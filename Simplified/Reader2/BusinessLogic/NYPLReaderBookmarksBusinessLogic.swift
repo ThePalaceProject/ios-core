@@ -10,15 +10,17 @@ import Foundation
 import R2Shared
 import R2Navigator
 
-/// Encapsulates all of the SimplyE business logic related to bookmarking.
+/// Encapsulates all of the SimplyE business logic related to bookmarking
+/// for a given book.
 class NYPLReaderBookmarksBusinessLogic: NSObject {
 
   var bookmarks: [NYPLReadiumBookmark] = []
   let book: NYPLBook
   private let publication: Publication
   private let drmDeviceID: String?
-  private let bookRegistryProvider: NYPLBookRegistryProvider
+  private let bookRegistry: NYPLBookRegistryProvider
   private let currentLibraryAccountProvider: NYPLCurrentLibraryAccountProvider
+  private let bookmarksFactory: NYPLBookmarkFactory
 
   init(book: NYPLBook,
        r2Publication: Publication,
@@ -28,9 +30,12 @@ class NYPLReaderBookmarksBusinessLogic: NSObject {
     self.book = book
     self.publication = r2Publication
     self.drmDeviceID = drmDeviceID
-    self.bookRegistryProvider = bookRegistryProvider
+    self.bookRegistry = bookRegistryProvider
     bookmarks = bookRegistryProvider.readiumBookmarks(forIdentifier: book.identifier)
     self.currentLibraryAccountProvider = currentLibraryAccountProvider
+    self.bookmarksFactory = NYPLBookmarkFactory(book: book,
+                                                publication: publication,
+                                                drmDeviceID: drmDeviceID)
 
     super.init()
   }
@@ -83,87 +88,34 @@ class NYPLReaderBookmarksBusinessLogic: NSObject {
   /// - Returns: A newly created bookmark object, unless the input location
   /// lacked progress information.
   func addBookmark(_ bookmarkLoc: NYPLBookmarkR2Location) -> NYPLReadiumBookmark? {
-    guard let progression = bookmarkLoc.locator.locations.progression else {
-      return nil
-    }
-    let chapterProgress = Float(progression)
-
-    guard let total = bookmarkLoc.locator.locations.totalProgression else {
-      return nil
-    }
-    let totalProgress = Float(total)
-    
-    var page: String? = nil
-    if let position = bookmarkLoc.locator.locations.position {
-      page = "\(position)"
-    }
-
-    let registryLoc = bookRegistryProvider.location(forIdentifier: book.identifier)
-    var cfi: String? = nil
-    var idref: String? = nil
-    if registryLoc?.locationString != nil,
-      let data = registryLoc?.locationString.data(using: .utf8),
-      let registryLocationJSON = try? JSONSerialization.jsonObject(with: data),
-      let registryLocationDict = registryLocationJSON as? [String: Any] {
-
-      cfi = registryLocationDict["contentCFI"] as? String
-
-      // backup idref from R1 in case parsing from R2 fails for some reason
-      idref = registryLocationDict["idref"] as? String
-    }
-
-    // get the idref from R2 data structures. Should be more reliable than R1's
-    // when working with R2 since it comes directly from a R2 Locator object.
-    if let idrefFromR2 = publication.idref(forHref: bookmarkLoc.locator.href) {
-      idref = idrefFromR2
-    }
-
-    let chapter: String?
-    if let locatorChapter = bookmarkLoc.locator.title {
-      chapter = locatorChapter
-    } else if let tocLink = publication.tableOfContents.first(withHREF: bookmarkLoc.locator.href) {
-      chapter = tocLink.title
-    } else {
-      chapter = nil
-    }
-
-    guard let bookmark = NYPLReadiumBookmark(
-      annotationId: nil,
-      contentCFI: cfi,
-      idref: idref,
-      chapter: chapter,
-      page: page,
-      location: registryLoc?.locationString,
-      progressWithinChapter: chapterProgress,
-      progressWithinBook: totalProgress,
-      time: (bookmarkLoc.creationDate as NSDate).rfc3339String(),
-      device: drmDeviceID) else {
-        return nil
+    guard let bookmark =
+      bookmarksFactory.make(fromR2Location: bookmarkLoc,
+                            usingBookRegistry: bookRegistry) else {
+                              //TODO: log error
+                              return nil
     }
 
     bookmarks.append(bookmark)
     bookmarks.sort { $0.progressWithinBook < $1.progressWithinBook }
 
-    addBookmark(bookmark)
+    postBookmark(bookmark)
 
     return bookmark
   }
     
-  private func addBookmark(_ bookmark: NYPLReadiumBookmark) {
+  private func postBookmark(_ bookmark: NYPLReadiumBookmark) {
     guard
       let currentAccount = currentLibraryAccountProvider.currentAccount,
       let accountDetails = currentAccount.details,
       accountDetails.syncPermissionGranted else {
-        self.bookRegistryProvider.add(bookmark, forIdentifier: book.identifier)
+        self.bookRegistry.add(bookmark, forIdentifier: book.identifier)
         return
     }
     
-    NYPLAnnotations.postBookmark(forBook: book.identifier,
-                                 toURL: nil,
-                                 bookmark: bookmark) { (serverAnnotationID) in
+    NYPLAnnotations.postBookmark(bookmark, forBookID: book.identifier) { serverAnnotationID in
       Log.debug(#function, serverAnnotationID != nil ? "Bookmark upload succeed" : "Bookmark failed to upload")
       bookmark.annotationId = serverAnnotationID
-      self.bookRegistryProvider.add(bookmark, forIdentifier: self.book.identifier)
+      self.bookRegistry.add(bookmark, forIdentifier: self.book.identifier)
     }
   }
 
@@ -194,7 +146,7 @@ class NYPLReaderBookmarksBusinessLogic: NSObject {
   }
 
   private func didDeleteBookmark(_ bookmark: NYPLReadiumBookmark) {
-    bookRegistryProvider.delete(bookmark, forIdentifier: book.identifier)
+    bookRegistry.delete(bookmark, forIdentifier: book.identifier)
 
     guard let currentAccount = currentLibraryAccountProvider.currentAccount,
         let details = currentAccount.details,
@@ -239,17 +191,18 @@ class NYPLReaderBookmarksBusinessLogic: NSObject {
       Log.debug(#file, "Syncing bookmarks...")
       // First check for and upload any local bookmarks that have never been saved to the server.
       // Wait til that's finished, then download the server's bookmark list and filter out any that can be deleted.
-      let localBookmarks = self.bookRegistryProvider.readiumBookmarks(forIdentifier: self.book.identifier)
+      let localBookmarks = self.bookRegistry.readiumBookmarks(forIdentifier: self.book.identifier)
       NYPLAnnotations.uploadLocalBookmarks(localBookmarks, forBook: self.book.identifier) { (bookmarksUploaded, bookmarksFailedToUpload) in
         for localBookmark in localBookmarks {
           for uploadedBookmark in bookmarksUploaded {
             if localBookmark.isEqual(uploadedBookmark) {
-              self.bookRegistryProvider.replace(localBookmark, with: uploadedBookmark, forIdentifier: self.book.identifier)
+              self.bookRegistry.replace(localBookmark, with: uploadedBookmark, forIdentifier: self.book.identifier)
             }
           }
         }
         
-        NYPLAnnotations.getServerBookmarks(forBook: self.book.identifier, atURL: self.book.annotationsURL) { (serverBookmarks) in
+        NYPLAnnotations.getServerBookmarks(forBook: self.book.identifier, atURL: self.book.annotationsURL) { serverBookmarks in
+
           guard let serverBookmarks = serverBookmarks else {
             self.handleBookmarksSyncFail(message: "Ending sync without running completion. Returning original list of bookmarks.",
                                          completion: completion)
@@ -266,7 +219,7 @@ class NYPLReaderBookmarksBusinessLogic: NSObject {
               completion(false, localBookmarks)
               return
             }
-            self.bookmarks = self.bookRegistryProvider.readiumBookmarks(forIdentifier: self.book.identifier)
+            self.bookmarks = self.bookRegistry.readiumBookmarks(forIdentifier: self.book.identifier)
             completion(true, self.bookmarks)
           }
         }
@@ -311,7 +264,7 @@ class NYPLReaderBookmarksBusinessLogic: NSObject {
     
     for localBookmark in localBookmarks {
       if !localBookmarksToKeep.contains(localBookmark) {
-        bookRegistryProvider.delete(localBookmark, forIdentifier: self.book.identifier)
+        bookRegistry.delete(localBookmark, forIdentifier: self.book.identifier)
       }
     }
     
@@ -322,7 +275,7 @@ class NYPLReaderBookmarksBusinessLogic: NSObject {
     bookmarksToAdd = Array(Set(bookmarksToAdd).subtracting(duplicatedBookmarks))
         
     for bookmark in bookmarksToAdd {
-      bookRegistryProvider.add(bookmark, forIdentifier: self.book.identifier)
+      bookRegistry.add(bookmark, forIdentifier: self.book.identifier)
     }
     
     NYPLAnnotations.deleteBookmarks(serverBookmarksToDelete)
@@ -334,7 +287,7 @@ class NYPLReaderBookmarksBusinessLogic: NSObject {
                                        completion: @escaping (Bool, [NYPLReadiumBookmark]) -> ()) {
     Log.info(#file, message)
     
-    self.bookmarks = self.bookRegistryProvider.readiumBookmarks(forIdentifier: self.book.identifier)
+    self.bookmarks = self.bookRegistry.readiumBookmarks(forIdentifier: self.book.identifier)
     completion(false, self.bookmarks)
   }
 }
