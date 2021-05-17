@@ -1,5 +1,4 @@
 @import LocalAuthentication;
-@import NYPLCardCreator;
 @import CoreLocation;
 
 #import <PureLayout/PureLayout.h>
@@ -29,8 +28,7 @@ static NSInteger sLinearViewTag = 1111;
 typedef NS_ENUM(NSInteger, CellKind) {
   CellKindBarcode,
   CellKindPIN,
-  CellKindLogIn,
-  CellKindRegistration
+  CellKindLogIn
 };
 
 typedef NS_ENUM(NSInteger, Section) {
@@ -284,20 +282,6 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
       [self.tableView deselectRowAtIndexPath:indexPath animated:YES];
       [self.businessLogic logIn];
       break;
-    case CellKindRegistration: {
-      [self.tableView deselectRowAtIndexPath:indexPath animated:YES];
-      UINavigationController *navController = [self.businessLogic makeCardCreatorIfPossible];
-      if (navController != nil) {
-        navController.navigationBar.topItem.leftBarButtonItem =
-        [[UIBarButtonItem alloc] initWithTitle:NSLocalizedString(@"Cancel", nil)
-                                         style:UIBarButtonItemStylePlain
-                                        target:self
-                                        action:@selector(didSelectCancelForSignUp)];
-        navController.modalPresentationStyle = UIModalPresentationFormSheet;
-        [self presentViewController:navController animated:YES completion:nil];
-      }
-      break;
-    }
   }
 }
 
@@ -385,9 +369,6 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
       self.logInCell.textLabel.font = [UIFont customFontForTextStyle:UIFontTextStyleBody];
       [self updateLoginCellAppearance];
       return self.logInCell;
-    }
-    case CellKindRegistration: {
-      return [self createRegistrationCell];
     }
   }
 }
@@ -610,14 +591,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
 - (void)setupTableData
 {
   NSArray *section0AcctInfo = [self accountInfoSection];
-
-  NSArray *section1;
-  if ([self.businessLogic registrationIsPossible]) {
-    section1 = @[@(CellKindRegistration)];
-  } else {
-    section1 = @[];
-  }
-  self.tableData = @[section0AcctInfo, section1];
+  self.tableData = @[section0AcctInfo];
   [self.tableView reloadData];
 }
 
