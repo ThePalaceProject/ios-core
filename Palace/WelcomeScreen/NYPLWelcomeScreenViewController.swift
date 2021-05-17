@@ -42,20 +42,13 @@ import PureLayout
                                  subheadline: NSLocalizedString("Simply browse, borrow, and read free e-books from your local library.", comment: "Informs a user of the features of being able to check out a book in the app and even use more than one mobile device"),
                                  buttonTitle: NSLocalizedString("Find Your Library", comment: "Button that lets user know they can select a library they have a card for"),
                                  buttonTargetSelector: #selector(pickYourLibraryTapped))
-    
-    let view2 = splashScreenView("SplashInstantClassicsIcon",
-                                 headline: NSLocalizedString("The SimplyE Collection", comment: "Title to show a user an option if they do not have a library card to check out books."),
-                                 subheadline: nil,
-                                 buttonTitle: NSLocalizedString("Add a Library Later", comment: "Name of section for free books means books that are well-known popular novels for many people."),
-                                 buttonTargetSelector: #selector(instantClassicsTapped))
-    
+        
     let logoView = UIImageView(image: UIImage(named: "LaunchImageLogo"))
     logoView.contentMode = .scaleAspectFit
     
     let containerView = UIView()
     containerView.addSubview(logoView)
     containerView.addSubview(view1)
-    containerView.addSubview(view2)
     
     self.view.addSubview(containerView)
     
@@ -66,11 +59,7 @@ import PureLayout
     view1.autoPinEdge(.top, to: .bottom, of: logoView, withOffset: -12)
     view1.autoPinEdge(toSuperviewMargin: .left)
     view1.autoPinEdge(toSuperviewMargin: .right)
-    
-    view2.autoAlignAxis(toSuperviewAxis: .vertical)
-    view2.autoPinEdge(.top, to: .bottom, of: view1, withOffset: 10)
-    view2.autoPinEdge(toSuperviewMargin: .left)
-    view2.autoPinEdge(toSuperviewMargin: .right)
+    view1.autoPinEdge(toSuperviewEdge: .bottom)
     
     containerView.autoAlignAxis(toSuperviewAxis: .vertical)
     containerView.autoPinEdge(toSuperviewEdge: .left, withInset: 24, relation: .greaterThanOrEqual)
@@ -84,7 +73,6 @@ import PureLayout
     }
     NSLayoutConstraint.autoSetPriority(UILayoutPriority.defaultLow) {
       logoView.autoSetDimensions(to: CGSize(width: 180, height: 150))
-      view2.autoPinEdge(toSuperviewEdge: .bottom, withInset: 80)
     }
   }
   
