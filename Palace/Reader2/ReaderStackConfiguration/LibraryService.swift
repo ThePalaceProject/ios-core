@@ -56,7 +56,7 @@ final class LibraryService: Loggable {
   ///   error alerts or other messages for the user.
   ///   - completion: When this is called, the book is ready for
   ///   presentation if there are no errors.
-  func openBook(_ book: NYPLBook,
+  func openBook(_ book: TPPBook,
                 sender: UIViewController,
                 completion: @escaping (CancellableResult<Publication, LibraryServiceError>) -> Void) {
 
@@ -90,7 +90,7 @@ final class LibraryService: Loggable {
     .eraseToAnyError()
   }
   
-  private func preparePresentation(of publication: Publication, book: NYPLBook) {
+  private func preparePresentation(of publication: Publication, book: TPPBook) {
     // If the book is a webpub, it means it is loaded remotely from a URL, and it doesn't need to be added to the publication server.
     guard publication.format != .webpub else {
       return

@@ -1,6 +1,6 @@
 #import "NSDate+NYPLDateAdditions.h"
 
-@implementation NSDate (NYPLDateAdditions)
+@implementation NSDate (TPPDateAdditions)
 
 + (NSDate *)dateWithRFC3339String:(NSString *const)string
 {

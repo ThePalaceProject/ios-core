@@ -14,7 +14,7 @@ extension Publication {
   /// Obtains a R2 Link object from a given ID reference.
   ///
   /// This for example can be used to get the link object related to a R1
-  /// bookmark by passing in the NYPLReadiumBookmark::idref.
+  /// bookmark by passing in the TPPReadiumBookmark::idref.
   ///
   /// - Complexity: O(*n*), where *n* is the length of data structures
   /// internal to this Publication, such as resources, links, readingOrder.

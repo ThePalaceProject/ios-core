@@ -36,7 +36,7 @@ protocol ReaderModuleAPI {
   /// - Parameter navigationController: The navigation stack the book will be presented in.
   /// - Parameter completion: Called once the publication is presented, or if an error occured.
   func presentPublication(_ publication: Publication,
-                          book: NYPLBook,
+                          book: TPPBook,
                           in navigationController: UINavigationController)
   
 }
@@ -51,19 +51,19 @@ final class ReaderModule: ReaderModuleAPI {
   
   weak var delegate: ModuleDelegate?
   private let resourcesServer: ResourcesServer
-  private let bookRegistry: NYPLBookRegistryProvider
-  private let progressSynchronizer: NYPLLastReadPositionSynchronizer
+  private let bookRegistry: TPPBookRegistryProvider
+  private let progressSynchronizer: TPPLastReadPositionSynchronizer
 
   /// Sub-modules to handle different publication formats (eg. EPUB, CBZ)
   var formatModules: [ReaderFormatModule] = []
 
   init(delegate: ModuleDelegate?,
        resourcesServer: ResourcesServer,
-       bookRegistry: NYPLBookRegistryProvider) {
+       bookRegistry: TPPBookRegistryProvider) {
     self.delegate = delegate
     self.resourcesServer = resourcesServer
     self.bookRegistry = bookRegistry
-    self.progressSynchronizer = NYPLLastReadPositionSynchronizer(bookRegistry: bookRegistry)
+    self.progressSynchronizer = TPPLastReadPositionSynchronizer(bookRegistry: bookRegistry)
 
     formatModules = [
       EPUBModule(delegate: self.delegate, resourcesServer: resourcesServer)
@@ -71,10 +71,10 @@ final class ReaderModule: ReaderModuleAPI {
   }
   
   func presentPublication(_ publication: Publication,
-                          book: NYPLBook,
+                          book: TPPBook,
                           in navigationController: UINavigationController) {
     if delegate == nil {
-      NYPLErrorLogger.logError(nil, summary: "ReaderModule delegate is not set")
+      TPPErrorLogger.logError(nil, summary: "ReaderModule delegate is not set")
     }
     
     guard let formatModule = self.formatModules.first(where:{ $0.publicationFormats.contains(publication.format) }) else {
@@ -82,8 +82,8 @@ final class ReaderModule: ReaderModuleAPI {
       return
     }
 
-    // TODO: SIMPLY-2656 remove implicit dependency (NYPLUserAccount.shared)
-    let drmDeviceID = NYPLUserAccount.sharedAccount().deviceID
+    // TODO: SIMPLY-2656 remove implicit dependency (TPPUserAccount.shared)
+    let drmDeviceID = TPPUserAccount.sharedAccount().deviceID
     progressSynchronizer.sync(for: publication,
                               book: book,
                               drmDeviceID: drmDeviceID) { [weak self] in
@@ -96,7 +96,7 @@ final class ReaderModule: ReaderModuleAPI {
   }
 
   func finalizePresentation(for publication: Publication,
-                            book: NYPLBook,
+                            book: TPPBook,
                             formatModule: ReaderFormatModule,
                             in navigationController: UINavigationController) {
     do {

@@ -7,10 +7,10 @@
 
 import Foundation
 
-extension NYPLMigrationManager {
+extension TPPMigrationManager {
   static func runMigrations() {
     // Fetch and parse app version
-    let appVersion = NYPLSettings.shared.appVersion ?? ""
+    let appVersion = TPPSettings.shared.appVersion ?? ""
     let appVersionTokens = appVersion.split(separator: ".").compactMap({ Int($0) })
 
     // Run through migration stages
@@ -61,7 +61,7 @@ extension NYPLMigrationManager {
 
     // Assign new uuid account list
     // The list of accounts would have been integers before; they will now be stored as a list of strings
-    NYPLSettings.shared.settingsAccountsList = newAccountsList
+    TPPSettings.shared.settingsAccountsList = newAccountsList
 
     // Migrate currentAccount
     // The old account ID that's being stored in the user defaults will be replaces with the string UUID
@@ -78,7 +78,7 @@ extension NYPLMigrationManager {
         continue
       }
 
-      guard let oldDirectoryPath = NYPLBookContentMetadataFilesHelper.directory(for: "\(accountId)") else {
+      guard let oldDirectoryPath = TPPBookContentMetadataFilesHelper.directory(for: "\(accountId)") else {
         Log.error(#file, "Could not get a directory path for accountId \(accountId)")
         continue
       }
@@ -87,7 +87,7 @@ extension NYPLMigrationManager {
           Log.error(#file, "Could not find mapping from accountID \(accountId) to uuid")
           continue
         }
-        guard let newDirectoryPath = NYPLBookContentMetadataFilesHelper.directory(for: accountUuid) else {
+        guard let newDirectoryPath = TPPBookContentMetadataFilesHelper.directory(for: accountUuid) else {
           Log.error(#file, "Could not get a directory path for accountUuid \(accountUuid)")
           continue
         }

@@ -1,4 +1,4 @@
-#import "NYPLBook.h"
+#import "TPPBook.h"
 
 #import "NYPLTenPrintCoverView+NYPLImageAdditions.h"
 
@@ -10,21 +10,21 @@
 // correctly declared as a static variable in TenPrintCoverView.)
 extern int authorHeight;
 
-@implementation NYPLTenPrintCoverView (NYPLTenPrintCoverView_NYPLImageAdditions)
+@implementation TPPTenPrintCoverView (NYPLTenPrintCoverView_NYPLImageAdditions)
 
 + (void)initialize {
   authorHeight = 15;
 }
 
-+ (UIImage *)imageForBook:(NYPLBook *const)book
++ (UIImage *)imageForBook:(TPPBook *const)book
 {
   CGFloat const width = 80;
   CGFloat const height = 120;
   
   // The scale argument below refers to the size of the font and nothing to do with the scale used
   // for rendering by the main screen.
-  NYPLTenPrintCoverView *const coverView =
-    [[NYPLTenPrintCoverView alloc]
+  TPPTenPrintCoverView *const coverView =
+    [[TPPTenPrintCoverView alloc]
      initWithFrame:CGRectMake(0, 0, width, height)
      withTitle:book.title
      withAuthor:book.authors

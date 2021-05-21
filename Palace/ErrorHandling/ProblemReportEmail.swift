@@ -10,7 +10,7 @@ import UIKit
   func beginComposing(
     to emailAddress: String,
     presentingViewController: UIViewController,
-    book: NYPLBook?)
+    book: TPPBook?)
   {
     beginComposing(to: emailAddress, presentingViewController: presentingViewController, body: generateBody(book: book))
   }
@@ -38,13 +38,13 @@ import UIKit
   
     let mailComposeViewController = MFMailComposeViewController.init()
     mailComposeViewController.mailComposeDelegate = self
-    mailComposeViewController.setSubject(NYPLLocalizationNotNeeded("Problem Report"))
+    mailComposeViewController.setSubject(TPPLocalizationNotNeeded("Problem Report"))
     mailComposeViewController.setToRecipients([emailAddress])
     mailComposeViewController.setMessageBody(body, isHTML: false)
     presentingViewController.present(mailComposeViewController, animated: true)
   }
   
-  func generateBody(book: NYPLBook?) -> String {
+  func generateBody(book: TPPBook?) -> String {
     let nativeHeight = UIScreen.main.nativeBounds.height
     let systemVersion = UIDevice.current.systemVersion
     let idiom: String

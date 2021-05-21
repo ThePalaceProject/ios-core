@@ -1,5 +1,5 @@
 //
-//  NYPLNetworkExecutorMock.swift
+//  TPPNetworkExecutorMock.swift
 //  The Palace Project
 //
 //  Created by Ettore Pasquini on 2/3/21.
@@ -9,7 +9,7 @@
 import Foundation
 @testable import SimplyE
 
-class NYPLRequestExecutorMock: NYPLRequestExecuting {
+class TPPRequestExecutorMock: NYPLRequestExecuting {
   var requestTimeout: TimeInterval = 60
 
   // table of all mock response bodies for given URLs
@@ -18,7 +18,7 @@ class NYPLRequestExecutorMock: NYPLRequestExecuting {
   init() {
     // add here the responses of all the api calls whose flow you want to verify
     let userProfileURL = URL(string: "https://circulation.librarysimplified.org/NYNYPL/patrons/me/")!
-    responseBodies[userProfileURL] = NYPLFake.validUserProfileJson
+    responseBodies[userProfileURL] = TPPFake.validUserProfileJson
   }
 
   func executeRequest(_ req: URLRequest,

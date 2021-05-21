@@ -1,32 +1,32 @@
 import Foundation
 
-let currentAccountIdentifierKey  = "NYPLCurrentAccountIdentifier"
+let currentAccountIdentifierKey  = "TPPCurrentAccountIdentifier"
 
-@objc protocol NYPLCurrentLibraryAccountProvider: NSObjectProtocol {
+@objc protocol TPPCurrentLibraryAccountProvider: NSObjectProtocol {
   var currentAccount: Account? {get}
 }
 
-@objc protocol NYPLLibraryAccountsProvider: NYPLCurrentLibraryAccountProvider {
-  var NYPLAccountUUID: String {get}
+@objc protocol TPPLibraryAccountsProvider: TPPCurrentLibraryAccountProvider {
+  var TPPAccountUUID: String {get}
   var currentAccountId: String? {get}
   func account(_ uuid: String) -> Account?
 }
 
 /// Manage the library accounts for the app.
 /// Initialized with JSON.
-@objcMembers final class AccountsManager: NSObject, NYPLLibraryAccountsProvider
+@objcMembers final class AccountsManager: NSObject, TPPLibraryAccountsProvider
 {
-  static let NYPLAccountUUIDs = [
+  static let TPPAccountUUIDs = [
     "urn:uuid:065c0c11-0d0f-42a3-82e4-277b18786949", //NYPL proper
     "urn:uuid:edef2358-9f6a-4ce6-b64f-9b351ec68ac4", //Brooklyn
     "urn:uuid:56906f26-2c9a-4ae9-bd02-552557720b99"  //Simplified Instant Classics
   ]
 
-  let NYPLAccountUUID = AccountsManager.NYPLAccountUUIDs[0]
+  let TPPAccountUUID = AccountsManager.TPPAccountUUIDs[0]
 
   static let shared = AccountsManager()
   
-  let ageCheck: NYPLAgeCheckVerifying
+  let ageCheck: TPPAgeCheckVerifying
 
   // For Objective-C classes
   class func sharedInstance() -> AccountsManager {
@@ -72,8 +72,8 @@ let currentAccountIdentifierKey  = "NYPLCurrentAccountIdentifier"
     set {
       Log.debug(#file, "Setting currentAccount to <\(newValue?.name ?? "[name N/A]") LibUUID=\(newValue?.uuid ?? "[UUID N/A]")>")
       currentAccountId = newValue?.uuid
-      NYPLErrorLogger.setUserID(NYPLUserAccount.sharedAccount().barcode)
-      NotificationCenter.default.post(name: NSNotification.Name.NYPLCurrentAccountDidChange,
+      TPPErrorLogger.setUserID(TPPUserAccount.sharedAccount().barcode)
+      NotificationCenter.default.post(name: NSNotification.Name.TPPCurrentAccountDidChange,
                                       object: nil)
     }
   }
@@ -91,7 +91,7 @@ let currentAccountIdentifierKey  = "NYPLCurrentAccountIdentifier"
 
   #if OPENEBOOKS
   private func setCurrentAccountIdFromSettings() {
-    if NYPLSettings.shared.useBetaLibraries {
+    if TPPSettings.shared.useBetaLibraries {
       currentAccountId = NYPLConfiguration.OpenEBooksUUIDBeta
     } else {
       currentAccountId = NYPLConfiguration.OpenEBooksUUIDProd
@@ -100,8 +100,8 @@ let currentAccountIdentifierKey  = "NYPLCurrentAccountIdentifier"
   #endif
 
   private override init() {
-    self.accountSet = NYPLSettings.shared.useBetaLibraries ? NYPLConfiguration.betaUrlHash : NYPLConfiguration.prodUrlHash
-    self.ageCheck = NYPLAgeCheck(ageCheckChoiceStorage: NYPLSettings.shared)
+    self.accountSet = TPPSettings.shared.useBetaLibraries ? TPPConfiguration.betaUrlHash : TPPConfiguration.prodUrlHash
+    self.ageCheck = TPPAgeCheck(ageCheckChoiceStorage: TPPSettings.shared)
     
     super.init()
 
@@ -116,7 +116,7 @@ let currentAccountIdentifierKey  = "NYPLCurrentAccountIdentifier"
     NotificationCenter.default.addObserver(
       self,
       selector: #selector(updateAccountSetFromNotification(_:)),
-      name: NSNotification.Name.NYPLUseBetaDidChange,
+      name: NSNotification.Name.TPPUseBetaDidChange,
       object: nil
     )
 
@@ -200,14 +200,14 @@ let currentAccountIdentifierKey  = "NYPLCurrentAccountIdentifier"
       // changing the `accountsSets` dictionary will also change `currentAccount`
       Log.debug(#function, "hadAccount=\(hadAccount) currentAccountID=\(currentAccountId ?? "N/A") currentAcct=\(String(describing: currentAccount))")
       if hadAccount != (self.currentAccount != nil) {
-        self.currentAccount?.loadAuthenticationDocument(using: NYPLUserAccount.sharedAccount(), completion: { success in
+        self.currentAccount?.loadAuthenticationDocument(using: TPPUserAccount.sharedAccount(), completion: { success in
           DispatchQueue.main.async {
             var mainFeed = URL(string: self.currentAccount?.catalogUrl ?? "")
             let resolveFn = {
               Log.debug(#function, "mainFeedURL=\(String(describing: mainFeed))")
-              NYPLSettings.shared.accountMainFeedURL = mainFeed
-              UIApplication.shared.delegate?.window??.tintColor = NYPLConfiguration.mainColor()
-              NotificationCenter.default.post(name: NSNotification.Name.NYPLCurrentAccountDidChange, object: nil)
+              TPPSettings.shared.accountMainFeedURL = mainFeed
+              UIApplication.shared.delegate?.window??.tintColor = TPPConfiguration.mainColor()
+              NotificationCenter.default.post(name: NSNotification.Name.TPPCurrentAccountDidChange, object: nil)
               completion(true)
             }
 
@@ -217,7 +217,7 @@ let currentAccountIdentifierKey  = "NYPLCurrentAccountIdentifier"
             // there is a logic in NYPLUserAcccount authDefinition setter to perform an age check, but it wasn't tested
             // most probably you can delete this check from here
             if self.currentAccount?.details?.needsAgeCheck ?? false {
-              self.ageCheck.verifyCurrentAccountAgeRequirement(userAccountProvider: NYPLUserAccount.sharedAccount(),
+              self.ageCheck.verifyCurrentAccountAgeRequirement(userAccountProvider: TPPUserAccount.sharedAccount(),
                                                                currentLibraryAccountProvider: self) { meetsAgeRequirement in
                 DispatchQueue.main.async {
                   mainFeed = self.currentAccount?.details?.defaultAuth?.coppaURL(isOfAge: meetsAgeRequirement)
@@ -235,7 +235,7 @@ let currentAccountIdentifierKey  = "NYPLCurrentAccountIdentifier"
         completion(true)
       }
     } catch (let error) {
-      NYPLErrorLogger.logError(error,
+      TPPErrorLogger.logError(error,
                                summary: "Error while parsing catalog feed")
       completion(false)
     }
@@ -251,22 +251,22 @@ let currentAccountIdentifierKey  = "NYPLCurrentAccountIdentifier"
   /// thread or not.
   func loadCatalogs(completion: ((Bool) -> ())?) {
     Log.debug(#file, "Entering loadCatalog...")
-    let targetUrl = NYPLSettings.shared.useBetaLibraries ? NYPLConfiguration.betaUrl : NYPLConfiguration.prodUrl
+    let targetUrl = TPPSettings.shared.useBetaLibraries ? TPPConfiguration.betaUrl : TPPConfiguration.prodUrl
     let hash = targetUrl.absoluteString.md5().base64EncodedStringUrlSafe()
       .trimmingCharacters(in: ["="])
 
     let wasAlreadyLoading = addLoadingCompletionHandler(key: hash, completion)
     guard !wasAlreadyLoading else { return }
 
-    NYPLNetworkExecutor.shared.GET(targetUrl) { result in
+    TPPNetworkExecutor.shared.GET(targetUrl) { result in
       switch result {
       case .success(let data, _):
         self.loadAccountSetsAndAuthDoc(fromCatalogData: data, key: hash) { success in
           self.callAndClearLoadingCompletionHandlers(key: hash, success)
-          NotificationCenter.default.post(name: NSNotification.Name.NYPLCatalogDidLoad, object: nil)
+          NotificationCenter.default.post(name: NSNotification.Name.TPPCatalogDidLoad, object: nil)
         }
       case .failure(let error, _):
-        NYPLErrorLogger.logError(
+        TPPErrorLogger.logError(
           withCode: .libraryListLoadFail,
           summary: "Unable to load libraries list",
           metadata: [
@@ -320,7 +320,7 @@ let currentAccountIdentifierKey  = "NYPLCurrentAccountIdentifier"
 
   func updateAccountSet(completion: ((Bool) -> ())?) {
     accountSetsWorkQueue.sync(flags: .barrier) {
-      self.accountSet = NYPLSettings.shared.useBetaLibraries ? NYPLConfiguration.betaUrlHash : NYPLConfiguration.prodUrlHash
+      self.accountSet = TPPSettings.shared.useBetaLibraries ? TPPConfiguration.betaUrlHash : TPPConfiguration.prodUrlHash
     }
 
     if self.accounts().isEmpty {
@@ -329,7 +329,7 @@ let currentAccountIdentifierKey  = "NYPLCurrentAccountIdentifier"
   }
 
   func clearCache() {
-    NYPLNetworkExecutor.shared.clearCache()
+    TPPNetworkExecutor.shared.clearCache()
     do {
       let applicationSupportUrl = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: false)
       let appSupportDirContents = try FileManager.default.contentsOfDirectory(at: applicationSupportUrl, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles, .skipsPackageDescendants, .skipsSubdirectoryDescendants])

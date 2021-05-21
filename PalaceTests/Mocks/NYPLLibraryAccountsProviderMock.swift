@@ -9,17 +9,17 @@
 import Foundation
 @testable import SimplyE
 
-class NYPLLibraryAccountMock: NSObject, NYPLLibraryAccountsProvider {
+class TPPLibraryAccountMock: NSObject, NYPLLibraryAccountsProvider {
   let feedURL: URL
   let nyplAuthDocURL: URL
   let feed: OPDS2CatalogsFeed
   let nyplAccount: Account
 
   override init() {
-    feedURL = Bundle(for: NYPLLibraryAccountMock.self)
+    feedURL = Bundle(for: TPPLibraryAccountMock.self)
       .url(forResource: "OPDS2CatalogsFeed", withExtension: "json")!
 
-    nyplAuthDocURL = Bundle(for: NYPLLibraryAccountMock.self)
+    nyplAuthDocURL = Bundle(for: TPPLibraryAccountMock.self)
       .url(forResource: "nypl_authentication_document", withExtension: "json")!
 
     let feedData = try! Data(contentsOf: feedURL)

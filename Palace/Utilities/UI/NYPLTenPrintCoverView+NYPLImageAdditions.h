@@ -1,8 +1,8 @@
-#import "NYPLTenPrintCoverView.h"
+#import "TPPTenPrintCoverView.h"
 
-@interface NYPLTenPrintCoverView (NYPLImageAdditions)
+@interface TPPTenPrintCoverView (NYPLImageAdditions)
 
 // Must be called on the main thread.
-+ (UIImage *)imageForBook:(NYPLBook *const)book;
++ (UIImage *)imageForBook:(TPPBook *const)book;
 
 @end

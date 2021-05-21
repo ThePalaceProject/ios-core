@@ -1,6 +1,6 @@
 @import Foundation;
 
-@interface NSDate (NYPLDateAdditions)
+@interface NSDate (TPPDateAdditions)
 
 // This correctly parses fractional seconds, but ignores them due to |NSDate| limitations.
 + (nullable NSDate *)dateWithRFC3339String:(nullable NSString *)string;
