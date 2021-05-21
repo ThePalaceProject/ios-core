@@ -139,7 +139,7 @@ static NSUInteger const memoryCacheInMegabytes = 2;
   } else {
     if(!book.imageThumbnailURL) {
       [[NSOperationQueue mainQueue] addOperationWithBlock:^{
-        handler([TPPTenPrintCoverView imageForBook:book]);
+        handler([NYPLTenPrintCoverView imageForBook:book]);
       }];
       return;
     }
@@ -175,7 +175,7 @@ static NSUInteger const memoryCacheInMegabytes = 2;
         if (image) {
           handler(image);
         } else {
-          handler([TPPTenPrintCoverView imageForBook:book]);
+          handler([NYPLTenPrintCoverView imageForBook:book]);
         }
       }];
   }]
@@ -209,7 +209,7 @@ static NSUInteger const memoryCacheInMegabytes = 2;
   for(TPPBook *const book in books) {
     if(!book.imageThumbnailURL) {
       [lock lock];
-      dictionary[book.identifier] = [TPPTenPrintCoverView imageForBook:book];
+      dictionary[book.identifier] = [NYPLTenPrintCoverView imageForBook:book];
       --remaining;
       if(!remaining) {
         [[NSOperationQueue mainQueue] addOperationWithBlock:^{
@@ -243,7 +243,7 @@ static NSUInteger const memoryCacheInMegabytes = 2;
                                                             __attribute__((unused)) BOOL *stop) {
               if([imageOrNull isKindOfClass:[NSNull class]]) {
                 dictionary[identifier] =
-                  [TPPTenPrintCoverView imageForBook:identifiersToBooks[identifier]];
+                  [NYPLTenPrintCoverView imageForBook:identifiersToBooks[identifier]];
               }
             }];
             handler(dictionary);
