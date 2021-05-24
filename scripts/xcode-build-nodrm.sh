@@ -15,7 +15,7 @@ set -eo pipefail
 
 echo "Building SimplyE without DRM support..."
 
-xcodebuild -project Simplified.xcodeproj \
+xcodebuild -project Palace.xcodeproj \
            -scheme SimplyE-noDRM \
            -destination platform=iOS\ Simulator,OS=13.5,name=iPhone\ 11\ Pro\
            clean build | \
