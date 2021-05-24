@@ -1,6 +1,6 @@
 
-private let userAboveAgeKey              = "NYPLSettingsUserAboveAgeKey"
-private let accountSyncEnabledKey        = "NYPLAccountSyncEnabledKey"
+private let userAboveAgeKey              = "TPPSettingsUserAboveAgeKey"
+private let accountSyncEnabledKey        = "TPPAccountSyncEnabledKey"
 
 /// This class is used for mapping details of SAML Identity Provider received in authentication document
 @objcMembers
@@ -22,7 +22,7 @@ class OPDS2SamlIDP: NSObject, Codable {
   }
 }
 
-@objc protocol NYPLSignedInStateProvider {
+@objc protocol TPPSignedInStateProvider {
   func isSignedIn() -> Bool
 }
 
@@ -180,11 +180,11 @@ class OPDS2SamlIDP: NSObject, Codable {
   
   var eulaIsAccepted:Bool {
     get {
-      return getAccountDictionaryKey(NYPLSettings.userHasAcceptedEULAKey) as? Bool ?? false
+      return getAccountDictionaryKey(TPPSettings.userHasAcceptedEULAKey) as? Bool ?? false
 
     }
     set {
-      setAccountDictionaryKey(NYPLSettings.userHasAcceptedEULAKey,
+      setAccountDictionaryKey(TPPSettings.userHasAcceptedEULAKey,
                               toValue: newValue as AnyObject)
     }
   }
@@ -406,10 +406,10 @@ class OPDS2SamlIDP: NSObject, Codable {
   /// No guarantees are being made about whether this is called on the main
   /// thread or not. This closure is not retained by `self`.
   @objc(loadAuthenticationDocumentUsingSignedInStateProvider:completion:)
-  func loadAuthenticationDocument(using signedInStateProvider: NYPLSignedInStateProvider? = nil, completion: @escaping (Bool) -> ()) {
+  func loadAuthenticationDocument(using signedInStateProvider: TPPSignedInStateProvider? = nil, completion: @escaping (Bool) -> ()) {
     Log.debug(#function, "Entering...")
     guard let urlString = authenticationDocumentUrl, let url = URL(string: urlString) else {
-      NYPLErrorLogger.logError(
+      TPPErrorLogger.logError(
         withCode: .noURL,
         summary: "Failed to load authentication document because its URL is invalid",
         metadata: ["self.uuid": uuid,
@@ -419,7 +419,7 @@ class OPDS2SamlIDP: NSObject, Codable {
       return
     }
 
-    NYPLNetworkExecutor.shared.GET(url) { result in
+    TPPNetworkExecutor.shared.GET(url) { result in
       switch result {
       case .success(let serverData, _):
         do {
@@ -429,13 +429,13 @@ class OPDS2SamlIDP: NSObject, Codable {
             provider.isSignedIn(),
             let announcements = self.authenticationDocument?.announcements {
             DispatchQueue.main.async {
-              NYPLAnnouncementBusinessLogic.shared.presentAnnouncements(announcements)
+              TPPAnnouncementBusinessLogic.shared.presentAnnouncements(announcements)
             }
           }
           completion(true)
         } catch (let error) {
           let responseBody = String(data: serverData, encoding: .utf8)
-          NYPLErrorLogger.logError(
+          TPPErrorLogger.logError(
             withCode: .authDocParseFail,
             summary: "Authentication Document Data Parse Error",
             metadata: [
@@ -447,7 +447,7 @@ class OPDS2SamlIDP: NSObject, Codable {
           completion(false)
         }
       case .failure(let error, _):
-        NYPLErrorLogger.logError(
+        TPPErrorLogger.logError(
           withCode: .authDocLoadFail,
           summary: "Authentication Document request failed to load",
           metadata: ["loadError": error, "url": url]

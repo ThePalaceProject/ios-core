@@ -33,7 +33,7 @@ import NYPLAudiobookToolkit
   @objc init?(for audiobookUrl: URL) {
     // Check contentProtection is in place
     guard let contentProtection = lcpService.contentProtection else {
-      NYPLErrorLogger.logError(nil, summary: "Uninitialized contentProtection in LCPAudiobooks")
+      TPPErrorLogger.logError(nil, summary: "Uninitialized contentProtection in LCPAudiobooks")
       return nil
     }
     self.audiobookUrl = audiobookUrl
@@ -51,7 +51,7 @@ import NYPLAudiobookToolkit
         let json = try resourse.readAsJSON().get()
         completion(json as NSDictionary, nil)
       } catch {
-        NYPLErrorLogger.logError(error, summary: "Error reading LCP \(manifestPath) file", metadata: [self.audiobookUrlKey: self.audiobookUrl])
+        TPPErrorLogger.logError(error, summary: "Error reading LCP \(manifestPath) file", metadata: [self.audiobookUrlKey: self.audiobookUrl])
         completion(nil, LCPAudiobooks.nsError(for: error))
       }
     }
@@ -94,7 +94,7 @@ extension LCPAudiobooks: DRMDecryptor {
         try data.write(to: resultUrl)
         completion(nil)
       } catch {
-        NYPLErrorLogger.logError(error, summary: "Error decrypting LCP audio file", metadata: [
+        TPPErrorLogger.logError(error, summary: "Error decrypting LCP audio file", metadata: [
           self.audiobookUrlKey: self.audiobookUrl,
           self.audioFileHrefKey: url,
           self.destinationFileUrlKey: resultUrl

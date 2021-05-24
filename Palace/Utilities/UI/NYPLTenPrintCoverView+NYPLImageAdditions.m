@@ -1,4 +1,4 @@
-#import "NYPLBook.h"
+#import "TPPBook.h"
 
 #import "NYPLTenPrintCoverView+NYPLImageAdditions.h"
 
@@ -16,7 +16,7 @@ extern int authorHeight;
   authorHeight = 15;
 }
 
-+ (UIImage *)imageForBook:(NYPLBook *const)book
++ (UIImage *)imageForBook:(TPPBook *const)book
 {
   CGFloat const width = 80;
   CGFloat const height = 120;

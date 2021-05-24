@@ -3,6 +3,6 @@
 @interface NYPLTenPrintCoverView (NYPLImageAdditions)
 
 // Must be called on the main thread.
-+ (UIImage *)imageForBook:(NYPLBook *const)book;
++ (UIImage *)imageForBook:(TPPBook *const)book;
 
 @end

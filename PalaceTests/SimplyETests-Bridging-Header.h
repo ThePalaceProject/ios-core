@@ -4,7 +4,7 @@
 
 #import "SimplyE-Bridging-Header.h"
 #import "NYPLOpenSearchDescription.h"
-#import "NSString+NYPLStringAdditions.h"
+#import "NSString+TPPStringAdditions.h"
 #import "NYPLBook.h"
 
 //

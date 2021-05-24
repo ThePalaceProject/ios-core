@@ -78,7 +78,7 @@ extension AudioBookVendors {
       SecItemDelete(addQuery as CFDictionary)
       let status = SecItemAdd(addQuery as CFDictionary, nil)
       if status != errSecSuccess && status != errSecDuplicateItem {
-        NYPLKeychainManager.logKeychainError(forVendor: self.rawValue, status: status, message: "FeedbookDrmPrivateKeyManagement Error:")
+        TPPKeychainManager.logKeychainError(forVendor: self.rawValue, status: status, message: "FeedbookDrmPrivateKeyManagement Error:")
       }
       
       completion?(nil)

@@ -1,18 +1,18 @@
 @import XCTest;
 
-#import "NSDate+NYPLDateAdditions.h"
-#import "NYPLOPDSEntry.h"
-#import "NYPLOPDSEntryGroupAttributes.h"
-#import "NYPLOPDSFeed.h"
-#import "NYPLXML.h"
+#import "NSDate+TPPDateAdditions.h"
+#import "TPPOPDSEntry.h"
+#import "TPPOPDSEntryGroupAttributes.h"
+#import "TPPOPDSFeed.h"
+#import "TPPXML.h"
 
-@interface NYPLOPDSEntryTests : XCTestCase
+@interface TPPOPDSEntryTests : XCTestCase
 
-@property (nonatomic) NYPLOPDSEntry *entry;
+@property (nonatomic) TPPOPDSEntry *entry;
 
 @end
 
-@implementation NYPLOPDSEntryTests
+@implementation TPPOPDSEntryTests
 
 - (void)setUp
 {
@@ -24,10 +24,10 @@
                          ofType:@"xml"]];
   assert(data);
   
-  NYPLXML *const feedXML = [NYPLXML XMLWithData:data];
+  TPPXML *const feedXML = [TPPXML XMLWithData:data];
   assert(feedXML);
   
-  NYPLOPDSFeed *const feed = [[NYPLOPDSFeed alloc] initWithXML:feedXML];
+  TPPOPDSFeed *const feed = [[TPPOPDSFeed alloc] initWithXML:feedXML];
   assert(feed);
   
   self.entry = feed.entries[0];
@@ -43,7 +43,7 @@
 
 - (void)testHandlesNilInit
 {
-  XCTAssertNil([[NYPLOPDSEntry alloc] initWithXML:nil]);
+  XCTAssertNil([[TPPOPDSEntry alloc] initWithXML:nil]);
 }
 
 - (void)testAuthorStrings
@@ -55,7 +55,7 @@
 
 - (void)testGroupAttributes
 {
-  NYPLOPDSEntryGroupAttributes *const attributes = self.entry.groupAttributes;
+  TPPOPDSEntryGroupAttributes *const attributes = self.entry.groupAttributes;
   XCTAssert(attributes);
   XCTAssertEqualObjects(attributes.href, [NSURL URLWithString:@"http://localhost/group"]);
   XCTAssertEqualObjects(attributes.title, @"Example");

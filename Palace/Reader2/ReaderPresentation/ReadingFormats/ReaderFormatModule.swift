@@ -26,7 +26,7 @@ protocol ReaderFormatModule {
   
   /// Creates the view controller to present the publication.
   func makeReaderViewController(for publication: Publication,
-                                book: NYPLBook,
+                                book: TPPBook,
                                 initialLocation: Locator?) throws -> UIViewController
   
 }

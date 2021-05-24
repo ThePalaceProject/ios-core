@@ -3,7 +3,7 @@ import XCTest
 @testable import SimplyE
 
 class UserProfileDocumentTests: XCTestCase {
-  let validJson = NYPLFake.validUserProfileJson
+  let validJson = TPPFake.validUserProfileJson
 
   let dataCorruptedJson = "lll"
     

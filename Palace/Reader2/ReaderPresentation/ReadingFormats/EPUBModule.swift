@@ -30,14 +30,14 @@ final class EPUBModule: ReaderFormatModule {
   }
   
   func makeReaderViewController(for publication: Publication,
-                                book: NYPLBook,
+                                book: TPPBook,
                                 initialLocation: Locator?) throws -> UIViewController {
       
     guard publication.metadata.identifier != nil else {
       throw ReaderError.epubNotValid
     }
     
-    let epubVC = NYPLEPUBViewController(publication: publication,
+    let epubVC = TPPEPUBViewController(publication: publication,
                                         book: book,
                                         initialLocation: initialLocation,
                                         resourcesServer: resourcesServer)

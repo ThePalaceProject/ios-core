@@ -23,7 +23,7 @@ class LCPPassphraseAuthenticationService: LCPAuthenticating {
       return
     }
     
-    NYPLNetworkExecutor.shared.GET(hintURL) { (result) in
+    TPPNetworkExecutor.shared.GET(hintURL) { (result) in
       switch result {
       case .success(let data, _):
         if let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String:Any],
@@ -31,7 +31,7 @@ class LCPPassphraseAuthenticationService: LCPAuthenticating {
           completion(passphrase)
         } else {
           let responseBody = String(data: data, encoding: .utf8)
-          NYPLErrorLogger.logError(
+          TPPErrorLogger.logError(
             withCode: .lcpPassphraseAuthorizationFail,
             summary: "LCP Passphrase JSON Parse Error",
             metadata: [
@@ -41,7 +41,7 @@ class LCPPassphraseAuthenticationService: LCPAuthenticating {
           completion(nil)
         }
       case .failure(let error, _):
-        NYPLErrorLogger.logError(
+        TPPErrorLogger.logError(
           withCode: .lcpPassphraseAuthorizationFail,
           summary: "Unable to retrieve LCP passphrase",
           metadata: [
