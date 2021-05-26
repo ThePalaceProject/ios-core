@@ -7,7 +7,7 @@
 //
 
 import Foundation
-@testable import SimplyE
+@testable import Palace
 
 class TPPRequestExecutorMock: NYPLRequestExecuting {
   var requestTimeout: TimeInterval = 60

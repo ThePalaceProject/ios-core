@@ -7,7 +7,7 @@
 //
 
 import XCTest
-@testable import SimplyE
+@testable import Palace
 
 class URLRequest_NYPLTests: XCTestCase {
   func testAuthorizationHeaderStrip() throws {

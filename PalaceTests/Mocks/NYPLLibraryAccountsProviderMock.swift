@@ -7,7 +7,7 @@
 //
 
 import Foundation
-@testable import SimplyE
+@testable import Palace
 
 class TPPLibraryAccountMock: NSObject, NYPLLibraryAccountsProvider {
   let feedURL: URL

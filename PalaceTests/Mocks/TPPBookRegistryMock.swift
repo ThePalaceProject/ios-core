@@ -7,7 +7,7 @@
 //
 
 import Foundation
-@testable import SimplyE
+@testable import Palace
 
 class TPPBookRegistryMock: NSObject, NYPLBookRegistrySyncing, NYPLBookRegistryProvider {
   var syncing = false

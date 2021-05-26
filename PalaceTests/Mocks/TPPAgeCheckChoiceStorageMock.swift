@@ -7,7 +7,7 @@
 //
 
 import Foundation
-@testable import SimplyE
+@testable import Palace
 
 class TPPAgeCheckChoiceStorageMock: NSObject, NYPLAgeCheckChoiceStorage {
   var userPresentedAgeCheck: Bool

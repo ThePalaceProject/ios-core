@@ -7,7 +7,7 @@
 //
 
 import XCTest
-@testable import SimplyE
+@testable import Palace
 
 // TODO: SIMPLY-3645
 class TPPBookmarkSpecTests: XCTestCase {

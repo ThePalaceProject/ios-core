@@ -7,7 +7,7 @@
 //
 
 import Foundation
-@testable import SimplyE
+@testable import Palace
 
 class TPPUserAccountProviderMock: NSObject, NYPLUserAccountProvider {
   private static let userAccountMock = TPPUserAccountMock()

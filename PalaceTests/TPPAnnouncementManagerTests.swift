@@ -1,5 +1,5 @@
 import XCTest
-@testable import SimplyE
+@testable import Palace
 
 class TPPAnnouncementManagerTests: XCTestCase {
   let announcementId = "test_announcement_id"

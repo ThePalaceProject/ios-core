@@ -7,7 +7,7 @@
 //
 
 import XCTest
-@testable import SimplyE
+@testable import Palace
 
 class UIColor_NYPLAdditionsTests: XCTestCase {
   func testExample() throws {

@@ -7,7 +7,7 @@
 //
 
 import Foundation
-@testable import SimplyE
+@testable import Palace
 
 class TPPUserAccountMock: NYPLUserAccount {
   override init() {

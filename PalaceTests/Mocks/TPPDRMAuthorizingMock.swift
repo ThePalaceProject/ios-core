@@ -7,7 +7,7 @@
 //
 
 import Foundation
-@testable import SimplyE
+@testable import Palace
 
 class TPPDRMAuthorizingMock: NSObject, NYPLDRMAuthorizing {
   var workflowsInProgress = false

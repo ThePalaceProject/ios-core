@@ -8,7 +8,7 @@
 
 import XCTest
 import R2Shared
-@testable import SimplyE
+@testable import Palace
 
 class TPPReaderBookmarksBusinessLogicTests: XCTestCase {
     var bookmarkBusinessLogic: NYPLReaderBookmarksBusinessLogic!

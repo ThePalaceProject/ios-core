@@ -1,6 +1,6 @@
 import XCTest
 
-@testable import SimplyE
+@testable import Palace
 
 class UserProfileDocumentTests: XCTestCase {
   let validJson = TPPFake.validUserProfileJson

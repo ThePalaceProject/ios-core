@@ -7,7 +7,7 @@
 //
 
 import Foundation
-@testable import SimplyE
+@testable import Palace
 
 class TPPCurrentLibraryAccountProviderMock: NSObject, NYPLCurrentLibraryAccountProvider {
   var currentAccount: Account?

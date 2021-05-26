@@ -7,7 +7,7 @@
 //
 
 import XCTest
-@testable import SimplyE
+@testable import Palace
 
 class Date_NYPLAdditionsTests: XCTestCase {
   func testRFC1123() {

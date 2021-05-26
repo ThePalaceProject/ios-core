@@ -1,7 +1,7 @@
 import XCTest
 
 import OverdriveProcessor
-@testable import SimplyE
+@testable import Palace
 
 class TPPMyBooksDownloadCenterTests: XCTestCase {
   func testDeleteLocalContent() {

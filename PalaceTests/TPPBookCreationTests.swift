@@ -7,7 +7,7 @@
 //
 
 import XCTest
-@testable import SimplyE
+@testable import Palace
 
 class TPPBookCreationTests: XCTestCase {
   var opdsEntry: NYPLOPDSEntry!
