@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 52;
+	objectVersion = 46;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -114,7 +114,6 @@
 		145DA48E215441A70055DB93 /* ZXingObjC.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 145DA48D215441A70055DB93 /* ZXingObjC.framework */; };
 		145DA4922154464F0055DB93 /* SQLite.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 145DA4912154464F0055DB93 /* SQLite.framework */; };
 		145DA49621544A430055DB93 /* PureLayout.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 145DA49521544A420055DB93 /* PureLayout.framework */; };
-		148B1C2D21768EAA00FF64AB /* NYPLAEToolkit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 148B1C1721710C6800FF64AB /* NYPLAEToolkit.framework */; };
 		148B1C2E21768EAA00FF64AB /* NYPLAudiobookToolkit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 148B1C1C21710C6800FF64AB /* NYPLAudiobookToolkit.framework */; };
 		17071065242A923400E2648F /* TPPSecrets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17071060242A923400E2648F /* TPPSecrets.swift */; };
 		170E5FBE25AFDD65007D6DE6 /* ZIPFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 170E5FBD25AFDD64007D6DE6 /* ZIPFoundation.framework */; };
@@ -138,9 +137,6 @@
 		17BE24E725FABCDE00AE707F /* TPPUserAccountProviderMock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17BE24E625FABCDE00AE707F /* TPPUserAccountProviderMock.swift */; };
 		17BE24ED25FB09F000AE707F /* TPPCurrentLibraryAccountProviderMock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17BE24EC25FB09F000AE707F /* TPPCurrentLibraryAccountProviderMock.swift */; };
 		17BE24EF25FB114900AE707F /* simplye_authentication_document.json in Resources */ = {isa = PBXBuildFile; fileRef = 17BE24EE25FB114900AE707F /* simplye_authentication_document.json */; };
-		17D08381248E938000092AA9 /* OverdriveProcessor.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 17D08378248E8EEB00092AA9 /* OverdriveProcessor.framework */; };
-		17DFC5ED251E7FBC003A19CC /* AudioEngine.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 176F8A802519684D00CE5BFB /* AudioEngine.xcframework */; settings = {ATTRIBUTES = (Required, ); }; };
-		17DFC5F6251E84CF003A19CC /* AudioEngine.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 176F8A802519684D00CE5BFB /* AudioEngine.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		17E81F08261522B3001003C2 /* TPPRoundedButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17E81F07261522B3001003C2 /* TPPRoundedButton.swift */; };
 		17E81F09261522B3001003C2 /* TPPRoundedButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17E81F07261522B3001003C2 /* TPPRoundedButton.swift */; };
 		17E81F0B261522B3001003C2 /* TPPRoundedButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17E81F07261522B3001003C2 /* TPPRoundedButton.swift */; };
@@ -316,8 +312,6 @@
 		736A54B8254B3C680031C3AA /* TPPSAMLHelper.m in Sources */ = {isa = PBXBuildFile; fileRef = 730263AB2540DE4200A53891 /* TPPSAMLHelper.m */; };
 		736A54BD254B3C6D0031C3AA /* TPPSignInBusinessLogic+DRM.swift in Sources */ = {isa = PBXBuildFile; fileRef = 737F4A6A254A137900A3C34B /* TPPSignInBusinessLogic+DRM.swift */; };
 		736A54BE254B3C730031C3AA /* TPPSignInBusinessLogic+UI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73A794A525477D8F00C59CC1 /* TPPSignInBusinessLogic+UI.swift */; };
-		736CF271252278AA0081D30A /* AudioEngine.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 176F8A802519684D00CE5BFB /* AudioEngine.xcframework */; };
-		736CF272252278AA0081D30A /* AudioEngine.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 176F8A802519684D00CE5BFB /* AudioEngine.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		7375AE5A25382AC900C85211 /* TPPUserAccountMock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7375AE5925382AC900C85211 /* TPPUserAccountMock.swift */; };
 		737DCB8C245CCF2300A8F297 /* TPPReaderBookmarksBusinessLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = 737DCB8B245CCF2300A8F297 /* TPPReaderBookmarksBusinessLogic.swift */; };
 		737DCB8D245CCF2300A8F297 /* TPPReaderBookmarksBusinessLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = 737DCB8B245CCF2300A8F297 /* TPPReaderBookmarksBusinessLogic.swift */; };
@@ -587,8 +581,6 @@
 		73A794BD2548E36100C59CC1 /* TPPBookCreationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73A794BC2548E36100C59CC1 /* TPPBookCreationTests.swift */; };
 		73A794C72549098700C59CC1 /* NYPLOPDSAcquisitionPathEntryMinimal.xml in Resources */ = {isa = PBXBuildFile; fileRef = 73A794C62549095700C59CC1 /* NYPLOPDSAcquisitionPathEntryMinimal.xml */; };
 		73A794CA25492C9800C59CC1 /* TPPFake.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73A794C925492C9800C59CC1 /* TPPFake.swift */; };
-		73A7BA4C25A62FCF00C2906C /* ReadiumLCP.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 73A7BA4B25A62FCE00C2906C /* ReadiumLCP.framework */; };
-		73A7BA4E25A62FEA00C2906C /* R2LCPClient.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 73A7BA4D25A62FE900C2906C /* R2LCPClient.framework */; };
 		73B501C524F48D4C00FBAD7D /* TPPUserAccountFrontEndValidation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73B501C024F48D4B00FBAD7D /* TPPUserAccountFrontEndValidation.swift */; };
 		73B550F42511720E00D05B86 /* TPPConfiguration+SE.swift in Sources */ = {isa = PBXBuildFile; fileRef = 738CB2052509A87700891F31 /* TPPConfiguration+SE.swift */; };
 		73B550F92511721700D05B86 /* TPPRootTabBarController+SE.swift in Sources */ = {isa = PBXBuildFile; fileRef = 739ECB2D25108EE800691A70 /* TPPRootTabBarController+SE.swift */; };
@@ -1047,17 +1039,6 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
-		17DFC5F5251E84C5003A19CC /* Embed Frameworks */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 10;
-			files = (
-				17DFC5F6251E84CF003A19CC /* AudioEngine.xcframework in Embed Frameworks */,
-			);
-			name = "Embed Frameworks";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		731B2B24244A2B6C00A7A649 /* Embed Frameworks */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
@@ -1068,7 +1049,6 @@
 				73BDB08325F1992B00556C35 /* R2Shared.framework in Embed Frameworks */,
 				73BDB08125F198F800556C35 /* R2Navigator.framework in Embed Frameworks */,
 				73BDB07A25F198D200556C35 /* R2Streamer.framework in Embed Frameworks */,
-				736CF272252278AA0081D30A /* AudioEngine.xcframework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -1716,7 +1696,6 @@
 				739E6119244A0D8600D00301 /* PureLayout.framework in Frameworks */,
 				739E611A244A0D8600D00301 /* SQLite.framework in Frameworks */,
 				739E611B244A0D8600D00301 /* NYPLAEToolkit.framework in Frameworks */,
-				736CF271252278AA0081D30A /* AudioEngine.xcframework in Frameworks */,
 				739E611C244A0D8600D00301 /* NYPLAudiobookToolkit.framework in Frameworks */,
 				210715672592606A005F94AE /* R2LCPClient.framework in Frameworks */,
 				739E611E244A0D8600D00301 /* FirebaseCoreDiagnostics.framework in Frameworks */,
@@ -1797,7 +1776,6 @@
 				03B0922E1E7886ED00AD338D /* CoreVideo.framework in Frameworks */,
 				03B0922C1E7886C900AD338D /* AVFoundation.framework in Frameworks */,
 				03B0922A1E7885A600AD338D /* AudioToolbox.framework in Frameworks */,
-				73A7BA4C25A62FCF00C2906C /* ReadiumLCP.framework in Frameworks */,
 				03B092261E7883C400AD338D /* libiconv.tbd in Frameworks */,
 				A823D813192BABA400B55DE2 /* CoreGraphics.framework in Frameworks */,
 				03B092241E78839D00AD338D /* QuartzCore.framework in Frameworks */,
@@ -1817,16 +1795,12 @@
 				738574AE25A631B0001E615D /* Minizip.framework in Frameworks */,
 				1112A8431A3249B4002B8CC1 /* libTenPrintCover.a in Frameworks */,
 				73DED81A25A630AB00A4D63B /* SwiftSoup.framework in Frameworks */,
-				17DFC5ED251E7FBC003A19CC /* AudioEngine.xcframework in Frameworks */,
 				73CEF832252699DD006B2820 /* FirebaseCrashlytics.framework in Frameworks */,
-				73A7BA4E25A62FEA00C2906C /* R2LCPClient.framework in Frameworks */,
 				119503E91993F919009FB788 /* libz.dylib in Frameworks */,
 				119503E71993F914009FB788 /* libxml2.dylib in Frameworks */,
 				145DA48E215441A70055DB93 /* ZXingObjC.framework in Frameworks */,
 				145DA49621544A430055DB93 /* PureLayout.framework in Frameworks */,
-				17D08381248E938000092AA9 /* OverdriveProcessor.framework in Frameworks */,
 				145DA4922154464F0055DB93 /* SQLite.framework in Frameworks */,
-				148B1C2D21768EAA00FF64AB /* NYPLAEToolkit.framework in Frameworks */,
 				148B1C2E21768EAA00FF64AB /* NYPLAudiobookToolkit.framework in Frameworks */,
 				7326AB3424BD272000C3BA29 /* R2Streamer.framework in Frameworks */,
 				7326AB3624BD272200C3BA29 /* R2Navigator.framework in Frameworks */,
@@ -3062,7 +3036,6 @@
 				A823D80A192BABA400B55DE2 /* Frameworks */,
 				A823D80B192BABA400B55DE2 /* Resources */,
 				145DA48C215441260055DB93 /* Copy Frameworks (Carthage) */,
-				17DFC5F5251E84C5003A19CC /* Embed Frameworks */,
 				73DA43AD2404CA9500985482 /* Crashlytics */,
 			);
 			buildRules = (
@@ -3087,14 +3060,19 @@
 				TargetAttributes = {
 					2D2B47711D08F807007F7764 = {
 						CreatedOnToolsVersion = 7.3.1;
+						DevelopmentTeam = 88CBA74T8K;
 						LastSwiftMigration = 1130;
+						ProvisioningStyle = Manual;
 						TestTargetID = 73EB0A6325821DF4006BC997;
 					};
 					739E6044244A0D8600D00301 = {
-						DevelopmentTeam = 7262U6ST2R;
+						DevelopmentTeam = 88CBA74T8K;
+					};
+					73EB0A6325821DF4006BC997 = {
+						DevelopmentTeam = 88CBA74T8K;
 					};
 					A823D80C192BABA400B55DE2 = {
-						DevelopmentTeam = 7262U6ST2R;
+						DevelopmentTeam = 88CBA74T8K;
 						LastSwiftMigration = 1130;
 						SystemCapabilities = {
 							com.apple.BackgroundModes = {
@@ -3326,7 +3304,6 @@
 				"$(SRCROOT)/Carthage/Build/iOS/ZXingObjC.framework",
 				"$(SRCROOT)/Carthage/Build/iOS/SQLite.framework",
 				"$(SRCROOT)/Carthage/Build/iOS/PureLayout.framework",
-				"$(SRCROOT)/Carthage/Build/iOS/NYPLAEToolkit.framework",
 				"$(SRCROOT)/Carthage/Build/iOS/NYPLAudiobookToolkit.framework",
 				"$(SRCROOT)/Carthage/Build/iOS/PDFRendererProvider.framework",
 				"$(SRCROOT)/Carthage/Build/iOS/R2Navigator.framework",
@@ -3337,9 +3314,6 @@
 				"$(SRCROOT)/Carthage/Build/iOS/GCDWebServer.framework",
 				"$(SRCROOT)/Carthage/Build/iOS/Minizip.framework",
 				"$(SRCROOT)/Carthage/Build/iOS/SwiftSoup.framework",
-				"$(SRCROOT)/Carthage/Build/iOS/OverdriveProcessor.framework",
-				"$(SRCROOT)/Carthage/Build/iOS/R2LCPClient.framework",
-				"$(SRCROOT)/Carthage/Build/iOS/ReadiumLCP.framework",
 				"$(SRCROOT)/Carthage/Build/iOS/ZIPFoundation.framework",
 			);
 			name = "Copy Frameworks (Carthage)";
@@ -3349,7 +3323,6 @@
 				"$(BUILT_PRODUCTS_DIR)/$(FRAMEWORKS_FOLDER_PATH)/ZXingObjC.framework",
 				"$(BUILT_PRODUCTS_DIR)/$(FRAMEWORKS_FOLDER_PATH)/SQLite.framework",
 				"$(BUILT_PRODUCTS_DIR)/$(FRAMEWORKS_FOLDER_PATH)/PureLayout.framework",
-				"$(BUILT_PRODUCTS_DIR)/$(FRAMEWORKS_FOLDER_PATH)/NYPLAEToolkit.framework",
 				"$(BUILT_PRODUCTS_DIR)/$(FRAMEWORKS_FOLDER_PATH)/NYPLAudiobookToolkit.framework",
 				"$(BUILT_PRODUCTS_DIR)/$(FRAMEWORKS_FOLDER_PATH)/PDFRendererProvider.framework",
 				"$(BUILT_PRODUCTS_DIR)/$(FRAMEWORKS_FOLDER_PATH)/R2Navigator.framework",
@@ -3360,8 +3333,6 @@
 				"$(BUILT_PRODUCTS_DIR)/$(FRAMEWORKS_FOLDER_PATH)/GCDWebServer.framework",
 				"$(BUILT_PRODUCTS_DIR)/$(FRAMEWORKS_FOLDER_PATH)/Minizip.framework",
 				"$(BUILT_PRODUCTS_DIR)/$(FRAMEWORKS_FOLDER_PATH)/SwiftSoup.framework",
-				"$(BUILT_PRODUCTS_DIR)/$(FRAMEWORKS_FOLDER_PATH)/R2LCPClient.framework",
-				"$(BUILT_PRODUCTS_DIR)/$(FRAMEWORKS_FOLDER_PATH)/ReadiumLCP.framework",
 				"$(BUILT_PRODUCTS_DIR)/$(FRAMEWORKS_FOLDER_PATH)/ZIPFoundation.framework",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -4363,11 +4334,7 @@
 				);
 				INFOPLIST_FILE = PalaceTests/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 10.0;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-					"@loader_path/Frameworks",
-				);
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
 				MTL_ENABLE_DEBUG_INFO = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = org.lyrasis.raybooks;
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -4416,11 +4383,7 @@
 				);
 				INFOPLIST_FILE = PalaceTests/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 10.0;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-					"@loader_path/Frameworks",
-				);
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
 				MTL_ENABLE_DEBUG_INFO = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = org.lyrasis.raybooks;
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -4475,10 +4438,7 @@
 				);
 				INFOPLIST_FILE = "PalaceConfig/Palace-Info.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 10.0;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-				);
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				MARKETING_VERSION = 1.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PRODUCT_MODULE_NAME = Palace;
@@ -4535,10 +4495,7 @@
 				);
 				INFOPLIST_FILE = "PalaceConfig/Palace-Info.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 10.0;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-				);
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				MARKETING_VERSION = 1.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PRODUCT_MODULE_NAME = Palace;
@@ -4590,10 +4547,7 @@
 				);
 				INFOPLIST_FILE = "PalaceConfig/Palace-Info.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 10.0;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-				);
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				MARKETING_VERSION = 1.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PRODUCT_MODULE_NAME = Palace;
@@ -4645,10 +4599,7 @@
 				);
 				INFOPLIST_FILE = "PalaceConfig/Palace-Info.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 10.0;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-				);
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				MARKETING_VERSION = 1.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PRODUCT_MODULE_NAME = Palace;
@@ -4786,8 +4737,7 @@
 				);
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
-				SWIFT_COMPILATION_MODE = wholemodule;
-				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_OPTIMIZATION_LEVEL = "-Owholemodule";
 				SWIFT_VERSION = "";
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VALIDATE_PRODUCT = YES;
@@ -4818,21 +4768,16 @@
 					"DEBUG=1",
 					"FEATURE_DRM_CONNECTOR=1",
 					"FEATURE_CRASH_REPORTING=1",
-					"FEATURE_OVERDRIVE=1",
-					"LCP=1",
 				);
 				INFOPLIST_FILE = "PalaceConfig/Palace-Info.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 10.0;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-				);
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				MARKETING_VERSION = 1.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PROVISIONING_PROFILE = "2e185b6c-271e-4b02-a05e-860b8c3831f6";
 				PROVISIONING_PROFILE_SPECIFIER = "Palace App";
 				RUN_CLANG_STATIC_ANALYZER = YES;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG SIMPLYE FEATURE_DRM_CONNECTOR FEATURE_CRASH_REPORTING FEATURE_OVERDRIVE LCP";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG SIMPLYE FEATURE_DRM_CONNECTOR FEATURE_CRASH_REPORTING";
 				SWIFT_OBJC_BRIDGING_HEADER = "Palace/AppInfrastructure/Palace-Bridging-Header.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
@@ -4875,21 +4820,16 @@
 					"DEBUG=0",
 					"FEATURE_DRM_CONNECTOR=1",
 					"FEATURE_CRASH_REPORTING=1",
-					"FEATURE_OVERDRIVE=1",
-					"LCP=1",
 				);
 				INFOPLIST_FILE = "PalaceConfig/Palace-Info.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 10.0;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-				);
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				MARKETING_VERSION = 1.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PROVISIONING_PROFILE = "b3d9154d-70e1-48d6-a0c5-869431277a5c";
 				PROVISIONING_PROFILE_SPECIFIER = "Palace App";
 				RUN_CLANG_STATIC_ANALYZER = YES;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "SIMPLYE FEATURE_DRM_CONNECTOR FEATURE_CRASH_REPORTING FEATURE_OVERDRIVE LCP";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "SIMPLYE FEATURE_DRM_CONNECTOR FEATURE_CRASH_REPORTING";
 				SWIFT_OBJC_BRIDGING_HEADER = "Palace/AppInfrastructure/Palace-Bridging-Header.h";
 				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
 				SWIFT_VERSION = 4.2;
