@@ -67,7 +67,7 @@
 
       BOOL workflowsInProgress;
 #if defined(FEATURE_DRM_CONNECTOR)
-      workflowsInProgress = ([NYPLADEPT sharedInstance].workflowsInProgress || [NYPLBookRegistry sharedRegistry].syncing == YES);
+      workflowsInProgress = ([NYPLADEPT sharedInstance].workflowsInProgress || [TPPBookRegistry sharedRegistry].syncing == YES);
 #else
       workflowsInProgress = ([TPPBookRegistry sharedRegistry].syncing == YES);
 #endif
