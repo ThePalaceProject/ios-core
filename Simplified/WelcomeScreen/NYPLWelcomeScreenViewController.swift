@@ -3,9 +3,10 @@ import PureLayout
 
 
 /// Welcome screen for a first-time user
-@objcMembers final class NYPLWelcomeScreenViewController: UIViewController {
+@objcMembers final class NYPLWelcomeScreenViewController: UIViewController, LoadingViewController {
   
   var completion: ((Account) -> ())?
+  var loadingView: UIView?
   
   required init(completion: ((Account) -> ())?) {
     self.completion = completion
@@ -148,36 +149,7 @@ import PureLayout
     let alert = NYPLAlertUtils.alert(title:nil, message:"We can’t get your library right now. Please close and reopen the app to try again.", style: .cancel)
     present(alert, animated: true, completion: nil)
   }
-  
-  func loadingOverlayView() -> UIView {
-    let overlayView = UIView()
-    overlayView.backgroundColor = UIColor.black.withAlphaComponent(0.7)
-    let activityView = UIActivityIndicatorView(style: .whiteLarge)
-    overlayView.addSubview(activityView)
-    activityView.autoCenterInSuperviewMargins()
-    activityView.startAnimating()
-    return overlayView
-  }
-  
-  private func addLoadingOverlayView(toVC viewController: UIViewController? = nil) -> UIView {
-    let vc = viewController ?? self
-    let loadingOverlay = loadingOverlayView()
-    if !Thread.isMainThread {
-      DispatchQueue.main.async {
-        vc.view.addSubview(loadingOverlay)
-        loadingOverlay.autoPinEdgesToSuperviewEdges()
-      }
-    } else {
-      vc.view.addSubview(loadingOverlay)
-      loadingOverlay.autoPinEdgesToSuperviewEdges()
-    }
-    return loadingOverlay
-  }
-  
-  private func removeLoadingOverlayView(_ view: UIView?) {
-    view?.removeFromSuperview()
-  }
-
+ 
   func pickYourLibraryTapped() {
     if completion == nil {
       self.dismiss(animated: true, completion: nil)
@@ -190,10 +162,10 @@ import PureLayout
           self.completion?(account)
         } else {
           // Show loading overlay while we load the auth document
-          let loadingOverlay = self.addLoadingOverlayView(toVC: self.navigationController)
+          self.startLoading()
           account.loadAuthenticationDocument { (success) in
             DispatchQueue.main.async {
-              self.removeLoadingOverlayView(loadingOverlay)
+              self.stopLoading()
               guard success else {
                 self.showLoadingFailureAlert()
                 return
@@ -215,10 +187,10 @@ import PureLayout
       pickLibrary()
     } else {
       // Show loading overlay while loading library list, which is required for pickLibrary
-      let loadingOverlay = addLoadingOverlayView()
+      startLoading()
       AccountsManager.shared.loadCatalogs() { (success) in
         DispatchQueue.main.async {
-          self.removeLoadingOverlayView(loadingOverlay)
+          self.stopLoading()
           guard success else {
             self.showLoadingFailureAlert()
             return
@@ -231,24 +203,22 @@ import PureLayout
 
   func instantClassicsTapped() {
     let classicsId = AccountsManager.NYPLAccountUUIDs[2]
-    var loadingOverlay: UIView? = nil
     
     let selectInstantClassics = {
       guard let classicsAccount = AccountsManager.shared.account(classicsId) else {
         DispatchQueue.main.async {
-          self.removeLoadingOverlayView(loadingOverlay)
+          self.stopLoading()
           self.showLoadingFailureAlert()
         }
         return
       }
       // If we didn't add the loading overlay to load the library list, we need to add it now to load the auth document
-      if loadingOverlay == nil {
-        loadingOverlay = self.addLoadingOverlayView()
-      }
+      self.startLoading()
+      
       // Load the auth document for the classics library
       classicsAccount.loadAuthenticationDocument { (authSuccess) in
         DispatchQueue.main.async {
-          self.removeLoadingOverlayView(loadingOverlay)
+          self.stopLoading()
           if authSuccess {
             NYPLSettings.shared.settingsAccountsList = [classicsId]
             self.completion?(AccountsManager.shared.account(classicsId)!)
@@ -263,13 +233,13 @@ import PureLayout
       selectInstantClassics()
     } else {
       // Make sure the library list is loaded
-      loadingOverlay = addLoadingOverlayView()
+      startLoading()
       AccountsManager.shared.loadCatalogs() { success in
         DispatchQueue.main.async {
           if success {
             selectInstantClassics()
           } else {
-            self.removeLoadingOverlayView(loadingOverlay)
+            self.stopLoading()
             self.showLoadingFailureAlert()
           }
         }
