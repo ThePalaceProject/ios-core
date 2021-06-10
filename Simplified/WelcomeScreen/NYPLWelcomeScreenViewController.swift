@@ -212,7 +212,7 @@ import PureLayout
         }
         return
       }
-      // If we didn't add the loading overlay to load the library list, we need to add it now to load the auth document
+      //Show indicator while loading the auth document
       self.startLoading()
       
       // Load the auth document for the classics library

@@ -7,7 +7,7 @@
     case failure
     case success
   }
-  
+
   weak var tableView: UITableView!
   var reloadView: NYPLReloadView!
   var spinner: UIActivityIndicatorView!
