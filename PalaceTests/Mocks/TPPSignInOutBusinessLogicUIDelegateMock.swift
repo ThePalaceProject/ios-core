@@ -9,7 +9,7 @@
 import Foundation
 @testable import Palace
 
-class TPPSignInOutBusinessLogicUIDelegateMock: NSObject, NYPLSignInOutBusinessLogicUIDelegate {
+class TPPSignInOutBusinessLogicUIDelegateMock: NSObject, TPPSignInOutBusinessLogicUIDelegate {
   func businessLogicWillSignOut(_ businessLogic: TPPSignInBusinessLogic) {
   }
 

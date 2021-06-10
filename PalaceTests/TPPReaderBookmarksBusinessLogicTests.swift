@@ -11,7 +11,7 @@ import R2Shared
 @testable import Palace
 
 class TPPReaderBookmarksBusinessLogicTests: XCTestCase {
-    var bookmarkBusinessLogic: NYPLReaderBookmarksBusinessLogic!
+    var bookmarkBusinessLogic: TPPReaderBookmarksBusinessLogic!
     var bookRegistryMock: TPPBookRegistryMock!
     var libraryAccountMock: TPPLibraryAccountMock!
     var bookmarkCounter: Int = 0
@@ -21,16 +21,16 @@ class TPPReaderBookmarksBusinessLogicTests: XCTestCase {
       try super.setUpWithError()
       
       let emptyUrl = URL.init(fileURLWithPath: "")
-      let fakeAcquisition = NYPLOPDSAcquisition.init(
+      let fakeAcquisition = TPPOPDSAcquisition.init(
         relation: .generic,
         type: "application/epub+zip",
         hrefURL: emptyUrl,
-        indirectAcquisitions: [NYPLOPDSIndirectAcquisition](),
-        availability: NYPLOPDSAcquisitionAvailabilityUnlimited.init()
+        indirectAcquisitions: [TPPOPDSIndirectAcquisition](),
+        availability: TPPOPDSAcquisitionAvailabilityUnlimited.init()
       )
-      let fakeBook = NYPLBook.init(
+      let fakeBook = TPPBook.init(
         acquisitions: [fakeAcquisition],
-        bookAuthors: [NYPLBookAuthor](),
+        bookAuthors: [TPPBookAuthor](),
         categoryStrings: [String](),
         distributor: "",
         identifier: bookIdentifier,
@@ -56,7 +56,7 @@ class TPPReaderBookmarksBusinessLogicTests: XCTestCase {
       libraryAccountMock = TPPLibraryAccountMock()
       let manifest = Manifest(metadata: Metadata(title: "fakeMetadata"))
       let pub = Publication(manifest: manifest)
-      bookmarkBusinessLogic = NYPLReaderBookmarksBusinessLogic(
+      bookmarkBusinessLogic = TPPReaderBookmarksBusinessLogic(
         book: fakeBook,
         r2Publication: pub,
         drmDeviceID: "fakeDeviceID",
@@ -77,7 +77,7 @@ class TPPReaderBookmarksBusinessLogicTests: XCTestCase {
     // MARK: - Test updateLocalBookmarks
     
     func testUpdateLocalBookmarksWithNoLocalBookmarks() throws {
-      var serverBookmarks = [NYPLReadiumBookmark]()
+      var serverBookmarks = [TPPReadiumBookmark]()
         
       // Make sure BookRegistry contains no bookmark
       XCTAssertEqual(bookRegistryMock.readiumBookmarks(forIdentifier: bookIdentifier).count, 0)
@@ -93,13 +93,13 @@ class TPPReaderBookmarksBusinessLogicTests: XCTestCase {
 
       bookmarkBusinessLogic.updateLocalBookmarks(serverBookmarks: serverBookmarks,
                                                  localBookmarks: bookRegistryMock.readiumBookmarks(forIdentifier: bookIdentifier),
-                                                 bookmarksFailedToUpload: [NYPLReadiumBookmark]()) {
+                                                 bookmarksFailedToUpload: [TPPReadiumBookmark]()) {
         XCTAssertEqual(self.bookRegistryMock.readiumBookmarks(forIdentifier: self.bookIdentifier).count, 1)
       }
     }
     
     func testUpdateLocalBookmarksWithDuplicatedLocalBookmarks() throws {
-      var serverBookmarks = [NYPLReadiumBookmark]()
+      var serverBookmarks = [TPPReadiumBookmark]()
 
       // Make sure BookRegistry contains no bookmark
       XCTAssertEqual(bookRegistryMock.readiumBookmarks(forIdentifier: bookIdentifier).count, 0)
@@ -124,13 +124,13 @@ class TPPReaderBookmarksBusinessLogicTests: XCTestCase {
       // There are one duplicated bookmark and one non-synced (server) bookmark
       bookmarkBusinessLogic.updateLocalBookmarks(serverBookmarks: serverBookmarks,
                                                  localBookmarks: bookRegistryMock.readiumBookmarks(forIdentifier: self.bookIdentifier),
-                                                 bookmarksFailedToUpload: [NYPLReadiumBookmark]()) {
+                                                 bookmarksFailedToUpload: [TPPReadiumBookmark]()) {
         XCTAssertEqual(self.bookRegistryMock.readiumBookmarks(forIdentifier: self.bookIdentifier).count, 2)
       }
     }
     
     func testUpdateLocalBookmarksWithExtraLocalBookmarks() throws {
-      var serverBookmarks = [NYPLReadiumBookmark]()
+      var serverBookmarks = [TPPReadiumBookmark]()
 
       // Make sure BookRegistry contains no bookmark
       XCTAssertEqual(bookRegistryMock.readiumBookmarks(forIdentifier: bookIdentifier).count, 0)
@@ -156,13 +156,13 @@ class TPPReaderBookmarksBusinessLogicTests: XCTestCase {
       // which means it has been delete from another device and should be removed locally
       bookmarkBusinessLogic.updateLocalBookmarks(serverBookmarks: serverBookmarks,
                                                  localBookmarks: bookRegistryMock.readiumBookmarks(forIdentifier: self.bookIdentifier),
-                                                 bookmarksFailedToUpload: [NYPLReadiumBookmark]()) {
+                                                 bookmarksFailedToUpload: [TPPReadiumBookmark]()) {
         XCTAssertEqual(self.bookRegistryMock.readiumBookmarks(forIdentifier: self.bookIdentifier).count, 1)
       }
     }
     
     func testUpdateLocalBookmarksWithFailedUploadBookmarks() throws {
-      var serverBookmarks = [NYPLReadiumBookmark]()
+      var serverBookmarks = [TPPReadiumBookmark]()
 
       // Make sure BookRegistry contains no bookmark
       XCTAssertEqual(bookRegistryMock.readiumBookmarks(forIdentifier: bookIdentifier).count, 0)
@@ -197,11 +197,11 @@ class TPPReaderBookmarksBusinessLogicTests: XCTestCase {
                      chapter: String,
                      progressWithinChapter: Float,
                      progressWithinBook: Float,
-                     device: String? = nil) -> NYPLReadiumBookmark? {
+                     device: String? = nil) -> TPPReadiumBookmark? {
       // Annotation id needs to be unique
       // contentCFI should be empty string for R2 bookmark
       bookmarkCounter += 1
-      return NYPLReadiumBookmark(annotationId: "fakeAnnotationID\(bookmarkCounter)",
+      return TPPReadiumBookmark(annotationId: "fakeAnnotationID\(bookmarkCounter)",
                                  contentCFI: "",
                                  idref: idref,
                                  chapter: chapter,

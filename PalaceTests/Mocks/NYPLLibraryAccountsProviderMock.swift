@@ -9,11 +9,11 @@
 import Foundation
 @testable import Palace
 
-class TPPLibraryAccountMock: NSObject, NYPLLibraryAccountsProvider {
+class TPPLibraryAccountMock: NSObject, TPPLibraryAccountsProvider {
   let feedURL: URL
   let nyplAuthDocURL: URL
   let feed: OPDS2CatalogsFeed
-  let nyplAccount: Account
+  let tppAccount: Account
 
   override init() {
     feedURL = Bundle(for: TPPLibraryAccountMock.self)
@@ -25,19 +25,19 @@ class TPPLibraryAccountMock: NSObject, NYPLLibraryAccountsProvider {
     let feedData = try! Data(contentsOf: feedURL)
     feed = try! OPDS2CatalogsFeed.fromData(feedData)
 
-    nyplAccount = Account(publication: feed.catalogs.first(where: { $0.metadata.title == "The New York Public Library" })!)
+    tppAccount = Account(publication: feed.catalogs.first(where: { $0.metadata.title == "The New York Public Library" })!)
 
     super.init()
 
-    nyplAccount.authenticationDocument = try! OPDS2AuthenticationDocument.fromData(try Data(contentsOf: nyplAuthDocURL))
+    tppAccount.authenticationDocument = try! OPDS2AuthenticationDocument.fromData(try Data(contentsOf: nyplAuthDocURL))
   }
 
   var barcodeAuthentication: AccountDetails.Authentication {
-    return nyplAccount.details!.auths.first { $0.authType == .basic }!
+    return tppAccount.details!.auths.first { $0.authType == .basic }!
   }
 
   var oauthAuthentication: AccountDetails.Authentication {
-    return nyplAccount.details!.auths.first { $0.authType == .oauthIntermediary }!
+    return tppAccount.details!.auths.first { $0.authType == .oauthIntermediary }!
   }
 
   var cleverAuthentication: AccountDetails.Authentication {
@@ -45,19 +45,19 @@ class TPPLibraryAccountMock: NSObject, NYPLLibraryAccountsProvider {
   }
 
   var samlAuthentication: AccountDetails.Authentication {
-    return nyplAccount.details!.auths.first { $0.authType == .saml }!
+    return tppAccount.details!.auths.first { $0.authType == .saml }!
   }
 
-  var NYPLAccountUUID: String {
-    return nyplAccount.uuid
+  var tppAccountUUID: String {
+    return tppAccount.uuid
   }
 
   var currentAccountId: String? {
-    return nyplAccount.uuid
+    return tppAccount.uuid
   }
 
   var currentAccount: Account? {
-    return nyplAccount
+    return tppAccount
   }
 
   func createOPDS2Publication() -> OPDS2Publication {
@@ -81,8 +81,8 @@ class TPPLibraryAccountMock: NSObject, NYPLLibraryAccountsProvider {
   func account(_ uuid: String) -> Account? {
     if uuid.isEmpty {
       return nil
-    } else if uuid == NYPLAccountUUID {
-      return nyplAccount
+    } else if uuid == tppAccountUUID {
+      return tppAccount
     } else {
       let pub = createOPDS2Publication()
       return Account(publication: pub)

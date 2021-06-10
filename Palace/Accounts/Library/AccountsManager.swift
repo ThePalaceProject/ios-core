@@ -7,7 +7,7 @@ let currentAccountIdentifierKey  = "TPPCurrentAccountIdentifier"
 }
 
 @objc protocol TPPLibraryAccountsProvider: TPPCurrentLibraryAccountProvider {
-  var TPPAccountUUID: String {get}
+  var tppAccountUUID: String {get}
   var currentAccountId: String? {get}
   func account(_ uuid: String) -> Account?
 }
@@ -22,7 +22,7 @@ let currentAccountIdentifierKey  = "TPPCurrentAccountIdentifier"
     "urn:uuid:56906f26-2c9a-4ae9-bd02-552557720b99"  //Simplified Instant Classics
   ]
 
-  let TPPAccountUUID = AccountsManager.TPPAccountUUIDs[0]
+  let tppAccountUUID = AccountsManager.TPPAccountUUIDs[0]
 
   static let shared = AccountsManager()
   

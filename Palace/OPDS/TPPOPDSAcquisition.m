@@ -32,18 +32,18 @@ TPPOPDSAcquisitionRelationSet
 NYPLOPDSAcquisitionRelationSetWithRelation(TPPOPDSAcquisitionRelation relation)
 {
   switch (relation) {
-    case NYPLOPDSAcquisitionRelationBuy:
-      return NYPLOPDSAcquisitionRelationSetBuy;
-    case NYPLOPDSAcquisitionRelationBorrow:
-      return NYPLOPDSAcquisitionRelationSetBorrow;
-    case NYPLOPDSAcquisitionRelationSample:
-      return NYPLOPDSAcquisitionRelationSetSample;
-    case NYPLOPDSAcquisitionRelationGeneric:
-      return NYPLOPDSAcquisitionRelationSetGeneric;
-    case NYPLOPDSAcquisitionRelationSubscribe:
-      return NYPLOPDSAcquisitionRelationSetSubscribe;
-    case NYPLOPDSAcquisitionRelationOpenAccess:
-      return NYPLOPDSAcquisitionRelationSetOpenAccess;
+    case TPPOPDSAcquisitionRelationBuy:
+      return TPPOPDSAcquisitionRelationSetBuy;
+    case TPPOPDSAcquisitionRelationBorrow:
+      return TPPOPDSAcquisitionRelationSetBorrow;
+    case TPPOPDSAcquisitionRelationSample:
+      return TPPOPDSAcquisitionRelationSetSample;
+    case TPPOPDSAcquisitionRelationGeneric:
+      return TPPOPDSAcquisitionRelationSetGeneric;
+    case TPPOPDSAcquisitionRelationSubscribe:
+      return TPPOPDSAcquisitionRelationSetSubscribe;
+    case TPPOPDSAcquisitionRelationOpenAccess:
+      return TPPOPDSAcquisitionRelationSetOpenAccess;
   }
 }
 
@@ -62,12 +62,12 @@ NYPLOPDSAcquisitionRelationWithString(NSString *const _Nonnull string,
 
   if (lazyStringToRelationObjectDict == nil) {
     lazyStringToRelationObjectDict = @{
-      genericRelationString: @(NYPLOPDSAcquisitionRelationGeneric),
-      openAccessRelationString: @(NYPLOPDSAcquisitionRelationOpenAccess),
-      borrowRelationString: @(NYPLOPDSAcquisitionRelationBorrow),
-      buyRelationString: @(NYPLOPDSAcquisitionRelationBuy),
-      sampleRelationString: @(NYPLOPDSAcquisitionRelationSample),
-      subscribeRelationString: @(NYPLOPDSAcquisitionRelationSubscribe)
+      genericRelationString: @(TPPOPDSAcquisitionRelationGeneric),
+      openAccessRelationString: @(TPPOPDSAcquisitionRelationOpenAccess),
+      borrowRelationString: @(TPPOPDSAcquisitionRelationBorrow),
+      buyRelationString: @(TPPOPDSAcquisitionRelationBuy),
+      sampleRelationString: @(TPPOPDSAcquisitionRelationSample),
+      subscribeRelationString: @(TPPOPDSAcquisitionRelationSubscribe)
     };
   }
 
@@ -85,17 +85,17 @@ NSString *_Nonnull
 NYPLOPDSAcquisitionRelationString(TPPOPDSAcquisitionRelation const relation)
 {
   switch (relation) {
-    case NYPLOPDSAcquisitionRelationGeneric:
+    case TPPOPDSAcquisitionRelationGeneric:
       return genericRelationString;
-    case NYPLOPDSAcquisitionRelationOpenAccess:
+    case TPPOPDSAcquisitionRelationOpenAccess:
       return openAccessRelationString;
-    case NYPLOPDSAcquisitionRelationBorrow:
+    case TPPOPDSAcquisitionRelationBorrow:
       return borrowRelationString;
-    case NYPLOPDSAcquisitionRelationBuy:
+    case TPPOPDSAcquisitionRelationBuy:
       return buyRelationString;
-    case NYPLOPDSAcquisitionRelationSample:
+    case TPPOPDSAcquisitionRelationSample:
       return sampleRelationString;
-    case NYPLOPDSAcquisitionRelationSubscribe:
+    case TPPOPDSAcquisitionRelationSubscribe:
       return subscribeRelationString;
   }
 }

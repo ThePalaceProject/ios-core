@@ -13,7 +13,7 @@ class TPPSignInBusinessLogicTests: XCTestCase {
   var businessLogic: TPPSignInBusinessLogic!
   var libraryAccountMock: TPPLibraryAccountMock!
   var drmAuthorizer: TPPDRMAuthorizingMock!
-  var uiDelegate: NYPLSignInOutBusinessLogicUIDelegateMock!
+  var uiDelegate: TPPSignInOutBusinessLogicUIDelegateMock!
 
   override func setUpWithError() throws {
     try super.setUpWithError()
@@ -21,7 +21,7 @@ class TPPSignInBusinessLogicTests: XCTestCase {
     drmAuthorizer = TPPDRMAuthorizingMock()
     uiDelegate = TPPSignInOutBusinessLogicUIDelegateMock()
     businessLogic = TPPSignInBusinessLogic(
-      libraryAccountID: libraryAccountMock.NYPLAccountUUID,
+      libraryAccountID: libraryAccountMock.tppAccountUUID,
       libraryAccountsProvider: libraryAccountMock,
       urlSettingsProvider: TPPURLSettingsProviderMock(),
       bookRegistry: TPPBookRegistryMock(),
@@ -159,16 +159,6 @@ class TPPSignInBusinessLogicTests: XCTestCase {
     XCTAssertTrue(samlHeaderValue?.starts(with: "Bearer") ?? false)
   }
 
-  func testCardCreatorSupport() {
-    XCTAssertTrue(businessLogic.registrationViaCardCreatorIsPossible())
-    XCTAssertTrue(businessLogic.registrationIsPossible())
-
-    let cardCreatorConfig = businessLogic.makeRegularCardCreationConfiguration()
-    XCTAssertEqual(cardCreatorConfig.endpointUsername, NYPLSecrets.cardCreatorUsername)
-    XCTAssertEqual(cardCreatorConfig.endpointPassword, NYPLSecrets.cardCreatorPassword)
-    XCTAssertGreaterThan(cardCreatorConfig.requestTimeoutInterval, 10)
-  }
-
   func testLogInFlow() throws {
     // preconditions
     let user = businessLogic.userAccount
@@ -178,7 +168,7 @@ class TPPSignInBusinessLogicTests: XCTestCase {
     XCTAssertNil(user.barcode, "user.barcode precondition should be nil")
     XCTAssertNil(user.pin, "user.pin precondition should be nil")
 
-    let expect = expectation(forNotification: .NYPLIsSigningIn, object: nil) { notif -> Bool in
+    let expect = expectation(forNotification: .TPPIsSigningIn, object: nil) { notif -> Bool in
       let isSigningIn = notif.object as! Bool
       // sanity verification
       XCTAssertNotNil(user)

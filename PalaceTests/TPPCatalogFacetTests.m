@@ -1,15 +1,15 @@
 @import XCTest;
 
-#import "NYPLCatalogFacet.h"
-#import "NYPLOPDSLink.h"
-#import "NYPLXML.h"
+#import "TPPCatalogFacet.h"
+#import "TPPOPDSLink.h"
+#import "TPPXML.h"
 
 @interface TPPCatalogFacetTests : XCTestCase
 
 @end
 
-static NYPLOPDSLink *biographyXML = nil;
-static NYPLOPDSLink *scienceFictionXML = nil;
+static TPPOPDSLink *biographyXML = nil;
+static TPPOPDSLink *scienceFictionXML = nil;
 
 @implementation TPPCatalogFacetTests
 
@@ -24,9 +24,9 @@ static NYPLOPDSLink *scienceFictionXML = nil;
                                  @" title=\"Biography\""
                                  @" opds:facetGroup=\"Categories\"/>");
     
-    NYPLXML *const XML = [NYPLXML XMLWithData:[XMLString dataUsingEncoding:NSUTF8StringEncoding]];
+    TPPXML *const XML = [TPPXML XMLWithData:[XMLString dataUsingEncoding:NSUTF8StringEncoding]];
     
-    biographyXML = [[NYPLOPDSLink alloc] initWithXML:XML];
+    biographyXML = [[TPPOPDSLink alloc] initWithXML:XML];
     
     assert(biographyXML);
   }
@@ -37,9 +37,9 @@ static NYPLOPDSLink *scienceFictionXML = nil;
                                  @" title=\"Science-Fiction\""
                                  @" opds:activeFacet=\"true\"/>");
     
-    NYPLXML *const XML = [NYPLXML XMLWithData:[XMLString dataUsingEncoding:NSUTF8StringEncoding]];
+    TPPXML *const XML = [TPPXML XMLWithData:[XMLString dataUsingEncoding:NSUTF8StringEncoding]];
     
-    scienceFictionXML = [[NYPLOPDSLink alloc] initWithXML:XML];
+    scienceFictionXML = [[TPPOPDSLink alloc] initWithXML:XML];
     
     assert(scienceFictionXML);
   }
@@ -47,7 +47,7 @@ static NYPLOPDSLink *scienceFictionXML = nil;
 
 - (void)testBiography
 {
-  NYPLCatalogFacet *const facet = [NYPLCatalogFacet catalogFacetWithLink:biographyXML];
+  TPPCatalogFacet *const facet = [TPPCatalogFacet catalogFacetWithLink:biographyXML];
   
   XCTAssert(facet);
   
@@ -60,7 +60,7 @@ static NYPLOPDSLink *scienceFictionXML = nil;
 
 - (void)testScienceFiction
 {
-  NYPLCatalogFacet *const facet = [NYPLCatalogFacet catalogFacetWithLink:scienceFictionXML];
+  TPPCatalogFacet *const facet = [TPPCatalogFacet catalogFacetWithLink:scienceFictionXML];
   
   XCTAssert(facet);
   

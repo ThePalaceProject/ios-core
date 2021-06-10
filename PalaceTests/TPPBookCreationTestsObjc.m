@@ -8,7 +8,7 @@
 
 @import XCTest;
 
-#import "NYPLBook.h"
+#import "TPPBook.h"
 
 @interface TPPBookCreationTestsObjc : XCTestCase
 
@@ -21,7 +21,7 @@
   // These are the minimum requirements for the `initWithDictionary`
   // initializer to create a non-nil TPPBook instance. With this initializer
   // it's possible to create a book without acquisitions...
-  NYPLBook *book = [[NYPLBook alloc] initWithDictionary:@{
+  TPPBook *book = [[TPPBook alloc] initWithDictionary:@{
     @"categories" : @[@"Fantasy"],
     @"id": @"666",
     @"title": @"The Lord of the Rings",
