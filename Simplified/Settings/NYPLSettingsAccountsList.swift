@@ -1,16 +1,17 @@
 /// UITableView to display or add library accounts that the user
 /// can then log in and adjust settings after selecting Accounts.
-@objcMembers class NYPLSettingsAccountsTableViewController: UIViewController, UITableViewDelegate, UITableViewDataSource {
+@objcMembers class NYPLSettingsAccountsTableViewController: UIViewController, UITableViewDelegate, UITableViewDataSource, LoadingViewController {
 
   enum LoadState {
     case loading
     case failure
     case success
   }
-
+  
   weak var tableView: UITableView!
   var reloadView: NYPLReloadView!
   var spinner: UIActivityIndicatorView!
+  var loadingView: UIView?
 
   fileprivate var accounts: [String] {
     didSet {
@@ -162,62 +163,49 @@
     let enable = self.userAddedSecondaryAccounts.count + 1 < self.libraryAccounts.count
     self.navigationItem.rightBarButtonItem?.isEnabled = enable
   }
-
+  
+  private func updateList(withAccount uuid: String) {
+    userAddedSecondaryAccounts.append(uuid)
+    updateSettingsAccountList()
+    updateNavBar()
+    tableView.reloadData()
+    navigationController?.popViewController(animated: true)
+  }
+  
   @objc private func addAccount() {
-    AccountsManager.shared.loadCatalogs() { success in
+    let listVC = NYPLWelcomeScreenAccountList { [weak self] account in
+      if account.details != nil {
+        self?.updateList(withAccount: account.uuid)
+      } else {
+        self?.authenticateAccount(account) {
+          self?.updateList(withAccount: account.uuid)
+        }
+      }
+    }
+    
+    navigationController?.pushViewController(listVC, animated: true)
+  }
+  
+  private func authenticateAccount(_ account: Account, completion: @escaping () -> Void) {
+    startLoading()
+    account.loadAuthenticationDocument { [weak self] success in
       DispatchQueue.main.async {
+        self?.stopLoading()
         guard success else {
-          let alert = NYPLAlertUtils.alert(title:nil, message:"We can’t get your library right now. Please close and reopen the app to try again.", style: .cancel)
-          NYPLAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: self, animated: true, completion: nil)
+          self?.showLoadingFailureAlert()
           return
         }
-        self.libraryAccounts = AccountsManager.shared.accounts()
-        self.showAddAccountList()
+        
+        completion()
       }
     }
   }
   
-  private func showAddAccountList() {
-    let alert = UIAlertController(title: NSLocalizedString(
-      "Add Your Library",
-      comment: "Title to tell a user that they can add another account to the list"),
-                                  message: nil,
-                                  preferredStyle: .actionSheet)
-    alert.popoverPresentationController?.barButtonItem = self.navigationItem.rightBarButtonItem
-    alert.popoverPresentationController?.permittedArrowDirections = .up
-
-    let sortedLibraryAccounts = self.libraryAccounts.sorted { (a, b) in
-      // Check if we're one of the three "special" libraries that always come first.
-      // This is a complete hack.
-      let idA = AccountsManager.NYPLAccountUUIDs.firstIndex(of: a.uuid) ?? Int.max
-      let idB = AccountsManager.NYPLAccountUUIDs.firstIndex(of: b.uuid) ?? Int.max
-      if idA <= 2 || idB <= 2 {
-        // One of the libraries is special, so sort it first. Lower ids are "more
-        // special" than higher ids and thus show up earlier.
-        return idA < idB
-      }
-      // Neither library is special so we just go alphabetically.
-      return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
-    }
-
-    for userAccount in sortedLibraryAccounts {
-      if (!userAddedSecondaryAccounts.contains(userAccount.uuid) && userAccount.uuid != manager.currentAccount?.uuid) {
-        alert.addAction(UIAlertAction(title: userAccount.name,
-          style: .default,
-          handler: { action in
-            self.userAddedSecondaryAccounts.append(userAccount.uuid)
-            self.updateSettingsAccountList()
-            self.updateNavBar()
-            self.tableView.reloadData()
-        }))
-      }
-    }
-
-    alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: "Cancel button title"), style: .cancel, handler:nil))
-    
-    self.present(alert, animated: true, completion: nil)
+  private func showLoadingFailureAlert() {
+    let alert = NYPLAlertUtils.alert(title:nil, message:"We can’t get your library right now. Please close and reopen the app to try again.", style: .cancel)
+    present(alert, animated: true, completion: nil)
   }
-  
+
   private func updateSettingsAccountList() {
     guard let uuid = manager.currentAccount?.uuid else {
       showLoadingUI(loadState: .failure)
