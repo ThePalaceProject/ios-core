@@ -1,11 +1,3 @@
-//
-//  UIViewController+Loading.swift
-//  SimplyE
-//
-//  Created by Maurice Work on 6/9/21.
-//  Copyright © 2021 NYPL Labs. All rights reserved.
-//
-
 import UIKit
 
 protocol LoadingViewController: UIViewController {

@@ -173,7 +173,7 @@
   }
   
   @objc private func addAccount() {
-    let listVC = NYPLWelcomeScreenAccountList { [weak self] account in
+    let listVC = AccountList { [weak self] account in
       if account.details != nil {
         self?.updateList(withAccount: account.uuid)
       } else {
