@@ -13,5 +13,3 @@ Carthage*
 **/GoogleService-Info.plist
 **/NYPLSecrets.swift
 fastlane/report.xml
-curl-7.64.1.zip
-openssl-1.0.1u.tar.gz
