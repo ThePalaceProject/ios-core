@@ -3,7 +3,6 @@ on: workflow_dispatch
 jobs:
   build-and-test:
     runs-on: macOS-latest
-    if: github.event.pull_request.head.repo.full_name == github.repository
     steps:
       - name: Force Xcode 11.5
         run: sudo xcode-select -switch /Applications/Xcode_11.5.app
