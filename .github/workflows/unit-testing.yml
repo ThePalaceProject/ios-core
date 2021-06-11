@@ -10,18 +10,18 @@ jobs:
         uses: actions/checkout@v2.3.4
         with:
           submodules: true
-          token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
       - name: Checkout Certificates
         uses: actions/checkout@v2.3.4
         with:
           repository: ThePalaceProject/mobile-certificates
-          token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
           path: ./mobile-ertificates
       - name: Checkout Adobe RMSDK
         uses: actions/checkout@v2.3.4
         with:
           repository: ThePalaceProject/mobile-drm-adeptconnector
-          token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
           path: ./mobile-drm-adeptconnector
       - name: Build non-Carthage 3rd party dependencies
         run: ./scripts/build-3rd-party-dependencies.sh
@@ -30,7 +30,7 @@ jobs:
       - name: Carthage Bootstrap
         uses: devbotsxyz/carthage-bootstrap@v1
         with:
-          github-token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           platform: iOS
           cache: false
           verbose: true
