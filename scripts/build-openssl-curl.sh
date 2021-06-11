@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Usage: run this script from the root of the Simplified-iOS repo.
+# Usage: run this script from the root of the Palace ios-core repository.
 #
 # Summary: this script rebuilds OpenSSL 1.0.1u and cURL 7.64.1 which are
 #              required by the Adobe RMSDK.
@@ -21,7 +21,7 @@ SDKVERSION=`xcodebuild -version -sdk iphoneos | grep SDKVersion | sed 's/SDKVers
 OPENSSL_VERSION="1.0.1u"
 OPENSSL_URL="https://www.openssl.org/source/old/1.0.1/openssl-1.0.1u.tar.gz"
 CURL_VERSION="7.64.1"
-CURL_URL="https://curl.haxx.se/download/curl-7.64.1.zip"
+CURL_URL="https://curl.se/download/curl-7.64.1.zip"
 
 echo "======================================="
 echo "Building OpenSSL..."

@@ -46,7 +46,9 @@ NSString * const _Nonnull ContentTypeAudiobookZip = @"application/audiobook+zip"
   if (!types) {
     types = [NSSet setWithArray:@[
       ContentTypeOPDSCatalog,
+#if FEATURE_DRM_CONNECTOR
       ContentTypeAdobeAdept,
+#endif
       ContentTypeBearerToken,
       ContentTypeEpubZip,
       ContentTypeFindaway,
@@ -55,7 +57,9 @@ NSString * const _Nonnull ContentTypeAudiobookZip = @"application/audiobook+zip"
       ContentTypeFeedbooksAudiobook,
       ContentTypeOverdriveAudiobook,
       ContentTypeOctetStream,
+#if LCP
       ContentTypeReadiumLCP,
+#endif
       ContentTypeAudiobookZip
     ]];
   }
