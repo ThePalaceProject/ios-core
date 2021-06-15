@@ -23,6 +23,14 @@ jobs:
           repository: ThePalaceProject/mobile-drm-adeptconnector
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
           path: ./mobile-drm-adeptconnector
+      - name: Uncompress Adobe RMSDK
+        run: ./scripts/setup-repo-drm.sh
+        env:
+          BUILD_CONTEXT: ci
+      - name: Build OpenSSL and curl
+        run: ./scripts/build-openssl-curl.sh
+        env:
+          BUILD_CONTEXT: ci
       - name: Build non-Carthage 3rd party dependencies
         run: ./scripts/build-3rd-party-dependencies.sh
         env:
