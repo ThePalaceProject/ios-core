@@ -16,7 +16,7 @@ jobs:
         with:
           repository: ThePalaceProject/mobile-certificates
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
-          path: ./mobile-ertificates
+          path: ./mobile-certificates
       - name: Checkout Adobe RMSDK
         uses: actions/checkout@v2.3.4
         with:
