@@ -13,7 +13,13 @@ set -x
 
 CURL_VERSION="7.64.1"
 
-DEVELOPER="/Applications/Xcode.app/Contents/Developer"
+
+if [ "$BUILD_CONTEXT" == "ci" ]; then
+  DEVELOPER="/Applications/Xcode_11.5.app/Contents/Developer"
+else
+  DEVELOPER="/Applications/Xcode.app/Contents/Developer"
+fi
+
 
 SDK_VERSION="12.2"
 MIN_VERSION="9.0"
