@@ -39,7 +39,7 @@ jobs:
         uses: devbotsxyz/carthage-bootstrap@v1
         with:
           github-token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
-          platform: iOS
+          platform: iOS,macOS
           cache: false
           verbose: true
       - name: Run Palace unit tests
