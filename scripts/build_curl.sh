@@ -13,23 +13,17 @@ set -x
 
 CURL_VERSION="7.64.1"
 
-
-if [ "$BUILD_CONTEXT" == "ci" ]; then
-  DEVELOPER="/Applications/Xcode_11.5.app/Contents/Developer"
-else
-  DEVELOPER="/Applications/Xcode.app/Contents/Developer"
-fi
-
+DEVELOPER="/Applications/Xcode.app/Contents/Developer"
 
 SDK_VERSION="12.2"
 MIN_VERSION="9.0"
 
 IPHONEOS_PLATFORM="${DEVELOPER}/Platforms/iPhoneOS.platform"
-IPHONEOS_SDK="${IPHONEOS_PLATFORM}/Developer/SDKs/iPhoneOS${SDK_VERSION}.sdk"
+IPHONEOS_SDK="${IPHONEOS_PLATFORM}/Developer/SDKs/iPhoneOS.sdk"
 IPHONEOS_GCC="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"
 
 IPHONESIMULATOR_PLATFORM="${DEVELOPER}/Platforms/iPhoneSimulator.platform"
-IPHONESIMULATOR_SDK="${IPHONESIMULATOR_PLATFORM}/Developer/SDKs/iPhoneSimulator${SDK_VERSION}.sdk"
+IPHONESIMULATOR_SDK="${IPHONESIMULATOR_PLATFORM}/Developer/SDKs/iPhoneSimulator.sdk"
 IPHONESIMULATOR_GCC="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"
 
 # Make sure things actually exist
