@@ -22,6 +22,6 @@ xcodebuild -project "$PROJECT_NAME" \
            -scheme "$SCHEME" \
            ENABLE_BITCODE=0 \
            LD_VERIFY_BITCODE=NO \
-           -destination platform=iOS\ Simulator,OS=13.7,name=iPhone\ 11 \
+           -destination platform=iOS\ Simulator,OS=13.5,name=iPhone\ 11 \
            clean test | \
            if command -v xcpretty &> /dev/null; then xcpretty; else cat; fi
