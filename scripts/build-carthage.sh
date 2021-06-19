@@ -34,5 +34,5 @@ rm -rf ~/Library/Caches/org.carthage.CarthageKit
 
 if [ "$BUILD_CONTEXT" != "ci" ] || [ "$1" == "--no-private" ]; then
   echo "Carthage build..."
-  carthage bootstrap --platform ios
+  carthage bootstrap --use-xcframeworks --platform ios
 fi
