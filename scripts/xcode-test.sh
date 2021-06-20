@@ -20,8 +20,6 @@ echo "Running unit tests for Palace..."
 
 xcodebuild -project "$PROJECT_NAME" \
            -scheme "$SCHEME" \
-           ENABLE_BITCODE=0 \
-           LD_VERIFY_BITCODE=NO \
-           -destination platform=iOS\ Simulator,OS=13.5,name=iPhone\ 11 \
+           -destination platform=iOS\ Simulator,OS=14.4,name=iPhone\ 12\ Pro\
            clean test | \
            if command -v xcpretty &> /dev/null; then xcpretty; else cat; fi
