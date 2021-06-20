@@ -32,7 +32,5 @@ fi
 # deep clean to avoid any caching issues
 rm -rf ~/Library/Caches/org.carthage.CarthageKit
 
-if [ "$BUILD_CONTEXT" != "ci" ] || [ "$1" == "--no-private" ]; then
-  echo "Carthage build..."
-  carthage bootstrap --use-xcframeworks --platform ios
-fi
+echo "Carthage build..."
+carthage bootstrap --use-xcframeworks --platform ios
