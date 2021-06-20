@@ -19,7 +19,9 @@ else
   echo "Setting up repo for building with DRM support for [$BUILD_CONTEXT]..."
 fi
 
-git submodule update --init --recursive --remote
+if [ "$BUILD_CONTEXT" != "ci" ]; then
+  git submodule update --init --recursive --remote
+fi
 
 if [ "$BUILD_CONTEXT" == "ci" ]; then
   ADOBE_SDK_PATH=./mobile-drm-adeptconnector
