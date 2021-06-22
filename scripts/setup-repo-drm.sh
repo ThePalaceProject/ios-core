@@ -20,7 +20,7 @@ else
 fi
 
 if [ "$BUILD_CONTEXT" != "ci" ]; then
-  git submodule update --init --recursive --remote
+  git submodule update --init --recursive
 fi
 
 if [ "$BUILD_CONTEXT" == "ci" ]; then
