@@ -1,17 +1,18 @@
 /// UITableView to display or add library accounts that the user
 /// can then log in and adjust settings after selecting Accounts.
-@objcMembers class TPPSettingsAccountsTableViewController: UIViewController, UITableViewDelegate, UITableViewDataSource {
-
+@objcMembers class TPPSettingsAccountsTableViewController: UIViewController, UITableViewDelegate, UITableViewDataSource, TPPLoadingViewController {
+  
   enum LoadState {
     case loading
     case failure
     case success
   }
-
+  
   weak var tableView: UITableView!
   var reloadView: TPPReloadView!
   var spinner: UIActivityIndicatorView!
-
+  var loadingView: UIView?
+  
   fileprivate var accounts: [String] {
     didSet {
       //update TPPSettings
@@ -25,14 +26,14 @@
     self.accounts = accounts
     self.manager = AccountsManager.shared
     self.libraryAccounts = manager.accounts()
-
+    
     super.init(nibName:nil, bundle:nil)
   }
   
   deinit {
     NotificationCenter.default.removeObserver(self)
   }
-
+  
   @available(*, unavailable)
   required init(coder aDecoder: NSCoder) {
     fatalError("init(coder:) has not been implemented")
@@ -45,10 +46,10 @@
     self.tableView = self.view as? UITableView
     self.tableView.delegate = self
     self.tableView.dataSource = self
-
+    
     spinner = UIActivityIndicatorView(style: .gray)
     view.addSubview(spinner)
-
+    
     reloadView = TPPReloadView()
     reloadView.handler = { [weak self] in
       guard let self = self else {
@@ -57,7 +58,7 @@
       self.reloadAccounts()
     }
     view.addSubview(reloadView)
-
+    
     // cleanup accounts, remove demo account or accounts not supported through accounts.json // will be refactored when implementing librsry registry
     var accountsToRemove = [String]()
     
@@ -66,7 +67,7 @@
         accountsToRemove.append(account)
       }
     }
-
+    
     for remove in accountsToRemove {
       if let index = accounts.index(of: remove) {
         accounts.remove(at: index)
@@ -76,7 +77,7 @@
     self.userAddedSecondaryAccounts = accounts.filter { $0 != AccountsManager.shared.currentAccount?.uuid }
     
     updateSettingsAccountList()
-
+    
     self.title = NSLocalizedString("Accounts",
                                    comment: "A title for a list of libraries the user may select or add to.")
     self.view.backgroundColor = TPPConfiguration.backgroundColor()
@@ -94,19 +95,19 @@
                                            selector: #selector(catalogChangeHandler),
                                            name: NSNotification.Name.TPPCatalogDidLoad,
                                            object: nil)
-
+    
     self.libraryAccounts = manager.accounts()
     updateNavBar()
   }
-
+  
   override func viewWillLayoutSubviews() {
     super.viewWillLayoutSubviews()
     spinner.centerInSuperview(withOffset: tableView.contentOffset)
     reloadView.centerInSuperview(withOffset: tableView.contentOffset)
   }
-
+  
   // MARK: -
-
+  
   func showLoadingUI(loadState: LoadState) {
     switch loadState {
     case .loading:
@@ -123,10 +124,10 @@
       reloadView.isHidden = true
     }
   }
-
+  
   func reloadAccounts() {
     showLoadingUI(loadState: .loading)
-
+    
     manager.updateAccountSet { [weak self] success in
       TPPMainThreadRun.asyncIfNeeded { [weak self] in
         guard let self = self else {
@@ -137,12 +138,12 @@
         } else {
           self.showLoadingUI(loadState: .failure)
           TPPErrorLogger.logError(withCode: .apiCall,
-                                   summary: "Accounts list failed to load")
+                                  summary: "Accounts list failed to load")
         }
       }
     }
   }
-
+  
   func reloadAfterAccountChange() {
     accounts = TPPSettings.shared.settingsAccountsList
     self.userAddedSecondaryAccounts = accounts.filter { $0 != manager.currentAccount?.uuid }
@@ -162,60 +163,47 @@
     let enable = self.userAddedSecondaryAccounts.count + 1 < self.libraryAccounts.count
     self.navigationItem.rightBarButtonItem?.isEnabled = enable
   }
-
+  
+  private func updateList(withAccount uuid: String) {
+    userAddedSecondaryAccounts.append(uuid)
+    updateSettingsAccountList()
+    updateNavBar()
+    tableView.reloadData()
+    navigationController?.popViewController(animated: true)
+  }
+  
   @objc private func addAccount() {
-    AccountsManager.shared.loadCatalogs() { success in
+    let listVC = TPPAccountList { [weak self] account in
+      if account.details != nil {
+        self?.updateList(withAccount: account.uuid)
+      } else {
+        self?.authenticateAccount(account) {
+          self?.updateList(withAccount: account.uuid)
+        }
+        self?.libraryAccounts = AccountsManager.shared.accounts()
+      }
+    }
+    navigationController?.pushViewController(listVC, animated: true)
+  }
+  
+  private func authenticateAccount(_ account: Account, completion: @escaping () -> Void) {
+    startLoading()
+    account.loadAuthenticationDocument { [weak self] success in
       DispatchQueue.main.async {
+        self?.stopLoading()
         guard success else {
-          let alert = TPPAlertUtils.alert(title:nil, message:"We can’t get your library right now. Please close and reopen the app to try again.", style: .cancel)
-          TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: self, animated: true, completion: nil)
+          self?.showLoadingFailureAlert()
           return
         }
-        self.libraryAccounts = AccountsManager.shared.accounts()
-        self.showAddAccountList()
+        
+        completion()
       }
     }
   }
   
-  private func showAddAccountList() {
-    let alert = UIAlertController(title: NSLocalizedString(
-      "Add Your Library",
-      comment: "Title to tell a user that they can add another account to the list"),
-                                  message: nil,
-                                  preferredStyle: .actionSheet)
-    alert.popoverPresentationController?.barButtonItem = self.navigationItem.rightBarButtonItem
-    alert.popoverPresentationController?.permittedArrowDirections = .up
-
-    let sortedLibraryAccounts = self.libraryAccounts.sorted { (a, b) in
-      // Check if we're one of the three "special" libraries that always come first.
-      // This is a complete hack.
-      let idA = AccountsManager.TPPAccountUUIDs.firstIndex(of: a.uuid) ?? Int.max
-      let idB = AccountsManager.TPPAccountUUIDs.firstIndex(of: b.uuid) ?? Int.max
-      if idA <= 2 || idB <= 2 {
-        // One of the libraries is special, so sort it first. Lower ids are "more
-        // special" than higher ids and thus show up earlier.
-        return idA < idB
-      }
-      // Neither library is special so we just go alphabetically.
-      return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
-    }
-
-    for userAccount in sortedLibraryAccounts {
-      if (!userAddedSecondaryAccounts.contains(userAccount.uuid) && userAccount.uuid != manager.currentAccount?.uuid) {
-        alert.addAction(UIAlertAction(title: userAccount.name,
-          style: .default,
-          handler: { action in
-            self.userAddedSecondaryAccounts.append(userAccount.uuid)
-            self.updateSettingsAccountList()
-            self.updateNavBar()
-            self.tableView.reloadData()
-        }))
-      }
-    }
-
-    alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: "Cancel button title"), style: .cancel, handler:nil))
-    
-    self.present(alert, animated: true, completion: nil)
+  private func showLoadingFailureAlert() {
+    let alert = TPPAlertUtils.alert(title:nil, message:"We can’t get your library right now. Please close and reopen the app to try again.", style: .cancel)
+    present(alert, animated: true, completion: nil)
   }
   
   private func updateSettingsAccountList() {
@@ -236,7 +224,7 @@
     if section == 0 {
       return self.manager.currentAccount != nil ? 1 : 0
     }
-      
+    
     return userAddedSecondaryAccounts.count
   }
   
@@ -256,9 +244,9 @@
   }
   
   func cellForLibrary(_ account: Account, _ indexPath: IndexPath) -> UITableViewCell {
-
+    
     let cell = UITableViewCell(style: UITableViewCell.CellStyle.default, reuseIdentifier: "cell")
-
+    
     let container = UIView()
     let textContainer = UIView()
     
@@ -270,12 +258,12 @@
     textLabel.font = UIFont.systemFont(ofSize: 14)
     textLabel.text = account.name
     textLabel.numberOfLines = 0
-
+    
     let detailLabel = UILabel()
     detailLabel.font = UIFont(name: "AvenirNext-Regular", size: 12)
     detailLabel.numberOfLines = 0
     detailLabel.text = account.subtitle
-
+    
     textContainer.addSubview(textLabel)
     textContainer.addSubview(detailLabel)
     
@@ -286,21 +274,21 @@
     imageView.autoAlignAxis(toSuperviewAxis: .horizontal)
     imageView.autoPinEdge(toSuperviewEdge: .left)
     imageView.autoSetDimensions(to: CGSize(width: 45, height: 45))
-
+    
     textContainer.autoPinEdge(.left, to: .right, of: imageView, withOffset: cell.contentView.layoutMargins.left)
     textContainer.autoPinEdge(toSuperviewMargin: .right)
     textContainer.autoAlignAxis(toSuperviewAxis: .horizontal)
-
+    
     NSLayoutConstraint.autoSetPriority(UILayoutPriority.defaultLow) {
       textContainer.autoPinEdge(toSuperviewEdge: .top, withInset: 0, relation: .greaterThanOrEqual)
       textContainer.autoPinEdge(toSuperviewEdge: .bottom, withInset: 0, relation: .greaterThanOrEqual)
     }
-
+    
     textLabel.autoPinEdgesToSuperviewEdges(with: .zero, excludingEdge: .bottom)
-
+    
     detailLabel.autoPinEdge(.top, to: .bottom, of: textLabel)
     detailLabel.autoPinEdgesToSuperviewEdges(with: .zero, excludingEdge: .top)
-
+    
     container.autoPinEdgesToSuperviewMargins()
     container.autoSetDimension(.height, toSize: 55, relation: .greaterThanOrEqual)
     
