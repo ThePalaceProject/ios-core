@@ -9,7 +9,7 @@
 import Foundation
 @testable import Palace
 
-class TPPRequestExecutorMock: NYPLRequestExecuting {
+class TPPRequestExecutorMock: TPPRequestExecuting {
   var requestTimeout: TimeInterval = 60
 
   // table of all mock response bodies for given URLs

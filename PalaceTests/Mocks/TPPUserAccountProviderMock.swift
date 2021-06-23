@@ -9,12 +9,12 @@
 import Foundation
 @testable import Palace
 
-class TPPUserAccountProviderMock: NSObject, NYPLUserAccountProvider {
+class TPPUserAccountProviderMock: NSObject, TPPUserAccountProvider {
   private static let userAccountMock = TPPUserAccountMock()
   
   var needsAuth: Bool
   
-  static func sharedAccount(libraryUUID: String?) -> NYPLUserAccount {
+  static func sharedAccount(libraryUUID: String?) -> TPPUserAccount {
     return userAccountMock
   }
   

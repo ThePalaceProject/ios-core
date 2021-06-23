@@ -20,8 +20,8 @@ class TPPBookmarkSpecTests: XCTestCase {
 
   func testBookmarkMotivationKeyword() throws {
     XCTAssert(
-      NYPLBookmarkSpec.Motivation.bookmark.rawValue
-        .contains(NYPLBookmarkSpec.Motivation.bookmarkingKeyword)
+      TPPBookmarkSpec.Motivation.bookmark.rawValue
+        .contains(TPPBookmarkSpec.Motivation.bookmarkingKeyword)
     )
   }
 }

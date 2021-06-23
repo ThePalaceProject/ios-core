@@ -9,9 +9,9 @@
 import Foundation
 @testable import Palace
 
-class TPPBookRegistryMock: NSObject, NYPLBookRegistrySyncing, NYPLBookRegistryProvider {
+class TPPBookRegistryMock: NSObject, NYPLBookRegistrySyncing, TPPBookRegistryProvider {
   var syncing = false
-  var identifiersToRecords = [String: NYPLBookRegistryRecord]()
+  var identifiersToRecords = [String: TPPBookRegistryRecord]()
 
   func reset(_ libraryAccountUUID: String) {
     syncing = false
@@ -29,40 +29,40 @@ class TPPBookRegistryMock: NSObject, NYPLBookRegistrySyncing, NYPLBookRegistryPr
   func save() {
   }
     
-  func addBook(book: NYPLBook,
-               state: NYPLBookState) {
+  func addBook(book: TPPBook,
+               state: TPPBookState) {
     let dict = ["metadata": book.dictionaryRepresentation(), "state": state.stringValue()] as [String : AnyObject]
-    self.identifiersToRecords[book.identifier] = NYPLBookRegistryRecord(dictionary: dict)
+    self.identifiersToRecords[book.identifier] = TPPBookRegistryRecord(dictionary: dict)
   }
     
-  func readiumBookmarks(forIdentifier identifier: String) -> [NYPLReadiumBookmark] {
-    guard let record = identifiersToRecords[identifier] else { return [NYPLReadiumBookmark]() }
+  func readiumBookmarks(forIdentifier identifier: String) -> [TPPReadiumBookmark] {
+    guard let record = identifiersToRecords[identifier] else { return [TPPReadiumBookmark]() }
     return record.readiumBookmarks.sorted{ $0.progressWithinBook > $1.progressWithinBook }
   }
   
-  func location(forIdentifier identifier: String) -> NYPLBookLocation? {
+  func location(forIdentifier identifier: String) -> TPPBookLocation? {
     guard let record = identifiersToRecords[identifier] else { return nil }
     return record.location
   }
     
-  func setLocation(_ location: NYPLBookLocation?, forIdentifier identifier: String) {
+  func setLocation(_ location: TPPBookLocation?, forIdentifier identifier: String) {
   }
 
-  func add(_ bookmark: NYPLReadiumBookmark, forIdentifier identifier: String) {
+  func add(_ bookmark: TPPReadiumBookmark, forIdentifier identifier: String) {
     guard let record = identifiersToRecords[identifier] else { return }
-    var bookmarks = [NYPLReadiumBookmark]()
+    var bookmarks = [TPPReadiumBookmark]()
     bookmarks.append(contentsOf: record.readiumBookmarks)
     bookmarks.append(bookmark)
     identifiersToRecords[identifier] = record.withReadiumBookmarks(bookmarks)
   }
 
-  func delete(_ bookmark: NYPLReadiumBookmark, forIdentifier identifier: String) {
+  func delete(_ bookmark: TPPReadiumBookmark, forIdentifier identifier: String) {
     guard let record = identifiersToRecords[identifier] else { return }
     let bookmarks = record.readiumBookmarks.filter { $0 != bookmark }
     identifiersToRecords[identifier] = record.withReadiumBookmarks(bookmarks)
   }
   
-  func replace(_ oldBookmark: NYPLReadiumBookmark, with newBookmark: NYPLReadiumBookmark, forIdentifier identifier: String) {
+  func replace(_ oldBookmark: TPPReadiumBookmark, with newBookmark: TPPReadiumBookmark, forIdentifier identifier: String) {
     guard let record = identifiersToRecords[identifier] else { return }
     var bookmarks = record.readiumBookmarks.filter { $0 != oldBookmark }
     bookmarks.append(newBookmark)

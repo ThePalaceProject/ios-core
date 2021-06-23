@@ -9,7 +9,7 @@
 import Foundation
 @testable import Palace
 
-class TPPMyBooksDownloadsCenterMock: NYPLBookDownloadsDeleting {
+class TPPMyBooksDownloadsCenterMock: TPPBookDownloadsDeleting {
   func reset(_ libraryID: String!) {
   }
 }

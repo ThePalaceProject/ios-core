@@ -7,22 +7,22 @@
 
 /// One of the six acquisition relations given in the OPDS specification.
 typedef NS_ENUM(NSInteger, TPPOPDSAcquisitionRelation) {
-  NYPLOPDSAcquisitionRelationGeneric,
-  NYPLOPDSAcquisitionRelationOpenAccess,
-  NYPLOPDSAcquisitionRelationBorrow,
-  NYPLOPDSAcquisitionRelationBuy,
-  NYPLOPDSAcquisitionRelationSample,
-  NYPLOPDSAcquisitionRelationSubscribe
+  TPPOPDSAcquisitionRelationGeneric,
+  TPPOPDSAcquisitionRelationOpenAccess,
+  TPPOPDSAcquisitionRelationBorrow,
+  TPPOPDSAcquisitionRelationBuy,
+  TPPOPDSAcquisitionRelationSample,
+  TPPOPDSAcquisitionRelationSubscribe
 };
 
 /// Represents zero or more relations given in the OPDS specification.
 typedef NS_OPTIONS(NSUInteger, TPPOPDSAcquisitionRelationSet) {
-  NYPLOPDSAcquisitionRelationSetGeneric    = 1 << 0,
-  NYPLOPDSAcquisitionRelationSetOpenAccess = 1 << 1,
-  NYPLOPDSAcquisitionRelationSetBorrow     = 1 << 2,
-  NYPLOPDSAcquisitionRelationSetBuy        = 1 << 3,
-  NYPLOPDSAcquisitionRelationSetSample     = 1 << 4,
-  NYPLOPDSAcquisitionRelationSetSubscribe  = 1 << 5
+  TPPOPDSAcquisitionRelationSetGeneric    = 1 << 0,
+  TPPOPDSAcquisitionRelationSetOpenAccess = 1 << 1,
+  TPPOPDSAcquisitionRelationSetBorrow     = 1 << 2,
+  TPPOPDSAcquisitionRelationSetBuy        = 1 << 3,
+  TPPOPDSAcquisitionRelationSetSample     = 1 << 4,
+  TPPOPDSAcquisitionRelationSetSubscribe  = 1 << 5
 };
 
 /// A set containing all possible relations.

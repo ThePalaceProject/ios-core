@@ -10,13 +10,13 @@ import XCTest
 @testable import Palace
 
 class TPPBookCreationTests: XCTestCase {
-  var opdsEntry: NYPLOPDSEntry!
-  var opdsEntryMinimal: NYPLOPDSEntry!
+  var opdsEntry: TPPOPDSEntry!
+  var opdsEntryMinimal: TPPOPDSEntry!
 
   override func setUpWithError() throws {
     try super.setUpWithError()
-    self.opdsEntry = NYPLFake.opdsEntry
-    self.opdsEntryMinimal = NYPLFake.opdsEntryMinimal
+    self.opdsEntry = TPPFake.opdsEntry
+    self.opdsEntryMinimal = TPPFake.opdsEntryMinimal
   }
 
   override func tearDownWithError() throws {
@@ -26,9 +26,9 @@ class TPPBookCreationTests: XCTestCase {
   }
 
   func testBookCreationViaDictionary() throws {
-    let acquisitions = [NYPLFake.genericAcquisition.dictionaryRepresentation()]
+    let acquisitions = [TPPFake.genericAcquisition.dictionaryRepresentation()]
 
-    let book = NYPLBook(dictionary: [
+    let book = TPPBook(dictionary: [
       "acquisitions": acquisitions,
       "categories" : ["Fantasy"],
       "id": "666",
@@ -44,7 +44,7 @@ class TPPBookCreationTests: XCTestCase {
     XCTAssertNoThrow(book?.loggableShortString())
     XCTAssertNoThrow(book?.loggableDictionary())
 
-    let bookNoUpdatedDate = NYPLBook(dictionary: [
+    let bookNoUpdatedDate = TPPBook(dictionary: [
       "acquisitions": acquisitions,
       "categories" : ["Fantasy"],
       "id": "666",
@@ -52,7 +52,7 @@ class TPPBookCreationTests: XCTestCase {
     ])
     XCTAssertNil(bookNoUpdatedDate)
 
-    let bookNoTitle = NYPLBook(dictionary: [
+    let bookNoTitle = TPPBook(dictionary: [
       "acquisitions": acquisitions,
       "categories" : ["Fantasy"],
       "id": "666",
@@ -60,7 +60,7 @@ class TPPBookCreationTests: XCTestCase {
     ])
     XCTAssertNil(bookNoTitle)
 
-    let bookNoId = NYPLBook(dictionary: [
+    let bookNoId = TPPBook(dictionary: [
       "acquisitions": acquisitions,
       "categories" : ["Fantasy"],
       "title": "The Lord of the Rings",
@@ -68,7 +68,7 @@ class TPPBookCreationTests: XCTestCase {
     ])
     XCTAssertNil(bookNoId)
 
-    let bookNoCategories = NYPLBook(dictionary: [
+    let bookNoCategories = TPPBook(dictionary: [
       "acquisitions": acquisitions,
       "id": "666",
       "title": "The Lord of the Rings",
@@ -81,14 +81,14 @@ class TPPBookCreationTests: XCTestCase {
      for the dictionary initializer *allows* object creation for a dictionary
      with no acquisitions. However this is not something we must necessarily
      ensure because
-     (1) the NYPLBook(entry:) initializer does NOT allow it,
+     (1) the TPPBook(entry:) initializer does NOT allow it,
      (2) a book with no acquisitions is a book the user won't be able to read,
      so useful only to look at the metadata
      */
   }
 
   func testBookCreationViaFactoryMethod() {
-    let bookWithNoCategories = NYPLBook(entry: opdsEntryMinimal)
+    let bookWithNoCategories = TPPBook(entry: opdsEntryMinimal)
     XCTAssertNotNil(bookWithNoCategories)
     XCTAssertNotNil(bookWithNoCategories?.acquisitions)
     XCTAssertNotNil(bookWithNoCategories?.categoryStrings)
@@ -100,7 +100,7 @@ class TPPBookCreationTests: XCTestCase {
   // for completeness only. This test is not strictly necessary because the
   // member-wise initializer is not public
   func testBookCreationViaMemberWiseInitializer() {
-    let book = NYPLBook(acquisitions: opdsEntry.acquisitions,
+    let book = TPPBook(acquisitions: opdsEntry.acquisitions,
                         bookAuthors: nil,
                         categoryStrings: nil,
                         distributor: nil,

@@ -7,14 +7,14 @@
 //
 
 import XCTest
-@testable import Palace
+//@testable import Palace
 
 class TPPOpenSearchDescriptionTests: XCTestCase {
-  var searchDescr: NYPLOpenSearchDescription!
+  var searchDescr: TPPOpenSearchDescription!
 
   override func setUp() {
     super.setUp()
-    searchDescr = NYPLOpenSearchDescription(title: "title", books: nil)
+    searchDescr = TPPOpenSearchDescription(title: "title", books: nil)
     searchDescr.opdsurlTemplate = "https://circulation.librarysimplified.org/NYNYPL/search/?entrypoint=All&q={searchTerms}"
   }
 

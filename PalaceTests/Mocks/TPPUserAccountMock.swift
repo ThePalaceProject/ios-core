@@ -9,7 +9,7 @@
 import Foundation
 @testable import Palace
 
-class TPPUserAccountMock: NYPLUserAccount {
+class TPPUserAccountMock: TPPUserAccount {
   override init() {
     super.init()
     print("#### init'ing userAccount \(self.hash)")
@@ -20,7 +20,7 @@ class TPPUserAccountMock: NYPLUserAccount {
   }
 
   private static var shared = TPPUserAccountMock()
-  override class func sharedAccount(libraryUUID: String?) -> NYPLUserAccount {
+  override class func sharedAccount(libraryUUID: String?) -> TPPUserAccount {
     return shared
   }
 
@@ -36,8 +36,8 @@ class TPPUserAccountMock: NYPLUserAccount {
     }
   }
 
-  var _credentials: NYPLCredentials?
-  override var credentials: NYPLCredentials? {
+  var _credentials: TPPCredentials?
+  override var credentials: TPPCredentials? {
     get {
       return _credentials
     }

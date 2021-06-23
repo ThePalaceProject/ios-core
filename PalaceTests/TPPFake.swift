@@ -10,30 +10,30 @@ import Foundation
 @testable import Palace
 
 class TPPFake {
-  class var genericAcquisition: NYPLOPDSAcquisition {
-    return NYPLOPDSAcquisition(
+  class var genericAcquisition: TPPOPDSAcquisition {
+    return TPPOPDSAcquisition(
       relation: .generic,
       type: "application/epub+zip",
       hrefURL: URL(fileURLWithPath: ""),
-      indirectAcquisitions: [NYPLOPDSIndirectAcquisition](),
-      availability: NYPLOPDSAcquisitionAvailabilityUnlimited()
+      indirectAcquisitions: [TPPOPDSIndirectAcquisition](),
+      availability: TPPOPDSAcquisitionAvailabilityUnlimited()
     )
   }
 
-  class var opdsEntry: NYPLOPDSEntry {
+  class var opdsEntry: TPPOPDSEntry {
     let bundle = Bundle(for: TPPFake.self)
     let url = bundle.url(forResource: "NYPLOPDSAcquisitionPathEntry",
                          withExtension: "xml")!
-    let xml = try! NYPLXML(data: Data(contentsOf: url))
-    let entry = NYPLOPDSEntry(xml: xml)
+    let xml = try! TPPXML(data: Data(contentsOf: url))
+    let entry = TPPOPDSEntry(xml: xml)
     return entry!
   }
 
-  class var opdsEntryMinimal: NYPLOPDSEntry {
+  class var opdsEntryMinimal: TPPOPDSEntry {
     let bundle = Bundle(for: TPPFake.self)
     let url = bundle.url(forResource: "NYPLOPDSAcquisitionPathEntryMinimal",
                          withExtension: "xml")!
-    return try! NYPLOPDSEntry(xml: NYPLXML(data: Data(contentsOf: url)))
+    return try! TPPOPDSEntry(xml: TPPXML(data: Data(contentsOf: url)))
   }
 
   static let validUserProfileJson = """

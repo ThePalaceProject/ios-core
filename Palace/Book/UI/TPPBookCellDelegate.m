@@ -263,8 +263,8 @@
         NSSet<NSString *> *types = [[NSSet alloc] initWithObjects:ContentTypeFindaway, ContentTypeOpenAccessAudiobook, ContentTypeFeedbooksAudiobook, nil];
         NSArray<TPPOPDSAcquisitionPath *> *paths = [TPPOPDSAcquisitionPath
                                                      supportedAcquisitionPathsForAllowedTypes:types
-                                                    allowedRelations:(NYPLOPDSAcquisitionRelationSetBorrow |
-                                                                      NYPLOPDSAcquisitionRelationSetGeneric)
+                                                    allowedRelations:(TPPOPDSAcquisitionRelationSetBorrow |
+                                                                      TPPOPDSAcquisitionRelationSetGeneric)
                                                      acquisitions:book.acquisitions];
         if (paths.count > 0) {
           UIAlertController *alert = [TPPReturnPromptHelper audiobookPromptWithCompletion:^(BOOL returnWasChosen) {

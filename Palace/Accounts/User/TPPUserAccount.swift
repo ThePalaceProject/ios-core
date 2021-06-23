@@ -23,7 +23,7 @@ private enum StorageKey: String {
       // historically user data for NYPL has not used keys that contain the
       // library UUID.
       let libraryUUID = libraryUUID,
-      libraryUUID != AccountsManager.shared.TPPAccountUUID else {
+      libraryUUID != AccountsManager.shared.tppAccountUUID else {
         return self.rawValue
     }
 

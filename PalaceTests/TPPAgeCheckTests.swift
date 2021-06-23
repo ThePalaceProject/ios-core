@@ -15,7 +15,7 @@ class TPPAgeCheckTests: XCTestCase {
   var ageCheckChoiceStorageMock: TPPAgeCheckChoiceStorageMock!
   var userAccountProviderMock: TPPUserAccountProviderMock!
   var simplyeLibraryAccountProviderMock: TPPCurrentLibraryAccountProviderMock!
-  var ageCheck: NYPLAgeCheck!
+  var ageCheck: TPPAgeCheck!
   
   // TPPAgeCheck checks the property userAboveAgeLimit in AccountDetails before performing age check
   // This property is store in UserDefault which can be different value when testing on different machine
@@ -39,7 +39,7 @@ class TPPAgeCheckTests: XCTestCase {
     
     expectation = self.expectation(description: "AgeChecking")
     
-    ageCheck = NYPLAgeCheck(ageCheckChoiceStorage: ageCheckChoiceStorageMock)
+    ageCheck = TPPAgeCheck(ageCheckChoiceStorage: ageCheckChoiceStorageMock)
   }
 
   override func tearDownWithError() throws {

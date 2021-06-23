@@ -344,7 +344,7 @@ static NSString *const UpdatedKey = @"updated";
     if (genericURL) {
       [mutableAcquisitions addObject:
        [TPPOPDSAcquisition
-        acquisitionWithRelation:NYPLOPDSAcquisitionRelationGeneric
+        acquisitionWithRelation:TPPOPDSAcquisitionRelationGeneric
         type:applicationEPUBZIP
         hrefURL:genericURL
         indirectAcquisitions:@[]
@@ -356,7 +356,7 @@ static NSString *const UpdatedKey = @"updated";
     if (borrowURL) {
       [mutableAcquisitions addObject:
        [TPPOPDSAcquisition
-        acquisitionWithRelation:NYPLOPDSAcquisitionRelationBorrow
+        acquisitionWithRelation:TPPOPDSAcquisitionRelationBorrow
         type:applicationEPUBZIP
         hrefURL:borrowURL
         indirectAcquisitions:@[]
@@ -368,7 +368,7 @@ static NSString *const UpdatedKey = @"updated";
     if (openAccessURL) {
       [mutableAcquisitions addObject:
        [TPPOPDSAcquisition
-        acquisitionWithRelation:NYPLOPDSAcquisitionRelationOpenAccess
+        acquisitionWithRelation:TPPOPDSAcquisitionRelationOpenAccess
         type:applicationEPUBZIP
         hrefURL:openAccessURL
         indirectAcquisitions:@[]
@@ -380,7 +380,7 @@ static NSString *const UpdatedKey = @"updated";
     if (sampleURL) {
       [mutableAcquisitions addObject:
        [TPPOPDSAcquisition
-        acquisitionWithRelation:NYPLOPDSAcquisitionRelationSample
+        acquisitionWithRelation:TPPOPDSAcquisitionRelationSample
         type:applicationEPUBZIP
         hrefURL:sampleURL
         indirectAcquisitions:@[]
@@ -553,14 +553,14 @@ static NSString *const UpdatedKey = @"updated";
 {
   TPPOPDSAcquisition *const acquisition = [self defaultAcquisition];
 
-  return acquisition.relation == NYPLOPDSAcquisitionRelationBorrow ? acquisition : nil;
+  return acquisition.relation == TPPOPDSAcquisitionRelationBorrow ? acquisition : nil;
 }
 
 - (TPPOPDSAcquisition *)defaultAcquisitionIfOpenAccess
 {
   TPPOPDSAcquisition *const acquisition = [self defaultAcquisition];
 
-  return acquisition.relation == NYPLOPDSAcquisitionRelationOpenAccess ? acquisition : nil;
+  return acquisition.relation == TPPOPDSAcquisitionRelationOpenAccess ? acquisition : nil;
 }
 
 - (TPPBookContentType)defaultBookContentType
