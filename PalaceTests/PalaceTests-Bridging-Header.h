@@ -2,16 +2,16 @@
 //  Use this file to import your target's public headers that you would like to expose to Swift.
 //
 
-#import "SimplyE-Bridging-Header.h"
-#import "NYPLOpenSearchDescription.h"
+#import "Palace-Bridging-Header.h"
+#import "TPPOpenSearchDescription.h"
 #import "NSString+TPPStringAdditions.h"
-#import "NYPLBook.h"
+#import "TPPBook.h"
 
 //
 // Override here any ObjC declarations to facilitate testing
 //
 
-@interface NYPLOpenSearchDescription ()
+@interface TPPOpenSearchDescription ()
 @property (nonatomic, readwrite, nullable) NSString *OPDSURLTemplate;
 @end
 
@@ -19,9 +19,9 @@
 - (nullable NSString *)javascriptHexString;
 @end
 
-@interface NYPLBook ()
-- (nonnull instancetype)initWithAcquisitions:(nonnull NSArray<NYPLOPDSAcquisition *> *)acquisitions
-                                 bookAuthors:(nullable NSArray<NYPLBookAuthor *> *)authors
+@interface TPPBook ()
+- (nonnull instancetype)initWithAcquisitions:(nonnull NSArray<TPPOPDSAcquisition *> *)acquisitions
+                                 bookAuthors:(nullable NSArray<TPPBookAuthor *> *)authors
                              categoryStrings:(nullable NSArray *)categoryStrings
                                  distributor:(nullable NSString *)distributor
                                   identifier:(nonnull NSString *)identifier

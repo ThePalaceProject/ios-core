@@ -130,7 +130,7 @@ TPPReaderSettingsFontFace fontFaceFromString(NSString *const stringKey)
 #if DEBUG
     @throw NSInternalInconsistencyException;
 #else
-    fontFaceNumber = @(NYPLReaderSettingsFontFaceSans);
+    fontFaceNumber = @(TPPReaderSettingsFontFaceSans);
 #endif
   }
   

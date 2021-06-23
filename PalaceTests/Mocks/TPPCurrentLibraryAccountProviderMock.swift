@@ -9,7 +9,7 @@
 import Foundation
 @testable import Palace
 
-class TPPCurrentLibraryAccountProviderMock: NSObject, NYPLCurrentLibraryAccountProvider {
+class TPPCurrentLibraryAccountProviderMock: NSObject, TPPCurrentLibraryAccountProvider {
   var currentAccount: Account?
   
   override init() {

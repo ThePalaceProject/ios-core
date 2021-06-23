@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # SUMMARY
-#   Configures common environment variables for building Simplified apps.
+#   Configures common environment variables for building Palace app.
 #
 # USAGE
 #   Source this script from other scripts (e.g. xcode-archive.sh)
@@ -11,14 +11,7 @@
 #     ...
 #
 #   invocation:
-#     xcode-archive.sh <app_name>
-#
-#   The assumption here is that the app name (visible to the end-user)
-#   coincides with the Xcode target and scheme names.
-#
-# PARAMETERS
-#     <app_name> : Which app to build. Mandatory. Possible values:
-#         [ simplye | SE | openebooks | OE ]
+#     xcode-archive.sh
 
 set -eo pipefail
 
@@ -29,27 +22,12 @@ fatal()
 }
 
 # determine which app we're going to work on
-APPNAME_PARAM=`echo "$1" | tr '[:upper:]' '[:lower:]'`
-case "$APPNAME_PARAM" in
-  se | simplye)
-    APP_NAME=SimplyE
-    APP_NAME_FOLDER=SimplyE
-    ;;
-  oe | openebooks | open_ebooks)
-    APP_NAME="Open eBooks"
-    APP_NAME_FOLDER=OpenEbooks
-    ;;
-  *)
-    echo "xcode-settings: please specify a valid app. Possible values: simplye | openebooks"
-    exit 1
-    ;;
-esac
-TARGET_NAME=$APP_NAME
-SCHEME=$APP_NAME
+TARGET_NAME=Palace
+SCHEME=Palace
 
 # app-agnostic settings
 PROV_PROFILES_DIR_PATH="$HOME/Library/MobileDevice/Provisioning Profiles"
-PROJECT_NAME=Simplified.xcodeproj
+PROJECT_NAME=Palace.xcodeproj
 BUILD_PATH="./Build"
 BUILD_SETTINGS="`xcodebuild -project $PROJECT_NAME -showBuildSettings -target \"$TARGET_NAME\"`"
 VERSION_NUM=`echo "$BUILD_SETTINGS" | grep "MARKETING_VERSION" | sed 's/[ ]*MARKETING_VERSION = //'`

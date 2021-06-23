@@ -15,6 +15,7 @@
 # at the top of both the build.sh / build_curl.sh scripts below.
 
 cp scripts/build_curl.sh adobe-rmsdk/thirdparty/curl/iOS-libcurl/
+cp scripts/build_openssl.sh adobe-rmsdk/thirdparty/openssl/iOS-openssl
 SDKVERSION=`xcodebuild -version -sdk iphoneos | grep SDKVersion | sed 's/SDKVersion[: ]*//'`
 
 # edit as required if OpenSSL and cURL need updating or retargeting
@@ -30,10 +31,10 @@ mkdir -p public
 [ -d "iOS-openssl" ] && [ ! -d "public/ios" ] && mv iOS-openssl public/ios
 cd public/ios
 curl -O $OPENSSL_URL
-sed -i '' "s/OPENSSL_VERSION=\".*\"/OPENSSL_VERSION=\"$OPENSSL_VERSION\"/" build.sh
-sed -i '' "s/SDK_VERSION=\".*\"/SDK_VERSION=\"$SDKVERSION\"/" build.sh
-sed -i '' 's/MIN_VERSION=".*"/MIN_VERSION="9.0"/' build.sh
-bash ./build.sh  #this will take a while
+sed -i '' "s/OPENSSL_VERSION=\".*\"/OPENSSL_VERSION=\"$OPENSSL_VERSION\"/" build_openssl.sh
+sed -i '' "s/SDK_VERSION=\".*\"/SDK_VERSION=\"$SDKVERSION\"/" build_openssl.sh
+sed -i '' 's/MIN_VERSION=".*"/MIN_VERSION="9.0"/' build_openssl.sh
+bash ./build_openssl.sh  #this will take a while
 
 echo "======================================="
 echo "Building cURL..."
