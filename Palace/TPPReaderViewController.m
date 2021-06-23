@@ -720,8 +720,8 @@ didRequestSyncBookmarksWithCompletion:(void (^)(BOOL, NSArray<TPPReadiumBookmark
 
 - (void)didSelectTOC
 {
-  UIStoryboard *sb = [UIStoryboard storyboardWithName:@"NYPLReaderTOC" bundle:nil];
-  TPPReaderTOCViewController *tocVC = [sb instantiateViewControllerWithIdentifier:@"NYPLReaderTOC"];
+  UIStoryboard *sb = [UIStoryboard storyboardWithName:@"TPPReaderTOC" bundle:nil];
+  TPPReaderTOCViewController *tocVC = [sb instantiateViewControllerWithIdentifier:@"TPPReaderTOC"];
   tocVC.delegate = self;
   tocVC.tableOfContents = self.rendererView.TOCElements;
   tocVC.bookTitle = [[TPPBookRegistry sharedRegistry] bookForIdentifier:self.bookIdentifier].title;
