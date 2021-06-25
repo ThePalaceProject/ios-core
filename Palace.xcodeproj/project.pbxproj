@@ -702,7 +702,7 @@
 		E551B363267D42A20026FC1B /* TPPAccountList.swift in Sources */ = {isa = PBXBuildFile; fileRef = E551B360267D402B0026FC1B /* TPPAccountList.swift */; };
 		E551B365267D42AF0026FC1B /* TPPLoadingViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E551B359267D396A0026FC1B /* TPPLoadingViewController.swift */; };
 		E5AD65DD2684FACA00C62951 /* TPPAccountListCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AD65DC2684FACA00C62951 /* TPPAccountListCell.swift */; };
-		E5AD65E12684FDA300C62951 /* TPPAccountDataSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AD65E02684FDA300C62951 /* TPPAccountDataSource.swift */; };
+		E5AD65E12684FDA300C62951 /* TPPAccountListDataSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AD65E02684FDA300C62951 /* TPPAccountListDataSource.swift */; };
 		E6202A021DD4E6F300C99553 /* TPPSettingsAccountDetailViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = E6202A011DD4E6F300C99553 /* TPPSettingsAccountDetailViewController.m */; };
 		E6207B652118973800864143 /* TPPAppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6207B642118973800864143 /* TPPAppTheme.swift */; };
 		E627B554216D4A9700A7D1D5 /* TPPBookContentType.m in Sources */ = {isa = PBXBuildFile; fileRef = E627B553216D4A9700A7D1D5 /* TPPBookContentType.m */; };
@@ -1425,7 +1425,7 @@
 		E551B359267D396A0026FC1B /* TPPLoadingViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPLoadingViewController.swift; sourceTree = "<group>"; };
 		E551B360267D402B0026FC1B /* TPPAccountList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAccountList.swift; sourceTree = "<group>"; };
 		E5AD65DC2684FACA00C62951 /* TPPAccountListCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAccountListCell.swift; sourceTree = "<group>"; };
-		E5AD65E02684FDA300C62951 /* TPPAccountDataSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAccountDataSource.swift; sourceTree = "<group>"; };
+		E5AD65E02684FDA300C62951 /* TPPAccountListDataSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAccountListDataSource.swift; sourceTree = "<group>"; };
 		E61D7F631F6AC78B0091C781 /* SimplyE.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SimplyE.entitlements; sourceTree = "<group>"; };
 		E6202A001DD4E6F300C99553 /* TPPSettingsAccountDetailViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPSettingsAccountDetailViewController.h; sourceTree = "<group>"; };
 		E6202A011DD4E6F300C99553 /* TPPSettingsAccountDetailViewController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPSettingsAccountDetailViewController.m; sourceTree = "<group>"; };
@@ -2752,7 +2752,7 @@
 			children = (
 				E551B360267D402B0026FC1B /* TPPAccountList.swift */,
 				E5AD65DC2684FACA00C62951 /* TPPAccountListCell.swift */,
-				E5AD65E02684FDA300C62951 /* TPPAccountDataSource.swift */,
+				E5AD65E02684FDA300C62951 /* TPPAccountListDataSource.swift */,
 			);
 			path = AccountList;
 			sourceTree = "<group>";
@@ -3533,7 +3533,7 @@
 				112C694D197301FE00C48F95 /* TPPBookRegistryRecord.m in Sources */,
 				5DD5674522B303DF001F0C83 /* TPPDeveloperSettingsTableViewController.swift in Sources */,
 				E627B554216D4A9700A7D1D5 /* TPPBookContentType.m in Sources */,
-				E5AD65E12684FDA300C62951 /* TPPAccountDataSource.swift in Sources */,
+				E5AD65E12684FDA300C62951 /* TPPAccountListDataSource.swift in Sources */,
 				2D754BC22002F1B10061D34F /* TPPOPDSIndirectAcquisition.m in Sources */,
 				734917DA242EB79700059AA5 /* TPPR1R2UserSettings.swift in Sources */,
 				116A5EB3194767DC00491A21 /* TPPMyBooksViewController.m in Sources */,

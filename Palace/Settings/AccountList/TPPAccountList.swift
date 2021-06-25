@@ -3,16 +3,22 @@ import Foundation
 
 /// List of available Libraries/Accounts to select as patron's primary
 /// when going through Welcome Screen flow.
-final class TPPAccountList: UITableViewController {
+final class TPPAccountList: UIViewController {
   
-  var datasource = TPPAccountDataSource()
+  var datasource = TPPAccountListDataSource()
+  
+  var searchBar: UISearchBar!
+  var tableView : UITableView!
 
   let completion: (Account) -> ()
+  
   private var numberOfSections = 2
+  private var estimatedRowHeight: CGFloat = 100
+  private var sectionHeaderSize: CGFloat = 20
   
   required init(completion: @escaping (Account) -> ()) {
     self.completion = completion
-    super.init(style: .grouped)
+    super.init(nibName:nil, bundle:nil)
   }
   
   @available(*, unavailable)
@@ -21,28 +27,74 @@ final class TPPAccountList: UITableViewController {
   }
   
   override func viewDidLoad() {
-    title = datasource.title
-    view.backgroundColor = TPPConfiguration.backgroundColor()
-    tableView.estimatedRowHeight = 100
+    configure()
   }
   
-  override func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
+  private func configure() {
+    let stackView = UIStackView()
+    stackView.axis = .vertical
+
+    searchBar = UISearchBar()
+    searchBar.backgroundColor = TPPConfiguration.backgroundColor()
+    searchBar.delegate = datasource
+    
+    tableView = UITableView(frame: .zero, style: .grouped)
+    tableView.delegate = self
+    tableView.dataSource = self
+    tableView.estimatedRowHeight = estimatedRowHeight
+    tableView.backgroundColor = TPPConfiguration.backgroundColor()
+    
+    stackView.addArrangedSubview(searchBar)
+    stackView.addArrangedSubview(tableView)
+    searchBar.autoSetDimensions(to: CGSize(width: 0, height: 50))
+    
+    view.addSubview(stackView)
+    stackView.autoPinEdge(toSuperviewMargin: .top)
+    stackView.autoPinEdgesToSuperviewEdges(with: .zero, excludingEdge: .top)
+    
+    title = datasource.title
+    view.backgroundColor = TPPConfiguration.backgroundColor()
+    tableView.register(TPPAccountListCell.self, forCellReuseIdentifier: TPPAccountListCell.reuseIdentifier)
+    datasource.delegate = self
+  }
+}
+
+extension TPPAccountList: UITableViewDelegate, UITableViewDataSource {
+  func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
     UITableView.automaticDimension
   }
   
-  override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+  func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
     completion(datasource.account(at: indexPath))
   }
   
-  override func numberOfSections(in tableView: UITableView) -> Int {
+  func numberOfSections(in tableView: UITableView) -> Int {
     numberOfSections
   }
   
-  override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+  func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
     datasource.accounts(in: section)
   }
   
-  override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-    TPPAccountListCell(datasource.account(at: indexPath))
+  func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+    guard let cell = tableView.dequeueReusableCell(withIdentifier: TPPAccountListCell.reuseIdentifier, for: indexPath) as? TPPAccountListCell else { return UITableViewCell() }
+    
+    cell.configure(for: datasource.account(at: indexPath))
+    return cell
+//    TPPAccountListCell(datasource.account(at: indexPath))
+  }
+  
+  func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
+    section == .zero ? .zero : sectionHeaderSize
+  }
+  
+  func tableView(_ tableView: UITableView, viewForHeaderInSection section: Int) -> UIView? {
+    UIView(frame: .zero)
+  }
+}
+
+extension TPPAccountList: DataSourceDelegate {
+  func refresh() {
+    tableView.reloadData()
   }
 }
