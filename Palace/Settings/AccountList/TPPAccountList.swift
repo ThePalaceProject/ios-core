@@ -59,6 +59,10 @@ final class TPPAccountList: UIViewController {
 }
 
 extension TPPAccountList: UITableViewDelegate, UITableViewDataSource {
+  func numberOfSections(in tableView: UITableView) -> Int {
+    numberOfSections
+  }
+
   func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
     UITableView.automaticDimension
   }
@@ -67,10 +71,14 @@ extension TPPAccountList: UITableViewDelegate, UITableViewDataSource {
     completion(datasource.account(at: indexPath))
   }
   
-  func numberOfSections(in tableView: UITableView) -> Int {
-    numberOfSections
+  func tableView(_ tableView: UITableView, viewForHeaderInSection section: Int) -> UIView? {
+    UIView(frame: .zero)
   }
-  
+
+  func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
+    section == .zero ? .zero : sectionHeaderSize
+  }
+
   func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
     datasource.accounts(in: section)
   }
@@ -80,14 +88,6 @@ extension TPPAccountList: UITableViewDelegate, UITableViewDataSource {
     
     cell.configure(for: datasource.account(at: indexPath))
     return cell
-  }
-  
-  func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
-    section == .zero ? .zero : sectionHeaderSize
-  }
-  
-  func tableView(_ tableView: UITableView, viewForHeaderInSection section: Int) -> UIView? {
-    UIView(frame: .zero)
   }
 }
 
