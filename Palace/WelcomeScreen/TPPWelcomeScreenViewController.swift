@@ -38,11 +38,10 @@ import PureLayout
   //MARK -
   
   func setupViews() {
-    let view1 = splashScreenView("SplashPickLibraryIcon",
-                                 headline: NSLocalizedString("Read E-Books from Your Library", comment: "Title to tell users they can read books from a library they already have a card for."),
-                                 subheadline: NSLocalizedString("Browse, borrow, and read free e-books from your local library.", comment: "Informs a user of the features of being able to check out a book in the app and even use more than one mobile device"),
-                                 buttonTitle: NSLocalizedString("Find Your Library", comment: "Button that lets user know they can select a library they have a card for"),
-                                 buttonTargetSelector: #selector(pickYourLibraryTapped))
+    let view1 = splashScreenView(
+      buttonTitle: NSLocalizedString("Find Your Library", comment: "Button that lets user know they can select a library they have a card for"),
+      buttonTargetSelector: #selector(pickYourLibraryTapped)
+    )
         
     let logoView = UIImageView(image: UIImage(named: "WelcomeLogo"))
     logoView.contentMode = .scaleAspectFit
@@ -79,44 +78,8 @@ import PureLayout
     }
   }
   
-  func splashScreenView(_ imageName: String, headline: String, subheadline: String?, buttonTitle: String, buttonTargetSelector: Selector) -> UIView {
+  func splashScreenView(buttonTitle: String, buttonTargetSelector: Selector) -> UIView {
     let tempView = UIView()
-    
-    let imageView1 = UIImageView(image: UIImage(named: imageName))
-    
-    tempView.addSubview(imageView1)
-    imageView1.autoSetDimensions(to: CGSize(width: 60, height: 60))
-    imageView1.autoAlignAxis(toSuperviewMarginAxis: .vertical)
-    imageView1.autoPinEdge(toSuperviewMargin: .top)
-    
-    let textLabel1 = UILabel()
-    textLabel1.numberOfLines = 0
-    textLabel1.textAlignment = .center
-    textLabel1.text = headline
-    textLabel1.accessibilityLabel = headline
-    textLabel1.font = UIFont.systemFont(ofSize: 20)
-    
-    tempView.addSubview(textLabel1)
-    textLabel1.autoPinEdge(.top, to: .bottom, of: imageView1, withOffset: 2.0, relation: .equal)
-    textLabel1.autoPinEdge(.leading, to: .leading, of: tempView, withOffset: 0.0, relation: .greaterThanOrEqual)
-    textLabel1.autoPinEdge(.trailing, to: .trailing, of: tempView, withOffset: 0.0, relation: .greaterThanOrEqual)
-    textLabel1.autoAlignAxis(toSuperviewMarginAxis: .vertical)
-    
-    let textLabel2 = UILabel()
-    textLabel2.numberOfLines = 0
-    textLabel2.textAlignment = .center
-    textLabel2.text = subheadline
-    textLabel2.accessibilityLabel = subheadline
-    textLabel2.font = UIFont.systemFont(ofSize: 16)
-
-    tempView.addSubview(textLabel2)
-    textLabel2.autoPinEdge(.top, to: .bottom, of: textLabel1, withOffset: 0.0, relation: .equal)
-    textLabel2.autoPinEdge(.leading, to: .leading, of: tempView, withOffset: 0.0, relation: .greaterThanOrEqual)
-    textLabel2.autoPinEdge(.trailing, to: .trailing, of: tempView, withOffset: 0.0, relation: .greaterThanOrEqual)
-    textLabel2.autoAlignAxis(toSuperviewMarginAxis: .vertical)
-    if subheadline == nil {
-      textLabel2.autoSetDimension(.height, toSize: 0)
-    }
     
     let button = UIButton()
     button.accessibilityLabel = buttonTitle
@@ -132,7 +95,7 @@ import PureLayout
     button.addTarget(self, action: buttonTargetSelector, for: .touchUpInside)
     tempView.addSubview(button)
     
-    button.autoPinEdge(.top, to: .bottom, of: textLabel2, withOffset: 24.0, relation: .equal)
+    button.autoPinEdge(toSuperviewMargin: .top)
     button.autoAlignAxis(toSuperviewMarginAxis: .vertical)
     button.autoPinEdge(toSuperviewMargin: .bottom)
     
