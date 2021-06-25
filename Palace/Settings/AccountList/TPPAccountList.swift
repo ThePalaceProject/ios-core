@@ -46,7 +46,6 @@ final class TPPAccountList: UIViewController {
     
     stackView.addArrangedSubview(searchBar)
     stackView.addArrangedSubview(tableView)
-    searchBar.autoSetDimensions(to: CGSize(width: 0, height: 50))
     
     view.addSubview(stackView)
     stackView.autoPinEdge(toSuperviewMargin: .top)
@@ -81,7 +80,6 @@ extension TPPAccountList: UITableViewDelegate, UITableViewDataSource {
     
     cell.configure(for: datasource.account(at: indexPath))
     return cell
-//    TPPAccountListCell(datasource.account(at: indexPath))
   }
   
   func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
