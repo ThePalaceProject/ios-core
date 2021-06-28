@@ -46,7 +46,8 @@
     self.tableView = self.view as? UITableView
     self.tableView.delegate = self
     self.tableView.dataSource = self
-    
+    self.tableView.register(TPPAccountListCell.self, forCellReuseIdentifier: TPPAccountListCell.reuseIdentifier)
+
     spinner = UIActivityIndicatorView(style: .gray)
     view.addSubview(spinner)
     
@@ -233,68 +234,20 @@
   }
   
   func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+    guard let account = self.manager.currentAccount,  let cell = tableView.dequeueReusableCell(withIdentifier: TPPAccountListCell.reuseIdentifier, for: indexPath) as? TPPAccountListCell else {
+      // Should never happen, but better than crashing
+      return UITableViewCell()
+    }
+    
     if (indexPath.section == 0) {
-      guard let account = self.manager.currentAccount else {
-        // Should never happen, but better than crashing
-        return UITableViewCell(style: UITableViewCell.CellStyle.default, reuseIdentifier: "cell")
-      }
-      return cellForLibrary(account, indexPath)
+      cell.configure(for: account)
+    } else {
+      cell.configure(for: AccountsManager.shared.account(userAddedSecondaryAccounts[indexPath.row])!)
     }
-    return cellForLibrary(AccountsManager.shared.account(userAddedSecondaryAccounts[indexPath.row])!, indexPath)
-  }
-  
-  func cellForLibrary(_ account: Account, _ indexPath: IndexPath) -> UITableViewCell {
-    
-    let cell = UITableViewCell(style: UITableViewCell.CellStyle.default, reuseIdentifier: "cell")
-    
-    let container = UIView()
-    let textContainer = UIView()
-    
-    cell.accessoryType = .disclosureIndicator
-    let imageView = UIImageView(image: account.logo)
-    imageView.contentMode = .scaleAspectFit
-    
-    let textLabel = UILabel()
-    textLabel.font = UIFont.systemFont(ofSize: 14)
-    textLabel.text = account.name
-    textLabel.numberOfLines = 0
-    
-    let detailLabel = UILabel()
-    detailLabel.font = UIFont(name: "AvenirNext-Regular", size: 12)
-    detailLabel.numberOfLines = 0
-    detailLabel.text = account.subtitle
-    
-    textContainer.addSubview(textLabel)
-    textContainer.addSubview(detailLabel)
-    
-    container.addSubview(imageView)
-    container.addSubview(textContainer)
-    cell.contentView.addSubview(container)
-    
-    imageView.autoAlignAxis(toSuperviewAxis: .horizontal)
-    imageView.autoPinEdge(toSuperviewEdge: .left)
-    imageView.autoSetDimensions(to: CGSize(width: 45, height: 45))
-    
-    textContainer.autoPinEdge(.left, to: .right, of: imageView, withOffset: cell.contentView.layoutMargins.left)
-    textContainer.autoPinEdge(toSuperviewMargin: .right)
-    textContainer.autoAlignAxis(toSuperviewAxis: .horizontal)
-    
-    NSLayoutConstraint.autoSetPriority(UILayoutPriority.defaultLow) {
-      textContainer.autoPinEdge(toSuperviewEdge: .top, withInset: 0, relation: .greaterThanOrEqual)
-      textContainer.autoPinEdge(toSuperviewEdge: .bottom, withInset: 0, relation: .greaterThanOrEqual)
-    }
-    
-    textLabel.autoPinEdgesToSuperviewEdges(with: .zero, excludingEdge: .bottom)
-    
-    detailLabel.autoPinEdge(.top, to: .bottom, of: textLabel)
-    detailLabel.autoPinEdgesToSuperviewEdges(with: .zero, excludingEdge: .top)
-    
-    container.autoPinEdgesToSuperviewMargins()
-    container.autoSetDimension(.height, toSize: 55, relation: .greaterThanOrEqual)
     
     return cell
   }
-  
+
   // MARK: UITableViewDelegate
   
   func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
