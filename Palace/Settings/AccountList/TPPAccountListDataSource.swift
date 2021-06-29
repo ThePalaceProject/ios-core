@@ -22,8 +22,8 @@ class TPPAccountListDataSource: NSObject {
     accounts.sort { $0.name < $1.name }
     
     if let filter = filterString, !filter.isEmpty {
-      nationalAccounts = self.accounts.filter { AccountsManager.TPPNationalAccountUUIDs.contains($0.uuid) && $0.name.contains(filter) }
-      accounts = self.accounts.filter { !AccountsManager.TPPNationalAccountUUIDs.contains($0.uuid) && $0.name.contains(filter) }
+      nationalAccounts = self.accounts.filter { AccountsManager.TPPNationalAccountUUIDs.contains($0.uuid) && $0.name.range(of: filter, options: .caseInsensitive) != nil }
+      accounts = self.accounts.filter { !AccountsManager.TPPNationalAccountUUIDs.contains($0.uuid) && $0.name.range(of: filter, options: .caseInsensitive) != nil }
     } else {
       nationalAccounts = self.accounts.filter { AccountsManager.TPPNationalAccountUUIDs.contains($0.uuid) }
       accounts = self.accounts.filter { !AccountsManager.TPPNationalAccountUUIDs.contains($0.uuid) }
