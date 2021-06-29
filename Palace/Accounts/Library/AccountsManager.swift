@@ -22,6 +22,12 @@ let currentAccountIdentifierKey  = "TPPCurrentAccountIdentifier"
     "urn:uuid:56906f26-2c9a-4ae9-bd02-552557720b99"  //Simplified Instant Classics
   ]
 
+  static let TPPNationalAccountUUIDs = [
+    "urn:uuid:6b849570-070f-43b4-9dcc-7ebb4bca292e", //DPLA
+    "urn:uuid:f60b644e-4955-4996-a4e5-a192feb4e7f8", //Internet Archive
+    "urn:uuid:5278562c-d642-4fda-ad7e-1613077cfb8d", //Open Textbook Library
+  ]
+
   let tppAccountUUID = AccountsManager.TPPAccountUUIDs[0]
 
   static let shared = AccountsManager()

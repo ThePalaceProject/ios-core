@@ -354,7 +354,7 @@ class OPDS2SamlIDP: NSObject, Codable {
 /// choose to sign up for multiple Accounts.
 @objcMembers final class Account: NSObject
 {
-  let logo:UIImage
+  var logo:UIImage
   let uuid:String
   let name:String
   let subtitle:String?
@@ -387,17 +387,11 @@ class OPDS2SamlIDP: NSObject, Codable {
     supportEmail = publication.links.first(where: { $0.rel == "help" })?.href.replacingOccurrences(of: "mailto:", with: "")
     
     authenticationDocumentUrl = publication.links.first(where: { $0.type == "application/vnd.opds.authentication.v1.0+json" })?.href
+    logo = UIImage()
     
-    let logoString = publication.images?.first(where: { $0.rel == "http://opds-spec.org/image/thumbnail" })?.href
-    if let modString = logoString?.replacingOccurrences(of: "data:image/png;base64,", with: ""),
-      let logoData = Data.init(base64Encoded: modString),
-      let logoImage = UIImage(data: logoData) {
-      logo = logoImage
-    } else {
-      logo = UIImage.init(named: "LibraryLogoMagic")!
-    }
+    super.init()
+    loadLogo()
   }
-
 
   /// Load authentication documents from the network or cache.
   /// Providing the signedInStateProvider might lead to presentation of announcements
@@ -408,7 +402,7 @@ class OPDS2SamlIDP: NSObject, Codable {
   @objc(loadAuthenticationDocumentUsingSignedInStateProvider:completion:)
   func loadAuthenticationDocument(using signedInStateProvider: TPPSignedInStateProvider? = nil, completion: @escaping (Bool) -> ()) {
     Log.debug(#function, "Entering...")
-    guard let urlString = authenticationDocumentUrl, let url = URL(string: urlString) else {
+    guard let urlString = authenticationDocumentUrl else {
       TPPErrorLogger.logError(
         withCode: .noURL,
         summary: "Failed to load authentication document because its URL is invalid",
@@ -418,21 +412,47 @@ class OPDS2SamlIDP: NSObject, Codable {
       completion(false)
       return
     }
+    
+    fetchAuthenticationDocument(urlString) { (document) in
+      guard let authenticationDocument = document else {
+        completion(false)
+        return
+      }
+      
+      self.authenticationDocument = authenticationDocument
 
+      if let provider = signedInStateProvider,
+         provider.isSignedIn(),
+         let announcements = self.authenticationDocument?.announcements {
+          DispatchQueue.main.async {
+            TPPAnnouncementBusinessLogic.shared.presentAnnouncements(announcements)
+          }
+      }
+      
+      completion(true)
+    }
+  }
+  
+  private func fetchAuthenticationDocument(_ urlString: String, completion: @escaping (OPDS2AuthenticationDocument?) -> Void) {
+    var document: OPDS2AuthenticationDocument?
+    
+    guard let url = URL(string: urlString) else {
+      TPPErrorLogger.logError(
+        withCode: .noURL,
+        summary: "Failed to load authentication document because its URL is invalid",
+        metadata: ["self.uuid": uuid,
+                   "urlString": urlString]
+      )
+      completion(document)
+      return
+    }
+    
     TPPNetworkExecutor.shared.GET(url) { result in
       switch result {
       case .success(let serverData, _):
         do {
-          self.authenticationDocument = try
-            OPDS2AuthenticationDocument.fromData(serverData)
-          if let provider = signedInStateProvider,
-            provider.isSignedIn(),
-            let announcements = self.authenticationDocument?.announcements {
-            DispatchQueue.main.async {
-              TPPAnnouncementBusinessLogic.shared.presentAnnouncements(announcements)
-            }
-          }
-          completion(true)
+          document = try OPDS2AuthenticationDocument.fromData(serverData)
+          completion(document)
         } catch (let error) {
           let responseBody = String(data: serverData, encoding: .utf8)
           TPPErrorLogger.logError(
@@ -444,7 +464,7 @@ class OPDS2SamlIDP: NSObject, Codable {
               "url": url
             ]
           )
-          completion(false)
+          completion(document)
         }
       case .failure(let error, _):
         TPPErrorLogger.logError(
@@ -452,7 +472,24 @@ class OPDS2SamlIDP: NSObject, Codable {
           summary: "Authentication Document request failed to load",
           metadata: ["loadError": error, "url": url]
         )
-        completion(false)
+        completion(document)
+      }
+    }
+  }
+  
+  private func loadLogo() {
+    fetchAuthenticationDocument(authenticationDocumentUrl ?? "") { (document) in
+      guard let authenticationDocument = document else {
+        return
+      }
+      
+      let logoString = authenticationDocument.links?.first(where: { $0.rel == "logo" })?.href
+      if let modString = logoString?.replacingOccurrences(of: "data:image/png;base64,", with: ""),
+         let logoData = Data.init(base64Encoded: modString),
+         let logoImage = UIImage(data: logoData) {
+        self.logo = logoImage
+      } else {
+        self.logo = UIImage.init(named: "LibraryLogoMagic")!
       }
     }
   }
