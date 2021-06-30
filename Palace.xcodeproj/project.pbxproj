@@ -703,6 +703,7 @@
 		E551B365267D42AF0026FC1B /* TPPLoadingViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E551B359267D396A0026FC1B /* TPPLoadingViewController.swift */; };
 		E5AD65DD2684FACA00C62951 /* TPPAccountListCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AD65DC2684FACA00C62951 /* TPPAccountListCell.swift */; };
 		E5AD65E12684FDA300C62951 /* TPPAccountListDataSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AD65E02684FDA300C62951 /* TPPAccountListDataSource.swift */; };
+		E5C2C422268BA5140046F415 /* TPPRegistryDebuggingCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5C2C421268BA5140046F415 /* TPPRegistryDebuggingCell.swift */; };
 		E6202A021DD4E6F300C99553 /* TPPSettingsAccountDetailViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = E6202A011DD4E6F300C99553 /* TPPSettingsAccountDetailViewController.m */; };
 		E6207B652118973800864143 /* TPPAppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6207B642118973800864143 /* TPPAppTheme.swift */; };
 		E627B554216D4A9700A7D1D5 /* TPPBookContentType.m in Sources */ = {isa = PBXBuildFile; fileRef = E627B553216D4A9700A7D1D5 /* TPPBookContentType.m */; };
@@ -1426,6 +1427,7 @@
 		E551B360267D402B0026FC1B /* TPPAccountList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAccountList.swift; sourceTree = "<group>"; };
 		E5AD65DC2684FACA00C62951 /* TPPAccountListCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAccountListCell.swift; sourceTree = "<group>"; };
 		E5AD65E02684FDA300C62951 /* TPPAccountListDataSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAccountListDataSource.swift; sourceTree = "<group>"; };
+		E5C2C421268BA5140046F415 /* TPPRegistryDebuggingCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPRegistryDebuggingCell.swift; sourceTree = "<group>"; };
 		E61D7F631F6AC78B0091C781 /* SimplyE.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SimplyE.entitlements; sourceTree = "<group>"; };
 		E6202A001DD4E6F300C99553 /* TPPSettingsAccountDetailViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPSettingsAccountDetailViewController.h; sourceTree = "<group>"; };
 		E6202A011DD4E6F300C99553 /* TPPSettingsAccountDetailViewController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPSettingsAccountDetailViewController.m; sourceTree = "<group>"; };
@@ -1750,7 +1752,7 @@
 			children = (
 				732940BF251D0B790065E362 /* BarcodeScanning */,
 				732940BE251D05E30065E362 /* SettingsCells */,
-				5DD5674422B303DF001F0C83 /* TPPDeveloperSettingsTableViewController.swift */,
+				E5C2C41B268BA4E00046F415 /* DeveloperSettings */,
 				5DD5677122B7ECE3001F0C83 /* TPPSettings.swift */,
 				730FC04F25127FA2004D7C2D /* TPPSettings+OE.swift */,
 				7347312825142FE200BE3D2C /* TPPSettings+SE.swift */,
@@ -2757,6 +2759,15 @@
 			path = AccountList;
 			sourceTree = "<group>";
 		};
+		E5C2C41B268BA4E00046F415 /* DeveloperSettings */ = {
+			isa = PBXGroup;
+			children = (
+				5DD5674422B303DF001F0C83 /* TPPDeveloperSettingsTableViewController.swift */,
+				E5C2C421268BA5140046F415 /* TPPRegistryDebuggingCell.swift */,
+			);
+			path = DeveloperSettings;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -3574,6 +3585,7 @@
 				E6DA7EA01F2A718600CFBEC8 /* TPPBookAuthor.swift in Sources */,
 				739ECB2425101CCE00691A70 /* NSNotification+TPP.swift in Sources */,
 				734B789125659611006FB8AD /* URLResponse+TPPAuthentication.swift in Sources */,
+				E5C2C422268BA5140046F415 /* TPPRegistryDebuggingCell.swift in Sources */,
 				118A0B1B19915BDF00792DDE /* TPPCatalogSearchViewController.m in Sources */,
 				737DCB8C245CCF2300A8F297 /* TPPReaderBookmarksBusinessLogic.swift in Sources */,
 				179699D124131BA500EC309F /* UIColor+LabelColor.swift in Sources */,
