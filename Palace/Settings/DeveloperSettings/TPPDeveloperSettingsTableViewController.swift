@@ -61,10 +61,7 @@ import Foundation
     switch indexPath.section {
     case 0: return cellForBetaLibraries()
     case 1: return cellForR2Toggle()
-    case 2:
-      let cell = TPPRegistryDebuggingCell()
-      cell.delegate = self
-      return cell
+    case 2: return cellForCustomRegsitry()
     default: return cellForClearCache()
     }
   }
@@ -106,6 +103,11 @@ import Foundation
     return cell
   }
   
+  private func cellForCustomRegsitry() -> UITableViewCell {
+    let cell = TPPRegistryDebuggingCell()
+    cell.delegate = self
+    return cell
+  }
   
   private func cellForClearCache() -> UITableViewCell {
     let cell = UITableViewCell(style: UITableViewCell.CellStyle.default, reuseIdentifier: "clearCacheCell")
