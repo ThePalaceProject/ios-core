@@ -9,13 +9,22 @@
 import Foundation
 
 extension TPPConfiguration {
-
+  
   static let betaUrl = URL(string: "https://libraryregistry.librarysimplified.org/libraries/qa")!
   static let prodUrl = URL(string: "https://libraryregistry.librarysimplified.org/libraries")!
-
+  
   static let betaUrlHash = betaUrl.absoluteString.md5().base64EncodedStringUrlSafe().trimmingCharacters(in: ["="])
   static let prodUrlHash = prodUrl.absoluteString.md5().base64EncodedStringUrlSafe().trimmingCharacters(in: ["="])
 
+  static func customUrl() -> URL? {
+    guard let server = TPPSettings.shared.customLibraryRegistryServer else { return nil }
+    return URL(string: "https://\(server)/libraries/qa")
+  }
+  
+  static func customUrlHash() -> String? {
+    customUrl()?.absoluteString.md5().base64EncodedStringUrlSafe().trimmingCharacters(in: ["="])
+  }
+  
   @objc static func mainColor() -> UIColor {
     let libAccount = AccountsManager.sharedInstance().currentAccount
     if let mainColor = libAccount?.details?.mainColor {
