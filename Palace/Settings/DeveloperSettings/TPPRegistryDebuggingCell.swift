@@ -1,8 +1,17 @@
 import UIKit
 
+protocol TPPRegistryDebugger: TPPLoadingViewController {}
+
 class TPPRegistryDebuggingCell: UITableViewCell {
   
   private var inputField = UITextField()
+  weak var delegate: TPPLoadingViewController?
+  
+  private var reloadInProgress: Bool = false {
+    didSet {
+      reloadInProgress ?  delegate?.startLoading() : delegate?.stopLoading()
+    }
+  }
   
   lazy var horizontalStackView: UIStackView = {
     let stack = UIStackView()
@@ -110,25 +119,47 @@ class TPPRegistryDebuggingCell: UITableViewCell {
   @objc private func clear() {
     inputField.text = nil
     TPPSettings.shared.customLibraryRegistryServer = nil
-    showAlert(title: "Configuration Updated", message: "Custom server has been reset to default")
-    reloadRegistry()
+    
+    reloadRegistry { isSuccess in
+      if isSuccess {
+        self.showAlert(title: "Configuration Updated", message: "Registry has been reset to default")
+      }
+    }
   }
   
   @objc private func set() {
+    guard let text = inputField.text, !text.isEmpty else {
+      self.showAlert(title: "Configuration Update Failed", message: "Please enter a valid server URL")
+      return
+    }
+    
     TPPSettings.shared.customLibraryRegistryServer = inputField.text
-    let message = String(format: "Custom server: %@", inputField.text ?? "")
-    showAlert(title: "Configuration Updated", message: message)
-    reloadRegistry()
+    let message = String(format: "Registry server: %@", inputField.text ?? "")
+    reloadRegistry { isSuccess in
+      if isSuccess {
+        self.showAlert(title: "Configuration Updated", message: message)
+      } else {
+        self.showAlert(title: "Configuration Update Failed", message: "Please enter a valid server URL")
+      }
+    }
   }
   
-  private func reloadRegistry() {
+  private func reloadRegistry(completion: @escaping (Bool) -> Void) {
+    guard !reloadInProgress else { return }
+    reloadInProgress.toggle()
+    
     AccountsManager.shared.clearCache()
-    AccountsManager.shared.updateAccountSet(completion: nil)
+    AccountsManager.shared.updateAccountSet { isSuccess in
+      self.reloadInProgress.toggle()
+      completion(isSuccess)
+    }
   }
   
   private func showAlert(title: String, message: String) {
     let alert = TPPAlertUtils.alert(title: title, message: message)
-    UIApplication.shared.keyWindow?.rootViewController?.present(alert, animated: true, completion: nil)
+    DispatchQueue.main.async {
+      UIApplication.shared.keyWindow?.rootViewController?.present(alert, animated: true, completion: nil)
+    }
   }
 }
 

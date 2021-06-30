@@ -4,7 +4,8 @@ import Foundation
 /// can then log in and adjust settings after selecting Accounts.
 @objcMembers class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDelegate, UITableViewDataSource {
   weak var tableView: UITableView!
-  
+  var loadingView: UIView?
+
   required init() {
     super.init(nibName: nil, bundle: nil)
   }
@@ -60,7 +61,10 @@ import Foundation
     switch indexPath.section {
     case 0: return cellForBetaLibraries()
     case 1: return cellForR2Toggle()
-    case 2: return TPPRegistryDebuggingCell()
+    case 2:
+      let cell = TPPRegistryDebuggingCell()
+      cell.delegate = self
+      return cell
     default: return cellForClearCache()
     }
   }
@@ -134,3 +138,5 @@ import Foundation
     return false
   }
 }
+
+extension TPPDeveloperSettingsTableViewController: TPPRegistryDebugger {}

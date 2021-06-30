@@ -21,22 +21,19 @@ extension TPPLoadingViewController {
     guard loadingView == nil else { return }
     
     let loadingOverlay = loadingOverlayView()
-    if !Thread.isMainThread {
       DispatchQueue.main.async {
         UIApplication.shared.keyWindow?.addSubview(loadingOverlay)
         loadingOverlay.autoPinEdgesToSuperviewEdges()
       }
-    } else {
-      UIApplication.shared.keyWindow?.addSubview(loadingOverlay)
-      loadingOverlay.autoPinEdgesToSuperviewEdges()
-    }
     
     loadingView = loadingOverlay
   }
   
   func stopLoading() {
-    loadingView?.removeFromSuperview()
-    loadingView = nil
+    DispatchQueue.main.async {
+      self.loadingView?.removeFromSuperview()
+      self.loadingView = nil
+    }
   }
 }
 

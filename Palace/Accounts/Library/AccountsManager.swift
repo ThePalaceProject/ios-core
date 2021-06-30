@@ -331,6 +331,8 @@ let currentAccountIdentifierKey  = "TPPCurrentAccountIdentifier"
 
     if self.accounts().isEmpty {
       loadCatalogs(completion: completion)
+    } else {
+      completion?(false)
     }
   }
 
