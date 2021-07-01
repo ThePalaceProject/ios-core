@@ -7,7 +7,7 @@
 # * based on your XCode, set SDK_VERSION below
 # * based on openssl version you are using, adjust OPENSSL_VERSION below
 #
-# * below code is verified on XCode 7.2 and iOS SDK version 9.2
+# * below code is verified on XCode 12.4 and iOS SDK version 13.4
 #
 
 set -x
