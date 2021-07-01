@@ -31,6 +31,7 @@ import Foundation
   static private let useR2Key = "NYPLUseR2Key"
   static let settingsLibraryAccountsKey = "NYPLSettingsLibraryAccountsKey"
   static private let versionKey = "NYPLSettingsVersionKey"
+  static private let customLibraryRegistryKey = "TPPSettingsCustomLibraryRegistryKey"
   
   // Set to nil (the default) if no custom feed should be used.
   var customMainFeedURL: URL? {
@@ -130,6 +131,16 @@ import Foundation
     }
     set(versionString) {
       UserDefaults.standard.set(versionString, forKey: TPPSettings.versionKey)
+      UserDefaults.standard.synchronize()
+    }
+  }
+  
+  var customLibraryRegistryServer: String? {
+    get {
+      return UserDefaults.standard.string(forKey: TPPSettings.customLibraryRegistryKey)
+    }
+    set(customServer) {
+      UserDefaults.standard.set(customServer, forKey: TPPSettings.customLibraryRegistryKey)
       UserDefaults.standard.synchronize()
     }
   }

@@ -106,7 +106,7 @@ let currentAccountIdentifierKey  = "TPPCurrentAccountIdentifier"
   #endif
 
   private override init() {
-    self.accountSet = TPPSettings.shared.useBetaLibraries ? TPPConfiguration.betaUrlHash : TPPConfiguration.prodUrlHash
+    self.accountSet = TPPConfiguration.customUrlHash() ?? (TPPSettings.shared.useBetaLibraries ? TPPConfiguration.betaUrlHash : TPPConfiguration.prodUrlHash)
     self.ageCheck = TPPAgeCheck(ageCheckChoiceStorage: TPPSettings.shared)
     
     super.init()
@@ -257,7 +257,7 @@ let currentAccountIdentifierKey  = "TPPCurrentAccountIdentifier"
   /// thread or not.
   func loadCatalogs(completion: ((Bool) -> ())?) {
     Log.debug(#file, "Entering loadCatalog...")
-    let targetUrl = TPPSettings.shared.useBetaLibraries ? TPPConfiguration.betaUrl : TPPConfiguration.prodUrl
+    let targetUrl = TPPConfiguration.customUrl() ?? (TPPSettings.shared.useBetaLibraries ? TPPConfiguration.betaUrl : TPPConfiguration.prodUrl)
     let hash = targetUrl.absoluteString.md5().base64EncodedStringUrlSafe()
       .trimmingCharacters(in: ["="])
 
@@ -326,11 +326,13 @@ let currentAccountIdentifierKey  = "TPPCurrentAccountIdentifier"
 
   func updateAccountSet(completion: ((Bool) -> ())?) {
     accountSetsWorkQueue.sync(flags: .barrier) {
-      self.accountSet = TPPSettings.shared.useBetaLibraries ? TPPConfiguration.betaUrlHash : TPPConfiguration.prodUrlHash
+      self.accountSet = TPPConfiguration.customUrlHash() ?? (TPPSettings.shared.useBetaLibraries ? TPPConfiguration.betaUrlHash : TPPConfiguration.prodUrlHash)
     }
 
     if self.accounts().isEmpty {
       loadCatalogs(completion: completion)
+    } else {
+      completion?(false)
     }
   }
 

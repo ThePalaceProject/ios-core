@@ -4,7 +4,8 @@ import Foundation
 /// can then log in and adjust settings after selecting Accounts.
 @objcMembers class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDelegate, UITableViewDataSource {
   weak var tableView: UITableView!
-  
+  var loadingView: UIView?
+
   required init() {
     super.init(nibName: nil, bundle: nil)
   }
@@ -53,13 +54,14 @@ import Foundation
   }
   
   func numberOfSections(in tableView: UITableView) -> Int {
-    return 3
+    return 4
   }
   
   func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
     switch indexPath.section {
     case 0: return cellForBetaLibraries()
     case 1: return cellForR2Toggle()
+    case 2: return cellForCustomRegsitry()
     default: return cellForClearCache()
     }
   }
@@ -70,6 +72,8 @@ import Foundation
       return "Library Settings"
     case 1:
       return "eReader Settings"
+    case 2:
+      return "Library Registry Debugging"
     default:
       return "Data Management"
     }
@@ -99,6 +103,12 @@ import Foundation
     return cell
   }
   
+  private func cellForCustomRegsitry() -> UITableViewCell {
+    let cell = TPPRegistryDebuggingCell()
+    cell.delegate = self
+    return cell
+  }
+  
   private func cellForClearCache() -> UITableViewCell {
     let cell = UITableViewCell(style: UITableViewCell.CellStyle.default, reuseIdentifier: "clearCacheCell")
     cell.selectionStyle = .none
@@ -111,7 +121,7 @@ import Foundation
   func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
     self.tableView.deselectRow(at: indexPath, animated: true)
     
-    if indexPath.section == 2 {
+    if indexPath.section == 3 {
       AccountsManager.shared.clearCache()
       let alert = TPPAlertUtils.alert(title: "Data Management", message: "Cache Cleared")
       self.present(alert, animated: true, completion: nil)
@@ -130,3 +140,5 @@ import Foundation
     return false
   }
 }
+
+extension TPPDeveloperSettingsTableViewController: TPPRegistryDebugger {}
