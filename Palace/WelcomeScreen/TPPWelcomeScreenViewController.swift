@@ -127,11 +127,8 @@ import PureLayout
                 self.showLoadingFailureAlert()
                 return
               }
-              if account.uuid != AccountsManager.TPPAccountUUIDs[2] {
-                TPPSettings.shared.settingsAccountsList = [account.uuid, AccountsManager.TPPAccountUUIDs[2]]
-              } else {
-                TPPSettings.shared.settingsAccountsList = [AccountsManager.TPPAccountUUIDs[2]]
-              }
+              
+              TPPSettings.shared.settingsAccountsList = [account.uuid]
               self.completion?(account)
             }
           }
