@@ -19,8 +19,8 @@ cp scripts/build_openssl.sh adobe-rmsdk/thirdparty/openssl/iOS-openssl
 SDKVERSION=`xcodebuild -version -sdk iphoneos | grep SDKVersion | sed 's/SDKVersion[: ]*//'`
 
 # edit as required if OpenSSL and cURL need updating or retargeting
-OPENSSL_VERSION="1.0.1u"
-OPENSSL_URL="https://www.openssl.org/source/old/1.0.1/openssl-1.0.1u.tar.gz"
+OPENSSL_VERSION="1.1.0e"
+OPENSSL_URL="https://www.openssl.org/source/old/1.1.0/openssl-1.1.0e.tar.gz"
 CURL_VERSION="7.64.1"
 CURL_URL="https://curl.se/download/curl-7.64.1.zip"
 
