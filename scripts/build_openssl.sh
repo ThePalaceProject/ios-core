@@ -1,19 +1,24 @@
 #!/bin/bash
 
 # This script builds a static version of
-# OpenSSL ${OPENSSL_VERSION} for iOS 7.1 that contains code for
+# OpenSSL ${OPENSSL_VERSION} for iOS that contains code for
 # arm64, armv7, arm7s, i386 and x86_64.
+#
+# * based on your XCode, set SDK_VERSION below
+# * based on openssl version you are using, adjust OPENSSL_VERSION below
+#
+# * below code is verified on XCode 12.4 and iOS SDK version 13.4
+#
 
 set -x
 
 # Setup paths to stuff we need
 
-OPENSSL_VERSION="1.0.1u"
+OPENSSL_VERSION="1.1.0e"
 
 DEVELOPER="/Applications/Xcode.app/Contents/Developer"
 
 SDK_VERSION="13.4"
-MIN_VERSION="9.0"
 
 IPHONEOS_PLATFORM="${DEVELOPER}/Platforms/iPhoneOS.platform"
 IPHONEOS_SDK="${IPHONEOS_PLATFORM}/Developer/SDKs/iPhoneOS.sdk"
@@ -72,12 +77,13 @@ build()
    tar xfz "openssl-${OPENSSL_VERSION}.tar.gz"
    pushd .
    cd "openssl-${OPENSSL_VERSION}"
-   ./Configure ${TARGET} --openssldir="/tmp/openssl-${OPENSSL_VERSION}-${ARCH}" ${EXTRA} &> "/tmp/openssl-${OPENSSL_VERSION}-${ARCH}.log"
+   sed -i '' "s#'File::Glob' => qw/glob/;#'File::Glob' => qw/bsd_glob/;#g" ./Configure
+   sed -i '' "s#'File::Glob' => qw/glob/;#'File::Glob' => qw/bsd_glob/;#g" ./test/build.info 
+   ./Configure ${TARGET} no-shared --openssldir="/tmp/openssl-${OPENSSL_VERSION}-${ARCH}" --prefix="/tmp/openssl-${OPENSSL_VERSION}-${ARCH}" ${EXTRA} &> "/tmp/openssl-${OPENSSL_VERSION}-$i{ARCH}.log"
    perl -i -pe 's|static volatile sig_atomic_t intr_signal|static volatile int intr_signal|' crypto/ui/ui_openssl.c
-   perl -i -pe "s|^CC= gcc|CC= ${GCC} -arch ${ARCH} -miphoneos-version-min=${MIN_VERSION}|g" Makefile
-   perl -i -pe "s|^CFLAG= (.*)|CFLAG= -isysroot ${SDK} \$1|g" Makefile
-   make &> "/tmp/openssl-${OPENSSL_VERSION}-${ARCH}.build-log"
-   make install &> "/tmp/openssl-${OPENSSL_VERSION}-${ARCH}.install-log"
+   perl -i -pe "s|CFLAGS=-DDSO_DLFCN |CFLAGS=-arch ${ARCH} -isysroot ${SDK} -DDSO_DLFCN \$1|g" Makefile
+   make 
+   make install 
    popd
    rm -rf "openssl-${OPENSSL_VERSION}"
 }
