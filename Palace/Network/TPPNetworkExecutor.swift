@@ -98,7 +98,8 @@ extension TPPNetworkExecutor {
 
       headers.forEach { urlRequest.setValue($0.value, forHTTPHeaderField: $0.key) }
     }
-
+    
+    urlRequest.setValue("", forHTTPHeaderField: "Accept-Language")
     return urlRequest
   }
 
