@@ -26,6 +26,7 @@ TARGET_NAME=Palace
 SCHEME=Palace
 
 # app-agnostic settings
+APP_NAME="Palace"
 PROV_PROFILES_DIR_PATH="$HOME/Library/MobileDevice/Provisioning Profiles"
 PROJECT_NAME=Palace.xcodeproj
 BUILD_PATH="./Build"

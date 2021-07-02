@@ -16,14 +16,19 @@ or alternatively using `brew install fastlane`
 
 # Available Actions
 ## iOS
-### ios fetch_install_certs
+### ios test
 ```
-fastlane ios fetch_install_certs
+fastlane ios test
 ```
 
-### ios fetch_install_provisioning
+### ios beta
 ```
-fastlane ios fetch_install_provisioning
+fastlane ios beta
+```
+
+### ios testflight
+```
+fastlane ios testflight
 ```
 
 
