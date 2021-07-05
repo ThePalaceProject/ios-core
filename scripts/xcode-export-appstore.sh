@@ -13,7 +13,6 @@
 #     ./scripts/xcode-export-appstore.sh
 #
 # RESULTS
-#   The generated .ipa is placed in its own directory inside
-#   `./Build/exports-appstore`.
+#   The generated .ipa is uploaded to TestFlight.
 
 fastlane ios testflight

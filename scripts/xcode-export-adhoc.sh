@@ -16,7 +16,7 @@
 #
 # RESULTS
 #   The generated .ipa is placed in its own directory inside
-#   `./Build/exports-adhoc`.
+#   `./Build/Palace-<version>` folder.
 
 source "$(dirname $0)/xcode-settings.sh"
 
