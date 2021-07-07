@@ -18,5 +18,4 @@ git clone git@github.com:ThePalaceProject/mobile-drm-adeptconnector.git
 cd ios-core
 
 ./scripts/setup-repo-drm.sh
-./scripts/build-openssl-curl.sh
 ./scripts/build-3rd-party-dependencies.sh
