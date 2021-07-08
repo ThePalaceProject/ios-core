@@ -22,6 +22,8 @@ git submodule deinit adept-ios
 git rm -rf adept-ios
 git submodule deinit adobe-content-filter
 git rm -rf adobe-content-filter
+git submodule deinit ios-drm-audioengine
+git rm -rf ios-drm-audioengine
 
 git submodule update --init --recursive
 

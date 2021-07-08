@@ -1,11 +1,12 @@
 binary "https://dl.google.com/dl/firebase/ios/carthage/FirebaseCrashlyticsBinary.json"
 binary "https://dl.google.com/dl/firebase/ios/carthage/FirebaseAnalyticsBinary.json"
-github "ThePalaceProject/ios-audiobooktoolkit" "master"
-github "ThePalaceProject/ios-provider-pdf-renderer" "master"
+github "ThePalaceProject/ios-audiobooktoolkit" "main"
+github "ThePalaceProject/ios-provider-pdf-renderer" "main"
+github "ThePalaceProject/ios-drm-audioengine" "task/update-xcode12"
 github "PureLayout/PureLayout" ~> 3.1.2
 github "stephencelis/SQLite.swift" == 0.12.2
 github "zxingify/zxingify-objc" ~> 3.6
 github "readium/r2-lcp-swift" == 2.0.0-beta.2
 github "readium/r2-shared-swift" == 2.0.0-beta.2
 github "readium/r2-streamer-swift" == 2.0.0-beta.2
-github "readium/r2-navigator-swift" == "2.0.0-beta.2"
+github "readium/r2-navigator-swift" == 2.0.0-beta.2

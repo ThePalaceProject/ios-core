@@ -32,5 +32,18 @@ fi
 # deep clean to avoid any caching issues
 rm -rf ~/Library/Caches/org.carthage.CarthageKit
 
+./ios-drm-audioengine/scripts/fetch-audioengine.sh
+
+# make NYPLAEToolkit use the same carthage folder as SimplyE by adding a
+# symlink if that's missing
+cd ios-drm-audioengine
+if [[ ! -L ./Carthage ]]; then
+  ln -s ../Carthage ./Carthage
+fi
+echo "ios-drm-audioengine contents:"
+ls -l . Carthage/
+cd ..
+
 echo "Carthage build..."
 carthage bootstrap --use-xcframeworks --platform ios
+

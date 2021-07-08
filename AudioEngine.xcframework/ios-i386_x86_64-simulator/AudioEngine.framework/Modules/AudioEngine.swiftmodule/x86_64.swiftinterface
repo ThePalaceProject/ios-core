@@ -1,0 +1,72 @@
+// swift-interface-format-version: 1.0
+// swift-compiler-version: Apple Swift version 5.2.4 (swiftlang-1103.0.32.9 clang-1103.0.32.53)
+// swift-module-flags: -target x86_64-apple-ios8.0-simulator -enable-objc-interop -enable-library-evolution -swift-version 5 -enforce-exclusivity=checked -O -module-name AudioEngine
+@_exported import AudioEngine
+import AudioEngine_Private
+import Foundation
+import Swift
+@objc public class FAEPlaylist : ObjectiveC.NSObject {
+  @objc final public let audiobookId: Swift.String
+  @objc final public let playlistToken: Swift.String
+  @objc final public let expires: Foundation.Date
+  @objc final public let playlist: [AudioEngine.FAEPlaylistItem]
+  @objc public init(audiobookId: Swift.String, playlistToken: Swift.String, expires: Foundation.Date, playlist: [AudioEngine.FAEPlaylistItem])
+  @objc(playlistItemForChapterDescription:) public func playlistItem(chapterDescription: AudioEngine.FAEChapterDescription) -> AudioEngine.FAEPlaylistItem?
+  @objc(serializePlaylistFromDictionary:forAudiobookID:) public class func decodePlaylist(dictionary: [Swift.String : Any], audiobookId: Swift.String) -> AudioEngine.FAEPlaylist?
+  @objc deinit
+  @objc override dynamic public init()
+}
+@objc public class FAEPlaylistItem : ObjectiveC.NSObject {
+  @objc final public let audiobookId: Swift.String
+  @objc final public let part: Swift.UInt
+  @objc final public let chapter: Swift.UInt
+  @objc final public let url: Foundation.URL
+  @objc final public let key: Swift.String?
+  @objc public var chapterDescription: AudioEngine.FAEChapterDescription? {
+    @objc get
+  }
+  @objc public init(audiobookId: Swift.String, part: Swift.UInt, chapter: Swift.UInt, url: Foundation.URL, key: Swift.String?)
+  @objc deinit
+  @objc override dynamic public init()
+}
+@objc public class FAEProgress : ObjectiveC.NSObject {
+  @objc public var fractionCompleted: Swift.Double {
+    get
+  }
+  @objc public init(completedWork: Swift.UInt64, totalWork: Swift.UInt64)
+  @objc public func assignChild(_ child: AudioEngine.FAEProgress, work assignedWork: Swift.UInt64)
+  @objc(setCompletedUnitCount:) public func setCompletedWork(_ work: Swift.UInt64)
+  @objc(setTotalUnitCount:) public func setTotalWork(_ work: Swift.UInt64)
+  @objc override dynamic public var description: Swift.String {
+    @objc get
+  }
+  @objc deinit
+  @objc override dynamic public init()
+}
+@_inheritsConvenienceInitializers @objc public class TaskSynchronizer : ObjectiveC.NSObject {
+  @objc public func fetchAudiobookMetadata(audiobookID: Swift.String, sessionKey: Swift.String, completion: @escaping (Foundation.NSError?) -> ())
+  @objc public func fetchPlaylistMetadata(audiobookID: Swift.String, licenseID: Swift.String, sessionKey: Swift.String, encrypted: Swift.Bool, completion: @escaping (AudioEngine.FAEPlaylist?, Foundation.NSError?) -> ())
+  @objc deinit
+  @objc override dynamic public init()
+}
+@_inheritsConvenienceInitializers @objc public class FilesystemMigration : ObjectiveC.NSObject {
+  @objc public class func migrate()
+  @objc deinit
+  @objc override dynamic public init()
+}
+@_inheritsConvenienceInitializers @objc public class FilesystemHelper : ObjectiveC.NSObject {
+  @objc public class func audioParentDirectory() -> Foundation.URL
+  @objc public class func audiobookAudioDirectory(audiobookID: Swift.String) -> Foundation.URL
+  @objc public class func metadataDatabasePath() -> Foundation.URL
+  @objc public class func persistenceEngineDatabasePath() -> Foundation.URL
+  @objc public class func createSupportDirectory() -> Foundation.URL
+  @objc public class func createAudiobookDirectory(audiobookID: Swift.String) -> Foundation.URL
+  @objc public class func filename(description: AudioEngine.FAEChapterDescription) -> Swift.String
+  @objc public class func chapterDescription(filename: Swift.String) -> AudioEngine.FAEChapterDescription?
+  @objc public class func filePath(description: AudioEngine.FAEChapterDescription) -> Foundation.URL
+  @objc public class func sizeOnDisk(description: AudioEngine.FAEChapterDescription) -> Swift.UInt64
+  @objc public class func deleteFile(description: AudioEngine.FAEChapterDescription)
+  @objc public class func deleteAllFiles(audiobookID: Swift.String)
+  @objc deinit
+  @objc override dynamic public init()
+}

@@ -1,0 +1,11 @@
+framework module NYPLAEToolkit {
+  umbrella header "NYPLAEToolkit.h"
+
+  export *
+  module * { export * }
+}
+
+module NYPLAEToolkit.Swift {
+    header "NYPLAEToolkit-Swift.h"
+    requires objc
+}
