@@ -686,8 +686,8 @@
 		E551B363267D42A20026FC1B /* TPPAccountList.swift in Sources */ = {isa = PBXBuildFile; fileRef = E551B360267D402B0026FC1B /* TPPAccountList.swift */; };
 		E551B365267D42AF0026FC1B /* TPPLoadingViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E551B359267D396A0026FC1B /* TPPLoadingViewController.swift */; };
 		E58565CF269774C400A5FBD5 /* AudioEngine.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E58565CE269774C400A5FBD5 /* AudioEngine.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		E58565D3269774D900A5FBD5 /* NYPLAEToolkit.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E58565D2269774D900A5FBD5 /* NYPLAEToolkit.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		E58565D7269774FB00A5FBD5 /* NYPLAEToolkit.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = E58565D2269774D900A5FBD5 /* NYPLAEToolkit.xcframework */; };
+		E585662826979EF100A5FBD5 /* NYPLAEToolkit.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = E585662726979EF100A5FBD5 /* NYPLAEToolkit.xcframework */; };
+		E585662C26979F1100A5FBD5 /* NYPLAEToolkit.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E585662726979EF100A5FBD5 /* NYPLAEToolkit.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		E5AD65DD2684FACA00C62951 /* TPPAccountListCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AD65DC2684FACA00C62951 /* TPPAccountListCell.swift */; };
 		E5AD65E12684FDA300C62951 /* TPPAccountListDataSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AD65E02684FDA300C62951 /* TPPAccountListDataSource.swift */; };
 		E5C2C422268BA5140046F415 /* TPPRegistryDebuggingCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5C2C421268BA5140046F415 /* TPPRegistryDebuggingCell.swift */; };
@@ -773,7 +773,7 @@
 			dstPath = "";
 			dstSubfolderSpec = 10;
 			files = (
-				E58565D3269774D900A5FBD5 /* NYPLAEToolkit.xcframework in Embed Frameworks */,
+				E585662C26979F1100A5FBD5 /* NYPLAEToolkit.xcframework in Embed Frameworks */,
 				E58565CF269774C400A5FBD5 /* AudioEngine.xcframework in Embed Frameworks */,
 				21986907267E299E0041369E /* GCDWebServer.xcframework in Embed Frameworks */,
 				219868F8267E29830041369E /* CryptoSwift.xcframework in Embed Frameworks */,
@@ -1404,6 +1404,7 @@
 		E58565CE269774C400A5FBD5 /* AudioEngine.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = AudioEngine.xcframework; path = Carthage/Build/iOS/AudioEngine.xcframework; sourceTree = "<group>"; };
 		E58565D2269774D900A5FBD5 /* NYPLAEToolkit.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = NYPLAEToolkit.xcframework; sourceTree = "<group>"; };
 		E585662026979AC100A5FBD5 /* NYPLAEToolkit.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = NYPLAEToolkit.xcodeproj; path = "ios-drm-audioengine/NYPLAEToolkit.xcodeproj"; sourceTree = "<group>"; };
+		E585662726979EF100A5FBD5 /* NYPLAEToolkit.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = NYPLAEToolkit.xcframework; path = Carthage/Build/NYPLAEToolkit.xcframework; sourceTree = "<group>"; };
 		E5AD65DC2684FACA00C62951 /* TPPAccountListCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAccountListCell.swift; sourceTree = "<group>"; };
 		E5AD65E02684FDA300C62951 /* TPPAccountListDataSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAccountListDataSource.swift; sourceTree = "<group>"; };
 		E5C2C421268BA5140046F415 /* TPPRegistryDebuggingCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPRegistryDebuggingCell.swift; sourceTree = "<group>"; };
@@ -1506,7 +1507,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				E58565D7269774FB00A5FBD5 /* NYPLAEToolkit.xcframework in Frameworks */,
+				E585662826979EF100A5FBD5 /* NYPLAEToolkit.xcframework in Frameworks */,
 				2198694D267E2A150041369E /* ZXingObjC.xcframework in Frameworks */,
 				03B092301E78871A00AD338D /* MediaPlayer.framework in Frameworks */,
 				03B092281E78859E00AD338D /* CoreMedia.framework in Frameworks */,
@@ -2516,6 +2517,7 @@
 			isa = PBXGroup;
 			children = (
 				E58565D2269774D900A5FBD5 /* NYPLAEToolkit.xcframework */,
+				E585662726979EF100A5FBD5 /* NYPLAEToolkit.xcframework */,
 				E58565CE269774C400A5FBD5 /* AudioEngine.xcframework */,
 				219869CE267E80800041369E /* GoogleAppMeasurement.xcframework */,
 				219869CD267E80800041369E /* GoogleDataTransport.xcframework */,
