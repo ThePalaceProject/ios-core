@@ -757,9 +757,9 @@
 			remoteGlobalIDString = 118A0E281992B3FD00792DDE;
 			remoteInfo = RDServices;
 		};
-		E585652326962B0C00A5FBD5 /* PBXContainerItemProxy */ = {
+		E585662426979AC100A5FBD5 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
-			containerPortal = E585651F26962B0C00A5FBD5 /* NYPLAEToolkit.xcodeproj */;
+			containerPortal = E585662026979AC100A5FBD5 /* NYPLAEToolkit.xcodeproj */;
 			proxyType = 2;
 			remoteGlobalIDString = 7BB4E7D120A0E1D1002E1360;
 			remoteInfo = NYPLAEToolkit;
@@ -1401,9 +1401,9 @@
 		D787E8431FB6B0290016D9D5 /* TPPSettingsAdvancedViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPSettingsAdvancedViewController.swift; sourceTree = "<group>"; };
 		E551B359267D396A0026FC1B /* TPPLoadingViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPLoadingViewController.swift; sourceTree = "<group>"; };
 		E551B360267D402B0026FC1B /* TPPAccountList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAccountList.swift; sourceTree = "<group>"; };
-		E585651F26962B0C00A5FBD5 /* NYPLAEToolkit.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = NYPLAEToolkit.xcodeproj; path = "ios-drm-audioengine/NYPLAEToolkit.xcodeproj"; sourceTree = "<group>"; };
 		E58565CE269774C400A5FBD5 /* AudioEngine.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = AudioEngine.xcframework; path = Carthage/Build/iOS/AudioEngine.xcframework; sourceTree = "<group>"; };
 		E58565D2269774D900A5FBD5 /* NYPLAEToolkit.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = NYPLAEToolkit.xcframework; sourceTree = "<group>"; };
+		E585662026979AC100A5FBD5 /* NYPLAEToolkit.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = NYPLAEToolkit.xcodeproj; path = "ios-drm-audioengine/NYPLAEToolkit.xcodeproj"; sourceTree = "<group>"; };
 		E5AD65DC2684FACA00C62951 /* TPPAccountListCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAccountListCell.swift; sourceTree = "<group>"; };
 		E5AD65E02684FDA300C62951 /* TPPAccountListDataSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAccountListDataSource.swift; sourceTree = "<group>"; };
 		E5C2C421268BA5140046F415 /* TPPRegistryDebuggingCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPRegistryDebuggingCell.swift; sourceTree = "<group>"; };
@@ -2490,7 +2490,7 @@
 		A823D804192BABA400B55DE2 = {
 			isa = PBXGroup;
 			children = (
-				E585651F26962B0C00A5FBD5 /* NYPLAEToolkit.xcodeproj */,
+				E585662026979AC100A5FBD5 /* NYPLAEToolkit.xcodeproj */,
 				5A569A261B8351C6003B5B61 /* ADEPT.xcodeproj */,
 				5A7048911B94A6700046FFF0 /* Adobe Content Filter.xcodeproj */,
 				A49C25401AE05A2600D63B89 /* RDServices.xcodeproj */,
@@ -2732,10 +2732,10 @@
 			name = "Supporting Files";
 			sourceTree = "<group>";
 		};
-		E585652026962B0C00A5FBD5 /* Products */ = {
+		E585662126979AC100A5FBD5 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				E585652426962B0C00A5FBD5 /* NYPLAEToolkit.framework */,
+				E585662526979AC100A5FBD5 /* NYPLAEToolkit.framework */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -2879,8 +2879,8 @@
 					ProjectRef = 5A7048911B94A6700046FFF0 /* Adobe Content Filter.xcodeproj */;
 				},
 				{
-					ProductGroup = E585652026962B0C00A5FBD5 /* Products */;
-					ProjectRef = E585651F26962B0C00A5FBD5 /* NYPLAEToolkit.xcodeproj */;
+					ProductGroup = E585662126979AC100A5FBD5 /* Products */;
+					ProjectRef = E585662026979AC100A5FBD5 /* NYPLAEToolkit.xcodeproj */;
 				},
 				{
 					ProductGroup = A49C25411AE05A2600D63B89 /* Products */;
@@ -2936,11 +2936,11 @@
 			remoteRef = A49C25451AE05A2600D63B89 /* PBXContainerItemProxy */;
 			sourceTree = BUILT_PRODUCTS_DIR;
 		};
-		E585652426962B0C00A5FBD5 /* NYPLAEToolkit.framework */ = {
+		E585662526979AC100A5FBD5 /* NYPLAEToolkit.framework */ = {
 			isa = PBXReferenceProxy;
 			fileType = wrapper.framework;
 			path = NYPLAEToolkit.framework;
-			remoteRef = E585652326962B0C00A5FBD5 /* PBXContainerItemProxy */;
+			remoteRef = E585662426979AC100A5FBD5 /* PBXContainerItemProxy */;
 			sourceTree = BUILT_PRODUCTS_DIR;
 		};
 /* End PBXReferenceProxy section */
