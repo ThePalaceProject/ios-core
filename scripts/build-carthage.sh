@@ -32,5 +32,8 @@ fi
 # deep clean to avoid any caching issues
 rm -rf ~/Library/Caches/org.carthage.CarthageKit
 
+./ios-drm-audioengine/scripts/fetch-audioengine.sh
+
 echo "Carthage build..."
 carthage bootstrap --use-xcframeworks --platform ios
+
