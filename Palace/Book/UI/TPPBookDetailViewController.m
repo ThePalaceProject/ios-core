@@ -163,7 +163,7 @@
 
 -(void)didSelectReportProblemForBook:(TPPBook *)book sender:(id)sender
 {
-  TPPProblemReportViewController *problemVC = [[TPPProblemReportViewController alloc] initWithNibName:@"NYPLProblemReportViewController" bundle:nil];
+  TPPProblemReportViewController *problemVC = [[TPPProblemReportViewController alloc] initWithNibName:@"TPPProblemReportViewController" bundle:nil];
   BOOL isIPad = self.traitCollection.horizontalSizeClass == UIUserInterfaceSizeClassRegular;
   problemVC.modalPresentationStyle = isIPad ? UIModalPresentationPopover : UIModalPresentationOverCurrentContext;
   problemVC.popoverPresentationController.sourceView = sender;

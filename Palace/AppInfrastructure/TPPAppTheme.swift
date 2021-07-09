@@ -25,7 +25,7 @@
       return colorFromHex(hex(theme))
     } else {
       Log.error(#file, "Given theme color is not supported: \(name)")
-      return .black
+      return UIApplication.darkModeEnabled ? .white : .black
     }
   }
 

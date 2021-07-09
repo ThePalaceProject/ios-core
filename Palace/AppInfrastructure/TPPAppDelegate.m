@@ -65,7 +65,10 @@ didFinishLaunchingWithOptions:(__attribute__((unused)) NSDictionary *)launchOpti
   self.window.tintColor = [TPPConfiguration mainColor];
   self.window.tintAdjustmentMode = UIViewTintAdjustmentModeNormal;
   [self.window makeKeyAndVisible];
-
+  
+  [[UITabBar appearance] setTintColor: [TPPConfiguration iconColor]];
+  [[UINavigationBar appearance] setTintColor: [TPPConfiguration iconColor]];
+  
   [self setUpRootVC];
 
   [TPPErrorLogger logNewAppLaunch];
