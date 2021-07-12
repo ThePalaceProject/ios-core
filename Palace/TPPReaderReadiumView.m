@@ -32,8 +32,6 @@
 
 @implementation TPPWebView
 
-// On Open eBooks we have a requirement to not allow copying of book text
-#ifdef OPENEBOOKS
 -(BOOL)canPerformAction:(SEL)action withSender:(id)sender
 {
   // Note: this does not work on iOS <= 10: the callback is never called for
@@ -43,7 +41,6 @@
   }
   return [super canPerformAction:action withSender:sender];
 }
-#endif
 
 @end
 
