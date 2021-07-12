@@ -59,7 +59,7 @@ extension TPPConfiguration {
     }
   }
   
-  @objc static func compatibleTextColor() -> UIColor {
+  @objc static func compatiblePrimaryColor() -> UIColor {
     if #available(iOS 13, *) {
       return UIColor.label
     } else {

@@ -25,11 +25,7 @@
       return colorFromHex(hex(theme))
     } else {
       Log.error(#file, "Given theme color is not supported: \(name)")
-        if #available(iOS 13, *) {
-          return UIColor.label
-        } else {
-          return .black
-        }
+      return TPPConfiguration.compatiblePrimaryColor()
     }
   }
 
