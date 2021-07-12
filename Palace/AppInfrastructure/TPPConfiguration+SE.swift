@@ -52,6 +52,18 @@ extension TPPConfiguration {
   }
   
   @objc static func iconColor() -> UIColor {
-    UIApplication.darkModeEnabled ? .white : .black
+    if #available(iOS 13, *) {
+      return UIColor.label
+    } else {
+      return .black
+    }
+  }
+  
+  @objc static func compatibleTextColor() -> UIColor {
+    if #available(iOS 13, *) {
+      return UIColor.label
+    } else {
+      return .black
+    }
   }
 }

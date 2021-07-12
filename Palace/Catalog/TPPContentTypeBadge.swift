@@ -19,6 +19,11 @@ final class TPPContentBadgeImageView: UIImageView {
   @objc required init(badgeImage: TPPBadgeImage) {
     super.init(image: UIImage(named: badgeImage.assetName()))
     backgroundColor = TPPConfiguration.mainColor()
+    
+    if #available(iOS 13.0, *) {
+      tintColor = UIColor(named: "inverseLabel")
+    }
+    
     contentMode = .scaleAspectFit
   }
 

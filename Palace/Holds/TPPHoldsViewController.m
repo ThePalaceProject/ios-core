@@ -187,7 +187,13 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
     UILabel *title = view.subviews.count > 0 ? view.subviews[0] : nil;
     if(!title) {
       title = [[UILabel alloc] init];
-      title.textColor =  [UIApplication darkModeEnabled] ? [UIColor blackColor] : [UIColor whiteColor];
+      
+      if (@available(iOS 13, *)) {
+        title.textColor = [UIColor colorNamed:@"inverseLabel"];
+      } else {
+        title.textColor = [UIColor whiteColor];
+      }
+      
       title.font = [UIFont systemFontOfSize:12];
       [view addSubview:title];
     }

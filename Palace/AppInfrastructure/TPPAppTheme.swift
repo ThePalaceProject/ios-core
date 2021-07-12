@@ -25,7 +25,11 @@
       return colorFromHex(hex(theme))
     } else {
       Log.error(#file, "Given theme color is not supported: \(name)")
-      return UIApplication.darkModeEnabled ? .white : .black
+        if #available(iOS 13, *) {
+          return UIColor.label
+        } else {
+          return .black
+        }
     }
   }
 
