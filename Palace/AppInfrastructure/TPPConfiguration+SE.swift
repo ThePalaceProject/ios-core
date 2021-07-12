@@ -66,4 +66,12 @@ extension TPPConfiguration {
       return .black
     }
   }
+  
+  @objc static func compatibleTextColor() -> UIColor {
+    if #available(iOS 13, *) {
+      return UIColor(named: "inverseLabel")!
+    } else {
+      return .white;
+    }
+  }
 }
