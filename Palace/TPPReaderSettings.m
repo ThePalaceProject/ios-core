@@ -428,11 +428,6 @@ static NSString *const MediaOverlaysEnableClick = @"mediaOverlaysEnableClick";
   }
 }
 
-- (UIColor *)tocNavigationTintColor
-{
-  return [UIColor whiteColor];
-}
-
 - (NSArray *)readiumStylesRepresentation
 {
   NSString *fontFace;

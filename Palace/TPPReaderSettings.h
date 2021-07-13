@@ -57,7 +57,6 @@ BOOL TPPReaderSettingsIncreasedFontSize(TPPReaderSettingsFontSize input,
 @property (nonnull, nonatomic, readonly) UIColor *foregroundColor;
 @property (nonnull, nonatomic, readonly) UIColor *selectedForegroundColor;
 @property (nonnull, nonatomic, readonly) UIColor *tintColor;
-@property (nonnull, nonatomic, readonly) UIColor *tocNavigationTintColor;
 
 - (void)save;
 
