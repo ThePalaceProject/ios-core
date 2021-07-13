@@ -60,10 +60,10 @@ segmentControlTypeWithInteger(NSInteger const integer)
 {
   [super viewWillAppear:animated];
 
-  self.navigationController.navigationBar.barStyle = UIBarStyleDefault;
   self.navigationController.navigationBar.translucent = YES;
-  self.navigationController.navigationBar.barTintColor = nil;
-  self.navigationController.navigationBar.tintColor = [[TPPReaderSettings sharedSettings] tocNavigationTintColor];
+  self.navigationController.navigationBar.barTintColor = [TPPReaderSettings sharedSettings].backgroundColor;
+  self.navigationController.navigationBar.tintColor = [[TPPReaderSettings sharedSettings] tintColor];
+  [self.navigationController.navigationBar setTitleTextAttributes: @{NSForegroundColorAttributeName: [[TPPReaderSettings sharedSettings] tintColor]}];
   
   self.tableView.separatorColor = [UIColor grayColor];
 
