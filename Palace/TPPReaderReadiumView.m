@@ -35,10 +35,11 @@
 -(BOOL)canPerformAction:(SEL)action withSender:(id)sender
 {
   // Note: this does not work on iOS <= 10.
-  if (action == @selector(lookup:)) {
-    return [super canPerformAction:action withSender:sender];
+  // Also Note: _share is in fact a declared selector
+  if (action == @selector(copy:) || action == @selector(_share:)) {
+    return NO;
   }
-  return NO;
+  return [super canPerformAction:action withSender:sender];
 }
 
 @end
