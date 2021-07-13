@@ -35,7 +35,7 @@
 -(BOOL)canPerformAction:(SEL)action withSender:(id)sender
 {
   // Note: this does not work on iOS <= 10.
-  if action == @selector(lookup:) {
+  if (action == @selector(lookup:)) {
     return [super canPerformAction:action withSender:sender];
   }
   return NO;
