@@ -181,7 +181,6 @@ typedef NS_ENUM(NSInteger, FacetSort) {
   
   [self.navigationController setNavigationBarHidden:NO];
   self.navigationController.navigationBar.tintColor = [TPPConfiguration iconColor];
-  self.navigationController.navigationBar.barStyle = UIBarStyleDefault;
 }
 
 - (void)viewWillLayoutSubviews
