@@ -34,9 +34,9 @@
 
 -(BOOL)canPerformAction:(SEL)action withSender:(id)sender
 {
-  // Note: this does not work on iOS <= 10: the callback is never called for
-  // the copy: action. It is on iOS 11+.
-  if (action == @selector(copy:)) {
+  // Note: this does not work on iOS <= 10.
+  // Also Note: _share is in fact a declared selector
+  if (action == @selector(copy:) || action == @selector(_share:)) {
     return NO;
   }
   return [super canPerformAction:action withSender:sender];
