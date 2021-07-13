@@ -63,6 +63,7 @@ segmentControlTypeWithInteger(NSInteger const integer)
   self.navigationController.navigationBar.barStyle = UIBarStyleDefault;
   self.navigationController.navigationBar.translucent = YES;
   self.navigationController.navigationBar.barTintColor = nil;
+  self.navigationController.navigationBar.tintColor = [[TPPReaderSettings sharedSettings] tocNavigationTintColor];
   
   self.tableView.separatorColor = [UIColor grayColor];
 
@@ -82,7 +83,7 @@ segmentControlTypeWithInteger(NSInteger const integer)
   }
 
   TPPReaderSettings *readerSettings = [TPPReaderSettings sharedSettings];
-  self.view.backgroundColor = [TPPReaderSettings sharedSettings].backgroundColor;
+  self.view.backgroundColor = readerSettings.backgroundColor;
   self.tableView.backgroundColor = self.view.backgroundColor;
   self.noBookmarksLabel.textColor = readerSettings.foregroundColor;
 

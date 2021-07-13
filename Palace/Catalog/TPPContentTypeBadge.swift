@@ -21,7 +21,7 @@ final class TPPContentBadgeImageView: UIImageView {
     backgroundColor = TPPConfiguration.mainColor()
     
     if #available(iOS 13.0, *) {
-      tintColor = UIColor(named: "inverseLabel")
+      tintColor = UIColor(named: "ColorInverseLabel")
     }
     
     contentMode = .scaleAspectFit

@@ -53,7 +53,7 @@ extension TPPConfiguration {
   
   @objc static func iconColor() -> UIColor {
     if #available(iOS 13, *) {
-      return UIColor.label
+      return UIColor(named: "ColorIcon")!
     } else {
       return .black
     }
@@ -69,7 +69,7 @@ extension TPPConfiguration {
   
   @objc static func compatibleTextColor() -> UIColor {
     if #available(iOS 13, *) {
-      return UIColor(named: "inverseLabel")!
+      return UIColor(named: "ColorInverseLabel")!
     } else {
       return .white;
     }

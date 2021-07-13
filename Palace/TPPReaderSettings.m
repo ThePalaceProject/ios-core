@@ -421,11 +421,16 @@ static NSString *const MediaOverlaysEnableClick = @"mediaOverlaysEnableClick";
   switch(self.colorScheme) {
     case TPPReaderSettingsColorSchemeBlackOnSepia:
     case TPPReaderSettingsColorSchemeBlackOnWhite:
-      return [TPPConfiguration mainColor];
+      return [UIColor darkGrayColor];
     case TPPReaderSettingsColorSchemeWhiteOnBlack:
     default:
       return [UIColor whiteColor];
   }
+}
+
+- (UIColor *)tocNavigationTintColor
+{
+  return [UIColor whiteColor];
 }
 
 - (NSArray *)readiumStylesRepresentation

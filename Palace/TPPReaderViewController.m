@@ -258,7 +258,6 @@ didEncounterCorruptionForBook:(__attribute__((unused)) TPPBook *)book
   
   self.footerViewLabel = [[UILabel alloc] init];
   self.footerViewLabel.numberOfLines = 1;
-  self.footerViewLabel.textColor = [TPPConfiguration mainColor];
   self.footerViewLabel.textAlignment = NSTextAlignmentCenter;
   [self.footerViewLabel setFont:[UIFont systemFontOfSize:13]];
   
@@ -425,6 +424,9 @@ didEncounterCorruptionForBook:(__attribute__((unused)) TPPBook *)book
   [self.activePopoverController.presentingViewController
    dismissViewControllerAnimated:NO completion:nil];
   self.activePopoverController = nil;
+  
+  [[UITabBar appearance] setTintColor: [TPPConfiguration iconColor]];
+  [[UINavigationBar appearance] setTintColor: [TPPConfiguration iconColor]];
 }
 
 #pragma mark Accessibility
@@ -607,7 +609,7 @@ didRequestSyncBookmarksWithCompletion:(void (^)(BOOL, NSArray<TPPReadiumBookmark
 
   self.activePopoverController.view.backgroundColor =
   [TPPReaderSettings sharedSettings].backgroundColor;
-
+  
   switch([TPPReaderSettings sharedSettings].colorScheme) {
     case TPPReaderSettingsColorSchemeBlackOnSepia:
       self.activityIndicatorView.activityIndicatorViewStyle = UIActivityIndicatorViewStyleGray;
@@ -616,6 +618,8 @@ didRequestSyncBookmarksWithCompletion:(void (^)(BOOL, NSArray<TPPReadiumBookmark
       self.bottomViewImageViewTopBorder.backgroundColor = [UIColor lightGrayColor];
       self.headerViewLabel.textColor = [UIColor darkGrayColor];
       self.footerViewLabel.textColor = [UIColor darkGrayColor];
+      self.navigationController.navigationBar.tintColor = [UIColor darkGrayColor];
+      self.bottomViewProgressLabel.textColor = [UIColor darkGrayColor];
       break;
 
     case TPPReaderSettingsColorSchemeBlackOnWhite:
@@ -625,6 +629,8 @@ didRequestSyncBookmarksWithCompletion:(void (^)(BOOL, NSArray<TPPReadiumBookmark
       self.bottomViewImageViewTopBorder.backgroundColor = [UIColor lightGrayColor];
       self.headerViewLabel.textColor = [UIColor darkGrayColor];
       self.footerViewLabel.textColor = [UIColor darkGrayColor];
+      self.navigationController.navigationBar.tintColor = [UIColor darkGrayColor];
+      self.bottomViewProgressLabel.textColor = [UIColor darkGrayColor];
       break;
 
     case TPPReaderSettingsColorSchemeWhiteOnBlack:
@@ -634,6 +640,8 @@ didRequestSyncBookmarksWithCompletion:(void (^)(BOOL, NSArray<TPPReadiumBookmark
       self.bottomViewImageViewTopBorder.backgroundColor = [UIColor darkGrayColor];
       self.headerViewLabel.textColor = [UIColor colorWithWhite: 0.80 alpha:1];
       self.footerViewLabel.textColor = [UIColor colorWithWhite: 0.80 alpha:1];
+      self.navigationController.navigationBar.tintColor =  [UIColor colorWithWhite: 0.80 alpha:1];
+      self.bottomViewProgressLabel.textColor = [UIColor colorWithWhite: 0.80 alpha:1];
       break;
   }
 }
