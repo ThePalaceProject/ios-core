@@ -109,6 +109,7 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
     navigationController?.navigationBar.barStyle = .default
     navigationController?.navigationBar.isTranslucent = true
     navigationController?.navigationBar.barTintColor = nil
+    navigationController?.navigationBar.tintColor = readerSettings.tintColor
   }
 
   override func viewWillAppear(_ animated: Bool) {

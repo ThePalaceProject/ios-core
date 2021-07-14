@@ -428,6 +428,9 @@
   
   self.backgroundColor = backgroundColor;
   
+  self.brightnessSlider.tintColor =  foregroundColor;
+  self.brightnessSlider.thumbTintColor =  foregroundColor;
+  
   [self.brightnessHighImageView setTintColor:foregroundColor];
   [self.brightnessLowImageView setTintColor:foregroundColor];
   
@@ -436,7 +439,6 @@
   
   self.increaseButton.backgroundColor = backgroundColor;
   [self.increaseButton setTitleColor:foregroundColor forState:UIControlStateNormal];
-  
   
   NSDictionary *fontColourWithUnderline = @{NSUnderlineStyleAttributeName: @(NSUnderlineStyleSingle), NSForegroundColorAttributeName : foregroundColor };
   NSDictionary *fontColourWithoutUnderline = @{NSUnderlineStyleAttributeName: @(NSUnderlineStyleNone), NSForegroundColorAttributeName : foregroundColor };

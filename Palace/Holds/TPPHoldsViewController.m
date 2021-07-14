@@ -187,7 +187,8 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
     UILabel *title = view.subviews.count > 0 ? view.subviews[0] : nil;
     if(!title) {
       title = [[UILabel alloc] init];
-      title.textColor = [UIColor whiteColor];
+      title.textColor = [TPPConfiguration compatibleTextColor];
+          
       title.font = [UIFont systemFontOfSize:12];
       [view addSubview:title];
     }
