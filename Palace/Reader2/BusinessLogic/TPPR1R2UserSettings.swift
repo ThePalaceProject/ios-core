@@ -33,22 +33,25 @@ class TPPR1R2UserSettings: NSObject {
   /// Get associated colors for a specific appearance setting.
   /// - parameter appearance: The selected appearance.
   /// - Returns: A tuple with a background color and a text color.
-  static func colors(for appearance: UserProperty) -> (backgroundColor: UIColor, textColor: UIColor) {
-    var backgroundColor, textColor: UIColor
+  static func colors(for appearance: UserProperty) -> (backgroundColor: UIColor, textColor: UIColor, navigationColor: UIColor) {
+    var backgroundColor, textColor: UIColor, navigationColor: UIColor
 
     switch appearance.toString() {
     case "readium-sepia-on":
       backgroundColor = TPPConfiguration.readerBackgroundSepiaColor()
       textColor = UIColor.black
+      navigationColor = .black
     case "readium-night-on":
       backgroundColor = TPPConfiguration.readerBackgroundDarkColor()
       textColor = UIColor.white
+      navigationColor = .white
     default:
       backgroundColor = UIColor.white
       textColor = UIColor.black
+      navigationColor = .black
     }
 
-    return (backgroundColor, textColor)
+    return (backgroundColor, textColor, navigationColor)
   }
 
   /// Persists both R1 and R2 user settings.

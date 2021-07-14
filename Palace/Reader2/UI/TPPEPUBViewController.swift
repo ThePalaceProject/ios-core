@@ -32,6 +32,7 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     config.preloadPreviousPositionCount = 0
     config.preloadNextPositionCount = 0
     config.debugState = true
+    config.editingActions = [.lookup]
 
     let navigator = EPUBNavigatorViewController(publication: publication,
                                                 initialLocation: initialLocation,
@@ -69,6 +70,8 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
 
   override open func viewWillDisappear(_ animated: Bool) {
     super.viewWillDisappear(animated)
+    self.navigationController?.navigationBar.tintColor = TPPConfiguration.iconColor()
+    self.tabBarController?.tabBar.tintColor = TPPConfiguration.iconColor()
     userSettings.save()
   }
 
@@ -112,6 +115,8 @@ extension TPPEPUBViewController: TPPUserSettingsReaderDelegate {
         self.navigator.view.backgroundColor = colors.backgroundColor
         self.view.backgroundColor = colors.backgroundColor
         self.navigationController?.navigationBar.barTintColor = colors.backgroundColor
+        self.navigationController?.navigationBar.tintColor = colors.navigationColor
+        self.tabBarController?.tabBar.tintColor = colors.navigationColor
       }
 
       switch self.userSettings.r1UserSettings.colorScheme {
@@ -150,3 +155,4 @@ extension TPPEPUBViewController: UIPopoverPresentationControllerDelegate {
     return .none
   }
 }
+
