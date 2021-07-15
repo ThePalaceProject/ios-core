@@ -6,7 +6,7 @@
 #   dependencies.
 #
 # USAGE
-#   Run this script from the root of Simplified-iOS repo:
+#   Run this script from the root of ios-core repo:
 #
 #     ./scripts/build-3rd-party-dependencies.sh [--no-private]
 #
