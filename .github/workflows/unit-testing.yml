@@ -27,10 +27,6 @@ jobs:
         run: ./scripts/setup-repo-drm.sh
         env:
           BUILD_CONTEXT: ci
-      - name: Build OpenSSL and curl
-        run: ./scripts/build-openssl-curl.sh
-        env:
-          BUILD_CONTEXT: ci
       - name: Build non-Carthage 3rd party dependencies
         run: ./scripts/build-3rd-party-dependencies.sh
         env:
