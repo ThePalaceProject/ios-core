@@ -105,13 +105,19 @@ ontoPrimaryViewController:(__attribute__((unused)) UIViewController *)primaryVie
       break;
     case NYPLSettingsPrimaryTableViewControllerItemAbout:
       viewController = [[RemoteHTMLViewController alloc]
-                        initWithURL:[NSURL URLWithString: TPPSettings.NYPLAboutSimplyEURLString]
+                        initWithURL:[NSURL URLWithString: TPPSettings.TPPAboutPalaceURLString]
                         title:NSLocalizedString(@"AboutApp", nil)
+                        failureMessage:NSLocalizedString(@"The page could not load due to a connection error.", nil)];
+      break;
+    case NYPLSettingsPrimaryTableViewControllerItemPrivacyPolicy:
+      viewController = [[RemoteHTMLViewController alloc]
+                        initWithURL:[NSURL URLWithString: TPPSettings.TPPPrivacyPolicyURLString]
+                        title:NSLocalizedString(@"PrivacyPolicy", nil)
                         failureMessage:NSLocalizedString(@"The page could not load due to a connection error.", nil)];
       break;
     case NYPLSettingsPrimaryTableViewControllerItemEULA:
       viewController = [[RemoteHTMLViewController alloc]
-                        initWithURL:[NSURL URLWithString: TPPSettings.NYPLUserAgreementURLString]
+                        initWithURL:[NSURL URLWithString: TPPSettings.TPPUserAgreementURLString]
                         title:NSLocalizedString(@"EULA", nil)
                         failureMessage:NSLocalizedString(@"The page could not load due to a connection error.", nil)];
       break;

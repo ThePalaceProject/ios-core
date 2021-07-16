@@ -65,10 +65,10 @@ class TPPRegistryDebuggingCell: UITableViewCell {
     let clearButton = UIButton()
     clearButton.layer.cornerRadius = 5
     clearButton.layer.borderWidth = 1
-    clearButton.layer.borderColor = UIColor.black.cgColor
+    clearButton.layer.borderColor = UIColor.defaultLabelColor().cgColor
     
     clearButton.setTitle("Clear", for: .normal)
-    clearButton.setTitleColor(UIColor.black, for: .normal)
+    clearButton.setTitleColor(UIColor.defaultLabelColor(), for: .normal)
 
     clearButton.addTarget(self, action: #selector(clear), for: .touchUpInside)
     
@@ -78,11 +78,11 @@ class TPPRegistryDebuggingCell: UITableViewCell {
     let setButton = UIButton()
     setButton.layer.cornerRadius = 5
     setButton.layer.borderWidth = 1
-    setButton.layer.borderColor = UIColor.black.cgColor
+    setButton.layer.borderColor = UIColor.defaultLabelColor().cgColor
     setButton.autoSetDimension(.width, toSize: 125)
 
     setButton.setTitle("Set", for: .normal)
-    setButton.setTitleColor(UIColor.black, for: .normal)
+    setButton.setTitleColor(UIColor.defaultLabelColor(), for: .normal)
 
     setButton.addTarget(self, action: #selector(set), for: .touchUpInside)
     stackView.addArrangedSubview(setButton)
