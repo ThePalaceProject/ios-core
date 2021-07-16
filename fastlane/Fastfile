@@ -1,20 +1,45 @@
 default_platform(:ios)
 
 platform :ios do
-  lane :fetch_install_certs do
-    cert(
-      keychain_path: ENV['KEYCHAIN_PATH'],
-      generate_apple_certs: "false"
+  lane :test do
+    run_tests(
+      project: "Palace.xcodeproj",
+      devices: ["iPhone 12 Pro"],
+      scheme: "Palace"
     )
   end
-
-  lane :fetch_install_provisioning do
-    sigh(
-      app_identifier: ENV['APP_BUNDLE_ID']
+  lane :beta do |options|
+    build_app(
+      project: "Palace.xcodeproj",
+      scheme: "Palace",
+      include_symbols: true,
+      include_bitcode: false,
+      silent: true,
+      output_name: options[:output_name],
+      output_directory: options[:export_path],
+      export_options: {
+        method: "development",
+        provisioningProfiles: { 
+          "org.thepalaceproject.palace" => "Palace App"
+        }
+      }
     )
-    sigh(
-      app_identifier: ENV['APP_BUNDLE_ID'],
-      adhoc: "true"
+  end
+  lane :testflight do
+    build_app(
+      project: "Palace.xcodeproj",
+      scheme: "Palace",
+      include_symbols: true,
+      include_bitcode: false,
+      export_options: {
+        method: "app-store",
+        provisioningProfiles: { 
+          "org.thepalaceproject.palace" => "App store"
+        }
+      }
+    )
+    pilot(
+      skip_submission: true
     )
   end
 end

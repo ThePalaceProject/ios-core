@@ -1,10 +1,10 @@
 #!/bin/bash
 
-# Usage: run this script from the root of Simplified-iOS repo.
+# Usage: run this script from the root of Palace ios-core repo.
 #
 #     ./scripts/update-certificates.sh
 #
-# Note: this script assumes you have the Certificates repo cloned as a sibling of Simplified-iOS.
+# Note: this script assumes you have the Certificates repo cloned as a sibling of ios-core.
 
 set -eo pipefail
 
@@ -15,24 +15,20 @@ else
 fi
 
 if [ "$BUILD_CONTEXT" == "ci" ]; then
-  CERTIFICATES_PATH="./Certificates"
+  CERTIFICATES_PATH="./mobile-certificates/Certificates"
 else
-  CERTIFICATES_PATH="../Certificates"
+  CERTIFICATES_PATH="../mobile-certificates/Certificates"
 fi
 
-cp $CERTIFICATES_PATH/SimplyE/iOS/APIKeys.swift Simplified/AppInfrastructure/
+cp Palace/AppInfrastructure/APIKeys.swift.example Palace/AppInfrastructure/APIKeys.swift
 
-# SimplyE-specific stuff
-cp $CERTIFICATES_PATH/SimplyE/iOS/GoogleService-Info.plist SimplyE/
-cp $CERTIFICATES_PATH/SimplyE/iOS/ReaderClientCertProduction.sig SimplyE/ReaderClientCert.sig
+# Copy configuration files
+cp $CERTIFICATES_PATH/Palace/iOS/GoogleService-Info.plist PalaceConfig/
+cp $CERTIFICATES_PATH/Palace/iOS/ReaderClientCert.sig PalaceConfig/
 
-# OpenEbooks-specific stuff
-cp $CERTIFICATES_PATH/OpenEbooks/iOS/ReaderClientCert.sig OpenEbooks/
-cp $CERTIFICATES_PATH/OpenEbooks/iOS/GoogleService-Info.plist OpenEbooks/
+git update-index --skip-worktree Palace/TPPSecrets.swift
 
-git update-index --skip-worktree Simplified/NYPLSecrets.swift
-
-echo "Obfuscating keys..."
-swift $CERTIFICATES_PATH/SimplyE/iOS/KeyObfuscator.swift "$CERTIFICATES_PATH/SimplyE/iOS/APIKeys.json"
+# echo "Obfuscating keys..."
+swift $CERTIFICATES_PATH/Palace/iOS/KeyObfuscator.swift "$CERTIFICATES_PATH/Palace/iOS/APIKeys.json"
 
 echo "update-certificates: finished"
