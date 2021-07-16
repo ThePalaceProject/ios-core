@@ -39,6 +39,7 @@ platform :ios do
       }
     )
     pilot(
+      api_key: ENV["CI_APPLE_FASTLANE_JSON"],
       skip_submission: true
     )
   end
