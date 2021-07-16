@@ -19,8 +19,10 @@ SettingsItemFromIndexPath(NSIndexPath *const indexPath)
         case 0:
           return NYPLSettingsPrimaryTableViewControllerItemAbout;
         case 1:
-          return NYPLSettingsPrimaryTableViewControllerItemEULA;
+          return NYPLSettingsPrimaryTableViewControllerItemPrivacyPolicy;
         case 2:
+          return NYPLSettingsPrimaryTableViewControllerItemEULA;
+        case 3:
           return NYPLSettingsPrimaryTableViewControllerItemSoftwareLicenses;
         default:
           @throw NSInvalidArgumentException;
@@ -45,10 +47,12 @@ NSIndexPath *NYPLSettingsPrimaryTableViewControllerIndexPathFromSettingsItem(
       return [NSIndexPath indexPathForRow:0 inSection:0];
     case NYPLSettingsPrimaryTableViewControllerItemAbout:
       return [NSIndexPath indexPathForRow:0 inSection:1];
-    case NYPLSettingsPrimaryTableViewControllerItemEULA:
+    case NYPLSettingsPrimaryTableViewControllerItemPrivacyPolicy:
       return [NSIndexPath indexPathForRow:1 inSection:1];
-    case NYPLSettingsPrimaryTableViewControllerItemSoftwareLicenses:
+    case NYPLSettingsPrimaryTableViewControllerItemEULA:
       return [NSIndexPath indexPathForRow:2 inSection:1];
+    case NYPLSettingsPrimaryTableViewControllerItemSoftwareLicenses:
+      return [NSIndexPath indexPathForRow:3 inSection:1];
     case NYPLSettingsPrimaryTableViewControllerItemDeveloperSettings:
       return [NSIndexPath indexPathForRow:0 inSection:2];
     default:
@@ -148,6 +152,9 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
     case NYPLSettingsPrimaryTableViewControllerItemSoftwareLicenses: {
       return [self settingsPrimaryTableViewCellWithText:NSLocalizedString(@"SoftwareLicenses", nil)];
     }
+    case NYPLSettingsPrimaryTableViewControllerItemPrivacyPolicy: {
+      return [self settingsPrimaryTableViewCellWithText:NSLocalizedString(@"PrivacyPolicy", nil)];
+    }
     case NYPLSettingsPrimaryTableViewControllerItemEULA: {
       return [self settingsPrimaryTableViewCellWithText:NSLocalizedString(@"EULA", nil)];
     }
@@ -195,7 +202,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
 {
   switch(section) {
     case 1:
-      return 3;
+      return 4;
     default:
       return 1;
   }
