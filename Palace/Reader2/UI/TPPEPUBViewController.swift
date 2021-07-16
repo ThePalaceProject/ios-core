@@ -32,6 +32,7 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     config.preloadPreviousPositionCount = 0
     config.preloadNextPositionCount = 0
     config.debugState = true
+    config.editingActions = [.lookup]
 
     let navigator = EPUBNavigatorViewController(publication: publication,
                                                 initialLocation: initialLocation,
@@ -154,3 +155,4 @@ extension TPPEPUBViewController: UIPopoverPresentationControllerDelegate {
     return .none
   }
 }
+
