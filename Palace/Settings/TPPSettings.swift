@@ -29,7 +29,7 @@ import Foundation
   static let userHasAcceptedEULAKey = "NYPLSettingsUserAcceptedEULA"
   static private let userSeenFirstTimeSyncMessageKey = "userSeenFirstTimeSyncMessageKey"
   static private let useBetaLibrariesKey = "NYPLUseBetaLibrariesKey"
-  static private let useR2Key = "NYPLUseR2Key"
+  static private let useR1Key = "NYPLUseR1Key"
   static let settingsLibraryAccountsKey = "NYPLSettingsLibraryAccountsKey"
   static private let versionKey = "NYPLSettingsVersionKey"
   static private let customLibraryRegistryKey = "TPPSettingsCustomLibraryRegistryKey"
@@ -116,12 +116,12 @@ import Foundation
     }
   }
 
-  var useR2: Bool {
+  var useR1: Bool {
     get {
-      return UserDefaults.standard.bool(forKey: TPPSettings.useR2Key)
+      return UserDefaults.standard.bool(forKey: TPPSettings.useR1Key)
     }
     set(b) {
-      UserDefaults.standard.set(b, forKey: TPPSettings.useR2Key)
+      UserDefaults.standard.set(b, forKey: TPPSettings.useR1Key)
       UserDefaults.standard.synchronize()
     }
   }

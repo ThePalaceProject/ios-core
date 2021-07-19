@@ -31,8 +31,8 @@ import Foundation
     TPPSettings.shared.useBetaLibraries = sender.isOn
   }
 
-  func r2SwitchDidChange(sender: UISwitch!) {
-    TPPSettings.shared.useR2 = sender.isOn
+  func r1SwitchDidChange(sender: UISwitch!) {
+    TPPSettings.shared.useR1 = sender.isOn
   }
 
   // MARK:- UIViewController
@@ -93,13 +93,13 @@ import Foundation
   private func cellForR2Toggle() -> UITableViewCell {
     let cell = UITableViewCell(style: UITableViewCell.CellStyle.default, reuseIdentifier: "R2ToggleCell")
     cell.selectionStyle = .none
-    cell.textLabel?.text = "Enable Readium 2"
-    let r2Switch = UISwitch()
-    r2Switch.setOn(TPPSettings.shared.useR2, animated: false)
-    r2Switch.addTarget(self,
-                       action:#selector(r2SwitchDidChange),
+    cell.textLabel?.text = "Enable Readium 1"
+    let r1Switch = UISwitch()
+    r1Switch.setOn(TPPSettings.shared.useR1, animated: false)
+    r1Switch.addTarget(self,
+                       action:#selector(r1SwitchDidChange),
                        for:.valueChanged)
-    cell.accessoryView = r2Switch
+    cell.accessoryView = r1Switch
     return cell
   }
   
