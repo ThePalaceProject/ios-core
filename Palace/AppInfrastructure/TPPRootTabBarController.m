@@ -1,7 +1,6 @@
 #import "TPPCatalogNavigationController.h"
 #import "TPPHoldsNavigationController.h"
 #import "TPPMyBooksNavigationController.h"
-#import "TPPReaderViewController.h"
 
 #ifdef SIMPLYE
 // TODO: SIMPLY-3053 this #ifdef can be removed once this ticket is done
@@ -60,11 +59,7 @@
                                            selector:@selector(setTabViewControllers)
                                                name:NSNotification.TPPCurrentAccountDidChange
                                              object:nil];
-
-  [[NSNotificationCenter defaultCenter] addObserver:self
-                                           selector:@selector(dismissReaderUponEnteringBackground)
-                                               name:UIApplicationDidEnterBackgroundNotification
-                                             object:nil];
+  
   self.r2Owner = [[TPPR2Owner alloc] init];
   return self;
 }
@@ -139,26 +134,6 @@ shouldSelectViewController:(nonnull UIViewController *)viewController
   [(UINavigationController *)self.selectedViewController
    pushViewController:viewController
    animated:animated];
-}
-
-#pragma mark -
-
-/// Dismiss TPPReaderViewController if entering the background, to try and
-/// mitigate reported issue of the app freezing and not allowing navigation. Can
-/// be removed whenever the renderer is replaced.
-/// https://jira.nypl.org/browse/SIMPLY-1298
-- (void)dismissReaderUponEnteringBackground
-{
-  if (![self.selectedViewController isKindOfClass:[UINavigationController class]]) {
-    return;
-  }
-  UINavigationController *selectedTab = (UINavigationController *)self.selectedViewController;
-  if (![selectedTab.topViewController isKindOfClass:[TPPReaderViewController class]]) {
-    TPPLOG(@"Entering Background: Ignoring VC that is not NYPLReaderViewController.");
-    return;
-  }
-
-  [selectedTab popViewControllerAnimated:NO];
 }
 
 @end
