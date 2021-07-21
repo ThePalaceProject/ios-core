@@ -1,5 +1,5 @@
 name: Unit Tests
-on: workflow_dispatch
+on: [ pull_request, workflow_dispatch ]
 jobs:
   build-and-test:
     runs-on: macOS-latest
@@ -25,10 +25,6 @@ jobs:
           path: ./mobile-drm-adeptconnector
       - name: Uncompress Adobe RMSDK
         run: ./scripts/setup-repo-drm.sh
-        env:
-          BUILD_CONTEXT: ci
-      - name: Build OpenSSL and curl
-        run: ./scripts/build-openssl-curl.sh
         env:
           BUILD_CONTEXT: ci
       - name: Build non-Carthage 3rd party dependencies
