@@ -749,6 +749,13 @@
 			remoteGlobalIDString = 118A0E281992B3FD00792DDE;
 			remoteInfo = RDServices;
 		};
+		E5C0C56226A9D758004A38F4 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E5C0C55E26A9D758004A38F4 /* NYPLAEToolkit.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 7BB4E7D120A0E1D1002E1360;
+			remoteInfo = NYPLAEToolkit;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -1382,10 +1389,10 @@
 		E551B360267D402B0026FC1B /* TPPAccountList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAccountList.swift; sourceTree = "<group>"; };
 		E58565CE269774C400A5FBD5 /* AudioEngine.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = AudioEngine.xcframework; path = Carthage/Build/AudioEngine.xcframework; sourceTree = "<group>"; };
 		E58565D2269774D900A5FBD5 /* NYPLAEToolkit.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = NYPLAEToolkit.xcframework; sourceTree = "<group>"; };
-		E585662026979AC100A5FBD5 /* ios-drm-audioengine */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "ios-drm-audioengine"; sourceTree = "<group>"; };
 		E585662726979EF100A5FBD5 /* NYPLAEToolkit.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = NYPLAEToolkit.xcframework; path = Carthage/Build/NYPLAEToolkit.xcframework; sourceTree = "<group>"; };
 		E5AD65DC2684FACA00C62951 /* TPPAccountListCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAccountListCell.swift; sourceTree = "<group>"; };
 		E5AD65E02684FDA300C62951 /* TPPAccountListDataSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAccountListDataSource.swift; sourceTree = "<group>"; };
+		E5C0C55E26A9D758004A38F4 /* NYPLAEToolkit.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = NYPLAEToolkit.xcodeproj; path = "../ios-drm-audioengine/NYPLAEToolkit.xcodeproj"; sourceTree = "<group>"; };
 		E5C2C421268BA5140046F415 /* TPPRegistryDebuggingCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPRegistryDebuggingCell.swift; sourceTree = "<group>"; };
 		E61D7F631F6AC78B0091C781 /* SimplyE.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SimplyE.entitlements; sourceTree = "<group>"; };
 		E6202A001DD4E6F300C99553 /* TPPSettingsAccountDetailViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPSettingsAccountDetailViewController.h; sourceTree = "<group>"; };
@@ -2464,7 +2471,7 @@
 		A823D804192BABA400B55DE2 = {
 			isa = PBXGroup;
 			children = (
-				E585662026979AC100A5FBD5 /* ios-drm-audioengine */,
+				E5C0C55E26A9D758004A38F4 /* NYPLAEToolkit.xcodeproj */,
 				5A569A261B8351C6003B5B61 /* ADEPT.xcodeproj */,
 				5A7048911B94A6700046FFF0 /* Adobe Content Filter.xcodeproj */,
 				A49C25401AE05A2600D63B89 /* RDServices.xcodeproj */,
@@ -2717,6 +2724,14 @@
 			path = AccountList;
 			sourceTree = "<group>";
 		};
+		E5C0C55F26A9D758004A38F4 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				E5C0C56326A9D758004A38F4 /* NYPLAEToolkit.framework */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
 		E5C2C41B268BA4E00046F415 /* DeveloperSettings */ = {
 			isa = PBXGroup;
 			children = (
@@ -2846,6 +2861,10 @@
 					ProjectRef = 5A7048911B94A6700046FFF0 /* Adobe Content Filter.xcodeproj */;
 				},
 				{
+					ProductGroup = E5C0C55F26A9D758004A38F4 /* Products */;
+					ProjectRef = E5C0C55E26A9D758004A38F4 /* NYPLAEToolkit.xcodeproj */;
+				},
+				{
 					ProductGroup = A49C25411AE05A2600D63B89 /* Products */;
 					ProjectRef = A49C25401AE05A2600D63B89 /* RDServices.xcodeproj */;
 				},
@@ -2897,6 +2916,13 @@
 			fileType = archive.ar;
 			path = libRDServices.a;
 			remoteRef = A49C25451AE05A2600D63B89 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		E5C0C56326A9D758004A38F4 /* NYPLAEToolkit.framework */ = {
+			isa = PBXReferenceProxy;
+			fileType = wrapper.framework;
+			path = NYPLAEToolkit.framework;
+			remoteRef = E5C0C56226A9D758004A38F4 /* PBXContainerItemProxy */;
 			sourceTree = BUILT_PRODUCTS_DIR;
 		};
 /* End PBXReferenceProxy section */
@@ -4005,7 +4031,6 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 6;
 				CURRENT_PROJECT_VERSION = 7;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -4029,7 +4054,6 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.0.6;
 				MARKETING_VERSION = 0.0.7;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PROVISIONING_PROFILE = "2e185b6c-271e-4b02-a05e-860b8c3831f6";
@@ -4063,7 +4087,6 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 6;
 				CURRENT_PROJECT_VERSION = 7;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -4087,7 +4110,6 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.0.6;
 				MARKETING_VERSION = 0.0.7;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PROVISIONING_PROFILE = "b3d9154d-70e1-48d6-a0c5-869431277a5c";
