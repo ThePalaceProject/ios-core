@@ -130,20 +130,20 @@
 
 - (void)openEPUB:(TPPBook *)book
 {
-  if (TPPSettings.shared.useR2) {
+  if (TPPSettings.shared.useR1) {
+    // R1
+    TPPReaderViewController *readerVC = [[TPPReaderViewController alloc] initWithBookIdentifier:book.identifier];
+    [[TPPRootTabBarController sharedController] pushViewController:readerVC animated:YES];
+  } else {
     // R2
     [[TPPRootTabBarController sharedController] presentBook:book];
-
+    
     [TPPAnnotations requestServerSyncStatusForAccount:[TPPUserAccount sharedAccount] completion:^(BOOL enableSync) {
       if (enableSync == YES) {
         Account *currentAccount = [[AccountsManager sharedInstance] currentAccount];
         currentAccount.details.syncPermissionGranted = enableSync;
       }
     }];
-  } else {
-    // R1
-    TPPReaderViewController *readerVC = [[TPPReaderViewController alloc] initWithBookIdentifier:book.identifier];
-    [[TPPRootTabBarController sharedController] pushViewController:readerVC animated:YES];
   }
 }
 
