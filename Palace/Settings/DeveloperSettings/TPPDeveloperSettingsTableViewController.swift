@@ -31,10 +31,6 @@ import Foundation
     TPPSettings.shared.useBetaLibraries = sender.isOn
   }
 
-  func r1SwitchDidChange(sender: UISwitch!) {
-    TPPSettings.shared.useR1 = sender.isOn
-  }
-
   // MARK:- UIViewController
   
   override func loadView() {
@@ -54,14 +50,13 @@ import Foundation
   }
   
   func numberOfSections(in tableView: UITableView) -> Int {
-    return 4
+    return 3
   }
   
   func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
     switch indexPath.section {
     case 0: return cellForBetaLibraries()
-    case 1: return cellForR1Toggle()
-    case 2: return cellForCustomRegsitry()
+    case 1: return cellForCustomRegsitry()
     default: return cellForClearCache()
     }
   }
@@ -71,8 +66,6 @@ import Foundation
     case 0:
       return "Library Settings"
     case 1:
-      return "eReader Settings"
-    case 2:
       return "Library Registry Debugging"
     default:
       return "Data Management"
@@ -87,19 +80,6 @@ import Foundation
     betaLibrarySwitch.setOn(TPPSettings.shared.useBetaLibraries, animated: false)
     betaLibrarySwitch.addTarget(self, action:#selector(librarySwitchDidChange), for:.valueChanged)
     cell.accessoryView = betaLibrarySwitch
-    return cell
-  }
-
-  private func cellForR1Toggle() -> UITableViewCell {
-    let cell = UITableViewCell(style: UITableViewCell.CellStyle.default, reuseIdentifier: "R2ToggleCell")
-    cell.selectionStyle = .none
-    cell.textLabel?.text = "Enable Readium 1"
-    let r1Switch = UISwitch()
-    r1Switch.setOn(TPPSettings.shared.useR1, animated: false)
-    r1Switch.addTarget(self,
-                       action:#selector(r1SwitchDidChange),
-                       for:.valueChanged)
-    cell.accessoryView = r1Switch
     return cell
   }
   
