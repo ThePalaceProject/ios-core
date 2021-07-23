@@ -31,10 +31,14 @@ jobs:
         run: ./scripts/build-3rd-party-dependencies.sh
         env:
           BUILD_CONTEXT: ci
-      - name: Export for Ad Hoc
-        run: ./scripts/xcode-export-adhoc.sh simplye
+      - name: Install provisioning profile
+        run: ./scripts/install-profile.sh
         env:
           BUILD_CONTEXT: ci
+          CI_APPSTORE_MP_BASE64: ${{ secrets.CI_APPSTORE_MP_BASE64 }}
+          CI_DISTRIBUTION_CERT_BASE64: ${{ secrets.CI_DISTRIBUTION_CERT_BASE64 }}
+          CI_DISTRIBUTION_CERT_PW: ${{ secrets.CI_DISTRIBUTION_CERT_PW }}
+          CI_KEYCHAIN_PW: ${{ secrets.CI_KEYCHAIN_PW }}
       - name: Export for App Store
         run: ./scripts/xcode-export-appstore.sh simplye
         env:
