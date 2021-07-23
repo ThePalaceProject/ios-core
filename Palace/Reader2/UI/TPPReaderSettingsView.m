@@ -1,7 +1,6 @@
 #import "TPPConfiguration.h"
 
 #import "TPPReaderSettingsView.h"
-#import "TPPReaderReadiumView.h"
 #import "Palace-Swift.h"
 
 @interface TPPReaderSettingsView ()

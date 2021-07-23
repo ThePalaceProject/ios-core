@@ -39,7 +39,6 @@
 		08A352261BDE8E700040BF1D /* SystemConfiguration.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 08A352251BDE8E700040BF1D /* SystemConfiguration.framework */; };
 		08A352271BDE91B80040BF1D /* libRDServices.a in Frameworks */ = {isa = PBXBuildFile; fileRef = A49C25461AE05A2600D63B89 /* libRDServices.a */; };
 		08C469C11BDAAEB1009D8AFD /* libADEPT.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A569A2C1B8351C6003B5B61 /* libADEPT.a */; settings = {ATTRIBUTES = (Weak, ); }; };
-		08C469C21BDAAEB1009D8AFD /* libAdobe Content Filter.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A7048961B94A6710046FFF0 /* libAdobe Content Filter.a */; settings = {ATTRIBUTES = (Weak, ); }; };
 		11068C55196DD37900E8A94B /* TPPNull.m in Sources */ = {isa = PBXBuildFile; fileRef = 11068C54196DD37900E8A94B /* TPPNull.m */; };
 		11078357198160A50071AB1E /* TPPBookDownloadFailedCell.m in Sources */ = {isa = PBXBuildFile; fileRef = 11078356198160A50071AB1E /* TPPBookDownloadFailedCell.m */; };
 		1107835E19816E3D0071AB1E /* UIView+TPPViewAdditions.m in Sources */ = {isa = PBXBuildFile; fileRef = 1107835D19816E3D0071AB1E /* UIView+TPPViewAdditions.m */; };
@@ -727,13 +726,6 @@
 			remoteGlobalIDString = A4FD2F3A1B601DDA0013DF4F;
 			remoteInfo = ADEPT;
 		};
-		5A7048951B94A6710046FFF0 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 5A7048911B94A6700046FFF0 /* Adobe Content Filter.xcodeproj */;
-			proxyType = 2;
-			remoteGlobalIDString = 5A5B8F981B9455A5002C53E9;
-			remoteInfo = "Adobe Content Filter";
-		};
 		A49C25451AE05A2600D63B89 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = A49C25401AE05A2600D63B89 /* RDServices.xcodeproj */;
@@ -891,8 +883,6 @@
 		112C684E19EF003300106973 /* TPPCatalogFacetGroup.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPCatalogFacetGroup.m; sourceTree = "<group>"; };
 		112C694B197301FE00C48F95 /* TPPBookRegistryRecord.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPBookRegistryRecord.h; sourceTree = "<group>"; };
 		112C694C197301FE00C48F95 /* TPPBookRegistryRecord.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPBookRegistryRecord.m; sourceTree = "<group>"; };
-		113137E51A48DAB90082954E /* TPPReaderReadiumView.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPReaderReadiumView.h; sourceTree = "<group>"; };
-		113137E61A48DAB90082954E /* TPPReaderReadiumView.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPReaderReadiumView.m; sourceTree = "<group>"; };
 		11369D46199527C200BB11F8 /* TPPJSON.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPJSON.h; sourceTree = "<group>"; };
 		11369D47199527C200BB11F8 /* TPPJSON.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPJSON.m; sourceTree = "<group>"; };
 		11396FB7193D289100E16EE8 /* NSDate+NYPLDateAdditions.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "NSDate+NYPLDateAdditions.h"; sourceTree = "<group>"; };
@@ -908,7 +898,6 @@
 		114B7F151A3644CF00B8582B /* NYPLTenPrintCoverView+NYPLImageAdditions.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = "NYPLTenPrintCoverView+NYPLImageAdditions.m"; sourceTree = "<group>"; };
 		114C8CD519BE2FD300719B72 /* TPPAttributedString.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPAttributedString.h; sourceTree = "<group>"; };
 		114C8CD619BE2FD300719B72 /* TPPAttributedString.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPAttributedString.m; sourceTree = "<group>"; };
-		115081381A48E1220007AEA5 /* TPPReaderRenderer.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TPPReaderRenderer.h; sourceTree = "<group>"; };
 		11548C091939136C009DBF2E /* TPPRootTabBarController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPRootTabBarController.h; sourceTree = "<group>"; };
 		11548C0A1939136C009DBF2E /* TPPRootTabBarController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPRootTabBarController.m; sourceTree = "<group>"; };
 		11548C0C1939147D009DBF2E /* TPPCatalogNavigationController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPCatalogNavigationController.h; sourceTree = "<group>"; };
@@ -945,7 +934,6 @@
 		119503E61993F914009FB788 /* libxml2.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libxml2.dylib; path = usr/lib/libxml2.dylib; sourceTree = SDKROOT; };
 		119503E81993F919009FB788 /* libz.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libz.dylib; path = usr/lib/libz.dylib; sourceTree = SDKROOT; };
 		119503EA1993F91E009FB788 /* libc++.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = "libc++.dylib"; path = "usr/lib/libc++.dylib"; sourceTree = SDKROOT; };
-		119503EE1993FB90009FB788 /* TPPReadium.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TPPReadium.h; sourceTree = "<group>"; };
 		1196F7591970727C00F62670 /* TPPMyBooksDownloadCenter.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPMyBooksDownloadCenter.h; sourceTree = "<group>"; };
 		1196F75A1970727C00F62670 /* TPPMyBooksDownloadCenter.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; lineEnding = 0; path = TPPMyBooksDownloadCenter.m; sourceTree = "<group>"; xcLanguageSpecificationIdentifier = xcode.lang.objc; };
 		119BEB87198C43A600121439 /* NSString+TPPStringAdditions.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "NSString+TPPStringAdditions.h"; sourceTree = "<group>"; };
@@ -963,8 +951,6 @@
 		11B20E6D19D9F6DD00877A23 /* TPPReloadView.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPReloadView.m; sourceTree = "<group>"; };
 		11B6020319806CD300800DA9 /* TPPBookDownloadingCell.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPBookDownloadingCell.h; sourceTree = "<group>"; };
 		11B6020419806CD300800DA9 /* TPPBookDownloadingCell.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPBookDownloadingCell.m; sourceTree = "<group>"; };
-		11BFDB34199C08E900378691 /* TPPReaderTOCElement.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPReaderTOCElement.h; sourceTree = "<group>"; };
-		11BFDB35199C08E900378691 /* TPPReaderTOCElement.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPReaderTOCElement.m; sourceTree = "<group>"; };
 		11C113CF19F842B9005B3F63 /* reader.html */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.html; path = reader.html; sourceTree = "<group>"; };
 		11C113D119F842BE005B3F63 /* host_app_feedback.js */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.javascript; path = host_app_feedback.js; sourceTree = "<group>"; };
 		11C113D519F84613005B3F63 /* simplified.js */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.javascript; path = simplified.js; sourceTree = "<group>"; };
@@ -1100,21 +1086,16 @@
 		5A569A261B8351C6003B5B61 /* ADEPT.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = ADEPT.xcodeproj; path = "adept-ios/ADEPT.xcodeproj"; sourceTree = "<group>"; };
 		5A5B90111B946763002C53E9 /* libc++.1.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = "libc++.1.dylib"; path = "usr/lib/libc++.1.dylib"; sourceTree = SDKROOT; };
 		5A5B90141B946CBD002C53E9 /* libstdc++.6.0.9.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = "libstdc++.6.0.9.dylib"; path = "usr/lib/libstdc++.6.0.9.dylib"; sourceTree = SDKROOT; };
-		5A5B90191B946FAD002C53E9 /* TPPReaderContainerDelegate.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPReaderContainerDelegate.h; sourceTree = "<group>"; };
-		5A5B901A1B946FAD002C53E9 /* TPPReaderContainerDelegate.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = TPPReaderContainerDelegate.mm; sourceTree = "<group>"; };
 		5A69290D1B95ACC600FB4C10 /* readium-shared-js_all.js */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.javascript; name = "readium-shared-js_all.js"; path = "readium-shared-js/build-output/_single-bundle/readium-shared-js_all.js"; sourceTree = SOURCE_ROOT; };
 		5A69290F1B95ACD100FB4C10 /* sdk.css */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.css; name = sdk.css; path = "readium-shared-js/build-output/css/sdk.css"; sourceTree = SOURCE_ROOT; };
 		5A69291D1B95C8AD00FB4C10 /* readium-shared-js_all.js.map */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = "sourcecode.module-map"; name = "readium-shared-js_all.js.map"; path = "readium-shared-js/build-output/_single-bundle/readium-shared-js_all.js.map"; sourceTree = SOURCE_ROOT; };
 		5A6929231B95C8B400FB4C10 /* readium-shared-js_all.js.bundles.js */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.javascript; name = "readium-shared-js_all.js.bundles.js"; path = "readium-shared-js/build-output/_single-bundle/readium-shared-js_all.js.bundles.js"; sourceTree = SOURCE_ROOT; };
-		5A7048911B94A6700046FFF0 /* Adobe Content Filter.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = "Adobe Content Filter.xcodeproj"; path = "adobe-content-filter/build/iOS/Adobe Content Filter.xcodeproj"; sourceTree = "<group>"; };
 		5D1B141422CBE3570006C964 /* TPPProblemDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPProblemDocument.swift; sourceTree = "<group>"; };
 		5D1B142922CC179F0006C964 /* TPPAlertUtils.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAlertUtils.swift; sourceTree = "<group>"; };
 		5D3A28CB22D3DA850042B3BD /* UserProfileDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserProfileDocument.swift; sourceTree = "<group>"; };
 		5D3A28D322D3FBB90042B3BD /* UserProfileDocumentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserProfileDocumentTests.swift; sourceTree = "<group>"; };
 		5D60D3532297353C001080D0 /* TPPMigrationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPMigrationManager.swift; sourceTree = "<group>"; };
 		5D73DA3D22A07B9A00162CB8 /* TPPMyBooksDownloadCenterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPMyBooksDownloadCenterTests.swift; sourceTree = "<group>"; };
-		5D7CF86322C19EBA007CAA34 /* TPPReaderContainerDelegateBase.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = TPPReaderContainerDelegateBase.m; sourceTree = "<group>"; };
-		5D7CF86922C1A2F1007CAA34 /* TPPReaderContainerDelegateBase.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TPPReaderContainerDelegateBase.h; sourceTree = "<group>"; };
 		5D7CF8B422C3FC06007CAA34 /* TPPErrorLogger.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPErrorLogger.swift; sourceTree = "<group>"; };
 		5DD5674422B303DF001F0C83 /* TPPDeveloperSettingsTableViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPDeveloperSettingsTableViewController.swift; sourceTree = "<group>"; };
 		5DD5677122B7ECE3001F0C83 /* TPPSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPSettings.swift; sourceTree = "<group>"; };
@@ -1401,8 +1382,6 @@
 		E66AE32F1DC0FCFC00124AE2 /* TPPCirculationAnalytics.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPCirculationAnalytics.swift; sourceTree = "<group>"; };
 		E671FF7C1E3A7068002AB13F /* TPPNetworkQueue.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPNetworkQueue.swift; sourceTree = "<group>"; };
 		E683953A217663B100371072 /* TPPFacetViewDefaultDataSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPFacetViewDefaultDataSource.swift; sourceTree = "<group>"; };
-		E6845D951FB38D1300EBF69A /* TPPReadiumViewSyncManager.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TPPReadiumViewSyncManager.h; sourceTree = "<group>"; };
-		E6845D961FB38D1300EBF69A /* TPPReadiumViewSyncManager.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = TPPReadiumViewSyncManager.m; sourceTree = "<group>"; };
 		E68CCFC41F9F80CF003DDA6C /* TPPBarcode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBarcode.swift; sourceTree = "<group>"; };
 		E69404081E4A789800E566ED /* TPPReachabilityManager.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPReachabilityManager.h; sourceTree = "<group>"; };
 		E69404091E4A789800E566ED /* TPPReachabilityManager.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPReachabilityManager.m; sourceTree = "<group>"; };
@@ -1500,7 +1479,6 @@
 				21986948267E2A120041369E /* ZIPFoundation.xcframework in Frameworks */,
 				219869AA267E792B0041369E /* FirebaseAnalytics.xcframework in Frameworks */,
 				08C469C11BDAAEB1009D8AFD /* libADEPT.a in Frameworks */,
-				08C469C21BDAAEB1009D8AFD /* libAdobe Content Filter.a in Frameworks */,
 				08A352271BDE91B80040BF1D /* libRDServices.a in Frameworks */,
 				08A352221BDE8E560040BF1D /* libicucore.tbd in Frameworks */,
 				5AEA9E011B947419009F71DB /* libc++.dylib in Frameworks */,
@@ -1557,25 +1535,6 @@
 				11F54C2919423A040086FCAF /* NYPLOPDSLinkTests.m */,
 			);
 			name = OPDS;
-			sourceTree = "<group>";
-		};
-		119504051994061E009FB788 /* Reader */ = {
-			isa = PBXGroup;
-			children = (
-				119503EE1993FB90009FB788 /* TPPReadium.h */,
-				113137E51A48DAB90082954E /* TPPReaderReadiumView.h */,
-				113137E61A48DAB90082954E /* TPPReaderReadiumView.m */,
-				5D7CF86922C1A2F1007CAA34 /* TPPReaderContainerDelegateBase.h */,
-				5D7CF86322C19EBA007CAA34 /* TPPReaderContainerDelegateBase.m */,
-				5A5B90191B946FAD002C53E9 /* TPPReaderContainerDelegate.h */,
-				5A5B901A1B946FAD002C53E9 /* TPPReaderContainerDelegate.mm */,
-				115081381A48E1220007AEA5 /* TPPReaderRenderer.h */,
-				11BFDB34199C08E900378691 /* TPPReaderTOCElement.h */,
-				11BFDB35199C08E900378691 /* TPPReaderTOCElement.m */,
-				E6845D951FB38D1300EBF69A /* TPPReadiumViewSyncManager.h */,
-				E6845D961FB38D1300EBF69A /* TPPReadiumViewSyncManager.m */,
-			);
-			name = Reader;
 			sourceTree = "<group>";
 		};
 		11C113D319F842E2005B3F63 /* Reader */ = {
@@ -1666,14 +1625,6 @@
 			isa = PBXGroup;
 			children = (
 				5A569A2C1B8351C6003B5B61 /* libADEPT.a */,
-			);
-			name = Products;
-			sourceTree = "<group>";
-		};
-		5A7048921B94A6700046FFF0 /* Products */ = {
-			isa = PBXGroup;
-			children = (
-				5A7048961B94A6710046FFF0 /* libAdobe Content Filter.a */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -2467,7 +2418,6 @@
 			children = (
 				E585662026979AC100A5FBD5 /* NYPLAEToolkit.xcodeproj */,
 				5A569A261B8351C6003B5B61 /* ADEPT.xcodeproj */,
-				5A7048911B94A6700046FFF0 /* Adobe Content Filter.xcodeproj */,
 				A49C25401AE05A2600D63B89 /* RDServices.xcodeproj */,
 				1112A8191A322C53002B8CC1 /* TenPrintCover.xcodeproj */,
 				A823D816192BABA400B55DE2 /* Palace */,
@@ -2610,7 +2560,6 @@
 				7338755E2423E108000FEB67 /* Network */,
 				73B5E004260567F800225C12 /* OPDS */,
 				73B5E005260567FF00225C12 /* OPDS2 */,
-				119504051994061E009FB788 /* Reader */,
 				73A22980240F26C6006B9EAD /* Reader2 */,
 				73085E222502EDC6008F6244 /* Settings */,
 				7332E143252F756E0043F2E1 /* SignInLogic */,
@@ -2851,10 +2800,6 @@
 					ProjectRef = 5A569A261B8351C6003B5B61 /* ADEPT.xcodeproj */;
 				},
 				{
-					ProductGroup = 5A7048921B94A6700046FFF0 /* Products */;
-					ProjectRef = 5A7048911B94A6700046FFF0 /* Adobe Content Filter.xcodeproj */;
-				},
-				{
 					ProductGroup = E585662126979AC100A5FBD5 /* Products */;
 					ProjectRef = E585662026979AC100A5FBD5 /* NYPLAEToolkit.xcodeproj */;
 				},
@@ -2896,13 +2841,6 @@
 			fileType = archive.ar;
 			path = libADEPT.a;
 			remoteRef = 5A569A2B1B8351C6003B5B61 /* PBXContainerItemProxy */;
-			sourceTree = BUILT_PRODUCTS_DIR;
-		};
-		5A7048961B94A6710046FFF0 /* libAdobe Content Filter.a */ = {
-			isa = PBXReferenceProxy;
-			fileType = archive.ar;
-			path = "libAdobe Content Filter.a";
-			remoteRef = 5A7048951B94A6710046FFF0 /* PBXContainerItemProxy */;
 			sourceTree = BUILT_PRODUCTS_DIR;
 		};
 		A49C25461AE05A2600D63B89 /* libRDServices.a */ = {
