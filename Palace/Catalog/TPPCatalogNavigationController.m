@@ -252,9 +252,8 @@
   [[TPPSettings sharedSettings] setUserHasSeenWelcomeScreen:YES];
   [[TPPBookRegistry sharedRegistry] save];
   [AccountsManager sharedInstance].currentAccount = account;
-  [self dismissViewControllerAnimated:YES completion:^{
-    [self updateFeedAndRegistryOnAccountChange];
-  }];
+  [self updateFeedAndRegistryOnAccountChange];
+  [self dismissViewControllerAnimated:YES completion:nil];
 }
 
 @end
