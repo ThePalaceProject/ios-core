@@ -39,6 +39,7 @@ jobs:
           CI_DISTRIBUTION_CERT_BASE64: ${{ secrets.CI_DISTRIBUTION_CERT_BASE64 }}
           CI_DISTRIBUTION_CERT_PW: ${{ secrets.CI_DISTRIBUTION_CERT_PW }}
           CI_KEYCHAIN_PW: ${{ secrets.CI_KEYCHAIN_PW }}
+          CI_APPLE_FASTLANE_JSON: ${{ secrets.CI_APPLE_FASTLANE_JSON }}
       - name: Export for App Store
         run: ./scripts/xcode-export-appstore.sh simplye
         env:
