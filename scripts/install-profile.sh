@@ -23,7 +23,7 @@ security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
 security unlock-keychain -p "$CI_KEYCHAIN_PW" $KEYCHAIN_PATH
 
 # import certificate to keychain
-security import $CERTIFICATE_PATH -P "$CI_DISTRIBUTION_CERT_PW" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+security import $CERTIFICATE_PATH -P "" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
 security list-keychain -d user -s $KEYCHAIN_PATH
 
 # apply provisioning profile
