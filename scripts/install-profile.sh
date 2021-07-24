@@ -29,3 +29,6 @@ security list-keychain -d user -s $KEYCHAIN_PATH
 # apply provisioning profile
 mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
 cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles
+
+# save App Store API key
+echo $CI_APPLE_FASTLANE_JSON > fastlane/fastlane.json
