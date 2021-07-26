@@ -31,7 +31,7 @@
   if(!self) return nil;
   
   self.title = NSLocalizedString(@"EULA", nil);
-  self.eulaURL = [NSURL URLWithString:TPPSettings.NYPLUserAgreementURLString];
+  self.eulaURL = [NSURL URLWithString:TPPSettings.TPPUserAgreementURLString];
   
   return self;
 }

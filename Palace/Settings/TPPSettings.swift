@@ -19,8 +19,9 @@ import Foundation
     return TPPSettings.shared
   }
 
-  static let NYPLAboutSimplyEURLString = "https://librarysimplified.org/simplye/"
-  static let NYPLUserAgreementURLString = "https://www.librarysimplified.org/EULA/"
+  static let TPPAboutPalaceURLString = "http://thepalaceproject.org/"
+  static let TPPUserAgreementURLString = "https://legal.palaceproject.io/End%20User%20License%20Agreement.html"
+  static let TPPPrivacyPolicyURLString = "https://legal.palaceproject.io/Privacy%20Policy.html"
   
   static private let customMainFeedURLKey = "NYPLSettingsCustomMainFeedURL"
   static private let accountMainFeedURLKey = "NYPLSettingsAccountMainFeedURL"
@@ -28,7 +29,6 @@ import Foundation
   static let userHasAcceptedEULAKey = "NYPLSettingsUserAcceptedEULA"
   static private let userSeenFirstTimeSyncMessageKey = "userSeenFirstTimeSyncMessageKey"
   static private let useBetaLibrariesKey = "NYPLUseBetaLibrariesKey"
-  static private let useR2Key = "NYPLUseR2Key"
   static let settingsLibraryAccountsKey = "NYPLSettingsLibraryAccountsKey"
   static private let versionKey = "NYPLSettingsVersionKey"
   static private let customLibraryRegistryKey = "TPPSettingsCustomLibraryRegistryKey"
@@ -112,16 +112,6 @@ import Foundation
       UserDefaults.standard.synchronize()
       NotificationCenter.default.post(name: NSNotification.Name.TPPUseBetaDidChange,
                                       object: self)
-    }
-  }
-
-  var useR2: Bool {
-    get {
-      return UserDefaults.standard.bool(forKey: TPPSettings.useR2Key)
-    }
-    set(b) {
-      UserDefaults.standard.set(b, forKey: TPPSettings.useR2Key)
-      UserDefaults.standard.synchronize()
     }
   }
 
