@@ -39,6 +39,7 @@ platform :ios do
       }
     )
     pilot(
+      api_key_path: "fastlane/fastlane.json",
       skip_submission: true
     )
   end
