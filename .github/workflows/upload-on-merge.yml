@@ -1,8 +1,13 @@
-name: Palace Build
-on: workflow_dispatch
+name: Palace Build on Merge
+on:
+  pull_request:
+    branches:
+      - develop
+    types: [closed]
 jobs:
   upload-build:
     runs-on: macOS-latest
+    if: github.event.pull_request.merged == true
     steps:
       - name: Force Xcode 12.4
         run: sudo xcode-select -switch /Applications/Xcode_12.4.app
