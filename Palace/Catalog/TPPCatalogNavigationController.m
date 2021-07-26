@@ -223,11 +223,7 @@
 
       UINavigationController *navController = [[UINavigationController alloc] initWithRootViewController:welcomeScreenVC];
 
-      if([[TPPRootTabBarController sharedController] traitCollection].horizontalSizeClass != UIUserInterfaceSizeClassCompact) {
-        [navController setModalPresentationStyle:UIModalPresentationFormSheet];
-      } else {
-        [navController setModalPresentationStyle:UIModalPresentationFullScreen];
-      }
+      [navController setModalPresentationStyle:UIModalPresentationFullScreen];
       [navController setModalTransitionStyle:UIModalTransitionStyleCrossDissolve];
 
       TPPRootTabBarController *vc = [TPPRootTabBarController sharedController];
