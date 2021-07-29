@@ -387,7 +387,7 @@ class OPDS2SamlIDP: NSObject, Codable {
     supportEmail = publication.links.first(where: { $0.rel == "help" })?.href.replacingOccurrences(of: "mailto:", with: "")
     
     authenticationDocumentUrl = publication.links.first(where: { $0.type == "application/vnd.opds.authentication.v1.0+json" })?.href
-    logo = UIImage.init(named: "LibraryLogoMagic")!
+    logo = UIImage(named: "LibraryLogoMagic")!
 
     super.init()
     loadLogo()
@@ -488,7 +488,7 @@ class OPDS2SamlIDP: NSObject, Codable {
          let logoData = Data.init(base64Encoded: modString),
          let logoImage = UIImage(data: logoData) {
         self.logo = logoImage
-      } 
+      }
     }
   }
 }
