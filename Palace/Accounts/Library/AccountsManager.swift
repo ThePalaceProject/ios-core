@@ -51,7 +51,7 @@ let currentAccountIdentifierKey  = "TPPCurrentAccountIdentifier"
   }
 
   private var accountSets = [String: [Account]]()
-  private var accountSetsWorkQueue = DispatchQueue(label: "org.nypl.labs.SimplyE.AccountsManager.workQueue", attributes: .concurrent)
+  private var accountSetsWorkQueue = DispatchQueue(label: "org.thepalaceproject.palace.AccountsManager.workQueue", attributes: .concurrent)
 
   var accountsHaveLoaded: Bool {
     var accounts: [Account]?
