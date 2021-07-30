@@ -1107,7 +1107,6 @@
 		7307A5EC23FF1A8500DE53DE /* TPPOpenSearchDescriptionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPOpenSearchDescriptionTests.swift; sourceTree = "<group>"; };
 		73085E182502DE87008F6244 /* OETutorialChoiceViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = OETutorialChoiceViewController.swift; sourceTree = "<group>"; };
 		73085E192502DE88008F6244 /* TPPPresentationUtils.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPPresentationUtils.swift; sourceTree = "<group>"; };
-		73085E202502E2CD008F6244 /* OpenEBooks_OPDS2_Catalog_Feed.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = OpenEBooks_OPDS2_Catalog_Feed.json; sourceTree = "<group>"; };
 		73085E232502EDEE008F6244 /* TPPSettingsPrimaryTableViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPSettingsPrimaryTableViewController.swift; sourceTree = "<group>"; };
 		73085E242502EDEF008F6244 /* TPPSettingsPrimaryTableItem.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPSettingsPrimaryTableItem.swift; sourceTree = "<group>"; };
 		73085E252502EDF0008F6244 /* TPPSettingsSplitViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPSettingsSplitViewController.swift; sourceTree = "<group>"; };
@@ -1170,10 +1169,6 @@
 		733E3E07257ED49C00BEBA32 /* xcode-archive.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "xcode-archive.sh"; sourceTree = "<group>"; };
 		733E3E08257ED49D00BEBA32 /* archive-and-upload-adhoc.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "archive-and-upload-adhoc.sh"; sourceTree = "<group>"; };
 		733E3E09257ED49D00BEBA32 /* xcode-export-adhoc.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "xcode-export-adhoc.sh"; sourceTree = "<group>"; };
-		733E3E0A257ED52400BEBA32 /* exportOptions-adhoc.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "exportOptions-adhoc.plist"; sourceTree = "<group>"; };
-		733E3E0B257ED52500BEBA32 /* exportOptions-appstore.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "exportOptions-appstore.plist"; sourceTree = "<group>"; };
-		733E3E0C257ED5DF00BEBA32 /* exportOptions-appstore.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "exportOptions-appstore.plist"; sourceTree = "<group>"; };
-		733E3E0D257ED5E000BEBA32 /* exportOptions-adhoc.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "exportOptions-adhoc.plist"; sourceTree = "<group>"; };
 		733FF9BD2530F9E700CDAA13 /* TPPSignInBusinessLogic+OAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPSignInBusinessLogic+OAuth.swift"; sourceTree = "<group>"; };
 		7340DA6124B7E45C00361387 /* URLResponse+NYPL.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "URLResponse+NYPL.swift"; sourceTree = "<group>"; };
 		7340DA6724B7F27900361387 /* TPPBook+Logging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPBook+Logging.swift"; sourceTree = "<group>"; };
@@ -1197,25 +1192,19 @@
 		7358A94B25898F4200E66D34 /* firebase-upload-symbols.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "firebase-upload-symbols.sh"; sourceTree = "<group>"; };
 		7358A951258997A900E66D34 /* xcode-test.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "xcode-test.sh"; sourceTree = "<group>"; };
 		7358A9532589A70B00E66D34 /* decode-install-secrets.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "decode-install-secrets.sh"; sourceTree = "<group>"; };
-		7358EE7B250062BD00DDA0CC /* OEImages.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = OEImages.xcassets; sourceTree = "<group>"; };
-		7358EE902500642900DDA0CC /* OELaunchScreen.xib */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.xib; path = OELaunchScreen.xib; sourceTree = "<group>"; };
-		7358EE922500675700DDA0CC /* Open-eBooks-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Open-eBooks-Info.plist"; sourceTree = "<group>"; };
 		735DD0BD252299A90096D1F9 /* UIColor+NYPLAdditionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UIColor+NYPLAdditionsTests.swift"; sourceTree = "<group>"; };
 		735F41A2243E381D00046182 /* String+NYPLAdditionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "String+NYPLAdditionsTests.swift"; sourceTree = "<group>"; };
 		735FC2D42485C178009CF11E /* SwiftSoup.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftSoup.framework; path = "../r2-navigator-swift/Carthage/Build/iOS/SwiftSoup.framework"; sourceTree = "<group>"; };
-		735FCB392506FACF009A8C95 /* ReaderClientCert.sig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = ReaderClientCert.sig; sourceTree = "<group>"; };
 		735FED252427494900144C97 /* TPPNetworkResponder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPNetworkResponder.swift; sourceTree = "<group>"; };
 		73609AD8245B53CB00F0E08B /* update-certificates.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; name = "update-certificates.sh"; path = "scripts/update-certificates.sh"; sourceTree = SOURCE_ROOT; };
 		7360D0D424BFCB9700C8AD16 /* TPPUserFriendlyError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPUserFriendlyError.swift; sourceTree = "<group>"; };
 		7364D69B2492A38C0087B056 /* Publication+NYPLAdditions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Publication+NYPLAdditions.swift"; sourceTree = "<group>"; };
 		7364FC6025B7C5AB00B0A9FD /* firebase-upload.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "firebase-upload.sh"; sourceTree = "<group>"; };
-		73735306256828EA00FE1B7E /* OpenEBooks_OPDS2_Catalog_Feed-QA.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "OpenEBooks_OPDS2_Catalog_Feed-QA.json"; sourceTree = "<group>"; };
 		7375AE5925382AC900C85211 /* TPPUserAccountMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPUserAccountMock.swift; sourceTree = "<group>"; };
 		737B9F83244FC648002B4464 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = SOURCE_ROOT; };
 		737DCB8B245CCF2300A8F297 /* TPPReaderBookmarksBusinessLogic.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPReaderBookmarksBusinessLogic.swift; sourceTree = "<group>"; };
 		737F4A522549D78100A3C34B /* TPPBookCreationTestsObjc.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = TPPBookCreationTestsObjc.m; sourceTree = "<group>"; };
 		737F4A6A254A137900A3C34B /* TPPSignInBusinessLogic+DRM.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPSignInBusinessLogic+DRM.swift"; sourceTree = "<group>"; };
-		738170142526504800BA2C44 /* GoogleService-Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		7384C756252D20AA0012C2DD /* TPPBook+DistributorChecks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPBook+DistributorChecks.swift"; sourceTree = "<group>"; };
 		7384C7FF242BB43300D5F960 /* TPPCachingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPCachingTests.swift; sourceTree = "<group>"; };
 		7384C801242BCC4800D5F960 /* Date+NYPLAdditions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Date+NYPLAdditions.swift"; sourceTree = "<group>"; };
@@ -1283,7 +1272,6 @@
 		73DED82125A630FF00A4D63B /* Fuzi.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Fuzi.framework; path = Carthage/Build/iOS/Fuzi.framework; sourceTree = "<group>"; };
 		73DED82525A6311A00A4D63B /* GCDWebServer.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = GCDWebServer.framework; path = Carthage/Build/iOS/GCDWebServer.framework; sourceTree = "<group>"; };
 		73E64E65252BB82600276953 /* TPPWelcomeEULAViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPWelcomeEULAViewController.swift; sourceTree = "<group>"; };
-		73E64E6B252BB89A00276953 /* eula.html */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.html; path = eula.html; sourceTree = "<group>"; };
 		73EB0B7525821DF4006BC997 /* Palace-noDRM.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Palace-noDRM.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		73EB0B7F2582CCE9006BC997 /* build-3rd-party-dependencies.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "build-3rd-party-dependencies.sh"; sourceTree = "<group>"; };
 		73EB0B802582CD59006BC997 /* bootstrap-drm.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "bootstrap-drm.sh"; sourceTree = "<group>"; };
@@ -2261,8 +2249,6 @@
 		73CEF839252706E3006B2820 /* PalaceConfig */ = {
 			isa = PBXGroup;
 			children = (
-				733E3E0A257ED52400BEBA32 /* exportOptions-adhoc.plist */,
-				733E3E0B257ED52500BEBA32 /* exportOptions-appstore.plist */,
 				A823D818192BABA400B55DE2 /* Palace-Info.plist */,
 				085D31FB1BE7BE86007F7672 /* ReaderClientCert.sig */,
 				738EF2CB2405E38800F388FB /* GoogleService-Info.plist */,
@@ -2270,23 +2256,6 @@
 				E65977C41F82AC91003CD6BC /* TPP_Launch_Screen.storyboard */,
 			);
 			path = PalaceConfig;
-			sourceTree = SOURCE_ROOT;
-		};
-		73CEF83B25270929006B2820 /* OpenEbooks */ = {
-			isa = PBXGroup;
-			children = (
-				733E3E0D257ED5E000BEBA32 /* exportOptions-adhoc.plist */,
-				733E3E0C257ED5DF00BEBA32 /* exportOptions-appstore.plist */,
-				7358EE922500675700DDA0CC /* Open-eBooks-Info.plist */,
-				735FCB392506FACF009A8C95 /* ReaderClientCert.sig */,
-				738170142526504800BA2C44 /* GoogleService-Info.plist */,
-				73085E202502E2CD008F6244 /* OpenEBooks_OPDS2_Catalog_Feed.json */,
-				73735306256828EA00FE1B7E /* OpenEBooks_OPDS2_Catalog_Feed-QA.json */,
-				7358EE7B250062BD00DDA0CC /* OEImages.xcassets */,
-				7358EE902500642900DDA0CC /* OELaunchScreen.xib */,
-				73E64E6B252BB89A00276953 /* eula.html */,
-			);
-			path = OpenEbooks;
 			sourceTree = SOURCE_ROOT;
 		};
 		73DB2D0924132C8B008346ED /* Internal */ = {
@@ -2576,7 +2545,6 @@
 			children = (
 				737B9F83244FC648002B4464 /* README.md */,
 				73CEF839252706E3006B2820 /* PalaceConfig */,
-				73CEF83B25270929006B2820 /* OpenEbooks */,
 				7300D467258829E1002256A3 /* .github */,
 				73A1DACF2592AD0F00712B5F /* fastlane */,
 				73CEF8332526FE80006B2820 /* scripts */,
@@ -4008,8 +3976,6 @@
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
-				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 5;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CURRENT_PROJECT_VERSION = 7;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
