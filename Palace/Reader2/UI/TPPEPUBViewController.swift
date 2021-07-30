@@ -114,6 +114,7 @@ extension TPPEPUBViewController: TPPUserSettingsReaderDelegate {
         let colors = TPPR1R2UserSettings.colors(for: appearance)
         self.navigator.view.backgroundColor = colors.backgroundColor
         self.view.backgroundColor = colors.backgroundColor
+        self.view.tintColor = colors.textColor
         self.navigationController?.navigationBar.barTintColor = colors.backgroundColor
         self.navigationController?.navigationBar.tintColor = colors.navigationColor
         self.tabBarController?.tabBar.tintColor = colors.navigationColor
