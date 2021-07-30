@@ -861,7 +861,7 @@
 		1111973E1988226F0014462F /* TPPBookDetailDownloadFailedView.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPBookDetailDownloadFailedView.m; sourceTree = "<group>"; };
 		11119740198827850014462F /* TPPBookDetailDownloadingView.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPBookDetailDownloadingView.h; sourceTree = "<group>"; };
 		11119741198827850014462F /* TPPBookDetailDownloadingView.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPBookDetailDownloadingView.m; sourceTree = "<group>"; };
-		1112A8191A322C53002B8CC1 /* TenPrintCover.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = TenPrintCover.xcodeproj; path = "tenprintcover-ios/TenPrintCover.xcodeproj"; sourceTree = "<group>"; };
+		1112A8191A322C53002B8CC1 /* TenPrintCover.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = TenPrintCover.xcodeproj; path = "ios-tenprintcover/TenPrintCover.xcodeproj"; sourceTree = "<group>"; };
 		1114A69F195884CB007507A2 /* TPPCatalogUngroupedFeed.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPCatalogUngroupedFeed.h; sourceTree = "<group>"; };
 		1114A6A0195884CB007507A2 /* TPPCatalogUngroupedFeed.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPCatalogUngroupedFeed.m; sourceTree = "<group>"; };
 		1114A6AC1958B215007507A2 /* TPPLOG.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; lineEnding = 0; path = TPPLOG.h; sourceTree = "<group>"; xcLanguageSpecificationIdentifier = xcode.lang.objcpp; };

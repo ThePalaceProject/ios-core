@@ -4,8 +4,8 @@
 [submodule "readium-shared-js"]
 	path = readium-shared-js
 	url = git@github.com:readium/readium-shared-js.git
-[submodule "tenprintcover-ios"]
-	path = tenprintcover-ios
+[submodule "ios-tenprintcover"]
+	path = ios-tenprintcover
 	url=git@github.com:ThePalaceProject/ios-tenprintcover.git
 [submodule "adept-ios"]
 	path = adept-ios
