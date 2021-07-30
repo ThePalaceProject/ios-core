@@ -25,12 +25,13 @@
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
 			<key>CFBundleURLName</key>
-			<string>org.nypl.labs.SimplyE</string>
+			<string>org.thepalaceproject.palace</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>SimplyE</string>
-				<string>Simplifiedapp</string>
+				<string>PalaceApp</string>
 				<string>OPDS</string>
 			</array>
 		</dict>
