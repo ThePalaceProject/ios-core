@@ -39,16 +39,7 @@ let currentAccountIdentifierKey  = "TPPCurrentAccountIdentifier"
     return shared
   }
 
-  private var accountSet: String {
-    didSet {
-      #if OPENEBOOKS
-      // This must be set up otherwise the rest of catalog loading logic gets
-      // really confused. It's necessary because OE doesn't provide a way to
-      // change the current library.
-      setCurrentAccountIdFromSettings()
-      #endif
-    }
-  }
+  private var accountSet: String
 
   private var accountSets = [String: [Account]]()
   private var accountSetsWorkQueue = DispatchQueue(label: "org.thepalaceproject.palace.AccountsManager.workQueue", attributes: .concurrent)
@@ -95,29 +86,11 @@ let currentAccountIdentifierKey  = "TPPCurrentAccountIdentifier"
     }
   }
 
-  #if OPENEBOOKS
-  private func setCurrentAccountIdFromSettings() {
-    if TPPSettings.shared.useBetaLibraries {
-      currentAccountId = NYPLConfiguration.OpenEBooksUUIDBeta
-    } else {
-      currentAccountId = NYPLConfiguration.OpenEBooksUUIDProd
-    }
-  }
-  #endif
-
   private override init() {
     self.accountSet = TPPConfiguration.customUrlHash() ?? (TPPSettings.shared.useBetaLibraries ? TPPConfiguration.betaUrlHash : TPPConfiguration.prodUrlHash)
     self.ageCheck = TPPAgeCheck(ageCheckChoiceStorage: TPPSettings.shared)
     
     super.init()
-
-    #if OPENEBOOKS
-    // This must be set up otherwise the rest of catalog loading logic gets
-    // really confused. It's necessary because OE doesn't provide a way to
-    // change the current library. This is somewhat the closest parallel to
-    // setting the Simplified library as default in SimplyE.
-    setCurrentAccountIdFromSettings()
-    #endif
 
     NotificationCenter.default.addObserver(
       self,

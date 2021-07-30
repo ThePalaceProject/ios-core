@@ -16,18 +16,6 @@ import Foundation
   }
   
   func librarySwitchDidChange(sender: UISwitch!) {
-    #if OPENEBOOKS
-    // we need to sign out because OE doesn't have the UX of handling multiple
-    // accounts at the same time.
-    if TPPUserAccount.sharedAccount().isSignedIn() {
-      let alert = TPPAlertUtils.alert(title: "Warning",
-                                       message: "Please sign out before changing to/from QA libraries")
-      TPPPresentationUtils.safelyPresent(alert, animated: true) {
-        sender.setOn(!sender.isOn, animated: true)
-      }
-      return
-    }
-    #endif
     TPPSettings.shared.useBetaLibraries = sender.isOn
   }
 

@@ -94,10 +94,6 @@ extension TPPSignInBusinessLogic {
     }
 
     self.deauthorizeDevice()
-
-    #if OPENEBOOKS
-    self.urlSettingsProvider.accountMainFeedURL = nil
-    #endif
   }
 
   private func processLogOutError(_ errorWithProblemDoc: TPPUserFriendlyError,
