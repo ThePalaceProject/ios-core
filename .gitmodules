@@ -4,18 +4,18 @@
 [submodule "readium-shared-js"]
 	path = readium-shared-js
 	url = git@github.com:readium/readium-shared-js.git
-[submodule "tenprintcover-ios"]
-	path = tenprintcover-ios
-	url = git@github.com:NYPL/tenprintcover-ios.git
+[submodule "ios-tenprintcover"]
+	path = ios-tenprintcover
+	url = git@github.com:ThePalaceProject/ios-tenprintcover.git
 [submodule "adept-ios"]
 	path = adept-ios
 	url = git@github.com:ThePalaceProject/ios-drm-adobe.git
 [submodule "adobe-content-filter"]
 	path = adobe-content-filter
 	url = git@github.com:ThePalaceProject/mobile-adobe-content-filter.git
-[submodule "Simplified-Bookmarks-Spec"]
-	path = Simplified-Bookmarks-Spec
-	url = git@github.com:NYPL-Simplified/Simplified-Bookmarks-Spec.git
+[submodule "mobile-bookmark-spec"]
+	path = mobile-bookmark-spec
+	url = git@github.com:ThePalaceProject/mobile-bookmark-spec.git
 [submodule "ios-drm-audioengine"]
 	path = ios-drm-audioengine
 	url = git@github.com:ThePalaceProject/ios-drm-audioengine.git

@@ -4,10 +4,7 @@ import NYPLAudiobookToolkit
 @objcMembers final class TPPKeychainManager: NSObject {
 
   private enum KeychainGroups: String {
-    #if SIMPLYE
-    case legacyKeychainID = "NLJ22T6E9W.org.nypl.labs.SimplyE"
-    #endif
-    case groupKeychainID = "7262U6ST2R.org.nypl.labs.SharedKeychainGroup"
+    case groupKeychainID = "88CBA74T8K.org.thepalaceproject.palace.SharedKeychainGroup"
   }
 
   private static let secClassItems: [String] = [
@@ -18,22 +15,12 @@ import NYPLAudiobookToolkit
     kSecClassIdentity as String
   ]
 
-  #if SIMPLYE
   private static let secAttrAccessGroups: [String] = [
     KeychainGroups.groupKeychainID.rawValue,
-    KeychainGroups.legacyKeychainID.rawValue
   ]
-  #elseif OPENEBOOKS
-  private static let secAttrAccessGroups: [String] = [
-    KeychainGroups.groupKeychainID.rawValue
-  ]
-  #endif
 
   class func validateKeychain() {
     removeItemsFromPreviousInstalls()
-    #if SIMPLYE
-    migrateItemsFromOldSimplyEKeychain()
-    #endif
     updateKeychainForBackgroundFetch()
     manageFeedbooksData()
     manageFeedbookDrmPrivateKey()
@@ -61,27 +48,7 @@ import NYPLAudiobookToolkit
       }
     }
   }
-
-  #if SIMPLYE
-  // Any keychain items in NLJ22T6E9W.org.nypl.labs.SimplyE must be moved to the
-  // new shared keychain with a valid, non-wildcard prefix/App ID in order to ensure
-  // access in 2.1.0 and beyond. This migration can be phased out and removed
-  // from the prov. profile entitlement at a sufficient time that users have moved over (~1 yr).
-  private class func migrateItemsFromOldSimplyEKeychain() {
-    for secClass in secClassItems {
-      let values = getAllKeyChainItemsOfClass(secClass, group: KeychainGroups.legacyKeychainID)
-      for (key, value) in values {
-        TPPKeychain.shared().setObject(value,
-                                        forKey: key,
-                                        accessGroup: KeychainGroups.groupKeychainID.rawValue)
-        TPPKeychain.shared().removeObject(forKey: key,
-                                           accessGroup: KeychainGroups.legacyKeychainID.rawValue)
-        Log.debug(#file, "Keychain item with key: \"\(key)\" found. Migrating item to new shared group...")
-      }
-    }
-  }
-  #endif
-
+  
   private class func getAllKeyChainItemsOfClass(_ secClass: String,
                                                 group: KeychainGroups) -> [String:AnyObject] {
 

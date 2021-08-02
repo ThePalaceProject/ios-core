@@ -46,11 +46,7 @@ import R2Shared
         return
       } else if (!initialized && settings.userHasSeenFirstTimeSyncMessage == false) {
         Log.debug(#file, "Sync has never been initialized for the patron. Showing UIAlertController flow.")
-        #if OPENEBOOKS
-        let title = "Open eBooks Sync"
-        #else
-        let title = "SimplyE Sync"
-        #endif
+        let title = "Palace Sync"
         let message = "Enable sync to save your reading position and bookmarks to your other devices.\n\nYou can change this any time in Settings."
         let alertController = UIAlertController.init(title: title, message: message, preferredStyle: .alert)
         let notNowAction = UIAlertAction.init(title: "Not Now", style: .default, handler: { action in

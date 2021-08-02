@@ -6,11 +6,11 @@
 //  Copyright © 2021 NYPL Labs. All rights reserved.
 //
 
-/// A type representing the [format](https://git.io/JYEkT) of bookmark data
+/// A type representing the [format](https://github.com/ThePalaceProject/mobile-bookmark-spec) of bookmark data
 /// shared between clients nd server in the Library Simplified ecosystem.
 ///
 /// The structure of this type mimics the structure of the spec, as one
-/// can see from the [provided examples](https://git.io/JYYFZ).
+/// can see from the [provided examples](https://github.com/ThePalaceProject/mobile-bookmark-spec/blob/main/valid-bookmark-0.json).
 /// All required keys are listed. When a `value` property is present,
 /// it means it's a required fixed value. E.g. the `"type"` key *MUST*
 /// have a value equal to the `"Annotation"` literal. Fields that allow more
@@ -24,7 +24,7 @@
 /// been consistence in how those bookmarks are defined, especially
 /// cross-platform.
 ///
-/// See the [full spec](https://github.com/NYPL-Simplified/Simplified-Bookmarks-Spec)
+/// See the [full spec](https://github.com/ThePalaceProject/mobile-bookmark-spec)
 /// for more details.
 struct TPPBookmarkSpec {
   struct Context {
@@ -48,7 +48,7 @@ struct TPPBookmarkSpec {
     let value: String?
   }
 
-  /// See https://github.com/NYPL-Simplified/Simplified-Bookmarks-Spec#bodies.
+  /// See hhttps://github.com/ThePalaceProject/mobile-bookmark-spec#bodies.
   struct Body {
     /// The key identifying the `Body` section.
     static let key = "body"
@@ -79,7 +79,7 @@ struct TPPBookmarkSpec {
     }
   }
 
-  /// See https://github.com/NYPL-Simplified/Simplified-Bookmarks-Spec#motivations
+  /// See https://github.com/ThePalaceProject/mobile-bookmark-spec#motivations
   enum Motivation: String {
     /// The key identifying the `Motivation` section.
     static let key = "motivation"
@@ -92,7 +92,7 @@ struct TPPBookmarkSpec {
     case readingProgress = "http://librarysimplified.org/terms/annotation/idling"
   }
 
-  /// See https://github.com/NYPL-Simplified/Simplified-Bookmarks-Spec#targets
+  /// See https://github.com/ThePalaceProject/mobile-bookmark-spec#targets
   struct Target {
     static let key = "target"
 
