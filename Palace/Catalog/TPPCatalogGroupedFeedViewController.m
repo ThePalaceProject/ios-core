@@ -113,15 +113,26 @@ static CGFloat const kTableViewCrossfadeDuration = 0.3;
   [self.facetBarView autoPinEdgeToSuperviewEdge:ALEdgeTrailing];
   [self.facetBarView autoPinToTopLayoutGuideOfViewController:self withInset:0.0];
 
+  UIView *imageBackground = [[UIView alloc] init];
+  imageBackground.backgroundColor = [UIColor colorWithWhite:250/255.0 alpha:1.0];
+  
+  [self.headerView addSubview:imageBackground];
+  
+  [imageBackground autoSetDimension:ALDimensionWidth toSize:100.0];
+  [imageBackground autoSetDimension:ALDimensionHeight toSize:56.0];
+  imageBackground.layer.cornerRadius = 23.0;
+  [imageBackground autoAlignAxisToSuperviewAxis:ALAxisVertical];
+  [self.facetBarView autoPinEdge:ALEdgeBottom toEdge:ALEdgeTop ofView:imageBackground withOffset:-5.0];
+  [self.headerView autoPinEdge:ALEdgeBottom toEdge:ALEdgeBottom ofView:imageBackground withOffset:5.0];
+  
   self.accountLogoImageView = [[UIImageView alloc] initWithImage:AccountsManager.shared.currentAccount.logo];
   self.accountLogoImageView.contentMode = UIViewContentModeScaleAspectFit;
-  [self.headerView addSubview:self.accountLogoImageView];
+  [imageBackground addSubview:self.accountLogoImageView];
   
-  [self.accountLogoImageView autoSetDimension:ALDimensionHeight toSize:75.0];
+  [self.accountLogoImageView autoSetDimension:ALDimensionHeight toSize:50.0];
   [self.accountLogoImageView autoAlignAxisToSuperviewAxis:ALAxisVertical];
-  [self.facetBarView autoPinEdge:ALEdgeBottom toEdge:ALEdgeTop ofView:self.accountLogoImageView withOffset:-10];
-  [self.headerView autoPinEdge:ALEdgeBottom toEdge:ALEdgeBottom ofView:self.accountLogoImageView withOffset:10];
-  
+  [imageBackground autoPinEdge:ALEdgeBottom toEdge:ALEdgeTop ofView:self.accountLogoImageView withOffset:-3.0];
+  [imageBackground autoPinEdge:ALEdgeBottom toEdge:ALEdgeBottom ofView:self.accountLogoImageView withOffset:3.0];
 
   if(self.feed.openSearchURL) {
     self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc]

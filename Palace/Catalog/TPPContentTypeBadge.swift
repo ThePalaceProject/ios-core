@@ -11,19 +11,14 @@ final class TPPContentBadgeImageView: UIImageView {
       case .audiobook:
         return "AudiobookBadge"
       case .ebook:
-        fatalError("No asset yet")
+        return "EbookBadge"
       }
     }
   }
 
   @objc required init(badgeImage: TPPBadgeImage) {
     super.init(image: UIImage(named: badgeImage.assetName()))
-    backgroundColor = TPPConfiguration.mainColor()
-    
-    if #available(iOS 13.0, *) {
-      tintColor = UIColor(named: "ColorInverseLabel")
-    }
-    
+    backgroundColor = TPPConfiguration.palaceRed()
     contentMode = .scaleAspectFit
   }
 

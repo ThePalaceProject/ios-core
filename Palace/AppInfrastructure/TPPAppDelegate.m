@@ -67,8 +67,11 @@ didFinishLaunchingWithOptions:(__attribute__((unused)) NSDictionary *)launchOpti
   [self.window makeKeyAndVisible];
   
   [[UITabBar appearance] setTintColor: [TPPConfiguration iconColor]];
+  [[UITabBar appearance] setTranslucent:NO];
+  [[UITabBar appearance] setBackgroundColor:[TPPConfiguration backgroundColor]];
+
   [[UINavigationBar appearance] setTintColor: [TPPConfiguration iconColor]];
-  [[UINavigationBar appearance] setOpaque:YES];
+  [[UINavigationBar appearance] setTranslucent:NO];
   [[UINavigationBar appearance] setBackgroundColor:[TPPConfiguration backgroundColor]];
   
   [self setUpRootVC];
