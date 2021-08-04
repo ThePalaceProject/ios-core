@@ -35,11 +35,12 @@ static CGFloat const kTableViewCrossfadeDuration = 0.3;
 @property (nonatomic) UIRefreshControl *refreshControl;
 @property (nonatomic) TPPOpenSearchDescription *searchDescription;
 @property (nonatomic) TPPFacetBarView *facetBarView;
+@property (nonatomic) UIImageView *accountLogoImageView;
 @property (nonatomic) UITableView *tableView;
 @property (nonatomic) TPPBook *mostRecentBookSelected;
 @property (nonatomic) int tempBookPosition;
 @property (nonatomic) UITraitCollection *previouslyProcessedTraits;
-
+@property (nonatomic) UIView *headerView;
 @end
 
 @implementation TPPCatalogGroupedFeedViewController
@@ -100,11 +101,27 @@ static CGFloat const kTableViewCrossfadeDuration = 0.3;
   self.facetBarView.entryPointView.delegate = self;
   self.facetBarView.entryPointView.dataSource = self;
 
-  [self.view addSubview:self.facetBarView];
+  self.headerView = [[UIView alloc] init];
+  self.headerView.backgroundColor = [TPPConfiguration backgroundColor];
+  [self.view addSubview:self.headerView];
+  [self.headerView autoPinEdgeToSuperviewEdge:ALEdgeLeading];
+  [self.headerView autoPinEdgeToSuperviewEdge:ALEdgeTrailing];
+  [self.headerView autoPinToTopLayoutGuideOfViewController:self withInset:0.0];
+  
+  [self.headerView addSubview:self.facetBarView];
   [self.facetBarView autoPinEdgeToSuperviewEdge:ALEdgeLeading];
   [self.facetBarView autoPinEdgeToSuperviewEdge:ALEdgeTrailing];
   [self.facetBarView autoPinToTopLayoutGuideOfViewController:self withInset:0.0];
 
+  self.accountLogoImageView = [[UIImageView alloc] initWithImage:AccountsManager.shared.currentAccount.logo];
+  self.accountLogoImageView.contentMode = UIViewContentModeScaleAspectFit;
+  [self.headerView addSubview:self.accountLogoImageView];
+  
+  [self.accountLogoImageView autoSetDimension:ALDimensionHeight toSize:75.0];
+  [self.accountLogoImageView autoAlignAxisToSuperviewAxis:ALAxisVertical];
+  [self.facetBarView autoPinEdge:ALEdgeBottom toEdge:ALEdgeTop ofView:self.accountLogoImageView withOffset:-10];
+  [self.headerView autoPinEdge:ALEdgeBottom toEdge:ALEdgeBottom ofView:self.accountLogoImageView withOffset:10];
+  
 
   if(self.feed.openSearchURL) {
     self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc]
@@ -133,10 +150,7 @@ static CGFloat const kTableViewCrossfadeDuration = 0.3;
   [super didMoveToParentViewController:parent];
   
   if(parent) {
-    CGFloat top = parent.topLayoutGuide.length;
-    if (self.facetBarView.frame.size.height > 0) {
-       top = CGRectGetMaxY(self.facetBarView.frame) + kTableViewInsetAdjustmentWithEntryPoints;
-    }
+    CGFloat top = CGRectGetMaxY(self.headerView.frame) + kTableViewInsetAdjustmentWithEntryPoints;
     CGFloat bottom = parent.bottomLayoutGuide.length;
     
     UIEdgeInsets insets = UIEdgeInsetsMake(top, 0, bottom, 0);

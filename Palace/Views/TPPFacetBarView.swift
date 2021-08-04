@@ -25,17 +25,7 @@ import Foundation
     let toolbarHeight = CGFloat(40);
     
     super.init(frame: CGRect(x: origin.x, y: origin.y, width: width, height: borderHeight + toolbarHeight))
-    
-    var blur: UIVisualEffect;
-    if #available(iOS 13, *) {
-      blur = UIBlurEffect(style: .prominent);
-    } else {
-      blur = UIBlurEffect(style: .extraLight);
-    }
-    let bgBlur = UIVisualEffectView(effect: blur)
-
-    addSubview(bgBlur)
-    bgBlur.autoPinEdgesToSuperviewEdges()
+    backgroundColor = TPPConfiguration.backgroundColor()
 
     self.entryPointView.isHidden = true;
     self.facetView.isHidden = true;

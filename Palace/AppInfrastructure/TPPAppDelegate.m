@@ -68,6 +68,8 @@ didFinishLaunchingWithOptions:(__attribute__((unused)) NSDictionary *)launchOpti
   
   [[UITabBar appearance] setTintColor: [TPPConfiguration iconColor]];
   [[UINavigationBar appearance] setTintColor: [TPPConfiguration iconColor]];
+  [[UINavigationBar appearance] setOpaque:YES];
+  [[UINavigationBar appearance] setBackgroundColor:[TPPConfiguration backgroundColor]];
   
   [self setUpRootVC];
 

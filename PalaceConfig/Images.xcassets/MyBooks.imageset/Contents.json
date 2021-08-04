@@ -1,22 +1,23 @@
 {
   "images" : [
     {
+      "filename" : "MyBooks.png",
       "idiom" : "universal",
-      "scale" : "1x",
-      "filename" : "MyBooks.png"
+      "scale" : "1x"
     },
     {
+      "filename" : "MyBooks@2x.png",
       "idiom" : "universal",
-      "scale" : "2x",
-      "filename" : "MyBooks@2x.png"
+      "scale" : "2x"
     },
     {
+      "filename" : "MyBooks@3x.png",
       "idiom" : "universal",
       "scale" : "3x"
     }
   ],
   "info" : {
-    "version" : 1,
-    "author" : "xcode"
+    "author" : "xcode",
+    "version" : 1
   }
 }
