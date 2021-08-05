@@ -128,13 +128,15 @@ class TPPRegistryDebuggingCell: UITableViewCell {
   }
   
   @objc private func set() {
+    AccountsManager.shared.clearCache()
+
     guard let text = inputField.text, !text.isEmpty else {
       self.showAlert(title: "Configuration Update Failed", message: "Please enter a valid server URL")
       return
     }
     
-    TPPSettings.shared.customLibraryRegistryServer = inputField.text
-    let message = String(format: "Registry server: %@", inputField.text ?? "")
+    TPPSettings.shared.customLibraryRegistryServer = text
+    let message = String(format: "Registry server: %@", text)
     reloadRegistry { isSuccess in
       if isSuccess {
         self.showAlert(title: "Configuration Updated", message: message)
