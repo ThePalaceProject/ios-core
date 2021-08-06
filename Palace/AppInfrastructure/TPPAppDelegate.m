@@ -67,12 +67,10 @@ didFinishLaunchingWithOptions:(__attribute__((unused)) NSDictionary *)launchOpti
   [self.window makeKeyAndVisible];
   
   [[UITabBar appearance] setTintColor: [TPPConfiguration iconColor]];
-  [[UITabBar appearance] setTranslucent:NO];
   [[UITabBar appearance] setBackgroundColor:[TPPConfiguration backgroundColor]];
   [[UITabBarItem appearance] setTitleTextAttributes:@{NSFontAttributeName: [UIFont palaceFontOfSize:12.0]} forState:UIControlStateNormal];
 
   [[UINavigationBar appearance] setTintColor: [TPPConfiguration iconColor]];
-  [[UINavigationBar appearance] setTranslucent:NO];
   [[UINavigationBar appearance] setBackgroundColor:[TPPConfiguration backgroundColor]];
   [[UINavigationBar appearance] setTitleTextAttributes:@{NSFontAttributeName: [UIFont semiBoldPalaceFontOfSize:18.0]}];
   
