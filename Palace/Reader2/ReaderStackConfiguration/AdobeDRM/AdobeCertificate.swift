@@ -66,7 +66,7 @@ extension AdobeCertificate {
   }
   
   /// Period of notification for expired Adobe DRM certificate
-  fileprivate static let notificationPeriod: TimeInterval = 10 //60 * 60
+  fileprivate static let notificationPeriod: TimeInterval = 60 * 60
   
   /// Last expired DRM certificate notification date
   fileprivate static var notificationDate: Date?
