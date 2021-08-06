@@ -89,8 +89,8 @@ CGFloat const marginPadding = 2.0;
   self = [super initWithStyle:UITableViewStyleGrouped];
   if(!self) return nil;
 
-  NYPLADEPT *adeptInstance = nil;
 #if FEATURE_DRM_CONNECTOR
+  NYPLADEPT *adeptInstance = nil;
   if ([AdobeCertificate.defaultCertificate hasExpired] == NO) {
     adeptInstance = [NYPLADEPT sharedInstance];
   }
@@ -104,7 +104,12 @@ CGFloat const marginPadding = 2.0;
                         bookDownloadsCenter:[TPPMyBooksDownloadCenter sharedDownloadCenter]
                         userAccountProvider:[TPPUserAccount class]
                         uiDelegate:self
-                        drmAuthorizer:adeptInstance
+                        drmAuthorizer:
+#if FEATURE_DRM_CONNECTOR
+                        adeptInstance
+#else
+                        nil
+#endif
                         ];
 
   self.title = NSLocalizedString(@"Sign In", nil);

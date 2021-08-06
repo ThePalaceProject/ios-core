@@ -1080,6 +1080,7 @@ didCompleteWithError:(NSError *)error
       }
     }
   } else {
+#if FEATURE_DRM_CONNECTOR
     if ([AdobeCertificate.defaultCertificate hasExpired] == YES) {
       // ADEPT crashes the app with expired certificate.
       UIAlertController *alert = [TPPAlertUtils
@@ -1093,6 +1094,12 @@ didCompleteWithError:(NSError *)error
          [[TPPMyBooksDownloadCenter sharedDownloadCenter] startDownloadForBook:book];
        }];
     }
+#else
+    [TPPAccountSignInViewController
+     requestCredentialsWithCompletion:^{
+       [[TPPMyBooksDownloadCenter sharedDownloadCenter] startDownloadForBook:book];
+     }];
+#endif
   }
 }
 
