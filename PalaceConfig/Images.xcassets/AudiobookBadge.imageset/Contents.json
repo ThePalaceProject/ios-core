@@ -1,19 +1,8 @@
 {
   "images" : [
     {
-      "filename" : "AudiobookBadge.png",
-      "idiom" : "universal",
-      "scale" : "1x"
-    },
-    {
-      "filename" : "AudiobookBadge@2x.png",
-      "idiom" : "universal",
-      "scale" : "2x"
-    },
-    {
-      "filename" : "AudiobookBadge@3x.png",
-      "idiom" : "universal",
-      "scale" : "3x"
+      "filename" : "AudiobookBadge.pdf",
+      "idiom" : "universal"
     }
   ],
   "info" : {
