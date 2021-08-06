@@ -314,7 +314,7 @@ viewForHeaderInSection:(NSInteger const)section
   
   {
     UIButton *const button = [UIButton buttonWithType:UIButtonTypeSystem];
-    button.titleLabel.font = [UIFont systemFontOfSize:21];
+    button.titleLabel.font = [UIFont palaceFontOfSize:21];
     NSString *const title = ((TPPCatalogLane *) self.feed.lanes[section]).title;
     [button setTitle:title forState:UIControlStateNormal];
     [button sizeToFit];
@@ -334,7 +334,7 @@ viewForHeaderInSection:(NSInteger const)section
   
   {
     UIButton *const button = [UIButton buttonWithType:UIButtonTypeSystem];
-    button.titleLabel.font = [UIFont systemFontOfSize:13];
+    button.titleLabel.font = [UIFont palaceFontOfSize:13];
     NSString *const title = NSLocalizedString(@"More...", nil);
     [button setTitle:title forState:UIControlStateNormal];
     [button sizeToFit];

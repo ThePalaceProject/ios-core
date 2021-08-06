@@ -99,7 +99,7 @@
   self.backgroundColor = [TPPConfiguration mainColor];
   
   self.authorsLabel = [[UILabel alloc] init];
-  self.authorsLabel.font = [UIFont systemFontOfSize:12];
+  self.authorsLabel.font = [UIFont palaceFontOfSize:12];
   self.authorsLabel.textColor = [TPPConfiguration backgroundColor];
   [self.contentView addSubview:self.authorsLabel];
   
@@ -114,13 +114,13 @@
   [self.contentView addSubview:self.cancelButton];
   
   self.downloadingLabel = [[UILabel alloc] init];
-  self.downloadingLabel.font = [UIFont systemFontOfSize:12];
+  self.downloadingLabel.font = [UIFont palaceFontOfSize:12];
   self.downloadingLabel.text = NSLocalizedString(@"Downloading", nil);
   self.downloadingLabel.textColor = [TPPConfiguration backgroundColor];
   [self.contentView addSubview:self.downloadingLabel];
   
   self.percentageLabel = [[UILabel alloc] init];
-  self.percentageLabel.font = [UIFont systemFontOfSize:12];
+  self.percentageLabel.font = [UIFont palaceFontOfSize:12];
   self.percentageLabel.textColor = [TPPConfiguration backgroundColor];
   self.percentageLabel.textAlignment = NSTextAlignmentRight;
   self.percentageLabel.text = TPPLocalizationNotNeeded(@"0%");
@@ -132,7 +132,7 @@
   [self.contentView addSubview:self.progressView];
   
   self.titleLabel = [[UILabel alloc] init];
-  self.titleLabel.font = [UIFont boldSystemFontOfSize:17];
+  self.titleLabel.font = [UIFont boldPalaceFontOfSize:17];
   self.titleLabel.textColor = [TPPConfiguration backgroundColor];
   [self.contentView addSubview:self.titleLabel];
 }

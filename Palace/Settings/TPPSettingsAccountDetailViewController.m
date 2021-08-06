@@ -979,12 +979,12 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
     logoView.contentMode = UIViewContentModeScaleAspectFit;
     
     titleLabel.text = self.selectedAccount.name;
-    titleLabel.font = [UIFont systemFontOfSize:14];
+    titleLabel.font = [UIFont palaceFontOfSize:14];
     subtitleLabel.text = self.selectedAccount.subtitle;
     if (subtitleLabel.text == nil || [subtitleLabel.text isEqualToString:@""]) {
       subtitleLabel.text = @" "; // Make sure it takes up at least some space
     }
-    subtitleLabel.font = [UIFont fontWithName:@"AvenirNext-Regular" size:12];
+    subtitleLabel.font = [UIFont palaceFontOfSize:12];
     
     [containerView addSubview:titleLabel];
     [containerView addSubview:subtitleLabel];

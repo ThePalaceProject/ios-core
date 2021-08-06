@@ -125,7 +125,7 @@
                        initWithString:NSLocalizedString(@"AlphabetFontStyle", nil)
                        attributes:whiteColourWithUnderline]
    forState:UIControlStateDisabled];
-  self.whiteOnBlackButton.titleLabel.font = [UIFont systemFontOfSize:18];
+  self.whiteOnBlackButton.titleLabel.font = [UIFont palaceFontOfSize:18];
   [self.whiteOnBlackButton addTarget:self
                               action:@selector(didSelectWhiteOnBlack)
                     forControlEvents:UIControlEventTouchUpInside];
@@ -143,7 +143,7 @@
   
   [self.blackOnSepiaButton setAttributedTitle:[[NSAttributedString alloc] initWithString:NSLocalizedString(@"AlphabetFontStyle", nil)
                                                                               attributes:underlineAttribute] forState:UIControlStateDisabled];
-  self.blackOnSepiaButton.titleLabel.font = [UIFont systemFontOfSize:18];
+  self.blackOnSepiaButton.titleLabel.font = [UIFont palaceFontOfSize:18];
   [self.blackOnSepiaButton addTarget:self
                               action:@selector(didSelectBlackOnSepia)
                     forControlEvents:UIControlEventTouchUpInside];
@@ -161,7 +161,7 @@
   
   [self.blackOnWhiteButton setAttributedTitle:[[NSAttributedString alloc] initWithString:NSLocalizedString(@"AlphabetFontStyle", nil)
                                                                               attributes:underlineAttribute] forState:UIControlStateDisabled];
-  self.blackOnWhiteButton.titleLabel.font = [UIFont systemFontOfSize:18];
+  self.blackOnWhiteButton.titleLabel.font = [UIFont palaceFontOfSize:18];
   [self.blackOnWhiteButton addTarget:self
                               action:@selector(didSelectBlackOnWhite)
                     forControlEvents:UIControlEventTouchUpInside];
@@ -173,7 +173,7 @@
   [self.decreaseButton setTitleColor:[UIColor blackColor] forState:UIControlStateNormal];
   [self.decreaseButton setTitleColor:[UIColor lightGrayColor] forState:UIControlStateDisabled];
   [self.decreaseButton setTitle:@"A" forState:UIControlStateNormal];
-  self.decreaseButton.titleLabel.font = [UIFont systemFontOfSize:14];
+  self.decreaseButton.titleLabel.font = [UIFont palaceFontOfSize:14];
   [self.decreaseButton addTarget:self
                           action:@selector(didSelectDecrease)
                 forControlEvents:UIControlEventTouchUpInside];
@@ -184,7 +184,7 @@
   [self.increaseButton setTitleColor:[UIColor blackColor] forState:UIControlStateNormal];
   [self.increaseButton setTitleColor:[UIColor lightGrayColor] forState:UIControlStateDisabled];
   [self.increaseButton setTitle:@"A" forState:UIControlStateNormal];
-  self.increaseButton.titleLabel.font = [UIFont systemFontOfSize:24];
+  self.increaseButton.titleLabel.font = [UIFont palaceFontOfSize:24];
   [self.increaseButton addTarget:self
                           action:@selector(didSelectIncrease)
                 forControlEvents:UIControlEventTouchUpInside];

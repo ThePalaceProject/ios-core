@@ -66,13 +66,13 @@ private let TPPRoundedButtonPadding: CGFloat = 6.0
   
   // MARK: - UI
   private func setupUI() {
-    titleLabel?.font = UIFont.systemFont(ofSize: 14)
+    titleLabel?.font = UIFont.palaceFont(ofSize: 14)
     layer.borderColor = tintColor.cgColor
     layer.borderWidth = 1
     layer.cornerRadius = 3
     
     label.textColor = self.tintColor
-    label.font = UIFont.systemFont(ofSize: 9)
+    label.font = UIFont.palaceFont(ofSize: 9)
     
     addSubview(label)
     addSubview(iconView)

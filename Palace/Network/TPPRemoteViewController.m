@@ -251,7 +251,7 @@
   [self.view addSubview:self.activityIndicatorView];
   
   self.activityIndicatorLabel = [[UILabel alloc] init];
-  self.activityIndicatorLabel.font = [UIFont systemFontOfSize:14.0];
+  self.activityIndicatorLabel.font = [UIFont palaceFontOfSize:14.0];
   self.activityIndicatorLabel.text = NSLocalizedString(@"Loading... Please wait.", @"Message explaining that the download is still going");
   self.activityIndicatorLabel.hidden = YES;
   [self.view addSubview:self.activityIndicatorLabel];

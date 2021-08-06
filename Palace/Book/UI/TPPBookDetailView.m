@@ -153,7 +153,7 @@ static NSString *DetailHTMLTemplate = nil;
   self.subtitleLabel.font = [UIFont customFontForTextStyle:UIFontTextStyleCaption2];
   self.audiobookLabel.font = [UIFont customFontForTextStyle:UIFontTextStyleCaption2];
   self.authorsLabel.font = [UIFont customFontForTextStyle:UIFontTextStyleCaption2];
-  self.readMoreLabel.titleLabel.font = [UIFont systemFontOfSize:14];
+  self.readMoreLabel.titleLabel.font = [UIFont palaceFontOfSize:14];
   self.summarySectionLabel.font = [UIFont customBoldFontForTextStyle:UIFontTextStyleCaption1];
   self.infoSectionLabel.font = [UIFont customBoldFontForTextStyle:UIFontTextStyleCaption1];
   [self.footerTableView reloadData];

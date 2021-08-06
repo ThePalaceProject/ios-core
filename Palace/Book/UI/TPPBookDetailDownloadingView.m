@@ -27,7 +27,7 @@
   self.translatesAutoresizingMaskIntoConstraints = NO;
   
   self.progressLabel = [[UILabel alloc] init];
-  self.progressLabel.font = [UIFont systemFontOfSize:14];
+  self.progressLabel.font = [UIFont palaceFontOfSize:14];
   self.progressLabel.text = NSLocalizedString(@"Requesting", nil);
   self.progressLabel.textColor = [TPPConfiguration backgroundColor];
   [self addSubview:self.progressLabel];
@@ -35,7 +35,7 @@
   [self.progressLabel autoPinEdgeToSuperviewEdge:ALEdgeLeading withInset:sidePadding];
   
   self.percentageLabel = [[UILabel alloc] init];
-  self.percentageLabel.font = [UIFont systemFontOfSize:14];
+  self.percentageLabel.font = [UIFont palaceFontOfSize:14];
   self.percentageLabel.textColor = [TPPConfiguration backgroundColor];
   self.percentageLabel.textAlignment = NSTextAlignmentRight;
   self.percentageLabel.text = TPPLocalizationNotNeeded(@"0%");

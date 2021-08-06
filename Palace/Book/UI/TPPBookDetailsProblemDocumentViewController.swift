@@ -140,8 +140,8 @@
   }
   
   func generateAttributedText(problemDocument: TPPProblemDocument) -> NSAttributedString {
-    let normalFont = UIFont.systemFont(ofSize: 12)
-    let boldFont = UIFont.boldSystemFont(ofSize: 12)
+    let normalFont = UIFont.palaceFont(ofSize: 12)
+    let boldFont = UIFont.boldPalaceFont(ofSize: 12)
     let type = problemDocument.type ?? "n/a"
     let title = problemDocument.title ?? "n/a"
     let status = problemDocument.status == nil ? "n/a" : "\(problemDocument.status!)"

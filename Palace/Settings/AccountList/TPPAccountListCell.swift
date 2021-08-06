@@ -27,10 +27,10 @@ class TPPAccountListCell: UITableViewCell {
     accessoryType = .disclosureIndicator
     customImageView.contentMode = .scaleAspectFit
     
-    customTextlabel.font = UIFont.systemFont(ofSize: 14)
+    customTextlabel.font = UIFont.palaceFont(ofSize: 14)
     customTextlabel.numberOfLines = 0
     
-    customDetailLabel.font = UIFont(name: "AvenirNext-Regular", size: 12)
+    customDetailLabel.font = UIFont.palaceFont(ofSize: 12)
     customDetailLabel.numberOfLines = 0
     
     textContainer.addSubview(customTextlabel)

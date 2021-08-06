@@ -67,7 +67,7 @@
   
   if(!self.authors) {
     self.authors = [[UILabel alloc] init];
-    self.authors.font = [UIFont systemFontOfSize:12];
+    self.authors.font = [UIFont palaceFontOfSize:12];
     [self.contentView addSubview:self.authors];
   }
   
@@ -82,7 +82,7 @@
   if(!self.title) {
     self.title = [[UILabel alloc] init];
     self.title.numberOfLines = 2;
-    self.title.font = [UIFont systemFontOfSize:17];
+    self.title.font = [UIFont palaceFontOfSize:17];
     [self.contentView addSubview:self.title];
     [self.contentView setNeedsLayout];
   }

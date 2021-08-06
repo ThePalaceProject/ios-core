@@ -23,7 +23,7 @@ static CGFloat const width = 280;
   if(!self) return nil;
   
   self.titleLabel = [[UILabel alloc] init];
-  self.titleLabel.font = [UIFont boldSystemFontOfSize:17];
+  self.titleLabel.font = [UIFont boldPalaceFontOfSize:17];
   self.titleLabel.text = NSLocalizedString(@"ConnectionFailed", nil);
   self.titleLabel.textColor = [UIColor grayColor];
   [self addSubview:self.titleLabel];
@@ -31,7 +31,7 @@ static CGFloat const width = 280;
   self.messageLabel = [[UILabel alloc] init];
   self.messageLabel.numberOfLines = 3;
   self.messageLabel.textAlignment = NSTextAlignmentCenter;
-  self.messageLabel.font = [UIFont systemFontOfSize:12];
+  self.messageLabel.font = [UIFont palaceFontOfSize:12];
   [self setDefaultMessage];
   self.messageLabel.textColor = [UIColor grayColor];
   [self addSubview:self.messageLabel];
