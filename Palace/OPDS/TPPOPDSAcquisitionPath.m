@@ -41,13 +41,16 @@ NSString * const _Nonnull ContentTypeAudiobookZip = @"application/audiobook+zip"
 
 + (NSSet<NSString *> *_Nonnull)supportedTypes
 {
-  static NSMutableSet<NSString *> *types = nil;
+  static NSSet<NSString *> *types = nil;
 
   if (!types) {
-    types = [NSMutableSet setWithArray:@[
+    types = [NSSet setWithArray:@[
       ContentTypeOPDSCatalog,
       ContentTypeBearerToken,
       ContentTypeEpubZip,
+#if FEATURE_DRM_CONNECTOR
+      ContentTypeAdobeAdept,
+#endif
       ContentTypeFindaway,
       ContentTypeOpenAccessAudiobook,
       ContentTypeOpenAccessPDF,
@@ -62,12 +65,14 @@ NSString * const _Nonnull ContentTypeAudiobookZip = @"application/audiobook+zip"
   }
 
 #if FEATURE_DRM_CONNECTOR
-  // Adobe DRM crashes the app when certificate expired.
-  if (!AdobeCertificate.defaultCertificate.hasExpired) {
-    [types addObject:ContentTypeAdobeAdept];
+  // Adobe DRM crashes the app when certificate is expired.
+  if ([AdobeCertificate.defaultCertificate hasExpired] == YES) {
+    NSMutableSet<NSString *> *mutableTypes = [types mutableCopy];
+    [mutableTypes removeObject:ContentTypeAdobeAdept];
+    return [mutableTypes copy];
   }
 #endif
-  return [types copy];
+  return types;
 }
   
 + (NSSet<NSString *> *_Nonnull)supportedSubtypesForType:(NSString *)type

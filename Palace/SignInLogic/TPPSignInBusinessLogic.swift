@@ -278,7 +278,11 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
       switch result {
       case .success(let responseData, _):
         #if FEATURE_DRM_CONNECTOR
-        self.drmAuthorizeUserData(responseData, loggingContext: loggingContext)
+        if (AdobeCertificate.defaultCertificate?.hasExpired == true) {
+          self.finalizeSignIn(forDRMAuthorization: true)
+        } else {
+          self.drmAuthorizeUserData(responseData, loggingContext: loggingContext)
+        }
         #else
         self.finalizeSignIn(forDRMAuthorization: true)
         #endif

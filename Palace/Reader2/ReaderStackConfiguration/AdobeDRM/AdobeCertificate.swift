@@ -47,7 +47,6 @@ extension AdobeCertificate {
   }
     
   /// Default certificate for Palace app.
-  
   @objc static var defaultCertificate: AdobeCertificate? {
     guard let adobeCertUrl = Bundle.main.url(forResource: "ReaderClientCert", withExtension: "sig"),
           let adobeCertData = try? Data(contentsOf: adobeCertUrl) else {
@@ -65,6 +64,25 @@ extension AdobeCertificate {
       return nil
     }
   }
+  
+  /// Period of notification for expired Adobe DRM certificate
+  fileprivate static let notificationPeriod: TimeInterval = 10 //60 * 60
+  
+  /// Last expired DRM certificate notification date
+  fileprivate static var notificationDate: Date?
+
+  /// Returns true every `notificationPeriod` time interval.
+  ///
+  /// Used to avoid showing expiration message every time the user opens the app with expired certificate.
+  @objc static var shouldNotifyAboutExpiration: Bool {
+    if let notificationDate = notificationDate, -notificationDate.timeIntervalSinceNow < notificationPeriod {
+      return false
+    } else {
+      notificationDate = Date()
+      return true
+    }
+  }
+  
 }
 
 #endif

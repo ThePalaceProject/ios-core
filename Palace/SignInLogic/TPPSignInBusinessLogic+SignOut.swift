@@ -157,27 +157,31 @@ extension TPPSignInBusinessLogic {
     AdobeDeviceID: \(adobeDeviceID ?? "N/A")
     """)
 
-    drmAuthorizer?.deauthorize(
-      withUsername: tokenUsername,
-      password: tokenPassword,
-      userID: adobeUserID,
-      deviceID: adobeDeviceID) { [weak self] success, error in
-        if success {
-          Log.info(#file, "*** Successful DRM Deactivation ***")
-        } else {
-          // Even though we failed, let the user continue to log out.
-          // The most likely reason is a user changing their PIN.
-          TPPErrorLogger.logError(error,
-                                   summary: "User lost an activation on signout: ADEPT error",
-                                   metadata: [
-                                    "AdobeUserID": adobeUserID ?? "N/A",
-                                    "DeviceID": adobeDeviceID ?? "N/A",
-                                    "Licensor": licensor,
-                                    "AdobeTokenUsername": tokenUsername ?? "N/A",
-                                    "AdobeTokenPassword": tokenPassword ?? "N/A"])
-        }
+    if let drmAuthorizer = drmAuthorizer {
+      drmAuthorizer.deauthorize(
+        withUsername: tokenUsername,
+        password: tokenPassword,
+        userID: adobeUserID,
+        deviceID: adobeDeviceID) { [weak self] success, error in
+          if success {
+            Log.info(#file, "*** Successful DRM Deactivation ***")
+          } else {
+            // Even though we failed, let the user continue to log out.
+            // The most likely reason is a user changing their PIN.
+            TPPErrorLogger.logError(error,
+                                     summary: "User lost an activation on signout: ADEPT error",
+                                     metadata: [
+                                      "AdobeUserID": adobeUserID ?? "N/A",
+                                      "DeviceID": adobeDeviceID ?? "N/A",
+                                      "Licensor": licensor,
+                                      "AdobeTokenUsername": tokenUsername ?? "N/A",
+                                      "AdobeTokenPassword": tokenPassword ?? "N/A"])
+          }
 
-        self?.completeLogOutProcess()
+          self?.completeLogOutProcess()
+      }
+    } else {
+      self.completeLogOutProcess()
     }
   }
   #endif
