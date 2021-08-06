@@ -11,5 +11,6 @@ adobe-rmsdk
 **/APIKeys.swift
 Carthage*
 **/GoogleService-Info.plist
-**/NYPLSecrets.swift
+**/TPPSecrets.swift
 fastlane/report.xml
+fastlane/*_output

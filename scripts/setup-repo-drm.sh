@@ -19,15 +19,17 @@ else
   echo "Setting up repo for building with DRM support for [$BUILD_CONTEXT]..."
 fi
 
-git submodule update --init --recursive
-
-if [ "$BUILD_CONTEXT" == "ci" ]; then
-  ADOBE_SDK_PATH=./DRM-iOS-AdeptConnector
-else
-  ADOBE_SDK_PATH=../DRM-iOS-AdeptConnector
+if [ "$BUILD_CONTEXT" != "ci" ]; then
+  git submodule update --init --recursive
 fi
 
-ln -s $ADOBE_SDK_PATH adobe-rmsdk
+if [ "$BUILD_CONTEXT" == "ci" ]; then
+  ADOBE_SDK_PATH=./mobile-drm-adeptconnector
+else
+  ADOBE_SDK_PATH=../mobile-drm-adeptconnector
+fi
+
+ln -s $ADOBE_SDK_PATH/uncompressed adobe-rmsdk
 
 cd $ADOBE_SDK_PATH
 ./uncompress.sh
