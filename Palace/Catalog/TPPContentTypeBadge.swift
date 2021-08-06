@@ -11,7 +11,7 @@ final class TPPContentBadgeImageView: UIImageView {
       case .audiobook:
         return "AudiobookBadge"
       case .ebook:
-        return "EbookBadge"
+        fatalError("No asset yet")
       }
     }
   }

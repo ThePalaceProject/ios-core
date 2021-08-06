@@ -61,15 +61,9 @@
     [buttons addObject:button];
     button.accessibilityLabel = book.title;
     [self.scrollView addSubview:button];
-    TPPContentBadgeImageView *badge;
     
-    if ([book defaultBookContentType] == TPPBookContentTypeAudiobook) {
-      button.accessibilityLabel = [@"Audiobook: " stringByAppendingString:book.title];
-      badge = [[TPPContentBadgeImageView alloc] initWithBadgeImage:TPPBadgeImageAudiobook];
-    } else {
-      badge = [[TPPContentBadgeImageView alloc] initWithBadgeImage:TPPBadgeImageEbook];
-      button.accessibilityLabel = [@"Ebook: " stringByAppendingString:book.title];
-    }
+    TPPContentBadgeImageView *badge = [[TPPContentBadgeImageView alloc] initWithBadgeImage:TPPBadgeImageAudiobook];
+    [TPPContentBadgeImageView pinWithBadge:badge toView:button];
     
     [TPPContentBadgeImageView pinWithBadge:badge toView:button];
   }];
