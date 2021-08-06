@@ -90,11 +90,11 @@ CGFloat const marginPadding = 2.0;
   if(!self) return nil;
 
   NYPLADEPT *adeptInstance = nil;
-//#if FEATURE_DRM_CONNECTOR
-//  if ([AdobeCertificate.defaultCertificate hasExpired] == NO) {
+#if FEATURE_DRM_CONNECTOR
+  if ([AdobeCertificate.defaultCertificate hasExpired] == NO) {
     adeptInstance = [NYPLADEPT sharedInstance];
-//  }
-//#endif
+  }
+#endif
   
   self.businessLogic = [[TPPSignInBusinessLogic alloc]
                         initWithLibraryAccountID:AccountsManager.shared.currentAccountId
@@ -104,12 +104,7 @@ CGFloat const marginPadding = 2.0;
                         bookDownloadsCenter:[TPPMyBooksDownloadCenter sharedDownloadCenter]
                         userAccountProvider:[TPPUserAccount class]
                         uiDelegate:self
-                        drmAuthorizer:
-#if FEATURE_DRM_CONNECTOR
-                        adeptInstance
-#else
-                        nil
-#endif
+                        drmAuthorizer:adeptInstance
                         ];
 
   self.title = NSLocalizedString(@"Sign In", nil);
