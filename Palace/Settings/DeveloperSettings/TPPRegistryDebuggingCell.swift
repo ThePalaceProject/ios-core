@@ -46,6 +46,9 @@ class TPPRegistryDebuggingCell: UITableViewCell {
     
     inputField.placeholder = "Input custom server"
     inputField.text = TPPSettings.shared.customLibraryRegistryServer
+    inputField.autocapitalizationType = .none
+    inputField.autocorrectionType = .no
+    
     stackView.addArrangedSubview(inputField)
     inputField.autoSetDimension(.width, toSize: 200, relation: .greaterThanOrEqual)
     
@@ -104,6 +107,7 @@ class TPPRegistryDebuggingCell: UITableViewCell {
     let containerStack = UIStackView()
     containerStack.axis = .vertical
     containerStack.spacing = 10
+    inputField.delegate = self
     
     horizontalStackView.addArrangedSubview(prefixLabel)
     horizontalStackView.addArrangedSubview(inputStackView)
@@ -119,22 +123,20 @@ class TPPRegistryDebuggingCell: UITableViewCell {
   @objc private func clear() {
     inputField.text = nil
     TPPSettings.shared.customLibraryRegistryServer = nil
-    
-    reloadRegistry { isSuccess in
-      if isSuccess {
-        self.showAlert(title: "Configuration Updated", message: "Registry has been reset to default")
-      }
-    }
+    AccountsManager.shared.clearCache()
+    self.showAlert(title: "Configuration Updated", message: "Registry has been reset to default")
   }
   
   @objc private func set() {
+    AccountsManager.shared.clearCache()
+
     guard let text = inputField.text, !text.isEmpty else {
       self.showAlert(title: "Configuration Update Failed", message: "Please enter a valid server URL")
       return
     }
     
-    TPPSettings.shared.customLibraryRegistryServer = inputField.text
-    let message = String(format: "Registry server: %@", inputField.text ?? "")
+    TPPSettings.shared.customLibraryRegistryServer = text
+    let message = String(format: "Registry server: %@", text)
     reloadRegistry { isSuccess in
       if isSuccess {
         self.showAlert(title: "Configuration Updated", message: message)
@@ -160,5 +162,11 @@ class TPPRegistryDebuggingCell: UITableViewCell {
     DispatchQueue.main.async {
       UIApplication.shared.keyWindow?.rootViewController?.present(alert, animated: true, completion: nil)
     }
+  }
+}
+
+extension TPPRegistryDebuggingCell: UITextFieldDelegate {
+  func textFieldDidChangeSelection(_ textField: UITextField) {
+    textField.text = textField.text?.trimmingCharacters(in: .whitespacesAndNewlines)
   }
 }

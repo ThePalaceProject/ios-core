@@ -302,11 +302,9 @@ let currentAccountIdentifierKey  = "TPPCurrentAccountIdentifier"
       self.accountSet = TPPConfiguration.customUrlHash() ?? (TPPSettings.shared.useBetaLibraries ? TPPConfiguration.betaUrlHash : TPPConfiguration.prodUrlHash)
     }
 
-    if self.accounts().isEmpty {
+    if self.accounts().isEmpty || TPPConfiguration.customUrlHash() != nil {
       loadCatalogs(completion: completion)
-    } else {
-      completion?(false)
-    }
+    } 
   }
 
   func clearCache() {

@@ -161,7 +161,12 @@
   }
   
   private func updateNavBar() {
-    let enable = self.userAddedSecondaryAccounts.count + 1 < self.libraryAccounts.count
+    var enable = self.userAddedSecondaryAccounts.count + 1 < self.libraryAccounts.count
+    
+    if TPPSettings.shared.customLibraryRegistryServer != nil {
+      enable = self.userAddedSecondaryAccounts.count < self.libraryAccounts.count
+    }
+    
     self.navigationItem.rightBarButtonItem?.isEnabled = enable
   }
   

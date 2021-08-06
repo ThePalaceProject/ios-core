@@ -149,7 +149,9 @@ Authenticating with any of those barcodes should work.
 
   id<TPPDRMAuthorizing> drmAuthorizer = nil;
 #if defined(FEATURE_DRM_CONNECTOR)
-  drmAuthorizer = [NYPLADEPT sharedInstance];
+  if ([AdobeCertificate.defaultCertificate hasExpired] == NO) {
+    drmAuthorizer = [NYPLADEPT sharedInstance];
+  }
 #endif
 
   self.businessLogic = [[TPPSignInBusinessLogic alloc]

@@ -67,7 +67,11 @@
 
       BOOL workflowsInProgress;
 #if defined(FEATURE_DRM_CONNECTOR)
-      workflowsInProgress = ([NYPLADEPT sharedInstance].workflowsInProgress || [TPPBookRegistry sharedRegistry].syncing == YES);
+      if ([AdobeCertificate.defaultCertificate hasExpired] == NO) {
+        workflowsInProgress = ([NYPLADEPT sharedInstance].workflowsInProgress || [TPPBookRegistry sharedRegistry].syncing == YES);
+      } else {
+        workflowsInProgress = ([TPPBookRegistry sharedRegistry].syncing == YES);
+      }
 #else
       workflowsInProgress = ([TPPBookRegistry sharedRegistry].syncing == YES);
 #endif

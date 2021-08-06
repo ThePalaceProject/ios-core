@@ -75,7 +75,11 @@
   if(!self) return nil;
   
 #if defined(FEATURE_DRM_CONNECTOR)
-  [NYPLADEPT sharedInstance].delegate = self;
+  // If Adobe certificate is expired, but we still are trying to download an Adobe DRM-protected book,
+  // the app will crash
+  if (!AdobeCertificate.defaultCertificate.hasExpired) {
+    [NYPLADEPT sharedInstance].delegate = self;
+  }
 #endif
   
   NSURLSessionConfiguration *const configuration =
@@ -1076,10 +1080,26 @@ didCompleteWithError:(NSError *)error
       }
     }
   } else {
+#if FEATURE_DRM_CONNECTOR
+    if ([AdobeCertificate.defaultCertificate hasExpired] == YES) {
+      // ADEPT crashes the app with expired certificate.
+      UIAlertController *alert = [TPPAlertUtils
+                                  alertWithTitle:NSLocalizedString(@"Something went wrong with the Adobe DRM system", @"Expired DRM certificate title")
+                                  message:NSLocalizedString(@"Some books will be unavailable in this version. Please try updating to the latest version of the application.", @"Expired DRM certificate message")
+                                  ];
+      [TPPAlertUtils presentFromViewControllerOrNilWithAlertController:alert viewController:nil animated:YES completion:nil];
+    } else {
+      [TPPAccountSignInViewController
+       requestCredentialsWithCompletion:^{
+         [[TPPMyBooksDownloadCenter sharedDownloadCenter] startDownloadForBook:book];
+       }];
+    }
+#else
     [TPPAccountSignInViewController
      requestCredentialsWithCompletion:^{
        [[TPPMyBooksDownloadCenter sharedDownloadCenter] startDownloadForBook:book];
      }];
+#endif
   }
 }
 

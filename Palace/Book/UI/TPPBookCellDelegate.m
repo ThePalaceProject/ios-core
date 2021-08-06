@@ -85,6 +85,7 @@
 
   TPPUserAccount *user = [TPPUserAccount sharedAccount];
   if ([user hasCredentials]
+      && [AdobeCertificate.defaultCertificate hasExpired] == NO
       && ![[NYPLADEPT sharedInstance] isUserAuthorized:[user userID]
                                             withDevice:[user deviceID]]) {
     // NOTE: This was cut and pasted while refactoring preexisting work:
