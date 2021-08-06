@@ -89,6 +89,13 @@ CGFloat const marginPadding = 2.0;
   self = [super initWithStyle:UITableViewStyleGrouped];
   if(!self) return nil;
 
+#if FEATURE_DRM_CONNECTOR
+  NYPLADEPT *adeptInstance = nil;
+  if ([AdobeCertificate.defaultCertificate hasExpired] == NO) {
+    adeptInstance = [NYPLADEPT sharedInstance];
+  }
+#endif
+  
   self.businessLogic = [[TPPSignInBusinessLogic alloc]
                         initWithLibraryAccountID:AccountsManager.shared.currentAccountId
                         libraryAccountsProvider:AccountsManager.shared
@@ -99,7 +106,7 @@ CGFloat const marginPadding = 2.0;
                         uiDelegate:self
                         drmAuthorizer:
 #if FEATURE_DRM_CONNECTOR
-                        [NYPLADEPT sharedInstance]
+                        adeptInstance
 #else
                         nil
 #endif

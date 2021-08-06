@@ -166,6 +166,16 @@ performFetchWithCompletionHandler:(void (^)(UIBackgroundFetchResult))backgroundF
 {
   [TPPErrorLogger setUserID:[[TPPUserAccount sharedAccount] barcode]];
   [self completeBecomingActive];
+  
+#if FEATURE_DRM_CONNECTOR
+  if ([AdobeCertificate.defaultCertificate hasExpired] == YES && AdobeCertificate.shouldNotifyAboutExpiration) {
+    UIAlertController *alert = [TPPAlertUtils
+                                alertWithTitle:NSLocalizedString(@"Something went wrong with the Adobe DRM system", @"Expired DRM certificate title")
+                                message:NSLocalizedString(@"Some books will be unavailable in this version. Please try updating to the latest version of the application.", @"Expired DRM certificate message")
+                                ];
+    [TPPAlertUtils presentFromViewControllerOrNilWithAlertController:alert viewController:nil animated:YES completion:nil];
+  }
+#endif
 }
 
 - (void)applicationWillResignActive:(__attribute__((unused)) UIApplication *)application
