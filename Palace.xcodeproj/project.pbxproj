@@ -234,6 +234,8 @@
 		21E35FC3268CC8AC00066F9D /* AdobeContentProtectionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21E35FC2268CC8AC00066F9D /* AdobeContentProtectionService.swift */; };
 		21E7E07B24FEA7E800189224 /* DPLAAudiobooks.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21E7E07A24FEA7E800189224 /* DPLAAudiobooks.swift */; };
 		21EC1B8F2501538600A12384 /* AudioBookVendors+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21EC1B8E2501538600A12384 /* AudioBookVendors+Extensions.swift */; };
+		21F4BF3A26BC62D4000CF592 /* AdobeCertificate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21F4BF3926BC62D4000CF592 /* AdobeCertificate.swift */; };
+		21F4BF3B26BC62D4000CF592 /* AdobeCertificate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21F4BF3926BC62D4000CF592 /* AdobeCertificate.swift */; };
 		2D2B47841D08F8E2007F7764 /* UpdateCheckUpToDate.json in Resources */ = {isa = PBXBuildFile; fileRef = 2D2B47691D08F264007F7764 /* UpdateCheckUpToDate.json */; };
 		2D2B478E1D08FDF5007F7764 /* UpdateCheckNeedsUpdate.json in Resources */ = {isa = PBXBuildFile; fileRef = 2D2B478A1D08FC78007F7764 /* UpdateCheckNeedsUpdate.json */; };
 		2D2B478F1D08FDF5007F7764 /* UpdateCheckUnknown.json in Resources */ = {isa = PBXBuildFile; fileRef = 2D2B47891D08FC78007F7764 /* UpdateCheckUnknown.json */; };
@@ -1051,6 +1053,7 @@
 		21F238C02499155E004DC0B1 /* AdobeDRMContainer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AdobeDRMContainer.h; sourceTree = "<group>"; };
 		21F238C12499155E004DC0B1 /* AdobeDRMContainer.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = AdobeDRMContainer.mm; sourceTree = "<group>"; };
 		21F238C724991A2A004DC0B1 /* AdobeDRMLibraryService.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AdobeDRMLibraryService.swift; sourceTree = "<group>"; };
+		21F4BF3926BC62D4000CF592 /* AdobeCertificate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdobeCertificate.swift; sourceTree = "<group>"; };
 		2D2B47621D08F1ED007F7764 /* PalaceTests-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "PalaceTests-Bridging-Header.h"; sourceTree = "<group>"; };
 		2D2B47691D08F264007F7764 /* UpdateCheckUpToDate.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = UpdateCheckUpToDate.json; sourceTree = "<group>"; };
 		2D2B47721D08F807007F7764 /* PalaceTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PalaceTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -1605,6 +1608,7 @@
 				21DDE32725D2CEFC002CBCE3 /* AdobeDRMContentProtection.swift */,
 				21DDE32D25D31DB4002CBCE3 /* AdobeDRMFetcher.swift */,
 				21E35FC2268CC8AC00066F9D /* AdobeContentProtectionService.swift */,
+				21F4BF3926BC62D4000CF592 /* AdobeCertificate.swift */,
 			);
 			path = AdobeDRM;
 			sourceTree = "<group>";
@@ -3050,6 +3054,7 @@
 				73D8D26825A68C6500DF5F69 /* TPPR2Owner.swift in Sources */,
 				73EB0A6525821DF4006BC997 /* TPPLibraryDescriptionCell.swift in Sources */,
 				73D8D28125A68D4F00DF5F69 /* EPUBModule.swift in Sources */,
+				21F4BF3B26BC62D4000CF592 /* AdobeCertificate.swift in Sources */,
 				73EB0A6725821DF4006BC997 /* TPPCirculationAnalytics.swift in Sources */,
 				73EB0A6825821DF4006BC997 /* TPPBookState.swift in Sources */,
 				73EB0A6925821DF4006BC997 /* APIKeys.swift in Sources */,
@@ -3296,6 +3301,7 @@
 				2D382BD71D08BA99002C423D /* Log.swift in Sources */,
 				11616E11196B0531003D60D9 /* TPPBookRegistry.m in Sources */,
 				081387571BC574DA003DEA6A /* UILabel+NYPLAppearanceAdditions.m in Sources */,
+				21F4BF3A26BC62D4000CF592 /* AdobeCertificate.swift in Sources */,
 				734917D1242D77D800059AA5 /* TPPUserSettingsVC.swift in Sources */,
 				21DDE31F25D2CEAF002CBCE3 /* AdobeDRMContainer.mm in Sources */,
 				734731232514235900BE3D2C /* TPPAppDelegate+SE.swift in Sources */,

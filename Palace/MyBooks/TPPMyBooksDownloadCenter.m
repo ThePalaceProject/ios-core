@@ -75,7 +75,11 @@
   if(!self) return nil;
   
 #if defined(FEATURE_DRM_CONNECTOR)
-  [NYPLADEPT sharedInstance].delegate = self;
+  // If Adobe certificate is expired, but we still are trying to download an Adobe DRM-protected book,
+  // the app will crash
+  if (!AdobeCertificate.defaultCertificate.hasExpired) {
+    [NYPLADEPT sharedInstance].delegate = self;
+  }
 #endif
   
   NSURLSessionConfiguration *const configuration =

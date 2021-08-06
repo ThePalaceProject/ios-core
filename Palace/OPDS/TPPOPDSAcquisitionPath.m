@@ -1,6 +1,6 @@
 #import "TPPOPDSIndirectAcquisition.h"
-
 #import "TPPOPDSAcquisitionPath.h"
+#import "Palace-Swift.h"
 
 NSString * const _Nonnull ContentTypeOPDSCatalog = @"application/atom+xml;type=entry;profile=opds-catalog";
 NSString * const _Nonnull ContentTypeAdobeAdept = @"application/vnd.adobe.adept+xml";
@@ -41,14 +41,11 @@ NSString * const _Nonnull ContentTypeAudiobookZip = @"application/audiobook+zip"
 
 + (NSSet<NSString *> *_Nonnull)supportedTypes
 {
-  static NSSet<NSString *> *types = nil;
+  static NSMutableSet<NSString *> *types = nil;
 
   if (!types) {
-    types = [NSSet setWithArray:@[
+    types = [NSMutableSet setWithArray:@[
       ContentTypeOPDSCatalog,
-#if FEATURE_DRM_CONNECTOR
-      ContentTypeAdobeAdept,
-#endif
       ContentTypeBearerToken,
       ContentTypeEpubZip,
       ContentTypeFindaway,
@@ -64,7 +61,13 @@ NSString * const _Nonnull ContentTypeAudiobookZip = @"application/audiobook+zip"
     ]];
   }
 
-  return types;
+#if FEATURE_DRM_CONNECTOR
+  // Adobe DRM crashes the app when certificate expired.
+  if (!AdobeCertificate.defaultCertificate.hasExpired) {
+    [types addObject:ContentTypeAdobeAdept];
+  }
+#endif
+  return [types copy];
 }
   
 + (NSSet<NSString *> *_Nonnull)supportedSubtypesForType:(NSString *)type
