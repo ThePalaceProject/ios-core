@@ -304,9 +304,7 @@ let currentAccountIdentifierKey  = "TPPCurrentAccountIdentifier"
 
     if self.accounts().isEmpty || TPPConfiguration.customUrlHash() != nil {
       loadCatalogs(completion: completion)
-    } else {
-      completion?(true) //Called when resetting a custom registry
-    }
+    } 
   }
 
   func clearCache() {
