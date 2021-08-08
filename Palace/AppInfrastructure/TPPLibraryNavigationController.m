@@ -33,7 +33,7 @@
 - (void)setNavigationLeftBarButtonForVC:(UIViewController *)vc
 {
   vc.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc]
-                                         initWithImage:[UIImage imageNamed:@"PalaceIcon_subdued"] style:(UIBarButtonItemStylePlain)
+                                         initWithImage:[UIImage imageNamed:@"MyLibraryIcon"] style:(UIBarButtonItemStylePlain)
                                          target:self
                                          action:@selector(switchLibrary)];
   vc.navigationItem.leftBarButtonItem.accessibilityLabel = NSLocalizedString(@"AccessibilitySwitchLibrary", nil);
