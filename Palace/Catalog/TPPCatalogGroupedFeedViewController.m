@@ -133,6 +133,10 @@ static CGFloat const kTableViewCrossfadeDuration = 0.3;
   [self.accountLogoImageView autoAlignAxisToSuperviewAxis:ALAxisVertical];
   [imageBackground autoPinEdge:ALEdgeBottom toEdge:ALEdgeTop ofView:self.accountLogoImageView withOffset:-3.0];
   [imageBackground autoPinEdge:ALEdgeBottom toEdge:ALEdgeBottom ofView:self.accountLogoImageView withOffset:3.0];
+  
+  UITapGestureRecognizer *logoTapRecognizer = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(showAccountPage)];
+  [self.accountLogoImageView addGestureRecognizer:logoTapRecognizer];
+  self.accountLogoImageView.userInteractionEnabled = YES;
 
   if(self.feed.openSearchURL) {
     self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc]
@@ -237,6 +241,13 @@ static CGFloat const kTableViewCrossfadeDuration = 0.3;
 
   TPPLOG_F(@"Presenting book: %@", [self.mostRecentBookSelected loggableShortString]);
   [[[TPPBookDetailViewController alloc] initWithBook:self.mostRecentBookSelected] presentFromViewController:self];
+}
+
+- (void)showAccountPage
+{
+  NSURL *url = [NSURL URLWithString:AccountsManager.shared.currentAccount.details.auths.firstObject.coppaOverUrl];
+  BundledHTMLViewController *webController = [[BundledHTMLViewController alloc] initWithFileURL:url title:AccountsManager.shared.currentAccount.name.capitalizedString];
+  [self.navigationController pushViewController:webController animated:YES];
 }
 
 #pragma mark UITableViewDataSource
