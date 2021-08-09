@@ -245,7 +245,7 @@ static CGFloat const kTableViewCrossfadeDuration = 0.3;
 
 - (void)showAccountPage
 {
-  NSURL *url = [NSURL URLWithString:AccountsManager.shared.currentAccount.details.auths.firstObject.coppaOverUrl];
+  NSURL *url = [NSURL URLWithString:AccountsManager.shared.currentAccount.homePageUrl];
   BundledHTMLViewController *webController = [[BundledHTMLViewController alloc] initWithFileURL:url title:AccountsManager.shared.currentAccount.name.capitalizedString];
   [self.navigationController pushViewController:webController animated:YES];
 }
