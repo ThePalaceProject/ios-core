@@ -66,7 +66,7 @@
   [self.view addSubview:self.searchActivityIndicatorView];
   
   self.searchActivityIndicatorLabel = [[UILabel alloc] init];
-  self.searchActivityIndicatorLabel.font = [UIFont systemFontOfSize:14.0];
+  self.searchActivityIndicatorLabel.font = [UIFont palaceFontOfSize:14.0];
   self.searchActivityIndicatorLabel.text = NSLocalizedString(@"Loading... Please wait.", @"Message explaining that the download is still going");
   self.searchActivityIndicatorLabel.hidden = YES;
   [self.view addSubview:self.searchActivityIndicatorLabel];
@@ -81,7 +81,7 @@
   
   self.noResultsLabel = [[UILabel alloc] init];
   self.noResultsLabel.text = NSLocalizedString(@"NoResultsFound", nil);
-  self.noResultsLabel.font = [UIFont systemFontOfSize:17];
+  self.noResultsLabel.font = [UIFont palaceFontOfSize:17];
   [self.noResultsLabel sizeToFit];
   self.noResultsLabel.hidden = YES;
   [self.view addSubview:self.noResultsLabel];

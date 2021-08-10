@@ -22,9 +22,11 @@
 
 + (UIColor *)readerBackgroundSepiaColor;
 
++ (NSString *)systemFontFamilyName;
+
 + (NSString *)systemFontName;
 
-+ (NSString *)systemFontFamilyName;
++ (NSString *)semiBoldSystemFontName;
 
 + (NSString *)boldSystemFontName;
 

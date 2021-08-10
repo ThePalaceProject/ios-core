@@ -71,7 +71,7 @@
   self.backgroundColor = [UIColor grayColor];
   
   self.authorsLabel = [[UILabel alloc] init];
-  self.authorsLabel.font = [UIFont systemFontOfSize:12];
+  self.authorsLabel.font = [UIFont palaceFontOfSize:12];
   self.authorsLabel.textColor = [TPPConfiguration backgroundColor];
   [self.contentView addSubview:self.authorsLabel];
   
@@ -90,14 +90,14 @@
   [self.buttonContainerView addSubview:self.cancelButton];
   
   self.messageLabel = [[UILabel alloc] init];
-  self.messageLabel.font = [UIFont systemFontOfSize:12];
+  self.messageLabel.font = [UIFont palaceFontOfSize:12];
   self.messageLabel.textColor = [TPPConfiguration backgroundColor];
   self.messageLabel.text = NSLocalizedString(@"DownloadCouldNotBeCompleted", nil);
   self.messageLabel.textAlignment = NSTextAlignmentCenter;
   [self.contentView addSubview:self.messageLabel];
   
   self.titleLabel = [[UILabel alloc] init];
-  self.titleLabel.font = [UIFont boldSystemFontOfSize:17];
+  self.titleLabel.font = [UIFont boldPalaceFontOfSize:17];
   self.titleLabel.textColor = [TPPConfiguration backgroundColor];
   [self.contentView addSubview:self.titleLabel];
   

@@ -61,6 +61,7 @@
     [buttons addObject:button];
     button.accessibilityLabel = book.title;
     [self.scrollView addSubview:button];
+    
     if ([book defaultBookContentType] == TPPBookContentTypeAudiobook) {
       TPPContentBadgeImageView *badge = [[TPPContentBadgeImageView alloc] initWithBadgeImage:TPPBadgeImageAudiobook];
       [TPPContentBadgeImageView pinWithBadge:badge toView:button];

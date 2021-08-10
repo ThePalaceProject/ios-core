@@ -87,14 +87,14 @@ CGFloat const toolbarHeight = 40;
     }
 
     UILabel *const groupLabel = [[UILabel alloc] init];
-    groupLabel.font = [UIFont systemFontOfSize:12];
+    groupLabel.font = [UIFont palaceFontOfSize:12];
     groupLabel.text = [[self.dataSource facetView:self nameForFacetGroupAtIndex:groupIndex]
                        stringByAppendingString:@":"];
     [self.linearView addSubview:groupLabel];
 
     TPPRoundedButton *const button = [[TPPRoundedButton alloc] initWithType:TPPRoundedButtonTypeNormal isFromDetailView:NO];
     button.tag = groupIndex;
-    button.titleLabel.font = [UIFont systemFontOfSize:12];
+    button.titleLabel.font = [UIFont palaceFontOfSize:12];
     if([self.dataSource facetView:self isActiveFacetForFacetGroupAtIndex:groupIndex]) {
       NSUInteger const facetIndex = [self.dataSource
                                      facetView:self

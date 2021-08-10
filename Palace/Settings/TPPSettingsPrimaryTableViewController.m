@@ -125,7 +125,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
   if (section == (sectionCount-1)) {
     if (self.infoLabel == nil) {
       self.infoLabel = [[UILabel alloc] init];
-      [self.infoLabel setFont:[UIFont systemFontOfSize:12]];
+      [self.infoLabel setFont:[UIFont palaceFontOfSize:12]];
       NSString *productName = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleDisplayName"];
       NSString *version = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
       NSString *build = [[NSBundle mainBundle] objectForInfoDictionaryKey:(NSString *)kCFBundleVersionKey];
@@ -178,7 +178,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
                                  initWithStyle:UITableViewCellStyleDefault
                                  reuseIdentifier:nil];
   cell.textLabel.text = text;
-  cell.textLabel.font = [UIFont systemFontOfSize:17];
+  cell.textLabel.font = [UIFont palaceFontOfSize:17];
   if (self.splitViewController.traitCollection.horizontalSizeClass == UIUserInterfaceSizeClassCompact) {
     cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
   } else {

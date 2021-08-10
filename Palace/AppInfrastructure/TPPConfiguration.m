@@ -74,21 +74,24 @@
   return [UIColor yellowColor];
 }
 
-// Set for the whole app via UIView+NYPLFontAdditions.
-+ (NSString *)systemFontName
-{
-  return @"AvenirNext-Medium";
-}
-
-// Set for the whole app via UIView+NYPLFontAdditions.
-+ (NSString *)boldSystemFontName
-{
-  return @"AvenirNext-Bold";
-}
-
 + (NSString *)systemFontFamilyName
 {
-  return @"Avenir Next";
+  return @"OpenSans";
+}
+
++ (NSString *)systemFontName
+{
+  return @"OpenSans-Regular";
+}
+
++ (NSString *)semiBoldSystemFontName
+{
+  return @"OpenSans-SemiBold";
+}
+
++ (NSString *)boldSystemFontName
+{
+  return @"OpenSans-Bold";
 }
 
 + (CGFloat)defaultTOCRowHeight

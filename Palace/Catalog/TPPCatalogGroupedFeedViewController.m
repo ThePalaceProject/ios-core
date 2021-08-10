@@ -35,11 +35,12 @@ static CGFloat const kTableViewCrossfadeDuration = 0.3;
 @property (nonatomic) UIRefreshControl *refreshControl;
 @property (nonatomic) TPPOpenSearchDescription *searchDescription;
 @property (nonatomic) TPPFacetBarView *facetBarView;
+@property (nonatomic) UIImageView *accountLogoImageView;
 @property (nonatomic) UITableView *tableView;
 @property (nonatomic) TPPBook *mostRecentBookSelected;
 @property (nonatomic) int tempBookPosition;
 @property (nonatomic) UITraitCollection *previouslyProcessedTraits;
-
+@property (nonatomic) UIView *headerView;
 @end
 
 @implementation TPPCatalogGroupedFeedViewController
@@ -100,11 +101,42 @@ static CGFloat const kTableViewCrossfadeDuration = 0.3;
   self.facetBarView.entryPointView.delegate = self;
   self.facetBarView.entryPointView.dataSource = self;
 
-  [self.view addSubview:self.facetBarView];
+  self.headerView = [[UIView alloc] init];
+  self.headerView.backgroundColor = [TPPConfiguration backgroundColor];
+  [self.view addSubview:self.headerView];
+  [self.headerView autoPinEdgeToSuperviewEdge:ALEdgeLeading];
+  [self.headerView autoPinEdgeToSuperviewEdge:ALEdgeTrailing];
+  [self.headerView autoPinToTopLayoutGuideOfViewController:self withInset:0.0];
+  
+  [self.headerView addSubview:self.facetBarView];
   [self.facetBarView autoPinEdgeToSuperviewEdge:ALEdgeLeading];
   [self.facetBarView autoPinEdgeToSuperviewEdge:ALEdgeTrailing];
   [self.facetBarView autoPinToTopLayoutGuideOfViewController:self withInset:0.0];
 
+  UIView *imageBackground = [[UIView alloc] init];
+  imageBackground.backgroundColor = [UIColor colorWithWhite:250/255.0 alpha:1.0];
+  
+  [self.headerView addSubview:imageBackground];
+  
+  [imageBackground autoSetDimension:ALDimensionWidth toSize:100.0];
+  [imageBackground autoSetDimension:ALDimensionHeight toSize:56.0];
+  imageBackground.layer.cornerRadius = 23.0;
+  [imageBackground autoAlignAxisToSuperviewAxis:ALAxisVertical];
+  [self.facetBarView autoPinEdge:ALEdgeBottom toEdge:ALEdgeTop ofView:imageBackground withOffset:-5.0];
+  [self.headerView autoPinEdge:ALEdgeBottom toEdge:ALEdgeBottom ofView:imageBackground withOffset:5.0];
+  
+  self.accountLogoImageView = [[UIImageView alloc] initWithImage:AccountsManager.shared.currentAccount.logo];
+  self.accountLogoImageView.contentMode = UIViewContentModeScaleAspectFit;
+  [imageBackground addSubview:self.accountLogoImageView];
+  
+  [self.accountLogoImageView autoSetDimension:ALDimensionHeight toSize:50.0];
+  [self.accountLogoImageView autoAlignAxisToSuperviewAxis:ALAxisVertical];
+  [imageBackground autoPinEdge:ALEdgeBottom toEdge:ALEdgeTop ofView:self.accountLogoImageView withOffset:-3.0];
+  [imageBackground autoPinEdge:ALEdgeBottom toEdge:ALEdgeBottom ofView:self.accountLogoImageView withOffset:3.0];
+  
+  UITapGestureRecognizer *logoTapRecognizer = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(showAccountPage)];
+  [self.accountLogoImageView addGestureRecognizer:logoTapRecognizer];
+  self.accountLogoImageView.userInteractionEnabled = YES;
 
   if(self.feed.openSearchURL) {
     self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc]
@@ -133,10 +165,7 @@ static CGFloat const kTableViewCrossfadeDuration = 0.3;
   [super didMoveToParentViewController:parent];
   
   if(parent) {
-    CGFloat top = parent.topLayoutGuide.length;
-    if (self.facetBarView.frame.size.height > 0) {
-       top = CGRectGetMaxY(self.facetBarView.frame) + kTableViewInsetAdjustmentWithEntryPoints;
-    }
+    CGFloat top = CGRectGetMaxY(self.headerView.frame) + kTableViewInsetAdjustmentWithEntryPoints;
     CGFloat bottom = parent.bottomLayoutGuide.length;
     
     UIEdgeInsets insets = UIEdgeInsetsMake(top, 0, bottom, 0);
@@ -214,6 +243,13 @@ static CGFloat const kTableViewCrossfadeDuration = 0.3;
   [[[TPPBookDetailViewController alloc] initWithBook:self.mostRecentBookSelected] presentFromViewController:self];
 }
 
+- (void)showAccountPage
+{
+  NSURL *url = [NSURL URLWithString:AccountsManager.shared.currentAccount.homePageUrl];
+  BundledHTMLViewController *webController = [[BundledHTMLViewController alloc] initWithFileURL:url title:AccountsManager.shared.currentAccount.name.capitalizedString];
+  [self.navigationController pushViewController:webController animated:YES];
+}
+
 #pragma mark UITableViewDataSource
 
 - (UITableViewCell *)tableView:(__attribute__((unused)) UITableView *)tableView
@@ -289,7 +325,7 @@ viewForHeaderInSection:(NSInteger const)section
   
   {
     UIButton *const button = [UIButton buttonWithType:UIButtonTypeSystem];
-    button.titleLabel.font = [UIFont systemFontOfSize:21];
+    button.titleLabel.font = [UIFont palaceFontOfSize:21];
     NSString *const title = ((TPPCatalogLane *) self.feed.lanes[section]).title;
     [button setTitle:title forState:UIControlStateNormal];
     [button sizeToFit];
@@ -309,7 +345,7 @@ viewForHeaderInSection:(NSInteger const)section
   
   {
     UIButton *const button = [UIButton buttonWithType:UIButtonTypeSystem];
-    button.titleLabel.font = [UIFont systemFontOfSize:13];
+    button.titleLabel.font = [UIFont palaceFontOfSize:13];
     NSString *const title = NSLocalizedString(@"More...", nil);
     [button setTitle:title forState:UIControlStateNormal];
     [button sizeToFit];

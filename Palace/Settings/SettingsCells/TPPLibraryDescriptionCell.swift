@@ -14,7 +14,7 @@ class TPPLibraryDescriptionCell: UITableViewCell {
   let descriptionLabel: UILabel = {
     let label = UILabel()
     label.numberOfLines = 0
-    label.font =  UIFont(name: "AvenirNext-Regular", size: 12)
+    label.font = UIFont.palaceFont(ofSize: 12)
     return label
   }()
 

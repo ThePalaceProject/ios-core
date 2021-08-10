@@ -95,6 +95,7 @@
   self.instructionsLabel = [[UILabel alloc] initWithFrame:CGRectZero];
   self.instructionsLabel.hidden = YES;
   self.instructionsLabel.text = NSLocalizedString(@"When you reserve a book from the catalog, it will show up here. Look here from time to time to see if your book is available to download.", nil);
+  self.instructionsLabel.font = [UIFont palaceFontOfSize:18.0];
   self.instructionsLabel.textAlignment = NSTextAlignmentCenter;
   self.instructionsLabel.textColor = [UIColor colorWithWhite:0.6667 alpha:1.0];
   self.instructionsLabel.numberOfLines = 0;
@@ -189,7 +190,7 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
       title = [[UILabel alloc] init];
       title.textColor = [TPPConfiguration compatibleTextColor];
           
-      title.font = [UIFont systemFontOfSize:12];
+      title.font = [UIFont palaceFontOfSize:12];
       [view addSubview:title];
     }
     if([self bookArrayForSection:indexPath.section] == self.reservedBooks) {

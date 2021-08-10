@@ -33,6 +33,8 @@ static const CGFloat kCollectionViewCrossfadeDuration = 0.3;
 @property (nonatomic) UIActivityIndicatorView *collectionViewActivityIndicator;
 @property (nonatomic) TPPFacetBarView *facetBarView;
 @property (nonatomic) TPPFacetViewDefaultDataSource *facetViewDataSource;
+@property (nonatomic) UIImageView *accountLogoImageView;
+@property (nonatomic) UIView *headerView;
 
 @end
 
@@ -52,7 +54,7 @@ static const CGFloat kCollectionViewCrossfadeDuration = 0.3;
 
 - (UIEdgeInsets)scrollIndicatorInsets
 {
-  return UIEdgeInsetsMake(CGRectGetMaxY(self.facetBarView.frame),
+  return UIEdgeInsetsMake(CGRectGetMaxY(self.headerView.frame),
                           0,
                           self.parentViewController.bottomLayoutGuide.length,
                           0);
@@ -102,11 +104,43 @@ static const CGFloat kCollectionViewCrossfadeDuration = 0.3;
   self.facetViewDataSource = [[TPPFacetViewDefaultDataSource alloc] initWithFacetGroups:self.feed.facetGroups];
   self.facetBarView.facetView.delegate = self;
   self.facetBarView.facetView.dataSource = self.facetViewDataSource;
-
-  [self.view addSubview:self.facetBarView];
+  
+  self.headerView = [[UIView alloc] init];
+  self.headerView.backgroundColor = [TPPConfiguration backgroundColor];
+  [self.view addSubview:self.headerView];
+  [self.headerView autoPinEdgeToSuperviewEdge:ALEdgeLeading];
+  [self.headerView autoPinEdgeToSuperviewEdge:ALEdgeTrailing];
+  [self.headerView autoPinToTopLayoutGuideOfViewController:self withInset:0.0];
+  
+  [self.headerView addSubview:self.facetBarView];
   [self.facetBarView autoPinEdgeToSuperviewEdge:ALEdgeLeading];
   [self.facetBarView autoPinEdgeToSuperviewEdge:ALEdgeTrailing];
   [self.facetBarView autoPinToTopLayoutGuideOfViewController:self withInset:0.0];
+  
+  UIView *imageBackground = [[UIView alloc] init];
+  imageBackground.backgroundColor = [UIColor colorWithWhite:250/255.0 alpha:1.0];
+  
+  [self.headerView addSubview:imageBackground];
+  
+  [imageBackground autoSetDimension:ALDimensionWidth toSize:100.0];
+  [imageBackground autoSetDimension:ALDimensionHeight toSize:56.0];
+  imageBackground.layer.cornerRadius = 23.0;
+  [imageBackground autoAlignAxisToSuperviewAxis:ALAxisVertical];
+  [self.facetBarView autoPinEdge:ALEdgeBottom toEdge:ALEdgeTop ofView:imageBackground withOffset:-12.0];
+  [self.headerView autoPinEdge:ALEdgeBottom toEdge:ALEdgeBottom ofView:imageBackground withOffset:12.0];
+  
+  self.accountLogoImageView = [[UIImageView alloc] initWithImage:AccountsManager.shared.currentAccount.logo];
+  self.accountLogoImageView.contentMode = UIViewContentModeScaleAspectFit;
+  [imageBackground addSubview:self.accountLogoImageView];
+  
+  [self.accountLogoImageView autoSetDimension:ALDimensionHeight toSize:50.0];
+  [self.accountLogoImageView autoAlignAxisToSuperviewAxis:ALAxisVertical];
+  [imageBackground autoPinEdge:ALEdgeBottom toEdge:ALEdgeTop ofView:self.accountLogoImageView withOffset:-3.0];
+  [imageBackground autoPinEdge:ALEdgeBottom toEdge:ALEdgeBottom ofView:self.accountLogoImageView withOffset:3.0];
+  
+  UITapGestureRecognizer *logoTapRecognizer = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(showAccountPage)];
+  [self.accountLogoImageView addGestureRecognizer:logoTapRecognizer];
+  self.accountLogoImageView.userInteractionEnabled = YES;
 
   self.collectionViewActivityIndicator = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleGray];
   self.collectionViewActivityIndicator.hidden = YES;
@@ -131,8 +165,9 @@ static const CGFloat kCollectionViewCrossfadeDuration = 0.3;
   
   if(parent) {
     [self updateActivityIndicator];
+    
     self.collectionView.scrollIndicatorInsets = [self scrollIndicatorInsets];
-    [self.collectionView setContentOffset:CGPointMake(0, -CGRectGetMaxY(self.facetBarView.frame))
+    [self.collectionView setContentOffset:CGPointMake(0, -CGRectGetMaxY(self.headerView.frame))
                                  animated:NO];
   }
 }
@@ -165,6 +200,13 @@ static const CGFloat kCollectionViewCrossfadeDuration = 0.3;
   TPPBook *const book = self.feed.books[indexPath.row];
   
   return TPPBookCellDequeue(collectionView, indexPath, book);
+}
+
+- (void)showAccountPage
+{
+  NSURL *url = [NSURL URLWithString:AccountsManager.shared.currentAccount.homePageUrl];
+  BundledHTMLViewController *webController = [[BundledHTMLViewController alloc] initWithFileURL:url title:AccountsManager.shared.currentAccount.name.capitalizedString];
+  [self.navigationController pushViewController:webController animated:YES];
 }
 
 #pragma mark UICollectionViewDelegate

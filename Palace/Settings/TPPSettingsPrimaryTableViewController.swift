@@ -29,7 +29,7 @@ class TPPSettingsPrimaryTableViewController : UITableViewController {
 
     // Init info label
     self.infoLabel = UILabel()
-    self.infoLabel.font = UIFont.systemFont(ofSize: 12.0)
+    self.infoLabel.font = UIFont.palaceFont(ofSize: 12.0)
     let productName = Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ?? ""
     let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
     let build = Bundle.main.object(forInfoDictionaryKey: kCFBundleVersionKey as String) as? String ?? ""
@@ -74,7 +74,7 @@ class TPPSettingsPrimaryTableViewController : UITableViewController {
   func settingsPrimaryTableViewCell(text: String) -> UITableViewCell {
     let cell = UITableViewCell.init(style: .default, reuseIdentifier: nil)
     cell.textLabel?.text = text
-    cell.textLabel?.font = UIFont.systemFont(ofSize: 17)
+    cell.textLabel?.font = UIFont.palaceFont(ofSize: 17)
     if self.splitVCAncestor?.traitCollection.horizontalSizeClass == .compact {
       cell.accessoryType = .disclosureIndicator
     } else {
