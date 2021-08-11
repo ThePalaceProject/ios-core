@@ -18,10 +18,7 @@ platform :ios do
       output_name: options[:output_name],
       output_directory: options[:export_path],
       export_options: {
-        method: "development",
-        provisioningProfiles: { 
-          "org.thepalaceproject.palace" => "Palace App"
-        }
+        method: "development"
       }
     )
   end
