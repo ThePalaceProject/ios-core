@@ -10,12 +10,14 @@
 
 # create variables
 CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
-PP_PATH=$RUNNER_TEMP/build_pp.mobileprovision
+ASPP_PATH=$RUNNER_TEMP/build_aspp.mobileprovision
+AHPP_PATH=$RUNNER_TEMP/build_ahpp.mobileprovision
 KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
 
 # import certificate and provisioning profile from secrets
 echo -n "$CI_DISTRIBUTION_CERT_BASE64" | base64 --decode --output $CERTIFICATE_PATH
-echo -n "$CI_APPSTORE_MP_BASE64" | base64 --decode --output $PP_PATH
+echo -n "$CI_APPSTORE_MP_BASE64" | base64 --decode --output $ASPP_PATH
+echo -n "$CI_ADHOC_MP_BASE64" | base64 --decode --output $AHPP_PATH
 
 # create temporary keychain
 security create-keychain -p "$CI_KEYCHAIN_PW" $KEYCHAIN_PATH
@@ -28,7 +30,8 @@ security list-keychain -d user -s $KEYCHAIN_PATH
 
 # apply provisioning profile
 mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles
+cp $ASPP_PATH ~/Library/MobileDevice/Provisioning\ Profiles
+cp $AHPP_PATH ~/Library/MobileDevice/Provisioning\ Profiles
 
 # save App Store API key
 echo $CI_APPLE_FASTLANE_JSON > fastlane/fastlane.json
