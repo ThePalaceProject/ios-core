@@ -26,11 +26,17 @@ extension TPPConfiguration {
   }
   
   @objc static func mainColor() -> UIColor {
-    let libAccount = AccountsManager.sharedInstance().currentAccount
-    if let mainColor = libAccount?.details?.mainColor {
-      return TPPAppTheme.themeColorFromString(name: mainColor)
+    UIColor.defaultLabelColor()
+  }
+  
+  @objc static func palaceRed() -> UIColor {
+    if #available(iOS 13, *) {
+      if let color = UIColor(named: "PalaceRed") {
+        return color
+      }
     }
-    return UIColor.defaultLabelColor()
+    
+    return UIColor(red: 248.0/255.0, green: 56.0/255.0, blue: 42.0/255.0, alpha: 1.0)
   }
 
   @objc static func iconLogoBlueColor() -> UIColor {

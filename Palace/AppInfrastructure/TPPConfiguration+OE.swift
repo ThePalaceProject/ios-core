@@ -58,9 +58,8 @@ extension TPPConfiguration {
 
   static func welcomeScreenFont() -> UIFont? {
     if UIDevice.current.userInterfaceIdiom == .phone {
-      return UIFont(name: NYPLConfiguration.systemFontFamilyName(),
-                    size: 18.0)
+      return UIFont.palaceFont(ofSize: 18.0)
     }
-    return UIFont(name: NYPLConfiguration.systemFontFamilyName(), size: 22.0)
+    return UIFont.palaceFont(ofSize: 22.0)
   }
 }

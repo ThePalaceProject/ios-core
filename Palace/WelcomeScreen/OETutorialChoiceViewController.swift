@@ -55,7 +55,7 @@ class OETutorialChoiceViewController : UIViewController {
     loginWithCleverButton.addTarget(self, action: #selector(didSelectClever), for: .touchUpInside)
     loginWithCleverButton.sizeToFit()
     
-    requestCodesButton.titleLabel?.font = UIFont.systemFont(ofSize: 20.0)
+    requestCodesButton.titleLabel?.font = UIFont.palaceFont(ofSize: 20.0)
     requestCodesButton.setTitle(NSLocalizedString("Request New Codes", comment: ""),
                                 for: .normal)
     requestCodesButton.addTarget(self, action: #selector(didSelectRequestCodes),

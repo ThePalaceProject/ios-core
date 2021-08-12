@@ -361,6 +361,7 @@ class OPDS2SamlIDP: NSObject, Codable {
   let supportEmail:String?
   let catalogUrl:String?
   var details:AccountDetails?
+  var homePageUrl: String?
   
   let authenticationDocumentUrl:String?
   var authenticationDocument:OPDS2AuthenticationDocument? {
@@ -388,6 +389,8 @@ class OPDS2SamlIDP: NSObject, Codable {
     
     authenticationDocumentUrl = publication.links.first(where: { $0.type == "application/vnd.opds.authentication.v1.0+json" })?.href
     logo = UIImage(named: "LibraryLogoMagic")!
+    
+    homePageUrl = publication.links.first(where: { $0.rel == "alternate" })?.href
 
     super.init()
     loadLogo()

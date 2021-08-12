@@ -84,7 +84,7 @@ import PureLayout
     let button = UIButton()
     button.accessibilityLabel = buttonTitle
     button.setTitle(buttonTitle, for: UIControl.State())
-    button.titleLabel?.font = UIFont.systemFont(ofSize: 16)
+    button.titleLabel?.font = UIFont.palaceFont(ofSize: 16)
     button.setTitleColor(.white, for: .normal)
     button.layer.backgroundColor = UIColor.black.cgColor
     button.layer.borderColor = UIColor.white.withAlphaComponent(0.33).cgColor
