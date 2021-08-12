@@ -25,7 +25,8 @@ fi
 
 if [[ -d "ios-binaries" ]]; then
   echo "ios-binaries repo appears to be cloned already..."
-else
+elif [ "$BUILD_CONTEXT" != "ci" ]; then
+# see upload*.yml GitHub actions; ios-binaries is cloned with the rest repos
   git clone git@github.com:ThePalaceProject/ios-binaries.git
 fi
 
