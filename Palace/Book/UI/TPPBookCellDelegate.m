@@ -248,7 +248,7 @@
       }];
 
       audiobookVC.hidesBottomBarWhenPushed = YES;
-      audiobookVC.view.tintColor = [TPPConfiguration mainColor];
+      audiobookVC.view.tintColor = [TPPConfiguration compatiblePrimaryColor];
       [[TPPRootTabBarController sharedController] pushViewController:audiobookVC animated:YES];
 
       __weak AudiobookPlayerViewController *weakAudiobookVC = audiobookVC;
