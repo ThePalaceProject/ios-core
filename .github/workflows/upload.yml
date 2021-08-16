@@ -1,4 +1,4 @@
-name: Palace Build
+name: Palace Manual Build
 on: workflow_dispatch
 jobs:
   upload-build:

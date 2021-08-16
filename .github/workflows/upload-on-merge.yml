@@ -1,4 +1,4 @@
-name: Palace Build on Merge
+name: Palace Build
 on:
   pull_request:
     branches:

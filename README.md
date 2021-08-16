@@ -1,3 +1,5 @@
+![Palace Build](https://github.com/ThePalaceProject/ios-core/actions/workflows/upload-on-merge.yml/badge.svg) [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
 # The Palace Project
 
 This repository contains the client-side code for The Palace Project [Palace](https://thepalaceproject.org) application.
@@ -12,7 +14,6 @@ This repository contains the client-side code for The Palace Project [Palace](ht
 ```bash
 git clone git@github.com:ThePalaceProject/ios-core.git
 cd ios-core
-git checkout develop
 
 # one-time set-up
 ./scripts/setup-repo-nodrm.sh
@@ -54,4 +55,13 @@ Release branch names follow the convention: `release/palace/<version>`. For exam
 
 Feature branch names (for features whose development is a month or more): `feature/<feature-name>`, e.g. `feature/my-new-screen`.
 
-Continuous integration is enabled on push events on `develop`, release and feature branches. Palace device builds are uploaded to [ios-binaries](https://github.com/ThePalaceProject/ios-binaries). Commits on release branches also send the same build to TestFlight.
+Continuous integration is enabled on merge events on `develop` branch. Palace device builds are uploaded to [ios-binaries](https://github.com/ThePalaceProject/ios-binaries).
+
+# Palace License
+
+Copyright © 2021 LYRASIS
+
+Licensed under the Apache License, Version 2.0 (the “License”); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an “AS IS” BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
