@@ -138,7 +138,8 @@
   static NSString *const TitleKey = @"title";
   static NSString *const HintKey = @"accessibilityHint";
   static NSString *const AddIndicatorKey = @"addIndicator";
-  
+  [self updateProcessingState:NO];
+
   NSString *fulfillmentId = [[TPPBookRegistry sharedRegistry] fulfillmentIdForIdentifier:self.book.identifier];
   
   switch(self.state) {
@@ -406,7 +407,7 @@
   self.activityIndicator.center = self.readButton.center;
   [self updateProcessingState:YES];
   [self.delegate didSelectReadForBook:self.book];
-  [[TPPRootTabBarController sharedController] dismissViewControllerAnimated:true completion:nil];
+  [[TPPRootTabBarController sharedController] dismissViewControllerAnimated:YES completion:nil];
 
 }
 

@@ -97,6 +97,9 @@
   } else {
     self.navigationController.navigationBarHidden = NO;
   }
+  
+  [self.bookDetailView setState:[[TPPBookRegistry sharedRegistry]
+                                 stateForIdentifier:self.book.identifier]];
 }
 
 - (void)viewDidAppear:(BOOL)animated

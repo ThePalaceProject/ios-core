@@ -145,6 +145,7 @@ typedef NS_ENUM(NSInteger, FacetSort) {
   self.instructionsLabel.text = NSLocalizedString(@"MyBooksGoToCatalog", nil);
   self.instructionsLabel.textAlignment = NSTextAlignmentCenter;
   self.instructionsLabel.textColor = [UIColor colorWithWhite:0.6667 alpha:1.0];
+  self.instructionsLabel.font = [UIFont palaceFontOfSize:18.0];
   self.instructionsLabel.numberOfLines = 0;
   [self.view addSubview:self.instructionsLabel];
   [self.instructionsLabel autoCenterInSuperview];
