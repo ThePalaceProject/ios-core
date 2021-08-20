@@ -20,6 +20,9 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   private static let bookmarkOnImageName = "BookmarkOn"
   private static let bookmarkOffImageName = "BookmarkOff"
 
+  // Side margins for long labels
+  private static let overlayLabelMargin: CGFloat = 20
+  
   // TODO: SIMPLY-2656 See if we still need this.
   weak var moduleDelegate: ModuleDelegate?
 
@@ -34,6 +37,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   private var bookmarkBarButton: UIBarButtonItem?
   private(set) var stackView: UIStackView!
   private lazy var positionLabel = UILabel()
+  private lazy var bookTitleLabel = UILabel()
 
   // MARK: - Lifecycle
 
@@ -111,12 +115,32 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
 
     positionLabel.translatesAutoresizingMaskIntoConstraints = false
     positionLabel.font = .systemFont(ofSize: 12)
+    positionLabel.textAlignment = .center
+    positionLabel.lineBreakMode = .byTruncatingTail
     positionLabel.textColor = .darkGray
     view.addSubview(positionLabel)
     NSLayoutConstraint.activate([
-      positionLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-      positionLabel.bottomAnchor.constraint(equalTo: navigator.view.bottomAnchor, constant: -20)
+      positionLabel.bottomAnchor.constraint(equalTo: navigator.view.bottomAnchor, constant: -TPPBaseReaderViewController.overlayLabelMargin),
+      positionLabel.leftAnchor.constraint(equalTo: navigator.view.leftAnchor, constant: TPPBaseReaderViewController.overlayLabelMargin),
+      positionLabel.rightAnchor.constraint(equalTo: navigator.view.rightAnchor, constant: -TPPBaseReaderViewController.overlayLabelMargin)
     ])
+    
+    bookTitleLabel.translatesAutoresizingMaskIntoConstraints = false
+    bookTitleLabel.font = .systemFont(ofSize: 12)
+    bookTitleLabel.textAlignment = .center
+    bookTitleLabel.lineBreakMode = .byTruncatingTail
+    bookTitleLabel.textColor = .darkGray
+    view.addSubview(bookTitleLabel)
+    var layoutConstraints: [NSLayoutConstraint] = [
+      bookTitleLabel.leftAnchor.constraint(equalTo: navigator.view.leftAnchor, constant: TPPBaseReaderViewController.overlayLabelMargin),
+      bookTitleLabel.rightAnchor.constraint(equalTo: navigator.view.rightAnchor, constant: -TPPBaseReaderViewController.overlayLabelMargin)
+    ]
+    if #available(iOS 11.0, *) {
+      layoutConstraints.append(bookTitleLabel.topAnchor.constraint(equalTo: navigator.view.safeAreaLayoutGuide.topAnchor, constant: TPPBaseReaderViewController.overlayLabelMargin / 2))
+    } else {
+      layoutConstraints.append(bookTitleLabel.topAnchor.constraint(equalTo: navigator.view.topAnchor, constant: TPPBaseReaderViewController.overlayLabelMargin))
+    }
+    NSLayoutConstraint.activate(layoutConstraints)
   }
 
   override func willMove(toParent parent: UIViewController?) {
@@ -176,6 +200,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
 
   func toggleNavigationBar() {
     navigationBarHidden = !navigationBarHidden
+    bookTitleLabel.isHidden = !navigationBarHidden
   }
 
   func updateNavigationBar(animated: Bool = true) {
@@ -351,6 +376,8 @@ extension TPPBaseReaderViewController: NavigatorDelegate {
       }
     }()
     
+    bookTitleLabel.text = publication.metadata.title
+
     if let resourceIndex = publication.resourceIndex(forLocator: locator),
       let _ = bookmarksBusinessLogic.isBookmarkExisting(at: TPPBookmarkR2Location(resourceIndex: resourceIndex, locator: locator)) {
       updateBookmarkButton(withState: true)
