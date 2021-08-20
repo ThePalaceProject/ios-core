@@ -171,7 +171,9 @@
   }
   
   private func updateList(withAccount uuid: String) {
-    userAddedSecondaryAccounts.append(uuid)
+    if !userAddedSecondaryAccounts.contains(uuid) {
+      userAddedSecondaryAccounts.append(uuid)
+    }
     updateSettingsAccountList()
     updateNavBar()
     tableView.reloadData()
