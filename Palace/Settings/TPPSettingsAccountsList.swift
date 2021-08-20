@@ -170,23 +170,30 @@
     self.navigationItem.rightBarButtonItem?.isEnabled = enable
   }
   
-  private func updateList(withAccount uuid: String) {
-    if !userAddedSecondaryAccounts.contains(uuid) {
-      userAddedSecondaryAccounts.append(uuid)
+  private func updateList(withAccount account: Account) {
+    if !userAddedSecondaryAccounts.contains(account.uuid) {
+      userAddedSecondaryAccounts.append(account.uuid)
     }
     updateSettingsAccountList()
+    // Return from search screen to the list of libraries
     updateNavBar()
     tableView.reloadData()
-    navigationController?.popViewController(animated: true)
+    navigationController?.popViewController(animated: false)
+    // Switch to the selected library
+    AccountsManager.shared.currentAccount = account
+    let catalog = TPPRootTabBarController.shared()?.viewControllers?.first as? TPPCatalogNavigationController
+    catalog?.updateFeedAndRegistryOnAccountChange()
+    self.tabBarController?.selectedIndex = 0
+    (navigationController?.parent as? UINavigationController)?.popToRootViewController(animated: false)
   }
   
   @objc private func addAccount() {
     let listVC = TPPAccountList { [weak self] account in
       if account.details != nil {
-        self?.updateList(withAccount: account.uuid)
+        self?.updateList(withAccount: account)
       } else {
         self?.authenticateAccount(account) {
-          self?.updateList(withAccount: account.uuid)
+          self?.updateList(withAccount: account)
         }
         self?.libraryAccounts = AccountsManager.shared.accounts()
       }
