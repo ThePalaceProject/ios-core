@@ -176,7 +176,6 @@
     }
     updateSettingsAccountList()
     // Return from search screen to the list of libraries
-    tableView.reloadData()
     navigationController?.popViewController(animated: false)
     // Switch to the selected library
     AccountsManager.shared.currentAccount = account
