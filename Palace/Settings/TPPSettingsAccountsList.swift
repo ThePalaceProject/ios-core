@@ -171,8 +171,13 @@
   }
   
   private func updateList(withAccount account: Account) {
-    userAddedSecondaryAccounts.append(account.uuid)
+    if !userAddedSecondaryAccounts.contains(account.uuid) {
+      userAddedSecondaryAccounts.append(account.uuid)
+    }
     updateSettingsAccountList()
+    // Return from search screen to the list of libraries
+    navigationController?.popViewController(animated: false)
+    // Switch to the selected library
     AccountsManager.shared.currentAccount = account
     let catalog = TPPRootTabBarController.shared()?.viewControllers?.first as? TPPCatalogNavigationController
     catalog?.updateFeedAndRegistryOnAccountChange()
