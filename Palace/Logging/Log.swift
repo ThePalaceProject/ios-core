@@ -1,6 +1,6 @@
 import os
 import Foundation
-import Firebase
+import FirebaseCore
 
 final class Log: NSObject {
   static var dateFormatter: DateFormatter = {
