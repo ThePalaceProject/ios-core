@@ -31,6 +31,7 @@ fi
 
 # deep clean to avoid any caching issues
 rm -rf ~/Library/Caches/org.carthage.CarthageKit
+rm -rf Carthage
 
 ./ios-drm-audioengine/scripts/fetch-audioengine.sh
 
