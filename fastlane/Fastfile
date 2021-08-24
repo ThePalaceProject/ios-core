@@ -18,9 +18,9 @@ platform :ios do
       output_name: options[:output_name],
       output_directory: options[:export_path],
       export_options: {
-        method: "development",
+        method: "ad-hoc",
         provisioningProfiles: { 
-          "org.thepalaceproject.palace" => "Palace App"
+          "org.thepalaceproject.palace" => "Ad hoc"
         }
       }
     )
@@ -39,6 +39,7 @@ platform :ios do
       }
     )
     pilot(
+      api_key_path: "fastlane/fastlane.json",
       skip_submission: true
     )
   end

@@ -1,0 +1,15 @@
+//
+//  NSURL+NYPLURLAdditions.h
+//  The Palace Project
+//
+//  Created by Sam Tarakajian on 9/24/15.
+//  Copyright © 2015 NYPL Labs. All rights reserved.
+//
+
+@interface NSURL (NYPLURLAdditions)
+
+@property (nonatomic, readonly, assign) BOOL isNYPLExternal;
+
+- (NSURL *)URLBySwappingForScheme:(NSString *)scheme;
+
+@end
