@@ -41,7 +41,7 @@ if [ "$1" != "--no-private" ]; then
     CERTIFICATES_PATH_PREFIX=".."
   fi
 
-  swift $CERTIFICATES_PATH_PREFIX/Certificates/Palace/iOS/AddLCP.swift
+  swift $CERTIFICATES_PATH_PREFIX/mobile-certificates/Certificates/Palace/iOS/AddLCP.swift
 
   ./ios-drm-audioengine/scripts/fetch-audioengine.sh
 fi
