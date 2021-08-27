@@ -138,6 +138,8 @@
 		2146872D2559A64B007B401A /* LCPLibraryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2171ADA0251E38140003CABA /* LCPLibraryService.swift */; };
 		2178984D269F174500374A6B /* NYPLAEToolkit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E585662526979AC100A5FBD5 /* NYPLAEToolkit.framework */; };
 		2178984E269F174500374A6B /* NYPLAEToolkit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E585662526979AC100A5FBD5 /* NYPLAEToolkit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		219747FC26D9218400FA25DF /* TPPLCPClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 219747F626D9218400FA25DF /* TPPLCPClient.swift */; };
+		2197480F26D9254500FA25DF /* R2LCPClient.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 73A7BA4D25A62FE900C2906C /* R2LCPClient.framework */; };
 		219868F7267E29830041369E /* CryptoSwift.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 219868F6267E29830041369E /* CryptoSwift.xcframework */; };
 		219868F8267E29830041369E /* CryptoSwift.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 219868F6267E29830041369E /* CryptoSwift.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		219868FF267E29920041369E /* Fuzi.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 219868FE267E29920041369E /* Fuzi.xcframework */; };
@@ -1024,6 +1026,7 @@
 		2156B54625B200F6003AD8EC /* ReadiumLCP.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ReadiumLCP.framework; path = Carthage/Build/iOS/ReadiumLCP.framework; sourceTree = "<group>"; };
 		2171ADA0251E38140003CABA /* LCPLibraryService.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = LCPLibraryService.swift; sourceTree = "<group>"; };
 		2171ADA6251E38560003CABA /* ReadiumLCP.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = ReadiumLCP.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		219747F626D9218400FA25DF /* TPPLCPClient.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPLCPClient.swift; sourceTree = "<group>"; };
 		219868F6267E29830041369E /* CryptoSwift.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = CryptoSwift.xcframework; path = Carthage/Build/CryptoSwift.xcframework; sourceTree = "<group>"; };
 		219868FE267E29920041369E /* Fuzi.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = Fuzi.xcframework; path = Carthage/Build/Fuzi.xcframework; sourceTree = "<group>"; };
 		21986905267E299E0041369E /* GCDWebServer.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = GCDWebServer.xcframework; path = Carthage/Build/GCDWebServer.xcframework; sourceTree = "<group>"; };
@@ -1500,6 +1503,7 @@
 				21986929267E29EA0041369E /* R2Navigator.xcframework in Frameworks */,
 				219869EF267E81CD0041369E /* PromisesObjC.xcframework in Frameworks */,
 				219869E7267E81CB0041369E /* GoogleAppMeasurement.xcframework in Frameworks */,
+				2197480F26D9254500FA25DF /* R2LCPClient.framework in Frameworks */,
 				84FCD2611B7BA79200BFEDD9 /* CoreLocation.framework in Frameworks */,
 				A823D815192BABA400B55DE2 /* UIKit.framework in Frameworks */,
 				219869EB267E81CC0041369E /* GoogleUtilities.xcframework in Frameworks */,
@@ -1575,6 +1579,7 @@
 			children = (
 				2171ADA0251E38140003CABA /* LCPLibraryService.swift */,
 				17A5AB4E25D201BD005DFF05 /* LCPPassphraseAuthenticationService.swift */,
+				219747F626D9218400FA25DF /* TPPLCPClient.swift */,
 			);
 			path = LCP;
 			sourceTree = "<group>";
@@ -2975,11 +2980,13 @@
 			inputFileListPaths = (
 			);
 			inputPaths = (
+				"$(SRCROOT)/Carthage/Build/iOS/R2LCPClient.framework",
 			);
 			name = "Copy Frameworks (Carthage)";
 			outputFileListPaths = (
 			);
 			outputPaths = (
+				"$(BUILT_PRODUCTS_DIR)/$(FRAMEWORKS_FOLDER_PATH)/R2LCPClient.framework",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -3484,6 +3491,7 @@
 				E6D848E32171334800CEC142 /* TPPContentTypeBadge.swift in Sources */,
 				E6C91BC21FD5F63B00A32F42 /* TPPZXingEncoder.m in Sources */,
 				085D31D71BE29E38007F7672 /* TPPProblemReportViewController.m in Sources */,
+				219747FC26D9218400FA25DF /* TPPLCPClient.swift in Sources */,
 				21DDE32E25D31DB4002CBCE3 /* AdobeDRMFetcher.swift in Sources */,
 				11C5DCF21976D1E0005A9945 /* TPPHoldsNavigationController.m in Sources */,
 				73DB56CC25F7F739003788EE /* TPPLastReadPositionPoster.swift in Sources */,
@@ -3976,6 +3984,7 @@
 					"$(inherited)",
 					"$(PROJECT_DIR)",
 					"$(PROJECT_DIR)/Carthage/Build",
+					"$(PROJECT_DIR)/Carthage/Build/iOS",
 				);
 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
 				GCC_PREFIX_HEADER = "Palace/AppInfrastructure/Palace-Prefix.pch";
@@ -4033,6 +4042,7 @@
 					"$(inherited)",
 					"$(PROJECT_DIR)",
 					"$(PROJECT_DIR)/Carthage/Build",
+					"$(PROJECT_DIR)/Carthage/Build/iOS",
 				);
 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
 				GCC_PREFIX_HEADER = "Palace/AppInfrastructure/Palace-Prefix.pch";

@@ -47,7 +47,7 @@ import NYPLAudiobookToolkit
     streamer.open(asset: asset, allowUserInteraction: false) { result in
       do {
         let publication = try result.get()
-        let resourse = publication.get(manifestPath)
+        let resourse = publication.getResource(at: manifestPath)
         let json = try resourse.readAsJSON().get()
         completion(json as NSDictionary, nil)
       } catch {
@@ -60,7 +60,7 @@ import NYPLAudiobookToolkit
   /// Check if the book is LCP audiobook
   /// - Parameter book: audiobook
   /// - Returns: `true` if the book is an LCP DRM protected audiobook, `false` otherwise
-  @objc static func canOpenBook(_ book: NYPLBook) -> Bool {
+  @objc static func canOpenBook(_ book: TPPBook) -> Bool {
     book.defaultBookContentType() == .audiobook && book.distributor == distributorKey
   }
 
@@ -89,7 +89,7 @@ extension LCPAudiobooks: DRMDecryptor {
     streamer.open(asset: asset, allowUserInteraction: false) { result in
       do {
         let publication = try result.get()
-        let resource = publication.get(url.path)
+        let resource = publication.getResource(at: url.path)
         let data = try resource.read().get()
         try data.write(to: resultUrl)
         completion(nil)
@@ -102,6 +102,18 @@ extension LCPAudiobooks: DRMDecryptor {
         completion(error)
       }
     }
+  }
+}
+
+private extension Publication {
+  // R2 has changed its expectation about the leading slash;
+  // here we verify both cases.
+  func getResource(at path: String) -> Resource {
+    let resource = get("/" + path)
+    guard type(of: resource) != FailureResource.self else {
+      return get(path)
+    }
+    return resource
   }
 }
 
