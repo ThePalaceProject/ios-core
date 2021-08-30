@@ -33,7 +33,18 @@ fi
 rm -rf ~/Library/Caches/org.carthage.CarthageKit
 rm -rf Carthage
 
-./ios-drm-audioengine/scripts/fetch-audioengine.sh
+# for DRM-enabled build only
+if [ "$1" != "--no-private" ]; then
+  if [ "$BUILD_CONTEXT" == "ci" ]; then
+    CERTIFICATES_PATH_PREFIX="."
+  else
+    CERTIFICATES_PATH_PREFIX=".."
+  fi
+
+  swift $CERTIFICATES_PATH_PREFIX/mobile-certificates/Certificates/Palace/iOS/AddLCP.swift
+
+  ./ios-drm-audioengine/scripts/fetch-audioengine.sh
+fi
 
 echo "Carthage build..."
 carthage bootstrap --use-xcframeworks --platform ios
