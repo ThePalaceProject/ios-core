@@ -1,6 +1,6 @@
 import os
 import Foundation
-import FirebaseCore
+import FirebaseCrashlytics
 
 final class Log: NSObject {
   static var dateFormatter: DateFormatter = {
