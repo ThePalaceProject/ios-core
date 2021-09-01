@@ -136,6 +136,7 @@
 		21399900268F9F2500B4EB60 /* TPPAccountListCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AD65DC2684FACA00C62951 /* TPPAccountListCell.swift */; };
 		21399902268F9F4C00B4EB60 /* TPPAccountListDataSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AD65E02684FDA300C62951 /* TPPAccountListDataSource.swift */; };
 		2146872D2559A64B007B401A /* LCPLibraryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2171ADA0251E38140003CABA /* LCPLibraryService.swift */; };
+		216FD1FC26DFE112003AF0D8 /* Colors.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E5506DE326C4688D009FA623 /* Colors.xcassets */; };
 		2178984D269F174500374A6B /* NYPLAEToolkit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E585662526979AC100A5FBD5 /* NYPLAEToolkit.framework */; };
 		2178984E269F174500374A6B /* NYPLAEToolkit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E585662526979AC100A5FBD5 /* NYPLAEToolkit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		219747FC26D9218400FA25DF /* TPPLCPClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 219747F626D9218400FA25DF /* TPPLCPClient.swift */; };
@@ -2923,6 +2924,7 @@
 				73EB0B6225821DF4006BC997 /* reader.html in Resources */,
 				73EB0B6325821DF4006BC997 /* DetailSummaryTemplate.html in Resources */,
 				73EB0B6425821DF4006BC997 /* Localizable.strings in Resources */,
+				216FD1FC26DFE112003AF0D8 /* Colors.xcassets in Resources */,
 				73EB0B6525821DF4006BC997 /* Images.xcassets in Resources */,
 				73EB0B6625821DF4006BC997 /* sdk.css in Resources */,
 				E5BEF02A26BDAB3A00C2A50B /* OpenSans-SemiBold.ttf in Resources */,
