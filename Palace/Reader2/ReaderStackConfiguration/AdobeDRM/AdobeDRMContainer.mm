@@ -66,6 +66,12 @@ static id acsdrm_lock = nil;
     dp::Data encryptionXMLData (encryptionContent, encryptionLen);
     dp::ref<dputils::EncryptionMetadata> encryptionMetadata = dputils::EncryptionMetadata::createFromXMLData(encryptionXMLData);
     uft::String itemPath (path.UTF8String);
+
+    if (!encryptionMetadata) {
+      self.epubDecodingError = @"Missing EncryptionMetadata";
+      return data;
+    }
+
     dp::ref<dputils::EncryptionItemInfo> itemInfo = encryptionMetadata->getItemForURI(itemPath);
 
     if (!itemInfo) {
