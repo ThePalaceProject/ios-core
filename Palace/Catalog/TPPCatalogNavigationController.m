@@ -203,7 +203,7 @@
 #ifdef SIMPLYE
   TPPSettings *settings = [TPPSettings sharedSettings];
   
-  if (!settings.userHasSeenWelcomeScreen) {
+  if (!settings.userHasSeenWelcomeScreen  || TPPConfiguration.registryChanged) {
     Account *currentAccount = [[AccountsManager sharedInstance] currentAccount];
 
     __block NSURL *mainFeedUrl = [NSURL URLWithString:currentAccount.catalogUrl];
