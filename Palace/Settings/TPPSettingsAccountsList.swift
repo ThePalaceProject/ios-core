@@ -254,7 +254,11 @@
     if (indexPath.section == 0) {
       cell.configure(for: account)
     } else {
-      cell.configure(for: AccountsManager.shared.account(userAddedSecondaryAccounts[indexPath.row])!)
+      // The app crashes here when we switch registry accounts
+      if indexPath.row < userAddedSecondaryAccounts.count,
+         let account = AccountsManager.shared.account(userAddedSecondaryAccounts[indexPath.row]) {
+        cell.configure(for: account)
+      }
     }
     
     return cell
