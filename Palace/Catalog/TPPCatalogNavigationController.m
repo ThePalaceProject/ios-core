@@ -221,6 +221,11 @@
         }
       }];
 
+      // Update current registry hash if registry changed
+      if (TPPConfiguration.registryChanged) {
+        [TPPConfiguration updateSavedeRegistryKey];
+      }
+
       UINavigationController *navController = [[UINavigationController alloc] initWithRootViewController:welcomeScreenVC];
 
       [navController setModalPresentationStyle:UIModalPresentationFullScreen];

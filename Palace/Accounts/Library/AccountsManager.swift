@@ -237,11 +237,6 @@ let currentAccountIdentifierKey  = "TPPCurrentAccountIdentifier"
     let wasAlreadyLoading = addLoadingCompletionHandler(key: hash, completion)
     guard !wasAlreadyLoading else { return }
 
-    // Update current registry hash if registry changed
-    if TPPConfiguration.registryChanged {
-      TPPConfiguration.updateSavedeRegistryKey()
-    }
-
     TPPNetworkExecutor.shared.GET(targetUrl) { result in
       switch result {
       case .success(let data, _):

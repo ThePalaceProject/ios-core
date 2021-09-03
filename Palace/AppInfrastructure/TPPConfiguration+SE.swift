@@ -30,6 +30,7 @@ extension TPPConfiguration {
   }
   
   /// Updates registry key
+  @objc
   static func updateSavedeRegistryKey() {
     UserDefaults.standard.set(prodUrlHash, forKey: registryHashKey)
   }
