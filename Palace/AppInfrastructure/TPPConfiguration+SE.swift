@@ -10,15 +10,29 @@ import Foundation
 
 extension TPPConfiguration {
   
-  static let betaUrl = URL(string: "https://libraryregistry.librarysimplified.org/libraries/qa")!
-  static let prodUrl = URL(string: "https://libraryregistry.librarysimplified.org/libraries")!
+  static let registryHashKey = "registryHashKey"
   
+  static let betaUrl = URL(string: "https://registry.palaceproject.io/libraries/qa")!
+  static let prodUrl = URL(string: "https://registry.palaceproject.io/libraries")!
+
   static let betaUrlHash = betaUrl.absoluteString.md5().base64EncodedStringUrlSafe().trimmingCharacters(in: ["="])
   static let prodUrlHash = prodUrl.absoluteString.md5().base64EncodedStringUrlSafe().trimmingCharacters(in: ["="])
 
   static func customUrl() -> URL? {
     guard let server = TPPSettings.shared.customLibraryRegistryServer else { return nil }
     return URL(string: "https://\(server)/libraries/qa")
+  }
+  
+  /// Checks if registry changed
+  @objc
+  static var registryChanged: Bool {
+    (UserDefaults.standard.string(forKey: registryHashKey) ?? "") != prodUrlHash
+  }
+  
+  /// Updates registry key
+  @objc
+  static func updateSavedeRegistryKey() {
+    UserDefaults.standard.set(prodUrlHash, forKey: registryHashKey)
   }
   
   static func customUrlHash() -> String? {
