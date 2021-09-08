@@ -135,6 +135,7 @@ typedef NS_ENUM(NSInteger, FacetSort) {
   self.facetBarView = [[TPPFacetBarView alloc] initWithOrigin:CGPointZero width:0];
   self.facetBarView.facetView.dataSource = self;
   self.facetBarView.facetView.delegate = self;
+  self.facetBarView.delegate = self;
   [self.view addSubview:self.facetBarView];
   [self.facetBarView autoPinEdgeToSuperviewEdge:ALEdgeLeading];
   [self.facetBarView autoPinEdgeToSuperviewEdge:ALEdgeTrailing];
@@ -325,6 +326,13 @@ activeFacetIndexForFacetGroupAtIndex:(NSUInteger const)index
   }
   
   @throw NSInternalInconsistencyException;
+}
+
+#pragma mark TPPFacetBarViewDelegate
+
+- (void)present:(UIViewController *)viewController
+{
+  [self.navigationController pushViewController:viewController animated:YES];
 }
 
 #pragma mark NYPLFacetViewDelegate
