@@ -64,7 +64,7 @@ import Foundation
     
     imageViewBackground.addSubview(imageView)
     imageView.autoSetDimension(.height, toSize: 50.0)
-    imageView.autoPinEdgesToSuperviewEdges()
+    imageView.autoPinEdgesToSuperviewEdges(with: UIEdgeInsets(top: 5, left: 5, bottom: 5, right: 5))
     
     let logoTapRecognizer = UITapGestureRecognizer(target: self, action: #selector(showAccountPage))
     imageView.addGestureRecognizer(logoTapRecognizer)
@@ -78,6 +78,10 @@ import Foundation
     facetView.addSubview(topBorderView)
     topBorderView.autoPinEdgesToSuperviewEdges(with: UIEdgeInsets.zero, excludingEdge: .bottom)
     topBorderView.autoSetDimension(.height, toSize:borderHeight)
+  }
+
+  @objc func updateLogo() {
+    imageView.image = AccountsManager.shared.currentAccount?.logo
   }
   
   @objc private func showAccountPage() {

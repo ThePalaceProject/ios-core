@@ -22,7 +22,7 @@ static const CGFloat kActivityIndicatorPadding = 20.0;
 static const CGFloat kCollectionViewCrossfadeDuration = 0.3;
 
 @interface TPPCatalogUngroupedFeedViewController ()
-  <TPPCatalogUngroupedFeedDelegate, TPPFacetViewDelegate, TPPEntryPointViewDelegate, TPPEntryPointViewDataSource,
+  <TPPCatalogUngroupedFeedDelegate, TPPFacetViewDelegate, TPPFacetBarViewDelegate, TPPEntryPointViewDelegate, TPPEntryPointViewDataSource,
    UICollectionViewDataSource, UICollectionViewDelegate, UICollectionViewDelegateFlowLayout, UIViewControllerPreviewingDelegate>
 
 @property (nonatomic) TPPOpenSearchDescription *searchDescription;
@@ -100,6 +100,7 @@ static const CGFloat kCollectionViewCrossfadeDuration = 0.3;
   self.facetBarView.entryPointView.delegate = self;
   self.facetBarView.entryPointView.dataSource = self;
   self.facetBarView.delegate = self;
+  [self.facetBarView updateLogo];
   self.facetViewDataSource = [[TPPFacetViewDefaultDataSource alloc] initWithFacetGroups:self.feed.facetGroups];
   self.facetBarView.facetView.delegate = self;
   self.facetBarView.facetView.dataSource = self.facetViewDataSource;

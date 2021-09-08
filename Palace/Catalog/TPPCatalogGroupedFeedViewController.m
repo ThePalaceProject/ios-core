@@ -25,7 +25,7 @@ static CGFloat const kTableViewCrossfadeDuration = 0.3;
 
 
 @interface TPPCatalogGroupedFeedViewController ()
-  <TPPCatalogLaneCellDelegate, TPPEntryPointViewDelegate, TPPEntryPointViewDataSource, UITableViewDataSource, UITableViewDelegate, UIViewControllerPreviewingDelegate>
+  <TPPCatalogLaneCellDelegate, TPPEntryPointViewDelegate, TPPFacetBarViewDelegate, TPPEntryPointViewDataSource, UITableViewDataSource, UITableViewDelegate, UIViewControllerPreviewingDelegate>
 
 @property (nonatomic, weak) TPPRemoteViewController *remoteViewController;
 @property (nonatomic) NSMutableDictionary *bookIdentifiersToImages;
@@ -99,6 +99,8 @@ static CGFloat const kTableViewCrossfadeDuration = 0.3;
   self.facetBarView.entryPointView.delegate = self;
   self.facetBarView.entryPointView.dataSource = self;
   self.facetBarView.delegate = self;
+  [self.facetBarView updateLogo];
+  
   [self.view addSubview:self.facetBarView];
   
   [self.facetBarView autoPinEdgeToSuperviewEdge:ALEdgeLeading];
