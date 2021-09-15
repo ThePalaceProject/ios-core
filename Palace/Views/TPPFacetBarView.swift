@@ -94,18 +94,14 @@ import Foundation
     imageHolder.autoSetDimension(.width, toSize: 50.0)
     
     imageHolder.addSubview(imageView)
+    imageView.autoPinEdgesToSuperviewEdges()
+    let container = UIView()
+    logoView.addSubview(container)
     
-    imageView.autoPinEdgesToSuperviewEdges(with: UIEdgeInsets(top: 10.0, left: 10.0, bottom: 10.0, right: 10.0))
-    
-    let hstack = UIStackView()
-    hstack.axis = .horizontal
-    hstack.distribution = .fillProportionally
-    logoView.addSubview(hstack)
-    
-    hstack.autoPinEdgesToSuperviewEdges(with: UIEdgeInsets(top: 0.0, left: 10.0, bottom: 0.0, right: 10.0))
-    
-    hstack.addArrangedSubview(imageHolder)
-    
+    container.autoPinEdgesToSuperviewEdges(with: UIEdgeInsets(top: 0.0, left: 10.0, bottom: 0.0, right: 10.0))
+    container.addSubview(imageHolder)
+    imageHolder.autoPinEdgesToSuperviewEdges(with: UIEdgeInsets(top: 10.0, left: 10.0, bottom: 10.0, right: 10.0), excludingEdge: .trailing)
+
     titleLabel.lineBreakMode = .byWordWrapping
     titleLabel.numberOfLines = 0
     titleLabel.textAlignment = .center
@@ -115,10 +111,12 @@ import Foundation
     
     let titleContainer = UIView()
     titleContainer.addSubview(titleLabel)
-    titleLabel.autoPinEdgesToSuperviewEdges(with: UIEdgeInsets(top: 0.0, left: 0.0, bottom: 0.0, right: 10.0))
+    titleLabel.autoPinEdgesToSuperviewEdges()
 
-    hstack.addArrangedSubview(titleContainer)
-    
+    container.addSubview(titleContainer)
+    titleContainer.autoPinEdgesToSuperviewEdges(with: UIEdgeInsets(top: 10.0, left: 10.0, bottom: 10.0, right: 10.0), excludingEdge: .leading)
+    titleContainer.autoPinEdge(.leading, to: .trailing, of: imageView, withOffset: 10.0)
+
     logoView.addSubview(accountSiteButton)
     accountSiteButton.autoPinEdgesToSuperviewEdges()
     accountSiteButton.addTarget(self, action: #selector(showAccountPage), for: .touchUpInside)
