@@ -86,7 +86,6 @@ typedef NS_ENUM(NSInteger, FacetSort) {
   if(!self) return nil;
 
   self.title = NSLocalizedString(@"MyBooksViewControllerTitle", nil);
-  self.navigationItem.title = NSLocalizedString(@"MyBooksViewControllerTitle", nil);
   
   [self willReloadCollectionViewData];
   
@@ -184,6 +183,7 @@ typedef NS_ENUM(NSInteger, FacetSort) {
   
   [self.navigationController setNavigationBarHidden:NO];
   self.navigationController.navigationBar.tintColor = [TPPConfiguration iconColor];
+  self.navigationItem.title = NSLocalizedString(@"MyBooksViewControllerTitle", nil);
 }
 
 - (void)viewWillLayoutSubviews

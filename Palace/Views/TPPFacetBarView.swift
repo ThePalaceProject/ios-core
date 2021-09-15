@@ -92,14 +92,15 @@ import Foundation
     let imageHolder = UIView()
     imageHolder.autoSetDimension(.height, toSize: 50.0)
     imageHolder.autoSetDimension(.width, toSize: 50.0)
-    
     imageHolder.addSubview(imageView)
+    
     imageView.autoPinEdgesToSuperviewEdges()
+    
     let container = UIView()
     logoView.addSubview(container)
-    
-    container.autoPinEdgesToSuperviewEdges(with: UIEdgeInsets(top: 0.0, left: 10.0, bottom: 0.0, right: 10.0))
     container.addSubview(imageHolder)
+
+    container.autoPinEdgesToSuperviewEdges(with: UIEdgeInsets(top: 0.0, left: 10.0, bottom: 0.0, right: 10.0))
     imageHolder.autoPinEdgesToSuperviewEdges(with: UIEdgeInsets(top: 10.0, left: 10.0, bottom: 10.0, right: 10.0), excludingEdge: .trailing)
 
     titleLabel.lineBreakMode = .byWordWrapping
