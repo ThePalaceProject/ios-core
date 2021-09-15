@@ -86,6 +86,7 @@ typedef NS_ENUM(NSInteger, FacetSort) {
   if(!self) return nil;
 
   self.title = NSLocalizedString(@"MyBooksViewControllerTitle", nil);
+  self.navigationItem.title = NSLocalizedString(@"MyBooksViewControllerTitle", nil);
   
   [self willReloadCollectionViewData];
   
@@ -171,8 +172,6 @@ typedef NS_ENUM(NSInteger, FacetSort) {
 - (void)viewWillAppear:(BOOL)animated
 {
   [super viewWillAppear:animated];
-  [self.facetBarView updateLogo];
-
   [[NSOperationQueue mainQueue] addOperationWithBlock:^{
     BOOL isSyncing = [TPPBookRegistry sharedRegistry].syncing;
     if(!isSyncing) {

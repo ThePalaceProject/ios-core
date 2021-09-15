@@ -79,7 +79,7 @@
     
     updateSettingsAccountList()
     
-    self.title = NSLocalizedString("Accounts",
+    self.title = NSLocalizedString("Libraries",
                                    comment: "A title for a list of libraries the user may select or add to.")
     self.view.backgroundColor = TPPConfiguration.backgroundColor()
     self.navigationItem.rightBarButtonItem =

@@ -15,3 +15,5 @@ github "scinfu/SwiftSoup" "2.3.2"
 github "stephencelis/SQLite.swift" "0.12.2"
 github "weichsel/ZIPFoundation" "0.9.11"
 github "zxingify/zxingify-objc" "3.6.7"
+
+binary "https://liblcp.dita.digital/readium/liblcp/ios/carthage/xHwy01rpnw/liblcp.json" "2.0.0"
