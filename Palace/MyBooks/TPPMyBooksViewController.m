@@ -171,8 +171,6 @@ typedef NS_ENUM(NSInteger, FacetSort) {
 - (void)viewWillAppear:(BOOL)animated
 {
   [super viewWillAppear:animated];
-  [self.facetBarView updateLogo];
-
   [[NSOperationQueue mainQueue] addOperationWithBlock:^{
     BOOL isSyncing = [TPPBookRegistry sharedRegistry].syncing;
     if(!isSyncing) {
@@ -185,6 +183,7 @@ typedef NS_ENUM(NSInteger, FacetSort) {
   
   [self.navigationController setNavigationBarHidden:NO];
   self.navigationController.navigationBar.tintColor = [TPPConfiguration iconColor];
+  self.navigationItem.title = NSLocalizedString(@"MyBooksViewControllerTitle", nil);
 }
 
 - (void)viewWillLayoutSubviews

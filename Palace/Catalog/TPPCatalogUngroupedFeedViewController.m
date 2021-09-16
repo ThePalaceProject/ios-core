@@ -100,7 +100,6 @@ static const CGFloat kCollectionViewCrossfadeDuration = 0.3;
   self.facetBarView.entryPointView.delegate = self;
   self.facetBarView.entryPointView.dataSource = self;
   self.facetBarView.delegate = self;
-  [self.facetBarView updateLogo];
   self.facetViewDataSource = [[TPPFacetViewDefaultDataSource alloc] initWithFacetGroups:self.feed.facetGroups];
   self.facetBarView.facetView.delegate = self;
   self.facetBarView.facetView.dataSource = self.facetViewDataSource;

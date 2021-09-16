@@ -159,7 +159,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
       return [self settingsPrimaryTableViewCellWithText:NSLocalizedString(@"EULA", nil)];
     }
     case NYPLSettingsPrimaryTableViewControllerItemAccount: {
-      return [self settingsPrimaryTableViewCellWithText:NSLocalizedString(@"Accounts", nil)];
+      return [self settingsPrimaryTableViewCellWithText:NSLocalizedString(@"Libraries", nil)];
     }
     case NYPLSettingsPrimaryTableViewControllerItemAbout: {
       return [self settingsPrimaryTableViewCellWithText:NSLocalizedString(@"AboutApp", nil)];

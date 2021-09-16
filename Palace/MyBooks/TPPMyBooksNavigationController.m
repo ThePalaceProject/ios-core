@@ -38,9 +38,6 @@
 -(void)viewWillAppear:(BOOL)animated
 {
   [super viewWillAppear:animated];
-    
-  UIViewController *visibleVC = self.visibleViewController;
-  visibleVC.navigationItem.title = [AccountsManager shared].currentAccount.name;
 }
 
 #pragma mark - Callbacks

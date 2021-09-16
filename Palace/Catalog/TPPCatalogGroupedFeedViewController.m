@@ -99,7 +99,6 @@ static CGFloat const kTableViewCrossfadeDuration = 0.3;
   self.facetBarView.entryPointView.delegate = self;
   self.facetBarView.entryPointView.dataSource = self;
   self.facetBarView.delegate = self;
-  [self.facetBarView updateLogo];
   
   [self.view addSubview:self.facetBarView];
   
