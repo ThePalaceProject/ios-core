@@ -424,7 +424,7 @@ class OPDS2SamlIDP: NSObject, Codable {
       
       self.authenticationDocument = authenticationDocument
 
-      // Completion should be called before authentication,
+      // Completion should be called before announcements,
       // otherwise the code that presents alerts interferes with catalog presentation.
       completion(true)
 
