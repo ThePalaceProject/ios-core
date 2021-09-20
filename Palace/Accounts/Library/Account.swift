@@ -424,6 +424,10 @@ class OPDS2SamlIDP: NSObject, Codable {
       
       self.authenticationDocument = authenticationDocument
 
+      // Completion should be called before authentication,
+      // otherwise the code that presents alerts interferes with catalog presentation.
+      completion(true)
+
       if let provider = signedInStateProvider,
          provider.isSignedIn(),
          let announcements = self.authenticationDocument?.announcements {
@@ -431,8 +435,6 @@ class OPDS2SamlIDP: NSObject, Codable {
             TPPAnnouncementBusinessLogic.shared.presentAnnouncements(announcements)
           }
       }
-      
-      completion(true)
     }
   }
   
