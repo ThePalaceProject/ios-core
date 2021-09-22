@@ -489,7 +489,7 @@ class OPDS2SamlIDP: NSObject, Codable {
       guard let logoString = authenticationDocument.links?.first(where: { $0.rel == "logo" })?.href else { return }
       let modString = logoString.replacingOccurrences(of: "data:image/png;base64,", with: "")
   
-      // Logo images may be formated as data strings or a url may be provided to download the image.
+      // The logoString may be an encoded image or url 
       if let logoData = Data.init(base64Encoded: modString),
          let logoImage = UIImage(data: logoData) {
         self.logo = logoImage
