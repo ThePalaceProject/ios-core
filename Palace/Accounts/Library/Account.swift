@@ -488,11 +488,34 @@ class OPDS2SamlIDP: NSObject, Codable {
         return
       }
       
-      let logoString = authenticationDocument.links?.first(where: { $0.rel == "logo" })?.href
-      if let modString = logoString?.replacingOccurrences(of: "data:image/png;base64,", with: ""),
-         let logoData = Data.init(base64Encoded: modString),
+      guard let logoString = authenticationDocument.links?.first(where: { $0.rel == "logo" })?.href else { return }
+      let modString = logoString.replacingOccurrences(of: "data:image/png;base64,", with: "")
+  
+      // The logoString may be an encoded image or url 
+      if let logoData = Data.init(base64Encoded: modString),
          let logoImage = UIImage(data: logoData) {
         self.logo = logoImage
+      } else if let url = URL(string: logoString) {
+        self.fetchImage(from: url, completion: {
+          guard let image = $0 else { return }
+          self.logo = image
+        })
+      }
+    }
+  }
+  
+  private func fetchImage(from url: URL, completion: @escaping (UIImage?) -> ()) {
+    TPPNetworkExecutor.shared.GET(url) { result in
+      switch result {
+      case .success(let serverData, _):
+        completion(UIImage(data: serverData))
+      case .failure(let error, _):
+        TPPErrorLogger.logError(
+          withCode: .authDocLoadFail,
+          summary: "Logo image failed to load",
+          metadata: ["loadError": error, "url": url]
+        )
+        completion(nil)
       }
     }
   }
