@@ -16,7 +16,7 @@
 #  Where:
 #  -t TAG - tag to start collecting release notes from.
 #  -v INFO_LEVEL - how much information to show:
-#    1 (default)  - pull request titles only;
+#    1 (default) - pull request titles only;
 #    2 - titles + links to PRs and  Notion tickets;
 #    3 - titles + links to PRs and  Notion tickets + PR body text.
 #  -h - show help
