@@ -133,10 +133,13 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
       self.infoLabel.textAlignment = NSTextAlignmentCenter;
       [self.infoLabel sizeToFit];
 
-      UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(revealDeveloperSettings)];
-      tap.numberOfTapsRequired = 7;
-      [self.infoLabel setUserInteractionEnabled:YES];
-      [self.infoLabel addGestureRecognizer:tap];
+      // Disable debug features in production environment
+      if (NSBundle.mainBundle.applicationEnvironment != TPPEnvironmentProduction) {
+        UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(revealDeveloperSettings)];
+        tap.numberOfTapsRequired = 7;
+        [self.infoLabel setUserInteractionEnabled:YES];
+        [self.infoLabel addGestureRecognizer:tap];
+      }
     }
     return self.infoLabel;
   }
