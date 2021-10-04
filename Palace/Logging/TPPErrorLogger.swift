@@ -136,6 +136,9 @@ fileprivate let nullString = "null"
   // MARK:- Configuration
 
   class func configureCrashAnalytics() {
+    // Only enable Crashlytics on Production builds
+    guard Bundle.main.applicationEnvironment == .production else { return }
+    
     #if FEATURE_CRASH_REPORTING
     FirebaseApp.configure()
 
@@ -146,6 +149,8 @@ fileprivate let nullString = "null"
   }
 
   class func setUserID(_ userID: String?) {
+    // Only enable Crashlytics on Production builds
+
     #if FEATURE_CRASH_REPORTING
     if let userIDmd5 = userID?.md5hex() {
       Crashlytics.crashlytics().setUserID(userIDmd5)
@@ -430,6 +435,9 @@ fileprivate let nullString = "null"
   // MARK:- Private helpers
 
   private class func record(error: NSError) {
+    // Only enable Crashlytics on Production builds
+    guard Bundle.main.applicationEnvironment == .production else { return }
+
     #if FEATURE_CRASH_REPORTING
     Crashlytics.crashlytics().record(error: error)
     #else
