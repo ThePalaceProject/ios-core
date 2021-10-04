@@ -691,6 +691,7 @@
 		E5BEF02826BDAB3A00C2A50B /* OpenSans-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E5BEF01C26BDA9EA00C2A50B /* OpenSans-SemiBold.ttf */; };
 		E5BEF02A26BDAB3A00C2A50B /* OpenSans-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E5BEF01C26BDA9EA00C2A50B /* OpenSans-SemiBold.ttf */; };
 		E5C2C422268BA5140046F415 /* TPPRegistryDebuggingCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5C2C421268BA5140046F415 /* TPPRegistryDebuggingCell.swift */; };
+		E5C8CAA1270B5653003F7BC0 /* BundleExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5C8CA9B270B5653003F7BC0 /* BundleExtension.swift */; };
 		E6202A021DD4E6F300C99553 /* TPPSettingsAccountDetailViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = E6202A011DD4E6F300C99553 /* TPPSettingsAccountDetailViewController.m */; };
 		E6207B652118973800864143 /* TPPAppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6207B642118973800864143 /* TPPAppTheme.swift */; };
 		E627B554216D4A9700A7D1D5 /* TPPBookContentType.m in Sources */ = {isa = PBXBuildFile; fileRef = E627B553216D4A9700A7D1D5 /* TPPBookContentType.m */; };
@@ -1381,6 +1382,7 @@
 		E5BEF01826BD94D600C2A50B /* UIFont+Extensions.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = "UIFont+Extensions.swift"; sourceTree = "<group>"; };
 		E5BEF01C26BDA9EA00C2A50B /* OpenSans-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "OpenSans-SemiBold.ttf"; sourceTree = "<group>"; };
 		E5C2C421268BA5140046F415 /* TPPRegistryDebuggingCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPRegistryDebuggingCell.swift; sourceTree = "<group>"; };
+		E5C8CA9B270B5653003F7BC0 /* BundleExtension.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = BundleExtension.swift; sourceTree = "<group>"; };
 		E61D7F631F6AC78B0091C781 /* SimplyE.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SimplyE.entitlements; sourceTree = "<group>"; };
 		E6202A001DD4E6F300C99553 /* TPPSettingsAccountDetailViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPSettingsAccountDetailViewController.h; sourceTree = "<group>"; };
 		E6202A011DD4E6F300C99553 /* TPPSettingsAccountDetailViewController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPSettingsAccountDetailViewController.m; sourceTree = "<group>"; };
@@ -1668,6 +1670,7 @@
 		73085E222502EDC6008F6244 /* Settings */ = {
 			isa = PBXGroup;
 			children = (
+				E5C8CA9B270B5653003F7BC0 /* BundleExtension.swift */,
 				732940BF251D0B790065E362 /* BarcodeScanning */,
 				732940BE251D05E30065E362 /* SettingsCells */,
 				E5C2C41B268BA4E00046F415 /* DeveloperSettings */,
@@ -3412,6 +3415,7 @@
 				E699BA402166598B00A0736A /* TPPEntryPointView.swift in Sources */,
 				A46226271B39D4980063F549 /* TPPOPDSGroup.m in Sources */,
 				A93F9F9721CDACF700BD3B0C /* TPPAppReviewPrompt.swift in Sources */,
+				E5C8CAA1270B5653003F7BC0 /* BundleExtension.swift in Sources */,
 				73DB56C625F769FF003788EE /* TPPLastReadPositionSynchronizer.swift in Sources */,
 				8C835DD5234D0B900050A18D /* TPPFacetBarView.swift in Sources */,
 				111197341986D7550014462F /* TPPDismissibleViewController.m in Sources */,
