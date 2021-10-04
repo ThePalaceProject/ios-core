@@ -150,6 +150,7 @@ fileprivate let nullString = "null"
 
   class func setUserID(_ userID: String?) {
     // Only enable Crashlytics on Production builds
+    guard Bundle.main.applicationEnvironment == .production else { return }
 
     #if FEATURE_CRASH_REPORTING
     if let userIDmd5 = userID?.md5hex() {
