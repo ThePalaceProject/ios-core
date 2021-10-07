@@ -5,7 +5,6 @@
 //  Created by Vladimir Fedorov on 30.09.2021.
 //  Copyright © 2021 The Palace Project. All rights reserved.
 //
-
 import Foundation
 
 @objc
