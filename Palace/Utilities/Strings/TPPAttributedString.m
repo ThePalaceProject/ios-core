@@ -25,15 +25,16 @@ NSAttributedString *TPPAttributedStringForTitleFromString(NSString *string)
   NSData *stringData = [string dataUsingEncoding:NSUTF8StringEncoding];
   if (!stringData) return nil;
   
+  // Decode HTML entities using NSAttributedString
   NSDictionary<NSAttributedStringDocumentReadingOptionKey, id> *options = @{
     NSDocumentTypeDocumentAttribute : NSHTMLTextDocumentType,
     NSCharacterEncodingDocumentAttribute :@(NSUTF8StringEncoding)
   };
   
   NSError *error;
-  NSAttributedString *decodedAttibutedString = [[NSAttributedString alloc] initWithData:stringData options:options documentAttributes:nil error:&error];
+  NSAttributedString *decodedAttributedString = [[NSAttributedString alloc] initWithData:stringData options:options documentAttributes:nil error:&error];
   if (!error) {
-    decodedString = decodedAttibutedString.string;
+    decodedString = decodedAttributedString.string;
   }
 
   NSMutableParagraphStyle *const paragraphStyle = [[NSMutableParagraphStyle alloc] init];
