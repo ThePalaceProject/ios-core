@@ -19,7 +19,23 @@ NSAttributedString *TPPAttributedStringForAuthorsFromString(NSString *string)
 NSAttributedString *TPPAttributedStringForTitleFromString(NSString *string)
 {
   if(!string) return nil;
+
+  NSString *decodedString = string;
   
+  NSData *stringData = [string dataUsingEncoding:NSUTF8StringEncoding];
+  if (!stringData) return nil;
+  
+  NSDictionary<NSAttributedStringDocumentReadingOptionKey, id> *options = @{
+    NSDocumentTypeDocumentAttribute : NSHTMLTextDocumentType,
+    NSCharacterEncodingDocumentAttribute :@(NSUTF8StringEncoding)
+  };
+  
+  NSError *error;
+  NSAttributedString *decodedAttibutedString = [[NSAttributedString alloc] initWithData:stringData options:options documentAttributes:nil error:&error];
+  if (!error) {
+    decodedString = decodedAttibutedString.string;
+  }
+
   NSMutableParagraphStyle *const paragraphStyle = [[NSMutableParagraphStyle alloc] init];
   paragraphStyle.lineSpacing = 0.0;
   paragraphStyle.minimumLineHeight = 0.0;
@@ -28,6 +44,6 @@ NSAttributedString *TPPAttributedStringForTitleFromString(NSString *string)
   paragraphStyle.hyphenationFactor = 0.75;
   
   return [[NSAttributedString alloc]
-          initWithString:string
+          initWithString:decodedString
           attributes:@{NSParagraphStyleAttributeName: paragraphStyle}];
 }
