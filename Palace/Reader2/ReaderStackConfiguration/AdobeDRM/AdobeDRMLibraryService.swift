@@ -29,7 +29,7 @@ class AdobeDRMLibraryService: DRMLibraryService {
   /// - Returns: Deferred fulfilled publication or error
   func fulfill(_ file: URL) -> Deferred<DRMFulfilledPublication, Error> {
     // Publications with Adobe DRM are fulfilled (license data already stored in _rights.xml file),
-    // this step is aalways a success.
+    // this step is always a success.
     return deferred { completion in
       completion(.success(DRMFulfilledPublication(
         localURL: file,

@@ -23,7 +23,14 @@ enum LibraryServiceError: LocalizedError {
     case .invalidBook:
       return NSLocalizedString("The book you were trying to open is invalid.", comment: "Error message used when trying to import a publication that is not valid")
     case .openFailed(let error):
-      return String(format: NSLocalizedString("An error was encountered while trying to open this book.", comment: "Error message used when a low-level error occured while opening a publication"), error.localizedDescription)
+      var errorDescription = error.localizedDescription
+      // Publication opening may fail due to DRM error
+      // Trying to get DRM error description
+      if let openingError = error as? Publication.OpeningError,
+         let drmErrorDescription = openingError.drmErrorDescription {
+        errorDescription = drmErrorDescription
+      }
+      return String(format: NSLocalizedString("An error was encountered while trying to open this book.", comment: "Error message used when a low-level error occured while opening a publication"), errorDescription)
     }
   }
   

@@ -43,17 +43,21 @@ class AdobeDRMContentProtection: ContentProtection {
       return
     }
 
-    let adobeFetcher = AdobeDRMFetcher(url: fileAsset.url, fetcher: fetcher, encryptionData: encryptionData)
-    let protectedAsset = ProtectedAsset(
-      asset: asset,
-      fetcher: adobeFetcher,
-      onCreatePublication: { _, _, _, services in
-        services.setContentProtectionServiceFactory { pubServiceContext in
-          AdobeContentProtectionService(context: pubServiceContext)
+    do {
+      let adobeFetcher = try AdobeDRMFetcher(url: fileAsset.url, fetcher: fetcher, encryptionData: encryptionData)
+      let protectedAsset = ProtectedAsset(
+        asset: asset,
+        fetcher: adobeFetcher,
+        onCreatePublication: { _, _, _, services in
+          services.setContentProtectionServiceFactory { pubServiceContext in
+            AdobeContentProtectionService(context: pubServiceContext)
+          }
         }
-      }
-    )
-    completion(.success(protectedAsset))
+      )
+      completion(.success(protectedAsset))
+    } catch {
+      completion(.failure(.forbidden(error)))
+    }
   }
 }
 
