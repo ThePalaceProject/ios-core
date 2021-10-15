@@ -16,17 +16,22 @@
 #include "dp_all.h"
 #pragma clang diagnostic pop
 
+#import "TPPXML.h"
+
 static id acsdrm_lock = nil;
 
 @interface AdobeDRMContainer () {
   @private dpdev::Device *device;
   @private dp::Data rightsXMLData;
   @private NSData *encryptionData;
+  @private TPPXML *permissionsNode;
 }
 @end
 
 
 @implementation AdobeDRMContainer: NSObject
+
+@synthesize displayUntilDate = _displayUntilDate;
 
 - (instancetype)initWithURL:(NSURL *)fileURL encryptionData:(NSData *)data {
   
@@ -44,12 +49,28 @@ static id acsdrm_lock = nil;
     // *_rights.xml file contents
     NSString *rightsPath = [NSString stringWithFormat:@"%@%@", path, RIGHTS_XML_SUFFIX];
     NSData *rightsData = [NSData dataWithContentsOfFile:rightsPath];
+    // Keep permissions node
+    TPPXML *xml = [TPPXML XMLWithData:rightsData];
+    permissionsNode = [[xml firstChildWithName:@"licenseToken"] firstChildWithName:@"permissions"];
+    // Pass rights data to Adobe DRM
     size_t rightsLen = rightsData.length;
     unsigned char *rightsContent = (unsigned char *)rightsData.bytes;
     rightsXMLData = dp::Data(rightsContent, rightsLen);
     
   }
   return self;
+}
+
+- (NSDate *)displayUntilDate {
+  if (!_displayUntilDate) {
+    /// The date is in `*.epub_rights.xml` files, xpath `/licenseToken/permissions/display/until`
+    TPPXML *dateUntilNode = [[permissionsNode firstChildWithName:@"display"] firstChildWithName:@"until"];
+    NSString *dateUntilValue = dateUntilNode.value;
+    NSDateFormatter *df = [[NSDateFormatter alloc] init];
+    df.dateFormat = @"yyyy-MM-dd'T'HH:mm:ssZ";
+    _displayUntilDate = [df dateFromString:dateUntilValue];
+  }
+  return _displayUntilDate;
 }
 
 - (NSData *)decodeData:(NSData *)data at:(NSString *)path {
