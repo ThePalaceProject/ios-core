@@ -17,7 +17,7 @@ enum AdobeDRMFetcherError: LocalizedError {
   
   public var errorDescription: String? {
     switch self {
-    case .expiredDisplayUntilDate: return "The book license has expired."
+    case .expiredDisplayUntilDate: return NSLocalizedString("The book license has expired.", comment: "Expired license warning")
     }
   }
 }

@@ -269,3 +269,4 @@
 // Adobe DRM Expired certificate title and message
 "Something went wrong with the Adobe DRM system" = "Something went wrong with the Adobe DRM system";
 "Some books will be unavailable in this version. Please try updating to the latest version of the application." = "Some books will be unavailable in this version. Please try updating to the latest version of the application.";
+"The book license has expired." = "The book license has expired.";
