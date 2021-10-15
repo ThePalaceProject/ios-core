@@ -53,7 +53,7 @@ class AdobeDRMFetcher: Fetcher {
       let href = link.href.starts(with: "/") ? String(link.href.dropFirst()) : link.href // remove leading /
       let data = container.decode(encryptedData, at: href)
       if let error = container.epubDecodingError, error == AdobeDRMContainerExpiredLicenseError {
-        return FailureResource(link: link, error: .forbidden(nil))
+        return FailureResource(link: link, error: .forbidden(AdobeDRMFetcherError.expiredDisplayUntilDate))
       }
       return DataResource(link: link, data: data)
     } catch {
