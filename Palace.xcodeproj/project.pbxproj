@@ -1851,6 +1851,7 @@
 		7338755E2423E108000FEB67 /* Network */ = {
 			isa = PBXGroup;
 			children = (
+				E5C49EF3271A09BD00C69A6F /* NetworkManager */,
 				733875662423E540000FEB67 /* TPPCaching.swift */,
 				733875642423E1B0000FEB67 /* TPPNetworkExecutor.swift */,
 				735FED252427494900144C97 /* TPPNetworkResponder.swift */,
@@ -2147,7 +2148,6 @@
 				085D31DD1BE3CD3C007F7672 /* NSURLRequest+NYPLURLRequestAdditions.h */,
 				085D31DE1BE3CD3C007F7672 /* NSURLRequest+NYPLURLRequestAdditions.m */,
 				7340DA6124B7E45C00361387 /* URLResponse+NYPL.swift */,
-				E5C49EF3271A09BD00C69A6F /* NetworkManager */,
 			);
 			path = Networking;
 			sourceTree = "<group>";

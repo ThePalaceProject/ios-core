@@ -8,7 +8,7 @@
 
 import Foundation
 
-enum NetworkManagerError: Error, Equatable {
+enum NetworkManagerError: Error {
   case offline
   case serverError(Error)
   case internalError(TPPErrorCode)
