@@ -22,7 +22,7 @@ enum NYPLResult<SuccessInfo> {
 /// header if present, otherwise defaults to 3 hours.
 ///
 /// The cache lives on both memory and disk.
-@objc class TPPNetworkExecutor: NSObject {
+@objc class TPPNetworkExecutor: NSObject, NetworkExecutor {
   private let urlSession: URLSession
 
   /// The delegate of the URLSession.

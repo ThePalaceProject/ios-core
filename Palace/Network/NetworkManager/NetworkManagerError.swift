@@ -8,10 +8,21 @@
 
 import Foundation
 
-enum NetworkManagerError: Error {
+enum NetworkManagerError: Error, Equatable {
   case offline
   case serverError(Error)
   case internalError(TPPErrorCode)
   case invalidURL
   case invalidData
+  
+  static func == (lhs: NetworkManagerError, rhs: NetworkManagerError) -> Bool {
+    switch (lhs, rhs) {
+    case let (.serverError(a), .serverError(b)):
+      return a.localizedDescription == b.localizedDescription
+    case let (.internalError(a), .internalError(b)):
+      return a == b
+    default:
+      return lhs == rhs
+    }
+  }
 }

@@ -9,14 +9,10 @@
 import Foundation
 import Combine
 
+typealias NetworkManager = NetworkManagerAccount
+
 protocol NetworkManagerAccount {  
   func fetchAuthenticationDocument(url: String) -> AnyPublisher<OPDS2AuthenticationDocument?, NetworkManagerError>
-  func fetchAccount(url: String) -> AnyPublisher<Account?, NetworkManagerError>
   func fetchCatalog(url: String) -> AnyPublisher<OPDS2CatalogsFeed?, NetworkManagerError>
 }
 
-protocol NetworkManagerCatalogFeed {
-  func fetchFeed(url: String) -> AnyPublisher<TPPOPDSFeed?, NetworkManagerError>
-}
-
-typealias NetworkManager = NetworkManagerAccount & NetworkManagerCatalogFeed

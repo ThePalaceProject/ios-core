@@ -9,15 +9,20 @@
 import Foundation
 import Combine
 
-class AppNetworkManager {}
+class AppNetworkManager {
+  let executor: NetworkExecutor
+
+  init(executor: NetworkExecutor = TPPNetworkExecutor.shared) {
+    self.executor = executor
+  }
+}
 
 extension AppNetworkManager: NetworkManagerAccount {
-
   func fetchAuthenticationDocument(url: String) -> AnyPublisher<OPDS2AuthenticationDocument?, NetworkManagerError> {
     guard let targetUrl = URL(string: url) else { return Fail(error: .invalidURL).eraseToAnyPublisher() }
 
-    return Future<OPDS2AuthenticationDocument?, NetworkManagerError> { promise in
-      TPPNetworkExecutor.shared.GET(targetUrl) { result in
+    return Future<OPDS2AuthenticationDocument?, NetworkManagerError> { [weak self] promise in
+      self?.executor.GET(targetUrl) { result in
         switch result {
         case let .success(data, _):
           
@@ -54,11 +59,6 @@ extension AppNetworkManager: NetworkManagerAccount {
     .eraseToAnyPublisher()
   }
   
-  func fetchAccount(url: String) -> AnyPublisher<Account?, NetworkManagerError> {
-    Fail(error: .internalError(.feedParseFail))
-      .eraseToAnyPublisher()
-  }
-  
   func fetchCatalog(url: String) -> AnyPublisher<OPDS2CatalogsFeed?, NetworkManagerError> {
     guard let targetUrl = URL(string: url) else {
       TPPErrorLogger.logError(
@@ -70,8 +70,8 @@ extension AppNetworkManager: NetworkManagerAccount {
       return Fail(error: .invalidURL).eraseToAnyPublisher()
     }
     
-    return Future<OPDS2CatalogsFeed?, NetworkManagerError> { promise in
-      TPPNetworkExecutor.shared.GET(targetUrl) { result in
+    return Future<OPDS2CatalogsFeed?, NetworkManagerError> { [weak self] promise in
+      self?.executor.GET(targetUrl) { result in
         switch result {
         case let .success(data, _):
           
@@ -100,13 +100,5 @@ extension AppNetworkManager: NetworkManagerAccount {
       }
     }
     .eraseToAnyPublisher()
-  }
-}
-
-extension AppNetworkManager: NetworkManagerCatalogFeed{
-  
-  func fetchFeed(url: String) -> AnyPublisher<TPPOPDSFeed?, NetworkManagerError> {
-    Fail(error: .internalError(.authDocParseFail))
-      .eraseToAnyPublisher()
   }
 }
