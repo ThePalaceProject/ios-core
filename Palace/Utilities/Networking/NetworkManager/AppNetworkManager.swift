@@ -2,7 +2,7 @@
 //  AppNetworkManager.swift
 //  Palace
 //
-//  Created by Maurice Work on 10/15/21.
+//  Created by Maurice Carrier on 10/15/21.
 //  Copyright © 2021 The Palace Project. All rights reserved.
 //
 
