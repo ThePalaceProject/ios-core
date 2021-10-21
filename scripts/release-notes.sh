@@ -30,4 +30,4 @@ else
   CERTIFICATES_PATH="../mobile-certificates/Certificates"
 fi
 
-swift $CERTIFICATES_PATH/Palace/iOS/ReleaseNotes.swift "$@"
+python3 $CERTIFICATES_PATH/Palace/iOS/ReleaseNotes.py "$@"
