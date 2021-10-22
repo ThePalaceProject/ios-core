@@ -703,6 +703,14 @@
 		E5C49F14271E69D000C69A6F /* NetworkManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5C49F13271E69D000C69A6F /* NetworkManagerTests.swift */; };
 		E5C49F20271E7A1C00C69A6F /* Publisher+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5C49F1F271E7A1C00C69A6F /* Publisher+Extensions.swift */; };
 		E5C49F24271E7F7900C69A6F /* lyrasis_reads_authentication_document.json in Resources */ = {isa = PBXBuildFile; fileRef = E5C49F23271E7F7900C69A6F /* lyrasis_reads_authentication_document.json */; };
+		E5C49F61271FB19400C69A6F /* AppContextProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5C49F5E271FB19300C69A6F /* AppContextProvider.swift */; };
+		E5C49F62271FB19400C69A6F /* AppController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5C49F5F271FB19400C69A6F /* AppController.swift */; };
+		E5C49F63271FB19400C69A6F /* WithContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5C49F60271FB19400C69A6F /* WithContext.swift */; };
+		E5C49F69271FB6C100C69A6F /* AppController+EventHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5C49F68271FB6C100C69A6F /* AppController+EventHandler.swift */; };
+		E5C49F6C271FB79500C69A6F /* AppEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5C49F6B271FB79500C69A6F /* AppEvent.swift */; };
+		E5C49F6F271FBEC000C69A6F /* AppEventSubject.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5C49F6E271FBEC000C69A6F /* AppEventSubject.swift */; };
+		E5C49F722720FC8A00C69A6F /* AccountManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5C49F712720FC8A00C69A6F /* AccountManager.swift */; };
+		E5C49F762722693100C69A6F /* AccountManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5C49F752722693100C69A6F /* AccountManagerTests.swift */; };
 		E5C8CAA1270B5653003F7BC0 /* BundleExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5C8CA9B270B5653003F7BC0 /* BundleExtension.swift */; };
 		E6202A021DD4E6F300C99553 /* TPPSettingsAccountDetailViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = E6202A011DD4E6F300C99553 /* TPPSettingsAccountDetailViewController.m */; };
 		E6207B652118973800864143 /* TPPAppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6207B642118973800864143 /* TPPAppTheme.swift */; };
@@ -1404,6 +1412,14 @@
 		E5C49F17271E6E0500C69A6F /* JSONMocker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONMocker.swift; sourceTree = "<group>"; };
 		E5C49F1F271E7A1C00C69A6F /* Publisher+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Publisher+Extensions.swift"; sourceTree = "<group>"; };
 		E5C49F23271E7F7900C69A6F /* lyrasis_reads_authentication_document.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = lyrasis_reads_authentication_document.json; sourceTree = "<group>"; };
+		E5C49F5E271FB19300C69A6F /* AppContextProvider.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AppContextProvider.swift; sourceTree = "<group>"; };
+		E5C49F5F271FB19400C69A6F /* AppController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AppController.swift; sourceTree = "<group>"; };
+		E5C49F60271FB19400C69A6F /* WithContext.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = WithContext.swift; sourceTree = "<group>"; };
+		E5C49F68271FB6C100C69A6F /* AppController+EventHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppController+EventHandler.swift"; sourceTree = "<group>"; };
+		E5C49F6B271FB79500C69A6F /* AppEvent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEvent.swift; sourceTree = "<group>"; };
+		E5C49F6E271FBEC000C69A6F /* AppEventSubject.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEventSubject.swift; sourceTree = "<group>"; };
+		E5C49F712720FC8A00C69A6F /* AccountManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountManager.swift; sourceTree = "<group>"; };
+		E5C49F752722693100C69A6F /* AccountManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountManagerTests.swift; sourceTree = "<group>"; };
 		E5C8CA9B270B5653003F7BC0 /* BundleExtension.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = BundleExtension.swift; sourceTree = "<group>"; };
 		E61D7F631F6AC78B0091C781 /* SimplyE.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SimplyE.entitlements; sourceTree = "<group>"; };
 		E6202A001DD4E6F300C99553 /* TPPSettingsAccountDetailViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPSettingsAccountDetailViewController.h; sourceTree = "<group>"; };
@@ -1780,6 +1796,7 @@
 				730EDFFF251567820038DD9F /* TPPLibraryNavigationController.h */,
 				730EE000251567820038DD9F /* TPPLibraryNavigationController.m */,
 				52545184217A76FF00BBC1B4 /* TPPUserNotifications.swift */,
+				E5C49F65271FB19800C69A6F /* AppController */,
 			);
 			path = AppInfrastructure;
 			sourceTree = "<group>";
@@ -2346,6 +2363,7 @@
 				03F94CCE1DD627AA00CE8F4F /* Accounts.json */,
 				03F94CD01DD6288C00CE8F4F /* AccountsManager.swift */,
 				73DE53302525A386003E2C56 /* TPPLibraryAccountURLsProvider.swift */,
+				E5C49F712720FC8A00C69A6F /* AccountManager.swift */,
 			);
 			path = Library;
 			sourceTree = "<group>";
@@ -2662,6 +2680,7 @@
 				17ADCF4E254BB84800D0A5FE /* TPPReaderBookmarksBusinessLogicTests.swift */,
 				17BE24D625F85D2300AE707F /* TPPAgeCheckTests.swift */,
 				E5C49F13271E69D000C69A6F /* NetworkManagerTests.swift */,
+				E5C49F752722693100C69A6F /* AccountManagerTests.swift */,
 			);
 			path = PalaceTests;
 			sourceTree = "<group>";
@@ -2736,6 +2755,19 @@
 				E5C49EF9271A0DBB00C69A6F /* NetworkManagerError.swift */,
 			);
 			path = NetworkManager;
+			sourceTree = "<group>";
+		};
+		E5C49F65271FB19800C69A6F /* AppController */ = {
+			isa = PBXGroup;
+			children = (
+				E5C49F5E271FB19300C69A6F /* AppContextProvider.swift */,
+				E5C49F60271FB19400C69A6F /* WithContext.swift */,
+				E5C49F5F271FB19400C69A6F /* AppController.swift */,
+				E5C49F68271FB6C100C69A6F /* AppController+EventHandler.swift */,
+				E5C49F6B271FB79500C69A6F /* AppEvent.swift */,
+				E5C49F6E271FBEC000C69A6F /* AppEventSubject.swift */,
+			);
+			path = AppController;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -3116,6 +3148,7 @@
 				7375AE5A25382AC900C85211 /* TPPUserAccountMock.swift in Sources */,
 				73C3CF5A25CB8D6100CA8166 /* NYPLNetworkExecutorMock.swift in Sources */,
 				735771AE2537687D00067CEA /* TPPURLSettingsProviderMock.swift in Sources */,
+				E5C49F762722693100C69A6F /* AccountManagerTests.swift in Sources */,
 				735771B12537691800067CEA /* TPPDRMAuthorizingMock.swift in Sources */,
 				E5C49F14271E69D000C69A6F /* NetworkManagerTests.swift in Sources */,
 				730EF263260955EF008E1DC3 /* TPPBookmarkSpecTests.swift in Sources */,
@@ -3445,6 +3478,7 @@
 				1139DA6519C7755D00A07810 /* TPPBookCoverRegistry.m in Sources */,
 				21D746E72718A4C000C0E1B4 /* AdobeDRMFetcherError.swift in Sources */,
 				73085E3525030D27008F6244 /* SEMigrations.swift in Sources */,
+				E5C49F62271FB19400C69A6F /* AppController.swift in Sources */,
 				11119742198827850014462F /* TPPBookDetailDownloadingView.m in Sources */,
 				730FC05B2512911E004D7C2D /* TPPWelcomeScreenViewController.swift in Sources */,
 				2DFAC8ED1CD8DDD1003D9EC0 /* TPPOPDSCategory.m in Sources */,
@@ -3463,6 +3497,7 @@
 				215C866D27064198005F9621 /* BundleExtension.swift in Sources */,
 				E699BA402166598B00A0736A /* TPPEntryPointView.swift in Sources */,
 				A46226271B39D4980063F549 /* TPPOPDSGroup.m in Sources */,
+				E5C49F69271FB6C100C69A6F /* AppController+EventHandler.swift in Sources */,
 				A93F9F9721CDACF700BD3B0C /* TPPAppReviewPrompt.swift in Sources */,
 				E5C49F20271E7A1C00C69A6F /* Publisher+Extensions.swift in Sources */,
 				E5C8CAA1270B5653003F7BC0 /* BundleExtension.swift in Sources */,
@@ -3519,6 +3554,7 @@
 				111E757D1A801A6F00718AD7 /* TPPSettingsPrimaryNavigationController.m in Sources */,
 				11A16E69195B2BD3004147F4 /* TPPCatalogUngroupedFeedViewController.m in Sources */,
 				E551B361267D402B0026FC1B /* TPPAccountList.swift in Sources */,
+				E5C49F6F271FBEC000C69A6F /* AppEventSubject.swift in Sources */,
 				D787E8441FB6B0290016D9D5 /* TPPSettingsAdvancedViewController.swift in Sources */,
 				5D60D3542297353C001080D0 /* TPPMigrationManager.swift in Sources */,
 				E5C49EEE271A03A400C69A6F /* NetworkManager.swift in Sources */,
@@ -3527,6 +3563,7 @@
 				086C45D624AE77CA00F5108E /* TPPBasicAuth.swift in Sources */,
 				B51C1E0422861C1A003B49A5 /* OPDS2AuthenticationDocument.swift in Sources */,
 				739ECB2B25102A2B00691A70 /* TPPCatalogs+SE.swift in Sources */,
+				E5C49F722720FC8A00C69A6F /* AccountManager.swift in Sources */,
 				112C694D197301FE00C48F95 /* TPPBookRegistryRecord.m in Sources */,
 				5DD5674522B303DF001F0C83 /* TPPDeveloperSettingsTableViewController.swift in Sources */,
 				E627B554216D4A9700A7D1D5 /* TPPBookContentType.m in Sources */,
@@ -3551,6 +3588,7 @@
 				219747FC26D9218400FA25DF /* TPPLCPClient.swift in Sources */,
 				21DDE32E25D31DB4002CBCE3 /* AdobeDRMFetcher.swift in Sources */,
 				11C5DCF21976D1E0005A9945 /* TPPHoldsNavigationController.m in Sources */,
+				E5C49F63271FB19400C69A6F /* WithContext.swift in Sources */,
 				73DB56CC25F7F739003788EE /* TPPLastReadPositionPoster.swift in Sources */,
 				A42E0DF11B3F5A490095EBAE /* TPPRemoteViewController.m in Sources */,
 				1798538B255A4092009F94D9 /* TPPBookLocation+Locator.swift in Sources */,
@@ -3573,6 +3611,7 @@
 				E6DA7EA01F2A718600CFBEC8 /* TPPBookAuthor.swift in Sources */,
 				739ECB2425101CCE00691A70 /* NSNotification+TPP.swift in Sources */,
 				734B789125659611006FB8AD /* URLResponse+TPPAuthentication.swift in Sources */,
+				E5C49F6C271FB79500C69A6F /* AppEvent.swift in Sources */,
 				E5C49EFA271A0DBB00C69A6F /* NetworkManagerError.swift in Sources */,
 				E5C2C422268BA5140046F415 /* TPPRegistryDebuggingCell.swift in Sources */,
 				118A0B1B19915BDF00792DDE /* TPPCatalogSearchViewController.m in Sources */,
@@ -3592,6 +3631,7 @@
 				E6B6E76F1F6859A4007EE361 /* TPPKeychainManager.swift in Sources */,
 				089E42C6249A823800310360 /* TPPCookiesWebViewController.swift in Sources */,
 				0826CD2924AA21B2000F4030 /* TPPSamlIDPCell.swift in Sources */,
+				E5C49F61271FB19400C69A6F /* AppContextProvider.swift in Sources */,
 				2126FE2E25C059250095C45C /* ReaderError.swift in Sources */,
 				5D7CF8B922C3FC06007CAA34 /* TPPErrorLogger.swift in Sources */,
 				0824D44E24B8DFE400C85A7E /* NSString+JSONParse.swift in Sources */,

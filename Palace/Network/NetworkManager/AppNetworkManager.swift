@@ -18,11 +18,9 @@ class AppNetworkManager {
 }
 
 extension AppNetworkManager: NetworkManagerAccount {
-  func fetchAuthenticationDocument(url: String) -> AnyPublisher<OPDS2AuthenticationDocument?, NetworkManagerError> {
-    guard let targetUrl = URL(string: url) else { return Fail(error: .invalidURL).eraseToAnyPublisher() }
-
+  func fetchAuthenticationDocument(url: URL) -> AnyPublisher<OPDS2AuthenticationDocument?, NetworkManagerError> {
     return Future<OPDS2AuthenticationDocument?, NetworkManagerError> { [weak self] promise in
-      self?.executor.GET(targetUrl) { result in
+      self?.executor.GET(url) { result in
         switch result {
         case let .success(data, _):
           
@@ -59,19 +57,9 @@ extension AppNetworkManager: NetworkManagerAccount {
     .eraseToAnyPublisher()
   }
   
-  func fetchCatalog(url: String) -> AnyPublisher<OPDS2CatalogsFeed?, NetworkManagerError> {
-    guard let targetUrl = URL(string: url) else {
-      TPPErrorLogger.logError(
-        withCode: .noURL,
-        summary: "Failed to load authentication document because its URL is invalid",
-        metadata: ["self.uuid": AccountsManager.shared.currentAccount?.uuid ?? "",
-                   "urlString": url])
-      
-      return Fail(error: .invalidURL).eraseToAnyPublisher()
-    }
-    
+  func fetchCatalog(url: URL) -> AnyPublisher<OPDS2CatalogsFeed?, NetworkManagerError> {
     return Future<OPDS2CatalogsFeed?, NetworkManagerError> { [weak self] promise in
-      self?.executor.GET(targetUrl) { result in
+      self?.executor.GET(url) { result in
         switch result {
         case let .success(data, _):
           
@@ -81,8 +69,8 @@ extension AppNetworkManager: NetworkManagerAccount {
           } catch (let error) {
             let responseBody = String(data: data, encoding: .utf8)
             TPPErrorLogger.logError(
-              withCode: .authDocParseFail,
-              summary: "Authentication Document Data Parse Error",
+              withCode: .libraryListLoadFail,
+              summary: "Unable to load libraries list",
               metadata: [
                 "underlyingError": error,
                 "responseBody": responseBody ?? "N/A",
@@ -100,5 +88,9 @@ extension AppNetworkManager: NetworkManagerAccount {
       }
     }
     .eraseToAnyPublisher()
+  }
+  
+  func clearCache() {
+    TPPNetworkExecutor.shared.clearCache()
   }
 }

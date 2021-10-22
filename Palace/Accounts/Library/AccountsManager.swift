@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 let currentAccountIdentifierKey  = "TPPCurrentAccountIdentifier"
 
@@ -58,6 +59,7 @@ let currentAccountIdentifierKey  = "TPPCurrentAccountIdentifier"
 
   private var loadingCompletionHandlers = [String: [(Bool) -> ()]]()
 
+  
   var currentAccount: Account? {
     get {
       guard let uuid = currentAccountId else {
