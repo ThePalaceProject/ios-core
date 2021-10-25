@@ -35,7 +35,8 @@ class AppAccountManager: NSObject, AccountManager, TPPLibraryAccountsProvider {
   @Published var currentAccount: Account? {
     didSet {
       guard let account = currentAccount else { return }
-      loadAuthDoc(account)
+      loadAuthenticationDocument(for: account, completion: nil)
+      setMainFeed(account)
     }
   }
   
@@ -108,14 +109,7 @@ class AppAccountManager: NSObject, AccountManager, TPPLibraryAccountsProvider {
       .store(in: &observers)
   }
   
-  func loadAuthDoc(_ account: Account) {
-    account.loadAuthenticationDocument(using: TPPUserAccount.sharedAccount()) { [weak self] success in
-      self?.setMainFeed(account)
-    }
-  }
-  
   private func setMainFeed(_ account: Account) {
-    currentAccount = account
     var mainFeed = URL(string: currentAccount!.catalogUrl ?? "")
     
     if currentAccount!.details?.needsAgeCheck ?? false {
@@ -127,6 +121,8 @@ class AppAccountManager: NSObject, AccountManager, TPPLibraryAccountsProvider {
         UIApplication.shared.delegate?.window??.tintColor = TPPConfiguration.mainColor()
       }
     }
+    
+    loadAuthenticationDocument(for: account, completion: nil)
   }
 
   func updateAccountSet() {
@@ -160,7 +156,34 @@ class AppAccountManager: NSObject, AccountManager, TPPLibraryAccountsProvider {
     
     return nil
   }
-  
+
+  func loadAuthenticationDocument(for account: Account, completion: ((_ success: Bool) -> Void)?) {
+    Log.debug(#function, "Entering...")
+    guard account.authenticationDocument == nil else {
+      return
+    }
+      
+    guard let urlString = account.authenticationDocumentUrl, let url = URL(string: urlString) else {
+      TPPErrorLogger.logError(
+        withCode: .noURL,
+        summary: "Failed to load authentication document because its URL is invalid",
+        metadata: ["self.uuid": account.uuid,
+                   "urlString": account.authenticationDocumentUrl ?? "N/A"]
+      )
+      completion?(false)
+      return
+    }
+    
+    networkManager.fetchAuthenticationDocument(url: url)
+      .sink { result in
+        if case let .success(document) = result {
+          account.authenticationDocument = document
+          completion?(true)
+        }
+      }
+      .store(in: &observers)
+  }
+
   func clearCache() {
     networkManager.clearCache()
     do {

@@ -31,9 +31,21 @@ class AccountManagerTests: XCTestCase {
   func testLoadAuthDoc() {
     let exp = expectation(description: "network test succeeds")
     accountManager.loadCatalogs(url: testCatalogFeed)
-    accountManager.loadAuthDoc(accountManager.accountSets.first!.value.first!)
-    XCTAssertNotNil(accountManager.currentAccount?.authenticationDocument)
-    exp.fulfill()
+    
+    let testAuthDocURL = Bundle.init(for: OPDS2CatalogsFeedTests.self)
+      .url(forResource: "lyrasis_reads_authentication_document", withExtension: "json")!
+
+    guard let account = accountManager.accountSets.first!.value.first else {
+      XCTFail()
+      return
+    }
+    
+    account.authenticationDocumentUrl = testAuthDocURL.absoluteString
+    accountManager.loadAuthenticationDocument(for: account) { success in
+      XCTAssertTrue(success)
+      XCTAssertNotNil(account.authenticationDocument)
+      exp.fulfill()
+    }
     waitForExpectations(timeout: timeout)
   }
 }
@@ -45,12 +57,8 @@ fileprivate struct TestError: TPPUserFriendlyError {
 
 fileprivate class MockNetworkExecutor: NetworkExecutor {
   
-  func loadTestAuthDocument(url: URL) -> Data? {
-    try? Data(contentsOf: url)
-  }
-  
   func GET(_ reqURL: URL, completion: @escaping (NYPLResult<Data>) -> Void) {
-    guard let data = loadTestAuthDocument(url: reqURL) else {
+    guard let data = try? Data(contentsOf: reqURL) else {
       completion(.failure(TestError(), nil))
       return
     }
