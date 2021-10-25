@@ -2,7 +2,7 @@
 //  AccountManager.swift
 //  Palace
 //
-//  Created by Maurice Work on 10/20/21.
+//  Created by Maurice Carrier on 10/20/21.
 //  Copyright © 2021 The Palace Project. All rights reserved.
 //
 
@@ -56,7 +56,7 @@ class AppAccountManager: NSObject, AccountManager, TPPLibraryAccountsProvider {
   }
 
   var accountSet: String
-  private var accountSets = [String: [Account]]()
+  var accountSets = [String: [Account]]()
   var ageCheck: TPPAgeCheckVerifying
   
   var currentAccountPublisher: AnyPublisher<Account?, Never> { $currentAccount.eraseToAnyPublisher() }
@@ -115,9 +115,10 @@ class AppAccountManager: NSObject, AccountManager, TPPLibraryAccountsProvider {
   }
   
   private func setMainFeed(_ account: Account) {
-    var mainFeed = URL(string: currentAccount?.catalogUrl ?? "")
+    currentAccount = account
+    var mainFeed = URL(string: currentAccount!.catalogUrl ?? "")
     
-    if currentAccount?.details?.needsAgeCheck ?? false {
+    if currentAccount!.details?.needsAgeCheck ?? false {
       ageCheck.verifyCurrentAccountAgeRequirement(userAccountProvider: TPPUserAccount.sharedAccount(), currentLibraryAccountProvider: self) { meetsAgeReq in
         mainFeed = self.currentAccount?.details?.defaultAuth?.coppaURL(isOfAge: meetsAgeReq)
         
@@ -129,7 +130,11 @@ class AppAccountManager: NSObject, AccountManager, TPPLibraryAccountsProvider {
   }
 
   func updateAccountSet() {
+    accountSet = TPPConfiguration.customUrlHash() ?? (TPPSettings.shared.useBetaLibraries ? TPPConfiguration.betaUrlHash : TPPConfiguration.prodUrlHash)
     
+    if accounts.isEmpty || TPPConfiguration.customUrlHash() != nil, let url = URL(string: accountSet) {
+      loadCatalogs(url: url)
+    }
   }
   
   func account(_ uuid: String) -> Account? {
