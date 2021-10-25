@@ -1,5 +1,4 @@
 import Foundation
-import Combine
 
 let currentAccountIdentifierKey  = "TPPCurrentAccountIdentifier"
 
@@ -59,7 +58,6 @@ let currentAccountIdentifierKey  = "TPPCurrentAccountIdentifier"
 
   private var loadingCompletionHandlers = [String: [(Bool) -> ()]]()
 
-  
   var currentAccount: Account? {
     get {
       guard let uuid = currentAccountId else {
@@ -242,8 +240,6 @@ let currentAccountIdentifierKey  = "TPPCurrentAccountIdentifier"
     TPPNetworkExecutor.shared.GET(targetUrl) { result in
       switch result {
       case .success(let data, _):
-        
-        let string = try? JSONSerialization.jsonObject(with: data, options: [])
         self.loadAccountSetsAndAuthDoc(fromCatalogData: data, key: hash) { success in
           self.callAndClearLoadingCompletionHandlers(key: hash, success)
           NotificationCenter.default.post(name: NSNotification.Name.TPPCatalogDidLoad, object: nil)
