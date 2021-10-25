@@ -363,7 +363,7 @@ class OPDS2SamlIDP: NSObject, Codable {
   var details:AccountDetails?
   var homePageUrl: String?
   
-  let authenticationDocumentUrl:String?
+  var authenticationDocumentUrl:String?
   var authenticationDocument:OPDS2AuthenticationDocument? {
     didSet {
       guard let authenticationDocument = authenticationDocument else {
@@ -396,6 +396,7 @@ class OPDS2SamlIDP: NSObject, Codable {
     loadLogo()
   }
 
+  //TODO: Remove Authentication Document logic, now handled by AccountManager
   /// Load authentication documents from the network or cache.
   /// Providing the signedInStateProvider might lead to presentation of announcements
   /// - Parameter signedInStateProvider: The object providing user signed in state for presenting announcement. nil means no announcements will be present

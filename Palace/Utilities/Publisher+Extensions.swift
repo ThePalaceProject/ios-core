@@ -2,7 +2,7 @@
 //  Publisher+Extensions.swift
 //  Palace
 //
-//  Created by Maurice Work on 10/18/21.
+//  Created by Maurice Carrier on 10/18/21.
 //  Copyright © 2021 The Palace Project. All rights reserved.
 //
 
@@ -18,5 +18,16 @@ extension Publisher {
       case .finished: break
       }
     }) { receiveResult(.success($0)) }
+  }
+}
+
+extension Publisher where Failure == Never {
+  public func assign<Root: AnyObject>(
+    to keyPath: ReferenceWritableKeyPath<Root, Output>,
+    onWeak object: Root
+  ) -> AnyCancellable {
+    sink { [weak object] value in
+      object?[keyPath: keyPath] = value
+    }
   }
 }
