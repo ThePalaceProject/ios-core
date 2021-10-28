@@ -9,7 +9,7 @@
 import UIKit
 import Combine
 
-class AppController: WithContext {
+@objc class AppController: NSObject, WithContext {
 
   var context: AppContext { appContextProvider }
   let eventInput: AppEventSubject = AppEventSubject()
@@ -21,7 +21,20 @@ class AppController: WithContext {
 
   private var observers = Set<AnyCancellable>()
   private var dataObservers = Set<AnyCancellable>()
+  
+  @objc static let shared = AppController()
 
+  override convenience init() {
+    let networkManager = AppNetworkManager()
+    let accountManager = AppAccountManager(networkManager: networkManager)
+    
+    self.init(
+      appContextProvider: AppContextProvider(),
+      networkManager: networkManager,
+      accountManager: accountManager
+    )
+  }
+  
   init(
     appContextProvider: AppContextProvider,
     networkManager: NetworkManager,
@@ -36,6 +49,8 @@ class AppController: WithContext {
       networkManager: self.networkManager,
       accountManager: self.accountManager
     )
+
+    super.init()
 
     subscribeToAccountManager()
     subscribeToEvents()

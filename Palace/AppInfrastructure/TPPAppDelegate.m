@@ -29,6 +29,7 @@
 @property (nonatomic) TPPReachability *reachabilityManager;
 @property (nonatomic) TPPUserNotifications *notificationsManager;
 @property (nonatomic, readwrite) BOOL isSigningIn;
+@property (nonatomic) AppController *appController;
 @end
 
 @implementation TPPAppDelegate
@@ -45,6 +46,7 @@ didFinishLaunchingWithOptions:(__attribute__((unused)) NSDictionary *)launchOpti
   // Perform data migrations as early as possible before anything has a chance to access them
   [TPPKeychainManager validateKeychain];
   [TPPMigrationManager migrate];
+  self.appController = [[AppController alloc] init];
   
   self.audiobookLifecycleManager = [[AudiobookLifecycleManager alloc] init];
   [self.audiobookLifecycleManager didFinishLaunching];

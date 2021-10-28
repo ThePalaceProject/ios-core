@@ -12,14 +12,17 @@ import Combine
 protocol AppContext {
   var accountPublisher: AnyPublisher<Account?, Never> { get }
   var catalogPublisher: AnyPublisher<OPDS2CatalogsFeed?, Never> { get }
+  var selectedTabBarViewPublisher: AnyPublisher<TabBarItem, Never> { get }
 }
 
 class AppContextProvider {
   @Published var currentAccount: Account?
   @Published var currentCatalog: OPDS2CatalogsFeed?
+  @Published var selectedTab: TabBarItem = .catalog
 }
 
 extension AppContextProvider: AppContext {
   var accountPublisher: AnyPublisher<Account?, Never> { $currentAccount.eraseToAnyPublisher() }
   var catalogPublisher: AnyPublisher<OPDS2CatalogsFeed?, Never> { $currentCatalog.eraseToAnyPublisher() }
+  var selectedTabBarViewPublisher: AnyPublisher<TabBarItem, Never> { $selectedTab.eraseToAnyPublisher() }
 }
