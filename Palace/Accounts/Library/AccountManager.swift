@@ -45,11 +45,6 @@ class AppAccountManager: NSObject, AccountManager, TPPLibraryAccountsProvider {
       return UserDefaults.standard.string(forKey: currentAccountIdentifierKey)
     }
     set {
-
-      if let uuid = newValue {
-        currentAccount = account(uuid)
-      }
-
       Log.debug(#file, "Setting currentAccountId to \(newValue ?? "N/A")>")
       UserDefaults.standard.set(newValue,
                                 forKey: currentAccountIdentifierKey)
@@ -88,7 +83,7 @@ class AppAccountManager: NSObject, AccountManager, TPPLibraryAccountsProvider {
     self.ageCheck = TPPAgeCheck(ageCheckChoiceStorage: TPPSettings.shared)
     self.networkManager = networkManager
     super.init()
-
+  
     self.loadCatalogs(
       url: TPPConfiguration.customUrl() ??
         (TPPSettings.shared.useBetaLibraries ? TPPConfiguration.betaUrl : TPPConfiguration.prodUrl)
@@ -104,25 +99,32 @@ class AppAccountManager: NSObject, AccountManager, TPPLibraryAccountsProvider {
       .sink { [weak self] result in
         if case let .success(feed) = result {
           self?.accountSets[hash] = feed?.catalogs.compactMap { Account(publication: $0) }
+          self?.currentAccount = self?.account(self?.currentAccountId ?? "")
         }
       }
       .store(in: &observers)
   }
   
   private func setMainFeed(_ account: Account) {
-    var mainFeed = URL(string: currentAccount!.catalogUrl ?? "")
-    
-    if currentAccount!.details?.needsAgeCheck ?? false {
-      ageCheck.verifyCurrentAccountAgeRequirement(userAccountProvider: TPPUserAccount.sharedAccount(), currentLibraryAccountProvider: self) { meetsAgeReq in
-        mainFeed = self.currentAccount?.details?.defaultAuth?.coppaURL(isOfAge: meetsAgeReq)
-        
+    self.loadAuthenticationDocument(for: account) { [weak self] success in
+      guard success, let self = self else { return }
+      
+      var mainFeed = URL(string: account.catalogUrl ?? "")
+      
+      let completion = {
         Log.debug(#function, "mainFeedURL=\(String(describing: mainFeed))")
         TPPSettings.shared.accountMainFeedURL = mainFeed
-        UIApplication.shared.delegate?.window??.tintColor = TPPConfiguration.mainColor()
+      }
+      
+      if self.currentAccount!.details?.needsAgeCheck ?? false {
+        self.ageCheck.verifyCurrentAccountAgeRequirement(userAccountProvider: TPPUserAccount.sharedAccount(), currentLibraryAccountProvider: self) { meetsAgeReq in
+          mainFeed = self.currentAccount?.details?.defaultAuth?.coppaURL(isOfAge: meetsAgeReq)
+          completion()
+        }
+      } else {
+        completion()
       }
     }
-    
-    loadAuthenticationDocument(for: account, completion: nil)
   }
 
   func updateAccountSet() {

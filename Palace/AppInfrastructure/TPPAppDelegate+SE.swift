@@ -10,11 +10,11 @@ import Foundation
 import SwiftUI
 
 extension TPPAppDelegate {
-  @objc func setUpRootVC() {
+  @objc func setUpRootVC(controller: AppController) {
     //    self.window.rootViewController = SETutorialViewController()
 //    window.rootViewController = TPPRootTabBarController.shared()
     
-    let hostingController = UIHostingController(rootView: TabBarView(model: TabBarViewModel(context: AppContextProvider())))
+    let hostingController = UIHostingController(rootView: TabBarView(model: TabBarViewModel(context: controller.context)))
     window.rootViewController = hostingController
   }
 

@@ -76,8 +76,7 @@ didFinishLaunchingWithOptions:(__attribute__((unused)) NSDictionary *)launchOpti
   [[UINavigationBar appearance] setBackgroundColor:[TPPConfiguration backgroundColor]];
   [[UINavigationBar appearance] setTitleTextAttributes:@{NSFontAttributeName: [UIFont semiBoldPalaceFontOfSize:18.0]}];
   
-  [self setUpRootVC];
-
+  [self setUpRootVCWithController: self.appController];
   [TPPErrorLogger logNewAppLaunch];
 
   return YES;
