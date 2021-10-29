@@ -10,7 +10,21 @@ import SwiftUI
 import UIKit
 
 extension View {
+  func anyView() -> AnyView {
+    AnyView(self)
+  }
+
   func foregroundColor(_ color: UIColor) -> some View {
     foregroundColor(Color(color))
   }
+
+  func asPlainButton(action: @escaping Action) -> some View {
+    let button = Button(action: action) {
+      self
+    }
+    .buttonStyle(PlainButtonStyle())
+    
+    return button.anyView()
+  }
 }
+

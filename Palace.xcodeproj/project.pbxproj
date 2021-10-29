@@ -679,6 +679,7 @@
 		E50D684A26AB238D00F1042B /* TPPReaderSettings.m in Sources */ = {isa = PBXBuildFile; fileRef = 1188F3E01A1ECC4B006B2F36 /* TPPReaderSettings.m */; };
 		E50D684C26AB239600F1042B /* TPPReaderSettingsView.m in Sources */ = {isa = PBXBuildFile; fileRef = 11DC19271A12F92500721DBA /* TPPReaderSettingsView.m */; };
 		E50D685026AB239600F1042B /* TPPReaderSettingsView.m in Sources */ = {isa = PBXBuildFile; fileRef = 11DC19271A12F92500721DBA /* TPPReaderSettingsView.m */; };
+		E53E0406272C3EB30000111C /* BaseView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E53E0405272C3EB30000111C /* BaseView.swift */; };
 		E5506DE426C4688D009FA623 /* Colors.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E5506DE326C4688D009FA623 /* Colors.xcassets */; };
 		E551B35A267D396A0026FC1B /* TPPLoadingViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E551B359267D396A0026FC1B /* TPPLoadingViewController.swift */; };
 		E551B361267D402B0026FC1B /* TPPAccountList.swift in Sources */ = {isa = PBXBuildFile; fileRef = E551B360267D402B0026FC1B /* TPPAccountList.swift */; };
@@ -686,6 +687,7 @@
 		E551B365267D42AF0026FC1B /* TPPLoadingViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E551B359267D396A0026FC1B /* TPPLoadingViewController.swift */; };
 		E58565CF269774C400A5FBD5 /* AudioEngine.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E58565CE269774C400A5FBD5 /* AudioEngine.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		E598EF4B272B0A57009BF946 /* View+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E598EF4A272B0A57009BF946 /* View+Extensions.swift */; };
+		E598EF57272B45B6009BF946 /* NavigationConfigurator.swift in Sources */ = {isa = PBXBuildFile; fileRef = E598EF56272B45B6009BF946 /* NavigationConfigurator.swift */; };
 		E5AD65DD2684FACA00C62951 /* TPPAccountListCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AD65DC2684FACA00C62951 /* TPPAccountListCell.swift */; };
 		E5AD65E12684FDA300C62951 /* TPPAccountListDataSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AD65E02684FDA300C62951 /* TPPAccountListDataSource.swift */; };
 		E5B2268C2727997800DA3F1F /* ViewCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5B2268B2727997800DA3F1F /* ViewCoordinator.swift */; };
@@ -1398,6 +1400,7 @@
 		B51C1E16229456E2003B49A5 /* dpl_authentication_document.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = dpl_authentication_document.json; sourceTree = "<group>"; };
 		CAE35BBA1B86289500BF9BC5 /* Palace.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Palace.xcconfig; path = ../Palace.xcconfig; sourceTree = "<group>"; };
 		D787E8431FB6B0290016D9D5 /* TPPSettingsAdvancedViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPSettingsAdvancedViewController.swift; sourceTree = "<group>"; };
+		E53E0405272C3EB30000111C /* BaseView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BaseView.swift; sourceTree = "<group>"; };
 		E5506DE326C4688D009FA623 /* Colors.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Colors.xcassets; sourceTree = "<group>"; };
 		E551B359267D396A0026FC1B /* TPPLoadingViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPLoadingViewController.swift; sourceTree = "<group>"; };
 		E551B360267D402B0026FC1B /* TPPAccountList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAccountList.swift; sourceTree = "<group>"; };
@@ -1406,6 +1409,7 @@
 		E585662026979AC100A5FBD5 /* NYPLAEToolkit.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = NYPLAEToolkit.xcodeproj; path = "ios-drm-audioengine/NYPLAEToolkit.xcodeproj"; sourceTree = "<group>"; };
 		E585662726979EF100A5FBD5 /* NYPLAEToolkit.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = NYPLAEToolkit.xcframework; path = Carthage/Build/NYPLAEToolkit.xcframework; sourceTree = "<group>"; };
 		E598EF4A272B0A57009BF946 /* View+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "View+Extensions.swift"; sourceTree = "<group>"; };
+		E598EF56272B45B6009BF946 /* NavigationConfigurator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationConfigurator.swift; sourceTree = "<group>"; };
 		E5AD65DC2684FACA00C62951 /* TPPAccountListCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAccountListCell.swift; sourceTree = "<group>"; };
 		E5AD65E02684FDA300C62951 /* TPPAccountListDataSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAccountListDataSource.swift; sourceTree = "<group>"; };
 		E5B2268B2727997800DA3F1F /* ViewCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewCoordinator.swift; sourceTree = "<group>"; };
@@ -1831,6 +1835,7 @@
 				11068C54196DD37900E8A94B /* TPPNull.m */,
 				E5C49F17271E6E0500C69A6F /* JSONMocker.swift */,
 				E598EF40272B0A0C009BF946 /* CombineExtensions */,
+				E598EF56272B45B6009BF946 /* NavigationConfigurator.swift */,
 			);
 			path = Utilities;
 			sourceTree = "<group>";
@@ -2783,6 +2788,7 @@
 		E5B2269527279B0200DA3F1F /* TabBarView */ = {
 			isa = PBXGroup;
 			children = (
+				E53E0405272C3EB30000111C /* BaseView.swift */,
 				E5B2269727279B2200DA3F1F /* WithEvents.swift */,
 				E5B2269127279A8B00DA3F1F /* TabBarView.swift */,
 				E5B2268E272799B600DA3F1F /* TabBarViewModel.swift */,
@@ -3617,6 +3623,7 @@
 				2D87909D20127AA300E2763F /* TPPOPDSAcquisitionPath.m in Sources */,
 				2DCB71EE2017DFB5000E041A /* TPPOPDSAcquisitionAvailability.m in Sources */,
 				732327B22478504500A041E6 /* NSError+NYPLAdditions.swift in Sources */,
+				E53E0406272C3EB30000111C /* BaseView.swift in Sources */,
 				2DB436381D4C049200F8E69D /* TPPReachability.m in Sources */,
 				1183F33B194B775900DC322F /* TPPCatalogLaneCell.m in Sources */,
 				7340DA6224B7E45C00361387 /* URLResponse+NYPL.swift in Sources */,
@@ -3697,6 +3704,7 @@
 				730D17CC25535954004CAC83 /* TPPSignInBusinessLogic+BookmarkSyncing.swift in Sources */,
 				E6DA7EA01F2A718600CFBEC8 /* TPPBookAuthor.swift in Sources */,
 				739ECB2425101CCE00691A70 /* NSNotification+TPP.swift in Sources */,
+				E598EF57272B45B6009BF946 /* NavigationConfigurator.swift in Sources */,
 				734B789125659611006FB8AD /* URLResponse+TPPAuthentication.swift in Sources */,
 				E5C49F6C271FB79500C69A6F /* AppEvent.swift in Sources */,
 				E5C49EFA271A0DBB00C69A6F /* NetworkManagerError.swift in Sources */,

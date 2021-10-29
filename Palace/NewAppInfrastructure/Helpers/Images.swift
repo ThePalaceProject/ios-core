@@ -12,6 +12,8 @@ import SwiftUI
 struct Images {
   struct Shared {
     static let accountLogoPlaceholder = Image("LibraryLogoMagic")
+    static let palaceLogo = Image("MyLibraryIcon")
+    static let searchIcon = Image("Search")
   }
 
   struct TabBarView {

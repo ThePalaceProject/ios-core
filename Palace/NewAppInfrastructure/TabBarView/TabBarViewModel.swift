@@ -49,7 +49,6 @@ class TabBarViewModel: WithEvents, WithContext, ObservableObject {
   let context: AppContext
   let eventInput = EventSubject()
   var eventObserver: AnyCancellable?
-
   
   lazy var catalogViewModel = CatalogViewModel(context: context)
 

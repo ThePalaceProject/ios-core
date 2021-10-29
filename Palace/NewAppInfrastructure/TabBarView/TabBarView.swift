@@ -13,44 +13,28 @@ struct TabBarView: View {
   @ObservedObject var model: TabBarViewModel
   
   var body: some View {
-    VStack {
       contentView
-    }
-    .edgesIgnoringSafeArea(.bottom)
+        .edgesIgnoringSafeArea(.bottom)
   }
   
   var contentView: some View {
     TabView {
-      CatalogView(viewModel: model.catalogViewModel)
-        .tabItem {
-          TabBarItem.catalog.image
-            .renderingMode(.template)
-            .foregroundColor(TPPConfiguration.iconColor())
-          Text(TabBarItem.catalog.title)
-        }
-      CatalogView(viewModel: model.catalogViewModel)
-        .tabItem {
-          TabBarItem.books.image
-            .renderingMode(.template)
-            .foregroundColor(TPPConfiguration.iconColor())
-          Text(TabBarItem.books.title)
-        }
+      tabView(for: .catalog)
+      tabView(for: .books)
       if model.currentAccount?.details?.supportsReservations ?? false {
-        CatalogView(viewModel: model.catalogViewModel)
-          .tabItem {
-            TabBarItem.reservations.image
-              .renderingMode(.template)
-              .foregroundColor(TPPConfiguration.iconColor())
-            Text(TabBarItem.reservations.title)
-          }
+        tabView(for: .reservations)
       }
-      CatalogView(viewModel: model.catalogViewModel)
-        .tabItem {
-          TabBarItem.settings.image
+      tabView(for: .settings)
+    }
+  }
+  
+  private func tabView(for item: TabBarItem) -> some View {
+    BaseView(title: item.title, content: CatalogView(model: model.catalogViewModel).anyView())
+      .tabItem {
+          item.image
             .renderingMode(.template)
             .foregroundColor(TPPConfiguration.iconColor())
-          Text(TabBarItem.settings.title)
-        }
-    }
+          Text(item.title)
+      }
   }
 }

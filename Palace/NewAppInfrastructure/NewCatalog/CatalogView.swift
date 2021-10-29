@@ -10,7 +10,7 @@ import SwiftUI
 
 struct CatalogView: View {
   
-  var viewModel: CatalogViewModel
+  var model: CatalogViewModel
   
   var body: some View {
     Text(/*@START_MENU_TOKEN@*/"Hello, World!"/*@END_MENU_TOKEN@*/)
@@ -20,7 +20,7 @@ struct CatalogView: View {
 #if DEBUG
 struct CatalogView_Previews: PreviewProvider {
   static var previews: some View {
-    CatalogView(viewModel: CatalogViewModel(context: AppContextProvider()))
+    CatalogView(model: CatalogViewModel(context: AppContextProvider()))
   }
 }
 #endif
