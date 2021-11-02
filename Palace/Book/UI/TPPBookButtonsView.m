@@ -276,12 +276,6 @@
   
   for (NSDictionary *buttonInfo in visibleButtonInfo) {
     TPPRoundedButton *button = buttonInfo[ButtonKey];
-    if(button == self.deleteButton && (!fulfillmentId && fulfillmentIdRequired) && !hasRevokeLink) {
-      if(!self.book.defaultAcquisitionIfOpenAccess && TPPUserAccount.sharedAccount.authDefinition.needsAuth) {
-        continue;
-      }
-    }
-    
     button.hidden = NO;
     
     // Disable the animation for changing the title. This helps avoid visual issues with
