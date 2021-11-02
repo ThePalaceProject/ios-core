@@ -7,7 +7,7 @@
 "AlphabetFontStyle" = "ABCabc";
 "AboutApp" = "About Palace";
 "About" = "About";
-"Accounts" = "Accounts";
+"Libraries" = "Libraries";
 "Account" = "Account";
 "Acknowledgements" = "Acknowledgements";
 "Loading... Please wait." = "Loading... Please wait.";
@@ -177,7 +177,7 @@
 // Reader error messages (R2)
 "Content Protection Error" = "Content Protection Error";
 "The book you were trying to open is invalid." = "The book you were trying to open is invalid.";
-"An error was encountered while trying to open this book." = "An error was encountered while trying to open this book.";
+"An error was encountered while trying to open this book." = "An error was encountered while trying to open this book. %@";
 "The book you were trying to read is in an unsupported format." = "The book you were trying to read is in an unsupported format.";
 "The book you were trying to read is corrupted. Please try downloading it again." = "The book you were trying to read is corrupted. Please try downloading it again.";
 
@@ -269,3 +269,4 @@
 // Adobe DRM Expired certificate title and message
 "Something went wrong with the Adobe DRM system" = "Something went wrong with the Adobe DRM system";
 "Some books will be unavailable in this version. Please try updating to the latest version of the application." = "Some books will be unavailable in this version. Please try updating to the latest version of the application.";
+"The book license has expired." = "The book license has expired.";

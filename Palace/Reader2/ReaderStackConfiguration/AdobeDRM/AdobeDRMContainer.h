@@ -13,6 +13,10 @@
 
 #define RIGHTS_XML_SUFFIX @"_rights.xml"
 
+/// Adobe DRM error message when opening an item with past display untill date
+/// The date is in `*.epub_rights.xml` files, xpath `/licenseToken/permissions/display/until`
+static NSString * _Nonnull const AdobeDRMContainerExpiredLicenseError = @"E_INVALID_LICENSE";
+
 @interface AdobeDRMContainer : NSObject
 NS_ASSUME_NONNULL_BEGIN
 - (instancetype)init NS_UNAVAILABLE;
@@ -27,6 +31,8 @@ NS_ASSUME_NONNULL_BEGIN
 NS_ASSUME_NONNULL_END
 /// Error messages from the container or underlying classes
 @property (nonatomic, strong) NSString * _Nullable epubDecodingError;
+/// Display until date from epub_rights.xml document permissions
+@property (nonatomic, strong) NSDate * _Nullable displayUntilDate;
 @end
 
 #endif /* AdobeDRMContainer_h */

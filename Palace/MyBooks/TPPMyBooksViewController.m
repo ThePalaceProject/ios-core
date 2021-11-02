@@ -62,7 +62,7 @@ typedef NS_ENUM(NSInteger, FacetSort) {
 @end
 
 @interface TPPMyBooksViewController ()
-  <TPPFacetViewDataSource, TPPFacetViewDelegate, UICollectionViewDataSource,
+  <TPPFacetViewDataSource, TPPFacetViewDelegate, TPPFacetBarViewDelegate, UICollectionViewDataSource,
    UICollectionViewDelegate, UICollectionViewDelegateFlowLayout>
 
 @property (nonatomic) FacetShow activeFacetShow;
@@ -135,6 +135,8 @@ typedef NS_ENUM(NSInteger, FacetSort) {
   self.facetBarView = [[TPPFacetBarView alloc] initWithOrigin:CGPointZero width:0];
   self.facetBarView.facetView.dataSource = self;
   self.facetBarView.facetView.delegate = self;
+  self.facetBarView.delegate = self;
+
   [self.view addSubview:self.facetBarView];
   [self.facetBarView autoPinEdgeToSuperviewEdge:ALEdgeLeading];
   [self.facetBarView autoPinEdgeToSuperviewEdge:ALEdgeTrailing];
@@ -169,7 +171,6 @@ typedef NS_ENUM(NSInteger, FacetSort) {
 - (void)viewWillAppear:(BOOL)animated
 {
   [super viewWillAppear:animated];
-
   [[NSOperationQueue mainQueue] addOperationWithBlock:^{
     BOOL isSyncing = [TPPBookRegistry sharedRegistry].syncing;
     if(!isSyncing) {
@@ -182,6 +183,7 @@ typedef NS_ENUM(NSInteger, FacetSort) {
   
   [self.navigationController setNavigationBarHidden:NO];
   self.navigationController.navigationBar.tintColor = [TPPConfiguration iconColor];
+  self.navigationItem.title = NSLocalizedString(@"MyBooksViewControllerTitle", nil);
 }
 
 - (void)viewWillLayoutSubviews
@@ -325,6 +327,13 @@ activeFacetIndexForFacetGroupAtIndex:(NSUInteger const)index
   }
   
   @throw NSInternalInconsistencyException;
+}
+
+#pragma mark TPPFacetBarViewDelegate
+
+- (void)present:(UIViewController *)viewController
+{
+  [self.navigationController pushViewController:viewController animated:YES];
 }
 
 #pragma mark NYPLFacetViewDelegate

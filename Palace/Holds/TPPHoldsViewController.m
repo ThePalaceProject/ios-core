@@ -40,7 +40,8 @@
   if(!self) return nil;
 
   self.title = NSLocalizedString(@"HoldsViewControllerTitle", nil);
-  
+  self.navigationItem.title = NSLocalizedString(@"HoldsViewControllerTitle", nil);
+
   [self willReloadCollectionViewData];
   
   [[NSNotificationCenter defaultCenter]

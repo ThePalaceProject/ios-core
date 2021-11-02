@@ -26,8 +26,12 @@ class AdobeDRMFetcher: Fetcher {
   ///   - url: Publication URL
   ///   - fetcher: ArchiveFetcher for the publication
   ///   - encryptionData: `META-INF/encryption.xml` file contents
-  init(url: URL, fetcher: Fetcher, encryptionData: Data) {
+  init(url: URL, fetcher: Fetcher, encryptionData: Data) throws {
     self.container = AdobeDRMContainer(url: url, encryptionData: encryptionData)
+    // Check if the book can still be displayed
+    if let displayUntilDate = container.displayUntilDate, displayUntilDate < Date() {
+      throw AdobeDRMFetcherError.expiredDisplayUntilDate
+    }
     self.fetcher = fetcher
     self.links = fetcher.links
   }
@@ -48,6 +52,9 @@ class AdobeDRMFetcher: Fetcher {
       let encryptedData = try resource.read().get()
       let href = link.href.starts(with: "/") ? String(link.href.dropFirst()) : link.href // remove leading /
       let data = container.decode(encryptedData, at: href)
+      if let error = container.epubDecodingError, error == AdobeDRMContainerExpiredLicenseError {
+        return FailureResource(link: link, error: .forbidden(AdobeDRMFetcherError.expiredDisplayUntilDate))
+      }
       return DataResource(link: link, data: data)
     } catch {
       return FailureResource(link: link, error: .other(error))
@@ -55,7 +62,7 @@ class AdobeDRMFetcher: Fetcher {
   }
   
   func close() {
-    // No need to close anything.
+    fetcher.close()
   }
 }
 

@@ -68,6 +68,7 @@ final class LibraryService: Loggable {
       .flatMap { self.openPublication(at: $0, allowUserInteraction: true, sender: sender) }
       .flatMap { publication in
         guard !publication.isRestricted else {
+          self.stopOpeningIndicator(identifier: book.identifier)
           if let error = publication.protectionError {
             return .failure(error)
           } else {
@@ -78,7 +79,10 @@ final class LibraryService: Loggable {
         self.preparePresentation(of: publication, book: book)
         return .success(publication)
     }
-    .mapError { LibraryServiceError.openFailed($0) }
+    .mapError {
+      self.stopOpeningIndicator(identifier: book.identifier)
+      return LibraryServiceError.openFailed($0)
+    }
     .resolve(completion)
   }
   
@@ -104,4 +108,13 @@ final class LibraryService: Loggable {
     }
   }
 
+  /// Stops activity indicator on the`Read` button.
+  private func stopOpeningIndicator(identifier: String) {
+    let userInfo: [String: Any] = [
+      TPPNotificationKeys.bookProcessingBookIDKey: identifier,
+      TPPNotificationKeys.bookProcessingValueKey: false
+    ]
+    NotificationCenter.default.post(name: NSNotification.TPPBookProcessingDidChange, object: nil, userInfo: userInfo)
+  }
+  
 }

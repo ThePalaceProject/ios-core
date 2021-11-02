@@ -45,7 +45,6 @@
   self.viewController.title = NSLocalizedString(@"Catalog", nil);
 
 #ifdef SIMPLYE
-  self.viewController.navigationItem.title = [AccountsManager shared].currentAccount.name;
   [self setNavigationLeftBarButtonForVC:self.viewController];
 #endif
 
@@ -62,6 +61,7 @@
   
   self.tabBarItem.title = NSLocalizedString(@"Catalog", nil);
   self.tabBarItem.image = [UIImage imageNamed:@"Catalog"];
+  self.navigationItem.title = NSLocalizedString(@"Catalog", nil);
   
   [self loadTopLevelCatalogViewController];
   
