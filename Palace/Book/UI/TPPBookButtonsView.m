@@ -264,8 +264,6 @@
   NSMutableArray *visibleButtons = [NSMutableArray array];
   
   BOOL fulfillmentIdRequired = NO;
-  TPPBookState state = [[TPPBookRegistry sharedRegistry] stateForIdentifier:self.book.identifier];
-  BOOL hasRevokeLink = (self.book.revokeURL && (state == TPPBookStateDownloadSuccessful || state == TPPBookStateUsed));
 
   #if defined(FEATURE_DRM_CONNECTOR)
   
@@ -276,6 +274,13 @@
   
   for (NSDictionary *buttonInfo in visibleButtonInfo) {
     TPPRoundedButton *button = buttonInfo[ButtonKey];
+    
+    if(button == self.deleteButton && (!fulfillmentId && fulfillmentIdRequired) && !self.book.revokeURL ) {
+      if(!self.book.defaultAcquisitionIfOpenAccess && TPPUserAccount.sharedAccount.authDefinition.needsAuth) {
+        continue;
+      }
+    }
+    
     button.hidden = NO;
     
     // Disable the animation for changing the title. This helps avoid visual issues with
