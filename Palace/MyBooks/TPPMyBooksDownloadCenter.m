@@ -762,9 +762,11 @@ didCompleteWithError:(NSError *)error
 /// @param book The book that failed to download.
 - (void)failDownloadWithAlertForBook:(TPPBook *const)book
 {
+  TPPBookLocation *location = [[TPPBookRegistry sharedRegistry] locationForIdentifier:book.identifier];
+  
   [[TPPBookRegistry sharedRegistry]
    addBook:book
-   location:nil
+   location:location
    state:TPPBookStateDownloadFailed
    fulfillmentId:nil
    readiumBookmarks:nil
@@ -839,9 +841,11 @@ didCompleteWithError:(NSError *)error
       return;
     }
 
+    TPPBookLocation *location = [[TPPBookRegistry sharedRegistry] locationForIdentifier:book.identifier];
+    
     [[TPPBookRegistry sharedRegistry]
      addBook:book
-     location:nil
+     location:location
      state:TPPBookStateDownloadNeeded
      fulfillmentId:nil
      readiumBookmarks:nil
@@ -881,6 +885,8 @@ didCompleteWithError:(NSError *)error
   TPPBookState state = [[TPPBookRegistry sharedRegistry]
                          stateForIdentifier:book.identifier];
 
+  TPPBookLocation *location = [[TPPBookRegistry sharedRegistry] locationForIdentifier:book.identifier];
+  
   BOOL loginRequired = TPPUserAccount.sharedAccount.authDefinition.needsAuth;
 
   switch(state) {
@@ -890,7 +896,7 @@ didCompleteWithError:(NSError *)error
 
         [[TPPBookRegistry sharedRegistry]
          addBook:book
-         location:nil
+         location:location
          state:TPPBookStateDownloadNeeded
          fulfillmentId:nil
          readiumBookmarks:nil
@@ -1121,9 +1127,11 @@ didCompleteWithError:(NSError *)error
   
   [task resume];
   
+  TPPBookLocation *location = [[TPPBookRegistry sharedRegistry] locationForIdentifier:book.identifier];
+  
   [[TPPBookRegistry sharedRegistry]
    addBook:book
-   location:nil
+   location:location
    state:TPPBookStateDownloading
    fulfillmentId:nil
    readiumBookmarks:nil
