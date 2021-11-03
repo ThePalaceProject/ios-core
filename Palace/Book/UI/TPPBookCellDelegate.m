@@ -26,6 +26,9 @@
 #endif
 
 @interface TPPBookCellDelegate () <RefreshDelegate>
+{
+  @private NSTimeInterval previousPlayheadOffset;
+}
 
 @property (nonatomic) NSTimer *timer;
 @property (nonatomic) TPPBook *book;
@@ -344,6 +347,13 @@
   [[TPPBookRegistry sharedRegistry]
    setLocation:[[TPPBookLocation alloc] initWithLocationString:string renderer:@"NYPLAudiobookToolkit"]
    forIdentifier:self.book.identifier];
+  
+  // Save updated playhead position in audiobook chapter
+  NSTimeInterval playheadOffset = self.manager.audiobook.player.currentChapterLocation.playheadOffset;
+  if (previousPlayheadOffset != playheadOffset) {
+    previousPlayheadOffset = playheadOffset;
+    [[TPPBookRegistry sharedRegistry] save];
+  }
 }
 
 - (void)presentDRMKeyError:(NSError *) error {
