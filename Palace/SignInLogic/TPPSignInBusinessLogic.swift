@@ -487,7 +487,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
       setBarcode(barcode, pin: pin)
     }
 
-    userAccount.authDefinition = selectedAuthentication
+    userAccount.setAuthDefinitionWithoutUpdate(authDefinition: selectedAuthentication)
 
     if libraryAccountID == libraryAccountsProvider.currentAccountId {
       bookRegistry.syncResettingCache(false) { [weak bookRegistry] errorDict in

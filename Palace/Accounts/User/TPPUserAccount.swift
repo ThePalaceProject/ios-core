@@ -90,7 +90,13 @@ private enum StorageKey: String {
         let resolveFn = {
           TPPSettings.shared.accountMainFeedURL = mainFeed
           UIApplication.shared.delegate?.window??.tintColor = TPPConfiguration.mainColor()
-          NotificationCenter.default.post(name: NSNotification.Name.TPPCurrentAccountDidChange, object: nil)
+          
+          if self.notifyAccountChange {
+            NotificationCenter.default.post(name: NSNotification.Name.TPPCurrentAccountDidChange, object: nil)
+          }
+          
+          self.notifyAccountChange = true
+
         }
 
         if self.needsAgeCheck {
@@ -107,7 +113,14 @@ private enum StorageKey: String {
       }
 
       notifyAccountDidChange()
-    }
+      }
+  }
+  
+  private var notifyAccountChange: Bool = true
+  
+  func setAuthDefinitionWithoutUpdate(authDefinition: AccountDetails.Authentication?) {
+    notifyAccountChange = false
+    self.authDefinition = authDefinition
   }
 
   var credentials: TPPCredentials? {
