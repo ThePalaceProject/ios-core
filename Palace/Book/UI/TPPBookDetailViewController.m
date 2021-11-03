@@ -120,15 +120,6 @@
 
 #pragma mark NSObject
 
-- (void)dismissViewControllerAnimated:(BOOL)flag completion:(void (^)(void))completion {
-  
-}
-
-- (void) viewWillDisappear:(BOOL)animated
-{
-  [super viewWillDisappear:animated];
-}
-
 - (void)dealloc
 {
   [[NSNotificationCenter defaultCenter] removeObserver:self];
