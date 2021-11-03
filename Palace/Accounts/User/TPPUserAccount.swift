@@ -91,11 +91,11 @@ private enum StorageKey: String {
         let resolveFn = {
           TPPSettings.shared.accountMainFeedURL = mainFeed
           UIApplication.shared.delegate?.window??.tintColor = TPPConfiguration.mainColor()
-          
+
           if self.notifyAccountChange {
             NotificationCenter.default.post(name: NSNotification.Name.TPPCurrentAccountDidChange, object: nil)
           }
-          
+
           self.notifyAccountChange = true
 
         }
@@ -114,7 +114,7 @@ private enum StorageKey: String {
       }
 
       notifyAccountDidChange()
-      }
+    }
   }
 
   var credentials: TPPCredentials? {
