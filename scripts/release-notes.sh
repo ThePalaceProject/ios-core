@@ -30,5 +30,4 @@ else
   CERTIFICATES_PATH="../mobile-certificates/Certificates"
 fi
 
-pip3 install requests > /dev/null
-python3 $CERTIFICATES_PATH/Palace/iOS/ReleaseNotes.py "$@"
+swift $CERTIFICATES_PATH/Palace/iOS/ReleaseNotes.swift "$@"
