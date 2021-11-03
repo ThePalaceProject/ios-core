@@ -41,7 +41,8 @@ private enum StorageKey: String {
   static private let shared = TPPUserAccount()
   private let accountInfoLock = NSRecursiveLock()
   private lazy var keychainTransaction = TPPKeychainVariableTransaction(accountInfoLock: accountInfoLock)
-    
+  private var notifyAccountChange: Bool = true
+
   private var libraryUUID: String? {
     didSet {
       guard libraryUUID != oldValue else { return }
@@ -115,13 +116,6 @@ private enum StorageKey: String {
       notifyAccountDidChange()
       }
   }
-  
-  private var notifyAccountChange: Bool = true
-  
-  func setAuthDefinitionWithoutUpdate(authDefinition: AccountDetails.Authentication?) {
-    notifyAccountChange = false
-    self.authDefinition = authDefinition
-  }
 
   var credentials: TPPCredentials? {
     get {
@@ -189,6 +183,11 @@ private enum StorageKey: String {
     shared.libraryUUID = libraryUUID
 
     return shared
+  }
+
+  func setAuthDefinitionWithoutUpdate(authDefinition: AccountDetails.Authentication?) {
+    notifyAccountChange = false
+    self.authDefinition = authDefinition
   }
 
   private func notifyAccountDidChange() {
