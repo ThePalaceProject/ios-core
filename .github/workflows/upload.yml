@@ -77,7 +77,9 @@ jobs:
       - name: Verify path and version
         run: |
           echo "Release notes path: " $RELEASE_NOTES_PATH
+          cat $RELEASE_NOTES_PATH
           echo "Changelog path:     " $CHANGELOG_PATH
+          cat $CHANGELOG_PATH
           echo "Version:            " $VERSION_NUM
         env:
           RELEASE_NOTES_PATH: ${{ env.RELEASE_NOTES_PATH }}
