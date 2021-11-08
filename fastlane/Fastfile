@@ -25,7 +25,7 @@ platform :ios do
       }
     )
   end
-  lane :testflight do
+  lane :testflight do |options|
     build_app(
       project: "Palace.xcodeproj",
       scheme: "Palace",
@@ -40,7 +40,8 @@ platform :ios do
     )
     pilot(
       api_key_path: "fastlane/fastlane.json",
-      skip_submission: true
+      skip_submission: true,
+      changelog: options[:changelog]
     )
   end
 end
