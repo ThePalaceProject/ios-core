@@ -80,10 +80,14 @@ jobs:
           BUILD_CONTEXT: ci
       - name: Verify path and version
         run: |
-          echo "Path:    " $RELEASE_NOTES_PATH
-          echo "Version: " $VERSION_NUM
+          echo "Release notes path: " $RELEASE_NOTES_PATH
+          cat $RELEASE_NOTES_PATH
+          echo "Changelog path:     " $CHANGELOG_PATH
+          cat $CHANGELOG_PATH
+          echo "Version:            " $VERSION_NUM
         env:
           RELEASE_NOTES_PATH: ${{ env.RELEASE_NOTES_PATH }}
+          CHANGELOG_PATH: ${{ env.CHANGELOG_PATH }}
           VERSION_NUM: ${{ env.VERSION_NUM }}
       - name: Create Release
         id: create_release
@@ -101,3 +105,4 @@ jobs:
         run: ./scripts/xcode-export-appstore.sh
         env:
           BUILD_CONTEXT: ci
+          CHANGELOG_PATH: ${{ env.CHANGELOG_PATH }}
