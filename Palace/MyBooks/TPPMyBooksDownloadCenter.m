@@ -1509,6 +1509,11 @@ didFinishDownload:(BOOL)didFinishDownload
                      forDownloadTask:downloadTask];
     if (!success) {
       [self failDownloadWithAlertForBook:book];
+    } else {
+      // Store license ID
+      TPPLCPLicense *license = [[TPPLCPLicense alloc] initWithUrl: licenseUrl];
+      [[TPPBookRegistry sharedRegistry] setFulfillmentId:license.identifier forIdentifier:book.identifier];
+      [[TPPBookRegistry sharedRegistry] save];
     }
   }];
   #endif
