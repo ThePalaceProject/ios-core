@@ -10,7 +10,7 @@
 
 import Foundation
 
-// TODO: Convert to Codable struct once TPPMyBookDownloadCenter is rewritten with Swift.
+// TODO: Convert to Codable struct once TPPMyBookDownloadCenter is rewritten in Swift.
 
 /// LCP License representation.
 /// This class is used to get license identifier to use after fulfillment is done.
