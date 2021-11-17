@@ -19,10 +19,10 @@ source ./scripts/xcode-settings.sh
 # Create release notes
 echo "### Changelog:" > $RELEASE_NOTES_PATH
 echo "" >> $RELEASE_NOTES_PATH
-./scripts/release-notes.sh -v 2 >> $RELEASE_NOTES_PATH
+./scripts/release-notes.sh -v 2 --token "$GITHUB_TOKEN" >> $RELEASE_NOTES_PATH
 
 # Create TestFlight changelog
-./scripts/release-notes.sh -v 3 >> $CHANGELOG_PATH
+./scripts/release-notes.sh -v 3 --token "$GITHUB_TOKEN" >> $CHANGELOG_PATH
 
 if [ "$BUILD_CONTEXT" == "ci" ]; then
   # Save variables for further steps
