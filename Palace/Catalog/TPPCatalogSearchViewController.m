@@ -27,6 +27,7 @@
 @property (nonatomic) UISearchBar *searchBar;
 @property (nonatomic) UILabel *noResultsLabel;
 @property (nonatomic) TPPFacetBarView *facetBarView;
+@property (nonatomic) NSTimer *debounceTimer;
 
 @end
 
@@ -192,7 +193,14 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
 {
   // FIXME: This is not ideal but we were having double-free issues with
   // `insertItemsAtIndexPaths:`. See issue #144 for more information.
-  [self.collectionView reloadData];
+
+  // Debounce timer reduces content flickering on each reload
+  if (!self.debounceTimer) {
+    self.debounceTimer = [NSTimer scheduledTimerWithTimeInterval:1 repeats:NO block:^(NSTimer * _Nonnull timer) {
+      [self.collectionView reloadSections:[NSIndexSet indexSetWithIndex:0]];
+      self.debounceTimer = nil;
+    }];
+  }
 }
 
 #pragma mark UISearchBarDelegate
@@ -216,6 +224,8 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
 
 - (void)fetchUngroupedFeedFromURL:(NSURL *)URL
 {
+  [self.debounceTimer invalidate];
+  self.debounceTimer = nil;
   [TPPCatalogUngroupedFeed
    withURL:URL
    handler:^(TPPCatalogUngroupedFeed *const category) {
@@ -258,6 +268,8 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
   self.searchBar.userInteractionEnabled = YES;
 
   if(success) {
+    [self.debounceTimer invalidate];
+    self.debounceTimer = nil;
     [self.collectionView scrollRectToVisible:CGRectMake(0, 0, 1, 1) animated:NO];
     [self.collectionView reloadData];
     
