@@ -113,11 +113,7 @@ class TPPBookmarkFactory {
     guard
       let body = annotation[TPPBookmarkSpec.Body.key] as? [String: AnyObject],
       let device = body[TPPBookmarkSpec.Body.Device.key] as? String,
-      let time = body[TPPBookmarkSpec.Body.Time.key] as? String,
-
-      // TODO: SIMPLY-3655 update to R2 spec or remove
-      let progressWithinChapter = (body["http://librarysimplified.org/terms/progressWithinChapter"] as? NSNumber)?.floatValue,
-      let progressWithinBook = (body["http://librarysimplified.org/terms/progressWithinBook"] as? NSNumber)?.floatValue
+      let time = body[TPPBookmarkSpec.Body.Time.key] as? String
       else {
         Log.error(#file, "Error reading required bookmark key/values from body")
         return nil
@@ -144,6 +140,8 @@ class TPPBookmarkFactory {
 
     let serverCFI = selectorValueJSON[TPPBookmarkSpec.Target.Selector.Value.legacyLocatorCFIKey] as? String
     let chapter = body["http://librarysimplified.org/terms/chapter"] as? String
+    let progressWithinChapter = selectorValueJSON["progressWithinChapter"] as? Float
+    let progressWithinBook = Float(selectorValueJSON["progressWithinBook"] as? Double ?? 0.0)
 
     return TPPReadiumBookmark(annotationId: annotationID,
                                contentCFI: serverCFI,
@@ -151,7 +149,7 @@ class TPPBookmarkFactory {
                                chapter: chapter,
                                page: nil,
                                location: selectorValueEscJSON,
-                               progressWithinChapter: progressWithinChapter,
+                               progressWithinChapter: progressWithinChapter ?? 0.0,
                                progressWithinBook: progressWithinBook,
                                time:time,
                                device:device)
