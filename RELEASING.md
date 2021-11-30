@@ -14,8 +14,6 @@ Every new feature, bug fix or other task are developed on branches named followi
 
 ## Github Actions and the Release Process
 
----
-
 ### Palace Build
 
 Location:  [.github/workflows/upload-on-merge.yml](https://github.com/ThePalaceProject/ios-core/blob/main/.github/workflows/upload-on-merge.yml)
@@ -29,15 +27,11 @@ The script performs several steps:
 - creates a new release on Github;
 - uploads a new build to Test Flight.
 
----
-
 ### Palace Manual Build
 
 Location: [.github/workflows/upload.yml](https://github.com/ThePalaceProject/ios-core/blob/main/.github/workflows/upload.yml)
 
 This script is similar to "Palace Build", but can be started manually. Performs the same set of steps.
-
----
 
 ### Unit Tests
 
