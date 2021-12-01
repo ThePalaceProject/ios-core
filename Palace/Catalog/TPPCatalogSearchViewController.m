@@ -310,7 +310,7 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
   [self.view addSubview:self.facetBarView];
   [self.facetBarView autoPinEdgeToSuperviewEdge:ALEdgeLeading];
   [self.facetBarView autoPinEdgeToSuperviewEdge:ALEdgeTrailing];
-  [self.facetBarView autoPinToTopLayoutGuideOfViewController:self withInset:0.0];
+  [self.facetBarView autoPinEdgeToSuperviewMargin:ALEdgeTop];
 }
 
 #pragma mark NYPLEntryPointViewDelegate
