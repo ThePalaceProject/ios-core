@@ -222,7 +222,6 @@ CGFloat const marginPadding = 2.0;
   self.logInCell = [[UITableViewCell alloc]
                     initWithStyle:UITableViewCellStyleDefault
                     reuseIdentifier:nil];
-
   [self setupTableData];
 }
 
@@ -239,6 +238,45 @@ CGFloat const marginPadding = 2.0;
     [self updateInputUIForcingEditability:self.forceEditability];
     [self updateShowHidePINState];
   }
+  
+  [self setupHeaderView];
+}
+
+- (void) setupHeaderView
+{
+  UIView *headerView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, self.tableView.frame.size.width, 100)];
+  UIView *containerView = [[UIView alloc] init];
+  
+  UIView *imageViewHolder = [[UIView alloc] init];
+  [imageViewHolder autoSetDimension:ALDimensionHeight toSize:50.0];
+  [imageViewHolder autoSetDimension:ALDimensionWidth toSize:50.0];
+
+  UIImageView *imageView = [[UIImageView alloc] initWithFrame:CGRectMake(0, 0, 75, 75)];
+  imageView.image = [[[AccountsManager shared] currentAccount] logo];
+  imageView.contentMode = UIViewContentModeScaleAspectFit;
+  [imageViewHolder addSubview: imageView];
+
+  [imageView autoPinEdgesToSuperviewEdges];
+  
+  [headerView addSubview:containerView];
+  [containerView addSubview:imageViewHolder];
+  
+  UILabel *titleLabel = [[UILabel alloc] init];
+  titleLabel.numberOfLines = 0;
+  titleLabel.textAlignment = NSTextAlignmentCenter;
+  titleLabel.textColor = [UIColor grayColor];
+  titleLabel.lineBreakMode = NSLineBreakByWordWrapping;
+  titleLabel.font = [UIFont boldSystemFontOfSize:18.0];
+  titleLabel.text = [[AccountsManager shared] currentAccount].name;
+  [containerView addSubview: titleLabel];
+  
+  self.tableView.tableHeaderView = headerView;
+  
+  [containerView autoAlignAxisToSuperviewAxis:ALAxisHorizontal];
+  [containerView autoAlignAxisToSuperviewAxis:ALAxisVertical];
+  [imageViewHolder autoPinEdgesToSuperviewMarginsExcludingEdge:ALEdgeTrailing];
+  [titleLabel autoPinEdgesToSuperviewMarginsExcludingEdge:ALEdgeLeading];
+  [imageViewHolder autoPinEdge:ALEdgeTrailing toEdge:ALEdgeLeading ofView:titleLabel withOffset:-10];
 }
 
 #if defined(FEATURE_DRM_CONNECTOR)
