@@ -48,7 +48,7 @@
     self.tableView.dataSource = self
     self.tableView.register(TPPAccountListCell.self, forCellReuseIdentifier: TPPAccountListCell.reuseIdentifier)
 
-    spinner = UIActivityIndicatorView(style: .gray)
+    spinner = UIActivityIndicatorView(style: .medium)
     view.addSubview(spinner)
     
     reloadView = TPPReloadView()

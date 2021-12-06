@@ -43,7 +43,7 @@ import WebKit
   
   func activityViewShouldShow(_ shouldShow: Bool) -> Void {
     if shouldShow == true {
-      activityView = UIActivityIndicatorView.init(style: .gray)
+      activityView = UIActivityIndicatorView.init(style: .medium)
       view.addSubview(activityView)
       activityView.autoCenterInSuperview()
       activityView.startAnimating()

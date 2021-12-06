@@ -51,7 +51,7 @@
   self.bookDetailView.state = [[TPPBookRegistry sharedRegistry]
                                stateForIdentifier:self.book.identifier];
 
-  if(UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad &&
+  if(UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad &&
      [[TPPRootTabBarController sharedController] traitCollection].horizontalSizeClass != UIUserInterfaceSizeClassCompact) {
     self.modalPresentationStyle = UIModalPresentationFormSheet;
   }
@@ -230,7 +230,7 @@
   UIViewController *currentVCTab = [[[TPPRootTabBarController sharedController] viewControllers] objectAtIndex:index];
   // If a VC is already presented as a form sheet (iPad), we push the next one
   // so the user can navigate through multiple book details without "stacking" them.
-  if((UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPhone ||
+  if((UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPhone ||
       viewController.traitCollection.horizontalSizeClass == UIUserInterfaceSizeClassCompact) ||
      currentVCTab.presentedViewController != nil)
   {

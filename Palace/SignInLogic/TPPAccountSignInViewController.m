@@ -780,7 +780,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
   
   UIActivityIndicatorView *const activityIndicatorView =
   [[UIActivityIndicatorView alloc]
-   initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleGray];
+   initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
   
   [activityIndicatorView startAnimating];
   
@@ -828,7 +828,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
   // least work very well.
   
   [[NSOperationQueue mainQueue] addOperationWithBlock:^{
-    if((UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPhone) ||
+    if((UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPhone) ||
        (self.traitCollection.horizontalSizeClass == UIUserInterfaceSizeClassCompact &&
         self.traitCollection.verticalSizeClass == UIUserInterfaceSizeClassCompact)) {
       CGSize const keyboardSize =
