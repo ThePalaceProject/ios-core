@@ -17,12 +17,6 @@
 #import "TPPRootTabBarController.h"
 #import "TPPCatalogNavigationController.h"
 
-#ifdef SIMPLYE
-// TODO: SIMPLY-3053 this #ifdef can be removed once this ticket is done
-#import "TPPSettingsPrimaryTableViewController.h"
-#endif
-
-
 @interface TPPLibraryNavigationController ()
 
 @end
@@ -90,13 +84,9 @@
   }
 
   [alert addAction:[UIAlertAction actionWithTitle:NSLocalizedString(@"Manage Accounts", nil) style:(UIAlertActionStyleDefault) handler:^(__unused UIAlertAction *_Nonnull action) {
-    NSUInteger tabCount = [[[TPPRootTabBarController sharedController] viewControllers] count];
-    UISplitViewController *splitViewVC = [[[TPPRootTabBarController sharedController] viewControllers] lastObject];
-    UINavigationController *masterNavVC = [[splitViewVC viewControllers] firstObject];
-    [masterNavVC popToRootViewControllerAnimated:NO];
-    [[TPPRootTabBarController sharedController] setSelectedIndex:tabCount-1];
-    TPPSettingsPrimaryTableViewController *tableVC = [[masterNavVC viewControllers] firstObject];
-    [tableVC.delegate settingsPrimaryTableViewController:tableVC didSelectItem:NYPLSettingsPrimaryTableViewControllerItemAccount];
+    TPPSettingsAccountsTableViewController *tableVC = [[TPPSettingsAccountsTableViewController alloc] initWithAccounts: TPPSettings.shared.settingsAccountsList];
+    tableVC.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:NSLocalizedString(@"AddAccount", nil) style:UIBarButtonItemStylePlain target:tableVC action:@selector(addAccount)];
+    [self pushViewController:tableVC animated:YES];
   }]];
 
   [alert addAction:[UIAlertAction actionWithTitle:NSLocalizedString(@"Cancel", nil) style:(UIAlertActionStyleCancel) handler:nil]];

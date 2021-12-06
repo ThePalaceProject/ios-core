@@ -1,12 +1,6 @@
 #import "TPPCatalogNavigationController.h"
 #import "TPPHoldsNavigationController.h"
 #import "TPPMyBooksNavigationController.h"
-
-#ifdef SIMPLYE
-// TODO: SIMPLY-3053 this #ifdef can be removed once this ticket is done
-#import "TPPSettingsSplitViewController.h"
-#endif
-
 #import "TPPRootTabBarController.h"
 #import "Palace-Swift.h"
 
@@ -97,10 +91,6 @@
 - (BOOL)tabBarController:(UITabBarController *)__unused tabBarController
 shouldSelectViewController:(nonnull UIViewController *)viewController
 {
-  if ([viewController isEqual:self.settingsViewController] && [self.selectedViewController isEqual:self.settingsViewController]) {
-    UINavigationController *navController = [[(UISplitViewController *)viewController viewControllers] firstObject];
-    [navController popToRootViewControllerAnimated:YES];
-  }
   return YES;
 }
 
