@@ -247,6 +247,8 @@
 		21F4BF3B26BC62D4000CF592 /* AdobeCertificate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21F4BF3926BC62D4000CF592 /* AdobeCertificate.swift */; };
 		21F634EA26D828CF00C8BE87 /* ReadiumLCP.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 21F634E426D828CF00C8BE87 /* ReadiumLCP.xcframework */; };
 		21F634EB26D828CF00C8BE87 /* ReadiumLCP.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 21F634E426D828CF00C8BE87 /* ReadiumLCP.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		21F7D3CB275A9D3C0080B44B /* String+HTMLEntities.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21F7D3CA275A9D3C0080B44B /* String+HTMLEntities.swift */; };
+		21F7D3CC275A9D3C0080B44B /* String+HTMLEntities.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21F7D3CA275A9D3C0080B44B /* String+HTMLEntities.swift */; };
 		2D2B47841D08F8E2007F7764 /* UpdateCheckUpToDate.json in Resources */ = {isa = PBXBuildFile; fileRef = 2D2B47691D08F264007F7764 /* UpdateCheckUpToDate.json */; };
 		2D2B478E1D08FDF5007F7764 /* UpdateCheckNeedsUpdate.json in Resources */ = {isa = PBXBuildFile; fileRef = 2D2B478A1D08FC78007F7764 /* UpdateCheckNeedsUpdate.json */; };
 		2D2B478F1D08FDF5007F7764 /* UpdateCheckUnknown.json in Resources */ = {isa = PBXBuildFile; fileRef = 2D2B47891D08FC78007F7764 /* UpdateCheckUnknown.json */; };
@@ -1079,6 +1081,7 @@
 		21F238C724991A2A004DC0B1 /* AdobeDRMLibraryService.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AdobeDRMLibraryService.swift; sourceTree = "<group>"; };
 		21F4BF3926BC62D4000CF592 /* AdobeCertificate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdobeCertificate.swift; sourceTree = "<group>"; };
 		21F634E426D828CF00C8BE87 /* ReadiumLCP.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = ReadiumLCP.xcframework; path = Carthage/Build/ReadiumLCP.xcframework; sourceTree = "<group>"; };
+		21F7D3CA275A9D3C0080B44B /* String+HTMLEntities.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "String+HTMLEntities.swift"; sourceTree = "<group>"; };
 		2D2B47621D08F1ED007F7764 /* PalaceTests-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "PalaceTests-Bridging-Header.h"; sourceTree = "<group>"; };
 		2D2B47691D08F264007F7764 /* UpdateCheckUpToDate.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = UpdateCheckUpToDate.json; sourceTree = "<group>"; };
 		2D2B47721D08F807007F7764 /* PalaceTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PalaceTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -2118,6 +2121,7 @@
 				119BEB87198C43A600121439 /* NSString+TPPStringAdditions.h */,
 				119BEB88198C43A600121439 /* NSString+TPPStringAdditions.m */,
 				5DD567AE22B95A30001F0C83 /* String+MD5.swift */,
+				21F7D3CA275A9D3C0080B44B /* String+HTMLEntities.swift */,
 			);
 			path = Strings;
 			sourceTree = "<group>";
@@ -3140,6 +3144,7 @@
 				73EB0A7B25821DF4006BC997 /* TPPSignInBusinessLogicUIDelegate.swift in Sources */,
 				73D8D28325A6921400DF5F69 /* Float+TPPAdditions.swift in Sources */,
 				73EB0A7C25821DF4006BC997 /* TPPBookCellCollectionViewController.m in Sources */,
+				21F7D3CC275A9D3C0080B44B /* String+HTMLEntities.swift in Sources */,
 				73EB0A7D25821DF4006BC997 /* TPPKeychainStoredVariable.swift in Sources */,
 				73EB0A7E25821DF4006BC997 /* TPPXML.m in Sources */,
 				73EB0A7F25821DF4006BC997 /* TPPSignInBusinessLogic.swift in Sources */,
@@ -3552,6 +3557,7 @@
 				113DB8A719C24E54004E1154 /* TPPIndeterminateProgressView.m in Sources */,
 				119BEB89198C43A600121439 /* NSString+TPPStringAdditions.m in Sources */,
 				E6B6E76F1F6859A4007EE361 /* TPPKeychainManager.swift in Sources */,
+				21F7D3CB275A9D3C0080B44B /* String+HTMLEntities.swift in Sources */,
 				089E42C6249A823800310360 /* TPPCookiesWebViewController.swift in Sources */,
 				0826CD2924AA21B2000F4030 /* TPPSamlIDPCell.swift in Sources */,
 				2126FE2E25C059250095C45C /* ReaderError.swift in Sources */,
