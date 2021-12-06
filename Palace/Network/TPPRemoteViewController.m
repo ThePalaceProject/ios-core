@@ -247,7 +247,7 @@
   self.view.backgroundColor = [TPPConfiguration backgroundColor];
   
   self.activityIndicatorView = [[UIActivityIndicatorView alloc]
-                                initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleGray];
+                                initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
   [self.view addSubview:self.activityIndicatorView];
   
   self.activityIndicatorLabel = [[UILabel alloc] init];

@@ -109,7 +109,7 @@ static const CGFloat kCollectionViewCrossfadeDuration = 0.3;
   [self.facetBarView autoPinEdgeToSuperviewEdge:ALEdgeTrailing];
   [self.facetBarView autoPinEdgeToSuperviewMargin:ALEdgeTop];
 
-  self.collectionViewActivityIndicator = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleGray];
+  self.collectionViewActivityIndicator = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
   self.collectionViewActivityIndicator.hidden = YES;
   [self.collectionViewActivityIndicator startAnimating];
   [self.collectionView addSubview:self.collectionViewActivityIndicator];
