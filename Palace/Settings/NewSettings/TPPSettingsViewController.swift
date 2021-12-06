@@ -10,9 +10,9 @@ import Foundation
 import SwiftUI
 
 class TPPSettingsViewController: NSObject {
-  @objc static func makeSwiftUIVIew(dismissHandler: @escaping (() -> Void)) -> UINavigationController {
+  @objc static func makeSwiftUIVIew(dismissHandler: @escaping (() -> Void)) -> UIViewController {
     let controller = UIHostingController(rootView: TPPSettingsView())
-    controller.title = NSLocalizedString("Settings", comment: "")
+    controller.title = DisplayStrings.Settings.settings
     controller.tabBarItem.image = UIImage(named: "Settings")
     let navigationController = UINavigationController(rootViewController: controller)
 

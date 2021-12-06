@@ -13,13 +13,13 @@ struct TPPSettingsView: View {
   @State private var showDeveloperSettings = false
 
   var body: some View {
-    List {
-      librariesSection
-      infoSection
-      developerSettingsSection
-    }
-    .navigationBarTitle(Strings.settings)
-    .listStyle(GroupedListStyle())
+      List {
+        librariesSection
+        infoSection
+        developerSettingsSection
+      }
+      .navigationBarTitle(Strings.settings)
+      .listStyle(GroupedListStyle())
   }
 
   @ViewBuilder private var librariesSection: some View {
@@ -119,7 +119,6 @@ struct TPPSettingsView: View {
     
     Text("\(productName) version \(version) (\(build))")
       .font(Font(uiFont: UIFont.palaceFont(ofSize: 12)))
-      .foregroundColor(.white)
       .onTapGesture(count: 7) {
         self.showDeveloperSettings = true
       }
