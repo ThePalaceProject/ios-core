@@ -77,9 +77,10 @@ private let standardCellHeight: CGFloat = 44.0
   func load() {
     NotificationCenter.default.addObserver(self, selector: #selector(self.updateFonts), name: UIContentSizeCategory.didChangeNotification, object: nil)
     
-    if book.reportURL != nil {
-      standardCells.append(TPPBookDetailTableViewDelegate.createCell(type: .reportAProblem))
-    }
+      //TODO: Disabled based on https://www.notion.so/lyrasis/Disable-Report-a-Problem-feature-0061bd6613f7487285e35200acf778c5
+//    if book.reportURL != nil {
+//      standardCells.append(TPPBookDetailTableViewDelegate.createCell(type: .reportAProblem))
+//    }
     configureViewIssuesCell()
     refresh()
     
