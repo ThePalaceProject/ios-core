@@ -24,7 +24,6 @@ The script performs several steps:
 
 - checks the project build version - if the version remains the same, the action stops; it helps to avoid unnecessary builds when updates are not related to the project itself, for example, changes in a CI script should not result in a new binary on Test Flight;
 - generates release notes for a new release on Github and Test Flight "What to Test" description;
-- creates a new release on Github;
 - uploads a new build to Test Flight.
 
 ### Palace Manual Build
