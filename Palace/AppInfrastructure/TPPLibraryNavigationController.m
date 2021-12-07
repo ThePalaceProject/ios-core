@@ -83,7 +83,7 @@
     }]];
   }
 
-  [alert addAction:[UIAlertAction actionWithTitle:NSLocalizedString(@"Manage Accounts", nil) style:(UIAlertActionStyleDefault) handler:^(__unused UIAlertAction *_Nonnull action) {
+  [alert addAction:[UIAlertAction actionWithTitle:NSLocalizedString(@"Add Library", nil) style:(UIAlertActionStyleDefault) handler:^(__unused UIAlertAction *_Nonnull action) {
     TPPSettingsAccountsTableViewController *tableVC = [[TPPSettingsAccountsTableViewController alloc] initWithAccounts: TPPSettings.shared.settingsAccountsList];
     tableVC.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:NSLocalizedString(@"AddAccount", nil) style:UIBarButtonItemStylePlain target:tableVC action:@selector(addAccount)];
     [self pushViewController:tableVC animated:YES];
