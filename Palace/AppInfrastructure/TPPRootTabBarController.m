@@ -43,7 +43,7 @@
   self.catalogNavigationController = [[TPPCatalogNavigationController alloc] init];
   self.myBooksNavigationController = [[TPPMyBooksNavigationController alloc] init];
   self.holdsNavigationController = [[TPPHoldsNavigationController alloc] init];
-  self.settingsViewController = (TPPSettingsViewController * ) [TPPSettingsViewController makeSwiftUIVIewWithDismissHandler:^{
+  self.settingsViewController = (TPPSettingsViewController * ) [TPPSettingsViewController makeSwiftUIViewWithDismissHandler:^{
     [[self presentedViewController] dismissViewControllerAnimated:YES completion:nil];
   }];
 

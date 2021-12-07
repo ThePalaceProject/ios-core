@@ -13,13 +13,23 @@ struct TPPSettingsView: View {
   @State private var showDeveloperSettings = false
 
   var body: some View {
-      List {
-        librariesSection
-        infoSection
-        developerSettingsSection
+    if UIDevice.current.userInterfaceIdiom == .pad {
+      NavigationView {
+          listView
       }
-      .navigationBarTitle(Strings.settings)
-      .listStyle(GroupedListStyle())
+    } else {
+      listView
+    }
+  }
+
+  @ViewBuilder private var listView: some View {
+    List {
+      librariesSection
+      infoSection
+      developerSettingsSection
+    }
+    .navigationBarTitle(Strings.settings)
+    .listStyle(GroupedListStyle())
   }
 
   @ViewBuilder private var librariesSection: some View {
