@@ -68,7 +68,6 @@ didFinishLaunchingWithOptions:(__attribute__((unused)) NSDictionary *)launchOpti
   
   [[UITabBar appearance] setTintColor: [TPPConfiguration iconColor]];
   [[UITabBar appearance] setBackgroundColor:[TPPConfiguration backgroundColor]];
-  [[UITabBar appearance] setTranslucent:NO];
   [[UITabBarItem appearance] setTitleTextAttributes:@{NSFontAttributeName: [UIFont palaceFontOfSize:12.0]} forState:UIControlStateNormal];
 
   [[UINavigationBar appearance] setTintColor: [TPPConfiguration iconColor]];
