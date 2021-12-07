@@ -78,25 +78,6 @@
     self.userAddedSecondaryAccounts = accounts.filter { $0 != AccountsManager.shared.currentAccount?.uuid }
     
     updateSettingsAccountList()
-    
-//    self.title = NSLocalizedString("Libraries",
-//                                   comment: "A title for a list of libraries the user may select or add to.")
-//    self.view.backgroundColor = TPPConfiguration.backgroundColor()
-//    self.navigationItem.rightBarButtonItem =
-//      UIBarButtonItem(title: NSLocalizedString("Add Library", comment: "Title of button to add a new library"),
-//                      style: .plain,
-//                      target: self,
-//                      action: #selector(addAccount))
-//    
-//    NotificationCenter.default.addObserver(self,
-//                                           selector: #selector(reloadAfterAccountChange),
-//                                           name: NSNotification.Name.TPPCurrentAccountDidChange,
-//                                           object: nil)
-//    NotificationCenter.default.addObserver(self,
-//                                           selector: #selector(catalogChangeHandler),
-//                                           name: NSNotification.Name.TPPCatalogDidLoad,
-//                                           object: nil)
-    
     self.libraryAccounts = manager.accounts()
     updateNavBar()
   }
