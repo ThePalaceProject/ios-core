@@ -78,6 +78,15 @@
     self.userAddedSecondaryAccounts = accounts.filter { $0 != AccountsManager.shared.currentAccount?.uuid }
     
     updateSettingsAccountList()
+    NotificationCenter.default.addObserver(self,
+                                           selector: #selector(reloadAfterAccountChange),
+                                           name: NSNotification.Name.TPPCurrentAccountDidChange,
+                                           object: nil)
+    NotificationCenter.default.addObserver(self,
+                                           selector: #selector(catalogChangeHandler),
+                                           name: NSNotification.Name.TPPCatalogDidLoad,
+                                           object: nil)
+    
     self.libraryAccounts = manager.accounts()
     updateNavBar()
   }
