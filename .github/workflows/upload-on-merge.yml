@@ -90,18 +90,6 @@ jobs:
           RELEASE_NOTES_PATH: ${{ env.RELEASE_NOTES_PATH }}
           CHANGELOG_PATH: ${{ env.CHANGELOG_PATH }}
           VERSION_NUM: ${{ env.VERSION_NUM }}
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_NOTES_PATH: ${{ env.RELEASE_NOTES_PATH }}
-          VERSION_NUM: ${{ env.VERSION_NUM }}
-        with:
-          tag_name: ${{ env.VERSION_NUM }}
-          release_name: ${{ env.VERSION_NUM }}
-          body_path: ${{ env.RELEASE_NOTES_PATH }}
-          draft: false
       - name: Export for App Store
         run: ./scripts/xcode-export-appstore.sh
         env:
