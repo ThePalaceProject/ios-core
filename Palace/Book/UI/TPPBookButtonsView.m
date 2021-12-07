@@ -60,7 +60,7 @@
   [self.cancelButton addTarget:self action:@selector(didSelectCancel) forControlEvents:UIControlEventTouchUpInside];
   [self addSubview:self.cancelButton];
   
-  self.activityIndicator = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleGray];
+  self.activityIndicator = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
   self.activityIndicator.color = [TPPConfiguration mainColor];
   self.activityIndicator.hidesWhenStopped = YES;
   [self addSubview:self.activityIndicator];

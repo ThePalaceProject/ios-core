@@ -48,7 +48,7 @@
     self.tableView.dataSource = self
     self.tableView.register(TPPAccountListCell.self, forCellReuseIdentifier: TPPAccountListCell.reuseIdentifier)
 
-    spinner = UIActivityIndicatorView(style: .gray)
+    spinner = UIActivityIndicatorView(style: .medium)
     view.addSubview(spinner)
     
     reloadView = TPPReloadView()
@@ -78,16 +78,6 @@
     self.userAddedSecondaryAccounts = accounts.filter { $0 != AccountsManager.shared.currentAccount?.uuid }
     
     updateSettingsAccountList()
-    
-    self.title = NSLocalizedString("Libraries",
-                                   comment: "A title for a list of libraries the user may select or add to.")
-    self.view.backgroundColor = TPPConfiguration.backgroundColor()
-    self.navigationItem.rightBarButtonItem =
-      UIBarButtonItem(title: NSLocalizedString("Add Library", comment: "Title of button to add a new library"),
-                      style: .plain,
-                      target: self,
-                      action: #selector(addAccount))
-    
     NotificationCenter.default.addObserver(self,
                                            selector: #selector(reloadAfterAccountChange),
                                            name: NSNotification.Name.TPPCurrentAccountDidChange,
@@ -185,7 +175,7 @@
     (navigationController?.parent as? UINavigationController)?.popToRootViewController(animated: false)
   }
   
-  @objc private func addAccount() {
+  @objc func addAccount() {
     let listVC = TPPAccountList { [weak self] account in
       if account.details != nil {
         self?.updateList(withAccount: account)

@@ -57,7 +57,7 @@
   
   self.activityIndicatorView =
   [[UIActivityIndicatorView alloc]
-   initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleGray];
+   initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
   self.activityIndicatorView.center = self.view.center;
   self.activityIndicatorView.autoresizingMask = (UIViewAutoresizingFlexibleWidth |
                                                  UIViewAutoresizingFlexibleHeight);

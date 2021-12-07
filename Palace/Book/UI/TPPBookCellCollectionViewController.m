@@ -135,7 +135,7 @@
   [self.view addSubview:shieldView];
   UIActivityIndicatorView *const activityIndicatorView =
     [[UIActivityIndicatorView alloc]
-     initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleGray];
+     initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
   activityIndicatorView.center = shieldView.center;
   [activityIndicatorView integralizeFrame];
   activityIndicatorView.autoresizingMask = (UIViewAutoresizingFlexibleTopMargin |

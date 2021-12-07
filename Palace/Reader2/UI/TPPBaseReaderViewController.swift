@@ -70,7 +70,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
 
     super.init(nibName: nil, bundle: nil)
 
-    NotificationCenter.default.addObserver(self, selector: #selector(voiceOverStatusDidChange), name: Notification.Name(UIAccessibilityVoiceOverStatusChanged), object: nil)
+    NotificationCenter.default.addObserver(self, selector: #selector(voiceOverStatusDidChange), name: Notification.Name(UIAccessibility.voiceOverStatusDidChangeNotification.rawValue), object: nil)
   }
 
   @available(*, unavailable)
