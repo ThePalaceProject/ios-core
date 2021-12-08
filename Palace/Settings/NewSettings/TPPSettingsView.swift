@@ -15,14 +15,14 @@ struct TPPSettingsView: View {
   @State private var selectedView: Int? = 0
   @State private var orientation: UIDeviceOrientation = UIDevice.current.orientation
 
-  private var sideBarEnabled: Bool {
+  private var splitScreenEnabled: Bool {
     UIDevice.current.userInterfaceIdiom == .pad
       &&  UIDevice.current.orientation != .portrait
       &&  UIDevice.current.orientation != .portraitUpsideDown
   }
 
   var body: some View {
-    if sideBarEnabled {
+    if splitScreenEnabled {
       NavigationView {
         listView
           .onAppear {
