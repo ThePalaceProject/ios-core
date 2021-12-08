@@ -47,7 +47,7 @@
 "Error Loading Library" = "Error Loading Library";
 "We can’t get your library right now. Please close and reopen the app to try again." = "We can’t get your library right now. Please close and reopen the app to try again.";
 "LogIn" = "Log In";
-"Manage Accounts" = "Manage Accounts";
+"Add Library" = "Add Library";
 "More..." = "More…";
 "MoreBooks" = "More %@ books";
 "NoEmailAccountSet" = "No email account is set for this device.";
