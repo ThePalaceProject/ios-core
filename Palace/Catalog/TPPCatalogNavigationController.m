@@ -199,8 +199,6 @@
     UIAccessibilityPostNotification(UIAccessibilityScreenChangedNotification, nil);
   }
 
-  // TODO: SIMPLY-3048 refactor better in a extension
-#ifdef SIMPLYE
   TPPSettings *settings = [TPPSettings sharedSettings];
   
   if (!settings.userHasSeenWelcomeScreen  || TPPConfiguration.registryChanged) {
@@ -233,6 +231,11 @@
 
       TPPRootTabBarController *vc = [TPPRootTabBarController sharedController];
       [vc safelyPresentViewController:navController animated:YES completion:nil];
+
+      // Present onboarding screens above the welcome screen.
+      UIViewController *onboardingVC = [TPPOnboardingViewController makeSwiftUIView];
+      onboardingVC.modalPresentationStyle = UIModalPresentationFullScreen;
+      [vc safelyPresentViewController:onboardingVC animated:YES completion:nil];
     };
     if (TPPUserAccount.sharedAccount.authDefinition.needsAgeCheck) {
       [[[AccountsManager shared] ageCheck] verifyCurrentAccountAgeRequirementWithUserAccountProvider:[TPPUserAccount sharedAccount]
@@ -245,7 +248,6 @@
       completion();
     }
   }
-#endif
 }
 
 - (void)welcomeScreenCompletionHandlerForAccount:(Account *const)account
