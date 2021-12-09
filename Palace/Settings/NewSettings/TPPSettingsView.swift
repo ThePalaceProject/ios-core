@@ -10,15 +10,30 @@ import SwiftUI
 
 struct TPPSettingsView: View {
   typealias Strings = DisplayStrings.Settings
+
   @State private var showDeveloperSettings = false
+  @State private var selectedView: Int? = 0
+  @State private var orientation: UIDeviceOrientation = UIDevice.current.orientation
+
+  private var sideBarEnabled: Bool {
+    UIDevice.current.userInterfaceIdiom == .pad
+      &&  UIDevice.current.orientation != .portrait
+      &&  UIDevice.current.orientation != .portraitUpsideDown
+  }
 
   var body: some View {
-    if UIDevice.current.userInterfaceIdiom == .pad {
+    if sideBarEnabled {
       NavigationView {
-          listView
+        listView
+          .onAppear {
+            selectedView = 1
+          }
       }
     } else {
       listView
+        .onAppear {
+          selectedView = 0
+        }
     }
   }
 
@@ -30,6 +45,9 @@ struct TPPSettingsView: View {
     }
     .navigationBarTitle(Strings.settings)
     .listStyle(GroupedListStyle())
+    .onReceive(NotificationCenter.default.publisher(for: UIDevice.orientationDidChangeNotification)) { _ in
+      self.orientation = UIDevice.current.orientation
+    }
   }
 
   @ViewBuilder private var librariesSection: some View {
@@ -44,7 +62,7 @@ struct TPPSettingsView: View {
       .navigationBarItems(trailing: navButton)
     
     Section {
-      row(title: Strings.libraries, destination: wrapper.anyView())
+      row(title: Strings.libraries, index: 1, selection: self.$selectedView, destination: wrapper.anyView())
     }
   }
 
@@ -68,7 +86,7 @@ struct TPPSettingsView: View {
     let wrapper = UIViewControllerWrapper(viewController, updater: { _ in })
       .navigationBarTitle(Text(Strings.aboutApp))
 
-    row(title: Strings.aboutApp, destination: wrapper.anyView())
+    row(title: Strings.aboutApp, index: 2, selection: self.$selectedView, destination: wrapper.anyView())
   }
 
   @ViewBuilder private var privacyRow: some View {
@@ -81,7 +99,8 @@ struct TPPSettingsView: View {
     let wrapper = UIViewControllerWrapper(viewController, updater: { _ in })
       .navigationBarTitle(Text(Strings.privacyPolicy))
     
-    row(title: Strings.privacyPolicy, destination: wrapper.anyView())
+    row(title: Strings.privacyPolicy, index: 3, selection: self.$selectedView, destination: wrapper.anyView())
+
   }
 
   @ViewBuilder private var userAgreementRow: some View {
@@ -94,7 +113,7 @@ struct TPPSettingsView: View {
     let wrapper = UIViewControllerWrapper(viewController, updater: { _ in })
       .navigationBarTitle(Text(Strings.eula))
     
-    row(title: Strings.eula, destination: wrapper.anyView())
+    row(title: Strings.eula, index: 4, selection: self.$selectedView, destination: wrapper.anyView())
   }
 
   @ViewBuilder private var softwareLicenseRow: some View {
@@ -106,7 +125,7 @@ struct TPPSettingsView: View {
     let wrapper = UIViewControllerWrapper(viewController, updater: { _ in })
       .navigationBarTitle(Text(Strings.softwareLicenses))
     
-    row(title: Strings.softwareLicenses, destination: wrapper.anyView())
+    row(title: Strings.softwareLicenses, index: 5, selection: self.$selectedView, destination: wrapper.anyView())
   }
 
   @ViewBuilder private var developerSettingsSection: some View {
@@ -117,7 +136,7 @@ struct TPPSettingsView: View {
         let wrapper = UIViewControllerWrapper(viewController, updater: { _ in })
           .navigationBarTitle(Text(Strings.developerSettings))
         
-        row(title: Strings.developerSettings, destination: wrapper.anyView())
+        row(title: Strings.developerSettings, index: 6, selection: self.$selectedView, destination: wrapper.anyView())
       }
     }
   }
@@ -135,9 +154,12 @@ struct TPPSettingsView: View {
       .horizontallyCentered()
   }
   
-  private func row(title: String, destination: AnyView) -> some View {
-    NavigationLink(destination: destination) {
-      Text(title)
-    }
+  private func row(title: String, index: Int, selection: Binding<Int?>, destination: AnyView) -> some View {
+    NavigationLink(
+      destination: destination,
+      tag: index,
+      selection: selection,
+      label: { Text(title) }
+    )
   }
 }
