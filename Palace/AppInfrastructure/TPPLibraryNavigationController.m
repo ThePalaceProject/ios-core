@@ -84,9 +84,16 @@
   }
 
   [alert addAction:[UIAlertAction actionWithTitle:NSLocalizedString(@"Add Library", nil) style:(UIAlertActionStyleDefault) handler:^(__unused UIAlertAction *_Nonnull action) {
-    TPPSettingsAccountsTableViewController *tableVC = [[TPPSettingsAccountsTableViewController alloc] initWithAccounts: TPPSettings.shared.settingsAccountsList];
-    tableVC.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:NSLocalizedString(@"AddAccount", nil) style:UIBarButtonItemStylePlain target:tableVC action:@selector(addAccount)];
-    [self pushViewController:tableVC animated:YES];
+    TPPAccountList *listVC = [[TPPAccountList alloc] initWithCompletion:^(Account * _Nonnull account) {
+      [account loadAuthenticationDocumentUsingSignedInStateProvider:nil completion:^(BOOL success) {
+        if (success) {
+          TPPSettings.shared.settingsAccountsList = [TPPSettings.shared.settingsAccountsList arrayByAddingObject:account.uuid];
+          AccountsManager.shared.currentAccount = account;
+          [self popToRootViewControllerAnimated:YES];
+        }
+      }];
+    }];
+    [self pushViewController:listVC animated:YES];
   }]];
 
   [alert addAction:[UIAlertAction actionWithTitle:NSLocalizedString(@"Cancel", nil) style:(UIAlertActionStyleCancel) handler:nil]];
