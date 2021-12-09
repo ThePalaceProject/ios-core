@@ -87,7 +87,11 @@
     TPPAccountList *listVC = [[TPPAccountList alloc] initWithCompletion:^(Account * _Nonnull account) {
       [account loadAuthenticationDocumentUsingSignedInStateProvider:nil completion:^(BOOL success) {
         if (success) {
-          TPPSettings.shared.settingsAccountsList = [TPPSettings.shared.settingsAccountsList arrayByAddingObject:account.uuid];
+          
+          if (![TPPSettings.shared.settingsAccountsList containsObject:account.uuid]) {
+            TPPSettings.shared.settingsAccountsList = [TPPSettings.shared.settingsAccountsList arrayByAddingObject:account.uuid];
+          }
+          
           AccountsManager.shared.currentAccount = account;
           [self popToRootViewControllerAnimated:YES];
         }
