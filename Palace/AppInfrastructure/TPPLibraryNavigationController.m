@@ -87,13 +87,16 @@
     TPPAccountList *listVC = [[TPPAccountList alloc] initWithCompletion:^(Account * _Nonnull account) {
       [account loadAuthenticationDocumentUsingSignedInStateProvider:nil completion:^(BOOL success) {
         if (success) {
-          
-          if (![TPPSettings.shared.settingsAccountsList containsObject:account.uuid]) {
-            TPPSettings.shared.settingsAccountsList = [TPPSettings.shared.settingsAccountsList arrayByAddingObject:account.uuid];
-          }
-          
-          AccountsManager.shared.currentAccount = account;
-          [self popToRootViewControllerAnimated:YES];
+          dispatch_async(dispatch_get_main_queue(), ^{
+            
+            if (![TPPSettings.shared.settingsAccountsList containsObject:account.uuid]) {
+              TPPSettings.shared.settingsAccountsList = [TPPSettings.shared.settingsAccountsList arrayByAddingObject:account.uuid];
+            }
+            
+            AccountsManager.shared.currentAccount = account;
+            [self popToRootViewControllerAnimated:YES];
+            
+          });
         }
       }];
     }];
