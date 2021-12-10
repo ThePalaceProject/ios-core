@@ -30,63 +30,69 @@ struct TPPOnboardingView: View {
   
   var body: some View {
     ZStack(alignment: .top) {
-      
-      // Onboarding slides
-      
-      GeometryReader { geometry in
-        HStack(spacing: 0) {
-          ForEach(onboardingImageNames, id: \.self) { imageName in
-            Image(imageName)
-              .resizable()
-              .aspectRatio(contentMode: .fit)
-              .frame(width: geometry.size.width)
-              .edgesIgnoringSafeArea(.bottom)
-          }
-        }
-        .contentShape(Rectangle())
-        .frame(width: geometry.size.width, alignment: .leading)
-        .offset(x: translation - CGFloat(currentIndex) * geometry.size.width)
-        .animation(.interactiveSpring(), value: currentIndex)
-        .gesture(
-          DragGesture()
-            .updating($translation) { value, state, _translation in
-              state = value.translation.width
-            }
-            .onEnded { value in
-              let offset = value.translation.width / geometry.size.width / activationDistance
-              let newIndex = (CGFloat(currentIndex) - offset).rounded()
-              // This is intentional, it makes possible swiping past the last slide to dismiss this view.
-              let lastIndex = onboardingImageNames.count
-              currentIndex = min(max(Int(newIndex), 0), lastIndex)
-            }
-        )
-      }
-      .background(
-        Color(UIColor(named: "OnboardingBackground") ?? .systemBackground)
-      )
-      
-      // Pager dots
-      
-      VStack {
-        Spacer()
-        TPPPagerDotsView(count: onboardingImageNames.count, currentIndex: $currentIndex)
-          .padding()
-      }
-      
-      // Close button
-      
-      HStack {
-        Spacer()
-        Button {
-          presentationMode.wrappedValue.dismiss()
-        } label: {
-          Image(systemName: "xmark.circle.fill")
-            .font(.title)
-            .foregroundColor(.gray)
-            .padding()
-        }
-      }
+      onboardingSlides()
+      pagerDots()
+      closeButton()
     }
     .statusBar(hidden: true)
-  }  
+  }
+  
+  @ViewBuilder
+  private func onboardingSlides() -> some View {
+    GeometryReader { geometry in
+      HStack(spacing: 0) {
+        ForEach(onboardingImageNames, id: \.self) { imageName in
+          Image(imageName)
+            .resizable()
+            .aspectRatio(contentMode: .fit)
+            .frame(width: geometry.size.width)
+            .edgesIgnoringSafeArea(.bottom)
+        }
+      }
+      .contentShape(Rectangle())
+      .frame(width: geometry.size.width, alignment: .leading)
+      .offset(x: translation - CGFloat(currentIndex) * geometry.size.width)
+      .animation(.interactiveSpring(), value: currentIndex)
+      .gesture(
+        DragGesture()
+          .updating($translation) { value, state, _translation in
+            state = value.translation.width
+          }
+          .onEnded { value in
+            let offset = value.translation.width / geometry.size.width / activationDistance
+            let newIndex = (CGFloat(currentIndex) - offset).rounded()
+            // This is intentional, it makes possible swiping past the last slide to dismiss this view.
+            let lastIndex = onboardingImageNames.count
+            currentIndex = min(max(Int(newIndex), 0), lastIndex)
+          }
+      )
+    }
+    .background(
+      Color(UIColor(named: "OnboardingBackground") ?? .systemBackground)
+    )
+  }
+  
+  @ViewBuilder
+  private func pagerDots() -> some View {
+    VStack {
+      Spacer()
+      TPPPagerDotsView(count: onboardingImageNames.count, currentIndex: $currentIndex)
+        .padding()
+    }
+  }
+  
+  @ViewBuilder
+  private func closeButton() -> some View {
+    HStack {
+      Spacer()
+      Button {
+        presentationMode.wrappedValue.dismiss()
+      } label: {
+        Image(systemName: "xmark.circle.fill")
+          .font(.title)
+          .foregroundColor(.gray)
+          .padding()
+      }
+    }
+  }
 }

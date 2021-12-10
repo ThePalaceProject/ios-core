@@ -9,7 +9,9 @@
 import SwiftUI
 
 struct TPPPagerDotsView: View {
+  /// Number of dots to show
   var count: Int
+  /// Selected dot index
   @Binding var currentIndex: Int
   var body: some View {
     HStack(spacing: 8) {
