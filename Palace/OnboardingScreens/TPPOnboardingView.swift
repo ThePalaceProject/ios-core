@@ -12,7 +12,7 @@ struct TPPOnboardingView: View {
   
   // 2 x pan distance to switch between slides
   // (relative to screen width)
-  private var activationDistance = 0.8
+  private var activationDistance: CGFloat = 0.8
   
   private var onboardingImageNames =
     ["Onboarding-1", "Onboarding-2", "Onboarding-3"]
