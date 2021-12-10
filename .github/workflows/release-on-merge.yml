@@ -48,4 +48,4 @@ jobs:
           tag_name: ${{ env.VERSION_NUM }}
           release_name: ${{ env.VERSION_NUM }}
           body_path: ${{ env.RELEASE_NOTES_PATH }}
-          draft: true
+          draft: false
