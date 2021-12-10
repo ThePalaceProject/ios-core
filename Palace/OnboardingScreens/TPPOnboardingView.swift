@@ -45,10 +45,8 @@ struct TPPOnboardingView: View {
         }
         .contentShape(Rectangle())
         .frame(width: geometry.size.width, alignment: .leading)
-        .offset(x: -CGFloat(currentIndex) * geometry.size.width)
-        .offset(x: translation)
+        .offset(x: translation - CGFloat(currentIndex) * geometry.size.width)
         .animation(.interactiveSpring(), value: currentIndex)
-        .animation(.interactiveSpring(), value: translation)
         .gesture(
           DragGesture()
             .updating($translation) { value, state, _translation in
