@@ -34,6 +34,7 @@ struct TPPOnboardingView: View {
       pagerDots()
       closeButton()
     }
+    .edgesIgnoringSafeArea(.all)
     .statusBar(hidden: true)
   }
   
@@ -46,7 +47,6 @@ struct TPPOnboardingView: View {
             .resizable()
             .aspectRatio(contentMode: .fit)
             .frame(width: geometry.size.width)
-            .edgesIgnoringSafeArea(.bottom)
         }
       }
       .contentShape(Rectangle())
