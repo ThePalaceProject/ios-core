@@ -1,5 +1,9 @@
-name: Create Release Test
-on: workflow_dispatch
+name: Palace Release
+on:
+  pull_request:
+    branches:
+      - main
+    types: [closed]
 jobs:
   create-release:
     runs-on: macOS-latest
