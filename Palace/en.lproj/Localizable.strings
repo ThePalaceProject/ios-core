@@ -47,7 +47,7 @@
 "Error Loading Library" = "Error Loading Library";
 "We can’t get your library right now. Please close and reopen the app to try again." = "We can’t get your library right now. Please close and reopen the app to try again.";
 "LogIn" = "Log In";
-"Manage Accounts" = "Manage Accounts";
+"Add Library" = "Add Library";
 "More..." = "More…";
 "MoreBooks" = "More %@ books";
 "NoEmailAccountSet" = "No email account is set for this device.";
@@ -242,7 +242,6 @@
 "Find Your Library" = "Find Your Library";
 "The SimplyE Collection" = "The SimplyE Collection";
 "Add a Library Later" = "Add a Library Later";
-"Pick Your Library" = "Pick Your Library";
 "Under 13" = "Under 13";
 "13 or Older" = "13 or Older";
 

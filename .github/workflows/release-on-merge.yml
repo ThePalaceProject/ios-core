@@ -1,5 +1,9 @@
-name: Create Release Test
-on: workflow_dispatch
+name: Palace Release
+on:
+  pull_request:
+    branches:
+      - main
+    types: [closed]
 jobs:
   create-release:
     runs-on: macOS-latest
@@ -44,4 +48,4 @@ jobs:
           tag_name: ${{ env.VERSION_NUM }}
           release_name: ${{ env.VERSION_NUM }}
           body_path: ${{ env.RELEASE_NOTES_PATH }}
-          draft: true
+          draft: false

@@ -23,7 +23,7 @@ Starts on merge to `develop` branch.
 The script performs several steps:
 
 - checks the project build version - if the version remains the same, the action stops; it helps to avoid unnecessary builds when updates are not related to the project itself, for example, changes in a CI script should not result in a new binary on Test Flight;
-- generates release notes for a new release on Github and Test Flight "What to Test" description;
+- generates release notes for Test Flight "What to Test" description;
 - uploads a new build to Test Flight.
 
 ### Palace Manual Build
@@ -31,6 +31,23 @@ The script performs several steps:
 Location: [.github/workflows/upload.yml](https://github.com/ThePalaceProject/ios-core/blob/main/.github/workflows/upload.yml)
 
 This script is similar to "Palace Build", but can be started manually. Performs the same set of steps.
+
+### Palace Release
+
+Location:  [.github/workflows/upload-on-merge.yml](https://github.com/ThePalaceProject/ios-core/blob/main/.github/workflows/release-on-merge.yml)
+
+Starts on merge to `main` branch.
+
+The script performs several steps:
+
+- generates release notes for a new release on Github;
+- creates a new release on Github.
+
+### Palace Manual Release
+
+Location:  [.github/workflows/upload-on-merge.yml](https://github.com/ThePalaceProject/ios-core/blob/main/.github/workflows/release.yml)
+
+This script is similar to "Palace Release", but can be started manually. Performs the same set of steps.
 
 ### Unit Tests
 
