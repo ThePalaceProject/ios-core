@@ -136,6 +136,8 @@
 		21399900268F9F2500B4EB60 /* TPPAccountListCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AD65DC2684FACA00C62951 /* TPPAccountListCell.swift */; };
 		21399902268F9F4C00B4EB60 /* TPPAccountListDataSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AD65E02684FDA300C62951 /* TPPAccountListDataSource.swift */; };
 		2146872D2559A64B007B401A /* LCPLibraryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2171ADA0251E38140003CABA /* LCPLibraryService.swift */; };
+		21562CC3276BB52700C03372 /* AdobeDRMAlerts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21562CC2276BB52700C03372 /* AdobeDRMAlerts.swift */; };
+		21562CC4276BB52700C03372 /* AdobeDRMAlerts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21562CC2276BB52700C03372 /* AdobeDRMAlerts.swift */; };
 		215C866D27064198005F9621 /* BundleExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = 215C866C27064198005F9621 /* BundleExtension.swift */; };
 		215C866E27064198005F9621 /* BundleExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = 215C866C27064198005F9621 /* BundleExtension.swift */; };
 		216FD1FC26DFE112003AF0D8 /* Colors.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E5506DE326C4688D009FA623 /* Colors.xcassets */; };
@@ -1032,6 +1034,7 @@
 		21045C572761095B00D2D407 /* TPPOnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPOnboardingView.swift; sourceTree = "<group>"; };
 		2126FE2D25C059240095C45C /* ReaderError.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ReaderError.swift; sourceTree = "<group>"; };
 		212B99D2258A36FD00C8BF79 /* LCPAudiobooks.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = LCPAudiobooks.swift; sourceTree = "<group>"; };
+		21562CC2276BB52700C03372 /* AdobeDRMAlerts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdobeDRMAlerts.swift; sourceTree = "<group>"; };
 		2156B54425B200EA003AD8EC /* R2LCPClient.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = R2LCPClient.framework; path = Carthage/Build/iOS/R2LCPClient.framework; sourceTree = "<group>"; };
 		2156B54625B200F6003AD8EC /* ReadiumLCP.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ReadiumLCP.framework; path = Carthage/Build/iOS/ReadiumLCP.framework; sourceTree = "<group>"; };
 		215C866C27064198005F9621 /* BundleExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BundleExtension.swift; sourceTree = "<group>"; };
@@ -1666,6 +1669,7 @@
 				21D746E62718A4C000C0E1B4 /* AdobeDRMFetcherError.swift */,
 				21E35FC2268CC8AC00066F9D /* AdobeContentProtectionService.swift */,
 				21F4BF3926BC62D4000CF592 /* AdobeCertificate.swift */,
+				21562CC2276BB52700C03372 /* AdobeDRMAlerts.swift */,
 			);
 			path = AdobeDRM;
 			sourceTree = "<group>";
@@ -3337,6 +3341,7 @@
 				73EB0AFF25821DF4006BC997 /* URLResponse+TPPAuthentication.swift in Sources */,
 				73EB0B0025821DF4006BC997 /* TPPCatalogSearchViewController.m in Sources */,
 				73DB56CF25F7F73A003788EE /* TPPLastReadPositionPoster.swift in Sources */,
+				21562CC4276BB52700C03372 /* AdobeDRMAlerts.swift in Sources */,
 				E551B363267D42A20026FC1B /* TPPAccountList.swift in Sources */,
 				73EB0B0125821DF4006BC997 /* UIColor+LabelColor.swift in Sources */,
 				73EB0B0225821DF4006BC997 /* TPPNetworkResponder.swift in Sources */,
@@ -3599,6 +3604,7 @@
 				089E42C6249A823800310360 /* TPPCookiesWebViewController.swift in Sources */,
 				0826CD2924AA21B2000F4030 /* TPPSamlIDPCell.swift in Sources */,
 				2126FE2E25C059250095C45C /* ReaderError.swift in Sources */,
+				21562CC3276BB52700C03372 /* AdobeDRMAlerts.swift in Sources */,
 				5D7CF8B922C3FC06007CAA34 /* TPPErrorLogger.swift in Sources */,
 				0824D44E24B8DFE400C85A7E /* NSString+JSONParse.swift in Sources */,
 				73CC48AA260C07C200F1E2C3 /* TPPReadiumBookmark+R2.swift in Sources */,
