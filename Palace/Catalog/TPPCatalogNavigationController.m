@@ -233,8 +233,9 @@
       [vc safelyPresentViewController:navController animated:YES completion:nil];
 
       // Present onboarding screens above the welcome screen.
-      UIViewController *onboardingVC = [TPPOnboardingViewController makeSwiftUIView];
-      onboardingVC.modalPresentationStyle = UIModalPresentationFullScreen;
+      UIViewController *onboardingVC = [TPPOnboardingViewController makeSwiftUIViewWithDismissHandler:^{
+        [[self presentedViewController] dismissViewControllerAnimated:YES completion:nil];
+      }];
       [vc safelyPresentViewController:onboardingVC animated:YES completion:nil];
     };
     if (TPPUserAccount.sharedAccount.authDefinition.needsAgeCheck) {

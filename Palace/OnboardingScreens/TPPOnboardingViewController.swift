@@ -10,8 +10,9 @@ import UIKit
 import SwiftUI
 
 class TPPOnboardingViewController: NSObject {
-  @objc static func makeSwiftUIView() -> UIViewController {
-    let controller = UIHostingController(rootView: TPPOnboardingView())
+  @objc static func makeSwiftUIView(dismissHandler: @escaping (() -> Void)) -> UIViewController {
+    let controller = UIHostingController(rootView: TPPOnboardingView(dismissHandler: dismissHandler))
+    controller.modalPresentationStyle = .fullScreen
     return controller
   }
 }
