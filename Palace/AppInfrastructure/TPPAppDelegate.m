@@ -179,7 +179,7 @@ performFetchWithCompletionHandler:(void (^)(UIBackgroundFetchResult))backgroundF
   // because we need to show modal views there as well
   if ([AdobeCertificate.defaultCertificate hasExpired] == YES &&
       AdobeCertificate.shouldNotifyAboutExpiration &&
-      ![[TPPSettings shared] userHasSeenWelcomeScreen]
+      [[TPPSettings shared] userHasSeenWelcomeScreen]
       ) {
     [TPPAlertUtils presentFromViewControllerOrNilWithAlertController:[TPPAlertUtils expiredAdobeDRMAlert] viewController:nil animated:YES completion:nil];
   }
