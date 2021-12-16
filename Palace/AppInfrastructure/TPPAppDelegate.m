@@ -174,12 +174,14 @@ performFetchWithCompletionHandler:(void (^)(UIBackgroundFetchResult))backgroundF
   [self completeBecomingActive];
   
 #if FEATURE_DRM_CONNECTOR
-  if ([AdobeCertificate.defaultCertificate hasExpired] == YES && AdobeCertificate.shouldNotifyAboutExpiration) {
-    UIAlertController *alert = [TPPAlertUtils
-                                alertWithTitle:NSLocalizedString(@"Something went wrong with the Adobe DRM system", @"Expired DRM certificate title")
-                                message:NSLocalizedString(@"Some books will be unavailable in this version. Please try updating to the latest version of the application.", @"Expired DRM certificate message")
-                                ];
-    [TPPAlertUtils presentFromViewControllerOrNilWithAlertController:alert viewController:nil animated:YES completion:nil];
+  // If Adobe DRM cerificate expired, the app shows this alert when the user opens the app.
+  // We don't show this alert if the user is going to see Welcome screen,
+  // because we need to show modal views there as well
+  if ([AdobeCertificate.defaultCertificate hasExpired] == YES &&
+      AdobeCertificate.shouldNotifyAboutExpiration &&
+      [[TPPSettings shared] userHasSeenWelcomeScreen]
+      ) {
+    [TPPAlertUtils presentFromViewControllerOrNilWithAlertController:[TPPAlertUtils expiredAdobeDRMAlert] viewController:nil animated:YES completion:nil];
   }
 #endif
 }

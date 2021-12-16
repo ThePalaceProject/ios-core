@@ -17,15 +17,21 @@ struct TPPOnboardingView: View {
   private var onboardingImageNames =
     ["Onboarding-1", "Onboarding-2", "Onboarding-3"]
   @GestureState private var translation: CGFloat = 0
-  @Environment(\.presentationMode) var presentationMode
   
   @State private var currentIndex = 0 {
     didSet {
       // Dismiss the view after the user swipes past the last slide.
       if currentIndex == onboardingImageNames.count {
-        presentationMode.wrappedValue.dismiss()
+        dismissView()
       }
     }
+  }
+  
+  // dismiss handler
+  var dismissView: (() -> Void)
+  
+  init(dismissHandler: @escaping (() -> Void)) {
+    self.dismissView = dismissHandler
   }
   
   var body: some View {
@@ -86,7 +92,7 @@ struct TPPOnboardingView: View {
     HStack {
       Spacer()
       Button {
-        presentationMode.wrappedValue.dismiss()
+        dismissView()
       } label: {
         Image(systemName: "xmark.circle.fill")
           .font(.title)
