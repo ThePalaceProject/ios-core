@@ -53,6 +53,7 @@ struct TPPOnboardingView: View {
             .resizable()
             .aspectRatio(contentMode: .fit)
             .frame(width: geometry.size.width)
+            .accessibility(label: Text(NSLocalizedString(imageName, comment: "Onboarding slide localised description")))
         }
       }
       .contentShape(Rectangle())
@@ -99,6 +100,7 @@ struct TPPOnboardingView: View {
           .foregroundColor(.gray)
           .padding()
       }
+      .accessibility(label: Text(NSLocalizedString("Close", comment: "Close")))
     }
   }
 }
