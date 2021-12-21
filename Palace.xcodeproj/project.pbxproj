@@ -2460,7 +2460,9 @@
 				A823D80E192BABA400B55DE2 /* Products */,
 				A823D80F192BABA400B55DE2 /* Frameworks */,
 			);
+			indentWidth = 2;
 			sourceTree = "<group>";
+			tabWidth = 2;
 		};
 		A823D80E192BABA400B55DE2 /* Products */ = {
 			isa = PBXGroup;
