@@ -1,0 +1,17 @@
+{
+  "feedbooks": {
+    "cantook": {
+      "secret": "",
+      "info": {
+        "profile": "https://www.cantookaudio.com"
+      }
+    },
+    "overdrive": {
+      "secret": "StTQ849MwpqWYHpd",
+      "key": "LYRASIS",
+      "info": {
+        "profile": "https://www.overdrive.com"
+      }
+    }
+  }
+}

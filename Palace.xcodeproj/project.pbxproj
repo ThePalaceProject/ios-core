@@ -697,6 +697,8 @@
 		E5AD65E12684FDA300C62951 /* TPPAccountListDataSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AD65E02684FDA300C62951 /* TPPAccountListDataSource.swift */; };
 		E5B2B8DA275952EC00150ED4 /* TPPSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5B2B8D9275952EC00150ED4 /* TPPSettingsView.swift */; };
 		E5B2B8E12759583200150ED4 /* TPPSettingsViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5B2B8DC2759552F00150ED4 /* TPPSettingsViewController.swift */; };
+		E5B9F4EF278409B50036882C /* TPPSecretsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5B9F4EE278409B50036882C /* TPPSecretsTests.swift */; };
+		E5B9F4F52784F6010036882C /* MockAPIKeys.json in Resources */ = {isa = PBXBuildFile; fileRef = E5B9F4F42784F6010036882C /* MockAPIKeys.json */; };
 		E5BEF00226BD919F00C2A50B /* OpenSans-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E5BEEFF526BD919D00C2A50B /* OpenSans-Bold.ttf */; };
 		E5BEF00326BD919F00C2A50B /* OpenSans-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E5BEEFF526BD919D00C2A50B /* OpenSans-Bold.ttf */; };
 		E5BEF00826BD919F00C2A50B /* OpenSans-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E5BEEFF826BD919E00C2A50B /* OpenSans-Regular.ttf */; };
@@ -707,6 +709,7 @@
 		E5BEF02A26BDAB3A00C2A50B /* OpenSans-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E5BEF01C26BDA9EA00C2A50B /* OpenSans-SemiBold.ttf */; };
 		E5C2C422268BA5140046F415 /* TPPRegistryDebuggingCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5C2C421268BA5140046F415 /* TPPRegistryDebuggingCell.swift */; };
 		E5C8CAA1270B5653003F7BC0 /* BundleExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5C8CA9B270B5653003F7BC0 /* BundleExtension.swift */; };
+		E5D68EF027725FB8004B2342 /* OverdriveProcessor.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E5D68EDB27716BF1004B2342 /* OverdriveProcessor.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		E6202A021DD4E6F300C99553 /* TPPSettingsAccountDetailViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = E6202A011DD4E6F300C99553 /* TPPSettingsAccountDetailViewController.m */; };
 		E6207B652118973800864143 /* TPPAppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6207B642118973800864143 /* TPPAppTheme.swift */; };
 		E627B554216D4A9700A7D1D5 /* TPPBookContentType.m in Sources */ = {isa = PBXBuildFile; fileRef = E627B553216D4A9700A7D1D5 /* TPPBookContentType.m */; };
@@ -772,6 +775,27 @@
 			remoteGlobalIDString = 7BB4E7D120A0E1D1002E1360;
 			remoteInfo = NYPLAEToolkit;
 		};
+		E5D68EDA27716BF1004B2342 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E5D68ED427716BF1004B2342 /* OverdriveProcessor.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 17EB3D18246B81D800183316;
+			remoteInfo = OverdriveProcessor;
+		};
+		E5D68EDC27716BF1004B2342 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E5D68ED427716BF1004B2342 /* OverdriveProcessor.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 17EB3D21246B81D800183316;
+			remoteInfo = OverdriveProcessorTests;
+		};
+		E5D68EDE27716BF1004B2342 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E5D68ED427716BF1004B2342 /* OverdriveProcessor.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 17EB3D4A246C7C6A00183316;
+			remoteInfo = OverdriveProcessorDriver;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -781,6 +805,7 @@
 			dstPath = "";
 			dstSubfolderSpec = 10;
 			files = (
+				E5D68EF027725FB8004B2342 /* OverdriveProcessor.framework in Embed Frameworks */,
 				21F634EB26D828CF00C8BE87 /* ReadiumLCP.xcframework in Embed Frameworks */,
 				E58565CF269774C400A5FBD5 /* AudioEngine.xcframework in Embed Frameworks */,
 				21986907267E299E0041369E /* GCDWebServer.xcframework in Embed Frameworks */,
@@ -1399,12 +1424,15 @@
 		E5AD65E02684FDA300C62951 /* TPPAccountListDataSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAccountListDataSource.swift; sourceTree = "<group>"; };
 		E5B2B8D9275952EC00150ED4 /* TPPSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPSettingsView.swift; sourceTree = "<group>"; };
 		E5B2B8DC2759552F00150ED4 /* TPPSettingsViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPSettingsViewController.swift; sourceTree = "<group>"; };
+		E5B9F4EE278409B50036882C /* TPPSecretsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPSecretsTests.swift; sourceTree = "<group>"; };
+		E5B9F4F42784F6010036882C /* MockAPIKeys.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = MockAPIKeys.json; sourceTree = "<group>"; };
 		E5BEEFF526BD919D00C2A50B /* OpenSans-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "OpenSans-Bold.ttf"; sourceTree = "<group>"; };
 		E5BEEFF826BD919E00C2A50B /* OpenSans-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "OpenSans-Regular.ttf"; sourceTree = "<group>"; };
 		E5BEF01826BD94D600C2A50B /* UIFont+Extensions.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = "UIFont+Extensions.swift"; sourceTree = "<group>"; };
 		E5BEF01C26BDA9EA00C2A50B /* OpenSans-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "OpenSans-SemiBold.ttf"; sourceTree = "<group>"; };
 		E5C2C421268BA5140046F415 /* TPPRegistryDebuggingCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPRegistryDebuggingCell.swift; sourceTree = "<group>"; };
 		E5C8CA9B270B5653003F7BC0 /* BundleExtension.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = BundleExtension.swift; sourceTree = "<group>"; };
+		E5D68ED427716BF1004B2342 /* OverdriveProcessor.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = OverdriveProcessor.xcodeproj; path = "ios-audiobook-overdrive/OverdriveProcessor/OverdriveProcessor.xcodeproj"; sourceTree = "<group>"; };
 		E61D7F631F6AC78B0091C781 /* SimplyE.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SimplyE.entitlements; sourceTree = "<group>"; };
 		E6202A001DD4E6F300C99553 /* TPPSettingsAccountDetailViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPSettingsAccountDetailViewController.h; sourceTree = "<group>"; };
 		E6202A011DD4E6F300C99553 /* TPPSettingsAccountDetailViewController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPSettingsAccountDetailViewController.m; sourceTree = "<group>"; };
@@ -2451,6 +2479,7 @@
 		A823D804192BABA400B55DE2 = {
 			isa = PBXGroup;
 			children = (
+				E5D68ED427716BF1004B2342 /* OverdriveProcessor.xcodeproj */,
 				E585662026979AC100A5FBD5 /* NYPLAEToolkit.xcodeproj */,
 				5A569A261B8351C6003B5B61 /* ADEPT.xcodeproj */,
 				A49C25401AE05A2600D63B89 /* RDServices.xcodeproj */,
@@ -2667,6 +2696,7 @@
 				735350B624918432006021BD /* URLRequest+NYPLTests.swift */,
 				17ADCF4E254BB84800D0A5FE /* TPPReaderBookmarksBusinessLogicTests.swift */,
 				17BE24D625F85D2300AE707F /* TPPAgeCheckTests.swift */,
+				E5B9F4EE278409B50036882C /* TPPSecretsTests.swift */,
 			);
 			path = PalaceTests;
 			sourceTree = "<group>";
@@ -2674,6 +2704,7 @@
 		A823D830192BABA400B55DE2 /* Supporting Files */ = {
 			isa = PBXGroup;
 			children = (
+				E5B9F4F42784F6010036882C /* MockAPIKeys.json */,
 				B51C1DFB22860513003B49A5 /* OPDS2CatalogsFeed.json */,
 				B51C1E13229456E2003B49A5 /* acl_authentication_document.json */,
 				B51C1E16229456E2003B49A5 /* dpl_authentication_document.json */,
@@ -2749,6 +2780,16 @@
 				E5C2C421268BA5140046F415 /* TPPRegistryDebuggingCell.swift */,
 			);
 			path = DeveloperSettings;
+			sourceTree = "<group>";
+		};
+		E5D68ED527716BF1004B2342 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				E5D68EDB27716BF1004B2342 /* OverdriveProcessor.framework */,
+				E5D68EDD27716BF1004B2342 /* OverdriveProcessorTests.xctest */,
+				E5D68EDF27716BF1004B2342 /* OverdriveProcessorDriver.app */,
+			);
+			name = Products;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -2871,6 +2912,10 @@
 					ProjectRef = E585662026979AC100A5FBD5 /* NYPLAEToolkit.xcodeproj */;
 				},
 				{
+					ProductGroup = E5D68ED527716BF1004B2342 /* Products */;
+					ProjectRef = E5D68ED427716BF1004B2342 /* OverdriveProcessor.xcodeproj */;
+				},
+				{
 					ProductGroup = A49C25411AE05A2600D63B89 /* Products */;
 					ProjectRef = A49C25401AE05A2600D63B89 /* RDServices.xcodeproj */;
 				},
@@ -2924,6 +2969,27 @@
 			remoteRef = E585662426979AC100A5FBD5 /* PBXContainerItemProxy */;
 			sourceTree = BUILT_PRODUCTS_DIR;
 		};
+		E5D68EDB27716BF1004B2342 /* OverdriveProcessor.framework */ = {
+			isa = PBXReferenceProxy;
+			fileType = wrapper.framework;
+			path = OverdriveProcessor.framework;
+			remoteRef = E5D68EDA27716BF1004B2342 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		E5D68EDD27716BF1004B2342 /* OverdriveProcessorTests.xctest */ = {
+			isa = PBXReferenceProxy;
+			fileType = wrapper.cfbundle;
+			path = OverdriveProcessorTests.xctest;
+			remoteRef = E5D68EDC27716BF1004B2342 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		E5D68EDF27716BF1004B2342 /* OverdriveProcessorDriver.app */ = {
+			isa = PBXReferenceProxy;
+			fileType = wrapper.application;
+			path = OverdriveProcessorDriver.app;
+			remoteRef = E5D68EDE27716BF1004B2342 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
 /* End PBXReferenceProxy section */
 
 /* Begin PBXResourcesBuildPhase section */
@@ -2931,6 +2997,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E5B9F4F52784F6010036882C /* MockAPIKeys.json in Resources */,
 				730EF25E26093E53008E1DC3 /* valid-locator-0.json in Resources */,
 				730EF25126093E40008E1DC3 /* invalid-bookmark-4.json in Resources */,
 				730EF24726093E40008E1DC3 /* invalid-bookmark-2.json in Resources */,
@@ -3133,6 +3200,7 @@
 				B51C1DFE22860563003B49A5 /* OPDS2CatalogsFeedTests.swift in Sources */,
 				73A794BD2548E36100C59CC1 /* TPPBookCreationTests.swift in Sources */,
 				730D17C02552124B004CAC83 /* TPPMyBooksDownloadsCenterMock.swift in Sources */,
+				E5B9F4EF278409B50036882C /* TPPSecretsTests.swift in Sources */,
 				735F41A3243E381D00046182 /* String+NYPLAdditionsTests.swift in Sources */,
 				17BE24E725FABCDE00AE707F /* TPPUserAccountProviderMock.swift in Sources */,
 				7311FD2B25CBD086004447CB /* TPPSignInOutBusinessLogicUIDelegateMock.swift in Sources */,
@@ -3815,7 +3883,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 38;
+				CURRENT_PROJECT_VERSION = 39;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
@@ -3836,7 +3904,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.15;
+				MARKETING_VERSION = 1.0.16;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PRODUCT_MODULE_NAME = Palace;
 				PRODUCT_NAME = "Palace-noDRM";
@@ -3871,7 +3939,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 38;
+				CURRENT_PROJECT_VERSION = 39;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
@@ -3892,7 +3960,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.15;
+				MARKETING_VERSION = 1.0.16;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PRODUCT_MODULE_NAME = Palace;
 				PRODUCT_NAME = "Palace-noDRM";
@@ -4051,7 +4119,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 38;
+				CURRENT_PROJECT_VERSION = 39;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
@@ -4069,6 +4137,7 @@
 					"FEATURE_DRM_CONNECTOR=1",
 					"FEATURE_CRASH_REPORTING=1",
 					"LCP=1",
+					"FEATURE_OVERDRIVE=1",
 				);
 				INFOPLIST_FILE = "PalaceConfig/Palace-Info.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
@@ -4076,12 +4145,12 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.15;
+				MARKETING_VERSION = 1.0.16;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PROVISIONING_PROFILE = "2e185b6c-271e-4b02-a05e-860b8c3831f6";
 				PROVISIONING_PROFILE_SPECIFIER = "Palace App";
 				RUN_CLANG_STATIC_ANALYZER = YES;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG SIMPLYE FEATURE_DRM_CONNECTOR FEATURE_CRASH_REPORTING LCP";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG SIMPLYE FEATURE_DRM_CONNECTOR FEATURE_CRASH_REPORTING LCP FEATURE_OVERDRIVE";
 				SWIFT_OBJC_BRIDGING_HEADER = "Palace/AppInfrastructure/Palace-Bridging-Header.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
@@ -4109,7 +4178,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 38;
+				CURRENT_PROJECT_VERSION = 39;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
@@ -4127,6 +4196,7 @@
 					"FEATURE_DRM_CONNECTOR=1",
 					"FEATURE_CRASH_REPORTING=1",
 					"LCP=1",
+					"FEATURE_OVERDRIVE=1",
 				);
 				INFOPLIST_FILE = "PalaceConfig/Palace-Info.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
@@ -4134,12 +4204,12 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.15;
+				MARKETING_VERSION = 1.0.16;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PROVISIONING_PROFILE = "b3d9154d-70e1-48d6-a0c5-869431277a5c";
 				PROVISIONING_PROFILE_SPECIFIER = "App store";
 				RUN_CLANG_STATIC_ANALYZER = YES;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "SIMPLYE FEATURE_DRM_CONNECTOR FEATURE_CRASH_REPORTING LCP";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "SIMPLYE FEATURE_DRM_CONNECTOR FEATURE_CRASH_REPORTING LCP FEATURE_OVERDRIVE";
 				SWIFT_OBJC_BRIDGING_HEADER = "Palace/AppInfrastructure/Palace-Bridging-Header.h";
 				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
 				SWIFT_VERSION = 4.2;
