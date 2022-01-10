@@ -1089,11 +1089,7 @@ didCompleteWithError:(NSError *)error
 #if FEATURE_DRM_CONNECTOR
     if ([AdobeCertificate.defaultCertificate hasExpired] == YES) {
       // ADEPT crashes the app with expired certificate.
-      UIAlertController *alert = [TPPAlertUtils
-                                  alertWithTitle:NSLocalizedString(@"Something went wrong with the Adobe DRM system", @"Expired DRM certificate title")
-                                  message:NSLocalizedString(@"Some books will be unavailable in this version. Please try updating to the latest version of the application.", @"Expired DRM certificate message")
-                                  ];
-      [TPPAlertUtils presentFromViewControllerOrNilWithAlertController:alert viewController:nil animated:YES completion:nil];
+      [TPPAlertUtils presentFromViewControllerOrNilWithAlertController:[TPPAlertUtils expiredAdobeDRMAlert] viewController:nil animated:YES completion:nil];
     } else {
       [TPPAccountSignInViewController
        requestCredentialsWithCompletion:^{
