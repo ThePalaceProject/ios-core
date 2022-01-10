@@ -210,7 +210,7 @@
                          AddIndicatorKey: @(YES)};
           break;
         case TPPBookContentTypeUnsupported:
-          buttonInfo = @{};
+          @throw NSInternalInconsistencyException;
           break;
       }
 

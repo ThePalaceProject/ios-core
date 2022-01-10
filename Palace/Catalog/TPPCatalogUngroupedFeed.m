@@ -63,9 +63,9 @@ handler:(void (^)(TPPCatalogUngroupedFeed *category))handler
   if(feed.type != TPPOPDSFeedTypeAcquisitionUngrouped) {
     @throw NSInvalidArgumentException;
   }
-
+  
   self.books = [NSMutableArray array];
-
+  
   for(TPPOPDSEntry *const entry in feed.entries) {
     TPPBook *book = [TPPBook bookWithEntry:entry];
     if(!book) {
@@ -77,17 +77,12 @@ handler:(void (^)(TPPCatalogUngroupedFeed *category))handler
       // The application is not able to support this, so we ignore it.
       continue;
     }
-
+    
     TPPBook *updatedBook = [[TPPBookRegistry sharedRegistry] updatedBookMetadata:book];
     if(updatedBook) {
       book = updatedBook;
     }
-
-    // Do not display unsupported titles in feed
-    // https://www.notion.so/lyrasis/App-crashes-after-getting-the-book-iPhone8-742898f53e2547efa4c6f5d43296b816
-    if (book.defaultBookContentType != TPPBookContentTypeUnsupported) {
-      [self.books addObject:book];
-    }
+    [self.books addObject:book];
   }
 
   NSMutableArray *const entryPointFacets = [NSMutableArray array];
