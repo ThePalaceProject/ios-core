@@ -58,28 +58,7 @@
     }
 
     [alert addAction:[UIAlertAction actionWithTitle:account.name style:(UIAlertActionStyleDefault) handler:^(__unused UIAlertAction *_Nonnull action) {
-
-      BOOL workflowsInProgress;
-#if defined(FEATURE_DRM_CONNECTOR)
-      if ([AdobeCertificate.defaultCertificate hasExpired] == NO) {
-        workflowsInProgress = ([NYPLADEPT sharedInstance].workflowsInProgress || [TPPBookRegistry sharedRegistry].syncing == YES);
-      } else {
-        workflowsInProgress = ([TPPBookRegistry sharedRegistry].syncing == YES);
-      }
-#else
-      workflowsInProgress = ([TPPBookRegistry sharedRegistry].syncing == YES);
-#endif
-
-      if (workflowsInProgress) {
-        [self presentViewController:[TPPAlertUtils
-                                     alertWithTitle:@"Please Wait"
-                                     message:@"Please wait a moment before switching library accounts."]
-                           animated:YES
-                         completion:nil];
-      } else {
-        [[TPPBookRegistry sharedRegistry] save];
-        [self updateCatalogFeedSettingCurrentAccount:account];
-      }
+      [self loadAccount:account];
     }]];
   }
 
@@ -92,10 +71,8 @@
             if (![TPPSettings.shared.settingsAccountsList containsObject:account.uuid]) {
               TPPSettings.shared.settingsAccountsList = [TPPSettings.shared.settingsAccountsList arrayByAddingObject:account.uuid];
             }
-            
-            AccountsManager.shared.currentAccount = account;
-            [self popToRootViewControllerAnimated:YES];
-            
+
+            [self loadAccount:account];
           });
         }
       }];
@@ -106,6 +83,30 @@
   [alert addAction:[UIAlertAction actionWithTitle:NSLocalizedString(@"Cancel", nil) style:(UIAlertActionStyleCancel) handler:nil]];
 
   [[TPPRootTabBarController sharedController] safelyPresentViewController:alert animated:YES completion:nil];
+}
+
+- (void) loadAccount:(Account *)account {
+    BOOL workflowsInProgress;
+  #if defined(FEATURE_DRM_CONNECTOR)
+    if ([AdobeCertificate.defaultCertificate hasExpired] == NO) {
+      workflowsInProgress = ([NYPLADEPT sharedInstance].workflowsInProgress || [TPPBookRegistry sharedRegistry].syncing == YES);
+    } else {
+      workflowsInProgress = ([TPPBookRegistry sharedRegistry].syncing == YES);
+    }
+  #else
+    workflowsInProgress = ([TPPBookRegistry sharedRegistry].syncing == YES);
+  #endif
+    
+    if (workflowsInProgress) {
+      [self presentViewController:[TPPAlertUtils
+                                   alertWithTitle:@"Please Wait"
+                                   message:@"Please wait a moment before switching library accounts."]
+                         animated:YES
+                       completion:nil];
+    } else {
+      [[TPPBookRegistry sharedRegistry] save];
+      [self updateCatalogFeedSettingCurrentAccount:account];
+    }
 }
 
 - (void)updateCatalogFeedSettingCurrentAccount:(Account *)account
