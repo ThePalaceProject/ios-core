@@ -772,21 +772,21 @@
 			remoteGlobalIDString = 7BB4E7D120A0E1D1002E1360;
 			remoteInfo = NYPLAEToolkit;
 		};
-		E5C1F49127989A46005FC6B2 /* PBXContainerItemProxy */ = {
+		E5C1F4A127989CF6005FC6B2 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = E5C1F48B27989A46005FC6B2 /* OverdriveProcessor.xcodeproj */;
 			proxyType = 2;
 			remoteGlobalIDString = 17EB3D18246B81D800183316;
 			remoteInfo = OverdriveProcessor;
 		};
-		E5C1F49327989A46005FC6B2 /* PBXContainerItemProxy */ = {
+		E5C1F4A327989CF6005FC6B2 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = E5C1F48B27989A46005FC6B2 /* OverdriveProcessor.xcodeproj */;
 			proxyType = 2;
 			remoteGlobalIDString = 17EB3D21246B81D800183316;
 			remoteInfo = OverdriveProcessorTests;
 		};
-		E5C1F49527989A46005FC6B2 /* PBXContainerItemProxy */ = {
+		E5C1F4A527989CF6005FC6B2 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = E5C1F48B27989A46005FC6B2 /* OverdriveProcessor.xcodeproj */;
 			proxyType = 2;
@@ -1424,7 +1424,7 @@
 		E5BEEFF826BD919E00C2A50B /* OpenSans-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "OpenSans-Regular.ttf"; sourceTree = "<group>"; };
 		E5BEF01826BD94D600C2A50B /* UIFont+Extensions.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = "UIFont+Extensions.swift"; sourceTree = "<group>"; };
 		E5BEF01C26BDA9EA00C2A50B /* OpenSans-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "OpenSans-SemiBold.ttf"; sourceTree = "<group>"; };
-		E5C1F48B27989A46005FC6B2 /* OverdriveProcessor.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = OverdriveProcessor.xcodeproj; path = "ios-audiobook-overdrive/OverdriveProcessor/OverdriveProcessor.xcodeproj"; sourceTree = "<group>"; };
+		E5C1F48B27989A46005FC6B2 /* OverdriveProcessor.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = OverdriveProcessor.xcodeproj; path = "ios-audiobook-overdrive/OverdriveProcessor.xcodeproj"; sourceTree = "<group>"; };
 		E5C2C421268BA5140046F415 /* TPPRegistryDebuggingCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPRegistryDebuggingCell.swift; sourceTree = "<group>"; };
 		E5C8CA9B270B5653003F7BC0 /* BundleExtension.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = BundleExtension.swift; sourceTree = "<group>"; };
 		E61D7F631F6AC78B0091C781 /* SimplyE.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SimplyE.entitlements; sourceTree = "<group>"; };
@@ -2765,12 +2765,12 @@
 			path = Fonts;
 			sourceTree = "<group>";
 		};
-		E5C1F48C27989A46005FC6B2 /* Products */ = {
+		E5C1F49C27989CF6005FC6B2 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				E5C1F49227989A46005FC6B2 /* OverdriveProcessor.framework */,
-				E5C1F49427989A46005FC6B2 /* OverdriveProcessorTests.xctest */,
-				E5C1F49627989A46005FC6B2 /* OverdriveProcessorDriver.app */,
+				E5C1F4A227989CF6005FC6B2 /* OverdriveProcessor.framework */,
+				E5C1F4A427989CF6005FC6B2 /* OverdriveProcessorTests.xctest */,
+				E5C1F4A627989CF6005FC6B2 /* OverdriveProcessorDriver.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -2904,7 +2904,7 @@
 					ProjectRef = E585662026979AC100A5FBD5 /* NYPLAEToolkit.xcodeproj */;
 				},
 				{
-					ProductGroup = E5C1F48C27989A46005FC6B2 /* Products */;
+					ProductGroup = E5C1F49C27989CF6005FC6B2 /* Products */;
 					ProjectRef = E5C1F48B27989A46005FC6B2 /* OverdriveProcessor.xcodeproj */;
 				},
 				{
@@ -2961,25 +2961,25 @@
 			remoteRef = E585662426979AC100A5FBD5 /* PBXContainerItemProxy */;
 			sourceTree = BUILT_PRODUCTS_DIR;
 		};
-		E5C1F49227989A46005FC6B2 /* OverdriveProcessor.framework */ = {
+		E5C1F4A227989CF6005FC6B2 /* OverdriveProcessor.framework */ = {
 			isa = PBXReferenceProxy;
 			fileType = wrapper.framework;
 			path = OverdriveProcessor.framework;
-			remoteRef = E5C1F49127989A46005FC6B2 /* PBXContainerItemProxy */;
+			remoteRef = E5C1F4A127989CF6005FC6B2 /* PBXContainerItemProxy */;
 			sourceTree = BUILT_PRODUCTS_DIR;
 		};
-		E5C1F49427989A46005FC6B2 /* OverdriveProcessorTests.xctest */ = {
+		E5C1F4A427989CF6005FC6B2 /* OverdriveProcessorTests.xctest */ = {
 			isa = PBXReferenceProxy;
 			fileType = wrapper.cfbundle;
 			path = OverdriveProcessorTests.xctest;
-			remoteRef = E5C1F49327989A46005FC6B2 /* PBXContainerItemProxy */;
+			remoteRef = E5C1F4A327989CF6005FC6B2 /* PBXContainerItemProxy */;
 			sourceTree = BUILT_PRODUCTS_DIR;
 		};
-		E5C1F49627989A46005FC6B2 /* OverdriveProcessorDriver.app */ = {
+		E5C1F4A627989CF6005FC6B2 /* OverdriveProcessorDriver.app */ = {
 			isa = PBXReferenceProxy;
 			fileType = wrapper.application;
 			path = OverdriveProcessorDriver.app;
-			remoteRef = E5C1F49527989A46005FC6B2 /* PBXContainerItemProxy */;
+			remoteRef = E5C1F4A527989CF6005FC6B2 /* PBXContainerItemProxy */;
 			sourceTree = BUILT_PRODUCTS_DIR;
 		};
 /* End PBXReferenceProxy section */
