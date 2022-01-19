@@ -772,27 +772,6 @@
 			remoteGlobalIDString = 7BB4E7D120A0E1D1002E1360;
 			remoteInfo = NYPLAEToolkit;
 		};
-		E59A1067279751190030017D /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = E59A1061279751190030017D /* OverdriveProcessor.xcodeproj */;
-			proxyType = 2;
-			remoteGlobalIDString = 17EB3D18246B81D800183316;
-			remoteInfo = OverdriveProcessor;
-		};
-		E59A1069279751190030017D /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = E59A1061279751190030017D /* OverdriveProcessor.xcodeproj */;
-			proxyType = 2;
-			remoteGlobalIDString = 17EB3D21246B81D800183316;
-			remoteInfo = OverdriveProcessorTests;
-		};
-		E59A106B279751190030017D /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = E59A1061279751190030017D /* OverdriveProcessor.xcodeproj */;
-			proxyType = 2;
-			remoteGlobalIDString = 17EB3D4A246C7C6A00183316;
-			remoteInfo = OverdriveProcessorDriver;
-		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -1416,7 +1395,7 @@
 		E58565D2269774D900A5FBD5 /* NYPLAEToolkit.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = NYPLAEToolkit.xcframework; sourceTree = "<group>"; };
 		E585662026979AC100A5FBD5 /* NYPLAEToolkit.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = NYPLAEToolkit.xcodeproj; path = "ios-drm-audioengine/NYPLAEToolkit.xcodeproj"; sourceTree = "<group>"; };
 		E585662726979EF100A5FBD5 /* NYPLAEToolkit.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = NYPLAEToolkit.xcframework; path = Carthage/Build/NYPLAEToolkit.xcframework; sourceTree = "<group>"; };
-		E59A1061279751190030017D /* OverdriveProcessor.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = OverdriveProcessor.xcodeproj; path = OverdriveProcessor/OverdriveProcessor.xcodeproj; sourceTree = "<group>"; };
+		E59A1061279751190030017D /* OverdriveProcessor.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = OverdriveProcessor.xcodeproj; path = "ios-audiobook-overdrive/OverdriveProcessor.xcodeproj"; sourceTree = "<group>"; };
 		E5AD65DC2684FACA00C62951 /* TPPAccountListCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAccountListCell.swift; sourceTree = "<group>"; };
 		E5AD65E02684FDA300C62951 /* TPPAccountListDataSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAccountListDataSource.swift; sourceTree = "<group>"; };
 		E5B2B8D9275952EC00150ED4 /* TPPSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPSettingsView.swift; sourceTree = "<group>"; };
@@ -2735,16 +2714,6 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
-		E59A1062279751190030017D /* Products */ = {
-			isa = PBXGroup;
-			children = (
-				E59A1068279751190030017D /* OverdriveProcessor.framework */,
-				E59A106A279751190030017D /* OverdriveProcessorTests.xctest */,
-				E59A106C279751190030017D /* OverdriveProcessorDriver.app */,
-			);
-			name = Products;
-			sourceTree = "<group>";
-		};
 		E5AD65D52684FA9E00C62951 /* AccountList */ = {
 			isa = PBXGroup;
 			children = (
@@ -2904,10 +2873,6 @@
 					ProjectRef = E585662026979AC100A5FBD5 /* NYPLAEToolkit.xcodeproj */;
 				},
 				{
-					ProductGroup = E59A1062279751190030017D /* Products */;
-					ProjectRef = E59A1061279751190030017D /* OverdriveProcessor.xcodeproj */;
-				},
-				{
 					ProductGroup = A49C25411AE05A2600D63B89 /* Products */;
 					ProjectRef = A49C25401AE05A2600D63B89 /* RDServices.xcodeproj */;
 				},
@@ -2959,27 +2924,6 @@
 			fileType = wrapper.framework;
 			path = NYPLAEToolkit.framework;
 			remoteRef = E585662426979AC100A5FBD5 /* PBXContainerItemProxy */;
-			sourceTree = BUILT_PRODUCTS_DIR;
-		};
-		E59A1068279751190030017D /* OverdriveProcessor.framework */ = {
-			isa = PBXReferenceProxy;
-			fileType = wrapper.framework;
-			path = OverdriveProcessor.framework;
-			remoteRef = E59A1067279751190030017D /* PBXContainerItemProxy */;
-			sourceTree = BUILT_PRODUCTS_DIR;
-		};
-		E59A106A279751190030017D /* OverdriveProcessorTests.xctest */ = {
-			isa = PBXReferenceProxy;
-			fileType = wrapper.cfbundle;
-			path = OverdriveProcessorTests.xctest;
-			remoteRef = E59A1069279751190030017D /* PBXContainerItemProxy */;
-			sourceTree = BUILT_PRODUCTS_DIR;
-		};
-		E59A106C279751190030017D /* OverdriveProcessorDriver.app */ = {
-			isa = PBXReferenceProxy;
-			fileType = wrapper.application;
-			path = OverdriveProcessorDriver.app;
-			remoteRef = E59A106B279751190030017D /* PBXContainerItemProxy */;
 			sourceTree = BUILT_PRODUCTS_DIR;
 		};
 /* End PBXReferenceProxy section */
