@@ -14,6 +14,7 @@
 cd ..
 git clone git@github.com:ThePalaceProject/mobile-certificates.git
 git clone git@github.com:ThePalaceProject/mobile-drm-adeptconnector.git
+git clone git@github.com:ThePalaceProject/ios-audiobook-overdrive.git
 
 cd ios-core
 

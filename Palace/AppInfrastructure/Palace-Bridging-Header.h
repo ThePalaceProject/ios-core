@@ -4,6 +4,10 @@
 #import "AdobeDRMContainer.h"
 #endif
 
+#if FEATURE_OVERDRIVE
+#import "OverdriveProcessor/OverdriveProcessor.h"
+#endif
+
 #ifndef OPENEBOOKS
 #import "TPPBarcodeScanningViewController.h"
 #import "TPPZXingEncoder.h"
