@@ -26,6 +26,7 @@ extension AudioBookVendors {
   func updateDrmCertificate(completion: ((_ error: Error?) -> ())? = nil) {
     switch self {
     case .cantook: updateCantookDRMCertificate(completion: completion)
+    default: return
     }
   }
   
