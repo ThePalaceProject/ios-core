@@ -40,27 +40,9 @@ class TPPBookmarkFactory {
     }
 
     let registryLoc = bookRegistry.location(forIdentifier: book.identifier)
-    var cfi: String? = nil
     var href: String? = nil
-    var idref: String? = nil
-    if registryLoc?.locationString != nil,
-      let data = registryLoc?.locationString.data(using: .utf8),
-      let registryLocationJSON = try? JSONSerialization.jsonObject(with: data),
-      let registryLocationDict = registryLocationJSON as? [String: Any] {
-
-      cfi = registryLocationDict[TPPBookmarkSpec.Target.Selector.Value.legacyLocatorCFIKey] as? String
-
-      // backup idref from R1 in case parsing from R2 fails for some reason
-      idref = registryLocationDict[NYPLBookmarkR1Key.idref.rawValue] as? String
-    }
 
     href = bookmarkLoc.locator.href
-
-    // get the idref from R2 data structures. Should be more reliable than R1's
-    // when working with R2 since it comes directly from a R2 Locator object.
-    if let idrefFromR2 = publication.idref(forHref: bookmarkLoc.locator.href) {
-      idref = idrefFromR2
-    }
 
     let chapter: String?
     if let locatorChapter = bookmarkLoc.locator.title {
@@ -70,11 +52,9 @@ class TPPBookmarkFactory {
     } else {
       chapter = nil
     }
-  
+
     return TPPReadiumBookmark(
       annotationId: nil,
-      contentCFI: cfi,
-      idref: idref,
       href: href,
       chapter: chapter,
       page: page,
@@ -135,22 +115,17 @@ class TPPBookmarkFactory {
       let selectorValueData = selectorValueEscJSON.data(using: String.Encoding.utf8),
       let selectorValueJSON = (try? JSONSerialization.jsonObject(with: selectorValueData,
                                                                  options: [])) as? [String: Any],
-      // TODO: SIMPLY-3655 update to R2 spec
-      let idref = selectorValueJSON[NYPLBookmarkR1Key.idref.rawValue] as? String,
       let href = selectorValueJSON[NYPLBookmarkR1Key.idref.rawValue] as? String
       else {
         Log.error(#file, "Error serializing serverCFI into JSON. Selector.Value=\(selectorValueEscJSON)")
         return nil
     }
 
-    let serverCFI = selectorValueJSON[TPPBookmarkSpec.Target.Selector.Value.legacyLocatorCFIKey] as? String
-    let chapter = body["http://librarysimplified.org/terms/chapter"] as? String
+    let chapter = selectorValueJSON["title"] as? String
     let progressWithinChapter = selectorValueJSON["progressWithinChapter"] as? Float
     let progressWithinBook = Float(selectorValueJSON["progressWithinBook"] as? Double ?? 0.0)
 
     return TPPReadiumBookmark(annotationId: annotationID,
-                               contentCFI: serverCFI,
-                               idref: idref,
                                href: href,
                                chapter: chapter,
                                page: nil,
