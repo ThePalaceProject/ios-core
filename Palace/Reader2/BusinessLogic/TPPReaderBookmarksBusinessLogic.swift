@@ -263,8 +263,11 @@ class TPPReaderBookmarksBusinessLogic: NSObject {
     }
     
     for localBookmark in localBookmarks {
-      if !localBookmarksToKeep.contains(localBookmark) {
+      guard let _  = localBookmarksToKeep.first(where: {
+        $0.annotationId == localBookmark.annotationId
+      }) else {
         bookRegistry.delete(localBookmark, forIdentifier: self.book.identifier)
+        continue
       }
     }
     

@@ -12,6 +12,7 @@
 @objc class TPPBookmarkDictionaryRepresentation: NSObject {
   fileprivate static let annotationIdKey = "annotationId"
   @objc static let idrefKey = "idref"
+  @objc static let hrefKey = "href"
   @objc static let locationKey = "location"
   @objc static let cfiKey = "contentCFI"
   fileprivate static let timeKey = "time"
@@ -33,6 +34,7 @@
 
   var location:String
   var idref:String
+  var href:String
 
   /// The CFI is location information generated from the R1 reader
   /// which is not usable in R2.
@@ -63,6 +65,7 @@
   init?(annotationId:String?,
         contentCFI:String?,
         idref:String?,
+        href:String?,
         chapter:String?,
         page:String?,
         location:String?,
@@ -75,9 +78,16 @@
       Log.error(#file, "Bookmark creation failed init due to nil `idref`.")
       return nil
     }
+    
+    guard let href = href else {
+      Log.error(#file, "Bookmark creation failed init due to nil `href`.")
+      return nil
+    }
+
     self.annotationId = annotationId
     self.contentCFI = contentCFI
     self.idref = idref
+    self.href = href
     self.chapter = chapter ?? ""
     self.page = page ?? ""
 
@@ -85,18 +95,20 @@
     // This location structure originally comes from R1 Reader's Javascript
     // and its not available in R2, we are mimicking the structure
     // in order to pass the needed information to the server
-    self.location = location ?? "{\"idref\":\"\(idref)\",\"contentCFI\":\"\(contentCFI ?? "")\"}"
+//    self.location = "{\"href\":\"\(href)\",\"contentCFI\":\"\(contentCFI ?? "")\",\"progressWithinChapter\":\"\(progressWithinChapter)\",\"@type\":\"LocatorHrefProgression\"}"
+    self.location = TPPBookLocation(href: href, type: "LocatorHrefProgression", chapterProgression: progressWithinChapter, totalProgression: progressWithinBook, title: nil, position: nil)?.locationString ?? ""
 
     self.progressWithinChapter = progressWithinChapter
     self.progressWithinBook = progressWithinBook
     self.time = time ?? NSDate().rfc3339String()
     self.device = device
   }
-  
+
   init?(dictionary:NSDictionary)
   {
     guard let contentCFI = dictionary[TPPBookmarkDictionaryRepresentation.cfiKey] as? String,
       let idref = dictionary[TPPBookmarkDictionaryRepresentation.idrefKey] as? String,
+      let href = dictionary[TPPBookmarkDictionaryRepresentation.hrefKey] as? String,
       let location = dictionary[TPPBookmarkDictionaryRepresentation.locationKey] as? String,
       let time = dictionary[TPPBookmarkDictionaryRepresentation.timeKey] as? String else {
         Log.error(#file, "Bookmark failed to init from dictionary.")
@@ -110,6 +122,7 @@
     }
     self.contentCFI = contentCFI
     self.idref = idref
+    self.href = href
     self.location = location
     self.time = time
     self.chapter = dictionary[TPPBookmarkDictionaryRepresentation.chapterKey] as? String
@@ -128,6 +141,7 @@
       TPPBookmarkDictionaryRepresentation.annotationIdKey: self.annotationId ?? "",
       TPPBookmarkDictionaryRepresentation.cfiKey: self.contentCFI ?? "",
       TPPBookmarkDictionaryRepresentation.idrefKey: self.idref,
+      TPPBookmarkDictionaryRepresentation.hrefKey: self.href,
       TPPBookmarkDictionaryRepresentation.chapterKey: self.chapter ?? "",
       TPPBookmarkDictionaryRepresentation.pageKey: self.page ?? "",
       TPPBookmarkDictionaryRepresentation.locationKey: self.location,
@@ -154,6 +168,7 @@
     } else {
       // R2
       return self.idref == other.idref
+        && self.href == other.href
         && self.progressWithinBook =~= other.progressWithinBook
         && self.progressWithinChapter =~= other.progressWithinChapter
         && self.chapter == other.chapter

@@ -50,4 +50,27 @@ extension TPPAnnotations {
       completion(id)
     }
   }
+  
+  class func postR2Bookmark(_ bookmark: TPPReadiumBookmark,
+                            forBookID bookID: String,
+                            completion: @escaping (_ serverID: String?) -> ())
+  {
+    guard syncIsPossibleAndPermitted() else {
+      Log.debug(#file, "Account does not support sync or sync is disabled.")
+      completion(nil)
+      return
+    }
+    
+    guard let annotationsURL = TPPAnnotations.annotationsURL else {
+      Log.error(#file, "Annotations URL was nil while posting R1 bookmark")
+      return
+    }
+    
+    let spec = TPPBookmarkSpec(id: UUID().uuidString, time: (bookmark.time.dateFromISO8601 as NSDate? ?? NSDate()), device: bookmark.device ?? "", motivation: .bookmark, bookID: bookID, selectorValue: bookmark.location)
+    let parameters = spec.dictionaryForJSONSerialization()
+
+    postAnnotation(forBook: bookID, withAnnotationURL: annotationsURL, withParameters: parameters, queueOffline: false) { (success, id) in
+      completion(id)
+    }
+  }
 }

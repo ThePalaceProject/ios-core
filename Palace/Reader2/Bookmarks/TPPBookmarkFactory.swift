@@ -41,6 +41,7 @@ class TPPBookmarkFactory {
 
     let registryLoc = bookRegistry.location(forIdentifier: book.identifier)
     var cfi: String? = nil
+    var href: String? = nil
     var idref: String? = nil
     if registryLoc?.locationString != nil,
       let data = registryLoc?.locationString.data(using: .utf8),
@@ -52,6 +53,8 @@ class TPPBookmarkFactory {
       // backup idref from R1 in case parsing from R2 fails for some reason
       idref = registryLocationDict[NYPLBookmarkR1Key.idref.rawValue] as? String
     }
+
+    href = bookmarkLoc.locator.href
 
     // get the idref from R2 data structures. Should be more reliable than R1's
     // when working with R2 since it comes directly from a R2 Locator object.
@@ -67,11 +70,12 @@ class TPPBookmarkFactory {
     } else {
       chapter = nil
     }
-
+  
     return TPPReadiumBookmark(
       annotationId: nil,
       contentCFI: cfi,
       idref: idref,
+      href: href,
       chapter: chapter,
       page: page,
       location: registryLoc?.locationString,
@@ -132,7 +136,8 @@ class TPPBookmarkFactory {
       let selectorValueJSON = (try? JSONSerialization.jsonObject(with: selectorValueData,
                                                                  options: [])) as? [String: Any],
       // TODO: SIMPLY-3655 update to R2 spec
-      let idref = selectorValueJSON[NYPLBookmarkR1Key.idref.rawValue] as? String
+      let idref = selectorValueJSON[NYPLBookmarkR1Key.idref.rawValue] as? String,
+      let href = selectorValueJSON[NYPLBookmarkR1Key.idref.rawValue] as? String
       else {
         Log.error(#file, "Error serializing serverCFI into JSON. Selector.Value=\(selectorValueEscJSON)")
         return nil
@@ -146,6 +151,7 @@ class TPPBookmarkFactory {
     return TPPReadiumBookmark(annotationId: annotationID,
                                contentCFI: serverCFI,
                                idref: idref,
+                               href: href,
                                chapter: chapter,
                                page: nil,
                                location: selectorValueEscJSON,

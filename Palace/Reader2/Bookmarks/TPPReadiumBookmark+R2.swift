@@ -26,7 +26,7 @@ extension TPPReadiumBookmark {
   /// - Returns: An object with R2 location information pointing at the same
   /// position the bookmark model is pointing to.
   func convertToR2(from publication: Publication) -> TPPBookmarkR2Location? {
-    guard let link = publication.link(withIDref: self.idref) else {
+    guard let link = publication.link(withHREF: self.href) else {
       return nil
     }
 

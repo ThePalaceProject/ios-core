@@ -224,7 +224,7 @@ import R2Shared
     }
   }
 
-  class func postReadingPosition(forBook bookID: String, selectorValue: String) {
+  class func postReadingPosition(forBook bookID: String, selectorValue: String, motivation: TPPBookmarkSpec.Motivation) {
     guard syncIsPossibleAndPermitted() else {
       Log.debug(#file, "Account does not support sync or sync is disabled.")
       return
@@ -238,7 +238,7 @@ import R2Shared
     // Format bookmark for submission to server according to spec
     let bookmark = TPPBookmarkSpec(time: NSDate(),
                                     device: TPPUserAccount.sharedAccount().deviceID ?? "",
-                                    motivation: .readingProgress,
+                                    motivation: motivation,
                                     bookID: bookID,
                                     selectorValue: selectorValue)
     let parameters = bookmark.dictionaryForJSONSerialization()
@@ -421,7 +421,7 @@ import R2Shared
     request.httpMethod = "DELETE"
     setDefaultAnnotationHeaders(forRequest: &request)
     request.timeoutInterval = TPPDefaultRequestTimeout
-    
+
     let task = URLSession.shared.dataTask(with: request) { (data, response, error) in
       let response = response as? HTTPURLResponse
       if response?.statusCode == 200 {
@@ -483,7 +483,10 @@ import R2Shared
                           completion: @escaping (_ serverID: String?) -> ()) {
     // TODO: SIMPLY-3655 distinguish based on renderer (R1 / R2)
     //                   or maybe just post R2 bookmarks?
-    postR1Bookmark(bookmark, forBookID: bookID, completion: completion)
+//    class func postReadingPosition(forBook bookID: String, selectorValue: String, motivation: TPPBookmarkSpec.Motivation) {
+//    postReadingPosition(forBook: bookID, selectorValue: <#T##String#>, motivation: <#T##TPPBookmarkSpec.Motivation#>)
+    postR2Bookmark(bookmark, forBookID: bookID, completion: completion)
+//    postR1Bookmark(bookmark, forBookID: bookID, completion: completion)
   }
 
   // MARK: -
