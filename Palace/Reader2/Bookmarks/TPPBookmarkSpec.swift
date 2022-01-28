@@ -138,7 +138,7 @@ struct TPPBookmarkSpec {
 
         /// A serialized JSON string (its keys and values are escaped)
         /// containing a [locator](https://git.io/JYTyx), e.g.
-        /// "{\"@type\": \"LocatorHrefProgression\", \"idref\": \"/xyz.html\",
+        /// "{\"@type\": \"LocatorHrefProgression\", \"href\": \"/xyz.html\",
         ///   \"progressWithinChapter\": 0.5}"
         let selectorValue: String
       }
@@ -196,10 +196,4 @@ struct TPPBookmarkSpec {
       ]
       ] as [String: Any]
   }
-}
-
-// MARK:- R1 keys (legacy)
-
-enum NYPLBookmarkR1Key: String {
-  case idref
 }

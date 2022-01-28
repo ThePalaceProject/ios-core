@@ -1,7 +1,7 @@
 /// This class specifies the keys used to represent a TPPReadiumBookmark
 /// as a dictionary.
 ///
-/// The dictionary representation is used internally in SimplyE / OE
+/// The dictionary representation is used internally
 /// to persist bookmark info to disk. It's only loosely related to the
 /// `TPPBookmarkSpec` which instead specifies a cross-platform contract
 /// for bookmark representation.
@@ -13,7 +13,6 @@
   fileprivate static let annotationIdKey = "annotationId"
   @objc static let hrefKey = "href"
   @objc static let locationKey = "location"
-  @objc static let cfiKey = "contentCFI"
   fileprivate static let timeKey = "time"
   fileprivate static let chapterKey = "chapter"
   fileprivate static let pageKey = "page"
@@ -49,7 +48,6 @@
   /// Date formatted as per RFC 3339
   let time:String
 
-  /// Deprecated.
   init?(annotationId:String?,
         href:String?,
         chapter:String?,

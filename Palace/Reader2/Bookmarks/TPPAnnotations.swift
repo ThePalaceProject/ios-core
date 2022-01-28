@@ -257,7 +257,7 @@ import R2Shared
     }
   }
   
-  class func postR2Bookmark(_ bookmark: TPPReadiumBookmark,
+  class func postBookmark(_ bookmark: TPPReadiumBookmark,
                             forBookID bookID: String,
                             completion: @escaping (_ serverID: String?) -> ())
   {
@@ -507,17 +507,6 @@ import R2Shared
       Log.debug(#file, "Finished task of uploading local bookmarks.")
       completion(bookmarksUpdated, bookmarksFailedToUpdate)
     }
-  }
-
-  class func postBookmark(_ bookmark: TPPReadiumBookmark,
-                          forBookID bookID: String,
-                          completion: @escaping (_ serverID: String?) -> ()) {
-    // TODO: SIMPLY-3655 distinguish based on renderer (R1 / R2)
-    //                   or maybe just post R2 bookmarks?
-//    class func postReadingPosition(forBook bookID: String, selectorValue: String, motivation: TPPBookmarkSpec.Motivation) {
-//    postReadingPosition(forBook: bookID, selectorValue: <#T##String#>, motivation: <#T##TPPBookmarkSpec.Motivation#>)
-    postR2Bookmark(bookmark, forBookID: bookID, completion: completion)
-//    postR1Bookmark(bookmark, forBookID: bookID, completion: completion)
   }
 
   // MARK: -

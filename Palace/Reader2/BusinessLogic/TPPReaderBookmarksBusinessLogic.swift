@@ -73,9 +73,7 @@ class TPPReaderBookmarksBusinessLogic: NSObject {
       return nil
     }
 
-    let idref = publication.idref(forHref: currentLocator.href)
-    return bookmarks.first(where: { $0.locationMatches(currentLocator,
-                                                       withIDref: idref )})
+    return bookmarks.first(where: { $0.locationMatches(currentLocator)})
   }
 
   /// Creates a new bookmark at the given location for the publication.

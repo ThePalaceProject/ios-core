@@ -53,29 +53,6 @@ extension TPPReadiumBookmark {
                                   creationDate: creationDate ?? Date())
   }
 
-
-  /// Determines if a given locator matches the location addressed by this
-  /// bookmark.
-  ///
-  /// This function converts a Readium 2 location into information compatible
-  /// with the pre-existing Readium 1 data stored in TPPReadiumBookmark.
-  /// This conversion should be lossless minus some Float epsilon error.
-  ///
-  /// - Complexity: O(*n*) where *n* is the length of internal Publication
-  /// data structures, such as list of chapters, resources, links.
-  ///
-  /// - Parameters:
-  ///   - locator: The object representing the given location in `publication`.
-  ///   - publication: The publication the `locator` is referring to.
-  ///
-  /// - Returns: `true` if the `locator`'s position matches the bookmark's.
-  func locationMatches(_ locator: Locator,
-                       inPublication publication: Publication) -> Bool {
-    let idref = publication.idref(forHref: locator.href)
-
-    return locationMatches(locator, withIDref: idref)
-  }
-
   /// Determines if a given locator matches the location addressed by this
   /// bookmark.
   ///
@@ -91,8 +68,7 @@ extension TPPReadiumBookmark {
   ///   contained in.
   ///
   /// - Returns: `true` if the `locator`'s position matches the bookmark's.
-  func locationMatches(_ locator: Locator,
-                       withIDref locatorIDref: String?) -> Bool {
+  func locationMatches(_ locator: Locator) -> Bool {
     let locatorTotalProgress: Float?
     if let totalProgress = locator.locations.totalProgression {
       locatorTotalProgress = Float(totalProgress)
@@ -114,9 +90,6 @@ extension TPPReadiumBookmark {
     if self.progressWithinBook =~= locatorTotalProgress {
       return true
     }
-
-    // note: could perhaps another condition be?
-    //   currentLocator.locations.position == bookmark.<position-is-missing>
 
     return false
   }
