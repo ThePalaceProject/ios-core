@@ -115,7 +115,7 @@ class TPPBookmarkFactory {
       let selectorValueData = selectorValueEscJSON.data(using: String.Encoding.utf8),
       let selectorValueJSON = (try? JSONSerialization.jsonObject(with: selectorValueData,
                                                                  options: [])) as? [String: Any],
-      let href = selectorValueJSON[NYPLBookmarkR1Key.idref.rawValue] as? String
+      let href = selectorValueJSON["href"] as? String
       else {
         Log.error(#file, "Error serializing serverCFI into JSON. Selector.Value=\(selectorValueEscJSON)")
         return nil

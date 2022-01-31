@@ -93,7 +93,7 @@ extension TPPBookLocation {
 }
 
 private extension TPPBookLocation {
-  static let hrefKey = "idref"
+  static let hrefKey = "href"
   static let typeKey = "locatorType"
   static let chapterProgressKey = "progressWithinChapter"
   static let bookProgressKey = "progressWithinBook"
