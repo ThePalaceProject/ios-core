@@ -224,7 +224,7 @@ import R2Shared
     }
   }
 
-  class func postReadingPosition(forBook bookID: String, selectorValue: String) {
+  class func postReadingPosition(forBook bookID: String, selectorValue: String, motivation: TPPBookmarkSpec.Motivation) {
     guard syncIsPossibleAndPermitted() else {
       Log.debug(#file, "Account does not support sync or sync is disabled.")
       return
@@ -238,7 +238,7 @@ import R2Shared
     // Format bookmark for submission to server according to spec
     let bookmark = TPPBookmarkSpec(time: NSDate(),
                                     device: TPPUserAccount.sharedAccount().deviceID ?? "",
-                                    motivation: .readingProgress,
+                                    motivation: motivation,
                                     bookID: bookID,
                                     selectorValue: selectorValue)
     let parameters = bookmark.dictionaryForJSONSerialization()
@@ -254,6 +254,37 @@ import R2Shared
         return
       }
       Log.debug(#file, "Successfully saved Reading Position to server: \(selectorValue)")
+    }
+  }
+  
+  class func postBookmark(_ bookmark: TPPReadiumBookmark,
+                            forBookID bookID: String,
+                            completion: @escaping (_ serverID: String?) -> ())
+  {
+    guard syncIsPossibleAndPermitted() else {
+      Log.debug(#file, "Account does not support sync or sync is disabled.")
+      completion(nil)
+      return
+    }
+
+    guard let annotationsURL = TPPAnnotations.annotationsURL else {
+      Log.error(#file, "Annotations URL was nil while posting R1 bookmark")
+      return
+    }
+
+    let spec = TPPBookmarkSpec(
+      id: UUID().uuidString,
+      time: (bookmark.time.dateFromISO8601 as NSDate? ?? NSDate()),
+      device: bookmark.device ?? "",
+      motivation: .bookmark,
+      bookID: bookID,
+      selectorValue: bookmark.location
+    )
+
+    let parameters = spec.dictionaryForJSONSerialization()
+
+    postAnnotation(forBook: bookID, withAnnotationURL: annotationsURL, withParameters: parameters, queueOffline: false) { (success, id) in
+      completion(id)
     }
   }
 
@@ -421,7 +452,7 @@ import R2Shared
     request.httpMethod = "DELETE"
     setDefaultAnnotationHeaders(forRequest: &request)
     request.timeoutInterval = TPPDefaultRequestTimeout
-    
+
     let task = URLSession.shared.dataTask(with: request) { (data, response, error) in
       let response = response as? HTTPURLResponse
       if response?.statusCode == 200 {
@@ -476,14 +507,6 @@ import R2Shared
       Log.debug(#file, "Finished task of uploading local bookmarks.")
       completion(bookmarksUpdated, bookmarksFailedToUpdate)
     }
-  }
-
-  class func postBookmark(_ bookmark: TPPReadiumBookmark,
-                          forBookID bookID: String,
-                          completion: @escaping (_ serverID: String?) -> ()) {
-    // TODO: SIMPLY-3655 distinguish based on renderer (R1 / R2)
-    //                   or maybe just post R2 bookmarks?
-    postR1Bookmark(bookmark, forBookID: bookID, completion: completion)
   }
 
   // MARK: -

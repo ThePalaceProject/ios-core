@@ -87,7 +87,8 @@ class TPPLastReadPositionPoster {
   private func postQueuedReadPosition() {
     if self.queuedReadPosition != "" {
       TPPAnnotations.postReadingPosition(forBook: book.identifier,
-                                          selectorValue: self.queuedReadPosition)
+                                          selectorValue: self.queuedReadPosition,
+                                          motivation: .readingProgress)
       self.queuedReadPosition = ""
       self.lastReadPositionUploadDate = Date()
     }

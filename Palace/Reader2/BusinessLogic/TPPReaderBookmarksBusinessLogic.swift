@@ -73,9 +73,7 @@ class TPPReaderBookmarksBusinessLogic: NSObject {
       return nil
     }
 
-    let idref = publication.idref(forHref: currentLocator.href)
-    return bookmarks.first(where: { $0.locationMatches(currentLocator,
-                                                       withIDref: idref )})
+    return bookmarks.first(where: { $0.locationMatches(currentLocator)})
   }
 
   /// Creates a new bookmark at the given location for the publication.
@@ -263,8 +261,11 @@ class TPPReaderBookmarksBusinessLogic: NSObject {
     }
     
     for localBookmark in localBookmarks {
-      if !localBookmarksToKeep.contains(localBookmark) {
+      guard let _  = localBookmarksToKeep.first(where: {
+        $0.annotationId == localBookmark.annotationId
+      }) else {
         bookRegistry.delete(localBookmark, forIdentifier: self.book.identifier)
+        continue
       }
     }
     
