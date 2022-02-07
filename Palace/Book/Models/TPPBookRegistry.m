@@ -506,7 +506,7 @@ genericBookmarks:(NSArray<TPPBookLocation *> *)genericBookmarks
   @synchronized(self) {
     TPPBookRegistryRecord *const record = self.identifiersToRecords[identifier];
     if(!record) {
-      NSLog(@"Record Object is nil");
+      TPPLOG(@"Record Object is nil");
       return;
     }
     
