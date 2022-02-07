@@ -71,9 +71,12 @@ didFinishLaunchingWithOptions:(__attribute__((unused)) NSDictionary *)launchOpti
   [[UITabBarItem appearance] setTitleTextAttributes:@{NSFontAttributeName: [UIFont palaceFontOfSize:12.0]} forState:UIControlStateNormal];
 
   [[UINavigationBar appearance] setTintColor: [TPPConfiguration iconColor]];
-  [[UINavigationBar appearance] setTranslucent:NO];
-  [[UINavigationBar appearance] setBackgroundColor:[TPPConfiguration backgroundColor]];
-  [[UINavigationBar appearance] setTitleTextAttributes:@{NSFontAttributeName: [UIFont semiBoldPalaceFontOfSize:18.0]}];
+  [[UINavigationBar appearance] setStandardAppearance:[TPPConfiguration defaultAppearance]];
+  [[UINavigationBar appearance] setScrollEdgeAppearance:[TPPConfiguration defaultAppearance]];
+  [[UINavigationBar appearance] setCompactAppearance:[TPPConfiguration defaultAppearance]];
+  if (@available(iOS 15.0, *)) {
+    [[UINavigationBar appearance] setCompactScrollEdgeAppearance:[TPPConfiguration defaultAppearance]];
+  }
   
   [self setUpRootVC];
 
