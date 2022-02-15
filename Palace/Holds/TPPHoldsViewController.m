@@ -16,7 +16,7 @@
 #import "Palace-Swift.h"
 
 @interface TPPHoldsViewController ()
-<UICollectionViewDataSource, UICollectionViewDelegate, UICollectionViewDelegateFlowLayout>
+<UICollectionViewDataSource, UICollectionViewDelegate, TPPFacetBarViewDelegate, UICollectionViewDelegateFlowLayout>
 
 // FIXME: It's unclear how "reserved" is different from "held" in this class. These
 // two terms are used interchangably in both OPDS and elsewhere in this application.
@@ -27,6 +27,7 @@
 @property (nonatomic) UILabel *instructionsLabel;
 @property (nonatomic) UIRefreshControl *refreshControl;
 @property (nonatomic) UIBarButtonItem *searchButton;
+@property (nonatomic) TPPFacetBarView *facetBarView;
 
 @end
 
@@ -118,6 +119,31 @@
                                            initWithTitle:NSLocalizedString(@"Back", @"Back button text")
                                            style:UIBarButtonItemStylePlain
                                            target:nil action:nil];
+
+  self.facetBarView = [[TPPFacetBarView alloc] initWithOrigin:CGPointZero width:self.view.bounds.size.width];
+  self.facetBarView.delegate = self;
+  
+  [self.view addSubview:self.facetBarView];
+  
+  [self.facetBarView autoPinEdgeToSuperviewEdge:ALEdgeLeading];
+  [self.facetBarView autoPinEdgeToSuperviewEdge:ALEdgeTrailing];
+  [self.facetBarView autoPinEdgeToSuperviewMargin:ALEdgeTop];
+
+}
+
+- (void)didMoveToParentViewController:(UIViewController *)parent
+{
+  [super didMoveToParentViewController:parent];
+  
+  if (parent) {
+    CGFloat facetBarHeight = self.facetBarView.frame.size.height;
+    UIEdgeInsets insets = self.collectionView.contentInset;
+    insets.top += facetBarHeight;
+    if (@available(iOS 11.0, *)) {
+      insets.top += parent.additionalSafeAreaInsets.top;
+    }
+    [self.collectionView setContentInset:insets];
+  }
 }
 
 - (void)viewWillAppear:(BOOL)animated
@@ -303,6 +329,18 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
 - (void)viewWillTransitionToSize:(CGSize)__unused size withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)__unused coordinator
 {
   [self.collectionView reloadData];
+}
+
+#pragma mark TPPFacetBarViewDelegate
+
+- (void)present:(UIViewController *)viewController
+{
+  [self.navigationController pushViewController:viewController animated:YES];
+}
+
+- (NSArray<TPPCatalogFacet *> *)facetsForEntryPointView
+{
+  return @[];
 }
 
 @end

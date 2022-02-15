@@ -210,7 +210,6 @@ import R2Shared
 
   /// Reads the current reading position from the server, parses the response
   /// and returns the result to the `completionHandler`.
-  //TODO: SIMPLY-3655 Refactor with `getServerBookmarks(forBook:atURL:completion:)
   class func syncReadingPosition(ofBook bookID: String?, toURL url:URL?,
                                  completion: @escaping (_ readPos: TPPReadiumBookmark?) -> ()) {
 
@@ -220,52 +219,12 @@ import R2Shared
       return
     }
 
-    guard let url = url, let bookID = bookID else {
-      Log.error(#file, "Required parameters are nil.")
-      completion(nil)
-      return
+    TPPAnnotations.getServerBookmarks(forBook: bookID, atURL: url, motivation: .readingProgress) { bookmarks in
+      completion(bookmarks?.first)
     }
-
-    var request = URLRequest(url: url,
-                             cachePolicy: .reloadIgnoringLocalCacheData,
-                             timeoutInterval: TPPDefaultRequestTimeout)
-    request.httpMethod = "GET"
-    setDefaultAnnotationHeaders(forRequest: &request)
-
-    let dataTask = URLSession.shared.dataTask(with: request) { (data, response, error) in
-
-      if let error = error as NSError? {
-        Log.error(#file, "Request Error Code: \(error.code). Description: \(error.localizedDescription)")
-        completion(nil)
-        return
-      }
-
-      guard let data = data,
-        let jsonObject = try? JSONSerialization.jsonObject(with: data, options: []),
-        let json = jsonObject as? [String: Any] else {
-          Log.error(#file, "Response from annotation server could not be serialized.")
-          completion(nil)
-          return
-      }
-
-      guard let first = json["first"] as? [String: Any],
-        let items = first["items"] as? [[String: Any]] else {
-          Log.error(#file, "Missing required key from Annotations response, or no items exist.")
-          completion(nil)
-          return
-      }
-
-      let readPos = items
-        .compactMap { TPPBookmarkFactory.make(fromServerAnnotation: $0,
-                                               annotationType: .readingProgress,
-                                               bookID: bookID) }
-        .first
-      completion(readPos)
-    }
-    dataTask.resume()
   }
 
-  class func postReadingPosition(forBook bookID: String, selectorValue: String) {
+  class func postReadingPosition(forBook bookID: String, selectorValue: String, motivation: TPPBookmarkSpec.Motivation) {
     guard syncIsPossibleAndPermitted() else {
       Log.debug(#file, "Account does not support sync or sync is disabled.")
       return
@@ -279,7 +238,7 @@ import R2Shared
     // Format bookmark for submission to server according to spec
     let bookmark = TPPBookmarkSpec(time: NSDate(),
                                     device: TPPUserAccount.sharedAccount().deviceID ?? "",
-                                    motivation: .readingProgress,
+                                    motivation: motivation,
                                     bookID: bookID,
                                     selectorValue: selectorValue)
     let parameters = bookmark.dictionaryForJSONSerialization()
@@ -295,6 +254,37 @@ import R2Shared
         return
       }
       Log.debug(#file, "Successfully saved Reading Position to server: \(selectorValue)")
+    }
+  }
+  
+  class func postBookmark(_ bookmark: TPPReadiumBookmark,
+                            forBookID bookID: String,
+                            completion: @escaping (_ serverID: String?) -> ())
+  {
+    guard syncIsPossibleAndPermitted() else {
+      Log.debug(#file, "Account does not support sync or sync is disabled.")
+      completion(nil)
+      return
+    }
+
+    guard let annotationsURL = TPPAnnotations.annotationsURL else {
+      Log.error(#file, "Annotations URL was nil while posting R1 bookmark")
+      return
+    }
+
+    let spec = TPPBookmarkSpec(
+      id: UUID().uuidString,
+      time: (bookmark.time.dateFromISO8601 as NSDate? ?? NSDate()),
+      device: bookmark.device ?? "",
+      motivation: .bookmark,
+      bookID: bookID,
+      selectorValue: bookmark.location
+    )
+
+    let parameters = spec.dictionaryForJSONSerialization()
+
+    postAnnotation(forBook: bookID, withAnnotationURL: annotationsURL, withParameters: parameters, queueOffline: false) { (success, id) in
+      completion(id)
     }
   }
 
@@ -368,6 +358,7 @@ import R2Shared
   // the network request, deserialization, or sync permission is not allowed.
   class func getServerBookmarks(forBook bookID:String?,
                                 atURL annotationURL:URL?,
+                                motivation: TPPBookmarkSpec.Motivation = .bookmark,
                                 completion: @escaping (_ bookmarks: [TPPReadiumBookmark]?) -> ()) {
 
     guard syncIsPossibleAndPermitted() else {
@@ -413,7 +404,7 @@ import R2Shared
 
       let bookmarks = items.compactMap {
         TPPBookmarkFactory.make(fromServerAnnotation: $0,
-                                 annotationType: .bookmark,
+                                 annotationType: motivation,
                                  bookID: bookID)
       }
 
@@ -461,7 +452,7 @@ import R2Shared
     request.httpMethod = "DELETE"
     setDefaultAnnotationHeaders(forRequest: &request)
     request.timeoutInterval = TPPDefaultRequestTimeout
-    
+
     let task = URLSession.shared.dataTask(with: request) { (data, response, error) in
       let response = response as? HTTPURLResponse
       if response?.statusCode == 200 {
@@ -516,14 +507,6 @@ import R2Shared
       Log.debug(#file, "Finished task of uploading local bookmarks.")
       completion(bookmarksUpdated, bookmarksFailedToUpdate)
     }
-  }
-
-  class func postBookmark(_ bookmark: TPPReadiumBookmark,
-                          forBookID bookID: String,
-                          completion: @escaping (_ serverID: String?) -> ()) {
-    // TODO: SIMPLY-3655 distinguish based on renderer (R1 / R2)
-    //                   or maybe just post R2 bookmarks?
-    postR1Bookmark(bookmark, forBookID: bookID, completion: completion)
   }
 
   // MARK: -

@@ -133,7 +133,7 @@ static NSString *DetailHTMLTemplate = nil;
   [self.contentView addSubview:self.footerTableView];
   [self.contentView addSubview:self.bottomFootnoteSeparator];
   
-  if(UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad &&
+  if(UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad &&
      [[TPPRootTabBarController sharedController] traitCollection].horizontalSizeClass != UIUserInterfaceSizeClassCompact) {
     self.closeButton = [UIButton buttonWithType:UIButtonTypeSystem];
     [self.closeButton setTitle:NSLocalizedString(@"Close", nil) forState:UIControlStateNormal];
@@ -272,7 +272,7 @@ static NSString *DetailHTMLTemplate = nil;
   self.authorsLabel = [[UILabel alloc] init];
   self.authorsLabel.autoresizingMask = UIViewAutoresizingFlexibleRightMargin;
   self.authorsLabel.numberOfLines = 2;
-  if (UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad &&
+  if (UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad &&
       [[TPPRootTabBarController sharedController] traitCollection].horizontalSizeClass != UIUserInterfaceSizeClassCompact) {
     self.authorsLabel.text = self.book.authors;
   } else {

@@ -140,8 +140,8 @@ typedef NS_ENUM(NSInteger, FacetSort) {
   [self.view addSubview:self.facetBarView];
   [self.facetBarView autoPinEdgeToSuperviewEdge:ALEdgeLeading];
   [self.facetBarView autoPinEdgeToSuperviewEdge:ALEdgeTrailing];
-  [self.facetBarView autoPinToTopLayoutGuideOfViewController:self withInset:0.0];
-  
+  [self.facetBarView autoPinEdgeToSuperviewMargin:ALEdgeTop];
+
   self.instructionsLabel = [[UILabel alloc] initWithFrame:CGRectZero];
   self.instructionsLabel.hidden = YES;
   self.instructionsLabel.text = NSLocalizedString(@"MyBooksGoToCatalog", nil);

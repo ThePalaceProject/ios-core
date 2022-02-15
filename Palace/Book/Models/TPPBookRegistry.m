@@ -506,7 +506,8 @@ genericBookmarks:(NSArray<TPPBookLocation *> *)genericBookmarks
   @synchronized(self) {
     TPPBookRegistryRecord *const record = self.identifiersToRecords[identifier];
     if(!record) {
-      @throw NSInvalidArgumentException;
+      TPPLOG(@"Record Object is nil");
+      return;
     }
     
     self.identifiersToRecords[identifier] = [record recordWithState:state];

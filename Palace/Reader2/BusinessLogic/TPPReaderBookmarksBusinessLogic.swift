@@ -73,9 +73,7 @@ class TPPReaderBookmarksBusinessLogic: NSObject {
       return nil
     }
 
-    let idref = publication.idref(forHref: currentLocator.href)
-    return bookmarks.first(where: { $0.locationMatches(currentLocator,
-                                                       withIDref: idref )})
+    return bookmarks.first(where: { $0.locationMatches(currentLocator)})
   }
 
   /// Creates a new bookmark at the given location for the publication.
@@ -201,7 +199,7 @@ class TPPReaderBookmarksBusinessLogic: NSObject {
           }
         }
         
-        TPPAnnotations.getServerBookmarks(forBook: self.book.identifier, atURL: self.book.annotationsURL) { serverBookmarks in
+        TPPAnnotations.getServerBookmarks(forBook: self.book.identifier, atURL: self.book.annotationsURL, motivation: .bookmark) { serverBookmarks in
 
           guard let serverBookmarks = serverBookmarks else {
             self.handleBookmarksSyncFail(message: "Ending sync without running completion. Returning original list of bookmarks.",
@@ -263,8 +261,11 @@ class TPPReaderBookmarksBusinessLogic: NSObject {
     }
     
     for localBookmark in localBookmarks {
-      if !localBookmarksToKeep.contains(localBookmark) {
+      guard let _  = localBookmarksToKeep.first(where: {
+        $0.annotationId == localBookmark.annotationId
+      }) else {
         bookRegistry.delete(localBookmark, forIdentifier: self.book.identifier)
+        continue
       }
     }
     

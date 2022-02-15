@@ -1,4 +1,5 @@
 #import "TPPAttributedString.h"
+#import "Palace-Swift.h"
 
 NSAttributedString *TPPAttributedStringForAuthorsFromString(NSString *string)
 {
@@ -20,23 +21,8 @@ NSAttributedString *TPPAttributedStringForTitleFromString(NSString *string)
 {
   if(!string) return nil;
 
-  NSString *decodedString = string;
-  
-  NSData *stringData = [string dataUsingEncoding:NSUTF8StringEncoding];
-  if (!stringData) return nil;
-  
-  // Decode HTML entities using NSAttributedString
-  NSDictionary<NSAttributedStringDocumentReadingOptionKey, id> *options = @{
-    NSDocumentTypeDocumentAttribute : NSHTMLTextDocumentType,
-    NSCharacterEncodingDocumentAttribute :@(NSUTF8StringEncoding)
-  };
-  
-  NSError *error;
-  NSAttributedString *decodedAttributedString = [[NSAttributedString alloc] initWithData:stringData options:options documentAttributes:nil error:&error];
-  if (!error) {
-    decodedString = decodedAttributedString.string;
-  }
-
+  // Decoding twice to mimic the behaviour of NSAttributedString that decodes entities like `&amp;#39;` correctly.
+  NSString *decodedString = [[string stringByDecodingHTMLEntities] stringByDecodingHTMLEntities];
   NSMutableParagraphStyle *const paragraphStyle = [[NSMutableParagraphStyle alloc] init];
   paragraphStyle.lineSpacing = 0.0;
   paragraphStyle.minimumLineHeight = 0.0;

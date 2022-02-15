@@ -117,14 +117,19 @@
     }
     
     NSMutableArray *const bookArray = groupTitleToMutableBookArray[groupTitle];
-    if(bookArray) {
-      // We previously found a book in this group, so we can just add one more.
-      [bookArray addObject:book];
-    } else {
-      // This is the first book we've found in this group, so we need to do a few things.
-      [groupTitles addObject:groupTitle];
-      groupTitleToMutableBookArray[groupTitle] = [NSMutableArray arrayWithObject:book];
-      groupTitleToURLOrNull[groupTitle] = TPPNullFromNil(entry.groupAttributes.href);
+    
+    // Do not display unsupported titles in feed
+    // https://www.notion.so/lyrasis/App-crashes-after-getting-the-book-iPhone8-742898f53e2547efa4c6f5d43296b816
+    if (book.defaultBookContentType != TPPBookContentTypeUnsupported) {
+      if(bookArray) {
+        // We previously found a book in this group, so we can just add one more.
+        [bookArray addObject:book];
+      } else {
+        // This is the first book we've found in this group, so we need to do a few things.
+        [groupTitles addObject:groupTitle];
+        groupTitleToMutableBookArray[groupTitle] = [NSMutableArray arrayWithObject:book];
+        groupTitleToURLOrNull[groupTitle] = TPPNullFromNil(entry.groupAttributes.href);
+      }
     }
   }
   

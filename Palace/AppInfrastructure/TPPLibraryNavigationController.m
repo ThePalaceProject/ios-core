@@ -17,12 +17,6 @@
 #import "TPPRootTabBarController.h"
 #import "TPPCatalogNavigationController.h"
 
-#ifdef SIMPLYE
-// TODO: SIMPLY-3053 this #ifdef can be removed once this ticket is done
-#import "TPPSettingsPrimaryTableViewController.h"
-#endif
-
-
 @interface TPPLibraryNavigationController ()
 
 @end
@@ -64,44 +58,55 @@
     }
 
     [alert addAction:[UIAlertAction actionWithTitle:account.name style:(UIAlertActionStyleDefault) handler:^(__unused UIAlertAction *_Nonnull action) {
-
-      BOOL workflowsInProgress;
-#if defined(FEATURE_DRM_CONNECTOR)
-      if ([AdobeCertificate.defaultCertificate hasExpired] == NO) {
-        workflowsInProgress = ([NYPLADEPT sharedInstance].workflowsInProgress || [TPPBookRegistry sharedRegistry].syncing == YES);
-      } else {
-        workflowsInProgress = ([TPPBookRegistry sharedRegistry].syncing == YES);
-      }
-#else
-      workflowsInProgress = ([TPPBookRegistry sharedRegistry].syncing == YES);
-#endif
-
-      if (workflowsInProgress) {
-        [self presentViewController:[TPPAlertUtils
-                                     alertWithTitle:@"Please Wait"
-                                     message:@"Please wait a moment before switching library accounts."]
-                           animated:YES
-                         completion:nil];
-      } else {
-        [[TPPBookRegistry sharedRegistry] save];
-        [self updateCatalogFeedSettingCurrentAccount:account];
-      }
+      [self loadAccount:account];
     }]];
   }
 
-  [alert addAction:[UIAlertAction actionWithTitle:NSLocalizedString(@"Manage Accounts", nil) style:(UIAlertActionStyleDefault) handler:^(__unused UIAlertAction *_Nonnull action) {
-    NSUInteger tabCount = [[[TPPRootTabBarController sharedController] viewControllers] count];
-    UISplitViewController *splitViewVC = [[[TPPRootTabBarController sharedController] viewControllers] lastObject];
-    UINavigationController *masterNavVC = [[splitViewVC viewControllers] firstObject];
-    [masterNavVC popToRootViewControllerAnimated:NO];
-    [[TPPRootTabBarController sharedController] setSelectedIndex:tabCount-1];
-    TPPSettingsPrimaryTableViewController *tableVC = [[masterNavVC viewControllers] firstObject];
-    [tableVC.delegate settingsPrimaryTableViewController:tableVC didSelectItem:NYPLSettingsPrimaryTableViewControllerItemAccount];
+  [alert addAction:[UIAlertAction actionWithTitle:NSLocalizedString(@"Add Library", nil) style:(UIAlertActionStyleDefault) handler:^(__unused UIAlertAction *_Nonnull action) {
+    TPPAccountList *listVC = [[TPPAccountList alloc] initWithCompletion:^(Account * _Nonnull account) {
+      [account loadAuthenticationDocumentUsingSignedInStateProvider:nil completion:^(BOOL success) {
+        if (success) {
+          dispatch_async(dispatch_get_main_queue(), ^{
+            
+            if (![TPPSettings.shared.settingsAccountsList containsObject:account.uuid]) {
+              TPPSettings.shared.settingsAccountsList = [TPPSettings.shared.settingsAccountsList arrayByAddingObject:account.uuid];
+            }
+
+            [self loadAccount:account];
+          });
+        }
+      }];
+    }];
+    [self pushViewController:listVC animated:YES];
   }]];
 
   [alert addAction:[UIAlertAction actionWithTitle:NSLocalizedString(@"Cancel", nil) style:(UIAlertActionStyleCancel) handler:nil]];
 
   [[TPPRootTabBarController sharedController] safelyPresentViewController:alert animated:YES completion:nil];
+}
+
+- (void) loadAccount:(Account *)account {
+    BOOL workflowsInProgress;
+  #if defined(FEATURE_DRM_CONNECTOR)
+    if ([AdobeCertificate.defaultCertificate hasExpired] == NO) {
+      workflowsInProgress = ([NYPLADEPT sharedInstance].workflowsInProgress || [TPPBookRegistry sharedRegistry].syncing == YES);
+    } else {
+      workflowsInProgress = ([TPPBookRegistry sharedRegistry].syncing == YES);
+    }
+  #else
+    workflowsInProgress = ([TPPBookRegistry sharedRegistry].syncing == YES);
+  #endif
+    
+    if (workflowsInProgress) {
+      [self presentViewController:[TPPAlertUtils
+                                   alertWithTitle:@"Please Wait"
+                                   message:@"Please wait a moment before switching library accounts."]
+                         animated:YES
+                       completion:nil];
+    } else {
+      [[TPPBookRegistry sharedRegistry] save];
+      [self updateCatalogFeedSettingCurrentAccount:account];
+    }
 }
 
 - (void)updateCatalogFeedSettingCurrentAccount:(Account *)account

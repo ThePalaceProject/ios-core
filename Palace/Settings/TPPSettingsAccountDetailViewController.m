@@ -212,7 +212,7 @@ Authenticating with any of those barcodes should work.
   self.view.backgroundColor = [TPPConfiguration backgroundColor];
   self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeInteractive;
 
-  UIActivityIndicatorView *activityIndicator = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle: UIActivityIndicatorViewStyleGray];
+  UIActivityIndicatorView *activityIndicator = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle: UIActivityIndicatorViewStyleMedium];
   activityIndicator.center = CGPointMake(self.view.frame.size.width / 2, self.view.frame.size.height / 2);
   [self.view addSubview:activityIndicator];
   [activityIndicator startAnimating];
@@ -570,7 +570,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
           logoutString = NSLocalizedString(@"If you sign out, your books and any saved bookmarks will be removed.", nil);
         }
         UIAlertController *const alertController =
-        (UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad &&
+        (UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad &&
          (self.traitCollection.horizontalSizeClass != UIUserInterfaceSizeClassCompact))
         ? [UIAlertController alertControllerWithTitle:NSLocalizedString(@"SignOut", nil)
                                               message:logoutString
@@ -1075,7 +1075,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
   // least work very well.
   
   [[NSOperationQueue mainQueue] addOperationWithBlock:^{
-    if((UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPhone) ||
+    if((UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPhone) ||
        (self.traitCollection.horizontalSizeClass == UIUserInterfaceSizeClassCompact &&
         self.traitCollection.verticalSizeClass == UIUserInterfaceSizeClassCompact)) {
       CGSize const keyboardSize =

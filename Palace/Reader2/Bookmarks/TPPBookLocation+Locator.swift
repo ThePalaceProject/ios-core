@@ -35,6 +35,35 @@ extension TPPBookLocation {
     self.init(locationString: jsonString, renderer: renderer)
   }
   
+  convenience init?(href: String,
+                    type: String,
+                    chapterProgression: Float? = nil,
+                    totalProgression: Float? = nil,
+                    title: String? = nil,
+                    position: Float? = nil,
+                    publication: Publication? = nil,
+                    renderer: String = TPPBookLocation.r2Renderer) {
+    
+    // Store all required properties of a locator object in a dictionary
+    // Create a json string from it and use it as the location string in NYPLBookLocation
+    // There is no specific format to follow, the value of the keys can be change if needed
+    let dict: [String : Any] = [
+      TPPBookLocation.hrefKey: href,
+      TPPBookLocation.typeKey: type,
+      TPPBookLocation.chapterProgressKey: chapterProgression ?? 0.0,
+      TPPBookLocation.bookProgressKey: totalProgression ?? 0.0,
+      TPPBookLocation.titleKey: title ?? "",
+      TPPBookLocation.positionKey: position ?? 0.0
+    ]
+    
+    guard let jsonString = serializeJSONString(dict) else {
+      Log.warn(#file, "Failed to serialize json string from dictionary - \(dict.debugDescription)")
+      return nil
+    }
+    
+    self.init(locationString: jsonString, renderer: renderer)
+  }
+  
   func convertToLocator() -> Locator? {
     guard self.renderer == TPPBookLocation.r2Renderer,
       let data = self.locationString.data(using: .utf8),
@@ -64,7 +93,7 @@ extension TPPBookLocation {
 }
 
 private extension TPPBookLocation {
-  static let hrefKey = "idref"
+  static let hrefKey = "href"
   static let typeKey = "locatorType"
   static let chapterProgressKey = "progressWithinChapter"
   static let bookProgressKey = "progressWithinBook"

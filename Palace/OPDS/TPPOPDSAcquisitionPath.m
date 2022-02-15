@@ -55,9 +55,7 @@ NSString * const _Nonnull ContentTypeAudiobookZip = @"application/audiobook+zip"
       ContentTypeOpenAccessAudiobook,
       ContentTypeOpenAccessPDF,
       ContentTypeFeedbooksAudiobook,
-// Temporarily removed,
-// https://www.notion.so/lyrasis/Filter-out-Overdrive-Audiobooks-iOS-e413e07cd8e541cfb4f5761e6bb467bb
-//      ContentTypeOverdriveAudiobook,
+      ContentTypeOverdriveAudiobook,
       ContentTypeOctetStream,
 #if LCP
       ContentTypeReadiumLCP,
@@ -98,9 +96,7 @@ NSString * const _Nonnull ContentTypeAudiobookZip = @"application/audiobook+zip"
         ContentTypeOpenAccessPDF,
         ContentTypeOpenAccessAudiobook,
         ContentTypeFeedbooksAudiobook,
-// Temporarily removed,
-// https://www.notion.so/lyrasis/Filter-out-Overdrive-Audiobooks-iOS-e413e07cd8e541cfb4f5761e6bb467bb
-//        ContentTypeOverdriveAudiobook,
+        ContentTypeOverdriveAudiobook,
         ContentTypeOctetStream,
         ContentTypeReadiumLCP,
         ContentTypeAudiobookZip
@@ -127,9 +123,7 @@ NSString * const _Nonnull ContentTypeAudiobookZip = @"application/audiobook+zip"
   return [NSSet setWithArray:@[ContentTypeFindaway,
                                ContentTypeOpenAccessAudiobook,
                                ContentTypeFeedbooksAudiobook,
-// Temporarily removed,
-// https://www.notion.so/lyrasis/Filter-out-Overdrive-Audiobooks-iOS-e413e07cd8e541cfb4f5761e6bb467bb
-//                               ContentTypeOverdriveAudiobook,
+                               ContentTypeOverdriveAudiobook,
                                ContentTypeAudiobookZip ]];
 }
 
