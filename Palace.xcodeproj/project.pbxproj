@@ -140,6 +140,8 @@
 		21562CC4276BB52700C03372 /* AdobeDRMAlerts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21562CC2276BB52700C03372 /* AdobeDRMAlerts.swift */; };
 		215C866D27064198005F9621 /* BundleExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = 215C866C27064198005F9621 /* BundleExtension.swift */; };
 		215C866E27064198005F9621 /* BundleExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = 215C866C27064198005F9621 /* BundleExtension.swift */; };
+		216D2E39274286D200472538 /* TPPLCPLicense.swift in Sources */ = {isa = PBXBuildFile; fileRef = 216D2E38274286D200472538 /* TPPLCPLicense.swift */; };
+		216D2E3A274286D200472538 /* TPPLCPLicense.swift in Sources */ = {isa = PBXBuildFile; fileRef = 216D2E38274286D200472538 /* TPPLCPLicense.swift */; };
 		216FD1FC26DFE112003AF0D8 /* Colors.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E5506DE326C4688D009FA623 /* Colors.xcassets */; };
 		2178984D269F174500374A6B /* NYPLAEToolkit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E585662526979AC100A5FBD5 /* NYPLAEToolkit.framework */; };
 		2178984E269F174500374A6B /* NYPLAEToolkit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E585662526979AC100A5FBD5 /* NYPLAEToolkit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -1070,6 +1072,7 @@
 		2156B54425B200EA003AD8EC /* R2LCPClient.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = R2LCPClient.framework; path = Carthage/Build/iOS/R2LCPClient.framework; sourceTree = "<group>"; };
 		2156B54625B200F6003AD8EC /* ReadiumLCP.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ReadiumLCP.framework; path = Carthage/Build/iOS/ReadiumLCP.framework; sourceTree = "<group>"; };
 		215C866C27064198005F9621 /* BundleExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BundleExtension.swift; sourceTree = "<group>"; };
+		216D2E38274286D200472538 /* TPPLCPLicense.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPLCPLicense.swift; sourceTree = "<group>"; };
 		2171ADA0251E38140003CABA /* LCPLibraryService.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = LCPLibraryService.swift; sourceTree = "<group>"; };
 		2171ADA6251E38560003CABA /* ReadiumLCP.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = ReadiumLCP.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		219747F626D9218400FA25DF /* TPPLCPClient.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPLCPClient.swift; sourceTree = "<group>"; };
@@ -1650,6 +1653,7 @@
 				2171ADA0251E38140003CABA /* LCPLibraryService.swift */,
 				17A5AB4E25D201BD005DFF05 /* LCPPassphraseAuthenticationService.swift */,
 				219747F626D9218400FA25DF /* TPPLCPClient.swift */,
+				216D2E38274286D200472538 /* TPPLCPLicense.swift */,
 			);
 			path = LCP;
 			sourceTree = "<group>";
@@ -3278,6 +3282,7 @@
 				73EB0A8925821DF4006BC997 /* TPPProblemDocument.swift in Sources */,
 				73EB0A8A25821DF4006BC997 /* TPPReturnPromptHelper.swift in Sources */,
 				73EB0A8C25821DF4006BC997 /* TPPOpenSearchDescription.m in Sources */,
+				216D2E3A274286D200472538 /* TPPLCPLicense.swift in Sources */,
 				73EB0A8E25821DF4006BC997 /* TPPSignInBusinessLogic+UI.swift in Sources */,
 				73D8D27825A68D3B00DF5F69 /* TPPUserSettingsVC.swift in Sources */,
 				73EB0A9025821DF4006BC997 /* OPDS2CatalogsFeed.swift in Sources */,
@@ -3491,6 +3496,7 @@
 				11616E11196B0531003D60D9 /* TPPBookRegistry.m in Sources */,
 				081387571BC574DA003DEA6A /* UILabel+NYPLAppearanceAdditions.m in Sources */,
 				21F4BF3A26BC62D4000CF592 /* AdobeCertificate.swift in Sources */,
+				216D2E39274286D200472538 /* TPPLCPLicense.swift in Sources */,
 				21D746FC2719B00E00C0E1B4 /* PublicationOpeningError.swift in Sources */,
 				734917D1242D77D800059AA5 /* TPPUserSettingsVC.swift in Sources */,
 				21DDE31F25D2CEAF002CBCE3 /* AdobeDRMContainer.mm in Sources */,
@@ -3894,7 +3900,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 42;
+				CURRENT_PROJECT_VERSION = 44;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = arm64;
@@ -3952,7 +3958,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 42;
+				CURRENT_PROJECT_VERSION = 44;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
@@ -4133,7 +4139,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 43;
+				CURRENT_PROJECT_VERSION = 44;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = arm64;
@@ -4194,7 +4200,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 43;
+				CURRENT_PROJECT_VERSION = 44;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
