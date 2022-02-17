@@ -14,11 +14,9 @@ import R2Shared
 import R2Navigator
 
 class TPPEPUBViewController: TPPBaseReaderViewController {
-  
+
   var popoverUserconfigurationAnchor: UIBarButtonItem?
-
-  let userSettings: TPPR1R2UserSettings
-
+  
   init(publication: Publication,
        book: TPPBook,
        initialLocation: Locator?,
@@ -38,8 +36,9 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
                                                 initialLocation: initialLocation,
                                                 resourcesServer: resourcesServer,
                                                 config: config)
-    userSettings = TPPR1R2UserSettings(r2UserSettings: navigator.userSettings)
 
+    TPPAssociatedColors.shared.userSettings = navigator.userSettings
+    
     // EPUBNavigatorViewController::init creates a UserSettings object and sets
     // it into the publication. However, that UserSettings object will have the
     // defaults options for the various user properties (fonts etc), so we need
@@ -65,15 +64,26 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
 
   override open func viewWillAppear(_ animated: Bool) {
     super.viewWillAppear(animated)
-    self.applyCurrentSettings()
+    if let appearance = epubNavigator.userSettings.userProperties.getProperty(reference: ReadiumCSSReference.appearance.rawValue) as? Enumerable {
+      self.setUIColor(for: appearance)
+    }
+    if let fontFamily = epubNavigator.userSettings.userProperties.getProperty(reference: ReadiumCSSReference.fontFamily.rawValue) as? Enumerable {
+      epubNavigator.userSettings.userProperties.removeProperty(forReference: ReadiumCSSReference.fontFamily)
+      epubNavigator.userSettings.userProperties.addEnumerable(
+        index: fontFamily.index,
+        values: TPPReaderFont.allCases.map { $0.rawValue },
+        reference: ReadiumCSSReference.fontFamily.rawValue,
+        name: ReadiumCSSName.fontFamily.rawValue
+      )
+    }
   }
 
   override open func viewWillDisappear(_ animated: Bool) {
     super.viewWillDisappear(animated)
-    self.navigationController?.navigationBar.setAppearance(TPPConfiguration.defaultAppearance())
-    self.navigationController?.navigationBar.tintColor = TPPConfiguration.iconColor()
-    self.tabBarController?.tabBar.tintColor = TPPConfiguration.iconColor()
-    userSettings.save()
+    navigationController?.navigationBar.setAppearance(TPPConfiguration.defaultAppearance())
+    navigationController?.navigationBar.tintColor = TPPConfiguration.iconColor()
+    tabBarController?.tabBar.tintColor = TPPConfiguration.iconColor()
+    epubNavigator.userSettings.save()
   }
 
   override func makeNavigationBarButtons() -> [UIBarButtonItem] {
@@ -91,10 +101,11 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
   }
 
   @objc func presentUserSettings() {
-    let vc = TPPUserSettingsVC(delegate: self)
+    let vc = TPPReaderSettingsVC.makeSwiftUIView(settings: epubNavigator.userSettings, delegate: self)
     vc.modalPresentationStyle = .popover
     vc.popoverPresentationController?.delegate = self
     vc.popoverPresentationController?.barButtonItem = popoverUserconfigurationAnchor
+    vc.preferredContentSize = CGSize(width: 320, height: 240)
 
     present(vc, animated: true) {
       // Makes sure that the popover is dismissed also when tapping on one of
@@ -105,35 +116,35 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
   }
 }
 
-// MARK: - TPPUserSettingsReaderDelegate
+// MARK: - TPPReaderSettingsDelegate
 
-extension TPPEPUBViewController: TPPUserSettingsReaderDelegate {
-  func applyCurrentSettings() {
-    TPPMainThreadRun.asyncIfNeeded {
-      if let appearance = self.userSettings.r2UserSettings?.userProperties.getProperty(reference: ReadiumCSSReference.appearance.rawValue) as? Enumerable {
-
-        let colors = TPPR1R2UserSettings.colors(for: appearance)
-        self.navigator.view.backgroundColor = colors.backgroundColor
-        self.view.backgroundColor = colors.backgroundColor
-        self.view.tintColor = colors.textColor
-        self.navigationController?.navigationBar.setAppearance(TPPConfiguration.appearance(withBackgroundColor: colors.backgroundColor))
-        self.navigationController?.navigationBar.tintColor = colors.navigationColor
-        self.tabBarController?.tabBar.tintColor = colors.navigationColor
-      }
-
-      switch self.userSettings.r1UserSettings.colorScheme {
-      case .blackOnSepia:
-        self.navigationController?.navigationBar.barStyle = .default
-      case .blackOnWhite:
-        self.navigationController?.navigationBar.barStyle = .default
-      case .whiteOnBlack:
-        self.navigationController?.navigationBar.barStyle = .black
-      }
-
+extension TPPEPUBViewController: TPPReaderSettingsDelegate {
+  
+  internal func getUserSettings() -> UserSettings {
+    return epubNavigator.userSettings
+  }
+  
+  internal func updateUserSettingsStyle() {
+    DispatchQueue.main.async {
       self.epubNavigator.updateUserSettingStyle()
     }
   }
+  
+  /// Synchronyze the UI appearance to the UserSettings.Appearance.
+  ///
+  /// - Parameter appearance: The appearance.
+  internal func setUIColor(for appearance: UserProperty) {
+    let colors = TPPAssociatedColors.colors(for: appearance)
+    
+    navigator.view.backgroundColor = colors.backgroundColor
+    view.backgroundColor = colors.backgroundColor
+    view.tintColor = colors.textColor
+    navigationController?.navigationBar.setAppearance(TPPConfiguration.appearance(withBackgroundColor: colors.backgroundColor))
+    navigationController?.navigationBar.tintColor = colors.navigationColor
+    tabBarController?.tabBar.tintColor = colors.navigationColor
+  }
 }
+
 
 // MARK: - EPUBNavigatorDelegate
 

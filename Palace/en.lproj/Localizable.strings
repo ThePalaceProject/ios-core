@@ -156,6 +156,7 @@
 "Next Chapter" = "Next Chapter";
 
 // NYPLReaderSettingsView
+"OriginalFont" = "Default book font";
 "SansFont" = "Sans font";
 "SerifFont" = "Serif font";
 "OpenDyslexicFont" = "Open dyslexic font";
