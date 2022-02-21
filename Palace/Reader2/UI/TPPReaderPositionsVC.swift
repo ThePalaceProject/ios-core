@@ -85,23 +85,23 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
     noBookmarksLabel.autoCenterInSuperview()
     noBookmarksLabel.autoSetDimension(.width, toSize: 250)
 
-    let readerSettings = TPPReaderSettings.shared()
+    let readerColors = TPPAssociatedColors.shared.appearanceColors
 
     tableView.separatorColor = .gray
-    view.backgroundColor = readerSettings.backgroundColor
+    view.backgroundColor = readerColors.backgroundColor
     tableView.backgroundColor = view.backgroundColor
-    noBookmarksLabel.textColor = readerSettings.foregroundColor
+    noBookmarksLabel.textColor = readerColors.foregroundColor
 
     if #available(iOS 13, *) {
-      segmentedControl.selectedSegmentTintColor = readerSettings.tintColor
+      segmentedControl.selectedSegmentTintColor = readerColors.tintColor
       segmentedControl.setTitleTextAttributes(
-        [NSAttributedString.Key.foregroundColor: readerSettings.tintColor],
+        [NSAttributedString.Key.foregroundColor: readerColors.tintColor],
         for: .normal)
       segmentedControl.setTitleTextAttributes(
-        [NSAttributedString.Key.foregroundColor: readerSettings.selectedForegroundColor],
+        [NSAttributedString.Key.foregroundColor: readerColors.selectedForegroundColor],
         for: .selected)
     } else {
-      segmentedControl.tintColor = readerSettings.tintColor
+      segmentedControl.tintColor = readerColors.tintColor
     }
 
     configRefreshControl()
@@ -109,7 +109,7 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
     navigationController?.navigationBar.barStyle = .default
     navigationController?.navigationBar.isTranslucent = true
     navigationController?.navigationBar.barTintColor = nil
-    navigationController?.navigationBar.tintColor = readerSettings.tintColor
+    navigationController?.navigationBar.tintColor = readerColors.tintColor
   }
 
   override func viewWillAppear(_ animated: Bool) {

@@ -38,8 +38,6 @@
 #import "TPPMyBooksDownloadCenter.h"
 #import "TPPOPDS.h"
 #import "TPPReachability.h"
-#import "TPPReaderSettings.h"
-#import "TPPReaderSettingsView.h"
 #import "TPPReloadView.h"
 #import "TPPRootTabBarController.h"
 #import "TPPSAMLHelper.h"
