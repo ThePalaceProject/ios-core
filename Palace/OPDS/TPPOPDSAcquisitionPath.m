@@ -14,6 +14,7 @@ NSString * const _Nonnull ContentTypeOctetStream = @"application/octet-stream";
 NSString * const _Nonnull ContentTypeOverdriveAudiobook = @"application/vnd.overdrive.circulation.api+json;profile=audiobook";
 NSString * const _Nonnull ContentTypeOverdriveAudiobookActual = @"application/json";
 NSString * const _Nonnull ContentTypeReadiumLCP = @"application/vnd.readium.lcp.license.v1.0+json";
+NSString * const _Nonnull ContentTypeAudiobookLCP = @"application/audiobook+lcp";
 NSString * const _Nonnull ContentTypeAudiobookZip = @"application/audiobook+zip";
 
 @interface TPPOPDSAcquisitionPath ()
@@ -59,6 +60,7 @@ NSString * const _Nonnull ContentTypeAudiobookZip = @"application/audiobook+zip"
       ContentTypeOctetStream,
 #if LCP
       ContentTypeReadiumLCP,
+      ContentTypeAudiobookLCP,
 #endif
       ContentTypeAudiobookZip
     ]];
@@ -103,7 +105,8 @@ NSString * const _Nonnull ContentTypeAudiobookZip = @"application/audiobook+zip"
       ]],
       ContentTypeReadiumLCP: [NSSet setWithArray:@[
         ContentTypeEpubZip,
-        ContentTypeAudiobookZip
+        ContentTypeAudiobookZip,
+        ContentTypeAudiobookLCP
       ]],
       ContentTypeAdobeAdept: [NSSet setWithArray:@[ContentTypeEpubZip]],
       ContentTypeBearerToken: [NSSet setWithArray:@[
@@ -124,7 +127,8 @@ NSString * const _Nonnull ContentTypeAudiobookZip = @"application/audiobook+zip"
                                ContentTypeOpenAccessAudiobook,
                                ContentTypeFeedbooksAudiobook,
                                ContentTypeOverdriveAudiobook,
-                               ContentTypeAudiobookZip ]];
+                               ContentTypeAudiobookZip,
+                               ContentTypeAudiobookLCP]];
 }
 
 - (BOOL)isEqual:(id const)object

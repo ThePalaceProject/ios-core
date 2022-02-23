@@ -25,7 +25,7 @@ import NYPLAudiobookToolkit
   private let lcpService = LCPLibraryService()
   private let streamer: Streamer
   
-  /// Distributor key - one can be found in `NYPLBook.distributor` property
+  /// Distributor key - one can be found in `TPP.distributor` property
   @objc static let distributorKey = "lcp"
   
   /// Initialize for an LCP audiobook
@@ -61,7 +61,7 @@ import NYPLAudiobookToolkit
   /// - Parameter book: audiobook
   /// - Returns: `true` if the book is an LCP DRM protected audiobook, `false` otherwise
   @objc static func canOpenBook(_ book: TPPBook) -> Bool {
-    book.defaultBookContentType() == .audiobook && book.distributor == distributorKey
+    book.defaultBookContentType() == .audiobook
   }
 
   /// Creates an NSError for Objective-C code
