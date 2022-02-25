@@ -5,7 +5,6 @@
 #import "TPPConfiguration.h"
 #import "TPPBookRegistry.h"
 #import "TPPReachability.h"
-#import "TPPReaderSettings.h"
 #import "TPPRootTabBarController.h"
 
 
@@ -192,14 +191,12 @@ performFetchWithCompletionHandler:(void (^)(UIBackgroundFetchResult))backgroundF
 - (void)applicationWillResignActive:(__attribute__((unused)) UIApplication *)application
 {
   [[TPPBookRegistry sharedRegistry] save];
-  [[TPPReaderSettings sharedSettings] save];
 }
 
 - (void)applicationWillTerminate:(__unused UIApplication *)application
 {
   [self.audiobookLifecycleManager willTerminate];
   [[TPPBookRegistry sharedRegistry] save];
-  [[TPPReaderSettings sharedSettings] save];
   [NSNotificationCenter.defaultCenter removeObserver:self];
 }
 
