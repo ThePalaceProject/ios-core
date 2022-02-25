@@ -19,8 +19,7 @@
 
 // order-dependent
 typedef NS_ENUM(NSInteger, Group) {
-  GroupSortBy,
-  GroupShow
+  GroupSortBy
 };
 
 // order-dependent
