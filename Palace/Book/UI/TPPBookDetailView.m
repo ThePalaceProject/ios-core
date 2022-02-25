@@ -301,6 +301,7 @@ static NSString *DetailHTMLTemplate = nil;
   NSDateFormatter *const dateFormatter = [[NSDateFormatter alloc] init];
   dateFormatter.timeStyle = NSDateFormatterNoStyle;
   dateFormatter.dateStyle = NSDateFormatterLongStyle;
+  dateFormatter.timeZone = [NSTimeZone timeZoneForSecondsFromGMT:0];
   
   NSString *const publishedKeyString =
   self.book.published
