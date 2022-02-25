@@ -190,7 +190,7 @@ static NSString *DetailHTMLTemplate = nil;
                            [UIFont systemFontOfSize: 12],
                            self.book.summary ?: @""] stringByDecodingHTMLEntities];
 
-  NSData *htmlData = [htmlString dataUsingEncoding:NSUTF8StringEncoding];
+  NSData *htmlData = [htmlString dataUsingEncoding:NSUnicodeStringEncoding];
   NSAttributedString *attrString;
   if (htmlData) {
     NSError *error = nil;
