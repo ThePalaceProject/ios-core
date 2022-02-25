@@ -14,5 +14,3 @@ Carthage*
 **/TPPSecrets.swift
 fastlane/report.xml
 fastlane/*_output
-Cartfile
-Cartfile.resolved
