@@ -19,14 +19,7 @@
 
 // order-dependent
 typedef NS_ENUM(NSInteger, Group) {
-  GroupSortBy,
-  GroupShow
-};
-
-// order-dependent
-typedef NS_ENUM(NSInteger, FacetShow) {
-  FacetShowAll,
-  FacetShowOnLoan
+  GroupSortBy
 };
 
 // order-dependent
@@ -65,7 +58,6 @@ typedef NS_ENUM(NSInteger, FacetSort) {
   <TPPFacetViewDataSource, TPPFacetViewDelegate, TPPFacetBarViewDelegate, UICollectionViewDataSource,
    UICollectionViewDelegate, UICollectionViewDelegateFlowLayout>
 
-@property (nonatomic) FacetShow activeFacetShow;
 @property (nonatomic) FacetSort activeFacetSort;
 @property (nonatomic) NSArray *books;
 @property (nonatomic) TPPFacetBarView *facetBarView;
@@ -121,7 +113,6 @@ typedef NS_ENUM(NSInteger, FacetSort) {
   
   self.view.backgroundColor = [TPPConfiguration backgroundColor];
   
-  self.activeFacetShow = FacetShowAll;
   self.activeFacetSort = FacetSortAuthor;
   
   self.collectionView.dataSource = self;
@@ -235,17 +226,7 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
   NSArray *books = [[TPPBookRegistry sharedRegistry] myBooks];
   
   self.instructionsLabel.hidden = !!books.count;
-  
-  switch(self.activeFacetShow) {
-    case FacetShowAll:
-      break;
-    case FacetShowOnLoan:
-      books = [books filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(TPPBook *book, __unused NSDictionary *bindings) {
-        return book.revokeURL != nil;
-      }]];
-      break;
-  }
-  
+    
   switch(self.activeFacetSort) {
     case FacetSortAuthor: {
       self.books = [books sortedArrayUsingComparator:
@@ -268,7 +249,7 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
 
 - (NSUInteger)numberOfFacetGroupsInFacetView:(__attribute__((unused)) TPPFacetView *)facetView
 {
-  return 2;
+  return 1;
 }
 
 - (NSUInteger)facetView:(__attribute__((unused)) TPPFacetView *)facetView
@@ -281,7 +262,6 @@ numberOfFacetsInFacetGroupAtIndex:(__attribute__((unused)) NSUInteger)index
 nameForFacetGroupAtIndex:(NSUInteger const)index
 {
   return @[NSLocalizedString(@"MyBooksViewControllerGroupSortBy", nil),
-           NSLocalizedString(@"MyBooksViewControllerGroupShow", nil)
            ][index];
 }
 
@@ -289,14 +269,6 @@ nameForFacetGroupAtIndex:(NSUInteger const)index
 nameForFacetAtIndexPath:(NSIndexPath *const)indexPath
 {
   switch([indexPath indexAtPosition:0]) {
-    case GroupShow:
-      switch([indexPath indexAtPosition:1]) {
-        case FacetShowAll:
-          return NSLocalizedString(@"MyBooksViewControllerFacetAll", nil);
-        case FacetShowOnLoan:
-          return NSLocalizedString(@"MyBooksViewControllerFacetOnLoan", nil);
-      }
-      break;
     case GroupSortBy:
       switch([indexPath indexAtPosition:1]) {
         case FacetSortAuthor:
@@ -320,8 +292,6 @@ isActiveFacetForFacetGroupAtIndex:(__attribute__((unused)) NSUInteger)index
 activeFacetIndexForFacetGroupAtIndex:(NSUInteger const)index
 {
   switch(index) {
-    case GroupShow:
-      return self.activeFacetShow;
     case GroupSortBy:
       return self.activeFacetSort;
   }
@@ -342,16 +312,6 @@ activeFacetIndexForFacetGroupAtIndex:(NSUInteger const)index
 didSelectFacetAtIndexPath:(NSIndexPath *const)indexPath
 {
   switch([indexPath indexAtPosition:0]) {
-    case GroupShow:
-      switch([indexPath indexAtPosition:1]) {
-        case FacetShowAll:
-          self.activeFacetShow = FacetShowAll;
-          goto OK;
-        case FacetShowOnLoan:
-          self.activeFacetShow = FacetShowOnLoan;
-          goto OK;
-      }
-      break;
     case GroupSortBy:
       switch([indexPath indexAtPosition:1]) {
         case FacetSortAuthor:
