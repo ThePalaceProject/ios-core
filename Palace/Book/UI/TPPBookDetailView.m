@@ -186,11 +186,9 @@ static NSString *DetailHTMLTemplate = nil;
   self.summaryTextView.textContainerInset = UIEdgeInsetsZero;
   self.summaryTextView.adjustsFontForContentSizeCategory = YES;
 
-  NSString *htmlString = [NSString stringWithFormat:DetailHTMLTemplate,
-                          [TPPConfiguration systemFontName],
-                          self.book.summary ?: @""];
-  htmlString = [htmlString stringByReplacingOccurrencesOfString:@"<p>" withString:@"<span>"];
-  htmlString = [htmlString stringByReplacingOccurrencesOfString:@"</p>" withString:@"</span>"];
+  NSString *htmlString = [[NSString stringWithFormat:DetailHTMLTemplate,
+                           [UIFont systemFontOfSize: 12],
+                           self.book.summary ?: @""] stringByDecodingHTMLEntities];
 
   NSData *htmlData = [htmlString dataUsingEncoding:NSUnicodeStringEncoding];
   NSAttributedString *attrString;
