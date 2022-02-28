@@ -87,7 +87,7 @@ struct TPPReaderSettingsView: View {
   
   /// Buttons to decrease and increase the size of text font
   var fontSizeButtons: some View {
-    HStack(spacing: 0) {
+    HStack(alignment: .center, spacing: 0) {
       Button {
         settings.decreaseFontSize()
       } label: {
