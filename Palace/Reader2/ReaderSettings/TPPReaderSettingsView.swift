@@ -87,11 +87,12 @@ struct TPPReaderSettingsView: View {
   
   /// Buttons to decrease and increase the size of text font
   var fontSizeButtons: some View {
-    HStack(spacing: 0) {
+    HStack(alignment: .center, spacing: 0) {
       Button {
         settings.decreaseFontSize()
       } label: {
-        Image(systemName: "textformat.size.smaller")
+        fontSizeText(size: 14)
+          .foregroundColor(Color(settings.textColor))
           .imageScale(.large)
           .opacity(imageOpacity(state: settings.canDecreaseFontSize))
       }
@@ -105,7 +106,8 @@ struct TPPReaderSettingsView: View {
       Button {
         settings.increaseFontSize()
       } label: {
-        Image(systemName: "textformat.size.larger")
+        fontSizeText(size: 20)
+          .foregroundColor(Color(settings.textColor))
           .imageScale(.large)
           .opacity(imageOpacity(state: settings.canIncreaseFontSize))
       }
@@ -113,6 +115,18 @@ struct TPPReaderSettingsView: View {
       .disabled(!settings.canIncreaseFontSize)
       .accessibility(label: Text("IncreaseFontSize"))
     }
+  }
+  
+  /// "A" text element for font size buttons
+  ///
+  /// Font size is number rather than style to avoid scaling.
+  ///
+  /// - Parameter size: text size
+  /// - Returns: Text element
+  @ViewBuilder
+  func fontSizeText(size: Double) -> some View {
+    Text("A")
+      .font(.system(size: size, weight: .medium, design: .rounded))
   }
   
   /// Screen brightness control

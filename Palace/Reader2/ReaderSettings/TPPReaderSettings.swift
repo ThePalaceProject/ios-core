@@ -46,8 +46,13 @@ class TPPReaderSettings: ObservableObject {
   init(userSettings: UserSettings, delegate: TPPReaderSettingsDelegate) {
     self.userSettings = userSettings
     self.delegate = delegate
-    
+
+    // Set font size variation
     if let settingsFontSize = userSettings.userProperties.getProperty(reference: ReadiumCSSReference.fontSize.rawValue) as? Incrementable {
+      settingsFontSize.max = 250.0
+      settingsFontSize.min = 75.0
+      settingsFontSize.step = 12.5
+
       self.fontSize = settingsFontSize.value
       self.minFontSize = settingsFontSize.min
       self.maxFontSize = settingsFontSize.max
