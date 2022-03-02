@@ -23,8 +23,7 @@ let currentAccountIdentifierKey  = "TPPCurrentAccountIdentifier"
   ]
 
   static let TPPNationalAccountUUIDs = [
-    "urn:uuid:6b849570-070f-43b4-9dcc-7ebb4bca292e", //DPLA
-    "urn:uuid:f60b644e-4955-4996-a4e5-a192feb4e7f8"  //Internet Archive
+    "urn:uuid:6b849570-070f-43b4-9dcc-7ebb4bca292e" // Palace Bookshelf
   ]
 
   let tppAccountUUID = AccountsManager.TPPAccountUUIDs[0]
