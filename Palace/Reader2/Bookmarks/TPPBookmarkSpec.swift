@@ -72,10 +72,17 @@ struct TPPBookmarkSpec {
       let value: String
     }
     let device: Device
+    
+    struct ChapterTitle {
+      static let key = "chapterTitle"
+      let value: String
+    }
+    let chapterTitle: ChapterTitle
 
-    init(time: String, device: String) {
+    init(time: String, device: String, chapterTitle: String) {
       self.time = Time(value: time)
       self.device = Device(value: device)
+      self.chapterTitle = ChapterTitle(value: chapterTitle)
     }
   }
 
@@ -171,7 +178,10 @@ struct TPPBookmarkSpec {
        bookID: String,
        selectorValue: String) {
     self.id = Id(value: id)
-    self.body = Body(time: time.rfc3339String(), device: device)
+    
+    let dict = try? JSONSerialization.jsonObject(with: selectorValue.data(using: .utf8)!, options: []) as? [String: Any]
+    let title = (dict!!["title"] as? String) ?? ""
+    self.body = Body(time: time.rfc3339String(), device: device, chapterTitle: title)
     self.motivation = motivation
     self.target = Target(bookID: bookID, selectorValue: selectorValue)
   }
@@ -184,7 +194,8 @@ struct TPPBookmarkSpec {
       TPPBookmarkSpec.type.key: TPPBookmarkSpec.type.value,
       TPPBookmarkSpec.Body.key: [
         TPPBookmarkSpec.Body.Time.key : body.time.value,
-        TPPBookmarkSpec.Body.Device.key : body.device.value
+        TPPBookmarkSpec.Body.Device.key : body.device.value,
+        TPPBookmarkSpec.Body.ChapterTitle.key: body.chapterTitle.value
       ],
       TPPBookmarkSpec.Motivation.key: motivation.rawValue,
       TPPBookmarkSpec.Target.key: [
