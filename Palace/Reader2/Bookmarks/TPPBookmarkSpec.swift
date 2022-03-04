@@ -74,15 +74,22 @@ struct TPPBookmarkSpec {
     let device: Device
     
     struct ChapterTitle {
-      static let key = "chapterTitle"
+      static let key = "http://librarysimplified.org/terms/chapter"
       let value: String
     }
     let chapterTitle: ChapterTitle
 
-    init(time: String, device: String, chapterTitle: String) {
+    struct ProgressWithinBook {
+      static let key = "http://librarysimplified.org/terms/progressWithinBook"
+      let value: Double
+    }
+    let progressWithinBook: ProgressWithinBook
+
+    init(time: String, device: String, chapterTitle: String, progressWithinBook: Double) {
       self.time = Time(value: time)
       self.device = Device(value: device)
       self.chapterTitle = ChapterTitle(value: chapterTitle)
+      self.progressWithinBook = ProgressWithinBook(value: progressWithinBook)
     }
   }
 
@@ -181,7 +188,8 @@ struct TPPBookmarkSpec {
     
     let dict = try? JSONSerialization.jsonObject(with: selectorValue.data(using: .utf8)!, options: []) as? [String: Any]
     let title = (dict!!["title"] as? String) ?? ""
-    self.body = Body(time: time.rfc3339String(), device: device, chapterTitle: title)
+    let progressWithinBook = (dict!!["progressWithinBook"] as? Double) ?? 0.0
+    self.body = Body(time: time.rfc3339String(), device: device, chapterTitle: title, progressWithinBook: progressWithinBook)
     self.motivation = motivation
     self.target = Target(bookID: bookID, selectorValue: selectorValue)
   }
