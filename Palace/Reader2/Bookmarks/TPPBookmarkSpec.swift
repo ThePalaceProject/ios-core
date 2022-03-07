@@ -185,10 +185,16 @@ struct TPPBookmarkSpec {
        bookID: String,
        selectorValue: String) {
     self.id = Id(value: id)
-    
-    let dict = try? JSONSerialization.jsonObject(with: selectorValue.data(using: .utf8)!, options: []) as? [String: Any]
-    let title = (dict!!["title"] as? String) ?? ""
-    let progressWithinBook = (dict!!["progressWithinBook"] as? Double) ?? 0.0
+
+    var title = ""
+    var progressWithinBook = 0.0
+
+    if let value = selectorValue.data(using: .utf8),
+       let dict = try? JSONSerialization.jsonObject(with: value, options: []) as? [String: Any] {
+      title = dict?["title"] as? String ?? ""
+      progressWithinBook = dict?["progressWithinBook"] as? Double ?? 0.0
+    }
+  
     self.body = Body(time: time.rfc3339String(), device: device, chapterTitle: title, progressWithinBook: progressWithinBook)
     self.motivation = motivation
     self.target = Target(bookID: bookID, selectorValue: selectorValue)
