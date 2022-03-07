@@ -136,7 +136,7 @@ totalBytesExpectedToWrite:(int64_t const)totalBytesExpectedToWrite
       self.bookIdentifierToDownloadInfo[book.identifier] =
       [[self downloadInfoForBookIdentifier:book.identifier]
        withRightsManagement:TPPMyBooksDownloadRightsManagementAdobe];
-    } else if([downloadTask.response.MIMEType isEqualToString:ContentTypeReadiumLCP]) {
+    } else if([downloadTask.response.MIMEType isEqualToString:ContentTypeReadiumLCP] || [downloadTask.response.MIMEType isEqualToString:ContentTypeReadiumLCPPDF]) {
         self.bookIdentifierToDownloadInfo[book.identifier] =
         [[self downloadInfoForBookIdentifier:book.identifier]
          withRightsManagement:TPPMyBooksDownloadRightsManagementLCP];
@@ -715,7 +715,7 @@ didCompleteWithError:(NSError *)error
   // FIXME: The extension is always "epub" even when the URL refers to content of a different
   // type (e.g. an audiobook). While there's no reason this must change, it's certainly likely
   // to cause confusion for anyone looking at the filesystem.
-  return @"epub";
+  return @"pdf";
 }
 
 - (NSURL *)fileURLForBookIndentifier:(NSString *const)identifier
