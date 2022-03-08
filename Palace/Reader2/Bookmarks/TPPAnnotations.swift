@@ -268,7 +268,7 @@ import R2Shared
     }
 
     guard let annotationsURL = TPPAnnotations.annotationsURL else {
-      Log.error(#file, "Annotations URL was nil while posting R1 bookmark")
+      Log.error(#file, "Annotations URL was nil while posting bookmark")
       return
     }
 

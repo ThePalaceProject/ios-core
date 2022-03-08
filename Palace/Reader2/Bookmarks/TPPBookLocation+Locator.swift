@@ -13,6 +13,7 @@ extension TPPBookLocation {
   static let r2Renderer = "readium2"
   
   convenience init?(locator: Locator,
+                    type: String,
                     publication: Publication,
                     renderer: String = TPPBookLocation.r2Renderer) {
     // Store all required properties of a locator object in a dictionary
@@ -20,7 +21,7 @@ extension TPPBookLocation {
     // There is no specific format to follow, the value of the keys can be change if needed
     let dict: [String : Any] = [
       TPPBookLocation.hrefKey: locator.href,
-      TPPBookLocation.typeKey: locator.type,
+      TPPBookLocation.typeKey: type,
       TPPBookLocation.chapterProgressKey: locator.locations.progression ?? 0.0,
       TPPBookLocation.bookProgressKey: locator.locations.totalProgression ?? 0.0,
       TPPBookLocation.titleKey: locator.title ?? "",
@@ -94,7 +95,7 @@ extension TPPBookLocation {
 
 private extension TPPBookLocation {
   static let hrefKey = "href"
-  static let typeKey = "locatorType"
+  static let typeKey = "@type"
   static let chapterProgressKey = "progressWithinChapter"
   static let bookProgressKey = "progressWithinBook"
   static let titleKey = "title"
