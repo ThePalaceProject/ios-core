@@ -52,10 +52,10 @@ class TPPLastReadPositionPoster {
       return
     }
 
-    // TODO: SIMPLY-3645 don't use old school location
-    guard let location = TPPBookLocation(locator: locator, publication: publication) else {
+    guard let location = TPPBookLocation(locator: locator, type: "LocatorHrefProgression", publication: publication) else {
       return
     }
+
     bookRegistryProvider.setLocation(location, forIdentifier: book.identifier)
     postReadPosition(selectorValue: location.locationString)
   }

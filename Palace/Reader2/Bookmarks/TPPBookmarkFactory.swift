@@ -121,9 +121,9 @@ class TPPBookmarkFactory {
         return nil
     }
 
-    let chapter = selectorValueJSON["title"] as? String
+    let chapter = body[TPPBookmarkSpec.Body.ChapterTitle.key] as? String ?? selectorValueJSON["title"] as? String
     let progressWithinChapter = selectorValueJSON["progressWithinChapter"] as? Float
-    let progressWithinBook = Float(selectorValueJSON["progressWithinBook"] as? Double ?? 0.0)
+    let progressWithinBook = Float(selectorValueJSON["progressWithinBook"] as? Double ?? body[TPPBookmarkSpec.Body.ProgressWithinBook.key] as? Double ?? 0.0)
 
     return TPPReadiumBookmark(annotationId: annotationID,
                                href: href,
