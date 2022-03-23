@@ -264,17 +264,17 @@ static NSString *DetailHTMLTemplate = nil;
   }
 
   self.titleLabel = [[UILabel alloc] init];
-  self.titleLabel.numberOfLines = 2;
+  self.titleLabel.numberOfLines = 0;
   self.titleLabel.attributedText = TPPAttributedStringForTitleFromString(self.book.title);
 
   self.subtitleLabel = [[UILabel alloc] init];
   self.subtitleLabel.attributedText = TPPAttributedStringForTitleFromString(self.book.subtitle);
-  self.subtitleLabel.numberOfLines = 3;
+  self.subtitleLabel.numberOfLines = 0;
 
 
   self.authorsLabel = [[UILabel alloc] init];
   self.authorsLabel.autoresizingMask = UIViewAutoresizingFlexibleRightMargin;
-  self.authorsLabel.numberOfLines = 2;
+  self.authorsLabel.numberOfLines = 0;
   if (UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad &&
       [[TPPRootTabBarController sharedController] traitCollection].horizontalSizeClass != UIUserInterfaceSizeClassCompact) {
     self.authorsLabel.text = self.book.authors;
