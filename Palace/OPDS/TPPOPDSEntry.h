@@ -26,6 +26,7 @@
 @property (nonatomic, readonly) NSString *summary; // nilable
 @property (nonatomic, readonly) NSString *title;
 @property (nonatomic, readonly) NSDate *updated;
+@property (nonatomic, readonly) NSDictionary<NSString *, NSArray<NSString *>*> *contributors;
 
 + (id)new NS_UNAVAILABLE;
 - (id)init NS_UNAVAILABLE;

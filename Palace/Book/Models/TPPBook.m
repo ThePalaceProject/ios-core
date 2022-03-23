@@ -28,6 +28,7 @@
 @property (nonatomic) NSURL *seriesURL;
 @property (nonatomic) NSURL *revokeURL;
 @property (nonatomic) NSURL *reportURL;
+@property (nonatomic) NSDictionary *contributors;
 
 - (nonnull instancetype)initWithAcquisitions:(nonnull NSArray<TPPOPDSAcquisition *> *)acquisitions
                                  bookAuthors:(nullable NSArray<TPPBookAuthor *> *)authors
@@ -49,6 +50,7 @@
                                    seriesURL:(nullable NSURL *)seriesURL
                                    revokeURL:(nullable NSURL *)revokeURL
                                    reportURL:(nullable NSURL *)reportURL
+                                contributors:(nullable NSDictionary *)contributors
 NS_DESIGNATED_INITIALIZER;
 
 @end
@@ -160,7 +162,9 @@ static NSString *const UpdatedKey = @"updated";
           relatedWorksURL:entry.relatedWorks.href
           seriesURL:entry.seriesLink.href
           revokeURL:revoke
-          reportURL:report];
+          reportURL:report
+          contributors:entry.contributors
+  ];
 }
 
 - (instancetype)bookWithMetadataFromBook:(TPPBook *)book
@@ -185,7 +189,9 @@ static NSString *const UpdatedKey = @"updated";
           relatedWorksURL:book.relatedWorksURL
           seriesURL:book.seriesURL
           revokeURL:self.revokeURL
-          reportURL:self.reportURL];
+          reportURL:self.reportURL
+          contributors:book.contributors
+  ];
 }
 
 - (instancetype)initWithAcquisitions:(NSArray<TPPOPDSAcquisition *> *)acquisitions
@@ -208,6 +214,7 @@ static NSString *const UpdatedKey = @"updated";
                            seriesURL:(NSURL *)seriesURL
                            revokeURL:(NSURL *)revokeURL
                            reportURL:(NSURL *)reportURL
+                        contributors:(NSDictionary *)contributors
 {
   self = [super init];
   if(!self) return nil;
@@ -236,6 +243,7 @@ static NSString *const UpdatedKey = @"updated";
   self.updated = updated;
   self.revokeURL = revokeURL;
   self.reportURL = reportURL;
+  self.contributors = contributors;
   
   return self;
 }
@@ -526,6 +534,10 @@ static NSString *const UpdatedKey = @"updated";
 - (NSString *)categories
 {
   return [self.categoryStrings componentsJoinedByString:@"; "];
+}
+
+- (NSString *)narrators {
+  return [self.contributors[@"nrt"] componentsJoinedByString:@"; "];
 }
 
 - (TPPOPDSAcquisition *)defaultAcquisition

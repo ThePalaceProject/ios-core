@@ -29,6 +29,7 @@
 @property (nonatomic) NSString *summary;
 @property (nonatomic) NSString *title;
 @property (nonatomic) NSDate *updated;
+@property (nonatomic) NSDictionary<NSString *, NSArray<NSString *>*> *contributors;
 
 @end
 
@@ -64,6 +65,24 @@
 
     self.authorStrings = authorStrings;
     self.authorLinks = [authorLinks copy];
+  }
+  
+  // Contributors and their roles
+  {
+    NSMutableDictionary<NSString *, NSMutableArray<NSString *>*> *contributors  = [NSMutableDictionary dictionary];
+    for(TPPXML *contributorNode in [entryXML childrenWithName:@"contributor"]) {
+      NSString *contributorRole = contributorNode.attributes[@"opf:role"];
+      NSString *contributorName = [[contributorNode firstChildWithName:@"name"].value stringByDecodingHTMLEntities];
+      if (contributorName) {
+        if (!contributors[contributorRole]) {
+          contributors[contributorRole] = [NSMutableArray array];
+        }
+        [contributors[contributorRole] addObject:contributorName];
+      }
+    }
+    if ([contributors count] > 0) {
+      self.contributors = contributors;
+    }
   }
   
   {
