@@ -63,7 +63,7 @@ import Foundation
   private func cellForBetaLibraries() -> UITableViewCell {
     let cell = UITableViewCell(style: UITableViewCell.CellStyle.default, reuseIdentifier: "betaLibraryCell")
     cell.selectionStyle = .none
-    cell.textLabel?.text = "Enable test libraries"
+    cell.textLabel?.text = "Enable Hidden Libraries"
     let betaLibrarySwitch = UISwitch()
     betaLibrarySwitch.setOn(TPPSettings.shared.useBetaLibraries, animated: false)
     betaLibrarySwitch.addTarget(self, action:#selector(librarySwitchDidChange), for:.valueChanged)
