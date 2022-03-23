@@ -39,5 +39,6 @@
                              relatedWorksURL:(nullable NSURL *)relatedWorksURL
                                    seriesURL:(nullable NSURL *)seriesURL
                                    revokeURL:(nullable NSURL *)revokeURL
-                                   reportURL:(nullable NSURL *)reportURL;
+                                   reportURL:(nullable NSURL *)reportURL
+                                contributors:(nullable NSDictionary *)contributors;
 @end
