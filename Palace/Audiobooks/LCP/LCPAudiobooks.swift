@@ -61,7 +61,6 @@ import NYPLAudiobookToolkit
   @objc static func canOpenBook(_ book: TPPBook) -> Bool {
     guard let defualtAcquisition = book.defaultAcquisition() else { return false }
     return book.defaultBookContentType() == .audiobook && defualtAcquisition.type == expectedAcquisitionType
-
   }
 
   /// Creates an NSError for Objective-C code

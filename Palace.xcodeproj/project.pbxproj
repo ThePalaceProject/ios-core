@@ -700,6 +700,11 @@
 		E551B361267D402B0026FC1B /* TPPAccountList.swift in Sources */ = {isa = PBXBuildFile; fileRef = E551B360267D402B0026FC1B /* TPPAccountList.swift */; };
 		E551B363267D42A20026FC1B /* TPPAccountList.swift in Sources */ = {isa = PBXBuildFile; fileRef = E551B360267D402B0026FC1B /* TPPAccountList.swift */; };
 		E551B365267D42AF0026FC1B /* TPPLoadingViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E551B359267D396A0026FC1B /* TPPLoadingViewController.swift */; };
+		E580CD9727ECC06900B14475 /* PDFModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = E580CD9627ECC06900B14475 /* PDFModule.swift */; };
+		E580CDA027ECC12F00B14475 /* PDFModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = E580CD9627ECC06900B14475 /* PDFModule.swift */; };
+		E580CDA227ECE66A00B14475 /* TPPPDFViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E580CDA127ECE66A00B14475 /* TPPPDFViewController.swift */; };
+		E580CDA327ECF0E100B14475 /* LCPPDFs.swift in Sources */ = {isa = PBXBuildFile; fileRef = E580CD7A27EABBEE00B14475 /* LCPPDFs.swift */; };
+		E580CDA427ECF0E200B14475 /* LCPPDFs.swift in Sources */ = {isa = PBXBuildFile; fileRef = E580CD7A27EABBEE00B14475 /* LCPPDFs.swift */; };
 		E58565CF269774C400A5FBD5 /* AudioEngine.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E58565CE269774C400A5FBD5 /* AudioEngine.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		E5AD65DD2684FACA00C62951 /* TPPAccountListCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AD65DC2684FACA00C62951 /* TPPAccountListCell.swift */; };
 		E5AD65E12684FDA300C62951 /* TPPAccountListDataSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AD65E02684FDA300C62951 /* TPPAccountListDataSource.swift */; };
@@ -1433,6 +1438,9 @@
 		E5506DE326C4688D009FA623 /* Colors.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Colors.xcassets; sourceTree = "<group>"; };
 		E551B359267D396A0026FC1B /* TPPLoadingViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPLoadingViewController.swift; sourceTree = "<group>"; };
 		E551B360267D402B0026FC1B /* TPPAccountList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAccountList.swift; sourceTree = "<group>"; };
+		E580CD7A27EABBEE00B14475 /* LCPPDFs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LCPPDFs.swift; sourceTree = "<group>"; };
+		E580CD9627ECC06900B14475 /* PDFModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFModule.swift; sourceTree = "<group>"; };
+		E580CDA127ECE66A00B14475 /* TPPPDFViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPPDFViewController.swift; sourceTree = "<group>"; };
 		E58565CE269774C400A5FBD5 /* AudioEngine.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = AudioEngine.xcframework; path = Carthage/Build/AudioEngine.xcframework; sourceTree = "<group>"; };
 		E58565D2269774D900A5FBD5 /* NYPLAEToolkit.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = NYPLAEToolkit.xcframework; sourceTree = "<group>"; };
 		E585662026979AC100A5FBD5 /* NYPLAEToolkit.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = NYPLAEToolkit.xcodeproj; path = "ios-drm-audioengine/NYPLAEToolkit.xcodeproj"; sourceTree = "<group>"; };
@@ -1683,6 +1691,7 @@
 			isa = PBXGroup;
 			children = (
 				212B99D2258A36FD00C8BF79 /* LCPAudiobooks.swift */,
+				E580CD7A27EABBEE00B14475 /* LCPPDFs.swift */,
 			);
 			path = LCP;
 			sourceTree = "<group>";
@@ -1969,6 +1978,7 @@
 			children = (
 				21DF7F9725AF5E560090402A /* ReaderFormatModule.swift */,
 				73A229AC2410221E006B9EAD /* EPUBModule.swift */,
+				E580CD9627ECC06900B14475 /* PDFModule.swift */,
 			);
 			path = ReadingFormats;
 			sourceTree = "<group>";
@@ -2476,6 +2486,7 @@
 				7386C1F9245276CA004C78BD /* TPPReaderTOCCell.swift */,
 				73F713552417200F00C63B81 /* TPPBaseReaderViewController.swift */,
 				73F713502417200F00C63B81 /* TPPEPUBViewController.swift */,
+				E580CDA127ECE66A00B14475 /* TPPPDFViewController.swift */,
 				73F713672417240100C63B81 /* UIViewController+TPP.swift */,
 				7386C1F3245225A5004C78BD /* TPPReaderPositionsVC.swift */,
 				7335BA9A2453C48F000295F2 /* TPPReaderPositions.storyboard */,
@@ -3336,6 +3347,7 @@
 				73EB0AA425821DF4006BC997 /* TPPCatalogNavigationController.m in Sources */,
 				73EB0AA525821DF4006BC997 /* TPPEntryPointView.swift in Sources */,
 				73EB0AA625821DF4006BC997 /* TPPOPDSGroup.m in Sources */,
+				E580CDA027ECC12F00B14475 /* PDFModule.swift in Sources */,
 				73EB0AA825821DF4006BC997 /* TPPAppReviewPrompt.swift in Sources */,
 				73EB0AA925821DF4006BC997 /* TPPFacetBarView.swift in Sources */,
 				73EB0AAA25821DF4006BC997 /* TPPDismissibleViewController.m in Sources */,
@@ -3435,6 +3447,7 @@
 				73EB0AFC25821DF4006BC997 /* TPPSignInBusinessLogic+BookmarkSyncing.swift in Sources */,
 				73EB0AFD25821DF4006BC997 /* TPPBookAuthor.swift in Sources */,
 				2126FE3A25C0597E0095C45C /* LibraryServiceError.swift in Sources */,
+				E580CDA427ECF0E200B14475 /* LCPPDFs.swift in Sources */,
 				217595DB27B6800100BA0FDD /* TPPReaderSettingsView.swift in Sources */,
 				73EB0AFE25821DF4006BC997 /* NSNotification+TPP.swift in Sources */,
 				73EB0AFF25821DF4006BC997 /* URLResponse+TPPAuthentication.swift in Sources */,
@@ -3525,6 +3538,7 @@
 				7327A89323EE017300954748 /* TPPMainThreadChecker.swift in Sources */,
 				116A5EB91947B57500491A21 /* TPPConfiguration.m in Sources */,
 				5D1B142A22CC179F0006C964 /* TPPAlertUtils.swift in Sources */,
+				E580CDA327ECF0E100B14475 /* LCPPDFs.swift in Sources */,
 				7386C1F724525AFF004C78BD /* TPPReaderTOCBusinessLogic.swift in Sources */,
 				B51C1E0222861BBF003B49A5 /* OPDS2Publication.swift in Sources */,
 				E5B2B8E12759583200150ED4 /* TPPSettingsViewController.swift in Sources */,
@@ -3621,6 +3635,7 @@
 				21DF7F9325AF5E1E0090402A /* ReaderModule.swift in Sources */,
 				E54DD4D0275C66F30013C200 /* DisplayStrings.swift in Sources */,
 				118B7ABF195CBF72005CE3E7 /* TPPSession.m in Sources */,
+				E580CD9727ECC06900B14475 /* PDFModule.swift in Sources */,
 				841B55431B740F2700FAC1AF /* TPPSettingsEULAViewController.m in Sources */,
 				7353940D25085DBB0043C800 /* TPPPresentationUtils.swift in Sources */,
 				A4276F481B00046300CA7194 /* TPPMyBooksDownloadInfo.m in Sources */,
@@ -3742,6 +3757,7 @@
 				17071065242A923400E2648F /* TPPSecrets.swift in Sources */,
 				E6D775421F9FE0AF00C0B722 /* TPPBarcodeScanningViewController.m in Sources */,
 				1111973F1988226F0014462F /* TPPBookDetailDownloadFailedView.m in Sources */,
+				E580CDA227ECE66A00B14475 /* TPPPDFViewController.swift in Sources */,
 				AE77EE7AACC975280BAB9A4C /* TPPOPDSFeed.m in Sources */,
 				73DE897A260BEA13003D9135 /* TPPRequestExecuting.swift in Sources */,
 				AE77EB0CB5B94AEC591E2D91 /* TPPOPDSLink.m in Sources */,
