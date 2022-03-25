@@ -23,7 +23,7 @@ import ReadiumLCP
   private let streamer: Streamer
   
   /// Initialize for an LCP PDF
-  /// - Parameter pdfURL: must be a file with `.lcpl` extension
+  /// - Parameter pdfURL: must be a file with `.pdf` extension
   @objc init?(for pdfURL: URL) {
     // Check contentProtection is in place
     guard let contentProtection = lcpService.contentProtection else {
