@@ -151,6 +151,7 @@ struct TPPSettingsView: View {
       .onTapGesture(count: 7) {
         self.showDeveloperSettings = true
       }
+      .frame(height: 40)
       .horizontallyCentered()
   }
   
