@@ -711,11 +711,16 @@ didCompleteWithError:(NSError *)error
   if ([LCPAudiobooks canOpenBook:book]) {
     return @"lcpa";
   }
+  
+  if ([LCPPDFs canOpenBook:book]) {
+    return @"zip";
+  }
 #endif
+
   // FIXME: The extension is always "epub" even when the URL refers to content of a different
   // type (e.g. an audiobook). While there's no reason this must change, it's certainly likely
   // to cause confusion for anyone looking at the filesystem.
-  return @"pdf";
+  return @"epub";
 }
 
 - (NSURL *)fileURLForBookIndentifier:(NSString *const)identifier

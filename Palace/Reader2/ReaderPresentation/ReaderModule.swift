@@ -66,7 +66,8 @@ final class ReaderModule: ReaderModuleAPI {
     self.progressSynchronizer = TPPLastReadPositionSynchronizer(bookRegistry: bookRegistry)
 
     formatModules = [
-      EPUBModule(delegate: self.delegate, resourcesServer: resourcesServer)
+      EPUBModule(delegate: self.delegate, resourcesServer: resourcesServer),
+      PDFModule(delegate: self.delegate)
     ]
   }
   
