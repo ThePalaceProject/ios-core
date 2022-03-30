@@ -161,7 +161,7 @@ CGFloat const marginPadding = 2.0;
 
   self.usernameTextField = [[UITextField alloc] initWithFrame:CGRectZero];
   self.usernameTextField.delegate = self.frontEndValidator;
-  self.usernameTextField.placeholder = NSLocalizedString(@"BarcodeOrUsername", nil);
+  self.usernameTextField.placeholder = AccountsManager.shared.currentAccount.details.defaultAuth.patronIDLabel ?: NSLocalizedString(@"BarcodeOrUsername", nil);
 
   switch (self.businessLogic.selectedAuthentication.patronIDKeyboard) {
     case LoginKeyboardStandard:
@@ -184,7 +184,7 @@ CGFloat const marginPadding = 2.0;
    forControlEvents:UIControlEventEditingChanged];
   
   self.PINTextField = [[UITextField alloc] initWithFrame:CGRectZero];
-  self.PINTextField.placeholder = NSLocalizedString(@"PIN", nil);
+  self.PINTextField.placeholder = self.businessLogic.selectedAuthentication.pinLabel ?: NSLocalizedString(@"PIN", nil);
 
   switch (self.businessLogic.selectedAuthentication.pinKeyboard) {
     case LoginKeyboardStandard:
