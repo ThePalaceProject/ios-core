@@ -211,6 +211,7 @@ Authenticating with any of those barcodes should work.
   
   self.view.backgroundColor = [TPPConfiguration backgroundColor];
   self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeInteractive;
+  [self setupHeaderView];
 
   UIActivityIndicatorView *activityIndicator = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle: UIActivityIndicatorViewStyleMedium];
   activityIndicator.center = CGPointMake(self.view.frame.size.width / 2, self.view.frame.size.height / 2);
@@ -969,46 +970,41 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
   return UITableViewAutomaticDimension;
 }
 
-- (UIView *)tableView:(__unused UITableView *)tableView viewForHeaderInSection:(NSInteger)section
+- (void) setupHeaderView
 {
-  if (section == sSection0AccountInfo) {
-    UIView *containerView = [[UIView alloc] init];
-    containerView.preservesSuperviewLayoutMargins = YES;
-    UILabel *titleLabel = [[UILabel alloc] init];
-    UILabel *subtitleLabel = [[UILabel alloc] init];
-    subtitleLabel.numberOfLines = 0;
-    UIImageView *logoView = [[UIImageView alloc] initWithImage:self.selectedAccount.logo];
-    logoView.contentMode = UIViewContentModeScaleAspectFit;
-    
-    titleLabel.text = self.selectedAccount.name;
-    titleLabel.font = [UIFont palaceFontOfSize:14];
-    subtitleLabel.text = self.selectedAccount.subtitle;
-    if (subtitleLabel.text == nil || [subtitleLabel.text isEqualToString:@""]) {
-      subtitleLabel.text = @" "; // Make sure it takes up at least some space
-    }
-    subtitleLabel.font = [UIFont palaceFontOfSize:12];
-    
-    [containerView addSubview:titleLabel];
-    [containerView addSubview:subtitleLabel];
-    [containerView addSubview:logoView];
-    
-    [logoView autoSetDimensionsToSize:CGSizeMake(45, 45)];
-    [logoView autoPinEdgeToSuperviewMargin:ALEdgeLeft];
-    [logoView autoPinEdgeToSuperviewEdge:ALEdgeTop withInset:16];
-    
-    [titleLabel autoPinEdgeToSuperviewEdge:ALEdgeTop withInset:16];
-    [titleLabel autoPinEdgeToSuperviewMargin:ALEdgeRight];
-    [titleLabel autoPinEdge:ALEdgeLeft toEdge:ALEdgeRight ofView:logoView withOffset:8];
-    
-    [subtitleLabel autoPinEdge:ALEdgeLeft toEdge:ALEdgeLeft ofView:titleLabel];
-    [subtitleLabel autoPinEdge:ALEdgeRight toEdge:ALEdgeRight ofView:titleLabel];
-    [subtitleLabel autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:titleLabel withOffset:0];
-    [subtitleLabel autoPinEdgeToSuperviewEdge:ALEdgeBottom withInset:20];
+  UIView *headerView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, self.tableView.frame.size.width, 100)];
+  UIView *containerView = [[UIView alloc] init];
+  
+  UIView *imageViewHolder = [[UIView alloc] init];
+  [imageViewHolder autoSetDimension:ALDimensionHeight toSize:50.0];
+  [imageViewHolder autoSetDimension:ALDimensionWidth toSize:50.0];
 
-    self.accountInfoHeaderView = containerView;
-    return containerView;
-  }
-  return nil;
+  UIImageView *imageView = [[UIImageView alloc] initWithFrame:CGRectMake(0, 0, 75, 75)];
+  imageView.image = [[[AccountsManager shared] currentAccount] logo];
+  imageView.contentMode = UIViewContentModeScaleAspectFit;
+  [imageViewHolder addSubview: imageView];
+
+  [imageView autoPinEdgesToSuperviewEdges];
+  
+  [headerView addSubview:containerView];
+  [containerView addSubview:imageViewHolder];
+  
+  UILabel *titleLabel = [[UILabel alloc] init];
+  titleLabel.numberOfLines = 0;
+  titleLabel.textAlignment = NSTextAlignmentCenter;
+  titleLabel.textColor = [UIColor grayColor];
+  titleLabel.lineBreakMode = NSLineBreakByWordWrapping;
+  titleLabel.font = [UIFont boldSystemFontOfSize:18.0];
+  titleLabel.text = [[AccountsManager shared] currentAccount].name;
+  [containerView addSubview: titleLabel];
+  
+  self.tableView.tableHeaderView = headerView;
+  
+  [containerView autoAlignAxisToSuperviewAxis:ALAxisHorizontal];
+  [containerView autoAlignAxisToSuperviewAxis:ALAxisVertical];
+  [imageViewHolder autoPinEdgesToSuperviewMarginsExcludingEdge:ALEdgeTrailing];
+  [titleLabel autoPinEdgesToSuperviewMarginsExcludingEdge:ALEdgeLeading];
+  [imageViewHolder autoPinEdge:ALEdgeTrailing toEdge:ALEdgeLeading ofView:titleLabel withOffset:-10];
 }
 
 - (UIView *)tableView:(UITableView *)__unused tableView viewForFooterInSection:(NSInteger)section
