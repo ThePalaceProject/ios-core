@@ -762,6 +762,17 @@ didCompleteWithError:(NSError *)error
 /// @param book The book that failed to download.
 - (void)failDownloadWithAlertForBook:(TPPBook *const)book
 {
+  [self failDownloadWithAlertForBook:book withMessage:nil];
+}
+
+/// Notifies the book registry AND the user that a book failed to download.
+///
+/// @note This method does NOT log to Crashlytics
+///
+/// @param book The book that failed to download.
+/// @param message Custom message to show
+- (void)failDownloadWithAlertForBook:(TPPBook *const)book withMessage:(NSString *)message
+{
   TPPBookLocation *location = [[TPPBookRegistry sharedRegistry] locationForIdentifier:book.identifier];
   
   [[TPPBookRegistry sharedRegistry]
@@ -773,8 +784,11 @@ didCompleteWithError:(NSError *)error
    genericBookmarks:nil];
   
   dispatch_async(dispatch_get_main_queue(), ^{
+    // TODO: Rephrase the default "No error message" message
+    NSString *errorMessage = message != nil ? message : @"No error message";
     NSString *formattedMessage = [NSString stringWithFormat:NSLocalizedString(@"DownloadCouldNotBeCompletedFormat", nil), book.title];
-    UIAlertController *alert = [TPPAlertUtils alertWithTitle:@"DownloadFailed" message:formattedMessage];
+    NSString *finalMessage = [NSString stringWithFormat:@"%@\n%@", formattedMessage, errorMessage];
+    UIAlertController *alert = [TPPAlertUtils alertWithTitle:@"DownloadFailed" message:finalMessage];
     [TPPAlertUtils presentFromViewControllerOrNilWithAlertController:alert viewController:nil animated:YES completion:nil];
   });
 
@@ -1497,14 +1511,16 @@ didFinishDownload:(BOOL)didFinishDownload
                          @"licenseURL": licenseUrl  ?: @"N/A",
                          @"localURL": localUrl  ?: @"N/A",
                        }];
-      [self failDownloadWithAlertForBook:book];
+      NSString *errorMessage = [NSString stringWithFormat:@"Fulfilment Error: %@\nlicenseUrl: %@\nlocalUrl: %@", error.localizedDescription, licenseUrl, localUrl];
+      [self failDownloadWithAlertForBook:book withMessage:errorMessage];
       return;
     }
     BOOL success = [self replaceBook:book
                        withFileAtURL:localUrl
                      forDownloadTask:downloadTask];
     if (!success) {
-      [self failDownloadWithAlertForBook:book];
+      NSString *errorMessage = [NSString stringWithFormat:@"Error replacing license file with file %@", localUrl];
+      [self failDownloadWithAlertForBook:book withMessage:errorMessage];
     } else {
       // Store license ID
       TPPLCPLicense *license = [[TPPLCPLicense alloc] initWithUrl: licenseUrl];
