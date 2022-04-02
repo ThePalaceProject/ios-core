@@ -14,6 +14,8 @@ NSString * const _Nonnull ContentTypeOctetStream = @"application/octet-stream";
 NSString * const _Nonnull ContentTypeOverdriveAudiobook = @"application/vnd.overdrive.circulation.api+json;profile=audiobook";
 NSString * const _Nonnull ContentTypeOverdriveAudiobookActual = @"application/json";
 NSString * const _Nonnull ContentTypeReadiumLCP = @"application/vnd.readium.lcp.license.v1.0+json";
+NSString * const _Nonnull ContentTypeReadiumLCPPDF = @"application/pdf";
+NSString * const _Nonnull ContentTypePDFLCP = @"application/pdf+lcp";
 NSString * const _Nonnull ContentTypeAudiobookLCP = @"application/audiobook+lcp";
 NSString * const _Nonnull ContentTypeAudiobookZip = @"application/audiobook+zip";
 
@@ -61,6 +63,7 @@ NSString * const _Nonnull ContentTypeAudiobookZip = @"application/audiobook+zip"
 #if LCP
       ContentTypeReadiumLCP,
       ContentTypeAudiobookLCP,
+      ContentTypeReadiumLCPPDF,
 #endif
       ContentTypeAudiobookZip
     ]];
@@ -106,7 +109,8 @@ NSString * const _Nonnull ContentTypeAudiobookZip = @"application/audiobook+zip"
       ContentTypeReadiumLCP: [NSSet setWithArray:@[
         ContentTypeEpubZip,
         ContentTypeAudiobookZip,
-        ContentTypeAudiobookLCP
+        ContentTypeAudiobookLCP,
+        ContentTypeReadiumLCPPDF
       ]],
       ContentTypeAdobeAdept: [NSSet setWithArray:@[ContentTypeEpubZip]],
       ContentTypeBearerToken: [NSSet setWithArray:@[

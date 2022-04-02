@@ -30,6 +30,10 @@ extern NSString * const _Nonnull ContentTypeOverdriveAudiobookActual;
 /// The constant value is fully lowercased.
 extern NSString * const _Nonnull ContentTypeReadiumLCP;
 /// The constant value is fully lowercased.
+extern NSString * const _Nonnull ContentTypeReadiumLCPPDF;
+/// The constant value is fully lowercased.
+extern NSString * const _Nonnull ContentTypePDFLCP;
+/// The constant value is fully lowercased.
 extern NSString * const _Nonnull ContentTypeAudiobookLCP;
 /// The constant value is fully lowercased.
 extern NSString * const _Nonnull ContentTypeAudiobookZip;

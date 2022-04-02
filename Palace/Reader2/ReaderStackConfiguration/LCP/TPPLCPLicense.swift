@@ -50,6 +50,9 @@ enum TPPLCPLicenseRel: String {
     }
   }
   
+  /// Returns first link with the specified `rel`.
+  /// - Parameter rel: `rel` value.
+  /// - Returns: First link, if available, `nil` if no link with the provided `rel` found.
   func firstLink(withRel rel: TPPLCPLicenseRel) -> TPPLCPLicenseLink? {
     links.filter({ $0.rel == rel.rawValue }).first
   }

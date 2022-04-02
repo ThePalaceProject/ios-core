@@ -123,6 +123,7 @@ class TPPLastReadPositionSynchronizer {
     let moveText = NSLocalizedString("Move", comment: "Perform navigation")
     let moveAction = UIAlertAction(title: moveText, style: .default) { _ in
       let loc = TPPBookLocation(locator: serverLocator,
+                                type: "LocatorHrefProgression",
                                  publication: publication)
       self.bookRegistry.setLocation(loc, forIdentifier: book.identifier)
       completion()

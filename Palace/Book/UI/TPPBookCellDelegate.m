@@ -145,6 +145,14 @@
 
 - (void)openPDF:(TPPBook *)book {
 
+  if ([LCPPDFs canOpenBook:book]) {
+    [[TPPRootTabBarController sharedController] presentBook:book];
+  } else {
+    [self presentPDF:book];
+  }
+}
+
+- (void)presentPDF:(TPPBook *)book {
   NSURL *const url = [[TPPMyBooksDownloadCenter sharedDownloadCenter] fileURLForBookIndentifier:book.identifier];
 
   NSArray<TPPBookLocation *> *const genericMarks = [[TPPBookRegistry sharedRegistry] genericBookmarksForIdentifier:book.identifier];

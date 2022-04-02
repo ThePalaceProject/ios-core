@@ -711,7 +711,12 @@ didCompleteWithError:(NSError *)error
   if ([LCPAudiobooks canOpenBook:book]) {
     return @"lcpa";
   }
+  
+  if ([LCPPDFs canOpenBook:book]) {
+    return @"zip";
+  }
 #endif
+
   // FIXME: The extension is always "epub" even when the URL refers to content of a different
   // type (e.g. an audiobook). While there's no reason this must change, it's certainly likely
   // to cause confusion for anyone looking at the filesystem.
@@ -1498,9 +1503,14 @@ didFinishDownload:(BOOL)didFinishDownload
     [self failDownloadWithAlertForBook:book];
     return;
   }
+
   // LCP library expects an .lcpl file at licenseUrl
   // localUrl is URL of downloaded file with embedded license
-  [lcpService fulfill:licenseUrl completion:^(NSURL *localUrl, NSError *error) {
+  NSURLSessionDownloadTask *fulfillmentDownloadTask = [lcpService fulfill:licenseUrl progress:^(double progressValue) {
+    self.bookIdentifierToDownloadInfo[book.identifier] =
+      [[self downloadInfoForBookIdentifier:book.identifier] withDownloadProgress:progressValue];
+      [self broadcastUpdate];
+  } completion:^(NSURL *localUrl, NSError *error) {
     if (error) {
       NSString *summary = [NSString stringWithFormat:@"%@ LCP license fulfillment error",
                            book.distributor];
@@ -1511,7 +1521,7 @@ didFinishDownload:(BOOL)didFinishDownload
                          @"licenseURL": licenseUrl  ?: @"N/A",
                          @"localURL": localUrl  ?: @"N/A",
                        }];
-      NSString *errorMessage = [NSString stringWithFormat:@"Fulfilment Error: %@\nlicenseUrl: %@\nlocalUrl: %@", error.localizedDescription, licenseUrl, localUrl];
+      NSString *errorMessage = [NSString stringWithFormat:@"Fulfilment Error: %@", error.localizedDescription];
       [self failDownloadWithAlertForBook:book withMessage:errorMessage];
       return;
     }
@@ -1528,6 +1538,14 @@ didFinishDownload:(BOOL)didFinishDownload
       [[TPPBookRegistry sharedRegistry] save];
     }
   }];
+  // If downlad task is created correctly, reassign download task for current book identifier
+  if (fulfillmentDownloadTask) {
+    self.bookIdentifierToDownloadInfo[book.identifier] =
+      [[TPPMyBooksDownloadInfo alloc]
+       initWithDownloadProgress:0.0
+       downloadTask:fulfillmentDownloadTask
+       rightsManagement:TPPMyBooksDownloadRightsManagementNone];
+  }
   #endif
 }
 

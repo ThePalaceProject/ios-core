@@ -23,54 +23,36 @@ enum TPPLicensesServiceError: Error {
 
 class TPPLicensesService: NSObject {
   
-  let lcpService: LCPService
-  let contentProtection: ContentProtection
+  var progressHandler: ((_ progress: Double) -> Void)?
+  var completionHandler: ((_ localUrl: URL?, _ error: Error?) -> Void)?
+  var lcpl: URL?
+  var link: TPPLCPLicenseLink?
   
-  init(lcpService: LCPService, contentProtection: ContentProtection) {
-    self.lcpService = lcpService
-    self.contentProtection = contentProtection
-  }
-  
-  func acquirePublication(from lcpl: URL, completion: @escaping (_ localUrl: URL?, _ error: Error?) -> Void) {
-    
-    // 1. read license file (extend TPPLCPLicense for that)
+  func acquirePublication(from lcpl: URL, progress: @escaping (_ progress: Double) -> Void, completion: @escaping (_ localUrl: URL?, _ error: Error?) -> Void) -> URLSessionDownloadTask? {
+    // Parse LCP license file
     guard let license = TPPLCPLicense(url: lcpl) else {
       completion(nil, TPPLicensesServiceError.licenseError(message: "Reading license file failed"))
-      return
+      return nil
     }
-    
+    // Get publication download link
     guard let link = license.firstLink(withRel: .publication), let href = link.href, let url = URL(string: href) else {
       completion(nil, TPPLicensesServiceError.licenseError(message: "Error parsing license file, publication href was not found"))
-      return
+      return nil
     }
-    
-    let title = link.title ?? "No title"
-    
-    // 2. download license.url (see LicenseDocument.swift in readium-lcp-swift)
-    print("Download url: \(url), title: \(title)")
 
-    // DownloadSession.swift contains an example how to update download progress
-    
-    // LicensesService.swift contains acquirePublication and injectLicense
-    
+    self.progressHandler = progress
+    self.completionHandler = completion
+    self.lcpl = lcpl
+    self.link = link
+
+    // Create download task and return it to TPPMyBooksDownloadCenter
+    // to hande task cancellation correctly
     let request = URLRequest(url: url)
-    let task = URLSession.shared.downloadTask(with: request) { tmpLocalUrl, response, error in
-      guard let file = tmpLocalUrl, error == nil else {
-        completion(nil, TPPLicensesServiceError.licenseError(message: "URLSession downloadTask error: \(error!.localizedDescription)"))
-        return
-      }
-
-      if let licensePathInZip = self.pathInZip(for: link) {
-        do {
-          try self.injectLicense(lcpl: lcpl, to: file, at: licensePathInZip)
-        } catch {
-          completion(nil, error)
-        }
-      }
-
-      completion(file, nil)
-    }
+    let sessionConfiguration = URLSessionConfiguration.default
+    let session = URLSession(configuration: sessionConfiguration, delegate: self, delegateQueue: .main)
+    let task = session.downloadTask(with: request)
     task.resume()
+    return task
   }
   
   /// Injects licens file into LCP-protected file
@@ -107,9 +89,38 @@ class TPPLicensesService: NSObject {
     }
     switch linkType {
     case ContentTypeEpubZip: return "META-INF/license.lcpl"
-    case ContentTypeReadiumLCP, ContentTypeAudiobookLCP: return "license.lcpl"
+    case ContentTypeReadiumLCP, ContentTypeReadiumLCPPDF, ContentTypePDFLCP, ContentTypeAudiobookLCP: return "license.lcpl"
     default: return nil
     }
   }
+}
 
+// MARK: - URLSessionDownloadDelegate
+
+extension TPPLicensesService: URLSessionDownloadDelegate {
+  func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
+    guard let lcpl = self.lcpl, let link = self.link else {
+      return
+    }
+    // Check if we need to inject license file for the link ContentType
+    if let licensePathInZip = self.pathInZip(for: link) {
+      do {
+        try self.injectLicense(lcpl: lcpl, to: location, at: licensePathInZip)
+        completionHandler?(location, nil)
+      } catch {
+        completionHandler?(nil, error)
+      }
+    }
+  }
+  
+  func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+    // Check the task wasn't cancelled
+    if let nsError = error as? NSError, nsError.code != NSURLErrorCancelled {
+      completionHandler?(nil, error)
+    }
+  }
+  
+  func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
+    progressHandler?(Double(totalBytesWritten) / Double(totalBytesExpectedToWrite))
+  }
 }

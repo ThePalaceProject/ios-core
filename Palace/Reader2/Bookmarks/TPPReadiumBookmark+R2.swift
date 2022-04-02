@@ -83,15 +83,7 @@ extension TPPReadiumBookmark {
       locatorChapterProgress = nil
     }
 
-    if self.progressWithinBook =~= locatorChapterProgress {
-      return true
-    }
-
-    if self.progressWithinBook =~= locatorTotalProgress {
-      return true
-    }
-
-    return false
+    return self.progressWithinChapter =~= locatorChapterProgress && self.progressWithinBook =~= locatorTotalProgress
   }
 }
 
