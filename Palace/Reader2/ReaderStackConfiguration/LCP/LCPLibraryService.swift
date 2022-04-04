@@ -64,20 +64,21 @@ import ReadiumLCP
   ///   - localUrl: Downloaded publication URL.
   ///   - downloadTask: `URLSessionDownloadTask` that downloaded the publication.
   ///   - error: `NSError` if any.
-  @objc func fulfill(_ file: URL, completion: @escaping (_ localUrl: URL?, _ error: NSError?) -> Void) {
-    self.lcpService.acquirePublication(from: file) { result in
-      do {
-        let publication = try result.get()
-        completion(publication.localURL, nil)
-      } catch {
+  @objc func fulfill(_ file: URL, progress: @escaping (_ progress: Double) -> Void, completion: @escaping (_ localUrl: URL?, _ error: NSError?) -> Void) -> URLSessionDownloadTask? {
+    return TPPLicensesService().acquirePublication(from: file) { progressValue in
+      progress(progressValue)
+    } completion: { localUrl, error in
+      guard error == nil else {
         let domain = "LCP fulfillment error"
         let code = TPPErrorCode.lcpDRMFulfillmentFail.rawValue
-        let errorDescription = (error as? LCPError)?.errorDescription ?? error.localizedDescription
+        let errorDescription = (error as? LCPError)?.errorDescription ?? (error as? TPPLicensesServiceError)?.description ?? error?.localizedDescription
         let nsError = NSError(domain: domain, code: code, userInfo: [
           NSLocalizedDescriptionKey: errorDescription as Any
         ])
         completion(nil, nsError)
+        return
       }
+      completion(localUrl, nil)
     }
   }
 }

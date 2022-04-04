@@ -15,6 +15,7 @@ NSString * const _Nonnull ContentTypeOverdriveAudiobook = @"application/vnd.over
 NSString * const _Nonnull ContentTypeOverdriveAudiobookActual = @"application/json";
 NSString * const _Nonnull ContentTypeReadiumLCP = @"application/vnd.readium.lcp.license.v1.0+json";
 NSString * const _Nonnull ContentTypeReadiumLCPPDF = @"application/pdf";
+NSString * const _Nonnull ContentTypePDFLCP = @"application/pdf+lcp";
 NSString * const _Nonnull ContentTypeAudiobookLCP = @"application/audiobook+lcp";
 NSString * const _Nonnull ContentTypeAudiobookZip = @"application/audiobook+zip";
 
