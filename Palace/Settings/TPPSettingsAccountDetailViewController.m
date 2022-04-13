@@ -1023,7 +1023,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
   [imageViewHolder autoSetDimension:ALDimensionWidth toSize:50.0];
 
   UIImageView *imageView = [[UIImageView alloc] initWithFrame:CGRectMake(0, 0, 75, 75)];
-  imageView.image = [[[AccountsManager shared] currentAccount] logo];
+  imageView.image = self.selectedAccount.logo;
   imageView.contentMode = UIViewContentModeScaleAspectFit;
   [imageViewHolder addSubview: imageView];
 
@@ -1038,11 +1038,11 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
   titleLabel.textColor = [UIColor grayColor];
   titleLabel.lineBreakMode = NSLineBreakByWordWrapping;
   titleLabel.font = [UIFont boldSystemFontOfSize:18.0];
-  titleLabel.text = [[AccountsManager shared] currentAccount].name;
+  titleLabel.text = self.selectedAccount.name;
   [containerView addSubview: titleLabel];
-  
+
   self.tableView.tableHeaderView = headerView;
-  
+
   [containerView autoAlignAxisToSuperviewAxis:ALAxisHorizontal];
   [containerView autoAlignAxisToSuperviewAxis:ALAxisVertical];
   [imageViewHolder autoPinEdgesToSuperviewMarginsExcludingEdge:ALEdgeTrailing];
