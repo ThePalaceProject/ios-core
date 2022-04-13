@@ -13,16 +13,16 @@
   var spinner: UIActivityIndicatorView!
   var loadingView: UIView?
   
-  fileprivate var accounts: [String] {
+  fileprivate var accounts: [Account] {
     didSet {
       //update TPPSettings
     }
   }
   fileprivate var libraryAccounts: [Account]
-  fileprivate var userAddedSecondaryAccounts: [String]!
+  fileprivate var userAddedSecondaryAccounts: [Account]!
   fileprivate let manager: AccountsManager
   
-  required init(accounts: [String]) {
+  required init(accounts: [Account]) {
     self.accounts = accounts
     self.manager = AccountsManager.shared
     self.libraryAccounts = manager.accounts()
@@ -51,7 +51,7 @@
     spinner = UIActivityIndicatorView(style: .medium)
     view.addSubview(spinner)
     
-    reloadView = TPPReloadView()
+    reloadView =  TPPReloadView()
     reloadView.handler = { [weak self] in
       guard let self = self else {
         return
@@ -64,19 +64,17 @@
     var accountsToRemove = [String]()
     
     for account in accounts {
-      if (AccountsManager.shared.account(account) == nil) {
-        accountsToRemove.append(account)
+      if (AccountsManager.shared.account(account.uuid) == nil) {
+        accountsToRemove.append(account.uuid)
       }
     }
     
     for remove in accountsToRemove {
-      if let index = accounts.index(of: remove) {
-        accounts.remove(at: index)
-      }
+      accounts = accounts.filter { $0.uuid == remove }
     }
-    
-    self.userAddedSecondaryAccounts = accounts.filter { $0 != AccountsManager.shared.currentAccount?.uuid }
-    
+
+    self.userAddedSecondaryAccounts = accounts.filter { $0.uuid != AccountsManager.shared.currentAccount?.uuid }
+
     updateSettingsAccountList()
     NotificationCenter.default.addObserver(self,
                                            selector: #selector(reloadAfterAccountChange),
@@ -137,7 +135,7 @@
   
   func reloadAfterAccountChange() {
     accounts = TPPSettings.shared.settingsAccountsList
-    self.userAddedSecondaryAccounts = accounts.filter { $0 != manager.currentAccount?.uuid }
+    self.userAddedSecondaryAccounts = accounts.filter { $0.uuid != AccountsManager.shared.currentAccount?.uuid }
     DispatchQueue.main.async {
       self.tableView.reloadData()
     }
@@ -161,18 +159,21 @@
   }
   
   private func updateList(withAccount account: Account) {
-    if !userAddedSecondaryAccounts.contains(account.uuid) {
-      userAddedSecondaryAccounts.append(account.uuid)
+    if userAddedSecondaryAccounts.filter({ $0.uuid == account.uuid }).isEmpty {
+      userAddedSecondaryAccounts.append(account)
     }
+  
     updateSettingsAccountList()
     // Return from search screen to the list of libraries
     navigationController?.popViewController(animated: false)
     // Switch to the selected library
     AccountsManager.shared.currentAccount = account
-    let catalog = TPPRootTabBarController.shared()?.viewControllers?.first as? TPPCatalogNavigationController
-    catalog?.updateFeedAndRegistryOnAccountChange()
-    self.tabBarController?.selectedIndex = 0
-    (navigationController?.parent as? UINavigationController)?.popToRootViewController(animated: false)
+    self.tableView.reloadData()
+  
+//    let catalog = TPPRootTabBarController.shared()?.viewControllers?.first as? TPPCatalogNavigationController
+//    catalog?.updateFeedAndRegistryOnAccountChange()
+//    self.tabBarController?.selectedIndex = 0
+//    (navigationController?.parent as? UINavigationController)?.popToRootViewController(animated: false)
   }
   
   @objc func addAccount() {
@@ -215,9 +216,9 @@
       return
     }
     showLoadingUI(loadState: .success)
-    var array = userAddedSecondaryAccounts!
+    var array = userAddedSecondaryAccounts!.map { $0.uuid }
     array.append(uuid)
-    TPPSettings.shared.settingsAccountsList = array
+    TPPSettings.shared.settingsAccountIdsList = array
   }
   
   // MARK: UITableViewDataSource
@@ -245,9 +246,8 @@
       cell.configure(for: account)
     } else {
       // The app crashes here when we switch registry accounts
-      if indexPath.row < userAddedSecondaryAccounts.count,
-         let account = AccountsManager.shared.account(userAddedSecondaryAccounts[indexPath.row]) {
-        cell.configure(for: account)
+      if indexPath.row < userAddedSecondaryAccounts.count {
+        cell.configure(for: userAddedSecondaryAccounts[indexPath.row])
       }
     }
     
@@ -257,13 +257,14 @@
   // MARK: UITableViewDelegate
   
   func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-    var account: String
+    var account: Account?
     if (indexPath.section == 0) {
-      account = self.manager.currentAccount?.uuid ?? ""
+      account = self.manager.currentAccount
     } else {
       account = userAddedSecondaryAccounts[indexPath.row]
     }
-    let vc = TPPSettingsAccountDetailViewController(libraryAccountID: account)
+    
+    let vc = TPPSettingsAccountDetailViewController(libraryAccountID: account?.uuid ?? "")
     self.tableView.deselectRow(at: indexPath, animated: true)
     self.navigationController?.pushViewController(vc, animated: true)
   }
