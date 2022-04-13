@@ -51,7 +51,7 @@
     spinner = UIActivityIndicatorView(style: .medium)
     view.addSubview(spinner)
     
-    reloadView =  TPPReloadView()
+    reloadView = TPPReloadView()
     reloadView.handler = { [weak self] in
       guard let self = self else {
         return
@@ -135,7 +135,7 @@
   
   func reloadAfterAccountChange() {
     accounts = TPPSettings.shared.settingsAccountsList
-    self.userAddedSecondaryAccounts = accounts.filter { $0.uuid != AccountsManager.shared.currentAccount?.uuid }
+    self.userAddedSecondaryAccounts = accounts.filter { $0.uuid != manager.currentAccount?.uuid }
     DispatchQueue.main.async {
       self.tableView.reloadData()
     }
@@ -170,10 +170,10 @@
     AccountsManager.shared.currentAccount = account
     self.tableView.reloadData()
   
-//    let catalog = TPPRootTabBarController.shared()?.viewControllers?.first as? TPPCatalogNavigationController
-//    catalog?.updateFeedAndRegistryOnAccountChange()
-//    self.tabBarController?.selectedIndex = 0
-//    (navigationController?.parent as? UINavigationController)?.popToRootViewController(animated: false)
+    let catalog = TPPRootTabBarController.shared()?.viewControllers?.first as? TPPCatalogNavigationController
+    catalog?.updateFeedAndRegistryOnAccountChange()
+    self.tabBarController?.selectedIndex = 0
+    (navigationController?.parent as? UINavigationController)?.popToRootViewController(animated: false)
   }
   
   @objc func addAccount() {
