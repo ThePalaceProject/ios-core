@@ -51,12 +51,7 @@
 
   NSArray *accounts = [[TPPSettings sharedSettings] settingsAccountsList];
 
-  for (int i = 0; i < (int)accounts.count; i++) {
-    Account *account = [[AccountsManager sharedInstance] account:accounts[i]];
-    if (!account) {
-      continue;
-    }
-
+  for (Account* account in accounts) {
     [alert addAction:[UIAlertAction actionWithTitle:account.name style:(UIAlertActionStyleDefault) handler:^(__unused UIAlertAction *_Nonnull action) {
       [self loadAccount:account];
     }]];
@@ -68,8 +63,8 @@
         if (success) {
           dispatch_async(dispatch_get_main_queue(), ^{
             
-            if (![TPPSettings.shared.settingsAccountsList containsObject:account.uuid]) {
-              TPPSettings.shared.settingsAccountsList = [TPPSettings.shared.settingsAccountsList arrayByAddingObject:account.uuid];
+            if (![TPPSettings.shared.settingsAccountIdsList containsObject:account.uuid]) {
+              TPPSettings.shared.settingsAccountIdsList = [TPPSettings.shared.settingsAccountIdsList arrayByAddingObject:account.uuid];
             }
 
             [self loadAccount:account];

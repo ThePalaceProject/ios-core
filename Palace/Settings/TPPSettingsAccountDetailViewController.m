@@ -29,6 +29,7 @@ typedef NS_ENUM(NSInteger, CellKind) {
   CellKindBarcode,
   CellKindPIN,
   CellKindLogInSignOut,
+  CellKindRegistration,
   CellKindSyncButton,
   CellKindAbout,
   CellKindPrivacyPolicy,
@@ -425,7 +426,11 @@ Authenticating with any of those barcodes should work.
     [section2About addObject:@(CellKindAdvancedSettings)];
   }
   
-  self.tableData = @[section0AcctInfo, section1Sync].mutableCopy;
+  if ([self.businessLogic registrationIsPossible])   {
+    self.tableData = @[section0AcctInfo, @[@(CellKindRegistration)], section1Sync].mutableCopy;
+  } else {
+    self.tableData = @[section0AcctInfo, section1Sync].mutableCopy;
+  }
 
   if (self.selectedAccount.supportEmail != nil) {
     [self.tableData addObject:@[@(CellReportIssue)]];
@@ -599,6 +604,12 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
       }
       break;
     }
+    case CellKindRegistration: {
+      [self.tableView deselectRowAtIndexPath:indexPath animated:YES];
+      UITableViewCell *cell = [tableView cellForRowAtIndexPath:indexPath];
+      [self didSelectRegularSignupOnCell:cell];
+      break;
+    }
     case CellKindSyncButton: {
       break;
     }
@@ -662,6 +673,35 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
       break;
     }
   }
+}
+
+
+- (void)didSelectRegularSignupOnCell:(UITableViewCell *)cell
+{
+  [cell setUserInteractionEnabled:NO];
+  __weak __auto_type weakSelf = self;
+  [self.businessLogic startRegularCardCreationWithCompletion:^(UINavigationController * _Nullable navVC, NSError * _Nullable error) {
+    [cell setUserInteractionEnabled:YES];
+    if (error) {
+      UIAlertController *alert = [TPPAlertUtils alertWithTitle:NSLocalizedString(@"Error", "Alert title") error:error];
+      [TPPAlertUtils presentFromViewControllerOrNilWithAlertController:alert
+                                                         viewController:nil
+                                                               animated:YES
+                                                             completion:nil];
+      return;
+    }
+
+    [TPPMainThreadRun asyncIfNeeded:^{
+      navVC.navigationBar.topItem.leftBarButtonItem =
+      [[UIBarButtonItem alloc] initWithTitle:NSLocalizedString(@"Cancel", nil)
+                                       style:UIBarButtonItemStylePlain
+                                      target:weakSelf
+                                      action:@selector(didSelectCancelForSignUp)];
+      navVC.modalPresentationStyle = UIModalPresentationFormSheet;
+      [weakSelf presentViewController:navVC animated:YES completion:nil];
+    }];
+
+  }];
 }
 
 - (void)didSelectCancelForSignUp
@@ -806,6 +846,9 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
       }
       [self updateLoginLogoutCellAppearance];
       return self.logInSignOutCell;
+    }
+    case CellKindRegistration: {
+      return [self createRegistrationCell];
     }
     case CellKindAgeCheck: {
       self.ageCheckCell = [[UITableViewCell alloc]
@@ -980,7 +1023,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
   [imageViewHolder autoSetDimension:ALDimensionWidth toSize:50.0];
 
   UIImageView *imageView = [[UIImageView alloc] initWithFrame:CGRectMake(0, 0, 75, 75)];
-  imageView.image = [[[AccountsManager shared] currentAccount] logo];
+  imageView.image = self.selectedAccount.logo;
   imageView.contentMode = UIViewContentModeScaleAspectFit;
   [imageViewHolder addSubview: imageView];
 
@@ -995,11 +1038,11 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
   titleLabel.textColor = [UIColor grayColor];
   titleLabel.lineBreakMode = NSLineBreakByWordWrapping;
   titleLabel.font = [UIFont boldSystemFontOfSize:18.0];
-  titleLabel.text = [[AccountsManager shared] currentAccount].name;
+  titleLabel.text = self.selectedAccount.name;
   [containerView addSubview: titleLabel];
-  
+
   self.tableView.tableHeaderView = headerView;
-  
+
   [containerView autoAlignAxisToSuperviewAxis:ALAxisHorizontal];
   [containerView autoAlignAxisToSuperviewAxis:ALAxisVertical];
   [imageViewHolder autoPinEdgesToSuperviewMarginsExcludingEdge:ALEdgeTrailing];

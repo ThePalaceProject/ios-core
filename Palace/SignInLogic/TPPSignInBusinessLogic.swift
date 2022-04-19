@@ -523,6 +523,11 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     return userAccount.hasCredentials()
   }
 
+  /// - Returns: Whether it is possible to sign up for a new account or not.
+  @objc func registrationIsPossible() -> Bool {
+    return !isSignedIn() && libraryAccount?.details?.signUpUrl != nil
+  }
+
   @objc func isSamlPossible() -> Bool {
     libraryAccount?.details?.auths.contains { $0.isSaml } ?? false
   }

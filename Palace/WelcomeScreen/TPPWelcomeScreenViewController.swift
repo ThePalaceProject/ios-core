@@ -128,7 +128,7 @@ import PureLayout
                 return
               }
                 
-              TPPSettings.shared.settingsAccountsList = [account.uuid]
+              TPPSettings.shared.settingsAccountIdsList = [account.uuid]
               self.completion?(account)
             }
           }
@@ -173,7 +173,7 @@ import PureLayout
         DispatchQueue.main.async {
           self.stopLoading()
           if authSuccess {
-            TPPSettings.shared.settingsAccountsList = [classicsId]
+            TPPSettings.shared.settingsAccountIdsList = [classicsId]
             self.completion?(AccountsManager.shared.account(classicsId)!)
           } else {
             self.showLoadingFailureAlert()
