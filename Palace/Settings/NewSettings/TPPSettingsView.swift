@@ -51,8 +51,7 @@ struct TPPSettingsView: View {
   }
 
   @ViewBuilder private var librariesSection: some View {
-    let accounts = TPPSettings.shared.settingsAccountsList
-    let viewController = TPPSettingsAccountsTableViewController(accounts: accounts)
+    let viewController = TPPSettingsAccountsTableViewController(accounts: TPPSettings.shared.settingsAccountsList)
     let navButton = Button(Strings.addLibrary) {
       viewController.addAccount()
     }

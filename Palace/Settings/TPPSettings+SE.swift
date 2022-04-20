@@ -16,7 +16,7 @@ extension TPPSettings: NYPLUniversalLinksSettings {
 extension TPPSettings {
   static let userHasSeenWelcomeScreenKey = "NYPLUserHasSeenWelcomeScreenKey"
   
-  var settingsAccountsList: [String] {
+  var settingsAccountIdsList: [String] {
     get {
       if let libraryAccounts = UserDefaults.standard.array(forKey: TPPSettings.settingsLibraryAccountsKey) {
         return libraryAccounts as! [String]
@@ -28,12 +28,18 @@ extension TPPSettings {
         accountsList.append(currentLibrary)
       }
       accountsList.append(AccountsManager.TPPAccountUUIDs[2])
-      self.settingsAccountsList = accountsList
+      self.settingsAccountIdsList = accountsList
       return accountsList
     }
     set(newAccountsList) {
       UserDefaults.standard.set(newAccountsList, forKey: TPPSettings.settingsLibraryAccountsKey)
       UserDefaults.standard.synchronize()
     }
+  }
+  
+  var settingsAccountsList: [Account] {
+    settingsAccountIdsList
+      .compactMap { AccountsManager.shared.account($0) }
+      .sorted { $0.name < $1.name }
   }
 }
