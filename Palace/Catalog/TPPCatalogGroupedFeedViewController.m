@@ -473,7 +473,14 @@ viewForHeaderInSection:(NSInteger const)section
   UIViewController *const viewController = [[TPPCatalogFeedViewController alloc]
                                             initWithURL:urlToLoad];
   
-  viewController.title = lane.title;
+  UILabel *label = [[UILabel alloc] init];
+  label.numberOfLines = 1;
+  label.textAlignment = NSTextAlignmentCenter;
+  label.font = [UIFont semiBoldPalaceFontOfSize: 17];
+  label.minimumScaleFactor = .75;
+  label.adjustsFontSizeToFitWidth = YES;
+  label.text = lane.title;
+  viewController.navigationItem.titleView = label;
 
   [self.navigationController pushViewController:viewController animated:YES];
 }
