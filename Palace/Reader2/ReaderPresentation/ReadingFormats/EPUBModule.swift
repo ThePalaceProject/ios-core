@@ -24,9 +24,10 @@ final class EPUBModule: ReaderFormatModule {
     self.delegate = delegate
     self.resourcesServer = resourcesServer
   }
-  
-  var publicationFormats: [Publication.Format] {
-    return [.epub, .webpub]
+    
+  func supports(_ publication: Publication) -> Bool {
+    // .allAreHTML matches .wepub format
+    return publication.conforms(to: .epub) || publication.readingOrder.allAreHTML
   }
   
   func makeReaderViewController(for publication: Publication,

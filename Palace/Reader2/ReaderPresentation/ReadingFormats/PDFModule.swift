@@ -14,16 +14,16 @@ import R2Shared
 /// The PDF module is only available on iOS 11 and more, since it relies on PDFKit.
 @available(iOS 11.0, *)
 final class PDFModule: ReaderFormatModule {
-
-    weak var delegate: ModuleDelegate?
-    
-    init(delegate: ModuleDelegate?) {
-        self.delegate = delegate
-    }
-    
-    var publicationFormats: [Publication.Format] {
-        return [.pdf]
-    }
+  
+  weak var delegate: ModuleDelegate?
+  
+  init(delegate: ModuleDelegate?) {
+    self.delegate = delegate
+  }
+  
+  func supports(_ publication: Publication) -> Bool {
+    return publication.conforms(to: .pdf)
+  }
 
   func makeReaderViewController(for publication: Publication,
                                 book: TPPBook,
