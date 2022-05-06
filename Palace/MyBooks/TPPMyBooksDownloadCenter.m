@@ -969,9 +969,10 @@ didCompleteWithError:(NSError *)error
         }
 
         NSString *scope = responseHeaders[@"x-overdrive-scope"] ?: responseHeaders[@"X-Overdrive-Scope"];
+        NSString *patronAuthorization = responseHeaders[@"x-overdrive-patron-authorization"] ?: responseHeaders[@"X-Overdrive-Patron-Authorization"];
         NSString *requestURLString = responseHeaders[@"location"] ?: responseHeaders[@"Location"];
         
-        if (!scope || !requestURLString) {
+        if (!scope || !patronAuthorization || !requestURLString) {
           [TPPErrorLogger logErrorWithCode:TPPErrorCodeOverdriveFulfillResponseParseFail
                                     summary:@"Overdrive audiobook fulfillment: wrong headers"
                                    metadata:@{
@@ -984,39 +985,8 @@ didCompleteWithError:(NSError *)error
           return;
         }
           
-        if ([[OverdriveAPIExecutor shared] hasValidPatronTokenWithUsername:[[TPPUserAccount sharedAccount] barcode] scope:scope]) {
-          // Use existing Patron Token
-          NSURLRequest *request = [[OverdriveAPIExecutor shared] getManifestRequestWithUrlString:requestURLString
-                                                                                        username:[[TPPUserAccount sharedAccount] barcode]
-                                                                                           scope:scope];
-          [self addDownloadTaskWithRequest:request book:book];
-        } else {
-          [[OverdriveAPIExecutor shared]
-           refreshPatronTokenWithKey:TPPSecrets.overdriveClientKey
-           secret:TPPSecrets.overdriveClientSecret
-           username:[[TPPUserAccount sharedAccount] barcode]
-           PIN:[[TPPUserAccount sharedAccount] PIN]
-           scope:scope
-           completion:^(NSError * _Nullable error) {
-            if (error) {
-              [TPPErrorLogger logError:error
-                                summary:@"Overdrive audiobook fulfillment: error refreshing patron token"
-                               metadata:@{
-                                 @"responseHeaders": responseHeaders ?: @"N/A",
-                                 @"acquisitionURL": URL ?: @"N/A",
-                                 @"book": book.loggableDictionary,
-                                 @"bookRegistryState": [TPPBookStateHelper stringValueFromBookState:state]
-                               }];
-              [self failDownloadWithAlertForBook:book];
-              return;
-            }
-              
-            NSURLRequest *request = [[OverdriveAPIExecutor shared] getManifestRequestWithUrlString:requestURLString
-                                                                                          username:[[TPPUserAccount sharedAccount] barcode]
-                                                                                             scope:scope];
-            [self addDownloadTaskWithRequest:request book:book];
-          }];
-        }
+        NSURLRequest *request = [[OverdriveAPIExecutor shared] getManifestRequestWithUrlString:requestURLString token:patronAuthorization scope:scope];
+        [self addDownloadTaskWithRequest:request book:book];
       }];
 #endif
     } else {
