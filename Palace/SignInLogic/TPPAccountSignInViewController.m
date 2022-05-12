@@ -28,7 +28,8 @@ static NSInteger sLinearViewTag = 1111;
 typedef NS_ENUM(NSInteger, CellKind) {
   CellKindBarcode,
   CellKindPIN,
-  CellKindLogIn
+  CellKindLogIn,
+  CellKindRegistration
 };
 
 typedef NS_ENUM(NSInteger, Section) {
@@ -327,7 +328,40 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
       [self.tableView deselectRowAtIndexPath:indexPath animated:YES];
       [self.businessLogic logIn];
       break;
+    case CellKindRegistration:
+      [self.tableView deselectRowAtIndexPath:indexPath animated:YES];
+      UITableViewCell *cell = [tableView cellForRowAtIndexPath:indexPath];
+      [self didSelectRegularSignupOnCell:cell];
+      break;
   }
+}
+
+- (void)didSelectRegularSignupOnCell:(UITableViewCell *)cell
+{
+  [cell setUserInteractionEnabled:NO];
+  __weak __auto_type weakSelf = self;
+  [self.businessLogic startRegularCardCreationWithCompletion:^(UINavigationController * _Nullable navVC, NSError * _Nullable error) {
+    [cell setUserInteractionEnabled:YES];
+    if (error) {
+      UIAlertController *alert = [TPPAlertUtils alertWithTitle:NSLocalizedString(@"Error", "Alert title") error:error];
+      [TPPAlertUtils presentFromViewControllerOrNilWithAlertController:alert
+                                                         viewController:nil
+                                                               animated:YES
+                                                             completion:nil];
+      return;
+    }
+
+    [TPPMainThreadRun asyncIfNeeded:^{
+      navVC.navigationBar.topItem.leftBarButtonItem =
+      [[UIBarButtonItem alloc] initWithTitle:NSLocalizedString(@"Cancel", nil)
+                                       style:UIBarButtonItemStylePlain
+                                      target:weakSelf
+                                      action:@selector(didSelectCancelForSignUp)];
+      navVC.modalPresentationStyle = UIModalPresentationFormSheet;
+      [weakSelf presentViewController:navVC animated:YES completion:nil];
+    }];
+
+  }];
 }
 
 #pragma mark UITableViewDataSource
@@ -414,6 +448,9 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
       self.logInCell.textLabel.font = [UIFont customFontForTextStyle:UIFontTextStyleBody];
       [self updateLoginCellAppearance];
       return self.logInCell;
+    }
+    case CellKindRegistration: {
+      return [self createRegistrationCell];
     }
   }
 }
@@ -636,7 +673,13 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
 - (void)setupTableData
 {
   NSArray *section0AcctInfo = [self accountInfoSection];
-  self.tableData = @[section0AcctInfo];
+
+  if ([self.businessLogic registrationIsPossible])   {
+    self.tableData = @[section0AcctInfo, @[@(CellKindRegistration)]];
+  } else {
+    self.tableData = @[section0AcctInfo];
+  }
+  
   [self.tableView reloadData];
 }
 
