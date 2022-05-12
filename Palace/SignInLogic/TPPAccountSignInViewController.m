@@ -336,34 +336,6 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
   }
 }
 
-- (void)didSelectRegularSignupOnCell:(UITableViewCell *)cell
-{
-  [cell setUserInteractionEnabled:NO];
-  __weak __auto_type weakSelf = self;
-  [self.businessLogic startRegularCardCreationWithCompletion:^(UINavigationController * _Nullable navVC, NSError * _Nullable error) {
-    [cell setUserInteractionEnabled:YES];
-    if (error) {
-      UIAlertController *alert = [TPPAlertUtils alertWithTitle:NSLocalizedString(@"Error", "Alert title") error:error];
-      [TPPAlertUtils presentFromViewControllerOrNilWithAlertController:alert
-                                                         viewController:nil
-                                                               animated:YES
-                                                             completion:nil];
-      return;
-    }
-
-    [TPPMainThreadRun asyncIfNeeded:^{
-      navVC.navigationBar.topItem.leftBarButtonItem =
-      [[UIBarButtonItem alloc] initWithTitle:NSLocalizedString(@"Cancel", nil)
-                                       style:UIBarButtonItemStylePlain
-                                      target:weakSelf
-                                      action:@selector(didSelectCancelForSignUp)];
-      navVC.modalPresentationStyle = UIModalPresentationFormSheet;
-      [weakSelf presentViewController:navVC animated:YES completion:nil];
-    }];
-
-  }];
-}
-
 #pragma mark UITableViewDataSource
 
 - (UITableViewCell *)tableView:(__attribute__((unused)) UITableView *)tableView
@@ -482,6 +454,34 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
   containerView.preservesSuperviewLayoutMargins = YES;
   [containerView autoPinEdgesToSuperviewEdges];
   return cell;
+}
+
+- (void)didSelectRegularSignupOnCell:(UITableViewCell *)cell
+{
+  [cell setUserInteractionEnabled:NO];
+  __weak __auto_type weakSelf = self;
+  [self.businessLogic startRegularCardCreationWithCompletion:^(UINavigationController * _Nullable navVC, NSError * _Nullable error) {
+    [cell setUserInteractionEnabled:YES];
+    if (error) {
+      UIAlertController *alert = [TPPAlertUtils alertWithTitle:NSLocalizedString(@"Error", "Alert title") error:error];
+      [TPPAlertUtils presentFromViewControllerOrNilWithAlertController:alert
+                                                         viewController:nil
+                                                               animated:YES
+                                                             completion:nil];
+      return;
+    }
+
+    [TPPMainThreadRun asyncIfNeeded:^{
+      navVC.navigationBar.topItem.leftBarButtonItem =
+      [[UIBarButtonItem alloc] initWithTitle:NSLocalizedString(@"Cancel", nil)
+                                       style:UIBarButtonItemStylePlain
+                                      target:weakSelf
+                                      action:@selector(didSelectCancelForSignUp)];
+      navVC.modalPresentationStyle = UIModalPresentationFormSheet;
+      [weakSelf presentViewController:navVC animated:YES completion:nil];
+    }];
+
+  }];
 }
 
 - (NSInteger)numberOfSectionsInTableView:(__attribute__((unused)) UITableView *)tableView
