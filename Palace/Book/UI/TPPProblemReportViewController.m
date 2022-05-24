@@ -115,10 +115,20 @@ static NSInteger EstimatedRowHeight = 44;
 
 - (void)reportIssueVC
 {
-  [[ProblemReportEmail sharedInstance]
-   beginComposingTo:[AccountsManager sharedInstance].currentAccount.supportEmail
-   presentingViewController:self
-   book:self.book];
+  if ([AccountsManager sharedInstance].currentAccount.supportEmail) {
+    [[ProblemReportEmail sharedInstance]
+     beginComposingTo:[AccountsManager sharedInstance].currentAccount.supportEmail.rawValue
+     presentingViewController:self
+     book:self.book];
+  } else if ([AccountsManager sharedInstance].currentAccount.supportURL) {
+    [self presentWebView: AccountsManager.sharedInstance.currentAccount.supportURL];
+  }
+}
+
+- (void)presentWebView:(NSURL *)url {
+  BundledHTMLViewController *webController = [[BundledHTMLViewController alloc] initWithFileURL:url title:AccountsManager.shared.currentAccount.name];
+  webController.hidesBottomBarWhenPushed = true;
+  [self.navigationController pushViewController:webController animated:YES];
 }
 
 #pragma mark UITableViewDataSource
