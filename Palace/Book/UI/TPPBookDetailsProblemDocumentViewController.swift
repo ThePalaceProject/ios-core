@@ -96,7 +96,7 @@
     self.submitButton = submitButton
     submitButton.translatesAutoresizingMaskIntoConstraints = false
     submitButton.setTitle("Send to Support", for: .normal)
-    submitButton.isEnabled = AccountsManager.shared.currentAccount?.hasSupportOption ?? false
+    submitButton.isEnabled = AccountsManager.shared.currentAccount?.supportEmail != nil
     submitButton.addTarget(self, action: #selector(submitButtonWasPressed), for: .touchDown)
     
     scrollView.addSubview(label)
@@ -172,17 +172,11 @@
   }
   
   func submitButtonWasPressed() {
-    if let supportEmail = AccountsManager.shared.currentAccount?.supportEmail {
-      sendSupportEmail(supportEmail: supportEmail.rawValue)
-    } else if let supportURL = AccountsManager.shared.currentAccount?.supportURL {
-      UIApplication.shared.open(supportURL, completionHandler: nil)
-    } else {
-      Log.error(#file, "Missing support email or url for library \(AccountsManager.shared.currentAccountId ?? "")")
+    guard let supportEmail = AccountsManager.shared.currentAccount?.supportEmail else {
+      Log.error(#file, "Missing support email for library \(AccountsManager.shared.currentAccountId ?? "")")
       return
     }
-  }
-
-  private func sendSupportEmail(supportEmail: String) {
+    
     let alert = UIAlertController.init(title: "Report a Problem", message: "Are you sure you want to email this error log to \(AccountsManager.shared.currentAccount?.name ?? "library") support?", preferredStyle: .alert)
     alert.addAction(UIAlertAction.init(title: "Cancel", style: .cancel, handler: nil))
     alert.addAction(UIAlertAction.init(title: "Send email", style: .default, handler: { (action) in
@@ -197,7 +191,7 @@
         BookIdentifier:\n\(self.book?.identifier ?? "n/a")\n\n
       """
       ProblemReportEmail.sharedInstance.beginComposing(
-        to: supportEmail,
+        to: supportEmail.rawValue,
         presentingViewController: self,
         body: body
       )
