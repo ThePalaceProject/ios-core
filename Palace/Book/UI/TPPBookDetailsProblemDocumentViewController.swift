@@ -191,7 +191,7 @@
         BookIdentifier:\n\(self.book?.identifier ?? "n/a")\n\n
       """
       ProblemReportEmail.sharedInstance.beginComposing(
-        to: supportEmail,
+        to: supportEmail.rawValue,
         presentingViewController: self,
         body: body
       )
