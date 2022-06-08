@@ -29,6 +29,7 @@
 @property (nonatomic) NSURL *revokeURL;
 @property (nonatomic) NSURL *reportURL;
 @property (nonatomic) NSDictionary *contributors;
+@property (nonatomic) NSRecursiveLock *bookTokenLock;
 
 - (nonnull instancetype)initWithAcquisitions:(nonnull NSArray<TPPOPDSAcquisition *> *)acquisitions
                                  bookAuthors:(nullable NSArray<TPPBookAuthor *> *)authors
@@ -244,7 +245,8 @@ static NSString *const UpdatedKey = @"updated";
   self.revokeURL = revokeURL;
   self.reportURL = reportURL;
   self.contributors = contributors;
-  
+  self.bookTokenLock = [[NSRecursiveLock alloc] init];
+
   return self;
 }
 

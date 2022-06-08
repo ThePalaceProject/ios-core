@@ -11,11 +11,17 @@ import Foundation
 @objc extension TPPBook {
   var bearerToken: String? {
     get {
-      UserDefaults.standard.string(forKey: self.identifier)
+      let _bearerToken: TPPKeychainVariable<String> = self.identifier.asKeychainVariable(with: bookTokenLock)
+      return _bearerToken.read()
     }
 
     set {
-      UserDefaults.standard.set(newValue, forKey: self.identifier)
+      let keychainTransaction = TPPKeychainVariableTransaction(accountInfoLock: bookTokenLock)
+
+      let _bearerToken: TPPKeychainVariable<String> = self.identifier.asKeychainVariable(with: bookTokenLock)
+      keychainTransaction.perform {
+        _bearerToken.write(newValue)
+      }
     }
   }
 }

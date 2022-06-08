@@ -213,22 +213,22 @@
       if (dict) {
         NSMutableDictionary *mutableDict = [dict mutableCopy];
         mutableDict[@"id"] = book.identifier;
-        [self openAudiobook:book withJSON:mutableDict decryptor:lcpAudiobooks];
+        [self openAudiobook:book withJSON:mutableDict decryptor:lcpAudiobooks isLCP:YES];
       }
     }];
   } else {
     // Not an LCP book
-    [self openAudiobook:book withJSON:dict ?: json decryptor:nil];
+    [self openAudiobook:book withJSON:dict ?: json decryptor:nil isLCP:NO];
   }
 #else
-  [self openAudiobook:book withJSON:dict ?: json decryptor:nil];
+  [self openAudiobook:book withJSON:dict ?: json decryptor:nil isLCP:NO];
 #endif
 }
 
-- (void)openAudiobook:(TPPBook *)book withJSON:(NSDictionary *)json decryptor:(id<DRMDecryptor>)audiobookDrmDecryptor {
+- (void)openAudiobook:(TPPBook *)book withJSON:(NSDictionary *)json decryptor:(id<DRMDecryptor>)audiobookDrmDecryptor isLCP:(BOOL)isLCP {
   [AudioBookVendorsHelper updateVendorKeyWithBook:json completion:^(NSError * _Nullable error) {
     [NSOperationQueue.mainQueue addOperationWithBlock:^{
-      id<Audiobook> const audiobook = [AudiobookFactory audiobook:json decryptor:audiobookDrmDecryptor token:book.bearerToken];
+      id<Audiobook> const audiobook = [AudiobookFactory audiobook:json decryptor:audiobookDrmDecryptor token:book.bearerToken isLCP: isLCP];
       
       if (!audiobook) {
         if (error) {
