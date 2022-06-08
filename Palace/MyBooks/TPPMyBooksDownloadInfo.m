@@ -5,6 +5,7 @@
 @property (nonatomic) CGFloat downloadProgress;
 @property (nonatomic) NSURLSessionDownloadTask *downloadTask;
 @property (nonatomic) TPPMyBooksDownloadRightsManagement rightsManagement;
+@property (nonatomic) TPPMyBooksSimplifiedBearerToken *bearerToken;
 
 @end
 
@@ -12,7 +13,19 @@
 
 - (instancetype)initWithDownloadProgress:(CGFloat const)downloadProgress
                             downloadTask:(NSURLSessionDownloadTask *const)downloadTask
+                        rightsManagement:(TPPMyBooksDownloadRightsManagement const)rightsManagement {
+
+  return [[[self class] alloc]
+          initWithDownloadProgress:downloadProgress
+          downloadTask:downloadTask
+          rightsManagement:rightsManagement
+          bearerToken:self.bearerToken];
+}
+
+- (instancetype)initWithDownloadProgress:(CGFloat const)downloadProgress
+                            downloadTask:(NSURLSessionDownloadTask *const)downloadTask
                         rightsManagement:(TPPMyBooksDownloadRightsManagement const)rightsManagement
+                             bearerToken:(TPPMyBooksSimplifiedBearerToken *)bearerToken
 {
   self = [super init];
   if(!self) return nil;
@@ -23,6 +36,7 @@
   self.downloadTask = downloadTask;
 
   self.rightsManagement = rightsManagement;
+  self.bearerToken = bearerToken;
   
   return self;
 }
