@@ -18,6 +18,7 @@ NSString * const _Nonnull ContentTypeReadiumLCPPDF = @"application/pdf";
 NSString * const _Nonnull ContentTypePDFLCP = @"application/pdf+lcp";
 NSString * const _Nonnull ContentTypeAudiobookLCP = @"application/audiobook+lcp";
 NSString * const _Nonnull ContentTypeAudiobookZip = @"application/audiobook+zip";
+NSString * const _Nonnull ContentTypeBiblioboard = @"application/json";
 
 @interface TPPOPDSAcquisitionPath ()
 
@@ -60,6 +61,7 @@ NSString * const _Nonnull ContentTypeAudiobookZip = @"application/audiobook+zip"
       ContentTypeFeedbooksAudiobook,
       ContentTypeOverdriveAudiobook,
       ContentTypeOctetStream,
+      ContentTypeBiblioboard,
 #if LCP
       ContentTypeReadiumLCP,
       ContentTypeAudiobookLCP,
