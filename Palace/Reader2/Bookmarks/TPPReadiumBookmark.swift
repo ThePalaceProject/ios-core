@@ -51,6 +51,9 @@
   init?(annotationId:String?,
         href:String?,
         chapter:String?,
+        audiobookProgress: Float? = nil,
+        audiobookPart: Float? = nil,
+        audiobookChapter: String? = nil,
         page:String?,
         location:String?,
         progressWithinChapter:Float,
@@ -69,7 +72,8 @@
     self.chapter = chapter ?? ""
     self.page = page ?? ""
 
-    self.location = TPPBookLocation(href: href, type: "LocatorHrefProgression", chapterProgression: progressWithinChapter, totalProgression: progressWithinBook, title: chapter, position: nil)?.locationString ?? ""
+//    self.location = TPPBookLocation(href: href, type: "LocatorHrefProgression", chapterProgression: progressWithinChapter, totalProgression: progressWithinBook, title: chapter, position: nil)?.locationString ?? ""
+    self.location = TPPBookLocation(href: href, type: "LocatorHrefProgression", time: audiobookProgress, part: audiobookPart, chapter: audiobookChapter, chapterProgression: progressWithinChapter, totalProgression: progressWithinBook, title: chapter, position: nil)?.locationString ?? ""
     
     self.progressWithinChapter = progressWithinChapter
     self.progressWithinBook = progressWithinBook

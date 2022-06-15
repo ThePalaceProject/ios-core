@@ -38,8 +38,8 @@ extension TPPBookLocation {
   
   convenience init?(href: String,
                     type: String,
-                    time: String? = nil,
-                    part: String? = nil,
+                    time: Float? = nil,
+                    part: Float? = nil,
                     chapter: String? = nil,
                     chapterProgression: Float? = nil,
                     totalProgression: Float? = nil,
@@ -54,8 +54,8 @@ extension TPPBookLocation {
     let dict: [String : Any] = [
       TPPBookLocation.hrefKey: href,
       TPPBookLocation.typeKey: type,
-      TPPBookLocation.timeKey: time ?? "",
-      TPPBookLocation.partKey: part ?? "",
+      TPPBookLocation.timeKey: time ?? 0.0,
+      TPPBookLocation.partKey: part ?? 0.0,
       TPPBookLocation.chapterKey: chapter ?? "",
       TPPBookLocation.chapterProgressKey: chapterProgression ?? 0.0,
       TPPBookLocation.bookProgressKey: totalProgression ?? 0.0,
@@ -106,7 +106,4 @@ private extension TPPBookLocation {
   static let bookProgressKey = "progressWithinBook"
   static let titleKey = "title"
   static let positionKey = "position"
-  static let timeKey = "time"
-  static let partKey = "part"
-  static let chapterKey = "chapter"
 }
