@@ -224,6 +224,10 @@ import R2Shared
     }
   }
 
+  class func postListeningPosition(forBook bookID: String, selectorValue: String) {
+    postReadingPosition(forBook: bookID, selectorValue: selectorValue, motivation: .readingProgress)
+  }
+
   class func postReadingPosition(forBook bookID: String, selectorValue: String, motivation: TPPBookmarkSpec.Motivation) {
     guard syncIsPossibleAndPermitted() else {
       Log.debug(#file, "Account does not support sync or sync is disabled.")

@@ -352,10 +352,11 @@
   NSString *const string = [[NSString alloc]
                             initWithData:self.manager.audiobook.player.currentChapterLocation.toData
                             encoding:NSUTF8StringEncoding];
+  
   [[TPPBookRegistry sharedRegistry]
    setLocation:[[TPPBookLocation alloc] initWithLocationString:string renderer:@"NYPLAudiobookToolkit"]
    forIdentifier:self.book.identifier];
-  
+
   // Save updated playhead position in audiobook chapter
   NSTimeInterval playheadOffset = self.manager.audiobook.player.currentChapterLocation.playheadOffset;
   if (previousPlayheadOffset != playheadOffset) {

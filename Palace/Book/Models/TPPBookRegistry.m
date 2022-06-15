@@ -544,6 +544,8 @@ genericBookmarks:(NSArray<TPPBookLocation *> *)genericBookmarks
     
     self.identifiersToRecords[identifier] = [record recordWithLocation:location];
     
+    // Save updated location on server
+    [TPPAnnotations postListeningPositionForBook:identifier selectorValue:location.locationString];
     [self broadcastChange];
   }
 }
@@ -552,6 +554,10 @@ genericBookmarks:(NSArray<TPPBookLocation *> *)genericBookmarks
 {
   @synchronized(self) {
     TPPBookRegistryRecord *const record = self.identifiersToRecords[identifier];
+    
+    [TPPAnnotations syncReadingPositionOfBook:identifier toURL:record.book.annotationsURL completion:^(TPPReadiumBookmark *bookmark) {
+          TPPLOG(@"Server Annotations fetched");
+    }];
     return record.location;
   }
 }

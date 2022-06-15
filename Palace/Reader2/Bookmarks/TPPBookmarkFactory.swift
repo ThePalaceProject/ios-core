@@ -114,13 +114,13 @@ class TPPBookmarkFactory {
     guard
       let selectorValueData = selectorValueEscJSON.data(using: String.Encoding.utf8),
       let selectorValueJSON = (try? JSONSerialization.jsonObject(with: selectorValueData,
-                                                                 options: [])) as? [String: Any],
-      let href = selectorValueJSON["href"] as? String
+                                                                 options: [])) as? [String: Any]
       else {
         Log.error(#file, "Error serializing serverCFI into JSON. Selector.Value=\(selectorValueEscJSON)")
         return nil
     }
 
+    let href = selectorValueJSON["href"] as? String ?? ""
     let chapter = body[TPPBookmarkSpec.Body.ChapterTitle.key] as? String ?? selectorValueJSON["title"] as? String
     let progressWithinChapter = selectorValueJSON["progressWithinChapter"] as? Float
     let progressWithinBook = Float(selectorValueJSON["progressWithinBook"] as? Double ?? body[TPPBookmarkSpec.Body.ProgressWithinBook.key] as? Double ?? 0.0)
