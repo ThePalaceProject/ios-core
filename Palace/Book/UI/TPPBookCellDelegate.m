@@ -35,6 +35,7 @@
 @property (nonatomic) id<AudiobookManager> manager;
 @property (nonatomic, weak) AudiobookPlayerViewController *audiobookViewController;
 @property (strong) NSLock *refreshAudiobookLock;
+@property (nonatomic, strong) LoadingViewController *loadingViewController;
 
 @end
 
@@ -287,12 +288,32 @@
 
       TPPBookLocation *const bookLocation =
       [[TPPBookRegistry sharedRegistry] locationForIdentifier:book.identifier];
-
+            
       if (bookLocation) {
         NSData *const data = [bookLocation.locationString dataUsingEncoding:NSUTF8StringEncoding];
         ChapterLocation *const chapterLocation = [ChapterLocation fromData:data];
         TPPLOG_F(@"Returning to Audiobook Location: %@", chapterLocation);
-        [manager.audiobook.player movePlayheadToLocation:chapterLocation];
+        [manager.audiobook.player movePlayheadToLocation:chapterLocation completion:nil];
+      } else {
+        [[TPPBookRegistry sharedRegistry] syncLocationFor:book completion:^(ChapterLocation * _Nullable chapterLocation) {
+          TPPLOG_F(@"Returning to Audiobook Location: %@", chapterLocation);
+
+          dispatch_async(dispatch_get_main_queue(), ^{
+            self.loadingViewController = [[LoadingViewController alloc] init];
+            [audiobookVC addChildViewController:self.loadingViewController];
+            self.loadingViewController.view.frame = audiobookVC.view.frame;
+            [audiobookVC.view addSubview:self.loadingViewController.view];
+            [self.loadingViewController didMoveToParentViewController:audiobookVC];
+          });
+  
+            [manager.audiobook.player movePlayheadToLocation:chapterLocation completion:^(NSError *error) {
+              dispatch_async(dispatch_get_main_queue(), ^{
+                [self.loadingViewController willMoveToParentViewController:nil];
+                [self.loadingViewController.view removeFromSuperview];
+                [self.loadingViewController removeFromParentViewController];
+              });
+            }];
+        }];
       }
 
       [self scheduleTimerForAudiobook:book manager:manager viewController:audiobookVC];
@@ -352,15 +373,18 @@
   NSString *const string = [[NSString alloc]
                             initWithData:self.manager.audiobook.player.currentChapterLocation.toData
                             encoding:NSUTF8StringEncoding];
-  
-  [[TPPBookRegistry sharedRegistry]
-   setLocation:[[TPPBookLocation alloc] initWithLocationString:string renderer:@"NYPLAudiobookToolkit"]
-   forIdentifier:self.book.identifier];
 
   // Save updated playhead position in audiobook chapter
   NSTimeInterval playheadOffset = self.manager.audiobook.player.currentChapterLocation.playheadOffset;
-  if (previousPlayheadOffset != playheadOffset) {
+  if (previousPlayheadOffset != playheadOffset && playheadOffset > 0) {
     previousPlayheadOffset = playheadOffset;
+  
+    [[TPPBookRegistry sharedRegistry]
+     setLocation:[[TPPBookLocation alloc] initWithLocationString:string renderer:@"NYPLAudiobookToolkit"]
+     forIdentifier:self.book.identifier];
+    
+    // Save updated location on server
+    [TPPAnnotations postListeningPositionForBook:self.book.identifier selectorValue:string];
     [[TPPBookRegistry sharedRegistry] save];
   }
 }

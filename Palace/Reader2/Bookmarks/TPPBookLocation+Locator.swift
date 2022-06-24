@@ -107,6 +107,6 @@ private extension TPPBookLocation {
   static let titleKey = "title"
   static let timeKey = "time"
   static let partKey = "part"
-  static let chapterKey = "chapterKey"
+  static let chapterKey = "chapter"
   static let positionKey = "position"
 }

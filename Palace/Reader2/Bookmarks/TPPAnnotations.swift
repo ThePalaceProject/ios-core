@@ -211,7 +211,7 @@ import R2Shared
   /// Reads the current reading position from the server, parses the response
   /// and returns the result to the `completionHandler`.
   class func syncReadingPosition(ofBook bookID: String?, toURL url:URL?,
-                                 completion: @escaping (_ readPos: TPPReadiumBookmark?) -> ()) {
+                                 completion: @escaping (_ readPos: Bookmark?) -> ()) {
 
     guard syncIsPossibleAndPermitted() else {
       Log.debug(#file, "Account does not support sync or sync is disabled.")
@@ -363,7 +363,7 @@ import R2Shared
   class func getServerBookmarks(forBook bookID:String?,
                                 atURL annotationURL:URL?,
                                 motivation: TPPBookmarkSpec.Motivation = .bookmark,
-                                completion: @escaping (_ bookmarks: [TPPReadiumBookmark]?) -> ()) {
+                                completion: @escaping (_ bookmarks: [Bookmark]?) -> ()) {
 
     guard syncIsPossibleAndPermitted() else {
       Log.debug(#file, "Account does not support sync or sync is disabled.")
