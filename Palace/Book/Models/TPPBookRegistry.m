@@ -543,6 +543,7 @@ genericBookmarks:(NSArray<TPPBookLocation *> *)genericBookmarks
     }
     
     self.identifiersToRecords[identifier] = [record recordWithLocation:location];
+    
     [self broadcastChange];
   }
 }
