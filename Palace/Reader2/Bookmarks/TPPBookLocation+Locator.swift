@@ -38,7 +38,7 @@ extension TPPBookLocation {
   
   convenience init?(href: String,
                     type: String,
-                    time: Float? = nil,
+                    time: Double? = nil,
                     part: Float? = nil,
                     chapter: String? = nil,
                     chapterProgression: Float? = nil,
