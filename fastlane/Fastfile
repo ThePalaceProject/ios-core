@@ -20,12 +20,12 @@ platform :ios do
       export_options: {
         method: "ad-hoc",
         provisioningProfiles: { 
-          "org.thepalaceproject.palace" => "Ad hoc"
+          "org.thepalaceproject.palace" => "Ad hoc 2"
         }
       }
     )
   end
-  lane :testflight do |options|
+  lane :appstore do |options|
     build_app(
       project: "Palace.xcodeproj",
       scheme: "Palace",
@@ -34,7 +34,7 @@ platform :ios do
       export_options: {
         method: "app-store",
         provisioningProfiles: { 
-          "org.thepalaceproject.palace" => "App store"
+          "org.thepalaceproject.palace" => "App Store 2"
         }
       }
     )
