@@ -9,11 +9,21 @@
 import Foundation
 
 @objc class AudioBookmark: NSObject, Bookmark, Codable {
-  let audiobookID: String
   let title: String
+  let chapter: UInt
   let part: UInt
-  let duration: Double
-  let startOffset: Double
-  let number: UInt
-  let playheadOffset: Double
+  let duration: UInt
+  let time: UInt
+  let type: String
+  let audiobookID: String
+
+  enum CodingKeys: String, CodingKey {
+    case title
+    case chapter
+    case part
+    case duration
+    case time
+    case type = "@type"
+    case audiobookID
+  }
 }

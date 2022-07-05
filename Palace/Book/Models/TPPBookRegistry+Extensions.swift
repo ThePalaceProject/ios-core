@@ -27,11 +27,11 @@ extension ChapterLocation {
 
   convenience init(audioBookmark: AudioBookmark) {
     self.init(
-      number: audioBookmark.number,
+      number: audioBookmark.chapter,
       part: audioBookmark.part,
-      duration: audioBookmark.duration,
-      startOffset: audioBookmark.startOffset,
-      playheadOffset: audioBookmark.playheadOffset,
+      duration: Double(audioBookmark.duration/1000),
+      startOffset: 0,
+      playheadOffset: Double(audioBookmark.time/1000),
       title: audioBookmark.title,
       audiobookID: audioBookmark.audiobookID
     )
