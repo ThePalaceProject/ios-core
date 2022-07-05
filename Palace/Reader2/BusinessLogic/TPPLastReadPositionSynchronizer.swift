@@ -82,9 +82,9 @@ class TPPLastReadPositionSynchronizer {
           completion(nil)
           return
         }
-        
+
         guard let bookmark = bookmark as? TPPReadiumBookmark else {
-         completion(nil)
+          completion(nil)
           return
         }
 
