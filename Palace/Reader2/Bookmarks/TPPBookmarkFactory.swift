@@ -67,7 +67,7 @@ class TPPBookmarkFactory {
 
   class func make(fromServerAnnotation annotation: [String: Any],
                   annotationType: TPPBookmarkSpec.Motivation,
-                  bookID: String) -> TPPReadiumBookmark? {
+                  bookID: String) -> Bookmark? {
 
     guard let annotationID = annotation[TPPBookmarkSpec.Id.key] as? String else {
       Log.error(#file, "Missing AnnotationID:\(annotation)")
@@ -111,28 +111,34 @@ class TPPBookmarkFactory {
         return nil
     }
 
-    guard
-      let selectorValueData = selectorValueEscJSON.data(using: String.Encoding.utf8),
-      let selectorValueJSON = (try? JSONSerialization.jsonObject(with: selectorValueData,
-                                                                 options: [])) as? [String: Any],
-      let href = selectorValueJSON["href"] as? String
-      else {
-        Log.error(#file, "Error serializing serverCFI into JSON. Selector.Value=\(selectorValueEscJSON)")
+    guard let selectorValueData = selectorValueEscJSON.data(using: String.Encoding.utf8) else {
+      Log.error(#file, "Error serializing serverCFI into JSON. Selector.Value=\(selectorValueEscJSON)")
         return nil
     }
-
-    let chapter = body[TPPBookmarkSpec.Body.ChapterTitle.key] as? String ?? selectorValueJSON["title"] as? String
-    let progressWithinChapter = selectorValueJSON["progressWithinChapter"] as? Float
-    let progressWithinBook = Float(selectorValueJSON["progressWithinBook"] as? Double ?? body[TPPBookmarkSpec.Body.ProgressWithinBook.key] as? Double ?? 0.0)
-
-    return TPPReadiumBookmark(annotationId: annotationID,
-                               href: href,
-                               chapter: chapter,
-                               page: nil,
-                               location: selectorValueEscJSON,
-                               progressWithinChapter: progressWithinChapter ?? 0.0,
-                               progressWithinBook: progressWithinBook,
-                               time:time,
-                               device:device)
+    
+    if let audioBookmark = try? JSONDecoder().decode(AudioBookmark.self, from: selectorValueData) {
+        return audioBookmark
+    }
+  
+    guard let selectorValueJSON = (try? JSONSerialization.jsonObject(with: selectorValueData, options: [])) as? [String: Any] else {
+      Log.error(#file, "Error serializing serverCFI into JSON. Selector.Value=\(selectorValueEscJSON)")
+      return nil
+    }
+  
+      let href = selectorValueJSON["href"] as? String ?? ""
+      let chapter = body[TPPBookmarkSpec.Body.ChapterTitle.key] as? String ?? selectorValueJSON["title"] as? String
+      let progressWithinChapter = selectorValueJSON["progressWithinChapter"] as? Float
+      let progressWithinBook = Float(selectorValueJSON["progressWithinBook"] as? Double ?? body[TPPBookmarkSpec.Body.ProgressWithinBook.key] as? Double ?? 0.0)
+      return TPPReadiumBookmark(
+        annotationId: annotationID,
+        href: href,
+        chapter: chapter,
+        page: nil,
+        location: selectorValueEscJSON,
+        progressWithinChapter: progressWithinChapter ?? 0.0,
+        progressWithinBook: progressWithinBook,
+        time:time,
+        device:device
+      )
   }
 }

@@ -21,9 +21,12 @@
   fileprivate static let bookProgressKey = "progressWithinBook"
 }
 
+protocol Bookmark: NSObject {}
+
 /// Internal representation of an annotation. This may represent an actual
 /// user bookmark as well as the "bookmark" of the last read position in a book.
-@objcMembers final class TPPReadiumBookmark: NSObject {
+@objcMembers final class TPPReadiumBookmark: NSObject, Bookmark {
+
   /// The bookmark ID.
   var annotationId:String?
 
@@ -69,7 +72,14 @@
     self.chapter = chapter ?? ""
     self.page = page ?? ""
 
-    self.location = TPPBookLocation(href: href, type: "LocatorHrefProgression", chapterProgression: progressWithinChapter, totalProgression: progressWithinBook, title: chapter, position: nil)?.locationString ?? ""
+    self.location = TPPBookLocation(
+      href: href,
+      type: "LocatorHrefProgression",
+      chapterProgression: progressWithinChapter,
+      totalProgression: progressWithinBook,
+      title: chapter,
+      position: nil
+    )?.locationString ?? ""
     
     self.progressWithinChapter = progressWithinChapter
     self.progressWithinBook = progressWithinBook
