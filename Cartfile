@@ -6,5 +6,3 @@ github "PureLayout/PureLayout" ~> 3.1.2
 github "stephencelis/SQLite.swift" == 0.12.2
 github "zxingify/zxingify-objc" ~> 3.6
 github "readium/swift-toolkit" "2.3.0"
-
-binary "https://liblcp.dita.digital/readium/liblcp/ios/carthage/xHwy01rpnw/liblcp.json" ~> 2.0.0
