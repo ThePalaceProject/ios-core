@@ -301,12 +301,21 @@
         } else {
           TPPBookLocation *const bookLocation =
           [[TPPBookRegistry sharedRegistry] locationForIdentifier:book.identifier];
-                
+
           if (bookLocation) {
+            [self startLoading:audiobookVC];
+
             NSData *const data = [bookLocation.locationString dataUsingEncoding:NSUTF8StringEncoding];
             ChapterLocation *const chapterLocation = [ChapterLocation fromData:data];
             TPPLOG_F(@"Returning to Audiobook Location: %@", chapterLocation);
-            [manager.audiobook.player movePlayheadToLocation:chapterLocation completion:nil];
+            [manager.audiobook.player movePlayheadToLocation:chapterLocation completion:^(NSError *error) {
+              if (error) {
+                [self presentLocationRecoveryError:error];
+                return;
+              }
+
+              [self stopLoading];
+            }];
           }
         }
       }];
