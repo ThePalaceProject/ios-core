@@ -8,27 +8,6 @@
 
 import Foundation
 
-protocol LoadableViewController: UIViewController {
-  var loadingViewController: LoadingViewController { get set }
-  func isLoading(_ isLoading: Bool)
-}
-  
-extension LoadableViewController {
-  func toggleLoading(_ isLoading: Bool) {
-    if isLoading {
-      loadingViewController = LoadingViewController()
-      addChild(loadingViewController)
-      loadingViewController.view.frame = view.frame
-      view.addSubview(loadingViewController.view)
-      loadingViewController.didMove(toParent: self)
-    } else {
-      loadingViewController.willMove(toParent: nil)
-      loadingViewController.view.removeFromSuperview()
-      loadingViewController.removeFromParent()
-    }
-  }
-}
-
 class LoadingViewController: UIViewController {
     var spinner = UIActivityIndicatorView(style: .large)
 
