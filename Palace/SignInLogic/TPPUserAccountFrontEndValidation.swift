@@ -50,7 +50,7 @@ extension TPPUserAccountFrontEndValidation: UITextFieldDelegate {
       businessLogic?.selectedAuthentication?.patronIDKeyboard != .email {
 
       // Barcodes are numeric and usernames are alphanumeric including punctuation
-      let allowedCharacters = CharacterSet.alphanumerics.union(.punctuationCharacters)
+      let allowedCharacters = CharacterSet.alphanumerics.union(.punctuationCharacters).union(CharacterSet(charactersIn: "$"))
       let bannedCharacters = allowedCharacters.inverted
 
       guard string.rangeOfCharacter(from: bannedCharacters) == nil else { return false }
