@@ -21,14 +21,21 @@ import ReadiumLCP
   /// Readium licensee file extension
   @objc public let licenseExtension = "lcpl"
   
+  private var lcpClient = TPPLCPClient()
+  
   /// Readium LCPService
-  private var lcpService = LCPService(client: TPPLCPClient())
+  private var lcpService: LCPService
   
   /// ContentProtection unlocks protected publication, providing a custom `Fetcher`
   lazy var contentProtection: ContentProtection? = lcpService.contentProtection(with: LCPPassphraseAuthenticationService())
   
   /// [LicenseDocument.id: passphrase callback]
   private var authenticationCallbacks: [String: (String?) -> Void] = [:]
+  
+  override init() {
+    self.lcpService = LCPService(client: lcpClient)
+    super.init()
+  }
   
   /// Returns whether this DRM can fulfill the given file into a protected publication.
   /// - Parameter file: file URL
@@ -80,6 +87,15 @@ import ReadiumLCP
       }
       completion(localUrl, nil)
     }
+  }
+  
+  /// Decrypts data passed to LCP decryptor.
+  /// - Parameter data: Encrypted data.
+  /// - Returns: Decrypted data.
+  ///
+  /// Encrypted data must be a valid block of AES-encrypted data, othervise LCP decryptor crashes the app.
+  func decrypt(data: Data) -> Data? {
+    lcpClient.decrypt(data: data)
   }
 }
 

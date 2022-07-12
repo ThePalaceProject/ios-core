@@ -4,6 +4,7 @@
 #if FEATURE_OVERDRIVE
 @import OverdriveProcessor;
 #endif
+@import PDFKit;
 
 #import "TPPAccountSignInViewController.h"
 #import "TPPBook.h"
@@ -144,9 +145,31 @@
 }
 
 - (void)openPDF:(TPPBook *)book {
-
   if ([LCPPDFs canOpenBook:book]) {
-    [[TPPRootTabBarController sharedController] presentBook:book];
+    NSURL *bookUrl = [[TPPMyBooksDownloadCenter sharedDownloadCenter] fileURLForBookIndentifier:book.identifier];
+    LCPPDFs *decryptor = [[LCPPDFs alloc] initWithUrl:bookUrl];
+    [decryptor extractWithUrl:bookUrl completion:^(NSURL *encryptedUrl, NSError *error) {
+      if (error) {
+        NSString *errorMessage = NSLocalizedString(@"Error extracting encrypted PDF file", nil);
+        [TPPErrorLogger logError:error
+                         summary:errorMessage
+                        metadata:@{ @"error": error }];
+        UIAlertController *alert = [TPPAlertUtils alertWithTitle:errorMessage error:error];
+        [TPPAlertUtils presentFromViewControllerOrNilWithAlertController:alert viewController:nil animated:YES completion:nil];
+        return;
+      }
+      NSData *encryptedData = [[NSData alloc] initWithContentsOfURL:encryptedUrl options:NSDataReadingMappedAlways error:nil];
+
+      TPPPDFDocumentMetadata *metadata = [[TPPPDFDocumentMetadata alloc] initWith:book.identifier];
+      metadata.title = book.title;
+      
+      TPPPDFDocument *document = [[TPPPDFDocument alloc] initWithEncryptedData:encryptedData decryptor:^NSData * _Nonnull(NSData *data, NSUInteger start, NSUInteger end) {
+        return [decryptor decryptDataWithData:data start:start end:end];
+      }];
+      
+      UIViewController *vc = [TPPPDFViewController createWithDocument:document metadata:metadata];
+      [[TPPRootTabBarController sharedController] pushViewController:vc animated:YES];
+    }];
   } else {
     [self presentPDF:book];
   }

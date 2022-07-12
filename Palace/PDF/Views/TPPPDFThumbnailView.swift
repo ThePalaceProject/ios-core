@@ -1,0 +1,26 @@
+//
+//  TPPPDFThumbnailView.swift
+//  Palace
+//
+//  Created by Vladimir Fedorov on 08.07.2022.
+//  Copyright © 2022 The Palace Project. All rights reserved.
+//
+
+import SwiftUI
+import PDFKit
+
+struct TPPPDFThumbnailView: UIViewRepresentable {
+
+  var pdfView: PDFView
+  
+  func makeUIView(context: Context) -> some UIView {
+    let view = PDFThumbnailView()
+    view.pdfView = pdfView
+    view.layoutMode = .horizontal
+    return view
+  }
+  
+  func updateUIView(_ uiView: UIViewType, context: Context) {
+    //
+  }
+}

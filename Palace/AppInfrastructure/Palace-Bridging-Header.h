@@ -45,3 +45,4 @@
 #import "TPPXML.h"
 #import "UIFont+TPPSystemFontOverride.h"
 #import "UIView+TPPViewAdditions.h"
+#import "TPPEncryptedPDFDataProvider.h"
