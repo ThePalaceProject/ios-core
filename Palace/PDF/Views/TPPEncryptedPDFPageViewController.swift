@@ -105,13 +105,22 @@ class TPPEncryptedPDFPageViewController: UIViewController {
     timer = nil
   }
   
+  override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
+    renderPageImage()
+  }
+  
   /// Render page for the view size
   private func renderPageImage() {
     let viewSize = self.view.bounds.size
     DispatchQueue.pdfImageRenderingQueue.async {
       if let pageImage = self.document.image(for: self.pageNumber, size: viewSize) {
         DispatchQueue.main.async {
+          guard let imageView = self.imageView, let scrollView = self.scrollView else {
+            return
+          }
+          imageView.frame = scrollView.bounds.insetBy(dx: self.contentInset * 2, dy: self.contentInset * 2)
           self.image = pageImage
+          self.didZoom =  false
         }
       }
     }
