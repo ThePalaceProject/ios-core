@@ -87,7 +87,7 @@ struct TPPPDFDocumentView: UIViewRepresentable {
     }
   }
   
-  class PDFViewGestureRecognizer: UITapGestureRecognizer {
+  class PDFViewGestureRecognizer: UIGestureRecognizer {
     var isTracking = false
     var touchCompletion: ((_ touches: Set<UITouch>) -> Void)?
         
