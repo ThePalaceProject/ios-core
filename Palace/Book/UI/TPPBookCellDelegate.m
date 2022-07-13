@@ -171,11 +171,32 @@
       [[TPPRootTabBarController sharedController] pushViewController:vc animated:YES];
     }];
   } else {
-    [self presentPDF:book];
+    if (TPPSettings.shared.useEncryptedPDFReader) {
+      [self presentPDF:book];
+    } else {
+      [self presentMinitexPDFReader:book];
+    }
   }
 }
 
+/// Present Palace PDF reader
+/// @param book PDF Book object
 - (void)presentPDF:(TPPBook *)book {
+  NSURL *bookUrl = [[TPPMyBooksDownloadCenter sharedDownloadCenter] fileURLForBookIndentifier:book.identifier];
+  NSData *data = [[NSData alloc] initWithContentsOfURL:bookUrl options:NSDataReadingMappedAlways error:nil];
+
+  TPPPDFDocumentMetadata *metadata = [[TPPPDFDocumentMetadata alloc] initWith:book.identifier];
+  metadata.title = book.title;
+  
+  TPPPDFDocument *document = [[TPPPDFDocument alloc] initWithData:data];
+  
+  UIViewController *vc = [TPPPDFViewController createWithDocument:document metadata:metadata];
+  [[TPPRootTabBarController sharedController] pushViewController:vc animated:YES];
+}
+
+/// Present Minitex PDF reader
+/// @param book PDF Book object
+- (void)presentMinitexPDFReader:(TPPBook *)book {
   NSURL *const url = [[TPPMyBooksDownloadCenter sharedDownloadCenter] fileURLForBookIndentifier:book.identifier];
 
   NSArray<TPPBookLocation *> *const genericMarks = [[TPPBookRegistry sharedRegistry] genericBookmarksForIdentifier:book.identifier];
