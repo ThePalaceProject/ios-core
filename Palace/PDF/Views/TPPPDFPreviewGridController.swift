@@ -13,6 +13,9 @@ import UIKit
 /// Shows page previews and bookmarks in `.pdf` files.
 class TPPPDFPreviewGridController: UICollectionViewController {
   
+  private let preferredPreviewWidth: CGFloat = 200
+  private let minimumItemsPerRow: Int = 3
+  
   /// Indices of pages to show in previews.
   var indices: [Int]? {
     didSet {
@@ -116,12 +119,6 @@ class TPPPDFPreviewGridController: UICollectionViewController {
         cell.imageView.image = nil
       }
       DispatchQueue.pdfThumbnailRenderingQueue.async {
-        let thumbnail: UIImage? = self.document?.thumbnail(for: page)
-        if page == cell.pageNumber {
-          DispatchQueue.main.async {
-            cell.imageView.image = thumbnail
-          }
-        }
         let image: UIImage? = self.document?.preview(for: page)
         if let image = image {
           self.previewCache.setObject(image, forKey: key)
@@ -150,11 +147,11 @@ class TPPPDFPreviewGridController: UICollectionViewController {
 
 extension TPPPDFPreviewGridController: UICollectionViewDelegateFlowLayout {
   func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> CGSize {
-    var itemsPerRow = 3
+    var itemsPerRow = minimumItemsPerRow
     let device = UIDevice.current
     if device.userInterfaceIdiom == .pad &&
         (device.orientation == .landscapeLeft || device.orientation == .landscapeRight) {
-      itemsPerRow = 6
+      itemsPerRow = max(minimumItemsPerRow, Int(collectionView.bounds.width / preferredPreviewWidth))
     }
     let contentWidth = collectionView.bounds.width
     var interitemSpace = 0.0
