@@ -15,8 +15,11 @@ class TPPPDFPreviewGridCell: UICollectionViewCell {
   
   var imageView: UIImageView = {
     let imageView = UIImageView()
-    imageView.backgroundColor = .secondarySystemBackground
+    imageView.backgroundColor = .clear
     imageView.contentMode = .scaleAspectFit
+    imageView.layer.shadowOffset = .zero
+    imageView.layer.shadowRadius = 4
+    imageView.layer.shadowOpacity = 0.2
     return imageView
   }()
 

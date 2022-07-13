@@ -33,7 +33,7 @@ class TPPEncryptedPDFViewController: UIPageViewController {
   }
   
   override func viewDidLoad() {
-    view.backgroundColor = .systemBackground
+    view.backgroundColor = .secondarySystemBackground
     dataSource = self
     currentPage = min(pageCount, max(0, currentPage))
     setViewControllers([pageViewController(page: currentPage)], direction: .forward, animated: false)

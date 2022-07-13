@@ -105,6 +105,12 @@ extension TPPPDFDocument {
     document?.page(at: page)?.thumbnail(of: size, for: .mediaBox)
   }
   
+  func size(page: Int) -> CGSize? {
+    isEncrypted ?
+    encryptedDocument?.page(at: page)?.getBoxRect(.mediaBox).size :
+    document?.page(at: page)?.bounds(for: .mediaBox).size
+  }
+  
   /// Search the document
   /// - Parameter text: Text string to look for
   /// - Returns: Array of PDF locations

@@ -77,7 +77,7 @@ class TPPPDFPreviewGridController: UICollectionViewController {
     collectionView.dataSource = self
     collectionView.delegate = self
     collectionView.register(TPPPDFPreviewGridCell.self, forCellWithReuseIdentifier: cellId)
-    collectionView.backgroundColor = .systemBackground
+    collectionView.backgroundColor = .secondarySystemBackground
     collectionView.contentInset = UIEdgeInsets(top: itemSpacing, left: itemSpacing, bottom: itemSpacing, right: itemSpacing)
     view.addSubview(collectionView)
   }
@@ -105,18 +105,18 @@ class TPPPDFPreviewGridController: UICollectionViewController {
     if let image = previewCache.object(forKey: key) {
       cell.imageView.image = image
     } else {
-      cell.imageView.image = nil
+      if let pageSize = document?.size(page: page) {
+        cell.imageView.image = UIImage(color: .white, size: pageSize)
+      } else {
+        cell.imageView.image = nil
+      }
       DispatchQueue.pdfThumbnailRenderingQueue.async {
         let thumbnail: UIImage? = self.document?.thumbnail(for: page)
         if page == cell.pageNumber {
           DispatchQueue.main.async {
-            if cell.imageView.image == nil {
-              cell.imageView.image = thumbnail
-            }
+            cell.imageView.image = thumbnail
           }
         }
-      }
-      DispatchQueue.pdfImageRenderingQueue.async {
         let image: UIImage? = self.document?.preview(for: page)
         if let image = image {
           self.previewCache.setObject(image, forKey: key)

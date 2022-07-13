@@ -12,6 +12,8 @@ import SwiftUI
 /// Single page view controller
 class TPPEncryptedPDFPageViewController: UIViewController {
   
+  private let contentInset: CGFloat = 5
+  
   var document: TPPEncryptedPDFDocument
   var pageNumber: Int
 
@@ -48,15 +50,24 @@ class TPPEncryptedPDFPageViewController: UIViewController {
     scrollView!.minimumZoomScale = 1
     scrollView!.maximumZoomScale = 4
     scrollView!.delegate = self
+    scrollView!.backgroundColor = .secondarySystemBackground
     view.addSubview(scrollView!)
     scrollView!.autoPinEdgesToSuperviewEdges()
     
-    imageView = UIImageView(frame: view.bounds)
+    imageView = UIImageView(frame: view.bounds.insetBy(dx: contentInset * 2, dy: contentInset * 2))
     imageView!.contentMode = .scaleAspectFit
     imageView!.clipsToBounds = false
+    imageView!.layer.shadowOffset = .zero
+    imageView!.layer.shadowRadius = contentInset
+    imageView!.layer.shadowOpacity = 0.2
     scrollView!.addSubview(imageView!)
     scrollView!.addGestureRecognizer(doubleTap)
 
+    // Blank page
+    if let pageSize = document.page(at: pageNumber)?.getBoxRect(.mediaBox).size {
+      imageView!.image = UIImage(color: .white, size: pageSize)
+    }
+    
     // The page is rendered after a short delay to avoid rendering when the user quickly scrolls through pages
     timer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: false, block: { _ in
       self.renderPageImage()
