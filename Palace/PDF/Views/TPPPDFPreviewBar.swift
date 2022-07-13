@@ -82,6 +82,14 @@ struct TPPPDFPreviewBar: View {
         }
       }
     }
+    .onAppear {
+      // When the view appears, it requests a lot of page thumnails
+      // A 1-second delay helps them to get first in the queue
+      // and makes the view look more responsive
+      DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+        document.makeThumbnails()
+      }
+    }
   }
   
   /// Array of visible page indices

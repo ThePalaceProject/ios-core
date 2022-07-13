@@ -29,7 +29,6 @@ import UIKit
     let dataProvider = pdfDataProvider.dataProvider().takeUnretainedValue()
     self.document = CGPDFDocument(dataProvider)
     super.init()
-    makeThumbnails()
   }
   
   var pageCount: Int {
@@ -51,11 +50,14 @@ import UIKit
   }
   
   func makeThumbnails() {
-    DispatchQueue.pdfThumbnailRenderingQueue.async {
-      let pageCount = self.document?.pageCount ?? 0
-      for page in 0..<pageCount {
+    let pageCount = self.document?.pageCount ?? 0
+    for page in 0..<pageCount {
+      DispatchQueue.pdfThumbnailRenderingQueue.async {
+        let pageNumber = NSNumber(value: page)
+        if self.thumbnailsCache.object(forKey: pageNumber) != nil {
+          return
+        }
         if let thumbnail = self.thumbnail(for: page), let thumbnailData = thumbnail.jpegData(compressionQuality: 0.5) {
-          let pageNumber = NSNumber(value: page)
           DispatchQueue.main.async {
             self.thumbnailsCache.setObject(thumbnailData as NSData, forKey: pageNumber)
           }

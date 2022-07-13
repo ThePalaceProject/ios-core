@@ -11,7 +11,7 @@ import Foundation
 extension DispatchQueue {
   /// Dispatch queue for thumbnails rendering
   static var pdfThumbnailRenderingQueue: DispatchQueue {
-    DispatchQueue(label: "org.thepalaceproject.palace.thumbnailRenderingQueue", qos: .userInteractive)
+    DispatchQueue(label: "org.thepalaceproject.palace.thumbnailRenderingQueue", qos: .userInteractive, attributes: .concurrent)
   }
   /// Dispatch queue for image rendering
   static var pdfImageRenderingQueue: DispatchQueue {
