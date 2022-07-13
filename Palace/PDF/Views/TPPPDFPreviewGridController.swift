@@ -28,9 +28,7 @@ class TPPPDFPreviewGridController: UICollectionViewController {
   /// Added to optimize data updates and generate page previews only when the view is visible to the user.
   var isVisible = false {
     didSet {
-      if isVisible && indices == nil {
-        collectionView.scrollToItem(at: IndexPath(item: currentPage, section: 0), at: .centeredVertically, animated: false)
-      }
+      scrollToCurrentItem()
     }
   }
   
@@ -90,8 +88,10 @@ class TPPPDFPreviewGridController: UICollectionViewController {
   }
   
   override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
-    collectionView.collectionViewLayout.invalidateLayout()
-    view.setNeedsDisplay()
+    DispatchQueue.main.async {
+      self.collectionView.collectionViewLayout.invalidateLayout()
+      self.scrollToCurrentItem()
+    }
   }
 
   override func numberOfSections(in collectionView: UICollectionView) -> Int {
@@ -139,6 +139,12 @@ class TPPPDFPreviewGridController: UICollectionViewController {
   override func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
     let page = pageNumber(for: indexPath.item)
     delegate?.didSelectPage(page)
+  }
+  
+  private func scrollToCurrentItem() {
+    if isVisible && indices == nil {
+      collectionView.scrollToItem(at: IndexPath(item: currentPage, section: 0), at: .centeredVertically, animated: false)
+    }
   }
 }
 
