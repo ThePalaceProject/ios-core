@@ -8,6 +8,8 @@
 
 import SwiftUI
 
+/// This view shows encrypted PDF documents.
+/// The analog for non-encrypted documents - `TPPPDFView`
 struct TPPEncryptedPDFView: View {
   
   let encryptedPDF: TPPEncryptedPDFDocument

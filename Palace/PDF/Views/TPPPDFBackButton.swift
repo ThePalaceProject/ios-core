@@ -8,6 +8,7 @@
 
 import SwiftUI
 
+/// Preconfigured back button view
 struct TPPPDFBackButton: View {
   
   let action: () -> Void

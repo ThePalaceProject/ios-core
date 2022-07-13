@@ -8,6 +8,7 @@
 
 import SwiftUI
 
+/// Single page thumbnail view
 struct TPPPDFPreviewThumbnail: View {
   
   @ObservedObject var thumbnailGenerator: ThumbnailFetcher

@@ -8,6 +8,9 @@
 
 import SwiftUI
 
+/// Encrypted PDF viewer class.
+/// Plays the same role as PDFKit's `PDFView` — displays a PDF page, performs swipe navigation between pages.
+/// Wraps `TPPEncryptedPDFViewController` — `UIPageViewController`
 struct TPPEncryptedPDFViewer: UIViewControllerRepresentable {
   
   let encryptedPDF: TPPEncryptedPDFDocument

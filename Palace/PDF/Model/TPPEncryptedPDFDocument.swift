@@ -84,18 +84,22 @@ extension TPPEncryptedPDFDocument {
 }
 
 extension TPPEncryptedPDFDocument {
+  /// Preview image for a page
+  /// - Parameter page: Page number
+  /// - Returns: Rendered page image
+  ///
+  /// `preview` returns a larger image than `thumbnail`
   func preview(for page: Int) -> UIImage? {
     self.page(at: page)?.preview
   }
 
-  func cachedThumbnail(for page: Int) -> UIImage? {
-    let pageNumber = NSNumber(value: page)
-    if let cachedData = thumbnailsCache.object(forKey: pageNumber), let cachedImage = UIImage(data: cachedData as Data) {
-      return cachedImage
-    }
-    return nil
-  }
-  
+  /// Thumbnail image for a page
+  /// - Parameter page: Page number
+  /// - Returns: Rendered page image
+  ///
+  /// `thumbnail` returns a smaller image than `preview`
+  ///
+  /// This function caches thumbnail image data and returnes a cached image when one is available.
   func thumbnail(for page: Int) -> UIImage? {
     let pageNumber = NSNumber(value: page)
     if let cachedData = thumbnailsCache.object(forKey: pageNumber), let cachedImage = UIImage(data: cachedData as Data) {
@@ -109,6 +113,25 @@ extension TPPEncryptedPDFDocument {
       }
     }
   }
+  
+  /// Cached thumbnail image for a page
+  /// - Parameter page: Page number
+  /// - Returns: Thumbnail image, if it is available in cached images, `nil` otherwise.
+  ///
+  /// This function doesn't render new thumbnail images.
+  func cachedThumbnail(for page: Int) -> UIImage? {
+    let pageNumber = NSNumber(value: page)
+    if let cachedData = thumbnailsCache.object(forKey: pageNumber), let cachedImage = UIImage(data: cachedData as Data) {
+      return cachedImage
+    }
+    return nil
+  }
+
+  /// Image for a page
+  /// - Parameters:
+  ///   - page: Page number
+  ///   - size: Size of the image to render
+  /// - Returns: Rendered page image
   func image(for page: Int, size: CGSize?) -> UIImage? {
     self.page(at: page)?.image(of: size)
   }

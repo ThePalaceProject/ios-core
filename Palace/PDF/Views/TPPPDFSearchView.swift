@@ -8,6 +8,7 @@
 
 import SwiftUI
 
+/// Search view
 struct TPPPDFSearchView: View {
   
   let document: TPPPDFDocument

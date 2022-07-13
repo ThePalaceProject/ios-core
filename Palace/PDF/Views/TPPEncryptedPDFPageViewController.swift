@@ -9,6 +9,7 @@
 import UIKit
 import SwiftUI
 
+/// Single page view controller
 class TPPEncryptedPDFPageViewController: UIViewController {
   
   var document: TPPEncryptedPDFDocument

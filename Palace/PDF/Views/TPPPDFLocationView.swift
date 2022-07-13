@@ -8,6 +8,7 @@
 
 import SwiftUI
 
+/// PDF page location view
 struct TPPPDFLocationView: View {
   let location: TPPPDFLocation
   var body: some View {

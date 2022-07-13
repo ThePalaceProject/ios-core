@@ -9,6 +9,8 @@
 import SwiftUI
 import UIKit
 
+/// Previews and bookmarks.
+/// Wraps `TPPPDFPreviewGridController` — `UICollectionViewController` 
 struct TPPPDFPreviewGrid: UIViewControllerRepresentable {
   let document: TPPPDFDocument
   var pageIndices: [Int]?

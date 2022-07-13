@@ -10,6 +10,7 @@ import SwiftUI
 import PDFKit
 import Combine
 
+/// Wraps PDFKit PDFView control
 struct TPPPDFDocumentView: UIViewRepresentable {
   
   var document: PDFDocument

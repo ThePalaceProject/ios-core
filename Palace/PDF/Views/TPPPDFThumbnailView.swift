@@ -9,6 +9,7 @@
 import SwiftUI
 import PDFKit
 
+/// Wraps PDFKit PDFThumbnails control
 struct TPPPDFThumbnailView: UIViewRepresentable {
 
   var pdfView: PDFView

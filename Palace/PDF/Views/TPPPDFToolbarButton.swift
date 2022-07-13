@@ -8,8 +8,7 @@
 
 import SwiftUI
 
-
-
+/// Preconfigured toolbar button view
 struct TPPPDFToolbarButton: View {
 
   let action: () -> Void

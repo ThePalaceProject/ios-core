@@ -8,6 +8,7 @@
 
 import UIKit
 
+/// Encrypted PDF view controller
 class TPPEncryptedPDFViewController: UIPageViewController {
   
   var document: TPPEncryptedPDFDocument

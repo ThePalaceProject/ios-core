@@ -35,7 +35,6 @@ extension CGPDFPage {
       context.translateBy(x: 0, y: pageRect.size.height)
       context.scaleBy(x: 1, y: -1)
       context.scaleBy(x: pdfScale, y: pdfScale)
-//      context.concatenate(getDrawingTransform(.mediaBox, rect: pageRect, rotate: 0, preserveAspectRatio: true))
       context.drawPDFPage(self)
       context.restoreGState()
 
@@ -46,10 +45,12 @@ extension CGPDFPage {
     }
   }
   
+  /// Thumbnail image of the page
   var thumbnail: UIImage? {
     image(of: .pdfThumbnailSize, for: .mediaBox)
   }
   
+  /// Preview image of the page
   var preview: UIImage? {
     image(of: .pdfPreviewSize, for: .mediaBox)
   }

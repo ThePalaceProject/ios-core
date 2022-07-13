@@ -9,6 +9,10 @@
 import SwiftUI
 import PDFKit
 
+/// This view shows PDFKit views when PDF is not encrypted
+/// PDFKit reading controls (PDFView and PDFThumbnails) are generally faster because of direct data reading,
+/// instead of reading blocks of data with data provider.
+/// The analog for encrypted documents - `TPPEncryptedPDFView`
 struct TPPPDFView: View {
   
   let document: PDFDocument

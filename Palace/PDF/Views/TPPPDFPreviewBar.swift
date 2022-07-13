@@ -8,6 +8,8 @@
 
 import SwiftUI
 
+/// Bottom bar with page thumbnails
+/// Performs similar to PDFKit's `PDFThumbnails` view.
 struct TPPPDFPreviewBar: View {
   
   private let barPreviewsHeight = 24.0

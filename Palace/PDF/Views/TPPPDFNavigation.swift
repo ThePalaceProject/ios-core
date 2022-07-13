@@ -8,6 +8,7 @@
 
 import SwiftUI
 
+/// Navigation between previews, TOC and bookmarks
 struct TPPPDFNavigation<Content>: View where Content: View {
   
   private enum TPPPDFReaderModeValues: Int, Identifiable {
