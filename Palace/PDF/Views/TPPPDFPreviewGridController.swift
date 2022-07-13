@@ -88,6 +88,11 @@ class TPPPDFPreviewGridController: UICollectionViewController {
       collectionView.scrollToItem(at: IndexPath(item: currentPage, section: 0), at: .centeredVertically, animated: false)
     }
   }
+  
+  override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
+    collectionView.collectionViewLayout.invalidateLayout()
+    view.setNeedsDisplay()
+  }
 
   override func numberOfSections(in collectionView: UICollectionView) -> Int {
     return 1
@@ -154,7 +159,11 @@ extension TPPPDFPreviewGridController: UICollectionViewDelegateFlowLayout {
       interitemSpace += itemSpacing * CGFloat(itemsPerRow - 1)
     }
     let width = (contentWidth - interitemSpace - itemSpacing) / CGFloat(itemsPerRow)
-    let height = width * 1.5
+    var height = width * 1.5
+    let pageNumber = self.pageNumber(for: indexPath.item)
+    if let pageSize = document?.size(page: pageNumber) {
+      height = pageSize.height * (width / pageSize.width)
+    }
     return CGSize(width: width, height: height)
   }
 }
