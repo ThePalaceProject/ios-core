@@ -139,7 +139,7 @@ extension TPPPDFDocument {
       }
   }
   
-  /// Unfolds al outline levels into a flat array with `level` parameter for depth level information
+  /// Unfolds all outline levels into a flat array with `level` parameter for depth level information
   /// - Parameters:
   ///   - element: `PDFOutline` element
   ///   - level: depth level
