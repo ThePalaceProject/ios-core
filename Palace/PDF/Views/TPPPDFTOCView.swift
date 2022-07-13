@@ -13,6 +13,7 @@ struct TPPPDFTOCView: View {
 
   @EnvironmentObject var metadata: TPPPDFDocumentMetadata
   let document: TPPPDFDocument
+  let done: () -> Void
 
   var body: some View {
     VStack {
@@ -21,6 +22,7 @@ struct TPPPDFTOCView: View {
           TPPPDFLocationView(location: location)
             .onTapGesture {
               metadata.currentPage = location.pageNumber
+              done()
             }
         }
       }

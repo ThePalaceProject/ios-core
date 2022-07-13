@@ -121,7 +121,33 @@ extension TPPPDFDocument {
 
   /// Table of contents for PDF document
   var tableOfContents: [TPPPDFLocation] {
-    document?.tableOfContents.map { TPPPDFLocation(title: $0.title, subtitle: nil, pageValue: nil, pageNumber: $0.pageNumber) } ?? []
+    guard let outlineRoot = document?.outlineRoot else {
+      return []
+    }
+    return outlineItems(in: outlineRoot)
+      .compactMap {
+        guard let document = $0.1.document, let page = $0.1.destination?.page else {
+          return nil
+        }
+        return TPPPDFLocation(
+          title: $0.1.label,
+          subtitle: nil,
+          pageLabel: page.label,
+          pageNumber: document.index(for: page),
+          level: $0.0
+        )
+      }
+  }
+  
+  /// Unfolds al outline levels into a flat array with `level` parameter for depth level information
+  /// - Parameters:
+  ///   - element: `PDFOutline` element
+  ///   - level: depth level
+  /// - Returns: `(Int, PDFOutline)` for (depth level, outline element)
+  private func outlineItems(in element: PDFOutline, level: Int = 0) -> [(Int, PDFOutline)] {
+    [(level, element)] + (0..<element.numberOfChildren).compactMap { element.child(at: $0) }.flatMap { outlineItems(in: $0, level: level + 1) }
   }
 
 }
+
+

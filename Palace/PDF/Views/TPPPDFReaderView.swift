@@ -24,7 +24,7 @@ struct TPPPDFReaderView: View {
           .visible(when: readerMode == .previews)
         TPPPDFPreviewGrid(document: document, pageIndices: metadata.bookmarks, isVisible: readerMode == .bookmarks, done: done)
           .visible(when: readerMode == .bookmarks)
-        TPPPDFTOCView(document: document)
+        TPPPDFTOCView(document: document, done: done)
           .visible(when: readerMode == .toc)
         TPPPDFSearchView(document: document)
           .visible(when: readerMode == .search)

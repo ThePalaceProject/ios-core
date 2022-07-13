@@ -12,15 +12,24 @@ import SwiftUI
 struct TPPPDFLocation {
   let title: String?
   let subtitle: String?
-  let pageValue: String?
+  let pageLabel: String?
   let pageNumber: Int
+  let level: Int
+  
+  init(title: String?, subtitle: String?, pageLabel: String?, pageNumber: Int, level: Int? = 0) {
+    self.title = title
+    self.subtitle = subtitle
+    self.pageLabel = pageLabel
+    self.pageNumber = pageNumber
+    self.level = level ?? 0
+  }
 }
 
 extension TPPPDFLocation: Identifiable {
   var id: String {
     let t = title ?? ""
     let s = subtitle ?? ""
-    let pv = pageValue ?? ""
+    let pv = pageLabel ?? ""
     return "\(pageNumber)-\(pv)-\(s)-\(t)"
   }
 }
