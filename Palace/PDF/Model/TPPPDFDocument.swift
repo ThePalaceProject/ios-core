@@ -105,6 +105,9 @@ extension TPPPDFDocument {
     document?.page(at: page)?.thumbnail(of: size, for: .mediaBox)
   }
   
+  /// Page size
+  /// - Parameter page: Page number
+  /// - Returns: Size of the page
   func size(page: Int) -> CGSize? {
     isEncrypted ?
     encryptedDocument?.page(at: page)?.getBoxRect(.mediaBox).size :
