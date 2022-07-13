@@ -33,7 +33,11 @@ struct TPPPDFView: View {
             .padding(.top)
         }
         Spacer()
-        TPPPDFLabel("\(metadata.currentPage + 1)/\(document.pageCount)")
+        if let pageLabel = document.page(at: metadata.currentPage)?.label, Int(pageLabel) != (metadata.currentPage + 1) {
+          TPPPDFLabel("\(pageLabel) (\(metadata.currentPage + 1)/\(document.pageCount))")
+        } else {
+          TPPPDFLabel("\(metadata.currentPage + 1)/\(document.pageCount)")
+        }
         TPPPDFThumbnailView(pdfView: pdfView)
           .frame(maxHeight: 40)
           .background(
