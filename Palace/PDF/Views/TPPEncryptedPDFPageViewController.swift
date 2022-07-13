@@ -111,7 +111,9 @@ class TPPEncryptedPDFPageViewController: UIViewController {
   
   /// Render page for the view size
   private func renderPageImage(size: CGSize? = nil) {
-    let viewSize = size ?? self.scrollView?.bounds.size ?? .zero
+    guard let viewSize = size ?? self.scrollView?.bounds.size else {
+      return
+    }
     DispatchQueue.pdfImageRenderingQueue.async {
       if let pageImage = self.document.image(for: self.pageNumber, size: viewSize) {
         DispatchQueue.main.async {
