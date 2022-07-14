@@ -26,7 +26,6 @@ struct TPPPDFLocationView: View {
     HStack(alignment: .center) {
       VStack(alignment: .leading, spacing: 4) {
         Text(location.title ?? "")
-          .font(.headline)
           .fontWeight(location.level <= emphasizeLevel ? .bold : .regular)
         if let subtitle = location.subtitle {
           Text(subtitle)
