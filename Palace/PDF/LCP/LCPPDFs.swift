@@ -158,13 +158,25 @@ import ZIPFoundation
     }
   }
   
+  /// Returns URL in temporary directory for the file
+  /// - Parameter url: Arcive URL
+  /// - Returns: URL in temporary directory for extracted PDF file
+  @objc static func temporaryUrlForPDF(url: URL) -> URL {
+    let filename = "\(url.lastPathComponent).pdf"
+    return FileManager.default.temporaryDirectory.appendingPathComponent(filename)
+  }
+  
   /// Extract PDF from `.zip` archive
   /// - Parameters:
   ///   - url: Source `.zip` archive with PDF file
   ///   - completion: `URL` of the unarchived file, `Error` in case of an error
   @objc func extract(url: URL, completion: @escaping (_ resultUrl: URL?, _ error: Error?) -> Void) {
-    let resultUrl = FileManager.default.temporaryDirectory.appendingUniquePathComponent("\(UUID().uuidString).pdf")
+    let resultUrl = LCPPDFs.temporaryUrlForPDF(url: url)
     getPdfHref { pdfHref, error in
+      if FileManager.default.fileExists(atPath: resultUrl.path) {
+        completion(resultUrl, nil)
+        return
+      }
       guard let pdfHref = pdfHref else {
         completion(nil, nil)
         return
@@ -183,6 +195,15 @@ import ZIPFoundation
       } catch {
         completion(nil, error)
       }
+    }
+  }
+  
+  /// Delete temporary unarchived file content, if it exists
+  /// - Parameter url: PDF archive URL
+  @objc static func deletePdfContent(url: URL) throws {
+    let contentUrl = temporaryUrlForPDF(url: url)
+    if FileManager.default.fileExists(atPath: contentUrl.path) {
+      try FileManager.default.removeItem(at: contentUrl)
     }
   }
 }

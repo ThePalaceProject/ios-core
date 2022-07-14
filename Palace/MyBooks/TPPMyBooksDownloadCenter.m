@@ -536,6 +536,11 @@ didCompleteWithError:(NSError *)error
       if (![[NSFileManager defaultManager] removeItemAtURL:bookURL error:&error]) {
         TPPLOG_F(@"Failed to remove local content for download: %@", error.localizedDescription);
       }
+      // Remove any unarchived content
+      [LCPPDFs deletePdfContentWithUrl:bookURL error:&error];
+      if (error) {
+        TPPLOG_F(@"Failed to remove local unarchived content for download: %@", error.localizedDescription);
+      }
       break;
     }
     case TPPBookContentTypeUnsupported:
@@ -1479,18 +1484,18 @@ didFinishDownload:(BOOL)didFinishDownload
   NSURLSessionDownloadTask *fulfillmentDownloadTask = [lcpService fulfill:licenseUrl progress:^(double progressValue) {
     self.bookIdentifierToDownloadInfo[book.identifier] =
       [[self downloadInfoForBookIdentifier:book.identifier] withDownloadProgress:progressValue];
-      [self broadcastUpdate];
+    [self broadcastUpdate];
   } completion:^(NSURL *localUrl, NSError *error) {
     if (error) {
       NSString *summary = [NSString stringWithFormat:@"%@ LCP license fulfillment error",
                            book.distributor];
       [TPPErrorLogger logError:error
-                        summary:summary
-                       metadata:@{
-                         @"book": book.loggableDictionary ?: @"N/A",
-                         @"licenseURL": licenseUrl  ?: @"N/A",
-                         @"localURL": localUrl  ?: @"N/A",
-                       }];
+                       summary:summary
+                      metadata:@{
+        @"book": book.loggableDictionary ?: @"N/A",
+        @"licenseURL": licenseUrl  ?: @"N/A",
+        @"localURL": localUrl  ?: @"N/A",
+      }];
       NSString *errorMessage = [NSString stringWithFormat:@"Fulfilment Error: %@", error.localizedDescription];
       [self failDownloadWithAlertForBook:book withMessage:errorMessage];
       return;
@@ -1506,6 +1511,14 @@ didFinishDownload:(BOOL)didFinishDownload
       TPPLCPLicense *license = [[TPPLCPLicense alloc] initWithUrl: licenseUrl];
       [[TPPBookRegistry sharedRegistry] setFulfillmentId:license.identifier forIdentifier:book.identifier];
       [[TPPBookRegistry sharedRegistry] save];
+      // For pdfs, try to unarchive the file to spped up the access
+      if (book.defaultBookContentType == TPPBookContentTypePDF) {
+        NSURL *bookURL = [self fileURLForBookIndentifier:book.identifier];
+        [[TPPBookRegistry sharedRegistry] setState:TPPBookStateDownloading forIdentifier:book.identifier];
+        [[[LCPPDFs alloc] initWithUrl:bookURL] extractWithUrl:bookURL completion:^(NSURL *url, NSError *error) {
+          [[TPPBookRegistry sharedRegistry] setState:TPPBookStateDownloadSuccessful forIdentifier:book.identifier];
+        }];
+      }
     }
   }];
   // If downlad task is created correctly, reassign download task for current book identifier
