@@ -83,6 +83,11 @@ class TPPLastReadPositionSynchronizer {
           return
         }
 
+        guard let bookmark = bookmark as? TPPReadiumBookmark else {
+          completion(nil)
+          return
+        }
+
         let deviceID = bookmark.device ?? ""
         let serverLocationString = bookmark.location
 

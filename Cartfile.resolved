@@ -1,7 +1,7 @@
 binary "https://dl.google.com/dl/firebase/ios/carthage/FirebaseAnalyticsBinary.json" "8.6.0"
 binary "https://dl.google.com/dl/firebase/ios/carthage/FirebaseCrashlyticsBinary.json" "8.6.0"
 github "PureLayout/PureLayout" "v3.1.9"
-github "ThePalaceProject/ios-audiobooktoolkit" "55693db96fecbc666755082d4b703977a613729d"
+github "ThePalaceProject/ios-audiobooktoolkit" "6ee923f905aa9d347990971eb4bb691f640018ab"
 github "ThePalaceProject/ios-provider-pdf-renderer" "6ad943ae12e2c96dba0867e653b9a65c0051ecca"
 github "cezheng/Fuzi" "3.1.3"
 github "dexman/Minizip" "1.4.0"
