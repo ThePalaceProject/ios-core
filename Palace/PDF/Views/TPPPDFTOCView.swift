@@ -19,7 +19,7 @@ struct TPPPDFTOCView: View {
     VStack {
       List {
         ForEach(document.tableOfContents) { location in
-          TPPPDFLocationView(location: location)
+          TPPPDFLocationView(location: location, emphasizeLevel: 0)
             .onTapGesture {
               metadata.currentPage = location.pageNumber
               done()

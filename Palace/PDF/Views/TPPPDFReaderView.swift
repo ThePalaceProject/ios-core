@@ -12,6 +12,9 @@ struct TPPPDFReaderView: View {
   
   @EnvironmentObject var metadata: TPPPDFDocumentMetadata
   @State private var readerMode: TPPPDFReaderMode = .reader
+  private var isShowingSearch: Bool {
+    get { readerMode == .search }
+  }
 
   let document: TPPPDFDocument
   
@@ -19,15 +22,16 @@ struct TPPPDFReaderView: View {
     TPPPDFNavigation(readerMode: $readerMode) { _ in
       ZStack {
         documentView
-          .visible(when: readerMode == .reader)
+          .visible(when: readerMode == .reader || readerMode == .search)
         TPPPDFPreviewGrid(document: document, pageIndices: nil, isVisible: readerMode == .previews, done: done)
           .visible(when: readerMode == .previews)
         TPPPDFPreviewGrid(document: document, pageIndices: metadata.bookmarks ?? [], isVisible: readerMode == .bookmarks, done: done)
           .visible(when: readerMode == .bookmarks)
         TPPPDFTOCView(document: document, done: done)
           .visible(when: readerMode == .toc)
-        TPPPDFSearchView(document: document)
-          .visible(when: readerMode == .search)
+      }
+      .sheet(isPresented: .constant(isShowingSearch)) {
+        TPPPDFSearchView(document: document, done: done)
       }
     }
     .navigationBarBackButtonHidden(true)

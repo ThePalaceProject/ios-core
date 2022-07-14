@@ -9,11 +9,18 @@
 import Foundation
 import PDFKit
 
+/// Search delegate
+protocol TPPPDFDocumentDelegate {
+  func didMatchString(_ instance: TPPPDFLocation)
+}
+
 /// Wrapper class for PDF docuument in general
 @objcMembers class TPPPDFDocument: NSObject {
   let data: Data
   let decryptor: ((_ data: Data, _ start: UInt, _ end: UInt) -> Data)?
   let isEncrypted: Bool
+  
+  var delegate: TPPPDFDocumentDelegate?
   
   /// Initialize with a non-encrypted document
   /// - Parameter data: PDF document data
@@ -117,9 +124,15 @@ extension TPPPDFDocument {
   /// Search the document
   /// - Parameter text: Text string to look for
   /// - Returns: Array of PDF locations
-  func search(text: String) -> [TPPPDFLocation] {
-    // TODO: - Requires implementation
-    return []
+  func search(text: String) {
+    let searchString = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+    document?.delegate = self
+    document?.cancelFindString()
+    document?.beginFindString(searchString, withOptions: .caseInsensitive)
+  }
+  
+  func cancelSearch() {
+    document?.cancelFindString()
   }
 
   /// Table of contents for PDF document
@@ -127,7 +140,7 @@ extension TPPPDFDocument {
     guard let outlineRoot = document?.outlineRoot else {
       return []
     }
-    return outlineItems(in: outlineRoot)
+    return outlineItems(in: outlineRoot, level: -1)
       .compactMap {
         guard let document = $0.1.document, let page = $0.1.destination?.page else {
           return nil
@@ -153,4 +166,17 @@ extension TPPPDFDocument {
 
 }
 
-
+extension TPPPDFDocument: PDFDocumentDelegate {
+  /// Search delegate for `PDFDocument`
+  /// - Parameter instance: `PDFSelection` found
+  func didMatchString(_ instance: PDFSelection) {
+    let extendedSelection = instance.copy() as! PDFSelection
+    extendedSelection.extendForLineBoundaries()
+    let page = instance.pages[0]
+    guard let pageNumber = document?.index(for: page) else {
+      return
+    }
+    let location = TPPPDFLocation(title: extendedSelection.string, subtitle: nil, pageLabel: page.label, pageNumber: pageNumber)
+    delegate?.didMatchString(location)
+  }
+}

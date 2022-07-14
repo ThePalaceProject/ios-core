@@ -11,27 +11,76 @@ import SwiftUI
 /// Search view
 struct TPPPDFSearchView: View {
   
+  @ObservedObject var searchDelegate: SearchDelegate
+  @EnvironmentObject var metadata: TPPPDFDocumentMetadata
+  
   let document: TPPPDFDocument
+  let done: () -> Void
   
   @State private var searchText = ""
-  @State private var searchResults: [TPPPDFLocation] = []
+
+  init(document: TPPPDFDocument, done: @escaping () -> Void) {
+    self.document = document
+    self.done = done
+    self._searchDelegate = ObservedObject(wrappedValue: SearchDelegate(document: document))
+  }
   
   var body: some View {
-    VStack {
-      TextField("Search", text: $searchText.onChange({ value in
-        performSearch(string: value)
-      }))
+    VStack(spacing: 0) {
+      HStack {
+        Spacer()
+        Button {
+          done()
+        } label: {
+          Text("Done")
+            .bold()
+        }
+        .padding()
+      }
+      Divider()
+      TextField("Search", text: $searchText.onChange(performSearch))
       .padding()
       Divider()
       List {
-        ForEach(searchResults) { location in
+        ForEach(searchDelegate.searchResults) { location in
           TPPPDFLocationView(location: location)
+            .onTapGesture {
+              metadata.currentPage = location.pageNumber
+              done()
+            }
         }
       }
     }
   }
   
   func performSearch(string: String) {
-    searchResults = document.search(text: string)
+    searchDelegate.search(text: string)
+  }
+
+  class SearchDelegate: ObservableObject, TPPPDFDocumentDelegate {
+    
+    let document: TPPPDFDocument
+    
+    @Published var searchResults: [TPPPDFLocation] = []
+
+    init(document: TPPPDFDocument) {
+      self.document = document
+      self.document.delegate = self
+    }
+    
+    func search(text: String) {
+      searchResults = []
+      if text.count >= 3 {
+        document.search(text: text)
+      }
+    }
+    
+    func cancelSearch() {
+      document.cancelSearch()
+    }
+    
+    func didMatchString(_ instance: TPPPDFLocation) {
+      searchResults.append(instance)
+    }
   }
 }
