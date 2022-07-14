@@ -201,7 +201,7 @@ class TPPReaderBookmarksBusinessLogic: NSObject {
         
         TPPAnnotations.getServerBookmarks(forBook: self.book.identifier, atURL: self.book.annotationsURL, motivation: .bookmark) { serverBookmarks in
 
-          guard let serverBookmarks = serverBookmarks else {
+          guard let serverBookmarks = serverBookmarks as? [TPPReadiumBookmark] else {
             self.handleBookmarksSyncFail(message: "Ending sync without running completion. Returning original list of bookmarks.",
                                          completion: completion)
             return

@@ -16,4 +16,4 @@
 #   The generated .ipa is uploaded to TestFlight.
 
 CHANGELOG=$(<"$CHANGELOG_PATH")
-fastlane ios testflight changelog:"$CHANGELOG"
+fastlane ios appstore changelog:"$CHANGELOG"

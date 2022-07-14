@@ -322,7 +322,10 @@ didFinishDownloadingToURL:(NSURL *const)tmpSavedFileURL
           [[TPPMyBooksDownloadInfo alloc]
            initWithDownloadProgress:0.0
            downloadTask:task
-           rightsManagement:TPPMyBooksDownloadRightsManagementNone];
+           rightsManagement:TPPMyBooksDownloadRightsManagementNone
+           bearerToken:simplifiedBearerToken];
+        
+        book.bearerToken = simplifiedBearerToken.accessToken;
         self.taskIdentifierToBook[@(task.taskIdentifier)] = book;
         [task resume];
         break;

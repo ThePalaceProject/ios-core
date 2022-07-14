@@ -2,7 +2,7 @@
 //  View+Extensions.swift
 //  Palace
 //
-//  Created by Maurice Work on 12/4/21.
+//  Created by Maurice Carrier on 12/4/21.
 //  Copyright © 2021 The Palace Project. All rights reserved.
 //
 

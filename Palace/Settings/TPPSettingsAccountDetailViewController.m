@@ -432,7 +432,7 @@ Authenticating with any of those barcodes should work.
     self.tableData = @[section0AcctInfo, section1Sync].mutableCopy;
   }
 
-  if (self.selectedAccount.supportEmail != nil) {
+  if (self.selectedAccount.hasSupportOption) {
     [self.tableData addObject:@[@(CellReportIssue)]];
   }
   
@@ -641,13 +641,21 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
       break;
     }
     case CellReportIssue: {
-      [[ProblemReportEmail sharedInstance]
-       beginComposingTo:self.selectedAccount.supportEmail
-       presentingViewController:self
-       book:nil];
-      [self.tableView deselectRowAtIndexPath:indexPath animated:YES];
-      break;
+      if (self.selectedAccount.supportEmail) {
+          [[ProblemReportEmail sharedInstance]
+           beginComposingTo:self.selectedAccount.supportEmail.rawValue
+           presentingViewController:self
+           book:nil];
+          [self.tableView deselectRowAtIndexPath:indexPath animated:YES];
+          break;
+      } else {
+        BundledHTMLViewController *webController = [[BundledHTMLViewController alloc] initWithFileURL:AccountsManager.sharedInstance.currentAccount.supportURL title:AccountsManager.shared.currentAccount.name];
+        webController.hidesBottomBarWhenPushed = true;
+        [self.navigationController pushViewController:webController animated:YES];
+        break;
+      }
     }
+    
     case CellKindAbout: {
       RemoteHTMLViewController *vc = [[RemoteHTMLViewController alloc]
                                       initWithURL:[self.selectedAccount.details getLicenseURL:URLTypeAcknowledgements]
@@ -674,7 +682,6 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
     }
   }
 }
-
 
 - (void)didSelectRegularSignupOnCell:(UITableViewCell *)cell
 {

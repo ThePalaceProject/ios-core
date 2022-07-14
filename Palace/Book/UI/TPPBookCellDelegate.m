@@ -36,6 +36,7 @@
 @property (nonatomic) id<AudiobookManager> manager;
 @property (nonatomic, weak) AudiobookPlayerViewController *audiobookViewController;
 @property (strong) NSLock *refreshAudiobookLock;
+@property (nonatomic, strong) LoadingViewController *loadingViewController;
 
 @end
 
@@ -272,7 +273,7 @@
 - (void)openAudiobook:(TPPBook *)book withJSON:(NSDictionary *)json decryptor:(id<DRMDecryptor>)audiobookDrmDecryptor {
   [AudioBookVendorsHelper updateVendorKeyWithBook:json completion:^(NSError * _Nullable error) {
     [NSOperationQueue.mainQueue addOperationWithBlock:^{
-      id<Audiobook> const audiobook = [AudiobookFactory audiobook:json decryptor:audiobookDrmDecryptor];
+      id<Audiobook> const audiobook = [AudiobookFactory audiobook:json decryptor:audiobookDrmDecryptor token:book.bearerToken];
       
       if (!audiobook) {
         if (error) {
@@ -328,20 +329,62 @@
           [TPPAppStoreReviewPrompt presentIfAvailable];
         }
       }];
+      
+      [[TPPBookRegistry sharedRegistry] syncLocationFor:book completion:^(ChapterLocation * _Nullable chapterLocation) {
 
-      TPPBookLocation *const bookLocation =
-      [[TPPBookRegistry sharedRegistry] locationForIdentifier:book.identifier];
+        if (chapterLocation) {
+          TPPLOG_F(@"Returning to Audiobook Location: %@", chapterLocation);
+          [self startLoading:audiobookVC];
+          [manager.audiobook.player movePlayheadToLocation:chapterLocation completion:^(NSError *error) {
+            if (error) {
+              [self presentLocationRecoveryError:error];
+              return;
+            }
+            [self stopLoading];
+          }];
+        } else {
+          TPPBookLocation *const bookLocation =
+          [[TPPBookRegistry sharedRegistry] locationForIdentifier:book.identifier];
 
-      if (bookLocation) {
-        NSData *const data = [bookLocation.locationString dataUsingEncoding:NSUTF8StringEncoding];
-        ChapterLocation *const chapterLocation = [ChapterLocation fromData:data];
-        TPPLOG_F(@"Returning to Audiobook Location: %@", chapterLocation);
-        [manager.audiobook.player movePlayheadToLocation:chapterLocation];
-      }
+          if (bookLocation) {
+            [self startLoading:audiobookVC];
 
+            NSData *const data = [bookLocation.locationString dataUsingEncoding:NSUTF8StringEncoding];
+            ChapterLocation *const chapterLocation = [ChapterLocation fromData:data];
+            TPPLOG_F(@"Returning to Audiobook Location: %@", chapterLocation);
+            [manager.audiobook.player movePlayheadToLocation:chapterLocation completion:^(NSError *error) {
+              if (error) {
+                [self presentLocationRecoveryError:error];
+                return;
+              }
+
+              [self stopLoading];
+            }];
+          }
+        }
+      }];
       [self scheduleTimerForAudiobook:book manager:manager viewController:audiobookVC];
     }];
   }];
+}
+
+- (void) startLoading:(UIViewController *)hostViewController {
+  dispatch_async(dispatch_get_main_queue(), ^{
+    self.loadingViewController = [[LoadingViewController alloc] init];
+    [hostViewController addChildViewController:self.loadingViewController];
+    self.loadingViewController.view.frame = hostViewController.view.frame;
+    [hostViewController.view addSubview:self.loadingViewController.view];
+    [self.loadingViewController didMoveToParentViewController:hostViewController];
+  });
+}
+
+- (void) stopLoading {
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [self.loadingViewController willMoveToParentViewController:nil];
+    [self.loadingViewController.view removeFromSuperview];
+    [self.loadingViewController removeFromParentViewController];
+    self.loadingViewController = nil;
+  });
 }
 
 #pragma mark - Audiobook Methods
@@ -392,18 +435,27 @@
     self.manager = nil;
     return;
   }
+  
+  // Only update audiobook location when we are not loading
+  if (self.loadingViewController != nil) {
+    return;
+  }
 
   NSString *const string = [[NSString alloc]
                             initWithData:self.manager.audiobook.player.currentChapterLocation.toData
                             encoding:NSUTF8StringEncoding];
-  [[TPPBookRegistry sharedRegistry]
-   setLocation:[[TPPBookLocation alloc] initWithLocationString:string renderer:@"NYPLAudiobookToolkit"]
-   forIdentifier:self.book.identifier];
-  
+
   // Save updated playhead position in audiobook chapter
   NSTimeInterval playheadOffset = self.manager.audiobook.player.currentChapterLocation.playheadOffset;
-  if (previousPlayheadOffset != playheadOffset) {
+  if (previousPlayheadOffset != playheadOffset && playheadOffset > 0) {
     previousPlayheadOffset = playheadOffset;
+  
+    [[TPPBookRegistry sharedRegistry]
+     setLocation:[[TPPBookLocation alloc] initWithLocationString:string renderer:@"NYPLAudiobookToolkit"]
+     forIdentifier:self.book.identifier];
+    
+    // Save updated location on server
+    [TPPAnnotations postListeningPositionForBook:self.book.identifier selectorValue:string];
     [[TPPBookRegistry sharedRegistry] save];
   }
 }
@@ -436,6 +488,14 @@
                              @"book": book.loggableDictionary ?: @"N/A",
                              @"fileURL": url ?: @"N/A"
                            }];
+}
+
+
+- (void)presentLocationRecoveryError:(NSError *)error {
+  NSString *title = NSLocalizedString(@"Location Recovery Error", nil);
+  NSString *message = error.localizedDescription;
+  UIAlertController *alert = [TPPAlertUtils alertWithTitle:title message:message];
+  [TPPAlertUtils presentFromViewControllerOrNilWithAlertController:alert viewController:nil animated:YES completion:nil];
 }
 
 #pragma mark TPPBookDownloadFailedDelegate
@@ -492,8 +552,10 @@
 
     dict[@"id"] = self.book.identifier;
 
-    [odAudiobook updateManifestWithJSON:dict];
-
+    if ([odAudiobook respondsToSelector:@selector(updateManifestWithJSON:)]) {
+      [odAudiobook updateManifestWithJSON:dict];
+    }
+  
     DefaultAudiobookManager *audiobookManager = (DefaultAudiobookManager *)_manager;
     [audiobookManager updateAudiobookWith:odAudiobook.spine];
       
