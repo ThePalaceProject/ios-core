@@ -508,8 +508,10 @@
 
     dict[@"id"] = self.book.identifier;
 
-    [odAudiobook updateManifestWithJSON:dict];
-
+    if ([odAudiobook respondsToSelector:@selector(updateManifestWithJSON:)]) {
+      [odAudiobook updateManifestWithJSON:dict];
+    }
+  
     DefaultAudiobookManager *audiobookManager = (DefaultAudiobookManager *)_manager;
     [audiobookManager updateAudiobookWith:odAudiobook.spine];
       
