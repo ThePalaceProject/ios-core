@@ -11,7 +11,7 @@ import Foundation
 extension CGSize {
   /// Thumbnail image size for PDF viewer
   static var pdfThumbnailSize: CGSize {
-    CGSize(width: 50, height: 50)
+    CGSize(width: 30, height: 30)
   }
   /// Preview image size for PDF viewer
   static var pdfPreviewSize: CGSize {

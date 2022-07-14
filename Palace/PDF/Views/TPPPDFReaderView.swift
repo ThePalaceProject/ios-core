@@ -22,7 +22,7 @@ struct TPPPDFReaderView: View {
           .visible(when: readerMode == .reader)
         TPPPDFPreviewGrid(document: document, pageIndices: nil, isVisible: readerMode == .previews, done: done)
           .visible(when: readerMode == .previews)
-        TPPPDFPreviewGrid(document: document, pageIndices: metadata.bookmarks, isVisible: readerMode == .bookmarks, done: done)
+        TPPPDFPreviewGrid(document: document, pageIndices: metadata.bookmarks ?? [], isVisible: readerMode == .bookmarks, done: done)
           .visible(when: readerMode == .bookmarks)
         TPPPDFTOCView(document: document, done: done)
           .visible(when: readerMode == .toc)

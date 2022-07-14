@@ -30,21 +30,20 @@ struct TPPPDFPreviewBar: View {
   
   let document: TPPEncryptedPDFDocument
   @Binding var currentPage: Int
-  @State var currentPageValue: Double = 0
-  @State var currentPageNeedsUpdate: Bool = false
-
-  @State private var tick = Timer.publish(every: 0.5, on: .main, in: .common)
   
   @State private var previewsAreaSize: CGSize = .zero
   @State private var previewsBarSize: CGSize = .zero
   @State private var touchLocation: CGPoint = .zero
+  
+  @State private var indices: [Int] = []
+  @State private var timer: Timer?
   
   var body: some View {
     VStack(alignment: .center) {
       Divider()
       ZStack {
         HStack(spacing: barPreviewsSpacing) {
-          ForEach(previewIndices(for: previewsAreaSize), id: \.self) { index in
+          ForEach(indices, id: \.self) { index in
             TPPPDFPreviewThumbnail(document: document, index: index, size: previewSize)
           }
         }
@@ -70,27 +69,32 @@ struct TPPPDFPreviewBar: View {
         .edgesIgnoringSafeArea(.bottom)
     )
     .readSize { size in
+      if size.width != previewsAreaSize.width {
+        indices = []
+      }
       previewsAreaSize = size
-    }
-    .onReceive(tick) { _ in
-      // Synchronizes currentPage Int value and curentPageValue Double value
-      // to limit the frequency of current page changes
-      if currentPageNeedsUpdate {
-        currentPageNeedsUpdate = false
-        currentPage = Int(currentPageValue)
-      } else {
-        if currentPage != Int(currentPageValue) {
-          currentPageValue = Double(currentPage)
-        }
+      debounce(0.1) {
+        indices = previewIndices(for: size)
       }
     }
     .onAppear {
       // When the view appears, it requests a lot of page thumnails
       // A 1-second delay helps them to get first in the queue
       // and makes the view look more responsive
-      DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
         document.makeThumbnails()
       }
+    }
+  }
+  
+  /// Debounce size updates
+  /// - Parameters:
+  ///   - timeInterval: Delay before action
+  ///   - action: Action to perform
+  private func debounce(_ timeInterval: TimeInterval, action: @escaping () -> Void) {
+    timer?.invalidate()
+    timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: false) { _ in
+      action()
     }
   }
   

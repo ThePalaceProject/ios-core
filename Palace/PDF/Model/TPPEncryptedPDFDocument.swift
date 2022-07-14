@@ -51,11 +51,11 @@ import UIKit
   
   func makeThumbnails() {
     let pageCount = self.document?.pageCount ?? 0
-    for page in 0..<pageCount {
-      DispatchQueue.pdfThumbnailRenderingQueue.async {
+    DispatchQueue.pdfThumbnailRenderingQueue.async {
+      for page in 0..<pageCount {
         let pageNumber = NSNumber(value: page)
         if self.thumbnailsCache.object(forKey: pageNumber) != nil {
-          return
+          continue
         }
         if let thumbnail = self.thumbnail(for: page), let thumbnailData = thumbnail.jpegData(compressionQuality: 0.5) {
           DispatchQueue.main.async {
