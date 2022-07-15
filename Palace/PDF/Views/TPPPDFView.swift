@@ -38,12 +38,15 @@ struct TPPPDFView: View {
         } else {
           TPPPDFLabel("\(metadata.currentPage + 1)/\(document.pageCount)")
         }
-        TPPPDFThumbnailView(pdfView: pdfView)
-          .frame(maxHeight: 40)
-          .background(
-            Color(UIColor.systemBackground)
-              .edgesIgnoringSafeArea(.bottom)
-          )
+        VStack(spacing: 0) {
+          Divider()
+          TPPPDFThumbnailView(pdfView: pdfView)
+            .frame(maxHeight: 40)
+            .background(
+              Color(UIColor.systemBackground)
+                .edgesIgnoringSafeArea(.bottom)
+            )
+        }
       }
       .opacity(showingDocumentInfo ? 1 : 0)
       .contentShape(Rectangle())

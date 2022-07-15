@@ -18,6 +18,7 @@ struct TPPPDFThumbnailView: UIViewRepresentable {
     let view = PDFThumbnailView()
     view.pdfView = pdfView
     view.layoutMode = .horizontal
+    view.backgroundColor = .systemBackground
     return view
   }
   
