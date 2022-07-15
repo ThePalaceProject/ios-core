@@ -121,6 +121,9 @@ extension TPPPDFDocument {
     document?.page(at: page)?.bounds(for: .mediaBox).size
   }
   
+  /// Page label
+  /// - Parameter page: Page number
+  /// - Returns: Page label
   func label(page: Int) -> String? {
     isEncrypted ?
     encryptedDocument?.page(at: page)?.pageNumber.description :
