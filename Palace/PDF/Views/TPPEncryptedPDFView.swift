@@ -20,7 +20,7 @@ struct TPPEncryptedPDFView: View {
   
   var body: some View {
     ZStack {
-      TPPEncryptedPDFViewer(encryptedPDF: encryptedPDF, currentPage: $metadata.currentPage)
+      TPPEncryptedPDFViewer(encryptedPDF: encryptedPDF, currentPage: $metadata.currentPage, showingDocumentInfo: $showingDocumentInfo)
         .edgesIgnoringSafeArea([.all])
       VStack {
         if let title = encryptedPDF.title ?? metadata.title {

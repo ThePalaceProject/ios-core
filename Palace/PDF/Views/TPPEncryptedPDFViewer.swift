@@ -16,6 +16,7 @@ struct TPPEncryptedPDFViewer: UIViewControllerRepresentable {
   let encryptedPDF: TPPEncryptedPDFDocument
   
   @Binding var currentPage: Int
+  @Binding var showingDocumentInfo: Bool
   
   func makeUIViewController(context: Context) -> some UIViewController {
     let vc = TPPEncryptedPDFViewController(encryptedPDF: encryptedPDF)
@@ -34,14 +35,16 @@ struct TPPEncryptedPDFViewer: UIViewControllerRepresentable {
   }
   
   func makeCoordinator() -> Coordinator {
-    return Coordinator(currentPage: $currentPage)
+    return Coordinator(currentPage: $currentPage, showingDocumentInfo: $showingDocumentInfo)
   }
   
   class Coordinator: NSObject, UIPageViewControllerDelegate {
     @Binding var currentPage: Int
+    @Binding var showingDocumentInfo: Bool
     
-    init(currentPage: Binding<Int>) {
+    init(currentPage: Binding<Int>, showingDocumentInfo: Binding<Bool>) {
       self._currentPage = currentPage
+      self._showingDocumentInfo = showingDocumentInfo
     }
     
     func pageViewController(_ pageViewController: UIPageViewController, didFinishAnimating finished: Bool, previousViewControllers: [UIViewController], transitionCompleted completed: Bool) {
@@ -52,6 +55,7 @@ struct TPPEncryptedPDFViewer: UIViewControllerRepresentable {
         pageVC.currentPage = vc.pageNumber
         currentPage = vc.pageNumber
       }
+      showingDocumentInfo = false
     }
   }
 }
