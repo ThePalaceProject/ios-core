@@ -16,12 +16,12 @@ struct TPPPDFLocation {
   let pageNumber: Int
   let level: Int
   
-  init(title: String?, subtitle: String?, pageLabel: String?, pageNumber: Int, level: Int? = 0) {
+  init(title: String?, subtitle: String?, pageLabel: String?, pageNumber: Int, level: Int = 0) {
     self.title = title
     self.subtitle = subtitle
     self.pageLabel = pageLabel
     self.pageNumber = pageNumber
-    self.level = level ?? 0
+    self.level = level
   }
 }
 
@@ -30,6 +30,6 @@ extension TPPPDFLocation: Identifiable {
     let t = title ?? ""
     let s = subtitle ?? ""
     let pv = pageLabel ?? ""
-    return "\(pageNumber)-\(pv)-\(s)-\(t)"
+    return "\(pageNumber)-\(pv)-\(s)-\(t)-\(level)"
   }
 }
