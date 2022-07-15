@@ -85,6 +85,7 @@ struct TPPPDFPreviewBar: View {
         document.makeThumbnails()
       }
     }
+    .padding(.bottom, 6)
   }
   
   /// Debounce size updates
