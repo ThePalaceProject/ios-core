@@ -110,6 +110,7 @@ class TPPPDFPreviewGridController: UICollectionViewController {
     let key = NSNumber(value: page)
     let cell = collectionView.dequeueReusableCell(withReuseIdentifier: cellId, for: indexPath) as! TPPPDFPreviewGridCell
     cell.pageNumber = page
+    cell.pageLabel.text = document?.label(page: page) ?? "\(page + 1)"
     if let image = previewCache.object(forKey: key) {
       cell.imageView.image = image
     } else {
@@ -168,5 +169,8 @@ extension TPPPDFPreviewGridController: UICollectionViewDelegateFlowLayout {
       height = pageSize.height * (width / pageSize.width)
     }
     return CGSize(width: width, height: height)
+  }
+  func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, minimumLineSpacingForSectionAt section: Int) -> CGFloat {
+    UIFont.smallSystemFontSize * 2
   }
 }

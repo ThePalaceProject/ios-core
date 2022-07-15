@@ -121,6 +121,12 @@ extension TPPPDFDocument {
     document?.page(at: page)?.bounds(for: .mediaBox).size
   }
   
+  func label(page: Int) -> String? {
+    isEncrypted ?
+    encryptedDocument?.page(at: page)?.pageNumber.description :
+    document?.page(at: page)?.label
+  }
+  
   /// Search the document
   /// - Parameter text: Text string to look for
   /// - Returns: Array of PDF locations

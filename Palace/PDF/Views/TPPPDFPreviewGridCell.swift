@@ -22,6 +22,14 @@ class TPPPDFPreviewGridCell: UICollectionViewCell {
     imageView.layer.shadowOpacity = 0.2
     return imageView
   }()
+  
+  var pageLabel: UILabel = {
+    let label = UILabel()
+    label.font = UIFont.systemFont(ofSize: UIFont.smallSystemFontSize)
+    label.textColor = .secondaryLabel
+    label.textAlignment = .center
+    return label
+  }()
 
   @available(*, unavailable)
   required init?(coder: NSCoder) {
@@ -35,6 +43,10 @@ class TPPPDFPreviewGridCell: UICollectionViewCell {
   
   func addSubviews() {
     addSubview(imageView)
+    addSubview(pageLabel)
     imageView.autoPinEdgesToSuperviewMargins()
+    pageLabel.autoPinEdge(.leading, to: .leading, of: self)
+    pageLabel.autoPinEdge(.trailing, to: .trailing, of: self)
+    pageLabel.autoPinEdge(.top, to: .bottom, of: self, withOffset: -UIFont.smallSystemFontSize / 4)
   }
 }
