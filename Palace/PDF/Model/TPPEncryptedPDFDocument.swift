@@ -1,0 +1,147 @@
+//
+//  TPPEncryptedPDFDocument.swift
+//  Palace
+//
+//  Created by Vladimir Fedorov on 20.05.2022.
+//  Copyright © 2022 The Palace Project. All rights reserved.
+//
+
+import Foundation
+import UIKit
+
+/// Encrypted PDF document.
+@objcMembers class TPPEncryptedPDFDocument: NSObject {
+  
+  private var thumbnailsCache = NSCache<NSNumber, NSData>()
+  
+  /// PDF document data.
+  let data: Data
+  /// Decryptor for document data.
+  let decryptor: (_ data: Data, _ start: UInt, _ end: UInt) -> Data
+  
+  /// PDF document.
+  var document: CGPDFDocument?
+    
+  init(encryptedData: Data, decryptor: @escaping (_ data: Data, _ start: UInt, _ end: UInt) -> Data) {
+    self.data = encryptedData
+    self.decryptor = decryptor
+    let pdfDataProvider = TPPEncryptedPDFDataProvider(data: encryptedData, decryptor: decryptor)
+    let dataProvider = pdfDataProvider.dataProvider().takeUnretainedValue()
+    self.document = CGPDFDocument(dataProvider)
+    super.init()
+  }
+  
+  var pageCount: Int {
+    document?.pageCount ?? 0
+  }
+  
+  var title: String? {
+    document?.title
+  }
+  
+  var cover: UIImage? {
+    document?.cover
+  }
+
+  func page(at n: Int) -> CGPDFPage? {
+    // Bookmarks compatibility:
+    // CGPDFDocument counts pages from 1; PDDocument from 0
+    document?.page(at: n + 1)
+  }
+  
+  func makeThumbnails() {
+    let pageCount = self.document?.pageCount ?? 0
+    DispatchQueue.pdfThumbnailRenderingQueue.async {
+      for page in 0..<pageCount {
+        let pageNumber = NSNumber(value: page)
+        if self.thumbnailsCache.object(forKey: pageNumber) != nil {
+          continue
+        }
+        if let thumbnail = self.thumbnail(for: page), let thumbnailData = thumbnail.jpegData(compressionQuality: 0.5) {
+          DispatchQueue.main.async {
+            self.thumbnailsCache.setObject(thumbnailData as NSData, forKey: pageNumber)
+          }
+        }
+      }
+    }
+  }
+  
+  var tableOfContents: [TPPPDFLocation] = []
+
+  func search(text: String) -> [TPPPDFLocation] {
+    return []
+  }
+  
+}
+
+extension TPPEncryptedPDFDocument {
+  func encryptedData() -> Data {
+    self.data
+  }
+  func decrypt(data: Data, start: UInt, end: UInt) -> Data {
+    return self.decryptor(data, start, end)
+  }
+}
+
+extension TPPEncryptedPDFDocument {
+  /// Preview image for a page
+  /// - Parameter page: Page number
+  /// - Returns: Rendered page image
+  ///
+  /// `preview` returns a larger image than `thumbnail`
+  func preview(for page: Int) -> UIImage? {
+    self.page(at: page)?.preview
+  }
+
+  /// Thumbnail image for a page
+  /// - Parameter page: Page number
+  /// - Returns: Rendered page image
+  ///
+  /// `thumbnail` returns a smaller image than `preview`
+  ///
+  /// This function caches thumbnail image data and returnes a cached image when one is available.
+  func thumbnail(for page: Int) -> UIImage? {
+    let pageNumber = NSNumber(value: page)
+    if let cachedData = thumbnailsCache.object(forKey: pageNumber), let cachedImage = UIImage(data: cachedData as Data) {
+      return cachedImage
+    } else {
+      if let image = self.page(at: page)?.thumbnail, let data = image.jpegData(compressionQuality: 0.5) {
+        thumbnailsCache.setObject(data as NSData, forKey: pageNumber)
+        return image
+      } else {
+        return nil
+      }
+    }
+  }
+  
+  /// Cached thumbnail image for a page
+  /// - Parameter page: Page number
+  /// - Returns: Thumbnail image, if it is available in cached images, `nil` otherwise.
+  ///
+  /// This function doesn't render new thumbnail images.
+  func cachedThumbnail(for page: Int) -> UIImage? {
+    let pageNumber = NSNumber(value: page)
+    if let cachedData = thumbnailsCache.object(forKey: pageNumber), let cachedImage = UIImage(data: cachedData as Data) {
+      return cachedImage
+    }
+    return nil
+  }
+
+  /// Image for a page
+  /// - Parameters:
+  ///   - page: Page number
+  ///   - size: Size of the image to render
+  /// - Returns: Rendered page image
+  func image(for page: Int, size: CGSize?) -> UIImage? {
+    self.page(at: page)?.image(of: size)
+  }
+}
+
+extension TPPEncryptedPDFDocument {
+  /// `TPPEncryptedPDFDocument` for SwiftUI previews
+  static var preview: TPPEncryptedPDFDocument {
+    TPPEncryptedPDFDocument(encryptedData: Data()) { data, start, end in
+      data
+    }
+  }
+}

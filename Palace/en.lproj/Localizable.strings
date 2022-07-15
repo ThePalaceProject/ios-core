@@ -275,3 +275,6 @@
 "Onboarding-1" = "Step 1 - Find your library";
 "Onboarding-2" = "Step 2 - Can't find your library? Go to the Palace Bookshelf or more than 10000 free titles that you can enjoy now";
 "Onboarding-3" = "Step 3 - Read. Listen. Enjoy!";
+
+// Encrypted PDF files
+"Error extracting encrypted PDF file" = "Error extracting encrypted PDF file";

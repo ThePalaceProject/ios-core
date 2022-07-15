@@ -19,6 +19,9 @@ import Foundation
     TPPSettings.shared.useBetaLibraries = sender.isOn
   }
 
+  func encryptedPDFReaderSwitchDidChange(sender: UISwitch) {
+    TPPSettings.shared.useEncryptedPDFReader = sender.isOn
+  }
   // MARK:- UIViewController
   
   override func loadView() {
@@ -34,7 +37,10 @@ import Foundation
   // MARK:- UITableViewDataSource
   
   func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-    return 1
+    switch section {
+    case 0: return 2
+    default: return 1
+    }
   }
   
   func numberOfSections(in tableView: UITableView) -> Int {
@@ -43,7 +49,11 @@ import Foundation
   
   func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
     switch indexPath.section {
-    case 0: return cellForBetaLibraries()
+    case 0:
+      switch indexPath.row {
+      case 0: return cellForBetaLibraries()
+      default: return cellForEncryptedPDFReader()
+      }
     case 1: return cellForCustomRegsitry()
     default: return cellForClearCache()
     }
@@ -67,6 +77,17 @@ import Foundation
     let betaLibrarySwitch = UISwitch()
     betaLibrarySwitch.setOn(TPPSettings.shared.useBetaLibraries, animated: false)
     betaLibrarySwitch.addTarget(self, action:#selector(librarySwitchDidChange), for:.valueChanged)
+    cell.accessoryView = betaLibrarySwitch
+    return cell
+  }
+  
+  private func cellForEncryptedPDFReader() -> UITableViewCell {
+    let cell = UITableViewCell(style: UITableViewCell.CellStyle.default, reuseIdentifier: "encryptedPDFReaderCell")
+    cell.selectionStyle = .none
+    cell.textLabel?.text = "Enable Beta PDF Reader"
+    let betaLibrarySwitch = UISwitch()
+    betaLibrarySwitch.setOn(TPPSettings.shared.useEncryptedPDFReader, animated: false)
+    betaLibrarySwitch.addTarget(self, action:#selector(encryptedPDFReaderSwitchDidChange), for: .valueChanged)
     cell.accessoryView = betaLibrarySwitch
     return cell
   }
