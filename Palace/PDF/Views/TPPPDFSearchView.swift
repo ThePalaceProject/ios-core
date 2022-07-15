@@ -39,7 +39,8 @@ struct TPPPDFSearchView: View {
       }
       Divider()
       TextField("Search", text: $searchText.onChange(performSearch))
-      .padding()
+        .frame(minHeight: 44)
+        .padding(.horizontal)
       Divider()
       List {
         ForEach(searchDelegate.searchResults) { location in
