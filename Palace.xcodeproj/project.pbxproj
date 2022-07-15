@@ -869,20 +869,6 @@
 			remoteGlobalIDString = 17EB3D4A246C7C6A00183316;
 			remoteInfo = OverdriveProcessorDriver;
 		};
-		E7F95EB42832766B00636467 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = E7F95EAA2832766A00636467 /* PDFRendererProvider.xcodeproj */;
-			proxyType = 2;
-			remoteGlobalIDString = 52EB73632092676D003E8D00;
-			remoteInfo = PDFRendererProvider;
-		};
-		E7F95EB62832766B00636467 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = E7F95EAA2832766A00636467 /* PDFRendererProvider.xcodeproj */;
-			proxyType = 2;
-			remoteGlobalIDString = 52EB736C2092676E003E8D00;
-			remoteInfo = PDFRendererProviderTests;
-		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -1595,7 +1581,6 @@
 		E7EB9A8728736508004F484D /* TPPPDFToolbarButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFToolbarButton.swift; sourceTree = "<group>"; };
 		E7EB9A9328736696004F484D /* TPPPDFBackButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFBackButton.swift; sourceTree = "<group>"; };
 		E7F8DA5E287854F2006996BC /* TPPPDFThumbnailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFThumbnailView.swift; sourceTree = "<group>"; };
-		E7F95EAA2832766A00636467 /* PDFRendererProvider.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = PDFRendererProvider.xcodeproj; path = "../ios-provider-pdf-renderer/PDFRendererProvider.xcodeproj"; sourceTree = "<group>"; };
 		E7FD4E51286CCF2C00D26A3B /* TPPPDFLocation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFLocation.swift; sourceTree = "<group>"; };
 		E7FD4E53286CD0E000D26A3B /* TPPPDFLocationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFLocationView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -2637,7 +2622,6 @@
 				5A569A261B8351C6003B5B61 /* ADEPT.xcodeproj */,
 				A49C25401AE05A2600D63B89 /* RDServices.xcodeproj */,
 				1112A8191A322C53002B8CC1 /* TenPrintCover.xcodeproj */,
-				E7F95EAA2832766A00636467 /* PDFRendererProvider.xcodeproj */,
 				A823D816192BABA400B55DE2 /* Palace */,
 				A823D82F192BABA400B55DE2 /* PalaceTests */,
 				A823D80E192BABA400B55DE2 /* Products */,
@@ -3034,15 +3018,6 @@
 			path = PDF;
 			sourceTree = "<group>";
 		};
-		E7F95EAB2832766A00636467 /* Products */ = {
-			isa = PBXGroup;
-			children = (
-				E7F95EB52832766B00636467 /* PDFRendererProvider.framework */,
-				E7F95EB72832766B00636467 /* PDFRendererProviderTests.xctest */,
-			);
-			name = Products;
-			sourceTree = "<group>";
-		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -3167,10 +3142,6 @@
 					ProjectRef = E5C1F52927990929005FC6B2 /* OverdriveProcessor.xcodeproj */;
 				},
 				{
-					ProductGroup = E7F95EAB2832766A00636467 /* Products */;
-					ProjectRef = E7F95EAA2832766A00636467 /* PDFRendererProvider.xcodeproj */;
-				},
-				{
 					ProductGroup = A49C25411AE05A2600D63B89 /* Products */;
 					ProjectRef = A49C25401AE05A2600D63B89 /* RDServices.xcodeproj */;
 				},
@@ -3243,20 +3214,6 @@
 			fileType = wrapper.application;
 			path = OverdriveProcessorDriver.app;
 			remoteRef = E5C1F53327990929005FC6B2 /* PBXContainerItemProxy */;
-			sourceTree = BUILT_PRODUCTS_DIR;
-		};
-		E7F95EB52832766B00636467 /* PDFRendererProvider.framework */ = {
-			isa = PBXReferenceProxy;
-			fileType = wrapper.framework;
-			path = PDFRendererProvider.framework;
-			remoteRef = E7F95EB42832766B00636467 /* PBXContainerItemProxy */;
-			sourceTree = BUILT_PRODUCTS_DIR;
-		};
-		E7F95EB72832766B00636467 /* PDFRendererProviderTests.xctest */ = {
-			isa = PBXReferenceProxy;
-			fileType = wrapper.cfbundle;
-			path = PDFRendererProviderTests.xctest;
-			remoteRef = E7F95EB62832766B00636467 /* PBXContainerItemProxy */;
 			sourceTree = BUILT_PRODUCTS_DIR;
 		};
 /* End PBXReferenceProxy section */
