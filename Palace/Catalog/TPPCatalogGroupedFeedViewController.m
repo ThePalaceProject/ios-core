@@ -447,10 +447,12 @@ viewForHeaderInSection:(NSInteger const)section
      // have had their covers downloaded.
      ++self.indexOfNextLaneRequiringImageDownload;
      
-     [self.tableView reloadSections:[NSIndexSet indexSetWithIndex:
-                                     (self.indexOfNextLaneRequiringImageDownload - 1)]
-                   withRowAnimation:UITableViewRowAnimationNone];
-     
+    NSMutableArray *indexPaths = [NSMutableArray new];
+    
+    for (int i = 0; i < (int)lane.books.count; i++) {
+      [indexPaths addObject:[NSIndexPath indexPathForRow:i inSection:self.indexOfNextLaneRequiringImageDownload - 1]];
+    }
+    [self.tableView reloadRowsAtIndexPaths:indexPaths withRowAnimation:UITableViewRowAnimationNone];
      [self downloadImages];
    }];
 }
