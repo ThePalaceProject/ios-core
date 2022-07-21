@@ -442,18 +442,11 @@ viewForHeaderInSection:(NSInteger const)section
    thumbnailImagesForBooks:[NSSet setWithArray:lane.books]
    handler:^(NSDictionary *const bookIdentifiersToImages) {
      [self.bookIdentifiersToImages addEntriesFromDictionary:bookIdentifiersToImages];
-     
      // We update this before reloading so that the delegate accurately knows which lanes already
      // have had their covers downloaded.
      ++self.indexOfNextLaneRequiringImageDownload;
-     
-    NSMutableArray *indexPaths = [NSMutableArray new];
-    
-    for (int i = 0; i < (int)lane.books.count; i++) {
-      [indexPaths addObject:[NSIndexPath indexPathForRow:i inSection:self.indexOfNextLaneRequiringImageDownload - 1]];
-    }
-    [self.tableView reloadRowsAtIndexPaths:indexPaths withRowAnimation:UITableViewRowAnimationNone];
-     [self downloadImages];
+    [self.tableView reloadData];
+    [self downloadImages];
    }];
 }
 
