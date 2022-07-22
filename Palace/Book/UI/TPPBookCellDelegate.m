@@ -352,14 +352,18 @@
             NSData *const data = [bookLocation.locationString dataUsingEncoding:NSUTF8StringEncoding];
             ChapterLocation *const chapterLocation = [ChapterLocation fromData:data];
             TPPLOG_F(@"Returning to Audiobook Location: %@", chapterLocation);
-            [manager.audiobook.player movePlayheadToLocation:chapterLocation completion:^(NSError *error) {
-              if (error) {
-                [self presentLocationRecoveryError:error];
-                return;
-              }
+            if (chapterLocation) {
+              [manager.audiobook.player movePlayheadToLocation:chapterLocation completion:^(NSError *error) {
+                if (error) {
+                  [self presentLocationRecoveryError:error];
+                  return;
+                }
 
+                [self stopLoading];
+              }];
+            } else {
               [self stopLoading];
-            }];
+            }
           }
         }
       }];
