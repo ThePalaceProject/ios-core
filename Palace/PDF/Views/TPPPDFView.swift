@@ -17,14 +17,16 @@ struct TPPPDFView: View {
   
   let document: PDFDocument
   let pdfView = PDFView()
+  private let pageChangePublisher = NotificationCenter.default.publisher(for: .PDFViewPageChanged)
 
   @EnvironmentObject var metadata: TPPPDFDocumentMetadata
   
   @State private var showingDocumentInfo = true
+  @State private var isTracking = false
 
   var body: some View {
     ZStack {
-      TPPPDFDocumentView(document: document, pdfView: pdfView, showingDocumentInfo: $showingDocumentInfo)
+      TPPPDFDocumentView(document: document, pdfView: pdfView, showingDocumentInfo: $showingDocumentInfo, isTracking: $isTracking)
         .edgesIgnoringSafeArea([.all])
 
       VStack {
@@ -52,5 +54,13 @@ struct TPPPDFView: View {
       .contentShape(Rectangle())
     }
     .navigationBarHidden(!showingDocumentInfo)
+    .onReceive(pageChangePublisher) { value in
+      if let pdfView = (value.object as? PDFView), let page = pdfView.currentPage, let pageIndex = pdfView.document?.index(for: page) {
+        metadata.currentPage = pageIndex
+        if isTracking {
+            showingDocumentInfo = false
+        }
+      }
+    }
   }
 }
