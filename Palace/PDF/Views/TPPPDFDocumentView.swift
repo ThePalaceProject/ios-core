@@ -16,6 +16,7 @@ struct TPPPDFDocumentView: UIViewRepresentable {
   var document: PDFDocument
   var pdfView: PDFView
   @Binding var showingDocumentInfo: Bool
+  @Binding var isTracking: Bool
   
   @EnvironmentObject var metadata: TPPPDFDocumentMetadata
 
@@ -43,17 +44,13 @@ struct TPPPDFDocumentView: UIViewRepresentable {
         }
       }
     })
-    pdfView.addGestureRecognizer(pdfViewGestureRecognizer)
-
-    NotificationCenter.default.addObserver(forName: .PDFViewPageChanged, object: nil, queue: nil) { _ in
-      if let page = pdfView.currentPage, let pageIndex = pdfView.document?.index(for: page) {
-        if pdfViewGestureRecognizer.isTracking {
-          showingDocumentInfo = false
-        }
-        metadata.currentPage = pageIndex
-      }
+    
+    pdfViewGestureRecognizer.onTrackingChanged { value in
+      isTracking = value
     }
     
+    pdfView.addGestureRecognizer(pdfViewGestureRecognizer)
+
     return pdfView
   }
   
@@ -88,11 +85,21 @@ struct TPPPDFDocumentView: UIViewRepresentable {
   }
   
   class PDFViewGestureRecognizer: UIGestureRecognizer {
-    var isTracking = false
-    var touchCompletion: ((_ touches: Set<UITouch>) -> Void)?
+    var isTracking = false {
+      didSet {
+        self.trackingChanged?(isTracking)
+      }
+    }
+    
+    private var touchCompletion: ((_ touches: Set<UITouch>) -> Void)?
+    private var trackingChanged: ((_ value: Bool) -> Void)?
         
     func onTouchEnded(_ touchCompleted: @escaping (_ touches: Set<UITouch>) -> Void) {
       self.touchCompletion = touchCompleted
+    }
+    
+    func onTrackingChanged(_ action: @escaping (_ value: Bool) -> Void) {
+      self.trackingChanged = action
     }
     
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
