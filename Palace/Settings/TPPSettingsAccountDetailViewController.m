@@ -703,7 +703,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
       [[UIBarButtonItem alloc] initWithTitle:NSLocalizedString(@"Back", nil)
                                        style:UIBarButtonItemStylePlain
                                       target:weakSelf
-                                      action:@selector(didSelectCancelForSignUp)];
+                                      action:@selector(didSelectBackForSignUp)];
       navVC.modalPresentationStyle = UIModalPresentationFormSheet;
       [weakSelf presentViewController:navVC animated:YES completion:nil];
     }];
@@ -711,7 +711,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
   }];
 }
 
-- (void)didSelectCancelForSignUp
+- (void)didSelectBackForSignUp
 {
   [self dismissViewControllerAnimated:YES completion:nil];
 }
