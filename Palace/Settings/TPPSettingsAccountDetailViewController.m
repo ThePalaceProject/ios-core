@@ -700,7 +700,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
 
     [TPPMainThreadRun asyncIfNeeded:^{
       navVC.navigationBar.topItem.leftBarButtonItem =
-      [[UIBarButtonItem alloc] initWithTitle:NSLocalizedString(@"Cancel", nil)
+      [[UIBarButtonItem alloc] initWithTitle:NSLocalizedString(@"Back", nil)
                                        style:UIBarButtonItemStylePlain
                                       target:weakSelf
                                       action:@selector(didSelectCancelForSignUp)];
