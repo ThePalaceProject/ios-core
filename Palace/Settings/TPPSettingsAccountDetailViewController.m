@@ -1070,6 +1070,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
 
   [containerView autoAlignAxisToSuperviewAxis:ALAxisHorizontal];
   [containerView autoAlignAxisToSuperviewAxis:ALAxisVertical];
+  [containerView autoPinEdgesToSuperviewMarginsWithInsets:UIEdgeInsetsMake(10, 10, 10, 10)];
   [imageViewHolder autoPinEdgesToSuperviewMarginsExcludingEdge:ALEdgeTrailing];
   [titleLabel autoPinEdgesToSuperviewMarginsExcludingEdge:ALEdgeLeading];
   [imageViewHolder autoPinEdge:ALEdgeTrailing toEdge:ALEdgeLeading ofView:titleLabel withOffset:-10];
