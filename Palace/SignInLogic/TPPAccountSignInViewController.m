@@ -29,7 +29,8 @@ typedef NS_ENUM(NSInteger, CellKind) {
   CellKindBarcode,
   CellKindPIN,
   CellKindLogIn,
-  CellKindRegistration
+  CellKindRegistration,
+  CellKindPasswordReset
 };
 
 typedef NS_ENUM(NSInteger, Section) {
@@ -328,6 +329,10 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
       [self.tableView deselectRowAtIndexPath:indexPath animated:YES];
       [self.businessLogic logIn];
       break;
+    case CellKindPasswordReset:
+      [self.tableView deselectRowAtIndexPath:indexPath animated:YES];
+      [self.businessLogic resetPassword];
+      break;
     case CellKindRegistration:
       [self.tableView deselectRowAtIndexPath:indexPath animated:YES];
       UITableViewCell *cell = [tableView cellForRowAtIndexPath:indexPath];
@@ -424,7 +429,15 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
     case CellKindRegistration: {
       return [self createRegistrationCell];
     }
+    case CellKindPasswordReset:
+      return [self passwordResetCell];
   }
+}
+
+- (UITableViewCell *)passwordResetCell {
+  UITableViewCell *cell = [[UITableViewCell alloc] init];
+  cell.textLabel.text = NSLocalizedString(@"Forgot your password?", "Password Reset");
+  return cell;
 }
 
 - (UITableViewCell *)createRegistrationCell
@@ -664,6 +677,11 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
       // no method header needed
       [workingSection addObjectsFromArray:[self cellsForAuthMethod:self.businessLogic.selectedAuthentication]];
     }
+    
+    if (self.businessLogic.canResetPassword) {
+      [workingSection addObject:@(CellKindPasswordReset)];
+    }
+    
   } else {
     [workingSection addObjectsFromArray:[self cellsForAuthMethod:self.businessLogic.selectedAuthentication]];
   }

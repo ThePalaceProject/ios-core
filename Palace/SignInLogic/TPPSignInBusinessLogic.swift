@@ -163,7 +163,37 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
   var currentAccount: Account? {
     return libraryAccount
   }
-
+  
+  /// Returns a valid password reset URL or `nil`
+  ///
+  /// Verifies that:
+  /// - password reset link exists in authentication document;
+  /// - contains a valid URL,
+  /// - can be opened by the app.
+  private var validPasswordResetUrl: URL? {
+    guard let passwordResetHref = libraryAccount?.authenticationDocument?.links?.first(rel: .passwordReset)?.href,
+          let passwordResetUrl = URL(string: passwordResetHref),
+          UIApplication.shared.canOpenURL(passwordResetUrl) else {
+      return nil
+    }
+    return passwordResetUrl
+  }
+  
+  /// Verifies that current library account can reset user password.
+  @objc var canResetPassword: Bool {
+    validPasswordResetUrl != nil
+  }
+  
+  /// Opens password reset URL to reset user password.
+  ///
+  /// This function doesn't show any errorl; use `canResetPassword` to identify if password can actually be reset.
+  @objc func resetPassword() {
+    guard let passwordResetUrl = validPasswordResetUrl else {
+      return
+    }
+    UIApplication.shared.open(passwordResetUrl)
+  }
+  
   @objc var selectedIDP: OPDS2SamlIDP?
 
   private var _selectedAuthentication: AccountDetails.Authentication?

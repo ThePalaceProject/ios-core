@@ -34,7 +34,8 @@ typedef NS_ENUM(NSInteger, CellKind) {
   CellKindAbout,
   CellKindPrivacyPolicy,
   CellKindContentLicense,
-  CellReportIssue
+  CellReportIssue,
+  CellKindPasswordReset
 };
 
 @interface TPPSettingsAccountDetailViewController () <TPPSignInOutBusinessLogicUIDelegate>
@@ -398,6 +399,11 @@ Authenticating with any of those barcodes should work.
       // no method header needed
       [workingSection addObjectsFromArray:[self cellsForAuthMethod:self.businessLogic.selectedAuthentication]];
     }
+    
+    if (self.businessLogic.canResetPassword) {
+      [workingSection addObject:@(CellKindPasswordReset)];
+    }
+    
   } else {
     [workingSection addObjectsFromArray:[self cellsForAuthMethod:self.businessLogic.selectedAuthentication]];
   }
@@ -680,6 +686,10 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
       [self.navigationController pushViewController:vc animated:YES];
       break;
     }
+    case CellKindPasswordReset:
+      [self.tableView deselectRowAtIndexPath:indexPath animated:YES];
+      [self.businessLogic resetPassword];
+      break;
   }
 }
 
@@ -932,7 +942,15 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
       cell.textLabel.text = NSLocalizedString(@"Advanced", nil);
       return cell;
     }
+    case CellKindPasswordReset:
+      return [self createPasswordResetCell];
   }
+}
+
+- (UITableViewCell *)createPasswordResetCell {
+  UITableViewCell *cell = [[UITableViewCell alloc] init];
+  cell.textLabel.text = NSLocalizedString(@"Forgot your password?", "Password Reset");
+  return cell;
 }
 
 - (UITableViewCell *)createRegistrationCell
