@@ -186,7 +186,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
   
   /// Opens password reset URL to reset user password.
   ///
-  /// This function doesn't show any errorl; use `canResetPassword` to identify if password can actually be reset.
+  /// This function doesn't show any error; use `canResetPassword` to identify if password can actually be reset.
   @objc func resetPassword() {
     guard let passwordResetUrl = validPasswordResetUrl else {
       return
