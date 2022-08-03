@@ -29,7 +29,8 @@ typedef NS_ENUM(NSInteger, CellKind) {
   CellKindBarcode,
   CellKindPIN,
   CellKindLogIn,
-  CellKindRegistration
+  CellKindRegistration,
+  CellKindPasswordReset
 };
 
 typedef NS_ENUM(NSInteger, Section) {
@@ -329,6 +330,10 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
       [self.tableView deselectRowAtIndexPath:indexPath animated:YES];
       [self.businessLogic logIn];
       break;
+    case CellKindPasswordReset:
+      [self.tableView deselectRowAtIndexPath:indexPath animated:YES];
+      [self.businessLogic resetPassword];
+      break;
     case CellKindRegistration:
       [self.tableView deselectRowAtIndexPath:indexPath animated:YES];
       UITableViewCell *cell = [tableView cellForRowAtIndexPath:indexPath];
@@ -425,7 +430,15 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
     case CellKindRegistration: {
       return [self createRegistrationCell];
     }
+    case CellKindPasswordReset:
+      return [self passwordResetCell];
   }
+}
+
+- (UITableViewCell *)passwordResetCell {
+  UITableViewCell *cell = [[UITableViewCell alloc] init];
+  cell.textLabel.text = NSLocalizedString(@"Forgot your password?", "Password Reset");
+  return cell;
 }
 
 - (UITableViewCell *)createRegistrationCell
@@ -474,10 +487,10 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
 
     [TPPMainThreadRun asyncIfNeeded:^{
       navVC.navigationBar.topItem.leftBarButtonItem =
-      [[UIBarButtonItem alloc] initWithTitle:NSLocalizedString(@"Cancel", nil)
+      [[UIBarButtonItem alloc] initWithTitle:NSLocalizedString(@"Back", nil)
                                        style:UIBarButtonItemStylePlain
                                       target:weakSelf
-                                      action:@selector(didSelectCancelForSignUp)];
+                                      action:@selector(didSelectBackForSignUp)];
       navVC.modalPresentationStyle = UIModalPresentationFormSheet;
       [weakSelf presentViewController:navVC animated:YES completion:nil];
     }];
@@ -665,6 +678,11 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
       // no method header needed
       [workingSection addObjectsFromArray:[self cellsForAuthMethod:self.businessLogic.selectedAuthentication]];
     }
+    
+    if (self.businessLogic.canResetPassword) {
+      [workingSection addObject:@(CellKindPasswordReset)];
+    }
+    
   } else {
     [workingSection addObjectsFromArray:[self cellsForAuthMethod:self.businessLogic.selectedAuthentication]];
   }
@@ -759,7 +777,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
    completion:nil];
 }
 
-- (void)didSelectCancelForSignUp
+- (void)didSelectBackForSignUp
 {
   [self dismissViewControllerAnimated:YES completion:nil];
 }
