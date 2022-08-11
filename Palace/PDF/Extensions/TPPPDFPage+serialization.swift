@@ -1,5 +1,5 @@
 //
-//  TPPPDFPage+locationString.swift
+//  TPPPDFPage+serialization.swift
 //  Palace
 //
 //  Created by Vladimir Fedorov on 22.06.2022.
@@ -15,6 +15,15 @@ extension TPPPDFPage {
     guard let jsonData = try? JSONEncoder().encode(self),
           let jsonString = String(data: jsonData, encoding: .utf8)
     else {
+      return nil
+    }
+    return jsonString
+  }
+  
+  /// Bookmark selector for reading position synchronization
+  var bookmarkSelector: String? {
+    let bookmark = TPPPDFPageBookmark(page: pageNumber)
+    guard let jsonData = try? JSONEncoder().encode(bookmark), let jsonString = String(data: jsonData, encoding: .utf8) else {
       return nil
     }
     return jsonString
