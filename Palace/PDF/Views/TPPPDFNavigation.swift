@@ -68,6 +68,7 @@ struct TPPPDFNavigation<Content>: View where Content: View {
       ZStack(alignment: .leading) {
         TPPPDFToolbarButton(icon: "list.bullet") {
           readerMode = TPPPDFReaderModeValues(rawValue: pickerSelection)?.readerMode ?? .previews
+          metadata.fetchBookmarks()
         }
         .visible(when: !isShowingPdfContorls)
 
