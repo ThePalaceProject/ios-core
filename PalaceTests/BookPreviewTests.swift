@@ -1,5 +1,5 @@
 //
-//  NetworkManagerTests.swift
+//  BookPreviewTests.swift
 //  PalaceTests
 //
 //  Created by Maurice Carrier on 8/10/22.
@@ -9,23 +9,22 @@
 import XCTest
 @testable import Palace
 
-class NetworkManagerTests: XCTestCase {
-
+class BookPreviewTests: XCTestCase {
   let testEpubURL = "https://market.feedbooks.com/item/3877422/preview"
 
   func testEpubDownload() {
     let expectation = expectation(description: "Should download epub file.")
 
-    AppNetworkManager.fetchPreview(query: testEpubURL) { result in
+    TPPNetworkExecutor.shared.GET(URL(string: testEpubURL)!) { result in
       switch result {
-      case let .success(model):
-        XCTAssertNotNil(model.epubData)
+      case let .success(data, _):
+        XCTAssertNotNil(data)
         expectation.fulfill()
       case .failure:
         XCTFail("Failed to fetch epub preview")
       }
     }
-    
-    waitForExpectations(timeout: 1.0)
+
+    waitForExpectations(timeout: 3.0)
   }
 }
