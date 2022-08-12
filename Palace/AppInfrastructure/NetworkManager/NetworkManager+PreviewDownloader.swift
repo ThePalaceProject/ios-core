@@ -18,30 +18,25 @@ protocol NetworkManager {
 
 extension NetworkManager {
   func sendRequest<T: Codable>(request: RequestModel, completion: @escaping (Swift.Result<T, NetworkManagerError>) -> Void) {
-         URLSession.shared.dataTask(with: request.urlRequest()) { data, response, error in
-             
-             let decoder = JSONDecoder()
-             decoder.keyDecodingStrategy = .convertFromSnakeCase
-             
-             guard let data = data else {
-               return completion(Result.failure(NetworkManagerError.previewFetchFailed))
-             }
-             
-             DispatchQueue.main.async {
-                 switch T.self {
-                     case is EpubPreviewResponseModel.Type:
-                         guard let responseModel = try? decoder.decode(T.self, from: data) else {
-                             completion(Result.failure(NetworkManagerError.previewDecodeFailed))
-                             return
-                         }
-                         completion(Result.success(responseModel))
-                     
-                 default:
-                     completion(Result.failure(NetworkManagerError.internalError))
-                 }
-             }
-         }.resume()
-     }
+    URLSession.shared.dataTask(with: request.urlRequest()) { data, response, error in
+      
+      let decoder = JSONDecoder()
+      decoder.keyDecodingStrategy = .convertFromSnakeCase
+      
+      guard let data = data else {
+        return completion(Result.failure(NetworkManagerError.previewFetchFailed))
+      }
+
+      DispatchQueue.main.async {
+        switch T.self {
+        case is EpubPreviewResponseModel.Type:
+          completion(Result.success(EpubPreviewResponseModel(data: data) as! T))
+        default:
+          completion(Result.failure(NetworkManagerError.internalError))
+        }
+      }
+    }.resume()
+  }
 }
 
 struct AppNetworkManager: NetworkManager {
