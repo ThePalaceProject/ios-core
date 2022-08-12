@@ -46,11 +46,11 @@ struct AppNetworkManager: NetworkManager {
 extension AppNetworkManager: PreviewDownloader {
 
   /**
-     featchPreview
-     
-     - Parameter query: Text query to search
-     - Parameter completion: closure block, returns Swift Result
-     */
+   featchPreview
+   
+   - Parameter query: Text query to search
+   - Parameter completion: closure block, returns Swift Result
+   */
   static func fetchPreview(query: String, completion: @escaping(Swift.Result<EpubPreviewResponseModel, NetworkManagerError>) -> Void) {
     AppNetworkManager.shared.sendRequest(request: EpubPreviewRequestModel(path: query)) { result in
       completion(result)
