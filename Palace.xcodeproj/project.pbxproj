@@ -745,7 +745,7 @@
 		E7048073285A72A600019B31 /* TPPPDFNavigation.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7048071285A72A600019B31 /* TPPPDFNavigation.swift */; };
 		E706F60128638140000B7431 /* TPPBookLocation+pageNumber.swift in Sources */ = {isa = PBXBuildFile; fileRef = E706F60028638140000B7431 /* TPPBookLocation+pageNumber.swift */; };
 		E706F60728638237000B7431 /* TPPPDFPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = E706F60628638237000B7431 /* TPPPDFPage.swift */; };
-		E706F6092863831F000B7431 /* TPPPDFPage+locationString.swift in Sources */ = {isa = PBXBuildFile; fileRef = E706F6082863831F000B7431 /* TPPPDFPage+locationString.swift */; };
+		E706F6092863831F000B7431 /* TPPPDFPage+serialization.swift in Sources */ = {isa = PBXBuildFile; fileRef = E706F6082863831F000B7431 /* TPPPDFPage+serialization.swift */; };
 		E706F60B2863864F000B7431 /* CGPDFPage+previews.swift in Sources */ = {isa = PBXBuildFile; fileRef = E706F60A2863864F000B7431 /* CGPDFPage+previews.swift */; };
 		E706F60F286388B3000B7431 /* TPPPDFDocumentMetadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = E706F60E286388B3000B7431 /* TPPPDFDocumentMetadata.swift */; };
 		E708C19227734EE300D34899 /* DifferenceKit.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = E708C18C27734EE300D34899 /* DifferenceKit.xcframework */; };
@@ -762,6 +762,7 @@
 		E731FF4C2864C934001DB7F2 /* TPPPDFPreviewGridCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E731FF4B2864C934001DB7F2 /* TPPPDFPreviewGridCell.swift */; };
 		E731FF4E2864E609001DB7F2 /* View.swift in Sources */ = {isa = PBXBuildFile; fileRef = E731FF4D2864E609001DB7F2 /* View.swift */; };
 		E7347D0B287F2A1600CCE65A /* UIImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7347D0A287F2A1600CCE65A /* UIImage.swift */; };
+		E73549DE28A53982001B0D0A /* TPPPDFPageBookmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = E73549DD28A53982001B0D0A /* TPPPDFPageBookmark.swift */; };
 		E7376EC0287DE9C00095AADF /* CGSize.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7376EBF287DE9C00095AADF /* CGSize.swift */; };
 		E7376ECC287DF1C30095AADF /* DispatchQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7376ECB287DF1C30095AADF /* DispatchQueue.swift */; };
 		E7376ED0287E05F50095AADF /* TPPPDFPreviewThumbnail.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7376ECF287E05F50095AADF /* TPPPDFPreviewThumbnail.swift */; };
@@ -1547,7 +1548,7 @@
 		E7048071285A72A600019B31 /* TPPPDFNavigation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFNavigation.swift; sourceTree = "<group>"; };
 		E706F60028638140000B7431 /* TPPBookLocation+pageNumber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPBookLocation+pageNumber.swift"; sourceTree = "<group>"; };
 		E706F60628638237000B7431 /* TPPPDFPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFPage.swift; sourceTree = "<group>"; };
-		E706F6082863831F000B7431 /* TPPPDFPage+locationString.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPPDFPage+locationString.swift"; sourceTree = "<group>"; };
+		E706F6082863831F000B7431 /* TPPPDFPage+serialization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPPDFPage+serialization.swift"; sourceTree = "<group>"; };
 		E706F60A2863864F000B7431 /* CGPDFPage+previews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CGPDFPage+previews.swift"; sourceTree = "<group>"; };
 		E706F60E286388B3000B7431 /* TPPPDFDocumentMetadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFDocumentMetadata.swift; sourceTree = "<group>"; };
 		E708C18C27734EE300D34899 /* DifferenceKit.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = DifferenceKit.xcframework; path = Carthage/Build/DifferenceKit.xcframework; sourceTree = "<group>"; };
@@ -1560,6 +1561,7 @@
 		E731FF4B2864C934001DB7F2 /* TPPPDFPreviewGridCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFPreviewGridCell.swift; sourceTree = "<group>"; };
 		E731FF4D2864E609001DB7F2 /* View.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = View.swift; sourceTree = "<group>"; };
 		E7347D0A287F2A1600CCE65A /* UIImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UIImage.swift; sourceTree = "<group>"; };
+		E73549DD28A53982001B0D0A /* TPPPDFPageBookmark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFPageBookmark.swift; sourceTree = "<group>"; };
 		E7376EBF287DE9C00095AADF /* CGSize.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CGSize.swift; sourceTree = "<group>"; };
 		E7376ECB287DF1C30095AADF /* DispatchQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DispatchQueue.swift; sourceTree = "<group>"; };
 		E7376ECF287E05F50095AADF /* TPPPDFPreviewThumbnail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFPreviewThumbnail.swift; sourceTree = "<group>"; };
@@ -2939,7 +2941,7 @@
 			isa = PBXGroup;
 			children = (
 				E706F60028638140000B7431 /* TPPBookLocation+pageNumber.swift */,
-				E706F6082863831F000B7431 /* TPPPDFPage+locationString.swift */,
+				E706F6082863831F000B7431 /* TPPPDFPage+serialization.swift */,
 				E706F60A2863864F000B7431 /* CGPDFPage+previews.swift */,
 				E731FF442864C2A4001DB7F2 /* Binding+onChange.swift */,
 				E731FF4D2864E609001DB7F2 /* View.swift */,
@@ -2963,6 +2965,7 @@
 			children = (
 				E7CBF976285CA41400F00C02 /* TPPPDFDocument.swift */,
 				E706F60628638237000B7431 /* TPPPDFPage.swift */,
+				E73549DD28A53982001B0D0A /* TPPPDFPageBookmark.swift */,
 				E7FD4E51286CCF2C00D26A3B /* TPPPDFLocation.swift */,
 				E7861C52284695DE00B3A38A /* TPPEncryptedPDFDocument.swift */,
 				E706F60E286388B3000B7431 /* TPPPDFDocumentMetadata.swift */,
@@ -3771,7 +3774,7 @@
 				A4BA1D0E1B430341006F83DF /* TPPCatalogGroupedFeedViewController.m in Sources */,
 				732F929323ECB51F0099244C /* TPPBackgroundExecutor.swift in Sources */,
 				5D1B141522CBE3570006C964 /* TPPProblemDocument.swift in Sources */,
-				E706F6092863831F000B7431 /* TPPPDFPage+locationString.swift in Sources */,
+				E706F6092863831F000B7431 /* TPPPDFPage+serialization.swift in Sources */,
 				A92FB0F921CDCE3D004740F4 /* TPPReturnPromptHelper.swift in Sources */,
 				17E81F08261522B3001003C2 /* TPPRoundedButton.swift in Sources */,
 				7380E702254B3E77004613B1 /* TPPBookContentMetadataFilesHelper.swift in Sources */,
@@ -4010,6 +4013,7 @@
 				7340DA6824B7F27900361387 /* TPPBook+Logging.swift in Sources */,
 				A949984F2235826500CE4241 /* TPPPDFViewControllerDelegate.swift in Sources */,
 				E7048072285A72A600019B31 /* TPPPDFNavigation.swift in Sources */,
+				E73549DE28A53982001B0D0A /* TPPPDFPageBookmark.swift in Sources */,
 				73B501C524F48D4C00FBAD7D /* TPPUserAccountFrontEndValidation.swift in Sources */,
 				E501710F27A3948C004B3392 /* TPPBookmarkFactory.swift in Sources */,
 			);
@@ -4182,7 +4186,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 94;
+				CURRENT_PROJECT_VERSION = 95;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = arm64;
@@ -4240,7 +4244,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 94;
+				CURRENT_PROJECT_VERSION = 95;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
@@ -4421,7 +4425,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 94;
+				CURRENT_PROJECT_VERSION = 95;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = arm64;
@@ -4482,7 +4486,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 94;
+				CURRENT_PROJECT_VERSION = 95;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (

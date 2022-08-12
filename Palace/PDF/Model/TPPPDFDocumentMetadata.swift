@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import Combine
 
 /// PDF Document metadata
 ///
@@ -19,12 +20,16 @@ import Foundation
   @objc var title: String?
   
   /// Page numbers for boomarks.
-  @Published var bookmarks: [Int]?
+  @Published var bookmarks: Set<Int>?
   
   /// Current page number.
-  @Published var currentPage: Int {
+  @Published var currentPage: Int
+  
+  private var currentPageCancellable: AnyCancellable?
+  
+  private var pdfBookmarks: [TPPPDFPageBookmark]? {
     didSet {
-      setCurrentPage(currentPage)
+      bookmarks = (pdfBookmarks == nil ? nil : Set(pdfBookmarks!.map { $0.page }))
     }
   }
   
@@ -36,48 +41,91 @@ import Foundation
   @objc init(with bookIdentifier: String) {
     self.bookIdentifier = bookIdentifier
     currentPage = TPPBookRegistry.shared().location(forIdentifier: bookIdentifier)?.pageNumber ?? 0
-    bookmarks = TPPBookRegistry.shared().genericBookmarks(forIdentifier: bookIdentifier)?.compactMap { $0.pageNumber }
     TPPBookRegistry.shared().setStateWithCode(TPPBookState.Used.rawValue, forIdentifier: bookIdentifier)
+    super.init()
+    syncReadingPosition()
+    fetchBookmarks()
+    currentPageCancellable = $currentPage
+      .debounce(for: .seconds(1), scheduler: RunLoop.main)
+      .removeDuplicates()
+      .sink { value in
+        self.setCurrentPage(value)
+      }
   }
   
   /// Set current page in the book registry.
-  /// - Parameter page: PDF page number.
+  /// - Parameter pageNumber: PDF page number.
   ///
   /// This function preserves last opened page in the book registry.
-  func setCurrentPage(_ page: Int) {
-    guard let locationString = TPPPDFPage(pageNumber: page).locationString,
+  func setCurrentPage(_ pageNumber: Int) {
+    let page = TPPPDFPage(pageNumber: pageNumber)
+    guard let locationString = page.locationString,
+          let bookmarkSelector = page.bookmarkSelector,
           let location = TPPBookLocation(locationString: locationString, renderer: rendererString)
     else {
       Log.error(#file, "Error creating and saving PDF Page Location")
       return
     }
     TPPBookRegistry.shared().setLocation(location, forIdentifier: self.bookIdentifier)
+    TPPAnnotations.postReadingPosition(forBook: bookIdentifier, selectorValue: bookmarkSelector, motivation: .readingProgress)
+  }
+  
+  /// Synchronize reading position with the position stored on the server.
+  func syncReadingPosition() {
+    guard let url = TPPAnnotations.annotationsURL else {
+      return
+    }
+    TPPAnnotations.syncReadingPosition(ofBook: bookIdentifier, toURL: url) { [weak self] bookmark in
+      if let pdfBookmark = bookmark as? TPPPDFPageBookmark {
+        DispatchQueue.main.async {
+          self?.currentPage = pdfBookmark.page
+        }
+      }
+    }
+  }
+  
+  /// Fetch bookmarks from the server.
+  func fetchBookmarks() {
+    guard let url = TPPAnnotations.annotationsURL else {
+      return
+    }
+    TPPAnnotations.getServerBookmarks(forBook: bookIdentifier, atURL: url) { bookmarks in
+      if let pdfBookmarks = bookmarks as? [TPPPDFPageBookmark] {
+        DispatchQueue.main.async {
+          self.pdfBookmarks = pdfBookmarks
+        }
+      }
+    }
   }
   
   /// Add bookmark for the book to the book registry.
-  /// - Parameter page: PDF page number, `nil` adds current page.
-  func addBookmark(at page: Int? = nil) {
-    guard let locationString = TPPPDFPage(pageNumber: page ?? currentPage).locationString,
-          let location = TPPBookLocation(locationString: locationString, renderer: rendererString)
-    else {
-      Log.error(#file, "Error adding PDF Page Location")
-      return
+  /// - Parameter pageNumber: PDF page number, `nil` adds current page.
+  func addBookmark(at pageNumber: Int? = nil) {
+    let page = TPPPDFPage(pageNumber: pageNumber ?? currentPage)
+    bookmarks?.insert(page.pageNumber)
+    TPPAnnotations.postBookmark(page, forBookID: bookIdentifier) { serverID in
+      DispatchQueue.main.async {
+        self.pdfBookmarks?.append(TPPPDFPageBookmark(page: page.pageNumber, annotationID: serverID))
+      }
     }
-    TPPBookRegistry.shared().addGenericBookmark(location, forIdentifier: bookIdentifier)
-    bookmarks = TPPBookRegistry.shared().genericBookmarks(forIdentifier: bookIdentifier)?.compactMap { $0.pageNumber }
   }
   
   /// Remove bookmark from the book registry.
-  /// - Parameter page: PDF page number, `nil` removes current page.
-  func removeBookmark(at page: Int? = nil) {
-    guard let locationString = TPPPDFPage(pageNumber: page ?? currentPage).locationString,
-          let location = TPPBookLocation(locationString: locationString, renderer: rendererString)
+  /// - Parameter pageNumber: PDF page number, `nil` removes current page.
+  func removeBookmark(at pageNumber: Int? = nil) {
+    let bookmarkPage = pageNumber ?? currentPage
+    guard let bookmark = pdfBookmarks?.first(where: { bookmarkPage == $0.page }),
+          let annotationId = bookmark.annotationID
     else {
-      Log.error(#file, "Error adding PDF Page Location")
+      Log.error(#file, "Error removing PDF Page Location")
       return
     }
-    TPPBookRegistry.shared().deleteGenericBookmark(location, forIdentifier: bookIdentifier)
-    bookmarks = TPPBookRegistry.shared().genericBookmarks(forIdentifier: bookIdentifier)?.compactMap { $0.pageNumber }
+    bookmarks?.remove(bookmarkPage)
+    TPPAnnotations.deleteBookmark(annotationId: annotationId) { success in
+      DispatchQueue.main.async {
+        self.pdfBookmarks?.removeAll(where: { bookmarkPage == $0.page })
+      }
+    }
   }
   
   /// Checks if page is bookmarked.

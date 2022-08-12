@@ -13,14 +13,14 @@ import UIKit
 /// Wraps `TPPPDFPreviewGridController` — `UICollectionViewController` 
 struct TPPPDFPreviewGrid: UIViewControllerRepresentable {
   let document: TPPPDFDocument
-  var pageIndices: [Int]?
+  var pageIndices: Set<Int>?
   var isVisible = false
   let done: () -> Void
   
   @EnvironmentObject var metadata: TPPPDFDocumentMetadata
 
   func makeUIViewController(context: Context) -> some UIViewController {
-    let vc = TPPPDFPreviewGridController(document: document, indices: pageIndices)
+    let vc = TPPPDFPreviewGridController(document: document, indices: pageIndices?.sorted())
     vc.delegate = context.coordinator
     vc.currentPage = metadata.currentPage
     vc.isVisible = isVisible

@@ -119,6 +119,12 @@ class TPPBookmarkFactory {
     if let audioBookmark = try? JSONDecoder().decode(AudioBookmark.self, from: selectorValueData) {
         return audioBookmark
     }
+    
+    if let pdfPageBookmark = try? JSONDecoder().decode(TPPPDFPageBookmark.self, from: selectorValueData),
+        pdfPageBookmark.type == TPPPDFPageBookmark.Types.locatorPage.rawValue {
+      pdfPageBookmark.annotationID = annotationID
+      return pdfPageBookmark
+    }
   
     guard let selectorValueJSON = (try? JSONSerialization.jsonObject(with: selectorValueData, options: [])) as? [String: Any] else {
       Log.error(#file, "Error serializing serverCFI into JSON. Selector.Value=\(selectorValueEscJSON)")

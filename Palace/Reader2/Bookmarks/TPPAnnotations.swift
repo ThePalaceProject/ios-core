@@ -261,6 +261,38 @@ import R2Shared
     }
   }
   
+  class func postBookmark(_ page: TPPPDFPage, forBookID bookID: String, completion: @escaping (_ serverID: String?) -> Void) {
+    guard syncIsPossibleAndPermitted() else {
+      Log.debug(#file, "Account does not support sync or sync is disabled.")
+      completion(nil)
+      return
+    }
+
+    guard let annotationsURL = TPPAnnotations.annotationsURL else {
+      Log.error(#file, "Annotations URL was nil while posting bookmark")
+      return
+    }
+
+    guard let selectorValue = page.bookmarkSelector else {
+      Log.error(#file, "Bookmark selectorValue was nil while posting bookmark")
+      return
+    }
+    
+    let spec = TPPBookmarkSpec(
+      time: NSDate(),
+      device: TPPUserAccount.sharedAccount().deviceID ?? "",
+      motivation: .bookmark,
+      bookID: bookID,
+      selectorValue: selectorValue
+    )
+
+    let parameters = spec.dictionaryForJSONSerialization()
+
+    postAnnotation(forBook: bookID, withAnnotationURL: annotationsURL, withParameters: parameters, queueOffline: false) { (success, id) in
+      completion(id)
+    }
+  }
+  
   class func postBookmark(_ bookmark: TPPReadiumBookmark,
                             forBookID bookID: String,
                             completion: @escaping (_ serverID: String?) -> ())
