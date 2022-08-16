@@ -172,10 +172,10 @@
       [[TPPRootTabBarController sharedController] pushViewController:vc animated:YES];
     }];
   } else {
-    if (TPPSettings.shared.useEncryptedPDFReader) {
-      [self presentPDF:book];
-    } else {
+    if (TPPSettings.shared.useLegacyPDFReader) {
       [self presentMinitexPDFReader:book];
+    } else {
+      [self presentPDF:book];
     }
   }
 }
