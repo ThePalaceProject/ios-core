@@ -32,7 +32,7 @@ import Foundation
   static let settingsLibraryAccountsKey = "NYPLSettingsLibraryAccountsKey"
   static private let versionKey = "NYPLSettingsVersionKey"
   static private let customLibraryRegistryKey = "TPPSettingsCustomLibraryRegistryKey"
-  static private let useEncryptedPDFReader = "TPPSettingsEncryptedPDFReader"
+  static private let useLegacyPDFReader = "TPPSettingsLegacyPDFReader"
   
   // Set to nil (the default) if no custom feed should be used.
   var customMainFeedURL: URL? {
@@ -136,12 +136,12 @@ import Foundation
     }
   }
 
-  var useEncryptedPDFReader: Bool {
+  var useLegacyPDFReader: Bool {
     get {
-      return UserDefaults.standard.bool(forKey: TPPSettings.useEncryptedPDFReader)
+      return UserDefaults.standard.bool(forKey: TPPSettings.useLegacyPDFReader)
     }
     set(b) {
-      UserDefaults.standard.set(b, forKey: TPPSettings.useEncryptedPDFReader)
+      UserDefaults.standard.set(b, forKey: TPPSettings.useLegacyPDFReader)
       UserDefaults.standard.synchronize()
     }
   }

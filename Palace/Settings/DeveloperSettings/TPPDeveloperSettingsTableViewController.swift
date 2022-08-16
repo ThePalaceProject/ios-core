@@ -19,8 +19,8 @@ import Foundation
     TPPSettings.shared.useBetaLibraries = sender.isOn
   }
 
-  func encryptedPDFReaderSwitchDidChange(sender: UISwitch) {
-    TPPSettings.shared.useEncryptedPDFReader = sender.isOn
+  func legacyPDFReaderSwitchDidChange(sender: UISwitch) {
+    TPPSettings.shared.useLegacyPDFReader = sender.isOn
   }
   // MARK:- UIViewController
   
@@ -82,13 +82,13 @@ import Foundation
   }
   
   private func cellForEncryptedPDFReader() -> UITableViewCell {
-    let cell = UITableViewCell(style: UITableViewCell.CellStyle.default, reuseIdentifier: "encryptedPDFReaderCell")
+    let cell = UITableViewCell(style: UITableViewCell.CellStyle.default, reuseIdentifier: "legacyPDFReaderCell")
     cell.selectionStyle = .none
-    cell.textLabel?.text = "Enable Beta PDF Reader"
-    let betaLibrarySwitch = UISwitch()
-    betaLibrarySwitch.setOn(TPPSettings.shared.useEncryptedPDFReader, animated: false)
-    betaLibrarySwitch.addTarget(self, action:#selector(encryptedPDFReaderSwitchDidChange), for: .valueChanged)
-    cell.accessoryView = betaLibrarySwitch
+    cell.textLabel?.text = "Use Legacy PDF Reader"
+    let legacyPDFReaderSwitch = UISwitch()
+    legacyPDFReaderSwitch.setOn(TPPSettings.shared.useLegacyPDFReader, animated: false)
+    legacyPDFReaderSwitch.addTarget(self, action:#selector(legacyPDFReaderSwitchDidChange), for: .valueChanged)
+    cell.accessoryView = legacyPDFReaderSwitch
     return cell
   }
   
