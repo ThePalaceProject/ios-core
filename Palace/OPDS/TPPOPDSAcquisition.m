@@ -28,6 +28,9 @@ static NSUInteger const numberOfRelations = 6;
 
 TPPOPDSAcquisitionRelationSet const NYPLOPDSAcquisitionRelationSetAll = (1 << (numberOfRelations)) - 1;
 
+TPPOPDSAcquisitionRelationSet const TPPOPDSAcquisitionRelationSetDefaultAcquisition =
+  NYPLOPDSAcquisitionRelationSetAll ^ TPPOPDSAcquisitionRelationSetSample;
+
 TPPOPDSAcquisitionRelationSet
 NYPLOPDSAcquisitionRelationSetWithRelation(TPPOPDSAcquisitionRelation relation)
 {

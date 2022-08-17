@@ -756,6 +756,7 @@
 		E708F721284781D50028405B /* TPPEncryptedPDFViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E708F71F284781D50028405B /* TPPEncryptedPDFViewController.swift */; };
 		E708F723284783250028405B /* TPPEncryptedPDFViewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E708F722284783250028405B /* TPPEncryptedPDFViewer.swift */; };
 		E708F724284783250028405B /* TPPEncryptedPDFViewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E708F722284783250028405B /* TPPEncryptedPDFViewer.swift */; };
+		E72B614B28AD7612008CFEBB /* TPPOPDSAcquisitionPathEntryWithSampleLink.xml in Resources */ = {isa = PBXBuildFile; fileRef = E72B614A28AD7612008CFEBB /* TPPOPDSAcquisitionPathEntryWithSampleLink.xml */; };
 		E731FF452864C2A4001DB7F2 /* Binding+onChange.swift in Sources */ = {isa = PBXBuildFile; fileRef = E731FF442864C2A4001DB7F2 /* Binding+onChange.swift */; };
 		E731FF482864C3BF001DB7F2 /* TPPPDFReaderMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = E731FF472864C3BF001DB7F2 /* TPPPDFReaderMode.swift */; };
 		E731FF4A2864C716001DB7F2 /* TPPPDFPreviewGridDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = E731FF492864C716001DB7F2 /* TPPPDFPreviewGridDelegate.swift */; };
@@ -1555,6 +1556,7 @@
 		E708F712284780920028405B /* TPPEncryptedPDFPageViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPEncryptedPDFPageViewController.swift; sourceTree = "<group>"; };
 		E708F71F284781D50028405B /* TPPEncryptedPDFViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPEncryptedPDFViewController.swift; sourceTree = "<group>"; };
 		E708F722284783250028405B /* TPPEncryptedPDFViewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPEncryptedPDFViewer.swift; sourceTree = "<group>"; };
+		E72B614A28AD7612008CFEBB /* TPPOPDSAcquisitionPathEntryWithSampleLink.xml */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xml; path = TPPOPDSAcquisitionPathEntryWithSampleLink.xml; sourceTree = "<group>"; };
 		E731FF442864C2A4001DB7F2 /* Binding+onChange.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Binding+onChange.swift"; sourceTree = "<group>"; };
 		E731FF472864C3BF001DB7F2 /* TPPPDFReaderMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFReaderMode.swift; sourceTree = "<group>"; };
 		E731FF492864C716001DB7F2 /* TPPPDFPreviewGridDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFPreviewGridDelegate.swift; sourceTree = "<group>"; };
@@ -2865,6 +2867,7 @@
 				2D2B47691D08F264007F7764 /* UpdateCheckUpToDate.json */,
 				111559F119B8FAA10003BE94 /* valid.xml */,
 				2D8790A220129AC400E2763F /* NYPLOPDSAcquisitionPathEntry.xml */,
+				E72B614A28AD7612008CFEBB /* TPPOPDSAcquisitionPathEntryWithSampleLink.xml */,
 				73A794C62549095700C59CC1 /* NYPLOPDSAcquisitionPathEntryMinimal.xml */,
 			);
 			name = "Supporting Files";
@@ -3241,6 +3244,7 @@
 				730EF24F26093E40008E1DC3 /* invalid-locator-4.json in Resources */,
 				219901FB24FD2E56001BC727 /* jwk_public in Resources */,
 				B51C1E1A229456E2003B49A5 /* dpl_authentication_document.json in Resources */,
+				E72B614B28AD7612008CFEBB /* TPPOPDSAcquisitionPathEntryWithSampleLink.xml in Resources */,
 				730EF24D26093E40008E1DC3 /* invalid-locator-3.json in Resources */,
 				730EF25A26093E53008E1DC3 /* valid-bookmark-0.json in Resources */,
 				2D2B478F1D08FDF5007F7764 /* UpdateCheckUnknown.json in Resources */,
@@ -4082,6 +4086,7 @@
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
+				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = arm64;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(PROJECT_DIR)/Carthage/Build",
@@ -4186,7 +4191,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 97;
+				CURRENT_PROJECT_VERSION = 98;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = arm64;
@@ -4244,7 +4249,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 97;
+				CURRENT_PROJECT_VERSION = 98;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
@@ -4425,7 +4430,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 97;
+				CURRENT_PROJECT_VERSION = 98;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = arm64;
@@ -4486,7 +4491,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 97;
+				CURRENT_PROJECT_VERSION = 98;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
