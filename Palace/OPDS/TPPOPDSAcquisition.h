@@ -28,6 +28,9 @@ typedef NS_OPTIONS(NSUInteger, TPPOPDSAcquisitionRelationSet) {
 /// A set containing all possible relations.
 extern TPPOPDSAcquisitionRelationSet const NYPLOPDSAcquisitionRelationSetAll;
 
+/// A set for `defaultAcquisition`
+extern TPPOPDSAcquisitionRelationSet const TPPOPDSAcquisitionRelationSetDefaultAcquisition;
+
 /// @param relation The relation with which to form a single-element set.
 /// @return A relation set containing a single relation.
 TPPOPDSAcquisitionRelationSet

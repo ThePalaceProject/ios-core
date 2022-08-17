@@ -552,7 +552,23 @@ static NSString *const UpdatedKey = @"updated";
   for (TPPOPDSAcquisition *const acquisition in self.acquisitions) {
     NSArray *const paths = [TPPOPDSAcquisitionPath
                             supportedAcquisitionPathsForAllowedTypes:[TPPOPDSAcquisitionPath supportedTypes]
-                            allowedRelations:NYPLOPDSAcquisitionRelationSetAll
+                            allowedRelations:TPPOPDSAcquisitionRelationSetDefaultAcquisition
+                            acquisitions:@[acquisition]];
+
+    if (paths.count >= 1) {
+      return acquisition;
+    }
+  }
+
+  return nil;
+}
+
+- (TPPOPDSAcquisition *)sampleAcquisition
+{
+  for (TPPOPDSAcquisition *const acquisition in self.acquisitions) {
+    NSArray *const paths = [TPPOPDSAcquisitionPath
+                            supportedAcquisitionPathsForAllowedTypes:[TPPOPDSAcquisitionPath supportedTypes]
+                            allowedRelations:TPPOPDSAcquisitionRelationSetSample
                             acquisitions:@[acquisition]];
 
     if (paths.count >= 1) {

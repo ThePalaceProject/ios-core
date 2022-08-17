@@ -70,6 +70,9 @@
 /// @return An acquisition leading to an EPUB or @c nil.
 - (nullable TPPOPDSAcquisition *)defaultAcquisition;
 
+/// Sample acquisition
+- (nullable TPPOPDSAcquisition *)sampleAcquisition;
+
 /// @discussion
 /// A compatibility method to allow the app to continue to function until the
 /// user interface and other components support handling multiple valid
