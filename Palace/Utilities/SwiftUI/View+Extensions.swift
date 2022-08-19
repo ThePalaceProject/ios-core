@@ -29,4 +29,8 @@ extension View {
       Spacer()
     }
   }
+
+  func square(length: CGFloat) -> some View {
+    self.frame(width: length, height: length)
+  }
 }

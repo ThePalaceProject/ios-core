@@ -27,4 +27,19 @@ class BookPreviewTests: XCTestCase {
 
     waitForExpectations(timeout: 3.0)
   }
+
+  func testBookPreviewExtraction() throws {
+    let acquisitions = [TPPFake.genericAcquisition.dictionaryRepresentation()]
+
+    let book = TPPBook(dictionary: [
+      "acquisitions": acquisitions,
+      "categories" : ["Fantasy"],
+      "id": "123",
+      "title": "The Lord of the Rings",
+      "updated": "2020-09-08T09:22:45Z"
+    ])
+
+    XCTAssertNotNil(book?.acquisitions)
+    XCTAssertNotNil(book?.samples)
+  }
 }
