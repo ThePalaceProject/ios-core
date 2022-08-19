@@ -10,8 +10,16 @@ import SwiftUI
 import Combine
 
 struct AudiobookSampleToolbar: View {
+  typealias Images = ImageProviders.AudiobookSampleToolbar
   @ObservedObject var player: AudiobookSamplePlayer
-  var book: TPPBook
+
+  private var book: TPPBook
+  private let imageLoader = AsyncImage(image: UIImage(systemName: "book.closed.fill")!)
+  private let toolbarHeight: CGFloat = 70
+  private let toolbarPadding: CGFloat = 5
+  private let imageViewHeight: CGFloat = 70
+  private let playbackButtonLength: CGFloat = 35
+  private let buttonViewSpacing: CGFloat = 10
 
   init?(book: TPPBook) {
     self.book = book
@@ -19,6 +27,9 @@ struct AudiobookSampleToolbar: View {
 //    guard let sample = book.samples.first as? AudiobookSample else { return nil }
     let sample = AudiobookSample(url: URL(string:"https://excerpts.cdn.overdrive.com/FormatType-425/1191-1/240440-TheLostSymbol.mp3")!)
     player = AudiobookSamplePlayer(sample: sample)
+    if let imageURL = book.imageThumbnailURL ?? book.imageURL {
+      imageLoader.loadImage(url: imageURL)
+    }
   }
 
   var body: some View {
@@ -28,8 +39,8 @@ struct AudiobookSampleToolbar: View {
       Spacer()
       buttonView
     }
-    .frame(height: 70)
-    .padding(5)
+    .frame(height: toolbarHeight)
+    .padding(toolbarPadding)
     .background(Color.init(.lightGray))
     .onDisappear {
       player.pauseAudiobook()
@@ -37,14 +48,12 @@ struct AudiobookSampleToolbar: View {
   }
 
   @ViewBuilder var imageView: some View {
-    if let image = TPPBookRegistry.shared().cachedThumbnailImage(for: book) {
-      Image(uiImage: image)
-        .resizable()
-        .aspectRatio(contentMode: .fit)
-        .frame(width: 50)
-    }
+    Image(uiImage: TPPBookRegistry.shared().cachedThumbnailImage(for: book) ?? imageLoader.image)
+      .resizable()
+      .aspectRatio(contentMode: .fit)
+      .frame(width: imageViewHeight)
   }
-  
+
   var infoView: some View {
     VStack(alignment: .leading) {
       Text(book.title)
@@ -54,7 +63,7 @@ struct AudiobookSampleToolbar: View {
   }
 
   var buttonView: some View {
-    HStack(spacing: 10) {
+    HStack(spacing: buttonViewSpacing) {
       playbackButton
       playButton
     }
@@ -64,9 +73,9 @@ struct AudiobookSampleToolbar: View {
     Button {
       player.goBack()
     } label: {
-      Image(systemName: "gobackward.30")
+      Images.stepBack
         .resizable()
-        .square(length: 40)
+        .square(length: playbackButtonLength)
         .padding(.trailing)
     }
   }
@@ -83,20 +92,24 @@ struct AudiobookSampleToolbar: View {
         return
       }
     } label: {
-      switch player.state {
-      case .paused:
-        ImageProviders.AudiobookSampleToolbar.play
-          .resizable()
-          .square(length: 40)
-          .padding(.trailing)
-      case .playing:
-        ImageProviders.AudiobookSampleToolbar.pause
-          .resizable()
-          .square(length: 40)
-          .padding(.trailing)
-      default:
-        loadingView
-      }
+     playButtonImage
+    }
+  }
+
+  @ViewBuilder private var playButtonImage: some View {
+    switch player.state {
+    case .paused:
+      Images.play
+        .resizable()
+        .square(length: playbackButtonLength)
+        .padding(.trailing)
+    case .playing:
+      Images.pause
+        .resizable()
+        .square(length: playbackButtonLength)
+        .padding(.trailing)
+    default:
+      loadingView
     }
   }
 
@@ -116,7 +129,7 @@ struct AudiobookSampleToolbar: View {
   }
 }
 
-extension TimeInterval {
+private extension TimeInterval {
   func displayFormat() -> String {
     let ti = NSInteger(self)
     let seconds = ti % 60

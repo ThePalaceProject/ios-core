@@ -18,6 +18,7 @@ enum AudiobookSamplePlayerState {
 
 class AudiobookSamplePlayer: NSObject, ObservableObject {
   @Published var remainingTime = 0.0
+  @Published var isLoading = false
   @Published var state: AudiobookSamplePlayerState = .initialized {
     didSet {
       DispatchQueue.main.async {
@@ -25,11 +26,9 @@ class AudiobookSamplePlayer: NSObject, ObservableObject {
       }
     }
   }
-  @Published var isLoading = false
 
   private var sample: AudiobookSample
   private var player: AVAudioPlayer?
-  private var sampleData: Data?
   private var timer: Timer?
 
   init(sample: AudiobookSample) {
@@ -45,33 +44,15 @@ class AudiobookSamplePlayer: NSObject, ObservableObject {
     self.player = nil
   }
 
-  // TODO: Handle error here
-  private func downloadFile() {
-    state = .loading
-
-    let _ = TPPNetworkExecutor.shared.GET(sample.url) { [unowned self]  result,_,_ in
-      DispatchQueue.main.async {
-        self.state = .paused
-        self.sampleData = result
-        try? self.setupPlayer()
-      }
-    }
-  }
-
   func playAudiobook() throws {
     player?.play()
     state = .playing
   }
 
-  private func setupPlayer() throws {
-    guard let sampleData = sampleData else {
-      throw SamplePlayerError.sampleDownloadFailed(nil)
-    }
-
-    player = try AVAudioPlayer(data: sampleData)
+  private func setupPlayer(data: Data) throws {
+    player = try AVAudioPlayer(data: data)
 
     player?.delegate = self
-    player?.prepareToPlay()
     player?.volume = 1.0
     startTimer()
   }
@@ -86,20 +67,23 @@ class AudiobookSamplePlayer: NSObject, ObservableObject {
     timer?.invalidate()
 
     self.player?.pause()
-    let newLocation = min(player.duration, self.remainingTime + 30)
+    let currentTime = remainingTime
+    let newLocation = min(player.duration, currentTime + 30)
     remainingTime = newLocation
     self.player?.play(atTime: remainingTime)
     startTimer()
   }
 
   @objc private func setDuration() {
-    guard let player = player else { return }
+    guard let player = player,
+          player.currentTime < player.duration
+    else { return }
 
     DispatchQueue.main.async {
-      self.remainingTime = min(abs(player.duration - player.currentTime), player.duration)
+      self.remainingTime = player.duration - player.currentTime
     }
   }
-  
+
   private func startTimer() {
     self.timer = Timer.scheduledTimer(
       timeInterval: 1.0,
@@ -108,6 +92,24 @@ class AudiobookSamplePlayer: NSObject, ObservableObject {
       userInfo: nil,
       repeats: true
     )
+  }
+
+  private func downloadFile() {
+    state = .loading
+
+    let _ = TPPNetworkExecutor.shared.GET(sample.url) { [unowned self]  result in
+      switch result {
+      case let .failure(error, _):
+        // TODO: Surface error and display alert
+        TPPErrorLogger.logError(error, summary: "Failed to download sample")
+        return
+      case let .success(result, _):
+        DispatchQueue.main.async {
+          self.state = .paused
+          try? self.setupPlayer(data: result)
+        }
+      }
+    }
   }
 }
 

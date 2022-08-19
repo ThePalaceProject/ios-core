@@ -12,5 +12,6 @@ struct ImageProviders {
   struct AudiobookSampleToolbar {
     static let pause = Image(systemName: "pause.circle")
     static let play = Image(systemName: "play.circle")
+    static let stepBack = Image(systemName: "gobackward.30")
   }
 }
