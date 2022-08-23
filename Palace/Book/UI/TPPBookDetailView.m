@@ -118,8 +118,7 @@ static NSString *DetailHTMLTemplate = nil;
   [self addSubview:self.scrollView];
   [self.scrollView addSubview:self.containerView];
   
-  if ([self.book hasSamples]) {
-//    self.audiobookSampleToolbar = [[AudiobookSampleToolbarWrapper createWithBook:self.book] view];
+  if ([self.book hasSamples] && [self.book defaultBookContentType] == TPPBookContentTypeAudiobook) {
     self.audiobookSampleToolbar = [[AudiobookSampleToolbarWrapper createWithBook:self.book] view];
     [self addSubview: self.audiobookSampleToolbar];
   }

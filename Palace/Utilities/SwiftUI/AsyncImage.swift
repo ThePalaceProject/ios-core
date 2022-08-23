@@ -45,8 +45,13 @@ class AsyncImage: ObservableObject {
 
   func loadImage(url: URL) {
     self.cancellable = imageLoader.publisher(for: url)
-      .sink(receiveCompletion: { failure in
-        print(failure)
+      .sink(receiveCompletion: { result in
+        switch result {
+        case .failure(let error):
+          TPPErrorLogger.logError(error, summary: "Failed to load image")
+        default:
+          return
+        }
       }, receiveValue: { image in
         self.image = image
       })
