@@ -24,4 +24,25 @@ import Foundation
       }
     }
   }
+   
+  var hasSamples: Bool { !samples.isEmpty }
+}
+
+extension TPPBook {
+  var samples: [Sample] {
+    let sampleAcquisitions = self.acquisitions?.filter { $0.relation == .sample }
+
+    switch self.defaultBookContentType() {
+    case .EPUB, .PDF:
+      return sampleAcquisitions?.compactMap { acquisition in
+          return EpubSample(url: acquisition.hrefURL)
+      } ?? []
+    case .audiobook:
+      return sampleAcquisitions?.compactMap { acquisition in
+          return AudiobookSample(url: acquisition.hrefURL)
+    } ?? []
+    default:
+      return []
+    }
+  }
 }

@@ -23,6 +23,7 @@
 @property (nonatomic) TPPRoundedButton *downloadButton;
 @property (nonatomic) TPPRoundedButton *readButton;
 @property (nonatomic) TPPRoundedButton *cancelButton;
+@property (nonatomic) TPPRoundedButton *sampleButton;
 @property (nonatomic) NSArray *visibleButtons;
 @property (nonatomic) NSMutableArray *constraints;
 @property (nonatomic) id observer;
@@ -59,6 +60,11 @@
   self.cancelButton.titleLabel.minimumScaleFactor = 0.8f;
   [self.cancelButton addTarget:self action:@selector(didSelectCancel) forControlEvents:UIControlEventTouchUpInside];
   [self addSubview:self.cancelButton];
+  
+  self.sampleButton = [[TPPRoundedButton alloc] initWithType:TPPRoundedButtonTypeNormal isFromDetailView:NO];
+  self.sampleButton.titleLabel.minimumScaleFactor = 0.8f;
+  [self.sampleButton addTarget:self action:@selector(didSelectSample) forControlEvents:UIControlEventTouchUpInside];
+  [self addSubview:self.sampleButton];
   
   self.activityIndicator = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
   self.activityIndicator.color = [TPPConfiguration mainColor];
@@ -133,7 +139,7 @@
 
 - (void)updateButtons
 {
-  NSArray *visibleButtonInfo = nil;
+  NSMutableArray *visibleButtonInfo = nil;
   static NSString *const ButtonKey = @"button";
   static NSString *const TitleKey = @"title";
   static NSString *const HintKey = @"accessibilityHint";
@@ -144,49 +150,70 @@
   
   switch(self.state) {
     case TPPBookButtonsStateCanBorrow:
-      visibleButtonInfo = @[@{ButtonKey: self.downloadButton,
+      visibleButtonInfo = [[NSMutableArray alloc] initWithArray: @[@{ButtonKey: self.downloadButton,
                               TitleKey: NSLocalizedString(@"Borrow", nil),
-                              HintKey: [NSString stringWithFormat:NSLocalizedString(@"Borrows %@", nil), self.book.title]}];
+                              HintKey: [NSString stringWithFormat:NSLocalizedString(@"Borrows %@", nil), self.book.title]}]];
+
+      if ([self.book hasSamples]) {
+        [visibleButtonInfo addObject:@{ButtonKey: self.sampleButton,
+                                        TitleKey: NSLocalizedString(@"Play Sample", nil),
+                                         HintKey: [NSString stringWithFormat:NSLocalizedString(@"View sample for %@", nil), self.book.title]}];
+      }
+
       break;
     case TPPBookButtonsStateCanHold:
-      visibleButtonInfo = @[@{ButtonKey: self.downloadButton,
+      visibleButtonInfo = [[NSMutableArray alloc] initWithArray: @[@{ButtonKey: self.downloadButton,
                               TitleKey: NSLocalizedString(@"Reserve", nil),
-                              HintKey: [NSString stringWithFormat:NSLocalizedString(@"Holds %@", nil), self.book.title]}];
+                              HintKey: [NSString stringWithFormat:NSLocalizedString(@"Holds %@", nil), self.book.title]}]];
+
+      if ([self.book hasSamples]) {
+        [visibleButtonInfo addObject:@{ButtonKey: self.sampleButton,
+                                              TitleKey: NSLocalizedString(@"Sample", nil),
+                                       HintKey: [NSString stringWithFormat:NSLocalizedString(@"View sample for %@", nil), self.book.title]}];
+      }
+
       break;
     case TPPBookButtonsStateHolding:
-      visibleButtonInfo = @[@{ButtonKey: self.deleteButton,
+      visibleButtonInfo = [[NSMutableArray alloc] initWithArray:@[@{ButtonKey: self.deleteButton,
                               TitleKey: NSLocalizedString(@"Remove", nil),
                               HintKey: [NSString stringWithFormat:NSLocalizedString(@"Cancels hold for %@", nil), self.book.title],
-                              AddIndicatorKey: @(YES)}];
+                              AddIndicatorKey: @(YES)}]];
+
+      if ([self.book hasSamples]) {
+        [visibleButtonInfo addObject:@{ButtonKey: self.sampleButton,
+                                              TitleKey: NSLocalizedString(@"Sample", nil),
+                                       HintKey: [NSString stringWithFormat:NSLocalizedString(@"View sample for %@", nil), self.book.title]}];
+      }
+
       break;
     case TPPBookButtonsStateHoldingFOQ:
-      visibleButtonInfo = @[@{ButtonKey: self.downloadButton,
+      visibleButtonInfo = [[NSMutableArray alloc] initWithArray:@[@{ButtonKey: self.downloadButton,
                               TitleKey: NSLocalizedString(@"Borrow", nil),
                               HintKey: [NSString stringWithFormat:NSLocalizedString(@"Borrows %@", nil), self.book.title],
                               AddIndicatorKey: @(YES)},
                             @{ButtonKey: self.deleteButton,
                               TitleKey: NSLocalizedString(@"Remove", nil),
-                              HintKey: [NSString stringWithFormat:NSLocalizedString(@"Cancels hold for %@", nil), self.book.title]}];
+                              HintKey: [NSString stringWithFormat:NSLocalizedString(@"Cancels hold for %@", nil), self.book.title]}]];
       break;
     case TPPBookButtonsStateDownloadNeeded:
     {
-      visibleButtonInfo = @[@{ButtonKey: self.downloadButton,
+      visibleButtonInfo = [[NSMutableArray alloc] initWithArray:@[@{ButtonKey: self.downloadButton,
                               TitleKey: NSLocalizedString(@"Download", nil),
                               HintKey: [NSString stringWithFormat:NSLocalizedString(@"Downloads %@", nil), self.book.title],
-                              AddIndicatorKey: @(YES)}];
+                              AddIndicatorKey: @(YES)}]];
         
       if (self.showReturnButtonIfApplicable)
       {
         NSString *title = (self.book.defaultAcquisitionIfOpenAccess || !TPPUserAccount.sharedAccount.authDefinition.needsAuth) ? NSLocalizedString(@"Delete", nil) : NSLocalizedString(@"Return", nil);
         NSString *hint = (self.book.defaultAcquisitionIfOpenAccess || !TPPUserAccount.sharedAccount.authDefinition.needsAuth) ? [NSString stringWithFormat:NSLocalizedString(@"Deletes %@", nil), self.book.title] : [NSString stringWithFormat:NSLocalizedString(@"Returns %@", nil), self.book.title];
 
-        visibleButtonInfo = @[@{ButtonKey: self.downloadButton,
+        visibleButtonInfo = [[NSMutableArray alloc] initWithArray:@[@{ButtonKey: self.downloadButton,
                                 TitleKey: NSLocalizedString(@"Download", nil),
                                 HintKey: [NSString stringWithFormat:NSLocalizedString(@"Downloads %@", nil), self.book.title],
                                 AddIndicatorKey: @(YES)},
                               @{ButtonKey: self.deleteButton,
                                 TitleKey: title,
-                                HintKey: hint}];
+                                HintKey: hint}]];
       }
       break;
     }
@@ -214,17 +241,17 @@
           break;
       }
 
-      visibleButtonInfo = @[buttonInfo];
+      visibleButtonInfo = [[NSMutableArray alloc] initWithArray: @[buttonInfo]];
         
       if (self.showReturnButtonIfApplicable)
       {
         NSString *title = (self.book.defaultAcquisitionIfOpenAccess || !TPPUserAccount.sharedAccount.authDefinition.needsAuth) ? NSLocalizedString(@"Delete", nil) : NSLocalizedString(@"Return", nil);
         NSString *hint = (self.book.defaultAcquisitionIfOpenAccess || !TPPUserAccount.sharedAccount.authDefinition.needsAuth) ? [NSString stringWithFormat:NSLocalizedString(@"Deletes %@", nil), self.book.title] : [NSString stringWithFormat:NSLocalizedString(@"Returns %@", nil), self.book.title];
 
-        visibleButtonInfo = @[buttonInfo,
+        visibleButtonInfo = [[NSMutableArray alloc] initWithArray:@[buttonInfo,
                               @{ButtonKey: self.deleteButton,
                                 TitleKey: title,
-                                HintKey: hint}];
+                                HintKey: hint}]];
       }
       break;
     }
@@ -232,10 +259,10 @@
     {
       if (self.showReturnButtonIfApplicable)
       {
-        visibleButtonInfo = @[@{ButtonKey: self.cancelButton,
+        visibleButtonInfo = [[NSMutableArray alloc] initWithArray:@[@{ButtonKey: self.cancelButton,
                                 TitleKey: NSLocalizedString(@"Cancel", nil),
                                 HintKey: [NSString stringWithFormat:NSLocalizedString(@"Cancels the download for the current book: %@", nil), self.book.title],
-                                AddIndicatorKey: @(NO)}];
+                                AddIndicatorKey: @(NO)}]];
       }
       break;
     }
@@ -243,21 +270,21 @@
     {
       if (self.showReturnButtonIfApplicable)
       {
-        visibleButtonInfo = @[@{ButtonKey: self.downloadButton,
+        visibleButtonInfo = [[NSMutableArray alloc] initWithArray:@[@{ButtonKey: self.downloadButton,
                                 TitleKey: NSLocalizedString(@"Retry", nil),
                                 HintKey: [NSString stringWithFormat:NSLocalizedString(@"Retry the failed download for this book: %@", nil), self.book.title],
                                 AddIndicatorKey: @(NO)},
                               @{ButtonKey: self.cancelButton,
                                 TitleKey: NSLocalizedString(@"Cancel", nil),
                                 HintKey: [NSString stringWithFormat:NSLocalizedString(@"Cancels the failed download for this book: %@", nil), self.book.title],
-                                AddIndicatorKey: @(NO)}];
+                                AddIndicatorKey: @(NO)}]];
       }
       break;
     }
     case TPPBookButtonsStateUnsupported:
       // The app should never show books it cannot support, but if it mistakenly does,
       // no actions will be available.
-      visibleButtonInfo = @[];
+      visibleButtonInfo = [NSMutableArray new];
       break;
   }
 
@@ -319,7 +346,7 @@
     
     [visibleButtons addObject:button];
   }
-  for (TPPRoundedButton *button in @[self.downloadButton, self.deleteButton, self.readButton, self.cancelButton]) {
+  for (TPPRoundedButton *button in @[self.downloadButton, self.deleteButton, self.readButton, self.cancelButton, self.sampleButton]) {
     if (![visibleButtons containsObject:button]) {
       button.hidden = YES;
     }
@@ -434,7 +461,11 @@
     default:
       break;
   }
-  
+}
+
+- (void)didSelectSample
+{
+  [self.sampleDelegate didSelectPlaySample:self.book];
 }
 
 @end

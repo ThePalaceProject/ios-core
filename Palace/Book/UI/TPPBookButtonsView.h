@@ -9,6 +9,13 @@
 - (void)didSelectReturnForBook:(TPPBook *)book;
 - (void)didSelectDownloadForBook:(TPPBook *)book;
 - (void)didSelectReadForBook:(TPPBook *)book;
+- (void)didSelectPlaySample:(TPPBook *)book;
+
+@end
+
+@protocol TPPBookButtonsSampleDelegate
+
+- (void)didSelectPlaySample:(TPPBook *)book;
 
 @end
 
@@ -27,6 +34,7 @@
 @property (nonatomic) TPPBookButtonsState state;
 @property (nonatomic, weak) id<TPPBookButtonsDelegate> delegate;
 @property (nonatomic, weak) id<TPPBookDownloadCancellationDelegate> downloadingDelegate;
+@property (nonatomic, weak) id<TPPBookButtonsSampleDelegate> sampleDelegate;
 @property (nonatomic) BOOL showReturnButtonIfApplicable;
 
 - (void)configureForBookDetailsContext;
