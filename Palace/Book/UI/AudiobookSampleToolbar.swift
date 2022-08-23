@@ -14,20 +14,18 @@ struct AudiobookSampleToolbar: View {
   @ObservedObject var player: AudiobookSamplePlayer
 
   private var book: TPPBook
-  private let imageLoader = AsyncImage(image: UIImage(systemName: "book.closed.fill")!)
+  private let imageLoader = AsyncImage(image: UIImage(systemName: "book.closed.fill") ?? UIImage())
   private let toolbarHeight: CGFloat = 70
   private let toolbarPadding: CGFloat = 5
   private let imageViewHeight: CGFloat = 70
   private let playbackButtonLength: CGFloat = 35
   private let buttonViewSpacing: CGFloat = 10
-  
-  let pub = NotificationCenter.default.publisher(for: NSNotification.Name("ToggleSampleNotification"))
+
+  private let notificationPublisher = NotificationCenter.default.publisher(for: NSNotification.Name("ToggleSampleNotification"))
 
   init?(book: TPPBook) {
     self.book = book
-//    self.isPlaying = self.$player.isPlaying.wrappedValue
-//    guard let sample = book.samples.first as? AudiobookSample else { return nil }
-    let sample = AudiobookSample(url: URL(string:"https://excerpts.cdn.overdrive.com/FormatType-425/1191-1/240440-TheLostSymbol.mp3")!)
+    guard let sample = book.samples.first as? AudiobookSample else { return nil }
     player = AudiobookSamplePlayer(sample: sample)
     if let imageURL = book.imageThumbnailURL ?? book.imageURL {
       imageLoader.loadImage(url: imageURL)
@@ -47,19 +45,19 @@ struct AudiobookSampleToolbar: View {
     .onDisappear {
       player.pauseAudiobook()
     }
-    .onReceive(pub) { _ in
+    .onReceive(notificationPublisher) { _ in
       self.togglePlay()
     }
   }
 
-  @ViewBuilder var imageView: some View {
+  @ViewBuilder private var imageView: some View {
     Image(uiImage: TPPBookRegistry.shared().cachedThumbnailImage(for: book) ?? imageLoader.image)
       .resizable()
       .aspectRatio(contentMode: .fit)
       .frame(width: imageViewHeight)
   }
 
-  var infoView: some View {
+  private var infoView: some View {
     VStack(alignment: .leading) {
       Text(book.title)
         .bold()
@@ -67,36 +65,14 @@ struct AudiobookSampleToolbar: View {
     }
   }
 
-  var buttonView: some View {
+  private var buttonView: some View {
     HStack(spacing: buttonViewSpacing) {
       playbackButton
       playButton
     }
   }
-  
-  func togglePlay() {
-    switch player.state {
-    case .paused:
-      try? player.playAudiobook()
-    case .playing:
-      player.pauseAudiobook()
-    default:
-      return
-    }  }
-  
-  var playbackButton: some View {
-    Button {
-      player.goBack()
-    } label: {
-      Images.stepBack
-        .resizable()
-        .square(length: playbackButtonLength)
-        .padding(.trailing)
-    }
-  }
 
-  var playButton: some View {
-    // TODO: Present error if sample play fails
+  private var playButton: some View {
     Button {
       togglePlay()
     } label: {
@@ -118,6 +94,27 @@ struct AudiobookSampleToolbar: View {
         .padding(.trailing)
     default:
       loadingView
+    }
+  }
+  
+  private func togglePlay() {
+    switch player.state {
+    case .paused:
+      try? player.playAudiobook()
+    case .playing:
+      player.pauseAudiobook()
+    default:
+      return
+    }  }
+  
+  private var playbackButton: some View {
+    Button {
+      player.goBack()
+    } label: {
+      Images.stepBack
+        .resizable()
+        .square(length: playbackButtonLength)
+        .padding(.trailing)
     }
   }
 

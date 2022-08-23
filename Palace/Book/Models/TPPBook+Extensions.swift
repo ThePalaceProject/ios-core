@@ -24,10 +24,8 @@ import Foundation
       }
     }
   }
-  
-  // TODO update once development is complete
-//  var hasSamples: Bool { !samples.isEmpty }
-  var hasSamples: Bool { true }
+   
+  var hasSamples: Bool { !samples.isEmpty }
 }
 
 extension TPPBook {
