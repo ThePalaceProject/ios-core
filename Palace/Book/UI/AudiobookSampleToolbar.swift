@@ -20,6 +20,8 @@ struct AudiobookSampleToolbar: View {
   private let imageViewHeight: CGFloat = 70
   private let playbackButtonLength: CGFloat = 35
   private let buttonViewSpacing: CGFloat = 10
+  
+  let pub = NotificationCenter.default.publisher(for: NSNotification.Name("ToggleSampleNotification"))
 
   init?(book: TPPBook) {
     self.book = book
@@ -31,7 +33,7 @@ struct AudiobookSampleToolbar: View {
       imageLoader.loadImage(url: imageURL)
     }
   }
-
+ 
   var body: some View {
     HStack {
       imageView
@@ -44,6 +46,9 @@ struct AudiobookSampleToolbar: View {
     .background(Color.init(.lightGray))
     .onDisappear {
       player.pauseAudiobook()
+    }
+    .onReceive(pub) { _ in
+      self.togglePlay()
     }
   }
 
@@ -69,6 +74,16 @@ struct AudiobookSampleToolbar: View {
     }
   }
   
+  func togglePlay() {
+    switch player.state {
+    case .paused:
+      try? player.playAudiobook()
+    case .playing:
+      player.pauseAudiobook()
+    default:
+      return
+    }  }
+  
   var playbackButton: some View {
     Button {
       player.goBack()
@@ -83,14 +98,7 @@ struct AudiobookSampleToolbar: View {
   var playButton: some View {
     // TODO: Present error if sample play fails
     Button {
-      switch player.state {
-      case .paused:
-        try? player.playAudiobook()
-      case .playing:
-        player.pauseAudiobook()
-      default:
-        return
-      }
+      togglePlay()
     } label: {
      playButtonImage
     }
@@ -122,6 +130,7 @@ struct AudiobookSampleToolbar: View {
 }
 
 @objc class AudiobookSampleToolbarWrapper: NSObject {
+
   @objc static func create(book: TPPBook) -> UIViewController {
     let toolbar = AudiobookSampleToolbar(book: book)
     let hostingController = UIHostingController(rootView: toolbar)

@@ -17,6 +17,7 @@ enum AudiobookSamplePlayerState {
 }
 
 class AudiobookSamplePlayer: NSObject, ObservableObject {
+
   @Published var remainingTime = 0.0
   @Published var isLoading = false
   @Published var state: AudiobookSamplePlayerState = .initialized {

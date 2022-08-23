@@ -461,12 +461,11 @@
     default:
       break;
   }
-
 }
 
 - (void)didSelectSample
 {
-  printf(@" smaple");
+  [self.sampleDelegate didSelectPlaySample:self.book];
 }
 
 @end

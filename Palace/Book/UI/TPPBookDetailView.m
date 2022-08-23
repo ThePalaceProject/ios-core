@@ -21,7 +21,7 @@
 
 #import <PureLayout/PureLayout.h>
 
-@interface TPPBookDetailView () <TPPBookDownloadCancellationDelegate, BookDetailTableViewDelegate>
+@interface TPPBookDetailView () <TPPBookDownloadCancellationDelegate, TPPBookButtonsSampleDelegate, BookDetailTableViewDelegate>
 
 @property (nonatomic, weak) id<TPPBookDetailViewDelegate, TPPCatalogLaneCellDelegate> detailViewDelegate;
 
@@ -119,6 +119,7 @@ static NSString *DetailHTMLTemplate = nil;
   [self.scrollView addSubview:self.containerView];
   
   if ([self.book hasSamples]) {
+//    self.audiobookSampleToolbar = [[AudiobookSampleToolbarWrapper createWithBook:self.book] view];
     self.audiobookSampleToolbar = [[AudiobookSampleToolbarWrapper createWithBook:self.book] view];
     [self addSubview: self.audiobookSampleToolbar];
   }
@@ -185,6 +186,7 @@ static NSString *DetailHTMLTemplate = nil;
   self.buttonsView.showReturnButtonIfApplicable = YES;
   self.buttonsView.delegate = [TPPBookCellDelegate sharedDelegate];
   self.buttonsView.downloadingDelegate = self;
+  self.buttonsView.sampleDelegate = self;
   self.buttonsView.book = self.book;
 }
 
@@ -599,6 +601,15 @@ static NSString *DetailHTMLTemplate = nil;
   [self.detailViewDelegate didSelectCancelDownloadFailedForBookDetailView:self];
 }
 
+#pragma mark TPPBookSampleDelegate
+
+NSString *PlaySampleNotification = @"ToggleSampleNotification";
+
+- (void)didSelectPlaySample:(TPPBook *)book
+{
+  [[NSNotificationCenter defaultCenter] postNotificationName:PlaySampleNotification object:self];
+}
+
 #pragma mark -
 
 - (void)setState:(TPPBookState)state
@@ -759,4 +770,8 @@ static NSString *DetailHTMLTemplate = nil;
   [self.detailViewDelegate didSelectViewIssuesForBook:self.book sender:self];
 }
 
+- (void)stateChangedWithIsPlaying:(BOOL)isPlaying
+{
+  printf(@"AudioBook sample player state changed");
+}
 @end
