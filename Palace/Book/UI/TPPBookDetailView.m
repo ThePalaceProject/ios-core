@@ -231,7 +231,7 @@ static NSString *DetailHTMLTemplate = nil;
 
 - (void)createHeaderLabels
 {
-  UIVisualEffect *blurEffect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleLight];
+  UIVisualEffect *blurEffect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemMaterial];
   self.visualEffectView = [[UIVisualEffectView alloc] initWithEffect:blurEffect];
 
   self.coverImageView = [[UIImageView alloc] init];
