@@ -106,7 +106,15 @@
 "BookDetailViewControllerHoldingTitleFormat" = "Available for checkout in less than %@.";
 "BookDetailViewControllerReservedTitleFormat" = "This reservation will be automatically cancelled in %@.";
 "BookDetailViewControllerDistributedByFormat" = "Distributed by: ";
+"BookDetailViewControllerBookFormat" = "Book format:";
+"BookDetailViewControllerNarrators" = "Narrators:";
 "It will expire in %@." = "It will expire in %@.";
+
+// Book Formats
+"ePub" = "ePub";
+"PDF" = "PDF";
+"Audiobook" = "Audiobook";
+"Unsupported format" = "Unsupported format";
 
 // NYPLBookCellDelegate
 "Unsupported Item" = "Unsupported Item";

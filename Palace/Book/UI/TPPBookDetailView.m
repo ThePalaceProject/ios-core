@@ -53,11 +53,13 @@
 @property (nonatomic) UILabel *publisherLabelKey;
 @property (nonatomic) UILabel *categoriesLabelKey;
 @property (nonatomic) UILabel *distributorLabelKey;
+@property (nonatomic) UILabel *bookFormatLabelKey;
 @property (nonatomic) UILabel *narratorsLabelKey;
 @property (nonatomic) UILabel *publishedLabelValue;
 @property (nonatomic) UILabel *publisherLabelValue;
 @property (nonatomic) UILabel *categoriesLabelValue;
 @property (nonatomic) UILabel *distributorLabelValue;
+@property (nonatomic) UILabel *bookFormatLabelValue;
 @property (nonatomic) UILabel *narratorsLabelValue;
 
 @property (nonatomic) TPPBookDetailTableView *footerTableView;
@@ -129,11 +131,13 @@ static NSString *DetailHTMLTemplate = nil;
   [self.contentView addSubview:self.publisherLabelKey];
   [self.contentView addSubview:self.categoriesLabelKey];
   [self.contentView addSubview:self.distributorLabelKey];
+  [self.contentView addSubview:self.bookFormatLabelKey];
   [self.contentView addSubview:self.narratorsLabelKey];
   [self.contentView addSubview:self.publishedLabelValue];
   [self.contentView addSubview:self.publisherLabelValue];
   [self.contentView addSubview:self.categoriesLabelValue];
   [self.contentView addSubview:self.distributorLabelValue];
+  [self.contentView addSubview:self.bookFormatLabelValue];
   [self.contentView addSubview:self.narratorsLabelValue];
   [self.contentView addSubview:self.footerTableView];
   [self.contentView addSubview:self.bottomFootnoteSeparator];
@@ -327,14 +331,17 @@ static NSString *DetailHTMLTemplate = nil;
       ? NSLocalizedString(@"Category", nil)
       : NSLocalizedString(@"Categories", nil))]
   : nil;
-  
+
+  NSString *const bookFormatKeyString = NSLocalizedString(@"BookDetailViewControllerBookFormat", nil);
+
   NSString *const narratorsKeyString =
-    self.book.narrators ? [NSString stringWithFormat:@"%@: ", NSLocalizedString(@"Narrators", nil)] : nil;
+    self.book.narrators ? [NSString stringWithFormat:@"%@: ", NSLocalizedString(@"BookDetailViewControllerNarrators", nil)] : nil;
   
   NSString *const categoriesValueString = self.book.categories;
   NSString *const publishedValueString = self.book.published ? [dateFormatter stringFromDate:self.book.published] : nil;
   NSString *const publisherValueString = self.book.publisher;
   NSString *const distributorKeyString = self.book.distributor ? [NSString stringWithFormat:NSLocalizedString(@"BookDetailViewControllerDistributedByFormat", nil)] : nil;
+  NSString *const bookFormatValueString = self.book.format;
   NSString *const narratorsValueString = self.book.narrators;
   
   if (!categoriesValueString && !publishedValueString && !publisherValueString && !self.book.distributor) {
@@ -346,6 +353,7 @@ static NSString *DetailHTMLTemplate = nil;
   self.publisherLabelKey = [self createFooterLabelWithString:publisherKeyString alignment:NSTextAlignmentRight];
   self.publishedLabelKey = [self createFooterLabelWithString:publishedKeyString alignment:NSTextAlignmentRight];
   self.distributorLabelKey = [self createFooterLabelWithString:distributorKeyString alignment:NSTextAlignmentRight];
+  self.bookFormatLabelKey = [self createFooterLabelWithString:bookFormatKeyString alignment:NSTextAlignmentRight];
   self.narratorsLabelKey = [self createFooterLabelWithString:narratorsKeyString alignment:NSTextAlignmentRight];
   
   self.categoriesLabelValue = [self createFooterLabelWithString:categoriesValueString alignment:NSTextAlignmentLeft];
@@ -354,6 +362,7 @@ static NSString *DetailHTMLTemplate = nil;
   self.publisherLabelValue.numberOfLines = 2;
   self.publishedLabelValue = [self createFooterLabelWithString:publishedValueString alignment:NSTextAlignmentLeft];
   self.distributorLabelValue = [self createFooterLabelWithString:self.book.distributor alignment:NSTextAlignmentLeft];
+  self.bookFormatLabelValue = [self createFooterLabelWithString:bookFormatValueString alignment:NSTextAlignmentLeft];
   self.narratorsLabelValue = [self createFooterLabelWithString:narratorsValueString alignment:NSTextAlignmentLeft];
   self.narratorsLabelValue.numberOfLines = 0;
   
@@ -481,8 +490,12 @@ static NSString *DetailHTMLTemplate = nil;
   [self.distributorLabelValue autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.categoriesLabelValue];
   [self.distributorLabelValue autoPinEdge:ALEdgeLeading toEdge:ALEdgeTrailing ofView:self.distributorLabelKey withOffset:MainTextPaddingLeft];
 
+  [self.bookFormatLabelValue autoPinEdgeToSuperviewMargin:ALEdgeTrailing relation:NSLayoutRelationGreaterThanOrEqual];
+  [self.bookFormatLabelValue autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.distributorLabelValue];
+  [self.bookFormatLabelValue autoPinEdge:ALEdgeLeading toEdge:ALEdgeTrailing ofView:self.bookFormatLabelKey withOffset:MainTextPaddingLeft];
+
   [self.narratorsLabelValue autoPinEdgeToSuperviewMargin:ALEdgeTrailing relation:NSLayoutRelationGreaterThanOrEqual];
-  [self.narratorsLabelValue autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.distributorLabelValue];
+  [self.narratorsLabelValue autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.bookFormatLabelValue];
   [self.narratorsLabelValue autoPinEdge:ALEdgeLeading toEdge:ALEdgeTrailing ofView:self.narratorsLabelKey withOffset:MainTextPaddingLeft];
 
   [self.publishedLabelKey autoPinEdgeToSuperviewMargin:ALEdgeLeading];
@@ -501,10 +514,15 @@ static NSString *DetailHTMLTemplate = nil;
   [self.categoriesLabelKey setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
 
   [self.distributorLabelKey autoPinEdgeToSuperviewMargin:ALEdgeLeading];
-  [self.distributorLabelKey autoPinEdge:ALEdgeTrailing toEdge:ALEdgeTrailing ofView:self.narratorsLabelKey];
+  [self.distributorLabelKey autoPinEdge:ALEdgeTrailing toEdge:ALEdgeTrailing ofView:self.bookFormatLabelKey];
   [self.distributorLabelKey autoPinEdge:ALEdgeTop toEdge:ALEdgeTop ofView:self.distributorLabelValue];
   [self.distributorLabelKey setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
-  
+
+  [self.bookFormatLabelKey autoPinEdgeToSuperviewMargin:ALEdgeLeading];
+  [self.bookFormatLabelKey autoPinEdge:ALEdgeTrailing toEdge:ALEdgeTrailing ofView:self.narratorsLabelKey];
+  [self.bookFormatLabelKey autoPinEdge:ALEdgeTop toEdge:ALEdgeTop ofView:self.bookFormatLabelValue];
+  [self.bookFormatLabelKey setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+
   [self.narratorsLabelKey autoPinEdgeToSuperviewMargin:ALEdgeLeading];
   [self.narratorsLabelKey autoPinEdge:ALEdgeTop toEdge:ALEdgeTop ofView:self.narratorsLabelValue];
   [self.narratorsLabelKey setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
