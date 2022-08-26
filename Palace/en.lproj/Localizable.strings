@@ -73,10 +73,11 @@
 "Search" = "Search";
 "Settings" = "Settings";
 "Show" = "Show";
-"Sign In" = "Sign In";
-"SignOut" = "Sign Out";
-"SigningOut" = "Signing Out";
+"Sign In" = "Sign in";
+"SignOut" = "Sign out";
+"SigningOut" = "Signing out";
 "SignUp" = "Sign Up";
+"Create Card" = "Create Card";
 "SoftwareLicenses" = "Software Licenses";
 "SyncFailed" = "Sync Failed";
 "TimedOut" = "The server did not respond. Please check your connection or try again later.";
