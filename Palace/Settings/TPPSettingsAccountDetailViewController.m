@@ -963,7 +963,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
   regTitle.numberOfLines = 2;
   regTitle.text = NSLocalizedString(@"Don't have a library card?", @"Title for registration. Asking the user if they already have a library card.");
   regButton.font = [UIFont customFontForTextStyle:UIFontTextStyleBody];
-  regButton.text = NSLocalizedString(@"SignUp", nil);
+  regButton.text = NSLocalizedString(@"Create Card", nil);
   regButton.textColor = [TPPConfiguration mainColor];
 
   [containerView addSubview:regTitle];
@@ -1252,7 +1252,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
     self.logInSignOutCell.textLabel.textColor = [TPPConfiguration mainColor];
     self.logInSignOutCell.userInteractionEnabled = YES;
   } else {
-    self.logInSignOutCell.textLabel.text = NSLocalizedString(@"LogIn", nil);
+    self.logInSignOutCell.textLabel.text = NSLocalizedString(@"Sign In", nil);
     self.logInSignOutCell.textLabel.textAlignment = NSTextAlignmentLeft;
     BOOL const barcodeHasText = [self.usernameTextField.text
                                  stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]].length;
