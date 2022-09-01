@@ -77,7 +77,8 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
       )
     }
 
-    // This value must be set in order for font size adjustments to work on html
+    // "The --USER__advancedSettings: readium-advanced-on inline style must be
+    // set for html in order for the font-size setting to work."
     // https://readium.org/readium-css/docs/CSS12-user_prefs.html#font-size
     epubNavigator.userSettings.userProperties.addSwitchable(
       onValue: ReadiumAdvancedSettings.on.rawValue,
