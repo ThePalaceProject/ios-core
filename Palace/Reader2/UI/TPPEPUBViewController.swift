@@ -80,8 +80,8 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     // This value must be set in order for font size adjustments to work on html
     // https://readium.org/readium-css/docs/CSS12-user_prefs.html#font-size
     epubNavigator.userSettings.userProperties.addSwitchable(
-      onValue: "readium-advanced-on",
-      offValue: "readium-advanced-off",
+      onValue: ReadiumAdvancedSettings.on.rawValue,
+      offValue: ReadiumAdvancedSettings.off.rawValue,
       on: true,
       reference: ReadiumCSSReference.publisherDefault.rawValue,
       name: ReadiumCSSName.publisherDefault.rawValue)

@@ -10,6 +10,11 @@ import SwiftUI
 import R2Shared
 import R2Navigator
 
+enum ReadiumAdvancedSettings: String {
+  case on = "readium-advanced-on"
+  case off = "readium-advanced-off"
+}
+
 class TPPReaderSettings: ObservableObject {
   
   /// `fontSize` user property value
