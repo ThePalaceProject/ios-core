@@ -76,6 +76,13 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
         name: ReadiumCSSName.fontFamily.rawValue
       )
     }
+
+    epubNavigator.userSettings.userProperties.addSwitchable(
+      onValue: "readium-advanced-on",
+      offValue: "readium-advanced-off",
+      on: true,
+      reference: ReadiumCSSReference.publisherDefault.rawValue,
+      name: ReadiumCSSName.publisherDefault.rawValue)
   }
 
   override open func viewWillDisappear(_ animated: Bool) {
