@@ -399,7 +399,7 @@ static NSString *DetailHTMLTemplate = nil;
 {
   [self.scrollView autoPinEdgeToSuperviewEdge:ALEdgeTop];
 
-  if ([self.book hasSamples]) {
+  if ([self.book hasAudiobookSample]) {
     [self.audiobookSampleToolbar autoPinEdgeToSuperviewEdge:ALEdgeLeft];
     [self.audiobookSampleToolbar autoPinEdgeToSuperviewEdge:ALEdgeRight];
     [self.audiobookSampleToolbar autoPinEdgeToSuperviewEdge:ALEdgeBottom withInset:TabBarHeight];
@@ -606,7 +606,17 @@ NSString *PlaySampleNotification = @"ToggleSampleNotification";
 
 - (void)didSelectPlaySample:(TPPBook *)book
 {
-  [[NSNotificationCenter defaultCenter] postNotificationName:PlaySampleNotification object:self];
+  if ([self.book defaultBookContentType] == TPPBookContentTypeAudiobook) {
+    [[NSNotificationCenter defaultCenter] postNotificationName:PlaySampleNotification object:self];
+  } else {
+    [EpubSamplePlayerViewWrapper createWithBook:self.book completion:^(NSString * sampleURL) {
+      NSURL *url = [[NSURL alloc] initWithString:sampleURL];
+      [TPPRootTabBarController.sharedController presentSample:self.book url:url];
+    }];
+//    if (epubSamplePlayer) {
+//      [self.window.rootViewController presentViewController:epubSamplePlayer animated:true completion:nil];
+//    }
+  }
 }
 
 #pragma mark -

@@ -25,7 +25,10 @@ import Foundation
     }
   }
    
+//  var hasSamples: Bool { true }
+
   var hasSamples: Bool { !samples.isEmpty }
+  var hasAudiobookSample: Bool { !samples.isEmpty && defaultBookContentType() == .audiobook }
 }
 
 extension TPPBook {
@@ -35,11 +38,13 @@ extension TPPBook {
     switch self.defaultBookContentType() {
     case .EPUB, .PDF:
       return sampleAcquisitions?.compactMap { acquisition in
-          return EpubSample(url: acquisition.hrefURL)
+        guard let sampleType = SampleType(rawValue: acquisition.type) else { return nil }
+        return EpubSample(url: acquisition.hrefURL, type: sampleType)
       } ?? []
     case .audiobook:
       return sampleAcquisitions?.compactMap { acquisition in
-          return AudiobookSample(url: acquisition.hrefURL)
+        guard let sampleType = SampleType(rawValue: acquisition.type) else { return nil }
+        return AudiobookSample(url: acquisition.hrefURL, type: sampleType)
     } ?? []
     default:
       return []

@@ -154,9 +154,13 @@
                               TitleKey: NSLocalizedString(@"Borrow", nil),
                               HintKey: [NSString stringWithFormat:NSLocalizedString(@"Borrows %@", nil), self.book.title]}]];
 
-      if ([self.book hasSamples]) {
+      if ([self.book hasAudiobookSample]) {
         [visibleButtonInfo addObject:@{ButtonKey: self.sampleButton,
                                         TitleKey: NSLocalizedString(@"Play Sample", nil),
+                                         HintKey: [NSString stringWithFormat:NSLocalizedString(@"View sample for %@", nil), self.book.title]}];
+      } else if ([self.book hasSamples]) {
+        [visibleButtonInfo addObject:@{ButtonKey: self.sampleButton,
+                                        TitleKey: NSLocalizedString(@"View Sample", nil),
                                          HintKey: [NSString stringWithFormat:NSLocalizedString(@"View sample for %@", nil), self.book.title]}];
       }
 

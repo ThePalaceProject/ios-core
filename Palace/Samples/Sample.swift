@@ -8,18 +8,46 @@
 
 import Foundation
 
+enum SampleType: String {
+  case contentTypeEpubZip = "application/epub+zip"
+  case overdriveEbook = "application/vnd.overdrive.circulation.api+json;profile=ebook"
+  case openAccessAudiobook = "application/audiobook+json"
+  case overdriveAudiobook = "application/json"
+  
+  var needsDownload: Bool {
+    switch self {
+    case .contentTypeEpubZip, .overdriveAudiobook:
+      return true
+    default:
+      return false
+    }
+  }
+}
+
 protocol Sample {
   var url: URL { get }
+  var type: SampleType { get }
+  func fetchSample(completion: @escaping (NYPLResult<Data>) -> Void)
+}
+
+extension Sample {
+  var needsDownload: Bool {
+    switch type {
+    case .contentTypeEpubZip, .overdriveAudiobook:
+      return true
+    default:
+      return false
+    }
+  }
+
+  func fetchSample(completion: @escaping (NYPLResult<Data>) -> Void) {
+    let _ = TPPNetworkExecutor.shared.GET(url) { result in
+        completion(result)
+    }
+  }
 }
 
 struct AudiobookSample: Sample {
   var url: URL
-}
-
-struct EpubSample: Sample {
-  var url: URL
-}
-
-protocol SampleProvider {
-  var sample: Sample { get }
+  var type: SampleType
 }

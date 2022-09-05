@@ -19,11 +19,3 @@ struct EpubSamplePlayer: View {
     Text("Show Epub reader")
   }
 }
-
-struct EpubSamplePlayer_Previews: PreviewProvider {
-  static var previews: some View {
-    EpubSamplePlayer(sample: EpubSample(
-      url: URL(string:"https://samples.overdrive.com/?crid=08F7D7E6-423F-45A6-9A1E-5AE9122C82E7&amp;.epub-sample.overdrive.com")!
-    ))
-  }
-}
