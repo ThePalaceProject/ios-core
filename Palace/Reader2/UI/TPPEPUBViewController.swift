@@ -76,6 +76,16 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
         name: ReadiumCSSName.fontFamily.rawValue
       )
     }
+
+    // "The --USER__advancedSettings: readium-advanced-on inline style must be
+    // set for html in order for the font-size setting to work."
+    // https://readium.org/readium-css/docs/CSS12-user_prefs.html#font-size
+    epubNavigator.userSettings.userProperties.addSwitchable(
+      onValue: TPPReaderAdvancedSettings.on.rawValue,
+      offValue: TPPReaderAdvancedSettings.off.rawValue,
+      on: true,
+      reference: ReadiumCSSReference.publisherDefault.rawValue,
+      name: ReadiumCSSName.publisherDefault.rawValue)
   }
 
   override open func viewWillDisappear(_ animated: Bool) {
