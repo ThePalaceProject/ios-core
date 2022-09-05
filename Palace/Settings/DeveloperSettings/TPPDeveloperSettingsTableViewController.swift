@@ -22,6 +22,11 @@ import Foundation
   func legacyPDFReaderSwitchDidChange(sender: UISwitch) {
     TPPSettings.shared.useLegacyPDFReader = sender.isOn
   }
+  
+  func enterLCPPassphraseSwitchDidChange(sender: UISwitch) {
+    TPPSettings.shared.enterLCPPassphraseManually = sender.isOn
+  }
+  
   // MARK:- UIViewController
   
   override func loadView() {
@@ -38,7 +43,7 @@ import Foundation
   
   func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
     switch section {
-    case 0: return 2
+    case 0: return 3
     default: return 1
     }
   }
@@ -52,7 +57,8 @@ import Foundation
     case 0:
       switch indexPath.row {
       case 0: return cellForBetaLibraries()
-      default: return cellForEncryptedPDFReader()
+      case 1: return cellForEncryptedPDFReader()
+      default: return cellForLCPPassphrase()
       }
     case 1: return cellForCustomRegsitry()
     default: return cellForClearCache()
@@ -91,7 +97,20 @@ import Foundation
     cell.accessoryView = legacyPDFReaderSwitch
     return cell
   }
-  
+
+  private func cellForLCPPassphrase() -> UITableViewCell {
+    let cell = UITableViewCell(style: UITableViewCell.CellStyle.default, reuseIdentifier: "lcpPassphraseCell")
+    cell.selectionStyle = .none
+    cell.textLabel?.text = "Enter LCP Passphrase Manually"
+    cell.textLabel?.adjustsFontSizeToFitWidth = true
+    cell.textLabel?.minimumScaleFactor = 0.5
+    let lcpPassphraseSwitch = UISwitch()
+    lcpPassphraseSwitch.setOn(TPPSettings.shared.enterLCPPassphraseManually, animated: false)
+    lcpPassphraseSwitch.addTarget(self, action:#selector(enterLCPPassphraseSwitchDidChange), for: .valueChanged)
+    cell.accessoryView = lcpPassphraseSwitch
+    return cell
+  }
+
   private func cellForCustomRegsitry() -> UITableViewCell {
     let cell = TPPRegistryDebuggingCell()
     cell.delegate = self

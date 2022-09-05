@@ -16,7 +16,11 @@ import ReadiumLCP
  */
 class LCPPassphraseAuthenticationService: LCPAuthenticating {
   func retrievePassphrase(for license: LCPAuthenticatedLicense, reason: LCPAuthenticationReason, allowUserInteraction: Bool, sender: Any?, completion: @escaping (String?) -> Void) {
-    retrievePassphraseFromLoan(for: license, reason: reason, allowUserInteraction: allowUserInteraction, sender: sender, completion: completion)
+    if TPPSettings.shared.enterLCPPassphraseManually {
+      requestPassphrase(for: license, reason: reason, allowUserInteraction: allowUserInteraction, sender: sender, completion: completion)
+    } else {
+      retrievePassphraseFromLoan(for: license, reason: reason, allowUserInteraction: allowUserInteraction, sender: sender, completion: completion)
+    }
   }
 
   /// Retrieves LCP passphrase from loans
@@ -98,6 +102,31 @@ class LCPPassphraseAuthenticationService: LCPAuthenticating {
     }
   }
   
+  /// Enter LCP passphrase manually
+  private func requestPassphrase(for license: LCPAuthenticatedLicense, reason: LCPAuthenticationReason, allowUserInteraction: Bool, sender: Any?, completion: @escaping (String?) -> Void) {
+    var passphraseField: UITextField?
+    let ac = UIAlertController(title: "Enter LCP Passphrase", message: license.hint, preferredStyle: .alert)
+    let doneAction = UIAlertAction(title: "Done", style: .default) { action in
+      completion(passphraseField?.text)
+    }
+    let cancelAction = UIAlertAction(title: "Cancel", style: .cancel) { action in
+      completion(nil)
+    }
+    ac.addAction(doneAction)
+    ac.addAction(cancelAction)
+    ac.addTextField { textField in
+      textField.placeholder = "Passphrase"
+      textField.autocapitalizationType = .none
+      textField.autocorrectionType = .no
+      textField.spellCheckingType = .no
+      textField.keyboardType = .default
+      textField.returnKeyType = .done
+      textField.isSecureTextEntry = true
+      passphraseField = textField
+    }
+    TPPAlertUtils.presentFromViewControllerOrNil(alertController: ac, viewController: nil, animated: true, completion: nil)
+  }
+    
   /// Creates a logger function
   /// - Parameters:
   ///   - code: `TPPErrorCode` code
