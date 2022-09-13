@@ -613,9 +613,6 @@ NSString *PlaySampleNotification = @"ToggleSampleNotification";
       NSURL *url = [[NSURL alloc] initWithString:sampleURL];
       [TPPRootTabBarController.sharedController presentSample:self.book url:url];
     }];
-//    if (epubSamplePlayer) {
-//      [self.window.rootViewController presentViewController:epubSamplePlayer animated:true completion:nil];
-//    }
   }
 }
 

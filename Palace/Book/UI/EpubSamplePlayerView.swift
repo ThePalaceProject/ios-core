@@ -30,10 +30,6 @@ struct EpubSamplePlayerView: View {
         loadingView
     }
   }
-//
-//  private func ePubView(url: URL) -> AnyView {
-//    TPPRootTabBarController.shared()?.presentSample(model.book, url: url)
-//  }
 
   @ViewBuilder var loadingView: some View {
     ActivityIndicator(isAnimating: $model.isLoading, style: .large)
@@ -69,10 +65,6 @@ struct WebView: UIViewRepresentable {
         completion(url)
       }
     }
-
-//    let epubSamplePlayer = EpubSamplePlayerView(model: model)
-//    let hostingController = UIHostingController(rootView: epubSamplePlayer)
-//    return hostingController
   }
 
   private static func downloadData(url: URL, completion: @escaping (Data?) -> Void) {

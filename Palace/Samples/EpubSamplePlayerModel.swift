@@ -59,12 +59,12 @@ class EpubSamplePlayerModel: ObservableObject {
 
   init?(book: TPPBook) {
     self.book = book
-    guard let epubSample = book.samples.first(
-      where: {$0 as? EpubSample != nil }) as? EpubSample
-    else {
-      return nil
-    }
-//    let epubSample = EpubSample(url: URL(string: "https://market.feedbooks.com/item/3262516/preview")!, type: .contentTypeEpubZip)
+//    guard let epubSample = book.samples.first(
+//      where: {$0 as? EpubSample != nil }) as? EpubSample
+//    else {
+//      return nil
+//    }
+    let epubSample = EpubSample(url: URL(string: "https://market.feedbooks.com/item/3262516/preview")!, type: .contentTypeEpubZip)
 //    let epubSample = EpubSample(url: URL(string: "https://market.feedbooks.com/item/3877422/preview")!)
     self.sample = epubSample
     setup()

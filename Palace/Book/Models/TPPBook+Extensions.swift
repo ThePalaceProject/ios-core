@@ -25,9 +25,9 @@ import Foundation
     }
   }
    
-//  var hasSamples: Bool { true }
+  var hasSamples: Bool { true }
 
-  var hasSamples: Bool { !samples.isEmpty }
+//  var hasSamples: Bool { !samples.isEmpty }
   var hasAudiobookSample: Bool { !samples.isEmpty && defaultBookContentType() == .audiobook }
 }
 
