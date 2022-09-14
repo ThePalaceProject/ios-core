@@ -13,7 +13,7 @@ enum SampleType: String {
   case overdriveEbook = "application/vnd.overdrive.circulation.api+json;profile=ebook"
   case openAccessAudiobook = "application/audiobook+json"
   case overdriveAudiobook = "application/json"
-  
+
   var needsDownload: Bool {
     switch self {
     case .contentTypeEpubZip, .overdriveAudiobook:
@@ -45,9 +45,4 @@ extension Sample {
         completion(result)
     }
   }
-}
-
-struct AudiobookSample: Sample {
-  var url: URL
-  var type: SampleType
 }

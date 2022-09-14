@@ -603,23 +603,35 @@ static NSString *DetailHTMLTemplate = nil;
 #pragma mark TPPBookSampleDelegate
 
 NSString *PlaySampleNotification = @"ToggleSampleNotification";
+BOOL isLoading = NO;
 
 - (void)didSelectPlaySample:(TPPBook *)book
 {
+  if (isLoading) { return; }
+
   if ([self.book defaultBookContentType] == TPPBookContentTypeAudiobook) {
     [[NSNotificationCenter defaultCenter] postNotificationName:PlaySampleNotification object:self];
   } else {
-    [EpubSamplePlayerViewWrapper createWithBook:self.book completion:^(NSString * sampleURL, NSError *error) {
-
+    isLoading = YES;
+    [EpubSampleFactory createSampleWithBook:self.book completion:^(EpubLocationSampleURL *sampleURL, NSError *error) {
+      isLoading = NO;
       if (error) {
-        TPPLOG_F(@"Attributed string rendering error for %@ book description: %@",
-                 [self.book loggableShortString], error);
-      } else {
-        NSURL *url = [[NSURL alloc] initWithString:sampleURL];
-        [TPPRootTabBarController.sharedController presentSample:self.book url:url];
-      }
+         TPPLOG_F(@"Attributed string rendering error for %@ book description: %@",
+                  [self.book loggableShortString], error);
+       } else if ([sampleURL isKindOfClass:[EpubSampleWebURL class]]) {
+         
+         [self presentWebView:sampleURL.url];
+       } else {
+         [TPPRootTabBarController.sharedController presentSample:self.book url:sampleURL.url];
+       }
     }];
   }
+}
+  
+- (void)presentWebView:(NSURL *)url {
+  BundledHTMLViewController *webController = [[BundledHTMLViewController alloc] initWithFileURL:url title:AccountsManager.shared.currentAccount.name];
+  webController.hidesBottomBarWhenPushed = true;
+  [TPPRootTabBarController.sharedController pushViewController:webController animated:YES];
 }
 
 #pragma mark -
