@@ -56,8 +56,8 @@ class TPPLastReadPositionPoster {
       return
     }
 
-//    bookRegistryProvider.setLocation(location, forIdentifier: book.identifier)
-//    postReadPosition(selectorValue: location.locationString)
+    bookRegistryProvider.setLocation(location, forIdentifier: book.identifier)
+    postReadPosition(selectorValue: location.locationString)
   }
 
   /// Deprecated

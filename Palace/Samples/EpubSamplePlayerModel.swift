@@ -12,7 +12,7 @@ import Combine
 enum EpubSamplePlayerState {
   case initalized
   case loading
-  case loaded(Data?, URL?)
+  case loaded(URL)
   case error(TPPUserFriendlyError)
 }
 
@@ -23,8 +23,8 @@ extension EpubSamplePlayerState: Equatable {
       return true
     case (.loading, .loading):
       return true
-    case (let .loaded(lhsData, lhsURL), let .loaded(rhsData, rhsURL)):
-      return lhsData == rhsData && lhsURL == rhsURL
+    case (let .loaded(lhsURL), let .loaded(rhsURL)):
+      return lhsURL == rhsURL
     case (let .error(lhsTPPError), let .error(rhsTPPError)):
       return lhsTPPError.userFriendlyTitle == rhsTPPError.userFriendlyTitle
     default:
@@ -34,7 +34,6 @@ extension EpubSamplePlayerState: Equatable {
 }
 
 class EpubSamplePlayerModel: ObservableObject {
-
   enum State {
     case initalized
     case loading
@@ -48,7 +47,7 @@ class EpubSamplePlayerModel: ObservableObject {
       self.isLoading = self.state == .loading
     }
   }
-  
+
   var book: TPPBook
 
   var sample: EpubSample {
@@ -59,13 +58,11 @@ class EpubSamplePlayerModel: ObservableObject {
 
   init?(book: TPPBook) {
     self.book = book
-//    guard let epubSample = book.samples.first(
-//      where: {$0 as? EpubSample != nil }) as? EpubSample
-//    else {
-//      return nil
-//    }
-    let epubSample = EpubSample(url: URL(string: "https://market.feedbooks.com/item/3262516/preview")!, type: .contentTypeEpubZip)
-//    let epubSample = EpubSample(url: URL(string: "https://market.feedbooks.com/item/3877422/preview")!)
+    guard let epubSample = book.sample as? EpubSample
+    else {
+      return nil
+    }
+
     self.sample = epubSample
     setup()
   }
@@ -74,10 +71,10 @@ class EpubSamplePlayerModel: ObservableObject {
     state = .loading
 
     if sample.type.needsDownload {
-//      downloadData()
-      state = .loaded(nil, sample.url)
+      downloadData()
+      state = .loaded(sample.url)
     } else {
-      state = .loaded(nil, sample.url)
+      state = .loaded(sample.url)
     }
   }
 
@@ -86,9 +83,9 @@ class EpubSamplePlayerModel: ObservableObject {
       switch result {
       case .failure(let error, _):
         self.state = .error(error)
-      case .success(let data, _):
+      case .success:
         DispatchQueue.main.async {
-          self.state = .loaded(data, self.sample.url)
+          self.state = .loaded(self.sample.url)
         }
       }
     }

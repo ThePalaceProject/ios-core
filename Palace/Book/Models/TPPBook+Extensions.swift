@@ -25,29 +25,22 @@ import Foundation
     }
   }
    
-  var hasSamples: Bool { true }
-
-//  var hasSamples: Bool { !samples.isEmpty }
-  var hasAudiobookSample: Bool { !samples.isEmpty && defaultBookContentType() == .audiobook }
+  var hasSample: Bool { sample != nil }
+  var hasAudiobookSample: Bool { hasSample && defaultBookContentType() == .audiobook }
 }
 
 extension TPPBook {
-  var samples: [Sample] {
-    let sampleAcquisitions = self.acquisitions?.filter { $0.relation == .sample }
-
+  var sample: Sample? {
+    guard let acquisition = self.sampleAcquisition() else { return nil }
     switch self.defaultBookContentType() {
     case .EPUB, .PDF:
-      return sampleAcquisitions?.compactMap { acquisition in
         guard let sampleType = SampleType(rawValue: acquisition.type) else { return nil }
         return EpubSample(url: acquisition.hrefURL, type: sampleType)
-      } ?? []
     case .audiobook:
-      return sampleAcquisitions?.compactMap { acquisition in
         guard let sampleType = SampleType(rawValue: acquisition.type) else { return nil }
         return AudiobookSample(url: acquisition.hrefURL, type: sampleType)
-    } ?? []
     default:
-      return []
+      return nil
     }
   }
 }

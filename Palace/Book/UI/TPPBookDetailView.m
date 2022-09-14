@@ -118,7 +118,7 @@ static NSString *DetailHTMLTemplate = nil;
   [self addSubview:self.scrollView];
   [self.scrollView addSubview:self.containerView];
   
-  if ([self.book hasSamples] && [self.book defaultBookContentType] == TPPBookContentTypeAudiobook) {
+  if ([self.book hasSample] && [self.book defaultBookContentType] == TPPBookContentTypeAudiobook) {
     self.audiobookSampleToolbar = [[AudiobookSampleToolbarWrapper createWithBook:self.book] view];
     [self addSubview: self.audiobookSampleToolbar];
   }
@@ -609,9 +609,15 @@ NSString *PlaySampleNotification = @"ToggleSampleNotification";
   if ([self.book defaultBookContentType] == TPPBookContentTypeAudiobook) {
     [[NSNotificationCenter defaultCenter] postNotificationName:PlaySampleNotification object:self];
   } else {
-    [EpubSamplePlayerViewWrapper createWithBook:self.book completion:^(NSString * sampleURL) {
-      NSURL *url = [[NSURL alloc] initWithString:sampleURL];
-      [TPPRootTabBarController.sharedController presentSample:self.book url:url];
+    [EpubSamplePlayerViewWrapper createWithBook:self.book completion:^(NSString * sampleURL, NSError *error) {
+
+      if (error) {
+        TPPLOG_F(@"Attributed string rendering error for %@ book description: %@",
+                 [self.book loggableShortString], error);
+      } else {
+        NSURL *url = [[NSURL alloc] initWithString:sampleURL];
+        [TPPRootTabBarController.sharedController presentSample:self.book url:url];
+      }
     }];
   }
 }

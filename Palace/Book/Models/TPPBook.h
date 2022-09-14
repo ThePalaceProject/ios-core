@@ -28,6 +28,7 @@
 @property (nullable, nonatomic, readonly) NSURL *seriesURL;
 @property (nullable, nonatomic, readonly) NSURL *revokeURL;
 @property (nullable, nonatomic, readonly) NSURL *reportURL;
+@property (nullable, nonatomic, readonly) TPPOPDSAcquisition *previewLink;
 @property (nullable, nonatomic, readonly) NSDictionary *contributors;
 @property (nullable, nonatomic, readonly) NSString *narrators;
 @property (nonnull, nonatomic, readonly) NSRecursiveLock *bookTokenLock;

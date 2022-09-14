@@ -158,7 +158,7 @@
         [visibleButtonInfo addObject:@{ButtonKey: self.sampleButton,
                                         TitleKey: NSLocalizedString(@"Play Sample", nil),
                                          HintKey: [NSString stringWithFormat:NSLocalizedString(@"View sample for %@", nil), self.book.title]}];
-      } else if ([self.book hasSamples]) {
+      } else if ([self.book hasSample]) {
         [visibleButtonInfo addObject:@{ButtonKey: self.sampleButton,
                                         TitleKey: NSLocalizedString(@"View Sample", nil),
                                          HintKey: [NSString stringWithFormat:NSLocalizedString(@"View sample for %@", nil), self.book.title]}];
@@ -170,7 +170,7 @@
                               TitleKey: NSLocalizedString(@"Reserve", nil),
                               HintKey: [NSString stringWithFormat:NSLocalizedString(@"Holds %@", nil), self.book.title]}]];
 
-      if ([self.book hasSamples]) {
+      if ([self.book hasSample]) {
         [visibleButtonInfo addObject:@{ButtonKey: self.sampleButton,
                                               TitleKey: NSLocalizedString(@"Sample", nil),
                                        HintKey: [NSString stringWithFormat:NSLocalizedString(@"View sample for %@", nil), self.book.title]}];
@@ -183,7 +183,7 @@
                               HintKey: [NSString stringWithFormat:NSLocalizedString(@"Cancels hold for %@", nil), self.book.title],
                               AddIndicatorKey: @(YES)}]];
 
-      if ([self.book hasSamples]) {
+      if ([self.book hasSample]) {
         [visibleButtonInfo addObject:@{ButtonKey: self.sampleButton,
                                               TitleKey: NSLocalizedString(@"Sample", nil),
                                        HintKey: [NSString stringWithFormat:NSLocalizedString(@"View sample for %@", nil), self.book.title]}];

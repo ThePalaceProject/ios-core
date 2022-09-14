@@ -25,6 +25,7 @@
 @property (nonatomic) NSURL *analyticsURL;
 @property (nonatomic) NSURL *alternateURL;
 @property (nonatomic) NSURL *relatedWorksURL;
+@property (nonatomic) TPPOPDSAcquisition *previewLink;
 @property (nonatomic) NSURL *seriesURL;
 @property (nonatomic) NSURL *revokeURL;
 @property (nonatomic) NSURL *reportURL;
@@ -48,6 +49,7 @@
                                 analyticsURL:(nullable NSURL *)analyticsURL
                                 alternateURL:(nullable NSURL *)alternateURL
                              relatedWorksURL:(nullable NSURL *)relatedWorksURL
+                                 previewLink:(nullable TPPOPDSAcquisition *)previewLink
                                    seriesURL:(nullable NSURL *)seriesURL
                                    revokeURL:(nullable NSURL *)revokeURL
                                    reportURL:(nullable NSURL *)reportURL
@@ -111,8 +113,8 @@ static NSString *const UpdatedKey = @"updated";
     return nil;
   }
   
-  NSURL *revoke, *image, *imageThumbnail, *report = nil;
-
+  NSURL *revoke, *image, *imageThumbnail, *report;
+  
   NSMutableArray<TPPBookAuthor *> *authors = [[NSMutableArray alloc] init];
   for (int i = 0; i < (int)entry.authorStrings.count; i++) {
     if ((int)entry.authorLinks.count > i) {
@@ -142,7 +144,7 @@ static NSString *const UpdatedKey = @"updated";
       continue;
     }
   }
-  
+
   return [[self alloc]
           initWithAcquisitions:entry.acquisitions
           bookAuthors:authors
@@ -161,6 +163,7 @@ static NSString *const UpdatedKey = @"updated";
           analyticsURL:entry.analytics
           alternateURL:entry.alternate.href
           relatedWorksURL:entry.relatedWorks.href
+          previewLink: entry.previewLink
           seriesURL:entry.seriesLink.href
           revokeURL:revoke
           reportURL:report
@@ -188,6 +191,7 @@ static NSString *const UpdatedKey = @"updated";
           analyticsURL:book.analyticsURL
           alternateURL:book.alternateURL
           relatedWorksURL:book.relatedWorksURL
+          previewLink: book.previewLink
           seriesURL:book.seriesURL
           revokeURL:self.revokeURL
           reportURL:self.reportURL
@@ -212,6 +216,7 @@ static NSString *const UpdatedKey = @"updated";
                         analyticsURL:(NSURL *)analyticsURL
                         alternateURL:(NSURL *)alternateURL
                      relatedWorksURL:(NSURL *)relatedWorksURL
+                         previewLink:(TPPOPDSAcquisition *)previewLink
                            seriesURL:(NSURL *)seriesURL
                            revokeURL:(NSURL *)revokeURL
                            reportURL:(NSURL *)reportURL
@@ -244,6 +249,7 @@ static NSString *const UpdatedKey = @"updated";
   self.updated = updated;
   self.revokeURL = revokeURL;
   self.reportURL = reportURL;
+  self.previewLink = previewLink;
   self.contributors = contributors;
   self.bookTokenLock = [[NSRecursiveLock alloc] init];
 
@@ -576,7 +582,7 @@ static NSString *const UpdatedKey = @"updated";
     }
   }
 
-  return nil;
+  return self.previewLink;
 }
 
 - (TPPOPDSAcquisition *)defaultAcquisitionIfBorrow

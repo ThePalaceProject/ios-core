@@ -17,15 +17,10 @@ struct EpubSamplePlayerView: View {
 
   @ViewBuilder var contentView: some View {
     switch model.state {
-    case let .loaded(data, url):
-//      if let data = data,  let url = save(data: data) {
-//        Text("\(url)")
-//      } else
-      if let url = url {
+    case let .loaded(url):
         WebView(url: url)
-      }
-    case .error:
-     Text("Show error View")
+    case let .error(error):
+      errorView(for: error)
     default:
         loadingView
     }
@@ -33,6 +28,10 @@ struct EpubSamplePlayerView: View {
 
   @ViewBuilder var loadingView: some View {
     ActivityIndicator(isAnimating: $model.isLoading, style: .large)
+  }
+
+  @ViewBuilder func errorView(for error: TPPUserFriendlyError) -> some View {
+    Text("Error: \(error.localizedDescription)")
   }
 }
 
@@ -51,30 +50,36 @@ struct WebView: UIViewRepresentable {
 }
 
 @objc class EpubSamplePlayerViewWrapper: NSObject {
-  @objc static func create(book: TPPBook, completion: @escaping (String?) -> Void) {
+  @objc static func create(book: TPPBook, completion: @escaping (String?, Error?) -> Void) {
     guard let model = EpubSamplePlayerModel(book: book) else {
       return
     }
 
     if model.sample.needsDownload {
-      downloadData(url: model.sample.url) { data in
+      downloadData(url: model.sample.url) { (data, error) in
+
+        guard error == nil else {
+          completion(nil, error)
+          return
+        }
+
         guard let data = data, let url = save(data: data) else {
           return
         }
 
-        completion(url)
+        completion(url, nil)
       }
     }
   }
 
-  private static func downloadData(url: URL, completion: @escaping (Data?) -> Void) {
+  private static func downloadData(url: URL, completion: @escaping (Data?, Error?) -> Void) {
     TPPNetworkExecutor.shared.GET(url) { result in
       switch result {
       case .failure(let error, _):
-        completion(nil)
+        completion(nil, error)
       case .success(let data, _):
         DispatchQueue.main.async {
-         completion(data)
+         completion(data, nil)
         }
       }
     }
