@@ -126,7 +126,7 @@
           continue;
         }
       } else if ([[linkXML attributes][@"rel"] containsString: TPPOPDSRelationPreview]) {
-        // Try parsing the link as an preview
+        // Try parsing the link as a preview
           TPPOPDSAcquisition *const acquisition = [TPPOPDSAcquisition acquisitionWithLinkXML:linkXML];
           if (acquisition) {
             self.previewLink = acquisition;
