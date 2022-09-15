@@ -603,23 +603,16 @@ static NSString *DetailHTMLTemplate = nil;
 #pragma mark TPPBookSampleDelegate
 
 NSString *PlaySampleNotification = @"ToggleSampleNotification";
-BOOL isLoading = NO;
 
-- (void)didSelectPlaySample:(TPPBook *)book
-{
-  if (isLoading) { return; }
-
+- (void)didSelectPlaySample:(TPPBook *)book {
   if ([self.book defaultBookContentType] == TPPBookContentTypeAudiobook) {
     [[NSNotificationCenter defaultCenter] postNotificationName:PlaySampleNotification object:self];
   } else {
-    isLoading = YES;
     [EpubSampleFactory createSampleWithBook:self.book completion:^(EpubLocationSampleURL *sampleURL, NSError *error) {
-      isLoading = NO;
       if (error) {
          TPPLOG_F(@"Attributed string rendering error for %@ book description: %@",
                   [self.book loggableShortString], error);
        } else if ([sampleURL isKindOfClass:[EpubSampleWebURL class]]) {
-         
          [self presentWebView:sampleURL.url];
        } else {
          [TPPRootTabBarController.sharedController presentSample:self.book url:sampleURL.url];
@@ -794,8 +787,5 @@ BOOL isLoading = NO;
   [self.detailViewDelegate didSelectViewIssuesForBook:self.book sender:self];
 }
 
-- (void)stateChangedWithIsPlaying:(BOOL)isPlaying
-{
-  printf(@"AudioBook sample player state changed");
-}
+- (void)stateChangedWithIsPlaying:(BOOL)isPlaying {}
 @end

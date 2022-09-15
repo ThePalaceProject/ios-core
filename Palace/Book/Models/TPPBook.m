@@ -113,7 +113,7 @@ static NSString *const UpdatedKey = @"updated";
     return nil;
   }
   
-  NSURL *revoke, *image, *imageThumbnail, *report;
+  NSURL *revoke, *image, *imageThumbnail, *report = nil;
   
   NSMutableArray<TPPBookAuthor *> *authors = [[NSMutableArray alloc] init];
   for (int i = 0; i < (int)entry.authorStrings.count; i++) {
