@@ -91,11 +91,6 @@ final class LibraryService: Loggable {
                 sender: UIViewController,
                 completion: @escaping (CancellableResult<Publication, LibraryServiceError>) -> Void) {
 
-//    guard let sampleURL =  book.samples.first?.url else {
-//      completion(.failure(.invalidBook))
-//      return
-//    }
-  
     deferredCatching { .success(sampleURL) }
       .flatMap { self.openPublication(at: $0, allowUserInteraction: true, sender: sender) }
       .flatMap { publication in

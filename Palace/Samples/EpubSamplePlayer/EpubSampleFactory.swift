@@ -19,28 +19,34 @@ import Foundation
 @objc class EpubSampleWebURL: EpubLocationSampleURL {}
 
 @objc class EpubSampleFactory: NSObject {
+  private static let samplePath = "TestApp.epub"
+
   @objc static func createSample(book: TPPBook, completion: @escaping (EpubLocationSampleURL?, Error?) -> Void) {
     guard let epubSample = book.sample as? EpubSample
     else {
-      completion(nil, nil)
+      completion(nil, SamplePlayerError.noSampleAvailable)
       return
     }
-
+    
     if epubSample.type.needsDownload {
       epubSample.fetchSample { result in
         switch result {
         case .failure(let error, _):
           completion(nil, error)
         case .success(let data, _):
-          
-          guard let location = save(data: data) else {
-            completion(nil, nil)
-            return
-          }
+  
+          do {
+            guard let location = try save(data: data) else {
+              completion(nil, SamplePlayerError.fileSaveFailed(nil))
+              return
+            }
 
-          let epubLocationURL = EpubLocationSampleURL(url: location)
-          DispatchQueue.main.async {
-            completion(epubLocationURL, nil)
+            let epubLocationURL = EpubLocationSampleURL(url: location)
+            DispatchQueue.main.async {
+              completion(epubLocationURL, nil)
+            }
+          } catch {
+            completion(nil, error)
           }
         }
       }
@@ -50,12 +56,11 @@ import Foundation
     }
   }
 
-  private static func save(data: Data) -> URL? {
+  private static func save(data: Data) throws -> URL? {
     do {
       try data.write(to: documentDirectory())
     } catch {
-      print("Error", error)
-      return nil
+      throw error
     }
     return documentDirectory().absoluteURL
   }
@@ -65,6 +70,6 @@ import Foundation
       for: .documentDirectory,
       in: .userDomainMask
     )[0]
-    return documentDirectory.appendingPathComponent("TestApp.epub")
+    return documentDirectory.appendingPathComponent(samplePath)
   }
 }

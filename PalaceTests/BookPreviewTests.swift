@@ -40,6 +40,6 @@ class BookPreviewTests: XCTestCase {
     ])
 
     XCTAssertNotNil(book?.acquisitions)
-    XCTAssertNotNil(book?.samples)
+    XCTAssertNotNil(book?.sample)
   }
 }
