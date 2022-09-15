@@ -20,7 +20,7 @@ import Foundation
       }
       switch result {
       case .success(let publication):
-        readerModule.presentPublication(publication, book: book, in: navVC)
+        readerModule.presentPublication(publication, book: book, in: navVC, forSample: false)
       case .cancelled:
         // .cancelled is returned when publication has restricted access to its resources and can't be rendered
         TPPErrorLogger.logError(nil, summary: "Error accessing book resources", metadata: [
@@ -52,7 +52,7 @@ import Foundation
       }
       switch result {
       case .success(let publication):
-        readerModule.presentPublication(publication, book: book, in: navVC)
+        readerModule.presentPublication(publication, book: book, in: navVC, forSample: true)
       case .cancelled:
         // .cancelled is returned when publication has restricted access to its resources and can't be rendered
         TPPErrorLogger.logError(nil, summary: "Error accessing book resources", metadata: [

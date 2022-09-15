@@ -10,4 +10,5 @@ import Foundation
 
 enum SamplePlayerError: Error {
   case sampleDownloadFailed(_ error: Error? = nil)
+  case fileSaveFailed(_ error: Error? = nil)
 }

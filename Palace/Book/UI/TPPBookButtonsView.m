@@ -132,7 +132,7 @@
   } else {
     [self.activityIndicator stopAnimating];
   }
-  for(TPPRoundedButton *button in @[self.downloadButton, self.deleteButton, self.readButton, self.cancelButton]) {
+  for(TPPRoundedButton *button in @[self.downloadButton, self.deleteButton, self.readButton, self.cancelButton, self.sampleButton]) {
     button.enabled = !isCurrentlyProcessing;
   }
 }
@@ -469,6 +469,8 @@
 
 - (void)didSelectSample
 {
+  self.activityIndicator.center = self.sampleButton.center;
+  [self updateProcessingState:YES];
   [self.sampleDelegate didSelectPlaySample:self.book];
 }
 
