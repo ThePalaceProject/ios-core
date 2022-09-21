@@ -161,6 +161,10 @@
 "chapter" = "chapter";
 
 // ReaderViewController (R2)
+"Reader settings" = "Reader settings";
+"Table of contents and bookmarks" = "Table of contents and bookmarks";
+"Remove Bookmark" = "Remove Bookmark";
+"Add Bookmark" = "Add Bookmark";
 "Previous Chapter" = "Previous Chapter";
 "Next Chapter" = "Next Chapter";
 
