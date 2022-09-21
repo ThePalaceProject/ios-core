@@ -1,5 +1,4 @@
 @import PureLayout;
-#import "Palace-Swift.h"
 
 #import "NSDate+NYPLDateAdditions.h"
 #import "TPPConfiguration.h"

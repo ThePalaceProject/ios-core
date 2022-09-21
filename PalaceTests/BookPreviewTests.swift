@@ -29,7 +29,7 @@ class BookPreviewTests: XCTestCase {
   }
 
   func testBookPreviewExtraction() throws {
-    let acquisitions = [TPPFake.genericAcquisition.dictionaryRepresentation()]
+    let acquisitions = [TPPFake.genericAcquisition.dictionaryRepresentation(), TPPFake.genericSample.dictionaryRepresentation()]
 
     let book = TPPBook(dictionary: [
       "acquisitions": acquisitions,
@@ -40,6 +40,6 @@ class BookPreviewTests: XCTestCase {
     ])
 
     XCTAssertNotNil(book?.acquisitions)
-//    XCTAssertNotNil(book?.sample)
+    XCTAssertNotNil(book?.sample)
   }
 }
