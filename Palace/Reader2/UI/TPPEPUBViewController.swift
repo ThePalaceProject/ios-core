@@ -16,21 +16,30 @@ import R2Navigator
 class TPPEPUBViewController: TPPBaseReaderViewController {
 
   var popoverUserconfigurationAnchor: UIBarButtonItem?
-  
+
   init(publication: Publication,
        book: TPPBook,
        initialLocation: Locator?,
        resourcesServer: ResourcesServer) {
+
+    let safeAreaInsets = UIApplication.shared.keyWindow?.safeAreaInsets ?? UIEdgeInsets()
+    let overlayLabelInset = TPPBaseReaderViewController.overlayLabelMargin * 2 // Vertical margin for labels
+    let contentInset: [UIUserInterfaceSizeClass: EPUBContentInsets] = [
+      .compact: (top: max(overlayLabelInset, safeAreaInsets.top), bottom: max(overlayLabelInset, safeAreaInsets.bottom)),
+      .regular: (top: max(overlayLabelInset, safeAreaInsets.top), bottom: max(overlayLabelInset, safeAreaInsets.bottom))
+    ]
 
     // this config was suggested by R2 engineers as a way to limit the possible
     // race conditions between restoring the initial location without
     // interfering with the web view layout timing
     // See: https://github.com/readium/r2-navigator-swift/issues/153
     var config = EPUBNavigatorViewController.Configuration()
-    config.preloadPreviousPositionCount = 0
-    config.preloadNextPositionCount = 0
-    config.debugState = true
+    config.preloadPreviousPositionCount = 2
+    config.preloadNextPositionCount = 2
+    config.debugState = false
+    config.decorationTemplates = HTMLDecorationTemplate.defaultTemplates()
     config.editingActions = [.lookup]
+    config.contentInset = contentInset
 
     let navigator = EPUBNavigatorViewController(publication: publication,
                                                 initialLocation: initialLocation,
@@ -104,6 +113,7 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
                                              style: .plain,
                                              target: self,
                                              action: #selector(presentUserSettings))
+    userSettingsButton.accessibilityLabel = NSLocalizedString("Reader settings", comment: "Reader settings")
     buttons.insert(userSettingsButton, at: 1)
     popoverUserconfigurationAnchor = userSettingsButton
 
