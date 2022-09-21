@@ -1,4 +1,5 @@
 #import "TPPBookButtonsState.h"
+#import "Palace-Swift.h"
 @class TPPBook;
 
 @interface TPPBookDetailNormalView : UIView

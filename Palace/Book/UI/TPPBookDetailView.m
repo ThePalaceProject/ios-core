@@ -1,5 +1,5 @@
 #import "TPPAttributedString.h"
-#import "TPPBook.h"
+
 #import "TPPBookCellDelegate.h"
 #import "TPPBookButtonsView.h"
 #import "TPPBookDetailDownloadFailedView.h"

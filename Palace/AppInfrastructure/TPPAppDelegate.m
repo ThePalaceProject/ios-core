@@ -16,7 +16,6 @@
 // TODO: Remove these imports and move handling the "open a book url" code to a more appropriate handler
 #import "TPPXML.h"
 #import "TPPOPDSEntry.h"
-#import "TPPBook.h"
 #import "TPPBookDetailViewController.h"
 #import "NSURL+NYPLURLAdditions.h"
 
@@ -136,7 +135,7 @@ performFetchWithCompletionHandler:(void (^)(UIBackgroundFetchResult))backgroundF
   TPPXML *xml = [TPPXML XMLWithData:data];
   TPPOPDSEntry *entry = [[TPPOPDSEntry alloc] initWithXML:xml];
   
-  TPPBook *book = [TPPBook bookWithEntry:entry];
+  TPPBook *book = [[TPPBook alloc] initWithEntry:entry];
   if (!book) {
     NSString *alertTitle = @"Error Opening Link";
     NSString *alertMessage = @"There was an error opening the linked book.";

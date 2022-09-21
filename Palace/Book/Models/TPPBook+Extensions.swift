@@ -26,14 +26,14 @@ import Foundation
   }
    
   var hasSample: Bool { sample != nil }
-  var hasAudiobookSample: Bool { hasSample && defaultBookContentType() == .audiobook }
+  var hasAudiobookSample: Bool { hasSample && defaultBookContentType == .audiobook }
 }
 
 extension TPPBook {
   var sample: Sample? {
-    guard let acquisition = self.sampleAcquisition() else { return nil }
-    switch self.defaultBookContentType() {
-    case .EPUB, .PDF:
+    guard let acquisition = self.sampleAcquisition else { return nil }
+    switch self.defaultBookContentType {
+    case .epub, .pdf:
         guard let sampleType = SampleType(rawValue: acquisition.type) else { return nil }
         return EpubSample(url: acquisition.hrefURL, type: sampleType)
     case .audiobook:

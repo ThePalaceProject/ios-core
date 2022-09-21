@@ -8,7 +8,7 @@
 
 @import PureLayout;
 
-#import "TPPBook.h"
+
 #import "TPPBookRegistry.h"
 #import "TPPBookButtonsView.h"
 #import "TPPConfiguration.h"
@@ -233,8 +233,8 @@
                          HintKey: [NSString stringWithFormat:NSLocalizedString(@"Opens audiobook %@ for listening", nil), self.book.title],
                          AddIndicatorKey: @(YES)};
           break;
-        case TPPBookContentTypePDF:
-        case TPPBookContentTypeEPUB:
+        case TPPBookContentTypePdf:
+        case TPPBookContentTypeEpub:
           buttonInfo = @{ButtonKey: self.readButton,
                          TitleKey: NSLocalizedString(@"Read", nil),
                          HintKey: [NSString stringWithFormat:NSLocalizedString(@"Opens %@ for reading", nil), self.book.title],

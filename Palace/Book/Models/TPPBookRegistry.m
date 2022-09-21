@@ -1,13 +1,11 @@
 #import "TPPBookRegistry.h"
 
-#import "TPPBook.h"
 #import "TPPBookCoverRegistry.h"
 #import "TPPBookRegistryRecord.h"
 #import "TPPConfiguration.h"
 #import "TPPJSON.h"
 #import "TPPOPDS.h"
 #import "TPPMyBooksDownloadCenter.h"
-#import "Palace-Swift.h"
 
 @interface TPPBookRegistry ()
 
@@ -356,7 +354,7 @@ static NSString *const RecordsKey = @"records";
          
          NSMutableSet *identifiersToRemove = [NSMutableSet setWithArray:self.identifiersToRecords.allKeys];
          for(TPPOPDSEntry *const entry in feed.entries) {
-           TPPBook *const book = [TPPBook bookWithEntry:entry];
+           TPPBook const *book = [[TPPBook alloc] initWithEntry:entry];
            if(!book) {
              TPPLOG_F(@"Failed to create book for entry '%@'.", entry.identifier);
              continue;
@@ -483,7 +481,7 @@ genericBookmarks:(NSArray<TPPBookLocation *> *)genericBookmarks
   @synchronized(self) {
     TPPBookRegistryRecord *const record = self.identifiersToRecords[book.identifier];
     if(record) {
-      book = [record.book bookWithMetadataFromBook:book];
+      book = [record.book bookWithMetadataFrom:book];
       TPPBookRegistryRecord *const updatedRecord = [record recordWithBook:book];
       self.identifiersToRecords[book.identifier] = updatedRecord;
       TPPBook *updatedBook = updatedRecord.book;

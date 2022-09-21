@@ -1,4 +1,5 @@
 // This class is intended for internal use by TPPBookRegistry only.
+#import "Palace-Swift.h"
 
 @class TPPBook;
 

@@ -59,8 +59,8 @@ import NYPLAudiobookToolkit
   /// - Parameter book: audiobook
   /// - Returns: `true` if the book is an LCP DRM protected audiobook, `false` otherwise
   @objc static func canOpenBook(_ book: TPPBook) -> Bool {
-    guard let defualtAcquisition = book.defaultAcquisition() else { return false }
-    return book.defaultBookContentType() == .audiobook && defualtAcquisition.type == expectedAcquisitionType
+    guard let defualtAcquisition = book.defaultAcquisition else { return false }
+    return book.defaultBookContentType == .audiobook && defualtAcquisition.type == expectedAcquisitionType
   }
 
   /// Creates an NSError for Objective-C code

@@ -1,5 +1,6 @@
-@class TPPBook;
+
 @class TPPMyBooksDownloadInfo;
+@class TPPBook;
 
 @interface TPPMyBooksDownloadCenter : NSObject
 
