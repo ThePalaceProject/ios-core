@@ -323,14 +323,13 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
         
     toolbar.items = [
       makeItem(.flexibleSpace),
-      backButton,
-      makeItem(.flexibleSpace),
       forwardButton,
+      makeItem(.flexibleSpace),
+      backButton,
       makeItem(.flexibleSpace),
     ]
     toolbar.isHidden = !UIAccessibility.isVoiceOverRunning
     toolbar.tintColor = UIColor.black
-    toolbar.accessibilityElements = [forwardButton, backButton]
     return toolbar
   }()
 
