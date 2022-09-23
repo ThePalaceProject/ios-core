@@ -1,5 +1,5 @@
 #import "TPPAsync.h"
-#import "TPPBook.h"
+
 #import "TPPBookRegistry.h"
 #import "TPPCatalogFacet.h"
 #import "TPPCatalogFacetGroup.h"
@@ -67,7 +67,7 @@ handler:(void (^)(TPPCatalogUngroupedFeed *category))handler
   self.books = [NSMutableArray array];
 
   for(TPPOPDSEntry *const entry in feed.entries) {
-    TPPBook *book = [TPPBook bookWithEntry:entry];
+    TPPBook *book = [[TPPBook alloc] initWithEntry: entry];
     if(!book) {
       TPPLOG(@"Failed to create book from entry.");
       continue;

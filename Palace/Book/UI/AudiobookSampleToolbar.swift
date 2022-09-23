@@ -25,7 +25,7 @@ struct AudiobookSampleToolbar: View {
 
   init?(book: TPPBook) {
     self.book = book
-    guard let sample = book.samples.first as? AudiobookSample else { return nil }
+    guard let sample = book.sample as? AudiobookSample else { return nil }
     player = AudiobookSamplePlayer(sample: sample)
     if let imageURL = book.imageThumbnailURL ?? book.imageURL {
       imageLoader.loadImage(url: imageURL)

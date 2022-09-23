@@ -20,7 +20,8 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
   init(publication: Publication,
        book: TPPBook,
        initialLocation: Locator?,
-       resourcesServer: ResourcesServer) {
+       resourcesServer: ResourcesServer,
+       forSample: Bool = false) {
 
     // this config was suggested by R2 engineers as a way to limit the possible
     // race conditions between restoring the initial location without
@@ -45,7 +46,7 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     // to re-set that to reflect our ad-hoc configuration.
     publication.userProperties = navigator.userSettings.userProperties
 
-    super.init(navigator: navigator, publication: publication, book: book)
+    super.init(navigator: navigator, publication: publication, book: book, forSample: forSample)
 
     navigator.delegate = self
   }

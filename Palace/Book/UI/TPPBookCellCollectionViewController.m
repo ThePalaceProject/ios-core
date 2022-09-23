@@ -1,4 +1,3 @@
-#import "TPPBook.h"
 #import "TPPBookCell.h"
 #import "TPPBookDownloadingCell.h"
 #import "TPPBookRegistry.h"

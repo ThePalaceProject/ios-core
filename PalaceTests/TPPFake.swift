@@ -29,6 +29,16 @@ class TPPFake {
       availability: TPPOPDSAcquisitionAvailabilityUnlimited()
     )
   }
+  
+  class var genericPreview: TPPOPDSAcquisition {
+    TPPOPDSAcquisition(
+      relation: .preview,
+      type: "application/epub+zip",
+      hrefURL: URL(string:"https://market.feedbooks.com/item/3877422/preview")!,
+      indirectAcquisitions: [],
+      availability: TPPOPDSAcquisitionAvailabilityUnlimited()
+    )
+  }
 
   class var opdsEntry: TPPOPDSEntry {
     let bundle = Bundle(for: TPPFake.self)

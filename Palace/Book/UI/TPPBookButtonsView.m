@@ -8,7 +8,7 @@
 
 @import PureLayout;
 
-#import "TPPBook.h"
+
 #import "TPPBookRegistry.h"
 #import "TPPBookButtonsView.h"
 #import "TPPConfiguration.h"
@@ -132,7 +132,7 @@
   } else {
     [self.activityIndicator stopAnimating];
   }
-  for(TPPRoundedButton *button in @[self.downloadButton, self.deleteButton, self.readButton, self.cancelButton]) {
+  for(TPPRoundedButton *button in @[self.downloadButton, self.deleteButton, self.readButton, self.cancelButton, self.sampleButton]) {
     button.enabled = !isCurrentlyProcessing;
   }
 }
@@ -154,9 +154,13 @@
                               TitleKey: NSLocalizedString(@"Borrow", nil),
                               HintKey: [NSString stringWithFormat:NSLocalizedString(@"Borrows %@", nil), self.book.title]}]];
 
-      if ([self.book hasSamples]) {
+      if ([self.book hasAudiobookSample]) {
         [visibleButtonInfo addObject:@{ButtonKey: self.sampleButton,
                                         TitleKey: NSLocalizedString(@"Play Sample", nil),
+                                         HintKey: [NSString stringWithFormat:NSLocalizedString(@"View sample for %@", nil), self.book.title]}];
+      } else if ([self.book hasSample]) {
+        [visibleButtonInfo addObject:@{ButtonKey: self.sampleButton,
+                                        TitleKey: NSLocalizedString(@"View Sample", nil),
                                          HintKey: [NSString stringWithFormat:NSLocalizedString(@"View sample for %@", nil), self.book.title]}];
       }
 
@@ -166,7 +170,7 @@
                               TitleKey: NSLocalizedString(@"Reserve", nil),
                               HintKey: [NSString stringWithFormat:NSLocalizedString(@"Holds %@", nil), self.book.title]}]];
 
-      if ([self.book hasSamples]) {
+      if ([self.book hasSample]) {
         [visibleButtonInfo addObject:@{ButtonKey: self.sampleButton,
                                               TitleKey: NSLocalizedString(@"Sample", nil),
                                        HintKey: [NSString stringWithFormat:NSLocalizedString(@"View sample for %@", nil), self.book.title]}];
@@ -179,7 +183,7 @@
                               HintKey: [NSString stringWithFormat:NSLocalizedString(@"Cancels hold for %@", nil), self.book.title],
                               AddIndicatorKey: @(YES)}]];
 
-      if ([self.book hasSamples]) {
+      if ([self.book hasSample]) {
         [visibleButtonInfo addObject:@{ButtonKey: self.sampleButton,
                                               TitleKey: NSLocalizedString(@"Sample", nil),
                                        HintKey: [NSString stringWithFormat:NSLocalizedString(@"View sample for %@", nil), self.book.title]}];
@@ -229,8 +233,8 @@
                          HintKey: [NSString stringWithFormat:NSLocalizedString(@"Opens audiobook %@ for listening", nil), self.book.title],
                          AddIndicatorKey: @(YES)};
           break;
-        case TPPBookContentTypePDF:
-        case TPPBookContentTypeEPUB:
+        case TPPBookContentTypePdf:
+        case TPPBookContentTypeEpub:
           buttonInfo = @{ButtonKey: self.readButton,
                          TitleKey: NSLocalizedString(@"Read", nil),
                          HintKey: [NSString stringWithFormat:NSLocalizedString(@"Opens %@ for reading", nil), self.book.title],
@@ -465,6 +469,8 @@
 
 - (void)didSelectSample
 {
+  self.activityIndicator.center = self.sampleButton.center;
+  [self updateProcessingState:YES];
   [self.sampleDelegate didSelectPlaySample:self.book];
 }
 

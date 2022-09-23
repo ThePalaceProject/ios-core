@@ -28,9 +28,10 @@ class TPPReaderBookmarksBusinessLogicTests: XCTestCase {
         indirectAcquisitions: [TPPOPDSIndirectAcquisition](),
         availability: TPPOPDSAcquisitionAvailabilityUnlimited.init()
       )
+      
       let fakeBook = TPPBook.init(
         acquisitions: [fakeAcquisition],
-        bookAuthors: [TPPBookAuthor](),
+        authors: [TPPBookAuthor](),
         categoryStrings: [String](),
         distributor: "",
         identifier: bookIdentifier,
@@ -46,12 +47,13 @@ class TPPReaderBookmarksBusinessLogicTests: XCTestCase {
         analyticsURL: emptyUrl,
         alternateURL: emptyUrl,
         relatedWorksURL: emptyUrl,
+        previewLink: fakeAcquisition,
         seriesURL: emptyUrl,
         revokeURL: emptyUrl,
-        report: emptyUrl,
+        reportURL: emptyUrl,
         contributors: [:]
       )
-      
+            
       bookRegistryMock = TPPBookRegistryMock()
       bookRegistryMock.addBook(book: fakeBook, state: .DownloadSuccessful)
       libraryAccountMock = TPPLibraryAccountMock()
@@ -70,7 +72,7 @@ class TPPReaderBookmarksBusinessLogicTests: XCTestCase {
       try super.tearDownWithError()
       bookmarkBusinessLogic = nil
       libraryAccountMock = nil
-      bookRegistryMock.identifiersToRecords.removeAll()
+      bookRegistryMock?.identifiersToRecords.removeAll()
       bookRegistryMock = nil
       bookmarkCounter = 0
     }

@@ -98,7 +98,7 @@ class AudiobookSamplePlayer: NSObject, ObservableObject {
   private func downloadFile() {
     state = .loading
 
-    let _ = TPPNetworkExecutor.shared.GET(sample.url) { [unowned self]  result in
+    let _ = sample.fetchSample { [unowned self]  result in
       switch result {
       case let .failure(error, _):
         // TODO: Surface error and display alert

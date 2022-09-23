@@ -1,5 +1,5 @@
 #import "TPPAttributedString.h"
-#import "TPPBook.h"
+
 #import "TPPBookCellDelegate.h"
 #import "TPPBookButtonsView.h"
 #import "TPPBookDetailDownloadFailedView.h"
@@ -118,7 +118,7 @@ static NSString *DetailHTMLTemplate = nil;
   [self addSubview:self.scrollView];
   [self.scrollView addSubview:self.containerView];
   
-  if ([self.book hasSamples] && [self.book defaultBookContentType] == TPPBookContentTypeAudiobook) {
+  if ([self.book hasSample] && [self.book defaultBookContentType] == TPPBookContentTypeAudiobook) {
     self.audiobookSampleToolbar = [[AudiobookSampleToolbarWrapper createWithBook:self.book] view];
     [self addSubview: self.audiobookSampleToolbar];
   }
@@ -399,7 +399,7 @@ static NSString *DetailHTMLTemplate = nil;
 {
   [self.scrollView autoPinEdgeToSuperviewEdge:ALEdgeTop];
 
-  if ([self.book hasSamples]) {
+  if ([self.book hasAudiobookSample]) {
     [self.audiobookSampleToolbar autoPinEdgeToSuperviewEdge:ALEdgeLeft];
     [self.audiobookSampleToolbar autoPinEdgeToSuperviewEdge:ALEdgeRight];
     [self.audiobookSampleToolbar autoPinEdgeToSuperviewEdge:ALEdgeBottom withInset:TabBarHeight];
@@ -604,9 +604,27 @@ static NSString *DetailHTMLTemplate = nil;
 
 NSString *PlaySampleNotification = @"ToggleSampleNotification";
 
-- (void)didSelectPlaySample:(TPPBook *)book
-{
-  [[NSNotificationCenter defaultCenter] postNotificationName:PlaySampleNotification object:self];
+- (void)didSelectPlaySample:(TPPBook *)book {
+  if ([self.book defaultBookContentType] == TPPBookContentTypeAudiobook) {
+    [[NSNotificationCenter defaultCenter] postNotificationName:PlaySampleNotification object:self];
+  } else {
+    [EpubSampleFactory createSampleWithBook:self.book completion:^(EpubLocationSampleURL *sampleURL, NSError *error) {
+      if (error) {
+         TPPLOG_F(@"Attributed string rendering error for %@ book description: %@",
+                  [self.book loggableShortString], error);
+       } else if ([sampleURL isKindOfClass:[EpubSampleWebURL class]]) {
+         [self presentWebView:sampleURL.url];
+       } else {
+         [TPPRootTabBarController.sharedController presentSample:self.book url:sampleURL.url];
+       }
+    }];
+  }
+}
+  
+- (void)presentWebView:(NSURL *)url {
+  BundledHTMLViewController *webController = [[BundledHTMLViewController alloc] initWithFileURL:url title:AccountsManager.shared.currentAccount.name];
+  webController.hidesBottomBarWhenPushed = true;
+  [TPPRootTabBarController.sharedController pushViewController:webController animated:YES];
 }
 
 #pragma mark -
@@ -769,8 +787,5 @@ NSString *PlaySampleNotification = @"ToggleSampleNotification";
   [self.detailViewDelegate didSelectViewIssuesForBook:self.book sender:self];
 }
 
-- (void)stateChangedWithIsPlaying:(BOOL)isPlaying
-{
-  printf(@"AudioBook sample player state changed");
-}
+- (void)stateChangedWithIsPlaying:(BOOL)isPlaying {}
 @end

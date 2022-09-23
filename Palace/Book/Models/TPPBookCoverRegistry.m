@@ -1,11 +1,9 @@
 #import "NSString+TPPStringAdditions.h"
-#import "TPPBook.h"
 #import "TPPBookRegistry.h"
 #import "TPPNull.h"
 #import "NYPLTenPrintCoverView+NYPLImageAdditions.h"
 
 #import "TPPBookCoverRegistry.h"
-#import "Palace-Swift.h"
 
 @interface TPPBookCoverRegistry ()
 
