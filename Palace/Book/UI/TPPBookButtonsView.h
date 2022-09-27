@@ -37,6 +37,7 @@
 @property (nonatomic, weak) id<TPPBookButtonsSampleDelegate> sampleDelegate;
 @property (nonatomic) BOOL showReturnButtonIfApplicable;
 
+- (instancetype)initWithSamplesEnabled:(BOOL)samplesEnabled;
 - (void)configureForBookDetailsContext;
 
 @end

@@ -27,6 +27,7 @@
 @property (nonatomic) NSArray *visibleButtons;
 @property (nonatomic) NSMutableArray *constraints;
 @property (nonatomic) id observer;
+@property (nonatomic) BOOL samplesEnabled;
 
 @end
 
@@ -34,12 +35,18 @@
 
 - (instancetype)init
 {
+  return [self initWithSamplesEnabled: NO];
+}
+
+- (instancetype)initWithSamplesEnabled:(BOOL)samplesEnabled
+{
   self = [super init];
   if(!self) {
     return self;
   }
   
   self.constraints = [[NSMutableArray alloc] init];
+  self.samplesEnabled = samplesEnabled;
   
   self.deleteButton = [[TPPRoundedButton alloc] initWithType:TPPRoundedButtonTypeNormal isFromDetailView:NO];
   self.deleteButton.titleLabel.minimumScaleFactor = 0.8f;
@@ -154,11 +161,11 @@
                               TitleKey: NSLocalizedString(@"Borrow", nil),
                               HintKey: [NSString stringWithFormat:NSLocalizedString(@"Borrows %@", nil), self.book.title]}]];
 
-      if ([self.book hasAudiobookSample]) {
+      if ([self.book hasAudiobookSample] && self.samplesEnabled) {
         [visibleButtonInfo addObject:@{ButtonKey: self.sampleButton,
                                         TitleKey: NSLocalizedString(@"Play Sample", nil),
                                          HintKey: [NSString stringWithFormat:NSLocalizedString(@"View sample for %@", nil), self.book.title]}];
-      } else if ([self.book hasSample]) {
+      } else if ([self.book hasSample] && self.samplesEnabled) {
         [visibleButtonInfo addObject:@{ButtonKey: self.sampleButton,
                                         TitleKey: NSLocalizedString(@"View Sample", nil),
                                          HintKey: [NSString stringWithFormat:NSLocalizedString(@"View sample for %@", nil), self.book.title]}];
@@ -170,7 +177,7 @@
                               TitleKey: NSLocalizedString(@"Reserve", nil),
                               HintKey: [NSString stringWithFormat:NSLocalizedString(@"Holds %@", nil), self.book.title]}]];
 
-      if ([self.book hasSample]) {
+      if ([self.book hasSample] && self.samplesEnabled) {
         [visibleButtonInfo addObject:@{ButtonKey: self.sampleButton,
                                               TitleKey: NSLocalizedString(@"Sample", nil),
                                        HintKey: [NSString stringWithFormat:NSLocalizedString(@"View sample for %@", nil), self.book.title]}];
@@ -183,7 +190,7 @@
                               HintKey: [NSString stringWithFormat:NSLocalizedString(@"Cancels hold for %@", nil), self.book.title],
                               AddIndicatorKey: @(YES)}]];
 
-      if ([self.book hasSample]) {
+      if ([self.book hasSample] && self.samplesEnabled) {
         [visibleButtonInfo addObject:@{ButtonKey: self.sampleButton,
                                               TitleKey: NSLocalizedString(@"Sample", nil),
                                        HintKey: [NSString stringWithFormat:NSLocalizedString(@"View sample for %@", nil), self.book.title]}];
