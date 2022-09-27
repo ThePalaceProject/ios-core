@@ -73,10 +73,11 @@
 "Search" = "Search";
 "Settings" = "Settings";
 "Show" = "Show";
-"Sign In" = "Sign In";
-"SignOut" = "Sign Out";
-"SigningOut" = "Signing Out";
+"Sign In" = "Sign in";
+"SignOut" = "Sign out";
+"SigningOut" = "Signing out";
 "SignUp" = "Sign Up";
+"Create Card" = "Create Card";
 "SoftwareLicenses" = "Software Licenses";
 "SyncFailed" = "Sync Failed";
 "TimedOut" = "The server did not respond. Please check your connection or try again later.";
@@ -106,7 +107,15 @@
 "BookDetailViewControllerHoldingTitleFormat" = "Available for checkout in less than %@.";
 "BookDetailViewControllerReservedTitleFormat" = "This reservation will be automatically cancelled in %@.";
 "BookDetailViewControllerDistributedByFormat" = "Distributed by: ";
+"BookDetailViewControllerBookFormat" = "Book format:";
+"BookDetailViewControllerNarrators" = "Narrators:";
 "It will expire in %@." = "It will expire in %@.";
+
+// Book Formats
+"ePub" = "ePub";
+"PDF" = "PDF";
+"Audiobook" = "Audiobook";
+"Unsupported format" = "Unsupported format";
 
 // NYPLBookCellDelegate
 "Unsupported Item" = "Unsupported Item";
@@ -152,6 +161,10 @@
 "chapter" = "chapter";
 
 // ReaderViewController (R2)
+"Reader settings" = "Reader settings";
+"Table of contents and bookmarks" = "Table of contents and bookmarks";
+"Remove Bookmark" = "Remove Bookmark";
+"Add Bookmark" = "Add Bookmark";
 "Previous Chapter" = "Previous Chapter";
 "Next Chapter" = "Next Chapter";
 

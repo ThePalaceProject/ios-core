@@ -39,7 +39,7 @@ class OETutorialChoiceViewController : UIViewController {
   override func viewDidLoad() {
     super.viewDidLoad()
     
-    title = NSLocalizedString("LogIn", comment: "")
+    title = NSLocalizedString("Sign In", comment: "")
     
     descriptionLabel.font = NYPLConfiguration.welcomeScreenFont()
     descriptionLabel.text = NSLocalizedString("You need to login to access the collection.", comment: "")

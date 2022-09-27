@@ -24,6 +24,16 @@ import Foundation
       }
     }
   }
+  
+  /// Readable book format based on its content type
+  var format: String {
+    switch defaultBookContentType() {
+    case .EPUB: return NSLocalizedString("ePub", comment: "ePub")
+    case .PDF: return NSLocalizedString("PDF", comment: "PDF")
+    case .audiobook: return NSLocalizedString("Audiobook", comment: "Audiobook")
+    case .unsupported: return NSLocalizedString("Unsupported format", comment: "Unsupported format")
+    }
+  }
    
   var hasSample: Bool { sample != nil }
   var hasAudiobookSample: Bool { hasSample && defaultBookContentType == .audiobook }

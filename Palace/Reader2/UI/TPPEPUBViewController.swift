@@ -16,22 +16,31 @@ import R2Navigator
 class TPPEPUBViewController: TPPBaseReaderViewController {
 
   var popoverUserconfigurationAnchor: UIBarButtonItem?
-  
+
   init(publication: Publication,
        book: TPPBook,
        initialLocation: Locator?,
        resourcesServer: ResourcesServer,
        forSample: Bool = false) {
 
+    let safeAreaInsets = UIApplication.shared.keyWindow?.safeAreaInsets ?? UIEdgeInsets()
+    let overlayLabelInset = TPPBaseReaderViewController.overlayLabelMargin * 2 // Vertical margin for labels
+    let contentInset: [UIUserInterfaceSizeClass: EPUBContentInsets] = [
+      .compact: (top: max(overlayLabelInset, safeAreaInsets.top), bottom: max(overlayLabelInset, safeAreaInsets.bottom)),
+      .regular: (top: max(overlayLabelInset, safeAreaInsets.top), bottom: max(overlayLabelInset, safeAreaInsets.bottom))
+    ]
+
     // this config was suggested by R2 engineers as a way to limit the possible
     // race conditions between restoring the initial location without
     // interfering with the web view layout timing
     // See: https://github.com/readium/r2-navigator-swift/issues/153
     var config = EPUBNavigatorViewController.Configuration()
-    config.preloadPreviousPositionCount = 0
-    config.preloadNextPositionCount = 0
-    config.debugState = true
+    config.preloadPreviousPositionCount = 2
+    config.preloadNextPositionCount = 2
+    config.debugState = false
+    config.decorationTemplates = HTMLDecorationTemplate.defaultTemplates()
     config.editingActions = [.lookup]
+    config.contentInset = contentInset
 
     let navigator = EPUBNavigatorViewController(publication: publication,
                                                 initialLocation: initialLocation,
@@ -77,6 +86,16 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
         name: ReadiumCSSName.fontFamily.rawValue
       )
     }
+
+    // "The --USER__advancedSettings: readium-advanced-on inline style must be
+    // set for html in order for the font-size setting to work."
+    // https://readium.org/readium-css/docs/CSS12-user_prefs.html#font-size
+    epubNavigator.userSettings.userProperties.addSwitchable(
+      onValue: TPPReaderAdvancedSettings.on.rawValue,
+      offValue: TPPReaderAdvancedSettings.off.rawValue,
+      on: true,
+      reference: ReadiumCSSReference.publisherDefault.rawValue,
+      name: ReadiumCSSName.publisherDefault.rawValue)
   }
 
   override open func viewWillDisappear(_ animated: Bool) {
@@ -95,6 +114,7 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
                                              style: .plain,
                                              target: self,
                                              action: #selector(presentUserSettings))
+    userSettingsButton.accessibilityLabel = NSLocalizedString("Reader settings", comment: "Reader settings")
     buttons.insert(userSettingsButton, at: 1)
     popoverUserconfigurationAnchor = userSettingsButton
 
