@@ -86,6 +86,33 @@ final class LibraryService: Loggable {
     .resolve(completion)
   }
   
+  func openSample(_ book: TPPBook,
+                  sampleURL: URL,
+                sender: UIViewController,
+                completion: @escaping (CancellableResult<Publication, LibraryServiceError>) -> Void) {
+
+    deferredCatching { .success(sampleURL) }
+      .flatMap { self.openPublication(at: $0, allowUserInteraction: true, sender: sender) }
+      .flatMap { publication in
+        guard !publication.isRestricted else {
+          self.stopOpeningIndicator(identifier: book.identifier)
+          if let error = publication.protectionError {
+            return .failure(error)
+          } else {
+            return .cancelled
+          }
+        }
+        
+        self.preparePresentation(of: publication, book: book)
+        return .success(publication)
+    }
+    .mapError {
+      self.stopOpeningIndicator(identifier: book.identifier)
+      return LibraryServiceError.openFailed($0)
+    }
+    .resolve(completion)
+  }
+  
   /// Opens the Readium 2 Publication at the given `url`.
   private func openPublication(at url: URL, allowUserInteraction: Bool, sender: UIViewController?) -> Deferred<Publication, Error> {
     return deferred {

@@ -1,6 +1,6 @@
 @import PureLayout;
 #import "TPPAttributedString.h"
-#import "TPPBook.h"
+
 #import "TPPBookRegistry.h"
 #import "TPPConfiguration.h"
 #import "TPPBookButtonsView.h"

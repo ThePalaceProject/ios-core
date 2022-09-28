@@ -21,7 +21,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   private static let bookmarkOffImageName = "BookmarkOff"
 
   // Side margins for long labels
-  private static let overlayLabelMargin: CGFloat = 20
+  static let overlayLabelMargin: CGFloat = 20
   
   // TODO: SIMPLY-2656 See if we still need this.
   weak var moduleDelegate: ModuleDelegate?
@@ -38,6 +38,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   private(set) var stackView: UIStackView!
   private lazy var positionLabel = UILabel()
   private lazy var bookTitleLabel = UILabel()
+  private var isShowingSample: Bool = false
 
   // MARK: - Lifecycle
 
@@ -49,10 +50,12 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   ///   - drm: Information about the DRM associated with the publication.
   init(navigator: UIViewController & Navigator,
        publication: Publication,
-       book: TPPBook) {
+       book: TPPBook,
+       forSample: Bool = false) {
 
     self.navigator = navigator
     self.publication = publication
+    self.isShowingSample = forSample
 
     lastReadPositionPoster = TPPLastReadPositionPoster(
       book: book,
@@ -103,7 +106,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     NSLayoutConstraint.activate([
       topConstraint,
       stackView.rightAnchor.constraint(equalTo: view.rightAnchor),
-      stackView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+      stackView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
       stackView.leftAnchor.constraint(equalTo: view.leftAnchor)
     ])
 
@@ -141,6 +144,8 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
       layoutConstraints.append(bookTitleLabel.topAnchor.constraint(equalTo: navigator.view.topAnchor, constant: TPPBaseReaderViewController.overlayLabelMargin))
     }
     NSLayoutConstraint.activate(layoutConstraints)
+    
+    updateViewsForVoiceOver(isRunning: UIAccessibility.isVoiceOverRunning)
   }
 
   override func willMove(toParent parent: UIViewController?) {
@@ -168,12 +173,18 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
                                       style: .plain,
                                       target: self,
                                       action: #selector(toggleBookmark))
-
     let tocButton = UIBarButtonItem(image: UIImage(named: "TOC"),
                                     style: .plain,
                                     target: self,
                                     action: #selector(presentPositionsVC))
+    tocButton.accessibilityLabel = NSLocalizedString("Table of contents and bookmarks", comment: "Table of contents and bookmarks")
+    
     buttons.append(bookmarkBtn)
+    
+    
+    if !isShowingSample {
+      buttons.append(bookmarkBtn)
+    }
     buttons.append(tocButton)
     tocBarButton = tocButton
     bookmarkBarButton = bookmarkBtn
@@ -315,11 +326,14 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     }
 
     let toolbar = UIToolbar(frame: .zero)
+    let backButton = makeItem(.rewind, label: NSLocalizedString("Previous Chapter", comment: "Accessibility label to go backward in the publication"), action: #selector(goBackward))
+    let forwardButton = makeItem(.fastForward, label: NSLocalizedString("Next Chapter", comment: "Accessibility label to go forward in the publication"), action: #selector(goForward))
+        
     toolbar.items = [
       makeItem(.flexibleSpace),
-      makeItem(.rewind, label: NSLocalizedString("Previous Chapter", comment: "Accessibility label to go backward in the publication"), action: #selector(goBackward)),
+      forwardButton,
       makeItem(.flexibleSpace),
-      makeItem(.fastForward, label: NSLocalizedString("Next Chapter", comment: "Accessibility label to go forward in the publication"), action: #selector(goForward)),
+      backButton,
       makeItem(.flexibleSpace),
     ]
     toolbar.isHidden = !UIAccessibility.isVoiceOverRunning
@@ -329,15 +343,21 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
 
   private var isVoiceOverRunning = UIAccessibility.isVoiceOverRunning
 
-  @objc private func voiceOverStatusDidChange() {
+  @objc func voiceOverStatusDidChange() {
     let isRunning = UIAccessibility.isVoiceOverRunning
     // Avoids excessive settings refresh when the status didn't change.
     guard isVoiceOverRunning != isRunning else {
       return
     }
+    updateViewsForVoiceOver(isRunning: isRunning)
+  }
+  
+  func updateViewsForVoiceOver(isRunning: Bool) {
     isVoiceOverRunning = isRunning
     accessibilityTopMargin.isActive = isRunning
     accessibilityToolbar.isHidden = !isRunning
+    positionLabel.isHidden = isRunning
+    bookTitleLabel.isHidden = isRunning
     updateNavigationBar()
   }
 

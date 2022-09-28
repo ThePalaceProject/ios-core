@@ -1,4 +1,4 @@
-#import "TPPBook.h"
+
 #import "TPPBookCellDelegate.h"
 #import "TPPBookDownloadFailedCell.h"
 #import "TPPBookDownloadingCell.h"
@@ -7,7 +7,6 @@
 #import "TPPConfiguration.h"
 #import "TPPMyBooksDownloadCenter.h"
 #import "TPPOPDS.h"
-#import "Palace-Swift.h"
 
 static NSString *const reuseIdentifierDownloading = @"Downloading";
 static NSString *const reuseIdentifierDownloadFailed = @"DownloadFailed";

@@ -19,6 +19,7 @@
 @property (nonatomic, readonly) TPPOPDSLink *annotations;
 @property (nonatomic, readonly) TPPOPDSLink *alternate;
 @property (nonatomic, readonly) TPPOPDSLink *relatedWorks;
+@property (nonatomic, readonly) TPPOPDSAcquisition *previewLink;
 @property (nonatomic, readonly) NSURL *analytics;
 @property (nonatomic, readonly) NSString *providerName; // nilable
 @property (nonatomic, readonly) NSDate *published; // nilable

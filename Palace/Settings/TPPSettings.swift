@@ -33,6 +33,7 @@ import Foundation
   static private let versionKey = "NYPLSettingsVersionKey"
   static private let customLibraryRegistryKey = "TPPSettingsCustomLibraryRegistryKey"
   static private let useLegacyPDFReader = "TPPSettingsLegacyPDFReader"
+  static private let enterLCPPassphraseManually = "TPPSettingsEnterLCPPassphraseManually"
   
   // Set to nil (the default) if no custom feed should be used.
   var customMainFeedURL: URL? {
@@ -142,6 +143,16 @@ import Foundation
     }
     set(b) {
       UserDefaults.standard.set(b, forKey: TPPSettings.useLegacyPDFReader)
+      UserDefaults.standard.synchronize()
+    }
+  }
+
+  var enterLCPPassphraseManually: Bool {
+    get {
+      return UserDefaults.standard.bool(forKey: TPPSettings.enterLCPPassphraseManually)
+    }
+    set(b) {
+      UserDefaults.standard.set(b, forKey: TPPSettings.enterLCPPassphraseManually)
       UserDefaults.standard.synchronize()
     }
   }

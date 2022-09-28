@@ -16,7 +16,6 @@
 #import "NSDate+NYPLDateAdditions.h"
 #import "TPPAccountSignInViewController.h"
 #import "TPPAppDelegate.h"
-#import "TPPBook.h"
 #import "TPPBookDetailView.h"
 #import "TPPBookDetailViewController.h"
 #import "TPPBookLocation.h"

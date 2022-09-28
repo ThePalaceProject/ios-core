@@ -1,4 +1,4 @@
-#import "TPPBook.h"
+
 #import "TPPBookDetailView.h"
 #import "TPPBookRegistry.h"
 #import "TPPCatalogFeedViewController.h"
@@ -10,7 +10,6 @@
 #import "TPPSession.h"
 #import "TPPProblemReportViewController.h"
 #import "NSURLRequest+NYPLURLRequestAdditions.h"
-#import "Palace-Swift.h"
 #import <PureLayout/PureLayout.h>
 
 #import "TPPBookDetailViewController.h"

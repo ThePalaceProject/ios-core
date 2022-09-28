@@ -41,6 +41,21 @@ public extension Date {
     return Date.rfc1123DateFormatter.string(from: self)
   }
   
+  /// A static date formatter to get date strings formatted per RFC 339
+  /// without incurring in the high cost of creating a new DateFormatter
+  /// each time, which would be ~300% more expensive.
+  static let rfc339StringFormatter: DateFormatter = {
+    let df = DateFormatter()
+    df.locale = Locale(identifier: "en_US_POSIX")
+    df.timeZone = TimeZone(identifier: "GMT")
+    df.dateFormat = "yyyy'-'MM'-'dd'T'HH':'mm':'ss'Z'"
+    return df
+  }()
+  
+  var rfc339String: String {
+    return Date.rfc339StringFormatter.string(from: self)
+  }
+  
   /// A date string with the choice of short or long suffix
   /// Example: 5 years / 5 y / 6 months / 1 day
   func timeUntilString(suffixType: NYPLDateSuffixType) -> String {

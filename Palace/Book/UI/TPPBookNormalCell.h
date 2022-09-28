@@ -1,8 +1,10 @@
 #import "TPPBookCell.h"
 #import "TPPBookButtonsState.h"
+#import "Palace-Swift.h"
 
-@class TPPBook;
 @class TPPBookNormalCell;
+@class TPPBook;
+
 @protocol TPPBookButtonsDelegate;
 
 @interface TPPBookNormalCell : TPPBookCell
