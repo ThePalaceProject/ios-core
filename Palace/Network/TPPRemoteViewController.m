@@ -224,6 +224,8 @@
           }];
         } else {
           [self load];
+          // Notify that all the accounts are re-authenticated
+          [[NSNotificationCenter defaultCenter] postNotificationName:NSNotification.TPPAccountSetDidLoad object:nil];
         }
       } else {
         [TPPErrorLogger logErrorWithCode:TPPErrorCodeNoURL
