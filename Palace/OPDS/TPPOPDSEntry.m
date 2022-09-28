@@ -22,6 +22,7 @@
 @property (nonatomic) TPPOPDSLink *annotations;
 @property (nonatomic) TPPOPDSLink *alternate;
 @property (nonatomic) TPPOPDSLink *relatedWorks;
+@property (nonatomic) TPPOPDSAcquisition *previewLink;
 @property (nonatomic) NSURL *analytics;
 @property (nonatomic) NSString *providerName;
 @property (nonatomic) NSDate *published;
@@ -124,11 +125,17 @@
           [mutableAcquisitions addObject:acquisition];
           continue;
         }
+      } else if ([[linkXML attributes][@"rel"] containsString: TPPOPDSRelationPreview]) {
+        // Try parsing the link as a preview
+          TPPOPDSAcquisition *const acquisition = [TPPOPDSAcquisition acquisitionWithLinkXML:linkXML];
+          if (acquisition) {
+            self.previewLink = acquisition;
+          }
+        }
 
         // It may sometimes bet the case that `!acquisition` if the acquisition used a
         // non-standard relation. As such, we do not log an error here and let things
         // continue so the link can be added to `self.links`.
-      }
 
       TPPOPDSLink *const link = [[TPPOPDSLink alloc] initWithXML:linkXML];
       if(!link) {

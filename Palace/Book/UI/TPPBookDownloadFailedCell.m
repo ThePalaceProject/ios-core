@@ -1,4 +1,4 @@
-#import "TPPBook.h"
+
 #import "TPPBookDownloadFailedCell.h"
 #import "TPPConfiguration.h"
 #import "UIView+TPPViewAdditions.h"

@@ -30,8 +30,8 @@ import ZIPFoundation
   /// - Parameter book: pdf
   /// - Returns: `true` if the book is an LCP DRM protected PDF, `false` otherwise
   @objc static func canOpenBook(_ book: TPPBook) -> Bool {
-    guard let defualtAcquisition = book.defaultAcquisition() else { return false }
-    return book.defaultBookContentType() == .PDF && defualtAcquisition.type == expectedAcquisitionType
+    guard let defualtAcquisition = book.defaultAcquisition else { return false }
+    return book.defaultBookContentType == .pdf && defualtAcquisition.type == expectedAcquisitionType
   }
   
   private let pdfUrl: URL

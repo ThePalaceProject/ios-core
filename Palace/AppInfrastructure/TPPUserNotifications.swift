@@ -41,13 +41,13 @@ let DefaultActionIdentifier = "UNNotificationDefaultActionIdentifier"
   {
     var wasOnHold = false
     var isNowReady = false
-    let oldAvail = cachedRecord.book.defaultAcquisition()?.availability
+    let oldAvail = cachedRecord.book.defaultAcquisition?.availability
     oldAvail?.matchUnavailable(nil,
                                limited: nil,
                                unlimited: nil,
                                reserved: { _ in wasOnHold = true },
                                ready: nil)
-    let newAvail = newBook.defaultAcquisition()?.availability
+    let newAvail = newBook.defaultAcquisition?.availability
     newAvail?.matchUnavailable(nil,
                                limited: nil,
                                unlimited: nil,
@@ -63,7 +63,7 @@ let DefaultActionIdentifier = "UNNotificationDefaultActionIdentifier"
   {
     var readyBooks = 0
     for book in heldBooks {
-      book.defaultAcquisition()?.availability.matchUnavailable(nil,
+      book.defaultAcquisition?.availability.matchUnavailable(nil,
                                                                limited: nil,
                                                                unlimited: nil,
                                                                reserved: nil,

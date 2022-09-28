@@ -1,7 +1,8 @@
 #import "TPPBookCell.h"
+#import "Palace-Swift.h"
 
-@class TPPBook;
 @class TPPBookDownloadingCell;
+@class TPPBook;
 
 @protocol TPPBookDownloadingCellDelegate
 

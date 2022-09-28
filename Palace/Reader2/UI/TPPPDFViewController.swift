@@ -2,7 +2,7 @@
 //  PDFModule.swift
 //  Palace
 //
-//  Created by Maurice Work on 3/24/22.
+//  Created by Maurice Carrier on 3/24/22.
 //  Copyright © 2022 The Palace Project. All rights reserved.
 //
 

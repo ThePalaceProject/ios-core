@@ -1,5 +1,5 @@
 #import "TPPAsync.h"
-#import "TPPBook.h"
+
 #import "TPPBookRegistry.h"
 #import "TPPCatalogLane.h"
 #import "TPPNull.h"
@@ -100,7 +100,7 @@
     
     NSString *const groupTitle = entry.groupAttributes.title;
     
-    TPPBook *book = [TPPBook bookWithEntry:entry];
+    TPPBook *book = [[TPPBook alloc] initWithEntry:entry];
     if(!book) {
       TPPLOG_F(@"Failed to create book from entry: %@",entry.title);
       continue;

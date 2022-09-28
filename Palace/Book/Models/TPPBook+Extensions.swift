@@ -27,11 +27,30 @@ import Foundation
   
   /// Readable book format based on its content type
   var format: String {
-    switch defaultBookContentType() {
-    case .EPUB: return NSLocalizedString("ePub", comment: "ePub")
-    case .PDF: return NSLocalizedString("PDF", comment: "PDF")
+    switch defaultBookContentType {
+    case .epub: return NSLocalizedString("ePub", comment: "ePub")
+    case .pdf: return NSLocalizedString("PDF", comment: "PDF")
     case .audiobook: return NSLocalizedString("Audiobook", comment: "Audiobook")
     case .unsupported: return NSLocalizedString("Unsupported format", comment: "Unsupported format")
+    }
+  }
+   
+  var hasSample: Bool { sample != nil }
+  var hasAudiobookSample: Bool { hasSample && defaultBookContentType == .audiobook }
+}
+
+extension TPPBook {
+  var sample: Sample? {
+    guard let acquisition = self.sampleAcquisition else { return nil }
+    switch self.defaultBookContentType {
+    case .epub, .pdf:
+        guard let sampleType = SampleType(rawValue: acquisition.type) else { return nil }
+        return EpubSample(url: acquisition.hrefURL, type: sampleType)
+    case .audiobook:
+        guard let sampleType = SampleType(rawValue: acquisition.type) else { return nil }
+        return AudiobookSample(url: acquisition.hrefURL, type: sampleType)
+    default:
+      return nil
     }
   }
 }
