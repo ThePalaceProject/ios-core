@@ -138,7 +138,6 @@
     [self load];
   }
 
-  [[TPPBookRegistry sharedRegistry] justLoad];
   UIApplicationState applicationState = [[UIApplication sharedApplication] applicationState];
   if (applicationState == UIApplicationStateActive) {
     [self syncBookRegistryForNewFeed];
