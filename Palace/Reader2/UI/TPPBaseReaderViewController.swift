@@ -38,6 +38,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   private(set) var stackView: UIStackView!
   private lazy var positionLabel = UILabel()
   private lazy var bookTitleLabel = UILabel()
+  private var isShowingSample: Bool = false
 
   // MARK: - Lifecycle
 
@@ -49,10 +50,12 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   ///   - drm: Information about the DRM associated with the publication.
   init(navigator: UIViewController & Navigator,
        publication: Publication,
-       book: TPPBook) {
+       book: TPPBook,
+       forSample: Bool = false) {
 
     self.navigator = navigator
     self.publication = publication
+    self.isShowingSample = forSample
 
     lastReadPositionPoster = TPPLastReadPositionPoster(
       book: book,
@@ -177,6 +180,11 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     tocButton.accessibilityLabel = NSLocalizedString("Table of contents and bookmarks", comment: "Table of contents and bookmarks")
     
     buttons.append(bookmarkBtn)
+    
+    
+    if !isShowingSample {
+      buttons.append(bookmarkBtn)
+    }
     buttons.append(tocButton)
     tocBarButton = tocButton
     bookmarkBarButton = bookmarkBtn
@@ -203,7 +211,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
 
   func toggleNavigationBar() {
     navigationBarHidden = !navigationBarHidden
-    bookTitleLabel.isHidden = !navigationBarHidden
+    bookTitleLabel.isHidden = UIAccessibility.isVoiceOverRunning || !navigationBarHidden
   }
 
   func updateNavigationBar(animated: Bool = true) {

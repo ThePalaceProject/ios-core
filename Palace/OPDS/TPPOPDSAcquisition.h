@@ -12,6 +12,7 @@ typedef NS_ENUM(NSInteger, TPPOPDSAcquisitionRelation) {
   TPPOPDSAcquisitionRelationBorrow,
   TPPOPDSAcquisitionRelationBuy,
   TPPOPDSAcquisitionRelationSample,
+  TPPOPDSAcquisitionRelationPreview,
   TPPOPDSAcquisitionRelationSubscribe
 };
 
@@ -22,7 +23,8 @@ typedef NS_OPTIONS(NSUInteger, TPPOPDSAcquisitionRelationSet) {
   TPPOPDSAcquisitionRelationSetBorrow     = 1 << 2,
   TPPOPDSAcquisitionRelationSetBuy        = 1 << 3,
   TPPOPDSAcquisitionRelationSetSample     = 1 << 4,
-  TPPOPDSAcquisitionRelationSetSubscribe  = 1 << 5
+  TPPOPDSAcquisitionRelationSetPreview    = 1 << 5,
+  TPPOPDSAcquisitionRelationSetSubscribe  = 1 << 6
 };
 
 /// A set containing all possible relations.

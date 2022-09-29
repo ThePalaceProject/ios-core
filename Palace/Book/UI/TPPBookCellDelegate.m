@@ -7,7 +7,6 @@
 @import PDFKit;
 
 #import "TPPAccountSignInViewController.h"
-#import "TPPBook.h"
 #import "TPPBookDownloadFailedCell.h"
 #import "TPPBookDownloadingCell.h"
 #import "TPPBookLocation.h"
@@ -118,10 +117,10 @@
   [TPPCirculationAnalytics postEvent:@"open_book" withBook:book];
 
   switch (book.defaultBookContentType) {
-    case TPPBookContentTypeEPUB:
+    case TPPBookContentTypeEpub:
       [self openEPUB:book];
       break;
-    case TPPBookContentTypePDF:
+    case TPPBookContentTypePdf:
       [self openPDF:book];
       break;
     case TPPBookContentTypeAudiobook:

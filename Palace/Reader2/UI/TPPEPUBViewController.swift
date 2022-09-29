@@ -20,7 +20,8 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
   init(publication: Publication,
        book: TPPBook,
        initialLocation: Locator?,
-       resourcesServer: ResourcesServer) {
+       resourcesServer: ResourcesServer,
+       forSample: Bool = false) {
 
     let safeAreaInsets = UIApplication.shared.keyWindow?.safeAreaInsets ?? UIEdgeInsets()
     let overlayLabelInset = TPPBaseReaderViewController.overlayLabelMargin * 2 // Vertical margin for labels
@@ -54,7 +55,7 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     // to re-set that to reflect our ad-hoc configuration.
     publication.userProperties = navigator.userSettings.userProperties
 
-    super.init(navigator: navigator, publication: publication, book: book)
+    super.init(navigator: navigator, publication: publication, book: book, forSample: forSample)
 
     navigator.delegate = self
   }

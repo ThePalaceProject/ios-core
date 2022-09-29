@@ -1,4 +1,4 @@
-#import "TPPBook.h"
+
 #import "TPPBookCell.h"
 #import "TPPBookDetailViewController.h"
 #import "TPPBookRegistry.h"
@@ -96,7 +96,14 @@ typedef NS_ENUM(NSInteger, FacetSort) {
    addObserver:self
    selector:@selector(syncBegan)
    name:NSNotification.TPPSyncBegan object:nil];
-  
+
+  // This notification indicates all the accounts have re-authenticated
+  // My Books are in the book registry after that
+  [[NSNotificationCenter defaultCenter]
+   addObserver:self
+   selector:@selector(accountSetDidLoad)
+   name:NSNotification.TPPAccountSetDidLoad object:nil];
+
   return self;
 }
 
@@ -335,7 +342,8 @@ OK:
 
 #pragma mark -
 
-- (void)didPullToRefresh
+/// Reloads book registry data
+- (void)reloadData
 {
   if ([TPPUserAccount sharedAccount].needsAuth) {
     if([[TPPUserAccount sharedAccount] hasCredentials]) {
@@ -349,6 +357,11 @@ OK:
     [[TPPBookRegistry sharedRegistry] justLoad];
     [[NSNotificationCenter defaultCenter] postNotificationName:NSNotification.TPPSyncEnded object:nil];
   }
+}
+
+- (void)didPullToRefresh
+{
+  [self reloadData];
 }
 
 - (void)bookRegistryDidChange
@@ -377,6 +390,11 @@ OK:
 - (void)syncEnded
 {
   self.navigationItem.leftBarButtonItem.enabled = YES;
+}
+
+- (void)accountSetDidLoad
+{
+  [self reloadData];
 }
 
 - (void)viewWillTransitionToSize:(CGSize)__unused size withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)__unused coordinator

@@ -1,4 +1,5 @@
 #import "NYPLTenPrintCoverView.h"
+#import "Palace-Swift.h"
 
 @interface NYPLTenPrintCoverView (NYPLImageAdditions)
 

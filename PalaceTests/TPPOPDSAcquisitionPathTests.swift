@@ -42,9 +42,9 @@ class TPPOPDSAcquisitionPathTests: XCTestCase {
     let entryWithSample = TPPOPDSEntry(xml: TPPXML(data: acquisitionWithSampleData))!
     let bookWithSample = TPPBook(entry: entryWithSample)
     XCTAssertNotNil(bookWithSample)
-    XCTAssert(bookWithSample?.defaultAcquisition()?.relation != TPPOPDSAcquisitionRelation.sample)
-    XCTAssertNotNil(bookWithSample?.sampleAcquisition())
-    XCTAssert(bookWithSample?.sampleAcquisition()?.relation == TPPOPDSAcquisitionRelation.sample)
+    XCTAssert(bookWithSample?.defaultAcquisition?.relation != TPPOPDSAcquisitionRelation.sample)
+    XCTAssertNotNil(bookWithSample?.sampleAcquisition)
+    XCTAssert(bookWithSample?.sampleAcquisition?.relation == TPPOPDSAcquisitionRelation.sample)
     
   }
 }

@@ -5,7 +5,7 @@
 
 #import "NSString+TPPStringAdditions.h"
 #import "TPPAccountSignInViewController.h"
-#import "TPPBook.h"
+
 #import "TPPBookCoverRegistry.h"
 #import "TPPBookRegistry.h"
 #import "TPPOPDS.h"
@@ -14,7 +14,6 @@
 #import "TPPMyBooksDownloadInfo.h"
 
 #import "TPPMyBooksSimplifiedBearerToken.h"
-#import "Palace-Swift.h"
 
 #if defined(FEATURE_DRM_CONNECTOR)
 #import <ADEPT/ADEPT.h>
@@ -523,7 +522,7 @@ didCompleteWithError:(NSError *)error
   NSURL *bookURL = [self fileURLForBookIndentifier:identifier account:account];
   
   switch (book.defaultBookContentType) {
-    case TPPBookContentTypeEPUB: {
+    case TPPBookContentTypeEpub: {
       NSError *error = nil;
       if(![[NSFileManager defaultManager] removeItemAtURL:bookURL error:&error]){
         TPPLOG_F(@"Failed to remove local content for download: %@", error.localizedDescription);
@@ -534,7 +533,7 @@ didCompleteWithError:(NSError *)error
       [self deleteLocalContentForAudiobook:book atURL:bookURL];
       break;
     }
-    case TPPBookContentTypePDF: {
+    case TPPBookContentTypePdf: {
       NSError *error = nil;
       if (![[NSFileManager defaultManager] removeItemAtURL:bookURL error:&error]) {
         TPPLOG_F(@"Failed to remove local content for download: %@", error.localizedDescription);
@@ -644,7 +643,7 @@ didCompleteWithError:(NSError *)error
         if(downloaded) {
           [self deleteLocalContentForBookIdentifier:identifier];
         }
-        TPPBook *returnedBook = [TPPBook bookWithEntry:entry];
+        TPPBook *returnedBook = [[TPPBook alloc] initWithEntry:entry];
         if(returnedBook) {
           [[TPPBookRegistry sharedRegistry] updateAndRemoveBook:returnedBook];
         } else {
@@ -853,7 +852,7 @@ didCompleteWithError:(NSError *)error
       return;
     }
 
-    TPPBook *book = [TPPBook bookWithEntry:feed.entries[0]];
+    TPPBook *book = [[TPPBook alloc] initWithEntry:feed.entries[0]];
 
     if(!book) {
       [[NSOperationQueue mainQueue] addOperationWithBlock:^{
@@ -1515,7 +1514,7 @@ didFinishDownload:(BOOL)didFinishDownload
       [[TPPBookRegistry sharedRegistry] setFulfillmentId:license.identifier forIdentifier:book.identifier];
       [[TPPBookRegistry sharedRegistry] save];
       // For pdfs, try to unarchive the file to spped up the access
-      if (book.defaultBookContentType == TPPBookContentTypePDF) {
+      if (book.defaultBookContentType == TPPBookContentTypePdf) {
         NSURL *bookURL = [self fileURLForBookIndentifier:book.identifier];
         [[TPPBookRegistry sharedRegistry] setState:TPPBookStateDownloading forIdentifier:book.identifier];
         [[[LCPPDFs alloc] initWithUrl:bookURL] extractWithUrl:bookURL completion:^(NSURL *url, NSError *error) {

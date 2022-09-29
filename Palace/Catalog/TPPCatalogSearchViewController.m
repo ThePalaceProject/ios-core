@@ -2,7 +2,7 @@
 // After it is complete, the common portions must be factored out.
 
 #import "NSString+TPPStringAdditions.h"
-#import "TPPBook.h"
+
 #import "TPPBookCell.h"
 #import "TPPBookDetailViewController.h"
 #import "TPPCatalogUngroupedFeed.h"

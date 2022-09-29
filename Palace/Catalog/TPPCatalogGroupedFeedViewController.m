@@ -1,6 +1,6 @@
 #import "TPPBookDetailViewController.h"
 #import "TPPBookRegistry.h"
-#import "TPPBook.h"
+
 #import "TPPCatalogFeedViewController.h"
 #import "TPPCatalogGroupedFeed.h"
 #import "TPPCatalogLane.h"

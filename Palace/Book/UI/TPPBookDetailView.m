@@ -1,5 +1,5 @@
 #import "TPPAttributedString.h"
-#import "TPPBook.h"
+
 #import "TPPBookCellDelegate.h"
 #import "TPPBookButtonsView.h"
 #import "TPPBookDetailDownloadFailedView.h"
@@ -21,12 +21,14 @@
 
 #import <PureLayout/PureLayout.h>
 
-@interface TPPBookDetailView () <TPPBookDownloadCancellationDelegate, BookDetailTableViewDelegate>
+@interface TPPBookDetailView () <TPPBookDownloadCancellationDelegate, TPPBookButtonsSampleDelegate, BookDetailTableViewDelegate>
 
 @property (nonatomic, weak) id<TPPBookDetailViewDelegate, TPPCatalogLaneCellDelegate> detailViewDelegate;
 
 @property (nonatomic) BOOL didSetupConstraints;
-@property (nonatomic) UIView *contentView;
+@property (nonatomic) UIScrollView *scrollView;
+@property (nonatomic) UIView *audiobookSampleToolbar;
+@property (nonatomic) UIView *containerView;
 @property (nonatomic) UIVisualEffectView *visualEffectView;
 
 @property (nonatomic) UILabel *titleLabel;
@@ -73,6 +75,8 @@ static CGFloat const SubtitleBaselineOffset = 10;
 static CGFloat const AuthorBaselineOffset = 12;
 static CGFloat const CoverImageAspectRatio = 0.8;
 static CGFloat const CoverImageMaxWidth = 160.0;
+static CGFloat const TabBarHeight = 80.0;
+static CGFloat const SampleToolbarHeight = 80.0;
 static CGFloat const TitleLabelMinimumWidth = 185.0;
 static CGFloat const NormalViewMinimumHeight = 38.0;
 static CGFloat const VerticalPadding = 10.0;
@@ -95,11 +99,13 @@ static NSString *DetailHTMLTemplate = nil;
   self.book = book;
   self.detailViewDelegate = delegate;
   self.backgroundColor = [TPPConfiguration backgroundColor];
-  self.alwaysBounceVertical = YES;
   self.translatesAutoresizingMaskIntoConstraints = NO;
   
-  self.contentView = [[UIView alloc] init];
-  self.contentView.layoutMargins = UIEdgeInsetsMake(self.layoutMargins.top,
+  self.scrollView = [[UIScrollView alloc] init];
+  self.scrollView.alwaysBounceVertical = YES;
+  
+  self.containerView = [[UIView alloc] init];
+  self.containerView.layoutMargins = UIEdgeInsetsMake(self.layoutMargins.top,
                                                     self.layoutMargins.left+12,
                                                     self.layoutMargins.bottom,
                                                     self.layoutMargins.right+12);
@@ -111,36 +117,43 @@ static NSString *DetailHTMLTemplate = nil;
   [self createDownloadViews];
   [self updateFonts];
   
-  [self addSubview:self.contentView];
-  [self.contentView addSubview:self.blurCoverImageView];
-  [self.contentView addSubview:self.visualEffectView];
-  [self.contentView addSubview:self.coverImageView];
-  [self.contentView addSubview:self.contentTypeBadge];
-  [self.contentView addSubview:self.titleLabel];
-  [self.contentView addSubview:self.subtitleLabel];
-  [self.contentView addSubview:self.audiobookLabel];
-  [self.contentView addSubview:self.authorsLabel];
-  [self.contentView addSubview:self.buttonsView];
-  [self.contentView addSubview:self.summarySectionLabel];
-  [self.contentView addSubview:self.summaryTextView];
-  [self.contentView addSubview:self.readMoreLabel];
+  [self addSubview:self.scrollView];
+  [self.scrollView addSubview:self.containerView];
   
-  [self.contentView addSubview:self.topFootnoteSeparater];
-  [self.contentView addSubview:self.infoSectionLabel];
-  [self.contentView addSubview:self.publishedLabelKey];
-  [self.contentView addSubview:self.publisherLabelKey];
-  [self.contentView addSubview:self.categoriesLabelKey];
-  [self.contentView addSubview:self.distributorLabelKey];
-  [self.contentView addSubview:self.bookFormatLabelKey];
-  [self.contentView addSubview:self.narratorsLabelKey];
-  [self.contentView addSubview:self.publishedLabelValue];
-  [self.contentView addSubview:self.publisherLabelValue];
-  [self.contentView addSubview:self.categoriesLabelValue];
-  [self.contentView addSubview:self.distributorLabelValue];
-  [self.contentView addSubview:self.bookFormatLabelValue];
-  [self.contentView addSubview:self.narratorsLabelValue];
-  [self.contentView addSubview:self.footerTableView];
-  [self.contentView addSubview:self.bottomFootnoteSeparator];
+  if ([self.book hasSample] && [self.book defaultBookContentType] == TPPBookContentTypeAudiobook) {
+    self.audiobookSampleToolbar = [[AudiobookSampleToolbarWrapper createWithBook:self.book] view];
+    [self addSubview: self.audiobookSampleToolbar];
+  }
+
+  [self.containerView addSubview:self.blurCoverImageView];
+  [self.containerView addSubview:self.visualEffectView];
+  [self.containerView addSubview:self.coverImageView];
+  [self.containerView addSubview:self.contentTypeBadge];
+  [self.containerView addSubview:self.titleLabel];
+  [self.containerView addSubview:self.subtitleLabel];
+  [self.containerView addSubview:self.audiobookLabel];
+  [self.containerView addSubview:self.authorsLabel];
+  [self.containerView addSubview:self.buttonsView];
+  [self.containerView addSubview:self.summarySectionLabel];
+  [self.containerView addSubview:self.summaryTextView];
+  [self.containerView addSubview:self.readMoreLabel];
+  
+  [self.containerView addSubview:self.topFootnoteSeparater];
+  [self.containerView addSubview:self.infoSectionLabel];
+  [self.containerView addSubview:self.publishedLabelKey];
+  [self.containerView addSubview:self.publisherLabelKey];
+  [self.containerView addSubview:self.categoriesLabelKey];
+  [self.containerView addSubview:self.distributorLabelKey];
+  [self.containerView addSubview:self.bookFormatLabelKey];
+  [self.containerView addSubview:self.narratorsLabelKey];
+  [self.containerView addSubview:self.publishedLabelValue];
+  [self.containerView addSubview:self.publisherLabelValue];
+  [self.containerView addSubview:self.categoriesLabelValue];
+  [self.containerView addSubview:self.distributorLabelValue];
+  [self.containerView addSubview:self.bookFormatLabelValue];
+  [self.containerView addSubview:self.narratorsLabelValue];
+  [self.containerView addSubview:self.footerTableView];
+  [self.containerView addSubview:self.bottomFootnoteSeparator];
   
   if(UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad &&
      [[TPPRootTabBarController sharedController] traitCollection].horizontalSizeClass != UIUserInterfaceSizeClassCompact) {
@@ -150,7 +163,7 @@ static NSString *DetailHTMLTemplate = nil;
     [self.closeButton setContentHorizontalAlignment:UIControlContentHorizontalAlignmentRight];
     [self.closeButton setContentEdgeInsets:UIEdgeInsetsMake(0, 2, 0, 0)];
     [self.closeButton addTarget:self action:@selector(closeButtonPressed) forControlEvents:UIControlEventTouchDown];
-    [self.contentView addSubview:self.closeButton];
+    [self.containerView addSubview:self.closeButton];
   }
 
   return self;
@@ -170,12 +183,13 @@ static NSString *DetailHTMLTemplate = nil;
 
 - (void)createButtonsView
 {
-  self.buttonsView = [[TPPBookButtonsView alloc] init];
+  self.buttonsView = [[TPPBookButtonsView alloc] initWithSamplesEnabled: YES];
   [self.buttonsView configureForBookDetailsContext];
   self.buttonsView.translatesAutoresizingMaskIntoConstraints = NO;
   self.buttonsView.showReturnButtonIfApplicable = YES;
   self.buttonsView.delegate = [TPPBookCellDelegate sharedDelegate];
   self.buttonsView.downloadingDelegate = self;
+  self.buttonsView.sampleDelegate = self;
   self.buttonsView.book = self.book;
 }
 
@@ -300,9 +314,9 @@ static NSString *DetailHTMLTemplate = nil;
   self.downloadingView = [[TPPBookDetailDownloadingView alloc] init];
   self.downloadingView.hidden = YES;
   
-  [self.contentView addSubview:self.normalView];
-  [self.contentView addSubview:self.downloadFailedView];
-  [self.contentView addSubview:self.downloadingView];
+  [self.containerView addSubview:self.normalView];
+  [self.containerView addSubview:self.downloadFailedView];
+  [self.containerView addSubview:self.downloadingView];
 }
 
 - (void)createFooterLabels
@@ -392,10 +406,26 @@ static NSString *DetailHTMLTemplate = nil;
 
 - (void)setupAutolayoutConstraints
 {
-  [self.contentView autoPinEdgeToSuperviewEdge:ALEdgeTop];
-  [self.contentView autoPinEdgeToSuperviewEdge:ALEdgeBottom];
-  [self.contentView autoPinEdgeToSuperviewEdge:ALEdgeLeft];
-  [self.contentView autoMatchDimension:ALDimensionWidth toDimension:ALDimensionWidth ofView:self];
+  [self.scrollView autoPinEdgeToSuperviewEdge:ALEdgeTop];
+
+  if ([self.book hasAudiobookSample]) {
+    [self.audiobookSampleToolbar autoPinEdgeToSuperviewEdge:ALEdgeLeft];
+    [self.audiobookSampleToolbar autoPinEdgeToSuperviewEdge:ALEdgeRight];
+    [self.audiobookSampleToolbar autoPinEdgeToSuperviewEdge:ALEdgeBottom withInset:TabBarHeight];
+    [self.audiobookSampleToolbar autoSetDimension:ALDimensionHeight toSize:SampleToolbarHeight relation:NSLayoutRelationLessThanOrEqual];
+    [self.audiobookSampleToolbar autoMatchDimension:ALDimensionWidth toDimension:ALDimensionWidth ofView:self];
+
+    [self.scrollView autoPinEdge:ALEdgeBottom toEdge:ALEdgeTop ofView: self.audiobookSampleToolbar];
+  } else {
+    [self.scrollView autoPinEdgeToSuperviewEdge:ALEdgeBottom];
+  }
+
+  [self.scrollView autoPinEdgeToSuperviewEdge:ALEdgeLeft];
+  [self.scrollView autoPinEdgeToSuperviewEdge:ALEdgeRight];
+  [self.scrollView autoMatchDimension:ALDimensionWidth toDimension:ALDimensionWidth ofView:self.containerView];
+  
+  [self.containerView autoPinEdgesToSuperviewEdges];
+  [self.containerView autoMatchDimension:ALDimensionWidth toDimension:ALDimensionWidth ofView:self];
   
   [self.visualEffectView autoPinEdgesToSuperviewEdgesWithInsets:UIEdgeInsetsZero excludingEdge:ALEdgeBottom];
   [self.visualEffectView autoPinEdge:ALEdgeBottom toEdge:ALEdgeTop ofView:self.normalView];
@@ -588,6 +618,33 @@ static NSString *DetailHTMLTemplate = nil;
   [self.detailViewDelegate didSelectCancelDownloadFailedForBookDetailView:self];
 }
 
+#pragma mark TPPBookSampleDelegate
+
+NSString *PlaySampleNotification = @"ToggleSampleNotification";
+
+- (void)didSelectPlaySample:(TPPBook *)book {
+  if ([self.book defaultBookContentType] == TPPBookContentTypeAudiobook) {
+    [[NSNotificationCenter defaultCenter] postNotificationName:PlaySampleNotification object:self];
+  } else {
+    [EpubSampleFactory createSampleWithBook:self.book completion:^(EpubLocationSampleURL *sampleURL, NSError *error) {
+      if (error) {
+         TPPLOG_F(@"Attributed string rendering error for %@ book description: %@",
+                  [self.book loggableShortString], error);
+       } else if ([sampleURL isKindOfClass:[EpubSampleWebURL class]]) {
+         [self presentWebView:sampleURL.url];
+       } else {
+         [TPPRootTabBarController.sharedController presentSample:self.book url:sampleURL.url];
+       }
+    }];
+  }
+}
+  
+- (void)presentWebView:(NSURL *)url {
+  BundledHTMLViewController *webController = [[BundledHTMLViewController alloc] initWithFileURL:url title:AccountsManager.shared.currentAccount.name];
+  webController.hidesBottomBarWhenPushed = true;
+  [TPPRootTabBarController.sharedController pushViewController:webController animated:YES];
+}
+
 #pragma mark -
 
 - (void)setState:(TPPBookState)state
@@ -748,4 +805,5 @@ static NSString *DetailHTMLTemplate = nil;
   [self.detailViewDelegate didSelectViewIssuesForBook:self.book sender:self];
 }
 
+- (void)stateChangedWithIsPlaying:(BOOL)isPlaying {}
 @end

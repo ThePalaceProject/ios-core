@@ -1,6 +1,5 @@
 // This class is intended for internal use by TPPBookRegistry only.
-
-@class TPPBook;
+#import "Palace-Swift.h"
 
 @interface TPPBookCoverRegistry : NSObject
 
