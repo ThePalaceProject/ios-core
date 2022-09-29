@@ -211,7 +211,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
 
   func toggleNavigationBar() {
     navigationBarHidden = !navigationBarHidden
-    bookTitleLabel.isHidden = !navigationBarHidden
+    bookTitleLabel.isHidden = UIAccessibility.isVoiceOverRunning || !navigationBarHidden
   }
 
   func updateNavigationBar(animated: Bool = true) {
