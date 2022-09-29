@@ -1492,6 +1492,7 @@
 		E523124A285C3828007D1DB5 /* TPPBookRegistry+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPBookRegistry+Extensions.swift"; sourceTree = "<group>"; };
 		E523124C28641505007D1DB5 /* LoadingViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoadingViewController.swift; sourceTree = "<group>"; };
 		E52E3BBB28C0EF410073DC4D /* TPPReaderAdvancedSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPReaderAdvancedSettings.swift; sourceTree = "<group>"; };
+		E54552E528E4E9DD0050DF5C /* TransifexCredentials.swift.gyb */ = {isa = PBXFileReference; lastKnownFileType = text; path = TransifexCredentials.swift.gyb; sourceTree = "<group>"; };
 		E54DD4C6275C60E70013C200 /* UIViewControllerWrapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UIViewControllerWrapper.swift; sourceTree = "<group>"; };
 		E54DD4CF275C66F30013C200 /* DisplayStrings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisplayStrings.swift; sourceTree = "<group>"; };
 		E54DD4D4275C7C940013C200 /* View+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "View+Extensions.swift"; sourceTree = "<group>"; };
@@ -2809,6 +2810,7 @@
 				2D6256901D41582A0080A81F /* software-licenses.html */,
 				110F853C19D5FA7300052DF7 /* DetailSummaryTemplate.html */,
 				738EF2D12405E3D900F388FB /* .gitignore */,
+				E54552E528E4E9DD0050DF5C /* TransifexCredentials.swift.gyb */,
 				73DA43A12404B4A900985482 /* Cartfile */,
 				73DA43A32404B92E00985482 /* Cartfile.resolved */,
 				735394012508161A0043C800 /* README.md */,
@@ -3055,6 +3057,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 73EB0B7225821DF4006BC997 /* Build configuration list for PBXNativeTarget "Palace-noDRM" */;
 			buildPhases = (
+				E54552D828E4E7A60050DF5C /* Run GYB Scripts */,
 				73EB0A6425821DF4006BC997 /* Sources */,
 				73EB0B2C25821DF4006BC997 /* Frameworks */,
 				73EB0B5825821DF4006BC997 /* Resources */,
@@ -3414,6 +3417,24 @@
 			runOnlyForDeploymentPostprocessing = 1;
 			shellPath = /bin/sh;
 			shellScript = "\"${PROJECT_DIR}/scripts/firebase/run\"\n";
+		};
+		E54552D828E4E7A60050DF5C /* Run GYB Scripts */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Run GYB Scripts";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "find . -name '*.gyb' |                                              \n    while read file; do                                             \n        ./path/to/gyb --line-directive '' -o \"${file%.gyb}\" \"$file\";\n    done\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
