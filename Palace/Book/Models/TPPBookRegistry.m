@@ -351,7 +351,9 @@ static NSString *const RecordsKey = @"records";
          } else {
            TPPLOG(@"A Licensor Token was not received or parsed from the OPDS feed.");
          }
-         
+
+         // load local copy before removing identifiers
+         [self justLoad];
          NSMutableSet *identifiersToRemove = [NSMutableSet setWithArray:self.identifiersToRecords.allKeys];
          for(TPPOPDSEntry *const entry in feed.entries) {
            TPPBook const *book = [[TPPBook alloc] initWithEntry:entry];
