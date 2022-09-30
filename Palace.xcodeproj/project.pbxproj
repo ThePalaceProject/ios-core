@@ -687,14 +687,16 @@
 		E523124B285C3828007D1DB5 /* TPPBookRegistry+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E523124A285C3828007D1DB5 /* TPPBookRegistry+Extensions.swift */; };
 		E523124D28641505007D1DB5 /* LoadingViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E523124C28641505007D1DB5 /* LoadingViewController.swift */; };
 		E52E3BBC28C0EF410073DC4D /* TPPReaderAdvancedSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = E52E3BBB28C0EF410073DC4D /* TPPReaderAdvancedSettings.swift */; };
-		E549949F28E62AEC00EA0D9B /* TransifexCredentials.swift.gyb in Resources */ = {isa = PBXBuildFile; fileRef = E54552E528E4E9DD0050DF5C /* TransifexCredentials.swift.gyb */; };
-		E54994A828E62AF000EA0D9B /* TransifexCredentials.swift.gyb in Resources */ = {isa = PBXBuildFile; fileRef = E54552E528E4E9DD0050DF5C /* TransifexCredentials.swift.gyb */; };
 		E52E3C0528C19BAD0073DC4D /* EpubSample.swift in Sources */ = {isa = PBXBuildFile; fileRef = E52E3BFF28C19BAD0073DC4D /* EpubSample.swift */; };
 		E52E3C0828C19BAD0073DC4D /* AudiobookSamplePlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E52E3C0228C19BAD0073DC4D /* AudiobookSamplePlayer.swift */; };
 		E52E3C0928C19BAD0073DC4D /* SamplePlayerError.swift in Sources */ = {isa = PBXBuildFile; fileRef = E52E3C0328C19BAD0073DC4D /* SamplePlayerError.swift */; };
 		E52E3C0A28C19C240073DC4D /* EpubSampleFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = E52E3C0128C19BAD0073DC4D /* EpubSampleFactory.swift */; };
 		E52E3C0D28C19F480073DC4D /* TPPBook+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E523116928504B85007D1DB5 /* TPPBook+Extensions.swift */; };
 		E52E3C0E28C19F490073DC4D /* TPPBook+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E523116928504B85007D1DB5 /* TPPBook+Extensions.swift */; };
+		E54994F628E76C0D00EA0D9B /* Obfuscator.swift in Sources */ = {isa = PBXBuildFile; fileRef = E54994F528E76C0D00EA0D9B /* Obfuscator.swift */; };
+		E54994F728E76C6300EA0D9B /* Obfuscator.swift in Sources */ = {isa = PBXBuildFile; fileRef = E54994F528E76C0D00EA0D9B /* Obfuscator.swift */; };
+		E54994FB28E76CA200EA0D9B /* ObfuscatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E54994FA28E76CA200EA0D9B /* ObfuscatorTests.swift */; };
+		E54994FE28E7752B00EA0D9B /* TransifexManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E54994FD28E7752B00EA0D9B /* TransifexManager.swift */; };
 		E54DD4D0275C66F30013C200 /* DisplayStrings.swift in Sources */ = {isa = PBXBuildFile; fileRef = E54DD4CF275C66F30013C200 /* DisplayStrings.swift */; };
 		E54DD4D5275C7C940013C200 /* View+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E54DD4D4275C7C940013C200 /* View+Extensions.swift */; };
 		E54DD4E6275C8EAA0013C200 /* Font+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E54DD4E5275C8EAA0013C200 /* Font+Extensions.swift */; };
@@ -1502,11 +1504,13 @@
 		E523124A285C3828007D1DB5 /* TPPBookRegistry+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPBookRegistry+Extensions.swift"; sourceTree = "<group>"; };
 		E523124C28641505007D1DB5 /* LoadingViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoadingViewController.swift; sourceTree = "<group>"; };
 		E52E3BBB28C0EF410073DC4D /* TPPReaderAdvancedSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPReaderAdvancedSettings.swift; sourceTree = "<group>"; };
-		E54552E528E4E9DD0050DF5C /* TransifexCredentials.swift.gyb */ = {isa = PBXFileReference; lastKnownFileType = text; path = TransifexCredentials.swift.gyb; sourceTree = "<group>"; };
 		E52E3BFF28C19BAD0073DC4D /* EpubSample.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = EpubSample.swift; sourceTree = "<group>"; };
 		E52E3C0128C19BAD0073DC4D /* EpubSampleFactory.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = EpubSampleFactory.swift; sourceTree = "<group>"; };
 		E52E3C0228C19BAD0073DC4D /* AudiobookSamplePlayer.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AudiobookSamplePlayer.swift; sourceTree = "<group>"; };
 		E52E3C0328C19BAD0073DC4D /* SamplePlayerError.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SamplePlayerError.swift; sourceTree = "<group>"; };
+		E54994F528E76C0D00EA0D9B /* Obfuscator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Obfuscator.swift; sourceTree = "<group>"; };
+		E54994FA28E76CA200EA0D9B /* ObfuscatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ObfuscatorTests.swift; sourceTree = "<group>"; };
+		E54994FD28E7752B00EA0D9B /* TransifexManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransifexManager.swift; sourceTree = "<group>"; };
 		E54DD4C6275C60E70013C200 /* UIViewControllerWrapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UIViewControllerWrapper.swift; sourceTree = "<group>"; };
 		E54DD4CF275C66F30013C200 /* DisplayStrings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisplayStrings.swift; sourceTree = "<group>"; };
 		E54DD4D4275C7C940013C200 /* View+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "View+Extensions.swift"; sourceTree = "<group>"; };
@@ -1989,6 +1993,7 @@
 		7327A88D23EE00FE00954748 /* Utilities */ = {
 			isa = PBXGroup;
 			children = (
+				E54994FC28E7751300EA0D9B /* Localization */,
 				E54DD4D3275C7C6B0013C200 /* SwiftUI */,
 				73B5DFF726055D2900225C12 /* Concurrency */,
 				73B5DFF426055BF700225C12 /* Date-Time */,
@@ -2806,6 +2811,7 @@
 				73DE53332525A83F003E2C56 /* Views */,
 				738CB2092509AD3B00891F31 /* WelcomeScreen */,
 				21045C4E276108ED00D2D407 /* OnboardingScreens */,
+				E54994EC28E76BEA00EA0D9B /* Security */,
 				A823D817192BABA400B55DE2 /* Supporting Files */,
 			);
 			path = Palace;
@@ -2831,7 +2837,6 @@
 				2D6256901D41582A0080A81F /* software-licenses.html */,
 				110F853C19D5FA7300052DF7 /* DetailSummaryTemplate.html */,
 				738EF2D12405E3D900F388FB /* .gitignore */,
-				E54552E528E4E9DD0050DF5C /* TransifexCredentials.swift.gyb */,
 				73DA43A12404B4A900985482 /* Cartfile */,
 				73DA43A32404B92E00985482 /* Cartfile.resolved */,
 				735394012508161A0043C800 /* README.md */,
@@ -2871,6 +2876,7 @@
 				17ADCF4E254BB84800D0A5FE /* TPPReaderBookmarksBusinessLogicTests.swift */,
 				17BE24D625F85D2300AE707F /* TPPAgeCheckTests.swift */,
 				E5F8A57C28A48B8300A229AE /* BookPreviewTests.swift */,
+				E54994FA28E76CA200EA0D9B /* ObfuscatorTests.swift */,
 			);
 			path = PalaceTests;
 			sourceTree = "<group>";
@@ -2897,6 +2903,22 @@
 				73A794C62549095700C59CC1 /* NYPLOPDSAcquisitionPathEntryMinimal.xml */,
 			);
 			name = "Supporting Files";
+			sourceTree = "<group>";
+		};
+		E54994EC28E76BEA00EA0D9B /* Security */ = {
+			isa = PBXGroup;
+			children = (
+				E54994F528E76C0D00EA0D9B /* Obfuscator.swift */,
+			);
+			path = Security;
+			sourceTree = "<group>";
+		};
+		E54994FC28E7751300EA0D9B /* Localization */ = {
+			isa = PBXGroup;
+			children = (
+				E54994FD28E7752B00EA0D9B /* TransifexManager.swift */,
+			);
+			path = Localization;
 			sourceTree = "<group>";
 		};
 		E54DD4D3275C7C6B0013C200 /* SwiftUI */ = {
@@ -3335,7 +3357,6 @@
 				17E81F2F261FF758001003C2 /* Localizable.stringsdict in Resources */,
 				73EB0B5E25821DF4006BC997 /* software-licenses.html in Resources */,
 				73EB0B5F25821DF4006BC997 /* TPP_Launch_Screen.storyboard in Resources */,
-				E54994A828E62AF000EA0D9B /* TransifexCredentials.swift.gyb in Resources */,
 				73EB0B6025821DF4006BC997 /* Accounts.json in Resources */,
 				73EB0B6125821DF4006BC997 /* InfoPlist.strings in Resources */,
 				E5BEF00326BD919F00C2A50B /* OpenSans-Bold.ttf in Resources */,
@@ -3369,7 +3390,6 @@
 				17E81F2C261FF758001003C2 /* Localizable.stringsdict in Resources */,
 				2D6256911D41582A0080A81F /* software-licenses.html in Resources */,
 				E65977C51F82AC91003CD6BC /* TPP_Launch_Screen.storyboard in Resources */,
-				E549949F28E62AEC00EA0D9B /* TransifexCredentials.swift.gyb in Resources */,
 				03F94CCF1DD627AA00CE8F4F /* Accounts.json in Resources */,
 				A823D81B192BABA400B55DE2 /* InfoPlist.strings in Resources */,
 				E5BEF00226BD919F00C2A50B /* OpenSans-Bold.ttf in Resources */,
@@ -3525,6 +3545,7 @@
 				735771AB2537650E00067CEA /* NYPLLibraryAccountsProviderMock.swift in Sources */,
 				1763C0D624F460FE00A4D0E2 /* TPPAnnouncementManagerTests.swift in Sources */,
 				2D8790A520129AF200E2763F /* TPPOPDSAcquisitionPathTests.swift in Sources */,
+				E54994FB28E76CA200EA0D9B /* ObfuscatorTests.swift in Sources */,
 				735350B724918432006021BD /* URLRequest+NYPLTests.swift in Sources */,
 				73A794CA25492C9800C59CC1 /* TPPFake.swift in Sources */,
 				7384C804242BCE5900D5F960 /* Date+NYPLAdditionsTests.swift in Sources */,
@@ -3711,6 +3732,7 @@
 				73EB0AEA25821DF4006BC997 /* TPPContentTypeBadge.swift in Sources */,
 				E7862A222773923B00BE8AB8 /* DisplayStrings.swift in Sources */,
 				73EB0AEB25821DF4006BC997 /* TPPZXingEncoder.m in Sources */,
+				E54994F728E76C6300EA0D9B /* Obfuscator.swift in Sources */,
 				21D746F42719AFD600C0E1B4 /* AdobeContentProtectionService.swift in Sources */,
 				73EB0AEC25821DF4006BC997 /* TPPProblemReportViewController.m in Sources */,
 				73EB0AED25821DF4006BC997 /* TPPHoldsNavigationController.m in Sources */,
@@ -3945,6 +3967,7 @@
 				2DB436381D4C049200F8E69D /* TPPReachability.m in Sources */,
 				1183F33B194B775900DC322F /* TPPCatalogLaneCell.m in Sources */,
 				7340DA6224B7E45C00361387 /* URLResponse+NYPL.swift in Sources */,
+				E54994F628E76C0D00EA0D9B /* Obfuscator.swift in Sources */,
 				E5A1412A28D4F1B20091AD2D /* TPPBook.swift in Sources */,
 				7347312925142FE200BE3D2C /* TPPSettings+SE.swift in Sources */,
 				E6202A021DD4E6F300C99553 /* TPPSettingsAccountDetailViewController.m in Sources */,
@@ -3992,6 +4015,7 @@
 				17631AED25E488CD006079C4 /* TPPAgeCheckViewController.swift in Sources */,
 				E6D848E32171334800CEC142 /* TPPContentTypeBadge.swift in Sources */,
 				E7376ED0287E05F50095AADF /* TPPPDFPreviewThumbnail.swift in Sources */,
+				E54994FE28E7752B00EA0D9B /* TransifexManager.swift in Sources */,
 				E731FF4C2864C934001DB7F2 /* TPPPDFPreviewGridCell.swift in Sources */,
 				E6C91BC21FD5F63B00A32F42 /* TPPZXingEncoder.m in Sources */,
 				085D31D71BE29E38007F7672 /* TPPProblemReportViewController.m in Sources */,
