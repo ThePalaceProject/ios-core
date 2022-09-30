@@ -3132,7 +3132,6 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 73EB0B7225821DF4006BC997 /* Build configuration list for PBXNativeTarget "Palace-noDRM" */;
 			buildPhases = (
-				E54552D828E4E7A60050DF5C /* Run GYB Scripts */,
 				73EB0A6425821DF4006BC997 /* Sources */,
 				73EB0B2C25821DF4006BC997 /* Frameworks */,
 				73EB0B5825821DF4006BC997 /* Resources */,
@@ -3492,24 +3491,6 @@
 			runOnlyForDeploymentPostprocessing = 1;
 			shellPath = /bin/sh;
 			shellScript = "\"${PROJECT_DIR}/scripts/firebase/run\"\n";
-		};
-		E54552D828E4E7A60050DF5C /* Run GYB Scripts */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-			);
-			name = "Run GYB Scripts";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "find . -name '*.gyb' |                                              \n    while read file; do                                             \n        ./path/to/gyb --line-directive '' -o \"${file%.gyb}\" \"$file\";\n    done\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
