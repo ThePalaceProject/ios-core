@@ -11,6 +11,8 @@ import Foundation
 enum TPPReaderAppearance: Int,  CaseIterable, Identifiable {
   case blackOnWhite, blackOnSepia, whiteOnBlack
   
+  typealias Strings = DisplayStrings.TPPReaderAppearance
+
   var id: Int {
     rawValue
   }
@@ -29,9 +31,9 @@ enum TPPReaderAppearance: Int,  CaseIterable, Identifiable {
   
   var accessibilityText: String {
     switch self {
-    case .blackOnWhite: return NSLocalizedString("BlackOnWhiteText", comment: "BlackOnWhiteText")
-    case .blackOnSepia: return NSLocalizedString("BlackOnSepiaText", comment: "BlackOnSepiaText")
-    case .whiteOnBlack: return NSLocalizedString("WhiteOnBlackText", comment: "WhiteOnBlackText")
+    case .blackOnWhite: return Strings.blackOnWhiteText
+    case .blackOnSepia: return Strings.blackOnSepiaText
+    case .whiteOnBlack: return Strings.whiteOnBlackText
     }
   }
 }

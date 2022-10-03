@@ -27,6 +27,7 @@ fileprivate func ZXBarcodeFormatFor(_ NYPLBarcodeType:NYPLBarcodeType) -> ZXBarc
 /// Manage creation and scanning of barcodes on library cards.
 /// Keep any third party dependency abstracted out of the main app.
 @objcMembers final class TPPBarcode: NSObject {
+  typealias Strings = DisplayStrings.TPPBarCode
 
   var libraryName: String?
 
@@ -71,23 +72,18 @@ fileprivate func ZXBarcodeFormatFor(_ NYPLBarcodeType:NYPLBarcodeType) -> ZXBarc
   private class func presentCameraPrivacyAlert()
   {
     let alertController = UIAlertController(
-      title: NSLocalizedString("Camera Access Disabled",
-                               comment: "An alert title stating the user has disallowed the app to access the user's location"),
-      message: NSLocalizedString(
-        ("You must enable camera access for this application " +
-          "in order to sign up for a library card."),
-        comment: "An alert message informing the user that camera access is required"),
+      title: Strings.cameraAccessDisabledTitle,
+      message: Strings.cameraAccessDisabledBody,
       preferredStyle: .alert)
 
     alertController.addAction(UIAlertAction(
-      title: NSLocalizedString("Open Settings",
-                               comment: "A title for a button that will open the Settings app"),
+      title: Strings.openSettings,
       style: .default,
       handler: {_ in
         UIApplication.shared.open(URL(string:UIApplication.openSettingsURLString)!)
     }))
     alertController.addAction(UIAlertAction(
-      title: NSLocalizedString("Cancel", comment: ""),
+      title: DisplayStrings.Generic.cancel,
       style: .cancel,
       handler: nil))
 

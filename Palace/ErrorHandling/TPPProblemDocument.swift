@@ -63,20 +63,15 @@ import Foundation
       return TPPProblemDocument([
         TPPProblemDocument.typeKey: TPPProblemDocument.TypeInvalidCredentials,
         TPPProblemDocument.titleKey:
-          NSLocalizedString("Authentication Expired",
-                            comment: "Title for an error related to expired credentials"),
+          DisplayStrings.TPPProblemDocument.authenticationExpiredTitle,
         TPPProblemDocument.detailKey:
-          NSLocalizedString("Your authentication details have expired. Please sign in again.",
-                            comment: "Message to prompt user to re-authenticate")])
+          DisplayStrings.TPPProblemDocument.authenticationExpiredBody])
     } else {
       return TPPProblemDocument([
         TPPProblemDocument.typeKey: TPPProblemDocument.TypeInvalidCredentials,
-        TPPProblemDocument.titleKey:
-          NSLocalizedString("Authentication Required",
-                            comment: "Title for an error related to credentials being required"),
+        TPPProblemDocument.titleKey: DisplayStrings.TPPProblemDocument.authenticationRequiredTitle,
         TPPProblemDocument.detailKey:
-          NSLocalizedString("Please sign in to use this functionality.",
-                            comment: "Message to prompt user to authenticate")])
+          DisplayStrings.TPPProblemDocument.authenticationRequireBody])
     }
   }
 

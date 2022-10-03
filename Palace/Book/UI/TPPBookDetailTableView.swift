@@ -305,7 +305,7 @@ private let standardCellHeight: CGFloat = 44.0
 
     moreButton.addTarget(self, action: #selector(moreBooksTapped(sender:)), for: .touchUpInside)
     moreButton.tag = section
-    moreButton.setTitle(NSLocalizedString("More...", comment: ""), for: .normal)
+    moreButton.setTitle(DisplayStrings.Generic.more, for: .normal)
     if #available(iOS 13.0, *) {
       moreButton.setTitleColor(.label, for: .normal)
     } else {

@@ -2,7 +2,8 @@ import MessageUI
 import UIKit
 
 @objcMembers class ProblemReportEmail: NSObject {
-  
+  typealias Strings = DisplayStrings.ProblemReportEmail
+
   static let sharedInstance = ProblemReportEmail()
   
   fileprivate weak var lastPresentingViewController: UIViewController?
@@ -22,12 +23,12 @@ import UIKit
   {
     guard MFMailComposeViewController.canSendMail() else {
       let alertController = UIAlertController(
-        title: NSLocalizedString("NoEmailAccountSet", comment: "Alert title"),
+        title: Strings.noAccountSetupTitle,
         message: String(format: NSLocalizedString("Please contact %@ to report an issue.", comment: "Alert message"),
                         emailAddress),
         preferredStyle: .alert)
       alertController.addAction(
-        UIAlertAction(title: NSLocalizedString("OK", comment: ""),
+        UIAlertAction(title: DisplayStrings.Generic.ok,
                       style: .default,
                       handler: nil))
       presentingViewController.present(alertController, animated: true)
@@ -85,24 +86,24 @@ extension ProblemReportEmail: MFMailComposeViewControllerDelegate {
     case .failed:
       if let error = error {
         let alertController = UIAlertController(
-          title: NSLocalizedString("Error", comment: ""),
+          title: DisplayStrings.Generic.error,
           message: error.localizedDescription,
           preferredStyle: .alert)
         alertController.addAction(
           UIAlertAction(
-            title: NSLocalizedString("OK", comment: ""),
+            title: DisplayStrings.Generic.ok,
             style: .default,
             handler: nil))
         self.lastPresentingViewController?.present(alertController, animated: true, completion: nil)
       }
     case .sent:
       let alertController = UIAlertController(
-        title: NSLocalizedString("Thank You", comment: "Alert title"),
-        message: NSLocalizedString("Your report will be reviewed as soon as possible.", comment: "Alert message"),
+        title: Strings.reportSentTitle,
+        message: Strings.reportSentBody,
         preferredStyle: .alert)
       alertController.addAction(
         UIAlertAction(
-          title: NSLocalizedString("OK", comment: ""),
+          title: DisplayStrings.Generic.ok,
           style: .default,
           handler: nil))
       self.lastPresentingViewController?.present(alertController, animated: true, completion: nil)

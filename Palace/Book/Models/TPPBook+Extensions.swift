@@ -9,6 +9,8 @@
 import Foundation
 
 @objc extension TPPBook {
+  typealias Strings = DisplayStrings.TPPBook
+
   var bearerToken: String? {
     get {
       let _bearerToken: TPPKeychainVariable<String> = self.identifier.asKeychainVariable(with: bookTokenLock)
@@ -28,13 +30,13 @@ import Foundation
   /// Readable book format based on its content type
   var format: String {
     switch defaultBookContentType {
-    case .epub: return NSLocalizedString("ePub", comment: "ePub")
-    case .pdf: return NSLocalizedString("PDF", comment: "PDF")
-    case .audiobook: return NSLocalizedString("Audiobook", comment: "Audiobook")
-    case .unsupported: return NSLocalizedString("Unsupported format", comment: "Unsupported format")
+    case .epub: return Strings.epubContentType
+    case .pdf: return Strings.pdfContentType
+    case .audiobook: return Strings.audiobookContentType
+    case .unsupported: return Strings.unsupportedContentType
     }
   }
-   
+
   var hasSample: Bool { sample != nil }
   var hasAudiobookSample: Bool { hasSample && defaultBookContentType == .audiobook }
 }
