@@ -16,7 +16,7 @@ import R2Shared
 
 /// This class is meant to be subclassed by each publication format view controller. It contains the shared behavior, eg. navigation bar toggling.
 class TPPBaseReaderViewController: UIViewController, Loggable {
-  typealias Strings = DisplayStrings.TPPBaseReaderViewController
+  typealias DisplayStrings = Strings.TPPBaseReaderViewController
 
   private static let bookmarkOnImageName = "BookmarkOn"
   private static let bookmarkOffImageName = "BookmarkOff"
@@ -178,7 +178,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
                                     style: .plain,
                                     target: self,
                                     action: #selector(presentPositionsVC))
-    tocButton.accessibilityLabel = Strings.tocAndBookmarks
+    tocButton.accessibilityLabel = DisplayStrings.tocAndBookmarks
     
     buttons.append(bookmarkBtn)
     
@@ -201,10 +201,10 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
 
     if isOn {
       btn.image = UIImage(named: TPPBaseReaderViewController.bookmarkOnImageName)
-      btn.accessibilityLabel = Strings.removeBookmark
+      btn.accessibilityLabel = DisplayStrings.removeBookmark
     } else {
       btn.image = UIImage(named: TPPBaseReaderViewController.bookmarkOffImageName)
-      btn.accessibilityLabel = Strings.addBookmark
+      btn.accessibilityLabel = DisplayStrings.addBookmark
     }
   }
 
@@ -325,8 +325,8 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     }
 
     let toolbar = UIToolbar(frame: .zero)
-    let backButton = makeItem(.rewind, label: Strings.previousChapter, action: #selector(goBackward))
-    let forwardButton = makeItem(.fastForward, label: Strings.nextChapter, action: #selector(goForward))
+    let backButton = makeItem(.rewind, label: DisplayStrings.previousChapter, action: #selector(goBackward))
+    let forwardButton = makeItem(.fastForward, label: DisplayStrings.nextChapter, action: #selector(goForward))
         
     toolbar.items = [
       makeItem(.flexibleSpace),

@@ -12,7 +12,7 @@ import R2Shared
 /// A front-end to the Annotations api to sync the reading progress for
 /// a given book with the progress on the server.
 class TPPLastReadPositionSynchronizer {
-  typealias Strings = DisplayStrings.TPPLastReadPositionSynchronizer
+  typealias DisplayStrings = Strings.TPPLastReadPositionSynchronizer
 
   private let bookRegistry: TPPBookRegistryProvider
 
@@ -118,16 +118,16 @@ class TPPLastReadPositionSynchronizer {
                                       publication: Publication,
                                       book: TPPBook,
                                       completion: @escaping () -> Void) {
-    let alert = UIAlertController(title: Strings.syncReadingPositionAlertTitle,
-                                  message: Strings.syncReadingPositionAlertBody,
+    let alert = UIAlertController(title: DisplayStrings.syncReadingPositionAlertTitle,
+                                  message: DisplayStrings.syncReadingPositionAlertBody,
                                   preferredStyle: .alert)
 
-    let stayText = Strings.stay
+    let stayText = DisplayStrings.stay
     let stayAction = UIAlertAction(title: stayText, style: .cancel) { _ in
       completion()
     }
 
-    let moveText = Strings.move
+    let moveText = DisplayStrings.move
     let moveAction = UIAlertAction(title: moveText, style: .default) { _ in
       let loc = TPPBookLocation(locator: serverLocator,
                                 type: "LocatorHrefProgression",

@@ -199,10 +199,10 @@ import R2Shared
   }
 
   class func handleSyncSettingError() {
-    let title = DisplayStrings.Error.syncSettingChangeErrorTitle
-    let message = DisplayStrings.Error.syncSettingsChangeErrorBody
+    let title = Strings.Error.syncSettingChangeErrorTitle
+    let message = Strings.Error.syncSettingsChangeErrorBody
     let alert = UIAlertController.init(title: title, message: message, preferredStyle: .alert)
-    alert.addAction(UIAlertAction.init(title: DisplayStrings.Generic.ok, style: .default, handler: nil))
+    alert.addAction(UIAlertAction.init(title: Strings.Generic.ok, style: .default, handler: nil))
     TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
   }
 

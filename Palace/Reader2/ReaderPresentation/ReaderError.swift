@@ -19,9 +19,9 @@ enum ReaderError: LocalizedError {
   var errorDescription: String? {
     switch self {
     case .formatNotSupported:
-      return DisplayStrings.Error.formatNotSupportedError
+      return Strings.Error.formatNotSupportedError
     case .epubNotValid:
-      return DisplayStrings.Error.epubNotValidError
+      return Strings.Error.epubNotValidError
     }
   }
   

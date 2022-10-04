@@ -2,7 +2,7 @@ import UIKit
 
 /// Advanced Menu in Settings
 @objcMembers class TPPSettingsAdvancedViewController: UIViewController, UITableViewDataSource, UITableViewDelegate {
-  typealias Strings = DisplayStrings.TPPSettingsAdvancedViewController
+  typealias DisplayStrings = Strings.TPPSettingsAdvancedViewController
 
   var account: Account
 
@@ -18,7 +18,7 @@ import UIKit
   override func viewDidLoad() {
     super.viewDidLoad()
     
-    title = Strings.advanced
+    title = DisplayStrings.advanced
     
     let tableView = UITableView.init(frame: .zero, style: .grouped)
     tableView.delegate = self
@@ -40,11 +40,11 @@ import UIKit
 
       let alert = UIAlertController.init(title: nil, message: message, preferredStyle: .alert)
 
-      let deleteAction = UIAlertAction.init(title: DisplayStrings.Generic.delete, style: .destructive, handler: { (action) in
+      let deleteAction = UIAlertAction.init(title: Strings.Generic.delete, style: .destructive, handler: { (action) in
         self.disableSync()
       })
       
-      let cancelAction = UIAlertAction.init(title: DisplayStrings.Generic.cancel, style: .cancel, handler: { (action) in
+      let cancelAction = UIAlertAction.init(title: Strings.Generic.cancel, style: .cancel, handler: { (action) in
         Log.info(#file, "User cancelled bookmark server delete.")
       })
       
@@ -57,7 +57,7 @@ import UIKit
   
   private func disableSync() {
     //Disable UI while working
-    let alert = UIAlertController(title: nil, message: Strings.pleaseWait, preferredStyle: .alert)
+    let alert = UIAlertController(title: nil, message: DisplayStrings.pleaseWait, preferredStyle: .alert)
     let loadingIndicator = UIActivityIndicatorView(frame: CGRect(x: 10, y: 5, width: 50, height: 50))
     loadingIndicator.hidesWhenStopped = true
     loadingIndicator.style = .medium
@@ -89,14 +89,14 @@ import UIKit
   func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
     
     let cell = UITableViewCell()
-    cell.textLabel?.text = Strings.deleteServerData
+    cell.textLabel?.text = DisplayStrings.deleteServerData
     cell.textLabel?.font = UIFont.customFont(forTextStyle: .body)
     cell.textLabel?.textColor = .red
     return cell
   }
   
   func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
-    return DisplayStrings.Generic.delete
+    return Strings.Generic.delete
   }
 
 }

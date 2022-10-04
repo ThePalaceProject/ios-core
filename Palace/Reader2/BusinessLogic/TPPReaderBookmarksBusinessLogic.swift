@@ -163,7 +163,7 @@ class TPPReaderBookmarksBusinessLogic: NSObject {
   }
 
   var noBookmarksText: String {
-    DisplayStrings.TPPReaderBookmarksBusinessLogic.noBookmarks
+    Strings.TPPReaderBookmarksBusinessLogic.noBookmarks
   }
 
   func shouldSelectBookmark(at index: Int) -> Bool {

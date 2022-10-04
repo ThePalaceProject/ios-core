@@ -29,7 +29,7 @@ class TPPReaderTOCBusinessLogic {
   }
 
   var tocDisplayTitle: String {
-    DisplayStrings.TPPReaderTOCBusinessLogic.tocDisplayTitle
+    Strings.TPPReaderTOCBusinessLogic.tocDisplayTitle
   }
 
   func tocLocator(at index: Int) -> Locator? {

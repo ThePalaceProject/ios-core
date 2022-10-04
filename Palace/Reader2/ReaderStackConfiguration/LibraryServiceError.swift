@@ -21,7 +21,7 @@ enum LibraryServiceError: LocalizedError {
   var errorDescription: String? {
     switch self {
     case .invalidBook:
-      return DisplayStrings.Error.invalidBookError
+      return Strings.Error.invalidBookError
     case .openFailed(let error):
       var errorDescription = error.localizedDescription
       // Publication opening may fail due to DRM error
@@ -30,7 +30,7 @@ enum LibraryServiceError: LocalizedError {
          let drmErrorDescription = openingError.drmErrorDescription {
         errorDescription = drmErrorDescription
       }
-      return String(format: DisplayStrings.Error.openFailedError, errorDescription)
+      return String(format: Strings.Error.openFailedError, errorDescription)
     }
   }
   

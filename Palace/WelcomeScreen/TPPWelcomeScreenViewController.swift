@@ -39,7 +39,7 @@ import PureLayout
   
   func setupViews() {
     let view1 = splashScreenView(
-      buttonTitle: NSLocalizedString("Find Your Library", comment: "Button that lets user know they can select a library they have a card for"),
+      buttonTitle: Strings.TPPWelcomeScreenViewController.findYourLibrary,
       buttonTargetSelector: #selector(pickYourLibraryTapped)
     )
         

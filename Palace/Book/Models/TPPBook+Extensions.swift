@@ -9,7 +9,7 @@
 import Foundation
 
 @objc extension TPPBook {
-  typealias Strings = DisplayStrings.TPPBook
+  typealias DisplayStrings = Strings.TPPBook
 
   var bearerToken: String? {
     get {
@@ -30,10 +30,10 @@ import Foundation
   /// Readable book format based on its content type
   var format: String {
     switch defaultBookContentType {
-    case .epub: return Strings.epubContentType
-    case .pdf: return Strings.pdfContentType
-    case .audiobook: return Strings.audiobookContentType
-    case .unsupported: return Strings.unsupportedContentType
+    case .epub: return DisplayStrings.epubContentType
+    case .pdf: return DisplayStrings.pdfContentType
+    case .audiobook: return DisplayStrings.audiobookContentType
+    case .unsupported: return DisplayStrings.unsupportedContentType
     }
   }
 

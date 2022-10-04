@@ -100,9 +100,8 @@ extension TPPSignInBusinessLogic {
                                   "loginURL": urlStr,
                                   "context": uiDelegate?.context ?? "N/A"])
         completion?(nil,
-                   NSLocalizedString("SettingsAccountViewControllerLoginFailed", comment: "Title for login error alert"),
-                   NSLocalizedString("An error occurred during the authentication process",
-                                     comment: "Generic error message while handling sign-in redirection during authentication"))
+                    Strings.Error.loginErrorTitle,
+                    Strings.Error.loginErrorDescription)
         return
     }
 
@@ -133,7 +132,7 @@ extension TPPSignInBusinessLogic {
       let parsedError = error.parseJSONString as? [String: Any] {
 
       completion?(nil,
-                 NSLocalizedString("SettingsAccountViewControllerLoginFailed", comment: "Title for login error alert"),
+                  Strings.Error.loginErrorTitle,
                  parsedError["title"] as? String)
       return
     }

@@ -50,7 +50,7 @@ extension TPPR2Owner: ModuleDelegate {
                     message: String,
                     from viewController: UIViewController) {
     let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
-    let dismissButton = UIAlertAction(title: DisplayStrings.Generic.ok, style: .cancel)
+    let dismissButton = UIAlertAction(title: Strings.Generic.ok, style: .cancel)
     alert.addAction(dismissButton)
     viewController.present(alert, animated: true)
   }
@@ -58,7 +58,7 @@ extension TPPR2Owner: ModuleDelegate {
   func presentError(_ error: Error?, from viewController: UIViewController) {
     guard let error = error else { return }
     presentAlert(
-      DisplayStrings.Generic.error,
+      Strings.Generic.error,
       message: error.localizedDescription,
       from: viewController
     )

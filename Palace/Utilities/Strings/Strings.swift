@@ -8,15 +8,20 @@
 
 import Foundation
 
-struct DisplayStrings {
+struct Strings {
   struct Generic {
     static let back = NSLocalizedString("Back", comment: "Text for Back button")
     static let more = NSLocalizedString("More...", comment: "").localized
     static let error = NSLocalizedString("Error", comment: "").localized
     static let ok = NSLocalizedString("OK", comment: "").localized
-    static let cancel = NSLocalizedString("Cancel", comment: "Button that says to cancel and go back to the last screen.")
-    static let reload = NSLocalizedString("Reload", comment: "Button that says to try again")
-    static let delete = NSLocalizedString("Delete", comment:"")
+    static let cancel = NSLocalizedString("Cancel", comment: "Button that says to cancel and go back to the last screen.").localized
+    static let reload = NSLocalizedString("Reload", comment: "Button that says to try again").localized
+    static let delete = NSLocalizedString("Delete", comment:"").localized
+    static let wait = NSLocalizedString("Wait", comment: "button title").localized
+    static let reject = NSLocalizedString("Reject", comment: "Title for a Reject button").localized
+    static let accept = NSLocalizedString("Accept", comment: "Title for a Accept button").localized
+    static let signin = NSLocalizedString("Sign In", comment: "").localized
+    static let close = NSLocalizedString("Close", comment: "")
   }
 
   struct Settings {
@@ -42,6 +47,19 @@ struct DisplayStrings {
     static let openFailedError = NSLocalizedString("An error was encountered while trying to open this book.", comment: "Error message used when a low-level error occured while opening a publication").localized
     static let formatNotSupportedError = NSLocalizedString("The book you were trying to read is in an unsupported format.", comment: "Error message when trying to read a publication with a unsupported format").localized
     static let epubNotValidError = NSLocalizedString("The book you were trying to read is corrupted. Please try downloading it again.", comment: "Error message when trying to read an EPUB that is invalid")
+    static let pageLoadFailedError = NSLocalizedString("The page could not load due to a connection error.", comment: "").localized
+    static let serverConnectionErrorDescription = NSLocalizedString("Unable to contact the server because the URL for signing in is missing.",
+                      comment: "Error message for when the library profile url is missing from the authentication document the server provided.")
+    static let serverConnectionErrorSuggestion = NSLocalizedString("Try force-quitting the app and repeat the sign-in process.",
+                                                                   comment: "Recovery instructions for when the URL to sign in is missing").localized
+    static let cardCreationError = NSLocalizedString("We're sorry. Currently we do not support signups for new patrons via the app.", comment: "Message describing the fact that new patron sign up is not supported by the current selected library").localized
+    static let signInErrorTitle = NSLocalizedString("Sign In Error",
+                                                    comment: "Title for sign in error alert").localized
+    static let signInErrorDescription = NSLocalizedString("The DRM Library is taking longer than expected. Please wait and try again later.\n\nIf the problem persists, try to sign out and back in again from the Library Settings menu.",
+                                                          comment: "Message for sign-in error alert caused by failed DRM authorization").localized
+    static let loginErrorTitle = NSLocalizedString("SettingsAccountViewControllerLoginFailed", comment: "Title for login error alert").localized
+    static let loginErrorDescription = NSLocalizedString("An error occurred during the authentication process",
+                                                         comment: "Generic error message while handling sign-in redirection during authentication").localized
   }
   
   struct AgeCheck {
@@ -157,4 +175,48 @@ struct DisplayStrings {
     static let pleaseWait = NSLocalizedString("Please wait...", comment:"Generic Wait message").localized
     static let deleteServerData = NSLocalizedString("Delete Server Data", comment:"").localized
   }
+  
+  struct TPPSettingsSplitViewController {
+    static let account = NSLocalizedString("Account", comment: "Title for account section").localized
+    static let acknowledgements = NSLocalizedString("Acknowledgements", comment: "Title for acknowledgements section").localized
+    static let eula = NSLocalizedString("EULA", comment: "Title for User Agreement section").localized
+    static let privacyPolicy = NSLocalizedString("PrivacyPolicy", comment: "Title for Privacy Policy section").localized
+  }
+  
+  struct TPPAccountListDataSource {
+    static let addLibrary = NSLocalizedString("Add Library", comment: "Title that also informs the user that they should choose a library from the list.").localized
+  }
+  
+  struct TPPSigninBusinessLogic {
+    static let ecard = NSLocalizedString("eCard",
+                                         comment: "Title for web-based card creator page").localized
+    static let ecardErrorMessage = NSLocalizedString("We're sorry. Our sign up system is currently down. Please try again later.",
+                                                     comment: "Message for error loading the web-based card creator").localized
+    static let signout =  NSLocalizedString("SignOut",
+                                            comment: "Title for sign out action")
+    static let annotationSyncMessage = NSLocalizedString("Your bookmarks and reading positions are in the process of being saved to the server. Would you like to stop that and continue logging out?",
+                                                         comment: "Warning message offering the user the choice of interrupting book registry syncing to log out immediately, or waiting until that finishes.").localized
+    static let pendingDownloadMessage = NSLocalizedString("It looks like you may have a book download or return in progress. Would you like to stop that and continue logging out?",
+                                                          comment: "Warning message offering the user the choice of interrupting the download or return of a book to log out immediately, or waiting until that finishes.").localized
+  }
+  
+  struct TPPWelcomeScreenViewController {
+    static let findYourLibrary = NSLocalizedString("Find Your Library", comment: "Button that lets user know they can select a library they have a card for").localized
+  }
+  
+  struct OETutorialChoiceViewController {
+    static let loginMessage = NSLocalizedString("You need to login to access the collection.", comment: "").localized
+    static let requestNewCodes = NSLocalizedString("Request New Codes", comment: "").localized
+  }
+  
+  struct OETutorialEligibilityViewController {
+    static let description = NSLocalizedString("Open eBooks provides free books to the children who need them the most.\n\nThe collection includes thousands of popular and award-winning titles as well as hundreds of public domain works.", comment: "Description of Open eBooks app displayed during 1st launch tutorial").localized
+  }
+  
+  struct OETutorialWelcomeViewController {
+    static let description = NSLocalizedString("Welcome to Open eBooks",
+                                               comment: "Welcome text").localized
+  }
+  
+  
 }

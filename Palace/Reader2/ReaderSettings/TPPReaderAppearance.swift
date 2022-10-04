@@ -11,7 +11,7 @@ import Foundation
 enum TPPReaderAppearance: Int,  CaseIterable, Identifiable {
   case blackOnWhite, blackOnSepia, whiteOnBlack
   
-  typealias Strings = DisplayStrings.TPPReaderAppearance
+  typealias DisplayStrings = Strings.TPPReaderAppearance
 
   var id: Int {
     rawValue
@@ -31,9 +31,9 @@ enum TPPReaderAppearance: Int,  CaseIterable, Identifiable {
   
   var accessibilityText: String {
     switch self {
-    case .blackOnWhite: return Strings.blackOnWhiteText
-    case .blackOnSepia: return Strings.blackOnSepiaText
-    case .whiteOnBlack: return Strings.whiteOnBlackText
+    case .blackOnWhite: return DisplayStrings.blackOnWhiteText
+    case .blackOnSepia: return DisplayStrings.blackOnSepiaText
+    case .whiteOnBlack: return DisplayStrings.whiteOnBlackText
     }
   }
 }

@@ -2,7 +2,7 @@ import MessageUI
 import UIKit
 
 @objcMembers class ProblemReportEmail: NSObject {
-  typealias Strings = DisplayStrings.ProblemReportEmail
+  typealias DisplayStrings = Strings.ProblemReportEmail
 
   static let sharedInstance = ProblemReportEmail()
   
@@ -23,12 +23,12 @@ import UIKit
   {
     guard MFMailComposeViewController.canSendMail() else {
       let alertController = UIAlertController(
-        title: Strings.noAccountSetupTitle,
+        title: DisplayStrings.noAccountSetupTitle,
         message: String(format: NSLocalizedString("Please contact %@ to report an issue.", comment: "Alert message"),
                         emailAddress),
         preferredStyle: .alert)
       alertController.addAction(
-        UIAlertAction(title: DisplayStrings.Generic.ok,
+        UIAlertAction(title: Strings.Generic.ok,
                       style: .default,
                       handler: nil))
       presentingViewController.present(alertController, animated: true)
@@ -86,24 +86,24 @@ extension ProblemReportEmail: MFMailComposeViewControllerDelegate {
     case .failed:
       if let error = error {
         let alertController = UIAlertController(
-          title: DisplayStrings.Generic.error,
+          title: Strings.Generic.error,
           message: error.localizedDescription,
           preferredStyle: .alert)
         alertController.addAction(
           UIAlertAction(
-            title: DisplayStrings.Generic.ok,
+            title: Strings.Generic.ok,
             style: .default,
             handler: nil))
         self.lastPresentingViewController?.present(alertController, animated: true, completion: nil)
       }
     case .sent:
       let alertController = UIAlertController(
-        title: Strings.reportSentTitle,
-        message: Strings.reportSentBody,
+        title: DisplayStrings.reportSentTitle,
+        message: DisplayStrings.reportSentBody,
         preferredStyle: .alert)
       alertController.addAction(
         UIAlertAction(
-          title: DisplayStrings.Generic.ok,
+          title: Strings.Generic.ok,
           style: .default,
           handler: nil))
       self.lastPresentingViewController?.present(alertController, animated: true, completion: nil)

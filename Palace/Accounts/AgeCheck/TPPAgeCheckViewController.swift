@@ -9,7 +9,7 @@
 import UIKit
 
 class TPPAgeCheckViewController: UIViewController {
-  typealias Strings = DisplayStrings.AgeCheck
+  typealias DisplayStrings = Strings.AgeCheck
   // Constants
   let textFieldHeight: CGFloat = 40.0
   
@@ -61,7 +61,7 @@ class TPPAgeCheckViewController: UIViewController {
   }
   
   func setupView() {
-    self.title = Strings.title
+    self.title = DisplayStrings.title
     
     if #available(iOS 13.0, *) {
       view.backgroundColor = UIColor.systemGray6
@@ -94,7 +94,7 @@ class TPPAgeCheckViewController: UIViewController {
   
   let titleLabel: UILabel = {
     let label = UILabel()
-    label.text = Strings.titleLabel
+    label.text = DisplayStrings.titleLabel
     label.textAlignment = .center
     label.font = UIFont.customFont(forTextStyle: .headline)
     return label
@@ -120,7 +120,7 @@ class TPPAgeCheckViewController: UIViewController {
     
     let toolbar = UIToolbar(frame: CGRect(x: 0, y: 0, width: UIScreen.main.bounds.size.width, height: 30))
     toolbar.sizeToFit()
-    let doneButton = UIBarButtonItem(title:Strings.done, style: .plain, target: self, action: #selector(hidePickerView))
+    let doneButton = UIBarButtonItem(title:DisplayStrings.done, style: .plain, target: self, action: #selector(hidePickerView))
     let spaceButton = UIBarButtonItem(barButtonSystemItem: UIBarButtonItem.SystemItem.flexibleSpace, target: nil, action: nil)
 
     toolbar.setItems([spaceButton, doneButton], animated: false)
@@ -129,7 +129,7 @@ class TPPAgeCheckViewController: UIViewController {
     textfield.inputView = pickerView
     
     // Styling
-    let placeHolderString = Strings.placeholderString
+    let placeHolderString = DisplayStrings.placeholderString
     if #available(iOS 13.0, *) {
       textfield.attributedPlaceholder = NSAttributedString(string: placeHolderString, attributes: [NSAttributedString.Key.foregroundColor: UIColor.label])
       textfield.backgroundColor = .systemBackground
@@ -151,7 +151,7 @@ class TPPAgeCheckViewController: UIViewController {
   }()
   
   lazy var rightBarButtonItem: UIBarButtonItem = {
-    let item = UIBarButtonItem(title: Strings.rightBarButtonItem, style: .plain, target: self, action: #selector(completeAgeCheck))
+    let item = UIBarButtonItem(title: DisplayStrings.rightBarButtonItem, style: .plain, target: self, action: #selector(completeAgeCheck))
     item.tintColor = .systemBlue
     item.isEnabled = false
     return item

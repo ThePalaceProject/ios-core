@@ -63,15 +63,15 @@ import Foundation
       return TPPProblemDocument([
         TPPProblemDocument.typeKey: TPPProblemDocument.TypeInvalidCredentials,
         TPPProblemDocument.titleKey:
-          DisplayStrings.TPPProblemDocument.authenticationExpiredTitle,
+          Strings.TPPProblemDocument.authenticationExpiredTitle,
         TPPProblemDocument.detailKey:
-          DisplayStrings.TPPProblemDocument.authenticationExpiredBody])
+          Strings.TPPProblemDocument.authenticationExpiredBody])
     } else {
       return TPPProblemDocument([
         TPPProblemDocument.typeKey: TPPProblemDocument.TypeInvalidCredentials,
-        TPPProblemDocument.titleKey: DisplayStrings.TPPProblemDocument.authenticationRequiredTitle,
+        TPPProblemDocument.titleKey: Strings.TPPProblemDocument.authenticationRequiredTitle,
         TPPProblemDocument.detailKey:
-          DisplayStrings.TPPProblemDocument.authenticationRequireBody])
+          Strings.TPPProblemDocument.authenticationRequireBody])
     }
   }
 
