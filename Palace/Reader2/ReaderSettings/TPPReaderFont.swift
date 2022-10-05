@@ -14,6 +14,8 @@ enum TPPReaderFont: String, CaseIterable, Identifiable {
   case serif = "Georgia"
   case dyslexic = "OpenDyslexic"
   
+  typealias DisplayStrings = Strings.TPPReaderFont
+
   var id: String {
     rawValue
   }
@@ -53,10 +55,10 @@ enum TPPReaderFont: String, CaseIterable, Identifiable {
   /// Accessibility text for accessibility labels
   var accessibilityText: String {
     switch self {
-    case .original: return NSLocalizedString("OriginalFont", comment: "OriginalFont")
-    case .sansSerif: return NSLocalizedString("SansFont", comment: "SansFont")
-    case .serif: return NSLocalizedString("SerifFont", comment: "SerifFont")
-    case .dyslexic: return NSLocalizedString("OpenDyslexicFont", comment: "OpenDyslexicFont")
+    case .original: return DisplayStrings.original
+    case .sansSerif: return DisplayStrings.sans
+    case .serif: return DisplayStrings.serif
+    case .dyslexic: return DisplayStrings.dyslexic
     }
   }
 }

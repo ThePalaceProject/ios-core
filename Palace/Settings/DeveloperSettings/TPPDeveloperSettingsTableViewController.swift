@@ -35,7 +35,7 @@ import Foundation
     self.tableView.delegate = self
     self.tableView.dataSource = self
     
-    self.title = NSLocalizedString("Testing", comment: "Developer Settings")
+    self.title = Strings.TPPDeveloperSettingsTableViewController.developerSettingsTitle
     self.view.backgroundColor = TPPConfiguration.backgroundColor()
   }
   

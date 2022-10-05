@@ -55,15 +55,13 @@ import WebKit
 
   func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
     activityViewShouldShow(false)
-    let alert = UIAlertController.init(title: NSLocalizedString(
-      "Connection Failed",
-      comment: "Title for alert that explains that the page could not download the information"),
+    let alert = UIAlertController.init(title: Strings.Error.connectionFailed,
                                        message: error.localizedDescription,
                                        preferredStyle: .alert)
-    let action1 = UIAlertAction.init(title: NSLocalizedString("Cancel", comment: "Button that says to cancel and go back to the last screen."), style: .destructive) { (cancelAction) in
+    let action1 = UIAlertAction.init(title: Strings.Generic.cancel, style: .destructive) { (cancelAction) in
       _ = self.navigationController?.popViewController(animated: true)
     }
-    let action2 = UIAlertAction.init(title: NSLocalizedString("Reload", comment: "Button that says to try again"), style: .destructive) { (reloadAction) in
+    let action2 = UIAlertAction.init(title: Strings.Generic.reload, style: .destructive) { (reloadAction) in
       let urlRequest = URLRequest(url: self.fileURL, cachePolicy: .useProtocolCachePolicy, timeoutInterval: 10.0)
       webView.load(urlRequest)
     }

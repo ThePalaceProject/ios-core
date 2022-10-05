@@ -39,10 +39,10 @@ class OETutorialChoiceViewController : UIViewController {
   override func viewDidLoad() {
     super.viewDidLoad()
     
-    title = NSLocalizedString("Sign In", comment: "")
+    title = DisplayStrings.Generic.signin
     
     descriptionLabel.font = NYPLConfiguration.welcomeScreenFont()
-    descriptionLabel.text = NSLocalizedString("You need to login to access the collection.", comment: "")
+    descriptionLabel.text = DisplayStrings.OETutorialChoiceViewController.loginMessage
     descriptionLabel.textAlignment = .center
     descriptionLabel.numberOfLines = 0
     descriptionLabel.sizeToFit()
@@ -56,7 +56,7 @@ class OETutorialChoiceViewController : UIViewController {
     loginWithCleverButton.sizeToFit()
     
     requestCodesButton.titleLabel?.font = UIFont.palaceFont(ofSize: 20.0)
-    requestCodesButton.setTitle(NSLocalizedString("Request New Codes", comment: ""),
+    requestCodesButton.setTitle(DisplayStrings.OETutorialChoiceViewController.requestNewCodes,
                                 for: .normal)
     requestCodesButton.addTarget(self, action: #selector(didSelectRequestCodes),
                                  for: .touchUpInside)

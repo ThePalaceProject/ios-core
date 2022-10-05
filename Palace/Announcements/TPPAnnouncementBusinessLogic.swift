@@ -4,6 +4,8 @@ private let announcementsFilename: String = "TPPPresentedAnnouncementsList"
 
 /// This class is not thread safe
 class TPPAnnouncementBusinessLogic {
+  typealias DisplayStrings = Strings.Announcments
+
   static let shared = TPPAnnouncementBusinessLogic()
 
   private var presentedAnnouncements: Set<String> = Set<String>()
@@ -79,7 +81,7 @@ class TPPAnnouncementBusinessLogic {
   - Returns: The alert controller to be presented.
   */
   private func alert(announcements: [Announcement]) -> UIAlertController? {
-    let title = NSLocalizedString("Announcement", comment: "")
+    let title = DisplayStrings.alertTitle
     var currentAlert: UIAlertController? = nil
     
     let alerts = announcements.map {
@@ -90,7 +92,7 @@ class TPPAnnouncementBusinessLogic {
     // Add the presented announcement to the presentedAnnouncement document
     for (i, alert) in alerts.enumerated() {
       if i > 0 {
-        let action = UIAlertAction.init(title: NSLocalizedString("OK", comment: ""),
+        let action = UIAlertAction.init(title: DisplayStrings.ok,
                                         style: .default) { [weak self] _ in
           TPPRootTabBarController.shared()?.safelyPresentViewController(alert, animated: true, completion: nil)
           self?.addPresentedAnnouncement(id: announcements[i - 1].id)
@@ -102,7 +104,7 @@ class TPPAnnouncementBusinessLogic {
     
     // Add dismiss button to the last announcement
     if let last = announcements.last {
-      currentAlert?.addAction(UIAlertAction.init(title: NSLocalizedString("OK", comment: ""), style: .default) { [weak self] _ in
+      currentAlert?.addAction(UIAlertAction.init(title: DisplayStrings.ok, style: .default) { [weak self] _ in
         self?.addPresentedAnnouncement(id: last.id)
       })
     }

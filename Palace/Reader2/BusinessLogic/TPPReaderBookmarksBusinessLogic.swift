@@ -163,7 +163,7 @@ class TPPReaderBookmarksBusinessLogic: NSObject {
   }
 
   var noBookmarksText: String {
-    return NSLocalizedString("There are no bookmarks for this book.", comment: "Text showing in bookmarks view when there are no bookmarks")
+    Strings.TPPReaderBookmarksBusinessLogic.noBookmarks
   }
 
   func shouldSelectBookmark(at index: Int) -> Bool {
