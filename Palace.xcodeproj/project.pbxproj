@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		032A31051DC02E8E0001E4AF /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 032A31071DC02E8E0001E4AF /* Localizable.strings */; };
 		0345BFE81DBF027200398B6F /* APIKeys.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0345BFD61DBF002E00398B6F /* APIKeys.swift */; };
 		03690E291EB2B44300F75D5F /* TPPReadiumBookmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03690E281EB2B44300F75D5F /* TPPReadiumBookmark.swift */; };
 		03B092241E78839D00AD338D /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 03B092231E78839D00AD338D /* QuartzCore.framework */; };
@@ -622,7 +621,6 @@
 		73EB0B6125821DF4006BC997 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = A823D819192BABA400B55DE2 /* InfoPlist.strings */; };
 		73EB0B6225821DF4006BC997 /* reader.html in Resources */ = {isa = PBXBuildFile; fileRef = 11C113CF19F842B9005B3F63 /* reader.html */; };
 		73EB0B6325821DF4006BC997 /* DetailSummaryTemplate.html in Resources */ = {isa = PBXBuildFile; fileRef = 110F853C19D5FA7300052DF7 /* DetailSummaryTemplate.html */; };
-		73EB0B6425821DF4006BC997 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 032A31071DC02E8E0001E4AF /* Localizable.strings */; };
 		73EB0B6525821DF4006BC997 /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A823D822192BABA400B55DE2 /* Images.xcassets */; };
 		73EB0B6625821DF4006BC997 /* sdk.css in Resources */ = {isa = PBXBuildFile; fileRef = 5A69290F1B95ACD100FB4C10 /* sdk.css */; };
 		73EB0B6725821DF4006BC997 /* OpenDyslexic3-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 84B7A3441B84E8FE00584FB2 /* OpenDyslexic3-Bold.ttf */; };
@@ -694,6 +692,12 @@
 		E52E3C0D28C19F480073DC4D /* TPPBook+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E523116928504B85007D1DB5 /* TPPBook+Extensions.swift */; };
 		E52E3C0E28C19F490073DC4D /* TPPBook+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E523116928504B85007D1DB5 /* TPPBook+Extensions.swift */; };
 		E549952028EA85B900EA0D9B /* String+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E549951F28EA85B900EA0D9B /* String+Extensions.swift */; };
+		E549954828EE1AAA00EA0D9B /* TransifexManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E549954728EE1AAA00EA0D9B /* TransifexManager.swift */; };
+		E549955228EE1ADB00EA0D9B /* TXNativeExtensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E549955128EE1ADB00EA0D9B /* TXNativeExtensions.swift */; };
+		E549955528EE1E2400EA0D9B /* Transifex in Frameworks */ = {isa = PBXBuildFile; productRef = E549955428EE1E2400EA0D9B /* Transifex */; };
+		E549955628EF77D200EA0D9B /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 032A31071DC02E8E0001E4AF /* Localizable.strings */; };
+		E549955828EF7B9500EA0D9B /* localizedStrings-es.json in Resources */ = {isa = PBXBuildFile; fileRef = E549955728EF7B9500EA0D9B /* localizedStrings-es.json */; };
+		E549955928EF7BEB00EA0D9B /* localizedStrings-es.json in Resources */ = {isa = PBXBuildFile; fileRef = E549955728EF7B9500EA0D9B /* localizedStrings-es.json */; };
 		E54DD4D0275C66F30013C200 /* Strings.swift in Sources */ = {isa = PBXBuildFile; fileRef = E54DD4CF275C66F30013C200 /* Strings.swift */; };
 		E54DD4D5275C7C940013C200 /* View+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E54DD4D4275C7C940013C200 /* View+Extensions.swift */; };
 		E54DD4E6275C8EAA0013C200 /* Font+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E54DD4E5275C8EAA0013C200 /* Font+Extensions.swift */; };
@@ -1506,6 +1510,9 @@
 		E52E3C0228C19BAD0073DC4D /* AudiobookSamplePlayer.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AudiobookSamplePlayer.swift; sourceTree = "<group>"; };
 		E52E3C0328C19BAD0073DC4D /* SamplePlayerError.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SamplePlayerError.swift; sourceTree = "<group>"; };
 		E549951F28EA85B900EA0D9B /* String+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "String+Extensions.swift"; sourceTree = "<group>"; };
+		E549954728EE1AAA00EA0D9B /* TransifexManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransifexManager.swift; sourceTree = "<group>"; };
+		E549955128EE1ADB00EA0D9B /* TXNativeExtensions.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TXNativeExtensions.swift; sourceTree = "<group>"; };
+		E549955728EF7B9500EA0D9B /* localizedStrings-es.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = "localizedStrings-es.json"; sourceTree = "<group>"; };
 		E54DD4C6275C60E70013C200 /* UIViewControllerWrapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UIViewControllerWrapper.swift; sourceTree = "<group>"; };
 		E54DD4CF275C66F30013C200 /* Strings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Strings.swift; sourceTree = "<group>"; };
 		E54DD4D4275C7C940013C200 /* View+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "View+Extensions.swift"; sourceTree = "<group>"; };
@@ -1725,6 +1732,7 @@
 				219868FF267E29920041369E /* Fuzi.xcframework in Frameworks */,
 				2198690D267E29B00041369E /* Minizip.xcframework in Frameworks */,
 				219869AE267E792B0041369E /* FirebaseCoreDiagnostics.xcframework in Frameworks */,
+				E549955528EE1E2400EA0D9B /* Transifex in Frameworks */,
 				219869AC267E792B0041369E /* FirebaseCore.xcframework in Frameworks */,
 				21986941267E2A0A0041369E /* SwiftSoup.xcframework in Frameworks */,
 				2198692E267E29EE0041369E /* R2Shared.xcframework in Frameworks */,
@@ -2342,6 +2350,9 @@
 				E54DD4CF275C66F30013C200 /* Strings.swift */,
 				21F7D3CA275A9D3C0080B44B /* String+HTMLEntities.swift */,
 				E549951F28EA85B900EA0D9B /* String+Extensions.swift */,
+				E549954728EE1AAA00EA0D9B /* TransifexManager.swift */,
+				E549955128EE1ADB00EA0D9B /* TXNativeExtensions.swift */,
+				E549955728EF7B9500EA0D9B /* localizedStrings-es.json */,
 			);
 			path = Strings;
 			sourceTree = "<group>";
@@ -3141,6 +3152,9 @@
 			dependencies = (
 			);
 			name = Palace;
+			packageProductDependencies = (
+				E549955428EE1E2400EA0D9B /* Transifex */,
+			);
 			productName = Simplified;
 			productReference = A823D80D192BABA400B55DE2 /* Palace.app */;
 			productType = "com.apple.product-type.application";
@@ -3192,6 +3206,9 @@
 				Base,
 			);
 			mainGroup = A823D804192BABA400B55DE2;
+			packageReferences = (
+				E549955328EE1E2400EA0D9B /* XCRemoteSwiftPackageReference "transifex-swift" */,
+			);
 			productRefGroup = A823D80E192BABA400B55DE2 /* Products */;
 			projectDirPath = "";
 			projectReferences = (
@@ -3330,6 +3347,7 @@
 				E5BEF00926BD919F00C2A50B /* OpenSans-Regular.ttf in Resources */,
 				73EB0B5C25821DF4006BC997 /* readium-shared-js_all.js in Resources */,
 				73EB0B5D25821DF4006BC997 /* ReaderClientCert.sig in Resources */,
+				E549955928EF7BEB00EA0D9B /* localizedStrings-es.json in Resources */,
 				17E81F2F261FF758001003C2 /* Localizable.stringsdict in Resources */,
 				73EB0B5E25821DF4006BC997 /* software-licenses.html in Resources */,
 				73EB0B5F25821DF4006BC997 /* TPP_Launch_Screen.storyboard in Resources */,
@@ -3338,7 +3356,6 @@
 				E5BEF00326BD919F00C2A50B /* OpenSans-Bold.ttf in Resources */,
 				73EB0B6225821DF4006BC997 /* reader.html in Resources */,
 				73EB0B6325821DF4006BC997 /* DetailSummaryTemplate.html in Resources */,
-				73EB0B6425821DF4006BC997 /* Localizable.strings in Resources */,
 				216FD1FC26DFE112003AF0D8 /* Colors.xcassets in Resources */,
 				73EB0B6525821DF4006BC997 /* Images.xcassets in Resources */,
 				73EB0B6625821DF4006BC997 /* sdk.css in Resources */,
@@ -3361,17 +3378,18 @@
 				11C113D719F84613005B3F63 /* simplified.js in Resources */,
 				085D31D91BE29ED4007F7672 /* TPPProblemReportViewController.xib in Resources */,
 				E5BEF00826BD919F00C2A50B /* OpenSans-Regular.ttf in Resources */,
+				E549955828EF7B9500EA0D9B /* localizedStrings-es.json in Resources */,
 				5A69290E1B95ACC600FB4C10 /* readium-shared-js_all.js in Resources */,
 				2D4379FE1C46FDB600AE1AD5 /* ReaderClientCert.sig in Resources */,
 				17E81F2C261FF758001003C2 /* Localizable.stringsdict in Resources */,
 				2D6256911D41582A0080A81F /* software-licenses.html in Resources */,
 				E65977C51F82AC91003CD6BC /* TPP_Launch_Screen.storyboard in Resources */,
+				E549955628EF77D200EA0D9B /* Localizable.strings in Resources */,
 				03F94CCF1DD627AA00CE8F4F /* Accounts.json in Resources */,
 				A823D81B192BABA400B55DE2 /* InfoPlist.strings in Resources */,
 				E5BEF00226BD919F00C2A50B /* OpenSans-Bold.ttf in Resources */,
 				11C113D019F842B9005B3F63 /* reader.html in Resources */,
 				110F853E19D5FA7300052DF7 /* DetailSummaryTemplate.html in Resources */,
-				032A31051DC02E8E0001E4AF /* Localizable.strings in Resources */,
 				E5506DE426C4688D009FA623 /* Colors.xcassets in Resources */,
 				A823D823192BABA400B55DE2 /* Images.xcassets in Resources */,
 				5A6929101B95ACD100FB4C10 /* sdk.css in Resources */,
@@ -3926,6 +3944,7 @@
 				7340DA6224B7E45C00361387 /* URLResponse+NYPL.swift in Sources */,
 				E5A1412A28D4F1B20091AD2D /* TPPBook.swift in Sources */,
 				7347312925142FE200BE3D2C /* TPPSettings+SE.swift in Sources */,
+				E549955228EE1ADB00EA0D9B /* TXNativeExtensions.swift in Sources */,
 				E6202A021DD4E6F300C99553 /* TPPSettingsAccountDetailViewController.m in Sources */,
 				2198F910250A90EE000D9DAB /* AudioBookVendorsHelper.swift in Sources */,
 				E68CCFC51F9F80CF003DDA6C /* TPPBarcode.swift in Sources */,
@@ -3971,6 +3990,7 @@
 				17631AED25E488CD006079C4 /* TPPAgeCheckViewController.swift in Sources */,
 				E6D848E32171334800CEC142 /* TPPContentTypeBadge.swift in Sources */,
 				E7376ED0287E05F50095AADF /* TPPPDFPreviewThumbnail.swift in Sources */,
+				E549954828EE1AAA00EA0D9B /* TransifexManager.swift in Sources */,
 				E731FF4C2864C934001DB7F2 /* TPPPDFPreviewGridCell.swift in Sources */,
 				E6C91BC21FD5F63B00A32F42 /* TPPZXingEncoder.m in Sources */,
 				085D31D71BE29E38007F7672 /* TPPProblemReportViewController.m in Sources */,
@@ -4674,6 +4694,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		E549955328EE1E2400EA0D9B /* XCRemoteSwiftPackageReference "transifex-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/transifex/transifex-swift/";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		E549955428EE1E2400EA0D9B /* Transifex */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E549955328EE1E2400EA0D9B /* XCRemoteSwiftPackageReference "transifex-swift" */;
+			productName = Transifex;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = A823D805192BABA400B55DE2 /* Project object */;
 }
