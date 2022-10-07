@@ -444,6 +444,7 @@ let UpdatedKey: String = "updated"
       return nil
     }
 
+    // Return first valid acquisition link
     for acquisition in acquisitions {
       let path = TPPOPDSAcquisitionPath.supportedAcquisitionPaths(
         forAllowedTypes: TPPOPDSAcquisitionPath.supportedTypes(),
