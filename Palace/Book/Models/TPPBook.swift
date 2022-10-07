@@ -444,21 +444,19 @@ let UpdatedKey: String = "updated"
       return nil
     }
 
-    var acquisition: TPPOPDSAcquisition?
-
-    acquisitions.forEach {
+    for acquisition in acquisitions {
       let path = TPPOPDSAcquisitionPath.supportedAcquisitionPaths(
         forAllowedTypes: TPPOPDSAcquisitionPath.supportedTypes(),
         allowedRelations: TPPOPDSAcquisitionRelationSetDefaultAcquisition,
-        acquisitions: [$0]
+        acquisitions: [acquisition]
       )
 
       if !path.isEmpty {
-        acquisition = $0
+        return acquisition
       }
     }
   
-    return acquisition
+    return nil
   }
 
   /// Sample acquisition
