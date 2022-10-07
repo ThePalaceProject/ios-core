@@ -11,11 +11,13 @@ import Transifex
 @objc class TransifexManager: NSObject {
   @objc static func setup() {
     let locales = TXLocaleState(sourceLocale: "en",
-                                appLocales: ["en", "es"])
-    
+                                appLocales: ["en", "es", "it", "de"])
+
     TXNative.initialize(
       locales: locales,
       token: TPPSecrets.transifexToken ?? ""
     )
+
+    TXNative.fetchTranslations()
   }
 }
