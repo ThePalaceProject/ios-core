@@ -24,7 +24,7 @@ struct Strings {
   
   struct Error {
     static let loadFailedError = "The page could not load due to a conection error.".localized
-    static let unknownRequestError = "UnknownRequestError".localized
+    static let unknownRequestError = "An unknown error occurred. Please check your connection or try again later.".localized
     static let connectionFailed = "Connection Failed".localized
     static let syncSettingChangeErrorTitle = "Error Changing Sync Setting".localized
     static let syncSettingsChangeErrorBody = "There was a problem contacting the server.\nPlease make sure you are connected to the internet, or try again later.".localized
@@ -38,7 +38,7 @@ struct Strings {
     static let cardCreationError = "We're sorry. Currently we do not support signups for new patrons via the app.".localized
     static let signInErrorTitle = "Sign In Error".localized
     static let signInErrorDescription = "The DRM Library is taking longer than expected. Please wait and try again later.\n\nIf the problem persists, try to sign out and back in again from the Library Settings menu.".localized
-    static let loginErrorTitle = "SettingsAccountViewControllerLoginFailed".localized
+    static let loginErrorTitle = "Login Failed".localized
     static let loginErrorDescription = "An error occurred during the authentication process".localized
   }
   
@@ -71,7 +71,7 @@ struct Strings {
   }
   
   struct ProblemReportEmail {
-    static let noAccountSetupTitle = "NoEmailAccountSet".localized
+    static let noAccountSetupTitle = "No email account is set for this device.".localized
     static let reportSentTitle = "Thank You".localized
     static let reportSentBody = "Your report will be reviewed as soon as possible.".localized
   }
@@ -87,10 +87,10 @@ struct Strings {
     static let settings = "Settings".localized
     static let libraries = "Libraries".localized
     static let addLibrary = "Add Library".localized
-    static let aboutApp = "AboutApp".localized
-    static let softwareLicenses = "SoftwareLicenses".localized
-    static let privacyPolicy = "PrivacyPolicy".localized
-    static let eula = "EULA".localized
+    static let aboutApp = "About App".localized
+    static let softwareLicenses = "Software Licenses".localized
+    static let privacyPolicy = "Privacy Policy".localized
+    static let eula = "User Agreement".localized
     static let developerSettings = "Testing".localized
   }
   
@@ -142,9 +142,9 @@ struct Strings {
   }
   
   struct TPPReaderAppearance {
-    static let blackOnWhiteText = "OpenDyslexicFont".localized
-    static let blackOnSepiaText = "BlackOnSepiaText".localized
-    static let whiteOnBlackText = "WhiteOnBlackText".localized
+    static let blackOnWhiteText = "Open dyslexic font".localized
+    static let blackOnSepiaText = "Black on sepia text".localized
+    static let whiteOnBlackText = "White on black text".localized
   }
   
   struct TPPReaderBookmarksBusinessLogic {
@@ -152,14 +152,14 @@ struct Strings {
   }
   
   struct TPPReaderFont {
-    static let original = "OriginalFont".localized
-    static let sans = "SansFont".localized
-    static let serif = "SerifFont".localized
-    static let dyslexic = "OpenDyslexicFont".localized
+    static let original = "Default book font".localized
+    static let sans = "Sans font".localized
+    static let serif = "Serif font".localized
+    static let dyslexic = "Open dyslexic font".localized
   }
   
   struct TPPReaderTOCBusinessLogic {
-    static let tocDisplayTitle = "ReaderTOCViewControllerTitle".localized
+    static let tocDisplayTitle = "Table of Contents".localized
   }
   
   struct TPPSettingsAdvancedViewController {
@@ -171,14 +171,14 @@ struct Strings {
   struct TPPSettingsSplitViewController {
     static let account = "Account".localized
     static let acknowledgements = "Acknowledgements".localized
-    static let eula = "EULA".localized
-    static let privacyPolicy = "PrivacyPolicy".localized
+    static let eula = "User Agreement".localized
+    static let privacyPolicy = "Privacy Policy".localized
   }
   
   struct TPPSigninBusinessLogic {
     static let ecard = "eCard".localized
     static let ecardErrorMessage = "We're sorry. Our sign up system is currently down. Please try again later.".localized
-    static let signout =  "SignOut".localized
+    static let signout =  "Sign out".localized
     static let annotationSyncMessage = "Your bookmarks and reading positions are in the process of being saved to the server. Would you like to stop that and continue logging out?".localized
     static let pendingDownloadMessage = "It looks like you may have a book download or return in progress. Would you like to stop that and continue logging out?".localized
   }
