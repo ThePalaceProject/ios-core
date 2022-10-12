@@ -103,13 +103,13 @@ typedef NS_ENUM (NSInteger, NYPLProblemReportButtonState) {
   NSString *newMessageString = @"";
   switch(state) {
     case TPPBookButtonsStateCanBorrow:
-      newMessageString = NSLocalizedString(@"BookDetailViewControllerAvailableToBorrowTitle", nil);
+      newMessageString = NSLocalizedString(@"This book is available to borrow.", nil);
       break;
     case TPPBookButtonsStateCanHold:
-      newMessageString = NSLocalizedString(@"BookDetailViewControllerCanHoldTitle", nil);
+      newMessageString = NSLocalizedString(@"All licenses of this book are currently checked out.", nil);
       break;
     case TPPBookButtonsStateDownloadNeeded:
-      newMessageString = NSLocalizedString(@"BookDetailViewControllerDownloadNeededTitle", nil);
+      newMessageString = NSLocalizedString(@"Your book has not yet been downloaded.", nil);
       break;
     case TPPBookButtonsStateDownloadSuccessful:
       newMessageString = [self messageStringForNYPLBookButtonStateSuccessful];
@@ -118,11 +118,11 @@ typedef NS_ENUM (NSInteger, NYPLProblemReportButtonState) {
       newMessageString = [self messageStringForNYPLBookButtonsStateHolding];
       break;
     case TPPBookButtonsStateHoldingFOQ:
-      newMessageString = [NSString stringWithFormat:NSLocalizedString(@"BookDetailViewControllerReservedTitleFormat", nil),
+      newMessageString = [NSString stringWithFormat:NSLocalizedString(@"This reservation will be automatically cancelled in %@.", nil),
                                 [self.book.defaultAcquisition.availability.until longTimeUntilString]];
       break;
     case TPPBookButtonsStateUsed:
-      newMessageString = NSLocalizedString(@"BookDetailViewControllerDownloadSuccessfulTitle", nil);
+      newMessageString = NSLocalizedString(@"Your book is ready to read!", nil);
       break;
     case TPPBookButtonsStateDownloadInProgress:
       break;
@@ -150,7 +150,7 @@ typedef NS_ENUM (NSInteger, NYPLProblemReportButtonState) {
 
 -(NSString *)messageStringForNYPLBookButtonsStateHolding
 {
-  NSString *newMessageString = [NSString stringWithFormat:NSLocalizedString(@"BookDetailViewControllerHoldingTitleFormat", nil),[self.book.defaultAcquisition.availability.until longTimeUntilString]];
+  NSString *newMessageString = [NSString stringWithFormat:NSLocalizedString(@"Available for checkout in less than %@.", nil),[self.book.defaultAcquisition.availability.until longTimeUntilString]];
 
   __block NSUInteger holdPosition = 0;
   __block TPPOPDSAcquisitionAvailabilityCopies copiesTotal = 0;
@@ -175,7 +175,7 @@ typedef NS_ENUM (NSInteger, NYPLProblemReportButtonState) {
 
 -(NSString *)messageStringForNYPLBookButtonStateSuccessful
 {
-  NSString *message = NSLocalizedString(@"BookDetailViewControllerDownloadSuccessfulTitle", nil);
+  NSString *message = NSLocalizedString(@"Your book is ready to read!", nil);
   if (self.book.defaultAcquisition.availability.until) {
     NSString *timeUntilString = [self.book.defaultAcquisition.availability.until longTimeUntilString];
     NSString *timeEstimateMessage = [NSString stringWithFormat:NSLocalizedString(@"It will expire in %@.", @"Tell the user how much time they have left for the book they have borrowed."),timeUntilString];
