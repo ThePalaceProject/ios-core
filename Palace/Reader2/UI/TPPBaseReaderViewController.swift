@@ -180,12 +180,10 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
                                     action: #selector(presentPositionsVC))
     tocButton.accessibilityLabel = DisplayStrings.tocAndBookmarks
     
-    buttons.append(bookmarkBtn)
-    
-    
     if !isShowingSample {
       buttons.append(bookmarkBtn)
     }
+
     buttons.append(tocButton)
     tocBarButton = tocButton
     bookmarkBarButton = bookmarkBtn

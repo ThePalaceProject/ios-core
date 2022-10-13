@@ -65,7 +65,7 @@ typedef NS_ENUM(NSInteger, FacetSort) {
 @property (nonatomic) UIRefreshControl *refreshControl;
 @property (nonatomic) UIBarButtonItem *searchButton;
 @property (nonatomic) TPPMyBooksContainerView *containerView;
-
+@property (nonatomic) BOOL didLoadAccounts;
 @end
 
 @implementation TPPMyBooksViewController
@@ -99,6 +99,7 @@ typedef NS_ENUM(NSInteger, FacetSort) {
 
   // This notification indicates all the accounts have re-authenticated
   // My Books are in the book registry after that
+  self.didLoadAccounts = NO;
   [[NSNotificationCenter defaultCenter]
    addObserver:self
    selector:@selector(accountSetDidLoad)
@@ -345,6 +346,9 @@ OK:
 /// Reloads book registry data
 - (void)reloadData
 {
+  if (!self.didLoadAccounts) {
+    return;
+  }
   if ([TPPUserAccount sharedAccount].needsAuth) {
     if([[TPPUserAccount sharedAccount] hasCredentials]) {
       [[TPPBookRegistry sharedRegistry] syncWithStandardAlertsOnCompletion];
@@ -394,6 +398,7 @@ OK:
 
 - (void)accountSetDidLoad
 {
+  self.didLoadAccounts = YES;
   [self reloadData];
 }
 
