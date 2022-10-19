@@ -13,10 +13,10 @@ set -x
 
 CURL_VERSION="7.64.1"
 
-DEVELOPER="/Applications/Xcode.app/Contents/Developer"
+DEVELOPER="/Applications/Xcode-14.0.0.app/Contents/Developer"
 
-SDK_VERSION="12.2"
-MIN_VERSION="9.0"
+SDK_VERSION="14.0.1"
+MIN_VERSION="11.0"
 
 IPHONEOS_PLATFORM="${DEVELOPER}/Platforms/iPhoneOS.platform"
 IPHONEOS_SDK="${IPHONEOS_PLATFORM}/Developer/SDKs/iPhoneOS.sdk"
