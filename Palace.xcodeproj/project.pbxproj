@@ -4380,6 +4380,7 @@
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_IDENTITY = "iPhone Distribution";
 				CURRENT_PROJECT_VERSION = 113;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
