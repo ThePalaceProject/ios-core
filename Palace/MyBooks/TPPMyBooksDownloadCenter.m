@@ -22,7 +22,6 @@
 #endif
 
 #if defined(LCP)
-//#import <ReadiumLCP/ReadiumLCP-Swift.h>
 @import ReadiumLCP;
 #endif
 

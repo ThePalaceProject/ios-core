@@ -43,8 +43,6 @@
      response:response metadata:nil];
     return nil;
   }
-  NSString *strData = [[NSString alloc]initWithData:data encoding:NSUTF8StringEncoding];
-  NSLog(@"Feed here: %@", strData);
 
   TPPXML *const XML = [TPPXML XMLWithData:data];
   if(!XML) {

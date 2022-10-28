@@ -2,7 +2,7 @@ name: NonDRM Build
 on: workflow_dispatch
 jobs:
   build:
-    runs-on: macOS-14.0.1
+    runs-on: macOS-12
     steps:
       - name: Force Xcode 14.0.1
         run: sudo xcode-select -switch /Applications/Xcode_14.0.1.app

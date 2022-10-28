@@ -13,7 +13,7 @@ set -x
 
 CURL_VERSION="7.64.1"
 
-DEVELOPER="/Applications/Xcode-14.0.1.app/Contents/Developer"
+DEVELOPER="/Applications/Xcode.app/Contents/Developer"
 
 SDK_VERSION="16.0"
 MIN_VERSION="13.0"
