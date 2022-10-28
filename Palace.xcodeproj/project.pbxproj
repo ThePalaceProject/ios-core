@@ -148,46 +148,22 @@
 		2178984E269F174500374A6B /* NYPLAEToolkit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E585662526979AC100A5FBD5 /* NYPLAEToolkit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		219747FC26D9218400FA25DF /* TPPLCPClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 219747F626D9218400FA25DF /* TPPLCPClient.swift */; };
 		2197480F26D9254500FA25DF /* R2LCPClient.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 73A7BA4D25A62FE900C2906C /* R2LCPClient.framework */; };
-		219868F7267E29830041369E /* CryptoSwift.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 219868F6267E29830041369E /* CryptoSwift.xcframework */; };
-		219868F8267E29830041369E /* CryptoSwift.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 219868F6267E29830041369E /* CryptoSwift.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		219868FF267E29920041369E /* Fuzi.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 219868FE267E29920041369E /* Fuzi.xcframework */; };
-		21986900267E29920041369E /* Fuzi.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 219868FE267E29920041369E /* Fuzi.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		21986906267E299E0041369E /* GCDWebServer.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 21986905267E299E0041369E /* GCDWebServer.xcframework */; };
 		21986907267E299E0041369E /* GCDWebServer.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 21986905267E299E0041369E /* GCDWebServer.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		2198690D267E29B00041369E /* Minizip.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2198690C267E29B00041369E /* Minizip.xcframework */; };
-		2198690E267E29B00041369E /* Minizip.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 2198690C267E29B00041369E /* Minizip.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		21986914267E29BC0041369E /* NYPLAudiobookToolkit.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 21986913267E29BC0041369E /* NYPLAudiobookToolkit.xcframework */; };
 		21986915267E29BC0041369E /* NYPLAudiobookToolkit.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 21986913267E29BC0041369E /* NYPLAudiobookToolkit.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		21986922267E29D70041369E /* PureLayout.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 21986921267E29D70041369E /* PureLayout.xcframework */; };
 		21986923267E29D70041369E /* PureLayout.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 21986921267E29D70041369E /* PureLayout.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		2198693A267E2A030041369E /* SQLite.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 21986939267E2A030041369E /* SQLite.xcframework */; };
-		2198693B267E2A030041369E /* SQLite.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 21986939267E2A030041369E /* SQLite.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		21986941267E2A0A0041369E /* SwiftSoup.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 21986940267E2A0A0041369E /* SwiftSoup.xcframework */; };
-		21986942267E2A0A0041369E /* SwiftSoup.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 21986940267E2A0A0041369E /* SwiftSoup.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		21986948267E2A120041369E /* ZIPFoundation.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 21986947267E2A120041369E /* ZIPFoundation.xcframework */; };
-		21986949267E2A120041369E /* ZIPFoundation.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 21986947267E2A120041369E /* ZIPFoundation.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		2198694D267E2A150041369E /* ZXingObjC.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2198694C267E2A140041369E /* ZXingObjC.xcframework */; };
 		2198694E267E2A150041369E /* ZXingObjC.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 2198694C267E2A140041369E /* ZXingObjC.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		21986955267E2A430041369E /* CryptoSwift.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 219868F6267E29830041369E /* CryptoSwift.xcframework */; };
-		21986956267E2A430041369E /* CryptoSwift.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 219868F6267E29830041369E /* CryptoSwift.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		21986957267E2A440041369E /* Fuzi.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 219868FE267E29920041369E /* Fuzi.xcframework */; };
-		21986958267E2A440041369E /* Fuzi.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 219868FE267E29920041369E /* Fuzi.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		21986959267E2A440041369E /* GCDWebServer.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 21986905267E299E0041369E /* GCDWebServer.xcframework */; };
 		2198695A267E2A440041369E /* GCDWebServer.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 21986905267E299E0041369E /* GCDWebServer.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		2198695B267E2A440041369E /* Minizip.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2198690C267E29B00041369E /* Minizip.xcframework */; };
-		2198695C267E2A440041369E /* Minizip.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 2198690C267E29B00041369E /* Minizip.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		2198695D267E2A440041369E /* NYPLAudiobookToolkit.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 21986913267E29BC0041369E /* NYPLAudiobookToolkit.xcframework */; };
 		2198695E267E2A450041369E /* NYPLAudiobookToolkit.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 21986913267E29BC0041369E /* NYPLAudiobookToolkit.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		2198695F267E2A450041369E /* PDFRendererProvider.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2198691A267E29CC0041369E /* PDFRendererProvider.xcframework */; };
 		21986960267E2A450041369E /* PDFRendererProvider.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 2198691A267E29CC0041369E /* PDFRendererProvider.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		21986961267E2A450041369E /* PureLayout.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 21986921267E29D70041369E /* PureLayout.xcframework */; };
 		21986962267E2A450041369E /* PureLayout.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 21986921267E29D70041369E /* PureLayout.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		21986969267E2A460041369E /* SQLite.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 21986939267E2A030041369E /* SQLite.xcframework */; };
-		2198696A267E2A470041369E /* SQLite.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 21986939267E2A030041369E /* SQLite.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		2198696B267E2A470041369E /* SwiftSoup.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 21986940267E2A0A0041369E /* SwiftSoup.xcframework */; };
-		2198696C267E2A470041369E /* SwiftSoup.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 21986940267E2A0A0041369E /* SwiftSoup.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		2198696D267E2A470041369E /* ZIPFoundation.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 21986947267E2A120041369E /* ZIPFoundation.xcframework */; };
-		2198696E267E2A470041369E /* ZIPFoundation.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 21986947267E2A120041369E /* ZIPFoundation.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		2198696F267E2A470041369E /* ZXingObjC.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2198694C267E2A140041369E /* ZXingObjC.xcframework */; };
 		21986970267E2A480041369E /* ZXingObjC.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 2198694C267E2A140041369E /* ZXingObjC.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		2198699D267E78FD0041369E /* FirebaseCrashlytics.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 21986998267E78FC0041369E /* FirebaseCrashlytics.xcframework */; };
@@ -234,8 +210,6 @@
 		21DCC3AC27BEC38F00064B37 /* TPPAssociatedColors.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21DCC3AA27BEC38F00064B37 /* TPPAssociatedColors.swift */; };
 		21DCC3AE27BEDB5A00064B37 /* TPPReaderAppearance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21DCC3AD27BEDB5A00064B37 /* TPPReaderAppearance.swift */; };
 		21DCC3AF27BEDB5A00064B37 /* TPPReaderAppearance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21DCC3AD27BEDB5A00064B37 /* TPPReaderAppearance.swift */; };
-		21DCC3B627BEE39E00064B37 /* DifferenceKit.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = E708C18C27734EE300D34899 /* DifferenceKit.xcframework */; };
-		21DCC3B727BEE39E00064B37 /* DifferenceKit.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E708C18C27734EE300D34899 /* DifferenceKit.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		21DDE31325D2CE9A002CBCE3 /* AdobeDRMLibraryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21F238C724991A2A004DC0B1 /* AdobeDRMLibraryService.swift */; };
 		21DDE31F25D2CEAF002CBCE3 /* AdobeDRMContainer.mm in Sources */ = {isa = PBXBuildFile; fileRef = 21F238C12499155E004DC0B1 /* AdobeDRMContainer.mm */; };
 		21DDE32425D2CEC6002CBCE3 /* AdobeDRMLibraryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21F238C724991A2A004DC0B1 /* AdobeDRMLibraryService.swift */; };
@@ -752,8 +726,6 @@
 		E706F6092863831F000B7431 /* TPPPDFPage+serialization.swift in Sources */ = {isa = PBXBuildFile; fileRef = E706F6082863831F000B7431 /* TPPPDFPage+serialization.swift */; };
 		E706F60B2863864F000B7431 /* CGPDFPage+previews.swift in Sources */ = {isa = PBXBuildFile; fileRef = E706F60A2863864F000B7431 /* CGPDFPage+previews.swift */; };
 		E706F60F286388B3000B7431 /* TPPPDFDocumentMetadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = E706F60E286388B3000B7431 /* TPPPDFDocumentMetadata.swift */; };
-		E708C19227734EE300D34899 /* DifferenceKit.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = E708C18C27734EE300D34899 /* DifferenceKit.xcframework */; };
-		E708C19327734EE300D34899 /* DifferenceKit.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E708C18C27734EE300D34899 /* DifferenceKit.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		E708F713284780920028405B /* TPPEncryptedPDFPageViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E708F712284780920028405B /* TPPEncryptedPDFPageViewController.swift */; };
 		E708F714284780920028405B /* TPPEncryptedPDFPageViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E708F712284780920028405B /* TPPEncryptedPDFPageViewController.swift */; };
 		E708F720284781D50028405B /* TPPEncryptedPDFViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E708F71F284781D50028405B /* TPPEncryptedPDFViewController.swift */; };
@@ -890,16 +862,9 @@
 				21986907267E299E0041369E /* GCDWebServer.xcframework in Embed Frameworks */,
 				E75E7B692881860D001C5427 /* PDFRendererProvider.xcframework in Embed Frameworks */,
 				2178984E269F174500374A6B /* NYPLAEToolkit.framework in Embed Frameworks */,
-				219868F8267E29830041369E /* CryptoSwift.xcframework in Embed Frameworks */,
-				E708C19327734EE300D34899 /* DifferenceKit.xcframework in Embed Frameworks */,
-				2198693B267E2A030041369E /* SQLite.xcframework in Embed Frameworks */,
 				21986923267E29D70041369E /* PureLayout.xcframework in Embed Frameworks */,
-				21986942267E2A0A0041369E /* SwiftSoup.xcframework in Embed Frameworks */,
-				2198690E267E29B00041369E /* Minizip.xcframework in Embed Frameworks */,
 				21986915267E29BC0041369E /* NYPLAudiobookToolkit.xcframework in Embed Frameworks */,
 				2198694E267E2A150041369E /* ZXingObjC.xcframework in Embed Frameworks */,
-				21986900267E29920041369E /* Fuzi.xcframework in Embed Frameworks */,
-				21986949267E2A120041369E /* ZIPFoundation.xcframework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -911,17 +876,10 @@
 			dstSubfolderSpec = 10;
 			files = (
 				2198695A267E2A440041369E /* GCDWebServer.xcframework in Embed Frameworks */,
-				21986956267E2A430041369E /* CryptoSwift.xcframework in Embed Frameworks */,
-				2198696A267E2A470041369E /* SQLite.xcframework in Embed Frameworks */,
 				21986962267E2A450041369E /* PureLayout.xcframework in Embed Frameworks */,
-				2198696C267E2A470041369E /* SwiftSoup.xcframework in Embed Frameworks */,
-				21DCC3B727BEE39E00064B37 /* DifferenceKit.xcframework in Embed Frameworks */,
 				21986960267E2A450041369E /* PDFRendererProvider.xcframework in Embed Frameworks */,
-				2198695C267E2A440041369E /* Minizip.xcframework in Embed Frameworks */,
 				2198695E267E2A450041369E /* NYPLAudiobookToolkit.xcframework in Embed Frameworks */,
 				21986970267E2A480041369E /* ZXingObjC.xcframework in Embed Frameworks */,
-				21986958267E2A440041369E /* Fuzi.xcframework in Embed Frameworks */,
-				2198696E267E2A470041369E /* ZIPFoundation.xcframework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -1102,7 +1060,6 @@
 		148B1C1721710C6800FF64AB /* NYPLAEToolkit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = NYPLAEToolkit.framework; path = Carthage/Build/iOS/NYPLAEToolkit.framework; sourceTree = "<group>"; };
 		148B1C1C21710C6800FF64AB /* NYPLAudiobookToolkit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = NYPLAudiobookToolkit.framework; path = Carthage/Build/iOS/NYPLAudiobookToolkit.framework; sourceTree = "<group>"; };
 		17071060242A923400E2648F /* TPPSecrets.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPSecrets.swift; sourceTree = "<group>"; };
-		170E5FBD25AFDD64007D6DE6 /* ZIPFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ZIPFoundation.framework; path = Carthage/Build/iOS/ZIPFoundation.framework; sourceTree = "<group>"; };
 		171966A824170819007BB87E /* TPPBookState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBookState.swift; sourceTree = "<group>"; };
 		173F0822241AAA4E00A64658 /* TPPBookStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBookStateTests.swift; sourceTree = "<group>"; };
 		175E480724EF36520066A6CF /* TPPAnnouncementBusinessLogic.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAnnouncementBusinessLogic.swift; sourceTree = "<group>"; };
@@ -1127,23 +1084,16 @@
 		2126FE2D25C059240095C45C /* ReaderError.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ReaderError.swift; sourceTree = "<group>"; };
 		212B99D2258A36FD00C8BF79 /* LCPAudiobooks.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = LCPAudiobooks.swift; sourceTree = "<group>"; };
 		21562CC2276BB52700C03372 /* AdobeDRMAlerts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdobeDRMAlerts.swift; sourceTree = "<group>"; };
-		2156B54425B200EA003AD8EC /* R2LCPClient.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = R2LCPClient.framework; path = Carthage/Build/iOS/R2LCPClient.framework; sourceTree = "<group>"; };
 		215C866C27064198005F9621 /* BundleExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BundleExtension.swift; sourceTree = "<group>"; };
 		216D2E38274286D200472538 /* TPPLCPLicense.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPLCPLicense.swift; sourceTree = "<group>"; };
 		2171ADA0251E38140003CABA /* LCPLibraryService.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = LCPLibraryService.swift; sourceTree = "<group>"; };
 		217595D927B6800100BA0FDD /* TPPReaderSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPReaderSettingsView.swift; sourceTree = "<group>"; };
 		217595DC27B680D400BA0FDD /* TPPReaderSettingsVC.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPReaderSettingsVC.swift; sourceTree = "<group>"; };
 		219747F626D9218400FA25DF /* TPPLCPClient.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPLCPClient.swift; sourceTree = "<group>"; };
-		219868F6267E29830041369E /* CryptoSwift.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = CryptoSwift.xcframework; path = Carthage/Build/CryptoSwift.xcframework; sourceTree = "<group>"; };
-		219868FE267E29920041369E /* Fuzi.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = Fuzi.xcframework; path = Carthage/Build/Fuzi.xcframework; sourceTree = "<group>"; };
 		21986905267E299E0041369E /* GCDWebServer.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = GCDWebServer.xcframework; path = Carthage/Build/GCDWebServer.xcframework; sourceTree = "<group>"; };
-		2198690C267E29B00041369E /* Minizip.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = Minizip.xcframework; path = Carthage/Build/Minizip.xcframework; sourceTree = "<group>"; };
 		21986913267E29BC0041369E /* NYPLAudiobookToolkit.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = NYPLAudiobookToolkit.xcframework; path = Carthage/Build/NYPLAudiobookToolkit.xcframework; sourceTree = "<group>"; };
 		2198691A267E29CC0041369E /* PDFRendererProvider.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = PDFRendererProvider.xcframework; path = Carthage/Build/PDFRendererProvider.xcframework; sourceTree = "<group>"; };
 		21986921267E29D70041369E /* PureLayout.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = PureLayout.xcframework; path = Carthage/Build/PureLayout.xcframework; sourceTree = "<group>"; };
-		21986939267E2A030041369E /* SQLite.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = SQLite.xcframework; path = Carthage/Build/SQLite.xcframework; sourceTree = "<group>"; };
-		21986940267E2A0A0041369E /* SwiftSoup.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = SwiftSoup.xcframework; path = Carthage/Build/SwiftSoup.xcframework; sourceTree = "<group>"; };
-		21986947267E2A120041369E /* ZIPFoundation.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = ZIPFoundation.xcframework; path = Carthage/Build/ZIPFoundation.xcframework; sourceTree = "<group>"; };
 		2198694C267E2A140041369E /* ZXingObjC.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = ZXingObjC.xcframework; path = Carthage/Build/ZXingObjC.xcframework; sourceTree = "<group>"; };
 		21986998267E78FC0041369E /* FirebaseCrashlytics.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = FirebaseCrashlytics.xcframework; path = Carthage/Build/FirebaseCrashlytics.xcframework; sourceTree = "<group>"; };
 		21986999267E78FC0041369E /* FirebaseAnalytics.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = FirebaseAnalytics.xcframework; path = Carthage/Build/FirebaseAnalytics.xcframework; sourceTree = "<group>"; };
@@ -1274,10 +1224,6 @@
 		731272B1259CFB180032D7B4 /* testflight-upload.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "testflight-upload.sh"; sourceTree = "<group>"; };
 		7314D13F2551E73C00723E26 /* TPPSignInBusinessLogic+SignOut.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPSignInBusinessLogic+SignOut.swift"; sourceTree = "<group>"; };
 		731A5B1124621F2B00B5E663 /* TPPSignInBusinessLogic.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPSignInBusinessLogic.swift; sourceTree = "<group>"; };
-		731B2B1A244A1EB300A7A649 /* Fuzi.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Fuzi.framework; path = "../r2-streamer-swift/Carthage/Build/iOS/Fuzi.framework"; sourceTree = "<group>"; };
-		731B2B1B244A1EB400A7A649 /* GCDWebServer.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = GCDWebServer.framework; path = "../r2-streamer-swift/Carthage/Build/iOS/GCDWebServer.framework"; sourceTree = "<group>"; };
-		731B2B1C244A1EB400A7A649 /* CryptoSwift.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CryptoSwift.framework; path = "../r2-streamer-swift/Carthage/Build/iOS/CryptoSwift.framework"; sourceTree = "<group>"; };
-		731B2B1D244A1EB400A7A649 /* Minizip.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Minizip.framework; path = "../r2-streamer-swift/Carthage/Build/iOS/Minizip.framework"; sourceTree = "<group>"; };
 		73225DEA250B471400EF1877 /* TPPRootTabBarController+OE.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPRootTabBarController+OE.swift"; sourceTree = "<group>"; };
 		732327B12478504500A041E6 /* NSError+NYPLAdditions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NSError+NYPLAdditions.swift"; sourceTree = "<group>"; };
 		7327A89223EE017300954748 /* TPPMainThreadChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPMainThreadChecker.swift; sourceTree = "<group>"; };
@@ -1316,7 +1262,6 @@
 		7358A9532589A70B00E66D34 /* decode-install-secrets.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "decode-install-secrets.sh"; sourceTree = "<group>"; };
 		735DD0BD252299A90096D1F9 /* UIColor+NYPLAdditionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UIColor+NYPLAdditionsTests.swift"; sourceTree = "<group>"; };
 		735F41A2243E381D00046182 /* String+NYPLAdditionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "String+NYPLAdditionsTests.swift"; sourceTree = "<group>"; };
-		735FC2D42485C178009CF11E /* SwiftSoup.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftSoup.framework; path = "../r2-navigator-swift/Carthage/Build/iOS/SwiftSoup.framework"; sourceTree = "<group>"; };
 		735FED252427494900144C97 /* TPPNetworkResponder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPNetworkResponder.swift; sourceTree = "<group>"; };
 		73609AD8245B53CB00F0E08B /* update-certificates.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; name = "update-certificates.sh"; path = "scripts/update-certificates.sh"; sourceTree = SOURCE_ROOT; };
 		7360D0D424BFCB9700C8AD16 /* TPPUserFriendlyError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPUserFriendlyError.swift; sourceTree = "<group>"; };
@@ -1330,7 +1275,6 @@
 		7384C7FF242BB43300D5F960 /* TPPCachingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPCachingTests.swift; sourceTree = "<group>"; };
 		7384C801242BCC4800D5F960 /* Date+NYPLAdditions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Date+NYPLAdditions.swift"; sourceTree = "<group>"; };
 		7384C803242BCE5900D5F960 /* Date+NYPLAdditionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Date+NYPLAdditionsTests.swift"; sourceTree = "<group>"; };
-		738574AD25A631AF001E615D /* Minizip.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Minizip.framework; path = Carthage/Build/iOS/Minizip.framework; sourceTree = "<group>"; };
 		7386C1F3245225A5004C78BD /* TPPReaderPositionsVC.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPReaderPositionsVC.swift; sourceTree = "<group>"; };
 		7386C1F624525AFF004C78BD /* TPPReaderTOCBusinessLogic.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPReaderTOCBusinessLogic.swift; sourceTree = "<group>"; };
 		7386C1F9245276CA004C78BD /* TPPReaderTOCCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPReaderTOCCell.swift; sourceTree = "<group>"; };
@@ -1385,9 +1329,6 @@
 		73DE53302525A386003E2C56 /* TPPLibraryAccountURLsProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPLibraryAccountURLsProvider.swift; sourceTree = "<group>"; };
 		73DE8979260BEA13003D9135 /* TPPRequestExecuting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPRequestExecuting.swift; sourceTree = "<group>"; };
 		73DEB5462486FDFC00B5FF0A /* TPPBookmarkR2Location.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPBookmarkR2Location.swift; sourceTree = "<group>"; };
-		73DED81925A630AA00A4D63B /* SwiftSoup.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftSoup.framework; path = Carthage/Build/iOS/SwiftSoup.framework; sourceTree = "<group>"; };
-		73DED81D25A630DB00A4D63B /* CryptoSwift.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CryptoSwift.framework; path = Carthage/Build/iOS/CryptoSwift.framework; sourceTree = "<group>"; };
-		73DED82125A630FF00A4D63B /* Fuzi.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Fuzi.framework; path = Carthage/Build/iOS/Fuzi.framework; sourceTree = "<group>"; };
 		73DED82525A6311A00A4D63B /* GCDWebServer.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = GCDWebServer.framework; path = Carthage/Build/iOS/GCDWebServer.framework; sourceTree = "<group>"; };
 		73E64E65252BB82600276953 /* TPPWelcomeEULAViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPWelcomeEULAViewController.swift; sourceTree = "<group>"; };
 		73EB0B7525821DF4006BC997 /* Palace-noDRM.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Palace-noDRM.app"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -1488,7 +1429,6 @@
 		E58565CE269774C400A5FBD5 /* AudioEngine.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = AudioEngine.xcframework; path = Carthage/Build/AudioEngine.xcframework; sourceTree = "<group>"; };
 		E58565D2269774D900A5FBD5 /* NYPLAEToolkit.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = NYPLAEToolkit.xcframework; sourceTree = "<group>"; };
 		E585662026979AC100A5FBD5 /* NYPLAEToolkit.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = NYPLAEToolkit.xcodeproj; path = "ios-drm-audioengine/NYPLAEToolkit.xcodeproj"; sourceTree = "<group>"; };
-		E585662726979EF100A5FBD5 /* NYPLAEToolkit.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = NYPLAEToolkit.xcframework; path = Carthage/Build/NYPLAEToolkit.xcframework; sourceTree = "<group>"; };
 		E59526EA28D24FC000C179DA /* AudiobookSample.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudiobookSample.swift; sourceTree = "<group>"; };
 		E59892E028A9AC2600C44A85 /* Sample.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sample.swift; sourceTree = "<group>"; };
 		E59892EC28AC909000C44A85 /* AudiobookSampleToolbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudiobookSampleToolbar.swift; sourceTree = "<group>"; };
@@ -1543,7 +1483,6 @@
 		E706F6082863831F000B7431 /* TPPPDFPage+serialization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPPDFPage+serialization.swift"; sourceTree = "<group>"; };
 		E706F60A2863864F000B7431 /* CGPDFPage+previews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CGPDFPage+previews.swift"; sourceTree = "<group>"; };
 		E706F60E286388B3000B7431 /* TPPPDFDocumentMetadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFDocumentMetadata.swift; sourceTree = "<group>"; };
-		E708C18C27734EE300D34899 /* DifferenceKit.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = DifferenceKit.xcframework; path = Carthage/Build/DifferenceKit.xcframework; sourceTree = "<group>"; };
 		E708F712284780920028405B /* TPPEncryptedPDFPageViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPEncryptedPDFPageViewController.swift; sourceTree = "<group>"; };
 		E708F71F284781D50028405B /* TPPEncryptedPDFViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPEncryptedPDFViewController.swift; sourceTree = "<group>"; };
 		E708F722284783250028405B /* TPPEncryptedPDFViewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPEncryptedPDFViewer.swift; sourceTree = "<group>"; };
@@ -1602,7 +1541,6 @@
 				73EB0B3025821DF4006BC997 /* CoreVideo.framework in Frameworks */,
 				73EB0B3125821DF4006BC997 /* AVFoundation.framework in Frameworks */,
 				73EB0B3225821DF4006BC997 /* AudioToolbox.framework in Frameworks */,
-				2198696D267E2A470041369E /* ZIPFoundation.xcframework in Frameworks */,
 				73EB0B3325821DF4006BC997 /* libiconv.tbd in Frameworks */,
 				219869DA267E80820041369E /* PromisesObjC.xcframework in Frameworks */,
 				2198695D267E2A440041369E /* NYPLAudiobookToolkit.xcframework in Frameworks */,
@@ -1617,12 +1555,8 @@
 				219869A1267E78FD0041369E /* FirebaseInstallations.xcframework in Frameworks */,
 				73EB0B3B25821DF4006BC997 /* LocalAuthentication.framework in Frameworks */,
 				73EB0B3C25821DF4006BC997 /* SystemConfiguration.framework in Frameworks */,
-				21986969267E2A460041369E /* SQLite.xcframework in Frameworks */,
 				73EB0B3D25821DF4006BC997 /* Security.framework in Frameworks */,
-				21DCC3B627BEE39E00064B37 /* DifferenceKit.xcframework in Frameworks */,
-				21986955267E2A430041369E /* CryptoSwift.xcframework in Frameworks */,
 				219869D2267E80810041369E /* GoogleDataTransport.xcframework in Frameworks */,
-				2198696B267E2A470041369E /* SwiftSoup.xcframework in Frameworks */,
 				73EB0B3E25821DF4006BC997 /* CFNetwork.framework in Frameworks */,
 				21986959267E2A440041369E /* GCDWebServer.xcframework in Frameworks */,
 				219869D4267E80810041369E /* GoogleAppMeasurement.xcframework in Frameworks */,
@@ -1635,9 +1569,7 @@
 				219869A5267E78FE0041369E /* FirebaseCoreDiagnostics.xcframework in Frameworks */,
 				219869D6267E80810041369E /* nanopb.xcframework in Frameworks */,
 				73EB0B4625821DF4006BC997 /* libxml2.dylib in Frameworks */,
-				2198695B267E2A440041369E /* Minizip.xcframework in Frameworks */,
 				219869A3267E78FE0041369E /* FirebaseCore.xcframework in Frameworks */,
-				21986957267E2A440041369E /* Fuzi.xcframework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1653,14 +1585,12 @@
 				03B092281E78859E00AD338D /* CoreMedia.framework in Frameworks */,
 				03B0922E1E7886ED00AD338D /* CoreVideo.framework in Frameworks */,
 				03B0922C1E7886C900AD338D /* AVFoundation.framework in Frameworks */,
-				219868F7267E29830041369E /* CryptoSwift.xcframework in Frameworks */,
 				E5A2354C28FFB202009CE3FD /* R2Shared in Frameworks */,
 				03B0922A1E7885A600AD338D /* AudioToolbox.framework in Frameworks */,
 				03B092261E7883C400AD338D /* libiconv.tbd in Frameworks */,
 				E75E7B682881860D001C5427 /* PDFRendererProvider.xcframework in Frameworks */,
 				A823D813192BABA400B55DE2 /* CoreGraphics.framework in Frameworks */,
 				03B092241E78839D00AD338D /* QuartzCore.framework in Frameworks */,
-				21986948267E2A120041369E /* ZIPFoundation.xcframework in Frameworks */,
 				E5A2355028FFB202009CE3FD /* ReadiumLCP in Frameworks */,
 				219869AA267E792B0041369E /* FirebaseAnalytics.xcframework in Frameworks */,
 				08C469C11BDAAEB1009D8AFD /* libADEPT.a in Frameworks */,
@@ -1683,18 +1613,13 @@
 				A823D811192BABA400B55DE2 /* Foundation.framework in Frameworks */,
 				1112A8431A3249B4002B8CC1 /* libTenPrintCover.a in Frameworks */,
 				21986922267E29D70041369E /* PureLayout.xcframework in Frameworks */,
-				E708C19227734EE300D34899 /* DifferenceKit.xcframework in Frameworks */,
 				219869B0267E792C0041369E /* FirebaseCrashlytics.xcframework in Frameworks */,
 				119503E91993F919009FB788 /* libz.dylib in Frameworks */,
 				119503E71993F914009FB788 /* libxml2.dylib in Frameworks */,
 				21986906267E299E0041369E /* GCDWebServer.xcframework in Frameworks */,
-				219868FF267E29920041369E /* Fuzi.xcframework in Frameworks */,
-				2198690D267E29B00041369E /* Minizip.xcframework in Frameworks */,
 				219869AE267E792B0041369E /* FirebaseCoreDiagnostics.xcframework in Frameworks */,
 				219869AC267E792B0041369E /* FirebaseCore.xcframework in Frameworks */,
-				21986941267E2A0A0041369E /* SwiftSoup.xcframework in Frameworks */,
 				219869E9267E81CB0041369E /* GoogleDataTransport.xcframework in Frameworks */,
-				2198693A267E2A030041369E /* SQLite.xcframework in Frameworks */,
 				21986914267E29BC0041369E /* NYPLAudiobookToolkit.xcframework in Frameworks */,
 				E5A2354E28FFB202009CE3FD /* R2Streamer in Frameworks */,
 			);
@@ -2640,9 +2565,7 @@
 		A823D80F192BABA400B55DE2 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
-				E708C18C27734EE300D34899 /* DifferenceKit.xcframework */,
 				E58565D2269774D900A5FBD5 /* NYPLAEToolkit.xcframework */,
-				E585662726979EF100A5FBD5 /* NYPLAEToolkit.xcframework */,
 				E58565CE269774C400A5FBD5 /* AudioEngine.xcframework */,
 				219869CE267E80800041369E /* GoogleAppMeasurement.xcframework */,
 				219869CD267E80800041369E /* GoogleDataTransport.xcframework */,
@@ -2655,30 +2578,13 @@
 				21986998267E78FC0041369E /* FirebaseCrashlytics.xcframework */,
 				2198699A267E78FC0041369E /* FirebaseInstallations.xcframework */,
 				2198694C267E2A140041369E /* ZXingObjC.xcframework */,
-				21986947267E2A120041369E /* ZIPFoundation.xcframework */,
-				21986940267E2A0A0041369E /* SwiftSoup.xcframework */,
-				21986939267E2A030041369E /* SQLite.xcframework */,
 				21986921267E29D70041369E /* PureLayout.xcframework */,
 				2198691A267E29CC0041369E /* PDFRendererProvider.xcframework */,
 				21986913267E29BC0041369E /* NYPLAudiobookToolkit.xcframework */,
-				2198690C267E29B00041369E /* Minizip.xcframework */,
 				21986905267E299E0041369E /* GCDWebServer.xcframework */,
-				219868FE267E29920041369E /* Fuzi.xcframework */,
-				219868F6267E29830041369E /* CryptoSwift.xcframework */,
-				2156B54425B200EA003AD8EC /* R2LCPClient.framework */,
 				73F36BD325CC76C60057954C /* XCTest.framework */,
-				170E5FBD25AFDD64007D6DE6 /* ZIPFoundation.framework */,
 				73A7BA4D25A62FE900C2906C /* R2LCPClient.framework */,
-				73DED81925A630AA00A4D63B /* SwiftSoup.framework */,
-				735FC2D42485C178009CF11E /* SwiftSoup.framework */,
-				73DED81D25A630DB00A4D63B /* CryptoSwift.framework */,
-				731B2B1C244A1EB400A7A649 /* CryptoSwift.framework */,
-				73DED82125A630FF00A4D63B /* Fuzi.framework */,
-				731B2B1A244A1EB300A7A649 /* Fuzi.framework */,
 				73DED82525A6311A00A4D63B /* GCDWebServer.framework */,
-				731B2B1B244A1EB400A7A649 /* GCDWebServer.framework */,
-				738574AD25A631AF001E615D /* Minizip.framework */,
-				731B2B1D244A1EB400A7A649 /* Minizip.framework */,
 				73CEF82F252699C9006B2820 /* FirebaseCrashlytics.framework */,
 				7347F132245A508400558D7F /* NYPLCardCreator.framework */,
 				17D08378248E8EEB00092AA9 /* OverdriveProcessor.framework */,
