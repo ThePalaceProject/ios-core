@@ -66,6 +66,7 @@ typedef NS_ENUM(NSInteger, FacetSort) {
 @property (nonatomic) UIBarButtonItem *searchButton;
 @property (nonatomic) TPPMyBooksContainerView *containerView;
 @property (nonatomic) BOOL didLoadAccounts;
+@property (nonatomic) UIActivityIndicatorView *activityIndicator;
 @end
 
 @implementation TPPMyBooksViewController
@@ -152,6 +153,14 @@ typedef NS_ENUM(NSInteger, FacetSort) {
   [self.instructionsLabel autoCenterInSuperview];
   [self.instructionsLabel autoSetDimension:ALDimensionWidth toSize:300.0];
   
+  self.activityIndicator = [[UIActivityIndicatorView alloc] initWithFrame:CGRectZero];
+  [self.view addSubview:self.activityIndicator];
+  [self.view bringSubviewToFront:self.activityIndicator];
+  [self.activityIndicator autoAlignAxisToSuperviewAxis:ALAxisVertical];
+  [self.activityIndicator autoAlignAxisToSuperviewAxis:ALAxisHorizontal];
+
+  [self.activityIndicator startAnimating];
+  
   self.searchButton = [[UIBarButtonItem alloc]
                        initWithImage:[UIImage imageNamed:@"Search"]
                        style:UIBarButtonItemStylePlain
@@ -170,6 +179,8 @@ typedef NS_ENUM(NSInteger, FacetSort) {
 - (void)viewWillAppear:(BOOL)animated
 {
   [super viewWillAppear:animated];
+  self.instructionsLabel.hidden = YES;
+
   [[NSOperationQueue mainQueue] addOperationWithBlock:^{
     BOOL isSyncing = [TPPBookRegistry sharedRegistry].syncing;
     if(!isSyncing) {
@@ -177,6 +188,7 @@ typedef NS_ENUM(NSInteger, FacetSort) {
       [[NSNotificationCenter defaultCenter] postNotificationName:NSNotification.TPPSyncEnded object:nil];
     } else {
       self.navigationItem.leftBarButtonItem.enabled = NO;
+      [self.activityIndicator startAnimating];
     }
   }];
   
@@ -232,9 +244,7 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
   [super willReloadCollectionViewData];
   
   NSArray *books = [[TPPBookRegistry sharedRegistry] myBooks];
-  
-  self.instructionsLabel.hidden = !!books.count;
-    
+      
   switch(self.activeFacetSort) {
     case FacetSortAuthor: {
       self.books = [books sortedArrayUsingComparator:
@@ -365,6 +375,8 @@ OK:
 
 - (void)didPullToRefresh
 {
+  [self.activityIndicator startAnimating];
+  self.instructionsLabel.hidden = YES;
   [self reloadData];
 }
 
@@ -394,6 +406,8 @@ OK:
 - (void)syncEnded
 {
   self.navigationItem.leftBarButtonItem.enabled = YES;
+  [self.activityIndicator stopAnimating];
+  self.instructionsLabel.hidden = !!self.books.count;
 }
 
 - (void)accountSetDidLoad
