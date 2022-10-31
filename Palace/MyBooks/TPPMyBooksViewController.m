@@ -375,7 +375,10 @@ OK:
 
 - (void)didPullToRefresh
 {
-  [self.activityIndicator startAnimating];
+  if (self.books.count == 0) {
+    [self.activityIndicator startAnimating];
+  }
+
   self.instructionsLabel.hidden = YES;
   [self reloadData];
 }
