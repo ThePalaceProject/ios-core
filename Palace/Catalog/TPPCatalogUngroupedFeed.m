@@ -1,6 +1,5 @@
 #import "TPPAsync.h"
 
-#import "TPPBookRegistry.h"
 #import "TPPCatalogFacet.h"
 #import "TPPCatalogFacetGroup.h"
 #import "TPPOPDS.h"
@@ -78,7 +77,7 @@ handler:(void (^)(TPPCatalogUngroupedFeed *category))handler
       continue;
     }
 
-    TPPBook *updatedBook = [[TPPBookRegistry sharedRegistry] updatedBookMetadata:book];
+    TPPBook *updatedBook = [[TPPBookRegistry shared] updatedBookMetadata:book];
     if(updatedBook) {
       book = updatedBook;
     }
@@ -224,7 +223,7 @@ handler:(void (^)(TPPCatalogUngroupedFeed *category))handler
     NSMutableArray *const refreshedBooks = [NSMutableArray arrayWithCapacity:self.books.count];
     
     for(TPPBook *const book in self.books) {
-      TPPBook *const refreshedBook = [[TPPBookRegistry sharedRegistry]
+      TPPBook *const refreshedBook = [[TPPBookRegistry shared]
                                        bookForIdentifier:book.identifier];
       if(refreshedBook) {
         [refreshedBooks addObject:refreshedBook];

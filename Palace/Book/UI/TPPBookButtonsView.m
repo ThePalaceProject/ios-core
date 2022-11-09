@@ -8,8 +8,6 @@
 
 @import PureLayout;
 
-
-#import "TPPBookRegistry.h"
 #import "TPPBookButtonsView.h"
 #import "TPPConfiguration.h"
 #import "TPPRootTabBarController.h"
@@ -153,7 +151,7 @@
   static NSString *const AddIndicatorKey = @"addIndicator";
   [self updateProcessingState:NO];
 
-  NSString *fulfillmentId = [[TPPBookRegistry sharedRegistry] fulfillmentIdForIdentifier:self.book.identifier];
+  NSString *fulfillmentId = [[TPPBookRegistry shared] fulfillmentIdForIdentifier:self.book.identifier];
   
   switch(self.state) {
     case TPPBookButtonsStateCanBorrow:
@@ -371,7 +369,7 @@
   _book = book;
   [self updateButtons];
 
-  BOOL isCurrentlyProcessing = [[TPPBookRegistry sharedRegistry]
+  BOOL isCurrentlyProcessing = [[TPPBookRegistry shared]
                                 processingForIdentifier:self.book.identifier];
   [self updateProcessingState:isCurrentlyProcessing];
 }
@@ -392,7 +390,7 @@
   NSString *message = nil;
   NSString *confirmButtonTitle = nil;
   
-  switch([[TPPBookRegistry sharedRegistry] stateForIdentifier:self.book.identifier]) {
+  switch([[TPPBookRegistry shared] stateFor:self.book.identifier]) {
     case TPPBookStateUsed:
     case TPPBookStateSAMLStarted:
     case TPPBookStateDownloading:
@@ -459,7 +457,7 @@
 
 - (void)didSelectCancel
 {
-  switch([[TPPBookRegistry sharedRegistry] stateForIdentifier:self.book.identifier]) {
+  switch([[TPPBookRegistry shared] stateFor:self.book.identifier]) {
     case TPPBookStateSAMLStarted:
     case TPPBookStateDownloading: {
       [self.downloadingDelegate didSelectCancelForBookDetailDownloadingView:self];

@@ -7,8 +7,6 @@
 
 #import "TPPAccountSignInViewController.h"
 #import "TPPAppDelegate.h"
-#import "TPPBookCoverRegistry.h"
-#import "TPPBookRegistry.h"
 #import "TPPConfiguration.h"
 #import "TPPLinearView.h"
 #import "TPPOPDSFeed.h"
@@ -102,7 +100,7 @@ CGFloat const marginPadding = 2.0;
                         initWithLibraryAccountID:AccountsManager.shared.currentAccountId
                         libraryAccountsProvider:AccountsManager.shared
                         urlSettingsProvider: TPPSettings.shared
-                        bookRegistry:[TPPBookRegistry sharedRegistry]
+                        bookRegistry:[TPPBookRegistry shared]
                         bookDownloadsCenter:[TPPMyBooksDownloadCenter sharedDownloadCenter]
                         userAccountProvider:[TPPUserAccount class]
                         uiDelegate:self

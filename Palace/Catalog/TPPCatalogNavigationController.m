@@ -3,7 +3,6 @@
 #import "TPPConfiguration.h"
 #import "TPPCatalogNavigationController.h"
 #import "TPPAccountSignInViewController.h"
-#import "TPPBookRegistry.h"
 #import "TPPRootTabBarController.h"
 #import "NSString+TPPStringAdditions.h"
 
@@ -127,12 +126,7 @@
     [[TPPSettings sharedSettings] setAccountMainFeedURL:mainFeedUrl];
     [UIApplication sharedApplication].delegate.window.tintColor = [TPPConfiguration mainColor];
     
-    [[TPPBookRegistry sharedRegistry] justLoad];
-    [[TPPBookRegistry sharedRegistry] syncResettingCache:NO completionHandler:^(NSDictionary *errorDict) {
-      if (errorDict == nil) {
-        [[TPPBookRegistry sharedRegistry] save];
-      }
-    }];
+    [[TPPBookRegistry shared] load];
     
     [[NSNotificationCenter defaultCenter]
      postNotificationName:NSNotification.TPPCurrentAccountDidChange
@@ -260,7 +254,6 @@
 - (void)welcomeScreenCompletionHandlerForAccount:(Account *const)account
 {
   [[TPPSettings sharedSettings] setUserHasSeenWelcomeScreen:YES];
-  [[TPPBookRegistry sharedRegistry] save];
   [AccountsManager sharedInstance].currentAccount = account;
   [self updateFeedAndRegistryOnAccountChange];
   [self dismissViewControllerAnimated:YES completion:nil];

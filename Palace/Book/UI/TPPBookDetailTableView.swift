@@ -137,7 +137,7 @@ private let standardCellHeight: CGFloat = 44.0
     }
 
     UIApplication.shared.isNetworkActivityIndicatorVisible = true
-    TPPBookRegistry.shared().thumbnailImages(forBooks: Set(books.map{$0})) { (bookIdentifierToImages) in
+    TPPBookRegistry.shared.thumbnailImages(forBooks: Set(books.map{$0})) { (bookIdentifierToImages) in
       UIApplication.shared.isNetworkActivityIndicatorVisible = false
       var index: UInt = 0
       for lane in feed.lanes as! [TPPCatalogLane] {

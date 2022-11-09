@@ -1,5 +1,4 @@
 #import "TPPBookDetailViewController.h"
-#import "TPPBookRegistry.h"
 
 #import "TPPCatalogFeedViewController.h"
 #import "TPPCatalogGroupedFeed.h"
@@ -340,7 +339,7 @@ viewForHeaderInSection:(NSInteger const)section
   TPPCatalogLane *const lane = self.feed.lanes[cell.laneIndex];
   TPPBook *const feedBook = lane.books[bookIndex];
   
-  TPPBook *const localBook = [[TPPBookRegistry sharedRegistry] bookForIdentifier:feedBook.identifier];
+  TPPBook *const localBook = [[TPPBookRegistry shared] bookForIdentifier:feedBook.identifier];
   TPPBook *const book = (localBook != nil) ? localBook : feedBook;
   TPPLOG_F(@"Presenting book: %@", [book loggableShortString]);
   [[[TPPBookDetailViewController alloc] initWithBook:book] presentFromViewController:self];
@@ -399,7 +398,7 @@ viewForHeaderInSection:(NSInteger const)section
 {
   TPPCatalogLane *const lane = self.feed.lanes[viewControllerToCommit.view.tag];
   TPPBook *const feedBook = lane.books[self.tempBookPosition];
-  TPPBook *const localBook = [[TPPBookRegistry sharedRegistry] bookForIdentifier:feedBook.identifier];
+  TPPBook *const localBook = [[TPPBookRegistry shared] bookForIdentifier:feedBook.identifier];
   TPPBook *const book = (localBook != nil) ? localBook : feedBook;
   TPPLOG_F(@"Presenting book: %@", [book loggableShortString]);
   [[[TPPBookDetailViewController alloc] initWithBook:book] presentFromViewController:self];
@@ -438,7 +437,7 @@ viewForHeaderInSection:(NSInteger const)section
   
   TPPCatalogLane *const lane = self.feed.lanes[self.indexOfNextLaneRequiringImageDownload];
   
-  [[TPPBookRegistry sharedRegistry]
+  [[TPPBookRegistry shared]
    thumbnailImagesForBooks:[NSSet setWithArray:lane.books]
    handler:^(NSDictionary *const bookIdentifiersToImages) {
      [self.bookIdentifiersToImages addEntriesFromDictionary:bookIdentifiersToImages];

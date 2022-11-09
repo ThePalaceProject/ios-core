@@ -51,7 +51,7 @@ struct AudiobookSampleToolbar: View {
   }
 
   @ViewBuilder private var imageView: some View {
-    Image(uiImage: TPPBookRegistry.shared().cachedThumbnailImage(for: book) ?? imageLoader.image)
+    Image(uiImage: TPPBookRegistry.shared.cachedThumbnailImage(for: book) ?? imageLoader.image)
       .resizable()
       .aspectRatio(contentMode: .fit)
       .frame(width: imageViewHeight)

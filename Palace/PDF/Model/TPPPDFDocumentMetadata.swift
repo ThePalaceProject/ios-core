@@ -40,8 +40,8 @@ import Combine
   /// `bookIdentifier` must be present in the registry, otherwise the app crashes..
   @objc init(with bookIdentifier: String) {
     self.bookIdentifier = bookIdentifier
-    currentPage = TPPBookRegistry.shared().location(forIdentifier: bookIdentifier)?.pageNumber ?? 0
-    TPPBookRegistry.shared().setStateWithCode(TPPBookState.Used.rawValue, forIdentifier: bookIdentifier)
+    currentPage = TPPBookRegistry.shared.location(forIdentifier: bookIdentifier)?.pageNumber ?? 0
+    TPPBookRegistry.shared.setState(.Used, for: bookIdentifier)
     super.init()
     syncReadingPosition()
     fetchBookmarks()
@@ -66,7 +66,7 @@ import Combine
       Log.error(#file, "Error creating and saving PDF Page Location")
       return
     }
-    TPPBookRegistry.shared().setLocation(location, forIdentifier: self.bookIdentifier)
+    TPPBookRegistry.shared.setLocation(location, forIdentifier: self.bookIdentifier)
     TPPAnnotations.postReadingPosition(forBook: bookIdentifier, selectorValue: bookmarkSelector, motivation: .readingProgress)
   }
   

@@ -3,8 +3,6 @@
 @import MessageUI;
 @import PureLayout;
 
-#import "TPPBookCoverRegistry.h"
-#import "TPPBookRegistry.h"
 #import "TPPCatalogNavigationController.h"
 #import "TPPConfiguration.h"
 #import "TPPLinearView.h"
@@ -160,7 +158,7 @@ Authenticating with any of those barcodes should work.
                         initWithLibraryAccountID:libraryUUID
                         libraryAccountsProvider:AccountsManager.shared
                         urlSettingsProvider: TPPSettings.shared
-                        bookRegistry:[TPPBookRegistry sharedRegistry]
+                        bookRegistry:[TPPBookRegistry shared]
                         bookDownloadsCenter:[TPPMyBooksDownloadCenter sharedDownloadCenter]
                         userAccountProvider:[TPPUserAccount class]
                         uiDelegate:self
@@ -556,7 +554,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
             weakSelf.selectedAccount.details.userAboveAgeLimit = aboveAgeLimit;
             if (!aboveAgeLimit) {
               [[TPPMyBooksDownloadCenter sharedDownloadCenter] reset:weakSelf.selectedAccountId];
-              [[TPPBookRegistry sharedRegistry] reset:weakSelf.selectedAccountId];
+              [[TPPBookRegistry shared] reset:weakSelf.selectedAccountId];
             }
             TPPCatalogNavigationController *catalog = (TPPCatalogNavigationController*)[TPPRootTabBarController sharedController].viewControllers[0];
             [catalog popToRootViewControllerAnimated:NO];

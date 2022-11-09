@@ -1,7 +1,6 @@
 @import PureLayout;
 #import "TPPAttributedString.h"
 
-#import "TPPBookRegistry.h"
 #import "TPPConfiguration.h"
 #import "TPPBookButtonsView.h"
 #import "Palace-Swift.h"
@@ -41,6 +40,9 @@
                                  CGSizeMake(titleWidth, CGFLOAT_MAX)].height + 5);
   
   [self.authors sizeToFit];
+  CGSize authorsSize = [self.authors sizeThatFits:CGSizeMake(titleWidth, CGFLOAT_MAX)];
+  CGRect authorsRect = CGRectMake(0, 0, authorsSize.width, authorsSize.height);
+  self.authors.frame = authorsRect;
   CGRect authorFrame = self.authors.frame;
   authorFrame.origin = CGPointMake(115, CGRectGetMaxY(self.title.frame));
   authorFrame.size.width = CGRectGetWidth([self contentFrame]) - 120;
@@ -126,11 +128,11 @@
   // will still be there when the user scrolls back up. It also avoids creating tasks and refetching
   // images when the collection view reloads its data in response to an additional page being
   // fetched (which otherwise would cause a flickering effect and pointless bandwidth usage).
-  self.cover.image = [[TPPBookRegistry sharedRegistry] cachedThumbnailImageForBook:book];
+  self.cover.image = [[TPPBookRegistry shared] cachedThumbnailImageFor:book];
   
   if(!self.cover.image) {
-    [[TPPBookRegistry sharedRegistry]
-     thumbnailImageForBook:book
+    [[TPPBookRegistry shared]
+     thumbnailImageFor:book
      handler:^(UIImage *const image) {
        // This check prevents old operations from overwriting cover images in the case of cells
        // being reused before those operations completed.

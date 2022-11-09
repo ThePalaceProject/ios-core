@@ -13,7 +13,6 @@
 #endif
 
 #import "TPPLibraryNavigationController.h"
-#import "TPPBookRegistry.h"
 #import "TPPRootTabBarController.h"
 #import "TPPCatalogNavigationController.h"
 
@@ -84,12 +83,12 @@
     BOOL workflowsInProgress;
   #if defined(FEATURE_DRM_CONNECTOR)
     if ([AdobeCertificate.defaultCertificate hasExpired] == NO) {
-      workflowsInProgress = ([NYPLADEPT sharedInstance].workflowsInProgress || [TPPBookRegistry sharedRegistry].syncing == YES);
+      workflowsInProgress = ([NYPLADEPT sharedInstance].workflowsInProgress || [TPPBookRegistry shared].isSyncing == YES);
     } else {
-      workflowsInProgress = ([TPPBookRegistry sharedRegistry].syncing == YES);
+      workflowsInProgress = ([TPPBookRegistry shared].isSyncing == YES);
     }
   #else
-    workflowsInProgress = ([TPPBookRegistry sharedRegistry].syncing == YES);
+    workflowsInProgress = ([TPPBookRegistry shared].isSyncing == YES);
   #endif
     
     if (workflowsInProgress) {
@@ -99,7 +98,6 @@
                          animated:YES
                        completion:nil];
     } else {
-      [[TPPBookRegistry sharedRegistry] save];
       [self updateCatalogFeedSettingCurrentAccount:account];
     }
 }

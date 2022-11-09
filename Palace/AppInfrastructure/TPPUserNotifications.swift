@@ -77,8 +77,8 @@ let DefaultActionIdentifier = "UNNotificationDefaultActionIdentifier"
   /// Depending on which Notificaitons are supported, only perform an expensive
   /// network operation if it's needed.
   class func backgroundFetchIsNeeded() -> Bool {
-    Log.info(#file, "[backgroundFetchIsNeeded] Held Books: \(TPPBookRegistry.shared().heldBooks.count)")
-    return TPPBookRegistry.shared().heldBooks.count > 0
+    Log.info(#file, "[backgroundFetchIsNeeded] Held Books: \(TPPBookRegistry.shared.heldBooks.count)")
+    return TPPBookRegistry.shared.heldBooks.count > 0
   }
 
   private class func createNotificationForReadyCheckout(book: TPPBook)
@@ -166,7 +166,7 @@ extension TPPUserNotifications: UNUserNotificationCenterDelegate
           completionHandler()
           return
       }
-      guard let book = TPPBookRegistry.shared().book(forIdentifier: bookID) else {
+      guard let book = TPPBookRegistry.shared.book(forIdentifier: bookID) else {
           Log.error(#file, "Problem creating book. BookID: \(bookID)")
           completionHandler()
           return

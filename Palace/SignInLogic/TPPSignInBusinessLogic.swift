@@ -17,15 +17,11 @@
 
 extension TPPMyBooksDownloadCenter: TPPBookDownloadsDeleting {}
 
-@objc protocol NYPLBookRegistrySyncing: NSObjectProtocol {
-  var syncing: Bool {get}
+@objc protocol TPPBookRegistrySyncing: NSObjectProtocol {
+  var isSyncing: Bool {get}
   func reset(_ libraryAccountUUID: String)
-  func syncResettingCache(_ resetCache: Bool,
-                          completionHandler: ((_ errorDict: [AnyHashable: Any]?) -> Void)?)
-  func save()
+  func sync()
 }
-
-extension TPPBookRegistry: NYPLBookRegistrySyncing {}
 
 @objc protocol TPPDRMAuthorizing: NSObjectProtocol {
   var workflowsInProgress: Bool {get}
@@ -44,7 +40,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
   @objc convenience init(libraryAccountID: String,
                          libraryAccountsProvider: TPPLibraryAccountsProvider,
                          urlSettingsProvider: NYPLUniversalLinksSettings & NYPLFeedURLProvider,
-                         bookRegistry: NYPLBookRegistrySyncing,
+                         bookRegistry: TPPBookRegistrySyncing,
                          bookDownloadsCenter: TPPBookDownloadsDeleting,
                          userAccountProvider: TPPUserAccountProvider.Type,
                          uiDelegate: TPPSignInOutBusinessLogicUIDelegate?,
@@ -66,7 +62,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
   init(libraryAccountID: String,
        libraryAccountsProvider: TPPLibraryAccountsProvider,
        urlSettingsProvider: NYPLUniversalLinksSettings & NYPLFeedURLProvider,
-       bookRegistry: NYPLBookRegistrySyncing,
+       bookRegistry: TPPBookRegistrySyncing,
        bookDownloadsCenter: TPPBookDownloadsDeleting,
        userAccountProvider: TPPUserAccountProvider.Type,
        networkExecutor: TPPRequestExecuting,
@@ -90,7 +86,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
   let permissionsCheckLock = NSLock()
 
   /// Signing in and out may imply syncing the book registry.
-  let bookRegistry: NYPLBookRegistrySyncing
+  let bookRegistry: TPPBookRegistrySyncing
 
   /// Signing out implies removing book downloads from the device.
   let bookDownloadsCenter: TPPBookDownloadsDeleting
@@ -520,11 +516,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     userAccount.setAuthDefinitionWithoutUpdate(authDefinition: selectedAuthentication)
 
     if libraryAccountID == libraryAccountsProvider.currentAccountId {
-      bookRegistry.syncResettingCache(false) { [weak bookRegistry] errorDict in
-        if errorDict == nil {
-          bookRegistry?.save()
-        }
-      }
+      bookRegistry.sync()
     }
 
     NotificationCenter.default.post(name: .TPPIsSigningIn, object: false)

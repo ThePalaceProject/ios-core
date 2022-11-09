@@ -1,6 +1,5 @@
 
 #import "TPPBookDetailView.h"
-#import "TPPBookRegistry.h"
 #import "TPPCatalogFeedViewController.h"
 #import "TPPCatalogLane.h"
 #import "TPPCatalogLaneCell.h"
@@ -47,8 +46,8 @@
   self.navigationItem.titleView = label;
   self.bookDetailView = [[TPPBookDetailView alloc] initWithBook:self.book
                                                         delegate:self];
-  self.bookDetailView.state = [[TPPBookRegistry sharedRegistry]
-                               stateForIdentifier:self.book.identifier];
+  self.bookDetailView.state = [[TPPBookRegistry shared]
+                               stateFor:self.book.identifier];
 
   if(UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad &&
      [[TPPRootTabBarController sharedController] traitCollection].horizontalSizeClass != UIUserInterfaceSizeClassCompact) {
@@ -97,8 +96,8 @@
     self.navigationController.navigationBarHidden = NO;
   }
   
-  [self.bookDetailView setState:[[TPPBookRegistry sharedRegistry]
-                                 stateForIdentifier:self.book.identifier]];
+  [self.bookDetailView setState:[[TPPBookRegistry shared]
+                                 stateFor:self.book.identifier]];
 }
 
 - (void)viewDidAppear:(BOOL)animated
@@ -156,7 +155,7 @@
 {
   TPPCatalogLane *const lane = self.bookDetailView.tableViewDelegate.catalogLanes[cell.laneIndex];
   TPPBook *const feedBook = lane.books[bookIndex];
-  TPPBook *const localBook = [[TPPBookRegistry sharedRegistry] bookForIdentifier:feedBook.identifier];
+  TPPBook *const localBook = [[TPPBookRegistry shared] bookForIdentifier:feedBook.identifier];
   TPPBook *const book = (localBook != nil) ? localBook : feedBook;
   [[[TPPBookDetailViewController alloc] initWithBook:book] presentFromViewController:self];
 }
@@ -304,13 +303,13 @@
 - (void)bookRegistryDidChange
 {
   [TPPMainThreadRun asyncIfNeeded:^{
-    TPPBookRegistry *registry = [TPPBookRegistry sharedRegistry];
+    TPPBookRegistry *registry = [TPPBookRegistry shared];
     TPPBook *newBook = [registry bookForIdentifier:self.book.identifier];
     if(newBook) {
       self.book = newBook;
       self.bookDetailView.book = newBook;
     }
-    self.bookDetailView.state = [registry stateForIdentifier:self.book.identifier];
+    self.bookDetailView.state = [registry stateFor:self.book.identifier];
   }];
 }
 
