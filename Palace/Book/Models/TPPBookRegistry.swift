@@ -24,20 +24,14 @@ extension TPPBookRegistryData {
   func value(for key: TPPBookRegistryKey) -> Any? {
     return self[key.rawValue]
   }
-  mutating func setValue(_ value: AnyHashable, for key: TPPBookRegistryKey) {
+  mutating func setValue(_ value: Any?, for key: TPPBookRegistryKey) {
     self[key.rawValue] = value
   }
   func object(for key: TPPBookRegistryKey) -> TPPBookRegistryData? {
     self[key.rawValue] as? TPPBookRegistryData
   }
-  mutating func setObject(_ object: TPPBookRegistryData, for key: TPPBookRegistryKey) {
-    self[key.rawValue] = object
-  }
   func array(for key: TPPBookRegistryKey) -> [TPPBookRegistryData]? {
     self[key.rawValue] as? [TPPBookRegistryData]
-  }
-  mutating func setArray(_ array: [TPPBookRegistryData], for key: TPPBookRegistryKey) {
-    self[key.rawValue] = array
   }
 }
 
@@ -242,7 +236,7 @@ class TPPBookRegistry: NSObject {
       if !FileManager.default.fileExists(atPath: registryUrl.path) {
         try FileManager.default.createDirectory(at: registryUrl.deletingLastPathComponent(), withIntermediateDirectories: true)
       }
-      let registryValues = registry.values.map { $0.dictionaryRepresentation }
+      let registryValues = registry.values.map { $0.dictionaryRepresentation } //.withNullValues() }
       let registryObject = [TPPBookRegistryKey.records.rawValue: registryValues]
       let registryData = try JSONSerialization.data(withJSONObject: registryObject, options: .fragmentsAllowed)
       try registryData.write(to: registryUrl, options: .atomic)

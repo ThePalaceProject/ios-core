@@ -51,20 +51,14 @@ class TPPBookRegistryRecord: NSObject {
     }
   }
   
-  var dictionaryRepresentation: [String: Any?] {
+  var dictionaryRepresentation: [String: Any] {
     var dictionary = TPPBookRegistryData()
-    dictionary.setObject(book.dictionaryRepresentation(), for: .book)
+    dictionary.setValue(book.dictionaryRepresentation(), for: .book)
     dictionary.setValue(state.stringValue(), for: .state)
     dictionary.setValue(fulfillmentId, for: .fulfillmentId)
-    if let location = self.location?.dictionaryRepresentation {
-      dictionary.setObject(location, for: .location)
-    }
-    if let readiumBookmarks = readiumBookmarks {
-      dictionary.setArray(readiumBookmarks.compactMap { $0.dictionaryRepresentation as? [String: Any] }, for: .readiumBookmarks)
-    }
-    if let genericBookmarks = genericBookmarks {
-      dictionary.setArray(genericBookmarks.map { $0.dictionaryRepresentation }, for: .genericBookmarks)
-    }
-    return dictionary as [String: Any?]
+    dictionary.setValue(self.location?.dictionaryRepresentation, for: .location)
+    dictionary.setValue(readiumBookmarks?.compactMap { $0.dictionaryRepresentation as? [String: Any] }, for: .readiumBookmarks)
+    dictionary.setValue(genericBookmarks?.map { $0.dictionaryRepresentation }, for: .genericBookmarks)
+    return dictionary
   }
 }

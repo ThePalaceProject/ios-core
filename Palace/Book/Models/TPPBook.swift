@@ -411,7 +411,7 @@ let UpdatedKey: String = "updated"
       ReportURLKey: reportURL?.absoluteString as Any,
       RevokeURLKey: revokeURL?.absoluteString as Any,
       SeriesLinkKey: seriesURL?.absoluteString as Any,
-      PreviewURLKey: previewLink as Any,
+      PreviewURLKey: previewLink?.dictionaryRepresentation() as Any,
       SubtitleKey: subtitle as Any,
       SummaryKey: summary as Any,
       TitleKey: title as Any,
