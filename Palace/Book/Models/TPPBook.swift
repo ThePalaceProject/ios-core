@@ -206,14 +206,14 @@ let UpdatedKey: String = "updated"
     var authors = [TPPBookAuthor]()
     
     var authorStrings = [String]()
-    if let authorObject = dictionary[AuthorsKey] as? [[String]] {
-      authorStrings = authorObject[0]
+    if let authorObject = dictionary[AuthorsKey] as? [[String]], let values = authorObject.first {
+      authorStrings = values
     } else if let authorObject = dictionary[AuthorsKey] as? [String] {
       authorStrings = authorObject
     }
     var authorLinkStrings = [String]()
-    if let authorLinkObject = dictionary[AuthorLinksKey] as? [[String]] {
-      authorLinkStrings = authorLinkObject[0]
+    if let authorLinkObject = dictionary[AuthorLinksKey] as? [[String]], let values = authorLinkObject.first {
+      authorLinkStrings = values
     } else if let authorLinkObject = dictionary[AuthorLinksKey] as? [String] {
       authorLinkStrings = authorLinkObject
     }
