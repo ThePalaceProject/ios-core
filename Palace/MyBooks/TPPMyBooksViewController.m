@@ -334,12 +334,21 @@ OK:
 /// Reloads book registry data
 - (void)reloadData
 {
-  [[TPPBookRegistry shared] sync];
+  if ([TPPUserAccount sharedAccount].needsAuth && ![[TPPUserAccount sharedAccount] hasCredentials]) {
+    [TPPAccountSignInViewController requestCredentialsWithCompletion:nil];
+    [self.refreshControl endRefreshing];
+  } else {
+    [[TPPBookRegistry shared] sync];
+  }
 }
 
 - (void)didPullToRefresh
 {
-  [self reloadData];
+  if (AccountsManager.shared.currentAccount.loansUrl) {
+    [self reloadData];
+  } else {
+    [self.refreshControl endRefreshing];
+  }
 }
 
 - (void)didSelectSearch
