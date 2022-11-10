@@ -334,7 +334,7 @@ OK:
 /// Reloads book registry data
 - (void)reloadData
 {
-  [[TPPBookRegistry shared] load];
+  [[TPPBookRegistry shared] sync];
 }
 
 - (void)didPullToRefresh

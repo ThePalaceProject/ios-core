@@ -126,8 +126,6 @@
     [[TPPSettings sharedSettings] setAccountMainFeedURL:mainFeedUrl];
     [UIApplication sharedApplication].delegate.window.tintColor = [TPPConfiguration mainColor];
     
-    [[TPPBookRegistry shared] load];
-    
     [[NSNotificationCenter defaultCenter]
      postNotificationName:NSNotification.TPPCurrentAccountDidChange
      object:nil];
