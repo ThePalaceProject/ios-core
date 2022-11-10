@@ -63,6 +63,7 @@ class TPPBookRegistry: NSObject {
     .receive(on: RunLoop.main)
     .sink { _ in
       TPPBookRegistry.shared.load()
+      TPPBookRegistry.shared.sync()
     }
   
   /// Book registry with book identifiers as keys.
@@ -99,8 +100,21 @@ class TPPBookRegistry: NSObject {
     
   }
   
+  fileprivate init(account: String) {
+    super.init()
+    load(account: account)
+  }
+  
+  /// Performs a block of operations on the provided account.
+  /// - Parameters:
+  ///   - account: Library account identifier.
+  ///   - block: Provides registry object for the provided account.
+  func with(account: String, perform block: (_ registry: TPPBookRegistry) -> Void) {
+    block(TPPBookRegistry(account: account))
+  }
+  
   /// Registry file URL.
-  /// - Parameter account: Library accounr UUID.
+  /// - Parameter account: Library account identifier.
   /// - Returns: Registry file URL.
   func registryUrl(for account: String) -> URL? {
     TPPBookContentMetadataFilesHelper.directory(for: account)?
@@ -109,7 +123,7 @@ class TPPBookRegistry: NSObject {
   }
   
   /// Loads the book registry for the provided library account.
-  /// - Parameter account: Library account id string.
+  /// - Parameter account: Library account identifier.
   func load(account: String? = nil) {
     guard let account = account ?? AccountsManager.shared.currentAccount?.uuid,
           let registryFileUrl = self.registryUrl(for: account)
@@ -133,11 +147,10 @@ class TPPBookRegistry: NSObject {
         }
       }
     }
-    sync()
   }
   
   /// Removes registry data.
-  /// - Parameter account: Library account id string.
+  /// - Parameter account: Library account identifier.
   func reset(_ account: String) {
     registry.removeAll()
     if let registryUrl = registryUrl(for: account) {
@@ -367,23 +380,6 @@ class TPPBookRegistry: NSObject {
   /// Returns whether a book is processing something, given its identifier.
   func processing(forIdentifier bookIdentifier: String) -> Bool {
     processingIdentifiers.contains(bookIdentifier)
-  }
-
-  /// Executes a function that does not modify the registry while the registry is set to a particular account, then
-  /// restores the registry to the original account afterwards.
-  /// - Parameters:
-  ///   - account: The account to use while @c block is executing.
-  ///   - block: The function to execute while the registry is set to another account.
-  func performUsingAccount(_ account: String, block: () -> Void) {
-    if account == AccountsManager.shared.currentAccount?.uuid {
-      block()
-    } else {
-      let currentRegistry = registry
-      load(account: account)
-      block()
-      registry = currentRegistry
-      save()
-    }
   }
 
   

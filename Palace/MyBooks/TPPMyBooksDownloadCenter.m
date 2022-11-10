@@ -1170,18 +1170,16 @@ didCompleteWithError:(NSError *)error
 
 - (void)deleteAudiobooksForAccount:(NSString * const)account
 {
-  [[TPPBookRegistry shared]
-   performUsingAccount:account
-   block:^{
-     NSArray<NSString *> const *books = [[TPPBookRegistry shared] allBooks];
-     for (TPPBook *const book in books) {
-       if (book.defaultBookContentType == TPPBookContentTypeAudiobook) {
-         [[TPPMyBooksDownloadCenter sharedDownloadCenter]
-          deleteLocalContentForBookIdentifier:book.identifier
-          account:account];
-       }
-     }
-   }];
+  [[TPPBookRegistry shared] withAccount:account perform:^(TPPBookRegistry * registry) {
+    NSArray<TPPBook *> const *books = registry.allBooks;
+    for (TPPBook *const book in books) {
+      if (book.defaultBookContentType == TPPBookContentTypeAudiobook) {
+        [[TPPMyBooksDownloadCenter sharedDownloadCenter]
+         deleteLocalContentForBookIdentifier:book.identifier
+         account:account];
+      }
+    }
+  }];
 }
 
 - (void)reset:(NSString *)account
