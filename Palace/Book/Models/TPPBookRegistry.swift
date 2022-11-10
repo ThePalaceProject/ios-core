@@ -47,6 +47,7 @@ enum TPPBookRegistryKey: String {
   case book = "metadata"
   case state = "state"
   case fulfillmentId = "fulfillmentId"
+  case location = "location"
   case readiumBookmarks = "bookmarks"
   case genericBookmarks = "genericBookmarks"
 

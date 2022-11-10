@@ -40,7 +40,15 @@ class TPPBookRegistryRecord: NSObject {
     self.book = book
     self.state = state
     self.fulfillmentId = record.value(for: .fulfillmentId) as? String
-    self.location = nil
+    if let location = record.object(for: .location) {
+        self.location = TPPBookLocation(dictionary: location)
+    }
+    if let recordReadiumBookmarks = record.array(for: .readiumBookmarks) {
+      self.readiumBookmarks = recordReadiumBookmarks.compactMap { TPPReadiumBookmark(dictionary: $0 as NSDictionary) }
+    }
+    if let recordGenericBookmarks = record.array(for: .genericBookmarks) {
+      self.genericBookmarks = recordGenericBookmarks.compactMap { TPPBookLocation(dictionary: $0) }
+    }
   }
   
   var dictionaryRepresentation: [String: Any?] {
@@ -48,6 +56,15 @@ class TPPBookRegistryRecord: NSObject {
     dictionary.setObject(book.dictionaryRepresentation(), for: .book)
     dictionary.setValue(state.stringValue(), for: .state)
     dictionary.setValue(fulfillmentId, for: .fulfillmentId)
+    if let location = self.location?.dictionaryRepresentation {
+      dictionary.setObject(location, for: .location)
+    }
+    if let readiumBookmarks = readiumBookmarks {
+      dictionary.setArray(readiumBookmarks.compactMap { $0.dictionaryRepresentation as? [String: Any] }, for: .readiumBookmarks)
+    }
+    if let genericBookmarks = genericBookmarks {
+      dictionary.setArray(genericBookmarks.map { $0.dictionaryRepresentation }, for: .genericBookmarks)
+    }
     return dictionary as [String: Any?]
   }
 }
