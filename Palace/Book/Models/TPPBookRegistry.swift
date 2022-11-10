@@ -207,7 +207,12 @@ class TPPBookRegistry: NSObject {
             self.addBook(book)
           }
         }
-        recordsToDelete.forEach { self.registry[$0] = nil }
+        recordsToDelete.forEach {
+          if let state = self.registry[$0]?.state, state == .DownloadSuccessful || state == .Used {
+            TPPMyBooksDownloadCenter.shared().deleteLocalContent(forBookIdentifier: $0)
+          }
+          self.registry[$0] = nil
+        }
         self.save()
         
         // Count new books
