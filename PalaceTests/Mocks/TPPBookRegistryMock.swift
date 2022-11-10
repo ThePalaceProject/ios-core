@@ -34,8 +34,8 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistrySyncing, TPPBookRegistryProv
   }
     
   func readiumBookmarks(forIdentifier identifier: String) -> [TPPReadiumBookmark] {
-    guard let record = registry[identifier] else { return [TPPReadiumBookmark]() }
-    return record.readiumBookmarks!.sorted{ $0.progressWithinBook > $1.progressWithinBook }
+    registry[identifier]?.readiumBookmarks?
+      .sorted { $0.progressWithinBook < $1.progressWithinBook } ?? []
   }
   
   func location(forIdentifier identifier: String) -> TPPBookLocation? {
@@ -47,23 +47,21 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistrySyncing, TPPBookRegistryProv
   }
 
   func add(_ bookmark: TPPReadiumBookmark, forIdentifier identifier: String) {
-    guard let record = registry[identifier] else { return }
-    var bookmarks = [TPPReadiumBookmark]()
-    bookmarks.append(contentsOf: record.readiumBookmarks!)
-    bookmarks.append(bookmark)
-    registry[identifier]!.readiumBookmarks = bookmarks
+    guard registry[identifier] != nil else {
+      return
+    }
+    if registry[identifier]?.readiumBookmarks == nil {
+      registry[identifier]?.readiumBookmarks = [TPPReadiumBookmark]()
+    }
+    registry[identifier]?.readiumBookmarks?.append(bookmark)
   }
 
   func delete(_ bookmark: TPPReadiumBookmark, forIdentifier identifier: String) {
-    guard let record = registry[identifier] else { return }
-    let bookmarks = record.readiumBookmarks!.filter { $0 != bookmark }
-    registry[identifier]!.readiumBookmarks = bookmarks
+    registry[identifier]?.readiumBookmarks?.removeAll { $0 == bookmark }
   }
   
   func replace(_ oldBookmark: TPPReadiumBookmark, with newBookmark: TPPReadiumBookmark, forIdentifier identifier: String) {
-    guard let record = registry[identifier] else { return }
-    var bookmarks = record.readiumBookmarks!.filter { $0 != oldBookmark }
-    bookmarks.append(newBookmark)
-    registry[identifier]!.readiumBookmarks = bookmarks
+    registry[identifier]?.readiumBookmarks?.removeAll { $0 == oldBookmark }
+    registry[identifier]?.readiumBookmarks?.append(newBookmark)
   }
 }
