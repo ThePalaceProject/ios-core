@@ -63,7 +63,9 @@ class TPPBookCoverRegistry {
     var result: [String: UIImage] = [:] {
       didSet {
         if books.count == result.keys.count {
-          handler(result)
+          DispatchQueue.main.async {
+            handler(result)
+          }
         }
       }
     }
@@ -112,7 +114,7 @@ class TPPBookCoverRegistry {
         do {
           try imageData.write(to: fileUrl, options: .atomic)
         } catch {
-          // Handle error
+          Log.error(#file, "Error saving thumbnail file: \(error.localizedDescription)")
         }
       }
     }.resume()
@@ -127,7 +129,7 @@ class TPPBookCoverRegistry {
     do {
       try FileManager.default.removeItem(at: fileUrl)
     } catch {
-      // handle error
+      Log.error(#file, "Error removeing thumbnail file: \(error.localizedDescription)")
     }
   }
   
@@ -138,7 +140,7 @@ class TPPBookCoverRegistry {
         try FileManager.default.removeItem(at: url)
       }
     } catch {
-      
+      Log.error(#file, "Error removing thumbnail directory: \(error.localizedDescription)")
     }
   }
   
