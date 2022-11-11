@@ -7,7 +7,7 @@ import PDFRendererProvider
 
   @objc init(bookIdentifier: String) {
     self.bookIdentifier = bookIdentifier
-    TPPBookRegistry.shared().setStateWithCode(TPPBookState.Used.rawValue, forIdentifier: bookIdentifier)
+    TPPBookRegistry.shared.setState(.Used, for: bookIdentifier)
   }
 
   func userDidNavigate(toPage page: MinitexPDFPage) {
@@ -17,7 +17,7 @@ import PDFRendererProvider
     let data = page.toData()
     if let string = String(data: data, encoding: .utf8),
       let bookLocation = TPPBookLocation(locationString: string, renderer: "PDFRendererProvider") {
-      TPPBookRegistry.shared().setLocation(bookLocation, forIdentifier: self.bookIdentifier)
+      TPPBookRegistry.shared.setLocation(bookLocation, forIdentifier: self.bookIdentifier)
     } else {
       Log.error(#file, "Error creating and saving PDF Page Location")
     }
@@ -30,7 +30,7 @@ import PDFRendererProvider
     let data = bookmark.toData()
     if let string = String(data: data, encoding: .utf8),
       let bookLocation = TPPBookLocation(locationString: string, renderer: "PDFRendererProvider") {
-      TPPBookRegistry.shared().addGenericBookmark(bookLocation, forIdentifier: self.bookIdentifier)
+      TPPBookRegistry.shared.addGenericBookmark(bookLocation, forIdentifier: self.bookIdentifier)
     } else {
       Log.error(#file, "Error adding PDF Page Location")
     }
@@ -43,7 +43,7 @@ import PDFRendererProvider
     let data = bookmark.toData()
     if let string = String(data: data, encoding: .utf8),
       let bookLocation = TPPBookLocation(locationString: string, renderer: "PDFRendererProvider") {
-      TPPBookRegistry.shared().deleteGenericBookmark(bookLocation, forIdentifier: self.bookIdentifier)
+      TPPBookRegistry.shared.deleteGenericBookmark(bookLocation, forIdentifier: self.bookIdentifier)
     } else {
       Log.error(#file, "Error deleting PDF Page Location")
     }

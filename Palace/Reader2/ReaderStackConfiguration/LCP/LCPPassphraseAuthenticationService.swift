@@ -26,7 +26,7 @@ class LCPPassphraseAuthenticationService: LCPAuthenticating {
   /// Retrieves LCP passphrase from loans
   private func retrievePassphraseFromLoan(for license: LCPAuthenticatedLicense, reason: LCPAuthenticationReason, allowUserInteraction: Bool, sender: Any?, completion: @escaping (String?) -> Void) {
     let licenseId = license.document.id
-    let registry = TPPBookRegistry.shared()
+    let registry = TPPBookRegistry.shared
     guard let loansUrl = AccountsManager.shared.currentAccount?.loansUrl else {
       completion(nil)
       return

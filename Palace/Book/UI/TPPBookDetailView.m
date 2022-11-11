@@ -5,7 +5,6 @@
 #import "TPPBookDetailDownloadFailedView.h"
 #import "TPPBookDetailDownloadingView.h"
 #import "TPPBookDetailNormalView.h"
-#import "TPPBookRegistry.h"
 #import "TPPCatalogGroupedFeed.h"
 #import "TPPCatalogGroupedFeedViewController.h"
 #import "TPPCatalogLaneCell.h"
@@ -264,8 +263,8 @@ static NSString *DetailHTMLTemplate = nil;
   }
   self.blurCoverImageView.alpha = 0.4f;
 
-  [[TPPBookRegistry sharedRegistry]
-   coverImageForBook:self.book handler:^(UIImage *image) {
+  [[TPPBookRegistry shared]
+   coverImageFor:self.book handler:^(UIImage *image) {
     self.coverImageView.image = image;
     self.blurCoverImageView.image = image;
   }];

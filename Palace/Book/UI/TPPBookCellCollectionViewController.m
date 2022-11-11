@@ -1,6 +1,5 @@
 #import "TPPBookCell.h"
 #import "TPPBookDownloadingCell.h"
-#import "TPPBookRegistry.h"
 #import "TPPConfiguration.h"
 #import "TPPMyBooksDownloadCenter.h"
 #import "UIView+TPPViewAdditions.h"

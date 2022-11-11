@@ -160,11 +160,7 @@
 {
   UIApplicationState applicationState = [[UIApplication sharedApplication] applicationState];
   if (applicationState == UIApplicationStateActive) {
-    [[TPPBookRegistry sharedRegistry] syncResettingCache:NO completionHandler:^(NSDictionary *errorDict) {
-      if (errorDict == nil) {
-        [[TPPBookRegistry sharedRegistry] save];
-      }
-    }];
+    [[TPPBookRegistry shared] sync];
   }
 }
 
