@@ -1,7 +1,6 @@
 
 #import "TPPBookCell.h"
 #import "TPPBookDetailViewController.h"
-#import "TPPBookRegistry.h"
 #import "TPPCatalogSearchViewController.h"
 #import "TPPConfiguration.h"
 #import "TPPFacetView.h"
@@ -65,7 +64,6 @@ typedef NS_ENUM(NSInteger, FacetSort) {
 @property (nonatomic) UIRefreshControl *refreshControl;
 @property (nonatomic) UIBarButtonItem *searchButton;
 @property (nonatomic) TPPMyBooksContainerView *containerView;
-@property (nonatomic) BOOL didLoadAccounts;
 @property (nonatomic) UIActivityIndicatorView *activityIndicator;
 @end
 
@@ -87,7 +85,13 @@ typedef NS_ENUM(NSInteger, FacetSort) {
    selector:@selector(bookRegistryDidChange)
    name:NSNotification.TPPBookRegistryDidChange
    object:nil];
-  
+
+  [[NSNotificationCenter defaultCenter]
+   addObserver:self
+   selector:@selector(bookRegistryStateDidChange)
+   name:NSNotification.TPPBookRegistryDidChange
+   object:nil];
+
   [[NSNotificationCenter defaultCenter]
    addObserver:self
    selector:@selector(syncEnded)
@@ -97,14 +101,6 @@ typedef NS_ENUM(NSInteger, FacetSort) {
    addObserver:self
    selector:@selector(syncBegan)
    name:NSNotification.TPPSyncBegan object:nil];
-
-  // This notification indicates all the accounts have re-authenticated
-  // My Books are in the book registry after that
-  self.didLoadAccounts = NO;
-  [[NSNotificationCenter defaultCenter]
-   addObserver:self
-   selector:@selector(accountSetDidLoad)
-   name:NSNotification.TPPAccountSetDidLoad object:nil];
 
   return self;
 }
@@ -159,7 +155,10 @@ typedef NS_ENUM(NSInteger, FacetSort) {
   [self.activityIndicator autoAlignAxisToSuperviewAxis:ALAxisVertical];
   [self.activityIndicator autoAlignAxisToSuperviewAxis:ALAxisHorizontal];
 
-  [self.activityIndicator startAnimating];
+  if (TPPBookRegistry.shared.state == RegistryStateUnloaded) {
+    self.instructionsLabel.hidden = YES;
+    [self.activityIndicator startAnimating];
+  }
   
   self.searchButton = [[UIBarButtonItem alloc]
                        initWithImage:[UIImage imageNamed:@"Search"]
@@ -179,22 +178,10 @@ typedef NS_ENUM(NSInteger, FacetSort) {
 - (void)viewWillAppear:(BOOL)animated
 {
   [super viewWillAppear:animated];
-  self.instructionsLabel.hidden = YES;
-
-  [[NSOperationQueue mainQueue] addOperationWithBlock:^{
-    BOOL isSyncing = [TPPBookRegistry sharedRegistry].syncing;
-    if(!isSyncing) {
-      [self.refreshControl endRefreshing];
-      [[NSNotificationCenter defaultCenter] postNotificationName:NSNotification.TPPSyncEnded object:nil];
-    } else {
-      self.navigationItem.leftBarButtonItem.enabled = NO;
-      [self.activityIndicator startAnimating];
-    }
-  }];
-  
   [self.navigationController setNavigationBarHidden:NO];
   self.navigationController.navigationBar.tintColor = [TPPConfiguration iconColor];
   self.navigationItem.title = NSLocalizedString(@"MyBooksViewControllerTitle", nil);
+  [TPPBookRegistry.shared sync];
 }
 
 - (void)viewWillLayoutSubviews
@@ -243,20 +230,27 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
 {
   [super willReloadCollectionViewData];
   
-  NSArray *books = [[TPPBookRegistry sharedRegistry] myBooks];
-      
+  NSArray *books = [[TPPBookRegistry shared] myBooks];
+  
   switch(self.activeFacetSort) {
     case FacetSortAuthor: {
       self.books = [books sortedArrayUsingComparator:
                     ^NSComparisonResult(TPPBook *const a, TPPBook *const b) {
-                      return [a.authors compare:b.authors options:NSCaseInsensitiveSearch];
+                      // myBooks is generated from a dictionary and the order of elements may change every time
+                      // elements with same authors or title change their position in the view
+                      // comparing "authors title" or "title authors" to avoid this.
+                      NSString *aString = [NSString stringWithFormat:@"%@ %@", a.authors, a.title];
+                      NSString *bString = [NSString stringWithFormat:@"%@ %@", b.authors, a.title];
+                      return [aString compare:bString options:NSCaseInsensitiveSearch];
                     }];
       break;
     }
     case FacetSortTitle: {
       self.books = [books sortedArrayUsingComparator:
                     ^NSComparisonResult(TPPBook *const a, TPPBook *const b) {
-                      return [a.title compare:b.title options:NSCaseInsensitiveSearch];
+                      NSString *aString = [NSString stringWithFormat:@"%@ %@", a.title, a.authors];
+                      NSString *bString = [NSString stringWithFormat:@"%@ %@", b.title, a.authors];
+                      return [aString compare:bString options:NSCaseInsensitiveSearch];
                     }];
       break;
     }
@@ -356,40 +350,21 @@ OK:
 /// Reloads book registry data
 - (void)reloadData
 {
-  if (!self.didLoadAccounts) {
-    return;
-  }
-  if ([TPPUserAccount sharedAccount].needsAuth) {
-    if([[TPPUserAccount sharedAccount] hasCredentials]) {
-      [[TPPBookRegistry sharedRegistry] syncWithStandardAlertsOnCompletion];
-    } else {
-      [TPPAccountSignInViewController requestCredentialsWithCompletion:nil];
-      [self.refreshControl endRefreshing];
-      [[NSNotificationCenter defaultCenter] postNotificationName:NSNotification.TPPSyncEnded object:nil];
-    }
+  if ([TPPUserAccount sharedAccount].needsAuth && ![[TPPUserAccount sharedAccount] hasCredentials]) {
+    [self.refreshControl endRefreshing];
+    [TPPAccountSignInViewController requestCredentialsWithCompletion:nil];
   } else {
-    [[TPPBookRegistry sharedRegistry] justLoad];
-    [[NSNotificationCenter defaultCenter] postNotificationName:NSNotification.TPPSyncEnded object:nil];
+    [[TPPBookRegistry shared] sync];
   }
 }
 
 - (void)didPullToRefresh
 {
-  if (self.books.count == 0) {
-    [self.activityIndicator startAnimating];
+  if (AccountsManager.shared.currentAccount.loansUrl) {
+    [self reloadData];
+  } else {
+    [self.refreshControl endRefreshing];
   }
-
-  self.instructionsLabel.hidden = YES;
-  [self reloadData];
-}
-
-- (void)bookRegistryDidChange
-{
-  [[NSOperationQueue mainQueue] addOperationWithBlock:^{
-    if([TPPBookRegistry sharedRegistry].syncing == NO) {
-      [self.refreshControl endRefreshing];
-    }
-  }];
 }
 
 - (void)didSelectSearch
@@ -401,22 +376,32 @@ OK:
    animated:YES];
 }
 
+- (void)bookRegistryDidChange
+{
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [self willReloadCollectionViewData];
+    // show instructionLabel when there are no books and the book registry is not unloaded
+    self.instructionsLabel.hidden = (self.books.count != 0 || TPPBookRegistry.shared.state == RegistryStateUnloaded);
+  });
+}
+
+- (void)bookRegistryStateDidChange
+{
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [self.activityIndicator stopAnimating];
+  });
+}
+
 - (void)syncBegan
 {
-  self.navigationItem.leftBarButtonItem.enabled = NO;
 }
 
 - (void)syncEnded
 {
-  self.navigationItem.leftBarButtonItem.enabled = YES;
-  [self.activityIndicator stopAnimating];
-  self.instructionsLabel.hidden = !!self.books.count;
-}
-
-- (void)accountSetDidLoad
-{
-  self.didLoadAccounts = YES;
-  [self reloadData];
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [self.refreshControl endRefreshing];
+    [self willReloadCollectionViewData];
+  });
 }
 
 - (void)viewWillTransitionToSize:(CGSize)__unused size withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)__unused coordinator

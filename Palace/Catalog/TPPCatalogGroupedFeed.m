@@ -1,6 +1,5 @@
 #import "TPPAsync.h"
 
-#import "TPPBookRegistry.h"
 #import "TPPCatalogLane.h"
 #import "TPPNull.h"
 #import "TPPOPDS.h"
@@ -111,7 +110,7 @@
       continue;
     }
     
-    TPPBook *updatedBook = [[TPPBookRegistry sharedRegistry] updatedBookMetadata:book];
+    TPPBook *updatedBook = [[TPPBookRegistry shared] updatedBookMetadata:book];
     if(updatedBook) {
       book = updatedBook;
     }
