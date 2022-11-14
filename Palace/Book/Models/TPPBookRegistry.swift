@@ -50,6 +50,11 @@ enum TPPBookRegistryKey: String {
 @objcMembers
 class TPPBookRegistry: NSObject {
   
+  @objc
+  enum RegistryState: Int {
+    case unloaded, loading, loaded, syncing
+  }
+  
   private let registryFolderName = "registry"
   private let registryFileName = "registry.json"
   
@@ -83,6 +88,13 @@ class TPPBookRegistry: NSObject {
       } else {
         NotificationCenter.default.post(name: .TPPSyncEnded, object: nil, userInfo: nil)
       }
+    }
+  }
+  
+  private(set) var state: RegistryState  = .unloaded {
+    didSet {
+      isSyncing = state == .syncing
+      NotificationCenter.default.post(name: .TPPBookRegistryStateDidChange, object: nil, userInfo: nil)
     }
   }
   
@@ -125,6 +137,7 @@ class TPPBookRegistry: NSObject {
     else {
       return
     }
+    state = .loading
     registry.removeAll()
     if FileManager.default.fileExists(atPath: registryFileUrl.path),
       let registryData = try? Data(contentsOf: registryFileUrl),
@@ -142,11 +155,13 @@ class TPPBookRegistry: NSObject {
         }
       }
     }
+    state = .loaded
   }
   
   /// Removes registry data.
   /// - Parameter account: Library account identifier.
   func reset(_ account: String) {
+    state = .unloaded
     registry.removeAll()
     if let registryUrl = registryUrl(for: account) {
       do {
@@ -166,12 +181,12 @@ class TPPBookRegistry: NSObject {
     if syncUrl == loansUrl {
       return
     }
-    isSyncing = true
+    state = .syncing
     syncUrl = loansUrl
     TPPOPDSFeed.withURL(loansUrl, shouldResetCache: true) { feed, errorDocument in
       DispatchQueue.main.async {
         defer {
-          self.isSyncing = false
+          self.state = .loaded
           self.syncUrl = nil
         }
         if self.syncUrl != loansUrl {

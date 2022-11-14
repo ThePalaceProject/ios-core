@@ -1138,7 +1138,6 @@
 		215C866C27064198005F9621 /* BundleExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BundleExtension.swift; sourceTree = "<group>"; };
 		216D2E38274286D200472538 /* TPPLCPLicense.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPLCPLicense.swift; sourceTree = "<group>"; };
 		2171ADA0251E38140003CABA /* LCPLibraryService.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = LCPLibraryService.swift; sourceTree = "<group>"; };
-		2171ADA6251E38560003CABA /* ReadiumLCP.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = ReadiumLCP.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		217595D927B6800100BA0FDD /* TPPReaderSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPReaderSettingsView.swift; sourceTree = "<group>"; };
 		217595DC27B680D400BA0FDD /* TPPReaderSettingsVC.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPReaderSettingsVC.swift; sourceTree = "<group>"; };
 		219747F626D9218400FA25DF /* TPPLCPClient.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPLCPClient.swift; sourceTree = "<group>"; };
@@ -1289,15 +1288,8 @@
 		731A5B1124621F2B00B5E663 /* TPPSignInBusinessLogic.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPSignInBusinessLogic.swift; sourceTree = "<group>"; };
 		731B2B12244A1D6500A7A649 /* R2Streamer.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = R2Streamer.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		731B2B18244A1D8600A7A649 /* R2Navigator.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = R2Navigator.framework; sourceTree = BUILT_PRODUCTS_DIR; };
-		731B2B1A244A1EB300A7A649 /* Fuzi.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Fuzi.framework; path = "../r2-streamer-swift/Carthage/Build/iOS/Fuzi.framework"; sourceTree = "<group>"; };
-		731B2B1B244A1EB400A7A649 /* GCDWebServer.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = GCDWebServer.framework; path = "../r2-streamer-swift/Carthage/Build/iOS/GCDWebServer.framework"; sourceTree = "<group>"; };
-		731B2B1C244A1EB400A7A649 /* CryptoSwift.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CryptoSwift.framework; path = "../r2-streamer-swift/Carthage/Build/iOS/CryptoSwift.framework"; sourceTree = "<group>"; };
-		731B2B1D244A1EB400A7A649 /* Minizip.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Minizip.framework; path = "../r2-streamer-swift/Carthage/Build/iOS/Minizip.framework"; sourceTree = "<group>"; };
 		73225DEA250B471400EF1877 /* TPPRootTabBarController+OE.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPRootTabBarController+OE.swift"; sourceTree = "<group>"; };
 		732327B12478504500A041E6 /* NSError+NYPLAdditions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NSError+NYPLAdditions.swift"; sourceTree = "<group>"; };
-		7326AB2D24BD271F00C3BA29 /* R2Streamer.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = R2Streamer.framework; path = Carthage/Build/iOS/R2Streamer.framework; sourceTree = "<group>"; };
-		7326AB3224BD271F00C3BA29 /* R2Shared.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = R2Shared.framework; path = Carthage/Build/iOS/R2Shared.framework; sourceTree = "<group>"; };
-		7326AB3324BD272000C3BA29 /* R2Navigator.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = R2Navigator.framework; path = Carthage/Build/iOS/R2Navigator.framework; sourceTree = "<group>"; };
 		732752832578CB7900A073E2 /* R2LCPClient.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = R2LCPClient.framework; path = "../r2-lcp-swift/Carthage/Build/iOS/R2LCPClient.framework"; sourceTree = "<group>"; };
 		7327A89223EE017300954748 /* TPPMainThreadChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPMainThreadChecker.swift; sourceTree = "<group>"; };
 		732F474A260B224A00E2CB64 /* TPPBookmarkSpec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBookmarkSpec.swift; sourceTree = "<group>"; };
@@ -1383,7 +1375,6 @@
 		73A794BC2548E36100C59CC1 /* TPPBookCreationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBookCreationTests.swift; sourceTree = "<group>"; };
 		73A794C62549095700C59CC1 /* NYPLOPDSAcquisitionPathEntryMinimal.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = NYPLOPDSAcquisitionPathEntryMinimal.xml; sourceTree = "<group>"; };
 		73A794C925492C9800C59CC1 /* TPPFake.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPFake.swift; sourceTree = "<group>"; };
-		73A7BA4B25A62FCE00C2906C /* ReadiumLCP.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ReadiumLCP.framework; path = Carthage/Build/iOS/ReadiumLCP.framework; sourceTree = "<group>"; };
 		73A7BA4D25A62FE900C2906C /* R2LCPClient.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = R2LCPClient.framework; path = Carthage/Build/iOS/R2LCPClient.framework; sourceTree = "<group>"; };
 		73B501C024F48D4B00FBAD7D /* TPPUserAccountFrontEndValidation.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPUserAccountFrontEndValidation.swift; sourceTree = "<group>"; };
 		73B5DFDA26052A1800225C12 /* TPPBookButtonsState.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPBookButtonsState.m; sourceTree = "<group>"; };
@@ -1406,7 +1397,6 @@
 		73DE53302525A386003E2C56 /* TPPLibraryAccountURLsProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPLibraryAccountURLsProvider.swift; sourceTree = "<group>"; };
 		73DE8979260BEA13003D9135 /* TPPRequestExecuting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPRequestExecuting.swift; sourceTree = "<group>"; };
 		73DEB5462486FDFC00B5FF0A /* TPPBookmarkR2Location.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPBookmarkR2Location.swift; sourceTree = "<group>"; };
-		73DED81925A630AA00A4D63B /* SwiftSoup.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftSoup.framework; path = Carthage/Build/iOS/SwiftSoup.framework; sourceTree = "<group>"; };
 		73DED81D25A630DB00A4D63B /* CryptoSwift.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CryptoSwift.framework; path = Carthage/Build/iOS/CryptoSwift.framework; sourceTree = "<group>"; };
 		73DED82125A630FF00A4D63B /* Fuzi.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Fuzi.framework; path = Carthage/Build/iOS/Fuzi.framework; sourceTree = "<group>"; };
 		73DED82525A6311A00A4D63B /* GCDWebServer.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = GCDWebServer.framework; path = Carthage/Build/iOS/GCDWebServer.framework; sourceTree = "<group>"; };
@@ -1509,7 +1499,6 @@
 		E58565CE269774C400A5FBD5 /* AudioEngine.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = AudioEngine.xcframework; path = Carthage/Build/AudioEngine.xcframework; sourceTree = "<group>"; };
 		E58565D2269774D900A5FBD5 /* NYPLAEToolkit.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = NYPLAEToolkit.xcframework; sourceTree = "<group>"; };
 		E585662026979AC100A5FBD5 /* NYPLAEToolkit.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = NYPLAEToolkit.xcodeproj; path = "ios-drm-audioengine/NYPLAEToolkit.xcodeproj"; sourceTree = "<group>"; };
-		E585662726979EF100A5FBD5 /* NYPLAEToolkit.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = NYPLAEToolkit.xcframework; path = Carthage/Build/NYPLAEToolkit.xcframework; sourceTree = "<group>"; };
 		E59526EA28D24FC000C179DA /* AudiobookSample.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudiobookSample.swift; sourceTree = "<group>"; };
 		E59892E028A9AC2600C44A85 /* Sample.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sample.swift; sourceTree = "<group>"; };
 		E59892EC28AC909000C44A85 /* AudiobookSampleToolbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudiobookSampleToolbar.swift; sourceTree = "<group>"; };
@@ -2666,7 +2655,6 @@
 				E708C18C27734EE300D34899 /* DifferenceKit.xcframework */,
 				21F634E426D828CF00C8BE87 /* ReadiumLCP.xcframework */,
 				E58565D2269774D900A5FBD5 /* NYPLAEToolkit.xcframework */,
-				E585662726979EF100A5FBD5 /* NYPLAEToolkit.xcframework */,
 				E58565CE269774C400A5FBD5 /* AudioEngine.xcframework */,
 				219869CE267E80800041369E /* GoogleAppMeasurement.xcframework */,
 				219869CD267E80800041369E /* GoogleDataTransport.xcframework */,
@@ -2696,29 +2684,19 @@
 				2156B54425B200EA003AD8EC /* R2LCPClient.framework */,
 				73F36BD325CC76C60057954C /* XCTest.framework */,
 				170E5FBD25AFDD64007D6DE6 /* ZIPFoundation.framework */,
-				73A7BA4B25A62FCE00C2906C /* ReadiumLCP.framework */,
 				73A7BA4D25A62FE900C2906C /* R2LCPClient.framework */,
 				21DE2A8025B1FF5A00BCC9E0 /* R2Shared.framework */,
 				732752832578CB7900A073E2 /* R2LCPClient.framework */,
-				2171ADA6251E38560003CABA /* ReadiumLCP.framework */,
-				73DED81925A630AA00A4D63B /* SwiftSoup.framework */,
 				735FC2D42485C178009CF11E /* SwiftSoup.framework */,
 				73DED81D25A630DB00A4D63B /* CryptoSwift.framework */,
-				731B2B1C244A1EB400A7A649 /* CryptoSwift.framework */,
 				73DED82125A630FF00A4D63B /* Fuzi.framework */,
-				731B2B1A244A1EB300A7A649 /* Fuzi.framework */,
 				73DED82525A6311A00A4D63B /* GCDWebServer.framework */,
-				731B2B1B244A1EB400A7A649 /* GCDWebServer.framework */,
 				738574AD25A631AF001E615D /* Minizip.framework */,
-				731B2B1D244A1EB400A7A649 /* Minizip.framework */,
 				731B2B18244A1D8600A7A649 /* R2Navigator.framework */,
 				731B2B12244A1D6500A7A649 /* R2Streamer.framework */,
 				739E6157244A0F6D00D00301 /* R2Shared.framework */,
 				73CEF82F252699C9006B2820 /* FirebaseCrashlytics.framework */,
 				7347F132245A508400558D7F /* NYPLCardCreator.framework */,
-				7326AB3224BD271F00C3BA29 /* R2Shared.framework */,
-				7326AB3324BD272000C3BA29 /* R2Navigator.framework */,
-				7326AB2D24BD271F00C3BA29 /* R2Streamer.framework */,
 				17D08378248E8EEB00092AA9 /* OverdriveProcessor.framework */,
 				738EF2EB2405EC5900F388FB /* PromisesObjC.framework */,
 				738EF2E42405EBAD00F388FB /* FirebaseInstallations.framework */,
@@ -4271,7 +4249,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 114;
+				CURRENT_PROJECT_VERSION = 115;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = arm64;
@@ -4329,7 +4307,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 114;
+				CURRENT_PROJECT_VERSION = 115;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
@@ -4510,7 +4488,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 114;
+				CURRENT_PROJECT_VERSION = 115;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = arm64;
@@ -4571,7 +4549,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 114;
+				CURRENT_PROJECT_VERSION = 115;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (

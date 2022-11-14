@@ -64,6 +64,7 @@ typedef NS_ENUM(NSInteger, FacetSort) {
 @property (nonatomic) UIRefreshControl *refreshControl;
 @property (nonatomic) UIBarButtonItem *searchButton;
 @property (nonatomic) TPPMyBooksContainerView *containerView;
+@property (nonatomic) UIActivityIndicatorView *activityIndicator;
 @end
 
 @implementation TPPMyBooksViewController
@@ -84,7 +85,13 @@ typedef NS_ENUM(NSInteger, FacetSort) {
    selector:@selector(bookRegistryDidChange)
    name:NSNotification.TPPBookRegistryDidChange
    object:nil];
-  
+
+  [[NSNotificationCenter defaultCenter]
+   addObserver:self
+   selector:@selector(bookRegistryStateDidChange)
+   name:NSNotification.TPPBookRegistryDidChange
+   object:nil];
+
   [[NSNotificationCenter defaultCenter]
    addObserver:self
    selector:@selector(syncEnded)
@@ -141,6 +148,17 @@ typedef NS_ENUM(NSInteger, FacetSort) {
   [self.view addSubview:self.instructionsLabel];
   [self.instructionsLabel autoCenterInSuperview];
   [self.instructionsLabel autoSetDimension:ALDimensionWidth toSize:300.0];
+  
+  self.activityIndicator = [[UIActivityIndicatorView alloc] initWithFrame:CGRectZero];
+  [self.view addSubview:self.activityIndicator];
+  [self.view bringSubviewToFront:self.activityIndicator];
+  [self.activityIndicator autoAlignAxisToSuperviewAxis:ALAxisVertical];
+  [self.activityIndicator autoAlignAxisToSuperviewAxis:ALAxisHorizontal];
+
+  if (TPPBookRegistry.shared.state == RegistryStateUnloaded) {
+    self.instructionsLabel.hidden = YES;
+    [self.activityIndicator startAnimating];
+  }
   
   self.searchButton = [[UIBarButtonItem alloc]
                        initWithImage:[UIImage imageNamed:@"Search"]
@@ -214,8 +232,6 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
   
   NSArray *books = [[TPPBookRegistry shared] myBooks];
   
-  self.instructionsLabel.hidden = !!books.count;
-    
   switch(self.activeFacetSort) {
     case FacetSortAuthor: {
       self.books = [books sortedArrayUsingComparator:
@@ -335,8 +351,8 @@ OK:
 - (void)reloadData
 {
   if ([TPPUserAccount sharedAccount].needsAuth && ![[TPPUserAccount sharedAccount] hasCredentials]) {
-    [TPPAccountSignInViewController requestCredentialsWithCompletion:nil];
     [self.refreshControl endRefreshing];
+    [TPPAccountSignInViewController requestCredentialsWithCompletion:nil];
   } else {
     [[TPPBookRegistry shared] sync];
   }
@@ -364,6 +380,15 @@ OK:
 {
   dispatch_async(dispatch_get_main_queue(), ^{
     [self willReloadCollectionViewData];
+    // show instructionLabel when there are no books and the book registry is not unloaded
+    self.instructionsLabel.hidden = (self.books.count != 0 || TPPBookRegistry.shared.state == RegistryStateUnloaded);
+  });
+}
+
+- (void)bookRegistryStateDidChange
+{
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [self.activityIndicator stopAnimating];
   });
 }
 
