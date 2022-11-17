@@ -304,7 +304,7 @@ class TPPBookRegistry: NSObject {
   /// will overwrite the existing book as if `updateBook` were called. The location may be nil. The
   /// state provided must be one of `TPPBookState` and must not be `TPPBookState.Unregistered`.
   func addBook(_ book: TPPBook, location: TPPBookLocation? = nil, state: TPPBookState = .DownloadNeeded, fulfillmentId: String? = nil, readiumBookmarks: [TPPReadiumBookmark]? = nil, genericBookmarks: [TPPBookLocation]? = nil) {
-    
+    coverRegistry.pinThumbnailImageForBook(book)
     registry[book.identifier] = TPPBookRegistryRecord(book: book, location: location, state: state, fulfillmentId: fulfillmentId, readiumBookmarks: readiumBookmarks, genericBookmarks: genericBookmarks)
     save()
   }
@@ -354,7 +354,7 @@ class TPPBookRegistry: NSObject {
 
   /// Returns the state of a book given its identifier.
   func state(for bookIdentifier: String) -> TPPBookState {
-    return registry[bookIdentifier]?.state ?? .DownloadNeeded
+    return registry[bookIdentifier]?.state ?? .Unregistered
   }
   
   /// Sets the state for a book previously registered given its identifier.
