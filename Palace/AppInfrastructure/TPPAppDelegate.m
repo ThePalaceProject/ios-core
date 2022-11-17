@@ -108,6 +108,8 @@ performFetchWithCompletionHandler:(void (^)(UIBackgroundFetchResult))backgroundF
       TPPLOG_F(@"[Background Fetch] Completed with %@."
                "ElapsedTime=%f", result, -startDate.timeIntervalSinceNow);
     }];
+  } else {
+    backgroundFetchHandler(UIBackgroundFetchResultNoData);
   }
 }
 
