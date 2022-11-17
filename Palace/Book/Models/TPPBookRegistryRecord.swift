@@ -26,6 +26,44 @@ class TPPBookRegistryRecord: NSObject {
     self.fulfillmentId = fulfillmentId
     self.readiumBookmarks = readiumBookmarks
     self.genericBookmarks = genericBookmarks
+    
+    super.init()
+    
+    var actuallyOnHold = false
+    if let defaultAcquisition = book.defaultAcquisition {
+      defaultAcquisition.availability.matchUnavailable { _ in
+        
+      } limited: { _ in
+        
+      } unlimited: { _ in
+        
+      } reserved: { [weak self] _ in
+        self?.state = .Holding
+        actuallyOnHold = true
+      } ready: { [weak self] _ in
+        self?.state = .Holding
+        actuallyOnHold = true
+      }
+
+    } else {
+      // Since the book has no default acqusition, there is no reliable way to
+      // determine if the book is on hold (although it may be), nor is there any
+      // way to download the book if it is available. As such, we give the book a
+      // special "unsupported" state which will allow other parts of the app to
+      // ignore it as appropriate. Unsupported books should generally only appear
+      // when a user has checked out or reserved a book in an unsupported format
+      // using another app.
+      self.state = .Unsupported
+    }
+    
+    if !actuallyOnHold {
+      if self.state == .Holding || self.state == .Unsupported {
+        // Since we're not in some download-related state and we're not unregistered,
+        // we must need to be downloaded.
+        self.state = .DownloadNeeded
+      }
+    }
+    
   }
   
   init?(record: TPPBookRegistryData) {
