@@ -5,15 +5,12 @@
 
 #import "NSString+TPPStringAdditions.h"
 #import "TPPAccountSignInViewController.h"
-
-#import "TPPBookCoverRegistry.h"
-#import "TPPBookRegistry.h"
 #import "TPPOPDS.h"
 #import "TPPJSON.h"
 #import "TPPMyBooksDownloadCenter.h"
 #import "TPPMyBooksDownloadInfo.h"
-
 #import "TPPMyBooksSimplifiedBearerToken.h"
+#import "Palace-Swift.h"
 
 #if defined(FEATURE_DRM_CONNECTOR)
 #import <ADEPT/ADEPT.h>
@@ -167,7 +164,7 @@ totalBytesExpectedToWrite:(int64_t const)totalBytesExpectedToWrite
     } else {
       TPPLOG(@"Authentication might be needed after all");
       [downloadTask cancel];
-      [[TPPBookRegistry sharedRegistry] setState:TPPBookStateDownloadFailed forIdentifier:book.identifier];
+      [[TPPBookRegistry shared] setState:TPPBookStateDownloadFailed for:book.identifier];
       [self broadcastUpdate];
       return;
     }
@@ -360,9 +357,9 @@ didFinishDownloadingToURL:(NSURL *const)tmpSavedFileURL
       [self alertForProblemDocument:problemDoc error:failureError book:book];
     });
     
-    [[TPPBookRegistry sharedRegistry]
+    [[TPPBookRegistry shared]
      setState:TPPBookStateDownloadFailed
-     forIdentifier:book.identifier];
+     for:book.identifier];
   }
 
   [self broadcastUpdate];
@@ -387,7 +384,7 @@ didFinishDownloadingToURL:(NSURL *const)tmpSavedFileURL
                                             document:problemDoc
                                               append:YES];
     if ([problemDoc.type isEqualToString:TPPProblemDocument.TypeNoActiveLoan]) {
-      [[TPPBookRegistry sharedRegistry] removeBookForIdentifier:book.identifier];
+      [[TPPBookRegistry shared] removeBookForIdentifier:book.identifier];
     }
   } else if (error && !error.localizedDescriptionWithRecovery.isEmptyNoWhitespace) {
     alert.message = [NSString stringWithFormat:@"%@\n\nError: %@",
@@ -513,7 +510,7 @@ didCompleteWithError:(NSError *)error
 
 - (void)deleteLocalContentForBookIdentifier:(NSString *const)identifier account:(NSString * const)account
 {
-  TPPBook *const book = [[TPPBookRegistry sharedRegistry] bookForIdentifier:identifier];
+  TPPBook *const book = [[TPPBookRegistry shared] bookForIdentifier:identifier];
   if (!book) {
     TPPLOG(@"WARNING: Could not find book to delete local content.");
     return;
@@ -606,13 +603,13 @@ didCompleteWithError:(NSError *)error
   
 - (void)returnBookWithIdentifier:(NSString *)identifier
 {
-  TPPBook *book = [[TPPBookRegistry sharedRegistry] bookForIdentifier:identifier];
-  TPPBookState state = [[TPPBookRegistry sharedRegistry] stateForIdentifier:identifier];
+  TPPBook *book = [[TPPBookRegistry shared] bookForIdentifier:identifier];
+  TPPBookState state = [[TPPBookRegistry shared] stateFor:identifier];
   BOOL downloaded = state == TPPBookStateDownloadSuccessful| state == TPPBookStateUsed;
 
   // Process Adobe Return
 #if defined(FEATURE_DRM_CONNECTOR)
-  NSString *fulfillmentId = [[TPPBookRegistry sharedRegistry] fulfillmentIdForIdentifier:identifier];
+  NSString *fulfillmentId = [[TPPBookRegistry shared] fulfillmentIdForIdentifier:identifier];
   if (fulfillmentId && TPPUserAccount.sharedAccount.authDefinition.needsAuth) {
     TPPLOG_F(@"Return attempt for book. userID: %@",[[TPPUserAccount sharedAccount] userID]);
     [[NYPLADEPT sharedInstance] returnLoan:fulfillmentId
@@ -630,13 +627,12 @@ didCompleteWithError:(NSError *)error
     if (downloaded) {
       [self deleteLocalContentForBookIdentifier:identifier];
     }
-    [[TPPBookRegistry sharedRegistry] removeBookForIdentifier:identifier];
-    [[TPPBookRegistry sharedRegistry] save];
+    [[TPPBookRegistry shared] removeBookForIdentifier:identifier];
   } else {
-    [[TPPBookRegistry sharedRegistry] setProcessing:YES forIdentifier:book.identifier];
+    [[TPPBookRegistry shared] setProcessing:YES for:book.identifier];
     [TPPOPDSFeed withURL:book.revokeURL shouldResetCache:NO completionHandler:^(TPPOPDSFeed *feed, NSDictionary *error) {
 
-      [[TPPBookRegistry sharedRegistry] setProcessing:NO forIdentifier:book.identifier];
+      [[TPPBookRegistry shared] setProcessing:NO for:book.identifier];
       
       if(feed && feed.entries.count == 1)  {
         TPPOPDSEntry *const entry = feed.entries[0];
@@ -645,7 +641,7 @@ didCompleteWithError:(NSError *)error
         }
         TPPBook *returnedBook = [[TPPBook alloc] initWithEntry:entry];
         if(returnedBook) {
-          [[TPPBookRegistry sharedRegistry] updateAndRemoveBook:returnedBook];
+          [[TPPBookRegistry shared] updateAndRemoveBook:returnedBook];
         } else {
           TPPLOG(@"Failed to create book from entry. Book not removed from registry.");
         }
@@ -654,7 +650,7 @@ didCompleteWithError:(NSError *)error
           if(downloaded) {
             [self deleteLocalContentForBookIdentifier:identifier];
           }
-          [[TPPBookRegistry sharedRegistry] removeBookForIdentifier:identifier];
+          [[TPPBookRegistry shared] removeBookForIdentifier:identifier];
         } else if ([error[@"type"] isEqualToString:TPPProblemDocument.TypeInvalidCredentials]) {
           TPPLOG(@"Invalid credentials problem when returning a book, present sign in VC");
           __weak __auto_type wSelf = self;
@@ -738,7 +734,7 @@ didCompleteWithError:(NSError *)error
 - (NSURL *)fileURLForBookIndentifier:(NSString *const)identifier account:(NSString * const)account
 {
   if(!identifier) return nil;
-  TPPBook *book = [[TPPBookRegistry sharedRegistry] bookForIdentifier:identifier];
+  TPPBook *book = [[TPPBookRegistry shared] bookForIdentifier:identifier];
   NSString *pathExtension = [self pathExtensionForBook:book];
   return [[[self contentDirectoryURL:account] URLByAppendingPathComponent:[identifier SHA256]]
           URLByAppendingPathExtension:pathExtension];
@@ -785,9 +781,9 @@ didCompleteWithError:(NSError *)error
 /// @param message Custom message to show
 - (void)failDownloadWithAlertForBook:(TPPBook *const)book withMessage:(NSString *)message
 {
-  TPPBookLocation *location = [[TPPBookRegistry sharedRegistry] locationForIdentifier:book.identifier];
+  TPPBookLocation *location = [[TPPBookRegistry shared] locationForIdentifier:book.identifier];
   
-  [[TPPBookRegistry sharedRegistry]
+  [[TPPBookRegistry shared]
    addBook:book
    location:location
    state:TPPBookStateDownloadFailed
@@ -811,9 +807,9 @@ didCompleteWithError:(NSError *)error
            attemptDownload:(BOOL)shouldAttemptDownload
           borrowCompletion:(void (^)(void))borrowCompletion
 {
-  [[TPPBookRegistry sharedRegistry] setProcessing:YES forIdentifier:book.identifier];
+  [[TPPBookRegistry shared] setProcessing:YES for:book.identifier];
   [TPPOPDSFeed withURL:book.defaultAcquisitionIfBorrow.hrefURL shouldResetCache:YES completionHandler:^(TPPOPDSFeed *feed, NSDictionary *error) {
-    [[TPPBookRegistry sharedRegistry] setProcessing:NO forIdentifier:book.identifier];
+    [[TPPBookRegistry shared] setProcessing:NO for:book.identifier];
 
     if (error || !feed || feed.entries.count < 1) {
       [[NSOperationQueue mainQueue] addOperationWithBlock:^{
@@ -867,9 +863,9 @@ didCompleteWithError:(NSError *)error
       return;
     }
 
-    TPPBookLocation *location = [[TPPBookRegistry sharedRegistry] locationForIdentifier:book.identifier];
+    TPPBookLocation *location = [[TPPBookRegistry shared] locationForIdentifier:book.identifier];
     
-    [[TPPBookRegistry sharedRegistry]
+    [[TPPBookRegistry shared]
      addBook:book
      location:location
      state:TPPBookStateDownloadNeeded
@@ -908,10 +904,10 @@ didCompleteWithError:(NSError *)error
 
 - (void)startDownloadForBook:(TPPBook *const)book withRequest:(NSURLRequest *)initedRequest
 {
-  TPPBookState state = [[TPPBookRegistry sharedRegistry]
-                         stateForIdentifier:book.identifier];
+  TPPBookState state = [[TPPBookRegistry shared]
+                         stateFor:book.identifier];
 
-  TPPBookLocation *location = [[TPPBookRegistry sharedRegistry] locationForIdentifier:book.identifier];
+  TPPBookLocation *location = [[TPPBookRegistry shared] locationForIdentifier:book.identifier];
   
   BOOL loginRequired = TPPUserAccount.sharedAccount.authDefinition.needsAuth;
 
@@ -920,7 +916,7 @@ didCompleteWithError:(NSError *)error
       if(!book.defaultAcquisitionIfBorrow
          && (book.defaultAcquisitionIfOpenAccess || !loginRequired)) {
 
-        [[TPPBookRegistry sharedRegistry]
+        [[TPPBookRegistry shared]
          addBook:book
          location:location
          state:TPPBookStateDownloadNeeded
@@ -1024,7 +1020,7 @@ didCompleteWithError:(NSError *)error
       }
 
       if (TPPUserAccount.sharedAccount.cookies && state != TPPBookStateSAMLStarted) {
-        [[TPPBookRegistry sharedRegistry] setState:TPPBookStateSAMLStarted forIdentifier:book.identifier];
+        [[TPPBookRegistry shared] setState:TPPBookStateSAMLStarted for:book.identifier];
 
         NSMutableArray *someCookies = TPPUserAccount.sharedAccount.cookies.mutableCopy;
         NSMutableURLRequest *mutableRequest = request.mutableCopy;
@@ -1035,7 +1031,7 @@ didCompleteWithError:(NSError *)error
           mutableRequest.cachePolicy = NSURLRequestReloadIgnoringCacheData;
 
           void (^loginCancelHandler)(void) = ^{
-            [[TPPBookRegistry sharedRegistry] setState:TPPBookStateDownloadNeeded forIdentifier:book.identifier];
+            [[TPPBookRegistry shared] setState:TPPBookStateDownloadNeeded for:book.identifier];
             [weakSelf cancelDownloadForBookIdentifier:book.identifier];
           };
 
@@ -1045,7 +1041,7 @@ didCompleteWithError:(NSError *)error
           };
 
           void (^problemFoundHandler)(TPPProblemDocument * _Nullable) = ^(__unused TPPProblemDocument * _Nullable problemDocument) {
-            [[TPPBookRegistry sharedRegistry] setState:TPPBookStateDownloadNeeded forIdentifier:book.identifier];
+            [[TPPBookRegistry shared] setState:TPPBookStateDownloadNeeded for:book.identifier];
 
             __weak __auto_type wSelf = self;
             [self.reauthenticator authenticateIfNeeded:TPPUserAccount.sharedAccount
@@ -1119,9 +1115,9 @@ didCompleteWithError:(NSError *)error
   
   [task resume];
   
-  TPPBookLocation *location = [[TPPBookRegistry sharedRegistry] locationForIdentifier:book.identifier];
+  TPPBookLocation *location = [[TPPBookRegistry shared] locationForIdentifier:book.identifier];
   
-  [[TPPBookRegistry sharedRegistry]
+  [[TPPBookRegistry shared]
    addBook:book
    location:location
    state:TPPBookStateDownloading
@@ -1152,40 +1148,38 @@ didCompleteWithError:(NSError *)error
     
     [info.downloadTask
      cancelByProducingResumeData:^(__attribute__((unused)) NSData *resumeData) {
-       [[TPPBookRegistry sharedRegistry]
-        setState:TPPBookStateDownloadNeeded forIdentifier:identifier];
+       [[TPPBookRegistry shared]
+        setState:TPPBookStateDownloadNeeded for:identifier];
        
        [self broadcastUpdate];
      }];
   } else {
     // The download was not actually going, so we just need to convert a failed download state.
-    TPPBookState const state = [[TPPBookRegistry sharedRegistry]
-                                 stateForIdentifier:identifier];
+    TPPBookState const state = [[TPPBookRegistry shared]
+                                 stateFor:identifier];
     
     if(state != TPPBookStateDownloadFailed) {
       TPPLOG(@"Ignoring nonsensical cancellation request.");
       return;
     }
     
-    [[TPPBookRegistry sharedRegistry]
-     setState:TPPBookStateDownloadNeeded forIdentifier:identifier];
+    [[TPPBookRegistry shared]
+     setState:TPPBookStateDownloadNeeded for:identifier];
   }
 }
 
 - (void)deleteAudiobooksForAccount:(NSString * const)account
 {
-  [[TPPBookRegistry sharedRegistry]
-   performUsingAccount:account
-   block:^{
-     NSArray<NSString *> const *books = [[TPPBookRegistry sharedRegistry] allBooks];
-     for (TPPBook *const book in books) {
-       if (book.defaultBookContentType == TPPBookContentTypeAudiobook) {
-         [[TPPMyBooksDownloadCenter sharedDownloadCenter]
-          deleteLocalContentForBookIdentifier:book.identifier
-          account:account];
-       }
-     }
-   }];
+  [[TPPBookRegistry shared] withAccount:account perform:^(TPPBookRegistry * registry) {
+    NSArray<TPPBook *> const *books = registry.allBooks;
+    for (TPPBook *const book in books) {
+      if (book.defaultBookContentType == TPPBookContentTypeAudiobook) {
+        [[TPPMyBooksDownloadCenter sharedDownloadCenter]
+         deleteLocalContentForBookIdentifier:book.identifier
+         account:account];
+      }
+    }
+  }];
 }
 
 - (void)reset:(NSString *)account
@@ -1270,9 +1264,8 @@ didCompleteWithError:(NSError *)error
                   error:&moveError];
 
   if (success) {
-    [[TPPBookRegistry sharedRegistry]
-     setState:TPPBookStateDownloadSuccessful forIdentifier:book.identifier];
-    [[TPPBookRegistry sharedRegistry] save];
+    [[TPPBookRegistry shared]
+     setState:TPPBookStateDownloadSuccessful for:book.identifier];
   } else if (moveError) {
     [self logBookDownloadFailure:book
                           reason:@"Couldn't move book to final disk location"
@@ -1302,8 +1295,7 @@ didCompleteWithError:(NSError *)error
                                                             error:&replaceError];
   
   if(success) {
-    [[TPPBookRegistry sharedRegistry] setState:TPPBookStateDownloadSuccessful forIdentifier:book.identifier];
-    [[TPPBookRegistry sharedRegistry] save];
+    [[TPPBookRegistry shared] setState:TPPBookStateDownloadSuccessful for:book.identifier];
   } else {
     [self logBookDownloadFailure:book
                           reason:@"Couldn't replace downloaded book"
@@ -1339,7 +1331,7 @@ didFinishDownload:(BOOL)didFinishDownload
               tag:(NSString *)tag
             error:(NSError *)adeptError
 {
-  TPPBook *const book = [[TPPBookRegistry sharedRegistry] bookForIdentifier:tag];
+  TPPBook *const book = [[TPPBookRegistry shared] bookForIdentifier:tag];
   NSString *rights = [[NSString alloc] initWithData:rightsData encoding:kCFStringEncodingUTF8];
   BOOL didSucceedCopying = NO;
 
@@ -1416,22 +1408,20 @@ didFinishDownload:(BOOL)didFinishDownload
   }
   
   if(isReturnable && fulfillmentID) {
-    [[TPPBookRegistry sharedRegistry]
-     setFulfillmentId:fulfillmentID forIdentifier:book.identifier];
+    [[TPPBookRegistry shared]
+     setFulfillmentId:fulfillmentID for:book.identifier];
   }
 
-  [[TPPBookRegistry sharedRegistry]
-   setState:TPPBookStateDownloadSuccessful forIdentifier:book.identifier];
-  
-  [[TPPBookRegistry sharedRegistry] save];
+  [[TPPBookRegistry shared]
+   setState:TPPBookStateDownloadSuccessful for:book.identifier];
 
   [self broadcastUpdate];
 }
   
 - (void)adept:(__attribute__((unused)) NYPLADEPT *)adept didCancelDownloadWithTag:(NSString *)tag
 {
-  [[TPPBookRegistry sharedRegistry]
-   setState:TPPBookStateDownloadNeeded forIdentifier:tag];
+  [[TPPBookRegistry shared]
+   setState:TPPBookStateDownloadNeeded for:tag];
 
   [self broadcastUpdate];
 }
@@ -1511,14 +1501,13 @@ didFinishDownload:(BOOL)didFinishDownload
     } else {
       // Store license ID
       TPPLCPLicense *license = [[TPPLCPLicense alloc] initWithUrl: licenseUrl];
-      [[TPPBookRegistry sharedRegistry] setFulfillmentId:license.identifier forIdentifier:book.identifier];
-      [[TPPBookRegistry sharedRegistry] save];
+      [[TPPBookRegistry shared] setFulfillmentId:license.identifier for:book.identifier];
       // For pdfs, try to unarchive the file to spped up the access
       if (book.defaultBookContentType == TPPBookContentTypePdf) {
         NSURL *bookURL = [self fileURLForBookIndentifier:book.identifier];
-        [[TPPBookRegistry sharedRegistry] setState:TPPBookStateDownloading forIdentifier:book.identifier];
+        [[TPPBookRegistry shared] setState:TPPBookStateDownloading for:book.identifier];
         [[[LCPPDFs alloc] initWithUrl:bookURL] extractWithUrl:bookURL completion:^(NSURL *url, NSError *error) {
-          [[TPPBookRegistry sharedRegistry] setState:TPPBookStateDownloadSuccessful forIdentifier:book.identifier];
+          [[TPPBookRegistry shared] setState:TPPBookStateDownloadSuccessful for:book.identifier];
         }];
       }
     }

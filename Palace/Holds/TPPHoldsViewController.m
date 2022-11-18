@@ -1,7 +1,6 @@
 
 #import "TPPBookCell.h"
 #import "TPPBookDetailViewController.h"
-#import "TPPBookRegistry.h"
 #import "TPPCatalogSearchViewController.h"
 #import "TPPConfiguration.h"
 #import "TPPOpenSearchDescription.h"
@@ -151,7 +150,7 @@
   [super viewWillAppear:animated];
 
   [[NSOperationQueue mainQueue] addOperationWithBlock:^{
-    BOOL isSyncing = [TPPBookRegistry sharedRegistry].syncing;
+    BOOL isSyncing = [TPPBookRegistry shared].isSyncing;
     if(!isSyncing) {
       [self.refreshControl endRefreshing];
       if (self.collectionView.numberOfSections == 0) {
@@ -245,7 +244,7 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
 {
   [super willReloadCollectionViewData];
   
-  NSArray *books = [[TPPBookRegistry sharedRegistry] heldBooks];
+  NSArray *books = [[TPPBookRegistry shared] heldBooks];
   
   self.instructionsLabel.hidden = !!books.count;
   
@@ -285,14 +284,14 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
 {  
   if ([TPPUserAccount sharedAccount].needsAuth) {
     if([[TPPUserAccount sharedAccount] hasCredentials]) {
-      [[TPPBookRegistry sharedRegistry] syncWithStandardAlertsOnCompletion];
+      [[TPPBookRegistry shared] sync];
     } else {
       [TPPAccountSignInViewController requestCredentialsWithCompletion:nil];
       [self.refreshControl endRefreshing];
       [[NSNotificationCenter defaultCenter] postNotificationName:NSNotification.TPPSyncEnded object:nil];
     }
   } else {
-    [[TPPBookRegistry sharedRegistry] justLoad];
+    [[TPPBookRegistry shared] loadWithAccount:nil];
     [[NSNotificationCenter defaultCenter] postNotificationName:NSNotification.TPPSyncEnded object:nil];
   }
 }
@@ -300,7 +299,7 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
 - (void)bookRegistryDidChange
 {
   [[NSOperationQueue mainQueue] addOperationWithBlock:^{
-    if([TPPBookRegistry sharedRegistry].syncing == NO) {
+    if([TPPBookRegistry shared].isSyncing == NO) {
       [self.refreshControl endRefreshing];
       [self willReloadCollectionViewData];
     }

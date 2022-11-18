@@ -205,15 +205,26 @@ let UpdatedKey: String = "updated"
     
     var authors = [TPPBookAuthor]()
     
-    if let authorStrings = dictionary[AuthorsKey] as? [String],
-       let authorLinks = dictionary[AuthorLinksKey] as? [TPPOPDSLink] {
-      authors = authorStrings.enumerated().map { (index, element) in
-        TPPBookAuthor(
-          authorName: element,
-          relatedBooksURL: authorLinks.count > index ? authorLinks[index].href : nil
-        )
-      }
+    var authorStrings = [String]()
+    if let authorObject = dictionary[AuthorsKey] as? [[String]], let values = authorObject.first {
+      authorStrings = values
+    } else if let authorObject = dictionary[AuthorsKey] as? [String] {
+      authorStrings = authorObject
     }
+    var authorLinkStrings = [String]()
+    if let authorLinkObject = dictionary[AuthorLinksKey] as? [[String]], let values = authorLinkObject.first {
+      authorLinkStrings = values
+    } else if let authorLinkObject = dictionary[AuthorLinksKey] as? [String] {
+      authorLinkStrings = authorLinkObject
+    }
+
+    authors = authorStrings.enumerated().map { (index, name) in
+      TPPBookAuthor(
+        authorName: name,
+        relatedBooksURL: authorLinkStrings.count > index ? URL(string: authorLinkStrings[index]) : nil
+      )
+    }
+    
     
     var revokeURL = URL(string: dictionary[RevokeURLKey] as? String ?? "")
     var reportURL = URL(string: dictionary[ReportURLKey] as? String ?? "")
@@ -387,8 +398,8 @@ let UpdatedKey: String = "updated"
       AlternateURLKey: alternateURL?.absoluteString ?? "",
       AnnotationsURLKey: annotationsURL?.absoluteString ?? "",
       AnalyticsURLKey: analyticsURL?.absoluteString ?? "",
-      AuthorLinksKey: [authorLinkArray],
-      AuthorsKey: [authorNameArray],
+      AuthorLinksKey: authorLinkArray ?? [],
+      AuthorsKey: authorNameArray ?? [],
       CategoriesKey: categoryStrings as Any,
       DistributorKey: distributor as Any,
       IdentifierKey: identifier,
@@ -400,7 +411,7 @@ let UpdatedKey: String = "updated"
       ReportURLKey: reportURL?.absoluteString as Any,
       RevokeURLKey: revokeURL?.absoluteString as Any,
       SeriesLinkKey: seriesURL?.absoluteString as Any,
-      PreviewURLKey: previewLink as Any,
+      PreviewURLKey: previewLink?.dictionaryRepresentation() as Any,
       SubtitleKey: subtitle as Any,
       SummaryKey: summary as Any,
       TitleKey: title as Any,

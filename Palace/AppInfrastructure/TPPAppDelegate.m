@@ -3,7 +3,6 @@
 #import "Palace-Swift.h"
 
 #import "TPPConfiguration.h"
-#import "TPPBookRegistry.h"
 #import "TPPReachability.h"
 #import "TPPRootTabBarController.h"
 
@@ -81,6 +80,9 @@ didFinishLaunchingWithOptions:(__attribute__((unused)) NSDictionary *)launchOpti
 
   [TPPErrorLogger logNewAppLaunch];
 
+  // Initialize TPPBookRegistry
+  [TPPBookRegistry shared];
+  
   return YES;
 }
 
@@ -91,21 +93,24 @@ performFetchWithCompletionHandler:(void (^)(UIBackgroundFetchResult))backgroundF
   NSDate *startDate = [NSDate date];
   if ([TPPUserNotifications backgroundFetchIsNeeded]) {
     TPPLOG_F(@"[Background Fetch] Starting book registry sync. "
-              "ElapsedTime=%f", -startDate.timeIntervalSinceNow);
-    // Only the "current library" account syncs during a background fetch.
-    [[TPPBookRegistry sharedRegistry] syncResettingCache:NO completionHandler:^(NSDictionary *errorDict) {
-      if (errorDict == nil) {
-        [[TPPBookRegistry sharedRegistry] save];
+                  "ElapsedTime=%f", -startDate.timeIntervalSinceNow);
+    [TPPBookRegistry.shared syncWithCompletion:^(NSDictionary *errorDocument, BOOL newBooks) {
+      NSString *result;
+      if (errorDocument) {
+        result = @"error document";
+        backgroundFetchHandler(UIBackgroundFetchResultFailed);
+      } else if (newBooks) {
+        result = @"new ready books available";
+        backgroundFetchHandler(UIBackgroundFetchResultNewData);
+      } else {
+        result = @"no ready books fetched";
+        backgroundFetchHandler(UIBackgroundFetchResultNoData);
       }
-    } backgroundFetchHandler:^(UIBackgroundFetchResult result) {
-      TPPLOG_F(@"[Background Fetch] Completed with result %lu. "
-                "ElapsedTime=%f", (unsigned long)result, -startDate.timeIntervalSinceNow);
-      backgroundFetchHandler(result);
+      TPPLOG_F(@"[Background Fetch] Completed with %@."
+               "ElapsedTime=%f", result, -startDate.timeIntervalSinceNow);
     }];
   } else {
-    TPPLOG_F(@"[Background Fetch] Registry sync not needed. "
-              "ElapsedTime=%f", -startDate.timeIntervalSinceNow);
-    backgroundFetchHandler(UIBackgroundFetchResultNewData);
+    backgroundFetchHandler(UIBackgroundFetchResultNoData);
   }
 }
 
@@ -190,13 +195,12 @@ performFetchWithCompletionHandler:(void (^)(UIBackgroundFetchResult))backgroundF
 
 - (void)applicationWillResignActive:(__attribute__((unused)) UIApplication *)application
 {
-  [[TPPBookRegistry sharedRegistry] save];
+
 }
 
 - (void)applicationWillTerminate:(__unused UIApplication *)application
 {
   [self.audiobookLifecycleManager willTerminate];
-  [[TPPBookRegistry sharedRegistry] save];
   [NSNotificationCenter.defaultCenter removeObserver:self];
 }
 

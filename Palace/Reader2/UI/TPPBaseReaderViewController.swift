@@ -61,13 +61,13 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     lastReadPositionPoster = TPPLastReadPositionPoster(
       book: book,
       r2Publication: publication,
-      bookRegistryProvider: TPPBookRegistry.shared())
+      bookRegistryProvider: TPPBookRegistry.shared)
 
     bookmarksBusinessLogic = TPPReaderBookmarksBusinessLogic(
       book: book,
       r2Publication: publication,
       drmDeviceID: TPPUserAccount.sharedAccount().deviceID,
-      bookRegistryProvider: TPPBookRegistry.shared(),
+      bookRegistryProvider: TPPBookRegistry.shared,
       currentLibraryAccountProvider: AccountsManager.shared)
 
     bookmarksBusinessLogic.syncBookmarks { (_, _) in }
@@ -151,10 +151,6 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
 
   override func willMove(toParent parent: UIViewController?) {
     super.willMove(toParent: parent)
-
-    if parent == nil {
-      TPPBookRegistry.shared().save()
-    }
   }
 
 

@@ -9,7 +9,6 @@
 #import "TPPAccountSignInViewController.h"
 #import "TPPBookDownloadFailedCell.h"
 #import "TPPBookDownloadingCell.h"
-#import "TPPBookLocation.h"
 #import "TPPBookNormalCell.h"
 #import "TPPMyBooksDownloadCenter.h"
 #import "TPPRootTabBarController.h"
@@ -199,7 +198,7 @@
 - (void)presentMinitexPDFReader:(TPPBook *)book {
   NSURL *const url = [[TPPMyBooksDownloadCenter sharedDownloadCenter] fileURLForBookIndentifier:book.identifier];
 
-  NSArray<TPPBookLocation *> *const genericMarks = [[TPPBookRegistry sharedRegistry] genericBookmarksForIdentifier:book.identifier];
+  NSArray<TPPBookLocation *> *const genericMarks = [[TPPBookRegistry shared] genericBookmarksForIdentifier:book.identifier];
   NSMutableArray<MinitexPDFPage *> *const bookmarks = [NSMutableArray array];
   for (TPPBookLocation *loc in genericMarks) {
     NSData *const data = [loc.locationString dataUsingEncoding:NSUTF8StringEncoding];
@@ -208,7 +207,7 @@
   }
 
   MinitexPDFPage *startingPage;
-  TPPBookLocation *const startingBookLocation = [[TPPBookRegistry sharedRegistry] locationForIdentifier:book.identifier];
+  TPPBookLocation *const startingBookLocation = [[TPPBookRegistry shared] locationForIdentifier:book.identifier];
   NSData *const data = [startingBookLocation.locationString dataUsingEncoding:NSUTF8StringEncoding];
   if (data) {
     startingPage = [MinitexPDFPage fromData:data];
@@ -296,7 +295,7 @@
 
       [self registerCallbackForLogHandler];
 
-      [[TPPBookRegistry sharedRegistry] coverImageForBook:book handler:^(UIImage *image) {
+      [[TPPBookRegistry shared] coverImageFor:book handler:^(UIImage *image) {
         if (image) {
           [audiobookVC.coverView setImage:image];
         }
@@ -329,7 +328,7 @@
         }
       }];
       
-      [[TPPBookRegistry sharedRegistry] syncLocationFor:book completion:^(ChapterLocation * _Nullable chapterLocation) {
+      [[TPPBookRegistry shared] syncLocationFor:book completion:^(ChapterLocation * _Nullable chapterLocation) {
 
         if (chapterLocation) {
           TPPLOG_F(@"Returning to Audiobook Location: %@", chapterLocation);
@@ -343,7 +342,7 @@
           }];
         } else {
           TPPBookLocation *const bookLocation =
-          [[TPPBookRegistry sharedRegistry] locationForIdentifier:book.identifier];
+          [[TPPBookRegistry shared] locationForIdentifier:book.identifier];
 
           if (bookLocation) {
             [self startLoading:audiobookVC];
@@ -453,13 +452,12 @@
   if (previousPlayheadOffset != playheadOffset && playheadOffset > 0) {
     previousPlayheadOffset = playheadOffset;
   
-    [[TPPBookRegistry sharedRegistry]
+    [[TPPBookRegistry shared]
      setLocation:[[TPPBookLocation alloc] initWithLocationString:string renderer:@"NYPLAudiobookToolkit"]
      forIdentifier:self.book.identifier];
     
     // Save updated location on server
     [TPPAnnotations postListeningPositionForBook:self.book.identifier selectorValue:string];
-    [[TPPBookRegistry sharedRegistry] save];
   }
 }
 
@@ -529,7 +527,7 @@
     return;
   }
     
-  [[TPPBookRegistry sharedRegistry] setState:TPPBookStateDownloadNeeded forIdentifier:self.book.identifier];
+  [[TPPBookRegistry shared] setState:TPPBookStateDownloadNeeded for:self.book.identifier];
 
 #if FEATURE_OVERDRIVE
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(updateODAudiobookManifest) name:NSNotification.TPPMyBooksDownloadCenterDidChange object:nil];
@@ -539,7 +537,7 @@
 
 #if FEATURE_OVERDRIVE
 - (void)updateODAudiobookManifest {
-  if ([[TPPBookRegistry sharedRegistry] stateForIdentifier:self.book.identifier] == TPPBookStateDownloadSuccessful) {
+  if ([[TPPBookRegistry shared] stateFor:self.book.identifier] == TPPBookStateDownloadSuccessful) {
     OverdriveAudiobook *odAudiobook = (OverdriveAudiobook *)self.manager.audiobook;
 
     NSURL *const url = [[TPPMyBooksDownloadCenter sharedDownloadCenter] fileURLForBookIndentifier:self.book.identifier];

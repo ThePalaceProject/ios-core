@@ -72,7 +72,7 @@ class TPPReaderBookmarksBusinessLogicTests: XCTestCase {
       try super.tearDownWithError()
       bookmarkBusinessLogic = nil
       libraryAccountMock = nil
-      bookRegistryMock?.identifiersToRecords.removeAll()
+      bookRegistryMock?.registry.removeAll()
       bookRegistryMock = nil
       bookmarkCounter = 0
     }

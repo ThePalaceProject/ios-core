@@ -9,20 +9,18 @@
 import Foundation
 @testable import Palace
 
-class TPPBookRegistryMock: NSObject, NYPLBookRegistrySyncing, TPPBookRegistryProvider {
-  var syncing = false
-  var identifiersToRecords = [String: TPPBookRegistryRecord]()
+class TPPBookRegistryMock: NSObject, TPPBookRegistrySyncing, TPPBookRegistryProvider {
+  var isSyncing = false
+  var registry = [String: TPPBookRegistryRecord]()
 
   func reset(_ libraryAccountUUID: String) {
-    syncing = false
+    isSyncing = false
   }
 
-  func syncResettingCache(_ resetCache: Bool,
-                          completionHandler: (([AnyHashable : Any]?) -> Void)?) {
-    syncing = true
+  func sync() {
+    isSyncing = true
     DispatchQueue.global(qos: .background).async {
-      self.syncing = false
-      completionHandler?(nil)
+      self.isSyncing = false
     }
   }
 
@@ -32,16 +30,16 @@ class TPPBookRegistryMock: NSObject, NYPLBookRegistrySyncing, TPPBookRegistryPro
   func addBook(book: TPPBook,
                state: TPPBookState) {
     let dict = ["metadata": book.dictionaryRepresentation(), "state": state.stringValue()] as [String : AnyObject]
-    self.identifiersToRecords[book.identifier] = TPPBookRegistryRecord(dictionary: dict)
+    self.registry[book.identifier] = TPPBookRegistryRecord(record: dict)
   }
     
   func readiumBookmarks(forIdentifier identifier: String) -> [TPPReadiumBookmark] {
-    guard let record = identifiersToRecords[identifier] else { return [TPPReadiumBookmark]() }
-    return record.readiumBookmarks.sorted{ $0.progressWithinBook > $1.progressWithinBook }
+    registry[identifier]?.readiumBookmarks?
+      .sorted { $0.progressWithinBook < $1.progressWithinBook } ?? []
   }
   
   func location(forIdentifier identifier: String) -> TPPBookLocation? {
-    guard let record = identifiersToRecords[identifier] else { return nil }
+    guard let record = registry[identifier] else { return nil }
     return record.location
   }
     
@@ -49,23 +47,21 @@ class TPPBookRegistryMock: NSObject, NYPLBookRegistrySyncing, TPPBookRegistryPro
   }
 
   func add(_ bookmark: TPPReadiumBookmark, forIdentifier identifier: String) {
-    guard let record = identifiersToRecords[identifier] else { return }
-    var bookmarks = [TPPReadiumBookmark]()
-    bookmarks.append(contentsOf: record.readiumBookmarks)
-    bookmarks.append(bookmark)
-    identifiersToRecords[identifier] = record.withReadiumBookmarks(bookmarks)
+    guard registry[identifier] != nil else {
+      return
+    }
+    if registry[identifier]?.readiumBookmarks == nil {
+      registry[identifier]?.readiumBookmarks = [TPPReadiumBookmark]()
+    }
+    registry[identifier]?.readiumBookmarks?.append(bookmark)
   }
 
   func delete(_ bookmark: TPPReadiumBookmark, forIdentifier identifier: String) {
-    guard let record = identifiersToRecords[identifier] else { return }
-    let bookmarks = record.readiumBookmarks.filter { $0 != bookmark }
-    identifiersToRecords[identifier] = record.withReadiumBookmarks(bookmarks)
+    registry[identifier]?.readiumBookmarks?.removeAll { $0 == bookmark }
   }
   
   func replace(_ oldBookmark: TPPReadiumBookmark, with newBookmark: TPPReadiumBookmark, forIdentifier identifier: String) {
-    guard let record = identifiersToRecords[identifier] else { return }
-    var bookmarks = record.readiumBookmarks.filter { $0 != oldBookmark }
-    bookmarks.append(newBookmark)
-    identifiersToRecords[identifier] = record.withReadiumBookmarks(bookmarks)
+    registry[identifier]?.readiumBookmarks?.removeAll { $0 == oldBookmark }
+    registry[identifier]?.readiumBookmarks?.append(newBookmark)
   }
 }

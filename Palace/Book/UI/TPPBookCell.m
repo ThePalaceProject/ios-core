@@ -3,7 +3,6 @@
 #import "TPPBookDownloadFailedCell.h"
 #import "TPPBookDownloadingCell.h"
 #import "TPPBookNormalCell.h"
-#import "TPPBookRegistry.h"
 #import "TPPConfiguration.h"
 #import "TPPMyBooksDownloadCenter.h"
 #import "TPPOPDS.h"
@@ -47,8 +46,8 @@ TPPBookCell *TPPBookCellDequeue(UICollectionView *const collectionView,
                                   NSIndexPath *const indexPath,
                                   TPPBook *const book)
 {
-  TPPBookState const state = [[TPPBookRegistry sharedRegistry]
-                               stateForIdentifier:book.identifier];
+  TPPBookState const state = [[TPPBookRegistry shared]
+                               stateFor:book.identifier];
   
   switch(state) {
     case TPPBookStateUnregistered:
