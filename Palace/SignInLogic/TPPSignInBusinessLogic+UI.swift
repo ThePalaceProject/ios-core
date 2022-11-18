@@ -74,7 +74,7 @@ extension TPPSignInBusinessLogic {
 
     let title = Strings.TPPSigninBusinessLogic.signout
     let msg: String
-    if bookRegistry.syncing {
+    if bookRegistry.isSyncing {
       msg = Strings.TPPSigninBusinessLogic.annotationSyncMessage
     } else if let drm = drmAuthorizer, drm.workflowsInProgress {
       msg = Strings.TPPSigninBusinessLogic.pendingDownloadMessage

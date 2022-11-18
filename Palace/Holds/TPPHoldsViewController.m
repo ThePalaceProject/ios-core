@@ -309,7 +309,7 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
 - (void)didSelectSearch
 {
   NSString *title = NSLocalizedString(@"Search Reservations", nil);
-  TPPOpenSearchDescription *searchDescription = [[TPPOpenSearchDescription alloc] initWithTitle:title books:[[TPPBookRegistry sharedRegistry] heldBooks]];
+  TPPOpenSearchDescription *searchDescription = [[TPPOpenSearchDescription alloc] initWithTitle:title books:[[TPPBookRegistry shared] heldBooks]];
   [self.navigationController
    pushViewController:[[TPPCatalogSearchViewController alloc] initWithOpenSearchDescription:searchDescription]
    animated:YES];
