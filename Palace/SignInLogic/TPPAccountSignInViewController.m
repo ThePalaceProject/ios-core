@@ -161,7 +161,7 @@ CGFloat const marginPadding = 2.0;
 
   self.usernameTextField = [[UITextField alloc] initWithFrame:CGRectZero];
   self.usernameTextField.delegate = self.frontEndValidator;
-  self.usernameTextField.placeholder = AccountsManager.shared.currentAccount.details.defaultAuth.patronIDLabel ?: NSLocalizedString(@"BarcodeOrUsername", nil);
+  self.usernameTextField.placeholder = AccountsManager.shared.currentAccount.details.defaultAuth.patronIDLabel ?: NSLocalizedString(@"Barcode or Username", nil);
 
   switch (self.businessLogic.selectedAuthentication.patronIDKeyboard) {
     case LoginKeyboardStandard:
@@ -543,7 +543,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
                                       NSUnderlineStyleAttributeName :
                                         @(NSUnderlineStyleSingle) };
     NSMutableAttributedString *eulaString = [[NSMutableAttributedString alloc]
-                                             initWithString:NSLocalizedString(@"SigningInAgree", nil) attributes:linkAttributes];
+                                             initWithString:NSLocalizedString(@"By signing in, you agree to the End User License Agreement.", nil) attributes:linkAttributes];
     footerLabel.attributedText = eulaString;
     [footerLabel addGestureRecognizer:[[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(showEULA)]];
 
@@ -708,7 +708,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
     LAContext *const context = [[LAContext alloc] init];
     if([context canEvaluatePolicy:LAPolicyDeviceOwnerAuthentication error:NULL]) {
       [context evaluatePolicy:LAPolicyDeviceOwnerAuthentication
-              localizedReason:NSLocalizedString(@"SettingsAccountViewControllerAuthenticationReason", nil)
+              localizedReason:NSLocalizedString(@"Authenticate to reveal your PIN.", nil)
                         reply:^(__unused BOOL success,
                                 __unused NSError *_Nullable error) {
                           if(success) {

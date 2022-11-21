@@ -20,7 +20,7 @@ class TPPSettingsSplitViewController : UISplitViewController, UISplitViewControl
     super.init(nibName: nil, bundle: nil)
     
     self.delegate = self
-    self.title = NSLocalizedString("Settings", comment: "")
+    self.title = DisplayStrings.Settings.settings
     self.tabBarItem.image = UIImage.init(named: "Settings")
     self.viewControllers = [navVC]
     self.presentsWithGesture = false

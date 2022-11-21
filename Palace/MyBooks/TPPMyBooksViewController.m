@@ -76,7 +76,7 @@ typedef NS_ENUM(NSInteger, FacetSort) {
   self = [super init];
   if(!self) return nil;
 
-  self.title = NSLocalizedString(@"MyBooksViewControllerTitle", nil);
+  self.title = NSLocalizedString(@"My Books", nil);
   
   [self willReloadCollectionViewData];
   
@@ -140,7 +140,7 @@ typedef NS_ENUM(NSInteger, FacetSort) {
 
   self.instructionsLabel = [[UILabel alloc] initWithFrame:CGRectZero];
   self.instructionsLabel.hidden = YES;
-  self.instructionsLabel.text = NSLocalizedString(@"MyBooksGoToCatalog", nil);
+  self.instructionsLabel.text = NSLocalizedString(@"Visit the Catalog to\nadd books to My Books.", nil);
   self.instructionsLabel.textAlignment = NSTextAlignmentCenter;
   self.instructionsLabel.textColor = [UIColor colorWithWhite:0.6667 alpha:1.0];
   self.instructionsLabel.font = [UIFont palaceFontOfSize:18.0];
@@ -180,8 +180,7 @@ typedef NS_ENUM(NSInteger, FacetSort) {
   [super viewWillAppear:animated];
   [self.navigationController setNavigationBarHidden:NO];
   self.navigationController.navigationBar.tintColor = [TPPConfiguration iconColor];
-  self.navigationItem.title = NSLocalizedString(@"MyBooksViewControllerTitle", nil);
-  [TPPBookRegistry.shared sync];
+  self.navigationItem.title = NSLocalizedString(@"My Books", nil);
 }
 
 - (void)viewWillLayoutSubviews
@@ -273,7 +272,7 @@ numberOfFacetsInFacetGroupAtIndex:(__attribute__((unused)) NSUInteger)index
 - (NSString *)facetView:(__attribute__((unused)) TPPFacetView *)facetView
 nameForFacetGroupAtIndex:(NSUInteger const)index
 {
-  return @[NSLocalizedString(@"MyBooksViewControllerGroupSortBy", nil),
+  return @[NSLocalizedString(@"Sort By", nil),
            ][index];
 }
 
@@ -284,9 +283,9 @@ nameForFacetAtIndexPath:(NSIndexPath *const)indexPath
     case GroupSortBy:
       switch([indexPath indexAtPosition:1]) {
         case FacetSortAuthor:
-          return NSLocalizedString(@"MyBooksViewControllerFacetAuthor", nil);
+          return NSLocalizedString(@"Author", nil);
         case FacetSortTitle:
-          return NSLocalizedString(@"MyBooksViewControllerFacetTitle", nil);
+          return NSLocalizedString(@"Title", nil);
       }
       break;
   }
@@ -369,7 +368,7 @@ OK:
 
 - (void)didSelectSearch
 {
-  NSString *title = NSLocalizedString(@"MyBooksViewControllerSearchTitle", nil);
+  NSString *title = NSLocalizedString(@"Search My Books", nil);
   TPPOpenSearchDescription *searchDescription = [[TPPOpenSearchDescription alloc] initWithTitle:title books:self.books];
   [self.navigationController
    pushViewController:[[TPPCatalogSearchViewController alloc] initWithOpenSearchDescription:searchDescription]
