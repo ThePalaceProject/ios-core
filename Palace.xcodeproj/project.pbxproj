@@ -832,6 +832,7 @@
 		E78AE800291BFCC600884446 /* TPPBookLocation.swift in Sources */ = {isa = PBXBuildFile; fileRef = E78AE7FF291BFCC600884446 /* TPPBookLocation.swift */; };
 		E78AE802291C1D8600884446 /* TPPBookRegistryRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = E78AE801291C1D8600884446 /* TPPBookRegistryRecord.swift */; };
 		E78AE803291C1D8600884446 /* TPPBookRegistryRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = E78AE801291C1D8600884446 /* TPPBookRegistryRecord.swift */; };
+		E78AE804291C1D8A00884446 /* TPPBookRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = E71A422A29017C58008FC910 /* TPPBookRegistry.swift */; };
 		E78AE805291C1D9100884446 /* TPPBookCoverRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = E78AE7F5291BFC6200884446 /* TPPBookCoverRegistry.swift */; };
 		E78AE806291C1D9100884446 /* TPPBookLocation.swift in Sources */ = {isa = PBXBuildFile; fileRef = E78AE7FF291BFCC600884446 /* TPPBookLocation.swift */; };
 		E78AE807291C1D9600884446 /* TPPBookRegistry+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E523124A285C3828007D1DB5 /* TPPBookRegistry+Extensions.swift */; };
@@ -3788,6 +3789,7 @@
 				73EB0B1525821DF4006BC997 /* TPPAnnotations.swift in Sources */,
 				E7048073285A72A600019B31 /* TPPPDFNavigation.swift in Sources */,
 				73EB0B1625821DF4006BC997 /* AudioBookVendors+Extensions.swift in Sources */,
+				E78AE804291C1D8A00884446 /* TPPBookRegistry.swift in Sources */,
 				73EB0B1725821DF4006BC997 /* TPPLibraryNavigationController.m in Sources */,
 				73D8D27725A68D3B00DF5F69 /* UIViewController+TPP.swift in Sources */,
 				73EB0B1825821DF4006BC997 /* RemoteHTMLViewController.swift in Sources */,
