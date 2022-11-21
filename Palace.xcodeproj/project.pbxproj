@@ -883,6 +883,20 @@
 			remoteGlobalIDString = 17EB3D4A246C7C6A00183316;
 			remoteInfo = OverdriveProcessorDriver;
 		};
+		E5D3290E292C29CC008BFD01 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E5D32907292C29CC008BFD01 /* NYPLAudiobookToolkit.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 7B54418C200EA7C20047B6C6;
+			remoteInfo = NYPLAudiobookToolkit;
+		};
+		E5D32910292C29CC008BFD01 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E5D32907292C29CC008BFD01 /* NYPLAudiobookToolkit.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 7B544195200EA7C20047B6C6;
+			remoteInfo = NYPLAudiobookToolkitTests;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -1514,6 +1528,7 @@
 		E5BEF01C26BDA9EA00C2A50B /* OpenSans-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "OpenSans-SemiBold.ttf"; sourceTree = "<group>"; };
 		E5C1F52927990929005FC6B2 /* OverdriveProcessor.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = OverdriveProcessor.xcodeproj; path = "ios-audiobook-overdrive/OverdriveProcessor/OverdriveProcessor.xcodeproj"; sourceTree = "<group>"; };
 		E5C2C421268BA5140046F415 /* TPPRegistryDebuggingCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPRegistryDebuggingCell.swift; sourceTree = "<group>"; };
+		E5D32907292C29CC008BFD01 /* NYPLAudiobookToolkit.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = NYPLAudiobookToolkit.xcodeproj; path = "ios-audiobooktoolkit/NYPLAudiobookToolkit.xcodeproj"; sourceTree = "<group>"; };
 		E5F8A57C28A48B8300A229AE /* BookPreviewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookPreviewTests.swift; sourceTree = "<group>"; };
 		E5FFB96328AED4850042907F /* ImageProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageProvider.swift; sourceTree = "<group>"; };
 		E5FFB96628AED70E0042907F /* ActivityIndicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityIndicator.swift; sourceTree = "<group>"; };
@@ -2625,6 +2640,7 @@
 		A823D804192BABA400B55DE2 = {
 			isa = PBXGroup;
 			children = (
+				E5D32907292C29CC008BFD01 /* NYPLAudiobookToolkit.xcodeproj */,
 				E5C1F52927990929005FC6B2 /* OverdriveProcessor.xcodeproj */,
 				E585662026979AC100A5FBD5 /* NYPLAEToolkit.xcodeproj */,
 				5A569A261B8351C6003B5B61 /* ADEPT.xcodeproj */,
@@ -2963,6 +2979,15 @@
 			path = DeveloperSettings;
 			sourceTree = "<group>";
 		};
+		E5D32908292C29CC008BFD01 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				E5D3290F292C29CC008BFD01 /* NYPLAudiobookToolkit.framework */,
+				E5D32911292C29CC008BFD01 /* NYPLAudiobookToolkitTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
 		E706F5F52863811C000B7431 /* Extensions */ = {
 			isa = PBXGroup;
 			children = (
@@ -3170,6 +3195,10 @@
 					ProjectRef = E585662026979AC100A5FBD5 /* NYPLAEToolkit.xcodeproj */;
 				},
 				{
+					ProductGroup = E5D32908292C29CC008BFD01 /* Products */;
+					ProjectRef = E5D32907292C29CC008BFD01 /* NYPLAudiobookToolkit.xcodeproj */;
+				},
+				{
 					ProductGroup = E5C1F52A27990929005FC6B2 /* Products */;
 					ProjectRef = E5C1F52927990929005FC6B2 /* OverdriveProcessor.xcodeproj */;
 				},
@@ -3246,6 +3275,20 @@
 			fileType = wrapper.application;
 			path = OverdriveProcessorDriver.app;
 			remoteRef = E5C1F53327990929005FC6B2 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		E5D3290F292C29CC008BFD01 /* NYPLAudiobookToolkit.framework */ = {
+			isa = PBXReferenceProxy;
+			fileType = wrapper.framework;
+			path = NYPLAudiobookToolkit.framework;
+			remoteRef = E5D3290E292C29CC008BFD01 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		E5D32911292C29CC008BFD01 /* NYPLAudiobookToolkitTests.xctest */ = {
+			isa = PBXReferenceProxy;
+			fileType = wrapper.cfbundle;
+			path = NYPLAudiobookToolkitTests.xctest;
+			remoteRef = E5D32910292C29CC008BFD01 /* PBXContainerItemProxy */;
 			sourceTree = BUILT_PRODUCTS_DIR;
 		};
 /* End PBXReferenceProxy section */
