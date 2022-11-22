@@ -427,7 +427,6 @@
 		73EB0A7C25821DF4006BC997 /* TPPBookCellCollectionViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 1120749219D20BF9008203A4 /* TPPBookCellCollectionViewController.m */; };
 		73EB0A7D25821DF4006BC997 /* TPPKeychainStoredVariable.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0857A0FE247835FF00C7984E /* TPPKeychainStoredVariable.swift */; };
 		73EB0A7E25821DF4006BC997 /* TPPXML.m in Sources */ = {isa = PBXBuildFile; fileRef = 111559EC19B8FA590003BE94 /* TPPXML.m */; };
-		73EB0A7F25821DF4006BC997 /* TPPSignInBusinessLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = 731A5B1124621F2B00B5E663 /* TPPSignInBusinessLogic.swift */; };
 		73EB0A8025821DF4006BC997 /* TPPBookCell.m in Sources */ = {isa = PBXBuildFile; fileRef = 11580AC71986A77B00949A15 /* TPPBookCell.m */; };
 		73EB0A8125821DF4006BC997 /* TPPConfiguration+SE.swift in Sources */ = {isa = PBXBuildFile; fileRef = 738CB2052509A87700891F31 /* TPPConfiguration+SE.swift */; };
 		73EB0A8225821DF4006BC997 /* NSURL+NYPLURLAdditions.m in Sources */ = {isa = PBXBuildFile; fileRef = 085640CD1BB99FC30088BDBF /* NSURL+NYPLURLAdditions.m */; };
