@@ -29,7 +29,7 @@ class TPPReaderTOCBusinessLogic {
   }
 
   var tocDisplayTitle: String {
-    return NSLocalizedString("ReaderTOCViewControllerTitle", comment: "Title for Table of Contents in eReader")
+    Strings.TPPReaderTOCBusinessLogic.tocDisplayTitle
   }
 
   func tocLocator(at index: Int) -> Locator? {
