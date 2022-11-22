@@ -1,6 +1,5 @@
 binary "https://dl.google.com/dl/firebase/ios/carthage/FirebaseCrashlyticsBinary.json"
 binary "https://dl.google.com/dl/firebase/ios/carthage/FirebaseAnalyticsBinary.json"
-github "ThePalaceProject/ios-audiobooktoolkit" "main"
 github "ThePalaceProject/ios-provider-pdf-renderer" "main"
 github "PureLayout/PureLayout" ~> 3.1.2
 github "stephencelis/SQLite.swift" == 0.12.2

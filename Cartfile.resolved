@@ -1,7 +1,6 @@
 binary "https://dl.google.com/dl/firebase/ios/carthage/FirebaseAnalyticsBinary.json" "8.6.0"
 binary "https://dl.google.com/dl/firebase/ios/carthage/FirebaseCrashlyticsBinary.json" "8.6.0"
 github "PureLayout/PureLayout" "v3.1.9"
-github "ThePalaceProject/ios-audiobooktoolkit" "57f817094c969cbbf3a42c5bb37e9d0c0200ff8c"
 github "ThePalaceProject/ios-provider-pdf-renderer" "6ad943ae12e2c96dba0867e653b9a65c0051ecca"
 github "cezheng/Fuzi" "3.1.3"
 github "dexman/Minizip" "1.4.0"
@@ -13,3 +12,4 @@ github "scinfu/SwiftSoup" "2.4.2"
 github "stephencelis/SQLite.swift" "0.12.2"
 github "weichsel/ZIPFoundation" "0.9.11"
 github "zxingify/zxingify-objc" "3.6.7"
+
