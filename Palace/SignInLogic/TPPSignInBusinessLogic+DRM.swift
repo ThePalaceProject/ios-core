@@ -138,12 +138,14 @@ extension TPPSignInBusinessLogic {
 
   @objc func dismissAfterUnexpectedDRMDelay(_ arg: Any) {
     TPPMainThreadRun.asyncIfNeeded {
-      let title = Strings.Error.signInErrorTitle
-      let message = Strings.Error.signInErrorDescription
+      let title = NSLocalizedString("Sign In Error",
+                                    comment: "Title for sign in error alert")
+      let message = NSLocalizedString("The DRM Library is taking longer than expected. Please wait and try again later.\n\nIf the problem persists, try to sign out and back in again from the Library Settings menu.",
+                                      comment: "Message for sign-in error alert caused by failed DRM authorization")
 
       let alert = UIAlertController(title: title, message: message,
                                     preferredStyle: .alert)
-      alert.addAction(UIAlertAction(title: Strings.Generic.ok,
+      alert.addAction(UIAlertAction(title: NSLocalizedString("OK", comment: "OK"),
                                     style: .default) { [weak self] action in
                                       self?.uiDelegate?.dismiss(animated: true,
                                                                 completion: nil)

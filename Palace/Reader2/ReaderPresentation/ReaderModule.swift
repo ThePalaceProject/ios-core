@@ -113,7 +113,7 @@ final class ReaderModule: ReaderModuleAPI {
         forSample: forSample)
 
       let backItem = UIBarButtonItem()
-      backItem.title = Strings.Generic.back
+      backItem.title = NSLocalizedString("Back", comment: "Text for Back button")
       readerVC.navigationItem.backBarButtonItem = backItem
       readerVC.extendedLayoutIncludesOpaqueBars = true
       readerVC.hidesBottomBarWhenPushed = true

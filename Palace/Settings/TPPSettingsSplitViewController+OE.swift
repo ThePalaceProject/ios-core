@@ -14,15 +14,14 @@ import Foundation
 // only meant for Open eBooks.
 // - See: https://github.com/NYPL-Simplified/Simplified-iOS/pull/1070
 extension TPPSettingsSplitViewController {
-  typealias DisplayStrings = DisplayStrings.TPPSettingsSplitViewController
-  
+
   /// Sets up the items of the `primaryTableVC`.
   func configPrimaryVCItems(using URLsProvider: TPPLibraryAccountURLsProvider) {
     let splitVC = self
     splitVC.primaryTableVC?.items = [
       TPPSettingsPrimaryTableItem.init(
         indexPath: IndexPath(row: 0, section: 0),
-        title: Strings.account,
+        title: NSLocalizedString("Account", comment: "Title for account section"),
         selectionHandler: { (splitVC, tableVC) in
           if TPPUserAccount.sharedAccount().hasCredentials(),
             let currentLibraryID = AccountsManager.shared.currentAccountId {
@@ -42,25 +41,25 @@ extension TPPSettingsSplitViewController {
       ),
       TPPSettingsPrimaryTableItem.init(
         indexPath: IndexPath(row: 0, section: 1),
-        title: Strings.acknowledgements,
+        title: NSLocalizedString("Acknowledgements", comment: "Title for acknowledgements section"),
         viewController: TPPSettingsPrimaryTableItem.generateRemoteView(
-          title: Strings.acknowledgements,
+          title: NSLocalizedString("Acknowledgements", comment: "Title for acknowledgements section"),
           url: URLsProvider.accountURL(forType: .acknowledgements)
         )
       ),
       TPPSettingsPrimaryTableItem.init(
         indexPath: IndexPath(row: 1, section: 1),
-        title: Strings.eula,
+        title: NSLocalizedString("EULA", comment: "Title for User Agreement section"),
         viewController: TPPSettingsPrimaryTableItem.generateRemoteView(
-          title: Strings.eula,
+          title: NSLocalizedString("EULA", comment: "Title for User Agreement section"),
           url: URLsProvider.accountURL(forType: .eula)
         )
       ),
       TPPSettingsPrimaryTableItem.init(
         indexPath: IndexPath(row: 2, section: 1),
-        title: DisplayStrings.privacyPolicy,
+        title: NSLocalizedString("PrivacyPolicy", comment: "Title for Privacy Policy section"),
         viewController: TPPSettingsPrimaryTableItem.generateRemoteView(
-          title: DisplayStrings.privacyPolicy,
+          title: NSLocalizedString("PrivacyPolicy", comment: "Title for Privacy Policy section"),
           url: URLsProvider.accountURL(forType: .privacyPolicy)
         )
       )

@@ -102,7 +102,7 @@ CGFloat const toolbarHeight = 40;
       [button setTitle:self.groupIndexesToFacetNames[groupIndex][facetIndex]
               forState:UIControlStateNormal];
     } else {
-      [button setTitle:NSLocalizedString(@"<>", nil)
+      [button setTitle:NSLocalizedString(@"FacetViewNotActive", nil)
               forState:UIControlStateNormal];
     }
     [button addTarget:self

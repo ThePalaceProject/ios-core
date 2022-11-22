@@ -40,7 +40,7 @@ extension TPPSignInBusinessLogic {
       guard drmSuccess else {
         NotificationCenter.default.post(name: .TPPSyncEnded, object: nil)
 
-        let alert = TPPAlertUtils.alert(title: Strings.Error.loginErrorTitle,
+        let alert = TPPAlertUtils.alert(title: "SettingsAccountViewControllerLoginFailed",
                                          message: errorMessage,
                                          error: error as NSError?)
         TPPPresentationUtils.safelyPresent(alert, animated: true)
@@ -72,12 +72,15 @@ extension TPPSignInBusinessLogic {
   /// or book downloading/returning currently happening.
   @objc func logOutOrWarn() -> UIAlertController? {
 
-    let title = Strings.TPPSigninBusinessLogic.signout
+    let title = NSLocalizedString("SignOut",
+                                  comment: "Title for sign out action")
     let msg: String
     if bookRegistry.isSyncing {
-      msg = Strings.TPPSigninBusinessLogic.annotationSyncMessage
+      msg = NSLocalizedString("Your bookmarks and reading positions are in the process of being saved to the server. Would you like to stop that and continue logging out?",
+                              comment: "Warning message offering the user the choice of interrupting book registry syncing to log out immediately, or waiting until that finishes.")
     } else if let drm = drmAuthorizer, drm.workflowsInProgress {
-      msg = Strings.TPPSigninBusinessLogic.pendingDownloadMessage
+      msg = NSLocalizedString("It looks like you may have a book download or return in progress. Would you like to stop that and continue logging out?",
+                              comment: "Warning message offering the user the choice of interrupting the download or return of a book to log out immediately, or waiting until that finishes.")
     } else {
       performLogOut()
       return nil
@@ -93,7 +96,7 @@ extension TPPSignInBusinessLogic {
                       self.performLogOut()
       }))
     alert.addAction(
-      UIAlertAction(title: Strings.Generic.wait,
+      UIAlertAction(title: NSLocalizedString("Wait", comment: "button title"),
                     style: .cancel,
                     handler: nil))
 

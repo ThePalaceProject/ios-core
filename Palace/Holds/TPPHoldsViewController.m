@@ -39,8 +39,8 @@
   self = [super init];
   if(!self) return nil;
 
-  self.title = NSLocalizedString(@"Reservations", nil);
-  self.navigationItem.title = NSLocalizedString(@"Reservations", nil);
+  self.title = NSLocalizedString(@"HoldsViewControllerTitle", nil);
+  self.navigationItem.title = NSLocalizedString(@"HoldsViewControllerTitle", nil);
 
   [self willReloadCollectionViewData];
   
@@ -221,10 +221,10 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
     }
     if([self bookArrayForSection:indexPath.section] == self.reservedBooks) {
       view.layer.backgroundColor = [TPPConfiguration mainColor].CGColor;
-      title.text = NSLocalizedString(@"AVAILABLE FOR CHECKOUT", nil);
+      title.text = NSLocalizedString(@"AvailableForCheckoutHeader", nil);
     } else {
       view.layer.backgroundColor = [UIColor colorWithRed:172.0/255.0 green:177.0/255.0 blue:182.0/255 alpha:1.0].CGColor;
-      title.text = NSLocalizedString(@"WAITING FOR AVAILABILITY", nil);
+      title.text = NSLocalizedString(@"WaitingForAvailabilityHeader", nil);
     }
     [title sizeToFit];
     CGRect frame = title.frame;
@@ -308,7 +308,7 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
 
 - (void)didSelectSearch
 {
-  NSString *title = NSLocalizedString(@"Search Reservations", nil);
+  NSString *title = NSLocalizedString(@"HoldsViewControllerSearchTitle", nil);
   TPPOpenSearchDescription *searchDescription = [[TPPOpenSearchDescription alloc] initWithTitle:title books:[[TPPBookRegistry shared] heldBooks]];
   [self.navigationController
    pushViewController:[[TPPCatalogSearchViewController alloc] initWithOpenSearchDescription:searchDescription]

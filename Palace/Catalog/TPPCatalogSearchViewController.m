@@ -81,7 +81,7 @@
   [self.searchBar becomeFirstResponder];
   
   self.noResultsLabel = [[UILabel alloc] init];
-  self.noResultsLabel.text = NSLocalizedString(@"No Results Found", nil);
+  self.noResultsLabel.text = NSLocalizedString(@"NoResultsFound", nil);
   self.noResultsLabel.font = [UIFont palaceFontOfSize:17];
   [self.noResultsLabel sizeToFit];
   self.noResultsLabel.hidden = YES;

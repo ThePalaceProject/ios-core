@@ -20,7 +20,7 @@ extension TPPSignInBusinessLogic {
   func startRegularCardCreation(completion: @escaping (UINavigationController?, Error?) -> Void) {
     // If the library does not have a sign-up url, there's nothing we can do
     guard let signUpURL = libraryAccount?.details?.signUpUrl else {
-      let description = Strings.Error.cardCreationError
+      let description = NSLocalizedString("We're sorry. Currently we do not support signups for new patrons via the app.", comment: "Message describing the fact that new patron sign up is not supported by the current selected library")
       let error = NSError(domain: TPPErrorLogger.clientDomain,
                           code: TPPErrorCode.nilSignUpURL.rawValue,
                           userInfo: [
@@ -34,9 +34,12 @@ extension TPPSignInBusinessLogic {
       completion(nil, error)
       return
     }
-
-    let title = Strings.TPPSigninBusinessLogic.ecard
-    let msg = Strings.TPPSigninBusinessLogic.ecardErrorMessage
+    
+    
+    let title = NSLocalizedString("eCard",
+                                  comment: "Title for web-based card creator page")
+    let msg = NSLocalizedString("We're sorry. Our sign up system is currently down. Please try again later.",
+                                comment: "Message for error loading the web-based card creator")
     let webVC = RemoteHTMLViewController(URL: signUpURL,
                                          title: title,
                                          failureMessage: msg)

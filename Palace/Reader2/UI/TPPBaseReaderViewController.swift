@@ -16,7 +16,6 @@ import R2Shared
 
 /// This class is meant to be subclassed by each publication format view controller. It contains the shared behavior, eg. navigation bar toggling.
 class TPPBaseReaderViewController: UIViewController, Loggable {
-  typealias DisplayStrings = Strings.TPPBaseReaderViewController
 
   private static let bookmarkOnImageName = "BookmarkOn"
   private static let bookmarkOffImageName = "BookmarkOff"
@@ -174,7 +173,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
                                     style: .plain,
                                     target: self,
                                     action: #selector(presentPositionsVC))
-    tocButton.accessibilityLabel = DisplayStrings.tocAndBookmarks
+    tocButton.accessibilityLabel = NSLocalizedString("Table of contents and bookmarks", comment: "Table of contents and bookmarks")
     
     if !isShowingSample {
       buttons.append(bookmarkBtn)
@@ -195,10 +194,12 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
 
     if isOn {
       btn.image = UIImage(named: TPPBaseReaderViewController.bookmarkOnImageName)
-      btn.accessibilityLabel = DisplayStrings.removeBookmark
+      btn.accessibilityLabel = NSLocalizedString("Remove Bookmark",
+                                                 comment: "Accessibility label for button to remove a bookmark")
     } else {
       btn.image = UIImage(named: TPPBaseReaderViewController.bookmarkOffImageName)
-      btn.accessibilityLabel = DisplayStrings.addBookmark
+      btn.accessibilityLabel = NSLocalizedString("Add Bookmark",
+                                                 comment: "Accessibility label for button to add a bookmark")
     }
   }
 
@@ -319,8 +320,8 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     }
 
     let toolbar = UIToolbar(frame: .zero)
-    let backButton = makeItem(.rewind, label: DisplayStrings.previousChapter, action: #selector(goBackward))
-    let forwardButton = makeItem(.fastForward, label: DisplayStrings.nextChapter, action: #selector(goForward))
+    let backButton = makeItem(.rewind, label: NSLocalizedString("Previous Chapter", comment: "Accessibility label to go backward in the publication"), action: #selector(goBackward))
+    let forwardButton = makeItem(.fastForward, label: NSLocalizedString("Next Chapter", comment: "Accessibility label to go forward in the publication"), action: #selector(goForward))
         
     toolbar.items = [
       makeItem(.flexibleSpace),

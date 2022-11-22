@@ -16,7 +16,7 @@ class TPPWelcomeEULAViewController : UIViewController {
     self.webView = WKWebView.init()
     self.activityIndicatorView = UIActivityIndicatorView.init(style: .gray)
     super.init(nibName: nil, bundle: nil)
-    self.title = DisplayStrings.Settings.eula
+    self.title = NSLocalizedString("EULA", comment: "Title for User Agreement")
   }
   
   @available(*, unavailable)
@@ -43,8 +43,8 @@ class TPPWelcomeEULAViewController : UIViewController {
     self.webView.navigationDelegate = self
     self.view.addSubview(self.webView)
 
-    let rejectTitle = DisplayStrings.Generic.reject
-    let acceptTitle = DisplayStrings.Generic.accept
+    let rejectTitle = NSLocalizedString("Reject", comment: "Title for a Reject button")
+    let acceptTitle = NSLocalizedString("Accept", comment: "Title for a Accept button")
     
     let rejectItem = UIBarButtonItem(title: rejectTitle,
                                      style: .plain,

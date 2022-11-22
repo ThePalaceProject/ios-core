@@ -100,7 +100,7 @@ struct TPPOnboardingView: View {
           .foregroundColor(.gray)
           .padding()
       }
-      .accessibility(label: Text(Strings.Generic.close))
+      .accessibility(label: Text(NSLocalizedString("Close", comment: "Close")))
     }
   }
 }

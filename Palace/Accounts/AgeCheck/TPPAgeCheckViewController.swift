@@ -9,7 +9,7 @@
 import UIKit
 
 class TPPAgeCheckViewController: UIViewController {
-  typealias DisplayStrings = Strings.AgeCheck
+
   // Constants
   let textFieldHeight: CGFloat = 40.0
   
@@ -61,7 +61,7 @@ class TPPAgeCheckViewController: UIViewController {
   }
   
   func setupView() {
-    self.title = DisplayStrings.title
+    self.title = NSLocalizedString("Age Verification", comment: "Title for Age Verification")
     
     if #available(iOS 13.0, *) {
       view.backgroundColor = UIColor.systemGray6
@@ -94,7 +94,7 @@ class TPPAgeCheckViewController: UIViewController {
   
   let titleLabel: UILabel = {
     let label = UILabel()
-    label.text = DisplayStrings.titleLabel
+    label.text = NSLocalizedString("Please enter your birth year", comment: "Caption for asking user to enter their birth year")
     label.textAlignment = .center
     label.font = UIFont.customFont(forTextStyle: .headline)
     return label
@@ -120,7 +120,7 @@ class TPPAgeCheckViewController: UIViewController {
     
     let toolbar = UIToolbar(frame: CGRect(x: 0, y: 0, width: UIScreen.main.bounds.size.width, height: 30))
     toolbar.sizeToFit()
-    let doneButton = UIBarButtonItem(title:DisplayStrings.done, style: .plain, target: self, action: #selector(hidePickerView))
+    let doneButton = UIBarButtonItem(title: NSLocalizedString("Done", comment: "Button title for hiding picker view"), style: .plain, target: self, action: #selector(hidePickerView))
     let spaceButton = UIBarButtonItem(barButtonSystemItem: UIBarButtonItem.SystemItem.flexibleSpace, target: nil, action: nil)
 
     toolbar.setItems([spaceButton, doneButton], animated: false)
@@ -129,7 +129,7 @@ class TPPAgeCheckViewController: UIViewController {
     textfield.inputView = pickerView
     
     // Styling
-    let placeHolderString = DisplayStrings.placeholderString
+    let placeHolderString = NSLocalizedString("Select Year", comment: "Placeholder for birth year textfield")
     if #available(iOS 13.0, *) {
       textfield.attributedPlaceholder = NSAttributedString(string: placeHolderString, attributes: [NSAttributedString.Key.foregroundColor: UIColor.label])
       textfield.backgroundColor = .systemBackground
@@ -151,7 +151,7 @@ class TPPAgeCheckViewController: UIViewController {
   }()
   
   lazy var rightBarButtonItem: UIBarButtonItem = {
-    let item = UIBarButtonItem(title: DisplayStrings.rightBarButtonItem, style: .plain, target: self, action: #selector(completeAgeCheck))
+    let item = UIBarButtonItem(title: NSLocalizedString("Next", comment: "Button title for completing age verification"), style: .plain, target: self, action: #selector(completeAgeCheck))
     item.tintColor = .systemBlue
     item.isEnabled = false
     return item

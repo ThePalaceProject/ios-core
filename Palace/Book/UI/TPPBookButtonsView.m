@@ -399,21 +399,21 @@
     case TPPBookStateDownloadNeeded:
     case TPPBookStateDownloadSuccessful:
       title = ((self.book.defaultAcquisitionIfOpenAccess || !TPPUserAccount.sharedAccount.authDefinition.needsAuth)
-               ? NSLocalizedString(@"Delete", nil)
-               : NSLocalizedString(@"Return", nil));
+               ? NSLocalizedString(@"MyBooksDownloadCenterConfirmDeleteTitle", nil)
+               : NSLocalizedString(@"MyBooksDownloadCenterConfirmReturnTitle", nil));
       message = ((self.book.defaultAcquisitionIfOpenAccess || !TPPUserAccount.sharedAccount.authDefinition.needsAuth)
-                 ? NSLocalizedString(@"Are you sure you want to delete \"%@\"?", nil)
-                 : NSLocalizedString(@"Are you sure you want to return \"%@\"?", nil));
+                 ? NSLocalizedString(@"MyBooksDownloadCenterConfirmDeleteTitleMessageFormat", nil)
+                 : NSLocalizedString(@"MyBooksDownloadCenterConfirmReturnTitleMessageFormat", nil));
       confirmButtonTitle = ((self.book.defaultAcquisitionIfOpenAccess || !TPPUserAccount.sharedAccount.authDefinition.needsAuth)
-                            ? NSLocalizedString(@"Delete", nil)
-                            : NSLocalizedString(@"Return", nil));
+                            ? NSLocalizedString(@"MyBooksDownloadCenterConfirmDeleteTitle", nil)
+                            : NSLocalizedString(@"MyBooksDownloadCenterConfirmReturnTitle", nil));
       break;
     case TPPBookStateHolding:
-      title = NSLocalizedString(@"Remove Reservation", nil);
+      title = NSLocalizedString(@"BookButtonsViewRemoveHoldTitle", nil);
       message = [NSString stringWithFormat:
-                 NSLocalizedString(@"Are you sure you want to remove \"%@\" from your reservations? You will no longer be in line for this book.", nil),
+                 NSLocalizedString(@"BookButtonsViewRemoveHoldMessage", nil),
                  self.book.title];
-      confirmButtonTitle = NSLocalizedString(@"Remove", nil);
+      confirmButtonTitle = NSLocalizedString(@"BookButtonsViewRemoveHoldConfirm", nil);
       break;
     case TPPBookStateUnsupported:
       @throw NSInternalInconsistencyException;

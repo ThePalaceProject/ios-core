@@ -38,7 +38,7 @@ class TPPSettingsPrimaryTableViewController : UITableViewController {
     self.infoLabel.sizeToFit()
 
     super.init(nibName: nil, bundle: nil)
-    self.title = DisplayStrings.Settings.settings
+    self.title = NSLocalizedString("Settings", comment: "")
     self.clearsSelectionOnViewWillAppear = false
 
     // add gesture recognizer for debug menu

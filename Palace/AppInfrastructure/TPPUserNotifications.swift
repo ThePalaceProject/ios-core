@@ -7,7 +7,6 @@ let DefaultActionIdentifier = "UNNotificationDefaultActionIdentifier"
 @available (iOS 10.0, *)
 @objcMembers class TPPUserNotifications: NSObject
 {
-  typealias DisplayStrings = Strings.UserNotifications
   private let unCenter = UNUserNotificationCenter.current()
 
   /// If a user has not yet been presented with Notifications authorization,
@@ -88,7 +87,7 @@ let DefaultActionIdentifier = "UNNotificationDefaultActionIdentifier"
     unCenter.getNotificationSettings { (settings) in
       guard settings.authorizationStatus == .authorized else { return }
 
-      let title = DisplayStrings.downloadReady
+      let title = NSLocalizedString("Ready for Download", comment: "")
       let content = UNMutableNotificationContent()
       content.body = NSLocalizedString("The title you reserved, \(book.title), is available.", comment: "")
       content.title = title
@@ -112,7 +111,7 @@ let DefaultActionIdentifier = "UNNotificationDefaultActionIdentifier"
   private func registerNotificationCategories()
   {
     let checkOutNotificationAction = UNNotificationAction(identifier: CheckOutActionIdentifier,
-                                                          title: DisplayStrings.checkoutTitle,
+                                                          title: NSLocalizedString("Check Out", comment: ""),
                                                           options: [])
     let holdToReserveCategory = UNNotificationCategory(identifier: HoldNotificationCategoryIdentifier,
                                                        actions: [checkOutNotificationAction],

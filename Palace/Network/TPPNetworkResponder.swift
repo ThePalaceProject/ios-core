@@ -181,7 +181,7 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
     if let httpResponse = task.response as? HTTPURLResponse {
       guard httpResponse.isSuccess() else {
         logMetadata["response"] = httpResponse
-        logMetadata[NSLocalizedDescriptionKey] = Strings.Error.unknownRequestError
+        logMetadata[NSLocalizedDescriptionKey] = NSLocalizedString("UnknownRequestError", comment: "A generic error message for when a network request fails")
         let err = NSError(domain: "Api call with failure HTTP status",
                           code: TPPErrorCode.responseFail.rawValue,
                           userInfo: logMetadata)

@@ -320,7 +320,7 @@ viewForHeaderInSection:(NSInteger const)section
                               CGRectGetHeight(button.frame));
     button.tag = section;
     TPPCatalogLane *const lane = self.feed.lanes[button.tag];
-    button.accessibilityLabel = [[NSString alloc] initWithFormat:NSLocalizedString(@"More %@ books", nil), lane.title];
+    button.accessibilityLabel = [[NSString alloc] initWithFormat:NSLocalizedString(@"MoreBooks", nil), lane.title];
     button.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
     [button addTarget:self
                action:@selector(didSelectCategory:)

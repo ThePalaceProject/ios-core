@@ -241,7 +241,7 @@ Authenticating with any of those barcodes should work.
       } else {
         dispatch_async(dispatch_get_main_queue(), ^{
           [activityIndicator removeFromSuperview];
-          [weakSelf displayErrorMessage:NSLocalizedString(@"Please check your connection and try again.", nil)];
+          [weakSelf displayErrorMessage:NSLocalizedString(@"CheckConnection", nil)];
         });
       }
     }];
@@ -262,7 +262,7 @@ Authenticating with any of those barcodes should work.
   self.usernameTextField = [[UITextField alloc] initWithFrame:CGRectZero];
   self.usernameTextField.delegate = self.frontEndValidator;
   self.usernameTextField.placeholder =
-  self.businessLogic.selectedAuthentication.patronIDLabel ?: NSLocalizedString(@"Barcode or Username", nil);
+  self.businessLogic.selectedAuthentication.patronIDLabel ?: NSLocalizedString(@"BarcodeOrUsername", nil);
 
   switch (self.businessLogic.selectedAuthentication.patronIDKeyboard) {
     case LoginKeyboardStandard:
@@ -582,7 +582,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
         UIAlertController *const alertController =
         (UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad &&
          (self.traitCollection.horizontalSizeClass != UIUserInterfaceSizeClassCompact))
-        ? [UIAlertController alertControllerWithTitle:NSLocalizedString(@"Sign out", nil)
+        ? [UIAlertController alertControllerWithTitle:NSLocalizedString(@"SignOut", nil)
                                               message:logoutString
                                        preferredStyle:UIAlertControllerStyleAlert]
         : [UIAlertController alertControllerWithTitle:logoutString
@@ -591,7 +591,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
         alertController.popoverPresentationController.sourceRect = self.view.bounds;
         alertController.popoverPresentationController.sourceView = self.view;
         [alertController addAction:[UIAlertAction
-                                    actionWithTitle:NSLocalizedString(@"Sign out", @"Title for sign out action")
+                                    actionWithTitle:NSLocalizedString(@"SignOut", @"Title for sign out action")
                                     style:UIAlertActionStyleDestructive
                                     handler:^(__attribute__((unused)) UIAlertAction *action) {
                                       [self logOut];
@@ -671,7 +671,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
     case CellKindPrivacyPolicy: {
       RemoteHTMLViewController *vc = [[RemoteHTMLViewController alloc]
                                       initWithURL:[self.selectedAccount.details getLicenseURL:URLTypePrivacyPolicy]
-                                      title:NSLocalizedString(@"Privacy Policy", nil)
+                                      title:NSLocalizedString(@"PrivacyPolicy", nil)
                                       failureMessage:NSLocalizedString(@"The page could not load due to a connection error.", nil)];
       [self.navigationController pushViewController:vc animated:YES];
       break;
@@ -679,7 +679,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
     case CellKindContentLicense: {
       RemoteHTMLViewController *vc = [[RemoteHTMLViewController alloc]
                                       initWithURL:[self.selectedAccount.details getLicenseURL:URLTypeContentLicenses]
-                                      title:NSLocalizedString(@"Content Licenses", nil)
+                                      title:NSLocalizedString(@"ContentLicenses", nil)
                                       failureMessage:NSLocalizedString(@"The page could not load due to a connection error.", nil)];
       [self.navigationController pushViewController:vc animated:YES];
       break;
@@ -917,7 +917,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
                                      reuseIdentifier:nil];
       cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
       cell.textLabel.font = [UIFont customFontForTextStyle:UIFontTextStyleBody];
-      cell.textLabel.text = NSLocalizedString(@"Privacy Policy", nil);
+      cell.textLabel.text = NSLocalizedString(@"PrivacyPolicy", nil);
       cell.hidden = ([self.selectedAccount.details getLicenseURL:URLTypePrivacyPolicy]) ? NO : YES;
       return cell;
     }
@@ -927,7 +927,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
                                      reuseIdentifier:nil];
       cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
       cell.textLabel.font = [UIFont customFontForTextStyle:UIFontTextStyleBody];
-      cell.textLabel.text = NSLocalizedString(@"Content Licenses", nil);
+      cell.textLabel.text = NSLocalizedString(@"ContentLicenses", nil);
       cell.hidden = ([self.selectedAccount.details getLicenseURL:URLTypeContentLicenses]) ? NO : YES;
       return cell;
     }
@@ -1096,7 +1096,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
                                         NSUnderlineStyleAttributeName :
                                           @(NSUnderlineStyleSingle) };
       eulaString = [[NSMutableAttributedString alloc]
-                    initWithString:NSLocalizedString(@"By signing in, you agree to the End User License Agreement.", nil) attributes:linkAttributes];
+                    initWithString:NSLocalizedString(@"SigningInAgree", nil) attributes:linkAttributes];
     } else { // sync section
       NSDictionary *attrs;
       attrs = @{ NSForegroundColorAttributeName : [UIColor defaultLabelColor] };
@@ -1165,7 +1165,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
     LAContext *const context = [[LAContext alloc] init];
     if([context canEvaluatePolicy:LAPolicyDeviceOwnerAuthentication error:NULL]) {
       [context evaluatePolicy:LAPolicyDeviceOwnerAuthentication
-              localizedReason:NSLocalizedString(@"Authenticate to reveal your PIN.", nil)
+              localizedReason:NSLocalizedString(@"SettingsAccountViewControllerAuthenticationReason", nil)
                         reply:^(BOOL success, NSError *_Nullable error) {
         if(success) {
           [[NSOperationQueue mainQueue] addOperationWithBlock:^{
@@ -1245,7 +1245,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
       return;
     }
 
-    self.logInSignOutCell.textLabel.text = NSLocalizedString(@"Sign out", @"Title for sign out action");
+    self.logInSignOutCell.textLabel.text = NSLocalizedString(@"SignOut", @"Title for sign out action");
     self.logInSignOutCell.textLabel.textAlignment = NSTextAlignmentCenter;
     self.logInSignOutCell.textLabel.textColor = [TPPConfiguration mainColor];
     self.logInSignOutCell.userInteractionEnabled = YES;
@@ -1487,7 +1487,7 @@ didEncounterSignOutError:(NSError *)error
 - (void)businessLogicWillSignOut:(TPPSignInBusinessLogic *)businessLogic
 {
 #if defined(FEATURE_DRM_CONNECTOR)
-  [self setActivityTitleWithText:NSLocalizedString(@"Signing out", nil)];
+  [self setActivityTitleWithText:NSLocalizedString(@"SigningOut", nil)];
 #endif
 }
 

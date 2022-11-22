@@ -46,7 +46,6 @@ didFinishLaunchingWithOptions:(__attribute__((unused)) NSDictionary *)launchOpti
   self.audiobookLifecycleManager = [[AudiobookLifecycleManager alloc] init];
   [self.audiobookLifecycleManager didFinishLaunching];
 
-  [TransifexManager setup];
   [app setMinimumBackgroundFetchInterval:MinimumBackgroundFetchInterval];
 
   self.notificationsManager = [[TPPUserNotifications alloc] init];

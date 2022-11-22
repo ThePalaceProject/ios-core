@@ -7,7 +7,7 @@ protocol DataSourceDelegate: AnyObject {
 class TPPAccountListDataSource: NSObject {
 
   weak var delegate: DataSourceDelegate?
-  var title: String = Strings.TPPAccountListDataSource.addLibrary
+  var title: String = NSLocalizedString("Add Library", comment: "Title that also informs the user that they should choose a library from the list.")
   
   private var accounts: [Account]!
   private var nationalAccounts: [Account]!
