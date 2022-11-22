@@ -280,11 +280,9 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
                           code: TPPErrorCode.noURL.rawValue,
                           userInfo: [
                             NSLocalizedDescriptionKey:
-                              NSLocalizedString("Unable to contact the server because the URL for signing in is missing.",
-                                                comment: "Error message for when the library profile url is missing from the authentication document the server provided."),
+                              Strings.Error.serverConnectionErrorDescription,
                             NSLocalizedRecoverySuggestionErrorKey:
-                              NSLocalizedString("Try force-quitting the app and repeat the sign-in process.",
-                                                comment: "Recovery instructions for when the URL to sign in is missing")])
+                              Strings.Error.serverConnectionErrorSuggestion])
       self.handleNetworkError(error, loggingContext: ["Context": uiContext])
       return
     }

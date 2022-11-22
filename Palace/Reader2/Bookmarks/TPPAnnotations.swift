@@ -199,10 +199,10 @@ import R2Shared
   }
 
   class func handleSyncSettingError() {
-    let title = NSLocalizedString("Error Changing Sync Setting", comment: "")
-    let message = NSLocalizedString("There was a problem contacting the server.\nPlease make sure you are connected to the internet, or try again later.", comment: "")
+    let title = Strings.Error.syncSettingChangeErrorTitle
+    let message = Strings.Error.syncSettingsChangeErrorBody
     let alert = UIAlertController.init(title: title, message: message, preferredStyle: .alert)
-    alert.addAction(UIAlertAction.init(title: NSLocalizedString("OK", comment: ""), style: .default, handler: nil))
+    alert.addAction(UIAlertAction.init(title: Strings.Generic.ok, style: .default, handler: nil))
     TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
   }
 

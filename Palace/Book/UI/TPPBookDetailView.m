@@ -345,15 +345,15 @@ static NSString *DetailHTMLTemplate = nil;
       : NSLocalizedString(@"Categories", nil))]
   : nil;
 
-  NSString *const bookFormatKeyString = NSLocalizedString(@"BookDetailViewControllerBookFormat", nil);
+  NSString *const bookFormatKeyString = NSLocalizedString(@"Book format:", nil);
 
   NSString *const narratorsKeyString =
-    self.book.narrators ? [NSString stringWithFormat:@"%@: ", NSLocalizedString(@"BookDetailViewControllerNarrators", nil)] : nil;
+    self.book.narrators ? [NSString stringWithFormat:@"%@: ", NSLocalizedString(@"Narrators:", nil)] : nil;
   
   NSString *const categoriesValueString = self.book.categories;
   NSString *const publishedValueString = self.book.published ? [dateFormatter stringFromDate:self.book.published] : nil;
   NSString *const publisherValueString = self.book.publisher;
-  NSString *const distributorKeyString = self.book.distributor ? [NSString stringWithFormat:NSLocalizedString(@"BookDetailViewControllerDistributedByFormat", nil)] : nil;
+  NSString *const distributorKeyString = self.book.distributor ? [NSString stringWithFormat:NSLocalizedString(@"Distributed by: ", nil)] : nil;
   NSString *const bookFormatValueString = self.book.format;
   NSString *const narratorsValueString = self.book.narrators;
   

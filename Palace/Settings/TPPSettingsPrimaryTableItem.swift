@@ -42,7 +42,7 @@ class TPPSettingsPrimaryTableItem {
     let remoteView = RemoteHTMLViewController.init(
       URL: url,
       title: title,
-      failureMessage: NSLocalizedString("The page could not load due to a connection error.", comment: "")
+      failureMessage: DisplayStrings.Error.pageLoadFailedError
     )
     return handleVCWrap(remoteView)
   }
