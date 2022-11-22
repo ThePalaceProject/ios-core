@@ -536,7 +536,9 @@ didCompleteWithError:(NSError *)error
         TPPLOG_F(@"Failed to remove local content for download: %@", error.localizedDescription);
       }
       // Remove any unarchived content
+#if LCP
       [LCPPDFs deletePdfContentWithUrl:bookURL error:&error];
+#endif
       if (error) {
         TPPLOG_F(@"Failed to remove local unarchived content for download: %@", error.localizedDescription);
       }

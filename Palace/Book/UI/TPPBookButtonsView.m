@@ -310,6 +310,9 @@
   
   for (NSDictionary *buttonInfo in visibleButtonInfo) {
     TPPRoundedButton *button = buttonInfo[ButtonKey];
+    if (!button) {
+      continue;
+    }
     
     if(button == self.deleteButton && (!fulfillmentId && fulfillmentIdRequired) && !self.book.revokeURL ) {
       if(!self.book.defaultAcquisitionIfOpenAccess && TPPUserAccount.sharedAccount.authDefinition.needsAuth) {

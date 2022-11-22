@@ -8,6 +8,16 @@ platform :ios do
       scheme: "Palace"
     )
   end
+  lane :nodrm do
+    build_app(
+      project: "Palace.xcodeproj",
+      scheme: "Palace-noDRM",
+      skip_package_ipa: true,
+      skip_archive: true,
+      skip_codesigning: true,
+      silent: true
+    )
+  end
   lane :beta do |options|
     build_app(
       project: "Palace.xcodeproj",

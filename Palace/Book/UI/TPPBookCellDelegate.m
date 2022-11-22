@@ -144,6 +144,7 @@
 }
 
 - (void)openPDF:(TPPBook *)book {
+#if LCP
   if ([LCPPDFs canOpenBook:book]) {
     NSURL *bookUrl = [[TPPMyBooksDownloadCenter sharedDownloadCenter] fileURLForBookIndentifier:book.identifier];
     LCPPDFs *decryptor = [[LCPPDFs alloc] initWithUrl:bookUrl];
@@ -176,6 +177,13 @@
       [self presentPDF:book];
     }
   }
+#else
+  if (TPPSettings.shared.useLegacyPDFReader) {
+    [self presentMinitexPDFReader:book];
+  } else {
+    [self presentPDF:book];
+  }
+#endif
 }
 
 /// Present Palace PDF reader
