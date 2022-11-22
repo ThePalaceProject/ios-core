@@ -4536,7 +4536,6 @@
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 116;
 				CURRENT_PROJECT_VERSION = 117;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_BITCODE = NO;
