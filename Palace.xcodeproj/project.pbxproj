@@ -716,7 +716,6 @@
 		E52E3C0E28C19F490073DC4D /* TPPBook+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E523116928504B85007D1DB5 /* TPPBook+Extensions.swift */; };
 		E549954828EE1AAA00EA0D9B /* TransifexManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E549954728EE1AAA00EA0D9B /* TransifexManager.swift */; };
 		E549955228EE1ADB00EA0D9B /* TXNativeExtensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E549955128EE1ADB00EA0D9B /* TXNativeExtensions.swift */; };
-		E549955528EE1E2400EA0D9B /* Transifex in Frameworks */ = {isa = PBXBuildFile; productRef = E549955428EE1E2400EA0D9B /* Transifex */; };
 		E54DD4D5275C7C940013C200 /* View+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E54DD4D4275C7C940013C200 /* View+Extensions.swift */; };
 		E54DD4E6275C8EAA0013C200 /* Font+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E54DD4E5275C8EAA0013C200 /* Font+Extensions.swift */; };
 		E54DD4F9275D9E7F0013C200 /* UIViewControllerWrapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = E54DD4C6275C60E70013C200 /* UIViewControllerWrapper.swift */; };
@@ -729,6 +728,9 @@
 		E5751BC0292D66E1002DCD84 /* NYPLAudiobookToolkit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E5751BBC292D66CE002DCD84 /* NYPLAudiobookToolkit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		E5751BC1292D670B002DCD84 /* NYPLAudiobookToolkit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E5751BBC292D66CE002DCD84 /* NYPLAudiobookToolkit.framework */; };
 		E5751C54292D7A6F002DCD84 /* NYPLAudiobookToolkit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E5751BBC292D66CE002DCD84 /* NYPLAudiobookToolkit.framework */; };
+		E5751CA9292D7D8F002DCD84 /* TPPSignInBusinessLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = 731A5B1124621F2B00B5E663 /* TPPSignInBusinessLogic.swift */; };
+		E5751CBC292DBF9E002DCD84 /* TransifexManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E549954728EE1AAA00EA0D9B /* TransifexManager.swift */; };
+		E5751CC9292DC282002DCD84 /* Transifex in Frameworks */ = {isa = PBXBuildFile; productRef = E5751CC8292DC282002DCD84 /* Transifex */; };
 		E580CDA327ECF0E100B14475 /* LCPPDFs.swift in Sources */ = {isa = PBXBuildFile; fileRef = E580CD7A27EABBEE00B14475 /* LCPPDFs.swift */; };
 		E580CDA427ECF0E200B14475 /* LCPPDFs.swift in Sources */ = {isa = PBXBuildFile; fileRef = E580CD7A27EABBEE00B14475 /* LCPPDFs.swift */; };
 		E58565CF269774C400A5FBD5 /* AudioEngine.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E58565CE269774C400A5FBD5 /* AudioEngine.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -1760,8 +1762,8 @@
 				21986906267E299E0041369E /* GCDWebServer.xcframework in Frameworks */,
 				219868FF267E29920041369E /* Fuzi.xcframework in Frameworks */,
 				2198690D267E29B00041369E /* Minizip.xcframework in Frameworks */,
+				E5751CC9292DC282002DCD84 /* Transifex in Frameworks */,
 				219869AE267E792B0041369E /* FirebaseCoreDiagnostics.xcframework in Frameworks */,
-				E549955528EE1E2400EA0D9B /* Transifex in Frameworks */,
 				219869AC267E792B0041369E /* FirebaseCore.xcframework in Frameworks */,
 				21986941267E2A0A0041369E /* SwiftSoup.xcframework in Frameworks */,
 				2198692E267E29EE0041369E /* R2Shared.xcframework in Frameworks */,
@@ -3182,7 +3184,7 @@
 			);
 			name = Palace;
 			packageProductDependencies = (
-				E549955428EE1E2400EA0D9B /* Transifex */,
+				E5751CC8292DC282002DCD84 /* Transifex */,
 			);
 			productName = Simplified;
 			productReference = A823D80D192BABA400B55DE2 /* Palace.app */;
@@ -3236,7 +3238,7 @@
 			);
 			mainGroup = A823D804192BABA400B55DE2;
 			packageReferences = (
-				E549955328EE1E2400EA0D9B /* XCRemoteSwiftPackageReference "transifex-swift" */,
+				E5751CC7292DC282002DCD84 /* XCRemoteSwiftPackageReference "transifex-swift" */,
 			);
 			productRefGroup = A823D80E192BABA400B55DE2 /* Products */;
 			projectDirPath = "";
@@ -3652,6 +3654,7 @@
 				E7E8939A284A1EB800C7A4F3 /* TPPPDFPreviewBar.swift in Sources */,
 				216D2E3A274286D200472538 /* TPPLCPLicense.swift in Sources */,
 				E51818442927FD8E00C03AD5 /* Strings.swift in Sources */,
+				E5751CBC292DBF9E002DCD84 /* TransifexManager.swift in Sources */,
 				73EB0A8E25821DF4006BC997 /* TPPSignInBusinessLogic+UI.swift in Sources */,
 				73EB0A9025821DF4006BC997 /* OPDS2CatalogsFeed.swift in Sources */,
 				21E41784292810EE00A78606 /* CGPDFPage+previews.swift in Sources */,
@@ -3678,6 +3681,7 @@
 				E7862A242773926700BE8AB8 /* View+Extensions.swift in Sources */,
 				73D8D27E25A68D4300DF5F69 /* TPPReaderBookmarksBusinessLogic.swift in Sources */,
 				21045C562761092C00D2D407 /* TPPOnboardingViewController.swift in Sources */,
+				E5751CA9292D7D8F002DCD84 /* TPPSignInBusinessLogic.swift in Sources */,
 				17631AF025E488CD006079C4 /* TPPAgeCheckViewController.swift in Sources */,
 				21989A1127B6FF0E00539B7F /* TPPReaderSettings.swift in Sources */,
 				73EB0A9D25821DF4006BC997 /* NSDate+NYPLDateAdditions.m in Sources */,
@@ -4769,7 +4773,7 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		E549955328EE1E2400EA0D9B /* XCRemoteSwiftPackageReference "transifex-swift" */ = {
+		E5751CC7292DC282002DCD84 /* XCRemoteSwiftPackageReference "transifex-swift" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/transifex/transifex-swift/";
 			requirement = {
@@ -4780,9 +4784,9 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		E549955428EE1E2400EA0D9B /* Transifex */ = {
+		E5751CC8292DC282002DCD84 /* Transifex */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = E549955328EE1E2400EA0D9B /* XCRemoteSwiftPackageReference "transifex-swift" */;
+			package = E5751CC7292DC282002DCD84 /* XCRemoteSwiftPackageReference "transifex-swift" */;
 			productName = Transifex;
 		};
 /* End XCSwiftPackageProductDependency section */
