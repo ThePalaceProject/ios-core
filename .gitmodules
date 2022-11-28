@@ -26,4 +26,4 @@
 [submodule "ios-audiobooktoolkit"]
 	path = ios-audiobooktoolkit
 	url = https://github.com/ThePalaceProject/ios-audiobooktoolkit.git
-	branch = feature/refactor-audiobook-toolkit
+	branch = task/move-to-submodule
