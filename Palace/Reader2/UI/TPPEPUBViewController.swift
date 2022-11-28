@@ -114,7 +114,7 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
                                              style: .plain,
                                              target: self,
                                              action: #selector(presentUserSettings))
-    userSettingsButton.accessibilityLabel = NSLocalizedString("Reader settings", comment: "Reader settings")
+    userSettingsButton.accessibilityLabel = Strings.TPPEPUBViewController.readerSettings
     buttons.insert(userSettingsButton, at: 1)
     popoverUserconfigurationAnchor = userSettingsButton
 

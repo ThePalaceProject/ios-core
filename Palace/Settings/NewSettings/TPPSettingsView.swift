@@ -9,7 +9,7 @@
 import SwiftUI
 
 struct TPPSettingsView: View {
-  typealias Strings = DisplayStrings.Settings
+  typealias DisplayStrings = Strings.Settings
 
   @State private var showDeveloperSettings = false
   @State private var selectedView: Int? = 0
@@ -43,7 +43,7 @@ struct TPPSettingsView: View {
       infoSection
       developerSettingsSection
     }
-    .navigationBarTitle(Strings.settings)
+    .navigationBarTitle(DisplayStrings.settings)
     .listStyle(GroupedListStyle())
     .onReceive(NotificationCenter.default.publisher(for: UIDevice.orientationDidChangeNotification)) { _ in
       self.orientation = UIDevice.current.orientation
@@ -52,16 +52,16 @@ struct TPPSettingsView: View {
 
   @ViewBuilder private var librariesSection: some View {
     let viewController = TPPSettingsAccountsTableViewController(accounts: TPPSettings.shared.settingsAccountsList)
-    let navButton = Button(Strings.addLibrary) {
+    let navButton = Button(DisplayStrings.addLibrary) {
       viewController.addAccount()
     }
 
     let wrapper = UIViewControllerWrapper(viewController) { _ in }
-      .navigationBarTitle(Text(Strings.libraries))
+      .navigationBarTitle(Text(DisplayStrings.libraries))
       .navigationBarItems(trailing: navButton)
     
     Section {
-      row(title: Strings.libraries, index: 1, selection: self.$selectedView, destination: wrapper.anyView())
+      row(title: DisplayStrings.libraries, index: 1, selection: self.$selectedView, destination: wrapper.anyView())
     }
   }
 
@@ -78,53 +78,53 @@ struct TPPSettingsView: View {
   @ViewBuilder private var aboutRow: some View {
     let viewController = RemoteHTMLViewController(
       URL: URL(string: TPPSettings.TPPAboutPalaceURLString)!,
-      title: DisplayStrings.Settings.aboutApp,
-      failureMessage: DisplayStrings.Error.loadFailedError
+      title: Strings.Settings.aboutApp,
+      failureMessage: Strings.Error.loadFailedError
     )
     
     let wrapper = UIViewControllerWrapper(viewController, updater: { _ in })
-      .navigationBarTitle(Text(Strings.aboutApp))
+      .navigationBarTitle(Text(DisplayStrings.aboutApp))
 
-    row(title: Strings.aboutApp, index: 2, selection: self.$selectedView, destination: wrapper.anyView())
+    row(title: DisplayStrings.aboutApp, index: 2, selection: self.$selectedView, destination: wrapper.anyView())
   }
 
   @ViewBuilder private var privacyRow: some View {
     let viewController = RemoteHTMLViewController(
       URL: URL(string: TPPSettings.TPPPrivacyPolicyURLString)!,
-      title: DisplayStrings.Settings.privacyPolicy,
-      failureMessage: DisplayStrings.Error.loadFailedError
+      title: Strings.Settings.privacyPolicy,
+      failureMessage: Strings.Error.loadFailedError
     )
    
     let wrapper = UIViewControllerWrapper(viewController, updater: { _ in })
-      .navigationBarTitle(Text(Strings.privacyPolicy))
+      .navigationBarTitle(Text(DisplayStrings.privacyPolicy))
     
-    row(title: Strings.privacyPolicy, index: 3, selection: self.$selectedView, destination: wrapper.anyView())
+    row(title: DisplayStrings.privacyPolicy, index: 3, selection: self.$selectedView, destination: wrapper.anyView())
 
   }
 
   @ViewBuilder private var userAgreementRow: some View {
     let viewController = RemoteHTMLViewController(
       URL: URL(string: TPPSettings.TPPUserAgreementURLString)!,
-      title: DisplayStrings.Settings.eula,
-      failureMessage: DisplayStrings.Error.loadFailedError
+      title: Strings.Settings.eula,
+      failureMessage: Strings.Error.loadFailedError
     )
 
     let wrapper = UIViewControllerWrapper(viewController, updater: { _ in })
-      .navigationBarTitle(Text(Strings.eula))
+      .navigationBarTitle(Text(DisplayStrings.eula))
     
-    row(title: Strings.eula, index: 4, selection: self.$selectedView, destination: wrapper.anyView())
+    row(title: DisplayStrings.eula, index: 4, selection: self.$selectedView, destination: wrapper.anyView())
   }
 
   @ViewBuilder private var softwareLicenseRow: some View {
     let viewController = BundledHTMLViewController(
       fileURL: Bundle.main.url(forResource: "software-licenses", withExtension: "html")!,
-      title: DisplayStrings.Settings.softwareLicenses
+      title: Strings.Settings.softwareLicenses
     )
 
     let wrapper = UIViewControllerWrapper(viewController, updater: { _ in })
-      .navigationBarTitle(Text(Strings.softwareLicenses))
+      .navigationBarTitle(Text(DisplayStrings.softwareLicenses))
     
-    row(title: Strings.softwareLicenses, index: 5, selection: self.$selectedView, destination: wrapper.anyView())
+    row(title: DisplayStrings.softwareLicenses, index: 5, selection: self.$selectedView, destination: wrapper.anyView())
   }
 
   @ViewBuilder private var developerSettingsSection: some View {
@@ -133,9 +133,9 @@ struct TPPSettingsView: View {
         let viewController = TPPDeveloperSettingsTableViewController()
           
         let wrapper = UIViewControllerWrapper(viewController, updater: { _ in })
-          .navigationBarTitle(Text(Strings.developerSettings))
+          .navigationBarTitle(Text(DisplayStrings.developerSettings))
         
-        row(title: Strings.developerSettings, index: 6, selection: self.$selectedView, destination: wrapper.anyView())
+        row(title: DisplayStrings.developerSettings, index: 6, selection: self.$selectedView, destination: wrapper.anyView())
       }
     }
   }

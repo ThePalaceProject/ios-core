@@ -251,7 +251,7 @@ didFinishDownloadingToURL:(NSURL *const)tmpSavedFileURL
         NSString *PDFString = @">application/pdf</dc:format>";
         if([[[NSString alloc] initWithData:ACSMData encoding:NSUTF8StringEncoding] containsString:PDFString]) {
           NSString *msg = [NSString
-                           stringWithFormat:NSLocalizedString(@"PDFNotSupportedFormatStr", nil),
+                           stringWithFormat:NSLocalizedString(@"%@ is an Adobe PDF, which is not supported.", nil),
                            book.title];
           failureError = [NSError errorWithDomain:TPPErrorLogger.clientDomain
                                              code:TPPErrorCodeIgnore
@@ -372,7 +372,7 @@ didFinishDownloadingToURL:(NSURL *const)tmpSavedFileURL
                            book:(TPPBook *)book
 {
   NSString *msg = [NSString stringWithFormat:
-                   NSLocalizedString(@"DownloadCouldNotBeCompletedFormat", nil),
+                   NSLocalizedString(@"The download for %@ could not be completed.", nil),
                    book.title];
   UIAlertController *alert = [TPPAlertUtils alertWithTitle:@"DownloadFailed"
                                                     message:msg];
@@ -536,7 +536,9 @@ didCompleteWithError:(NSError *)error
         TPPLOG_F(@"Failed to remove local content for download: %@", error.localizedDescription);
       }
       // Remove any unarchived content
+#if LCP
       [LCPPDFs deletePdfContentWithUrl:bookURL error:&error];
+#endif
       if (error) {
         TPPLOG_F(@"Failed to remove local unarchived content for download: %@", error.localizedDescription);
       }
@@ -661,7 +663,7 @@ didCompleteWithError:(NSError *)error
           }];
         } else {
           [[NSOperationQueue mainQueue] addOperationWithBlock:^{
-            NSString *formattedMessage = [NSString stringWithFormat:NSLocalizedString(@"ReturnCouldNotBeCompletedFormat", nil), book.title];
+            NSString *formattedMessage = [NSString stringWithFormat:NSLocalizedString(@"The return of %@ could not be completed.", nil), book.title];
             UIAlertController *alert = [TPPAlertUtils
                                         alertWithTitle:@"ReturnFailed"
                                         message:formattedMessage];
@@ -794,7 +796,7 @@ didCompleteWithError:(NSError *)error
   dispatch_async(dispatch_get_main_queue(), ^{
     // TODO: Rephrase the default "No error message" message
     NSString *errorMessage = message != nil ? message : @"No error message";
-    NSString *formattedMessage = [NSString stringWithFormat:NSLocalizedString(@"DownloadCouldNotBeCompletedFormat", nil), book.title];
+    NSString *formattedMessage = [NSString stringWithFormat:NSLocalizedString(@"The download for %@ could not be completed.", nil), book.title];
     NSString *finalMessage = [NSString stringWithFormat:@"%@\n%@", formattedMessage, errorMessage];
     UIAlertController *alert = [TPPAlertUtils alertWithTitle:@"DownloadFailed" message:finalMessage];
     [TPPAlertUtils presentFromViewControllerOrNilWithAlertController:alert viewController:nil animated:YES completion:nil];
@@ -819,7 +821,7 @@ didCompleteWithError:(NSError *)error
         }
 
         // create an alert to display for error, feed, or feed count conditions
-        NSString *formattedMessage = [NSString stringWithFormat:NSLocalizedString(@"BorrowCouldNotBeCompletedFormat", nil), book.title];
+        NSString *formattedMessage = [NSString stringWithFormat:NSLocalizedString(@"Borrowing %@ could not be completed.", nil), book.title];
         UIAlertController *alert = [TPPAlertUtils alertWithTitle:@"BorrowFailed" message:formattedMessage];
 
         // set different message for special type of error or just add document message for generic error
@@ -856,7 +858,7 @@ didCompleteWithError:(NSError *)error
           borrowCompletion();
           return;
         }
-        NSString *formattedMessage = [NSString stringWithFormat:NSLocalizedString(@"BorrowCouldNotBeCompletedFormat", nil), book.title];
+        NSString *formattedMessage = [NSString stringWithFormat:NSLocalizedString(@"Borrowing %@ could not be completed.", nil), book.title];
         UIAlertController *alert = [TPPAlertUtils alertWithTitle:@"BorrowFailed" message:formattedMessage];
         [TPPAlertUtils presentFromViewControllerOrNilWithAlertController:alert viewController:nil animated:YES completion:nil];
       }];
