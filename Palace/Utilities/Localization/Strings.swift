@@ -89,7 +89,7 @@ struct Strings {
     static let audiobookPromptMessage = NSLocalizedString("Would you like to return it?", comment: "")
     static let keepActionAlertTitle = NSLocalizedString("Keep",
                                                         comment: "Button title for keeping an audiobook")
-    static let returnActionTitle = NSLocalizedString("Return ",
+    static let returnActionTitle = NSLocalizedString("Return",
                                                      comment: "Button title for keeping an audiobook")
   }
   
