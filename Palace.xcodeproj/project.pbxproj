@@ -126,6 +126,7 @@
 		213998FE268F9E3000B4EB60 /* TPPRegistryDebuggingCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5C2C421268BA5140046F415 /* TPPRegistryDebuggingCell.swift */; };
 		21399900268F9F2500B4EB60 /* TPPAccountListCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AD65DC2684FACA00C62951 /* TPPAccountListCell.swift */; };
 		21399902268F9F4C00B4EB60 /* TPPAccountListDataSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AD65E02684FDA300C62951 /* TPPAccountListDataSource.swift */; };
+		213AA3BB293554F3007B7AF7 /* Transifex in Frameworks */ = {isa = PBXBuildFile; productRef = 213AA3BA293554F3007B7AF7 /* Transifex */; };
 		2146872D2559A64B007B401A /* LCPLibraryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2171ADA0251E38140003CABA /* LCPLibraryService.swift */; };
 		21562CC3276BB52700C03372 /* AdobeDRMAlerts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21562CC2276BB52700C03372 /* AdobeDRMAlerts.swift */; };
 		21562CC4276BB52700C03372 /* AdobeDRMAlerts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21562CC2276BB52700C03372 /* AdobeDRMAlerts.swift */; };
@@ -1676,6 +1677,7 @@
 				21986969267E2A460041369E /* SQLite.xcframework in Frameworks */,
 				73EB0B3D25821DF4006BC997 /* Security.framework in Frameworks */,
 				21DCC3B627BEE39E00064B37 /* DifferenceKit.xcframework in Frameworks */,
+				213AA3BB293554F3007B7AF7 /* Transifex in Frameworks */,
 				21986955267E2A430041369E /* CryptoSwift.xcframework in Frameworks */,
 				219869D2267E80810041369E /* GoogleDataTransport.xcframework in Frameworks */,
 				2198696B267E2A470041369E /* SwiftSoup.xcframework in Frameworks */,
@@ -3139,6 +3141,9 @@
 			dependencies = (
 			);
 			name = "Palace-noDRM";
+			packageProductDependencies = (
+				213AA3BA293554F3007B7AF7 /* Transifex */,
+			);
 			productName = Simplified;
 			productReference = 73EB0B7525821DF4006BC997 /* Palace-noDRM.app */;
 			productType = "com.apple.product-type.application";
@@ -4740,6 +4745,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		213AA3BA293554F3007B7AF7 /* Transifex */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E549955328EE1E2400EA0D9B /* XCRemoteSwiftPackageReference "transifex-swift" */;
+			productName = Transifex;
+		};
 		E549955428EE1E2400EA0D9B /* Transifex */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = E549955328EE1E2400EA0D9B /* XCRemoteSwiftPackageReference "transifex-swift" */;
