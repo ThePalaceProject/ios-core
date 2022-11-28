@@ -19,9 +19,11 @@
 [submodule "ios-drm-audioengine"]
 	path = ios-drm-audioengine
 	url = git@github.com:ThePalaceProject/ios-drm-audioengine.git
+	branch = task/make-audiobook-toolkit-submodule
 [submodule "ios-audiobook-overdrive"]
 	path = ios-audiobook-overdrive
 	url = git@github.com:ThePalaceProject/ios-audiobook-overdrive.git
 [submodule "ios-audiobooktoolkit"]
 	path = ios-audiobooktoolkit
 	url = https://github.com/ThePalaceProject/ios-audiobooktoolkit.git
+	branch = feature/refactor-audiobook-toolkit
