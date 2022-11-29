@@ -704,7 +704,6 @@
 		E5158B62292E87840007ABDB /* Transifex in Frameworks */ = {isa = PBXBuildFile; productRef = E5158B61292E87840007ABDB /* Transifex */; };
 		E5158B64292E87C50007ABDB /* Transifex in Frameworks */ = {isa = PBXBuildFile; productRef = E5158B63292E87C50007ABDB /* Transifex */; };
 		E5158B65292E8AC60007ABDB /* NYPLAudiobookToolkit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E5751BBC292D66CE002DCD84 /* NYPLAudiobookToolkit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		E5158C5329355C880007ABDB /* PureLayout.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 21986921267E29D70041369E /* PureLayout.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		E51818442927FD8E00C03AD5 /* Strings.swift in Sources */ = {isa = PBXBuildFile; fileRef = E54DD4CF275C66F30013C200 /* Strings.swift */; };
 		E5231241285C291D007D1DB5 /* AudioBookmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5231240285C291D007D1DB5 /* AudioBookmark.swift */; };
 		E523124B285C3828007D1DB5 /* TPPBookRegistry+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E523124A285C3828007D1DB5 /* TPPBookRegistry+Extensions.swift */; };
@@ -949,7 +948,6 @@
 			dstPath = "";
 			dstSubfolderSpec = 10;
 			files = (
-				E5158C5329355C880007ABDB /* PureLayout.xcframework in Embed Frameworks */,
 				E5751BC0292D66E1002DCD84 /* NYPLAudiobookToolkit.framework in Embed Frameworks */,
 				E5C1F55327990A96005FC6B2 /* OverdriveProcessor.framework in Embed Frameworks */,
 				21F634EB26D828CF00C8BE87 /* ReadiumLCP.xcframework in Embed Frameworks */,
