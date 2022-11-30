@@ -44,7 +44,7 @@ struct Strings {
                                                     comment: "Title for sign in error alert")
     static let signInErrorDescription = NSLocalizedString("The DRM Library is taking longer than expected. Please wait and try again later.\n\nIf the problem persists, try to sign out and back in again from the Library Settings menu.",
                                                           comment: "Message for sign-in error alert caused by failed DRM authorization")
-    static let loginErrorTitle = NSLocalizedString("SettingsAccountViewControllerLoginFailed", comment: "Title for login error alert")
+    static let loginErrorTitle = NSLocalizedString("Login Failed", comment: "Title for login error alert")
     static let loginErrorDescription = NSLocalizedString("An error occurred during the authentication process",
                                                          comment: "Generic error message while handling sign-in redirection during authentication")
   }
@@ -89,7 +89,7 @@ struct Strings {
     static let audiobookPromptMessage = NSLocalizedString("Would you like to return it?", comment: "")
     static let keepActionAlertTitle = NSLocalizedString("Keep",
                                                         comment: "Button title for keeping an audiobook")
-    static let returnActionTitle = NSLocalizedString("Keep",
+    static let returnActionTitle = NSLocalizedString("Return",
                                                      comment: "Button title for keeping an audiobook")
   }
   
