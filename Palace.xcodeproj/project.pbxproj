@@ -785,9 +785,6 @@
 		E77D02292931360100544180 /* R2Shared in Frameworks */ = {isa = PBXBuildFile; productRef = E77D02282931360100544180 /* R2Shared */; };
 		E77D022B2931360100544180 /* R2Streamer in Frameworks */ = {isa = PBXBuildFile; productRef = E77D022A2931360100544180 /* R2Streamer */; };
 		E77D022D2931361700544180 /* SwiftSoup in Frameworks */ = {isa = PBXBuildFile; productRef = E77D022C2931361700544180 /* SwiftSoup */; };
-		E77D02392931406C00544180 /* Transifex in Frameworks */ = {isa = PBXBuildFile; productRef = E77D02382931406C00544180 /* Transifex */; };
-		E77D023B2931407E00544180 /* Transifex in Frameworks */ = {isa = PBXBuildFile; productRef = E77D023A2931407E00544180 /* Transifex */; };
-		E77D023C2931411D00544180 /* TransifexManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E549954728EE1AAA00EA0D9B /* TransifexManager.swift */; };
 		E7861C472846868800B3A38A /* TPPPDFViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7861C462846868800B3A38A /* TPPPDFViewController.swift */; };
 		E7861C492846875D00B3A38A /* TPPPDFView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7861C482846875D00B3A38A /* TPPPDFView.swift */; };
 		E7861C4B28468AB200B3A38A /* TPPPDFDocumentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7861C4A28468AB200B3A38A /* TPPPDFDocumentView.swift */; };
@@ -1612,7 +1609,6 @@
 				73EB0B3225821DF4006BC997 /* AudioToolbox.framework in Frameworks */,
 				73EB0B3325821DF4006BC997 /* libiconv.tbd in Frameworks */,
 				219869DA267E80820041369E /* PromisesObjC.xcframework in Frameworks */,
-				E77D023B2931407E00544180 /* Transifex in Frameworks */,
 				2198695D267E2A440041369E /* NYPLAudiobookToolkit.xcframework in Frameworks */,
 				73EB0B3425821DF4006BC997 /* CoreGraphics.framework in Frameworks */,
 				73EB0B3525821DF4006BC997 /* QuartzCore.framework in Frameworks */,
@@ -1681,7 +1677,6 @@
 				219869ED267E81CC0041369E /* nanopb.xcframework in Frameworks */,
 				219869EF267E81CD0041369E /* PromisesObjC.xcframework in Frameworks */,
 				219869E7267E81CB0041369E /* GoogleAppMeasurement.xcframework in Frameworks */,
-				E77D02392931406C00544180 /* Transifex in Frameworks */,
 				2197480F26D9254500FA25DF /* R2LCPClient.framework in Frameworks */,
 				84FCD2611B7BA79200BFEDD9 /* CoreLocation.framework in Frameworks */,
 				E77D02252931357400544180 /* SwiftSoup in Frameworks */,
@@ -3092,7 +3087,6 @@
 				E77D02282931360100544180 /* R2Shared */,
 				E77D022A2931360100544180 /* R2Streamer */,
 				E77D022C2931361700544180 /* SwiftSoup */,
-				E77D023A2931407E00544180 /* Transifex */,
 				E7CA1C4F2938107A009CC6FD /* SQLite */,
 				E5158C402935417A0007ABDB /* Transifex */,
 			);
@@ -3122,7 +3116,6 @@
 				E77D021D2931337000544180 /* R2Streamer */,
 				E77D021F2931337000544180 /* ReadiumLCP */,
 				E77D02242931357400544180 /* SwiftSoup */,
-				E77D02382931406C00544180 /* Transifex */,
 				E7CA1C4D29381068009CC6FD /* SQLite */,
 				E5158C3E293541630007ABDB /* Transifex */,
 			);
@@ -3180,7 +3173,6 @@
 			packageReferences = (
 				E77D02182931337000544180 /* XCRemoteSwiftPackageReference "swift-toolkit" */,
 				E77D02232931357400544180 /* XCRemoteSwiftPackageReference "SwiftSoup" */,
-				E77D02372931406C00544180 /* XCRemoteSwiftPackageReference "transifex-swift" */,
 				E7CA1C4C29381068009CC6FD /* XCRemoteSwiftPackageReference "SQLite.swift" */,
 				E5158C3D293541630007ABDB /* XCRemoteSwiftPackageReference "transifex-swift" */,
 			);
@@ -3580,7 +3572,6 @@
 				73EB0A8C25821DF4006BC997 /* TPPOpenSearchDescription.m in Sources */,
 				E7E8939A284A1EB800C7A4F3 /* TPPPDFPreviewBar.swift in Sources */,
 				216D2E3A274286D200472538 /* TPPLCPLicense.swift in Sources */,
-				E77D023C2931411D00544180 /* TransifexManager.swift in Sources */,
 				E5158C202935345F0007ABDB /* TransifexManager.swift in Sources */,
 				E51818442927FD8E00C03AD5 /* Strings.swift in Sources */,
 				73EB0A8E25821DF4006BC997 /* TPPSignInBusinessLogic+UI.swift in Sources */,
@@ -4709,7 +4700,6 @@
 				minimumVersion = 2.3.2;
 			};
 		};
-		E77D02372931406C00544180 /* XCRemoteSwiftPackageReference "transifex-swift" */ = {
 		E5158C3D293541630007ABDB /* XCRemoteSwiftPackageReference "transifex-swift" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/transifex/transifex-swift/";
@@ -4774,9 +4764,6 @@
 			package = E77D02232931357400544180 /* XCRemoteSwiftPackageReference "SwiftSoup" */;
 			productName = SwiftSoup;
 		};
-		E77D02382931406C00544180 /* Transifex */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E77D02372931406C00544180 /* XCRemoteSwiftPackageReference "transifex-swift" */;
 		E5158C3E293541630007ABDB /* Transifex */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = E5158C3D293541630007ABDB /* XCRemoteSwiftPackageReference "transifex-swift" */;
@@ -4785,11 +4772,6 @@
 		E5158C402935417A0007ABDB /* Transifex */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = E5158C3D293541630007ABDB /* XCRemoteSwiftPackageReference "transifex-swift" */;
-			productName = Transifex;
-		};
-		E77D023A2931407E00544180 /* Transifex */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E77D02372931406C00544180 /* XCRemoteSwiftPackageReference "transifex-swift" */;
 			productName = Transifex;
 		};
 		E7CA1C4D29381068009CC6FD /* SQLite */ = {
