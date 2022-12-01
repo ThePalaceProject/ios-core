@@ -782,8 +782,6 @@
 		E77D02292931360100544180 /* R2Shared in Frameworks */ = {isa = PBXBuildFile; productRef = E77D02282931360100544180 /* R2Shared */; };
 		E77D022B2931360100544180 /* R2Streamer in Frameworks */ = {isa = PBXBuildFile; productRef = E77D022A2931360100544180 /* R2Streamer */; };
 		E77D022D2931361700544180 /* SwiftSoup in Frameworks */ = {isa = PBXBuildFile; productRef = E77D022C2931361700544180 /* SwiftSoup */; };
-		E77D0230293136C900544180 /* SQLite in Frameworks */ = {isa = PBXBuildFile; productRef = E77D022F293136C900544180 /* SQLite */; };
-		E77D0232293136DC00544180 /* SQLite in Frameworks */ = {isa = PBXBuildFile; productRef = E77D0231293136DC00544180 /* SQLite */; };
 		E77D02392931406C00544180 /* Transifex in Frameworks */ = {isa = PBXBuildFile; productRef = E77D02382931406C00544180 /* Transifex */; };
 		E77D023B2931407E00544180 /* Transifex in Frameworks */ = {isa = PBXBuildFile; productRef = E77D023A2931407E00544180 /* Transifex */; };
 		E77D023C2931411D00544180 /* TransifexManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E549954728EE1AAA00EA0D9B /* TransifexManager.swift */; };
@@ -821,6 +819,8 @@
 		E7B20B47285B3BC800C49FE1 /* TPPPDFPreviewGridController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7B20B45285B3BC800C49FE1 /* TPPPDFPreviewGridController.swift */; };
 		E7B20B49285B4E5600C49FE1 /* TPPPDFLabel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7B20B48285B4E5600C49FE1 /* TPPPDFLabel.swift */; };
 		E7B20B4A285B4E5600C49FE1 /* TPPPDFLabel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7B20B48285B4E5600C49FE1 /* TPPPDFLabel.swift */; };
+		E7CA1C4E29381068009CC6FD /* SQLite in Frameworks */ = {isa = PBXBuildFile; productRef = E7CA1C4D29381068009CC6FD /* SQLite */; };
+		E7CA1C502938107A009CC6FD /* SQLite in Frameworks */ = {isa = PBXBuildFile; productRef = E7CA1C4F2938107A009CC6FD /* SQLite */; };
 		E7CBF977285CA41400F00C02 /* TPPPDFDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7CBF976285CA41400F00C02 /* TPPPDFDocument.swift */; };
 		E7E89399284A1EB800C7A4F3 /* TPPPDFPreviewBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7E89398284A1EB800C7A4F3 /* TPPPDFPreviewBar.swift */; };
 		E7E8939A284A1EB800C7A4F3 /* TPPPDFPreviewBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7E89398284A1EB800C7A4F3 /* TPPPDFPreviewBar.swift */; };
@@ -1618,6 +1618,7 @@
 				E77D02272931360100544180 /* R2Navigator in Frameworks */,
 				73EB0B3925821DF4006BC997 /* libicucore.tbd in Frameworks */,
 				219869D8267E80820041369E /* GoogleUtilities.xcframework in Frameworks */,
+				E7CA1C502938107A009CC6FD /* SQLite in Frameworks */,
 				2198696F267E2A470041369E /* ZXingObjC.xcframework in Frameworks */,
 				E77D02292931360100544180 /* R2Shared in Frameworks */,
 				73EB0B3A25821DF4006BC997 /* libc++.dylib in Frameworks */,
@@ -1630,7 +1631,6 @@
 				E77D022D2931361700544180 /* SwiftSoup in Frameworks */,
 				73EB0B3E25821DF4006BC997 /* CFNetwork.framework in Frameworks */,
 				219869D4267E80810041369E /* GoogleAppMeasurement.xcframework in Frameworks */,
-				E77D0232293136DC00544180 /* SQLite in Frameworks */,
 				73EB0B3F25821DF4006BC997 /* CoreLocation.framework in Frameworks */,
 				73EB0B4025821DF4006BC997 /* UIKit.framework in Frameworks */,
 				73EB0B4125821DF4006BC997 /* Foundation.framework in Frameworks */,
@@ -1676,7 +1676,6 @@
 				219869EF267E81CD0041369E /* PromisesObjC.xcframework in Frameworks */,
 				219869E7267E81CB0041369E /* GoogleAppMeasurement.xcframework in Frameworks */,
 				E77D02392931406C00544180 /* Transifex in Frameworks */,
-				E77D0230293136C900544180 /* SQLite in Frameworks */,
 				2197480F26D9254500FA25DF /* R2LCPClient.framework in Frameworks */,
 				84FCD2611B7BA79200BFEDD9 /* CoreLocation.framework in Frameworks */,
 				E77D02252931357400544180 /* SwiftSoup in Frameworks */,
@@ -1684,6 +1683,7 @@
 				219869EB267E81CC0041369E /* GoogleUtilities.xcframework in Frameworks */,
 				219869B2267E792C0041369E /* FirebaseInstallations.xcframework in Frameworks */,
 				A823D811192BABA400B55DE2 /* Foundation.framework in Frameworks */,
+				E7CA1C4E29381068009CC6FD /* SQLite in Frameworks */,
 				1112A8431A3249B4002B8CC1 /* libTenPrintCover.a in Frameworks */,
 				21986922267E29D70041369E /* PureLayout.xcframework in Frameworks */,
 				219869B0267E792C0041369E /* FirebaseCrashlytics.xcframework in Frameworks */,
@@ -3085,8 +3085,8 @@
 				E77D02282931360100544180 /* R2Shared */,
 				E77D022A2931360100544180 /* R2Streamer */,
 				E77D022C2931361700544180 /* SwiftSoup */,
-				E77D0231293136DC00544180 /* SQLite */,
 				E77D023A2931407E00544180 /* Transifex */,
+				E7CA1C4F2938107A009CC6FD /* SQLite */,
 			);
 			productName = Simplified;
 			productReference = 73EB0B7525821DF4006BC997 /* Palace-noDRM.app */;
@@ -3114,8 +3114,8 @@
 				E77D021D2931337000544180 /* R2Streamer */,
 				E77D021F2931337000544180 /* ReadiumLCP */,
 				E77D02242931357400544180 /* SwiftSoup */,
-				E77D022F293136C900544180 /* SQLite */,
 				E77D02382931406C00544180 /* Transifex */,
+				E7CA1C4D29381068009CC6FD /* SQLite */,
 			);
 			productName = Simplified;
 			productReference = A823D80D192BABA400B55DE2 /* Palace.app */;
@@ -3171,8 +3171,8 @@
 			packageReferences = (
 				E77D02182931337000544180 /* XCRemoteSwiftPackageReference "swift-toolkit" */,
 				E77D02232931357400544180 /* XCRemoteSwiftPackageReference "SwiftSoup" */,
-				E77D022E293136C900544180 /* XCRemoteSwiftPackageReference "SQLite" */,
 				E77D02372931406C00544180 /* XCRemoteSwiftPackageReference "transifex-swift" */,
+				E7CA1C4C29381068009CC6FD /* XCRemoteSwiftPackageReference "SQLite.swift" */,
 			);
 			productRefGroup = A823D80E192BABA400B55DE2 /* Products */;
 			projectDirPath = "";
@@ -4698,20 +4698,20 @@
 				minimumVersion = 2.3.2;
 			};
 		};
-		E77D022E293136C900544180 /* XCRemoteSwiftPackageReference "SQLite" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/stephencelis/SQLite.swift";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 0.9.2;
-			};
-		};
 		E77D02372931406C00544180 /* XCRemoteSwiftPackageReference "transifex-swift" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/transifex/transifex-swift/";
 			requirement = {
 				kind = upToNextMajorVersion;
 				minimumVersion = 1.0.0;
+			};
+		};
+		E7CA1C4C29381068009CC6FD /* XCRemoteSwiftPackageReference "SQLite.swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/stephencelis/SQLite.swift.git";
+			requirement = {
+				kind = upToNextMinorVersion;
+				minimumVersion = 0.13.0;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
@@ -4762,16 +4762,6 @@
 			package = E77D02232931357400544180 /* XCRemoteSwiftPackageReference "SwiftSoup" */;
 			productName = SwiftSoup;
 		};
-		E77D022F293136C900544180 /* SQLite */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E77D022E293136C900544180 /* XCRemoteSwiftPackageReference "SQLite" */;
-			productName = SQLite;
-		};
-		E77D0231293136DC00544180 /* SQLite */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E77D022E293136C900544180 /* XCRemoteSwiftPackageReference "SQLite" */;
-			productName = SQLite;
-		};
 		E77D02382931406C00544180 /* Transifex */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = E77D02372931406C00544180 /* XCRemoteSwiftPackageReference "transifex-swift" */;
@@ -4781,6 +4771,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = E77D02372931406C00544180 /* XCRemoteSwiftPackageReference "transifex-swift" */;
 			productName = Transifex;
+		};
+		E7CA1C4D29381068009CC6FD /* SQLite */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E7CA1C4C29381068009CC6FD /* XCRemoteSwiftPackageReference "SQLite.swift" */;
+			productName = SQLite;
+		};
+		E7CA1C4F2938107A009CC6FD /* SQLite */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E7CA1C4C29381068009CC6FD /* XCRemoteSwiftPackageReference "SQLite.swift" */;
+			productName = SQLite;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
