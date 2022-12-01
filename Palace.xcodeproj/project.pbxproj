@@ -1625,9 +1625,7 @@
 				73EB0B3B25821DF4006BC997 /* LocalAuthentication.framework in Frameworks */,
 				73EB0B3C25821DF4006BC997 /* SystemConfiguration.framework in Frameworks */,
 				73EB0B3D25821DF4006BC997 /* Security.framework in Frameworks */,
-				21DCC3B627BEE39E00064B37 /* DifferenceKit.xcframework in Frameworks */,
 				E5158C412935417A0007ABDB /* Transifex in Frameworks */,
-				21986955267E2A430041369E /* CryptoSwift.xcframework in Frameworks */,
 				219869D2267E80810041369E /* GoogleDataTransport.xcframework in Frameworks */,
 				E77D022B2931360100544180 /* R2Streamer in Frameworks */,
 				E77D022D2931361700544180 /* SwiftSoup in Frameworks */,
@@ -4684,6 +4682,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		E5158C3D293541630007ABDB /* XCRemoteSwiftPackageReference "transifex-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/transifex/transifex-swift/";
+			requirement = {
+				kind = upToNextMinorVersion;
+				minimumVersion = 1.0.0;
+			};
+		};
 		E77D02182931337000544180 /* XCRemoteSwiftPackageReference "swift-toolkit" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/readium/swift-toolkit.git";
@@ -4700,14 +4706,6 @@
 				minimumVersion = 2.3.2;
 			};
 		};
-		E5158C3D293541630007ABDB /* XCRemoteSwiftPackageReference "transifex-swift" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/transifex/transifex-swift/";
-			requirement = {
-				kind = upToNextMinorVersion;
-				minimumVersion = 1.0.0;
-			};
-		};
 		E7CA1C4C29381068009CC6FD /* XCRemoteSwiftPackageReference "SQLite.swift" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/stephencelis/SQLite.swift.git";
@@ -4719,6 +4717,16 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		E5158C3E293541630007ABDB /* Transifex */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E5158C3D293541630007ABDB /* XCRemoteSwiftPackageReference "transifex-swift" */;
+			productName = Transifex;
+		};
+		E5158C402935417A0007ABDB /* Transifex */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E5158C3D293541630007ABDB /* XCRemoteSwiftPackageReference "transifex-swift" */;
+			productName = Transifex;
+		};
 		E77D02192931337000544180 /* R2Navigator */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = E77D02182931337000544180 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
@@ -4763,16 +4771,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = E77D02232931357400544180 /* XCRemoteSwiftPackageReference "SwiftSoup" */;
 			productName = SwiftSoup;
-		};
-		E5158C3E293541630007ABDB /* Transifex */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E5158C3D293541630007ABDB /* XCRemoteSwiftPackageReference "transifex-swift" */;
-			productName = Transifex;
-		};
-		E5158C402935417A0007ABDB /* Transifex */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E5158C3D293541630007ABDB /* XCRemoteSwiftPackageReference "transifex-swift" */;
-			productName = Transifex;
 		};
 		E7CA1C4D29381068009CC6FD /* SQLite */ = {
 			isa = XCSwiftPackageProductDependency;
