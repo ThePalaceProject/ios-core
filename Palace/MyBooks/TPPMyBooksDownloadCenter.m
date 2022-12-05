@@ -18,10 +18,6 @@
 @end
 #endif
 
-#if defined(LCP)
-#import <ReadiumLCP/ReadiumLCP-Swift.h>
-#endif
-
 @interface TPPMyBooksDownloadCenter ()
   <NSURLSessionDownloadDelegate, NSURLSessionTaskDelegate>
 
