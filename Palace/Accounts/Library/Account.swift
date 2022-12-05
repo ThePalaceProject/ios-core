@@ -437,12 +437,10 @@ class OPDS2SamlIDP: NSObject, Codable {
       // otherwise the code that presents alerts interferes with catalog presentation.
       completion(true)
 
-      if let provider = signedInStateProvider,
-         provider.isSignedIn(),
-         let announcements = self.authenticationDocument?.announcements {
-          DispatchQueue.main.async {
-            TPPAnnouncementBusinessLogic.shared.presentAnnouncements(announcements)
-          }
+      if let announcements = self.authenticationDocument?.announcements {
+        DispatchQueue.main.async {
+          TPPAnnouncementBusinessLogic.shared.presentAnnouncements(announcements)
+        }
       }
     }
   }
