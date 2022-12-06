@@ -1250,7 +1250,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
     self.logInSignOutCell.textLabel.textColor = [TPPConfiguration mainColor];
     self.logInSignOutCell.userInteractionEnabled = YES;
   } else {
-    self.logInSignOutCell.textLabel.text = NSLocalizedString(@"Sign in", nil);
+    self.logInSignOutCell.textLabel.text = NSLocalizedString(@"Sign in", nil).capitalizedString;
     self.logInSignOutCell.textLabel.textAlignment = NSTextAlignmentLeft;
     BOOL const barcodeHasText = [self.usernameTextField.text
                                  stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]].length;
