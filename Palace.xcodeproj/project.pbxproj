@@ -671,6 +671,10 @@
 		E5231241285C291D007D1DB5 /* AudioBookmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5231240285C291D007D1DB5 /* AudioBookmark.swift */; };
 		E523124B285C3828007D1DB5 /* TPPBookRegistry+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E523124A285C3828007D1DB5 /* TPPBookRegistry+Extensions.swift */; };
 		E523124D28641505007D1DB5 /* LoadingViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E523124C28641505007D1DB5 /* LoadingViewController.swift */; };
+		E5288CBD293FB61C00F3B3D2 /* NYPLAudiobookToolkit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E5534255293FB23F004FF34A /* NYPLAudiobookToolkit.framework */; };
+		E5288CBE293FB69400F3B3D2 /* NYPLAudiobookToolkit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E5534255293FB23F004FF34A /* NYPLAudiobookToolkit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		E5288CBF293FB6DE00F3B3D2 /* NYPLAudiobookToolkit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E5534255293FB23F004FF34A /* NYPLAudiobookToolkit.framework */; };
+		E5288CC0293FB6E400F3B3D2 /* NYPLAudiobookToolkit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E5534255293FB23F004FF34A /* NYPLAudiobookToolkit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		E52E3BBC28C0EF410073DC4D /* TPPReaderAdvancedSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = E52E3BBB28C0EF410073DC4D /* TPPReaderAdvancedSettings.swift */; };
 		E52E3C0528C19BAD0073DC4D /* EpubSample.swift in Sources */ = {isa = PBXBuildFile; fileRef = E52E3BFF28C19BAD0073DC4D /* EpubSample.swift */; };
 		E52E3C0828C19BAD0073DC4D /* AudiobookSamplePlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E52E3C0228C19BAD0073DC4D /* AudiobookSamplePlayer.swift */; };
@@ -689,13 +693,9 @@
 		E551B361267D402B0026FC1B /* TPPAccountList.swift in Sources */ = {isa = PBXBuildFile; fileRef = E551B360267D402B0026FC1B /* TPPAccountList.swift */; };
 		E551B363267D42A20026FC1B /* TPPAccountList.swift in Sources */ = {isa = PBXBuildFile; fileRef = E551B360267D402B0026FC1B /* TPPAccountList.swift */; };
 		E551B365267D42AF0026FC1B /* TPPLoadingViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E551B359267D396A0026FC1B /* TPPLoadingViewController.swift */; };
-		E553422F293F950E004FF34A /* NYPLAudiobookToolkit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E58D73AE293F8EB000DFBF32 /* NYPLAudiobookToolkit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		E5534230293F9543004FF34A /* NYPLAudiobookToolkit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E58D73AE293F8EB000DFBF32 /* NYPLAudiobookToolkit.framework */; };
-		E5534231293F95A7004FF34A /* NYPLAudiobookToolkit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E58D73AE293F8EB000DFBF32 /* NYPLAudiobookToolkit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		E580CDA327ECF0E100B14475 /* LCPPDFs.swift in Sources */ = {isa = PBXBuildFile; fileRef = E580CD7A27EABBEE00B14475 /* LCPPDFs.swift */; };
 		E580CDA427ECF0E200B14475 /* LCPPDFs.swift in Sources */ = {isa = PBXBuildFile; fileRef = E580CD7A27EABBEE00B14475 /* LCPPDFs.swift */; };
 		E58565CF269774C400A5FBD5 /* AudioEngine.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E58565CE269774C400A5FBD5 /* AudioEngine.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		E58D73B5293F8F9A00DFBF32 /* NYPLAudiobookToolkit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E58D73AE293F8EB000DFBF32 /* NYPLAudiobookToolkit.framework */; };
 		E59526EB28D24FC000C179DA /* AudiobookSample.swift in Sources */ = {isa = PBXBuildFile; fileRef = E59526EA28D24FC000C179DA /* AudiobookSample.swift */; };
 		E59892E128A9AC2600C44A85 /* Sample.swift in Sources */ = {isa = PBXBuildFile; fileRef = E59892E028A9AC2600C44A85 /* Sample.swift */; };
 		E59892ED28AC909000C44A85 /* AudiobookSampleToolbar.swift in Sources */ = {isa = PBXBuildFile; fileRef = E59892EC28AC909000C44A85 /* AudiobookSampleToolbar.swift */; };
@@ -868,26 +868,26 @@
 			remoteGlobalIDString = 118A0E281992B3FD00792DDE;
 			remoteInfo = RDServices;
 		};
+		E5534254293FB23F004FF34A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E553424F293FB23F004FF34A /* NYPLAudiobookToolkit.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 7B54418C200EA7C20047B6C6;
+			remoteInfo = NYPLAudiobookToolkit;
+		};
+		E5534256293FB23F004FF34A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E553424F293FB23F004FF34A /* NYPLAudiobookToolkit.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 7B544195200EA7C20047B6C6;
+			remoteInfo = NYPLAudiobookToolkitTests;
+		};
 		E585662426979AC100A5FBD5 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = E585662026979AC100A5FBD5 /* NYPLAEToolkit.xcodeproj */;
 			proxyType = 2;
 			remoteGlobalIDString = 7BB4E7D120A0E1D1002E1360;
 			remoteInfo = NYPLAEToolkit;
-		};
-		E58D73AD293F8EB000DFBF32 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = E58D73A8293F8EB000DFBF32 /* NYPLAudiobookToolkit.xcodeproj */;
-			proxyType = 2;
-			remoteGlobalIDString = 7B54418C200EA7C20047B6C6;
-			remoteInfo = NYPLAudiobookToolkit;
-		};
-		E58D73AF293F8EB000DFBF32 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = E58D73A8293F8EB000DFBF32 /* NYPLAudiobookToolkit.xcodeproj */;
-			proxyType = 2;
-			remoteGlobalIDString = 7B544195200EA7C20047B6C6;
-			remoteInfo = NYPLAudiobookToolkitTests;
 		};
 		E5C1F52F27990929005FC6B2 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -919,7 +919,7 @@
 			dstPath = "";
 			dstSubfolderSpec = 10;
 			files = (
-				E553422F293F950E004FF34A /* NYPLAudiobookToolkit.framework in Embed Frameworks */,
+				E5288CBE293FB69400F3B3D2 /* NYPLAudiobookToolkit.framework in Embed Frameworks */,
 				E5C1F55327990A96005FC6B2 /* OverdriveProcessor.framework in Embed Frameworks */,
 				E58565CF269774C400A5FBD5 /* AudioEngine.xcframework in Embed Frameworks */,
 				E75E7B692881860D001C5427 /* PDFRendererProvider.xcframework in Embed Frameworks */,
@@ -937,7 +937,7 @@
 			dstPath = "";
 			dstSubfolderSpec = 10;
 			files = (
-				E5534231293F95A7004FF34A /* NYPLAudiobookToolkit.framework in Embed Frameworks */,
+				E5288CC0293FB6E400F3B3D2 /* NYPLAudiobookToolkit.framework in Embed Frameworks */,
 				21986962267E2A450041369E /* PureLayout.xcframework in Embed Frameworks */,
 				21986960267E2A450041369E /* PDFRendererProvider.xcframework in Embed Frameworks */,
 				2198695C267E2A440041369E /* Minizip.xcframework in Embed Frameworks */,
@@ -1497,13 +1497,13 @@
 		E551116D283C93BC0095E723 /* EmailAddress.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmailAddress.swift; sourceTree = "<group>"; };
 		E551B359267D396A0026FC1B /* TPPLoadingViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPLoadingViewController.swift; sourceTree = "<group>"; };
 		E551B360267D402B0026FC1B /* TPPAccountList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAccountList.swift; sourceTree = "<group>"; };
+		E553424F293FB23F004FF34A /* NYPLAudiobookToolkit.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = NYPLAudiobookToolkit.xcodeproj; path = "ios-audiobooktoolkit/NYPLAudiobookToolkit.xcodeproj"; sourceTree = "<group>"; };
 		E580CD7A27EABBEE00B14475 /* LCPPDFs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LCPPDFs.swift; sourceTree = "<group>"; };
 		E580CD9627ECC06900B14475 /* PDFModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFModule.swift; sourceTree = "<group>"; };
 		E580CDA127ECE66A00B14475 /* TPPPDFViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPPDFViewController.swift; sourceTree = "<group>"; };
 		E58565CE269774C400A5FBD5 /* AudioEngine.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = AudioEngine.xcframework; path = Carthage/Build/AudioEngine.xcframework; sourceTree = "<group>"; };
 		E58565D2269774D900A5FBD5 /* NYPLAEToolkit.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = NYPLAEToolkit.xcframework; sourceTree = "<group>"; };
 		E585662026979AC100A5FBD5 /* NYPLAEToolkit.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = NYPLAEToolkit.xcodeproj; path = "ios-drm-audioengine/NYPLAEToolkit.xcodeproj"; sourceTree = "<group>"; };
-		E58D73A8293F8EB000DFBF32 /* NYPLAudiobookToolkit.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = NYPLAudiobookToolkit.xcodeproj; path = "ios-audiobooktoolkit/NYPLAudiobookToolkit.xcodeproj"; sourceTree = "<group>"; };
 		E59526EA28D24FC000C179DA /* AudiobookSample.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudiobookSample.swift; sourceTree = "<group>"; };
 		E59892E028A9AC2600C44A85 /* Sample.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sample.swift; sourceTree = "<group>"; };
 		E59892EC28AC909000C44A85 /* AudiobookSampleToolbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudiobookSampleToolbar.swift; sourceTree = "<group>"; };
@@ -1615,7 +1615,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				E5534230293F9543004FF34A /* NYPLAudiobookToolkit.framework in Frameworks */,
+				E5288CBF293FB6DE00F3B3D2 /* NYPLAudiobookToolkit.framework in Frameworks */,
 				73EB0B2E25821DF4006BC997 /* MediaPlayer.framework in Frameworks */,
 				2198699D267E78FD0041369E /* FirebaseCrashlytics.xcframework in Frameworks */,
 				21986961267E2A450041369E /* PureLayout.xcframework in Frameworks */,
@@ -1664,7 +1664,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				E58D73B5293F8F9A00DFBF32 /* NYPLAudiobookToolkit.framework in Frameworks */,
+				E5288CBD293FB61C00F3B3D2 /* NYPLAudiobookToolkit.framework in Frameworks */,
 				E5C1F55227990A89005FC6B2 /* OverdriveProcessor.framework in Frameworks */,
 				2198694D267E2A150041369E /* ZXingObjC.xcframework in Frameworks */,
 				03B092301E78871A00AD338D /* MediaPlayer.framework in Frameworks */,
@@ -2624,7 +2624,7 @@
 		A823D804192BABA400B55DE2 = {
 			isa = PBXGroup;
 			children = (
-				E58D73A8293F8EB000DFBF32 /* NYPLAudiobookToolkit.xcodeproj */,
+				E553424F293FB23F004FF34A /* NYPLAudiobookToolkit.xcodeproj */,
 				E5C1F52927990929005FC6B2 /* OverdriveProcessor.xcodeproj */,
 				E585662026979AC100A5FBD5 /* NYPLAEToolkit.xcodeproj */,
 				5A569A261B8351C6003B5B61 /* ADEPT.xcodeproj */,
@@ -2876,19 +2876,19 @@
 			path = SwiftUI;
 			sourceTree = "<group>";
 		};
-		E585662126979AC100A5FBD5 /* Products */ = {
+		E5534250293FB23F004FF34A /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				E585662526979AC100A5FBD5 /* NYPLAEToolkit.framework */,
+				E5534255293FB23F004FF34A /* NYPLAudiobookToolkit.framework */,
+				E5534257293FB23F004FF34A /* NYPLAudiobookToolkitTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
 		};
-		E58D73A9293F8EB000DFBF32 /* Products */ = {
+		E585662126979AC100A5FBD5 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				E58D73AE293F8EB000DFBF32 /* NYPLAudiobookToolkit.framework */,
-				E58D73B0293F8EB000DFBF32 /* NYPLAudiobookToolkitTests.xctest */,
+				E585662526979AC100A5FBD5 /* NYPLAEToolkit.framework */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -3211,8 +3211,8 @@
 					ProjectRef = E585662026979AC100A5FBD5 /* NYPLAEToolkit.xcodeproj */;
 				},
 				{
-					ProductGroup = E58D73A9293F8EB000DFBF32 /* Products */;
-					ProjectRef = E58D73A8293F8EB000DFBF32 /* NYPLAudiobookToolkit.xcodeproj */;
+					ProductGroup = E5534250293FB23F004FF34A /* Products */;
+					ProjectRef = E553424F293FB23F004FF34A /* NYPLAudiobookToolkit.xcodeproj */;
 				},
 				{
 					ProductGroup = E5C1F52A27990929005FC6B2 /* Products */;
@@ -3265,25 +3265,25 @@
 			remoteRef = A49C25451AE05A2600D63B89 /* PBXContainerItemProxy */;
 			sourceTree = BUILT_PRODUCTS_DIR;
 		};
+		E5534255293FB23F004FF34A /* NYPLAudiobookToolkit.framework */ = {
+			isa = PBXReferenceProxy;
+			fileType = wrapper.framework;
+			path = NYPLAudiobookToolkit.framework;
+			remoteRef = E5534254293FB23F004FF34A /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		E5534257293FB23F004FF34A /* NYPLAudiobookToolkitTests.xctest */ = {
+			isa = PBXReferenceProxy;
+			fileType = wrapper.cfbundle;
+			path = NYPLAudiobookToolkitTests.xctest;
+			remoteRef = E5534256293FB23F004FF34A /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
 		E585662526979AC100A5FBD5 /* NYPLAEToolkit.framework */ = {
 			isa = PBXReferenceProxy;
 			fileType = wrapper.framework;
 			path = NYPLAEToolkit.framework;
 			remoteRef = E585662426979AC100A5FBD5 /* PBXContainerItemProxy */;
-			sourceTree = BUILT_PRODUCTS_DIR;
-		};
-		E58D73AE293F8EB000DFBF32 /* NYPLAudiobookToolkit.framework */ = {
-			isa = PBXReferenceProxy;
-			fileType = wrapper.framework;
-			path = NYPLAudiobookToolkit.framework;
-			remoteRef = E58D73AD293F8EB000DFBF32 /* PBXContainerItemProxy */;
-			sourceTree = BUILT_PRODUCTS_DIR;
-		};
-		E58D73B0293F8EB000DFBF32 /* NYPLAudiobookToolkitTests.xctest */ = {
-			isa = PBXReferenceProxy;
-			fileType = wrapper.cfbundle;
-			path = NYPLAudiobookToolkitTests.xctest;
-			remoteRef = E58D73AF293F8EB000DFBF32 /* PBXContainerItemProxy */;
 			sourceTree = BUILT_PRODUCTS_DIR;
 		};
 		E5C1F53027990929005FC6B2 /* OverdriveProcessor.framework */ = {
