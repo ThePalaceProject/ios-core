@@ -112,7 +112,7 @@ CGFloat const marginPadding = 2.0;
 #endif
                         ];
 
-  self.title = NSLocalizedString(@"Sign In", nil);
+  self.title = NSLocalizedString(@"Sign in", nil);
 
   [[NSNotificationCenter defaultCenter]
    addObserver:self
@@ -833,7 +833,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
     return;
   }
 
-  self.logInCell.textLabel.text = NSLocalizedString(@"Sign In", nil);
+  self.logInCell.textLabel.text = NSLocalizedString(@"Sign in", nil);
   BOOL const barcodeHasText = [self.usernameTextField.text
                                stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]].length;
   BOOL const pinHasText = [self.PINTextField.text

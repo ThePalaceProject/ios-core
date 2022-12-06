@@ -156,8 +156,8 @@
   switch(self.state) {
     case TPPBookButtonsStateCanBorrow:
       visibleButtonInfo = [[NSMutableArray alloc] initWithArray: @[@{ButtonKey: self.downloadButton,
-                              TitleKey: NSLocalizedString(@"Borrow", nil),
-                              HintKey: [NSString stringWithFormat:NSLocalizedString(@"Borrows %@", nil), self.book.title]}]];
+                              TitleKey: NSLocalizedString(@"Get", nil),
+                              HintKey: [NSString stringWithFormat:NSLocalizedString(@"Gets %@", nil), self.book.title]}]];
 
       if ([self.book hasAudiobookSample] && self.samplesEnabled) {
         [visibleButtonInfo addObject:@{ButtonKey: self.sampleButton,
@@ -197,8 +197,8 @@
       break;
     case TPPBookButtonsStateHoldingFOQ:
       visibleButtonInfo = [[NSMutableArray alloc] initWithArray:@[@{ButtonKey: self.downloadButton,
-                              TitleKey: NSLocalizedString(@"Borrow", nil),
-                              HintKey: [NSString stringWithFormat:NSLocalizedString(@"Borrows %@", nil), self.book.title],
+                              TitleKey: NSLocalizedString(@"Get", nil),
+                              HintKey: [NSString stringWithFormat:NSLocalizedString(@"Gets %@", nil), self.book.title],
                               AddIndicatorKey: @(YES)},
                             @{ButtonKey: self.deleteButton,
                               TitleKey: NSLocalizedString(@"Remove", nil),
