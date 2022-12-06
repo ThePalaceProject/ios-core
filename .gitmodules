@@ -22,3 +22,6 @@
 [submodule "ios-audiobook-overdrive"]
 	path = ios-audiobook-overdrive
 	url = git@github.com:ThePalaceProject/ios-audiobook-overdrive.git
+[submodule "ios-audiobooktoolkit"]
+	path = ios-audiobooktoolkit
+	url = https://github.com/ThePalaceProject/ios-audiobooktoolkit.git
