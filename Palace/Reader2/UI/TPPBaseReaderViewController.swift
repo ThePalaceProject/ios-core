@@ -381,7 +381,8 @@ extension TPPBaseReaderViewController: NavigatorDelegate {
       }
       
       if let position = locator.locations.position {
-        return "Page \(position) of \(publication.positions.count)" + chapterTitle
+        let pageOf = NSLocalizedString("Page %@ of ", value: position, comment: "States the page count out of total pages, i.e. `Page 1 of 20`")
+        return pageOf + publication.positions.count + chapterTitle
       } else if let progression = locator.locations.totalProgression {
         return "\(progression)%" + chapterTitle
       } else {

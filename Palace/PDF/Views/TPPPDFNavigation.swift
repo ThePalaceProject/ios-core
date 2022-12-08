@@ -88,7 +88,7 @@ struct TPPPDFNavigation<Content>: View where Content: View {
   @ViewBuilder
   var trailingItems: some View {
     ZStack(alignment: .trailing) {
-      TPPPDFToolbarButton(text: "Resume") {
+      TPPPDFToolbarButton(text: Strings.TPPPDFNavigation.resume) {
         readerMode = .reader
       }
       .visible(when: isShowingPdfContorls)
