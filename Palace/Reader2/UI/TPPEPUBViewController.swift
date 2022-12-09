@@ -100,7 +100,11 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
 
   override open func viewWillDisappear(_ animated: Bool) {
     super.viewWillDisappear(animated)
-    navigationController?.navigationBar.setAppearance(TPPConfiguration.defaultAppearance())
+    if let appearance = TPPConfiguration.defaultAppearance() {
+      navigationController?.navigationBar.setAppearance(appearance)
+      navigationController?.navigationBar.forceUpdateAppearance(style: appearance.backgroundColor == .black ? .light : .dark)
+    }
+
     navigationController?.navigationBar.tintColor = TPPConfiguration.iconColor()
     tabBarController?.tabBar.tintColor = TPPConfiguration.iconColor()
     epubNavigator.userSettings.save()
