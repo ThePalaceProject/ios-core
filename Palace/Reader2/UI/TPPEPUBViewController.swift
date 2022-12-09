@@ -161,7 +161,7 @@ extension TPPEPUBViewController: TPPReaderSettingsDelegate {
     view.backgroundColor = colors.backgroundColor
     view.tintColor = colors.textColor
     navigationController?.navigationBar.setAppearance(TPPConfiguration.appearance(withBackgroundColor: colors.backgroundColor))
-    navigationController?.navigationBar.forceUpdateAppearance()
+    navigationController?.navigationBar.forceUpdateAppearance(style: colors.navigationColor == .black ? .light : .dark)
     navigationController?.navigationBar.tintColor = colors.navigationColor
     tabBarController?.tabBar.tintColor = colors.navigationColor
   }

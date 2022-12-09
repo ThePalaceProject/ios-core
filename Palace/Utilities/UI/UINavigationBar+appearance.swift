@@ -22,11 +22,12 @@ extension UINavigationBar {
   
   /// Updatign the appearance of the navbar, when presented, will not cause the changes to propogage.
   /// Calling this function will trigger the view to redraw itself, forcing an appearance update
-  func forceUpdateAppearance() {
-    UIApplication.shared.windows.compactMap { window in
+  func forceUpdateAppearance(style: UIUserInterfaceStyle) {
+    _ = UIApplication.shared.windows.compactMap { window in
       for view in window.subviews {
         view.removeFromSuperview()
         window.addSubview(view)
+        window.overrideUserInterfaceStyle = style
       }
     }
   }
