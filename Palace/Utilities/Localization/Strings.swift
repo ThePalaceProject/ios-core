@@ -60,7 +60,7 @@ struct Strings {
     static let wait = NSLocalizedString("Wait", comment: "button title")
     static let reject = NSLocalizedString("Reject", comment: "Title for a Reject button")
     static let accept = NSLocalizedString("Accept", comment: "Title for a Accept button")
-    static let signin = NSLocalizedString("Sign In", comment: "")
+    static let signin = NSLocalizedString("Sign in", comment: "")
     static let close = NSLocalizedString("Close", comment: "")
   }
   
