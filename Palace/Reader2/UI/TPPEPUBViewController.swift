@@ -16,6 +16,7 @@ import R2Navigator
 class TPPEPUBViewController: TPPBaseReaderViewController {
 
   var popoverUserconfigurationAnchor: UIBarButtonItem?
+  private let systemUserInterfaceStyle: UIUserInterfaceStyle
 
   init(publication: Publication,
        book: TPPBook,
@@ -23,6 +24,7 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
        resourcesServer: ResourcesServer,
        forSample: Bool = false) {
 
+    systemUserInterfaceStyle = UITraitCollection.current.userInterfaceStyle
     let safeAreaInsets = UIApplication.shared.keyWindow?.safeAreaInsets ?? UIEdgeInsets()
     let overlayLabelInset = TPPBaseReaderViewController.overlayLabelMargin * 2 // Vertical margin for labels
     let contentInset: [UIUserInterfaceSizeClass: EPUBContentInsets] = [
@@ -100,7 +102,11 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
 
   override open func viewWillDisappear(_ animated: Bool) {
     super.viewWillDisappear(animated)
-    navigationController?.navigationBar.setAppearance(TPPConfiguration.defaultAppearance())
+    if let appearance = TPPConfiguration.defaultAppearance() {
+      navigationController?.navigationBar.setAppearance(appearance)
+      navigationController?.navigationBar.forceUpdateAppearance(style: systemUserInterfaceStyle)
+    }
+
     navigationController?.navigationBar.tintColor = TPPConfiguration.iconColor()
     tabBarController?.tabBar.tintColor = TPPConfiguration.iconColor()
     epubNavigator.userSettings.save()
@@ -161,6 +167,7 @@ extension TPPEPUBViewController: TPPReaderSettingsDelegate {
     view.backgroundColor = colors.backgroundColor
     view.tintColor = colors.textColor
     navigationController?.navigationBar.setAppearance(TPPConfiguration.appearance(withBackgroundColor: colors.backgroundColor))
+    navigationController?.navigationBar.forceUpdateAppearance(style: colors.navigationColor == .black ? .light : .dark)
     navigationController?.navigationBar.tintColor = colors.navigationColor
     tabBarController?.tabBar.tintColor = colors.navigationColor
   }
