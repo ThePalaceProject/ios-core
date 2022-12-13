@@ -16,6 +16,7 @@ import R2Navigator
 class TPPEPUBViewController: TPPBaseReaderViewController {
 
   var popoverUserconfigurationAnchor: UIBarButtonItem?
+  private let systemUserInterfaceStyle: UIUserInterfaceStyle
 
   init(publication: Publication,
        book: TPPBook,
@@ -23,6 +24,7 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
        resourcesServer: ResourcesServer,
        forSample: Bool = false) {
 
+    systemUserInterfaceStyle = UITraitCollection.current.userInterfaceStyle
     let safeAreaInsets = UIApplication.shared.keyWindow?.safeAreaInsets ?? UIEdgeInsets()
     let overlayLabelInset = TPPBaseReaderViewController.overlayLabelMargin * 2 // Vertical margin for labels
     let contentInset: [UIUserInterfaceSizeClass: EPUBContentInsets] = [
@@ -102,7 +104,7 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     super.viewWillDisappear(animated)
     if let appearance = TPPConfiguration.defaultAppearance() {
       navigationController?.navigationBar.setAppearance(appearance)
-      navigationController?.navigationBar.forceUpdateAppearance(style: appearance.backgroundColor == .black ? .light : .dark)
+      navigationController?.navigationBar.forceUpdateAppearance(style: systemUserInterfaceStyle)
     }
 
     navigationController?.navigationBar.tintColor = TPPConfiguration.iconColor()
