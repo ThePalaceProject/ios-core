@@ -144,16 +144,12 @@
 		2197480F26D9254500FA25DF /* R2LCPClient.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 73A7BA4D25A62FE900C2906C /* R2LCPClient.framework */; };
 		2198690D267E29B00041369E /* Minizip.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2198690C267E29B00041369E /* Minizip.xcframework */; };
 		2198690E267E29B00041369E /* Minizip.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 2198690C267E29B00041369E /* Minizip.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		21986914267E29BC0041369E /* NYPLAudiobookToolkit.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 21986913267E29BC0041369E /* NYPLAudiobookToolkit.xcframework */; };
-		21986915267E29BC0041369E /* NYPLAudiobookToolkit.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 21986913267E29BC0041369E /* NYPLAudiobookToolkit.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		21986922267E29D70041369E /* PureLayout.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 21986921267E29D70041369E /* PureLayout.xcframework */; };
 		21986923267E29D70041369E /* PureLayout.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 21986921267E29D70041369E /* PureLayout.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		2198694D267E2A150041369E /* ZXingObjC.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2198694C267E2A140041369E /* ZXingObjC.xcframework */; };
 		2198694E267E2A150041369E /* ZXingObjC.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 2198694C267E2A140041369E /* ZXingObjC.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		2198695B267E2A440041369E /* Minizip.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2198690C267E29B00041369E /* Minizip.xcframework */; };
 		2198695C267E2A440041369E /* Minizip.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 2198690C267E29B00041369E /* Minizip.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		2198695D267E2A440041369E /* NYPLAudiobookToolkit.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 21986913267E29BC0041369E /* NYPLAudiobookToolkit.xcframework */; };
-		2198695E267E2A450041369E /* NYPLAudiobookToolkit.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 21986913267E29BC0041369E /* NYPLAudiobookToolkit.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		2198695F267E2A450041369E /* PDFRendererProvider.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2198691A267E29CC0041369E /* PDFRendererProvider.xcframework */; };
 		21986960267E2A450041369E /* PDFRendererProvider.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 2198691A267E29CC0041369E /* PDFRendererProvider.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		21986961267E2A450041369E /* PureLayout.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 21986921267E29D70041369E /* PureLayout.xcframework */; };
@@ -675,6 +671,10 @@
 		E5231241285C291D007D1DB5 /* AudioBookmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5231240285C291D007D1DB5 /* AudioBookmark.swift */; };
 		E523124B285C3828007D1DB5 /* TPPBookRegistry+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E523124A285C3828007D1DB5 /* TPPBookRegistry+Extensions.swift */; };
 		E523124D28641505007D1DB5 /* LoadingViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E523124C28641505007D1DB5 /* LoadingViewController.swift */; };
+		E5288CBD293FB61C00F3B3D2 /* NYPLAudiobookToolkit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E5534255293FB23F004FF34A /* NYPLAudiobookToolkit.framework */; };
+		E5288CBE293FB69400F3B3D2 /* NYPLAudiobookToolkit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E5534255293FB23F004FF34A /* NYPLAudiobookToolkit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		E5288CBF293FB6DE00F3B3D2 /* NYPLAudiobookToolkit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E5534255293FB23F004FF34A /* NYPLAudiobookToolkit.framework */; };
+		E5288CC0293FB6E400F3B3D2 /* NYPLAudiobookToolkit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E5534255293FB23F004FF34A /* NYPLAudiobookToolkit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		E52E3BBC28C0EF410073DC4D /* TPPReaderAdvancedSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = E52E3BBB28C0EF410073DC4D /* TPPReaderAdvancedSettings.swift */; };
 		E52E3C0528C19BAD0073DC4D /* EpubSample.swift in Sources */ = {isa = PBXBuildFile; fileRef = E52E3BFF28C19BAD0073DC4D /* EpubSample.swift */; };
 		E52E3C0828C19BAD0073DC4D /* AudiobookSamplePlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E52E3C0228C19BAD0073DC4D /* AudiobookSamplePlayer.swift */; };
@@ -868,6 +868,20 @@
 			remoteGlobalIDString = 118A0E281992B3FD00792DDE;
 			remoteInfo = RDServices;
 		};
+		E5534254293FB23F004FF34A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E553424F293FB23F004FF34A /* NYPLAudiobookToolkit.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 7B54418C200EA7C20047B6C6;
+			remoteInfo = NYPLAudiobookToolkit;
+		};
+		E5534256293FB23F004FF34A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E553424F293FB23F004FF34A /* NYPLAudiobookToolkit.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 7B544195200EA7C20047B6C6;
+			remoteInfo = NYPLAudiobookToolkitTests;
+		};
 		E585662426979AC100A5FBD5 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = E585662026979AC100A5FBD5 /* NYPLAEToolkit.xcodeproj */;
@@ -905,13 +919,13 @@
 			dstPath = "";
 			dstSubfolderSpec = 10;
 			files = (
+				E5288CBE293FB69400F3B3D2 /* NYPLAudiobookToolkit.framework in Embed Frameworks */,
 				E5C1F55327990A96005FC6B2 /* OverdriveProcessor.framework in Embed Frameworks */,
 				E58565CF269774C400A5FBD5 /* AudioEngine.xcframework in Embed Frameworks */,
 				E75E7B692881860D001C5427 /* PDFRendererProvider.xcframework in Embed Frameworks */,
 				2178984E269F174500374A6B /* NYPLAEToolkit.framework in Embed Frameworks */,
 				21986923267E29D70041369E /* PureLayout.xcframework in Embed Frameworks */,
 				2198690E267E29B00041369E /* Minizip.xcframework in Embed Frameworks */,
-				21986915267E29BC0041369E /* NYPLAudiobookToolkit.xcframework in Embed Frameworks */,
 				2198694E267E2A150041369E /* ZXingObjC.xcframework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
@@ -923,10 +937,10 @@
 			dstPath = "";
 			dstSubfolderSpec = 10;
 			files = (
+				E5288CC0293FB6E400F3B3D2 /* NYPLAudiobookToolkit.framework in Embed Frameworks */,
 				21986962267E2A450041369E /* PureLayout.xcframework in Embed Frameworks */,
 				21986960267E2A450041369E /* PDFRendererProvider.xcframework in Embed Frameworks */,
 				2198695C267E2A440041369E /* Minizip.xcframework in Embed Frameworks */,
-				2198695E267E2A450041369E /* NYPLAudiobookToolkit.xcframework in Embed Frameworks */,
 				21986970267E2A480041369E /* ZXingObjC.xcframework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
@@ -1483,6 +1497,7 @@
 		E551116D283C93BC0095E723 /* EmailAddress.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmailAddress.swift; sourceTree = "<group>"; };
 		E551B359267D396A0026FC1B /* TPPLoadingViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPLoadingViewController.swift; sourceTree = "<group>"; };
 		E551B360267D402B0026FC1B /* TPPAccountList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAccountList.swift; sourceTree = "<group>"; };
+		E553424F293FB23F004FF34A /* NYPLAudiobookToolkit.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = NYPLAudiobookToolkit.xcodeproj; path = "ios-audiobooktoolkit/NYPLAudiobookToolkit.xcodeproj"; sourceTree = "<group>"; };
 		E580CD7A27EABBEE00B14475 /* LCPPDFs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LCPPDFs.swift; sourceTree = "<group>"; };
 		E580CD9627ECC06900B14475 /* PDFModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFModule.swift; sourceTree = "<group>"; };
 		E580CDA127ECE66A00B14475 /* TPPPDFViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPPDFViewController.swift; sourceTree = "<group>"; };
@@ -1600,6 +1615,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E5288CBF293FB6DE00F3B3D2 /* NYPLAudiobookToolkit.framework in Frameworks */,
 				73EB0B2E25821DF4006BC997 /* MediaPlayer.framework in Frameworks */,
 				2198699D267E78FD0041369E /* FirebaseCrashlytics.xcframework in Frameworks */,
 				21986961267E2A450041369E /* PureLayout.xcframework in Frameworks */,
@@ -1609,7 +1625,6 @@
 				73EB0B3225821DF4006BC997 /* AudioToolbox.framework in Frameworks */,
 				73EB0B3325821DF4006BC997 /* libiconv.tbd in Frameworks */,
 				219869DA267E80820041369E /* PromisesObjC.xcframework in Frameworks */,
-				2198695D267E2A440041369E /* NYPLAudiobookToolkit.xcframework in Frameworks */,
 				73EB0B3425821DF4006BC997 /* CoreGraphics.framework in Frameworks */,
 				73EB0B3525821DF4006BC997 /* QuartzCore.framework in Frameworks */,
 				2198695F267E2A450041369E /* PDFRendererProvider.xcframework in Frameworks */,
@@ -1649,6 +1664,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E5288CBD293FB61C00F3B3D2 /* NYPLAudiobookToolkit.framework in Frameworks */,
 				E5C1F55227990A89005FC6B2 /* OverdriveProcessor.framework in Frameworks */,
 				2198694D267E2A150041369E /* ZXingObjC.xcframework in Frameworks */,
 				03B092301E78871A00AD338D /* MediaPlayer.framework in Frameworks */,
@@ -1695,7 +1711,6 @@
 				219869AC267E792B0041369E /* FirebaseCore.xcframework in Frameworks */,
 				E77D021E2931337000544180 /* R2Streamer in Frameworks */,
 				219869E9267E81CB0041369E /* GoogleDataTransport.xcframework in Frameworks */,
-				21986914267E29BC0041369E /* NYPLAudiobookToolkit.xcframework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -2609,6 +2624,7 @@
 		A823D804192BABA400B55DE2 = {
 			isa = PBXGroup;
 			children = (
+				E553424F293FB23F004FF34A /* NYPLAudiobookToolkit.xcodeproj */,
 				E5C1F52927990929005FC6B2 /* OverdriveProcessor.xcodeproj */,
 				E585662026979AC100A5FBD5 /* NYPLAEToolkit.xcodeproj */,
 				5A569A261B8351C6003B5B61 /* ADEPT.xcodeproj */,
@@ -2858,6 +2874,15 @@
 				E5FFB9CA28AFE8AF0042907F /* AsyncImage.swift */,
 			);
 			path = SwiftUI;
+			sourceTree = "<group>";
+		};
+		E5534250293FB23F004FF34A /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				E5534255293FB23F004FF34A /* NYPLAudiobookToolkit.framework */,
+				E5534257293FB23F004FF34A /* NYPLAudiobookToolkitTests.xctest */,
+			);
+			name = Products;
 			sourceTree = "<group>";
 		};
 		E585662126979AC100A5FBD5 /* Products */ = {
@@ -3185,6 +3210,10 @@
 					ProjectRef = E585662026979AC100A5FBD5 /* NYPLAEToolkit.xcodeproj */;
 				},
 				{
+					ProductGroup = E5534250293FB23F004FF34A /* Products */;
+					ProjectRef = E553424F293FB23F004FF34A /* NYPLAudiobookToolkit.xcodeproj */;
+				},
+				{
 					ProductGroup = E5C1F52A27990929005FC6B2 /* Products */;
 					ProjectRef = E5C1F52927990929005FC6B2 /* OverdriveProcessor.xcodeproj */;
 				},
@@ -3233,6 +3262,20 @@
 			fileType = archive.ar;
 			path = libRDServices.a;
 			remoteRef = A49C25451AE05A2600D63B89 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		E5534255293FB23F004FF34A /* NYPLAudiobookToolkit.framework */ = {
+			isa = PBXReferenceProxy;
+			fileType = wrapper.framework;
+			path = NYPLAudiobookToolkit.framework;
+			remoteRef = E5534254293FB23F004FF34A /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		E5534257293FB23F004FF34A /* NYPLAudiobookToolkitTests.xctest */ = {
+			isa = PBXReferenceProxy;
+			fileType = wrapper.cfbundle;
+			path = NYPLAudiobookToolkitTests.xctest;
+			remoteRef = E5534256293FB23F004FF34A /* PBXContainerItemProxy */;
 			sourceTree = BUILT_PRODUCTS_DIR;
 		};
 		E585662526979AC100A5FBD5 /* NYPLAEToolkit.framework */ = {
@@ -4294,7 +4337,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 124;
+				CURRENT_PROJECT_VERSION = 125;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
@@ -4350,7 +4393,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 124;
+				CURRENT_PROJECT_VERSION = 125;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
@@ -4522,7 +4565,7 @@
 		A823D83A192BABA400B55DE2 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = NO;
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ENABLE_MODULES = YES;
@@ -4531,7 +4574,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 124;
+				CURRENT_PROJECT_VERSION = 125;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -4586,14 +4629,14 @@
 		A823D83B192BABA400B55DE2 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = NO;
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 124;
+				CURRENT_PROJECT_VERSION = 125;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
