@@ -317,6 +317,7 @@ class TPPBookRegistry: NSObject {
       return
     }
     coverRegistry.removePinnedThumbnailImageForBookIdentifier(book.identifier)
+    registry[book.identifier]?.book = book
     registry[book.identifier]?.state = .Unregistered
     save()
   }
