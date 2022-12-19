@@ -136,6 +136,10 @@ struct Strings {
     static let unsupportedContentType = NSLocalizedString("Unsupported format", comment: "Unsupported format")
   }
   
+  struct TPPPDFNavigation {
+    static let resume = NSLocalizedString("Resume", comment: "A button to continue reading title.")
+  }
+  
   struct TPPDeveloperSettingsTableViewController {
     static let developerSettingsTitle = NSLocalizedString("Testing", comment: "Developer Settings")
   }
