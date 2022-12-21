@@ -23,11 +23,11 @@ CURL_RESULT=`curl -I -s -o /dev/null -w "%{http_code}"  https://github.com/ThePa
 
 if [ "$CURL_RESULT" == 200 ]; then
   echo "Build for ${ARCHIVE_NAME} already exists in ios-binaries"
-  echo "::set-output name=version_changed::0"
+  echo "version_changed=0" >> $GITHUB_OUTPUT
 elif [ "$CURL_RESULT" != 404 ]; then
   echo "Obtained unexpected curl result for file named \"$UPLOAD_FILENAME\""
   exit 1
 else
   echo "Build for ${ARCHIVE_NAME} doesn't exist in ios-binaries"    
-  echo "::set-output name=version_changed::1"
+  echo "version_changed=1" >> $GITHUB_OUTPUT
 fi
