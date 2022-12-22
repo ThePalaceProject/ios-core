@@ -11,12 +11,12 @@ jobs:
       - name: Force Xcode 13.2
         run: sudo xcode-select -switch /Applications/Xcode_13.2.app
       - name: Checkout main repo and submodules
-        uses: actions/checkout@v2.3.4
+        uses: actions/checkout@v3
         with:
           submodules: true
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
       - name: Checkout Certificates
-        uses: actions/checkout@v2.3.4
+        uses: actions/checkout@v3
         with:
           repository: ThePalaceProject/mobile-certificates
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
