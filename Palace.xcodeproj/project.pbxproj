@@ -665,8 +665,6 @@
 		E50D684626AB235400F1042B /* TPPReaderBookmarkCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03690E221EB2B35000F75D5F /* TPPReaderBookmarkCell.swift */; };
 		E50D684726AB235400F1042B /* TPPReaderTOCCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7386C1F9245276CA004C78BD /* TPPReaderTOCCell.swift */; };
 		E5158C202935345F0007ABDB /* TransifexManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E549954728EE1AAA00EA0D9B /* TransifexManager.swift */; };
-		E5158C3F293541630007ABDB /* Transifex in Frameworks */ = {isa = PBXBuildFile; productRef = E5158C3E293541630007ABDB /* Transifex */; };
-		E5158C412935417A0007ABDB /* Transifex in Frameworks */ = {isa = PBXBuildFile; productRef = E5158C402935417A0007ABDB /* Transifex */; };
 		E51818442927FD8E00C03AD5 /* Strings.swift in Sources */ = {isa = PBXBuildFile; fileRef = E54DD4CF275C66F30013C200 /* Strings.swift */; };
 		E5231241285C291D007D1DB5 /* AudioBookmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5231240285C291D007D1DB5 /* AudioBookmark.swift */; };
 		E523124B285C3828007D1DB5 /* TPPBookRegistry+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E523124A285C3828007D1DB5 /* TPPBookRegistry+Extensions.swift */; };
@@ -1640,7 +1638,6 @@
 				73EB0B3B25821DF4006BC997 /* LocalAuthentication.framework in Frameworks */,
 				73EB0B3C25821DF4006BC997 /* SystemConfiguration.framework in Frameworks */,
 				73EB0B3D25821DF4006BC997 /* Security.framework in Frameworks */,
-				E5158C412935417A0007ABDB /* Transifex in Frameworks */,
 				219869D2267E80810041369E /* GoogleDataTransport.xcframework in Frameworks */,
 				E77D022B2931360100544180 /* R2Streamer in Frameworks */,
 				E77D022D2931361700544180 /* SwiftSoup in Frameworks */,
@@ -1707,7 +1704,6 @@
 				2198690D267E29B00041369E /* Minizip.xcframework in Frameworks */,
 				219869AE267E792B0041369E /* FirebaseCoreDiagnostics.xcframework in Frameworks */,
 				E77D02202931337000544180 /* ReadiumLCP in Frameworks */,
-				E5158C3F293541630007ABDB /* Transifex in Frameworks */,
 				219869AC267E792B0041369E /* FirebaseCore.xcframework in Frameworks */,
 				E77D021E2931337000544180 /* R2Streamer in Frameworks */,
 				219869E9267E81CB0041369E /* GoogleDataTransport.xcframework in Frameworks */,
@@ -3111,7 +3107,6 @@
 				E77D022A2931360100544180 /* R2Streamer */,
 				E77D022C2931361700544180 /* SwiftSoup */,
 				E7CA1C4F2938107A009CC6FD /* SQLite */,
-				E5158C402935417A0007ABDB /* Transifex */,
 			);
 			productName = Simplified;
 			productReference = 73EB0B7525821DF4006BC997 /* Palace-noDRM.app */;
@@ -3140,7 +3135,6 @@
 				E77D021F2931337000544180 /* ReadiumLCP */,
 				E77D02242931357400544180 /* SwiftSoup */,
 				E7CA1C4D29381068009CC6FD /* SQLite */,
-				E5158C3E293541630007ABDB /* Transifex */,
 			);
 			productName = Simplified;
 			productReference = A823D80D192BABA400B55DE2 /* Palace.app */;
@@ -3196,7 +3190,6 @@
 				E77D02182931337000544180 /* XCRemoteSwiftPackageReference "swift-toolkit" */,
 				E77D02232931357400544180 /* XCRemoteSwiftPackageReference "SwiftSoup" */,
 				E7CA1C4C29381068009CC6FD /* XCRemoteSwiftPackageReference "SQLite.swift" */,
-				E5158C3D293541630007ABDB /* XCRemoteSwiftPackageReference "transifex-swift" */,
 			);
 			productRefGroup = A823D80E192BABA400B55DE2 /* Products */;
 			projectDirPath = "";
@@ -4572,11 +4565,9 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
-				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 126;
-				DEVELOPMENT_TEAM = "";
-				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
+				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -4605,7 +4596,6 @@
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PROVISIONING_PROFILE = "2e185b6c-271e-4b02-a05e-860b8c3831f6";
 				PROVISIONING_PROFILE_SPECIFIER = "";
-				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "Ad hoc 2";
 				RUN_CLANG_STATIC_ANALYZER = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG SIMPLYE FEATURE_DRM_CONNECTOR FEATURE_CRASH_REPORTING LCP FEATURE_OVERDRIVE";
 				SWIFT_OBJC_BRIDGING_HEADER = "Palace/AppInfrastructure/Palace-Bridging-Header.h";
@@ -4727,14 +4717,6 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		E5158C3D293541630007ABDB /* XCRemoteSwiftPackageReference "transifex-swift" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/transifex/transifex-swift/";
-			requirement = {
-				kind = upToNextMinorVersion;
-				minimumVersion = 1.0.0;
-			};
-		};
 		E77D02182931337000544180 /* XCRemoteSwiftPackageReference "swift-toolkit" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/readium/swift-toolkit.git";
@@ -4762,16 +4744,6 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		E5158C3E293541630007ABDB /* Transifex */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E5158C3D293541630007ABDB /* XCRemoteSwiftPackageReference "transifex-swift" */;
-			productName = Transifex;
-		};
-		E5158C402935417A0007ABDB /* Transifex */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E5158C3D293541630007ABDB /* XCRemoteSwiftPackageReference "transifex-swift" */;
-			productName = Transifex;
-		};
 		E77D02192931337000544180 /* R2Navigator */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = E77D02182931337000544180 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
