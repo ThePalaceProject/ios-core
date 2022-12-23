@@ -12,7 +12,7 @@
 #
 
 cd ..
-git clone git@github.com:ThePalaceProject/mobile-certificates.git -b feature/new-lcp-version
+git clone git@github.com:ThePalaceProject/mobile-certificates.git
 git clone git@github.com:ThePalaceProject/mobile-drm-adeptconnector.git
 git clone git@github.com:ThePalaceProject/ios-audiobook-overdrive.git
 
