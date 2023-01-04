@@ -140,6 +140,7 @@
 		2178984D269F174500374A6B /* NYPLAEToolkit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E585662526979AC100A5FBD5 /* NYPLAEToolkit.framework */; };
 		2178984E269F174500374A6B /* NYPLAEToolkit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E585662526979AC100A5FBD5 /* NYPLAEToolkit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		219747FC26D9218400FA25DF /* TPPLCPClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 219747F626D9218400FA25DF /* TPPLCPClient.swift */; };
+		2197480F26D9254500FA25DF /* R2LCPClient.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 73A7BA4D25A62FE900C2906C /* R2LCPClient.framework */; };
 		2198690D267E29B00041369E /* Minizip.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2198690C267E29B00041369E /* Minizip.xcframework */; };
 		2198690E267E29B00041369E /* Minizip.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 2198690C267E29B00041369E /* Minizip.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		21986922267E29D70041369E /* PureLayout.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 21986921267E29D70041369E /* PureLayout.xcframework */; };
@@ -831,8 +832,6 @@
 		E7E8939A284A1EB800C7A4F3 /* TPPPDFPreviewBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7E89398284A1EB800C7A4F3 /* TPPPDFPreviewBar.swift */; };
 		E7EB9A8828736508004F484D /* TPPPDFToolbarButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7EB9A8728736508004F484D /* TPPPDFToolbarButton.swift */; };
 		E7EB9A9428736696004F484D /* TPPPDFBackButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7EB9A9328736696004F484D /* TPPPDFBackButton.swift */; };
-		E7F287792956566900EEB1E0 /* R2LCPClient.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = E7F287782956566800EEB1E0 /* R2LCPClient.xcframework */; };
-		E7F2877A2956566900EEB1E0 /* R2LCPClient.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E7F287782956566800EEB1E0 /* R2LCPClient.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		E7F403212899A70A004934A3 /* OPDS2LinkArray.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7F403202899A70A004934A3 /* OPDS2LinkArray.swift */; };
 		E7F8DA5F287854F2006996BC /* TPPPDFThumbnailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7F8DA5E287854F2006996BC /* TPPPDFThumbnailView.swift */; };
 		E7FD4E52286CCF2C00D26A3B /* TPPPDFLocation.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7FD4E51286CCF2C00D26A3B /* TPPPDFLocation.swift */; };
@@ -929,7 +928,6 @@
 				E5288CBE293FB69400F3B3D2 /* NYPLAudiobookToolkit.framework in Embed Frameworks */,
 				E5C1F55327990A96005FC6B2 /* OverdriveProcessor.framework in Embed Frameworks */,
 				E58565CF269774C400A5FBD5 /* AudioEngine.xcframework in Embed Frameworks */,
-				E7F2877A2956566900EEB1E0 /* R2LCPClient.xcframework in Embed Frameworks */,
 				E75E7B692881860D001C5427 /* PDFRendererProvider.xcframework in Embed Frameworks */,
 				2178984E269F174500374A6B /* NYPLAEToolkit.framework in Embed Frameworks */,
 				21986923267E29D70041369E /* PureLayout.xcframework in Embed Frameworks */,
@@ -1609,7 +1607,6 @@
 		E7E89398284A1EB800C7A4F3 /* TPPPDFPreviewBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFPreviewBar.swift; sourceTree = "<group>"; };
 		E7EB9A8728736508004F484D /* TPPPDFToolbarButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFToolbarButton.swift; sourceTree = "<group>"; };
 		E7EB9A9328736696004F484D /* TPPPDFBackButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFBackButton.swift; sourceTree = "<group>"; };
-		E7F287782956566800EEB1E0 /* R2LCPClient.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = R2LCPClient.xcframework; path = Carthage/Build/R2LCPClient.xcframework; sourceTree = "<group>"; };
 		E7F403202899A70A004934A3 /* OPDS2LinkArray.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OPDS2LinkArray.swift; sourceTree = "<group>"; };
 		E7F8DA5E287854F2006996BC /* TPPPDFThumbnailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFThumbnailView.swift; sourceTree = "<group>"; };
 		E7FD4E51286CCF2C00D26A3B /* TPPPDFLocation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFLocation.swift; sourceTree = "<group>"; };
@@ -1677,7 +1674,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				E7F287792956566900EEB1E0 /* R2LCPClient.xcframework in Frameworks */,
 				E5288CBD293FB61C00F3B3D2 /* NYPLAudiobookToolkit.framework in Frameworks */,
 				E5C1F55227990A89005FC6B2 /* OverdriveProcessor.framework in Frameworks */,
 				2198694D267E2A150041369E /* ZXingObjC.xcframework in Frameworks */,
@@ -1705,6 +1701,7 @@
 				219869ED267E81CC0041369E /* nanopb.xcframework in Frameworks */,
 				219869EF267E81CD0041369E /* PromisesObjC.xcframework in Frameworks */,
 				219869E7267E81CB0041369E /* GoogleAppMeasurement.xcframework in Frameworks */,
+				2197480F26D9254500FA25DF /* R2LCPClient.framework in Frameworks */,
 				84FCD2611B7BA79200BFEDD9 /* CoreLocation.framework in Frameworks */,
 				E77D02252931357400544180 /* SwiftSoup in Frameworks */,
 				A823D815192BABA400B55DE2 /* UIKit.framework in Frameworks */,
@@ -2667,7 +2664,6 @@
 		A823D80F192BABA400B55DE2 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
-				E7F287782956566800EEB1E0 /* R2LCPClient.xcframework */,
 				E708C18C27734EE300D34899 /* DifferenceKit.xcframework */,
 				21F634E426D828CF00C8BE87 /* ReadiumLCP.xcframework */,
 				E58565D2269774D900A5FBD5 /* NYPLAEToolkit.xcframework */,
@@ -3444,11 +3440,13 @@
 			inputFileListPaths = (
 			);
 			inputPaths = (
+				"$(SRCROOT)/Carthage/Build/iOS/R2LCPClient.framework",
 			);
 			name = "Copy Frameworks (Carthage)";
 			outputFileListPaths = (
 			);
 			outputPaths = (
+				"$(BUILT_PRODUCTS_DIR)/$(FRAMEWORKS_FOLDER_PATH)/R2LCPClient.framework",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;

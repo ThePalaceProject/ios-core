@@ -9,8 +9,6 @@ This repository contains the client-side code for The Palace Project [Palace](ht
 - Install Xcode 13.2 in `/Applications`, open it and make sure to install additional components if it asks you.
 - Install [Carthage](https://github.com/Carthage/Carthage) if you haven't already. Using `brew` is recommended.
 
-If you run this project **with DRM support** on a Mac computer with Apple Silicon, make sure to check **[x]&nbsp;Open&nbsp;using&nbsp;Rosetta** in Xcode.app application info. This is required to build with Adobe DRM support. 
-
 # Building without Adobe DRM nor Private Repos
 
 ```bash
