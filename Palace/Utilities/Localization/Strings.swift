@@ -222,4 +222,11 @@ struct Strings {
     static let downloadReady = NSLocalizedString("Ready for Download", comment: "")
     static let checkoutTitle = NSLocalizedString("Check Out", comment: "")
   }
+  
+  struct MyBooksView {
+    static let sortBy = NSLocalizedString("Sort By", comment: "")
+    static let author = NSLocalizedString("Author", comment: "")
+    static let title = NSLocalizedString("Title", comment: "")
+    static let searchBooks = NSLocalizedString("Search My Books", comment: "")
+  }
 }

@@ -7,7 +7,7 @@
 @interface TPPRootTabBarController () <UITabBarControllerDelegate>
 
 @property (nonatomic) TPPCatalogNavigationController *catalogNavigationController;
-@property (nonatomic) TPPMyBooksNavigationController *myBooksNavigationController;
+@property (nonatomic) TPPMyBooksViewController *myBooksNavigationController;
 @property (nonatomic) TPPHoldsNavigationController *holdsNavigationController;
 @property (nonatomic) TPPSettingsViewController *settingsViewController;
 @property (readwrite) TPPR2Owner *r2Owner;
@@ -41,7 +41,7 @@
   self.delegate = self;
   
   self.catalogNavigationController = [[TPPCatalogNavigationController alloc] init];
-  self.myBooksNavigationController = [[TPPMyBooksNavigationController alloc] init];
+  self.myBooksNavigationController = [[TPPMyBooksViewController alloc] init];
   self.holdsNavigationController = [[TPPHoldsNavigationController alloc] init];
   self.settingsViewController = (TPPSettingsViewController * ) [TPPSettingsViewController makeSwiftUIViewWithDismissHandler:^{
     [[self presentedViewController] dismissViewControllerAnimated:YES completion:nil];
