@@ -7,11 +7,27 @@
 //
 
 import SwiftUI
+import Combine
 
 struct MyBooksView: View {
-    var body: some View {
-        Text(/*@START_MENU_TOKEN@*/"Hello, World!"/*@END_MENU_TOKEN@*/)
-    }
-}
+  typealias DisplayStrings = Strings.MyBooksView
+  @ObservedObject var model: MyBooksViewModel
 
+  var body: some View {
+    VStack(alignment: .leading) {
+      facetView
+      List {
+        ForEach(model.books) {
+          BookCell(book: $0)
+        }
+      }
+    }
+  }
+  
+  @ViewBuilder private var facetView: some View {
+    FacetView(
+      model: model.facetViewModel()
+    )
+  }
+}
 

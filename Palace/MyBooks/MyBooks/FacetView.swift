@@ -11,12 +11,15 @@ import Combine
 
 struct FacetView: View {
   @ObservedObject var model: FacetViewModel
+  @State private var showAlert = false
 
   var body: some View {
     HStack {
       titleLabel
       facet
     }
+    .actionSheet(isPresented: $showAlert) { facetAlert }
+    .font(.footnote)
     .padding(.vertical)
   }
 
@@ -26,11 +29,30 @@ struct FacetView: View {
 
   var facet: some View {
     Button(action: {
-      print("update current facet")
+      showAlert = true
     }) {
       Text(model.activeFacet.title)
-        .border(.white, width: 1)
-        .cornerRadius(3)
     }
+    .frame(width: 60, height: 30)
+    .border(.white, width: 1)
+    .cornerRadius(2)
+  }
+
+  private var facetAlert: ActionSheet {
+    var buttons = [ActionSheet.Button]()
+  
+    if let secondaryFacet = model.facets.first(where: { $0.title != model.activeFacet.title }) {
+      buttons.append(ActionSheet.Button.default(Text(secondaryFacet.title)) {
+        self.model.activeFacet = secondaryFacet
+      })
+      
+      buttons.append(Alert.Button.default(Text(model.activeFacet.title)) {
+        self.model.activeFacet = model.activeFacet
+      })
+    } else {
+      buttons.append(ActionSheet.Button.cancel(Text(Strings.Generic.cancel)))
+    }
+
+    return ActionSheet(title: Text(""), message: Text(""), buttons:buttons)
   }
 }

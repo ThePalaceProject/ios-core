@@ -558,3 +558,5 @@ let UpdatedKey: String = "updated"
     return defaultType
   }
 }
+
+extension TPPBook: Identifiable {}

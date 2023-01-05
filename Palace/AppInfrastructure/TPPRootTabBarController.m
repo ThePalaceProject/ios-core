@@ -41,7 +41,9 @@
   self.delegate = self;
   
   self.catalogNavigationController = [[TPPCatalogNavigationController alloc] init];
-  self.myBooksNavigationController = [[TPPMyBooksViewController alloc] init];
+  self.myBooksNavigationController = (TPPMyBooksViewController * ) [TPPMyBooksViewController makeSwiftUIViewWithDismissHandler:^{
+    [[self presentedViewController] dismissViewControllerAnimated:YES completion:nil];
+  }];
   self.holdsNavigationController = [[TPPHoldsNavigationController alloc] init];
   self.settingsViewController = (TPPSettingsViewController * ) [TPPSettingsViewController makeSwiftUIViewWithDismissHandler:^{
     [[self presentedViewController] dismissViewControllerAnimated:YES completion:nil];

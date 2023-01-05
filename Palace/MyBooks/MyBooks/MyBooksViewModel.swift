@@ -24,8 +24,10 @@ class MyBooksViewModel: ObservableObject {
   @Published var activeFacetSort: FacetSort
   @Published var isRefreshing: Bool
   @Published var showInstructionsLabel: Bool
+  
+  private var observers = Set<AnyCancellable>()
 
-  private var books: [TPPBook]
+  @Published var books: [TPPBook]
   
   init() {
     books = []
@@ -74,6 +76,20 @@ class MyBooksViewModel: ObservableObject {
                                            name: .TPPSyncEnded,
                                            object: nil)
   }
+  
+  func facetViewModel() -> FacetViewModel {
+    let facetModel = FacetViewModel(
+      groupName: DisplayStrings.sortBy,
+      facets: [Facet(title: DisplayStrings.title),
+               Facet(title: DisplayStrings.author)]
+    )
+    
+    facetModel.$activeFacet.sink { activeFacet in
+      print("active facet \(activeFacet)")
+    }
+    .store(in: &observers)
+    return facetModel
+  }
 
   @objc private func bookRegistryDidChange() {
     DispatchQueue.main.async {
@@ -100,6 +116,10 @@ class MyBooksViewModel: ObservableObject {
   }
   
   func reloadData() {
+    defer {
+      loadData()
+    }
+  
     if TPPUserAccount.sharedAccount().needsAuth && !TPPUserAccount.sharedAccount().hasCredentials() {
       isRefreshing = false
       TPPAccountSignInViewController.requestCredentials(completion: nil)

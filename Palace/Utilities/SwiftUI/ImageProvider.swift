@@ -14,4 +14,8 @@ struct ImageProviders {
     static let play = Image(systemName: "play.circle")
     static let stepBack = Image(systemName: "gobackward.30")
   }
+  
+  struct MyBooksView {
+    static let bookPlaceholder = UIImage(systemName: "book.closed.fill")
+  }
 }
