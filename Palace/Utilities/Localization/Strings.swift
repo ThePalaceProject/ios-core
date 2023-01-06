@@ -116,6 +116,7 @@ struct Strings {
                                                comment: "Accessibility label for button to add a bookmark")
     static let previousChapter = NSLocalizedString("Previous Chapter", comment: "Accessibility label to go backward in the publication")
     static let nextChapter = NSLocalizedString("Next Chapter", comment: "Accessibility label to go forward in the publication")
+    static let pageOf = NSLocalizedString("Page %d of ", value: "Page %d of ", comment: "States the page count out of total pages, i.e. `Page 1 of 20`")
   }
   
   struct TPPBarCode {
