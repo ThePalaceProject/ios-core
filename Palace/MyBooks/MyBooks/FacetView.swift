@@ -31,7 +31,7 @@ struct FacetView: View {
     Button(action: {
       showAlert = true
     }) {
-      Text(model.activeFacet.title)
+      Text(model.activeFacet.localizedString)
     }
     .frame(width: 60, height: 30)
     .border(.white, width: 1)
@@ -40,13 +40,13 @@ struct FacetView: View {
 
   private var facetAlert: ActionSheet {
     var buttons = [ActionSheet.Button]()
-  
-    if let secondaryFacet = model.facets.first(where: { $0.title != model.activeFacet.title }) {
-      buttons.append(ActionSheet.Button.default(Text(secondaryFacet.title)) {
+
+    if let secondaryFacet = model.facets.first(where: { $0 != model.activeFacet }) {
+      buttons.append(ActionSheet.Button.default(Text(secondaryFacet.localizedString)) {
         self.model.activeFacet = secondaryFacet
       })
-      
-      buttons.append(Alert.Button.default(Text(model.activeFacet.title)) {
+
+      buttons.append(Alert.Button.default(Text(model.activeFacet.localizedString)) {
         self.model.activeFacet = model.activeFacet
       })
     } else {

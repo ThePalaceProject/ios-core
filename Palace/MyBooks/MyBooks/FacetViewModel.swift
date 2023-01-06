@@ -9,8 +9,18 @@
 import Foundation
 import Combine
 
-struct Facet {
-  var title: String
+enum Facet: String {
+  case author
+  case title
+  
+  var localizedString: String {
+    switch self {
+    case .author:
+      return Strings.FacetView.author
+    case .title:
+      return Strings.FacetView.title
+    }
+  }
 }
 
 class FacetViewModel: ObservableObject {

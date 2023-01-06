@@ -26,7 +26,7 @@ struct MyBooksView: View {
   
   @ViewBuilder private var facetView: some View {
     FacetView(
-      model: model.facetViewModel()
+      model: model.facetViewModel
     )
   }
 }

@@ -13,15 +13,28 @@ enum Group: Int {
   case groupSortBy
 }
 
-enum FacetSort: Int {
-  case facetSortAuthor
-  case facetSortTitle
-}
-
 class MyBooksViewModel: ObservableObject {
   typealias DisplayStrings = Strings.MyBooksView
 
-  @Published var activeFacetSort: FacetSort
+  var activeFacetSort: Facet {
+    didSet {
+      sortData()
+    }
+  }
+  
+  var facetViewModel: FacetViewModel {
+    let facetModel = FacetViewModel(
+      groupName: DisplayStrings.sortBy,
+      facets: [.title, .author]
+    )
+    
+    facetModel.$activeFacet.sink { activeFacet in
+      self.activeFacetSort = activeFacet
+    }
+    .store(in: &observers)
+    return facetModel
+  }
+
   @Published var isRefreshing: Bool
   @Published var showInstructionsLabel: Bool
   
@@ -31,7 +44,7 @@ class MyBooksViewModel: ObservableObject {
   
   init() {
     books = []
-    activeFacetSort = .facetSortAuthor
+    activeFacetSort = Facet.author
     isRefreshing = true
     showInstructionsLabel = false
 
@@ -45,20 +58,22 @@ class MyBooksViewModel: ObservableObject {
   
   private func loadData() {
     books = TPPBookRegistry.shared.myBooks
+  }
 
-    switch activeFacetSort {
-    case .facetSortAuthor:
-      books = books.sorted {
+  private func sortData() {
+   switch activeFacetSort {
+    case .author:
+      books.sort {
         let aString = "\(String(describing: $0.authors)) \($0.title)"
         let bString = "\(String(describing: $1.authors)) \($1.title)"
         return aString.caseInsensitiveCompare(bString) == .orderedDescending
-        }
-    case .facetSortTitle:
-      books = books.sorted {
+      }
+    case .title:
+      books.sort {
         let aString = "\($0.title) \(String(describing: $0.authors))"
         let bString = "\($1.title) \(String(describing: $1.authors))"
         return aString.caseInsensitiveCompare(bString) == .orderedDescending
-        }
+      }
     }
   }
   
@@ -75,20 +90,6 @@ class MyBooksViewModel: ObservableObject {
     NotificationCenter.default.addObserver(self, selector: #selector(syncEnded),
                                            name: .TPPSyncEnded,
                                            object: nil)
-  }
-  
-  func facetViewModel() -> FacetViewModel {
-    let facetModel = FacetViewModel(
-      groupName: DisplayStrings.sortBy,
-      facets: [Facet(title: DisplayStrings.title),
-               Facet(title: DisplayStrings.author)]
-    )
-    
-    facetModel.$activeFacet.sink { activeFacet in
-      print("active facet \(activeFacet)")
-    }
-    .store(in: &observers)
-    return facetModel
   }
 
   @objc private func bookRegistryDidChange() {
@@ -136,61 +137,3 @@ class MyBooksViewModel: ObservableObject {
     }
   }
 }
-
-extension MyBooksViewModel: TPPFacetViewDataSource {
-  func numberOfFacetGroups(in facetView: TPPFacetView!) -> UInt {
-    1
-  }
-  
-  func facetView(_ facetView: TPPFacetView!, numberOfFacetsInFacetGroupAt index: UInt) -> UInt {
-    2
-  }
-  
-  func facetView(_ facetView: TPPFacetView!, nameForFacetGroupAt index: UInt) -> String! {
-    DisplayStrings.sortBy
-  }
-  
-  func facetView(_ facetView: TPPFacetView!, nameForFacetAt indexPath: IndexPath!) -> String! {
-    switch Group(rawValue: indexPath.first!)! {
-    case .groupSortBy:
-      switch FacetSort(rawValue: indexPath.index(of: 1)!)! {
-      case .facetSortAuthor:
-        return DisplayStrings.author
-      case .facetSortTitle:
-        return DisplayStrings.title
-        return DisplayStrings.title
-      }
-    }
-  }
-
-  func facetView(_ facetView: TPPFacetView!, isActiveFacetForFacetGroupAt index: UInt) -> Bool {
-    true
-  }
-  
-  func facetView(_ facetView: TPPFacetView!, activeFacetIndexForFacetGroupAt index: UInt) -> UInt {
-    switch Group(rawValue: Int(index))! {
-    case .groupSortBy:
-      return UInt(activeFacetSort.rawValue)
-    }
-  }
-}
-
-extension MyBooksViewModel: TPPFacetViewDelegate {
-  func facetView(_ facetView: TPPFacetView!, didSelectFacetAt indexPath: IndexPath!) {
-    defer {
-      facetView.reloadData()
-      loadData()
-    }
-
-    switch Group(rawValue: indexPath.first!)! {
-    case .groupSortBy:
-      switch FacetSort(rawValue: indexPath.index(of: 1)!)! {
-      case .facetSortAuthor:
-        activeFacetSort = .facetSortAuthor
-      case .facetSortTitle:
-        activeFacetSort = .facetSortTitle
-      }
-    }
-  }
-}
-

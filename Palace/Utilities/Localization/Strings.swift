@@ -226,8 +226,11 @@ struct Strings {
   struct MyBooksView {
     static let navTitle = NSLocalizedString("My Books", comment: "")
     static let sortBy = NSLocalizedString("Sort By:", comment: "")
+    static let searchBooks = NSLocalizedString("Search My Books", comment: "")
+  }
+  
+  struct FacetView {
     static let author = NSLocalizedString("Author", comment: "")
     static let title = NSLocalizedString("Title", comment: "")
-    static let searchBooks = NSLocalizedString("Search My Books", comment: "")
   }
 }
