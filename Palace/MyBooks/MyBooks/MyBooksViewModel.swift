@@ -21,32 +21,29 @@ class MyBooksViewModel: ObservableObject {
       sortData()
     }
   }
-  
-  var facetViewModel: FacetViewModel {
-    let facetModel = FacetViewModel(
-      groupName: DisplayStrings.sortBy,
-      facets: [.title, .author]
-    )
-    
-    facetModel.$activeFacet.sink { activeFacet in
-      self.activeFacetSort = activeFacet
-    }
-    .store(in: &observers)
-    return facetModel
-  }
+
+  let facetViewModel: FacetViewModel = FacetViewModel(
+    groupName: DisplayStrings.sortBy,
+    facets: [.title, .author]
+  )
 
   @Published var isRefreshing: Bool
   @Published var showInstructionsLabel: Bool
-  
+  @Published var books: [TPPBook]
+
   private var observers = Set<AnyCancellable>()
 
-  @Published var books: [TPPBook]
   
   init() {
     books = []
     activeFacetSort = Facet.author
     isRefreshing = true
     showInstructionsLabel = false
+    
+    facetViewModel.$activeFacet.sink { activeFacet in
+      self.activeFacetSort = activeFacet
+    }
+    .store(in: &observers)
 
     registerForNotifications()
     loadData()
@@ -63,15 +60,15 @@ class MyBooksViewModel: ObservableObject {
   private func sortData() {
    switch activeFacetSort {
     case .author:
-      books.sort {
-        let aString = "\(String(describing: $0.authors)) \($0.title)"
-        let bString = "\(String(describing: $1.authors)) \($1.title)"
+      books = books.sorted {
+        let aString = "\($0.authors!) \($0.title)"
+        let bString = "\($1.authors!) \($1.title)"
         return aString.caseInsensitiveCompare(bString) == .orderedDescending
       }
     case .title:
-      books.sort {
-        let aString = "\($0.title) \(String(describing: $0.authors))"
-        let bString = "\($1.title) \(String(describing: $1.authors))"
+      books = books.sorted {
+        let aString = "\($0.title) \($0.authors!)"
+        let bString = "\($1.title) \($1.authors!)"
         return aString.caseInsensitiveCompare(bString) == .orderedDescending
       }
     }
@@ -94,33 +91,31 @@ class MyBooksViewModel: ObservableObject {
 
   @objc private func bookRegistryDidChange() {
     DispatchQueue.main.async {
-      self.reloadData()
+      self.loadData()
       self.showInstructionsLabel = self.books.count == 0 || TPPBookRegistry.shared.state == .unloaded
     }
   }
-  
+
   @objc private func bookRegistryStateDidChange() {
     DispatchQueue.main.async {
       self.isRefreshing = false
     }
   }
-  
-  @objc private func syncBegan() {
-    
-  }
-  
+
+  @objc private func syncBegan() {}
+
   @objc private func syncEnded() {
     DispatchQueue.main.async {
       self.isRefreshing = false
       self.reloadData()
     }
   }
-  
+
   func reloadData() {
     defer {
       loadData()
     }
-  
+
     if TPPUserAccount.sharedAccount().needsAuth && !TPPUserAccount.sharedAccount().hasCredentials() {
       isRefreshing = false
       TPPAccountSignInViewController.requestCredentials(completion: nil)
