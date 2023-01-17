@@ -1,16 +1,16 @@
 @import XCTest;
 
 #import "NSDate+NYPLDateAdditions.h"
-#import "NYPLOPDSFeed.h"
-#import "NYPLXML.h"
+#import "TPPOPDSFeed.h"
+#import "TPPXML.h"
 
-@interface NYPLOPDSFeedTests : XCTestCase
+@interface TPPOPDSFeedTests : XCTestCase
 
-@property (nonatomic) NYPLOPDSFeed *feed;
+@property (nonatomic) TPPOPDSFeed *feed;
 
 @end
 
-@implementation NYPLOPDSFeedTests
+@implementation TPPOPDSFeedTests
 
 - (void)setUp
 {
@@ -21,10 +21,10 @@
      [[NSBundle bundleForClass:[self class]] pathForResource:@"main" ofType:@"xml"]];
   assert(data);
   
-  NYPLXML *const feedXML = [NYPLXML XMLWithData:data];
+  TPPXML *const feedXML = [TPPXML XMLWithData:data];
   assert(feedXML);
   
-  self.feed = [[NYPLOPDSFeed alloc] initWithXML:feedXML];
+  self.feed = [[TPPOPDSFeed alloc] initWithXML:feedXML];
   assert(self.feed);
 }
 
@@ -37,7 +37,7 @@
 
 - (void)testHandlesNilInit
 {
-  XCTAssertNil([[NYPLOPDSFeed alloc] initWithXML:nil]);
+  XCTAssertNil([[TPPOPDSFeed alloc] initWithXML:nil]);
 }
 
 - (void)testEntriesPresent
@@ -47,7 +47,7 @@
 
 - (void)testTypeAcquisitionUngrouped
 {
-  XCTAssertEqual(self.feed.type, NYPLOPDSFeedTypeAcquisitionUngrouped);
+  XCTAssertEqual(self.feed.type, TPPOPDSFeedTypeAcquisitionUngrouped);
 }
 
 - (void)testIdentifier
