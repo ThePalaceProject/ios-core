@@ -773,6 +773,8 @@
 		E74A5783290C43930026E3AF /* TPPPDFViewControllerDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A949984E2235826500CE4241 /* TPPPDFViewControllerDelegate.swift */; };
 		E75E7B682881860D001C5427 /* PDFRendererProvider.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2198691A267E29CC0041369E /* PDFRendererProvider.xcframework */; };
 		E75E7B692881860D001C5427 /* PDFRendererProvider.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 2198691A267E29CC0041369E /* PDFRendererProvider.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		E76AD92B296DCB76008ECC61 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E76AD92A296DCB76008ECC61 /* NotificationService.swift */; };
+		E76AD92C296DCB76008ECC61 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E76AD92A296DCB76008ECC61 /* NotificationService.swift */; };
 		E77D021A2931337000544180 /* R2Navigator in Frameworks */ = {isa = PBXBuildFile; productRef = E77D02192931337000544180 /* R2Navigator */; };
 		E77D021C2931337000544180 /* R2Shared in Frameworks */ = {isa = PBXBuildFile; productRef = E77D021B2931337000544180 /* R2Shared */; };
 		E77D021E2931337000544180 /* R2Streamer in Frameworks */ = {isa = PBXBuildFile; productRef = E77D021D2931337000544180 /* R2Streamer */; };
@@ -816,6 +818,9 @@
 		E7B20B47285B3BC800C49FE1 /* TPPPDFPreviewGridController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7B20B45285B3BC800C49FE1 /* TPPPDFPreviewGridController.swift */; };
 		E7B20B49285B4E5600C49FE1 /* TPPPDFLabel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7B20B48285B4E5600C49FE1 /* TPPPDFLabel.swift */; };
 		E7B20B4A285B4E5600C49FE1 /* TPPPDFLabel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7B20B48285B4E5600C49FE1 /* TPPPDFLabel.swift */; };
+		E7BF790D296F5F7600137D9F /* FirebaseMessaging.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = E7BF790C296F5F7600137D9F /* FirebaseMessaging.xcframework */; };
+		E7BF790F296F5FA300137D9F /* FirebaseMessaging.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = E7BF790C296F5F7600137D9F /* FirebaseMessaging.xcframework */; };
+		E7BF7911296F5FB300137D9F /* FirebaseMessaging.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = E7BF790C296F5F7600137D9F /* FirebaseMessaging.xcframework */; };
 		E7CA1C4E29381068009CC6FD /* SQLite in Frameworks */ = {isa = PBXBuildFile; productRef = E7CA1C4D29381068009CC6FD /* SQLite */; };
 		E7CA1C502938107A009CC6FD /* SQLite in Frameworks */ = {isa = PBXBuildFile; productRef = E7CA1C4F2938107A009CC6FD /* SQLite */; };
 		E7CBF977285CA41400F00C02 /* TPPPDFDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7CBF976285CA41400F00C02 /* TPPPDFDocument.swift */; };
@@ -1576,6 +1581,7 @@
 		E7376ECB287DF1C30095AADF /* DispatchQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DispatchQueue.swift; sourceTree = "<group>"; };
 		E7376ECF287E05F50095AADF /* TPPPDFPreviewThumbnail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFPreviewThumbnail.swift; sourceTree = "<group>"; };
 		E74752F627FF044400F5E7FA /* TPPSignInBusinessLogic+CardCreation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPSignInBusinessLogic+CardCreation.swift"; sourceTree = "<group>"; };
+		E76AD92A296DCB76008ECC61 /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
 		E7861C462846868800B3A38A /* TPPPDFViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFViewController.swift; sourceTree = "<group>"; };
 		E7861C482846875D00B3A38A /* TPPPDFView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFView.swift; sourceTree = "<group>"; };
 		E7861C4A28468AB200B3A38A /* TPPPDFDocumentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFDocumentView.swift; sourceTree = "<group>"; };
@@ -1592,6 +1598,7 @@
 		E7B20B38285B3AC400C49FE1 /* TPPPDFPreviewGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFPreviewGrid.swift; sourceTree = "<group>"; };
 		E7B20B45285B3BC800C49FE1 /* TPPPDFPreviewGridController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFPreviewGridController.swift; sourceTree = "<group>"; };
 		E7B20B48285B4E5600C49FE1 /* TPPPDFLabel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFLabel.swift; sourceTree = "<group>"; };
+		E7BF790C296F5F7600137D9F /* FirebaseMessaging.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = FirebaseMessaging.xcframework; path = Carthage/Build/FirebaseMessaging.xcframework; sourceTree = "<group>"; };
 		E7CBF976285CA41400F00C02 /* TPPPDFDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFDocument.swift; sourceTree = "<group>"; };
 		E7E89398284A1EB800C7A4F3 /* TPPPDFPreviewBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFPreviewBar.swift; sourceTree = "<group>"; };
 		E7EB9A8728736508004F484D /* TPPPDFToolbarButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFToolbarButton.swift; sourceTree = "<group>"; };
@@ -1629,6 +1636,7 @@
 				73EB0B3425821DF4006BC997 /* CoreGraphics.framework in Frameworks */,
 				73EB0B3525821DF4006BC997 /* QuartzCore.framework in Frameworks */,
 				2198695F267E2A450041369E /* PDFRendererProvider.xcframework in Frameworks */,
+				E7BF7911296F5FB300137D9F /* FirebaseMessaging.xcframework in Frameworks */,
 				73EB0B3825821DF4006BC997 /* libRDServices.a in Frameworks */,
 				E77D02272931360100544180 /* R2Navigator in Frameworks */,
 				73EB0B3925821DF4006BC997 /* libicucore.tbd in Frameworks */,
@@ -1683,8 +1691,10 @@
 				08C469C11BDAAEB1009D8AFD /* libADEPT.a in Frameworks */,
 				08A352271BDE91B80040BF1D /* libRDServices.a in Frameworks */,
 				08A352221BDE8E560040BF1D /* libicucore.tbd in Frameworks */,
+				E7BF790F296F5FA300137D9F /* FirebaseMessaging.xcframework in Frameworks */,
 				5AEA9E011B947419009F71DB /* libc++.dylib in Frameworks */,
 				2DA4F2331C68363B008853D7 /* LocalAuthentication.framework in Frameworks */,
+				E7BF790D296F5F7600137D9F /* FirebaseMessaging.xcframework in Frameworks */,
 				08A352261BDE8E700040BF1D /* SystemConfiguration.framework in Frameworks */,
 				08A352241BDE8E640040BF1D /* Security.framework in Frameworks */,
 				08A352201BDE8E410040BF1D /* CFNetwork.framework in Frameworks */,
@@ -2651,6 +2661,7 @@
 		A823D80F192BABA400B55DE2 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				E7BF790C296F5F7600137D9F /* FirebaseMessaging.xcframework */,
 				E7F287782956566800EEB1E0 /* R2LCPClient.xcframework */,
 				E708C18C27734EE300D34899 /* DifferenceKit.xcframework */,
 				21F634E426D828CF00C8BE87 /* ReadiumLCP.xcframework */,
@@ -2762,6 +2773,7 @@
 				73085E3325030CFC008F6244 /* Migrations */,
 				7384C751252D1F720012C2DD /* MyBooks */,
 				7338755E2423E108000FEB67 /* Network */,
+				E76AD929296DCB43008ECC61 /* Notifications */,
 				73B5E004260567F800225C12 /* OPDS */,
 				73B5E005260567FF00225C12 /* OPDS2 */,
 				E7861C3B284685F800B3A38A /* PDF */,
@@ -3054,6 +3066,14 @@
 				E580CD7A27EABBEE00B14475 /* LCPPDFs.swift */,
 			);
 			path = LCP;
+			sourceTree = "<group>";
+		};
+		E76AD929296DCB43008ECC61 /* Notifications */ = {
+			isa = PBXGroup;
+			children = (
+				E76AD92A296DCB76008ECC61 /* NotificationService.swift */,
+			);
+			path = Notifications;
 			sourceTree = "<group>";
 		};
 		E7861C3B284685F800B3A38A /* PDF */ = {
@@ -3816,6 +3836,7 @@
 				73EB0B1E25821DF4006BC997 /* TPPAccountSignInViewController.m in Sources */,
 				73EB0B1F25821DF4006BC997 /* UserProfileDocument.swift in Sources */,
 				21E41777292810E000A78606 /* TPPPDFDocumentMetadata.swift in Sources */,
+				E76AD92C296DCB76008ECC61 /* NotificationService.swift in Sources */,
 				73EB0B2025821DF4006BC997 /* AccountsManager.swift in Sources */,
 				217595DE27B680D400BA0FDD /* TPPReaderSettingsVC.swift in Sources */,
 				E7862A252773927900BE8AB8 /* Font+Extensions.swift in Sources */,
@@ -3942,6 +3963,7 @@
 				215C866D27064198005F9621 /* BundleExtension.swift in Sources */,
 				E699BA402166598B00A0736A /* TPPEntryPointView.swift in Sources */,
 				A46226271B39D4980063F549 /* TPPOPDSGroup.m in Sources */,
+				E76AD92B296DCB76008ECC61 /* NotificationService.swift in Sources */,
 				A93F9F9721CDACF700BD3B0C /* TPPAppReviewPrompt.swift in Sources */,
 				73DB56C625F769FF003788EE /* TPPLastReadPositionSynchronizer.swift in Sources */,
 				8C835DD5234D0B900050A18D /* TPPFacetBarView.swift in Sources */,
@@ -4332,7 +4354,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 129;
+				CURRENT_PROJECT_VERSION = 130;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
@@ -4388,7 +4410,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 129;
+				CURRENT_PROJECT_VERSION = 130;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
@@ -4569,7 +4591,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 129;
+				CURRENT_PROJECT_VERSION = 130;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -4598,7 +4620,6 @@
 				);
 				MARKETING_VERSION = 1.0.26;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
-				PROVISIONING_PROFILE = "2e185b6c-271e-4b02-a05e-860b8c3831f6";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "Ad hoc 2";
 				RUN_CLANG_STATIC_ANALYZER = YES;
@@ -4631,7 +4652,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 129;
+				CURRENT_PROJECT_VERSION = 130;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
@@ -4659,7 +4680,6 @@
 				);
 				MARKETING_VERSION = 1.0.26;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
-				PROVISIONING_PROFILE = "b3d9154d-70e1-48d6-a0c5-869431277a5c";
 				PROVISIONING_PROFILE_SPECIFIER = "App Store 2";
 				RUN_CLANG_STATIC_ANALYZER = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "SIMPLYE FEATURE_DRM_CONNECTOR FEATURE_CRASH_REPORTING LCP FEATURE_OVERDRIVE";
