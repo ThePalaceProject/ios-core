@@ -26,16 +26,16 @@ class TPPMyBooksDownloadCenterTests: XCTestCase {
     ]
     for config in configs {
       // Create fake books and relevant structures required to invoke 
-      let fakeAcquisition = NYPLOPDSAcquisition.init(
+      let fakeAcquisition = TPPOPDSAcquisition.init(
         relation: .generic,
         type: config["type"]!,
         hrefURL: emptyUrl,
-        indirectAcquisitions: [NYPLOPDSIndirectAcquisition](),
-        availability: NYPLOPDSAcquisitionAvailabilityUnlimited.init()
+        indirectAcquisitions: [TPPOPDSIndirectAcquisition](),
+        availability: TPPOPDSAcquisitionAvailabilityUnlimited.init()
       )
-      let fakeBook = NYPLBook(
+      let fakeBook = TPPBook(
         acquisitions: [fakeAcquisition],
-        bookAuthors: [NYPLBookAuthor](),
+        authors: [],
         categoryStrings: [String](),
         distributor: "",
         identifier: config["identifier"]!,
@@ -51,30 +51,32 @@ class TPPMyBooksDownloadCenterTests: XCTestCase {
         analyticsURL: emptyUrl,
         alternateURL: emptyUrl,
         relatedWorksURL: emptyUrl,
+        previewLink: fakeAcquisition,
         seriesURL: emptyUrl,
         revokeURL: emptyUrl,
-        report: emptyUrl
+        reportURL: emptyUrl,
+        contributors: [:]
       )
-
+            
       // Calculate target filepath to use as "book location"
-      let bookUrl = NYPLMyBooksDownloadCenter.shared()?.fileURL(forBookIndentifier: fakeBook.identifier)
+      let bookUrl = TPPMyBooksDownloadCenter.shared()?.fileURL(forBookIndentifier: fakeBook.identifier)
 
       // Create dummy book file at path
       fileManager.createFile(atPath: bookUrl!.path, contents: "Hello world!".data(using: .utf8), attributes: [FileAttributeKey : Any]())
 
       // Register fake book with registry
-      NYPLBookRegistry.shared().add(
+      TPPBookRegistry.shared.addBook(
         fakeBook,
-        location: NYPLBookLocation.init(locationString: bookUrl?.path, renderer: ""),
-        state: NYPLBookState.DownloadSuccessful.rawValue,
+        location: TPPBookLocation(locationString: bookUrl!.path, renderer: ""),
+        state: .DownloadSuccessful,
         fulfillmentId: "",
-        readiumBookmarks: [NYPLReadiumBookmark](),
-        genericBookmarks: [NYPLBookLocation]()
+        readiumBookmarks: [],
+        genericBookmarks: []
       )
-
+      
       // Perform file deletion test
       XCTAssert(fileManager.fileExists(atPath: bookUrl!.path))
-      NYPLMyBooksDownloadCenter.shared()?.deleteLocalContent(forBookIdentifier: fakeBook.identifier)
+      TPPMyBooksDownloadCenter.shared()?.deleteLocalContent(forBookIdentifier: fakeBook.identifier)
       XCTAssert(!fileManager.fileExists(atPath: bookUrl!.path))
     }
   }
@@ -83,17 +85,17 @@ class TPPMyBooksDownloadCenterTests: XCTestCase {
     let acquisitionsDictionaries = TPPFake.opdsEntry.acquisitions.map {
       $0.dictionaryRepresentation()
     }
-    let optBook = NYPLBook(dictionary: [
+    let optBook = TPPBook(dictionary: [
       "acquisitions": acquisitionsDictionaries,
       "title": "Tractatus",
-      "categories": "some cat",
+      "categories": ["some cat"],
       "id": "123",
       "updated": "2020-10-06T17:13:51Z",
       "distributor": OverdriveDistributorKey])
     XCTAssertNotNil(optBook)
     let book = optBook!
 
-    for contentType in NYPLOPDSAcquisitionPath.supportedTypes() {
+    for contentType in TPPOPDSAcquisitionPath.supportedTypes() {
       XCTAssert(book.canCompleteDownload(withContentType: contentType))
     }
 

@@ -709,12 +709,14 @@ didCompleteWithError:(NSError *)error
 - (NSString *)pathExtensionForBook:(TPPBook *)book
 {
 #if defined(LCP)
-  if ([LCPAudiobooks canOpenBook:book]) {
-    return @"lcpa";
-  }
-  
-  if ([LCPPDFs canOpenBook:book]) {
-    return @"zip";
+  if (book) {
+    if ([LCPAudiobooks canOpenBook:book]) {
+      return @"lcpa";
+    }
+    
+    if ([LCPPDFs canOpenBook:book]) {
+      return @"zip";
+    }
   }
 #endif
 
