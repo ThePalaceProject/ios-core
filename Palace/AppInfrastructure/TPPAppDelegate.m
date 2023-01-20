@@ -82,7 +82,8 @@ didFinishLaunchingWithOptions:(__attribute__((unused)) NSDictionary *)launchOpti
   [TPPBookRegistry shared];
   
   // Push Notificatoins
-  [[NotificationService sharedService] setupPushNotifications];
+  // TODO: Enable push notifications when CM starts supporting them
+//  [[NotificationService sharedService] setupPushNotifications];
 
   return YES;
 }
