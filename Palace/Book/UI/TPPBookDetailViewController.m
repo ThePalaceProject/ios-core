@@ -44,6 +44,7 @@
   self.title = book.title;
   UILabel *label = [[UILabel alloc] init];
   self.navigationItem.titleView = label;
+  self.navigationItem.backButtonTitle = NSLocalizedString(@"Back", @"Back Button");
   self.bookDetailView = [[TPPBookDetailView alloc] initWithBook:self.book
                                                         delegate:self];
   self.bookDetailView.state = [[TPPBookRegistry shared]

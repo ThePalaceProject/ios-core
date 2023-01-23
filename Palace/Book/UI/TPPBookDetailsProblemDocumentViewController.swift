@@ -49,7 +49,7 @@
       let backButton = UIButton.init(type: .system)
       self.backButton = backButton
       backButton.translatesAutoresizingMaskIntoConstraints = false
-      backButton.setTitle("Back", for: .normal)
+      backButton.setTitle(Strings.Generic.back, for: .normal)
       backButton.setTitleColor(TPPConfiguration.mainColor(), for: .normal)
       backButton.contentHorizontalAlignment = .left
       backButton.contentEdgeInsets = UIEdgeInsets.init(top: 0, left: 0, bottom: 0, right: 2)
@@ -60,7 +60,7 @@
       let closeButton = UIButton.init(type: .system)
       self.closeButton = closeButton
       closeButton.translatesAutoresizingMaskIntoConstraints = false
-      closeButton.setTitle("Close", for: .normal)
+      closeButton.setTitle(Strings.Generic.close, for: .normal)
       closeButton.setTitleColor(TPPConfiguration.mainColor(), for: .normal)
       closeButton.contentHorizontalAlignment = .right
       closeButton.contentEdgeInsets = UIEdgeInsets.init(top: 0, left: 2, bottom: 0, right: 0)

@@ -32,13 +32,13 @@ struct TPPPDFSearchView: View {
         Button {
           done()
         } label: {
-          Text("Done")
+          Text(Strings.Generic.done)
             .bold()
         }
         .padding()
       }
       Divider()
-      TextField("Search", text: $searchText.onChange(performSearch))
+      TextField(Strings.Generic.search, text: $searchText.onChange(performSearch))
         .frame(minHeight: 44)
         .padding(.horizontal)
       Divider()
