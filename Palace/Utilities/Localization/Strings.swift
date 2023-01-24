@@ -61,7 +61,9 @@ struct Strings {
     static let reject = NSLocalizedString("Reject", comment: "Title for a Reject button")
     static let accept = NSLocalizedString("Accept", comment: "Title for a Accept button")
     static let signin = NSLocalizedString("Sign in", comment: "")
-    static let close = NSLocalizedString("Close", comment: "")
+    static let close = NSLocalizedString("Close", comment: "Title for close button")
+    static let search = NSLocalizedString("Search", comment: "Placeholder for Search Field")
+    static let done =  NSLocalizedString("Done", comment: "Title for Done button")
   }
   
   struct OETutorialChoiceViewController {
@@ -182,6 +184,11 @@ struct Strings {
     static let sans = NSLocalizedString("Sans font", comment: "SansFont")
     static let serif = NSLocalizedString("Serif font", comment: "SerifFont")
     static let dyslexic = NSLocalizedString("Open dyslexic font", comment: "OpenDyslexicFont")
+  }
+  
+  struct TPPReaderPositionsVC {
+      static let contents = NSLocalizedString("Contents", comment: "")
+      static let bookmarks = NSLocalizedString("Bookmarks", comment: "")
   }
   
   struct TPPReaderTOCBusinessLogic {

@@ -595,10 +595,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
 - (void)presentAsModal
 {
   UIBarButtonItem *const cancelBarButtonItem =
-  [[UIBarButtonItem alloc]
-   initWithBarButtonSystemItem:UIBarButtonSystemItemCancel
-   target:self
-   action:@selector(didSelectCancel)];
+  [[UIBarButtonItem alloc] initWithTitle:NSLocalizedString(@"Cancel", "Cancel Button") style: UIBarButtonItemStylePlain target:self action:@selector(didSelectCancel)];
 
   self.navigationItem.leftBarButtonItem = cancelBarButtonItem;
   UINavigationController *const navVC = [[UINavigationController alloc]
