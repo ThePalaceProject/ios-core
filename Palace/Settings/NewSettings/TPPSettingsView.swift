@@ -55,11 +55,15 @@ struct TPPSettingsView: View {
     let navButton = Button(DisplayStrings.addLibrary) {
       viewController.addAccount()
     }
+    
+    let backButton = Button(Strings.Generic.back) {
+      viewController.navigationController?.popViewController(animated: true)
+    }
 
     let wrapper = UIViewControllerWrapper(viewController) { _ in }
       .navigationBarTitle(Text(DisplayStrings.libraries))
-      .navigationBarItems(trailing: navButton)
-    
+      .navigationBarItems(leading: backButton, trailing: navButton)
+
     Section {
       row(title: DisplayStrings.libraries, index: 1, selection: self.$selectedView, destination: wrapper.anyView())
     }
