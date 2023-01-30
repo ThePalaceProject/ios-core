@@ -601,6 +601,7 @@
 		73EB0B5E25821DF4006BC997 /* software-licenses.html in Resources */ = {isa = PBXBuildFile; fileRef = 2D6256901D41582A0080A81F /* software-licenses.html */; };
 		73EB0B5F25821DF4006BC997 /* TPP_Launch_Screen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = E65977C41F82AC91003CD6BC /* TPP_Launch_Screen.storyboard */; };
 		73EB0B6025821DF4006BC997 /* Accounts.json in Resources */ = {isa = PBXBuildFile; fileRef = 03F94CCE1DD627AA00CE8F4F /* Accounts.json */; };
+		73EB0B6125821DF4006BC997 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = A823D819192BABA400B55DE2 /* InfoPlist.strings */; };
 		73EB0B6225821DF4006BC997 /* reader.html in Resources */ = {isa = PBXBuildFile; fileRef = 11C113CF19F842B9005B3F63 /* reader.html */; };
 		73EB0B6325821DF4006BC997 /* DetailSummaryTemplate.html in Resources */ = {isa = PBXBuildFile; fileRef = 110F853C19D5FA7300052DF7 /* DetailSummaryTemplate.html */; };
 		73EB0B6525821DF4006BC997 /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A823D822192BABA400B55DE2 /* Images.xcassets */; };
@@ -635,6 +636,7 @@
 		A823D811192BABA400B55DE2 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A823D810192BABA400B55DE2 /* Foundation.framework */; };
 		A823D813192BABA400B55DE2 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A823D812192BABA400B55DE2 /* CoreGraphics.framework */; };
 		A823D815192BABA400B55DE2 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A823D814192BABA400B55DE2 /* UIKit.framework */; };
+		A823D81B192BABA400B55DE2 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = A823D819192BABA400B55DE2 /* InfoPlist.strings */; };
 		A823D81D192BABA400B55DE2 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = A823D81C192BABA400B55DE2 /* main.m */; };
 		A823D821192BABA400B55DE2 /* TPPAppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = A823D820192BABA400B55DE2 /* TPPAppDelegate.m */; };
 		A823D823192BABA400B55DE2 /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A823D822192BABA400B55DE2 /* Images.xcassets */; };
@@ -1446,6 +1448,7 @@
 		A823D812192BABA400B55DE2 /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
 		A823D814192BABA400B55DE2 /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
 		A823D818192BABA400B55DE2 /* Palace-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Palace-Info.plist"; sourceTree = "<group>"; };
+		A823D81A192BABA400B55DE2 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		A823D81C192BABA400B55DE2 /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
 		A823D81E192BABA400B55DE2 /* Palace-Prefix.pch */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Palace-Prefix.pch"; sourceTree = "<group>"; };
 		A823D81F192BABA400B55DE2 /* TPPAppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TPPAppDelegate.h; sourceTree = "<group>"; };
@@ -2778,6 +2781,7 @@
 				17071060242A923400E2648F /* TPPSecrets.swift */,
 				CAE35BBA1B86289500BF9BC5 /* Palace.xcconfig */,
 				2D6AF74A1E7E341F005CEC90 /* Palace+RMSDK.xcconfig */,
+				A823D819192BABA400B55DE2 /* InfoPlist.strings */,
 				84B7A3421B84E8FE00584FB2 /* OpenDyslexicFont */,
 				11C113D319F842E2005B3F63 /* Reader */,
 				E61D7F631F6AC78B0091C781 /* SimplyE.entitlements */,
@@ -3361,6 +3365,7 @@
 				73EB0B5E25821DF4006BC997 /* software-licenses.html in Resources */,
 				73EB0B5F25821DF4006BC997 /* TPP_Launch_Screen.storyboard in Resources */,
 				73EB0B6025821DF4006BC997 /* Accounts.json in Resources */,
+				73EB0B6125821DF4006BC997 /* InfoPlist.strings in Resources */,
 				E5BEF00326BD919F00C2A50B /* OpenSans-Bold.ttf in Resources */,
 				73EB0B6225821DF4006BC997 /* reader.html in Resources */,
 				73EB0B6325821DF4006BC997 /* DetailSummaryTemplate.html in Resources */,
@@ -3397,6 +3402,7 @@
 				2D6256911D41582A0080A81F /* software-licenses.html in Resources */,
 				E65977C51F82AC91003CD6BC /* TPP_Launch_Screen.storyboard in Resources */,
 				03F94CCF1DD627AA00CE8F4F /* Accounts.json in Resources */,
+				A823D81B192BABA400B55DE2 /* InfoPlist.strings in Resources */,
 				E5BEF00226BD919F00C2A50B /* OpenSans-Bold.ttf in Resources */,
 				11C113D019F842B9005B3F63 /* reader.html in Resources */,
 				110F853E19D5FA7300052DF7 /* DetailSummaryTemplate.html in Resources */,
@@ -4188,6 +4194,14 @@
 				E50221CB29881D1E00A8A80B /* fr */,
 			);
 			name = Localizable.stringsdict;
+			sourceTree = "<group>";
+		};
+		A823D819192BABA400B55DE2 /* InfoPlist.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				A823D81A192BABA400B55DE2 /* en */,
+			);
+			name = InfoPlist.strings;
 			sourceTree = "<group>";
 		};
 		A823D832192BABA400B55DE2 /* InfoPlist.strings */ = {
