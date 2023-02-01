@@ -49,8 +49,6 @@ didFinishLaunchingWithOptions:(__attribute__((unused)) NSDictionary *)launchOpti
   [TransifexManager setup];
   [app setMinimumBackgroundFetchInterval:MinimumBackgroundFetchInterval];
 
-  self.notificationsManager = [[TPPUserNotifications alloc] init];
-  [self.notificationsManager authorizeIfNeeded];
   [NSNotificationCenter.defaultCenter addObserver:self
                                          selector:@selector(signingIn:)
                                              name:NSNotification.TPPIsSigningIn
@@ -83,6 +81,10 @@ didFinishLaunchingWithOptions:(__attribute__((unused)) NSDictionary *)launchOpti
   // Initialize TPPBookRegistry
   [TPPBookRegistry shared];
   
+  // Push Notificatoins
+  // TODO: Enable push notifications when CM starts supporting them
+//  [[NotificationService sharedService] setupPushNotifications];
+
   return YES;
 }
 

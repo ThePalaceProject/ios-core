@@ -10,8 +10,11 @@ import SwiftUI
 
 struct TPPPDFReaderView: View {
   
+  typealias DisplayStrings = Strings.TPPLastReadPositionSynchronizer
+  
   @EnvironmentObject var metadata: TPPPDFDocumentMetadata
   @State private var readerMode: TPPPDFReaderMode = .reader
+  @State private var shouldRequestPageSync = false
   private var isShowingSearch: Bool {
     get { readerMode == .search }
   }
@@ -22,7 +25,17 @@ struct TPPPDFReaderView: View {
     TPPPDFNavigation(readerMode: $readerMode) { _ in
       ZStack {
         documentView
+          .onReceive(metadata.$remotePage, perform: showRemotePositionAlert)
           .visible(when: readerMode == .reader || readerMode == .search)
+          .alert(isPresented: $shouldRequestPageSync) {
+            Alert(title: Text(DisplayStrings.syncReadingPositionAlertTitle),
+                  message: Text(DisplayStrings.syncReadingPositionAlertBody),
+                  primaryButton: .default(Text(DisplayStrings.move), action: metadata.syncReadingPosition),
+                  secondaryButton: .cancel(Text(DisplayStrings.stay))
+            )
+          }
+
+
         TPPPDFPreviewGrid(document: document, pageIndices: nil, isVisible: readerMode == .previews, done: done)
           .visible(when: readerMode == .previews)
         bookmarkView
@@ -58,8 +71,8 @@ struct TPPPDFReaderView: View {
 
   @ViewBuilder
   var bookmarkView: some View {
-    if let bookmarks = metadata.bookmarks, !bookmarks.isEmpty {
-      TPPPDFPreviewGrid(document: document, pageIndices: bookmarks, isVisible: readerMode == .bookmarks, done: done)
+    if !metadata.bookmarks.isEmpty {
+      TPPPDFPreviewGrid(document: document, pageIndices: metadata.bookmarks, isVisible: readerMode == .bookmarks, done: done)
         .visible(when: readerMode == .bookmarks)
     } else {
       Text(NSLocalizedString("There are no bookmarks for this book.", comment: ""))
@@ -74,5 +87,12 @@ struct TPPPDFReaderView: View {
   /// Done picking a page
   func done() {
     readerMode = .reader
+  }
+  
+  /// Present navigation alert
+  func showRemotePositionAlert(_ value: Published<Int?>.Publisher.Output) {
+    if let value = value, metadata.currentPage != value {
+      shouldRequestPageSync = true
+    }
   }
 }

@@ -657,6 +657,14 @@
 		D787E8441FB6B0290016D9D5 /* TPPSettingsAdvancedViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D787E8431FB6B0290016D9D5 /* TPPSettingsAdvancedViewController.swift */; };
 		E501710F27A3948C004B3392 /* TPPBookmarkFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 730EF265260967FF008E1DC3 /* TPPBookmarkFactory.swift */; };
 		E501711127A3948C004B3392 /* TPPBookmarkFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 730EF265260967FF008E1DC3 /* TPPBookmarkFactory.swift */; };
+		E50221B529881BC900A8A80B /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = E50221B729881BC900A8A80B /* Localizable.strings */; };
+		E50221B829881C5100A8A80B /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = E50221B729881BC900A8A80B /* Localizable.strings */; };
+		E50221BC29881CAC00A8A80B /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = E50221BF29881CAC00A8A80B /* Localizable.strings */; };
+		E50221BD29881CAC00A8A80B /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = E50221BF29881CAC00A8A80B /* Localizable.strings */; };
+		E50221C329881CDD00A8A80B /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = E50221C629881CDD00A8A80B /* Localizable.strings */; };
+		E50221C429881CDD00A8A80B /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = E50221C629881CDD00A8A80B /* Localizable.strings */; };
+		E50221CD29881D2800A8A80B /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = E50221D029881D2800A8A80B /* Localizable.strings */; };
+		E50221CE29881D2800A8A80B /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = E50221D029881D2800A8A80B /* Localizable.strings */; };
 		E50D684326AB235400F1042B /* TPPReaderBookmarkCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03690E221EB2B35000F75D5F /* TPPReaderBookmarkCell.swift */; };
 		E50D684426AB235400F1042B /* TPPReaderTOCCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7386C1F9245276CA004C78BD /* TPPReaderTOCCell.swift */; };
 		E50D684626AB235400F1042B /* TPPReaderBookmarkCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03690E221EB2B35000F75D5F /* TPPReaderBookmarkCell.swift */; };
@@ -782,6 +790,16 @@
 		E74A5783290C43930026E3AF /* TPPPDFViewControllerDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A949984E2235826500CE4241 /* TPPPDFViewControllerDelegate.swift */; };
 		E75E7B682881860D001C5427 /* PDFRendererProvider.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2198691A267E29CC0041369E /* PDFRendererProvider.xcframework */; };
 		E75E7B692881860D001C5427 /* PDFRendererProvider.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 2198691A267E29CC0041369E /* PDFRendererProvider.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		E75ED6D2297720DE006BBD5F /* TXNativeExtensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E549955128EE1ADB00EA0D9B /* TXNativeExtensions.swift */; };
+		E75ED6D32977223A006BBD5F /* TPPKeychainTests.m in Sources */ = {isa = PBXBuildFile; fileRef = 11C5DD171977335E005A9945 /* TPPKeychainTests.m */; };
+		E75ED6D4297722BA006BBD5F /* TPPMyBooksDownloadCenterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D73DA3D22A07B9A00162CB8 /* TPPMyBooksDownloadCenterTests.swift */; };
+		E75ED6DB29772C4B006BBD5F /* NYPLXMLTests.m in Sources */ = {isa = PBXBuildFile; fileRef = 111559EE19B8FA8E0003BE94 /* NYPLXMLTests.m */; };
+		E75ED6DC29772E6D006BBD5F /* valid.xml in Resources */ = {isa = PBXBuildFile; fileRef = 111559F119B8FAA10003BE94 /* valid.xml */; };
+		E75ED6DD29772EBE006BBD5F /* invalid.xml in Resources */ = {isa = PBXBuildFile; fileRef = 111559F019B8FAA10003BE94 /* invalid.xml */; };
+		E75ED6DE29772EC1006BBD5F /* main.xml in Resources */ = {isa = PBXBuildFile; fileRef = 11F54C1D194109120086FCAF /* main.xml */; };
+		E75ED6E32977320B006BBD5F /* single_entry.xml in Resources */ = {isa = PBXBuildFile; fileRef = 11F54C2419410BE40086FCAF /* single_entry.xml */; };
+		E76AD92B296DCB76008ECC61 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E76AD92A296DCB76008ECC61 /* NotificationService.swift */; };
+		E76AD92C296DCB76008ECC61 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E76AD92A296DCB76008ECC61 /* NotificationService.swift */; };
 		E77D021A2931337000544180 /* R2Navigator in Frameworks */ = {isa = PBXBuildFile; productRef = E77D02192931337000544180 /* R2Navigator */; };
 		E77D021C2931337000544180 /* R2Shared in Frameworks */ = {isa = PBXBuildFile; productRef = E77D021B2931337000544180 /* R2Shared */; };
 		E77D021E2931337000544180 /* R2Streamer in Frameworks */ = {isa = PBXBuildFile; productRef = E77D021D2931337000544180 /* R2Streamer */; };
@@ -825,6 +843,9 @@
 		E7B20B47285B3BC800C49FE1 /* TPPPDFPreviewGridController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7B20B45285B3BC800C49FE1 /* TPPPDFPreviewGridController.swift */; };
 		E7B20B49285B4E5600C49FE1 /* TPPPDFLabel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7B20B48285B4E5600C49FE1 /* TPPPDFLabel.swift */; };
 		E7B20B4A285B4E5600C49FE1 /* TPPPDFLabel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7B20B48285B4E5600C49FE1 /* TPPPDFLabel.swift */; };
+		E7BF790D296F5F7600137D9F /* FirebaseMessaging.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = E7BF790C296F5F7600137D9F /* FirebaseMessaging.xcframework */; };
+		E7BF790F296F5FA300137D9F /* FirebaseMessaging.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = E7BF790C296F5F7600137D9F /* FirebaseMessaging.xcframework */; };
+		E7BF7911296F5FB300137D9F /* FirebaseMessaging.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = E7BF790C296F5F7600137D9F /* FirebaseMessaging.xcframework */; };
 		E7CA1C4E29381068009CC6FD /* SQLite in Frameworks */ = {isa = PBXBuildFile; productRef = E7CA1C4D29381068009CC6FD /* SQLite */; };
 		E7CA1C502938107A009CC6FD /* SQLite in Frameworks */ = {isa = PBXBuildFile; productRef = E7CA1C4F2938107A009CC6FD /* SQLite */; };
 		E7CBF977285CA41400F00C02 /* TPPPDFDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7CBF976285CA41400F00C02 /* TPPPDFDocument.swift */; };
@@ -1040,8 +1061,6 @@
 		113DB8A619C24E54004E1154 /* TPPIndeterminateProgressView.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPIndeterminateProgressView.m; sourceTree = "<group>"; };
 		1142E4E719EEC7C500D9B3D9 /* TPPCatalogFacetTests.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPCatalogFacetTests.m; sourceTree = "<group>"; };
 		1146EE3F1A5DD071009F7576 /* CoreText.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreText.framework; path = System/Library/Frameworks/CoreText.framework; sourceTree = SDKROOT; };
-		114B7F141A3644CF00B8582B /* NYPLTenPrintCoverView+NYPLImageAdditions.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "NYPLTenPrintCoverView+NYPLImageAdditions.h"; sourceTree = "<group>"; };
-		114B7F151A3644CF00B8582B /* NYPLTenPrintCoverView+NYPLImageAdditions.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = "NYPLTenPrintCoverView+NYPLImageAdditions.m"; sourceTree = "<group>"; };
 		114C8CD519BE2FD300719B72 /* TPPAttributedString.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPAttributedString.h; sourceTree = "<group>"; };
 		114C8CD619BE2FD300719B72 /* TPPAttributedString.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPAttributedString.m; sourceTree = "<group>"; };
 		11548C091939136C009DBF2E /* TPPRootTabBarController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPRootTabBarController.h; sourceTree = "<group>"; };
@@ -1098,7 +1117,7 @@
 		11C5DCF41976D22F005A9945 /* TPPHoldsViewController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPHoldsViewController.m; sourceTree = "<group>"; };
 		11C5DD14197727A6005A9945 /* TPPKeychain.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPKeychain.h; sourceTree = "<group>"; };
 		11C5DD15197727A6005A9945 /* TPPKeychain.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPKeychain.m; sourceTree = "<group>"; };
-		11C5DD171977335E005A9945 /* NYPLKeychainTests.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = NYPLKeychainTests.m; sourceTree = "<group>"; };
+		11C5DD171977335E005A9945 /* TPPKeychainTests.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPKeychainTests.m; sourceTree = "<group>"; };
 		11D521991A44980D00636240 /* librmservices_iphone.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = librmservices_iphone.a; path = "../../Code/RMSDK-10_0_2014-08-25/samples/rmservices/build/xc3/build/Release-iphoneos/librmservices_iphone.a"; sourceTree = "<group>"; };
 		11D5219B1A449ABA00636240 /* libstdc++.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = "libstdc++.dylib"; path = "usr/lib/libstdc++.dylib"; sourceTree = SDKROOT; };
 		11E0208B197F05D9009DEA93 /* UIFont+TPPSystemFontOverride.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "UIFont+TPPSystemFontOverride.h"; sourceTree = "<group>"; };
@@ -1258,13 +1277,8 @@
 		730263AA2540DE4200A53891 /* TPPSAMLHelper.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TPPSAMLHelper.h; sourceTree = "<group>"; };
 		730263AB2540DE4200A53891 /* TPPSAMLHelper.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = TPPSAMLHelper.m; sourceTree = "<group>"; };
 		7307A5EC23FF1A8500DE53DE /* TPPOpenSearchDescriptionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPOpenSearchDescriptionTests.swift; sourceTree = "<group>"; };
-		73085E182502DE87008F6244 /* OETutorialChoiceViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = OETutorialChoiceViewController.swift; sourceTree = "<group>"; };
 		73085E192502DE88008F6244 /* TPPPresentationUtils.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPPresentationUtils.swift; sourceTree = "<group>"; };
-		73085E232502EDEE008F6244 /* TPPSettingsPrimaryTableViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPSettingsPrimaryTableViewController.swift; sourceTree = "<group>"; };
-		73085E242502EDEF008F6244 /* TPPSettingsPrimaryTableItem.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPSettingsPrimaryTableItem.swift; sourceTree = "<group>"; };
-		73085E252502EDF0008F6244 /* TPPSettingsSplitViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPSettingsSplitViewController.swift; sourceTree = "<group>"; };
 		73085E3425030D27008F6244 /* SEMigrations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SEMigrations.swift; sourceTree = "<group>"; };
-		73085E3725030D66008F6244 /* OEMigrations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OEMigrations.swift; sourceTree = "<group>"; };
 		730B7867249AB9D7008F28B3 /* Float+TPPAdditions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Float+TPPAdditions.swift"; sourceTree = "<group>"; };
 		730D17BF2552124B004CAC83 /* TPPMyBooksDownloadsCenterMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPMyBooksDownloadsCenterMock.swift; sourceTree = "<group>"; };
 		730D17CB25535954004CAC83 /* TPPSignInBusinessLogic+BookmarkSyncing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPSignInBusinessLogic+BookmarkSyncing.swift"; sourceTree = "<group>"; };
@@ -1286,10 +1300,6 @@
 		730EF25726093E53008E1DC3 /* valid-bookmark-2.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; name = "valid-bookmark-2.json"; path = "mobile-bookmark-spec/valid-bookmark-2.json"; sourceTree = SOURCE_ROOT; };
 		730EF262260955EF008E1DC3 /* TPPBookmarkSpecTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TPPBookmarkSpecTests.swift; path = Bookmarks/TPPBookmarkSpecTests.swift; sourceTree = "<group>"; };
 		730EF265260967FF008E1DC3 /* TPPBookmarkFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBookmarkFactory.swift; sourceTree = "<group>"; };
-		730FC04F25127FA2004D7C2D /* TPPSettings+OE.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = "TPPSettings+OE.swift"; sourceTree = "<group>"; };
-		730FC05425128D63004D7C2D /* OETutorialViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = OETutorialViewController.swift; sourceTree = "<group>"; };
-		730FC05525128D64004D7C2D /* OETutorialEligibilityViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = OETutorialEligibilityViewController.swift; sourceTree = "<group>"; };
-		730FC05625128D64004D7C2D /* OETutorialWelcomeViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = OETutorialWelcomeViewController.swift; sourceTree = "<group>"; };
 		7311FD2A25CBD086004447CB /* TPPSignInOutBusinessLogicUIDelegateMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPSignInOutBusinessLogicUIDelegateMock.swift; sourceTree = "<group>"; };
 		73127257259A99F50032D7B4 /* check-build-number.yml */ = {isa = PBXFileReference; lastKnownFileType = text.yaml; path = "check-build-number.yml"; sourceTree = "<group>"; };
 		7312725C259A9AB00032D7B4 /* ios-binaries-check.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "ios-binaries-check.sh"; sourceTree = "<group>"; };
@@ -1299,7 +1309,6 @@
 		731A5B1124621F2B00B5E663 /* TPPSignInBusinessLogic.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPSignInBusinessLogic.swift; sourceTree = "<group>"; };
 		731B2B12244A1D6500A7A649 /* R2Streamer.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = R2Streamer.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		731B2B18244A1D8600A7A649 /* R2Navigator.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = R2Navigator.framework; sourceTree = BUILT_PRODUCTS_DIR; };
-		73225DEA250B471400EF1877 /* TPPRootTabBarController+OE.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPRootTabBarController+OE.swift"; sourceTree = "<group>"; };
 		732327B12478504500A041E6 /* NSError+NYPLAdditions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NSError+NYPLAdditions.swift"; sourceTree = "<group>"; };
 		732752832578CB7900A073E2 /* R2LCPClient.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = R2LCPClient.framework; path = "../r2-lcp-swift/Carthage/Build/iOS/R2LCPClient.framework"; sourceTree = "<group>"; };
 		7327A89223EE017300954748 /* TPPMainThreadChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPMainThreadChecker.swift; sourceTree = "<group>"; };
@@ -1318,16 +1327,13 @@
 		733FF9BD2530F9E700CDAA13 /* TPPSignInBusinessLogic+OAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPSignInBusinessLogic+OAuth.swift"; sourceTree = "<group>"; };
 		7340DA6124B7E45C00361387 /* URLResponse+NYPL.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "URLResponse+NYPL.swift"; sourceTree = "<group>"; };
 		7340DA6724B7F27900361387 /* TPPBook+Logging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPBook+Logging.swift"; sourceTree = "<group>"; };
-		73422116252FE4950053DA9E /* TPPAccountSignInViewController+OESelectAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPAccountSignInViewController+OESelectAuth.swift"; sourceTree = "<group>"; };
 		734731222514235900BE3D2C /* TPPAppDelegate+SE.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPAppDelegate+SE.swift"; sourceTree = "<group>"; };
-		734731252514236A00BE3D2C /* TPPAppDelegate+OE.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPAppDelegate+OE.swift"; sourceTree = "<group>"; };
 		7347312825142FE200BE3D2C /* TPPSettings+SE.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPSettings+SE.swift"; sourceTree = "<group>"; };
 		7347F132245A508400558D7F /* NYPLCardCreator.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = NYPLCardCreator.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		734B789025659611006FB8AD /* URLResponse+TPPAuthentication.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "URLResponse+TPPAuthentication.swift"; sourceTree = "<group>"; };
 		734B78982565F7DE006FB8AD /* TPPReauthenticator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPReauthenticator.swift; sourceTree = "<group>"; };
 		735350B624918432006021BD /* URLRequest+NYPLTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "URLRequest+NYPLTests.swift"; sourceTree = "<group>"; };
 		735394012508161A0043C800 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = SOURCE_ROOT; };
-		7353940B250854A90043C800 /* TPPSettingsSplitViewController+OE.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPSettingsSplitViewController+OE.swift"; sourceTree = "<group>"; };
 		7357719F2537635600067CEA /* TPPSignInBusinessLogicTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPSignInBusinessLogicTests.swift; sourceTree = "<group>"; };
 		735771A7253763E800067CEA /* TPPBookRegistryMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBookRegistryMock.swift; sourceTree = "<group>"; };
 		735771AA2537650E00067CEA /* NYPLLibraryAccountsProviderMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NYPLLibraryAccountsProviderMock.swift; sourceTree = "<group>"; };
@@ -1356,7 +1362,6 @@
 		7386C1F3245225A5004C78BD /* TPPReaderPositionsVC.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPReaderPositionsVC.swift; sourceTree = "<group>"; };
 		7386C1F624525AFF004C78BD /* TPPReaderTOCBusinessLogic.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPReaderTOCBusinessLogic.swift; sourceTree = "<group>"; };
 		7386C1F9245276CA004C78BD /* TPPReaderTOCCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPReaderTOCCell.swift; sourceTree = "<group>"; };
-		738CB1FF2509A61E00891F31 /* TPPConfiguration+OE.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPConfiguration+OE.swift"; sourceTree = "<group>"; };
 		738CB2052509A87700891F31 /* TPPConfiguration+SE.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPConfiguration+SE.swift"; sourceTree = "<group>"; };
 		738E4715258ABB6300BEEC1D /* build-carthage-R2-integration.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "build-carthage-R2-integration.sh"; sourceTree = "<group>"; };
 		738EF2CB2405E38800F388FB /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "GoogleService-Info.plist"; path = "PalaceConfig/GoogleService-Info.plist"; sourceTree = SOURCE_ROOT; };
@@ -1374,7 +1379,6 @@
 		739062D125358CF900D0743D /* TPPSignInBusinessLogicUIDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPSignInBusinessLogicUIDelegate.swift; sourceTree = "<group>"; };
 		739E6157244A0F6D00D00301 /* R2Shared.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = R2Shared.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		739ECB2325101CCE00691A70 /* NSNotification+TPP.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NSNotification+TPP.swift"; sourceTree = "<group>"; };
-		739ECB282510207E00691A70 /* TPPCatalogs+OE.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPCatalogs+OE.swift"; sourceTree = "<group>"; };
 		739ECB2A25102A2B00691A70 /* TPPCatalogs+SE.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPCatalogs+SE.swift"; sourceTree = "<group>"; };
 		739ECB2D25108EE800691A70 /* TPPRootTabBarController+SE.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPRootTabBarController+SE.swift"; sourceTree = "<group>"; };
 		73A1DAD02592AD0F00712B5F /* Appfile */ = {isa = PBXFileReference; lastKnownFileType = text; path = Appfile; sourceTree = "<group>"; };
@@ -1405,13 +1409,11 @@
 		73DA43A82404BA5600985482 /* build-openssl-curl.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; name = "build-openssl-curl.sh"; path = "scripts/build-openssl-curl.sh"; sourceTree = SOURCE_ROOT; };
 		73DB56C125F769FF003788EE /* TPPLastReadPositionSynchronizer.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPLastReadPositionSynchronizer.swift; sourceTree = "<group>"; };
 		73DB56CB25F7F684003788EE /* TPPLastReadPositionPoster.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPLastReadPositionPoster.swift; sourceTree = "<group>"; };
-		73DE53302525A386003E2C56 /* TPPLibraryAccountURLsProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPLibraryAccountURLsProvider.swift; sourceTree = "<group>"; };
 		73DE8979260BEA13003D9135 /* TPPRequestExecuting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPRequestExecuting.swift; sourceTree = "<group>"; };
 		73DEB5462486FDFC00B5FF0A /* TPPBookmarkR2Location.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPBookmarkR2Location.swift; sourceTree = "<group>"; };
 		73DED81D25A630DB00A4D63B /* CryptoSwift.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CryptoSwift.framework; path = Carthage/Build/iOS/CryptoSwift.framework; sourceTree = "<group>"; };
 		73DED82125A630FF00A4D63B /* Fuzi.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Fuzi.framework; path = Carthage/Build/iOS/Fuzi.framework; sourceTree = "<group>"; };
 		73DED82525A6311A00A4D63B /* GCDWebServer.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = GCDWebServer.framework; path = Carthage/Build/iOS/GCDWebServer.framework; sourceTree = "<group>"; };
-		73E64E65252BB82600276953 /* TPPWelcomeEULAViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPWelcomeEULAViewController.swift; sourceTree = "<group>"; };
 		73EB0B7525821DF4006BC997 /* Palace-noDRM.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Palace-noDRM.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		73EB0B7F2582CCE9006BC997 /* build-3rd-party-dependencies.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "build-3rd-party-dependencies.sh"; sourceTree = "<group>"; };
 		73EB0B802582CD59006BC997 /* bootstrap-drm.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "bootstrap-drm.sh"; sourceTree = "<group>"; };
@@ -1487,6 +1489,11 @@
 		B51C1E16229456E2003B49A5 /* dpl_authentication_document.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = dpl_authentication_document.json; sourceTree = "<group>"; };
 		CAE35BBA1B86289500BF9BC5 /* Palace.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Palace.xcconfig; path = ../Palace.xcconfig; sourceTree = "<group>"; };
 		D787E8431FB6B0290016D9D5 /* TPPSettingsAdvancedViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPSettingsAdvancedViewController.swift; sourceTree = "<group>"; };
+		E50221B629881BC900A8A80B /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = es.lproj/Localizable.strings; sourceTree = "<group>"; };
+		E50221BE29881CAC00A8A80B /* de */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = de; path = de.lproj/Localizable.strings; sourceTree = "<group>"; };
+		E50221C529881CDD00A8A80B /* it */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = it; path = it.lproj/Localizable.strings; sourceTree = "<group>"; };
+		E50221CC29881D1E00A8A80B /* fr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = fr; path = fr.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		E50221CF29881D2800A8A80B /* fr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = fr; path = fr.lproj/Localizable.strings; sourceTree = "<group>"; };
 		E523116928504B85007D1DB5 /* TPPBook+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPBook+Extensions.swift"; sourceTree = "<group>"; };
 		E5231240285C291D007D1DB5 /* AudioBookmark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioBookmark.swift; sourceTree = "<group>"; };
 		E523124A285C3828007D1DB5 /* TPPBookRegistry+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPBookRegistry+Extensions.swift"; sourceTree = "<group>"; };
@@ -1514,11 +1521,16 @@
 		E553424F293FB23F004FF34A /* NYPLAudiobookToolkit.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = NYPLAudiobookToolkit.xcodeproj; path = "ios-audiobooktoolkit/NYPLAudiobookToolkit.xcodeproj"; sourceTree = "<group>"; };
 		E567C72B296743990079C28C /* BookCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookCell.swift; sourceTree = "<group>"; };
 		E580CD7A27EABBEE00B14475 /* LCPPDFs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LCPPDFs.swift; sourceTree = "<group>"; };
-		E580CD9627ECC06900B14475 /* PDFModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFModule.swift; sourceTree = "<group>"; };
-		E580CDA127ECE66A00B14475 /* TPPPDFViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPPDFViewController.swift; sourceTree = "<group>"; };
 		E58565CE269774C400A5FBD5 /* AudioEngine.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = AudioEngine.xcframework; path = Carthage/Build/AudioEngine.xcframework; sourceTree = "<group>"; };
 		E58565D2269774D900A5FBD5 /* NYPLAEToolkit.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = NYPLAEToolkit.xcframework; sourceTree = "<group>"; };
 		E585662026979AC100A5FBD5 /* NYPLAEToolkit.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = NYPLAEToolkit.xcodeproj; path = "ios-drm-audioengine/NYPLAEToolkit.xcodeproj"; sourceTree = "<group>"; };
+		E58F09B92988269200DAC72A /* de */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = de; path = de.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		E58F09BA2988269700DAC72A /* fr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = fr; path = fr.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		E58F09BB2988269900DAC72A /* it */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = it; path = it.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		E58F09BC2988269A00DAC72A /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = es.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		E58F09BD29882C0100DAC72A /* fr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.stringsdict; name = fr; path = fr.lproj/Localizable.stringsdict; sourceTree = "<group>"; };
+		E58F09BE29882C0400DAC72A /* de */ = {isa = PBXFileReference; lastKnownFileType = text.plist.stringsdict; name = de; path = de.lproj/Localizable.stringsdict; sourceTree = "<group>"; };
+		E58F09BF29882C0600DAC72A /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.stringsdict; name = es; path = es.lproj/Localizable.stringsdict; sourceTree = "<group>"; };
 		E59526EA28D24FC000C179DA /* AudiobookSample.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudiobookSample.swift; sourceTree = "<group>"; };
 		E59892E028A9AC2600C44A85 /* Sample.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sample.swift; sourceTree = "<group>"; };
 		E59892EC28AC909000C44A85 /* AudiobookSampleToolbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudiobookSampleToolbar.swift; sourceTree = "<group>"; };
@@ -1591,6 +1603,7 @@
 		E7376ECB287DF1C30095AADF /* DispatchQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DispatchQueue.swift; sourceTree = "<group>"; };
 		E7376ECF287E05F50095AADF /* TPPPDFPreviewThumbnail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFPreviewThumbnail.swift; sourceTree = "<group>"; };
 		E74752F627FF044400F5E7FA /* TPPSignInBusinessLogic+CardCreation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPSignInBusinessLogic+CardCreation.swift"; sourceTree = "<group>"; };
+		E76AD92A296DCB76008ECC61 /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
 		E7861C462846868800B3A38A /* TPPPDFViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFViewController.swift; sourceTree = "<group>"; };
 		E7861C482846875D00B3A38A /* TPPPDFView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFView.swift; sourceTree = "<group>"; };
 		E7861C4A28468AB200B3A38A /* TPPPDFDocumentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFDocumentView.swift; sourceTree = "<group>"; };
@@ -1607,6 +1620,7 @@
 		E7B20B38285B3AC400C49FE1 /* TPPPDFPreviewGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFPreviewGrid.swift; sourceTree = "<group>"; };
 		E7B20B45285B3BC800C49FE1 /* TPPPDFPreviewGridController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFPreviewGridController.swift; sourceTree = "<group>"; };
 		E7B20B48285B4E5600C49FE1 /* TPPPDFLabel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFLabel.swift; sourceTree = "<group>"; };
+		E7BF790C296F5F7600137D9F /* FirebaseMessaging.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = FirebaseMessaging.xcframework; path = Carthage/Build/FirebaseMessaging.xcframework; sourceTree = "<group>"; };
 		E7CBF976285CA41400F00C02 /* TPPPDFDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFDocument.swift; sourceTree = "<group>"; };
 		E7E89398284A1EB800C7A4F3 /* TPPPDFPreviewBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFPreviewBar.swift; sourceTree = "<group>"; };
 		E7EB9A8728736508004F484D /* TPPPDFToolbarButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFToolbarButton.swift; sourceTree = "<group>"; };
@@ -1644,6 +1658,7 @@
 				73EB0B3425821DF4006BC997 /* CoreGraphics.framework in Frameworks */,
 				73EB0B3525821DF4006BC997 /* QuartzCore.framework in Frameworks */,
 				2198695F267E2A450041369E /* PDFRendererProvider.xcframework in Frameworks */,
+				E7BF7911296F5FB300137D9F /* FirebaseMessaging.xcframework in Frameworks */,
 				73EB0B3825821DF4006BC997 /* libRDServices.a in Frameworks */,
 				E77D02272931360100544180 /* R2Navigator in Frameworks */,
 				73EB0B3925821DF4006BC997 /* libicucore.tbd in Frameworks */,
@@ -1698,8 +1713,10 @@
 				08C469C11BDAAEB1009D8AFD /* libADEPT.a in Frameworks */,
 				08A352271BDE91B80040BF1D /* libRDServices.a in Frameworks */,
 				08A352221BDE8E560040BF1D /* libicucore.tbd in Frameworks */,
+				E7BF790F296F5FA300137D9F /* FirebaseMessaging.xcframework in Frameworks */,
 				5AEA9E011B947419009F71DB /* libc++.dylib in Frameworks */,
 				2DA4F2331C68363B008853D7 /* LocalAuthentication.framework in Frameworks */,
+				E7BF790D296F5F7600137D9F /* FirebaseMessaging.xcframework in Frameworks */,
 				08A352261BDE8E700040BF1D /* SystemConfiguration.framework in Frameworks */,
 				08A352241BDE8E640040BF1D /* Security.framework in Frameworks */,
 				08A352201BDE8E410040BF1D /* CFNetwork.framework in Frameworks */,
@@ -1899,7 +1916,6 @@
 				732940BE251D05E30065E362 /* SettingsCells */,
 				E5C2C41B268BA4E00046F415 /* DeveloperSettings */,
 				5DD5677122B7ECE3001F0C83 /* TPPSettings.swift */,
-				730FC04F25127FA2004D7C2D /* TPPSettings+OE.swift */,
 				7347312825142FE200BE3D2C /* TPPSettings+SE.swift */,
 				E6202A001DD4E6F300C99553 /* TPPSettingsAccountDetailViewController.h */,
 				E6202A011DD4E6F300C99553 /* TPPSettingsAccountDetailViewController.m */,
@@ -1907,10 +1923,6 @@
 				D787E8431FB6B0290016D9D5 /* TPPSettingsAdvancedViewController.swift */,
 				841B55411B740F2700FAC1AF /* TPPSettingsEULAViewController.h */,
 				841B55421B740F2700FAC1AF /* TPPSettingsEULAViewController.m */,
-				73085E242502EDEF008F6244 /* TPPSettingsPrimaryTableItem.swift */,
-				73085E232502EDEE008F6244 /* TPPSettingsPrimaryTableViewController.swift */,
-				73085E252502EDF0008F6244 /* TPPSettingsSplitViewController.swift */,
-				7353940B250854A90043C800 /* TPPSettingsSplitViewController+OE.swift */,
 				215C866C27064198005F9621 /* BundleExtension.swift */,
 				E5AD65D52684FA9E00C62951 /* AccountList */,
 			);
@@ -1922,7 +1934,6 @@
 			children = (
 				5D60D3532297353C001080D0 /* TPPMigrationManager.swift */,
 				73085E3425030D27008F6244 /* SEMigrations.swift */,
-				73085E3725030D66008F6244 /* OEMigrations.swift */,
 			);
 			path = Migrations;
 			sourceTree = "<group>";
@@ -1959,18 +1970,15 @@
 				739ECB2325101CCE00691A70 /* NSNotification+TPP.swift */,
 				A823D81F192BABA400B55DE2 /* TPPAppDelegate.h */,
 				A823D820192BABA400B55DE2 /* TPPAppDelegate.m */,
-				734731252514236A00BE3D2C /* TPPAppDelegate+OE.swift */,
 				734731222514235900BE3D2C /* TPPAppDelegate+SE.swift */,
 				A93F9F9621CDACF700BD3B0C /* TPPAppReviewPrompt.swift */,
 				E6207B642118973800864143 /* TPPAppTheme.swift */,
 				E6F26E721DFF672F00C103CA /* TPPBookContentMetadataFilesHelper.swift */,
 				116A5EB71947B57500491A21 /* TPPConfiguration.h */,
 				116A5EB81947B57500491A21 /* TPPConfiguration.m */,
-				738CB1FF2509A61E00891F31 /* TPPConfiguration+OE.swift */,
 				738CB2052509A87700891F31 /* TPPConfiguration+SE.swift */,
 				11548C091939136C009DBF2E /* TPPRootTabBarController.h */,
 				11548C0A1939136C009DBF2E /* TPPRootTabBarController.m */,
-				73225DEA250B471400EF1877 /* TPPRootTabBarController+OE.swift */,
 				739ECB2D25108EE800691A70 /* TPPRootTabBarController+SE.swift */,
 				730EDFFF251567820038DD9F /* TPPLibraryNavigationController.h */,
 				730EE000251567820038DD9F /* TPPLibraryNavigationController.m */,
@@ -2035,7 +2043,6 @@
 			children = (
 				1158812C1A894F4E008672C3 /* TPPAccountSignInViewController.h */,
 				1158812D1A894F4E008672C3 /* TPPAccountSignInViewController.m */,
-				73422116252FE4950053DA9E /* TPPAccountSignInViewController+OESelectAuth.swift */,
 				086C45D524AE77CA00F5108E /* TPPBasicAuth.swift */,
 				089E42C5249A823800310360 /* TPPCookiesWebViewController.swift */,
 				734B78982565F7DE006FB8AD /* TPPReauthenticator.swift */,
@@ -2101,7 +2108,6 @@
 			children = (
 				21DF7F9725AF5E560090402A /* ReaderFormatModule.swift */,
 				73A229AC2410221E006B9EAD /* EPUBModule.swift */,
-				E580CD9627ECC06900B14475 /* PDFModule.swift */,
 			);
 			path = ReadingFormats;
 			sourceTree = "<group>";
@@ -2165,12 +2171,7 @@
 		738CB2092509AD3B00891F31 /* WelcomeScreen */ = {
 			isa = PBXGroup;
 			children = (
-				73E64E65252BB82600276953 /* TPPWelcomeEULAViewController.swift */,
 				E6202A031DD52B8600C99553 /* TPPWelcomeScreenViewController.swift */,
-				73085E182502DE87008F6244 /* OETutorialChoiceViewController.swift */,
-				730FC05525128D64004D7C2D /* OETutorialEligibilityViewController.swift */,
-				730FC05425128D63004D7C2D /* OETutorialViewController.swift */,
-				730FC05625128D64004D7C2D /* OETutorialWelcomeViewController.swift */,
 			);
 			path = WelcomeScreen;
 			sourceTree = "<group>";
@@ -2203,7 +2204,6 @@
 				E6D848E22171334800CEC142 /* TPPContentTypeBadge.swift */,
 				11548C0C1939147D009DBF2E /* TPPCatalogNavigationController.h */,
 				11548C0D1939147D009DBF2E /* TPPCatalogNavigationController.m */,
-				739ECB282510207E00691A70 /* TPPCatalogs+OE.swift */,
 				739ECB2A25102A2B00691A70 /* TPPCatalogs+SE.swift */,
 				118A0B1919915BDF00792DDE /* TPPCatalogSearchViewController.h */,
 				118A0B1A19915BDF00792DDE /* TPPCatalogSearchViewController.m */,
@@ -2388,8 +2388,6 @@
 		73B5DFFC2605606600225C12 /* UI */ = {
 			isa = PBXGroup;
 			children = (
-				114B7F141A3644CF00B8582B /* NYPLTenPrintCoverView+NYPLImageAdditions.h */,
-				114B7F151A3644CF00B8582B /* NYPLTenPrintCoverView+NYPLImageAdditions.m */,
 				081387581BC5767F003DEA6A /* UIButton+NYPLAppearanceAdditions.h */,
 				081387591BC5767F003DEA6A /* UIButton+NYPLAppearanceAdditions.m */,
 				11A14DF21A1BF94F00D6C510 /* UIColor+TPPColorAdditions.h */,
@@ -2541,7 +2539,6 @@
 				8CC26F822370C1DF0000D8E1 /* Account.swift */,
 				03F94CCE1DD627AA00CE8F4F /* Accounts.json */,
 				03F94CD01DD6288C00CE8F4F /* AccountsManager.swift */,
-				73DE53302525A386003E2C56 /* TPPLibraryAccountURLsProvider.swift */,
 			);
 			path = Library;
 			sourceTree = "<group>";
@@ -2610,7 +2607,6 @@
 				7386C1F9245276CA004C78BD /* TPPReaderTOCCell.swift */,
 				73F713552417200F00C63B81 /* TPPBaseReaderViewController.swift */,
 				73F713502417200F00C63B81 /* TPPEPUBViewController.swift */,
-				E580CDA127ECE66A00B14475 /* TPPPDFViewController.swift */,
 				73F713672417240100C63B81 /* UIViewController+TPP.swift */,
 				7386C1F3245225A5004C78BD /* TPPReaderPositionsVC.swift */,
 				7335BA9A2453C48F000295F2 /* TPPReaderPositions.storyboard */,
@@ -2668,6 +2664,7 @@
 		A823D80F192BABA400B55DE2 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				E7BF790C296F5F7600137D9F /* FirebaseMessaging.xcframework */,
 				E7F287782956566800EEB1E0 /* R2LCPClient.xcframework */,
 				E708C18C27734EE300D34899 /* DifferenceKit.xcframework */,
 				21F634E426D828CF00C8BE87 /* ReadiumLCP.xcframework */,
@@ -2779,6 +2776,7 @@
 				73085E3325030CFC008F6244 /* Migrations */,
 				7384C751252D1F720012C2DD /* MyBooks */,
 				7338755E2423E108000FEB67 /* Network */,
+				E76AD929296DCB43008ECC61 /* Notifications */,
 				73B5E004260567F800225C12 /* OPDS */,
 				73B5E005260567FF00225C12 /* OPDS2 */,
 				E7861C3B284685F800B3A38A /* PDF */,
@@ -2816,6 +2814,10 @@
 				73DA43A12404B4A900985482 /* Cartfile */,
 				73DA43A32404B92E00985482 /* Cartfile.resolved */,
 				735394012508161A0043C800 /* README.md */,
+				E50221B729881BC900A8A80B /* Localizable.strings */,
+				E50221D029881D2800A8A80B /* Localizable.strings */,
+				E50221C629881CDD00A8A80B /* Localizable.strings */,
+				E50221BF29881CAC00A8A80B /* Localizable.strings */,
 				17E81F32261FF758001003C2 /* Localizable.stringsdict */,
 			);
 			name = "Supporting Files";
@@ -2838,7 +2840,7 @@
 				7384C7FF242BB43300D5F960 /* TPPCachingTests.swift */,
 				1142E4E719EEC7C500D9B3D9 /* TPPCatalogFacetTests.m */,
 				73A794C925492C9800C59CC1 /* TPPFake.swift */,
-				11C5DD171977335E005A9945 /* NYPLKeychainTests.m */,
+				11C5DD171977335E005A9945 /* TPPKeychainTests.m */,
 				5D73DA3D22A07B9A00162CB8 /* TPPMyBooksDownloadCenterTests.swift */,
 				7307A5EC23FF1A8500DE53DE /* TPPOpenSearchDescriptionTests.swift */,
 				7357719F2537635600067CEA /* TPPSignInBusinessLogicTests.swift */,
@@ -3085,6 +3087,14 @@
 			path = LCP;
 			sourceTree = "<group>";
 		};
+		E76AD929296DCB43008ECC61 /* Notifications */ = {
+			isa = PBXGroup;
+			children = (
+				E76AD92A296DCB76008ECC61 /* NotificationService.swift */,
+			);
+			path = Notifications;
+			sourceTree = "<group>";
+		};
 		E7861C3B284685F800B3A38A /* PDF */ = {
 			isa = PBXGroup;
 			children = (
@@ -3217,6 +3227,7 @@
 				de,
 				es,
 				Base,
+				fr,
 			);
 			mainGroup = A823D804192BABA400B55DE2;
 			packageReferences = (
@@ -3341,9 +3352,11 @@
 			files = (
 				730EF25E26093E53008E1DC3 /* valid-locator-0.json in Resources */,
 				730EF25126093E40008E1DC3 /* invalid-bookmark-4.json in Resources */,
+				E75ED6E32977320B006BBD5F /* single_entry.xml in Resources */,
 				730EF24726093E40008E1DC3 /* invalid-bookmark-2.json in Resources */,
 				2D2B478E1D08FDF5007F7764 /* UpdateCheckNeedsUpdate.json in Resources */,
 				B51C1E18229456E2003B49A5 /* gpl_authentication_document.json in Resources */,
+				E75ED6DE29772EC1006BBD5F /* main.xml in Resources */,
 				B51C1E19229456E2003B49A5 /* nypl_authentication_document.json in Resources */,
 				730EF24926093E40008E1DC3 /* invalid-bookmark-1.json in Resources */,
 				730EF24126093E40008E1DC3 /* invalid-locator-1.json in Resources */,
@@ -3360,7 +3373,9 @@
 				730EF24526093E40008E1DC3 /* invalid-bookmark-3.json in Resources */,
 				219901F524FD2DE9001BC727 /* jwk.json in Resources */,
 				730EF25C26093E53008E1DC3 /* valid-bookmark-1.json in Resources */,
+				E75ED6DC29772E6D006BBD5F /* valid.xml in Resources */,
 				730EF24326093E40008E1DC3 /* invalid-locator-2.json in Resources */,
+				E75ED6DD29772EBE006BBD5F /* invalid.xml in Resources */,
 				B51C1DFC22860513003B49A5 /* OPDS2CatalogsFeed.json in Resources */,
 				2D2B47841D08F8E2007F7764 /* UpdateCheckUpToDate.json in Resources */,
 				730EF24B26093E40008E1DC3 /* invalid-bookmark-0.json in Resources */,
@@ -3378,6 +3393,7 @@
 				73EB0B5A25821DF4006BC997 /* simplified.js in Resources */,
 				73EB0B5B25821DF4006BC997 /* TPPProblemReportViewController.xib in Resources */,
 				E5BEF00926BD919F00C2A50B /* OpenSans-Regular.ttf in Resources */,
+				E50221B829881C5100A8A80B /* Localizable.strings in Resources */,
 				73EB0B5C25821DF4006BC997 /* readium-shared-js_all.js in Resources */,
 				73EB0B5D25821DF4006BC997 /* ReaderClientCert.sig in Resources */,
 				17E81F2F261FF758001003C2 /* Localizable.stringsdict in Resources */,
@@ -3390,12 +3406,15 @@
 				73EB0B6325821DF4006BC997 /* DetailSummaryTemplate.html in Resources */,
 				216FD1FC26DFE112003AF0D8 /* Colors.xcassets in Resources */,
 				73EB0B6525821DF4006BC997 /* Images.xcassets in Resources */,
+				E50221BD29881CAC00A8A80B /* Localizable.strings in Resources */,
 				73EB0B6625821DF4006BC997 /* sdk.css in Resources */,
 				E5BEF02A26BDAB3A00C2A50B /* OpenSans-SemiBold.ttf in Resources */,
 				73EB0B6725821DF4006BC997 /* OpenDyslexic3-Bold.ttf in Resources */,
 				73EB0B6925821DF4006BC997 /* readium-shared-js_all.js.map in Resources */,
+				E50221C429881CDD00A8A80B /* Localizable.strings in Resources */,
 				73D8D27A25A68D3B00DF5F69 /* TPPReaderPositions.storyboard in Resources */,
 				73EB0B6A25821DF4006BC997 /* host_app_feedback.js in Resources */,
+				E50221CE29881D2800A8A80B /* Localizable.strings in Resources */,
 				E5D3288B292C0D68008BFD01 /* txstrings.json in Resources */,
 				73EB0B6B25821DF4006BC997 /* readium-shared-js_all.js.bundles.js in Resources */,
 				73EB0B6C25821DF4006BC997 /* OpenDyslexic3-Regular.ttf in Resources */,
@@ -3411,6 +3430,7 @@
 				11C113D719F84613005B3F63 /* simplified.js in Resources */,
 				085D31D91BE29ED4007F7672 /* TPPProblemReportViewController.xib in Resources */,
 				E5BEF00826BD919F00C2A50B /* OpenSans-Regular.ttf in Resources */,
+				E50221B529881BC900A8A80B /* Localizable.strings in Resources */,
 				5A69290E1B95ACC600FB4C10 /* readium-shared-js_all.js in Resources */,
 				2D4379FE1C46FDB600AE1AD5 /* ReaderClientCert.sig in Resources */,
 				17E81F2C261FF758001003C2 /* Localizable.stringsdict in Resources */,
@@ -3423,12 +3443,15 @@
 				110F853E19D5FA7300052DF7 /* DetailSummaryTemplate.html in Resources */,
 				E5506DE426C4688D009FA623 /* Colors.xcassets in Resources */,
 				A823D823192BABA400B55DE2 /* Images.xcassets in Resources */,
+				E50221BC29881CAC00A8A80B /* Localizable.strings in Resources */,
 				5A6929101B95ACD100FB4C10 /* sdk.css in Resources */,
 				E5BEF02826BDAB3A00C2A50B /* OpenSans-SemiBold.ttf in Resources */,
 				84B7A3471B84E8FE00584FB2 /* OpenDyslexic3-Bold.ttf in Resources */,
 				5A6929251B95C93B00FB4C10 /* readium-shared-js_all.js.map in Resources */,
+				E50221C329881CDD00A8A80B /* Localizable.strings in Resources */,
 				7347F0272459E10900558D7F /* TPPReaderPositions.storyboard in Resources */,
 				11C113D219F842BE005B3F63 /* host_app_feedback.js in Resources */,
+				E50221CD29881D2800A8A80B /* Localizable.strings in Resources */,
 				E5D3288A292C0D34008BFD01 /* txstrings.json in Resources */,
 				5A6929241B95C8B400FB4C10 /* readium-shared-js_all.js.bundles.js in Resources */,
 				84B7A3481B84E8FE00584FB2 /* OpenDyslexic3-Regular.ttf in Resources */,
@@ -3524,6 +3547,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E75ED6D32977223A006BBD5F /* TPPKeychainTests.m in Sources */,
 				735DD0C225229DAC0096D1F9 /* TPPCatalogFacetTests.m in Sources */,
 				7384C800242BB43400D5F960 /* TPPCachingTests.swift in Sources */,
 				5D3A28D522D400D00042B3BD /* UserProfileDocumentTests.swift in Sources */,
@@ -3531,6 +3555,7 @@
 				735771A8253763E800067CEA /* TPPBookRegistryMock.swift in Sources */,
 				735771A02537635600067CEA /* TPPSignInBusinessLogicTests.swift in Sources */,
 				17BE24DA25F85D2300AE707F /* TPPAgeCheckTests.swift in Sources */,
+				E75ED6DB29772C4B006BBD5F /* NYPLXMLTests.m in Sources */,
 				17BE24E025FABA0900AE707F /* TPPAgeCheckChoiceStorageMock.swift in Sources */,
 				7375AE5A25382AC900C85211 /* TPPUserAccountMock.swift in Sources */,
 				73C3CF5A25CB8D6100CA8166 /* NYPLNetworkExecutorMock.swift in Sources */,
@@ -3550,6 +3575,7 @@
 				17ADCF4F254BB84800D0A5FE /* TPPReaderBookmarksBusinessLogicTests.swift in Sources */,
 				735771AB2537650E00067CEA /* NYPLLibraryAccountsProviderMock.swift in Sources */,
 				1763C0D624F460FE00A4D0E2 /* TPPAnnouncementManagerTests.swift in Sources */,
+				E75ED6D4297722BA006BBD5F /* TPPMyBooksDownloadCenterTests.swift in Sources */,
 				2D8790A520129AF200E2763F /* TPPOPDSAcquisitionPathTests.swift in Sources */,
 				735350B724918432006021BD /* URLRequest+NYPLTests.swift in Sources */,
 				73A794CA25492C9800C59CC1 /* TPPFake.swift in Sources */,
@@ -3622,6 +3648,7 @@
 				2126FE6625C089110095C45C /* ReaderFormatModule.swift in Sources */,
 				21E41787292810EE00A78606 /* CGSize.swift in Sources */,
 				21399900268F9F2500B4EB60 /* TPPAccountListCell.swift in Sources */,
+				E75ED6D2297720DE006BBD5F /* TXNativeExtensions.swift in Sources */,
 				21E4178D292810F600A78606 /* TPPPDFBackButton.swift in Sources */,
 				73EB0A8725821DF4006BC997 /* TPPCatalogGroupedFeedViewController.m in Sources */,
 				73EB0A8825821DF4006BC997 /* TPPBackgroundExecutor.swift in Sources */,
@@ -3849,6 +3876,7 @@
 				73EB0B1E25821DF4006BC997 /* TPPAccountSignInViewController.m in Sources */,
 				73EB0B1F25821DF4006BC997 /* UserProfileDocument.swift in Sources */,
 				21E41777292810E000A78606 /* TPPPDFDocumentMetadata.swift in Sources */,
+				E76AD92C296DCB76008ECC61 /* NotificationService.swift in Sources */,
 				73EB0B2025821DF4006BC997 /* AccountsManager.swift in Sources */,
 				217595DE27B680D400BA0FDD /* TPPReaderSettingsVC.swift in Sources */,
 				E7862A252773927900BE8AB8 /* Font+Extensions.swift in Sources */,
@@ -3975,6 +4003,7 @@
 				215C866D27064198005F9621 /* BundleExtension.swift in Sources */,
 				E699BA402166598B00A0736A /* TPPEntryPointView.swift in Sources */,
 				A46226271B39D4980063F549 /* TPPOPDSGroup.m in Sources */,
+				E76AD92B296DCB76008ECC61 /* NotificationService.swift in Sources */,
 				A93F9F9721CDACF700BD3B0C /* TPPAppReviewPrompt.swift in Sources */,
 				73DB56C625F769FF003788EE /* TPPLastReadPositionSynchronizer.swift in Sources */,
 				8C835DD5234D0B900050A18D /* TPPFacetBarView.swift in Sources */,
@@ -4206,6 +4235,9 @@
 			children = (
 				17E81F31261FF758001003C2 /* en */,
 				17E81F332620DAE0001003C2 /* it */,
+				E58F09BD29882C0100DAC72A /* fr */,
+				E58F09BE29882C0400DAC72A /* de */,
+				E58F09BF29882C0600DAC72A /* es */,
 			);
 			name = Localizable.stringsdict;
 			sourceTree = "<group>";
@@ -4214,6 +4246,10 @@
 			isa = PBXVariantGroup;
 			children = (
 				A823D81A192BABA400B55DE2 /* en */,
+				E58F09B92988269200DAC72A /* de */,
+				E58F09BA2988269700DAC72A /* fr */,
+				E58F09BB2988269900DAC72A /* it */,
+				E58F09BC2988269A00DAC72A /* es */,
 			);
 			name = InfoPlist.strings;
 			sourceTree = "<group>";
@@ -4222,8 +4258,41 @@
 			isa = PBXVariantGroup;
 			children = (
 				A823D833192BABA400B55DE2 /* en */,
+				E50221CC29881D1E00A8A80B /* fr */,
 			);
 			name = InfoPlist.strings;
+			sourceTree = "<group>";
+		};
+		E50221B729881BC900A8A80B /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				E50221B629881BC900A8A80B /* es */,
+			);
+			name = Localizable.strings;
+			sourceTree = "<group>";
+		};
+		E50221BF29881CAC00A8A80B /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				E50221BE29881CAC00A8A80B /* de */,
+			);
+			name = Localizable.strings;
+			sourceTree = "<group>";
+		};
+		E50221C629881CDD00A8A80B /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				E50221C529881CDD00A8A80B /* it */,
+			);
+			name = Localizable.strings;
+			sourceTree = "<group>";
+		};
+		E50221D029881D2800A8A80B /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				E50221CF29881D2800A8A80B /* fr */,
+			);
+			name = Localizable.strings;
 			sourceTree = "<group>";
 		};
 /* End PBXVariantGroup section */
@@ -4370,7 +4439,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 129;
+				CURRENT_PROJECT_VERSION = 135;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
@@ -4426,7 +4495,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 129;
+				CURRENT_PROJECT_VERSION = 135;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
@@ -4608,6 +4677,11 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 129;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 135;
+				DEVELOPMENT_TEAM = "";
+				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -4634,7 +4708,6 @@
 				);
 				MARKETING_VERSION = 1.0.26;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
-				PROVISIONING_PROFILE = "2e185b6c-271e-4b02-a05e-860b8c3831f6";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				RUN_CLANG_STATIC_ANALYZER = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG SIMPLYE FEATURE_DRM_CONNECTOR FEATURE_CRASH_REPORTING LCP FEATURE_OVERDRIVE";
@@ -4666,7 +4739,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 129;
+				CURRENT_PROJECT_VERSION = 135;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
@@ -4694,7 +4767,6 @@
 				);
 				MARKETING_VERSION = 1.0.26;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
-				PROVISIONING_PROFILE = "b3d9154d-70e1-48d6-a0c5-869431277a5c";
 				PROVISIONING_PROFILE_SPECIFIER = "App Store 2";
 				RUN_CLANG_STATIC_ANALYZER = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "SIMPLYE FEATURE_DRM_CONNECTOR FEATURE_CRASH_REPORTING LCP FEATURE_OVERDRIVE";

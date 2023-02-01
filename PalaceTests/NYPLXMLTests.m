@@ -1,18 +1,18 @@
 @import XCTest;
 
-#import "NYPLXML.h"
+#import "TPPXML.h"
 
-@interface NYPLXMLTests : XCTestCase
+@interface TPPXMLTests : XCTestCase
 
-@property (nonatomic) NYPLXML *XML;
+@property (nonatomic) TPPXML *XML;
 
 @end
 
-@implementation NYPLXMLTests
+@implementation TPPXMLTests
 
 - (void)testValid
 {
-  NYPLXML *const root = [NYPLXML XMLWithData:[NSData dataWithContentsOfURL:
+  TPPXML *const root = [TPPXML XMLWithData:[NSData dataWithContentsOfURL:
                                               [[NSBundle bundleForClass:[self class]]
                                                URLForResource:@"valid"
                                                withExtension:@"xml"]]];
@@ -26,7 +26,7 @@
   XCTAssertEqualObjects(root.qualifiedName, @"ex:foo");
   XCTAssertNotNil(root.value);
   
-  NYPLXML *const bar0 = root.children[0];
+  TPPXML *const bar0 = root.children[0];
   XCTAssertEqualObjects(bar0.attributes, @{});
   XCTAssertNotNil(bar0.children);
   XCTAssertEqual(bar0.children.count, 0U);
@@ -36,7 +36,7 @@
   XCTAssertEqualObjects(bar0.qualifiedName, @"bar");
   XCTAssertEqualObjects(bar0.value, @"\n    42\n  ");
   
-  NYPLXML *const bar1 = root.children[1];
+  TPPXML *const bar1 = root.children[1];
   NSDictionary *const bar1Attributes = @{@"a": @"hello", @"b": @"goodbye"};
   XCTAssertEqualObjects(bar1.attributes, bar1Attributes);
   XCTAssertNotNil(bar1.children);
@@ -47,7 +47,7 @@
   XCTAssertEqualObjects(bar1.qualifiedName, @"bar");
   XCTAssertEqualObjects(bar1.value, @"100");
   
-  NYPLXML *const baz = root.children[2];
+  TPPXML *const baz = root.children[2];
   XCTAssertEqualObjects(baz.attributes, @{});
   XCTAssertEqual(baz.children.count, 2U);
   XCTAssertEqualObjects(baz.name, @"baz");
@@ -56,7 +56,7 @@
   XCTAssertEqualObjects(baz.qualifiedName, @"baz");
   XCTAssertEqualObjects(baz.value, @"\n    one\n    \n    two\n    \n  ");
   
-  NYPLXML *const quux0 = baz.children[0];
+  TPPXML *const quux0 = baz.children[0];
   XCTAssertEqualObjects(quux0.attributes, @{});
   XCTAssertNotNil(quux0.children);
   XCTAssertEqual(quux0.children.count, 0U);
@@ -66,7 +66,7 @@
   XCTAssertEqualObjects(quux0.qualifiedName, @"quux");
   XCTAssertEqualObjects(quux0.value, @"");
   
-  NYPLXML *const quux1 = baz.children[1];
+  TPPXML *const quux1 = baz.children[1];
   XCTAssertEqualObjects(quux1.attributes, @{});
   XCTAssertNotNil(quux1.children);
   XCTAssertEqual(quux1.children.count, 0U);
@@ -89,7 +89,7 @@
 
 - (void)testInvalid
 {
-  NYPLXML *const root = [NYPLXML XMLWithData:[NSData dataWithContentsOfURL:
+  TPPXML *const root = [TPPXML XMLWithData:[NSData dataWithContentsOfURL:
                                               [[NSBundle bundleForClass:[self class]]
                                                URLForResource:@"invalid"
                                                withExtension:@"xml"]]];
@@ -98,7 +98,7 @@
 
 - (void)testNoData
 {
-  NYPLXML *const root = [NYPLXML XMLWithData:nil];
+  TPPXML *const root = [TPPXML XMLWithData:nil];
   XCTAssertNil(root);
 }
 
