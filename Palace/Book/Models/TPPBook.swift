@@ -560,3 +560,8 @@ let UpdatedKey: String = "updated"
 }
 
 extension TPPBook: Identifiable {}
+extension TPPBook: Comparable {
+  static func < (lhs: TPPBook, rhs: TPPBook) -> Bool {
+    lhs.identifier == rhs.identifier
+  }
+}

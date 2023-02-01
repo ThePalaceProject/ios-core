@@ -54,7 +54,10 @@ class MyBooksViewModel: ObservableObject {
   }
   
   private func loadData() {
+    let updatedBooks = TPPBookRegistry.shared.myBooks
+    guard !books.containsSameElements(as: updatedBooks) else { return }
     books = TPPBookRegistry.shared.myBooks
+    sortData()
   }
 
   private func sortData() {
@@ -63,13 +66,13 @@ class MyBooksViewModel: ObservableObject {
       books = books.sorted {
         let aString = "\($0.authors!) \($0.title)"
         let bString = "\($1.authors!) \($1.title)"
-        return aString.caseInsensitiveCompare(bString) == .orderedDescending
+        return aString < bString
       }
     case .title:
       books = books.sorted {
         let aString = "\($0.title) \($0.authors!)"
         let bString = "\($1.title) \($1.authors!)"
-        return aString.caseInsensitiveCompare(bString) == .orderedDescending
+        return aString < bString
       }
     }
   }
@@ -131,4 +134,10 @@ class MyBooksViewModel: ObservableObject {
       isRefreshing = false
     }
   }
+}
+
+extension Array where Element: Comparable {
+    func containsSameElements(as other: [Element]) -> Bool {
+        return self.count == other.count && self.sorted() == other.sorted()
+    }
 }

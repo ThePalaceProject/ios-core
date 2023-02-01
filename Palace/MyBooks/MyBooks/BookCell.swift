@@ -15,7 +15,7 @@ enum BookCellState {
 }
 
 struct BookCell: View {
-  private var imageLoader = AsyncImage(image: ImageProviders.MyBooksView.bookPlaceholder ?? UIImage())
+  private var imageLoader = AsyncImage(image: UIImage())
   private var book: TPPBook
   private let imageViewHeight: CGFloat = 70
   

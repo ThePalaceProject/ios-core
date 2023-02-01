@@ -4,3 +4,5 @@ github "PureLayout/PureLayout" "v3.1.9"
 github "ThePalaceProject/ios-provider-pdf-renderer" "6ad943ae12e2c96dba0867e653b9a65c0051ecca"
 github "dexman/Minizip" "1.4.0"
 github "zxingify/zxingify-objc" "3.6.7"
+
+binary "https://liblcp.dita.digital/readium/liblcp/ios/carthage/xHwy01rpnw/liblcp.json" "3.0.0"
