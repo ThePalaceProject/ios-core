@@ -361,7 +361,6 @@
 		739062D225358CF900D0743D /* TPPSignInBusinessLogicUIDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 739062D125358CF900D0743D /* TPPSignInBusinessLogicUIDelegate.swift */; };
 		739ECB2425101CCE00691A70 /* NSNotification+TPP.swift in Sources */ = {isa = PBXBuildFile; fileRef = 739ECB2325101CCE00691A70 /* NSNotification+TPP.swift */; };
 		739ECB2B25102A2B00691A70 /* TPPCatalogs+SE.swift in Sources */ = {isa = PBXBuildFile; fileRef = 739ECB2A25102A2B00691A70 /* TPPCatalogs+SE.swift */; };
-		739ECB2E25108EE800691A70 /* TPPRootTabBarController+SE.swift in Sources */ = {isa = PBXBuildFile; fileRef = 739ECB2D25108EE800691A70 /* TPPRootTabBarController+SE.swift */; };
 		73A2299B240F3B9B006B9EAD /* TPPR2Owner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73A2299A240F3B9B006B9EAD /* TPPR2Owner.swift */; };
 		73A229A2240F3BEB006B9EAD /* LibraryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73A2299E240F3BEA006B9EAD /* LibraryService.swift */; };
 		73A229AD2410221E006B9EAD /* EPUBModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73A229AC2410221E006B9EAD /* EPUBModule.swift */; };
@@ -453,7 +452,6 @@
 		73EB0AA025821DF4006BC997 /* TPPUserNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52545184217A76FF00BBC1B4 /* TPPUserNotifications.swift */; };
 		73EB0AA125821DF4006BC997 /* TPPCatalogLane.m in Sources */ = {isa = PBXBuildFile; fileRef = 1183F340194F723D00DC322F /* TPPCatalogLane.m */; };
 		73EB0AA225821DF4006BC997 /* TPPBookNormalCell.m in Sources */ = {isa = PBXBuildFile; fileRef = 11A16E6E195B60DF004147F4 /* TPPBookNormalCell.m */; };
-		73EB0AA325821DF4006BC997 /* TPPRootTabBarController+SE.swift in Sources */ = {isa = PBXBuildFile; fileRef = 739ECB2D25108EE800691A70 /* TPPRootTabBarController+SE.swift */; };
 		73EB0AA425821DF4006BC997 /* TPPCatalogNavigationController.m in Sources */ = {isa = PBXBuildFile; fileRef = 11548C0D1939147D009DBF2E /* TPPCatalogNavigationController.m */; };
 		73EB0AA525821DF4006BC997 /* TPPEntryPointView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E699BA3F2166598B00A0736A /* TPPEntryPointView.swift */; };
 		73EB0AA625821DF4006BC997 /* TPPOPDSGroup.m in Sources */ = {isa = PBXBuildFile; fileRef = A46226251B39D4980063F549 /* TPPOPDSGroup.m */; };
@@ -3643,7 +3641,6 @@
 				73EB0AA125821DF4006BC997 /* TPPCatalogLane.m in Sources */,
 				21DCC39D27BE4AF900064B37 /* TPPReaderFont.swift in Sources */,
 				73EB0AA225821DF4006BC997 /* TPPBookNormalCell.m in Sources */,
-				73EB0AA325821DF4006BC997 /* TPPRootTabBarController+SE.swift in Sources */,
 				73EB0AA425821DF4006BC997 /* TPPCatalogNavigationController.m in Sources */,
 				73EB0AA525821DF4006BC997 /* TPPEntryPointView.swift in Sources */,
 				E78AE803291C1D8600884446 /* TPPBookRegistryRecord.swift in Sources */,
@@ -3929,7 +3926,6 @@
 				52545185217A76FF00BBC1B4 /* TPPUserNotifications.swift in Sources */,
 				1183F341194F723D00DC322F /* TPPCatalogLane.m in Sources */,
 				11A16E6F195B60DF004147F4 /* TPPBookNormalCell.m in Sources */,
-				739ECB2E25108EE800691A70 /* TPPRootTabBarController+SE.swift in Sources */,
 				17A5AB4F25D201BD005DFF05 /* LCPPassphraseAuthenticationService.swift in Sources */,
 				E7376ECC287DF1C30095AADF /* DispatchQueue.swift in Sources */,
 				11548C0E1939147D009DBF2E /* TPPCatalogNavigationController.m in Sources */,
