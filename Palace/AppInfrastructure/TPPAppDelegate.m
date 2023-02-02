@@ -57,6 +57,9 @@ didFinishLaunchingWithOptions:(__attribute__((unused)) NSDictionary *)launchOpti
   [[NetworkQueue shared] addObserverForOfflineQueue];
   self.reachabilityManager = [TPPReachability sharedReachability];
   
+  // Enable new reachability notifications
+  [Reachability.shared startMonitoring];
+  
   self.window = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
   self.window.tintColor = [TPPConfiguration mainColor];
   self.window.tintAdjustmentMode = UIViewTintAdjustmentModeNormal;
