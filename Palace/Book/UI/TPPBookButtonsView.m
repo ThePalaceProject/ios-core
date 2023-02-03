@@ -24,7 +24,7 @@
 @property (nonatomic) TPPRoundedButton *sampleButton;
 @property (nonatomic) NSArray *visibleButtons;
 @property (nonatomic) NSMutableArray *constraints;
-@property (nonatomic) id observer;
+@property (nonatomic) NSMutableArray *observers;
 @property (nonatomic) BOOL samplesEnabled;
 
 @end
@@ -76,23 +76,34 @@
   self.activityIndicator.hidesWhenStopped = YES;
   [self addSubview:self.activityIndicator];
   
-  self.observer = [[NSNotificationCenter defaultCenter]
-                   addObserverForName:NSNotification.TPPBookProcessingDidChange
-   object:nil
-   queue:[NSOperationQueue mainQueue]
-   usingBlock:^(NSNotification *note) {
-     if ([note.userInfo[TPPNotificationKeys.bookProcessingBookIDKey] isEqualToString:self.book.identifier]) {
-       BOOL isProcessing = [note.userInfo[TPPNotificationKeys.bookProcessingValueKey] boolValue];
-       [self updateProcessingState:isProcessing];
-     }
-   }];
+  [self.observers addObject:[[NSNotificationCenter defaultCenter]
+                             addObserverForName:NSNotification.TPPBookProcessingDidChange
+                             object:nil
+                             queue:[NSOperationQueue mainQueue]
+                             usingBlock:^(NSNotification *note) {
+    if ([note.userInfo[TPPNotificationKeys.bookProcessingBookIDKey] isEqualToString:self.book.identifier]) {
+      BOOL isProcessing = [note.userInfo[TPPNotificationKeys.bookProcessingValueKey] boolValue];
+      [self updateProcessingState:isProcessing];
+    }
+  }]];
+    
+  [self.observers addObject:[[NSNotificationCenter defaultCenter]
+                             addObserverForName:NSNotification.TPPReachabilityChanged
+                             object:nil
+                             queue:[NSOperationQueue mainQueue]
+                             usingBlock:^(NSNotification * _Nonnull note) {
+    [self updateButtons];
+  }]];
   
   return self;
 }
 
 - (void)dealloc
 {
-  [[NSNotificationCenter defaultCenter] removeObserver:self.observer];
+  for(id const observer in self.observers) {
+    [[NSNotificationCenter defaultCenter] removeObserver:observer];
+  }
+  [self.observers removeAllObjects];
 }
 
 - (void)configureForBookDetailsContext
@@ -321,6 +332,14 @@
     }
     
     button.hidden = NO;
+    
+    if (button != self.readButton) {
+      if (button == self.deleteButton && self.showReturnButtonIfApplicable && (self.book.defaultAcquisitionIfOpenAccess || !TPPUserAccount.sharedAccount.authDefinition.needsAuth)) {
+        // "Delete" button remains active in offline mode
+      } else {
+        button.enabled = [Reachability.shared isConnectedToNetwork];
+      }
+    }
     
     // Disable the animation for changing the title. This helps avoid visual issues with
     // reloading data in collection views.

@@ -32,6 +32,7 @@ extension Notification.Name {
   static let TPPMyBooksDownloadCenterDidChange = Notification.Name("TPPMyBooksDownloadCenterDidChange")
   static let TPPBookDetailDidClose = Notification.Name("TPPBookDetailDidClose")
   static let TPPAccountSetDidLoad = Notification.Name("TPPAccountSetDidLoad")
+  static let TPPReachabilityChanged = Notification.Name("TPPReachabilityChanged")
 }
 
 @objc extension NSNotification {
@@ -51,6 +52,7 @@ extension Notification.Name {
   public static let TPPMyBooksDownloadCenterDidChange = Notification.Name.TPPMyBooksDownloadCenterDidChange
   public static let TPPBookDetailDidClose = Notification.Name.TPPBookDetailDidClose
   public static let TPPAccountSetDidLoad = Notification.Name.TPPAccountSetDidLoad
+  public static let TPPReachabilityChanged = Notification.Name.TPPReachabilityChanged
 }
 
 class TPPNotificationKeys: NSObject {

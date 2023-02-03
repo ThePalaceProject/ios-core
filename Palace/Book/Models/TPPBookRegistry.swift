@@ -132,7 +132,7 @@ class TPPBookRegistry: NSObject {
   /// Loads the book registry for the provided library account.
   /// - Parameter account: Library account identifier.
   func load(account: String? = nil) {
-    guard let account = account ?? AccountsManager.shared.currentAccount?.uuid,
+    guard let account = account ?? AccountsManager.shared.currentAccountId,
           let registryFileUrl = self.registryUrl(for: account)
     else {
       return
