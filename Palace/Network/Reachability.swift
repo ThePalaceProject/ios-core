@@ -14,13 +14,17 @@ import SystemConfiguration
 class Reachability: NSObject {
   static let shared = Reachability()
   
-  let connectionMonitor = NWPathMonitor()
+  private let connectionMonitor = NWPathMonitor()
   private var isConnected = false
+  // Status update retries
+  private let maxRetries = 30
+  private var retriesCounter = 0
   
   func startMonitoring() {
     connectionMonitor.pathUpdateHandler = { [weak self] path in
       // This seems to be the most reliable way to determine the connectin status
       // path.status remains .unsatisfied during off/on testing
+      self?.retriesCounter = 0
       self?.updateStatus()
     }
     let queue = DispatchQueue(label: "NetworkMonitor")
@@ -32,6 +36,10 @@ class Reachability: NSObject {
   }
   
   func updateStatus() {
+    guard retriesCounter < maxRetries else {
+      return
+    }
+    retriesCounter += 1
     let newStatus = isConnectedToNetwork()
     if isConnected != newStatus {
       isConnected = newStatus
