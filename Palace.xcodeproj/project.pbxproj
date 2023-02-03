@@ -657,6 +657,14 @@
 		D787E8441FB6B0290016D9D5 /* TPPSettingsAdvancedViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D787E8431FB6B0290016D9D5 /* TPPSettingsAdvancedViewController.swift */; };
 		E501710F27A3948C004B3392 /* TPPBookmarkFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 730EF265260967FF008E1DC3 /* TPPBookmarkFactory.swift */; };
 		E501711127A3948C004B3392 /* TPPBookmarkFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 730EF265260967FF008E1DC3 /* TPPBookmarkFactory.swift */; };
+		E50221B529881BC900A8A80B /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = E50221B729881BC900A8A80B /* Localizable.strings */; };
+		E50221B829881C5100A8A80B /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = E50221B729881BC900A8A80B /* Localizable.strings */; };
+		E50221BC29881CAC00A8A80B /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = E50221BF29881CAC00A8A80B /* Localizable.strings */; };
+		E50221BD29881CAC00A8A80B /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = E50221BF29881CAC00A8A80B /* Localizable.strings */; };
+		E50221C329881CDD00A8A80B /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = E50221C629881CDD00A8A80B /* Localizable.strings */; };
+		E50221C429881CDD00A8A80B /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = E50221C629881CDD00A8A80B /* Localizable.strings */; };
+		E50221CD29881D2800A8A80B /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = E50221D029881D2800A8A80B /* Localizable.strings */; };
+		E50221CE29881D2800A8A80B /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = E50221D029881D2800A8A80B /* Localizable.strings */; };
 		E50D684326AB235400F1042B /* TPPReaderBookmarkCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03690E221EB2B35000F75D5F /* TPPReaderBookmarkCell.swift */; };
 		E50D684426AB235400F1042B /* TPPReaderTOCCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7386C1F9245276CA004C78BD /* TPPReaderTOCCell.swift */; };
 		E50D684626AB235400F1042B /* TPPReaderBookmarkCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03690E221EB2B35000F75D5F /* TPPReaderBookmarkCell.swift */; };
@@ -1472,6 +1480,11 @@
 		B51C1E16229456E2003B49A5 /* dpl_authentication_document.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = dpl_authentication_document.json; sourceTree = "<group>"; };
 		CAE35BBA1B86289500BF9BC5 /* Palace.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Palace.xcconfig; path = ../Palace.xcconfig; sourceTree = "<group>"; };
 		D787E8431FB6B0290016D9D5 /* TPPSettingsAdvancedViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPSettingsAdvancedViewController.swift; sourceTree = "<group>"; };
+		E50221B629881BC900A8A80B /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = es.lproj/Localizable.strings; sourceTree = "<group>"; };
+		E50221BE29881CAC00A8A80B /* de */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = de; path = de.lproj/Localizable.strings; sourceTree = "<group>"; };
+		E50221C529881CDD00A8A80B /* it */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = it; path = it.lproj/Localizable.strings; sourceTree = "<group>"; };
+		E50221CC29881D1E00A8A80B /* fr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = fr; path = fr.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		E50221CF29881D2800A8A80B /* fr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = fr; path = fr.lproj/Localizable.strings; sourceTree = "<group>"; };
 		E523116928504B85007D1DB5 /* TPPBook+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPBook+Extensions.swift"; sourceTree = "<group>"; };
 		E5231240285C291D007D1DB5 /* AudioBookmark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioBookmark.swift; sourceTree = "<group>"; };
 		E523124A285C3828007D1DB5 /* TPPBookRegistry+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPBookRegistry+Extensions.swift"; sourceTree = "<group>"; };
@@ -1496,6 +1509,13 @@
 		E58565CE269774C400A5FBD5 /* AudioEngine.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = AudioEngine.xcframework; path = Carthage/Build/AudioEngine.xcframework; sourceTree = "<group>"; };
 		E58565D2269774D900A5FBD5 /* NYPLAEToolkit.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = NYPLAEToolkit.xcframework; sourceTree = "<group>"; };
 		E585662026979AC100A5FBD5 /* NYPLAEToolkit.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = NYPLAEToolkit.xcodeproj; path = "ios-drm-audioengine/NYPLAEToolkit.xcodeproj"; sourceTree = "<group>"; };
+		E58F09B92988269200DAC72A /* de */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = de; path = de.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		E58F09BA2988269700DAC72A /* fr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = fr; path = fr.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		E58F09BB2988269900DAC72A /* it */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = it; path = it.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		E58F09BC2988269A00DAC72A /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = es.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		E58F09BD29882C0100DAC72A /* fr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.stringsdict; name = fr; path = fr.lproj/Localizable.stringsdict; sourceTree = "<group>"; };
+		E58F09BE29882C0400DAC72A /* de */ = {isa = PBXFileReference; lastKnownFileType = text.plist.stringsdict; name = de; path = de.lproj/Localizable.stringsdict; sourceTree = "<group>"; };
+		E58F09BF29882C0600DAC72A /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.stringsdict; name = es; path = es.lproj/Localizable.stringsdict; sourceTree = "<group>"; };
 		E59526EA28D24FC000C179DA /* AudiobookSample.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudiobookSample.swift; sourceTree = "<group>"; };
 		E59892E028A9AC2600C44A85 /* Sample.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sample.swift; sourceTree = "<group>"; };
 		E59892EC28AC909000C44A85 /* AudiobookSampleToolbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudiobookSampleToolbar.swift; sourceTree = "<group>"; };
@@ -2779,6 +2799,10 @@
 				73DA43A12404B4A900985482 /* Cartfile */,
 				73DA43A32404B92E00985482 /* Cartfile.resolved */,
 				735394012508161A0043C800 /* README.md */,
+				E50221B729881BC900A8A80B /* Localizable.strings */,
+				E50221D029881D2800A8A80B /* Localizable.strings */,
+				E50221C629881CDD00A8A80B /* Localizable.strings */,
+				E50221BF29881CAC00A8A80B /* Localizable.strings */,
 				17E81F32261FF758001003C2 /* Localizable.stringsdict */,
 			);
 			name = "Supporting Files";
@@ -3176,6 +3200,7 @@
 				de,
 				es,
 				Base,
+				fr,
 			);
 			mainGroup = A823D804192BABA400B55DE2;
 			packageReferences = (
@@ -3341,6 +3366,7 @@
 				73EB0B5A25821DF4006BC997 /* simplified.js in Resources */,
 				73EB0B5B25821DF4006BC997 /* TPPProblemReportViewController.xib in Resources */,
 				E5BEF00926BD919F00C2A50B /* OpenSans-Regular.ttf in Resources */,
+				E50221B829881C5100A8A80B /* Localizable.strings in Resources */,
 				73EB0B5C25821DF4006BC997 /* readium-shared-js_all.js in Resources */,
 				73EB0B5D25821DF4006BC997 /* ReaderClientCert.sig in Resources */,
 				17E81F2F261FF758001003C2 /* Localizable.stringsdict in Resources */,
@@ -3353,12 +3379,15 @@
 				73EB0B6325821DF4006BC997 /* DetailSummaryTemplate.html in Resources */,
 				216FD1FC26DFE112003AF0D8 /* Colors.xcassets in Resources */,
 				73EB0B6525821DF4006BC997 /* Images.xcassets in Resources */,
+				E50221BD29881CAC00A8A80B /* Localizable.strings in Resources */,
 				73EB0B6625821DF4006BC997 /* sdk.css in Resources */,
 				E5BEF02A26BDAB3A00C2A50B /* OpenSans-SemiBold.ttf in Resources */,
 				73EB0B6725821DF4006BC997 /* OpenDyslexic3-Bold.ttf in Resources */,
 				73EB0B6925821DF4006BC997 /* readium-shared-js_all.js.map in Resources */,
+				E50221C429881CDD00A8A80B /* Localizable.strings in Resources */,
 				73D8D27A25A68D3B00DF5F69 /* TPPReaderPositions.storyboard in Resources */,
 				73EB0B6A25821DF4006BC997 /* host_app_feedback.js in Resources */,
+				E50221CE29881D2800A8A80B /* Localizable.strings in Resources */,
 				E5D3288B292C0D68008BFD01 /* txstrings.json in Resources */,
 				73EB0B6B25821DF4006BC997 /* readium-shared-js_all.js.bundles.js in Resources */,
 				73EB0B6C25821DF4006BC997 /* OpenDyslexic3-Regular.ttf in Resources */,
@@ -3374,6 +3403,7 @@
 				11C113D719F84613005B3F63 /* simplified.js in Resources */,
 				085D31D91BE29ED4007F7672 /* TPPProblemReportViewController.xib in Resources */,
 				E5BEF00826BD919F00C2A50B /* OpenSans-Regular.ttf in Resources */,
+				E50221B529881BC900A8A80B /* Localizable.strings in Resources */,
 				5A69290E1B95ACC600FB4C10 /* readium-shared-js_all.js in Resources */,
 				2D4379FE1C46FDB600AE1AD5 /* ReaderClientCert.sig in Resources */,
 				17E81F2C261FF758001003C2 /* Localizable.stringsdict in Resources */,
@@ -3386,12 +3416,15 @@
 				110F853E19D5FA7300052DF7 /* DetailSummaryTemplate.html in Resources */,
 				E5506DE426C4688D009FA623 /* Colors.xcassets in Resources */,
 				A823D823192BABA400B55DE2 /* Images.xcassets in Resources */,
+				E50221BC29881CAC00A8A80B /* Localizable.strings in Resources */,
 				5A6929101B95ACD100FB4C10 /* sdk.css in Resources */,
 				E5BEF02826BDAB3A00C2A50B /* OpenSans-SemiBold.ttf in Resources */,
 				84B7A3471B84E8FE00584FB2 /* OpenDyslexic3-Bold.ttf in Resources */,
 				5A6929251B95C93B00FB4C10 /* readium-shared-js_all.js.map in Resources */,
+				E50221C329881CDD00A8A80B /* Localizable.strings in Resources */,
 				7347F0272459E10900558D7F /* TPPReaderPositions.storyboard in Resources */,
 				11C113D219F842BE005B3F63 /* host_app_feedback.js in Resources */,
+				E50221CD29881D2800A8A80B /* Localizable.strings in Resources */,
 				E5D3288A292C0D34008BFD01 /* txstrings.json in Resources */,
 				5A6929241B95C8B400FB4C10 /* readium-shared-js_all.js.bundles.js in Resources */,
 				84B7A3481B84E8FE00584FB2 /* OpenDyslexic3-Regular.ttf in Resources */,
@@ -4166,6 +4199,9 @@
 			children = (
 				17E81F31261FF758001003C2 /* en */,
 				17E81F332620DAE0001003C2 /* it */,
+				E58F09BD29882C0100DAC72A /* fr */,
+				E58F09BE29882C0400DAC72A /* de */,
+				E58F09BF29882C0600DAC72A /* es */,
 			);
 			name = Localizable.stringsdict;
 			sourceTree = "<group>";
@@ -4174,6 +4210,10 @@
 			isa = PBXVariantGroup;
 			children = (
 				A823D81A192BABA400B55DE2 /* en */,
+				E58F09B92988269200DAC72A /* de */,
+				E58F09BA2988269700DAC72A /* fr */,
+				E58F09BB2988269900DAC72A /* it */,
+				E58F09BC2988269A00DAC72A /* es */,
 			);
 			name = InfoPlist.strings;
 			sourceTree = "<group>";
@@ -4182,8 +4222,41 @@
 			isa = PBXVariantGroup;
 			children = (
 				A823D833192BABA400B55DE2 /* en */,
+				E50221CC29881D1E00A8A80B /* fr */,
 			);
 			name = InfoPlist.strings;
+			sourceTree = "<group>";
+		};
+		E50221B729881BC900A8A80B /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				E50221B629881BC900A8A80B /* es */,
+			);
+			name = Localizable.strings;
+			sourceTree = "<group>";
+		};
+		E50221BF29881CAC00A8A80B /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				E50221BE29881CAC00A8A80B /* de */,
+			);
+			name = Localizable.strings;
+			sourceTree = "<group>";
+		};
+		E50221C629881CDD00A8A80B /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				E50221C529881CDD00A8A80B /* it */,
+			);
+			name = Localizable.strings;
+			sourceTree = "<group>";
+		};
+		E50221D029881D2800A8A80B /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				E50221CF29881D2800A8A80B /* fr */,
+			);
+			name = Localizable.strings;
 			sourceTree = "<group>";
 		};
 /* End PBXVariantGroup section */
@@ -4331,6 +4404,7 @@
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
 				CURRENT_PROJECT_VERSION = 136;
+				CURRENT_PROJECT_VERSION = 135;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
@@ -4387,6 +4461,7 @@
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
 				CURRENT_PROJECT_VERSION = 136;
+				CURRENT_PROJECT_VERSION = 135;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
@@ -4568,6 +4643,7 @@
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
 				CURRENT_PROJECT_VERSION = 136;
+				CURRENT_PROJECT_VERSION = 135;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -4629,6 +4705,7 @@
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
 				CURRENT_PROJECT_VERSION = 136;
+				CURRENT_PROJECT_VERSION = 135;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (

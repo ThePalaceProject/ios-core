@@ -55,14 +55,10 @@ struct TPPSettingsView: View {
     let navButton = Button(DisplayStrings.addLibrary) {
       viewController.addAccount()
     }
-    
-    let backButton = Button(Strings.Generic.back) {
-      viewController.navigationController?.popViewController(animated: true)
-    }
 
     let wrapper = UIViewControllerWrapper(viewController) { _ in }
       .navigationBarTitle(Text(DisplayStrings.libraries))
-      .navigationBarItems(leading: backButton, trailing: navButton)
+      .navigationBarItems(trailing: navButton)
 
     Section {
       row(title: DisplayStrings.libraries, index: 1, selection: self.$selectedView, destination: wrapper.anyView())
@@ -98,10 +94,10 @@ struct TPPSettingsView: View {
       title: Strings.Settings.privacyPolicy,
       failureMessage: Strings.Error.loadFailedError
     )
-   
+
     let wrapper = UIViewControllerWrapper(viewController, updater: { _ in })
       .navigationBarTitle(Text(DisplayStrings.privacyPolicy))
-    
+
     row(title: DisplayStrings.privacyPolicy, index: 3, selection: self.$selectedView, destination: wrapper.anyView())
 
   }
@@ -112,10 +108,10 @@ struct TPPSettingsView: View {
       title: Strings.Settings.eula,
       failureMessage: Strings.Error.loadFailedError
     )
-
+    
     let wrapper = UIViewControllerWrapper(viewController, updater: { _ in })
       .navigationBarTitle(Text(DisplayStrings.eula))
-    
+
     row(title: DisplayStrings.eula, index: 4, selection: self.$selectedView, destination: wrapper.anyView())
   }
 
@@ -124,10 +120,10 @@ struct TPPSettingsView: View {
       fileURL: Bundle.main.url(forResource: "software-licenses", withExtension: "html")!,
       title: Strings.Settings.softwareLicenses
     )
-
+    
     let wrapper = UIViewControllerWrapper(viewController, updater: { _ in })
       .navigationBarTitle(Text(DisplayStrings.softwareLicenses))
-    
+
     row(title: DisplayStrings.softwareLicenses, index: 5, selection: self.$selectedView, destination: wrapper.anyView())
   }
 
