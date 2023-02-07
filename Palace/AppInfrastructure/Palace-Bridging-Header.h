@@ -43,3 +43,4 @@
 #import "UIView+TPPViewAdditions.h"
 #import "TPPEncryptedPDFDataProvider.h"
 #import "NYPLTenPrintCoverView.h"
+#import "TPPBookCellDelegate.h"

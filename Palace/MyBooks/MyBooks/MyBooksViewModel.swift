@@ -27,7 +27,7 @@ class MyBooksViewModel: ObservableObject {
     facets: [.title, .author]
   )
 
-  @Published var isRefreshing: Bool
+  var isRefreshing: Bool
   @Published var showInstructionsLabel: Bool
   @Published var books: [TPPBook]
 
@@ -54,8 +54,6 @@ class MyBooksViewModel: ObservableObject {
   }
   
   private func loadData() {
-    let updatedBooks = TPPBookRegistry.shared.myBooks
-    guard !books.containsSameElements(as: updatedBooks) else { return }
     books = TPPBookRegistry.shared.myBooks
     sortData()
   }
@@ -63,13 +61,13 @@ class MyBooksViewModel: ObservableObject {
   private func sortData() {
    switch activeFacetSort {
     case .author:
-      books = books.sorted {
+      books.sort {
         let aString = "\($0.authors!) \($0.title)"
         let bString = "\($1.authors!) \($1.title)"
         return aString < bString
       }
     case .title:
-      books = books.sorted {
+     books.sort {
         let aString = "\($0.title) \($0.authors!)"
         let bString = "\($1.title) \($1.authors!)"
         return aString < bString
@@ -93,25 +91,19 @@ class MyBooksViewModel: ObservableObject {
   }
 
   @objc private func bookRegistryDidChange() {
-    DispatchQueue.main.async {
       self.loadData()
       self.showInstructionsLabel = self.books.count == 0 || TPPBookRegistry.shared.state == .unloaded
-    }
   }
 
   @objc private func bookRegistryStateDidChange() {
-    DispatchQueue.main.async {
       self.isRefreshing = false
-    }
   }
 
   @objc private func syncBegan() {}
 
   @objc private func syncEnded() {
-    DispatchQueue.main.async {
       self.isRefreshing = false
       self.reloadData()
-    }
   }
 
   func reloadData() {
@@ -134,10 +126,4 @@ class MyBooksViewModel: ObservableObject {
       isRefreshing = false
     }
   }
-}
-
-extension Array where Element: Comparable {
-    func containsSameElements(as other: [Element]) -> Bool {
-        return self.count == other.count && self.sorted() == other.sorted()
-    }
 }

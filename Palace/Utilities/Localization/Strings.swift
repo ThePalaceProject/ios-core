@@ -240,4 +240,14 @@ struct Strings {
     static let author = NSLocalizedString("Author", comment: "")
     static let title = NSLocalizedString("Title", comment: "")
   }
+  
+  struct BookCell {
+    static let delete = NSLocalizedString("Delete", comment: "")
+    static let `return` = NSLocalizedString("Return", comment: "")
+    static let remove = NSLocalizedString("Remove", comment: "")
+    static let deleteMessage = NSLocalizedString("Are you sure you want to delete \"%@\"?", comment: "Message shown in an alert to the user prior to deleting a title")
+    static let returnMessage = NSLocalizedString("Are you sure you want to return \"%@\"?", comment: "Message shown in an alert to the user prior to returning a title")
+    static let removeReservation = NSLocalizedString("Remove Reservation", comment: "")
+    static let removeReservationMessage = NSLocalizedString("Are you sure you want ot remove \"%@\" from your reservations? You will no longer be in line for this book.", comment: "Message shown in an alert to the user prior to returning a reserved title.")
+  }
 }
