@@ -13,7 +13,7 @@ extension View {
   func anyView() -> AnyView {
     AnyView(self)
   }
-
+  
   func verticallyCentered() -> some View {
     VStack {
       Spacer()
@@ -21,12 +21,22 @@ extension View {
       Spacer()
     }
   }
-
+  
   func horizontallyCentered() -> some View {
     HStack {
       Spacer()
       self
       Spacer()
+    }
+  }
+  
+  func bottomrRightJustified() -> some View {
+    VStack {
+      Spacer()
+      HStack {
+        Spacer()
+        self
+      }
     }
   }
 

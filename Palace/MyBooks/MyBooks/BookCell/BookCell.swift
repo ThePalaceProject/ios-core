@@ -10,49 +10,74 @@ import SwiftUI
 import Combine
 
 struct BookCell: View {
-  private var model: BookCellModel
-  private var imageLoader = AsyncImage(image: ImageProviders.MyBooksView.bookPlaceholder ?? UIImage())
-  private let imageViewHeight: CGFloat = 70
+  @ObservedObject private var model: BookCellModel
+  @State private var image = ImageProviders.MyBooksView.bookPlaceholder ?? UIImage()
+
+  private let cellHeight: CGFloat = 125
+  private let imageViewWidth: CGFloat = 100
   
   init(model: BookCellModel) {
     self.model = model
-    if let url = model.imageURL {
-      imageLoader.loadImage(url: url)
-    }
+    loadImage()
   }
-  
+
   var body: some View {
-    HStack(alignment: .top) {
-      imageView
-      VStack(alignment: .leading, spacing: 20) {
-        infoView
-        buttons
+    ZStack {
+      loadingView
+      HStack(alignment: .center) {
+        unreadImageView
+        imageView
+        VStack(alignment: .leading) {
+          infoView
+          Spacer()
+          buttons
+        }
+        .alert(item: $model.showAlert) { alert in
+          Alert(
+            title: Text(alert.title),
+            message: Text(alert.message),
+            primaryButton: .default(Text(alert.buttonTitle), action: alert.primaryAction),
+            secondaryButton: .cancel(alert.secondaryAction)
+          )
+        }
       }
+      .opacity(model.isLoading ? 0.75 : 1.0)
+      .disabled(model.isLoading)
+      .frame(height: cellHeight)
+      .onDisappear { model.isLoading = false }
+      .onAppear(perform: loadImage)
     }
   }
   
-  //TODO: Revisit ASYNC image failing to load image
   @ViewBuilder private var imageView: some View {
     ZStack {
-      Image(uiImage: TPPBookRegistry.shared.cachedThumbnailImage(for: model.book) ?? imageLoader.image)
+      Image(uiImage: TPPBookRegistry.shared.cachedThumbnailImage(for: model.book) ?? image)
         .resizable()
         .aspectRatio(contentMode: .fit)
-        .frame(width: imageViewHeight)
       audiobookIndicator
     }
+    .frame(width: imageViewWidth)
+    .padding(.trailing, 2)
   }
 
   @ViewBuilder private var audiobookIndicator: some View {
-    EmptyView()
+    if model.book.defaultBookContentType == .audiobook {
+      ImageProviders.MyBooksView.audiobookBadge
+        .resizable()
+        .frame(width: 24, height: 24)
+        .background(Color(TPPConfiguration.palaceRed()))
+        .bottomrRightJustified()
+    }
   }
   
   @ViewBuilder private var infoView: some View {
     VStack(alignment: .leading) {
       Text(model.title)
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityLabel(model.book.defaultBookContentType == .audiobook ? "\(model.book.title). Audiobook." : "")
       Text(model.authors)
         .font(.footnote)
     }
-    .padding(.bottom, 10)
   }
   
   @ViewBuilder private var buttons: some View {
@@ -61,6 +86,23 @@ struct BookCell: View {
         buttonView(type: $0)
       }
     }
+  }
+  
+  @ViewBuilder private var loadingView: some View {
+    if model.isLoading {
+      ProgressView()
+    }
+  }
+  
+  @ViewBuilder private var unreadImageView: some View {
+      VStack {
+        ImageProviders.MyBooksView.unreadBadge
+          .resizable()
+          .frame(width: 10, height: 10)
+          .foregroundColor(Color(TPPConfiguration.accentColor()))
+        Spacer()
+      }
+      .opacity(model.showUnreadIndicator ? 1.0 : 0.0)
   }
   
   private func buttonView(type: BookButtonType) -> some View {
@@ -74,5 +116,13 @@ struct BookCell: View {
         .stroke(Color(TPPConfiguration.mainColor()), lineWidth: 1)
         .frame(height: 35)
     )
+  }
+  
+  private func loadImage() {
+    guard TPPBookRegistry.shared.cachedThumbnailImage(for: model.book) == nil else { return }
+    TPPBookRegistry.shared.thumbnailImage(for: model.book) { image in
+      guard let image = image else { return }
+      self.image = image
+    }
   }
 }

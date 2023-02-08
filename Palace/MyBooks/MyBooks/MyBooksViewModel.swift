@@ -54,8 +54,10 @@ class MyBooksViewModel: ObservableObject {
   }
   
   private func loadData() {
-    books = TPPBookRegistry.shared.myBooks
-    sortData()
+    DispatchQueue.main.async {
+      self.books = TPPBookRegistry.shared.myBooks
+      self.sortData()
+    }
   }
 
   private func sortData() {
@@ -92,7 +94,9 @@ class MyBooksViewModel: ObservableObject {
 
   @objc private func bookRegistryDidChange() {
       self.loadData()
+    DispatchQueue.main.async {
       self.showInstructionsLabel = self.books.count == 0 || TPPBookRegistry.shared.state == .unloaded
+    }
   }
 
   @objc private func bookRegistryStateDidChange() {

@@ -37,21 +37,31 @@ extension BookCellState {
   }
 }
 
-struct AlertModel {
+struct AlertModel: Identifiable {
+  let id = UUID()
   var title: String
   var message: String
   var buttonTitle: String
-  var action: () -> Void
+  var primaryAction: () -> Void
+  var secondaryAction: () -> Void
 }
 
 class BookCellModel: ObservableObject {
   typealias DisplayStrings = Strings.BookCell
-  var title: String
-  var authors: String
-  var imageURL: URL?
+  var state: BookCellState
+  var title: String { book.title }
+  var authors: String { book.authors ?? "" }
   var book: TPPBook
+  var showUnreadIndicator: Bool {
+    if case .normal(let bookState) = state, bookState == .downloadSuccessful {
+      return true
+    } else {
+      return false
+    }
+  }
   
   @Published var showAlert: AlertModel?
+  @Published var isLoading: Bool = false
 
   var buttonTypes: [BookButtonType] {
     state.buttonState.buttonTypes(book: book)
@@ -60,15 +70,12 @@ class BookCellModel: ObservableObject {
   private weak var buttonDelegate = TPPBookCellDelegate.shared()
   private weak var sampleDelegate: TPPBookButtonsSampleDelegate?
   private weak var downloadDelegate: TPPBookDownloadCancellationDelegate?
-  private var state: BookCellState
 
   init(book: TPPBook) {
     self.book = book
-    self.title = book.title
-    self.authors = book.authors ?? ""
 
     self.state = BookCellState(BookButtonState(book) ?? .unsupported)
-    self.imageURL = book.imageThumbnailURL ?? book.imageURL
+    self.isLoading = TPPBookRegistry.shared.processing(forIdentifier: book.identifier)
   }
 }
 
@@ -88,18 +95,18 @@ extension BookCellModel {
       didSelectRead()
     }
   }
-  
+
   func didSelectRead() {
+    isLoading = true
     self.buttonDelegate?.didSelectRead(for: book)
     TPPRootTabBarController.shared().dismiss(animated: true)
   }
-  
+
   func didSelectReturn() {
     var title = ""
     var message = ""
     var confirmButtonTitle = ""
-    var deleteTitle = (book.defaultAcquisitionIfOpenAccess != nil) || !(TPPUserAccount.sharedAccount().authDefinition?.needsAuth ?? true)
-
+    let shouldDelete = (book.defaultAcquisitionIfOpenAccess != nil) || !(TPPUserAccount.sharedAccount().authDefinition?.needsAuth ?? true)
 
     switch TPPBookRegistry.shared.state(for: book.identifier) {
     case .Used,
@@ -109,9 +116,9 @@ extension BookCellModel {
         .DownloadFailed,
         .DownloadNeeded,
         .DownloadSuccessful:
-      title = deleteTitle ? DisplayStrings.delete : DisplayStrings.return
-      message = deleteTitle ? DisplayStrings.deleteMessage : DisplayStrings.returnMessage
-      confirmButtonTitle = deleteTitle ? DisplayStrings.delete : DisplayStrings.return
+      title = shouldDelete ? DisplayStrings.delete : DisplayStrings.return
+      message = shouldDelete ? String.localizedStringWithFormat(DisplayStrings.deleteMessage, book.title) : String.localizedStringWithFormat(DisplayStrings.returnMessage, book.title)
+      confirmButtonTitle = shouldDelete ? DisplayStrings.delete : DisplayStrings.return
     case .Holding:
       title = DisplayStrings.removeReservation
       message = DisplayStrings.returnMessage
@@ -124,13 +131,19 @@ extension BookCellModel {
       title: title,
       message: message,
       buttonTitle: confirmButtonTitle,
-      action: { [weak self] in
+      primaryAction: { [weak self] in
         self?.buttonDelegate?.didSelectReturn(for: self?.book)
+        self?.isLoading = true
+      },
+      secondaryAction: { [weak self] in
+        self?.showAlert = nil
       }
     )
   }
 
   func didSelectDownload() {
+    isLoading = true
+
     if case .canHold = state.buttonState {
       TPPUserNotifications.requestAuthorization()
     }
@@ -139,6 +152,8 @@ extension BookCellModel {
   }
   
   func didSelectSample() {
+    isLoading = true
+
     self.sampleDelegate?.didSelectPlaySample(book)
   }
 

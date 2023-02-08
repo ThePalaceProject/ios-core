@@ -12,7 +12,6 @@ import Combine
 struct MyBooksView: View {
   typealias DisplayStrings = Strings.MyBooksView
   @ObservedObject var model: MyBooksViewModel
-  @State private var selectedView: Int?
 
   var body: some View {
     VStack(alignment: .leading) {
@@ -28,18 +27,20 @@ struct MyBooksView: View {
   }
 
   @ViewBuilder private var listView: some View {
-    List {
-      ForEach(0..<model.books.count, id: \.self) { i in
-        NavigationLink(
-          destination: UIViewControllerWrapper(TPPBookDetailViewController(book: model.books[i]), updater: { _ in }),
-          tag: i,
-          selection: self.$selectedView
-        ) {
-          BookCell(model: BookCellModel(book: model.books[i]))
+      List {
+        ForEach(0..<model.books.count, id: \.self) { i in
+          ZStack(alignment: .leading) {
+            NavigationLink(destination: UIViewControllerWrapper(TPPBookDetailViewController(book: model.books[i]), updater: { _ in })) {
+              EmptyView()
+            }
+            .opacity(0)
+            BookCell(model: BookCellModel(book: model.books[i]))
+          }
+          .listRowInsets(EdgeInsets(top: 5, leading: 0, bottom: 5, trailing: 0))
+          .listRowBackground(Color.clear)
         }
-        .listRowBackground(Color.clear)
       }
-    }
+      .padding(.leading, -10)
   }
 }
 
