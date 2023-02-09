@@ -342,15 +342,18 @@
       NSData *localLocationData = [localAudiobookLocation.locationString dataUsingEncoding:NSUTF8StringEncoding];
       ChapterLocation *localLocation = [ChapterLocation fromData:localLocationData];
  
-      // The player moves to the local position before loading a remote one.
-      // This way the user sees the last playhead position.
-      [manager.audiobook.player movePlayheadToLocation:localLocation completion:^(NSError *error) {
+      // Player error handler
+      void (^moveCompletionHandler)(NSError *) = ^(NSError *error) {
         if (error) {
           [self presentLocationRecoveryError:error];
           return;
         }
         [self stopLoading];
-      }];
+      };
+      
+      // The player moves to the local position before loading a remote one.
+      // This way the user sees the last playhead position.
+      [manager.audiobook.player movePlayheadToLocation:localLocation completion:moveCompletionHandler];
       [self stopLoading];
       
       [[TPPBookRegistry shared] syncLocationFor:book completion:^(ChapterLocation * _Nullable remoteLocation) {
@@ -358,13 +361,7 @@
           [NSOperationQueue.mainQueue addOperationWithBlock:^{
             TPPLOG_F(@"Returning to Audiobook Location: %@", location);
             if (location) {
-              [manager.audiobook.player movePlayheadToLocation:location completion:^(NSError *error) {
-                if (error) {
-                  [self presentLocationRecoveryError:error];
-                  return;
-                }
-                [self stopLoading];
-              }];
+              [manager.audiobook.player movePlayheadToLocation:location completion:moveCompletionHandler];
             } else {
               [self stopLoading];
             }
