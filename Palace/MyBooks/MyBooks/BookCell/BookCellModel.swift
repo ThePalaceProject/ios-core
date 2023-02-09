@@ -92,6 +92,39 @@ class BookCellModel: ObservableObject {
 
     self.image = cachedImage
   }
+
+  func indicatorDate(for buttonType: BookButtonType) -> Date? {
+    guard buttonType.displaysIndicator else {
+      return nil
+    }
+
+    var date: Date? = nil
+
+    switch state.buttonState {
+    case .downloadNeeded, .used:
+      book.defaultAcquisition?.availability.matchUnavailable(
+        nil,
+        limited: { limited in
+          if let until = limited.until,
+             until.timeIntervalSinceNow > 0
+          {
+            date = until
+          }
+        },
+        unlimited: nil,
+        reserved: nil,
+        ready: { ready in
+          if let until = ready.until,
+             until.timeIntervalSinceNow > 0
+          {
+            date = until
+          }
+        })
+    default:
+      return date
+    }
+    return date
+  }
 }
 
 extension BookCellModel {

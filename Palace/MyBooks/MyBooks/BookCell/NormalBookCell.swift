@@ -77,7 +77,11 @@ struct NormalBookCell: View {
   @ViewBuilder private var buttons: some View {
     HStack {
       ForEach(model.buttonTypes, id: \.self) { type in
-        ButtonView(title: type.localizedTitle.capitalized, action: { model.callDelegate(for: type) })
+        ButtonView(
+          title: type.localizedTitle.capitalized,
+          indicatorDate: model.indicatorDate(for: type),
+          action: { model.callDelegate(for: type) }
+        )
       }
     }
   }

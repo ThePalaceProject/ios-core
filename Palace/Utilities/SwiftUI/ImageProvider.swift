@@ -19,5 +19,6 @@ struct ImageProviders {
     static let bookPlaceholder = UIImage(systemName: "book.closed.fill")
     static let audiobookBadge = Image("AudiobookBadge")
     static let unreadBadge = Image("Unread")
+    static let clock = Image("Clock")
   }
 }

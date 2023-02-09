@@ -96,6 +96,15 @@ enum BookButtonType: String {
   var localizedTitle: String {
     NSLocalizedString(self.rawValue, comment: "Book Action Button title")
   }
+  
+  var displaysIndicator: Bool {
+    switch self {
+    case .read, .remove, .get, .download, .listen:
+      return true
+    default:
+      return false
+    }
+  }
 }
 
 extension BookButtonState {
