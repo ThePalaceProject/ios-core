@@ -335,47 +335,84 @@
           [TPPAppStoreReviewPrompt presentIfAvailable];
         }
       }];
+
+      [self startLoading:audiobookVC];
+
+      TPPBookLocation *localAudiobookLocation = [[TPPBookRegistry shared] locationForIdentifier:book.identifier];
+      NSData *localLocationData = [localAudiobookLocation.locationString dataUsingEncoding:NSUTF8StringEncoding];
+      ChapterLocation *localLocation = [ChapterLocation fromData:localLocationData];
+ 
+      // The player moves to the local position before loading a remote one.
+      // This way the user sees the last playhead position.
+      [manager.audiobook.player movePlayheadToLocation:localLocation completion:^(NSError *error) {
+        if (error) {
+          [self presentLocationRecoveryError:error];
+          return;
+        }
+        [self stopLoading];
+      }];
+      [self stopLoading];
       
-      [[TPPBookRegistry shared] syncLocationFor:book completion:^(ChapterLocation * _Nullable chapterLocation) {
-
-        if (chapterLocation) {
-          TPPLOG_F(@"Returning to Audiobook Location: %@", chapterLocation);
-          [self startLoading:audiobookVC];
-          [manager.audiobook.player movePlayheadToLocation:chapterLocation completion:^(NSError *error) {
-            if (error) {
-              [self presentLocationRecoveryError:error];
-              return;
-            }
-            [self stopLoading];
-          }];
-        } else {
-          TPPBookLocation *const bookLocation =
-          [[TPPBookRegistry shared] locationForIdentifier:book.identifier];
-
-          if (bookLocation) {
-            [self startLoading:audiobookVC];
-
-            NSData *const data = [bookLocation.locationString dataUsingEncoding:NSUTF8StringEncoding];
-            ChapterLocation *const chapterLocation = [ChapterLocation fromData:data];
-            TPPLOG_F(@"Returning to Audiobook Location: %@", chapterLocation);
-            if (chapterLocation) {
-              [manager.audiobook.player movePlayheadToLocation:chapterLocation completion:^(NSError *error) {
+      [[TPPBookRegistry shared] syncLocationFor:book completion:^(ChapterLocation * _Nullable remoteLocation) {
+        [self chooseLocalLocation:localLocation orRemoteLocation:remoteLocation forOperation:^(ChapterLocation *location) {
+          [NSOperationQueue.mainQueue addOperationWithBlock:^{
+            TPPLOG_F(@"Returning to Audiobook Location: %@", location);
+            if (location) {
+              [manager.audiobook.player movePlayheadToLocation:location completion:^(NSError *error) {
                 if (error) {
                   [self presentLocationRecoveryError:error];
                   return;
                 }
-
                 [self stopLoading];
               }];
             } else {
               [self stopLoading];
             }
-          }
-        }
+          }];
+        }];
       }];
+      
       [self scheduleTimerForAudiobook:book manager:manager viewController:audiobookVC];
     }];
   }];
+}
+
+/// Requests whether the user wants to ysnc current listening position
+/// - Parameter completion: completion with `YES` or `NO` to the sync
+- (void) requestSyncWithCompletion:(void (^)(BOOL))completion {
+  [[NSOperationQueue mainQueue] addOperationWithBlock:^{
+    NSString *title = LocalizedStrings.syncListeningPositionAlertTitle;
+    NSString *message = LocalizedStrings.syncListeningPositionAlertBody;
+    NSString *moveTitle = LocalizedStrings.move;
+    NSString *stayTitle = LocalizedStrings.stay;
+    
+    UIAlertController *ac = [UIAlertController alertControllerWithTitle:title message:message preferredStyle:UIAlertControllerStyleAlert];
+    UIAlertAction *moveAction = [UIAlertAction actionWithTitle:moveTitle style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull __unused action) {
+      completion(YES);
+    }];
+    UIAlertAction *stayAction = [UIAlertAction actionWithTitle:stayTitle style:UIAlertActionStyleCancel handler:^(UIAlertAction * _Nonnull __unused action) {
+      completion(NO);
+    }];
+    [ac addAction:moveAction];
+    [ac addAction:stayAction];
+    [TPPAlertUtils presentFromViewControllerOrNilWithAlertController:ac viewController:nil animated:YES completion:nil];
+  }];
+}
+
+/// Pick one of the locations
+/// - Parameters:
+///   - localLocation: local player location
+///   - remoteLocation: remote player location
+///   - operation: operation block on the selected location
+- (void) chooseLocalLocation:(ChapterLocation *)localLocation orRemoteLocation:(ChapterLocation *)remoteLocation forOperation:(void (^)(ChapterLocation *))operation {
+  if (remoteLocation && (![remoteLocation.description isEqualToString:localLocation.description])) {
+    [self requestSyncWithCompletion:^(BOOL shouldSync) {
+      ChapterLocation *location = shouldSync ? remoteLocation : localLocation;
+      operation(location);
+    }];
+  } else {
+    operation(localLocation);
+  }
 }
 
 - (void) startLoading:(UIViewController *)hostViewController {

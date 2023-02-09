@@ -157,7 +157,12 @@ struct Strings {
     static let stay = NSLocalizedString("Stay", comment: "Do not perform navigation")
     static let move = NSLocalizedString("Move", comment: "Perform navigation")
   }
-  
+
+  struct TPPLastListenedPositionSynchronizer {
+    static let syncListeningPositionAlertTitle = NSLocalizedString("Sync Listening Position", comment: "An alert title notifying the user the listening position has been synced")
+    static let syncListeningPositionAlertBody = NSLocalizedString("Do you want to move to the listening position on which you left off?", comment: "An alert message asking the user to perform navigation to the synced listening position or not")
+  }
+
   struct TPPProblemDocument {
     static let authenticationExpiredTitle = NSLocalizedString("Authentication Expired",
                                                               comment: "Title for an error related to expired credentials")
