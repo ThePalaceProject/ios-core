@@ -165,6 +165,7 @@
 - (void)didSelectCancel
 {
   [self.delegate didSelectCancelForBookDownloadingCell:self];
+  [self.delegate didSelectCancelForBookDownloadingCell:self];
 }
 
 @end

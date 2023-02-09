@@ -23,53 +23,60 @@ enum BookButtonState {
 
 extension BookButtonState {
   func buttonTypes(book: TPPBook) -> [BookButtonType] {
+    var buttons = [BookButtonType]()
+  
     switch self {
     case .canBorrow:
-      return [.get, book.defaultBookContentType == .audiobook ? .audiobookSample : .sample]
+      buttons = [.get, book.defaultBookContentType == .audiobook ? .audiobookSample : .sample]
     case .canHold:
-      return [.reserve,book.defaultBookContentType == .audiobook ? .audiobookSample : .sample]
+      buttons = [.reserve,book.defaultBookContentType == .audiobook ? .audiobookSample : .sample]
     case .holding:
-      return [.remove,book.defaultBookContentType == .audiobook ? .audiobookSample : .sample]
+      buttons = [.remove,book.defaultBookContentType == .audiobook ? .audiobookSample : .sample]
     case .holdingFrontOfQueue:
-      return [.get, .remove]
+      buttons = [.get, .remove]
     case .downloadNeeded:
-      guard let authDef = TPPUserAccount.sharedAccount().authDefinition,
+      if let authDef = TPPUserAccount.sharedAccount().authDefinition,
             authDef.needsAuth ||
               book.defaultAcquisitionIfOpenAccess != nil
-      else {
-        return [.download, .remove]
+       {
+        buttons = [.download, .return]
+      } else {
+        buttons = [.download, .remove]
       }
-    
-      return [.download, .return]
     case .downloadSuccessful, .used:
-      var buttonArray = [BookButtonType]()
 
       switch book.defaultBookContentType {
       case .audiobook:
-        buttonArray.append(.listen)
+        buttons.append(.listen)
       case .pdf, .epub:
-        buttonArray.append(.read)
+        buttons.append(.read)
       case .unsupported:
         break
       }
 
-      guard let authDef = TPPUserAccount.sharedAccount().authDefinition,
+      if let authDef = TPPUserAccount.sharedAccount().authDefinition,
             authDef.needsAuth ||
-              book.defaultAcquisitionIfOpenAccess != nil
-      else {
-        buttonArray.append(.remove)
-        return buttonArray
+              book.defaultAcquisitionIfOpenAccess != nil {
+        buttons.append(.return)
+      } else {
+        buttons.append(.remove)
       }
-      
-      buttonArray.append(.return)
-      return buttonArray
+
     case .downloadInProgress:
-      return [.cancel]
+      buttons = [.cancel]
     case .downloadFailed:
-      return [.retry, .cancel]
+      buttons = [.retry, .cancel]
     case .unsupported:
       return []
     }
+
+    if !book.supportsDeletion(for: self) {
+      buttons = buttons.filter {
+        $0 != .return || $0 != .remove
+      }
+    }
+
+    return buttons
   }
 }
 
@@ -92,7 +99,7 @@ enum BookButtonType: String {
 }
 
 extension BookButtonState {
-  
+
   init?(_ book: TPPBook) {
     let bookState = TPPBookRegistry.shared.state(for: book.identifier)
     switch bookState {
@@ -124,7 +131,7 @@ extension BookButtonState {
     guard let availability = availability else {
       return nil
     }
-    
+
     var state: BookButtonState = .unsupported
     availability.matchUnavailable { _ in
       state = .canHold
@@ -137,5 +144,20 @@ extension BookButtonState {
     }
 
     self = state
+  }
+}
+
+extension TPPBook {
+  func supportsDeletion(for state: BookButtonState) -> Bool {
+    var fullfillmentRequired = false
+    #if FEATURE_DRM_CONNECTOR
+      fullfillmentRequired = state == .holding && self.revokeURL != nil
+    #endif
+    
+    let hasFullfillmentId = TPPBookRegistry.shared.fulfillmentId(forIdentifier: self.identifier) != nil
+    let isFullfiliable = !(hasFullfillmentId && fullfillmentRequired) && self.revokeURL != nil
+    let needsAuthentication = self.defaultAcquisitionIfOpenAccess == nil && TPPUserAccount.sharedAccount().authDefinition?.needsAuth ?? false
+    
+    return isFullfiliable && !needsAuthentication
   }
 }

@@ -132,7 +132,8 @@ extension BookCellModel {
         .DownloadNeeded,
         .DownloadSuccessful:
       title = shouldDelete ? DisplayStrings.delete : DisplayStrings.return
-      message = shouldDelete ? String.localizedStringWithFormat(DisplayStrings.deleteMessage, book.title) : String.localizedStringWithFormat(DisplayStrings.returnMessage, book.title)
+      message = shouldDelete ? String.localizedStringWithFormat(DisplayStrings.deleteMessage, book.title) :
+      String.localizedStringWithFormat(DisplayStrings.returnMessage, book.title)
       confirmButtonTitle = shouldDelete ? DisplayStrings.delete : DisplayStrings.return
     case .Holding:
       title = DisplayStrings.removeReservation
@@ -172,6 +173,7 @@ extension BookCellModel {
     self.sampleDelegate?.didSelectPlaySample(book)
   }
 
-  //TODO: Unused in current implementation, to be completed when updating BookDetailView
-  func didSelectCancel() {}
+  func didSelectCancel() {
+    TPPMyBooksDownloadCenter.shared().cancelDownload(forBookIdentifier: book.identifier)
+  }
 }

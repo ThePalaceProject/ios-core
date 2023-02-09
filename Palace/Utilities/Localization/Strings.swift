@@ -249,5 +249,6 @@ struct Strings {
     static let returnMessage = NSLocalizedString("Are you sure you want to return \"%@\"?", comment: "Message shown in an alert to the user prior to returning a title")
     static let removeReservation = NSLocalizedString("Remove Reservation", comment: "")
     static let removeReservationMessage = NSLocalizedString("Are you sure you want ot remove \"%@\" from your reservations? You will no longer be in line for this book.", comment: "Message shown in an alert to the user prior to returning a reserved title.")
+    static let downloading = NSLocalizedString("Downloading", comment: "")
   }
 }

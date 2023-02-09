@@ -40,6 +40,7 @@ struct MyBooksView: View {
           .listRowBackground(Color.clear)
         }
       }
+      .onAppear { model.reloadData() }
       .padding(.leading, -10)
   }
 }
