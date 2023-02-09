@@ -11,14 +11,12 @@ import Combine
 
 struct BookCell: View {
   @ObservedObject private var model: BookCellModel
-  @State private var image = ImageProviders.MyBooksView.bookPlaceholder ?? UIImage()
 
   private let cellHeight: CGFloat = 125
   private let imageViewWidth: CGFloat = 100
   
   init(model: BookCellModel) {
     self.model = model
-    loadImage()
   }
 
   var body: some View {
@@ -26,7 +24,7 @@ struct BookCell: View {
       loadingView
       HStack(alignment: .center) {
         unreadImageView
-        imageView
+        titleCoverImageView
         VStack(alignment: .leading) {
           infoView
           Spacer()
@@ -45,13 +43,12 @@ struct BookCell: View {
       .disabled(model.isLoading)
       .frame(height: cellHeight)
       .onDisappear { model.isLoading = false }
-      .onAppear(perform: loadImage)
     }
   }
   
-  @ViewBuilder private var imageView: some View {
+  @ViewBuilder private var titleCoverImageView: some View {
     ZStack {
-      Image(uiImage: TPPBookRegistry.shared.cachedThumbnailImage(for: model.book) ?? image)
+      Image(uiImage: model.image)
         .resizable()
         .aspectRatio(contentMode: .fit)
       audiobookIndicator
@@ -116,13 +113,5 @@ struct BookCell: View {
         .stroke(Color(TPPConfiguration.mainColor()), lineWidth: 1)
         .frame(height: 35)
     )
-  }
-  
-  private func loadImage() {
-    guard TPPBookRegistry.shared.cachedThumbnailImage(for: model.book) == nil else { return }
-    TPPBookRegistry.shared.thumbnailImage(for: model.book) { image in
-      guard let image = image else { return }
-      self.image = image
-    }
   }
 }

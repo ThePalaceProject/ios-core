@@ -8,6 +8,7 @@
 
 import Foundation
 import Combine
+import SwiftUI
 
 enum BookCellState {
   case normal(BookButtonState)
@@ -62,6 +63,7 @@ class BookCellModel: ObservableObject {
   
   @Published var showAlert: AlertModel?
   @Published var isLoading: Bool = false
+  @Published var image = ImageProviders.MyBooksView.bookPlaceholder ?? UIImage()
 
   var buttonTypes: [BookButtonType] {
     state.buttonState.buttonTypes(book: book)
@@ -76,6 +78,19 @@ class BookCellModel: ObservableObject {
 
     self.state = BookCellState(BookButtonState(book) ?? .unsupported)
     self.isLoading = TPPBookRegistry.shared.processing(forIdentifier: book.identifier)
+    loadImage()
+  }
+  
+  private func loadImage() {
+    guard let cachedImage = TPPBookRegistry.shared.cachedThumbnailImage(for: book) else {
+      TPPBookRegistry.shared.thumbnailImage(for: book) { image in
+        guard let image = image else { return }
+        self.image = image
+      }
+      return
+    }
+
+    self.image = cachedImage
   }
 }
 
