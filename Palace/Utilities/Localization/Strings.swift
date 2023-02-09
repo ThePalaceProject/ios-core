@@ -160,7 +160,7 @@ struct Strings {
 
   struct TPPLastListenedPositionSynchronizer {
     static let syncListeningPositionAlertTitle = NSLocalizedString("Sync Listening Position", comment: "An alert title notifying the user the listening position has been synced")
-    static let syncListeningPositionAlertBody = NSLocalizedString("Do you want to move to the listening position on which you left off?", comment: "An alert message asking the user to perform navigation to the synced listening position or not")
+    static let syncListeningPositionAlertBody = NSLocalizedString("Do you want to move to the time on which you left off?", comment: "An alert message asking the user to perform navigation to the synced listening position or not")
   }
 
   struct TPPProblemDocument {
