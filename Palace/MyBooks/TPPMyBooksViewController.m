@@ -350,7 +350,11 @@ OK:
 - (void)reloadData
 {
   if ([TPPUserAccount sharedAccount].needsAuth && ![[TPPUserAccount sharedAccount] hasCredentials]) {
-    [self.refreshControl endRefreshing];
+    // [self.refreshControl emdRefreshing] doesn't stop without a delay when another vc is presented
+    dispatch_time_t stopTime = dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC);
+    dispatch_after(stopTime, dispatch_get_main_queue(), ^{
+      [self.refreshControl endRefreshing];
+    });
     [TPPAccountSignInViewController requestCredentialsWithCompletion:nil];
   } else {
     [[TPPBookRegistry shared] sync];
