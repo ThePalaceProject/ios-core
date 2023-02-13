@@ -353,8 +353,10 @@
       
       // The player moves to the local position before loading a remote one.
       // This way the user sees the last playhead position.
-      [manager.audiobook.player movePlayheadToLocation:localLocation completion:moveCompletionHandler];
-      [self stopLoading];
+      if (localLocation) {
+        [manager.audiobook.player movePlayheadToLocation:localLocation completion:moveCompletionHandler];
+        [self stopLoading];
+      }
       
       [[TPPBookRegistry shared] syncLocationFor:book completion:^(ChapterLocation * _Nullable remoteLocation) {
         [self chooseLocalLocation:localLocation orRemoteLocation:remoteLocation forOperation:^(ChapterLocation *location) {
