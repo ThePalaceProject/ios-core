@@ -17,30 +17,25 @@ struct NormalBookCell: View {
   private let imageViewWidth: CGFloat = 100
 
   var body: some View {
-    ZStack {
-      loadingView
-      HStack(alignment: .center) {
-        unreadImageView
-        titleCoverImageView
-        VStack(alignment: .leading) {
-          infoView
-          Spacer()
-          buttons
-        }
-        .alert(item: $model.showAlert) { alert in
-          Alert(
-            title: Text(alert.title),
-            message: Text(alert.message),
-            primaryButton: .default(Text(alert.buttonTitle), action: alert.primaryAction),
-            secondaryButton: .cancel(alert.secondaryAction)
-          )
-        }
+    HStack(alignment: .center) {
+      unreadImageView
+      titleCoverImageView
+      VStack(alignment: .leading) {
+        infoView
+        Spacer()
+        buttons
+      }
+      .alert(item: $model.showAlert) { alert in
+        Alert(
+          title: Text(alert.title),
+          message: Text(alert.message),
+          primaryButton: .default(Text(alert.buttonTitle), action: alert.primaryAction),
+          secondaryButton: .cancel(alert.secondaryAction)
+        )
       }
     }
     .frame(height: cellHeight)
     .onDisappear { model.isLoading = false }
-    .opacity(model.isLoading ? 0.75 : 1.0)
-    .disabled(model.isLoading)
   }
   
   @ViewBuilder private var titleCoverImageView: some View {
@@ -83,12 +78,6 @@ struct NormalBookCell: View {
           action: { model.callDelegate(for: type) }
         )
       }
-    }
-  }
-  
-  @ViewBuilder private var loadingView: some View {
-    if model.isLoading {
-      ProgressView()
     }
   }
   

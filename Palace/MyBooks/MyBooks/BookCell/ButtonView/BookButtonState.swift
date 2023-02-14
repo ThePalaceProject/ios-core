@@ -65,7 +65,7 @@ extension BookButtonState {
     case .downloadInProgress:
       buttons = [.cancel]
     case .downloadFailed:
-      buttons = [.retry, .cancel]
+      buttons = [.cancel, .retry]
     case .unsupported:
       return []
     }

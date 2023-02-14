@@ -14,12 +14,18 @@ struct FacetView: View {
   @State private var showAlert = false
 
   var body: some View {
-    HStack {
-      titleLabel
-      facet
+    VStack(alignment: .leading) {
+      Divider()
+        .foregroundColor(Color(TPPConfiguration.mainColor()))
+      HStack {
+        titleLabel
+        facet
+      }
+      .actionSheet(isPresented: $showAlert) { facetAlert }
+      .font(.footnote)
+      Divider()
+        .foregroundColor(Color(TPPConfiguration.mainColor()))
     }
-    .actionSheet(isPresented: $showAlert) { facetAlert }
-    .font(.footnote)
     .padding(.vertical)
   }
 

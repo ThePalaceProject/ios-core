@@ -60,10 +60,16 @@ class BookCellModel: ObservableObject {
       return false
     }
   }
-  
-  @Published var showAlert: AlertModel?
-  @Published var isLoading: Bool = false
+
   @Published var image = ImageProviders.MyBooksView.bookPlaceholder ?? UIImage()
+  @Published var showAlert: AlertModel?
+  @Published var isLoading: Bool = false {
+    didSet {
+      statePublisher.send(isLoading)
+    }
+  }
+
+  var statePublisher = PassthroughSubject<Bool, Never>()
 
   var buttonTypes: [BookButtonType] {
     state.buttonState.buttonTypes(book: book)
@@ -191,7 +197,7 @@ extension BookCellModel {
   }
 
   func didSelectDownload() {
-    isLoading = true
+//    isLoading = true
 
     if case .canHold = state.buttonState {
       TPPUserNotifications.requestAuthorization()

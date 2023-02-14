@@ -234,6 +234,7 @@ struct Strings {
     static let navTitle = NSLocalizedString("My Books", comment: "")
     static let sortBy = NSLocalizedString("Sort By:", comment: "")
     static let searchBooks = NSLocalizedString("Search My Books", comment: "")
+    static let emptyViewMessage = NSLocalizedString("Visit the Catalog to\nadd books to My Books.", comment: "")
   }
   
   struct FacetView {
@@ -250,5 +251,6 @@ struct Strings {
     static let removeReservation = NSLocalizedString("Remove Reservation", comment: "")
     static let removeReservationMessage = NSLocalizedString("Are you sure you want ot remove \"%@\" from your reservations? You will no longer be in line for this book.", comment: "Message shown in an alert to the user prior to returning a reserved title.")
     static let downloading = NSLocalizedString("Downloading", comment: "")
+    static let downloadFailedMessage = NSLocalizedString("The download could not be completed.", comment: "")
   }
 }

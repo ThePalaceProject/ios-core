@@ -13,6 +13,7 @@ enum Group: Int {
   case groupSortBy
 }
 
+@MainActor
 class MyBooksViewModel: ObservableObject {
   typealias DisplayStrings = Strings.MyBooksView
 
@@ -30,9 +31,10 @@ class MyBooksViewModel: ObservableObject {
   var isRefreshing: Bool
   @Published var showInstructionsLabel: Bool
   @Published var books: [TPPBook]
+  @Published var isLoading: Bool = false
 
-  private var observers = Set<AnyCancellable>()
-
+  var observers = Set<AnyCancellable>()
+  
   
   init() {
     books = []

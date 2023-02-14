@@ -14,6 +14,14 @@ struct ButtonView: View {
   var indicatorDate: Date? = nil
   var backgroundFill: Color? = nil
   var action: () -> Void
+  
+  private var accessiblityString: String {
+    guard let untilDate = indicatorDate?.timeUntilString(suffixType: .long) else {
+      return title
+    }
+
+    return "\(title).\(untilDate) remaining"
+  }
     
   var body: some View {
     Button (action: action) {
@@ -23,13 +31,9 @@ struct ButtonView: View {
       }
       .padding()
     }
-    .frame(height: 35)
-    .buttonStyle(.plain)
-    .background(backgroundFill)
-    .overlay(
-      RoundedRectangle(cornerRadius: 3)
-        .stroke(backgroundFill ?? Color(TPPConfiguration.mainColor()), lineWidth: 1)
-    )
+    .fixedSize()
+    .buttonStyle(AnimatedButton(backgroundColor: backgroundFill))
+    .accessibilityLabel(accessiblityString)
   }
   
   @ViewBuilder private var indicatorView: some View {
@@ -44,5 +48,21 @@ struct ButtonView: View {
       .padding(.leading, -7)
       .foregroundColor(Color(TPPConfiguration.mainColor()))
     }
+  }
+}
+
+struct AnimatedButton: ButtonStyle {
+  var backgroundColor: Color? = nil
+
+  func makeBody(configuration: Configuration) -> some View {
+    configuration.label
+      .frame(height: 35)
+      .buttonStyle(.plain)
+      .background(backgroundColor)
+      .overlay(
+        RoundedRectangle(cornerRadius: 3)
+          .stroke(backgroundColor ?? Color(TPPConfiguration.mainColor()), lineWidth: 1)
+      )
+      .opacity(configuration.isPressed ? 0.5 : 1.0)
   }
 }

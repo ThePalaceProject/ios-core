@@ -11,14 +11,14 @@ import Combine
 
 struct BookCell: View {
   @ObservedObject var model: BookCellModel
-
+  
   var body: some View {
     bookCell
   }
   
   @ViewBuilder private var bookCell: some View {
     switch model.state {
-    case .downloading:
+    case .downloading, .downloadFailed:
       DownloadingBookCell(model: model)
     default:
       NormalBookCell(model: model)

@@ -10,20 +10,22 @@ import SwiftUI
 
 struct DownloadingBookCell: View {
   @ObservedObject var model: BookCellModel
-  private let cellHeight: CGFloat = 125
+  private let cellHeight: CGFloat = 135
   @State private var progress = 0.0
   var downloadPublisher = NotificationCenter.default.publisher(for: NSNotification.Name.TPPMyBooksDownloadCenterDidChange)
   
-  
   var body: some View {
-    VStack(alignment: .leading) {
-      infoView
-      progressView
-      buttons
+    ZStack {
+      VStack(alignment: .leading) {
+        infoView
+        statusView
+        buttons
+      }
+      .padding()
+      .frame(height: cellHeight)
+      .background(Color(TPPConfiguration.mainColor()))
+      overlay
     }
-    .padding([.leading, .trailing])
-    .frame(height: cellHeight)
-    .background(Color(TPPConfiguration.mainColor()))
   }
 
   @ViewBuilder private var infoView: some View {
@@ -36,6 +38,19 @@ struct DownloadingBookCell: View {
     .foregroundColor(Color(TPPConfiguration.backgroundColor()))
   }
   
+  @ViewBuilder private var statusView: some View {
+    switch model.state.buttonState {
+    case .downloadFailed:
+      Text(Strings.BookCell.downloadFailedMessage)
+        .horizontallyCentered()
+        .padding(.top, 5)
+        .font(.subheadline)
+        .foregroundColor(Color(TPPConfiguration.backgroundColor()))
+    default:
+      progressView
+    }
+  }
+
   @ViewBuilder private var progressView: some View {
     HStack {
       Text(Strings.BookCell.downloading)
@@ -46,7 +61,6 @@ struct DownloadingBookCell: View {
     .font(.subheadline)
     .foregroundColor(Color(TPPConfiguration.backgroundColor()))
     .onReceive(downloadPublisher) { _ in
-      print("MYDebugger Title: \(model.book.title) downloading progress: \(TPPMyBooksDownloadCenter.shared().downloadProgress(forBookIdentifier: model.book.identifier))")
       self.progress = TPPMyBooksDownloadCenter.shared().downloadProgress(forBookIdentifier: model.book.identifier)
     }
   }
@@ -63,6 +77,17 @@ struct DownloadingBookCell: View {
         }
       }
       Spacer()
+    }
+  }
+  
+  @ViewBuilder private var overlay: some View {
+    switch model.state.buttonState {
+    case .downloadFailed:
+      Color.black.opacity(0.25)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .allowsHitTesting(false)
+    default:
+      EmptyView()
     }
   }
 }
