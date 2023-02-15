@@ -32,17 +32,17 @@ class MyBooksViewModel: ObservableObject {
   @Published var showInstructionsLabel: Bool
   @Published var books: [TPPBook]
   @Published var isLoading: Bool = false
+  @Published var alert: AlertModel?
 
   var observers = Set<AnyCancellable>()
-  
-  
+
   init() {
     books = []
     activeFacetSort = Facet.author
     isRefreshing = true
     showInstructionsLabel = false
     
-    facetViewModel.$activeFacet.sink { activeFacet in
+    facetViewModel.$activeSort.sink { activeFacet in
       self.activeFacetSort = activeFacet
     }
     .store(in: &observers)
@@ -131,5 +131,48 @@ class MyBooksViewModel: ObservableObject {
     } else {
       isRefreshing = false
     }
+  }
+  
+  func authenticateAndLoad(_ account: Account) {
+    account.loadAuthenticationDocument { success in
+      guard success else {
+        return
+      }
+      
+      DispatchQueue.main.async {
+        if !TPPSettings.shared.settingsAccountIdsList.contains(account.uuid) {
+          TPPSettings.shared.settingsAccountIdsList = TPPSettings.shared.settingsAccountIdsList + [account.uuid]
+        }
+        
+        self.loadAccount(account)
+      }
+    }
+  }
+  
+  func loadAccount(_ account: Account) {
+    var workflowsInProgress = false
+    
+#if FEATURE_DRM_CONNECTOR
+    if !(AdobeCertificate.defaultCertificate?.hasExpired ?? true) {
+      workflowsInProgress = NYPLADEPT.sharedInstance().workflowsInProgress || TPPBookRegistry.shared.isSyncing
+    } else {
+      workflowsInProgress = TPPBookRegistry.shared.isSyncing
+    }
+#else
+    workflowsInProgress = TPPBookRegistry.shared.isSyncing
+#endif
+
+    if workflowsInProgress {
+      alert = AlertModel(
+        title: Strings.MyBooksView.accountSyncingAlertTitle,
+        message: Strings.MyBooksView.accountSyncingAlertTitle)
+    } else {
+      self.updateFeed(account)
+    }
+  }
+  
+  private func updateFeed(_ account: Account) {
+    AccountsManager.shared.currentAccount = account
+    (TPPRootTabBarController.shared().viewControllers?.first as? TPPCatalogNavigationController)?.updateFeedAndRegistryOnAccountChange()
   }
 }

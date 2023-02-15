@@ -12,7 +12,13 @@ import Combine
 struct MyBooksView: View {
   typealias DisplayStrings = Strings.MyBooksView
   @ObservedObject var model: MyBooksViewModel
-  
+  @State var selectNewLibrary: Bool = false
+  @State var showLibraryAccountView: Bool = false {
+    didSet {
+      print("show library account view reset")
+    }
+  }
+
   var body: some View {
     NavigationView {
       ZStack {
@@ -25,6 +31,20 @@ struct MyBooksView: View {
       }
     }
     .navigationViewStyle(.stack)
+    .navigationBarItems(leading: leadingBarButton, trailing: trailingBarButton)
+    .actionSheet(isPresented: $selectNewLibrary) {
+      libraryPicker
+    }
+    .sheet(isPresented: $showLibraryAccountView) {
+      libraryAccountView()
+    }
+    .alert(item: $model.alert) { alert in
+      Alert(
+        title: Text(alert.title),
+        message: Text(alert.message),
+        dismissButton: .cancel()
+      )
+    }
   }
 
  @ViewBuilder private var emptyView: some View {
@@ -37,10 +57,9 @@ struct MyBooksView: View {
   }
 
   @ViewBuilder private var facetView: some View {
-    FacetView(
+    SortView(
       model: model.facetViewModel
     )
-    .padding(.leading)
   }
 
   @ViewBuilder private var loadingView: some View {
@@ -77,10 +96,53 @@ struct MyBooksView: View {
       .store(in: &self.model.observers)
     return BookCell(model: model)
   }
-}
+  
+  @ViewBuilder private var leadingBarButton: some View {
+    Button {
+      selectNewLibrary.toggle()
+    } label: {
+      ImageProviders.MyBooksView.myLibraryIcon
+    }
+  }
+  
+  @ViewBuilder private var trailingBarButton: some View {
+    Button {
+      print("Show mybooks search")
+    } label: {
+      ImageProviders.MyBooksView.search
+    }
+  }
+  
+  private var libraryPicker: ActionSheet {
+    ActionSheet(
+      title: Text(Strings.MyBooksView.findYourLibrary),
+      buttons: existingLibraryButtons() + [addLibraryButton, .cancel()]
+    )
+  }
 
-extension UIDevice {
-  var isLandscape: Bool {
-    self.orientation == .landscapeLeft || self.orientation == .landscapeRight
+  private func existingLibraryButtons() -> [ActionSheet.Button] {
+    TPPSettings.shared.settingsAccountsList.map { account in
+      .default(Text(account.name)) {
+        model.loadAccount(account)
+        showLibraryAccountView = false
+        selectNewLibrary = false
+      }
+    }
+  }
+
+  private var addLibraryButton: Alert.Button {
+    .default(Text(Strings.MyBooksView.addLibrary)) {
+      showLibraryAccountView = true
+    }
+  }
+  
+  private func libraryAccountView() -> some View {
+     let accountList = TPPAccountList { account in
+       model.authenticateAndLoad(account)
+       showLibraryAccountView = false
+       selectNewLibrary = false
+     }
+  
+    return UIViewControllerWrapper(accountList, updater: {_ in })
   }
 }

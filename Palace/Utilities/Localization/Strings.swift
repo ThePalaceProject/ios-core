@@ -235,6 +235,10 @@ struct Strings {
     static let sortBy = NSLocalizedString("Sort By:", comment: "")
     static let searchBooks = NSLocalizedString("Search My Books", comment: "")
     static let emptyViewMessage = NSLocalizedString("Visit the Catalog to\nadd books to My Books.", comment: "")
+    static let findYourLibrary = NSLocalizedString("Find Your Library", comment: "Button that lets user know they can select a library they have a card for")
+    static let addLibrary = NSLocalizedString("Add Library", comment: "Title of button to add a new library")
+    static let accountSyncingAlertTitle = NSLocalizedString("Please wait", comment: "")
+    static let accountSyncingAlertMessage = NSLocalizedString("Please wait a moment before switching library accounts", comment: "")
   }
   
   struct FacetView {

@@ -29,7 +29,7 @@ struct NormalBookCell: View {
         Alert(
           title: Text(alert.title),
           message: Text(alert.message),
-          primaryButton: .default(Text(alert.buttonTitle), action: alert.primaryAction),
+          primaryButton: .default(Text(alert.buttonTitle ?? ""), action: alert.primaryAction),
           secondaryButton: .cancel(alert.secondaryAction)
         )
       }

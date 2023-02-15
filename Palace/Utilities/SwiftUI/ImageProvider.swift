@@ -20,5 +20,7 @@ struct ImageProviders {
     static let audiobookBadge = Image("AudiobookBadge")
     static let unreadBadge = Image("Unread")
     static let clock = Image("Clock")
+    static let myLibraryIcon = Image("MyLibraryIcon")
+    static let search = Image("Search")
   }
 }

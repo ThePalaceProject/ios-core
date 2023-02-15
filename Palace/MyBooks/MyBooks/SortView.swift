@@ -1,5 +1,5 @@
 //
-//  FacetView.swift
+//  SortView.swift
 //  Palace
 //
 //  Created by Maurice Carrer on 12/23/22.
@@ -9,51 +9,56 @@
 import SwiftUI
 import Combine
 
-struct FacetView: View {
+struct SortView: View {
   @ObservedObject var model: FacetViewModel
   @State private var showAlert = false
 
   var body: some View {
     VStack(alignment: .leading) {
-      Divider()
-        .foregroundColor(Color(TPPConfiguration.mainColor()))
+      dividerView
       HStack {
         titleLabel
-        facet
+        sortView
       }
-      .actionSheet(isPresented: $showAlert) { facetAlert }
+      .padding(.leading)
+      .actionSheet(isPresented: $showAlert) { alert }
       .font(.footnote)
-      Divider()
-        .foregroundColor(Color(TPPConfiguration.mainColor()))
+      dividerView
     }
-    .padding(.vertical)
   }
 
-  var titleLabel: some View {
+  private var titleLabel: some View {
     Text(model.groupName)
   }
 
-  var facet: some View {
+  private var sortView: some View {
     Button(action: {
       showAlert = true
     }) {
-      Text(model.activeFacet.localizedString)
+      Text(model.activeSort.localizedString)
     }
     .frame(width: 60, height: 30)
     .border(.white, width: 1)
     .cornerRadius(2)
   }
+  
+  private var dividerView: some View {
+    Rectangle()
+      .fill(Color(TPPConfiguration.mainColor()))
+      .frame(height: 0.30)
+      .edgesIgnoringSafeArea(.horizontal)
+  }
 
-  private var facetAlert: ActionSheet {
+  private var alert: ActionSheet {
     var buttons = [ActionSheet.Button]()
 
-    if let secondaryFacet = model.facets.first(where: { $0 != model.activeFacet }) {
+    if let secondaryFacet = model.facets.first(where: { $0 != model.activeSort }) {
       buttons.append(ActionSheet.Button.default(Text(secondaryFacet.localizedString)) {
-        self.model.activeFacet = secondaryFacet
+        self.model.activeSort = secondaryFacet
       })
 
-      buttons.append(Alert.Button.default(Text(model.activeFacet.localizedString)) {
-        self.model.activeFacet = model.activeFacet
+      buttons.append(Alert.Button.default(Text(model.activeSort.localizedString)) {
+        self.model.activeSort = model.activeSort
       })
     } else {
       buttons.append(ActionSheet.Button.cancel(Text(Strings.Generic.cancel)))

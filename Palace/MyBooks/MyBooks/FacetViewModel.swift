@@ -27,11 +27,11 @@ class FacetViewModel: ObservableObject {
   @Published var groupName: String
   @Published var facets: [Facet]
   
-  @Published var activeFacet: Facet
+  @Published var activeSort: Facet
   
   init(groupName: String, facets: [Facet]) {
     self.facets = facets
     self.groupName = groupName
-    activeFacet = facets.first!
+    activeSort = facets.first!
   }
 }

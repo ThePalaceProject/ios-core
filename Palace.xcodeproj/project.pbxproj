@@ -686,8 +686,8 @@
 		E53573D0295612BA008BDCA4 /* MyBooksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E53573CE295612BA008BDCA4 /* MyBooksView.swift */; };
 		E53573D2295613FF008BDCA4 /* MyBooksViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E53573D1295613FF008BDCA4 /* MyBooksViewModel.swift */; };
 		E53573D3295613FF008BDCA4 /* MyBooksViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E53573D1295613FF008BDCA4 /* MyBooksViewModel.swift */; };
-		E53573D629653076008BDCA4 /* FacetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E53573D529653076008BDCA4 /* FacetView.swift */; };
-		E53573D729653076008BDCA4 /* FacetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E53573D529653076008BDCA4 /* FacetView.swift */; };
+		E53573D629653076008BDCA4 /* SortView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E53573D529653076008BDCA4 /* SortView.swift */; };
+		E53573D729653076008BDCA4 /* SortView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E53573D529653076008BDCA4 /* SortView.swift */; };
 		E53573D929653095008BDCA4 /* FacetViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E53573D829653095008BDCA4 /* FacetViewModel.swift */; };
 		E53573DA29653095008BDCA4 /* FacetViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E53573D829653095008BDCA4 /* FacetViewModel.swift */; };
 		E53573DC2965E606008BDCA4 /* TPPMyBooksViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E53573DB2965E606008BDCA4 /* TPPMyBooksViewController.swift */; };
@@ -1513,7 +1513,7 @@
 		E52E3C0328C19BAD0073DC4D /* SamplePlayerError.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SamplePlayerError.swift; sourceTree = "<group>"; };
 		E53573CE295612BA008BDCA4 /* MyBooksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyBooksView.swift; sourceTree = "<group>"; };
 		E53573D1295613FF008BDCA4 /* MyBooksViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyBooksViewModel.swift; sourceTree = "<group>"; };
-		E53573D529653076008BDCA4 /* FacetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FacetView.swift; sourceTree = "<group>"; };
+		E53573D529653076008BDCA4 /* SortView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SortView.swift; sourceTree = "<group>"; };
 		E53573D829653095008BDCA4 /* FacetViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FacetViewModel.swift; sourceTree = "<group>"; };
 		E53573DB2965E606008BDCA4 /* TPPMyBooksViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPMyBooksViewController.swift; sourceTree = "<group>"; };
 		E549954728EE1AAA00EA0D9B /* TransifexManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransifexManager.swift; sourceTree = "<group>"; };
@@ -2901,7 +2901,7 @@
 				E53573D1295613FF008BDCA4 /* MyBooksViewModel.swift */,
 				E53573CE295612BA008BDCA4 /* MyBooksView.swift */,
 				E53573D829653095008BDCA4 /* FacetViewModel.swift */,
-				E53573D529653076008BDCA4 /* FacetView.swift */,
+				E53573D529653076008BDCA4 /* SortView.swift */,
 				E5EFDE7A298C4F7100258CA3 /* BookCell */,
 			);
 			path = MyBooks;
@@ -3631,7 +3631,7 @@
 				73EB0A6825821DF4006BC997 /* TPPBookState.swift in Sources */,
 				73EB0A6925821DF4006BC997 /* APIKeys.swift in Sources */,
 				73EB0A6A25821DF4006BC997 /* TPPAttributedString.m in Sources */,
-				E53573D729653076008BDCA4 /* FacetView.swift in Sources */,
+				E53573D729653076008BDCA4 /* SortView.swift in Sources */,
 				73D8D27B25A68D4300DF5F69 /* TPPRootTabBarController+R2.swift in Sources */,
 				73EB0A6D25821DF4006BC997 /* TPPBookContentTypeConverter.swift in Sources */,
 				73EB0A6E25821DF4006BC997 /* TPPAgeCheck.swift in Sources */,
@@ -4087,7 +4087,7 @@
 				E6202A021DD4E6F300C99553 /* TPPSettingsAccountDetailViewController.m in Sources */,
 				2198F910250A90EE000D9DAB /* AudioBookVendorsHelper.swift in Sources */,
 				E68CCFC51F9F80CF003DDA6C /* TPPBarcode.swift in Sources */,
-				E53573D629653076008BDCA4 /* FacetView.swift in Sources */,
+				E53573D629653076008BDCA4 /* SortView.swift in Sources */,
 				21DF7F9325AF5E1E0090402A /* ReaderModule.swift in Sources */,
 				E78AE7F6291BFC6200884446 /* TPPBookCoverRegistry.swift in Sources */,
 				118B7ABF195CBF72005CE3E7 /* TPPSession.m in Sources */,

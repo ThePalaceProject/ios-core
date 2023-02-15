@@ -42,9 +42,10 @@ struct AlertModel: Identifiable {
   let id = UUID()
   var title: String
   var message: String
-  var buttonTitle: String
-  var primaryAction: () -> Void
-  var secondaryAction: () -> Void
+  var buttonTitle: String? = nil
+  var primaryAction: () -> Void = {}
+  var secondaryButtonTitle: String? = nil
+  var secondaryAction: () -> Void = {}
 }
 
 class BookCellModel: ObservableObject {
@@ -197,8 +198,6 @@ extension BookCellModel {
   }
 
   func didSelectDownload() {
-//    isLoading = true
-
     if case .canHold = state.buttonState {
       TPPUserNotifications.requestAuthorization()
     }
