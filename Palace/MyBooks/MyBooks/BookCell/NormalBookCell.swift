@@ -79,6 +79,8 @@ struct NormalBookCell: View {
           indicatorDate: model.indicatorDate(for: type),
           action: { model.callDelegate(for: type) }
         )
+        .disabled(type.isDisabled)
+        .opacity(type.isDisabled ? 0.5 : 1.0)
       }
     }
   }

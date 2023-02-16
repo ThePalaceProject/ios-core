@@ -86,6 +86,13 @@ class BookCellModel: ObservableObject {
     self.state = BookCellState(BookButtonState(book) ?? .unsupported)
     self.isLoading = TPPBookRegistry.shared.processing(forIdentifier: book.identifier)
     loadImage()
+    registerForNotifications()
+  }
+  
+  private func registerForNotifications() {
+    NotificationCenter.default.addObserver(self, selector: #selector(updateButtons),
+                                           name: .TPPReachabilityChanged,
+                                           object: nil)
   }
   
   private func loadImage() {
@@ -131,6 +138,11 @@ class BookCellModel: ObservableObject {
       return date
     }
     return date
+  }
+  
+  
+  @objc private func updateButtons() {
+    isLoading = false
   }
 }
 

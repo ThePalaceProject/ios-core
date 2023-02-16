@@ -105,6 +105,15 @@ enum BookButtonType: String {
       return false
     }
   }
+  
+  var isDisabled: Bool {
+    switch self {
+    case .read, .listen, .remove:
+      return false
+    default:
+      return !Reachability.shared.isConnectedToNetwork()
+    }
+  }
 }
 
 extension BookButtonState {

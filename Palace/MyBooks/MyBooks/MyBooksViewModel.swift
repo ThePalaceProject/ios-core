@@ -28,7 +28,6 @@ class MyBooksViewModel: ObservableObject {
     facets: [.title, .author]
   )
 
-  var isRefreshing = true
   @Published var showInstructionsLabel = false
   @Published var books = [TPPBook]()
   @Published var isLoading = false
@@ -110,14 +109,9 @@ class MyBooksViewModel: ObservableObject {
     }
   }
 
-  @objc private func bookRegistryStateDidChange() {
-      self.isRefreshing = false
-  }
-
+  @objc private func bookRegistryStateDidChange() {}
   @objc private func syncBegan() {}
-
   @objc private func syncEnded() {
-      self.isRefreshing = false
       self.loadData()
   }
 
@@ -127,7 +121,6 @@ class MyBooksViewModel: ObservableObject {
     }
 
     if TPPUserAccount.sharedAccount().needsAuth && !TPPUserAccount.sharedAccount().hasCredentials() {
-      isRefreshing = false
       TPPAccountSignInViewController.requestCredentials(completion: nil)
     } else {
       TPPBookRegistry.shared.sync()
@@ -137,8 +130,6 @@ class MyBooksViewModel: ObservableObject {
   func refresh() {
     if AccountsManager.shared.currentAccount?.loansUrl != nil {
       reloadData()
-    } else {
-      isRefreshing = false
     }
   }
   
