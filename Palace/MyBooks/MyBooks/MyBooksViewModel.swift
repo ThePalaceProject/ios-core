@@ -28,26 +28,24 @@ class MyBooksViewModel: ObservableObject {
     facets: [.title, .author]
   )
 
-  var isRefreshing: Bool
-  @Published var showInstructionsLabel: Bool
-  @Published var books: [TPPBook]
-  @Published var isLoading: Bool = false
+  var isRefreshing = true
+  @Published var showInstructionsLabel = false
+  @Published var books = [TPPBook]()
+  @Published var isLoading = false
   @Published var alert: AlertModel?
-  @Published var showSearchSheet: Bool = false
-
+  @Published var showSearchSheet = false
+  @Published var showAccountScreen = false {
+    didSet {
+      accountURL = facetViewModel.accountScreenURL
+    }
+  }
+  @Published var accountURL: URL?
+  
   var observers = Set<AnyCancellable>()
 
   init() {
-    books = []
     activeFacetSort = Facet.author
-    isRefreshing = true
-    showInstructionsLabel = false
-    
-    facetViewModel.$activeSort.sink { activeFacet in
-      self.activeFacetSort = activeFacet
-    }
-    .store(in: &observers)
-
+    registerForPublishers()
     registerForNotifications()
     loadData()
   }
@@ -78,6 +76,16 @@ class MyBooksViewModel: ObservableObject {
         return aString < bString
       }
     }
+  }
+  
+  private func registerForPublishers() {
+    facetViewModel.$activeSort
+      .assign(to: \.activeFacetSort, on: self)
+      .store(in: &observers)
+    
+    facetViewModel.$showAccountScreen
+      .assign(to: \.showAccountScreen, on: self)
+      .store(in: &observers)
   }
   
   private func registerForNotifications() {
@@ -152,7 +160,7 @@ class MyBooksViewModel: ObservableObject {
   
   func loadAccount(_ account: Account) {
     var workflowsInProgress = false
-    
+
 #if FEATURE_DRM_CONNECTOR
     if !(AdobeCertificate.defaultCertificate?.hasExpired ?? true) {
       workflowsInProgress = NYPLADEPT.sharedInstance().workflowsInProgress || TPPBookRegistry.shared.isSyncing

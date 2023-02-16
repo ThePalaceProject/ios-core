@@ -17,12 +17,13 @@ struct MyBooksView: View {
   
   var body: some View {
     NavigationLink(destination: searchView, isActive: $model.showSearchSheet) {}
-    
+    NavigationLink(destination: accountScreen, isActive: $model.showAccountScreen) {}
+
     NavigationView {
       ZStack {
         VStack(alignment: .leading) {
           facetView
-          listView
+          content
         }
         loadingView
       }
@@ -32,7 +33,7 @@ struct MyBooksView: View {
       libraryPicker
     }
     .sheet(isPresented: $showLibraryAccountView) {
-      libraryAccountView
+      accountPickerList
     }
     .alert(item: $model.alert) { alert in
       Alert(
@@ -65,7 +66,7 @@ struct MyBooksView: View {
       .verticallyCentered()
   }
   
-  @ViewBuilder private var listView: some View {
+  @ViewBuilder private var content: some View {
     GeometryReader { geometry in
       ScrollView {
         if model.books.count == 0 {
@@ -74,21 +75,25 @@ struct MyBooksView: View {
           }
           .frame(minHeight: geometry.size.height)
         } else {
-          VStack(alignment: .leading, spacing: 10) {
-            ForEach(0..<model.books.count, id: \.self) { i in
-              ZStack(alignment: .leading) {
-                NavigationLink(destination: UIViewControllerWrapper(TPPBookDetailViewController(book: model.books[i]), updater: { _ in })) {
-                  cell(for: model.books[i])
-                }
-              }
-              .opacity(model.isLoading ? 0.5 : 1.0)
-              .disabled(model.isLoading)
-            }
-          }
-          .onAppear { model.loadData() }
+          listView
         }
       }
     }
+  }
+  
+  @ViewBuilder private var listView: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      ForEach(0..<model.books.count, id: \.self) { i in
+        ZStack(alignment: .leading) {
+          NavigationLink(destination: UIViewControllerWrapper(TPPBookDetailViewController(book: model.books[i]), updater: { _ in })) {
+            cell(for: model.books[i])
+          }
+        }
+        .opacity(model.isLoading ? 0.5 : 1.0)
+        .disabled(model.isLoading)
+      }
+    }
+    .onAppear { model.loadData() }
   }
   
   private func cell(for book: TPPBook) -> BookCell {
@@ -139,7 +144,7 @@ struct MyBooksView: View {
     }
   }
   
-  private var libraryAccountView: some View {
+  private var accountPickerList: some View {
     let accountList = TPPAccountList { account in
       model.authenticateAndLoad(account)
       showLibraryAccountView = false
@@ -153,5 +158,15 @@ struct MyBooksView: View {
     let searchDescription = TPPOpenSearchDescription(title: DisplayStrings.searchBooks, books: model.books)
     let navController = UINavigationController(rootViewController: TPPCatalogSearchViewController(openSearchDescription: searchDescription))
     return UIViewControllerWrapper(navController, updater: { _ in })
+  }
+  
+  private var accountScreen: some View {
+    guard let url = model.accountURL else {
+      return EmptyView().anyView()
+    }
+
+    let webController = BundledHTMLViewController(fileURL: url, title: "TEST")
+    webController.hidesBottomBarWhenPushed = true
+    return  UIViewControllerWrapper(webController, updater: { _ in } ).anyView()
   }
 }

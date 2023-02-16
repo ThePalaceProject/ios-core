@@ -26,9 +26,9 @@ enum Facet: String {
 class FacetViewModel: ObservableObject {
   @Published var groupName: String
   @Published var facets: [Facet]
-  
   @Published var activeSort: Facet
   @Published var currentAccount: Account?
+  @Published var accountScreenURL: URL? = nil
   @Published var showAccountScreen = false
 
   var currentAccountURL: URL? {
@@ -40,6 +40,7 @@ class FacetViewModel: ObservableObject {
     self.groupName = groupName
     activeSort = facets.first!
     registerForNotifications()
+    updateAccount()
   }
   
   
@@ -51,5 +52,6 @@ class FacetViewModel: ObservableObject {
   
   @objc private func updateAccount() {
     currentAccount = AccountsManager.shared.currentAccount
+    accountScreenURL = currentAccountURL
   }
 }

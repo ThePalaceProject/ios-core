@@ -14,8 +14,6 @@ struct FacetView: View {
   @State private var showAlert = false
 
   var body: some View {
-    NavigationLink(destination: accountScreen, isActive: $model.showAccountScreen) {}
-
     VStack(alignment: .leading) {
       dividerView
       HStack {
@@ -73,7 +71,7 @@ struct FacetView: View {
   @ViewBuilder private var accountLogoView: some View {
     if let account = model.currentAccount {
       Button {
-        model.showAccountScreen.toggle()
+        model.showAccountScreen = true
       } label: {
           HStack {
             Image(uiImage: account.logo)
@@ -93,15 +91,5 @@ struct FacetView: View {
         }
         .horizontallyCentered()
     }
-  }
-  
-  private var accountScreen: some View {
-    guard let url = model.currentAccountURL else {
-      return EmptyView().anyView()
-    }
-
-    let webController = BundledHTMLViewController(fileURL: url, title: model.currentAccount?.name.capitalized ?? "")
-    webController.hidesBottomBarWhenPushed = true
-    return  UIViewControllerWrapper(webController, updater: { _ in } ).anyView()
   }
 }
