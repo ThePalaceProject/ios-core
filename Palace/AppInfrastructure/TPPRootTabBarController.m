@@ -84,7 +84,10 @@
     self.viewControllers = @[self.catalogNavigationController,
                              self.myBooksNavigationController,
                              self.settingsViewController];
-    [self setInitialSelectedTab];
+    // Change selected index if the "Reservations" or "Settings" tab is selected
+    if (self.selectedIndex > 1) {
+      self.selectedIndex -= 1;
+    }
   }
 }
 
