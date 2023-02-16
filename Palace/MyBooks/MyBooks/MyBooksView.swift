@@ -13,16 +13,13 @@ struct MyBooksView: View {
   typealias DisplayStrings = Strings.MyBooksView
   @ObservedObject var model: MyBooksViewModel
   @State var selectNewLibrary: Bool = false
-  @State var showLibraryAccountView: Bool = false {
-    didSet {
-      print("show library account view reset")
-    }
-  }
-
+  @State var showLibraryAccountView: Bool = false
+  
   var body: some View {
+    NavigationLink(destination: searchView, isActive: $model.showSearchSheet) {}
+
     NavigationView {
       ZStack {
-        emptyView
         VStack(alignment: .leading) {
           facetView
           listView
@@ -30,13 +27,13 @@ struct MyBooksView: View {
         loadingView
       }
     }
-    .navigationViewStyle(.stack)
+    .navigationBarTitleDisplayMode(.inline)
     .navigationBarItems(leading: leadingBarButton, trailing: trailingBarButton)
     .actionSheet(isPresented: $selectNewLibrary) {
       libraryPicker
     }
     .sheet(isPresented: $showLibraryAccountView) {
-      libraryAccountView()
+      libraryAccountView
     }
     .alert(item: $model.alert) { alert in
       Alert(
@@ -46,48 +43,55 @@ struct MyBooksView: View {
       )
     }
   }
-
- @ViewBuilder private var emptyView: some View {
-    if model.books.count == 0 {
-      Text(Strings.MyBooksView.emptyViewMessage)
-        .multilineTextAlignment(.center)
-        .foregroundColor(.gray)
-        .horizontallyCentered()
-    }
-  }
-
+  
   @ViewBuilder private var facetView: some View {
     SortView(
       model: model.facetViewModel
     )
   }
-
+  
   @ViewBuilder private var loadingView: some View {
     if model.isLoading {
       ProgressView()
         .scaleEffect(x: 2, y: 2, anchor: .center)
         .horizontallyCentered()
-        .verticallyCentered()
     }
   }
-
-  @ViewBuilder private var listView: some View {
-      ScrollView {
-        VStack(alignment: .leading, spacing: 10) {
-          ForEach(0..<model.books.count, id: \.self) { i in
-            ZStack(alignment: .leading) {
-              NavigationLink(destination: UIViewControllerWrapper(TPPBookDetailViewController(book: model.books[i]), updater: { _ in })) {
-                cell(for: model.books[i])
-              }
-            }
-            .opacity(model.isLoading ? 0.5 : 1.0)
-            .disabled(model.isLoading)
-          }
-        }
-        .onAppear { model.reloadData() }
-      }
+  
+  @ViewBuilder private var emptyView: some View {
+    Text(DisplayStrings.emptyViewMessage)
+      .multilineTextAlignment(.center)
+      .foregroundColor(.gray)
+      .horizontallyCentered()
+      .verticallyCentered()
   }
-
+  
+  @ViewBuilder private var listView: some View {
+    GeometryReader { geometry in
+      ScrollView {
+        if model.books.count == 0 {
+          VStack {
+            emptyView
+          }
+          .frame(minHeight: geometry.size.height)
+        } else {
+          VStack(alignment: .leading, spacing: 10) {
+            ForEach(0..<model.books.count, id: \.self) { i in
+              ZStack(alignment: .leading) {
+                NavigationLink(destination: UIViewControllerWrapper(TPPBookDetailViewController(book: model.books[i]), updater: { _ in })) {
+                  cell(for: model.books[i])
+                }
+              }
+              .opacity(model.isLoading ? 0.5 : 1.0)
+              .disabled(model.isLoading)
+            }
+          }
+          .onAppear { model.loadData() }
+        }
+      }
+    }
+  }
+  
   private func cell(for book: TPPBook) -> BookCell {
     let model = BookCellModel(book: book)
     
@@ -107,7 +111,7 @@ struct MyBooksView: View {
   
   @ViewBuilder private var trailingBarButton: some View {
     Button {
-      print("Show mybooks search")
+      model.showSearchSheet.toggle()
     } label: {
       ImageProviders.MyBooksView.search
     }
@@ -115,34 +119,40 @@ struct MyBooksView: View {
   
   private var libraryPicker: ActionSheet {
     ActionSheet(
-      title: Text(Strings.MyBooksView.findYourLibrary),
+      title: Text(DisplayStrings.findYourLibrary),
       buttons: existingLibraryButtons() + [addLibraryButton, .cancel()]
     )
   }
-
+  
   private func existingLibraryButtons() -> [ActionSheet.Button] {
     TPPSettings.shared.settingsAccountsList.map { account in
-      .default(Text(account.name)) {
-        model.loadAccount(account)
-        showLibraryAccountView = false
-        selectNewLibrary = false
-      }
+        .default(Text(account.name)) {
+          model.loadAccount(account)
+          showLibraryAccountView = false
+          selectNewLibrary = false
+        }
     }
   }
-
+  
   private var addLibraryButton: Alert.Button {
-    .default(Text(Strings.MyBooksView.addLibrary)) {
+    .default(Text(DisplayStrings.addLibrary)) {
       showLibraryAccountView = true
     }
   }
   
-  private func libraryAccountView() -> some View {
-     let accountList = TPPAccountList { account in
-       model.authenticateAndLoad(account)
-       showLibraryAccountView = false
-       selectNewLibrary = false
-     }
-  
+  private var libraryAccountView: some View {
+    let accountList = TPPAccountList { account in
+      model.authenticateAndLoad(account)
+      showLibraryAccountView = false
+      selectNewLibrary = false
+    }
+    
     return UIViewControllerWrapper(accountList, updater: {_ in })
+  }
+
+  private var searchView: some View {
+    let searchDescription = TPPOpenSearchDescription(title: DisplayStrings.searchBooks, books: model.books)
+    let navController = UINavigationController(rootViewController: TPPCatalogSearchViewController(openSearchDescription: searchDescription))
+    return UIViewControllerWrapper(navController, updater: { _ in })
   }
 }

@@ -34,6 +34,7 @@ struct NormalBookCell: View {
         )
       }
     }
+    .padding([.leading, .trailing], 5)
     .frame(height: cellHeight)
     .onDisappear { model.isLoading = false }
   }

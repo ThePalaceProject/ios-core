@@ -33,6 +33,7 @@ class MyBooksViewModel: ObservableObject {
   @Published var books: [TPPBook]
   @Published var isLoading: Bool = false
   @Published var alert: AlertModel?
+  @Published var showSearchSheet: Bool = false
 
   var observers = Set<AnyCancellable>()
 
@@ -55,7 +56,7 @@ class MyBooksViewModel: ObservableObject {
     NotificationCenter.default.removeObserver(self)
   }
   
-  private func loadData() {
+  func loadData() {
     DispatchQueue.main.async {
       self.books = TPPBookRegistry.shared.myBooks
       self.sortData()
@@ -109,7 +110,7 @@ class MyBooksViewModel: ObservableObject {
 
   @objc private func syncEnded() {
       self.isRefreshing = false
-      self.reloadData()
+      self.loadData()
   }
 
   func reloadData() {
@@ -174,5 +175,9 @@ class MyBooksViewModel: ObservableObject {
   private func updateFeed(_ account: Account) {
     AccountsManager.shared.currentAccount = account
     (TPPRootTabBarController.shared().viewControllers?.first as? TPPCatalogNavigationController)?.updateFeedAndRegistryOnAccountChange()
+  }
+  
+  @objc func dismissSearchSheet() {
+    showSearchSheet.toggle()
   }
 }
