@@ -31,9 +31,9 @@ struct DownloadingBookCell: View {
   @ViewBuilder private var infoView: some View {
     VStack(alignment: .leading, spacing: 3) {
       Text(model.title)
-        .font(.headline)
+        .font(Font(uiFont: UIFont.palaceFont(ofSize: 17)))
       Text(model.authors)
-        .font(.subheadline)
+        .font(Font(uiFont: UIFont.palaceFont(ofSize: 12)))
     }
     .foregroundColor(Color(TPPConfiguration.backgroundColor()))
   }
@@ -44,7 +44,7 @@ struct DownloadingBookCell: View {
       Text(Strings.BookCell.downloadFailedMessage)
         .horizontallyCentered()
         .padding(.top, 5)
-        .font(.subheadline)
+        .font(Font(uiFont: UIFont.palaceFont(ofSize: 12)))
         .foregroundColor(Color(TPPConfiguration.backgroundColor()))
     default:
       progressView
@@ -58,7 +58,7 @@ struct DownloadingBookCell: View {
         .progressViewStyle(LinearProgressViewStyle(tint: Color(TPPConfiguration.backgroundColor())))
       Text("\(Int(progress * 100))%")
     }
-    .font(.subheadline)
+    .font(Font(uiFont: UIFont.palaceFont(ofSize: 12)))
     .foregroundColor(Color(TPPConfiguration.backgroundColor()))
     .onReceive(downloadPublisher) { _ in
       self.progress = TPPMyBooksDownloadCenter.shared().downloadProgress(forBookIdentifier: model.book.identifier)

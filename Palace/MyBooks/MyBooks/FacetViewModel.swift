@@ -28,10 +28,28 @@ class FacetViewModel: ObservableObject {
   @Published var facets: [Facet]
   
   @Published var activeSort: Facet
-  
+  @Published var currentAccount: Account?
+  @Published var showAccountScreen = false
+
+  var currentAccountURL: URL? {
+    URL(string: currentAccount?.homePageUrl ?? "")
+  }
+
   init(groupName: String, facets: [Facet]) {
     self.facets = facets
     self.groupName = groupName
     activeSort = facets.first!
+    registerForNotifications()
+  }
+  
+  
+  private func registerForNotifications() {
+    NotificationCenter.default.addObserver(self, selector: #selector(updateAccount),
+                                           name: .TPPCurrentAccountDidChange,
+                                           object: nil)
+  }
+  
+  @objc private func updateAccount() {
+    currentAccount = AccountsManager.shared.currentAccount
   }
 }

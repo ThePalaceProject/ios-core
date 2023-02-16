@@ -34,7 +34,7 @@ struct NormalBookCell: View {
         )
       }
     }
-    .padding([.leading, .trailing], 5)
+    .padding([.leading, .trailing], 2)
     .frame(height: cellHeight)
     .onDisappear { model.isLoading = false }
   }
@@ -63,10 +63,11 @@ struct NormalBookCell: View {
   @ViewBuilder private var infoView: some View {
     VStack(alignment: .leading) {
       Text(model.title)
+        .font(Font(uiFont: UIFont.palaceFont(ofSize: 17)))
         .fixedSize(horizontal: false, vertical: true)
         .accessibilityLabel(model.book.defaultBookContentType == .audiobook ? "\(model.book.title). Audiobook." : "")
       Text(model.authors)
-        .font(.footnote)
+        .font(Font(uiFont: UIFont.palaceFont(ofSize: 12)))
     }
   }
   

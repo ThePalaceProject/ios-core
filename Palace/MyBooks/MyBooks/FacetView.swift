@@ -1,5 +1,5 @@
 //
-//  SortView.swift
+//  FacetView.swift
 //  Palace
 //
 //  Created by Maurice Carrer on 12/23/22.
@@ -9,11 +9,13 @@
 import SwiftUI
 import Combine
 
-struct SortView: View {
+struct FacetView: View {
   @ObservedObject var model: FacetViewModel
   @State private var showAlert = false
 
   var body: some View {
+    NavigationLink(destination: accountScreen, isActive: $model.showAccountScreen) {}
+
     VStack(alignment: .leading) {
       dividerView
       HStack {
@@ -22,8 +24,9 @@ struct SortView: View {
       }
       .padding(.leading)
       .actionSheet(isPresented: $showAlert) { alert }
-      .font(.footnote)
+      .font(Font(uiFont: UIFont.palaceFont(ofSize: 12)))
       dividerView
+      accountLogoView
     }
   }
 
@@ -65,5 +68,40 @@ struct SortView: View {
     }
 
     return ActionSheet(title: Text(""), message: Text(""), buttons:buttons)
+  }
+  
+  @ViewBuilder private var accountLogoView: some View {
+    if let account = model.currentAccount {
+      Button {
+        model.showAccountScreen.toggle()
+      } label: {
+          HStack {
+            Image(uiImage: account.logo)
+              .resizable()
+              .aspectRatio(contentMode: .fit)
+              .square(length: 50)
+            Text(account.name)
+              .font(Font(uiFont: UIFont.boldSystemFont(ofSize: 18.0)))
+              .foregroundColor(.gray)
+              .lineLimit(0)
+              .multilineTextAlignment(.center)
+          }
+          .padding()
+          .background(Color(TPPConfiguration.readerBackgroundColor()))
+          .frame(height: 70.0)
+          .cornerRadius(35)
+        }
+        .horizontallyCentered()
+    }
+  }
+  
+  private var accountScreen: some View {
+    guard let url = model.currentAccountURL else {
+      return EmptyView().anyView()
+    }
+
+    let webController = BundledHTMLViewController(fileURL: url, title: model.currentAccount?.name.capitalized ?? "")
+    webController.hidesBottomBarWhenPushed = true
+    return  UIViewControllerWrapper(webController, updater: { _ in } ).anyView()
   }
 }

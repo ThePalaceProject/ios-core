@@ -17,7 +17,7 @@ struct MyBooksView: View {
   
   var body: some View {
     NavigationLink(destination: searchView, isActive: $model.showSearchSheet) {}
-
+    
     NavigationView {
       ZStack {
         VStack(alignment: .leading) {
@@ -27,7 +27,6 @@ struct MyBooksView: View {
         loadingView
       }
     }
-    .navigationBarTitleDisplayMode(.inline)
     .navigationBarItems(leading: leadingBarButton, trailing: trailingBarButton)
     .actionSheet(isPresented: $selectNewLibrary) {
       libraryPicker
@@ -45,7 +44,7 @@ struct MyBooksView: View {
   }
   
   @ViewBuilder private var facetView: some View {
-    SortView(
+    FacetView(
       model: model.facetViewModel
     )
   }

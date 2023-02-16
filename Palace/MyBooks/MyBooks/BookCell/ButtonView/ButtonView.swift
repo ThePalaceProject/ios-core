@@ -31,6 +31,7 @@ struct ButtonView: View {
       }
       .padding()
     }
+    .font(Font(uiFont: UIFont.palaceFont(ofSize: 14)))
     .fixedSize()
     .buttonStyle(AnimatedButton(backgroundColor: backgroundFill))
     .accessibilityLabel(accessiblityString)
@@ -43,7 +44,7 @@ struct ButtonView: View {
           .resizable()
           .square(length: 14)
         Text(endDate)
-          .font(.system(size: 10))
+          .font(.system(size: 9))
       }
       .padding(.leading, -7)
       .foregroundColor(Color(TPPConfiguration.mainColor()))
