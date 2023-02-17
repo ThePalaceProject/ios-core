@@ -501,7 +501,7 @@ didCompleteWithError:(NSError *)error
 
 - (void)deleteLocalContentForBookIdentifier:(NSString *const)identifier
 {
-  [self deleteLocalContentForBookIdentifier:identifier account:[AccountsManager sharedInstance].currentAccount.uuid];
+  [self deleteLocalContentForBookIdentifier:identifier account:[AccountsManager sharedInstance].currentAccountId];
 }
 
 - (void)deleteLocalContentForBookIdentifier:(NSString *const)identifier account:(NSString * const)account
@@ -681,7 +681,7 @@ didCompleteWithError:(NSError *)error
 
 - (NSURL *)contentDirectoryURL
 {
-  return [self contentDirectoryURL:[AccountsManager sharedInstance].currentAccount.uuid];
+  return [self contentDirectoryURL:[AccountsManager sharedInstance].currentAccountId];
 }
 
 - (NSURL *)contentDirectoryURL:(NSString *)account
@@ -728,7 +728,7 @@ didCompleteWithError:(NSError *)error
 
 - (NSURL *)fileURLForBookIndentifier:(NSString *const)identifier
 {
-  return [self fileURLForBookIndentifier:identifier account:[AccountsManager sharedInstance].currentAccount.uuid];
+  return [self fileURLForBookIndentifier:identifier account:[AccountsManager sharedInstance].currentAccountId];
 }
   
 - (NSURL *)fileURLForBookIndentifier:(NSString *const)identifier account:(NSString * const)account
@@ -1184,7 +1184,7 @@ didCompleteWithError:(NSError *)error
 
 - (void)reset:(NSString *)account
 {
-  if ([[AccountsManager shared].currentAccount.uuid isEqualToString:account])
+  if ([[AccountsManager shared].currentAccountId isEqualToString:account])
   {
     [self reset];
   }
@@ -1200,7 +1200,7 @@ didCompleteWithError:(NSError *)error
 
 - (void)reset
 {
-  [self deleteAudiobooksForAccount:[AccountsManager sharedInstance].currentAccount.uuid];
+  [self deleteAudiobooksForAccount:[AccountsManager sharedInstance].currentAccountId];
   
   for(TPPMyBooksDownloadInfo *const info in [self.bookIdentifierToDownloadInfo allValues]) {
     [info.downloadTask cancelByProducingResumeData:^(__unused NSData *resumeData) {}];

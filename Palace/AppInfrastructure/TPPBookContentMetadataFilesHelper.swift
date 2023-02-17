@@ -5,10 +5,10 @@ import Foundation
 @objcMembers final class TPPBookContentMetadataFilesHelper : NSObject {
   
   class func currentAccountDirectory() -> URL? {
-    guard let account = AccountsManager.shared.currentAccount else {
+    guard let accountId = AccountsManager.shared.currentAccountId else {
       return nil
     }
-    return directory(for: account.uuid)
+    return directory(for: accountId)
   }
   
   class func directory(for account: String) -> URL? {
