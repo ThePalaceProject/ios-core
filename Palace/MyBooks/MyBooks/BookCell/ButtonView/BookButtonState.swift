@@ -27,24 +27,21 @@ extension BookButtonState {
   
     switch self {
     case .canBorrow:
-      buttons = [.get, book.defaultBookContentType == .audiobook ? .audiobookSample : .sample]
+      buttons = [.get, book.isAudiobook ? .audiobookSample : .sample]
     case .canHold:
-      buttons = [.reserve,book.defaultBookContentType == .audiobook ? .audiobookSample : .sample]
+      buttons = [.reserve, book.isAudiobook ? .audiobookSample : .sample]
     case .holding:
-      buttons = [.remove,book.defaultBookContentType == .audiobook ? .audiobookSample : .sample]
+      buttons = [.remove, book.isAudiobook ? .audiobookSample : .sample]
     case .holdingFrontOfQueue:
       buttons = [.get, .remove]
     case .downloadNeeded:
       if let authDef = TPPUserAccount.sharedAccount().authDefinition,
-            authDef.needsAuth ||
-              book.defaultAcquisitionIfOpenAccess != nil
-       {
+         authDef.needsAuth || book.defaultAcquisitionIfOpenAccess != nil {
         buttons = [.download, .return]
       } else {
         buttons = [.download, .remove]
       }
     case .downloadSuccessful, .used:
-
       switch book.defaultBookContentType {
       case .audiobook:
         buttons.append(.listen)
@@ -55,13 +52,12 @@ extension BookButtonState {
       }
 
       if let authDef = TPPUserAccount.sharedAccount().authDefinition,
-            authDef.needsAuth ||
-              book.defaultAcquisitionIfOpenAccess != nil {
+         authDef.needsAuth ||
+          book.defaultAcquisitionIfOpenAccess != nil {
         buttons.append(.return)
       } else {
         buttons.append(.remove)
       }
-
     case .downloadInProgress:
       buttons = [.cancel]
     case .downloadFailed:
@@ -77,42 +73,6 @@ extension BookButtonState {
     }
 
     return buttons
-  }
-}
-
-enum BookButtonType: String {
-  case get
-  case reserve
-  case download
-  case read
-  case listen
-  case retry
-  case cancel
-  case sample
-  case audiobookSample
-  case remove
-  case `return`
-
-  var localizedTitle: String {
-    NSLocalizedString(self.rawValue, comment: "Book Action Button title")
-  }
-  
-  var displaysIndicator: Bool {
-    switch self {
-    case .read, .remove, .get, .download, .listen:
-      return true
-    default:
-      return false
-    }
-  }
-  
-  var isDisabled: Bool {
-    switch self {
-    case .read, .listen, .remove:
-      return false
-    default:
-      return !Reachability.shared.isConnectedToNetwork()
-    }
   }
 }
 

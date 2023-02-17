@@ -17,6 +17,18 @@ enum Group: Int {
 class MyBooksViewModel: ObservableObject {
   typealias DisplayStrings = Strings.MyBooksView
 
+  @Published var books = [TPPBook]()
+  @Published var isLoading = false
+  @Published var alert: AlertModel?
+  @Published var showSearchSheet = false
+  @Published var showInstructionsLabel = false
+  @Published var showAccountScreen = false {
+    didSet {
+      accountURL = facetViewModel.accountScreenURL
+    }
+  }
+  @Published var accountURL: URL?
+  
   var activeFacetSort: Facet {
     didSet {
       sortData()
@@ -27,18 +39,6 @@ class MyBooksViewModel: ObservableObject {
     groupName: DisplayStrings.sortBy,
     facets: [.title, .author]
   )
-
-  @Published var showInstructionsLabel = false
-  @Published var books = [TPPBook]()
-  @Published var isLoading = false
-  @Published var alert: AlertModel?
-  @Published var showSearchSheet = false
-  @Published var showAccountScreen = false {
-    didSet {
-      accountURL = facetViewModel.accountScreenURL
-    }
-  }
-  @Published var accountURL: URL?
   
   var observers = Set<AnyCancellable>()
 

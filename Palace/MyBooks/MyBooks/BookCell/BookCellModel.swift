@@ -38,29 +38,8 @@ extension BookCellState {
   }
 }
 
-struct AlertModel: Identifiable {
-  let id = UUID()
-  var title: String
-  var message: String
-  var buttonTitle: String? = nil
-  var primaryAction: () -> Void = {}
-  var secondaryButtonTitle: String? = nil
-  var secondaryAction: () -> Void = {}
-}
-
 class BookCellModel: ObservableObject {
   typealias DisplayStrings = Strings.BookCell
-  var state: BookCellState
-  var title: String { book.title }
-  var authors: String { book.authors ?? "" }
-  var book: TPPBook
-  var showUnreadIndicator: Bool {
-    if case .normal(let bookState) = state, bookState == .downloadSuccessful {
-      return true
-    } else {
-      return false
-    }
-  }
 
   @Published var image = ImageProviders.MyBooksView.bookPlaceholder ?? UIImage()
   @Published var showAlert: AlertModel?
@@ -71,11 +50,22 @@ class BookCellModel: ObservableObject {
   }
 
   var statePublisher = PassthroughSubject<Bool, Never>()
-
+  var state: BookCellState
+  var book: TPPBook
+  var title: String { book.title }
+  var authors: String { book.authors ?? "" }
+  var showUnreadIndicator: Bool {
+    if case .normal(let bookState) = state, bookState == .downloadSuccessful {
+      return true
+    } else {
+      return false
+    }
+  }
+  
   var buttonTypes: [BookButtonType] {
     state.buttonState.buttonTypes(book: book)
   }
-
+  
   private weak var buttonDelegate = TPPBookCellDelegate.shared()
   private weak var sampleDelegate: TPPBookButtonsSampleDelegate?
   private weak var downloadDelegate: TPPBookDownloadCancellationDelegate?
@@ -85,8 +75,8 @@ class BookCellModel: ObservableObject {
 
     self.state = BookCellState(BookButtonState(book) ?? .unsupported)
     self.isLoading = TPPBookRegistry.shared.processing(forIdentifier: book.identifier)
-    loadImage()
     registerForNotifications()
+    loadBookCoverImage()
   }
   
   private func registerForNotifications() {
@@ -95,7 +85,7 @@ class BookCellModel: ObservableObject {
                                            object: nil)
   }
   
-  private func loadImage() {
+  private func loadBookCoverImage() {
     guard let cachedImage = TPPBookRegistry.shared.cachedThumbnailImage(for: book) else {
       TPPBookRegistry.shared.thumbnailImage(for: book) { image in
         guard let image = image else { return }
@@ -119,35 +109,26 @@ class BookCellModel: ObservableObject {
       book.defaultAcquisition?.availability.matchUnavailable(
         nil,
         limited: { limited in
-          if let until = limited.until,
-             until.timeIntervalSinceNow > 0
-          {
-            date = until
-          }
+          if let until = limited.until, until.timeIntervalSinceNow > 0 { date = until }
         },
         unlimited: nil,
         reserved: nil,
         ready: { ready in
-          if let until = ready.until,
-             until.timeIntervalSinceNow > 0
-          {
-            date = until
-          }
-        })
+          if let until = ready.until, until.timeIntervalSinceNow > 0 { date = until }
+        }
+      )
     default:
       return date
     }
     return date
   }
-  
-  
+
   @objc private func updateButtons() {
     isLoading = false
   }
 }
 
 extension BookCellModel {
-  
   func callDelegate(for action: BookButtonType) {
     switch action {
     case .download, .retry, .get, .reserve:
@@ -173,7 +154,7 @@ extension BookCellModel {
     var title = ""
     var message = ""
     var confirmButtonTitle = ""
-    let shouldDelete = (book.defaultAcquisitionIfOpenAccess != nil) || !(TPPUserAccount.sharedAccount().authDefinition?.needsAuth ?? true)
+    let deleteAvailable = (book.defaultAcquisitionIfOpenAccess != nil) || !(TPPUserAccount.sharedAccount().authDefinition?.needsAuth ?? true)
 
     switch TPPBookRegistry.shared.state(for: book.identifier) {
     case .Used,
@@ -183,10 +164,10 @@ extension BookCellModel {
         .DownloadFailed,
         .DownloadNeeded,
         .DownloadSuccessful:
-      title = shouldDelete ? DisplayStrings.delete : DisplayStrings.return
-      message = shouldDelete ? String.localizedStringWithFormat(DisplayStrings.deleteMessage, book.title) :
+      title = deleteAvailable ? DisplayStrings.delete : DisplayStrings.return
+      message = deleteAvailable ? String.localizedStringWithFormat(DisplayStrings.deleteMessage, book.title) :
       String.localizedStringWithFormat(DisplayStrings.returnMessage, book.title)
-      confirmButtonTitle = shouldDelete ? DisplayStrings.delete : DisplayStrings.return
+      confirmButtonTitle = deleteAvailable ? DisplayStrings.delete : DisplayStrings.return
     case .Holding:
       title = DisplayStrings.removeReservation
       message = DisplayStrings.returnMessage
@@ -194,7 +175,7 @@ extension BookCellModel {
     case .Unsupported:
       return
     }
-    
+
     showAlert = AlertModel(
       title: title,
       message: message,
@@ -213,10 +194,10 @@ extension BookCellModel {
     if case .canHold = state.buttonState {
       TPPUserNotifications.requestAuthorization()
     }
-    
+
     buttonDelegate?.didSelectDownload(for: book)
   }
-  
+
   func didSelectSample() {
     isLoading = true
 

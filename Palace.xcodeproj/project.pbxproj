@@ -667,6 +667,13 @@
 		E523124B285C3828007D1DB5 /* TPPBookRegistry+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E523124A285C3828007D1DB5 /* TPPBookRegistry+Extensions.swift */; };
 		E523124D28641505007D1DB5 /* LoadingViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E523124C28641505007D1DB5 /* LoadingViewController.swift */; };
 		E5239A1F2992107D00850941 /* BookCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E567C72B296743990079C28C /* BookCell.swift */; };
+		E523A453299FCA5300EF833B /* AlertModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E523A452299FCA5300EF833B /* AlertModel.swift */; };
+		E523A455299FCD4B00EF833B /* BookButtonType.swift in Sources */ = {isa = PBXBuildFile; fileRef = E523A454299FCD4B00EF833B /* BookButtonType.swift */; };
+		E523A456299FD7DC00EF833B /* AlertModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E523A452299FCA5300EF833B /* AlertModel.swift */; };
+		E523A457299FD81000EF833B /* BookButtonType.swift in Sources */ = {isa = PBXBuildFile; fileRef = E523A454299FCD4B00EF833B /* BookButtonType.swift */; };
+		E523A458299FD81D00EF833B /* DownloadingBookCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5824BE02994AF4800DE76C2 /* DownloadingBookCell.swift */; };
+		E523A459299FD82100EF833B /* NormalBookCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5824BDE2994AC2900DE76C2 /* NormalBookCell.swift */; };
+		E523A45A299FD83600EF833B /* ButtonView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5824BE22994B29700DE76C2 /* ButtonView.swift */; };
 		E5288CBD293FB61C00F3B3D2 /* NYPLAudiobookToolkit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E5534255293FB23F004FF34A /* NYPLAudiobookToolkit.framework */; };
 		E5288CBE293FB69400F3B3D2 /* NYPLAudiobookToolkit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E5534255293FB23F004FF34A /* NYPLAudiobookToolkit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		E5288CBF293FB6DE00F3B3D2 /* NYPLAudiobookToolkit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E5534255293FB23F004FF34A /* NYPLAudiobookToolkit.framework */; };
@@ -1502,6 +1509,8 @@
 		E5231240285C291D007D1DB5 /* AudioBookmark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioBookmark.swift; sourceTree = "<group>"; };
 		E523124A285C3828007D1DB5 /* TPPBookRegistry+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPBookRegistry+Extensions.swift"; sourceTree = "<group>"; };
 		E523124C28641505007D1DB5 /* LoadingViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoadingViewController.swift; sourceTree = "<group>"; };
+		E523A452299FCA5300EF833B /* AlertModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertModel.swift; sourceTree = "<group>"; };
+		E523A454299FCD4B00EF833B /* BookButtonType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookButtonType.swift; sourceTree = "<group>"; };
 		E52E3BBB28C0EF410073DC4D /* TPPReaderAdvancedSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPReaderAdvancedSettings.swift; sourceTree = "<group>"; };
 		E52E3BFF28C19BAD0073DC4D /* EpubSample.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = EpubSample.swift; sourceTree = "<group>"; };
 		E52E3C0128C19BAD0073DC4D /* EpubSampleFactory.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = EpubSampleFactory.swift; sourceTree = "<group>"; };
@@ -2912,6 +2921,7 @@
 				E54DD4E5275C8EAA0013C200 /* Font+Extensions.swift */,
 				E5FFB96628AED70E0042907F /* ActivityIndicator.swift */,
 				E5FFB9CA28AFE8AF0042907F /* AsyncImage.swift */,
+				E523A452299FCA5300EF833B /* AlertModel.swift */,
 			);
 			path = SwiftUI;
 			sourceTree = "<group>";
@@ -2930,6 +2940,7 @@
 			children = (
 				E5EFDE77298C43D300258CA3 /* BookButtonState.swift */,
 				E5824BE22994B29700DE76C2 /* ButtonView.swift */,
+				E523A454299FCD4B00EF833B /* BookButtonType.swift */,
 			);
 			path = ButtonView;
 			sourceTree = "<group>";
@@ -3652,6 +3663,7 @@
 				21F7D3CC275A9D3C0080B44B /* String+HTMLEntities.swift in Sources */,
 				E52E3C0D28C19F480073DC4D /* TPPBook+Extensions.swift in Sources */,
 				E5A1413328D9018A0091AD2D /* TPPBook.swift in Sources */,
+				E523A457299FD81000EF833B /* BookButtonType.swift in Sources */,
 				73EB0A7D25821DF4006BC997 /* TPPKeychainStoredVariable.swift in Sources */,
 				21E41783292810EE00A78606 /* View.swift in Sources */,
 				21E4177B292810E000A78606 /* TPPPDFDocument.swift in Sources */,
@@ -3670,6 +3682,7 @@
 				73EB0A8325821DF4006BC997 /* TPPAsync.m in Sources */,
 				73EB0A8425821DF4006BC997 /* TPPReloadView.m in Sources */,
 				E5FFB96528AED4990042907F /* ImageProvider.swift in Sources */,
+				E523A458299FD81D00EF833B /* DownloadingBookCell.swift in Sources */,
 				21D746FD2719B00E00C0E1B4 /* PublicationOpeningError.swift in Sources */,
 				73D8D27625A68D3B00DF5F69 /* TPPEPUBViewController.swift in Sources */,
 				21E41781292810EE00A78606 /* Binding+onChange.swift in Sources */,
@@ -3678,6 +3691,7 @@
 				21E41787292810EE00A78606 /* CGSize.swift in Sources */,
 				21399900268F9F2500B4EB60 /* TPPAccountListCell.swift in Sources */,
 				E75ED6D2297720DE006BBD5F /* TXNativeExtensions.swift in Sources */,
+				E523A45A299FD83600EF833B /* ButtonView.swift in Sources */,
 				21E4178D292810F600A78606 /* TPPPDFBackButton.swift in Sources */,
 				73EB0A8725821DF4006BC997 /* TPPCatalogGroupedFeedViewController.m in Sources */,
 				73EB0A8825821DF4006BC997 /* TPPBackgroundExecutor.swift in Sources */,
@@ -3814,6 +3828,7 @@
 				21E41786292810EE00A78606 /* UIImage.swift in Sources */,
 				E551B365267D42AF0026FC1B /* TPPLoadingViewController.swift in Sources */,
 				73CC48AD260C07C300F1E2C3 /* TPPReadiumBookmark+R2.swift in Sources */,
+				E523A456299FD7DC00EF833B /* AlertModel.swift in Sources */,
 				73D8D27525A68D2C00DF5F69 /* TPPBaseReaderViewController.swift in Sources */,
 				E50D684326AB235400F1042B /* TPPReaderBookmarkCell.swift in Sources */,
 				73EB0AE025821DF4006BC997 /* TPPOPDSIndirectAcquisition.m in Sources */,
@@ -3850,6 +3865,7 @@
 				73EB0AF725821DF4006BC997 /* TPPOPDSAcquisition.m in Sources */,
 				21E4177E292810E000A78606 /* TPPPDFPageBookmark.swift in Sources */,
 				21E417902928113300A78606 /* TPPContentType.swift in Sources */,
+				E523A459299FD82100EF833B /* NormalBookCell.swift in Sources */,
 				21E4179B292813E200A78606 /* EpubSampleFactory.swift in Sources */,
 				73EB0AF825821DF4006BC997 /* NSURLRequest+NYPLURLRequestAdditions.m in Sources */,
 				73EB0AF925821DF4006BC997 /* TPPRootTabBarController.m in Sources */,
@@ -4024,6 +4040,7 @@
 				7360D0D524BFCB9700C8AD16 /* TPPUserFriendlyError.swift in Sources */,
 				11068C55196DD37900E8A94B /* TPPNull.m in Sources */,
 				1111973C19880E8D0014462F /* TPPLinearView.m in Sources */,
+				E523A455299FCD4B00EF833B /* BookButtonType.swift in Sources */,
 				E5231241285C291D007D1DB5 /* AudioBookmark.swift in Sources */,
 				11396FB9193D289100E16EE8 /* NSDate+NYPLDateAdditions.m in Sources */,
 				21E7E07B24FEA7E800189224 /* DPLAAudiobooks.swift in Sources */,
@@ -4165,6 +4182,7 @@
 				E6DA7EA01F2A718600CFBEC8 /* TPPBookAuthor.swift in Sources */,
 				21045C552761092C00D2D407 /* TPPOnboardingViewController.swift in Sources */,
 				739ECB2425101CCE00691A70 /* NSNotification+TPP.swift in Sources */,
+				E523A453299FCA5300EF833B /* AlertModel.swift in Sources */,
 				E5FFB9CB28AFE8AF0042907F /* AsyncImage.swift in Sources */,
 				734B789125659611006FB8AD /* URLResponse+TPPAuthentication.swift in Sources */,
 				217595DA27B6800100BA0FDD /* TPPReaderSettingsView.swift in Sources */,
