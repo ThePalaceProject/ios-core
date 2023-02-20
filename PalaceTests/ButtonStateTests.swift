@@ -89,15 +89,23 @@ final class ButtonStateTests: XCTestCase {
   
   func testDownloadNeeded() {
     let testState = BookButtonState.downloadNeeded
-    let expectedbuttons = [BookButtonType.download, .return]
+    let expectedbuttons = [BookButtonType.download, .remove]
     let resultButtons = testState.buttonTypes(book: testEpub)
+    
+    XCTAssertTrue(Set(expectedbuttons) == Set(resultButtons))
+  }
+  
+  func testDownloadNeededOpenAccessAudiobook() {
+    let testState = BookButtonState.downloadNeeded
+    let expectedbuttons = [BookButtonType.download, .remove]
+    let resultButtons = testState.buttonTypes(book: testAudiobook)
     
     XCTAssertTrue(Set(expectedbuttons) == Set(resultButtons))
   }
   
   func testDownloadSuccessfulEpub() {
     let testState = BookButtonState.downloadSuccessful
-    let expectedbuttons = [BookButtonType.read, .return]
+    let expectedbuttons = [BookButtonType.read, .remove]
     let resultButtons = testState.buttonTypes(book: testEpub)
     
     XCTAssertTrue(Set(expectedbuttons) == Set(resultButtons))
@@ -105,7 +113,7 @@ final class ButtonStateTests: XCTestCase {
   
   func testUsedEpub() throws {
     let testState = BookButtonState.used
-    let expectedbuttons = [BookButtonType.read, .return]
+    let expectedbuttons = [BookButtonType.read, .remove]
     let resultButtons = testState.buttonTypes(book: testEpub)
     
     XCTAssertTrue(Set(expectedbuttons) == Set(resultButtons))
