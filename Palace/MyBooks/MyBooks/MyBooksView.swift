@@ -14,20 +14,19 @@ struct MyBooksView: View {
   @ObservedObject var model: MyBooksViewModel
   @State var selectNewLibrary: Bool = false
   @State var showLibraryAccountView: Bool = false
-  
+
   var body: some View {
     NavigationLink(destination: searchView, isActive: $model.showSearchSheet) {}
     NavigationLink(destination: accountScreen, isActive: $model.showAccountScreen) {}
-
-    NavigationView {
-      ZStack {
-        VStack(alignment: .leading) {
-          facetView
-          content
-        }
-        loadingView
+  
+    ZStack {
+      VStack(alignment: .leading) {
+        facetView
+        content
       }
+      loadingView
     }
+    .background(Color(TPPConfiguration.backgroundColor()))
     .navigationBarItems(leading: leadingBarButton, trailing: trailingBarButton)
     .actionSheet(isPresented: $selectNewLibrary) {
       libraryPicker
@@ -45,9 +44,7 @@ struct MyBooksView: View {
   }
   
   @ViewBuilder private var facetView: some View {
-    FacetView(
-      model: model.facetViewModel
-    )
+    FacetView(model: model.facetViewModel)
   }
   
   @ViewBuilder private var loadingView: some View {
@@ -69,7 +66,7 @@ struct MyBooksView: View {
   @ViewBuilder private var content: some View {
     GeometryReader { geometry in
       ScrollView {
-        if model.books.count == 0 {
+        if model.showInstructionsLabel {
           VStack {
             emptyView
           }
@@ -153,7 +150,7 @@ struct MyBooksView: View {
     
     return UIViewControllerWrapper(accountList, updater: {_ in })
   }
-
+  
   private var searchView: some View {
     let searchDescription = TPPOpenSearchDescription(title: DisplayStrings.searchBooks, books: model.books)
     let navController = UINavigationController(rootViewController: TPPCatalogSearchViewController(openSearchDescription: searchDescription))
@@ -164,7 +161,7 @@ struct MyBooksView: View {
     guard let url = model.accountURL else {
       return EmptyView().anyView()
     }
-
+    
     let webController = BundledHTMLViewController(fileURL: url, title: "TEST")
     webController.hidesBottomBarWhenPushed = true
     return  UIViewControllerWrapper(webController, updater: { _ in } ).anyView()

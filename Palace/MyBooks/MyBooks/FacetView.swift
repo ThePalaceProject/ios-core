@@ -16,13 +16,13 @@ struct FacetView: View {
   var body: some View {
     VStack(alignment: .leading) {
       dividerView
-      HStack {
+      HStack(alignment: .center) {
         titleLabel
         sortView
       }
       .padding(.leading)
       .actionSheet(isPresented: $showAlert) { alert }
-      .font(Font(uiFont: UIFont.palaceFont(ofSize: 12)))
+      .font(Font(uiFont: UIFont.palaceFont(ofSize: 16)))
       dividerView
       accountLogoView
     }
@@ -38,8 +38,8 @@ struct FacetView: View {
     }) {
       Text(model.activeSort.localizedString)
     }
-    .frame(width: 60, height: 30)
-    .border(.white, width: 1)
+    .frame(width: 65, height: 30)
+    .border(Color(TPPConfiguration.mainColor()), width: 1)
     .cornerRadius(2)
   }
   

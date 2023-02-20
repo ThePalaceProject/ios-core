@@ -14,8 +14,6 @@ class TPPMyBooksViewController: NSObject {
     let controller = UIHostingController(rootView: MyBooksView(model: MyBooksViewModel()))
     controller.title = Strings.MyBooksView.navTitle
     controller.tabBarItem.image = UIImage(named: "MyBooks")
-    let navigationController = UINavigationController(rootViewController: controller)
-
-    return navigationController
+    return UINavigationController(rootViewController: controller)
   }
 }
