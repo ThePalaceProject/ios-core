@@ -20,10 +20,30 @@ class TPPFake {
     )
   }
   
+  class var genericAudiobookAcquisition: TPPOPDSAcquisition {
+    TPPOPDSAcquisition(
+      relation: .generic,
+      type: "application/audiobook+json",
+      hrefURL: URL(string:"https://market.feedbooks.com/item/3877422/preview")!,
+      indirectAcquisitions: [TPPOPDSIndirectAcquisition](),
+      availability: TPPOPDSAcquisitionAvailabilityUnlimited()
+    )
+  }
+  
   class var genericSample: TPPOPDSAcquisition {
     TPPOPDSAcquisition(
       relation: .sample,
       type: "application/epub+zip",
+      hrefURL: URL(string:"https://market.feedbooks.com/item/3877422/preview")!,
+      indirectAcquisitions: [],
+      availability: TPPOPDSAcquisitionAvailabilityUnlimited()
+    )
+  }
+
+  class var genericAudiobookSample: TPPOPDSAcquisition {
+    TPPOPDSAcquisition(
+      relation: .sample,
+      type: "application/json",
       hrefURL: URL(string:"https://market.feedbooks.com/item/3877422/preview")!,
       indirectAcquisitions: [],
       availability: TPPOPDSAcquisitionAvailabilityUnlimited()
