@@ -153,10 +153,7 @@
     BOOL isSyncing = [TPPBookRegistry shared].isSyncing;
     if(!isSyncing) {
       [self.refreshControl endRefreshing];
-      if (self.collectionView.numberOfSections == 0) {
-        self.collectionView.contentOffset = CGPointMake(0, -self.collectionView.contentInset.top);
-      }
-      [[NSNotificationCenter defaultCenter] postNotificationName:NSNotification.TPPSyncEnded object:nil];\
+      [[NSNotificationCenter defaultCenter] postNotificationName:NSNotification.TPPSyncEnded object:nil];
     } else {
       self.navigationItem.leftBarButtonItem.enabled = NO;
     }
