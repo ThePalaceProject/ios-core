@@ -18,13 +18,15 @@ struct MyBooksView: View {
   var body: some View {
     NavigationLink(destination: searchView, isActive: $model.showSearchSheet) {}
     NavigationLink(destination: accountScreen, isActive: $model.showAccountScreen) {}
-  
-    ZStack {
-      VStack(alignment: .leading) {
-        facetView
-        content
+    
+    NavigationView {
+      ZStack {
+        VStack(alignment: .leading) {
+          facetView
+          content
+        }
+        loadingView
       }
-      loadingView
     }
     .background(Color(TPPConfiguration.backgroundColor()))
     .navigationBarItems(leading: leadingBarButton, trailing: trailingBarButton)
