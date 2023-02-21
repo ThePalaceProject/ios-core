@@ -358,11 +358,13 @@ class OPDS2SamlIDP: NSObject, Codable {
   let uuid:String
   let name:String
   let subtitle:String?
-  let supportEmail:String?
+  var supportEmail:EmailAddress? = nil
+  var supportURL:URL? = nil
   let catalogUrl:String?
   var details:AccountDetails?
   var homePageUrl: String?
-  
+  lazy var hasSupportOption = { supportEmail != nil || supportURL != nil }()
+
   let authenticationDocumentUrl:String?
   var authenticationDocument:OPDS2AuthenticationDocument? {
     didSet {
@@ -383,10 +385,17 @@ class OPDS2SamlIDP: NSObject, Codable {
     name = publication.metadata.title
     subtitle = publication.metadata.description
     uuid = publication.metadata.id
-    
+  
     catalogUrl = publication.links.first(where: { $0.rel == "http://opds-spec.org/catalog" })?.href
-    supportEmail = publication.links.first(where: { $0.rel == "help" })?.href.replacingOccurrences(of: "mailto:", with: "")
-    
+
+    if let link = publication.links.first(where: { $0.rel == "help" })?.href {
+      if let emailAddress = EmailAddress(rawValue: link) {
+        supportEmail = emailAddress
+      } else {
+        supportURL = URL(string: link)
+      }
+    }
+  
     authenticationDocumentUrl = publication.links.first(where: { $0.type == "application/vnd.opds.authentication.v1.0+json" })?.href
     logo = UIImage(named: "LibraryLogoMagic")!
     
@@ -428,12 +437,10 @@ class OPDS2SamlIDP: NSObject, Codable {
       // otherwise the code that presents alerts interferes with catalog presentation.
       completion(true)
 
-      if let provider = signedInStateProvider,
-         provider.isSignedIn(),
-         let announcements = self.authenticationDocument?.announcements {
-          DispatchQueue.main.async {
-            TPPAnnouncementBusinessLogic.shared.presentAnnouncements(announcements)
-          }
+      if let announcements = self.authenticationDocument?.announcements {
+        DispatchQueue.main.async {
+          TPPAnnouncementBusinessLogic.shared.presentAnnouncements(announcements)
+        }
       }
     }
   }

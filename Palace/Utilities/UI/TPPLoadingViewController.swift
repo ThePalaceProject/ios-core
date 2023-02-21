@@ -9,7 +9,7 @@ extension TPPLoadingViewController {
   private func loadingOverlayView() -> UIView {
     let overlayView = UIView()
     overlayView.backgroundColor = UIColor.black.withAlphaComponent(0.7)
-    let activityView = UIActivityIndicatorView(style: .whiteLarge)
+    let activityView = UIActivityIndicatorView(style: .large)
     overlayView.addSubview(activityView)
     activityView.autoCenterInSuperviewMargins()
     overlayView.translatesAutoresizingMaskIntoConstraints = false

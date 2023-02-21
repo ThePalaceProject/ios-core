@@ -34,7 +34,7 @@ import R2Streamer
     libraryService = LibraryService(publicationServer: server)
     readerModule = ReaderModule(delegate: self,
                                 resourcesServer: server,
-                                bookRegistry: TPPBookRegistry.shared())
+                                bookRegistry: TPPBookRegistry.shared)
 
     // Set Readium 2's logging minimum level.
     R2EnableLog(withMinimumSeverityLevel: .debug)
@@ -50,7 +50,7 @@ extension TPPR2Owner: ModuleDelegate {
                     message: String,
                     from viewController: UIViewController) {
     let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
-    let dismissButton = UIAlertAction(title: NSLocalizedString("OK", comment: "Alert button"), style: .cancel)
+    let dismissButton = UIAlertAction(title: Strings.Generic.ok, style: .cancel)
     alert.addAction(dismissButton)
     viewController.present(alert, animated: true)
   }
@@ -58,7 +58,7 @@ extension TPPR2Owner: ModuleDelegate {
   func presentError(_ error: Error?, from viewController: UIViewController) {
     guard let error = error else { return }
     presentAlert(
-      NSLocalizedString("Error", comment: "Alert title for errors"),
+      Strings.Generic.error,
       message: error.localizedDescription,
       from: viewController
     )

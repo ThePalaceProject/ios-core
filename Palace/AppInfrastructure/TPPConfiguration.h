@@ -40,4 +40,11 @@
 
 + (CGFloat)defaultBookmarkRowHeight;
 
+/// Default navigation bar appearance with proper status bar background color
++ (UINavigationBarAppearance *)defaultAppearance;
+
+/// Navigation bar appearance with a specified background color
+/// @param backgroundColor Navigation bar background color
++ (UINavigationBarAppearance *)appearanceWithBackgroundColor:(UIColor *)backgroundColor;
+
 @end

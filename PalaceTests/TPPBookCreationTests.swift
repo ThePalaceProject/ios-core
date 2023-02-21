@@ -101,8 +101,8 @@ class TPPBookCreationTests: XCTestCase {
   // member-wise initializer is not public
   func testBookCreationViaMemberWiseInitializer() {
     let book = TPPBook(acquisitions: opdsEntry.acquisitions,
-                        bookAuthors: nil,
-                        categoryStrings: nil,
+                        authors: nil,
+                        categoryStrings: ["Test String 1", "Test String 2"],
                         distributor: nil,
                         identifier: "666",
                         imageURL: nil,
@@ -117,9 +117,13 @@ class TPPBookCreationTests: XCTestCase {
                         analyticsURL: nil,
                         alternateURL: nil,
                         relatedWorksURL: nil,
+                        previewLink: nil,
                         seriesURL: nil,
                         revokeURL: nil,
-                        report: nil)
+                        reportURL: nil,
+                        contributors: nil
+    )
+    
     XCTAssertNotNil(book)
     XCTAssertNotNil(book.acquisitions)
     XCTAssertNotNil(book.categoryStrings)

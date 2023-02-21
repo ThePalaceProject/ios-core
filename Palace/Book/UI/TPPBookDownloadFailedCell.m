@@ -1,4 +1,4 @@
-#import "TPPBook.h"
+
 #import "TPPBookDownloadFailedCell.h"
 #import "TPPConfiguration.h"
 #import "UIView+TPPViewAdditions.h"
@@ -92,7 +92,7 @@
   self.messageLabel = [[UILabel alloc] init];
   self.messageLabel.font = [UIFont palaceFontOfSize:12];
   self.messageLabel.textColor = [TPPConfiguration backgroundColor];
-  self.messageLabel.text = NSLocalizedString(@"DownloadCouldNotBeCompleted", nil);
+  self.messageLabel.text = NSLocalizedString(@"The download could not be completed.", nil);
   self.messageLabel.textAlignment = NSTextAlignmentCenter;
   [self.contentView addSubview:self.messageLabel];
   
@@ -105,7 +105,7 @@
   self.tryAgainButton.backgroundColor = [TPPConfiguration backgroundColor];
   self.tryAgainButton.tintColor = [UIColor grayColor];
   self.tryAgainButton.layer.borderWidth = 0;
-  [self.tryAgainButton setTitle:NSLocalizedString(@"TryAgain", nil)
+  [self.tryAgainButton setTitle:NSLocalizedString(@"Try Again", nil)
                        forState:UIControlStateNormal];
   [self.tryAgainButton addTarget:self
                           action:@selector(didSelectTryAgain)

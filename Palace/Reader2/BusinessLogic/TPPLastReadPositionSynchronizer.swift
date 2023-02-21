@@ -12,6 +12,8 @@ import R2Shared
 /// A front-end to the Annotations api to sync the reading progress for
 /// a given book with the progress on the server.
 class TPPLastReadPositionSynchronizer {
+  typealias DisplayStrings = Strings.TPPLastReadPositionSynchronizer
+
   private let bookRegistry: TPPBookRegistryProvider
 
   /// Designated initializer.
@@ -83,6 +85,11 @@ class TPPLastReadPositionSynchronizer {
           return
         }
 
+        guard let bookmark = bookmark as? TPPReadiumBookmark else {
+          completion(nil)
+          return
+        }
+
         let deviceID = bookmark.device ?? ""
         let serverLocationString = bookmark.location
 
@@ -111,18 +118,19 @@ class TPPLastReadPositionSynchronizer {
                                       publication: Publication,
                                       book: TPPBook,
                                       completion: @escaping () -> Void) {
-    let alert = UIAlertController(title: NSLocalizedString("Sync Reading Position", comment: "An alert title notifying the user the reading position has been synced"),
-                                  message: NSLocalizedString("Do you want to move to the page on which you left off?", comment: "An alert message asking the user to perform navigation to the synced reading position or not"),
+    let alert = UIAlertController(title: DisplayStrings.syncReadingPositionAlertTitle,
+                                  message: DisplayStrings.syncReadingPositionAlertBody,
                                   preferredStyle: .alert)
 
-    let stayText = NSLocalizedString("Stay", comment: "Do not perform navigation")
+    let stayText = DisplayStrings.stay
     let stayAction = UIAlertAction(title: stayText, style: .cancel) { _ in
       completion()
     }
 
-    let moveText = NSLocalizedString("Move", comment: "Perform navigation")
+    let moveText = DisplayStrings.move
     let moveAction = UIAlertAction(title: moveText, style: .default) { _ in
       let loc = TPPBookLocation(locator: serverLocator,
+                                type: "LocatorHrefProgression",
                                  publication: publication)
       self.bookRegistry.setLocation(loc, forIdentifier: book.identifier)
       completion()

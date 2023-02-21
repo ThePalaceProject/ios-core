@@ -1,7 +1,5 @@
-#import "TPPBook.h"
 #import "TPPBookCell.h"
 #import "TPPBookDownloadingCell.h"
-#import "TPPBookRegistry.h"
 #import "TPPConfiguration.h"
 #import "TPPMyBooksDownloadCenter.h"
 #import "UIView+TPPViewAdditions.h"
@@ -135,7 +133,7 @@
   [self.view addSubview:shieldView];
   UIActivityIndicatorView *const activityIndicatorView =
     [[UIActivityIndicatorView alloc]
-     initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleGray];
+     initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
   activityIndicatorView.center = shieldView.center;
   [activityIndicatorView integralizeFrame];
   activityIndicatorView.autoresizingMask = (UIViewAutoresizingFlexibleTopMargin |

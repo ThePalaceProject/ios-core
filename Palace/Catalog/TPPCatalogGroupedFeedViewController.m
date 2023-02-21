@@ -1,6 +1,5 @@
 #import "TPPBookDetailViewController.h"
-#import "TPPBookRegistry.h"
-#import "TPPBook.h"
+
 #import "TPPCatalogFeedViewController.h"
 #import "TPPCatalogGroupedFeed.h"
 #import "TPPCatalogLane.h"
@@ -104,7 +103,7 @@ static CGFloat const kTableViewCrossfadeDuration = 0.3;
   
   [self.facetBarView autoPinEdgeToSuperviewEdge:ALEdgeLeading];
   [self.facetBarView autoPinEdgeToSuperviewEdge:ALEdgeTrailing];
-  [self.facetBarView autoPinToTopLayoutGuideOfViewController:self withInset:0.0];
+  [self.facetBarView autoPinEdgeToSuperviewMargin:ALEdgeTop];
 
   if(self.feed.openSearchURL) {
     self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc]
@@ -321,7 +320,7 @@ viewForHeaderInSection:(NSInteger const)section
                               CGRectGetHeight(button.frame));
     button.tag = section;
     TPPCatalogLane *const lane = self.feed.lanes[button.tag];
-    button.accessibilityLabel = [[NSString alloc] initWithFormat:NSLocalizedString(@"MoreBooks", nil), lane.title];
+    button.accessibilityLabel = [[NSString alloc] initWithFormat:NSLocalizedString(@"More %@ books", nil), lane.title];
     button.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
     [button addTarget:self
                action:@selector(didSelectCategory:)
@@ -340,7 +339,7 @@ viewForHeaderInSection:(NSInteger const)section
   TPPCatalogLane *const lane = self.feed.lanes[cell.laneIndex];
   TPPBook *const feedBook = lane.books[bookIndex];
   
-  TPPBook *const localBook = [[TPPBookRegistry sharedRegistry] bookForIdentifier:feedBook.identifier];
+  TPPBook *const localBook = [[TPPBookRegistry shared] bookForIdentifier:feedBook.identifier];
   TPPBook *const book = (localBook != nil) ? localBook : feedBook;
   TPPLOG_F(@"Presenting book: %@", [book loggableShortString]);
   [[[TPPBookDetailViewController alloc] initWithBook:book] presentFromViewController:self];
@@ -399,7 +398,7 @@ viewForHeaderInSection:(NSInteger const)section
 {
   TPPCatalogLane *const lane = self.feed.lanes[viewControllerToCommit.view.tag];
   TPPBook *const feedBook = lane.books[self.tempBookPosition];
-  TPPBook *const localBook = [[TPPBookRegistry sharedRegistry] bookForIdentifier:feedBook.identifier];
+  TPPBook *const localBook = [[TPPBookRegistry shared] bookForIdentifier:feedBook.identifier];
   TPPBook *const book = (localBook != nil) ? localBook : feedBook;
   TPPLOG_F(@"Presenting book: %@", [book loggableShortString]);
   [[[TPPBookDetailViewController alloc] initWithBook:book] presentFromViewController:self];
@@ -438,20 +437,15 @@ viewForHeaderInSection:(NSInteger const)section
   
   TPPCatalogLane *const lane = self.feed.lanes[self.indexOfNextLaneRequiringImageDownload];
   
-  [[TPPBookRegistry sharedRegistry]
+  [[TPPBookRegistry shared]
    thumbnailImagesForBooks:[NSSet setWithArray:lane.books]
    handler:^(NSDictionary *const bookIdentifiersToImages) {
      [self.bookIdentifiersToImages addEntriesFromDictionary:bookIdentifiersToImages];
-     
      // We update this before reloading so that the delegate accurately knows which lanes already
      // have had their covers downloaded.
      ++self.indexOfNextLaneRequiringImageDownload;
-     
-     [self.tableView reloadSections:[NSIndexSet indexSetWithIndex:
-                                     (self.indexOfNextLaneRequiringImageDownload - 1)]
-                   withRowAnimation:UITableViewRowAnimationNone];
-     
-     [self downloadImages];
+    [self.tableView reloadData];
+    [self downloadImages];
    }];
 }
 
@@ -473,7 +467,13 @@ viewForHeaderInSection:(NSInteger const)section
   UIViewController *const viewController = [[TPPCatalogFeedViewController alloc]
                                             initWithURL:urlToLoad];
   
-  viewController.title = lane.title;
+  UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, self.view.frame.size.width, 150)];
+  label.numberOfLines = 0;
+  label.lineBreakMode = NSLineBreakByWordWrapping;
+  label.textAlignment = NSTextAlignmentCenter;
+  label.font = [UIFont semiBoldPalaceFontOfSize: 16];
+  label.text = lane.title;
+  viewController.navigationItem.titleView = label;
 
   [self.navigationController pushViewController:viewController animated:YES];
 }

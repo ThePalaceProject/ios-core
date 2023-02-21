@@ -28,9 +28,10 @@ class TPPReaderBookmarksBusinessLogicTests: XCTestCase {
         indirectAcquisitions: [TPPOPDSIndirectAcquisition](),
         availability: TPPOPDSAcquisitionAvailabilityUnlimited.init()
       )
+      
       let fakeBook = TPPBook.init(
         acquisitions: [fakeAcquisition],
-        bookAuthors: [TPPBookAuthor](),
+        authors: [TPPBookAuthor](),
         categoryStrings: [String](),
         distributor: "",
         identifier: bookIdentifier,
@@ -46,11 +47,13 @@ class TPPReaderBookmarksBusinessLogicTests: XCTestCase {
         analyticsURL: emptyUrl,
         alternateURL: emptyUrl,
         relatedWorksURL: emptyUrl,
+        previewLink: fakeAcquisition,
         seriesURL: emptyUrl,
         revokeURL: emptyUrl,
-        report: emptyUrl
+        reportURL: emptyUrl,
+        contributors: [:]
       )
-      
+            
       bookRegistryMock = TPPBookRegistryMock()
       bookRegistryMock.addBook(book: fakeBook, state: .DownloadSuccessful)
       libraryAccountMock = TPPLibraryAccountMock()
@@ -69,7 +72,7 @@ class TPPReaderBookmarksBusinessLogicTests: XCTestCase {
       try super.tearDownWithError()
       bookmarkBusinessLogic = nil
       libraryAccountMock = nil
-      bookRegistryMock.identifiersToRecords.removeAll()
+      bookRegistryMock?.registry.removeAll()
       bookRegistryMock = nil
       bookmarkCounter = 0
     }
@@ -82,7 +85,7 @@ class TPPReaderBookmarksBusinessLogicTests: XCTestCase {
       // Make sure BookRegistry contains no bookmark
       XCTAssertEqual(bookRegistryMock.readiumBookmarks(forIdentifier: bookIdentifier).count, 0)
       
-      guard let firstBookmark = newBookmark(idref: "Intro",
+      guard let firstBookmark = newBookmark(href: "Intro",
                                           chapter: "1",
                                           progressWithinChapter: 0.1,
                                           progressWithinBook: 0.1) else {
@@ -104,11 +107,11 @@ class TPPReaderBookmarksBusinessLogicTests: XCTestCase {
       // Make sure BookRegistry contains no bookmark
       XCTAssertEqual(bookRegistryMock.readiumBookmarks(forIdentifier: bookIdentifier).count, 0)
       
-      guard let firstBookmark = newBookmark(idref: "Intro",
+      guard let firstBookmark = newBookmark(href: "Intro",
                                           chapter: "1",
                                           progressWithinChapter: 0.1,
                                           progressWithinBook: 0.1),
-        let secondBookmark = newBookmark(idref: "Intro",
+        let secondBookmark = newBookmark(href: "Intro",
                                          chapter: "1",
                                          progressWithinChapter: 0.2,
                                          progressWithinBook: 0.1) else {
@@ -135,11 +138,11 @@ class TPPReaderBookmarksBusinessLogicTests: XCTestCase {
       // Make sure BookRegistry contains no bookmark
       XCTAssertEqual(bookRegistryMock.readiumBookmarks(forIdentifier: bookIdentifier).count, 0)
       
-      guard let firstBookmark = newBookmark(idref: "Intro",
+      guard let firstBookmark = newBookmark(href: "Intro",
                                           chapter: "1",
                                           progressWithinChapter: 0.1,
                                           progressWithinBook: 0.1),
-        let secondBookmark = newBookmark(idref: "Intro",
+        let secondBookmark = newBookmark(href: "Intro",
                                          chapter: "1",
                                          progressWithinChapter: 0.2,
                                          progressWithinBook: 0.1) else {
@@ -167,11 +170,11 @@ class TPPReaderBookmarksBusinessLogicTests: XCTestCase {
       // Make sure BookRegistry contains no bookmark
       XCTAssertEqual(bookRegistryMock.readiumBookmarks(forIdentifier: bookIdentifier).count, 0)
       
-      guard let firstBookmark = newBookmark(idref: "Intro",
+      guard let firstBookmark = newBookmark(href: "Intro",
                                           chapter: "1",
                                           progressWithinChapter: 0.1,
                                           progressWithinBook: 0.1),
-        let secondBookmark = newBookmark(idref: "Intro",
+        let secondBookmark = newBookmark(href: "Intro",
                                          chapter: "1",
                                          progressWithinChapter: 0.2,
                                          progressWithinBook: 0.1) else {
@@ -193,17 +196,15 @@ class TPPReaderBookmarksBusinessLogicTests: XCTestCase {
 
     // MARK: Helper
     
-    func newBookmark(idref: String,
+    func newBookmark(href: String,
                      chapter: String,
                      progressWithinChapter: Float,
                      progressWithinBook: Float,
                      device: String? = nil) -> TPPReadiumBookmark? {
       // Annotation id needs to be unique
-      // contentCFI should be empty string for R2 bookmark
       bookmarkCounter += 1
       return TPPReadiumBookmark(annotationId: "fakeAnnotationID\(bookmarkCounter)",
-                                 contentCFI: "",
-                                 idref: idref,
+                                href: href,
                                  chapter: chapter,
                                  page: nil,
                                  location: nil,

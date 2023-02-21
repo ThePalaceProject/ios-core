@@ -1,7 +1,6 @@
-#import "TPPBook.h"
+
 #import "TPPBookCell.h"
 #import "TPPBookDetailViewController.h"
-#import "TPPBookRegistry.h"
 #import "TPPCatalogSearchViewController.h"
 #import "TPPConfiguration.h"
 #import "TPPFacetView.h"
@@ -19,14 +18,7 @@
 
 // order-dependent
 typedef NS_ENUM(NSInteger, Group) {
-  GroupSortBy,
-  GroupShow
-};
-
-// order-dependent
-typedef NS_ENUM(NSInteger, FacetShow) {
-  FacetShowAll,
-  FacetShowOnLoan
+  GroupSortBy
 };
 
 // order-dependent
@@ -65,7 +57,6 @@ typedef NS_ENUM(NSInteger, FacetSort) {
   <TPPFacetViewDataSource, TPPFacetViewDelegate, TPPFacetBarViewDelegate, UICollectionViewDataSource,
    UICollectionViewDelegate, UICollectionViewDelegateFlowLayout>
 
-@property (nonatomic) FacetShow activeFacetShow;
 @property (nonatomic) FacetSort activeFacetSort;
 @property (nonatomic) NSArray *books;
 @property (nonatomic) TPPFacetBarView *facetBarView;
@@ -73,7 +64,7 @@ typedef NS_ENUM(NSInteger, FacetSort) {
 @property (nonatomic) UIRefreshControl *refreshControl;
 @property (nonatomic) UIBarButtonItem *searchButton;
 @property (nonatomic) TPPMyBooksContainerView *containerView;
-
+@property (nonatomic) UIActivityIndicatorView *activityIndicator;
 @end
 
 @implementation TPPMyBooksViewController
@@ -85,7 +76,7 @@ typedef NS_ENUM(NSInteger, FacetSort) {
   self = [super init];
   if(!self) return nil;
 
-  self.title = NSLocalizedString(@"MyBooksViewControllerTitle", nil);
+  self.title = NSLocalizedString(@"My Books", nil);
   
   [self willReloadCollectionViewData];
   
@@ -94,7 +85,13 @@ typedef NS_ENUM(NSInteger, FacetSort) {
    selector:@selector(bookRegistryDidChange)
    name:NSNotification.TPPBookRegistryDidChange
    object:nil];
-  
+
+  [[NSNotificationCenter defaultCenter]
+   addObserver:self
+   selector:@selector(bookRegistryStateDidChange)
+   name:NSNotification.TPPBookRegistryDidChange
+   object:nil];
+
   [[NSNotificationCenter defaultCenter]
    addObserver:self
    selector:@selector(syncEnded)
@@ -104,7 +101,7 @@ typedef NS_ENUM(NSInteger, FacetSort) {
    addObserver:self
    selector:@selector(syncBegan)
    name:NSNotification.TPPSyncBegan object:nil];
-  
+
   return self;
 }
 
@@ -121,7 +118,6 @@ typedef NS_ENUM(NSInteger, FacetSort) {
   
   self.view.backgroundColor = [TPPConfiguration backgroundColor];
   
-  self.activeFacetShow = FacetShowAll;
   self.activeFacetSort = FacetSortAuthor;
   
   self.collectionView.dataSource = self;
@@ -140,11 +136,11 @@ typedef NS_ENUM(NSInteger, FacetSort) {
   [self.view addSubview:self.facetBarView];
   [self.facetBarView autoPinEdgeToSuperviewEdge:ALEdgeLeading];
   [self.facetBarView autoPinEdgeToSuperviewEdge:ALEdgeTrailing];
-  [self.facetBarView autoPinToTopLayoutGuideOfViewController:self withInset:0.0];
-  
+  [self.facetBarView autoPinEdgeToSuperviewMargin:ALEdgeTop];
+
   self.instructionsLabel = [[UILabel alloc] initWithFrame:CGRectZero];
   self.instructionsLabel.hidden = YES;
-  self.instructionsLabel.text = NSLocalizedString(@"MyBooksGoToCatalog", nil);
+  self.instructionsLabel.text = NSLocalizedString(@"Visit the Catalog to\nadd books to My Books.", nil);
   self.instructionsLabel.textAlignment = NSTextAlignmentCenter;
   self.instructionsLabel.textColor = [UIColor colorWithWhite:0.6667 alpha:1.0];
   self.instructionsLabel.font = [UIFont palaceFontOfSize:18.0];
@@ -152,6 +148,17 @@ typedef NS_ENUM(NSInteger, FacetSort) {
   [self.view addSubview:self.instructionsLabel];
   [self.instructionsLabel autoCenterInSuperview];
   [self.instructionsLabel autoSetDimension:ALDimensionWidth toSize:300.0];
+  
+  self.activityIndicator = [[UIActivityIndicatorView alloc] initWithFrame:CGRectZero];
+  [self.view addSubview:self.activityIndicator];
+  [self.view bringSubviewToFront:self.activityIndicator];
+  [self.activityIndicator autoAlignAxisToSuperviewAxis:ALAxisVertical];
+  [self.activityIndicator autoAlignAxisToSuperviewAxis:ALAxisHorizontal];
+
+  if (TPPBookRegistry.shared.state == RegistryStateUnloaded) {
+    self.instructionsLabel.hidden = YES;
+    [self.activityIndicator startAnimating];
+  }
   
   self.searchButton = [[UIBarButtonItem alloc]
                        initWithImage:[UIImage imageNamed:@"Search"]
@@ -171,19 +178,9 @@ typedef NS_ENUM(NSInteger, FacetSort) {
 - (void)viewWillAppear:(BOOL)animated
 {
   [super viewWillAppear:animated];
-  [[NSOperationQueue mainQueue] addOperationWithBlock:^{
-    BOOL isSyncing = [TPPBookRegistry sharedRegistry].syncing;
-    if(!isSyncing) {
-      [self.refreshControl endRefreshing];
-      [[NSNotificationCenter defaultCenter] postNotificationName:NSNotification.TPPSyncEnded object:nil];
-    } else {
-      self.navigationItem.leftBarButtonItem.enabled = NO;
-    }
-  }];
-  
   [self.navigationController setNavigationBarHidden:NO];
   self.navigationController.navigationBar.tintColor = [TPPConfiguration iconColor];
-  self.navigationItem.title = NSLocalizedString(@"MyBooksViewControllerTitle", nil);
+  self.navigationItem.title = NSLocalizedString(@"My Books", nil);
 }
 
 - (void)viewWillLayoutSubviews
@@ -232,32 +229,27 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
 {
   [super willReloadCollectionViewData];
   
-  NSArray *books = [[TPPBookRegistry sharedRegistry] myBooks];
-  
-  self.instructionsLabel.hidden = !!books.count;
-  
-  switch(self.activeFacetShow) {
-    case FacetShowAll:
-      break;
-    case FacetShowOnLoan:
-      books = [books filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(TPPBook *book, __unused NSDictionary *bindings) {
-        return book.revokeURL != nil;
-      }]];
-      break;
-  }
+  NSArray *books = [[TPPBookRegistry shared] myBooks];
   
   switch(self.activeFacetSort) {
     case FacetSortAuthor: {
       self.books = [books sortedArrayUsingComparator:
                     ^NSComparisonResult(TPPBook *const a, TPPBook *const b) {
-                      return [a.authors compare:b.authors options:NSCaseInsensitiveSearch];
+                      // myBooks is generated from a dictionary and the order of elements may change every time
+                      // elements with same authors or title change their position in the view
+                      // comparing "authors title" or "title authors" to avoid this.
+                      NSString *aString = [NSString stringWithFormat:@"%@ %@", a.authors, a.title];
+                      NSString *bString = [NSString stringWithFormat:@"%@ %@", b.authors, a.title];
+                      return [aString compare:bString options:NSCaseInsensitiveSearch];
                     }];
       break;
     }
     case FacetSortTitle: {
       self.books = [books sortedArrayUsingComparator:
                     ^NSComparisonResult(TPPBook *const a, TPPBook *const b) {
-                      return [a.title compare:b.title options:NSCaseInsensitiveSearch];
+                      NSString *aString = [NSString stringWithFormat:@"%@ %@", a.title, a.authors];
+                      NSString *bString = [NSString stringWithFormat:@"%@ %@", b.title, a.authors];
+                      return [aString compare:bString options:NSCaseInsensitiveSearch];
                     }];
       break;
     }
@@ -268,7 +260,7 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
 
 - (NSUInteger)numberOfFacetGroupsInFacetView:(__attribute__((unused)) TPPFacetView *)facetView
 {
-  return 2;
+  return 1;
 }
 
 - (NSUInteger)facetView:(__attribute__((unused)) TPPFacetView *)facetView
@@ -280,8 +272,7 @@ numberOfFacetsInFacetGroupAtIndex:(__attribute__((unused)) NSUInteger)index
 - (NSString *)facetView:(__attribute__((unused)) TPPFacetView *)facetView
 nameForFacetGroupAtIndex:(NSUInteger const)index
 {
-  return @[NSLocalizedString(@"MyBooksViewControllerGroupSortBy", nil),
-           NSLocalizedString(@"MyBooksViewControllerGroupShow", nil)
+  return @[NSLocalizedString(@"Sort By", nil),
            ][index];
 }
 
@@ -289,20 +280,12 @@ nameForFacetGroupAtIndex:(NSUInteger const)index
 nameForFacetAtIndexPath:(NSIndexPath *const)indexPath
 {
   switch([indexPath indexAtPosition:0]) {
-    case GroupShow:
-      switch([indexPath indexAtPosition:1]) {
-        case FacetShowAll:
-          return NSLocalizedString(@"MyBooksViewControllerFacetAll", nil);
-        case FacetShowOnLoan:
-          return NSLocalizedString(@"MyBooksViewControllerFacetOnLoan", nil);
-      }
-      break;
     case GroupSortBy:
       switch([indexPath indexAtPosition:1]) {
         case FacetSortAuthor:
-          return NSLocalizedString(@"MyBooksViewControllerFacetAuthor", nil);
+          return NSLocalizedString(@"Author", nil);
         case FacetSortTitle:
-          return NSLocalizedString(@"MyBooksViewControllerFacetTitle", nil);
+          return NSLocalizedString(@"Title", nil);
       }
       break;
   }
@@ -320,8 +303,6 @@ isActiveFacetForFacetGroupAtIndex:(__attribute__((unused)) NSUInteger)index
 activeFacetIndexForFacetGroupAtIndex:(NSUInteger const)index
 {
   switch(index) {
-    case GroupShow:
-      return self.activeFacetShow;
     case GroupSortBy:
       return self.activeFacetSort;
   }
@@ -342,16 +323,6 @@ activeFacetIndexForFacetGroupAtIndex:(NSUInteger const)index
 didSelectFacetAtIndexPath:(NSIndexPath *const)indexPath
 {
   switch([indexPath indexAtPosition:0]) {
-    case GroupShow:
-      switch([indexPath indexAtPosition:1]) {
-        case FacetShowAll:
-          self.activeFacetShow = FacetShowAll;
-          goto OK;
-        case FacetShowOnLoan:
-          self.activeFacetShow = FacetShowOnLoan;
-          goto OK;
-      }
-      break;
     case GroupSortBy:
       switch([indexPath indexAtPosition:1]) {
         case FacetSortAuthor:
@@ -375,48 +346,65 @@ OK:
 
 #pragma mark -
 
-- (void)didPullToRefresh
+/// Reloads book registry data
+- (void)reloadData
 {
-  if ([TPPUserAccount sharedAccount].needsAuth) {
-    if([[TPPUserAccount sharedAccount] hasCredentials]) {
-      [[TPPBookRegistry sharedRegistry] syncWithStandardAlertsOnCompletion];
-    } else {
-      [TPPAccountSignInViewController requestCredentialsWithCompletion:nil];
+  if ([TPPUserAccount sharedAccount].needsAuth && ![[TPPUserAccount sharedAccount] hasCredentials]) {
+    // [self.refreshControl emdRefreshing] doesn't stop without a delay when another vc is presented
+    dispatch_time_t stopTime = dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC);
+    dispatch_after(stopTime, dispatch_get_main_queue(), ^{
       [self.refreshControl endRefreshing];
-      [[NSNotificationCenter defaultCenter] postNotificationName:NSNotification.TPPSyncEnded object:nil];
-    }
+    });
+    [TPPAccountSignInViewController requestCredentialsWithCompletion:nil];
   } else {
-    [[TPPBookRegistry sharedRegistry] justLoad];
-    [[NSNotificationCenter defaultCenter] postNotificationName:NSNotification.TPPSyncEnded object:nil];
+    [[TPPBookRegistry shared] sync];
   }
 }
 
-- (void)bookRegistryDidChange
+- (void)didPullToRefresh
 {
-  [[NSOperationQueue mainQueue] addOperationWithBlock:^{
-    if([TPPBookRegistry sharedRegistry].syncing == NO) {
-      [self.refreshControl endRefreshing];
-    }
-  }];
+  if (AccountsManager.shared.currentAccount.loansUrl) {
+    [self reloadData];
+  } else {
+    [self.refreshControl endRefreshing];
+  }
 }
 
 - (void)didSelectSearch
 {
-  NSString *title = NSLocalizedString(@"MyBooksViewControllerSearchTitle", nil);
+  NSString *title = NSLocalizedString(@"Search My Books", nil);
   TPPOpenSearchDescription *searchDescription = [[TPPOpenSearchDescription alloc] initWithTitle:title books:self.books];
   [self.navigationController
    pushViewController:[[TPPCatalogSearchViewController alloc] initWithOpenSearchDescription:searchDescription]
    animated:YES];
 }
 
+- (void)bookRegistryDidChange
+{
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [self willReloadCollectionViewData];
+    // show instructionLabel when there are no books and the book registry is not unloaded
+    self.instructionsLabel.hidden = (self.books.count != 0 || TPPBookRegistry.shared.state == RegistryStateUnloaded);
+  });
+}
+
+- (void)bookRegistryStateDidChange
+{
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [self.activityIndicator stopAnimating];
+  });
+}
+
 - (void)syncBegan
 {
-  self.navigationItem.leftBarButtonItem.enabled = NO;
 }
 
 - (void)syncEnded
 {
-  self.navigationItem.leftBarButtonItem.enabled = YES;
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [self.refreshControl endRefreshing];
+    [self willReloadCollectionViewData];
+  });
 }
 
 - (void)viewWillTransitionToSize:(CGSize)__unused size withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)__unused coordinator

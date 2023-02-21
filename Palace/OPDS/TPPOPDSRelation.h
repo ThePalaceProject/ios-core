@@ -52,6 +52,9 @@ static NSString *const TPPOPDSContentLicenseLink =
 static NSString *const TPPOPDSRelationAcquisitionIssues =
   @"issues";
 
+static NSString *const TPPOPDSRelationPreview =
+  @"preview";
+
 static NSString *const TPPOPDSRelationAnnotations =
   @"http://www.w3.org/ns/oa#annotationService";
 

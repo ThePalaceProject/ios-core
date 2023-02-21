@@ -39,7 +39,7 @@ import PureLayout
   
   func setupViews() {
     let view1 = splashScreenView(
-      buttonTitle: NSLocalizedString("Find Your Library", comment: "Button that lets user know they can select a library they have a card for"),
+      buttonTitle: Strings.TPPWelcomeScreenViewController.findYourLibrary,
       buttonTargetSelector: #selector(pickYourLibraryTapped)
     )
         
@@ -128,7 +128,7 @@ import PureLayout
                 return
               }
                 
-              TPPSettings.shared.settingsAccountsList = [account.uuid]
+              TPPSettings.shared.settingsAccountIdsList = [account.uuid]
               self.completion?(account)
             }
           }
@@ -173,7 +173,7 @@ import PureLayout
         DispatchQueue.main.async {
           self.stopLoading()
           if authSuccess {
-            TPPSettings.shared.settingsAccountsList = [classicsId]
+            TPPSettings.shared.settingsAccountIdsList = [classicsId]
             self.completion?(AccountsManager.shared.account(classicsId)!)
           } else {
             self.showLoadingFailureAlert()

@@ -32,7 +32,7 @@ extension TPPBook {
     // one that was promised in this book's OPDS document
     if distributor?.lowercased() == OverdriveDistributorKey.lowercased() {
       // if we original acquisition for this book matches, that's good enough
-      if defaultAcquisition()?.type.lowercased() == ContentTypeOverdriveAudiobook {
+      if defaultAcquisition?.type.lowercased() == ContentTypeOverdriveAudiobook {
         return true
       }
 

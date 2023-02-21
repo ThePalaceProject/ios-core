@@ -1,6 +1,5 @@
-#import "TPPBook.h"
+
 #import "TPPBookDetailView.h"
-#import "TPPBookRegistry.h"
 #import "TPPCatalogFeedViewController.h"
 #import "TPPCatalogLane.h"
 #import "TPPCatalogLaneCell.h"
@@ -10,7 +9,6 @@
 #import "TPPSession.h"
 #import "TPPProblemReportViewController.h"
 #import "NSURLRequest+NYPLURLRequestAdditions.h"
-#import "Palace-Swift.h"
 #import <PureLayout/PureLayout.h>
 
 #import "TPPBookDetailViewController.h"
@@ -46,12 +44,13 @@
   self.title = book.title;
   UILabel *label = [[UILabel alloc] init];
   self.navigationItem.titleView = label;
+  self.navigationItem.backButtonTitle = NSLocalizedString(@"Back", @"Back Button");
   self.bookDetailView = [[TPPBookDetailView alloc] initWithBook:self.book
                                                         delegate:self];
-  self.bookDetailView.state = [[TPPBookRegistry sharedRegistry]
-                               stateForIdentifier:self.book.identifier];
+  self.bookDetailView.state = [[TPPBookRegistry shared]
+                               stateFor:self.book.identifier];
 
-  if(UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad &&
+  if(UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad &&
      [[TPPRootTabBarController sharedController] traitCollection].horizontalSizeClass != UIUserInterfaceSizeClassCompact) {
     self.modalPresentationStyle = UIModalPresentationFormSheet;
   }
@@ -98,8 +97,8 @@
     self.navigationController.navigationBarHidden = NO;
   }
   
-  [self.bookDetailView setState:[[TPPBookRegistry sharedRegistry]
-                                 stateForIdentifier:self.book.identifier]];
+  [self.bookDetailView setState:[[TPPBookRegistry shared]
+                                 stateFor:self.book.identifier]];
 }
 
 - (void)viewDidAppear:(BOOL)animated
@@ -157,7 +156,7 @@
 {
   TPPCatalogLane *const lane = self.bookDetailView.tableViewDelegate.catalogLanes[cell.laneIndex];
   TPPBook *const feedBook = lane.books[bookIndex];
-  TPPBook *const localBook = [[TPPBookRegistry sharedRegistry] bookForIdentifier:feedBook.identifier];
+  TPPBook *const localBook = [[TPPBookRegistry shared] bookForIdentifier:feedBook.identifier];
   TPPBook *const book = (localBook != nil) ? localBook : feedBook;
   [[[TPPBookDetailViewController alloc] initWithBook:book] presentFromViewController:self];
 }
@@ -230,7 +229,7 @@
   UIViewController *currentVCTab = [[[TPPRootTabBarController sharedController] viewControllers] objectAtIndex:index];
   // If a VC is already presented as a form sheet (iPad), we push the next one
   // so the user can navigate through multiple book details without "stacking" them.
-  if((UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPhone ||
+  if((UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPhone ||
       viewController.traitCollection.horizontalSizeClass == UIUserInterfaceSizeClassCompact) ||
      currentVCTab.presentedViewController != nil)
   {
@@ -305,13 +304,13 @@
 - (void)bookRegistryDidChange
 {
   [TPPMainThreadRun asyncIfNeeded:^{
-    TPPBookRegistry *registry = [TPPBookRegistry sharedRegistry];
+    TPPBookRegistry *registry = [TPPBookRegistry shared];
     TPPBook *newBook = [registry bookForIdentifier:self.book.identifier];
     if(newBook) {
       self.book = newBook;
       self.bookDetailView.book = newBook;
     }
-    self.bookDetailView.state = [registry stateForIdentifier:self.book.identifier];
+    self.bookDetailView.state = [registry stateFor:self.book.identifier];
   }];
 }
 

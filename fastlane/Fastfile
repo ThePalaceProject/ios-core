@@ -8,6 +8,16 @@ platform :ios do
       scheme: "Palace"
     )
   end
+  lane :nodrm do
+    build_app(
+      project: "Palace.xcodeproj",
+      scheme: "Palace-noDRM",
+      skip_package_ipa: true,
+      skip_archive: true,
+      skip_codesigning: true,
+      silent: true
+    )
+  end
   lane :beta do |options|
     build_app(
       project: "Palace.xcodeproj",
@@ -20,12 +30,12 @@ platform :ios do
       export_options: {
         method: "ad-hoc",
         provisioningProfiles: { 
-          "org.thepalaceproject.palace" => "Ad hoc"
+          "org.thepalaceproject.palace" => "Ad hoc 2"
         }
       }
     )
   end
-  lane :testflight do
+  lane :appstore do |options|
     build_app(
       project: "Palace.xcodeproj",
       scheme: "Palace",
@@ -34,13 +44,14 @@ platform :ios do
       export_options: {
         method: "app-store",
         provisioningProfiles: { 
-          "org.thepalaceproject.palace" => "App store"
+          "org.thepalaceproject.palace" => "App Store 2"
         }
       }
     )
     pilot(
       api_key_path: "fastlane/fastlane.json",
-      skip_submission: true
+      skip_submission: true,
+      changelog: options[:changelog]
     )
   end
 end

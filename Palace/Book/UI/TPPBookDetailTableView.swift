@@ -77,9 +77,10 @@ private let standardCellHeight: CGFloat = 44.0
   func load() {
     NotificationCenter.default.addObserver(self, selector: #selector(self.updateFonts), name: UIContentSizeCategory.didChangeNotification, object: nil)
     
-    if book.reportURL != nil {
-      standardCells.append(TPPBookDetailTableViewDelegate.createCell(type: .reportAProblem))
-    }
+      //TODO: Disabled based on https://www.notion.so/lyrasis/Disable-Report-a-Problem-feature-0061bd6613f7487285e35200acf778c5
+//    if book.reportURL != nil {
+//      standardCells.append(TPPBookDetailTableViewDelegate.createCell(type: .reportAProblem))
+//    }
     configureViewIssuesCell()
     refresh()
     
@@ -136,7 +137,7 @@ private let standardCellHeight: CGFloat = 44.0
     }
 
     UIApplication.shared.isNetworkActivityIndicatorVisible = true
-    TPPBookRegistry.shared().thumbnailImages(forBooks: Set(books.map{$0})) { (bookIdentifierToImages) in
+    TPPBookRegistry.shared.thumbnailImages(forBooks: Set(books.map{$0})) { (bookIdentifierToImages) in
       UIApplication.shared.isNetworkActivityIndicatorVisible = false
       var index: UInt = 0
       for lane in feed.lanes as! [TPPCatalogLane] {
@@ -304,7 +305,7 @@ private let standardCellHeight: CGFloat = 44.0
 
     moreButton.addTarget(self, action: #selector(moreBooksTapped(sender:)), for: .touchUpInside)
     moreButton.tag = section
-    moreButton.setTitle(NSLocalizedString("More...", comment: ""), for: .normal)
+    moreButton.setTitle(Strings.Generic.more, for: .normal)
     if #available(iOS 13.0, *) {
       moreButton.setTitleColor(.label, for: .normal)
     } else {

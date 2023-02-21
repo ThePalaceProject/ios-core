@@ -13,7 +13,7 @@ import R2Shared
 /// a given book.
 class TPPLastReadPositionPoster {
   /// Interval used to throttle request submission.
-  static let throttlingInterval = 30.0
+  static let throttlingInterval = 0.0
 
   // models
   private let publication: Publication
@@ -52,10 +52,10 @@ class TPPLastReadPositionPoster {
       return
     }
 
-    // TODO: SIMPLY-3645 don't use old school location
-    guard let location = TPPBookLocation(locator: locator, publication: publication) else {
+    guard let location = TPPBookLocation(locator: locator, type: "LocatorHrefProgression", publication: publication) else {
       return
     }
+
     bookRegistryProvider.setLocation(location, forIdentifier: book.identifier)
     postReadPosition(selectorValue: location.locationString)
   }
@@ -87,7 +87,8 @@ class TPPLastReadPositionPoster {
   private func postQueuedReadPosition() {
     if self.queuedReadPosition != "" {
       TPPAnnotations.postReadingPosition(forBook: book.identifier,
-                                          selectorValue: self.queuedReadPosition)
+                                          selectorValue: self.queuedReadPosition,
+                                          motivation: .readingProgress)
       self.queuedReadPosition = ""
       self.lastReadPositionUploadDate = Date()
     }

@@ -72,10 +72,24 @@ struct TPPBookmarkSpec {
       let value: String
     }
     let device: Device
+    
+    struct ChapterTitle {
+      static let key = "http://librarysimplified.org/terms/chapter"
+      let value: String
+    }
+    let chapterTitle: ChapterTitle
 
-    init(time: String, device: String) {
+    struct ProgressWithinBook {
+      static let key = "http://librarysimplified.org/terms/progressWithinBook"
+      let value: Double
+    }
+    let progressWithinBook: ProgressWithinBook
+
+    init(time: String, device: String, chapterTitle: String, progressWithinBook: Double) {
       self.time = Time(value: time)
       self.device = Device(value: device)
+      self.chapterTitle = ChapterTitle(value: chapterTitle)
+      self.progressWithinBook = ProgressWithinBook(value: progressWithinBook)
     }
   }
 
@@ -138,7 +152,7 @@ struct TPPBookmarkSpec {
 
         /// A serialized JSON string (its keys and values are escaped)
         /// containing a [locator](https://git.io/JYTyx), e.g.
-        /// "{\"@type\": \"LocatorHrefProgression\", \"idref\": \"/xyz.html\",
+        /// "{\"@type\": \"LocatorHrefProgression\", \"href\": \"/xyz.html\",
         ///   \"progressWithinChapter\": 0.5}"
         let selectorValue: String
       }
@@ -171,7 +185,17 @@ struct TPPBookmarkSpec {
        bookID: String,
        selectorValue: String) {
     self.id = Id(value: id)
-    self.body = Body(time: time.rfc3339String(), device: device)
+
+    var title = ""
+    var progressWithinBook = 0.0
+
+    if let value = selectorValue.data(using: .utf8),
+       let dict = try? JSONSerialization.jsonObject(with: value, options: []) as? [String: Any] {
+      title = dict?["title"] as? String ?? ""
+      progressWithinBook = dict?["progressWithinBook"] as? Double ?? 0.0
+    }
+  
+    self.body = Body(time: time.rfc3339String(), device: device, chapterTitle: title, progressWithinBook: progressWithinBook)
     self.motivation = motivation
     self.target = Target(bookID: bookID, selectorValue: selectorValue)
   }
@@ -184,7 +208,8 @@ struct TPPBookmarkSpec {
       TPPBookmarkSpec.type.key: TPPBookmarkSpec.type.value,
       TPPBookmarkSpec.Body.key: [
         TPPBookmarkSpec.Body.Time.key : body.time.value,
-        TPPBookmarkSpec.Body.Device.key : body.device.value
+        TPPBookmarkSpec.Body.Device.key : body.device.value,
+        TPPBookmarkSpec.Body.ChapterTitle.key: body.chapterTitle.value
       ],
       TPPBookmarkSpec.Motivation.key: motivation.rawValue,
       TPPBookmarkSpec.Target.key: [
@@ -196,10 +221,4 @@ struct TPPBookmarkSpec {
       ]
       ] as [String: Any]
   }
-}
-
-// MARK:- R1 keys (legacy)
-
-enum NYPLBookmarkR1Key: String {
-  case idref
 }

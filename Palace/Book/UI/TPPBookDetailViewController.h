@@ -1,8 +1,6 @@
-#import "TPPDismissibleViewController.h"
-
 @class TPPBook;
 
-@interface TPPBookDetailViewController : TPPDismissibleViewController
+@interface TPPBookDetailViewController : UIViewController
 
 + (id)new NS_UNAVAILABLE;
 - (id)init NS_UNAVAILABLE;

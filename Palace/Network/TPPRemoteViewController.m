@@ -17,6 +17,7 @@
 @property (nonatomic, copy) UIViewController *(^handler)(TPPRemoteViewController *remoteViewController, NSData *data, NSURLResponse *response);
 @property (atomic, readwrite) NSURL *URL;
 @property BOOL needsReauthentication;
+@property NSURLRequestCachePolicy cachePolicy;
 
 @end
 
@@ -37,6 +38,7 @@
   
   self.handler = handler;
   self.URL = URL;
+  self.cachePolicy = NSURLRequestUseProtocolCachePolicy;
   
   return self;
 }
@@ -79,7 +81,7 @@
 
   // NSURLRequestUseProtocolCachePolicy originally, but pull to refresh on a catalog
   NSURLRequest *const request = [NSURLRequest requestWithURL:self.URL
-                                                 cachePolicy:NSURLRequestUseProtocolCachePolicy
+                                                 cachePolicy:self.cachePolicy
                                              timeoutInterval:timeoutInterval];
 
 
@@ -117,6 +119,7 @@
                                @"ChildVCs": self.childViewControllers
                              }];
     [self reloadAccountsAndAuthenticationDocument];
+    self.cachePolicy = NSURLRequestReloadIgnoringCacheData;
     return;
   }
 
@@ -128,7 +131,9 @@
   TPPLOG_F(@"RemoteVC: issueing request [%@]", [request loggableString]);
   self.dataTask = [TPPNetworkExecutor.shared addBearerAndExecute:request
                            completion:^(NSData * _Nullable data, NSURLResponse * _Nullable response, NSError * _Nullable error) {
-
+    // Ignore cache if request returns an error
+    // This helps to reload data faster.
+    self.cachePolicy = error == nil ? NSURLRequestUseProtocolCachePolicy : NSURLRequestReloadIgnoringCacheData;
     NSHTTPURLResponse *httpResponse = nil;
     if ([response isKindOfClass: [NSHTTPURLResponse class]]) {
       httpResponse = (NSHTTPURLResponse *) response;
@@ -224,6 +229,8 @@
           }];
         } else {
           [self load];
+          // Notify that all the accounts are re-authenticated
+          [[NSNotificationCenter defaultCenter] postNotificationName:NSNotification.TPPAccountSetDidLoad object:nil];
         }
       } else {
         [TPPErrorLogger logErrorWithCode:TPPErrorCodeNoURL
@@ -247,7 +254,7 @@
   self.view.backgroundColor = [TPPConfiguration backgroundColor];
   
   self.activityIndicatorView = [[UIActivityIndicatorView alloc]
-                                initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleGray];
+                                initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
   [self.view addSubview:self.activityIndicatorView];
   
   self.activityIndicatorLabel = [[UILabel alloc] init];

@@ -4,12 +4,11 @@
 #if FEATURE_OVERDRIVE
 @import OverdriveProcessor;
 #endif
+@import PDFKit;
 
 #import "TPPAccountSignInViewController.h"
-#import "TPPBook.h"
 #import "TPPBookDownloadFailedCell.h"
 #import "TPPBookDownloadingCell.h"
-#import "TPPBookLocation.h"
 #import "TPPBookNormalCell.h"
 #import "TPPMyBooksDownloadCenter.h"
 #import "TPPRootTabBarController.h"
@@ -26,12 +25,16 @@
 #endif
 
 @interface TPPBookCellDelegate () <RefreshDelegate>
+{
+  @private NSTimeInterval previousPlayheadOffset;
+}
 
 @property (nonatomic) NSTimer *timer;
 @property (nonatomic) TPPBook *book;
 @property (nonatomic) id<AudiobookManager> manager;
 @property (nonatomic, weak) AudiobookPlayerViewController *audiobookViewController;
 @property (strong) NSLock *refreshAudiobookLock;
+@property (nonatomic, strong) LoadingViewController *loadingViewController;
 
 @end
 
@@ -113,10 +116,10 @@
   [TPPCirculationAnalytics postEvent:@"open_book" withBook:book];
 
   switch (book.defaultBookContentType) {
-    case TPPBookContentTypeEPUB:
+    case TPPBookContentTypeEpub:
       [self openEPUB:book];
       break;
-    case TPPBookContentTypePDF:
+    case TPPBookContentTypePdf:
       [self openPDF:book];
       break;
     case TPPBookContentTypeAudiobook:
@@ -141,10 +144,69 @@
 }
 
 - (void)openPDF:(TPPBook *)book {
+#if LCP
+  if ([LCPPDFs canOpenBook:book]) {
+    NSURL *bookUrl = [[TPPMyBooksDownloadCenter sharedDownloadCenter] fileURLForBookIndentifier:book.identifier];
+    LCPPDFs *decryptor = [[LCPPDFs alloc] initWithUrl:bookUrl];
+    [decryptor extractWithUrl:bookUrl completion:^(NSURL *encryptedUrl, NSError *error) {
+      if (error) {
+        NSString *errorMessage = NSLocalizedString(@"Error extracting encrypted PDF file", nil);
+        [TPPErrorLogger logError:error
+                         summary:errorMessage
+                        metadata:@{ @"error": error }];
+        UIAlertController *alert = [TPPAlertUtils alertWithTitle:errorMessage error:error];
+        [TPPAlertUtils presentFromViewControllerOrNilWithAlertController:alert viewController:nil animated:YES completion:nil];
+        return;
+      }
+      NSData *encryptedData = [[NSData alloc] initWithContentsOfURL:encryptedUrl options:NSDataReadingMappedAlways error:nil];
 
+      TPPPDFDocumentMetadata *metadata = [[TPPPDFDocumentMetadata alloc] initWith:book.identifier];
+      metadata.title = book.title;
+      
+      TPPPDFDocument *document = [[TPPPDFDocument alloc] initWithEncryptedData:encryptedData decryptor:^NSData * _Nonnull(NSData *data, NSUInteger start, NSUInteger end) {
+        return [decryptor decryptDataWithData:data start:start end:end];
+      }];
+      
+      UIViewController *vc = [TPPPDFViewController createWithDocument:document metadata:metadata];
+      [[TPPRootTabBarController sharedController] pushViewController:vc animated:YES];
+    }];
+  } else {
+    if (TPPSettings.shared.useLegacyPDFReader) {
+      [self presentMinitexPDFReader:book];
+    } else {
+      [self presentPDF:book];
+    }
+  }
+#else
+  if (TPPSettings.shared.useLegacyPDFReader) {
+    [self presentMinitexPDFReader:book];
+  } else {
+    [self presentPDF:book];
+  }
+#endif
+}
+
+/// Present Palace PDF reader
+/// @param book PDF Book object
+- (void)presentPDF:(TPPBook *)book {
+  NSURL *bookUrl = [[TPPMyBooksDownloadCenter sharedDownloadCenter] fileURLForBookIndentifier:book.identifier];
+  NSData *data = [[NSData alloc] initWithContentsOfURL:bookUrl options:NSDataReadingMappedAlways error:nil];
+
+  TPPPDFDocumentMetadata *metadata = [[TPPPDFDocumentMetadata alloc] initWith:book.identifier];
+  metadata.title = book.title;
+  
+  TPPPDFDocument *document = [[TPPPDFDocument alloc] initWithData:data];
+  
+  UIViewController *vc = [TPPPDFViewController createWithDocument:document metadata:metadata];
+  [[TPPRootTabBarController sharedController] pushViewController:vc animated:YES];
+}
+
+/// Present Minitex PDF reader
+/// @param book PDF Book object
+- (void)presentMinitexPDFReader:(TPPBook *)book {
   NSURL *const url = [[TPPMyBooksDownloadCenter sharedDownloadCenter] fileURLForBookIndentifier:book.identifier];
 
-  NSArray<TPPBookLocation *> *const genericMarks = [[TPPBookRegistry sharedRegistry] genericBookmarksForIdentifier:book.identifier];
+  NSArray<TPPBookLocation *> *const genericMarks = [[TPPBookRegistry shared] genericBookmarksForIdentifier:book.identifier];
   NSMutableArray<MinitexPDFPage *> *const bookmarks = [NSMutableArray array];
   for (TPPBookLocation *loc in genericMarks) {
     NSData *const data = [loc.locationString dataUsingEncoding:NSUTF8StringEncoding];
@@ -153,7 +215,7 @@
   }
 
   MinitexPDFPage *startingPage;
-  TPPBookLocation *const startingBookLocation = [[TPPBookRegistry sharedRegistry] locationForIdentifier:book.identifier];
+  TPPBookLocation *const startingBookLocation = [[TPPBookRegistry shared] locationForIdentifier:book.identifier];
   NSData *const data = [startingBookLocation.locationString dataUsingEncoding:NSUTF8StringEncoding];
   if (data) {
     startingPage = [MinitexPDFPage fromData:data];
@@ -217,7 +279,7 @@
 - (void)openAudiobook:(TPPBook *)book withJSON:(NSDictionary *)json decryptor:(id<DRMDecryptor>)audiobookDrmDecryptor {
   [AudioBookVendorsHelper updateVendorKeyWithBook:json completion:^(NSError * _Nullable error) {
     [NSOperationQueue.mainQueue addOperationWithBlock:^{
-      id<Audiobook> const audiobook = [AudiobookFactory audiobook:json decryptor:audiobookDrmDecryptor];
+      id<Audiobook> const audiobook = [AudiobookFactory audiobook:json decryptor:audiobookDrmDecryptor token:book.bearerToken];
       
       if (!audiobook) {
         if (error) {
@@ -241,7 +303,7 @@
 
       [self registerCallbackForLogHandler];
 
-      [[TPPBookRegistry sharedRegistry] coverImageForBook:book handler:^(UIImage *image) {
+      [[TPPBookRegistry shared] coverImageFor:book handler:^(UIImage *image) {
         if (image) {
           [audiobookVC.coverView setImage:image];
         }
@@ -274,19 +336,101 @@
         }
       }];
 
-      TPPBookLocation *const bookLocation =
-      [[TPPBookRegistry sharedRegistry] locationForIdentifier:book.identifier];
+      [self startLoading:audiobookVC];
 
-      if (bookLocation) {
-        NSData *const data = [bookLocation.locationString dataUsingEncoding:NSUTF8StringEncoding];
-        ChapterLocation *const chapterLocation = [ChapterLocation fromData:data];
-        TPPLOG_F(@"Returning to Audiobook Location: %@", chapterLocation);
-        [manager.audiobook.player movePlayheadToLocation:chapterLocation];
+      TPPBookLocation *localAudiobookLocation = [[TPPBookRegistry shared] locationForIdentifier:book.identifier];
+      NSData *localLocationData = [localAudiobookLocation.locationString dataUsingEncoding:NSUTF8StringEncoding];
+      ChapterLocation *localLocation = [ChapterLocation fromData:localLocationData];
+ 
+      // Player error handler
+      void (^moveCompletionHandler)(NSError *) = ^(NSError *error) {
+        if (error) {
+          [self presentLocationRecoveryError:error];
+          return;
+        }
+        [self stopLoading];
+      };
+      
+      // The player moves to the local position before loading a remote one.
+      // This way the user sees the last playhead position.
+      if (localLocation) {
+        [manager.audiobook.player movePlayheadToLocation:localLocation completion:moveCompletionHandler];
+        [self stopLoading];
       }
-
+      
+      [[TPPBookRegistry shared] syncLocationFor:book completion:^(ChapterLocation * _Nullable remoteLocation) {
+        [self chooseLocalLocation:localLocation orRemoteLocation:remoteLocation forOperation:^(ChapterLocation *location) {
+          [NSOperationQueue.mainQueue addOperationWithBlock:^{
+            TPPLOG_F(@"Returning to Audiobook Location: %@", location);
+            if (location) {
+              [manager.audiobook.player movePlayheadToLocation:location completion:moveCompletionHandler];
+            } else {
+              [self stopLoading];
+            }
+          }];
+        }];
+      }];
+      
       [self scheduleTimerForAudiobook:book manager:manager viewController:audiobookVC];
     }];
   }];
+}
+
+/// Requests whether the user wants to ysnc current listening position
+/// - Parameter completion: completion with `YES` or `NO` to the sync
+- (void) requestSyncWithCompletion:(void (^)(BOOL))completion {
+  [[NSOperationQueue mainQueue] addOperationWithBlock:^{
+    NSString *title = LocalizedStrings.syncListeningPositionAlertTitle;
+    NSString *message = LocalizedStrings.syncListeningPositionAlertBody;
+    NSString *moveTitle = LocalizedStrings.move;
+    NSString *stayTitle = LocalizedStrings.stay;
+    
+    UIAlertController *ac = [UIAlertController alertControllerWithTitle:title message:message preferredStyle:UIAlertControllerStyleAlert];
+    UIAlertAction *moveAction = [UIAlertAction actionWithTitle:moveTitle style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull __unused action) {
+      completion(YES);
+    }];
+    UIAlertAction *stayAction = [UIAlertAction actionWithTitle:stayTitle style:UIAlertActionStyleCancel handler:^(UIAlertAction * _Nonnull __unused action) {
+      completion(NO);
+    }];
+    [ac addAction:moveAction];
+    [ac addAction:stayAction];
+    [TPPAlertUtils presentFromViewControllerOrNilWithAlertController:ac viewController:nil animated:YES completion:nil];
+  }];
+}
+
+/// Pick one of the locations
+/// - Parameters:
+///   - localLocation: local player location
+///   - remoteLocation: remote player location
+///   - operation: operation block on the selected location
+- (void) chooseLocalLocation:(ChapterLocation *)localLocation orRemoteLocation:(ChapterLocation *)remoteLocation forOperation:(void (^)(ChapterLocation *))operation {
+  if (remoteLocation && (![remoteLocation.description isEqualToString:localLocation.description])) {
+    [self requestSyncWithCompletion:^(BOOL shouldSync) {
+      ChapterLocation *location = shouldSync ? remoteLocation : localLocation;
+      operation(location);
+    }];
+  } else {
+    operation(localLocation);
+  }
+}
+
+- (void) startLoading:(UIViewController *)hostViewController {
+  dispatch_async(dispatch_get_main_queue(), ^{
+    self.loadingViewController = [[LoadingViewController alloc] init];
+    [hostViewController addChildViewController:self.loadingViewController];
+    self.loadingViewController.view.frame = hostViewController.view.frame;
+    [hostViewController.view addSubview:self.loadingViewController.view];
+    [self.loadingViewController didMoveToParentViewController:hostViewController];
+  });
+}
+
+- (void) stopLoading {
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [self.loadingViewController willMoveToParentViewController:nil];
+    [self.loadingViewController.view removeFromSuperview];
+    [self.loadingViewController removeFromParentViewController];
+    self.loadingViewController = nil;
+  });
 }
 
 #pragma mark - Audiobook Methods
@@ -337,13 +481,28 @@
     self.manager = nil;
     return;
   }
+  
+  // Only update audiobook location when we are not loading
+  if (self.loadingViewController != nil) {
+    return;
+  }
 
   NSString *const string = [[NSString alloc]
                             initWithData:self.manager.audiobook.player.currentChapterLocation.toData
                             encoding:NSUTF8StringEncoding];
-  [[TPPBookRegistry sharedRegistry]
-   setLocation:[[TPPBookLocation alloc] initWithLocationString:string renderer:@"NYPLAudiobookToolkit"]
-   forIdentifier:self.book.identifier];
+
+  // Save updated playhead position in audiobook chapter
+  NSTimeInterval playheadOffset = self.manager.audiobook.player.currentChapterLocation.playheadOffset;
+  if (previousPlayheadOffset != playheadOffset && playheadOffset > 0) {
+    previousPlayheadOffset = playheadOffset;
+  
+    [[TPPBookRegistry shared]
+     setLocation:[[TPPBookLocation alloc] initWithLocationString:string renderer:@"NYPLAudiobookToolkit"]
+     forIdentifier:self.book.identifier];
+    
+    // Save updated location on server
+    [TPPAnnotations postListeningPositionForBook:self.book.identifier selectorValue:string];
+  }
 }
 
 - (void)presentDRMKeyError:(NSError *) error {
@@ -376,6 +535,14 @@
                            }];
 }
 
+
+- (void)presentLocationRecoveryError:(NSError *)error {
+  NSString *title = NSLocalizedString(@"Location Recovery Error", nil);
+  NSString *message = error.localizedDescription;
+  UIAlertController *alert = [TPPAlertUtils alertWithTitle:title message:message];
+  [TPPAlertUtils presentFromViewControllerOrNilWithAlertController:alert viewController:nil animated:YES completion:nil];
+}
+
 #pragma mark TPPBookDownloadFailedDelegate
 
 - (void)didSelectCancelForBookDownloadFailedCell:(TPPBookDownloadFailedCell *const)cell
@@ -404,7 +571,7 @@
     return;
   }
     
-  [[TPPBookRegistry sharedRegistry] setState:TPPBookStateDownloadNeeded forIdentifier:self.book.identifier];
+  [[TPPBookRegistry shared] setState:TPPBookStateDownloadNeeded for:self.book.identifier];
 
 #if FEATURE_OVERDRIVE
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(updateODAudiobookManifest) name:NSNotification.TPPMyBooksDownloadCenterDidChange object:nil];
@@ -414,7 +581,7 @@
 
 #if FEATURE_OVERDRIVE
 - (void)updateODAudiobookManifest {
-  if ([[TPPBookRegistry sharedRegistry] stateForIdentifier:self.book.identifier] == TPPBookStateDownloadSuccessful) {
+  if ([[TPPBookRegistry shared] stateFor:self.book.identifier] == TPPBookStateDownloadSuccessful) {
     OverdriveAudiobook *odAudiobook = (OverdriveAudiobook *)self.manager.audiobook;
 
     NSURL *const url = [[TPPMyBooksDownloadCenter sharedDownloadCenter] fileURLForBookIndentifier:self.book.identifier];
@@ -430,8 +597,10 @@
 
     dict[@"id"] = self.book.identifier;
 
-    [odAudiobook updateManifestWithJSON:dict];
-
+    if ([odAudiobook respondsToSelector:@selector(updateManifestWithJSON:)]) {
+      [odAudiobook updateManifestWithJSON:dict];
+    }
+  
     DefaultAudiobookManager *audiobookManager = (DefaultAudiobookManager *)_manager;
     [audiobookManager updateAudiobookWith:odAudiobook.spine];
       

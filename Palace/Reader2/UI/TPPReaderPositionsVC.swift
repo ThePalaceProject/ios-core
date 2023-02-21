@@ -28,6 +28,7 @@ protocol TPPReaderPositionsDelegate: class {
 /// See `TPPReaderTOCBusinessLogic` for anything related to actual TOC product
 /// business logic, and `TPPReaderBookmarksBusinessLogic` for bookmarks logic.
 class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableViewDelegate {
+  typealias DisplayStrings = Strings.TPPReaderPositionsVC
   @IBOutlet weak var tableView: UITableView!
   @IBOutlet weak var segmentedControl: UISegmentedControl!
   @IBOutlet weak var noBookmarksLabel: UILabel!
@@ -41,9 +42,18 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
   var tocBusinessLogic: TPPReaderTOCBusinessLogic?
   var bookmarksBusinessLogic: TPPReaderBookmarksBusinessLogic?
 
-  private enum Tab: Int {
+  private enum Tab: Int, CaseIterable {
     case toc = 0
     case bookmarks
+    
+    var title: String {
+      switch self {
+      case .toc:
+        return DisplayStrings.contents
+      case .bookmarks:
+        return DisplayStrings.bookmarks
+      }
+    }
   }
 
   private var currentTab: Tab {
@@ -85,23 +95,27 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
     noBookmarksLabel.autoCenterInSuperview()
     noBookmarksLabel.autoSetDimension(.width, toSize: 250)
 
-    let readerSettings = TPPReaderSettings.shared()
+    let readerColors = TPPAssociatedColors.shared.appearanceColors
 
     tableView.separatorColor = .gray
-    view.backgroundColor = readerSettings.backgroundColor
+    view.backgroundColor = readerColors.backgroundColor
     tableView.backgroundColor = view.backgroundColor
-    noBookmarksLabel.textColor = readerSettings.foregroundColor
+    noBookmarksLabel.textColor = readerColors.foregroundColor
+
+    Tab.allCases.forEach {
+      segmentedControl.setTitle($0.title, forSegmentAt: $0.rawValue)
+    }
 
     if #available(iOS 13, *) {
-      segmentedControl.selectedSegmentTintColor = readerSettings.tintColor
+      segmentedControl.selectedSegmentTintColor = readerColors.tintColor
       segmentedControl.setTitleTextAttributes(
-        [NSAttributedString.Key.foregroundColor: readerSettings.tintColor],
+        [NSAttributedString.Key.foregroundColor: readerColors.tintColor],
         for: .normal)
       segmentedControl.setTitleTextAttributes(
-        [NSAttributedString.Key.foregroundColor: readerSettings.selectedForegroundColor],
+        [NSAttributedString.Key.foregroundColor: readerColors.selectedForegroundColor],
         for: .selected)
     } else {
-      segmentedControl.tintColor = readerSettings.tintColor
+      segmentedControl.tintColor = readerColors.tintColor
     }
 
     configRefreshControl()
@@ -109,7 +123,7 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
     navigationController?.navigationBar.barStyle = .default
     navigationController?.navigationBar.isTranslucent = true
     navigationController?.navigationBar.barTintColor = nil
-    navigationController?.navigationBar.tintColor = readerSettings.tintColor
+    navigationController?.navigationBar.tintColor = readerColors.tintColor
   }
 
   override func viewWillAppear(_ animated: Bool) {

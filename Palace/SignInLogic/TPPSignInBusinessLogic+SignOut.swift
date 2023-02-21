@@ -44,7 +44,7 @@ extension TPPSignInBusinessLogic {
     }
 
     #else
-    if self.bookRegistry.syncing {
+    if self.bookRegistry.isSyncing {
       let alert = TPPAlertUtils.alert(
         title: "SettingsAccountViewControllerCannotLogOutTitle",
         message: "SettingsAccountViewControllerCannotLogOutMessage")

@@ -17,15 +17,11 @@
 
 extension TPPMyBooksDownloadCenter: TPPBookDownloadsDeleting {}
 
-@objc protocol NYPLBookRegistrySyncing: NSObjectProtocol {
-  var syncing: Bool {get}
+@objc protocol TPPBookRegistrySyncing: NSObjectProtocol {
+  var isSyncing: Bool {get}
   func reset(_ libraryAccountUUID: String)
-  func syncResettingCache(_ resetCache: Bool,
-                          completionHandler: ((_ errorDict: [AnyHashable: Any]?) -> Void)?)
-  func save()
+  func sync()
 }
-
-extension TPPBookRegistry: NYPLBookRegistrySyncing {}
 
 @objc protocol TPPDRMAuthorizing: NSObjectProtocol {
   var workflowsInProgress: Bool {get}
@@ -44,7 +40,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
   @objc convenience init(libraryAccountID: String,
                          libraryAccountsProvider: TPPLibraryAccountsProvider,
                          urlSettingsProvider: NYPLUniversalLinksSettings & NYPLFeedURLProvider,
-                         bookRegistry: NYPLBookRegistrySyncing,
+                         bookRegistry: TPPBookRegistrySyncing,
                          bookDownloadsCenter: TPPBookDownloadsDeleting,
                          userAccountProvider: TPPUserAccountProvider.Type,
                          uiDelegate: TPPSignInOutBusinessLogicUIDelegate?,
@@ -66,7 +62,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
   init(libraryAccountID: String,
        libraryAccountsProvider: TPPLibraryAccountsProvider,
        urlSettingsProvider: NYPLUniversalLinksSettings & NYPLFeedURLProvider,
-       bookRegistry: NYPLBookRegistrySyncing,
+       bookRegistry: TPPBookRegistrySyncing,
        bookDownloadsCenter: TPPBookDownloadsDeleting,
        userAccountProvider: TPPUserAccountProvider.Type,
        networkExecutor: TPPRequestExecuting,
@@ -90,7 +86,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
   let permissionsCheckLock = NSLock()
 
   /// Signing in and out may imply syncing the book registry.
-  let bookRegistry: NYPLBookRegistrySyncing
+  let bookRegistry: TPPBookRegistrySyncing
 
   /// Signing out implies removing book downloads from the device.
   let bookDownloadsCenter: TPPBookDownloadsDeleting
@@ -163,7 +159,37 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
   var currentAccount: Account? {
     return libraryAccount
   }
-
+  
+  /// Returns a valid password reset URL or `nil`
+  ///
+  /// Verifies that:
+  /// - password reset link exists in authentication document;
+  /// - contains a valid URL,
+  /// - can be opened by the app.
+  private var validPasswordResetUrl: URL? {
+    guard let passwordResetHref = libraryAccount?.authenticationDocument?.links?.first(rel: .passwordReset)?.href,
+          let passwordResetUrl = URL(string: passwordResetHref),
+          UIApplication.shared.canOpenURL(passwordResetUrl) else {
+      return nil
+    }
+    return passwordResetUrl
+  }
+  
+  /// Verifies that current library account can reset user password.
+  @objc var canResetPassword: Bool {
+    validPasswordResetUrl != nil
+  }
+  
+  /// Opens password reset URL to reset user password.
+  ///
+  /// This function doesn't show any error; use `canResetPassword` to identify if password can actually be reset.
+  @objc func resetPassword() {
+    guard let passwordResetUrl = validPasswordResetUrl else {
+      return
+    }
+    UIApplication.shared.open(passwordResetUrl)
+  }
+  
   @objc var selectedIDP: OPDS2SamlIDP?
 
   private var _selectedAuthentication: AccountDetails.Authentication?
@@ -254,11 +280,9 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
                           code: TPPErrorCode.noURL.rawValue,
                           userInfo: [
                             NSLocalizedDescriptionKey:
-                              NSLocalizedString("Unable to contact the server because the URL for signing in is missing.",
-                                                comment: "Error message for when the library profile url is missing from the authentication document the server provided."),
+                              Strings.Error.serverConnectionErrorDescription,
                             NSLocalizedRecoverySuggestionErrorKey:
-                              NSLocalizedString("Try force-quitting the app and repeat the sign-in process.",
-                                                comment: "Recovery instructions for when the URL to sign in is missing")])
+                              Strings.Error.serverConnectionErrorSuggestion])
       self.handleNetworkError(error, loggingContext: ["Context": uiContext])
       return
     }
@@ -316,7 +340,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
       title = problemDoc.title
       message = problemDoc.detail
     } else {
-      title = "SettingsAccountViewControllerLoginFailed"
+      title = "Login Failed"
       message = nil
     }
 
@@ -487,14 +511,10 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
       setBarcode(barcode, pin: pin)
     }
 
-    userAccount.authDefinition = selectedAuthentication
+    userAccount.setAuthDefinitionWithoutUpdate(authDefinition: selectedAuthentication)
 
     if libraryAccountID == libraryAccountsProvider.currentAccountId {
-      bookRegistry.syncResettingCache(false) { [weak bookRegistry] errorDict in
-        if errorDict == nil {
-          bookRegistry?.save()
-        }
-      }
+      bookRegistry.sync()
     }
 
     NotificationCenter.default.post(name: .TPPIsSigningIn, object: false)
@@ -521,6 +541,11 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
       return false
     }
     return userAccount.hasCredentials()
+  }
+
+  /// - Returns: Whether it is possible to sign up for a new account or not.
+  @objc func registrationIsPossible() -> Bool {
+    return !isSignedIn() && libraryAccount?.details?.signUpUrl != nil
   }
 
   @objc func isSamlPossible() -> Bool {

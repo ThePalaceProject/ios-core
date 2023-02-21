@@ -7,6 +7,7 @@ let DefaultActionIdentifier = "UNNotificationDefaultActionIdentifier"
 @available (iOS 10.0, *)
 @objcMembers class TPPUserNotifications: NSObject
 {
+  typealias DisplayStrings = Strings.UserNotifications
   private let unCenter = UNUserNotificationCenter.current()
 
   /// If a user has not yet been presented with Notifications authorization,
@@ -41,13 +42,13 @@ let DefaultActionIdentifier = "UNNotificationDefaultActionIdentifier"
   {
     var wasOnHold = false
     var isNowReady = false
-    let oldAvail = cachedRecord.book.defaultAcquisition()?.availability
+    let oldAvail = cachedRecord.book.defaultAcquisition?.availability
     oldAvail?.matchUnavailable(nil,
                                limited: nil,
                                unlimited: nil,
                                reserved: { _ in wasOnHold = true },
                                ready: nil)
-    let newAvail = newBook.defaultAcquisition()?.availability
+    let newAvail = newBook.defaultAcquisition?.availability
     newAvail?.matchUnavailable(nil,
                                limited: nil,
                                unlimited: nil,
@@ -63,7 +64,7 @@ let DefaultActionIdentifier = "UNNotificationDefaultActionIdentifier"
   {
     var readyBooks = 0
     for book in heldBooks {
-      book.defaultAcquisition()?.availability.matchUnavailable(nil,
+      book.defaultAcquisition?.availability.matchUnavailable(nil,
                                                                limited: nil,
                                                                unlimited: nil,
                                                                reserved: nil,
@@ -77,8 +78,8 @@ let DefaultActionIdentifier = "UNNotificationDefaultActionIdentifier"
   /// Depending on which Notificaitons are supported, only perform an expensive
   /// network operation if it's needed.
   class func backgroundFetchIsNeeded() -> Bool {
-    Log.info(#file, "[backgroundFetchIsNeeded] Held Books: \(TPPBookRegistry.shared().heldBooks.count)")
-    return TPPBookRegistry.shared().heldBooks.count > 0
+    Log.info(#file, "[backgroundFetchIsNeeded] Held Books: \(TPPBookRegistry.shared.heldBooks.count)")
+    return TPPBookRegistry.shared.heldBooks.count > 0
   }
 
   private class func createNotificationForReadyCheckout(book: TPPBook)
@@ -87,7 +88,7 @@ let DefaultActionIdentifier = "UNNotificationDefaultActionIdentifier"
     unCenter.getNotificationSettings { (settings) in
       guard settings.authorizationStatus == .authorized else { return }
 
-      let title = NSLocalizedString("Ready for Download", comment: "")
+      let title = DisplayStrings.downloadReady
       let content = UNMutableNotificationContent()
       content.body = NSLocalizedString("The title you reserved, \(book.title), is available.", comment: "")
       content.title = title
@@ -111,7 +112,7 @@ let DefaultActionIdentifier = "UNNotificationDefaultActionIdentifier"
   private func registerNotificationCategories()
   {
     let checkOutNotificationAction = UNNotificationAction(identifier: CheckOutActionIdentifier,
-                                                          title: NSLocalizedString("Check Out", comment: ""),
+                                                          title: DisplayStrings.checkoutTitle,
                                                           options: [])
     let holdToReserveCategory = UNNotificationCategory(identifier: HoldNotificationCategoryIdentifier,
                                                        actions: [checkOutNotificationAction],
@@ -166,7 +167,7 @@ extension TPPUserNotifications: UNUserNotificationCenterDelegate
           completionHandler()
           return
       }
-      guard let book = TPPBookRegistry.shared().book(forIdentifier: bookID) else {
+      guard let book = TPPBookRegistry.shared.book(forIdentifier: bookID) else {
           Log.error(#file, "Problem creating book. BookID: \(bookID)")
           completionHandler()
           return

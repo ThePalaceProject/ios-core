@@ -27,7 +27,7 @@ import UIKit
     leadingEdgeConstraint?.constant = CGFloat(nestingLevel * 20 + 10)
 
     titleLabel?.text = title
-    titleLabel?.textColor = TPPReaderSettings.shared().foregroundColor
+    titleLabel?.textColor = TPPAssociatedColors.shared.appearanceColors.textColor
 
     background?.layer.borderColor = TPPConfiguration.mainColor().cgColor
     background?.layer.borderWidth = 1

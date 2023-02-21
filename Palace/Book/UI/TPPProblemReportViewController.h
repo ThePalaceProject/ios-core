@@ -7,6 +7,7 @@
 //
 
 #import <UIKit/UIKit.h>
+#import "Palace-Swift.h"
 
 @class TPPProblemReportViewController;
 @class TPPBook;

@@ -23,9 +23,7 @@ let currentAccountIdentifierKey  = "TPPCurrentAccountIdentifier"
   ]
 
   static let TPPNationalAccountUUIDs = [
-    "urn:uuid:6b849570-070f-43b4-9dcc-7ebb4bca292e", //DPLA
-    "urn:uuid:f60b644e-4955-4996-a4e5-a192feb4e7f8", //Internet Archive
-    "urn:uuid:5278562c-d642-4fda-ad7e-1613077cfb8d", //Open Textbook Library
+    "urn:uuid:6b849570-070f-43b4-9dcc-7ebb4bca292e" // Palace Bookshelf
   ]
 
   let tppAccountUUID = AccountsManager.TPPAccountUUIDs[0]
@@ -237,22 +235,33 @@ let currentAccountIdentifierKey  = "TPPCurrentAccountIdentifier"
     let wasAlreadyLoading = addLoadingCompletionHandler(key: hash, completion)
     guard !wasAlreadyLoading else { return }
 
-    TPPNetworkExecutor.shared.GET(targetUrl) { result in
+    TPPNetworkExecutor(cachingStrategy: .fallback).GET(targetUrl) { result in
       switch result {
       case .success(let data, _):
         self.loadAccountSetsAndAuthDoc(fromCatalogData: data, key: hash) { success in
           self.callAndClearLoadingCompletionHandlers(key: hash, success)
           NotificationCenter.default.post(name: NSNotification.Name.TPPCatalogDidLoad, object: nil)
+          self.cacheAccountsCatalogData(data, hash: hash)
         }
       case .failure(let error, _):
-        TPPErrorLogger.logError(
-          withCode: .libraryListLoadFail,
-          summary: "Unable to load libraries list",
-          metadata: [
-            NSUnderlyingErrorKey: error,
-            "targetUrl": targetUrl
-        ])
-        self.callAndClearLoadingCompletionHandlers(key: hash, false)
+        // Try file cache
+        self.readCachedAccountsCatalogData(urlHash: hash) { data in
+          if let data = data {
+            self.loadAccountSetsAndAuthDoc(fromCatalogData: data, key: hash) { success in
+              self.callAndClearLoadingCompletionHandlers(key: hash, success)
+              NotificationCenter.default.post(name: NSNotification.Name.TPPCatalogDidLoad, object: nil)
+            }
+          } else {
+            TPPErrorLogger.logError(
+              withCode: .libraryListLoadFail,
+              summary: "Unable to load libraries list",
+              metadata: [
+                NSUnderlyingErrorKey: error,
+                "targetUrl": targetUrl
+            ])
+            self.callAndClearLoadingCompletionHandlers(key: hash, false)
+          }
+        }
       }
     }
   }
@@ -315,20 +324,61 @@ let currentAccountIdentifierKey  = "TPPCurrentAccountIdentifier"
       let libraryListCaches = appSupportDirContents.filter { (url) -> Bool in
         return url.lastPathComponent.starts(with: "library_list_") && url.pathExtension == "json"
       }
+      let accountsCatalogCaches = appSupportDirContents.filter { (url) -> Bool in
+        return url.lastPathComponent.starts(with: "accounts_catalog_") && url.pathExtension == "json"
+      }
       let authDocCaches = appSupportDirContents.filter { (url) -> Bool in
         return url.lastPathComponent.starts(with: "authentication_document_") && url.pathExtension == "json"
       }
-        
-      let allCaches = libraryListCaches + authDocCaches
-        for cache in allCaches {
-          do {
-            try FileManager.default.removeItem(at: cache)
-          } catch {
-            Log.error("ClearCache", "Unable to clear cache for: \(cache)")
-          }
+      
+      let allCaches = libraryListCaches + authDocCaches + accountsCatalogCaches
+      for cache in allCaches {
+        do {
+          try FileManager.default.removeItem(at: cache)
+        } catch {
+          Log.error("ClearCache", "Unable to clear cache for: \(cache)")
         }
-     } catch {
-       Log.error("ClearCache", "Unable to clear cache")
+      }
+    } catch {
+      Log.error("ClearCache", "Unable to clear cache")
     }
   }
+  
+  /// Returns cached catalog data file URL
+  /// - Parameter urlHash: target URL hash
+  /// - Returns: Cached accounts catalog data file URL
+  private func accountsCatalogUrl(urlHash: String) -> URL? {
+    guard let applicationSupportUrl = try? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: false) else {
+      return nil
+    }
+    return applicationSupportUrl.appendingPathComponent("accounts_catalog_\(urlHash).json")
+  }
+  
+  /// Write accounts catalog data
+  /// - Parameters:
+  ///   - data: Accounts catalog data
+  ///   - hash: targetUrl hash
+  private func cacheAccountsCatalogData(_ data: Data, hash: String) {
+    if let cacheUrl = accountsCatalogUrl(urlHash: hash) {
+      do {
+        try data.write(to: cacheUrl)
+      } catch {
+        Log.error("AccountsCatalogCache", error.localizedDescription)
+      }
+    }
+  }
+  
+  /// Read accounts catalog data
+  /// - Parameters:
+  ///   - urlHash: targetUrl hash
+  ///   - completion: completion with accounts catalog data
+  private func readCachedAccountsCatalogData(urlHash: String, completion: (Data?) -> Void) {
+    guard let cacheUrl = accountsCatalogUrl(urlHash: urlHash), let data = try? Data(contentsOf: cacheUrl) else {
+      Log.error("AccountsCatalogCache", "Unable to read accounts catalog cache")
+      completion(nil)
+      return
+    }
+    completion(data)
+  }
+  
 }

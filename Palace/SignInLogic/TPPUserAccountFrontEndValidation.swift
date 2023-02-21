@@ -49,12 +49,6 @@ extension TPPUserAccountFrontEndValidation: UITextFieldDelegate {
     if textField == userInputProvider?.usernameTextField,
       businessLogic?.selectedAuthentication?.patronIDKeyboard != .email {
 
-      // Barcodes are numeric and usernames are alphanumeric including punctuation
-      let allowedCharacters = CharacterSet.alphanumerics.union(.punctuationCharacters)
-      let bannedCharacters = allowedCharacters.inverted
-
-      guard string.rangeOfCharacter(from: bannedCharacters) == nil else { return false }
-
       if let text = textField.text {
         if range.location < 0 || range.location + range.length > text.count {
           return false

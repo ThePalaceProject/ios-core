@@ -1,12 +1,6 @@
 #import "TPPCatalogNavigationController.h"
 #import "TPPHoldsNavigationController.h"
 #import "TPPMyBooksNavigationController.h"
-
-#ifdef SIMPLYE
-// TODO: SIMPLY-3053 this #ifdef can be removed once this ticket is done
-#import "TPPSettingsSplitViewController.h"
-#endif
-
 #import "TPPRootTabBarController.h"
 #import "Palace-Swift.h"
 
@@ -15,7 +9,7 @@
 @property (nonatomic) TPPCatalogNavigationController *catalogNavigationController;
 @property (nonatomic) TPPMyBooksNavigationController *myBooksNavigationController;
 @property (nonatomic) TPPHoldsNavigationController *holdsNavigationController;
-@property (nonatomic) TPPSettingsSplitViewController *settingsSplitViewController;
+@property (nonatomic) TPPSettingsViewController *settingsViewController;
 @property (readwrite) TPPR2Owner *r2Owner;
 
 @end
@@ -49,9 +43,9 @@
   self.catalogNavigationController = [[TPPCatalogNavigationController alloc] init];
   self.myBooksNavigationController = [[TPPMyBooksNavigationController alloc] init];
   self.holdsNavigationController = [[TPPHoldsNavigationController alloc] init];
-  self.settingsSplitViewController = [[TPPSettingsSplitViewController alloc]
-                                      initWithCurrentLibraryAccountProvider:
-                                      AccountsManager.shared];
+  self.settingsViewController = (TPPSettingsViewController * ) [TPPSettingsViewController makeSwiftUIViewWithDismissHandler:^{
+    [[self presentedViewController] dismissViewControllerAnimated:YES completion:nil];
+  }];
 
   [self setTabViewControllers];
 
@@ -83,12 +77,15 @@
     self.viewControllers = @[self.catalogNavigationController,
                              self.myBooksNavigationController,
                              self.holdsNavigationController,
-                             self.settingsSplitViewController];
+                             self.settingsViewController];
   } else {
     self.viewControllers = @[self.catalogNavigationController,
                              self.myBooksNavigationController,
-                             self.settingsSplitViewController];
-    [self setInitialSelectedTab];
+                             self.settingsViewController];
+    // Change selected index if the "Reservations" or "Settings" tab is selected
+    if (self.selectedIndex > 1) {
+      self.selectedIndex -= 1;
+    }
   }
 }
 
@@ -97,10 +94,6 @@
 - (BOOL)tabBarController:(UITabBarController *)__unused tabBarController
 shouldSelectViewController:(nonnull UIViewController *)viewController
 {
-  if ([viewController isEqual:self.settingsSplitViewController] && [self.selectedViewController isEqual:self.settingsSplitViewController]) {
-    UINavigationController *navController = [[(UISplitViewController *)viewController viewControllers] firstObject];
-    [navController popToRootViewControllerAnimated:YES];
-  }
   return YES;
 }
 

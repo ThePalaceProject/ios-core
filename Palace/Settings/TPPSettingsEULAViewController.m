@@ -19,7 +19,7 @@
   self = [super init];
   if(!self) return nil;
   
-  self.title = NSLocalizedString(@"EULA", nil);
+  self.title = NSLocalizedString(@"User Agreement", nil);
   self.eulaURL = [account.details getLicenseURL:URLTypeEula];
   
   return self;
@@ -30,7 +30,7 @@
   self = [super init];
   if(!self) return nil;
   
-  self.title = NSLocalizedString(@"EULA", nil);
+  self.title = NSLocalizedString(@"User Agreement", nil);
   self.eulaURL = [NSURL URLWithString:TPPSettings.TPPUserAgreementURLString];
   
   return self;
@@ -57,7 +57,7 @@
   
   self.activityIndicatorView =
   [[UIActivityIndicatorView alloc]
-   initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleGray];
+   initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
   self.activityIndicatorView.center = self.view.center;
   self.activityIndicatorView.autoresizingMask = (UIViewAutoresizingFlexibleWidth |
                                                  UIViewAutoresizingFlexibleHeight);
@@ -86,7 +86,7 @@ didFailNavigation:(__unused WKNavigation *)navigation
   [self.activityIndicatorView stopAnimating];
 
   UIAlertController *alertController = [UIAlertController
-                                        alertControllerWithTitle:NSLocalizedString(@"ConnectionFailed", nil)
+                                        alertControllerWithTitle:NSLocalizedString(@"Connection Failed", nil)
                                         message:NSLocalizedString(@"Unable to load the web page at this time.", nil)
                                         preferredStyle:UIAlertControllerStyleAlert];
 

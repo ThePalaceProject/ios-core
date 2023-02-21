@@ -1,7 +1,7 @@
 /// This class specifies the keys used to represent a TPPReadiumBookmark
 /// as a dictionary.
 ///
-/// The dictionary representation is used internally in SimplyE / OE
+/// The dictionary representation is used internally
 /// to persist bookmark info to disk. It's only loosely related to the
 /// `TPPBookmarkSpec` which instead specifies a cross-platform contract
 /// for bookmark representation.
@@ -11,9 +11,8 @@
 ///
 @objc class TPPBookmarkDictionaryRepresentation: NSObject {
   fileprivate static let annotationIdKey = "annotationId"
-  @objc static let idrefKey = "idref"
+  @objc static let hrefKey = "href"
   @objc static let locationKey = "location"
-  @objc static let cfiKey = "contentCFI"
   fileprivate static let timeKey = "time"
   fileprivate static let chapterKey = "chapter"
   fileprivate static let pageKey = "page"
@@ -22,9 +21,12 @@
   fileprivate static let bookProgressKey = "progressWithinBook"
 }
 
+protocol Bookmark: NSObject {}
+
 /// Internal representation of an annotation. This may represent an actual
 /// user bookmark as well as the "bookmark" of the last read position in a book.
-@objcMembers final class TPPReadiumBookmark: NSObject {
+@objcMembers final class TPPReadiumBookmark: NSObject, Bookmark {
+
   /// The bookmark ID.
   var annotationId:String?
 
@@ -32,17 +34,7 @@
   var page:String?
 
   var location:String
-  var idref:String
-
-  /// The CFI is location information generated from the R1 reader
-  /// which is not usable in R2.
-  ///
-  /// A CFI value refers to the content fragment identifier used to point
-  /// to a specific element within the specified spine item. This was
-  /// consumed by R1, but there has always been very little consistency
-  /// in the values consumed by Library Simplified applications between
-  /// platforms, hence its legacy and optional status.
-  var contentCFI:String?
+  var href:String
 
   var progressWithinChapter:Float = 0.0
   var progressWithinBook:Float = 0.0
@@ -59,10 +51,8 @@
   /// Date formatted as per RFC 3339
   let time:String
 
-  /// Deprecated. 
   init?(annotationId:String?,
-        contentCFI:String?,
-        idref:String?,
+        href:String?,
         chapter:String?,
         page:String?,
         location:String?,
@@ -71,32 +61,35 @@
         time:String?,
         device:String?)
   {
-    guard let idref = idref else {
-      Log.error(#file, "Bookmark creation failed init due to nil `idref`.")
+
+    guard let href = href else {
+      Log.error(#file, "Bookmark creation failed init due to nil `href`.")
       return nil
     }
+
     self.annotationId = annotationId
-    self.contentCFI = contentCFI
-    self.idref = idref
+    self.href = href
     self.chapter = chapter ?? ""
     self.page = page ?? ""
 
-    // TODO: SIMPLY-3655 refactor per spec
-    // This location structure originally comes from R1 Reader's Javascript
-    // and its not available in R2, we are mimicking the structure
-    // in order to pass the needed information to the server
-    self.location = location ?? "{\"idref\":\"\(idref)\",\"contentCFI\":\"\(contentCFI ?? "")\"}"
-
+    self.location = TPPBookLocation(
+      href: href,
+      type: "LocatorHrefProgression",
+      chapterProgression: progressWithinChapter,
+      totalProgression: progressWithinBook,
+      title: chapter,
+      position: nil
+    )?.locationString ?? ""
+    
     self.progressWithinChapter = progressWithinChapter
     self.progressWithinBook = progressWithinBook
     self.time = time ?? NSDate().rfc3339String()
     self.device = device
   }
-  
+
   init?(dictionary:NSDictionary)
   {
-    guard let contentCFI = dictionary[TPPBookmarkDictionaryRepresentation.cfiKey] as? String,
-      let idref = dictionary[TPPBookmarkDictionaryRepresentation.idrefKey] as? String,
+    guard let href = dictionary[TPPBookmarkDictionaryRepresentation.hrefKey] as? String,
       let location = dictionary[TPPBookmarkDictionaryRepresentation.locationKey] as? String,
       let time = dictionary[TPPBookmarkDictionaryRepresentation.timeKey] as? String else {
         Log.error(#file, "Bookmark failed to init from dictionary.")
@@ -108,8 +101,7 @@
     } else {
       self.annotationId = nil
     }
-    self.contentCFI = contentCFI
-    self.idref = idref
+    self.href = href
     self.location = location
     self.time = time
     self.chapter = dictionary[TPPBookmarkDictionaryRepresentation.chapterKey] as? String
@@ -126,8 +118,7 @@
   var dictionaryRepresentation:NSDictionary {
     return [
       TPPBookmarkDictionaryRepresentation.annotationIdKey: self.annotationId ?? "",
-      TPPBookmarkDictionaryRepresentation.cfiKey: self.contentCFI ?? "",
-      TPPBookmarkDictionaryRepresentation.idrefKey: self.idref,
+      TPPBookmarkDictionaryRepresentation.hrefKey: self.href,
       TPPBookmarkDictionaryRepresentation.chapterKey: self.chapter ?? "",
       TPPBookmarkDictionaryRepresentation.pageKey: self.page ?? "",
       TPPBookmarkDictionaryRepresentation.locationKey: self.location,
@@ -137,27 +128,16 @@
       TPPBookmarkDictionaryRepresentation.bookProgressKey: self.progressWithinBook
     ]
   }
-  
+
   override func isEqual(_ object: Any?) -> Bool {
     guard let other = object as? TPPReadiumBookmark else {
       return false
     }
 
-    if let contentCFI = self.contentCFI,
-      let otherContentCFI = other.contentCFI,
-      contentCFI.count > 0 && otherContentCFI.count > 0 {
-      // R1
-      return self.idref == other.idref
-        && self.contentCFI == other.contentCFI
-        && self.location == other.location
-        && self.chapter == other.chapter
-    } else {
-      // R2
-      return self.idref == other.idref
-        && self.progressWithinBook =~= other.progressWithinBook
-        && self.progressWithinChapter =~= other.progressWithinChapter
-        && self.chapter == other.chapter
-    }
+    return self.href == other.href
+      && self.progressWithinBook =~= other.progressWithinBook
+      && self.progressWithinChapter =~= other.progressWithinChapter
+      && self.chapter == other.chapter
   }
 }
 

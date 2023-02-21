@@ -2,7 +2,7 @@
 // After it is complete, the common portions must be factored out.
 
 #import "NSString+TPPStringAdditions.h"
-#import "TPPBook.h"
+
 #import "TPPBookCell.h"
 #import "TPPBookDetailViewController.h"
 #import "TPPCatalogUngroupedFeed.h"
@@ -27,6 +27,7 @@
 @property (nonatomic) UISearchBar *searchBar;
 @property (nonatomic) UILabel *noResultsLabel;
 @property (nonatomic) TPPFacetBarView *facetBarView;
+@property (nonatomic) NSTimer *debounceTimer;
 
 @end
 
@@ -80,7 +81,7 @@
   [self.searchBar becomeFirstResponder];
   
   self.noResultsLabel = [[UILabel alloc] init];
-  self.noResultsLabel.text = NSLocalizedString(@"NoResultsFound", nil);
+  self.noResultsLabel.text = NSLocalizedString(@"No Results Found", nil);
   self.noResultsLabel.font = [UIFont palaceFontOfSize:17];
   [self.noResultsLabel sizeToFit];
   self.noResultsLabel.hidden = YES;
@@ -192,7 +193,14 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
 {
   // FIXME: This is not ideal but we were having double-free issues with
   // `insertItemsAtIndexPaths:`. See issue #144 for more information.
-  [self.collectionView reloadData];
+
+  // Debounce timer reduces content flickering on each reload
+  if (!self.debounceTimer) {
+    self.debounceTimer = [NSTimer scheduledTimerWithTimeInterval:1 repeats:NO block:^(NSTimer * _Nonnull timer) {
+      [self.collectionView reloadSections:[NSIndexSet indexSetWithIndex:0]];
+      self.debounceTimer = nil;
+    }];
+  }
 }
 
 #pragma mark UISearchBarDelegate
@@ -216,6 +224,8 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
 
 - (void)fetchUngroupedFeedFromURL:(NSURL *)URL
 {
+  [self.debounceTimer invalidate];
+  self.debounceTimer = nil;
   [TPPCatalogUngroupedFeed
    withURL:URL
    handler:^(TPPCatalogUngroupedFeed *const category) {
@@ -258,6 +268,8 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
   self.searchBar.userInteractionEnabled = YES;
 
   if(success) {
+    [self.debounceTimer invalidate];
+    self.debounceTimer = nil;
     [self.collectionView scrollRectToVisible:CGRectMake(0, 0, 1, 1) animated:NO];
     [self.collectionView reloadData];
     
@@ -298,7 +310,7 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
   [self.view addSubview:self.facetBarView];
   [self.facetBarView autoPinEdgeToSuperviewEdge:ALEdgeLeading];
   [self.facetBarView autoPinEdgeToSuperviewEdge:ALEdgeTrailing];
-  [self.facetBarView autoPinToTopLayoutGuideOfViewController:self withInset:0.0];
+  [self.facetBarView autoPinEdgeToSuperviewMargin:ALEdgeTop];
 }
 
 #pragma mark NYPLEntryPointViewDelegate

@@ -21,14 +21,21 @@ import ReadiumLCP
   /// Readium licensee file extension
   @objc public let licenseExtension = "lcpl"
   
+  private var lcpClient = TPPLCPClient()
+  
   /// Readium LCPService
-  private var lcpService = LCPService(client: TPPLCPClient())
+  private var lcpService: LCPService
   
   /// ContentProtection unlocks protected publication, providing a custom `Fetcher`
   lazy var contentProtection: ContentProtection? = lcpService.contentProtection(with: LCPPassphraseAuthenticationService())
   
   /// [LicenseDocument.id: passphrase callback]
   private var authenticationCallbacks: [String: (String?) -> Void] = [:]
+  
+  override init() {
+    self.lcpService = LCPService(client: lcpClient)
+    super.init()
+  }
   
   /// Returns whether this DRM can fulfill the given file into a protected publication.
   /// - Parameter file: file URL
@@ -64,21 +71,31 @@ import ReadiumLCP
   ///   - localUrl: Downloaded publication URL.
   ///   - downloadTask: `URLSessionDownloadTask` that downloaded the publication.
   ///   - error: `NSError` if any.
-  @objc func fulfill(_ file: URL, completion: @escaping (_ localUrl: URL?, _ error: NSError?) -> Void) {
-    self.lcpService.acquirePublication(from: file) { result in
-      do {
-        let publication = try result.get()
-        completion(publication.localURL, nil)
-      } catch {
+  @objc func fulfill(_ file: URL, progress: @escaping (_ progress: Double) -> Void, completion: @escaping (_ localUrl: URL?, _ error: NSError?) -> Void) -> URLSessionDownloadTask? {
+    return TPPLicensesService().acquirePublication(from: file) { progressValue in
+      progress(progressValue)
+    } completion: { localUrl, error in
+      guard error == nil else {
         let domain = "LCP fulfillment error"
         let code = TPPErrorCode.lcpDRMFulfillmentFail.rawValue
-        let errorDescription = (error as? LCPError)?.errorDescription ?? error.localizedDescription
+        let errorDescription = (error as? LCPError)?.errorDescription ?? (error as? TPPLicensesServiceError)?.description ?? error?.localizedDescription
         let nsError = NSError(domain: domain, code: code, userInfo: [
           NSLocalizedDescriptionKey: errorDescription as Any
         ])
         completion(nil, nsError)
+        return
       }
+      completion(localUrl, nil)
     }
+  }
+  
+  /// Decrypts data passed to LCP decryptor.
+  /// - Parameter data: Encrypted data.
+  /// - Returns: Decrypted data.
+  ///
+  /// Encrypted data must be a valid block of AES-encrypted data, othervise LCP decryptor crashes the app.
+  func decrypt(data: Data) -> Data? {
+    lcpClient.decrypt(data: data)
   }
 }
 

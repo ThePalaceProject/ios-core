@@ -4,6 +4,10 @@
 #import "AdobeDRMContainer.h"
 #endif
 
+#if FEATURE_OVERDRIVE
+#import "OverdriveProcessor/OverdriveProcessor.h"
+#endif
+
 #ifndef OPENEBOOKS
 #import "TPPBarcodeScanningViewController.h"
 #import "TPPZXingEncoder.h"
@@ -12,12 +16,8 @@
 #import "NSDate+NYPLDateAdditions.h"
 #import "TPPAccountSignInViewController.h"
 #import "TPPAppDelegate.h"
-#import "TPPBook.h"
 #import "TPPBookDetailView.h"
 #import "TPPBookDetailViewController.h"
-#import "TPPBookLocation.h"
-#import "TPPBookRegistry.h"
-#import "TPPBookRegistryRecord.h"
 #import "TPPCatalogFacet.h"
 #import "TPPCatalogFacetGroup.h"
 #import "TPPCatalogUngroupedFeed.h"
@@ -34,8 +34,6 @@
 #import "TPPMyBooksDownloadCenter.h"
 #import "TPPOPDS.h"
 #import "TPPReachability.h"
-#import "TPPReaderSettings.h"
-#import "TPPReaderSettingsView.h"
 #import "TPPReloadView.h"
 #import "TPPRootTabBarController.h"
 #import "TPPSAMLHelper.h"
@@ -43,3 +41,5 @@
 #import "TPPXML.h"
 #import "UIFont+TPPSystemFontOverride.h"
 #import "UIView+TPPViewAdditions.h"
+#import "TPPEncryptedPDFDataProvider.h"
+#import "NYPLTenPrintCoverView.h"

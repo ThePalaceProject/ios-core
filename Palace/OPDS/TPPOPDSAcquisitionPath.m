@@ -14,7 +14,11 @@ NSString * const _Nonnull ContentTypeOctetStream = @"application/octet-stream";
 NSString * const _Nonnull ContentTypeOverdriveAudiobook = @"application/vnd.overdrive.circulation.api+json;profile=audiobook";
 NSString * const _Nonnull ContentTypeOverdriveAudiobookActual = @"application/json";
 NSString * const _Nonnull ContentTypeReadiumLCP = @"application/vnd.readium.lcp.license.v1.0+json";
+NSString * const _Nonnull ContentTypeReadiumLCPPDF = @"application/pdf";
+NSString * const _Nonnull ContentTypePDFLCP = @"application/pdf+lcp";
+NSString * const _Nonnull ContentTypeAudiobookLCP = @"application/audiobook+lcp";
 NSString * const _Nonnull ContentTypeAudiobookZip = @"application/audiobook+zip";
+NSString * const _Nonnull ContentTypeBiblioboard = @"application/json";
 
 @interface TPPOPDSAcquisitionPath ()
 
@@ -55,12 +59,13 @@ NSString * const _Nonnull ContentTypeAudiobookZip = @"application/audiobook+zip"
       ContentTypeOpenAccessAudiobook,
       ContentTypeOpenAccessPDF,
       ContentTypeFeedbooksAudiobook,
-// Temporarily removed,
-// https://www.notion.so/lyrasis/Filter-out-Overdrive-Audiobooks-iOS-e413e07cd8e541cfb4f5761e6bb467bb
-//      ContentTypeOverdriveAudiobook,
+      ContentTypeOverdriveAudiobook,
       ContentTypeOctetStream,
+      ContentTypeBiblioboard,
 #if LCP
       ContentTypeReadiumLCP,
+      ContentTypeAudiobookLCP,
+      ContentTypeReadiumLCPPDF,
 #endif
       ContentTypeAudiobookZip
     ]];
@@ -98,16 +103,16 @@ NSString * const _Nonnull ContentTypeAudiobookZip = @"application/audiobook+zip"
         ContentTypeOpenAccessPDF,
         ContentTypeOpenAccessAudiobook,
         ContentTypeFeedbooksAudiobook,
-// Temporarily removed,
-// https://www.notion.so/lyrasis/Filter-out-Overdrive-Audiobooks-iOS-e413e07cd8e541cfb4f5761e6bb467bb
-//        ContentTypeOverdriveAudiobook,
+        ContentTypeOverdriveAudiobook,
         ContentTypeOctetStream,
         ContentTypeReadiumLCP,
         ContentTypeAudiobookZip
       ]],
       ContentTypeReadiumLCP: [NSSet setWithArray:@[
         ContentTypeEpubZip,
-        ContentTypeAudiobookZip
+        ContentTypeAudiobookZip,
+        ContentTypeAudiobookLCP,
+        ContentTypeReadiumLCPPDF
       ]],
       ContentTypeAdobeAdept: [NSSet setWithArray:@[ContentTypeEpubZip]],
       ContentTypeBearerToken: [NSSet setWithArray:@[
@@ -127,10 +132,9 @@ NSString * const _Nonnull ContentTypeAudiobookZip = @"application/audiobook+zip"
   return [NSSet setWithArray:@[ContentTypeFindaway,
                                ContentTypeOpenAccessAudiobook,
                                ContentTypeFeedbooksAudiobook,
-// Temporarily removed,
-// https://www.notion.so/lyrasis/Filter-out-Overdrive-Audiobooks-iOS-e413e07cd8e541cfb4f5761e6bb467bb
-//                               ContentTypeOverdriveAudiobook,
-                               ContentTypeAudiobookZip ]];
+                               ContentTypeOverdriveAudiobook,
+                               ContentTypeAudiobookZip,
+                               ContentTypeAudiobookLCP]];
 }
 
 - (BOOL)isEqual:(id const)object

@@ -1,6 +1,5 @@
 #import "TPPAsync.h"
-#import "TPPBook.h"
-#import "TPPBookRegistry.h"
+
 #import "TPPCatalogFacet.h"
 #import "TPPCatalogFacetGroup.h"
 #import "TPPOPDS.h"
@@ -63,11 +62,11 @@ handler:(void (^)(TPPCatalogUngroupedFeed *category))handler
   if(feed.type != TPPOPDSFeedTypeAcquisitionUngrouped) {
     @throw NSInvalidArgumentException;
   }
-  
+
   self.books = [NSMutableArray array];
-  
+
   for(TPPOPDSEntry *const entry in feed.entries) {
-    TPPBook *book = [TPPBook bookWithEntry:entry];
+    TPPBook *book = [[TPPBook alloc] initWithEntry: entry];
     if(!book) {
       TPPLOG(@"Failed to create book from entry.");
       continue;
@@ -77,12 +76,17 @@ handler:(void (^)(TPPCatalogUngroupedFeed *category))handler
       // The application is not able to support this, so we ignore it.
       continue;
     }
-    
-    TPPBook *updatedBook = [[TPPBookRegistry sharedRegistry] updatedBookMetadata:book];
+
+    TPPBook *updatedBook = [[TPPBookRegistry shared] updatedBookMetadata:book];
     if(updatedBook) {
       book = updatedBook;
     }
-    [self.books addObject:book];
+
+    // Do not display unsupported titles in feed
+    // https://www.notion.so/lyrasis/App-crashes-after-getting-the-book-iPhone8-742898f53e2547efa4c6f5d43296b816
+    if (book.defaultBookContentType != TPPBookContentTypeUnsupported) {
+      [self.books addObject:book];
+    }
   }
 
   NSMutableArray *const entryPointFacets = [NSMutableArray array];
@@ -219,7 +223,7 @@ handler:(void (^)(TPPCatalogUngroupedFeed *category))handler
     NSMutableArray *const refreshedBooks = [NSMutableArray arrayWithCapacity:self.books.count];
     
     for(TPPBook *const book in self.books) {
-      TPPBook *const refreshedBook = [[TPPBookRegistry sharedRegistry]
+      TPPBook *const refreshedBook = [[TPPBookRegistry shared]
                                        bookForIdentifier:book.identifier];
       if(refreshedBook) {
         [refreshedBooks addObject:refreshedBook];

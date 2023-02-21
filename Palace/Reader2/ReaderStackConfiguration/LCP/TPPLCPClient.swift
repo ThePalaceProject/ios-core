@@ -17,8 +17,12 @@ let lcpService = LCPService(client: TPPLCPClient())
 
 /// Facade to the private R2LCPClient.framework.
 class TPPLCPClient: ReadiumLCP.LCPClient {
+  
+  var context: LCPClientContext?
+  
   func createContext(jsonLicense: String, hashedPassphrase: String, pemCrl: String) throws -> LCPClientContext {
-    return try R2LCPClient.createContext(jsonLicense: jsonLicense, hashedPassphrase: hashedPassphrase, pemCrl: pemCrl)
+    context = try R2LCPClient.createContext(jsonLicense: jsonLicense, hashedPassphrase: hashedPassphrase, pemCrl: pemCrl)
+    return context!
   }
 
   func decrypt(data: Data, using context: LCPClientContext) -> Data? {
@@ -27,6 +31,16 @@ class TPPLCPClient: ReadiumLCP.LCPClient {
 
   func findOneValidPassphrase(jsonLicense: String, hashedPassphrases: [String]) -> String? {
     return R2LCPClient.findOneValidPassphrase(jsonLicense: jsonLicense, hashedPassphrases: hashedPassphrases)
+  }
+}
+
+/// Provides access to data decryptor
+extension TPPLCPClient {
+  func decrypt(data: Data) -> Data? {
+    guard let context = context else {
+      return nil
+    }
+    return R2LCPClient.decrypt(data: data, using: context as! DRMContext)
   }
 }
 

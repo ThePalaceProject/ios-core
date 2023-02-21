@@ -34,4 +34,17 @@ class TPPOPDSAcquisitionPathTests: XCTestCase {
       "application/pdf"
       ])
   }
+  
+  func testSampleLinkInAcquisitions() {
+    // TPPOPDSAcquisitionPathEntryWithSampleLink.xml contains a sample link
+    let bundle = Bundle(for: TPPOPDSAcquisitionPathTests.self)
+    let acquisitionWithSampleData = try! Data(contentsOf: bundle.url(forResource: "TPPOPDSAcquisitionPathEntryWithSampleLink", withExtension: "xml")!)
+    let entryWithSample = TPPOPDSEntry(xml: TPPXML(data: acquisitionWithSampleData))!
+    let bookWithSample = TPPBook(entry: entryWithSample)
+    XCTAssertNotNil(bookWithSample)
+    XCTAssert(bookWithSample?.defaultAcquisition?.relation != TPPOPDSAcquisitionRelation.sample)
+    XCTAssertNotNil(bookWithSample?.sampleAcquisition)
+    XCTAssert(bookWithSample?.sampleAcquisition?.relation == TPPOPDSAcquisitionRelation.sample)
+    
+  }
 }

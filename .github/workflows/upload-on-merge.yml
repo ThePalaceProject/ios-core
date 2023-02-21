@@ -6,12 +6,12 @@ on:
     types: [closed]
 jobs:
   check-version:
-    runs-on: macOS-latest
+    runs-on: macOS-11
     steps:
-      - name: Force Xcode 12.4
-        run: sudo xcode-select -switch /Applications/Xcode_12.4.app
+      - name: Force Xcode 13.2
+        run: sudo xcode-select -switch /Applications/Xcode_13.2.app
       - name: Checkout main repo and submodules
-        uses: actions/checkout@v2.3.4
+        uses: actions/checkout@v3
         with:
           submodules: true
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
@@ -23,31 +23,31 @@ jobs:
     outputs:
       should_upload: ${{ steps.checkVersion.outputs.version_changed }}
   upload-build:
-    runs-on: macOS-latest
+    runs-on: macOS-11
     needs: check-version
     if: github.event.pull_request.merged == true && needs.check-version.outputs.should_upload == '1'
     steps:
-      - name: Force Xcode 12.4
-        run: sudo xcode-select -switch /Applications/Xcode_12.4.app
+      - name: Force Xcode 13.2
+        run: sudo xcode-select -switch /Applications/Xcode_13.2.app
       - name: Checkout main repo and submodules
-        uses: actions/checkout@v2.3.4
+        uses: actions/checkout@v3
         with:
           submodules: true
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
       - name: Checkout Binaries
-        uses: actions/checkout@v2.3.4
+        uses: actions/checkout@v3
         with:
           repository: ThePalaceProject/ios-binaries
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
           path: ./ios-binaries
       - name: Checkout Certificates
-        uses: actions/checkout@v2.3.4
+        uses: actions/checkout@v3
         with:
           repository: ThePalaceProject/mobile-certificates
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
           path: ./mobile-certificates
       - name: Checkout Adobe RMSDK
-        uses: actions/checkout@v2.3.4
+        uses: actions/checkout@v3
         with:
           repository: ThePalaceProject/mobile-drm-adeptconnector
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
@@ -78,26 +78,20 @@ jobs:
         run: ./scripts/create-release-notes.sh
         env:
           BUILD_CONTEXT: ci
+          GITHUB_TOKEN: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
       - name: Verify path and version
         run: |
-          echo "Path:    " $RELEASE_NOTES_PATH
-          echo "Version: " $VERSION_NUM
+          echo "Release notes path: " $RELEASE_NOTES_PATH
+          cat $RELEASE_NOTES_PATH
+          echo "Changelog path:     " $CHANGELOG_PATH
+          cat $CHANGELOG_PATH
+          echo "Version:            " $VERSION_NUM
         env:
           RELEASE_NOTES_PATH: ${{ env.RELEASE_NOTES_PATH }}
+          CHANGELOG_PATH: ${{ env.CHANGELOG_PATH }}
           VERSION_NUM: ${{ env.VERSION_NUM }}
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_NOTES_PATH: ${{ env.RELEASE_NOTES_PATH }}
-          VERSION_NUM: ${{ env.VERSION_NUM }}
-        with:
-          tag_name: ${{ env.VERSION_NUM }}
-          release_name: ${{ env.VERSION_NUM }}
-          body_path: ${{ env.RELEASE_NOTES_PATH }}
-          draft: false
       - name: Export for App Store
         run: ./scripts/xcode-export-appstore.sh
         env:
           BUILD_CONTEXT: ci
+          CHANGELOG_PATH: ${{ env.CHANGELOG_PATH }}

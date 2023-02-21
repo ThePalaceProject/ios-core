@@ -1,6 +1,5 @@
-#import "TPPBook.h"
-
 #import "TPPCatalogLane.h"
+#import "Palace-Swift.h"
 
 @interface TPPCatalogLane ()
 

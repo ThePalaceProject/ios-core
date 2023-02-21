@@ -3,9 +3,7 @@
 #import "Palace-Swift.h"
 
 #import "TPPConfiguration.h"
-#import "TPPBookRegistry.h"
 #import "TPPReachability.h"
-#import "TPPReaderSettings.h"
 #import "TPPRootTabBarController.h"
 
 
@@ -17,7 +15,6 @@
 // TODO: Remove these imports and move handling the "open a book url" code to a more appropriate handler
 #import "TPPXML.h"
 #import "TPPOPDSEntry.h"
-#import "TPPBook.h"
 #import "TPPBookDetailViewController.h"
 #import "NSURL+NYPLURLAdditions.h"
 
@@ -49,10 +46,9 @@ didFinishLaunchingWithOptions:(__attribute__((unused)) NSDictionary *)launchOpti
   self.audiobookLifecycleManager = [[AudiobookLifecycleManager alloc] init];
   [self.audiobookLifecycleManager didFinishLaunching];
 
+  [TransifexManager setup];
   [app setMinimumBackgroundFetchInterval:MinimumBackgroundFetchInterval];
 
-  self.notificationsManager = [[TPPUserNotifications alloc] init];
-  [self.notificationsManager authorizeIfNeeded];
   [NSNotificationCenter.defaultCenter addObserver:self
                                          selector:@selector(signingIn:)
                                              name:NSNotification.TPPIsSigningIn
@@ -60,6 +56,9 @@ didFinishLaunchingWithOptions:(__attribute__((unused)) NSDictionary *)launchOpti
 
   [[NetworkQueue shared] addObserverForOfflineQueue];
   self.reachabilityManager = [TPPReachability sharedReachability];
+  
+  // Enable new reachability notifications
+  [Reachability.shared startMonitoring];
   
   self.window = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
   self.window.tintColor = [TPPConfiguration mainColor];
@@ -71,12 +70,23 @@ didFinishLaunchingWithOptions:(__attribute__((unused)) NSDictionary *)launchOpti
   [[UITabBarItem appearance] setTitleTextAttributes:@{NSFontAttributeName: [UIFont palaceFontOfSize:12.0]} forState:UIControlStateNormal];
 
   [[UINavigationBar appearance] setTintColor: [TPPConfiguration iconColor]];
-  [[UINavigationBar appearance] setBackgroundColor:[TPPConfiguration backgroundColor]];
-  [[UINavigationBar appearance] setTitleTextAttributes:@{NSFontAttributeName: [UIFont semiBoldPalaceFontOfSize:18.0]}];
+  [[UINavigationBar appearance] setStandardAppearance:[TPPConfiguration defaultAppearance]];
+  [[UINavigationBar appearance] setScrollEdgeAppearance:[TPPConfiguration defaultAppearance]];
+  [[UINavigationBar appearance] setCompactAppearance:[TPPConfiguration defaultAppearance]];
+  if (@available(iOS 15.0, *)) {
+    [[UINavigationBar appearance] setCompactScrollEdgeAppearance:[TPPConfiguration defaultAppearance]];
+  }
   
   [self setUpRootVC];
 
   [TPPErrorLogger logNewAppLaunch];
+
+  // Initialize TPPBookRegistry
+  [TPPBookRegistry shared];
+  
+  // Push Notificatoins
+  // TODO: Enable push notifications when CM starts supporting them
+//  [[NotificationService sharedService] setupPushNotifications];
 
   return YES;
 }
@@ -88,21 +98,24 @@ performFetchWithCompletionHandler:(void (^)(UIBackgroundFetchResult))backgroundF
   NSDate *startDate = [NSDate date];
   if ([TPPUserNotifications backgroundFetchIsNeeded]) {
     TPPLOG_F(@"[Background Fetch] Starting book registry sync. "
-              "ElapsedTime=%f", -startDate.timeIntervalSinceNow);
-    // Only the "current library" account syncs during a background fetch.
-    [[TPPBookRegistry sharedRegistry] syncResettingCache:NO completionHandler:^(NSDictionary *errorDict) {
-      if (errorDict == nil) {
-        [[TPPBookRegistry sharedRegistry] save];
+                  "ElapsedTime=%f", -startDate.timeIntervalSinceNow);
+    [TPPBookRegistry.shared syncWithCompletion:^(NSDictionary *errorDocument, BOOL newBooks) {
+      NSString *result;
+      if (errorDocument) {
+        result = @"error document";
+        backgroundFetchHandler(UIBackgroundFetchResultFailed);
+      } else if (newBooks) {
+        result = @"new ready books available";
+        backgroundFetchHandler(UIBackgroundFetchResultNewData);
+      } else {
+        result = @"no ready books fetched";
+        backgroundFetchHandler(UIBackgroundFetchResultNoData);
       }
-    } backgroundFetchHandler:^(UIBackgroundFetchResult result) {
-      TPPLOG_F(@"[Background Fetch] Completed with result %lu. "
-                "ElapsedTime=%f", (unsigned long)result, -startDate.timeIntervalSinceNow);
-      backgroundFetchHandler(result);
+      TPPLOG_F(@"[Background Fetch] Completed with %@."
+               "ElapsedTime=%f", result, -startDate.timeIntervalSinceNow);
     }];
   } else {
-    TPPLOG_F(@"[Background Fetch] Registry sync not needed. "
-              "ElapsedTime=%f", -startDate.timeIntervalSinceNow);
-    backgroundFetchHandler(UIBackgroundFetchResultNewData);
+    backgroundFetchHandler(UIBackgroundFetchResultNoData);
   }
 }
 
@@ -133,7 +146,7 @@ performFetchWithCompletionHandler:(void (^)(UIBackgroundFetchResult))backgroundF
   TPPXML *xml = [TPPXML XMLWithData:data];
   TPPOPDSEntry *entry = [[TPPOPDSEntry alloc] initWithXML:xml];
   
-  TPPBook *book = [TPPBook bookWithEntry:entry];
+  TPPBook *book = [[TPPBook alloc] initWithEntry:entry];
   if (!book) {
     NSString *alertTitle = @"Error Opening Link";
     NSString *alertMessage = @"There was an error opening the linked book.";
@@ -173,27 +186,26 @@ performFetchWithCompletionHandler:(void (^)(UIBackgroundFetchResult))backgroundF
   [self completeBecomingActive];
   
 #if FEATURE_DRM_CONNECTOR
-  if ([AdobeCertificate.defaultCertificate hasExpired] == YES && AdobeCertificate.shouldNotifyAboutExpiration) {
-    UIAlertController *alert = [TPPAlertUtils
-                                alertWithTitle:NSLocalizedString(@"Something went wrong with the Adobe DRM system", @"Expired DRM certificate title")
-                                message:NSLocalizedString(@"Some books will be unavailable in this version. Please try updating to the latest version of the application.", @"Expired DRM certificate message")
-                                ];
-    [TPPAlertUtils presentFromViewControllerOrNilWithAlertController:alert viewController:nil animated:YES completion:nil];
+  // If Adobe DRM cerificate expired, the app shows this alert when the user opens the app.
+  // We don't show this alert if the user is going to see Welcome screen,
+  // because we need to show modal views there as well
+  if ([AdobeCertificate.defaultCertificate hasExpired] == YES &&
+      AdobeCertificate.shouldNotifyAboutExpiration &&
+      [[TPPSettings shared] userHasSeenWelcomeScreen]
+      ) {
+    [TPPAlertUtils presentFromViewControllerOrNilWithAlertController:[TPPAlertUtils expiredAdobeDRMAlert] viewController:nil animated:YES completion:nil];
   }
 #endif
 }
 
 - (void)applicationWillResignActive:(__attribute__((unused)) UIApplication *)application
 {
-  [[TPPBookRegistry sharedRegistry] save];
-  [[TPPReaderSettings sharedSettings] save];
+
 }
 
 - (void)applicationWillTerminate:(__unused UIApplication *)application
 {
   [self.audiobookLifecycleManager willTerminate];
-  [[TPPBookRegistry sharedRegistry] save];
-  [[TPPReaderSettings sharedSettings] save];
   [NSNotificationCenter.defaultCenter removeObserver:self];
 }
 

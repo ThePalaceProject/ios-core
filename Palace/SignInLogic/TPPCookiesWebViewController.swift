@@ -75,7 +75,7 @@ class TPPCookiesWebViewController: UIViewController, WKNavigationDelegate {
       TPPCookiesWebViewController.automaticBrowserStorage[uuid] = self
     }
 
-    navigationItem.leftBarButtonItem = UIBarButtonItem(title: NSLocalizedString("Cancel", comment: ""), style: .plain, target: self, action: #selector(didSelectCancel))
+    navigationItem.leftBarButtonItem = UIBarButtonItem(title: Strings.Generic.cancel, style: .plain, target: self, action: #selector(didSelectCancel))
 
     webView.navigationDelegate = self
     guard let model = model else { return }

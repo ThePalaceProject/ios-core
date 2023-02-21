@@ -1,7 +1,6 @@
-#import "TPPBook.h"
+
 #import "TPPBookCell.h"
 #import "TPPBookDetailViewController.h"
-#import "TPPBookRegistry.h"
 #import "TPPCatalogSearchViewController.h"
 #import "TPPConfiguration.h"
 #import "TPPOpenSearchDescription.h"
@@ -16,7 +15,7 @@
 #import "Palace-Swift.h"
 
 @interface TPPHoldsViewController ()
-<UICollectionViewDataSource, UICollectionViewDelegate, UICollectionViewDelegateFlowLayout>
+<UICollectionViewDataSource, UICollectionViewDelegate, TPPFacetBarViewDelegate, UICollectionViewDelegateFlowLayout>
 
 // FIXME: It's unclear how "reserved" is different from "held" in this class. These
 // two terms are used interchangably in both OPDS and elsewhere in this application.
@@ -27,6 +26,7 @@
 @property (nonatomic) UILabel *instructionsLabel;
 @property (nonatomic) UIRefreshControl *refreshControl;
 @property (nonatomic) UIBarButtonItem *searchButton;
+@property (nonatomic) TPPFacetBarView *facetBarView;
 
 @end
 
@@ -39,8 +39,8 @@
   self = [super init];
   if(!self) return nil;
 
-  self.title = NSLocalizedString(@"HoldsViewControllerTitle", nil);
-  self.navigationItem.title = NSLocalizedString(@"HoldsViewControllerTitle", nil);
+  self.title = NSLocalizedString(@"Reservations", nil);
+  self.navigationItem.title = NSLocalizedString(@"Reservations", nil);
 
   [self willReloadCollectionViewData];
   
@@ -118,6 +118,31 @@
                                            initWithTitle:NSLocalizedString(@"Back", @"Back button text")
                                            style:UIBarButtonItemStylePlain
                                            target:nil action:nil];
+
+  self.facetBarView = [[TPPFacetBarView alloc] initWithOrigin:CGPointZero width:self.view.bounds.size.width];
+  self.facetBarView.delegate = self;
+  
+  [self.view addSubview:self.facetBarView];
+  
+  [self.facetBarView autoPinEdgeToSuperviewEdge:ALEdgeLeading];
+  [self.facetBarView autoPinEdgeToSuperviewEdge:ALEdgeTrailing];
+  [self.facetBarView autoPinEdgeToSuperviewMargin:ALEdgeTop];
+
+}
+
+- (void)didMoveToParentViewController:(UIViewController *)parent
+{
+  [super didMoveToParentViewController:parent];
+  
+  if (parent) {
+    CGFloat facetBarHeight = self.facetBarView.frame.size.height;
+    UIEdgeInsets insets = self.collectionView.contentInset;
+    insets.top += facetBarHeight;
+    if (@available(iOS 11.0, *)) {
+      insets.top += parent.additionalSafeAreaInsets.top;
+    }
+    [self.collectionView setContentInset:insets];
+  }
 }
 
 - (void)viewWillAppear:(BOOL)animated
@@ -125,7 +150,7 @@
   [super viewWillAppear:animated];
 
   [[NSOperationQueue mainQueue] addOperationWithBlock:^{
-    BOOL isSyncing = [TPPBookRegistry sharedRegistry].syncing;
+    BOOL isSyncing = [TPPBookRegistry shared].isSyncing;
     if(!isSyncing) {
       [self.refreshControl endRefreshing];
       if (self.collectionView.numberOfSections == 0) {
@@ -196,10 +221,10 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
     }
     if([self bookArrayForSection:indexPath.section] == self.reservedBooks) {
       view.layer.backgroundColor = [TPPConfiguration mainColor].CGColor;
-      title.text = NSLocalizedString(@"AvailableForCheckoutHeader", nil);
+      title.text = NSLocalizedString(@"AVAILABLE FOR CHECKOUT", nil);
     } else {
       view.layer.backgroundColor = [UIColor colorWithRed:172.0/255.0 green:177.0/255.0 blue:182.0/255 alpha:1.0].CGColor;
-      title.text = NSLocalizedString(@"WaitingForAvailabilityHeader", nil);
+      title.text = NSLocalizedString(@"WAITING FOR AVAILABILITY", nil);
     }
     [title sizeToFit];
     CGRect frame = title.frame;
@@ -219,7 +244,7 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
 {
   [super willReloadCollectionViewData];
   
-  NSArray *books = [[TPPBookRegistry sharedRegistry] heldBooks];
+  NSArray *books = [[TPPBookRegistry shared] heldBooks];
   
   self.instructionsLabel.hidden = !!books.count;
   
@@ -259,14 +284,14 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
 {  
   if ([TPPUserAccount sharedAccount].needsAuth) {
     if([[TPPUserAccount sharedAccount] hasCredentials]) {
-      [[TPPBookRegistry sharedRegistry] syncWithStandardAlertsOnCompletion];
+      [[TPPBookRegistry shared] sync];
     } else {
       [TPPAccountSignInViewController requestCredentialsWithCompletion:nil];
       [self.refreshControl endRefreshing];
       [[NSNotificationCenter defaultCenter] postNotificationName:NSNotification.TPPSyncEnded object:nil];
     }
   } else {
-    [[TPPBookRegistry sharedRegistry] justLoad];
+    [[TPPBookRegistry shared] loadWithAccount:nil];
     [[NSNotificationCenter defaultCenter] postNotificationName:NSNotification.TPPSyncEnded object:nil];
   }
 }
@@ -274,7 +299,7 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
 - (void)bookRegistryDidChange
 {
   [[NSOperationQueue mainQueue] addOperationWithBlock:^{
-    if([TPPBookRegistry sharedRegistry].syncing == NO) {
+    if([TPPBookRegistry shared].isSyncing == NO) {
       [self.refreshControl endRefreshing];
       [self willReloadCollectionViewData];
     }
@@ -283,8 +308,8 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
 
 - (void)didSelectSearch
 {
-  NSString *title = NSLocalizedString(@"HoldsViewControllerSearchTitle", nil);
-  TPPOpenSearchDescription *searchDescription = [[TPPOpenSearchDescription alloc] initWithTitle:title books:[[TPPBookRegistry sharedRegistry] heldBooks]];
+  NSString *title = NSLocalizedString(@"Search Reservations", nil);
+  TPPOpenSearchDescription *searchDescription = [[TPPOpenSearchDescription alloc] initWithTitle:title books:[[TPPBookRegistry shared] heldBooks]];
   [self.navigationController
    pushViewController:[[TPPCatalogSearchViewController alloc] initWithOpenSearchDescription:searchDescription]
    animated:YES];
@@ -303,6 +328,18 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
 - (void)viewWillTransitionToSize:(CGSize)__unused size withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)__unused coordinator
 {
   [self.collectionView reloadData];
+}
+
+#pragma mark TPPFacetBarViewDelegate
+
+- (void)present:(UIViewController *)viewController
+{
+  [self.navigationController pushViewController:viewController animated:YES];
+}
+
+- (NSArray<TPPCatalogFacet *> *)facetsForEntryPointView
+{
+  return @[];
 }
 
 @end

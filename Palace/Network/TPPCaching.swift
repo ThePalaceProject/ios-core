@@ -213,7 +213,11 @@ class TPPCaching {
     config.urlCache = makeCache()
 
     if #available(iOS 11.0, *) {
-      config.waitsForConnectivity = true
+      // Originally set to `true`
+      // Fails faster when connection is not available.
+      // It is ignored by background sessions,
+      // background updates will still wait for the network.
+      config.waitsForConnectivity = false
     }
 
     if #available(iOS 13.0, *) {

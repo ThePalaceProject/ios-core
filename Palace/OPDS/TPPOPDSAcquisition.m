@@ -11,6 +11,7 @@ static NSString *const genericRelationString = @"http://opds-spec.org/acquisitio
 static NSString *const openAccessRelationString = @"http://opds-spec.org/acquisition/open-access";
 static NSString *const sampleRelationString = @"http://opds-spec.org/acquisition/sample";
 static NSString *const subscribeRelationString = @"http://opds-spec.org/acquisition/subscribe";
+static NSString *const previewRelationString = @"preview";
 
 static NSString *const availabilityKey = @"availability";
 static NSString *const hrefURLKey = @"href";
@@ -28,6 +29,9 @@ static NSUInteger const numberOfRelations = 6;
 
 TPPOPDSAcquisitionRelationSet const NYPLOPDSAcquisitionRelationSetAll = (1 << (numberOfRelations)) - 1;
 
+TPPOPDSAcquisitionRelationSet const TPPOPDSAcquisitionRelationSetDefaultAcquisition =
+  NYPLOPDSAcquisitionRelationSetAll ^ TPPOPDSAcquisitionRelationSetSample;
+
 TPPOPDSAcquisitionRelationSet
 NYPLOPDSAcquisitionRelationSetWithRelation(TPPOPDSAcquisitionRelation relation)
 {
@@ -38,6 +42,8 @@ NYPLOPDSAcquisitionRelationSetWithRelation(TPPOPDSAcquisitionRelation relation)
       return TPPOPDSAcquisitionRelationSetBorrow;
     case TPPOPDSAcquisitionRelationSample:
       return TPPOPDSAcquisitionRelationSetSample;
+    case TPPOPDSAcquisitionRelationPreview:
+      return TPPOPDSAcquisitionRelationSetPreview;
     case TPPOPDSAcquisitionRelationGeneric:
       return TPPOPDSAcquisitionRelationSetGeneric;
     case TPPOPDSAcquisitionRelationSubscribe:
@@ -67,6 +73,7 @@ NYPLOPDSAcquisitionRelationWithString(NSString *const _Nonnull string,
       borrowRelationString: @(TPPOPDSAcquisitionRelationBorrow),
       buyRelationString: @(TPPOPDSAcquisitionRelationBuy),
       sampleRelationString: @(TPPOPDSAcquisitionRelationSample),
+      previewRelationString: @(TPPOPDSAcquisitionRelationPreview),
       subscribeRelationString: @(TPPOPDSAcquisitionRelationSubscribe)
     };
   }
@@ -95,6 +102,8 @@ NYPLOPDSAcquisitionRelationString(TPPOPDSAcquisitionRelation const relation)
       return buyRelationString;
     case TPPOPDSAcquisitionRelationSample:
       return sampleRelationString;
+    case TPPOPDSAcquisitionRelationPreview:
+      return previewRelationString;
     case TPPOPDSAcquisitionRelationSubscribe:
       return subscribeRelationString;
   }

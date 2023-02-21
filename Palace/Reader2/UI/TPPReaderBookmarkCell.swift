@@ -22,7 +22,7 @@ import UIKit
     let progress = String.localizedStringWithFormat(NSLocalizedString("%@ through chapter", comment: "A concise string that expreses the percent progress, where %@ is the percentage"), percentInChapter)
     pageNumberLabel.text = "\(formattedBookmarkDate) - \(progress)"
 
-    let textColor = TPPReaderSettings.shared().foregroundColor
+    let textColor = TPPAssociatedColors.shared.appearanceColors.textColor
     chapterLabel.textColor = textColor;
     pageNumberLabel.textColor = textColor;
   }

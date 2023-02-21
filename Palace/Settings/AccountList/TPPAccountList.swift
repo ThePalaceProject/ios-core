@@ -16,7 +16,7 @@ final class TPPAccountList: UIViewController {
   private var estimatedRowHeight: CGFloat = 100
   private var sectionHeaderSize: CGFloat = 20
   
-  required init(completion: @escaping (Account) -> ()) {
+  @objc required init(completion: @escaping (Account) -> ()) {
     self.completion = completion
     super.init(nibName:nil, bundle:nil)
   }

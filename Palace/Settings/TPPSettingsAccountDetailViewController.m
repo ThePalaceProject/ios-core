@@ -3,8 +3,6 @@
 @import MessageUI;
 @import PureLayout;
 
-#import "TPPBookCoverRegistry.h"
-#import "TPPBookRegistry.h"
 #import "TPPCatalogNavigationController.h"
 #import "TPPConfiguration.h"
 #import "TPPLinearView.h"
@@ -29,11 +27,13 @@ typedef NS_ENUM(NSInteger, CellKind) {
   CellKindBarcode,
   CellKindPIN,
   CellKindLogInSignOut,
+  CellKindRegistration,
   CellKindSyncButton,
   CellKindAbout,
   CellKindPrivacyPolicy,
   CellKindContentLicense,
-  CellReportIssue
+  CellReportIssue,
+  CellKindPasswordReset
 };
 
 @interface TPPSettingsAccountDetailViewController () <TPPSignInOutBusinessLogicUIDelegate>
@@ -158,7 +158,7 @@ Authenticating with any of those barcodes should work.
                         initWithLibraryAccountID:libraryUUID
                         libraryAccountsProvider:AccountsManager.shared
                         urlSettingsProvider: TPPSettings.shared
-                        bookRegistry:[TPPBookRegistry sharedRegistry]
+                        bookRegistry:[TPPBookRegistry shared]
                         bookDownloadsCenter:[TPPMyBooksDownloadCenter sharedDownloadCenter]
                         userAccountProvider:[TPPUserAccount class]
                         uiDelegate:self
@@ -211,8 +211,9 @@ Authenticating with any of those barcodes should work.
   
   self.view.backgroundColor = [TPPConfiguration backgroundColor];
   self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeInteractive;
+  [self setupHeaderView];
 
-  UIActivityIndicatorView *activityIndicator = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle: UIActivityIndicatorViewStyleGray];
+  UIActivityIndicatorView *activityIndicator = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle: UIActivityIndicatorViewStyleMedium];
   activityIndicator.center = CGPointMake(self.view.frame.size.width / 2, self.view.frame.size.height / 2);
   [self.view addSubview:activityIndicator];
   [activityIndicator startAnimating];
@@ -240,7 +241,7 @@ Authenticating with any of those barcodes should work.
       } else {
         dispatch_async(dispatch_get_main_queue(), ^{
           [activityIndicator removeFromSuperview];
-          [weakSelf displayErrorMessage:NSLocalizedString(@"CheckConnection", nil)];
+          [weakSelf displayErrorMessage:NSLocalizedString(@"Please check your connection and try again.", nil)];
         });
       }
     }];
@@ -261,7 +262,7 @@ Authenticating with any of those barcodes should work.
   self.usernameTextField = [[UITextField alloc] initWithFrame:CGRectZero];
   self.usernameTextField.delegate = self.frontEndValidator;
   self.usernameTextField.placeholder =
-  self.businessLogic.selectedAuthentication.patronIDLabel ?: NSLocalizedString(@"BarcodeOrUsername", nil);
+  self.businessLogic.selectedAuthentication.patronIDLabel ?: NSLocalizedString(@"Barcode or Username", nil);
 
   switch (self.businessLogic.selectedAuthentication.patronIDKeyboard) {
     case LoginKeyboardStandard:
@@ -396,6 +397,11 @@ Authenticating with any of those barcodes should work.
       // no method header needed
       [workingSection addObjectsFromArray:[self cellsForAuthMethod:self.businessLogic.selectedAuthentication]];
     }
+    
+    if (self.businessLogic.canResetPassword) {
+      [workingSection addObject:@(CellKindPasswordReset)];
+    }
+    
   } else {
     [workingSection addObjectsFromArray:[self cellsForAuthMethod:self.businessLogic.selectedAuthentication]];
   }
@@ -424,9 +430,13 @@ Authenticating with any of those barcodes should work.
     [section2About addObject:@(CellKindAdvancedSettings)];
   }
   
-  self.tableData = @[section0AcctInfo, section1Sync].mutableCopy;
+  if ([self.businessLogic registrationIsPossible])   {
+    self.tableData = @[section0AcctInfo, @[@(CellKindRegistration)], section1Sync].mutableCopy;
+  } else {
+    self.tableData = @[section0AcctInfo, section1Sync].mutableCopy;
+  }
 
-  if (self.selectedAccount.supportEmail != nil) {
+  if (self.selectedAccount.hasSupportOption) {
     [self.tableData addObject:@[@(CellReportIssue)]];
   }
   
@@ -544,7 +554,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
             weakSelf.selectedAccount.details.userAboveAgeLimit = aboveAgeLimit;
             if (!aboveAgeLimit) {
               [[TPPMyBooksDownloadCenter sharedDownloadCenter] reset:weakSelf.selectedAccountId];
-              [[TPPBookRegistry sharedRegistry] reset:weakSelf.selectedAccountId];
+              [[TPPBookRegistry shared] reset:weakSelf.selectedAccountId];
             }
             TPPCatalogNavigationController *catalog = (TPPCatalogNavigationController*)[TPPRootTabBarController sharedController].viewControllers[0];
             [catalog popToRootViewControllerAnimated:NO];
@@ -570,9 +580,9 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
           logoutString = NSLocalizedString(@"If you sign out, your books and any saved bookmarks will be removed.", nil);
         }
         UIAlertController *const alertController =
-        (UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad &&
+        (UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad &&
          (self.traitCollection.horizontalSizeClass != UIUserInterfaceSizeClassCompact))
-        ? [UIAlertController alertControllerWithTitle:NSLocalizedString(@"SignOut", nil)
+        ? [UIAlertController alertControllerWithTitle:NSLocalizedString(@"Sign out", nil)
                                               message:logoutString
                                        preferredStyle:UIAlertControllerStyleAlert]
         : [UIAlertController alertControllerWithTitle:logoutString
@@ -581,7 +591,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
         alertController.popoverPresentationController.sourceRect = self.view.bounds;
         alertController.popoverPresentationController.sourceView = self.view;
         [alertController addAction:[UIAlertAction
-                                    actionWithTitle:NSLocalizedString(@"SignOut", @"Title for sign out action")
+                                    actionWithTitle:NSLocalizedString(@"Sign out", @"Title for sign out action")
                                     style:UIAlertActionStyleDestructive
                                     handler:^(__attribute__((unused)) UIAlertAction *action) {
                                       [self logOut];
@@ -596,6 +606,12 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
       } else {
         [self.businessLogic logIn];
       }
+      break;
+    }
+    case CellKindRegistration: {
+      [self.tableView deselectRowAtIndexPath:indexPath animated:YES];
+      UITableViewCell *cell = [tableView cellForRowAtIndexPath:indexPath];
+      [self didSelectRegularSignupOnCell:cell];
       break;
     }
     case CellKindSyncButton: {
@@ -629,13 +645,21 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
       break;
     }
     case CellReportIssue: {
-      [[ProblemReportEmail sharedInstance]
-       beginComposingTo:self.selectedAccount.supportEmail
-       presentingViewController:self
-       book:nil];
-      [self.tableView deselectRowAtIndexPath:indexPath animated:YES];
-      break;
+      if (self.selectedAccount.supportEmail) {
+          [[ProblemReportEmail sharedInstance]
+           beginComposingTo:self.selectedAccount.supportEmail.rawValue
+           presentingViewController:self
+           book:nil];
+          [self.tableView deselectRowAtIndexPath:indexPath animated:YES];
+          break;
+      } else {
+        BundledHTMLViewController *webController = [[BundledHTMLViewController alloc] initWithFileURL:AccountsManager.sharedInstance.currentAccount.supportURL title:AccountsManager.shared.currentAccount.name];
+        webController.hidesBottomBarWhenPushed = true;
+        [self.navigationController pushViewController:webController animated:YES];
+        break;
+      }
     }
+    
     case CellKindAbout: {
       RemoteHTMLViewController *vc = [[RemoteHTMLViewController alloc]
                                       initWithURL:[self.selectedAccount.details getLicenseURL:URLTypeAcknowledgements]
@@ -647,7 +671,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
     case CellKindPrivacyPolicy: {
       RemoteHTMLViewController *vc = [[RemoteHTMLViewController alloc]
                                       initWithURL:[self.selectedAccount.details getLicenseURL:URLTypePrivacyPolicy]
-                                      title:NSLocalizedString(@"PrivacyPolicy", nil)
+                                      title:NSLocalizedString(@"Privacy Policy", nil)
                                       failureMessage:NSLocalizedString(@"The page could not load due to a connection error.", nil)];
       [self.navigationController pushViewController:vc animated:YES];
       break;
@@ -655,15 +679,47 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
     case CellKindContentLicense: {
       RemoteHTMLViewController *vc = [[RemoteHTMLViewController alloc]
                                       initWithURL:[self.selectedAccount.details getLicenseURL:URLTypeContentLicenses]
-                                      title:NSLocalizedString(@"ContentLicenses", nil)
+                                      title:NSLocalizedString(@"Content Licenses", nil)
                                       failureMessage:NSLocalizedString(@"The page could not load due to a connection error.", nil)];
       [self.navigationController pushViewController:vc animated:YES];
       break;
     }
+    case CellKindPasswordReset:
+      [self.tableView deselectRowAtIndexPath:indexPath animated:YES];
+      [self.businessLogic resetPassword];
+      break;
   }
 }
 
-- (void)didSelectCancelForSignUp
+- (void)didSelectRegularSignupOnCell:(UITableViewCell *)cell
+{
+  [cell setUserInteractionEnabled:NO];
+  __weak __auto_type weakSelf = self;
+  [self.businessLogic startRegularCardCreationWithCompletion:^(UINavigationController * _Nullable navVC, NSError * _Nullable error) {
+    [cell setUserInteractionEnabled:YES];
+    if (error) {
+      UIAlertController *alert = [TPPAlertUtils alertWithTitle:NSLocalizedString(@"Error", "Alert title") error:error];
+      [TPPAlertUtils presentFromViewControllerOrNilWithAlertController:alert
+                                                         viewController:nil
+                                                               animated:YES
+                                                             completion:nil];
+      return;
+    }
+
+    [TPPMainThreadRun asyncIfNeeded:^{
+      navVC.navigationBar.topItem.leftBarButtonItem =
+      [[UIBarButtonItem alloc] initWithTitle:NSLocalizedString(@"Back", nil)
+                                       style:UIBarButtonItemStylePlain
+                                      target:weakSelf
+                                      action:@selector(didSelectBackForSignUp)];
+      navVC.modalPresentationStyle = UIModalPresentationFormSheet;
+      [weakSelf presentViewController:navVC animated:YES completion:nil];
+    }];
+
+  }];
+}
+
+- (void)didSelectBackForSignUp
 {
   [self dismissViewControllerAnimated:YES completion:nil];
 }
@@ -806,6 +862,9 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
       [self updateLoginLogoutCellAppearance];
       return self.logInSignOutCell;
     }
+    case CellKindRegistration: {
+      return [self createRegistrationCell];
+    }
     case CellKindAgeCheck: {
       self.ageCheckCell = [[UITableViewCell alloc]
                            initWithStyle:UITableViewCellStyleDefault
@@ -858,7 +917,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
                                      reuseIdentifier:nil];
       cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
       cell.textLabel.font = [UIFont customFontForTextStyle:UIFontTextStyleBody];
-      cell.textLabel.text = NSLocalizedString(@"PrivacyPolicy", nil);
+      cell.textLabel.text = NSLocalizedString(@"Privacy Policy", nil);
       cell.hidden = ([self.selectedAccount.details getLicenseURL:URLTypePrivacyPolicy]) ? NO : YES;
       return cell;
     }
@@ -868,7 +927,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
                                      reuseIdentifier:nil];
       cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
       cell.textLabel.font = [UIFont customFontForTextStyle:UIFontTextStyleBody];
-      cell.textLabel.text = NSLocalizedString(@"ContentLicenses", nil);
+      cell.textLabel.text = NSLocalizedString(@"Content Licenses", nil);
       cell.hidden = ([self.selectedAccount.details getLicenseURL:URLTypeContentLicenses]) ? NO : YES;
       return cell;
     }
@@ -881,7 +940,15 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
       cell.textLabel.text = NSLocalizedString(@"Advanced", nil);
       return cell;
     }
+    case CellKindPasswordReset:
+      return [self createPasswordResetCell];
   }
+}
+
+- (UITableViewCell *)createPasswordResetCell {
+  UITableViewCell *cell = [[UITableViewCell alloc] init];
+  cell.textLabel.text = NSLocalizedString(@"Forgot your password?", "Password Reset");
+  return cell;
 }
 
 - (UITableViewCell *)createRegistrationCell
@@ -894,7 +961,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
   regTitle.numberOfLines = 2;
   regTitle.text = NSLocalizedString(@"Don't have a library card?", @"Title for registration. Asking the user if they already have a library card.");
   regButton.font = [UIFont customFontForTextStyle:UIFontTextStyleBody];
-  regButton.text = NSLocalizedString(@"SignUp", nil);
+  regButton.text = NSLocalizedString(@"Create Card", nil);
   regButton.textColor = [TPPConfiguration mainColor];
 
   [containerView addSubview:regTitle];
@@ -969,46 +1036,42 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
   return UITableViewAutomaticDimension;
 }
 
-- (UIView *)tableView:(__unused UITableView *)tableView viewForHeaderInSection:(NSInteger)section
+- (void) setupHeaderView
 {
-  if (section == sSection0AccountInfo) {
-    UIView *containerView = [[UIView alloc] init];
-    containerView.preservesSuperviewLayoutMargins = YES;
-    UILabel *titleLabel = [[UILabel alloc] init];
-    UILabel *subtitleLabel = [[UILabel alloc] init];
-    subtitleLabel.numberOfLines = 0;
-    UIImageView *logoView = [[UIImageView alloc] initWithImage:self.selectedAccount.logo];
-    logoView.contentMode = UIViewContentModeScaleAspectFit;
-    
-    titleLabel.text = self.selectedAccount.name;
-    titleLabel.font = [UIFont palaceFontOfSize:14];
-    subtitleLabel.text = self.selectedAccount.subtitle;
-    if (subtitleLabel.text == nil || [subtitleLabel.text isEqualToString:@""]) {
-      subtitleLabel.text = @" "; // Make sure it takes up at least some space
-    }
-    subtitleLabel.font = [UIFont palaceFontOfSize:12];
-    
-    [containerView addSubview:titleLabel];
-    [containerView addSubview:subtitleLabel];
-    [containerView addSubview:logoView];
-    
-    [logoView autoSetDimensionsToSize:CGSizeMake(45, 45)];
-    [logoView autoPinEdgeToSuperviewMargin:ALEdgeLeft];
-    [logoView autoPinEdgeToSuperviewEdge:ALEdgeTop withInset:16];
-    
-    [titleLabel autoPinEdgeToSuperviewEdge:ALEdgeTop withInset:16];
-    [titleLabel autoPinEdgeToSuperviewMargin:ALEdgeRight];
-    [titleLabel autoPinEdge:ALEdgeLeft toEdge:ALEdgeRight ofView:logoView withOffset:8];
-    
-    [subtitleLabel autoPinEdge:ALEdgeLeft toEdge:ALEdgeLeft ofView:titleLabel];
-    [subtitleLabel autoPinEdge:ALEdgeRight toEdge:ALEdgeRight ofView:titleLabel];
-    [subtitleLabel autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:titleLabel withOffset:0];
-    [subtitleLabel autoPinEdgeToSuperviewEdge:ALEdgeBottom withInset:20];
+  UIView *headerView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, self.tableView.frame.size.width, 100)];
+  UIView *containerView = [[UIView alloc] init];
+  
+  UIView *imageViewHolder = [[UIView alloc] init];
+  [imageViewHolder autoSetDimension:ALDimensionHeight toSize:50.0];
+  [imageViewHolder autoSetDimension:ALDimensionWidth toSize:50.0];
 
-    self.accountInfoHeaderView = containerView;
-    return containerView;
-  }
-  return nil;
+  UIImageView *imageView = [[UIImageView alloc] initWithFrame:CGRectMake(0, 0, 75, 75)];
+  imageView.image = self.selectedAccount.logo;
+  imageView.contentMode = UIViewContentModeScaleAspectFit;
+  [imageViewHolder addSubview: imageView];
+
+  [imageView autoPinEdgesToSuperviewEdges];
+  
+  [headerView addSubview:containerView];
+  [containerView addSubview:imageViewHolder];
+  
+  UILabel *titleLabel = [[UILabel alloc] init];
+  titleLabel.numberOfLines = 0;
+  titleLabel.textAlignment = NSTextAlignmentCenter;
+  titleLabel.textColor = [UIColor grayColor];
+  titleLabel.lineBreakMode = NSLineBreakByWordWrapping;
+  titleLabel.font = [UIFont boldSystemFontOfSize:18.0];
+  titleLabel.text = self.selectedAccount.name;
+  [containerView addSubview: titleLabel];
+
+  self.tableView.tableHeaderView = headerView;
+
+  [containerView autoAlignAxisToSuperviewAxis:ALAxisHorizontal];
+  [containerView autoAlignAxisToSuperviewAxis:ALAxisVertical];
+  [containerView autoPinEdgesToSuperviewMarginsWithInsets:UIEdgeInsetsMake(10, 10, 10, 10)];
+  [imageViewHolder autoPinEdgesToSuperviewMarginsExcludingEdge:ALEdgeTrailing];
+  [titleLabel autoPinEdgesToSuperviewMarginsExcludingEdge:ALEdgeLeading];
+  [imageViewHolder autoPinEdge:ALEdgeTrailing toEdge:ALEdgeLeading ofView:titleLabel withOffset:-10];
 }
 
 - (UIView *)tableView:(UITableView *)__unused tableView viewForFooterInSection:(NSInteger)section
@@ -1033,7 +1096,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
                                         NSUnderlineStyleAttributeName :
                                           @(NSUnderlineStyleSingle) };
       eulaString = [[NSMutableAttributedString alloc]
-                    initWithString:NSLocalizedString(@"SigningInAgree", nil) attributes:linkAttributes];
+                    initWithString:NSLocalizedString(@"By signing in, you agree to the End User License Agreement.", nil) attributes:linkAttributes];
     } else { // sync section
       NSDictionary *attrs;
       attrs = @{ NSForegroundColorAttributeName : [UIColor defaultLabelColor] };
@@ -1075,7 +1138,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
   // least work very well.
   
   [[NSOperationQueue mainQueue] addOperationWithBlock:^{
-    if((UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPhone) ||
+    if((UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPhone) ||
        (self.traitCollection.horizontalSizeClass == UIUserInterfaceSizeClassCompact &&
         self.traitCollection.verticalSizeClass == UIUserInterfaceSizeClassCompact)) {
       CGSize const keyboardSize =
@@ -1102,7 +1165,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
     LAContext *const context = [[LAContext alloc] init];
     if([context canEvaluatePolicy:LAPolicyDeviceOwnerAuthentication error:NULL]) {
       [context evaluatePolicy:LAPolicyDeviceOwnerAuthentication
-              localizedReason:NSLocalizedString(@"SettingsAccountViewControllerAuthenticationReason", nil)
+              localizedReason:NSLocalizedString(@"Authenticate to reveal your PIN.", nil)
                         reply:^(BOOL success, NSError *_Nullable error) {
         if(success) {
           [[NSOperationQueue mainQueue] addOperationWithBlock:^{
@@ -1182,12 +1245,12 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
       return;
     }
 
-    self.logInSignOutCell.textLabel.text = NSLocalizedString(@"SignOut", @"Title for sign out action");
+    self.logInSignOutCell.textLabel.text = NSLocalizedString(@"Sign out", @"Title for sign out action");
     self.logInSignOutCell.textLabel.textAlignment = NSTextAlignmentCenter;
     self.logInSignOutCell.textLabel.textColor = [TPPConfiguration mainColor];
     self.logInSignOutCell.userInteractionEnabled = YES;
   } else {
-    self.logInSignOutCell.textLabel.text = NSLocalizedString(@"LogIn", nil);
+    self.logInSignOutCell.textLabel.text = NSLocalizedString(@"Sign in", nil);
     self.logInSignOutCell.textLabel.textAlignment = NSTextAlignmentLeft;
     BOOL const barcodeHasText = [self.usernameTextField.text
                                  stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]].length;
@@ -1424,7 +1487,7 @@ didEncounterSignOutError:(NSError *)error
 - (void)businessLogicWillSignOut:(TPPSignInBusinessLogic *)businessLogic
 {
 #if defined(FEATURE_DRM_CONNECTOR)
-  [self setActivityTitleWithText:NSLocalizedString(@"SigningOut", nil)];
+  [self setActivityTitleWithText:NSLocalizedString(@"Signing out", nil)];
 #endif
 }
 

@@ -20,7 +20,7 @@ typedef NS_ENUM(NSInteger, TPPBookState);
 
 static CGFloat const SummaryTextAbbreviatedHeight = 150.0;
 
-@interface TPPBookDetailView : UIScrollView
+@interface TPPBookDetailView : UIView
 
 @property (nonatomic) TPPBook *book;
 @property (nonatomic) double downloadProgress;

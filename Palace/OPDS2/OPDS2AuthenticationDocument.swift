@@ -8,6 +8,10 @@
 
 import Foundation
 
+enum OPDS2LinkRel: String {
+  case passwordReset = "http://librarysimplified.org/terms/rel/patron-password-reset"
+}
+
 struct Announcement: Codable {
   let id: String
   let content: String

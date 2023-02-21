@@ -24,6 +24,8 @@ git submodule deinit adobe-content-filter
 git rm -rf adobe-content-filter
 git submodule deinit ios-drm-audioengine
 git rm -rf ios-drm-audioengine
+git submodule deinit ios-audiobook-overdrive
+git rm -rf ios-audiobook-overdrive
 
 git submodule update --init --recursive
 

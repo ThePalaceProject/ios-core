@@ -138,7 +138,6 @@
     [self load];
   }
 
-  [[TPPBookRegistry sharedRegistry] justLoad];
   UIApplicationState applicationState = [[UIApplication sharedApplication] applicationState];
   if (applicationState == UIApplicationStateActive) {
     [self syncBookRegistryForNewFeed];
@@ -161,11 +160,7 @@
 {
   UIApplicationState applicationState = [[UIApplication sharedApplication] applicationState];
   if (applicationState == UIApplicationStateActive) {
-    [[TPPBookRegistry sharedRegistry] syncResettingCache:NO completionHandler:^(NSDictionary *errorDict) {
-      if (errorDict == nil) {
-        [[TPPBookRegistry sharedRegistry] save];
-      }
-    }];
+    [[TPPBookRegistry shared] sync];
   }
 }
 

@@ -61,7 +61,7 @@ extension TPPMigrationManager {
 
     // Assign new uuid account list
     // The list of accounts would have been integers before; they will now be stored as a list of strings
-    TPPSettings.shared.settingsAccountsList = newAccountsList
+    TPPSettings.shared.settingsAccountIdsList = newAccountsList
 
     // Migrate currentAccount
     // The old account ID that's being stored in the user defaults will be replaces with the string UUID

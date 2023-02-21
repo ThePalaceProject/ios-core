@@ -21,13 +21,14 @@ protocol ReaderFormatModule {
   
   var delegate: ModuleDelegate? { get }
   
-  /// Publication types handled by this sub-module.
-  var publicationFormats: [Publication.Format] { get }
-  
+  /// Returns whether the given publication is supported by this module.
+  func supports(_ publication: Publication) -> Bool
+
   /// Creates the view controller to present the publication.
   func makeReaderViewController(for publication: Publication,
                                 book: TPPBook,
-                                initialLocation: Locator?) throws -> UIViewController
+                                initialLocation: Locator?,
+                                forSample: Bool) throws -> UIViewController
   
 }
 

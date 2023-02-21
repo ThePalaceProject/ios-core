@@ -16,12 +16,13 @@ import R2Shared
 
 /// This class is meant to be subclassed by each publication format view controller. It contains the shared behavior, eg. navigation bar toggling.
 class TPPBaseReaderViewController: UIViewController, Loggable {
+  typealias DisplayStrings = Strings.TPPBaseReaderViewController
 
   private static let bookmarkOnImageName = "BookmarkOn"
   private static let bookmarkOffImageName = "BookmarkOff"
 
   // Side margins for long labels
-  private static let overlayLabelMargin: CGFloat = 20
+  static let overlayLabelMargin: CGFloat = 20
   
   // TODO: SIMPLY-2656 See if we still need this.
   weak var moduleDelegate: ModuleDelegate?
@@ -38,6 +39,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   private(set) var stackView: UIStackView!
   private lazy var positionLabel = UILabel()
   private lazy var bookTitleLabel = UILabel()
+  private var isShowingSample: Bool = false
 
   // MARK: - Lifecycle
 
@@ -49,28 +51,30 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   ///   - drm: Information about the DRM associated with the publication.
   init(navigator: UIViewController & Navigator,
        publication: Publication,
-       book: TPPBook) {
+       book: TPPBook,
+       forSample: Bool = false) {
 
     self.navigator = navigator
     self.publication = publication
+    self.isShowingSample = forSample
 
     lastReadPositionPoster = TPPLastReadPositionPoster(
       book: book,
       r2Publication: publication,
-      bookRegistryProvider: TPPBookRegistry.shared())
+      bookRegistryProvider: TPPBookRegistry.shared)
 
     bookmarksBusinessLogic = TPPReaderBookmarksBusinessLogic(
       book: book,
       r2Publication: publication,
       drmDeviceID: TPPUserAccount.sharedAccount().deviceID,
-      bookRegistryProvider: TPPBookRegistry.shared(),
+      bookRegistryProvider: TPPBookRegistry.shared,
       currentLibraryAccountProvider: AccountsManager.shared)
 
     bookmarksBusinessLogic.syncBookmarks { (_, _) in }
 
     super.init(nibName: nil, bundle: nil)
 
-    NotificationCenter.default.addObserver(self, selector: #selector(voiceOverStatusDidChange), name: Notification.Name(UIAccessibilityVoiceOverStatusChanged), object: nil)
+    NotificationCenter.default.addObserver(self, selector: #selector(voiceOverStatusDidChange), name: Notification.Name(UIAccessibility.voiceOverStatusDidChangeNotification.rawValue), object: nil)
   }
 
   @available(*, unavailable)
@@ -103,7 +107,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     NSLayoutConstraint.activate([
       topConstraint,
       stackView.rightAnchor.constraint(equalTo: view.rightAnchor),
-      stackView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+      stackView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
       stackView.leftAnchor.constraint(equalTo: view.leftAnchor)
     ])
 
@@ -141,14 +145,12 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
       layoutConstraints.append(bookTitleLabel.topAnchor.constraint(equalTo: navigator.view.topAnchor, constant: TPPBaseReaderViewController.overlayLabelMargin))
     }
     NSLayoutConstraint.activate(layoutConstraints)
+    
+    updateViewsForVoiceOver(isRunning: UIAccessibility.isVoiceOverRunning)
   }
 
   override func willMove(toParent parent: UIViewController?) {
     super.willMove(toParent: parent)
-
-    if parent == nil {
-      TPPBookRegistry.shared().save()
-    }
   }
 
 
@@ -168,12 +170,16 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
                                       style: .plain,
                                       target: self,
                                       action: #selector(toggleBookmark))
-
     let tocButton = UIBarButtonItem(image: UIImage(named: "TOC"),
                                     style: .plain,
                                     target: self,
                                     action: #selector(presentPositionsVC))
-    buttons.append(bookmarkBtn)
+    tocButton.accessibilityLabel = DisplayStrings.tocAndBookmarks
+    
+    if !isShowingSample {
+      buttons.append(bookmarkBtn)
+    }
+
     buttons.append(tocButton)
     tocBarButton = tocButton
     bookmarkBarButton = bookmarkBtn
@@ -189,18 +195,16 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
 
     if isOn {
       btn.image = UIImage(named: TPPBaseReaderViewController.bookmarkOnImageName)
-      btn.accessibilityLabel = NSLocalizedString("Remove Bookmark",
-                                                 comment: "Accessibility label for button to remove a bookmark")
+      btn.accessibilityLabel = DisplayStrings.removeBookmark
     } else {
       btn.image = UIImage(named: TPPBaseReaderViewController.bookmarkOffImageName)
-      btn.accessibilityLabel = NSLocalizedString("Add Bookmark",
-                                                 comment: "Accessibility label for button to add a bookmark")
+      btn.accessibilityLabel = DisplayStrings.addBookmark
     }
   }
 
   func toggleNavigationBar() {
     navigationBarHidden = !navigationBarHidden
-    bookTitleLabel.isHidden = !navigationBarHidden
+    bookTitleLabel.isHidden = UIAccessibility.isVoiceOverRunning || !navigationBarHidden
   }
 
   func updateNavigationBar(animated: Bool = true) {
@@ -315,11 +319,14 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     }
 
     let toolbar = UIToolbar(frame: .zero)
+    let backButton = makeItem(.rewind, label: DisplayStrings.previousChapter, action: #selector(goBackward))
+    let forwardButton = makeItem(.fastForward, label: DisplayStrings.nextChapter, action: #selector(goForward))
+        
     toolbar.items = [
       makeItem(.flexibleSpace),
-      makeItem(.rewind, label: NSLocalizedString("Previous Chapter", comment: "Accessibility label to go backward in the publication"), action: #selector(goBackward)),
+      forwardButton,
       makeItem(.flexibleSpace),
-      makeItem(.fastForward, label: NSLocalizedString("Next Chapter", comment: "Accessibility label to go forward in the publication"), action: #selector(goForward)),
+      backButton,
       makeItem(.flexibleSpace),
     ]
     toolbar.isHidden = !UIAccessibility.isVoiceOverRunning
@@ -329,15 +336,21 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
 
   private var isVoiceOverRunning = UIAccessibility.isVoiceOverRunning
 
-  @objc private func voiceOverStatusDidChange() {
+  @objc func voiceOverStatusDidChange() {
     let isRunning = UIAccessibility.isVoiceOverRunning
     // Avoids excessive settings refresh when the status didn't change.
     guard isVoiceOverRunning != isRunning else {
       return
     }
+    updateViewsForVoiceOver(isRunning: isRunning)
+  }
+  
+  func updateViewsForVoiceOver(isRunning: Bool) {
     isVoiceOverRunning = isRunning
     accessibilityTopMargin.isActive = isRunning
     accessibilityToolbar.isHidden = !isRunning
+    positionLabel.isHidden = isRunning
+    bookTitleLabel.isHidden = isRunning
     updateNavigationBar()
   }
 
@@ -368,7 +381,7 @@ extension TPPBaseReaderViewController: NavigatorDelegate {
       }
       
       if let position = locator.locations.position {
-        return "Page \(position) of \(publication.positions.count)" + chapterTitle
+        return String(format: Strings.TPPBaseReaderViewController.pageOf, position) + "\(publication.positions.count)" + chapterTitle
       } else if let progression = locator.locations.totalProgression {
         return "\(progression)%" + chapterTitle
       } else {

@@ -7,8 +7,6 @@
 
 #import "TPPAccountSignInViewController.h"
 #import "TPPAppDelegate.h"
-#import "TPPBookCoverRegistry.h"
-#import "TPPBookRegistry.h"
 #import "TPPConfiguration.h"
 #import "TPPLinearView.h"
 #import "TPPOPDSFeed.h"
@@ -28,7 +26,9 @@ static NSInteger sLinearViewTag = 1111;
 typedef NS_ENUM(NSInteger, CellKind) {
   CellKindBarcode,
   CellKindPIN,
-  CellKindLogIn
+  CellKindLogIn,
+  CellKindRegistration,
+  CellKindPasswordReset
 };
 
 typedef NS_ENUM(NSInteger, Section) {
@@ -100,7 +100,7 @@ CGFloat const marginPadding = 2.0;
                         initWithLibraryAccountID:AccountsManager.shared.currentAccountId
                         libraryAccountsProvider:AccountsManager.shared
                         urlSettingsProvider: TPPSettings.shared
-                        bookRegistry:[TPPBookRegistry sharedRegistry]
+                        bookRegistry:[TPPBookRegistry shared]
                         bookDownloadsCenter:[TPPMyBooksDownloadCenter sharedDownloadCenter]
                         userAccountProvider:[TPPUserAccount class]
                         uiDelegate:self
@@ -112,7 +112,7 @@ CGFloat const marginPadding = 2.0;
 #endif
                         ];
 
-  self.title = NSLocalizedString(@"Sign In", nil);
+  self.title = NSLocalizedString(@"Sign in", nil);
 
   [[NSNotificationCenter defaultCenter]
    addObserver:self
@@ -161,7 +161,7 @@ CGFloat const marginPadding = 2.0;
 
   self.usernameTextField = [[UITextField alloc] initWithFrame:CGRectZero];
   self.usernameTextField.delegate = self.frontEndValidator;
-  self.usernameTextField.placeholder = NSLocalizedString(@"BarcodeOrUsername", nil);
+  self.usernameTextField.placeholder = AccountsManager.shared.currentAccount.details.defaultAuth.patronIDLabel ?: NSLocalizedString(@"Barcode or Username", nil);
 
   switch (self.businessLogic.selectedAuthentication.patronIDKeyboard) {
     case LoginKeyboardStandard:
@@ -184,7 +184,7 @@ CGFloat const marginPadding = 2.0;
    forControlEvents:UIControlEventEditingChanged];
   
   self.PINTextField = [[UITextField alloc] initWithFrame:CGRectZero];
-  self.PINTextField.placeholder = NSLocalizedString(@"PIN", nil);
+  self.PINTextField.placeholder = self.businessLogic.selectedAuthentication.pinLabel ?: NSLocalizedString(@"PIN", nil);
 
   switch (self.businessLogic.selectedAuthentication.pinKeyboard) {
     case LoginKeyboardStandard:
@@ -222,7 +222,6 @@ CGFloat const marginPadding = 2.0;
   self.logInCell = [[UITableViewCell alloc]
                     initWithStyle:UITableViewCellStyleDefault
                     reuseIdentifier:nil];
-
   [self setupTableData];
 }
 
@@ -239,6 +238,46 @@ CGFloat const marginPadding = 2.0;
     [self updateInputUIForcingEditability:self.forceEditability];
     [self updateShowHidePINState];
   }
+  
+  [self setupHeaderView];
+}
+
+- (void) setupHeaderView
+{
+  UIView *headerView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, self.tableView.frame.size.width, 100)];
+  UIView *containerView = [[UIView alloc] init];
+  
+  UIView *imageViewHolder = [[UIView alloc] init];
+  [imageViewHolder autoSetDimension:ALDimensionHeight toSize:50.0];
+  [imageViewHolder autoSetDimension:ALDimensionWidth toSize:50.0];
+
+  UIImageView *imageView = [[UIImageView alloc] initWithFrame:CGRectMake(0, 0, 75, 75)];
+  imageView.image = [[[AccountsManager shared] currentAccount] logo];
+  imageView.contentMode = UIViewContentModeScaleAspectFit;
+  [imageViewHolder addSubview: imageView];
+
+  [imageView autoPinEdgesToSuperviewEdges];
+  
+  [headerView addSubview:containerView];
+  [containerView addSubview:imageViewHolder];
+  
+  UILabel *titleLabel = [[UILabel alloc] init];
+  titleLabel.numberOfLines = 0;
+  titleLabel.textAlignment = NSTextAlignmentCenter;
+  titleLabel.textColor = [UIColor grayColor];
+  titleLabel.lineBreakMode = NSLineBreakByWordWrapping;
+  titleLabel.font = [UIFont boldSystemFontOfSize:18.0];
+  titleLabel.text = [[AccountsManager shared] currentAccount].name;
+  [containerView addSubview: titleLabel];
+  
+  self.tableView.tableHeaderView = headerView;
+  
+  [containerView autoAlignAxisToSuperviewAxis:ALAxisHorizontal];
+  [containerView autoAlignAxisToSuperviewAxis:ALAxisVertical];
+  [containerView autoPinEdgesToSuperviewMarginsWithInsets:UIEdgeInsetsMake(10, 10, 10, 10)];
+  [imageViewHolder autoPinEdgesToSuperviewMarginsExcludingEdge:ALEdgeTrailing];
+  [titleLabel autoPinEdgesToSuperviewMarginsExcludingEdge:ALEdgeLeading];
+  [imageViewHolder autoPinEdge:ALEdgeTrailing toEdge:ALEdgeLeading ofView:titleLabel withOffset:-10];
 }
 
 #if defined(FEATURE_DRM_CONNECTOR)
@@ -288,6 +327,15 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
     case CellKindLogIn:
       [self.tableView deselectRowAtIndexPath:indexPath animated:YES];
       [self.businessLogic logIn];
+      break;
+    case CellKindPasswordReset:
+      [self.tableView deselectRowAtIndexPath:indexPath animated:YES];
+      [self.businessLogic resetPassword];
+      break;
+    case CellKindRegistration:
+      [self.tableView deselectRowAtIndexPath:indexPath animated:YES];
+      UITableViewCell *cell = [tableView cellForRowAtIndexPath:indexPath];
+      [self didSelectRegularSignupOnCell:cell];
       break;
   }
 }
@@ -377,7 +425,18 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
       [self updateLoginCellAppearance];
       return self.logInCell;
     }
+    case CellKindRegistration: {
+      return [self createRegistrationCell];
+    }
+    case CellKindPasswordReset:
+      return [self passwordResetCell];
   }
+}
+
+- (UITableViewCell *)passwordResetCell {
+  UITableViewCell *cell = [[UITableViewCell alloc] init];
+  cell.textLabel.text = NSLocalizedString(@"Forgot your password?", "Password Reset");
+  return cell;
 }
 
 - (UITableViewCell *)createRegistrationCell
@@ -390,7 +449,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
   regTitle.numberOfLines = 2;
   regTitle.text = NSLocalizedString(@"Don't have a library card?", @"Title for registration. Asking the user if they already have a library card.");
   regButton.font = [UIFont customFontForTextStyle:UIFontTextStyleBody];
-  regButton.text = NSLocalizedString(@"SignUp", nil);
+  regButton.text = NSLocalizedString(@"Create Card", nil);
   regButton.textColor = [TPPConfiguration mainColor];
 
   [containerView addSubview:regTitle];
@@ -407,6 +466,34 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
   containerView.preservesSuperviewLayoutMargins = YES;
   [containerView autoPinEdgesToSuperviewEdges];
   return cell;
+}
+
+- (void)didSelectRegularSignupOnCell:(UITableViewCell *)cell
+{
+  [cell setUserInteractionEnabled:NO];
+  __weak __auto_type weakSelf = self;
+  [self.businessLogic startRegularCardCreationWithCompletion:^(UINavigationController * _Nullable navVC, NSError * _Nullable error) {
+    [cell setUserInteractionEnabled:YES];
+    if (error) {
+      UIAlertController *alert = [TPPAlertUtils alertWithTitle:NSLocalizedString(@"Error", "Alert title") error:error];
+      [TPPAlertUtils presentFromViewControllerOrNilWithAlertController:alert
+                                                         viewController:nil
+                                                               animated:YES
+                                                             completion:nil];
+      return;
+    }
+
+    [TPPMainThreadRun asyncIfNeeded:^{
+      navVC.navigationBar.topItem.leftBarButtonItem =
+      [[UIBarButtonItem alloc] initWithTitle:NSLocalizedString(@"Back", nil)
+                                       style:UIBarButtonItemStylePlain
+                                      target:weakSelf
+                                      action:@selector(didSelectBackForSignUp)];
+      navVC.modalPresentationStyle = UIModalPresentationFormSheet;
+      [weakSelf presentViewController:navVC animated:YES completion:nil];
+    }];
+
+  }];
 }
 
 - (NSInteger)numberOfSectionsInTableView:(__attribute__((unused)) UITableView *)tableView
@@ -456,7 +543,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
                                       NSUnderlineStyleAttributeName :
                                         @(NSUnderlineStyleSingle) };
     NSMutableAttributedString *eulaString = [[NSMutableAttributedString alloc]
-                                             initWithString:NSLocalizedString(@"SigningInAgree", nil) attributes:linkAttributes];
+                                             initWithString:NSLocalizedString(@"By signing in, you agree to the End User License Agreement.", nil) attributes:linkAttributes];
     footerLabel.attributedText = eulaString;
     [footerLabel addGestureRecognizer:[[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(showEULA)]];
 
@@ -508,10 +595,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
 - (void)presentAsModal
 {
   UIBarButtonItem *const cancelBarButtonItem =
-  [[UIBarButtonItem alloc]
-   initWithBarButtonSystemItem:UIBarButtonSystemItemCancel
-   target:self
-   action:@selector(didSelectCancel)];
+  [[UIBarButtonItem alloc] initWithTitle:NSLocalizedString(@"Cancel", "Cancel Button") style: UIBarButtonItemStylePlain target:self action:@selector(didSelectCancel)];
 
   self.navigationItem.leftBarButtonItem = cancelBarButtonItem;
   UINavigationController *const navVC = [[UINavigationController alloc]
@@ -589,6 +673,11 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
       // no method header needed
       [workingSection addObjectsFromArray:[self cellsForAuthMethod:self.businessLogic.selectedAuthentication]];
     }
+    
+    if (self.businessLogic.canResetPassword) {
+      [workingSection addObject:@(CellKindPasswordReset)];
+    }
+    
   } else {
     [workingSection addObjectsFromArray:[self cellsForAuthMethod:self.businessLogic.selectedAuthentication]];
   }
@@ -598,7 +687,13 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
 - (void)setupTableData
 {
   NSArray *section0AcctInfo = [self accountInfoSection];
-  self.tableData = @[section0AcctInfo];
+
+  if ([self.businessLogic registrationIsPossible])   {
+    self.tableData = @[section0AcctInfo, @[@(CellKindRegistration)]];
+  } else {
+    self.tableData = @[section0AcctInfo];
+  }
+  
   [self.tableView reloadData];
 }
 
@@ -610,7 +705,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
     LAContext *const context = [[LAContext alloc] init];
     if([context canEvaluatePolicy:LAPolicyDeviceOwnerAuthentication error:NULL]) {
       [context evaluatePolicy:LAPolicyDeviceOwnerAuthentication
-              localizedReason:NSLocalizedString(@"SettingsAccountViewControllerAuthenticationReason", nil)
+              localizedReason:NSLocalizedString(@"Authenticate to reveal your PIN.", nil)
                         reply:^(__unused BOOL success,
                                 __unused NSError *_Nullable error) {
                           if(success) {
@@ -677,7 +772,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
    completion:nil];
 }
 
-- (void)didSelectCancelForSignUp
+- (void)didSelectBackForSignUp
 {
   [self dismissViewControllerAnimated:YES completion:nil];
 }
@@ -735,7 +830,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
     return;
   }
 
-  self.logInCell.textLabel.text = NSLocalizedString(@"LogIn", nil);
+  self.logInCell.textLabel.text = NSLocalizedString(@"Sign in", nil);
   BOOL const barcodeHasText = [self.usernameTextField.text
                                stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]].length;
   BOOL const pinHasText = [self.PINTextField.text
@@ -780,7 +875,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
   
   UIActivityIndicatorView *const activityIndicatorView =
   [[UIActivityIndicatorView alloc]
-   initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleGray];
+   initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
   
   [activityIndicatorView startAnimating];
   
@@ -828,7 +923,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
   // least work very well.
   
   [[NSOperationQueue mainQueue] addOperationWithBlock:^{
-    if((UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPhone) ||
+    if((UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPhone) ||
        (self.traitCollection.horizontalSizeClass == UIUserInterfaceSizeClassCompact &&
         self.traitCollection.verticalSizeClass == UIUserInterfaceSizeClassCompact)) {
       CGSize const keyboardSize =

@@ -37,8 +37,8 @@ protocol ReaderModuleAPI {
   /// - Parameter completion: Called once the publication is presented, or if an error occured.
   func presentPublication(_ publication: Publication,
                           book: TPPBook,
-                          in navigationController: UINavigationController)
-  
+                          in navigationController: UINavigationController,
+                          forSample: Bool)
 }
 
 // MARK:-
@@ -72,12 +72,13 @@ final class ReaderModule: ReaderModuleAPI {
   
   func presentPublication(_ publication: Publication,
                           book: TPPBook,
-                          in navigationController: UINavigationController) {
+                          in navigationController: UINavigationController,
+                          forSample: Bool = false) {
     if delegate == nil {
       TPPErrorLogger.logError(nil, summary: "ReaderModule delegate is not set")
     }
     
-    guard let formatModule = self.formatModules.first(where:{ $0.publicationFormats.contains(publication.format) }) else {
+    guard let formatModule = self.formatModules.first(where:{ $0.supports(publication) }) else {
       delegate?.presentError(ReaderError.formatNotSupported, from: navigationController)
       return
     }
@@ -91,14 +92,16 @@ final class ReaderModule: ReaderModuleAPI {
                                 self?.finalizePresentation(for: publication,
                                                            book: book,
                                                            formatModule: formatModule,
-                                                           in: navigationController)
+                                                           in: navigationController,
+                                                           forSample: forSample)
     }
   }
 
   func finalizePresentation(for publication: Publication,
                             book: TPPBook,
                             formatModule: ReaderFormatModule,
-                            in navigationController: UINavigationController) {
+                            in navigationController: UINavigationController,
+                            forSample: Bool = false) {
     do {
       let lastSavedLocation = bookRegistry.location(forIdentifier: book.identifier)
       let initialLocator = lastSavedLocation?.convertToLocator()
@@ -106,11 +109,13 @@ final class ReaderModule: ReaderModuleAPI {
       let readerVC = try formatModule.makeReaderViewController(
         for: publication,
         book: book,
-        initialLocation: initialLocator)
+        initialLocation: initialLocator,
+        forSample: forSample)
 
       let backItem = UIBarButtonItem()
-      backItem.title = NSLocalizedString("Back", comment: "Text for Back button")
+      backItem.title = Strings.Generic.back
       readerVC.navigationItem.backBarButtonItem = backItem
+      readerVC.extendedLayoutIncludesOpaqueBars = true
       readerVC.hidesBottomBarWhenPushed = true
       navigationController.pushViewController(readerVC, animated: true)
 

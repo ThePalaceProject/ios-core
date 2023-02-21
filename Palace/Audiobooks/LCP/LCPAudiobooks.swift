@@ -20,13 +20,11 @@ import NYPLAudiobookToolkit
   private let audiobookUrlKey = "audiobookUrl"
   private let audioFileHrefKey = "audioFileHref"
   private let destinationFileUrlKey = "destinationFileUrl"
+  private static let expectedAcquisitionType = "application/vnd.readium.lcp.license.v1.0+json"
   
   private let audiobookUrl: URL
   private let lcpService = LCPLibraryService()
   private let streamer: Streamer
-  
-  /// Distributor key - one can be found in `NYPLBook.distributor` property
-  @objc static let distributorKey = "lcp"
   
   /// Initialize for an LCP audiobook
   /// - Parameter audiobookUrl: must be a file with `.lcpa` extension
@@ -61,7 +59,8 @@ import NYPLAudiobookToolkit
   /// - Parameter book: audiobook
   /// - Returns: `true` if the book is an LCP DRM protected audiobook, `false` otherwise
   @objc static func canOpenBook(_ book: TPPBook) -> Bool {
-    book.defaultBookContentType() == .audiobook && book.distributor == distributorKey
+    guard let defualtAcquisition = book.defaultAcquisition else { return false }
+    return book.defaultBookContentType == .audiobook && defualtAcquisition.type == expectedAcquisitionType
   }
 
   /// Creates an NSError for Objective-C code

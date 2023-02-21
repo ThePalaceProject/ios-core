@@ -1,6 +1,6 @@
 @import XCTest;
 
-#import "NSDate+TPPDateAdditions.h"
+#import "NSDate+NYPLDateAdditions.h"
 #import "TPPOPDSEntry.h"
 #import "TPPOPDSEntryGroupAttributes.h"
 #import "TPPOPDSFeed.h"

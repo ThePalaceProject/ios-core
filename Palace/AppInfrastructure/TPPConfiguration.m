@@ -104,4 +104,18 @@
   return 100;
 }
 
++ (UINavigationBarAppearance *)defaultAppearance
+{
+  return [TPPConfiguration appearanceWithBackgroundColor:[TPPConfiguration backgroundColor]];
+}
+
++ (UINavigationBarAppearance *)appearanceWithBackgroundColor:(UIColor *)backgroundColor
+{
+  UINavigationBarAppearance *appearance = [[UINavigationBarAppearance alloc] init];
+  [appearance configureWithOpaqueBackground];
+  [appearance setBackgroundColor: backgroundColor];
+  [appearance setTitleTextAttributes:@{NSFontAttributeName: [UIFont semiBoldPalaceFontOfSize:18.0]}];
+  return appearance;
+}
+
 @end
