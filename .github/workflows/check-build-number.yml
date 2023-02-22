@@ -7,7 +7,7 @@ on:
       - feature/**
 jobs:
   check-binaries:
-    runs-on: macOS-11
+    runs-on: macOS-12
     steps:
       - name: Checkout main repo
         uses: actions/checkout@v3
