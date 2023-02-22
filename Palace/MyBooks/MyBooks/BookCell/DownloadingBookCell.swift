@@ -21,6 +21,7 @@ struct DownloadingBookCell: View {
         statusView
         buttons
       }
+      .multilineTextAlignment(.leading)
       .padding()
       .frame(height: cellHeight)
       overlay
