@@ -42,14 +42,6 @@
   self.title = NSLocalizedString(@"Reservations", nil);
   self.navigationItem.title = NSLocalizedString(@"Reservations", nil);
 
-  [self willReloadCollectionViewData];
-  
-  [[NSNotificationCenter defaultCenter]
-   addObserver:self
-   selector:@selector(bookRegistryDidChange)
-   name:NSNotification.TPPBookRegistryDidChange
-   object:nil];
-  
   [[NSNotificationCenter defaultCenter]
    addObserver:self
    selector:@selector(syncEnded)
@@ -87,7 +79,7 @@
   self.collectionView.alwaysBounceVertical = YES;
   self.refreshControl = [[UIRefreshControl alloc] init];
   [self.refreshControl addTarget:self action:@selector(didPullToRefresh) forControlEvents:UIControlEventValueChanged];
-  [self.collectionView addSubview:self.refreshControl];
+  [self.collectionView setRefreshControl:self.refreshControl];
   
   // We know that super sets it to a flow layout.
   UICollectionViewFlowLayout *layout = (UICollectionViewFlowLayout *)self.collectionView.collectionViewLayout;
@@ -152,11 +144,7 @@
   [[NSOperationQueue mainQueue] addOperationWithBlock:^{
     BOOL isSyncing = [TPPBookRegistry shared].isSyncing;
     if(!isSyncing) {
-      [self.refreshControl endRefreshing];
-      if (self.collectionView.numberOfSections == 0) {
-        self.collectionView.contentOffset = CGPointMake(0, -self.collectionView.contentInset.top);
-      }
-      [[NSNotificationCenter defaultCenter] postNotificationName:NSNotification.TPPSyncEnded object:nil];\
+      [self endRefreshing];
     } else {
       self.navigationItem.leftBarButtonItem.enabled = NO;
     }
@@ -268,6 +256,7 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
   self.heldBooks = held;
   self.reservedBooks = reserved;
   [self updateBadge];
+  [self endRefreshing];
 }
 
 #pragma mark -
@@ -286,24 +275,12 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
     if([[TPPUserAccount sharedAccount] hasCredentials]) {
       [[TPPBookRegistry shared] sync];
     } else {
+      [self endRefreshing];
       [TPPAccountSignInViewController requestCredentialsWithCompletion:nil];
-      [self.refreshControl endRefreshing];
-      [[NSNotificationCenter defaultCenter] postNotificationName:NSNotification.TPPSyncEnded object:nil];
     }
   } else {
     [[TPPBookRegistry shared] loadWithAccount:nil];
-    [[NSNotificationCenter defaultCenter] postNotificationName:NSNotification.TPPSyncEnded object:nil];
   }
-}
-
-- (void)bookRegistryDidChange
-{
-  [[NSOperationQueue mainQueue] addOperationWithBlock:^{
-    if([TPPBookRegistry shared].isSyncing == NO) {
-      [self.refreshControl endRefreshing];
-      [self willReloadCollectionViewData];
-    }
-  }];
 }
 
 - (void)didSelectSearch
@@ -313,6 +290,22 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
   [self.navigationController
    pushViewController:[[TPPCatalogSearchViewController alloc] initWithOpenSearchDescription:searchDescription]
    animated:YES];
+}
+
+/// Makes sure `refreshControl` animation ends
+///
+/// `refreshControl` remains on screen when multiple views are animated at the same time,
+/// e.g., modal view controllers, or scrollView is being scrolled.
+/// Starting and stopping `refreshControl` animation guarantees to stop it.
+- (void)endRefreshing
+{
+  dispatch_time_t stopTime = dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC);
+  dispatch_after(stopTime, dispatch_get_main_queue(), ^{
+    if (!self.collectionView.refreshControl.isRefreshing) {
+      [self.collectionView.refreshControl beginRefreshing];
+    }
+    [self.collectionView.refreshControl endRefreshing];
+  });
 }
 
 - (void)syncBegan
