@@ -16,8 +16,8 @@ struct MyBooksView: View {
   @State var showLibraryAccountView: Bool = false
 
   var body: some View {
-    NavigationLink(destination: searchView, isActive: $model.showSearchSheet) {}
     NavigationLink(destination: accountScreen, isActive: $model.showAccountScreen) {}
+    NavigationLink(destination: searchView, isActive: $model.showSearchSheet) {}
     
     //TODO: This is a workaround for an apparent bug in iOS14 that prevents us from wrapping
     // the body in a NavigationView. Once iOS14 support is dropped, this can be removed/repalced
@@ -30,9 +30,6 @@ struct MyBooksView: View {
           dismissButton: .cancel()
         )
       }
-      .actionSheet(isPresented: $selectNewLibrary) {
-        libraryPicker
-      }
       .sheet(isPresented: $showLibraryAccountView) {
         accountPickerList
       }
@@ -41,6 +38,9 @@ struct MyBooksView: View {
       VStack(alignment: .leading) {
         facetView
         content
+          .actionSheet(isPresented: $selectNewLibrary) {
+            libraryPicker
+          }
       }
       .background(Color(TPPConfiguration.backgroundColor()))
       .navigationBarItems(leading: leadingBarButton, trailing: trailingBarButton)
@@ -71,15 +71,19 @@ struct MyBooksView: View {
   
   @ViewBuilder private var content: some View {
     GeometryReader { geometry in
-      ScrollView {
-        if model.showInstructionsLabel {
-          VStack {
-            emptyView
-          }
-          .frame(minHeight: geometry.size.height)
-        } else {
-          listView
+      if model.showInstructionsLabel {
+        VStack {
+          emptyView
         }
+        .frame(minHeight: geometry.size.height)
+        .refreshable {
+          model.reloadData()
+        }
+      } else {
+        listView
+          .refreshable {
+            model.reloadData()
+          }
       }
     }
   }

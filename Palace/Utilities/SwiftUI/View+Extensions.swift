@@ -43,4 +43,8 @@ extension View {
   func square(length: CGFloat) -> some View {
     self.frame(width: length, height: length)
   }
+
+  func refreshable(_ refreshAction: @escaping Action) -> some View {
+    modifier(RefreshableScrollView(refreshAction))
+  }
 }
