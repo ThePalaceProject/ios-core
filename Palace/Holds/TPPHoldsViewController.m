@@ -296,7 +296,7 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
 ///
 /// `refreshControl` remains on screen when multiple views are animated at the same time,
 /// e.g., modal view controllers, or scrollView is being scrolled.
-/// Starting and stopping `refreshControl` animatin guarantees to stop it.
+/// Starting and stopping `refreshControl` animation guarantees to stop it.
 - (void)endRefreshing
 {
   dispatch_time_t stopTime = dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC);
