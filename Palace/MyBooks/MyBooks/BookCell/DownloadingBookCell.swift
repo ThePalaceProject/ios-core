@@ -10,7 +10,7 @@ import SwiftUI
 
 struct DownloadingBookCell: View {
   @ObservedObject var model: BookCellModel
-  private let cellHeight: CGFloat = 135
+  private let cellHeight = 135.0
   @State private var progress = 0.0
   var downloadPublisher = NotificationCenter.default.publisher(for: NSNotification.Name.TPPMyBooksDownloadCenterDidChange)
   
@@ -25,6 +25,7 @@ struct DownloadingBookCell: View {
       .frame(height: cellHeight)
       overlay
     }
+    .background(Color(TPPConfiguration.mainColor()))
   }
 
   @ViewBuilder private var infoView: some View {
@@ -44,7 +45,7 @@ struct DownloadingBookCell: View {
         .horizontallyCentered()
         .padding(.top, 5)
         .font(Font(uiFont: UIFont.palaceFont(ofSize: 12)))
-        .foregroundColor(Color(TPPConfiguration.backgroundColor()))
+        .foregroundColor(Color(TPPConfiguration.mainColor()))
     default:
       progressView
     }

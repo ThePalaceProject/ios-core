@@ -19,30 +19,34 @@ struct MyBooksView: View {
     NavigationLink(destination: searchView, isActive: $model.showSearchSheet) {}
     NavigationLink(destination: accountScreen, isActive: $model.showAccountScreen) {}
     
-    NavigationView {
-      ZStack {
-        VStack(alignment: .leading) {
-          facetView
-          content
-        }
-        loadingView
+    //TODO: This is a workaround for an apparent bug in iOS14 that prevents us from wrapping
+    // the body in a NavigationView. Once iOS14 support is dropped, this can be removed/repalced
+    // with a NavigationView
+    EmptyView()
+      .alert(item: $model.alert) { alert in
+        Alert(
+          title: Text(alert.title),
+          message: Text(alert.message),
+          dismissButton: .cancel()
+        )
+      }
+      .actionSheet(isPresented: $selectNewLibrary) {
+        libraryPicker
+      }
+      .sheet(isPresented: $showLibraryAccountView) {
+        accountPickerList
+      }
+
+    ZStack {
+      VStack(alignment: .leading) {
+        facetView
+        content
       }
       .background(Color(TPPConfiguration.backgroundColor()))
+      .navigationBarItems(leading: leadingBarButton, trailing: trailingBarButton)
+      loadingView
     }
-    .navigationBarItems(leading: leadingBarButton, trailing: trailingBarButton)
-    .actionSheet(isPresented: $selectNewLibrary) {
-      libraryPicker
-    }
-    .sheet(isPresented: $showLibraryAccountView) {
-      accountPickerList
-    }
-    .alert(item: $model.alert) { alert in
-      Alert(
-        title: Text(alert.title),
-        message: Text(alert.message),
-        dismissButton: .cancel()
-      )
-    }
+    .background(Color(TPPConfiguration.backgroundColor()))
   }
   
   @ViewBuilder private var facetView: some View {
