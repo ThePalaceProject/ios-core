@@ -23,7 +23,6 @@ struct DownloadingBookCell: View {
       }
       .padding()
       .frame(height: cellHeight)
-      .background(Color(TPPConfiguration.mainColor()))
       overlay
     }
   }

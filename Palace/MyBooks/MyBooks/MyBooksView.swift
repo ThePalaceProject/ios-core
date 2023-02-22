@@ -27,8 +27,8 @@ struct MyBooksView: View {
         }
         loadingView
       }
+      .background(Color(TPPConfiguration.backgroundColor()))
     }
-    .background(Color(TPPConfiguration.backgroundColor()))
     .navigationBarItems(leading: leadingBarButton, trailing: trailingBarButton)
     .actionSheet(isPresented: $selectNewLibrary) {
       libraryPicker
