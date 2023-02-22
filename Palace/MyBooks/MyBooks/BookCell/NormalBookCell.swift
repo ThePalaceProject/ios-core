@@ -32,6 +32,7 @@ struct NormalBookCell: View {
           secondaryButton: .cancel(alert.secondaryAction)
         )
       }
+      Spacer()
     }
     .multilineTextAlignment(.leading)
     .padding([.leading, .trailing], 2)
