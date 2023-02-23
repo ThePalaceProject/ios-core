@@ -50,7 +50,7 @@ struct RefreshableScrollView: ViewModifier {
         Spacer()
         if needRefresh {
           ProgressView()
-            .square(length: 25)
+            .scaleEffect(1.5)
         }
         Spacer()
       }
