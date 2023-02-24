@@ -111,8 +111,8 @@ struct MyBooksView: View {
         showDetailForBook = book
       } label: {
         BookCell(model: model)
-          .padding()
-          .border(width: 1, edges: [.bottom, .trailing], color: self.model.isPad ? Color(TPPConfiguration.mainColor()) : .clear)
+          .padding(5)
+          .border(width: 0.5, edges: [.bottom, .trailing], color: self.model.isPad ? Color(TPPConfiguration.mainColor()) : .clear)
       }
       .sheet(item: $showDetailForBook) { item in
         UIViewControllerWrapper(TPPBookDetailViewController(book: item), updater: { _ in })
