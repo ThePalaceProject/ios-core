@@ -29,7 +29,7 @@ struct ButtonView: View {
         indicatorView
         Text(title)
       }
-      .padding()
+      .padding(8)
     }
     .font(Font(uiFont: UIFont.palaceFont(ofSize: 14)))
     .fixedSize()
@@ -46,7 +46,6 @@ struct ButtonView: View {
         Text(endDate)
           .font(.system(size: 9))
       }
-      .padding(.leading, -7)
       .foregroundColor(Color(TPPConfiguration.mainColor()))
     }
   }

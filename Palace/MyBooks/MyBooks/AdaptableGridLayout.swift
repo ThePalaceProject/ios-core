@@ -9,13 +9,13 @@
 import SwiftUI
 
 struct AdaptableGridLayout <Content: View>: View {
-  private let gridItemLayout = [GridItem(.adaptive(minimum: 300))]
+  private let gridItemLayout = [GridItem(.adaptive(minimum: 300), spacing: .zero)]
   private var isPad : Bool { UIDevice.current.userInterfaceIdiom == .pad }
   var content: () -> Content
   
   var body: some View {
     if isPad {
-      LazyVGrid(columns: gridItemLayout, alignment: .leading) {
+      LazyVGrid(columns: gridItemLayout, alignment: .leading, spacing: .zero) {
         content()
       }
     } else {
