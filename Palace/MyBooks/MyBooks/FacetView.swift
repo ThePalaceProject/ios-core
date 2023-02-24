@@ -22,7 +22,7 @@ struct FacetView: View {
       }
       .padding(.leading)
       .actionSheet(isPresented: $showAlert) { alert }
-      .font(Font(uiFont: UIFont.palaceFont(ofSize: 16)))
+      .font(Font(uiFont: UIFont.palaceFont(ofSize: 12)))
       dividerView
       accountLogoView
     }
