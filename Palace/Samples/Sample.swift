@@ -10,7 +10,7 @@ import Foundation
 
 enum SampleType: String {
   case contentTypeEpubZip = "application/epub+zip"
-  case overdriveEbook = "application/vnd.overdrive.circulation.api+json;profile=ebook"
+  case overdriveEbook = "text/html"
   case openAccessAudiobook = "application/audiobook+json"
   case overdriveAudiobook = "application/json"
 
