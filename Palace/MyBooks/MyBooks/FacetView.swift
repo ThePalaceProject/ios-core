@@ -45,8 +45,8 @@ struct FacetView: View {
   
   private var dividerView: some View {
     Rectangle()
-      .fill(Color(TPPConfiguration.mainColor()))
-      .frame(height: 0.30)
+      .fill(Color(UIColor.lightGray.withAlphaComponent(0.9)))
+      .frame(height: 1.0)
       .edgesIgnoringSafeArea(.horizontal)
   }
 

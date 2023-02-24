@@ -12,8 +12,9 @@ import Combine
 struct MyBooksView: View {
   typealias DisplayStrings = Strings.MyBooksView
   @ObservedObject var model: MyBooksViewModel
-  @State var selectNewLibrary: Bool = false
-  @State var showLibraryAccountView: Bool = false
+  @State var selectNewLibrary = false
+  @State var showLibraryAccountView = false
+  @State var showDetailForBook: TPPBook?
 
   var body: some View {
     NavigationLink(destination: accountScreen, isActive: $model.showAccountScreen) {}
@@ -33,14 +34,11 @@ struct MyBooksView: View {
       .sheet(isPresented: $showLibraryAccountView) {
         accountPickerList
       }
-
+    
     ZStack {
       VStack(alignment: .leading) {
         facetView
         content
-          .actionSheet(isPresented: $selectNewLibrary) {
-            libraryPicker
-          }
       }
       .background(Color(TPPConfiguration.backgroundColor()))
       .navigationBarItems(leading: leadingBarButton, trailing: trailingBarButton)
@@ -87,14 +85,12 @@ struct MyBooksView: View {
       }
     }
   }
-  
+    
   @ViewBuilder private var listView: some View {
-    VStack(alignment: .leading, spacing: 10) {
+    AdaptableGridLayout {
       ForEach(0..<model.books.count, id: \.self) { i in
         ZStack(alignment: .leading) {
-          NavigationLink(destination: UIViewControllerWrapper(TPPBookDetailViewController(book: model.books[i]), updater: { _ in })) {
             cell(for: model.books[i])
-          }
         }
         .opacity(model.isLoading ? 0.5 : 1.0)
         .disabled(model.isLoading)
@@ -102,14 +98,32 @@ struct MyBooksView: View {
     }
     .onAppear { model.loadData() }
   }
-  
-  private func cell(for book: TPPBook) -> BookCell {
-    let model = BookCellModel(book: book)
     
+  private func cell(for book: TPPBook) -> some View {
+    let model = BookCellModel(book: book)
+
     model
       .statePublisher.assign(to: \.isLoading, on: self.model)
       .store(in: &self.model.observers)
-    return BookCell(model: model)
+
+    if self.model.isPad {
+      return Button {
+        showDetailForBook = book
+      } label: {
+        BookCell(model: model)
+          .padding()
+          .border(self.model.isPad ? Color(TPPConfiguration.mainColor()) : .clear)
+      }
+      .sheet(item: $showDetailForBook) { item in
+        UIViewControllerWrapper(TPPBookDetailViewController(book: item), updater: { _ in })
+      }
+      .anyView()
+    } else {
+      return NavigationLink(destination: UIViewControllerWrapper(TPPBookDetailViewController(book: book), updater: { _ in })) {
+        BookCell(model: model)
+      }
+      .anyView()
+    }
   }
   
   @ViewBuilder private var leadingBarButton: some View {
@@ -117,6 +131,9 @@ struct MyBooksView: View {
       selectNewLibrary.toggle()
     } label: {
       ImageProviders.MyBooksView.myLibraryIcon
+    }
+    .actionSheet(isPresented: $selectNewLibrary) {
+      libraryPicker
     }
   }
   
