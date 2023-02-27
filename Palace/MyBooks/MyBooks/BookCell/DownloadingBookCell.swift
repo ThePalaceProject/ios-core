@@ -10,7 +10,7 @@ import SwiftUI
 
 struct DownloadingBookCell: View {
   @ObservedObject var model: BookCellModel
-  private let cellHeight = 135.0
+  private let cellHeight = 125.0
   @State private var progress = 0.0
   var downloadPublisher = NotificationCenter.default.publisher(for: NSNotification.Name.TPPMyBooksDownloadCenterDidChange)
   
