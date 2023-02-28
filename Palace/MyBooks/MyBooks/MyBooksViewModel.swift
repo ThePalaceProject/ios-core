@@ -29,6 +29,8 @@ class MyBooksViewModel: ObservableObject {
   }
   @Published var accountURL: URL?
   
+  var isPad : Bool { UIDevice.current.userInterfaceIdiom == .pad }
+
   var activeFacetSort: Facet {
     didSet {
       sortData()

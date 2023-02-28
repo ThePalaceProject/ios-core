@@ -12,8 +12,9 @@ import Combine
 struct MyBooksView: View {
   typealias DisplayStrings = Strings.MyBooksView
   @ObservedObject var model: MyBooksViewModel
-  @State var selectNewLibrary: Bool = false
-  @State var showLibraryAccountView: Bool = false
+  @State var selectNewLibrary = false
+  @State var showLibraryAccountView = false
+  @State var showDetailForBook: TPPBook?
 
   var body: some View {
     NavigationLink(destination: accountScreen, isActive: $model.showAccountScreen) {}
@@ -33,14 +34,11 @@ struct MyBooksView: View {
       .sheet(isPresented: $showLibraryAccountView) {
         accountPickerList
       }
-
+    
     ZStack {
       VStack(alignment: .leading) {
         facetView
         content
-          .actionSheet(isPresented: $selectNewLibrary) {
-            libraryPicker
-          }
       }
       .background(Color(TPPConfiguration.backgroundColor()))
       .navigationBarItems(leading: leadingBarButton, trailing: trailingBarButton)
@@ -87,14 +85,12 @@ struct MyBooksView: View {
       }
     }
   }
-  
+    
   @ViewBuilder private var listView: some View {
-    VStack(alignment: .leading, spacing: 10) {
+    AdaptableGridLayout {
       ForEach(0..<model.books.count, id: \.self) { i in
         ZStack(alignment: .leading) {
-          NavigationLink(destination: UIViewControllerWrapper(TPPBookDetailViewController(book: model.books[i]), updater: { _ in })) {
             cell(for: model.books[i])
-          }
         }
         .opacity(model.isLoading ? 0.5 : 1.0)
         .disabled(model.isLoading)
@@ -102,14 +98,32 @@ struct MyBooksView: View {
     }
     .onAppear { model.loadData() }
   }
-  
-  private func cell(for book: TPPBook) -> BookCell {
-    let model = BookCellModel(book: book)
     
+  private func cell(for book: TPPBook) -> some View {
+    let model = BookCellModel(book: book)
+
     model
       .statePublisher.assign(to: \.isLoading, on: self.model)
       .store(in: &self.model.observers)
-    return BookCell(model: model)
+
+    if self.model.isPad {
+      return Button {
+        showDetailForBook = book
+      } label: {
+        BookCell(model: model)
+          .padding(5)
+          .border(width: 0.5, edges: [.bottom, .trailing], color: self.model.isPad ? Color(TPPConfiguration.mainColor()) : .clear)
+      }
+      .sheet(item: $showDetailForBook) { item in
+        UIViewControllerWrapper(TPPBookDetailViewController(book: item), updater: { _ in })
+      }
+      .anyView()
+    } else {
+      return NavigationLink(destination: UIViewControllerWrapper(TPPBookDetailViewController(book: book), updater: { _ in })) {
+        BookCell(model: model)
+      }
+      .anyView()
+    }
   }
   
   @ViewBuilder private var leadingBarButton: some View {
@@ -117,6 +131,9 @@ struct MyBooksView: View {
       selectNewLibrary.toggle()
     } label: {
       ImageProviders.MyBooksView.myLibraryIcon
+    }
+    .actionSheet(isPresented: $selectNewLibrary) {
+      libraryPicker
     }
   }
   
@@ -176,4 +193,50 @@ struct MyBooksView: View {
     webController.hidesBottomBarWhenPushed = true
     return  UIViewControllerWrapper(webController, updater: { _ in } ).anyView()
   }
+}
+
+extension View {
+    func border(width: CGFloat, edges: [Edge], color: Color) -> some View {
+        overlay(EdgeBorder(width: width, edges: edges).foregroundColor(color))
+    }
+}
+
+struct EdgeBorder: Shape {
+    var width: CGFloat
+    var edges: [Edge]
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        for edge in edges {
+            var x: CGFloat {
+                switch edge {
+                case .top, .bottom, .leading: return rect.minX
+                case .trailing: return rect.maxX - width
+                }
+            }
+
+            var y: CGFloat {
+                switch edge {
+                case .top, .leading, .trailing: return rect.minY
+                case .bottom: return rect.maxY - width
+                }
+            }
+
+            var w: CGFloat {
+                switch edge {
+                case .top, .bottom: return rect.width
+                case .leading, .trailing: return width
+                }
+            }
+
+            var h: CGFloat {
+                switch edge {
+                case .top, .bottom: return width
+                case .leading, .trailing: return rect.height
+                }
+            }
+            path.addRect(CGRect(x: x, y: y, width: w, height: h))
+        }
+        return path
+    }
 }

@@ -22,7 +22,7 @@ struct FacetView: View {
       }
       .padding(.leading)
       .actionSheet(isPresented: $showAlert) { alert }
-      .font(Font(uiFont: UIFont.palaceFont(ofSize: 16)))
+      .font(Font(uiFont: UIFont.palaceFont(ofSize: 12)))
       dividerView
       accountLogoView
     }
@@ -45,8 +45,8 @@ struct FacetView: View {
   
   private var dividerView: some View {
     Rectangle()
-      .fill(Color(TPPConfiguration.mainColor()))
-      .frame(height: 0.30)
+      .fill(Color(UIColor.lightGray.withAlphaComponent(0.9)))
+      .frame(height: 1.0)
       .edgesIgnoringSafeArea(.horizontal)
   }
 

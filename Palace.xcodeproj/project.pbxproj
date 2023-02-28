@@ -663,6 +663,8 @@
 		E50D684626AB235400F1042B /* TPPReaderBookmarkCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03690E221EB2B35000F75D5F /* TPPReaderBookmarkCell.swift */; };
 		E50D684726AB235400F1042B /* TPPReaderTOCCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7386C1F9245276CA004C78BD /* TPPReaderTOCCell.swift */; };
 		E5158C202935345F0007ABDB /* TransifexManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E549954728EE1AAA00EA0D9B /* TransifexManager.swift */; };
+		E5180ABA29A91D42002A18F8 /* AdaptableGridLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5180AB929A91D42002A18F8 /* AdaptableGridLayout.swift */; };
+		E5180ABB29A91D42002A18F8 /* AdaptableGridLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5180AB929A91D42002A18F8 /* AdaptableGridLayout.swift */; };
 		E51818442927FD8E00C03AD5 /* Strings.swift in Sources */ = {isa = PBXBuildFile; fileRef = E54DD4CF275C66F30013C200 /* Strings.swift */; };
 		E5231241285C291D007D1DB5 /* AudioBookmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5231240285C291D007D1DB5 /* AudioBookmark.swift */; };
 		E523124B285C3828007D1DB5 /* TPPBookRegistry+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E523124A285C3828007D1DB5 /* TPPBookRegistry+Extensions.swift */; };
@@ -1509,6 +1511,7 @@
 		E50221CC29881D1E00A8A80B /* fr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = fr; path = fr.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		E50221CF29881D2800A8A80B /* fr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = fr; path = fr.lproj/Localizable.strings; sourceTree = "<group>"; };
 		E5037FE629A3FF83002DA132 /* ButtonStateTests.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ButtonStateTests.swift; sourceTree = "<group>"; };
+		E5180AB929A91D42002A18F8 /* AdaptableGridLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdaptableGridLayout.swift; sourceTree = "<group>"; };
 		E523116928504B85007D1DB5 /* TPPBook+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPBook+Extensions.swift"; sourceTree = "<group>"; };
 		E5231240285C291D007D1DB5 /* AudioBookmark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioBookmark.swift; sourceTree = "<group>"; };
 		E523124A285C3828007D1DB5 /* TPPBookRegistry+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPBookRegistry+Extensions.swift"; sourceTree = "<group>"; };
@@ -2914,6 +2917,7 @@
 				E53573D829653095008BDCA4 /* FacetViewModel.swift */,
 				E53573D529653076008BDCA4 /* FacetView.swift */,
 				E5EFDE7A298C4F7100258CA3 /* BookCell */,
+				E5180AB929A91D42002A18F8 /* AdaptableGridLayout.swift */,
 			);
 			path = MyBooks;
 			sourceTree = "<group>";
@@ -3917,6 +3921,7 @@
 				73EB0B1325821DF4006BC997 /* TPPBookButtonsView.m in Sources */,
 				73EB0B1425821DF4006BC997 /* TPPMyBooksSimplifiedBearerToken.m in Sources */,
 				73EB0B1525821DF4006BC997 /* TPPAnnotations.swift in Sources */,
+				E5180ABB29A91D42002A18F8 /* AdaptableGridLayout.swift in Sources */,
 				E7048073285A72A600019B31 /* TPPPDFNavigation.swift in Sources */,
 				E5AA6F4229A6BA4500601B02 /* RefreshableView.swift in Sources */,
 				73EB0B1625821DF4006BC997 /* AudioBookVendors+Extensions.swift in Sources */,
@@ -4282,6 +4287,7 @@
 				E53573DC2965E606008BDCA4 /* TPPMyBooksViewController.swift in Sources */,
 				73B501C524F48D4C00FBAD7D /* TPPUserAccountFrontEndValidation.swift in Sources */,
 				E501710F27A3948C004B3392 /* TPPBookmarkFactory.swift in Sources */,
+				E5180ABA29A91D42002A18F8 /* AdaptableGridLayout.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -4506,6 +4512,7 @@
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
 				CURRENT_PROJECT_VERSION = 143;
+				CURRENT_PROJECT_VERSION = 142;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
@@ -4562,6 +4569,7 @@
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
 				CURRENT_PROJECT_VERSION = 143;
+				CURRENT_PROJECT_VERSION = 142;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
