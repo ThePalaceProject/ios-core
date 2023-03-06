@@ -111,7 +111,6 @@ struct MyBooksView: View {
         showDetailForBook = book
       } label: {
         BookCell(model: model)
-          .padding(5)
           .border(width: 0.5, edges: [.bottom, .trailing], color: self.model.isPad ? Color(TPPConfiguration.mainColor()) : .clear)
       }
       .sheet(item: $showDetailForBook) { item in
