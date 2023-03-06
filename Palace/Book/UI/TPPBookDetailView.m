@@ -119,7 +119,7 @@ static NSString *DetailHTMLTemplate = nil;
   [self addSubview:self.scrollView];
   [self.scrollView addSubview:self.containerView];
   
-  if ([self.book hasSample] && [self.book defaultBookContentType] == TPPBookContentTypeAudiobook) {
+  if (self.book.showAudiobookToolbar) {
     self.audiobookSampleToolbar = [[AudiobookSampleToolbarWrapper createWithBook:self.book] view];
     [self addSubview: self.audiobookSampleToolbar];
   }
@@ -407,7 +407,7 @@ static NSString *DetailHTMLTemplate = nil;
 {
   [self.scrollView autoPinEdgeToSuperviewEdge:ALEdgeTop];
 
-  if ([self.book hasAudiobookSample]) {
+  if ([self.book showAudiobookToolbar]) {
     [self.audiobookSampleToolbar autoPinEdgeToSuperviewEdge:ALEdgeLeft];
     [self.audiobookSampleToolbar autoPinEdgeToSuperviewEdge:ALEdgeRight];
     [self.audiobookSampleToolbar autoPinEdgeToSuperviewEdge:ALEdgeBottom withInset:TabBarHeight];
@@ -623,7 +623,11 @@ NSString *PlaySampleNotification = @"ToggleSampleNotification";
 
 - (void)didSelectPlaySample:(TPPBook *)book {
   if ([self.book defaultBookContentType] == TPPBookContentTypeAudiobook) {
-    [[NSNotificationCenter defaultCenter] postNotificationName:PlaySampleNotification object:self];
+    if ([self.book.sampleAcquisition.type isEqualToString: @"text/html"]) {
+      [self presentWebView: self.book.sampleAcquisition.hrefURL];
+    } else {
+      [[NSNotificationCenter defaultCenter] postNotificationName:PlaySampleNotification object:self];
+    }
   } else {
     [EpubSampleFactory createSampleWithBook:self.book completion:^(EpubLocationSampleURL *sampleURL, NSError *error) {
       if (error) {

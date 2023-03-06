@@ -50,6 +50,36 @@ class TPPFake {
     )
   }
   
+  class var overdriveWebAudiobookSample: TPPOPDSAcquisition {
+    TPPOPDSAcquisition(
+      relation: .preview,
+      type: "text/html",
+      hrefURL: URL(string:"https://market.feedbooks.com/item/3877422/preview")!,
+      indirectAcquisitions: [],
+      availability: TPPOPDSAcquisitionAvailabilityUnlimited()
+    )
+  }
+  
+  class var overdriveAudiobookWaveFile: TPPOPDSAcquisition {
+    TPPOPDSAcquisition(
+      relation: .sample,
+      type: "audio/x-ms-wma",
+      hrefURL: URL(string:"https://market.feedbooks.com/item/3877422/preview")!,
+      indirectAcquisitions: [],
+      availability: TPPOPDSAcquisitionAvailabilityUnlimited()
+    )
+  }
+  
+  class var overdriveAudiobookMPEG: TPPOPDSAcquisition {
+    TPPOPDSAcquisition(
+      relation: .sample,
+      type: "audio/mpeg",
+      hrefURL: URL(string:"https://market.feedbooks.com/item/3877422/preview")!,
+      indirectAcquisitions: [],
+      availability: TPPOPDSAcquisitionAvailabilityUnlimited()
+    )
+  }
+  
   class var genericPreview: TPPOPDSAcquisition {
     TPPOPDSAcquisition(
       relation: .preview,

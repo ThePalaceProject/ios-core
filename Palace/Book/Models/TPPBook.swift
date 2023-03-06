@@ -338,6 +338,11 @@ let UpdatedKey: String = "updated"
       }
     }
 
+    var previewLink: TPPOPDSAcquisition?
+    if let previewDict = dictionary[PreviewURLKey] as? [AnyHashable: Any] {
+      previewLink = TPPOPDSAcquisition(dictionary: previewDict)
+    }
+  
     guard let updated = NSDate(iso8601DateString: (dictionary[UpdatedKey] as? String ?? "")) as? Date else { return nil }
 
     self.init(
@@ -358,7 +363,7 @@ let UpdatedKey: String = "updated"
       analyticsURL: URL(string: dictionary[AnalyticsURLKey] as? String ?? ""),
       alternateURL: URL(string: dictionary[AlternateURLKey] as? String ?? ""),
       relatedWorksURL: URL(string: dictionary[RelatedURLKey] as? String ?? ""),
-      previewLink: dictionary[PreviewURLKey] as? TPPOPDSAcquisition,
+      previewLink: previewLink,
       seriesURL: URL(string: dictionary[SeriesLinkKey] as? String ?? ""),
       revokeURL: revokeURL,
       reportURL: reportURL,
