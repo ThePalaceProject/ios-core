@@ -234,4 +234,32 @@ struct Strings {
     static let downloadReady = NSLocalizedString("Ready for Download", comment: "")
     static let checkoutTitle = NSLocalizedString("Check Out", comment: "")
   }
+  
+  struct MyBooksView {
+    static let navTitle = NSLocalizedString("My Books", comment: "")
+    static let sortBy = NSLocalizedString("Sort By:", comment: "")
+    static let searchBooks = NSLocalizedString("Search My Books", comment: "")
+    static let emptyViewMessage = NSLocalizedString("Visit the Catalog to\nadd books to My Books.", comment: "")
+    static let findYourLibrary = NSLocalizedString("Find Your Library", comment: "Button that lets user know they can select a library they have a card for")
+    static let addLibrary = NSLocalizedString("Add Library", comment: "Title of button to add a new library")
+    static let accountSyncingAlertTitle = NSLocalizedString("Please wait", comment: "")
+    static let accountSyncingAlertMessage = NSLocalizedString("Please wait a moment before switching library accounts", comment: "")
+  }
+  
+  struct FacetView {
+    static let author = NSLocalizedString("Author", comment: "")
+    static let title = NSLocalizedString("Title", comment: "")
+  }
+  
+  struct BookCell {
+    static let delete = NSLocalizedString("Delete", comment: "")
+    static let `return` = NSLocalizedString("Return", comment: "")
+    static let remove = NSLocalizedString("Remove", comment: "")
+    static let deleteMessage = NSLocalizedString("Are you sure you want to delete \"%@\"?", comment: "Message shown in an alert to the user prior to deleting a title")
+    static let returnMessage = NSLocalizedString("Are you sure you want to return \"%@\"?", comment: "Message shown in an alert to the user prior to returning a title")
+    static let removeReservation = NSLocalizedString("Remove Reservation", comment: "")
+    static let removeReservationMessage = NSLocalizedString("Are you sure you want ot remove \"%@\" from your reservations? You will no longer be in line for this book.", comment: "Message shown in an alert to the user prior to returning a reserved title.")
+    static let downloading = NSLocalizedString("Downloading", comment: "")
+    static let downloadFailedMessage = NSLocalizedString("The download could not be completed.", comment: "")
+  }
 }

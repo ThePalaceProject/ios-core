@@ -14,4 +14,13 @@ struct ImageProviders {
     static let play = Image(systemName: "play.circle")
     static let stepBack = Image(systemName: "gobackward.30")
   }
+  
+  struct MyBooksView {
+    static let bookPlaceholder = UIImage(systemName: "book.closed.fill")
+    static let audiobookBadge = Image("AudiobookBadge")
+    static let unreadBadge = Image("Unread")
+    static let clock = Image("Clock")
+    static let myLibraryIcon = Image("MyLibraryIcon")
+    static let search = Image("Search")
+  }
 }

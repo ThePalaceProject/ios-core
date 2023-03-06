@@ -68,7 +68,11 @@ let UpdatedKey: String = "updated"
   static func categoryStringsFromCategories(categories: [TPPOPDSCategory]) -> [String] {
     categories.filter { $0.scheme == nil || ($0.scheme?.absoluteString ?? "") == SimplifiedScheme }.map { $0.label ?? $0.term }
   }
-  
+
+  @objc var isAudiobook: Bool {
+    defaultBookContentType == .audiobook
+  }
+
   init(
     acquisitions: [TPPOPDSAcquisition],
     authors: [TPPBookAuthor]?,
@@ -117,7 +121,7 @@ let UpdatedKey: String = "updated"
     self.contributors = contributors
     self.bookTokenLock = NSRecursiveLock()
   }
-
+  
   /// @brief Factory method to build a TPPBook object from an OPDS feed entry.
   ///
   /// @param entry An OPDS entry to base the book on.
@@ -224,8 +228,7 @@ let UpdatedKey: String = "updated"
         relatedBooksURL: authorLinkStrings.count > index ? URL(string: authorLinkStrings[index]) : nil
       )
     }
-    
-    
+  
     var revokeURL = URL(string: dictionary[RevokeURLKey] as? String ?? "")
     var reportURL = URL(string: dictionary[ReportURLKey] as? String ?? "")
 
@@ -343,8 +346,8 @@ let UpdatedKey: String = "updated"
       categoryStrings: categoryStrings,
       distributor: dictionary[DistributorKey] as? String,
       identifier: identifier,
-      imageURL: dictionary[ImageURLKey] as? URL,
-      imageThumbnailURL: dictionary[ImageThumbnailURLKey] as? URL,
+      imageURL: URL(string: dictionary[ImageURLKey] as? String ?? ""),
+      imageThumbnailURL: URL(string: dictionary[ImageThumbnailURLKey] as? String ?? ""),
       published: dictionary[PublishedKey] as? Date,
       publisher: dictionary[PublisherKey] as? String,
       subtitle: dictionary[SubtitleKey] as? String,
@@ -556,5 +559,12 @@ let UpdatedKey: String = "updated"
     }
     
     return defaultType
+  }
+}
+
+extension TPPBook: Identifiable {}
+extension TPPBook: Comparable {
+  static func < (lhs: TPPBook, rhs: TPPBook) -> Bool {
+    lhs.identifier == rhs.identifier
   }
 }
