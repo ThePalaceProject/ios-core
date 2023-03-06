@@ -35,7 +35,7 @@ struct NormalBookCell: View {
       Spacer()
     }
     .multilineTextAlignment(.leading)
-    .padding([.leading, .trailing], 2)
+    .padding(5)
     .frame(height: cellHeight)
     .onDisappear { model.isLoading = false }
   }
