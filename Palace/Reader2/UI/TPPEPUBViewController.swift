@@ -57,7 +57,7 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     // to re-set that to reflect our ad-hoc configuration.
     publication.userProperties = navigator.userSettings.userProperties
 
-    super.init(navigator: navigator, publication: publication, book: book, forSample: forSample)
+    super.init(navigator: navigator, publication: publication, book: book, forSample: forSample, initialLocation: initialLocation)
 
     navigator.delegate = self
   }

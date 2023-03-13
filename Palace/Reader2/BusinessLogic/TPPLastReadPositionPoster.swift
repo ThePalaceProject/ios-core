@@ -48,7 +48,7 @@ class TPPLastReadPositionPoster {
   /// - Parameter locator: The new local progress to be stored.
   func storeReadPosition(locator: Locator) {
     // Avoid overwriting location when reader first open
-    guard (locator.locations.totalProgression ?? 0) != 0 else {
+    guard (locator.locations.totalProgression ?? 0) != 0 || locator.locations.otherLocations["cssSelector"] != nil else {
       return
     }
 

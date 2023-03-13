@@ -837,6 +837,8 @@
 		E7BF7911296F5FB300137D9F /* FirebaseMessaging.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = E7BF790C296F5F7600137D9F /* FirebaseMessaging.xcframework */; };
 		E7C0F2F1299586E8003A10C5 /* Strings+objC.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7C0F2F0299586E8003A10C5 /* Strings+objC.swift */; };
 		E7C0F2F2299586E8003A10C5 /* Strings+objC.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7C0F2F0299586E8003A10C5 /* Strings+objC.swift */; };
+		E7C4BD6129BA70710079F729 /* TPPTextToSpeech.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7C4BD6029BA70710079F729 /* TPPTextToSpeech.swift */; };
+		E7C4BD6229BA70710079F729 /* TPPTextToSpeech.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7C4BD6029BA70710079F729 /* TPPTextToSpeech.swift */; };
 		E7CA1C4E29381068009CC6FD /* SQLite in Frameworks */ = {isa = PBXBuildFile; productRef = E7CA1C4D29381068009CC6FD /* SQLite */; };
 		E7CA1C502938107A009CC6FD /* SQLite in Frameworks */ = {isa = PBXBuildFile; productRef = E7CA1C4F2938107A009CC6FD /* SQLite */; };
 		E7CBF977285CA41400F00C02 /* TPPPDFDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7CBF976285CA41400F00C02 /* TPPPDFDocument.swift */; };
@@ -1609,6 +1611,7 @@
 		E7B20B48285B4E5600C49FE1 /* TPPPDFLabel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFLabel.swift; sourceTree = "<group>"; };
 		E7BF790C296F5F7600137D9F /* FirebaseMessaging.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = FirebaseMessaging.xcframework; path = Carthage/Build/FirebaseMessaging.xcframework; sourceTree = "<group>"; };
 		E7C0F2F0299586E8003A10C5 /* Strings+objC.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Strings+objC.swift"; sourceTree = "<group>"; };
+		E7C4BD6029BA70710079F729 /* TPPTextToSpeech.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPTextToSpeech.swift; sourceTree = "<group>"; };
 		E7CBF976285CA41400F00C02 /* TPPPDFDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFDocument.swift; sourceTree = "<group>"; };
 		E7E89398284A1EB800C7A4F3 /* TPPPDFPreviewBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFPreviewBar.swift; sourceTree = "<group>"; };
 		E7E9A22C298C6A82006C5D9E /* Reachability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Reachability.swift; sourceTree = "<group>"; };
@@ -2134,6 +2137,7 @@
 				73DB56C125F769FF003788EE /* TPPLastReadPositionSynchronizer.swift */,
 				7386C1F624525AFF004C78BD /* TPPReaderTOCBusinessLogic.swift */,
 				737DCB8B245CCF2300A8F297 /* TPPReaderBookmarksBusinessLogic.swift */,
+				E7C4BD6029BA70710079F729 /* TPPTextToSpeech.swift */,
 			);
 			path = BusinessLogic;
 			sourceTree = "<group>";
@@ -3178,9 +3182,6 @@
 						ProvisioningStyle = Manual;
 						TestTargetID = A823D80C192BABA400B55DE2;
 					};
-					73EB0A6325821DF4006BC997 = {
-						DevelopmentTeam = 88CBA74T8K;
-					};
 					A823D80C192BABA400B55DE2 = {
 						LastSwiftMigration = 1130;
 						SystemCapabilities = {
@@ -3672,6 +3673,7 @@
 				21989A1127B6FF0E00539B7F /* TPPReaderSettings.swift in Sources */,
 				73EB0A9D25821DF4006BC997 /* NSDate+NYPLDateAdditions.m in Sources */,
 				E792891D2861F58B000313D7 /* TPPPDFTOCView.swift in Sources */,
+				E7C4BD6229BA70710079F729 /* TPPTextToSpeech.swift in Sources */,
 				21045C592761095B00D2D407 /* TPPOnboardingView.swift in Sources */,
 				E7861C4F2846937B00B3A38A /* TPPPDFView.swift in Sources */,
 				17E81F0B261522B3001003C2 /* TPPRoundedButton.swift in Sources */,
@@ -4183,6 +4185,7 @@
 				AE77E7E37D89FB3EED630624 /* TPPOPDSType.m in Sources */,
 				7340DA6824B7F27900361387 /* TPPBook+Logging.swift in Sources */,
 				E7048072285A72A600019B31 /* TPPPDFNavigation.swift in Sources */,
+				E7C4BD6129BA70710079F729 /* TPPTextToSpeech.swift in Sources */,
 				E73549DE28A53982001B0D0A /* TPPPDFPageBookmark.swift in Sources */,
 				73B501C524F48D4C00FBAD7D /* TPPUserAccountFrontEndValidation.swift in Sources */,
 				E501710F27A3948C004B3392 /* TPPBookmarkFactory.swift in Sources */,
@@ -4408,7 +4411,8 @@
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
-				CODE_SIGN_IDENTITY = "iPhone Distribution";
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 141;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -4435,7 +4439,7 @@
 				PRODUCT_MODULE_NAME = Palace;
 				PRODUCT_NAME = "Palace-noDRM";
 				PROVISIONING_PROFILE = "2e185b6c-271e-4b02-a05e-860b8c3831f6";
-				PROVISIONING_PROFILE_SPECIFIER = "Ad hoc 2";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				RUN_CLANG_STATIC_ANALYZER = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG SIMPLYE";
 				SWIFT_OBJC_BRIDGING_HEADER = "Palace/AppInfrastructure/Palace-Bridging-Header.h";
