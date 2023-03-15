@@ -492,7 +492,7 @@
                             encoding:NSUTF8StringEncoding];
 
   // Save updated playhead position in audiobook chapter
-  NSTimeInterval playheadOffset = self.manager.audiobook.player.currentChapterLocation.playheadOffset;
+  NSTimeInterval playheadOffset = self.manager.audiobook.player.currentChapterLocation.actualOffset;
   if (previousPlayheadOffset != playheadOffset && playheadOffset > 0) {
     previousPlayheadOffset = playheadOffset;
   
