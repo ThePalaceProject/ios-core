@@ -102,11 +102,9 @@ class BookCellModel: ObservableObject {
       return nil
     }
 
-    var date: Date? = nil
+    var date: Date?
 
-    switch state.buttonState {
-    case .downloadNeeded, .used:
-      book.defaultAcquisition?.availability.matchUnavailable(
+    book.defaultAcquisition?.availability.matchUnavailable(
         nil,
         limited: { limited in
           if let until = limited.until, until.timeIntervalSinceNow > 0 { date = until }
@@ -117,9 +115,7 @@ class BookCellModel: ObservableObject {
           if let until = ready.until, until.timeIntervalSinceNow > 0 { date = until }
         }
       )
-    default:
-      return date
-    }
+
     return date
   }
 
