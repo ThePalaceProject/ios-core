@@ -1,5 +1,4 @@
 @import MediaPlayer;
-@import NYPLAudiobookToolkit;
 @import PDFRendererProvider;
 #if FEATURE_OVERDRIVE
 @import OverdriveProcessor;
@@ -18,7 +17,6 @@
 #import "TPPReachabilityManager.h"
 
 #import "TPPBookCellDelegate.h"
-#import "Palace-Swift.h"
 
 #if defined(FEATURE_DRM_CONNECTOR)
 #import <ADEPT/ADEPT.h>
@@ -31,6 +29,7 @@
 
 @property (nonatomic) NSTimer *timer;
 @property (nonatomic) TPPBook *book;
+@property (nonatomic) NSDate *lastServerUpdate;
 @property (nonatomic) id<AudiobookManager> manager;
 @property (nonatomic, weak) AudiobookPlayerViewController *audiobookViewController;
 @property (strong) NSLock *refreshAudiobookLock;
@@ -39,6 +38,8 @@
 @end
 
 @implementation TPPBookCellDelegate
+
+static int ServerUpdateDelay = 15;
 
 + (instancetype)sharedDelegate
 {
@@ -60,7 +61,8 @@
   self = [super init];
     
   _refreshAudiobookLock = [[NSLock alloc] init];
-  
+  _lastServerUpdate = [NSDate date];
+
   return self;
 }
 
@@ -297,6 +299,7 @@
                                             initWithMetadata:metadata
                                             audiobook:audiobook];
       manager.refreshDelegate = self;
+      manager.annotationsDelegate = self;
 
       AudiobookPlayerViewController *const audiobookVC = [[AudiobookPlayerViewController alloc]
                                                           initWithAudiobookManager:manager];
@@ -500,8 +503,11 @@
      setLocation:[[TPPBookLocation alloc] initWithLocationString:string renderer:@"NYPLAudiobookToolkit"]
      forIdentifier:self.book.identifier];
     
-    // Save updated location on server
-    [TPPAnnotations postListeningPositionForBook:self.book.identifier selectorValue:string];
+    if ([[NSDate date] timeIntervalSinceDate: self.lastServerUpdate] >= ServerUpdateDelay) {
+      self.lastServerUpdate = [NSDate date];
+      // Save updated location on server
+      [self postWithLocation:string for:self.book.identifier];
+    }
   }
 }
 
@@ -577,6 +583,13 @@
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(updateODAudiobookManifest) name:NSNotification.TPPMyBooksDownloadCenterDidChange object:nil];
 #endif
   [[TPPMyBooksDownloadCenter sharedDownloadCenter] startDownloadForBook:self.book];
+}
+
+#pragma mark Annotations Delegate
+
+- (void)postWithLocation:(NSString *)location for:(NSString *)book
+{
+  [TPPAnnotations postListeningPositionForBook:book selectorValue:location];
 }
 
 #if FEATURE_OVERDRIVE
