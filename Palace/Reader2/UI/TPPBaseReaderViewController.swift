@@ -38,13 +38,14 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   let navigator: UIViewController & Navigator
   private var tocBarButton: UIBarButtonItem?
   private var bookmarkBarButton: UIBarButtonItem?
+  private var tempPlayButton: UIBarButtonItem?
   private(set) var stackView: UIStackView!
   private lazy var positionLabel = UILabel()
   private lazy var bookTitleLabel = UILabel()
   private var isShowingSample: Bool = false
 
   private var ttsPlayingUtterance: AnyCancellable?
-  private var ttsState: AnyCancellable?
+  private var ttsIsPlaying: AnyCancellable?
   
   // MARK: - Lifecycle
 
@@ -63,7 +64,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     self.navigator = navigator
     self.publication = publication
     self.isShowingSample = forSample
-    self.tts = TPPTextToSpeech(navigator: navigator, publication: publication, initialLocator: initialLocation)
+    self.tts = TPPTextToSpeech(navigator: navigator, publication: publication, locator: initialLocation)
     
     lastReadPositionPoster = TPPLastReadPositionPoster(
       book: book,
@@ -87,10 +88,12 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
       .removeDuplicates()
       .receive(on: RunLoop.main)
       .sink(receiveValue: didUpdateTTSLocator)
-    self.ttsState = self.tts?.$state
+    
+    self.ttsIsPlaying = self.tts?.$isPlaying
       .removeDuplicates()
       .receive(on: RunLoop.main)
-      .sink(receiveValue: didUpdateTTSState)
+      .sink(receiveValue: didChangePlayingState)
+    
   }
 
   @available(*, unavailable)
@@ -180,7 +183,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     if let locator = tts.playingUtterance {
       lastReadPositionPoster.storeReadPosition(locator: locator)
     }
-    if tts.state.isPlaying {
+    if tts.isPlaying {
       tts.stop()
     }
   }
@@ -207,14 +210,17 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
                                     target: self,
                                     action: #selector(presentPositionsVC))
     tocButton.accessibilityLabel = DisplayStrings.tocAndBookmarks
-    
+    let playButton = UIBarButtonItem(image: UIImage(systemName: "play"), style: .plain, target: self, action: #selector(playPauseReading))
+    playButton.accessibilityLabel = "Play"
     if !isShowingSample {
       buttons.append(bookmarkBtn)
     }
 
     buttons.append(tocButton)
+    buttons.append(playButton)
     tocBarButton = tocButton
     bookmarkBarButton = bookmarkBtn
+    tempPlayButton = playButton
     updateBookmarkButton(withState: false)
 
     return buttons
@@ -332,15 +338,15 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   // MARK: - Accessibility
 
   
-  private func didUpdateTTSState(_ state: TPPTextToSpeech.State?) {
-    
-  }
-  
   private func didUpdateTTSLocator(_ locator: Locator?) {
     // Save text-to-speech location here in VoiceOver mode
     if let locator = locator, isVoiceOverRunning {
       lastReadPositionPoster.storeReadPosition(locator: locator)
     }
+  }
+  
+  private func didChangePlayingState(_ isPlaying: Bool) {
+    
   }
     
   /// Constraint used to shift the content under the navigation bar, since it is always visible when VoiceOver is running.
@@ -387,7 +393,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     guard isVoiceOverRunning != isRunning else {
       return
     }
-    if let tts = tts, !isRunning, tts.state.isPlaying {
+    if let tts = tts, !isRunning, tts.isPlaying {
       tts.pause()
     }
     updateViewsForVoiceOver(isRunning: isRunning)
@@ -425,8 +431,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
       return
     }
     if tts.playingUtterance != nil {
-      tts.start()
-//      tts.pauseOrResume()
+      tts.pauseOrResume()
     } else {
       tts.start()
     }
