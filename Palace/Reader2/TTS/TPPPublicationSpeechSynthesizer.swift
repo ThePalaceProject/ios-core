@@ -7,21 +7,33 @@
 //
 
 import Foundation
+import Combine
+import AVFoundation
 import R2Shared
 import R2Navigator
-import AVFoundation
-import Combine
+
+/// Iterator direction
+private enum Direction {
+  case forward, backward
+}
+
+/// An utterance is an arbitrary text (e.g. sentence) extracted from the publication
+public struct Utterance {
+  /// Text to be spoken.
+  public let text: String
+  /// Locator to the utterance in the publication.
+  public let locator: Locator
+  /// Language of this utterance, if it dffers from the default publication language.
+  public let language: Language?
+}
 
 public protocol TPPPublicationSpeechSynthesizerDelegate: AnyObject {
   /// Called when the synthesizer's state is updated.
   func publicationSpeechSynthesizer(_ synthesizer: TPPPublicationSpeechSynthesizer, stateDidChange state: TPPPublicationSpeechSynthesizer.State)
-  
-  /// Called when an `error` occurs while speaking `utterance`.
-  func publicationSpeechSynthesizer(_ synthesizer: TPPPublicationSpeechSynthesizer, utterance: TPPPublicationSpeechSynthesizer.Utterance, didFailWithError error: TPPPublicationSpeechSynthesizer.Error)
 }
 
 /// `PublicationSpeechSynthesizer` orchestrates the rendition of a `Publication` by iterating through its content,
-/// splitting it into individual utterances using a `ContentTokenizer`, then using a `TTSEngine` to read them aloud.
+/// splitting it into individual utterances using a `ContentTokenizer`
 public class TPPPublicationSpeechSynthesizer: NSObject, Loggable {
 
   public typealias TokenizerFactory = (_ defaultLanguage: Language?) -> ContentTokenizer
@@ -29,22 +41,6 @@ public class TPPPublicationSpeechSynthesizer: NSObject, Loggable {
   /// Returns whether the `publication` can be played with a `PublicationSpeechSynthesizer`.
   public static func canSpeak(publication: Publication) -> Bool {
     publication.content() != nil
-  }
-  
-  public enum Error: Swift.Error {
-    /// Underlying `TTSEngine` error.
-    case engine(TTSError)
-  }
-    
-  /// An utterance is an arbitrary text (e.g. sentence) extracted from the publication, that can be synthesized by
-  /// the TTS engine.
-  public struct Utterance {
-    /// Text to be spoken.
-    public let text: String
-    /// Locator to the utterance in the publication.
-    public let locator: Locator
-    /// Language of this utterance, if it dffers from the default publication language.
-    public let language: Language?
   }
   
   /// Represents a state of the `PublicationSpeechSynthesizer`.
@@ -74,14 +70,12 @@ public class TPPPublicationSpeechSynthesizer: NSObject, Loggable {
   private let synthesizer: AVSpeechSynthesizer
   private var voiceOverAnnouncementCancellable: AnyCancellable?
   
-  /// Creates a `PublicationSpeechSynthesizer` using the given `TTSEngine` factory.
+  /// Creates a `PublicationSpeechSynthesizer`
   ///
   /// Returns null if the publication cannot be synthesized.
   ///
   /// - Parameters:
   ///   - publication: Publication which will be iterated through and synthesized.
-  ///   - config: Initial TTS configuration.
-  ///   - engineFactory: Factory to create an instance of `TtsEngine`. Defaults to `AVTTSEngine`.
   ///   - tokenizerFactory: Factory to create a `ContentTokenizer` which will be used to
   ///     split each `ContentElement` item into smaller chunks. Splits by sentences by default.
   ///   - delegate: Optional delegate.
@@ -123,6 +117,20 @@ public class TPPPublicationSpeechSynthesizer: NSObject, Loggable {
   /// (Re)starts the synthesizer from the given locator or the beginning of the publication.
   public func start(from locator: Locator? = nil) {
     publicationIterator = publication.content(from: locator)?.iterator()
+    
+    if let cssSelector = locator?.locations.cssSelector {
+      var utteranceAtLocator: Utterance?
+      while utterances.current()?.locator.locations.cssSelector != cssSelector {
+        utteranceAtLocator = nextUtterance(.forward)
+        if utteranceAtLocator == nil {
+          break
+        }
+      }
+      // Reload publication content if utterance is not found
+      if utteranceAtLocator == nil {
+        publicationIterator = publication.content(from: locator)?.iterator()
+      }
+    }
     playNextUtterance(.forward)
   }
   
@@ -209,7 +217,7 @@ public class TPPPublicationSpeechSynthesizer: NSObject, Loggable {
     play(utterance)
   }
   
-  /// Plays the given `utterance` with the TTS `engine`.
+  /// Plays the given `utterance`
   private func play(_ utterance: Utterance) {
     
     if let range = utterance.text.range(of: utterance.text) {
@@ -318,7 +326,6 @@ public class TPPPublicationSpeechSynthesizer: NSObject, Loggable {
     case .playing(_, range: _): self.playNextUtterance(.forward)
     default: break
     }
-    
   }
 }
 
@@ -327,11 +334,6 @@ extension TPPPublicationSpeechSynthesizer: AVSpeechSynthesizerDelegate {
     self.didFinishUtterance()
   }
 }
-
-private enum Direction {
-  case forward, backward
-}
-
 
 /// A `List` with a mutable cursor index.
 struct CursorList<Element> {
@@ -387,28 +389,6 @@ private extension ContentIterator {
       return try next()
     case .backward:
       return try previous()
-    }
-  }
-}
-
-/// An utterance is an arbitrary text (e.g. sentence) that can be synthesized by the TTS engine.
-public struct TTSUtterance {
-  /// Text to be spoken.
-  public let text: String
-  
-  /// Delay before speaking the utterance, in seconds.
-  public let delay: TimeInterval
-  
-  /// Either an explicit voice or the language of the text. If a language is provided, the default voice for this
-  /// language will be used.
-  public let voiceOrLanguage: Either<TTSVoice, Language>
-  
-  public var language: Language {
-    switch voiceOrLanguage {
-    case .left(let voice):
-      return voice.language
-    case .right(let language):
-      return language
     }
   }
 }

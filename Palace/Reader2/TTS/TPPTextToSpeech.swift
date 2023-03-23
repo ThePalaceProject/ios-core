@@ -13,7 +13,6 @@ import R2Shared
 
 class TPPTextToSpeech: ObservableObject {
   
-  private(set) var locator: Locator?
   private let publication: Publication
   private let navigator: Navigator
   private let synthesizer: TPPPublicationSpeechSynthesizer
@@ -30,14 +29,13 @@ class TPPTextToSpeech: ObservableObject {
   ///   - navigator: Readium Navigator object
   ///   - publication: Readium Publication object
   ///   - locator: initial locator
-  init?(navigator: Navigator, publication: Publication, locator: Locator? = nil) {
+  init?(navigator: Navigator, publication: Publication) {
     guard let synthesizer = TPPPublicationSpeechSynthesizer(publication: publication) else {
       return nil
     }
     self.synthesizer = synthesizer
     self.navigator = navigator
     self.publication = publication
-    self.locator = locator
     
     synthesizer.delegate = self
     
@@ -76,8 +74,8 @@ class TPPTextToSpeech: ObservableObject {
     
   }
   
-  @objc func start() {
-    if let locator = locator, locator.locations.cssSelector != nil {
+  func start(from startLocator: Locator? = nil) {
+    if let locator = startLocator {
       synthesizer.start(from: locator)
     } else if let navigator = navigator as? VisualNavigator {
       // Gets the locator of the element at the top of the page.
@@ -131,7 +129,4 @@ extension TPPTextToSpeech: TPPPublicationSpeechSynthesizerDelegate {
     }
   }
   
-  public func publicationSpeechSynthesizer(_ synthesizer: TPPPublicationSpeechSynthesizer, utterance: TPPPublicationSpeechSynthesizer.Utterance, didFailWithError error: TPPPublicationSpeechSynthesizer.Error) {
-    TPPErrorLogger.logError(error, summary: "Text To Speech Error")
-  }
 }

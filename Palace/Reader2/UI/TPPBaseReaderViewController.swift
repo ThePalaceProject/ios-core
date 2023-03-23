@@ -43,6 +43,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   private lazy var positionLabel = UILabel()
   private lazy var bookTitleLabel = UILabel()
   private var isShowingSample: Bool = false
+  private let initialLocation: Locator?
 
   private var ttsPlayingUtterance: AnyCancellable?
   private var ttsIsPlaying: AnyCancellable?
@@ -64,7 +65,8 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     self.navigator = navigator
     self.publication = publication
     self.isShowingSample = forSample
-    self.tts = TPPTextToSpeech(navigator: navigator, publication: publication, locator: initialLocation)
+    self.initialLocation = initialLocation
+    self.tts = TPPTextToSpeech(navigator: navigator, publication: publication)
     
     lastReadPositionPoster = TPPLastReadPositionPoster(
       book: book,
@@ -412,7 +414,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     tts?.stop()
     DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
       self.navigator.goBackward {
-        self.tts?.start()
+        self.tts?.start(from: self.navigator.currentLocation)
       }
     }
   }
@@ -421,7 +423,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     tts?.stop()
     DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
       self.navigator.goForward {
-        self.tts?.start()
+        self.tts?.start(from: self.navigator.currentLocation)
       }
     }
   }
@@ -433,7 +435,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     if tts.playingUtterance != nil {
       tts.pauseOrResume()
     } else {
-      tts.start()
+      tts.start(from: self.initialLocation)
     }
   }
 
