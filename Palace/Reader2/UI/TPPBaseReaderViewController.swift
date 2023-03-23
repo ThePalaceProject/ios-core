@@ -368,7 +368,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     let toolbar = UIToolbar(frame: .zero)
     let forwardButton = makeItem(.fastForward, label: DisplayStrings.nextChapter, action: #selector(goForward))
     let backButton = makeItem(.rewind, label: DisplayStrings.previousChapter, action: #selector(goBackward))
-    let playButton = makeItem(.play, label: "Play", action: #selector(playPauseReading))
+    let playButton = makeItem(.play, label: DisplayStrings.read, action: #selector(playPauseReading))
     
     toolbar.items = [
       backButton,
