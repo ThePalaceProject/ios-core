@@ -39,7 +39,7 @@
 
 @implementation TPPBookCellDelegate
 
-static int ServerUpdateDelay = 15;
+static const int kServerUpdateDelay = 15;
 
 + (instancetype)sharedDelegate
 {
@@ -503,7 +503,7 @@ static int ServerUpdateDelay = 15;
      setLocation:[[TPPBookLocation alloc] initWithLocationString:string renderer:@"NYPLAudiobookToolkit"]
      forIdentifier:self.book.identifier];
     
-    if ([[NSDate date] timeIntervalSinceDate: self.lastServerUpdate] >= ServerUpdateDelay) {
+    if ([[NSDate date] timeIntervalSinceDate: self.lastServerUpdate] >= kServerUpdateDelay) {
       self.lastServerUpdate = [NSDate date];
       // Save updated location on server
       [self postWithLocation:string for:self.book.identifier];
