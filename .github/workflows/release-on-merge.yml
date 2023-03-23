@@ -6,10 +6,10 @@ on:
     types: [closed]
 jobs:
   create-release:
-    runs-on: macOS-11
+    runs-on: macOS-12
     steps:
-      - name: Force Xcode 13.2
-        run: sudo xcode-select -switch /Applications/Xcode_13.2.app
+      - name: Force Xcode 14.2
+        run: sudo xcode-select -switch /Applications/Xcode_14.2.app
       - name: Checkout main repo and submodules
         uses: actions/checkout@v3
         with:

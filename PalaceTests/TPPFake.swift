@@ -20,10 +20,60 @@ class TPPFake {
     )
   }
   
+  class var genericAudiobookAcquisition: TPPOPDSAcquisition {
+    TPPOPDSAcquisition(
+      relation: .generic,
+      type: "application/audiobook+json",
+      hrefURL: URL(string:"https://market.feedbooks.com/item/3877422/preview")!,
+      indirectAcquisitions: [TPPOPDSIndirectAcquisition](),
+      availability: TPPOPDSAcquisitionAvailabilityUnlimited()
+    )
+  }
+  
   class var genericSample: TPPOPDSAcquisition {
     TPPOPDSAcquisition(
       relation: .sample,
       type: "application/epub+zip",
+      hrefURL: URL(string:"https://market.feedbooks.com/item/3877422/preview")!,
+      indirectAcquisitions: [],
+      availability: TPPOPDSAcquisitionAvailabilityUnlimited()
+    )
+  }
+
+  class var genericAudiobookSample: TPPOPDSAcquisition {
+    TPPOPDSAcquisition(
+      relation: .sample,
+      type: "application/json",
+      hrefURL: URL(string:"https://market.feedbooks.com/item/3877422/preview")!,
+      indirectAcquisitions: [],
+      availability: TPPOPDSAcquisitionAvailabilityUnlimited()
+    )
+  }
+  
+  class var overdriveWebAudiobookSample: TPPOPDSAcquisition {
+    TPPOPDSAcquisition(
+      relation: .preview,
+      type: "text/html",
+      hrefURL: URL(string:"https://market.feedbooks.com/item/3877422/preview")!,
+      indirectAcquisitions: [],
+      availability: TPPOPDSAcquisitionAvailabilityUnlimited()
+    )
+  }
+  
+  class var overdriveAudiobookWaveFile: TPPOPDSAcquisition {
+    TPPOPDSAcquisition(
+      relation: .sample,
+      type: "audio/x-ms-wma",
+      hrefURL: URL(string:"https://market.feedbooks.com/item/3877422/preview")!,
+      indirectAcquisitions: [],
+      availability: TPPOPDSAcquisitionAvailabilityUnlimited()
+    )
+  }
+  
+  class var overdriveAudiobookMPEG: TPPOPDSAcquisition {
+    TPPOPDSAcquisition(
+      relation: .sample,
+      type: "audio/mpeg",
       hrefURL: URL(string:"https://market.feedbooks.com/item/3877422/preview")!,
       indirectAcquisitions: [],
       availability: TPPOPDSAcquisitionAvailabilityUnlimited()

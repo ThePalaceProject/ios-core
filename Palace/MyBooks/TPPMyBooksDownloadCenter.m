@@ -555,7 +555,8 @@ didCompleteWithError:(NSError *)error
   if (!data) {
     return;
   }
-  id const json = TPPJSONObjectFromData([NSData dataWithContentsOfURL:bookURL]);
+
+  id const json = TPPJSONObjectFromData(data);
   
   NSMutableDictionary *dict = nil;
   

@@ -39,6 +39,7 @@ import Foundation
 
   var hasSample: Bool { sample != nil }
   var hasAudiobookSample: Bool { hasSample && defaultBookContentType == .audiobook }
+  var showAudiobookToolbar: Bool { hasAudiobookSample && SampleType(rawValue: sampleAcquisition?.type ?? "")?.needsDownload ?? false }
 }
 
 extension TPPBook {
