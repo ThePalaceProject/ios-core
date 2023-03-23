@@ -68,7 +68,11 @@ let UpdatedKey: String = "updated"
   static func categoryStringsFromCategories(categories: [TPPOPDSCategory]) -> [String] {
     categories.filter { $0.scheme == nil || ($0.scheme?.absoluteString ?? "") == SimplifiedScheme }.map { $0.label ?? $0.term }
   }
-  
+
+  @objc var isAudiobook: Bool {
+    defaultBookContentType == .audiobook
+  }
+
   init(
     acquisitions: [TPPOPDSAcquisition],
     authors: [TPPBookAuthor]?,
@@ -117,7 +121,7 @@ let UpdatedKey: String = "updated"
     self.contributors = contributors
     self.bookTokenLock = NSRecursiveLock()
   }
-
+  
   /// @brief Factory method to build a TPPBook object from an OPDS feed entry.
   ///
   /// @param entry An OPDS entry to base the book on.
@@ -224,8 +228,7 @@ let UpdatedKey: String = "updated"
         relatedBooksURL: authorLinkStrings.count > index ? URL(string: authorLinkStrings[index]) : nil
       )
     }
-    
-    
+  
     var revokeURL = URL(string: dictionary[RevokeURLKey] as? String ?? "")
     var reportURL = URL(string: dictionary[ReportURLKey] as? String ?? "")
 
@@ -335,6 +338,11 @@ let UpdatedKey: String = "updated"
       }
     }
 
+    var previewLink: TPPOPDSAcquisition?
+    if let previewDict = dictionary[PreviewURLKey] as? [AnyHashable: Any] {
+      previewLink = TPPOPDSAcquisition(dictionary: previewDict)
+    }
+  
     guard let updated = NSDate(iso8601DateString: (dictionary[UpdatedKey] as? String ?? "")) as? Date else { return nil }
 
     self.init(
@@ -343,8 +351,8 @@ let UpdatedKey: String = "updated"
       categoryStrings: categoryStrings,
       distributor: dictionary[DistributorKey] as? String,
       identifier: identifier,
-      imageURL: dictionary[ImageURLKey] as? URL,
-      imageThumbnailURL: dictionary[ImageThumbnailURLKey] as? URL,
+      imageURL: URL(string: dictionary[ImageURLKey] as? String ?? ""),
+      imageThumbnailURL: URL(string: dictionary[ImageThumbnailURLKey] as? String ?? ""),
       published: dictionary[PublishedKey] as? Date,
       publisher: dictionary[PublisherKey] as? String,
       subtitle: dictionary[SubtitleKey] as? String,
@@ -355,7 +363,7 @@ let UpdatedKey: String = "updated"
       analyticsURL: URL(string: dictionary[AnalyticsURLKey] as? String ?? ""),
       alternateURL: URL(string: dictionary[AlternateURLKey] as? String ?? ""),
       relatedWorksURL: URL(string: dictionary[RelatedURLKey] as? String ?? ""),
-      previewLink: dictionary[PreviewURLKey] as? TPPOPDSAcquisition,
+      previewLink: previewLink,
       seriesURL: URL(string: dictionary[SeriesLinkKey] as? String ?? ""),
       revokeURL: revokeURL,
       reportURL: reportURL,
@@ -556,5 +564,12 @@ let UpdatedKey: String = "updated"
     }
     
     return defaultType
+  }
+}
+
+extension TPPBook: Identifiable {}
+extension TPPBook: Comparable {
+  static func < (lhs: TPPBook, rhs: TPPBook) -> Bool {
+    lhs.identifier == rhs.identifier
   }
 }
