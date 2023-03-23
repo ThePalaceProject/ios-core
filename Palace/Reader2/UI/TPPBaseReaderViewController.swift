@@ -38,7 +38,6 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   let navigator: UIViewController & Navigator
   private var tocBarButton: UIBarButtonItem?
   private var bookmarkBarButton: UIBarButtonItem?
-  private var tempPlayButton: UIBarButtonItem?
   private(set) var stackView: UIStackView!
   private lazy var positionLabel = UILabel()
   private lazy var bookTitleLabel = UILabel()
@@ -212,17 +211,13 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
                                     target: self,
                                     action: #selector(presentPositionsVC))
     tocButton.accessibilityLabel = DisplayStrings.tocAndBookmarks
-    let playButton = UIBarButtonItem(image: UIImage(systemName: "play"), style: .plain, target: self, action: #selector(playPauseReading))
-    playButton.accessibilityLabel = "Play"
     if !isShowingSample {
       buttons.append(bookmarkBtn)
     }
 
     buttons.append(tocButton)
-    buttons.append(playButton)
     tocBarButton = tocButton
     bookmarkBarButton = bookmarkBtn
-    tempPlayButton = playButton
     updateBookmarkButton(withState: false)
 
     return buttons
