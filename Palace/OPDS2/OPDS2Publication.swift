@@ -20,3 +20,29 @@ struct OPDS2Publication: Codable {
   let metadata: Metadata
   let images: [OPDS2Link]?
 }
+
+private let imageType = "image/png"
+
+extension OPDS2Publication {
+  var imageURL: URL? {
+    guard let image = images?.first(where: { $0.type == imageType }) else {
+      return nil
+    }
+    return URL(string: image.href)
+  }
+  
+  var thumbnailURL: URL? {
+    guard let thumbnail = images?.first(where: { $0.type == imageType && ($0.rel ?? "").contains("thumbnail") }) else {
+      return nil
+    }
+    return URL(string: thumbnail.href)
+  }
+
+  var coverURL: URL? {
+    guard let cover = images?.first(where: { $0.type == imageType && ($0.rel ?? "").contains("cover") }) else {
+      return nil
+    }
+    return URL(string: cover.href)
+  }
+}
+
