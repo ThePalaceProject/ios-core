@@ -43,9 +43,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   private lazy var bookTitleLabel = UILabel()
   private var isShowingSample: Bool = false
   private var initialLocation: Locator?
-
-  private var ttsPlayingUtterance: AnyCancellable?
-  private var ttsIsPlaying: AnyCancellable?
+  private var subscriptions: Set<AnyCancellable> = []
   
   // MARK: - Lifecycle
 
@@ -85,15 +83,17 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
 
     NotificationCenter.default.addObserver(self, selector: #selector(voiceOverStatusDidChange), name: Notification.Name(UIAccessibility.voiceOverStatusDidChangeNotification.rawValue), object: nil)
 
-    self.ttsPlayingUtterance = self.tts?.$playingUtterance
+    self.tts?.$playingUtterance
       .removeDuplicates()
       .receive(on: RunLoop.main)
       .sink(receiveValue: didUpdateTTSLocator)
+      .store(in: &subscriptions)
     
-    self.ttsIsPlaying = self.tts?.$isPlaying
+    self.tts?.$isPlaying
       .removeDuplicates()
       .receive(on: RunLoop.main)
       .sink(receiveValue: didChangePlayingState)
+      .store(in: &subscriptions)
     
   }
 
