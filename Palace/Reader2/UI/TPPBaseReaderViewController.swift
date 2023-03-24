@@ -42,7 +42,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   private lazy var positionLabel = UILabel()
   private lazy var bookTitleLabel = UILabel()
   private var isShowingSample: Bool = false
-  private let initialLocation: Locator?
+  private var initialLocation: Locator?
 
   private var ttsPlayingUtterance: AnyCancellable?
   private var ttsIsPlaying: AnyCancellable?
@@ -409,7 +409,9 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     tts?.stop()
     DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
       self.navigator.goBackward {
-        self.tts?.start(from: self.navigator.currentLocation)
+        if UIAccessibility.isVoiceOverRunning {
+          self.tts?.start(from: self.navigator.currentLocation)
+        }
       }
     }
   }
@@ -418,7 +420,9 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     tts?.stop()
     DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
       self.navigator.goForward {
-        self.tts?.start(from: self.navigator.currentLocation)
+        if UIAccessibility.isVoiceOverRunning {
+          self.tts?.start(from: self.navigator.currentLocation)
+        }
       }
     }
   }
@@ -430,7 +434,8 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     if tts.playingUtterance != nil {
       tts.pauseOrResume()
     } else {
-      tts.start(from: self.initialLocation)
+      tts.start(from: self.initialLocation ?? self.navigator.currentLocation)
+      self.initialLocation = nil
     }
   }
 
@@ -524,6 +529,9 @@ extension TPPBaseReaderViewController: TPPReaderPositionsDelegate {
 
     if let location = loc as? Locator {
       navigator.go(to: location)
+      if UIAccessibility.isVoiceOverRunning {
+        tts?.stop()
+      }
     }
   }
 
@@ -539,6 +547,9 @@ extension TPPBaseReaderViewController: TPPReaderPositionsDelegate {
     let r2bookmark = bookmark.convertToR2(from: publication)
     if let locator = r2bookmark?.locator {
       navigator.go(to: locator)
+      if UIAccessibility.isVoiceOverRunning {
+        tts?.stop()
+      }
     }
   }
 
