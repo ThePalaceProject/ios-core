@@ -814,6 +814,8 @@
 		E75ED6DD29772EBE006BBD5F /* invalid.xml in Resources */ = {isa = PBXBuildFile; fileRef = 111559F019B8FAA10003BE94 /* invalid.xml */; };
 		E75ED6DE29772EC1006BBD5F /* main.xml in Resources */ = {isa = PBXBuildFile; fileRef = 11F54C1D194109120086FCAF /* main.xml */; };
 		E75ED6E32977320B006BBD5F /* single_entry.xml in Resources */ = {isa = PBXBuildFile; fileRef = 11F54C2419410BE40086FCAF /* single_entry.xml */; };
+		E75F4A2929C3AB1F006DFBD8 /* TPPPublicationSpeechSynthesizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E75F4A2829C3AB1F006DFBD8 /* TPPPublicationSpeechSynthesizer.swift */; };
+		E75F4A2A29C3AB1F006DFBD8 /* TPPPublicationSpeechSynthesizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E75F4A2829C3AB1F006DFBD8 /* TPPPublicationSpeechSynthesizer.swift */; };
 		E76AD92B296DCB76008ECC61 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E76AD92A296DCB76008ECC61 /* NotificationService.swift */; };
 		E76AD92C296DCB76008ECC61 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E76AD92A296DCB76008ECC61 /* NotificationService.swift */; };
 		E77D021A2931337000544180 /* R2Navigator in Frameworks */ = {isa = PBXBuildFile; productRef = E77D02192931337000544180 /* R2Navigator */; };
@@ -864,6 +866,8 @@
 		E7BF7911296F5FB300137D9F /* FirebaseMessaging.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = E7BF790C296F5F7600137D9F /* FirebaseMessaging.xcframework */; };
 		E7C0F2F1299586E8003A10C5 /* Strings+objC.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7C0F2F0299586E8003A10C5 /* Strings+objC.swift */; };
 		E7C0F2F2299586E8003A10C5 /* Strings+objC.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7C0F2F0299586E8003A10C5 /* Strings+objC.swift */; };
+		E7C4BD6129BA70710079F729 /* TPPTextToSpeech.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7C4BD6029BA70710079F729 /* TPPTextToSpeech.swift */; };
+		E7C4BD6229BA70710079F729 /* TPPTextToSpeech.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7C4BD6029BA70710079F729 /* TPPTextToSpeech.swift */; };
 		E7CA1C4E29381068009CC6FD /* SQLite in Frameworks */ = {isa = PBXBuildFile; productRef = E7CA1C4D29381068009CC6FD /* SQLite */; };
 		E7CA1C502938107A009CC6FD /* SQLite in Frameworks */ = {isa = PBXBuildFile; productRef = E7CA1C4F2938107A009CC6FD /* SQLite */; };
 		E7CBF977285CA41400F00C02 /* TPPPDFDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7CBF976285CA41400F00C02 /* TPPPDFDocument.swift */; };
@@ -1629,6 +1633,7 @@
 		E7376ECB287DF1C30095AADF /* DispatchQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DispatchQueue.swift; sourceTree = "<group>"; };
 		E7376ECF287E05F50095AADF /* TPPPDFPreviewThumbnail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFPreviewThumbnail.swift; sourceTree = "<group>"; };
 		E74752F627FF044400F5E7FA /* TPPSignInBusinessLogic+CardCreation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPSignInBusinessLogic+CardCreation.swift"; sourceTree = "<group>"; };
+		E75F4A2829C3AB1F006DFBD8 /* TPPPublicationSpeechSynthesizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPublicationSpeechSynthesizer.swift; sourceTree = "<group>"; };
 		E76AD92A296DCB76008ECC61 /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
 		E7861C462846868800B3A38A /* TPPPDFViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFViewController.swift; sourceTree = "<group>"; };
 		E7861C482846875D00B3A38A /* TPPPDFView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFView.swift; sourceTree = "<group>"; };
@@ -1648,6 +1653,7 @@
 		E7B20B48285B4E5600C49FE1 /* TPPPDFLabel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFLabel.swift; sourceTree = "<group>"; };
 		E7BF790C296F5F7600137D9F /* FirebaseMessaging.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = FirebaseMessaging.xcframework; path = Carthage/Build/FirebaseMessaging.xcframework; sourceTree = "<group>"; };
 		E7C0F2F0299586E8003A10C5 /* Strings+objC.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Strings+objC.swift"; sourceTree = "<group>"; };
+		E7C4BD6029BA70710079F729 /* TPPTextToSpeech.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPTextToSpeech.swift; sourceTree = "<group>"; };
 		E7CBF976285CA41400F00C02 /* TPPPDFDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFDocument.swift; sourceTree = "<group>"; };
 		E7E89398284A1EB800C7A4F3 /* TPPPDFPreviewBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFPreviewBar.swift; sourceTree = "<group>"; };
 		E7E9A22C298C6A82006C5D9E /* Reachability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Reachability.swift; sourceTree = "<group>"; };
@@ -2255,6 +2261,7 @@
 		73A22980240F26C6006B9EAD /* Reader2 */ = {
 			isa = PBXGroup;
 			children = (
+				E75F4A2729C3AAF0006DFBD8 /* TTS */,
 				217595D027B67FA300BA0FDD /* ReaderSettings */,
 				73DE8984260BF61B003D9135 /* Bookmarks */,
 				7361615525F75E3900395337 /* BusinessLogic */,
@@ -3139,6 +3146,15 @@
 			path = LCP;
 			sourceTree = "<group>";
 		};
+		E75F4A2729C3AAF0006DFBD8 /* TTS */ = {
+			isa = PBXGroup;
+			children = (
+				E7C4BD6029BA70710079F729 /* TPPTextToSpeech.swift */,
+				E75F4A2829C3AB1F006DFBD8 /* TPPPublicationSpeechSynthesizer.swift */,
+			);
+			path = TTS;
+			sourceTree = "<group>";
+		};
 		E76AD929296DCB43008ECC61 /* Notifications */ = {
 			isa = PBXGroup;
 			children = (
@@ -3252,9 +3268,6 @@
 						LastSwiftMigration = 1130;
 						ProvisioningStyle = Manual;
 						TestTargetID = A823D80C192BABA400B55DE2;
-					};
-					73EB0A6325821DF4006BC997 = {
-						DevelopmentTeam = 88CBA74T8K;
 					};
 					A823D80C192BABA400B55DE2 = {
 						LastSwiftMigration = 1130;
@@ -3673,6 +3686,7 @@
 				73D8D28325A6921400DF5F69 /* Float+TPPAdditions.swift in Sources */,
 				73EB0A7C25821DF4006BC997 /* TPPBookCellCollectionViewController.m in Sources */,
 				21F7D3CC275A9D3C0080B44B /* String+HTMLEntities.swift in Sources */,
+				E75F4A2A29C3AB1F006DFBD8 /* TPPPublicationSpeechSynthesizer.swift in Sources */,
 				E52E3C0D28C19F480073DC4D /* TPPBook+Extensions.swift in Sources */,
 				E5A1413328D9018A0091AD2D /* TPPBook.swift in Sources */,
 				E523A457299FD81000EF833B /* BookButtonType.swift in Sources */,
@@ -3751,6 +3765,7 @@
 				21989A1127B6FF0E00539B7F /* TPPReaderSettings.swift in Sources */,
 				73EB0A9D25821DF4006BC997 /* NSDate+NYPLDateAdditions.m in Sources */,
 				E792891D2861F58B000313D7 /* TPPPDFTOCView.swift in Sources */,
+				E7C4BD6229BA70710079F729 /* TPPTextToSpeech.swift in Sources */,
 				21045C592761095B00D2D407 /* TPPOnboardingView.swift in Sources */,
 				E7861C4F2846937B00B3A38A /* TPPPDFView.swift in Sources */,
 				17E81F0B261522B3001003C2 /* TPPRoundedButton.swift in Sources */,
@@ -4184,6 +4199,7 @@
 				21DCC3AE27BEDB5A00064B37 /* TPPReaderAppearance.swift in Sources */,
 				732F474B260B224A00E2CB64 /* TPPBookmarkSpec.swift in Sources */,
 				2D754BBB2002E2FB0061D34F /* TPPOPDSAcquisition.m in Sources */,
+				E75F4A2929C3AB1F006DFBD8 /* TPPPublicationSpeechSynthesizer.swift in Sources */,
 				E53573CF295612BA008BDCA4 /* MyBooksView.swift in Sources */,
 				085D31DF1BE3CD3C007F7672 /* NSURLRequest+NYPLURLRequestAdditions.m in Sources */,
 				E731FF4A2864C716001DB7F2 /* TPPPDFPreviewGridDelegate.swift in Sources */,
@@ -4283,6 +4299,7 @@
 				AE77E7E37D89FB3EED630624 /* TPPOPDSType.m in Sources */,
 				7340DA6824B7F27900361387 /* TPPBook+Logging.swift in Sources */,
 				E7048072285A72A600019B31 /* TPPPDFNavigation.swift in Sources */,
+				E7C4BD6129BA70710079F729 /* TPPTextToSpeech.swift in Sources */,
 				E73549DE28A53982001B0D0A /* TPPPDFPageBookmark.swift in Sources */,
 				E53573DC2965E606008BDCA4 /* TPPMyBooksViewController.swift in Sources */,
 				73B501C524F48D4C00FBAD7D /* TPPUserAccountFrontEndValidation.swift in Sources */,
@@ -4511,8 +4528,11 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 146;
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 147;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
+				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -4537,7 +4557,8 @@
 				PRODUCT_MODULE_NAME = Palace;
 				PRODUCT_NAME = "Palace-noDRM";
 				PROVISIONING_PROFILE = "2e185b6c-271e-4b02-a05e-860b8c3831f6";
-				PROVISIONING_PROFILE_SPECIFIER = "Ad hoc 2";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "Ad hoc 2";
 				RUN_CLANG_STATIC_ANALYZER = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG SIMPLYE";
 				SWIFT_OBJC_BRIDGING_HEADER = "Palace/AppInfrastructure/Palace-Bridging-Header.h";
@@ -4567,7 +4588,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 146;
+				CURRENT_PROJECT_VERSION = 147;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
@@ -4748,7 +4769,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 146;
+				CURRENT_PROJECT_VERSION = 147;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -4809,7 +4830,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 146;
+				CURRENT_PROJECT_VERSION = 147;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (

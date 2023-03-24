@@ -25,7 +25,8 @@ extension TPPBookLocation {
       TPPBookLocation.chapterProgressKey: locator.locations.progression ?? 0.0,
       TPPBookLocation.bookProgressKey: locator.locations.totalProgression ?? 0.0,
       TPPBookLocation.titleKey: locator.title ?? "",
-      TPPBookLocation.positionKey: locator.locations.position ?? 0.0
+      TPPBookLocation.positionKey: locator.locations.position ?? 0.0,
+      TPPBookLocation.cssSelector: locator.locations.otherLocations[TPPBookLocation.cssSelector] ?? ""
     ]
     
     guard let jsonString = serializeJSONString(dict) else {
@@ -45,6 +46,7 @@ extension TPPBookLocation {
                     totalProgression: Float? = nil,
                     title: String? = nil,
                     position: Float? = nil,
+                    cssSelector: String? = nil,
                     publication: Publication? = nil,
                     renderer: String = TPPBookLocation.r2Renderer) {
     
@@ -60,7 +62,8 @@ extension TPPBookLocation {
       TPPBookLocation.chapterProgressKey: chapterProgression ?? 0.0,
       TPPBookLocation.bookProgressKey: totalProgression ?? 0.0,
       TPPBookLocation.titleKey: title ?? "",
-      TPPBookLocation.positionKey: position ?? 0.0
+      TPPBookLocation.positionKey: position ?? 0.0,
+      TPPBookLocation.cssSelector: cssSelector ?? ""
     ]
     
     guard let jsonString = serializeJSONString(dict) else {
@@ -86,11 +89,16 @@ extension TPPBookLocation {
     let title: String = dict[TPPBookLocation.titleKey] as? String ?? ""
     let position: Int? = dict[TPPBookLocation.positionKey] as? Int
 
+    var otherLocations = [String: Any]()
+    if let cssSelector = dict[TPPBookLocation.cssSelector] as? String, !cssSelector.isEmpty {
+      otherLocations[TPPBookLocation.cssSelector] = cssSelector
+    }
+    
     let locations = Locator.Locations(fragments: [],
                                       progression: progressWithinChapter,
                                       totalProgression: progressWithinBook,
                                       position: position,
-                                      otherLocations: [:])
+                                      otherLocations: otherLocations)
     
     return Locator(href: href,
                    type: type,
@@ -109,4 +117,5 @@ private extension TPPBookLocation {
   static let partKey = "part"
   static let chapterKey = "chapter"
   static let positionKey = "position"
+  static let cssSelector = "cssSelector"
 }
