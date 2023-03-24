@@ -13,7 +13,7 @@ import R2Shared
 /// a given book.
 class TPPLastReadPositionPoster {
   /// Interval used to throttle request submission.
-  static let throttlingInterval = 0.0
+  static let throttlingInterval = 15.0
 
   // models
   private let publication: Publication
