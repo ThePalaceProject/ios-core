@@ -402,7 +402,7 @@ class OPDS2SamlIDP: NSObject, Codable {
     homePageUrl = publication.links.first(where: { $0.rel == "alternate" })?.href
 
     super.init()
-    loadLogo()
+    loadLogo(imageURL: publication.thumbnailURL)
   }
 
   /// Load authentication documents from the network or cache.
@@ -489,28 +489,15 @@ class OPDS2SamlIDP: NSObject, Codable {
     }
   }
   
-  private func loadLogo() {
-    fetchAuthenticationDocument(authenticationDocumentUrl ?? "") { (document) in
-      guard let authenticationDocument = document else {
-        return
-      }
-      
-      guard let logoString = authenticationDocument.links?.first(where: { $0.rel == "logo" })?.href else { return }
-      let modString = logoString.replacingOccurrences(of: "data:image/png;base64,", with: "")
-  
-      // The logoString may be an encoded image or url 
-      if let logoData = Data.init(base64Encoded: modString),
-         let logoImage = UIImage(data: logoData) {
-        self.logo = logoImage
-      } else if let url = URL(string: logoString) {
-        self.fetchImage(from: url, completion: {
-          guard let image = $0 else { return }
-          self.logo = image
-        })
-      }
-    }
+  private func loadLogo(imageURL: URL?) {
+    guard let url = imageURL else { return }
+
+      self.fetchImage(from: url, completion: {
+        guard let image = $0 else { return }
+        self.logo = image
+      })
   }
-  
+
   private func fetchImage(from url: URL, completion: @escaping (UIImage?) -> ()) {
     TPPNetworkExecutor.shared.GET(url) { result in
       switch result {
