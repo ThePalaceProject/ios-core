@@ -57,15 +57,9 @@ class MyBooksViewModel: ObservableObject {
   
   func loadData() {
     DispatchQueue.main.async {
-//      self.books = Reachability.shared.isConnectedToNetwork() ? TPPBookRegistry.shared.myBooks : TPPBookRegistry.shared.myBooks.filter { !$0.isExpired }
-
-      if Reachability.shared.isConnectedToNetwork() {
-        self.books = TPPBookRegistry.shared.myBooks
-      } else {
-        self.books = TPPBookRegistry.shared.myBooks.filter {
-          !$0.isExpired
-        }
-      }
+      self.books =  Reachability.shared.isConnectedToNetwork() ?
+      TPPBookRegistry.shared.myBooks :
+      TPPBookRegistry.shared.myBooks.filter { !$0.isExpired }
       self.sortData()
     }
   }
