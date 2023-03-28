@@ -499,23 +499,26 @@ let UpdatedKey: String = "updated"
   }
   
   @objc var isExpired: Bool {
-    var date: Date?
-
-    defaultAcquisition?.availability.matchUnavailable(
-        nil,
-        limited: { limited in
-          if let until = limited.until, until.timeIntervalSinceNow > 0 { date = until }
-        },
-        unlimited: nil,
-        reserved: nil,
-        ready: { ready in
-          if let until = ready.until, until.timeIntervalSinceNow > 0 { date = until }
-        }
-      )
-
-    guard let date = date else { return true }
-
+    guard let date = getExpirationDate() else { return true }
     return date < Date()
+  }
+
+  private func getExpirationDate() -> Date? {
+    var date: Date?
+    
+    defaultAcquisition?.availability.matchUnavailable(
+      nil,
+      limited: { limited in
+        if let until = limited.until, until.timeIntervalSinceNow > 0 { date = until }
+      },
+      unlimited: nil,
+      reserved: nil,
+      ready: { ready in
+        if let until = ready.until, until.timeIntervalSinceNow > 0 { date = until }
+      }
+    )
+
+    return date
   }
 
   /// @discussion
