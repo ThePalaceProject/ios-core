@@ -497,6 +497,29 @@ let UpdatedKey: String = "updated"
   
     return acquisition
   }
+  
+  @objc var isExpired: Bool {
+    guard let date = getExpirationDate() else { return true }
+    return date < Date()
+  }
+
+  private func getExpirationDate() -> Date? {
+    var date: Date?
+    
+    defaultAcquisition?.availability.matchUnavailable(
+      nil,
+      limited: { limited in
+        if let until = limited.until, until.timeIntervalSinceNow > 0 { date = until }
+      },
+      unlimited: nil,
+      reserved: nil,
+      ready: { ready in
+        if let until = ready.until, until.timeIntervalSinceNow > 0 { date = until }
+      }
+    )
+
+    return date
+  }
 
   /// @discussion
   /// A compatibility method to allow the app to continue to function until the
