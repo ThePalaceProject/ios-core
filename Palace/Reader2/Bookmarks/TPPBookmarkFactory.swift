@@ -117,7 +117,8 @@ class TPPBookmarkFactory {
     }
     
     if let audioBookmark = try? JSONDecoder().decode(AudioBookmark.self, from: selectorValueData) {
-        return audioBookmark
+      audioBookmark.timeStamp = time
+      return audioBookmark
     }
     
     if let pdfPageBookmark = try? JSONDecoder().decode(TPPPDFPageBookmark.self, from: selectorValueData),

@@ -17,6 +17,7 @@ import Foundation
   let time: UInt
   let type: String
   let audiobookID: String
+  var timeStamp: String = Date().iso8601
 
   enum CodingKeys: String, CodingKey {
     case title
