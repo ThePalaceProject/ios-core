@@ -506,7 +506,7 @@ static const int kServerUpdateDelay = 15;
     if ([[NSDate date] timeIntervalSinceDate: self.lastServerUpdate] >= kServerUpdateDelay) {
       self.lastServerUpdate = [NSDate date];
       // Save updated location on server
-      [self postWithLocation:string for:self.book.identifier];
+      [self postWithLocation:string];
     }
   }
 }
@@ -587,9 +587,9 @@ static const int kServerUpdateDelay = 15;
 
 #pragma mark Annotations Delegate
 
-- (void)postWithLocation:(NSString *)location for:(NSString *)book
+- (void)postWithLocation:(NSString *)location
 {
-  [TPPAnnotations postListeningPositionForBook:book selectorValue:location];
+  [TPPAnnotations postListeningPositionForBook:self.book.identifier selectorValue:location];
 }
 
 #if FEATURE_OVERDRIVE
