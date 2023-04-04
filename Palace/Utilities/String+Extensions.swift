@@ -9,7 +9,7 @@
 import Foundation
 
 @objc public extension NSString {
-  @objc class func isDate(_ dateOne: NSString, moreReceentThan dateTwo: NSString, with margin: Int) -> Bool {
+  @objc class func isDate(_ dateOne: NSString, moreRecentThan dateTwo: NSString, with margin: Int) -> Bool {
         let dateFormatter = ISO8601DateFormatter()
 
         guard let date1 = dateFormatter.date(from: String(dateOne)),
