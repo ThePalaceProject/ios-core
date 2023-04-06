@@ -1,5 +1,5 @@
 //
-//  DisplayStrings.Strings.swift
+//  DisplayStrings.swift
 //  Palace
 //
 //  Created by Maurice Carrier on 12/4/21.
