@@ -35,6 +35,8 @@ extension NYPLADEPT: TPPDRMAuthorizing {}
 #endif
 
 class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibraryAccountProvider {
+  var onLocationAuthorizationCompletion: (UINavigationController?, Error?) -> Void = {_,_ in }
+
   /// Makes a business logic object with a network request executor that
   /// performs no persistent storage for caching.
   @objc convenience init(libraryAccountID: String,
