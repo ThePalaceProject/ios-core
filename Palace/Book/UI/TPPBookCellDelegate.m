@@ -40,6 +40,7 @@
 @implementation TPPBookCellDelegate
 
 static const int kServerUpdateDelay = 15;
+static const int kMostRecentAnnotationMargin = 15;
 
 + (instancetype)sharedDelegate
 {
@@ -409,7 +410,7 @@ static const int kServerUpdateDelay = 15;
 ///   - operation: operation block on the selected location
 - (void) chooseLocalLocation:(ChapterLocation *)localLocation orRemoteLocation:(ChapterLocation *)remoteLocation forOperation:(void (^)(ChapterLocation *))operation {
   
-  bool remoteLocationIsNewer = [NSString isDate:remoteLocation.lastSavedTimeStamp moreRecentThan:localLocation.lastSavedTimeStamp with:15];
+  bool remoteLocationIsNewer = [NSString isDate:remoteLocation.lastSavedTimeStamp moreRecentThan:localLocation.lastSavedTimeStamp with:kMostRecentAnnotationMargin];
   if (remoteLocation && (![remoteLocation.description isEqualToString:localLocation.description]) && remoteLocationIsNewer) {
     [self requestSyncWithCompletion:^(BOOL shouldSync) {
       ChapterLocation *location = shouldSync ? remoteLocation : localLocation;
