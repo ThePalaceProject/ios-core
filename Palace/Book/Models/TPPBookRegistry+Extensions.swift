@@ -33,7 +33,8 @@ extension ChapterLocation {
       startOffset: Double(audioBookmark.startOffset/1000),
       playheadOffset: Double(audioBookmark.time/1000),
       title: audioBookmark.title,
-      audiobookID: audioBookmark.audiobookID
+      audiobookID: audioBookmark.audiobookID,
+      lastSavedTimeStamp: audioBookmark.timeStamp
     )
   }
 }
