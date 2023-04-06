@@ -1,5 +1,5 @@
 //
-//  DisplayStrings.swift
+//  DisplayStrings.Strings.swift
 //  Palace
 //
 //  Created by Maurice Carrier on 12/4/21.
@@ -47,6 +47,9 @@ struct Strings {
     static let loginErrorTitle = NSLocalizedString("Login Failed", comment: "Title for login error alert")
     static let loginErrorDescription = NSLocalizedString("An error occurred during the authentication process",
                                                          comment: "Generic error message while handling sign-in redirection during authentication")
+    static let userDeniedLocationAccess = NSLocalizedString("User denied location access. Go to system settings to enable location access for the Palace App.", comment: "Error message shown to user when location services are denied.")
+    static let uknownLocationError = NSLocalizedString("Unkown error occurred. Please try again.", comment: "Error message shown to user when an unknown location error occurs.")
+    static let locationFetchFailed = NSLocalizedString("Failed to get current location. Please try again.", comment: "Error message shown to user when CoreLocation does not return the current location.")
   }
   
   struct Generic {

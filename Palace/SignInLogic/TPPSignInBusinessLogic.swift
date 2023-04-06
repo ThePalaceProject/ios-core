@@ -6,6 +6,8 @@
 //  Copyright © 2020 NYPL Labs. All rights reserved.
 //
 
+import CoreLocation
+
 @objc enum TPPAuthRequestType: Int {
   case signIn = 1
   case signOut = 2
@@ -193,6 +195,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
   }
   
   @objc var selectedIDP: OPDS2SamlIDP?
+  let locationManager = CLLocationManager()
 
   private var _selectedAuthentication: AccountDetails.Authentication?
   @objc var selectedAuthentication: AccountDetails.Authentication? {
