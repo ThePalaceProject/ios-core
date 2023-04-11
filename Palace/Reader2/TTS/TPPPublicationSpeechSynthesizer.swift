@@ -220,7 +220,8 @@ public class TPPPublicationSpeechSynthesizer: NSObject, Loggable {
   /// Plays the given `utterance`
   private func play(_ utterance: Utterance) {
     
-    if let range = utterance.text.range(of: utterance.text) {
+    // utterance.locator.copy crashes if highlight is nil
+    if let range = utterance.text.range(of: utterance.text), utterance.locator.text.highlight != nil  {
       state = .playing(utterance, range: utterance.locator.copy(text: { $0 = utterance.locator.text[range] } ))
     } else {
       state = .playing(utterance, range: nil)
