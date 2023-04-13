@@ -28,7 +28,6 @@
 }
 
 @property (nonatomic) NSTimer *timer;
-@property (nonatomic) TPPBook *book;
 @property (nonatomic) NSDate *lastServerUpdate;
 @property (nonatomic) id<AudiobookManager> manager;
 @property (nonatomic, weak) AudiobookPlayerViewController *audiobookViewController;
@@ -586,13 +585,6 @@ static const int kServerUpdateDelay = 15;
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(updateODAudiobookManifest) name:NSNotification.TPPMyBooksDownloadCenterDidChange object:nil];
 #endif
   [[TPPMyBooksDownloadCenter sharedDownloadCenter] startDownloadForBook:self.book];
-}
-
-#pragma mark Annotations Delegate
-
-- (void)postWithLocation:(NSString *)location
-{
-  [TPPAnnotations postListeningPositionForBook:self.book.identifier selectorValue:location];
 }
 
 #if FEATURE_OVERDRIVE

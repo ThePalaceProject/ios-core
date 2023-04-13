@@ -225,7 +225,11 @@ import R2Shared
   }
 
   class func postListeningPosition(forBook bookID: String, selectorValue: String) {
-    postReadingPosition(forBook: bookID, selectorValue: selectorValue, motivation: .readingProgress)
+    postReadingPosition(forBook: bookID, selectorValue: selectorValue, motivation:  .readingProgress)
+  }
+  
+  class func postAudiobookBookmark(forBook bookID: String, selectorValue: String) {
+    postReadingPosition(forBook: bookID, selectorValue: selectorValue, motivation:  .bookmark)
   }
 
   class func postReadingPosition(forBook bookID: String, selectorValue: String, motivation: TPPBookmarkSpec.Motivation) {
