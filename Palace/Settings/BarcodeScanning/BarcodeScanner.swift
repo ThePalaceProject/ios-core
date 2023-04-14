@@ -97,18 +97,33 @@ class BarcodeScanner: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
     view.addSubview(previewView)
 
     let cancelButton = UIBarButtonItem(systemItem: .cancel, primaryAction: UIAction(handler: { _ in
-      if self.captureSession.isRunning {
-        self.captureSession.stopRunning()
-      }
+      self.stopCaptureSession()
       self.dismiss(animated: true)
     }))
     navigationItem.rightBarButtonItem = cancelButton
     
-    
-    captureSession.startRunning()
+    startCaptureSession()
   }
   
-  func showError() {
+  private func startCaptureSession() {
+    //-[AVCaptureSession startRunning] should be called from background thread. Calling it on the main thread can lead to UI unresponsiveness
+    DispatchQueue.global(qos: .background).async {
+      if !self.captureSession.isRunning {
+        self.captureSession.startRunning()
+      }
+    }
+  }
+
+  private func stopCaptureSession() {
+    //-[AVCaptureSession startRunning] should be called from background thread. Calling it on the main thread can lead to UI unresponsiveness
+    DispatchQueue.global(qos: .background).async {
+      if self.captureSession.isRunning {
+        self.captureSession.stopRunning()
+      }
+    }
+  }
+
+  private func showError() {
     let ac = UIAlertController(
       title: Strings.TPPBarCode.cameraAccessDisabledTitle,
       message: Strings.TPPBarCode.cameraAccessDisabledBody,
@@ -120,18 +135,12 @@ class BarcodeScanner: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
   
   override func viewWillAppear(_ animated: Bool) {
     super.viewWillAppear(animated)
-    
-    if (captureSession?.isRunning == false) {
-      captureSession.startRunning()
-    }
+    startCaptureSession()
   }
   
   override func viewWillDisappear(_ animated: Bool) {
     super.viewWillDisappear(animated)
-    
-    if (captureSession?.isRunning == true) {
-      captureSession.stopRunning()
-    }
+    stopCaptureSession()
   }
   
   func metadataOutput(_ output: AVCaptureMetadataOutput, didOutput metadataObjects: [AVMetadataObject], from connection: AVCaptureConnection) {
@@ -145,7 +154,7 @@ class BarcodeScanner: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
       }
     if barcodes.count == 1, let value = barcodes.first?.stringValue {
       completion(value)
-      captureSession.stopRunning()
+      stopCaptureSession()
       dismiss(animated: true)
     }
     
