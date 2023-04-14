@@ -121,6 +121,11 @@ fileprivate let nullString = "null"
 
   // keychain
   case keychainItemAddFail = 1300
+  
+  // localization
+  case locationAccessDenied = 1400
+  case failedToGetLocation = 1401
+  case unknownLocationError = 1402
 }
 
 /// Facility to report error situations to a remote logging system such as
