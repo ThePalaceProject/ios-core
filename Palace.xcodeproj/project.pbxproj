@@ -142,16 +142,12 @@
 		2198690E267E29B00041369E /* Minizip.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 2198690C267E29B00041369E /* Minizip.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		21986922267E29D70041369E /* PureLayout.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 21986921267E29D70041369E /* PureLayout.xcframework */; };
 		21986923267E29D70041369E /* PureLayout.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 21986921267E29D70041369E /* PureLayout.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		2198694D267E2A150041369E /* ZXingObjC.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2198694C267E2A140041369E /* ZXingObjC.xcframework */; };
-		2198694E267E2A150041369E /* ZXingObjC.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 2198694C267E2A140041369E /* ZXingObjC.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		2198695B267E2A440041369E /* Minizip.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2198690C267E29B00041369E /* Minizip.xcframework */; };
 		2198695C267E2A440041369E /* Minizip.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 2198690C267E29B00041369E /* Minizip.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		2198695F267E2A450041369E /* PDFRendererProvider.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2198691A267E29CC0041369E /* PDFRendererProvider.xcframework */; };
 		21986960267E2A450041369E /* PDFRendererProvider.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 2198691A267E29CC0041369E /* PDFRendererProvider.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		21986961267E2A450041369E /* PureLayout.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 21986921267E29D70041369E /* PureLayout.xcframework */; };
 		21986962267E2A450041369E /* PureLayout.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 21986921267E29D70041369E /* PureLayout.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		2198696F267E2A470041369E /* ZXingObjC.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2198694C267E2A140041369E /* ZXingObjC.xcframework */; };
-		21986970267E2A480041369E /* ZXingObjC.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 2198694C267E2A140041369E /* ZXingObjC.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		2198699D267E78FD0041369E /* FirebaseCrashlytics.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 21986998267E78FC0041369E /* FirebaseCrashlytics.xcframework */; };
 		2198699F267E78FD0041369E /* FirebaseAnalytics.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 21986999267E78FC0041369E /* FirebaseAnalytics.xcframework */; };
 		219869A1267E78FD0041369E /* FirebaseInstallations.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2198699A267E78FC0041369E /* FirebaseInstallations.xcframework */; };
@@ -503,7 +499,6 @@
 		73EB0AE725821DF4006BC997 /* TPPBookDetailViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 110AF89B1961ED1F004887C3 /* TPPBookDetailViewController.m */; };
 		73EB0AE925821DF4006BC997 /* TPPBookContentMetadataFilesHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6F26E721DFF672F00C103CA /* TPPBookContentMetadataFilesHelper.swift */; };
 		73EB0AEA25821DF4006BC997 /* TPPContentTypeBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6D848E22171334800CEC142 /* TPPContentTypeBadge.swift */; };
-		73EB0AEB25821DF4006BC997 /* TPPZXingEncoder.m in Sources */ = {isa = PBXBuildFile; fileRef = E6C91BC11FD5F63B00A32F42 /* TPPZXingEncoder.m */; };
 		73EB0AEC25821DF4006BC997 /* TPPProblemReportViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 085D31D61BE29E38007F7672 /* TPPProblemReportViewController.m */; };
 		73EB0AED25821DF4006BC997 /* TPPHoldsNavigationController.m in Sources */ = {isa = PBXBuildFile; fileRef = 11C5DCF11976D1E0005A9945 /* TPPHoldsNavigationController.m */; };
 		73EB0AEE25821DF4006BC997 /* TPPRemoteViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = A42E0DF01B3F5A490095EBAE /* TPPRemoteViewController.m */; };
@@ -555,7 +550,6 @@
 		73EB0B2025821DF4006BC997 /* AccountsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03F94CD01DD6288C00CE8F4F /* AccountsManager.swift */; };
 		73EB0B2125821DF4006BC997 /* TPPLocalization.m in Sources */ = {isa = PBXBuildFile; fileRef = 52592BB721220A1100587288 /* TPPLocalization.m */; };
 		73EB0B2225821DF4006BC997 /* TPPSecrets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17071060242A923400E2648F /* TPPSecrets.swift */; };
-		73EB0B2325821DF4006BC997 /* TPPBarcodeScanningViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = E6D7753D1F9FE0AF00C0B722 /* TPPBarcodeScanningViewController.m */; };
 		73EB0B2425821DF4006BC997 /* TPPBookDetailDownloadFailedView.m in Sources */ = {isa = PBXBuildFile; fileRef = 1111973E1988226F0014462F /* TPPBookDetailDownloadFailedView.m */; };
 		73EB0B2525821DF4006BC997 /* TPPOPDSFeed.m in Sources */ = {isa = PBXBuildFile; fileRef = AE77E94D56B65997B861C0C0 /* TPPOPDSFeed.m */; };
 		73EB0B2725821DF4006BC997 /* TPPOPDSLink.m in Sources */ = {isa = PBXBuildFile; fileRef = AE77ECC029F3DABDB46A64EB /* TPPOPDSLink.m */; };
@@ -772,8 +766,6 @@
 		E6B6E76F1F6859A4007EE361 /* TPPKeychainManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6B6E76E1F6859A4007EE361 /* TPPKeychainManager.swift */; };
 		E6BA02B81DE4B6F600F76404 /* RemoteHTMLViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6BA02B71DE4B6F600F76404 /* RemoteHTMLViewController.swift */; };
 		E6BC315D1E009F3E0021B65E /* TPPAgeCheck.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6BC315C1E009F3E0021B65E /* TPPAgeCheck.swift */; };
-		E6C91BC21FD5F63B00A32F42 /* TPPZXingEncoder.m in Sources */ = {isa = PBXBuildFile; fileRef = E6C91BC11FD5F63B00A32F42 /* TPPZXingEncoder.m */; };
-		E6D775421F9FE0AF00C0B722 /* TPPBarcodeScanningViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = E6D7753D1F9FE0AF00C0B722 /* TPPBarcodeScanningViewController.m */; };
 		E6D848E32171334800CEC142 /* TPPContentTypeBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6D848E22171334800CEC142 /* TPPContentTypeBadge.swift */; };
 		E6DA7EA01F2A718600CFBEC8 /* TPPBookAuthor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6DA7E9F1F2A718600CFBEC8 /* TPPBookAuthor.swift */; };
 		E704804E2859253900019B31 /* TPPPDFReaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E704804D2859253900019B31 /* TPPPDFReaderView.swift */; };
@@ -984,7 +976,6 @@
 				2178984E269F174500374A6B /* NYPLAEToolkit.framework in Embed Frameworks */,
 				21986923267E29D70041369E /* PureLayout.xcframework in Embed Frameworks */,
 				2198690E267E29B00041369E /* Minizip.xcframework in Embed Frameworks */,
-				2198694E267E2A150041369E /* ZXingObjC.xcframework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -999,7 +990,6 @@
 				21986962267E2A450041369E /* PureLayout.xcframework in Embed Frameworks */,
 				21986960267E2A450041369E /* PDFRendererProvider.xcframework in Embed Frameworks */,
 				2198695C267E2A440041369E /* Minizip.xcframework in Embed Frameworks */,
-				21986970267E2A480041369E /* ZXingObjC.xcframework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -1607,10 +1597,6 @@
 		E6B6E76E1F6859A4007EE361 /* TPPKeychainManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPKeychainManager.swift; sourceTree = "<group>"; };
 		E6BA02B71DE4B6F600F76404 /* RemoteHTMLViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = RemoteHTMLViewController.swift; sourceTree = "<group>"; };
 		E6BC315C1E009F3E0021B65E /* TPPAgeCheck.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPAgeCheck.swift; sourceTree = "<group>"; };
-		E6C91BC01FD5F63B00A32F42 /* TPPZXingEncoder.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TPPZXingEncoder.h; sourceTree = "<group>"; };
-		E6C91BC11FD5F63B00A32F42 /* TPPZXingEncoder.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = TPPZXingEncoder.m; sourceTree = "<group>"; };
-		E6D7753D1F9FE0AF00C0B722 /* TPPBarcodeScanningViewController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPBarcodeScanningViewController.m; sourceTree = "<group>"; };
-		E6D775431F9FE0C400C0B722 /* TPPBarcodeScanningViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPBarcodeScanningViewController.h; sourceTree = "<group>"; };
 		E6D848E22171334800CEC142 /* TPPContentTypeBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPContentTypeBadge.swift; sourceTree = "<group>"; };
 		E6DA7E9F1F2A718600CFBEC8 /* TPPBookAuthor.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPBookAuthor.swift; sourceTree = "<group>"; };
 		E6F26E721DFF672F00C103CA /* TPPBookContentMetadataFilesHelper.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPBookContentMetadataFilesHelper.swift; sourceTree = "<group>"; };
@@ -1704,7 +1690,6 @@
 				73EB0B3925821DF4006BC997 /* libicucore.tbd in Frameworks */,
 				219869D8267E80820041369E /* GoogleUtilities.xcframework in Frameworks */,
 				E7CA1C502938107A009CC6FD /* SQLite in Frameworks */,
-				2198696F267E2A470041369E /* ZXingObjC.xcframework in Frameworks */,
 				E77D02292931360100544180 /* R2Shared in Frameworks */,
 				73EB0B3A25821DF4006BC997 /* libc++.dylib in Frameworks */,
 				219869A1267E78FD0041369E /* FirebaseInstallations.xcframework in Frameworks */,
@@ -1737,7 +1722,6 @@
 				E7F287792956566900EEB1E0 /* R2LCPClient.xcframework in Frameworks */,
 				E5288CBD293FB61C00F3B3D2 /* NYPLAudiobookToolkit.framework in Frameworks */,
 				E5C1F55227990A89005FC6B2 /* OverdriveProcessor.framework in Frameworks */,
-				2198694D267E2A150041369E /* ZXingObjC.xcframework in Frameworks */,
 				03B092301E78871A00AD338D /* MediaPlayer.framework in Frameworks */,
 				E77D021A2931337000544180 /* R2Navigator in Frameworks */,
 				2178984D269F174500374A6B /* NYPLAEToolkit.framework in Frameworks */,
@@ -2072,10 +2056,6 @@
 			children = (
 				E68CCFC41F9F80CF003DDA6C /* TPPBarcode.swift */,
 				E7F66E0A29E7565300B62900 /* BarcodeScanner.swift */,
-				E6D775431F9FE0C400C0B722 /* TPPBarcodeScanningViewController.h */,
-				E6D7753D1F9FE0AF00C0B722 /* TPPBarcodeScanningViewController.m */,
-				E6C91BC01FD5F63B00A32F42 /* TPPZXingEncoder.h */,
-				E6C91BC11FD5F63B00A32F42 /* TPPZXingEncoder.m */,
 			);
 			path = BarcodeScanning;
 			sourceTree = "<group>";
@@ -3878,7 +3858,6 @@
 				73EB0AE725821DF4006BC997 /* TPPBookDetailViewController.m in Sources */,
 				73EB0AE925821DF4006BC997 /* TPPBookContentMetadataFilesHelper.swift in Sources */,
 				73EB0AEA25821DF4006BC997 /* TPPContentTypeBadge.swift in Sources */,
-				73EB0AEB25821DF4006BC997 /* TPPZXingEncoder.m in Sources */,
 				21D746F42719AFD600C0E1B4 /* AdobeContentProtectionService.swift in Sources */,
 				73EB0AEC25821DF4006BC997 /* TPPProblemReportViewController.m in Sources */,
 				73EB0AED25821DF4006BC997 /* TPPHoldsNavigationController.m in Sources */,
@@ -3970,7 +3949,6 @@
 				73EB0B2125821DF4006BC997 /* TPPLocalization.m in Sources */,
 				73D8D27D25A68D4300DF5F69 /* TPPReaderTOCBusinessLogic.swift in Sources */,
 				73EB0B2225821DF4006BC997 /* TPPSecrets.swift in Sources */,
-				73EB0B2325821DF4006BC997 /* TPPBarcodeScanningViewController.m in Sources */,
 				E50D684426AB235400F1042B /* TPPReaderTOCCell.swift in Sources */,
 				73C3CF5825C8EB6B00CA8166 /* TPPUserAccount.swift in Sources */,
 				73EB0B2425821DF4006BC997 /* TPPBookDetailDownloadFailedView.m in Sources */,
@@ -4184,7 +4162,6 @@
 				E7376ED0287E05F50095AADF /* TPPPDFPreviewThumbnail.swift in Sources */,
 				E549954828EE1AAA00EA0D9B /* TransifexManager.swift in Sources */,
 				E731FF4C2864C934001DB7F2 /* TPPPDFPreviewGridCell.swift in Sources */,
-				E6C91BC21FD5F63B00A32F42 /* TPPZXingEncoder.m in Sources */,
 				085D31D71BE29E38007F7672 /* TPPProblemReportViewController.m in Sources */,
 				E523124D28641505007D1DB5 /* LoadingViewController.swift in Sources */,
 				219747FC26D9218400FA25DF /* TPPLCPClient.swift in Sources */,
@@ -4302,7 +4279,6 @@
 				03F94CD11DD6288C00CE8F4F /* AccountsManager.swift in Sources */,
 				52592BB821220A1100587288 /* TPPLocalization.m in Sources */,
 				17071065242A923400E2648F /* TPPSecrets.swift in Sources */,
-				E6D775421F9FE0AF00C0B722 /* TPPBarcodeScanningViewController.m in Sources */,
 				1111973F1988226F0014462F /* TPPBookDetailDownloadFailedView.m in Sources */,
 				AE77EE7AACC975280BAB9A4C /* TPPOPDSFeed.m in Sources */,
 				73DE897A260BEA13003D9135 /* TPPRequestExecuting.swift in Sources */,
