@@ -1,30 +1,9 @@
 import Foundation
-//import ZXingObjC
 import AVFoundation
 
 fileprivate let barcodeHeight: CGFloat = 100
 fileprivate let maxBarcodeWidth: CGFloat = 414
 
-//@objc enum NYPLBarcodeType: Int {
-//  case codabar
-//  case code39
-//  case qrCode
-//  case code128
-//}
-//
-//fileprivate func ZXBarcodeFormatFor(_ NYPLBarcodeType:NYPLBarcodeType) -> ZXBarcodeFormat {
-//  switch NYPLBarcodeType {
-//  case .codabar:
-//    return kBarcodeFormatCodabar
-//  case .code39:
-//    return kBarcodeFormatCode39
-//  case .qrCode:
-//    return kBarcodeFormatQRCode
-//  case .code128:
-//    return kBarcodeFormatCode128
-//  }
-//}
-//
 /// Manage creation and scanning of barcodes on library cards.
 /// Keep any third party dependency abstracted out of the main app.
 @objcMembers final class TPPBarcode: NSObject {
@@ -34,6 +13,20 @@ fileprivate let maxBarcodeWidth: CGFloat = 414
 
   init (library: String) {
     self.libraryName = library
+  }
+
+  func image(fromString stringToEncode: String) -> UIImage?
+  {
+    let data = stringToEncode.data(using: String.Encoding.ascii)
+    if let filter = CIFilter(name: "CICode128BarcodeGenerator") {
+      filter.setValue(data, forKey: "inputMessage")
+      let transform = CGAffineTransform(scaleX: 3, y: 3)
+      
+      if let output = filter.outputImage?.transformed(by: transform) {
+        return UIImage(ciImage: output)
+      }
+    }
+    return nil
   }
 
   class func presentScanner(withCompletion completion: @escaping (String?) -> ())
