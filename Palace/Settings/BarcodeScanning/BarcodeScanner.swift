@@ -96,6 +96,15 @@ class BarcodeScanner: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
     previewView.layer.borderWidth = 4
     view.addSubview(previewView)
 
+    let cancelButton = UIBarButtonItem(systemItem: .cancel, primaryAction: UIAction(handler: { _ in
+      if self.captureSession.isRunning {
+        self.captureSession.stopRunning()
+      }
+      self.dismiss(animated: true)
+    }))
+    navigationItem.rightBarButtonItem = cancelButton
+    
+    
     captureSession.startRunning()
   }
   
