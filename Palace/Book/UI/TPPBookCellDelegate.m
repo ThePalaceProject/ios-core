@@ -344,7 +344,8 @@ static const int kServerUpdateDelay = 15;
       TPPBookLocation *localAudiobookLocation = [[TPPBookRegistry shared] locationForIdentifier:book.identifier];
       NSData *localLocationData = [localAudiobookLocation.locationString dataUsingEncoding:NSUTF8StringEncoding];
       ChapterLocation *localLocation = [ChapterLocation fromData:localLocationData];
- 
+      localLocation.lastSavedTimeStamp = localAudiobookLocation.timeStamp;
+  
       // Player error handler
       void (^moveCompletionHandler)(NSError *) = ^(NSError *error) {
         if (error) {
@@ -407,7 +408,9 @@ static const int kServerUpdateDelay = 15;
 ///   - remoteLocation: remote player location
 ///   - operation: operation block on the selected location
 - (void) chooseLocalLocation:(ChapterLocation *)localLocation orRemoteLocation:(ChapterLocation *)remoteLocation forOperation:(void (^)(ChapterLocation *))operation {
-  if (remoteLocation && (![remoteLocation.description isEqualToString:localLocation.description])) {
+  
+  bool remoteLocationIsNewer = [NSString isDate:remoteLocation.lastSavedTimeStamp moreRecentThan:localLocation.lastSavedTimeStamp with:kServerUpdateDelay];
+  if (remoteLocation && (![remoteLocation.description isEqualToString:localLocation.description]) && remoteLocationIsNewer) {
     [self requestSyncWithCompletion:^(BOOL shouldSync) {
       ChapterLocation *location = shouldSync ? remoteLocation : localLocation;
       operation(location);
