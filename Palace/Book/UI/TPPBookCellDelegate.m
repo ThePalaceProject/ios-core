@@ -1,5 +1,4 @@
 @import MediaPlayer;
-@import PDFRendererProvider;
 #if FEATURE_OVERDRIVE
 @import OverdriveProcessor;
 #endif
@@ -173,18 +172,10 @@ static const int kServerUpdateDelay = 15;
       [[TPPRootTabBarController sharedController] pushViewController:vc animated:YES];
     }];
   } else {
-    if (TPPSettings.shared.useLegacyPDFReader) {
-      [self presentMinitexPDFReader:book];
-    } else {
-      [self presentPDF:book];
-    }
-  }
-#else
-  if (TPPSettings.shared.useLegacyPDFReader) {
-    [self presentMinitexPDFReader:book];
-  } else {
     [self presentPDF:book];
   }
+#else
+  [self presentPDF:book];
 #endif
 }
 
@@ -201,39 +192,6 @@ static const int kServerUpdateDelay = 15;
   
   UIViewController *vc = [TPPPDFViewController createWithDocument:document metadata:metadata];
   [[TPPRootTabBarController sharedController] pushViewController:vc animated:YES];
-}
-
-/// Present Minitex PDF reader
-/// @param book PDF Book object
-- (void)presentMinitexPDFReader:(TPPBook *)book {
-  NSURL *const url = [[TPPMyBooksDownloadCenter sharedDownloadCenter] fileURLForBookIndentifier:book.identifier];
-
-  NSArray<TPPBookLocation *> *const genericMarks = [[TPPBookRegistry shared] genericBookmarksForIdentifier:book.identifier];
-  NSMutableArray<MinitexPDFPage *> *const bookmarks = [NSMutableArray array];
-  for (TPPBookLocation *loc in genericMarks) {
-    NSData *const data = [loc.locationString dataUsingEncoding:NSUTF8StringEncoding];
-    MinitexPDFPage *const page = [MinitexPDFPage fromData:data];
-    [bookmarks addObject:page];
-  }
-
-  MinitexPDFPage *startingPage;
-  TPPBookLocation *const startingBookLocation = [[TPPBookRegistry shared] locationForIdentifier:book.identifier];
-  NSData *const data = [startingBookLocation.locationString dataUsingEncoding:NSUTF8StringEncoding];
-  if (data) {
-    startingPage = [MinitexPDFPage fromData:data];
-    TPPLOG_F(@"Returning to PDF Location: %@", startingPage);
-  }
-
-  id<MinitexPDFViewController> pdfViewController = [MinitexPDFViewControllerFactory createWithFileUrl:url openToPage:startingPage bookmarks:bookmarks annotations:nil];
-
-  if (pdfViewController) {
-    pdfViewController.delegate = [[TPPPDFViewControllerDelegate alloc] initWithBookIdentifier:book.identifier];
-    [(UIViewController *)pdfViewController setHidesBottomBarWhenPushed:YES];
-    [[TPPRootTabBarController sharedController] pushViewController:(UIViewController *)pdfViewController animated:YES];
-  } else {
-    [self presentUnsupportedItemError];
-    return;
-  }
 }
 
 - (void)openAudiobook:(TPPBook *)book {
