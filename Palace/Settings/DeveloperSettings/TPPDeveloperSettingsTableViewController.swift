@@ -18,10 +18,6 @@ import Foundation
   func librarySwitchDidChange(sender: UISwitch!) {
     TPPSettings.shared.useBetaLibraries = sender.isOn
   }
-
-  func legacyPDFReaderSwitchDidChange(sender: UISwitch) {
-    TPPSettings.shared.useLegacyPDFReader = sender.isOn
-  }
   
   func enterLCPPassphraseSwitchDidChange(sender: UISwitch) {
     TPPSettings.shared.enterLCPPassphraseManually = sender.isOn
@@ -43,7 +39,7 @@ import Foundation
   
   func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
     switch section {
-    case 0: return 3
+    case 0: return 2
     default: return 1
     }
   }
@@ -57,7 +53,6 @@ import Foundation
     case 0:
       switch indexPath.row {
       case 0: return cellForBetaLibraries()
-      case 1: return cellForEncryptedPDFReader()
       default: return cellForLCPPassphrase()
       }
     case 1: return cellForCustomRegsitry()
@@ -87,17 +82,6 @@ import Foundation
     return cell
   }
   
-  private func cellForEncryptedPDFReader() -> UITableViewCell {
-    let cell = UITableViewCell(style: UITableViewCell.CellStyle.default, reuseIdentifier: "legacyPDFReaderCell")
-    cell.selectionStyle = .none
-    cell.textLabel?.text = "Use Legacy PDF Reader"
-    let legacyPDFReaderSwitch = UISwitch()
-    legacyPDFReaderSwitch.setOn(TPPSettings.shared.useLegacyPDFReader, animated: false)
-    legacyPDFReaderSwitch.addTarget(self, action:#selector(legacyPDFReaderSwitchDidChange), for: .valueChanged)
-    cell.accessoryView = legacyPDFReaderSwitch
-    return cell
-  }
-
   private func cellForLCPPassphrase() -> UITableViewCell {
     let cell = UITableViewCell(style: UITableViewCell.CellStyle.default, reuseIdentifier: "lcpPassphraseCell")
     cell.selectionStyle = .none
