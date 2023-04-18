@@ -791,11 +791,8 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
       if (![self.businessLogic librarySupportsBarcodeDisplay]) {
         TPPLOG(@"A nonvalid library was attempting to create a barcode image.");
       } else {
-#ifndef OPENEBOOKS
         TPPBarcode *barcode = [[TPPBarcode alloc] initWithLibrary:self.selectedAccount.name];
-        UIImage *barcodeImage = [barcode imageFromString:self.selectedUserAccount.authorizationIdentifier
-                                          superviewWidth:self.tableView.bounds.size.width
-                                                    type:NYPLBarcodeTypeCodabar];
+        UIImage *barcodeImage = [barcode imageFromString:self.selectedUserAccount.authorizationIdentifier];
 
         if (barcodeImage) {
           self.barcodeImageView = [[UIImageView alloc] initWithImage:barcodeImage];
@@ -828,7 +825,6 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
             [self.barcodeImageLabel autoPinEdgeToSuperviewEdge:ALEdgeBottom withInset:10.0];
           }];
         }
-#endif
       }
       return cell;
     }

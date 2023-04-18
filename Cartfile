@@ -2,4 +2,3 @@ binary "https://dl.google.com/dl/firebase/ios/carthage/FirebaseCrashlyticsBinary
 binary "https://dl.google.com/dl/firebase/ios/carthage/FirebaseAnalyticsBinary.json"
 binary "https://dl.google.com/dl/firebase/ios/carthage/FirebaseMessagingBinary.json"
 github "PureLayout/PureLayout" ~> 3.1.2
-github "zxingify/zxingify-objc" ~> 3.6

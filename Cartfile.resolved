@@ -3,4 +3,3 @@ binary "https://dl.google.com/dl/firebase/ios/carthage/FirebaseCrashlyticsBinary
 binary "https://dl.google.com/dl/firebase/ios/carthage/FirebaseMessagingBinary.json" "8.6.0"
 github "PureLayout/PureLayout" "v3.1.9"
 github "dexman/Minizip" "1.4.0"
-github "zxingify/zxingify-objc" "3.6.7"
