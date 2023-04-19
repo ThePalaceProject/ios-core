@@ -45,11 +45,14 @@ extension TPPSignInBusinessLogic: CLLocationManagerDelegate {
         completion(nil, error)
         return
       }
-  
-      let webVC = SFSafariViewController(url: url)
-      webVC.preferredControlTintColor = UIColor.clear
-      webVC.modalPresentationCapturesStatusBarAppearance = true
+
+      let title = Strings.TPPSigninBusinessLogic.ecard
+      let msg = Strings.TPPSigninBusinessLogic.ecardErrorMessage
+      let webVC = RemoteHTMLViewController(URL: url,
+                                           title: title,
+                                           failureMessage: msg)
       completion(UINavigationController(rootViewController: webVC), nil)
+
     case .notDetermined:
       locationManager.requestWhenInUseAuthorization()
       locationManager.delegate = self

@@ -150,8 +150,7 @@ typedef NS_ENUM (NSInteger, NYPLProblemReportButtonState) {
 
 -(NSString *)messageStringForNYPLBookButtonsStateHolding
 {
-  NSString *newMessageString = [NSString stringWithFormat:NSLocalizedString(@"Available for checkout in less than %@.", nil),[self.book.defaultAcquisition.availability.until longTimeUntilString]];
-
+  
   __block NSUInteger holdPosition = 0;
   __block TPPOPDSAcquisitionAvailabilityCopies copiesTotal = 0;
 
@@ -164,12 +163,21 @@ typedef NS_ENUM (NSInteger, NYPLProblemReportButtonState) {
      copiesTotal = reserved.copiesTotal;
    }
    ready:nil];
+  
+  NSString *timeUntilString = [self.book.defaultAcquisition.availability.until longTimeUntilString];
 
-  if (holdPosition > 0 && copiesTotal > 0) {
-    NSString *positionString = [NSString stringWithFormat:NSLocalizedString(@"\n#%lu in line for %lu copies.", @"Describe the line that a person is waiting in for a total number of books that are available for everyone to check out, to help tell them how long they will be waiting."), (unsigned long)holdPosition, (unsigned long)copiesTotal];
-    return [newMessageString stringByAppendingString:positionString];
-  } else {
+  NSString *newMessageString;
+  if (timeUntilString != nil) {
+    newMessageString = [NSString stringWithFormat:NSLocalizedString(@"Available for checkout in less than %@.", nil), timeUntilString];
+
+    if (holdPosition > 0 && copiesTotal > 0) {
+      NSString *positionString = [NSString stringWithFormat:NSLocalizedString(@"\n#You are %ld in line for %ld copies.", @"Describe the line that a person is waiting in for a total number of books that are available for everyone to check out, to help tell them how long they will be waiting."), (unsigned long)holdPosition, (unsigned long)copiesTotal];
+      return [newMessageString stringByAppendingString:positionString];
+    }
+
     return newMessageString;
+  } else {
+    return [NSString stringWithFormat:NSLocalizedString(@"You are %ld in line for %ld copies.", nil), (long)holdPosition, (long)copiesTotal];
   }
 }
 
