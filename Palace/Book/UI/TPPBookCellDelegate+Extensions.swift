@@ -10,22 +10,22 @@ import Foundation
 import NYPLAudiobookToolkit
 
 extension TPPBookCellDelegate: AudiobookPlaybackPositionDelegate {
-  public func post(location: String) {
-    TPPAnnotations.postListeningPosition(forBook: self.book.identifier, selectorValue: location)
+  public func post(location: String, completion: ((_ serverID: String?) -> Void)? = nil) {
+    TPPAnnotations.postListeningPosition(forBook: self.book.identifier, selectorValue: location, completion: completion)
   }
   
-  public func saveBookmark(at location: String) {
-    TPPAnnotations.postAudiobookBookmark(forBook: self.book.identifier, selectorValue: location)
+  public func saveBookmark(at location: String, completion: ((_ serverID: String?) -> Void)? = nil) {
+    TPPAnnotations.postAudiobookBookmark(forBook: self.book.identifier, selectorValue: location, completion: completion)
   }
   
-  public func fetchBookmarks(for audiobook: String, completion: @escaping ([NYPLAudiobookToolkit.ChapterLocation]) -> ()) {
+  public func fetchBookmarks(for audiobook: String, completion: @escaping ([NYPLAudiobookToolkit.ChapterLocation]) -> Void) {
     guard let book = TPPBookRegistry.shared.book(forIdentifier: audiobook) else {
       completion([])
       return
     }
-
+    
     TPPAnnotations.getServerBookmarks(forBook: audiobook, atURL: book.annotationsURL) { serverBookmarks in
-  
+      
       guard let bookmarks = serverBookmarks as? [AudioBookmark] else {
         completion([])
         return
@@ -33,5 +33,9 @@ extension TPPBookCellDelegate: AudiobookPlaybackPositionDelegate {
       
       completion(bookmarks.compactMap { ChapterLocation(audioBookmark: $0) })
     }
+  }
+  
+  public func deleteBookmark(at location: ChapterLocation, completion: @escaping (Bool) -> Void) {
+    TPPAnnotations.deleteBookmark(annotationId: location.annotationId, completionHandler: completion)
   }
 }
