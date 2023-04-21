@@ -9,7 +9,7 @@
 import Foundation
 import NYPLAudiobookToolkit
 
-extension TPPBookCellDelegate: AudiobookPlaybackPositionDelegate {
+extension TPPBookCellDelegate {
   public func saveListeningPosition(at location: String, completion: ((_ serverID: String?) -> Void)? = nil) {
     TPPAnnotations.postListeningPosition(forBook: self.book.identifier, selectorValue: location, completion: completion)
   }
