@@ -8,11 +8,6 @@
 #import "OverdriveProcessor/OverdriveProcessor.h"
 #endif
 
-#ifndef OPENEBOOKS
-#import "TPPBarcodeScanningViewController.h"
-#import "TPPZXingEncoder.h"
-#endif
-
 #import "NSDate+NYPLDateAdditions.h"
 #import "TPPAccountSignInViewController.h"
 #import "TPPAppDelegate.h"
