@@ -741,6 +741,7 @@
 		E5D3288A292C0D34008BFD01 /* txstrings.json in Resources */ = {isa = PBXBuildFile; fileRef = E5D32881292C0D34008BFD01 /* txstrings.json */; };
 		E5D3288B292C0D68008BFD01 /* txstrings.json in Resources */ = {isa = PBXBuildFile; fileRef = E5D32881292C0D34008BFD01 /* txstrings.json */; };
 		E5E4907229280597005BFC55 /* Strings.swift in Sources */ = {isa = PBXBuildFile; fileRef = E54DD4CF275C66F30013C200 /* Strings.swift */; };
+		E5ED734729F702D500EC2F67 /* TPPBookCellDelegate+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E55E2FA729E7AFCD0093F916 /* TPPBookCellDelegate+Extensions.swift */; };
 		E5EFDE78298C43D300258CA3 /* BookButtonState.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5EFDE77298C43D300258CA3 /* BookButtonState.swift */; };
 		E5EFDE79298C43DD00258CA3 /* BookButtonState.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5EFDE77298C43D300258CA3 /* BookButtonState.swift */; };
 		E5EFDE7C298C4F8000258CA3 /* BookCellModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5EFDE7B298C4F8000258CA3 /* BookCellModel.swift */; };
@@ -3685,6 +3686,7 @@
 				21E41778292810E000A78606 /* TPPEncryptedPDFDocument.swift in Sources */,
 				73EB0A8325821DF4006BC997 /* TPPAsync.m in Sources */,
 				73EB0A8425821DF4006BC997 /* TPPReloadView.m in Sources */,
+				E5ED734729F702D500EC2F67 /* TPPBookCellDelegate+Extensions.swift in Sources */,
 				E5FFB96528AED4990042907F /* ImageProvider.swift in Sources */,
 				E523A458299FD81D00EF833B /* DownloadingBookCell.swift in Sources */,
 				21D746FD2719B00E00C0E1B4 /* PublicationOpeningError.swift in Sources */,

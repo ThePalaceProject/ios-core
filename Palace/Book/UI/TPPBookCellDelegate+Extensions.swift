@@ -9,12 +9,12 @@
 import Foundation
 import NYPLAudiobookToolkit
 
-extension TPPBookCellDelegate {
+@objc extension TPPBookCellDelegate {
   public func saveListeningPosition(at location: String, completion: ((_ serverID: String?) -> Void)? = nil) {
     TPPAnnotations.postListeningPosition(forBook: self.book.identifier, selectorValue: location, completion: completion)
   }
   
-  public func saveBookmark(at location: String, completion: ((_ serverID: String?) -> Void)? = nil) {
+ public func saveBookmark(at location: String, completion: ((_ serverID: String?) -> Void)? = nil) {
     TPPAnnotations.postAudiobookBookmark(forBook: self.book.identifier, selectorValue: location, completion: completion)
   }
   
