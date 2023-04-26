@@ -1131,12 +1131,19 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
 {
   // This nudges the scroll view up slightly so that the log in button is clearly visible even on
   // older 3:2 iPhone displays.
-  if (self.logInSignOutCell && ![self.tableView.visibleCells containsObject:self.logInSignOutCell]) {
-    NSIndexPath *indexPath = [self.tableView indexPathForCell:self.logInSignOutCell];
-    if (indexPath) {
-      [self.tableView scrollToRowAtIndexPath:indexPath atScrollPosition:UITableViewScrollPositionBottom animated:YES];
+  [NSOperationQueue.mainQueue addOperationWithBlock:^{
+    if ((UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPhone) ||
+        (self.traitCollection.horizontalSizeClass == UIUserInterfaceSizeClassCompact &&
+         self.traitCollection.verticalSizeClass == UIUserInterfaceSizeClassCompact)) {
+      
+      if (self.logInSignOutCell && ![self.tableView.visibleCells containsObject:self.logInSignOutCell]) {
+        NSIndexPath *indexPath = [self.tableView indexPathForCell:self.logInSignOutCell];
+        if (indexPath) {
+          [self.tableView scrollToRowAtIndexPath:indexPath atScrollPosition:UITableViewScrollPositionBottom animated:YES];
+        }
+      }
     }
-  }
+  }];
 }
 
 #pragma mark - PIN Show/Hide
