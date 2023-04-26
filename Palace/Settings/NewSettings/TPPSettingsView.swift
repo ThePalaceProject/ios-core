@@ -147,9 +147,12 @@ struct TPPSettingsView: View {
     
     Text("\(productName) version \(version) (\(build))")
       .font(Font(uiFont: UIFont.palaceFont(ofSize: 12)))
-      .onTapGesture(count: 7) {
-        self.showDeveloperSettings = true
-      }
+      .gesture(
+        LongPressGesture(minimumDuration: 5.0)
+          .onEnded { _ in
+                    self.showDeveloperSettings = true
+          }
+      )
       .frame(height: 40)
       .horizontallyCentered()
   }
