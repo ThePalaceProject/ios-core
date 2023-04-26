@@ -13,5 +13,6 @@ shared cover registry, shared download center, et cetera. */
 - (id)init NS_UNAVAILABLE;
 
 + (instancetype)sharedDelegate;
+@property (nonatomic) TPPBook *book;
 
 @end

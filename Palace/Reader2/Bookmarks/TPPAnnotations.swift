@@ -224,11 +224,15 @@ import R2Shared
     }
   }
 
-  class func postListeningPosition(forBook bookID: String, selectorValue: String) {
-    postReadingPosition(forBook: bookID, selectorValue: selectorValue, motivation: .readingProgress)
+  class func postListeningPosition(forBook bookID: String, selectorValue: String, completion: ((_ serverID: String?) -> Void)? = nil) {
+    postReadingPosition(forBook: bookID, selectorValue: selectorValue, motivation:  .readingProgress, completion: completion)
+  }
+  
+  class func postAudiobookBookmark(forBook bookID: String, selectorValue: String, completion: ((_ serverID: String?) -> Void)? = nil) {
+    postReadingPosition(forBook: bookID, selectorValue: selectorValue, motivation: .bookmark, completion: completion)
   }
 
-  class func postReadingPosition(forBook bookID: String, selectorValue: String, motivation: TPPBookmarkSpec.Motivation) {
+  class func postReadingPosition(forBook bookID: String, selectorValue: String, motivation: TPPBookmarkSpec.Motivation, completion: ((_ serverID: String?) -> Void)? = nil) {
     guard syncIsPossibleAndPermitted() else {
       Log.debug(#file, "Account does not support sync or sync is disabled.")
       return
@@ -257,6 +261,8 @@ import R2Shared
                                   "annotationURL": annotationsURL])
         return
       }
+
+      completion?(id)
       Log.debug(#file, "Successfully saved Reading Position to server: \(selectorValue)")
     }
   }
