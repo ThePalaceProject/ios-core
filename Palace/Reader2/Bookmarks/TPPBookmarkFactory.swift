@@ -116,9 +116,12 @@ class TPPBookmarkFactory {
         return nil
     }
     
-    if let audioBookmark = try? JSONDecoder().decode(AudioBookmark.self, from: selectorValueData) {
-      audioBookmark.timeStamp = time
-      return audioBookmark
+    do {
+        let audioBookmark = try JSONDecoder().decode(AudioBookmark.self, from: selectorValueData)
+        audioBookmark.timeStamp = time
+        return audioBookmark
+    } catch {
+      print("MYDebugger: error: \(error.localizedDescription)")
     }
     
     if let pdfPageBookmark = try? JSONDecoder().decode(TPPPDFPageBookmark.self, from: selectorValueData),

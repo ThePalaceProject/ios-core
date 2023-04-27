@@ -13,7 +13,7 @@ import Foundation
   let chapter: UInt
   let part: UInt
   let duration: UInt
-  let startOffset: UInt
+  let startOffset: UInt?
   let time: UInt
   let type: String
   let audiobookID: String
