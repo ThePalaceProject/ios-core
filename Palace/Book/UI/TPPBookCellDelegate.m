@@ -27,7 +27,6 @@
 }
 
 @property (nonatomic) NSTimer *timer;
-@property (nonatomic) TPPBook *book;
 @property (nonatomic) NSDate *lastServerUpdate;
 @property (nonatomic) id<AudiobookManager> manager;
 @property (nonatomic, weak) AudiobookPlayerViewController *audiobookViewController;
@@ -367,7 +366,12 @@ static const int kServerUpdateDelay = 15;
 ///   - operation: operation block on the selected location
 - (void) chooseLocalLocation:(ChapterLocation *)localLocation orRemoteLocation:(ChapterLocation *)remoteLocation forOperation:(void (^)(ChapterLocation *))operation {
   
-  bool remoteLocationIsNewer = [NSString isDate:remoteLocation.lastSavedTimeStamp moreRecentThan:localLocation.lastSavedTimeStamp with:kServerUpdateDelay];
+  BOOL remoteLocationIsNewer = NO;
+  if (localLocation == nil && remoteLocation != nil) {
+    remoteLocationIsNewer = YES;
+  } else if (localLocation != nil && remoteLocation != nil) {
+    remoteLocationIsNewer = [NSString isDate:remoteLocation.lastSavedTimeStamp moreRecentThan:localLocation.lastSavedTimeStamp with:kServerUpdateDelay];
+  }
   if (remoteLocation && (![remoteLocation.description isEqualToString:localLocation.description]) && remoteLocationIsNewer) {
     [self requestSyncWithCompletion:^(BOOL shouldSync) {
       ChapterLocation *location = shouldSync ? remoteLocation : localLocation;
@@ -467,7 +471,7 @@ static const int kServerUpdateDelay = 15;
     if ([[NSDate date] timeIntervalSinceDate: self.lastServerUpdate] >= kServerUpdateDelay) {
       self.lastServerUpdate = [NSDate date];
       // Save updated location on server
-      [self postWithLocation:string];
+      [self saveListeningPositionAt:string completion:nil];
     }
   }
 }
@@ -544,13 +548,6 @@ static const int kServerUpdateDelay = 15;
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(updateODAudiobookManifest) name:NSNotification.TPPMyBooksDownloadCenterDidChange object:nil];
 #endif
   [[TPPMyBooksDownloadCenter sharedDownloadCenter] startDownloadForBook:self.book];
-}
-
-#pragma mark Annotations Delegate
-
-- (void)postWithLocation:(NSString *)location
-{
-  [TPPAnnotations postListeningPositionForBook:self.book.identifier selectorValue:location];
 }
 
 #if FEATURE_OVERDRIVE
