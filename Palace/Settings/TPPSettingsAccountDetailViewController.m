@@ -1130,24 +1130,17 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
 - (void)keyboardDidShow:(NSNotification *const)notification
 {
   // This nudges the scroll view up slightly so that the log in button is clearly visible even on
-  // older 3:2 iPhone displays. I wish there were a more general way to do this, but this does at
-  // least work very well.
-  
-  [[NSOperationQueue mainQueue] addOperationWithBlock:^{
-    if((UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPhone) ||
-       (self.traitCollection.horizontalSizeClass == UIUserInterfaceSizeClassCompact &&
-        self.traitCollection.verticalSizeClass == UIUserInterfaceSizeClassCompact)) {
-      CGSize const keyboardSize =
-      [[notification userInfo][UIKeyboardFrameBeginUserInfoKey] CGRectValue].size;
-      CGRect visibleRect = self.view.frame;
-      visibleRect.size.height -= keyboardSize.height + self.tableView.contentInset.top;
-      if(!CGRectContainsPoint(visibleRect,
-                              CGPointMake(0, CGRectGetMaxY(self.logInSignOutCell.frame)))) {
-        // We use an explicit animation block here because |setContentOffset:animated:| does not seem
-        // to work at all.
-        [UIView animateWithDuration:0.25 animations:^{
-          [self.tableView setContentOffset:CGPointMake(0, -self.tableView.contentInset.top + 20)];
-        }];
+  // older 3:2 iPhone displays.
+  [NSOperationQueue.mainQueue addOperationWithBlock:^{
+    if ((UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPhone) ||
+        (self.traitCollection.horizontalSizeClass == UIUserInterfaceSizeClassCompact &&
+         self.traitCollection.verticalSizeClass == UIUserInterfaceSizeClassCompact)) {
+      
+      if (self.logInSignOutCell && ![self.tableView.visibleCells containsObject:self.logInSignOutCell]) {
+        NSIndexPath *indexPath = [self.tableView indexPathForCell:self.logInSignOutCell];
+        if (indexPath) {
+          [self.tableView scrollToRowAtIndexPath:indexPath atScrollPosition:UITableViewScrollPositionBottom animated:YES];
+        }
       }
     }
   }];
