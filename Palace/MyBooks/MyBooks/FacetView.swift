@@ -14,21 +14,18 @@ struct FacetView: View {
   @State private var showAlert = false
 
   var body: some View {
-    GeometryReader { proxy in
-      VStack(alignment: .leading) {
-        dividerView
-        HStack(alignment: .center) {
-          titleLabel
-          sortView
-        }
-        .padding(.leading)
-        .actionSheet(isPresented: $showAlert) { alert }
-        .font(Font(uiFont: UIFont.palaceFont(ofSize: 12)))
-        dividerView
-        accountLogoView
-          .frame(width: proxy.size.width * 0.65)
-          .horizontallyCentered()
+    VStack(alignment: .leading) {
+      dividerView
+      HStack(alignment: .center) {
+        titleLabel
+        sortView
       }
+      .padding(.leading)
+      .actionSheet(isPresented: $showAlert) { alert }
+      .font(Font(uiFont: UIFont.palaceFont(ofSize: 12)))
+      dividerView
+      accountLogoView
+        .horizontallyCentered()
     }
   }
 
@@ -90,9 +87,9 @@ struct FacetView: View {
           }
           .padding()
           .background(Color(TPPConfiguration.readerBackgroundColor()))
-          .frame(height: 70.0)
           .cornerRadius(35)
         }
+        .padding(.vertical)
     }
   }
 }
