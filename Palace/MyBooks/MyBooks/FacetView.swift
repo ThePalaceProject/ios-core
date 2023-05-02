@@ -14,17 +14,21 @@ struct FacetView: View {
   @State private var showAlert = false
 
   var body: some View {
-    VStack(alignment: .leading) {
-      dividerView
-      HStack(alignment: .center) {
-        titleLabel
-        sortView
+    GeometryReader { proxy in
+      VStack(alignment: .leading) {
+        dividerView
+        HStack(alignment: .center) {
+          titleLabel
+          sortView
+        }
+        .padding(.leading)
+        .actionSheet(isPresented: $showAlert) { alert }
+        .font(Font(uiFont: UIFont.palaceFont(ofSize: 12)))
+        dividerView
+        accountLogoView
+          .frame(width: proxy.size.width * 0.65)
+          .horizontallyCentered()
       }
-      .padding(.leading)
-      .actionSheet(isPresented: $showAlert) { alert }
-      .font(Font(uiFont: UIFont.palaceFont(ofSize: 12)))
-      dividerView
-      accountLogoView
     }
   }
 
@@ -79,9 +83,9 @@ struct FacetView: View {
               .aspectRatio(contentMode: .fit)
               .square(length: 50)
             Text(account.name)
+              .fixedSize(horizontal: false, vertical: true)
               .font(Font(uiFont: UIFont.boldSystemFont(ofSize: 18.0)))
               .foregroundColor(.gray)
-              .lineLimit(0)
               .multilineTextAlignment(.center)
           }
           .padding()
@@ -89,7 +93,6 @@ struct FacetView: View {
           .frame(height: 70.0)
           .cornerRadius(35)
         }
-        .horizontallyCentered()
     }
   }
 }
