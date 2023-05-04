@@ -235,11 +235,13 @@ import R2Shared
   class func postReadingPosition(forBook bookID: String, selectorValue: String, motivation: TPPBookmarkSpec.Motivation, completion: ((_ serverID: String?) -> Void)? = nil) {
     guard syncIsPossibleAndPermitted() else {
       Log.debug(#file, "Account does not support sync or sync is disabled.")
+      completion?(nil)
       return
     }
 
     guard let annotationsURL = TPPAnnotations.annotationsURL else {
       Log.error(#file, "Annotations URL was nil while updating reading position")
+      completion?(nil)
       return
     }
 
@@ -259,11 +261,12 @@ import R2Shared
                                   "bookID": bookID,
                                   "annotationID": id ?? "N/A",
                                   "annotationURL": annotationsURL])
+        completion?(nil)
         return
       }
 
-      completion?(id)
       Log.debug(#file, "Successfully saved Reading Position to server: \(selectorValue)")
+      completion?(id)
     }
   }
   
