@@ -87,9 +87,9 @@ struct FacetView: View {
           }
           .padding()
           .background(Color(TPPConfiguration.readerBackgroundColor()))
+          .frame(height: 70.0)
           .cornerRadius(35)
         }
-        .padding(.vertical)
     }
   }
 }
