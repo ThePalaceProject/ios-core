@@ -25,6 +25,7 @@ struct FacetView: View {
       .font(Font(uiFont: UIFont.palaceFont(ofSize: 12)))
       dividerView
       accountLogoView
+        .horizontallyCentered()
     }
   }
 
@@ -79,9 +80,9 @@ struct FacetView: View {
               .aspectRatio(contentMode: .fit)
               .square(length: 50)
             Text(account.name)
+              .fixedSize(horizontal: false, vertical: true)
               .font(Font(uiFont: UIFont.boldSystemFont(ofSize: 18.0)))
               .foregroundColor(.gray)
-              .lineLimit(0)
               .multilineTextAlignment(.center)
           }
           .padding()
@@ -89,7 +90,6 @@ struct FacetView: View {
           .frame(height: 70.0)
           .cornerRadius(35)
         }
-        .horizontallyCentered()
     }
   }
 }
