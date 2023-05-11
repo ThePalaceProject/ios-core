@@ -316,6 +316,7 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
 - (void)syncEnded
 {
   self.navigationItem.leftBarButtonItem.enabled = YES;
+  [self endRefreshing];
 }
 
 - (void)viewWillTransitionToSize:(CGSize)__unused size withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)__unused coordinator

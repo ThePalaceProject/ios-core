@@ -1,6 +1,4 @@
 @import MediaPlayer;
-@import NYPLAudiobookToolkit;
-@import PDFRendererProvider;
 #if FEATURE_OVERDRIVE
 @import OverdriveProcessor;
 #endif
@@ -18,7 +16,6 @@
 #import "TPPReachabilityManager.h"
 
 #import "TPPBookCellDelegate.h"
-#import "Palace-Swift.h"
 
 #if defined(FEATURE_DRM_CONNECTOR)
 #import <ADEPT/ADEPT.h>
@@ -30,7 +27,7 @@
 }
 
 @property (nonatomic) NSTimer *timer;
-@property (nonatomic) TPPBook *book;
+@property (nonatomic) NSDate *lastServerUpdate;
 @property (nonatomic) id<AudiobookManager> manager;
 @property (nonatomic, weak) AudiobookPlayerViewController *audiobookViewController;
 @property (strong) NSLock *refreshAudiobookLock;
@@ -39,6 +36,8 @@
 @end
 
 @implementation TPPBookCellDelegate
+
+static const int kServerUpdateDelay = 15;
 
 + (instancetype)sharedDelegate
 {
@@ -60,7 +59,8 @@
   self = [super init];
     
   _refreshAudiobookLock = [[NSLock alloc] init];
-  
+  _lastServerUpdate = [NSDate date];
+
   return self;
 }
 
@@ -171,18 +171,10 @@
       [[TPPRootTabBarController sharedController] pushViewController:vc animated:YES];
     }];
   } else {
-    if (TPPSettings.shared.useLegacyPDFReader) {
-      [self presentMinitexPDFReader:book];
-    } else {
-      [self presentPDF:book];
-    }
-  }
-#else
-  if (TPPSettings.shared.useLegacyPDFReader) {
-    [self presentMinitexPDFReader:book];
-  } else {
     [self presentPDF:book];
   }
+#else
+  [self presentPDF:book];
 #endif
 }
 
@@ -199,39 +191,6 @@
   
   UIViewController *vc = [TPPPDFViewController createWithDocument:document metadata:metadata];
   [[TPPRootTabBarController sharedController] pushViewController:vc animated:YES];
-}
-
-/// Present Minitex PDF reader
-/// @param book PDF Book object
-- (void)presentMinitexPDFReader:(TPPBook *)book {
-  NSURL *const url = [[TPPMyBooksDownloadCenter sharedDownloadCenter] fileURLForBookIndentifier:book.identifier];
-
-  NSArray<TPPBookLocation *> *const genericMarks = [[TPPBookRegistry shared] genericBookmarksForIdentifier:book.identifier];
-  NSMutableArray<MinitexPDFPage *> *const bookmarks = [NSMutableArray array];
-  for (TPPBookLocation *loc in genericMarks) {
-    NSData *const data = [loc.locationString dataUsingEncoding:NSUTF8StringEncoding];
-    MinitexPDFPage *const page = [MinitexPDFPage fromData:data];
-    [bookmarks addObject:page];
-  }
-
-  MinitexPDFPage *startingPage;
-  TPPBookLocation *const startingBookLocation = [[TPPBookRegistry shared] locationForIdentifier:book.identifier];
-  NSData *const data = [startingBookLocation.locationString dataUsingEncoding:NSUTF8StringEncoding];
-  if (data) {
-    startingPage = [MinitexPDFPage fromData:data];
-    TPPLOG_F(@"Returning to PDF Location: %@", startingPage);
-  }
-
-  id<MinitexPDFViewController> pdfViewController = [MinitexPDFViewControllerFactory createWithFileUrl:url openToPage:startingPage bookmarks:bookmarks annotations:nil];
-
-  if (pdfViewController) {
-    pdfViewController.delegate = [[TPPPDFViewControllerDelegate alloc] initWithBookIdentifier:book.identifier];
-    [(UIViewController *)pdfViewController setHidesBottomBarWhenPushed:YES];
-    [[TPPRootTabBarController sharedController] pushViewController:(UIViewController *)pdfViewController animated:YES];
-  } else {
-    [self presentUnsupportedItemError];
-    return;
-  }
 }
 
 - (void)openAudiobook:(TPPBook *)book {
@@ -279,7 +238,7 @@
 - (void)openAudiobook:(TPPBook *)book withJSON:(NSDictionary *)json decryptor:(id<DRMDecryptor>)audiobookDrmDecryptor {
   [AudioBookVendorsHelper updateVendorKeyWithBook:json completion:^(NSError * _Nullable error) {
     [NSOperationQueue.mainQueue addOperationWithBlock:^{
-      id<Audiobook> const audiobook = [AudiobookFactory audiobook:json decryptor:audiobookDrmDecryptor token:book.bearerToken];
+      id<Audiobook> const audiobook = [AudiobookFactory audiobook:json bookID:book.identifier decryptor:audiobookDrmDecryptor token:book.bearerToken];
       
       if (!audiobook) {
         if (error) {
@@ -297,6 +256,7 @@
                                             initWithMetadata:metadata
                                             audiobook:audiobook];
       manager.refreshDelegate = self;
+      manager.annotationsDelegate = self;
 
       AudiobookPlayerViewController *const audiobookVC = [[AudiobookPlayerViewController alloc]
                                                           initWithAudiobookManager:manager];
@@ -341,7 +301,8 @@
       TPPBookLocation *localAudiobookLocation = [[TPPBookRegistry shared] locationForIdentifier:book.identifier];
       NSData *localLocationData = [localAudiobookLocation.locationString dataUsingEncoding:NSUTF8StringEncoding];
       ChapterLocation *localLocation = [ChapterLocation fromData:localLocationData];
- 
+      localLocation.lastSavedTimeStamp = localAudiobookLocation.timeStamp;
+  
       // Player error handler
       void (^moveCompletionHandler)(NSError *) = ^(NSError *error) {
         if (error) {
@@ -404,7 +365,14 @@
 ///   - remoteLocation: remote player location
 ///   - operation: operation block on the selected location
 - (void) chooseLocalLocation:(ChapterLocation *)localLocation orRemoteLocation:(ChapterLocation *)remoteLocation forOperation:(void (^)(ChapterLocation *))operation {
-  if (remoteLocation && (![remoteLocation.description isEqualToString:localLocation.description])) {
+  
+  BOOL remoteLocationIsNewer = NO;
+  if (localLocation == nil && remoteLocation != nil) {
+    remoteLocationIsNewer = YES;
+  } else if (localLocation != nil && remoteLocation != nil) {
+    remoteLocationIsNewer = [NSString isDate:remoteLocation.lastSavedTimeStamp moreRecentThan:localLocation.lastSavedTimeStamp with:kServerUpdateDelay];
+  }
+  if (remoteLocation && (![remoteLocation.description isEqualToString:localLocation.description]) && remoteLocationIsNewer) {
     [self requestSyncWithCompletion:^(BOOL shouldSync) {
       ChapterLocation *location = shouldSync ? remoteLocation : localLocation;
       operation(location);
@@ -500,8 +468,11 @@
      setLocation:[[TPPBookLocation alloc] initWithLocationString:string renderer:@"NYPLAudiobookToolkit"]
      forIdentifier:self.book.identifier];
     
-    // Save updated location on server
-    [TPPAnnotations postListeningPositionForBook:self.book.identifier selectorValue:string];
+    if ([[NSDate date] timeIntervalSinceDate: self.lastServerUpdate] >= kServerUpdateDelay) {
+      self.lastServerUpdate = [NSDate date];
+      // Save updated location on server
+      [self saveListeningPositionAt:string completion:nil];
+    }
   }
 }
 

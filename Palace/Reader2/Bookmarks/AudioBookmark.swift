@@ -13,15 +13,19 @@ import Foundation
   let chapter: UInt
   let part: UInt
   let duration: UInt
+  let startOffset: UInt?
   let time: UInt
   let type: String
   let audiobookID: String
+  var timeStamp: String = Date().iso8601
+  var annotationId: String = ""
 
   enum CodingKeys: String, CodingKey {
     case title
     case chapter
     case part
     case duration
+    case startOffset
     case time
     case type = "@type"
     case audiobookID

@@ -47,6 +47,9 @@ struct Strings {
     static let loginErrorTitle = NSLocalizedString("Login Failed", comment: "Title for login error alert")
     static let loginErrorDescription = NSLocalizedString("An error occurred during the authentication process",
                                                          comment: "Generic error message while handling sign-in redirection during authentication")
+    static let userDeniedLocationAccess = NSLocalizedString("User denied location access. Go to system settings to enable location access for the Palace App.", comment: "Error message shown to user when location services are denied.")
+    static let uknownLocationError = NSLocalizedString("Unkown error occurred. Please try again.", comment: "Error message shown to user when an unknown location error occurs.")
+    static let locationFetchFailed = NSLocalizedString("Failed to get current location. Please try again.", comment: "Error message shown to user when CoreLocation does not return the current location.")
   }
   
   struct Generic {
@@ -118,6 +121,7 @@ struct Strings {
                                                comment: "Accessibility label for button to add a bookmark")
     static let previousChapter = NSLocalizedString("Previous Chapter", comment: "Accessibility label to go backward in the publication")
     static let nextChapter = NSLocalizedString("Next Chapter", comment: "Accessibility label to go forward in the publication")
+    static let read = NSLocalizedString("Read", comment: "Accessibility label to read current chapter")
     static let pageOf = NSLocalizedString("Page %d of ", value: "Page %d of ", comment: "States the page count out of total pages, i.e. `Page 1 of 20`")
   }
   

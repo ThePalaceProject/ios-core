@@ -64,9 +64,10 @@ struct NormalBookCell: View {
   @ViewBuilder private var infoView: some View {
     VStack(alignment: .leading) {
       Text(model.title)
+        .lineLimit(2)
         .font(Font(uiFont: UIFont.palaceFont(ofSize: 17)))
         .fixedSize(horizontal: false, vertical: true)
-        .accessibilityLabel(model.book.defaultBookContentType == .audiobook ? "\(model.book.title). Audiobook." : "")
+        .accessibilityLabel(model.book.defaultBookContentType == .audiobook ? "\(model.book.title). Audiobook." : model.book.title)
       Text(model.authors)
         .font(Font(uiFont: UIFont.palaceFont(ofSize: 12)))
     }

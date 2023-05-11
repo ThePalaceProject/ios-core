@@ -745,16 +745,6 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
 
 - (void)scanLibraryCard
 {
-#ifdef OPENEBOOKS
-  __auto_type auth = self.businessLogic.selectedAuthentication;
-  [TPPErrorLogger logErrorWithCode:NYPLErrorCodeAppLogicInconsistency
-                            summary:@"Barcode button was displayed"
-                           metadata:@{
-                             @"Supports barcode display": @(auth.supportsBarcodeDisplay) ?: @"N/A",
-                             @"Supports barcode scanner": @(auth.supportsBarcodeScanner) ?: @"N/A",
-                             @"Context": @"Sign-in modal",
-                           }];
-#else
   [TPPBarcode presentScannerWithCompletion:^(NSString * _Nullable resultString) {
     if (resultString) {
       self.usernameTextField.text = resultString;
@@ -762,7 +752,6 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
       self.loggingInAfterBarcodeScan = YES;
     }
   }];
-#endif
 }
 
 - (void)didSelectCancel

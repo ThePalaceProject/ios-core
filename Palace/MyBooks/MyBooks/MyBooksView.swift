@@ -19,7 +19,8 @@ struct MyBooksView: View {
   var body: some View {
     NavigationLink(destination: accountScreen, isActive: $model.showAccountScreen) {}
     NavigationLink(destination: searchView, isActive: $model.showSearchSheet) {}
-    
+    NavigationLink(destination: accountPickerList, isActive: $showLibraryAccountView) {}
+
     //TODO: This is a workaround for an apparent bug in iOS14 that prevents us from wrapping
     // the body in a NavigationView. Once iOS14 support is dropped, this can be removed/repalced
     // with a NavigationView
@@ -30,9 +31,6 @@ struct MyBooksView: View {
           message: Text(alert.message),
           dismissButton: .cancel()
         )
-      }
-      .sheet(isPresented: $showLibraryAccountView) {
-        accountPickerList
       }
     
     ZStack {
