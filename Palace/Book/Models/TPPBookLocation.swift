@@ -31,7 +31,6 @@ class TPPBookLocation: NSObject {
   /// location, renderers can inspect `renderer` to ensure the location string they're about to use is
   /// compatible with their underlying systems.
   var locationString: String
-  var timeStamp: String = Date().iso8601
 
   // Renderer
   var renderer: String

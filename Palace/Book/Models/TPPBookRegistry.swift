@@ -433,11 +433,21 @@ class TPPBookRegistry: NSObject {
     registry[bookIdentifier]?.genericBookmarks ?? []
   }
   
+  func addOrReplaceGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String) {
+    guard let existingBookmark = registry[bookIdentifier]?.genericBookmarks?.first(where: { $0 == location }) else {
+      addGenericBookmark(location, forIdentifier: bookIdentifier)
+      return
+    }
+
+    replaceGenericBookmark(existingBookmark, with: location, forIdentifier: bookIdentifier)
+  }
+  
   /// Adds a generic bookmark (book location) for a book given its identifier
   func addGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String) {
     guard registry[bookIdentifier] != nil else {
       return
     }
+
     if registry[bookIdentifier]?.genericBookmarks == nil {
       registry[bookIdentifier]?.genericBookmarks = [TPPBookLocation]()
     }
@@ -445,9 +455,15 @@ class TPPBookRegistry: NSObject {
     save()
   }
   
-  /// Deletes a generic bookmark (book location) for a book given its identifier
+   /// Deletes a generic bookmark (book location) for a book given its identifier
   func deleteGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String) {
-    registry[bookIdentifier]?.genericBookmarks?.removeAll { $0 == location }
+    registry[bookIdentifier]?.genericBookmarks?.removeAll { $0.locationString == location.locationString }
+    save()
+  }
+  
+  func replaceGenericBookmark(_ oldLocation: TPPBookLocation, with newLocation: TPPBookLocation, forIdentifier bookIdentifier: String) {
+    deleteGenericBookmark(oldLocation, forIdentifier: bookIdentifier)
+    registry[bookIdentifier]?.genericBookmarks?.append(newLocation)
     save()
   }
 }

@@ -228,8 +228,20 @@ import R2Shared
     postReadingPosition(forBook: bookID, selectorValue: selectorValue, motivation:  .readingProgress, completion: completion)
   }
   
-  class func postAudiobookBookmark(forBook bookID: String, selectorValue: String, completion: ((_ serverID: String?) -> Void)? = nil) {
-    postReadingPosition(forBook: bookID, selectorValue: selectorValue, motivation: .bookmark, completion: completion)
+//  class func postAudiobookBookmark(forBook bookID: String, selectorValue: String, completion: ((_ serverID: String?) -> Void)? = nil) {
+//    postReadingPosition(forBook: bookID, selectorValue: selectorValue, motivation: .bookmark, completion: completion)
+//  }
+
+  class func postAudiobookBookmark(forBook bookID: String, selectorValue: String) async throws -> String? {
+    return try await withCheckedThrowingContinuation { continuation in
+          postReadingPosition(forBook: bookID, selectorValue: selectorValue, motivation: .bookmark) { serverID in
+              if let serverID = serverID {
+                  continuation.resume(returning: serverID)
+              } else {
+                  continuation.resume(throwing: NSError(domain: "Error posting bookmark", code: 1, userInfo: nil))
+              }
+          }
+      }
   }
 
   class func postReadingPosition(forBook bookID: String, selectorValue: String, motivation: TPPBookmarkSpec.Motivation, completion: ((_ serverID: String?) -> Void)? = nil) {
@@ -483,13 +495,13 @@ import R2Shared
 
     if !syncIsPossibleAndPermitted() {
       Log.debug(#file, "Account does not support sync or sync is disabled.")
-      completionHandler(false)
+      completionHandler(true)
       return
     }
 
     guard let url = URL(string: annotationId) else {
       Log.error(#file, "Invalid URL from Annotation ID")
-      completionHandler(false)
+      completionHandler(true)
       return
     }
 

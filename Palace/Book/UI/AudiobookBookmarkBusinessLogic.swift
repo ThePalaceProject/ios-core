@@ -1,0 +1,190 @@
+//
+//  AudiobookBookmarkBusinessLogic.swift
+//  Palace
+//
+//  Created by Maurice Carrier on 4/12/23.
+//  Copyright © 2023 The Palace Project. All rights reserved.
+//
+
+import Foundation
+import NYPLAudiobookToolkit
+
+@objcMembers public class AudiobookBookmarkBusinessLogic: NSObject, AudiobookBookmarkDelegate {
+  var book: TPPBook
+  private var isSyncing: Bool = false
+  
+  init(book: TPPBook) {
+    self.book = book
+  }
+
+  public func saveListeningPosition(at location: String, completion: ((_ serverID: String?) -> Void)? = nil) {
+    TPPAnnotations.postListeningPosition(forBook: self.book.identifier, selectorValue: location, completion: completion)
+  }
+
+  // Need to replace exiting bookmark if it already exists
+  public func saveBookmark(at location: ChapterLocation, completion: ((_ location: ChapterLocation?) -> Void)? = nil) {
+    Task {
+      location.lastSavedTimeStamp = Date().iso8601
+      
+      defer {
+        if let genericLocation = location.toTPPBookLocation() {
+          TPPBookRegistry.shared.addOrReplaceGenericBookmark(genericLocation, forIdentifier: self.book.identifier)
+          completion?(location)
+        }
+      }
+
+      let data = location.toData()
+      guard let locationString = String(data: data, encoding: .utf8) else {
+        return
+      }
+
+      if let annotationId = try await TPPAnnotations.postAudiobookBookmark(forBook: self.book.identifier, selectorValue: locationString) {
+        location.annotationId = annotationId
+      }
+    }
+  }
+
+  public func fetchBookmarks(completion: @escaping ([NYPLAudiobookToolkit.ChapterLocation]) -> Void) {
+    let localBookmarks: [ChapterLocation] = fetchLocalBookmarks()
+
+    fetchServerBookmarks { [weak self] serverBookmarks in
+      completion(serverBookmarks.combinedAndRemoveDuplicates(with: localBookmarks))
+      self?.syncBookmarks(localBookmarks: localBookmarks)
+    }
+  }
+
+  private func fetchLocalBookmarks() -> [ChapterLocation] {
+    TPPBookRegistry.shared.genericBookmarksForIdentifier(book.identifier).compactMap {
+        guard let localData = $0.locationString.data(using: .utf8),
+                let location = try? JSONDecoder().decode(ChapterLocation.self, from: localData) else { return nil }
+        return location
+      }
+  }
+
+  private func fetchServerBookmarks(completion: @escaping ([NYPLAudiobookToolkit.ChapterLocation]) -> Void) {
+    TPPAnnotations.getServerBookmarks(forBook: book.identifier, atURL: book.annotationsURL) { serverBookmarks in
+        guard let bookmarks = serverBookmarks as? [AudioBookmark] else {
+            completion([])
+            return
+        }
+
+      let serverBookmarks = bookmarks.compactMap { ChapterLocation(audioBookmark: $0) }
+      completion(serverBookmarks)
+    }
+  }
+  
+  private func syncBookmarks(localBookmarks: [ChapterLocation]) {
+     Task {
+      guard !isSyncing else { return }
+      isSyncing = true
+  
+      defer { isSyncing = false }
+  
+      let unsyncedBookmarks = localBookmarks.filter { $0.annotationId.isEmpty }
+      
+      for bookmark in unsyncedBookmarks {
+        let data = bookmark.toData()
+        guard let locationString = String(data: data, encoding: .utf8) else {
+          continue
+        }
+        
+        if let annotationId = try await TPPAnnotations.postAudiobookBookmark(forBook: self.book.identifier, selectorValue: locationString) {
+          if let updatedBookmark = bookmark.copy() as? ChapterLocation {
+            updatedBookmark.annotationId = annotationId
+            replace(oldLocation: bookmark, with: updatedBookmark)
+          }
+        }
+      }
+
+      fetchServerBookmarks { [weak self] remoteBookmarks in
+        guard let self = self, !remoteBookmarks.isEmpty else {
+          return
+        }
+
+        let updatedLocalBookmarks = self.fetchLocalBookmarks()
+        let unsyncedRemoteBookmarks = remoteBookmarks.filter { remoteBookmark in
+          !updatedLocalBookmarks.contains(where: { localBookmark in
+            localBookmark.isSimilar(to: remoteBookmark)
+          })
+        }
+  
+        unsyncedRemoteBookmarks.forEach {
+          self.saveBookmark(at: $0)
+        }
+      }
+    }
+  }
+  
+  private func replace(oldLocation: ChapterLocation, with newLocation: ChapterLocation) {
+    guard
+      let oldLocation = oldLocation.toTPPBookLocation(),
+      let newLocation = newLocation.toTPPBookLocation() else { return }
+    TPPBookRegistry.shared.replaceGenericBookmark(oldLocation, with: newLocation, forIdentifier: book.identifier)
+  }
+
+  public func deleteBookmark(at location: ChapterLocation, completion: @escaping (Bool) -> Void) {
+    TPPAnnotations.deleteBookmark(annotationId: location.annotationId) { success in
+      guard success else {
+        completion(success)
+        return
+      }
+      
+      if let genericLocation = location.toTPPBookLocation() {
+        TPPBookRegistry.shared.deleteGenericBookmark(genericLocation, forIdentifier: self.book.identifier)
+        completion(success)
+      } else {
+        completion(false)
+      }
+    }
+  }
+}
+
+extension Array where Element == ChapterLocation {
+    func combinedAndRemoveDuplicates(with otherArray: [ChapterLocation]) -> [ChapterLocation] {
+        let combinedArray = self + otherArray
+        
+        var uniqueArray: [ChapterLocation] = []
+        
+        for location in combinedArray {
+          if !uniqueArray.contains(where: { $0.isSimilar(to: location) }) {
+                uniqueArray.append(location)
+            }
+        }
+
+        return uniqueArray
+    }
+}
+
+extension ChapterLocation: NSCopying {
+  public func copy(with zone: NSZone? = nil) -> Any {
+    let copy = ChapterLocation(
+      number: number,
+      part: part,
+      duration: duration,
+      startOffset: chapterOffset,
+      playheadOffset: playheadOffset,
+      title: title,
+      audiobookID: audiobookID
+    )
+    copy.lastSavedTimeStamp = self.lastSavedTimeStamp
+    copy.annotationId = self.annotationId
+    return copy
+  }
+  
+  
+  func toTPPBookLocation() -> TPPBookLocation? {
+    guard let updatedLocationString = String(data: toData(), encoding: .utf8) else { return nil }
+    return TPPBookLocation.init(locationString: updatedLocationString, renderer: "NYPLAudiobookToolkit")
+  }
+
+  func isSimilar(to location: ChapterLocation) -> Bool {
+    type == location.type &&
+    number == location.number &&
+    part == location.part &&
+    chapterOffset == location.chapterOffset &&
+    playheadOffset == location.playheadOffset &&
+    title == location.title &&
+    audiobookID == location.audiobookID &&
+    duration == location.duration
+  }
+}
