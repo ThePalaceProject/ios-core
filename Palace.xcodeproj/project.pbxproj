@@ -146,8 +146,6 @@
 		2198695C267E2A440041369E /* Minizip.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 2198690C267E29B00041369E /* Minizip.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		21986961267E2A450041369E /* PureLayout.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 21986921267E29D70041369E /* PureLayout.xcframework */; };
 		21986962267E2A450041369E /* PureLayout.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 21986921267E29D70041369E /* PureLayout.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		219869D6267E80810041369E /* nanopb.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 219869CF267E80800041369E /* nanopb.xcframework */; };
-		219869ED267E81CC0041369E /* nanopb.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 219869CF267E80800041369E /* nanopb.xcframework */; };
 		21989A1027B6FF0E00539B7F /* TPPReaderSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21989A0F27B6FF0D00539B7F /* TPPReaderSettings.swift */; };
 		21989A1127B6FF0E00539B7F /* TPPReaderSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21989A0F27B6FF0D00539B7F /* TPPReaderSettings.swift */; };
 		2198F910250A90EE000D9DAB /* AudioBookVendorsHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2198F90F250A90EE000D9DAB /* AudioBookVendorsHelper.swift */; };
@@ -1681,7 +1679,6 @@
 				73EB0B4125821DF4006BC997 /* Foundation.framework in Frameworks */,
 				73EB0B4225821DF4006BC997 /* libTenPrintCover.a in Frameworks */,
 				73EB0B4525821DF4006BC997 /* libz.dylib in Frameworks */,
-				219869D6267E80810041369E /* nanopb.xcframework in Frameworks */,
 				73EB0B4625821DF4006BC997 /* libxml2.dylib in Frameworks */,
 				2198695B267E2A440041369E /* Minizip.xcframework in Frameworks */,
 			);
@@ -1714,7 +1711,6 @@
 				08A352201BDE8E410040BF1D /* CFNetwork.framework in Frameworks */,
 				E7498A862A0E7F460037DD93 /* FirebaseAnalytics in Frameworks */,
 				E77D021C2931337000544180 /* R2Shared in Frameworks */,
-				219869ED267E81CC0041369E /* nanopb.xcframework in Frameworks */,
 				84FCD2611B7BA79200BFEDD9 /* CoreLocation.framework in Frameworks */,
 				E77D02252931357400544180 /* SwiftSoup in Frameworks */,
 				A823D815192BABA400B55DE2 /* UIKit.framework in Frameworks */,
