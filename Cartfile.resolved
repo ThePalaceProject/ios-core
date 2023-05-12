@@ -1,5 +1,2 @@
-binary "https://dl.google.com/dl/firebase/ios/carthage/FirebaseAnalyticsBinary.json" "8.6.0"
-binary "https://dl.google.com/dl/firebase/ios/carthage/FirebaseCrashlyticsBinary.json" "8.6.0"
-binary "https://dl.google.com/dl/firebase/ios/carthage/FirebaseMessagingBinary.json" "8.6.0"
 github "PureLayout/PureLayout" "v3.1.9"
 github "dexman/Minizip" "1.4.0"

@@ -6,7 +6,6 @@
 #import "Palace-Swift.h"
 
 #import "TPPAccountSignInViewController.h"
-#import "TPPAppDelegate.h"
 #import "TPPConfiguration.h"
 #import "TPPLinearView.h"
 #import "TPPOPDSFeed.h"
