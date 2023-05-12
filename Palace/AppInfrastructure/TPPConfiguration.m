@@ -1,5 +1,4 @@
 #import "TPPConfiguration.h"
-#import "TPPAppDelegate.h"
 
 #import "UILabel+NYPLAppearanceAdditions.h"
 #import "UIButton+NYPLAppearanceAdditions.h"

@@ -146,8 +146,6 @@ fileprivate let nullString = "null"
     guard Bundle.main.applicationEnvironment == .production else { return }
     
     #if FEATURE_CRASH_REPORTING
-    FirebaseApp.configure()
-
     if let deviceID = UIDevice.current.identifierForVendor?.uuidString {
       Crashlytics.crashlytics().setCustomValue(deviceID, forKey: "PalaceDeviceID")
     }
