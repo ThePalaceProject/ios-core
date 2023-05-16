@@ -64,4 +64,43 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistrySyncing, TPPBookRegistryProv
     registry[identifier]?.readiumBookmarks?.removeAll { $0 == oldBookmark }
     registry[identifier]?.readiumBookmarks?.append(newBookmark)
   }
+  
+  func genericBookmarksForIdentifier(_ bookIdentifier: String) -> [Palace.TPPBookLocation] {
+    registry[bookIdentifier]?.genericBookmarks ?? []
+  }
+  
+  func addOrReplaceGenericBookmark(_ location: Palace.TPPBookLocation, forIdentifier bookIdentifier: String) {
+    guard let existingBookmark = registry[bookIdentifier]?.genericBookmarks?.first(where: { $0 == location }) else {
+      addGenericBookmark(location, forIdentifier: bookIdentifier)
+      return
+    }
+
+    replaceGenericBookmark(existingBookmark, with: location, forIdentifier: bookIdentifier)
+  }
+  
+  func addGenericBookmark(_ location: Palace.TPPBookLocation, forIdentifier bookIdentifier: String) {
+    guard registry[bookIdentifier] != nil else {
+      return
+    }
+
+    if registry[bookIdentifier]?.genericBookmarks == nil {
+      registry[bookIdentifier]?.genericBookmarks = [TPPBookLocation]()
+    }
+    registry[bookIdentifier]?.genericBookmarks?.append(location)
+  }
+  
+  func deleteGenericBookmark(_ location: Palace.TPPBookLocation, forIdentifier bookIdentifier: String) {
+    registry[bookIdentifier]?.genericBookmarks?.removeAll { $0.locationString == location.locationString }
+  }
+  
+  func replaceGenericBookmark(_ oldLocation: Palace.TPPBookLocation, with newLocation: Palace.TPPBookLocation, forIdentifier: String) {
+    deleteGenericBookmark(oldLocation, forIdentifier: forIdentifier)
+    registry[forIdentifier]?.genericBookmarks?.append(newLocation)
+  }
+}
+
+extension TPPBookRegistryMock {
+  func preloadData(bookIdentifier: String, locations: [TPPBookLocation]) {
+    locations.forEach { addGenericBookmark($0, forIdentifier: bookIdentifier) }
+  }
 }

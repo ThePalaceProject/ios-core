@@ -9,26 +9,33 @@
 import Foundation
 import NYPLAudiobookToolkit
 
-@objcMembers public class AudiobookBookmarkBusinessLogic: NSObject, AudiobookBookmarkDelegate {
-  var book: TPPBook
+@objc public class AudiobookBookmarkBusinessLogic: NSObject, AudiobookBookmarkDelegate {
+  private var book: TPPBook
+  private var registry: TPPBookRegistryProvider
+  private var annotationsManager: AnnotationsManager
   private var isSyncing: Bool = false
   
-  init(book: TPPBook) {
+  @objc convenience init(book: TPPBook) {
+    self.init(book: book, registry: TPPBookRegistry.shared, annotationsManager: TPPAnnotationsWrapper())
+  }
+
+  init(book: TPPBook, registry: TPPBookRegistryProvider, annotationsManager: AnnotationsManager) {
     self.book = book
+    self.registry = registry
+    self.annotationsManager = annotationsManager
   }
 
   public func saveListeningPosition(at location: String, completion: ((_ serverID: String?) -> Void)? = nil) {
-    TPPAnnotations.postListeningPosition(forBook: self.book.identifier, selectorValue: location, completion: completion)
+    annotationsManager.postListeningPosition(forBook: self.book.identifier, selectorValue: location, completion: completion)
   }
 
-  // Need to replace exiting bookmark if it already exists
   public func saveBookmark(at location: ChapterLocation, completion: ((_ location: ChapterLocation?) -> Void)? = nil) {
     Task {
       location.lastSavedTimeStamp = Date().iso8601
-      
+
       defer {
         if let genericLocation = location.toTPPBookLocation() {
-          TPPBookRegistry.shared.addOrReplaceGenericBookmark(genericLocation, forIdentifier: self.book.identifier)
+          registry.addOrReplaceGenericBookmark(genericLocation, forIdentifier: self.book.identifier)
           completion?(location)
         }
       }
@@ -38,7 +45,7 @@ import NYPLAudiobookToolkit
         return
       }
 
-      if let annotationId = try await TPPAnnotations.postAudiobookBookmark(forBook: self.book.identifier, selectorValue: locationString) {
+      if let annotationId = try await annotationsManager.postAudiobookBookmark(forBook: self.book.identifier, selectorValue: locationString) {
         location.annotationId = annotationId
       }
     }
@@ -54,7 +61,7 @@ import NYPLAudiobookToolkit
   }
 
   private func fetchLocalBookmarks() -> [ChapterLocation] {
-    TPPBookRegistry.shared.genericBookmarksForIdentifier(book.identifier).compactMap {
+    registry.genericBookmarksForIdentifier(book.identifier).compactMap {
         guard let localData = $0.locationString.data(using: .utf8),
                 let location = try? JSONDecoder().decode(ChapterLocation.self, from: localData) else { return nil }
         return location
@@ -62,7 +69,7 @@ import NYPLAudiobookToolkit
   }
 
   private func fetchServerBookmarks(completion: @escaping ([NYPLAudiobookToolkit.ChapterLocation]) -> Void) {
-    TPPAnnotations.getServerBookmarks(forBook: book.identifier, atURL: book.annotationsURL) { serverBookmarks in
+    annotationsManager.getServerBookmarks(forBook: book.identifier, atURL: book.annotationsURL, motivation: .bookmark) { serverBookmarks in
         guard let bookmarks = serverBookmarks as? [AudioBookmark] else {
             completion([])
             return
@@ -88,7 +95,7 @@ import NYPLAudiobookToolkit
           continue
         }
         
-        if let annotationId = try await TPPAnnotations.postAudiobookBookmark(forBook: self.book.identifier, selectorValue: locationString) {
+        if let annotationId = try await annotationsManager.postAudiobookBookmark(forBook: self.book.identifier, selectorValue: locationString) {
           if let updatedBookmark = bookmark.copy() as? ChapterLocation {
             updatedBookmark.annotationId = annotationId
             replace(oldLocation: bookmark, with: updatedBookmark)
@@ -119,18 +126,18 @@ import NYPLAudiobookToolkit
     guard
       let oldLocation = oldLocation.toTPPBookLocation(),
       let newLocation = newLocation.toTPPBookLocation() else { return }
-    TPPBookRegistry.shared.replaceGenericBookmark(oldLocation, with: newLocation, forIdentifier: book.identifier)
+    registry.replaceGenericBookmark(oldLocation, with: newLocation, forIdentifier: book.identifier)
   }
 
   public func deleteBookmark(at location: ChapterLocation, completion: @escaping (Bool) -> Void) {
-    TPPAnnotations.deleteBookmark(annotationId: location.annotationId) { success in
+    annotationsManager.deleteBookmark(annotationId: location.annotationId) { success in
       guard success else {
         completion(success)
         return
       }
       
       if let genericLocation = location.toTPPBookLocation() {
-        TPPBookRegistry.shared.deleteGenericBookmark(genericLocation, forIdentifier: self.book.identifier)
+        self.registry.deleteGenericBookmark(genericLocation, forIdentifier: self.book.identifier)
         completion(success)
       } else {
         completion(false)
