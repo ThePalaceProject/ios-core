@@ -55,8 +55,8 @@ import NYPLAudiobookToolkit
     let localBookmarks: [ChapterLocation] = fetchLocalBookmarks()
 
     fetchServerBookmarks { [weak self] serverBookmarks in
-      completion(serverBookmarks.combinedAndRemoveDuplicates(with: localBookmarks))
       self?.syncBookmarks(localBookmarks: localBookmarks)
+      completion(serverBookmarks.combineAndRemoveDuplicates(with: localBookmarks))
     }
   }
 
@@ -80,13 +80,11 @@ import NYPLAudiobookToolkit
     }
   }
   
-  private func syncBookmarks(localBookmarks: [ChapterLocation]) {
+  func syncBookmarks(localBookmarks: [ChapterLocation], completion: (() -> Void)? = nil) {
      Task {
       guard !isSyncing else { return }
       isSyncing = true
-  
-      defer { isSyncing = false }
-  
+    
       let unsyncedBookmarks = localBookmarks.filter { $0.annotationId.isEmpty }
       
       for bookmark in unsyncedBookmarks {
@@ -116,8 +114,13 @@ import NYPLAudiobookToolkit
         }
   
         unsyncedRemoteBookmarks.forEach {
-          self.saveBookmark(at: $0)
+          if let genericLocation = $0.toTPPBookLocation() {
+            self.registry.addOrReplaceGenericBookmark(genericLocation, forIdentifier: self.book.identifier)
+          }
         }
+
+        isSyncing = false
+        completion?()
       }
     }
   }
@@ -147,17 +150,15 @@ import NYPLAudiobookToolkit
 }
 
 extension Array where Element == ChapterLocation {
-    func combinedAndRemoveDuplicates(with otherArray: [ChapterLocation]) -> [ChapterLocation] {
+    func combineAndRemoveDuplicates(with otherArray: [ChapterLocation]) -> [ChapterLocation] {
         let combinedArray = self + otherArray
-        
         var uniqueArray: [ChapterLocation] = []
-        
+
         for location in combinedArray {
           if !uniqueArray.contains(where: { $0.isSimilar(to: location) }) {
                 uniqueArray.append(location)
             }
         }
-
         return uniqueArray
     }
 }
