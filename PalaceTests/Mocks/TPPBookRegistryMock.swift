@@ -101,6 +101,7 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistrySyncing, TPPBookRegistryProv
 
 extension TPPBookRegistryMock {
   func preloadData(bookIdentifier: String, locations: [TPPBookLocation]) {
+    registry[bookIdentifier]?.genericBookmarks = []
     locations.forEach { addGenericBookmark($0, forIdentifier: bookIdentifier) }
   }
 }

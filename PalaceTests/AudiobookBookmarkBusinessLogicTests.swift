@@ -275,7 +275,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
     mockAnnotations.bookmarks = [fakeBook.identifier: remoteBookmarks]
 
     sut = AudiobookBookmarkBusinessLogic(book: fakeBook, registry: mockRegistry, annotationsManager: mockAnnotations)
-    sut.deleteBookmark(at: registryTestBookmarks[1]) { success in
+    sut.deleteBookmark(at: localTestBookmarkTwo) { success in
       XCTAssertTrue(success)
       let localBookmarks = self.mockRegistry.genericBookmarksForIdentifier(self.fakeBook.identifier)
 
