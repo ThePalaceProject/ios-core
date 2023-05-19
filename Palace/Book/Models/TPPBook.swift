@@ -564,29 +564,19 @@ let UpdatedKey: String = "updated"
     guard let acquisition = defaultAcquisition else {
       return .unsupported
     }
-
     let paths = TPPOPDSAcquisitionPath.supportedAcquisitionPaths(
       forAllowedTypes: TPPOPDSAcquisitionPath.supportedTypes(),
       allowedRelations: NYPLOPDSAcquisitionRelationSetAll,
       acquisitions: [acquisition])
-
-    var defaultType: TPPBookContentType = .unsupported
-
-    paths.forEach {
-      let finalTypeString = $0.types.last
-      let contentType = TPPBookContentType.from(mimeType: finalTypeString)
-      
-      if contentType == TPPBookContentType.epub {
-        defaultType = contentType
-        return
-      }
-
-      if defaultType == .unsupported {
-        defaultType = contentType
+    for path in paths {
+      if let mimeType = path.types.last {
+        let contentType = TPPBookContentType.from(mimeType: mimeType)
+        if contentType != .unsupported {
+          return contentType
+        }
       }
     }
-    
-    return defaultType
+    return .unsupported
   }
 }
 
