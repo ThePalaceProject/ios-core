@@ -519,13 +519,13 @@ protocol AnnotationsManager {
 
     if !syncIsPossibleAndPermitted() {
       Log.debug(#file, "Account does not support sync or sync is disabled.")
-      completionHandler(true)
+      completionHandler(false)
       return
     }
 
     guard let url = URL(string: annotationId) else {
       Log.error(#file, "Invalid URL from Annotation ID")
-      completionHandler(true)
+      completionHandler(false)
       return
     }
 

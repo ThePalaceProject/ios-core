@@ -106,7 +106,7 @@ import NYPLAudiobookToolkit
           return
         }
 
-        let updatedLocalBookmarks = self.fetchLocalBookmarks()
+        var updatedLocalBookmarks = self.fetchLocalBookmarks()
         let unsyncedRemoteBookmarks = remoteBookmarks.filter { remoteBookmark in
           !updatedLocalBookmarks.contains(where: { localBookmark in
             localBookmark.isSimilar(to: remoteBookmark)
@@ -118,9 +118,26 @@ import NYPLAudiobookToolkit
             self.registry.addOrReplaceGenericBookmark(genericLocation, forIdentifier: self.book.identifier)
           }
         }
-
-        isSyncing = false
-        completion?()
+        
+        updatedLocalBookmarks = self.fetchLocalBookmarks()
+//        let serverBookmarksToDelete = remoteBookmarks.filter { remoteBookmark in
+//          !updatedLocalBookmarks.contains(where: { localBookmark in
+//            localBookmark.isSimilar(to: remoteBookmark) && !localBookmark.annotationId.isEmpty
+//          })
+//        }
+        
+        let localBookmarksToDelete = remoteBookmarks.filter { remoteBookmark in
+          updatedLocalBookmarks.contains(where: { localBookmark in
+            localBookmark.isSimilar(to: remoteBookmark) && localBookmark.annotationId.isEmpty
+          })
+        }
+        
+        localBookmarksToDelete.forEach { self.deleteBookmark(at: $0) { _ in
+          self.isSyncing = false
+          completion?()
+        }}
+        
+        
       }
     }
   }
@@ -133,21 +150,15 @@ import NYPLAudiobookToolkit
   }
 
   public func deleteBookmark(at location: ChapterLocation, completion: @escaping (Bool) -> Void) {
+    if let genericLocation = location.toTPPBookLocation() {
+      self.registry.deleteGenericBookmark(genericLocation, forIdentifier: self.book.identifier)
+    }
+  
     annotationsManager.deleteBookmark(annotationId: location.annotationId) { success in
-      guard success else {
         completion(success)
-        return
-      }
-      
-      if let genericLocation = location.toTPPBookLocation() {
-        self.registry.deleteGenericBookmark(genericLocation, forIdentifier: self.book.identifier)
-        completion(success)
-      } else {
-        completion(false)
       }
     }
   }
-}
 
 extension Array where Element == ChapterLocation {
     func combineAndRemoveDuplicates(with otherArray: [ChapterLocation]) -> [ChapterLocation] {

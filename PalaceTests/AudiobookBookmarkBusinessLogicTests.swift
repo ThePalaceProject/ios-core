@@ -256,4 +256,39 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
 
     wait(for: [expectation], timeout: 5.0)
   }
+  
+  func testDeleteBookmark_localAndRemote() {
+    let expectation = XCTestExpectation(description: "DeleteLocalAndRemoteBookmarks")
+
+    let registryTestBookmarks: [ChapterLocation] = [testBookmark, testBookmarkTwo, testBookmarkThree]
+    let remoteTestBookmarks: [ChapterLocation] = [testBookmark, testBookmarkTwo]
+    let expectedLocalBookmarks = [testBookmark, testBookmarkThree]
+    let expectedRemoteBookmarks = [testBookmark]
+
+    mockRegistry.preloadData(bookIdentifier: fakeBook.identifier, locations: registryTestBookmarks.compactMap { $0.toTPPBookLocation() })
+    let remoteBookmarks = remoteTestBookmarks.compactMap { TestBookmark(annotationId: "TestAnnotationId\(fakeBook.identifier)", value: $0.toTPPBookLocation()!.locationString) }
+    mockAnnotations.bookmarks = [fakeBook.identifier: remoteBookmarks]
+
+    sut = AudiobookBookmarkBusinessLogic(book: fakeBook, registry: mockRegistry, annotationsManager: mockAnnotations)
+    sut.deleteBookmark(at: testBookmarkTwo) { success in
+      XCTAssertTrue(success)
+      let localBookmarks = self.mockRegistry.genericBookmarksForIdentifier(self.fakeBook.identifier)
+
+      XCTAssertEqual(localBookmarks.count, expectedLocalBookmarks.count)
+      expectedLocalBookmarks.forEach { expectedBookmark in
+        XCTAssertFalse(localBookmarks.filter { $0.locationString == expectedBookmark.toTPPBookLocation()?.locationString }.isEmpty)
+      }
+      
+      let remoteBookmarks = self.mockAnnotations.bookmarks[self.fakeBook.identifier]?.compactMap { $0.value } ?? []
+      XCTAssertEqual(remoteBookmarks.count, expectedRemoteBookmarks.count)
+
+      expectedRemoteBookmarks.forEach { expectedBookmark in
+        XCTAssertFalse(remoteBookmarks.filter { $0 == expectedBookmark.toTPPBookLocation()?.locationString }.isEmpty)
+      }
+
+      expectation.fulfill()
+    }
+
+    wait(for: [expectation], timeout: 5.0)
+  }
 }
