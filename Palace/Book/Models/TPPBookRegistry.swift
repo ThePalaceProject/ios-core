@@ -508,7 +508,7 @@ extension TPPBookRegistry: TPPBookRegistryProvider {
   
    /// Deletes a generic bookmark (book location) for a book given its identifier
   func deleteGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String) {
-    registry[bookIdentifier]?.genericBookmarks?.removeAll { $0.locationString == location.locationString }
+    registry[bookIdentifier]?.genericBookmarks?.removeAll { $0.isSimilarTo(location) }
     save()
   }
   
@@ -516,5 +516,41 @@ extension TPPBookRegistry: TPPBookRegistryProvider {
     deleteGenericBookmark(oldLocation, forIdentifier: bookIdentifier)
     registry[bookIdentifier]?.genericBookmarks?.append(newLocation)
     save()
+  }
+}
+
+extension TPPBookLocation {
+  
+  func locationStringDictionary() -> [String: Any]? {
+    guard let data = locationString.data(using: .utf8),
+            let dictionary = try? JSONSerialization.jsonObject(with: data, options: .allowFragments) as? [String: Any]
+    else { return nil }
+    
+    return dictionary
+  }
+
+  func isSimilarTo(_ location: TPPBookLocation) -> Bool {
+    guard renderer == location.renderer,
+          let locationDict = locationStringDictionary(),
+          let otherLocationDict = location.locationStringDictionary()
+    else { return false }
+            
+    var areEqual = true
+    
+    for (key, value) in locationDict {
+      if key == "lastSavedTimeStamp" { continue }
+      
+      if let otherValue = otherLocationDict[key] {
+        if "\(value)" != "\(otherValue)" {
+          areEqual = false
+          break
+        }
+      } else {
+        areEqual = false
+        break
+      }
+    }
+    
+    return areEqual
   }
 }
