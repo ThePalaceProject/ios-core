@@ -482,6 +482,17 @@ Authenticating with any of those barcodes should work.
   [self.tableView reloadData];
 }
 
+/**
+ * Update Library Card value
+ *
+ *@param username user name or library card value
+ */
+- (void)setUserName:(nonnull NSString *)username
+{
+  usernameTextField.text = username;
+  [PINTextField becomeFirstResponder];
+}
+
 #pragma mark - Account SignOut
 
 - (void)logOut

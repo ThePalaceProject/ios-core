@@ -8,6 +8,7 @@
 
 import Foundation
 import FirebaseCore
+import FirebaseDynamicLinks
 
 @main
 class TPPAppDelegate: UIResponder, UIApplicationDelegate {
@@ -98,7 +99,18 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
   }
   
   func application(_ application: UIApplication, continue userActivity: NSUserActivity, restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void) -> Bool {
-    if userActivity.activityType == NSUserActivityTypeBrowsingWeb &&
+    if let url = userActivity.webpageURL, DynamicLinks.dynamicLinks().handleUniversalLink(url, completion: { dynamicLink, error in
+      if let error {
+        // Cannot parse the link
+        return
+      }
+      if let dynamicLink, DLNavigator.shared.isValidLink(dynamicLink) {
+        DLNavigator.shared.navigate(to: dynamicLink)
+      }
+    }) {
+      // handleUniversalLink returns true if it receives a link,
+      // dynamicLink is processed in the completion handler
+    } else if userActivity.activityType == NSUserActivityTypeBrowsingWeb &&
         userActivity.webpageURL?.host == TPPSettings.shared.universalLinksURL.host {
       NotificationCenter.default.post(name: .TPPAppDelegateDidReceiveCleverRedirectURL, object: userActivity.webpageURL)
       return true
@@ -162,4 +174,38 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     }
   }
   
+}
+
+extension TPPAppDelegate {
+//  var topViewController: UIViewController? {
+//    guard let keyWindow = UIApplication.shared.windows.first(where: { $0.isKeyWindow }) else {
+//      return nil
+//    }
+//    if var topViewController = keyWindow.rootViewController {
+//      while let presentedViewController = topViewController.presentedViewController {
+//        topViewController = presentedViewController
+//      }
+//      return topViewController
+//    }
+//    return nil
+//  }
+  
+  func topViewController(_ viewController: UIViewController? = nil) -> UIViewController? {
+    guard let controller = viewController ?? UIApplication.shared.windows.first(where: { $0.isKeyWindow })?.rootViewController else {
+      return nil
+    }
+    
+    if let navigationController = controller as? UINavigationController {
+      return topViewController(navigationController.visibleViewController)
+    }
+    if let tabController = controller as? UITabBarController {
+      if let selected = tabController.selectedViewController {
+        return topViewController(selected)
+      }
+    }
+    if let presented = controller.presentedViewController {
+      return topViewController(presented)
+    }
+    return controller
+  }
 }
