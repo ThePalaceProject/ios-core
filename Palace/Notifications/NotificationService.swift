@@ -51,7 +51,6 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
   @objc
   /// Runs configuration function, registers the app for remote notifications.
   func setupPushNotifications() {
-    FirebaseApp.configure()
     notificationCenter.delegate = self
     notificationCenter.requestAuthorization(options: [.alert, .badge, .sound]) { granted, error in
       if granted {
