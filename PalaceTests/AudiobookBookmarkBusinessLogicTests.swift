@@ -24,7 +24,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
     startOffset: TimeInterval(floatLiteral: 1000),
     playheadOffset:TimeInterval(floatLiteral: 1000),
     title: "Test Title",
-    audiobookID: UUID().uuidString,
+    audiobookID: "testBookmark",
     annotationId: "TestAnnotationId\(UUID().uuidString)"
   )
   
@@ -35,7 +35,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
     startOffset: TimeInterval(floatLiteral: 1000),
     playheadOffset:TimeInterval(floatLiteral: 111000),
     title: "Test Title",
-    audiobookID: UUID().uuidString,
+    audiobookID: "testBookmarkTwo",
     annotationId: "TestAnnotationId\(UUID().uuidString)"
   )
   
@@ -46,7 +46,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
     startOffset: TimeInterval(floatLiteral: 1000),
     playheadOffset:TimeInterval(floatLiteral: 1000),
     title: "Test Title",
-    audiobookID: UUID().uuidString,
+    audiobookID: "testBookmarkThree",
     annotationId: "TestAnnotationId\(UUID().uuidString)"
   )
 
@@ -56,7 +56,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
     duration: TimeInterval(floatLiteral: 44000),
     startOffset: TimeInterval(floatLiteral: 1000),
     playheadOffset:TimeInterval(floatLiteral: 1000),
-    title: "Test Title",
+    title: "testBookmark",
     audiobookID: UUID().uuidString
   )
   
@@ -66,7 +66,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
     duration: TimeInterval(floatLiteral: 66000),
     startOffset: TimeInterval(floatLiteral: 1000),
     playheadOffset:TimeInterval(floatLiteral: 111000),
-    title: "Test Title",
+    title: "testBookmarkTwo",
     audiobookID: UUID().uuidString
   )
   
@@ -76,7 +76,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
     duration: TimeInterval(floatLiteral: 5500),
     startOffset: TimeInterval(floatLiteral: 1000),
     playheadOffset:TimeInterval(floatLiteral: 1000),
-    title: "Test Title",
+    title: "testBookmarkThree",
     audiobookID: UUID().uuidString
   )
   
@@ -152,7 +152,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
     let expectation = XCTestExpectation(description: "FetchAllBookmarks")
     let registryTestBookmarks = [localTestBookmark, localTestBookmarkTwo]
     let remoteTestBookmarks = [testBookmark, testBookmarkThree]
-    let expectedBookmarks = [testBookmark, localTestBookmarkTwo, testBookmarkThree]
+    let expectedBookmarks = [testBookmark, localTestBookmark, localTestBookmarkTwo, testBookmarkThree]
 
     mockRegistry.preloadData(bookIdentifier: fakeBook.identifier, locations: registryTestBookmarks.compactMap { $0.toTPPBookLocation() })
     let remoteBookmarks = remoteTestBookmarks.compactMap { TestBookmark(annotationId: $0.annotationId, value: $0.toTPPBookLocation()!.locationString) }
@@ -262,7 +262,8 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
   func testDeleteBookmark_localOnly() {
     let expectation = XCTestExpectation(description: "DeleteLocalBookmarks")
 
-    let registryTestBookmarks: [ChapterLocation] = [localTestBookmark, localTestBookmarkTwo, localTestBookmarkThree]
+    let deletedBookmark = localTestBookmarkTwo
+    let registryTestBookmarks: [ChapterLocation] = [localTestBookmark, deletedBookmark, localTestBookmarkThree]
     let remoteTestBookmarks: [ChapterLocation] = []
     let expectedLocalBookmarks = [localTestBookmark, localTestBookmarkThree]
 
@@ -271,7 +272,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
     mockAnnotations.bookmarks = [fakeBook.identifier: remoteBookmarks]
 
     sut = AudiobookBookmarkBusinessLogic(book: fakeBook, registry: mockRegistry, annotationsManager: mockAnnotations)
-    sut.deleteBookmark(at: localTestBookmarkTwo) { success in
+    sut.deleteBookmark(at: deletedBookmark) { success in
       XCTAssertTrue(success)
       let localBookmarks = self.mockRegistry.genericBookmarksForIdentifier(self.fakeBook.identifier)
 
