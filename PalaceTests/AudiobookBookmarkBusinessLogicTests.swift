@@ -24,7 +24,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
     startOffset: TimeInterval(floatLiteral: 1000),
     playheadOffset:TimeInterval(floatLiteral: 1000),
     title: "Test Title",
-    audiobookID: "123456789123456",
+    audiobookID: UUID().uuidString,
     annotationId: "TestAnnotationId\(UUID().uuidString)"
   )
   
@@ -35,7 +35,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
     startOffset: TimeInterval(floatLiteral: 1000),
     playheadOffset:TimeInterval(floatLiteral: 111000),
     title: "Test Title",
-    audiobookID: "123456789123456",
+    audiobookID: UUID().uuidString,
     annotationId: "TestAnnotationId\(UUID().uuidString)"
   )
   
@@ -46,7 +46,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
     startOffset: TimeInterval(floatLiteral: 1000),
     playheadOffset:TimeInterval(floatLiteral: 1000),
     title: "Test Title",
-    audiobookID: "123456789123456",
+    audiobookID: UUID().uuidString,
     annotationId: "TestAnnotationId\(UUID().uuidString)"
   )
 
@@ -57,7 +57,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
     startOffset: TimeInterval(floatLiteral: 1000),
     playheadOffset:TimeInterval(floatLiteral: 1000),
     title: "Test Title",
-    audiobookID: "123456789123456"
+    audiobookID: UUID().uuidString
   )
   
   let localTestBookmarkTwo = ChapterLocation(
@@ -67,7 +67,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
     startOffset: TimeInterval(floatLiteral: 1000),
     playheadOffset:TimeInterval(floatLiteral: 111000),
     title: "Test Title",
-    audiobookID: "123456789123456"
+    audiobookID: UUID().uuidString
   )
   
   let localTestBookmarkThree = ChapterLocation(
@@ -77,7 +77,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
     startOffset: TimeInterval(floatLiteral: 1000),
     playheadOffset:TimeInterval(floatLiteral: 1000),
     title: "Test Title",
-    audiobookID: "123456789123456"
+    audiobookID: UUID().uuidString
   )
   
   override func setUp() {
