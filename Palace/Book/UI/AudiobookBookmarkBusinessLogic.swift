@@ -113,7 +113,7 @@ import NYPLAudiobookToolkit
         
         for bookmark in serverBookmarksToDelete {
           if !bookmark.annotationId.isEmpty {
-            annotationsManager.deleteBookmark(annotationId: bookmark.annotationId) { _ in }
+            self.annotationsManager.deleteBookmark(annotationId: bookmark.annotationId) { _ in }
           }
         }
 
