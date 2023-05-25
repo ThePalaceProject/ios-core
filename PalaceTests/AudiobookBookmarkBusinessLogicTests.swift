@@ -218,7 +218,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
 
     let registryTestBookmarks: [ChapterLocation] = [localTestBookmark]
     let remoteTestBookmarks: [ChapterLocation] = [testBookmarkTwo, testBookmarkThree]
-    let expectedLocalBookmarks = [testBookmark, testBookmarkTwo, testBookmarkThree]
+    let expectedLocalBookmarks = [localTestBookmark, testBookmarkTwo, testBookmarkThree]
 
     mockRegistry.preloadData(bookIdentifier: fakeBook.identifier, locations: registryTestBookmarks.compactMap { $0.toTPPBookLocation() })
     let remoteBookmarks = remoteTestBookmarks.compactMap { TestBookmark(annotationId: $0.annotationId, value: $0.toTPPBookLocation()!.locationString) }
