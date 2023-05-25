@@ -139,11 +139,12 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
     XCTAssertTrue(testBookmark.lastSavedTimeStamp.isEmpty)
     sut = AudiobookBookmarkBusinessLogic(book: fakeBook, registry: mockRegistry, annotationsManager: mockAnnotations)
 
-    sut.saveBookmark(at: testBookmark) { Bookmark in
+    let testBookmark = testBookmark
+    sut.saveBookmark(at: testBookmark) { bookmark in
       expectation.fulfill()
-      XCTAssertNotNil(Bookmark)
-      XCTAssertFalse(Bookmark!.lastSavedTimeStamp.isEmpty)
-      XCTAssertTrue(self.testBookmark.isSimilar(to: Bookmark!))
+      XCTAssertNotNil(bookmark)
+      XCTAssertFalse(bookmark!.lastSavedTimeStamp.isEmpty)
+      XCTAssertTrue(testBookmark.isSimilar(to: bookmark!))
     }
     wait(for: [expectation], timeout: 5.0)
   }
