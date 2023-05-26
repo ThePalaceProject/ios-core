@@ -175,37 +175,3 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
   }
   
 }
-
-extension TPPAppDelegate {
-//  var topViewController: UIViewController? {
-//    guard let keyWindow = UIApplication.shared.windows.first(where: { $0.isKeyWindow }) else {
-//      return nil
-//    }
-//    if var topViewController = keyWindow.rootViewController {
-//      while let presentedViewController = topViewController.presentedViewController {
-//        topViewController = presentedViewController
-//      }
-//      return topViewController
-//    }
-//    return nil
-//  }
-  
-  func topViewController(_ viewController: UIViewController? = nil) -> UIViewController? {
-    guard let controller = viewController ?? UIApplication.shared.windows.first(where: { $0.isKeyWindow })?.rootViewController else {
-      return nil
-    }
-    
-    if let navigationController = controller as? UINavigationController {
-      return topViewController(navigationController.visibleViewController)
-    }
-    if let tabController = controller as? UITabBarController {
-      if let selected = tabController.selectedViewController {
-        return topViewController(selected)
-      }
-    }
-    if let presented = controller.presentedViewController {
-      return topViewController(presented)
-    }
-    return controller
-  }
-}
