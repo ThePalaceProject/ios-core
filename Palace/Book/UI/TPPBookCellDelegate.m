@@ -280,7 +280,14 @@ static const int kServerUpdateDelay = 15;
 
       __weak AudiobookPlayerViewController *weakAudiobookVC = audiobookVC;
       [manager setPlaybackCompletionHandler:^{
-        NSSet<NSString *> *types = [[NSSet alloc] initWithObjects:ContentTypeFindaway, ContentTypeOpenAccessAudiobook, ContentTypeFeedbooksAudiobook, nil];
+        NSSet<NSString *> *types = [[NSSet alloc] initWithObjects:
+                                    ContentTypeFindaway,
+                                    ContentTypeBearerToken,
+                                    ContentTypeOpenAccessAudiobook,
+                                    ContentTypeOverdriveAudiobook,
+                                    ContentTypeFeedbooksAudiobook,
+                                    nil
+        ];
         NSArray<TPPOPDSAcquisitionPath *> *paths = [TPPOPDSAcquisitionPath
                                                      supportedAcquisitionPathsForAllowedTypes:types
                                                     allowedRelations:(TPPOPDSAcquisitionRelationSetBorrow |
