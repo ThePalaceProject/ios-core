@@ -119,40 +119,13 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
   }
   
   func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey : Any] = [:]) -> Bool {
-
-    // TODO: Refactor this code.
-    // The code below opens a book entry URL, replacing https with http,
-    // downloads the entry synchronously.
-
-    // URLs should be a permalink to a feed URL
-    let entryUrl = url.replacingScheme(with: "http")
-    if let data = try? Data(contentsOf: entryUrl),
-       let xml = TPPXML(data: data),
-       let entry = TPPOPDSEntry(xml: xml),
-       let book = TPPBook(entry: entry) {
-      
-      if let bookDetailVC = TPPBookDetailViewController(book: book),
-         let tbc = TPPRootTabBarController.shared() {
-        tbc.selectedIndex = 0
-        if let navigationVC = tbc.selectedViewController as? UINavigationController, tbc.traitCollection.horizontalSizeClass == .compact {
-          navigationVC.pushViewController(bookDetailVC, animated: true)
-        } else if let navigationVC = tbc.selectedViewController?.presentedViewController as? UINavigationController {
-          navigationVC.pushViewController(bookDetailVC, animated: true)
-        } else {
-          let navigationVC = UINavigationController(rootViewController: bookDetailVC)
-          navigationVC.modalPresentationStyle = .formSheet
-          tbc.selectedViewController?.present(navigationVC, animated: true)
-        }
-        return true
-      } else {
-        return false
+    if let dynamicLink = DynamicLinks.dynamicLinks().dynamicLink(fromCustomSchemeURL: url) {
+      if DLNavigator.shared.isValidLink(dynamicLink) {
+        DLNavigator.shared.navigate(to: dynamicLink)
       }
-    } else {
-      let alertController = TPPAlertUtils.alert(title: "Error Opening Link", message: "There was an error opening the linked book.", style: .default)
-      TPPAlertUtils.presentFromViewControllerOrNil(alertController: alertController, viewController: nil, animated: true, completion: nil)
-      Log.log("Failed to create book from deep-linked URL.")
-      return false
+      return true
     }
+    return false
   }
   
   func applicationDidBecomeActive(_ application: UIApplication) {
