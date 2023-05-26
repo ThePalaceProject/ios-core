@@ -785,6 +785,8 @@
 		E7498A902A0E7F840037DD93 /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = E7498A8F2A0E7F840037DD93 /* FirebaseCrashlytics */; };
 		E7498A922A0E7F840037DD93 /* FirebaseDynamicLinks in Frameworks */ = {isa = PBXBuildFile; productRef = E7498A912A0E7F840037DD93 /* FirebaseDynamicLinks */; };
 		E7498A942A0E7F840037DD93 /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = E7498A932A0E7F840037DD93 /* FirebaseMessaging */; };
+		E75499F72A1D6863009FF821 /* TPPAppDelegate+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E75499F62A1D6863009FF821 /* TPPAppDelegate+Extensions.swift */; };
+		E75499F82A1D6863009FF821 /* TPPAppDelegate+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E75499F62A1D6863009FF821 /* TPPAppDelegate+Extensions.swift */; };
 		E75ED6D2297720DE006BBD5F /* TXNativeExtensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E549955128EE1ADB00EA0D9B /* TXNativeExtensions.swift */; };
 		E75ED6D32977223A006BBD5F /* TPPKeychainTests.m in Sources */ = {isa = PBXBuildFile; fileRef = 11C5DD171977335E005A9945 /* TPPKeychainTests.m */; };
 		E75ED6D4297722BA006BBD5F /* TPPMyBooksDownloadCenterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D73DA3D22A07B9A00162CB8 /* TPPMyBooksDownloadCenterTests.swift */; };
@@ -1604,6 +1606,7 @@
 		E74752F627FF044400F5E7FA /* TPPSignInBusinessLogic+CardCreation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPSignInBusinessLogic+CardCreation.swift"; sourceTree = "<group>"; };
 		E7498A7A2A0E349A0037DD93 /* TPPAppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAppDelegate.swift; sourceTree = "<group>"; };
 		E7498A7D2A0E4F6A0037DD93 /* URL+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "URL+Extensions.swift"; sourceTree = "<group>"; };
+		E75499F62A1D6863009FF821 /* TPPAppDelegate+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPAppDelegate+Extensions.swift"; sourceTree = "<group>"; };
 		E759B2052A1BF7AA0041B075 /* PalaceDebug.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = PalaceDebug.entitlements; sourceTree = "<group>"; };
 		E75F4A2829C3AB1F006DFBD8 /* TPPPublicationSpeechSynthesizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPublicationSpeechSynthesizer.swift; sourceTree = "<group>"; };
 		E76AD92A296DCB76008ECC61 /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
@@ -1956,6 +1959,7 @@
 				0345BFD61DBF002E00398B6F /* APIKeys.swift */,
 				739ECB2325101CCE00691A70 /* NSNotification+TPP.swift */,
 				E7498A7A2A0E349A0037DD93 /* TPPAppDelegate.swift */,
+				E75499F62A1D6863009FF821 /* TPPAppDelegate+Extensions.swift */,
 				A93F9F9621CDACF700BD3B0C /* TPPAppReviewPrompt.swift */,
 				E6207B642118973800864143 /* TPPAppTheme.swift */,
 				E6F26E721DFF672F00C103CA /* TPPBookContentMetadataFilesHelper.swift */,
@@ -3644,6 +3648,7 @@
 				73EB0A7725821DF4006BC997 /* OPDS2Publication.swift in Sources */,
 				73EB0A7825821DF4006BC997 /* String+MD5.swift in Sources */,
 				73EB0A7925821DF4006BC997 /* TPPNetworkQueue.swift in Sources */,
+				E75499F82A1D6863009FF821 /* TPPAppDelegate+Extensions.swift in Sources */,
 				73EB0A7B25821DF4006BC997 /* TPPSignInBusinessLogicUIDelegate.swift in Sources */,
 				73D8D28325A6921400DF5F69 /* Float+TPPAdditions.swift in Sources */,
 				73EB0A7C25821DF4006BC997 /* TPPBookCellCollectionViewController.m in Sources */,
@@ -4215,6 +4220,7 @@
 				73CC48AA260C07C200F1E2C3 /* TPPReadiumBookmark+R2.swift in Sources */,
 				A499BF261B39EFC7002F8B8B /* TPPOPDSEntryGroupAttributes.m in Sources */,
 				E731FF4E2864E609001DB7F2 /* View.swift in Sources */,
+				E75499F72A1D6863009FF821 /* TPPAppDelegate+Extensions.swift in Sources */,
 				E706F60B2863864F000B7431 /* CGPDFPage+previews.swift in Sources */,
 				E52E3C0E28C19F490073DC4D /* TPPBook+Extensions.swift in Sources */,
 				E54DD4D5275C7C940013C200 /* View+Extensions.swift in Sources */,
