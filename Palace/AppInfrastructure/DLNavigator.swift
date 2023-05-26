@@ -69,8 +69,10 @@ class DLNavigator {
     }
     if newAccount.uuid != accountsManager.currentAccount?.uuid {
       accountsManager.currentAccount = accountsManager.account(libraryId)
-      accountsManager.loadCatalogs { success in
-      }
+      (TPPRootTabBarController.shared().viewControllers?.first as? TPPCatalogNavigationController)?.updateFeedAndRegistryOnAccountChange()
+    }
+    if TPPUserAccount.sharedAccount(libraryUUID: libraryId).isSignedIn() {
+      return
     }
     if let accountDetailVC = topViewController as? TPPSettingsAccountDetailViewController {
       accountDetailVC.setUserName(barcode)
