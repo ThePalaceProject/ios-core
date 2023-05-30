@@ -16,6 +16,11 @@ protocol TPPBookRegistryProvider {
   func add(_ bookmark: TPPReadiumBookmark, forIdentifier identifier: String)
   func delete(_ bookmark: TPPReadiumBookmark, forIdentifier identifier: String)
   func replace(_ oldBookmark: TPPReadiumBookmark, with newBookmark: TPPReadiumBookmark, forIdentifier identifier: String)
+  func genericBookmarksForIdentifier(_ bookIdentifier: String) -> [TPPBookLocation]
+  func addOrReplaceGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String)
+  func addGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String)
+  func deleteGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String)
+  func replaceGenericBookmark(_ oldLocation: TPPBookLocation, with newLocation: TPPBookLocation, forIdentifier: String)
 }
 
 typealias TPPBookRegistryData = [String: Any]
@@ -424,32 +429,6 @@ class TPPBookRegistry: NSObject {
   func coverImage(for book: TPPBook, handler: @escaping (_ image: UIImage?) -> Void) {
     coverRegistry.coverImageForBook(book, handler: handler)
   }
-
-  
-  // MARK: - Generic Bookmarks
-  
-  /// Returns the generic bookmarks for a any renderer's bookmarks given its identifier
-  func genericBookmarksForIdentifier(_ bookIdentifier: String) -> [TPPBookLocation] {
-    registry[bookIdentifier]?.genericBookmarks ?? []
-  }
-  
-  /// Adds a generic bookmark (book location) for a book given its identifier
-  func addGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String) {
-    guard registry[bookIdentifier] != nil else {
-      return
-    }
-    if registry[bookIdentifier]?.genericBookmarks == nil {
-      registry[bookIdentifier]?.genericBookmarks = [TPPBookLocation]()
-    }
-    registry[bookIdentifier]?.genericBookmarks?.append(location)
-    save()
-  }
-  
-  /// Deletes a generic bookmark (book location) for a book given its identifier
-  func deleteGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String) {
-    registry[bookIdentifier]?.genericBookmarks?.removeAll { $0 == location }
-    save()
-  }
 }
 
 // MARK: - TPPBookRegistryProvider
@@ -496,5 +475,82 @@ extension TPPBookRegistry: TPPBookRegistryProvider {
     registry[bookIdentifier]?.readiumBookmarks?.removeAll { $0 == oldBookmark }
     registry[bookIdentifier]?.readiumBookmarks?.append(newBookmark)
     save()
+  }
+  
+  // MARK: - Generic Bookmarks
+  
+  /// Returns the generic bookmarks for a any renderer's bookmarks given its identifier
+  func genericBookmarksForIdentifier(_ bookIdentifier: String) -> [TPPBookLocation] {
+    registry[bookIdentifier]?.genericBookmarks ?? []
+  }
+  
+  func addOrReplaceGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String) {
+    guard let existingBookmark = registry[bookIdentifier]?.genericBookmarks?.first(where: { $0 == location }) else {
+      addGenericBookmark(location, forIdentifier: bookIdentifier)
+      return
+    }
+
+    replaceGenericBookmark(existingBookmark, with: location, forIdentifier: bookIdentifier)
+  }
+  
+  /// Adds a generic bookmark (book location) for a book given its identifier
+  func addGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String) {
+    guard registry[bookIdentifier] != nil else {
+      return
+    }
+
+    if registry[bookIdentifier]?.genericBookmarks == nil {
+      registry[bookIdentifier]?.genericBookmarks = [TPPBookLocation]()
+    }
+    registry[bookIdentifier]?.genericBookmarks?.append(location)
+    save()
+  }
+  
+   /// Deletes a generic bookmark (book location) for a book given its identifier
+  func deleteGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String) {
+    registry[bookIdentifier]?.genericBookmarks?.removeAll { $0.isSimilarTo(location) }
+    save()
+  }
+  
+  func replaceGenericBookmark(_ oldLocation: TPPBookLocation, with newLocation: TPPBookLocation, forIdentifier bookIdentifier: String) {
+    deleteGenericBookmark(oldLocation, forIdentifier: bookIdentifier)
+    registry[bookIdentifier]?.genericBookmarks?.append(newLocation)
+    save()
+  }
+}
+
+extension TPPBookLocation {
+  
+  func locationStringDictionary() -> [String: Any]? {
+    guard let data = locationString.data(using: .utf8),
+            let dictionary = try? JSONSerialization.jsonObject(with: data, options: .allowFragments) as? [String: Any]
+    else { return nil }
+    
+    return dictionary
+  }
+
+  func isSimilarTo(_ location: TPPBookLocation) -> Bool {
+    guard renderer == location.renderer,
+          let locationDict = locationStringDictionary(),
+          let otherLocationDict = location.locationStringDictionary()
+    else { return false }
+            
+    var areEqual = true
+    
+    for (key, value) in locationDict {
+      if key == "lastSavedTimeStamp" { continue }
+      
+      if let otherValue = otherLocationDict[key] {
+        if "\(value)" != "\(otherValue)" {
+          areEqual = false
+          break
+        }
+      } else {
+        areEqual = false
+        break
+      }
+    }
+    
+    return areEqual
   }
 }

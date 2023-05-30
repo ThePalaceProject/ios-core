@@ -1,6 +1,34 @@
 import UIKit
 import R2Shared
 
+protocol AnnotationsManager {
+  func postListeningPosition(forBook bookID: String, selectorValue: String, completion: ((_ serverID: String?) -> Void)?)
+  func postAudiobookBookmark(forBook bookID: String, selectorValue: String) async throws -> String?
+  func getServerBookmarks(forBook bookID:String?,
+                                atURL annotationURL:URL?,
+                                motivation: TPPBookmarkSpec.Motivation,
+                                completion: @escaping (_ bookmarks: [Bookmark]?) -> ())
+  func deleteBookmark(annotationId: String, completionHandler: @escaping (_ success: Bool) -> ())
+}
+
+@objcMembers final class TPPAnnotationsWrapper: NSObject, AnnotationsManager {
+  func postListeningPosition(forBook bookID: String, selectorValue: String, completion: ((String?) -> Void)?) {
+    TPPAnnotations.postListeningPosition(forBook: bookID, selectorValue: selectorValue, completion: completion)
+  }
+  
+  func postAudiobookBookmark(forBook bookID: String, selectorValue: String) async throws -> String? {
+    try await TPPAnnotations.postAudiobookBookmark(forBook: bookID, selectorValue: selectorValue)
+  }
+  
+  func getServerBookmarks(forBook bookID: String?, atURL annotationURL: URL?, motivation: TPPBookmarkSpec.Motivation = .bookmark, completion: @escaping ([Bookmark]?) -> ()) {
+    TPPAnnotations.getServerBookmarks(forBook: bookID, atURL: annotationURL, motivation: motivation, completion: completion)
+  }
+  
+  func deleteBookmark(annotationId: String, completionHandler: @escaping (Bool) -> ()) {
+    TPPAnnotations.deleteBookmark(annotationId: annotationId, completionHandler: completionHandler)
+  }
+}
+
 @objcMembers final class TPPAnnotations: NSObject {
   // MARK: - Sync Settings
 
@@ -227,19 +255,29 @@ import R2Shared
   class func postListeningPosition(forBook bookID: String, selectorValue: String, completion: ((_ serverID: String?) -> Void)? = nil) {
     postReadingPosition(forBook: bookID, selectorValue: selectorValue, motivation:  .readingProgress, completion: completion)
   }
-  
-  class func postAudiobookBookmark(forBook bookID: String, selectorValue: String, completion: ((_ serverID: String?) -> Void)? = nil) {
-    postReadingPosition(forBook: bookID, selectorValue: selectorValue, motivation: .bookmark, completion: completion)
+
+  class func postAudiobookBookmark(forBook bookID: String, selectorValue: String) async throws -> String? {
+    return try await withCheckedThrowingContinuation { continuation in
+          postReadingPosition(forBook: bookID, selectorValue: selectorValue, motivation: .bookmark) { serverID in
+              if let serverID = serverID {
+                  continuation.resume(returning: serverID)
+              } else {
+                  continuation.resume(throwing: NSError(domain: "Error posting bookmark", code: 1, userInfo: nil))
+              }
+          }
+      }
   }
 
   class func postReadingPosition(forBook bookID: String, selectorValue: String, motivation: TPPBookmarkSpec.Motivation, completion: ((_ serverID: String?) -> Void)? = nil) {
     guard syncIsPossibleAndPermitted() else {
       Log.debug(#file, "Account does not support sync or sync is disabled.")
+      completion?(nil)
       return
     }
 
     guard let annotationsURL = TPPAnnotations.annotationsURL else {
       Log.error(#file, "Annotations URL was nil while updating reading position")
+      completion?(nil)
       return
     }
 
@@ -259,11 +297,12 @@ import R2Shared
                                   "bookID": bookID,
                                   "annotationID": id ?? "N/A",
                                   "annotationURL": annotationsURL])
+        completion?(nil)
         return
       }
 
-      completion?(id)
       Log.debug(#file, "Successfully saved Reading Position to server: \(selectorValue)")
+      completion?(id)
     }
   }
   

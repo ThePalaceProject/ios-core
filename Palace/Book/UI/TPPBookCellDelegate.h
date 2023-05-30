@@ -14,5 +14,6 @@ shared cover registry, shared download center, et cetera. */
 
 + (instancetype)sharedDelegate;
 @property (nonatomic) TPPBook *book;
+@property (nonatomic) bool isSyncing;
 
 @end
