@@ -7,4 +7,11 @@
 /// @param libraryAccountUUID The ID of the library to sign in to.
 - (nonnull instancetype)initWithLibraryAccountID:(nonnull NSString *)libraryAccountUUID;
 
+/**
+ * Update Library Card value
+ *
+ *@param username user name or library card value
+ */
+- (void)setUserName:(nonnull NSString *)username;
+
 @end

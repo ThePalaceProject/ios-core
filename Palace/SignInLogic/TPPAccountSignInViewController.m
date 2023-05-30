@@ -52,6 +52,7 @@ typedef NS_ENUM(NSInteger, Section) {
 @property (nonatomic) NSArray *tableData;
 
 // account state
+@property (nonatomic) NSString *defaultUsername;
 @property TPPUserAccountFrontEndValidation *frontEndValidator;
 @property (nonatomic) TPPSignInBusinessLogic *businessLogic;
 
@@ -563,8 +564,14 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
 
 + (void)requestCredentialsWithCompletion:(void (^)(void))completion
 {
+  [TPPAccountSignInViewController requestCredentialsForUsername:nil withCompletion:completion];
+}
+
++ (void)requestCredentialsForUsername:(NSString *)username withCompletion:(void (^)(void))completion
+{
   [TPPMainThreadRun asyncIfNeeded:^{
     TPPAccountSignInViewController *signInVC = [[self alloc] init];
+    signInVC.defaultUsername = username;
     [signInVC presentIfNeededUsingExistingCredentials:NO
                                     completionHandler:completion];
   }];
@@ -796,7 +803,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
       self.PINTextField.textColor = [UIColor grayColor];
     }
   } else {
-    self.usernameTextField.text = nil;
+    self.usernameTextField.text = self.defaultUsername;
     self.usernameTextField.enabled = YES;
     self.usernameTextField.textColor = [UIColor defaultLabelColor];
     self.PINTextField.text = nil;
@@ -806,6 +813,11 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
 
   [self setupTableData];
   [self updateLoginCellAppearance];
+  
+  if (self.defaultUsername) {
+    self.defaultUsername = nil; // clear default username
+    [PINTextField becomeFirstResponder];
+  }
 }
 
 - (void)updateLoginCellAppearance
