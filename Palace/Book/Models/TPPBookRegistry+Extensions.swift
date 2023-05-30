@@ -22,3 +22,20 @@ import NYPLAudiobookToolkit
     }
   }
 }
+
+extension ChapterLocation {
+
+  convenience init(audioBookmark: AudioBookmark) {
+    self.init(
+      number: audioBookmark.chapter,
+      part: audioBookmark.part,
+      duration: Double(audioBookmark.duration/1000),
+      startOffset: Double((audioBookmark.startOffset ?? 0)/1000),
+      playheadOffset: Double(audioBookmark.time/1000),
+      title: audioBookmark.title,
+      audiobookID: audioBookmark.audiobookID,
+      lastSavedTimeStamp: audioBookmark.timeStamp,
+      annotationId: audioBookmark.annotationId
+    )
+  }
+}
