@@ -132,7 +132,7 @@ import NYPLAudiobookToolkit
   }
 }
 
-extension Array where Element == ChapterLocation {
+private extension Array where Element == ChapterLocation {
     func combineAndRemoveDuplicates(with otherArray: [ChapterLocation]) -> [ChapterLocation] {
         let combinedArray = self + otherArray
         var uniqueArray: [ChapterLocation] = []
@@ -144,40 +144,6 @@ extension Array where Element == ChapterLocation {
         }
         return uniqueArray
     }
-}
-
-extension ChapterLocation: NSCopying {
-  public func copy(with zone: NSZone? = nil) -> Any {
-    let copy = ChapterLocation(
-      number: number,
-      part: part,
-      duration: duration,
-      startOffset: chapterOffset,
-      playheadOffset: playheadOffset,
-      title: title,
-      audiobookID: audiobookID
-    )
-    copy.lastSavedTimeStamp = self.lastSavedTimeStamp
-    copy.annotationId = self.annotationId
-    return copy
-  }
-  
-  
-  func toTPPBookLocation() -> TPPBookLocation? {
-    guard let updatedLocationString = String(data: toData(), encoding: .utf8) else { return nil }
-    return TPPBookLocation.init(locationString: updatedLocationString, renderer: "NYPLAudiobookToolkit")
-  }
-
-  func isSimilar(to location: ChapterLocation) -> Bool {
-    type == location.type &&
-    number == location.number &&
-    part == location.part &&
-    chapterOffset == location.chapterOffset &&
-    playheadOffset == location.playheadOffset &&
-    title == location.title &&
-    audiobookID == location.audiobookID &&
-    duration == location.duration
-  }
 }
 
 extension AudiobookBookmarkBusinessLogic: AudiobookPlaybackPositionDelegate {
