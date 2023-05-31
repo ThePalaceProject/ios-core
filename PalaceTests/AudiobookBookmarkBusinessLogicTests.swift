@@ -56,7 +56,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
     duration: TimeInterval(floatLiteral: 44000),
     startOffset: TimeInterval(floatLiteral: 1000),
     playheadOffset:TimeInterval(floatLiteral: 1000),
-    title: "testBookmark",
+    title: "localTestBookmark",
     audiobookID: UUID().uuidString
   )
   
@@ -66,7 +66,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
     duration: TimeInterval(floatLiteral: 66000),
     startOffset: TimeInterval(floatLiteral: 1000),
     playheadOffset:TimeInterval(floatLiteral: 111000),
-    title: "testBookmarkTwo",
+    title: "localTestBookmarkTwo",
     audiobookID: UUID().uuidString
   )
   
@@ -76,7 +76,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
     duration: TimeInterval(floatLiteral: 5500),
     startOffset: TimeInterval(floatLiteral: 1000),
     playheadOffset:TimeInterval(floatLiteral: 1000),
-    title: "testBookmarkThree",
+    title: "localTestBookmarkThree",
     audiobookID: UUID().uuidString
   )
   
@@ -121,7 +121,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
     mockRegistry.addBook(book: fakeBook, state: .DownloadSuccessful)
     mockAnnotations = TPPAnnotationMock()
   }
-  
+
   func testSaveListeningPosition() {
     let expectation = XCTestExpectation(description: "SaveListeningPosition")
     sut = AudiobookBookmarkBusinessLogic(book: fakeBook, registry: mockRegistry, annotationsManager: mockAnnotations)
@@ -144,7 +144,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
       expectation.fulfill()
       XCTAssertNotNil(bookmark)
       XCTAssertFalse(bookmark!.lastSavedTimeStamp.isEmpty)
-      XCTAssertTrue(testBookmark.isSimilar(to: bookmark!))
+      XCTAssertTrue(testBookmark.isSimilar(to: bookmark))
     }
     wait(for: [expectation], timeout: 5.0)
   }
@@ -160,11 +160,11 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
     mockAnnotations.bookmarks = [fakeBook.identifier: remoteBookmarks]
     
     sut = AudiobookBookmarkBusinessLogic(book: fakeBook, registry: mockRegistry, annotationsManager: mockAnnotations)
-    sut.fetchBookmarks{ Bookmarks in
+    sut.fetchBookmarks{ bookmarks in
       expectation.fulfill()
-      XCTAssertEqual(Bookmarks.count, expectedBookmarks.count)
+      XCTAssertEqual(bookmarks.count, expectedBookmarks.count)
       expectedBookmarks.forEach { expectedBookmark in
-        XCTAssertFalse(Bookmarks.filter { $0.isSimilar(to: expectedBookmark) }.isEmpty)
+        XCTAssertFalse(bookmarks.filter { $0.isSimilar(to: expectedBookmark) }.isEmpty)
       }
     }
     wait(for: [expectation], timeout: 5.0)
@@ -182,11 +182,11 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
     mockAnnotations.bookmarks = [fakeBook.identifier: remoteBookmarks]
     
     sut = AudiobookBookmarkBusinessLogic(book: fakeBook, registry: mockRegistry, annotationsManager: mockAnnotations)
-    sut.fetchBookmarks{ Bookmarks in
+    sut.fetchBookmarks{ bookmarks in
       expectation.fulfill()
-      XCTAssertEqual(Bookmarks.count, expectedBookmarks.count)
+      XCTAssertEqual(bookmarks.count, expectedBookmarks.count)
       expectedBookmarks.forEach { expectedBookmark in
-        XCTAssertFalse(Bookmarks.filter { $0.isSimilar(to: expectedBookmark) }.isEmpty)
+        XCTAssertFalse(bookmarks.filter { $0.isSimilar(to: expectedBookmark) }.isEmpty)
       }
     }
     wait(for: [expectation], timeout: 5.0)
@@ -202,13 +202,13 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
     mockRegistry.preloadData(bookIdentifier: fakeBook.identifier, locations: registryTestBookmarks.compactMap { $0.toTPPBookLocation() })
     let remoteBookmarks = remoteTestBookmarks.compactMap { TestBookmark(annotationId: $0.annotationId, value: $0.toTPPBookLocation()!.locationString) }
     mockAnnotations.bookmarks = [fakeBook.identifier: remoteBookmarks]
-    
+
     sut = AudiobookBookmarkBusinessLogic(book: fakeBook, registry: mockRegistry, annotationsManager: mockAnnotations)
-    sut.fetchBookmarks{ Bookmarks in
+    sut.fetchBookmarks{ bookmarks in
       expectation.fulfill()
-      XCTAssertEqual(Bookmarks.count, expectedBookmarks.count)
+      XCTAssertEqual(bookmarks.count, expectedBookmarks.count)
       expectedBookmarks.forEach { expectedBookmark in
-        XCTAssertFalse(Bookmarks.filter { $0.isSimilar(to: expectedBookmark) }.isEmpty)
+        XCTAssertFalse(bookmarks.filter { $0.isSimilar(to: expectedBookmark) }.isEmpty)
       }
     }
     wait(for: [expectation], timeout: 5.0)

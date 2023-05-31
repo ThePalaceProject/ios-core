@@ -46,4 +46,15 @@
  */
 + (void)requestCredentialsWithCompletion:(void (^)(void))completion;
 
+/**
+ * Present sign in view controller to begin the login process.
+ *
+ * If unsure whether user is already logged in or not, use
+ * @p NYPLReauthenticator instead.
+ *
+ * @param username If provided, this username will apear in the Library Card field
+ * @param completion Called upon successful authentication.
+ */
++ (void)requestCredentialsForUsername:(NSString *)username withCompletion:(void (^)(void))completion;
+
 @end
