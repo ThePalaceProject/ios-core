@@ -868,7 +868,11 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
       return self.logInSignOutCell;
     }
     case CellKindRegistration: {
-      return [RegistrationCell new];
+      RegistrationCell *cell =  [RegistrationCell new];
+      [cell configureWithTitle:nil body:nil buttonTitle:nil buttonAction:^{
+        [self didSelectRegularSignupOnCell:cell];
+      }];
+      return cell;
     }
     case CellKindAgeCheck: {
       self.ageCheckCell = [[UITableViewCell alloc]

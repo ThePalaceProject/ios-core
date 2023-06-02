@@ -380,12 +380,12 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
         [self.usernameTextField autoPinEdgeToSuperviewMargin:ALEdgeRight];
         [self.usernameTextField autoPinEdgeToSuperviewMargin:ALEdgeLeft];
         [self.usernameTextField autoConstrainAttribute:ALAttributeTop toAttribute:ALAttributeMarginTop
-                                               ofView:[self.usernameTextField superview]
-                                           withOffset:marginPadding];
+                                                ofView:[self.usernameTextField superview]
+                                            withOffset:marginPadding];
         [self.usernameTextField autoConstrainAttribute:ALAttributeBottom toAttribute:ALAttributeMarginBottom
-                                               ofView:[self.usernameTextField superview]
-                                           withOffset:-marginPadding];
-
+                                                ofView:[self.usernameTextField superview]
+                                            withOffset:-marginPadding];
+        
         if (self.businessLogic.selectedAuthentication.supportsBarcodeScanner) {
           [cell.contentView addSubview:self.barcodeScanButton];
           CGFloat rightMargin = cell.layoutMargins.right;
@@ -410,11 +410,11 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
         [self.PINTextField autoPinEdgeToSuperviewMargin:ALEdgeRight];
         [self.PINTextField autoPinEdgeToSuperviewMargin:ALEdgeLeft];
         [self.PINTextField autoConstrainAttribute:ALAttributeTop toAttribute:ALAttributeMarginTop
-                                               ofView:[self.PINTextField superview]
-                                           withOffset:marginPadding];
+                                           ofView:[self.PINTextField superview]
+                                       withOffset:marginPadding];
         [self.PINTextField autoConstrainAttribute:ALAttributeBottom toAttribute:ALAttributeMarginBottom
-                                               ofView:[self.PINTextField superview]
-                                           withOffset:-marginPadding];
+                                           ofView:[self.PINTextField superview]
+                                       withOffset:-marginPadding];
       }
       return cell;
     }
@@ -424,11 +424,15 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
       return self.logInCell;
     }
     case CellKindRegistration: {
-      return [RegistrationCell new];
+      RegistrationCell *cell =  [RegistrationCell new];
+      [cell configureWithTitle:nil body:nil buttonTitle:nil buttonAction:^{
+        [self didSelectRegularSignupOnCell:cell];
+      }];
+      return cell;
     }
     case CellKindPasswordReset:
       return [self passwordResetCell];
-  }
+    }
 }
 
 - (UITableViewCell *)passwordResetCell {

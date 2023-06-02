@@ -82,10 +82,10 @@ class RegistrationCell: UITableViewCell {
     fatalError("init(coder:) has not been implemented")
   }
   
-  func configure(title: String, body: String, buttonTitle: String, buttonAction: @escaping () -> Void) {
-    regTitle.text = title
-    regBody.text = body
-    regButton.setTitle(buttonTitle, for: .normal)
+  @objc func configure(title: String? = nil, body: String? = nil, buttonTitle: String? = nil, buttonAction: @escaping Action) {
+    regTitle.text = title ?? regTitle.text
+    regBody.text = body ?? regBody.text
+    regButton.setTitle(buttonTitle ?? regButton.titleLabel?.text ?? "", for: .normal)
     regButton.addAction(UIAction(handler: { _ in buttonAction() }), for: .touchUpInside)
   }
 }
