@@ -71,7 +71,7 @@ class DLNavigator {
       return
     }
     if newAccount.uuid != accountsManager.currentAccount?.uuid {
-      callOnce(on: .TPPBookRegistryDidChange) { [weak self] _ in
+      callOnce(on: .TPPCurrentAccountDidChange) { [weak self] _ in
         self?.login(libraryId: libraryId, barcode: barcode)
       }
       DispatchQueue.main.async {
