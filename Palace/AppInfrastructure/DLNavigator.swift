@@ -65,11 +65,19 @@ class DLNavigator {
     guard let topViewController = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController(),
           let newAccount = accountsManager.account(libraryId)
     else {
+      callOnce(on: .TPPAccountSetDidLoad) { [weak self] _ in
+        self?.login(libraryId: libraryId, barcode: barcode)
+      }
       return
     }
     if newAccount.uuid != accountsManager.currentAccount?.uuid {
-      accountsManager.currentAccount = accountsManager.account(libraryId)
-      (TPPRootTabBarController.shared().viewControllers?.first as? TPPCatalogNavigationController)?.updateFeedAndRegistryOnAccountChange()
+      callOnce(on: .TPPBookRegistryDidChange) { [weak self] _ in
+        self?.login(libraryId: libraryId, barcode: barcode)
+      }
+      DispatchQueue.main.async {
+        MyBooksViewModel().authenticateAndLoad(newAccount)
+      }
+      return
     }
     if TPPUserAccount.sharedAccount(libraryUUID: libraryId).isSignedIn() {
       return
@@ -78,6 +86,18 @@ class DLNavigator {
       accountDetailVC.setUserName(barcode)
     } else {
       TPPAccountSignInViewController.requestCredentials(forUsername: barcode, withCompletion: nil)
+    }
+  }
+  
+  /// Runs `block` when receives a notification with `name` once.
+  /// - Parameters:
+  ///   - name: Notification name
+  ///   - block: Code to run
+  private func callOnce(on name: Notification.Name, block: @escaping (_ notification: Notification) -> Void) {
+    var token: NSObjectProtocol?
+    token = NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { notification in
+      NotificationCenter.default.removeObserver(token!, name: name, object: nil)
+      block(notification)
     }
   }
 }
