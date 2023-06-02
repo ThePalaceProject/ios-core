@@ -706,6 +706,8 @@
 		E5AD65E12684FDA300C62951 /* TPPAccountListDataSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AD65E02684FDA300C62951 /* TPPAccountListDataSource.swift */; };
 		E5B2B8DA275952EC00150ED4 /* TPPSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5B2B8D9275952EC00150ED4 /* TPPSettingsView.swift */; };
 		E5B2B8E12759583200150ED4 /* TPPSettingsViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5B2B8DC2759552F00150ED4 /* TPPSettingsViewController.swift */; };
+		E5BDA0252A2A7D0300C133CB /* RegistrationCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5BDA0242A2A7D0300C133CB /* RegistrationCell.swift */; };
+		E5BDA0262A2A7DC100C133CB /* RegistrationCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5BDA0242A2A7D0300C133CB /* RegistrationCell.swift */; };
 		E5BEF00226BD919F00C2A50B /* OpenSans-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E5BEEFF526BD919D00C2A50B /* OpenSans-Bold.ttf */; };
 		E5BEF00326BD919F00C2A50B /* OpenSans-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E5BEEFF526BD919D00C2A50B /* OpenSans-Bold.ttf */; };
 		E5BEF00826BD919F00C2A50B /* OpenSans-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E5BEEFF826BD919E00C2A50B /* OpenSans-Regular.ttf */; };
@@ -1551,6 +1553,7 @@
 		E5AD65E02684FDA300C62951 /* TPPAccountListDataSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAccountListDataSource.swift; sourceTree = "<group>"; };
 		E5B2B8D9275952EC00150ED4 /* TPPSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPSettingsView.swift; sourceTree = "<group>"; };
 		E5B2B8DC2759552F00150ED4 /* TPPSettingsViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPSettingsViewController.swift; sourceTree = "<group>"; };
+		E5BDA0242A2A7D0300C133CB /* RegistrationCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RegistrationCell.swift; sourceTree = "<group>"; };
 		E5BEEFF526BD919D00C2A50B /* OpenSans-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "OpenSans-Bold.ttf"; sourceTree = "<group>"; };
 		E5BEEFF826BD919E00C2A50B /* OpenSans-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "OpenSans-Regular.ttf"; sourceTree = "<group>"; };
 		E5BEF01826BD94D600C2A50B /* UIFont+Extensions.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = "UIFont+Extensions.swift"; sourceTree = "<group>"; };
@@ -2581,6 +2584,7 @@
 				1111973B19880E8D0014462F /* TPPLinearView.m */,
 				11B20E6C19D9F6DD00877A23 /* TPPReloadView.h */,
 				11B20E6D19D9F6DD00877A23 /* TPPReloadView.m */,
+				E5BDA0242A2A7D0300C133CB /* RegistrationCell.swift */,
 				17E81F07261522B3001003C2 /* TPPRoundedButton.swift */,
 			);
 			path = Views;
@@ -3649,6 +3653,7 @@
 				E53573D729653076008BDCA4 /* FacetView.swift in Sources */,
 				73D8D27B25A68D4300DF5F69 /* TPPRootTabBarController+R2.swift in Sources */,
 				73EB0A6D25821DF4006BC997 /* TPPBookContentTypeConverter.swift in Sources */,
+				E5BDA0262A2A7DC100C133CB /* RegistrationCell.swift in Sources */,
 				73EB0A6E25821DF4006BC997 /* TPPAgeCheck.swift in Sources */,
 				73EB0A6F25821DF4006BC997 /* Log.swift in Sources */,
 				73EB0A7125821DF4006BC997 /* UILabel+NYPLAppearanceAdditions.m in Sources */,
@@ -4147,6 +4152,7 @@
 				21E35FC3268CC8AC00066F9D /* AdobeContentProtectionService.swift in Sources */,
 				21C7B87E25AE1DBA000E8BF3 /* LibraryServiceError.swift in Sources */,
 				E6B3269F1EE066DE00DB877A /* TPPBookDetailTableView.swift in Sources */,
+				E5BDA0252A2A7D0300C133CB /* RegistrationCell.swift in Sources */,
 				734B78992565F7DE006FB8AD /* TPPReauthenticator.swift in Sources */,
 				175E480824EF36520066A6CF /* TPPAnnouncementBusinessLogic.swift in Sources */,
 				8CC26F832370C1DF0000D8E1 /* Account.swift in Sources */,

@@ -19,5 +19,4 @@ class LocalizedStrings: NSObject {
   // MARK: - TPPLastReadPositionSynchronizer
   static let stay = Strings.TPPLastReadPositionSynchronizer.stay
   static let move = Strings.TPPLastReadPositionSynchronizer.move
-  
 }
