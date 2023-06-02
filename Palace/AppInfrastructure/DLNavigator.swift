@@ -86,7 +86,7 @@ class DLNavigator {
       accountDetailVC.setUserName(barcode)
     } else {
       TPPAccountSignInViewController.requestCredentials(forUsername: barcode) {
-        // Remove Welcome screen if ot is still present.
+        // Remove Welcome screen if it is still present.
         if let welcomeController = (topViewController.presentingViewController as? UINavigationController)?.topViewController as? TPPWelcomeScreenViewController {
           welcomeController.completion?(newAccount)
           welcomeController.presentedViewController?.dismiss(animated: false)
