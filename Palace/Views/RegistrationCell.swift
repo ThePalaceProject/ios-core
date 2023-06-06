@@ -79,13 +79,37 @@ class RegistrationCell: UITableViewCell {
   }
   
   required init?(coder: NSCoder) {
-    fatalError("init(coder:) has not been implemented")
+    super.init(coder: coder)
   }
   
   @objc func configure(title: String? = nil, body: String? = nil, buttonTitle: String? = nil, buttonAction: @escaping Action) {
+    guard LocationManager.shared.locationAccessAuthorized else {
+      configureForDeniedLocationAccess()
+      return
+    }
+    
     regTitle.text = title ?? regTitle.text
     regBody.text = body ?? regBody.text
     regButton.setTitle(buttonTitle ?? regButton.titleLabel?.text ?? "", for: .normal)
-    regButton.addAction(UIAction(handler: { _ in buttonAction() }), for: .touchUpInside)
+    regButton.addAction(UIAction(handler: { _ in  buttonAction() }), for: .touchUpInside)
+  }
+
+  @objc func configureForDeniedLocationAccess() {
+    let attributedString = NSMutableAttributedString(string: DisplayStrings.deniedLocationAccessMessage)
+    let boldRange = (DisplayStrings.deniedLocationAccessMessage as NSString).range(of: DisplayStrings.deniedLocationAccessMessageBoldText)
+    let boldFont = UIFont.boldPalaceFont(ofSize: UIFont.systemFontSize + 2.0)
+    attributedString.addAttributes([NSAttributedString.Key.font: boldFont], range: boldRange)
+    
+    regTitle.text = regTitle.text
+    regBody.attributedText = attributedString
+    regButton.setTitle(DisplayStrings.openSettings, for: .normal)
+    
+    regButton.addAction(UIAction(handler: { _ in
+      if let url = URL(string: UIApplication.openSettingsURLString) {
+        if UIApplication.shared.canOpenURL(url) {
+          UIApplication.shared.open(url, options: [:], completionHandler: nil)
+        }
+      }
+    }), for: .touchUpInside)
   }
 }

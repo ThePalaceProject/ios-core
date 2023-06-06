@@ -212,6 +212,7 @@ Authenticating with any of those barcodes should work.
   self.view.backgroundColor = [TPPConfiguration backgroundColor];
   self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeInteractive;
   [self setupHeaderView];
+  [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(appWillEnterForeground) name:UIApplicationWillEnterForegroundNotification object:nil];
 
   UIActivityIndicatorView *activityIndicator = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle: UIActivityIndicatorViewStyleMedium];
   activityIndicator.center = CGPointMake(self.view.frame.size.width / 2, self.view.frame.size.height / 2);
@@ -246,6 +247,10 @@ Authenticating with any of those barcodes should work.
       }
     }];
   }
+}
+
+- (void)appWillEnterForeground {
+  [self.tableView reloadData];
 }
 
 - (void)displayErrorMessage:(NSString *)errorMessage
