@@ -97,7 +97,7 @@ class RegistrationCell: UITableViewCell {
   @objc func configureForDeniedLocationAccess() {
     let attributedString = NSMutableAttributedString(string: DisplayStrings.deniedLocationAccessMessage)
     let boldRange = (DisplayStrings.deniedLocationAccessMessage as NSString).range(of: DisplayStrings.deniedLocationAccessMessageBoldText)
-    let boldFont = UIFont.boldPalaceFont(ofSize: UIFont.systemFontSize + 4.0)
+    let boldFont = UIFont.boldPalaceFont(ofSize: UIFont.systemFontSize)
     attributedString.addAttributes([NSAttributedString.Key.font: boldFont], range: boldRange)
     
     regTitle.text = regTitle.text
