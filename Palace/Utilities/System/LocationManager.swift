@@ -25,6 +25,11 @@ class LocationManager: NSObject, CLLocationManagerDelegate {
     let status = locationManager.authorizationStatus
     return status == .authorizedAlways || status == .authorizedWhenInUse
   }
+  
+  var locationAccessDenied: Bool {
+    let status = locationManager.authorizationStatus
+    return status == .denied
+  }
 
   func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
     NotificationCenter.default.post(name: .locationAuthorizationDidChange, object: nil)

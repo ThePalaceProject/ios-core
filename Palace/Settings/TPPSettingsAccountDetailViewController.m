@@ -213,6 +213,7 @@ Authenticating with any of those barcodes should work.
   self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeInteractive;
   [self setupHeaderView];
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(appWillEnterForeground) name:UIApplicationWillEnterForegroundNotification object:nil];
+  [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(reloadData) name:@"LocationAuthorizationDidChange" object:nil];
 
   UIActivityIndicatorView *activityIndicator = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle: UIActivityIndicatorViewStyleMedium];
   activityIndicator.center = CGPointMake(self.view.frame.size.width / 2, self.view.frame.size.height / 2);
@@ -250,6 +251,10 @@ Authenticating with any of those barcodes should work.
 }
 
 - (void)appWillEnterForeground {
+  [self.tableView reloadData];
+}
+
+- (void)reloadData {
   [self.tableView reloadData];
 }
 
@@ -717,6 +722,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
                                                          viewController:nil
                                                                animated:YES
                                                              completion:nil];
+      [self.tableView reloadData];
       return;
     }
 

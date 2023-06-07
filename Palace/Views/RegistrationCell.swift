@@ -83,11 +83,11 @@ class RegistrationCell: UITableViewCell {
   }
   
   @objc func configure(title: String? = nil, body: String? = nil, buttonTitle: String? = nil, buttonAction: @escaping Action) {
-    guard LocationManager.shared.locationAccessAuthorized else {
+    if LocationManager.shared.locationAccessDenied {
       configureForDeniedLocationAccess()
       return
     }
-    
+
     regTitle.text = title ?? regTitle.text
     regBody.text = body ?? regBody.text
     regButton.setTitle(buttonTitle ?? regButton.titleLabel?.text ?? "", for: .normal)
@@ -97,7 +97,7 @@ class RegistrationCell: UITableViewCell {
   @objc func configureForDeniedLocationAccess() {
     let attributedString = NSMutableAttributedString(string: DisplayStrings.deniedLocationAccessMessage)
     let boldRange = (DisplayStrings.deniedLocationAccessMessage as NSString).range(of: DisplayStrings.deniedLocationAccessMessageBoldText)
-    let boldFont = UIFont.boldPalaceFont(ofSize: UIFont.systemFontSize + 2.0)
+    let boldFont = UIFont.boldPalaceFont(ofSize: UIFont.systemFontSize + 4.0)
     attributedString.addAttributes([NSAttributedString.Key.font: boldFont], range: boldRange)
     
     regTitle.text = regTitle.text
