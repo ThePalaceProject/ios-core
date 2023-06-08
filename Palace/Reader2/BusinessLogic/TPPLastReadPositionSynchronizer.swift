@@ -95,9 +95,9 @@ class TPPLastReadPositionSynchronizer {
 
         // Pass through returning nil (meaning the server doesn't have a
         // last read location worth restoring) if:
-        // 1 - The most recent page on the server comes from the same device, or
+        // 1 - The most recent page on the server comes from the same device and there is no localLocation, or
         // 2 - The server and the client have the same page marked
-        if deviceID == drmDeviceID
+        if (deviceID == drmDeviceID && localLocation != nil)
           || localLocation?.locationString == serverLocationString {
 
           // server location does not differ from or should take no precedence
