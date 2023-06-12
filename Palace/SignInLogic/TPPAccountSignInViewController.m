@@ -222,6 +222,10 @@ CGFloat const marginPadding = 2.0;
   self.logInCell = [[UITableViewCell alloc]
                     initWithStyle:UITableViewCellStyleDefault
                     reuseIdentifier:nil];
+  
+  [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(appWillEnterForeground) name:UIApplicationWillEnterForegroundNotification object:nil];
+  [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(reloadData) name:@"LocationAuthorizationDidChange" object:nil];
+  
   [self setupTableData];
 }
 
@@ -240,6 +244,14 @@ CGFloat const marginPadding = 2.0;
   }
   
   [self setupHeaderView];
+}
+
+- (void)appWillEnterForeground {
+  [self.tableView reloadData];
+}
+
+- (void)reloadData {
+  [self.tableView reloadData];
 }
 
 - (void) setupHeaderView
