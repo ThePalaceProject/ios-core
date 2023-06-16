@@ -244,7 +244,7 @@ class TPPBookRegistry: NSObject {
       }
     }
   }
-  
+
   /// Saves book registry data.
   private func save() {
     guard let account = AccountsManager.shared.currentAccount?.uuid,
