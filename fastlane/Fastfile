@@ -30,7 +30,7 @@ platform :ios do
       export_options: {
         method: "ad-hoc",
         provisioningProfiles: { 
-          "org.thepalaceproject.palace" => "Ad hoc 2"
+          "org.thepalaceproject.palace" => "Ad Hoc"
         }
       }
     )
@@ -44,7 +44,7 @@ platform :ios do
       export_options: {
         method: "app-store",
         provisioningProfiles: { 
-          "org.thepalaceproject.palace" => "App Store 2"
+          "org.thepalaceproject.palace" => "App Store"
         }
       }
     )

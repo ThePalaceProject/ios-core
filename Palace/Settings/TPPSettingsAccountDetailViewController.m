@@ -212,6 +212,8 @@ Authenticating with any of those barcodes should work.
   self.view.backgroundColor = [TPPConfiguration backgroundColor];
   self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeInteractive;
   [self setupHeaderView];
+  [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(appWillEnterForeground) name:UIApplicationWillEnterForegroundNotification object:nil];
+  [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(reloadData) name:@"LocationAuthorizationDidChange" object:nil];
 
   UIActivityIndicatorView *activityIndicator = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle: UIActivityIndicatorViewStyleMedium];
   activityIndicator.center = CGPointMake(self.view.frame.size.width / 2, self.view.frame.size.height / 2);
@@ -246,6 +248,14 @@ Authenticating with any of those barcodes should work.
       }
     }];
   }
+}
+
+- (void)appWillEnterForeground {
+  [self.tableView reloadData];
+}
+
+- (void)reloadData {
+  [self.tableView reloadData];
 }
 
 - (void)displayErrorMessage:(NSString *)errorMessage
@@ -482,6 +492,17 @@ Authenticating with any of those barcodes should work.
   [self.tableView reloadData];
 }
 
+/**
+ * Update Library Card value
+ *
+ *@param username user name or library card value
+ */
+- (void)setUserName:(nonnull NSString *)username
+{
+  usernameTextField.text = username;
+  [PINTextField becomeFirstResponder];
+}
+
 #pragma mark - Account SignOut
 
 - (void)logOut
@@ -610,8 +631,6 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
     }
     case CellKindRegistration: {
       [self.tableView deselectRowAtIndexPath:indexPath animated:YES];
-      UITableViewCell *cell = [tableView cellForRowAtIndexPath:indexPath];
-      [self didSelectRegularSignupOnCell:cell];
       break;
     }
     case CellKindSyncButton: {
@@ -703,6 +722,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
                                                          viewController:nil
                                                                animated:YES
                                                              completion:nil];
+      [self.tableView reloadData];
       return;
     }
 
@@ -859,7 +879,11 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
       return self.logInSignOutCell;
     }
     case CellKindRegistration: {
-      return [self createRegistrationCell];
+      RegistrationCell *cell =  [RegistrationCell new];
+      [cell configureWithTitle:nil body:nil buttonTitle:nil buttonAction:^{
+        [self didSelectRegularSignupOnCell:cell];
+      }];
+      return cell;
     }
     case CellKindAgeCheck: {
       self.ageCheckCell = [[UITableViewCell alloc]
@@ -944,36 +968,6 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
 - (UITableViewCell *)createPasswordResetCell {
   UITableViewCell *cell = [[UITableViewCell alloc] init];
   cell.textLabel.text = NSLocalizedString(@"Forgot your password?", "Password Reset");
-  return cell;
-}
-
-- (UITableViewCell *)createRegistrationCell
-{
-  UIView *containerView = [[UIView alloc] init];
-  UILabel *regTitle = [[UILabel alloc] init];
-  UILabel *regButton = [[UILabel alloc] init];
-
-  regTitle.font = [UIFont customFontForTextStyle:UIFontTextStyleBody];
-  regTitle.numberOfLines = 2;
-  regTitle.text = NSLocalizedString(@"Don't have a library card?", @"Title for registration. Asking the user if they already have a library card.");
-  regButton.font = [UIFont customFontForTextStyle:UIFontTextStyleBody];
-  regButton.text = NSLocalizedString(@"Create Card", nil);
-  regButton.textColor = [TPPConfiguration mainColor];
-
-  [containerView addSubview:regTitle];
-  [containerView addSubview:regButton];
-  [regTitle autoPinEdgeToSuperviewMargin:ALEdgeLeft];
-  [regTitle autoConstrainAttribute:ALAttributeTop toAttribute:ALAttributeMarginTop ofView:[regTitle superview] withOffset:sVerticalMarginPadding];
-  [regTitle autoConstrainAttribute:ALAttributeBottom toAttribute:ALAttributeMarginBottom ofView:[regTitle superview] withOffset:-sVerticalMarginPadding];
-  [regButton autoPinEdge:ALEdgeLeft toEdge:ALEdgeRight ofView:regTitle withOffset:8.0 relation:NSLayoutRelationGreaterThanOrEqual];
-  [regButton autoPinEdgeToSuperviewMargin:ALEdgeRight];
-  [regButton autoAlignAxisToSuperviewMarginAxis:ALAxisHorizontal];
-  [regButton setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
-
-  UITableViewCell *cell = [[UITableViewCell alloc] init];
-  [cell.contentView addSubview:containerView];
-  containerView.preservesSuperviewLayoutMargins = YES;
-  [containerView autoPinEdgesToSuperviewEdges];
   return cell;
 }
 

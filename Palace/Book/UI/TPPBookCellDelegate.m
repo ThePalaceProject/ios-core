@@ -32,6 +32,7 @@
 @property (nonatomic, weak) AudiobookPlayerViewController *audiobookViewController;
 @property (strong) NSLock *refreshAudiobookLock;
 @property (nonatomic, strong) LoadingViewController *loadingViewController;
+@property (nonatomic, strong) AudiobookBookmarkBusinessLogic *audiobookBookmarkBusinessLogic;
 
 @end
 
@@ -239,7 +240,7 @@ static const int kServerUpdateDelay = 15;
   [AudioBookVendorsHelper updateVendorKeyWithBook:json completion:^(NSError * _Nullable error) {
     [NSOperationQueue.mainQueue addOperationWithBlock:^{
       id<Audiobook> const audiobook = [AudiobookFactory audiobook:json bookID:book.identifier decryptor:audiobookDrmDecryptor token:book.bearerToken];
-      
+
       if (!audiobook) {
         if (error) {
           [self presentDRMKeyError:error];
@@ -255,8 +256,12 @@ static const int kServerUpdateDelay = 15;
       id<AudiobookManager> const manager = [[DefaultAudiobookManager alloc]
                                             initWithMetadata:metadata
                                             audiobook:audiobook];
+      
+      self.audiobookBookmarkBusinessLogic = [[AudiobookBookmarkBusinessLogic alloc] initWithBook:book];
+
       manager.refreshDelegate = self;
-      manager.annotationsDelegate = self;
+      manager.playbackPositionDelegate = self;
+      manager.bookmarkDelegate = self.audiobookBookmarkBusinessLogic;
 
       AudiobookPlayerViewController *const audiobookVC = [[AudiobookPlayerViewController alloc]
                                                           initWithAudiobookManager:manager];
@@ -275,7 +280,14 @@ static const int kServerUpdateDelay = 15;
 
       __weak AudiobookPlayerViewController *weakAudiobookVC = audiobookVC;
       [manager setPlaybackCompletionHandler:^{
-        NSSet<NSString *> *types = [[NSSet alloc] initWithObjects:ContentTypeFindaway, ContentTypeOpenAccessAudiobook, ContentTypeFeedbooksAudiobook, nil];
+        NSSet<NSString *> *types = [[NSSet alloc] initWithObjects:
+                                    ContentTypeFindaway,
+                                    ContentTypeBearerToken,
+                                    ContentTypeOpenAccessAudiobook,
+                                    ContentTypeOverdriveAudiobook,
+                                    ContentTypeFeedbooksAudiobook,
+                                    nil
+        ];
         NSArray<TPPOPDSAcquisitionPath *> *paths = [TPPOPDSAcquisitionPath
                                                      supportedAcquisitionPathsForAllowedTypes:types
                                                     allowedRelations:(TPPOPDSAcquisitionRelationSetBorrow |
@@ -301,7 +313,6 @@ static const int kServerUpdateDelay = 15;
       TPPBookLocation *localAudiobookLocation = [[TPPBookRegistry shared] locationForIdentifier:book.identifier];
       NSData *localLocationData = [localAudiobookLocation.locationString dataUsingEncoding:NSUTF8StringEncoding];
       ChapterLocation *localLocation = [ChapterLocation fromData:localLocationData];
-      localLocation.lastSavedTimeStamp = localAudiobookLocation.timeStamp;
   
       // Player error handler
       void (^moveCompletionHandler)(NSError *) = ^(NSError *error) {

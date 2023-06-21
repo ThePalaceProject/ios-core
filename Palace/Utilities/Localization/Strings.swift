@@ -266,4 +266,13 @@ struct Strings {
     static let downloading = NSLocalizedString("Downloading", comment: "")
     static let downloadFailedMessage = NSLocalizedString("The download could not be completed.", comment: "")
   }
+  
+  struct TPPAccountRegistration {
+    static let doesUserHaveLibraryCard = NSLocalizedString("Don't have a library card?", comment: "Title for registration. Asking the user if they already have a library card.")
+    static let geolocationInstructions = NSLocalizedString("The Palace App requires a one-time location check in order to verify your library service area. Once you choose \"Create Card\", please select \"Allow Once\" in the popup so we can verify this information.", comment: "Body for registration. Explaining the reason for requesting the user's location and instructions for how to provide permission.")
+    static let createCard = NSLocalizedString("Create Card", comment: "")
+    static let deniedLocationAccessMessage = NSLocalizedString("The Palace App requires a one-time location check in order to verify your library service area. You have disabled location services for this app. To enable, please select the 'Open Settings' button below then continue with card creation.", comment: "Registration message shown to user when location access has been denied.")
+    static let deniedLocationAccessMessageBoldText = NSLocalizedString("You have disabled location services for this app.",comment: "Registration message shown to user when location access has been denied.")
+    static let openSettings = NSLocalizedString("Open Settings", comment: "")
+  }
 }
