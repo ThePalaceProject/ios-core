@@ -324,7 +324,7 @@ private enum StorageKey: String {
 
   var needsAuth:Bool {
     let authType = authDefinition?.authType ?? .none
-    return authType == .basic || authType == .oauthIntermediary || authType == .saml
+    return authType == .basic || authType == .oauthIntermediary || authType == .saml || authType == .token
   }
 
   var needsAgeCheck:Bool {
