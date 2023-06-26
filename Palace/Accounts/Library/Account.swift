@@ -35,6 +35,7 @@ class OPDS2SamlIDP: NSObject, Codable {
     case anonymous = "http://librarysimplified.org/rel/auth/anonymous"
     case oauthIntermediary = "http://librarysimplified.org/authtype/OAuth-with-intermediary"
     case saml = "http://librarysimplified.org/authtype/SAML-2.0"
+    case token = "http://thepalaceproject.org/authtype/basic-token"
     case none
   }
   
@@ -81,7 +82,7 @@ class OPDS2SamlIDP: NSObject, Codable {
         coppaOverUrl = nil
         samlIdps = nil
 
-      case .saml:
+      case .saml, .token:
         samlIdps = auth.links?.filter { $0.rel == "authenticate" }.compactMap { OPDS2SamlIDP(opdsLink: $0) }
         oauthIntermediaryUrl = nil
         coppaUnderUrl = nil
@@ -97,7 +98,7 @@ class OPDS2SamlIDP: NSObject, Codable {
     }
 
     var needsAuth:Bool {
-      return authType == .basic || authType == .oauthIntermediary || authType == .saml
+      return authType == .basic || authType == .oauthIntermediary || authType == .saml || authType == .token
     }
 
     var needsAgeCheck:Bool {
