@@ -32,8 +32,6 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   private let bookmarksBusinessLogic: TPPReaderBookmarksBusinessLogic
   private let lastReadPositionPoster: TPPLastReadPositionPoster
 
-  private let tts: TPPTextToSpeech?
-  
   // UI
   let navigator: UIViewController & Navigator
   private var tocBarButton: UIBarButtonItem?
@@ -63,7 +61,6 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     self.publication = publication
     self.isShowingSample = forSample
     self.initialLocation = initialLocation
-    self.tts = TPPTextToSpeech(navigator: navigator, publication: publication)
     
     lastReadPositionPoster = TPPLastReadPositionPoster(
       book: book,
@@ -83,18 +80,6 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
 
     NotificationCenter.default.addObserver(self, selector: #selector(voiceOverStatusDidChange), name: Notification.Name(UIAccessibility.voiceOverStatusDidChangeNotification.rawValue), object: nil)
 
-    self.tts?.$playingUtterance
-      .removeDuplicates()
-      .receive(on: RunLoop.main)
-      .sink(receiveValue: didUpdateTTSLocator)
-      .store(in: &subscriptions)
-    
-    self.tts?.$isPlaying
-      .removeDuplicates()
-      .receive(on: RunLoop.main)
-      .sink(receiveValue: didChangePlayingState)
-      .store(in: &subscriptions)
-    
   }
 
   @available(*, unavailable)
@@ -134,10 +119,9 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     addChild(navigator)
     stackView.addArrangedSubview(navigator.view)
     navigator.didMove(toParent: self)
-    navigator.view.accessibilityElementsHidden = true
 
     stackView.addArrangedSubview(accessibilityToolbar)
-    accessibilityToolbar.accessibilityElementsHidden = false
+    accessibilityToolbar.accessibilityElementsHidden = true
 
     positionLabel.translatesAutoresizingMaskIntoConstraints = false
     positionLabel.font = .systemFont(ofSize: 12)
@@ -170,22 +154,22 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     
     // Accessibility
     updateViewsForVoiceOver(isRunning: UIAccessibility.isVoiceOverRunning)
+    
   }
 
   override func willMove(toParent parent: UIViewController?) {
     super.willMove(toParent: parent)
   }
   
+  override func viewDidAppear(_ animated: Bool) {
+    super.viewDidAppear(animated)
+    accessibilityToolbar.accessibilityElementsHidden = false
+  }
+  
   override func viewWillDisappear(_ animated: Bool) {
     super.viewWillDisappear(animated)
-    guard let tts = tts else {
-      return
-    }
-    if let locator = tts.playingUtterance {
+    if let locator = navigator.currentLocation {
       lastReadPositionPoster.storeReadPosition(locator: locator)
-    }
-    if tts.isPlaying {
-      tts.stop()
     }
   }
 
@@ -334,18 +318,6 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   //----------------------------------------------------------------------------
   // MARK: - Accessibility
 
-  
-  private func didUpdateTTSLocator(_ locator: Locator?) {
-    // Save text-to-speech location here in VoiceOver mode
-    if let locator = locator, isVoiceOverRunning {
-      lastReadPositionPoster.storeReadPosition(locator: locator)
-    }
-  }
-  
-  private func didChangePlayingState(_ isPlaying: Bool) {
-    
-  }
-    
   /// Constraint used to shift the content under the navigation bar, since it is always visible when VoiceOver is running.
   private lazy var accessibilityTopMargin: NSLayoutConstraint = {
     let topAnchor: NSLayoutYAxisAnchor = {
@@ -368,12 +340,9 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     let toolbar = UIToolbar(frame: .zero)
     let forwardButton = makeItem(.fastForward, label: DisplayStrings.nextChapter, action: #selector(goForward))
     let backButton = makeItem(.rewind, label: DisplayStrings.previousChapter, action: #selector(goBackward))
-    let playButton = makeItem(.play, label: DisplayStrings.read, action: #selector(playPauseReading))
     
     toolbar.items = [
       backButton,
-      makeItem(.flexibleSpace),
-      playButton,
       makeItem(.flexibleSpace),
       forwardButton,
     ]
@@ -390,52 +359,34 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     guard isVoiceOverRunning != isRunning else {
       return
     }
-    if let tts = tts, !isRunning, tts.isPlaying {
-      tts.pause()
-    }
     updateViewsForVoiceOver(isRunning: isRunning)
   }
   
   func updateViewsForVoiceOver(isRunning: Bool) {
+    updateNavigationBar()
     isVoiceOverRunning = isRunning
     accessibilityTopMargin.isActive = isRunning
     accessibilityToolbar.isHidden = !isRunning
     positionLabel.isHidden = isRunning
     bookTitleLabel.isHidden = isRunning
-    updateNavigationBar()
+    if isRunning {
+      UIAccessibility.post(notification: .layoutChanged, argument: navigationController?.navigationBar)
+    }
   }
 
   @objc private func goBackward() {
-    tts?.stop()
-    DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-      self.navigator.goBackward {
-        if UIAccessibility.isVoiceOverRunning {
-          self.tts?.start(from: self.navigator.currentLocation)
-        }
+    navigator.goBackward(animated: false) {
+      if let title = self.navigator.currentLocation?.title {
+        UIAccessibility.post(notification: .announcement, argument: title)
       }
     }
   }
 
   @objc private func goForward() {
-    tts?.stop()
-    DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-      self.navigator.goForward {
-        if UIAccessibility.isVoiceOverRunning {
-          self.tts?.start(from: self.navigator.currentLocation)
-        }
+    navigator.goForward(animated: false) {
+      if let title = self.navigator.currentLocation?.title {
+        UIAccessibility.post(notification: .announcement, argument: title)
       }
-    }
-  }
-  
-  @objc private func playPauseReading() {
-    guard let tts = tts else {
-      return
-    }
-    if tts.playingUtterance != nil {
-      tts.pauseOrResume()
-    } else {
-      tts.start(from: self.initialLocation ?? self.navigator.currentLocation)
-      self.initialLocation = nil
     }
   }
 
@@ -529,9 +480,6 @@ extension TPPBaseReaderViewController: TPPReaderPositionsDelegate {
 
     if let location = loc as? Locator {
       navigator.go(to: location)
-      if UIAccessibility.isVoiceOverRunning {
-        tts?.stop()
-      }
     }
   }
 
@@ -547,9 +495,6 @@ extension TPPBaseReaderViewController: TPPReaderPositionsDelegate {
     let r2bookmark = bookmark.convertToR2(from: publication)
     if let locator = r2bookmark?.locator {
       navigator.go(to: locator)
-      if UIAccessibility.isVoiceOverRunning {
-        tts?.stop()
-      }
     }
   }
 
