@@ -132,6 +132,41 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
     }
   }
   
+  /// Delete token
+  /// - Parameters:
+  ///   - token: FCM token value
+  ///   - account: Library account
+  func deleteToken(_ token: String, account: Account) {
+    guard let account = account,
+          let catalogHref = account.catalogUrl,
+          let requestUrl = URL(string: "\(catalogHref)patrons/me/devices"),
+          let requestBody = TokenData(token: token).data
+    else {
+      return
+    }
+    var request = URLRequest(url: requestUrl)
+    request.httpMethod = "DELETE"
+    request.httpBody = requestBody
+    _ = TPPNetworkExecutor.shared.addBearerAndExecute(request) { result, response, error in
+      if let error = error {
+        TPPErrorLogger.logError(error,
+                                summary: "Couldn't delete token data",
+                                metadata: [
+                                  "requestURL": requestUrl,
+                                  "tokenData": String(data: requestBody, encoding: .utf8) ?? "",
+                                  "statusCode": (response as? HTTPURLResponse)?.statusCode ?? 0
+                                ]
+        )
+      }
+    }
+  }
+  
+  func deleteToken(for account: Account) {
+    Messaging.messaging().token { token, _ in
+      deleteToken(token, account: account)
+    }
+  }
+  
   // MARK: - Messaging Delegate
   
   /// Notofies that the token is updated
