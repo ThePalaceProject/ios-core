@@ -122,7 +122,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
   /// Update token when user account changes
   func updateToken() {
     Messaging.messaging().token { token, _ in
-      if let token = token {
+      if let token {
         self.checkTokenExists(token) { exists, _ in
           if let exists = exists, !exists {
             self.saveToken(token)
@@ -137,8 +137,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
   ///   - token: FCM token value
   ///   - account: Library account
   func deleteToken(_ token: String, account: Account) {
-    guard let account = account,
-          let catalogHref = account.catalogUrl,
+    guard let catalogHref = account.catalogUrl,
           let requestUrl = URL(string: "\(catalogHref)patrons/me/devices"),
           let requestBody = TokenData(token: token).data
     else {
@@ -163,7 +162,9 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
   
   func deleteToken(for account: Account) {
     Messaging.messaging().token { token, _ in
-      deleteToken(token, account: account)
+      if let token {
+        self.deleteToken(token, account: account)
+      }
     }
   }
   
