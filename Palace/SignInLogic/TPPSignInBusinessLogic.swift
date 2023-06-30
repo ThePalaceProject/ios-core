@@ -242,7 +242,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     var req = URLRequest(url: url)
 
     if let selectedAuth = selectedAuthentication,
-      (selectedAuth.isOauth || selectedAuth.isSaml) {
+       (selectedAuth.isOauth || selectedAuth.isSaml) {
 
       // The nil-coalescing on the authToken covers 2 cases:
       // - sign in, where uiDelegate has the token because we just obtained it
@@ -324,6 +324,24 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     }
   }
 
+  func getBearerToken(username: String, password: String) {
+    Task {
+      do {
+        guard let url = selectedAuthentication?.tokenURL else {
+          throw URLError(.badURL)
+        }
+        
+        let tokenRequest = TokenRequest(url: url, username: username, password: password)
+        let tokenResponse = try await tokenRequest.execute()
+        
+        authToken = tokenResponse.accessToken
+        validateCredentials()
+      } catch {
+        handleNetworkError(error as NSError, loggingContext: ["Context": uiContext])
+      }
+    }
+  }
+
   /// Uses the problem document's `title` and `message` fields to
   ///  communicate a user friendly error info to the `uiDelegate`.
   /// Also logs the `error`.
@@ -365,12 +383,25 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
       self.uiDelegate?.businessLogicWillSignIn(self)
     }
 
-    if selectedAuthentication?.isOauth ?? false {
-      oauthLogIn()
-    } else if selectedAuthentication?.isSaml ?? false {
-      samlHelper.logIn()
-    } else {
-      validateCredentials()
+    switch selectedAuthentication {
+    case .none:
+      return
+    case .some(let wrapped):
+      switch wrapped.authType {
+      case .oauthIntermediary:
+        oauthLogIn()
+      case .saml:
+        samlHelper.logIn()
+      case .token:
+        guard let username = self.uiDelegate?.username,
+              let password = self.uiDelegate?.pin else {
+          return
+        }
+
+        getBearerToken(username: username, password: password)
+      default:
+        validateCredentials()
+      }
     }
   }
 
@@ -413,7 +444,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
 
     guard
       let authDef = userAccount.authDefinition,
-      (authDef.isBasic || authDef.isOauth || authDef.isSaml)
+      (authDef.isBasic || authDef.isOauth || authDef.isSaml || authDef.isToken)
     else {
       completion?()
       return false
@@ -436,7 +467,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     }
 
     // set up UI and log in if needed
-    if authDef.isBasic {
+    if authDef.isBasic || authDef.isToken {
       if usingExistingCredentials && userAccount.hasBarcodeAndPIN() {
         if uiDelegate == nil {
           #if DEBUG
@@ -496,9 +527,9 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     #endif
 
     if let selectedAuthentication = selectedAuthentication {
-      if selectedAuthentication.isOauth || selectedAuthentication.isSaml {
+      if selectedAuthentication.isOauth || selectedAuthentication.isSaml || selectedAuthentication.isToken {
         if let authToken = authToken {
-          userAccount.setAuthToken(authToken)
+          userAccount.setAuthToken(authToken, barcode: barcode, pin: pin)
         }
         if let patron = patron {
           userAccount.setPatron(patron)

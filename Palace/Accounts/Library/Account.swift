@@ -53,6 +53,7 @@ class OPDS2SamlIDP: NSObject, Codable {
     let coppaUnderUrl:URL?
     let coppaOverUrl:URL?
     let oauthIntermediaryUrl:URL?
+    let tokenURL: URL?
     let methodDescription: String?
 
     let samlIdps: [OPDS2SamlIDP]?
@@ -75,20 +76,30 @@ class OPDS2SamlIDP: NSObject, Codable {
         coppaOverUrl = URL.init(string: auth.links?.first(where: { $0.rel == "http://librarysimplified.org/terms/rel/authentication/restriction-met" })?.href ?? "")
         oauthIntermediaryUrl = nil
         samlIdps = nil
+        tokenURL = nil
 
       case .oauthIntermediary:
         oauthIntermediaryUrl = URL.init(string: auth.links?.first(where: { $0.rel == "authenticate" })?.href ?? "")
         coppaUnderUrl = nil
         coppaOverUrl = nil
         samlIdps = nil
+        tokenURL = nil
 
-      case .saml, .token:
+      case .saml:
         samlIdps = auth.links?.filter { $0.rel == "authenticate" }.compactMap { OPDS2SamlIDP(opdsLink: $0) }
         oauthIntermediaryUrl = nil
         coppaUnderUrl = nil
         coppaOverUrl = nil
+        tokenURL = nil
 
       case .none, .basic, .anonymous:
+        oauthIntermediaryUrl = nil
+        coppaUnderUrl = nil
+        coppaOverUrl = nil
+        samlIdps = nil
+        tokenURL = nil
+      case .token:
+        tokenURL = URL.init(string: auth.links?.first(where: { $0.rel == "authenticate" })?.href ?? "")
         oauthIntermediaryUrl = nil
         coppaUnderUrl = nil
         coppaOverUrl = nil
@@ -97,12 +108,12 @@ class OPDS2SamlIDP: NSObject, Codable {
       }
     }
 
-    var needsAuth:Bool {
-      return authType == .basic || authType == .oauthIntermediary || authType == .saml || authType == .token
+    var needsAuth: Bool {
+      authType == .basic || authType == .oauthIntermediary || authType == .saml || authType == .token
     }
 
-    var needsAgeCheck:Bool {
-      return authType == .coppa
+    var needsAgeCheck: Bool {
+      authType == .coppa
     }
 
     func coppaURL(isOfAge: Bool) -> URL? {
@@ -110,20 +121,24 @@ class OPDS2SamlIDP: NSObject, Codable {
     }
 
     var isBasic: Bool {
-      return authType == .basic
+      authType == .basic
     }
 
     var isOauth: Bool {
-      return authType == .oauthIntermediary
+      authType == .oauthIntermediary
     }
 
     var isSaml: Bool {
-      return authType == .saml
+      authType == .saml
     }
 
+    var isToken: Bool {
+      authType == .token
+    }
+    
     var catalogRequiresAuthentication: Bool {
       // you need an oauth token in order to access catalogs if authentication type is either oauth with intermediary (ex. Clever), or SAML
-      return authType == .oauthIntermediary || authType == .saml
+      authType == .oauthIntermediary || authType == .saml
     }
 
     func encode(with coder: NSCoder) {
@@ -150,6 +165,7 @@ class OPDS2SamlIDP: NSObject, Codable {
       oauthIntermediaryUrl = authentication.oauthIntermediaryUrl
       methodDescription = authentication.methodDescription
       samlIdps = authentication.samlIdps
+      tokenURL = authentication.tokenURL
     }
   }
 

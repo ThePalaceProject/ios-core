@@ -10,7 +10,7 @@ import Foundation
 import WebKit
 
 enum TPPCredentials {
-  case token(authToken: String)
+  case token(authToken: String, barcode: String?  = nil, pin: String? = nil)
   case barcodeAndPin(barcode: String, pin: String)
   case cookies([HTTPCookie])
 }
@@ -59,7 +59,12 @@ extension TPPCredentials: Codable {
     case .token:
       let additionalInfo = try values.nestedContainer(keyedBy: TokenKeys.self, forKey: .associatedTokenData)
       let token = try additionalInfo.decode(String.self, forKey: .authToken)
-      self = .token(authToken: token)
+      
+      let barcodePinInfo = try values.nestedContainer(keyedBy: BarcodeAndPinKeys.self, forKey: .associatedBarcodeAndPinData)
+      let barcode = try barcodePinInfo.decode(String.self, forKey: .barcode)
+      let pin = try barcodePinInfo.decode(String.self, forKey: .pin)
+
+      self = .token(authToken: token, barcode: barcode, pin: pin)
 
     case .barcodeAndPin:
       let additionalInfo = try values.nestedContainer(keyedBy: BarcodeAndPinKeys.self, forKey: .associatedBarcodeAndPinData)
@@ -83,9 +88,13 @@ extension TPPCredentials: Codable {
     try container.encode(typeID, forKey: .type)
 
     switch self {
-    case let .token(authToken: token):
+    case let .token(authToken: token, barcode: barcode, pin: pin):
       var additionalInfo = container.nestedContainer(keyedBy: TokenKeys.self, forKey: .associatedTokenData)
       try additionalInfo.encode(token, forKey: .authToken)
+      
+      var barCodePinInfo = container.nestedContainer(keyedBy: BarcodeAndPinKeys.self, forKey: .associatedBarcodeAndPinData)
+      try barCodePinInfo.encode(barcode, forKey: .barcode)
+      try barCodePinInfo.encode(pin, forKey: .pin)
 
     case let .barcodeAndPin(barcode: barcode, pin: pin):
       var additionalInfo = container.nestedContainer(keyedBy: BarcodeAndPinKeys.self, forKey: .associatedBarcodeAndPinData)
