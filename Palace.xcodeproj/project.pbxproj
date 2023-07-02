@@ -702,8 +702,6 @@
 		E5824BE32994B29700DE76C2 /* ButtonView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5824BE22994B29700DE76C2 /* ButtonView.swift */; };
 		E5824BF129988C4E00DE76C2 /* TPPSAMLHelper.m in Sources */ = {isa = PBXBuildFile; fileRef = 730263AB2540DE4200A53891 /* TPPSAMLHelper.m */; };
 		E5824BF229988C4F00DE76C2 /* TPPSAMLHelper.m in Sources */ = {isa = PBXBuildFile; fileRef = 730263AB2540DE4200A53891 /* TPPSAMLHelper.m */; };
-		E5824BF629988CA600DE76C2 /* TPPMyBooksDownloadCenter.m in Sources */ = {isa = PBXBuildFile; fileRef = 1196F75A1970727C00F62670 /* TPPMyBooksDownloadCenter.m */; };
-		E5824BF729988CA700DE76C2 /* TPPMyBooksDownloadCenter.m in Sources */ = {isa = PBXBuildFile; fileRef = 1196F75A1970727C00F62670 /* TPPMyBooksDownloadCenter.m */; };
 		E58565CF269774C400A5FBD5 /* AudioEngine.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E58565CE269774C400A5FBD5 /* AudioEngine.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		E59526EB28D24FC000C179DA /* AudiobookSample.swift in Sources */ = {isa = PBXBuildFile; fileRef = E59526EA28D24FC000C179DA /* AudiobookSample.swift */; };
 		E59892E128A9AC2600C44A85 /* Sample.swift in Sources */ = {isa = PBXBuildFile; fileRef = E59892E028A9AC2600C44A85 /* Sample.swift */; };
@@ -3991,7 +3989,6 @@
 				E50D684426AB235400F1042B /* TPPReaderTOCCell.swift in Sources */,
 				73C3CF5825C8EB6B00CA8166 /* TPPUserAccount.swift in Sources */,
 				73EB0B2425821DF4006BC997 /* TPPBookDetailDownloadFailedView.m in Sources */,
-				E5824BF729988CA700DE76C2 /* TPPMyBooksDownloadCenter.m in Sources */,
 				21E4178A292810F600A78606 /* TPPPDFPreviewGridCell.swift in Sources */,
 				E7862A1E277391E200BE8AB8 /* TPPSettingsView.swift in Sources */,
 				73EB0B2525821DF4006BC997 /* TPPOPDSFeed.m in Sources */,
@@ -4069,7 +4066,6 @@
 				A4BA1D0E1B430341006F83DF /* TPPCatalogGroupedFeedViewController.m in Sources */,
 				732F929323ECB51F0099244C /* TPPBackgroundExecutor.swift in Sources */,
 				5D1B141522CBE3570006C964 /* TPPProblemDocument.swift in Sources */,
-				E5824BF629988CA600DE76C2 /* TPPMyBooksDownloadCenter.m in Sources */,
 				E706F6092863831F000B7431 /* TPPPDFPage+serialization.swift in Sources */,
 				A92FB0F921CDCE3D004740F4 /* TPPReturnPromptHelper.swift in Sources */,
 				17E81F08261522B3001003C2 /* TPPRoundedButton.swift in Sources */,

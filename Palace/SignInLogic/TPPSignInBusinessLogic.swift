@@ -17,8 +17,6 @@ import CoreLocation
   func reset(_ libraryID: String!)
 }
 
-extension TPPMyBooksDownloadCenter: TPPBookDownloadsDeleting {}
-
 @objc protocol TPPBookRegistrySyncing: NSObjectProtocol {
   var isSyncing: Bool {get}
   func reset(_ libraryAccountUUID: String)

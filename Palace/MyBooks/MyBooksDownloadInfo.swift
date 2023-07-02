@@ -9,9 +9,9 @@
 import Foundation
 import UIKit
 
-class MyBooksDownloadInfo {
+@objc class MyBooksDownloadInfo: NSObject {
   
-  enum RightsManagement: Int {
+  @objc enum MyBooksDownloadRightsManagement: Int {
     case unknown
     case none
     case adobe
@@ -22,10 +22,10 @@ class MyBooksDownloadInfo {
   
   var downloadProgress: CGFloat
   var downloadTask: URLSessionDownloadTask
-  var rightsManagement: RightsManagement
+  @objc var rightsManagement: MyBooksDownloadRightsManagement
   var bearerToken: MyBooksSimplifiedBearerToken?
   
-  init(downloadProgress: CGFloat, downloadTask: URLSessionDownloadTask, rightsManagement: RightsManagement, bearerToken: MyBooksSimplifiedBearerToken? = nil) {
+  init(downloadProgress: CGFloat, downloadTask: URLSessionDownloadTask, rightsManagement: MyBooksDownloadRightsManagement, bearerToken: MyBooksSimplifiedBearerToken? = nil) {
     self.downloadProgress = downloadProgress
     self.downloadTask = downloadTask
     self.rightsManagement = rightsManagement
@@ -36,7 +36,7 @@ class MyBooksDownloadInfo {
     return MyBooksDownloadInfo(downloadProgress: downloadProgress, downloadTask: self.downloadTask, rightsManagement: self.rightsManagement, bearerToken: self.bearerToken)
   }
   
-  func withRightsManagement(_ rightsManagement: RightsManagement) -> MyBooksDownloadInfo {
+  func withRightsManagement(_ rightsManagement: MyBooksDownloadRightsManagement) -> MyBooksDownloadInfo {
     return MyBooksDownloadInfo(downloadProgress: self.downloadProgress, downloadTask: self.downloadTask, rightsManagement: rightsManagement, bearerToken: self.bearerToken)
   }
   

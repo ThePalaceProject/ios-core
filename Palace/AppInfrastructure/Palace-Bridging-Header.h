@@ -25,7 +25,6 @@
 #import "TPPHoldsNavigationController.h"
 #import "TPPKeychain.h"
 #import "TPPLocalization.h"
-#import "TPPMyBooksDownloadCenter.h"
 #import "TPPOPDS.h"
 #import "TPPReachability.h"
 #import "TPPReloadView.h"

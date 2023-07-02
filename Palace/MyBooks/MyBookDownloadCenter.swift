@@ -14,10 +14,10 @@ import OverdriveProcessor
 extension MyBooksDownloadCenter: NYPLADEPTDelegate { }
 #endif
 
-class MyBooksDownloadCenter: NSObject {
+@objc class MyBooksDownloadCenter: NSObject {
   typealias DisplayStrings = Strings.MyDownloadCenter
   
-  static let shared = MyBooksDownloadCenter()
+  @objc static let shared = MyBooksDownloadCenter()
   
   private var bookIdentifierOfBookToRemove: String?
   private var broadcastScheduled = false
@@ -44,7 +44,7 @@ class MyBooksDownloadCenter: NSObject {
     self.reauthenticator = TPPReauthenticator()
   }
   
-  func startBorrowForBook(_ book: TPPBook, attemptDownload shouldAttemptDownload: Bool, borrowCompletion: (() -> Void)?) {
+  func startBorrow(for book: TPPBook, attemptDownload shouldAttemptDownload: Bool, borrowCompletion: (() -> Void)? = nil) {
     TPPBookRegistry.shared.setProcessing(true, for: book.identifier)
     
     TPPOPDSFeed.withURL(book.defaultAcquisitionIfBorrow?.hrefURL, shouldResetCache: true) { [weak self] feed, error in
@@ -131,12 +131,10 @@ class MyBooksDownloadCenter: NSObject {
     TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
   }
   
-  func startDownload(for book: TPPBook, withRequest initedRequest: URLRequest? = nil) {
+  @objc func startDownload(for book: TPPBook, withRequest initedRequest: URLRequest? = nil) {
     let state = TPPBookRegistry.shared.state(for: book.identifier)
-    
-    guard let location = TPPBookRegistry.shared.location(forIdentifier: book.identifier),
-          let loginRequired = TPPUserAccount.sharedAccount().authDefinition?.needsAuth
-    else { return }
+    let location = TPPBookRegistry.shared.location(forIdentifier: book.identifier)
+    let loginRequired = TPPUserAccount.sharedAccount().authDefinition?.needsAuth
     
     switch state {
     case .Unregistered:
@@ -162,16 +160,16 @@ class MyBooksDownloadCenter: NSObject {
     )
   }
   
-  private func processUnregisteredState(for book: TPPBook, location: TPPBookLocation, loginRequired: Bool) {
+  private func processUnregisteredState(for book: TPPBook, location: TPPBookLocation?, loginRequired: Bool?) {
     guard book.defaultAcquisitionIfBorrow == nil,
-          ((book.defaultAcquisitionIfOpenAccess != nil) || !loginRequired) else {
+          ((book.defaultAcquisitionIfOpenAccess != nil) || !(loginRequired ?? false)) else {
       TPPBookRegistry.shared.addBook(book, location: location, state: .DownloadNeeded, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
       return
     }
   }
   
-  private func processDownload(for book: TPPBook, withState state: TPPBookState, andRequest initedRequest: URLRequest?, loginRequired: Bool) {
-    if TPPUserAccount.sharedAccount().hasCredentials() || !loginRequired {
+  private func processDownload(for book: TPPBook, withState state: TPPBookState, andRequest initedRequest: URLRequest?, loginRequired: Bool?) {
+    if TPPUserAccount.sharedAccount().hasCredentials() || !(loginRequired ?? false) {
       processDownloadWithCredentials(for: book, withState: state, andRequest: initedRequest)
     } else {
       requestCredentialsAndStartDownload(for: book)
@@ -201,7 +199,7 @@ class MyBooksDownloadCenter: NSObject {
     andRequest initedRequest: URLRequest?
   ) {
     if state == .Unregistered || state == .Holding {
-      startBorrowForBook(book, attemptDownload: true, borrowCompletion: nil)
+      startBorrow(for: book, attemptDownload: true, borrowCompletion: nil)
     } else if book.distributor == OverdriveDistributorKey && book.defaultBookContentType == .audiobook {
 #if FEATURE_OVERDRIVE
       processOverdriveDownload(for: book, withState: state)
@@ -274,7 +272,7 @@ class MyBooksDownloadCenter: NSObject {
     guard let url = book.defaultAcquisition?.hrefURL else { return }
     let request = initedRequest ?? TPPNetworkExecutor.bearerAuthorized(request: URLRequest(url: url))
     
-    guard let requestURL = request.url else {
+    guard let _ = request.url else {
       logInvalidURLRequest(for: book, withState: state, url: url, request: request)
       return
     }
@@ -297,7 +295,7 @@ class MyBooksDownloadCenter: NSObject {
       
       let loginCancelHandler: () -> Void = { [weak self] in
         TPPBookRegistry.shared.setState(.DownloadNeeded, for: book.identifier)
-        self?.cancelDownloadForBookIdentifier(book.identifier)
+        self?.cancelDownload(for: book.identifier)
       }
       
       let bookFoundHandler: (_ request: URLRequest?, _ cookies: [HTTPCookie]) -> Void = { [weak self] request, cookies in
@@ -338,7 +336,7 @@ class MyBooksDownloadCenter: NSObject {
     addDownloadTask(with: request, book: book)
   }
 
-  private func cancelDownloadForBookIdentifier(_ identifier: String) {
+  @objc func cancelDownload(for identifier: String) {
     guard let info = downloadInfo(forBookIdentifier: identifier) else {
       let state = TPPBookRegistry.shared.state(for: identifier)
       if state != .DownloadFailed {
@@ -365,7 +363,7 @@ class MyBooksDownloadCenter: NSObject {
 }
 
 extension MyBooksDownloadCenter {
-  func deleteLocalContent(for identifier: String, account: String) {
+  func deleteLocalContent(for identifier: String, account: String? = nil) {
     guard let book = TPPBookRegistry.shared.book(forIdentifier: identifier),
           let bookURL = fileUrl(for: identifier, account: account) else {
       NSLog("WARNING: Could not find book to delete local content.")
@@ -390,13 +388,10 @@ extension MyBooksDownloadCenter {
       NSLog("Failed to remove local content for download: \(error.localizedDescription)")
     }
   }
-
+  
   func deleteLocalContent(forAudiobook book: TPPBook, at bookURL: URL) {
-    guard let data = try? Data(contentsOf: bookURL) else {
-      return
-    }
-    
-    guard let json = try? JSONSerialization.jsonObject(with: data, options: []),
+    guard let data = try? Data(contentsOf: bookURL),
+          let json = try? JSONSerialization.jsonObject(with: data, options: []),
           var dict = json as? [String: Any] else {
       return
     }
@@ -411,7 +406,7 @@ extension MyBooksDownloadCenter {
     if LCPAudiobooks.canOpenBook(book) {
       let lcpAudiobooks = LCPAudiobooks(for: bookURL)
       lcpAudiobooks?.contentDictionary { dict, error in
-        if let error = error {
+        if let _ = error {
           // LCPAudiobooks logs this error
           return
         }
@@ -437,7 +432,80 @@ extension MyBooksDownloadCenter {
     AudiobookFactory.audiobook(dict)?.deleteLocalContent()
 #endif
   }
-
+  
+  @objc func returnBook(withIdentifier identifier: String) {
+    guard let book = TPPBookRegistry.shared.book(forIdentifier: identifier) else {
+      return
+    }
+    
+    let state = TPPBookRegistry.shared.state(for: identifier)
+    let downloaded = (state == .DownloadSuccessful) || (state == .Used)
+    
+    // Process Adobe Return
+#if FEATURE_DRM_CONNECTOR
+    if let fulfillmentId = TPPBookRegistry.shared.fulfillmentId(forIdentifier: identifier),
+       TPPUserAccount.sharedAccount().authDefinition?.needsAuth == true {
+      NSLog("Return attempt for book. userID: %@", TPPUserAccount.sharedAccount().userID ?? "")
+      NYPLADEPT.sharedInstance().returnLoan(fulfillmentId,
+                                            userID: TPPUserAccount.sharedAccount().userID,
+                                            deviceID: TPPUserAccount.sharedAccount().deviceID) { success, error in
+        if !success {
+          NSLog("Failed to return loan via NYPLAdept.")
+        }
+      }
+    }
+#endif
+    
+    if let revokeURL = book.revokeURL {
+      TPPBookRegistry.shared.setProcessing(true, for: book.identifier)
+      
+      TPPOPDSFeed.withURL(revokeURL, shouldResetCache: false) { feed, error in
+        TPPBookRegistry.shared.setProcessing(false, for: book.identifier)
+        
+        if let feed = feed, feed.entries.count == 1, let entry = feed.entries[0] as? TPPOPDSEntry {
+          if downloaded {
+            self.deleteLocalContent(for: identifier)
+          }
+          if let returnedBook = TPPBook(entry: entry) {
+            TPPBookRegistry.shared.updateAndRemoveBook(returnedBook)
+          } else {
+            NSLog("Failed to create book from entry. Book not removed from registry.")
+          }
+        } else {
+          if let errorType = error?["type"] as? String {
+            if errorType == TPPProblemDocument.TypeNoActiveLoan {
+              if downloaded {
+                self.deleteLocalContent(for: identifier)
+              }
+              TPPBookRegistry.shared.removeBook(forIdentifier: identifier)
+            } else if errorType == TPPProblemDocument.TypeInvalidCredentials {
+              NSLog("Invalid credentials problem when returning a book, present sign in VC")
+              self.reauthenticator.authenticateIfNeeded(TPPUserAccount.sharedAccount(),
+                                                        usingExistingCredentials: false) { [weak self] in
+                self?.returnBook(withIdentifier: identifier)
+              }
+            } else {
+              DispatchQueue.main.async {
+                let formattedMessage = String(format: NSLocalizedString("The return of %@ could not be completed.", comment: ""), book.title)
+                let alert = TPPAlertUtils.alert(title: "ReturnFailed", message: formattedMessage)
+                if let error = error as? Decoder, let document = try? TPPProblemDocument(from: error) {
+                  TPPAlertUtils.setProblemDocument(controller: alert, document: document, append: true)
+                }
+                TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
+              }
+            }
+          }
+        }
+      }
+    } else {
+      if book.revokeURL == nil {
+        if downloaded {
+          deleteLocalContent(for: identifier)
+        }
+        TPPBookRegistry.shared.removeBook(forIdentifier: identifier)
+      }
+    }
+  }
 }
 
 extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
@@ -615,7 +683,7 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
     broadcastUpdate()
   }
 
-  private func downloadInfo(forBookIdentifier bookIdentifier: String) -> MyBooksDownloadInfo? {
+  @objc func downloadInfo(forBookIdentifier bookIdentifier: String) -> MyBooksDownloadInfo? {
     bookIdentifierToDownloadInfo[bookIdentifier]
   }
 
@@ -917,7 +985,7 @@ extension MyBooksDownloadCenter {
     return false
   }
 
-  func fileUrl(for identifier: String, account: String = AccountsManager.shared.currentAccountId ?? "") -> URL? {
+  @objc func fileUrl(for identifier: String, account: String? = AccountsManager.shared.currentAccountId ?? "") -> URL? {
     guard let book = TPPBookRegistry.shared.book(forIdentifier: identifier) else {
       return nil
     }
@@ -929,8 +997,8 @@ extension MyBooksDownloadCenter {
     return contentDirectoryURL?.appendingPathComponent(hashedIdentifier).appendingPathExtension(pathExtension)
   }
 
-  func contentDirectoryURL(_ account: String = AccountsManager.shared.currentAccountId ?? "") -> URL? {
-    guard let directoryURL = TPPBookContentMetadataFilesHelper.directory(for: account)?.appendingPathComponent("content") else {
+  func contentDirectoryURL(_ account: String? = AccountsManager.shared.currentAccountId) -> URL? {
+    guard let directoryURL = TPPBookContentMetadataFilesHelper.directory(for: account ?? "")?.appendingPathComponent("content") else {
       NSLog("[contentDirectoryURL] nil directory.")
       return nil
     }
@@ -961,5 +1029,65 @@ extension MyBooksDownloadCenter {
     }
 #endif
     return "epub"
+  }
+}
+
+extension MyBooksDownloadCenter: TPPBookDownloadsDeleting {
+  func reset(_ libraryID: String!) {
+    reset(account: libraryID)
+  }
+
+  func reset(account: String) {
+    if AccountsManager.shared.currentAccountId == account {
+      reset()
+    } else {
+      deleteAudiobooks(forAccount: account)
+      do {
+        if let url = contentDirectoryURL(account) {
+          try FileManager.default.removeItem(at: url)
+        }
+      } catch {
+        // Handle error, if needed
+      }
+    }
+  }
+  
+  func reset() {
+    guard let currentAccountId = AccountsManager.shared.currentAccountId, let contentDirectoryURL = contentDirectoryURL() else {
+      return
+    }
+  
+    deleteAudiobooks(forAccount: currentAccountId)
+    
+    for info in bookIdentifierToDownloadInfo.values {
+      info.downloadTask.cancel(byProducingResumeData: { _ in })
+    }
+    
+    bookIdentifierToDownloadInfo.removeAll()
+    taskIdentifierToBook.removeAll()
+    bookIdentifierOfBookToRemove = nil
+    
+    do {
+      try FileManager.default.removeItem(at: contentDirectoryURL)
+    } catch {
+      // Handle error, if needed
+    }
+    
+    broadcastUpdate()
+  }
+
+  func deleteAudiobooks(forAccount account: String) {
+    TPPBookRegistry.shared.with(account: account) { registry in
+      let books = registry.allBooks
+      for book in books {
+        if book.defaultBookContentType == .audiobook {
+          deleteLocalContent(for: book.identifier, account: account)
+        }
+      }
+    }
+  }
+
+  @objc func downloadProgress(for bookIdentifier: String) -> Double {
+    Double(self.downloadInfo(forBookIdentifier: bookIdentifier)?.downloadProgress ?? 0.0)
   }
 }
