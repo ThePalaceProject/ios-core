@@ -40,3 +40,5 @@
 #import "TPPBookCellDelegate.h"
 #import "TPPOpenSearchDescription.h"
 #import "TPPCatalogSearchViewController.h"
+#import "TPPJSON.h"
+#import "TPPMyBooksDownloadInfo.h"

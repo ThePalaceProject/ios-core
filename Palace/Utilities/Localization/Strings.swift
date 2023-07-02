@@ -275,4 +275,10 @@ struct Strings {
     static let deniedLocationAccessMessageBoldText = NSLocalizedString("You have disabled location services for this app.",comment: "Registration message shown to user when location access has been denied.")
     static let openSettings = NSLocalizedString("Open Settings", comment: "")
   }
+  
+  struct MyDownloadCenter {
+    static let borrowFailed = NSLocalizedString("Borrow Failed", comment: "")
+    static let borrowFailedMessage = NSLocalizedString("Borrowing %@ could not be completed.", comment: "")
+    static let loanAlreadyExistsAlertMessage = NSLocalizedString("You have already checked out this loan. You may need to refresh your My Books list to download the title.", comment: "")
+  }
 }
