@@ -898,7 +898,7 @@ didCompleteWithError:(NSError *)error
   }];
 }
 
-- (void)startDownloadForBookstartDownloadForBook:(TPPBook *const)book
+- (void)startDownloadForBook:(TPPBook *const)book
 {
   [self startDownloadForBook:book withRequest:nil];
 }

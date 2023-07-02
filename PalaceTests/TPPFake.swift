@@ -14,7 +14,7 @@ class TPPFake {
     return TPPOPDSAcquisition(
       relation: .generic,
       type: "application/epub+zip",
-      hrefURL: URL(string:"https://market.feedbooks.com/item/3877422/preview")!,
+      hrefURL: URL(fileURLWithPath: ""),
       indirectAcquisitions: [TPPOPDSIndirectAcquisition](),
       availability: TPPOPDSAcquisitionAvailabilityUnlimited()
     )
