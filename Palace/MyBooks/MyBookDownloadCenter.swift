@@ -364,6 +364,82 @@ class MyBooksDownloadCenter: NSObject {
   }
 }
 
+extension MyBooksDownloadCenter {
+  func deleteLocalContent(for identifier: String, account: String) {
+    guard let book = TPPBookRegistry.shared.book(forIdentifier: identifier),
+          let bookURL = fileUrl(for: identifier, account: account) else {
+      NSLog("WARNING: Could not find book to delete local content.")
+      return
+    }
+    
+    do {
+      switch book.defaultBookContentType {
+      case .epub:
+        try FileManager.default.removeItem(at: bookURL)
+      case .audiobook:
+        deleteLocalContent(forAudiobook: book, at: bookURL)
+      case .pdf:
+        try FileManager.default.removeItem(at: bookURL)
+#if LCP
+        try LCPPDFs.deletePdfContent(url: bookURL)
+#endif
+      case .unsupported:
+        break
+      }
+    } catch {
+      NSLog("Failed to remove local content for download: \(error.localizedDescription)")
+    }
+  }
+
+  func deleteLocalContent(forAudiobook book: TPPBook, at bookURL: URL) {
+    guard let data = try? Data(contentsOf: bookURL) else {
+      return
+    }
+    
+    guard let json = try? JSONSerialization.jsonObject(with: data, options: []),
+          var dict = json as? [String: Any] else {
+      return
+    }
+    
+#if FEATURE_OVERDRIVE
+    if book.distributor == OverdriveDistributorKey {
+      dict["id"] = book.identifier
+    }
+#endif
+    
+#if LCP
+    if LCPAudiobooks.canOpenBook(book) {
+      let lcpAudiobooks = LCPAudiobooks(for: bookURL)
+      lcpAudiobooks?.contentDictionary { dict, error in
+        if let error = error {
+          // LCPAudiobooks logs this error
+          return
+        }
+        if let dict = dict {
+          // Delete decrypted content for the book
+          let mutableDict = dict.mutableCopy() as? [String: Any]
+          AudiobookFactory.audiobook(mutableDict ?? [:])?.deleteLocalContent()
+        }
+      }
+      // Delete LCP book file
+      if FileManager.default.fileExists(atPath: bookURL.path) {
+        do {
+          try FileManager.default.removeItem(at: bookURL)
+        } catch {
+          TPPErrorLogger.logError(error, summary: "Failed to delete LCP audiobook local content", metadata: ["book": book.loggableShortString()])
+        }
+      }
+    } else {
+      // Not an LCP book
+      AudiobookFactory.audiobook(dict)?.deleteLocalContent()
+    }
+#else
+    AudiobookFactory.audiobook(dict)?.deleteLocalContent()
+#endif
+  }
+
+}
+
 extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
   func urlSession(
     _ session: URLSession,
