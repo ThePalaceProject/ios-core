@@ -516,7 +516,7 @@ class OPDS2SamlIDP: NSObject, Codable {
   }
 
   private func fetchImage(from url: URL, completion: @escaping (UIImage?) -> ()) {
-    TPPNetworkExecutor.shared.GET(url) { result in
+    TPPNetworkExecutor.shared.GET(url, useTokenIfAvailable: false) { result in
       switch result {
       case .success(let serverData, _):
         completion(UIImage(data: serverData))

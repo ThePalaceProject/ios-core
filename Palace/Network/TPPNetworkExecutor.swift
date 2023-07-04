@@ -59,9 +59,9 @@ enum NYPLResult<SuccessInfo> {
   ///   - reqURL: URL of the resource to GET.
   ///   - completion: Always called when the resource is either fetched from
   /// the network or from the cache.
-  func GET(_ reqURL: URL,
+  func GET(_ reqURL: URL, useTokenIfAvailable: Bool = true,
            completion: @escaping (_ result: NYPLResult<Data>) -> Void) {
-    let req = request(for: reqURL)
+    let req = request(for: reqURL, useTokenIfAvailable: useTokenIfAvailable)
     executeRequest(req, completion: completion)
   }
 }
@@ -85,12 +85,12 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
 }
 
 extension TPPNetworkExecutor {
-  func request(for url: URL) -> URLRequest {
+  func request(for url: URL, useTokenIfAvailable: Bool = true) -> URLRequest {
 
     var urlRequest = URLRequest(url: url,
                                 cachePolicy: urlSession.configuration.requestCachePolicy)
 
-    if let authToken = TPPUserAccount.sharedAccount().authToken {
+    if let authToken = TPPUserAccount.sharedAccount().authToken, useTokenIfAvailable {
       let headers = [
         "Authorization" : "Bearer \(authToken)",
         "Content-Type" : "application/json"
