@@ -335,10 +335,15 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
         }
         
         let tokenRequest = TokenRequest(url: url, username: username, password: password)
-        let tokenResponse = try await tokenRequest.execute()
+        let result = await tokenRequest.execute()
         
-        authToken = tokenResponse.accessToken
-        self.finalizeSignIn(forDRMAuthorization: true)
+        switch result {
+        case .success(let tokenResponse):
+          authToken = tokenResponse.accessToken
+          self.finalizeSignIn(forDRMAuthorization: true)
+        case .failure(let error):
+          handleNetworkError(error as NSError, loggingContext: ["Context": uiContext])
+        }
       } catch {
         handleNetworkError(error as NSError, loggingContext: ["Context": uiContext])
       }

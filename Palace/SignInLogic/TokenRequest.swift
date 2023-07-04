@@ -19,22 +19,26 @@ struct TokenRequest {
   let username: String
   let password: String
   
-  func execute() async throws -> TokenResponse {
+  func execute() async -> Result<TokenResponse, Error> {
     var request = URLRequest(url: url)
     request.httpMethod = HTTPMethodType.GET.rawValue
     
     let loginString = "\(username):\(password)"
     guard let loginData = loginString.data(using: .utf8) else {
-      throw URLError(.badURL)
+      return .failure(URLError(.badURL))
     }
+
     let base64LoginString = loginData.base64EncodedString()
     request.addValue("Basic \(base64LoginString)", forHTTPHeaderField: "Authorization")
     
-    let (data, _) = try await URLSession.shared.data(for: request)
-    
-    let decoder = JSONDecoder()
-    decoder.keyDecodingStrategy = .convertFromSnakeCase
-    return try decoder.decode(TokenResponse.self, from: data)
+    do {
+      let (data, _) = try await URLSession.shared.data(for: request)
+      let decoder = JSONDecoder()
+      decoder.keyDecodingStrategy = .convertFromSnakeCase
+      let tokenResponse = try decoder.decode(TokenResponse.self, from: data)
+      return .success(tokenResponse)
+    } catch {
+      return .failure(error)
+    }
   }
 }
-
