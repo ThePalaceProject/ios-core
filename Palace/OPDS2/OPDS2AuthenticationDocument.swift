@@ -55,29 +55,11 @@ struct OPDS2AuthenticationDocument: Codable {
   let colorScheme: String?
   let announcements: [Announcement]?
   let id: String
-//
-//  static func fromData(_ data: Data) throws -> OPDS2AuthenticationDocument {
-//    let jsonDecoder = JSONDecoder()
-//    jsonDecoder.keyDecodingStrategy = .convertFromSnakeCase
-//
-//    return try jsonDecoder.decode(OPDS2AuthenticationDocument.self, from: data)
-//  }
   
   static func fromData(_ data: Data) throws -> OPDS2AuthenticationDocument {
     let jsonDecoder = JSONDecoder()
     jsonDecoder.keyDecodingStrategy = .convertFromSnakeCase
-    
-    let decodedData = try jsonDecoder.decode(OPDS2AuthenticationDocument.self, from: data)
-    
-    // Convert back to JSON for pretty printing
-    let jsonEncoder = JSONEncoder()
-    jsonEncoder.outputFormatting = .prettyPrinted // This will pretty print the JSON
-    
-    let jsonData = try jsonEncoder.encode(decodedData)
-    if let jsonString = String(data: jsonData, encoding: .utf8) {
-      print(jsonString)
-    }
-    
-    return decodedData
+
+    return try jsonDecoder.decode(OPDS2AuthenticationDocument.self, from: data)
   }
 }

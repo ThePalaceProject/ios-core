@@ -59,7 +59,8 @@ enum NYPLResult<SuccessInfo> {
   ///   - reqURL: URL of the resource to GET.
   ///   - completion: Always called when the resource is either fetched from
   /// the network or from the cache.
-  func GET(_ reqURL: URL, useTokenIfAvailable: Bool = true,
+  func GET(_ reqURL: URL,
+           useTokenIfAvailable: Bool = true,
            completion: @escaping (_ result: NYPLResult<Data>) -> Void) {
     let req = request(for: reqURL, useTokenIfAvailable: useTokenIfAvailable)
     executeRequest(req, completion: completion)
