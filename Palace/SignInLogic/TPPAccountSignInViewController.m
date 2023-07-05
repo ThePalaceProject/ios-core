@@ -644,7 +644,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
       [workingSection addObject:[[TPPInfoHeaderCellType alloc] initWithInformation:libraryInfo]];
     }
 
-    if (self.businessLogic.libraryAccount.details.auths.count > 1) {
+    if (self.businessLogic.libraryAccount.details.auths.count > 1 && !self.businessLogic.libraryAccount.details.defaultAuth.isToken) {
       // multiple authentication methods
       for (AccountDetailsAuthentication *authMethod in self.businessLogic.libraryAccount.details.auths) {
         // show all possible login methods
