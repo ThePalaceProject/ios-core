@@ -51,7 +51,7 @@ extension MyBooksDownloadCenter: NYPLADEPTDelegate { }
       guard let self = self else { return }
       TPPBookRegistry.shared.setProcessing(false, for: book.identifier)
       
-      if let feed = feed, !feed.entries.isEmpty,
+      if let feed = feed,
          let borrowedEntry = feed.entries.first as? TPPOPDSEntry,
          let borrowedBook = TPPBook(entry: borrowedEntry),
          let location = TPPBookRegistry.shared.location(forIdentifier: borrowedBook.identifier) {
@@ -122,13 +122,17 @@ extension MyBooksDownloadCenter: NYPLADEPTDelegate { }
       }
     }
     
-    TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
+    DispatchQueue.main.async {
+      TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
+    }
   }
   
   private func showGenericBorrowFailedAlert(for book: TPPBook) {
     let formattedMessage = String(format: DisplayStrings.borrowFailedMessage, book.title)
     let alert = TPPAlertUtils.alert(title: DisplayStrings.borrowFailed, message: formattedMessage)
-    TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
+    DispatchQueue.main.async {
+      TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
+    }
   }
   
   @objc func startDownload(for book: TPPBook, withRequest initedRequest: URLRequest? = nil) {
@@ -491,7 +495,9 @@ extension MyBooksDownloadCenter {
                 if let error = error as? Decoder, let document = try? TPPProblemDocument(from: error) {
                   TPPAlertUtils.setProblemDocument(controller: alert, document: document, append: true)
                 }
-                TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
+                DispatchQueue.main.async {
+                  TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
+                }
               }
             }
           }
@@ -518,12 +524,12 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
     NSLog("Ignoring unexpected resumption.")
   }
   
-  private func urlSession(
+  func urlSession(
     _ session: URLSession,
     downloadTask: URLSessionDownloadTask,
-    didWriteData bytesWritten: Int,
-    totalBytesWritten: Int,
-    totalBytesExpectedToWrite: Int
+    didWriteData bytesWritten: Int64,
+    totalBytesWritten: Int64,
+    totalBytesExpectedToWrite: Int64
   ) {
     let key = downloadTask.taskIdentifier
     guard let book = taskIdentifierToBook[key] else {
@@ -793,20 +799,16 @@ extension MyBooksDownloadCenter: URLSessionTaskDelegate {
     MyBooksDownloadInfo(downloadProgress: 0.0,
                            downloadTask: task,
                            rightsManagement: .unknown)
-    
+
     self.taskIdentifierToBook[task.taskIdentifier] = book
-    
     task.resume()
-    
-    guard let location = TPPBookRegistry.shared.location(forIdentifier: book.identifier) else { return }
-    
     TPPBookRegistry.shared.addBook(book,
-                                   location: location,
+                                   location: TPPBookRegistry.shared.location(forIdentifier: book.identifier),
                                    state: .Downloading,
                                    fulfillmentId: nil,
                                    readiumBookmarks: nil,
                                    genericBookmarks: nil)
-    
+
     NotificationCenter.default.post(name: .TPPMyBooksDownloadCenterDidChange, object: self)
   }
 }
@@ -816,7 +818,7 @@ extension MyBooksDownloadCenter {
     let rights = downloadInfo(forBookIdentifier: book.identifier)?.rightsManagementString ?? ""
     let bookType = TPPBookContentTypeConverter.stringValue(of: book.defaultBookContentType)
     let context = "\(String(describing: book.distributor)) \(bookType) download fail: \(reason)"
-    
+
     var dict: [String: Any] = metadata ?? [:]
     dict["book"] = book.loggableDictionary
     dict["rightsManagement"] = rights
@@ -824,7 +826,7 @@ extension MyBooksDownloadCenter {
     dict["taskCurrentRequest"] = downloadTask.currentRequest?.loggableString
     dict["response"] = downloadTask.response ?? "N/A"
     dict["downloadError"] = downloadTask.error ?? "N/A"
-    
+
     TPPErrorLogger.logError(withCode: .downloadFail, summary: context, metadata: dict)
   }
   
@@ -906,7 +908,9 @@ extension MyBooksDownloadCenter {
       let formattedMessage = String.localizedStringWithFormat(NSLocalizedString("The download for %@ could not be completed.", comment: ""), book.title)
       let finalMessage = "\(formattedMessage)\n\(errorMessage)"
       let alert = TPPAlertUtils.alert(title: "DownloadFailed", message: finalMessage)
-      TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
+      DispatchQueue.main.async {
+        TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
+      }
     }
     
     broadcastUpdate()
@@ -927,7 +931,9 @@ extension MyBooksDownloadCenter {
       alert.message = String(format: "%@\n\nError: %@", msg, error.localizedDescription)
     }
     
-    TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
+    DispatchQueue.main.async {
+      TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
+    }
   }
   
   func moveFile(at sourceLocation: URL, toDestinationForBook book: TPPBook, forDownloadTask downloadTask: URLSessionDownloadTask) -> Bool {
