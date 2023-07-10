@@ -359,6 +359,14 @@ private enum StorageKey: String {
     }
     return nil
   }
+  
+  var authTokenHasExpired: Bool {
+    guard let credentials = credentials, case let TPPCredentials.token(authToken: token) = credentials else {
+      return true
+    }
+    
+   return true
+  }
 
   var patronFullName: String? {
     if let patron = patron,

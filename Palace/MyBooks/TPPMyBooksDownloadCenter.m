@@ -395,15 +395,52 @@ didFinishDownloadingToURL:(NSURL *const)tmpSavedFileURL
 // As with the NSURLSessionDownloadDelegate methods, we need to be mindful of resets for the task
 // delegate methods too.
 
-- (void)URLSession:(__attribute__((unused)) NSURLSession *)session
-              task:(__attribute__((unused)) NSURLSessionTask *)task
-didReceiveChallenge:(NSURLAuthenticationChallenge *const)challenge
- completionHandler:(void (^)(NSURLSessionAuthChallengeDisposition disposition,
-                             NSURLCredential *credential))completionHandler
+- (void)URLSession:(NSURLSession *)session
+              task:(NSURLSessionTask *)task
+didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
+ completionHandler:(void (^)(NSURLSessionAuthChallengeDisposition disposition, NSURLCredential *credential))completionHandler
 {
-  TPPBasicAuth *handler = [[TPPBasicAuth alloc] initWithCredentialsProvider:TPPUserAccount.sharedAccount];
-  [handler handleChallenge:challenge completion:completionHandler];
+  NSString *authenticationMethod = challenge.protectionSpace.authenticationMethod;
+  
+  if ([authenticationMethod isEqualToString:NSURLAuthenticationMethodHTTPBasic]) {
+    TPPBasicAuth *handler = [[TPPBasicAuth alloc] initWithCredentialsProvider:TPPUserAccount.sharedAccount];
+    [handler handleChallenge:challenge completion:completionHandler];
+  } else if ([authenticationMethod isEqualToString: NSURLAuthenticationMethodServerTrust]) {
+    [self getBearerTokenWithCompletion:^(NSString * _Nullable token) {
+      [TPPUserAccount.sharedAccount setAuthToken:token :TPPUserAccount.sharedAccount.username :TPPUserAccount.sharedAccount.pin];
+      NSURLCredential *credential = [NSURLCredential credentialWithUser:@"" password:token persistence:NSURLCredentialPersistenceNone];
+      completionHandler(NSURLSessionAuthChallengeUseCredential, credential);
+    }];
+  } else {
+    completionHandler(NSURLSessionAuthChallengeRejectProtectionSpace, nil);
+  }
 }
+
+- (void)getBearerTokenWithCompletion:(void (^)(NSString * _Nullable token))completion {
+  NSURL *url = TPPUserAccount.sharedAccount.authDefinition.tokenURL; Why is this nil
+  
+  if (!url) {
+    completion(nil);
+    return;
+  }
+  
+  TokenRequest *tokenRequest = [[TokenRequest alloc] initWithUrl:url username:TPPUserAccount.sharedAccount.username password:TPPUserAccount.sharedAccount.pin];
+
+  if (!tokenRequest) {
+    completion(nil);
+    return;
+  }
+  
+  [tokenRequest executeWithCompletion:^(TokenResponse * _Nullable tokenResponse, NSError * _Nullable error) {
+    if (tokenResponse) {
+      completion(tokenResponse.accessToken);
+    } else {
+      completion(nil);
+    }
+  }];
+}
+
+
 
 // This is implemented in order to be able to handle redirects when using
 // bearer token authentication.
@@ -954,10 +991,14 @@ didCompleteWithError:(NSError *)error
 #if FEATURE_OVERDRIVE
     } else if ([book.distributor isEqualToString:OverdriveDistributorKey] && book.defaultBookContentType == TPPBookContentTypeAudiobook) {
       NSURL *URL = book.defaultAcquisition.hrefURL;
-        
+      
+      
+ 
+  
       [[OverdriveAPIExecutor shared] fulfillBookWithUrlString:URL.absoluteString
                                                      username:[[TPPUserAccount sharedAccount] barcode]
-                                                          PIN:[[TPPUserAccount sharedAccount] PIN]
+                                                          pin:[[TPPUserAccount sharedAccount] PIN]
+                                                        token:[[TPPUserAccount sharedAccount] authToken]
                                                    completion:^(NSDictionary<NSString *,id> * _Nullable responseHeaders, NSError * _Nullable error) {
         if (error) {
           [TPPErrorLogger logError:error

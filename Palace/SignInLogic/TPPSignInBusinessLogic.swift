@@ -32,11 +32,15 @@ extension TPPMyBooksDownloadCenter: TPPBookDownloadsDeleting {}
   func deauthorize(withUsername username: String!, password: String!, userID: String!, deviceID: String!, completion: ((Bool, Error?) -> Void)!)
 }
 
+@objc protocol TokenManager: NSObjectProtocol {
+  func refreshToken(completion: @escaping (String?) -> Void)
+}
+
 #if FEATURE_DRM_CONNECTOR
 extension NYPLADEPT: TPPDRMAuthorizing {}
 #endif
 
-class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibraryAccountProvider {
+class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibraryAccountProvider, TokenManager {
   var onLocationAuthorizationCompletion: (UINavigationController?, Error?) -> Void = {_,_ in }
 
   /// Makes a business logic object with a network request executor that
@@ -45,7 +49,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
                          libraryAccountsProvider: TPPLibraryAccountsProvider,
                          urlSettingsProvider: NYPLUniversalLinksSettings & NYPLFeedURLProvider,
                          bookRegistry: TPPBookRegistrySyncing,
-                         bookDownloadsCenter: TPPBookDownloadsDeleting,
+                         bookDownloadsCenter: TPPMyBooksDownloadCenter,
                          userAccountProvider: TPPUserAccountProvider.Type,
                          uiDelegate: TPPSignInOutBusinessLogicUIDelegate?,
                          drmAuthorizer: TPPDRMAuthorizing?) {
@@ -67,7 +71,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
        libraryAccountsProvider: TPPLibraryAccountsProvider,
        urlSettingsProvider: NYPLUniversalLinksSettings & NYPLFeedURLProvider,
        bookRegistry: TPPBookRegistrySyncing,
-       bookDownloadsCenter: TPPBookDownloadsDeleting,
+       bookDownloadsCenter: TPPMyBooksDownloadCenter,
        userAccountProvider: TPPUserAccountProvider.Type,
        networkExecutor: TPPRequestExecuting,
        uiDelegate: TPPSignInOutBusinessLogicUIDelegate?,
@@ -84,6 +88,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     self.samlHelper = TPPSAMLHelper()
     super.init()
     self.samlHelper.businessLogic = self
+    self.bookDownloadsCenter.tokenManager = self
   }
 
   /// Lock for ensuring internal state consistency.
@@ -93,7 +98,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
   let bookRegistry: TPPBookRegistrySyncing
 
   /// Signing out implies removing book downloads from the device.
-  let bookDownloadsCenter: TPPBookDownloadsDeleting
+  let bookDownloadsCenter: TPPMyBooksDownloadCenter
 
   /// Provides the user account for a given library.
   private let userAccountProvider: TPPUserAccountProvider.Type
@@ -323,12 +328,24 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
       }
     }
   }
+  
+  func refreshToken(completion: @escaping (String?) -> Void) {
+    guard let username = self.uiDelegate?.username,
+          let password = self.uiDelegate?.pin else {
+      return
+    }
+  
+    getBearerToken(username: username, password: password) {
+      completion(TPPUserAccount.sharedAccount().authToken)
+    }
+  }
 
   func getBearerToken(username: String, password: String, completion: (() -> Void)? = nil) {
     Task {
       defer {
         completion?()
       }
+  
       do {
         guard let url = selectedAuthentication?.tokenURL else {
           throw URLError(.badURL)

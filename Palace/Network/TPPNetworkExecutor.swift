@@ -86,7 +86,7 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
 }
 
 extension TPPNetworkExecutor {
-  func request(for url: URL, useTokenIfAvailable: Bool = true) -> URLRequest {
+  @objc func request(for url: URL, useTokenIfAvailable: Bool = true) -> URLRequest {
 
     var urlRequest = URLRequest(url: url,
                                 cachePolicy: urlSession.configuration.requestCachePolicy)
@@ -113,7 +113,7 @@ extension TPPNetworkExecutor {
 extension TPPNetworkExecutor {
   @objc class func bearerAuthorized(request: URLRequest) -> URLRequest {
     let headers: [String: String]
-    if let authToken = TPPUserAccount.sharedAccount().authToken {
+    if let authToken = TPPUserAccount.sharedAccount().authToken, !authToken.isEmpty {
       headers = [
         "Authorization" : "Bearer \(authToken)",
         "Content-Type" : "application/json"]
