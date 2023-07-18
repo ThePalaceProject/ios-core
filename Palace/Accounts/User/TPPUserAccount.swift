@@ -529,5 +529,3 @@ extension TPPUserAccount: NYPLBasicAuthCredentialsProvider {
     return PIN
   }
 }
-
-extension TPPUserAccount: NYPLAuthTokenProvider {}

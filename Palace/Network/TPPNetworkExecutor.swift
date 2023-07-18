@@ -115,19 +115,21 @@ extension TPPNetworkExecutor {
 // Objective-C compatibility
 extension TPPNetworkExecutor {
   @objc class func bearerAuthorized(request: URLRequest) -> URLRequest {
-    var request = request
-
     let headers: [String: String]
     if let authToken = TPPUserAccount.sharedAccount().authToken, !authToken.isEmpty {
       headers = [
         "Authorization" : "Bearer \(authToken)",
         "Content-Type" : "application/json"]
-      
-      for (headerKey, headerValue) in headers {
-        request.setValue(headerValue, forHTTPHeaderField: headerKey)
-      }
+    } else {
+      headers = [
+        "Authorization" : "",
+        "Content-Type" : "application/json"]
     }
-  
+
+    var request = request
+    for (headerKey, headerValue) in headers {
+      request.setValue(headerValue, forHTTPHeaderField: headerKey)
+    }
     return request
   }
 

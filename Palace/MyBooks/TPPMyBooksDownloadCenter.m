@@ -400,14 +400,8 @@ didFinishDownloadingToURL:(NSURL *const)tmpSavedFileURL
 didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
  completionHandler:(void (^)(NSURLSessionAuthChallengeDisposition disposition, NSURLCredential *credential))completionHandler
 {
-  NSString *authenticationMethod = challenge.protectionSpace.authenticationMethod;
-  
-  if ([authenticationMethod isEqualToString:NSURLAuthenticationMethodHTTPBasic]) {
-    TPPBasicAuth *handler = [[TPPBasicAuth alloc] initWithCredentialsProvider:TPPUserAccount.sharedAccount];
-    [handler handleChallenge:challenge completion:completionHandler];
-  } else {
-    completionHandler(NSURLSessionAuthChallengeRejectProtectionSpace, nil);
-  }
+  TPPBasicAuth *handler = [[TPPBasicAuth alloc] initWithCredentialsProvider:TPPUserAccount.sharedAccount];
+  [handler handleChallenge:challenge completion:completionHandler];
 }
 
 // This is implemented in order to be able to handle redirects when using
@@ -959,10 +953,6 @@ didCompleteWithError:(NSError *)error
 #if FEATURE_OVERDRIVE
     } else if ([book.distributor isEqualToString:OverdriveDistributorKey] && book.defaultBookContentType == TPPBookContentTypeAudiobook) {
       NSURL *URL = book.defaultAcquisition.hrefURL;
-      
-      
- 
-  
       [[OverdriveAPIExecutor shared] fulfillBookWithUrlString:URL.absoluteString
                                                      username:[[TPPUserAccount sharedAccount] barcode]
                                                           pin:[[TPPUserAccount sharedAccount] PIN]

@@ -269,46 +269,16 @@ extension URLSessionTask {
 //----------------------------------------------------------------------------
 // MARK: - URLSessionTaskDelegate
 extension TPPNetworkResponder: URLSessionTaskDelegate {
-//  func urlSession(_ session: URLSession,
-//                  task: URLSessionTask,
-//                  didReceive challenge: URLAuthenticationChallenge,
-//                  completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void)
-//  {
-//    let credsProvider = credentialsProvider ?? TPPUserAccount.sharedAccount()
-//    let authChallenger = TPPBasicAuth(credentialsProvider: credsProvider)
-//    authChallenger.handleChallenge(challenge, completion: completionHandler)
-//  }
-    func urlSession(_ session: URLSession,
-                    task: URLSessionTask,
-                    didReceive challenge: URLAuthenticationChallenge,
-                    completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void)
-    {
-      let credsProvider = credentialsProvider ?? TPPUserAccount.sharedAccount()
-      let authChallenger = TPPBasicAuth(credentialsProvider: credsProvider)
-      authChallenger.handleChallenge(challenge) { [weak self] (disposition, credential) in
-        if disposition == .rejectProtectionSpace {
-          completionHandler(disposition, credential)
-        } else {
-          if let dataTask = task as? URLSessionDataTask,
-             let response = dataTask.response as? HTTPURLResponse,
-             response.statusCode == 401 && disposition == .cancelAuthenticationChallenge {
-            // Perform token refresh and retry the request
-            Task { [weak self] in
-              guard let self = self else { return }
-              do {
-                try await self.refreshToken()
-                // Retry the authentication challenge with the updated credentials
-                authChallenger.handleChallenge(challenge, completion: completionHandler)
-              } catch {
-                completionHandler(.rejectProtectionSpace, nil)
-              }
-            }
-          } else {
-            completionHandler(disposition, credential)
-          }
-        }
-      }
-    }
+  func urlSession(_ session: URLSession,
+                  task: URLSessionTask,
+                  didReceive challenge: URLAuthenticationChallenge,
+                  completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void)
+  {
+    let credsProvider = credentialsProvider ?? TPPUserAccount.sharedAccount()
+    let authChallenger = TPPBasicAuth(credentialsProvider: credsProvider)
+    authChallenger.handleChallenge(challenge, completion: completionHandler)
+  }
+    
   
     private func refreshToken() async throws {
       guard let tokenURL = TPPUserAccount.sharedAccount().authDefinition?.tokenURL,
