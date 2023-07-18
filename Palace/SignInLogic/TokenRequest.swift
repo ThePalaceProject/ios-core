@@ -11,12 +11,18 @@ import Foundation
 @objc class TokenResponse: NSObject, Codable {
   @objc let accessToken: String
   let tokenType: String
-  let expiresIn: Int
+  @objc let expiresIn: Int
   
   @objc init(accessToken: String, tokenType: String, expiresIn: Int) {
     self.accessToken = accessToken
     self.tokenType = tokenType
     self.expiresIn = expiresIn
+  }
+}
+
+@objc extension TokenResponse {
+  @objc var expirationDate: Date {
+    Date(timeIntervalSinceNow: Double(expiresIn))
   }
 }
 

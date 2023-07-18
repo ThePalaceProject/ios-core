@@ -33,8 +33,10 @@ extension TPPSignInBusinessLogic {
                              withBarcode: self.uiDelegate?.username,
                              pin: self.uiDelegate?.pin,
                              authToken: self.authToken,
+                             expirationDate: self.authTokenExpiration,
                              patron: self.patron,
-                             cookies: self.cookies)
+                             cookies: self.cookies
+      )
 
       #if FEATURE_DRM_CONNECTOR
       guard drmSuccess else {

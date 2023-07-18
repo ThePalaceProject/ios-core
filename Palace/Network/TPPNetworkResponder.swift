@@ -321,7 +321,7 @@ extension TPPNetworkResponder: URLSessionTaskDelegate {
       
       switch result {
       case .success(let tokenResponse):
-        TPPUserAccount.sharedAccount().setAuthToken(tokenResponse.accessToken, barcode: username, pin: password)
+        TPPUserAccount.sharedAccount().setAuthToken(tokenResponse.accessToken, barcode: username, pin: password, expirationDate: tokenResponse.expirationDate)
       case .failure(let error):
         throw error
       }

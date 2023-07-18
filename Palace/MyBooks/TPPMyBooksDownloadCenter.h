@@ -2,13 +2,10 @@
 @class TPPMyBooksDownloadInfo;
 @class TPPBook;
 
-@protocol TokenManager;
-
 @interface TPPMyBooksDownloadCenter : NSObject
 
 + (id)new NS_UNAVAILABLE;
 - (id)init NS_UNAVAILABLE;
-@property (nonatomic, strong) id<TokenManager> tokenManager;
 
 + (TPPMyBooksDownloadCenter *)sharedDownloadCenter;
 
