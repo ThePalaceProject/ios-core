@@ -45,7 +45,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
                          libraryAccountsProvider: TPPLibraryAccountsProvider,
                          urlSettingsProvider: NYPLUniversalLinksSettings & NYPLFeedURLProvider,
                          bookRegistry: TPPBookRegistrySyncing,
-                         bookDownloadsCenter: TPPMyBooksDownloadCenter,
+                         bookDownloadsCenter: TPPBookDownloadsDeleting,
                          userAccountProvider: TPPUserAccountProvider.Type,
                          uiDelegate: TPPSignInOutBusinessLogicUIDelegate?,
                          drmAuthorizer: TPPDRMAuthorizing?) {
@@ -67,7 +67,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
        libraryAccountsProvider: TPPLibraryAccountsProvider,
        urlSettingsProvider: NYPLUniversalLinksSettings & NYPLFeedURLProvider,
        bookRegistry: TPPBookRegistrySyncing,
-       bookDownloadsCenter: TPPMyBooksDownloadCenter,
+       bookDownloadsCenter: TPPBookDownloadsDeleting,
        userAccountProvider: TPPUserAccountProvider.Type,
        networkExecutor: TPPRequestExecuting,
        uiDelegate: TPPSignInOutBusinessLogicUIDelegate?,
@@ -93,7 +93,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
   let bookRegistry: TPPBookRegistrySyncing
 
   /// Signing out implies removing book downloads from the device.
-  let bookDownloadsCenter: TPPMyBooksDownloadCenter
+  let bookDownloadsCenter: TPPBookDownloadsDeleting
 
   /// Provides the user account for a given library.
   private let userAccountProvider: TPPUserAccountProvider.Type
