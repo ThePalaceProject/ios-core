@@ -33,6 +33,7 @@ import Foundation
   static private let versionKey = "NYPLSettingsVersionKey"
   static private let customLibraryRegistryKey = "TPPSettingsCustomLibraryRegistryKey"
   static private let enterLCPPassphraseManually = "TPPSettingsEnterLCPPassphraseManually"
+  static private let isTimeTrackingEnabled = "TPPSettingsEnableTimeTracking"
   
   // Set to nil (the default) if no custom feed should be used.
   var customMainFeedURL: URL? {
@@ -143,6 +144,15 @@ import Foundation
     set(b) {
       UserDefaults.standard.set(b, forKey: TPPSettings.enterLCPPassphraseManually)
       UserDefaults.standard.synchronize()
+    }
+  }
+  
+  var isTimeTrackingEnabled: Bool {
+    get {
+      UserDefaults.standard.bool(forKey: TPPSettings.isTimeTrackingEnabled)
+    }
+    set {
+      UserDefaults.standard.set(newValue, forKey: TPPSettings.isTimeTrackingEnabled)
     }
   }
 
