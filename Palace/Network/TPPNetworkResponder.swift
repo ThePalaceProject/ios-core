@@ -155,7 +155,6 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
     
     if let httpResponse = task.response as? HTTPURLResponse {
       guard httpResponse.isSuccess() else {
-        // check if the token is expired and refresh it if necessary
         if handleExpiredTokenIfNeeded(for: httpResponse, with: task) {
           return
         }
@@ -173,7 +172,6 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
       }
     }
 
-    // attempt parsing of Problem Document
     if task.response?.isProblemDocument() ?? false {
       let errorWithProblemDoc = task.parseAndLogError(fromProblemDocumentData: responseData,
                                                       networkError: networkError,
@@ -182,12 +180,9 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
       return
     }
 
-    // no problem document, but if we have an error it's still a failure
     if let networkError = networkError {
       currentTaskInfo.completion(.failure(networkError as TPPUserFriendlyError, task.response))
 
-      // logging the error after the completion call so that the error report
-      // will include any eventual logging done in the completion handler.
       TPPErrorLogger.logNetworkError(
         networkError,
         summary: "Network task completed with error",
@@ -197,7 +192,6 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
       return
     }
 
-    // no problem document nor error, but response could still be a failure
     if let httpResponse = task.response as? HTTPURLResponse {
       guard httpResponse.isSuccess() else {
         logMetadata["response"] = httpResponse
