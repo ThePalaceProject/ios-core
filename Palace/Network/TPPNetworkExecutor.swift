@@ -232,11 +232,7 @@ extension TPPNetworkExecutor {
   }
   
   func refreshToken(resume task: URLSessionTask) throws {
-    guard let tokenURL = TPPUserAccount.sharedAccount().authDefinition?.tokenURL,
-          let username = TPPUserAccount.sharedAccount().username,
-          let password = TPPUserAccount.sharedAccount().pin else { return }
-    
-    performTokenRefresh(username: username, password: password, tokenURL: tokenURL) { [weak self] result in
+    executeTokenRefresh() { [weak self] result in
       switch result {
       case .success:
         guard let request = task.originalRequest else { return }
@@ -249,14 +245,26 @@ extension TPPNetworkExecutor {
     }
   }
 
-  func performTokenRefresh(username: String, password: String, tokenURL: URL, completion: @escaping (Result<TokenResponse, Error>) -> Void) {
+  func executeTokenRefresh(completion: @escaping (Result<TokenResponse, Error>) -> Void) {
+    guard let tokenURL = TPPUserAccount.sharedAccount().authDefinition?.tokenURL,
+          let username = TPPUserAccount.sharedAccount().username,
+          let password = TPPUserAccount.sharedAccount().pin else {
+      Log.error(#file, "Unable to refresh token, missing credentials")
+      return
+    }
+
     Task {
       let tokenRequest = TokenRequest(url: tokenURL, username: username, password: password)
       let result = await tokenRequest.execute()
       
       switch result {
       case .success(let tokenResponse):
-        TPPUserAccount.sharedAccount().setAuthToken(tokenResponse.accessToken, barcode: username, pin: password, expirationDate: tokenResponse.expirationDate)
+        TPPUserAccount.sharedAccount().setAuthToken(
+          tokenResponse.accessToken,
+          barcode: username,
+          pin: password,
+          expirationDate: tokenResponse.expirationDate
+        )
         completion(.success(tokenResponse))
       case .failure(let error):
         completion(.failure(error))
