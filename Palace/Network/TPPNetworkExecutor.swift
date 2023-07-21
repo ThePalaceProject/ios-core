@@ -24,7 +24,6 @@ enum NYPLResult<SuccessInfo> {
 /// The cache lives on both memory and disk.
 @objc class TPPNetworkExecutor: NSObject {
   private let urlSession: URLSession
-  private var tokenRefreshTimer: DispatchSourceTimer?
 
   /// The delegate of the URLSession.
   private let responder: TPPNetworkResponder
@@ -46,8 +45,6 @@ enum NYPLResult<SuccessInfo> {
                                  delegate: self.responder,
                                  delegateQueue: delegateQueue)
     super.init()
-
-    self.startTokenRefresh()
   }
 
   deinit {
@@ -217,53 +214,37 @@ extension TPPNetworkExecutor {
   @objc
   func POST(_ request: URLRequest,
             completion: ((_ result: Data?, _ response: URLResponse?,  _ error: Error?) -> Void)?) -> URLSessionDataTask {
-      
+    
     if (request.httpMethod != "POST") {
       var newRequest = request
       newRequest.httpMethod = "POST"
       return POST(newRequest, completion: completion)
     }
-      
+    
     let completionWrapper: (_ result: NYPLResult<Data>) -> Void = { result in
       switch result {
-        case let .success(data, response): completion?(data, response, nil)
-        case let .failure(error, response): completion?(nil, response, error)
+      case let .success(data, response): completion?(data, response, nil)
+      case let .failure(error, response): completion?(nil, response, error)
       }
     }
     
     return executeRequest(request, completion: completionWrapper)
-    }
-
-  @objc func startTokenRefresh() {
-    guard TPPUserAccount.sharedAccount().authDefinition?.authType == .token else { return }
-    let queue = DispatchQueue.global()
-    tokenRefreshTimer = DispatchSource.makeTimerSource(queue: queue)
-    tokenRefreshTimer?.schedule(deadline: .now(), repeating: 300)
-    
-    tokenRefreshTimer?.setEventHandler { [weak self] in
-      self?.refreshTokenIfExpired()
-    }
+  }
   
-    tokenRefreshTimer?.resume()
-  }
-
-  private func refreshTokenIfExpired() {
-    if TPPUserAccount.sharedAccount().authTokenHasExpired {
-      try? self.refreshToken()
-    }
-  }
-
- 
-  private func refreshToken() throws {
+  func refreshToken(resume task: URLSessionTask) throws {
     guard let tokenURL = TPPUserAccount.sharedAccount().authDefinition?.tokenURL,
           let username = TPPUserAccount.sharedAccount().username,
           let password = TPPUserAccount.sharedAccount().pin else { return }
     
-    performTokenRefresh(username: username, password: password, tokenURL: tokenURL) { result in
+    performTokenRefresh(username: username, password: password, tokenURL: tokenURL) { [weak self] result in
       switch result {
-      case .success: break
+      case .success:
+        guard let request = task.originalRequest else { return }
+        self?.executeRequest(request) { _ in
+          Log.info(#file, "Bearer token Successfully refreshed")
+        }
       case .failure(let error):
-        NSLog("Failed to refresh token with error: \(error)")
+        Log.info(#file, "Failed to refresh token with error: \(error)")
       }
     }
   }
