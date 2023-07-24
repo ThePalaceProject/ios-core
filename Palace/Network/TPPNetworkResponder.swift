@@ -291,4 +291,32 @@ extension URLSessionTask {
 
 //----------------------------------------------------------------------------
 // MARK: - URLSessionTaskDelegate
-extension TPPNetworkResponder: URLSessionTaskDelegate {}
+extension TPPNetworkResponder: URLSessionTaskDelegate {
+  func urlSession(_ session: URLSession,
+                  task: URLSessionTask,
+                  didReceive challenge: URLAuthenticationChallenge,
+                  completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void)
+  {
+    let credsProvider = credentialsProvider ?? TPPUserAccount.sharedAccount()
+    let authChallenger = TPPBasicAuth(credentialsProvider: credsProvider)
+    authChallenger.handleChallenge(challenge, completion: completionHandler)
+  }
+  
+  
+  func refreshToken() async throws {
+    guard let tokenURL = TPPUserAccount.sharedAccount().authDefinition?.tokenURL,
+          let username = TPPUserAccount.sharedAccount().username,
+          let password = TPPUserAccount.sharedAccount().pin
+    else { return }
+    
+    let tokenRequest = TokenRequest(url: tokenURL, username: username, password: password)
+    let result = await tokenRequest.execute()
+    
+    switch result {
+    case .success(let tokenResponse):
+      TPPUserAccount.sharedAccount().setAuthToken(tokenResponse.accessToken, barcode: username, pin: password, expirationDate: tokenResponse.expirationDate)
+    case .failure(let error):
+      throw error
+    }
+  }
+}
