@@ -24,6 +24,8 @@ enum NYPLResult<SuccessInfo> {
 /// The cache lives on both memory and disk.
 @objc class TPPNetworkExecutor: NSObject {
   private let urlSession: URLSession
+  private var retryQueue: [URLSessionTask] = []
+  private var isRefreshing = false
 
   /// The delegate of the URLSession.
   private let responder: TPPNetworkResponder
@@ -231,16 +233,30 @@ extension TPPNetworkExecutor {
     return executeRequest(request, completion: completionWrapper)
   }
   
-  func refreshToken(resume task: URLSessionTask) throws {
+  func refreshTokenAndResume(task: URLSessionTask) {
+    retryQueue.append(task)
+    guard !isRefreshing else { return }
+    
+    isRefreshing = true
+    
     executeTokenRefresh() { [weak self] result in
       switch result {
       case .success:
-        guard let request = task.originalRequest else { return }
-        self?.executeRequest(request) { _ in
-          Log.info(#file, "Bearer token Successfully refreshed")
-        }
+        self?.isRefreshing = false
+        self?.retryFailedRequests()
       case .failure(let error):
+        self?.isRefreshing = false
         Log.info(#file, "Failed to refresh token with error: \(error)")
+      }
+    }
+  }
+  
+  private func retryFailedRequests() {
+    while !retryQueue.isEmpty {
+      let task = retryQueue.removeFirst()
+      guard let request = task.originalRequest else { continue }
+      self.executeRequest(request) { _ in
+        Log.info(#file, "Task Successfully resumed after token refresh")
       }
     }
   }
