@@ -53,6 +53,7 @@ class TPPSignInBusinessLogicTests: XCTestCase {
                                     withBarcode: "newBarcode",
                                     pin: "newPIN",
                                     authToken: nil,
+                                    expirationDate: nil,
                                     patron: nil,
                                     cookies: nil)
 
@@ -73,6 +74,7 @@ class TPPSignInBusinessLogicTests: XCTestCase {
                                     withBarcode: "newBarcode",
                                     pin: "newPIN",
                                     authToken: nil,
+                                    expirationDate: nil,
                                     patron: nil,
                                     cookies: nil)
 
@@ -95,6 +97,7 @@ class TPPSignInBusinessLogicTests: XCTestCase {
                                     withBarcode: nil,
                                     pin: nil,
                                     authToken: "some-great-token",
+                                    expirationDate: nil,
                                     patron: patron,
                                     cookies: nil)
 
@@ -124,6 +127,7 @@ class TPPSignInBusinessLogicTests: XCTestCase {
                                     withBarcode: nil,
                                     pin: nil,
                                     authToken: "some-great-token",
+                                    expirationDate: nil,
                                     patron: patron,
                                     cookies: cookies)
 

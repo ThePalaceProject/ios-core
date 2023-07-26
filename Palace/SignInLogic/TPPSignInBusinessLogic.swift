@@ -119,6 +119,8 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
 
   /// The current OAuth token if available.
   var authToken: String? = nil
+  
+  var authTokenExpiration: Date? = nil
 
   /// The current patron info if available.
   var patron: [String: Any]? = nil
@@ -323,29 +325,20 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
       }
     }
   }
-
+  
   func getBearerToken(username: String, password: String, completion: (() -> Void)? = nil) {
-    Task {
+    TPPNetworkExecutor.shared.executeTokenRefresh() {  [weak self] result in
       defer {
         completion?()
       }
-      do {
-        guard let url = selectedAuthentication?.tokenURL else {
-          throw URLError(.badURL)
-        }
-        
-        let tokenRequest = TokenRequest(url: url, username: username, password: password)
-        let result = await tokenRequest.execute()
-        
-        switch result {
-        case .success(let tokenResponse):
-          authToken = tokenResponse.accessToken
-          self.finalizeSignIn(forDRMAuthorization: true)
-        case .failure(let error):
-          handleNetworkError(error as NSError, loggingContext: ["Context": uiContext])
-        }
-      } catch {
-        handleNetworkError(error as NSError, loggingContext: ["Context": uiContext])
+      
+      switch result {
+      case .success(let tokenResponse):
+        self?.authToken = tokenResponse.accessToken
+        self?.authTokenExpiration = tokenResponse.expirationDate
+        self?.finalizeSignIn(forDRMAuthorization: true)
+      case .failure(let error):
+        self?.handleNetworkError(error as NSError, loggingContext: ["Context": self?.uiContext as Any])
       }
     }
   }
@@ -451,7 +444,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
                                  completion: (() -> Void)?) -> Bool {
       guard
         let authDef = userAccount.authDefinition,
-        (authDef.isBasic || authDef.isOauth || authDef.isSaml || authDef.isToken)
+        (authDef.isBasic || authDef.isOauth || authDef.isSaml || authDef.isToken && TPPUserAccount.sharedAccount().authTokenHasExpired)
       else {
         completion?()
         return false
@@ -475,7 +468,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
       
       if authDef.isToken, let barcode = userAccount.barcode, let pin = userAccount.pin {
         getBearerToken(username: barcode, password: pin, completion: completion)
-      } else if authDef.isBasic || authDef.isToken {
+      } else if authDef.isBasic {
         if usingExistingCredentials && userAccount.hasBarcodeAndPIN() {
           if uiDelegate == nil {
 #if DEBUG
@@ -525,6 +518,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
                          withBarcode barcode: String?,
                          pin: String?,
                          authToken: String?,
+                         expirationDate: Date?,
                          patron: [String:Any]?,
                          cookies: [HTTPCookie]?) {
     #if FEATURE_DRM_CONNECTOR
@@ -537,7 +531,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     if let selectedAuthentication = selectedAuthentication {
       if selectedAuthentication.isOauth || selectedAuthentication.isSaml || selectedAuthentication.isToken {
         if let authToken = authToken {
-          userAccount.setAuthToken(authToken, barcode: barcode, pin: pin)
+          userAccount.setAuthToken(authToken, barcode: barcode, pin: pin, expirationDate: expirationDate)
         }
         if let patron = patron {
           userAccount.setPatron(patron)
