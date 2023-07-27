@@ -74,7 +74,7 @@
   }
 #endif
   
-  NSString *backgroundIdentifier = @"org.thepalaceproject.palace.backgroundIdentifier";
+  NSString *backgroundIdentifier = [(NSBundle.mainBundle.bundleIdentifier ?: @"") stringByAppendingString:@".downloadCenterBackgroundIdentifier"];
   NSURLSessionConfiguration *configuration = [NSURLSessionConfiguration backgroundSessionConfigurationWithIdentifier:backgroundIdentifier];
   
   self.bookIdentifierToDownloadInfo = [NSMutableDictionary dictionary];
