@@ -24,6 +24,8 @@ enum NYPLResult<SuccessInfo> {
 /// The cache lives on both memory and disk.
 @objc class TPPNetworkExecutor: NSObject {
   private let urlSession: URLSession
+  private var retryQueue: [URLSessionTask] = []
+  private var isRefreshing = false
 
   /// The delegate of the URLSession.
   private let responder: TPPNetworkResponder
@@ -60,8 +62,9 @@ enum NYPLResult<SuccessInfo> {
   ///   - completion: Always called when the resource is either fetched from
   /// the network or from the cache.
   func GET(_ reqURL: URL,
+           useTokenIfAvailable: Bool = true,
            completion: @escaping (_ result: NYPLResult<Data>) -> Void) {
-    let req = request(for: reqURL)
+    let req = request(for: reqURL, useTokenIfAvailable: useTokenIfAvailable)
     executeRequest(req, completion: completion)
   }
 }
@@ -85,12 +88,12 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
 }
 
 extension TPPNetworkExecutor {
-  func request(for url: URL) -> URLRequest {
+  @objc func request(for url: URL, useTokenIfAvailable: Bool = true) -> URLRequest {
 
     var urlRequest = URLRequest(url: url,
                                 cachePolicy: urlSession.configuration.requestCachePolicy)
 
-    if let authToken = TPPUserAccount.sharedAccount().authToken {
+    if let authToken = TPPUserAccount.sharedAccount().authToken, useTokenIfAvailable {
       let headers = [
         "Authorization" : "Bearer \(authToken)",
         "Content-Type" : "application/json"
@@ -112,7 +115,7 @@ extension TPPNetworkExecutor {
 extension TPPNetworkExecutor {
   @objc class func bearerAuthorized(request: URLRequest) -> URLRequest {
     let headers: [String: String]
-    if let authToken = TPPUserAccount.sharedAccount().authToken {
+    if let authToken = TPPUserAccount.sharedAccount().authToken, !authToken.isEmpty {
       headers = [
         "Authorization" : "Bearer \(authToken)",
         "Content-Type" : "application/json"]
@@ -213,21 +216,75 @@ extension TPPNetworkExecutor {
   @objc
   func POST(_ request: URLRequest,
             completion: ((_ result: Data?, _ response: URLResponse?,  _ error: Error?) -> Void)?) -> URLSessionDataTask {
-      
+    
     if (request.httpMethod != "POST") {
       var newRequest = request
       newRequest.httpMethod = "POST"
       return POST(newRequest, completion: completion)
     }
-      
+    
     let completionWrapper: (_ result: NYPLResult<Data>) -> Void = { result in
       switch result {
-        case let .success(data, response): completion?(data, response, nil)
-        case let .failure(error, response): completion?(nil, response, error)
+      case let .success(data, response): completion?(data, response, nil)
+      case let .failure(error, response): completion?(nil, response, error)
       }
     }
     
     return executeRequest(request, completion: completionWrapper)
-    }
+  }
+  
+  func refreshTokenAndResume(task: URLSessionTask) {
+    retryQueue.append(task)
+    guard !isRefreshing else { return }
     
+    isRefreshing = true
+    
+    executeTokenRefresh() { [weak self] result in
+      switch result {
+      case .success:
+        self?.isRefreshing = false
+        self?.retryFailedRequests()
+      case .failure(let error):
+        self?.isRefreshing = false
+        Log.info(#file, "Failed to refresh token with error: \(error)")
+      }
+    }
+  }
+  
+  private func retryFailedRequests() {
+    while !retryQueue.isEmpty {
+      let task = retryQueue.removeFirst()
+      guard let request = task.originalRequest else { continue }
+      self.executeRequest(request) { _ in
+        Log.info(#file, "Task Successfully resumed after token refresh")
+      }
+    }
+  }
+
+  func executeTokenRefresh(completion: @escaping (Result<TokenResponse, Error>) -> Void) {
+    guard let tokenURL = TPPUserAccount.sharedAccount().authDefinition?.tokenURL,
+          let username = TPPUserAccount.sharedAccount().username,
+          let password = TPPUserAccount.sharedAccount().pin else {
+      Log.error(#file, "Unable to refresh token, missing credentials")
+      return
+    }
+
+    Task {
+      let tokenRequest = TokenRequest(url: tokenURL, username: username, password: password)
+      let result = await tokenRequest.execute()
+      
+      switch result {
+      case .success(let tokenResponse):
+        TPPUserAccount.sharedAccount().setAuthToken(
+          tokenResponse.accessToken,
+          barcode: username,
+          pin: password,
+          expirationDate: tokenResponse.expirationDate
+        )
+        completion(.success(tokenResponse))
+      case .failure(let error):
+        completion(.failure(error))
+      }
+    }
+  }
 }

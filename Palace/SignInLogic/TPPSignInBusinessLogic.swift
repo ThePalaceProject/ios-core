@@ -119,6 +119,8 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
 
   /// The current OAuth token if available.
   var authToken: String? = nil
+  
+  var authTokenExpiration: Date? = nil
 
   /// The current patron info if available.
   var patron: [String: Any]? = nil
@@ -242,7 +244,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     var req = URLRequest(url: url)
 
     if let selectedAuth = selectedAuthentication,
-      (selectedAuth.isOauth || selectedAuth.isSaml) {
+       (selectedAuth.isOauth || selectedAuth.isSaml) {
 
       // The nil-coalescing on the authToken covers 2 cases:
       // - sign in, where uiDelegate has the token because we just obtained it
@@ -323,6 +325,23 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
       }
     }
   }
+  
+  func getBearerToken(username: String, password: String, completion: (() -> Void)? = nil) {
+    TPPNetworkExecutor.shared.executeTokenRefresh() {  [weak self] result in
+      defer {
+        completion?()
+      }
+      
+      switch result {
+      case .success(let tokenResponse):
+        self?.authToken = tokenResponse.accessToken
+        self?.authTokenExpiration = tokenResponse.expirationDate
+        self?.finalizeSignIn(forDRMAuthorization: true)
+      case .failure(let error):
+        self?.handleNetworkError(error as NSError, loggingContext: ["Context": self?.uiContext as Any])
+      }
+    }
+  }
 
   /// Uses the problem document's `title` and `message` fields to
   ///  communicate a user friendly error info to the `uiDelegate`.
@@ -365,12 +384,25 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
       self.uiDelegate?.businessLogicWillSignIn(self)
     }
 
-    if selectedAuthentication?.isOauth ?? false {
-      oauthLogIn()
-    } else if selectedAuthentication?.isSaml ?? false {
-      samlHelper.logIn()
-    } else {
-      validateCredentials()
+    switch selectedAuthentication {
+    case .none:
+      return
+    case .some(let wrapped):
+      switch wrapped.authType {
+      case .oauthIntermediary:
+        oauthLogIn()
+      case .saml:
+        samlHelper.logIn()
+      case .token:
+        guard let username = self.uiDelegate?.username,
+              let password = self.uiDelegate?.pin else {
+          return
+        }
+
+        getBearerToken(username: username, password: password)
+      default:
+        validateCredentials()
+      }
     }
   }
 
@@ -410,60 +442,60 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
   /// - Returns: `true` if a sign-in UI is needed to refresh authentication.
   @objc func refreshAuthIfNeeded(usingExistingCredentials: Bool,
                                  completion: (() -> Void)?) -> Bool {
-
-    guard
-      let authDef = userAccount.authDefinition,
-      (authDef.isBasic || authDef.isOauth || authDef.isSaml)
-    else {
-      completion?()
-      return false
-    }
-
-    refreshAuthCompletion = completion
-
-    // reset authentication if needed
-    if authDef.isSaml || authDef.isOauth {
-      if !usingExistingCredentials {
-        // if current authentication is SAML and we don't want to use current
-        // credentials, we need to force log in process. this is for the case
-        // when we were logged in, but IDP expired our session and if this
-        // happens, we want the user to pick the idp to begin reauthentication
-        ignoreSignedInState = true
-        if authDef.isSaml {
-          selectedAuthentication = nil
-        }
-      }
-    }
-
-    // set up UI and log in if needed
-    if authDef.isBasic {
-      if usingExistingCredentials && userAccount.hasBarcodeAndPIN() {
-        if uiDelegate == nil {
-          #if DEBUG
-          preconditionFailure("uiDelegate must be set for logIn to work correctly")
-          #else
-          TPPErrorLogger.logError(
-            withCode: .appLogicInconsistency,
-            summary: "uiDelegate missing while refreshing basic auth",
-            metadata: [
-              "usingExistingCredentials": usingExistingCredentials,
-              "hashedBarcode": userAccount.barcode?.md5hex() ?? "N/A"
-          ])
-          #endif
-        }
-        uiDelegate?.usernameTextField?.text = userAccount.barcode
-        uiDelegate?.PINTextField?.text = userAccount.PIN
-
-        logIn()
+      guard
+        let authDef = userAccount.authDefinition,
+        (authDef.isBasic || authDef.isOauth || authDef.isSaml || authDef.isToken && TPPUserAccount.sharedAccount().authTokenHasExpired)
+      else {
+        completion?()
         return false
-      } else {
-        uiDelegate?.usernameTextField?.text = ""
-        uiDelegate?.PINTextField?.text = ""
-        uiDelegate?.usernameTextField?.becomeFirstResponder()
       }
-    }
-
-    return true
+      
+      refreshAuthCompletion = completion
+      
+      // reset authentication if needed
+      if authDef.isSaml || authDef.isOauth {
+        if !usingExistingCredentials {
+          // if current authentication is SAML and we don't want to use current
+          // credentials, we need to force log in process. this is for the case
+          // when we were logged in, but IDP expired our session and if this
+          // happens, we want the user to pick the idp to begin reauthentication
+          ignoreSignedInState = true
+          if authDef.isSaml {
+            selectedAuthentication = nil
+          }
+        }
+      }
+      
+      if authDef.isToken, let barcode = userAccount.barcode, let pin = userAccount.pin {
+        getBearerToken(username: barcode, password: pin, completion: completion)
+      } else if authDef.isBasic {
+        if usingExistingCredentials && userAccount.hasBarcodeAndPIN() {
+          if uiDelegate == nil {
+#if DEBUG
+            preconditionFailure("uiDelegate must be set for logIn to work correctly")
+#else
+            TPPErrorLogger.logError(
+              withCode: .appLogicInconsistency,
+              summary: "uiDelegate missing while refreshing basic auth",
+              metadata: [
+                "usingExistingCredentials": usingExistingCredentials,
+                "hashedBarcode": userAccount.barcode?.md5hex() ?? "N/A"
+              ])
+#endif
+          }
+          uiDelegate?.usernameTextField?.text = userAccount.barcode
+          uiDelegate?.PINTextField?.text = userAccount.PIN
+          
+          logIn()
+          return false
+        } else {
+          uiDelegate?.usernameTextField?.text = ""
+          uiDelegate?.PINTextField?.text = ""
+          uiDelegate?.usernameTextField?.becomeFirstResponder()
+        }
+      }
+      
+      return true
   }
 
   // MARK:- User Account Management
@@ -486,6 +518,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
                          withBarcode barcode: String?,
                          pin: String?,
                          authToken: String?,
+                         expirationDate: Date?,
                          patron: [String:Any]?,
                          cookies: [HTTPCookie]?) {
     #if FEATURE_DRM_CONNECTOR
@@ -496,9 +529,9 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     #endif
 
     if let selectedAuthentication = selectedAuthentication {
-      if selectedAuthentication.isOauth || selectedAuthentication.isSaml {
+      if selectedAuthentication.isOauth || selectedAuthentication.isSaml || selectedAuthentication.isToken {
         if let authToken = authToken {
-          userAccount.setAuthToken(authToken)
+          userAccount.setAuthToken(authToken, barcode: barcode, pin: pin, expirationDate: expirationDate)
         }
         if let patron = patron {
           userAccount.setPatron(patron)

@@ -48,7 +48,8 @@ class TPPLicensesService: NSObject {
     // Create download task and return it to TPPMyBooksDownloadCenter
     // to hande task cancellation correctly
     let request = URLRequest(url: url)
-    let sessionConfiguration = URLSessionConfiguration.default
+    let backgroundIdentifier = (Bundle.main.bundleIdentifier ?? "").appending(".lcpBackgroundIdentifier")
+    let sessionConfiguration = URLSessionConfiguration.background(withIdentifier: backgroundIdentifier)
     let session = URLSession(configuration: sessionConfiguration, delegate: self, delegateQueue: .main)
     let task = session.downloadTask(with: request)
     task.resume()

@@ -88,22 +88,28 @@ static const int kServerUpdateDelay = 15;
   // Try to prevent blank books bug
 
   TPPUserAccount *user = [TPPUserAccount sharedAccount];
-  if ([user hasCredentials]
-      && [AdobeCertificate.defaultCertificate hasExpired] == NO
-      && ![[NYPLADEPT sharedInstance] isUserAuthorized:[user userID]
-                                            withDevice:[user deviceID]]) {
-    // NOTE: This was cut and pasted while refactoring preexisting work:
-    // "This handles a bug that seems to occur when the user updates,
-    // where the barcode and pin are entered but according to ADEPT the device
-    // is not authorized. To be used, the account must have a barcode and pin."
-    TPPReauthenticator *reauthenticator = [[TPPReauthenticator alloc] init];
-    [reauthenticator authenticateIfNeeded:user
-                 usingExistingCredentials:YES
-                 authenticationCompletion:^{
-      dispatch_async(dispatch_get_main_queue(), ^{
-        [self openBook:book];   // with successful DRM activation
-      });
-    }];
+  if ([user hasCredentials]) {
+    if ([user hasAuthToken]) {
+      [self openBook:book];
+    } else
+      if ([AdobeCertificate.defaultCertificate hasExpired] == NO
+          && ![[NYPLADEPT sharedInstance] isUserAuthorized:[user userID]
+                                                withDevice:[user deviceID]]) {
+        // NOTE: This was cut and pasted while refactoring preexisting work:
+        // "This handles a bug that seems to occur when the user updates,
+        // where the barcode and pin are entered but according to ADEPT the device
+        // is not authorized. To be used, the account must have a barcode and pin."
+        TPPReauthenticator *reauthenticator = [[TPPReauthenticator alloc] init];
+        [reauthenticator authenticateIfNeeded:user
+                     usingExistingCredentials:YES
+                     authenticationCompletion:^{
+          dispatch_async(dispatch_get_main_queue(), ^{
+            [self openBook:book];   // with successful DRM activation
+          });
+        }];
+      } else {
+        [self openBook:book];
+      }
   } else {
     [self openBook:book];
   }
