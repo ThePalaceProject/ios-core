@@ -74,8 +74,8 @@
   }
 #endif
   
-  NSURLSessionConfiguration *const configuration =
-    [NSURLSessionConfiguration ephemeralSessionConfiguration];
+  NSString *backgroundIdentifier = [(NSBundle.mainBundle.bundleIdentifier ?: @"") stringByAppendingString:@".downloadCenterBackgroundIdentifier"];
+  NSURLSessionConfiguration *configuration = [NSURLSessionConfiguration backgroundSessionConfigurationWithIdentifier:backgroundIdentifier];
   
   self.bookIdentifierToDownloadInfo = [NSMutableDictionary dictionary];
   self.bookIdentifierToDownloadProgress = [NSMutableDictionary dictionary];
