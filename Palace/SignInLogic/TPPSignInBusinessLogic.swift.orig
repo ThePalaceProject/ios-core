@@ -329,6 +329,20 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
       defer {
         completion?()
       }
+<<<<<<< HEAD
+      do {
+        guard let url = selectedAuthentication?.tokenURL else {
+          throw URLError(.badURL)
+        }
+        
+        let tokenRequest = TokenRequest(url: url, username: username, password: password)
+        let tokenResponse = try await tokenRequest.execute()
+        
+        authToken = tokenResponse.accessToken
+        self.finalizeSignIn(forDRMAuthorization: true)
+      } catch {
+        handleNetworkError(error as NSError, loggingContext: ["Context": uiContext])
+=======
       
       switch result {
       case .success(let tokenResponse):
@@ -337,6 +351,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
         self?.finalizeSignIn(forDRMAuthorization: true)
       case .failure(let error):
         self?.handleNetworkError(error as NSError, loggingContext: ["Context": self?.uiContext as Any])
+>>>>>>> develop
       }
     }
   }

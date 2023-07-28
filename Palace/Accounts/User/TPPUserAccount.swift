@@ -299,7 +299,7 @@ private enum StorageKey: String {
     switch credentials {
     case let TPPCredentials.barcodeAndPin(barcode: barcode, pin: _):
       return barcode
-    case let TPPCredentials.token(_, barcode, _):
+    case let TPPCredentials.token(_, barcode, _, _):
       return barcode
     default:
       return nil
@@ -327,7 +327,7 @@ private enum StorageKey: String {
     switch credentials {
     case let TPPCredentials.barcodeAndPin(barcode: _, pin: pin):
       return pin
-    case let TPPCredentials.token(_, _, pin):
+    case let TPPCredentials.token(_, _, pin, _):
       return pin
     default:
       return nil
@@ -358,6 +358,17 @@ private enum StorageKey: String {
       return token.authToken
     }
     return nil
+  }
+  
+  var authTokenHasExpired: Bool {
+    guard let credentials = credentials,
+            case let TPPCredentials.token(authToken: token) = credentials,
+            let expirationDate = token.expirationDate, expirationDate > Date()
+    else {
+      return true
+    }
+    
+   return false
   }
 
   var patronFullName: String? {
@@ -442,9 +453,9 @@ private enum StorageKey: String {
     notifyAccountDidChange()
   }
   
-  @objc(setAuthToken:::)
-  func setAuthToken(_ token: String, barcode: String?, pin: String?) {
-    credentials = .token(authToken: token, barcode: barcode, pin: pin)
+  @objc(setAuthToken::::)
+  func setAuthToken(_ token: String, barcode: String?, pin: String?, expirationDate: Date?) {
+    credentials = .token(authToken: token, barcode: barcode, pin: pin, expirationDate: expirationDate)
   }
 
   @objc(setCookies:)
@@ -513,9 +524,8 @@ extension TPPUserAccount: NYPLBasicAuthCredentialsProvider {
   var username: String? {
     return barcode
   }
-
+  
   var pin: String? {
     return PIN
   }
 }
-

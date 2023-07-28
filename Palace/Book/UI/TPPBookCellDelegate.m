@@ -109,6 +109,8 @@ static const int kServerUpdateDelay = 15;
       } else {
         [self openBook:book];
       }
+  } else {
+    [self openBook:book];
   }
 #else
   [self openBook:book];
