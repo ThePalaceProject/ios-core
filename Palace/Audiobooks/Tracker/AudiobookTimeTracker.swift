@@ -59,15 +59,22 @@ class AudiobookTimeTracker: NSObject, AudiobookPlaybackTrackerDelegate {
   
   deinit {
     subscriptions.removeAll()
+    saveCurrentDuration()
   }
     
   func receiveValue(_ value: Date) {
     duration += tick
     let minute = minuteFormatter.string(from: value)
     if minute != currentMinute {
-      timeEntryId = ULID(timestamp: value) // timeEntryId value updates once every minute
-      dataManager.save(time: timeEntry)
+      saveCurrentDuration(date: value)
       currentMinute = minute
+    }
+  }
+
+  private func saveCurrentDuration(date: Date = Date()) {
+    if duration > 0 {
+      timeEntryId = ULID(timestamp: date) // timeEntryId value updates once every minute
+      dataManager.save(time: timeEntry)
       duration = 0
     }
   }
