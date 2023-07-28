@@ -884,6 +884,7 @@
 		E7F8DA5F287854F2006996BC /* TPPPDFThumbnailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7F8DA5E287854F2006996BC /* TPPPDFThumbnailView.swift */; };
 		E7FD4E52286CCF2C00D26A3B /* TPPPDFLocation.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7FD4E51286CCF2C00D26A3B /* TPPPDFLocation.swift */; };
 		E7FD4E54286CD0E000D26A3B /* TPPPDFLocationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7FD4E53286CD0E000D26A3B /* TPPPDFLocationView.swift */; };
+		E7FFEAA62A745F600006030A /* ULID in Frameworks */ = {isa = PBXBuildFile; productRef = E7FFEAA52A745F600006030A /* ULID */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -1687,6 +1688,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E7FFEAA62A745F600006030A /* ULID in Frameworks */,
 				E5288CBF293FB6DE00F3B3D2 /* NYPLAudiobookToolkit.framework in Frameworks */,
 				73EB0B2E25821DF4006BC997 /* MediaPlayer.framework in Frameworks */,
 				E7498A902A0E7F840037DD93 /* FirebaseCrashlytics in Frameworks */,
@@ -3239,6 +3241,7 @@
 				E7498A8F2A0E7F840037DD93 /* FirebaseCrashlytics */,
 				E7498A912A0E7F840037DD93 /* FirebaseDynamicLinks */,
 				E7498A932A0E7F840037DD93 /* FirebaseMessaging */,
+				E7FFEAA52A745F600006030A /* ULID */,
 			);
 			productName = Simplified;
 			productReference = 73EB0B7525821DF4006BC997 /* Palace-noDRM.app */;
@@ -5111,6 +5114,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = E7CA1C4C29381068009CC6FD /* XCRemoteSwiftPackageReference "SQLite.swift" */;
 			productName = SQLite;
+		};
+		E7FFEAA52A745F600006030A /* ULID */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E795A7802A744F0A00314EC8 /* XCRemoteSwiftPackageReference "ULID.swift" */;
+			productName = ULID;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
