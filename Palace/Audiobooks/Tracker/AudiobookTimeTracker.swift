@@ -1,6 +1,6 @@
 //
 //  AudiobookTimeTracker.swift
-//  NYPLAudiobookToolkit
+//  The Palace Project
 //
 //  Created by Vladimir Fedorov on 03/07/2023.
 //  Copyright © 2023 The Palace Project. All rights reserved.

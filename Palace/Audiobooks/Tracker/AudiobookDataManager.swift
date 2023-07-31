@@ -1,6 +1,6 @@
 //
 //  AudiobookDataManager.swift
-//  NYPLAudiobookToolkit
+//  The Palace Project
 //
 //  Created by Vladimir Fedorov on 03/07/2023.
 //  Copyright © 2023 The Palace Project. All rights reserved.
@@ -9,6 +9,7 @@
 import Foundation
 import Combine
 
+/// LibraryBook is an identifier, a library id - book id pair, for time entries.
 fileprivate struct LibraryBook: Codable, Hashable {
   var bookId: String
   var libraryId: String
@@ -23,6 +24,7 @@ fileprivate struct LibraryBook: Codable, Hashable {
   }
 }
 
+/// Data format the app POSTs to `timeTrackingURL` time tracker endpoint
 fileprivate struct RequestData: Codable {
   
   struct TimeEntry: Codable {
@@ -70,6 +72,7 @@ fileprivate struct RequestData: Codable {
   }
 }
 
+/// Data format for data the app receives in response from `timeTrackingURL` time tracker endpoint
 fileprivate struct ResponseData: Codable {
   
   struct ResponseEntry: Codable {
@@ -92,6 +95,10 @@ fileprivate struct ResponseData: Codable {
   }
 }
 
+/// Imternal data store
+///
+/// This data is kept outside TPPBookRegistry to preserve it when related book(s) are removed from the app.
+/// Time entries will be uploaded correctly in this case.
 fileprivate struct AudiobookDataManagerStore: Codable {
   var urls: [LibraryBook: URL] = [:]
   var queue: [AudiobookTimeEntry] = []
@@ -111,6 +118,7 @@ fileprivate struct AudiobookDataManagerStore: Codable {
 }
 
 
+/// Data manager
 class AudiobookDataManager {
   static let shared = AudiobookDataManager()
   private let syncTimeInterval: TimeInterval = 60
@@ -119,6 +127,11 @@ class AudiobookDataManager {
   private var store = AudiobookDataManagerStore()
   
   init() {
+    
+    // Palace uploads data:
+    // - every 60 seconds, when internet connection is available
+    // - every time internet connection becomes available
+    
     Timer.publish(every: syncTimeInterval, on: .main, in: .default)
       .autoconnect()
       .sink(receiveValue: syncValues)
@@ -153,10 +166,6 @@ class AudiobookDataManager {
       )
       // perform request
       if let requestUrl = store.urls[libraryBook], let requestBody = requestData.jsonRepresentation {
-        
-        // DEBUG:
-        try! requestData.jsonRepresentation?.write(to: storeDirectoryUrl!.appendingPathComponent("\(libraryBook.bookId).json"))
-        
         var request = URLRequest(url: requestUrl)
         request.httpMethod = "POST"
         request.httpBody = requestBody
@@ -230,18 +239,22 @@ class AudiobookDataManager {
     }
   }
   
+  /// Removes `timeTrackingURL`s of books not available in the store.
   private func cleanUpUrls() {
     let remainingLibraryBooks: Set<LibraryBook> = Set(store.queue.map { LibraryBook(time: $0) })
     store.urls = store.urls.filter { remainingLibraryBooks.contains($0.key) }
     saveStore()
   }
-    
+  
+  /// Removes uploaded store entries
   private func removeSynchronizedEntries(ids: [String]) {
     store.queue = store.queue.filter { !ids.contains($0.id) }
     saveStore()
   }
   
 }
+
+// MARK: - DataManager protocol
 
 extension AudiobookDataManager: DataManager {
   func save(time: TimeEntry) {
