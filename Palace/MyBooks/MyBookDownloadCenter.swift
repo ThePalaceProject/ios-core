@@ -208,15 +208,18 @@ import OverdriveProcessor
   ) {
     if state == .Unregistered || state == .Holding {
       startBorrow(for: book, attemptDownload: true, borrowCompletion: nil)
-    } else if book.distributor == OverdriveDistributorKey && book.defaultBookContentType == .audiobook {
-#if FEATURE_OVERDRIVE
-      processOverdriveDownload(for: book, withState: state)
-#endif
     } else {
+#if FEATURE_OVERDRIVE
+      if book.distributor == OverdriveDistributorKey && book.defaultBookContentType == .audiobook {
+        processOverdriveDownload(for: book, withState: state)
+        return
+      }
+#endif
       processRegularDownload(for: book, withState: state, andRequest: initedRequest)
     }
   }
   
+#if FEATURE_OVERDRIVE
   private func processOverdriveDownload(for book: TPPBook, withState state: TPPBookState) {
     guard let url = book.defaultAcquisition?.hrefURL,
           let token = TPPUserAccount.sharedAccount().authToken else { return }
@@ -225,6 +228,7 @@ import OverdriveProcessor
       self?.handleOverdriveResponse(for: book, url: url, withState: state, responseHeaders: responseHeaders, error: error)
     }
   }
+#endif
 
 #if FEATURE_OVERDRIVE
   private func handleOverdriveResponse(
