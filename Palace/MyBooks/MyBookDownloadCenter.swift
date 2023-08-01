@@ -8,10 +8,8 @@
 
 import Foundation
 
-#if canImport(ADEPT)
-import ADEPT
+#if FEATURE_OVERDRIVE
 import OverdriveProcessor
-extension MyBooksDownloadCenter: NYPLADEPTDelegate { }
 #endif
 
 @objc class MyBooksDownloadCenter: NSObject {
@@ -33,10 +31,13 @@ extension MyBooksDownloadCenter: NYPLADEPTDelegate { }
   override init() {
     super.init()
     
-#if canImport(ADEPT)
-    if !AdobeCertificate.defaultCertificate.hasExpired {
+#if FEATURE_DRM_CONNECTOR
+    if !(AdobeCertificate.defaultCertificate?.hasExpired ?? true)
+    {
       NYPLADEPT.sharedInstance().delegate = self
     }
+#else
+    NSLog("Cannot import ADEPT")
 #endif
     
     let configuration = URLSessionConfiguration.ephemeral
@@ -49,13 +50,15 @@ extension MyBooksDownloadCenter: NYPLADEPTDelegate { }
     
     TPPOPDSFeed.withURL(book.defaultAcquisitionIfBorrow?.hrefURL, shouldResetCache: true) { [weak self] feed, error in
       guard let self = self else { return }
+      
       TPPBookRegistry.shared.setProcessing(false, for: book.identifier)
       
       if let feed = feed,
          let borrowedEntry = feed.entries.first as? TPPOPDSEntry,
-         let borrowedBook = TPPBook(entry: borrowedEntry),
-         let location = TPPBookRegistry.shared.location(forIdentifier: borrowedBook.identifier) {
+         let borrowedBook = TPPBook(entry: borrowedEntry) {
         
+        let location = TPPBookRegistry.shared.location(forIdentifier: borrowedBook.identifier)
+
         TPPBookRegistry.shared.addBook(
           borrowedBook,
           location: location,
@@ -214,14 +217,20 @@ extension MyBooksDownloadCenter: NYPLADEPTDelegate { }
   }
   
   private func processOverdriveDownload(for book: TPPBook, withState state: TPPBookState) {
-    guard let url = book.defaultAcquisition?.hrefURL else { return }
-#if canImport(ADEPT)
-    OverdriveAPIExecutor.shared.fulfillBook(withUrlString: url.absoluteString, username: TPPUserAccount.sharedAccount().barcode, PIN: TPPUserAccount.sharedAccount().PIN) { [weak self] responseHeaders, error in
-      self?.handleOverdriveResponse(for: book, url: URL, withState: state, responseHeaders: responseHeaders, error: error)
+    guard let url = book.defaultAcquisition?.hrefURL,
+          let barcode = TPPUserAccount.sharedAccount().barcode,
+          let pin = TPPUserAccount.sharedAccount().pin else { return }
+    OverdriveAPIExecutor.shared.fulfillBook(
+      urlString: url.absoluteString,
+      username: barcode,
+      PIN: pin,
+      authToken: TPPUserAccount.sharedAccount().authToken
+    ) { [weak self] responseHeaders, error in
+      self?.handleOverdriveResponse(for: book, url: url, withState: state, responseHeaders: responseHeaders, error: error)
     }
-#endif
-    }
+  }
 
+#if FEATURE_OVERDRIVE
   private func handleOverdriveResponse(
     for book: TPPBook,
     url: URL?,
@@ -229,7 +238,6 @@ extension MyBooksDownloadCenter: NYPLADEPTDelegate { }
     responseHeaders: [AnyHashable: Any]?,
     error: Error?
   ) {
-#if canImport(ADEPT)
     let summary = "Overdrive audiobook fulfillment error"
     let summaryWrongHeaders = "Overdrive audiobook fulfillment: wrong headers"
     let nA = "N/A"
@@ -254,9 +262,11 @@ extension MyBooksDownloadCenter: NYPLADEPTDelegate { }
     let patronAuthorizationKey = "x-overdrive-patron-authorization"
     let locationKey = "location"
     
-    guard let scope = normalizedHeaders?[scopeKey],
-          let patronAuthorization = normalizedHeaders?[patronAuthorizationKey],
-          let requestURLString = normalizedHeaders?[locationKey] else {
+    guard let scope = normalizedHeaders?[scopeKey] as? String,
+          let patronAuthorization = normalizedHeaders?[patronAuthorizationKey] as? String,
+          let requestURLString = normalizedHeaders?[locationKey] as? String,
+          let request = OverdriveAPIExecutor.shared.getManifestRequest(urlString: requestURLString, token: patronAuthorization, scope: scope)
+    else {
       TPPErrorLogger.logError(withCode: .overdriveFulfillResponseParseFail, summary: summaryWrongHeaders, metadata: [
         responseHeadersKey: responseHeaders ?? nA,
         acquisitionURLKey: url?.absoluteString ?? nA,
@@ -267,10 +277,9 @@ extension MyBooksDownloadCenter: NYPLADEPTDelegate { }
       return
     }
     
-    let request = OverdriveAPIExecutor.shared.getManifestRequest(withUrlString: requestURLString, token: patronAuthorization, scope: scope)
     self.addDownloadTask(with: request, book: book)
-#endif
   }
+#endif
 
   private func processRegularDownload(for book: TPPBook, withState state: TPPBookState, andRequest initedRequest: URLRequest?) {
     guard let url = book.defaultAcquisition?.hrefURL else { return }
@@ -394,14 +403,16 @@ extension MyBooksDownloadCenter {
   }
   
   func deleteLocalContent(forAudiobook book: TPPBook, at bookURL: URL) {
-    guard let data = try? Data(contentsOf: bookURL),
-          let json = try? JSONSerialization.jsonObject(with: data, options: []),
-          var dict = json as? [String: Any] else {
-      return
-    }
+    guard let data = try? Data(contentsOf: bookURL) else { return }
+
+    var dict = [String: Any]()
     
 #if FEATURE_OVERDRIVE
     if book.distributor == OverdriveDistributorKey {
+      if let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
+        dict = json ?? [String: Any]()
+      }
+
       dict["id"] = book.identifier
     }
 #endif
@@ -460,10 +471,15 @@ extension MyBooksDownloadCenter {
     }
 #endif
     
-    if let revokeURL = book.revokeURL {
+    if book.revokeURL == nil {
+      if downloaded {
+        deleteLocalContent(for: identifier)
+      }
+      TPPBookRegistry.shared.removeBook(forIdentifier: identifier)
+    } else {
       TPPBookRegistry.shared.setProcessing(true, for: book.identifier)
       
-      TPPOPDSFeed.withURL(revokeURL, shouldResetCache: false) { feed, error in
+      TPPOPDSFeed.withURL(book.revokeURL, shouldResetCache: false) { feed, error in
         TPPBookRegistry.shared.setProcessing(false, for: book.identifier)
         
         if let feed = feed, feed.entries.count == 1, let entry = feed.entries[0] as? TPPOPDSEntry {
@@ -488,27 +504,20 @@ extension MyBooksDownloadCenter {
                                                         usingExistingCredentials: false) { [weak self] in
                 self?.returnBook(withIdentifier: identifier)
               }
-            } else {
+            }
+          } else {
+            DispatchQueue.main.async {
+              let formattedMessage = String(format: NSLocalizedString("The return of %@ could not be completed.", comment: ""), book.title)
+              let alert = TPPAlertUtils.alert(title: "ReturnFailed", message: formattedMessage)
+              if let error = error as? Decoder, let document = try? TPPProblemDocument(from: error) {
+                TPPAlertUtils.setProblemDocument(controller: alert, document: document, append: true)
+              }
               DispatchQueue.main.async {
-                let formattedMessage = String(format: NSLocalizedString("The return of %@ could not be completed.", comment: ""), book.title)
-                let alert = TPPAlertUtils.alert(title: "ReturnFailed", message: formattedMessage)
-                if let error = error as? Decoder, let document = try? TPPProblemDocument(from: error) {
-                  TPPAlertUtils.setProblemDocument(controller: alert, document: document, append: true)
-                }
-                DispatchQueue.main.async {
-                  TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
-                }
+                TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
               }
             }
           }
         }
-      }
-    } else {
-      if book.revokeURL == nil {
-        if downloaded {
-          deleteLocalContent(for: identifier)
-        }
-        TPPBookRegistry.shared.removeBook(forIdentifier: identifier)
       }
     }
   }
@@ -632,7 +641,7 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
           logBookDownloadFailure(book, reason: "Received PDF for AdobeDRM rights", downloadTask: downloadTask, metadata: nil)
           failureRequiringAlert = true
         } else if let acsmData = try? Data(contentsOf: location) {
-          NSLog("Download finished. Fulfilling with userID: \((TPPUserAccount.sharedAccount().userID)!)")
+          NSLog("Download finished. Fulfilling with userID: \(TPPUserAccount.sharedAccount().userID ?? "")")
           NYPLADEPT.sharedInstance().fulfill(withACSMData: acsmData, tag: book.identifier, userID: TPPUserAccount.sharedAccount().userID, deviceID: TPPUserAccount.sharedAccount().deviceID)
         }
 #endif
@@ -1097,3 +1106,103 @@ extension MyBooksDownloadCenter: TPPBookDownloadsDeleting {
     Double(self.downloadInfo(forBookIdentifier: bookIdentifier)?.downloadProgress ?? 0.0)
   }
 }
+
+#if FEATURE_DRM_CONNECTOR
+extension MyBooksDownloadCenter: NYPLADEPTDelegate {
+  
+  func adept(_ adept: NYPLADEPT, didFinishDownload: Bool, to adeptToURL: URL?, fulfillmentID: String?, isReturnable: Bool, rightsData: Data, tag: String, error adeptError: Error?) {
+    guard let book = TPPBookRegistry.shared.book(forIdentifier: tag),
+          let rights = String(data: rightsData, encoding: .utf8) else { return }
+    
+    var didSucceedCopying = false
+
+    if didFinishDownload {
+      guard let fileURL = fileUrl(for: book.identifier) else { return }
+      let fileManager = FileManager.default
+        
+        do {
+            try fileManager.removeItem(at: fileURL)
+        } catch {
+            print("Remove item error: \(error)")
+        }
+
+        guard let destURL = fileUrl(for: book.identifier), let adeptToURL = adeptToURL else {
+            TPPErrorLogger.logError(withCode: .adobeDRMFulfillmentFail, summary: "Adobe DRM error: destination file URL unavailable", metadata: [
+                "adeptError": adeptError ?? "N/A",
+                "fileURLToRemove": adeptToURL ?? "N/A",
+                "book": book.loggableDictionary,
+                "AdobeFulfilmmentID": fulfillmentID ?? "N/A",
+                "AdobeRights": rights,
+                "AdobeTag": tag
+            ])
+            self.failDownloadWithAlert(for: book)
+            return
+        }
+
+        do {
+            try fileManager.copyItem(at: adeptToURL, to: destURL)
+            didSucceedCopying = true
+        } catch {
+            TPPErrorLogger.logError(withCode: .adobeDRMFulfillmentFail, summary: "Adobe DRM error: failure copying file", metadata: [
+                "adeptError": adeptError ?? "N/A",
+                "copyError": error,
+                "fromURL": adeptToURL,
+                "destURL": destURL,
+                "book": book.loggableDictionary,
+                "AdobeFulfilmmentID": fulfillmentID ?? "N/A",
+                "AdobeRights": rights,
+                "AdobeTag": tag
+            ])
+        }
+    } else {
+      TPPErrorLogger.logError(withCode: .adobeDRMFulfillmentFail, summary: "Adobe DRM error: did not finish download", metadata: [
+        "adeptError": adeptError ?? "N/A",
+        "adeptToURL": adeptToURL ?? "N/A",
+        "book": book.loggableDictionary,
+        "AdobeFulfilmmentID": fulfillmentID ?? "N/A",
+        "AdobeRights": rights,
+        "AdobeTag": tag
+      ])
+    }
+    
+    if !didFinishDownload || !didSucceedCopying {
+      self.failDownloadWithAlert(for: book)
+      return
+    }
+    
+    guard let rightsFilePath = fileUrl(for: book.identifier)?.path.appending("_rights.xml") else { return }
+    do {
+      try rightsData.write(to: URL(fileURLWithPath: rightsFilePath))
+    } catch {
+      print("Failed to store rights data.")
+    }
+    
+    if isReturnable, let fulfillmentID = fulfillmentID {
+      TPPBookRegistry.shared.setFulfillmentId(fulfillmentID, for: book.identifier)
+    }
+    
+    TPPBookRegistry.shared.setState(.DownloadSuccessful, for: book.identifier)
+  
+    self.broadcastUpdate()
+  }
+
+
+  func adept(_ adept: NYPLADEPT, didUpdateProgress progress: Double, tag: String) {
+    self.bookIdentifierToDownloadInfo[tag] = self.downloadInfo(forBookIdentifier: tag)?.withDownloadProgress(progress)
+    self.broadcastUpdate()
+  }
+
+  func adept(_ adept: NYPLADEPT, didCancelDownloadWithTag tag: String) {
+    TPPBookRegistry.shared.setState(.DownloadNeeded, for: tag)
+    self.broadcastUpdate()
+  }
+  
+  func didIgnoreFulfillmentWithNoAuthorizationPresent() {
+    // NOTE: This is cut and pasted from a previous implementation:
+    // "This handles a bug that seems to occur when the user updates,
+    // where the barcode and pin are entered but according to ADEPT the device
+    // is not authorized. To be used, the account must have a barcode and pin."
+    self.reauthenticator.authenticateIfNeeded(TPPUserAccount.sharedAccount(), usingExistingCredentials: true, authenticationCompletion: nil)
+  }
+}
+#endif

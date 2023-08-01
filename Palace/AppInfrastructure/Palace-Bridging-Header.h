@@ -1,6 +1,7 @@
 #if FEATURE_DRM_CONNECTOR
 #import "ADEPT/NYPLADEPTErrors.h"
 #import "ADEPT/NYPLADEPT.h"
+#import "ADEPT/ADEPT.h"
 #import "AdobeDRMContainer.h"
 #endif
 
