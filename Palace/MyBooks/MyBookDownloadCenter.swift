@@ -40,7 +40,8 @@ import OverdriveProcessor
     NSLog("Cannot import ADEPT")
 #endif
     
-    let configuration = URLSessionConfiguration.ephemeral
+    let backgroundIdentifier = (Bundle.main.bundleIdentifier ?? "") + ".downloadCenterBackgroundIdentifier"
+    let configuration = URLSessionConfiguration.background(withIdentifier: backgroundIdentifier)
     self.session = URLSession(configuration: configuration, delegate: self, delegateQueue: .main)
     self.reauthenticator = TPPReauthenticator()
   }
