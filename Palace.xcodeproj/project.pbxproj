@@ -1105,8 +1105,6 @@
 		119503E61993F914009FB788 /* libxml2.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libxml2.dylib; path = usr/lib/libxml2.dylib; sourceTree = SDKROOT; };
 		119503E81993F919009FB788 /* libz.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libz.dylib; path = usr/lib/libz.dylib; sourceTree = SDKROOT; };
 		119503EA1993F91E009FB788 /* libc++.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = "libc++.dylib"; path = "usr/lib/libc++.dylib"; sourceTree = SDKROOT; };
-		1196F7591970727C00F62670 /* TPPMyBooksDownloadCenter.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPMyBooksDownloadCenter.h; sourceTree = "<group>"; };
-		1196F75A1970727C00F62670 /* TPPMyBooksDownloadCenter.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; lineEnding = 0; path = TPPMyBooksDownloadCenter.m; sourceTree = "<group>"; xcLanguageSpecificationIdentifier = xcode.lang.objc; };
 		119BEB87198C43A600121439 /* NSString+TPPStringAdditions.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "NSString+TPPStringAdditions.h"; sourceTree = "<group>"; };
 		119BEB88198C43A600121439 /* NSString+TPPStringAdditions.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = "NSString+TPPStringAdditions.m"; sourceTree = "<group>"; };
 		119BEB8D19901E1000121439 /* TPPOPDS.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TPPOPDS.h; sourceTree = "<group>"; };
@@ -2174,8 +2172,6 @@
 			isa = PBXGroup;
 			children = (
 				7384C756252D20AA0012C2DD /* TPPBook+DistributorChecks.swift */,
-				1196F7591970727C00F62670 /* TPPMyBooksDownloadCenter.h */,
-				1196F75A1970727C00F62670 /* TPPMyBooksDownloadCenter.m */,
 				A4276F461B00046300CA7194 /* TPPMyBooksDownloadInfo.h */,
 				A4276F471B00046300CA7194 /* TPPMyBooksDownloadInfo.m */,
 				2DEF10B8201ECCEA0082843A /* TPPMyBooksSimplifiedBearerToken.h */,
@@ -4800,9 +4796,6 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/PalaceDebug.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 176;
-				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Distribution";
 				CODE_SIGN_STYLE = Manual;
 				CURRENT_PROJECT_VERSION = 177;
