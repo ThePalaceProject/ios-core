@@ -218,14 +218,9 @@ import OverdriveProcessor
   
   private func processOverdriveDownload(for book: TPPBook, withState state: TPPBookState) {
     guard let url = book.defaultAcquisition?.hrefURL,
-          let barcode = TPPUserAccount.sharedAccount().barcode,
-          let pin = TPPUserAccount.sharedAccount().pin else { return }
-    OverdriveAPIExecutor.shared.fulfillBook(
-      urlString: url.absoluteString,
-      username: barcode,
-      PIN: pin,
-      authToken: TPPUserAccount.sharedAccount().authToken
-    ) { [weak self] responseHeaders, error in
+          let token = TPPUserAccount.sharedAccount().authToken else { return }
+    OverdriveAPIExecutor.shared.fulfillBook(urlString: url.absoluteString, authType: .token(token))
+     { [weak self] responseHeaders, error in
       self?.handleOverdriveResponse(for: book, url: url, withState: state, responseHeaders: responseHeaders, error: error)
     }
   }
