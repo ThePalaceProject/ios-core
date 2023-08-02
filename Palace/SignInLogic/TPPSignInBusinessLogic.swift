@@ -325,11 +325,11 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
   }
   
   func getBearerToken(username: String, password: String, completion: (() -> Void)? = nil) {
-    TPPNetworkExecutor.shared.executeTokenRefresh() {  [weak self] result in
+    TPPNetworkExecutor.shared.executeTokenRefresh(username: username, password: password) {  [weak self] result in
       defer {
         completion?()
       }
-      
+
       switch result {
       case .success(let tokenResponse):
         self?.authToken = tokenResponse.accessToken
