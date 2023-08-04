@@ -31,7 +31,7 @@ class AudiobookTimeTracker: NSObject, AudiobookPlaybackTrackerDelegate {
     self.timeTrackingUrl = timeTrackingUrl
     self.dataManager = dataManager
     self.minuteFormatter = DateFormatter()
-    minuteFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm"
+    minuteFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm'Z'"
     minuteFormatter.timeZone = TimeZone(identifier: "UTC")
     currentMinute = minuteFormatter.string(from: Date())
   }
