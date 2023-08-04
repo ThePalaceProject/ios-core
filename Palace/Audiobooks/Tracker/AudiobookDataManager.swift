@@ -48,13 +48,7 @@ fileprivate struct RequestData: Codable {
   let libraryId: String
   let bookId: String
   let timeEntries: [TimeEntry]
-  
-  enum CodingKeys: String, CodingKey {
-      case libraryId = "library_id"
-      case bookId = "book_id"
-      case timeEntries
-  }
-  
+    
   init(libraryId: String, bookId: String, timeEntries: [TimeEntry]) {
     self.libraryId = libraryId
     self.bookId = bookId
