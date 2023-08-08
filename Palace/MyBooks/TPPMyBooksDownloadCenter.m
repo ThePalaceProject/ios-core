@@ -808,7 +808,10 @@ didCompleteWithError:(NSError *)error
           borrowCompletion:(void (^)(void))borrowCompletion
 {
   [[TPPBookRegistry shared] setProcessing:YES for:book.identifier];
-  [TPPOPDSFeed withURL:book.defaultAcquisitionIfBorrow.hrefURL shouldResetCache:YES completionHandler:^(TPPOPDSFeed *feed, NSDictionary *error) {
+  
+  NSURL *url = book.defaultAcquisition.hrefURL;
+  
+  [TPPOPDSFeed withURL:url shouldResetCache:YES completionHandler:^(TPPOPDSFeed *feed, NSDictionary *error) {
     [[TPPBookRegistry shared] setProcessing:NO for:book.identifier];
 
     if (error || !feed || feed.entries.count < 1) {

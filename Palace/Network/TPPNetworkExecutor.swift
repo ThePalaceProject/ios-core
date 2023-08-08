@@ -241,15 +241,16 @@ extension TPPNetworkExecutor {
     }
   
     retryQueue.append(task)
-    guard !isRefreshing else { return }
+    guard !isRefreshing && TPPUserAccount.sharedAccount().authTokenHasExpired else { return }
     
     isRefreshing = true
 
     executeTokenRefresh(username: username, password: password){ [weak self] result in
       switch result {
       case .success:
-        self?.isRefreshing = false
-        self?.retryFailedRequests()
+        self?.retryFailedRequests {
+          self?.isRefreshing = false
+        }
       case .failure(let error):
         self?.isRefreshing = false
         Log.info(#file, "Failed to refresh token with error: \(error)")
@@ -257,7 +258,11 @@ extension TPPNetworkExecutor {
     }
   }
   
-  private func retryFailedRequests() {
+  private func retryFailedRequests(completion: (() -> Void)? = nil) {
+    defer {
+      completion?()
+    }
+
     while !retryQueue.isEmpty {
       let task = retryQueue.removeFirst()
       guard let request = task.originalRequest else { continue }

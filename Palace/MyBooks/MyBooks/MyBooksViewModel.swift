@@ -104,6 +104,13 @@ class MyBooksViewModel: ObservableObject {
     NotificationCenter.default.addObserver(self, selector: #selector(syncEnded),
                                            name: .TPPSyncEnded,
                                            object: nil)
+    NotificationCenter.default.addObserver(self, selector: #selector(stopLoading),
+                                           name: .TPPBookProcessingDidChange,
+                                           object: nil)
+  }
+
+  @objc private func stopLoading() {
+    isLoading.toggle()
   }
 
   @objc private func bookRegistryDidChange() {
