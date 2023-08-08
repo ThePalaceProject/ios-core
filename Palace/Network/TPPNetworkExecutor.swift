@@ -234,12 +234,18 @@ extension TPPNetworkExecutor {
   }
   
   func refreshTokenAndResume(task: URLSessionTask) {
+    guard let username = TPPUserAccount.sharedAccount().username,
+          let password = TPPUserAccount.sharedAccount().pin else {
+      Log.info(#file, "Failed to refresh token due to missing credentials!")
+      return
+    }
+  
     retryQueue.append(task)
     guard !isRefreshing else { return }
     
     isRefreshing = true
-    
-    executeTokenRefresh() { [weak self] result in
+
+    executeTokenRefresh(username: username, password: password){ [weak self] result in
       switch result {
       case .success:
         self?.isRefreshing = false
@@ -261,10 +267,8 @@ extension TPPNetworkExecutor {
     }
   }
 
-  func executeTokenRefresh(completion: @escaping (Result<TokenResponse, Error>) -> Void) {
-    guard let tokenURL = TPPUserAccount.sharedAccount().authDefinition?.tokenURL,
-          let username = TPPUserAccount.sharedAccount().username,
-          let password = TPPUserAccount.sharedAccount().pin else {
+  func executeTokenRefresh(username: String, password: String, completion: @escaping (Result<TokenResponse, Error>) -> Void) {
+    guard let tokenURL = TPPUserAccount.sharedAccount().authDefinition?.tokenURL else {
       Log.error(#file, "Unable to refresh token, missing credentials")
       return
     }
