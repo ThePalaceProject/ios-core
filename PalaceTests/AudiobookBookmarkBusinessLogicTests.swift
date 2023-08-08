@@ -114,6 +114,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
       seriesURL: emptyUrl,
       revokeURL: emptyUrl,
       reportURL: emptyUrl,
+      timeTrackingURL: emptyUrl,
       contributors: [:]
     )
 
