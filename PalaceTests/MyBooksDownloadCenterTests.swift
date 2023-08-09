@@ -55,6 +55,7 @@ class MyBooksDownloadCenterTests: XCTestCase {
         seriesURL: emptyUrl,
         revokeURL: emptyUrl,
         reportURL: emptyUrl,
+        timeTrackingURL: emptyUrl,
         contributors: [:]
       )
             

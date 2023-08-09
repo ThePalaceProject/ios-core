@@ -37,6 +37,7 @@ let SubtitleKey: String = "subtitle"
 let SummaryKey: String = "summary"
 let TitleKey: String = "title"
 let UpdatedKey: String = "updated"
+let TimeTrackingURLURLKey: String = "time-tracking-url"
 
 @objc class TPPBook: NSObject {
   @objc var acquisitions: [TPPOPDSAcquisition]
@@ -60,6 +61,7 @@ let UpdatedKey: String = "updated"
   @objc var seriesURL: URL?
   @objc var revokeURL: URL?
   @objc var reportURL: URL?
+  @objc var timeTrackingURL: URL?
   @objc var contributors: [String: Any]?
   @objc var bookTokenLock: NSRecursiveLock
   
@@ -95,6 +97,7 @@ let UpdatedKey: String = "updated"
     seriesURL: URL?,
     revokeURL: URL?,
     reportURL: URL?,
+    timeTrackingURL: URL?,
     contributors: [String: Any]?
   ) {
     self.acquisitions = acquisitions
@@ -118,6 +121,7 @@ let UpdatedKey: String = "updated"
     self.seriesURL = seriesURL
     self.revokeURL = revokeURL
     self.reportURL = reportURL
+    self.timeTrackingURL = timeTrackingURL
     self.contributors = contributors
     self.bookTokenLock = NSRecursiveLock()
   }
@@ -180,6 +184,7 @@ let UpdatedKey: String = "updated"
       seriesURL: entry.seriesLink?.href,
       revokeURL: revoke,
       reportURL: report,
+      timeTrackingURL: entry.timeTrackingLink?.href,
       contributors: entry.contributors
     )
   }
@@ -367,6 +372,7 @@ let UpdatedKey: String = "updated"
       seriesURL: URL(string: dictionary[SeriesLinkKey] as? String ?? ""),
       revokeURL: revokeURL,
       reportURL: reportURL,
+      timeTrackingURL: URL(string: dictionary[TimeTrackingURLURLKey] as? String ?? ""),
       contributors: nil
     )
   }
@@ -394,6 +400,7 @@ let UpdatedKey: String = "updated"
       seriesURL: book.seriesURL,
       revokeURL: self.revokeURL,
       reportURL: self.reportURL,
+      timeTrackingURL: self.timeTrackingURL,
       contributors: book.contributors
     )
   }
@@ -423,7 +430,8 @@ let UpdatedKey: String = "updated"
       SubtitleKey: subtitle as Any,
       SummaryKey: summary as Any,
       TitleKey: title as Any,
-      UpdatedKey: updated.rfc339String as Any
+      UpdatedKey: updated.rfc339String as Any,
+      TimeTrackingURLURLKey: timeTrackingURL?.absoluteString as Any
     ]
   }
 

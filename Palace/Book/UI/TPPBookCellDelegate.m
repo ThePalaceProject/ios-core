@@ -255,12 +255,19 @@ static const int kServerUpdateDelay = 15;
         return;
       }
 
+      AudiobookTimeTracker *timeTracker;
+      if (book.timeTrackingURL && TPPSettings.shared.isTimeTrackingEnabled) {
+        timeTracker = [[AudiobookTimeTracker alloc] initWithLibraryId:AccountsManager.shared.currentAccount.uuid bookId:book.identifier timeTrackingUrl:book.timeTrackingURL];
+      }
+      
       AudiobookMetadata *const metadata = [[AudiobookMetadata alloc]
                                            initWithTitle:book.title
                                            authors:@[book.authors]];
       id<AudiobookManager> const manager = [[DefaultAudiobookManager alloc]
                                             initWithMetadata:metadata
-                                            audiobook:audiobook];
+                                            audiobook:audiobook
+                                            playbackTrackerDelegate:timeTracker];
+      
       
       self.audiobookBookmarkBusinessLogic = [[AudiobookBookmarkBusinessLogic alloc] initWithBook:book];
 

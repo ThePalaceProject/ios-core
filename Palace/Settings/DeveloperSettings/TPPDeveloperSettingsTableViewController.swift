@@ -23,6 +23,10 @@ import Foundation
     TPPSettings.shared.enterLCPPassphraseManually = sender.isOn
   }
   
+  func timeTrackingDidChange(sender: UISwitch) {
+    TPPSettings.shared.isTimeTrackingEnabled = sender.isOn
+  }
+  
   // MARK:- UIViewController
   
   override func loadView() {
@@ -39,7 +43,7 @@ import Foundation
   
   func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
     switch section {
-    case 0: return 2
+    case 0: return 3
     default: return 1
     }
   }
@@ -53,7 +57,8 @@ import Foundation
     case 0:
       switch indexPath.row {
       case 0: return cellForBetaLibraries()
-      default: return cellForLCPPassphrase()
+      case 1: return cellForLCPPassphrase()
+      default: return cellForTimeTracking()
       }
     case 1: return cellForCustomRegsitry()
     default: return cellForClearCache()
@@ -105,6 +110,17 @@ import Foundation
     let cell = UITableViewCell(style: UITableViewCell.CellStyle.default, reuseIdentifier: "clearCacheCell")
     cell.selectionStyle = .none
     cell.textLabel?.text = "Clear Cached Data"
+    return cell
+  }
+  
+  private func cellForTimeTracking() -> UITableViewCell {
+    let cell = UITableViewCell(style: UITableViewCell.CellStyle.default, reuseIdentifier: "timeTrackingCell")
+    cell.selectionStyle = .none
+    cell.textLabel?.text = "Enable Time Tracking"
+    let timeTrackingSwitch = UISwitch()
+    timeTrackingSwitch.setOn(TPPSettings.shared.isTimeTrackingEnabled, animated: false)
+    timeTrackingSwitch.addTarget(self, action:#selector(timeTrackingDidChange), for: .valueChanged)
+    cell.accessoryView = timeTrackingSwitch
     return cell
   }
   
