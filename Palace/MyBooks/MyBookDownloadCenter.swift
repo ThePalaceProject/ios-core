@@ -48,8 +48,8 @@ import OverdriveProcessor
   
   func startBorrow(for book: TPPBook, attemptDownload shouldAttemptDownload: Bool, borrowCompletion: (() -> Void)? = nil) {
     TPPBookRegistry.shared.setProcessing(true, for: book.identifier)
-    
-    TPPOPDSFeed.withURL(book.defaultAcquisitionIfBorrow?.hrefURL, shouldResetCache: true) { [weak self] feed, error in
+  
+    TPPOPDSFeed.withURL((book.defaultAcquisitionIfBorrow ?? book.defaultAcquisition)?.hrefURL, shouldResetCache: true) { [weak self] feed, error in
       guard let self = self else { return }
       
       TPPBookRegistry.shared.setProcessing(false, for: book.identifier)
