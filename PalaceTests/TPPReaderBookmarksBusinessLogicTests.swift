@@ -51,6 +51,7 @@ class TPPReaderBookmarksBusinessLogicTests: XCTestCase {
         seriesURL: emptyUrl,
         revokeURL: emptyUrl,
         reportURL: emptyUrl,
+        timeTrackingURL: emptyUrl,
         contributors: [:]
       )
             

@@ -121,6 +121,7 @@ class TPPBookCreationTests: XCTestCase {
                         seriesURL: nil,
                         revokeURL: nil,
                         reportURL: nil,
+                        timeTrackingURL: nil,
                         contributors: nil
     )
     

@@ -8,7 +8,6 @@
 #import "TPPBookDownloadFailedCell.h"
 #import "TPPBookDownloadingCell.h"
 #import "TPPBookNormalCell.h"
-#import "TPPMyBooksDownloadCenter.h"
 #import "TPPRootTabBarController.h"
 
 #import "NSURLRequest+NYPLURLRequestAdditions.h"
@@ -74,12 +73,12 @@ static const int kServerUpdateDelay = 15;
 
 - (void)didSelectReturnForBook:(TPPBook *)book
 {
-  [[TPPMyBooksDownloadCenter sharedDownloadCenter] returnBookWithIdentifier:book.identifier];
+  [[MyBooksDownloadCenter shared] returnBookWithIdentifier:book.identifier];
 }
 
 - (void)didSelectDownloadForBook:(TPPBook *)book
 {
-  [[TPPMyBooksDownloadCenter sharedDownloadCenter] startDownloadForBook:book];
+  [[MyBooksDownloadCenter shared] startDownloadFor:book withRequest:nil];
 }
 
 - (void)didSelectReadForBook:(TPPBook *)book
@@ -153,7 +152,7 @@ static const int kServerUpdateDelay = 15;
 - (void)openPDF:(TPPBook *)book {
 #if LCP
   if ([LCPPDFs canOpenBook:book]) {
-    NSURL *bookUrl = [[TPPMyBooksDownloadCenter sharedDownloadCenter] fileURLForBookIndentifier:book.identifier];
+    NSURL *bookUrl = [[MyBooksDownloadCenter shared] fileUrlFor:book.identifier account:nil];
     LCPPDFs *decryptor = [[LCPPDFs alloc] initWithUrl:bookUrl];
     [decryptor extractWithUrl:bookUrl completion:^(NSURL *encryptedUrl, NSError *error) {
       if (error) {
@@ -188,7 +187,7 @@ static const int kServerUpdateDelay = 15;
 /// Present Palace PDF reader
 /// @param book PDF Book object
 - (void)presentPDF:(TPPBook *)book {
-  NSURL *bookUrl = [[TPPMyBooksDownloadCenter sharedDownloadCenter] fileURLForBookIndentifier:book.identifier];
+  NSURL *bookUrl = [[MyBooksDownloadCenter shared] fileUrlFor:book.identifier account:nil];
   NSData *data = [[NSData alloc] initWithContentsOfURL:bookUrl options:NSDataReadingMappedAlways error:nil];
 
   TPPPDFDocumentMetadata *metadata = [[TPPPDFDocumentMetadata alloc] initWith:book.identifier];
@@ -201,7 +200,7 @@ static const int kServerUpdateDelay = 15;
 }
 
 - (void)openAudiobook:(TPPBook *)book {
-  NSURL *const url = [[TPPMyBooksDownloadCenter sharedDownloadCenter] fileURLForBookIndentifier:book.identifier];
+  NSURL *const url = [[MyBooksDownloadCenter shared] fileUrlFor:book.identifier account:nil];
   NSData *const data = [NSData dataWithContentsOfURL:url];
   if (data == nil) {
     [self presentCorruptedItemErrorForBook:book fromURL:url];
@@ -256,12 +255,19 @@ static const int kServerUpdateDelay = 15;
         return;
       }
 
+      AudiobookTimeTracker *timeTracker;
+      if (book.timeTrackingURL && TPPSettings.shared.isTimeTrackingEnabled) {
+        timeTracker = [[AudiobookTimeTracker alloc] initWithLibraryId:AccountsManager.shared.currentAccount.uuid bookId:book.identifier timeTrackingUrl:book.timeTrackingURL];
+      }
+      
       AudiobookMetadata *const metadata = [[AudiobookMetadata alloc]
                                            initWithTitle:book.title
                                            authors:@[book.authors]];
       id<AudiobookManager> const manager = [[DefaultAudiobookManager alloc]
                                             initWithMetadata:metadata
-                                            audiobook:audiobook];
+                                            audiobook:audiobook
+                                            playbackTrackerDelegate:timeTracker];
+      
       
       self.audiobookBookmarkBusinessLogic = [[AudiobookBookmarkBusinessLogic alloc] initWithBook:book];
 
@@ -535,21 +541,21 @@ static const int kServerUpdateDelay = 15;
 
 - (void)didSelectCancelForBookDownloadFailedCell:(TPPBookDownloadFailedCell *const)cell
 {
-  [[TPPMyBooksDownloadCenter sharedDownloadCenter]
-   cancelDownloadForBookIdentifier:cell.book.identifier];
+  [[MyBooksDownloadCenter shared]
+   cancelDownloadFor:cell.book.identifier];
 }
 
 - (void)didSelectTryAgainForBookDownloadFailedCell:(TPPBookDownloadFailedCell *const)cell
 {
-  [[TPPMyBooksDownloadCenter sharedDownloadCenter] startDownloadForBook:cell.book];
+  [[MyBooksDownloadCenter shared] startDownloadFor: cell.book withRequest:nil];
 }
 
 #pragma mark TPPBookDownloadingCellDelegate
 
 - (void)didSelectCancelForBookDownloadingCell:(TPPBookDownloadingCell *const)cell
 {
-  [[TPPMyBooksDownloadCenter sharedDownloadCenter]
-   cancelDownloadForBookIdentifier:cell.book.identifier];
+  [[MyBooksDownloadCenter shared]
+   cancelDownloadFor:cell.book.identifier];
 }
 
 #pragma mark Audiobook Manager Refresh Delegate
@@ -564,7 +570,7 @@ static const int kServerUpdateDelay = 15;
 #if FEATURE_OVERDRIVE
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(updateODAudiobookManifest) name:NSNotification.TPPMyBooksDownloadCenterDidChange object:nil];
 #endif
-  [[TPPMyBooksDownloadCenter sharedDownloadCenter] startDownloadForBook:self.book];
+  [[MyBooksDownloadCenter shared] startDownloadFor:self.book withRequest:nil];
 }
 
 #if FEATURE_OVERDRIVE
@@ -572,7 +578,7 @@ static const int kServerUpdateDelay = 15;
   if ([[TPPBookRegistry shared] stateFor:self.book.identifier] == TPPBookStateDownloadSuccessful) {
     OverdriveAudiobook *odAudiobook = (OverdriveAudiobook *)self.manager.audiobook;
 
-    NSURL *const url = [[TPPMyBooksDownloadCenter sharedDownloadCenter] fileURLForBookIndentifier:self.book.identifier];
+    NSURL *const url = [[MyBooksDownloadCenter shared] fileUrlFor: self.book.identifier account:nil];
     NSData *const data = [NSData dataWithContentsOfURL:url];
     if (data == nil) {
       [self presentCorruptedItemErrorForBook:self.book fromURL:url];
