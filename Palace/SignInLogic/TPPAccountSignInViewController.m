@@ -101,7 +101,7 @@ CGFloat const marginPadding = 2.0;
                         libraryAccountsProvider:AccountsManager.shared
                         urlSettingsProvider: TPPSettings.shared
                         bookRegistry:[TPPBookRegistry shared]
-                        bookDownloadsCenter:[TPPMyBooksDownloadCenter sharedDownloadCenter]
+                        bookDownloadsCenter:[MyBooksDownloadCenter shared]
                         userAccountProvider:[TPPUserAccount class]
                         uiDelegate:self
                         drmAuthorizer:

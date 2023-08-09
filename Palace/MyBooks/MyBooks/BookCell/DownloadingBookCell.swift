@@ -62,7 +62,7 @@ struct DownloadingBookCell: View {
     .font(Font(uiFont: UIFont.palaceFont(ofSize: 12)))
     .foregroundColor(Color(TPPConfiguration.backgroundColor()))
     .onReceive(downloadPublisher) { _ in
-      self.progress = TPPMyBooksDownloadCenter.shared().downloadProgress(forBookIdentifier: model.book.identifier)
+      self.progress = MyBooksDownloadCenter.shared.downloadProgress(for: model.book.identifier)
     }
   }
 
