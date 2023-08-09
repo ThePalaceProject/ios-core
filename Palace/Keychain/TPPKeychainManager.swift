@@ -48,7 +48,8 @@ import NYPLAudiobookToolkit
       
       let status = SecItemDelete(query as CFDictionary)
       if status != errSecSuccess && status != errSecItemNotFound {
-        Log.info("Error deleting Keychain item for class \(secClass): \(status)")
+        Log.info(#file, "Error deleting Keychain item for class \(secClass): \(status)")
+        
       }
     }
   }
