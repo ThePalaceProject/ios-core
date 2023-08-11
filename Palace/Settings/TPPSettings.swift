@@ -33,6 +33,7 @@ import Foundation
   static private let versionKey = "NYPLSettingsVersionKey"
   static private let customLibraryRegistryKey = "TPPSettingsCustomLibraryRegistryKey"
   static private let enterLCPPassphraseManually = "TPPSettingsEnterLCPPassphraseManually"
+  static private let isTimeTrackingEnabled = "TPPSettingsEnableTimeTracking"
   
   // Set to nil (the default) if no custom feed should be used.
   var customMainFeedURL: URL? {
@@ -44,7 +45,6 @@ import Foundation
         return
       }
       UserDefaults.standard.set(customUrl, forKey: TPPSettings.customMainFeedURLKey)
-      UserDefaults.standard.synchronize()
       NotificationCenter.default.post(name: Notification.Name.TPPSettingsDidChange, object: self)
     }
   }
@@ -58,7 +58,6 @@ import Foundation
         return
       }
       UserDefaults.standard.set(mainFeedUrl, forKey: TPPSettings.accountMainFeedURLKey)
-      UserDefaults.standard.synchronize()
       NotificationCenter.default.post(name: Notification.Name.TPPSettingsDidChange, object: self)
     }
   }
@@ -66,51 +65,46 @@ import Foundation
   /// Whether the user has seen the welcome screen or completed tutorial
   var userHasSeenWelcomeScreen: Bool {
     get {
-      return UserDefaults.standard.bool(forKey: TPPSettings.userHasSeenWelcomeScreenKey)
+      UserDefaults.standard.bool(forKey: TPPSettings.userHasSeenWelcomeScreenKey)
     }
-    set(b) {
-      UserDefaults.standard.set(b, forKey: TPPSettings.userHasSeenWelcomeScreenKey)
-      UserDefaults.standard.synchronize()
+    set {
+      UserDefaults.standard.set(newValue, forKey: TPPSettings.userHasSeenWelcomeScreenKey)
     }
   }
   
   var userPresentedAgeCheck: Bool {
     get {
-      return UserDefaults.standard.bool(forKey: TPPSettings.userPresentedAgeCheckKey)
+      UserDefaults.standard.bool(forKey: TPPSettings.userPresentedAgeCheckKey)
     }
-    set(b) {
-      UserDefaults.standard.set(b, forKey: TPPSettings.userPresentedAgeCheckKey)
-      UserDefaults.standard.synchronize()
+    set {
+      UserDefaults.standard.set(newValue, forKey: TPPSettings.userPresentedAgeCheckKey)
     }
   }
   
   var userHasAcceptedEULA: Bool {
     get {
-      return UserDefaults.standard.bool(forKey: TPPSettings.userHasAcceptedEULAKey)
+      UserDefaults.standard.bool(forKey: TPPSettings.userHasAcceptedEULAKey)
     }
-    set(b) {
-      UserDefaults.standard.set(b, forKey: TPPSettings.userHasAcceptedEULAKey)
-      UserDefaults.standard.synchronize()
+    set {
+      UserDefaults.standard.set(newValue, forKey: TPPSettings.userHasAcceptedEULAKey)
     }
   }
 
   var userHasSeenFirstTimeSyncMessage: Bool {
     get {
-      return UserDefaults.standard.bool(forKey: TPPSettings.userSeenFirstTimeSyncMessageKey)
+      UserDefaults.standard.bool(forKey: TPPSettings.userSeenFirstTimeSyncMessageKey)
     }
     set(b) {
       UserDefaults.standard.set(b, forKey: TPPSettings.userSeenFirstTimeSyncMessageKey)
-      UserDefaults.standard.synchronize()
     }
   }
   
   var useBetaLibraries: Bool {
     get {
-      return UserDefaults.standard.bool(forKey: TPPSettings.useBetaLibrariesKey)
+      UserDefaults.standard.bool(forKey: TPPSettings.useBetaLibrariesKey)
     }
-    set(b) {
-      UserDefaults.standard.set(b, forKey: TPPSettings.useBetaLibrariesKey)
-      UserDefaults.standard.synchronize()
+    set {
+      UserDefaults.standard.set(newValue, forKey: TPPSettings.useBetaLibrariesKey)
       NotificationCenter.default.post(name: NSNotification.Name.TPPUseBetaDidChange,
                                       object: self)
     }
@@ -118,31 +112,37 @@ import Foundation
 
   var appVersion: String? {
     get {
-      return UserDefaults.standard.string(forKey: TPPSettings.versionKey)
+      UserDefaults.standard.string(forKey: TPPSettings.versionKey)
     }
     set(versionString) {
       UserDefaults.standard.set(versionString, forKey: TPPSettings.versionKey)
-      UserDefaults.standard.synchronize()
     }
   }
   
   var customLibraryRegistryServer: String? {
     get {
-      return UserDefaults.standard.string(forKey: TPPSettings.customLibraryRegistryKey)
+      UserDefaults.standard.string(forKey: TPPSettings.customLibraryRegistryKey)
     }
     set(customServer) {
       UserDefaults.standard.set(customServer, forKey: TPPSettings.customLibraryRegistryKey)
-      UserDefaults.standard.synchronize()
     }
   }
 
   var enterLCPPassphraseManually: Bool {
     get {
-      return UserDefaults.standard.bool(forKey: TPPSettings.enterLCPPassphraseManually)
+      UserDefaults.standard.bool(forKey: TPPSettings.enterLCPPassphraseManually)
     }
-    set(b) {
-      UserDefaults.standard.set(b, forKey: TPPSettings.enterLCPPassphraseManually)
-      UserDefaults.standard.synchronize()
+    set {
+      UserDefaults.standard.set(newValue, forKey: TPPSettings.enterLCPPassphraseManually)
+    }
+  }
+  
+  var isTimeTrackingEnabled: Bool {
+    get {
+      UserDefaults.standard.bool(forKey: TPPSettings.isTimeTrackingEnabled)
+    }
+    set {
+      UserDefaults.standard.set(newValue, forKey: TPPSettings.isTimeTrackingEnabled)
     }
   }
 
