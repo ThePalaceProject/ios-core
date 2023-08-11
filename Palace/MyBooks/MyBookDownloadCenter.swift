@@ -49,9 +49,7 @@ import OverdriveProcessor
   func startBorrow(for book: TPPBook, attemptDownload shouldAttemptDownload: Bool, borrowCompletion: (() -> Void)? = nil) {
     TPPBookRegistry.shared.setProcessing(true, for: book.identifier)
   
-    TPPOPDSFeed.withURL((book.defaultAcquisitionIfBorrow ?? book.defaultAcquisition)?.hrefURL, shouldResetCache: true) { [weak self] feed, error in
-      guard let self = self else { return }
-      
+    TPPOPDSFeed.withURL((book.defaultAcquisition)?.hrefURL, shouldResetCache: true) { [weak self] feed, error in
       TPPBookRegistry.shared.setProcessing(false, for: book.identifier)
       
       if let feed = feed,
@@ -70,11 +68,11 @@ import OverdriveProcessor
         )
         
         if shouldAttemptDownload {
-          self.startDownloadIfAvailable(book: borrowedBook)
+          self?.startDownloadIfAvailable(book: borrowedBook)
         }
         
       } else {
-        self.process(error: error as? [String: Any], for: book)
+        self?.process(error: error as? [String: Any], for: book)
       }
       
       DispatchQueue.main.async {
@@ -140,13 +138,13 @@ import OverdriveProcessor
   }
   
   @objc func startDownload(for book: TPPBook, withRequest initedRequest: URLRequest? = nil) {
-    let state = TPPBookRegistry.shared.state(for: book.identifier)
+    var state = TPPBookRegistry.shared.state(for: book.identifier)
     let location = TPPBookRegistry.shared.location(forIdentifier: book.identifier)
     let loginRequired = TPPUserAccount.sharedAccount().authDefinition?.needsAuth
     
     switch state {
     case .Unregistered:
-      processUnregisteredState(
+      state = processUnregisteredState(
         for: book,
         location: location,
         loginRequired: loginRequired
@@ -159,7 +157,7 @@ import OverdriveProcessor
       NSLog("Ignoring nonsensical download request.")
       return
     }
-    
+
     processDownload(
       for: book,
       withState: state,
@@ -168,12 +166,12 @@ import OverdriveProcessor
     )
   }
   
-  private func processUnregisteredState(for book: TPPBook, location: TPPBookLocation?, loginRequired: Bool?) {
-    guard book.defaultAcquisitionIfBorrow == nil,
-          ((book.defaultAcquisitionIfOpenAccess != nil) || !(loginRequired ?? false)) else {
+  private func processUnregisteredState(for book: TPPBook, location: TPPBookLocation?, loginRequired: Bool?) -> TPPBookState {
+    if book.defaultAcquisitionIfBorrow == nil && (book.defaultAcquisitionIfOpenAccess != nil || !(loginRequired ?? false)) {
       TPPBookRegistry.shared.addBook(book, location: location, state: .DownloadNeeded, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
-      return
+      return .DownloadNeeded
     }
+    return .Unregistered
   }
   
   private func processDownload(for book: TPPBook, withState state: TPPBookState, andRequest initedRequest: URLRequest?, loginRequired: Bool?) {
@@ -221,11 +219,17 @@ import OverdriveProcessor
   
 #if FEATURE_OVERDRIVE
   private func processOverdriveDownload(for book: TPPBook, withState state: TPPBookState) {
-    guard let url = book.defaultAcquisition?.hrefURL,
-          let token = TPPUserAccount.sharedAccount().authToken else { return }
-    OverdriveAPIExecutor.shared.fulfillBook(urlString: url.absoluteString, authType: .token(token))
-     { [weak self] responseHeaders, error in
+    guard let url = book.defaultAcquisition?.hrefURL else { return }
+    
+    let completion: ([AnyHashable: Any]?, Error?) -> Void = { [weak self] responseHeaders, error in
       self?.handleOverdriveResponse(for: book, url: url, withState: state, responseHeaders: responseHeaders, error: error)
+    }
+    
+    let userAccount = TPPUserAccount.sharedAccount()
+    if let token = userAccount.authToken {
+      OverdriveAPIExecutor.shared.fulfillBook(urlString: url.absoluteString, authType: .token(token), completion: completion)
+    } else if let username = userAccount.username, let pin = userAccount.PIN {
+      OverdriveAPIExecutor.shared.fulfillBook(urlString: url.absoluteString, authType: .basic(username: username, pin: pin), completion: completion)
     }
   }
 #endif
@@ -238,7 +242,6 @@ import OverdriveProcessor
     responseHeaders: [AnyHashable: Any]?,
     error: Error?
   ) {
-    let summary = "Overdrive audiobook fulfillment error"
     let summaryWrongHeaders = "Overdrive audiobook fulfillment: wrong headers"
     let nA = "N/A"
     let responseHeadersKey = "responseHeaders"
@@ -247,6 +250,8 @@ import OverdriveProcessor
     let bookRegistryStateKey = "bookRegistryState"
     
     if let error = error {
+      let summary = "Overdrive audiobook fulfillment error"
+
       TPPErrorLogger.logError(error, summary: summary, metadata: [
         responseHeadersKey: responseHeaders ?? nA,
         acquisitionURLKey: url?.absoluteString ?? nA,
@@ -282,14 +287,21 @@ import OverdriveProcessor
 #endif
 
   private func processRegularDownload(for book: TPPBook, withState state: TPPBookState, andRequest initedRequest: URLRequest?) {
-    guard let url = book.defaultAcquisition?.hrefURL else { return }
-    let request = initedRequest ?? TPPNetworkExecutor.bearerAuthorized(request: URLRequest(url: url))
-    
-    guard let _ = request.url else {
-      logInvalidURLRequest(for: book, withState: state, url: url, request: request)
+    let request: URLRequest
+    if let initedRequest = initedRequest {
+      request = initedRequest
+    } else if let url = book.defaultAcquisition?.hrefURL {
+      request = TPPNetworkExecutor.bearerAuthorized(request: URLRequest(url: url))
+    } else {
+      logInvalidURLRequest(for: book, withState: state, url: nil, request: nil)
       return
     }
-  
+
+    guard let _ = request.url else {
+      logInvalidURLRequest(for: book, withState: state, url: book.defaultAcquisition?.hrefURL, request: request)
+      return
+    }
+
     if TPPUserAccount.sharedAccount().cookies != nil && state != .SAMLStarted {
       processSAMLCookies(for: book, withRequest: request)
     } else {
