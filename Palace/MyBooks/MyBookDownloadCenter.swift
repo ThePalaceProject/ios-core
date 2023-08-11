@@ -12,7 +12,7 @@ import Foundation
 import OverdriveProcessor
 #endif
 
-@objc class MyBooksDownloadCenter: NSObject {
+@objc class MyBooksDownloadCenter: NSObject, URLSessionDelegate {
   typealias DisplayStrings = Strings.MyDownloadCenter
   
   @objc static let shared = MyBooksDownloadCenter()
@@ -301,10 +301,11 @@ import OverdriveProcessor
       logInvalidURLRequest(for: book, withState: state, url: book.defaultAcquisition?.hrefURL, request: request)
       return
     }
-
-    if TPPUserAccount.sharedAccount().cookies != nil && state != .SAMLStarted {
-      processSAMLCookies(for: book, withRequest: request)
+  
+    if let cookies = TPPUserAccount.sharedAccount().cookies, state != .SAMLStarted {
+      handleSAMLStartedState(for: book, withRequest: request, cookies: cookies)
     } else {
+      clearAndSetCookies()
       addDownloadTask(with: request, book: book)
     }
   }
@@ -350,15 +351,49 @@ import OverdriveProcessor
     }
   }
 
-  private func processSAMLCookies(for book: TPPBook, withRequest request: URLRequest) {
-    let cookieStorage = session.configuration.httpCookieStorage
-    if let cookies = TPPUserAccount.sharedAccount().cookies {
-      for cookie in cookies {
-        cookieStorage?.setCookie(cookie)
-      }
+  private func handleSAMLStartedState(for book: TPPBook, withRequest request: URLRequest, cookies: [HTTPCookie]) {
+    TPPBookRegistry.shared.setState(.SAMLStarted, for: book.identifier)
+    
+    DispatchQueue.main.async { [weak self] in
+      var mutableRequest = request
+      mutableRequest.cachePolicy = .reloadIgnoringCacheData
+      
+      let model = TPPCookiesWebViewModel(cookies: cookies, request: mutableRequest, loginCompletionHandler: nil, loginCancelHandler: {
+        self?.handleLoginCancellation(for: book)
+      }, bookFoundHandler: { request, cookies in
+        self?.handleBookFound(for: book, withRequest: request, cookies: cookies)
+      }, problemFoundHandler: { problemDocument in
+        self?.handleProblem(for: book, problemDocument: problemDocument)
+      }, autoPresentIfNeeded: true)
+      
+      let cookiesVC = TPPCookiesWebViewController(model: model)
+      cookiesVC.loadViewIfNeeded()
     }
+  }
   
-    addDownloadTask(with: request, book: book)
+  private func handleLoginCancellation(for book: TPPBook) {
+    TPPBookRegistry.shared.setState(.DownloadNeeded, for: book.identifier)
+    cancelDownload(for: book.identifier)
+  }
+  
+  private func handleBookFound(for book: TPPBook, withRequest request: URLRequest?, cookies: [HTTPCookie]) {
+    TPPUserAccount.sharedAccount().setCookies(cookies)
+    if let request = request {
+      startDownload(for: book, withRequest: request)
+    }
+  }
+
+  private func handleProblem(for book: TPPBook, problemDocument: TPPProblemDocument?) {
+    TPPBookRegistry.shared.setState(.DownloadNeeded, for: book.identifier)
+    reauthenticator.authenticateIfNeeded(TPPUserAccount.sharedAccount(), usingExistingCredentials: false) {
+      self.startDownload(for: book)
+    }
+  }
+  
+  private func clearAndSetCookies() {
+    let cookieStorage = session.configuration.httpCookieStorage
+    cookieStorage?.cookies?.forEach { cookieStorage?.deleteCookie($0) }
+    TPPUserAccount.sharedAccount().cookies?.forEach { cookieStorage?.setCookie($0) }
   }
 
   @objc func cancelDownload(for identifier: String) {
@@ -777,6 +812,7 @@ extension MyBooksDownloadCenter: URLSessionTaskDelegate {
         return
       }
       
+      
       // Prevent redirection from HTTPS to a non-HTTPS URL.
       if task.originalRequest?.url?.scheme == "https" && request.url?.scheme != "https" {
         completionHandler(nil)
@@ -813,7 +849,7 @@ extension MyBooksDownloadCenter: URLSessionTaskDelegate {
     }
   }
 
-  private func addDownloadTask(with request: URLRequest, book: TPPBook) {
+  private func  addDownloadTask(with request: URLRequest, book: TPPBook) {
     let task = self.session.downloadTask(with: request)
     
     self.bookIdentifierToDownloadInfo[book.identifier] =
@@ -864,10 +900,10 @@ extension MyBooksDownloadCenter {
         "licenseUrl": licenseUrl.absoluteString,
         "book": book.loggableDictionary
       ])
-      failDownloadWithAlert(for: book)
+      failDownloadWithAlert(for: book, withMessage: error.localizedDescription)
       return
     }
-    
+
     let lcpProgress: (Double) -> Void = { [weak self] progressValue in
       guard let self = self else { return }
       self.bookIdentifierToDownloadInfo[book.identifier] = self.downloadInfo(forBookIdentifier: book.identifier)?.withDownloadProgress(progressValue)
@@ -896,6 +932,7 @@ extension MyBooksDownloadCenter {
         self.failDownloadWithAlert(for: book, withMessage: errorMessage)
         return
       }
+      
       TPPBookRegistry.shared.setFulfillmentId(license.identifier, for: book.identifier)
       
       if book.defaultBookContentType == .pdf,
@@ -906,7 +943,7 @@ extension MyBooksDownloadCenter {
         }
       }
     }
-
+    
     let fulfillmentDownloadTask = lcpService.fulfill(licenseUrl, progress: lcpProgress, completion: lcpCompletion)
     if let fulfillmentDownloadTask = fulfillmentDownloadTask {
       self.bookIdentifierToDownloadInfo[book.identifier] = MyBooksDownloadInfo(downloadProgress: 0.0, downloadTask: fulfillmentDownloadTask, rightsManagement: .none)
@@ -1127,45 +1164,45 @@ extension MyBooksDownloadCenter: NYPLADEPTDelegate {
           let rights = String(data: rightsData, encoding: .utf8) else { return }
     
     var didSucceedCopying = false
-
+    
     if didFinishDownload {
       guard let fileURL = fileUrl(for: book.identifier) else { return }
       let fileManager = FileManager.default
-        
-        do {
-            try fileManager.removeItem(at: fileURL)
-        } catch {
-            print("Remove item error: \(error)")
-        }
-
-        guard let destURL = fileUrl(for: book.identifier), let adeptToURL = adeptToURL else {
-            TPPErrorLogger.logError(withCode: .adobeDRMFulfillmentFail, summary: "Adobe DRM error: destination file URL unavailable", metadata: [
-                "adeptError": adeptError ?? "N/A",
-                "fileURLToRemove": adeptToURL ?? "N/A",
-                "book": book.loggableDictionary,
-                "AdobeFulfilmmentID": fulfillmentID ?? "N/A",
-                "AdobeRights": rights,
-                "AdobeTag": tag
-            ])
-            self.failDownloadWithAlert(for: book)
-            return
-        }
-
-        do {
-            try fileManager.copyItem(at: adeptToURL, to: destURL)
-            didSucceedCopying = true
-        } catch {
-            TPPErrorLogger.logError(withCode: .adobeDRMFulfillmentFail, summary: "Adobe DRM error: failure copying file", metadata: [
-                "adeptError": adeptError ?? "N/A",
-                "copyError": error,
-                "fromURL": adeptToURL,
-                "destURL": destURL,
-                "book": book.loggableDictionary,
-                "AdobeFulfilmmentID": fulfillmentID ?? "N/A",
-                "AdobeRights": rights,
-                "AdobeTag": tag
-            ])
-        }
+      
+      do {
+        try fileManager.removeItem(at: fileURL)
+      } catch {
+        print("Remove item error: \(error)")
+      }
+      
+      guard let destURL = fileUrl(for: book.identifier), let adeptToURL = adeptToURL else {
+        TPPErrorLogger.logError(withCode: .adobeDRMFulfillmentFail, summary: "Adobe DRM error: destination file URL unavailable", metadata: [
+          "adeptError": adeptError ?? "N/A",
+          "fileURLToRemove": adeptToURL ?? "N/A",
+          "book": book.loggableDictionary,
+          "AdobeFulfilmmentID": fulfillmentID ?? "N/A",
+          "AdobeRights": rights,
+          "AdobeTag": tag
+        ])
+        self.failDownloadWithAlert(for: book)
+        return
+      }
+      
+      do {
+        try fileManager.copyItem(at: adeptToURL, to: destURL)
+        didSucceedCopying = true
+      } catch {
+        TPPErrorLogger.logError(withCode: .adobeDRMFulfillmentFail, summary: "Adobe DRM error: failure copying file", metadata: [
+          "adeptError": adeptError ?? "N/A",
+          "copyError": error,
+          "fromURL": adeptToURL,
+          "destURL": destURL,
+          "book": book.loggableDictionary,
+          "AdobeFulfilmmentID": fulfillmentID ?? "N/A",
+          "AdobeRights": rights,
+          "AdobeTag": tag
+        ])
+      }
     } else {
       TPPErrorLogger.logError(withCode: .adobeDRMFulfillmentFail, summary: "Adobe DRM error: did not finish download", metadata: [
         "adeptError": adeptError ?? "N/A",
@@ -1194,16 +1231,16 @@ extension MyBooksDownloadCenter: NYPLADEPTDelegate {
     }
     
     TPPBookRegistry.shared.setState(.DownloadSuccessful, for: book.identifier)
-  
+    
     self.broadcastUpdate()
   }
-
-
+  
+  
   func adept(_ adept: NYPLADEPT, didUpdateProgress progress: Double, tag: String) {
     self.bookIdentifierToDownloadInfo[tag] = self.downloadInfo(forBookIdentifier: tag)?.withDownloadProgress(progress)
     self.broadcastUpdate()
   }
-
+  
   func adept(_ adept: NYPLADEPT, didCancelDownloadWithTag tag: String) {
     TPPBookRegistry.shared.setState(.DownloadNeeded, for: tag)
     self.broadcastUpdate()
