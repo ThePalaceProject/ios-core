@@ -108,7 +108,7 @@ class MyBooksViewModel: ObservableObject {
                                            name: .TPPBookProcessingDidChange,
                                            object: nil)
   }
-
+  
   @objc private func stopLoading() {
     isLoading.toggle()
   }
