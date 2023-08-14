@@ -4,6 +4,7 @@
 #import "TPPBookDownloadingCell.h"
 #import "TPPBookNormalCell.h"
 #import "TPPConfiguration.h"
+#import "TPPMyBooksDownloadCenter.h"
 #import "TPPOPDS.h"
 
 static NSString *const reuseIdentifierDownloading = @"Downloading";
@@ -90,8 +91,8 @@ TPPBookCell *TPPBookCellDequeue(UICollectionView *const collectionView,
                                                 forIndexPath:indexPath];
       cell.book = book;
       cell.delegate = [TPPBookCellDelegate sharedDelegate];
-      cell.downloadProgress = [[MyBooksDownloadCenter shared]
-                               downloadProgressFor:book.identifier];
+      cell.downloadProgress = [[TPPMyBooksDownloadCenter sharedDownloadCenter]
+                               downloadProgressForBookIdentifier:book.identifier];
       cell.backgroundColor = [TPPConfiguration mainColor];
       return cell;
     }
