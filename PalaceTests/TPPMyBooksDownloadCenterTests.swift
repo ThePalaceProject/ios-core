@@ -3,7 +3,7 @@ import XCTest
 import OverdriveProcessor
 @testable import Palace
 
-class MyBooksDownloadCenterTests: XCTestCase {
+class TPPMyBooksDownloadCenterTests: XCTestCase {
   func testDeleteLocalContent() {
     let fileManager = FileManager.default
     let emptyUrl = URL.init(fileURLWithPath: "")
@@ -60,7 +60,7 @@ class MyBooksDownloadCenterTests: XCTestCase {
       )
             
       // Calculate target filepath to use as "book location"
-      let bookUrl = MyBooksDownloadCenter.shared.fileUrl(for: fakeBook.identifier)
+      let bookUrl = TPPMyBooksDownloadCenter.shared()?.fileURL(forBookIndentifier: fakeBook.identifier)
 
       // Create dummy book file at path
       fileManager.createFile(atPath: bookUrl!.path, contents: "Hello world!".data(using: .utf8), attributes: [FileAttributeKey : Any]())
@@ -77,7 +77,7 @@ class MyBooksDownloadCenterTests: XCTestCase {
       
       // Perform file deletion test
       XCTAssert(fileManager.fileExists(atPath: bookUrl!.path))
-      MyBooksDownloadCenter.shared.deleteLocalContent(for: fakeBook.identifier)
+      TPPMyBooksDownloadCenter.shared()?.deleteLocalContent(forBookIdentifier: fakeBook.identifier)
       XCTAssert(!fileManager.fileExists(atPath: bookUrl!.path))
     }
   }

@@ -156,12 +156,16 @@ extension TPPUserNotifications: UNUserNotificationCenterDelegate
     else if response.actionIdentifier == CheckOutActionIdentifier {
       Log.debug(#file, "'Check Out' Notification Action.")
       let userInfo = response.notification.request.content.userInfo
-      let downloadCenter = MyBooksDownloadCenter.shared
-
+      
       guard let bookID = userInfo["bookID"] as? String else {
         Log.error(#file, "Bad user info in Local Notification. UserInfo: \n\(userInfo)")
         completionHandler()
         return
+      }
+      guard let downloadCenter = TPPMyBooksDownloadCenter.shared() else {
+          Log.error(#file, "Download center singleton is nil!")
+          completionHandler()
+          return
       }
       guard let book = TPPBookRegistry.shared.book(forIdentifier: bookID) else {
           Log.error(#file, "Problem creating book. BookID: \(bookID)")
@@ -178,7 +182,7 @@ extension TPPUserNotifications: UNUserNotificationCenterDelegate
   }
 
   private func borrow(_ book: TPPBook,
-                      inBackgroundFrom downloadCenter: MyBooksDownloadCenter,
+                      inBackgroundFrom downloadCenter: TPPMyBooksDownloadCenter,
                       completion: @escaping () -> Void) {
     // Asynchronous network task in the background app state.
     var bgTask: UIBackgroundTaskIdentifier = .invalid
