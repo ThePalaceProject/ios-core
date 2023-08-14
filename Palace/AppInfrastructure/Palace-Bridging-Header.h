@@ -1,7 +1,6 @@
 #if FEATURE_DRM_CONNECTOR
 #import "ADEPT/NYPLADEPTErrors.h"
 #import "ADEPT/NYPLADEPT.h"
-#import "ADEPT/ADEPT.h"
 #import "AdobeDRMContainer.h"
 #endif
 
@@ -26,6 +25,7 @@
 #import "TPPHoldsNavigationController.h"
 #import "TPPKeychain.h"
 #import "TPPLocalization.h"
+#import "TPPMyBooksDownloadCenter.h"
 #import "TPPOPDS.h"
 #import "TPPReachability.h"
 #import "TPPReloadView.h"
@@ -40,5 +40,3 @@
 #import "TPPBookCellDelegate.h"
 #import "TPPOpenSearchDescription.h"
 #import "TPPCatalogSearchViewController.h"
-#import "TPPJSON.h"
-
