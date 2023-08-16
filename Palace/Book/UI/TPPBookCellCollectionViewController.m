@@ -1,6 +1,7 @@
 #import "TPPBookCell.h"
 #import "TPPBookDownloadingCell.h"
 #import "TPPConfiguration.h"
+#import "TPPMyBooksDownloadCenter.h"
 #import "UIView+TPPViewAdditions.h"
 #import "TPPBookCellCollectionViewController.h"
 #import "Palace-Swift.h"
@@ -76,8 +77,8 @@
         if([cell isKindOfClass:[TPPBookDownloadingCell class]]) {
           TPPBookDownloadingCell *const downloadingCell = (TPPBookDownloadingCell *)cell;
           NSString *const bookIdentifier = downloadingCell.book.identifier;
-          downloadingCell.downloadProgress = [[MyBooksDownloadCenter shared]
-                                              downloadProgressFor:bookIdentifier];
+          downloadingCell.downloadProgress = [[TPPMyBooksDownloadCenter sharedDownloadCenter]
+                                              downloadProgressForBookIdentifier:bookIdentifier];
         }
       }
     }]];
