@@ -201,6 +201,6 @@ extension BookCellModel {
   }
 
   func didSelectCancel() {
-    MyBooksDownloadCenter.shared.cancelDownload(for: book.identifier)
+    TPPMyBooksDownloadCenter.shared().cancelDownload(forBookIdentifier: book.identifier)
   }
 }

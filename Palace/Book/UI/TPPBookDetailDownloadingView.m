@@ -2,6 +2,7 @@
 #import "Palace-Swift.h"
 
 #import "TPPConfiguration.h"
+#import "TPPMyBooksDownloadCenter.h"
 #import "UIView+TPPViewAdditions.h"
 #import "TPPLocalization.h"
 #import "TPPBookDetailDownloadingView.h"

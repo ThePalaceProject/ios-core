@@ -3,6 +3,7 @@
 #import "TPPCatalogFeedViewController.h"
 #import "TPPCatalogLane.h"
 #import "TPPCatalogLaneCell.h"
+#import "TPPMyBooksDownloadCenter.h"
 #import "TPPMyBooksDownloadInfo.h"
 #import "TPPRootTabBarController.h"
 #import "TPPSession.h"
@@ -137,15 +138,15 @@
 - (void)didSelectCancelDownloadFailedForBookDetailView:
 (__attribute__((unused)) TPPBookDetailView *)detailView
 {
-  [[MyBooksDownloadCenter shared]
-   cancelDownloadFor:self.book.identifier];
+  [[TPPMyBooksDownloadCenter sharedDownloadCenter]
+   cancelDownloadForBookIdentifier:self.book.identifier];
 }
   
 - (void)didSelectCancelDownloadingForBookDetailView:
 (__attribute__((unused)) TPPBookDetailView *)detailView
 {
-  [[MyBooksDownloadCenter shared]
-   cancelDownloadFor:self.book.identifier];
+  [[TPPMyBooksDownloadCenter sharedDownloadCenter]
+   cancelDownloadForBookIdentifier:self.book.identifier];
 }
 
 #pragma mark - TPPCatalogLaneCellDelegate
@@ -292,11 +293,11 @@
 - (void)myBooksDidChange
 {
   [TPPMainThreadRun asyncIfNeeded:^{
-    __auto_type myBooks = [MyBooksDownloadCenter shared];
+    __auto_type myBooks = [TPPMyBooksDownloadCenter sharedDownloadCenter];
     __auto_type bookID = self.book.identifier;
-    MyBooksDownloadRightsManagement rights = [myBooks downloadInfoForBookIdentifier:bookID].rightsManagement;
-    self.bookDetailView.downloadProgress = [myBooks downloadProgressFor:bookID];
-    self.bookDetailView.downloadStarted = (rights != MyBooksDownloadRightsManagementUnknown);
+    TPPMyBooksDownloadRightsManagement rights = [myBooks downloadInfoForBookIdentifier:bookID].rightsManagement;
+    self.bookDetailView.downloadProgress = [myBooks downloadProgressForBookIdentifier:bookID];
+    self.bookDetailView.downloadStarted = (rights != TPPMyBooksDownloadRightsManagementUnknown);
   }];
 }
 
