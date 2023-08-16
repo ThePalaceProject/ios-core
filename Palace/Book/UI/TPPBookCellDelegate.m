@@ -257,7 +257,7 @@ static const int kServerUpdateDelay = 15;
       }
 
       AudiobookTimeTracker *timeTracker;
-      if (book.timeTrackingURL && TPPSettings.shared.isTimeTrackingEnabled) {
+      if (book.timeTrackingURL) {
         timeTracker = [[AudiobookTimeTracker alloc] initWithLibraryId:AccountsManager.shared.currentAccount.uuid bookId:book.identifier timeTrackingUrl:book.timeTrackingURL];
       }
       
