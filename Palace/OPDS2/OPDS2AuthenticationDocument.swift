@@ -55,7 +55,7 @@ struct OPDS2AuthenticationDocument: Codable {
   let colorScheme: String?
   let announcements: [Announcement]?
   let id: String
-  
+
   static func fromData(_ data: Data) throws -> OPDS2AuthenticationDocument {
     let jsonDecoder = JSONDecoder()
     jsonDecoder.keyDecodingStrategy = .convertFromSnakeCase

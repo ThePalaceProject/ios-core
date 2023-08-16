@@ -12,6 +12,6 @@ extension TPPBook {
   // TODO: SIMPLY-2656 Remove this hack if possible, or at least use DI for
   // instead of implicitly using NYPLMyBooksDownloadCenter
   var url: URL? {
-    return TPPMyBooksDownloadCenter.shared()?.fileURL(forBookIndentifier: identifier)
+    return MyBooksDownloadCenter.shared.fileUrl(for: identifier)
   }
 }

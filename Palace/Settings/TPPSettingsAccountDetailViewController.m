@@ -6,7 +6,6 @@
 #import "TPPCatalogNavigationController.h"
 #import "TPPConfiguration.h"
 #import "TPPLinearView.h"
-#import "TPPMyBooksDownloadCenter.h"
 #import "TPPOPDS.h"
 #import "TPPRootTabBarController.h"
 #import "TPPSettingsAccountDetailViewController.h"
@@ -159,7 +158,7 @@ Authenticating with any of those barcodes should work.
                         libraryAccountsProvider:AccountsManager.shared
                         urlSettingsProvider: TPPSettings.shared
                         bookRegistry:[TPPBookRegistry shared]
-                        bookDownloadsCenter:[TPPMyBooksDownloadCenter sharedDownloadCenter]
+                        bookDownloadsCenter:[MyBooksDownloadCenter shared]
                         userAccountProvider:[TPPUserAccount class]
                         uiDelegate:self
                         drmAuthorizer:drmAuthorizer];
@@ -574,7 +573,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
             cell.accessoryView = [[UIImageView alloc] initWithImage:[UIImage imageNamed: @"CheckedCircle"]];
             weakSelf.selectedAccount.details.userAboveAgeLimit = aboveAgeLimit;
             if (!aboveAgeLimit) {
-              [[TPPMyBooksDownloadCenter sharedDownloadCenter] reset:weakSelf.selectedAccountId];
+              [[MyBooksDownloadCenter shared] reset:weakSelf.selectedAccountId];
               [[TPPBookRegistry shared] reset:weakSelf.selectedAccountId];
             }
             TPPCatalogNavigationController *catalog = (TPPCatalogNavigationController*)[TPPRootTabBarController sharedController].viewControllers[0];
