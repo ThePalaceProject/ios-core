@@ -152,7 +152,7 @@ static const int kServerUpdateDelay = 15;
 - (void)openPDF:(TPPBook *)book {
 #if LCP
   if ([LCPPDFs canOpenBook:book]) {
-    NSURL *bookUrl = [[MyBooksDownloadCenter shared] fileUrlFor:book.identifier account:nil];
+    NSURL *bookUrl = [[MyBooksDownloadCenter shared] fileUrlFor:book.identifier];
     LCPPDFs *decryptor = [[LCPPDFs alloc] initWithUrl:bookUrl];
     [decryptor extractWithUrl:bookUrl completion:^(NSURL *encryptedUrl, NSError *error) {
       if (error) {
@@ -187,7 +187,7 @@ static const int kServerUpdateDelay = 15;
 /// Present Palace PDF reader
 /// @param book PDF Book object
 - (void)presentPDF:(TPPBook *)book {
-  NSURL *bookUrl = [[MyBooksDownloadCenter shared] fileUrlFor:book.identifier account:nil];
+  NSURL *bookUrl = [[MyBooksDownloadCenter shared] fileUrlFor:book.identifier];
   NSData *data = [[NSData alloc] initWithContentsOfURL:bookUrl options:NSDataReadingMappedAlways error:nil];
 
   TPPPDFDocumentMetadata *metadata = [[TPPPDFDocumentMetadata alloc] initWith:book.identifier];
@@ -200,7 +200,7 @@ static const int kServerUpdateDelay = 15;
 }
 
 - (void)openAudiobook:(TPPBook *)book {
-  NSURL *const url = [[MyBooksDownloadCenter shared] fileUrlFor:book.identifier account:nil];
+  NSURL *const url = [[MyBooksDownloadCenter shared] fileUrlFor:book.identifier];
   NSData *const data = [NSData dataWithContentsOfURL:url];
   if (data == nil) {
     [self presentCorruptedItemErrorForBook:book fromURL:url];
@@ -578,7 +578,7 @@ static const int kServerUpdateDelay = 15;
   if ([[TPPBookRegistry shared] stateFor:self.book.identifier] == TPPBookStateDownloadSuccessful) {
     OverdriveAudiobook *odAudiobook = (OverdriveAudiobook *)self.manager.audiobook;
 
-    NSURL *const url = [[MyBooksDownloadCenter shared] fileUrlFor: self.book.identifier account:nil];
+    NSURL *const url = [[MyBooksDownloadCenter shared] fileUrlFor: self.book.identifier];
     NSData *const data = [NSData dataWithContentsOfURL:url];
     if (data == nil) {
       [self presentCorruptedItemErrorForBook:self.book fromURL:url];

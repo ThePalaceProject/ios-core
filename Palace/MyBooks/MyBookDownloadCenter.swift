@@ -636,7 +636,7 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
         downloadInfo(forBookIdentifier: book.identifier)?
           .withDownloadProgress(Double(totalBytesWritten) / Double(totalBytesExpectedToWrite))
         broadcastUpdate()
-      }
+      } 
     }
   }
 
@@ -1049,7 +1049,11 @@ extension MyBooksDownloadCenter {
     return false
   }
 
-  @objc func fileUrl(for identifier: String, account: String? = AccountsManager.shared.currentAccountId ?? "") -> URL? {
+  @objc func fileUrl(for identifier: String) -> URL? {
+    return fileUrl(for: identifier, account: AccountsManager.shared.currentAccountId)
+  }
+  
+  func fileUrl(for identifier: String, account: String?) -> URL? {
     guard let book = TPPBookRegistry.shared.book(forIdentifier: identifier) else {
       return nil
     }
@@ -1060,13 +1064,13 @@ extension MyBooksDownloadCenter {
     
     return contentDirectoryURL?.appendingPathComponent(hashedIdentifier).appendingPathExtension(pathExtension)
   }
-
-  func contentDirectoryURL(_ account: String? = AccountsManager.shared.currentAccountId) -> URL? {
+  
+  func contentDirectoryURL(_ account: String?) -> URL? {
     guard let directoryURL = TPPBookContentMetadataFilesHelper.directory(for: account ?? "")?.appendingPathComponent("content") else {
       NSLog("[contentDirectoryURL] nil directory.")
       return nil
     }
-
+    
     var isDirectory: ObjCBool = false
     if !FileManager.default.fileExists(atPath: directoryURL.path, isDirectory: &isDirectory) {
       do {
@@ -1076,9 +1080,10 @@ extension MyBooksDownloadCenter {
         return nil
       }
     }
-
+    
     return directoryURL
   }
+
   
   func pathExtension(for book: TPPBook?) -> String {
 #if LCP
@@ -1117,10 +1122,10 @@ extension MyBooksDownloadCenter: TPPBookDownloadsDeleting {
   }
   
   func reset() {
-    guard let currentAccountId = AccountsManager.shared.currentAccountId, let contentDirectoryURL = contentDirectoryURL() else {
+    guard let currentAccountId = AccountsManager.shared.currentAccountId else {
       return
     }
-  
+    
     deleteAudiobooks(forAccount: currentAccountId)
     
     for info in bookIdentifierToDownloadInfo.values {
@@ -1132,7 +1137,9 @@ extension MyBooksDownloadCenter: TPPBookDownloadsDeleting {
     bookIdentifierOfBookToRemove = nil
     
     do {
-      try FileManager.default.removeItem(at: contentDirectoryURL)
+      if let url = contentDirectoryURL(currentAccountId) {
+        try FileManager.default.removeItem(at: url)
+      }
     } catch {
       // Handle error, if needed
     }

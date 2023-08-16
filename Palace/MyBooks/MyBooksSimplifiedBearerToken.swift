@@ -23,7 +23,7 @@ class MyBooksSimplifiedBearerToken {
     guard let locationString = dictionary["location"] as? String,
           let location = URL(string: locationString),
           let accessToken = dictionary["access_token"] as? String,
-          let expirationNumber = dictionary["expiration"] as? Int else {
+          let expirationNumber = dictionary["expires_in"] as? Int ?? dictionary["expiration"] as? Int else {
       return nil
     }
     
