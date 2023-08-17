@@ -1,4 +1,4 @@
-@import NYPLAudiobookToolkit;
+@import PalaceAudiobookToolkit;
 #if FEATURE_OVERDRIVE
 @import OverdriveProcessor;
 #endif

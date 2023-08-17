@@ -441,7 +441,7 @@ static const int kServerUpdateDelay = 15;
       NSString *logLevel = (level == LogLevelInfo ?
                             @"info" :
                             (level == LogLevelWarn ? @"warning" : @"error"));
-      NSString *summary = [NSString stringWithFormat:@"NYPLAudiobookToolkit::AudiobookManager %@", logLevel];
+      NSString *summary = [NSString stringWithFormat:@"PalaceAudiobookToolkit::AudiobookManager %@", logLevel];
       [TPPErrorLogger logErrorWithCode:TPPErrorCodeAudiobookExternalError
                                 summary:summary
                                metadata:@{ @"context": msg ?: @"N/A" }];
@@ -489,7 +489,7 @@ static const int kServerUpdateDelay = 15;
     previousPlayheadOffset = playheadOffset;
   
     [[TPPBookRegistry shared]
-     setLocation:[[TPPBookLocation alloc] initWithLocationString:string renderer:@"NYPLAudiobookToolkit"]
+     setLocation:[[TPPBookLocation alloc] initWithLocationString:string renderer:@"PalaceAudiobookToolkit"]
      forIdentifier:self.book.identifier];
     
     if ([[NSDate date] timeIntervalSinceDate: self.lastServerUpdate] >= kServerUpdateDelay) {

@@ -7,7 +7,7 @@
 //
 
 import Foundation
-import NYPLAudiobookToolkit
+import PalaceAudiobookToolkit
 
 @objc public class AudiobookBookmarkBusinessLogic: NSObject {
   private var book: TPPBook
@@ -38,7 +38,7 @@ import NYPLAudiobookToolkit
     }
   }
   
-  private func fetchServerBookmarks(completion: @escaping ([NYPLAudiobookToolkit.ChapterLocation]) -> Void) {
+  private func fetchServerBookmarks(completion: @escaping ([PalaceAudiobookToolkit.ChapterLocation]) -> Void) {
     annotationsManager.getServerBookmarks(forBook: book.identifier, atURL: book.annotationsURL, motivation: .bookmark) { serverBookmarks in
       guard let audioBookmarks = serverBookmarks as? [AudioBookmark] else {
         completion([])
@@ -175,7 +175,7 @@ extension AudiobookBookmarkBusinessLogic: AudiobookBookmarkDelegate {
     }
   }
 
-  public func fetchBookmarks(completion: @escaping ([NYPLAudiobookToolkit.ChapterLocation]) -> Void) {
+  public func fetchBookmarks(completion: @escaping ([PalaceAudiobookToolkit.ChapterLocation]) -> Void) {
     let localBookmarks: [ChapterLocation] = fetchLocalBookmarks()
 
     fetchServerBookmarks { [weak self] serverBookmarks in
