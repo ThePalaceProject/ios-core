@@ -60,3 +60,6 @@ static NSString *const TPPOPDSRelationAnnotations =
 
 static NSString *const TPPOPDSRelationEntrypoint =
   @"http://librarysimplified.org/terms/rel/entrypoint";
+
+static NSString *const TPPOPDSRelationTimeTrackingLink =
+  @"http://palaceproject.io/terms/timeTracking";

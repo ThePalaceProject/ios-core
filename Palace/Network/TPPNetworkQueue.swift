@@ -12,6 +12,10 @@ extension Connection {
   }
 }
 
+enum HTTPMethodType: String {
+  case GET, POST, HEAD, PUT, DELETE, OPTIONS, CONNECT
+}
+
 /**
  The NetworkQueue is insantiated once on app startup and listens
  for a valid network notification from a reachability class. It then
@@ -48,10 +52,6 @@ final class NetworkQueue: NSObject {
 
   private static let DBVersion = 1
   private static let TableName = "offline_queue"
-
-  enum HTTPMethodType: String {
-    case GET, POST, HEAD, PUT, DELETE, OPTIONS, CONNECT
-  }
 
   private var retryRequestCount = 0
   private let path = NSSearchPathForDirectoriesInDomains(.applicationSupportDirectory, .userDomainMask, true).first!

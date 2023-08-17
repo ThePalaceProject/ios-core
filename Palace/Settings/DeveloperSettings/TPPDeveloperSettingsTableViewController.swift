@@ -22,7 +22,7 @@ import Foundation
   func enterLCPPassphraseSwitchDidChange(sender: UISwitch) {
     TPPSettings.shared.enterLCPPassphraseManually = sender.isOn
   }
-  
+    
   // MARK:- UIViewController
   
   override func loadView() {
@@ -107,7 +107,7 @@ import Foundation
     cell.textLabel?.text = "Clear Cached Data"
     return cell
   }
-  
+    
   // MARK:- UITableViewDelegate
   
   func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {

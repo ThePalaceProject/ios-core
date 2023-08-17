@@ -682,6 +682,7 @@
 		E55E2FA529E7A9660093F916 /* AudioBookmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5231240285C291D007D1DB5 /* AudioBookmark.swift */; };
 		E55E2FA629E7A9670093F916 /* AudioBookmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5231240285C291D007D1DB5 /* AudioBookmark.swift */; };
 		E55E2FA829E7AFCD0093F916 /* AudiobookBookmarkBusinessLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = E55E2FA729E7AFCD0093F916 /* AudiobookBookmarkBusinessLogic.swift */; };
+		E56067752A4C8858002ACE93 /* TokenRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = E56067742A4C8858002ACE93 /* TokenRequest.swift */; };
 		E56724BF2A13223700972828 /* TPPBookCellDelegate+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5024A8C2A0E8761006BF653 /* TPPBookCellDelegate+Extensions.swift */; };
 		E56724C12A132C1300972828 /* TPPAnnotationMock.swift in Sources */ = {isa = PBXBuildFile; fileRef = E56724C02A132C1300972828 /* TPPAnnotationMock.swift */; };
 		E567C72C296743990079C28C /* BookCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E567C72B296743990079C28C /* BookCell.swift */; };
@@ -718,6 +719,7 @@
 		E5BEF01A26BD94D600C2A50B /* UIFont+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5BEF01826BD94D600C2A50B /* UIFont+Extensions.swift */; };
 		E5BEF02826BDAB3A00C2A50B /* OpenSans-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E5BEF01C26BDA9EA00C2A50B /* OpenSans-SemiBold.ttf */; };
 		E5BEF02A26BDAB3A00C2A50B /* OpenSans-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E5BEF01C26BDA9EA00C2A50B /* OpenSans-SemiBold.ttf */; };
+		E5BFCF0E2A5455170046A48D /* TokenRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = E56067742A4C8858002ACE93 /* TokenRequest.swift */; };
 		E5C1F55227990A89005FC6B2 /* OverdriveProcessor.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E5C1F53027990929005FC6B2 /* OverdriveProcessor.framework */; };
 		E5C1F55327990A96005FC6B2 /* OverdriveProcessor.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E5C1F53027990929005FC6B2 /* OverdriveProcessor.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		E5C2C422268BA5140046F415 /* TPPRegistryDebuggingCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5C2C421268BA5140046F415 /* TPPRegistryDebuggingCell.swift */; };
@@ -845,6 +847,15 @@
 		E792891D2861F58B000313D7 /* TPPPDFTOCView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E792891B2861F58B000313D7 /* TPPPDFTOCView.swift */; };
 		E79289292861F5B0000313D7 /* TPPPDFSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E79289282861F5B0000313D7 /* TPPPDFSearchView.swift */; };
 		E792892A2861F5B0000313D7 /* TPPPDFSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E79289282861F5B0000313D7 /* TPPPDFSearchView.swift */; };
+		E795A7672A74074300314EC8 /* AudiobookTimeEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = E795A7632A74074200314EC8 /* AudiobookTimeEntry.swift */; };
+		E795A7682A74074300314EC8 /* AudiobookTimeEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = E795A7632A74074200314EC8 /* AudiobookTimeEntry.swift */; };
+		E795A7692A74074300314EC8 /* AudiobookTimeTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = E795A7642A74074300314EC8 /* AudiobookTimeTracker.swift */; };
+		E795A76A2A74074300314EC8 /* AudiobookTimeTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = E795A7642A74074300314EC8 /* AudiobookTimeTracker.swift */; };
+		E795A76B2A74074300314EC8 /* AudiobookDataManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E795A7652A74074300314EC8 /* AudiobookDataManager.swift */; };
+		E795A76C2A74074300314EC8 /* AudiobookDataManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E795A7652A74074300314EC8 /* AudiobookDataManager.swift */; };
+		E795A76D2A74074300314EC8 /* DataManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E795A7662A74074300314EC8 /* DataManager.swift */; };
+		E795A76E2A74074300314EC8 /* DataManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E795A7662A74074300314EC8 /* DataManager.swift */; };
+		E795A7822A744F0A00314EC8 /* ULID in Frameworks */ = {isa = PBXBuildFile; productRef = E795A7812A744F0A00314EC8 /* ULID */; };
 		E7A9909027EE4EF400D9486F /* LicensesService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7A9908F27EE4EF400D9486F /* LicensesService.swift */; };
 		E7B20B39285B3AC400C49FE1 /* TPPPDFPreviewGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7B20B38285B3AC400C49FE1 /* TPPPDFPreviewGrid.swift */; };
 		E7B20B3A285B3AC400C49FE1 /* TPPPDFPreviewGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7B20B38285B3AC400C49FE1 /* TPPPDFPreviewGrid.swift */; };
@@ -873,6 +884,7 @@
 		E7F8DA5F287854F2006996BC /* TPPPDFThumbnailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7F8DA5E287854F2006996BC /* TPPPDFThumbnailView.swift */; };
 		E7FD4E52286CCF2C00D26A3B /* TPPPDFLocation.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7FD4E51286CCF2C00D26A3B /* TPPPDFLocation.swift */; };
 		E7FD4E54286CD0E000D26A3B /* TPPPDFLocationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7FD4E53286CD0E000D26A3B /* TPPPDFLocationView.swift */; };
+		E7FFEAA62A745F600006030A /* ULID in Frameworks */ = {isa = PBXBuildFile; productRef = E7FFEAA52A745F600006030A /* ULID */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -1529,6 +1541,7 @@
 		E551B360267D402B0026FC1B /* TPPAccountList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAccountList.swift; sourceTree = "<group>"; };
 		E553424F293FB23F004FF34A /* NYPLAudiobookToolkit.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = NYPLAudiobookToolkit.xcodeproj; path = "ios-audiobooktoolkit/NYPLAudiobookToolkit.xcodeproj"; sourceTree = "<group>"; };
 		E55E2FA729E7AFCD0093F916 /* AudiobookBookmarkBusinessLogic.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudiobookBookmarkBusinessLogic.swift; sourceTree = "<group>"; };
+		E56067742A4C8858002ACE93 /* TokenRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenRequest.swift; sourceTree = "<group>"; };
 		E56724C02A132C1300972828 /* TPPAnnotationMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAnnotationMock.swift; sourceTree = "<group>"; };
 		E567C72B296743990079C28C /* BookCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookCell.swift; sourceTree = "<group>"; };
 		E57E798329D4D407006D0F87 /* String+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "String+Extensions.swift"; sourceTree = "<group>"; };
@@ -1638,6 +1651,10 @@
 		E78AE801291C1D8600884446 /* TPPBookRegistryRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBookRegistryRecord.swift; sourceTree = "<group>"; };
 		E792891B2861F58B000313D7 /* TPPPDFTOCView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFTOCView.swift; sourceTree = "<group>"; };
 		E79289282861F5B0000313D7 /* TPPPDFSearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFSearchView.swift; sourceTree = "<group>"; };
+		E795A7632A74074200314EC8 /* AudiobookTimeEntry.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AudiobookTimeEntry.swift; sourceTree = "<group>"; };
+		E795A7642A74074300314EC8 /* AudiobookTimeTracker.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AudiobookTimeTracker.swift; sourceTree = "<group>"; };
+		E795A7652A74074300314EC8 /* AudiobookDataManager.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AudiobookDataManager.swift; sourceTree = "<group>"; };
+		E795A7662A74074300314EC8 /* DataManager.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = DataManager.swift; sourceTree = "<group>"; };
 		E7A9908F27EE4EF400D9486F /* LicensesService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LicensesService.swift; sourceTree = "<group>"; };
 		E7B20B38285B3AC400C49FE1 /* TPPPDFPreviewGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFPreviewGrid.swift; sourceTree = "<group>"; };
 		E7B20B45285B3BC800C49FE1 /* TPPPDFPreviewGridController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFPreviewGridController.swift; sourceTree = "<group>"; };
@@ -1671,6 +1688,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E7FFEAA62A745F600006030A /* ULID in Frameworks */,
 				E5288CBF293FB6DE00F3B3D2 /* NYPLAudiobookToolkit.framework in Frameworks */,
 				73EB0B2E25821DF4006BC997 /* MediaPlayer.framework in Frameworks */,
 				E7498A902A0E7F840037DD93 /* FirebaseCrashlytics in Frameworks */,
@@ -1743,6 +1761,7 @@
 				E7CA1C4E29381068009CC6FD /* SQLite in Frameworks */,
 				1112A8431A3249B4002B8CC1 /* libTenPrintCover.a in Frameworks */,
 				21986922267E29D70041369E /* PureLayout.xcframework in Frameworks */,
+				E795A7822A744F0A00314EC8 /* ULID in Frameworks */,
 				119503E91993F919009FB788 /* libz.dylib in Frameworks */,
 				119503E71993F914009FB788 /* libxml2.dylib in Frameworks */,
 				2198690D267E29B00041369E /* Minizip.xcframework in Frameworks */,
@@ -1854,6 +1873,7 @@
 		21E7E07424FEA7C100189224 /* Audiobooks */ = {
 			isa = PBXGroup;
 			children = (
+				E795A7622A74072500314EC8 /* Tracker */,
 				218D0CF925715EF700E81705 /* LCP */,
 				21E7E07924FEA7D700189224 /* DPLA */,
 				A92FB0F821CDCE3D004740F4 /* TPPReturnPromptHelper.swift */,
@@ -2063,6 +2083,7 @@
 				739062D125358CF900D0743D /* TPPSignInBusinessLogicUIDelegate.swift */,
 				73B501C024F48D4B00FBAD7D /* TPPUserAccountFrontEndValidation.swift */,
 				734B789025659611006FB8AD /* URLResponse+TPPAuthentication.swift */,
+				E56067742A4C8858002ACE93 /* TokenRequest.swift */,
 			);
 			path = SignInLogic;
 			sourceTree = "<group>";
@@ -3162,6 +3183,17 @@
 			path = PDF;
 			sourceTree = "<group>";
 		};
+		E795A7622A74072500314EC8 /* Tracker */ = {
+			isa = PBXGroup;
+			children = (
+				E795A7662A74074300314EC8 /* DataManager.swift */,
+				E795A7632A74074200314EC8 /* AudiobookTimeEntry.swift */,
+				E795A7652A74074300314EC8 /* AudiobookDataManager.swift */,
+				E795A7642A74074300314EC8 /* AudiobookTimeTracker.swift */,
+			);
+			path = Tracker;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -3209,6 +3241,7 @@
 				E7498A8F2A0E7F840037DD93 /* FirebaseCrashlytics */,
 				E7498A912A0E7F840037DD93 /* FirebaseDynamicLinks */,
 				E7498A932A0E7F840037DD93 /* FirebaseMessaging */,
+				E7FFEAA52A745F600006030A /* ULID */,
 			);
 			productName = Simplified;
 			productReference = 73EB0B7525821DF4006BC997 /* Palace-noDRM.app */;
@@ -3224,6 +3257,7 @@
 				145DA48C215441260055DB93 /* Copy Frameworks (Carthage) */,
 				73DA43AD2404CA9500985482 /* Crashlytics */,
 				219868F9267E29840041369E /* Embed Frameworks */,
+				21A21AA32A7AD7C700080C04 /* ShellScript */,
 			);
 			buildRules = (
 			);
@@ -3241,6 +3275,7 @@
 				E7498A872A0E7F460037DD93 /* FirebaseCrashlytics */,
 				E7498A892A0E7F460037DD93 /* FirebaseDynamicLinks */,
 				E7498A8B2A0E7F460037DD93 /* FirebaseMessaging */,
+				E795A7812A744F0A00314EC8 /* ULID */,
 			);
 			productName = Simplified;
 			productReference = A823D80D192BABA400B55DE2 /* Palace.app */;
@@ -3295,6 +3330,7 @@
 				E77D02232931357400544180 /* XCRemoteSwiftPackageReference "SwiftSoup" */,
 				E7CA1C4C29381068009CC6FD /* XCRemoteSwiftPackageReference "SQLite.swift" */,
 				E7498A842A0E7F460037DD93 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+				E795A7802A744F0A00314EC8 /* XCRemoteSwiftPackageReference "ULID.swift" */,
 			);
 			productRefGroup = A823D80E192BABA400B55DE2 /* Products */;
 			projectDirPath = "";
@@ -3541,6 +3577,28 @@
 			shellPath = /bin/sh;
 			shellScript = "/usr/local/bin/carthage copy-frameworks\n";
 		};
+		21A21AA32A7AD7C700080C04 /* ShellScript */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}",
+				"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}/Contents/Resources/DWARF/${PRODUCT_NAME}",
+				"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}/Contents/Info.plist",
+				"$(BUILT_PRODUCTS_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/GoogleService-Info.plist",
+				"$(BUILT_PRODUCTS_DIR)/$(EXECUTABLE_PATH)",
+			);
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = "/bin/sh ";
+			shellScript = "# Type a script or drag a script file from your workspace to insert its path.\n\"${BUILD_DIR%/Build/*}/SourcePackages/checkouts/firebase-ios-sdk/Crashlytics/run\"\n";
+		};
 		73DA43AD2404CA9500985482 /* Crashlytics */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 8;
@@ -3756,6 +3814,7 @@
 				21E41793292811CB00A78606 /* TPPReaderAdvancedSettings.swift in Sources */,
 				73EB0A9925821DF4006BC997 /* TPPOPDSCategory.m in Sources */,
 				73EB0A9A25821DF4006BC997 /* TPPUserFriendlyError.swift in Sources */,
+				E795A76C2A74074300314EC8 /* AudiobookDataManager.swift in Sources */,
 				E704804F2859253900019B31 /* TPPPDFReaderView.swift in Sources */,
 				E7861C502846937B00B3A38A /* TPPPDFDocumentView.swift in Sources */,
 				73EB0A9B25821DF4006BC997 /* TPPNull.m in Sources */,
@@ -3784,6 +3843,7 @@
 				E7E9A22E298C6A82006C5D9E /* Reachability.swift in Sources */,
 				73EB0AA525821DF4006BC997 /* TPPEntryPointView.swift in Sources */,
 				E78AE803291C1D8600884446 /* TPPBookRegistryRecord.swift in Sources */,
+				E5BFCF0E2A5455170046A48D /* TokenRequest.swift in Sources */,
 				73EB0AA625821DF4006BC997 /* TPPOPDSGroup.m in Sources */,
 				73EB0AA825821DF4006BC997 /* TPPAppReviewPrompt.swift in Sources */,
 				73EB0AA925821DF4006BC997 /* TPPFacetBarView.swift in Sources */,
@@ -3794,6 +3854,7 @@
 				E7862A232773924900BE8AB8 /* UIViewControllerWrapper.swift in Sources */,
 				21DDE33225D31DB4002CBCE3 /* AdobeDRMFetcher.swift in Sources */,
 				21E4177A292810E000A78606 /* TPPPDFPage.swift in Sources */,
+				E795A7682A74074300314EC8 /* AudiobookTimeEntry.swift in Sources */,
 				73EB0AB025821DF4006BC997 /* JWKResponse.swift in Sources */,
 				73EB0AB125821DF4006BC997 /* UIFont+TPPSystemFontOverride.m in Sources */,
 				73EB0AB225821DF4006BC997 /* TPPReadiumBookmark.swift in Sources */,
@@ -3843,6 +3904,7 @@
 				E51EB51529D5F46400022D24 /* String+Extensions.swift in Sources */,
 				73EB0AD125821DF4006BC997 /* ProblemReportEmail.swift in Sources */,
 				21E41788292810F600A78606 /* TPPPDFThumbnailView.swift in Sources */,
+				E795A76E2A74074300314EC8 /* DataManager.swift in Sources */,
 				73EB0AD225821DF4006BC997 /* TPPBookCellDelegate.m in Sources */,
 				E5EFDE79298C43DD00258CA3 /* BookButtonState.swift in Sources */,
 				73EB0AD325821DF4006BC997 /* TPPBookDetailNormalView.m in Sources */,
@@ -3858,6 +3920,7 @@
 				21E41786292810EE00A78606 /* UIImage.swift in Sources */,
 				E551B365267D42AF0026FC1B /* TPPLoadingViewController.swift in Sources */,
 				73CC48AD260C07C300F1E2C3 /* TPPReadiumBookmark+R2.swift in Sources */,
+				E795A76A2A74074300314EC8 /* AudiobookTimeTracker.swift in Sources */,
 				E523A456299FD7DC00EF833B /* AlertModel.swift in Sources */,
 				73D8D27525A68D2C00DF5F69 /* TPPBaseReaderViewController.swift in Sources */,
 				E50D684326AB235400F1042B /* TPPReaderBookmarkCell.swift in Sources */,
@@ -4002,6 +4065,7 @@
 				21F4BF3A26BC62D4000CF592 /* AdobeCertificate.swift in Sources */,
 				216D2E39274286D200472538 /* TPPLCPLicense.swift in Sources */,
 				E79289292861F5B0000313D7 /* TPPPDFSearchView.swift in Sources */,
+				E795A7692A74074300314EC8 /* AudiobookTimeTracker.swift in Sources */,
 				E52E3BBC28C0EF410073DC4D /* TPPReaderAdvancedSettings.swift in Sources */,
 				E7498A7E2A0E4F6A0037DD93 /* URL+Extensions.swift in Sources */,
 				21D746FC2719B00E00C0E1B4 /* PublicationOpeningError.swift in Sources */,
@@ -4009,6 +4073,7 @@
 				21045C582761095B00D2D407 /* TPPOnboardingView.swift in Sources */,
 				2146872D2559A64B007B401A /* LCPLibraryService.swift in Sources */,
 				11369D48199527C200BB11F8 /* TPPJSON.m in Sources */,
+				E795A76D2A74074300314EC8 /* DataManager.swift in Sources */,
 				E5824BDF2994AC2900DE76C2 /* NormalBookCell.swift in Sources */,
 				7327A89323EE017300954748 /* TPPMainThreadChecker.swift in Sources */,
 				116A5EB91947B57500491A21 /* TPPConfiguration.m in Sources */,
@@ -4195,6 +4260,7 @@
 				217595DD27B680D400BA0FDD /* TPPReaderSettingsVC.swift in Sources */,
 				E7861C4D2846937400B3A38A /* TPPEncryptedPDFView.swift in Sources */,
 				E78AE800291BFCC600884446 /* TPPBookLocation.swift in Sources */,
+				E795A76B2A74074300314EC8 /* AudiobookDataManager.swift in Sources */,
 				730FC05125128224004D7C2D /* TPPSettings.swift in Sources */,
 				11C5DCF51976D22F005A9945 /* TPPHoldsViewController.m in Sources */,
 				E6B1F4FB1DD20EA900D73CA1 /* TPPSettingsAccountsList.swift in Sources */,
@@ -4230,6 +4296,7 @@
 				737DCB8C245CCF2300A8F297 /* TPPReaderBookmarksBusinessLogic.swift in Sources */,
 				E52E3C0528C19BAD0073DC4D /* EpubSample.swift in Sources */,
 				179699D124131BA500EC309F /* UIColor+LabelColor.swift in Sources */,
+				E56067752A4C8858002ACE93 /* TokenRequest.swift in Sources */,
 				735FED262427494900144C97 /* TPPNetworkResponder.swift in Sources */,
 				E5AD65DD2684FACA00C62951 /* TPPAccountListCell.swift in Sources */,
 				11C5DD16197727A6005A9945 /* TPPKeychain.m in Sources */,
@@ -4258,6 +4325,7 @@
 				E7FD4E52286CCF2C00D26A3B /* TPPPDFLocation.swift in Sources */,
 				0824D44E24B8DFE400C85A7E /* NSString+JSONParse.swift in Sources */,
 				73CC48AA260C07C200F1E2C3 /* TPPReadiumBookmark+R2.swift in Sources */,
+				E795A7672A74074300314EC8 /* AudiobookTimeEntry.swift in Sources */,
 				A499BF261B39EFC7002F8B8B /* TPPOPDSEntryGroupAttributes.m in Sources */,
 				E731FF4E2864E609001DB7F2 /* View.swift in Sources */,
 				E75499F72A1D6863009FF821 /* TPPAppDelegate+Extensions.swift in Sources */,
@@ -4537,7 +4605,7 @@
 				CODE_SIGN_IDENTITY = "Apple Distribution";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 172;
+				CURRENT_PROJECT_VERSION = 186;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -4559,7 +4627,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.29;
+				MARKETING_VERSION = 1.0.30;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PRODUCT_MODULE_NAME = Palace;
 				PRODUCT_NAME = "Palace-noDRM";
@@ -4594,7 +4662,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 172;
+				CURRENT_PROJECT_VERSION = 186;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -4616,7 +4684,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.29;
+				MARKETING_VERSION = 1.0.30;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PRODUCT_MODULE_NAME = Palace;
 				PRODUCT_NAME = "Palace-noDRM";
@@ -4776,7 +4844,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 172;
+				CURRENT_PROJECT_VERSION = 186;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -4803,7 +4871,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.29;
+				MARKETING_VERSION = 1.0.30;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PROVISIONING_PROFILE_SPECIFIER = "Ad Hoc";
 				RUN_CLANG_STATIC_ANALYZER = YES;
@@ -4836,7 +4904,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 172;
+				CURRENT_PROJECT_VERSION = 186;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -4863,7 +4931,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.29;
+				MARKETING_VERSION = 1.0.30;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PROVISIONING_PROFILE_SPECIFIER = "App Store";
 				RUN_CLANG_STATIC_ANALYZER = YES;
@@ -4949,6 +5017,14 @@
 			requirement = {
 				kind = upToNextMajorVersion;
 				minimumVersion = 2.3.2;
+			};
+		};
+		E795A7802A744F0A00314EC8 /* XCRemoteSwiftPackageReference "ULID.swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/yaslab/ULID.swift.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.0.0;
 			};
 		};
 		E7CA1C4C29381068009CC6FD /* XCRemoteSwiftPackageReference "SQLite.swift" */ = {
@@ -5047,6 +5123,11 @@
 			package = E77D02232931357400544180 /* XCRemoteSwiftPackageReference "SwiftSoup" */;
 			productName = SwiftSoup;
 		};
+		E795A7812A744F0A00314EC8 /* ULID */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E795A7802A744F0A00314EC8 /* XCRemoteSwiftPackageReference "ULID.swift" */;
+			productName = ULID;
+		};
 		E7CA1C4D29381068009CC6FD /* SQLite */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = E7CA1C4C29381068009CC6FD /* XCRemoteSwiftPackageReference "SQLite.swift" */;
@@ -5056,6 +5137,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = E7CA1C4C29381068009CC6FD /* XCRemoteSwiftPackageReference "SQLite.swift" */;
 			productName = SQLite;
+		};
+		E7FFEAA52A745F600006030A /* ULID */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E795A7802A744F0A00314EC8 /* XCRemoteSwiftPackageReference "ULID.swift" */;
+			productName = ULID;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
