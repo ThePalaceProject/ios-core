@@ -17,8 +17,6 @@ import CoreLocation
   func reset(_ libraryID: String!)
 }
 
-extension TPPMyBooksDownloadCenter: TPPBookDownloadsDeleting {}
-
 @objc protocol TPPBookRegistrySyncing: NSObjectProtocol {
   var isSyncing: Bool {get}
   func reset(_ libraryAccountUUID: String)
@@ -336,7 +334,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
       case .success(let tokenResponse):
         self?.authToken = tokenResponse.accessToken
         self?.authTokenExpiration = tokenResponse.expirationDate
-        self?.finalizeSignIn(forDRMAuthorization: true)
+        self?.validateCredentials()
       case .failure(let error):
         self?.handleNetworkError(error as NSError, loggingContext: ["Context": self?.uiContext as Any])
       }

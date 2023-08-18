@@ -224,7 +224,7 @@ class TPPBookRegistry: NSObject {
         }
         recordsToDelete.forEach {
           if let state = self.registry[$0]?.state, state == .DownloadSuccessful || state == .Used {
-            TPPMyBooksDownloadCenter.shared().deleteLocalContent(forBookIdentifier: $0)
+            MyBooksDownloadCenter.shared.deleteLocalContent(for: $0)
           }
           self.registry[$0] = nil
         }
@@ -244,7 +244,7 @@ class TPPBookRegistry: NSObject {
       }
     }
   }
-  
+
   /// Saves book registry data.
   private func save() {
     guard let account = AccountsManager.shared.currentAccount?.uuid,

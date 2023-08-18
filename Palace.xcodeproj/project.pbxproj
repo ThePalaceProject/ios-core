@@ -668,6 +668,14 @@
 		E53573DD2965E606008BDCA4 /* TPPMyBooksViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E53573DB2965E606008BDCA4 /* TPPMyBooksViewController.swift */; };
 		E53CDA882A2FBCD800C6008A /* LocationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E53CDA872A2FBCD800C6008A /* LocationManager.swift */; };
 		E53CDABC2A2FD4D300C6008A /* LocationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E53CDA872A2FBCD800C6008A /* LocationManager.swift */; };
+		E544C4E92A395BE000B2DC9D /* MyBookDownloadCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = E544C4E82A395BE000B2DC9D /* MyBookDownloadCenter.swift */; };
+		E544C4EA2A395BE000B2DC9D /* MyBookDownloadCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = E544C4E82A395BE000B2DC9D /* MyBookDownloadCenter.swift */; };
+		E544C4EC2A395DDE00B2DC9D /* MyBooksDownloadInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = E544C4EB2A395DDE00B2DC9D /* MyBooksDownloadInfo.swift */; };
+		E544C4ED2A395DDE00B2DC9D /* MyBooksDownloadInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = E544C4EB2A395DDE00B2DC9D /* MyBooksDownloadInfo.swift */; };
+		E544C4EF2A395E8C00B2DC9D /* MyBooksSimplifiedBearerToken.swift in Sources */ = {isa = PBXBuildFile; fileRef = E544C4EE2A395E8C00B2DC9D /* MyBooksSimplifiedBearerToken.swift */; };
+		E544C4F02A395E8C00B2DC9D /* MyBooksSimplifiedBearerToken.swift in Sources */ = {isa = PBXBuildFile; fileRef = E544C4EE2A395E8C00B2DC9D /* MyBooksSimplifiedBearerToken.swift */; };
+		E544C4F72A3C1E4A00B2DC9D /* Dictionary+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E544C4F62A3C1E4A00B2DC9D /* Dictionary+Extensions.swift */; };
+		E544C4F82A3C1E4A00B2DC9D /* Dictionary+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E544C4F62A3C1E4A00B2DC9D /* Dictionary+Extensions.swift */; };
 		E549954828EE1AAA00EA0D9B /* TransifexManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E549954728EE1AAA00EA0D9B /* TransifexManager.swift */; };
 		E549955228EE1ADB00EA0D9B /* TXNativeExtensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E549955128EE1ADB00EA0D9B /* TXNativeExtensions.swift */; };
 		E54DD4D5275C7C940013C200 /* View+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E54DD4D4275C7C940013C200 /* View+Extensions.swift */; };
@@ -694,8 +702,6 @@
 		E5824BE32994B29700DE76C2 /* ButtonView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5824BE22994B29700DE76C2 /* ButtonView.swift */; };
 		E5824BF129988C4E00DE76C2 /* TPPSAMLHelper.m in Sources */ = {isa = PBXBuildFile; fileRef = 730263AB2540DE4200A53891 /* TPPSAMLHelper.m */; };
 		E5824BF229988C4F00DE76C2 /* TPPSAMLHelper.m in Sources */ = {isa = PBXBuildFile; fileRef = 730263AB2540DE4200A53891 /* TPPSAMLHelper.m */; };
-		E5824BF629988CA600DE76C2 /* TPPMyBooksDownloadCenter.m in Sources */ = {isa = PBXBuildFile; fileRef = 1196F75A1970727C00F62670 /* TPPMyBooksDownloadCenter.m */; };
-		E5824BF729988CA700DE76C2 /* TPPMyBooksDownloadCenter.m in Sources */ = {isa = PBXBuildFile; fileRef = 1196F75A1970727C00F62670 /* TPPMyBooksDownloadCenter.m */; };
 		E58565CF269774C400A5FBD5 /* AudioEngine.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E58565CE269774C400A5FBD5 /* AudioEngine.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		E59526EB28D24FC000C179DA /* AudiobookSample.swift in Sources */ = {isa = PBXBuildFile; fileRef = E59526EA28D24FC000C179DA /* AudiobookSample.swift */; };
 		E59892E128A9AC2600C44A85 /* Sample.swift in Sources */ = {isa = PBXBuildFile; fileRef = E59892E028A9AC2600C44A85 /* Sample.swift */; };
@@ -801,7 +807,6 @@
 		E75499F82A1D6863009FF821 /* TPPAppDelegate+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E75499F62A1D6863009FF821 /* TPPAppDelegate+Extensions.swift */; };
 		E75ED6D2297720DE006BBD5F /* TXNativeExtensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E549955128EE1ADB00EA0D9B /* TXNativeExtensions.swift */; };
 		E75ED6D32977223A006BBD5F /* TPPKeychainTests.m in Sources */ = {isa = PBXBuildFile; fileRef = 11C5DD171977335E005A9945 /* TPPKeychainTests.m */; };
-		E75ED6D4297722BA006BBD5F /* TPPMyBooksDownloadCenterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D73DA3D22A07B9A00162CB8 /* TPPMyBooksDownloadCenterTests.swift */; };
 		E75ED6DB29772C4B006BBD5F /* NYPLXMLTests.m in Sources */ = {isa = PBXBuildFile; fileRef = 111559EE19B8FA8E0003BE94 /* NYPLXMLTests.m */; };
 		E75ED6DC29772E6D006BBD5F /* valid.xml in Resources */ = {isa = PBXBuildFile; fileRef = 111559F119B8FAA10003BE94 /* valid.xml */; };
 		E75ED6DD29772EBE006BBD5F /* invalid.xml in Resources */ = {isa = PBXBuildFile; fileRef = 111559F019B8FAA10003BE94 /* invalid.xml */; };
@@ -1109,8 +1114,6 @@
 		119503E61993F914009FB788 /* libxml2.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libxml2.dylib; path = usr/lib/libxml2.dylib; sourceTree = SDKROOT; };
 		119503E81993F919009FB788 /* libz.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libz.dylib; path = usr/lib/libz.dylib; sourceTree = SDKROOT; };
 		119503EA1993F91E009FB788 /* libc++.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = "libc++.dylib"; path = "usr/lib/libc++.dylib"; sourceTree = SDKROOT; };
-		1196F7591970727C00F62670 /* TPPMyBooksDownloadCenter.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPMyBooksDownloadCenter.h; sourceTree = "<group>"; };
-		1196F75A1970727C00F62670 /* TPPMyBooksDownloadCenter.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; lineEnding = 0; path = TPPMyBooksDownloadCenter.m; sourceTree = "<group>"; xcLanguageSpecificationIdentifier = xcode.lang.objc; };
 		119BEB87198C43A600121439 /* NSString+TPPStringAdditions.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "NSString+TPPStringAdditions.h"; sourceTree = "<group>"; };
 		119BEB88198C43A600121439 /* NSString+TPPStringAdditions.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = "NSString+TPPStringAdditions.m"; sourceTree = "<group>"; };
 		119BEB8D19901E1000121439 /* TPPOPDS.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TPPOPDS.h; sourceTree = "<group>"; };
@@ -1285,7 +1288,7 @@
 		5D3A28CB22D3DA850042B3BD /* UserProfileDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserProfileDocument.swift; sourceTree = "<group>"; };
 		5D3A28D322D3FBB90042B3BD /* UserProfileDocumentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserProfileDocumentTests.swift; sourceTree = "<group>"; };
 		5D60D3532297353C001080D0 /* TPPMigrationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPMigrationManager.swift; sourceTree = "<group>"; };
-		5D73DA3D22A07B9A00162CB8 /* TPPMyBooksDownloadCenterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPMyBooksDownloadCenterTests.swift; sourceTree = "<group>"; };
+		5D73DA3D22A07B9A00162CB8 /* MyBooksDownloadCenterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyBooksDownloadCenterTests.swift; sourceTree = "<group>"; };
 		5D7CF8B422C3FC06007CAA34 /* TPPErrorLogger.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPErrorLogger.swift; sourceTree = "<group>"; };
 		5DD5674422B303DF001F0C83 /* TPPDeveloperSettingsTableViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPDeveloperSettingsTableViewController.swift; sourceTree = "<group>"; };
 		5DD5677122B7ECE3001F0C83 /* TPPSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPSettings.swift; sourceTree = "<group>"; };
@@ -1529,6 +1532,10 @@
 		E53573D829653095008BDCA4 /* FacetViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FacetViewModel.swift; sourceTree = "<group>"; };
 		E53573DB2965E606008BDCA4 /* TPPMyBooksViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPMyBooksViewController.swift; sourceTree = "<group>"; };
 		E53CDA872A2FBCD800C6008A /* LocationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationManager.swift; sourceTree = "<group>"; };
+		E544C4E82A395BE000B2DC9D /* MyBookDownloadCenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyBookDownloadCenter.swift; sourceTree = "<group>"; };
+		E544C4EB2A395DDE00B2DC9D /* MyBooksDownloadInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyBooksDownloadInfo.swift; sourceTree = "<group>"; };
+		E544C4EE2A395E8C00B2DC9D /* MyBooksSimplifiedBearerToken.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyBooksSimplifiedBearerToken.swift; sourceTree = "<group>"; };
+		E544C4F62A3C1E4A00B2DC9D /* Dictionary+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Dictionary+Extensions.swift"; sourceTree = "<group>"; };
 		E549954728EE1AAA00EA0D9B /* TransifexManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransifexManager.swift; sourceTree = "<group>"; };
 		E549955128EE1ADB00EA0D9B /* TXNativeExtensions.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TXNativeExtensions.swift; sourceTree = "<group>"; };
 		E54DD4C6275C60E70013C200 /* UIViewControllerWrapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UIViewControllerWrapper.swift; sourceTree = "<group>"; };
@@ -2029,6 +2036,7 @@
 				11068C54196DD37900E8A94B /* TPPNull.m */,
 				E551116D283C93BC0095E723 /* EmailAddress.swift */,
 				E57E798329D4D407006D0F87 /* String+Extensions.swift */,
+				E544C4F62A3C1E4A00B2DC9D /* Dictionary+Extensions.swift */,
 			);
 			path = Utilities;
 			sourceTree = "<group>";
@@ -2180,14 +2188,15 @@
 			isa = PBXGroup;
 			children = (
 				7384C756252D20AA0012C2DD /* TPPBook+DistributorChecks.swift */,
-				1196F7591970727C00F62670 /* TPPMyBooksDownloadCenter.h */,
-				1196F75A1970727C00F62670 /* TPPMyBooksDownloadCenter.m */,
 				A4276F461B00046300CA7194 /* TPPMyBooksDownloadInfo.h */,
 				A4276F471B00046300CA7194 /* TPPMyBooksDownloadInfo.m */,
 				2DEF10B8201ECCEA0082843A /* TPPMyBooksSimplifiedBearerToken.h */,
 				2DEF10B9201ECCEA0082843A /* TPPMyBooksSimplifiedBearerToken.m */,
 				E53573DB2965E606008BDCA4 /* TPPMyBooksViewController.swift */,
 				E53573D42965306A008BDCA4 /* MyBooks */,
+				E544C4E82A395BE000B2DC9D /* MyBookDownloadCenter.swift */,
+				E544C4EB2A395DDE00B2DC9D /* MyBooksDownloadInfo.swift */,
+				E544C4EE2A395E8C00B2DC9D /* MyBooksSimplifiedBearerToken.swift */,
 			);
 			path = MyBooks;
 			sourceTree = "<group>";
@@ -2873,7 +2882,7 @@
 				1142E4E719EEC7C500D9B3D9 /* TPPCatalogFacetTests.m */,
 				73A794C925492C9800C59CC1 /* TPPFake.swift */,
 				11C5DD171977335E005A9945 /* TPPKeychainTests.m */,
-				5D73DA3D22A07B9A00162CB8 /* TPPMyBooksDownloadCenterTests.swift */,
+				5D73DA3D22A07B9A00162CB8 /* MyBooksDownloadCenterTests.swift */,
 				7307A5EC23FF1A8500DE53DE /* TPPOpenSearchDescriptionTests.swift */,
 				7357719F2537635600067CEA /* TPPSignInBusinessLogicTests.swift */,
 				111559EE19B8FA8E0003BE94 /* NYPLXMLTests.m */,
@@ -3697,7 +3706,6 @@
 				17ADCF4F254BB84800D0A5FE /* TPPReaderBookmarksBusinessLogicTests.swift in Sources */,
 				735771AB2537650E00067CEA /* NYPLLibraryAccountsProviderMock.swift in Sources */,
 				1763C0D624F460FE00A4D0E2 /* TPPAnnouncementManagerTests.swift in Sources */,
-				E75ED6D4297722BA006BBD5F /* TPPMyBooksDownloadCenterTests.swift in Sources */,
 				2D8790A520129AF200E2763F /* TPPOPDSAcquisitionPathTests.swift in Sources */,
 				735350B724918432006021BD /* URLRequest+NYPLTests.swift in Sources */,
 				73A794CA25492C9800C59CC1 /* TPPFake.swift in Sources */,
@@ -3829,6 +3837,7 @@
 				E792891D2861F58B000313D7 /* TPPPDFTOCView.swift in Sources */,
 				E7C4BD6229BA70710079F729 /* TPPTextToSpeech.swift in Sources */,
 				21045C592761095B00D2D407 /* TPPOnboardingView.swift in Sources */,
+				E544C4F02A395E8C00B2DC9D /* MyBooksSimplifiedBearerToken.swift in Sources */,
 				E7861C4F2846937B00B3A38A /* TPPPDFView.swift in Sources */,
 				17E81F0B261522B3001003C2 /* TPPRoundedButton.swift in Sources */,
 				73B5DFDF26052A1800225C12 /* TPPBookButtonsState.m in Sources */,
@@ -3856,6 +3865,7 @@
 				21E4177A292810E000A78606 /* TPPPDFPage.swift in Sources */,
 				E795A7682A74074300314EC8 /* AudiobookTimeEntry.swift in Sources */,
 				73EB0AB025821DF4006BC997 /* JWKResponse.swift in Sources */,
+				E544C4ED2A395DDE00B2DC9D /* MyBooksDownloadInfo.swift in Sources */,
 				73EB0AB125821DF4006BC997 /* UIFont+TPPSystemFontOverride.m in Sources */,
 				73EB0AB225821DF4006BC997 /* TPPReadiumBookmark.swift in Sources */,
 				73EB0AB325821DF4006BC997 /* TPPFacetViewDefaultDataSource.swift in Sources */,
@@ -3912,6 +3922,7 @@
 				73EB0AD625821DF4006BC997 /* TPPSettingsAdvancedViewController.swift in Sources */,
 				73EB0AD725821DF4006BC997 /* TPPMigrationManager.swift in Sources */,
 				73EB0AD925821DF4006BC997 /* Date+NYPLAdditions.swift in Sources */,
+				E544C4F82A3C1E4A00B2DC9D /* Dictionary+Extensions.swift in Sources */,
 				73EB0ADA25821DF4006BC997 /* TPPBasicAuth.swift in Sources */,
 				73EB0ADB25821DF4006BC997 /* OPDS2AuthenticationDocument.swift in Sources */,
 				73EB0ADC25821DF4006BC997 /* TPPCatalogs+SE.swift in Sources */,
@@ -3940,6 +3951,7 @@
 				73EB0AED25821DF4006BC997 /* TPPHoldsNavigationController.m in Sources */,
 				73EB0AEE25821DF4006BC997 /* TPPRemoteViewController.m in Sources */,
 				219E4D9325C34A8800588588 /* DRMLibraryService.swift in Sources */,
+				E544C4EA2A395BE000B2DC9D /* MyBookDownloadCenter.swift in Sources */,
 				73EB0AEF25821DF4006BC997 /* TPPOPDSAttribute.m in Sources */,
 				E53573DA29653095008BDCA4 /* FacetViewModel.swift in Sources */,
 				73EB0AF025821DF4006BC997 /* TPPCatalogUngroupedFeed.m in Sources */,
@@ -4031,7 +4043,6 @@
 				E50D684426AB235400F1042B /* TPPReaderTOCCell.swift in Sources */,
 				73C3CF5825C8EB6B00CA8166 /* TPPUserAccount.swift in Sources */,
 				73EB0B2425821DF4006BC997 /* TPPBookDetailDownloadFailedView.m in Sources */,
-				E5824BF729988CA700DE76C2 /* TPPMyBooksDownloadCenter.m in Sources */,
 				21E4178A292810F600A78606 /* TPPPDFPreviewGridCell.swift in Sources */,
 				E7862A1E277391E200BE8AB8 /* TPPSettingsView.swift in Sources */,
 				73EB0B2525821DF4006BC997 /* TPPOPDSFeed.m in Sources */,
@@ -4069,6 +4080,7 @@
 				E52E3BBC28C0EF410073DC4D /* TPPReaderAdvancedSettings.swift in Sources */,
 				E7498A7E2A0E4F6A0037DD93 /* URL+Extensions.swift in Sources */,
 				21D746FC2719B00E00C0E1B4 /* PublicationOpeningError.swift in Sources */,
+				E544C4E92A395BE000B2DC9D /* MyBookDownloadCenter.swift in Sources */,
 				21DDE31F25D2CEAF002CBCE3 /* AdobeDRMContainer.mm in Sources */,
 				21045C582761095B00D2D407 /* TPPOnboardingView.swift in Sources */,
 				2146872D2559A64B007B401A /* LCPLibraryService.swift in Sources */,
@@ -4077,6 +4089,7 @@
 				E5824BDF2994AC2900DE76C2 /* NormalBookCell.swift in Sources */,
 				7327A89323EE017300954748 /* TPPMainThreadChecker.swift in Sources */,
 				116A5EB91947B57500491A21 /* TPPConfiguration.m in Sources */,
+				E544C4EC2A395DDE00B2DC9D /* MyBooksDownloadInfo.swift in Sources */,
 				E706F60128638140000B7431 /* TPPBookLocation+pageNumber.swift in Sources */,
 				5D1B142A22CC179F0006C964 /* TPPAlertUtils.swift in Sources */,
 				E7EB9A8828736508004F484D /* TPPPDFToolbarButton.swift in Sources */,
@@ -4109,7 +4122,6 @@
 				A4BA1D0E1B430341006F83DF /* TPPCatalogGroupedFeedViewController.m in Sources */,
 				732F929323ECB51F0099244C /* TPPBackgroundExecutor.swift in Sources */,
 				5D1B141522CBE3570006C964 /* TPPProblemDocument.swift in Sources */,
-				E5824BF629988CA600DE76C2 /* TPPMyBooksDownloadCenter.m in Sources */,
 				E706F6092863831F000B7431 /* TPPPDFPage+serialization.swift in Sources */,
 				A92FB0F921CDCE3D004740F4 /* TPPReturnPromptHelper.swift in Sources */,
 				17E81F08261522B3001003C2 /* TPPRoundedButton.swift in Sources */,
@@ -4133,6 +4145,7 @@
 				E704804E2859253900019B31 /* TPPPDFReaderView.swift in Sources */,
 				21D746E72718A4C000C0E1B4 /* AdobeDRMFetcherError.swift in Sources */,
 				73085E3525030D27008F6244 /* SEMigrations.swift in Sources */,
+				E544C4EF2A395E8C00B2DC9D /* MyBooksSimplifiedBearerToken.swift in Sources */,
 				11119742198827850014462F /* TPPBookDetailDownloadingView.m in Sources */,
 				730FC05B2512911E004D7C2D /* TPPWelcomeScreenViewController.swift in Sources */,
 				2DFAC8ED1CD8DDD1003D9EC0 /* TPPOPDSCategory.m in Sources */,
@@ -4247,6 +4260,7 @@
 				E731FF4C2864C934001DB7F2 /* TPPPDFPreviewGridCell.swift in Sources */,
 				085D31D71BE29E38007F7672 /* TPPProblemReportViewController.m in Sources */,
 				E523124D28641505007D1DB5 /* LoadingViewController.swift in Sources */,
+				E544C4F72A3C1E4A00B2DC9D /* Dictionary+Extensions.swift in Sources */,
 				219747FC26D9218400FA25DF /* TPPLCPClient.swift in Sources */,
 				21DDE32E25D31DB4002CBCE3 /* AdobeDRMFetcher.swift in Sources */,
 				11C5DCF21976D1E0005A9945 /* TPPHoldsNavigationController.m in Sources */,
@@ -4605,7 +4619,7 @@
 				CODE_SIGN_IDENTITY = "Apple Distribution";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 184;
+				CURRENT_PROJECT_VERSION = 187;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -4627,7 +4641,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.30;
+				MARKETING_VERSION = 1.0.31;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PRODUCT_MODULE_NAME = Palace;
 				PRODUCT_NAME = "Palace-noDRM";
@@ -4662,7 +4676,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 184;
+				CURRENT_PROJECT_VERSION = 187;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -4684,7 +4698,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.30;
+				MARKETING_VERSION = 1.0.31;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PRODUCT_MODULE_NAME = Palace;
 				PRODUCT_NAME = "Palace-noDRM";
@@ -4844,7 +4858,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 184;
+				CURRENT_PROJECT_VERSION = 187;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -4871,7 +4885,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.30;
+				MARKETING_VERSION = 1.0.31;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PROVISIONING_PROFILE_SPECIFIER = "Ad Hoc";
 				RUN_CLANG_STATIC_ANALYZER = YES;
@@ -4904,7 +4918,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 184;
+				CURRENT_PROJECT_VERSION = 187;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -4931,7 +4945,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.30;
+				MARKETING_VERSION = 1.0.31;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PROVISIONING_PROFILE_SPECIFIER = "App Store";
 				RUN_CLANG_STATIC_ANALYZER = YES;
