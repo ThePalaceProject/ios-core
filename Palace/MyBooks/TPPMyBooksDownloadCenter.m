@@ -1079,11 +1079,6 @@ didCompleteWithError:(NSError *)error
 
         [self addDownloadTaskWithRequest:request book:book];
       }
-      // If the user is on Reservations tab, switch to My Books tab -
-      // downloaded books disappear from Reservations tab
-      if ([TPPRootTabBarController.sharedController.selectedViewController isKindOfClass:[TPPHoldsNavigationController class]]) {
-        TPPRootTabBarController.sharedController.selectedIndex = 1;
-      }
     }
   } else {
 #if FEATURE_DRM_CONNECTOR
