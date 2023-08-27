@@ -947,10 +947,7 @@ didCompleteWithError:(NSError *)error
   }
   
   if([TPPUserAccount sharedAccount].hasCredentials || !loginRequired) {
-    // We should verify if an acquisition link for borrowing is available
-    // When there's a download link only (e.g., when the book has already been borroed in another app),
-    // the borrowing process results in error
-    if(state == TPPBookStateUnregistered || (state == TPPBookStateHolding && book.defaultAcquisitionIfBorrow)) {
+    if(state == TPPBookStateUnregistered || state == TPPBookStateHolding) {
       // Check out the book
       [self startBorrowForBook:book attemptDownload:YES borrowCompletion:nil];
 #if FEATURE_OVERDRIVE
