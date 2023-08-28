@@ -343,8 +343,10 @@ class TPPBookRegistry: NSObject {
     guard let record = registry[book.identifier] else {
       return
     }
+    let state = TPPBookRegistryRecord(book: book, state: .DownloadNeeded).state
     TPPUserNotifications.compareAvailability(cachedRecord: record, andNewBook: book)
     registry[book.identifier]?.book = book
+    registry[book.identifier]?.state = state
   }
   
   /// Updates book metadata (e.g., from OPDS feed) in the registry and returns the updated book.

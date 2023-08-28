@@ -43,7 +43,7 @@ class Reachability: NSObject {
     let newStatus = isConnectedToNetwork()
     if isConnected != newStatus {
       isConnected = newStatus
-      NotificationCenter.default.post(name: .TPPReachabilityChanged, object: nil)
+      NotificationCenter.default.post(name: .TPPReachabilityChanged, object: isConnected)
     } else {
       DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
         self?.updateStatus()

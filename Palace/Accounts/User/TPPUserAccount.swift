@@ -135,7 +135,7 @@ private enum StorageKey: String {
           }
         } else if let authToken = legacyAuthToken {
           // auth token was used previously
-          credentials = .token(authToken: authToken)
+          credentials = .token(authToken: authToken, barcode: legacyBarcode, pin: legacyPin)
 
           // remove legacy storage and save into new place
           keychainTransaction.perform {
@@ -294,10 +294,16 @@ private enum StorageKey: String {
   /// features of platform.nypl.org will work if you give them a 14-digit
   /// barcode but not a 7-letter username or a 16-digit NYC ID.
   var barcode: String? {
-    if let credentials = credentials, case let TPPCredentials.barcodeAndPin(barcode: barcode, pin: _) = credentials {
+    guard let credentials = credentials else { return nil }
+
+    switch credentials {
+    case let TPPCredentials.barcodeAndPin(barcode: barcode, pin: _):
       return barcode
+    case let TPPCredentials.token(_, barcode, _, _):
+      return barcode
+    default:
+      return nil
     }
-    return nil
   }
 
   /// For any library but the NYPL, this identifier can be anything they want.
@@ -316,10 +322,16 @@ private enum StorageKey: String {
   var authorizationIdentifier: String? { _authorizationIdentifier.read() }
 
   var PIN: String? {
-    if let credentials = credentials, case let TPPCredentials.barcodeAndPin(barcode: _, pin: pin) = credentials {
+    guard let credentials = credentials else { return nil }
+    
+    switch credentials {
+    case let TPPCredentials.barcodeAndPin(barcode: _, pin: pin):
       return pin
+    case let TPPCredentials.token(_, _, pin, _):
+      return pin
+    default:
+      return nil
     }
-    return nil
   }
 
   var needsAuth:Bool {
@@ -343,9 +355,20 @@ private enum StorageKey: String {
 
   var authToken: String? {
     if let credentials = credentials, case let TPPCredentials.token(authToken: token) = credentials {
-      return token
+      return token.authToken
     }
     return nil
+  }
+  
+  var authTokenHasExpired: Bool {
+    guard let credentials = credentials,
+            case let TPPCredentials.token(authToken: token) = credentials,
+            let expirationDate = token.expirationDate, expirationDate > Date()
+    else {
+      return true
+    }
+    
+   return false
   }
 
   var patronFullName: String? {
@@ -430,9 +453,9 @@ private enum StorageKey: String {
     notifyAccountDidChange()
   }
   
-  @objc(setAuthToken:)
-  func setAuthToken(_ token: String) {
-    credentials = .token(authToken: token)
+  @objc(setAuthToken::::)
+  func setAuthToken(_ token: String, barcode: String?, pin: String?, expirationDate: Date?) {
+    credentials = .token(authToken: token, barcode: barcode, pin: pin, expirationDate: expirationDate)
   }
 
   @objc(setCookies:)
@@ -501,9 +524,8 @@ extension TPPUserAccount: NYPLBasicAuthCredentialsProvider {
   var username: String? {
     return barcode
   }
-
+  
   var pin: String? {
     return PIN
   }
 }
-

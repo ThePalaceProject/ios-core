@@ -152,8 +152,26 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
     let elapsed = Date().timeIntervalSince(currentTaskInfo.startDate)
     logMetadata["elapsedTime"] = elapsed
     Log.info(#file, "Task \(taskID) completed, elapsed time: \(elapsed) sec")
+    
+    if let httpResponse = task.response as? HTTPURLResponse {
+      guard httpResponse.isSuccess() else {
+        if handleExpiredTokenIfNeeded(for: httpResponse, with: task) {
+          return
+        }
+        logMetadata["response"] = httpResponse
+        logMetadata[NSLocalizedDescriptionKey] = Strings.Error.unknownRequestError
+        let err = NSError(domain: "Api call with failure HTTP status",
+                          code: TPPErrorCode.responseFail.rawValue,
+                          userInfo: logMetadata)
+        currentTaskInfo.completion(.failure(err, task.response))
+        TPPErrorLogger.logNetworkError(code: TPPErrorCode.responseFail,
+                                       summary: "Network request failed: server error response",
+                                       request: task.originalRequest,
+                                       metadata: logMetadata)
+        return
+      }
+    }
 
-    // attempt parsing of Problem Document
     if task.response?.isProblemDocument() ?? false {
       let errorWithProblemDoc = task.parseAndLogError(fromProblemDocumentData: responseData,
                                                       networkError: networkError,
@@ -162,12 +180,9 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
       return
     }
 
-    // no problem document, but if we have an error it's still a failure
     if let networkError = networkError {
       currentTaskInfo.completion(.failure(networkError as TPPUserFriendlyError, task.response))
 
-      // logging the error after the completion call so that the error report
-      // will include any eventual logging done in the completion handler.
       TPPErrorLogger.logNetworkError(
         networkError,
         summary: "Network task completed with error",
@@ -177,7 +192,6 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
       return
     }
 
-    // no problem document nor error, but response could still be a failure
     if let httpResponse = task.response as? HTTPURLResponse {
       guard httpResponse.isSuccess() else {
         logMetadata["response"] = httpResponse
@@ -197,6 +211,15 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
     currentTaskInfo.completion(.success(responseData, task.response))
   }
 }
+
+private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse, with task: URLSessionTask) -> Bool {
+  if response.statusCode == 401 {
+    TPPNetworkExecutor.shared.refreshTokenAndResume(task: task)
+    return true
+  }
+  return false
+}
+                                                                                                                                                                                                                            
 
 //------------------------------------------------------------------------------
 // MARK: - URLSessionTask extensions
@@ -277,5 +300,23 @@ extension TPPNetworkResponder: URLSessionTaskDelegate {
     let credsProvider = credentialsProvider ?? TPPUserAccount.sharedAccount()
     let authChallenger = TPPBasicAuth(credentialsProvider: credsProvider)
     authChallenger.handleChallenge(challenge, completion: completionHandler)
+  }
+  
+  
+  func refreshToken() async throws {
+    guard let tokenURL = TPPUserAccount.sharedAccount().authDefinition?.tokenURL,
+          let username = TPPUserAccount.sharedAccount().username,
+          let password = TPPUserAccount.sharedAccount().pin
+    else { return }
+    
+    let tokenRequest = TokenRequest(url: tokenURL, username: username, password: password)
+    let result = await tokenRequest.execute()
+    
+    switch result {
+    case .success(let tokenResponse):
+      TPPUserAccount.sharedAccount().setAuthToken(tokenResponse.accessToken, barcode: username, pin: password, expirationDate: tokenResponse.expirationDate)
+    case .failure(let error):
+      throw error
+    }
   }
 }

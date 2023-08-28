@@ -45,10 +45,14 @@ class TPPLicensesService: NSObject {
     self.lcpl = lcpl
     self.link = link
 
-    // Create download task and return it to TPPMyBooksDownloadCenter
+    // Create download task and return it to MyBooksDownloadCenter
     // to hande task cancellation correctly
+    // Background task identifier is unique to create unique download sessions for each class instance.
+    // Otherwise, single download session calls one delegate class methods,
+    // and only one book's status is updated.
     let request = URLRequest(url: url)
-    let sessionConfiguration = URLSessionConfiguration.default
+    let backgroundIdentifier = (Bundle.main.bundleIdentifier ?? "").appending(".lcpBackgroundIdentifier.\(lcpl.hashValue)")
+    let sessionConfiguration = URLSessionConfiguration.background(withIdentifier: backgroundIdentifier)
     let session = URLSession(configuration: sessionConfiguration, delegate: self, delegateQueue: .main)
     let task = session.downloadTask(with: request)
     task.resume()
