@@ -122,12 +122,48 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
   /// Update token when user account changes
   func updateToken() {
     Messaging.messaging().token { token, _ in
-      if let token = token {
+      if let token {
         self.checkTokenExists(token) { exists, _ in
           if let exists = exists, !exists {
             self.saveToken(token)
           }
         }
+      }
+    }
+  }
+  
+  /// Delete token
+  /// - Parameters:
+  ///   - token: FCM token value
+  ///   - account: Library account
+  func deleteToken(_ token: String, account: Account) {
+    guard let catalogHref = account.catalogUrl,
+          let requestUrl = URL(string: "\(catalogHref)patrons/me/devices"),
+          let requestBody = TokenData(token: token).data
+    else {
+      return
+    }
+    var request = URLRequest(url: requestUrl)
+    request.httpMethod = "DELETE"
+    request.httpBody = requestBody
+    _ = TPPNetworkExecutor.shared.addBearerAndExecute(request) { result, response, error in
+      if let error = error {
+        TPPErrorLogger.logError(error,
+                                summary: "Couldn't delete token data",
+                                metadata: [
+                                  "requestURL": requestUrl,
+                                  "tokenData": String(data: requestBody, encoding: .utf8) ?? "",
+                                  "statusCode": (response as? HTTPURLResponse)?.statusCode ?? 0
+                                ]
+        )
+      }
+    }
+  }
+  
+  func deleteToken(for account: Account) {
+    Messaging.messaging().token { token, _ in
+      if let token {
+        self.deleteToken(token, account: account)
       }
     }
   }

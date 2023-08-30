@@ -70,8 +70,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     _ = TPPBookRegistry.shared
     
     // Push Notificatoins
-    // TODO: Enable push notifications when CM starts supporting them
-//    NotificationService.shared.setupPushNotifications()
+    NotificationService.shared.setupPushNotifications()
   }
   
   // TODO: This method is deprecated, we should migrate to BGAppRefreshTask in the BackgroundTasks framework instead
