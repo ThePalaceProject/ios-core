@@ -612,6 +612,8 @@
 		B51C1E19229456E2003B49A5 /* nypl_authentication_document.json in Resources */ = {isa = PBXBuildFile; fileRef = B51C1E15229456E2003B49A5 /* nypl_authentication_document.json */; };
 		B51C1E1A229456E2003B49A5 /* dpl_authentication_document.json in Resources */ = {isa = PBXBuildFile; fileRef = B51C1E16229456E2003B49A5 /* dpl_authentication_document.json */; };
 		D787E8441FB6B0290016D9D5 /* TPPSettingsAdvancedViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D787E8431FB6B0290016D9D5 /* TPPSettingsAdvancedViewController.swift */; };
+		E50009AF2AA6B9B800B6D8D2 /* MyBooksDownloadCenterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D73DA3D22A07B9A00162CB8 /* MyBooksDownloadCenterTests.swift */; };
+		E50009B02AA7C64E00B6D8D2 /* libADEPT.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A569A2C1B8351C6003B5B61 /* libADEPT.a */; };
 		E501710F27A3948C004B3392 /* TPPBookmarkFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 730EF265260967FF008E1DC3 /* TPPBookmarkFactory.swift */; };
 		E501711127A3948C004B3392 /* TPPBookmarkFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 730EF265260967FF008E1DC3 /* TPPBookmarkFactory.swift */; };
 		E50221B529881BC900A8A80B /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = E50221B729881BC900A8A80B /* Localizable.strings */; };
@@ -726,6 +728,7 @@
 		E5BEF02826BDAB3A00C2A50B /* OpenSans-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E5BEF01C26BDA9EA00C2A50B /* OpenSans-SemiBold.ttf */; };
 		E5BEF02A26BDAB3A00C2A50B /* OpenSans-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E5BEF01C26BDA9EA00C2A50B /* OpenSans-SemiBold.ttf */; };
 		E5BFCF0E2A5455170046A48D /* TokenRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = E56067742A4C8858002ACE93 /* TokenRequest.swift */; };
+		E5C0EB592AA18985003CCDE0 /* TPPBookMock.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5C0EB582AA18985003CCDE0 /* TPPBookMock.swift */; };
 		E5C1F55227990A89005FC6B2 /* OverdriveProcessor.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E5C1F53027990929005FC6B2 /* OverdriveProcessor.framework */; };
 		E5C1F55327990A96005FC6B2 /* OverdriveProcessor.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E5C1F53027990929005FC6B2 /* OverdriveProcessor.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		E5C2C422268BA5140046F415 /* TPPRegistryDebuggingCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5C2C421268BA5140046F415 /* TPPRegistryDebuggingCell.swift */; };
@@ -1581,6 +1584,7 @@
 		E5BEEFF826BD919E00C2A50B /* OpenSans-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "OpenSans-Regular.ttf"; sourceTree = "<group>"; };
 		E5BEF01826BD94D600C2A50B /* UIFont+Extensions.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = "UIFont+Extensions.swift"; sourceTree = "<group>"; };
 		E5BEF01C26BDA9EA00C2A50B /* OpenSans-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "OpenSans-SemiBold.ttf"; sourceTree = "<group>"; };
+		E5C0EB582AA18985003CCDE0 /* TPPBookMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBookMock.swift; sourceTree = "<group>"; };
 		E5C1F52927990929005FC6B2 /* OverdriveProcessor.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = OverdriveProcessor.xcodeproj; path = "ios-audiobook-overdrive/OverdriveProcessor/OverdriveProcessor.xcodeproj"; sourceTree = "<group>"; };
 		E5C2C421268BA5140046F415 /* TPPRegistryDebuggingCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPRegistryDebuggingCell.swift; sourceTree = "<group>"; };
 		E5D32881292C0D34008BFD01 /* txstrings.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = txstrings.json; sourceTree = "<group>"; };
@@ -1687,6 +1691,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E50009B02AA7C64E00B6D8D2 /* libADEPT.a in Frameworks */,
 				73F36BD825CC76C60057954C /* XCTest.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -2882,7 +2887,7 @@
 				1142E4E719EEC7C500D9B3D9 /* TPPCatalogFacetTests.m */,
 				73A794C925492C9800C59CC1 /* TPPFake.swift */,
 				11C5DD171977335E005A9945 /* TPPKeychainTests.m */,
-				5D73DA3D22A07B9A00162CB8 /* MyBooksDownloadCenterTests.swift */,
+				E5C0EB562AA1895E003CCDE0 /* MyBooksDownloaderTests */,
 				7307A5EC23FF1A8500DE53DE /* TPPOpenSearchDescriptionTests.swift */,
 				7357719F2537635600067CEA /* TPPSignInBusinessLogicTests.swift */,
 				111559EE19B8FA8E0003BE94 /* NYPLXMLTests.m */,
@@ -3045,6 +3050,15 @@
 				E5BEF01C26BDA9EA00C2A50B /* OpenSans-SemiBold.ttf */,
 			);
 			path = Fonts;
+			sourceTree = "<group>";
+		};
+		E5C0EB562AA1895E003CCDE0 /* MyBooksDownloaderTests */ = {
+			isa = PBXGroup;
+			children = (
+				5D73DA3D22A07B9A00162CB8 /* MyBooksDownloadCenterTests.swift */,
+				E5C0EB582AA18985003CCDE0 /* TPPBookMock.swift */,
+			);
+			name = MyBooksDownloaderTests;
 			sourceTree = "<group>";
 		};
 		E5C1F52A27990929005FC6B2 /* Products */ = {
@@ -3684,6 +3698,7 @@
 				735771A02537635600067CEA /* TPPSignInBusinessLogicTests.swift in Sources */,
 				17BE24DA25F85D2300AE707F /* TPPAgeCheckTests.swift in Sources */,
 				E75ED6DB29772C4B006BBD5F /* NYPLXMLTests.m in Sources */,
+				E5C0EB592AA18985003CCDE0 /* TPPBookMock.swift in Sources */,
 				17BE24E025FABA0900AE707F /* TPPAgeCheckChoiceStorageMock.swift in Sources */,
 				7375AE5A25382AC900C85211 /* TPPUserAccountMock.swift in Sources */,
 				73C3CF5A25CB8D6100CA8166 /* NYPLNetworkExecutorMock.swift in Sources */,
@@ -3696,6 +3711,7 @@
 				73A794BD2548E36100C59CC1 /* TPPBookCreationTests.swift in Sources */,
 				E534510529FA238500D88BC6 /* AudiobookmarkTests.swift in Sources */,
 				730D17C02552124B004CAC83 /* TPPMyBooksDownloadsCenterMock.swift in Sources */,
+				E50009AF2AA6B9B800B6D8D2 /* MyBooksDownloadCenterTests.swift in Sources */,
 				735F41A3243E381D00046182 /* String+NYPLAdditionsTests.swift in Sources */,
 				17BE24E725FABCDE00AE707F /* TPPUserAccountProviderMock.swift in Sources */,
 				E5037FE729A3FF84002DA132 /* ButtonStateTests.swift in Sources */,
@@ -4619,7 +4635,6 @@
 				CODE_SIGN_IDENTITY = "Apple Distribution";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 189;
 				CURRENT_PROJECT_VERSION = 191;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
@@ -4677,7 +4692,6 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 189;
 				CURRENT_PROJECT_VERSION = 191;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
@@ -4858,12 +4872,9 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/PalaceDebug.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
-				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Distribution";
-				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 189;
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 191;
-				DEVELOPMENT_TEAM = "";
-				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
+				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -4890,7 +4901,7 @@
 				);
 				MARKETING_VERSION = 1.0.31;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
-				PROVISIONING_PROFILE_SPECIFIER = "Ad Hoc";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				RUN_CLANG_STATIC_ANALYZER = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG SIMPLYE FEATURE_DRM_CONNECTOR FEATURE_CRASH_REPORTING LCP FEATURE_OVERDRIVE";
 				SWIFT_OBJC_BRIDGING_HEADER = "Palace/AppInfrastructure/Palace-Bridging-Header.h";
@@ -4921,7 +4932,6 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 189;
 				CURRENT_PROJECT_VERSION = 191;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
