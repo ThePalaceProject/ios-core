@@ -35,10 +35,8 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistrySyncing, TPPBookRegistryProv
   func save() {
   }
     
-  func addBook(book: TPPBook,
-               state: TPPBookState) {
-    let dict = ["metadata": book.dictionaryRepresentation(), "state": state.stringValue()] as [String : AnyObject]
-    self.registry[book.identifier] = TPPBookRegistryRecord(record: dict)
+  func addBook(book: TPPBook, state: TPPBookState) {
+    registry[book.identifier] = TPPBookRegistryRecord(book: book, location: nil, state: state, fulfillmentId: nil, readiumBookmarks: [], genericBookmarks: [])
   }
     
   func readiumBookmarks(forIdentifier identifier: String) -> [TPPReadiumBookmark] {

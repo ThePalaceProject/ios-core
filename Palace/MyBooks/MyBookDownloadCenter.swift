@@ -18,7 +18,7 @@ import OverdriveProcessor
   @objc static let shared = MyBooksDownloadCenter()
   
   private var userAccount: TPPUserAccount
-  private var reauthenticator: TPPReauthenticator
+  private var reauthenticator: Reauthenticator
   private var bookRegistry: TPPBookRegistryProvider
   
   private var bookIdentifierOfBookToRemove: String?
@@ -33,7 +33,7 @@ import OverdriveProcessor
   
   init(
     userAccount: TPPUserAccount = TPPUserAccount.sharedAccount(),
-    reauthenticator: TPPReauthenticator = TPPReauthenticator(),
+    reauthenticator: Reauthenticator = TPPReauthenticator(),
     bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared
   ) {
     self.userAccount = userAccount
