@@ -52,34 +52,6 @@ enum TPPBookRegistryKey: String {
 
 }
 
-fileprivate class BoolWithDelay {
-  private var switchBackDelay: Double
-  private var resetTask: DispatchWorkItem?
-  private var onChange: ((_ value: Bool) -> Void)?
-  init(delay: Double = 5, onChange: ((_ value: Bool) -> Void)? = nil) {
-    self.switchBackDelay = delay
-    self.onChange = onChange
-  }
-  
-  var value: Bool = false {
-    willSet {
-      if value != newValue {
-        onChange?(newValue)
-      }
-    }
-    didSet {
-      resetTask?.cancel()
-      if value {
-        let task = DispatchWorkItem { [weak self] in
-          self?.value = false
-        }
-        resetTask = task
-        DispatchQueue.main.asyncAfter(deadline: .now() + switchBackDelay, execute: task)
-      }
-    }
-  }
-}
-
 @objcMembers
 class TPPBookRegistry: NSObject {
   
@@ -114,25 +86,19 @@ class TPPBookRegistry: NSObject {
   static let shared = TPPBookRegistry()
   
   /// Identifies that the synchronsiation process is going on.
-  private(set) var isSyncing: Bool {
-    get {
-      syncState.value
-    }
-    set { }
-  }
-  
-  /// `syncState` switches back after a delay to prevent locking in synchronization state
-  private var syncState = BoolWithDelay { value in
-    if value {
-      NotificationCenter.default.post(name: .TPPSyncBegan, object: nil, userInfo: nil)
-    } else {
-      NotificationCenter.default.post(name: .TPPSyncEnded, object: nil, userInfo: nil)
+  private(set) var isSyncing = false {
+    didSet {
+      if isSyncing {
+        NotificationCenter.default.post(name: .TPPSyncBegan, object: nil, userInfo: nil)
+      } else {
+        NotificationCenter.default.post(name: .TPPSyncEnded, object: nil, userInfo: nil)
+      }
     }
   }
   
   private(set) var state: RegistryState  = .unloaded {
     didSet {
-      syncState.value = state == .syncing
+      isSyncing = state == .syncing
       NotificationCenter.default.post(name: .TPPBookRegistryStateDidChange, object: nil, userInfo: nil)
     }
   }
