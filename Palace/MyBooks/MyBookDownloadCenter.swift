@@ -934,11 +934,11 @@ extension MyBooksDownloadCenter {
         return
       }
       
-      bookRegistry.setFulfillmentId(license.identifier, for: book.identifier)
+      self.bookRegistry.setFulfillmentId(license.identifier, for: book.identifier)
       
       if book.defaultBookContentType == .pdf,
          let bookURL = self.fileUrl(for: book.identifier) {
-        bookRegistry.setState(.Downloading, for: book.identifier)
+        self.bookRegistry.setState(.Downloading, for: book.identifier)
         LCPPDFs(url: bookURL)?.extract(url: bookURL) { _, _ in
           self.bookRegistry.setState(.DownloadSuccessful, for: book.identifier)
         }
