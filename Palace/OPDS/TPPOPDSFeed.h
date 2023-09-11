@@ -27,7 +27,7 @@ typedef NS_ENUM(NSInteger, TPPOPDSFeedType) {
 /// @param shouldResetCache Pass YES to wipe the whole cache.
 /// @param handler The completion handler that will always be called at the
 /// end of the process.
-+ (void)  withURL:(NSURL *)URL
++ (void) withURL:(NSURL *)URL
  shouldResetCache:(BOOL)shouldResetCache
 completionHandler:(void (^)(TPPOPDSFeed *feed, NSDictionary *error))handler;
 
