@@ -21,8 +21,8 @@ func performLogOut() {
     guard var request = self.makeRequest(for: .signOut, context: "Sign Out") else {
       return
     }
-    
-    request.timeoutInterval = 30
+
+    request.timeoutInterval = 45
     
     let barcode = userAccount.barcode
     networker.executeRequest(request) { [weak self] result in
