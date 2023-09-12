@@ -13,20 +13,17 @@ extension TPPSignInBusinessLogic {
   /// Main entry point for logging a user out.
   ///
   /// - Important: Requires to be called from the main thread.
-  func performLogOut() {
-    #if FEATURE_DRM_CONNECTOR
-
+func performLogOut() {
+#if FEATURE_DRM_CONNECTOR
+    
     uiDelegate?.businessLogicWillSignOut(self)
-
-    // we need to make this request (which is identical to the sign-in request)
-    // because in order for the Adobe deactivation to be successful, it has
-    // to use a fresh Adobe token provided by the CM, since it may have expired.
-    // These tokens are very short lived (1 hour).
-    guard let request = self.makeRequest(for: .signOut, context: "Sign Out") else {
-      // no need to log since makeRequest(for:) does log already
+    
+    guard var request = self.makeRequest(for: .signOut, context: "Sign Out") else {
       return
     }
-
+    
+    request.timeoutInterval = 30
+    
     let barcode = userAccount.barcode
     networker.executeRequest(request) { [weak self] result in
       switch result {
@@ -36,14 +33,18 @@ extension TPPSignInBusinessLogic {
                             for: request,
                             barcode: barcode)
       case .failure(let errorWithProblemDoc, let response):
+        if let error = errorWithProblemDoc as? URLError, error.code == .timedOut {
+          TPPUserAccount.sharedAccount().removeAll()
+        }
+        
         self?.processLogOutError(errorWithProblemDoc,
                                  response: response,
                                  for: request,
                                  barcode: barcode)
       }
     }
-
-    #else
+    
+#else
     if self.bookRegistry.isSyncing {
       let alert = TPPAlertUtils.alert(
         title: "SettingsAccountViewControllerCannotLogOutTitle",
@@ -52,7 +53,7 @@ extension TPPSignInBusinessLogic {
     } else {
       completeLogOutProcess()
     }
-    #endif
+#endif
   }
 
   #if FEATURE_DRM_CONNECTOR
