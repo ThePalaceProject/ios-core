@@ -26,6 +26,7 @@ fileprivate struct TPPNetworkTaskInfo {
 /// handlers in a thread-safe way.
 class TPPNetworkResponder: NSObject {
   typealias TaskID = Int
+  private var tokenRefreshAttempts: Int = 0
 
   private var taskInfo: [TaskID: TPPNetworkTaskInfo]
 
@@ -152,12 +153,17 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
     let elapsed = Date().timeIntervalSince(currentTaskInfo.startDate)
     logMetadata["elapsedTime"] = elapsed
     Log.info(#file, "Task \(taskID) completed, elapsed time: \(elapsed) sec")
-    
+
     if let httpResponse = task.response as? HTTPURLResponse {
       guard httpResponse.isSuccess() else {
-        if handleExpiredTokenIfNeeded(for: httpResponse, with: task) {
+        if (TPPUserAccount.sharedAccount().authDefinition?.isToken ?? false) &&
+            handleExpiredTokenIfNeeded(for: httpResponse, with: task) &&
+            tokenRefreshAttempts < 2 {
+          tokenRefreshAttempts += 1
           return
         }
+
+        tokenRefreshAttempts = 0
         logMetadata["response"] = httpResponse
         logMetadata[NSLocalizedDescriptionKey] = Strings.Error.unknownRequestError
         let err = NSError(domain: "Api call with failure HTTP status",
@@ -219,7 +225,6 @@ private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse, with task
   }
   return false
 }
-                                                                                                                                                                                                                            
 
 //------------------------------------------------------------------------------
 // MARK: - URLSessionTask extensions
