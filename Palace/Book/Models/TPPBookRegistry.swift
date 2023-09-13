@@ -10,6 +10,8 @@ import Foundation
 import UIKit
 
 protocol TPPBookRegistryProvider {
+  func setProcessing(_ processing: Bool, for bookIdentifier: String)
+  func state(for bookIdentifier: String) -> TPPBookState
   func readiumBookmarks(forIdentifier identifier: String) -> [TPPReadiumBookmark]
   func setLocation(_ location: TPPBookLocation?, forIdentifier identifier: String)
   func location(forIdentifier identifier: String) -> TPPBookLocation?
@@ -21,6 +23,14 @@ protocol TPPBookRegistryProvider {
   func addGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String)
   func deleteGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String)
   func replaceGenericBookmark(_ oldLocation: TPPBookLocation, with newLocation: TPPBookLocation, forIdentifier: String)
+  func addBook(_ book: TPPBook, location: TPPBookLocation?, state: TPPBookState, fulfillmentId: String?, readiumBookmarks: [TPPReadiumBookmark]?, genericBookmarks: [TPPBookLocation]?)
+  func removeBook(forIdentifier bookIdentifier: String)
+  func updateAndRemoveBook(_ book: TPPBook)
+  func setState(_ state: TPPBookState, for bookIdentifier: String)
+  func book(forIdentifier bookIdentifier: String) -> TPPBook?
+  func fulfillmentId(forIdentifier bookIdentifier: String) -> String?
+  func setFulfillmentId(_ fulfillmentId: String, for bookIdentifier: String)
+  func with(account: String, perform block: (_ registry: TPPBookRegistry) -> Void)
 }
 
 typealias TPPBookRegistryData = [String: Any]
