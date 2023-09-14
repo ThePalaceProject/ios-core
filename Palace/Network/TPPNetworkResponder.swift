@@ -123,7 +123,7 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
                                           data: proposedResponse.data))
     }
   }
-  
+
   //----------------------------------------------------------------------------
 
   func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError networkError: Error?) {
