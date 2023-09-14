@@ -8,6 +8,12 @@
 
 import Foundation
 
+protocol Reauthenticator: NSObject {
+  func authenticateIfNeeded(_ user: TPPUserAccount,
+                                  usingExistingCredentials: Bool,
+                                  authenticationCompletion: (()-> Void)?)
+}
+
 /// This class is a front-end for taking care of situations where an
 /// already authenticated user somehow sees its requests fail with a 401
 /// HTTP status as it the request lacked proper authentication.
@@ -19,7 +25,7 @@ import Foundation
 /// This class takes care of initializing the VC's UI, its business logic,
 /// opening up the VC when needed, and performing the log-in request under
 /// the hood when no user input is needed.
-@objc class TPPReauthenticator: NSObject {
+@objc class TPPReauthenticator: NSObject, Reauthenticator {
 
   private var signInModalVC: TPPAccountSignInViewController?
 

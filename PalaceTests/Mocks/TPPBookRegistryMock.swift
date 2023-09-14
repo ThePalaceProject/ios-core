@@ -12,6 +12,14 @@ import Foundation
 class TPPBookRegistryMock: NSObject, TPPBookRegistrySyncing, TPPBookRegistryProvider {
   var isSyncing = false
   var registry = [String: TPPBookRegistryRecord]()
+  var processing = [String: Bool]()
+
+  var allBooks: [TPPBook] {
+    registry
+      .map { $0.value }
+      .filter { TPPBookStateHelper.allBookStates().contains($0.state.rawValue) }
+      .map { $0.book }
+  }
 
   func reset(_ libraryAccountUUID: String) {
     isSyncing = false
@@ -27,10 +35,8 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistrySyncing, TPPBookRegistryProv
   func save() {
   }
     
-  func addBook(book: TPPBook,
-               state: TPPBookState) {
-    let dict = ["metadata": book.dictionaryRepresentation(), "state": state.stringValue()] as [String : AnyObject]
-    self.registry[book.identifier] = TPPBookRegistryRecord(record: dict)
+  func addBook(book: TPPBook, state: TPPBookState) {
+    registry[book.identifier] = TPPBookRegistryRecord(book: book, location: nil, state: state, fulfillmentId: nil, readiumBookmarks: [], genericBookmarks: [])
   }
     
   func readiumBookmarks(forIdentifier identifier: String) -> [TPPReadiumBookmark] {
@@ -96,6 +102,46 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistrySyncing, TPPBookRegistryProv
   func replaceGenericBookmark(_ oldLocation: Palace.TPPBookLocation, with newLocation: Palace.TPPBookLocation, forIdentifier: String) {
     deleteGenericBookmark(oldLocation, forIdentifier: forIdentifier)
     registry[forIdentifier]?.genericBookmarks?.append(newLocation)
+  }
+  
+  func setProcessing(_ processing: Bool, for bookIdentifier: String) {
+    self.processing[bookIdentifier] = processing
+  }
+  
+  func state(for bookIdentifier: String) -> Palace.TPPBookState {
+    self.registry[bookIdentifier]?.state ?? .Unregistered
+  }
+  
+  func addBook(_ book: Palace.TPPBook, location: Palace.TPPBookLocation?, state: Palace.TPPBookState, fulfillmentId: String?, readiumBookmarks: [Palace.TPPReadiumBookmark]?, genericBookmarks: [Palace.TPPBookLocation]?) {
+    self.addBook(book: book, state: state)
+  }
+  
+  func removeBook(forIdentifier bookIdentifier: String) {
+    self.registry.removeValue(forKey: bookIdentifier)
+  }
+  
+  func updateAndRemoveBook(_ book: Palace.TPPBook) {
+    self.registry.removeValue(forKey: book.identifier)
+  }
+  
+  func setState(_ state: Palace.TPPBookState, for bookIdentifier: String) {
+    self.registry[bookIdentifier]?.state = state
+  }
+  
+  func book(forIdentifier bookIdentifier: String) -> Palace.TPPBook? {
+    self.registry[bookIdentifier]?.book
+  }
+  
+  func fulfillmentId(forIdentifier bookIdentifier: String) -> String? {
+    self.registry[bookIdentifier]?.fulfillmentId
+  }
+  
+  func setFulfillmentId(_ fulfillmentId: String, for bookIdentifier: String) {
+    self.registry[bookIdentifier]?.fulfillmentId = fulfillmentId
+  }
+  
+  func with(account: String, perform block: (Palace.TPPBookRegistry) -> Void) {
+    NSLog("Uncompleted function")
   }
 }
 

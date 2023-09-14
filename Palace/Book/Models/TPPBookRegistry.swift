@@ -10,6 +10,8 @@ import Foundation
 import UIKit
 
 protocol TPPBookRegistryProvider {
+  func setProcessing(_ processing: Bool, for bookIdentifier: String)
+  func state(for bookIdentifier: String) -> TPPBookState
   func readiumBookmarks(forIdentifier identifier: String) -> [TPPReadiumBookmark]
   func setLocation(_ location: TPPBookLocation?, forIdentifier identifier: String)
   func location(forIdentifier identifier: String) -> TPPBookLocation?
@@ -21,6 +23,14 @@ protocol TPPBookRegistryProvider {
   func addGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String)
   func deleteGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String)
   func replaceGenericBookmark(_ oldLocation: TPPBookLocation, with newLocation: TPPBookLocation, forIdentifier: String)
+  func addBook(_ book: TPPBook, location: TPPBookLocation?, state: TPPBookState, fulfillmentId: String?, readiumBookmarks: [TPPReadiumBookmark]?, genericBookmarks: [TPPBookLocation]?)
+  func removeBook(forIdentifier bookIdentifier: String)
+  func updateAndRemoveBook(_ book: TPPBook)
+  func setState(_ state: TPPBookState, for bookIdentifier: String)
+  func book(forIdentifier bookIdentifier: String) -> TPPBook?
+  func fulfillmentId(forIdentifier bookIdentifier: String) -> String?
+  func setFulfillmentId(_ fulfillmentId: String, for bookIdentifier: String)
+  func with(account: String, perform block: (_ registry: TPPBookRegistry) -> Void)
 }
 
 typealias TPPBookRegistryData = [String: Any]
@@ -50,6 +60,34 @@ enum TPPBookRegistryKey: String {
   case readiumBookmarks = "bookmarks"
   case genericBookmarks = "genericBookmarks"
 
+}
+
+fileprivate class BoolWithDelay {
+  private var switchBackDelay: Double
+  private var resetTask: DispatchWorkItem?
+  private var onChange: ((_ value: Bool) -> Void)?
+  init(delay: Double = 5, onChange: ((_ value: Bool) -> Void)? = nil) {
+    self.switchBackDelay = delay
+    self.onChange = onChange
+  }
+  
+  var value: Bool = false {
+    willSet {
+      if value != newValue {
+        onChange?(newValue)
+      }
+    }
+    didSet {
+      resetTask?.cancel()
+      if value {
+        let task = DispatchWorkItem { [weak self] in
+          self?.value = false
+        }
+        resetTask = task
+        DispatchQueue.main.asyncAfter(deadline: .now() + switchBackDelay, execute: task)
+      }
+    }
+  }
 }
 
 @objcMembers
@@ -86,19 +124,25 @@ class TPPBookRegistry: NSObject {
   static let shared = TPPBookRegistry()
   
   /// Identifies that the synchronsiation process is going on.
-  private(set) var isSyncing = false {
-    didSet {
-      if isSyncing {
-        NotificationCenter.default.post(name: .TPPSyncBegan, object: nil, userInfo: nil)
-      } else {
-        NotificationCenter.default.post(name: .TPPSyncEnded, object: nil, userInfo: nil)
-      }
+  private(set) var isSyncing: Bool {
+    get {
+      syncState.value
+    }
+    set { }
+  }
+  
+  /// `syncState` switches back after a delay to prevent locking in synchronization state
+  private var syncState = BoolWithDelay { value in
+    if value {
+      NotificationCenter.default.post(name: .TPPSyncBegan, object: nil, userInfo: nil)
+    } else {
+      NotificationCenter.default.post(name: .TPPSyncEnded, object: nil, userInfo: nil)
     }
   }
   
   private(set) var state: RegistryState  = .unloaded {
     didSet {
-      isSyncing = state == .syncing
+      syncState.value = state == .syncing
       NotificationCenter.default.post(name: .TPPBookRegistryStateDidChange, object: nil, userInfo: nil)
     }
   }

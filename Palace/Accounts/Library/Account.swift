@@ -138,7 +138,7 @@ class OPDS2SamlIDP: NSObject, Codable {
     
     var catalogRequiresAuthentication: Bool {
       // you need an oauth token in order to access catalogs if authentication type is either oauth with intermediary (ex. Clever), or SAML
-      authType == .oauthIntermediary || authType == .saml
+      authType == .oauthIntermediary 
     }
 
     func encode(with coder: NSCoder) {
