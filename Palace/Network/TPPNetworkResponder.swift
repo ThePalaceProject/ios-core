@@ -177,14 +177,11 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
   
   private func handleHTTPResponse(_ httpResponse: HTTPURLResponse, for task: URLSessionTask, currentTaskInfo: TPPNetworkTaskInfo, logMetadata: inout [String: Any]) -> Bool {
     guard httpResponse.isSuccess() else {
-      if (TPPUserAccount.sharedAccount().authDefinition?.isToken ?? false) &&
-          handleExpiredTokenIfNeeded(for: httpResponse, with: task) &&
-          tokenRefreshAttempts < 2 {
+      if (TPPUserAccount.sharedAccount().authDefinition?.isToken ?? false) && tokenRefreshAttempts < 2 {
         tokenRefreshAttempts += 1
-        return false
+        return handleExpiredTokenIfNeeded(for: httpResponse, with: task)
       }
       
-      tokenRefreshAttempts = 0
       logMetadata["response"] = httpResponse
       logMetadata[NSLocalizedDescriptionKey] = Strings.Error.unknownRequestError
       let err = NSError(domain: "Api call with failure HTTP status",
@@ -197,6 +194,7 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
                                      metadata: logMetadata)
       return false
     }
+
     return true
   }
   
