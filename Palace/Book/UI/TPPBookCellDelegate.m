@@ -29,7 +29,7 @@
 @property (nonatomic) NSTimer *timer;
 @property (nonatomic) NSDate *lastServerUpdate;
 @property (nonatomic) id<AudiobookManager> manager;
-@property (nonatomic, weak) AudiobookPlayerViewController *audiobookViewController;
+@property (nonatomic, weak) UIViewController *audiobookViewController;
 @property (strong) NSLock *refreshAudiobookLock;
 @property (nonatomic, strong) LoadingViewController *loadingViewController;
 @property (nonatomic, strong) AudiobookBookmarkBusinessLogic *audiobookBookmarkBusinessLogic;
@@ -270,28 +270,26 @@ static const int kServerUpdateDelay = 15;
                                             playbackTrackerDelegate:timeTracker];
       
       
+      self.book = book;
       self.audiobookBookmarkBusinessLogic = [[AudiobookBookmarkBusinessLogic alloc] initWithBook:book];
 
       manager.refreshDelegate = self;
       manager.playbackPositionDelegate = self;
       manager.bookmarkDelegate = self.audiobookBookmarkBusinessLogic;
 
-      AudiobookPlayerViewController *const audiobookVC = [[AudiobookPlayerViewController alloc]
-                                                          initWithAudiobookManager:manager];
+      AudiobookPlayer *audiobookPlayer = [[AudiobookPlayer alloc] initWithAudiobookManager:manager];
 
       [self registerCallbackForLogHandler];
 
       [[TPPBookRegistry shared] coverImageFor:book handler:^(UIImage *image) {
         if (image) {
-          [audiobookVC.coverView setImage:image];
+          [audiobookPlayer updateImage:image];
         }
       }];
 
-      audiobookVC.hidesBottomBarWhenPushed = YES;
-      audiobookVC.view.tintColor = [TPPConfiguration mainColor];
-      [[TPPRootTabBarController sharedController] pushViewController:audiobookVC animated:YES];
+      [[TPPRootTabBarController sharedController] pushViewController:audiobookPlayer.viewController animated:YES];
 
-      __weak AudiobookPlayerViewController *weakAudiobookVC = audiobookVC;
+      __weak UIViewController *weakAudiobookVC = audiobookPlayer.viewController;
       [manager setPlaybackCompletionHandler:^{
         NSSet<NSString *> *types = [[NSSet alloc] initWithObjects:
                                     ContentTypeFindaway,
@@ -321,7 +319,7 @@ static const int kServerUpdateDelay = 15;
         }
       }];
 
-      [self startLoading:audiobookVC];
+      [self startLoading:audiobookPlayer.viewController];
 
       TPPBookLocation *localAudiobookLocation = [[TPPBookRegistry shared] locationForIdentifier:book.identifier];
       NSData *localLocationData = [localAudiobookLocation.locationString dataUsingEncoding:NSUTF8StringEncoding];
@@ -356,7 +354,7 @@ static const int kServerUpdateDelay = 15;
         }];
       }];
       
-      [self scheduleTimerForAudiobook:book manager:manager viewController:audiobookVC];
+      [self scheduleTimerForAudiobook:book manager:manager viewController:audiobookPlayer.viewController];
     }];
   }];
 }
@@ -451,10 +449,9 @@ static const int kServerUpdateDelay = 15;
 
 - (void)scheduleTimerForAudiobook:(TPPBook *)book
                           manager:(id<AudiobookManager>)manager
-                   viewController:(AudiobookPlayerViewController *)viewController
+                   viewController:(UIViewController *)viewController
 {
   self.audiobookViewController = viewController;
-  self.book = book;
   self.manager = manager;
   // Target-Selector method required for iOS <10.0
   self.timer = [NSTimer scheduledTimerWithTimeInterval:1.0
@@ -469,7 +466,6 @@ static const int kServerUpdateDelay = 15;
   if (!self.audiobookViewController) {
     [self.timer invalidate];
     self.timer = nil;
-    self.book = nil;
     self.manager = nil;
     return;
   }
