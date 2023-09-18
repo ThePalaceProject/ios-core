@@ -39,7 +39,7 @@ import Foundation
   
   func execute() async -> Result<TokenResponse, Error> {
     var request = URLRequest(url: url)
-    request.httpMethod = HTTPMethodType.GET.rawValue
+    request.httpMethod = HTTPMethodType.POST.rawValue
     
     let loginString = "\(username):\(password)"
     guard let loginData = loginString.data(using: .utf8) else {
@@ -50,6 +50,14 @@ import Foundation
  
     do {
       let (data, _) = try await URLSession.shared.data(for: request)
+      
+      // Print the raw data
+      if let stringData = String(data: data, encoding: .utf8) {
+        print("Raw Data: \(stringData)")
+      } else {
+        print("Data could not be converted to UTF-8 string")
+      }
+      
       let decoder = JSONDecoder()
       decoder.keyDecodingStrategy = .convertFromSnakeCase
       let tokenResponse = try decoder.decode(TokenResponse.self, from: data)
