@@ -50,6 +50,7 @@ import Foundation
  
     do {
       let (data, _) = try await URLSession.shared.data(for: request)
+
       let decoder = JSONDecoder()
       decoder.keyDecodingStrategy = .convertFromSnakeCase
       let tokenResponse = try decoder.decode(TokenResponse.self, from: data)
