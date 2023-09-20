@@ -15,6 +15,9 @@ import Foundation
   private let betaLibraryCellIdentifier = "betaLibraryCell"
   private let lcpPassphraseCellIdentifier = "lcpPassphraseCell"
   private let clearCacheCellIdentifier = "clearCacheCell"
+  private let enablePushNotificationsCellIdentifier = "enablePushNotificationsCell"
+  
+  private var pushNotificationsStatus = false
   
   required init() {
     super.init(nibName: nil, bundle: nil)
@@ -33,6 +36,14 @@ import Foundation
     TPPSettings.shared.enterLCPPassphraseManually = sender.isOn
   }
   
+  @objc func enablePushNotificationsDidChange(sender: UISwitch) {
+    if sender.isOn {
+      NotificationService.shared.setupPushNotifications { _ in
+        self.updatePushNotificationStatus()
+      }
+    }
+  }
+  
   // MARK:- UIViewController
   
   override func loadView() {
@@ -47,13 +58,33 @@ import Foundation
     self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: betaLibraryCellIdentifier)
     self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: lcpPassphraseCellIdentifier)
     self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: clearCacheCellIdentifier)
+    self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: enablePushNotificationsCellIdentifier)
+    
+    updatePushNotificationStatus()
+    NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in
+      self.updatePushNotificationStatus()
+    }
+  }
+  
+  deinit {
+    NotificationCenter.default.removeObserver(self, name: UIApplication.didBecomeActiveNotification, object: nil)
+  }
+  
+  // Gets push notifications authorization status and updates the view
+  private func updatePushNotificationStatus() {
+    NotificationService.shared.getNotificationStatus { areEnabled in
+      DispatchQueue.main.async {
+        self.pushNotificationsStatus = areEnabled
+        self.tableView.reloadData()
+      }
+    }
   }
   
   // MARK:- UITableViewDataSource
   
   func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
     switch Section(rawValue: section)! {
-    case .librarySettings: return 2
+    case .librarySettings: return 3
     default: return 1
     }
   }
@@ -67,7 +98,8 @@ import Foundation
     case .librarySettings:
       switch indexPath.row {
       case 0: return cellForBetaLibraries()
-      default: return cellForLCPPassphrase()
+      case 1: return cellForLCPPassphrase()
+      default: return cellForPushNotifications()
       }
     case .libraryRegistryDebugging: return cellForCustomRegsitry()
     case .dataManagement: return cellForClearCache()
@@ -107,6 +139,18 @@ import Foundation
     cell.textLabel?.adjustsFontSizeToFitWidth = true
     cell.textLabel?.minimumScaleFactor = 0.5
     cell.accessoryView = createSwitch(isOn: TPPSettings.shared.enterLCPPassphraseManually, action: #selector(enterLCPPassphraseSwitchDidChange))
+    return cell
+  }
+  
+  private func cellForPushNotifications() -> UITableViewCell {
+    let cell = tableView.dequeueReusableCell(withIdentifier: enablePushNotificationsCellIdentifier)!
+    cell.selectionStyle = .none
+    cell.textLabel?.text = "Enable Push Notifications"
+    cell.textLabel?.adjustsFontSizeToFitWidth = true
+    cell.textLabel?.minimumScaleFactor = 0.5
+    let pushNotificationSwitch = createSwitch(isOn: pushNotificationsStatus, action: #selector(enablePushNotificationsDidChange))
+    pushNotificationSwitch.isEnabled = !pushNotificationsStatus
+    cell.accessoryView = pushNotificationSwitch
     return cell
   }
   
