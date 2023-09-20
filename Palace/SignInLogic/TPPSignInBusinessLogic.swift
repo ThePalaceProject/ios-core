@@ -393,7 +393,10 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
         samlHelper.logIn()
       case .token:
         guard let username = self.uiDelegate?.username,
-              let password = self.uiDelegate?.pin else {
+              let password = self.uiDelegate?.pin,
+              TPPUserAccount.sharedAccount().authDefinition?.tokenURL != nil
+        else {
+          validateCredentials()
           return
         }
 
