@@ -183,13 +183,24 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
       }
       
       logMetadata["response"] = httpResponse
+      var err: NSError = NSError()
+      var code: TPPErrorCode = .responseFail
+      var summary: String = Strings.Error.connectionFailed
       logMetadata[NSLocalizedDescriptionKey] = Strings.Error.unknownRequestError
-      let err = NSError(domain: "Api call with failure HTTP status",
-                        code: TPPErrorCode.responseFail.rawValue,
-                        userInfo: logMetadata)
+  
+      if httpResponse.statusCode == 401 {
+        logMetadata[NSLocalizedDescriptionKey] = Strings.Error.invalidCredentialsError
+        code = TPPErrorCode.invalidCredentials
+        summary = Strings.Error.invalidCredentialsError
+      }
+      
+      err = NSError(domain: "Api call with failure HTTP status",
+                    code: TPPErrorCode.responseFail.rawValue,
+                    userInfo: logMetadata)
+  
       currentTaskInfo.completion(.failure(err, task.response))
-      TPPErrorLogger.logNetworkError(code: TPPErrorCode.responseFail,
-                                     summary: "Network request failed: server error response",
+      TPPErrorLogger.logNetworkError(code: code,
+                                     summary: summary,
                                      request: task.originalRequest,
                                      metadata: logMetadata)
       return false

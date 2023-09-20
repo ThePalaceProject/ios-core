@@ -24,6 +24,7 @@ struct Strings {
 
   struct Error {
     static let loadFailedError = NSLocalizedString("The page could not load due to a conection error.", comment: "")
+    static let invalidCredentialsError = NSLocalizedString("We could not find a match for the credentials provided.", comment: "")
     static let unknownRequestError = NSLocalizedString("An unknown error occurred. Please check your connection or try again later.", comment: "A generic error message for when a network request fails")
     static let connectionFailed = NSLocalizedString(
       "Connection Failed",
