@@ -180,11 +180,16 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
   
   /// Called when the app is in foreground
   func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
-    completionHandler([.alert, .badge, .sound])
+    // Shows notification banner on screen
+    completionHandler([.banner, .badge, .sound])
+    // Update loans
+    TPPBookRegistry.shared.sync()
   }
   
   /// Called when the user responded to the notification by opening the application, dismissing the notification or choosing a UNNotificationAction
   func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
     completionHandler()
+    // Update loans
+    TPPBookRegistry.shared.sync()
   }
 }
