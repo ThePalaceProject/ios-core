@@ -33,10 +33,7 @@ func performLogOut() {
                             for: request,
                             barcode: barcode)
       case .failure(let errorWithProblemDoc, let response):
-        if let error = errorWithProblemDoc as? URLError, error.code == .timedOut {
-          TPPUserAccount.sharedAccount().removeAll()
-        }
-        
+        TPPUserAccount.sharedAccount().removeAll()        
         self?.processLogOutError(errorWithProblemDoc,
                                  response: response,
                                  for: request,
