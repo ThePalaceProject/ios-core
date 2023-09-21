@@ -35,16 +35,21 @@ import PalaceAudiobookToolkit
     }
     Log.info(#file, "Fresh install detected. Purging any existing keychain items...")
 
-    for accessGroup in secAttrAccessGroups {
-      for secClass in secClassItems {
-        let queryDelete: [String: Any] = [
-          kSecClass as String : secClass,
-          kSecAttrAccessGroup as String: accessGroup
-        ]
-        let resultCodeDelete = SecItemDelete(queryDelete as CFDictionary)
-        if resultCodeDelete == noErr {
-          Log.debug(#file, "\(secClass) item successfully purged from keychain group: \(accessGroup)")
-        }
+    let secClassItems: [String] = [
+      kSecClassGenericPassword as String,
+      kSecClassInternetPassword as String,
+      kSecClassCertificate as String,
+      kSecClassKey as String,
+      kSecClassIdentity as String
+    ]
+    
+    for secClass in secClassItems {
+      let query: [String: Any] = [kSecClass as String: secClass]
+      
+      let status = SecItemDelete(query as CFDictionary)
+      if status != errSecSuccess && status != errSecItemNotFound {
+        Log.info(#file, "Error deleting Keychain item for class \(secClass): \(status)")
+        
       }
     }
   }

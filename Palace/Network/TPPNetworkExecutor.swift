@@ -24,8 +24,9 @@ enum NYPLResult<SuccessInfo> {
 /// The cache lives on both memory and disk.
 @objc class TPPNetworkExecutor: NSObject {
   private let urlSession: URLSession
-  private var retryQueue: [URLSessionTask] = []
+  private let refreshQueue = DispatchQueue(label: "com.palace.token-refresh-queue", qos: .userInitiated)
   private var isRefreshing = false
+  private var retryQueue: [URLSessionTask] = []
 
   /// The delegate of the URLSession.
   private let responder: TPPNetworkResponder
@@ -234,29 +235,34 @@ extension TPPNetworkExecutor {
   }
   
   func refreshTokenAndResume(task: URLSessionTask) {
-    guard let username = TPPUserAccount.sharedAccount().username,
-          let password = TPPUserAccount.sharedAccount().pin else {
-      Log.info(#file, "Failed to refresh token due to missing credentials!")
-      return
-    }
-  
-    retryQueue.append(task)
-    guard !isRefreshing else { return }
-    
-    isRefreshing = true
-
-    executeTokenRefresh(username: username, password: password){ [weak self] result in
-      switch result {
-      case .success:
-        self?.isRefreshing = false
-        self?.retryFailedRequests()
-      case .failure(let error):
-        self?.isRefreshing = false
-        Log.info(#file, "Failed to refresh token with error: \(error)")
+    refreshQueue.async { [weak self] in
+      guard let self = self else { return }
+      guard !self.isRefreshing else { return }
+      
+      self.isRefreshing = true
+      
+      guard let username = TPPUserAccount.sharedAccount().username,
+            let password = TPPUserAccount.sharedAccount().pin else {
+        Log.info(#file, "Failed to refresh token due to missing credentials!")
+        self.isRefreshing = false
+        return
+      }
+      
+      self.retryQueue.append(task)
+      
+      self.executeTokenRefresh(username: username, password: password) { result in
+        switch result {
+        case .success:
+          self.isRefreshing = false
+          self.retryFailedRequests()
+        case .failure(let error):
+          self.isRefreshing = false
+          Log.info(#file, "Failed to refresh token with error: \(error)")
+        }
       }
     }
   }
-  
+
   private func retryFailedRequests() {
     while !retryQueue.isEmpty {
       let task = retryQueue.removeFirst()
@@ -270,6 +276,7 @@ extension TPPNetworkExecutor {
   func executeTokenRefresh(username: String, password: String, completion: @escaping (Result<TokenResponse, Error>) -> Void) {
     guard let tokenURL = TPPUserAccount.sharedAccount().authDefinition?.tokenURL else {
       Log.error(#file, "Unable to refresh token, missing credentials")
+      completion(.failure(NSError(domain: "Unable to refresh token, missing credentials", code: 401)))
       return
     }
 

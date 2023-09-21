@@ -6,6 +6,10 @@
 #import "TPPOpenSearchDescription.h"
 #import "NSString+TPPStringAdditions.h"
 
+#import "ADEPT/NYPLADEPTErrors.h"
+#import "ADEPT/NYPLADEPT.h"
+#import "ADEPT/ADEPT.h"
+#import "AdobeDRMContainer.h"
 
 //
 // Override here any ObjC declarations to facilitate testing
