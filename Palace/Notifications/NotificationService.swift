@@ -50,7 +50,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
   
   @objc
   /// Runs configuration function, registers the app for remote notifications.
-  func setupPushNotifications() {
+  func setupPushNotifications(completion: ((_ granted: Bool) -> Void)? = nil) {
     notificationCenter.delegate = self
     notificationCenter.requestAuthorization(options: [.alert, .badge, .sound]) { granted, error in
       if granted {
@@ -58,8 +58,18 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
           UIApplication.shared.registerForRemoteNotifications()
         }
       }
+      completion?(granted)
     }
     Messaging.messaging().delegate = self
+  }
+  
+  func getNotificationStatus(completion: @escaping (_ areEnabled: Bool) -> Void) {
+    notificationCenter.getNotificationSettings { notificationSettings in
+      switch notificationSettings.authorizationStatus {
+      case .authorized, .provisional: completion(true)
+      default: completion(false)
+      }
+    }
   }
   
   /// Check if token exists on the server
@@ -180,11 +190,16 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
   
   /// Called when the app is in foreground
   func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
-    completionHandler([.alert, .badge, .sound])
+    // Shows notification banner on screen
+    completionHandler([.banner, .badge, .sound])
+    // Update loans
+    TPPBookRegistry.shared.sync()
   }
   
   /// Called when the user responded to the notification by opening the application, dismissing the notification or choosing a UNNotificationAction
   func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
     completionHandler()
+    // Update loans
+    TPPBookRegistry.shared.sync()
   }
 }
