@@ -189,13 +189,13 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
       logMetadata[NSLocalizedDescriptionKey] = Strings.Error.unknownRequestError
   
       if httpResponse.statusCode == 401 {
-        logMetadata[NSLocalizedDescriptionKey] = Strings.Error.invalidCredentialsError
+        logMetadata[NSLocalizedDescriptionKey] = Strings.Error.invalidCredentialsErrorMessage
         code = TPPErrorCode.invalidCredentials
-        summary = Strings.Error.invalidCredentialsError
+        summary = Strings.Error.invalidCredentialsErrorMessage
       }
       
       err = NSError(domain: "Api call with failure HTTP status",
-                    code: TPPErrorCode.responseFail.rawValue,
+                    code: code.rawValue,
                     userInfo: logMetadata)
   
       currentTaskInfo.completion(.failure(err, task.response))
