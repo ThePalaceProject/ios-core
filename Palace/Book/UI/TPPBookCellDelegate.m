@@ -286,9 +286,9 @@ static const int kServerUpdateDelay = 15;
         }
       }];
 
-      [[TPPRootTabBarController sharedController] pushViewController:audiobookPlayer.viewController animated:YES];
+      [[TPPRootTabBarController sharedController] pushViewController:audiobookPlayer animated:YES];
 
-      __weak UIViewController *weakAudiobookVC = audiobookPlayer.viewController;
+      __weak UIViewController *weakAudiobookVC = audiobookPlayer;
       [manager setPlaybackCompletionHandler:^{
         NSSet<NSString *> *types = [[NSSet alloc] initWithObjects:
                                     ContentTypeFindaway,
@@ -318,7 +318,7 @@ static const int kServerUpdateDelay = 15;
         }
       }];
 
-      [self startLoading:audiobookPlayer.viewController];
+      [self startLoading:audiobookPlayer];
 
       TPPBookLocation *localAudiobookLocation = [[TPPBookRegistry shared] locationForIdentifier:book.identifier];
       NSData *localLocationData = [localAudiobookLocation.locationString dataUsingEncoding:NSUTF8StringEncoding];
@@ -353,7 +353,7 @@ static const int kServerUpdateDelay = 15;
         }];
       }];
       
-      [self scheduleTimerForAudiobook:book manager:manager viewController:audiobookPlayer.viewController];
+      [self scheduleTimerForAudiobook:book manager:manager viewController:audiobookPlayer];
     }];
   }];
 }
