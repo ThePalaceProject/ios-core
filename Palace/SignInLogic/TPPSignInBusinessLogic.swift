@@ -362,7 +362,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
       title = problemDoc.title
       message = problemDoc.detail
     } else {
-      title = "Login Failed"
+      title = error.code == TPPErrorCode.invalidCredentials.rawValue ? Strings.Error.invalidCredentialsErrorTitle : Strings.Error.loginErrorTitle
       message = nil
     }
 
