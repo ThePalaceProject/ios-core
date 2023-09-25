@@ -1,4 +1,4 @@
-@import NYPLAudiobookToolkit;
+@import PalaceAudiobookToolkit;
 
 #import "TPPBookDownloadFailedCell.h"
 #import "TPPBookDownloadingCell.h"

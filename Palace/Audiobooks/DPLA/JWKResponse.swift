@@ -7,7 +7,7 @@
 //
 
 import Foundation
-import NYPLAudiobookToolkit
+import PalaceAudiobookToolkit
 
 struct JWKResponse: Codable {
   let keys: [JWK]
