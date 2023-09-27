@@ -776,6 +776,8 @@
 		E708F723284783250028405B /* TPPEncryptedPDFViewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E708F722284783250028405B /* TPPEncryptedPDFViewer.swift */; };
 		E708F724284783250028405B /* TPPEncryptedPDFViewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E708F722284783250028405B /* TPPEncryptedPDFViewer.swift */; };
 		E71A422B29017C58008FC910 /* TPPBookRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = E71A422A29017C58008FC910 /* TPPBookRegistry.swift */; };
+		E72429632AC3276500D8AF75 /* PalaceAudiobookToolkit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E7F9BABE2A8E6811001697DE /* PalaceAudiobookToolkit.framework */; };
+		E72429642AC3276500D8AF75 /* PalaceAudiobookToolkit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E7F9BABE2A8E6811001697DE /* PalaceAudiobookToolkit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		E727EFAE2A1BFB20006AB1F2 /* DLNavigator.swift in Sources */ = {isa = PBXBuildFile; fileRef = E727EFAD2A1BFB20006AB1F2 /* DLNavigator.swift */; };
 		E727EFAF2A1BFB20006AB1F2 /* DLNavigator.swift in Sources */ = {isa = PBXBuildFile; fileRef = E727EFAD2A1BFB20006AB1F2 /* DLNavigator.swift */; };
 		E72B614B28AD7612008CFEBB /* TPPOPDSAcquisitionPathEntryWithSampleLink.xml in Resources */ = {isa = PBXBuildFile; fileRef = E72B614A28AD7612008CFEBB /* TPPOPDSAcquisitionPathEntryWithSampleLink.xml */; };
@@ -986,6 +988,7 @@
 				2178984E269F174500374A6B /* NYPLAEToolkit.framework in Embed Frameworks */,
 				21986923267E29D70041369E /* PureLayout.xcframework in Embed Frameworks */,
 				2198690E267E29B00041369E /* Minizip.xcframework in Embed Frameworks */,
+				E72429642AC3276500D8AF75 /* PalaceAudiobookToolkit.framework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -1774,6 +1777,7 @@
 				119503E71993F914009FB788 /* libxml2.dylib in Frameworks */,
 				2198690D267E29B00041369E /* Minizip.xcframework in Frameworks */,
 				E77D02202931337000544180 /* ReadiumLCP in Frameworks */,
+				E72429632AC3276500D8AF75 /* PalaceAudiobookToolkit.framework in Frameworks */,
 				E7498A882A0E7F460037DD93 /* FirebaseCrashlytics in Frameworks */,
 				E77D021E2931337000544180 /* R2Streamer in Frameworks */,
 			);
@@ -4633,7 +4637,7 @@
 				CODE_SIGN_IDENTITY = "Apple Distribution";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 199;
+				CURRENT_PROJECT_VERSION = 201;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -4655,7 +4659,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.32;
+				MARKETING_VERSION = 1.0.33;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PRODUCT_MODULE_NAME = Palace;
 				PRODUCT_NAME = "Palace-noDRM";
@@ -4690,7 +4694,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 199;
+				CURRENT_PROJECT_VERSION = 201;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -4712,7 +4716,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.32;
+				MARKETING_VERSION = 1.0.33;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PRODUCT_MODULE_NAME = Palace;
 				PRODUCT_NAME = "Palace-noDRM";
@@ -4872,7 +4876,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 199;
+				CURRENT_PROJECT_VERSION = 201;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -4899,7 +4903,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.32;
+				MARKETING_VERSION = 1.0.33;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PROVISIONING_PROFILE_SPECIFIER = "Ad Hoc";
 				RUN_CLANG_STATIC_ANALYZER = YES;
@@ -4932,7 +4936,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 199;
+				CURRENT_PROJECT_VERSION = 201;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -4959,7 +4963,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.32;
+				MARKETING_VERSION = 1.0.33;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PROVISIONING_PROFILE_SPECIFIER = "App Store";
 				RUN_CLANG_STATIC_ANALYZER = YES;
