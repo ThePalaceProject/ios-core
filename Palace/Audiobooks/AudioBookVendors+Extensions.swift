@@ -7,7 +7,7 @@
 //
 
 import Foundation
-import NYPLAudiobookToolkit
+import PalaceAudiobookToolkit
 
 extension AudioBookVendors {
   

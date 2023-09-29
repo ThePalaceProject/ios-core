@@ -7,7 +7,7 @@
 //
 
 import Foundation
-import NYPLAudiobookToolkit
+import PalaceAudiobookToolkit
 
 @objc extension TPPBookRegistry {
   func syncLocation(for book: TPPBook, completion: @escaping (ChapterLocation?) -> Void) {
