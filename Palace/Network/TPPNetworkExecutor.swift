@@ -71,7 +71,12 @@ enum NYPLResult<SuccessInfo> {
 }
 
 extension TPPNetworkExecutor: TPPRequestExecuting {
-
+  /// Executes a given request.
+  /// - Parameters:
+  ///   - req: The request to perform.
+  ///   - completion: Always called when the resource is either fetched from
+  /// the network or from the cache.
+  /// - Returns: The task issueing the given request.
   @discardableResult
   func executeRequest(_ req: URLRequest, completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask {
     
@@ -256,7 +261,7 @@ extension TPPNetworkExecutor {
     refreshQueue.async { [weak self] in
       guard let self = self else { return }
       guard !self.isRefreshing else {
-        completion?(nil) // If already refreshing, return nil for simplicity
+        completion?(nil)
         return
       }
       
@@ -293,12 +298,11 @@ extension TPPNetworkExecutor {
             self.responder.updateCompletionId(oldTask.taskIdentifier, newId: newTask.taskIdentifier)
             newTasks.append(newTask)
             
-            oldTask.cancel() // Cancel the old task
+            oldTask.cancel()
           }
           
-          // Resume the new tasks
           newTasks.forEach { $0.resume() }
-          self.retryQueue.removeAll() // Clear the retry queue
+          self.retryQueue.removeAll()
           
           completion?(nil)
           
