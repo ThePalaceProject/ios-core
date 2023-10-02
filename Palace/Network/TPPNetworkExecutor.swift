@@ -71,12 +71,7 @@ enum NYPLResult<SuccessInfo> {
 }
 
 extension TPPNetworkExecutor: TPPRequestExecuting {
-  /// Executes a given request.
-  /// - Parameters:
-  ///   - req: The request to perform.
-  ///   - completion: Always called when the resource is either fetched from
-  /// the network or from the cache.
-  /// - Returns: The task issuing the given request.
+
   @discardableResult
   func executeRequest(_ req: URLRequest, completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask {
     
@@ -84,19 +79,20 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
       return performDataTask(with: req, completion: completion)
     }
     
+    // If the token has expired, attempt to refresh it.
     refreshTokenAndResume(task: nil) { [weak self] newToken in
       guard let strongSelf = self else { return }
       
       if let token = newToken {
         var updatedRequest = req
         updatedRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        
-        _ = strongSelf.performDataTask(with: updatedRequest, completion: completion)
+        strongSelf.executeRequest(updatedRequest, completion: completion)
+
       } else {
-        completion(NYPLResult.failure(NSError(domain: "Palace App", code: 401, userInfo: [NSLocalizedDescriptionKey: "Unauthorized HTTP"]), nil))
+        completion(NYPLResult.failure(NSError(domain: "com.PalaceApp.error", code: 401, userInfo: [NSLocalizedDescriptionKey: "Unauthorized HTTP"]), nil))
       }
     }
-    
+
     return URLSessionDataTask()
   }
   
@@ -255,7 +251,35 @@ extension TPPNetworkExecutor {
     
     return executeRequest(request, completion: completionWrapper)
   }
-
+  
+//  func refreshTokenAndResume(task: URLSessionTask) {
+//    refreshQueue.async { [weak self] in
+//      guard let self = self else { return }
+//      guard !self.isRefreshing else { return }
+//
+//      self.isRefreshing = true
+//
+//      guard let username = TPPUserAccount.sharedAccount().username,
+//            let password = TPPUserAccount.sharedAccount().pin else {
+//        Log.info(#file, "Failed to refresh token due to missing credentials!")
+//        self.isRefreshing = false
+//        return
+//      }
+//
+//      self.retryQueue.append(task)
+//
+//      self.executeTokenRefresh(username: username, password: password) { result in
+//        switch result {
+//        case .success:
+//          self.isRefreshing = false
+//          self.retryFailedRequests()
+//        case .failure(let error):
+//          self.isRefreshing = false
+//          Log.info(#file, "Failed to refresh token with error: \(error)")
+//        }
+//      }
+//    }
+//  }
   func refreshTokenAndResume(task: URLSessionTask?, completion: ((String?) -> Void)? = nil) {
     refreshQueue.async { [weak self] in
       guard let self = self else { return }
@@ -313,6 +337,7 @@ extension TPPNetworkExecutor {
       }
     }
   }
+
 
   private func retryFailedRequests() {
     while !retryQueue.isEmpty {
