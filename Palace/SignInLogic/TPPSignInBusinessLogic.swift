@@ -362,8 +362,8 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
       title = problemDoc.title
       message = problemDoc.detail
     } else {
-      title = error.code == TPPErrorCode.invalidCredentials.rawValue ? Strings.Error.invalidCredentialsErrorTitle : Strings.Error.loginErrorTitle
-      message = nil
+      title = Strings.Error.invalidCredentialsErrorTitle
+      message = Strings.Error.invalidCredentialsErrorMessage
     }
 
     TPPMainThreadRun.asyncIfNeeded {
