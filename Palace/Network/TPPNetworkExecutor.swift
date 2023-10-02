@@ -76,13 +76,35 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
   ///   - req: The request to perform.
   ///   - completion: Always called when the resource is either fetched from
   /// the network or from the cache.
-  /// - Returns: The task issueing the given request.
+  /// - Returns: The task issuing the given request.
   @discardableResult
-  func executeRequest(_ req: URLRequest,
-           completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask {
-    let task = urlSession.dataTask(with: req)
+  func executeRequest(_ req: URLRequest, completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask {
+    
+    if !TPPUserAccount.sharedAccount().authTokenHasExpired {
+      return performDataTask(with: req, completion: completion)
+    }
+    
+    refreshTokenAndResume(task: nil) { [weak self] newToken in
+      guard let strongSelf = self else { return }
+      
+      if let token = newToken {
+        var updatedRequest = req
+        updatedRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        
+        _ = strongSelf.performDataTask(with: updatedRequest, completion: completion)
+      } else {
+        completion(NYPLResult.failure(NSError(domain: "Palace App", code: 401, userInfo: [NSLocalizedDescriptionKey: "Unauthorized HTTP"]), nil))
+      }
+    }
+    
+    return URLSessionDataTask()
+  }
+  
+  private func performDataTask(with request: URLRequest,
+                               completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask {
+    let task = urlSession.dataTask(with: request)
     responder.addCompletion(completion, taskID: task.taskIdentifier)
-    Log.info(#file, "Task \(task.taskIdentifier): starting request \(req.loggableString)")
+    Log.info(#file, "Task \(task.taskIdentifier): starting request \(request.loggableString)")
     task.resume()
     return task
   }
@@ -233,11 +255,14 @@ extension TPPNetworkExecutor {
     
     return executeRequest(request, completion: completionWrapper)
   }
-  
-  func refreshTokenAndResume(task: URLSessionTask) {
+
+  func refreshTokenAndResume(task: URLSessionTask?, completion: ((String?) -> Void)? = nil) {
     refreshQueue.async { [weak self] in
       guard let self = self else { return }
-      guard !self.isRefreshing else { return }
+      guard !self.isRefreshing else {
+        completion?(nil) // If already refreshing, return nil for simplicity
+        return
+      }
       
       self.isRefreshing = true
       
@@ -245,19 +270,45 @@ extension TPPNetworkExecutor {
             let password = TPPUserAccount.sharedAccount().pin else {
         Log.info(#file, "Failed to refresh token due to missing credentials!")
         self.isRefreshing = false
+        completion?(nil)
         return
       }
       
-      self.retryQueue.append(task)
+      if let task = task {
+        self.retryQueue.append(task)
+      }
       
       self.executeTokenRefresh(username: username, password: password) { result in
+        defer { self.isRefreshing = false }
+        
         switch result {
         case .success:
-          self.isRefreshing = false
-          self.retryFailedRequests()
+          var newTasks = [URLSessionTask]()
+          
+          self.retryQueue.forEach { oldTask in
+            guard let originalRequest = oldTask.originalRequest,
+                  let url = originalRequest.url else {
+              return
+            }
+            
+            let mutableRequest = self.request(for: url)
+            let newTask = self.urlSession.dataTask(with: mutableRequest)
+            
+            self.responder.updateCompletionId(oldTask.taskIdentifier, newId: newTask.taskIdentifier)
+            newTasks.append(newTask)
+            
+            oldTask.cancel() // Cancel the old task
+          }
+          
+          // Resume the new tasks
+          newTasks.forEach { $0.resume() }
+          self.retryQueue.removeAll() // Clear the retry queue
+          
+          completion?(nil)
+          
         case .failure(let error):
-          self.isRefreshing = false
           Log.info(#file, "Failed to refresh token with error: \(error)")
+          completion?(nil)
         }
       }
     }
