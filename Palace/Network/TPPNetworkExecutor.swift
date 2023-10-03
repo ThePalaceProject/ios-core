@@ -84,7 +84,6 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
       return performDataTask(with: req, completion: completion)
     }
     
-    // If the token has expired, attempt to refresh it.
     refreshTokenAndResume(task: nil) { [weak self] newToken in
       guard let strongSelf = self else { return }
       
