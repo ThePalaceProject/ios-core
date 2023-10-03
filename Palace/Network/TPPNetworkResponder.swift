@@ -65,6 +65,15 @@ class TPPNetworkResponder: NSObject {
 
     taskInfo[taskID] = TPPNetworkTaskInfo(completion: completion)
   }
+  
+  func updateCompletionId(_ oldId: TaskID, newId: TaskID) {
+    taskInfoLock.lock()
+    defer {
+      taskInfoLock.unlock()
+    }
+    
+    taskInfo[newId] = taskInfo[oldId]
+  }
 }
 
 // MARK: - URLSessionDelegate
@@ -230,7 +239,7 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
 
 private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse, with task: URLSessionTask) -> Bool {
   if response.statusCode == 401 {
-    TPPNetworkExecutor.shared.refreshTokenAndResume(task: task)
+    TPPNetworkExecutor.shared.refreshTokenAndResume(task: task, completion: nil)
     return true
   }
   return false
