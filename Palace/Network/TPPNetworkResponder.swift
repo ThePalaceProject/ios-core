@@ -143,35 +143,46 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
     ]
     
     taskInfoLock.lock()
+    defer { taskInfoLock.unlock() }  // Ensure unlocking in all scenarios.
+    
     guard let currentTaskInfo = taskInfo.removeValue(forKey: taskID) else {
       handleNoTaskInfo(for: task, with: networkError, logMetadata: &logMetadata)
       return
     }
-    taskInfoLock.unlock()
     
-    let responseData = currentTaskInfo.progressData
-    let elapsed = Date().timeIntervalSince(currentTaskInfo.startDate)
-    logMetadata["elapsedTime"] = elapsed
-    Log.info(#file, "Task \(taskID) completed, elapsed time: \(elapsed) sec")
+    logTaskCompletion(taskID: taskID, startDate: currentTaskInfo.startDate, metadata: &logMetadata)
     
-    if let httpResponse = task.response as? HTTPURLResponse {
-      if task.response?.isProblemDocument() ?? false {
-        handleProblemDocument(for: task, with: responseData, currentTaskInfo: currentTaskInfo, networkError: networkError, logMetadata: logMetadata)
-        return
-      }
-      
-      if let networkError = networkError {
-        handleNetworkError(networkError, for: task, currentTaskInfo: currentTaskInfo, logMetadata: logMetadata)
-        return
-      }
-      
-      guard handleHTTPResponse(httpResponse, for: task, currentTaskInfo: currentTaskInfo, logMetadata: &logMetadata) else {
-        return
-      }
+    guard let httpResponse = task.response as? HTTPURLResponse else {
+      let error = NSError(domain: "Api call with failure HTTP status",
+                          code: TPPErrorCode.invalidOrNoHTTPResponse.rawValue,
+                    userInfo: logMetadata)
+      currentTaskInfo.completion(.failure(error, nil))
+      return
     }
     
-    currentTaskInfo.completion(.success(responseData, task.response))
+    if let response = task.response, response.isProblemDocument() {
+      handleProblemDocument(for: task, with: currentTaskInfo.progressData, currentTaskInfo: currentTaskInfo, networkError: networkError, logMetadata: logMetadata)
+      return
+    }
+    
+    if let networkError = networkError {
+      handleNetworkError(networkError, for: task, currentTaskInfo: currentTaskInfo, logMetadata: logMetadata)
+      return
+    }
+    
+    guard handleHTTPResponse(httpResponse, for: task, currentTaskInfo: currentTaskInfo, logMetadata: &logMetadata) else {
+      return
+    }
+    
+    currentTaskInfo.completion(.success(currentTaskInfo.progressData, task.response))
   }
+  
+  private func logTaskCompletion(taskID: Int, startDate: Date, metadata: inout [String: Any]) {
+    let elapsed = Date().timeIntervalSince(startDate)
+    metadata["elapsedTime"] = elapsed
+    Log.info(#file, "Task \(taskID) completed, elapsed time: \(elapsed) sec")
+  }
+
   
   private func handleNoTaskInfo(for task: URLSessionTask, with networkError: Error?, logMetadata: inout [String: Any]) {
     logMetadata["NYPLNetworkResponder context"] = "No task info available for task \(task.taskIdentifier). Completion closure could not be called."
