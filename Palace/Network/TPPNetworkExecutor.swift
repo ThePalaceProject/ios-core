@@ -93,7 +93,7 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
         strongSelf.executeRequest(updatedRequest, completion: completion)
 
       } else {
-        completion(NYPLResult.failure(NSError(domain: "com.PalaceApp.error", code: 401, userInfo: [NSLocalizedDescriptionKey: "Unauthorized HTTP"]), nil))
+        completion(NYPLResult.failure(NSError(domain: TPPErrorLogger.clientDomain, code: TPPErrorCode.invalidCredentials.rawValue, userInfo: [NSLocalizedDescriptionKey: "Unauthorized HTTP"]), nil))
       }
     }
 
