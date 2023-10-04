@@ -80,7 +80,9 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
   @discardableResult
   func executeRequest(_ req: URLRequest, completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask {
     
-    if !TPPUserAccount.sharedAccount().authTokenHasExpired {
+    let isTokenAuthorized = req.allHTTPHeaderFields?["Authorization"]?.hasPrefix("Bearer") ?? false
+    
+    if !TPPUserAccount.sharedAccount().authTokenHasExpired || !isTokenAuthorized {
       return performDataTask(with: req, completion: completion)
     }
     
