@@ -27,3 +27,10 @@ extension URLRequest {
     return (self as URLRequest).loggableString
   }
 }
+
+extension URLRequest {
+  var isTokenAuthorized: Bool {
+    return self.allHTTPHeaderFields?["Authorization"]?.hasPrefix("Bearer") ?? false
+  }
+}
+
