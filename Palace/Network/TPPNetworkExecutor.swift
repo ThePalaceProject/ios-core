@@ -79,27 +79,37 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
   /// - Returns: The task issueing the given request.
   @discardableResult
   func executeRequest(_ req: URLRequest, completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask {
+    var resultTask: URLSessionDataTask?
     
-    if !TPPUserAccount.sharedAccount().authTokenHasExpired {
-      return performDataTask(with: req, completion: completion)
+    if !TPPUserAccount.sharedAccount().authTokenHasExpired || !req.isTokenAuthorized || req.hasRetried {
+      if req.hasRetried {
+        let error = NSError(domain: TPPErrorLogger.clientDomain, code: TPPErrorCode.invalidCredentials.rawValue, userInfo: [NSLocalizedDescriptionKey: "Unauthorized HTTP after token refresh attempt"])
+        completion(NYPLResult.failure(error, nil))
+      } else {
+        resultTask = performDataTask(with: req, completion: completion)
+      }
+    } else {
+      handleTokenRefresh(for: req, completion: completion)
     }
     
+    return resultTask ?? URLSessionDataTask()
+  }
+  
+  private func handleTokenRefresh(for req: URLRequest, completion: @escaping (_: NYPLResult<Data>) -> Void) {
     refreshTokenAndResume(task: nil) { [weak self] newToken in
       guard let strongSelf = self else { return }
       
       if let token = newToken {
         var updatedRequest = req
         updatedRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        updatedRequest.hasRetried = true
         strongSelf.executeRequest(updatedRequest, completion: completion)
-
       } else {
-        completion(NYPLResult.failure(NSError(domain: TPPErrorLogger.clientDomain, code: TPPErrorCode.invalidCredentials.rawValue, userInfo: [NSLocalizedDescriptionKey: "Unauthorized HTTP"]), nil))
+        let error = NSError(domain: TPPErrorLogger.clientDomain, code: TPPErrorCode.invalidCredentials.rawValue, userInfo: [NSLocalizedDescriptionKey: "Unauthorized HTTP"])
+        completion(NYPLResult.failure(error, nil))
       }
     }
-
-    return URLSessionDataTask()
   }
-  
   private func performDataTask(with request: URLRequest,
                                completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask {
     let task = urlSession.dataTask(with: request)
@@ -347,6 +357,21 @@ extension TPPNetworkExecutor {
       case .failure(let error):
         completion(.failure(error))
       }
+    }
+  }
+}
+
+private extension URLRequest {
+  struct AssociatedKeys {
+    static var hasRetriedKey = "hasRetriedKey"
+  }
+  
+  var hasRetried: Bool {
+    get {
+      return objc_getAssociatedObject(self, &AssociatedKeys.hasRetriedKey) as? Bool ?? false
+    }
+    set {
+      objc_setAssociatedObject(self, &AssociatedKeys.hasRetriedKey, newValue, .OBJC_ASSOCIATION_RETAIN)
     }
   }
 }
