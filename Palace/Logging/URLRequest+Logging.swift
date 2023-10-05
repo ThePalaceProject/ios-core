@@ -30,7 +30,6 @@ extension URLRequest {
 
 extension URLRequest {
   var isTokenAuthorized: Bool {
-    return self.allHTTPHeaderFields?["Authorization"]?.hasPrefix("Bearer") ?? false
+    self.allHTTPHeaderFields?["Authorization"]?.hasPrefix("Bearer") ?? false
   }
 }
-
