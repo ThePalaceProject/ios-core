@@ -62,6 +62,8 @@ import UIKit
       idiom = "mac"
     case .unspecified:
       idiom = "unspecified"
+    case .vision:
+      idiom = "vision"
     }
     let bodyWithoutBook = "\n\n---\nIdiom: \(idiom)\nHeight: \(nativeHeight)\nOS: \(systemVersion)"
     let body: String
