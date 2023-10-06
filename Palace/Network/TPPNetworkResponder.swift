@@ -65,6 +65,15 @@ class TPPNetworkResponder: NSObject {
 
     taskInfo[taskID] = TPPNetworkTaskInfo(completion: completion)
   }
+  
+  func updateCompletionId(_ oldId: TaskID, newId: TaskID) {
+    taskInfoLock.lock()
+    defer {
+      taskInfoLock.unlock()
+    }
+    
+    taskInfo[newId] = taskInfo[oldId]
+  }
 }
 
 // MARK: - URLSessionDelegate
@@ -134,25 +143,25 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
     ]
     
     taskInfoLock.lock()
+    defer { taskInfoLock.unlock() }  // Ensure unlocking in all scenarios.
+    
     guard let currentTaskInfo = taskInfo.removeValue(forKey: taskID) else {
       handleNoTaskInfo(for: task, with: networkError, logMetadata: &logMetadata)
       return
     }
-    taskInfoLock.unlock()
     
-    let responseData = currentTaskInfo.progressData
-    let elapsed = Date().timeIntervalSince(currentTaskInfo.startDate)
-    logMetadata["elapsedTime"] = elapsed
-    Log.info(#file, "Task \(taskID) completed, elapsed time: \(elapsed) sec")
+    logTaskCompletion(taskID: taskID, startDate: currentTaskInfo.startDate, metadata: &logMetadata)
     
-    if let httpResponse = task.response as? HTTPURLResponse {
-      guard handleHTTPResponse(httpResponse, for: task, currentTaskInfo: currentTaskInfo, logMetadata: &logMetadata) else {
-        return
-      }
+    guard let httpResponse = task.response as? HTTPURLResponse else {
+      let error = NSError(domain: "Api call with failure HTTP status",
+                          code: TPPErrorCode.invalidOrNoHTTPResponse.rawValue,
+                    userInfo: logMetadata)
+      currentTaskInfo.completion(.failure(error, nil))
+      return
     }
     
-    if task.response?.isProblemDocument() ?? false {
-      handleProblemDocument(for: task, with: responseData, currentTaskInfo: currentTaskInfo, networkError: networkError, logMetadata: logMetadata)
+    if let response = task.response, response.isProblemDocument() {
+      handleProblemDocument(for: task, with: currentTaskInfo.progressData, currentTaskInfo: currentTaskInfo, networkError: networkError, logMetadata: logMetadata)
       return
     }
     
@@ -161,8 +170,19 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
       return
     }
     
-    currentTaskInfo.completion(.success(responseData, task.response))
+    guard handleHTTPResponse(httpResponse, for: task, currentTaskInfo: currentTaskInfo, logMetadata: &logMetadata) else {
+      return
+    }
+    
+    currentTaskInfo.completion(.success(currentTaskInfo.progressData, task.response))
   }
+  
+  private func logTaskCompletion(taskID: Int, startDate: Date, metadata: inout [String: Any]) {
+    let elapsed = Date().timeIntervalSince(startDate)
+    metadata["elapsedTime"] = elapsed
+    Log.info(#file, "Task \(taskID) completed, elapsed time: \(elapsed) sec")
+  }
+
   
   private func handleNoTaskInfo(for task: URLSessionTask, with networkError: Error?, logMetadata: inout [String: Any]) {
     logMetadata["NYPLNetworkResponder context"] = "No task info available for task \(task.taskIdentifier). Completion closure could not be called."
@@ -177,18 +197,18 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
   
   private func handleHTTPResponse(_ httpResponse: HTTPURLResponse, for task: URLSessionTask, currentTaskInfo: TPPNetworkTaskInfo, logMetadata: inout [String: Any]) -> Bool {
     guard httpResponse.isSuccess() else {
-      if (TPPUserAccount.sharedAccount().authDefinition?.isToken ?? false) && tokenRefreshAttempts < 2 {
-        tokenRefreshAttempts += 1
-        return handleExpiredTokenIfNeeded(for: httpResponse, with: task)
-      }
-      
       logMetadata["response"] = httpResponse
       var err: NSError = NSError()
       var code: TPPErrorCode = .responseFail
       var summary: String = Strings.Error.connectionFailed
       logMetadata[NSLocalizedDescriptionKey] = Strings.Error.unknownRequestError
-  
+      
       if httpResponse.statusCode == 401 {
+        if (TPPUserAccount.sharedAccount().authDefinition?.isToken ?? false) && tokenRefreshAttempts < 2 {
+          tokenRefreshAttempts += 1
+          return handleExpiredTokenIfNeeded(for: httpResponse, with: task)
+        }
+        
         logMetadata[NSLocalizedDescriptionKey] = Strings.Error.invalidCredentialsErrorMessage
         code = TPPErrorCode.invalidCredentials
         summary = Strings.Error.invalidCredentialsErrorMessage
@@ -197,7 +217,7 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
       err = NSError(domain: "Api call with failure HTTP status",
                     code: code.rawValue,
                     userInfo: logMetadata)
-  
+      
       currentTaskInfo.completion(.failure(err, task.response))
       TPPErrorLogger.logNetworkError(code: code,
                                      summary: summary,
@@ -205,9 +225,10 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
                                      metadata: logMetadata)
       return false
     }
-
+    
     return true
   }
+
   
   private func handleProblemDocument(for task: URLSessionTask, with responseData: Data, currentTaskInfo: TPPNetworkTaskInfo, networkError: Error?, logMetadata: [String: Any]) {
     let errorWithProblemDoc = task.parseAndLogError(fromProblemDocumentData: responseData,
@@ -230,7 +251,7 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
 
 private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse, with task: URLSessionTask) -> Bool {
   if response.statusCode == 401 {
-    TPPNetworkExecutor.shared.refreshTokenAndResume(task: task)
+    TPPNetworkExecutor.shared.refreshTokenAndResume(task: task, completion: nil)
     return true
   }
   return false
