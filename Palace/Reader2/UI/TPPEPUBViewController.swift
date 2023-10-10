@@ -10,6 +10,7 @@
 //
 
 import UIKit
+import SwiftUI
 import R2Shared
 import R2Navigator
 
@@ -17,6 +18,8 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
 
   var popoverUserconfigurationAnchor: UIBarButtonItem?
   private let systemUserInterfaceStyle: UIUserInterfaceStyle
+  let searchButton = UIBarButtonItem(barButtonSystemItem: .search, target: self, action: #selector(presentEPUBSearch))
+  let searchViewModel: SearchViewModel
 
   init(publication: Publication,
        book: TPPBook,
@@ -56,6 +59,7 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     // defaults options for the various user properties (fonts etc), so we need
     // to re-set that to reflect our ad-hoc configuration.
     publication.userProperties = navigator.userSettings.userProperties
+    searchViewModel = SearchViewModel(publication: publication)
 
     super.init(navigator: navigator, publication: publication, book: book, forSample: forSample, initialLocation: initialLocation)
 
@@ -123,6 +127,7 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     userSettingsButton.accessibilityLabel = Strings.TPPEPUBViewController.readerSettings
     buttons.insert(userSettingsButton, at: 1)
     popoverUserconfigurationAnchor = userSettingsButton
+    buttons.append(searchButton)
 
     return buttons
   }
@@ -140,6 +145,37 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
       // ie. http://karmeye.com/2014/11/20/ios8-popovers-and-passthroughviews/
       vc.popoverPresentationController?.passthroughViews = nil
     }
+  }
+
+  @objc func presentEPUBSearch() {
+    // Create the alert controller for input.
+    let alertController = UIAlertController(title: "Search EPUB", message: "Enter the text to search", preferredStyle: .alert)
+    
+    alertController.addTextField { textField in
+      textField.placeholder = "Search text"
+    }
+    
+    // Define the search action for the alert.
+//    let searchAction = UIAlertAction(title: "Search", style: .default) { [weak self] _ in
+//      guard let self = self else { return }
+//      if let searchText = alertController.textFields?.first?.text, !searchText.isEmpty {
+//        self.searchViewModel.search(with: searchText)
+//
+        // Once search is initiated, display the SwiftUI Search View.
+        let searchView = EPUBSearchView(viewModel: self.searchViewModel)
+        let hostingController = UIHostingController(rootView: searchView)
+        self.present(hostingController, animated: true)
+//      }
+//    }
+    
+    // Define the cancel action for the alert.
+//    let cancelAction = UIAlertAction(title: "Cancel", style: .cancel)
+//    
+//    alertController.addAction(searchAction)
+//    alertController.addAction(cancelAction)
+//    
+//    // Present the alert controller.
+//    present(alertController, animated: true)
   }
 }
 

@@ -156,6 +156,9 @@ struct Strings {
   
   struct TPPEPUBViewController {
     static let readerSettings = NSLocalizedString("Reader settings", comment: "Reader settings")
+    static let emptySearchView = NSLocalizedString("There are no results", comment: "No search results available.")
+    static let endOfResults = NSLocalizedString("Reached the end of the results.", comment: "Reached the end of the results."
+)
   }
   
   struct TPPLastReadPositionSynchronizer {
