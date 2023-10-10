@@ -4797,6 +4797,7 @@
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
+					"-ld64",
 				);
 				PRODUCT_NAME = Palace;
 				SDKROOT = iphoneos;
@@ -4853,6 +4854,7 @@
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
+					"-ld64",
 				);
 				PRODUCT_NAME = Palace;
 				SDKROOT = iphoneos;
