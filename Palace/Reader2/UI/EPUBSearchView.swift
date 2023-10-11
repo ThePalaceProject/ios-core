@@ -11,94 +11,17 @@ import Combine
 import R2Shared
 import R2Navigator
 
-
-final class SearchViewModel: ObservableObject {
-  enum State {
-    case empty
-    case starting(R2Shared.Cancellable?)
-    case idle(SearchIterator)
-    case loadingNext(SearchIterator, R2Shared.Cancellable?)
-    case end
-    case failure(LocalizedError)
-  }
-  
-  @Published private(set) var state: State = .empty
-  @Published private(set) var results: [Locator] = []
-  
-  private var publication: Publication
-  
-  init(publication: Publication) {
-    self.publication = publication
-  }
-
-  func search(with query: String) {
-    cancelSearch()
-    
-    let cancellable = publication._search(query: query) { result in
-      switch result {
-      case .success(let iterator):
-        self.state = .idle(iterator)
-        self.fetchAllLocations(iterator: iterator)
-        
-      case .failure(let error):
-        self.state = .failure(error)
-      }
-    }
-    
-    state = .starting(cancellable)
-  }
-  
-  func fetchAllLocations(iterator: SearchIterator) {
-    state = .loadingNext(iterator, nil)
-    
-    let cancellable = iterator.next { result in
-      switch result {
-      case .success(let collection):
-        if let collection = collection {
-          self.results.append(contentsOf: collection.locators)
-          self.fetchAllLocations(iterator: iterator)
-        } else {
-          self.state = .end
-        }
-        
-      case .failure(let error):
-        self.state = .failure(error)
-      }
-    }
-    
-    state = .loadingNext(iterator, cancellable)
-  }
-  /// Cancels any on-going search and clears the results.
-  func cancelSearch() {
-    switch state {
-    case .starting(let cancellable):
-      cancellable?.cancel()
-    case .idle(let iterator):
-      iterator.close()
-    case .loadingNext(let iterator, let cancellable):
-      cancellable?.cancel()
-      iterator.close()
-    default:
-      break
-    }
-    
-    results.removeAll()
-    state = .empty
-  }
-}
-
 struct EPUBSearchView: View {
-  @ObservedObject var viewModel: SearchViewModel
+  @ObservedObject var viewModel: EPUBSearchViewModel
   @State private var searchQuery: String = ""
-  
+  @State private var debounceSearch: AnyCancellable?
+
   var body: some View {
     VStack {
       searchBar
       listView
     }
-    .onChange(of: searchQuery, perform: { newValue in
-      viewModel.search(with: newValue)
-    })
+    .onChange(of: searchQuery, perform: search)
     .padding()
   }
   
@@ -121,7 +44,7 @@ struct EPUBSearchView: View {
   }
 
   @ViewBuilder private var listView: some View {
-    ZStack {
+    VStack {
       List {
         ForEach(groupedByChapterName(viewModel.results), id: \.key) { key, locators in
           Section(header: sectionHeaderView(title: key)) {
@@ -132,8 +55,10 @@ struct EPUBSearchView: View {
         }
       }
       .listStyle(PlainListStyle())
-      
-      if viewModel.results.isEmpty && searchQuery != "" {
+
+      if case .starting = viewModel.state {
+        ProgressView()
+      } else if viewModel.results.isEmpty && searchQuery != "" {
         Text(Strings.TPPEPUBViewController.emptySearchView)
       }
     }
@@ -177,6 +102,20 @@ struct EPUBSearchView: View {
       Text(text.highlight ?? "").foregroundColor(Color.orange).fontWeight(.medium) +
       Text(text.after ?? "")
     }
+    .onTapGesture {
+      viewModel.userSelected(locator)
+      
+    }
     .padding(5)
   }
+
+  private func search(newValue: String) {
+    debounceSearch?.cancel()
+    debounceSearch = Just(newValue)
+      .delay(for: .seconds(0.5), scheduler: RunLoop.main)
+      .sink { value in
+        viewModel.search(with: value)
+      }
+  }
 }
+

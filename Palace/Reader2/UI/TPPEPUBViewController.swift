@@ -19,7 +19,6 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
   var popoverUserconfigurationAnchor: UIBarButtonItem?
   private let systemUserInterfaceStyle: UIUserInterfaceStyle
   let searchButton = UIBarButtonItem(barButtonSystemItem: .search, target: self, action: #selector(presentEPUBSearch))
-  let searchViewModel: SearchViewModel
 
   init(publication: Publication,
        book: TPPBook,
@@ -59,7 +58,6 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     // defaults options for the various user properties (fonts etc), so we need
     // to re-set that to reflect our ad-hoc configuration.
     publication.userProperties = navigator.userSettings.userProperties
-    searchViewModel = SearchViewModel(publication: publication)
 
     super.init(navigator: navigator, publication: publication, book: book, forSample: forSample, initialLocation: initialLocation)
 
@@ -148,34 +146,11 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
   }
 
   @objc func presentEPUBSearch() {
-    // Create the alert controller for input.
-    let alertController = UIAlertController(title: "Search EPUB", message: "Enter the text to search", preferredStyle: .alert)
-    
-    alertController.addTextField { textField in
-      textField.placeholder = "Search text"
-    }
-    
-    // Define the search action for the alert.
-//    let searchAction = UIAlertAction(title: "Search", style: .default) { [weak self] _ in
-//      guard let self = self else { return }
-//      if let searchText = alertController.textFields?.first?.text, !searchText.isEmpty {
-//        self.searchViewModel.search(with: searchText)
-//
-        // Once search is initiated, display the SwiftUI Search View.
-        let searchView = EPUBSearchView(viewModel: self.searchViewModel)
-        let hostingController = UIHostingController(rootView: searchView)
-        self.present(hostingController, animated: true)
-//      }
-//    }
-    
-    // Define the cancel action for the alert.
-//    let cancelAction = UIAlertAction(title: "Cancel", style: .cancel)
-//    
-//    alertController.addAction(searchAction)
-//    alertController.addAction(cancelAction)
-//    
-//    // Present the alert controller.
-//    present(alertController, animated: true)
+    var searchViewModel = EPUBSearchViewModel(publication: publication)
+    searchViewModel.delegate = self
+    let searchView = EPUBSearchView(viewModel: searchViewModel)
+    let hostingController = UIHostingController(rootView: searchView)
+    self.present(hostingController, animated: true)
   }
 }
 
@@ -233,3 +208,9 @@ extension TPPEPUBViewController: UIPopoverPresentationControllerDelegate {
   }
 }
 
+extension TPPEPUBViewController: EPUBSearchDelegate {
+  func didSelect(location: Locator) {
+    navigator.go(to: location)
+    presentedViewController?.dismiss(animated: true)
+  }
+}
