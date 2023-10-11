@@ -60,8 +60,14 @@ import UIKit
       idiom = "tv"
     case .mac:
       idiom = "mac"
-    case .unspecified:
+    default:
       idiom = "unspecified"
+//#if swift(>=5.9)
+//    case .vision:
+//      return "vision"
+//#endif
+//    @unknown default:         // for Xcode < 15
+//      idiom = "unspecified"
     }
     let bodyWithoutBook = "\n\n---\nIdiom: \(idiom)\nHeight: \(nativeHeight)\nOS: \(systemVersion)"
     let body: String
