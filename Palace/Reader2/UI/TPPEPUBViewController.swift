@@ -146,7 +146,7 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
   }
 
   @objc func presentEPUBSearch() {
-    var searchViewModel = EPUBSearchViewModel(publication: publication)
+    let searchViewModel = EPUBSearchViewModel(publication: publication)
     searchViewModel.delegate = self
     let searchView = EPUBSearchView(viewModel: searchViewModel)
     let hostingController = UIHostingController(rootView: searchView)

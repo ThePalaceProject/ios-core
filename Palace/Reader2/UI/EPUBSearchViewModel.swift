@@ -50,7 +50,7 @@ final class EPUBSearchViewModel: ObservableObject {
     
     state = .starting(cancellable)
   }
-  
+
   func fetchAllLocations(iterator: SearchIterator) {
     state = .loadingNext(iterator, nil)
     
@@ -58,7 +58,12 @@ final class EPUBSearchViewModel: ObservableObject {
       switch result {
       case .success(let collection):
         if let collection = collection {
-          self.results.append(contentsOf: collection.locators)
+
+          for locator in collection.locators {
+            if !self.results.contains(where: { $0.href == locator.href }) {
+              self.results.append(locator)
+            }
+          }
           self.fetchAllLocations(iterator: iterator)
         } else {
           self.state = .end
@@ -71,6 +76,7 @@ final class EPUBSearchViewModel: ObservableObject {
     
     state = .loadingNext(iterator, cancellable)
   }
+
   
   func cancelSearch() {
     switch state {

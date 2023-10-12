@@ -23,6 +23,7 @@ struct EPUBSearchView: View {
     }
     .onChange(of: searchQuery, perform: search)
     .padding()
+    .ignoresSafeArea(.keyboard)
   }
   
   @ViewBuilder private var searchBar: some View {
@@ -54,7 +55,7 @@ struct EPUBSearchView: View {
           }
         }
       }
-      .listStyle(PlainListStyle())
+      .listStyle(.plain)
 
       if case .starting = viewModel.state {
         ProgressView()
@@ -78,7 +79,7 @@ struct EPUBSearchView: View {
   }
 
   private func sectionHeaderView(title: String) -> some View {
-    Text(title.uppercased())
+    Text(title.uppercased(  ))
       .padding(.leading)
       .font(.largeTitle)
       .foregroundColor(.black.opacity(0.8))
