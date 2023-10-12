@@ -13,7 +13,7 @@
 #   invocation:
 #     xcode-archive.sh
 
-set -eo pipefail
+# set -eo pipefail
 
 fatal()
 {
