@@ -79,10 +79,16 @@ struct EPUBSearchView: View {
   }
 
   private func groupedByChapterName(_ results: [Locator]) -> [(key: String, value: [Locator])] {
+    let hasTitles = results.contains { $0.title != nil && $0.title != "" }
+  
+    if !hasTitles {
+      return [("", results)]
+    }
+  
     let uniqueTitles = Array(Set(results.compactMap { $0.title })).sorted { title1, title2 in
       results.firstIndex(where: { $0.title == title1 })! < results.firstIndex(where: { $0.title == title2 })!
     }
-    
+  
     return uniqueTitles.compactMap { title -> (key: String, value: [Locator])? in
       if let items = results.filter({ $0.title == title }) as [Locator]?, !items.isEmpty {
         return (key: title, value: items)
