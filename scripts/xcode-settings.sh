@@ -13,12 +13,12 @@
 #   invocation:
 #     xcode-archive.sh
 
-# set -eo pipefail
+set -eo pipefail
 
 fatal()
 {
   echo "$0 error: $1" 1>&2
-  # exit 1
+  exit 1
 }
 
 # determine which app we're going to work on

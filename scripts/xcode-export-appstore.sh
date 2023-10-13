@@ -15,5 +15,12 @@
 # RESULTS
 #   The generated .ipa is uploaded to TestFlight.
 
+source "$(dirname $0)/xcode-settings.sh"
+
 CHANGELOG=$(<"$CHANGELOG_PATH")
 fastlane ios appstore changelog:"$CHANGELOG"
+
+echo "gym logs:"
+echo ">>>"
+cat /Users/runner/Library/Logs/gym/Palace-Palace.log
+echo ">>>"
