@@ -210,7 +210,20 @@ extension TPPEPUBViewController: UIPopoverPresentationControllerDelegate {
 
 extension TPPEPUBViewController: EPUBSearchDelegate {
   func didSelect(location: Locator) {
-    navigator.go(to: location)
-    presentedViewController?.dismiss(animated: true)
+    
+    defer {
+      presentedViewController?.dismiss(animated: true)
+      navigator.go(to: location)
+    }
+  
+    if let navigator = navigator as? DecorableNavigator {
+      
+      var decorations: [Decoration] = []
+      decorations.append(Decoration(
+        id: "tts-search",
+        locator: location,
+        style: .highlight(tint: .red)))
+      navigator.apply(decorations: decorations, in: "tts")
+    }
   }
 }

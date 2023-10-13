@@ -98,16 +98,33 @@ struct EPUBSearchView: View {
   
   private func rowView(_ locator: Locator) -> some View {
     let text = locator.text.sanitized()
-    return VStack {
-      Text(text.before ?? "") +
-      Text(text.highlight ?? "").foregroundColor(Color.orange).fontWeight(.medium) +
-      Text(text.after ?? "")
-    }
-    .onTapGesture {
-      viewModel.userSelected(locator)
+    
+    if #available(iOS 15.0, *) {
+      var combinedText = AttributedString(text.before ?? "")
       
+      var highlight = AttributedString(text.highlight ?? "")
+      highlight.backgroundColor = .red.opacity(0.3)
+      highlight.font = .system(size: 16, weight: .medium)
+      
+      combinedText.append(highlight)
+      combinedText.append(AttributedString(text.after ?? ""))
+      
+      return Text(combinedText)
+        .onTapGesture {
+          viewModel.userSelected(locator)
+        }
+        .padding(5)
+    } else {
+      return VStack {
+        Text(text.before ?? "") +
+        Text(text.highlight ?? "").foregroundColor(Color.red).fontWeight(.medium) +
+        Text(text.after ?? "")
+      }
+      .onTapGesture {
+        viewModel.userSelected(locator)
+      }
+      .padding(5)
     }
-    .padding(5)
   }
 
   private func search(newValue: String) {
