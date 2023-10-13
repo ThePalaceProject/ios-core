@@ -45,26 +45,39 @@ struct EPUBSearchView: View {
   }
 
   @ViewBuilder private var listView: some View {
-    VStack {
+    ZStack {
       List {
         ForEach(groupedByChapterName(viewModel.results), id: \.key) { key, locators in
           Section(header: sectionHeaderView(title: key)) {
             ForEach(locators, id: \.href) { locator in
               rowView(locator)
+                .onAppear(perform: {
+                  if shouldFetchMoreResults(for: locator) {
+                    viewModel.fetchNextBatch()
+                  }
+                })
             }
           }
         }
       }
       .listStyle(.plain)
-
-      if case .starting = viewModel.state {
-        ProgressView()
-      } else if viewModel.results.isEmpty && searchQuery != "" {
-        Text(Strings.TPPEPUBViewController.emptySearchView)
+      
+      VStack {
+        Spacer()
+        if viewModel.state.isLoadingState {
+          ProgressView()
+        } else if viewModel.results.isEmpty && searchQuery != "" {
+          Text(Strings.TPPEPUBViewController.emptySearchView)
+        }
+        Spacer()
       }
     }
   }
   
+  private func shouldFetchMoreResults(for locator: Locator) -> Bool {
+     viewModel.results.last?.href == locator.href
+  }
+
   private func groupedByChapterName(_ results: [Locator]) -> [(key: String, value: [Locator])] {
     let uniqueTitles = Array(Set(results.compactMap { $0.title })).sorted { title1, title2 in
       results.firstIndex(where: { $0.title == title1 })! < results.firstIndex(where: { $0.title == title2 })!

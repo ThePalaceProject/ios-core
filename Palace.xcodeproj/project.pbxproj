@@ -2665,9 +2665,7 @@
 				73F713672417240100C63B81 /* UIViewController+TPP.swift */,
 				7386C1F3245225A5004C78BD /* TPPReaderPositionsVC.swift */,
 				7335BA9A2453C48F000295F2 /* TPPReaderPositions.storyboard */,
-				E57345502AD6EB600021D768 /* EPUBSearchViewModel.swift */,
-				E573454A2AD6E8410021D768 /* EPUBSearchView.swift */,
-				E573454B2AD6E8410021D768 /* SearchResultView.swift */,
+				E5515EC32AD98050000BDFE9 /* EpubSearchView */,
 			);
 			path = UI;
 			sourceTree = "<group>";
@@ -2978,6 +2976,16 @@
 				E523A452299FCA5300EF833B /* AlertModel.swift */,
 			);
 			path = SwiftUI;
+			sourceTree = "<group>";
+		};
+		E5515EC32AD98050000BDFE9 /* EpubSearchView */ = {
+			isa = PBXGroup;
+			children = (
+				E57345502AD6EB600021D768 /* EPUBSearchViewModel.swift */,
+				E573454A2AD6E8410021D768 /* EPUBSearchView.swift */,
+				E573454B2AD6E8410021D768 /* SearchResultView.swift */,
+			);
+			path = EpubSearchView;
 			sourceTree = "<group>";
 		};
 		E5824BE4299591DB00DE76C2 /* ButtonView */ = {

@@ -18,10 +18,19 @@ final class EPUBSearchViewModel: ObservableObject {
   enum State {
     case empty
     case starting(R2Shared.Cancellable?)
-    case idle(SearchIterator)
+    case idle(SearchIterator, isFetching: Bool)
     case loadingNext(SearchIterator, R2Shared.Cancellable?)
     case end
     case failure(LocalizedError)
+  
+    var isLoadingState: Bool {
+      switch self {
+        case .starting, .loadingNext:
+         return true
+      default:
+        return false
+      }
+    }
   }
   
   @Published private(set) var state: State = .empty
@@ -33,16 +42,15 @@ final class EPUBSearchViewModel: ObservableObject {
   init(publication: Publication) {
     self.publication = publication
   }
-  
+
   func search(with query: String) {
     cancelSearch()
     
     let cancellable = publication._search(query: query) { result in
       switch result {
       case .success(let iterator):
-        self.state = .idle(iterator)
-        self.fetchAllLocations(iterator: iterator)
-        
+        self.state = .idle(iterator, isFetching: false)
+        self.fetchNextBatch()
       case .failure(let error):
         self.state = .failure(error)
       }
@@ -51,20 +59,21 @@ final class EPUBSearchViewModel: ObservableObject {
     state = .starting(cancellable)
   }
 
-  func fetchAllLocations(iterator: SearchIterator) {
+  func fetchNextBatch() {
+    guard case let .idle(iterator, _) = state else { return }
+    
     state = .loadingNext(iterator, nil)
     
     let cancellable = iterator.next { result in
       switch result {
       case .success(let collection):
         if let collection = collection {
-
           for locator in collection.locators {
             if !self.results.contains(where: { $0.href == locator.href }) {
               self.results.append(locator)
             }
           }
-          self.fetchAllLocations(iterator: iterator)
+          self.state = .idle(iterator, isFetching: false)
         } else {
           self.state = .end
         }
@@ -77,12 +86,13 @@ final class EPUBSearchViewModel: ObservableObject {
     state = .loadingNext(iterator, cancellable)
   }
 
+
   
   func cancelSearch() {
     switch state {
     case .starting(let cancellable):
       cancellable?.cancel()
-    case .idle(let iterator):
+    case .idle(let iterator, _):
       iterator.close()
     case .loadingNext(let iterator, let cancellable):
       cancellable?.cancel()
