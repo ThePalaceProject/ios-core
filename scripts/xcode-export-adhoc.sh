@@ -26,9 +26,7 @@ fastlane ios beta output_name:$ARCHIVE_NAME.ipa export_path:$ARCHIVE_DIR
 
 echo "gym logs:"
 echo ">>>"
-
 cat /Users/runner/Library/Logs/gym/Palace-Palace.log
-
 echo ">>>"
 
 echo "Uploading archive:"
