@@ -149,7 +149,7 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     let searchViewModel = EPUBSearchViewModel(publication: publication)
     searchViewModel.delegate = self
     let searchView = EPUBSearchView(viewModel: searchViewModel)
-    let hostingController = UIHostingController(rootView: searchView)
+    let hostingController = UIHostingController(rootView: searchView, ignoreSafeArea: true)
     self.present(hostingController, animated: true)
   }
 }
