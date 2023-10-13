@@ -86,8 +86,8 @@ jobs:
           RELEASE_NOTES_PATH: ${{ env.RELEASE_NOTES_PATH }}
           CHANGELOG_PATH: ${{ env.CHANGELOG_PATH }}
           VERSION_NUM: ${{ env.VERSION_NUM }}
-      - name: Export for App Store
-        run: ./scripts/xcode-export-appstore.sh
-        env:
-          BUILD_CONTEXT: ci
-          CHANGELOG_PATH: ${{ env.CHANGELOG_PATH }}
+      # - name: Export for App Store
+      #   run: ./scripts/xcode-export-appstore.sh
+      #   env:
+      #     BUILD_CONTEXT: ci
+      #     CHANGELOG_PATH: ${{ env.CHANGELOG_PATH }}
