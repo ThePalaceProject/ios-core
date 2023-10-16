@@ -8,6 +8,8 @@
 # echo -n "<your secret that includes encoded certificate>" | base64 --decode --output <certificate name>.p12
 # echo -n "<your secret that includes encoded provision profile>" | base64 --decode --output <profile name>.mobileprovision
 
+set -eo pipefail
+
 # create variables
 CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
 ASPP_PATH=$RUNNER_TEMP/build_aspp.mobileprovision
