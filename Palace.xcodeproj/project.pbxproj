@@ -3279,9 +3279,8 @@
 				A823D80A192BABA400B55DE2 /* Frameworks */,
 				A823D80B192BABA400B55DE2 /* Resources */,
 				145DA48C215441260055DB93 /* Copy Frameworks (Carthage) */,
-				73DA43AD2404CA9500985482 /* Crashlytics */,
 				219868F9267E29840041369E /* Embed Frameworks */,
-				21A21AA32A7AD7C700080C04 /* ShellScript */,
+				73DA43AD2404CA9500985482 /* Crashlytics */,
 			);
 			buildRules = (
 			);
@@ -3601,28 +3600,6 @@
 			shellPath = /bin/sh;
 			shellScript = "/usr/local/bin/carthage copy-frameworks\n";
 		};
-		21A21AA32A7AD7C700080C04 /* ShellScript */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-				"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}",
-				"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}/Contents/Resources/DWARF/${PRODUCT_NAME}",
-				"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}/Contents/Info.plist",
-				"$(BUILT_PRODUCTS_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/GoogleService-Info.plist",
-				"$(BUILT_PRODUCTS_DIR)/$(EXECUTABLE_PATH)",
-			);
-			outputFileListPaths = (
-			);
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = "/bin/sh ";
-			shellScript = "# Type a script or drag a script file from your workspace to insert its path.\n\"${BUILD_DIR%/Build/*}/SourcePackages/checkouts/firebase-ios-sdk/Crashlytics/run\"\n";
-		};
 		73DA43AD2404CA9500985482 /* Crashlytics */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 8;
@@ -3634,6 +3611,8 @@
 				"$(BUILT_PRODUCTS_DIR)/$(INFOPLIST_PATH)",
 				"${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}/GoogleService-Info.plist",
 				"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}/Contents/Resources/DWARF/${TARGET_NAME}",
+				"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}",
+				"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}/Contents/Info.plist",
 			);
 			name = Crashlytics;
 			outputFileListPaths = (
