@@ -81,7 +81,9 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
   func executeRequest(_ req: URLRequest, completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask {
     var resultTask: URLSessionDataTask?
     
-    if !TPPUserAccount.sharedAccount().authTokenHasExpired || !req.isTokenAuthorized || req.hasRetried {
+    if let authDefinition = TPPUserAccount.sharedAccount().authDefinition, authDefinition.isSaml {
+      resultTask = performDataTask(with: req, completion: completion)
+    } else if !TPPUserAccount.sharedAccount().authTokenHasExpired || !req.isTokenAuthorized || req.hasRetried {
       if req.hasRetried {
         let error = NSError(domain: TPPErrorLogger.clientDomain, code: TPPErrorCode.invalidCredentials.rawValue, userInfo: [NSLocalizedDescriptionKey: "Unauthorized HTTP after token refresh attempt"])
         completion(NYPLResult.failure(error, nil))
