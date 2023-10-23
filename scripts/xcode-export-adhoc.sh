@@ -24,4 +24,6 @@ echo "Exporting $ARCHIVE_NAME for Ad-Hoc distribution..."
 
 fastlane ios beta output_name:$ARCHIVE_NAME.ipa export_path:$ARCHIVE_DIR
 
+echo "Uploading archive:"
+
 ./scripts/ios-binaries-upload.sh
