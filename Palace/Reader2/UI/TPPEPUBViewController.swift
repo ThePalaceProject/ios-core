@@ -220,10 +220,10 @@ extension TPPEPUBViewController: EPUBSearchDelegate {
       
       var decorations: [Decoration] = []
       decorations.append(Decoration(
-        id: "tts-search",
+        id: "search",
         locator: location,
         style: .highlight(tint: .red)))
-      navigator.apply(decorations: decorations, in: "tts")
+      navigator.apply(decorations: decorations, in: "search")
     }
   }
 }
