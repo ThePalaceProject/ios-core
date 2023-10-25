@@ -110,7 +110,9 @@ class MyBooksViewModel: ObservableObject {
   }
   
   @objc private func stopLoading() {
-    isLoading.toggle()
+    DispatchQueue.main.async {
+      self.isLoading.toggle()
+    }
   }
 
   @objc private func bookRegistryDidChange() {
