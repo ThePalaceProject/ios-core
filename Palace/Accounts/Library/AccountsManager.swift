@@ -40,11 +40,23 @@ let currentAccountIdentifierKey  = "TPPCurrentAccountIdentifier"
   private var accountSet: String
 
   private var accountSets = [String: [Account]]()
-  private var accountSetsWorkQueue = DispatchQueue(label: "org.thepalaceproject.palace.AccountsManager.workQueue", attributes: .concurrent)
+  
+  private let accountSetsLock = NSRecursiveLock()
+  
+  /// Performs a closure within a lock using `accountSetsLock`
+  /// - Parameter action: the action inside the locked
+  private func performLocked(_ action: () -> Void) {
+    accountSetsLock.lock()
+    defer {
+      accountSetsLock.unlock()
+    }
+    action()
+  }
 
   var accountsHaveLoaded: Bool {
     var accounts: [Account]?
-    accountSetsWorkQueue.sync {
+  
+    performLocked {
       accounts = accountSets[accountSet]
     }
 
@@ -168,9 +180,10 @@ let currentAccountIdentifierKey  = "TPPCurrentAccountIdentifier"
     do {
       let catalogsFeed = try OPDS2CatalogsFeed.fromData(data)
       let hadAccount = self.currentAccount != nil
+      let accountSet = catalogsFeed.catalogs.map { Account(publication: $0) }
 
-      accountSetsWorkQueue.sync(flags: .barrier) {
-        accountSets[key] = catalogsFeed.catalogs.map { Account(publication: $0) }
+      performLocked {
+        accountSets[key] = accountSet
       }
 
       // note: `currentAccount` computed property feeds off of `accountSets`, so
@@ -270,7 +283,8 @@ let currentAccountIdentifierKey  = "TPPCurrentAccountIdentifier"
     // get accountSets dictionary first for thread-safety
     var accountSetsCopy = [String: [Account]]()
     var accountSetKey = ""
-    accountSetsWorkQueue.sync {
+
+    performLocked {
       accountSetsCopy = self.accountSets
       accountSetKey = self.accountSet
     }
@@ -294,7 +308,7 @@ let currentAccountIdentifierKey  = "TPPCurrentAccountIdentifier"
   func accounts(_ key: String? = nil) -> [Account] {
     var accounts: [Account]? = []
 
-    accountSetsWorkQueue.sync {
+    performLocked {
       let k = key ?? self.accountSet
       accounts = self.accountSets[k]
     }
@@ -307,10 +321,11 @@ let currentAccountIdentifierKey  = "TPPCurrentAccountIdentifier"
   }
 
   func updateAccountSet(completion: ((Bool) -> ())?) {
-    accountSetsWorkQueue.sync(flags: .barrier) {
+
+    performLocked {
       self.accountSet = TPPConfiguration.customUrlHash() ?? (TPPSettings.shared.useBetaLibraries ? TPPConfiguration.betaUrlHash : TPPConfiguration.prodUrlHash)
     }
-
+    
     if self.accounts().isEmpty || TPPConfiguration.customUrlHash() != nil {
       loadCatalogs(completion: completion)
     } 

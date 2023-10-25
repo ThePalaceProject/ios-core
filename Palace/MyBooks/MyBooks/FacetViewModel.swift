@@ -30,6 +30,7 @@ class FacetViewModel: ObservableObject {
   @Published var currentAccount: Account?
   @Published var accountScreenURL: URL? = nil
   @Published var showAccountScreen = false
+  @Published var logo: UIImage?
 
   var currentAccountURL: URL? {
     URL(string: currentAccount?.homePageUrl ?? "")
@@ -43,7 +44,6 @@ class FacetViewModel: ObservableObject {
     updateAccount()
   }
   
-  
   private func registerForNotifications() {
     NotificationCenter.default.addObserver(self, selector: #selector(updateAccount),
                                            name: .TPPCurrentAccountDidChange,
@@ -52,6 +52,15 @@ class FacetViewModel: ObservableObject {
   
   @objc private func updateAccount() {
     currentAccount = AccountsManager.shared.currentAccount
+    currentAccount?.logoDelegate = self
     accountScreenURL = currentAccountURL
+    logo = currentAccount?.logo 
   }
 }
+
+extension FacetViewModel: AccountLogoDelegate {
+  func logoDidUpdate(in account: Account, to newLogo: UIImage) {
+    self.logo = newLogo
+  }
+}
+
