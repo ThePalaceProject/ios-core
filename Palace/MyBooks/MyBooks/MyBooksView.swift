@@ -22,7 +22,7 @@ struct MyBooksView: View {
     NavigationLink(destination: accountPickerList, isActive: $showLibraryAccountView) {}
 
     //TODO: This is a workaround for an apparent bug in iOS14 that prevents us from wrapping
-    // the body in a NavigationView. Once iOS14 support is dropped, this can be removed/repalced
+    // the body in a NavigationView. Once iOS14 support is dropped, this can be removed/replaced
     // with a NavigationView
     EmptyView()
       .alert(item: $model.alert) { alert in

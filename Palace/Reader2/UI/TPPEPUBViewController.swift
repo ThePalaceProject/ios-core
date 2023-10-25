@@ -10,6 +10,7 @@
 //
 
 import UIKit
+import SwiftUI
 import R2Shared
 import R2Navigator
 
@@ -17,6 +18,7 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
 
   var popoverUserconfigurationAnchor: UIBarButtonItem?
   private let systemUserInterfaceStyle: UIUserInterfaceStyle
+  let searchButton = UIBarButtonItem(barButtonSystemItem: .search, target: self, action: #selector(presentEPUBSearch))
 
   init(publication: Publication,
        book: TPPBook,
@@ -123,6 +125,7 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     userSettingsButton.accessibilityLabel = Strings.TPPEPUBViewController.readerSettings
     buttons.insert(userSettingsButton, at: 1)
     popoverUserconfigurationAnchor = userSettingsButton
+    buttons.append(searchButton)
 
     return buttons
   }
@@ -140,6 +143,14 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
       // ie. http://karmeye.com/2014/11/20/ios8-popovers-and-passthroughviews/
       vc.popoverPresentationController?.passthroughViews = nil
     }
+  }
+
+  @objc func presentEPUBSearch() {
+    let searchViewModel = EPUBSearchViewModel(publication: publication)
+    searchViewModel.delegate = self
+    let searchView = EPUBSearchView(viewModel: searchViewModel)
+    let hostingController = UIHostingController(rootView: searchView, ignoreSafeArea: true)
+    self.present(hostingController, animated: true)
   }
 }
 
@@ -197,3 +208,22 @@ extension TPPEPUBViewController: UIPopoverPresentationControllerDelegate {
   }
 }
 
+extension TPPEPUBViewController: EPUBSearchDelegate {
+  func didSelect(location: Locator) {
+    
+    defer {
+      presentedViewController?.dismiss(animated: true)
+      navigator.go(to: location)
+    }
+  
+    if let navigator = navigator as? DecorableNavigator {
+      
+      var decorations: [Decoration] = []
+      decorations.append(Decoration(
+        id: "search",
+        locator: location,
+        style: .highlight(tint: .red)))
+      navigator.apply(decorations: decorations, in: "search")
+    }
+  }
+}
