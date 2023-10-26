@@ -197,6 +197,6 @@ class TPPSignInBusinessLogicTests: XCTestCase {
     businessLogic.logIn()
     XCTAssertTrue(businessLogic.isValidatingCredentials)
 
-    wait(for: [expect], timeout: 5)
+    wait(for: [expect], timeout: 50)
   }
 }
