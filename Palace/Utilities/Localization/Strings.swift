@@ -23,7 +23,10 @@ struct Strings {
   }
 
   struct Error {
+    static let loginFailedErrorTitle = NSLocalizedString("Login Failed", comment: "")
     static let loadFailedError = NSLocalizedString("The page could not load due to a conection error.", comment: "")
+    static let invalidCredentialsErrorTitle = NSLocalizedString("Invalid Credentials", comment: "")
+    static let invalidCredentialsErrorMessage = NSLocalizedString("Please check your username and password and try again.", comment: "")
     static let unknownRequestError = NSLocalizedString("An unknown error occurred. Please check your connection or try again later.", comment: "A generic error message for when a network request fails")
     static let connectionFailed = NSLocalizedString(
       "Connection Failed",
@@ -153,6 +156,9 @@ struct Strings {
   
   struct TPPEPUBViewController {
     static let readerSettings = NSLocalizedString("Reader settings", comment: "Reader settings")
+    static let emptySearchView = NSLocalizedString("There are no results", comment: "No search results available.")
+    static let endOfResults = NSLocalizedString("Reached the end of the results.", comment: "Reached the end of the results."
+)
   }
   
   struct TPPLastReadPositionSynchronizer {

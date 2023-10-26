@@ -8,6 +8,8 @@
 # echo -n "<your secret that includes encoded certificate>" | base64 --decode --output <certificate name>.p12
 # echo -n "<your secret that includes encoded provision profile>" | base64 --decode --output <profile name>.mobileprovision
 
+set -eo pipefail
+
 # create variables
 CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
 ASPP_PATH=$RUNNER_TEMP/build_aspp.mobileprovision
@@ -15,9 +17,9 @@ AHPP_PATH=$RUNNER_TEMP/build_ahpp.mobileprovision
 KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
 
 # import certificate and provisioning profile from secrets
-echo -n "$CI_DISTRIBUTION_CERT_BASE64" | base64 --decode --output $CERTIFICATE_PATH
-echo -n "$CI_APPSTORE_MP_BASE64" | base64 --decode --output $ASPP_PATH
-echo -n "$CI_ADHOC_MP_BASE64" | base64 --decode --output $AHPP_PATH
+echo -n "$CI_DISTRIBUTION_CERT_BASE64" | base64 --decode -o $CERTIFICATE_PATH
+echo -n "$CI_APPSTORE_MP_BASE64" | base64 --decode -o $ASPP_PATH
+echo -n "$CI_ADHOC_MP_BASE64" | base64 --decode -o $AHPP_PATH
 
 # create temporary keychain
 security create-keychain -p "$CI_KEYCHAIN_PW" $KEYCHAIN_PATH

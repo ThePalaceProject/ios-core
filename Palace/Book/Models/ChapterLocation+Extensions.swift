@@ -11,7 +11,7 @@ import Foundation
 extension ChapterLocation {
   func toTPPBookLocation() -> TPPBookLocation? {
     guard let updatedLocationString = String(data: toData(), encoding: .utf8) else { return nil }
-    return TPPBookLocation.init(locationString: updatedLocationString, renderer: "NYPLAudiobookToolkit")
+    return TPPBookLocation.init(locationString: updatedLocationString, renderer: "PalaceAudiobookToolkit")
   }
 }
 
