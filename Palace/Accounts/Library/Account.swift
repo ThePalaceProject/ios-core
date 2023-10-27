@@ -424,7 +424,10 @@ protocol AccountLogoDelegate: AnyObject {
     homePageUrl = publication.links.first(where: { $0.rel == "alternate" })?.href
 
     super.init()
-    loadLogo(imageURL: publication.thumbnailURL)
+    
+    DispatchQueue.main.async {
+      self.loadLogo(imageURL: publication.thumbnailURL)
+    }
   }
 
   /// Load authentication documents from the network or cache.
