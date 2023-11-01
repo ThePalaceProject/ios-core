@@ -26,6 +26,10 @@ class OPDS2SamlIDP: NSObject, Codable {
   func isSignedIn() -> Bool
 }
 
+protocol AccountLogoDelegate: AnyObject {
+  func logoDidUpdate(in account: Account, to newLogo: UIImage)
+}
+
 // MARK: AccountDetails
 // Extra data that gets loaded from an OPDS2AuthenticationDocument,
 @objcMembers final class AccountDetails: NSObject {
@@ -381,6 +385,7 @@ class OPDS2SamlIDP: NSObject, Codable {
   var details:AccountDetails?
   var homePageUrl: String?
   lazy var hasSupportOption = { supportEmail != nil || supportURL != nil }()
+  weak var logoDelegate: AccountLogoDelegate?
 
   let authenticationDocumentUrl:String?
   var authenticationDocument:OPDS2AuthenticationDocument? {
@@ -419,7 +424,10 @@ class OPDS2SamlIDP: NSObject, Codable {
     homePageUrl = publication.links.first(where: { $0.rel == "alternate" })?.href
 
     super.init()
-    loadLogo(imageURL: publication.thumbnailURL)
+    
+    DispatchQueue.main.async {
+      self.loadLogo(imageURL: publication.thumbnailURL)
+    }
   }
 
   /// Load authentication documents from the network or cache.
@@ -512,6 +520,7 @@ class OPDS2SamlIDP: NSObject, Codable {
       self.fetchImage(from: url, completion: {
         guard let image = $0 else { return }
         self.logo = image
+        self.logoDelegate?.logoDidUpdate(in: self, to: image)
       })
   }
 

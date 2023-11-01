@@ -101,6 +101,7 @@ fileprivate let nullString = "null"
   case clientSideUserInterruption = 911
   case problemDocAvailable = 912
   case malformedURL = 913
+  case invalidOrNoHTTPResponse = 914
 
   // DRM
   case epubDecodingError = 1000

@@ -12,7 +12,7 @@ import Foundation
 import R2Shared
 import R2Streamer
 import ReadiumLCP
-import NYPLAudiobookToolkit
+import PalaceAudiobookToolkit
 
 /// LCP Audiobooks helper class
 @objc class LCPAudiobooks: NSObject {

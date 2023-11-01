@@ -2,10 +2,10 @@ name: Palace Manual Build
 on: workflow_dispatch
 jobs:
   check-version:
-    runs-on: macOS-12
+    runs-on: macOS-13
     steps:
-      - name: Force Xcode 14.2
-        run: sudo xcode-select -switch /Applications/Xcode_14.2.app
+      - name: Force Xcode 15
+        run: sudo xcode-select -switch /Applications/Xcode_15.0.1.app
       - name: Checkout main repo and submodules
         uses: actions/checkout@v3
         with:
@@ -19,12 +19,12 @@ jobs:
     outputs:
       should_upload: ${{ steps.checkVersion.outputs.version_changed }}
   upload-build:
-    runs-on: macOS-12
+    runs-on: macOS-13
     needs: check-version
     if: needs.check-version.outputs.should_upload == '1'
     steps:
-      - name: Force Xcode 14.2
-        run: sudo xcode-select -switch /Applications/Xcode_14.2.app
+      - name: Force Xcode 15
+        run: sudo xcode-select -switch /Applications/Xcode_15.0.1.app
       - name: Checkout main repo and submodules
         uses: actions/checkout@v3
         with:

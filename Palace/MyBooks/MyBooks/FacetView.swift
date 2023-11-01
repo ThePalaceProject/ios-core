@@ -75,7 +75,7 @@ struct FacetView: View {
         model.showAccountScreen = true
       } label: {
           HStack {
-            Image(uiImage: account.logo)
+            Image(uiImage: model.logo ?? UIImage())
               .resizable()
               .aspectRatio(contentMode: .fit)
               .square(length: 50)

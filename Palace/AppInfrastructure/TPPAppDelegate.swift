@@ -70,9 +70,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     _ = TPPBookRegistry.shared
     
     // Push Notificatoins
-    // TODO: Enable push notifications once they are fully tested here
-    // Disabling because of PP-473
-//    NotificationService.shared.setupPushNotifications()
+    NotificationService.shared.setupPushNotifications()
   }
   
   // TODO: This method is deprecated, we should migrate to BGAppRefreshTask in the BackgroundTasks framework instead
