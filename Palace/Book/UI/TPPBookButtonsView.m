@@ -453,7 +453,7 @@
   [alertController addAction:[UIAlertAction actionWithTitle:confirmButtonTitle
                                                       style:UIAlertActionStyleDefault
                                                     handler:^(__attribute__((unused))UIAlertAction * _Nonnull action) {
-                                                      [self.delegate didSelectReturnForBook:self.book];
+                                                      [self.delegate didSelectReturnForBook:self.book completion:nil];
                                                     }]];
   
   [[TPPRootTabBarController sharedController] safelyPresentViewController:alertController animated:YES completion:nil];
