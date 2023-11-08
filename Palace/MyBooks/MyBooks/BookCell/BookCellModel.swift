@@ -177,8 +177,10 @@ extension BookCellModel {
       message: message,
       buttonTitle: confirmButtonTitle,
       primaryAction: { [weak self] in
-        self?.buttonDelegate?.didSelectReturn(for: self?.book)
         self?.isLoading = true
+        self?.buttonDelegate?.didSelectReturn(for: self?.book) {
+          self?.isLoading = false
+        }
       },
       secondaryAction: { [weak self] in
         self?.showAlert = nil
