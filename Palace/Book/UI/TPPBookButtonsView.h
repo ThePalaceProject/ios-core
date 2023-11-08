@@ -6,7 +6,7 @@
 
 @protocol TPPBookButtonsDelegate
 
-- (void)didSelectReturnForBook:(TPPBook *)book completion:(void (^)(void))completion;
+- (void)didSelectReturnForBook:(TPPBook *)book completion:(void (^ _Nullable)(void))completion;
 - (void)didSelectDownloadForBook:(TPPBook *)book;
 - (void)didSelectReadForBook:(TPPBook *)book;
 - (void)didSelectPlaySample:(TPPBook *)book;
