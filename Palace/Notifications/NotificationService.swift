@@ -81,10 +81,9 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
   /// - 200: exists
   /// - 404 doesn't exist
   /// `exists` is `nil` for any other response status code.
-  private func checkTokenExists(_ token: String, completion: @escaping (Bool?, Error?) -> Void) {
-    guard let account = AccountsManager.shared.currentAccount,
-          let catalogHref = account.catalogUrl,
-          let requestUrl = URL(string: "\(catalogHref)patrons/me/devices?device_token=\(token)")
+  private func checkTokenExists(_ token: String, endpointUrl: URL, completion: @escaping (Bool?, Error?) -> Void) {
+    guard
+      let requestUrl = URL(string: "\(endpointUrl.absoluteString)?device_token=\(token)")
     else {
       return
     }
@@ -102,15 +101,11 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
   
   /// Save token to the server
   /// - Parameter token: FCM token value
-  private func saveToken(_ token: String) {
-    guard let account = AccountsManager.shared.currentAccount,
-          let catalogHref = account.catalogUrl,
-          let requestUrl = URL(string: "\(catalogHref)patrons/me/devices"),
-          let requestBody = TokenData(token: token).data
-    else {
+  private func saveToken(_ token: String, endpointUrl: URL) {
+    guard let requestBody = TokenData(token: token).data else {
       return
     }
-    var request = URLRequest(url: requestUrl)
+    var request = URLRequest(url: endpointUrl)
     request.httpMethod = "PUT"
     request.httpBody = requestBody
     _ = TPPNetworkExecutor.shared.addBearerAndExecute(request) { result, response, error in
@@ -118,7 +113,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
         TPPErrorLogger.logError(error,
                                 summary: "Couldn't upload token data",
                                 metadata: [
-                                  "requestURL": requestUrl,
+                                  "requestURL": endpointUrl,
                                   "tokenData": String(data: requestBody, encoding: .utf8) ?? "",
                                   "statusCode": (response as? HTTPURLResponse)?.statusCode ?? 0
                                 ]
@@ -131,29 +126,29 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
   ///
   /// Update token when user account changes
   func updateToken() {
-    Messaging.messaging().token { token, _ in
-      if let token {
-        self.checkTokenExists(token) { exists, _ in
-          if let exists = exists, !exists {
-            self.saveToken(token)
+    AccountsManager.shared.currentAccount?.getProfileDocument { profileDocument in
+      guard let endpointHref = profileDocument?.linksWith(.deviceRegistration).first?.href,
+            let endpointUrl = URL(string: endpointHref)
+      else {
+        return
+      }
+      Messaging.messaging().token { token, _ in
+        if let token {
+          self.checkTokenExists(token, endpointUrl: endpointUrl) { exists, _ in
+            if let exists = exists, !exists {
+              self.saveToken(token, endpointUrl: endpointUrl)
+            }
           }
         }
       }
     }
   }
-  
-  /// Delete token
-  /// - Parameters:
-  ///   - token: FCM token value
-  ///   - account: Library account
-  func deleteToken(_ token: String, account: Account) {
-    guard let catalogHref = account.catalogUrl,
-          let requestUrl = URL(string: "\(catalogHref)patrons/me/devices"),
-          let requestBody = TokenData(token: token).data
-    else {
+    
+  private func deleteToken(_ token: String, endpointUrl: URL) {
+    guard let requestBody = TokenData(token: token).data else {
       return
     }
-    var request = URLRequest(url: requestUrl)
+    var request = URLRequest(url: endpointUrl)
     request.httpMethod = "DELETE"
     request.httpBody = requestBody
     _ = TPPNetworkExecutor.shared.addBearerAndExecute(request) { result, response, error in
@@ -161,7 +156,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
         TPPErrorLogger.logError(error,
                                 summary: "Couldn't delete token data",
                                 metadata: [
-                                  "requestURL": requestUrl,
+                                  "requestURL": endpointUrl,
                                   "tokenData": String(data: requestBody, encoding: .utf8) ?? "",
                                   "statusCode": (response as? HTTPURLResponse)?.statusCode ?? 0
                                 ]
@@ -169,11 +164,18 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
       }
     }
   }
-  
+
   func deleteToken(for account: Account) {
-    Messaging.messaging().token { token, _ in
-      if let token {
-        self.deleteToken(token, account: account)
+    account.getProfileDocument { profileDocument in
+      guard let endpointHref = profileDocument?.linksWith(.deviceRegistration).first?.href,
+            let endpointUrl = URL(string: endpointHref)
+      else {
+        return
+      }
+      Messaging.messaging().token { token, _ in
+        if let token {
+          self.deleteToken(token, endpointUrl: endpointUrl)
+        }
       }
     }
   }
