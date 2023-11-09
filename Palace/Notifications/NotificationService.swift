@@ -41,6 +41,12 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
     NotificationCenter.default.addObserver(forName: NSNotification.Name.TPPCurrentAccountDidChange, object: nil, queue: nil) { _ in
       self.updateToken()
     }
+    // Update library token when the user signes in (but has already added the library)
+    NotificationCenter.default.addObserver(forName: NSNotification.Name.TPPIsSigningIn, object: nil, queue: nil) { notification in
+      if let isSigningIn = notification.object as? Bool, !isSigningIn {
+        self.updateToken()
+      }
+    }
   }
   
   @objc
