@@ -150,7 +150,7 @@ struct TPPSettingsView: View {
       .gesture(
         LongPressGesture(minimumDuration: 5.0)
           .onEnded { _ in
-                    self.showDeveloperSettings = true
+            self.showDeveloperSettings.toggle()
           }
       )
       .frame(height: 40)
