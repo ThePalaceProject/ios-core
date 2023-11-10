@@ -11,7 +11,7 @@ import SwiftUI
 struct TPPSettingsView: View {
   typealias DisplayStrings = Strings.Settings
 
-  @State private var showDeveloperSettings = false
+  @AppStorage("showDeveloperSettings") private var showDeveloperSettings: Bool = false
   @State private var selectedView: Int? = 0
   @State private var orientation: UIDeviceOrientation = UIDevice.current.orientation
 
