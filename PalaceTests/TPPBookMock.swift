@@ -71,7 +71,7 @@ struct TPPBookMocker {
       reportURL: emptyUrl,
       timeTrackingURL: emptyUrl,
       contributors: [:],
-      bookDuration: ""
+      bookDuration: nil
     )
     
     return fakeBook

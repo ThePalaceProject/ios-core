@@ -123,7 +123,7 @@ class TPPBookCreationTests: XCTestCase {
                         reportURL: nil,
                         timeTrackingURL: nil,
                         contributors: nil,
-                        bookDuration: ""
+                        bookDuration: nil
     )
     
     XCTAssertNotNil(book)
