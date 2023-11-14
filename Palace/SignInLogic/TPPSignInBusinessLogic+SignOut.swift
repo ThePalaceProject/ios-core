@@ -145,7 +145,7 @@ func performLogOut() {
     let tokenUsername = licensorItems?.joined(separator: "|")
     let adobeUserID = userAccount.userID
     let adobeDeviceID = userAccount.deviceID
-
+ 
     Log.info(#file, """
     ***DRM Deactivation Attempt***
     Licensor: \(licensor)

@@ -56,12 +56,14 @@
 @property (nonatomic) UILabel *distributorLabelKey;
 @property (nonatomic) UILabel *bookFormatLabelKey;
 @property (nonatomic) UILabel *narratorsLabelKey;
+@property (nonatomic) UILabel *bookDurationLabelKey;
 @property (nonatomic) UILabel *publishedLabelValue;
 @property (nonatomic) UILabel *publisherLabelValue;
 @property (nonatomic) UILabel *categoriesLabelValue;
 @property (nonatomic) UILabel *distributorLabelValue;
 @property (nonatomic) UILabel *bookFormatLabelValue;
 @property (nonatomic) UILabel *narratorsLabelValue;
+@property (nonatomic) UILabel *bookDurationLabelValue;
 
 @property (nonatomic) TPPBookDetailTableView *footerTableView;
 
@@ -145,12 +147,22 @@ static NSString *DetailHTMLTemplate = nil;
   [self.containerView addSubview:self.distributorLabelKey];
   [self.containerView addSubview:self.bookFormatLabelKey];
   [self.containerView addSubview:self.narratorsLabelKey];
+
+  if (self.book.isAudiobook) {
+    [self.containerView addSubview:self.bookDurationLabelKey];
+  }
+
   [self.containerView addSubview:self.publishedLabelValue];
   [self.containerView addSubview:self.publisherLabelValue];
   [self.containerView addSubview:self.categoriesLabelValue];
   [self.containerView addSubview:self.distributorLabelValue];
   [self.containerView addSubview:self.bookFormatLabelValue];
   [self.containerView addSubview:self.narratorsLabelValue];
+  
+  if (self.book.isAudiobook) {
+    [self.containerView addSubview:self.bookDurationLabelValue];
+  }
+  
   [self.containerView addSubview:self.footerTableView];
   [self.containerView addSubview:self.bottomFootnoteSeparator];
   
@@ -348,8 +360,10 @@ static NSString *DetailHTMLTemplate = nil;
   NSString *const bookFormatKeyString = NSLocalizedString(@"Book format:", nil);
 
   NSString *const narratorsKeyString =
-    self.book.narrators ? [NSString stringWithFormat:@"%@: ", NSLocalizedString(@"Narrators:", nil)] : nil;
+    self.book.narrators ? [NSString stringWithFormat:@"%@: ", NSLocalizedString(@"Narrators", nil)] : nil;
   
+  NSString *const bookDurationKeyString = [NSString stringWithFormat:@"%@:", NSLocalizedString(@"Duration", nil)];
+
   NSString *const categoriesValueString = self.book.categories;
   NSString *const publishedValueString = self.book.published ? [dateFormatter stringFromDate:self.book.published] : nil;
   NSString *const publisherValueString = self.book.publisher;
@@ -368,7 +382,8 @@ static NSString *DetailHTMLTemplate = nil;
   self.distributorLabelKey = [self createFooterLabelWithString:distributorKeyString alignment:NSTextAlignmentRight];
   self.bookFormatLabelKey = [self createFooterLabelWithString:bookFormatKeyString alignment:NSTextAlignmentRight];
   self.narratorsLabelKey = [self createFooterLabelWithString:narratorsKeyString alignment:NSTextAlignmentRight];
-  
+  self.bookDurationLabelKey = [self createFooterLabelWithString:bookDurationKeyString alignment:NSTextAlignmentRight];
+
   self.categoriesLabelValue = [self createFooterLabelWithString:categoriesValueString alignment:NSTextAlignmentLeft];
   self.categoriesLabelValue.numberOfLines = 2;
   self.publisherLabelValue = [self createFooterLabelWithString:publisherValueString alignment:NSTextAlignmentLeft];
@@ -377,6 +392,8 @@ static NSString *DetailHTMLTemplate = nil;
   self.distributorLabelValue = [self createFooterLabelWithString:self.book.distributor alignment:NSTextAlignmentLeft];
   self.bookFormatLabelValue = [self createFooterLabelWithString:bookFormatValueString alignment:NSTextAlignmentLeft];
   self.narratorsLabelValue = [self createFooterLabelWithString:narratorsValueString alignment:NSTextAlignmentLeft];
+  self.bookDurationLabelValue = [self createFooterLabelWithString:[self displayStringForDuration: self.book.bookDuration] alignment:NSTextAlignmentLeft];
+
   self.narratorsLabelValue.numberOfLines = 0;
   
   self.topFootnoteSeparater = [[UIView alloc] init];
@@ -401,6 +418,14 @@ static NSString *DetailHTMLTemplate = nil;
   label.text = string;
   label.font = [UIFont customFontForTextStyle:UIFontTextStyleCaption2];
   return label;
+}
+
+- (NSString *) displayStringForDuration: (NSString *) durationInSeconds {
+  double totalSeconds = [durationInSeconds doubleValue];
+  int hours = (int)(totalSeconds / 3600);
+  int minutes = (int)((totalSeconds - (hours * 3600)) / 60);
+  
+  return [NSString stringWithFormat:@"%d hours, %d minutes", hours, minutes];
 }
 
 - (void)setupAutolayoutConstraints
@@ -527,6 +552,13 @@ static NSString *DetailHTMLTemplate = nil;
   [self.narratorsLabelValue autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.bookFormatLabelValue];
   [self.narratorsLabelValue autoPinEdge:ALEdgeLeading toEdge:ALEdgeTrailing ofView:self.narratorsLabelKey withOffset:MainTextPaddingLeft];
 
+  if (self.book.hasDuration) {
+    [self.bookDurationLabelValue autoPinEdgeToSuperviewMargin:ALEdgeTrailing relation:NSLayoutRelationGreaterThanOrEqual];
+    [self.bookDurationLabelValue autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.narratorsLabelValue];
+    [self.bookDurationLabelValue autoPinEdge:ALEdgeLeading toEdge:ALEdgeTrailing ofView:self.bookDurationLabelKey withOffset:MainTextPaddingLeft];
+  }
+
+  [self.publishedLabelKey autoPinEdgeToSuperviewMargin:ALEdgeLeading];
   [self.publishedLabelKey autoPinEdgeToSuperviewMargin:ALEdgeLeading];
   [self.publishedLabelKey autoPinEdge:ALEdgeTrailing toEdge:ALEdgeTrailing ofView:self.publisherLabelKey];
   [self.publishedLabelKey autoPinEdge:ALEdgeTop toEdge:ALEdgeTop ofView:self.publishedLabelValue];
@@ -556,7 +588,13 @@ static NSString *DetailHTMLTemplate = nil;
   [self.narratorsLabelKey autoPinEdge:ALEdgeTop toEdge:ALEdgeTop ofView:self.narratorsLabelValue];
   [self.narratorsLabelKey setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
 
-
+  if (self.book.hasDuration) {
+    [self.bookDurationLabelKey autoPinEdgeToSuperviewMargin:ALEdgeLeading];
+    [self.bookDurationLabelKey autoPinEdge:ALEdgeTop toEdge:ALEdgeTop ofView:self.bookDurationLabelValue];
+    [self.bookDurationLabelKey autoPinEdge:ALEdgeTrailing toEdge:ALEdgeTrailing ofView:self.narratorsLabelKey];
+    [self.bookDurationLabelKey setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+  }
+  
   if (self.closeButton) {
     [self.closeButton autoPinEdgeToSuperviewMargin:ALEdgeTrailing];
     [self.closeButton autoPinEdge:ALEdgeTop toEdge:ALEdgeTop ofView:self.titleLabel];
@@ -574,7 +612,12 @@ static NSString *DetailHTMLTemplate = nil;
   [self.bottomFootnoteSeparator autoSetDimension:ALDimensionHeight toSize: 1.0f / [UIScreen mainScreen].scale];
   [self.bottomFootnoteSeparator autoPinEdgeToSuperviewEdge:ALEdgeRight];
   [self.bottomFootnoteSeparator autoPinEdgeToSuperviewMargin:ALEdgeLeft];
-  [self.bottomFootnoteSeparator autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.narratorsLabelValue withOffset:VerticalPadding];
+
+  if (self.book.hasDuration) {
+    [self.bottomFootnoteSeparator autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.bookDurationLabelKey withOffset:VerticalPadding];
+  } else {
+    [self.bottomFootnoteSeparator autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.narratorsLabelValue withOffset:VerticalPadding];
+  }
   
   [self.footerTableView autoPinEdgesToSuperviewEdgesWithInsets:UIEdgeInsetsZero excludingEdge:ALEdgeTop];
   [self.footerTableView autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.narratorsLabelValue withOffset:VerticalPadding];

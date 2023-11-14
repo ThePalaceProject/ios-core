@@ -11,7 +11,7 @@ import SwiftUI
 struct TPPSettingsView: View {
   typealias DisplayStrings = Strings.Settings
 
-  @State private var showDeveloperSettings = false
+  @AppStorage(TPPSettings.showDeveloperSettingsKey) private var showDeveloperSettings: Bool = false
   @State private var selectedView: Int? = 0
   @State private var orientation: UIDeviceOrientation = UIDevice.current.orientation
 
@@ -150,7 +150,7 @@ struct TPPSettingsView: View {
       .gesture(
         LongPressGesture(minimumDuration: 5.0)
           .onEnded { _ in
-                    self.showDeveloperSettings = true
+            self.showDeveloperSettings.toggle()
           }
       )
       .frame(height: 40)

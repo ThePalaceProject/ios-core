@@ -496,7 +496,11 @@ extension MyBooksDownloadCenter {
 #endif
   }
   
-  @objc func returnBook(withIdentifier identifier: String) {
+  @objc func returnBook(withIdentifier identifier: String, completion: (() -> Void)? = nil) {
+    defer {
+      completion?()
+    }
+
     guard let book = bookRegistry.book(forIdentifier: identifier) else {
       return
     }

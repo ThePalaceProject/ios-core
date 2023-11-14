@@ -16,19 +16,12 @@ struct EPUBSearchView: View {
   @State private var searchQuery: String = ""
   @State private var debounceSearch: AnyCancellable?
 
-  var body: some View {
-    VStack {
-      searchBar
-      listView
-    }
-    .onChange(of: searchQuery, perform: search)
-    .padding()
-    .ignoresSafeArea(.keyboard)
-  }
+  @FocusState private var isSearchFieldFocused: Bool
   
   @ViewBuilder private var searchBar: some View {
     HStack {
       TextField("\(Strings.Generic.search)...", text: $searchQuery)
+        .focused($isSearchFieldFocused) // Bind the focus state to the text field
       Button(action: {
         searchQuery = ""
         viewModel.cancelSearch()
@@ -42,6 +35,22 @@ struct EPUBSearchView: View {
     .background(Color(.secondarySystemBackground))
     .cornerRadius(8)
     .padding(.bottom)
+    .onAppear {
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+        // This delay ensures that the view is fully loaded before focusing
+        isSearchFieldFocused = true
+      }
+    }
+  }
+  
+  var body: some View {
+    VStack {
+      searchBar
+      listView
+    }
+    .onChange(of: searchQuery, perform: search)
+    .padding()
+    .ignoresSafeArea(.keyboard)
   }
 
   @ViewBuilder private var listView: some View {
