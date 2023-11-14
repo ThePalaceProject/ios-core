@@ -52,7 +52,8 @@ class TPPReaderBookmarksBusinessLogicTests: XCTestCase {
         revokeURL: emptyUrl,
         reportURL: emptyUrl,
         timeTrackingURL: emptyUrl,
-        contributors: [:]
+        contributors: [:],
+        bookDuration: nil
       )
             
       bookRegistryMock = TPPBookRegistryMock()

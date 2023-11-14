@@ -64,7 +64,8 @@ let TimeTrackingURLURLKey: String = "time-tracking-url"
   @objc var timeTrackingURL: URL?
   @objc var contributors: [String: Any]?
   @objc var bookTokenLock: NSRecursiveLock
-  
+  @objc var bookDuration: String?
+
   static let SimplifiedScheme = "http://librarysimplified.org/terms/genres/Simplified/"
   
   static func categoryStringsFromCategories(categories: [TPPOPDSCategory]) -> [String] {
@@ -73,6 +74,10 @@ let TimeTrackingURLURLKey: String = "time-tracking-url"
 
   @objc var isAudiobook: Bool {
     defaultBookContentType == .audiobook
+  }
+  
+  @objc var hasDuration: Bool {
+    (bookDuration ?? "").count > 0
   }
 
   init(
@@ -98,9 +103,11 @@ let TimeTrackingURLURLKey: String = "time-tracking-url"
     revokeURL: URL?,
     reportURL: URL?,
     timeTrackingURL: URL?,
-    contributors: [String: Any]?
+    contributors: [String: Any]?,
+    bookDuration: String?
   ) {
     self.acquisitions = acquisitions
+    self.bookAuthors = authors
     self.bookAuthors = authors
     self.categoryStrings = categoryStrings
     self.distributor = distributor
@@ -124,6 +131,7 @@ let TimeTrackingURLURLKey: String = "time-tracking-url"
     self.timeTrackingURL = timeTrackingURL
     self.contributors = contributors
     self.bookTokenLock = NSRecursiveLock()
+    self.bookDuration = bookDuration
   }
   
   /// @brief Factory method to build a TPPBook object from an OPDS feed entry.
@@ -185,7 +193,8 @@ let TimeTrackingURLURLKey: String = "time-tracking-url"
       revokeURL: revoke,
       reportURL: report,
       timeTrackingURL: entry.timeTrackingLink?.href,
-      contributors: entry.contributors
+      contributors: entry.contributors,
+      bookDuration: entry.duration
     )
   }
   
@@ -373,7 +382,8 @@ let TimeTrackingURLURLKey: String = "time-tracking-url"
       revokeURL: revokeURL,
       reportURL: reportURL,
       timeTrackingURL: URL(string: dictionary[TimeTrackingURLURLKey] as? String ?? ""),
-      contributors: nil
+      contributors: nil,
+      bookDuration: nil
     )
   }
 
@@ -401,7 +411,8 @@ let TimeTrackingURLURLKey: String = "time-tracking-url"
       revokeURL: self.revokeURL,
       reportURL: self.reportURL,
       timeTrackingURL: self.timeTrackingURL,
-      contributors: book.contributors
+      contributors: book.contributors, 
+      bookDuration: book.bookDuration
     )
   }
 
