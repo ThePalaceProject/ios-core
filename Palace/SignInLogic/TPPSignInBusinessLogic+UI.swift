@@ -45,6 +45,13 @@ extension TPPSignInBusinessLogic {
         let alert = TPPAlertUtils.alert(title: Strings.Error.loginErrorTitle,
                                          message: errorMessage,
                                          error: error as NSError?)
+        
+        TPPErrorLogger.logError(withCode: .loginFailedDueToDRM,
+                                summary: "Unable to login due to drm error",
+                                metadata: [
+                                  "DRM Error" : error?.localizedDescription ?? "",
+                                  "authTokenExpirationDate": self.authTokenExpiration ?? ""])
+        
         TPPPresentationUtils.safelyPresent(alert, animated: true)
         return
       }

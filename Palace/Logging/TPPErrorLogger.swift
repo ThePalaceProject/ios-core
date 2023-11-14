@@ -109,6 +109,7 @@ fileprivate let nullString = "null"
   case lcpDRMFulfillmentFail = 1002
   case lcpPassphraseAuthorizationFail = 1003
   case lcpPassphraseRetrievalFail = 1004
+  case loginFailedDueToDRM = 1005
 
   // wrong content
   case unknownRightsManagement = 1100
