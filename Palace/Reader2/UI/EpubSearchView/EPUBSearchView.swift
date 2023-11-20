@@ -21,7 +21,7 @@ struct EPUBSearchView: View {
   @ViewBuilder private var searchBar: some View {
     HStack {
       TextField("\(Strings.Generic.search)...", text: $searchQuery)
-        .focused($isSearchFieldFocused) // Bind the focus state to the text field
+        .focused($isSearchFieldFocused)
       Button(action: {
         searchQuery = ""
         viewModel.cancelSearch()
@@ -37,7 +37,6 @@ struct EPUBSearchView: View {
     .padding(.bottom)
     .onAppear {
       DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-        // This delay ensures that the view is fully loaded before focusing
         isSearchFieldFocused = true
       }
     }
@@ -56,9 +55,9 @@ struct EPUBSearchView: View {
   @ViewBuilder private var listView: some View {
     ZStack {
       List {
-        ForEach(groupedByChapterName(viewModel.results), id: \.key) { key, locators in
-          Section(header: sectionHeaderView(title: key)) {
-            ForEach(locators, id: \.href) { locator in
+        ForEach(groupedByChapterTitle(viewModel.results), id: \.title) { section in
+          Section(header: sectionHeaderView(title: section.title)) {
+            ForEach(section.locators, id: \.self) { locator in
               rowView(locator)
                 .onAppear(perform: {
                   if shouldFetchMoreResults(for: locator) {
@@ -84,7 +83,34 @@ struct EPUBSearchView: View {
   }
   
   private func shouldFetchMoreResults(for locator: Locator) -> Bool {
-     viewModel.results.last?.href == locator.href
+    if let lastHref = viewModel.results.last?.href {
+      return locator.href == lastHref
+    }
+    return false
+  }
+  
+  private func groupedByChapterTitle(_ results: [Locator]) -> [(title: String, locators: [Locator])] {
+    var groupedResults: [String: [Locator]] = [:]
+    
+    for locator in results {
+      let titleKey = locator.title ?? locator.href  // Use title or href as a key
+      
+      if groupedResults[titleKey] == nil {
+        groupedResults[titleKey] = []
+      }
+      
+      let isDuplicate = groupedResults[titleKey]!.contains { existingLocator in
+        existingLocator.href == locator.href &&
+        existingLocator.locations.progression == locator.locations.progression &&
+        existingLocator.locations.totalProgression == locator.locations.totalProgression
+      }
+      
+      if !isDuplicate {
+        groupedResults[titleKey]!.append(locator)
+      }
+    }
+    
+    return groupedResults.map { (title: $0.value.first?.title ?? "", locators: $0.value) }
   }
 
   private func groupedByChapterName(_ results: [Locator]) -> [(key: String, value: [Locator])] {
