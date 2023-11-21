@@ -55,7 +55,7 @@ struct EPUBSearchView: View {
   @ViewBuilder private var listView: some View {
     ZStack {
       List {
-        ForEach(groupedByChapterTitle(viewModel.results), id: \.title) { section in
+        ForEach(viewModel.groupedResults, id: \.title) { section in
           Section(header: sectionHeaderView(title: section.title)) {
             ForEach(section.locators, id: \.self) { locator in
               rowView(locator)
@@ -81,55 +81,13 @@ struct EPUBSearchView: View {
       }
     }
   }
-  
+
   private func shouldFetchMoreResults(for locator: Locator) -> Bool {
-    if let lastHref = viewModel.results.last?.href {
-      return locator.href == lastHref
+    if let lastSection = viewModel.groupedResults.last,
+       let lastLocator = lastSection.locators.last {
+      return locator.href == lastLocator.href
     }
     return false
-  }
-  
-  private func groupedByChapterTitle(_ results: [Locator]) -> [(title: String, locators: [Locator])] {
-    var groupedResults: [String: [Locator]] = [:]
-    
-    for locator in results {
-      let titleKey = locator.title ?? locator.href  // Use title or href as a key
-      
-      if groupedResults[titleKey] == nil {
-        groupedResults[titleKey] = []
-      }
-      
-      let isDuplicate = groupedResults[titleKey]!.contains { existingLocator in
-        existingLocator.href == locator.href &&
-        existingLocator.locations.progression == locator.locations.progression &&
-        existingLocator.locations.totalProgression == locator.locations.totalProgression
-      }
-      
-      if !isDuplicate {
-        groupedResults[titleKey]!.append(locator)
-      }
-    }
-    
-    return groupedResults.map { (title: $0.value.first?.title ?? "", locators: $0.value) }
-  }
-
-  private func groupedByChapterName(_ results: [Locator]) -> [(key: String, value: [Locator])] {
-    let hasTitles = results.contains { $0.title != nil && $0.title != "" }
-  
-    if !hasTitles {
-      return [("", results)]
-    }
-  
-    let uniqueTitles = Array(Set(results.compactMap { $0.title })).sorted { title1, title2 in
-      results.firstIndex(where: { $0.title == title1 })! < results.firstIndex(where: { $0.title == title2 })!
-    }
-  
-    return uniqueTitles.compactMap { title -> (key: String, value: [Locator])? in
-      if let items = results.filter({ $0.title == title }) as [Locator]?, !items.isEmpty {
-        return (key: title, value: items)
-      }
-      return nil
-    }
   }
 
   private func sectionHeaderView(title: String) -> some View {
@@ -149,7 +107,7 @@ struct EPUBSearchView: View {
       EmptyView()
     }
   }
-  
+
   private func rowView(_ locator: Locator) -> some View {
     let text = locator.text.sanitized()
     
