@@ -528,26 +528,28 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
       return
     }
     #endif
-
-    if let selectedAuthentication = selectedAuthentication {
-      if selectedAuthentication.isOauth || selectedAuthentication.isSaml || selectedAuthentication.isToken {
-        if let authToken = authToken {
-          userAccount.setAuthToken(authToken, barcode: barcode, pin: pin, expirationDate: expirationDate)
-        }
-        if let patron = patron {
-          userAccount.setPatron(patron)
-        }
+    
+    guard let selectedAuthentication = selectedAuthentication else {
+      setBarcode(barcode, pin: pin)
+      return
+    }
+    
+    if selectedAuthentication.isOauth || selectedAuthentication.isSaml || selectedAuthentication.isToken {
+      if let authToken = authToken {
+        userAccount.setAuthToken(authToken, barcode: barcode, pin: pin, expirationDate: expirationDate)
+      }
+      
+      if let patron = patron {
+        userAccount.setPatron(patron)
       } else {
         setBarcode(barcode, pin: pin)
       }
-
-      if selectedAuthentication.isSaml {
-        if let cookies = cookies {
-          userAccount.setCookies(cookies)
-        }
-      }
     } else {
       setBarcode(barcode, pin: pin)
+    }
+    
+    if selectedAuthentication.isSaml, let cookies = cookies {
+      userAccount.setCookies(cookies)
     }
 
     userAccount.setAuthDefinitionWithoutUpdate(authDefinition: selectedAuthentication)

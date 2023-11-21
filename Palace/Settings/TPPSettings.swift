@@ -33,6 +33,7 @@ import Foundation
   static private let versionKey = "NYPLSettingsVersionKey"
   static private let customLibraryRegistryKey = "TPPSettingsCustomLibraryRegistryKey"
   static private let enterLCPPassphraseManually = "TPPSettingsEnterLCPPassphraseManually"
+  static let showDeveloperSettingsKey = "showDeveloperSettings"
   
   // Set to nil (the default) if no custom feed should be used.
   var customMainFeedURL: URL? {

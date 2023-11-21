@@ -57,10 +57,10 @@ static const int kServerUpdateDelay = 15;
 - (instancetype)init
 {
   self = [super init];
-    
+  
   _refreshAudiobookLock = [[NSLock alloc] init];
   _lastServerUpdate = [NSDate date];
-
+  
   return self;
 }
 
@@ -71,9 +71,9 @@ static const int kServerUpdateDelay = 15;
 
 #pragma mark TPPBookButtonsDelegate
 
-- (void)didSelectReturnForBook:(TPPBook *)book
+- (void)didSelectReturnForBook:(TPPBook *)book completion:(void (^ __nullable)(void))completion
 {
-  [[MyBooksDownloadCenter shared] returnBookWithIdentifier:book.identifier];
+  [[MyBooksDownloadCenter shared] returnBookWithIdentifier:book.identifier completion: completion];
 }
 
 - (void)didSelectDownloadForBook:(TPPBook *)book
@@ -307,7 +307,7 @@ static const int kServerUpdateDelay = 15;
           UIAlertController *alert = [TPPReturnPromptHelper audiobookPromptWithCompletion:^(BOOL returnWasChosen) {
             if (returnWasChosen) {
               [weakAudiobookVC.navigationController popViewControllerAnimated:YES];
-              [self didSelectReturnForBook:book];
+              [self didSelectReturnForBook:book completion:nil];
             }
             [TPPAppStoreReviewPrompt presentIfAvailable];
           }];
