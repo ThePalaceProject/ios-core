@@ -463,7 +463,7 @@
 {
   self.activityIndicator.center = self.readButton.center;
   [self updateProcessingState:YES];
-  [self.delegate didSelectReadForBook:self.book];
+  [self.delegate didSelectReadForBook:self.book completion:nil];
   [[TPPRootTabBarController sharedController] dismissViewControllerAnimated:YES completion:nil];
 
 }

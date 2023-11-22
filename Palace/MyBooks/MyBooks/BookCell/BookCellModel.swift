@@ -142,8 +142,9 @@ extension BookCellModel {
 
   func didSelectRead() {
     isLoading = true
-    self.buttonDelegate?.didSelectRead(for: book)
-    TPPRootTabBarController.shared().dismiss(animated: true)
+    self.buttonDelegate?.didSelectRead(for: book) { [weak self] in
+      self?.isLoading = false
+    }
   }
 
   func didSelectReturn() {
