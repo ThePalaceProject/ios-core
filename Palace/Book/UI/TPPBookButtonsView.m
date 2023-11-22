@@ -466,8 +466,6 @@
   [self.delegate didSelectReadForBook:self.book completion:^{
     [self updateProcessingState:NO];
   }];
-  [[TPPRootTabBarController sharedController] dismissViewControllerAnimated:YES completion:nil];
-
 }
 
 - (void)didSelectDownload
