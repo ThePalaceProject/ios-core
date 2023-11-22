@@ -35,7 +35,8 @@ final class EPUBSearchViewModel: ObservableObject {
   
   @Published private(set) var state: State = .empty
   @Published private(set) var results: [Locator] = []
-  
+  @Published private(set) var groupedResults: [(title: String, locators: [Locator])] = []
+
   private var publication: Publication
   weak var delegate: EPUBSearchDelegate?
   
@@ -58,26 +59,20 @@ final class EPUBSearchViewModel: ObservableObject {
     
     state = .starting(cancellable)
   }
-
+  
   func fetchNextBatch() {
-    guard case let .idle(iterator, _) = state else { return }
+    guard case let .idle(iterator, _) = state else {
+      return
+    }
     
     state = .loadingNext(iterator, nil)
     
-    let cancellable = iterator.next { result in
+    let cancellable = iterator.next { [weak self] result in
+      guard let self = self else { return }
+      
       switch result {
       case .success(let collection):
-        if let collection = collection {
-          for locator in collection.locators {
-            if !self.results.contains(where: { $0.href == locator.href }) {
-              self.results.append(locator)
-            }
-          }
-          self.state = .idle(iterator, isFetching: false)
-        } else {
-          self.state = .end
-        }
-        
+        self.handleNewCollection(iterator, collection: collection)
       case .failure(let error):
         self.state = .failure(error)
       }
@@ -86,7 +81,58 @@ final class EPUBSearchViewModel: ObservableObject {
     state = .loadingNext(iterator, cancellable)
   }
 
+  private func handleNewCollection(_ iterator: SearchIterator, collection: _LocatorCollection?) {
+    guard let collection = collection else {
+      state = .end
+      return
+    }
+    
+    for newLocator in collection.locators {
+      if !isDuplicate(newLocator) {
+        self.results.append(newLocator)
+      }
+    }
+    
+    groupResults()
+    
+    self.state = .idle(iterator, isFetching: false)
+  }
+  
+  private func groupResults() {
+    var groupedResults: [String: [Locator]] = [:]
+    
+    for locator in results {
+      let titleKey = locator.title ?? locator.href
+      
+      if !groupedResults.keys.contains(titleKey) {
+        groupedResults[titleKey] = []
+      }
+      
+      if !groupedResults[titleKey]!.contains(where: { existingLocator in
+        existingLocator.href == locator.href &&
+        existingLocator.locations.progression == locator.locations.progression &&
+        existingLocator.locations.totalProgression == locator.locations.totalProgression
+      }) {
+        groupedResults[titleKey]!.append(locator)
+      }
+    }
+    
+    self.groupedResults = groupedResults
+      .map { (title: $0.value.first?.title ?? "", locators: $0.value) }
+      .sorted { section1, section2 in
+        let href1 = section1.locators.first?.href.split(separator: "/").dropFirst(2).joined(separator: "/") ?? ""
+        let href2 = section2.locators.first?.href.split(separator: "/").dropFirst(2).joined(separator: "/") ?? ""
+        return href1 < href2
+      }
+  }
 
+  private func isDuplicate(_ locator: Locator) -> Bool {
+    return self.results.contains { existingLocator in
+      existingLocator.href == locator.href &&
+      existingLocator.locations.progression == locator.locations.progression &&
+      existingLocator.locations.totalProgression == locator.locations.totalProgression
+    }
+  }
   
   func cancelSearch() {
     switch state {

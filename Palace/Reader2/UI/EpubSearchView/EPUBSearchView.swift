@@ -21,7 +21,7 @@ struct EPUBSearchView: View {
   @ViewBuilder private var searchBar: some View {
     HStack {
       TextField("\(Strings.Generic.search)...", text: $searchQuery)
-        .focused($isSearchFieldFocused) // Bind the focus state to the text field
+        .focused($isSearchFieldFocused)
       Button(action: {
         searchQuery = ""
         viewModel.cancelSearch()
@@ -37,7 +37,6 @@ struct EPUBSearchView: View {
     .padding(.bottom)
     .onAppear {
       DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-        // This delay ensures that the view is fully loaded before focusing
         isSearchFieldFocused = true
       }
     }
@@ -56,9 +55,9 @@ struct EPUBSearchView: View {
   @ViewBuilder private var listView: some View {
     ZStack {
       List {
-        ForEach(groupedByChapterName(viewModel.results), id: \.key) { key, locators in
-          Section(header: sectionHeaderView(title: key)) {
-            ForEach(locators, id: \.href) { locator in
+        ForEach(viewModel.groupedResults, id: \.title) { section in
+          Section(header: sectionHeaderView(title: section.title)) {
+            ForEach(section.locators, id: \.self) { locator in
               rowView(locator)
                 .onAppear(perform: {
                   if shouldFetchMoreResults(for: locator) {
@@ -82,28 +81,13 @@ struct EPUBSearchView: View {
       }
     }
   }
-  
-  private func shouldFetchMoreResults(for locator: Locator) -> Bool {
-     viewModel.results.last?.href == locator.href
-  }
 
-  private func groupedByChapterName(_ results: [Locator]) -> [(key: String, value: [Locator])] {
-    let hasTitles = results.contains { $0.title != nil && $0.title != "" }
-  
-    if !hasTitles {
-      return [("", results)]
+  private func shouldFetchMoreResults(for locator: Locator) -> Bool {
+    if let lastSection = viewModel.groupedResults.last,
+       let lastLocator = lastSection.locators.last {
+      return locator.href == lastLocator.href
     }
-  
-    let uniqueTitles = Array(Set(results.compactMap { $0.title })).sorted { title1, title2 in
-      results.firstIndex(where: { $0.title == title1 })! < results.firstIndex(where: { $0.title == title2 })!
-    }
-  
-    return uniqueTitles.compactMap { title -> (key: String, value: [Locator])? in
-      if let items = results.filter({ $0.title == title }) as [Locator]?, !items.isEmpty {
-        return (key: title, value: items)
-      }
-      return nil
-    }
+    return false
   }
 
   private func sectionHeaderView(title: String) -> some View {
@@ -123,7 +107,7 @@ struct EPUBSearchView: View {
       EmptyView()
     }
   }
-  
+
   private func rowView(_ locator: Locator) -> some View {
     let text = locator.text.sanitized()
     
