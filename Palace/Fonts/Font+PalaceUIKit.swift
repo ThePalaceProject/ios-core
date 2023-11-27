@@ -12,15 +12,16 @@ public struct PalaceFontModifier: ViewModifier {
   
   var style: Font.TextStyle
   var size: CGFloat? = nil
-  var weigth: Font.Weight? = nil
+  var weight: Font.Weight? = nil
   
   public func body(content: Content) -> some View {
-    content.font(.custom(palaceBoldFontName, size: size ?? fontSize(for: style), relativeTo: style))
+    content.font(
+      .custom(palaceFontName, size: size ?? fontSize(for: style), relativeTo: style)
+      .weight(weight ?? fontWeight(for: style))
+    )
   }
   
-  private let palaceRegularFontName = "OpenSans-Regular"
-  private let palaceSemiBoldFontName = "OpenSans-SemiBold"
-  private let palaceBoldFontName = "OpenSans Bold"
+  private let palaceFontName = "OpenSans-Regular"
   
   // Font sizes are described in pixels: https://www.figma.com/file/BxLs5QNmU5tCIKhO9ccAyh/TPP-UI---Style-Guidelines?type=design&node-id=1-12&mode=design&t=sGPJYuRIuFdWCIg3-0
   // Large title: 34 px
@@ -37,16 +38,16 @@ public struct PalaceFontModifier: ViewModifier {
     }
   }
   
-  private func fontName(for textStyle: Font.TextStyle, weight: Font.Weight? = nil) -> String {
+  private func fontWeight(for textStyle: Font.TextStyle) -> Font.Weight {
     switch textStyle {
-//    case .largeTitle: return palaceSemiBoldFontName
-//    case .title: return palaceBoldFontName
-//    case .title2: return palaceSemiBoldFontName
-//    case .title3: return palaceSemiBoldFontName
-//    case .headline: return palaceBoldFontName
-//    case .subheadline: return palaceBoldFontName
-//    case .body: return palaceRegularFontName
-    default: return palaceBoldFontName
+    case .largeTitle: return .bold
+    case .title: return .bold
+    case .title2: return .bold
+    case .title3: return .bold
+    case .headline: return .bold
+    case .subheadline: return .bold
+    case .body: return .regular
+    default: return .regular
     }
   }
     
@@ -70,9 +71,9 @@ public struct PalaceFontModifier: ViewModifier {
 
 public extension View {
   func palaceFont(_ style: Font.TextStyle, weight: Font.Weight? = nil) -> some View {
-    self.modifier(PalaceFontModifier(style: style, weigth: weight))
+    self.modifier(PalaceFontModifier(style: style, weight: weight))
   }
   func palaceFont(size: CGFloat, weight: Font.Weight? = nil) -> some View {
-    self.modifier(PalaceFontModifier(style: .body, size: size, weigth: weight))
+    self.modifier(PalaceFontModifier(style: .body, size: size, weight: weight))
   }
 }
