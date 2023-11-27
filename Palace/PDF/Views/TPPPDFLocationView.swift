@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import PalaceUIKit
 
 /// PDF page location view
 struct TPPPDFLocationView: View {
@@ -26,10 +27,10 @@ struct TPPPDFLocationView: View {
     HStack(alignment: .center) {
       VStack(alignment: .leading, spacing: 4) {
         Text(location.title ?? "")
-          .fontWeight(location.level <= emphasizeLevel ? .bold : .regular)
+          .palaceFont(.headline, weight: location.level <= emphasizeLevel ? .bold : .regular)
         if let subtitle = location.subtitle {
           Text(subtitle)
-            .font(.subheadline)
+            .palaceFont(.subheadline, weight: location.level <= emphasizeLevel ? .bold : .regular)
         }
       }
       .padding(.leading, 10 * CGFloat(location.level))
@@ -39,4 +40,13 @@ struct TPPPDFLocationView: View {
     }
     .contentShape(Rectangle())
   }
+}
+
+struct TPPPDFLocationView_Previews: PreviewProvider {
+    static var previews: some View {
+      List {
+        TPPPDFLocationView(location: .init(title: "Chapter 1", subtitle: "Subtitle", pageLabel: "xi", pageNumber: 11), emphasizeLevel: 1)
+        TPPPDFLocationView(location: .init(title: "Chapter 1", subtitle: "Subtitle", pageLabel: "xi", pageNumber: 11))
+      }
+    }
 }
