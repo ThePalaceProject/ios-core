@@ -838,6 +838,11 @@
 		E77D022D2931361700544180 /* SwiftSoup in Frameworks */ = {isa = PBXBuildFile; productRef = E77D022C2931361700544180 /* SwiftSoup */; };
 		E78494992A8E99CF0059B4B0 /* PalaceAudiobookToolkit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E7F9BABE2A8E6811001697DE /* PalaceAudiobookToolkit.framework */; };
 		E784949A2A8E99CF0059B4B0 /* PalaceAudiobookToolkit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E7F9BABE2A8E6811001697DE /* PalaceAudiobookToolkit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		E785BA282B1519E600A12EFA /* OpenSans-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E5BEEFF526BD919D00C2A50B /* OpenSans-Bold.ttf */; };
+		E785BA292B1519E600A12EFA /* OpenSans-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E5BEEFF826BD919E00C2A50B /* OpenSans-Regular.ttf */; };
+		E785BA2A2B1519E600A12EFA /* OpenSans-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E5BEF01C26BDA9EA00C2A50B /* OpenSans-SemiBold.ttf */; };
+		E785BA2B2B1519E600A12EFA /* OpenDyslexic3-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 84B7A3441B84E8FE00584FB2 /* OpenDyslexic3-Bold.ttf */; };
+		E785BA2C2B1519E600A12EFA /* OpenDyslexic3-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 84B7A3451B84E8FE00584FB2 /* OpenDyslexic3-Regular.ttf */; };
 		E7861C472846868800B3A38A /* TPPPDFViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7861C462846868800B3A38A /* TPPPDFViewController.swift */; };
 		E7861C492846875D00B3A38A /* TPPPDFView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7861C482846875D00B3A38A /* TPPPDFView.swift */; };
 		E7861C4B28468AB200B3A38A /* TPPPDFDocumentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7861C4A28468AB200B3A38A /* TPPPDFDocumentView.swift */; };
@@ -896,8 +901,6 @@
 		E7E96BB42B0E82220036B23A /* PalaceUIKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E7E96B9E2B0E82210036B23A /* PalaceUIKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		E7E96BBB2B0E82540036B23A /* PalaceUIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E7E96B9E2B0E82210036B23A /* PalaceUIKit.framework */; };
 		E7E96BBC2B0E82550036B23A /* PalaceUIKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E7E96B9E2B0E82210036B23A /* PalaceUIKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		E7E96BC42B0E86630036B23A /* Font+PalaceUIKit.swift in Sources */ = {isa = PBXBuildFile; fileRef = E737CD282B07E5540074D809 /* Font+PalaceUIKit.swift */; };
-		E7E96BC52B0E86630036B23A /* Font+PalaceUIKit.swift in Sources */ = {isa = PBXBuildFile; fileRef = E737CD282B07E5540074D809 /* Font+PalaceUIKit.swift */; };
 		E7E96BC62B0E86670036B23A /* Font+PalaceUIKit.swift in Sources */ = {isa = PBXBuildFile; fileRef = E737CD282B07E5540074D809 /* Font+PalaceUIKit.swift */; };
 		E7E9A22D298C6A82006C5D9E /* Reachability.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7E9A22C298C6A82006C5D9E /* Reachability.swift */; };
 		E7E9A22E298C6A82006C5D9E /* Reachability.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7E9A22C298C6A82006C5D9E /* Reachability.swift */; };
@@ -1692,6 +1695,7 @@
 		E759B2052A1BF7AA0041B075 /* PalaceDebug.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = PalaceDebug.entitlements; sourceTree = "<group>"; };
 		E75F4A2829C3AB1F006DFBD8 /* TPPPublicationSpeechSynthesizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPublicationSpeechSynthesizer.swift; sourceTree = "<group>"; };
 		E76AD92A296DCB76008ECC61 /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
+		E785BA272B1519C200A12EFA /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		E7861C462846868800B3A38A /* TPPPDFViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFViewController.swift; sourceTree = "<group>"; };
 		E7861C482846875D00B3A38A /* TPPPDFView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFView.swift; sourceTree = "<group>"; };
 		E7861C4A28468AB200B3A38A /* TPPPDFDocumentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFDocumentView.swift; sourceTree = "<group>"; };
@@ -3281,6 +3285,7 @@
 		E7E96B9F2B0E82210036B23A /* PalaceUIKit */ = {
 			isa = PBXGroup;
 			children = (
+				E785BA272B1519C200A12EFA /* Info.plist */,
 				E7E96BA02B0E82210036B23A /* PalaceUIKit.h */,
 				E7E96BA12B0E82210036B23A /* PalaceUIKit.docc */,
 			);
@@ -3696,6 +3701,11 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E785BA282B1519E600A12EFA /* OpenSans-Bold.ttf in Resources */,
+				E785BA292B1519E600A12EFA /* OpenSans-Regular.ttf in Resources */,
+				E785BA2A2B1519E600A12EFA /* OpenSans-SemiBold.ttf in Resources */,
+				E785BA2B2B1519E600A12EFA /* OpenDyslexic3-Bold.ttf in Resources */,
+				E785BA2C2B1519E600A12EFA /* OpenDyslexic3-Regular.ttf in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -3869,7 +3879,6 @@
 				73EB0A7B25821DF4006BC997 /* TPPSignInBusinessLogicUIDelegate.swift in Sources */,
 				73D8D28325A6921400DF5F69 /* Float+TPPAdditions.swift in Sources */,
 				73EB0A7C25821DF4006BC997 /* TPPBookCellCollectionViewController.m in Sources */,
-				E7E96BC52B0E86630036B23A /* Font+PalaceUIKit.swift in Sources */,
 				21F7D3CC275A9D3C0080B44B /* String+HTMLEntities.swift in Sources */,
 				E75F4A2A29C3AB1F006DFBD8 /* TPPPublicationSpeechSynthesizer.swift in Sources */,
 				E52E3C0D28C19F480073DC4D /* TPPBook+Extensions.swift in Sources */,
@@ -4269,7 +4278,6 @@
 				21D746E72718A4C000C0E1B4 /* AdobeDRMFetcherError.swift in Sources */,
 				E5515EBE2AD8E13E000BDFE9 /* TPPEPUBViewController.swift in Sources */,
 				73085E3525030D27008F6244 /* SEMigrations.swift in Sources */,
-				E7E96BC42B0E86630036B23A /* Font+PalaceUIKit.swift in Sources */,
 				E544C4EF2A395E8C00B2DC9D /* MyBooksSimplifiedBearerToken.swift in Sources */,
 				11119742198827850014462F /* TPPBookDetailDownloadingView.m in Sources */,
 				730FC05B2512911E004D7C2D /* TPPWelcomeScreenViewController.swift in Sources */,
@@ -5144,6 +5152,7 @@
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = PalaceUIKit/Info.plist;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2023 The Palace Project. All rights reserved.";
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
@@ -5203,6 +5212,7 @@
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = PalaceUIKit/Info.plist;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2023 The Palace Project. All rights reserved.";
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
