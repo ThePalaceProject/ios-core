@@ -36,7 +36,7 @@ struct TPPPDFLocationView: View {
       .padding(.leading, 10 * CGFloat(location.level))
       Spacer()
       Text(location.pageLabel ?? "\(location.pageNumber + 1)")
-        .fontWeight(location.level <= emphasizeLevel ? .bold : .regular)
+        .palaceFont(.body, weight: location.level <= emphasizeLevel ? .bold : .regular)
     }
     .contentShape(Rectangle())
   }
