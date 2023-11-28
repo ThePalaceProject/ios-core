@@ -32,6 +32,7 @@
 @property (nonatomic) NSDate *updated;
 @property (nonatomic) NSDictionary<NSString *, NSArray<NSString *>*> *contributors;
 @property (nonatomic) TPPOPDSLink *timeTrackingLink;
+@property (nonatomic) NSString *duration;
 
 @end
 
@@ -47,6 +48,11 @@
   {
     NSMutableArray *const authorStrings = [NSMutableArray array];
     NSMutableArray<TPPOPDSLink *> const *authorLinks = [NSMutableArray array];
+    
+    if ([[entryXML childrenWithName:@"duration"] count] > 0) {
+      TPPXML *durationXML = [[entryXML childrenWithName:@"duration"] firstObject];
+      self.duration = durationXML.value;
+    }
     
     for(TPPXML *const authorXML in [entryXML childrenWithName:@"author"]) {
       TPPXML *const nameXML = [authorXML firstChildWithName:@"name"];

@@ -115,7 +115,8 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
       revokeURL: emptyUrl,
       reportURL: emptyUrl,
       timeTrackingURL: emptyUrl,
-      contributors: [:]
+      contributors: [:],
+      bookDuration: nil
     )
 
     mockRegistry = TPPBookRegistryMock()

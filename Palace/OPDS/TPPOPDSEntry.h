@@ -29,6 +29,7 @@
 @property (nonatomic, readonly) NSDate *updated;
 @property (nonatomic, readonly) NSDictionary<NSString *, NSArray<NSString *>*> *contributors;
 @property (nonatomic, readonly) TPPOPDSLink *timeTrackingLink;
+@property (nonatomic, readonly) NSString *duration;
 
 + (id)new NS_UNAVAILABLE;
 - (id)init NS_UNAVAILABLE;
