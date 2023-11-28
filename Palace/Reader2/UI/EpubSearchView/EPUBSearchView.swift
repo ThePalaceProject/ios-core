@@ -10,6 +10,7 @@ import SwiftUI
 import Combine
 import R2Shared
 import R2Navigator
+import PalaceUIKit
 
 struct EPUBSearchView: View {
   @ObservedObject var viewModel: EPUBSearchViewModel
@@ -77,6 +78,7 @@ struct EPUBSearchView: View {
           ProgressView()
         } else if viewModel.results.isEmpty && searchQuery != "" {
           Text(Strings.TPPEPUBViewController.emptySearchView)
+            .palaceFont(.body)
         }
         Spacer()
       }
@@ -107,9 +109,8 @@ struct EPUBSearchView: View {
   }
 
   private func sectionHeaderView(title: String) -> some View {
-    Text(title.uppercased(  ))
-      .padding(.leading)
-      .font(.largeTitle)
+    Text(title.uppercased())
+      .palaceFont(.headline)
       .foregroundColor(.black.opacity(0.8))
       .textCase(.none)
       .frame(maxWidth: .infinity, alignment: .leading)
@@ -132,12 +133,13 @@ struct EPUBSearchView: View {
       
       var highlight = AttributedString(text.highlight ?? "")
       highlight.backgroundColor = .red.opacity(0.3)
-      highlight.font = .system(size: 16, weight: .medium)
+      highlight.font = .semiBoldPalaceFont(ofSize: UIFont.preferredFont(forTextStyle: .body).pointSize)
       
       combinedText.append(highlight)
       combinedText.append(AttributedString(text.after ?? ""))
       
       return Text(combinedText)
+        .palaceFont(.body)
         .onTapGesture {
           viewModel.userSelected(locator)
         }
@@ -148,6 +150,7 @@ struct EPUBSearchView: View {
         Text(text.highlight ?? "").foregroundColor(Color.red).fontWeight(.medium) +
         Text(text.after ?? "")
       }
+      .palaceFont(.body)
       .onTapGesture {
         viewModel.userSelected(locator)
       }
