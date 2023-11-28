@@ -45,7 +45,7 @@ import UIKit
 
   func page(at n: Int) -> CGPDFPage? {
     // Bookmarks compatibility:
-    // CGPDFDocument counts pages from 1; PDDocument from 0
+    // CGPDFDocument counts pages from 1; PDFDocument from 0
     document?.page(at: n + 1)
   }
   
