@@ -79,24 +79,60 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
   /// - Returns: The task issueing the given request.
   @discardableResult
   func executeRequest(_ req: URLRequest, completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask {
-    var resultTask: URLSessionDataTask?
+    let userAccount = TPPUserAccount.sharedAccount()
     
-    if let authDefinition = TPPUserAccount.sharedAccount().authDefinition, authDefinition.isSaml {
-      resultTask = performDataTask(with: req, completion: completion)
-    } else if !TPPUserAccount.sharedAccount().authTokenHasExpired || !req.isTokenAuthorized || req.hasRetried {
-      if req.hasRetried {
-        let error = NSError(domain: TPPErrorLogger.clientDomain, code: TPPErrorCode.invalidCredentials.rawValue, userInfo: [NSLocalizedDescriptionKey: "Unauthorized HTTP after token refresh attempt"])
-        completion(NYPLResult.failure(error, nil))
-      } else {
-        resultTask = performDataTask(with: req, completion: completion)
-      }
-    } else {
-      handleTokenRefresh(for: req, completion: completion)
+    // Handle SAML authentication
+    if let authDefinition = userAccount.authDefinition, authDefinition.isSaml {
+      return performDataTask(with: req, completion: completion)
     }
     
-    return resultTask ?? URLSessionDataTask()
+    if userAccount.isTokenRefreshRequired() {
+      handleTokenRefresh(for: req, completion: completion)
+      return URLSessionDataTask()
+    }
+    
+    if req.hasRetried {
+      let error = createErrorForRetryFailure()
+      completion(NYPLResult.failure(error, nil))
+      return URLSessionDataTask()
+    }
+    
+    return performDataTask(with: req, completion: completion)
   }
   
+  /// Creates an error object for retry failure scenario.
+  private func createErrorForRetryFailure() -> NSError {
+    return NSError(
+      domain: TPPErrorLogger.clientDomain,
+      code: TPPErrorCode.invalidCredentials.rawValue,
+      userInfo: [NSLocalizedDescriptionKey: "Unauthorized HTTP after token refresh attempt"]
+    )
+  }
+//  func executeRequest(_ req: URLRequest, completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask {
+//    var resultTask: URLSessionDataTask?
+//    
+//    if let authDefinition = TPPUserAccount.sharedAccount().authDefinition, authDefinition.isSaml {
+//      resultTask = performDataTask(with: req, completion: completion)
+//    } else if TPPUserAccount.sharedAccount().isTokenRefreshRequired() {
+//      handleTokenRefresh(for: req, completion: completion)
+//    } else if !TPPUserAccount.sharedAccount().authTokenHasExpired || !req.isTokenAuthorized || req.hasRetried {
+//      if req.hasRetried {
+//        let error = NSError(
+//          domain: TPPErrorLogger.clientDomain,
+//          code: TPPErrorCode.invalidCredentials.rawValue,
+//          userInfo: [NSLocalizedDescriptionKey: "Unauthorized HTTP after token refresh attempt"]
+//        )
+//        completion(NYPLResult.failure(error, nil))
+//      } else {
+//        resultTask = performDataTask(with: req, completion: completion)
+//      }
+//    } else {
+//      handleTokenRefresh(for: req, completion: completion)
+//    }
+//    
+//    return resultTask ?? URLSessionDataTask()
+//  }
+
   private func handleTokenRefresh(for req: URLRequest, completion: @escaping (_: NYPLResult<Data>) -> Void) {
     refreshTokenAndResume(task: nil) { [weak self] newToken in
       guard let strongSelf = self else { return }

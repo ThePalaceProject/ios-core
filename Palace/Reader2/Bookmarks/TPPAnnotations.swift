@@ -382,14 +382,13 @@ protocol AnnotationsManager {
       completionHandler(false, nil)
       return
     }
-    
-    var request = URLRequest(url: url)
+
+    var request = TPPNetworkExecutor.shared.request(for: url)
     request.httpMethod = "POST"
     request.httpBody = jsonData
-    setDefaultAnnotationHeaders(forRequest: &request)
     request.timeoutInterval = timeout
 
-    let task = URLSession.shared.dataTask(with: request) { (data, response, error) in
+    let task = TPPNetworkExecutor.shared.POST(request) { (data, response, error) in
       if let error = error as NSError? {
         Log.error(#file, "Annotation POST error (nsCode: \(error.code) Description: \(error.localizedDescription))")
         if (NetworkQueue.StatusCodes.contains(error.code)) && (queueOffline == true) {
@@ -453,14 +452,11 @@ protocol AnnotationsManager {
       completion(nil)
       return
     }
-
-    var request = URLRequest(url: annotationURL,
-                             cachePolicy: .reloadIgnoringLocalCacheData,
-                             timeoutInterval: TPPDefaultRequestTimeout)
-    request.httpMethod = "GET"
-    setDefaultAnnotationHeaders(forRequest: &request)
     
-    let dataTask = URLSession.shared.dataTask(with: request) { (data, response, error) in
+//    var request = TPPNetworkExecutor.shared.request(for: annotationURL)
+//    request.timeoutInterval = TPPDefaultRequestTimeout
+    
+    let dataTask = TPPNetworkExecutor.shared.GET(annotationURL) { (data, response, error) in
       
       if let error = error as NSError? {
         Log.error(#file, "Request Error Code: \(error.code). Description: \(error.localizedDescription)")
