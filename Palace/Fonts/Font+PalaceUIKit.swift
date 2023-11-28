@@ -24,7 +24,6 @@ public struct PalaceFontModifier: ViewModifier {
   private let palaceFontName = "OpenSans-Regular"
   
   // Font sizes are described in pixels: https://www.figma.com/file/BxLs5QNmU5tCIKhO9ccAyh/TPP-UI---Style-Guidelines?type=design&node-id=1-12&mode=design&t=sGPJYuRIuFdWCIg3-0
-  // Large title: 34 px
   private func fontSize(for textStyle: Font.TextStyle) -> CGFloat {
     switch textStyle {
     case .largeTitle: return 34
