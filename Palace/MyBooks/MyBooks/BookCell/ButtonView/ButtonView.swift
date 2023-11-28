@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import PalaceUIKit
 
 struct ButtonView: View {
   
@@ -31,7 +32,7 @@ struct ButtonView: View {
       }
       .padding(8)
     }
-    .font(Font(uiFont: UIFont.palaceFont(ofSize: 14)))
+    .palaceFont(size: 14)
     .fixedSize()
     .buttonStyle(AnimatedButton(backgroundColor: backgroundFill))
     .accessibilityLabel(accessiblityString)
@@ -44,7 +45,7 @@ struct ButtonView: View {
           .resizable()
           .square(length: 14)
         Text(endDate)
-          .font(.system(size: 9))
+          .palaceFont(size: 9)
       }
       .foregroundColor(Color(TPPConfiguration.mainColor()))
     }
