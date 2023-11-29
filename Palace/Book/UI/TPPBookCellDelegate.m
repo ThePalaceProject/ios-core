@@ -81,7 +81,7 @@ static const int kServerUpdateDelay = 15;
   [[MyBooksDownloadCenter shared] startDownloadFor:book withRequest:nil];
 }
 
-- (void)didSelectReadForBook:(TPPBook *)book
+- (void)didSelectReadForBook:(TPPBook *)book completion:(void (^ _Nullable)(void))completion
 { 
 #if defined(FEATURE_DRM_CONNECTOR)
   // Try to prevent blank books bug
@@ -89,7 +89,7 @@ static const int kServerUpdateDelay = 15;
   TPPUserAccount *user = [TPPUserAccount sharedAccount];
   if ([user hasCredentials]) {
     if ([user hasAuthToken]) {
-      [self openBook:book];
+      [self openBook:book completion:completion];
     } else
       if ([AdobeCertificate.defaultCertificate hasExpired] == NO
           && ![[NYPLADEPT sharedInstance] isUserAuthorized:[user userID]
@@ -103,21 +103,21 @@ static const int kServerUpdateDelay = 15;
                      usingExistingCredentials:YES
                      authenticationCompletion:^{
           dispatch_async(dispatch_get_main_queue(), ^{
-            [self openBook:book];   // with successful DRM activation
+            [self openBook:book completion:completion];   // with successful DRM activation
           });
         }];
       } else {
-        [self openBook:book];
+        [self openBook:book completion:completion];
       }
   } else {
-    [self openBook:book];
+    [self openBook:book completion:completion];
   }
 #else
-  [self openBook:book];
+  [self openBook:book completion:completion];
 #endif
 }
 
-- (void)openBook:(TPPBook *)book
+- (void)openBook:(TPPBook *)book completion:(void (^ _Nullable)(void))completion
 {
   [TPPCirculationAnalytics postEvent:@"open_book" withBook:book];
 
@@ -129,7 +129,7 @@ static const int kServerUpdateDelay = 15;
       [self openPDF:book];
       break;
     case TPPBookContentTypeAudiobook:
-      [self openAudiobook:book];
+      [self openAudiobook:book completion:completion];
       break;
     default:
       [self presentUnsupportedItemError];
@@ -199,11 +199,12 @@ static const int kServerUpdateDelay = 15;
   [[TPPRootTabBarController sharedController] pushViewController:vc animated:YES];
 }
 
-- (void)openAudiobook:(TPPBook *)book {
+- (void)openAudiobook:(TPPBook *)book completion:(void (^ _Nullable)(void))completion{
   NSURL *const url = [[MyBooksDownloadCenter shared] fileUrlFor:book.identifier];
   NSData *const data = [NSData dataWithContentsOfURL:url];
   if (data == nil) {
     [self presentCorruptedItemErrorForBook:book fromURL:url];
+    completion();
     return;
   }
 
