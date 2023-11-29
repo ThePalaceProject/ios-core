@@ -861,6 +861,8 @@
 		E78AE805291C1D9100884446 /* TPPBookCoverRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = E78AE7F5291BFC6200884446 /* TPPBookCoverRegistry.swift */; };
 		E78AE806291C1D9100884446 /* TPPBookLocation.swift in Sources */ = {isa = PBXBuildFile; fileRef = E78AE7FF291BFCC600884446 /* TPPBookLocation.swift */; };
 		E78AE807291C1D9600884446 /* TPPBookRegistry+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E523124A285C3828007D1DB5 /* TPPBookRegistry+Extensions.swift */; };
+		E78ED2312B18026A00773278 /* TPPPDFTextExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E78ED2302B18026A00773278 /* TPPPDFTextExtractor.swift */; };
+		E78ED2322B18026A00773278 /* TPPPDFTextExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E78ED2302B18026A00773278 /* TPPPDFTextExtractor.swift */; };
 		E792891C2861F58B000313D7 /* TPPPDFTOCView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E792891B2861F58B000313D7 /* TPPPDFTOCView.swift */; };
 		E792891D2861F58B000313D7 /* TPPPDFTOCView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E792891B2861F58B000313D7 /* TPPPDFTOCView.swift */; };
 		E79289292861F5B0000313D7 /* TPPPDFSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E79289282861F5B0000313D7 /* TPPPDFSearchView.swift */; };
@@ -1676,6 +1678,7 @@
 		E78AE7F5291BFC6200884446 /* TPPBookCoverRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBookCoverRegistry.swift; sourceTree = "<group>"; };
 		E78AE7FF291BFCC600884446 /* TPPBookLocation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBookLocation.swift; sourceTree = "<group>"; };
 		E78AE801291C1D8600884446 /* TPPBookRegistryRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBookRegistryRecord.swift; sourceTree = "<group>"; };
+		E78ED2302B18026A00773278 /* TPPPDFTextExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFTextExtractor.swift; sourceTree = "<group>"; };
 		E792891B2861F58B000313D7 /* TPPPDFTOCView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFTOCView.swift; sourceTree = "<group>"; };
 		E79289282861F5B0000313D7 /* TPPPDFSearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFSearchView.swift; sourceTree = "<group>"; };
 		E795A7632A74074200314EC8 /* AudiobookTimeEntry.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AudiobookTimeEntry.swift; sourceTree = "<group>"; };
@@ -3157,6 +3160,7 @@
 				E7861C552846B38C00B3A38A /* TPPEncryptedPDFDataProvider.h */,
 				E7861C562846B38C00B3A38A /* TPPEncryptedPDFDataProvider.m */,
 				E731FF472864C3BF001DB7F2 /* TPPPDFReaderMode.swift */,
+				E78ED2302B18026A00773278 /* TPPPDFTextExtractor.swift */,
 			);
 			path = Model;
 			sourceTree = "<group>";
@@ -3856,6 +3860,7 @@
 				73EB0A9C25821DF4006BC997 /* TPPLinearView.m in Sources */,
 				E7862A242773926700BE8AB8 /* View+Extensions.swift in Sources */,
 				73D8D27E25A68D4300DF5F69 /* TPPReaderBookmarksBusinessLogic.swift in Sources */,
+				E78ED2322B18026A00773278 /* TPPPDFTextExtractor.swift in Sources */,
 				E733E4B12AFD7A3500D5052A /* Account+profileDocument.swift in Sources */,
 				21045C562761092C00D2D407 /* TPPOnboardingViewController.swift in Sources */,
 				17631AF025E488CD006079C4 /* TPPAgeCheckViewController.swift in Sources */,
@@ -4133,6 +4138,7 @@
 				E5824BF129988C4E00DE76C2 /* TPPSAMLHelper.m in Sources */,
 				E706F60F286388B3000B7431 /* TPPPDFDocumentMetadata.swift in Sources */,
 				E7861C4B28468AB200B3A38A /* TPPPDFDocumentView.swift in Sources */,
+				E78ED2312B18026A00773278 /* TPPPDFTextExtractor.swift in Sources */,
 				739062D225358CF900D0743D /* TPPSignInBusinessLogicUIDelegate.swift in Sources */,
 				E57E798429D4D407006D0F87 /* String+Extensions.swift in Sources */,
 				E7376EC0287DE9C00095AADF /* CGSize.swift in Sources */,
