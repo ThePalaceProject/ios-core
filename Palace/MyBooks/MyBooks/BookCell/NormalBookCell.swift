@@ -9,6 +9,7 @@
 
 import SwiftUI
 import Combine
+import PalaceUIKit
 
 struct NormalBookCell: View {
   @ObservedObject var model: BookCellModel
@@ -65,11 +66,11 @@ struct NormalBookCell: View {
     VStack(alignment: .leading) {
       Text(model.title)
         .lineLimit(2)
-        .font(Font(uiFont: UIFont.palaceFont(ofSize: 17)))
+        .palaceFont(size: 17)
         .fixedSize(horizontal: false, vertical: true)
         .accessibilityLabel(model.book.defaultBookContentType == .audiobook ? "\(model.book.title). Audiobook." : model.book.title)
       Text(model.authors)
-        .font(Font(uiFont: UIFont.palaceFont(ofSize: 12)))
+        .palaceFont(size: 12)
     }
   }
   
@@ -83,6 +84,7 @@ struct NormalBookCell: View {
         )
         .disabled(type.isDisabled)
         .opacity(type.isDisabled ? 0.5 : 1.0)
+        .palaceFont(.body)
       }
     }
   }

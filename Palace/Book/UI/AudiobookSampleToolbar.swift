@@ -8,6 +8,7 @@
 
 import SwiftUI
 import Combine
+import PalaceUIKit
 
 struct AudiobookSampleToolbar: View {
   typealias Images = ImageProviders.AudiobookSampleToolbar
@@ -60,8 +61,9 @@ struct AudiobookSampleToolbar: View {
   private var infoView: some View {
     VStack(alignment: .leading) {
       Text(book.title)
-        .bold()
+        .palaceFont(.body, weight: .bold)
       Text(player.remainingTime.displayFormat())
+        .palaceFont(.body)
     }
   }
 
