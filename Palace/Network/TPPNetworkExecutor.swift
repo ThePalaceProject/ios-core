@@ -78,10 +78,9 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
   /// the network or from the cache.
   /// - Returns: The task issueing the given request.
   @discardableResult
-  func executeRequest(_ req: URLRequest, completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask {
+  func executeRequest(_ req: URLRequest, completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask? {
     let userAccount = TPPUserAccount.sharedAccount()
     
-    // Handle SAML authentication
     if let authDefinition = userAccount.authDefinition, authDefinition.isSaml {
       return performDataTask(with: req, completion: completion)
     }
@@ -99,8 +98,7 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
     
     return performDataTask(with: req, completion: completion)
   }
-  
-  /// Creates an error object for retry failure scenario.
+
   private func createErrorForRetryFailure() -> NSError {
     return NSError(
       domain: TPPErrorLogger.clientDomain,
@@ -108,30 +106,6 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
       userInfo: [NSLocalizedDescriptionKey: "Unauthorized HTTP after token refresh attempt"]
     )
   }
-//  func executeRequest(_ req: URLRequest, completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask {
-//    var resultTask: URLSessionDataTask?
-//    
-//    if let authDefinition = TPPUserAccount.sharedAccount().authDefinition, authDefinition.isSaml {
-//      resultTask = performDataTask(with: req, completion: completion)
-//    } else if TPPUserAccount.sharedAccount().isTokenRefreshRequired() {
-//      handleTokenRefresh(for: req, completion: completion)
-//    } else if !TPPUserAccount.sharedAccount().authTokenHasExpired || !req.isTokenAuthorized || req.hasRetried {
-//      if req.hasRetried {
-//        let error = NSError(
-//          domain: TPPErrorLogger.clientDomain,
-//          code: TPPErrorCode.invalidCredentials.rawValue,
-//          userInfo: [NSLocalizedDescriptionKey: "Unauthorized HTTP after token refresh attempt"]
-//        )
-//        completion(NYPLResult.failure(error, nil))
-//      } else {
-//        resultTask = performDataTask(with: req, completion: completion)
-//      }
-//    } else {
-//      handleTokenRefresh(for: req, completion: completion)
-//    }
-//    
-//    return resultTask ?? URLSessionDataTask()
-//  }
 
   private func handleTokenRefresh(for req: URLRequest, completion: @escaping (_: NYPLResult<Data>) -> Void) {
     refreshTokenAndResume(task: nil) { [weak self] newToken in
@@ -148,6 +122,7 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
       }
     }
   }
+
   private func performDataTask(with request: URLRequest,
                                completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask {
     let task = urlSession.dataTask(with: request)
@@ -231,7 +206,7 @@ extension TPPNetworkExecutor {
   ///   - completion: Always called when the resource is either fetched from
   /// the network or from the cache.
   @objc func addBearerAndExecute(_ request: URLRequest,
-                     completion: @escaping (_ result: Data?, _ response: URLResponse?,  _ error: Error?) -> Void) -> URLSessionDataTask {
+                     completion: @escaping (_ result: Data?, _ response: URLResponse?,  _ error: Error?) -> Void) -> URLSessionDataTask? {
     let req = TPPNetworkExecutor.bearerAuthorized(request: request)
     let completionWrapper: (_ result: NYPLResult<Data>) -> Void = { result in
       switch result {
@@ -241,24 +216,42 @@ extension TPPNetworkExecutor {
     }
     return executeRequest(req, completion: completionWrapper)
   }
-
-  /// Performs a GET request using the specified URL
+  
+  // Performs a GET request using the specified URL
   /// - Parameters:
   ///   - reqURL: URL of the resource to GET.
   ///   - completion: Always called when the resource is either fetched from
   /// the network or from the cache.
   @objc func GET(_ reqURL: URL,
                  cachePolicy: NSURLRequest.CachePolicy = .useProtocolCachePolicy,
-                 completion: @escaping (_ result: Data?, _ response: URLResponse?,  _ error: Error?) -> Void) -> URLSessionDataTask {
-    var req = request(for: reqURL)
-    req.cachePolicy = cachePolicy
+                 completion: @escaping (_ result: Data?, _ response: URLResponse?,  _ error: Error?) -> Void) -> URLSessionDataTask? {
+    GET(request: request(for: reqURL), cachePolicy: cachePolicy, completion: completion)
+  }
+  
+  /// Performs a GET request using the specified URLRequest
+  /// - Parameters:
+  ///   - request: URLRequest of the resource to GET.
+  ///   - completion: Always called when the resource is either fetched from
+  /// the network or from the cache.
+  @objc func GET(request: URLRequest,
+                 cachePolicy: NSURLRequest.CachePolicy = .useProtocolCachePolicy,
+                 completion: @escaping (_ result: Data?, _ response: URLResponse?,  _ error: Error?) -> Void) -> URLSessionDataTask? {
+    if (request.httpMethod != "GET") {
+      var newRequest = request
+      newRequest.httpMethod = "GET"
+      return GET(request: newRequest, cachePolicy: cachePolicy, completion: completion)
+    }
+    
+    var updatedReq = request
+    updatedReq.cachePolicy = cachePolicy
+    
     let completionWrapper: (_ result: NYPLResult<Data>) -> Void = { result in
       switch result {
       case let .success(data, response): completion(data, response, nil)
       case let .failure(error, response): completion(nil, response, error)
       }
     }
-    return executeRequest(req, completion: completionWrapper)
+    return executeRequest(updatedReq, completion: completionWrapper)
   }
 
   /// Performs a PUT request using the specified URL
@@ -267,16 +260,30 @@ extension TPPNetworkExecutor {
   ///   - completion: Always called when the resource is either fetched from
   /// the network or from the cache.
   @objc func PUT(_ reqURL: URL,
-                 completion: @escaping (_ result: Data?, _ response: URLResponse?,  _ error: Error?) -> Void) -> URLSessionDataTask {
-    var req = request(for: reqURL)
-    req.httpMethod = "PUT"
+                 completion: @escaping (_ result: Data?, _ response: URLResponse?,  _ error: Error?) -> Void) -> URLSessionDataTask? {
+    PUT(request: request(for: reqURL), completion: completion)
+  }
+
+  /// Performs a PUT request using the specified URLRequest
+  /// - Parameters:
+  ///   - request: URLRequest of the resource to PUT.
+  ///   - completion: Always called when the resource is either fetched from
+  /// the network or from the cache.
+  @objc func PUT(request: URLRequest,
+                 completion: @escaping (_ result: Data?, _ response: URLResponse?,  _ error: Error?) -> Void) -> URLSessionDataTask? {
+    if (request.httpMethod != "PUT") {
+      var newRequest = request
+      newRequest.httpMethod = "PUT"
+      return PUT(request: newRequest, completion: completion)
+    }
+
     let completionWrapper: (_ result: NYPLResult<Data>) -> Void = { result in
       switch result {
       case let .success(data, response): completion(data, response, nil)
       case let .failure(error, response): completion(nil, response, error)
       }
     }
-    return executeRequest(req, completion: completionWrapper)
+    return executeRequest(request, completion: completionWrapper)
   }
     
   /// Performs a POST request using the specified request
@@ -286,12 +293,37 @@ extension TPPNetworkExecutor {
   @discardableResult
   @objc
   func POST(_ request: URLRequest,
-            completion: ((_ result: Data?, _ response: URLResponse?,  _ error: Error?) -> Void)?) -> URLSessionDataTask {
+            completion: ((_ result: Data?, _ response: URLResponse?,  _ error: Error?) -> Void)?) -> URLSessionDataTask? {
     
     if (request.httpMethod != "POST") {
       var newRequest = request
       newRequest.httpMethod = "POST"
       return POST(newRequest, completion: completion)
+    }
+    
+    let completionWrapper: (_ result: NYPLResult<Data>) -> Void = { result in
+      switch result {
+      case let .success(data, response): completion?(data, response, nil)
+      case let .failure(error, response): completion?(nil, response, error)
+      }
+    }
+    
+    return executeRequest(request, completion: completionWrapper)
+  }
+  
+  /// Performs a DELETE request using the specified request
+  /// - Parameters:
+  ///   - request: Request to be deleted..
+  ///   - completion: Always called when the api call either returns or times out
+  @discardableResult
+  @objc
+  func DELETE(_ request: URLRequest,
+            completion: ((_ result: Data?, _ response: URLResponse?,  _ error: Error?) -> Void)?) -> URLSessionDataTask? {
+    
+    if (request.httpMethod != "DELETE") {
+      var newRequest = request
+      newRequest.httpMethod = "DELETE"
+      return DELETE(newRequest, completion: completion)
     }
     
     let completionWrapper: (_ result: NYPLResult<Data>) -> Void = { result in

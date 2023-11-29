@@ -37,6 +37,7 @@ import Foundation
   private class func addToOfflineAnalyticsQueue(_ event: String, _ bookURL: URL) -> Void
   {
     let libraryID = AccountsManager.shared.currentAccount?.uuid ?? ""
-    NetworkQueue.shared().addRequest(libraryID, nil, bookURL, .GET, nil, TPPAnnotations.headers)
+    let headers = TPPNetworkExecutor.shared.request(for: bookURL).allHTTPHeaderFields
+    NetworkQueue.shared().addRequest(libraryID, nil, bookURL, .GET, nil, headers)
   }
 }

@@ -98,7 +98,7 @@ class AudiobookSamplePlayer: NSObject, ObservableObject {
   private func downloadFile() {
     state = .loading
 
-    let _ = sample.fetchSample { [unowned self]  result in
+    let _ = sample.fetchSample { [weak self]  result in
       switch result {
       case let .failure(error, _):
         // TODO: Surface error and display alert
@@ -106,8 +106,8 @@ class AudiobookSamplePlayer: NSObject, ObservableObject {
         return
       case let .success(result, _):
         DispatchQueue.main.async {
-          self.state = .paused
-          try? self.setupPlayer(data: result)
+          self?.state = .paused
+          try? self?.setupPlayer(data: result)
         }
       }
     }

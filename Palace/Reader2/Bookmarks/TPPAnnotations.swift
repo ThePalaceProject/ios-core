@@ -134,15 +134,11 @@ protocol AnnotationsManager {
       Log.error(#file, "Failed to create user profile URL from string. Abandoning attempt to retrieve sync setting.")
       return
     }
+    
+    var request = TPPNetworkExecutor.shared.request(for: userProfileUrl)
+    request.timeoutInterval = 60
 
-    var request = URLRequest.init(url: userProfileUrl,
-                                  cachePolicy: .reloadIgnoringLocalCacheData,
-                                  timeoutInterval: 60)
-    request.httpMethod = "GET"
-    setDefaultAnnotationHeaders(forRequest: &request)
-
-    let dataTask = URLSession.shared.dataTask(with: request) { (data, response, error) in
-
+    let dataTask = TPPNetworkExecutor.shared.GET(request: request) { (data, response, error) in
       DispatchQueue.main.async {
 
         if let error = error as NSError? {
@@ -172,7 +168,7 @@ protocol AnnotationsManager {
         }
       }
     }
-    dataTask.resume()
+    dataTask?.resume()
   }
 
   /// - parameter completion: if a network request is actually performed, this
@@ -188,17 +184,14 @@ protocol AnnotationsManager {
       return
     }
     
-    var request = URLRequest(url: url)
-    request.httpMethod = "PUT"
+    var request = TPPNetworkExecutor.shared.request(for: url)
     request.httpBody = jsonData
-    setDefaultAnnotationHeaders(forRequest: &request)
     request.setValue("vnd.librarysimplified/user-profile+json", forHTTPHeaderField: "Content-Type")
     if let timeout = timeout {
       request.timeoutInterval = timeout
     }
     
-    let task = URLSession.shared.dataTask(with: request) { (data, response, error) in
-
+    let task = TPPNetworkExecutor.shared.PUT(request: request) { (data, response, error) in
       DispatchQueue.main.async {
 
         if let error = error as NSError? {
@@ -223,7 +216,7 @@ protocol AnnotationsManager {
         }
       }
     }
-    task.resume()
+    task?.resume()
   }
 
   class func handleSyncSettingError() {
@@ -412,7 +405,7 @@ protocol AnnotationsManager {
         completionHandler(false, nil)
       }
     }
-    task.resume()
+    task?.resume()
   }
 
   private class func annotationID(fromNetworkData data: Data?) -> String? {
@@ -453,9 +446,6 @@ protocol AnnotationsManager {
       return
     }
     
-//    var request = TPPNetworkExecutor.shared.request(for: annotationURL)
-//    request.timeoutInterval = TPPDefaultRequestTimeout
-    
     let dataTask = TPPNetworkExecutor.shared.GET(annotationURL) { (data, response, error) in
       
       if let error = error as NSError? {
@@ -487,7 +477,8 @@ protocol AnnotationsManager {
 
       completion(bookmarks)
     }
-    dataTask.resume()
+
+    dataTask?.resume()
   }
 
   class func deleteBookmarks(_ bookmarks: [TPPReadiumBookmark]) {
@@ -525,12 +516,10 @@ protocol AnnotationsManager {
       return
     }
 
-    var request = URLRequest(url: url)
-    request.httpMethod = "DELETE"
-    setDefaultAnnotationHeaders(forRequest: &request)
+    var request = TPPNetworkExecutor.shared.request(for: url)
     request.timeoutInterval = TPPDefaultRequestTimeout
 
-    let task = URLSession.shared.dataTask(with: request) { (data, response, error) in
+    let task = TPPNetworkExecutor.shared.DELETE(request) { (data, response, error) in
       let response = response as? HTTPURLResponse
       if response?.statusCode == 200 {
         Log.info(#file, "200: DELETE bookmark success")
@@ -544,7 +533,8 @@ protocol AnnotationsManager {
         completionHandler(false)
       }
     }
-    task.resume()
+  
+    task?.resume()
   }
 
 
@@ -603,13 +593,13 @@ protocol AnnotationsManager {
   static var annotationsURL: URL? {
     return TPPConfiguration.mainFeedURL()?.appendingPathComponent("annotations/")
   }
-
+  
+  
   private class func setDefaultAnnotationHeaders(forRequest request: inout URLRequest) {
     for (headerKey, headerValue) in TPPAnnotations.headers {
       request.setValue(headerValue, forHTTPHeaderField: headerKey)
     }
   }
-
   class var headers: [String:String] {
     if let barcode = TPPUserAccount.sharedAccount().barcode, let pin = TPPUserAccount.sharedAccount().PIN {
       let authenticationString = "\(barcode):\(pin)"
@@ -621,9 +611,9 @@ protocol AnnotationsManager {
         Log.error(#file, "Error formatting auth headers.")
       }
     } else if let authToken = TPPUserAccount.sharedAccount().authToken {
-        let authenticationValue = "Bearer \(authToken)"
-        return ["Authorization" : "\(authenticationValue)",
-            "Content-Type" : "application/json"]
+      let authenticationValue = "Bearer \(authToken)"
+      return ["Authorization" : "\(authenticationValue)",
+              "Content-Type" : "application/json"]
     } else {
       Log.error(#file, "Attempted to create authorization header with neither an oauth token nor a barcode and pin pair.")
     }
@@ -634,6 +624,7 @@ protocol AnnotationsManager {
   private class func addToOfflineQueue(_ bookID: String?, _ url: URL, _ parameters: [String:Any]) {
     let libraryID = AccountsManager.shared.currentAccount?.uuid ?? ""
     let parameterData = try? JSONSerialization.data(withJSONObject: parameters, options: [.prettyPrinted])
+//    let headers = TPPNetworkExecutor.shared.request(for: url).allHTTPHeaderFields
     NetworkQueue.shared().addRequest(libraryID, bookID, url, .POST, parameterData, headers)
   }
 }
