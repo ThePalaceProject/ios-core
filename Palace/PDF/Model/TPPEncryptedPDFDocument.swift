@@ -82,7 +82,7 @@ import UIKit
       let textBlocks = extractor.extractText(page: page)
       let lowercaseBlocks = textBlocks.map { $0.lowercased() }
       for (i, textBlock) in lowercaseBlocks.enumerated() {
-        if textBlock.contains(text) {
+        if textBlock.contains(searchText) {
           // ! CGPDF first page index is 1, that's why we subtract 1 from pageNumber
           result.append(TPPPDFLocation(title: textBlocks[i], subtitle: nil, pageLabel: nil, pageNumber: page.pageNumber - 1))
         }
