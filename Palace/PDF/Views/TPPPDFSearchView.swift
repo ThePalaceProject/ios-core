@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import PalaceUIKit
 
 /// Search view
 struct TPPPDFSearchView: View {
@@ -33,12 +34,13 @@ struct TPPPDFSearchView: View {
           done()
         } label: {
           Text(Strings.Generic.done)
-            .bold()
+            .palaceFont(.body, weight: .bold)
         }
         .padding()
       }
       Divider()
       TextField(Strings.Generic.search, text: $searchText.onChange(performSearch))
+        .palaceFont(.body)
         .frame(minHeight: 44)
         .padding(.horizontal)
       Divider()
