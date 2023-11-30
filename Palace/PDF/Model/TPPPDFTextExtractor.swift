@@ -36,6 +36,12 @@ class TPPPDFTextExtractor {
     }
     let scanner = CGPDFScannerCreate(stream, operatorTable, Unmanaged.passUnretained(self).toOpaque())
     CGPDFScannerScan(scanner)
+    
+    // Release resources
+    CGPDFScannerRelease(scanner)
+    CGPDFOperatorTableRelease(operatorTable!)
+    CGPDFContentStreamRelease(stream)
+    
     return textBlocks
   }
   
