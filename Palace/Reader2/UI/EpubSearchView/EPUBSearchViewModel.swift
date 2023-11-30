@@ -14,6 +14,8 @@ protocol EPUBSearchDelegate: class {
   func didSelect(location: Locator)
 }
 
+typealias SearchViewSection = (id: String, title: String, locators: [Locator])
+
 final class EPUBSearchViewModel: ObservableObject {
   enum State {
     case empty
@@ -35,7 +37,7 @@ final class EPUBSearchViewModel: ObservableObject {
   
   @Published private(set) var state: State = .empty
   @Published private(set) var results: [Locator] = []
-  @Published private(set) var groupedResults: [(title: String, locators: [Locator])] = []
+  @Published private(set) var sections: [SearchViewSection] = []
 
   private var publication: Publication
   weak var delegate: EPUBSearchDelegate?
@@ -117,8 +119,8 @@ final class EPUBSearchViewModel: ObservableObject {
       }
     }
     
-    self.groupedResults = groupedResults
-      .map { (title: $0.value.first?.title ?? "", locators: $0.value) }
+    self.sections = groupedResults
+      .map { (id: UUID().uuidString, title: $0.value.first?.title ?? "", locators: $0.value) }
       .sorted { section1, section2 in
         let href1 = section1.locators.first?.href.split(separator: "/").dropFirst(2).joined(separator: "/") ?? ""
         let href2 = section2.locators.first?.href.split(separator: "/").dropFirst(2).joined(separator: "/") ?? ""

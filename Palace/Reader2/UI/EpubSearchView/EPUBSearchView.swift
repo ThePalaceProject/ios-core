@@ -56,15 +56,14 @@ struct EPUBSearchView: View {
   @ViewBuilder private var listView: some View {
     ZStack {
       List {
-        ForEach(viewModel.groupedResults, id: \.title) { section in
-          Section(header: sectionHeaderView(title: section.title)) {
-            ForEach(section.locators, id: \.self) { locator in
-              rowView(locator)
-                .onAppear(perform: {
-                  if shouldFetchMoreResults(for: locator) {
-                    viewModel.fetchNextBatch()
-                  }
-                })
+        ForEach(viewModel.sections, id: \.id) { section in
+          if section.title.isEmpty {
+            Section {
+              sectionContent(section)
+            }
+          } else {
+            Section(header: sectionHeaderView(title: section.title)) {
+              sectionContent(section)
             }
           }
         }
@@ -83,9 +82,20 @@ struct EPUBSearchView: View {
       }
     }
   }
+  
+  @ViewBuilder private func sectionContent(_ section: SearchViewSection) -> some View {
+    ForEach(section.locators, id: \.self) { locator in
+      rowView(locator)
+        .onAppear(perform: {
+          if shouldFetchMoreResults(for: locator) {
+            viewModel.fetchNextBatch()
+          }
+        })
+    }
+  }
 
   private func shouldFetchMoreResults(for locator: Locator) -> Bool {
-    if let lastSection = viewModel.groupedResults.last,
+    if let lastSection = viewModel.sections.last,
        let lastLocator = lastSection.locators.last {
       return locator.href == lastLocator.href
     }
