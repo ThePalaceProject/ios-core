@@ -593,38 +593,11 @@ protocol AnnotationsManager {
   static var annotationsURL: URL? {
     return TPPConfiguration.mainFeedURL()?.appendingPathComponent("annotations/")
   }
-  
-  
-  private class func setDefaultAnnotationHeaders(forRequest request: inout URLRequest) {
-    for (headerKey, headerValue) in TPPAnnotations.headers {
-      request.setValue(headerValue, forHTTPHeaderField: headerKey)
-    }
-  }
-  class var headers: [String:String] {
-    if let barcode = TPPUserAccount.sharedAccount().barcode, let pin = TPPUserAccount.sharedAccount().PIN {
-      let authenticationString = "\(barcode):\(pin)"
-      if let authenticationData = authenticationString.data(using: String.Encoding.ascii) {
-        let authenticationValue = "Basic \(authenticationData.base64EncodedString(options: .lineLength64Characters))"
-        return ["Authorization" : "\(authenticationValue)",
-                "Content-Type" : "application/json"]
-      } else {
-        Log.error(#file, "Error formatting auth headers.")
-      }
-    } else if let authToken = TPPUserAccount.sharedAccount().authToken {
-      let authenticationValue = "Bearer \(authToken)"
-      return ["Authorization" : "\(authenticationValue)",
-              "Content-Type" : "application/json"]
-    } else {
-      Log.error(#file, "Attempted to create authorization header with neither an oauth token nor a barcode and pin pair.")
-    }
-    return ["Authorization" : "",
-            "Content-Type" : "application/json"]
-  }
 
   private class func addToOfflineQueue(_ bookID: String?, _ url: URL, _ parameters: [String:Any]) {
     let libraryID = AccountsManager.shared.currentAccount?.uuid ?? ""
     let parameterData = try? JSONSerialization.data(withJSONObject: parameters, options: [.prettyPrinted])
-//    let headers = TPPNetworkExecutor.shared.request(for: url).allHTTPHeaderFields
+    let headers = TPPNetworkExecutor.shared.request(for: url).allHTTPHeaderFields
     NetworkQueue.shared().addRequest(libraryID, bookID, url, .POST, parameterData, headers)
   }
 }
