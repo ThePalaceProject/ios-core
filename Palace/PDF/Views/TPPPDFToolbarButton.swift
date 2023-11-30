@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import PalaceUIKit
 
 /// Preconfigured toolbar button view
 struct TPPPDFToolbarButton: View {
@@ -34,6 +35,7 @@ struct TPPPDFToolbarButton: View {
       }
       if let text = text {
         Text(text)
+          .palaceFont(.body)
       }
     }
     .toolbarButtonSize()
