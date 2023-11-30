@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import PalaceUIKit
 
 /// Floating label
 ///
@@ -21,8 +22,7 @@ struct TPPPDFLabel: View {
   
   var body: some View {
     Text(text)
-      .font(.subheadline)
-      .fontWeight(.semibold)
+      .palaceFont(.subheadline, weight: .semibold)
       .multilineTextAlignment(.center)
       .padding(.horizontal)
       .padding(.vertical, 6)

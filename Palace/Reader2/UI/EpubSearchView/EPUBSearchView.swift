@@ -10,6 +10,7 @@ import SwiftUI
 import Combine
 import R2Shared
 import R2Navigator
+import PalaceUIKit
 
 struct EPUBSearchView: View {
   @ObservedObject var viewModel: EPUBSearchViewModel
@@ -55,15 +56,14 @@ struct EPUBSearchView: View {
   @ViewBuilder private var listView: some View {
     ZStack {
       List {
-        ForEach(viewModel.groupedResults, id: \.title) { section in
-          Section(header: sectionHeaderView(title: section.title)) {
-            ForEach(section.locators, id: \.self) { locator in
-              rowView(locator)
-                .onAppear(perform: {
-                  if shouldFetchMoreResults(for: locator) {
-                    viewModel.fetchNextBatch()
-                  }
-                })
+        ForEach(viewModel.sections, id: \.id) { section in
+          if section.title.isEmpty {
+            Section {
+              sectionContent(section)
+            }
+          } else {
+            Section(header: sectionHeaderView(title: section.title)) {
+              sectionContent(section)
             }
           }
         }
@@ -76,14 +76,26 @@ struct EPUBSearchView: View {
           ProgressView()
         } else if viewModel.results.isEmpty && searchQuery != "" {
           Text(Strings.TPPEPUBViewController.emptySearchView)
+            .palaceFont(.body)
         }
         Spacer()
       }
     }
   }
+  
+  @ViewBuilder private func sectionContent(_ section: SearchViewSection) -> some View {
+    ForEach(section.locators, id: \.self) { locator in
+      rowView(locator)
+        .onAppear(perform: {
+          if shouldFetchMoreResults(for: locator) {
+            viewModel.fetchNextBatch()
+          }
+        })
+    }
+  }
 
   private func shouldFetchMoreResults(for locator: Locator) -> Bool {
-    if let lastSection = viewModel.groupedResults.last,
+    if let lastSection = viewModel.sections.last,
        let lastLocator = lastSection.locators.last {
       return locator.href == lastLocator.href
     }
@@ -91,9 +103,8 @@ struct EPUBSearchView: View {
   }
 
   private func sectionHeaderView(title: String) -> some View {
-    Text(title.uppercased(  ))
-      .padding(.leading)
-      .font(.largeTitle)
+    Text(title.uppercased())
+      .palaceFont(.headline)
       .foregroundColor(.black.opacity(0.8))
       .textCase(.none)
       .frame(maxWidth: .infinity, alignment: .leading)
@@ -116,12 +127,13 @@ struct EPUBSearchView: View {
       
       var highlight = AttributedString(text.highlight ?? "")
       highlight.backgroundColor = .red.opacity(0.3)
-      highlight.font = .system(size: 16, weight: .medium)
+      highlight.font = .semiBoldPalaceFont(ofSize: UIFont.preferredFont(forTextStyle: .body).pointSize)
       
       combinedText.append(highlight)
       combinedText.append(AttributedString(text.after ?? ""))
       
       return Text(combinedText)
+        .palaceFont(.body)
         .onTapGesture {
           viewModel.userSelected(locator)
         }
@@ -132,6 +144,7 @@ struct EPUBSearchView: View {
         Text(text.highlight ?? "").foregroundColor(Color.red).fontWeight(.medium) +
         Text(text.after ?? "")
       }
+      .palaceFont(.body)
       .onTapGesture {
         viewModel.userSelected(locator)
       }

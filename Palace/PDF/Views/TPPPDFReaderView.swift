@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import PalaceUIKit
 
 struct TPPPDFReaderView: View {
   
@@ -76,12 +77,14 @@ struct TPPPDFReaderView: View {
         .visible(when: readerMode == .bookmarks)
     } else {
       Text(NSLocalizedString("There are no bookmarks for this book.", comment: ""))
+        .palaceFont(.body)
     }
   }
   
   @ViewBuilder
   var unableToLoadView: some View {
     Text("Unable to load PDF file")
+      .palaceFont(.body)
   }
   
   /// Done picking a page
