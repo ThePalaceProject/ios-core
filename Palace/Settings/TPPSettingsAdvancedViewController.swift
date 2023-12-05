@@ -56,24 +56,8 @@ import UIKit
   }
   
   private func disableSync() {
-    //Disable UI while working
-    let alert = UIAlertController(title: nil, message: DisplayStrings.pleaseWait, preferredStyle: .alert)
-    let loadingIndicator = UIActivityIndicatorView(frame: CGRect(x: 10, y: 5, width: 50, height: 50))
-    loadingIndicator.hidesWhenStopped = true
-    loadingIndicator.style = .medium
-    loadingIndicator.startAnimating();
-
-    alert.view.addSubview(loadingIndicator)
-    present(alert, animated: true, completion: nil)
-
-    TPPAnnotations.updateServerSyncSetting(toEnabled: false, completion: { success in
-      self.dismiss(animated: true, completion: nil)
-      if (success) {
-        self.account.details?.syncPermissionGranted = false;
-        TPPSettings.shared.userHasSeenFirstTimeSyncMessage = false;
-        self.navigationController?.popViewController(animated: true)
-      }
-    })
+    self.account.details?.syncPermissionGranted = false;
+    self.navigationController?.popViewController(animated: true)
   }
   
   // MARK: - UITableViewDataSource

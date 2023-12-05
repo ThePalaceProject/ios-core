@@ -332,7 +332,6 @@ Authenticating with any of those barcodes should work.
   [self setupTableData];
   
   self.syncSwitch = [[UISwitch alloc] initWithFrame:CGRectZero];
-  [self checkSyncPermissionForCurrentPatron];
 }
 
 - (NSArray *) cellsForAuthMethod:(AccountDetailsAuthentication *)authenticationMethod {
@@ -1195,7 +1194,6 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
 {
   [[NSOperationQueue mainQueue] addOperationWithBlock:^{
     if(self.selectedUserAccount.hasCredentials) {
-      [self checkSyncPermissionForCurrentPatron];
       self.usernameTextField.text = self.selectedUserAccount.barcode;
       self.usernameTextField.enabled = NO;
       self.usernameTextField.textColor = [UIColor grayColor];
@@ -1368,29 +1366,8 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
 - (void)syncSwitchChanged:(UISwitch*)sender
 {
   const BOOL currentSwitchState = sender.on;
-
-  if (sender.on) {
-    self.syncSwitch.enabled = NO;
-  } else {
-    self.syncSwitch.on = NO;
-  }
-
-  __weak __auto_type weakSelf = self;
-  [self.businessLogic changeSyncPermissionTo:currentSwitchState
-                    postServerSyncCompletion:^(BOOL success) {
-    weakSelf.syncSwitch.enabled = YES;
-    weakSelf.syncSwitch.on = success;
-  }];
-}
-
-- (void)checkSyncPermissionForCurrentPatron
-{
-  [self.businessLogic checkSyncPermissionWithPreWork:^{
-    self.syncSwitch.enabled = NO;
-  } postWork:^(BOOL enableSync){
-    self.syncSwitch.on = enableSync;
-    self.syncSwitch.enabled = YES;
-  }];
+  self.syncSwitch.enabled = currentSwitchState;
+  self.syncSwitch.on = currentSwitchState;
 }
 
 #pragma mark - UIApplication callbacks
