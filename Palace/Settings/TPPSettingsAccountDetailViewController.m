@@ -903,6 +903,8 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
                                      initWithStyle:UITableViewCellStyleDefault
                                      reuseIdentifier:nil];
       self.syncSwitch.on = self.selectedAccount.details.syncPermissionGranted;
+      self.syncSwitch.enabled = true;
+
       cell.accessoryView = self.syncSwitch;
       [self.syncSwitch addTarget:self action:@selector(syncSwitchChanged:) forControlEvents:UIControlEventValueChanged];
       cell.selectionStyle = UITableViewCellSelectionStyleNone;
@@ -1365,9 +1367,8 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
 
 - (void)syncSwitchChanged:(UISwitch*)sender
 {
-  const BOOL currentSwitchState = sender.on;
-  self.syncSwitch.enabled = currentSwitchState;
-  self.syncSwitch.on = currentSwitchState;
+  self.syncSwitch.on = sender.on;
+  self.selectedAccount.details.syncPermissionGranted = sender.on;
 }
 
 #pragma mark - UIApplication callbacks

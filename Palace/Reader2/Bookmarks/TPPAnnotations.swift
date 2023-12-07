@@ -286,11 +286,6 @@ protocol AnnotationsManager {
 
   class func deleteBookmarks(_ bookmarks: [TPPReadiumBookmark]) {
 
-    if !syncIsPossibleAndPermitted() {
-      Log.debug(#file, "Account does not support sync or sync is disabled.")
-      return
-    }
-
     for localBookmark in bookmarks {
       if let annotationID = localBookmark.annotationId {
         deleteBookmark(annotationId: annotationID) { success in
@@ -309,7 +304,7 @@ protocol AnnotationsManager {
 
     if !syncIsPossibleAndPermitted() {
       Log.debug(#file, "Account does not support sync or sync is disabled.")
-      completionHandler(false)
+      completionHandler(true)
       return
     }
 
