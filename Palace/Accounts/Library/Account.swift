@@ -211,7 +211,7 @@ protocol AccountLogoDelegate: AnyObject {
   }
   var syncPermissionGranted:Bool {
     get {
-      return getAccountDictionaryKey(accountSyncEnabledKey) as? Bool ?? false
+      return getAccountDictionaryKey(accountSyncEnabledKey) as? Bool ?? true
     }
     set {
       setAccountDictionaryKey(accountSyncEnabledKey, toValue: newValue as AnyObject)

@@ -140,13 +140,6 @@ static const int kServerUpdateDelay = 15;
 - (void)openEPUB:(TPPBook *)book
 {
   [[TPPRootTabBarController sharedController] presentBook:book];
-  
-  [TPPAnnotations requestServerSyncStatusForAccount:[TPPUserAccount sharedAccount] completion:^(BOOL enableSync) {
-    if (enableSync == YES) {
-      Account *currentAccount = [[AccountsManager sharedInstance] currentAccount];
-      currentAccount.details.syncPermissionGranted = enableSync;
-    }
-  }];
 }
 
 - (void)openPDF:(TPPBook *)book {

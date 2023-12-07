@@ -22,7 +22,7 @@ class TPPRequestExecutorMock: TPPRequestExecuting {
   }
 
   func executeRequest(_ req: URLRequest,
-                      completion: @escaping (NYPLResult<Data>) -> Void) -> URLSessionDataTask? {
+                      completion: @escaping (NYPLResult<Data>) -> Void) -> URLSessionDataTask {
 
     DispatchQueue.main.async {
       guard let url = req.url else {

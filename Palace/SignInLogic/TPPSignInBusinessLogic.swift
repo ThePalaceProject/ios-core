@@ -84,9 +84,6 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     self.samlHelper.businessLogic = self
   }
 
-  /// Lock for ensuring internal state consistency.
-  let permissionsCheckLock = NSLock()
-
   /// Signing in and out may imply syncing the book registry.
   let bookRegistry: TPPBookRegistrySyncing
 
