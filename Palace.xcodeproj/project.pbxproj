@@ -213,7 +213,6 @@
 		21E41795292812B700A78606 /* TPPSignInBusinessLogic+CardCreation.swift in Sources */ = {isa = PBXBuildFile; fileRef = E74752F627FF044400F5E7FA /* TPPSignInBusinessLogic+CardCreation.swift */; };
 		21E417962928136300A78606 /* AudiobookSampleToolbar.swift in Sources */ = {isa = PBXBuildFile; fileRef = E59892EC28AC909000C44A85 /* AudiobookSampleToolbar.swift */; };
 		21E417972928137E00A78606 /* AudiobookSamplePlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E52E3C0228C19BAD0073DC4D /* AudiobookSamplePlayer.swift */; };
-		21E417982928139300A78606 /* ActivityIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5FFB96628AED70E0042907F /* ActivityIndicator.swift */; };
 		21E41799292813A000A78606 /* AsyncImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5FFB9CA28AFE8AF0042907F /* AsyncImage.swift */; };
 		21E4179A292813DB00A78606 /* SamplePlayerError.swift in Sources */ = {isa = PBXBuildFile; fileRef = E52E3C0328C19BAD0073DC4D /* SamplePlayerError.swift */; };
 		21E4179B292813E200A78606 /* EpubSampleFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = E52E3C0128C19BAD0073DC4D /* EpubSampleFactory.swift */; };
@@ -747,7 +746,6 @@
 		E5FC133A2A25AC16000BFED5 /* ChapterLocation+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5FC12AD2A24EB1C000BFED5 /* ChapterLocation+Extensions.swift */; };
 		E5FFB96428AED4850042907F /* ImageProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5FFB96328AED4850042907F /* ImageProvider.swift */; };
 		E5FFB96528AED4990042907F /* ImageProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5FFB96328AED4850042907F /* ImageProvider.swift */; };
-		E5FFB96728AED70E0042907F /* ActivityIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5FFB96628AED70E0042907F /* ActivityIndicator.swift */; };
 		E5FFB9CB28AFE8AF0042907F /* AsyncImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5FFB9CA28AFE8AF0042907F /* AsyncImage.swift */; };
 		E6202A021DD4E6F300C99553 /* TPPSettingsAccountDetailViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = E6202A011DD4E6F300C99553 /* TPPSettingsAccountDetailViewController.m */; };
 		E6207B652118973800864143 /* TPPAppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6207B642118973800864143 /* TPPAppTheme.swift */; };
@@ -1637,7 +1635,6 @@
 		E5F8A57C28A48B8300A229AE /* BookPreviewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookPreviewTests.swift; sourceTree = "<group>"; };
 		E5FC12AD2A24EB1C000BFED5 /* ChapterLocation+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ChapterLocation+Extensions.swift"; sourceTree = "<group>"; };
 		E5FFB96328AED4850042907F /* ImageProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageProvider.swift; sourceTree = "<group>"; };
-		E5FFB96628AED70E0042907F /* ActivityIndicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityIndicator.swift; sourceTree = "<group>"; };
 		E5FFB9CA28AFE8AF0042907F /* AsyncImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AsyncImage.swift; sourceTree = "<group>"; };
 		E61D7F631F6AC78B0091C781 /* SimplyE.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SimplyE.entitlements; sourceTree = "<group>"; };
 		E6202A001DD4E6F300C99553 /* TPPSettingsAccountDetailViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPSettingsAccountDetailViewController.h; sourceTree = "<group>"; };
@@ -3024,7 +3021,6 @@
 				E54DD4C6275C60E70013C200 /* UIViewControllerWrapper.swift */,
 				E54DD4D4275C7C940013C200 /* View+Extensions.swift */,
 				E54DD4E5275C8EAA0013C200 /* Font+Extensions.swift */,
-				E5FFB96628AED70E0042907F /* ActivityIndicator.swift */,
 				E5FFB9CA28AFE8AF0042907F /* AsyncImage.swift */,
 				E523A452299FCA5300EF833B /* AlertModel.swift */,
 			);
@@ -3867,7 +3863,6 @@
 				73EB0A6F25821DF4006BC997 /* Log.swift in Sources */,
 				73EB0A7125821DF4006BC997 /* UILabel+NYPLAppearanceAdditions.m in Sources */,
 				21399902268F9F4C00B4EB60 /* TPPAccountListDataSource.swift in Sources */,
-				21E417982928139300A78606 /* ActivityIndicator.swift in Sources */,
 				73EB0A7325821DF4006BC997 /* TPPJSON.m in Sources */,
 				21E41789292810F600A78606 /* TPPPDFPreviewThumbnail.swift in Sources */,
 				73EB0A7425821DF4006BC997 /* TPPMainThreadChecker.swift in Sources */,
@@ -4475,7 +4470,6 @@
 				21562CC3276BB52700C03372 /* AdobeDRMAlerts.swift in Sources */,
 				5D7CF8B922C3FC06007CAA34 /* TPPErrorLogger.swift in Sources */,
 				E7A9909027EE4EF400D9486F /* LicensesService.swift in Sources */,
-				E5FFB96728AED70E0042907F /* ActivityIndicator.swift in Sources */,
 				E7FD4E52286CCF2C00D26A3B /* TPPPDFLocation.swift in Sources */,
 				0824D44E24B8DFE400C85A7E /* NSString+JSONParse.swift in Sources */,
 				73CC48AA260C07C200F1E2C3 /* TPPReadiumBookmark+R2.swift in Sources */,

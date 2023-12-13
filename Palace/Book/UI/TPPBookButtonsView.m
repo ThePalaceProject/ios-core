@@ -498,7 +498,9 @@
 {
   self.activityIndicator.center = self.sampleButton.center;
   [self updateProcessingState:YES];
-  [self.sampleDelegate didSelectPlaySample:self.book];
+  [self.sampleDelegate didSelectPlaySample:self.book completion:^{
+    [self updateProcessingState:NO];
+  }];
 }
 
 @end

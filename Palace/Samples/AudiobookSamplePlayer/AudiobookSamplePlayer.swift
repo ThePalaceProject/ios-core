@@ -56,6 +56,8 @@ class AudiobookSamplePlayer: NSObject, ObservableObject {
     player?.delegate = self
     player?.volume = 1.0
     startTimer()
+    player?.play()
+    state = .playing
   }
 
   func pauseAudiobook() {
@@ -106,7 +108,6 @@ class AudiobookSamplePlayer: NSObject, ObservableObject {
         return
       case let .success(result, _):
         DispatchQueue.main.async {
-          self?.state = .paused
           try? self?.setupPlayer(data: result)
         }
       }

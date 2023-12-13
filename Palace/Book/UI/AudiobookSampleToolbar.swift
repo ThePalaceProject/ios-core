@@ -96,9 +96,11 @@ struct AudiobookSampleToolbar: View {
         .padding(.trailing)
     default:
       loadingView
+        .square(length: playbackButtonLength)
+        .padding(.trailing)
     }
   }
-  
+
   private func togglePlay() {
     switch player.state {
     case .paused:
@@ -107,8 +109,9 @@ struct AudiobookSampleToolbar: View {
       player.pauseAudiobook()
     default:
       return
-    }  }
-  
+    }
+  }
+
   private var playbackButton: some View {
     Button {
       player.goBack()
@@ -121,10 +124,11 @@ struct AudiobookSampleToolbar: View {
   }
 
   @ViewBuilder private var loadingView: some View {
-    AnyView {
-      ActivityIndicator(isAnimating: $player.isLoading, style: .medium)
-        .foregroundColor(.black)
-    }
+      ProgressView()
+        .progressViewStyle(CircularProgressViewStyle())
+        .scaleEffect(1.25)
+        .transition(.opacity)
+        .animation(.easeInOut)
   }
 }
 
