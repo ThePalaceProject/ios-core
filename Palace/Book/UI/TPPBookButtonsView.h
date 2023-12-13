@@ -15,7 +15,7 @@
 
 @protocol TPPBookButtonsSampleDelegate
 
-- (void)didSelectPlaySample:(TPPBook *)book;
+- (void)didSelectPlaySample:(TPPBook *)book completion:(void (^ _Nullable)(void))completion;
 
 @end
 
