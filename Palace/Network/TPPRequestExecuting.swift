@@ -34,10 +34,5 @@ extension TPPRequestExecuting {
   static var defaultRequestTimeout: TimeInterval {
     return TPPDefaultRequestTimeout
   }
-  
-  func executeRequest(_ req: URLRequest,
-                      completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask {
-    URLSessionDataTask()
-  }
 }
 

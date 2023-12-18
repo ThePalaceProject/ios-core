@@ -248,7 +248,7 @@ let currentAccountIdentifierKey  = "TPPCurrentAccountIdentifier"
     let wasAlreadyLoading = addLoadingCompletionHandler(key: hash, completion)
     guard !wasAlreadyLoading else { return }
 
-    TPPNetworkExecutor(cachingStrategy: .fallback).GET(targetUrl, useTokenIfAvailable: true) { result in
+    TPPNetworkExecutor(cachingStrategy: .fallback).GET(targetUrl) { result in
       switch result {
       case .success(let data, _):
         self.loadAccountSetsAndAuthDoc(fromCatalogData: data, key: hash) { success in
