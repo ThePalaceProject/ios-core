@@ -83,8 +83,9 @@ completionHandler:(void (^)(TPPOPDSFeed *feed, NSDictionary *error))handler
   }
 
   request = [[[TPPNetworkExecutor shared] GET:URL
-                                   cachePolicy:cachePolicy
-                                    completion:^(NSData *data, NSURLResponse *response, NSError *error) {
+                                  cachePolicy:cachePolicy
+                                  useTokenIfAvailable: NO
+                                  completion:^(NSData *data, NSURLResponse *response, NSError *error) {
 
     if (error != nil) {
       // Note: NYPLNetworkExecutor already logged this error
