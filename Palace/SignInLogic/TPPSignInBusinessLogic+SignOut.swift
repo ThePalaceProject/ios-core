@@ -25,7 +25,7 @@ func performLogOut() {
     request.timeoutInterval = 45
     
     let barcode = userAccount.barcode
-    networker.executeRequest(request, useTokenIfAvailable: false) { [weak self] result in
+    networker.executeRequest(request) { [weak self] result in
       switch result {
       case .success(let data, let response):
         self?.processLogOut(data: data,

@@ -66,7 +66,7 @@ enum NYPLResult<SuccessInfo> {
            useTokenIfAvailable: Bool = true,
            completion: @escaping (_ result: NYPLResult<Data>) -> Void) {
     let req = request(for: reqURL, useTokenIfAvailable: useTokenIfAvailable)
-    executeRequest(req, useTokenIfAvailable: useTokenIfAvailable, completion: completion)
+    executeRequest(req, completion: completion)
   }
 }
 
@@ -78,14 +78,14 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
   /// the network or from the cache.
   /// - Returns: The task issueing the given request.
   @discardableResult
-  func executeRequest(_ req: URLRequest, useTokenIfAvailable: Bool = true, completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask {
+  func executeRequest(_ req: URLRequest, completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask {
     let userAccount = TPPUserAccount.sharedAccount()
     
     if let authDefinition = userAccount.authDefinition, authDefinition.isSaml {
       return performDataTask(with: req, completion: completion)
     }
     
-    if userAccount.isTokenRefreshRequired() && useTokenIfAvailable {
+    if userAccount.isTokenRefreshRequired() {
       handleTokenRefresh(for: req, completion: completion)
       return URLSessionDataTask()
     }
@@ -253,7 +253,7 @@ extension TPPNetworkExecutor {
       case let .failure(error, response): completion(nil, response, error)
       }
     }
-    return executeRequest(updatedReq, useTokenIfAvailable: useTokenIfAvailable, completion: completionWrapper)
+    return executeRequest(updatedReq, completion: completionWrapper)
   }
 
   /// Performs a PUT request using the specified URL
