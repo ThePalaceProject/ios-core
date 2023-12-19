@@ -386,6 +386,7 @@ protocol AccountLogoDelegate: AnyObject {
   var homePageUrl: String?
   lazy var hasSupportOption = { supportEmail != nil || supportURL != nil }()
   weak var logoDelegate: AccountLogoDelegate?
+  var hasUpdatedToken: Bool = false
 
   let authenticationDocumentUrl:String?
   var authenticationDocument:OPDS2AuthenticationDocument? {
