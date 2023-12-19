@@ -78,6 +78,7 @@ let currentAccountIdentifierKey  = "TPPCurrentAccountIdentifier"
     }
     set {
       Log.debug(#file, "Setting currentAccount to <\(newValue?.name ?? "[name N/A]") LibUUID=\(newValue?.uuid ?? "[UUID N/A]")>")
+      self.currentAccount?.hasUpdatedToken = false;
       currentAccountId = newValue?.uuid
       TPPErrorLogger.setUserID(TPPUserAccount.sharedAccount().barcode)
       NotificationCenter.default.post(name: NSNotification.Name.TPPCurrentAccountDidChange,

@@ -90,7 +90,7 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
       return URLSessionDataTask()
     }
     
-    if req.hasRetried {
+    if req.hasRetried && userAccount.isTokenRefreshRequired() {
       let error = createErrorForRetryFailure()
       completion(NYPLResult.failure(error, nil))
       return URLSessionDataTask()
@@ -224,8 +224,9 @@ extension TPPNetworkExecutor {
   /// the network or from the cache.
   @objc func GET(_ reqURL: URL,
                  cachePolicy: NSURLRequest.CachePolicy = .useProtocolCachePolicy,
+                 useTokenIfAvailable: Bool = true,
                  completion: @escaping (_ result: Data?, _ response: URLResponse?,  _ error: Error?) -> Void) -> URLSessionDataTask? {
-    GET(request: request(for: reqURL), cachePolicy: cachePolicy, completion: completion)
+    GET(request: request(for: reqURL), cachePolicy: cachePolicy, useTokenIfAvailable: useTokenIfAvailable, completion: completion)
   }
   
   /// Performs a GET request using the specified URLRequest
@@ -235,11 +236,12 @@ extension TPPNetworkExecutor {
   /// the network or from the cache.
   @objc func GET(request: URLRequest,
                  cachePolicy: NSURLRequest.CachePolicy = .useProtocolCachePolicy,
+                 useTokenIfAvailable: Bool,
                  completion: @escaping (_ result: Data?, _ response: URLResponse?,  _ error: Error?) -> Void) -> URLSessionDataTask? {
     if (request.httpMethod != "GET") {
       var newRequest = request
       newRequest.httpMethod = "GET"
-      return GET(request: newRequest, cachePolicy: cachePolicy, completion: completion)
+      return GET(request: newRequest, cachePolicy: cachePolicy, useTokenIfAvailable: useTokenIfAvailable, completion: completion)
     }
     
     var updatedReq = request
@@ -362,7 +364,7 @@ extension TPPNetworkExecutor {
         defer { self.isRefreshing = false }
         
         switch result {
-        case .success:
+        case .success(let token):
           var newTasks = [URLSessionTask]()
           
           self.retryQueue.forEach { oldTask in
@@ -383,7 +385,7 @@ extension TPPNetworkExecutor {
           newTasks.forEach { $0.resume() }
           self.retryQueue.removeAll()
           
-          completion?(nil)
+          completion?(token.accessToken)
           
         case .failure(let error):
           Log.info(#file, "Failed to refresh token with error: \(error)")

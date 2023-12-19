@@ -132,6 +132,11 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
   ///
   /// Update token when user account changes
   func updateToken() {
+    guard !(AccountsManager.shared.currentAccount?.hasUpdatedToken ?? false) else {
+      return
+    }
+
+    AccountsManager.shared.currentAccount?.hasUpdatedToken = true
     AccountsManager.shared.currentAccount?.getProfileDocument { profileDocument in
       guard let endpointHref = profileDocument?.linksWith(.deviceRegistration).first?.href,
             let endpointUrl = URL(string: endpointHref)
