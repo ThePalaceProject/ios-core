@@ -19,6 +19,7 @@ protocol TPPRequestExecuting {
   /// - Returns: The task issueing the given request.
   @discardableResult
   func executeRequest(_ req: URLRequest,
+                      useTokenIfAvailable: Bool,
                       completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask
 
   var requestTimeout: TimeInterval {get}
@@ -33,6 +34,12 @@ extension TPPRequestExecuting {
 
   static var defaultRequestTimeout: TimeInterval {
     return TPPDefaultRequestTimeout
+  }
+  
+  func executeRequest(_ req: URLRequest,
+                      useTokenIfAvailable: Bool = true,
+                      completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask {
+    URLSessionDataTask()
   }
 }
 
