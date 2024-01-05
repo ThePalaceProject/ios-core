@@ -485,7 +485,7 @@ protocol AccountLogoDelegate: AnyObject {
       return
     }
     
-    TPPNetworkExecutor.shared.GET(url, useTokenIfAvailable: false) { result in
+    TPPNetworkExecutor.shared.GET(url) { result in
       switch result {
       case .success(let serverData, _):
         do {
