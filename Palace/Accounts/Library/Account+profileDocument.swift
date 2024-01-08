@@ -18,6 +18,7 @@ extension Account {
       completion(nil)
       return
     }
+    
     TPPNetworkExecutor.shared.executeRequest(URLRequest(url: profileUrl), useTokenIfAvailable: false) { result in
       switch result {
       case .success(let data, _):
