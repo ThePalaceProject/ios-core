@@ -66,7 +66,7 @@ enum NYPLResult<SuccessInfo> {
            useTokenIfAvailable: Bool = true,
            completion: @escaping (_ result: NYPLResult<Data>) -> Void) {
     let req = request(for: reqURL, useTokenIfAvailable: useTokenIfAvailable)
-    executeRequest(req, enableTokenRefresh: useTokenIfAvailable, completion: completion)
+    executeRequest(req, completion: completion)
   }
 }
 
@@ -78,14 +78,14 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
   /// the network or from the cache.
   /// - Returns: The task issueing the given request.
   @discardableResult
-  func executeRequest(_ req: URLRequest, enableTokenRefresh: Bool, completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask {
+  func executeRequest(_ req: URLRequest, completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask {
     let userAccount = TPPUserAccount.sharedAccount()
     
     if let authDefinition = userAccount.authDefinition, authDefinition.isSaml {
       return performDataTask(with: req, completion: completion)
     }
-
-    if userAccount.isTokenRefreshRequired() && enableTokenRefresh {
+    
+    if userAccount.isTokenRefreshRequired() {
       handleTokenRefresh(for: req, completion: completion)
       return URLSessionDataTask()
     }
@@ -115,7 +115,7 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
         var updatedRequest = req
         updatedRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         updatedRequest.hasRetried = true
-        strongSelf.executeRequest(updatedRequest, enableTokenRefresh: false, completion: completion)
+        strongSelf.executeRequest(updatedRequest, completion: completion)
       } else {
         let error = NSError(domain: TPPErrorLogger.clientDomain, code: TPPErrorCode.invalidCredentials.rawValue, userInfo: [NSLocalizedDescriptionKey: "Unauthorized HTTP"])
         completion(NYPLResult.failure(error, nil))
@@ -214,7 +214,7 @@ extension TPPNetworkExecutor {
       case let .failure(error, response): completion(nil, response, error)
       }
     }
-    return executeRequest(req, enableTokenRefresh: false, completion: completionWrapper)
+    return executeRequest(req, completion: completionWrapper)
   }
   
   // Performs a GET request using the specified URL
@@ -253,7 +253,7 @@ extension TPPNetworkExecutor {
       case let .failure(error, response): completion(nil, response, error)
       }
     }
-    return executeRequest(updatedReq, enableTokenRefresh: useTokenIfAvailable, completion: completionWrapper)
+    return executeRequest(updatedReq, completion: completionWrapper)
   }
 
   /// Performs a PUT request using the specified URL
@@ -262,9 +262,8 @@ extension TPPNetworkExecutor {
   ///   - completion: Always called when the resource is either fetched from
   /// the network or from the cache.
   @objc func PUT(_ reqURL: URL,
-                 useTokenIfAvailable: Bool,
                  completion: @escaping (_ result: Data?, _ response: URLResponse?,  _ error: Error?) -> Void) -> URLSessionDataTask? {
-    PUT(request: request(for: reqURL), useTokenIfAvailable: useTokenIfAvailable, completion: completion)
+    PUT(request: request(for: reqURL), completion: completion)
   }
 
   /// Performs a PUT request using the specified URLRequest
@@ -273,12 +272,11 @@ extension TPPNetworkExecutor {
   ///   - completion: Always called when the resource is either fetched from
   /// the network or from the cache.
   @objc func PUT(request: URLRequest,
-                 useTokenIfAvailable: Bool,
                  completion: @escaping (_ result: Data?, _ response: URLResponse?,  _ error: Error?) -> Void) -> URLSessionDataTask? {
     if (request.httpMethod != "PUT") {
       var newRequest = request
       newRequest.httpMethod = "PUT"
-      return PUT(request: newRequest, useTokenIfAvailable: useTokenIfAvailable, completion: completion)
+      return PUT(request: newRequest, completion: completion)
     }
 
     let completionWrapper: (_ result: NYPLResult<Data>) -> Void = { result in
@@ -287,7 +285,7 @@ extension TPPNetworkExecutor {
       case let .failure(error, response): completion(nil, response, error)
       }
     }
-    return executeRequest(request, enableTokenRefresh: useTokenIfAvailable, completion: completionWrapper)
+    return executeRequest(request, completion: completionWrapper)
   }
     
   /// Performs a POST request using the specified request
@@ -297,13 +295,12 @@ extension TPPNetworkExecutor {
   @discardableResult
   @objc
   func POST(_ request: URLRequest,
-            useTokenIfAvailable: Bool,
             completion: ((_ result: Data?, _ response: URLResponse?,  _ error: Error?) -> Void)?) -> URLSessionDataTask? {
     
     if (request.httpMethod != "POST") {
       var newRequest = request
       newRequest.httpMethod = "POST"
-      return POST(newRequest, useTokenIfAvailable: useTokenIfAvailable, completion: completion)
+      return POST(newRequest, completion: completion)
     }
     
     let completionWrapper: (_ result: NYPLResult<Data>) -> Void = { result in
@@ -313,7 +310,7 @@ extension TPPNetworkExecutor {
       }
     }
     
-    return executeRequest(request, enableTokenRefresh: false, completion: completionWrapper)
+    return executeRequest(request, completion: completionWrapper)
   }
   
   /// Performs a DELETE request using the specified request
@@ -323,13 +320,12 @@ extension TPPNetworkExecutor {
   @discardableResult
   @objc
   func DELETE(_ request: URLRequest,
-              useTokenIfAvailable: Bool,
             completion: ((_ result: Data?, _ response: URLResponse?,  _ error: Error?) -> Void)?) -> URLSessionDataTask? {
     
     if (request.httpMethod != "DELETE") {
       var newRequest = request
       newRequest.httpMethod = "DELETE"
-      return DELETE(newRequest, useTokenIfAvailable: useTokenIfAvailable, completion: completion)
+      return DELETE(newRequest, completion: completion)
     }
     
     let completionWrapper: (_ result: NYPLResult<Data>) -> Void = { result in
@@ -339,7 +335,7 @@ extension TPPNetworkExecutor {
       }
     }
     
-    return executeRequest(request, enableTokenRefresh: false, completion: completionWrapper)
+    return executeRequest(request, completion: completionWrapper)
   }
   
   func refreshTokenAndResume(task: URLSessionTask?, completion: ((String?) -> Void)? = nil) {
@@ -404,7 +400,7 @@ extension TPPNetworkExecutor {
     while !retryQueue.isEmpty {
       let task = retryQueue.removeFirst()
       guard let request = task.originalRequest else { continue }
-      self.executeRequest(request, enableTokenRefresh: true) { _ in
+      self.executeRequest(request) { _ in
         Log.info(#file, "Task Successfully resumed after token refresh")
       }
     }

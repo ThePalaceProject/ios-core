@@ -66,7 +66,11 @@ enum NYPLResult<SuccessInfo> {
            useTokenIfAvailable: Bool = true,
            completion: @escaping (_ result: NYPLResult<Data>) -> Void) {
     let req = request(for: reqURL, useTokenIfAvailable: useTokenIfAvailable)
-    executeRequest(req, enableTokenRefresh: useTokenIfAvailable, completion: completion)
+<<<<<<< Updated upstream
+    executeRequest(req, useTokenIfAvailable: useTokenIfAvailable, completion: completion)
+=======
+    executeRequest(req, useAuthToken: useTokenIfAvailable, completion: completion)
+>>>>>>> Stashed changes
   }
 }
 
@@ -78,14 +82,22 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
   /// the network or from the cache.
   /// - Returns: The task issueing the given request.
   @discardableResult
-  func executeRequest(_ req: URLRequest, enableTokenRefresh: Bool, completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask {
+<<<<<<< Updated upstream
+  func executeRequest(_ req: URLRequest, useTokenIfAvailable: Bool = true, completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask {
+=======
+  func executeRequest(_ req: URLRequest, useAuthToken: Bool, completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask {
+>>>>>>> Stashed changes
     let userAccount = TPPUserAccount.sharedAccount()
     
     if let authDefinition = userAccount.authDefinition, authDefinition.isSaml {
       return performDataTask(with: req, completion: completion)
     }
-
-    if userAccount.isTokenRefreshRequired() && enableTokenRefresh {
+    
+<<<<<<< Updated upstream
+    if userAccount.isTokenRefreshRequired() && useTokenIfAvailable {
+=======
+    if userAccount.isTokenRefreshRequired() && useAuthToken {
+>>>>>>> Stashed changes
       handleTokenRefresh(for: req, completion: completion)
       return URLSessionDataTask()
     }
@@ -115,7 +127,7 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
         var updatedRequest = req
         updatedRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         updatedRequest.hasRetried = true
-        strongSelf.executeRequest(updatedRequest, enableTokenRefresh: false, completion: completion)
+        strongSelf.executeRequest(updatedRequest, useAuthToken: false, completion: completion)
       } else {
         let error = NSError(domain: TPPErrorLogger.clientDomain, code: TPPErrorCode.invalidCredentials.rawValue, userInfo: [NSLocalizedDescriptionKey: "Unauthorized HTTP"])
         completion(NYPLResult.failure(error, nil))
@@ -214,7 +226,7 @@ extension TPPNetworkExecutor {
       case let .failure(error, response): completion(nil, response, error)
       }
     }
-    return executeRequest(req, enableTokenRefresh: false, completion: completionWrapper)
+    return executeRequest(req, useAuthToken: false, completion: completionWrapper)
   }
   
   // Performs a GET request using the specified URL
@@ -253,7 +265,11 @@ extension TPPNetworkExecutor {
       case let .failure(error, response): completion(nil, response, error)
       }
     }
-    return executeRequest(updatedReq, enableTokenRefresh: useTokenIfAvailable, completion: completionWrapper)
+<<<<<<< Updated upstream
+    return executeRequest(updatedReq, useTokenIfAvailable: useTokenIfAvailable, completion: completionWrapper)
+=======
+    return executeRequest(updatedReq,  useAuthToken: useTokenIfAvailable, completion: completionWrapper)
+>>>>>>> Stashed changes
   }
 
   /// Performs a PUT request using the specified URL
@@ -287,7 +303,7 @@ extension TPPNetworkExecutor {
       case let .failure(error, response): completion(nil, response, error)
       }
     }
-    return executeRequest(request, enableTokenRefresh: useTokenIfAvailable, completion: completionWrapper)
+    return executeRequest(request, useAuthToken: useTokenIfAvailable, completion: completionWrapper)
   }
     
   /// Performs a POST request using the specified request
@@ -313,7 +329,7 @@ extension TPPNetworkExecutor {
       }
     }
     
-    return executeRequest(request, enableTokenRefresh: false, completion: completionWrapper)
+    return executeRequest(request, useAuthToken: false, completion: completionWrapper)
   }
   
   /// Performs a DELETE request using the specified request
@@ -339,7 +355,7 @@ extension TPPNetworkExecutor {
       }
     }
     
-    return executeRequest(request, enableTokenRefresh: false, completion: completionWrapper)
+    return executeRequest(request, useAuthToken: false, completion: completionWrapper)
   }
   
   func refreshTokenAndResume(task: URLSessionTask?, completion: ((String?) -> Void)? = nil) {
@@ -404,7 +420,7 @@ extension TPPNetworkExecutor {
     while !retryQueue.isEmpty {
       let task = retryQueue.removeFirst()
       guard let request = task.originalRequest else { continue }
-      self.executeRequest(request, enableTokenRefresh: true) { _ in
+      self.executeRequest(request, useAuthToken: true) { _ in
         Log.info(#file, "Task Successfully resumed after token refresh")
       }
     }

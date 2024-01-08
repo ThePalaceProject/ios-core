@@ -84,7 +84,7 @@ completionHandler:(void (^)(TPPOPDSFeed *feed, NSDictionary *error))handler
 
   request = [[[TPPNetworkExecutor shared] GET:URL
                                   cachePolicy:cachePolicy
-                                  useTokenIfAvailable: NO
+                                  useTokenIfAvailable: YES
                                   completion:^(NSData *data, NSURLResponse *response, NSError *error) {
 
     if (error != nil) {

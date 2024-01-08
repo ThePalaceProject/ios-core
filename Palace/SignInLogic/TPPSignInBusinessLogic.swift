@@ -289,7 +289,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
       return
     }
 
-    networker.executeRequest(req, useTokenIfAvailable: false) { [weak self] result in
+    networker.executeRequest(req, enableTokenRefresh: false) { [weak self] result in
       guard let self = self else {
         return
       }

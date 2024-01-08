@@ -204,7 +204,7 @@
                              postRequestWithProblemDocument:@{@"type":type}
                              url:reportURL];
     
-    [self.executor POST:request completion:nil];
+    [self.executor POST:request useTokenIfAvailable:NO completion:nil];
   }
   if (problemReportViewController.navigationController) {
     [problemReportViewController.navigationController popViewControllerAnimated:YES];
