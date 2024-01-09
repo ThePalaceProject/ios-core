@@ -126,9 +126,9 @@ didReceiveChallenge:(NSURLAuthenticationChallenge *const)challenge
 
   NSString *lpe = [URL lastPathComponent];
   if ([lpe isEqualToString:@"borrow"])
-    req = [[TPPNetworkExecutor.shared PUT:URL completion:completionWrapper] originalRequest];
+    req = [[TPPNetworkExecutor.shared PUT:URL useTokenIfAvailable:false completion:completionWrapper] originalRequest];
   else
-    req = [[TPPNetworkExecutor.shared GET:URL cachePolicy:NSURLRequestUseProtocolCachePolicy useTokenIfAvailable:true completion:completionWrapper] originalRequest];
+    req = [[TPPNetworkExecutor.shared GET:URL cachePolicy:NSURLRequestUseProtocolCachePolicy useTokenIfAvailable:false completion:completionWrapper] originalRequest];
 
   return req;
 }

@@ -184,7 +184,7 @@ protocol AnnotationsManager {
     request.httpBody = jsonData
     request.timeoutInterval = timeout
 
-    let task = TPPNetworkExecutor.shared.POST(request) { (data, response, error) in
+    let task = TPPNetworkExecutor.shared.POST(request, useTokenIfAvailable: true) { (data, response, error) in
       if let error = error as NSError? {
         Log.error(#file, "Annotation POST error (nsCode: \(error.code) Description: \(error.localizedDescription))")
         if (NetworkQueue.StatusCodes.contains(error.code)) && (queueOffline == true) {
@@ -249,7 +249,7 @@ protocol AnnotationsManager {
       return
     }
     
-    let dataTask = TPPNetworkExecutor.shared.GET(annotationURL) { (data, response, error) in
+    let dataTask = TPPNetworkExecutor.shared.GET(annotationURL, useTokenIfAvailable: false) { (data, response, error) in
       
       if let error = error as NSError? {
         Log.error(#file, "Request Error Code: \(error.code). Description: \(error.localizedDescription)")
@@ -317,7 +317,7 @@ protocol AnnotationsManager {
     var request = TPPNetworkExecutor.shared.request(for: url)
     request.timeoutInterval = TPPDefaultRequestTimeout
 
-    let task = TPPNetworkExecutor.shared.DELETE(request) { (data, response, error) in
+    let task = TPPNetworkExecutor.shared.DELETE(request, useTokenIfAvailable: true) { (data, response, error) in
       let response = response as? HTTPURLResponse
       if response?.statusCode == 200 {
         Log.info(#file, "200: DELETE bookmark success")
