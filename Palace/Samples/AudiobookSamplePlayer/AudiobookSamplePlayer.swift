@@ -45,7 +45,7 @@ class AudiobookSamplePlayer: NSObject, ObservableObject {
       try AVAudioSession.sharedInstance().setCategory(.playback)
       try AVAudioSession.sharedInstance().setActive(true)
     } catch {
-      print("Failed to set audio session category: \(error)")
+      TPPErrorLogger.logError(error, summary: "Failed to set audio session category")
     }
   }
 
