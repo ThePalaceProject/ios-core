@@ -36,7 +36,17 @@ class AudiobookSamplePlayer: NSObject, ObservableObject {
     self.sample = sample
     super.init()
 
+    configureAudioSession()
     downloadFile()
+  }
+  
+  private func configureAudioSession() {
+    do {
+      try AVAudioSession.sharedInstance().setCategory(.playback)
+      try AVAudioSession.sharedInstance().setActive(true)
+    } catch {
+      print("Failed to set audio session category: \(error)")
+    }
   }
 
   deinit {
