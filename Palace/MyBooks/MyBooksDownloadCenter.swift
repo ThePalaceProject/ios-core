@@ -291,7 +291,7 @@ import OverdriveProcessor
     if let initedRequest = initedRequest {
       request = initedRequest
     } else if let url = book.defaultAcquisition?.hrefURL {
-      request = TPPNetworkExecutor.bearerAuthorized(request: URLRequest(url: url))
+      request = TPPNetworkExecutor.bearerAuthorized(request: URLRequest(url: url, applyingCustomUserAgent: true))
     } else {
       logInvalidURLRequest(for: book, withState: state, url: nil, request: nil)
       return
@@ -703,9 +703,8 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
         if let data = try? Data(contentsOf: location) {
           if let dictionary = TPPJSONObjectFromData(data) as? [String: Any],
              let simplifiedBearerToken = MyBooksSimplifiedBearerToken.simplifiedBearerToken(with: dictionary) {
-            let mutableRequest = NSMutableURLRequest(url: simplifiedBearerToken.location)
+            var mutableRequest = URLRequest(url: simplifiedBearerToken.location, applyingCustomUserAgent: true)
             mutableRequest.setValue("Bearer \(simplifiedBearerToken.accessToken)", forHTTPHeaderField: "Authorization")
-            
             let task = session.downloadTask(with: mutableRequest as URLRequest)
             bookIdentifierToDownloadInfo[book.identifier] = MyBooksDownloadInfo(
               downloadProgress: 0.0,
@@ -827,7 +826,7 @@ extension MyBooksDownloadCenter: URLSessionTaskDelegate {
       var mutableAllHTTPHeaderFields = request.allHTTPHeaderFields ?? [:]
       mutableAllHTTPHeaderFields[authorizationKey] = originalAuthorization
       
-      var mutableRequest = URLRequest(url: request.url!)
+      var mutableRequest = URLRequest(url: request.url!, applyingCustomUserAgent: true)
       mutableRequest.allHTTPHeaderFields = mutableAllHTTPHeaderFields
       
       completionHandler(mutableRequest)
@@ -855,7 +854,8 @@ extension MyBooksDownloadCenter: URLSessionTaskDelegate {
   }
 
   private func  addDownloadTask(with request: URLRequest, book: TPPBook) {
-    let task = self.session.downloadTask(with: request)
+    var modifiableRequest = request
+    let task = self.session.downloadTask(with: modifiableRequest.applyCustomUserAgent())
     
     self.bookIdentifierToDownloadInfo[book.identifier] =
     MyBooksDownloadInfo(downloadProgress: 0.0,

@@ -14,7 +14,7 @@ import Foundation
   
   private class func post(_ event: String, withURL url: URL) -> Void
   {
-    var request = URLRequest(url: url)
+    var request = URLRequest(url: url, applyingCustomUserAgent: true)
     request.httpMethod = "GET"
 
     let dataTask = URLSession.shared.dataTask(with: request) { (data, response, error) in

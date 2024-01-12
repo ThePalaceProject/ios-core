@@ -236,7 +236,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
         return nil
     }
 
-    var req = URLRequest(url: url)
+    var req = URLRequest(url: url, applyingCustomUserAgent: true)
 
     if let selectedAuth = selectedAuthentication,
        (selectedAuth.isOauth || selectedAuth.isSaml) {

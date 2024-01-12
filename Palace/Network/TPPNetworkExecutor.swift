@@ -139,6 +139,7 @@ extension TPPNetworkExecutor {
     var urlRequest = URLRequest(url: url,
                                 cachePolicy: urlSession.configuration.requestCachePolicy)
 
+    urlRequest.applyCustomUserAgent()
     if let authToken = TPPUserAccount.sharedAccount().authToken, useTokenIfAvailable {
       let headers = [
         "Authorization" : "Bearer \(authToken)",
