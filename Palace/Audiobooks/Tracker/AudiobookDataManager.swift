@@ -164,6 +164,8 @@ class AudiobookDataManager {
         request.httpMethod = "POST"
         request.httpBody = requestBody
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.applyCustomUserAgent()
+
         TPPNetworkExecutor.shared.POST(request, useTokenIfAvailable: true) { result, response, error in
           if let response = response as? HTTPURLResponse, !response.isSuccess() {
             TPPErrorLogger.logError(error, summary: "Error uploading audiobook tracker data", metadata: [

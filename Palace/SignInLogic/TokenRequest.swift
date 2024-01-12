@@ -38,7 +38,7 @@ import Foundation
   }
   
   func execute() async -> Result<TokenResponse, Error> {
-    var request = URLRequest(url: url)
+    var request = URLRequest(url: url, applyingCustomUserAgent: true)
     request.httpMethod = HTTPMethodType.POST.rawValue
     
     let loginString = "\(username):\(password)"

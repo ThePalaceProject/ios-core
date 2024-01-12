@@ -93,7 +93,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
     else {
       return
     }
-    var request = URLRequest(url: requestUrl)
+    let request = URLRequest(url: requestUrl, applyingCustomUserAgent: true)
     _ = TPPNetworkExecutor.shared.addBearerAndExecute(request) { result, response, error in
       let status = (response as? HTTPURLResponse)?.statusCode
       // Token exists if status code is 200, doesn't exist if 404.
@@ -111,7 +111,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
     guard let requestBody = TokenData(token: token).data else {
       return
     }
-    var request = URLRequest(url: endpointUrl)
+    var request = URLRequest(url: endpointUrl, applyingCustomUserAgent: true)
     request.httpMethod = "PUT"
     request.httpBody = requestBody
     _ = TPPNetworkExecutor.shared.addBearerAndExecute(request) { result, response, error in
@@ -159,7 +159,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
     guard let requestBody = TokenData(token: token).data else {
       return
     }
-    var request = URLRequest(url: endpointUrl)
+    var request = URLRequest(url: endpointUrl, applyingCustomUserAgent: true)
     request.httpMethod = "DELETE"
     request.httpBody = requestBody
     _ = TPPNetworkExecutor.shared.addBearerAndExecute(request) { result, response, error in

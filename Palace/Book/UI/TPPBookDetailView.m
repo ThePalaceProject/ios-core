@@ -442,7 +442,13 @@ static NSString *DetailHTMLTemplate = nil;
   if ([self.book showAudiobookToolbar] && self.isShowingSample) {
     [self.audiobookSampleToolbar autoPinEdgeToSuperviewEdge:ALEdgeLeft];
     [self.audiobookSampleToolbar autoPinEdgeToSuperviewEdge:ALEdgeRight];
-    [self.audiobookSampleToolbar autoPinEdgeToSuperviewEdge:ALEdgeBottom withInset: TabBarHeight];
+
+    CGFloat bottomInset = 0;
+    if ([UIDevice currentDevice].userInterfaceIdiom != UIUserInterfaceIdiomPad) {
+      bottomInset = TabBarHeight;
+    }
+    
+    [self.audiobookSampleToolbar autoPinEdgeToSuperviewEdge:ALEdgeBottom withInset: bottomInset];
     [self.audiobookSampleToolbar autoSetDimension:ALDimensionHeight toSize:SampleToolbarHeight relation:NSLayoutRelationLessThanOrEqual];
     [self.audiobookSampleToolbar autoMatchDimension:ALDimensionWidth toDimension:ALDimensionWidth ofView:self];
     self.scrollView.contentInset = UIEdgeInsetsMake(0, 0, SampleToolbarHeight, 0);

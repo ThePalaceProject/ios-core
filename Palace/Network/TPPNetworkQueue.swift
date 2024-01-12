@@ -224,6 +224,7 @@ final class NetworkQueue: NSObject {
     var urlRequest = URLRequest(url: URL(string: requestRow[sqlUrl])!)
     urlRequest.httpMethod = requestRow[sqlMethod]
     urlRequest.httpBody = requestRow[sqlParameters]
+    urlRequest.applyCustomUserAgent()
     
     if let headerData = requestRow[sqlHeader],
        let headers = NSKeyedUnarchiver.unarchiveObject(with: headerData) as? [String:String] {

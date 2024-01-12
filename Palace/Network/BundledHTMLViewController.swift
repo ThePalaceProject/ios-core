@@ -42,7 +42,7 @@ import WebKit
   }
   
   override func viewWillAppear(_ animated: Bool) {
-    self.webView.load(URLRequest(url: self.fileURL))
+    self.webView.load(URLRequest(url: self.fileURL, applyingCustomUserAgent: true))
   }
   
   fileprivate class WebViewDelegate: NSObject, WKNavigationDelegate
