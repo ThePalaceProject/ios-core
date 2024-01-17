@@ -249,7 +249,7 @@ protocol AnnotationsManager {
       return
     }
     
-    let dataTask = TPPNetworkExecutor.shared.GET(annotationURL, useTokenIfAvailable: false) { (data, response, error) in
+    let dataTask = TPPNetworkExecutor.shared.GET(annotationURL, useTokenIfAvailable: true) { (data, response, error) in
       
       if let error = error as NSError? {
         Log.error(#file, "Request Error Code: \(error.code). Description: \(error.localizedDescription)")
@@ -321,6 +321,9 @@ protocol AnnotationsManager {
       let response = response as? HTTPURLResponse
       if response?.statusCode == 200 {
         Log.info(#file, "200: DELETE bookmark success")
+        completionHandler(true)
+      } else if response?.statusCode == 404 {
+        Log.error(#file, "Bookmark is no longer on the server")
         completionHandler(true)
       } else if let code = response?.statusCode {
         Log.error(#file, "DELETE bookmark failed with server response code: \(code)")
