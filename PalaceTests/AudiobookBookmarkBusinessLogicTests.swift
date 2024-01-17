@@ -228,7 +228,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
     mockAnnotations.bookmarks = [fakeBook.identifier: remoteBookmarks]
 
     sut = AudiobookBookmarkBusinessLogic(book: fakeBook, registry: mockRegistry, annotationsManager: mockAnnotations)
-    sut.syncBookmarks(localBookmarks: registryTestBookmarks) {
+    sut.syncBookmarks(localBookmarks: registryTestBookmarks) { _ in 
       let localBookmarks = self.mockRegistry.genericBookmarksForIdentifier(self.fakeBook.identifier)
       
       XCTAssertEqual(localBookmarks.count, expectedLocalBookmarks.count)
@@ -252,7 +252,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
     mockAnnotations.bookmarks = [fakeBook.identifier: remoteBookmarks]
 
     sut = AudiobookBookmarkBusinessLogic(book: fakeBook, registry: mockRegistry, annotationsManager: mockAnnotations)
-    sut.syncBookmarks(localBookmarks: registryTestBookmarks) {
+    sut.syncBookmarks(localBookmarks: registryTestBookmarks) { _ in
       
       let remoteBookmarks = self.mockAnnotations.bookmarks[self.fakeBook.identifier]?.compactMap { $0.value } ?? []
       XCTAssertEqual(remoteBookmarks.count, registryTestBookmarks.count)
