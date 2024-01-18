@@ -322,6 +322,9 @@ protocol AnnotationsManager {
       if response?.statusCode == 200 {
         Log.info(#file, "200: DELETE bookmark success")
         completionHandler(true)
+      } else if response?.statusCode == 404 {
+        Log.error(#file, "Bookmark is no longer on the server")
+        completionHandler(true)
       } else if let code = response?.statusCode {
         Log.error(#file, "DELETE bookmark failed with server response code: \(code)")
         completionHandler(false)
