@@ -249,7 +249,7 @@ protocol AnnotationsManager {
       return
     }
     
-    let dataTask = TPPNetworkExecutor.shared.GET(annotationURL, useTokenIfAvailable: true) { (data, response, error) in
+    let dataTask = TPPNetworkExecutor.shared.GET(annotationURL, useTokenIfAvailable: false) { (data, response, error) in
       
       if let error = error as NSError? {
         Log.error(#file, "Request Error Code: \(error.code). Description: \(error.localizedDescription)")
