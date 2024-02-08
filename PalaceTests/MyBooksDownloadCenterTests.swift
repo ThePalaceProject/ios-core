@@ -41,7 +41,7 @@ class MyBooksDownloadCenterTests: XCTestCase {
         expectation.fulfill()
       }
     
-    swizzle(selector: #selector(TPPOPDSFeed.withURL(_:shouldResetCache:useTokenIfAvailable:completionHandler:)))
+    swizzle(selector: #selector(TPPOPDSFeed.swizzledURL_Success(_:shouldResetCache:userTokenIfAvailable:completionHandler:)))
     let book = TPPBookMocker.mockBook(distributorType: .AdobeAdept)
     myBooksDownloadCenter.startBorrow(for: book, attemptDownload: true)
     
@@ -66,7 +66,7 @@ class MyBooksDownloadCenterTests: XCTestCase {
         expectation.fulfill()
       }
     
-    swizzle(selector: #selector(TPPOPDSFeed.withURL(_:shouldResetCache:useTokenIfAvailable:completionHandler:)))
+    swizzle(selector: #selector(TPPOPDSFeed.swizzledURL_Error(_:shouldResetCache:useTokenIfAvailable:completionHandler:)))
     let book = TPPBookMocker.mockBook(distributorType: .AdobeAdept)
     myBooksDownloadCenter.startBorrow(for: book, attemptDownload: true)
     
@@ -103,6 +103,7 @@ extension TPPOPDSFeed {
   @objc func swizzledURL_Success(
     _ url: URL,
     shouldResetCache: Bool,
+    userTokenIfAvailable: Bool,
     completionHandler: @escaping (TPPOPDSFeed?, [String: Any]?) -> Void) {
     completionHandler(mockFeed, nil)
   }
@@ -110,6 +111,7 @@ extension TPPOPDSFeed {
   @objc func swizzledURL_Error(
     _ url: URL,
     shouldResetCache: Bool,
+    useTokenIfAvailable: Bool,
     completionHandler: @escaping (TPPOPDSFeed?, [String: Any]?) -> Void) {
       completionHandler(nil, ["type": TPPProblemDocument.TypeInvalidCredentials])
     }
