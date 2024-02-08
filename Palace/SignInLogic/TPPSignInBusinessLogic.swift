@@ -532,11 +532,9 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     }
     
     if selectedAuthentication.isOauth || selectedAuthentication.isSaml || selectedAuthentication.isToken {
-      if let authToken = authToken {
+      if let authToken {
         userAccount.setAuthToken(authToken, barcode: barcode, pin: pin, expirationDate: expirationDate)
-      }
-      
-      if let patron = patron {
+      } else if let patron {
         userAccount.setPatron(patron)
       } else {
         setBarcode(barcode, pin: pin)
@@ -545,12 +543,13 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
       setBarcode(barcode, pin: pin)
     }
     
-    if selectedAuthentication.isSaml, let cookies = cookies {
+    if selectedAuthentication.isSaml, let cookies {
       userAccount.setCookies(cookies)
     }
 
     userAccount.setAuthDefinitionWithoutUpdate(authDefinition: selectedAuthentication)
 
+    
     if libraryAccountID == libraryAccountsProvider.currentAccountId {
       bookRegistry.sync()
     }

@@ -59,7 +59,7 @@ import OverdriveProcessor
   func startBorrow(for book: TPPBook, attemptDownload shouldAttemptDownload: Bool, borrowCompletion: (() -> Void)? = nil) {
     bookRegistry.setProcessing(true, for: book.identifier)
   
-    TPPOPDSFeed.withURL((book.defaultAcquisition)?.hrefURL, shouldResetCache: true) { [weak self] feed, error in
+    TPPOPDSFeed.withURL((book.defaultAcquisition)?.hrefURL, shouldResetCache: true, useTokenIfAvailable: true) { [weak self] feed, error in
       self?.bookRegistry.setProcessing(false, for: book.identifier)
       
       if let feed = feed,
@@ -531,7 +531,7 @@ extension MyBooksDownloadCenter {
     } else {
       bookRegistry.setProcessing(true, for: book.identifier)
       
-      TPPOPDSFeed.withURL(book.revokeURL, shouldResetCache: false) { feed, error in
+      TPPOPDSFeed.withURL(book.revokeURL, shouldResetCache: false, useTokenIfAvailable: true) { feed, error in
         self.bookRegistry.setProcessing(false, for: book.identifier)
         
         if let feed = feed, feed.entries.count == 1, let entry = feed.entries[0] as? TPPOPDSEntry {

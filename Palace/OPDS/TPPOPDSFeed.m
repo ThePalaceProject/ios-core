@@ -58,6 +58,7 @@ static TPPOPDSFeedType TypeImpliedByEntry(TPPOPDSEntry *const entry)
 
 + (void)withURL:(NSURL *)URL
 shouldResetCache:(BOOL)shouldResetCache
+useTokenIfAvailable:(BOOL)useTokenIfAvailable
 completionHandler:(void (^)(TPPOPDSFeed *feed, NSDictionary *error))handler
 {
   if(!handler) {
@@ -84,7 +85,7 @@ completionHandler:(void (^)(TPPOPDSFeed *feed, NSDictionary *error))handler
 
   request = [[[TPPNetworkExecutor shared] GET:URL
                                   cachePolicy:cachePolicy
-                                  useTokenIfAvailable: YES
+                                  useTokenIfAvailable:useTokenIfAvailable
                                   completion:^(NSData *data, NSURLResponse *response, NSError *error) {
 
     if (error != nil) {

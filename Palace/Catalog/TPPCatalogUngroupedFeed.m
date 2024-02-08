@@ -29,6 +29,7 @@ static NSUInteger const preloadThreshold = 100;
 @implementation TPPCatalogUngroupedFeed
 
 + (void)withURL:(NSURL *)URL
+useTokenIfAvailable:(BOOL)useTokenIfAvailable
 handler:(void (^)(TPPCatalogUngroupedFeed *category))handler
 {
   if(!handler) {
@@ -38,6 +39,7 @@ handler:(void (^)(TPPCatalogUngroupedFeed *category))handler
   [TPPOPDSFeed
    withURL:URL
    shouldResetCache:NO
+   useTokenIfAvailable:useTokenIfAvailable
    completionHandler:^(TPPOPDSFeed *const ungroupedFeed, __unused NSDictionary *error) {
      if(!ungroupedFeed) {
        handler(nil);
@@ -194,6 +196,7 @@ handler:(void (^)(TPPCatalogUngroupedFeed *category))handler
   
   [TPPCatalogUngroupedFeed
    withURL:self.nextURL
+   useTokenIfAvailable:NO
    handler:^(TPPCatalogUngroupedFeed *const ungroupedFeed) {
      [[NSOperationQueue mainQueue] addOperationWithBlock:^{
        if(!ungroupedFeed) {
