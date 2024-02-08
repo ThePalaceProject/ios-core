@@ -82,7 +82,7 @@ class MyBooksDownloadCenterTests: XCTestCase {
   
   private func swizzle(selector: Selector) {
     let aClass: AnyClass? = object_getClass(TPPOPDSFeed.self)
-    let originalSelector = #selector(TPPOPDSFeed.withURL(_:shouldResetCache:completionHandler:))
+    let originalSelector = #selector(TPPOPDSFeed.withURL(_:shouldResetCache:useTokenIfAvailable:completionHandler:))
     let swizzledSelector = selector
     
     let originalMethod = class_getInstanceMethod(aClass, originalSelector)
