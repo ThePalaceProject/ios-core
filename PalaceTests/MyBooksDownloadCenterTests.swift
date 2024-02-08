@@ -41,7 +41,7 @@ class MyBooksDownloadCenterTests: XCTestCase {
         expectation.fulfill()
       }
     
-    swizzle(selector: #selector(TPPOPDSFeed.swizzledURL_Success(_:shouldResetCache:completionHandler:)))
+    swizzle(selector: #selector(TPPOPDSFeed.withURL(_:shouldResetCache:useTokenIfAvailable:completionHandler:)))
     let book = TPPBookMocker.mockBook(distributorType: .AdobeAdept)
     myBooksDownloadCenter.startBorrow(for: book, attemptDownload: true)
     
@@ -66,7 +66,7 @@ class MyBooksDownloadCenterTests: XCTestCase {
         expectation.fulfill()
       }
     
-    swizzle(selector: #selector(TPPOPDSFeed.swizzledURL_Error(_:shouldResetCache:completionHandler:)))
+    swizzle(selector: #selector(TPPOPDSFeed.withURL(_:shouldResetCache:useTokenIfAvailable:completionHandler:)))
     let book = TPPBookMocker.mockBook(distributorType: .AdobeAdept)
     myBooksDownloadCenter.startBorrow(for: book, attemptDownload: true)
     
