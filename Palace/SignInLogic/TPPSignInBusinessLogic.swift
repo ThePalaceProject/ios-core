@@ -532,10 +532,11 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     }
     
     if selectedAuthentication.isOauth || selectedAuthentication.isSaml || selectedAuthentication.isToken {
+      if let patron {
+        userAccount.setPatron(patron)
+      }
       if let authToken {
         userAccount.setAuthToken(authToken, barcode: barcode, pin: pin, expirationDate: expirationDate)
-      } else if let patron {
-        userAccount.setPatron(patron)
       } else {
         setBarcode(barcode, pin: pin)
       }
