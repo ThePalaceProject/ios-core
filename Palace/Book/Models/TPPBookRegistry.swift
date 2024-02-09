@@ -232,7 +232,7 @@ class TPPBookRegistry: NSObject {
     }
     state = .syncing
     syncUrl = loansUrl
-    TPPOPDSFeed.withURL(loansUrl, shouldResetCache: true) { feed, errorDocument in
+    TPPOPDSFeed.withURL(loansUrl, shouldResetCache: true, useTokenIfAvailable: false) { feed, errorDocument in
       DispatchQueue.main.async {
         defer {
           self.state = .loaded
