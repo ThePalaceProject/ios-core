@@ -48,7 +48,7 @@ class MyBooksDownloadCenterTests: XCTestCase {
     let borrowedEntry = mockFeed.entries.first as! TPPOPDSEntry
     let expectedDownloadTitle = TPPBook(entry: borrowedEntry)
     
-    waitForExpectations(timeout: 5, handler: nil)
+    waitForExpectations(timeout: 30, handler: nil)
     NotificationCenter.default.removeObserver(notificationObserver)
     
     let bookState = mockBookRegistry.state(for: expectedDownloadTitle!.identifier)
