@@ -32,13 +32,12 @@ class LCPPassphraseAuthenticationService: LCPAuthenticating {
       return
     }
     let logError = makeLogger(code: .lcpPassphraseRetrievalFail, urlKey: "loansUrl", urlValue: loansUrl)
-    guard let books = registry.myBooks as? [TPPBook],
-          let book = books.filter({ registry.fulfillmentId(forIdentifier: $0.identifier) == licenseId }).first else {
+    guard let book = registry.myBooks.filter({ registry.fulfillmentId(forIdentifier: $0.identifier) == licenseId }).first else {
             logError("LCP passphrase retrieval error: no book with fulfillment id found", "licenseId", licenseId)
             completion(nil)
             return
     }
-    TPPNetworkExecutor.shared.GET(loansUrl) { result in
+    TPPNetworkExecutor.shared.GET(loansUrl, useTokenIfAvailable: false) { result in
       switch result {
       case .success(let data, _):
         let responseBody = String(data: data, encoding: .utf8)
