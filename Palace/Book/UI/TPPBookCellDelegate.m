@@ -194,7 +194,9 @@ static const int kServerUpdateDelay = 15;
 
 - (void)openAudiobook:(TPPBook *)book completion:(void (^ _Nullable)(void))completion{
   NSURL *const url = [[MyBooksDownloadCenter shared] fileUrlFor:book.identifier];
-  NSData *const data = [NSData dataWithContentsOfURL:url];
+  NSError *error = nil;
+  NSData *const data = [NSData dataWithContentsOfURL:url options:NSDataReadingMappedIfSafe error:&error];
+
   if (data == nil) {
     [self presentCorruptedItemErrorForBook:book fromURL:url];
     completion();
