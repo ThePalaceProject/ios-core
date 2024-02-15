@@ -527,16 +527,18 @@ protocol AccountLogoDelegate: AnyObject {
 
   private func fetchImage(from url: URL, completion: @escaping (UIImage?) -> ()) {
     TPPNetworkExecutor.shared.GET(url, useTokenIfAvailable: false) { result in
-      switch result {
-      case .success(let serverData, _):
-        completion(UIImage(data: serverData))
-      case .failure(let error, _):
-        TPPErrorLogger.logError(
-          withCode: .authDocLoadFail,
-          summary: "Logo image failed to load",
-          metadata: ["loadError": error, "url": url]
-        )
-        completion(nil)
+      DispatchQueue.main.async {
+        switch result {
+        case .success(let serverData, _):
+          completion(UIImage(data: serverData))
+        case .failure(let error, _):
+          TPPErrorLogger.logError(
+            withCode: .authDocLoadFail,
+            summary: "Logo image failed to load",
+            metadata: ["loadError": error.localizedDescription, "url": url.absoluteString]
+          )
+          completion(nil)
+        }
       }
     }
   }

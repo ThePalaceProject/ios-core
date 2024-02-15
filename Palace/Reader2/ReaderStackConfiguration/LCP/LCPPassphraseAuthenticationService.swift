@@ -37,7 +37,7 @@ class LCPPassphraseAuthenticationService: LCPAuthenticating {
             completion(nil)
             return
     }
-    TPPNetworkExecutor.shared.GET(loansUrl, useTokenIfAvailable: false) { result in
+    TPPNetworkExecutor.shared.GET(loansUrl, useTokenIfAvailable: true) { result in
       switch result {
       case .success(let data, _):
         let responseBody = String(data: data, encoding: .utf8)
