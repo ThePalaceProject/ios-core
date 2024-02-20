@@ -190,11 +190,13 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
                                       style: .plain,
                                       target: self,
                                       action: #selector(toggleBookmark))
+    bookmarkBtn.accessibilityLabel = Strings.Accessibility.toggleBookmark
     let tocButton = UIBarButtonItem(image: UIImage(named: "TOC"),
                                     style: .plain,
                                     target: self,
                                     action: #selector(presentPositionsVC))
-    tocButton.accessibilityLabel = DisplayStrings.tocAndBookmarks
+    tocButton.accessibilityLabel = Strings.Accessibility.viewBookmarksAndTocButton
+    
     if !isShowingSample {
       buttons.append(bookmarkBtn)
     }
