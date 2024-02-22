@@ -166,12 +166,26 @@ private extension Array where Element == ChapterLocation {
 }
 
 extension AudiobookBookmarkBusinessLogic: AudiobookPlaybackPositionDelegate {
-  public func saveListeningPosition(at location: String, completion: ((_ serverID: String?) -> Void)? = nil) {
+  public func postListeningPosition(at location: String, completion: ((_ serverID: String?) -> Void)? = nil) {
     annotationsManager.postListeningPosition(forBook: self.book.identifier, selectorValue: location, completion: completion)
   }
 }
 
 extension AudiobookBookmarkBusinessLogic: AudiobookBookmarkDelegate {
+
+  public func saveListeningPosition(at location: PalaceAudiobookToolkit.ChapterLocation, completion: ((String?) -> Void)?) {
+    guard let tppLocation = location.toTPPBookLocation() else {
+      completion?(nil)
+      return
+    }
+
+    annotationsManager.postListeningPosition(forBook: self.book.identifier, selectorValue: tppLocation.locationString) { serverId in
+      location.annotationId = serverId ?? ""
+      self.registry.setLocation(location.toTPPBookLocation(), forIdentifier: self.book.identifier)
+      completion?(nil)
+    }
+  }
+
   public func saveBookmark(at location: ChapterLocation, completion: ((_ location: ChapterLocation?) -> Void)? = nil) {
     Task {
       location.lastSavedTimeStamp = Date().iso8601

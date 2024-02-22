@@ -129,7 +129,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
     sut = AudiobookBookmarkBusinessLogic(book: fakeBook, registry: mockRegistry, annotationsManager: mockAnnotations)
 
     let expectedString = localTestBookmark.toTPPBookLocation()!.locationString
-    sut.saveListeningPosition(at: expectedString) { result in
+    sut.postListeningPosition(at: expectedString) { result in
       expectation.fulfill()
       XCTAssertEqual(self.mockAnnotations.savedLocations[self.fakeBook.identifier]?.first?.value ?? "", expectedString)
     }

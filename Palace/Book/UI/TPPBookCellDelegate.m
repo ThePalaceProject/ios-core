@@ -478,7 +478,7 @@ static const int kServerUpdateDelay = 15;
     if ([[NSDate date] timeIntervalSinceDate: self.lastServerUpdate] >= kServerUpdateDelay) {
       self.lastServerUpdate = [NSDate date];
       // Save updated location on server
-      [self saveListeningPositionAt:string completion:nil];
+      [self postListeningPositionAt:string completion:nil];
     }
   }
 }
