@@ -42,6 +42,9 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   private var isShowingSample: Bool = false
   private var initialLocation: Locator?
   private var subscriptions: Set<AnyCancellable> = []
+  private var currentLocationIsBookmarked: Bool {
+    bookmarksBusinessLogic.currentLocation(in: navigator) != nil
+  }
   
   // MARK: - Lifecycle
 
@@ -190,7 +193,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
                                       style: .plain,
                                       target: self,
                                       action: #selector(toggleBookmark))
-    bookmarkBtn.accessibilityLabel = Strings.Accessibility.toggleBookmark
+    bookmarkBtn.accessibilityLabel = currentLocationIsBookmarked ? Strings.TPPBaseReaderViewController.removeBookmark :  Strings.TPPBaseReaderViewController.addBookmark
     let tocButton = UIBarButtonItem(image: UIImage(named: "TOC"),
                                     style: .plain,
                                     target: self,

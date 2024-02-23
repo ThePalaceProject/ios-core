@@ -13,7 +13,6 @@ struct Strings {
   struct Accessibility {
     static let navigationTitle = "navigationTitle"
     static let librarySwitchButton = "librarySwitchButton"
-    static let toggleBookmark = "toggleBookmark"
     static let viewBookmarksAndTocButton = "viewBookmarksAndTocButton"
   }
 
