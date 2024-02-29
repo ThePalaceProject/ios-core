@@ -473,6 +473,7 @@ viewForHeaderInSection:(NSInteger const)section
   label.textAlignment = NSTextAlignmentCenter;
   label.font = [UIFont semiBoldPalaceFontOfSize: 16];
   label.text = lane.title;
+  label.accessibilityLabel = @"navigationTitle";
   viewController.navigationItem.titleView = label;
 
   [self.navigationController pushViewController:viewController animated:YES];
