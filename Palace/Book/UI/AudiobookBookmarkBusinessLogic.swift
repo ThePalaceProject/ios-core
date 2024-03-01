@@ -174,15 +174,19 @@ extension AudiobookBookmarkBusinessLogic: AudiobookPlaybackPositionDelegate {
 extension AudiobookBookmarkBusinessLogic: AudiobookBookmarkDelegate {
 
   public func saveListeningPosition(at location: PalaceAudiobookToolkit.ChapterLocation, completion: ((String?) -> Void)?) {
+    location.lastSavedTimeStamp = Date().iso8601
     guard let tppLocation = location.toTPPBookLocation() else {
       completion?(nil)
       return
     }
 
     annotationsManager.postListeningPosition(forBook: self.book.identifier, selectorValue: tppLocation.locationString) { serverId in
-      location.annotationId = serverId ?? ""
+      if let serverId {
+        location.lastSavedTimeStamp = ""
+        location.annotationId = serverId
+      }
       self.registry.setLocation(location.toTPPBookLocation(), forIdentifier: self.book.identifier)
-      completion?(nil)
+      completion?(serverId)
     }
   }
 

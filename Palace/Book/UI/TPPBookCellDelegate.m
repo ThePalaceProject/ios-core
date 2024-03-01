@@ -438,6 +438,7 @@ static const int kServerUpdateDelay = 15;
                           manager:(id<AudiobookManager>)manager
                    viewController:(UIViewController *)viewController
 {
+  self.lastServerUpdate = [NSDate date];
   self.audiobookViewController = viewController;
   self.manager = manager;
   // Target-Selector method required for iOS <10.0
