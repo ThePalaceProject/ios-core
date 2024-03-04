@@ -86,8 +86,9 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
     }
 
     if userAccount.isTokenRefreshRequired() && enableTokenRefresh {
-      handleTokenRefresh(for: req, completion: completion)
-      return URLSessionDataTask()
+      let task = performDataTask(with: req, completion: completion)
+      handleTokenRefresh(for: task)
+      return task
     }
     
     if req.hasRetried && userAccount.isTokenRefreshRequired() {
@@ -107,20 +108,21 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
     )
   }
 
-  private func handleTokenRefresh(for req: URLRequest, completion: @escaping (_: NYPLResult<Data>) -> Void) {
-    refreshTokenAndResume(task: nil) { [weak self] newToken in
-      guard let strongSelf = self else { return }
-      
-      if let token = newToken {
-        var updatedRequest = req
-        updatedRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        updatedRequest.hasRetried = true
-        strongSelf.executeRequest(updatedRequest, enableTokenRefresh: false, completion: completion)
-      } else {
-        let error = NSError(domain: TPPErrorLogger.clientDomain, code: TPPErrorCode.invalidCredentials.rawValue, userInfo: [NSLocalizedDescriptionKey: "Unauthorized HTTP"])
-        completion(NYPLResult.failure(error, nil))
-      }
-    }
+  private func handleTokenRefresh(for task: URLSessionTask) {
+    refreshTokenAndResume(task: task)
+//    { [weak self] newToken in
+//      guard let strongSelf = self else { return }
+//      
+//      if let token = newToken {
+//        var updatedRequest = req
+//        updatedRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+//        updatedRequest.hasRetried = true
+//        strongSelf.executeRequest(updatedRequest, enableTokenRefresh: false, completion: completion)
+//      } else {
+//        let error = NSError(domain: TPPErrorLogger.clientDomain, code: TPPErrorCode.invalidCredentials.rawValue, userInfo: [NSLocalizedDescriptionKey: "Unauthorized HTTP"])
+//        completion(NYPLResult.failure(error, nil))
+//      }
+//    }
   }
 
   private func performDataTask(with request: URLRequest,
@@ -343,11 +345,11 @@ extension TPPNetworkExecutor {
     return executeRequest(request, enableTokenRefresh: false, completion: completionWrapper)
   }
   
-  func refreshTokenAndResume(task: URLSessionTask?, completion: ((String?) -> Void)? = nil) {
+  func refreshTokenAndResume(task: URLSessionTask?) {
     refreshQueue.async { [weak self] in
       guard let self = self else { return }
       guard !self.isRefreshing else {
-        completion?(nil)
+//        completion?(nil)
         return
       }
       
@@ -357,7 +359,7 @@ extension TPPNetworkExecutor {
             let password = TPPUserAccount.sharedAccount().pin else {
         Log.info(#file, "Failed to refresh token due to missing credentials!")
         self.isRefreshing = false
-        completion?(nil)
+//        completion?(nil)
         return
       }
       
@@ -378,9 +380,10 @@ extension TPPNetworkExecutor {
               return
             }
             
-            let mutableRequest = self.request(for: url)
+            var mutableRequest = self.request(for: url)
             let newTask = self.urlSession.dataTask(with: mutableRequest)
-            
+            mutableRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            mutableRequest.hasRetried = true
             self.responder.updateCompletionId(oldTask.taskIdentifier, newId: newTask.taskIdentifier)
             newTasks.append(newTask)
             
@@ -390,11 +393,11 @@ extension TPPNetworkExecutor {
           newTasks.forEach { $0.resume() }
           self.retryQueue.removeAll()
           
-          completion?(token.accessToken)
+//          completion?(token.accessToken)
           
         case .failure(let error):
           Log.info(#file, "Failed to refresh token with error: \(error)")
-          completion?(nil)
+//          completion?(nil)
         }
       }
     }

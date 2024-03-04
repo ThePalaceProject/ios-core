@@ -243,13 +243,13 @@ protocol AnnotationsManager {
       return
     }
 
-    guard let bookID = bookID, let annotationURL = annotationURL else {
+    guard let bookID, let annotationURL else {
       Log.error(#file, "Required parameter was nil.")
       completion(nil)
       return
     }
     
-    let dataTask = TPPNetworkExecutor.shared.GET(annotationURL, useTokenIfAvailable: false) { (data, response, error) in
+    let dataTask = TPPNetworkExecutor.shared.GET(annotationURL, useTokenIfAvailable: true) { (data, response, error) in
       
       if let error = error as NSError? {
         Log.error(#file, "Request Error Code: \(error.code). Description: \(error.localizedDescription)")
