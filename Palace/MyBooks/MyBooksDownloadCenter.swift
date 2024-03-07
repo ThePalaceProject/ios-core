@@ -626,9 +626,7 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
           }
         } else {
           NSLog("Authentication might be needed after all")
-          downloadTask.cancel()
-          bookRegistry.setState(.DownloadFailed, for: book.identifier)
-          broadcastUpdate()
+          TPPNetworkExecutor.shared.refreshTokenAndResume(task: downloadTask)
           return
         }
       }
