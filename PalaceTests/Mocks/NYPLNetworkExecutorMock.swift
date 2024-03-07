@@ -9,7 +9,7 @@
 import Foundation
 @testable import Palace
 
-class TPPRequestExecutorMock: TPPRequestExecuting {
+class TPPRequestExecutorMock: TPPRequestExecuting {  
   var requestTimeout: TimeInterval = 60
 
   // table of all mock response bodies for given URLs
@@ -23,7 +23,7 @@ class TPPRequestExecutorMock: TPPRequestExecuting {
 
   func executeRequest(_ req: URLRequest,
                       enableTokenRefresh: Bool,
-                      completion: @escaping (NYPLResult<Data>) -> Void) -> URLSessionDataTask {
+                      completion: @escaping (NYPLResult<Data>) -> Void) -> URLSessionDataTask? {
 
     DispatchQueue.main.async {
       guard let url = req.url else {
