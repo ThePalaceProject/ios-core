@@ -537,7 +537,7 @@ extension TPPBookRegistry: TPPBookRegistryProvider {
   }
   
   func addOrReplaceGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String) {
-    guard let existingBookmark = registry[bookIdentifier]?.genericBookmarks?.first(where: { $0 == location }) else {
+    guard let existingBookmark = registry[bookIdentifier]?.genericBookmarks?.first(where: { $0.isSimilarTo(location) }) else {
       addGenericBookmark(location, forIdentifier: bookIdentifier)
       return
     }
@@ -566,8 +566,7 @@ extension TPPBookRegistry: TPPBookRegistryProvider {
   
   func replaceGenericBookmark(_ oldLocation: TPPBookLocation, with newLocation: TPPBookLocation, forIdentifier bookIdentifier: String) {
     deleteGenericBookmark(oldLocation, forIdentifier: bookIdentifier)
-    registry[bookIdentifier]?.genericBookmarks?.append(newLocation)
-    save()
+    addGenericBookmark(newLocation, forIdentifier: bookIdentifier)
   }
 }
 
@@ -584,25 +583,18 @@ extension TPPBookLocation {
   func isSimilarTo(_ location: TPPBookLocation) -> Bool {
     guard renderer == location.renderer,
           let locationDict = locationStringDictionary(),
-          let otherLocationDict = location.locationStringDictionary()
-    else { return false }
-            
-    var areEqual = true
-    
-    for (key, value) in locationDict {
-      if key == "lastSavedTimeStamp" { continue }
-      
-      if let otherValue = otherLocationDict[key] {
-        if "\(value)" != "\(otherValue)" {
-          areEqual = false
-          break
-        }
-      } else {
-        areEqual = false
-        break
-      }
+          let otherLocationDict = location.locationStringDictionary() else {
+      return false
     }
     
-    return areEqual
+    // Keys to be excluded from the comparison.
+    let excludedKeys = ["lastSavedTimeStamp", "annotationId"]
+    
+    // Prepare dictionaries excluding the keys not relevant for comparison.
+    let filteredDict = locationDict.filter { !excludedKeys.contains($0.key) }
+    let filteredOtherDict = otherLocationDict.filter { !excludedKeys.contains($0.key) }
+    
+    // Compare the filtered dictionaries.
+    return NSDictionary(dictionary: filteredDict).isEqual(to: filteredOtherDict)
   }
 }

@@ -158,7 +158,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
     let expectedBookmarks = [testBookmark, localTestBookmark, localTestBookmarkTwo, testBookmarkThree]
 
     mockRegistry.preloadData(bookIdentifier: fakeBook.identifier, locations: registryTestBookmarks.compactMap { $0.toTPPBookLocation() })
-    let remoteBookmarks = remoteTestBookmarks.compactMap { TestBookmark(annotationId: $0.annotationId, value: $0.toTPPBookLocation()!.locationString) }
+    let remoteBookmarks = remoteTestBookmarks.compactMap { TestBookmark(annotationId: $0.annotationId!, value: $0.toTPPBookLocation()!.locationString) }
     mockAnnotations.bookmarks = [fakeBook.identifier: remoteBookmarks]
     
     sut = AudiobookBookmarkBusinessLogic(book: fakeBook, registry: mockRegistry, annotationsManager: mockAnnotations)
@@ -180,7 +180,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
     let expectedBookmarks = [localTestBookmark, localTestBookmarkThree]
 
     mockRegistry.preloadData(bookIdentifier: fakeBook.identifier, locations: registryTestBookmarks.compactMap { $0.toTPPBookLocation() })
-    let remoteBookmarks = remoteTestBookmarks.compactMap { TestBookmark(annotationId: $0.annotationId, value: $0.toTPPBookLocation()!.locationString) }
+    let remoteBookmarks = remoteTestBookmarks.compactMap { TestBookmark(annotationId: $0.annotationId!, value: $0.toTPPBookLocation()!.locationString) }
     mockAnnotations.bookmarks = [fakeBook.identifier: remoteBookmarks]
     
     sut = AudiobookBookmarkBusinessLogic(book: fakeBook, registry: mockRegistry, annotationsManager: mockAnnotations)
@@ -202,7 +202,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
     let expectedBookmarks = [testBookmark, testBookmarkTwo]
 
     mockRegistry.preloadData(bookIdentifier: fakeBook.identifier, locations: registryTestBookmarks.compactMap { $0.toTPPBookLocation() })
-    let remoteBookmarks = remoteTestBookmarks.compactMap { TestBookmark(annotationId: $0.annotationId, value: $0.toTPPBookLocation()!.locationString) }
+    let remoteBookmarks = remoteTestBookmarks.compactMap { TestBookmark(annotationId: $0.annotationId!, value: $0.toTPPBookLocation()!.locationString) }
     mockAnnotations.bookmarks = [fakeBook.identifier: remoteBookmarks]
 
     sut = AudiobookBookmarkBusinessLogic(book: fakeBook, registry: mockRegistry, annotationsManager: mockAnnotations)
@@ -224,7 +224,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
     let expectedLocalBookmarks = [localTestBookmark, testBookmarkTwo, testBookmarkThree]
 
     mockRegistry.preloadData(bookIdentifier: fakeBook.identifier, locations: registryTestBookmarks.compactMap { $0.toTPPBookLocation() })
-    let remoteBookmarks = remoteTestBookmarks.compactMap { TestBookmark(annotationId: $0.annotationId, value: $0.toTPPBookLocation()!.locationString) }
+    let remoteBookmarks = remoteTestBookmarks.compactMap { TestBookmark(annotationId: $0.annotationId!, value: $0.toTPPBookLocation()!.locationString) }
     mockAnnotations.bookmarks = [fakeBook.identifier: remoteBookmarks]
 
     sut = AudiobookBookmarkBusinessLogic(book: fakeBook, registry: mockRegistry, annotationsManager: mockAnnotations)
@@ -248,7 +248,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
     let remoteTestBookmarks: [ChapterLocation] = []
 
     mockRegistry.preloadData(bookIdentifier: fakeBook.identifier, locations: registryTestBookmarks.compactMap { $0.toTPPBookLocation() })
-    let remoteBookmarks = remoteTestBookmarks.compactMap { TestBookmark(annotationId: $0.annotationId, value: $0.toTPPBookLocation()!.locationString) }
+    let remoteBookmarks = remoteTestBookmarks.compactMap { TestBookmark(annotationId: $0.annotationId!, value: $0.toTPPBookLocation()!.locationString) }
     mockAnnotations.bookmarks = [fakeBook.identifier: remoteBookmarks]
 
     sut = AudiobookBookmarkBusinessLogic(book: fakeBook, registry: mockRegistry, annotationsManager: mockAnnotations)
@@ -271,7 +271,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
     let expectedLocalBookmarks = [localTestBookmark, localTestBookmarkThree]
 
     mockRegistry.preloadData(bookIdentifier: fakeBook.identifier, locations: registryTestBookmarks.compactMap { $0.toTPPBookLocation() })
-    let remoteBookmarks = remoteTestBookmarks.compactMap { TestBookmark(annotationId: $0.annotationId, value: $0.toTPPBookLocation()!.locationString) }
+    let remoteBookmarks = remoteTestBookmarks.compactMap { TestBookmark(annotationId: $0.annotationId!, value: $0.toTPPBookLocation()!.locationString) }
     mockAnnotations.bookmarks = [fakeBook.identifier: remoteBookmarks]
 
     sut = AudiobookBookmarkBusinessLogic(book: fakeBook, registry: mockRegistry, annotationsManager: mockAnnotations)
@@ -299,7 +299,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
     let expectedRemoteBookmarks = [testBookmark]
 
     mockRegistry.preloadData(bookIdentifier: fakeBook.identifier, locations: registryTestBookmarks.compactMap { $0.toTPPBookLocation() })
-    let remoteBookmarks = remoteTestBookmarks.compactMap { TestBookmark(annotationId: $0.annotationId, value: $0.toTPPBookLocation()!.locationString) }
+    let remoteBookmarks = remoteTestBookmarks.compactMap { TestBookmark(annotationId: $0.annotationId!, value: $0.toTPPBookLocation()!.locationString) }
     mockAnnotations.bookmarks = [fakeBook.identifier: remoteBookmarks]
 
     sut = AudiobookBookmarkBusinessLogic(book: fakeBook, registry: mockRegistry, annotationsManager: mockAnnotations)
@@ -316,7 +316,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
       XCTAssertEqual(remoteBookmarks.count, expectedRemoteBookmarks.count)
 
       expectedRemoteBookmarks.forEach { expectedBookmark in
-        XCTAssertFalse(remoteBookmarks.filter { $0.contains(expectedBookmark.annotationId) }.isEmpty)
+        XCTAssertFalse(remoteBookmarks.filter { $0.contains(expectedBookmark.annotationId!) }.isEmpty)
       }
 
       expectation.fulfill()

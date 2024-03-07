@@ -39,7 +39,7 @@ import PalaceAudiobookToolkit
   }
   
   private func fetchServerBookmarks(completion: @escaping ([PalaceAudiobookToolkit.ChapterLocation]) -> Void) {
-    annotationsManager.getServerBookmarks(forBook: book.identifier, atURL: book.annotationsURL, motivation: .bookmark) { serverBookmarks in
+    annotationsManager.getServerBookmarks(forBook: book.identifier, atURL: self.book.annotationsURL, motivation: .bookmark) { serverBookmarks in
       guard let audioBookmarks = serverBookmarks as? [AudioBookmark] else {
         completion([])
         return
@@ -75,7 +75,7 @@ import PalaceAudiobookToolkit
   }
   
   private func uploadUnsyncedBookmarks(_ localBookmarks: [ChapterLocation]) async {
-    let unsyncedLocalBookmarks = localBookmarks.filter { $0.annotationId.isEmpty }
+    let unsyncedLocalBookmarks = localBookmarks.filter { $0.isUnsynced }
     
     for bookmark in unsyncedLocalBookmarks {
       do {
@@ -96,14 +96,14 @@ import PalaceAudiobookToolkit
     
     replaceBookmarkInLocalStore(bookmark, withAnnotationId: annotationId)
   }
-
+  
   private func replaceBookmarkInLocalStore(_ bookmark: ChapterLocation, withAnnotationId annotationId: String) {
     if let updatedBookmark = bookmark.copy() as? ChapterLocation {
       updatedBookmark.annotationId = annotationId
       replace(oldLocation: bookmark, with: updatedBookmark)
     }
   }
-  
+
   private func updateLocalBookmarks(with remoteBookmarks: [ChapterLocation], completion: @escaping ([ChapterLocation]) -> Void) {
     var updatedLocalBookmarks = fetchLocalBookmarks()
 
@@ -113,26 +113,39 @@ import PalaceAudiobookToolkit
     }
     
     let localBookmarksToDelete = updatedLocalBookmarks.filter { localBookmark in
-      !remoteBookmarks.contains(where: { remoteBookmark in
-        remoteBookmark.isSimilar(to: localBookmark)
-      })
+      let hasAnnotationId = !(localBookmark.annotationId.isEmpty)
+      let notOnServer = !remoteBookmarks.contains(where: { $0.isSimilar(to: localBookmark) })
+      return hasAnnotationId && notOnServer
     }
     
     deleteBookmarks(localBookmarksToDelete)
     
-    updatedLocalBookmarks.removeAll(where: { localBookmark in
-      localBookmarksToDelete.contains(localBookmark)
-    })
+    updatedLocalBookmarks.removeAll(where: { localBookmarksToDelete.contains($0) })
     
-    completion(updatedLocalBookmarks)
+    let existingLocalBookmarkIds = Set(updatedLocalBookmarks.compactMap { $0.annotationId })
+    let newRemoteBookmarks = remoteBookmarks.filter { remoteBookmark in
+      return !existingLocalBookmarkIds.contains(remoteBookmark.annotationId)
+    }
+    
+    addNewBookmarksToLocalStore(newRemoteBookmarks)
+    
+    let finalUpdatedLocalBookmarks = fetchLocalBookmarks()
+    
+    completion(finalUpdatedLocalBookmarks)
   }
   
+  private func addNewBookmarksToLocalStore(_ bookmarks: [ChapterLocation]) {
+    bookmarks.forEach { bookmark in
+      if let location = bookmark.toTPPBookLocation() {
+        registry.addGenericBookmark(location, forIdentifier: book.identifier)
+      }
+    }
+  }
+
   private func deleteBookmarks(_ bookmarks: [ChapterLocation]) {
     bookmarks.forEach { bookmark in
       deleteBookmark(at: bookmark)
-      if !bookmark.annotationId.isEmpty {
-        annotationsManager.deleteBookmark(annotationId: bookmark.annotationId) { _ in }
-      }
+      annotationsManager.deleteBookmark(annotationId: bookmark.annotationId) { _ in }
     }
   }
   
@@ -224,6 +237,11 @@ extension AudiobookBookmarkBusinessLogic: AudiobookBookmarkDelegate {
   public func deleteBookmark(at location: ChapterLocation, completion: ((Bool) -> Void)? = nil) {
     if let genericLocation = location.toTPPBookLocation() {
       self.registry.deleteGenericBookmark(genericLocation, forIdentifier: self.book.identifier)
+    }
+    
+    guard !location.isUnsynced else {
+      completion?(true)
+      return
     }
     
     annotationsManager.deleteBookmark(annotationId: location.annotationId) { success in
