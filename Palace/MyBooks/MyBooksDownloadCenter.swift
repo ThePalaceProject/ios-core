@@ -168,13 +168,13 @@ import OverdriveProcessor
       return
     }
 
-    if userAccount.hasCredentials() || !(loginRequired ?? false) {
-      processDownloadWithCredentials(for: book, withState: state, andRequest: initedRequest)
-    } else {
+    if !userAccount.hasCredentials() && (loginRequired ?? false) && !userAccount.hasAuthToken() {
       requestCredentialsAndStartDownload(for: book)
+    } else {
+      processDownloadWithCredentials(for: book, withState: state, andRequest: initedRequest)
     }
   }
-  
+
   private func processUnregisteredState(for book: TPPBook, location: TPPBookLocation?, loginRequired: Bool?) -> TPPBookState {
     if book.defaultAcquisitionIfBorrow == nil && (book.defaultAcquisitionIfOpenAccess != nil || !(loginRequired ?? false)) {
       bookRegistry.addBook(book, location: location, state: .DownloadNeeded, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
@@ -626,9 +626,7 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
           }
         } else {
           NSLog("Authentication might be needed after all")
-          downloadTask.cancel()
-          bookRegistry.setState(.DownloadFailed, for: book.identifier)
-          broadcastUpdate()
+          TPPNetworkExecutor.shared.refreshTokenAndResume(task: downloadTask)
           return
         }
       }

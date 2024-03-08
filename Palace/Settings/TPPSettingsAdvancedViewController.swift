@@ -71,16 +71,14 @@ import UIKit
   }
   
   func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-    
     let cell = UITableViewCell()
     cell.textLabel?.text = DisplayStrings.deleteServerData
     cell.textLabel?.font = UIFont.customFont(forTextStyle: .body)
     cell.textLabel?.textColor = .red
     return cell
   }
-  
-  func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
-    return Strings.Generic.delete
-  }
 
+  func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
+    nil
+  }
 }

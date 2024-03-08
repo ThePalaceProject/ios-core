@@ -20,7 +20,7 @@ protocol TPPRequestExecuting {
   @discardableResult
   func executeRequest(_ req: URLRequest,
                       enableTokenRefresh: Bool,
-                      completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask
+                      completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask?
 
   var requestTimeout: TimeInterval {get}
 
