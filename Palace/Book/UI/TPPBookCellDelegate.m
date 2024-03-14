@@ -201,22 +201,7 @@ static const int kServerUpdateDelay = 15;
 
 - (void)openAudiobook:(TPPBook *)book {
   NSURL *const url = [[MyBooksDownloadCenter shared] fileUrlFor:book.identifier];
-  NSData *const data = [NSData dataWithContentsOfURL:url];
-  if (data == nil) {
-    [self presentCorruptedItemErrorForBook:book fromURL:url];
-    return;
-  }
-
-  id const json = TPPJSONObjectFromData(data);
-    
   NSMutableDictionary *dict = nil;
-    
-#if FEATURE_OVERDRIVE
-  if ([book.distributor isEqualToString:OverdriveDistributorKey]) {
-    dict = [(NSMutableDictionary *)json mutableCopy];
-    dict[@"id"] = book.identifier;
-  }
-#endif
   
 #if defined(LCP)
   if ([LCPAudiobooks canOpenBook:book]) {
@@ -232,13 +217,26 @@ static const int kServerUpdateDelay = 15;
         [self openAudiobook:book withJSON:mutableDict decryptor:lcpAudiobooks];
       }
     }];
-  } else {
-    // Not an LCP book
-    [self openAudiobook:book withJSON:dict ?: json decryptor:nil];
+    return;
   }
-#else
-  [self openAudiobook:book withJSON:dict ?: json decryptor:nil];
 #endif
+
+  NSError *error = nil;
+  NSData *const data = [NSData dataWithContentsOfURL:url options:NSDataReadingMappedIfSafe error:&error];
+  if (data == nil) {
+    [self presentCorruptedItemErrorForBook:book fromURL:url];
+    return;
+  }
+  id const json = TPPJSONObjectFromData(data);
+
+#if FEATURE_OVERDRIVE
+  if ([book.distributor isEqualToString:OverdriveDistributorKey]) {
+    dict = [(NSMutableDictionary *)json mutableCopy];
+    dict[@"id"] = book.identifier;
+  }
+#endif
+
+  [self openAudiobook:book withJSON:dict ?: json decryptor:nil];
 }
 
 - (void)openAudiobook:(TPPBook *)book withJSON:(NSDictionary *)json decryptor:(id<DRMDecryptor>)audiobookDrmDecryptor {
