@@ -240,7 +240,7 @@ static const int kServerUpdateDelay = 15;
 - (void)openAudiobook:(TPPBook *)book withJSON:(NSDictionary *)json decryptor:(id<DRMDecryptor>)audiobookDrmDecryptor {
   [AudioBookVendorsHelper updateVendorKeyWithBook:json completion:^(NSError * _Nullable error) {
     [NSOperationQueue.mainQueue addOperationWithBlock:^{
-      id<Audiobook> const audiobook = [AudiobookFactory audiobook:json bookID:book.identifier decryptor:audiobookDrmDecryptor token:book.bearerToken];
+      id<Original_Audiobook> const audiobook = [Original_AudiobookFactory audiobook:json bookID:book.identifier decryptor:audiobookDrmDecryptor token:book.bearerToken];
 
       if (!audiobook) {
         if (error) {
@@ -561,7 +561,7 @@ static const int kServerUpdateDelay = 15;
 #if FEATURE_OVERDRIVE
 - (void)updateODAudiobookManifest {
   if ([[TPPBookRegistry shared] stateFor:self.book.identifier] == TPPBookStateDownloadSuccessful) {
-    OverdriveAudiobook *odAudiobook = (OverdriveAudiobook *)self.manager.audiobook;
+    Original_OverdriveAudiobook *odAudiobook = (Original_OverdriveAudiobook *)self.manager.audiobook;
 
     NSURL *const url = [[MyBooksDownloadCenter shared] fileUrlFor: self.book.identifier];
     NSData *const data = [NSData dataWithContentsOfURL:url];
