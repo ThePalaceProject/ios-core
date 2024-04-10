@@ -20,14 +20,13 @@
 #import <ADEPT/ADEPT.h>
 #endif
 
-@interface TPPBookCellDelegate () <RefreshDelegate>
+@interface TPPBookCellDelegate ()
 {
   @private NSTimeInterval previousPlayheadOffset;
 }
 
 @property (nonatomic) NSTimer *timer;
 @property (nonatomic) NSDate *lastServerUpdate;
-@property (nonatomic) id<AudiobookManager> manager;
 @property (nonatomic, weak) UIViewController *audiobookViewController;
 @property (strong) NSLock *refreshAudiobookLock;
 @property (nonatomic, strong) LoadingViewController *loadingViewController;
@@ -225,126 +224,127 @@ static const int kServerUpdateDelay = 15;
       if (dict) {
         NSMutableDictionary *mutableDict = [dict mutableCopy];
         mutableDict[@"id"] = book.identifier;
-        [self openAudiobook:book withJSON:mutableDict decryptor:lcpAudiobooks];
+        [self openAudiobookWithBook:book json:mutableDict drmDecryptor:lcpAudiobooks];
       }
     }];
   } else {
     // Not an LCP book
-    [self openAudiobook:book withJSON:dict ?: json decryptor:nil];
+    [self openAudiobookWithBook:book json:dict ?: json drmDecryptor:nil];
   }
 #else
-  [self openAudiobook:book withJSON:dict ?: json decryptor:nil];
+  [self openAudiobookWithBook:book json:dict ?: json drmDecryptor:nil];
 #endif
 }
-
-- (void)openAudiobook:(TPPBook *)book withJSON:(NSDictionary *)json decryptor:(id<DRMDecryptor>)audiobookDrmDecryptor {
-  [AudioBookVendorsHelper updateVendorKeyWithBook:json completion:^(NSError * _Nullable error) {
-    [NSOperationQueue.mainQueue addOperationWithBlock:^{
-      id<Original_Audiobook> const audiobook = [Original_AudiobookFactory audiobook:json bookID:book.identifier decryptor:audiobookDrmDecryptor token:book.bearerToken];
-
-      if (!audiobook) {
-        if (error) {
-          [self presentDRMKeyError:error];
-        } else {
-          [self presentUnsupportedItemError];
-        }
-        return;
-      }
-
-      AudiobookTimeTracker *timeTracker;
-      if (book.timeTrackingURL) {
-        timeTracker = [[AudiobookTimeTracker alloc] initWithLibraryId:AccountsManager.shared.currentAccount.uuid bookId:book.identifier timeTrackingUrl:book.timeTrackingURL];
-      }
-      
-      AudiobookMetadata *const metadata = [[AudiobookMetadata alloc]
-                                           initWithTitle:book.title
-                                           authors:@[book.authors]];
-      id<AudiobookManager> const manager = [[DefaultAudiobookManager alloc]
-                                            initWithMetadata:metadata
-                                            audiobook:audiobook
-                                            playbackTrackerDelegate:timeTracker];
-      
-      
-      self.book = book;
-      self.audiobookBookmarkBusinessLogic = [[AudiobookBookmarkBusinessLogic alloc] initWithBook:book];
-
-      manager.refreshDelegate = self;
-      manager.playbackPositionDelegate = self;
-      manager.bookmarkDelegate = self.audiobookBookmarkBusinessLogic;
-
-      AudiobookPlayer *audiobookPlayer = [[AudiobookPlayer alloc] initWithAudiobookManager:manager];
-
-      [self registerCallbackForLogHandler];
-
-      [[TPPBookRegistry shared] coverImageFor:book handler:^(UIImage *image) {
-        if (image) {
-          [audiobookPlayer updateImage:image];
-        }
-      }];
-
-      [[TPPRootTabBarController sharedController] pushViewController:audiobookPlayer animated:YES];
-
-      __weak UIViewController *weakAudiobookVC = audiobookPlayer;
-      [manager setPlaybackCompletionHandler:^{
-        NSArray<TPPOPDSAcquisitionPath *> *paths = [TPPOPDSAcquisitionPath
-                                                     supportedAcquisitionPathsForAllowedTypes:[TPPOPDSAcquisitionPath supportedTypes]
-                                                    allowedRelations:(TPPOPDSAcquisitionRelationSetBorrow |
-                                                                      TPPOPDSAcquisitionRelationSetGeneric)
-                                                     acquisitions:book.acquisitions];
-        if (paths.count > 0) {
-          UIAlertController *alert = [TPPReturnPromptHelper audiobookPromptWithCompletion:^(BOOL returnWasChosen) {
-            if (returnWasChosen) {
-              [weakAudiobookVC.navigationController popViewControllerAnimated:YES];
-              [self didSelectReturnForBook:book completion:nil];
-            }
-            [TPPAppStoreReviewPrompt presentIfAvailable];
-          }];
-          [[TPPRootTabBarController sharedController] presentViewController:alert animated:YES completion:nil];
-        } else {
-          TPPLOG(@"Skipped Return Prompt with no valid acquisition path.");
-          [TPPAppStoreReviewPrompt presentIfAvailable];
-        }
-      }];
-
-      [self startLoading:audiobookPlayer];
-
-      TPPBookLocation *localAudiobookLocation = [[TPPBookRegistry shared] locationForIdentifier:book.identifier];
-      NSData *localLocationData = [localAudiobookLocation.locationString dataUsingEncoding:NSUTF8StringEncoding];
-      ChapterLocation *localLocation = [ChapterLocation fromData:localLocationData];
-  
-      // Player error handler
-      void (^moveCompletionHandler)(NSError *) = ^(NSError *error) {
-        if (error) {
-          [self presentLocationRecoveryError:error];
-          return;
-        }
-        [self stopLoading];
-      };
-      
-      // The player moves to the local position before loading a remote one.
-      // This way the user sees the last playhead position.
-      if (localLocation) {
-        [manager.audiobook.player movePlayheadToLocation:localLocation completion:moveCompletionHandler];
-        [self stopLoading];
-      }
-      
-      [[TPPBookRegistry shared] syncLocationFor:book completion:^(ChapterLocation * _Nullable remoteLocation) {
-        [self chooseLocalLocation:localLocation orRemoteLocation:remoteLocation forOperation:^(ChapterLocation *location) {
-          [NSOperationQueue.mainQueue addOperationWithBlock:^{
-            TPPLOG_F(@"Returning to Audiobook Location: %@", location);
-            if (location) {
-              [manager.audiobook.player movePlayheadToLocation:location completion:moveCompletionHandler];
-            } else {
-              [self stopLoading];
-            }
-          }];
-        }];
-      }];
-      
-      [self scheduleTimerForAudiobook:book manager:manager viewController:audiobookPlayer];
-    }];
-  }];
-}
+//
+//- (void)openAudiobook:(TPPBook *)book withJSON:(NSDictionary *)json decryptor:(id<DRMDecryptor>)audiobookDrmDecryptor {
+//  [AudioBookVendorsHelper updateVendorKeyWithBook:json completion:^(NSError * _Nullable error) {
+//    [NSOperationQueue.mainQueue addOperationWithBlock:^{
+//      id<Original_Audiobook> const audiobook = [Original_AudiobookFactory audiobook:json bookID:book.identifier decryptor:audiobookDrmDecryptor token:book.bearerToken];
+//
+//      if (!audiobook) {
+//        if (error) {
+//          [self presentDRMKeyError:error];
+//        } else {
+//          [self presentUnsupportedItemError];
+//        }
+//        return;
+//      }
+//
+//      AudiobookTimeTracker *timeTracker;
+//      if (book.timeTrackingURL) {
+//        timeTracker = [[AudiobookTimeTracker alloc] initWithLibraryId:AccountsManager.shared.currentAccount.uuid bookId:book.identifier timeTrackingUrl:book.timeTrackingURL];
+//      }
+//      
+//      AudiobookMetadata *const metadata = [[AudiobookMetadata alloc]
+//                                           initWithTitle:book.title
+//                                           authors:@[book.authors]];
+////      id<AudiobookManager> const manager = [[DefaultAudiobookManager alloc]
+////                                            initWithMetadata:metadata
+////                                            audiobook:audiobook
+////                                            playbackTrackerDelegate:timeTracker];
+//      
+//      
+//      id<AudiobookManger> const manager = [[DefaultAudiobookManager alloc] ]
+//      self.book = book;
+//      self.audiobookBookmarkBusinessLogic = [[AudiobookBookmarkBusinessLogic alloc] initWithBook:book];
+//
+////      manager.refreshDelegate = self;
+////      manager.playbackPositionDelegate = self;
+////      manager.bookmarkDelegate = self.audiobookBookmarkBusinessLogic;
+//
+//      AudiobookPlayer *audiobookPlayer = [[AudiobookPlayer alloc] initWithAudiobookManager:manager];
+//
+//      [self registerCallbackForLogHandler];
+//
+//      [[TPPBookRegistry shared] coverImageFor:book handler:^(UIImage *image) {
+//        if (image) {
+//          [audiobookPlayer updateImage:image];
+//        }
+//      }];
+//
+//      [[TPPRootTabBarController sharedController] pushViewController:audiobookPlayer animated:YES];
+//
+//      __weak UIViewController *weakAudiobookVC = audiobookPlayer;
+//      [manager setPlaybackCompletionHandler:^{
+//        NSArray<TPPOPDSAcquisitionPath *> *paths = [TPPOPDSAcquisitionPath
+//                                                     supportedAcquisitionPathsForAllowedTypes:[TPPOPDSAcquisitionPath supportedTypes]
+//                                                    allowedRelations:(TPPOPDSAcquisitionRelationSetBorrow |
+//                                                                      TPPOPDSAcquisitionRelationSetGeneric)
+//                                                     acquisitions:book.acquisitions];
+//        if (paths.count > 0) {
+//          UIAlertController *alert = [TPPReturnPromptHelper audiobookPromptWithCompletion:^(BOOL returnWasChosen) {
+//            if (returnWasChosen) {
+//              [weakAudiobookVC.navigationController popViewControllerAnimated:YES];
+//              [self didSelectReturnForBook:book completion:nil];
+//            }
+//            [TPPAppStoreReviewPrompt presentIfAvailable];
+//          }];
+//          [[TPPRootTabBarController sharedController] presentViewController:alert animated:YES completion:nil];
+//        } else {
+//          TPPLOG(@"Skipped Return Prompt with no valid acquisition path.");
+//          [TPPAppStoreReviewPrompt presentIfAvailable];
+//        }
+//      }];
+//
+//      [self startLoading:audiobookPlayer];
+//
+//      TPPBookLocation *localAudiobookLocation = [[TPPBookRegistry shared] locationForIdentifier:book.identifier];
+//      NSData *localLocationData = [localAudiobookLocation.locationString dataUsingEncoding:NSUTF8StringEncoding];
+//      ChapterLocation *localLocation = [ChapterLocation fromData:localLocationData];
+//  
+//      // Player error handler
+//      void (^moveCompletionHandler)(NSError *) = ^(NSError *error) {
+//        if (error) {
+//          [self presentLocationRecoveryError:error];
+//          return;
+//        }
+//        [self stopLoading];
+//      };
+//      
+//      // The player moves to the local position before loading a remote one.
+//      // This way the user sees the last playhead position.
+//      if (localLocation) {
+//        [manager.audiobook.player movePlayheadToLocation:localLocation completion:moveCompletionHandler];
+//        [self stopLoading];
+//      }
+//      
+//      [[TPPBookRegistry shared] syncLocationFor:book completion:^(ChapterLocation * _Nullable remoteLocation) {
+//        [self chooseLocalLocation:localLocation orRemoteLocation:remoteLocation forOperation:^(ChapterLocation *location) {
+//          [NSOperationQueue.mainQueue addOperationWithBlock:^{
+//            TPPLOG_F(@"Returning to Audiobook Location: %@", location);
+//            if (location) {
+//              [manager.audiobook.player movePlayheadToLocation:location completion:moveCompletionHandler];
+//            } else {
+//              [self stopLoading];
+//            }
+//          }];
+//        }];
+//      }];
+//      
+//      [self scheduleTimerForAudiobook:book manager:manager viewController:audiobookPlayer];
+//    }];
+//  }];
+//}
 
 /// Requests whether the user wants to ysnc current listening position
 /// - Parameter completion: completion with `YES` or `NO` to the sync
@@ -410,94 +410,94 @@ static const int kServerUpdateDelay = 15;
   });
 }
 
-#pragma mark - Audiobook Methods
+//#pragma mark - Audiobook Methods
+//
+//- (void)registerCallbackForLogHandler
+//{
+//  [DefaultAudiobookManager setLogHandler:^(enum LogLevel level, NSString * _Nonnull message, NSError * _Nullable error) {
+//    NSString *msg = [NSString stringWithFormat:@"Level: %ld. Message: %@",
+//                     (long)level, message];
+//
+//    if (error) {
+//      [TPPErrorLogger logError:error
+//                        summary:@"Error registering audiobook callback for logging"
+//                       metadata:@{ @"context": msg ?: @"N/A" }];
+//    } else if (level > LogLevelDebug) {
+//      NSString *logLevel = (level == LogLevelInfo ?
+//                            @"info" :
+//                            (level == LogLevelWarn ? @"warning" : @"error"));
+//      NSString *summary = [NSString stringWithFormat:@"PalaceAudiobookToolkit::AudiobookManager %@", logLevel];
+//      [TPPErrorLogger logErrorWithCode:TPPErrorCodeAudiobookExternalError
+//                                summary:summary
+//                               metadata:@{ @"context": msg ?: @"N/A" }];
+//    }
+//  }];
+//}
+//
+//- (void)scheduleTimerForAudiobook:(TPPBook *)book
+//                          manager:(id<AudiobookManager>)manager
+//                   viewController:(UIViewController *)viewController
+//{
+//  self.lastServerUpdate = [NSDate date];
+//  self.audiobookViewController = viewController;
+//  self.manager = manager;
+//  // Target-Selector method required for iOS <10.0
+//  self.timer = [NSTimer scheduledTimerWithTimeInterval:1.0
+//                                                target:self
+//                                              selector:@selector(pollAudiobookReadingLocation)
+//                                              userInfo:nil
+//                                               repeats:YES];
+//}
+//
+//- (void)pollAudiobookReadingLocation
+//{
+//  if (!self.audiobookViewController) {
+//    [self.timer invalidate];
+//    self.timer = nil;
+//    self.manager = nil;
+//    return;
+//  }
+//  
+//  // Only update audiobook location when we are not loading
+//  if (self.loadingViewController != nil) {
+//    return;
+//  }
+//
+//  NSString *const string = [[NSString alloc]
+//                            initWithData:self.manager.audiobook.player.currentChapterLocation.toData
+//                            encoding:NSUTF8StringEncoding];
+//
+//  // Save updated playhead position in audiobook chapter
+//  NSTimeInterval playheadOffset = self.manager.audiobook.player.currentChapterLocation.actualOffset;
+//  if (previousPlayheadOffset != playheadOffset && playheadOffset > 0) {
+//    previousPlayheadOffset = playheadOffset;
+//  
+//    [[TPPBookRegistry shared]
+//     setLocation:[[TPPBookLocation alloc] initWithLocationString:string renderer:@"PalaceAudiobookToolkit"]
+//     forIdentifier:self.book.identifier];
+//    
+//    if ([[NSDate date] timeIntervalSinceDate: self.lastServerUpdate] >= kServerUpdateDelay) {
+//      self.lastServerUpdate = [NSDate date];
+//      // Save updated location on server
+//      [self postListeningPositionAt:string completion:nil];
+//    }
+//  }
+//}
 
-- (void)registerCallbackForLogHandler
-{
-  [DefaultAudiobookManager setLogHandler:^(enum LogLevel level, NSString * _Nonnull message, NSError * _Nullable error) {
-    NSString *msg = [NSString stringWithFormat:@"Level: %ld. Message: %@",
-                     (long)level, message];
-
-    if (error) {
-      [TPPErrorLogger logError:error
-                        summary:@"Error registering audiobook callback for logging"
-                       metadata:@{ @"context": msg ?: @"N/A" }];
-    } else if (level > LogLevelDebug) {
-      NSString *logLevel = (level == LogLevelInfo ?
-                            @"info" :
-                            (level == LogLevelWarn ? @"warning" : @"error"));
-      NSString *summary = [NSString stringWithFormat:@"PalaceAudiobookToolkit::AudiobookManager %@", logLevel];
-      [TPPErrorLogger logErrorWithCode:TPPErrorCodeAudiobookExternalError
-                                summary:summary
-                               metadata:@{ @"context": msg ?: @"N/A" }];
-    }
-  }];
-}
-
-- (void)scheduleTimerForAudiobook:(TPPBook *)book
-                          manager:(id<AudiobookManager>)manager
-                   viewController:(UIViewController *)viewController
-{
-  self.lastServerUpdate = [NSDate date];
-  self.audiobookViewController = viewController;
-  self.manager = manager;
-  // Target-Selector method required for iOS <10.0
-  self.timer = [NSTimer scheduledTimerWithTimeInterval:1.0
-                                                target:self
-                                              selector:@selector(pollAudiobookReadingLocation)
-                                              userInfo:nil
-                                               repeats:YES];
-}
-
-- (void)pollAudiobookReadingLocation
-{
-  if (!self.audiobookViewController) {
-    [self.timer invalidate];
-    self.timer = nil;
-    self.manager = nil;
-    return;
-  }
-  
-  // Only update audiobook location when we are not loading
-  if (self.loadingViewController != nil) {
-    return;
-  }
-
-  NSString *const string = [[NSString alloc]
-                            initWithData:self.manager.audiobook.player.currentChapterLocation.toData
-                            encoding:NSUTF8StringEncoding];
-
-  // Save updated playhead position in audiobook chapter
-  NSTimeInterval playheadOffset = self.manager.audiobook.player.currentChapterLocation.actualOffset;
-  if (previousPlayheadOffset != playheadOffset && playheadOffset > 0) {
-    previousPlayheadOffset = playheadOffset;
-  
-    [[TPPBookRegistry shared]
-     setLocation:[[TPPBookLocation alloc] initWithLocationString:string renderer:@"PalaceAudiobookToolkit"]
-     forIdentifier:self.book.identifier];
-    
-    if ([[NSDate date] timeIntervalSinceDate: self.lastServerUpdate] >= kServerUpdateDelay) {
-      self.lastServerUpdate = [NSDate date];
-      // Save updated location on server
-      [self postListeningPositionAt:string completion:nil];
-    }
-  }
-}
-
-- (void)presentDRMKeyError:(NSError *) error {
-  NSString *title = NSLocalizedString(@"DRM Error", nil);
-  NSString *message = error.localizedDescription;
-  UIAlertController *alert = [TPPAlertUtils alertWithTitle:title message:message];
-  [TPPAlertUtils presentFromViewControllerOrNilWithAlertController:alert viewController:nil animated:YES completion:nil];
-}
-
-- (void)presentUnsupportedItemError
-{
-  NSString *title = NSLocalizedString(@"Unsupported Item", nil);
-  NSString *message = NSLocalizedString(@"The item you are trying to open is not currently supported.", nil);
-  UIAlertController *alert = [TPPAlertUtils alertWithTitle:title message:message];
-  [TPPAlertUtils presentFromViewControllerOrNilWithAlertController:alert viewController:nil animated:YES completion:nil];
-}
+//- (void)presentDRMKeyError:(NSError *) error {
+//  NSString *title = NSLocalizedString(@"DRM Error", nil);
+//  NSString *message = error.localizedDescription;
+//  UIAlertController *alert = [TPPAlertUtils alertWithTitle:title message:message];
+//  [TPPAlertUtils presentFromViewControllerOrNilWithAlertController:alert viewController:nil animated:YES completion:nil];
+//}
+//
+//- (void)presentUnsupportedItemError
+//{
+//  NSString *title = NSLocalizedString(@"Unsupported Item", nil);
+//  NSString *message = NSLocalizedString(@"The item you are trying to open is not currently supported.", nil);
+//  UIAlertController *alert = [TPPAlertUtils alertWithTitle:title message:message];
+//  [TPPAlertUtils presentFromViewControllerOrNilWithAlertController:alert viewController:nil animated:YES completion:nil];
+//}
 
 - (void)presentCorruptedItemErrorForBook:(TPPBook*)book fromURL:(NSURL*)url
 {
@@ -560,33 +560,34 @@ static const int kServerUpdateDelay = 15;
 
 #if FEATURE_OVERDRIVE
 - (void)updateODAudiobookManifest {
-  if ([[TPPBookRegistry shared] stateFor:self.book.identifier] == TPPBookStateDownloadSuccessful) {
-    Original_OverdriveAudiobook *odAudiobook = (Original_OverdriveAudiobook *)self.manager.audiobook;
-
-    NSURL *const url = [[MyBooksDownloadCenter shared] fileUrlFor: self.book.identifier];
-    NSData *const data = [NSData dataWithContentsOfURL:url];
-    if (data == nil) {
-      [self presentCorruptedItemErrorForBook:self.book fromURL:url];
-      return;
-    }
-
-    id const json = TPPJSONObjectFromData(data);
-
-    NSMutableDictionary *dict = [(NSMutableDictionary *)json mutableCopy];
-
-    dict[@"id"] = self.book.identifier;
-
-    if ([odAudiobook respondsToSelector:@selector(updateManifestWithJSON:)]) {
-      [odAudiobook updateManifestWithJSON:dict];
-    }
-  
-    DefaultAudiobookManager *audiobookManager = (DefaultAudiobookManager *)_manager;
-    [audiobookManager updateAudiobookWith:odAudiobook.spine];
-      
-    [[NSNotificationCenter defaultCenter] removeObserver:self];
-      
-    [self.refreshAudiobookLock unlock];
-  }
+  //TODO: ADD OVERDRIVE DOWNLOAD FUNCTIONLIATY TO AUDIOBOOKMANAGER. SHOULDNT BE HERE
+//  if ([[TPPBookRegistry shared] stateFor:self.book.identifier] == TPPBookStateDownloadSuccessful) {
+//    Original_OverdriveAudiobook *odAudiobook = (Original_OverdriveAudiobook *)self.manager.audiobook;
+//
+//    NSURL *const url = [[MyBooksDownloadCenter shared] fileUrlFor: self.book.identifier];
+//    NSData *const data = [NSData dataWithContentsOfURL:url];
+//    if (data == nil) {
+//      [self presentCorruptedItemErrorForBook:self.book fromURL:url];
+//      return;
+//    }
+//
+//    id const json = TPPJSONObjectFromData(data);
+//
+//    NSMutableDictionary *dict = [(NSMutableDictionary *)json mutableCopy];
+//
+//    dict[@"id"] = self.book.identifier;
+//
+//    if ([odAudiobook respondsToSelector:@selector(updateManifestWithJSON:)]) {
+//      [odAudiobook updateManifestWithJSON:dict];
+//    }
+//  
+//    DefaultAudiobookManager *audiobookManager = (DefaultAudiobookManager *)_manager;
+//    [audiobookManager updateAudiobookWith:odAudiobook.spine];
+//      
+//    [[NSNotificationCenter defaultCenter] removeObserver:self];
+//      
+//    [self.refreshAudiobookLock unlock];
+//  }
 }
 #endif
 
