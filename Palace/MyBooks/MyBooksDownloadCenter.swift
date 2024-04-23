@@ -476,7 +476,7 @@ extension MyBooksDownloadCenter {
         if let dict = dict {
           // Delete decrypted content for the book
           let mutableDict = dict.mutableCopy() as? [String: Any]
-          Original_AudiobookFactory.audiobook(mutableDict ?? [:])?.deleteLocalContent()
+//          Original_AudiobookFactory.audiobook(mutableDict ?? [:])?.deleteLocalContent()
         }
       }
       // Delete LCP book file
@@ -489,10 +489,10 @@ extension MyBooksDownloadCenter {
       }
     } else {
       // Not an LCP book
-      Original_AudiobookFactory.audiobook(dict)?.deleteLocalContent()
+//      Original_AudiobookFactory.audiobook(dict)?.deleteLocalContent()
     }
 #else
-    Original_AudiobookFactory.audiobook(dict)?.deleteLocalContent()
+//    Original_AudiobookFactory.audiobook(dict)?.deleteLocalContent()
 #endif
   }
   

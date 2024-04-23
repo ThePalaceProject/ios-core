@@ -25,16 +25,17 @@ import PalaceAudiobookToolkit
           self.presentDRMKeyError(error)
           return
         }
-        
+
+        let manifestDecoder = Manifest.customDecoder()
         guard let jsonData = try? JSONSerialization.data(withJSONObject: json, options: []),
-              let manifest = try? JSONDecoder().decode(Manifest.self, from: jsonData),
-                let audiobook = Audiobook(manifest: manifest)
+              let manifest = try? manifestDecoder.decode(Manifest.self, from: jsonData),
+              let audiobook = AudiobookFactory.audiobook(for: manifest, bookIdentifier: book.identifier, decryptor: drmDecryptor, token: book.bearerToken)
         else {
           self.presentUnsupportedItemError()
           return
         }
-        
-        let timeTracker = book.timeTrackingURL.map { AudiobookTimeTracker(libraryId: AccountsManager.shared.currentAccount?.uuid ?? "", bookId: book.identifier, timeTrackingUrl: $0) }
+
+//        let timeTracker = book.timeTrackingURL.map { AudiobookTimeTracker(libraryId: AccountsManager.shared.currentAccount?.uuid ?? "", bookId: book.identifier, timeTrackingUrl: $0) }
         
         let metadata = AudiobookMetadata(title: book.title, authors: [book.authors ?? ""])
         let audiobookManager = DefaultAudiobookManager(
@@ -43,12 +44,16 @@ import PalaceAudiobookToolkit
           networkService: DefaultAudiobookNetworkService(tracks: audiobook.tableOfContents.tracks.tracks))
         
         let audiobookPlayer = AudiobookPlayer(audiobookManager: audiobookManager)
-                
-//        audiobookManager?.playbackCompletionHandler = {
+        //        audiobookManager?.playbackCompletionHandler = {
 //          // Handle playback completion here
 //        }
         
         TPPRootTabBarController.shared().pushViewController(audiobookPlayer, animated: true)
+        TPPBookRegistry.shared.coverImage(for: book) { image in
+          if let image {
+            audiobookPlayer.updateImage(image)
+          }
+        }
       }
     }
   }
