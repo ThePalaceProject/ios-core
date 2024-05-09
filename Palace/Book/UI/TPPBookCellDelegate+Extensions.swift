@@ -27,6 +27,7 @@ import PalaceAudiobookToolkit
         }
 
         let manifestDecoder = Manifest.customDecoder()
+        
         guard let jsonData = try? JSONSerialization.data(withJSONObject: json, options: []),
               let manifest = try? manifestDecoder.decode(Manifest.self, from: jsonData),
               let audiobook = AudiobookFactory.audiobook(for: manifest, bookIdentifier: book.identifier, decryptor: drmDecryptor, token: book.bearerToken)
@@ -41,7 +42,7 @@ import PalaceAudiobookToolkit
         let audiobookManager = DefaultAudiobookManager(
           metadata: metadata,
           audiobook: audiobook,
-          networkService: DefaultAudiobookNetworkService(tracks: audiobook.tableOfContents.tracks.tracks))
+          networkService: DefaultAudiobookNetworkService(tracks: audiobook.tableOfContents.allTracks))
         
         let audiobookPlayer = AudiobookPlayer(audiobookManager: audiobookManager)
         //        audiobookManager?.playbackCompletionHandler = {
