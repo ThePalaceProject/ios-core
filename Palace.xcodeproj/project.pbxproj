@@ -953,7 +953,7 @@
 		D570B6A72BA20139003FE991 /* OverdriveProcessor.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E5C1F53027990929005FC6B2 /* OverdriveProcessor.framework */; };
 		D570B6A82BA20139003FE991 /* MediaPlayer.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 03B0922F1E78871A00AD338D /* MediaPlayer.framework */; };
 		D570B6A92BA20139003FE991 /* R2Navigator in Frameworks */ = {isa = PBXBuildFile; productRef = D570B53D2BA20139003FE991 /* R2Navigator */; };
-		D570B6AA2BA20139003FE991 /* NYPLAEToolkit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E585662526979AC100A5FBD5 /* NYPLAEToolkit.framework */; };
+		D570B6AA2BA20139003FE991 /* (null) in Frameworks */ = {isa = PBXBuildFile; };
 		D570B6AB2BA20139003FE991 /* PalaceUIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E7E96B9E2B0E82210036B23A /* PalaceUIKit.framework */; };
 		D570B6AC2BA20139003FE991 /* CoreMedia.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 03B092271E78859E00AD338D /* CoreMedia.framework */; };
 		D570B6AD2BA20139003FE991 /* CoreVideo.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 03B0922D1E7886ED00AD338D /* CoreVideo.framework */; };
@@ -1021,7 +1021,7 @@
 		D570B6EF2BA20139003FE991 /* OverdriveProcessor.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E5C1F53027990929005FC6B2 /* OverdriveProcessor.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		D570B6F02BA20139003FE991 /* AudioEngine.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E58565CE269774C400A5FBD5 /* AudioEngine.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		D570B6F12BA20139003FE991 /* R2LCPClient.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E7F287782956566800EEB1E0 /* R2LCPClient.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		D570B6F22BA20139003FE991 /* NYPLAEToolkit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E585662526979AC100A5FBD5 /* NYPLAEToolkit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		D570B6F22BA20139003FE991 /* (null) in Embed Frameworks */ = {isa = PBXBuildFile; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		D570B6F32BA20139003FE991 /* PureLayout.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 21986921267E29D70041369E /* PureLayout.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		D570B6F42BA20139003FE991 /* PalaceUIKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E7E96B9E2B0E82210036B23A /* PalaceUIKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		D570B6F52BA20139003FE991 /* Minizip.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 2198690C267E29B00041369E /* Minizip.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -1380,13 +1380,6 @@
 			remoteGlobalIDString = E7E96B9D2B0E82210036B23A;
 			remoteInfo = PalaceUIKit;
 		};
-		E585662426979AC100A5FBD5 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = E585662026979AC100A5FBD5 /* NYPLAEToolkit.xcodeproj */;
-			proxyType = 2;
-			remoteGlobalIDString = 7BB4E7D120A0E1D1002E1360;
-			remoteInfo = NYPLAEToolkit;
-		};
 		E5C1F52F27990929005FC6B2 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = E5C1F52927990929005FC6B2 /* OverdriveProcessor.xcodeproj */;
@@ -1479,7 +1472,7 @@
 				D570B6EF2BA20139003FE991 /* OverdriveProcessor.framework in Embed Frameworks */,
 				D570B6F02BA20139003FE991 /* AudioEngine.xcframework in Embed Frameworks */,
 				D570B6F12BA20139003FE991 /* R2LCPClient.xcframework in Embed Frameworks */,
-				D570B6F22BA20139003FE991 /* NYPLAEToolkit.framework in Embed Frameworks */,
+				D570B6F22BA20139003FE991 /* (null) in Embed Frameworks */,
 				D570B6F32BA20139003FE991 /* PureLayout.xcframework in Embed Frameworks */,
 				D570B6F42BA20139003FE991 /* PalaceUIKit.framework in Embed Frameworks */,
 				D570B6F52BA20139003FE991 /* Minizip.xcframework in Embed Frameworks */,
@@ -2285,7 +2278,7 @@
 				D570B6A72BA20139003FE991 /* OverdriveProcessor.framework in Frameworks */,
 				D570B6A82BA20139003FE991 /* MediaPlayer.framework in Frameworks */,
 				D570B6A92BA20139003FE991 /* R2Navigator in Frameworks */,
-				D570B6AA2BA20139003FE991 /* NYPLAEToolkit.framework in Frameworks */,
+				D570B6AA2BA20139003FE991 /* (null) in Frameworks */,
 				D570B6AB2BA20139003FE991 /* PalaceUIKit.framework in Frameworks */,
 				D570B6AC2BA20139003FE991 /* CoreMedia.framework in Frameworks */,
 				D570B6AD2BA20139003FE991 /* CoreVideo.framework in Frameworks */,
@@ -5959,13 +5952,8 @@
 				CODE_SIGN_ENTITLEMENTS = Palace/PalaceDebug.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 252;
-				DEVELOPMENT_TEAM = 88CBA74T8K;
-				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Distribution";
-				CODE_SIGN_STYLE = Manual;
 				CURRENT_PROJECT_VERSION = 253;
-				DEVELOPMENT_TEAM = "";
-				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
+				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
