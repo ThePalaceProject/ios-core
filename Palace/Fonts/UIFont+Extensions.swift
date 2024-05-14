@@ -1,4 +1,4 @@
-import Foundation
+import UIKit
 
 extension UIFont {
   @objc class func palaceFont(ofSize fontSize: CGFloat) -> UIFont {

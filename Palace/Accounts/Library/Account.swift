@@ -211,7 +211,7 @@ protocol AccountLogoDelegate: AnyObject {
   }
   var syncPermissionGranted:Bool {
     get {
-      return getAccountDictionaryKey(accountSyncEnabledKey) as? Bool ?? false
+      return getAccountDictionaryKey(accountSyncEnabledKey) as? Bool ?? true
     }
     set {
       setAccountDictionaryKey(accountSyncEnabledKey, toValue: newValue as AnyObject)
@@ -386,6 +386,7 @@ protocol AccountLogoDelegate: AnyObject {
   var homePageUrl: String?
   lazy var hasSupportOption = { supportEmail != nil || supportURL != nil }()
   weak var logoDelegate: AccountLogoDelegate?
+  var hasUpdatedToken: Bool = false
 
   let authenticationDocumentUrl:String?
   var authenticationDocument:OPDS2AuthenticationDocument? {
@@ -484,7 +485,7 @@ protocol AccountLogoDelegate: AnyObject {
       return
     }
     
-    TPPNetworkExecutor.shared.GET(url) { result in
+    TPPNetworkExecutor.shared.GET(url, useTokenIfAvailable: false) { result in
       switch result {
       case .success(let serverData, _):
         do {
@@ -526,16 +527,18 @@ protocol AccountLogoDelegate: AnyObject {
 
   private func fetchImage(from url: URL, completion: @escaping (UIImage?) -> ()) {
     TPPNetworkExecutor.shared.GET(url, useTokenIfAvailable: false) { result in
-      switch result {
-      case .success(let serverData, _):
-        completion(UIImage(data: serverData))
-      case .failure(let error, _):
-        TPPErrorLogger.logError(
-          withCode: .authDocLoadFail,
-          summary: "Logo image failed to load",
-          metadata: ["loadError": error, "url": url]
-        )
-        completion(nil)
+      DispatchQueue.main.async {
+        switch result {
+        case .success(let serverData, _):
+          completion(UIImage(data: serverData))
+        case .failure(let error, _):
+          TPPErrorLogger.logError(
+            withCode: .authDocLoadFail,
+            summary: "Logo image failed to load",
+            metadata: ["loadError": error.localizedDescription, "url": url.absoluteString]
+          )
+          completion(nil)
+        }
       }
     }
   }

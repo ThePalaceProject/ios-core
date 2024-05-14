@@ -228,6 +228,7 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
   self.debounceTimer = nil;
   [TPPCatalogUngroupedFeed
    withURL:URL
+   useTokenIfAvailable:NO
    handler:^(TPPCatalogUngroupedFeed *const category) {
      [[NSOperationQueue mainQueue] addOperationWithBlock:^{
        if(category) {

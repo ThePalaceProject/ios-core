@@ -36,7 +36,17 @@ class AudiobookSamplePlayer: NSObject, ObservableObject {
     self.sample = sample
     super.init()
 
+    configureAudioSession()
     downloadFile()
+  }
+  
+  private func configureAudioSession() {
+    do {
+      try AVAudioSession.sharedInstance().setCategory(.playback)
+      try AVAudioSession.sharedInstance().setActive(true)
+    } catch {
+      TPPErrorLogger.logError(error, summary: "Failed to set audio session category")
+    }
   }
 
   deinit {
@@ -56,6 +66,8 @@ class AudiobookSamplePlayer: NSObject, ObservableObject {
     player?.delegate = self
     player?.volume = 1.0
     startTimer()
+    player?.play()
+    state = .playing
   }
 
   func pauseAudiobook() {
@@ -98,7 +110,7 @@ class AudiobookSamplePlayer: NSObject, ObservableObject {
   private func downloadFile() {
     state = .loading
 
-    let _ = sample.fetchSample { [unowned self]  result in
+    let _ = sample.fetchSample { [weak self]  result in
       switch result {
       case let .failure(error, _):
         // TODO: Surface error and display alert
@@ -106,8 +118,7 @@ class AudiobookSamplePlayer: NSObject, ObservableObject {
         return
       case let .success(result, _):
         DispatchQueue.main.async {
-          self.state = .paused
-          try? self.setupPlayer(data: result)
+          try? self?.setupPlayer(data: result)
         }
       }
     }

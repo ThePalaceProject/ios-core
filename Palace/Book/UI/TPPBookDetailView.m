@@ -70,6 +70,8 @@
 @property (nonatomic) UIView *topFootnoteSeparater;
 @property (nonatomic) UIView *bottomFootnoteSeparator;
 
+@property (nonatomic) BOOL isShowingSample;
+
 @end
 
 static CGFloat const SubtitleBaselineOffset = 10;
@@ -121,11 +123,6 @@ static NSString *DetailHTMLTemplate = nil;
   [self addSubview:self.scrollView];
   [self.scrollView addSubview:self.containerView];
   
-  if (self.book.showAudiobookToolbar) {
-    self.audiobookSampleToolbar = [[AudiobookSampleToolbarWrapper createWithBook:self.book] view];
-    [self addSubview: self.audiobookSampleToolbar];
-  }
-
   [self.containerView addSubview:self.blurCoverImageView];
   [self.containerView addSubview:self.visualEffectView];
   [self.containerView addSubview:self.coverImageView];
@@ -178,6 +175,15 @@ static NSString *DetailHTMLTemplate = nil;
   }
 
   return self;
+}
+
+- (void)showAudiobookSampleToolbar
+{
+    self.audiobookSampleToolbar = [[AudiobookSampleToolbarWrapper createWithBook:self.book] view];
+    [self addSubview: self.audiobookSampleToolbar];
+    self.isShowingSample = true;
+    self.didSetupConstraints = false;
+    [self setupAutolayoutConstraints];
 }
 
 - (void)updateFonts
@@ -431,17 +437,21 @@ static NSString *DetailHTMLTemplate = nil;
 - (void)setupAutolayoutConstraints
 {
   [self.scrollView autoPinEdgeToSuperviewEdge:ALEdgeTop];
+  [self.scrollView autoPinEdgeToSuperviewEdge:ALEdgeBottom];
 
-  if ([self.book showAudiobookToolbar]) {
+  if ([self.book showAudiobookToolbar] && self.isShowingSample) {
     [self.audiobookSampleToolbar autoPinEdgeToSuperviewEdge:ALEdgeLeft];
     [self.audiobookSampleToolbar autoPinEdgeToSuperviewEdge:ALEdgeRight];
-    [self.audiobookSampleToolbar autoPinEdgeToSuperviewEdge:ALEdgeBottom withInset:TabBarHeight];
+
+    CGFloat bottomInset = 0;
+    if ([UIDevice currentDevice].userInterfaceIdiom != UIUserInterfaceIdiomPad) {
+      bottomInset = TabBarHeight;
+    }
+    
+    [self.audiobookSampleToolbar autoPinEdgeToSuperviewEdge:ALEdgeBottom withInset: bottomInset];
     [self.audiobookSampleToolbar autoSetDimension:ALDimensionHeight toSize:SampleToolbarHeight relation:NSLayoutRelationLessThanOrEqual];
     [self.audiobookSampleToolbar autoMatchDimension:ALDimensionWidth toDimension:ALDimensionWidth ofView:self];
-
-    [self.scrollView autoPinEdge:ALEdgeBottom toEdge:ALEdgeTop ofView: self.audiobookSampleToolbar];
-  } else {
-    [self.scrollView autoPinEdgeToSuperviewEdge:ALEdgeBottom];
+    self.scrollView.contentInset = UIEdgeInsetsMake(0, 0, SampleToolbarHeight, 0);
   }
 
   [self.scrollView autoPinEdgeToSuperviewEdge:ALEdgeLeft];
@@ -664,11 +674,15 @@ static NSString *DetailHTMLTemplate = nil;
 
 NSString *PlaySampleNotification = @"ToggleSampleNotification";
 
-- (void)didSelectPlaySample:(TPPBook *)book {
+- (void)didSelectPlaySample:(TPPBook *)book completion:(void (^ _Nullable)(void))completion {
   if ([self.book defaultBookContentType] == TPPBookContentTypeAudiobook) {
     if ([self.book.sampleAcquisition.type isEqualToString: @"text/html"]) {
       [self presentWebView: self.book.sampleAcquisition.hrefURL];
     } else {
+      if (!self.isShowingSample) {
+        self.isShowingSample = YES;
+        [self showAudiobookSampleToolbar];
+      }
       [[NSNotificationCenter defaultCenter] postNotificationName:PlaySampleNotification object:self];
     }
   } else {
@@ -683,6 +697,8 @@ NSString *PlaySampleNotification = @"ToggleSampleNotification";
        }
     }];
   }
+  
+  completion();
 }
   
 - (void)presentWebView:(NSURL *)url {

@@ -7,11 +7,10 @@
 //
 
 import SwiftUI
+import PalaceUIKit
 
-/// Search view
 struct TPPPDFSearchView: View {
-  
-  @ObservedObject var searchDelegate: SearchDelegate
+  @StateObject var searchDelegate: SearchDelegate
   @EnvironmentObject var metadata: TPPPDFDocumentMetadata
   
   let document: TPPPDFDocument
@@ -22,7 +21,7 @@ struct TPPPDFSearchView: View {
   init(document: TPPPDFDocument, done: @escaping () -> Void) {
     self.document = document
     self.done = done
-    self._searchDelegate = ObservedObject(wrappedValue: SearchDelegate(document: document))
+    self._searchDelegate = StateObject(wrappedValue: SearchDelegate(document: document))
   }
   
   var body: some View {
@@ -33,12 +32,13 @@ struct TPPPDFSearchView: View {
           done()
         } label: {
           Text(Strings.Generic.done)
-            .bold()
+            .palaceFont(.body, weight: .bold)
         }
         .padding()
       }
       Divider()
       TextField(Strings.Generic.search, text: $searchText.onChange(performSearch))
+        .palaceFont(.body)
         .frame(minHeight: 44)
         .padding(.horizontal)
       Divider()
@@ -81,7 +81,9 @@ struct TPPPDFSearchView: View {
     }
     
     func didMatchString(_ instance: TPPPDFLocation) {
-      searchResults.append(instance)
+      DispatchQueue.main.async {
+        self.searchResults.append(instance)
+      }
     }
   }
 }

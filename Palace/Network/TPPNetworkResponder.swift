@@ -251,7 +251,7 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
 
 private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse, with task: URLSessionTask) -> Bool {
   if response.statusCode == 401 {
-    TPPNetworkExecutor.shared.refreshTokenAndResume(task: task, completion: nil)
+    TPPNetworkExecutor.shared.refreshTokenAndResume(task: task)
     return true
   }
   return false

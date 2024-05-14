@@ -104,6 +104,7 @@ struct TPPPDFNavigation<Content>: View where Content: View {
             metadata.addBookmark()
           }
         }
+        .accessibilityIdentifier(metadata.isBookmarked() ? Strings.TPPBaseReaderViewController.removeBookmark : Strings.TPPBaseReaderViewController.addBookmark)
       }
       .visible(when: !isShowingPdfContorls)
     }

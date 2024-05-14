@@ -8,14 +8,14 @@
 
 - (void)didSelectReturnForBook:(TPPBook *)book completion:(void (^ _Nullable)(void))completion;
 - (void)didSelectDownloadForBook:(TPPBook *)book;
-- (void)didSelectReadForBook:(TPPBook *)book;
+- (void)didSelectReadForBook:(TPPBook *)book completion:(void (^ _Nullable)(void))completion;
 - (void)didSelectPlaySample:(TPPBook *)book;
 
 @end
 
 @protocol TPPBookButtonsSampleDelegate
 
-- (void)didSelectPlaySample:(TPPBook *)book;
+- (void)didSelectPlaySample:(TPPBook *)book completion:(void (^ _Nullable)(void))completion;
 
 @end
 

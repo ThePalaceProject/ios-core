@@ -29,6 +29,7 @@ typedef NS_ENUM(NSInteger, TPPOPDSFeedType) {
 /// end of the process.
 + (void) withURL:(NSURL *)URL
  shouldResetCache:(BOOL)shouldResetCache
+useTokenIfAvailable:(BOOL)useTokenIfAvailable
 completionHandler:(void (^)(TPPOPDSFeed *feed, NSDictionary *error))handler;
 
 /// Designated initializer.
