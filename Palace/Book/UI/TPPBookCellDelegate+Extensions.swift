@@ -35,8 +35,6 @@ import PalaceAudiobookToolkit
           self.presentUnsupportedItemError()
           return
         }
-
-//        let timeTracker = book.timeTrackingURL.map { AudiobookTimeTracker(libraryId: AccountsManager.shared.currentAccount?.uuid ?? "", bookId: book.identifier, timeTrackingUrl: $0) }
         
         let metadata = AudiobookMetadata(title: book.title, authors: [book.authors ?? ""])
         let audiobookManager = DefaultAudiobookManager(
@@ -45,10 +43,24 @@ import PalaceAudiobookToolkit
           networkService: DefaultAudiobookNetworkService(tracks: audiobook.tableOfContents.allTracks))
         
         let audiobookPlayer = AudiobookPlayer(audiobookManager: audiobookManager)
-        //        audiobookManager?.playbackCompletionHandler = {
-//          // Handle playback completion here
-//        }
-        
+        audiobookManager.playbackCompletionHandler = {
+          
+          let paths = TPPOPDSAcquisitionPath.supportedAcquisitionPaths(forAllowedTypes: TPPOPDSAcquisitionPath.supportedTypes(), allowedRelations:  [.borrow, .generic], acquisitions: book.acquisitions)
+          if paths.count > 0 {
+            let alert = TPPReturnPromptHelper.audiobookPrompt { returnWasChosen in
+              if returnWasChosen {
+                audiobookPlayer.navigationController?.popViewController(animated: true)
+                self.didSelectReturn(for: book, completion: nil)
+
+              }
+              TPPAppStoreReviewPrompt.presentIfAvailable()
+            }
+            TPPRootTabBarController.shared().present(alert, animated: true, completion: nil)
+          } else {
+            TPPAppStoreReviewPrompt.presentIfAvailable()
+          }
+        }
+  
         TPPRootTabBarController.shared().pushViewController(audiobookPlayer, animated: true)
         TPPBookRegistry.shared.coverImage(for: book) { image in
           if let image {
