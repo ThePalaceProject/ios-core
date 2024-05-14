@@ -3,6 +3,7 @@ on:
   pull_request:
     branches:
       - develop
+      - hotfix
     types: [closed]
 jobs:
   check-version:
