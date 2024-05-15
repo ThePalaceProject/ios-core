@@ -39,7 +39,7 @@ let TitleKey: String = "title"
 let UpdatedKey: String = "updated"
 let TimeTrackingURLURLKey: String = "time-tracking-url"
 
-@objc class TPPBook: NSObject {
+@objc public class TPPBook: NSObject {
   @objc var acquisitions: [TPPOPDSAcquisition]
   @objc var bookAuthors: [TPPBookAuthor]?
   @objc var categoryStrings: [String]?
@@ -592,7 +592,7 @@ let TimeTrackingURLURLKey: String = "time-tracking-url"
 
 extension TPPBook: Identifiable {}
 extension TPPBook: Comparable {
-  static func < (lhs: TPPBook, rhs: TPPBook) -> Bool {
+  public static func < (lhs: TPPBook, rhs: TPPBook) -> Bool {
     lhs.identifier == rhs.identifier
   }
 }
