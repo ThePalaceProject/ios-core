@@ -433,72 +433,67 @@ extension MyBooksDownloadCenter {
     
     do {
       switch book.defaultBookContentType {
-      case .epub, .pdf:
+      case .epub:
         try FileManager.default.removeItem(at: bookURL)
-#if LCP
-        if book.defaultBookContentType == .pdf {
-          try LCPPDFs.deletePdfContent(url: bookURL)
-        }
-#endif
       case .audiobook:
         deleteLocalContent(forAudiobook: book, at: bookURL)
+      case .pdf:
+        try FileManager.default.removeItem(at: bookURL)
+#if LCP
+        try LCPPDFs.deletePdfContent(url: bookURL)
+#endif
       case .unsupported:
-        NSLog("Unsupported content type for deletion.")
+        break
       }
     } catch {
-      NSLog("Failed to remove local content for book with identifier \(identifier): \(error.localizedDescription)")
+      NSLog("Failed to remove local content for download: \(error.localizedDescription)")
     }
   }
-
+  
   func deleteLocalContent(forAudiobook book: TPPBook, at bookURL: URL) {
+    guard let data = try? Data(contentsOf: bookURL) else { return }
+
+    var dict = [String: Any]()
+    
 #if FEATURE_OVERDRIVE
-    if book.distributor == OverdriveDistributorKey,
-        let data = try? Data(contentsOf: bookURL),
-        let json = try? JSONSerialization.jsonObject(with: data, options: []),
-        let jsonDict = json as? [String: Any] {
-      handleOverdriveContentDeletion(jsonDict, for: book)
+    if book.distributor == OverdriveDistributorKey {
+      if let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
+        dict = json ?? [String: Any]()
+      }
+
+      dict["id"] = book.identifier
     }
 #endif
     
 #if LCP
     if LCPAudiobooks.canOpenBook(book) {
-      deleteLCPLocalContent(for: book, at: bookURL)
+      let lcpAudiobooks = LCPAudiobooks(for: bookURL)
+      lcpAudiobooks?.contentDictionary { dict, error in
+        if let _ = error {
+          // LCPAudiobooks logs this error
+          return
+        }
+        if let dict = dict {
+          // Delete decrypted content for the book
+          let mutableDict = dict.mutableCopy() as? [String: Any]
+          AudiobookFactory.audiobook(mutableDict ?? [:])?.deleteLocalContent()
+        }
+      }
+      // Delete LCP book file
+      if FileManager.default.fileExists(atPath: bookURL.path) {
+        do {
+          try FileManager.default.removeItem(at: bookURL)
+        } catch {
+          TPPErrorLogger.logError(error, summary: "Failed to delete LCP audiobook local content", metadata: ["book": book.loggableShortString()])
+        }
+      }
     } else {
-      deleteNonLCPLocalContent(at: bookURL)
+      // Not an LCP book
+      AudiobookFactory.audiobook(dict)?.deleteLocalContent()
     }
 #else
-    deleteNonLCPLocalContent(at: bookURL)
+    AudiobookFactory.audiobook(dict)?.deleteLocalContent()
 #endif
-  }
-  
-  private func handleOverdriveContentDeletion(_ dict: [String: Any], for book: TPPBook) {
-    // Implement specific deletion logic for Overdrive content if required.
-  }
-  
-#if LCP
-  private func deleteLCPLocalContent(for book: TPPBook, at bookURL: URL) {
-    LCPAudiobooks(for: bookURL)?.contentDictionary { dict, error in
-      guard error == nil, let dict = dict as? [String: Any] else { return }
-      self.deleteAudiobookContent(dict, for: book, bookURL: bookURL)
-    }
-  }
-  
-  private func deleteAudiobookContent(_ dict: [String: Any], for book: TPPBook, bookURL: URL) {
-    // Assuming we create and use an audiobook object to manage deletion
-    guard let jsonData = try? JSONSerialization.data(withJSONObject: dict, options: []),
-          let manifest = try? Manifest.customDecoder().decode(Manifest.self, from: jsonData),
-          let audiobook = AudiobookFactory.audiobook(for: manifest, bookIdentifier: book.identifier, decryptor: nil, token: book.bearerToken) else {
-      return
-    }
-    audiobook.deleteLocalContent(completion: { _, _ in })
-    if FileManager.default.fileExists(atPath: bookURL.path) {
-      try? FileManager.default.removeItem(at: bookURL)
-    }
-  }
-#endif
-  
-  private func deleteNonLCPLocalContent(at bookURL: URL) {
-    try? FileManager.default.removeItem(at: bookURL)
   }
   
   @objc func returnBook(withIdentifier identifier: String, completion: (() -> Void)? = nil) {
@@ -818,6 +813,7 @@ extension MyBooksDownloadCenter: URLSessionTaskDelegate {
         completionHandler(request)
         return
       }
+      
       
       // Prevent redirection from HTTPS to a non-HTTPS URL.
       if task.originalRequest?.url?.scheme == "https" && request.url?.scheme != "https" {

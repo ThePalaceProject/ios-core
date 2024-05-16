@@ -16,6 +16,9 @@
 [submodule "mobile-bookmark-spec"]
 	path = mobile-bookmark-spec
 	url = git@github.com:ThePalaceProject/mobile-bookmark-spec.git
+[submodule "ios-drm-audioengine"]
+	path = ios-drm-audioengine
+	url = git@github.com:ThePalaceProject/ios-drm-audioengine.git
 [submodule "ios-audiobook-overdrive"]
 	path = ios-audiobook-overdrive
 	url = git@github.com:ThePalaceProject/ios-audiobook-overdrive.git

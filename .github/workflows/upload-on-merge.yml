@@ -4,7 +4,6 @@ on:
     branches:
       - develop
       - hotfix
-      - beta
     types: [closed]
 jobs:
   check-version:
