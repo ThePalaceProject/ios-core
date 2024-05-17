@@ -30,7 +30,8 @@ import OverdriveProcessor
   private var bookIdentifierToDownloadTask: [String: URLSessionDownloadTask] = [:]
   private var taskIdentifierToBook: [Int: TPPBook] = [:]
   private var taskIdentifierToRedirectAttempts: [Int: Int] = [:]
-  
+  private let downloadQueue = DispatchQueue(label: "com.palace.downloadQueue", qos: .background)
+
   init(
     userAccount: TPPUserAccount = TPPUserAccount.sharedAccount(),
     reauthenticator: Reauthenticator = TPPReauthenticator(),
@@ -390,11 +391,20 @@ import OverdriveProcessor
       self.startDownload(for: book)
     }
   }
-  
+
   private func clearAndSetCookies() {
-    let cookieStorage = session.configuration.httpCookieStorage
-    cookieStorage?.cookies?.forEach { cookieStorage?.deleteCookie($0) }
-    userAccount.cookies?.forEach { cookieStorage?.setCookie($0) }
+      downloadQueue.async { [weak self] in
+      guard let self = self else { return }
+      
+      let cookieStorage = self.session.configuration.httpCookieStorage
+      cookieStorage?.cookies?.forEach { cookie in
+        cookieStorage?.deleteCookie(cookie)
+      }
+      
+      self.userAccount.cookies?.forEach { cookie in
+        cookieStorage?.setCookie(cookie)
+      }
+    }
   }
 
   @objc func cancelDownload(for identifier: String) {
