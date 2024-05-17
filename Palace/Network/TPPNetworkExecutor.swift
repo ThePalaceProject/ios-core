@@ -18,7 +18,7 @@ enum NYPLResult<SuccessInfo> {
   private let refreshQueue = DispatchQueue(label: "com.palace.token-refresh-queue", qos: .userInitiated)
   private var isRefreshing = false
   private var retryQueue: [URLSessionTask] = []
-  private let retryQueueLock = NSLock() // Add a lock for thread-safe access
+  private let retryQueueLock = NSLock()
   
   private let responder: TPPNetworkResponder
   
