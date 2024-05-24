@@ -116,8 +116,8 @@ class TPPBookmarkFactory {
         return nil
     }
     
-    if let audioBookmark = try? JSONDecoder().decode(AudioBookmark.self, from: selectorValueData) {
-      audioBookmark.timeStamp = time
+    if var audioBookmark = try? JSONDecoder().decode(AudioBookmark.self, from: selectorValueData) {
+      audioBookmark.lastSavedTimeStamp = time
       audioBookmark.annotationId = annotationID
       return audioBookmark
     }

@@ -8,21 +8,13 @@
 
 import Foundation
 @testable import Palace
+@testable import PalaceAudiobookToolkit
 
 struct TestBookmark {
   var annotationId: String
   var value: String
 }
 
-extension TestBookmark {
-  var toChapterLocation: ChapterLocation? {
-    guard let selectorValueData = value.data(using: String.Encoding.utf8),
-          let audioBookmark = try? JSONDecoder().decode(AudioBookmark.self, from: selectorValueData) else {
-      return nil
-    }
-    return ChapterLocation(audioBookmark: audioBookmark)
-  }
-}
 
 class TPPAnnotationMock: NSObject, AnnotationsManager {
   var savedLocations: [String: [TestBookmark]] = [:]
@@ -54,10 +46,10 @@ class TPPAnnotationMock: NSObject, AnnotationsManager {
           return nil
       }
 
-      if let audioBookmark = try? JSONDecoder().decode(AudioBookmark.self, from: selectorValueData) {
-        audioBookmark.timeStamp = Date().iso8601
-        audioBookmark.annotationId = "TestAnnotationId\(bookID)"
-        return audioBookmark
+      if let audiobookmark = try? JSONDecoder().decode(AudioBookmark.self, from: selectorValueData) {
+        audiobookmark.lastSavedTimeStamp = Date().iso8601
+        audiobookmark.annotationId = "TestAnnotationId\(bookID)"
+        return audiobookmark
       } else {
         return nil
       }

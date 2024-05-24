@@ -434,26 +434,223 @@ static NSString *DetailHTMLTemplate = nil;
   return [NSString stringWithFormat:@"%d hours, %d minutes", hours, minutes];
 }
 
-- (void)setupAutolayoutConstraints
-{
+//- (void)setupAutolayoutConstraints
+//{
+//  [self.scrollView autoPinEdgeToSuperviewEdge:ALEdgeTop];
+//  [self.scrollView autoPinEdgeToSuperviewEdge:ALEdgeBottom];
+//
+//  if ([self.book showAudiobookToolbar] && self.isShowingSample) {
+//    [self.audiobookSampleToolbar autoPinEdgeToSuperviewEdge:ALEdgeLeft];
+//    [self.audiobookSampleToolbar autoPinEdgeToSuperviewEdge:ALEdgeRight];
+//
+//    CGFloat bottomInset = 0;
+//    if ([UIDevice currentDevice].userInterfaceIdiom != UIUserInterfaceIdiomPad) {
+//      bottomInset = TabBarHeight;
+//    }
+//    
+//    [self.audiobookSampleToolbar autoPinEdgeToSuperviewEdge:ALEdgeBottom withInset: bottomInset];
+//    [self.audiobookSampleToolbar autoSetDimension:ALDimensionHeight toSize:SampleToolbarHeight relation:NSLayoutRelationLessThanOrEqual];
+//    [self.audiobookSampleToolbar autoMatchDimension:ALDimensionWidth toDimension:ALDimensionWidth ofView:self];
+//    self.scrollView.contentInset = UIEdgeInsetsMake(0, 0, SampleToolbarHeight, 0);
+//  }
+//
+//  [self.scrollView autoPinEdgeToSuperviewEdge:ALEdgeLeft];
+//  [self.scrollView autoPinEdgeToSuperviewEdge:ALEdgeRight];
+//  [self.scrollView autoMatchDimension:ALDimensionWidth toDimension:ALDimensionWidth ofView:self.containerView];
+//  
+//  [self.containerView autoPinEdgesToSuperviewEdges];
+//  [self.containerView autoMatchDimension:ALDimensionWidth toDimension:ALDimensionWidth ofView:self];
+//  
+//  [self.visualEffectView autoPinEdgesToSuperviewEdgesWithInsets:UIEdgeInsetsZero excludingEdge:ALEdgeBottom];
+//  [self.visualEffectView autoPinEdge:ALEdgeBottom toEdge:ALEdgeTop ofView:self.normalView];
+//  
+//  [self.coverImageView autoPinEdgeToSuperviewMargin:ALEdgeLeading];
+//  [self.coverImageView autoPinEdgeToSuperviewEdge:ALEdgeTop withInset:VerticalPadding];
+//  [self.coverImageView autoMatchDimension:ALDimensionWidth toDimension:ALDimensionHeight ofView:self.coverImageView withMultiplier:CoverImageAspectRatio];
+//  [self.coverImageView autoSetDimension:ALDimensionWidth toSize:CoverImageMaxWidth relation:NSLayoutRelationLessThanOrEqual];
+//  [self.blurCoverImageView autoPinEdge:ALEdgeLeading toEdge:ALEdgeLeading ofView:self.coverImageView];
+//  [self.blurCoverImageView autoPinEdge:ALEdgeTrailing toEdge:ALEdgeTrailing ofView:self.coverImageView];
+//  [self.blurCoverImageView autoPinEdge:ALEdgeTop toEdge:ALEdgeTop ofView:self.coverImageView];
+//  [self.blurCoverImageView autoPinEdge:ALEdgeBottom toEdge:ALEdgeBottom ofView:self.coverImageView];
+//
+//  [TPPContentBadgeImageView pinWithBadge:self.contentTypeBadge toView:self.coverImageView];
+//  
+//  [self.titleLabel autoPinEdge:ALEdgeLeading toEdge:ALEdgeTrailing ofView:self.coverImageView withOffset:MainTextPaddingLeft];
+//  [self.titleLabel autoPinEdge:ALEdgeTop toEdge:ALEdgeTop ofView:self.coverImageView];
+//  [self.titleLabel autoSetDimension:ALDimensionWidth toSize:TitleLabelMinimumWidth relation:NSLayoutRelationGreaterThanOrEqual];
+//  NSLayoutConstraint *titleLabelConstraint = [self.titleLabel autoPinEdgeToSuperviewMargin:ALEdgeTrailing];
+//  
+//  [self.subtitleLabel autoPinEdge:ALEdgeLeading toEdge:ALEdgeTrailing ofView:self.coverImageView withOffset:MainTextPaddingLeft];
+//  [self.subtitleLabel autoPinEdge:ALEdgeTrailing toEdge:ALEdgeTrailing ofView:self.titleLabel];
+//  [self.subtitleLabel autoConstrainAttribute:ALAttributeTop toAttribute:ALAttributeBaseline ofView:self.titleLabel withOffset:SubtitleBaselineOffset];
+//
+//  [self.audiobookLabel autoPinEdge:ALEdgeLeading toEdge:ALEdgeTrailing ofView:self.coverImageView withOffset:MainTextPaddingLeft];
+//  [self.audiobookLabel autoPinEdge:ALEdgeTrailing toEdge:ALEdgeTrailing ofView:self.titleLabel];
+//  if (self.subtitleLabel.text) {
+//    [self.audiobookLabel autoConstrainAttribute:ALAttributeTop toAttribute:ALAttributeBaseline ofView:self.subtitleLabel withOffset:AuthorBaselineOffset];
+//  } else {
+//    [self.audiobookLabel autoConstrainAttribute:ALAttributeTop toAttribute:ALAttributeBaseline ofView:self.titleLabel withOffset:AuthorBaselineOffset];
+//  }
+//
+//  [self.authorsLabel autoPinEdge:ALEdgeLeading toEdge:ALEdgeTrailing ofView:self.coverImageView withOffset:MainTextPaddingLeft];
+//  [self.authorsLabel autoPinEdge:ALEdgeTrailing toEdge:ALEdgeTrailing ofView:self.titleLabel];
+//  if (self.audiobookLabel.text) {
+//    [self.authorsLabel autoConstrainAttribute:ALAttributeTop toAttribute:ALAttributeBaseline ofView:self.audiobookLabel withOffset:AuthorBaselineOffset];
+//  } else if (self.subtitleLabel.text) {
+//    [self.authorsLabel autoConstrainAttribute:ALAttributeTop toAttribute:ALAttributeBaseline ofView:self.subtitleLabel withOffset:AuthorBaselineOffset];
+//  } else {
+//    [self.authorsLabel autoConstrainAttribute:ALAttributeTop toAttribute:ALAttributeBaseline ofView:self.titleLabel withOffset:AuthorBaselineOffset];
+//  }
+//
+//  [self.buttonsView autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.authorsLabel withOffset:VerticalPadding relation:NSLayoutRelationGreaterThanOrEqual];
+//  [NSLayoutConstraint autoSetPriority:UILayoutPriorityDefaultLow forConstraints:^{
+//    [self.buttonsView autoPinEdge:ALEdgeBottom toEdge:ALEdgeBottom ofView:self.coverImageView];
+//  }];
+//  [self.buttonsView autoPinEdge:ALEdgeLeading toEdge:ALEdgeTrailing ofView:self.coverImageView withOffset:MainTextPaddingLeft];
+//  
+//  [self.normalView autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.buttonsView withOffset:VerticalPadding];
+//  [self.normalView autoPinEdgeToSuperviewEdge:ALEdgeRight];
+//  [self.normalView autoPinEdgeToSuperviewEdge:ALEdgeLeft];
+//  [self.normalView autoSetDimension:ALDimensionHeight toSize:NormalViewMinimumHeight relation:NSLayoutRelationGreaterThanOrEqual];
+//  
+//  [self.downloadingView autoPinEdgeToSuperviewEdge:ALEdgeRight];
+//  [self.downloadingView autoPinEdgeToSuperviewEdge:ALEdgeLeft];
+//  [self.downloadingView autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.buttonsView withOffset:VerticalPadding];
+//  [self.downloadingView autoConstrainAttribute:ALAttributeHeight toAttribute:ALAttributeHeight ofView:self.normalView];
+//
+//  [self.downloadFailedView autoPinEdgeToSuperviewEdge:ALEdgeRight];
+//  [self.downloadFailedView autoPinEdgeToSuperviewEdge:ALEdgeLeft];
+//  [self.downloadFailedView autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.buttonsView withOffset:VerticalPadding];
+//  [self.downloadFailedView autoConstrainAttribute:ALAttributeHeight toAttribute:ALAttributeHeight ofView:self.normalView];
+//  
+//  [self.summarySectionLabel autoPinEdgeToSuperviewMargin:ALEdgeLeading];
+//  [self.summarySectionLabel autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.normalView withOffset:VerticalPadding + 4];
+//  
+//  [self.summaryTextView autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.summarySectionLabel withOffset:VerticalPadding];
+//  [self.summaryTextView autoPinEdgeToSuperviewMargin:ALEdgeTrailing];
+//  [self.summaryTextView autoPinEdgeToSuperviewMargin:ALEdgeLeading];
+//  self.textHeightConstraint = [self.summaryTextView autoSetDimension:ALDimensionHeight toSize:SummaryTextAbbreviatedHeight relation:NSLayoutRelationLessThanOrEqual];
+//
+//  [self.readMoreLabel autoPinEdgeToSuperviewMargin:ALEdgeLeading];
+//  [self.readMoreLabel autoPinEdgeToSuperviewMargin:ALEdgeTrailing];
+//  [self.readMoreLabel autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.summaryTextView];
+//  [self.readMoreLabel autoPinEdge:ALEdgeBottom toEdge:ALEdgeTop ofView:self.topFootnoteSeparater];
+//  
+//  [self.infoSectionLabel autoPinEdgeToSuperviewMargin:ALEdgeLeading];
+//  
+//  [self.publishedLabelValue autoPinEdgeToSuperviewMargin:ALEdgeTrailing relation:NSLayoutRelationGreaterThanOrEqual];
+//  [self.publishedLabelValue autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.infoSectionLabel withOffset:VerticalPadding];
+//  [self.publishedLabelValue autoPinEdge:ALEdgeLeading toEdge:ALEdgeTrailing ofView:self.publishedLabelKey withOffset:MainTextPaddingLeft];
+//  
+//  [self.publisherLabelValue autoPinEdgeToSuperviewMargin:ALEdgeTrailing relation:NSLayoutRelationGreaterThanOrEqual];
+//  [self.publisherLabelValue autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.publishedLabelValue];
+//  [self.publisherLabelValue autoPinEdge:ALEdgeLeading toEdge:ALEdgeTrailing ofView:self.publisherLabelKey withOffset:MainTextPaddingLeft];
+//  
+//  [self.categoriesLabelValue autoPinEdgeToSuperviewMargin:ALEdgeTrailing relation:NSLayoutRelationGreaterThanOrEqual];
+//  [self.categoriesLabelValue autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.publisherLabelValue];
+//  [self.categoriesLabelValue autoPinEdge:ALEdgeLeading toEdge:ALEdgeTrailing ofView:self.categoriesLabelKey withOffset:MainTextPaddingLeft];
+//  
+//  [self.distributorLabelValue autoPinEdgeToSuperviewMargin:ALEdgeTrailing relation:NSLayoutRelationGreaterThanOrEqual];
+//  [self.distributorLabelValue autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.categoriesLabelValue];
+//  [self.distributorLabelValue autoPinEdge:ALEdgeLeading toEdge:ALEdgeTrailing ofView:self.distributorLabelKey withOffset:MainTextPaddingLeft];
+//
+//  [self.bookFormatLabelValue autoPinEdgeToSuperviewMargin:ALEdgeTrailing relation:NSLayoutRelationGreaterThanOrEqual];
+//  [self.bookFormatLabelValue autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.distributorLabelValue];
+//  [self.bookFormatLabelValue autoPinEdge:ALEdgeLeading toEdge:ALEdgeTrailing ofView:self.bookFormatLabelKey withOffset:MainTextPaddingLeft];
+//
+//  [self.narratorsLabelValue autoPinEdgeToSuperviewMargin:ALEdgeTrailing relation:NSLayoutRelationGreaterThanOrEqual];
+//  [self.narratorsLabelValue autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.bookFormatLabelValue];
+//  [self.narratorsLabelValue autoPinEdge:ALEdgeLeading toEdge:ALEdgeTrailing ofView:self.narratorsLabelKey withOffset:MainTextPaddingLeft];
+//
+//  if (self.book.hasDuration) {
+//    [self.bookDurationLabelValue autoPinEdgeToSuperviewMargin:ALEdgeTrailing relation:NSLayoutRelationGreaterThanOrEqual];
+//    [self.bookDurationLabelValue autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.narratorsLabelValue];
+//    [self.bookDurationLabelValue autoPinEdge:ALEdgeLeading toEdge:ALEdgeTrailing ofView:self.bookDurationLabelKey withOffset:MainTextPaddingLeft];
+//  }
+//
+//  [self.publishedLabelKey autoPinEdgeToSuperviewMargin:ALEdgeLeading];
+//  [self.publishedLabelKey autoPinEdgeToSuperviewMargin:ALEdgeLeading];
+//  [self.publishedLabelKey autoPinEdge:ALEdgeTrailing toEdge:ALEdgeTrailing ofView:self.publisherLabelKey];
+//  [self.publishedLabelKey autoPinEdge:ALEdgeTop toEdge:ALEdgeTop ofView:self.publishedLabelValue];
+//  [self.publishedLabelKey setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+//
+//  [self.publisherLabelKey autoPinEdgeToSuperviewMargin:ALEdgeLeading];
+//  [self.publisherLabelKey autoPinEdge:ALEdgeTrailing toEdge:ALEdgeTrailing ofView:self.categoriesLabelKey];
+//  [self.publisherLabelKey autoPinEdge:ALEdgeTop toEdge:ALEdgeTop ofView:self.publisherLabelValue];
+//  [self.publisherLabelKey setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+//  
+//  [self.categoriesLabelKey autoPinEdgeToSuperviewMargin:ALEdgeLeading];
+//  [self.categoriesLabelKey autoPinEdge:ALEdgeTrailing toEdge:ALEdgeTrailing ofView:self.distributorLabelKey];
+//  [self.categoriesLabelKey autoPinEdge:ALEdgeTop toEdge:ALEdgeTop ofView:self.categoriesLabelValue];
+//  [self.categoriesLabelKey setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+//
+//  [self.distributorLabelKey autoPinEdgeToSuperviewMargin:ALEdgeLeading];
+//  [self.distributorLabelKey autoPinEdge:ALEdgeTrailing toEdge:ALEdgeTrailing ofView:self.bookFormatLabelKey];
+//  [self.distributorLabelKey autoPinEdge:ALEdgeTop toEdge:ALEdgeTop ofView:self.distributorLabelValue];
+//  [self.distributorLabelKey setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+//
+//  [self.bookFormatLabelKey autoPinEdgeToSuperviewMargin:ALEdgeLeading];
+//  [self.bookFormatLabelKey autoPinEdge:ALEdgeTrailing toEdge:ALEdgeTrailing ofView:self.narratorsLabelKey];
+//  [self.bookFormatLabelKey autoPinEdge:ALEdgeTop toEdge:ALEdgeTop ofView:self.bookFormatLabelValue];
+//  [self.bookFormatLabelKey setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+//
+//  [self.narratorsLabelKey autoPinEdgeToSuperviewMargin:ALEdgeLeading];
+//  [self.narratorsLabelKey autoPinEdge:ALEdgeTop toEdge:ALEdgeTop ofView:self.narratorsLabelValue];
+//  [self.narratorsLabelKey setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+//
+//  if (self.book.hasDuration) {
+//    [self.bookDurationLabelKey autoPinEdgeToSuperviewMargin:ALEdgeLeading];
+//    [self.bookDurationLabelKey autoPinEdge:ALEdgeTop toEdge:ALEdgeTop ofView:self.bookDurationLabelValue];
+//    [self.bookDurationLabelKey autoPinEdge:ALEdgeTrailing toEdge:ALEdgeTrailing ofView:self.narratorsLabelKey];
+//    [self.bookDurationLabelKey setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+//  }
+//  
+//  if (self.closeButton) {
+//    [self.closeButton autoPinEdgeToSuperviewMargin:ALEdgeTrailing];
+//    [self.closeButton autoPinEdge:ALEdgeTop toEdge:ALEdgeTop ofView:self.titleLabel];
+//    [self.closeButton autoSetDimension:ALDimensionWidth toSize:80 relation:NSLayoutRelationLessThanOrEqual];
+//    [NSLayoutConstraint deactivateConstraints:@[titleLabelConstraint]];
+//    [self.closeButton autoPinEdge:ALEdgeLeading toEdge:ALEdgeTrailing ofView:self.titleLabel withOffset:MainTextPaddingLeft];
+//    [self.closeButton setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+//  }
+//  
+//  [self.topFootnoteSeparater autoSetDimension:ALDimensionHeight toSize: 1.0f / [UIScreen mainScreen].scale];
+//  [self.topFootnoteSeparater autoPinEdgeToSuperviewEdge:ALEdgeRight];
+//  [self.topFootnoteSeparater autoPinEdgeToSuperviewMargin:ALEdgeLeft];
+//  [self.topFootnoteSeparater autoPinEdge:ALEdgeBottom toEdge:ALEdgeTop ofView:self.infoSectionLabel withOffset:-VerticalPadding];
+//  
+//  [self.bottomFootnoteSeparator autoSetDimension:ALDimensionHeight toSize: 1.0f / [UIScreen mainScreen].scale];
+//  [self.bottomFootnoteSeparator autoPinEdgeToSuperviewEdge:ALEdgeRight];
+//  [self.bottomFootnoteSeparator autoPinEdgeToSuperviewMargin:ALEdgeLeft];
+//
+//  if (self.book.hasDuration) {
+//    [self.bottomFootnoteSeparator autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.bookDurationLabelKey withOffset:VerticalPadding];
+//  } else {
+//    [self.bottomFootnoteSeparator autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.narratorsLabelValue withOffset:VerticalPadding];
+//  }
+//  
+//  [self.footerTableView autoPinEdgesToSuperviewEdgesWithInsets:UIEdgeInsetsZero excludingEdge:ALEdgeTop];
+//  [self.footerTableView autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.narratorsLabelValue withOffset:VerticalPadding];
+//}
+- (void)setupAutolayoutConstraints {
   [self.scrollView autoPinEdgeToSuperviewEdge:ALEdgeTop];
   [self.scrollView autoPinEdgeToSuperviewEdge:ALEdgeBottom];
-
+  
   if ([self.book showAudiobookToolbar] && self.isShowingSample) {
     [self.audiobookSampleToolbar autoPinEdgeToSuperviewEdge:ALEdgeLeft];
     [self.audiobookSampleToolbar autoPinEdgeToSuperviewEdge:ALEdgeRight];
-
+    
     CGFloat bottomInset = 0;
     if ([UIDevice currentDevice].userInterfaceIdiom != UIUserInterfaceIdiomPad) {
       bottomInset = TabBarHeight;
     }
     
-    [self.audiobookSampleToolbar autoPinEdgeToSuperviewEdge:ALEdgeBottom withInset: bottomInset];
+    [self.audiobookSampleToolbar autoPinEdgeToSuperviewEdge:ALEdgeBottom withInset:bottomInset];
     [self.audiobookSampleToolbar autoSetDimension:ALDimensionHeight toSize:SampleToolbarHeight relation:NSLayoutRelationLessThanOrEqual];
     [self.audiobookSampleToolbar autoMatchDimension:ALDimensionWidth toDimension:ALDimensionWidth ofView:self];
     self.scrollView.contentInset = UIEdgeInsetsMake(0, 0, SampleToolbarHeight, 0);
   }
-
+  
   [self.scrollView autoPinEdgeToSuperviewEdge:ALEdgeLeft];
   [self.scrollView autoPinEdgeToSuperviewEdge:ALEdgeRight];
   [self.scrollView autoMatchDimension:ALDimensionWidth toDimension:ALDimensionWidth ofView:self.containerView];
@@ -472,18 +669,21 @@ static NSString *DetailHTMLTemplate = nil;
   [self.blurCoverImageView autoPinEdge:ALEdgeTrailing toEdge:ALEdgeTrailing ofView:self.coverImageView];
   [self.blurCoverImageView autoPinEdge:ALEdgeTop toEdge:ALEdgeTop ofView:self.coverImageView];
   [self.blurCoverImageView autoPinEdge:ALEdgeBottom toEdge:ALEdgeBottom ofView:self.coverImageView];
-
+  
   [TPPContentBadgeImageView pinWithBadge:self.contentTypeBadge toView:self.coverImageView];
   
   [self.titleLabel autoPinEdge:ALEdgeLeading toEdge:ALEdgeTrailing ofView:self.coverImageView withOffset:MainTextPaddingLeft];
   [self.titleLabel autoPinEdge:ALEdgeTop toEdge:ALEdgeTop ofView:self.coverImageView];
   [self.titleLabel autoSetDimension:ALDimensionWidth toSize:TitleLabelMinimumWidth relation:NSLayoutRelationGreaterThanOrEqual];
+  
+  // Ensure titleLabelConstraint is properly set up
   NSLayoutConstraint *titleLabelConstraint = [self.titleLabel autoPinEdgeToSuperviewMargin:ALEdgeTrailing];
+  titleLabelConstraint.priority = UILayoutPriorityRequired;  // Ensure it has a valid priority
   
   [self.subtitleLabel autoPinEdge:ALEdgeLeading toEdge:ALEdgeTrailing ofView:self.coverImageView withOffset:MainTextPaddingLeft];
   [self.subtitleLabel autoPinEdge:ALEdgeTrailing toEdge:ALEdgeTrailing ofView:self.titleLabel];
   [self.subtitleLabel autoConstrainAttribute:ALAttributeTop toAttribute:ALAttributeBaseline ofView:self.titleLabel withOffset:SubtitleBaselineOffset];
-
+  
   [self.audiobookLabel autoPinEdge:ALEdgeLeading toEdge:ALEdgeTrailing ofView:self.coverImageView withOffset:MainTextPaddingLeft];
   [self.audiobookLabel autoPinEdge:ALEdgeTrailing toEdge:ALEdgeTrailing ofView:self.titleLabel];
   if (self.subtitleLabel.text) {
@@ -491,7 +691,7 @@ static NSString *DetailHTMLTemplate = nil;
   } else {
     [self.audiobookLabel autoConstrainAttribute:ALAttributeTop toAttribute:ALAttributeBaseline ofView:self.titleLabel withOffset:AuthorBaselineOffset];
   }
-
+  
   [self.authorsLabel autoPinEdge:ALEdgeLeading toEdge:ALEdgeTrailing ofView:self.coverImageView withOffset:MainTextPaddingLeft];
   [self.authorsLabel autoPinEdge:ALEdgeTrailing toEdge:ALEdgeTrailing ofView:self.titleLabel];
   if (self.audiobookLabel.text) {
@@ -501,7 +701,7 @@ static NSString *DetailHTMLTemplate = nil;
   } else {
     [self.authorsLabel autoConstrainAttribute:ALAttributeTop toAttribute:ALAttributeBaseline ofView:self.titleLabel withOffset:AuthorBaselineOffset];
   }
-
+  
   [self.buttonsView autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.authorsLabel withOffset:VerticalPadding relation:NSLayoutRelationGreaterThanOrEqual];
   [NSLayoutConstraint autoSetPriority:UILayoutPriorityDefaultLow forConstraints:^{
     [self.buttonsView autoPinEdge:ALEdgeBottom toEdge:ALEdgeBottom ofView:self.coverImageView];
@@ -517,7 +717,7 @@ static NSString *DetailHTMLTemplate = nil;
   [self.downloadingView autoPinEdgeToSuperviewEdge:ALEdgeLeft];
   [self.downloadingView autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.buttonsView withOffset:VerticalPadding];
   [self.downloadingView autoConstrainAttribute:ALAttributeHeight toAttribute:ALAttributeHeight ofView:self.normalView];
-
+  
   [self.downloadFailedView autoPinEdgeToSuperviewEdge:ALEdgeRight];
   [self.downloadFailedView autoPinEdgeToSuperviewEdge:ALEdgeLeft];
   [self.downloadFailedView autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.buttonsView withOffset:VerticalPadding];
@@ -530,7 +730,7 @@ static NSString *DetailHTMLTemplate = nil;
   [self.summaryTextView autoPinEdgeToSuperviewMargin:ALEdgeTrailing];
   [self.summaryTextView autoPinEdgeToSuperviewMargin:ALEdgeLeading];
   self.textHeightConstraint = [self.summaryTextView autoSetDimension:ALDimensionHeight toSize:SummaryTextAbbreviatedHeight relation:NSLayoutRelationLessThanOrEqual];
-
+  
   [self.readMoreLabel autoPinEdgeToSuperviewMargin:ALEdgeLeading];
   [self.readMoreLabel autoPinEdgeToSuperviewMargin:ALEdgeTrailing];
   [self.readMoreLabel autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.summaryTextView];
@@ -553,27 +753,27 @@ static NSString *DetailHTMLTemplate = nil;
   [self.distributorLabelValue autoPinEdgeToSuperviewMargin:ALEdgeTrailing relation:NSLayoutRelationGreaterThanOrEqual];
   [self.distributorLabelValue autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.categoriesLabelValue];
   [self.distributorLabelValue autoPinEdge:ALEdgeLeading toEdge:ALEdgeTrailing ofView:self.distributorLabelKey withOffset:MainTextPaddingLeft];
-
+  
   [self.bookFormatLabelValue autoPinEdgeToSuperviewMargin:ALEdgeTrailing relation:NSLayoutRelationGreaterThanOrEqual];
   [self.bookFormatLabelValue autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.distributorLabelValue];
   [self.bookFormatLabelValue autoPinEdge:ALEdgeLeading toEdge:ALEdgeTrailing ofView:self.bookFormatLabelKey withOffset:MainTextPaddingLeft];
-
+  
   [self.narratorsLabelValue autoPinEdgeToSuperviewMargin:ALEdgeTrailing relation:NSLayoutRelationGreaterThanOrEqual];
   [self.narratorsLabelValue autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.bookFormatLabelValue];
   [self.narratorsLabelValue autoPinEdge:ALEdgeLeading toEdge:ALEdgeTrailing ofView:self.narratorsLabelKey withOffset:MainTextPaddingLeft];
-
+  
   if (self.book.hasDuration) {
     [self.bookDurationLabelValue autoPinEdgeToSuperviewMargin:ALEdgeTrailing relation:NSLayoutRelationGreaterThanOrEqual];
     [self.bookDurationLabelValue autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.narratorsLabelValue];
     [self.bookDurationLabelValue autoPinEdge:ALEdgeLeading toEdge:ALEdgeTrailing ofView:self.bookDurationLabelKey withOffset:MainTextPaddingLeft];
   }
-
+  
   [self.publishedLabelKey autoPinEdgeToSuperviewMargin:ALEdgeLeading];
   [self.publishedLabelKey autoPinEdgeToSuperviewMargin:ALEdgeLeading];
   [self.publishedLabelKey autoPinEdge:ALEdgeTrailing toEdge:ALEdgeTrailing ofView:self.publisherLabelKey];
   [self.publishedLabelKey autoPinEdge:ALEdgeTop toEdge:ALEdgeTop ofView:self.publishedLabelValue];
   [self.publishedLabelKey setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
-
+  
   [self.publisherLabelKey autoPinEdgeToSuperviewMargin:ALEdgeLeading];
   [self.publisherLabelKey autoPinEdge:ALEdgeTrailing toEdge:ALEdgeTrailing ofView:self.categoriesLabelKey];
   [self.publisherLabelKey autoPinEdge:ALEdgeTop toEdge:ALEdgeTop ofView:self.publisherLabelValue];
@@ -583,21 +783,21 @@ static NSString *DetailHTMLTemplate = nil;
   [self.categoriesLabelKey autoPinEdge:ALEdgeTrailing toEdge:ALEdgeTrailing ofView:self.distributorLabelKey];
   [self.categoriesLabelKey autoPinEdge:ALEdgeTop toEdge:ALEdgeTop ofView:self.categoriesLabelValue];
   [self.categoriesLabelKey setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
-
+  
   [self.distributorLabelKey autoPinEdgeToSuperviewMargin:ALEdgeLeading];
   [self.distributorLabelKey autoPinEdge:ALEdgeTrailing toEdge:ALEdgeTrailing ofView:self.bookFormatLabelKey];
   [self.distributorLabelKey autoPinEdge:ALEdgeTop toEdge:ALEdgeTop ofView:self.distributorLabelValue];
   [self.distributorLabelKey setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
-
+  
   [self.bookFormatLabelKey autoPinEdgeToSuperviewMargin:ALEdgeLeading];
   [self.bookFormatLabelKey autoPinEdge:ALEdgeTrailing toEdge:ALEdgeTrailing ofView:self.narratorsLabelKey];
   [self.bookFormatLabelKey autoPinEdge:ALEdgeTop toEdge:ALEdgeTop ofView:self.bookFormatLabelValue];
   [self.bookFormatLabelKey setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
-
+  
   [self.narratorsLabelKey autoPinEdgeToSuperviewMargin:ALEdgeLeading];
   [self.narratorsLabelKey autoPinEdge:ALEdgeTop toEdge:ALEdgeTop ofView:self.narratorsLabelValue];
   [self.narratorsLabelKey setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
-
+  
   if (self.book.hasDuration) {
     [self.bookDurationLabelKey autoPinEdgeToSuperviewMargin:ALEdgeLeading];
     [self.bookDurationLabelKey autoPinEdge:ALEdgeTop toEdge:ALEdgeTop ofView:self.bookDurationLabelValue];
@@ -614,15 +814,15 @@ static NSString *DetailHTMLTemplate = nil;
     [self.closeButton setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
   }
   
-  [self.topFootnoteSeparater autoSetDimension:ALDimensionHeight toSize: 1.0f / [UIScreen mainScreen].scale];
+  [self.topFootnoteSeparater autoSetDimension:ALDimensionHeight toSize:1.0f / [UIScreen mainScreen].scale];
   [self.topFootnoteSeparater autoPinEdgeToSuperviewEdge:ALEdgeRight];
   [self.topFootnoteSeparater autoPinEdgeToSuperviewMargin:ALEdgeLeft];
   [self.topFootnoteSeparater autoPinEdge:ALEdgeBottom toEdge:ALEdgeTop ofView:self.infoSectionLabel withOffset:-VerticalPadding];
   
-  [self.bottomFootnoteSeparator autoSetDimension:ALDimensionHeight toSize: 1.0f / [UIScreen mainScreen].scale];
+  [self.bottomFootnoteSeparator autoSetDimension:ALDimensionHeight toSize:1.0f / [UIScreen mainScreen].scale];
   [self.bottomFootnoteSeparator autoPinEdgeToSuperviewEdge:ALEdgeRight];
   [self.bottomFootnoteSeparator autoPinEdgeToSuperviewMargin:ALEdgeLeft];
-
+  
   if (self.book.hasDuration) {
     [self.bottomFootnoteSeparator autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.bookDurationLabelKey withOffset:VerticalPadding];
   } else {
@@ -632,6 +832,7 @@ static NSString *DetailHTMLTemplate = nil;
   [self.footerTableView autoPinEdgesToSuperviewEdgesWithInsets:UIEdgeInsetsZero excludingEdge:ALEdgeTop];
   [self.footerTableView autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.narratorsLabelValue withOffset:VerticalPadding];
 }
+
 
 #pragma mark NSObject
 

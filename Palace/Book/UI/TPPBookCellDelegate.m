@@ -9,6 +9,7 @@
 #import "TPPBookDownloadingCell.h"
 #import "TPPBookNormalCell.h"
 #import "TPPRootTabBarController.h"
+#import "Palace-Swift.h"
 
 #import "NSURLRequest+NYPLURLRequestAdditions.h"
 #import "TPPJSON.h"
@@ -25,18 +26,12 @@
   @private NSTimeInterval previousPlayheadOffset;
 }
 
-@property (nonatomic) NSTimer *timer;
-@property (nonatomic) NSDate *lastServerUpdate;
-@property (nonatomic, weak) UIViewController *audiobookViewController;
 @property (strong) NSLock *refreshAudiobookLock;
 @property (nonatomic, strong) LoadingViewController *loadingViewController;
-@property (nonatomic, strong) AudiobookBookmarkBusinessLogic *audiobookBookmarkBusinessLogic;
 
 @end
 
 @implementation TPPBookCellDelegate
-
-static const int kServerUpdateDelay = 15;
 
 + (instancetype)sharedDelegate
 {
@@ -237,6 +232,7 @@ static const int kServerUpdateDelay = 15;
 }
 //
 //- (void)openAudiobook:(TPPBook *)book withJSON:(NSDictionary *)json decryptor:(id<DRMDecryptor>)audiobookDrmDecryptor {
+//- (void)openAudiobook:(TPPBook *)book withJSON:(NSDictionary *)json decryptor:(id<DRMDecryptor>)audiobookDrmDecryptor {
 //  [AudioBookVendorsHelper updateVendorKeyWithBook:json completion:^(NSError * _Nullable error) {
 //    [NSOperationQueue.mainQueue addOperationWithBlock:^{
 //      id<Original_Audiobook> const audiobook = [Original_AudiobookFactory audiobook:json bookID:book.identifier decryptor:audiobookDrmDecryptor token:book.bearerToken];
@@ -368,30 +364,8 @@ static const int kServerUpdateDelay = 15;
   }];
 }
 
-/// Pick one of the locations
-/// - Parameters:
-///   - localLocation: local player location
-///   - remoteLocation: remote player location
-///   - operation: operation block on the selected location
-- (void) chooseLocalLocation:(ChapterLocation *)localLocation orRemoteLocation:(ChapterLocation *)remoteLocation forOperation:(void (^)(ChapterLocation *))operation {
-  
-  BOOL remoteLocationIsNewer = NO;
-  if (localLocation == nil && remoteLocation != nil) {
-    remoteLocationIsNewer = YES;
-  } else if (localLocation != nil && remoteLocation != nil) {
-    remoteLocationIsNewer = [NSString isDate:remoteLocation.lastSavedTimeStamp moreRecentThan:localLocation.lastSavedTimeStamp with:kServerUpdateDelay];
-  }
-  if (remoteLocation && (![remoteLocation.description isEqualToString:localLocation.description]) && remoteLocationIsNewer) {
-    [self requestSyncWithCompletion:^(BOOL shouldSync) {
-      ChapterLocation *location = shouldSync ? remoteLocation : localLocation;
-      operation(location);
-    }];
-  } else {
-    operation(localLocation);
-  }
-}
-
 - (void) startLoading:(UIViewController *)hostViewController {
+  self.isSyncing = YES;
   dispatch_async(dispatch_get_main_queue(), ^{
     self.loadingViewController = [[LoadingViewController alloc] init];
     [hostViewController addChildViewController:self.loadingViewController];
@@ -402,6 +376,7 @@ static const int kServerUpdateDelay = 15;
 }
 
 - (void) stopLoading {
+  self.isSyncing = NO;
   dispatch_async(dispatch_get_main_queue(), ^{
     [self.loadingViewController willMoveToParentViewController:nil];
     [self.loadingViewController.view removeFromSuperview];
