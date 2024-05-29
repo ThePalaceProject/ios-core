@@ -537,25 +537,20 @@ extension TPPBookRegistry: TPPBookRegistryProvider {
   }
   
   func addOrReplaceGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String) {
-    guard let existingBookmark = registry[bookIdentifier]?.genericBookmarks?.first(where: { $0.isSimilarTo(location) }) else {
-      addGenericBookmark(location, forIdentifier: bookIdentifier)
-      return
+    guard registry[bookIdentifier] != nil else { return }
+    
+    if registry[bookIdentifier]?.genericBookmarks == nil {
+      registry[bookIdentifier]?.genericBookmarks = [TPPBookLocation]()
     }
-
-    replaceGenericBookmark(existingBookmark, with: location, forIdentifier: bookIdentifier)
+    
+    deleteGenericBookmark(location, forIdentifier: bookIdentifier)
+    addGenericBookmark(location, forIdentifier: bookIdentifier)
+    save()
   }
   
   /// Adds a generic bookmark (book location) for a book given its identifier
   func addGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String) {
-    guard registry[bookIdentifier] != nil else {
-      return
-    }
-
-    if registry[bookIdentifier]?.genericBookmarks == nil {
-      registry[bookIdentifier]?.genericBookmarks = [TPPBookLocation]()
-    }
     registry[bookIdentifier]?.genericBookmarks?.append(location)
-    save()
   }
   
    /// Deletes a generic bookmark (book location) for a book given its identifier
@@ -588,7 +583,7 @@ extension TPPBookLocation {
     }
     
     // Keys to be excluded from the comparison.
-    let excludedKeys = ["lastSavedTimeStamp", "annotationId"]
+    let excludedKeys = ["timeStamp", "annotationId"]
     
     // Prepare dictionaries excluding the keys not relevant for comparison.
     let filteredDict = locationDict.filter { !excludedKeys.contains($0.key) }

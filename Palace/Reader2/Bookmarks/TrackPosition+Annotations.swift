@@ -14,25 +14,31 @@ public extension TrackPosition {
       readingOrderItem: track.key,
       readingOrderItemOffsetMilliseconds: UInt(timestamp * 1000)
     )
-    return AudioBookmark(locator: locator)
+    return AudioBookmark(locator: locator, timeStamp: lastSavedTimeStamp, annotationId: annotationId)
   }
-
+  
   init?(audioBookmark: AudioBookmark, toc: [Chapter], tracks: Tracks) {
-    if let locator = audioBookmark.locator as? AudioBookmark.LocatorAudioBookTime2,
-       let track = tracks.track(forKey: locator.readingOrderItem) {
+    switch audioBookmark.locator {
+    case let locator as AudioBookmark.LocatorAudioBookTime2:
+      guard let track = tracks.track(forKey: locator.readingOrderItem) else { return nil }
       let timestamp = Double(locator.readingOrderItemOffsetMilliseconds) / 1000.0
       self.init(track: track, timestamp: timestamp, tracks: tracks)
-    } else if let locator = audioBookmark.locator as? AudioBookmark.LocatorAudioBookTime1 {
+      
+    case let locator as AudioBookmark.LocatorAudioBookTime1:
+      let timestamp = Double(locator.time)
       if let track = tracks.track(forPart: Int(locator.part), sequence: Int(locator.chapter)) {
-        let timestamp = Double(locator.time)
         self.init(track: track, timestamp: timestamp, tracks: tracks)
       } else {
-        let track = toc[Int(locator.chapter)].position.track
-        let timestamp = Double(locator.time)
+        guard let chapterIndex = Int(exactly: locator.chapter), toc.indices.contains(chapterIndex) else { return nil }
+        let track = toc[chapterIndex].position.track
         self.init(track: track, timestamp: timestamp, tracks: tracks)
       }
-    } else {
+      
+    default:
       return nil
     }
+    
+    self.annotationId = audioBookmark.annotationId
+    self.lastSavedTimeStamp = audioBookmark.lastSavedTimeStamp
   }
 }
