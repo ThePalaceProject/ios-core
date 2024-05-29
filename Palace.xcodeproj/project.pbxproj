@@ -1061,6 +1061,8 @@
 		E53CDA882A2FBCD800C6008A /* LocationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E53CDA872A2FBCD800C6008A /* LocationManager.swift */; };
 		E53CDABC2A2FD4D300C6008A /* LocationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E53CDA872A2FBCD800C6008A /* LocationManager.swift */; };
 		E541812F2C004923005ED059 /* snowcrash_manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = E541812E2C004923005ED059 /* snowcrash_manifest.json */; };
+		E5437D5E2C07C0B8005852DA /* TrackPosition+Annotations.swift in Sources */ = {isa = PBXBuildFile; fileRef = E59A99892BFC4D3700BE3BF4 /* TrackPosition+Annotations.swift */; };
+		E5437D5F2C07C0B8005852DA /* TrackPosition+Annotations.swift in Sources */ = {isa = PBXBuildFile; fileRef = E59A99892BFC4D3700BE3BF4 /* TrackPosition+Annotations.swift */; };
 		E544C4E92A395BE000B2DC9D /* MyBooksDownloadCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = E544C4E82A395BE000B2DC9D /* MyBooksDownloadCenter.swift */; };
 		E544C4EA2A395BE000B2DC9D /* MyBooksDownloadCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = E544C4E82A395BE000B2DC9D /* MyBooksDownloadCenter.swift */; };
 		E544C4EC2A395DDE00B2DC9D /* MyBooksDownloadInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = E544C4EB2A395DDE00B2DC9D /* MyBooksDownloadInfo.swift */; };
@@ -4639,6 +4641,7 @@
 				21E417972928137E00A78606 /* AudiobookSamplePlayer.swift in Sources */,
 				E5FD62142BFD30F500DD4B94 /* LoadingViewController.swift in Sources */,
 				73EB0AFF25821DF4006BC997 /* URLResponse+TPPAuthentication.swift in Sources */,
+				E5437D5F2C07C0B8005852DA /* TrackPosition+Annotations.swift in Sources */,
 				73EB0B0025821DF4006BC997 /* TPPCatalogSearchViewController.m in Sources */,
 				73DB56CF25F7F73A003788EE /* TPPLastReadPositionPoster.swift in Sources */,
 				21562CC4276BB52700C03372 /* AdobeDRMAlerts.swift in Sources */,
@@ -5272,6 +5275,7 @@
 				D570B61E2BA20139003FE991 /* TPPLastReadPositionPoster.swift in Sources */,
 				D570B61F2BA20139003FE991 /* TPPRemoteViewController.m in Sources */,
 				D570B6202BA20139003FE991 /* TPPBookLocation+Locator.swift in Sources */,
+				E5437D5E2C07C0B8005852DA /* TrackPosition+Annotations.swift in Sources */,
 				D570B6212BA20139003FE991 /* TPPReaderSettings.swift in Sources */,
 				D570B6222BA20139003FE991 /* TPPOPDSAttribute.m in Sources */,
 				D570B6232BA20139003FE991 /* TPPBookRegistry.swift in Sources */,
