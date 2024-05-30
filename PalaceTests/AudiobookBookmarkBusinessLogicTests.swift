@@ -219,11 +219,14 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
     
     sut = AudiobookBookmarkBusinessLogic(book: fakeBook, registry: mockRegistry, annotationsManager: mockAnnotations)
     sut.syncBookmarks(localBookmarks: registryTestBookmarks.compactMap { $0.toAudioBookmark() }) { _ in
-      let localBookmarks = self.mockRegistry.genericBookmarksForIdentifier(self.fakeBook.identifier)
-      
-      XCTAssertEqual(localBookmarks.count, expectedLocalBookmarks.count)
-      expectedLocalBookmarks.forEach { expectedBookmark in
-        XCTAssertFalse(localBookmarks.filter { $0.locationString == expectedBookmark.toAudioBookmark().toTPPBookLocation()?.locationString }.isEmpty)
+      DispatchQueue.main.async {
+        
+        let localBookmarks = self.mockRegistry.genericBookmarksForIdentifier(self.fakeBook.identifier)
+        
+        XCTAssertEqual(localBookmarks.count, expectedLocalBookmarks.count)
+        expectedLocalBookmarks.forEach { expectedBookmark in
+          XCTAssertFalse(localBookmarks.filter { $0.locationString == expectedBookmark.toAudioBookmark().toTPPBookLocation()?.locationString }.isEmpty)
+        }
       }
     }
     

@@ -80,8 +80,8 @@ import Foundation
   required public init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     type = try container.decode(BookmarkType.self, forKey: .type)
-    lastSavedTimeStamp = try container.decode(String.self, forKey: .timeStamp)
-    annotationId = try container.decode(String.self, forKey: .annotationId)
+    lastSavedTimeStamp = try container.decodeIfPresent(String.self, forKey: .timeStamp) ?? Date().iso8601
+    annotationId = try container.decodeIfPresent(String.self, forKey: .annotationId) ?? ""
     
     if type == .locatorAudioBookTime {
       if let locator = try? container.decode(LocatorAudioBookTime1.self, forKey: .locator) {
