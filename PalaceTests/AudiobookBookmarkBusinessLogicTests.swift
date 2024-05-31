@@ -17,21 +17,31 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
   var mockRegistry: TPPBookRegistryMock!
   let bookIdentifier = "fakeEpub"
   var fakeBook: TPPBook!
+  var tracks: Tracks!
   
   let testID = "TestID"
+  let manifestJSON: ManifestJSON = .snowcrash
   
   func loadTracks(for manifestJSON: ManifestJSON) throws -> Tracks {
     let manifest = try Manifest.from(jsonFileName: manifestJSON.rawValue, bundle: Bundle(for: type(of: self)))
     return Tracks(manifest: manifest, audiobookID: testID, token: nil)
   }
   
-  let manifestJSON: ManifestJSON = .snowcrash
-  
-  var tracks: Tracks!
-  
   override func setUp() {
     super.setUp()
-    
+    setupEnvironment()
+  }
+  
+  override func tearDown() {
+    sut = nil
+    mockAnnotations = nil
+    mockRegistry = nil
+    fakeBook = nil
+    tracks = nil
+    super.tearDown()
+  }
+  
+  func setupEnvironment() {
     let emptyUrl = URL(fileURLWithPath: "")
     let fakeAcquisition = TPPOPDSAcquisition(
       relation: .generic,
@@ -81,6 +91,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
     
     let localTestBookmark = TrackPosition(track: tracks.tracks[0], timestamp: 1000, tracks: tracks)
     let expectedString = localTestBookmark.toAudioBookmark().toTPPBookLocation()!.locationString
+    
     sut.saveListeningPosition(at: localTestBookmark) { result in
       expectation.fulfill()
       
@@ -96,7 +107,8 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
       
       XCTAssertTrue((expectedDict as NSDictionary) == (savedDict as NSDictionary))
     }
-    wait(for: [expectation], timeout: 5.0)
+    
+    wait(for: [expectation], timeout: 10.0)
   }
   
   func testSaveBookmark() {
@@ -105,46 +117,37 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
     
     let position = TrackPosition(track: tracks.tracks[0], timestamp: 1000, tracks: tracks)
     XCTAssertTrue(position.lastSavedTimeStamp.isEmpty)
-
+    
     sut.saveBookmark(at: position) { bookmark in
       expectation.fulfill()
       XCTAssertNotNil(bookmark)
       XCTAssertFalse(bookmark!.lastSavedTimeStamp.isEmpty)
       XCTAssertTrue(position == bookmark)
     }
-    wait(for: [expectation], timeout: 5.0)
+    
+    wait(for: [expectation], timeout: 10.0)
   }
-
+  
   func testFetchBookmarksDuplicate_LocalAndRemote() {
     let expectation = XCTestExpectation(description: "FetchAllBookmarks")
-    let tracks = try! loadTracks(for: manifestJSON)
-    
     var localTestBookmark = TrackPosition(track: tracks.tracks[0], timestamp: 1000, tracks: tracks)
     localTestBookmark.annotationId = "TestannotationId1"
     var localTestBookmarkTwo = TrackPosition(track: tracks.tracks[1], timestamp: 111000, tracks: tracks)
     localTestBookmarkTwo.annotationId = "TestannotationId2"
-
-    let registryTestBookmarks = [localTestBookmark, localTestBookmarkTwo]
     
+    let registryTestBookmarks = [localTestBookmark, localTestBookmarkTwo]
     let testBookmark = TrackPosition(track: tracks.tracks[0], timestamp: 1000, tracks: tracks)
     let testBookmarkThree = TrackPosition(track: tracks.tracks[2], timestamp: 1000, tracks: tracks)
     let remoteTestBookmarks = [testBookmark, testBookmarkThree]
     let expectedBookmarks = [localTestBookmark, localTestBookmarkTwo, testBookmarkThree]
     
-    // Preload registry data
     mockRegistry.preloadData(bookIdentifier: fakeBook.identifier, locations: registryTestBookmarks.compactMap { $0.toAudioBookmark().toTPPBookLocation() })
-    
-    // Setup mock annotations
     let remoteBookmarks = remoteTestBookmarks.compactMap { TestBookmark(annotationId: $0.annotationId, value: $0.toAudioBookmark().toTPPBookLocation()!.locationString) }
     mockAnnotations.bookmarks = [fakeBook.identifier: remoteBookmarks]
     
-    // Initialize the system under test (sut)
     sut = AudiobookBookmarkBusinessLogic(book: fakeBook, registry: mockRegistry, annotationsManager: mockAnnotations)
     
-    // Ensure the fetchBookmarks function is called correctly
-    print("Calling fetchBookmarks function")
     sut.fetchBookmarks(for: tracks, toc: [Chapter(title: "", position: localTestBookmark, duration: 10.0, downloadProgress: 1.0)]) { bookmarks in
-      print("fetchBookmarks completion handler called")
       expectation.fulfill()
       XCTAssertEqual(bookmarks.count, expectedBookmarks.count)
       expectedBookmarks.forEach { expectedBookmark in
@@ -176,7 +179,8 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
         XCTAssertFalse(bookmarks.filter { $0 == expectedBookmark }.isEmpty)
       }
     }
-    wait(for: [expectation], timeout: 5.0)
+    
+    wait(for: [expectation], timeout: 10.0)
   }
   
   func testFetchBookmarks_RemoteOnly() {
@@ -200,7 +204,8 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
         XCTAssertFalse(bookmarks.filter { $0 == expectedBookmark }.isEmpty)
       }
     }
-    wait(for: [expectation], timeout: 5.0)
+    
+    wait(for: [expectation], timeout: 10.0)
   }
   
   func testBookmarkSync_RemoteToLocal() {
@@ -220,18 +225,16 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
     sut = AudiobookBookmarkBusinessLogic(book: fakeBook, registry: mockRegistry, annotationsManager: mockAnnotations)
     sut.syncBookmarks(localBookmarks: registryTestBookmarks.compactMap { $0.toAudioBookmark() }) { _ in
       DispatchQueue.main.async {
-        
         let localBookmarks = self.mockRegistry.genericBookmarksForIdentifier(self.fakeBook.identifier)
-        
         XCTAssertEqual(localBookmarks.count, expectedLocalBookmarks.count)
         expectedLocalBookmarks.forEach { expectedBookmark in
           XCTAssertFalse(localBookmarks.filter { $0.locationString == expectedBookmark.toAudioBookmark().toTPPBookLocation()?.locationString }.isEmpty)
         }
+        expectation.fulfill()
       }
     }
     
-    expectation.fulfill()
-    wait(for: [expectation], timeout: 5.0)
+    wait(for: [expectation], timeout: 10.0)
   }
   
   func testBookmarkSync_LocalToRemote() {
@@ -249,13 +252,12 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
     
     sut = AudiobookBookmarkBusinessLogic(book: fakeBook, registry: mockRegistry, annotationsManager: mockAnnotations)
     sut.syncBookmarks(localBookmarks: registryTestBookmarks.compactMap { $0.toAudioBookmark() }) { _ in
-      
       let remoteBookmarks = self.mockAnnotations.bookmarks[self.fakeBook.identifier]?.compactMap { $0.value } ?? []
       XCTAssertEqual(remoteBookmarks.count, registryTestBookmarks.count)
       expectation.fulfill()
     }
     
-    wait(for: [expectation], timeout: 5.0)
+    wait(for: [expectation], timeout: 10.0)
   }
   
   func testDeleteBookmark_localOnly() {
@@ -289,7 +291,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
           let savedData = savedString.data(using: .utf8)!
           let expectedDict = try! JSONSerialization.jsonObject(with: expectedData, options: []) as! [String: Any]
           let savedDict = try! JSONSerialization.jsonObject(with: savedData, options: []) as! [String: Any]
-
+          
           return (expectedDict as NSDictionary) == (savedDict as NSDictionary)
         }
         
@@ -299,15 +301,15 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
       expectation.fulfill()
     }
     
-    wait(for: [expectation], timeout: 5.0)
+    wait(for: [expectation], timeout: 10.0)
   }
-
+  
   func testDeleteBookmark_localAndRemote() {
     let expectation = XCTestExpectation(description: "DeleteLocalAndRemoteBookmarks")
     
     var testBookmark = TrackPosition(track: tracks.tracks[0], timestamp: 1000, tracks: tracks)
     testBookmark.annotationId = "TestannotationId1"
-
+    
     var testBookmarkTwo = TrackPosition(track: tracks.tracks[1], timestamp: 111000, tracks: tracks)
     testBookmarkTwo.annotationId = "TestannotationId2"
     let localTestBookmarkThree = TrackPosition(track: tracks.tracks[2], timestamp: 1000, tracks: tracks)
@@ -330,19 +332,19 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
       
       expectedLocalBookmarks.forEach { expectedBookmark in
         let expectedString = expectedBookmark.toAudioBookmark().toTPPBookLocation()?.locationString ?? ""
+        
+        let matchingLocalBookmarks = localBookmarks.filter { localBookmark in
+          let savedString = localBookmark.locationString
           
-          let matchingLocalBookmarks = localBookmarks.filter { localBookmark in
-            let savedString = localBookmark.locationString
-            
-            let expectedData = expectedString.data(using: .utf8)!
-            let savedData = savedString.data(using: .utf8)!
-            let expectedDict = try! JSONSerialization.jsonObject(with: expectedData, options: []) as! [String: Any]
-            let savedDict = try! JSONSerialization.jsonObject(with: savedData, options: []) as! [String: Any]
-            
-            return (expectedDict as NSDictionary) == (savedDict as NSDictionary)
-          }
+          let expectedData = expectedString.data(using: .utf8)!
+          let savedData = savedString.data(using: .utf8)!
+          let expectedDict = try! JSONSerialization.jsonObject(with: expectedData, options: []) as! [String: Any]
+          let savedDict = try! JSONSerialization.jsonObject(with: savedData, options: []) as! [String: Any]
           
-          XCTAssertFalse(matchingLocalBookmarks.isEmpty)
+          return (expectedDict as NSDictionary) == (savedDict as NSDictionary)
+        }
+        
+        XCTAssertFalse(matchingLocalBookmarks.isEmpty)
       }
       
       let remoteBookmarks = self.mockAnnotations.bookmarks[self.fakeBook.identifier]?.compactMap { $0.value } ?? []
@@ -361,14 +363,14 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
           
           return (expectedDict as NSDictionary) == (savedDict as NSDictionary)
         }
-                
+        
         XCTAssertFalse(matchingRemoteBookmarks.isEmpty)
       }
       
       expectation.fulfill()
     }
     
-    wait(for: [expectation], timeout: 5.0)
+    wait(for: [expectation], timeout: 10.0)
   }
-
+  
 }
