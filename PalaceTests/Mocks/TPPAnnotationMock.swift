@@ -50,7 +50,6 @@ class TPPAnnotationMock: NSObject, AnnotationsManager {
 
       if let audiobookmark = try? JSONDecoder().decode(AudioBookmark.self, from: selectorValueData) {
         audiobookmark.lastSavedTimeStamp = Date().iso8601
-        audiobookmark.annotationId = "\(generateRandomString(length: 8))\(bookID)"
         return audiobookmark
       } else {
         return nil

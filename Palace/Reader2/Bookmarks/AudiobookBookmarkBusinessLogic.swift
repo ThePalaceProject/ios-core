@@ -50,7 +50,7 @@ import PalaceAudiobookToolkit
 
   func syncBookmarks(localBookmarks: [AudioBookmark], completion: (([AudioBookmark]) -> Void)? = nil) {
     guard !isSyncing else {
-      if let completion = completion {
+      if let completion {
         completionHandlersQueue.append(completion)
       }
       return
@@ -211,12 +211,9 @@ extension AudiobookBookmarkBusinessLogic: AudiobookBookmarkDelegate {
   
   public func fetchBookmarks(for tracks: Tracks, toc: [Chapter], completion: @escaping ([TrackPosition]) -> Void) {
     let localBookmarks: [AudioBookmark] = fetchLocalBookmarks()
-    print("Fetched local bookmarks: \(localBookmarks.count)")
     
     self.syncBookmarks(localBookmarks: localBookmarks) { syncedBookmarks in
-      print("Synced bookmarks: \(syncedBookmarks.count)")
       let trackPositions = syncedBookmarks.combineAndRemoveDuplicates(with: localBookmarks).compactMap { TrackPosition(audioBookmark: $0, toc: toc, tracks: tracks) }
-      print("Track positions: \(trackPositions.count)")
       completion(trackPositions)
     }
   }
