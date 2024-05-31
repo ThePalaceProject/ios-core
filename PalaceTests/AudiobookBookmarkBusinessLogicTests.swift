@@ -183,8 +183,10 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
     let expectation = XCTestExpectation(description: "FetchRemoteBookmarks")
     
     let registryTestBookmarks: [TrackPosition] = []
-    let testBookmark = TrackPosition(track: tracks.tracks[0], timestamp: 1000, tracks: tracks)
-    let testBookmarkTwo = TrackPosition(track: tracks.tracks[1], timestamp: 111000, tracks: tracks)
+    var testBookmark = TrackPosition(track: tracks.tracks[0], timestamp: 1000, tracks: tracks)
+    testBookmark.annotationId = "testBookmarkTwo"
+    var testBookmarkTwo = TrackPosition(track: tracks.tracks[1], timestamp: 111000, tracks: tracks)
+    testBookmarkTwo.annotationId = "testBookmarkTwo"
     let remoteTestBookmarks: [TrackPosition] = [testBookmark, testBookmarkTwo]
     let expectedBookmarks = [testBookmark, testBookmarkTwo]
     
