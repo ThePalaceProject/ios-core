@@ -108,17 +108,7 @@ import PalaceAudiobookToolkit
       completion(updatedLocalBookmarks)
       return
     }
-        
-    let localBookmarksToDelete = updatedLocalBookmarks.filter { localBookmark in
-      let hasAnnotationId = !(localBookmark.annotationId.isEmpty)
-      let notOnServer = !remoteBookmarks.contains(where: { $0.isSimilar(to: localBookmark) })
-      return hasAnnotationId && notOnServer
-    }
-    
-    deleteBookmarks(localBookmarksToDelete)
-    
-    updatedLocalBookmarks.removeAll(where: { localBookmarksToDelete.contains($0) })
-    
+
     let existingLocalBookmarkIds = Set(updatedLocalBookmarks.compactMap { $0.annotationId })
     let newRemoteBookmarks = remoteBookmarks.filter { remoteBookmark in
       let isNew = !existingLocalBookmarkIds.contains(remoteBookmark.annotationId)
