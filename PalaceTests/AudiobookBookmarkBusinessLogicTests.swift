@@ -67,15 +67,16 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
       contributors: [:],
       bookDuration: nil
     )
-    
+
+  }
+  
+  func testSaveListeningPosition() {
     mockRegistry = TPPBookRegistryMock()
     mockRegistry.addBook(book: fakeBook, state: .DownloadSuccessful)
     mockAnnotations = TPPAnnotationMock()
     
     tracks = try! loadTracks(for: manifestJSON)
-  }
-  
-  func testSaveListeningPosition() {
+    
     let expectation = XCTestExpectation(description: "SaveListeningPosition")
     sut = AudiobookBookmarkBusinessLogic(book: fakeBook, registry: mockRegistry, annotationsManager: mockAnnotations)
     
@@ -100,6 +101,12 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
   }
   
   func testSaveBookmark() {
+    mockRegistry = TPPBookRegistryMock()
+    mockRegistry.addBook(book: fakeBook, state: .DownloadSuccessful)
+    mockAnnotations = TPPAnnotationMock()
+    
+    tracks = try! loadTracks(for: manifestJSON)
+    
     let expectation = XCTestExpectation(description: "SaveBookmark")
     sut = AudiobookBookmarkBusinessLogic(book: fakeBook, registry: mockRegistry, annotationsManager: mockAnnotations)
     
@@ -116,6 +123,12 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
   }
 
   func testFetchBookmarksDuplicate_LocalAndRemote() {
+    mockRegistry = TPPBookRegistryMock()
+    mockRegistry.addBook(book: fakeBook, state: .DownloadSuccessful)
+    mockAnnotations = TPPAnnotationMock()
+    
+    tracks = try! loadTracks(for: manifestJSON)
+    
     let expectation = XCTestExpectation(description: "FetchAllBookmarks")
     let tracks = try! loadTracks(for: manifestJSON)
     
@@ -156,6 +169,12 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
   }
   
   func testFetchBookmarks_localOnly() {
+    mockRegistry = TPPBookRegistryMock()
+    mockRegistry.addBook(book: fakeBook, state: .DownloadSuccessful)
+    mockAnnotations = TPPAnnotationMock()
+    
+    tracks = try! loadTracks(for: manifestJSON)
+    
     let expectation = XCTestExpectation(description: "FetchLocalBookmarks")
     
     let localTestBookmark = TrackPosition(track: tracks.tracks[0], timestamp: 1000, tracks: tracks)
@@ -180,6 +199,12 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
   }
   
   func testFetchBookmarks_RemoteOnly() {
+    mockRegistry = TPPBookRegistryMock()
+    mockRegistry.addBook(book: fakeBook, state: .DownloadSuccessful)
+    mockAnnotations = TPPAnnotationMock()
+    
+    tracks = try! loadTracks(for: manifestJSON)
+    
     let expectation = XCTestExpectation(description: "FetchRemoteBookmarks")
     
     let registryTestBookmarks: [TrackPosition] = []
@@ -206,6 +231,12 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
   }
   
   func testBookmarkSync_RemoteToLocal() {
+    mockRegistry = TPPBookRegistryMock()
+    mockRegistry.addBook(book: fakeBook, state: .DownloadSuccessful)
+    mockAnnotations = TPPAnnotationMock()
+    
+    tracks = try! loadTracks(for: manifestJSON)
+    
     let expectation = XCTestExpectation(description: "SyncRemoteBookmarks")
     
     let localTestBookmark = TrackPosition(track: tracks.tracks[0], timestamp: 1000, tracks: tracks)
@@ -239,6 +270,12 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
   }
   
   func testBookmarkSync_LocalToRemote() {
+    mockRegistry = TPPBookRegistryMock()
+    mockRegistry.addBook(book: fakeBook, state: .DownloadSuccessful)
+    mockAnnotations = TPPAnnotationMock()
+    
+    tracks = try! loadTracks(for: manifestJSON)
+    
     let expectation = XCTestExpectation(description: "SyncLocalBookmarks")
     
     let localTestBookmark = TrackPosition(track: tracks.tracks[0], timestamp: 1000, tracks: tracks)
@@ -263,6 +300,12 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
   }
   
   func testDeleteBookmark_localOnly() {
+    mockRegistry = TPPBookRegistryMock()
+    mockRegistry.addBook(book: fakeBook, state: .DownloadSuccessful)
+    mockAnnotations = TPPAnnotationMock()
+    
+    tracks = try! loadTracks(for: manifestJSON)
+    
     let expectation = XCTestExpectation(description: "DeleteLocalBookmarks")
     
     let localTestBookmark = TrackPosition(track: tracks.tracks[0], timestamp: 1000, tracks: tracks)
@@ -307,6 +350,12 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
   }
 
   func testDeleteBookmark_localAndRemote() {
+    mockRegistry = TPPBookRegistryMock()
+    mockRegistry.addBook(book: fakeBook, state: .DownloadSuccessful)
+    mockAnnotations = TPPAnnotationMock()
+    
+    tracks = try! loadTracks(for: manifestJSON)
+    
     let expectation = XCTestExpectation(description: "DeleteLocalAndRemoteBookmarks")
     
     var testBookmark = TrackPosition(track: tracks.tracks[0], timestamp: 1000, tracks: tracks)
@@ -374,5 +423,4 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
     
     wait(for: [expectation], timeout: 5.0)
   }
-
 }
