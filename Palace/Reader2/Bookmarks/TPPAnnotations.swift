@@ -2,6 +2,7 @@ import UIKit
 import R2Shared
 
 protocol AnnotationsManager {
+  var syncIsPossibleAndPermitted: Bool { get }
   func postListeningPosition(forBook bookID: String, selectorValue: String, completion: ((_ serverID: String?) -> Void)?)
   func postAudiobookBookmark(forBook bookID: String, selectorValue: String) async throws -> String?
   func getServerBookmarks(forBook bookID:String?,
@@ -12,6 +13,8 @@ protocol AnnotationsManager {
 }
 
 @objcMembers final class TPPAnnotationsWrapper: NSObject, AnnotationsManager {
+  var syncIsPossibleAndPermitted: Bool { TPPAnnotations.syncIsPossibleAndPermitted() }
+
   func postListeningPosition(forBook bookID: String, selectorValue: String, completion: ((String?) -> Void)?) {
     TPPAnnotations.postListeningPosition(forBook: bookID, selectorValue: selectorValue, completion: completion)
   }

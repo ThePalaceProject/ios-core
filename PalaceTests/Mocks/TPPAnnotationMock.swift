@@ -8,28 +8,22 @@
 
 import Foundation
 @testable import Palace
+@testable import PalaceAudiobookToolkit
 
 struct TestBookmark {
   var annotationId: String
   var value: String
 }
 
-extension TestBookmark {
-  var toChapterLocation: ChapterLocation? {
-    guard let selectorValueData = value.data(using: String.Encoding.utf8),
-          let audioBookmark = try? JSONDecoder().decode(AudioBookmark.self, from: selectorValueData) else {
-      return nil
-    }
-    return ChapterLocation(audioBookmark: audioBookmark)
-  }
-}
 
 class TPPAnnotationMock: NSObject, AnnotationsManager {
   var savedLocations: [String: [TestBookmark]] = [:]
   var bookmarks: [String: [TestBookmark]] = [:]
   
+  var syncIsPossibleAndPermitted: Bool { true }
+
   func postListeningPosition(forBook bookID: String, selectorValue: String, completion: ((String?) -> Void)?) {
-    let annotationId = "TestAnnotationId\(bookID)"
+    let annotationId = "\(generateRandomString(length: 8))\(bookID)"
     var array = savedLocations[bookID] ?? []
     array.append(TestBookmark(annotationId: annotationId, value: selectorValue))
     savedLocations[bookID] = array
@@ -37,7 +31,7 @@ class TPPAnnotationMock: NSObject, AnnotationsManager {
   }
   
   func postAudiobookBookmark(forBook bookID: String, selectorValue: String) async throws -> String? {
-    let annotationId = "TestAnnotationId\(bookID)"
+    let annotationId = "\(generateRandomString(length: 8))\(bookID)"
     bookmarks[bookID]?.append(TestBookmark(annotationId: annotationId, value: selectorValue))
     return annotationId
   }
@@ -54,10 +48,9 @@ class TPPAnnotationMock: NSObject, AnnotationsManager {
           return nil
       }
 
-      if let audioBookmark = try? JSONDecoder().decode(AudioBookmark.self, from: selectorValueData) {
-        audioBookmark.timeStamp = Date().iso8601
-        audioBookmark.annotationId = "TestAnnotationId\(bookID)"
-        return audioBookmark
+      if let audiobookmark = try? JSONDecoder().decode(AudioBookmark.self, from: selectorValueData) {
+        audiobookmark.lastSavedTimeStamp = Date().iso8601
+        return audiobookmark
       } else {
         return nil
       }
@@ -71,6 +64,19 @@ class TPPAnnotationMock: NSObject, AnnotationsManager {
         }
 
     completionHandler(true)
+  }
+
+  func generateRandomString(length: Int) -> String {
+    let letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    var randomString = ""
+    
+    for _ in 0..<length {
+      let randomIndex = Int(arc4random_uniform(UInt32(letters.count)))
+      let randomCharacter = letters[letters.index(letters.startIndex, offsetBy: randomIndex)]
+      randomString.append(randomCharacter)
+    }
+    
+    return randomString
   }
 }
 

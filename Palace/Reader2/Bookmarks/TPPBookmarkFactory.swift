@@ -111,13 +111,15 @@ class TPPBookmarkFactory {
         return nil
     }
 
-    guard let selectorValueData = selectorValueEscJSON.data(using: String.Encoding.utf8) else {
+    guard let selectorValueData = selectorValueEscJSON.data(using: String.Encoding.utf8),
+    let selectorValueDict = try? JSONSerialization.jsonObject(with: selectorValueData, options: []) as? [String: Any]
+    else {
       Log.error(#file, "Error serializing serverCFI into JSON. Selector.Value=\(selectorValueEscJSON)")
         return nil
     }
     
-    if let audioBookmark = try? JSONDecoder().decode(AudioBookmark.self, from: selectorValueData) {
-      audioBookmark.timeStamp = time
+    if let selectorValueDict, let audioBookmark = AudioBookmark.create(locatorData: selectorValueDict) {
+      audioBookmark.lastSavedTimeStamp = time
       audioBookmark.annotationId = annotationID
       return audioBookmark
     }
