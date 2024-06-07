@@ -15,7 +15,6 @@ struct TestBookmark {
   var value: String
 }
 
-
 class TPPAnnotationMock: NSObject, AnnotationsManager {
   var savedLocations: [String: [TestBookmark]] = [:]
   var bookmarks: [String: [TestBookmark]] = [:]
@@ -49,7 +48,7 @@ class TPPAnnotationMock: NSObject, AnnotationsManager {
       }
 
       if let audiobookmark = try? JSONDecoder().decode(AudioBookmark.self, from: selectorValueData) {
-        audiobookmark.lastSavedTimeStamp = Date().iso8601
+        audiobookmark.lastSavedTimeStamp = Date().ISO8601Format()
         return audiobookmark
       } else {
         return nil

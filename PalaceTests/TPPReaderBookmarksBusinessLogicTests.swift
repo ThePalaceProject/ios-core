@@ -212,7 +212,10 @@ class TPPReaderBookmarksBusinessLogicTests: XCTestCase {
                                  location: nil,
                                  progressWithinChapter: progressWithinChapter,
                                  progressWithinBook: progressWithinBook,
+                                 readingOrderItem: nil,
+                                 readingOrderItemOffsetMilliseconds: 0,
                                  time:nil,
                                  device:device)
+      
     }
 }

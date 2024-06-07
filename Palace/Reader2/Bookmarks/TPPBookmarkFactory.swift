@@ -61,8 +61,11 @@ class TPPBookmarkFactory {
       location: registryLoc?.locationString,
       progressWithinChapter: chapterProgress,
       progressWithinBook: totalProgress,
+      readingOrderItem: nil,
+      readingOrderItemOffsetMilliseconds: 0.0,
       time: (bookmarkLoc.creationDate as NSDate).rfc3339String(),
-      device: drmDeviceID)
+      device: drmDeviceID
+    )
   }
 
   class func make(fromServerAnnotation annotation: [String: Any],
@@ -139,6 +142,9 @@ class TPPBookmarkFactory {
       let chapter = body[TPPBookmarkSpec.Body.ChapterTitle.key] as? String ?? selectorValueJSON["title"] as? String
       let progressWithinChapter = selectorValueJSON["progressWithinChapter"] as? Float
       let progressWithinBook = Float(selectorValueJSON["progressWithinBook"] as? Double ?? body[TPPBookmarkSpec.Body.ProgressWithinBook.key] as? Double ?? 0.0)
+      let readingOrderItem = selectorValueJSON["readingOrderItem"] as? String
+      let readingOrderItemOffsetMilliseconds = selectorValueJSON["readingOrderItemOffsetMilliseconds"] as? Float
+
       return TPPReadiumBookmark(
         annotationId: annotationID,
         href: href,
@@ -147,6 +153,8 @@ class TPPBookmarkFactory {
         location: selectorValueEscJSON,
         progressWithinChapter: progressWithinChapter ?? 0.0,
         progressWithinBook: progressWithinBook,
+        readingOrderItem: readingOrderItem,
+        readingOrderItemOffsetMilliseconds: readingOrderItemOffsetMilliseconds,
         time:time,
         device:device
       )

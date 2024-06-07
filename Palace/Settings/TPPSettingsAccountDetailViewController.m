@@ -669,7 +669,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
            book:nil];
           [self.tableView deselectRowAtIndexPath:indexPath animated:YES];
           break;
-      } else {
+      } else if (AccountsManager.sharedInstance.currentAccount.supportURL != nil) {
         BundledHTMLViewController *webController = [[BundledHTMLViewController alloc] initWithFileURL:AccountsManager.sharedInstance.currentAccount.supportURL title:AccountsManager.shared.currentAccount.name];
         webController.hidesBottomBarWhenPushed = true;
         [self.navigationController pushViewController:webController animated:YES];

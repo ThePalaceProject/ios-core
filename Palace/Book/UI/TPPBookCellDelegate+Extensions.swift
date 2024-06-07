@@ -102,9 +102,8 @@ private struct AssociatedKeys {
     
         let localAudiobookLocation = TPPBookRegistry.shared.location(forIdentifier: book.identifier)
 
-        guard let locationString = localAudiobookLocation?.locationString,
-              let data = locationString.data(using: .utf8),
-              let localBookmark = try? JSONDecoder().decode(AudioBookmark.self, from: data),
+        guard let dictionary = localAudiobookLocation?.locationStringDictionary(),
+              let localBookmark = AudioBookmark.create(locatorData: dictionary),
               let localPosition = TrackPosition(
                 audioBookmark: localBookmark,
                 toc: audiobook.tableOfContents.toc,
