@@ -102,7 +102,7 @@ import PalaceAudiobookToolkit
   }
 
   private func updateLocalBookmarks(with remoteBookmarks: [AudioBookmark], completion: @escaping ([AudioBookmark]) -> Void) {
-    var updatedLocalBookmarks = fetchLocalBookmarks()
+    let updatedLocalBookmarks = fetchLocalBookmarks()
     
     guard annotationsManager.syncIsPossibleAndPermitted else {
       completion(updatedLocalBookmarks)
