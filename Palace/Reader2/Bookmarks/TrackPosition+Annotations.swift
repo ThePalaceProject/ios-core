@@ -18,58 +18,73 @@ public extension TrackPosition {
   }
 
   init?(audioBookmark: AudioBookmark, toc: [Chapter], tracks: Tracks) {
-    // Extract the locator dictionary from the audio bookmark.
     guard let locator = audioBookmark.locator["locator"] as? [String: Any] else {
-      print("Unsupported locator type: \(audioBookmark.locator)")
+      ATLog(.debug, "Unsupported locator type: \(audioBookmark.locator)")
       return nil
     }
     
-    if let readingOrderItem = locator["readingOrderItem"] as? String,
-       let readingOrderItemOffsetMilliseconds = Self.extractOffsetMilliseconds(from: locator["readingOrderItemOffsetMilliseconds"]),
-       let track = tracks.track(forKey: readingOrderItem) {
-      let timestamp = Double(readingOrderItemOffsetMilliseconds) / 1000.0
-      self.init(track: track, timestamp: timestamp, tracks: tracks)
-    } else if let href = locator["href"] as? String {
-      let timestamp = locator["time"] as? Double ?? 0.0
-      if let track = tracks.track(forHref: href) {
-        self.init(track: track, timestamp: timestamp, tracks: tracks)
-      } else if let part = locator["part"] as? Int,
-                let chapter = locator["chapter"] as? String,
-                let track = tracks.track(forPart: part, sequence: Int(chapter) ?? 0) {
-        self.init(track: track, timestamp: timestamp, tracks: tracks)
-      } else {
-        guard let chapterIndex = Int(locator["chapter"] as? String ?? ""),
-              toc.indices.contains(chapterIndex) else {
-          return nil
-        }
-        let track = toc[chapterIndex].position.track
-        self.init(track: track, timestamp: timestamp, tracks: tracks)
-      }
-    } else if let part = locator["part"] as? Int,
-              let chapter = locator["chapter"] as? Int,
-              let track = tracks.track(forPart: part, sequence: chapter) {
-      let timestamp = Double(locator["time"] as? Int ?? 0) / 1000.0
-      self.init(track: track, timestamp: timestamp, tracks: tracks)
-    } else if let chapterIndex = Int(locator["chapter"] as? String ?? ""),
-              toc.indices.contains(chapterIndex) {
-      let track = toc[chapterIndex].position.track
-      let timestamp = Double(locator["time"] as? Int ?? 0) / 1000.0
-      self.init(track: track, timestamp: timestamp, tracks: tracks)
-    } else if let chapterIndex = locator["chapter"] as? Int,
-      toc.count - 1 > chapterIndex {
-      let track = toc[chapterIndex].position.track
-      let timestamp = Double(locator["time"] as? Int ?? 0) / 1000.0
-      self.init(track: track, timestamp: timestamp, tracks: tracks)
+    if let initializedFromReadingOrderItem = TrackPosition.initializeFromReadingOrderItem(locator: locator, tracks: tracks) {
+      self = initializedFromReadingOrderItem
+    } else if let initializedFromHref = TrackPosition.initializeFromHref(locator: locator, toc: toc, tracks: tracks) {
+      self = initializedFromHref
+    } else if let initializedFromPartAndChapter = TrackPosition.initializeFromPartAndChapter(locator: locator, toc: toc, tracks: tracks) {
+      self = initializedFromPartAndChapter
+    } else if let initializedFromChapterIndex = TrackPosition.initializeFromChapterIndex(locator: locator, toc: toc) {
+      self = initializedFromChapterIndex
     } else {
-      print("Unable to find a valid track for the provided locator.")
+      ATLog(.debug, "Unable to find a valid track for the provided locator.")
       return nil
     }
     
-    // Assign additional properties from the audio bookmark.
     self.annotationId = audioBookmark.annotationId
     self.lastSavedTimeStamp = audioBookmark.lastSavedTimeStamp
   }
-
+  
+  private static func initializeFromReadingOrderItem(locator: [String: Any], tracks: Tracks) -> TrackPosition? {
+    guard let readingOrderItem = locator["readingOrderItem"] as? String,
+          let readingOrderItemOffsetMilliseconds = extractOffsetMilliseconds(from: locator["readingOrderItemOffsetMilliseconds"]),
+          let track = tracks.track(forKey: readingOrderItem) else {
+      return nil
+    }
+    let timestamp = Double(readingOrderItemOffsetMilliseconds) / 1000.0
+    return TrackPosition(track: track, timestamp: timestamp, tracks: tracks)
+  }
+  
+  private static func initializeFromHref(locator: [String: Any], toc: [Chapter], tracks: Tracks) -> TrackPosition? {
+    guard let href = locator["href"] as? String else {
+      return nil
+    }
+    let timestamp = locator["time"] as? Double ?? 0.0
+    if let track = tracks.track(forHref: href) {
+      return TrackPosition(track: track, timestamp: timestamp, tracks: tracks)
+    } else if let part = locator["part"] as? Int,
+              let chapter = locator["chapter"] as? String,
+              let track = tracks.track(forPart: part, sequence: Int(chapter) ?? 0) {
+      return TrackPosition(track: track, timestamp: timestamp, tracks: tracks)
+    }
+    return nil
+  }
+  
+  private static func initializeFromPartAndChapter(locator: [String: Any], toc: [Chapter], tracks: Tracks) -> TrackPosition? {
+    guard let part = locator["part"] as? Int,
+          let chapter = locator["chapter"] as? Int,
+          let track = tracks.track(forPart: part, sequence: chapter) else {
+      return nil
+    }
+    let timestamp = Double(locator["time"] as? Int ?? 0) / 1000.0
+    return TrackPosition(track: track, timestamp: timestamp, tracks: tracks)
+  }
+  
+  private static func initializeFromChapterIndex(locator: [String: Any], toc: [Chapter]) -> TrackPosition? {
+    guard let chapterIndex = locator["chapter"] as? Int,
+          toc.indices.contains(chapterIndex) else {
+      return nil
+    }
+    let track = toc[chapterIndex].position.track
+    let timestamp = Double(locator["time"] as? Int ?? 0) / 1000.0
+    return TrackPosition(track: track, timestamp: timestamp, tracks: toc[chapterIndex].position.tracks)
+  }
+  
   private static func extractOffsetMilliseconds(from value: Any?) -> UInt? {
     if let uintValue = value as? UInt {
       return uintValue
