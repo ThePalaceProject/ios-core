@@ -192,25 +192,3 @@ extension TPPReadiumBookmark {
     return dict
   }
 }
-//extension TPPReadiumBookmark {
-//  func toJSONDictionary() -> [String: Any] {
-//    var dict: [String: Any] = [:]
-//    dict["annotationId"] = self.annotationId
-//    dict["chapter"] = self.chapter
-//    dict["page"] = self.page
-//    dict["href"] = self.href
-//    dict["progressWithinChapter"] = self.progressWithinChapter
-//    dict["progressWithinBook"] = self.progressWithinBook
-//    dict["device"] = self.device
-//    dict["time"] = self.time
-//    dict["readingOrderItemOffsetMilliseconds"] = self.readingOrderItemOffsetMilliseconds
-//    dict["readingOrderItem"] = self.readingOrderItem
-//    
-//    if let locationData = self.location.data(using: .utf8),
-//       let locationDict = try? JSONSerialization.jsonObject(with: locationData, options: []) as? [String: Any] {
-//      dict["locator"] = locationDict
-//    }
-//    
-//    return dict
-//  }
-//}
