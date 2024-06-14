@@ -214,20 +214,21 @@
     [lcpAudiobooks contentDictionaryWithCompletion:^(NSDictionary * _Nullable dict, NSError * _Nullable error) {
       if (error) {
         [self presentUnsupportedItemError];
+        completion();
         return;
       }
       if (dict) {
         NSMutableDictionary *mutableDict = [dict mutableCopy];
         mutableDict[@"id"] = book.identifier;
-        [self openAudiobookWithBook:book json:mutableDict drmDecryptor:lcpAudiobooks];
+        [self openAudiobookWithBook:book json:mutableDict drmDecryptor:lcpAudiobooks completion: completion];
       }
     }];
   } else {
     // Not an LCP book
-    [self openAudiobookWithBook:book json:dict ?: json drmDecryptor:nil];
+    [self openAudiobookWithBook:book json:dict ?: json drmDecryptor:nil completion: completion];
   }
 #else
-  [self openAudiobookWithBook:book json:dict ?: json drmDecryptor:nil];
+  [self openAudiobookWithBook:book json:dict ?: json drmDecryptor:nil completion: completion];
 #endif
 }
 
@@ -317,53 +318,5 @@
   [[MyBooksDownloadCenter shared]
    cancelDownloadFor:cell.book.identifier];
 }
-
-#pragma mark Audiobook Manager Refresh Delegate
-
-- (void)audiobookManagerDidRequestRefresh {
-  if (![self.refreshAudiobookLock tryLock]) {
-    return;
-  }
-    
-  [[TPPBookRegistry shared] setState:TPPBookStateDownloadNeeded for:self.book.identifier];
-
-#if FEATURE_OVERDRIVE
-  [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(updateODAudiobookManifest) name:NSNotification.TPPMyBooksDownloadCenterDidChange object:nil];
-#endif
-  [[MyBooksDownloadCenter shared] startDownloadFor:self.book withRequest:nil];
-}
-
-#if FEATURE_OVERDRIVE
-- (void)updateODAudiobookManifest {
-  //TODO: ADD OVERDRIVE DOWNLOAD FUNCTIONLIATY TO AUDIOBOOKMANAGER. SHOULDNT BE HERE
-//  if ([[TPPBookRegistry shared] stateFor:self.book.identifier] == TPPBookStateDownloadSuccessful) {
-//    Original_OverdriveAudiobook *odAudiobook = (Original_OverdriveAudiobook *)self.manager.audiobook;
-//
-//    NSURL *const url = [[MyBooksDownloadCenter shared] fileUrlFor: self.book.identifier];
-//    NSData *const data = [NSData dataWithContentsOfURL:url];
-//    if (data == nil) {
-//      [self presentCorruptedItemErrorForBook:self.book fromURL:url];
-//      return;
-//    }
-//
-//    id const json = TPPJSONObjectFromData(data);
-//
-//    NSMutableDictionary *dict = [(NSMutableDictionary *)json mutableCopy];
-//
-//    dict[@"id"] = self.book.identifier;
-//
-//    if ([odAudiobook respondsToSelector:@selector(updateManifestWithJSON:)]) {
-//      [odAudiobook updateManifestWithJSON:dict];
-//    }
-//  
-//    DefaultAudiobookManager *audiobookManager = (DefaultAudiobookManager *)_manager;
-//    [audiobookManager updateAudiobookWith:odAudiobook.spine];
-//      
-//    [[NSNotificationCenter defaultCenter] removeObserver:self];
-//      
-//    [self.refreshAudiobookLock unlock];
-//  }
-}
-#endif
 
 @end

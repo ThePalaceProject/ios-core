@@ -38,13 +38,14 @@ private struct AssociatedKeys {
     }
   }
 
-  public func openAudiobook(withBook book: TPPBook, json: [String: Any], drmDecryptor: DRMDecryptor?) {
+  public func openAudiobook(withBook book: TPPBook, json: [String: Any], drmDecryptor: DRMDecryptor?, completion: (() -> Void)?) {
     AudioBookVendorsHelper.updateVendorKey(book: json) { [weak self] error in
       DispatchQueue.main.async {
         guard let self = self else { return }
         
         if let error = error {
           self.presentDRMKeyError(error)
+          completion?()
           return
         }
         
@@ -55,6 +56,7 @@ private struct AssociatedKeys {
               let audiobook = AudiobookFactory.audiobook(for: manifest, bookIdentifier: book.identifier, decryptor: drmDecryptor, token: book.bearerToken)
         else {
           self.presentUnsupportedItemError()
+          completion?()
           return
         }
         
@@ -165,7 +167,9 @@ private struct AssociatedKeys {
     let message = NSLocalizedString("The item you are trying to open is not currently supported.", comment: "")
     let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
     alert.addAction(UIAlertAction(title: NSLocalizedString("OK", comment: ""), style: .default))
-    TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
+    TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true) {
+      self.stopLoading()
+    }
   }
 }
 

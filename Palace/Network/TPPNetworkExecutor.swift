@@ -61,9 +61,9 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
     }
     
     if userAccount.isTokenRefreshRequired() && enableTokenRefresh {
-      let task = performDataTask(with: req, completion: completion)
+      let task = urlSession.dataTask(with: req)
       refreshTokenAndResume(task: task, completion: completion)
-      return nil
+      return task
     }
     
     if req.hasRetried && userAccount.isTokenRefreshRequired() {
@@ -74,7 +74,7 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
     
     return performDataTask(with: req, completion: completion)
   }
-  
+
   private func createErrorForRetryFailure() -> NSError {
     return NSError(
       domain: TPPErrorLogger.clientDomain,
@@ -258,12 +258,10 @@ extension TPPNetworkExecutor {
     return executeRequest(request, enableTokenRefresh: false, completion: completionWrapper)
   }
   
-  func refreshTokenAndResume(task: URLSessionTask?, completion: ( (_: NYPLResult<Data>) -> Void)? = nil) {
+  func refreshTokenAndResume(task: URLSessionTask?, completion: ((_ result: NYPLResult<Data>) -> Void)? = nil) {
     refreshQueue.async { [weak self] in
       guard let self = self else { return }
-      guard !self.isRefreshing else {
-        return
-      }
+      guard !self.isRefreshing else { return }
       
       self.isRefreshing = true
       
@@ -276,9 +274,12 @@ extension TPPNetworkExecutor {
         return
       }
       
-      if let task = task {
+      if let task {
         self.retryQueueLock.lock()
         self.retryQueue.append(task)
+        if let completion {
+          responder.addCompletion(completion, taskID: task.taskIdentifier)
+        }
         self.retryQueueLock.unlock()
       }
       
@@ -292,14 +293,14 @@ extension TPPNetworkExecutor {
           self.retryQueueLock.lock()
           self.retryQueue.forEach { oldTask in
             guard let originalRequest = oldTask.originalRequest,
-                  let url = originalRequest.url else {
+                  let originalURL = originalRequest.url else {
               return
             }
             
-            var mutableRequest = self.request(for: url)
-            let newTask = self.urlSession.dataTask(with: mutableRequest)
+            var mutableRequest = self.request(for: originalURL)
             mutableRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             mutableRequest.hasRetried = true
+            let newTask = self.urlSession.dataTask(with: mutableRequest)
             self.responder.updateCompletionId(oldTask.taskIdentifier, newId: newTask.taskIdentifier)
             newTasks.append(newTask)
             
@@ -318,7 +319,7 @@ extension TPPNetworkExecutor {
       }
     }
   }
-  
+
   private func retryFailedRequests() {
     retryQueueLock.lock()
     while !retryQueue.isEmpty {
@@ -335,6 +336,7 @@ extension TPPNetworkExecutor {
     }
     retryQueueLock.unlock()
   }
+
   
   func executeTokenRefresh(username: String, password: String, completion: @escaping (Result<TokenResponse, Error>) -> Void) {
     guard let tokenURL = TPPUserAccount.sharedAccount().authDefinition?.tokenURL else {
