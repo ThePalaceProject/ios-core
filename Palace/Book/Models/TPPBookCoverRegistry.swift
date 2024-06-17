@@ -25,16 +25,21 @@ class TPPBookCoverRegistry {
         handler(image)
       } else if let thumbnailUrl = book.imageThumbnailURL,
                 let fileUrl = self.pinnedThumbnailImageUrlOfBookIdentifier(book.identifier) {
-        self.getBookCoverImage(url: thumbnailUrl, fileUrl: fileUrl, handler: handler, forBook: book)
+        self.getBookCoverImage(url: thumbnailUrl, fileUrl: fileUrl, handler: { [weak self] image in
+          guard let self else { return }
+          handler(image)
+        }, forBook: book)
       }
     } else {
       if let thumbnailUrl = book.imageThumbnailURL {
-        self.getBookCoverImage(url: thumbnailUrl, fileUrl: nil, handler: handler, forBook: book)
+        self.getBookCoverImage(url: thumbnailUrl, fileUrl: nil, handler: { [weak self] image in
+          guard let self else { return }
+          handler(image)
+        }, forBook: book)
       } else {
         handler(self.generateBookCoverImage(book))
       }
     }
-    
   }
   
   /// Downloads cover image for the provided book.

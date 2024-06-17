@@ -158,7 +158,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
     sut = AudiobookBookmarkBusinessLogic(book: fakeBook, registry: mockRegistry, annotationsManager: mockAnnotations)
     
     // Ensure the fetchBookmarks function is called correctly
-    sut.fetchBookmarks(for: tracks, toc: [Chapter(title: "", position: localTestBookmark, duration: 10.0, downloadProgress: 1.0)]) { bookmarks in
+    sut.fetchBookmarks(for: tracks, toc: [Chapter(title: "", position: localTestBookmark, duration: 10.0)]) { bookmarks in
       XCTAssertEqual(bookmarks.count, expectedBookmarks.count)
       expectedBookmarks.forEach { expectedBookmark in
         XCTAssertFalse(bookmarks.filter { $0 == expectedBookmark }.isEmpty)
