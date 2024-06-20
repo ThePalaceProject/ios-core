@@ -171,7 +171,7 @@
   }
   
   func submitButtonWasPressed() {
-    let alert = UIAlertController.init(title: "Report a Problem", message: "Are you sure you want to email this error log to \(AccountsManager.shared.currentAccount?.name ?? "library") support?", preferredStyle: .alert)
+    let alert = UIAlertController.init(title: "Report a Problem", message: "Are you sure you want to email this error log to The Palace Project support?", preferredStyle: .alert)
     alert.addAction(UIAlertAction.init(title: "Cancel", style: .cancel, handler: nil))
     alert.addAction(UIAlertAction.init(title: "Send email", style: .default, handler: { (action) in
       let labelText = self.label?.attributedText?.string ?? ""
