@@ -143,10 +143,18 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
     ]
     
     taskInfoLock.lock()
-    defer { taskInfoLock.unlock() }  // Ensure unlocking in all scenarios.
+    defer { taskInfoLock.unlock() }
     
     guard let currentTaskInfo = taskInfo.removeValue(forKey: taskID) else {
       handleNoTaskInfo(for: task, with: networkError, logMetadata: &logMetadata)
+      return
+    }
+    
+    if let networkError = networkError as NSError?,
+       networkError.domain == NSURLErrorDomain,
+       networkError.code == NSURLErrorCancelled
+    {
+      Log.info(#file, "Task was cancelled: \(networkError.localizedDescription)")
       return
     }
     
@@ -155,7 +163,7 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
     guard let httpResponse = task.response as? HTTPURLResponse else {
       let error = NSError(domain: "Api call with failure HTTP status",
                           code: TPPErrorCode.invalidOrNoHTTPResponse.rawValue,
-                    userInfo: logMetadata)
+                          userInfo: logMetadata)
       currentTaskInfo.completion(.failure(error, nil))
       return
     }
