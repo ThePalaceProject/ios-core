@@ -287,7 +287,7 @@ extension TPPNetworkExecutor {
         defer { self.isRefreshing = false }
         
         switch result {
-        case .success(let token):
+        case .success:
           var newTasks = [URLSessionTask]()
           
           self.retryQueueLock.lock()
@@ -298,7 +298,6 @@ extension TPPNetworkExecutor {
             }
             
             var mutableRequest = self.request(for: originalURL)
-            mutableRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             mutableRequest.hasRetried = true
             let newTask = self.urlSession.dataTask(with: mutableRequest)
             self.responder.updateCompletionId(oldTask.taskIdentifier, newId: newTask.taskIdentifier)
@@ -307,9 +306,10 @@ extension TPPNetworkExecutor {
             oldTask.cancel()
           }
           
-          newTasks.forEach { $0.resume() }
           self.retryQueue.removeAll()
           self.retryQueueLock.unlock()
+          
+          newTasks.forEach { $0.resume() }
           
         case .failure(let error):
           Log.info(#file, "Failed to refresh token with error: \(error)")
