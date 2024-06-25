@@ -309,7 +309,6 @@ extension TPPNetworkExecutor {
           self.retryQueue.removeAll()
           self.retryQueueLock.unlock()
           
-          // Resume new tasks after unlocking retryQueueLock
           newTasks.forEach { $0.resume() }
           
         case .failure(let error):
