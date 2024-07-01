@@ -50,7 +50,7 @@ private struct AssociatedKeys {
         }
         
         let manifestDecoder = Manifest.customDecoder()
-        
+
         guard let jsonData = try? JSONSerialization.data(withJSONObject: json, options: []),
               let manifest = try? manifestDecoder.decode(Manifest.self, from: jsonData),
               let audiobook = AudiobookFactory.audiobook(for: manifest, bookIdentifier: book.identifier, decryptor: drmDecryptor, token: book.bearerToken)
@@ -59,7 +59,7 @@ private struct AssociatedKeys {
           completion?()
           return
         }
-        
+
         let metadata = AudiobookMetadata(title: book.title, authors: [book.authors ?? ""])
         let audiobookManager = DefaultAudiobookManager(
           metadata: metadata,
