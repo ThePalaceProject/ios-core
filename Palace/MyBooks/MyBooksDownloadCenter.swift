@@ -497,7 +497,12 @@ extension MyBooksDownloadCenter {
     // Assuming we create and use an audiobook object to manage deletion
     guard let jsonData = try? JSONSerialization.data(withJSONObject: dict, options: []),
           let manifest = try? Manifest.customDecoder().decode(Manifest.self, from: jsonData),
-          let audiobook = AudiobookFactory.audiobook(for: manifest, bookIdentifier: book.identifier, decryptor: nil, token: book.bearerToken) else {
+          let audiobook = AudiobookFactory.audiobook(
+            for: manifest,
+            bookIdentifier: book.identifier,
+            decryptor: nil,
+            token: book.bearerToken
+          ) else {
       return
     }
     audiobook.deleteLocalContent(completion: { _, _ in })
