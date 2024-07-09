@@ -63,7 +63,7 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
     if userAccount.isTokenRefreshRequired() && enableTokenRefresh {
       let task = urlSession.dataTask(with: req)
       refreshTokenAndResume(task: task, completion: completion)
-      return task
+      return nil
     }
     
     if req.hasRetried && userAccount.isTokenRefreshRequired() {
