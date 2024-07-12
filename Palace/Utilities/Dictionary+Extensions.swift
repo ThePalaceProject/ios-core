@@ -31,16 +31,4 @@ extension Dictionary where Key == String, Value: Any {
       print("Failed to pretty print JSON: \(error)")
     }
   }
-  
-  /// Converts the JSON dictionary to a pretty printed string
-  /// - Returns: A string representation of the pretty printed JSON dictionary
-  func prettyPrintedJSONString() -> String? {
-    do {
-      let jsonData = try JSONSerialization.data(withJSONObject: self, options: .prettyPrinted)
-      return String(data: jsonData, encoding: .utf8)
-    } catch {
-      print("Failed to convert JSON dictionary to pretty printed string: \(error)")
-      return nil
-    }
-  }
 }
