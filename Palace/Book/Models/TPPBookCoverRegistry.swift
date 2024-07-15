@@ -66,18 +66,14 @@ class TPPBookCoverRegistry {
   ///   - books: A set of `TPPBook` objects.
   ///   - handler: completion handler. `handler()` is called once, after all covers are downloaded.
   func thumbnailImagesForBooks(_ books: Set<TPPBook>, handler: @escaping (_ bookIdentifiersToImages: [String: UIImage]) -> Void) {
-    var result: [String: UIImage] = [:] {
-      didSet {
-        if books.count == result.keys.count {
-          DispatchQueue.main.async {
-            handler(result)
-          }
-        }
-      }
-    }
+    var result: [String: UIImage] = [:]
+    let dispatchGroup = DispatchGroup()
+    
     books.forEach { book in
+      dispatchGroup.enter()
       guard let thumbnailUrl = book.imageThumbnailURL else {
         result[book.identifier] = self.generateBookCoverImage(book)
+        dispatchGroup.leave()
         return
       }
       
@@ -91,7 +87,12 @@ class TPPBookCoverRegistry {
             result[book.identifier] = self.generateBookCoverImage(book)
           }
         }
+        dispatchGroup.leave()
       }.resume()
+    }
+    
+    dispatchGroup.notify(queue: .main) {
+      handler(result)
     }
   }
   
