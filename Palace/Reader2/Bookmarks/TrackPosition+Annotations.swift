@@ -8,9 +8,17 @@
 
 public extension TrackPosition {
   func toAudioBookmark() -> AudioBookmark {
+    let offsetMilliseconds: UInt
+    if timestamp >= 0 {
+      offsetMilliseconds = UInt(timestamp * 1000)
+    } else {
+      ATLog(.debug, "Warning: Negative timestamp encountered. Defaulting to 0.")
+      offsetMilliseconds = 0
+    }
+    
     let locator: [String: Any] = [
       "readingOrderItem": track.key,
-      "readingOrderItemOffsetMilliseconds": UInt(timestamp * 1000),
+      "readingOrderItemOffsetMilliseconds": offsetMilliseconds,
       "@type": BookmarkType.locatorAudioBookTime.rawValue,
       "@version": 2
     ]
