@@ -6,6 +6,213 @@
 //  Copyright © 2022 The Palace Project. All rights reserved.
 //
 
+//import Foundation
+//
+//enum BookmarkType: String, Codable {
+//  case locatorAudioBookTime = "LocatorAudioBookTime"
+//  case locatorHrefProgression = "LocatorHrefProgression"
+//}
+//
+//@objc public class AudioBookmark: NSObject, Bookmark, Codable, NSCopying {
+//  let type: BookmarkType
+//  var annotationId: String
+//  let locator: [String: Any]
+//  var lastSavedTimeStamp: String
+//  var isUnsynced: Bool {
+//    annotationId.isEmpty
+//  }
+//  
+//  enum CodingKeys: String, CodingKey {
+//    case type = "@type"
+//    case timeStamp
+//    case annotationId
+//    case locator
+//  }
+//  
+//  init(locator: [String: Any], type: BookmarkType, timeStamp: String = Date().iso8601, annotationId: String = "") {
+//    self.type = type
+//    self.lastSavedTimeStamp = timeStamp
+//    self.annotationId = annotationId
+//    self.locator = locator
+//  }
+//  
+//  required public init(from decoder: Decoder) throws {
+//    let container = try decoder.container(keyedBy: CodingKeys.self)
+//    type = try container.decode(BookmarkType.self, forKey: .type)
+//    lastSavedTimeStamp = try container.decodeIfPresent(String.self, forKey: .timeStamp) ?? Date().iso8601
+//    annotationId = try container.decodeIfPresent(String.self, forKey: .annotationId) ?? ""
+//    locator = try container.decode([String: AnyCodable].self, forKey: .locator).mapValues { $0.value }
+//  }
+//  
+//  public func encode(to encoder: Encoder) throws {
+//    var container = encoder.container(keyedBy: CodingKeys.self)
+//    try container.encode(type.rawValue, forKey: .type)
+//    try container.encode(lastSavedTimeStamp, forKey: .timeStamp)
+//    try container.encode(annotationId, forKey: .annotationId)
+//    try container.encode(locator.mapValues { AnyCodable($0) }, forKey: .locator)
+//  }
+//  
+//  static func create(locatorData: [String: Any], timeStamp: String = Date().iso8601, annotationId: String = "") -> AudioBookmark? {
+//    guard let typeString = locatorData["@type"] as? String,
+//            let type = BookmarkType(rawValue: typeString) else { return nil }
+//    
+//    let locatorDict = locatorData.filter({ $0.key != "@type" && $0.key != "@version" }) as [String: Any]
+//    
+//    return AudioBookmark(locator: locatorDict, type: type, timeStamp: (locatorData["timeStamp"] as? String) ?? timeStamp, annotationId: (locatorData["annotationId"] as? String) ?? annotationId)
+//  }
+//  
+//  public func toData() -> Data? {
+//    return try? JSONEncoder().encode(self)
+//  }
+//  
+//  public func isSimilar(to other: AudioBookmark) -> Bool {
+//    if self.type != other.type {
+//      return false
+//    }
+//    
+//    return NSDictionary(dictionary: self.locator).isEqual(to: other.locator)
+//  }
+//  
+//  public func toTPPBookLocation() -> TPPBookLocation? {
+//    guard let data = try? JSONEncoder().encode(self),
+//          let locationString = String(data: data, encoding: .utf8) else {
+//      return nil
+//    }
+//    return TPPBookLocation(locationString: locationString, renderer: "PalaceAudiobookToolkit")
+//  }
+//  
+//  public func copy(with zone: NSZone? = nil) -> Any {
+//    return AudioBookmark(locator: locator, type: type, timeStamp: lastSavedTimeStamp, annotationId: annotationId)
+//  }
+//}
+//
+//struct AnyCodable: Codable {
+//  var value: Any
+//  
+//  init(_ value: Any) {
+//    self.value = value
+//  }
+//  
+//  init(from decoder: Decoder) throws {
+//    let container = try decoder.singleValueContainer()
+//    if let intVal = try? container.decode(Int.self) {
+//      value = intVal
+//    } else if let doubleVal = try? container.decode(Double.self) {
+//      value = doubleVal
+//    } else if let boolVal = try? container.decode(Bool.self) {
+//      value = boolVal
+//    } else if let stringVal = try? container.decode(String.self) {
+//      value = stringVal
+//    } else if let nestedVal = try? container.decode([String: AnyCodable].self) {
+//      value = Dictionary(uniqueKeysWithValues: nestedVal.map { key, value in (key, value.value) })
+//    } else if let arrayVal = try? container.decode([AnyCodable].self) {
+//      value = arrayVal.map { $0.value }
+//    } else {
+//      throw DecodingError.dataCorruptedError(in: container, debugDescription: "Unsupported type")
+//    }
+//  }
+//
+//  func encode(to encoder: Encoder) throws {
+//    var container = encoder.singleValueContainer()
+//    if let intVal = value as? UInt {
+//      try container.encode(intVal)
+//    }  else if let intVal = value as? Int {
+//      try container.encode(intVal)
+//    } else if let doubleVal = value as? Double {
+//      try container.encode(doubleVal)
+//    } else if let floatValue = value as? Float {
+//      try container.encode(floatValue)
+//    } else if let boolVal = value as? Bool {
+//      try container.encode(boolVal)
+//    } else if let stringVal = value as? String {
+//      try container.encode(stringVal)
+//    } else if let nestedVal = value as? [String: Any] {
+//      try container.encode(nestedVal.mapValues { AnyCodable($0) })
+//    } else if let arrayVal = value as? [Any] {
+//      try container.encode(arrayVal.map { AnyCodable($0) })
+//    } else {
+//      throw EncodingError.invalidValue(value, EncodingError.Context(codingPath: encoder.codingPath, debugDescription: "Unsupported type"))
+//    }
+//  }
+//}
+//
+//// Utility to get ISO8601 formatted date string
+//extension Date {
+//  var iso8601: String {
+//    return ISO8601DateFormatter().string(from: self)
+//  }
+//}
+//
+//
+//extension AudioBookmark {
+//  struct LocatorHrefProgression: Codable {
+//    let chapter: String
+//    let cssSelector: String
+//    let href: String
+//    let part: Int
+//    let position: Int
+//    let progressWithinBook: Double
+//    let progressWithinChapter: Double
+//    let time: Int
+//    let title: String
+//    
+//    enum CodingKeys: String, CodingKey {
+//      case chapter
+//      case cssSelector
+//      case href
+//      case part
+//      case position
+//      case progressWithinBook
+//      case progressWithinChapter
+//      case time
+//      case title
+//      case type = "@type"
+//    }
+//    
+//    init(from decoder: Decoder) throws {
+//      let container = try decoder.container(keyedBy: CodingKeys.self)
+//      chapter = try container.decodeIfPresent(String.self, forKey: .chapter) ?? ""
+//      cssSelector = try container.decodeIfPresent(String.self, forKey: .cssSelector) ?? ""
+//      href = try container.decodeIfPresent(String.self, forKey: .href) ?? ""
+//      part = try container.decodeIfPresent(Int.self, forKey: .part) ?? 0
+//      position = try container.decodeIfPresent(Int.self, forKey: .position) ?? 0
+//      progressWithinBook = try container.decodeIfPresent(Double.self, forKey: .progressWithinBook) ?? 0.0
+//      progressWithinChapter = try container.decodeIfPresent(Double.self, forKey: .progressWithinChapter) ?? 0.0
+//      time = try container.decodeIfPresent(Int.self, forKey: .time) ?? 0
+//      title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
+//      _ = try container.decode(String.self, forKey: .type) // Consume the "@type" field
+//    }
+//    
+//    func encode(to encoder: Encoder) throws {
+//      var container = encoder.container(keyedBy: CodingKeys.self)
+//      try container.encode(chapter, forKey: .chapter)
+//      try container.encode(cssSelector, forKey: .cssSelector)
+//      try container.encode(href, forKey: .href)
+//      try container.encode(part, forKey: .part)
+//      try container.encode(position, forKey: .position)
+//      try container.encode(progressWithinBook, forKey: .progressWithinBook)
+//      try container.encode(progressWithinChapter, forKey: .progressWithinChapter)
+//      try container.encode(time, forKey: .time)
+//      try container.encode(title, forKey: .title)
+//      try container.encode("LocatorHrefProgression", forKey: .type)
+//    }
+//  }
+//  
+//  struct LocatorAudioBookTime: Codable {
+//    let readingOrderItem: String
+//    let readingOrderItemOffsetMilliseconds: UInt
+//    
+//    enum CodingKeys: String, CodingKey {
+//      case type = "@type"
+//      case version = "@version"
+//      case readingOrderItem
+//      case readingOrderItemOffsetMilliseconds
+//    }
+//    
+//    let type = BookmarkType.locatorAudioBookTime.rawValue
+//    let version = 2
+//  }
+//}
 import Foundation
 
 enum BookmarkType: String, Codable {
@@ -16,8 +223,16 @@ enum BookmarkType: String, Codable {
 @objc public class AudioBookmark: NSObject, Bookmark, Codable, NSCopying {
   let type: BookmarkType
   var annotationId: String
-  let locator: [String: Any]
   var lastSavedTimeStamp: String
+  var version: Int
+  var readingOrderItem: String?
+  var readingOrderItemOffsetMilliseconds: UInt?
+  // Other properties for older versions
+  var chapter: String?
+  var title: String?
+  var part: Int?
+  var time: Int?
+  
   var isUnsynced: Bool {
     annotationId.isEmpty
   }
@@ -26,14 +241,26 @@ enum BookmarkType: String, Codable {
     case type = "@type"
     case timeStamp
     case annotationId
-    case locator
+    case version = "@version"
+    case readingOrderItem
+    case readingOrderItemOffsetMilliseconds
+    case chapter
+    case title
+    case part
+    case time
   }
   
-  init(locator: [String: Any], type: BookmarkType, timeStamp: String = Date().iso8601, annotationId: String = "") {
+  init(type: BookmarkType, version: Int = 2, timeStamp: String = Date().iso8601, annotationId: String = "", readingOrderItem: String? = nil, readingOrderItemOffsetMilliseconds: UInt? = nil, chapter: String? = nil, title: String? = nil, part: Int? = nil, time: Int? = nil) {
     self.type = type
     self.lastSavedTimeStamp = timeStamp
     self.annotationId = annotationId
-    self.locator = locator
+    self.version = version
+    self.readingOrderItem = readingOrderItem
+    self.readingOrderItemOffsetMilliseconds = readingOrderItemOffsetMilliseconds
+    self.chapter = chapter
+    self.title = title
+    self.part = part
+    self.time = time
   }
   
   required public init(from decoder: Decoder) throws {
@@ -41,7 +268,26 @@ enum BookmarkType: String, Codable {
     type = try container.decode(BookmarkType.self, forKey: .type)
     lastSavedTimeStamp = try container.decodeIfPresent(String.self, forKey: .timeStamp) ?? Date().iso8601
     annotationId = try container.decodeIfPresent(String.self, forKey: .annotationId) ?? ""
-    locator = try container.decode([String: AnyCodable].self, forKey: .locator).mapValues { $0.value }
+    version = try container.decodeIfPresent(Int.self, forKey: .version) ?? 1
+    
+    if type == .locatorAudioBookTime {
+      if version == 2 {
+        readingOrderItem = try container.decodeIfPresent(String.self, forKey: .readingOrderItem)
+        readingOrderItemOffsetMilliseconds = try container.decodeIfPresent(UInt.self, forKey: .readingOrderItemOffsetMilliseconds)
+      } else {
+        readingOrderItem = try container.decodeIfPresent(String.self, forKey: .readingOrderItem)
+        readingOrderItemOffsetMilliseconds = try container.decodeIfPresent(UInt.self, forKey: .time)
+        chapter = try container.decodeIfPresent(String.self, forKey: .chapter)
+        title = try container.decodeIfPresent(String.self, forKey: .title)
+        part = try container.decodeIfPresent(Int.self, forKey: .part)
+      }
+    } else {
+      readingOrderItem = try container.decodeIfPresent(String.self, forKey: .readingOrderItem)
+      readingOrderItemOffsetMilliseconds = try container.decodeIfPresent(UInt.self, forKey: .time)
+      chapter = try container.decodeIfPresent(String.self, forKey: .chapter)
+      title = try container.decodeIfPresent(String.self, forKey: .title)
+      part = try container.decodeIfPresent(Int.self, forKey: .part)
+    }
   }
   
   public func encode(to encoder: Encoder) throws {
@@ -49,20 +295,82 @@ enum BookmarkType: String, Codable {
     try container.encode(type.rawValue, forKey: .type)
     try container.encode(lastSavedTimeStamp, forKey: .timeStamp)
     try container.encode(annotationId, forKey: .annotationId)
-    try container.encode(locator.mapValues { AnyCodable($0) }, forKey: .locator)
+    try container.encode(version, forKey: .version)
+    
+    if version == 2 {
+      try container.encodeIfPresent(readingOrderItem, forKey: .readingOrderItem)
+      try container.encodeIfPresent(readingOrderItemOffsetMilliseconds, forKey: .readingOrderItemOffsetMilliseconds)
+    } else {
+      try container.encodeIfPresent(readingOrderItem, forKey: .readingOrderItem)
+      try container.encodeIfPresent(readingOrderItemOffsetMilliseconds, forKey: .time)
+      try container.encodeIfPresent(chapter, forKey: .chapter)
+      try container.encodeIfPresent(title, forKey: .title)
+      try container.encodeIfPresent(part, forKey: .part)
+    }
   }
   
   static func create(locatorData: [String: Any], timeStamp: String = Date().iso8601, annotationId: String = "") -> AudioBookmark? {
     guard let typeString = locatorData["@type"] as? String,
-            let type = BookmarkType(rawValue: typeString) else { return nil }
+          let type = BookmarkType(rawValue: typeString) else { return nil }
     
-    let locatorDict = locatorData.filter({ $0.key != "@type" && $0.key != "@version" }) as [String: Any]
+    let version = locatorData["@version"] as? Int ?? 1
     
-    return AudioBookmark(locator: locatorDict, type: type, timeStamp: (locatorData["timeStamp"] as? String) ?? timeStamp, annotationId: (locatorData["annotationId"] as? String) ?? annotationId)
+    if type == .locatorAudioBookTime {
+      if version == 2 {
+        return AudioBookmark(
+          type: type,
+          version: version,
+          timeStamp: timeStamp,
+          annotationId: annotationId,
+          readingOrderItem: locatorData["readingOrderItem"] as? String,
+          readingOrderItemOffsetMilliseconds: locatorData["readingOrderItemOffsetMilliseconds"] as? UInt
+        )
+      } else {
+        return AudioBookmark(
+          type: type,
+          version: version,
+          timeStamp: timeStamp,
+          annotationId: annotationId,
+          readingOrderItem: locatorData["audiobookID"] as? String,
+          readingOrderItemOffsetMilliseconds: locatorData["time"] as? UInt,
+          chapter: locatorData["chapter"] as? String,
+          title: locatorData["title"] as? String,
+          part: locatorData["part"] as? Int
+        )
+      }
+    } else {
+      return AudioBookmark(
+        type: type,
+        version: version,
+        timeStamp: timeStamp,
+        annotationId: annotationId,
+        readingOrderItem: locatorData["href"] as? String,
+        readingOrderItemOffsetMilliseconds: locatorData["time"] as? UInt,
+        chapter: locatorData["chapter"] as? String,
+        title: locatorData["title"] as? String,
+        part: locatorData["part"] as? Int
+      )
+    }
   }
   
   public func toData() -> Data? {
     return try? JSONEncoder().encode(self)
+  }
+  
+  public func toDataForPosting() -> Data? {
+    var container: [String: Any] = [
+      "@type": type.rawValue,
+      "@version": version,
+      "timeStamp": lastSavedTimeStamp,
+      "annotationId": annotationId
+    ]
+    if let readingOrderItem = readingOrderItem {
+      container["readingOrderItem"] = readingOrderItem
+    }
+    if let readingOrderItemOffsetMilliseconds = readingOrderItemOffsetMilliseconds {
+      container["readingOrderItemOffsetMilliseconds"] = readingOrderItemOffsetMilliseconds
+    }
+    return try? JSONSerialization.data(withJSONObject: container, options: [])
   }
   
   public func isSimilar(to other: AudioBookmark) -> Bool {
@@ -70,11 +378,16 @@ enum BookmarkType: String, Codable {
       return false
     }
     
-    return NSDictionary(dictionary: self.locator).isEqual(to: other.locator)
+    return self.readingOrderItem == other.readingOrderItem &&
+    self.readingOrderItemOffsetMilliseconds == other.readingOrderItemOffsetMilliseconds &&
+    self.chapter == other.chapter &&
+    self.title == other.title &&
+    self.part == other.part &&
+    self.time == other.time
   }
   
   public func toTPPBookLocation() -> TPPBookLocation? {
-    guard let data = try? JSONEncoder().encode(self),
+    guard let data = toDataForPosting(),
           let locationString = String(data: data, encoding: .utf8) else {
       return nil
     }
@@ -82,7 +395,18 @@ enum BookmarkType: String, Codable {
   }
   
   public func copy(with zone: NSZone? = nil) -> Any {
-    return AudioBookmark(locator: locator, type: type, timeStamp: lastSavedTimeStamp, annotationId: annotationId)
+    return AudioBookmark(
+      type: type,
+      version: version,
+      timeStamp: lastSavedTimeStamp,
+      annotationId: annotationId,
+      readingOrderItem: readingOrderItem,
+      readingOrderItemOffsetMilliseconds: readingOrderItemOffsetMilliseconds,
+      chapter: chapter,
+      title: title,
+      part: part,
+      time: time
+    )
   }
 }
 
@@ -111,12 +435,12 @@ struct AnyCodable: Codable {
       throw DecodingError.dataCorruptedError(in: container, debugDescription: "Unsupported type")
     }
   }
-
+  
   func encode(to encoder: Encoder) throws {
     var container = encoder.singleValueContainer()
     if let intVal = value as? UInt {
       try container.encode(intVal)
-    }  else if let intVal = value as? Int {
+    } else if let intVal = value as? Int {
       try container.encode(intVal)
     } else if let doubleVal = value as? Double {
       try container.encode(doubleVal)
@@ -136,80 +460,8 @@ struct AnyCodable: Codable {
   }
 }
 
-// Utility to get ISO8601 formatted date string
 extension Date {
   var iso8601: String {
     return ISO8601DateFormatter().string(from: self)
-  }
-}
-
-
-extension AudioBookmark {
-  struct LocatorHrefProgression: Codable {
-    let chapter: String
-    let cssSelector: String
-    let href: String
-    let part: Int
-    let position: Int
-    let progressWithinBook: Double
-    let progressWithinChapter: Double
-    let time: Int
-    let title: String
-    
-    enum CodingKeys: String, CodingKey {
-      case chapter
-      case cssSelector
-      case href
-      case part
-      case position
-      case progressWithinBook
-      case progressWithinChapter
-      case time
-      case title
-      case type = "@type"
-    }
-    
-    init(from decoder: Decoder) throws {
-      let container = try decoder.container(keyedBy: CodingKeys.self)
-      chapter = try container.decodeIfPresent(String.self, forKey: .chapter) ?? ""
-      cssSelector = try container.decodeIfPresent(String.self, forKey: .cssSelector) ?? ""
-      href = try container.decodeIfPresent(String.self, forKey: .href) ?? ""
-      part = try container.decodeIfPresent(Int.self, forKey: .part) ?? 0
-      position = try container.decodeIfPresent(Int.self, forKey: .position) ?? 0
-      progressWithinBook = try container.decodeIfPresent(Double.self, forKey: .progressWithinBook) ?? 0.0
-      progressWithinChapter = try container.decodeIfPresent(Double.self, forKey: .progressWithinChapter) ?? 0.0
-      time = try container.decodeIfPresent(Int.self, forKey: .time) ?? 0
-      title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
-      _ = try container.decode(String.self, forKey: .type) // Consume the "@type" field
-    }
-    
-    func encode(to encoder: Encoder) throws {
-      var container = encoder.container(keyedBy: CodingKeys.self)
-      try container.encode(chapter, forKey: .chapter)
-      try container.encode(cssSelector, forKey: .cssSelector)
-      try container.encode(href, forKey: .href)
-      try container.encode(part, forKey: .part)
-      try container.encode(position, forKey: .position)
-      try container.encode(progressWithinBook, forKey: .progressWithinBook)
-      try container.encode(progressWithinChapter, forKey: .progressWithinChapter)
-      try container.encode(time, forKey: .time)
-      try container.encode(title, forKey: .title)
-      try container.encode("LocatorHrefProgression", forKey: .type)
-    }
-  }
-  
-  struct LocatorAudioBookTime: Codable {
-    let readingOrderItem: String
-    let readingOrderItemOffsetMilliseconds: UInt
-    
-    enum CodingKeys: String, CodingKey {
-      case type = "@type"
-      case version = "@version"
-      case readingOrderItem
-      case readingOrderItemOffsetMilliseconds
-    }
-    
-    let type = BookmarkType.locatorAudioBookTime.rawValue
-    let version = 2
   }
 }

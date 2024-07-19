@@ -27,15 +27,14 @@ final class AudiobookmarkTests: XCTestCase {
     let decoder = JSONDecoder()
     let locatorDict = try decoder.decode([String: AnyCodable].self, from: earlyBookmarkJSON.data(using: .utf8)!)
     let locator = locatorDict.mapValues { $0.value }
-    let bookmark = AudioBookmark(locator: locator, type: .locatorAudioBookTime)
+    let bookmark = AudioBookmark.create(locatorData: locator)!
     
-    XCTAssertEqual(locator["time"] as? Int, 2199000)
+    XCTAssertEqual(bookmark.time, 2199000)
     XCTAssertEqual(bookmark.type.rawValue, "LocatorAudioBookTime")
-    XCTAssertEqual(locator["audiobookID"] as? String, "urn:librarysimplified.org/terms/id/Overdrive ID/faf182e5-2f05-4729-b2cd-139d6bb0b19e")
-    XCTAssertEqual(locator["title"] as? String, "Track 1")
-    XCTAssertEqual(locator["part"] as? Int, 0)
-    XCTAssertEqual(locator["duration"] as? Int, 3659000)
-    XCTAssertEqual(locator["chapter"] as? Int, 0)
+    XCTAssertEqual(bookmark.readingOrderItem, "urn:librarysimplified.org/terms/id/Overdrive ID/faf182e5-2f05-4729-b2cd-139d6bb0b19e")
+    XCTAssertEqual(bookmark.title, "Track 1")
+    XCTAssertEqual(bookmark.part, 0)
+    XCTAssertEqual(bookmark.chapter, "0")
   }
   
   func testDecodeNewerBookmark() throws {
@@ -55,16 +54,15 @@ final class AudiobookmarkTests: XCTestCase {
     let decoder = JSONDecoder()
     let locatorDict = try decoder.decode([String: AnyCodable].self, from: newerBookmarkJSON.data(using: .utf8)!)
     let locator = locatorDict.mapValues { $0.value }
-    let bookmark = AudioBookmark(locator: locator, type: .locatorAudioBookTime)
+    let bookmark = AudioBookmark.create(locatorData: locator)!
     
-    XCTAssertEqual(locator["time"] as? Int, 2199000)
+    XCTAssertEqual(bookmark.time, 2199000)
     XCTAssertEqual(bookmark.type.rawValue, "LocatorAudioBookTime")
-    XCTAssertEqual(locator["audiobookID"] as? String, "urn:librarysimplified.org/terms/id/Overdrive ID/faf182e5-2f05-4729-b2cd-139d6bb0b19e")
-    XCTAssertEqual(locator["title"] as? String, "Track 1")
-    XCTAssertEqual(locator["part"] as? Int, 0)
-    XCTAssertEqual(locator["duration"] as? Int, 3659000)
-    XCTAssertEqual(locator["chapter"] as? Int, 0)
-    XCTAssertEqual(locator["startOffset"] as? Int, 0)
+    XCTAssertEqual(bookmark.readingOrderItem, "urn:librarysimplified.org/terms/id/Overdrive ID/faf182e5-2f05-4729-b2cd-139d6bb0b19e")
+    XCTAssertEqual(bookmark.title, "Track 1")
+    XCTAssertEqual(bookmark.part, 0)
+    XCTAssertEqual(bookmark.chapter, "0")
+    XCTAssertEqual(bookmark.readingOrderItemOffsetMilliseconds, 0)
   }
   
   func testDecodeLocatorAudioBookTime2() throws {
@@ -80,13 +78,13 @@ final class AudiobookmarkTests: XCTestCase {
     let decoder = JSONDecoder()
     let locatorDict = try decoder.decode([String: AnyCodable].self, from: locatorAudioBookTime2JSON.data(using: .utf8)!)
     let locator = locatorDict.mapValues { $0.value }
-    let bookmark = AudioBookmark(locator: locator, type: .locatorAudioBookTime)
+    let bookmark = AudioBookmark.create(locatorData: locator)!
     
-    XCTAssertEqual(locator["readingOrderItem"] as? String, "urn:uuid:ddf56790-60a7-413c-9771-7f7dcef2f565-0")
-    XCTAssertEqual(locator["readingOrderItemOffsetMilliseconds"] as? Int, 15823)
+    XCTAssertEqual(bookmark.readingOrderItem, "urn:uuid:ddf56790-60a7-413c-9771-7f7dcef2f565-0")
+    XCTAssertEqual(bookmark.readingOrderItemOffsetMilliseconds, 15823)
     XCTAssertEqual(bookmark.type.rawValue, "LocatorAudioBookTime")
   }
-    
+  
   func testEncodeAndDecodeBookmark() throws {
     let locator1: [String: Any] = [
       "title": "Track 1",
@@ -98,19 +96,17 @@ final class AudiobookmarkTests: XCTestCase {
       "audiobookID": "urn:librarysimplified.org/terms/id/Overdrive ID/faf182e5-2f05-4729-b2cd-139d6bb0b19e",
       "@type": "LocatorAudioBookTime"
     ]
-    let bookmark1 = AudioBookmark(locator: locator1, type: .locatorAudioBookTime, timeStamp: "2024-05-28T17:54:51Z", annotationId: "some-annotation-id")
+    let bookmark1 = AudioBookmark.create(locatorData: locator1, timeStamp: "2024-05-28T17:54:51Z", annotationId: "some-annotation-id")!
     
     let data1 = try JSONEncoder().encode(bookmark1)
     let decodedBookmark1 = try JSONDecoder().decode(AudioBookmark.self, from: data1)
     
-    XCTAssertEqual(decodedBookmark1.locator["time"] as? Int, 2199000)
+    XCTAssertEqual(decodedBookmark1.time, 2199000)
     XCTAssertEqual(decodedBookmark1.type.rawValue, "LocatorAudioBookTime")
-    XCTAssertEqual(decodedBookmark1.locator["audiobookID"] as? String, "urn:librarysimplified.org/terms/id/Overdrive ID/faf182e5-2f05-4729-b2cd-139d6bb0b19e")
-    XCTAssertEqual(decodedBookmark1.locator["title"] as? String, "Track 1")
-    XCTAssertEqual(decodedBookmark1.locator["part"] as? Int, 0)
-    XCTAssertEqual(decodedBookmark1.locator["duration"] as? Int, 3659000)
-    XCTAssertEqual(decodedBookmark1.locator["chapter"] as? Int, 0)
-    XCTAssertEqual(decodedBookmark1.locator["startOffset"] as? Int, 0)
+    XCTAssertEqual(decodedBookmark1.readingOrderItem, "urn:librarysimplified.org/terms/id/Overdrive ID/faf182e5-2f05-4729-b2cd-139d6bb0b19e")
+    XCTAssertEqual(decodedBookmark1.title, "Track 1")
+    XCTAssertEqual(decodedBookmark1.part, 0)
+    XCTAssertEqual(decodedBookmark1.chapter, "0")
     XCTAssertEqual(decodedBookmark1.lastSavedTimeStamp, "2024-05-28T17:54:51Z")
     XCTAssertEqual(decodedBookmark1.annotationId, "some-annotation-id")
     
@@ -120,15 +116,15 @@ final class AudiobookmarkTests: XCTestCase {
       "@type": "LocatorAudioBookTime",
       "@version": 2
     ]
-    let bookmark2 = AudioBookmark(locator: locator2, type: .locatorAudioBookTime, timeStamp: "2024-05-28T17:54:51Z", annotationId: "another-annotation-id")
+    let bookmark2 = AudioBookmark.create(locatorData: locator2, timeStamp: "2024-05-28T17:54:51Z", annotationId: "another-annotation-id")!
     
     let data2 = try JSONEncoder().encode(bookmark2)
     let decodedBookmark2 = try JSONDecoder().decode(AudioBookmark.self, from: data2)
     
-    XCTAssertEqual(decodedBookmark2.locator["readingOrderItem"] as? String, "urn:uuid:ddf56790-60a7-413c-9771-7f7dcef2f565-0")
-    XCTAssertEqual(decodedBookmark2.locator["readingOrderItemOffsetMilliseconds"] as? Int, 15823)
+    XCTAssertEqual(decodedBookmark2.readingOrderItem, "urn:uuid:ddf56790-60a7-413c-9771-7f7dcef2f565-0")
+    XCTAssertEqual(decodedBookmark2.readingOrderItemOffsetMilliseconds, 15823)
     XCTAssertEqual(decodedBookmark2.type.rawValue, "LocatorAudioBookTime")
-    XCTAssertEqual(decodedBookmark2.locator["@version"] as? Int, 2)
+    XCTAssertEqual(decodedBookmark2.version, 2)
     XCTAssertEqual(decodedBookmark2.lastSavedTimeStamp, "2024-05-28T17:54:51Z")
     XCTAssertEqual(decodedBookmark2.annotationId, "another-annotation-id")
   }
