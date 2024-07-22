@@ -551,6 +551,7 @@ extension TPPBookRegistry: TPPBookRegistryProvider {
   /// Adds a generic bookmark (book location) for a book given its identifier
   func addGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String) {
     registry[bookIdentifier]?.genericBookmarks?.append(location)
+    save()
   }
   
    /// Deletes a generic bookmark (book location) for a book given its identifier

@@ -198,7 +198,7 @@ extension AudiobookBookmarkBusinessLogic: AudiobookBookmarkDelegate {
         }
       }
       
-      guard let data = try? JSONEncoder().encode(location), let locationString = String(data: data, encoding: .utf8) else {
+      guard let data = location.toData(), let locationString = String(data: data, encoding: .utf8) else {
         completion?(nil)
         return
       }
