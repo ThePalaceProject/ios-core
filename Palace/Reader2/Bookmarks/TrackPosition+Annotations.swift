@@ -155,7 +155,7 @@ public extension TrackPosition {
     }
     
     self.annotationId = audioBookmark.annotationId
-    self.lastSavedTimeStamp = audioBookmark.lastSavedTimeStamp
+    self.lastSavedTimeStamp = audioBookmark.lastSavedTimeStamp ?? ""
   }
   
   private static func initializeFromReadingOrderItem(audioBookmark: AudioBookmark, tracks: Tracks) -> TrackPosition? {

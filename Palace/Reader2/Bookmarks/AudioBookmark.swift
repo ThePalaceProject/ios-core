@@ -16,7 +16,7 @@ enum BookmarkType: String, Codable {
 @objc public class AudioBookmark: NSObject, Bookmark, Codable, NSCopying {
   let type: BookmarkType
   var annotationId: String
-  var lastSavedTimeStamp: String
+  var lastSavedTimeStamp: String?
   var version: Int
   var readingOrderItem: String?
   var readingOrderItemOffsetMilliseconds: UInt?
@@ -43,7 +43,18 @@ enum BookmarkType: String, Codable {
     case time
   }
   
-  init(type: BookmarkType, version: Int = 2, timeStamp: String = Date().iso8601, annotationId: String = "", readingOrderItem: String? = nil, readingOrderItemOffsetMilliseconds: UInt? = nil, chapter: String? = nil, title: String? = nil, part: Int? = nil, time: Int? = nil) {
+  init(
+    type: BookmarkType,
+    version: Int = 2,
+    timeStamp: String? = nil,
+    annotationId: String = "",
+    readingOrderItem: String? = nil,
+    readingOrderItemOffsetMilliseconds: UInt? = nil,
+    chapter: String? = nil,
+    title: String? = nil,
+    part: Int? = nil,
+    time: Int? = nil
+  ) {
     self.type = type
     self.lastSavedTimeStamp = timeStamp
     self.annotationId = annotationId
@@ -59,7 +70,7 @@ enum BookmarkType: String, Codable {
   required public init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     type = try container.decode(BookmarkType.self, forKey: .type)
-    lastSavedTimeStamp = try container.decodeIfPresent(String.self, forKey: .timeStamp) ?? Date().iso8601
+    lastSavedTimeStamp = try container.decodeIfPresent(String.self, forKey: .timeStamp)
     annotationId = try container.decodeIfPresent(String.self, forKey: .annotationId) ?? ""
     version = try container.decodeIfPresent(Int.self, forKey: .version) ?? 1
     
@@ -147,10 +158,9 @@ enum BookmarkType: String, Codable {
   }
 
   public func toData() -> Data? {
-    var dict: [String: Any] = [
+    let dict: [String: Any] = [
       "@type": type.rawValue,
       "@version": version,
-      "timeStamp": lastSavedTimeStamp,
       "annotationId": annotationId,
       "readingOrderItem": readingOrderItem ?? "",
       "readingOrderItemOffsetMilliseconds": readingOrderItemOffsetMilliseconds ?? ""

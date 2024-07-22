@@ -15,8 +15,8 @@ private struct AssociatedKeys {
   static var audiobookBookmarkBusinessLogic = "audiobookBookmarkBusinessLogic"
 }
 
-@objc extension TPPBookCellDelegate {
-  public func postListeningPosition(at location: String, completion: ((_ serverID: String?) -> Void)? = nil) {
+extension TPPBookCellDelegate {
+  public func postListeningPosition(at location: String, completion: ((_ response: AnnotationResponse?) -> Void)? = nil) {
     TPPAnnotations.postListeningPosition(forBook: self.book.identifier, selectorValue: location, completion: completion)
   }
 }
@@ -24,13 +24,13 @@ private struct AssociatedKeys {
 @objc extension TPPBookCellDelegate {
   private var audiobookBookmarkBusinessLogic: AudiobookBookmarkBusinessLogic? {
     get {
-      return objc_getAssociatedObject(self, &AssociatedKeys.audiobookBookmarkBusinessLogic) as? AudiobookBookmarkBusinessLogic
+      return objc_getAssociatedObject(self, AssociatedKeys.audiobookBookmarkBusinessLogic) as? AudiobookBookmarkBusinessLogic
     }
     set {
       if let newValue = newValue {
         objc_setAssociatedObject(
           self,
-          &AssociatedKeys.audiobookBookmarkBusinessLogic,
+          AssociatedKeys.audiobookBookmarkBusinessLogic,
           newValue as AudiobookBookmarkBusinessLogic?,
           .OBJC_ASSOCIATION_RETAIN_NONATOMIC
         )

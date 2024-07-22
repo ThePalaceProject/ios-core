@@ -87,16 +87,17 @@ import PalaceAudiobookToolkit
             let locationString = String(data: data, encoding: .utf8)
     else { return }
 
-    guard let annotationId = try await annotationsManager.postAudiobookBookmark(forBook: self.book.identifier, selectorValue: locationString) else {
+    guard let annotationResponse = try await annotationsManager.postAudiobookBookmark(forBook: self.book.identifier, selectorValue: locationString) else {
       return
     }
     
-    replaceBookmarkInLocalStore(bookmark, withAnnotationId: annotationId)
+    replaceBookmarkInLocalStore(bookmark, withAnnotationResponse: annotationResponse)
   }
   
-  private func replaceBookmarkInLocalStore(_ bookmark: AudioBookmark, withAnnotationId annotationId: String) {
+  private func replaceBookmarkInLocalStore(_ bookmark: AudioBookmark, withAnnotationResponse response: AnnotationResponse) {
     if let updatedBookmark = bookmark.copy() as? AudioBookmark {
-      updatedBookmark.annotationId = annotationId
+      updatedBookmark.annotationId = response.serverId ?? ""
+      updatedBookmark.lastSavedTimeStamp = response.timeStamp ?? ""
       replace(oldLocation: bookmark, with: updatedBookmark)
     }
   }
@@ -172,14 +173,14 @@ extension AudiobookBookmarkBusinessLogic: AudiobookBookmarkDelegate {
       return
     }
 
-    annotationsManager.postListeningPosition(forBook: self.book.identifier, selectorValue: tppLocation.locationString) { serverId in
-      if let serverId {
-        audioBookmark.lastSavedTimeStamp = ""
-        audioBookmark.annotationId = serverId
+    annotationsManager.postListeningPosition(forBook: self.book.identifier, selectorValue: tppLocation.locationString) { response in
+      if let response {
+        audioBookmark.lastSavedTimeStamp = response.timeStamp ?? ""
+        audioBookmark.annotationId = response.serverId ?? ""
       }
     
       self.registry.setLocation(audioBookmark.toTPPBookLocation(), forIdentifier: self.book.identifier)
-      completion?(serverId)
+      completion?(response?.timeStamp)
     }
   }
 
@@ -188,8 +189,8 @@ extension AudiobookBookmarkBusinessLogic: AudiobookBookmarkDelegate {
       let location = position.toAudioBookmark()
       location.lastSavedTimeStamp = Date().iso8601
       var updatedPosition = position
-      updatedPosition.lastSavedTimeStamp = location.lastSavedTimeStamp
-      
+      updatedPosition.lastSavedTimeStamp = location.lastSavedTimeStamp ?? ""
+
       defer {
         if let genericLocation = location.toTPPBookLocation() {
           updatedPosition.annotationId = location.annotationId
@@ -203,8 +204,9 @@ extension AudiobookBookmarkBusinessLogic: AudiobookBookmarkDelegate {
         return
       }
       
-      if let annotationId = try await annotationsManager.postAudiobookBookmark(forBook: self.book.identifier, selectorValue: locationString) {
-        location.annotationId = annotationId
+      if let annotationResponse = try await annotationsManager.postAudiobookBookmark(forBook: self.book.identifier, selectorValue: locationString) {
+        location.annotationId = annotationResponse.serverId ?? ""
+        location.lastSavedTimeStamp = annotationResponse.timeStamp ?? ""
       }
     }
   }
