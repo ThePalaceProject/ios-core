@@ -9,7 +9,11 @@
 import Foundation
 import PalaceAudiobookToolkit
 
-let kServerUpdateDelay: Double = 15;
+let kServerUpdateDelay: Double = 30.0
+let kTimerInterval: Double = 1.0
+
+//TODO: This is a temporary solution to enable location saves from AppDelegate. Investigate a global context to manage state and introduce caching.
+var latestAudiobookLocation: (book: String, location: String)?
 
 private struct AssociatedKeys {
   static var audiobookBookmarkBusinessLogic = "audiobookBookmarkBusinessLogic"
@@ -24,20 +28,20 @@ extension TPPBookCellDelegate {
 @objc extension TPPBookCellDelegate {
   private var audiobookBookmarkBusinessLogic: AudiobookBookmarkBusinessLogic? {
     get {
-      return objc_getAssociatedObject(self, AssociatedKeys.audiobookBookmarkBusinessLogic) as? AudiobookBookmarkBusinessLogic
+      return objc_getAssociatedObject(self, &AssociatedKeys.audiobookBookmarkBusinessLogic) as? AudiobookBookmarkBusinessLogic
     }
     set {
       if let newValue = newValue {
         objc_setAssociatedObject(
           self,
-          AssociatedKeys.audiobookBookmarkBusinessLogic,
+          &AssociatedKeys.audiobookBookmarkBusinessLogic,
           newValue as AudiobookBookmarkBusinessLogic?,
           .OBJC_ASSOCIATION_RETAIN_NONATOMIC
         )
       }
     }
   }
-
+  
   public func openAudiobook(withBook book: TPPBook, json: [String: Any], drmDecryptor: DRMDecryptor?, completion: (() -> Void)?) {
     AudioBookVendorsHelper.updateVendorKey(book: json) { [weak self] error in
       DispatchQueue.main.async {
@@ -65,10 +69,10 @@ extension TPPBookCellDelegate {
           metadata: metadata,
           audiobook: audiobook,
           networkService: DefaultAudiobookNetworkService(tracks: audiobook.tableOfContents.allTracks))
-
+        
         self.audiobookBookmarkBusinessLogic = AudiobookBookmarkBusinessLogic(book: book)
         audiobookManager.bookmarkDelegate = self.audiobookBookmarkBusinessLogic
-
+        
         let audiobookPlayer = AudiobookPlayer(audiobookManager: audiobookManager)
         
         defer {
@@ -76,14 +80,12 @@ extension TPPBookCellDelegate {
         }
         
         audiobookManager.playbackCompletionHandler = {
-          
           let paths = TPPOPDSAcquisitionPath.supportedAcquisitionPaths(forAllowedTypes: TPPOPDSAcquisitionPath.supportedTypes(), allowedRelations:  [.borrow, .generic], acquisitions: book.acquisitions)
           if paths.count > 0 {
             let alert = TPPReturnPromptHelper.audiobookPrompt { returnWasChosen in
               if returnWasChosen {
                 audiobookPlayer.navigationController?.popViewController(animated: true)
                 self.didSelectReturn(for: book, completion: nil)
-                
               }
               TPPAppStoreReviewPrompt.presentIfAvailable()
             }
@@ -101,9 +103,9 @@ extension TPPBookCellDelegate {
         }
         
         self.startLoading(audiobookPlayer)
-    
+        
         let localAudiobookLocation = TPPBookRegistry.shared.location(forIdentifier: book.identifier)
-
+        
         guard let dictionary = localAudiobookLocation?.locationStringDictionary(),
               let localBookmark = AudioBookmark.create(locatorData: dictionary),
               let localPosition = TrackPosition(
@@ -135,7 +137,7 @@ extension TPPBookCellDelegate {
             toc: audiobook.tableOfContents.toc,
             tracks: audiobook.tableOfContents.tracks
           )
-
+          
           self.chooseLocalLocation(
             localPosition: localPosition,
             remotePosition: remotePosition,
@@ -153,7 +155,7 @@ extension TPPBookCellDelegate {
       }
     }
   }
-
+  
   @objc func presentDRMKeyError(_ error: Error) {
     let title = NSLocalizedString("DRM Error", comment: "")
     let message = error.localizedDescription
@@ -197,7 +199,7 @@ public extension TPPBookCellDelegate {
       operation(remotePosition)
     }
   }
-
+  
   func requestSyncWithCompletion(completion: @escaping (Bool) -> Void) {
     DispatchQueue.main.async {
       let title = LocalizedStrings.syncListeningPositionAlertTitle
@@ -230,7 +232,7 @@ extension TPPBookCellDelegate {
     self.manager = manager
     self.book = book
     // Target-Selector method required for iOS <10.0
-    self.timer = Timer.scheduledTimer(timeInterval: 1.0,
+    self.timer = Timer.scheduledTimer(timeInterval: kTimerInterval,
                                       target: self,
                                       selector: #selector(pollAudiobookReadingLocation),
                                       userInfo: nil,
@@ -245,7 +247,6 @@ extension TPPBookCellDelegate {
       return
     }
     
-    // Only update audiobook location when we are not loading
     guard !self.isSyncing else {
       return
     }
@@ -254,20 +255,16 @@ extension TPPBookCellDelegate {
       return
     }
     
-    let locationData = try? JSONEncoder().encode(currentTrackPosition.toAudioBookmark())
-    let locationString = String(data: locationData ?? Data(), encoding: .utf8) ?? ""
-    
-    // Save updated playhead position in audiobook chapter
     let playheadOffset = currentTrackPosition.timestamp
     if previousPlayheadOffset != playheadOffset && playheadOffset > 0 {
       previousPlayheadOffset = playheadOffset
       
-      TPPBookRegistry.shared.setLocation(TPPBookLocation(locationString: locationString, renderer: "PalaceAudiobookToolkit"), forIdentifier: book.identifier)
-      
-      if Date().timeIntervalSince(self.lastServerUpdate ?? Date()) >= kServerUpdateDelay {
-        self.lastServerUpdate = Date()
-        // Save updated location on server
-        self.postListeningPosition(at: locationString, completion: nil)
+      DispatchQueue.global(qos: .background).async {
+        let locationData = try? JSONEncoder().encode(currentTrackPosition.toAudioBookmark())
+        let locationString = String(data: locationData ?? Data(), encoding: .utf8) ?? ""
+        
+        TPPBookRegistry.shared.setLocation(TPPBookLocation(locationString: locationString, renderer: "PalaceAudiobookToolkit"), forIdentifier: self.book.identifier)
+        latestAudiobookLocation = (book: self.book.identifier, location: locationString)
       }
     }
   }
