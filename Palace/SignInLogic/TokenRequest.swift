@@ -48,28 +48,9 @@ import Foundation
     let base64LoginString = loginData.base64EncodedString()
     request.addValue("Basic \(base64LoginString)", forHTTPHeaderField: "Authorization")
  
-//    do {
-//      let (data, _) = try await URLSession.shared.data(for: request)
-//
-//      let decoder = JSONDecoder()
-//      decoder.keyDecodingStrategy = .convertFromSnakeCase
-//      let tokenResponse = try decoder.decode(TokenResponse.self, from: data)
-//      return .success(tokenResponse)
-//    } catch {
-//      return .failure(error)
-//    }
     do {
       let (data, _) = try await URLSession.shared.data(for: request)
-      
-      // Pretty print the JSON data
-      if let jsonObject = try? JSONSerialization.jsonObject(with: data, options: []),
-         let jsonData = try? JSONSerialization.data(withJSONObject: jsonObject, options: [.prettyPrinted]),
-         let jsonString = String(data: jsonData, encoding: .utf8) {
-        print("Pretty Printed JSON:\n\(jsonString)")
-      } else {
-        print("Failed to pretty print JSON")
-      }
-      
+
       let decoder = JSONDecoder()
       decoder.keyDecodingStrategy = .convertFromSnakeCase
       let tokenResponse = try decoder.decode(TokenResponse.self, from: data)
