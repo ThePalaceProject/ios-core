@@ -161,7 +161,7 @@ public extension TrackPosition {
   private static func initializeFromReadingOrderItem(audioBookmark: AudioBookmark, tracks: Tracks) -> TrackPosition? {
     guard let readingOrderItem = audioBookmark.readingOrderItem,
           let readingOrderItemOffsetMilliseconds = audioBookmark.readingOrderItemOffsetMilliseconds,
-          let track = tracks.track(forKey: readingOrderItem) else {
+          let track = tracks.track(forKey: readingOrderItem) ?? tracks.track(forTitle: readingOrderItem) else {
       return nil
     }
     let timestamp = Double(readingOrderItemOffsetMilliseconds) / 1000.0
