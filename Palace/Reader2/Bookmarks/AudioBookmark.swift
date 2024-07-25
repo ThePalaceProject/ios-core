@@ -221,10 +221,13 @@ extension Date {
 
 extension AudioBookmark {
   var uniqueIdentifier: String {
+    if let readingOrderItem, let readingOrderItemOffsetMilliseconds {
       return "\(readingOrderItem)-\(readingOrderItemOffsetMilliseconds)"
+    } else if let chapter, let part, let time {
       return "\(chapter)-\(part)-\(time)"
     }
     return ""
   }
 }
+
 
