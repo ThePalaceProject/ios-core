@@ -150,7 +150,7 @@ enum BookmarkType: String, Codable {
         version: version,
         timeStamp: timeStamp,
         annotationId: id,
-        readingOrderItem: locatorData["href"] as? String,
+        readingOrderItem: locatorData["readingOrderItem"] as? String,
         readingOrderItemOffsetMilliseconds: locatorData["time"] as? UInt,
         chapter: locatorData["chapter"] as? String,
         title: locatorData["title"] as? String,
