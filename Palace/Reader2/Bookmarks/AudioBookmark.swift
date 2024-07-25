@@ -113,19 +113,21 @@ enum BookmarkType: String, Codable {
     }
   }
   
-  static func create(locatorData: [String: Any], timeStamp: String = Date().iso8601, annotationId: String = "") -> AudioBookmark? {
+  static func create(locatorData: [String: Any], timeStamp: String? = Date().iso8601, annotationId: String = "") -> AudioBookmark? {
     guard let typeString = locatorData["@type"] as? String,
           let type = BookmarkType(rawValue: typeString) else { return nil }
     
     let version = locatorData["@version"] as? Int ?? 1
+    let lastSavedTimeStamp = locatorData["timeStamp"] as? String ?? timeStamp
+    let id = locatorData["annotationId"] as? String ?? annotationId
     
     if type == .locatorAudioBookTime {
       if version == 2 {
         return AudioBookmark(
           type: type,
           version: version,
-          timeStamp: timeStamp,
-          annotationId: annotationId,
+          timeStamp: lastSavedTimeStamp,
+          annotationId: id,
           readingOrderItem: locatorData["readingOrderItem"] as? String,
           readingOrderItemOffsetMilliseconds: locatorData["readingOrderItemOffsetMilliseconds"] as? UInt
         )
@@ -161,6 +163,7 @@ enum BookmarkType: String, Codable {
     let dict: [String: Any] = [
       "@type": type.rawValue,
       "@version": version,
+      "timeStamp": lastSavedTimeStamp ?? "",
       "annotationId": annotationId,
       "readingOrderItem": readingOrderItem ?? "",
       "readingOrderItemOffsetMilliseconds": readingOrderItemOffsetMilliseconds ?? ""
@@ -259,5 +262,16 @@ struct AnyCodable: Codable {
 extension Date {
   var iso8601: String {
     return ISO8601DateFormatter().string(from: self)
+  }
+}
+
+extension AudioBookmark {
+  var uniqueIdentifier: String {
+    if let readingOrderItem, let readingOrderItemOffsetMilliseconds {
+      return "\(readingOrderItem)-\(readingOrderItemOffsetMilliseconds)"
+    } else if let chapter, let part, let time {
+      return "\(chapter)-\(part)-\(time)"
+    }
+    return ""
   }
 }

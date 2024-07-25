@@ -121,9 +121,7 @@ class TPPBookmarkFactory {
         return nil
     }
     
-    if let selectorValueDict, let audioBookmark = AudioBookmark.create(locatorData: selectorValueDict) {
-      audioBookmark.lastSavedTimeStamp = time
-      audioBookmark.annotationId = annotationID
+    if let selectorValueDict, let audioBookmark = AudioBookmark.create(locatorData: selectorValueDict, timeStamp: time, annotationId: annotationID) {
       return audioBookmark
     }
     
