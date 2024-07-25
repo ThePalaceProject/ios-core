@@ -8,9 +8,9 @@
 
 public extension TrackPosition {
   func toAudioBookmark() -> AudioBookmark {
-    let offsetMilliseconds: UInt
+    let offsetMilliseconds: Int
     if timestamp >= 0 {
-      offsetMilliseconds = UInt(timestamp * 1000)
+      offsetMilliseconds = Int(timestamp * 1000)
     } else {
       ATLog(.debug, "Warning: Negative timestamp encountered. Defaulting to 0.")
       offsetMilliseconds = 0

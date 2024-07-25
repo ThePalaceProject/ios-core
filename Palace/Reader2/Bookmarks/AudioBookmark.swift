@@ -19,7 +19,7 @@ enum BookmarkType: String, Codable {
   var lastSavedTimeStamp: String?
   var version: Int
   var readingOrderItem: String?
-  var readingOrderItemOffsetMilliseconds: UInt?
+  var readingOrderItemOffsetMilliseconds: Int?
   // Other properties for older versions
   var chapter: String?
   var title: String?
@@ -49,7 +49,7 @@ enum BookmarkType: String, Codable {
     timeStamp: String? = nil,
     annotationId: String = "",
     readingOrderItem: String? = nil,
-    readingOrderItemOffsetMilliseconds: UInt? = nil,
+    readingOrderItemOffsetMilliseconds: Int? = nil,
     chapter: String? = nil,
     title: String? = nil,
     part: Int? = nil,
@@ -77,17 +77,17 @@ enum BookmarkType: String, Codable {
     if type == .locatorAudioBookTime {
       if version == 2 {
         readingOrderItem = try container.decodeIfPresent(String.self, forKey: .readingOrderItem)
-        readingOrderItemOffsetMilliseconds = try container.decodeIfPresent(UInt.self, forKey: .readingOrderItemOffsetMilliseconds)
+        readingOrderItemOffsetMilliseconds = try container.decodeIfPresent(Int.self, forKey: .readingOrderItemOffsetMilliseconds)
       } else {
         readingOrderItem = try container.decodeIfPresent(String.self, forKey: .readingOrderItem)
-        readingOrderItemOffsetMilliseconds = try container.decodeIfPresent(UInt.self, forKey: .time)
+        readingOrderItemOffsetMilliseconds = try container.decodeIfPresent(Int.self, forKey: .time)
         chapter = try container.decodeIfPresent(String.self, forKey: .chapter)
         title = try container.decodeIfPresent(String.self, forKey: .title)
         part = try container.decodeIfPresent(Int.self, forKey: .part)
       }
     } else {
       readingOrderItem = try container.decodeIfPresent(String.self, forKey: .readingOrderItem)
-      readingOrderItemOffsetMilliseconds = try container.decodeIfPresent(UInt.self, forKey: .time)
+      readingOrderItemOffsetMilliseconds = try container.decodeIfPresent(Int.self, forKey: .time)
       chapter = try container.decodeIfPresent(String.self, forKey: .chapter)
       title = try container.decodeIfPresent(String.self, forKey: .title)
       part = try container.decodeIfPresent(Int.self, forKey: .part)
@@ -129,7 +129,7 @@ enum BookmarkType: String, Codable {
           timeStamp: lastSavedTimeStamp,
           annotationId: id,
           readingOrderItem: locatorData["readingOrderItem"] as? String,
-          readingOrderItemOffsetMilliseconds: locatorData["readingOrderItemOffsetMilliseconds"] as? UInt
+          readingOrderItemOffsetMilliseconds: locatorData["readingOrderItemOffsetMilliseconds"] as? Int
         )
       } else {
         return AudioBookmark(
@@ -138,10 +138,11 @@ enum BookmarkType: String, Codable {
           timeStamp: timeStamp,
           annotationId: id,
           readingOrderItem: locatorData["readingOrderItem"] as? String,
-          readingOrderItemOffsetMilliseconds: locatorData["readingOrderItemOffsetMilliseconds"] as? UInt,
-          chapter: locatorData["chapter"] as? String,
+          readingOrderItemOffsetMilliseconds: locatorData["readingOrderItemOffsetMilliseconds"] as? Int,
+          chapter: String(locatorData["chapter"] as? Int ?? 0),
           title: locatorData["title"] as? String,
-          part: locatorData["part"] as? Int
+          part: locatorData["part"] as? Int,
+          time: locatorData["time"] as? Int
         )
       }
     } else {
@@ -151,10 +152,11 @@ enum BookmarkType: String, Codable {
         timeStamp: timeStamp,
         annotationId: id,
         readingOrderItem: locatorData["readingOrderItem"] as? String,
-        readingOrderItemOffsetMilliseconds: locatorData["time"] as? UInt,
+        readingOrderItemOffsetMilliseconds: locatorData["time"] as? Int,
         chapter: locatorData["chapter"] as? String,
         title: locatorData["title"] as? String,
-        part: locatorData["part"] as? Int
+        part: locatorData["part"] as? Int,
+        time: locatorData["time"] as? Int
       )
     }
   }
