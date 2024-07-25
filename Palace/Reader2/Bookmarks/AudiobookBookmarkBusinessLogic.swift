@@ -14,7 +14,11 @@ import PalaceAudiobookToolkit
   private var registry: TPPBookRegistryProvider
   private var annotationsManager: AnnotationsManager
   private var isSyncing: Bool = false
-  
+  private let queue = DispatchQueue(label: "com.palace.audiobookBookmarkBusinessLogic", attributes: .concurrent)
+  private var debounceTimer: Timer?
+  private let debounceInterval: TimeInterval = 1.0
+  private var completionHandlersQueue: [([AudioBookmark]) -> Void] = []
+
   @objc convenience init(book: TPPBook) {
     self.init(book: book, registry: TPPBookRegistry.shared, annotationsManager: TPPAnnotationsWrapper())
   }
@@ -25,27 +29,91 @@ import PalaceAudiobookToolkit
     self.annotationsManager = annotationsManager
   }
   
-  private func fetchLocalBookmarks() -> [AudioBookmark] {
-    return registry.genericBookmarksForIdentifier(book.identifier).compactMap { bookmark in
-      guard let dictionary = bookmark.locationStringDictionary(),
-            let localBookmark = AudioBookmark.create(locatorData: dictionary) else {
-        return nil
+  // MARK: - Bookmark Management
+  
+  public func saveListeningPosition(at position: TrackPosition, completion: ((String?) -> Void)?) {
+    let audioBookmark = position.toAudioBookmark()
+    audioBookmark.lastSavedTimeStamp = Date().iso8601
+    guard let tppLocation = audioBookmark.toTPPBookLocation() else {
+      completion?(nil)
+      return
+    }
+    
+    annotationsManager.postListeningPosition(forBook: self.book.identifier, selectorValue: tppLocation.locationString) { response in
+      if let response {
+        audioBookmark.lastSavedTimeStamp = response.timeStamp ?? ""
+        audioBookmark.annotationId = response.serverId ?? ""
+        self.registry.setLocation(audioBookmark.toTPPBookLocation(), forIdentifier: self.book.identifier)
+        completion?(response.timeStamp)
+      } else {
+        completion?(nil)
       }
-      return localBookmark
     }
   }
   
-  private func fetchServerBookmarks(completion: @escaping ([AudioBookmark]) -> Void) {
-    annotationsManager.getServerBookmarks(forBook: book.identifier, atURL: self.book.annotationsURL, motivation: .bookmark) { serverBookmarks in
-      guard let audioBookmarks = serverBookmarks as? [AudioBookmark] else {
-        completion([])
-        return
+  public func saveBookmark(at position: TrackPosition, completion: ((_ position: TrackPosition?) -> Void)? = nil) {
+    debounce {
+      Task {
+        let location = position.toAudioBookmark()
+        var updatedPosition = position
+        
+        defer {
+          updatedPosition.lastSavedTimeStamp = location.lastSavedTimeStamp ?? Date().iso8601
+          updatedPosition.annotationId = location.annotationId
+          if let updatedLocation = updatedPosition.toAudioBookmark().toTPPBookLocation() {
+            self.registry.addOrReplaceGenericBookmark(updatedLocation, forIdentifier: self.book.identifier)
+          }
+          completion?(updatedPosition)
+        }
+        
+        guard let data = location.toData(), let locationString = String(data: data, encoding: .utf8) else {
+          Log.error(#file, "Failed to encode location data for bookmark.")
+          completion?(nil)
+          return
+        }
+        
+        if let annotationResponse = try? await self.annotationsManager.postAudiobookBookmark(forBook: self.book.identifier, selectorValue: locationString) {
+          location.annotationId = annotationResponse?.serverId ?? ""
+          location.lastSavedTimeStamp = annotationResponse?.timeStamp ?? ""
+        }
       }
-      completion(audioBookmarks)
     }
   }
   
-  private var completionHandlersQueue: [([AudioBookmark]) -> Void] = []
+  public func fetchBookmarks(for tracks: Tracks, toc: [Chapter], completion: @escaping ([TrackPosition]) -> Void) {
+    queue.async {
+      let localBookmarks: [AudioBookmark] = self.fetchLocalBookmarks()
+      
+      self.syncBookmarks(localBookmarks: localBookmarks) { syncedBookmarks in
+        let trackPositions = syncedBookmarks.combineAndRemoveDuplicates(with: localBookmarks).compactMap { TrackPosition(audioBookmark: $0, toc: toc, tracks: tracks) }
+        DispatchQueue.main.async {
+          completion(trackPositions)
+        }
+      }
+    }
+  }
+  
+  public func deleteBookmark(at position: TrackPosition, completion: ((Bool) -> Void)? = nil) {
+    let bookmark = position.toAudioBookmark()
+    deleteBookmark(at: bookmark, completion: completion)
+  }
+  
+  public func deleteBookmark(at bookmark: AudioBookmark, completion: ((Bool) -> Void)? = nil) {
+    if let genericLocation = bookmark.toTPPBookLocation() {
+      self.registry.deleteGenericBookmark(genericLocation, forIdentifier: self.book.identifier)
+    }
+    
+    guard !bookmark.isUnsynced else {
+      completion?(true)
+      return
+    }
+    
+    annotationsManager.deleteBookmark(annotationId: bookmark.annotationId) { success in
+      completion?(success)
+    }
+  }
+  
+  // MARK: - Sync Logic
   
   func syncBookmarks(localBookmarks: [AudioBookmark], completion: (([AudioBookmark]) -> Void)? = nil) {
     guard !isSyncing else {
@@ -66,6 +134,26 @@ import PalaceAudiobookToolkit
           strongSelf.finalizeSync(with: updatedBookmarks, completion: completion)
         }
       }
+    }
+  }
+  
+  private func fetchLocalBookmarks() -> [AudioBookmark] {
+    return registry.genericBookmarksForIdentifier(book.identifier).compactMap { bookmark in
+      guard let dictionary = bookmark.locationStringDictionary(),
+            let localBookmark = AudioBookmark.create(locatorData: dictionary) else {
+        return nil
+      }
+      return localBookmark
+    }
+  }
+  
+  private func fetchServerBookmarks(completion: @escaping ([AudioBookmark]) -> Void) {
+    annotationsManager.getServerBookmarks(forBook: book.identifier, atURL: self.book.annotationsURL, motivation: .bookmark) { serverBookmarks in
+      guard let audioBookmarks = serverBookmarks as? [AudioBookmark] else {
+        completion([])
+        return
+      }
+      completion(audioBookmarks)
     }
   }
   
@@ -110,16 +198,13 @@ import PalaceAudiobookToolkit
     
     var updatedLocalBookmarks = localBookmarks
     
-    // Filter remote bookmarks to find new ones that do not exist locally
     let newRemoteBookmarks = remoteBookmarks.filter { remoteBookmark in
       let isSimilar = localBookmarks.contains { $0.isSimilar(to: remoteBookmark) }
       return !isSimilar
     }
     
-    // Add new remote bookmarks to local store
     addNewBookmarksToLocalStore(newRemoteBookmarks)
     
-    // Fetch the updated local bookmarks
     updatedLocalBookmarks = fetchLocalBookmarks()
     
     completion(updatedLocalBookmarks)
@@ -154,6 +239,15 @@ import PalaceAudiobookToolkit
       let newLocation = newLocation.toTPPBookLocation() else { return }
     registry.replaceGenericBookmark(oldLocation, with: newLocation, forIdentifier: book.identifier)
   }
+  
+  // MARK: - Helpers
+  
+  private func debounce(action: @escaping () -> Void) {
+    debounceTimer?.invalidate()
+    debounceTimer = Timer.scheduledTimer(withTimeInterval: debounceInterval, repeats: false) { _ in
+      action()
+    }
+  }
 }
 
 private extension Array where Element == AudioBookmark {
@@ -170,81 +264,12 @@ private extension Array where Element == AudioBookmark {
   }
 }
 
-extension AudiobookBookmarkBusinessLogic: AudiobookBookmarkDelegate {
-  public func saveListeningPosition(at position: TrackPosition, completion: ((String?) -> Void)?) {
-    let audioBookmark = position.toAudioBookmark()
-    audioBookmark.lastSavedTimeStamp = Date().iso8601
-    guard let tppLocation = audioBookmark.toTPPBookLocation() else {
-      completion?(nil)
-      return
-    }
-    
-    annotationsManager.postListeningPosition(forBook: self.book.identifier, selectorValue: tppLocation.locationString) { response in
-      if let response {
-        audioBookmark.lastSavedTimeStamp = response.timeStamp ?? ""
-        audioBookmark.annotationId = response.serverId ?? ""
-        self.registry.setLocation(audioBookmark.toTPPBookLocation(), forIdentifier: self.book.identifier)
-        completion?(response.timeStamp)
-      } else {
-        completion?(nil)
-      }
-    }
-  }
-  
-  public func saveBookmark(at position: TrackPosition, completion: ((_ position: TrackPosition?) -> Void)? = nil) {
-    Task {
-      let location = position.toAudioBookmark()
-      var updatedPosition = position
-      
-      defer {
-        updatedPosition.lastSavedTimeStamp = location.lastSavedTimeStamp ?? Date().iso8601
-        updatedPosition.annotationId = location.annotationId
-        if let updatedLocation = updatedPosition.toAudioBookmark().toTPPBookLocation() {
-          registry.addOrReplaceGenericBookmark(updatedLocation, forIdentifier: self.book.identifier)
-        }
-        
-        completion?(updatedPosition)
-      }
-      
-      guard let data = location.toData(), let locationString = String(data: data, encoding: .utf8) else {
-        Log.error(#file, "Failed to encode location data for bookmark.")
-        completion?(nil)
-        return
-      }
-      
-      if let annotationResponse = try await annotationsManager.postAudiobookBookmark(forBook: self.book.identifier, selectorValue: locationString) {
-        location.annotationId = annotationResponse.serverId ?? ""
-        location.lastSavedTimeStamp = annotationResponse.timeStamp ?? ""
-      }
-    }
-  }
-  
-  public func fetchBookmarks(for tracks: Tracks, toc: [Chapter], completion: @escaping ([TrackPosition]) -> Void) {
-    let localBookmarks: [AudioBookmark] = fetchLocalBookmarks()
-    
-    self.syncBookmarks(localBookmarks: localBookmarks) { syncedBookmarks in
-      let trackPositions = syncedBookmarks.combineAndRemoveDuplicates(with: localBookmarks).compactMap { TrackPosition(audioBookmark: $0, toc: toc, tracks: tracks) }
-      completion(trackPositions)
-    }
-  }
-  
-  public func deleteBookmark(at position: TrackPosition, completion: ((Bool) -> Void)? = nil) {
-    let bookmark = position.toAudioBookmark()
-    deleteBookmark(at: bookmark, completion: completion)
-  }
-  
-  public func deleteBookmark(at bookmark: AudioBookmark, completion: ((Bool) -> Void)? = nil) {
-    if let genericLocation = bookmark.toTPPBookLocation() {
-      self.registry.deleteGenericBookmark(genericLocation, forIdentifier: self.book.identifier)
-    }
-    
-    guard !bookmark.isUnsynced else {
-      completion?(true)
-      return
-    }
-    
-    annotationsManager.deleteBookmark(annotationId: bookmark.annotationId) { success in
-      completion?(success)
+private extension Array {
+  func chunked(into size: Int) -> [[Element]] {
+    stride(from: 0, to: count, by: size).map {
+      Array(self[$0..<Swift.min($0 + size, count)])
     }
   }
 }
+
+extension AudiobookBookmarkBusinessLogic: AudiobookBookmarkDelegate {}
