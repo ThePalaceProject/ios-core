@@ -74,24 +74,12 @@ enum BookmarkType: String, Codable {
     annotationId = try container.decodeIfPresent(String.self, forKey: .annotationId) ?? ""
     version = try container.decodeIfPresent(Int.self, forKey: .version) ?? 1
     
-    if type == .locatorAudioBookTime {
-      if version == 2 {
-        readingOrderItem = try container.decodeIfPresent(String.self, forKey: .readingOrderItem)
-        readingOrderItemOffsetMilliseconds = try container.decodeIfPresent(Int.self, forKey: .readingOrderItemOffsetMilliseconds)
-      } else {
-        readingOrderItem = try container.decodeIfPresent(String.self, forKey: .readingOrderItem)
-        readingOrderItemOffsetMilliseconds = try container.decodeIfPresent(Int.self, forKey: .time)
-        chapter = try container.decodeIfPresent(String.self, forKey: .chapter)
-        title = try container.decodeIfPresent(String.self, forKey: .title)
-        part = try container.decodeIfPresent(Int.self, forKey: .part)
-      }
-    } else {
-      readingOrderItem = try container.decodeIfPresent(String.self, forKey: .readingOrderItem)
-      readingOrderItemOffsetMilliseconds = try container.decodeIfPresent(Int.self, forKey: .time)
-      chapter = try container.decodeIfPresent(String.self, forKey: .chapter)
-      title = try container.decodeIfPresent(String.self, forKey: .title)
-      part = try container.decodeIfPresent(Int.self, forKey: .part)
-    }
+    readingOrderItem = try container.decodeIfPresent(String.self, forKey: .readingOrderItem)
+    readingOrderItemOffsetMilliseconds = try container.decodeIfPresent(Int.self, forKey: .readingOrderItemOffsetMilliseconds)
+    chapter = try container.decodeIfPresent(String.self, forKey: .chapter)
+    title = try container.decodeIfPresent(String.self, forKey: .title)
+    part = try container.decodeIfPresent(Int.self, forKey: .part)
+    time = try container.decodeIfPresent(Int.self, forKey: .time)
   }
   
   public func encode(to encoder: Encoder) throws {
@@ -100,17 +88,12 @@ enum BookmarkType: String, Codable {
     try container.encode(lastSavedTimeStamp, forKey: .timeStamp)
     try container.encode(annotationId, forKey: .annotationId)
     try container.encode(version, forKey: .version)
-    
-    if version == 2 {
-      try container.encodeIfPresent(readingOrderItem, forKey: .readingOrderItem)
-      try container.encodeIfPresent(readingOrderItemOffsetMilliseconds, forKey: .readingOrderItemOffsetMilliseconds)
-    } else {
-      try container.encodeIfPresent(readingOrderItem, forKey: .readingOrderItem)
-      try container.encodeIfPresent(readingOrderItemOffsetMilliseconds, forKey: .time)
-      try container.encodeIfPresent(chapter, forKey: .chapter)
-      try container.encodeIfPresent(title, forKey: .title)
-      try container.encodeIfPresent(part, forKey: .part)
-    }
+    try container.encodeIfPresent(readingOrderItem, forKey: .readingOrderItem)
+    try container.encodeIfPresent(readingOrderItemOffsetMilliseconds, forKey: .readingOrderItemOffsetMilliseconds)
+    try container.encodeIfPresent(chapter, forKey: .chapter)
+    try container.encodeIfPresent(title, forKey: .title)
+    try container.encodeIfPresent(part, forKey: .part)
+    try container.encodeIfPresent(time, forKey: .time)
   }
   
   static func create(locatorData: [String: Any], timeStamp: String? = Date().iso8601, annotationId: String = "") -> AudioBookmark? {
@@ -121,65 +104,34 @@ enum BookmarkType: String, Codable {
     let lastSavedTimeStamp = locatorData["timeStamp"] as? String ?? timeStamp
     let id = locatorData["annotationId"] as? String ?? annotationId
     
-    if type == .locatorAudioBookTime {
-      if version == 2 {
-        return AudioBookmark(
-          type: type,
-          version: version,
-          timeStamp: lastSavedTimeStamp,
-          annotationId: id,
-          readingOrderItem: locatorData["readingOrderItem"] as? String,
-          readingOrderItemOffsetMilliseconds: locatorData["readingOrderItemOffsetMilliseconds"] as? Int
-        )
-      } else {
-        return AudioBookmark(
-          type: type,
-          version: version,
-          timeStamp: timeStamp,
-          annotationId: id,
-          readingOrderItem: locatorData["readingOrderItem"] as? String,
-          readingOrderItemOffsetMilliseconds: locatorData["readingOrderItemOffsetMilliseconds"] as? Int,
-          chapter: String(locatorData["chapter"] as? Int ?? 0),
-          title: locatorData["title"] as? String,
-          part: locatorData["part"] as? Int,
-          time: locatorData["time"] as? Int
-        )
-      }
-    } else {
-      return AudioBookmark(
-        type: type,
-        version: version,
-        timeStamp: timeStamp,
-        annotationId: id,
-        readingOrderItem: locatorData["readingOrderItem"] as? String,
-        readingOrderItemOffsetMilliseconds: locatorData["time"] as? Int,
-        chapter: locatorData["chapter"] as? String,
-        title: locatorData["title"] as? String,
-        part: locatorData["part"] as? Int,
-        time: locatorData["time"] as? Int
-      )
-    }
+    let readingOrderItem = locatorData["readingOrderItem"] as? String
+    let readingOrderItemOffsetMilliseconds = locatorData["readingOrderItemOffsetMilliseconds"] as? Int ?? locatorData["time"] as? Int
+    let chapter = locatorData["chapter"] as? String ?? String(locatorData["chapter"] as? Int ?? 0)
+    let title = locatorData["title"] as? String
+    let part = locatorData["part"] as? Int
+    let time = locatorData["time"] as? Int
+    
+    return AudioBookmark(
+      type: type,
+      version: version,
+      timeStamp: lastSavedTimeStamp,
+      annotationId: id,
+      readingOrderItem: readingOrderItem,
+      readingOrderItemOffsetMilliseconds: readingOrderItemOffsetMilliseconds,
+      chapter: chapter,
+      title: title,
+      part: part,
+      time: time
+    )
   }
-
+  
   public func toData() -> Data? {
-    let dict: [String: Any] = [
-      "@type": type.rawValue,
-      "@version": version,
-      "timeStamp": lastSavedTimeStamp ?? "",
-      "annotationId": annotationId,
-      "readingOrderItem": readingOrderItem ?? "",
-      "readingOrderItemOffsetMilliseconds": readingOrderItemOffsetMilliseconds ?? ""
-    ]
-
-    return try? JSONSerialization.data(withJSONObject: dict, options: [])
+    return try? JSONEncoder().encode(self)
   }
   
   public func isSimilar(to other: AudioBookmark) -> Bool {
-    if self.type != other.type {
-      return false
-    }
-    
-    return self.readingOrderItem == other.readingOrderItem &&
+    return self.type == other.type &&
+    self.readingOrderItem == other.readingOrderItem &&
     self.readingOrderItemOffsetMilliseconds == other.readingOrderItemOffsetMilliseconds &&
     self.chapter == other.chapter &&
     self.title == other.title &&
@@ -269,11 +221,10 @@ extension Date {
 
 extension AudioBookmark {
   var uniqueIdentifier: String {
-    if let readingOrderItem, let readingOrderItemOffsetMilliseconds {
       return "\(readingOrderItem)-\(readingOrderItemOffsetMilliseconds)"
-    } else if let chapter, let part, let time {
       return "\(chapter)-\(part)-\(time)"
     }
     return ""
   }
 }
+
