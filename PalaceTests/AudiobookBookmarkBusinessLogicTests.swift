@@ -197,7 +197,6 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
     
     wait(for: [expectation], timeout: 5.0)
   }
-
   
   func testFetchBookmarks_RemoteOnly() {
     mockRegistry = TPPBookRegistryMock()

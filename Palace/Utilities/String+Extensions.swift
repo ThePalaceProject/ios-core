@@ -9,17 +9,12 @@
 import Foundation
 
 extension String {
-  static func isDate(_ dateOne: String?, moreRecentThan dateTwo: String?, with margin: TimeInterval) -> Bool {
+  static func isDate(_ date1: String, moreRecentThan date2: String, with delay: TimeInterval) -> Bool {
     let dateFormatter = ISO8601DateFormatter()
-    
-    guard let dateOne = dateOne, let dateTwo = dateTwo,
-          let date1 = dateFormatter.date(from: dateOne),
-          let date2 = dateFormatter.date(from: dateTwo) else {
+    guard let d1 = dateFormatter.date(from: date1), let d2 = dateFormatter.date(from: date2) else {
       return false
     }
-    
-    let timeInterval = date1.timeIntervalSince(date2)
-    return timeInterval > margin
+    return d1.addingTimeInterval(delay) > d2
   }
 }
 

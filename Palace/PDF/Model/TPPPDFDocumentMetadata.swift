@@ -140,9 +140,9 @@ import Combine
       TPPBookRegistry.shared.addGenericBookmark(location, forIdentifier: bookIdentifier)
     }
     if canSync {
-      TPPAnnotations.postBookmark(page, forBookID: bookIdentifier) { serverID in
+      TPPAnnotations.postBookmark(page, forBookID: bookIdentifier) { response in
         DispatchQueue.main.async {
-          self.pdfBookmarks?.append(TPPPDFPageBookmark(page: page.pageNumber, annotationID: serverID))
+          self.pdfBookmarks?.append(TPPPDFPageBookmark(page: page.pageNumber, annotationID: response?.serverId))
         }
       }
     }
