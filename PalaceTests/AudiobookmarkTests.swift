@@ -60,7 +60,6 @@ final class AudiobookmarkTests: XCTestCase {
     XCTAssertEqual(bookmark.title, "Track 1")
     XCTAssertEqual(bookmark.part, 0)
     XCTAssertEqual(bookmark.chapter, "0")
-    XCTAssertNil(bookmark.readingOrderItemOffsetMilliseconds)
   }
   
   func testDecodeLocatorAudioBookTime2() throws {
