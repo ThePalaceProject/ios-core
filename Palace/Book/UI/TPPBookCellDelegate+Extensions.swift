@@ -12,11 +12,24 @@ import PalaceAudiobookToolkit
 let kServerUpdateDelay: Double = 30.0
 let kTimerInterval: Double = 1.0
 
-//TODO: This is a temporary solution to enable location saves from AppDelegate. Investigate a global context to manage state and introduce caching.
-var latestAudiobookLocation: (book: String, location: String)?
-
 private struct AssociatedKeys {
   static var audiobookBookmarkBusinessLogic = "audiobookBookmarkBusinessLogic"
+}
+
+private let locationQueue = DispatchQueue(label: "com.palace.latestAudiobookLocation", attributes: .concurrent)
+private var _latestAudiobookLocation: (book: String, location: String)?
+
+var latestAudiobookLocation: (book: String, location: String)? {
+  get {
+    locationQueue.sync {
+      _latestAudiobookLocation
+    }
+  }
+  set {
+    locationQueue.async(flags: .barrier) {
+      _latestAudiobookLocation = newValue
+    }
+  }
 }
 
 extension TPPBookCellDelegate {
@@ -31,14 +44,12 @@ extension TPPBookCellDelegate {
       return objc_getAssociatedObject(self, &AssociatedKeys.audiobookBookmarkBusinessLogic) as? AudiobookBookmarkBusinessLogic
     }
     set {
-      if let newValue = newValue {
-        objc_setAssociatedObject(
-          self,
-          &AssociatedKeys.audiobookBookmarkBusinessLogic,
-          newValue as AudiobookBookmarkBusinessLogic?,
-          .OBJC_ASSOCIATION_RETAIN_NONATOMIC
-        )
-      }
+      objc_setAssociatedObject(
+        self,
+        &AssociatedKeys.audiobookBookmarkBusinessLogic,
+        newValue,
+        .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+      )
     }
   }
   
@@ -264,6 +275,7 @@ extension TPPBookCellDelegate {
         let locationString = String(data: locationData ?? Data(), encoding: .utf8) ?? ""
         
         TPPBookRegistry.shared.setLocation(TPPBookLocation(locationString: locationString, renderer: "PalaceAudiobookToolkit"), forIdentifier: self.book.identifier)
+  
         latestAudiobookLocation = (book: self.book.identifier, location: locationString)
       }
     }

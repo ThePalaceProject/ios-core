@@ -30,8 +30,14 @@ import PalaceAudiobookToolkit
   }
   
   // MARK: - Bookmark Management
-  
+
   public func saveListeningPosition(at position: TrackPosition, completion: ((String?) -> Void)?) {
+    debounce {
+      self.saveListeningPositionImmediate(at: position, completion: completion)
+    }
+  }
+  
+  private func saveListeningPositionImmediate(at position: TrackPosition, completion: ((String?) -> Void)?) {
     let audioBookmark = position.toAudioBookmark()
     audioBookmark.lastSavedTimeStamp = Date().iso8601
     guard let tppLocation = audioBookmark.toTPPBookLocation() else {
@@ -50,7 +56,7 @@ import PalaceAudiobookToolkit
       }
     }
   }
-  
+
   public func saveBookmark(at position: TrackPosition, completion: ((_ position: TrackPosition?) -> Void)? = nil) {
     debounce {
       Task {
