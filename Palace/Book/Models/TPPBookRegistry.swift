@@ -211,6 +211,7 @@ class TPPBookRegistry: NSObject {
   /// - Parameter account: Library account identifier.
   func reset(_ account: String) {
     state = .unloaded
+    syncUrl = nil
     registry.removeAll()
     if let registryUrl = registryUrl(for: account) {
       do {
@@ -227,7 +228,9 @@ class TPPBookRegistry: NSObject {
     guard let loansUrl = AccountsManager.shared.currentAccount?.loansUrl else {
       return
     }
-
+    if syncUrl == loansUrl {
+      return
+    }
     state = .syncing
     syncUrl = loansUrl
     TPPOPDSFeed.withURL(loansUrl, shouldResetCache: true, useTokenIfAvailable: false) { feed, errorDocument in
