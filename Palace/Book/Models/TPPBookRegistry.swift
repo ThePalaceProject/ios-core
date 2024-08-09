@@ -211,6 +211,7 @@ class TPPBookRegistry: NSObject {
   /// - Parameter account: Library account identifier.
   func reset(_ account: String) {
     state = .unloaded
+    syncUrl = nil
     registry.removeAll()
     if let registryUrl = registryUrl(for: account) {
       do {
