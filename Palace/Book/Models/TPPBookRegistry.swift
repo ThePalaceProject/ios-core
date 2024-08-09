@@ -227,9 +227,7 @@ class TPPBookRegistry: NSObject {
     guard let loansUrl = AccountsManager.shared.currentAccount?.loansUrl else {
       return
     }
-    if syncUrl == loansUrl {
-      return
-    }
+
     state = .syncing
     syncUrl = loansUrl
     TPPOPDSFeed.withURL(loansUrl, shouldResetCache: true, useTokenIfAvailable: false) { feed, errorDocument in
