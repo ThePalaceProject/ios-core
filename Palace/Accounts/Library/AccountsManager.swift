@@ -78,6 +78,7 @@ let currentAccountIdentifierKey  = "TPPCurrentAccountIdentifier"
     }
     set {
       Log.debug(#file, "Setting currentAccount to <\(newValue?.name ?? "[name N/A]") LibUUID=\(newValue?.uuid ?? "[UUID N/A]")>")
+      self.currentAccount?.hasUpdatedToken = false;
       currentAccountId = newValue?.uuid
       TPPErrorLogger.setUserID(TPPUserAccount.sharedAccount().barcode)
       NotificationCenter.default.post(name: NSNotification.Name.TPPCurrentAccountDidChange,
@@ -248,7 +249,7 @@ let currentAccountIdentifierKey  = "TPPCurrentAccountIdentifier"
     let wasAlreadyLoading = addLoadingCompletionHandler(key: hash, completion)
     guard !wasAlreadyLoading else { return }
 
-    TPPNetworkExecutor(cachingStrategy: .fallback).GET(targetUrl) { result in
+    TPPNetworkExecutor(cachingStrategy: .fallback).GET(targetUrl, useTokenIfAvailable: false) { result in
       switch result {
       case .success(let data, _):
         self.loadAccountSetsAndAuthDoc(fromCatalogData: data, key: hash) { success in

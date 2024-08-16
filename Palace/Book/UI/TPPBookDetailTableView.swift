@@ -90,7 +90,7 @@ private let standardCellHeight: CGFloat = 44.0
     }
 
     addPendingIndicator()
-    TPPOPDSFeed.withURL(url, shouldResetCache: false) { (feed, errorDict) in
+    TPPOPDSFeed.withURL(url, shouldResetCache: false, useTokenIfAvailable: TPPUserAccount.sharedAccount().hasAdobeToken()) { (feed, errorDict) in
       DispatchQueue.main.async {
         if feed?.type == .acquisitionGrouped {
           let groupedFeed = TPPCatalogGroupedFeed.init(opdsFeed: feed)

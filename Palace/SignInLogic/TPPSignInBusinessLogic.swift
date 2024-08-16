@@ -84,9 +84,6 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     self.samlHelper.businessLogic = self
   }
 
-  /// Lock for ensuring internal state consistency.
-  let permissionsCheckLock = NSLock()
-
   /// Signing in and out may imply syncing the book registry.
   let bookRegistry: TPPBookRegistrySyncing
 
@@ -239,7 +236,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
         return nil
     }
 
-    var req = URLRequest(url: url)
+    var req = URLRequest(url: url, applyingCustomUserAgent: true)
 
     if let selectedAuth = selectedAuthentication,
        (selectedAuth.isOauth || selectedAuth.isSaml) {
@@ -292,7 +289,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
       return
     }
 
-    networker.executeRequest(req) { [weak self] result in
+    networker.executeRequest(req, enableTokenRefresh: false) { [weak self] result in
       guard let self = self else {
         return
       }
@@ -535,12 +532,11 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     }
     
     if selectedAuthentication.isOauth || selectedAuthentication.isSaml || selectedAuthentication.isToken {
-      if let authToken = authToken {
-        userAccount.setAuthToken(authToken, barcode: barcode, pin: pin, expirationDate: expirationDate)
-      }
-      
-      if let patron = patron {
+      if let patron {
         userAccount.setPatron(patron)
+      }
+      if let authToken {
+        userAccount.setAuthToken(authToken, barcode: barcode, pin: pin, expirationDate: expirationDate)
       } else {
         setBarcode(barcode, pin: pin)
       }
@@ -548,12 +544,13 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
       setBarcode(barcode, pin: pin)
     }
     
-    if selectedAuthentication.isSaml, let cookies = cookies {
+    if selectedAuthentication.isSaml, let cookies {
       userAccount.setCookies(cookies)
     }
 
     userAccount.setAuthDefinitionWithoutUpdate(authDefinition: selectedAuthentication)
 
+    
     if libraryAccountID == libraryAccountsProvider.currentAccountId {
       bookRegistry.sync()
     }

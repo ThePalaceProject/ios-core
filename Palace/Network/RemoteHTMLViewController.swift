@@ -62,8 +62,8 @@ import WebKit
       _ = self.navigationController?.popViewController(animated: true)
     }
     let action2 = UIAlertAction.init(title: Strings.Generic.reload, style: .destructive) { (reloadAction) in
-      let urlRequest = URLRequest(url: self.fileURL, cachePolicy: .useProtocolCachePolicy, timeoutInterval: 10.0)
-      webView.load(urlRequest)
+      var urlRequest = URLRequest(url: self.fileURL, cachePolicy: .useProtocolCachePolicy, timeoutInterval: 10.0)
+      webView.load(urlRequest.applyCustomUserAgent())
     }
     
     alert.addAction(action1)

@@ -8,6 +8,7 @@
 
 import SwiftUI
 import Combine
+import PalaceUIKit
 
 struct MyBooksView: View {
   typealias DisplayStrings = Strings.MyBooksView
@@ -63,6 +64,7 @@ struct MyBooksView: View {
       .foregroundColor(.gray)
       .horizontallyCentered()
       .verticallyCentered()
+      .palaceFont(.body)
   }
   
   @ViewBuilder private var content: some View {

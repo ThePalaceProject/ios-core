@@ -25,16 +25,21 @@ class TPPBookCoverRegistry {
         handler(image)
       } else if let thumbnailUrl = book.imageThumbnailURL,
                 let fileUrl = self.pinnedThumbnailImageUrlOfBookIdentifier(book.identifier) {
-        self.getBookCoverImage(url: thumbnailUrl, fileUrl: fileUrl, handler: handler, forBook: book)
+        self.getBookCoverImage(url: thumbnailUrl, fileUrl: fileUrl, handler: { [weak self] image in
+          guard let self else { return }
+          handler(image)
+        }, forBook: book)
       }
     } else {
       if let thumbnailUrl = book.imageThumbnailURL {
-        self.getBookCoverImage(url: thumbnailUrl, fileUrl: nil, handler: handler, forBook: book)
+        self.getBookCoverImage(url: thumbnailUrl, fileUrl: nil, handler: { [weak self] image in
+          guard let self else { return }
+          handler(image)
+        }, forBook: book)
       } else {
         handler(self.generateBookCoverImage(book))
       }
     }
-    
   }
   
   /// Downloads cover image for the provided book.
@@ -46,7 +51,8 @@ class TPPBookCoverRegistry {
     guard let imageUrl = book.imageURL else {
       return
     }
-    urlSession.dataTask(with: URLRequest(url: imageUrl)) { imageData, response, error in
+    var request = URLRequest(url: imageUrl)
+    urlSession.dataTask(with: request.applyCustomUserAgent()) { imageData, response, error in
       if let imageData = imageData, let image = UIImage(data: imageData) {
         DispatchQueue.main.async {
           handler(image)
@@ -60,21 +66,18 @@ class TPPBookCoverRegistry {
   ///   - books: A set of `TPPBook` objects.
   ///   - handler: completion handler. `handler()` is called once, after all covers are downloaded.
   func thumbnailImagesForBooks(_ books: Set<TPPBook>, handler: @escaping (_ bookIdentifiersToImages: [String: UIImage]) -> Void) {
-    var result: [String: UIImage] = [:] {
-      didSet {
-        if books.count == result.keys.count {
-          DispatchQueue.main.async {
-            handler(result)
-          }
-        }
-      }
-    }
+    var result: [String: UIImage] = [:]
+    let dispatchGroup = DispatchGroup()
+    
     books.forEach { book in
+      dispatchGroup.enter()
       guard let thumbnailUrl = book.imageThumbnailURL else {
         result[book.identifier] = self.generateBookCoverImage(book)
+        dispatchGroup.leave()
         return
       }
-      urlSession.dataTask(with: URLRequest(url: thumbnailUrl)) { imageData, response, error in
+      
+      urlSession.dataTask(with: URLRequest(url: thumbnailUrl, applyingCustomUserAgent: true)) { imageData, response, error in
         if let imageData = imageData, let image = UIImage(data: imageData) {
           DispatchQueue.main.async {
             result[book.identifier] = image
@@ -84,7 +87,12 @@ class TPPBookCoverRegistry {
             result[book.identifier] = self.generateBookCoverImage(book)
           }
         }
+        dispatchGroup.leave()
       }.resume()
+    }
+    
+    dispatchGroup.notify(queue: .main) {
+      handler(result)
     }
   }
   
@@ -93,7 +101,7 @@ class TPPBookCoverRegistry {
   /// - Returns: cover image, if one is available.
   func cachedThumbnailImageForBook(_ book: TPPBook) -> UIImage? {
     guard let thumbnailUrl = book.imageThumbnailURL,
-          let cachedData = urlSession.configuration.urlCache?.cachedResponse(for: URLRequest(url: thumbnailUrl))?.data
+          let cachedData = urlSession.configuration.urlCache?.cachedResponse(for: URLRequest(url: thumbnailUrl, applyingCustomUserAgent: true))?.data
     else {
       return nil
     }
@@ -109,7 +117,7 @@ class TPPBookCoverRegistry {
       return
     }
     try? Data().write(to: fileUrl, options: .atomic)
-    urlSession.dataTask(with: URLRequest(url: thumbnailUrl)) { imageData, response, error in
+    urlSession.dataTask(with: URLRequest(url: thumbnailUrl, applyingCustomUserAgent: true)) { imageData, response, error in
       if let imageData = imageData {
         do {
           try imageData.write(to: fileUrl, options: .atomic)
@@ -194,7 +202,7 @@ class TPPBookCoverRegistry {
   ///   - handler: completion handler.
   ///   - book: `TPPBook` object.
   private func getBookCoverImage(url: URL, fileUrl: URL?, handler:  @escaping (_ image: UIImage?) -> (), forBook book: TPPBook) {
-    urlSession.dataTask(with: URLRequest(url: url)) { imageData, response, error in
+    urlSession.dataTask(with: URLRequest(url: url, applyingCustomUserAgent: true)) { imageData, response, error in
       if let imageData = imageData, let image = UIImage(data: imageData) {
         DispatchQueue.main.async {
           handler(image)

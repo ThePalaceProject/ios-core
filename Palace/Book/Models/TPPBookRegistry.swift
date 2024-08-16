@@ -211,6 +211,7 @@ class TPPBookRegistry: NSObject {
   /// - Parameter account: Library account identifier.
   func reset(_ account: String) {
     state = .unloaded
+    syncUrl = nil
     registry.removeAll()
     if let registryUrl = registryUrl(for: account) {
       do {
@@ -227,12 +228,10 @@ class TPPBookRegistry: NSObject {
     guard let loansUrl = AccountsManager.shared.currentAccount?.loansUrl else {
       return
     }
-    if syncUrl == loansUrl {
-      return
-    }
+
     state = .syncing
     syncUrl = loansUrl
-    TPPOPDSFeed.withURL(loansUrl, shouldResetCache: true) { feed, errorDocument in
+    TPPOPDSFeed.withURL(loansUrl, shouldResetCache: true, useTokenIfAvailable: false) { feed, errorDocument in
       DispatchQueue.main.async {
         defer {
           self.state = .loaded
@@ -537,23 +536,19 @@ extension TPPBookRegistry: TPPBookRegistryProvider {
   }
   
   func addOrReplaceGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String) {
-    guard let existingBookmark = registry[bookIdentifier]?.genericBookmarks?.first(where: { $0 == location }) else {
-      addGenericBookmark(location, forIdentifier: bookIdentifier)
-      return
+    guard registry[bookIdentifier] != nil else { return }
+    
+    if registry[bookIdentifier]?.genericBookmarks == nil {
+      registry[bookIdentifier]?.genericBookmarks = [TPPBookLocation]()
     }
-
-    replaceGenericBookmark(existingBookmark, with: location, forIdentifier: bookIdentifier)
+    
+    deleteGenericBookmark(location, forIdentifier: bookIdentifier)
+    addGenericBookmark(location, forIdentifier: bookIdentifier)
+    save()
   }
   
   /// Adds a generic bookmark (book location) for a book given its identifier
   func addGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String) {
-    guard registry[bookIdentifier] != nil else {
-      return
-    }
-
-    if registry[bookIdentifier]?.genericBookmarks == nil {
-      registry[bookIdentifier]?.genericBookmarks = [TPPBookLocation]()
-    }
     registry[bookIdentifier]?.genericBookmarks?.append(location)
     save()
   }
@@ -566,8 +561,7 @@ extension TPPBookRegistry: TPPBookRegistryProvider {
   
   func replaceGenericBookmark(_ oldLocation: TPPBookLocation, with newLocation: TPPBookLocation, forIdentifier bookIdentifier: String) {
     deleteGenericBookmark(oldLocation, forIdentifier: bookIdentifier)
-    registry[bookIdentifier]?.genericBookmarks?.append(newLocation)
-    save()
+    addGenericBookmark(newLocation, forIdentifier: bookIdentifier)
   }
 }
 
@@ -584,25 +578,18 @@ extension TPPBookLocation {
   func isSimilarTo(_ location: TPPBookLocation) -> Bool {
     guard renderer == location.renderer,
           let locationDict = locationStringDictionary(),
-          let otherLocationDict = location.locationStringDictionary()
-    else { return false }
-            
-    var areEqual = true
-    
-    for (key, value) in locationDict {
-      if key == "lastSavedTimeStamp" { continue }
-      
-      if let otherValue = otherLocationDict[key] {
-        if "\(value)" != "\(otherValue)" {
-          areEqual = false
-          break
-        }
-      } else {
-        areEqual = false
-        break
-      }
+          let otherLocationDict = location.locationStringDictionary() else {
+      return false
     }
     
-    return areEqual
+    // Keys to be excluded from the comparison.
+    let excludedKeys = ["timeStamp", "annotationId"]
+    
+    // Prepare dictionaries excluding the keys not relevant for comparison.
+    let filteredDict = locationDict.filter { !excludedKeys.contains($0.key) }
+    let filteredOtherDict = otherLocationDict.filter { !excludedKeys.contains($0.key) }
+    
+    // Compare the filtered dictionaries.
+    return NSDictionary(dictionary: filteredDict).isEqual(to: filteredOtherDict)
   }
 }

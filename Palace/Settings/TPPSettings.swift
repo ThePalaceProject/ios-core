@@ -90,15 +90,6 @@ import Foundation
     }
   }
 
-  var userHasSeenFirstTimeSyncMessage: Bool {
-    get {
-      UserDefaults.standard.bool(forKey: TPPSettings.userSeenFirstTimeSyncMessageKey)
-    }
-    set(b) {
-      UserDefaults.standard.set(b, forKey: TPPSettings.userSeenFirstTimeSyncMessageKey)
-    }
-  }
-  
   var useBetaLibraries: Bool {
     get {
       UserDefaults.standard.bool(forKey: TPPSettings.useBetaLibrariesKey)

@@ -17,3 +17,18 @@ extension Dictionary {
     return dictionary
   }
 }
+
+extension Dictionary where Key == String, Value: Any {
+  
+  /// Pretty prints the JSON dictionary
+  func prettyPrintJSON() {
+    do {
+      let jsonData = try JSONSerialization.data(withJSONObject: self, options: .prettyPrinted)
+      if let jsonString = String(data: jsonData, encoding: .utf8) {
+        print(jsonString)
+      }
+    } catch {
+      print("Failed to pretty print JSON: \(error)")
+    }
+  }
+}

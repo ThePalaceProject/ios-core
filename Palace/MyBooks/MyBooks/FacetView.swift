@@ -8,6 +8,7 @@
 
 import SwiftUI
 import Combine
+import PalaceUIKit
 
 struct FacetView: View {
   @ObservedObject var model: FacetViewModel
@@ -22,7 +23,7 @@ struct FacetView: View {
       }
       .padding(.leading)
       .actionSheet(isPresented: $showAlert) { alert }
-      .font(Font(uiFont: UIFont.palaceFont(ofSize: 12)))
+      .palaceFont(size: 12)
       dividerView
       accountLogoView
         .horizontallyCentered()

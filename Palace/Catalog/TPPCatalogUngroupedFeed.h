@@ -30,7 +30,9 @@
 - (id)init NS_UNAVAILABLE;
 
 // In the callback, |ungroupedFeed| will be |nil| if an error occurred.
-+ (void)withURL:(NSURL *)URL handler:(void (^)(TPPCatalogUngroupedFeed *ungroupedFeed))handler;
++ (void)withURL:(NSURL *)URL
+useTokenIfAvailable:(BOOL)useTokenIfAvailable
+        handler:(void (^)(TPPCatalogUngroupedFeed *ungroupedFeed))handler;
 
 // |feed.type| must be TPPOPDSFeedTypeAcquisitionUngrouped.
 - (instancetype)initWithOPDSFeed:(TPPOPDSFeed *)feed;

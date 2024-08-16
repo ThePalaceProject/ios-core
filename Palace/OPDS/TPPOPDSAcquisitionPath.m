@@ -112,7 +112,9 @@ NSString * const _Nonnull ContentTypeBiblioboard = @"application/json";
         ContentTypeEpubZip,
         ContentTypeAudiobookZip,
         ContentTypeAudiobookLCP,
-        ContentTypeReadiumLCPPDF
+        ContentTypeReadiumLCPPDF,
+        ContentTypeReadiumLCP,
+        ContentTypeOpenAccessAudiobook
       ]],
       ContentTypeAdobeAdept: [NSSet setWithArray:@[ContentTypeEpubZip]],
       ContentTypeBearerToken: [NSSet setWithArray:@[

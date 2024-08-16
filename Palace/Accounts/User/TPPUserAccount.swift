@@ -259,6 +259,11 @@ private enum StorageKey: String {
     return false
   }
   
+  func isTokenRefreshRequired() -> Bool {
+    let isTokenAuthAndMissing = (authDefinition?.isToken ?? false) && !hasAuthToken()
+    return authTokenHasExpired || isTokenAuthAndMissing
+  }
+  
   func hasAdobeToken() -> Bool {
     return adobeToken != nil
   }

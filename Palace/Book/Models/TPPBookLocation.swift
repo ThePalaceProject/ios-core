@@ -16,13 +16,13 @@ extension TPPBookLocationData {
   }
 }
 
-enum TPPBookLocationKey: String {
+public enum TPPBookLocationKey: String {
   case locationString = "locationString"
   case renderer = "renderer"
 }
 
 @objcMembers
-class TPPBookLocation: NSObject {
+public class TPPBookLocation: NSObject {
   
   /// Due to differences in how different renderers (e.g. Readium, RMSDK, et cetera) want to handle
   /// location information, it is necessary to store location information in an unstructured manner.

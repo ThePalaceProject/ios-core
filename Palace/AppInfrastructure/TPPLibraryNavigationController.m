@@ -28,8 +28,8 @@
   vc.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc]
                                          initWithImage:[UIImage imageNamed:@"MyLibraryIcon"] style:(UIBarButtonItemStylePlain)
                                          target:self
-                                         action:@selector(switchLibrary)];
-  vc.navigationItem.leftBarButtonItem.accessibilityLabel = NSLocalizedString(@"AccessibilitySwitchLibrary", nil);
+                                         action:@selector(switchLibrary)];;
+  vc.navigationItem.leftBarButtonItem.accessibilityLabel = NSLocalizedString(@"librarySwitchButton", nil);
 }
 
 // for converting this to Swift, see https://bit.ly/3mM9QoH

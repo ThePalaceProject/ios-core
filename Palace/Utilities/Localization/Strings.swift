@@ -9,6 +9,13 @@
 import Foundation
 
 struct Strings {
+  
+  struct Accessibility {
+    static let navigationTitle = "navigationTitle"
+    static let librarySwitchButton = "librarySwitchButton"
+    static let viewBookmarksAndTocButton = "viewBookmarksAndTocButton"
+  }
+
   struct AgeCheck {
     static let title = NSLocalizedString("Age Verification", comment: "Title for Age Verification")
     static let titleLabel = NSLocalizedString("Please enter your birth year", comment: "Caption for asking user to enter their birth year")
@@ -87,6 +94,7 @@ struct Strings {
   }
   
   struct ProblemReportEmail {
+    static let supportEmail = "logs@thepalaceproject.org"
     static let noAccountSetupTitle = NSLocalizedString("No email account is set for this device.", comment: "Alert title")
     static let reportSentTitle = NSLocalizedString("Thank You", comment: "Alert title")
     static let reportSentBody = NSLocalizedString("Your report will be reviewed as soon as possible.", comment: "Alert message")
@@ -117,7 +125,6 @@ struct Strings {
   }
   
   struct TPPBaseReaderViewController {
-    static let tocAndBookmarks = NSLocalizedString("Table of contents and bookmarks", comment: "Table of contents and bookmarks")
     static let removeBookmark = NSLocalizedString("Remove Bookmark",
                                                   comment: "Accessibility label for button to remove a bookmark")
     static let addBookmark = NSLocalizedString("Add Bookmark",
@@ -185,9 +192,9 @@ struct Strings {
   }
   
   struct TPPReaderAppearance {
-    static let blackOnWhiteText = NSLocalizedString("Open dyslexic font", comment: "OpenDyslexicFont")
-    static let blackOnSepiaText = NSLocalizedString("Black on sepia text", comment: "BlackOnSepiaText")
-    static let whiteOnBlackText = NSLocalizedString("White on black text", comment: "WhiteOnBlackText")
+    static let blackOnWhiteText = NSLocalizedString("Appearance Selector: Open dyslexic font", comment: "OpenDyslexicFont")
+    static let blackOnSepiaText = NSLocalizedString("Appearance Selector: Black on sepia text", comment: "BlackOnSepiaText")
+    static let whiteOnBlackText = NSLocalizedString("Appearance Selector: White on black text", comment: "WhiteOnBlackText")
   }
   
   struct TPPReaderBookmarksBusinessLogic {
@@ -195,10 +202,10 @@ struct Strings {
   }
   
   struct TPPReaderFont {
-    static let original = NSLocalizedString("Default book font", comment: "OriginalFont")
-    static let sans = NSLocalizedString("Sans font", comment: "SansFont")
-    static let serif = NSLocalizedString("Serif font", comment: "SerifFont")
-    static let dyslexic = NSLocalizedString("Open dyslexic font", comment: "OpenDyslexicFont")
+    static let original = NSLocalizedString("Font selector: Default book font", comment: "OriginalFont")
+    static let sans = NSLocalizedString("Font selector: Sans font", comment: "SansFont")
+    static let serif = NSLocalizedString("Font selector: Serif font", comment: "SerifFont")
+    static let dyslexic = NSLocalizedString("Font selector: Open dyslexic font", comment: "OpenDyslexicFont")
   }
   
   struct TPPReaderPositionsVC {

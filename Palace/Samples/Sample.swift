@@ -35,7 +35,7 @@ extension Sample {
   var needsDownload: Bool { type.needsDownload }
 
   func fetchSample(completion: @escaping (NYPLResult<Data>) -> Void) {
-    let _ = TPPNetworkExecutor.shared.GET(url) { result in
+    let _ = TPPNetworkExecutor.shared.GET(url, useTokenIfAvailable: false) { result in
         completion(result)
     }
   }

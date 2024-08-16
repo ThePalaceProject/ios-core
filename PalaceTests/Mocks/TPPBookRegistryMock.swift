@@ -96,7 +96,7 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistrySyncing, TPPBookRegistryProv
   }
   
   func deleteGenericBookmark(_ location: Palace.TPPBookLocation, forIdentifier bookIdentifier: String) {
-    registry[bookIdentifier]?.genericBookmarks?.removeAll { $0.locationString == location.locationString }
+    registry[bookIdentifier]?.genericBookmarks?.removeAll { $0.isSimilarTo(location) }
   }
   
   func replaceGenericBookmark(_ oldLocation: Palace.TPPBookLocation, with newLocation: Palace.TPPBookLocation, forIdentifier: String) {
