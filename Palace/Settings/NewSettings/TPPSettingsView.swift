@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import PalaceUIKit
 
 struct TPPSettingsView: View {
   typealias DisplayStrings = Strings.Settings
@@ -146,7 +147,7 @@ struct TPPSettingsView: View {
     let build = Bundle.main.object(forInfoDictionaryKey: (kCFBundleVersionKey as String)) as! String
     
     Text("\(productName) version \(version) (\(build))")
-      .font(Font(uiFont: UIFont.palaceFont(ofSize: 12)))
+      .palaceFont(size: 12)
       .gesture(
         LongPressGesture(minimumDuration: 5.0)
           .onEnded { _ in
@@ -162,7 +163,10 @@ struct TPPSettingsView: View {
       destination: destination,
       tag: index,
       selection: selection,
-      label: { Text(title) }
+      label: {
+        Text(title)
+          .palaceFont(.body)
+      }
     )
   }
 }

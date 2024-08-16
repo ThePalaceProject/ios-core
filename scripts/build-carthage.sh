@@ -43,7 +43,7 @@ if [ "$1" != "--no-private" ]; then
 
   swift $CERTIFICATES_PATH_PREFIX/mobile-certificates/Certificates/Palace/iOS/AddLCP.swift
 
-  ./ios-drm-audioengine/scripts/fetch-audioengine.sh
+  ./scripts/fetch-audioengine.sh
 fi
 
 echo "Carthage build..."

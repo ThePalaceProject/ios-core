@@ -135,9 +135,17 @@ extension TPPPDFDocument {
   /// - Returns: Array of PDF locations
   func search(text: String) {
     let searchString = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-    document?.delegate = self
-    document?.cancelFindString()
-    document?.beginFindString(searchString, withOptions: .caseInsensitive)
+    if isEncrypted {
+      if let locations = encryptedDocument?.search(text: searchString) {
+        for location in locations {
+          delegate?.didMatchString(location)
+        }
+      }
+    } else {
+      document?.delegate = self
+      document?.cancelFindString()
+      document?.beginFindString(searchString, withOptions: .caseInsensitive)
+    }
   }
   
   func cancelSearch() {

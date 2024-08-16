@@ -16,7 +16,7 @@ import PalaceAudiobookToolkit
 
 /// LCP Audiobooks helper class
 @objc class LCPAudiobooks: NSObject {
-    
+  
   private let audiobookUrlKey = "audiobookUrl"
   private let audioFileHrefKey = "audioFileHref"
   private let destinationFileUrlKey = "destinationFileUrl"
@@ -40,17 +40,35 @@ import PalaceAudiobookToolkit
   
   /// Content dictionary for `AudiobookFactory`
   @objc func contentDictionary(completion: @escaping (_ json: NSDictionary?, _ error: NSError?) -> ()) {
+    DispatchQueue.global(qos: .userInitiated).async {
+      self.loadContentDictionary { json, error in
+        DispatchQueue.main.async {
+          completion(json, error)
+        }
+      }
+    }
+  }
+  
+  private func loadContentDictionary(completion: @escaping (_ json: NSDictionary?, _ error: NSError?) -> ()) {
     let manifestPath = "manifest.json"
     let asset = FileAsset(url: self.audiobookUrl)
     streamer.open(asset: asset, allowUserInteraction: false) { result in
-      do {
-        let publication = try result.get()
-        let resourse = publication.getResource(at: manifestPath)
-        let json = try resourse.readAsJSON().get()
-        completion(json as NSDictionary, nil)
-      } catch {
-        TPPErrorLogger.logError(error, summary: "Error reading LCP \(manifestPath) file", metadata: [self.audiobookUrlKey: self.audiobookUrl])
+      switch result {
+      case .success(let publication):
+        do {
+          let resource = publication.getResource(at: manifestPath)
+          let json = try resource.readAsJSON().get()
+          completion(json as NSDictionary, nil)
+        } catch {
+          TPPErrorLogger.logError(error, summary: "Error reading LCP \(manifestPath) file", metadata: [self.audiobookUrlKey: self.audiobookUrl])
+          completion(nil, LCPAudiobooks.nsError(for: error))
+        }
+      case .failure(let error):
+        TPPErrorLogger.logError(error, summary: "Failed to open LCP audiobook", metadata: [self.audiobookUrlKey: self.audiobookUrl])
         completion(nil, LCPAudiobooks.nsError(for: error))
+      case .cancelled:
+        completion(nil, nil)
+
       }
     }
   }
@@ -59,10 +77,10 @@ import PalaceAudiobookToolkit
   /// - Parameter book: audiobook
   /// - Returns: `true` if the book is an LCP DRM protected audiobook, `false` otherwise
   @objc static func canOpenBook(_ book: TPPBook) -> Bool {
-    guard let defualtAcquisition = book.defaultAcquisition else { return false }
-    return book.defaultBookContentType == .audiobook && defualtAcquisition.type == expectedAcquisitionType
+    guard let defaultAcquisition = book.defaultAcquisition else { return false }
+    return book.defaultBookContentType == .audiobook && defaultAcquisition.type == expectedAcquisitionType
   }
-
+  
   /// Creates an NSError for Objective-C code
   /// - Parameter error: Error object
   /// - Returns: NSError object
@@ -77,28 +95,41 @@ import PalaceAudiobookToolkit
 
 /// DRM Decryptor for LCP audiobooks
 extension LCPAudiobooks: DRMDecryptor {
-
+  
   /// Decrypt protected file
   /// - Parameters:
   ///   - url: encrypted file URL.
   ///   - resultUrl: URL to save decrypted file at.
   ///   - completion: decryptor callback with optional `Error`.
   func decrypt(url: URL, to resultUrl: URL, completion: @escaping (Error?) -> Void) {
+    DispatchQueue.global(qos: .userInitiated).async {
+      self.decryptFile(at: url, to: resultUrl, completion: completion)
+    }
+  }
+  
+  private func decryptFile(at url: URL, to resultUrl: URL, completion: @escaping (Error?) -> Void) {
     let asset = FileAsset(url: self.audiobookUrl)
     streamer.open(asset: asset, allowUserInteraction: false) { result in
-      do {
-        let publication = try result.get()
-        let resource = publication.getResource(at: url.path)
-        let data = try resource.read().get()
-        try data.write(to: resultUrl)
-        completion(nil)
-      } catch {
-        TPPErrorLogger.logError(error, summary: "Error decrypting LCP audio file", metadata: [
-          self.audiobookUrlKey: self.audiobookUrl,
-          self.audioFileHrefKey: url,
-          self.destinationFileUrlKey: resultUrl
-        ])
+      switch result {
+      case .success(let publication):
+        do {
+          let resource = publication.getResource(at: url.path)
+          let data = try resource.read().get()
+          try data.write(to: resultUrl)
+          completion(nil)
+        } catch {
+          TPPErrorLogger.logError(error, summary: "Error decrypting LCP audio file", metadata: [
+            self.audiobookUrlKey: self.audiobookUrl,
+            self.audioFileHrefKey: url,
+            self.destinationFileUrlKey: resultUrl
+          ])
+          completion(error)
+        }
+      case .failure(let error):
+        TPPErrorLogger.logError(error, summary: "Failed to decrypt LCP audiobook", metadata: [self.audiobookUrlKey: self.audiobookUrl])
         completion(error)
+      case .cancelled:
+        completion(nil)
       }
     }
   }

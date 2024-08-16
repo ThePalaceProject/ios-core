@@ -332,7 +332,6 @@ Authenticating with any of those barcodes should work.
   [self setupTableData];
   
   self.syncSwitch = [[UISwitch alloc] initWithFrame:CGRectZero];
-  [self checkSyncPermissionForCurrentPatron];
 }
 
 - (NSArray *) cellsForAuthMethod:(AccountDetailsAuthentication *)authenticationMethod {
@@ -670,7 +669,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
            book:nil];
           [self.tableView deselectRowAtIndexPath:indexPath animated:YES];
           break;
-      } else {
+      } else if (AccountsManager.sharedInstance.currentAccount.supportURL != nil) {
         BundledHTMLViewController *webController = [[BundledHTMLViewController alloc] initWithFileURL:AccountsManager.sharedInstance.currentAccount.supportURL title:AccountsManager.shared.currentAccount.name];
         webController.hidesBottomBarWhenPushed = true;
         [self.navigationController pushViewController:webController animated:YES];
@@ -904,6 +903,8 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
                                      initWithStyle:UITableViewCellStyleDefault
                                      reuseIdentifier:nil];
       self.syncSwitch.on = self.selectedAccount.details.syncPermissionGranted;
+      self.syncSwitch.enabled = true;
+
       cell.accessoryView = self.syncSwitch;
       [self.syncSwitch addTarget:self action:@selector(syncSwitchChanged:) forControlEvents:UIControlEventValueChanged];
       cell.selectionStyle = UITableViewCellSelectionStyleNone;
@@ -1195,7 +1196,6 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
 {
   [[NSOperationQueue mainQueue] addOperationWithBlock:^{
     if(self.selectedUserAccount.hasCredentials) {
-      [self checkSyncPermissionForCurrentPatron];
       self.usernameTextField.text = self.selectedUserAccount.barcode;
       self.usernameTextField.enabled = NO;
       self.usernameTextField.textColor = [UIColor grayColor];
@@ -1367,30 +1367,8 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
 
 - (void)syncSwitchChanged:(UISwitch*)sender
 {
-  const BOOL currentSwitchState = sender.on;
-
-  if (sender.on) {
-    self.syncSwitch.enabled = NO;
-  } else {
-    self.syncSwitch.on = NO;
-  }
-
-  __weak __auto_type weakSelf = self;
-  [self.businessLogic changeSyncPermissionTo:currentSwitchState
-                    postServerSyncCompletion:^(BOOL success) {
-    weakSelf.syncSwitch.enabled = YES;
-    weakSelf.syncSwitch.on = success;
-  }];
-}
-
-- (void)checkSyncPermissionForCurrentPatron
-{
-  [self.businessLogic checkSyncPermissionWithPreWork:^{
-    self.syncSwitch.enabled = NO;
-  } postWork:^(BOOL enableSync){
-    self.syncSwitch.on = enableSync;
-    self.syncSwitch.enabled = YES;
-  }];
+  self.syncSwitch.on = sender.on;
+  self.selectedAccount.details.syncPermissionGranted = sender.on;
 }
 
 #pragma mark - UIApplication callbacks

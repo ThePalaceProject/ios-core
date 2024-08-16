@@ -7,7 +7,6 @@
 //
 
 import Foundation
-import PalaceAudiobookToolkit
 
 @objc public class AudiobookBookmarkBusinessLogic: NSObject {
   private var book: TPPBook
@@ -25,106 +24,138 @@ import PalaceAudiobookToolkit
     self.annotationsManager = annotationsManager
   }
   
-  private func fetchLocalBookmarks() -> [ChapterLocation] {
+  private func fetchLocalBookmarks() -> [AudioBookmark] {
     return registry.genericBookmarksForIdentifier(book.identifier).compactMap { bookmark in
       guard
         let localData = bookmark.locationString.data(using: .utf8),
-        let location = try? JSONDecoder().decode(ChapterLocation.self, from: localData)
+        let audiobookMarks = try? JSONDecoder().decode(AudioBookmark.self, from: localData)
       else {
         return nil
       }
       
-      return location
+      return audiobookMarks
     }
   }
   
-  private func fetchServerBookmarks(completion: @escaping ([PalaceAudiobookToolkit.ChapterLocation]) -> Void) {
-    annotationsManager.getServerBookmarks(forBook: book.identifier, atURL: book.annotationsURL, motivation: .bookmark) { serverBookmarks in
+  private func fetchServerBookmarks(completion: @escaping ([AudioBookmark]) -> Void) {
+    annotationsManager.getServerBookmarks(forBook: book.identifier, atURL: self.book.annotationsURL, motivation: .bookmark) { serverBookmarks in
       guard let audioBookmarks = serverBookmarks as? [AudioBookmark] else {
         completion([])
         return
       }
       
-      let chapterLocations = audioBookmarks.compactMap(ChapterLocation.init)
-      completion(chapterLocations)
+      completion(audioBookmarks)
     }
   }
   
-  
-  func syncBookmarks(localBookmarks: [ChapterLocation], completion: (() -> Void)? = nil) {
-    Task {
-      guard !isSyncing else { return }
-      isSyncing = true
-      
-      let unsyncedLocalBookmarks = localBookmarks.filter { $0.annotationId.isEmpty }
-      
-      // 1. Upload unsynced local bookmarks to server
-      for bookmark in unsyncedLocalBookmarks {
-        let data = bookmark.toData()
-        guard let locationString = String(data: data, encoding: .utf8) else {
-          continue
-        }
-        
-        if let annotationId = try await annotationsManager.postAudiobookBookmark(forBook: self.book.identifier, selectorValue: locationString) {
-          if let updatedBookmark = bookmark.copy() as? ChapterLocation {
-            updatedBookmark.annotationId = annotationId
-            replace(oldLocation: bookmark, with: updatedBookmark)
-          }
-        }
+  private var completionHandlersQueue: [([AudioBookmark]) -> Void] = []
+
+  func syncBookmarks(localBookmarks: [AudioBookmark], completion: (([AudioBookmark]) -> Void)? = nil) {
+    guard !isSyncing else {
+      if let completion = completion {
+        completionHandlersQueue.append(completion)
       }
+      return
+    }
+    
+    isSyncing = true
+    Task {
+      await uploadUnsyncedBookmarks(localBookmarks)
       
       fetchServerBookmarks { [weak self] remoteBookmarks in
-        guard let self = self, !remoteBookmarks.isEmpty else {
-          return
+        guard let strongSelf = self else { return }
+        
+        strongSelf.updateLocalBookmarks(with: remoteBookmarks) { updatedBookmarks in
+          strongSelf.finalizeSync(with: updatedBookmarks, completion: completion)
         }
-        
-        var updatedLocalBookmarks = self.fetchLocalBookmarks()
-        
-        // 2. Download server bookmarks that are not stored locally
-        let unsyncedRemoteBookmarks = remoteBookmarks.filter { remoteBookmark in
-          !updatedLocalBookmarks.contains(where: { localBookmark in
-            localBookmark.isSimilar(to: remoteBookmark)
-          })
-        }
-        
-        unsyncedRemoteBookmarks.forEach {
-          if let genericLocation = $0.toTPPBookLocation() {
-            self.registry.addOrReplaceGenericBookmark(genericLocation, forIdentifier: self.book.identifier)
-          }
-        }
-        
-        updatedLocalBookmarks = self.fetchLocalBookmarks()
-        
-        // 3. Delete local bookmarks that have been deleted from the server
-        let localBookmarksToDelete = remoteBookmarks.filter { remoteBookmark in
-          updatedLocalBookmarks.contains(where: { localBookmark in
-            localBookmark.isSimilar(to: remoteBookmark) && localBookmark.annotationId.isEmpty
-          })
-        }
-        
-        localBookmarksToDelete.forEach { self.deleteBookmark(at: $0) { _ in } }
-        
-        // 4. Delete server bookmarks that have been deleted locally
-        let serverBookmarksToDelete = updatedLocalBookmarks.filter { localBookmark in
-          !remoteBookmarks.contains(where: { remoteBookmark in
-            remoteBookmark.isSimilar(to: localBookmark)
-          }) && !localBookmark.annotationId.isEmpty
-        }
-        
-        for bookmark in serverBookmarksToDelete {
-          if !bookmark.annotationId.isEmpty {
-            self.annotationsManager.deleteBookmark(annotationId: bookmark.annotationId) { _ in }
-          }
-        }
-
-        self.isSyncing = false
-        completion?()
       }
     }
   }
   
+  private func uploadUnsyncedBookmarks(_ localBookmarks: [AudioBookmark]) async {
+    let unsyncedLocalBookmarks = localBookmarks.filter { $0.isUnsynced }
+    
+    for bookmark in unsyncedLocalBookmarks {
+      do {
+        try await uploadBookmark(bookmark)
+      } catch {
+        ATLog(.debug, "Failed to save annotation with error: \(error.localizedDescription)")
+      }
+    }
+  }
   
-  private func replace(oldLocation: ChapterLocation, with newLocation: ChapterLocation) {
+  private func uploadBookmark(_ bookmark: AudioBookmark) async throws {
+    guard let data = bookmark.toData(),
+            let locationString = String(data: data, encoding: .utf8)
+    else { return }
+    
+    guard let annotationId = try await annotationsManager.postAudiobookBookmark(forBook: self.book.identifier, selectorValue: locationString) else {
+      return
+    }
+    
+    replaceBookmarkInLocalStore(bookmark, withAnnotationId: annotationId)
+  }
+  
+  private func replaceBookmarkInLocalStore(_ bookmark: AudioBookmark, withAnnotationId annotationId: String) {
+    if var updatedBookmark = bookmark.copy() as? AudioBookmark {
+      updatedBookmark.annotationId = annotationId
+      replace(oldLocation: bookmark, with: updatedBookmark)
+    }
+  }
+
+  private func updateLocalBookmarks(with remoteBookmarks: [AudioBookmark], completion: @escaping ([AudioBookmark]) -> Void) {
+    var updatedLocalBookmarks = fetchLocalBookmarks()
+
+    guard TPPAnnotations.syncIsPossibleAndPermitted() else {
+      completion(updatedLocalBookmarks)
+      return
+    }
+    
+    let localBookmarksToDelete = updatedLocalBookmarks.filter { localBookmark in
+      let hasAnnotationId = !(localBookmark.annotationId.isEmpty)
+      let notOnServer = !remoteBookmarks.contains(where: { $0.isSimilar(to: localBookmark) })
+      return hasAnnotationId && notOnServer
+    }
+    
+    deleteBookmarks(localBookmarksToDelete)
+    
+    updatedLocalBookmarks.removeAll(where: { localBookmarksToDelete.contains($0) })
+    
+    let existingLocalBookmarkIds = Set(updatedLocalBookmarks.compactMap { $0.annotationId })
+    let newRemoteBookmarks = remoteBookmarks.filter { remoteBookmark in
+      return !existingLocalBookmarkIds.contains(remoteBookmark.annotationId)
+    }
+    
+    addNewBookmarksToLocalStore(newRemoteBookmarks)
+    
+    let finalUpdatedLocalBookmarks = fetchLocalBookmarks()
+    
+    completion(finalUpdatedLocalBookmarks)
+  }
+  
+  private func addNewBookmarksToLocalStore(_ bookmarks: [AudioBookmark]) {
+    bookmarks.forEach { bookmark in
+      if let location = bookmark.toTPPBookLocation() {
+        registry.addGenericBookmark(location, forIdentifier: book.identifier)
+      }
+    }
+  }
+
+  private func deleteBookmarks(_ bookmarks: [AudioBookmark]) {
+    bookmarks.forEach { bookmark in
+//      deleteBookmark(at: bookmark)
+      annotationsManager.deleteBookmark(annotationId: bookmark.annotationId) { _ in }
+    }
+  }
+  
+  private func finalizeSync(with bookmarks: [AudioBookmark], completion: (([AudioBookmark]) -> Void)?) {
+    isSyncing = false
+    completion?(bookmarks)
+    completionHandlersQueue.forEach { $0(bookmarks) }
+    completionHandlersQueue.removeAll()
+  }
+
+  private func replace(oldLocation: AudioBookmark, with newLocation: AudioBookmark) {
     guard
       let oldLocation = oldLocation.toTPPBookLocation(),
       let newLocation = newLocation.toTPPBookLocation() else { return }
@@ -132,65 +163,92 @@ import PalaceAudiobookToolkit
   }
 }
 
-private extension Array where Element == ChapterLocation {
-    func combineAndRemoveDuplicates(with otherArray: [ChapterLocation]) -> [ChapterLocation] {
-        let combinedArray = self + otherArray
-        var uniqueArray: [ChapterLocation] = []
-
-        for location in combinedArray {
-          if !uniqueArray.contains(where: { $0.isSimilar(to: location) }) {
-                uniqueArray.append(location)
-            }
-        }
-        return uniqueArray
+private extension Array where Element == AudioBookmark {
+  func combineAndRemoveDuplicates(with otherArray: [AudioBookmark]) -> [AudioBookmark] {
+    let combinedArray = self + otherArray
+    var uniqueArray: [AudioBookmark] = []
+    
+    for location in combinedArray {
+      if !uniqueArray.contains(where: { $0.isSimilar(to: location) }) {
+        uniqueArray.append(location)
+      }
     }
-}
-
-extension AudiobookBookmarkBusinessLogic: AudiobookPlaybackPositionDelegate {
-  public func saveListeningPosition(at location: String, completion: ((_ serverID: String?) -> Void)? = nil) {
-    annotationsManager.postListeningPosition(forBook: self.book.identifier, selectorValue: location, completion: completion)
+    return uniqueArray
   }
 }
 
-extension AudiobookBookmarkBusinessLogic: AudiobookBookmarkDelegate {
-  public func saveBookmark(at location: ChapterLocation, completion: ((_ location: ChapterLocation?) -> Void)? = nil) {
-    Task {
-      location.lastSavedTimeStamp = Date().iso8601
+//extension AudiobookBookmarkBusinessLogic: AudiobookPlaybackPositionDelegate {
+//  public func postListeningPosition(at location: String, completion: ((_ serverID: String?) -> Void)? = nil) {
+//    annotationsManager.postListeningPosition(forBook: self.book.identifier, selectorValue: location, completion: completion)
+//  }
+//}
 
+extension AudiobookBookmarkBusinessLogic: AudiobookBookmarkDelegate {
+  public func saveListeningPosition(at position: TrackPosition, completion: ((String?) -> Void)?) {
+    let audioBookmark = position.toAudioBookmark()
+    audioBookmark.lastSavedTimeStamp = Date().iso8601
+    guard let tppLocation = audioBookmark.toTPPBookLocation() else {
+      completion?(nil)
+      return
+    }
+
+    annotationsManager.postListeningPosition(forBook: self.book.identifier, selectorValue: tppLocation.locationString) { serverId in
+      if let serverId {
+        audioBookmark.lastSavedTimeStamp = ""
+        audioBookmark.annotationId = serverId
+      }
+    
+      self.registry.setLocation(audioBookmark.toTPPBookLocation(), forIdentifier: self.book.identifier)
+      completion?(serverId)
+    }
+  }
+
+  public func saveBookmark(at position: TrackPosition, completion: ((_ position: TrackPosition?) -> Void)? = nil) {
+    Task {
+      var location = position.toAudioBookmark()
+      location.lastSavedTimeStamp = Date().iso8601
+      var updatedPosition = position
+      updatedPosition.lastSavedTimeStamp = location.lastSavedTimeStamp
+  
       defer {
         if let genericLocation = location.toTPPBookLocation() {
           registry.addOrReplaceGenericBookmark(genericLocation, forIdentifier: self.book.identifier)
-          completion?(location)
+          completion?(updatedPosition)
         }
       }
-
-      let data = location.toData()
-      guard let locationString = String(data: data, encoding: .utf8) else {
+     
+      guard  let data = location.toData(), let locationString = String(data: data, encoding: .utf8) else {
         return
       }
-
+      
       if let annotationId = try await annotationsManager.postAudiobookBookmark(forBook: self.book.identifier, selectorValue: locationString) {
         location.annotationId = annotationId
       }
     }
   }
-
-  public func fetchBookmarks(completion: @escaping ([PalaceAudiobookToolkit.ChapterLocation]) -> Void) {
-    let localBookmarks: [ChapterLocation] = fetchLocalBookmarks()
+  
+  public func fetchBookmarks(completion: @escaping ([TrackPosition]) -> Void) {
+    let localBookmarks: [AudioBookmark] = fetchLocalBookmarks()
 
     fetchServerBookmarks { [weak self] serverBookmarks in
       self?.syncBookmarks(localBookmarks: localBookmarks)
+      let trackPositions = serverBookmarks.combineAndRemoveDuplicates(with: localBookmarks).compactMap { TrackPosition(audioBookmark: $0, tracks: ) }
       completion(serverBookmarks.combineAndRemoveDuplicates(with: localBookmarks))
     }
   }
-
-  public func deleteBookmark(at location: ChapterLocation, completion: ((Bool) -> Void)? = nil) {
+  
+  public func deleteBookmark(at location: AudioBookmark, completion: ((Bool) -> Void)? = nil) {
     if let genericLocation = location.toTPPBookLocation() {
       self.registry.deleteGenericBookmark(genericLocation, forIdentifier: self.book.identifier)
     }
-
-    annotationsManager.deleteBookmark(annotationId: location.annotationId) { success in
-        completion?(success)
-      }
+    
+    guard !location.isUnsynced else {
+      completion?(true)
+      return
     }
+    
+    annotationsManager.deleteBookmark(annotationId: location.annotationId) { success in
+      completion?(success)
+    }
+  }
 }

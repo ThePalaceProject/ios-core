@@ -21,7 +21,7 @@ import UIKit
   
   /// PDF document.
   var document: CGPDFDocument?
-    
+  
   init(encryptedData: Data, decryptor: @escaping (_ data: Data, _ start: UInt, _ end: UInt) -> Data) {
     self.data = encryptedData
     self.decryptor = decryptor
@@ -42,10 +42,10 @@ import UIKit
   var cover: UIImage? {
     document?.cover
   }
-
+  
   func page(at n: Int) -> CGPDFPage? {
     // Bookmarks compatibility:
-    // CGPDFDocument counts pages from 1; PDDocument from 0
+    // CGPDFDocument counts pages from 1; PDFDocument from 0
     document?.page(at: n + 1)
   }
   
@@ -67,9 +67,28 @@ import UIKit
   }
   
   var tableOfContents: [TPPPDFLocation] = []
-
+  
   func search(text: String) -> [TPPPDFLocation] {
-    return []
+    guard let document else {
+      return []
+    }
+    let searchText = text.lowercased()
+    var result = [TPPPDFLocation]()
+    for pageNumber in 1...pageCount {
+      guard let page = document.page(at: pageNumber) else {
+        continue
+      }
+      let extractor = TPPPDFTextExtractor()
+      let textBlocks = extractor.extractText(page: page)
+      let lowercaseBlocks = textBlocks.map { $0.lowercased() }
+      for (i, textBlock) in lowercaseBlocks.enumerated() {
+        if textBlock.contains(searchText) {
+          // ! CGPDF first page index is 1, that's why we subtract 1 from pageNumber
+          result.append(TPPPDFLocation(title: textBlocks[i], subtitle: nil, pageLabel: nil, pageNumber: page.pageNumber - 1))
+        }
+      }
+    }
+    return result
   }
   
 }
@@ -92,7 +111,7 @@ extension TPPEncryptedPDFDocument {
   func preview(for page: Int) -> UIImage? {
     self.page(at: page)?.preview
   }
-
+  
   /// Thumbnail image for a page
   /// - Parameter page: Page number
   /// - Returns: Rendered page image
@@ -126,7 +145,7 @@ extension TPPEncryptedPDFDocument {
     }
     return nil
   }
-
+  
   /// Image for a page
   /// - Parameters:
   ///   - page: Page number

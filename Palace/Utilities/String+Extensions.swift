@@ -8,16 +8,13 @@
 
 import Foundation
 
-@objc public extension NSString {
-  @objc class func isDate(_ dateOne: NSString, moreRecentThan dateTwo: NSString, with margin: Int) -> Bool {
+extension String {
+  static func isDate(_ date1: String, moreRecentThan date2: String, with delay: TimeInterval) -> Bool {
     let dateFormatter = ISO8601DateFormatter()
-    
-    guard let date1 = dateFormatter.date(from: String(dateOne)),
-          let date2 = dateFormatter.date(from: String(dateTwo)) else {
+    guard let d1 = dateFormatter.date(from: date1), let d2 = dateFormatter.date(from: date2) else {
       return false
     }
-    
-    let timeInterval = date1.timeIntervalSince(date2)
-    return timeInterval > TimeInterval(margin)
+    return d1.addingTimeInterval(delay) > d2
   }
 }
+

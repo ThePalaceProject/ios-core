@@ -19,6 +19,8 @@
   fileprivate static let deviceKey = "device"
   fileprivate static let chapterProgressKey = "progressWithinChapter"
   fileprivate static let bookProgressKey = "progressWithinBook"
+  fileprivate static let readingOrderItem = "readingOrderItem"
+  fileprivate static let readingOrderItemOffsetMilliseconds = "readingOrderItemOffsetMilliseconds"
 }
 
 protocol Bookmark: NSObject {}
@@ -38,6 +40,9 @@ protocol Bookmark: NSObject {}
 
   var progressWithinChapter:Float = 0.0
   var progressWithinBook:Float = 0.0
+  
+  var readingOrderItem:String?
+  var readingOrderItemOffsetMilliseconds:Float = 0.0
 
   var percentInChapter:String {
     return (self.progressWithinChapter * 100).roundTo(decimalPlaces: 0)
@@ -58,6 +63,8 @@ protocol Bookmark: NSObject {}
         location:String?,
         progressWithinChapter:Float,
         progressWithinBook:Float,
+        readingOrderItem: String?,
+        readingOrderItemOffsetMilliseconds: Float?,
         time:String?,
         device:String?)
   {
@@ -83,6 +90,8 @@ protocol Bookmark: NSObject {}
     
     self.progressWithinChapter = progressWithinChapter
     self.progressWithinBook = progressWithinBook
+    self.readingOrderItem = readingOrderItem
+    self.readingOrderItemOffsetMilliseconds = readingOrderItemOffsetMilliseconds ?? 0.0
     self.time = time ?? NSDate().rfc3339String()
     self.device = device
   }
@@ -107,6 +116,12 @@ protocol Bookmark: NSObject {}
     self.chapter = dictionary[TPPBookmarkDictionaryRepresentation.chapterKey] as? String
     self.page = dictionary[TPPBookmarkDictionaryRepresentation.pageKey] as? String
     self.device = dictionary[TPPBookmarkDictionaryRepresentation.deviceKey] as? String
+    self.readingOrderItem = dictionary[TPPBookmarkDictionaryRepresentation.readingOrderItem] as? String
+    
+    if let readingOrderItemOffsetMilliseconds = dictionary[TPPBookmarkDictionaryRepresentation.readingOrderItemOffsetMilliseconds] as? NSNumber {
+      self.progressWithinChapter = readingOrderItemOffsetMilliseconds.floatValue
+    }
+    
     if let progressChapter = dictionary[TPPBookmarkDictionaryRepresentation.chapterProgressKey] as? NSNumber {
       self.progressWithinChapter = progressChapter.floatValue
     }
@@ -125,7 +140,9 @@ protocol Bookmark: NSObject {}
       TPPBookmarkDictionaryRepresentation.timeKey: self.time,
       TPPBookmarkDictionaryRepresentation.deviceKey: self.device ?? "",
       TPPBookmarkDictionaryRepresentation.chapterProgressKey: self.progressWithinChapter,
-      TPPBookmarkDictionaryRepresentation.bookProgressKey: self.progressWithinBook
+      TPPBookmarkDictionaryRepresentation.bookProgressKey: self.progressWithinBook,
+      TPPBookmarkDictionaryRepresentation.readingOrderItem: self.readingOrderItem ?? "",
+      TPPBookmarkDictionaryRepresentation.readingOrderItemOffsetMilliseconds: self.readingOrderItemOffsetMilliseconds
     ]
   }
 
@@ -138,6 +155,9 @@ protocol Bookmark: NSObject {}
       && self.progressWithinBook =~= other.progressWithinBook
       && self.progressWithinChapter =~= other.progressWithinChapter
       && self.chapter == other.chapter
+      && self.readingOrderItem == other.readingOrderItem
+      && self.readingOrderItemOffsetMilliseconds =~= other.readingOrderItemOffsetMilliseconds
+
   }
 }
 
@@ -147,3 +167,28 @@ extension TPPReadiumBookmark {
   }
 }
 
+extension TPPReadiumBookmark {
+  func toJSONDictionary() -> [String: Any] {
+    var dict: [String: Any] = [:]
+    dict["annotationId"] = self.annotationId
+    dict["chapter"] = self.chapter
+    dict["page"] = self.page
+    dict["href"] = self.href
+    dict["progressWithinChapter"] = self.progressWithinChapter
+    dict["progressWithinBook"] = self.progressWithinBook
+    dict["device"] = self.device
+    dict["time"] = self.time
+    dict["readingOrderItemOffsetMilliseconds"] = self.readingOrderItemOffsetMilliseconds
+    dict["readingOrderItem"] = self.readingOrderItem
+    
+    if let locationData = self.location.data(using: .utf8),
+       let locationDict = try? JSONSerialization.jsonObject(with: locationData, options: []) as? [String: Any],
+       let locationDict {
+      for (key, value) in locationDict {
+        dict[key] = value
+      }
+    }
+    
+    return dict
+  }
+}

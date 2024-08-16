@@ -110,9 +110,9 @@ class TPPReaderBookmarksBusinessLogic: NSObject {
         return
     }
     
-    TPPAnnotations.postBookmark(bookmark, forBookID: book.identifier) { serverAnnotationID in
-      Log.debug(#function, serverAnnotationID != nil ? "Bookmark upload succeed" : "Bookmark failed to upload")
-      bookmark.annotationId = serverAnnotationID
+    TPPAnnotations.postBookmark(bookmark, forBookID: book.identifier) { response in
+      Log.debug(#function, response?.serverId != nil ? "Bookmark upload succeed" : "Bookmark failed to upload")
+      bookmark.annotationId = response?.serverId
       self.bookRegistry.add(bookmark, forIdentifier: self.book.identifier)
     }
   }

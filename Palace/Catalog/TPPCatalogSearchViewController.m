@@ -140,12 +140,14 @@
 - (void)addActivityIndicatorLabel:(NSTimer*)timer
 {
   if (!self.searchActivityIndicatorView.isHidden) {
-    [UIView transitionWithView:self.searchActivityIndicatorLabel
-                      duration:0.5
-                       options:UIViewAnimationOptionTransitionCrossDissolve
-                    animations:^{
-                      self.searchActivityIndicatorLabel.hidden = NO;
-                    } completion:nil];
+    dispatch_async(dispatch_get_main_queue(), ^{
+      [UIView transitionWithView:self.searchActivityIndicatorLabel
+                        duration:0.5
+                         options:UIViewAnimationOptionTransitionCrossDissolve
+                      animations:^{
+        self.searchActivityIndicatorLabel.hidden = NO;
+      } completion:nil];
+    });
   }
   [timer invalidate];
 }
@@ -193,12 +195,14 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
 {
   // FIXME: This is not ideal but we were having double-free issues with
   // `insertItemsAtIndexPaths:`. See issue #144 for more information.
-
+  
   // Debounce timer reduces content flickering on each reload
   if (!self.debounceTimer) {
     self.debounceTimer = [NSTimer scheduledTimerWithTimeInterval:1 repeats:NO block:^(NSTimer * _Nonnull timer) {
-      [self.collectionView reloadSections:[NSIndexSet indexSetWithIndex:0]];
-      self.debounceTimer = nil;
+      dispatch_async(dispatch_get_main_queue(), ^{
+        [self.collectionView reloadSections:[NSIndexSet indexSetWithIndex:0]];
+        self.debounceTimer = nil;
+      });
     }];
   }
 }
@@ -228,15 +232,16 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
   self.debounceTimer = nil;
   [TPPCatalogUngroupedFeed
    withURL:URL
+   useTokenIfAvailable:NO
    handler:^(TPPCatalogUngroupedFeed *const category) {
-     [[NSOperationQueue mainQueue] addOperationWithBlock:^{
-       if(category) {
-         self.feed = category;
-         self.feed.delegate = self;
-       }
-       [self updateUIAfterSearchSuccess:(category != nil)];
-     }];
-   }];
+    dispatch_async(dispatch_get_main_queue(), ^{
+      if(category) {
+        self.feed = category;
+        self.feed.delegate = self;
+      }
+      [self updateUIAfterSearchSuccess:(category != nil)];
+    });
+  }];
 }
 
 - (void)searchBarSearchButtonClicked:(__attribute__((unused)) UISearchBar *)searchBar

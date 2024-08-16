@@ -7,7 +7,9 @@
 /* This class implements a shared delegate that performs all of its duties via the shared registry,
 shared cover registry, shared download center, et cetera. */
 @interface TPPBookCellDelegate : NSObject
-  <TPPBookButtonsDelegate, TPPBookDownloadFailedCellDelegate, TPPBookDownloadingCellDelegate, AudiobookPlaybackPositionDelegate>
+<TPPBookButtonsDelegate, TPPBookDownloadFailedCellDelegate, TPPBookDownloadingCellDelegate>
+
+//  <TPPBookButtonsDelegate, TPPBookDownloadFailedCellDelegate, TPPBookDownloadingCellDelegate, AudiobookPlaybackPositionDelegate>
 
 + (id)new NS_UNAVAILABLE;
 - (id)init NS_UNAVAILABLE;
@@ -15,5 +17,15 @@ shared cover registry, shared download center, et cetera. */
 + (instancetype)sharedDelegate;
 @property (nonatomic) TPPBook *book;
 @property (nonatomic) bool isSyncing;
+@property (nonatomic) NSTimer *timer;
+@property (nonatomic) NSDate *lastServerUpdate;
+@property (nonatomic, weak) UIViewController *audiobookViewController;
+@property (nonatomic) DefaultAudiobookManager *manager;
+@property (nonatomic) NSTimeInterval previousPlayheadOffset;
+
+//- (void)presentDRMKeyError:(NSError *) error;
+- (void) startLoading:(UIViewController *)hostViewController;
+- (void) stopLoading;
+- (void)presentLocationRecoveryError:(NSError *)error;
 
 @end
