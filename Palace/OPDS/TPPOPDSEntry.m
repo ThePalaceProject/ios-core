@@ -41,179 +41,190 @@
 - (instancetype)initWithXML:(TPPXML *const)entryXML
 {
   self = [super init];
-  if(!self) return nil;
-
+  if (!self) return nil;
+  
   self.alternativeHeadline = [entryXML firstChildWithName:@"alternativeHeadline"].value;
   
-  {
-    NSMutableArray *const authorStrings = [NSMutableArray array];
-    NSMutableArray<TPPOPDSLink *> const *authorLinks = [NSMutableArray array];
-    
-    if ([[entryXML childrenWithName:@"duration"] count] > 0) {
-      TPPXML *durationXML = [[entryXML childrenWithName:@"duration"] firstObject];
-      self.duration = durationXML.value;
-    }
-    
-    for(TPPXML *const authorXML in [entryXML childrenWithName:@"author"]) {
-      TPPXML *const nameXML = [authorXML firstChildWithName:@"name"];
-      if(!nameXML) {
-        TPPLOG(@"'author' element missing required 'name' element. Ignoring malformed 'author' element.");
-        continue;
-      }
-      [authorStrings addObject:nameXML.value];
-      
-      TPPXML *const authorLinkXML = [authorXML firstChildWithName:@"link"];
-      TPPOPDSLink *const link = [[TPPOPDSLink alloc] initWithXML:authorLinkXML];
-      if(!link) {
-        TPPLOG(@"Ignoring malformed 'link' element for author.");
-      } else if ([link.rel isEqualToString:@"contributor"]) {
-        [authorLinks addObject:link];
-      }
-    }
+  [self parseAuthorsFromXML:entryXML];
+  [self parseContributorsFromXML:entryXML];
+  [self parseCategoriesFromXML:entryXML];
+  
+  if (![self parseIdentifierFromXML:entryXML]) return nil;
+  
+  [self parseLinksFromXML:entryXML];
+  
+  self.providerName = [entryXML firstChildWithName:@"distribution"].attributes[@"bibframe:ProviderName"];
+  
+  NSString *dateString = [entryXML firstChildWithName:@"issued"].value;
+  if (dateString) {
+    self.published = [NSDate dateWithISO8601DateString:dateString];
+  }
+  
+  self.publisher = [entryXML firstChildWithName:@"publisher"].value;
+  self.summary = [entryXML firstChildWithName:@"summary"].value;
+  
+  if (![self parseTitleFromXML:entryXML]) return nil;
+  if (![self parseUpdatedDateFromXML:entryXML]) return nil;
+  [self parseSeriesFromXML:entryXML];
+  
+  return self;
+}
 
-    self.authorStrings = authorStrings;
-    self.authorLinks = [authorLinks copy];
+- (void)parseAuthorsFromXML:(TPPXML *const)entryXML {
+  NSMutableArray *authorStrings = [NSMutableArray array];
+  NSMutableArray<TPPOPDSLink *> *authorLinks = [NSMutableArray array];
+  
+  TPPXML *durationXML = [[entryXML childrenWithName:@"duration"] firstObject];
+  if (durationXML) {
+    self.duration = durationXML.value;
   }
   
-  // Contributors and their roles
-  {
-    NSMutableDictionary<NSString *, NSMutableArray<NSString *>*> *contributors  = [NSMutableDictionary dictionary];
-    for(TPPXML *contributorNode in [entryXML childrenWithName:@"contributor"]) {
-      NSString *contributorRole = contributorNode.attributes[@"opf:role"];
-      NSString *contributorName = [[contributorNode firstChildWithName:@"name"].value stringByDecodingHTMLEntities];
-      if (contributorName) {
-        if (!contributors[contributorRole]) {
-          contributors[contributorRole] = [NSMutableArray array];
-        }
-        [contributors[contributorRole] addObject:contributorName];
-      }
+  for (TPPXML *authorXML in [entryXML childrenWithName:@"author"]) {
+    TPPXML *nameXML = [authorXML firstChildWithName:@"name"];
+    if (!nameXML) {
+      TPPLOG(@"'author' element missing required 'name' element. Ignoring malformed 'author' element.");
+      continue;
     }
-    if ([contributors count] > 0) {
-      self.contributors = contributors;
-    }
-  }
-  
-  {
-    NSMutableArray<TPPOPDSCategory *> const *categories = [NSMutableArray array];
+    [authorStrings addObject:nameXML.value];
     
-    for(TPPXML *const categoryXML in [entryXML childrenWithName:@"category"]) {
-      NSString *const term = categoryXML.attributes[@"term"];
-      if(!term) {
-        TPPLOG(@"Category missing required 'term'.");
+    TPPXML *authorLinkXML = [authorXML firstChildWithName:@"link"];
+    TPPOPDSLink *link = [[TPPOPDSLink alloc] initWithXML:authorLinkXML];
+    if (!link) {
+      TPPLOG(@"Ignoring malformed 'link' element for author.");
+    } else if ([link.rel isEqualToString:@"contributor"]) {
+      [authorLinks addObject:link];
+    }
+  }
+  
+  self.authorStrings = authorStrings;
+  self.authorLinks = [authorLinks copy];
+}
+
+- (void)parseContributorsFromXML:(TPPXML *const)entryXML {
+  NSMutableDictionary<NSString *, NSMutableArray<NSString *>*> *contributors = [NSMutableDictionary dictionary];
+  
+  for (TPPXML *contributorNode in [entryXML childrenWithName:@"contributor"]) {
+    NSString *contributorRole = contributorNode.attributes[@"opf:role"];
+    NSString *contributorName = [[contributorNode firstChildWithName:@"name"].value stringByDecodingHTMLEntities];
+    if (contributorName) {
+      if (!contributors[contributorRole]) {
+        contributors[contributorRole] = [NSMutableArray array];
+      }
+      [contributors[contributorRole] addObject:contributorName];
+    }
+  }
+  
+  if (contributors.count > 0) {
+    self.contributors = contributors;
+  }
+}
+
+- (void)parseCategoriesFromXML:(TPPXML *const)entryXML {
+  NSMutableArray<TPPOPDSCategory *> *categories = [NSMutableArray array];
+  
+  for (TPPXML *categoryXML in [entryXML childrenWithName:@"category"]) {
+    NSString *term = categoryXML.attributes[@"term"];
+    if (!term) {
+      TPPLOG(@"Category missing required 'term'.");
+      continue;
+    }
+    NSString *schemeString = categoryXML.attributes[@"scheme"];
+    NSURL *scheme = schemeString ? [NSURL URLWithString:schemeString] : nil;
+    TPPOPDSCategory *category = [TPPOPDSCategory categoryWithTerm:term label:categoryXML.attributes[@"label"] scheme:scheme];
+    [categories addObject:category];
+  }
+  
+  self.categories = [categories copy];
+}
+
+- (BOOL)parseIdentifierFromXML:(TPPXML *const)entryXML {
+  self.identifier = [entryXML firstChildWithName:@"id"].value;
+  if (!self.identifier) {
+    TPPLOG(@"Missing required 'id' element.");
+    return NO;
+  }
+  return YES;
+}
+
+- (void)parseLinksFromXML:(TPPXML *const)entryXML {
+  NSMutableArray *mutableLinks = [NSMutableArray array];
+  NSMutableArray<TPPOPDSAcquisition *> *mutableAcquisitions = [NSMutableArray array];
+  
+  for (TPPXML *linkXML in [entryXML childrenWithName:@"link"]) {
+    if ([linkXML.attributes[@"rel"] containsString:TPPOPDSRelationAcquisition]) {
+      TPPOPDSAcquisition *acquisition = [TPPOPDSAcquisition acquisitionWithLinkXML:linkXML];
+      if (acquisition) {
+        [mutableAcquisitions addObject:acquisition];
         continue;
       }
-      NSString *const schemeString = categoryXML.attributes[@"scheme"];
-      NSURL *const scheme = schemeString ? [NSURL URLWithString:schemeString] : nil;
-      [categories addObject:[TPPOPDSCategory
-                             categoryWithTerm:term
-                             label:categoryXML.attributes[@"label"]
-                             scheme:scheme]];
-    }
-    
-    self.categories = [categories copy];
-  }
-  
-  if(!((self.identifier = [entryXML firstChildWithName:@"id"].value))) {
-    TPPLOG(@"Missing required 'id' element.");
-    return nil;
-  }
-  
-  {
-    NSMutableArray *const mutableLinks = [NSMutableArray array];
-    NSMutableArray<TPPOPDSAcquisition *> *const mutableAcquisitions = [NSMutableArray array];
-    
-    for (TPPXML *const linkXML in [entryXML childrenWithName:@"link"]) {
-      
-      // Try parsing the link as an acquisition first to avoid creating an NYPLOPDSLink
-      // for no reason.
-      if ([[linkXML attributes][@"rel"] containsString:TPPOPDSRelationAcquisition]) {
-        TPPOPDSAcquisition *const acquisition = [TPPOPDSAcquisition acquisitionWithLinkXML:linkXML];
-        if (acquisition) {
-          [mutableAcquisitions addObject:acquisition];
-          continue;
-        }
-      } else if ([[linkXML attributes][@"rel"] containsString: TPPOPDSRelationPreview]) {
-        // Try parsing the link as a preview
-        TPPOPDSAcquisition *const acquisition = [TPPOPDSAcquisition acquisitionWithLinkXML:linkXML];
+    } else if ([linkXML.attributes[@"rel"] containsString:TPPOPDSRelationPreview]) {
+      if (!self.previewLink) {
+        TPPOPDSAcquisition *acquisition = [TPPOPDSAcquisition acquisitionWithLinkXML:linkXML];
         if (acquisition) {
           self.previewLink = acquisition;
         }
       }
-      
-      // It may sometimes bet the case that `!acquisition` if the acquisition used a
-      // non-standard relation. As such, we do not log an error here and let things
-      // continue so the link can be added to `self.links`.
-      
-      TPPOPDSLink *const link = [[TPPOPDSLink alloc] initWithXML:linkXML];
-      if(!link) {
-        TPPLOG(@"Ignoring malformed 'link' element.");
-        continue;
-      }
-            
-      if ([link.rel isEqualToString:@"http://www.w3.org/ns/oa#annotationService"]){
-        self.annotations = link;
-      } else if ([link.rel isEqualToString:@"alternate"]){
-        self.alternate = link;
-        self.analytics = [NSURL URLWithString:[link.href.absoluteString stringByReplacingOccurrencesOfString:@"/works/" withString:@"/analytics/"]];
-      } else if ([link.rel isEqualToString:@"related"]){
-        self.relatedWorks = link;
-      } else if ([link.rel isEqualToString:TPPOPDSRelationTimeTrackingLink]) {
-        // The app should track and report audiobook playback time if this link is present
-        self.timeTrackingLink = link;
-      }  else {
-        [mutableLinks addObject:link];
-      }
     }
     
-    self.acquisitions = [mutableAcquisitions copy];
-    self.links = [mutableLinks copy];
-  }
-  
-  self.providerName = [entryXML firstChildWithName:@"distribution"].attributes[@"bibframe:ProviderName"];
-  
-  {
-    NSString *const dateString = [entryXML firstChildWithName:@"issued"].value;
-    if(dateString) {
-      self.published = [NSDate dateWithISO8601DateString:dateString];
-    }
-  }
-  
-  self.publisher = [entryXML firstChildWithName:@"publisher"].value;
-  
-  self.summary = [entryXML firstChildWithName:@"summary"].value;
-  
-  if(!((self.title = [entryXML firstChildWithName:@"title"].value))) {
-    TPPLOG(@"Missing required 'title' element.");
-    return nil;
-  }
-  
-  {
-    NSString *const updatedString = [entryXML firstChildWithName:@"updated"].value;
-    if(!updatedString) {
-      TPPLOG(@"Missing required 'updated' element.");
-      return nil;
+    TPPOPDSLink *link = [[TPPOPDSLink alloc] initWithXML:linkXML];
+    if (!link) {
+      TPPLOG(@"Ignoring malformed 'link' element.");
+      continue;
     }
     
-    self.updated = [NSDate dateWithRFC3339String:updatedString];
-    if(!self.updated) {
-      TPPLOG(@"Element 'updated' does not contain an RFC 3339 date.");
-      return nil;
-    }
-  }
-
-  {
-    TPPXML *const seriesXML = [entryXML firstChildWithName:@"Series"];
-    TPPXML *const linkXML = [seriesXML firstChildWithName:@"link"];
-    if (linkXML) {
-      self.seriesLink = [[TPPOPDSLink alloc] initWithXML:linkXML];
-      if (!self.seriesLink) {
-        TPPLOG(@"Ignoring malformed 'link' element for schema:Series.");
-      }
+    if ([link.rel isEqualToString:@"http://www.w3.org/ns/oa#annotationService"]) {
+      self.annotations = link;
+    } else if ([link.rel isEqualToString:@"alternate"]) {
+      self.alternate = link;
+      self.analytics = [NSURL URLWithString:[link.href.absoluteString stringByReplacingOccurrencesOfString:@"/works/" withString:@"/analytics/"]];
+    } else if ([link.rel isEqualToString:@"related"]) {
+      self.relatedWorks = link;
+    } else if ([link.rel isEqualToString:TPPOPDSRelationTimeTrackingLink]) {
+      self.timeTrackingLink = link;
+    } else {
+      [mutableLinks addObject:link];
     }
   }
   
-  return self;
+  self.acquisitions = [mutableAcquisitions copy];
+  self.links = [mutableLinks copy];
 }
+
+- (BOOL)parseTitleFromXML:(TPPXML *const)entryXML {
+  self.title = [entryXML firstChildWithName:@"title"].value;
+  if (!self.title) {
+    TPPLOG(@"Missing required 'title' element.");
+    return NO;
+  }
+  return YES;
+}
+
+- (BOOL)parseUpdatedDateFromXML:(TPPXML *const)entryXML {
+  NSString *updatedString = [entryXML firstChildWithName:@"updated"].value;
+  if (!updatedString) {
+    TPPLOG(@"Missing required 'updated' element.");
+    return NO;
+  }
+  
+  self.updated = [NSDate dateWithRFC3339String:updatedString];
+  if (!self.updated) {
+    TPPLOG(@"Element 'updated' does not contain an RFC 3339 date.");
+    return NO;
+  }
+  return YES;
+}
+
+- (void)parseSeriesFromXML:(TPPXML *const)entryXML {
+  TPPXML *seriesXML = [entryXML firstChildWithName:@"Series"];
+  TPPXML *linkXML = [seriesXML firstChildWithName:@"link"];
+  if (linkXML) {
+    self.seriesLink = [[TPPOPDSLink alloc] initWithXML:linkXML];
+    if (!self.seriesLink) {
+      TPPLOG(@"Ignoring malformed 'link' element for schema:Series.");
+    }
+  }
+}
+
 - (TPPOPDSEntryGroupAttributes *)groupAttributes
 {
   for(TPPOPDSLink *const link in self.links) {
