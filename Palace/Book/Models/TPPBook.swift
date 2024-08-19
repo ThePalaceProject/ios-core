@@ -264,7 +264,7 @@ let TimeTrackingURLURLKey = "time-tracking-url"
       bookDuration: nil
     )
   }
-  
+
   @objc func bookWithMetadata(from book: TPPBook) -> TPPBook {
     TPPBook(
       acquisitions: self.acquisitions,
@@ -293,10 +293,10 @@ let TimeTrackingURLURLKey = "time-tracking-url"
       bookDuration: book.bookDuration
     )
   }
-  
+
   @objc func dictionaryRepresentation() -> [String: Any] {
     let acquisitions = self.acquisitions.map { $0.dictionaryRepresentation() }
-    
+  
     return [
       AcquisitionsKey: acquisitions,
       AlternateURLKey: alternateURL?.absoluteString ?? "",
@@ -323,27 +323,27 @@ let TimeTrackingURLURLKey = "time-tracking-url"
       TimeTrackingURLURLKey: timeTrackingURL?.absoluteString as Any
     ]
   }
-  
+
   @objc var authorNameArray: [String]? {
     bookAuthors?.compactMap { $0.name }
   }
-  
+
   @objc var authorLinkArray: [String]? {
     bookAuthors?.compactMap { $0.relatedBooksURL?.absoluteString }
   }
-  
+
   @objc var authors: String? {
     authorNameArray?.joined(separator: "; ")
   }
-  
+
   @objc var categories: String? {
     categoryStrings?.joined(separator: "; ")
   }
-  
+
   @objc var narrators: String? {
     (contributors?["nrt"] as? [String])?.joined(separator: "; ")
   }
-  
+
   @objc var defaultAcquisition: TPPOPDSAcquisition? {
     acquisitions.first(where: {
       !TPPOPDSAcquisitionPath.supportedAcquisitionPaths(
@@ -353,7 +353,7 @@ let TimeTrackingURLURLKey = "time-tracking-url"
       ).isEmpty
     })
   }
-  
+
   @objc var sampleAcquisition: TPPOPDSAcquisition? {
     acquisitions.first(where: {
       !TPPOPDSAcquisitionPath.supportedAcquisitionPaths(
@@ -363,12 +363,12 @@ let TimeTrackingURLURLKey = "time-tracking-url"
       ).isEmpty
     }) ?? previewLink
   }
-  
+
   @objc var isExpired: Bool {
     guard let date = getExpirationDate() else { return true }
     return date < Date()
   }
-  
+
   private func getExpirationDate() -> Date? {
     var date: Date?
     
@@ -383,10 +383,10 @@ let TimeTrackingURLURLKey = "time-tracking-url"
         if let until = ready.until, until.timeIntervalSinceNow > 0 { date = until }
       }
     )
-    
+
     return date
   }
-  
+
   @objc var defaultAcquisitionIfBorrow: TPPOPDSAcquisition? {
     defaultAcquisition?.relation == .borrow ? defaultAcquisition : nil
   }

@@ -128,14 +128,14 @@ extension TPPNetworkExecutor {
         "Content-Type": "application/json"
       ]
     }
-    
+
     var request = request
     for (headerKey, headerValue) in headers {
       request.setValue(headerValue, forHTTPHeaderField: headerKey)
     }
     return request
   }
-  
+
   @objc func download(_ reqURL: URL,
                       completion: @escaping (_ result: Data?, _ response: URLResponse?, _ error: Error?) -> Void) -> URLSessionDownloadTask {
     let req = request(for: reqURL)
@@ -145,11 +145,11 @@ extension TPPNetworkExecutor {
       case let .failure(error, response): completion(nil, response, error)
       }
     }
-    
+
     let task = urlSession.downloadTask(with: req)
     responder.addCompletion(completionWrapper, taskID: task.taskIdentifier)
     task.resume()
-    
+
     return task
   }
   
@@ -164,7 +164,7 @@ extension TPPNetworkExecutor {
     }
     return executeRequest(req, enableTokenRefresh: false, completion: completionWrapper)
   }
-  
+
   @objc func GET(_ reqURL: URL,
                  cachePolicy: NSURLRequest.CachePolicy = .useProtocolCachePolicy,
                  useTokenIfAvailable: Bool = true,
