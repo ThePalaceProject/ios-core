@@ -8,38 +8,37 @@
 
 import Foundation
 @testable import Palace
+@testable import PalaceAudiobookToolkit
+
+import Foundation
+@testable import Palace
+@testable import PalaceAudiobookToolkit
 
 struct TestBookmark {
   var annotationId: String
   var value: String
 }
 
-extension TestBookmark {
-  var toChapterLocation: ChapterLocation? {
-    guard let selectorValueData = value.data(using: String.Encoding.utf8),
-          let audioBookmark = try? JSONDecoder().decode(AudioBookmark.self, from: selectorValueData) else {
-      return nil
-    }
-    return ChapterLocation(audioBookmark: audioBookmark)
-  }
-}
-
 class TPPAnnotationMock: NSObject, AnnotationsManager {
   var savedLocations: [String: [TestBookmark]] = [:]
   var bookmarks: [String: [TestBookmark]] = [:]
   
-  func postListeningPosition(forBook bookID: String, selectorValue: String, completion: ((String?) -> Void)?) {
-    let annotationId = "TestAnnotationId\(bookID)"
+  var syncIsPossibleAndPermitted: Bool { true }
+  
+  func postListeningPosition(forBook bookID: String, selectorValue: String, completion: ((AnnotationResponse?) -> Void)?) {
+    let annotationId = "\(generateRandomString(length: 8))\(bookID)"
     var array = savedLocations[bookID] ?? []
     array.append(TestBookmark(annotationId: annotationId, value: selectorValue))
     savedLocations[bookID] = array
-    completion?(annotationId)
+    let response = AnnotationResponse(serverId: annotationId, timeStamp: Date().ISO8601Format())
+    completion?(response)
   }
   
-  func postAudiobookBookmark(forBook bookID: String, selectorValue: String) async throws -> String? {
-    let annotationId = "TestAnnotationId\(bookID)"
+  func postAudiobookBookmark(forBook bookID: String, selectorValue: String) async throws -> AnnotationResponse? {
+    let annotationId = "\(generateRandomString(length: 8))\(bookID)"
     bookmarks[bookID]?.append(TestBookmark(annotationId: annotationId, value: selectorValue))
-    return annotationId
+    let response = AnnotationResponse(serverId: annotationId, timeStamp: Date().ISO8601Format())
+    return response
   }
   
   func getServerBookmarks(forBook bookID: String?, atURL annotationURL: URL?, motivation: Palace.TPPBookmarkSpec.Motivation, completion: @escaping ([Palace.Bookmark]?) -> ()) {
@@ -47,31 +46,41 @@ class TPPAnnotationMock: NSObject, AnnotationsManager {
       completion([])
       return
     }
-
+    
     let bookmarks = motivation == .bookmark ? bookmarks[bookID] : savedLocations[bookID]
     completion(bookmarks?.compactMap {
       guard let selectorValueData = $0.value.data(using: String.Encoding.utf8) else {
-          return nil
+        return nil
       }
-
-      if let audioBookmark = try? JSONDecoder().decode(AudioBookmark.self, from: selectorValueData) {
-        audioBookmark.timeStamp = Date().iso8601
-        audioBookmark.annotationId = "TestAnnotationId\(bookID)"
-        return audioBookmark
+      
+      if let audiobookmark = try? JSONDecoder().decode(AudioBookmark.self, from: selectorValueData) {
+        audiobookmark.lastSavedTimeStamp = Date().ISO8601Format()
+        return audiobookmark
       } else {
         return nil
       }
     })
   }
-
+  
   func deleteBookmark(annotationId: String, completionHandler: @escaping (Bool) -> ()) {
     for (bookId, bookmarksArray) in bookmarks {
-          let filteredBookmarks = bookmarksArray.filter { $0.annotationId != annotationId }
-          bookmarks[bookId] = filteredBookmarks
-        }
-
+      let filteredBookmarks = bookmarksArray.filter { $0.annotationId != annotationId }
+      bookmarks[bookId] = filteredBookmarks
+    }
+    
     completionHandler(true)
   }
+  
+  func generateRandomString(length: Int) -> String {
+    let letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    var randomString = ""
+    
+    for _ in 0..<length {
+      let randomIndex = Int(arc4random_uniform(UInt32(letters.count)))
+      let randomCharacter = letters[letters.index(letters.startIndex, offsetBy: randomIndex)]
+      randomString.append(randomCharacter)
+    }
+    
+    return randomString
+  }
 }
-
-

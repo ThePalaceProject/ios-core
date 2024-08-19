@@ -94,6 +94,7 @@ struct Strings {
   }
   
   struct ProblemReportEmail {
+    static let supportEmail = "logs@thepalaceproject.org"
     static let noAccountSetupTitle = NSLocalizedString("No email account is set for this device.", comment: "Alert title")
     static let reportSentTitle = NSLocalizedString("Thank You", comment: "Alert title")
     static let reportSentBody = NSLocalizedString("Your report will be reviewed as soon as possible.", comment: "Alert message")

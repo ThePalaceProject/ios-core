@@ -1,7 +1,7 @@
 @objcMembers class TPPBookDetailsProblemDocumentViewController : UIViewController {
   let doc: TPPProblemDocument
   let book: TPPBook?
-  
+    
   let elementSpacing = CGFloat(12)
   weak var scrollView: UIScrollView?
   weak var backButton: UIButton?
@@ -96,7 +96,6 @@
     self.submitButton = submitButton
     submitButton.translatesAutoresizingMaskIntoConstraints = false
     submitButton.setTitle("Send to Support", for: .normal)
-    submitButton.isEnabled = AccountsManager.shared.currentAccount?.supportEmail != nil
     submitButton.addTarget(self, action: #selector(submitButtonWasPressed), for: .touchDown)
     
     scrollView.addSubview(label)
@@ -172,12 +171,7 @@
   }
   
   func submitButtonWasPressed() {
-    guard let supportEmail = AccountsManager.shared.currentAccount?.supportEmail else {
-      Log.error(#file, "Missing support email for library \(AccountsManager.shared.currentAccountId ?? "")")
-      return
-    }
-    
-    let alert = UIAlertController.init(title: "Report a Problem", message: "Are you sure you want to email this error log to \(AccountsManager.shared.currentAccount?.name ?? "library") support?", preferredStyle: .alert)
+    let alert = UIAlertController.init(title: "Report a Problem", message: "Are you sure you want to email this error log to The Palace Project support?", preferredStyle: .alert)
     alert.addAction(UIAlertAction.init(title: "Cancel", style: .cancel, handler: nil))
     alert.addAction(UIAlertAction.init(title: "Send email", style: .default, handler: { (action) in
       let labelText = self.label?.attributedText?.string ?? ""
@@ -191,7 +185,7 @@
         BookIdentifier:\n\(self.book?.identifier ?? "n/a")\n\n
       """
       ProblemReportEmail.sharedInstance.beginComposing(
-        to: supportEmail.rawValue,
+        to: Strings.ProblemReportEmail.supportEmail,
         presentingViewController: self,
         body: body
       )

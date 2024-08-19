@@ -4,6 +4,7 @@ on:
     branches:
       - develop
       - hotfix
+      - beta
       - release/**
       - feature/**
 jobs:

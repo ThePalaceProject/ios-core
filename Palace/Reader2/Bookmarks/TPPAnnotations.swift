@@ -1,9 +1,15 @@
 import UIKit
 import R2Shared
 
+public struct AnnotationResponse {
+  var serverId: String?
+  var timeStamp: String?
+}
+
 protocol AnnotationsManager {
-  func postListeningPosition(forBook bookID: String, selectorValue: String, completion: ((_ serverID: String?) -> Void)?)
-  func postAudiobookBookmark(forBook bookID: String, selectorValue: String) async throws -> String?
+  var syncIsPossibleAndPermitted: Bool { get }
+  func postListeningPosition(forBook bookID: String, selectorValue: String, completion: ((_ response: AnnotationResponse?) -> Void)?)
+  func postAudiobookBookmark(forBook bookID: String, selectorValue: String) async throws -> AnnotationResponse?
   func getServerBookmarks(forBook bookID:String?,
                                 atURL annotationURL:URL?,
                                 motivation: TPPBookmarkSpec.Motivation,
@@ -12,11 +18,13 @@ protocol AnnotationsManager {
 }
 
 @objcMembers final class TPPAnnotationsWrapper: NSObject, AnnotationsManager {
-  func postListeningPosition(forBook bookID: String, selectorValue: String, completion: ((String?) -> Void)?) {
+  var syncIsPossibleAndPermitted: Bool { TPPAnnotations.syncIsPossibleAndPermitted() }
+
+  func postListeningPosition(forBook bookID: String, selectorValue: String, completion: ((_ response: AnnotationResponse?) -> Void)?) {
     TPPAnnotations.postListeningPosition(forBook: bookID, selectorValue: selectorValue, completion: completion)
   }
   
-  func postAudiobookBookmark(forBook bookID: String, selectorValue: String) async throws -> String? {
+  func postAudiobookBookmark(forBook bookID: String, selectorValue: String) async throws -> AnnotationResponse? {
     try await TPPAnnotations.postAudiobookBookmark(forBook: bookID, selectorValue: selectorValue)
   }
   
@@ -48,23 +56,23 @@ protocol AnnotationsManager {
     }
   }
 
-  class func postListeningPosition(forBook bookID: String, selectorValue: String, completion: ((_ serverID: String?) -> Void)? = nil) {
+  class func postListeningPosition(forBook bookID: String, selectorValue: String, completion: ((_ response: AnnotationResponse?) -> Void)? = nil) {
     postReadingPosition(forBook: bookID, selectorValue: selectorValue, motivation:  .readingProgress, completion: completion)
   }
 
-  class func postAudiobookBookmark(forBook bookID: String, selectorValue: String) async throws -> String? {
+  class func postAudiobookBookmark(forBook bookID: String, selectorValue: String) async throws -> AnnotationResponse? {
     return try await withCheckedThrowingContinuation { continuation in
-          postReadingPosition(forBook: bookID, selectorValue: selectorValue, motivation: .bookmark) { serverID in
-              if let serverID = serverID {
-                  continuation.resume(returning: serverID)
-              } else {
-                  continuation.resume(throwing: NSError(domain: "Error posting bookmark", code: 1, userInfo: nil))
-              }
-          }
+      postReadingPosition(forBook: bookID, selectorValue: selectorValue, motivation: .bookmark) { response in
+        if let response {
+          continuation.resume(returning: response)
+        } else {
+          continuation.resume(throwing: NSError(domain: "Error posting bookmark", code: 1, userInfo: nil))
+        }
       }
+    }
   }
 
-  class func postReadingPosition(forBook bookID: String, selectorValue: String, motivation: TPPBookmarkSpec.Motivation, completion: ((_ serverID: String?) -> Void)? = nil) {
+  class func postReadingPosition(forBook bookID: String, selectorValue: String, motivation: TPPBookmarkSpec.Motivation, completion: ((_ response: AnnotationResponse?) -> Void)? = nil) {
     guard syncIsPossibleAndPermitted() else {
       Log.debug(#file, "Account does not support sync or sync is disabled.")
       completion?(nil)
@@ -85,7 +93,7 @@ protocol AnnotationsManager {
                                     selectorValue: selectorValue)
     let parameters = bookmark.dictionaryForJSONSerialization()
 
-    postAnnotation(forBook: bookID, withAnnotationURL: annotationsURL, withParameters: parameters, queueOffline: true) { (success, id) in
+    postAnnotation(forBook: bookID, withAnnotationURL: annotationsURL, withParameters: parameters, queueOffline: true) { (success, id, timeStamp) in
       guard success else {
         TPPErrorLogger.logError(withCode: .apiCall,
                                  summary: "Error posting annotation",
@@ -98,11 +106,11 @@ protocol AnnotationsManager {
       }
 
       Log.debug(#file, "Successfully saved Reading Position to server: \(selectorValue)")
-      completion?(id)
+      completion?(AnnotationResponse(serverId: id, timeStamp: timeStamp))
     }
   }
   
-  class func postBookmark(_ page: TPPPDFPage, forBookID bookID: String, completion: @escaping (_ serverID: String?) -> Void) {
+  class func postBookmark(_ page: TPPPDFPage, forBookID bookID: String, completion: @escaping (_ annotationResponse: AnnotationResponse?) -> Void) {
     guard syncIsPossibleAndPermitted() else {
       Log.debug(#file, "Account does not support sync or sync is disabled.")
       completion(nil)
@@ -129,14 +137,14 @@ protocol AnnotationsManager {
 
     let parameters = spec.dictionaryForJSONSerialization()
 
-    postAnnotation(forBook: bookID, withAnnotationURL: annotationsURL, withParameters: parameters, queueOffline: false) { (success, id) in
-      completion(id)
+    postAnnotation(forBook: bookID, withAnnotationURL: annotationsURL, withParameters: parameters, queueOffline: false) { (success, id, timeStamp) in
+      completion(AnnotationResponse(serverId: id, timeStamp: timeStamp))
     }
   }
   
   class func postBookmark(_ bookmark: TPPReadiumBookmark,
                             forBookID bookID: String,
-                            completion: @escaping (_ serverID: String?) -> ())
+                          completion: @escaping (_ annotationResponse: AnnotationResponse?) -> ())
   {
     guard syncIsPossibleAndPermitted() else {
       Log.debug(#file, "Account does not support sync or sync is disabled.")
@@ -160,8 +168,8 @@ protocol AnnotationsManager {
 
     let parameters = spec.dictionaryForJSONSerialization()
 
-    postAnnotation(forBook: bookID, withAnnotationURL: annotationsURL, withParameters: parameters, queueOffline: false) { (success, id) in
-      completion(id)
+    postAnnotation(forBook: bookID, withAnnotationURL: annotationsURL, withParameters: parameters, queueOffline: false) { (success, id, timeStamp) in
+      completion(AnnotationResponse(serverId: id, timeStamp: timeStamp))
     }
   }
 
@@ -171,11 +179,11 @@ protocol AnnotationsManager {
                             withParameters parameters: [String: Any],
                             timeout: TimeInterval = TPPDefaultRequestTimeout,
                             queueOffline: Bool,
-                            _ completionHandler: @escaping (_ success: Bool, _ annotationID: String?) -> ()) {
+                            _ completionHandler: @escaping (_ success: Bool, _ annotationID: String?, _ timeStamp: String?) -> ()) {
 
     guard let jsonData = try? JSONSerialization.data(withJSONObject: parameters, options: [.prettyPrinted]) else {
       Log.error(#file, "Network request abandoned. Could not create JSON from given parameters.")
-      completionHandler(false, nil)
+      completionHandler(false, nil, nil)
       return
     }
 
@@ -190,22 +198,23 @@ protocol AnnotationsManager {
         if (NetworkQueue.StatusCodes.contains(error.code)) && (queueOffline == true) {
           self.addToOfflineQueue(bookID, url, parameters)
         }
-        completionHandler(false, nil)
+        completionHandler(false, nil, nil)
         return
       }
       guard let statusCode = (response as? HTTPURLResponse)?.statusCode else {
         Log.error(#file, "Annotation POST error: No response received from server")
-        completionHandler(false, nil)
+        completionHandler(false, nil, nil)
         return
       }
 
       if statusCode == 200 {
         Log.debug(#file, "Annotation POST: Success 200.")
         let serverAnnotationID = annotationID(fromNetworkData: data)
-        completionHandler(true, serverAnnotationID)
+        let timeStamp = timeStamp(fromNetworkData: data)
+        completionHandler(true, serverAnnotationID, timeStamp)
       } else {
         Log.error(#file, "Annotation POST: Response Error. Status Code: \(statusCode)")
-        completionHandler(false, nil)
+        completionHandler(false, nil, nil)
       }
     }
     task?.resume()
@@ -222,6 +231,23 @@ protocol AnnotationsManager {
     }
     if let annotationID = json[TPPBookmarkSpec.Id.key] as? String {
       return annotationID
+    } else {
+      Log.error(#file, "No Annotation ID saved: Key/Value not found in JSON response.")
+      return nil
+    }
+  }
+  
+  private class func timeStamp(fromNetworkData data: Data?) -> String? {
+    guard let data = data else {
+      Log.error(#file, "No Annotation ID saved: No data received from server.")
+      return nil
+    }
+    guard let json = try? JSONSerialization.jsonObject(with: data, options: []) as! [String:Any] else {
+      Log.error(#file, "No Annotation ID saved: JSON could not be created from data.")
+      return nil
+    }
+    if let body = json[TPPBookmarkSpec.Body.key] as? [String:Any], let timeStamp = body[TPPBookmarkSpec.Body.Time.key] as? String {
+      return timeStamp
     } else {
       Log.error(#file, "No Annotation ID saved: Key/Value not found in JSON response.")
       return nil
@@ -358,9 +384,9 @@ protocol AnnotationsManager {
     for localBookmark in bookmarks {
       if localBookmark.annotationId == nil {
         uploadGroup.enter()
-        postBookmark(localBookmark, forBookID: bookID) { serverID in
-          if let ID = serverID {
-            localBookmark.annotationId = ID
+        postBookmark(localBookmark, forBookID: bookID) { response in
+          if let serverId = response?.serverId {
+            localBookmark.annotationId = serverId
             bookmarksUpdated.append(localBookmark)
           } else {
             Log.error(#file, "Local Bookmark not uploaded: \(localBookmark)")

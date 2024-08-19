@@ -133,13 +133,20 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
   
   func applicationWillTerminate(_ application: UIApplication) {
     self.audiobookLifecycleManager.willTerminate()
+    postListeningLocationIfAvailable()
     NotificationCenter.default.removeObserver(self)
   }
   
-  func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String, completionHandler: @escaping () -> Void) {
+  private func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String, completionHandler: @escaping () -> Void) {
     self.audiobookLifecycleManager.handleEventsForBackgroundURLSession(for: identifier, completionHandler: completionHandler)
   }
   
+  private func postListeningLocationIfAvailable() {
+    if let latestAudiobookLocation {
+      TPPAnnotations.postListeningPosition(forBook: latestAudiobookLocation.book, selectorValue: latestAudiobookLocation.location)
+    }
+  }
+
   func signingIn(_ notification: Notification) {
     if let boolValue = notification.object as? Bool {
       self.isSigningIn = boolValue

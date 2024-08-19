@@ -6,23 +6,23 @@
 
 @protocol TPPBookButtonsDelegate
 
-- (void)didSelectReturnForBook:(TPPBook *)book completion:(void (^ _Nullable)(void))completion;
-- (void)didSelectDownloadForBook:(TPPBook *)book;
-- (void)didSelectReadForBook:(TPPBook *)book completion:(void (^ _Nullable)(void))completion;
-- (void)didSelectPlaySample:(TPPBook *)book;
+- (void)didSelectReturnForBook:(TPPBook *_Nullable)book completion:(void (^ _Nullable)(void))completion;
+- (void)didSelectDownloadForBook:(TPPBook *_Nullable)book;
+- (void)didSelectReadForBook:(TPPBook *_Nullable)book completion:(void (^ _Nullable)(void))completion;
+- (void)didSelectPlaySample:(TPPBook *_Nullable)book;
 
 @end
 
 @protocol TPPBookButtonsSampleDelegate
 
-- (void)didSelectPlaySample:(TPPBook *)book completion:(void (^ _Nullable)(void))completion;
+- (void)didSelectPlaySample:(TPPBook *_Nullable)book completion:(void (^ _Nullable)(void))completion;
 
 @end
 
 @protocol TPPBookDownloadCancellationDelegate
 
-- (void)didSelectCancelForBookDetailDownloadingView:(TPPBookButtonsView *)view;
-- (void)didSelectCancelForBookDetailDownloadFailedView:(TPPBookButtonsView *)failedView;
+- (void)didSelectCancelForBookDetailDownloadingView:(TPPBookButtonsView *_Nullable)view;
+- (void)didSelectCancelForBookDetailDownloadFailedView:(TPPBookButtonsView *_Nullable)failedView;
 
 @end
 
@@ -30,14 +30,14 @@
 /// because that's always identical and used in book cells and book detail views.
 @interface TPPBookButtonsView : UIView
 
-@property (nonatomic, weak) TPPBook *book;
+@property (nonatomic, weak) TPPBook * _Nullable book;
 @property (nonatomic) TPPBookButtonsState state;
-@property (nonatomic, weak) id<TPPBookButtonsDelegate> delegate;
-@property (nonatomic, weak) id<TPPBookDownloadCancellationDelegate> downloadingDelegate;
-@property (nonatomic, weak) id<TPPBookButtonsSampleDelegate> sampleDelegate;
+@property (nonatomic, weak) id<TPPBookButtonsDelegate> _Nullable delegate;
+@property (nonatomic, weak) id<TPPBookDownloadCancellationDelegate> _Nullable downloadingDelegate;
+@property (nonatomic, weak) id<TPPBookButtonsSampleDelegate> _Nullable sampleDelegate;
 @property (nonatomic) BOOL showReturnButtonIfApplicable;
 
-- (instancetype)initWithSamplesEnabled:(BOOL)samplesEnabled;
+- (instancetype _Nullable )initWithSamplesEnabled:(BOOL)samplesEnabled;
 - (void)configureForBookDetailsContext;
 
 @end
