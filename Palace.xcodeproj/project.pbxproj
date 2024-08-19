@@ -827,7 +827,7 @@
 		D570B6372BA20139003FE991 /* Binding+onChange.swift in Sources */ = {isa = PBXBuildFile; fileRef = E731FF442864C2A4001DB7F2 /* Binding+onChange.swift */; };
 		D570B6382BA20139003FE991 /* TPPRootTabBarController.m in Sources */ = {isa = PBXBuildFile; fileRef = 11548C0A1939136C009DBF2E /* TPPRootTabBarController.m */; };
 		D570B6392BA20139003FE991 /* ExtendedNavBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E63F2C6B1EAA81B3002B6373 /* ExtendedNavBarView.swift */; };
-		D570B63A2BA20139003FE991 /* ChapterLocation+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5FC12AD2A24EB1C000BFED5 /* ChapterLocation+Extensions.swift */; };
+		D570B63A2BA20139003FE991 /* (null) in Sources */ = {isa = PBXBuildFile; };
 		D570B63B2BA20139003FE991 /* OPDS2Link.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51C1DFF22861BAD003B49A5 /* OPDS2Link.swift */; };
 		D570B63C2BA20139003FE991 /* TPPSignInBusinessLogic+BookmarkSyncing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 730D17CB25535954004CAC83 /* TPPSignInBusinessLogic+BookmarkSyncing.swift */; };
 		D570B63D2BA20139003FE991 /* TPPBookAuthor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6DA7E9F1F2A718600CFBEC8 /* TPPBookAuthor.swift */; };
@@ -908,7 +908,7 @@
 		D570B6882BA20139003FE991 /* EPUBSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E573454A2AD6E8410021D768 /* EPUBSearchView.swift */; };
 		D570B6892BA20139003FE991 /* TPPLoginCellTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 089E430B24A2459100310360 /* TPPLoginCellTypes.swift */; };
 		D570B68A2BA20139003FE991 /* TPPAccountSignInViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 1158812D1A894F4E008672C3 /* TPPAccountSignInViewController.m */; };
-		D570B68B2BA20139003FE991 /* AudiobookBookmarkBusinessLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = E55E2FA729E7AFCD0093F916 /* AudiobookBookmarkBusinessLogic.swift */; };
+		D570B68B2BA20139003FE991 /* (null) in Sources */ = {isa = PBXBuildFile; };
 		D570B68C2BA20139003FE991 /* AudiobookSample.swift in Sources */ = {isa = PBXBuildFile; fileRef = E59526EA28D24FC000C179DA /* AudiobookSample.swift */; };
 		D570B68D2BA20139003FE991 /* TPPSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5B2B8D9275952EC00150ED4 /* TPPSettingsView.swift */; };
 		D570B68E2BA20139003FE991 /* LCPAudiobooks.swift in Sources */ = {isa = PBXBuildFile; fileRef = 212B99D2258A36FD00C8BF79 /* LCPAudiobooks.swift */; };
@@ -938,7 +938,7 @@
 		D570B6A72BA20139003FE991 /* OverdriveProcessor.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E5C1F53027990929005FC6B2 /* OverdriveProcessor.framework */; };
 		D570B6A82BA20139003FE991 /* MediaPlayer.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 03B0922F1E78871A00AD338D /* MediaPlayer.framework */; };
 		D570B6A92BA20139003FE991 /* R2Navigator in Frameworks */ = {isa = PBXBuildFile; productRef = D570B53D2BA20139003FE991 /* R2Navigator */; };
-		D570B6AA2BA20139003FE991 /* NYPLAEToolkit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E585662526979AC100A5FBD5 /* NYPLAEToolkit.framework */; };
+		D570B6AA2BA20139003FE991 /* (null) in Frameworks */ = {isa = PBXBuildFile; };
 		D570B6AB2BA20139003FE991 /* PalaceUIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E7E96B9E2B0E82210036B23A /* PalaceUIKit.framework */; };
 		D570B6AC2BA20139003FE991 /* CoreMedia.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 03B092271E78859E00AD338D /* CoreMedia.framework */; };
 		D570B6AD2BA20139003FE991 /* CoreVideo.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 03B0922D1E7886ED00AD338D /* CoreVideo.framework */; };
@@ -1006,7 +1006,7 @@
 		D570B6EF2BA20139003FE991 /* OverdriveProcessor.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E5C1F53027990929005FC6B2 /* OverdriveProcessor.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		D570B6F02BA20139003FE991 /* AudioEngine.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E58565CE269774C400A5FBD5 /* AudioEngine.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		D570B6F12BA20139003FE991 /* R2LCPClient.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E7F287782956566800EEB1E0 /* R2LCPClient.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		D570B6F22BA20139003FE991 /* NYPLAEToolkit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E585662526979AC100A5FBD5 /* NYPLAEToolkit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		D570B6F22BA20139003FE991 /* (null) in Embed Frameworks */ = {isa = PBXBuildFile; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		D570B6F32BA20139003FE991 /* PureLayout.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 21986921267E29D70041369E /* PureLayout.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		D570B6F42BA20139003FE991 /* PalaceUIKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E7E96B9E2B0E82210036B23A /* PalaceUIKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		D570B6F52BA20139003FE991 /* Minizip.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 2198690C267E29B00041369E /* Minizip.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -1370,13 +1370,6 @@
 			remoteGlobalIDString = E7E96B9D2B0E82210036B23A;
 			remoteInfo = PalaceUIKit;
 		};
-		E585662426979AC100A5FBD5 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = A823D805192BABA400B55DE2 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = E7E96B9D2B0E82210036B23A;
-			remoteInfo = PalaceUIKit;
-		};
 		E5C1F52F27990929005FC6B2 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = E5C1F52927990929005FC6B2 /* OverdriveProcessor.xcodeproj */;
@@ -1469,7 +1462,7 @@
 				D570B6EF2BA20139003FE991 /* OverdriveProcessor.framework in Embed Frameworks */,
 				D570B6F02BA20139003FE991 /* AudioEngine.xcframework in Embed Frameworks */,
 				D570B6F12BA20139003FE991 /* R2LCPClient.xcframework in Embed Frameworks */,
-				D570B6F22BA20139003FE991 /* NYPLAEToolkit.framework in Embed Frameworks */,
+				D570B6F22BA20139003FE991 /* (null) in Embed Frameworks */,
 				D570B6F32BA20139003FE991 /* PureLayout.xcframework in Embed Frameworks */,
 				D570B6F42BA20139003FE991 /* PalaceUIKit.framework in Embed Frameworks */,
 				D570B6F52BA20139003FE991 /* Minizip.xcframework in Embed Frameworks */,
@@ -2216,7 +2209,6 @@
 				E5C1F55227990A89005FC6B2 /* OverdriveProcessor.framework in Frameworks */,
 				03B092301E78871A00AD338D /* MediaPlayer.framework in Frameworks */,
 				E77D021A2931337000544180 /* R2Navigator in Frameworks */,
-				2178984D269F174500374A6B /* NYPLAEToolkit.framework in Frameworks */,
 				E7E96BB32B0E82220036B23A /* PalaceUIKit.framework in Frameworks */,
 				03B092281E78859E00AD338D /* CoreMedia.framework in Frameworks */,
 				03B0922E1E7886ED00AD338D /* CoreVideo.framework in Frameworks */,
@@ -2263,7 +2255,7 @@
 				D570B6A72BA20139003FE991 /* OverdriveProcessor.framework in Frameworks */,
 				D570B6A82BA20139003FE991 /* MediaPlayer.framework in Frameworks */,
 				D570B6A92BA20139003FE991 /* R2Navigator in Frameworks */,
-				D570B6AA2BA20139003FE991 /* NYPLAEToolkit.framework in Frameworks */,
+				D570B6AA2BA20139003FE991 /* (null) in Frameworks */,
 				D570B6AB2BA20139003FE991 /* PalaceUIKit.framework in Frameworks */,
 				D570B6AC2BA20139003FE991 /* CoreMedia.framework in Frameworks */,
 				D570B6AD2BA20139003FE991 /* CoreVideo.framework in Frameworks */,
@@ -5317,7 +5309,7 @@
 				D570B6372BA20139003FE991 /* Binding+onChange.swift in Sources */,
 				D570B6382BA20139003FE991 /* TPPRootTabBarController.m in Sources */,
 				D570B6392BA20139003FE991 /* ExtendedNavBarView.swift in Sources */,
-				D570B63A2BA20139003FE991 /* ChapterLocation+Extensions.swift in Sources */,
+				D570B63A2BA20139003FE991 /* (null) in Sources */,
 				D570B63B2BA20139003FE991 /* OPDS2Link.swift in Sources */,
 				D570B63C2BA20139003FE991 /* TPPSignInBusinessLogic+BookmarkSyncing.swift in Sources */,
 				D570B63D2BA20139003FE991 /* TPPBookAuthor.swift in Sources */,
@@ -5399,7 +5391,7 @@
 				D570B6882BA20139003FE991 /* EPUBSearchView.swift in Sources */,
 				D570B6892BA20139003FE991 /* TPPLoginCellTypes.swift in Sources */,
 				D570B68A2BA20139003FE991 /* TPPAccountSignInViewController.m in Sources */,
-				D570B68B2BA20139003FE991 /* AudiobookBookmarkBusinessLogic.swift in Sources */,
+				D570B68B2BA20139003FE991 /* (null) in Sources */,
 				D570B68C2BA20139003FE991 /* AudiobookSample.swift in Sources */,
 				D570B68D2BA20139003FE991 /* TPPSettingsView.swift in Sources */,
 				D570B68E2BA20139003FE991 /* LCPAudiobooks.swift in Sources */,
@@ -5673,7 +5665,6 @@
 				CODE_SIGN_IDENTITY = "Apple Distribution";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 253;
 				CURRENT_PROJECT_VERSION = 282;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
@@ -5696,7 +5687,6 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.36;
 				MARKETING_VERSION = 1.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PRODUCT_MODULE_NAME = Palace;
@@ -5734,7 +5724,6 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 253;
 				CURRENT_PROJECT_VERSION = 282;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
@@ -5757,7 +5746,6 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.36;
 				MARKETING_VERSION = 1.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PRODUCT_MODULE_NAME = Palace;
@@ -5921,7 +5909,6 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 253;
 				CURRENT_PROJECT_VERSION = 282;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
@@ -5949,7 +5936,6 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.36;
 				MARKETING_VERSION = 1.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PROVISIONING_PROFILE_SPECIFIER = "Ad Hoc 2";
@@ -5984,7 +5970,6 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 253;
 				CURRENT_PROJECT_VERSION = 282;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
@@ -6012,7 +5997,6 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.36;
 				MARKETING_VERSION = 1.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PROVISIONING_PROFILE_SPECIFIER = "App Store";
@@ -6046,8 +6030,6 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/PalaceDebug.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 253;
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
 				CURRENT_PROJECT_VERSION = 282;
@@ -6076,10 +6058,6 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.36;
-				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
-				PRODUCT_NAME = Palace;
-				PROVISIONING_PROFILE_SPECIFIER = "Ad Hoc";
 				MARKETING_VERSION = 1.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PRODUCT_NAME = Palace;
@@ -6115,7 +6093,6 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 253;
 				CURRENT_PROJECT_VERSION = 282;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
@@ -6142,10 +6119,6 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.36;
-				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
-				PRODUCT_NAME = Palace;
-				PROVISIONING_PROFILE_SPECIFIER = "App Store";
 				MARKETING_VERSION = 1.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PRODUCT_NAME = Palace;
@@ -6244,7 +6217,6 @@
 				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CODE_SIGN_IDENTITY = "Apple Development";
-				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Distribution";
 				CODE_SIGN_STYLE = Manual;
 				COPY_PHASE_STRIP = NO;
