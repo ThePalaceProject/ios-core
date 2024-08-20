@@ -352,30 +352,54 @@ class TPPBookRegistry: NSObject {
   /// will overwrite the existing book as if `updateBook` were called. The location may be nil. The
   /// state provided must be one of `TPPBookState` and must not be `TPPBookState.Unregistered`.
   func addBook(_ book: TPPBook, location: TPPBookLocation? = nil, state: TPPBookState = .DownloadNeeded, fulfillmentId: String? = nil, readiumBookmarks: [TPPReadiumBookmark]? = nil, genericBookmarks: [TPPBookLocation]? = nil) {
-    coverRegistry.pinThumbnailImageForBook(book)
-    registry[book.identifier] = TPPBookRegistryRecord(book: book, location: location, state: state, fulfillmentId: fulfillmentId, readiumBookmarks: readiumBookmarks, genericBookmarks: genericBookmarks)
+    // Cache the thumbnail image if it exists
+    coverRegistry.thumbnailImageForBook(book) { _ in
+      // The image is automatically cached by `thumbnailImageForBook`, so no need to handle it here
+    }
+    
+    // Create and store the book record in the registry
+    registry[book.identifier] = TPPBookRegistryRecord(
+      book: book,
+      location: location,
+      state: state,
+      fulfillmentId: fulfillmentId,
+      readiumBookmarks: readiumBookmarks,
+      genericBookmarks: genericBookmarks
+    )
+    
+    // Save the registry data
     save()
   }
   
-  /// This will update the book like updateBook does, but will also set its state to unregistered, then
-  /// broadcast the change, then remove the book from the registry. This gives any views using the book
-  /// a chance to update their copy with the new one, without having to keep it in the registry after.
   func updateAndRemoveBook(_ book: TPPBook) {
-    guard registry[book.identifier] != nil else {
+    guard let existingRecord = registry[book.identifier] else {
       return
     }
-    coverRegistry.removePinnedThumbnailImageForBookIdentifier(book.identifier)
-    registry[book.identifier]?.book = book
-    registry[book.identifier]?.state = .Unregistered
+    
+    // Remove the pinned thumbnail image if cached
+    coverRegistry.cachedThumbnailImageForBook(book)
+    
+    // Update the book in the registry, set it to unregistered, and then save the changes
+    existingRecord.book = book
+    existingRecord.state = .Unregistered
+    
+    // Save the updated registry
+    save()
+  }
+  
+  func removeBook(forIdentifier bookIdentifier: String) {
+    // Remove the pinned thumbnail image if cached
+    if let book = registry[bookIdentifier]?.book {
+      coverRegistry.cachedThumbnailImageForBook(book)
+    }
+    
+    // Remove the book from the registry
+    registry.removeValue(forKey: bookIdentifier)
+    
+    // Save the updated registry
     save()
   }
 
-  /// Given an identifier, this method removes a book from the registry.
-  func removeBook(forIdentifier bookIdentifier: String) {
-    coverRegistry.removePinnedThumbnailImageForBookIdentifier(bookIdentifier)
-    registry.removeValue(forKey: bookIdentifier)
-    save()
-  }
   
   /// This method should be called whenever new book information is retrieved from a server. Doing so
   /// ensures that once the user has seen the new information, they will continue to do so when

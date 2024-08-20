@@ -135,7 +135,7 @@ extension TPPNetworkExecutor {
     }
     return request
   }
-  
+
   @objc func download(_ reqURL: URL,
                       completion: @escaping (_ result: Data?, _ response: URLResponse?, _ error: Error?) -> Void) -> URLSessionDownloadTask {
     let req = request(for: reqURL)
@@ -164,7 +164,7 @@ extension TPPNetworkExecutor {
     }
     return executeRequest(req, enableTokenRefresh: false, completion: completionWrapper)
   }
-  
+
   @objc func GET(_ reqURL: URL,
                  cachePolicy: NSURLRequest.CachePolicy = .useProtocolCachePolicy,
                  useTokenIfAvailable: Bool = true,
@@ -287,7 +287,7 @@ extension TPPNetworkExecutor {
         defer { self.isRefreshing = false }
         
         switch result {
-        case .success(let token):
+        case .success:
           var newTasks = [URLSessionTask]()
           
           self.retryQueueLock.lock()

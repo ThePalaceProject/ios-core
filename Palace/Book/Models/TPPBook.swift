@@ -8,36 +8,36 @@
 
 import Foundation
 
-let DeprecatedAcquisitionKey: String = "acquisition"
-let DeprecatedAvailableCopiesKey: String = "available-copies"
-let DeprecatedAvailableUntilKey: String = "available-until"
-let DeprecatedAvailabilityStatusKey: String = "availability-status"
-let DeprecatedHoldsPositionKey: String = "holds-position"
-let DeprecatedTotalCopiesKey: String = "total-copies"
+let DeprecatedAcquisitionKey = "acquisition"
+let DeprecatedAvailableCopiesKey = "available-copies"
+let DeprecatedAvailableUntilKey = "available-until"
+let DeprecatedAvailabilityStatusKey = "availability-status"
+let DeprecatedHoldsPositionKey = "holds-position"
+let DeprecatedTotalCopiesKey = "total-copies"
 
-let AcquisitionsKey: String = "acquisitions"
-let AlternateURLKey: String = "alternate"
-let AnalyticsURLKey: String = "analytics"
-let AnnotationsURLKey: String = "annotations"
-let AuthorLinksKey: String = "author-links"
-let AuthorsKey: String = "authors"
-let CategoriesKey: String = "categories"
-let DistributorKey: String = "distributor"
-let IdentifierKey: String = "id"
-let ImageThumbnailURLKey: String = "image-thumbnail"
-let ImageURLKey: String = "image"
-let PublishedKey: String = "published"
-let PublisherKey: String = "publisher"
-let RelatedURLKey: String = "related-works-url"
-let PreviewURLKey: String = "preview-url"
-let ReportURLKey: String = "report-url"
-let RevokeURLKey: String = "revoke-url"
-let SeriesLinkKey: String = "series-link"
-let SubtitleKey: String = "subtitle"
-let SummaryKey: String = "summary"
-let TitleKey: String = "title"
-let UpdatedKey: String = "updated"
-let TimeTrackingURLURLKey: String = "time-tracking-url"
+let AcquisitionsKey = "acquisitions"
+let AlternateURLKey = "alternate"
+let AnalyticsURLKey = "analytics"
+let AnnotationsURLKey = "annotations"
+let AuthorLinksKey = "author-links"
+let AuthorsKey = "authors"
+let CategoriesKey = "categories"
+let DistributorKey = "distributor"
+let IdentifierKey = "id"
+let ImageThumbnailURLKey = "image-thumbnail"
+let ImageURLKey = "image"
+let PublishedKey = "published"
+let PublisherKey = "publisher"
+let RelatedURLKey = "related-works-url"
+let PreviewURLKey = "preview-url"
+let ReportURLKey = "report-url"
+let RevokeURLKey = "revoke-url"
+let SeriesLinkKey = "series-link"
+let SubtitleKey = "subtitle"
+let SummaryKey = "summary"
+let TitleKey = "title"
+let UpdatedKey = "updated"
+let TimeTrackingURLURLKey = "time-tracking-url"
 
 @objc public class TPPBook: NSObject {
   @objc var acquisitions: [TPPOPDSAcquisition]
@@ -63,23 +63,23 @@ let TimeTrackingURLURLKey: String = "time-tracking-url"
   @objc var reportURL: URL?
   @objc var timeTrackingURL: URL?
   @objc var contributors: [String: Any]?
-  @objc var bookTokenLock: NSRecursiveLock
+  @objc var bookTokenLock = NSRecursiveLock()
   @objc var bookDuration: String?
-
+  
   static let SimplifiedScheme = "http://librarysimplified.org/terms/genres/Simplified/"
   
   static func categoryStringsFromCategories(categories: [TPPOPDSCategory]) -> [String] {
-    categories.filter { $0.scheme == nil || ($0.scheme?.absoluteString ?? "") == SimplifiedScheme }.map { $0.label ?? $0.term }
+    categories.compactMap { $0.scheme == nil || $0.scheme?.absoluteString == SimplifiedScheme ? $0.label ?? $0.term : nil }
   }
-
+  
   @objc var isAudiobook: Bool {
     defaultBookContentType == .audiobook
   }
   
   @objc var hasDuration: Bool {
-    (bookDuration ?? "").count > 0
+    !(bookDuration?.isEmpty ?? true)
   }
-
+  
   init(
     acquisitions: [TPPOPDSAcquisition],
     authors: [TPPBookAuthor]?,
@@ -108,7 +108,6 @@ let TimeTrackingURLURLKey: String = "time-tracking-url"
   ) {
     self.acquisitions = acquisitions
     self.bookAuthors = authors
-    self.bookAuthors = authors
     self.categoryStrings = categoryStrings
     self.distributor = distributor
     self.identifier = identifier
@@ -134,27 +133,24 @@ let TimeTrackingURLURLKey: String = "time-tracking-url"
     self.bookDuration = bookDuration
   }
   
-  /// @brief Factory method to build a TPPBook object from an OPDS feed entry.
-  ///
-  /// @param entry An OPDS entry to base the book on.
-  ///
-  /// @return @p nil if the entry does not contain non-nil values for the
-  /// @p acquisitions, @p categories, @p identifier, @p title, @p updated
-  /// properties.
   @objc convenience init?(entry: TPPOPDSEntry?) {
     guard let entry = entry else {
       Log.debug(#file, ("Failed to create book with nil entry."))
       return nil
     }
-
-    var revoke, image, imageThumbnail, report: URL?
-    let authors = entry.authorStrings.enumerated().map { (index, element) in
+    
+    let authors = entry.authorStrings.enumerated().map { index, element in
       TPPBookAuthor(
         authorName: (element as? String) ?? "",
-        relatedBooksURL: entry.authorLinks.count > index ? entry.authorLinks[index].href : nil
+        relatedBooksURL: index < entry.authorLinks.count ? entry.authorLinks[index].href : nil
       )
     }
-
+    
+    var image: URL?
+    var imageThumbnail: URL?
+    var report: URL?
+    var revoke: URL?
+    
     (entry.links as? [TPPOPDSLink])?.forEach {
       switch $0.rel {
       case TPPOPDSRelationAcquisitionRevoke:
@@ -166,10 +162,10 @@ let TimeTrackingURLURLKey: String = "time-tracking-url"
       case TPPOPDSRelationAcquisitionIssues:
         report = $0.href
       default:
-        return
+        break
       }
     }
-
+    
     self.init(
       acquisitions: entry.acquisitions,
       authors: authors,
@@ -198,167 +194,49 @@ let TimeTrackingURLURLKey: String = "time-tracking-url"
     )
   }
   
-  /// @brief This is the designated initializer.
-  ///
-  /// @discussion Returns @p nil if either one of the values for the following
-  /// keys is nil: @p "categories", @p "id", @p "title", @p "updated". In all other cases
-  /// an non-nil instance is returned.
-  ///
-  /// @param dictionary A JSON-style key-value pair string dictionary.
   @objc convenience init?(dictionary: [String: Any]) {
     guard let categoryStrings = dictionary[CategoriesKey] as? [String],
-        let identifier = dictionary[IdentifierKey] as? String,
-        let title = dictionary[TitleKey] as? String
-    else {
-     return nil
+          let identifier = dictionary[IdentifierKey] as? String,
+          let title = dictionary[TitleKey] as? String else {
+      return nil
     }
-
-    var acquisitions = [TPPOPDSAcquisition]()
-
-    if let acquisitionDictionaries: [[String: Any]] = dictionary[AcquisitionsKey] as? [[String: Any]] {
-      acquisitions = acquisitionDictionaries.compactMap {
-        return TPPOPDSAcquisition(dictionary: $0)
+    
+    let acquisitions: [TPPOPDSAcquisition] = (dictionary[AcquisitionsKey] as? [[String: Any]] ?? []).compactMap {
+      TPPOPDSAcquisition(dictionary: $0)
+    }
+    
+    let authorStrings: [String] = {
+      if let authorObject = dictionary[AuthorsKey] as? [[String]], let values = authorObject.first {
+        return values
+      } else if let authorObject = dictionary[AuthorsKey] as? [String] {
+        return authorObject
+      } else {
+        return []
       }
-    }
+    }()
     
-    var authors = [TPPBookAuthor]()
+    let authorLinkStrings: [String] = {
+      if let authorLinkObject = dictionary[AuthorLinksKey] as? [[String]], let values = authorLinkObject.first {
+        return values
+      } else if let authorLinkObject = dictionary[AuthorLinksKey] as? [String] {
+        return authorLinkObject
+      } else {
+        return []
+      }
+    }()
     
-    var authorStrings = [String]()
-    if let authorObject = dictionary[AuthorsKey] as? [[String]], let values = authorObject.first {
-      authorStrings = values
-    } else if let authorObject = dictionary[AuthorsKey] as? [String] {
-      authorStrings = authorObject
-    }
-    var authorLinkStrings = [String]()
-    if let authorLinkObject = dictionary[AuthorLinksKey] as? [[String]], let values = authorLinkObject.first {
-      authorLinkStrings = values
-    } else if let authorLinkObject = dictionary[AuthorLinksKey] as? [String] {
-      authorLinkStrings = authorLinkObject
-    }
-
-    authors = authorStrings.enumerated().map { (index, name) in
+    let authors = authorStrings.enumerated().map { index, name in
       TPPBookAuthor(
         authorName: name,
-        relatedBooksURL: authorLinkStrings.count > index ? URL(string: authorLinkStrings[index]) : nil
+        relatedBooksURL: index < authorLinkStrings.count ? URL(string: authorLinkStrings[index]) : nil
       )
     }
-  
-    var revokeURL = URL(string: dictionary[RevokeURLKey] as? String ?? "")
-    var reportURL = URL(string: dictionary[ReportURLKey] as? String ?? "")
-
-    if dictionary[DeprecatedAcquisitionKey] != nil {
-      acquisitions = [TPPOPDSAcquisition]()
-
-      revokeURL = URL(string: (dictionary[DeprecatedAcquisitionKey] as? [String: String])?["revoke"] ?? "")
-      reportURL = URL(string: (dictionary[DeprecatedAcquisitionKey] as? [String: String])?["report"] ?? "")
-      
-      let availabilityStatus = dictionary[DeprecatedAvailabilityStatusKey] as? String
-      let holdsPositionString = dictionary[DeprecatedHoldsPositionKey] as? String
-      var holdsPosition: Int?
-      if let holdsPositioningString = holdsPositionString {
-        holdsPosition = Int(holdsPositioningString)
-      }
-
-      var availableCopies: Int?
-      if let availableCopiesString = dictionary[DeprecatedAvailableCopiesKey] as? String {
-        availableCopies = Int(availableCopiesString)
-      }
-
-      var totalCopies: Int?
-      if let totalCopiesString = dictionary[DeprecatedTotalCopiesKey] as? String {
-        totalCopies = Int(totalCopiesString)
-      }
-      
-      var until: Date?
-      if let untilString = dictionary[DeprecatedAvailableUntilKey] as? String {
-        until = NSDate(rfc3339String: untilString) as? Date
-      }
     
-      var availability: TPPOPDSAcquisitionAvailability = TPPOPDSAcquisitionAvailabilityUnlimited()
-      
-      switch availabilityStatus {
-      case "available":
-        if availableCopies == NSNotFound {
-          break
-        } else {
-          availability = TPPOPDSAcquisitionAvailabilityLimited(
-            copiesAvailable: UInt(availableCopies ?? NSNotFound),
-            copiesTotal: UInt(totalCopies ?? NSNotFound),
-            since: until,
-            until: until
-          )
-        }
-      case "unavailable":
-        availability = TPPOPDSAcquisitionAvailabilityUnavailable(
-          copiesHeld: UInt(availableCopies ?? NSNotFound),
-          copiesTotal: UInt(totalCopies ?? NSNotFound)
-        )
-      case "reserved":
-        availability = TPPOPDSAcquisitionAvailabilityReserved(
-          holdPosition: UInt(holdsPosition ?? NSNotFound),
-          copiesTotal: UInt(totalCopies ?? NSNotFound),
-          since: until,
-          until: until
-        )
-      case "ready":
-        availability = TPPOPDSAcquisitionAvailabilityReady(since: until, until: until)
-      default:
-        break
-      }
-      
-      let applicationEPUBZIP = ContentTypeEpubZip
-      let genericURL = URL(string: (dictionary[DeprecatedAcquisitionKey] as? [String: String])?["generic"] ?? "")
-      if let genericURL = genericURL {
-        acquisitions.append(TPPOPDSAcquisition(
-          relation: .generic,
-          type: applicationEPUBZIP,
-          hrefURL: genericURL,
-          indirectAcquisitions: [],
-          availability: availability)
-        )
-      }
-      
-      let borrowURL = URL(string: (dictionary[DeprecatedAcquisitionKey] as? [String: String])?["borrow"] ?? "")
-      if let borrowURL = borrowURL {
-        acquisitions.append(TPPOPDSAcquisition(
-          relation: .borrow,
-          type: applicationEPUBZIP,
-          hrefURL: borrowURL,
-          indirectAcquisitions: [],
-          availability: availability)
-        )
-      }
-      
-      let openAccessURL = URL(string: (dictionary[DeprecatedAcquisitionKey] as? [String: String])?["open-access"] ?? "")
-      if let openAccessURL = openAccessURL {
-        acquisitions.append(TPPOPDSAcquisition(
-          relation: .openAccess,
-          type: applicationEPUBZIP,
-          hrefURL: openAccessURL,
-          indirectAcquisitions: [],
-          availability: availability)
-        )
-      }
-      
-      let sampleURL = URL(string: (dictionary[DeprecatedAcquisitionKey] as? [String: String])?["sample"] ?? "")
-      if let sampleURL = sampleURL {
-        acquisitions.append(TPPOPDSAcquisition(
-          relation: .sample,
-          type: applicationEPUBZIP,
-          hrefURL: sampleURL,
-          indirectAcquisitions: [],
-          availability: availability)
-        )
-      }
-    }
-
-    var previewLink: TPPOPDSAcquisition?
-    if let previewDict = dictionary[PreviewURLKey] as? [AnyHashable: Any] {
-      previewLink = TPPOPDSAcquisition(dictionary: previewDict)
-    }
-  
-    guard let updated = NSDate(iso8601DateString: (dictionary[UpdatedKey] as? String ?? "")) as? Date else { return nil }
-
+    let revokeURL = URL(string: dictionary[RevokeURLKey] as? String ?? "")
+    let reportURL = URL(string: dictionary[ReportURLKey] as? String ?? "")
+    
+    guard let updated = NSDate(iso8601DateString: dictionary[UpdatedKey] as? String ?? "") as? Date else { return nil }
+    
     self.init(
       acquisitions: acquisitions,
       authors: authors,
@@ -377,7 +255,7 @@ let TimeTrackingURLURLKey: String = "time-tracking-url"
       analyticsURL: URL(string: dictionary[AnalyticsURLKey] as? String ?? ""),
       alternateURL: URL(string: dictionary[AlternateURLKey] as? String ?? ""),
       relatedWorksURL: URL(string: dictionary[RelatedURLKey] as? String ?? ""),
-      previewLink: previewLink,
+      previewLink: dictionary[PreviewURLKey].flatMap { TPPOPDSAcquisition(dictionary: $0 as? [AnyHashable: Any] ?? [:]) },
       seriesURL: URL(string: dictionary[SeriesLinkKey] as? String ?? ""),
       revokeURL: revokeURL,
       reportURL: reportURL,
@@ -411,14 +289,14 @@ let TimeTrackingURLURLKey: String = "time-tracking-url"
       revokeURL: self.revokeURL,
       reportURL: self.reportURL,
       timeTrackingURL: self.timeTrackingURL,
-      contributors: book.contributors, 
+      contributors: book.contributors,
       bookDuration: book.bookDuration
     )
   }
 
   @objc func dictionaryRepresentation() -> [String: Any] {
     let acquisitions = self.acquisitions.map { $0.dictionaryRepresentation() }
-    
+  
     return [
       AcquisitionsKey: acquisitions,
       AlternateURLKey: alternateURL?.absoluteString ?? "",
@@ -453,67 +331,39 @@ let TimeTrackingURLURLKey: String = "time-tracking-url"
   @objc var authorLinkArray: [String]? {
     bookAuthors?.compactMap { $0.relatedBooksURL?.absoluteString }
   }
-  
+
   @objc var authors: String? {
-   authorNameArray?.joined(separator: "; ")
+    authorNameArray?.joined(separator: "; ")
   }
-  
-  
+
   @objc var categories: String? {
     categoryStrings?.joined(separator: "; ")
   }
-  
+
   @objc var narrators: String? {
     (contributors?["nrt"] as? [String])?.joined(separator: "; ")
   }
 
-  /// @discussion
-  /// A compatibility method to allow the app to continue to function until the
-  /// user interface and other components support handling multiple valid
-  /// acquisition possibilities.
-  ///
-  /// @return An acquisition leading to the first supported format or @c nil.
   @objc var defaultAcquisition: TPPOPDSAcquisition? {
-    guard acquisitions.count > 0 else {
-      Log.debug("", "ERROR: No acquisitions found when computing a default. This is an OPDS violation.")
-      return nil
-    }
-
-    // Return first valid acquisition link
-    for acquisition in acquisitions {
-      let path = TPPOPDSAcquisitionPath.supportedAcquisitionPaths(
+    acquisitions.first(where: {
+      !TPPOPDSAcquisitionPath.supportedAcquisitionPaths(
         forAllowedTypes: TPPOPDSAcquisitionPath.supportedTypes(),
         allowedRelations: TPPOPDSAcquisitionRelationSetDefaultAcquisition,
-        acquisitions: [acquisition]
-      )
-
-      if !path.isEmpty {
-        return acquisition
-      }
-    }
-  
-    return nil
+        acquisitions: [$0]
+      ).isEmpty
+    })
   }
 
-  /// Sample acquisition
   @objc var sampleAcquisition: TPPOPDSAcquisition? {
-    var acquisition: TPPOPDSAcquisition? = previewLink
-
-    acquisitions.forEach {
-      let path = TPPOPDSAcquisitionPath.supportedAcquisitionPaths(
+    acquisitions.first(where: {
+      !TPPOPDSAcquisitionPath.supportedAcquisitionPaths(
         forAllowedTypes: TPPOPDSAcquisitionPath.supportedTypes(),
         allowedRelations: TPPOPDSAcquisitionRelationSet.sample,
         acquisitions: [$0]
-      )
-
-      if !path.isEmpty {
-        acquisition = $0
-      }
-    }
-  
-    return acquisition
+      ).isEmpty
+    }) ?? previewLink
   }
-  
+
   @objc var isExpired: Bool {
     guard let date = getExpirationDate() else { return true }
     return date < Date()
@@ -537,62 +387,31 @@ let TimeTrackingURLURLKey: String = "time-tracking-url"
     return date
   }
 
-  /// @discussion
-  /// A compatibility method to allow the app to continue to function until the
-  /// user interface and other components support handling multiple valid
-  /// acquisition possibilities. Its use should be avoided wherever possible and
-  /// it will eventually be removed.
-  ///
-  /// @return The default acquisition leading to an EPUB if it has a borrow
-  /// relation, else @c nil.
   @objc var defaultAcquisitionIfBorrow: TPPOPDSAcquisition? {
-    guard let acquisition = defaultAcquisition else { return nil }
-    return acquisition.relation == .borrow ? acquisition : nil
+    defaultAcquisition?.relation == .borrow ? defaultAcquisition : nil
   }
-
-  /// @discussion
-  /// A compatibility method to allow the app to continue to function until the
-  /// user interface and other components support handling multiple valid
-  /// acquisition possibilities. Its use should be avoided wherever possible and
-  /// it will eventually be removed.
-  ///
-  /// @return The default acquisition leading to an EPUB if it has an open access
-  /// relation, else @c nil.
+  
   @objc var defaultAcquisitionIfOpenAccess: TPPOPDSAcquisition? {
-    guard let acquisition = defaultAcquisition else { return nil }
-    return acquisition.relation == .openAccess ? acquisition : nil
+    defaultAcquisition?.relation == .openAccess ? defaultAcquisition : nil
   }
-
-  /// @discussion
-  /// Assigns the book content type based on the inner-most type listed
-  /// in the acquistion path. If multiple acquisition paths exist, default
-  /// to the first supported one.
-  /// The UI does not yet support more than one supported type.
-  ///
-  /// @return The default TPPBookContentType
+  
   @objc var defaultBookContentType: TPPBookContentType {
     guard let acquisition = defaultAcquisition else {
       return .unsupported
     }
-    let paths = TPPOPDSAcquisitionPath.supportedAcquisitionPaths(
+    return TPPOPDSAcquisitionPath.supportedAcquisitionPaths(
       forAllowedTypes: TPPOPDSAcquisitionPath.supportedTypes(),
       allowedRelations: NYPLOPDSAcquisitionRelationSetAll,
-      acquisitions: [acquisition])
-    for path in paths {
-      if let mimeType = path.types.last {
-        let contentType = TPPBookContentType.from(mimeType: mimeType)
-        if contentType != .unsupported {
-          return contentType
-        }
-      }
-    }
-    return .unsupported
+      acquisitions: [acquisition]
+    ).compactMap {
+      TPPBookContentType.from(mimeType: $0.types.last)
+    }.first(where: { $0 != .unsupported }) ?? .unsupported
   }
 }
 
 extension TPPBook: Identifiable {}
 extension TPPBook: Comparable {
   public static func < (lhs: TPPBook, rhs: TPPBook) -> Bool {
-    lhs.identifier == rhs.identifier
+    lhs.identifier < rhs.identifier
   }
 }
