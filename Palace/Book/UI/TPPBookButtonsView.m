@@ -26,8 +26,10 @@
 @property (nonatomic) NSMutableArray *constraints;
 @property (nonatomic) NSMutableArray *observers;
 @property (nonatomic) BOOL samplesEnabled;
+@property (nonatomic) BOOL isProcessing;
 
 @end
+
 
 @implementation TPPBookButtonsView
 
@@ -143,6 +145,8 @@
 
 - (void)updateProcessingState:(BOOL)isCurrentlyProcessing
 {
+  self.isProcessing = isCurrentlyProcessing;
+  
   if (isCurrentlyProcessing) {
     [self.activityIndicator startAnimating];
   } else {
@@ -496,11 +500,13 @@
 
 - (void)didSelectSample
 {
-  self.activityIndicator.center = self.sampleButton.center;
-  [self updateProcessingState:YES];
-  [self.sampleDelegate didSelectPlaySample:self.book completion:^{
-    [self updateProcessingState:NO];
-  }];
+  if (!self.isProcessing) {
+    self.activityIndicator.center = self.sampleButton.center;
+    [self updateProcessingState:YES];
+    [self.sampleDelegate didSelectPlaySample:self.book completion:^{
+      [self updateProcessingState:NO];
+    }];
+  }
 }
 
 @end
