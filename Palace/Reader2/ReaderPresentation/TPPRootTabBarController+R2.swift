@@ -42,6 +42,16 @@ import Foundation
   }
 
   func presentSample(_ book: TPPBook, url: URL) {
+    guard !isPresentingSample else {
+      return
+    }
+    
+    isPresentingSample = true
+    
+    defer {
+      isPresentingSample = false
+    }
+
     guard let libraryService = r2Owner?.libraryService, let readerModule = r2Owner?.readerModule else {
       return
     }

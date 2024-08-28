@@ -11,6 +11,7 @@
 + (instancetype)sharedController;
 
 @property (readonly) TPPR2Owner *r2Owner;
+@property (nonatomic) BOOL isPresentingSample;
 @property(nonatomic, readonly) TPPCatalogNavigationController *catalogNavigationController;
 
 /// This method will present a view controller from the receiver, or from the
