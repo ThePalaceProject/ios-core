@@ -108,13 +108,15 @@ class TPPBookCoverRegistry {
     var image: UIImage?
     let width: CGFloat = 80
     let height: CGFloat = 120
-    let coverView = NYPLTenPrintCoverView(frame: CGRect(x: 0, y: 0, width: width, height: height), withTitle: book.title, withAuthor: book.authors, withScale: 0.4)
-    UIGraphicsBeginImageContextWithOptions(CGSize(width: width, height: height), true, 0)
-    if let context = UIGraphicsGetCurrentContext() {
-      coverView?.layer.render(in: context)
-      image = UIGraphicsGetImageFromCurrentImageContext()
+    DispatchQueue.main.async {
+      let coverView = NYPLTenPrintCoverView(frame: CGRect(x: 0, y: 0, width: width, height: height), withTitle: book.title, withAuthor: book.authors, withScale: 0.4)
+      UIGraphicsBeginImageContextWithOptions(CGSize(width: width, height: height), true, 0)
+      if let context = UIGraphicsGetCurrentContext() {
+        coverView?.layer.render(in: context)
+        image = UIGraphicsGetImageFromCurrentImageContext()
+      }
+      UIGraphicsEndImageContext()
     }
-    UIGraphicsEndImageContext()
     return image
   }
   

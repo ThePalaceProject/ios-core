@@ -228,10 +228,10 @@ class TPPBookRegistry: NSObject {
     guard let loansUrl = AccountsManager.shared.currentAccount?.loansUrl else {
       return
     }
-
+    
     state = .syncing
     syncUrl = loansUrl
-    TPPOPDSFeed.withURL(loansUrl, shouldResetCache: true, useTokenIfAvailable: false) { feed, errorDocument in
+    TPPOPDSFeed.withURL(loansUrl, shouldResetCache: true, useTokenIfAvailable: true) { feed, errorDocument in
       DispatchQueue.main.async {
         defer {
           self.state = .loaded
@@ -240,40 +240,61 @@ class TPPBookRegistry: NSObject {
         if self.syncUrl != loansUrl {
           return
         }
-        if let errorDocument = errorDocument {
+        if let errorDocument {
           completion?(errorDocument, false)
           return
         }
-        guard let feed = feed else {
+        guard let feed else {
           completion?(nil, false)
           return
         }
         if let licensor = feed.licensor as? [String: Any] {
           TPPUserAccount.sharedAccount().setLicensor(licensor)
         }
+        
         var recordsToDelete = Set<String>(self.registry.keys.map { $0 as String })
         for entry in feed.entries {
           guard let opdsEntry = entry as? TPPOPDSEntry,
-                let book = TPPBook(entry: opdsEntry)
-          else {
+                let book = TPPBook(entry: opdsEntry) else {
             continue
           }
           recordsToDelete.remove(book.identifier)
-          if self.registry[book.identifier] != nil {
+          if let existingRecord = self.registry[book.identifier] {
             self.updateBook(book)
           } else {
             self.addBook(book)
           }
         }
-        recordsToDelete.forEach {
-          if let state = self.registry[$0]?.state, state == .DownloadSuccessful || state == .Used {
-            MyBooksDownloadCenter.shared.deleteLocalContent(for: $0)
+        
+        // Handle expired books
+        recordsToDelete.forEach { identifier in
+          if let state = self.registry[identifier]?.state, state == .DownloadSuccessful || state == .Used {
+            MyBooksDownloadCenter.shared.deleteLocalContent(for: identifier)
           }
-          self.registry[$0] = nil
+          self.registry[identifier]?.state = .Unregistered
+          self.removeBook(forIdentifier: identifier)
         }
+        
         self.save()
         
-        // Count new books
+        self.myBooks.forEach { book in
+          book.defaultAcquisition?.availability.matchUnavailable({ _ in
+            MyBooksDownloadCenter.shared.returnBook(withIdentifier: book.identifier)
+            self.removeBook(forIdentifier: book.identifier)
+          }, limited: { limited in
+            if let until = limited.until, until.timeIntervalSinceNow <= 0 {
+              MyBooksDownloadCenter.shared.returnBook(withIdentifier: book.identifier)
+              self.removeBook(forIdentifier: book.identifier)
+            }
+          }, unlimited: nil, reserved: nil, ready: { ready in
+            if let until = ready.until, until.timeIntervalSinceNow <= 0 {
+              MyBooksDownloadCenter.shared.returnBook(withIdentifier: book.identifier)
+              self.removeBook(forIdentifier: book.identifier)
+            }
+          })
+        }
+        
+        // Update the app icon badge for ready books
         var readyBooks = 0
         self.heldBooks.forEach { book in
           book.defaultAcquisition?.availability.matchUnavailable(nil, limited: nil, unlimited: nil, reserved: nil, ready: { _ in
