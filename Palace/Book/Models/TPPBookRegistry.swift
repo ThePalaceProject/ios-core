@@ -66,6 +66,7 @@ fileprivate class BoolWithDelay {
   private var switchBackDelay: Double
   private var resetTask: DispatchWorkItem?
   private var onChange: ((_ value: Bool) -> Void)?
+
   init(delay: Double = 5, onChange: ((_ value: Bool) -> Void)? = nil) {
     self.switchBackDelay = delay
     self.onChange = onChange
@@ -117,7 +118,8 @@ class TPPBookRegistry: NSObject {
   }
   
   private var coverRegistry = TPPBookCoverRegistry()
-  
+  private let syncQueue = DispatchQueue(label: "com.palace.syncQueue")
+
   /// Book identifiers that are being processed.
   private var processingIdentifiers = Set<String>()
   
@@ -231,20 +233,22 @@ class TPPBookRegistry: NSObject {
     
     state = .syncing
     syncUrl = loansUrl
+    
     TPPOPDSFeed.withURL(loansUrl, shouldResetCache: true, useTokenIfAvailable: true) { feed, errorDocument in
       DispatchQueue.main.async {
         defer {
           self.state = .loaded
           self.syncUrl = nil
         }
+        
         if self.syncUrl != loansUrl {
           return
         }
-        if let errorDocument {
+        if let errorDocument = errorDocument {
           completion?(errorDocument, false)
           return
         }
-        guard let feed else {
+        guard let feed = feed else {
           completion?(nil, false)
           return
         }
@@ -252,30 +256,32 @@ class TPPBookRegistry: NSObject {
           TPPUserAccount.sharedAccount().setLicensor(licensor)
         }
         
-        var recordsToDelete = Set<String>(self.registry.keys.map { $0 as String })
-        for entry in feed.entries {
-          guard let opdsEntry = entry as? TPPOPDSEntry,
-                let book = TPPBook(entry: opdsEntry) else {
-            continue
+        self.syncQueue.sync {
+          var recordsToDelete = Set<String>(self.registry.keys.map { $0 as String })
+          for entry in feed.entries {
+            guard let opdsEntry = entry as? TPPOPDSEntry,
+                  let book = TPPBook(entry: opdsEntry) else {
+              continue
+            }
+            recordsToDelete.remove(book.identifier)
+            if let existingRecord = self.registry[book.identifier] {
+              self.updateBook(book)
+            } else {
+              self.addBook(book)
+            }
           }
-          recordsToDelete.remove(book.identifier)
-          if let existingRecord = self.registry[book.identifier] {
-            self.updateBook(book)
-          } else {
-            self.addBook(book)
+          
+          // Handle expired books
+          recordsToDelete.forEach { identifier in
+            if let state = self.registry[identifier]?.state, state == .DownloadSuccessful || state == .Used {
+              MyBooksDownloadCenter.shared.deleteLocalContent(for: identifier)
+            }
+            self.registry[identifier]?.state = .Unregistered
+            self.removeBook(forIdentifier: identifier)
           }
+          
+          self.save()
         }
-        
-        // Handle expired books
-        recordsToDelete.forEach { identifier in
-          if let state = self.registry[identifier]?.state, state == .DownloadSuccessful || state == .Used {
-            MyBooksDownloadCenter.shared.deleteLocalContent(for: identifier)
-          }
-          self.registry[identifier]?.state = .Unregistered
-          self.removeBook(forIdentifier: identifier)
-        }
-        
-        self.save()
         
         self.myBooks.forEach { book in
           book.defaultAcquisition?.availability.matchUnavailable({ _ in
@@ -293,21 +299,10 @@ class TPPBookRegistry: NSObject {
             }
           })
         }
-        
-        // Update the app icon badge for ready books
-        var readyBooks = 0
-        self.heldBooks.forEach { book in
-          book.defaultAcquisition?.availability.matchUnavailable(nil, limited: nil, unlimited: nil, reserved: nil, ready: { _ in
-            readyBooks += 1
-          })
-        }
-        if UIApplication.shared.applicationIconBadgeNumber != readyBooks {
-          UIApplication.shared.applicationIconBadgeNumber = readyBooks
-        }
-        completion?(nil, readyBooks > 0)
       }
     }
   }
+
 
   /// Saves book registry data.
   private func save() {

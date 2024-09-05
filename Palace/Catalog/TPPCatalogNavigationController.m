@@ -100,7 +100,7 @@
   [account loadAuthenticationDocumentUsingSignedInStateProvider:nil completion:^(BOOL success) {
     dispatch_async(dispatch_get_main_queue(), ^{
       if (success) {
-        [AccountsManager shared].currentAccount = account;
+        [AccountsManager sharedInstance].currentAccount = account;
         [self updateFeedAndRegistryOnAccountChange];
       } else {
         NSString *title = NSLocalizedString(@"Error Loading Library", @"Title for alert related to error loading library authentication doc");
@@ -133,8 +133,8 @@
 
   TPPUserAccount * const user = TPPUserAccount.sharedAccount;
   if (user.authDefinition.needsAgeCheck) {
-    [[[AccountsManager shared] ageCheck] verifyCurrentAccountAgeRequirementWithUserAccountProvider:[TPPUserAccount sharedAccount]
-                                                                     currentLibraryAccountProvider:[AccountsManager shared]
+    [[[AccountsManager sharedInstance] ageCheck] verifyCurrentAccountAgeRequirementWithUserAccountProvider:[TPPUserAccount sharedAccount]
+                                                                     currentLibraryAccountProvider:[AccountsManager sharedInstance]
                                                                                         completion:^(BOOL isOfAge)  {
       [TPPMainThreadRun asyncIfNeeded: ^{
         mainFeedUrl = [user.authDefinition coppaURLWithIsOfAge:isOfAge];
@@ -169,8 +169,8 @@
     };
 
     if (TPPUserAccount.sharedAccount.authDefinition.needsAgeCheck) {
-      [[[AccountsManager shared] ageCheck] verifyCurrentAccountAgeRequirementWithUserAccountProvider:[TPPUserAccount sharedAccount]
-                                                                       currentLibraryAccountProvider:[AccountsManager shared]
+      [[[AccountsManager sharedInstance] ageCheck] verifyCurrentAccountAgeRequirementWithUserAccountProvider:[TPPUserAccount sharedAccount]
+                                                                       currentLibraryAccountProvider:[AccountsManager sharedInstance]
                                                                                           completion:^(BOOL isOfAge) {
         dispatch_async(dispatch_get_main_queue(), ^{
           mainFeedUrl = [TPPUserAccount.sharedAccount.authDefinition coppaURLWithIsOfAge:isOfAge];
@@ -237,8 +237,8 @@
       [vc safelyPresentViewController:onboardingVC animated:YES completion:nil];
     };
     if (TPPUserAccount.sharedAccount.authDefinition.needsAgeCheck) {
-      [[[AccountsManager shared] ageCheck] verifyCurrentAccountAgeRequirementWithUserAccountProvider:[TPPUserAccount sharedAccount]
-                                                                       currentLibraryAccountProvider:[AccountsManager shared]
+      [[[AccountsManager sharedInstance] ageCheck] verifyCurrentAccountAgeRequirementWithUserAccountProvider:[TPPUserAccount sharedAccount]
+                                                                       currentLibraryAccountProvider:[AccountsManager sharedInstance]
                                                                                           completion:^(BOOL isOfAge) {
         mainFeedUrl = [TPPUserAccount.sharedAccount.authDefinition coppaURLWithIsOfAge:isOfAge];
         completion();

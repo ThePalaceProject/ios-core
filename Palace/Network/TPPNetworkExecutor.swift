@@ -19,6 +19,8 @@ enum NYPLResult<SuccessInfo> {
   private var isRefreshing = false
   private var retryQueue: [URLSessionTask] = []
   private let retryQueueLock = NSLock()
+  private var activeTasks: [URLSessionTask] = []  // Track active tasks
+  private let activeTasksLock = NSLock()  // Lock to ensure thread-safe access to active tasks
   
   private let responder: TPPNetworkResponder
   
@@ -47,7 +49,42 @@ enum NYPLResult<SuccessInfo> {
            useTokenIfAvailable: Bool = true,
            completion: @escaping (_ result: NYPLResult<Data>) -> Void) {
     let req = request(for: reqURL, useTokenIfAvailable: useTokenIfAvailable)
-    executeRequest(req, enableTokenRefresh: useTokenIfAvailable, completion: completion)
+    let task = executeRequest(req, enableTokenRefresh: useTokenIfAvailable, completion: completion)
+    
+    // Track active tasks
+    if let task = task {
+      addTaskToActiveTasks(task)
+    }
+  }
+  
+  // Add task to the active tasks list
+  private func addTaskToActiveTasks(_ task: URLSessionTask) {
+    activeTasksLock.lock()
+    activeTasks.append(task)
+    activeTasksLock.unlock()
+  }
+  
+  // Remove task from the active tasks list
+  private func removeTaskFromActiveTasks(_ task: URLSessionTask) {
+    activeTasksLock.lock()
+    if let index = activeTasks.firstIndex(of: task) {
+      activeTasks.remove(at: index)
+    }
+    activeTasksLock.unlock()
+  }
+  
+  // Suspend all active tasks
+  @objc func pauseAllTasks() {
+    activeTasksLock.lock()
+    activeTasks.forEach { $0.suspend() }
+    activeTasksLock.unlock()
+  }
+  
+  // Resume all suspended tasks
+  @objc func resumeAllTasks() {
+    activeTasksLock.lock()
+    activeTasks.forEach { $0.resume() }
+    activeTasksLock.unlock()
   }
 }
 
@@ -63,7 +100,7 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
     if userAccount.isTokenRefreshRequired() && enableTokenRefresh {
       let task = urlSession.dataTask(with: req)
       refreshTokenAndResume(task: task, completion: completion)
-      return nil
+      return task
     }
     
     if req.hasRetried && userAccount.isTokenRefreshRequired() {
@@ -74,6 +111,39 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
     
     return performDataTask(with: req, completion: completion)
   }
+  
+  private func performDataTask(with request: URLRequest,
+                               completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask {
+    let task = urlSession.dataTask(with: request)
+    responder.addCompletion(completion, taskID: task.taskIdentifier)
+    task.resume()
+    return task
+  }
+}
+
+extension TPPNetworkExecutor {
+//  @discardableResult
+//  func executeRequest(_ req: URLRequest, enableTokenRefresh: Bool, completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask? {
+//    let userAccount = TPPUserAccount.sharedAccount()
+//    
+//    if let authDefinition = userAccount.authDefinition, authDefinition.isSaml {
+//      return performDataTask(with: req, completion: completion)
+//    }
+//    
+//    if userAccount.isTokenRefreshRequired() && enableTokenRefresh {
+//      let task = urlSession.dataTask(with: req)
+//      refreshTokenAndResume(task: task, completion: completion)
+//      return nil
+//    }
+//    
+//    if req.hasRetried && userAccount.isTokenRefreshRequired() {
+//      let error = createErrorForRetryFailure()
+//      completion(NYPLResult.failure(error, nil))
+//      return nil
+//    }
+//    
+//    return performDataTask(with: req, completion: completion)
+//  }
 
   private func createErrorForRetryFailure() -> NSError {
     return NSError(
@@ -83,14 +153,14 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
     )
   }
   
-  private func performDataTask(with request: URLRequest,
-                               completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask {
-    let task = urlSession.dataTask(with: request)
-    responder.addCompletion(completion, taskID: task.taskIdentifier)
-    Log.info(#file, "Task \(task.taskIdentifier): starting request \(request.loggableString)")
-    task.resume()
-    return task
-  }
+//  private func performDataTask(with request: URLRequest,
+//                               completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask {
+//    let task = urlSession.dataTask(with: request)
+//    responder.addCompletion(completion, taskID: task.taskIdentifier)
+//    Log.info(#file, "Task \(task.taskIdentifier): starting request \(request.loggableString)")
+//    task.resume()
+//    return task
+//  }
 }
 
 extension TPPNetworkExecutor {

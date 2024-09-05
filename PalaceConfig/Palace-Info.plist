@@ -72,6 +72,17 @@
 	<string>We use your screenshots to help support you by understanding what you see on the screen or share with us via screen capture. You must upload those images and we do not do that in the background or programmatically.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>We use your screenshots to help support you by understanding what you see on the screen or share with us via screen capture. You must upload those images and we do not do that in the background or programmatically.</string>
+	<key>NSPrivacyAccessedAPITypes</key>
+	<dict>
+		<key>NSPrivacyAccessedAPICategoryDiskSpace</key>
+		<string>The Palace App uses disk space to store audiobook files and user bookmarks for offline access and to enhance the user experience by ensuring that the user’s progress and settings are saved locally.</string>
+		<key>NSPrivacyAccessedAPICategoryFileTimestamp</key>
+		<string>Palace App</string>
+		<key>NSPrivacyAccessedAPICategorySystemBootTime</key>
+		<string>The Palace App accesses system boot time to ensure proper scheduling and functioning of background tasks, such as periodic checks for new audiobook content and managing download operations, ensuring a smooth user experience without unnecessary interruptions.</string>
+		<key>NSPrivacyAccessedAPICategoryUserDefaults</key>
+		<string>The Palace App uses UserDefaults to store user preferences, such as playback settings and interface customizations, providing a personalized experience tailored to the user’s needs.</string>
+	</dict>
 	<key>UIAppFonts</key>
 	<array>
 		<string>OpenDyslexic3-Regular.ttf</string>
@@ -83,7 +94,9 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>
+		<string>bluetooth-central</string>
 		<string>fetch</string>
+		<string>processing</string>
 	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>TPP_Launch_Screen</string>
@@ -106,16 +119,5 @@
 	</array>
 	<key>UIWhitePointAdaptivityStyle</key>
 	<string>UIWhitePointAdaptivityStyleReading</string>
-	<key>NSPrivacyAccessedAPITypes</key>
-	<dict>
-		<key>NSPrivacyAccessedAPICategoryDiskSpace</key>
-		<string>The Palace App uses disk space to store audiobook files and user bookmarks for offline access and to enhance the user experience by ensuring that the user’s progress and settings are saved locally.</string>
-		<key>NSPrivacyAccessedAPICategoryFileTimestamp</key>
-		<string>Palace App</string>
-		<key>NSPrivacyAccessedAPICategorySystemBootTime</key>
-		<string>The Palace App accesses system boot time to ensure proper scheduling and functioning of background tasks, such as periodic checks for new audiobook content and managing download operations, ensuring a smooth user experience without unnecessary interruptions.</string>
-		<key>NSPrivacyAccessedAPICategoryUserDefaults</key>
-		<string>The Palace App uses UserDefaults to store user preferences, such as playback settings and interface customizations, providing a personalized experience tailored to the user’s needs.</string>
-	</dict>
 </dict>
 </plist>
