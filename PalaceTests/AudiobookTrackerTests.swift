@@ -117,7 +117,6 @@ class AudiobookTimeTrackerTests: XCTestCase {
       sut.receiveValue(simulatedDate)
     }
     
-    // Assert that the time entry is recorded in UTC
     DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
       let firstEntry = self.mockDataManager.savedTimeEntries.first
       XCTAssertNotNil(firstEntry, "Time entry should exist")
@@ -129,23 +128,19 @@ class AudiobookTimeTrackerTests: XCTestCase {
   }
   
   func testPlaybackStopped_stopsTimer() {
-    // Arrange
     sut.playbackStarted()
     let expectation = self.expectation(description: "Timer stopped")
     
-    // Act
     DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
       self.sut.playbackStopped()
       let previousDuration = self.sut.timeEntry.duration
       
-      // After another second, ensure duration has not increased
       DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
         XCTAssertEqual(self.sut.timeEntry.duration, previousDuration)
         expectation.fulfill()
       }
     }
     
-    // Assert
     wait(for: [expectation], timeout: 10.0)
   }
   
