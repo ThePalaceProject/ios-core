@@ -75,19 +75,12 @@ extension TPPBookCellDelegate {
           return
         }
         
-        var timeTracker: AudiobookTimeTracker?
-        if let libraryId = AccountsManager.shared.currentAccount?.uuid, let timeTrackingURL = book.timeTrackingURL {
-          timeTracker = AudiobookTimeTracker(libraryId: libraryId, bookId: book.identifier, timeTrackingUrl: timeTrackingURL)
-        }
-        
         let metadata = AudiobookMetadata(title: book.title, authors: [book.authors ?? ""])
         let audiobookManager = DefaultAudiobookManager(
           metadata: metadata,
           audiobook: audiobook,
-          networkService: DefaultAudiobookNetworkService(tracks: audiobook.tableOfContents.allTracks),
-          playbackTrackerDelegate: timeTracker
-        )
-      
+          networkService: DefaultAudiobookNetworkService(tracks: audiobook.tableOfContents.allTracks))
+        
         self.audiobookBookmarkBusinessLogic = AudiobookBookmarkBusinessLogic(book: book)
         audiobookManager.bookmarkDelegate = self.audiobookBookmarkBusinessLogic
         
