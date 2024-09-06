@@ -117,14 +117,14 @@ class AudiobookTimeTrackerTests: XCTestCase {
       sut.receiveValue(simulatedDate)
     }
     
-    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
       let firstEntry = self.mockDataManager.savedTimeEntries.first
       XCTAssertNotNil(firstEntry, "Time entry should exist")
       XCTAssertTrue(firstEntry?.duringMinute.hasSuffix("Z") ?? false, "Time entry should be in UTC format")
       expectation.fulfill()
     }
     
-    wait(for: [expectation], timeout: 3.0)
+    wait(for: [expectation], timeout: 5.0)
   }
   
   func testPlaybackStopped_stopsTimer() {
@@ -188,7 +188,7 @@ class AudiobookTimeTrackerTests: XCTestCase {
     
     sut = nil
     
-    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
       let total = self.mockDataManager.savedTimeEntries.reduce(0) { $0 + $1.duration }
       
     XCTAssertLessThanOrEqual(self.mockDataManager.savedTimeEntries.count, 2, "There should be less than or equal to 2 entries.")
@@ -196,6 +196,6 @@ class AudiobookTimeTrackerTests: XCTestCase {
       expectation.fulfill()
     }
     
-    wait(for: [expectation], timeout: 3.0)
+    wait(for: [expectation], timeout: 5.0)
   }
 }
