@@ -244,40 +244,19 @@ public extension TPPBookCellDelegate {
 }
 
 extension TPPBookCellDelegate {
-//  public func scheduleTimer(forAudiobook book: TPPBook, manager: DefaultAudiobookManager, viewController: UIViewController) {
-//    self.lastServerUpdate = Date()
-//    self.audiobookViewController = viewController
-//    self.manager = manager
-//    self.book = book
-//    
-//    timer?.cancel()
-//    timer = nil
-//    
-//    let queue = DispatchQueue(label: "com.palace.pollAudiobookLocation", qos: .background, attributes: .concurrent)
-//    timer = DispatchSource.makeTimerSource(queue: queue)
-//    
-//    timer?.schedule(deadline: .now() + kTimerInterval, repeating: kTimerInterval)
-//    
-//    timer?.setEventHandler { [weak self] in
-//      self?.pollAudiobookReadingLocation()
-//    }
-//    
-//    timer?.resume()
-//  }
+
   public func scheduleTimer(forAudiobook book: TPPBook, manager: DefaultAudiobookManager, viewController: UIViewController) {
     self.lastServerUpdate = Date()
     self.audiobookViewController = viewController
     self.manager = manager
     self.book = book
     
-    // Cancel any previous timer
     timer?.cancel()
     timer = nil
     
     let queue = DispatchQueue(label: "com.palace.pollAudiobookLocation", qos: .background, attributes: .concurrent)
     timer = DispatchSource.makeTimerSource(queue: queue)
     
-    // Start the timer
     timer?.schedule(deadline: .now() + kTimerInterval, repeating: kTimerInterval)
     
     timer?.setEventHandler { [weak self] in
@@ -285,32 +264,10 @@ extension TPPBookCellDelegate {
     }
     
     timer?.resume()
-    
-    NotificationCenter.default.addObserver(self,
-                                           selector: #selector(applicationDidEnterBackground),
-                                           name: UIApplication.didEnterBackgroundNotification,
-                                           object: nil)
-    
-    NotificationCenter.default.addObserver(self,
-                                           selector: #selector(applicationWillEnterForeground),
-                                           name: UIApplication.willEnterForegroundNotification,
-                                           object: nil)
-  }
-  
-  @objc private func applicationDidEnterBackground() {
-    timer?.suspend()
-  }
-  
-  @objc private func applicationWillEnterForeground() {
-    timer?.resume()
   }
 
   @objc public func pollAudiobookReadingLocation() {
     DispatchQueue.main.async {
-      guard UIApplication.shared.applicationState == .active else {
-        return
-      }
-      
       guard let _ = self.audiobookViewController else {
         timer?.cancel()
         timer = nil
