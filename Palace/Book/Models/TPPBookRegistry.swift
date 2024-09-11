@@ -244,11 +244,11 @@ class TPPBookRegistry: NSObject {
         if self.syncUrl != loansUrl {
           return
         }
-        if let errorDocument = errorDocument {
+        if let errorDocument {
           completion?(errorDocument, false)
           return
         }
-        guard let feed = feed else {
+        guard let feed else {
           completion?(nil, false)
           return
         }

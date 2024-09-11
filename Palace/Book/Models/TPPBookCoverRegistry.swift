@@ -103,7 +103,6 @@ class TPPBookCoverRegistry {
     
     urlSession.dataTask(with: request) { data, response, error in
       guard let data = data else {
-        // Handle error or return a placeholder image
         completion(nil)
         return
       }
@@ -111,9 +110,8 @@ class TPPBookCoverRegistry {
       if let image = UIImage(data: data) {
         completion(image)
       } else {
-        // Handle the failure to decode the image
         print("Failed to decode image data.")
-        completion(nil) // or return a placeholder image
+        completion(nil)
       }
     }.resume()
   }

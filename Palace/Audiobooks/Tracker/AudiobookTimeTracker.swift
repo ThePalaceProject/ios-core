@@ -65,6 +65,7 @@ class AudiobookTimeTracker: NSObject, AudiobookPlaybackTrackerDelegate {
   func receiveValue(_ value: Date) {
     duration += tick
     let minute = minuteFormatter.string(from: value)
+    
     if minute != currentMinute {
       saveCurrentDuration(date: value)
       currentMinute = minute

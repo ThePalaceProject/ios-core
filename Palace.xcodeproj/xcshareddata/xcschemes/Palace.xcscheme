@@ -74,6 +74,9 @@
                <Test
                   Identifier = "AudiobookBookmarkBusinessLogicTests">
                </Test>
+               <Test
+                  Identifier = "AudiobookTimeTrackerTests">
+               </Test>
             </SkippedTests>
          </TestableReference>
          <TestableReference
