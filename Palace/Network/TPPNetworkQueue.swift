@@ -72,9 +72,7 @@ final class NetworkQueue: NSObject {
   // MARK: - Public Functions
 
   @objc func addObserverForOfflineQueue() {
-    NotificationCenter.default.addObserver(forName: NSNotification.Name.NYPLReachabilityHostIsReachable,
-                                           object: nil,
-                                           queue: nil) { notification in self.retryQueue() }
+    NotificationCenter.default.addObserver(self, selector: #selector(retryQueue), name: .TPPReachabilityChanged, object: nil)
   }
 
   func addRequest(_ libraryID: String,
@@ -179,7 +177,7 @@ final class NetworkQueue: NSObject {
     }
   }
 
-  private func retryQueue()
+  @objc private func retryQueue()
   {
     self.serialQueue.async {
 

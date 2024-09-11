@@ -9,7 +9,6 @@
 #import "TPPConfiguration.h"
 #import "TPPLinearView.h"
 #import "TPPOPDSFeed.h"
-#import "TPPReachability.h"
 #import "TPPRootTabBarController.h"
 #import "TPPSettingsEULAViewController.h"
 #import "TPPXML.h"

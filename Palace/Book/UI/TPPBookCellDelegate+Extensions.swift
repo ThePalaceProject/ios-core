@@ -9,8 +9,7 @@
 import Foundation
 import PalaceAudiobookToolkit
 
-let kServerUpdateDelay: Double = 30.0
-let kTimerInterval: Double = 1.0
+let kTimerInterval: Double = 5.0
 
 private struct AssociatedKeys {
   static var audiobookBookmarkBusinessLogic = "audiobookBookmarkBusinessLogic"
@@ -18,6 +17,7 @@ private struct AssociatedKeys {
 
 private let locationQueue = DispatchQueue(label: "com.palace.latestAudiobookLocation", attributes: .concurrent)
 private var _latestAudiobookLocation: (book: String, location: String)?
+private var timer: DispatchSourceTimer?
 
 var latestAudiobookLocation: (book: String, location: String)? {
   get {
@@ -244,46 +244,54 @@ public extension TPPBookCellDelegate {
 }
 
 extension TPPBookCellDelegate {
+
   public func scheduleTimer(forAudiobook book: TPPBook, manager: DefaultAudiobookManager, viewController: UIViewController) {
     self.lastServerUpdate = Date()
     self.audiobookViewController = viewController
     self.manager = manager
     self.book = book
-    // Target-Selector method required for iOS <10.0
-    self.timer = Timer.scheduledTimer(timeInterval: kTimerInterval,
-                                      target: self,
-                                      selector: #selector(pollAudiobookReadingLocation),
-                                      userInfo: nil,
-                                      repeats: true)
+    
+    timer?.cancel()
+    timer = nil
+    
+    let queue = DispatchQueue(label: "com.palace.pollAudiobookLocation", qos: .background, attributes: .concurrent)
+    timer = DispatchSource.makeTimerSource(queue: queue)
+    
+    timer?.schedule(deadline: .now() + kTimerInterval, repeating: kTimerInterval)
+    
+    timer?.setEventHandler { [weak self] in
+      self?.pollAudiobookReadingLocation()
+    }
+    
+    timer?.resume()
   }
-  
+
   @objc public func pollAudiobookReadingLocation() {
-    guard let _ = self.audiobookViewController else {
-      self.timer?.invalidate()
-      self.timer = nil
-      self.manager = nil
-      return
-    }
-    
-    guard !self.isSyncing else {
-      return
-    }
-    
-    guard let currentTrackPosition = self.manager?.audiobook.player.currentTrackPosition else {
-      return
-    }
-    
-    let playheadOffset = currentTrackPosition.timestamp
-    if previousPlayheadOffset != playheadOffset && playheadOffset > 0 {
-      previousPlayheadOffset = playheadOffset
+    DispatchQueue.main.async {
+      guard let _ = self.audiobookViewController else {
+        timer?.cancel()
+        timer = nil
+        self.manager = nil
+        return
+      }
       
-      DispatchQueue.global(qos: .background).async {
-        let locationData = try? JSONEncoder().encode(currentTrackPosition.toAudioBookmark())
-        let locationString = String(data: locationData ?? Data(), encoding: .utf8) ?? ""
+      guard let currentTrackPosition = self.manager?.audiobook.player.currentTrackPosition else {
+        return
+      }
+      
+      let playheadOffset = currentTrackPosition.timestamp
+      if self.previousPlayheadOffset != playheadOffset && playheadOffset > 0 {
+        self.previousPlayheadOffset = playheadOffset
         
-        TPPBookRegistry.shared.setLocation(TPPBookLocation(locationString: locationString, renderer: "PalaceAudiobookToolkit"), forIdentifier: self.book.identifier)
-  
-        latestAudiobookLocation = (book: self.book.identifier, location: locationString)
+        DispatchQueue.global(qos: .background).async { [weak self] in
+          guard let self = self else { return }
+          
+          let locationData = try? JSONEncoder().encode(currentTrackPosition.toAudioBookmark())
+          let locationString = String(data: locationData ?? Data(), encoding: .utf8) ?? ""
+          
+          TPPBookRegistry.shared.setLocation(TPPBookLocation(locationString: locationString, renderer: "PalaceAudiobookToolkit"), forIdentifier: self.book.identifier)
+          latestAudiobookLocation = (book: self.book.identifier, location: locationString)
+        }
       }
     }
   }

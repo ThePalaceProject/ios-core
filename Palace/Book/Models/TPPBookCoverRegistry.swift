@@ -115,7 +115,7 @@ class TPPBookCoverRegistry {
       }
     }.resume()
   }
-  
+
   private func pinThumbnailImage(_ image: UIImage, for book: TPPBook) {
     guard let fileUrl = pinnedThumbnailImageUrlOfBookIdentifier(book.identifier) else { return }
     

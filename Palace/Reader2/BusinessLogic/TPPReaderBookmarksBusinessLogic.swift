@@ -177,10 +177,7 @@ class TPPReaderBookmarksBusinessLogic: NSObject {
   }
     
   func syncBookmarks(completion: @escaping (Bool, [TPPReadiumBookmark]) -> ()) {
-    TPPReachability.shared()?.reachability(for: TPPConfiguration.mainFeedURL(),
-                                            timeoutInternal: 8.0,
-                                            handler: { (reachable) in
-      guard reachable else {
+      guard Reachability.shared.isConnectedToNetwork() else {
         self.handleBookmarksSyncFail(message: "Error: host was not reachable for bookmark sync attempt.",
                                      completion: completion)
         return
@@ -190,40 +187,38 @@ class TPPReaderBookmarksBusinessLogic: NSObject {
       // First check for and upload any local bookmarks that have never been saved to the server.
       // Wait til that's finished, then download the server's bookmark list and filter out any that can be deleted.
       let localBookmarks = self.bookRegistry.readiumBookmarks(forIdentifier: self.book.identifier)
-      TPPAnnotations.uploadLocalBookmarks(localBookmarks, forBook: self.book.identifier) { (bookmarksUploaded, bookmarksFailedToUpload) in
-        for localBookmark in localBookmarks {
-          for uploadedBookmark in bookmarksUploaded {
-            if localBookmark.isEqual(uploadedBookmark) {
-              self.bookRegistry.replace(localBookmark, with: uploadedBookmark, forIdentifier: self.book.identifier)
-            }
-          }
-        }
-        
-        TPPAnnotations.getServerBookmarks(forBook: self.book.identifier, atURL: self.book.annotationsURL, motivation: .bookmark) { serverBookmarks in
-
-          guard let serverBookmarks = serverBookmarks as? [TPPReadiumBookmark] else {
-            self.handleBookmarksSyncFail(message: "Ending sync without running completion. Returning original list of bookmarks.",
-                                         completion: completion)
-            return
-          }
-            
-          Log.debug(#file, serverBookmarks.count == 0 ? "No server bookmarks" : "Server bookmarks count: \(serverBookmarks.count)")
-          
-          self.updateLocalBookmarks(serverBookmarks: serverBookmarks,
-                                     localBookmarks: localBookmarks,
-                                     bookmarksFailedToUpload: bookmarksFailedToUpload)
-          { [weak self] in
-            guard let self = self else {
-              completion(false, localBookmarks)
-              return
-            }
-            self.bookmarks = self.bookRegistry.readiumBookmarks(forIdentifier: self.book.identifier)
-            completion(true, self.bookmarks)
+    TPPAnnotations.uploadLocalBookmarks(localBookmarks, forBook: self.book.identifier) { (bookmarksUploaded, bookmarksFailedToUpload) in
+      for localBookmark in localBookmarks {
+        for uploadedBookmark in bookmarksUploaded {
+          if localBookmark.isEqual(uploadedBookmark) {
+            self.bookRegistry.replace(localBookmark, with: uploadedBookmark, forIdentifier: self.book.identifier)
           }
         }
       }
       
-    })
+      TPPAnnotations.getServerBookmarks(forBook: self.book.identifier, atURL: self.book.annotationsURL, motivation: .bookmark) { serverBookmarks in
+        
+        guard let serverBookmarks = serverBookmarks as? [TPPReadiumBookmark] else {
+          self.handleBookmarksSyncFail(message: "Ending sync without running completion. Returning original list of bookmarks.",
+                                       completion: completion)
+          return
+        }
+        
+        Log.debug(#file, serverBookmarks.count == 0 ? "No server bookmarks" : "Server bookmarks count: \(serverBookmarks.count)")
+        
+        self.updateLocalBookmarks(serverBookmarks: serverBookmarks,
+                                  localBookmarks: localBookmarks,
+                                  bookmarksFailedToUpload: bookmarksFailedToUpload)
+        { [weak self] in
+          guard let self = self else {
+            completion(false, localBookmarks)
+            return
+          }
+          self.bookmarks = self.bookRegistry.readiumBookmarks(forIdentifier: self.book.identifier)
+          completion(true, self.bookmarks)
+        }
+      }
+    }
   }
     
   func updateLocalBookmarks(serverBookmarks: [TPPReadiumBookmark],
