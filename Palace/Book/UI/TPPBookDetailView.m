@@ -70,6 +70,7 @@
 @property (nonatomic) UIView *topFootnoteSeparater;
 @property (nonatomic) UIView *bottomFootnoteSeparator;
 
+@property (nonatomic) BOOL isProcessingSample;
 @property (nonatomic) BOOL isShowingSample;
 
 @end
@@ -678,30 +679,35 @@ static NSString *DetailHTMLTemplate = nil;
 NSString *PlaySampleNotification = @"ToggleSampleNotification";
 
 - (void)didSelectPlaySample:(TPPBook *)book completion:(void (^ _Nullable)(void))completion {
-  if ([self.book defaultBookContentType] == TPPBookContentTypeAudiobook) {
-    if ([self.book.sampleAcquisition.type isEqualToString: @"text/html"]) {
-      [self presentWebView: self.book.sampleAcquisition.hrefURL];
-    } else {
-      if (!self.isShowingSample) {
-        self.isShowingSample = YES;
-        [self showAudiobookSampleToolbar];
+  if (!self.isProcessingSample) {
+    self.isProcessingSample = YES;
+    if ([self.book defaultBookContentType] == TPPBookContentTypeAudiobook) {
+      if ([self.book.sampleAcquisition.type isEqualToString: @"text/html"]) {
+        [self presentWebView: self.book.sampleAcquisition.hrefURL];
+      } else {
+        if (!self.isShowingSample) {
+          self.isShowingSample = YES;
+          self.isProcessingSample = NO;
+          [self showAudiobookSampleToolbar];
+        }
+        [[NSNotificationCenter defaultCenter] postNotificationName:PlaySampleNotification object:self];
       }
-      [[NSNotificationCenter defaultCenter] postNotificationName:PlaySampleNotification object:self];
+    } else {
+      [EpubSampleFactory createSampleWithBook:self.book completion:^(EpubLocationSampleURL *sampleURL, NSError *error) {
+        if (error) {
+          TPPLOG_F(@"Attributed string rendering error for %@ book description: %@",
+                   [self.book loggableShortString], error);
+        } else if ([sampleURL isKindOfClass:[EpubSampleWebURL class]]) {
+          [self presentWebView:sampleURL.url];
+        } else {
+          [TPPRootTabBarController.sharedController presentSample:self.book url:sampleURL.url];
+        }
+        self.isProcessingSample = NO;
+      }];
     }
-  } else {
-    [EpubSampleFactory createSampleWithBook:self.book completion:^(EpubLocationSampleURL *sampleURL, NSError *error) {
-      if (error) {
-         TPPLOG_F(@"Attributed string rendering error for %@ book description: %@",
-                  [self.book loggableShortString], error);
-       } else if ([sampleURL isKindOfClass:[EpubSampleWebURL class]]) {
-         [self presentWebView:sampleURL.url];
-       } else {
-         [TPPRootTabBarController.sharedController presentSample:self.book url:sampleURL.url];
-       }
-    }];
+    
+    completion();
   }
-  
-  completion();
 }
   
 - (void)presentWebView:(NSURL *)url {

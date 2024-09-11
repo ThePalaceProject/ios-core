@@ -228,10 +228,10 @@ class TPPBookRegistry: NSObject {
     guard let loansUrl = AccountsManager.shared.currentAccount?.loansUrl else {
       return
     }
-
+    
     state = .syncing
     syncUrl = loansUrl
-    TPPOPDSFeed.withURL(loansUrl, shouldResetCache: true, useTokenIfAvailable: false) { feed, errorDocument in
+    TPPOPDSFeed.withURL(loansUrl, shouldResetCache: true, useTokenIfAvailable: true) { feed, errorDocument in
       DispatchQueue.main.async {
         defer {
           self.state = .loaded
@@ -240,40 +240,61 @@ class TPPBookRegistry: NSObject {
         if self.syncUrl != loansUrl {
           return
         }
-        if let errorDocument = errorDocument {
+        if let errorDocument {
           completion?(errorDocument, false)
           return
         }
-        guard let feed = feed else {
+        guard let feed else {
           completion?(nil, false)
           return
         }
         if let licensor = feed.licensor as? [String: Any] {
           TPPUserAccount.sharedAccount().setLicensor(licensor)
         }
+        
         var recordsToDelete = Set<String>(self.registry.keys.map { $0 as String })
         for entry in feed.entries {
           guard let opdsEntry = entry as? TPPOPDSEntry,
-                let book = TPPBook(entry: opdsEntry)
-          else {
+                let book = TPPBook(entry: opdsEntry) else {
             continue
           }
           recordsToDelete.remove(book.identifier)
-          if self.registry[book.identifier] != nil {
+          if let existingRecord = self.registry[book.identifier] {
             self.updateBook(book)
           } else {
             self.addBook(book)
           }
         }
-        recordsToDelete.forEach {
-          if let state = self.registry[$0]?.state, state == .DownloadSuccessful || state == .Used {
-            MyBooksDownloadCenter.shared.deleteLocalContent(for: $0)
+        
+        // Handle expired books
+        recordsToDelete.forEach { identifier in
+          if let state = self.registry[identifier]?.state, state == .DownloadSuccessful || state == .Used {
+            MyBooksDownloadCenter.shared.deleteLocalContent(for: identifier)
           }
-          self.registry[$0] = nil
+          self.registry[identifier]?.state = .Unregistered
+          self.removeBook(forIdentifier: identifier)
         }
+        
         self.save()
         
-        // Count new books
+        self.myBooks.forEach { book in
+          book.defaultAcquisition?.availability.matchUnavailable({ _ in
+            MyBooksDownloadCenter.shared.returnBook(withIdentifier: book.identifier)
+            self.removeBook(forIdentifier: book.identifier)
+          }, limited: { limited in
+            if let until = limited.until, until.timeIntervalSinceNow <= 0 {
+              MyBooksDownloadCenter.shared.returnBook(withIdentifier: book.identifier)
+              self.removeBook(forIdentifier: book.identifier)
+            }
+          }, unlimited: nil, reserved: nil, ready: { ready in
+            if let until = ready.until, until.timeIntervalSinceNow <= 0 {
+              MyBooksDownloadCenter.shared.returnBook(withIdentifier: book.identifier)
+              self.removeBook(forIdentifier: book.identifier)
+            }
+          })
+        }
+        
+        // Update the app icon badge for ready books
         var readyBooks = 0
         self.heldBooks.forEach { book in
           book.defaultAcquisition?.availability.matchUnavailable(nil, limited: nil, unlimited: nil, reserved: nil, ready: { _ in
@@ -352,30 +373,54 @@ class TPPBookRegistry: NSObject {
   /// will overwrite the existing book as if `updateBook` were called. The location may be nil. The
   /// state provided must be one of `TPPBookState` and must not be `TPPBookState.Unregistered`.
   func addBook(_ book: TPPBook, location: TPPBookLocation? = nil, state: TPPBookState = .DownloadNeeded, fulfillmentId: String? = nil, readiumBookmarks: [TPPReadiumBookmark]? = nil, genericBookmarks: [TPPBookLocation]? = nil) {
-    coverRegistry.pinThumbnailImageForBook(book)
-    registry[book.identifier] = TPPBookRegistryRecord(book: book, location: location, state: state, fulfillmentId: fulfillmentId, readiumBookmarks: readiumBookmarks, genericBookmarks: genericBookmarks)
+    // Cache the thumbnail image if it exists
+    coverRegistry.thumbnailImageForBook(book) { _ in
+      // The image is automatically cached by `thumbnailImageForBook`, so no need to handle it here
+    }
+    
+    // Create and store the book record in the registry
+    registry[book.identifier] = TPPBookRegistryRecord(
+      book: book,
+      location: location,
+      state: state,
+      fulfillmentId: fulfillmentId,
+      readiumBookmarks: readiumBookmarks,
+      genericBookmarks: genericBookmarks
+    )
+    
+    // Save the registry data
     save()
   }
   
-  /// This will update the book like updateBook does, but will also set its state to unregistered, then
-  /// broadcast the change, then remove the book from the registry. This gives any views using the book
-  /// a chance to update their copy with the new one, without having to keep it in the registry after.
   func updateAndRemoveBook(_ book: TPPBook) {
-    guard registry[book.identifier] != nil else {
+    guard let existingRecord = registry[book.identifier] else {
       return
     }
-    coverRegistry.removePinnedThumbnailImageForBookIdentifier(book.identifier)
-    registry[book.identifier]?.book = book
-    registry[book.identifier]?.state = .Unregistered
+    
+    // Remove the pinned thumbnail image if cached
+    coverRegistry.cachedThumbnailImageForBook(book)
+    
+    // Update the book in the registry, set it to unregistered, and then save the changes
+    existingRecord.book = book
+    existingRecord.state = .Unregistered
+    
+    // Save the updated registry
+    save()
+  }
+  
+  func removeBook(forIdentifier bookIdentifier: String) {
+    // Remove the pinned thumbnail image if cached
+    if let book = registry[bookIdentifier]?.book {
+      coverRegistry.cachedThumbnailImageForBook(book)
+    }
+    
+    // Remove the book from the registry
+    registry.removeValue(forKey: bookIdentifier)
+    
+    // Save the updated registry
     save()
   }
 
-  /// Given an identifier, this method removes a book from the registry.
-  func removeBook(forIdentifier bookIdentifier: String) {
-    coverRegistry.removePinnedThumbnailImageForBookIdentifier(bookIdentifier)
-    registry.removeValue(forKey: bookIdentifier)
-    save()
-  }
   
   /// This method should be called whenever new book information is retrieved from a server. Doing so
   /// ensures that once the user has seen the new information, they will continue to do so when
