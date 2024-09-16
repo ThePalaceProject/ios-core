@@ -268,7 +268,7 @@ extension TPPNetworkExecutor {
       case let .failure(error, response): completion?(nil, response, error)
       }
     }
-    return executeRequest(request, enableTokenRefresh: false, completion: completionWrapper)
+    return executeRequest(request, enableTokenRefresh: useTokenIfAvailable, completion: completionWrapper)
   }
   
   @discardableResult

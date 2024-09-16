@@ -1,20 +1,22 @@
-import Foundation
+import MessageUI
 
-/// UITableView to display or add library accounts that the user
-/// can then log in and adjust settings after selecting Accounts.
-@objcMembers class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDelegate, UITableViewDataSource {
+@objcMembers
+class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDelegate, UITableViewDataSource, MFMailComposeViewControllerDelegate {
+  
   weak var tableView: UITableView!
   var loadingView: UIView?
-
+  
   enum Section: Int, CaseIterable {
     case librarySettings = 0
     case libraryRegistryDebugging
     case dataManagement
+    case developerTools
   }
   
   private let betaLibraryCellIdentifier = "betaLibraryCell"
   private let lcpPassphraseCellIdentifier = "lcpPassphraseCell"
   private let clearCacheCellIdentifier = "clearCacheCell"
+  private let emailLogsCellIdentifier = "emailLogsCell"
   
   private var pushNotificationsStatus = false
   
@@ -34,7 +36,7 @@ import Foundation
   @objc func enterLCPPassphraseSwitchDidChange(sender: UISwitch) {
     TPPSettings.shared.enterLCPPassphraseManually = sender.isOn
   }
-    
+  
   // MARK:- UIViewController
   
   override func loadView() {
@@ -49,6 +51,7 @@ import Foundation
     self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: betaLibraryCellIdentifier)
     self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: lcpPassphraseCellIdentifier)
     self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: clearCacheCellIdentifier)
+    self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: emailLogsCellIdentifier)
   }
   
   // MARK:- UITableViewDataSource
@@ -56,6 +59,7 @@ import Foundation
   func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
     switch Section(rawValue: section)! {
     case .librarySettings: return 2
+    case .developerTools: return 1
     default: return 1
     }
   }
@@ -73,6 +77,7 @@ import Foundation
       }
     case .libraryRegistryDebugging: return cellForCustomRegsitry()
     case .dataManagement: return cellForClearCache()
+    case .developerTools: return cellForEmailLogs()
     }
   }
   
@@ -84,6 +89,8 @@ import Foundation
       return "Library Registry Debugging"
     case .dataManagement:
       return "Data Management"
+    case .developerTools:
+      return "Developer Tools"
     }
   }
   
@@ -125,6 +132,13 @@ import Foundation
     return cell
   }
   
+  private func cellForEmailLogs() -> UITableViewCell {
+    let cell = tableView.dequeueReusableCell(withIdentifier: emailLogsCellIdentifier)!
+    cell.selectionStyle = .none
+    cell.textLabel?.text = "Email Logs"
+    return cell
+  }
+  
   // MARK:- UITableViewDelegate
   
   func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
@@ -134,19 +148,41 @@ import Foundation
       AccountsManager.shared.clearCache()
       let alert = TPPAlertUtils.alert(title: "Data Management", message: "Cache Cleared")
       self.present(alert, animated: true, completion: nil)
+    } else if Section(rawValue: indexPath.section) == .developerTools {
+      emailLogs()
     }
   }
   
-  func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
-    UITableView.automaticDimension
+  private func emailLogs() {
+    guard MFMailComposeViewController.canSendMail() else {
+      let alert = TPPAlertUtils.alert(title: "Mail Unavailable", message: "Cannot send email. Please configure an email account.")
+      self.present(alert, animated: true, completion: nil)
+      return
+    }
+    
+    let mailComposer = MFMailComposeViewController()
+    mailComposer.mailComposeDelegate = self
+    mailComposer.setSubject("Audiobook Logs")
+    mailComposer.setToRecipients(["maurice.carrier@outlook.com"])
+    mailComposer.setPreferredSendingEmailAddress("LyrasisDebugging@email.com")
+    
+    let logger = AudiobookFileLogger()
+    if let logsDirectoryUrl = logger.getLogsDirectoryUrl() {
+      let fileManager = FileManager.default
+      let logFiles = try? fileManager.contentsOfDirectory(at: logsDirectoryUrl, includingPropertiesForKeys: nil)
+      
+      logFiles?.forEach { logFileUrl in
+        if let logData = try? Data(contentsOf: logFileUrl) {
+          mailComposer.addAttachmentData(logData, mimeType: "text/plain", fileName: logFileUrl.lastPathComponent)
+        }
+      }
+    }
+    
+    self.present(mailComposer, animated: true, completion: nil)
   }
-  
-  func tableView(_ tableView: UITableView, estimatedHeightForRowAt indexPath: IndexPath) -> CGFloat {
-    80
-  }
-  
-  func tableView(_ tableView: UITableView, canEditRowAt indexPath: IndexPath) -> Bool {
-    false
+    
+  func mailComposeController(_ controller: MFMailComposeViewController, didFinishWith result: MFMailComposeResult, error: Error?) {
+    controller.dismiss(animated: true, completion: nil)
   }
 }
 
