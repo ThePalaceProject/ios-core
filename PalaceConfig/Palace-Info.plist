@@ -119,5 +119,13 @@
 	</array>
 	<key>UIWhitePointAdaptivityStyle</key>
 	<string>UIWhitePointAdaptivityStyleReading</string>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>org.thepalaceproject.palace.backgroundTask</string>
+		<string>org.thepalaceproject.palace.openAccessBackgroundIdentifier</string>
+		<string>org.thepalaceproject.palace.lcpBackgroundIdentifier</string>
+		<string>org.thepalaceproject.palace.overdriveBackgroundIdentifier</string>
+		<string>org.thepalaceproject.palace.downloadCenterBackgroundIdentifier</string>
+	</array>
 </dict>
 </plist>

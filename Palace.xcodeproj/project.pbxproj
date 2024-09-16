@@ -1089,6 +1089,7 @@
 		E55E2FA529E7A9660093F916 /* AudioBookmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5231240285C291D007D1DB5 /* AudioBookmark.swift */; };
 		E55E2FA629E7A9670093F916 /* AudioBookmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5231240285C291D007D1DB5 /* AudioBookmark.swift */; };
 		E56067752A4C8858002ACE93 /* TokenRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = E56067742A4C8858002ACE93 /* TokenRequest.swift */; };
+		E56576002C933527005953BD /* AudiobookFileLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = E56575FF2C933527005953BD /* AudiobookFileLogger.swift */; };
 		E56724BF2A13223700972828 /* TPPBookCellDelegate+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5024A8C2A0E8761006BF653 /* TPPBookCellDelegate+Extensions.swift */; };
 		E56724C12A132C1300972828 /* TPPAnnotationMock.swift in Sources */ = {isa = PBXBuildFile; fileRef = E56724C02A132C1300972828 /* TPPAnnotationMock.swift */; };
 		E567C72C296743990079C28C /* BookCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E567C72B296743990079C28C /* BookCell.swift */; };
@@ -1999,6 +2000,7 @@
 		E551B360267D402B0026FC1B /* TPPAccountList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAccountList.swift; sourceTree = "<group>"; };
 		E553424F293FB23F004FF34A /* PalaceAudiobookToolkit.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = PalaceAudiobookToolkit.xcodeproj; path = "ios-audiobooktoolkit/PalaceAudiobookToolkit.xcodeproj"; sourceTree = "<group>"; };
 		E56067742A4C8858002ACE93 /* TokenRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenRequest.swift; sourceTree = "<group>"; };
+		E56575FF2C933527005953BD /* AudiobookFileLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudiobookFileLogger.swift; sourceTree = "<group>"; };
 		E56724C02A132C1300972828 /* TPPAnnotationMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAnnotationMock.swift; sourceTree = "<group>"; };
 		E567C72B296743990079C28C /* BookCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookCell.swift; sourceTree = "<group>"; };
 		E573454A2AD6E8410021D768 /* EPUBSearchView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = EPUBSearchView.swift; sourceTree = "<group>"; };
@@ -2906,6 +2908,7 @@
 				5D7CF8B422C3FC06007CAA34 /* TPPErrorLogger.swift */,
 				1114A6AC1958B215007507A2 /* TPPLOG.h */,
 				73CDA120243EDAD8009CC6A6 /* URLRequest+Logging.swift */,
+				E56575FF2C933527005953BD /* AudiobookFileLogger.swift */,
 			);
 			path = Logging;
 			sourceTree = "<group>";
@@ -4841,6 +4844,7 @@
 				E683953B217663B100371072 /* TPPFacetViewDefaultDataSource.swift in Sources */,
 				73B5DFDC26052A1800225C12 /* TPPBookButtonsState.m in Sources */,
 				E6207B652118973800864143 /* TPPAppTheme.swift in Sources */,
+				E56576002C933527005953BD /* AudiobookFileLogger.swift in Sources */,
 				E7B20B39285B3AC400C49FE1 /* TPPPDFPreviewGrid.swift in Sources */,
 				11A14DF41A1BF94F00D6C510 /* UIColor+TPPColorAdditions.m in Sources */,
 				737F4A6B254A137900A3C34B /* TPPSignInBusinessLogic+DRM.swift in Sources */,

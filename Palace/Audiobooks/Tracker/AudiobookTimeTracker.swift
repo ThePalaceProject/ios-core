@@ -24,7 +24,10 @@ class AudiobookTimeTracker: NSObject, AudiobookPlaybackTrackerDelegate {
   
   private let minuteFormatter: DateFormatter
   private let tick: TimeInterval = 1
-    
+  private var isPlaying = false
+
+  private let audiobookLogger = AudiobookFileLogger.shared
+  
   init(libraryId: String, bookId: String, timeTrackingUrl: URL, dataManager: DataManager) {
     self.libraryId = libraryId
     self.bookId = bookId
@@ -34,6 +37,8 @@ class AudiobookTimeTracker: NSObject, AudiobookPlaybackTrackerDelegate {
     minuteFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm'Z'"
     minuteFormatter.timeZone = TimeZone(identifier: "UTC")
     currentMinute = minuteFormatter.string(from: Date())
+    
+    audiobookLogger.logEvent(forBookId: bookId, event: "TimeTracker initialized for bookId: \(bookId)")
   }
   
   @objc
@@ -42,10 +47,10 @@ class AudiobookTimeTracker: NSObject, AudiobookPlaybackTrackerDelegate {
       libraryId: libraryId,
       bookId: bookId,
       timeTrackingUrl: timeTrackingUrl,
-      dataManager: AudiobookDataManager.shared
+      dataManager: AudiobookDataManager()
     )
   }
-
+  
   var timeEntry: AudiobookTimeEntry {
     AudiobookTimeEntry(
       id: timeEntryId.ulidString,
@@ -60,8 +65,9 @@ class AudiobookTimeTracker: NSObject, AudiobookPlaybackTrackerDelegate {
   deinit {
     subscriptions.removeAll()
     saveCurrentDuration()
+    audiobookLogger.logEvent(forBookId: bookId, event: "TimeTracker deinitialized for bookId: \(bookId)")
   }
-    
+  
   func receiveValue(_ value: Date) {
     duration += tick
     let minute = minuteFormatter.string(from: value)
@@ -71,11 +77,14 @@ class AudiobookTimeTracker: NSObject, AudiobookPlaybackTrackerDelegate {
       currentMinute = minute
     }
   }
-
+  
   private func saveCurrentDuration(date: Date = Date()) {
     if duration > 0 {
-      timeEntryId = ULID(timestamp: date) // timeEntryId value updates once every minute
+      timeEntryId = ULID(timestamp: date)
       dataManager.save(time: timeEntry)
+      
+      audiobookLogger.logEvent(forBookId: bookId, event: "Time entry saved for minute \(currentMinute), \(min(60, Int(duration))) seconds played.")
+      
       duration = 0
     }
   }
@@ -83,6 +92,11 @@ class AudiobookTimeTracker: NSObject, AudiobookPlaybackTrackerDelegate {
   // MARK: - AudiobookPlaybackTrackerDelegate
   
   func playbackStarted() {
+    if !isPlaying {
+      audiobookLogger.logEvent(forBookId: bookId, event: "Playback started for bookId: \(bookId)")
+      isPlaying = true
+    }
+    
     Timer.publish(every: tick, on: .main, in: .default)
       .autoconnect()
       .sink(receiveValue: receiveValue)
@@ -90,7 +104,11 @@ class AudiobookTimeTracker: NSObject, AudiobookPlaybackTrackerDelegate {
   }
   
   func playbackStopped() {
+    if isPlaying {
+      audiobookLogger.logEvent(forBookId: bookId, event: "Playback stopped for bookId: \(bookId)")
+      isPlaying = false
+    }
+    
     subscriptions.removeAll()
   }
-
 }
