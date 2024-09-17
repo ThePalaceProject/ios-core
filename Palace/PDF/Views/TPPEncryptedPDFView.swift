@@ -23,10 +23,8 @@ struct TPPEncryptedPDFView: View {
       TPPEncryptedPDFViewer(encryptedPDF: encryptedPDF, currentPage: $metadata.currentPage, showingDocumentInfo: $showingDocumentInfo)
         .edgesIgnoringSafeArea([.all])
       VStack {
-        if let title = encryptedPDF.title ?? metadata.title {
-          TPPPDFLabel(title)
-            .padding(.top)
-        }
+        TPPPDFLabel(encryptedPDF.title ?? metadata.book.title)
+          .padding(.top)
         Spacer()
         TPPPDFLabel("\(metadata.currentPage + 1)/\(encryptedPDF.pageCount)")
         TPPPDFPreviewBar(document: encryptedPDF, currentPage: $metadata.currentPage)

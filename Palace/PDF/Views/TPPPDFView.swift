@@ -30,10 +30,8 @@ struct TPPPDFView: View {
         .edgesIgnoringSafeArea([.all])
 
       VStack {
-        if let title = document.title ?? metadata.title {
-          TPPPDFLabel(title)
-            .padding(.top)
-        }
+        TPPPDFLabel(document.title ?? metadata.book.title)
+          .padding(.top)
         Spacer()
         if let pageLabel = document.page(at: metadata.currentPage)?.label, Int(pageLabel) != (metadata.currentPage + 1) {
           TPPPDFLabel("\(pageLabel) (\(metadata.currentPage + 1)/\(document.pageCount))")

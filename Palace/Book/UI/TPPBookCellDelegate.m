@@ -152,9 +152,8 @@
       }
       NSData *encryptedData = [[NSData alloc] initWithContentsOfURL:encryptedUrl options:NSDataReadingMappedAlways error:nil];
 
-      TPPPDFDocumentMetadata *metadata = [[TPPPDFDocumentMetadata alloc] initWith:book.identifier];
-      metadata.title = book.title;
-      
+      TPPPDFDocumentMetadata *metadata = [[TPPPDFDocumentMetadata alloc] initWith:book];
+
       TPPPDFDocument *document = [[TPPPDFDocument alloc] initWithEncryptedData:encryptedData decryptor:^NSData * _Nonnull(NSData *data, NSUInteger start, NSUInteger end) {
         return [decryptor decryptDataWithData:data start:start end:end];
       }];
@@ -176,9 +175,8 @@
   NSURL *bookUrl = [[MyBooksDownloadCenter shared] fileUrlFor:book.identifier];
   NSData *data = [[NSData alloc] initWithContentsOfURL:bookUrl options:NSDataReadingMappedAlways error:nil];
 
-  TPPPDFDocumentMetadata *metadata = [[TPPPDFDocumentMetadata alloc] initWith:book.identifier];
-  metadata.title = book.title;
-  
+  TPPPDFDocumentMetadata *metadata = [[TPPPDFDocumentMetadata alloc] initWith:book];
+
   TPPPDFDocument *document = [[TPPPDFDocument alloc] initWithData:data];
   
   UIViewController *vc = [TPPPDFViewController createWithDocument:document metadata:metadata];
