@@ -30,7 +30,7 @@ class TPPAnnotationMock: NSObject, AnnotationsManager {
   }
   
   func getServerBookmarks(forBook book: TPPBook?, atURL annotationURL: URL?, motivation: Palace.TPPBookmarkSpec.Motivation, completion: @escaping ([Palace.Bookmark]?) -> ()) {
-    guard let bookID = book.bookID else {
+    guard let bookID = book.identifier else {
       completion([])
       return
     }
