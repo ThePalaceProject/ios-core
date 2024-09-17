@@ -1,15 +1,3 @@
-//
-//  TPPAnnotationMock.swift
-//  PalaceTests
-//
-//  Created by Maurice Carrier on 5/15/23.
-//  Copyright © 2023 The Palace Project. All rights reserved.
-//
-
-import Foundation
-@testable import Palace
-@testable import PalaceAudiobookToolkit
-
 import Foundation
 @testable import Palace
 @testable import PalaceAudiobookToolkit
@@ -41,8 +29,8 @@ class TPPAnnotationMock: NSObject, AnnotationsManager {
     return response
   }
   
-  func getServerBookmarks(forBook bookID: String?, atURL annotationURL: URL?, motivation: Palace.TPPBookmarkSpec.Motivation, completion: @escaping ([Palace.Bookmark]?) -> ()) {
-    guard let bookID = bookID else {
+  func getServerBookmarks(forBook book: TPPBook?, atURL annotationURL: URL?, motivation: Palace.TPPBookmarkSpec.Motivation, completion: @escaping ([Palace.Bookmark]?) -> ()) {
+    guard let bookID = book.bookID else {
       completion([])
       return
     }
