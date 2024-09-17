@@ -70,8 +70,10 @@ class TPPBookmarkFactory {
 
   class func make(fromServerAnnotation annotation: [String: Any],
                   annotationType: TPPBookmarkSpec.Motivation,
-                  bookID: String) -> Bookmark? {
+                  book: TPPBook) -> Bookmark? {
 
+    let bookID = book.identifier
+    
     guard let annotationID = annotation[TPPBookmarkSpec.Id.key] as? String else {
       Log.error(#file, "Missing AnnotationID:\(annotation)")
       return nil
@@ -121,7 +123,7 @@ class TPPBookmarkFactory {
         return nil
     }
     
-    if let selectorValueDict, let audioBookmark = AudioBookmark.create(locatorData: selectorValueDict, timeStamp: time, annotationId: annotationID) {
+    if book.isAudiobook, let selectorValueDict, let audioBookmark = AudioBookmark.create(locatorData: selectorValueDict, timeStamp: time, annotationId: annotationID) {
       return audioBookmark
     }
     
