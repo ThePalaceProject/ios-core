@@ -22,6 +22,7 @@ enum HTTPMethodType: String {
  will retry any queued requests and purge them if necessary.
  */
 final class NetworkQueue: NSObject {
+  typealias Expression = SQLite.Expression
 
   static let sharedInstance = NetworkQueue()
 
@@ -67,6 +68,7 @@ final class NetworkQueue: NSObject {
   private let sqlHeader = Expression<Data?>("request_header")
   private let sqlRetries = Expression<Int>("retry_count")
   private let sqlDateCreated = Expression<Data>("date_created")
+
   
   
   // MARK: - Public Functions
@@ -212,7 +214,7 @@ final class NetworkQueue: NSObject {
   {
     do {
       let ID = Int(requestRow[sqlID])
-      let newValue = Int(requestRow[sqlRetries]) + 1
+      let newValue = (Int(requestRow[sqlRetries]) ?? 0) + 1
       try db.run(sqlTable.filter(sqlID == ID).update(sqlRetries <- newValue))
     } catch {
       Log.error(#file, "SQLite Error incrementing retry count")
