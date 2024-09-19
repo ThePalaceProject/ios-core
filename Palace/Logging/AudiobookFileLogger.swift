@@ -8,20 +8,15 @@
 
 class AudiobookFileLogger: TPPErrorLogger {
   
-  // Singleton instance
   static let shared = AudiobookFileLogger()
   
   private var logsDirectoryUrl: URL? {
-#if DEBUG
     let fileManager = FileManager.default
     let logsPath = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first?.appendingPathComponent("AudiobookLogs")
     if let logsPath = logsPath, !fileManager.fileExists(atPath: logsPath.path) {
       try? fileManager.createDirectory(at: logsPath, withIntermediateDirectories: true, attributes: nil)
     }
     return logsPath
-#else
-    return nil
-#endif
   }
   
   func getLogsDirectoryUrl() -> URL? {
@@ -29,9 +24,8 @@ class AudiobookFileLogger: TPPErrorLogger {
   }
   
   func logEvent(forBookId bookId: String, event: String) {
-#if DEBUG
-    guard let logsDirectoryUrl = logsDirectoryUrl else { return }
-    
+    guard let logsDirectoryUrl = logsDirectoryUrl, TPPSettings.shared.customMainFeedURL == nil else { return }
+
     print("New event logged: \(event.description)")
     let logFileUrl = logsDirectoryUrl.appendingPathComponent("\(bookId).log")
     let logMessage = "\(Date()): \(event)\n"
@@ -47,21 +41,15 @@ class AudiobookFileLogger: TPPErrorLogger {
     } else {
       try? logMessage.write(to: logFileUrl, atomically: true, encoding: .utf8)
     }
-#endif
   }
   
   func retrieveLog(forBookId bookId: String) -> String? {
-#if DEBUG
     guard let logsDirectoryUrl = logsDirectoryUrl else { return nil }
     let logFileUrl = logsDirectoryUrl.appendingPathComponent("\(bookId).log")
     return try? String(contentsOf: logFileUrl)
-#else
-    return nil
-#endif
   }
   
   func retrieveLogs(forBookIds bookIds: [String]) -> [String: String] {
-#if DEBUG
     var logs: [String: String] = [:]
     for bookId in bookIds {
       if let log = retrieveLog(forBookId: bookId) {
@@ -69,8 +57,5 @@ class AudiobookFileLogger: TPPErrorLogger {
       }
     }
     return logs
-#else
-    return [:]
-#endif
   }
 }
