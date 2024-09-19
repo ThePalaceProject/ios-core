@@ -214,7 +214,7 @@ final class NetworkQueue: NSObject {
   {
     do {
       let ID = Int(requestRow[sqlID])
-      let newValue = (Int(requestRow[sqlRetries]) ?? 0) + 1
+      let newValue = Int(requestRow[sqlRetries]) + 1
       try db.run(sqlTable.filter(sqlID == ID).update(sqlRetries <- newValue))
     } catch {
       Log.error(#file, "SQLite Error incrementing retry count")
