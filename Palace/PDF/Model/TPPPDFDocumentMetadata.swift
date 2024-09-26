@@ -117,7 +117,7 @@ import Combine
     
   /// Fetch bookmarks from the server.
   func fetchBookmarks() {
-    guard canSync, let url = TPPAnnotations.annotationsURL else {
+    guard canSync, let url = book.annotationsURL ?? TPPAnnotations.annotationsURL else {
       return
     }
     TPPAnnotations.getServerBookmarks(forBook: book, atURL: url) { bookmarks in
@@ -138,7 +138,8 @@ import Combine
       TPPBookRegistry.shared.addGenericBookmark(location, forIdentifier: bookIdentifier)
     }
     if canSync {
-      TPPAnnotations.postBookmark(page, forBookID: bookIdentifier) { response in
+      TPPAnnotations.postBookmark(page, annotationsURL: book.annotationsURL ?? TPPAnnotations.annotationsURL, forBookID: bookIdentifier)
+      { response in
         DispatchQueue.main.async {
           self.pdfBookmarks?.append(TPPPDFPageBookmark(page: page.pageNumber, annotationID: response?.serverId))
         }

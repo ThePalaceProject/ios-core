@@ -222,60 +222,45 @@ class TPPReaderBookmarksBusinessLogic: NSObject {
   }
     
   func updateLocalBookmarks(serverBookmarks: [TPPReadiumBookmark],
-                                     localBookmarks: [TPPReadiumBookmark],
-                                     bookmarksFailedToUpload: [TPPReadiumBookmark],
-                                     completion: @escaping () -> ())
+                            localBookmarks: [TPPReadiumBookmark],
+                            bookmarksFailedToUpload: [TPPReadiumBookmark],
+                            completion: @escaping () -> ())
   {
     // Bookmarks that are present on the client, and have a corresponding version on the server
     // with matching annotation ID's should be kept on the client.
     var localBookmarksToKeep = [TPPReadiumBookmark]()
-    // Bookmarks that are present on the server, but not the client, should be added to this
-    // client as long as they were not created on this device originally.
-    var serverBookmarksToKeep = serverBookmarks
-    // Bookmarks present on the server, that were originally created on this device,
-    // and are no longer present on the client, should be deleted on the server.
+    var serverBookmarksToAdd = [TPPReadiumBookmark]()
     var serverBookmarksToDelete = [TPPReadiumBookmark]()
-    
+
     for serverBookmark in serverBookmarks {
-      let matched = localBookmarks.contains{ $0.annotationId == serverBookmark.annotationId }
-        
-      if matched {
+      // If the local device already has this bookmark, keep it
+      if localBookmarks.contains(where: { $0.annotationId == serverBookmark.annotationId }) {
         localBookmarksToKeep.append(serverBookmark)
-      }
-        
-      if let deviceID = serverBookmark.device,
-        let drmDeviceID = drmDeviceID,
-        deviceID == drmDeviceID
-        && !matched
-      {
-        serverBookmarksToDelete.append(serverBookmark)
-        if let indexToRemove = serverBookmarksToKeep.index(of: serverBookmark) {
-          serverBookmarksToKeep.remove(at: indexToRemove)
+      } else {
+        // If the bookmark is not found locally, and was created on a different device, add it locally
+        if let deviceID = serverBookmark.device, let drmDeviceID = drmDeviceID, deviceID != drmDeviceID {
+          serverBookmarksToAdd.append(serverBookmark)
         }
       }
     }
-    
-    for localBookmark in localBookmarks {
-      guard let _  = localBookmarksToKeep.first(where: {
-        $0.annotationId == localBookmark.annotationId
-      }) else {
-        bookRegistry.delete(localBookmark, forIdentifier: self.book.identifier)
-        continue
+
+    // Handle local deletions: only delete server bookmarks if they were created on this device and no longer exist locally
+    for serverBookmark in serverBookmarks {
+      if let deviceID = serverBookmark.device, let drmDeviceID = drmDeviceID, deviceID == drmDeviceID {
+        if !localBookmarks.contains(where: { $0.annotationId == serverBookmark.annotationId }) {
+          serverBookmarksToDelete.append(serverBookmark)
+        }
       }
     }
-    
-    var bookmarksToAdd = serverBookmarks + bookmarksFailedToUpload
-        
-    // Look for duplicates in server and local bookmarks, remove them from bookmarksToAdd
-    let duplicatedBookmarks = Set(serverBookmarksToKeep).intersection(Set(localBookmarksToKeep))
-    bookmarksToAdd = Array(Set(bookmarksToAdd).subtracting(duplicatedBookmarks))
-        
-    for bookmark in bookmarksToAdd {
+
+    // Add missing bookmarks from server
+    for bookmark in serverBookmarksToAdd {
       bookRegistry.add(bookmark, forIdentifier: self.book.identifier)
     }
-    
+
+    // Remove locally deleted bookmarks from the server
     TPPAnnotations.deleteBookmarks(serverBookmarksToDelete)
-    
+
     completion()
   }
 

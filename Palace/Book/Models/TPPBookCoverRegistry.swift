@@ -10,7 +10,8 @@ import Foundation
 import UIKit
 
 class TPPBookCoverRegistry {
-  
+  private let cacheLock = NSLock()
+
   private let inMemoryCache: NSCache<NSString, UIImage> = {
     let cache = NSCache<NSString, UIImage>()
     cache.countLimit = 100
@@ -29,11 +30,14 @@ class TPPBookCoverRegistry {
   }()
   
   func thumbnailImageForBook(_ book: TPPBook, handler: @escaping (_ image: UIImage?) -> Void) {
+    cacheLock.lock()
     if let cachedImage = inMemoryCache.object(forKey: book.identifier as NSString) {
+      cacheLock.unlock()
       handler(cachedImage)
       return
     }
-    
+    cacheLock.unlock()
+
     if let imagePath = pinnedThumbnailImageUrlOfBookIdentifier(book.identifier)?.path, FileManager.default.fileExists(atPath: imagePath),
        let image = UIImage(contentsOfFile: imagePath) {
       inMemoryCache.setObject(image, forKey: book.identifier as NSString)
@@ -47,12 +51,12 @@ class TPPBookCoverRegistry {
     }
     
     fetchImage(from: thumbnailUrl, for: book) { [weak self] image in
-      guard let self = self, let image = image else {
+      guard let strongSelf = self, let image = image else {
         handler(self?.generateBookCoverImage(book))
         return
       }
-      self.inMemoryCache.setObject(image, forKey: book.identifier as NSString)
-      self.pinThumbnailImage(image, for: book)
+      strongSelf.inMemoryCache.setObject(image, forKey: book.identifier as NSString)
+      strongSelf.pinThumbnailImage(image, for: book)
       handler(image)
     }
   }
@@ -110,7 +114,7 @@ class TPPBookCoverRegistry {
       if let image = UIImage(data: data) {
         completion(image)
       } else {
-        print("Failed to decode image data.")
+        ATLog(.debug, "Failed to decode image data.")
         completion(nil)
       }
     }.resume()
@@ -120,8 +124,15 @@ class TPPBookCoverRegistry {
     guard let fileUrl = pinnedThumbnailImageUrlOfBookIdentifier(book.identifier) else { return }
     
     DispatchQueue.global(qos: .background).async {
-      if let data = image.pngData() {
-        try? data.write(to: fileUrl, options: .atomic)
+      guard let data = image.pngData() else {
+        ATLog(.debug, "Failed to convert image to PNG data")
+        return
+      }
+
+      do {
+        try data.write(to: fileUrl, options: .atomic)
+      } catch {
+        ATLog(.error, "Failed to write image to file - \(error.localizedDescription)")
       }
     }
   }
