@@ -226,8 +226,6 @@ class TPPReaderBookmarksBusinessLogic: NSObject {
                             bookmarksFailedToUpload: [TPPReadiumBookmark],
                             completion: @escaping () -> ())
   {
-    // Bookmarks that are present on the client, and have a corresponding version on the server
-    // with matching annotation ID's should be kept on the client.
     var localBookmarksToKeep = [TPPReadiumBookmark]()
     var serverBookmarksToAdd = [TPPReadiumBookmark]()
     var serverBookmarksToDelete = [TPPReadiumBookmark]()
