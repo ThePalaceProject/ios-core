@@ -110,14 +110,14 @@ protocol AnnotationsManager {
     }
   }
   
-  class func postBookmark(_ page: TPPPDFPage, forBookID bookID: String, completion: @escaping (_ annotationResponse: AnnotationResponse?) -> Void) {
+  class func postBookmark(_ page: TPPPDFPage, annotationsURL: URL?, forBookID bookID: String, completion: @escaping (_ annotationResponse: AnnotationResponse?) -> Void) {
     guard syncIsPossibleAndPermitted() else {
       Log.debug(#file, "Account does not support sync or sync is disabled.")
       completion(nil)
       return
     }
 
-    guard let annotationsURL = TPPAnnotations.annotationsURL else {
+    guard let annotationsURL = annotationsURL ?? TPPAnnotations.annotationsURL else {
       Log.error(#file, "Annotations URL was nil while posting bookmark")
       return
     }

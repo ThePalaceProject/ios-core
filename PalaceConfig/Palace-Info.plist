@@ -2,6 +2,14 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>org.thepalaceproject.palace.backgroundTask</string>
+		<string>org.thepalaceproject.palace.openAccessBackgroundIdentifier</string>
+		<string>org.thepalaceproject.palace.lcpBackgroundIdentifier</string>
+		<string>org.thepalaceproject.palace.overdriveBackgroundIdentifier</string>
+		<string>org.thepalaceproject.palace.downloadCenterBackgroundIdentifier</string>
+	</array>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
@@ -94,7 +102,6 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>
-		<string>bluetooth-central</string>
 		<string>fetch</string>
 		<string>processing</string>
 	</array>
@@ -119,13 +126,5 @@
 	</array>
 	<key>UIWhitePointAdaptivityStyle</key>
 	<string>UIWhitePointAdaptivityStyleReading</string>
-	<key>BGTaskSchedulerPermittedIdentifiers</key>
-	<array>
-		<string>org.thepalaceproject.palace.backgroundTask</string>
-		<string>org.thepalaceproject.palace.openAccessBackgroundIdentifier</string>
-		<string>org.thepalaceproject.palace.lcpBackgroundIdentifier</string>
-		<string>org.thepalaceproject.palace.overdriveBackgroundIdentifier</string>
-		<string>org.thepalaceproject.palace.downloadCenterBackgroundIdentifier</string>
-	</array>
 </dict>
 </plist>

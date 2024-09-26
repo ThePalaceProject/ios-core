@@ -86,16 +86,16 @@ class TPPBookmarkFactory {
         return nil
     }
 
-//     guard source == bookID else {
-//       TPPErrorLogger.logError(withCode: .bookmarkReadError,
-//                                summary: "Got bookmark for a different book",
-//                                metadata: [
-//                                 "requestedBookID": bookID,
-//                                 "serverAnnotation": annotation])
-//       return nil
-//     }
+     guard source == bookID else {
+       TPPErrorLogger.logError(withCode: .bookmarkReadError,
+                                summary: "Got bookmark for a different book",
+                                metadata: [
+                                 "requestedBookID": bookID,
+                                 "serverAnnotation": annotation])
+       return nil
+     }
 
-    guard motivation.contains(annotationType.rawValue) else {
+    guard motivation == annotationType.rawValue else {
       return nil
     }
 

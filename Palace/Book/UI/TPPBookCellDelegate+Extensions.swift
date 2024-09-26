@@ -267,7 +267,9 @@ extension TPPBookCellDelegate {
   }
 
   @objc public func pollAudiobookReadingLocation() {
-    DispatchQueue.main.async {
+    DispatchQueue.main.async { [weak self] in
+      guard let self else { return }
+
       guard let _ = self.audiobookViewController else {
         timer?.cancel()
         timer = nil
