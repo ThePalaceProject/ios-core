@@ -227,18 +227,14 @@ class TPPReaderBookmarksBusinessLogic: NSObject {
                             completion: @escaping () -> ())
   {
     var localBookmarksToKeep = [TPPReadiumBookmark]()
-    var serverBookmarksToAdd = [TPPReadiumBookmark]()
+    var serverBookmarksToAdd = [TPPReadiumBookmark]() + bookmarksFailedToUpload
     var serverBookmarksToDelete = [TPPReadiumBookmark]()
 
     for serverBookmark in serverBookmarks {
-      // If the local device already has this bookmark, keep it
       if localBookmarks.contains(where: { $0.annotationId == serverBookmark.annotationId }) {
         localBookmarksToKeep.append(serverBookmark)
       } else {
-        // If the bookmark is not found locally, and was created on a different device, add it locally
-        if let deviceID = serverBookmark.device, let drmDeviceID = drmDeviceID, deviceID != drmDeviceID {
           serverBookmarksToAdd.append(serverBookmark)
-        }
       }
     }
 
