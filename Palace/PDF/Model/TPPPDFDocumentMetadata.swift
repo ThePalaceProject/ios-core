@@ -14,11 +14,9 @@ import Combine
 /// This object handles interaction between Objective-C code, TPPBookRegistry for storing PDF book current page and bookmarks, and SwiftUI code.
 @objc class TPPPDFDocumentMetadata: NSObject, ObservableObject {
   private let rendererString = "TPPPDFReader"
-  let bookIdentifier: String
-  
-  /// Provides book title available in `TPPBook` object.
-  @objc var title: String?
-  
+  let book: TPPBook
+  var bookIdentifier: String { book.identifier }
+
   /// Page numbers for boomarks.
   @Published var bookmarks = Set<Int>()
   
@@ -45,7 +43,7 @@ import Combine
   /// Bookmark page numbers of bookmarks stored in the book registry
   private var localBookmarks: Set<Int> {
     Set(
-      TPPBookRegistry.shared.genericBookmarksForIdentifier(bookIdentifier)
+      TPPBookRegistry.shared.genericBookmarksForIdentifier(book.identifier)
         .compactMap { $0.pageNumber }
     )
   }
@@ -60,10 +58,10 @@ import Combine
   ///
   /// This function gets data from `TPPBookRegistry`,
   /// `bookIdentifier` must be present in the registry, otherwise the app crashes..
-  @objc init(with bookIdentifier: String) {
-    self.bookIdentifier = bookIdentifier
-    currentPage = TPPBookRegistry.shared.location(forIdentifier: bookIdentifier)?.pageNumber ?? 0
-    TPPBookRegistry.shared.setState(.Used, for: bookIdentifier)
+  @objc init(with book: TPPBook) {
+    self.book = book
+    currentPage = TPPBookRegistry.shared.location(forIdentifier: book.identifier)?.pageNumber ?? 0
+    TPPBookRegistry.shared.setState(.Used, for: book.identifier)
     super.init()
     bookmarks = localBookmarks
     fetchReadingPosition()
@@ -100,7 +98,7 @@ import Combine
     guard canSync, let url = TPPAnnotations.annotationsURL else {
       return
     }
-    TPPAnnotations.syncReadingPosition(ofBook: bookIdentifier, toURL: url) { [weak self] bookmark in
+    TPPAnnotations.syncReadingPosition(ofBook: book, toURL: url) { [weak self] bookmark in
       if let pdfBookmark = bookmark as? TPPPDFPageBookmark {
         DispatchQueue.main.async {
           self?.remotePage = pdfBookmark.page
@@ -119,10 +117,10 @@ import Combine
     
   /// Fetch bookmarks from the server.
   func fetchBookmarks() {
-    guard canSync, let url = TPPAnnotations.annotationsURL else {
+    guard canSync, let url = book.annotationsURL ?? TPPAnnotations.annotationsURL else {
       return
     }
-    TPPAnnotations.getServerBookmarks(forBook: bookIdentifier, atURL: url) { bookmarks in
+    TPPAnnotations.getServerBookmarks(forBook: book, atURL: url) { bookmarks in
       if let pdfBookmarks = bookmarks as? [TPPPDFPageBookmark] {
         DispatchQueue.main.async {
           self.pdfBookmarks = pdfBookmarks
@@ -140,7 +138,8 @@ import Combine
       TPPBookRegistry.shared.addGenericBookmark(location, forIdentifier: bookIdentifier)
     }
     if canSync {
-      TPPAnnotations.postBookmark(page, forBookID: bookIdentifier) { response in
+      TPPAnnotations.postBookmark(page, annotationsURL: book.annotationsURL ?? TPPAnnotations.annotationsURL, forBookID: bookIdentifier)
+      { response in
         DispatchQueue.main.async {
           self.pdfBookmarks?.append(TPPPDFPageBookmark(page: page.pageNumber, annotationID: response?.serverId))
         }

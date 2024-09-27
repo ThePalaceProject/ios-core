@@ -9,7 +9,6 @@
 import Network
 import SystemConfiguration
 
-// TODO: Replace TPPReachability and TPPReachabilityManager with this class
 @objcMembers
 class Reachability: NSObject {
   static let shared = Reachability()

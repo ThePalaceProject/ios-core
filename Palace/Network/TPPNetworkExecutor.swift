@@ -19,6 +19,8 @@ enum NYPLResult<SuccessInfo> {
   private var isRefreshing = false
   private var retryQueue: [URLSessionTask] = []
   private let retryQueueLock = NSLock()
+  private var activeTasks: [URLSessionTask] = []
+  private let activeTasksLock = NSLock()
   
   private let responder: TPPNetworkResponder
   
@@ -47,7 +49,37 @@ enum NYPLResult<SuccessInfo> {
            useTokenIfAvailable: Bool = true,
            completion: @escaping (_ result: NYPLResult<Data>) -> Void) {
     let req = request(for: reqURL, useTokenIfAvailable: useTokenIfAvailable)
-    executeRequest(req, enableTokenRefresh: useTokenIfAvailable, completion: completion)
+    let task = executeRequest(req, enableTokenRefresh: useTokenIfAvailable, completion: completion)
+    
+    if let task = task {
+      addTaskToActiveTasks(task)
+    }
+  }
+  
+  private func addTaskToActiveTasks(_ task: URLSessionTask) {
+    activeTasksLock.lock()
+    activeTasks.append(task)
+    activeTasksLock.unlock()
+  }
+  
+  private func removeTaskFromActiveTasks(_ task: URLSessionTask) {
+    activeTasksLock.lock()
+    if let index = activeTasks.firstIndex(of: task) {
+      activeTasks.remove(at: index)
+    }
+    activeTasksLock.unlock()
+  }
+  
+  @objc func pauseAllTasks() {
+    activeTasksLock.lock()
+    activeTasks.forEach { $0.suspend() }
+    activeTasksLock.unlock()
+  }
+  
+  @objc func resumeAllTasks() {
+    activeTasksLock.lock()
+    activeTasks.forEach { $0.resume() }
+    activeTasksLock.unlock()
   }
 }
 
@@ -63,7 +95,7 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
     if userAccount.isTokenRefreshRequired() && enableTokenRefresh {
       let task = urlSession.dataTask(with: req)
       refreshTokenAndResume(task: task, completion: completion)
-      return nil
+      return task
     }
     
     if req.hasRetried && userAccount.isTokenRefreshRequired() {
@@ -74,22 +106,23 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
     
     return performDataTask(with: req, completion: completion)
   }
+  
+  private func performDataTask(with request: URLRequest,
+                               completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask {
+    let task = urlSession.dataTask(with: request)
+    responder.addCompletion(completion, taskID: task.taskIdentifier)
+    task.resume()
+    return task
+  }
+}
 
+extension TPPNetworkExecutor {
   private func createErrorForRetryFailure() -> NSError {
     return NSError(
       domain: TPPErrorLogger.clientDomain,
       code: TPPErrorCode.invalidCredentials.rawValue,
       userInfo: [NSLocalizedDescriptionKey: "Unauthorized HTTP after token refresh attempt"]
     )
-  }
-  
-  private func performDataTask(with request: URLRequest,
-                               completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask {
-    let task = urlSession.dataTask(with: request)
-    responder.addCompletion(completion, taskID: task.taskIdentifier)
-    Log.info(#file, "Task \(task.taskIdentifier): starting request \(request.loggableString)")
-    task.resume()
-    return task
   }
 }
 
@@ -235,7 +268,7 @@ extension TPPNetworkExecutor {
       case let .failure(error, response): completion?(nil, response, error)
       }
     }
-    return executeRequest(request, enableTokenRefresh: false, completion: completionWrapper)
+    return executeRequest(request, enableTokenRefresh: useTokenIfAvailable, completion: completionWrapper)
   }
   
   @discardableResult

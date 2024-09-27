@@ -1,74 +1,65 @@
-//
-//  AudiobookDataManager.swift
-//  The Palace Project
-//
-//  Created by Vladimir Fedorov on 03/07/2023.
-//  Copyright © 2023 The Palace Project. All rights reserved.
-//
-
 import Foundation
 import Combine
 
-/// LibraryBook is an identifier, a library id - book id pair, for time entries.
-fileprivate struct LibraryBook: Codable, Hashable {
+struct LibraryBook: Codable, Hashable {
   var bookId: String
   var libraryId: String
-  
+
   init(bookId: String, libraryId: String) {
     self.bookId = bookId
     self.libraryId = libraryId
   }
-  
+
   init(time: AudiobookTimeEntry) {
     self.init(bookId: time.bookId, libraryId: time.libraryId)
   }
 }
 
-/// Data format the app POSTs to `timeTrackingURL` time tracker endpoint
-fileprivate struct RequestData: Codable {
-  
+struct RequestData: Codable {
   struct TimeEntry: Codable {
     let id: String
     let duringMinute: String
     let secondsPlayed: Int
-    
+
     init(id: String, duringMinute: String, secondsPlayed: Int) {
       self.id = id
       self.duringMinute = duringMinute
       self.secondsPlayed = secondsPlayed
     }
-    
+
     init(time: AudiobookTimeEntry) {
       self.id = time.id
       self.duringMinute = time.duringMinute
       self.secondsPlayed = Int(time.duration)
     }
+
+    var description: String {
+      return "TimeEntry(id: \(id), duringMinute: \(duringMinute), secondsPlayed: \(secondsPlayed))"
+    }
   }
-  
+
   let libraryId: String
   let bookId: String
   let timeEntries: [TimeEntry]
-    
+
   init(libraryId: String, bookId: String, timeEntries: [TimeEntry]) {
     self.libraryId = libraryId
     self.bookId = bookId
     self.timeEntries = timeEntries
   }
-  
+
   init(libraryBook: LibraryBook, timeEntries: [AudiobookTimeEntry]) {
     self.libraryId = libraryBook.libraryId
     self.bookId = libraryBook.bookId
     self.timeEntries = timeEntries.map { TimeEntry(time: $0) }
   }
-  
+
   var jsonRepresentation: Data? {
     return try? JSONEncoder().encode(self)
   }
 }
 
-/// Data format for data the app receives in response from `timeTrackingURL` time tracker endpoint
-fileprivate struct ResponseData: Codable {
-  
+struct ResponseData: Codable {
   struct ResponseEntry: Codable {
     let status: Int
     let message: String
@@ -76,11 +67,11 @@ fileprivate struct ResponseData: Codable {
   }
 
   let responses: [ResponseEntry]
-  
+
   init(responses: [ResponseEntry]) {
     self.responses = responses
   }
-  
+
   init?(data: Data) {
     guard let value = try? JSONDecoder().decode(ResponseData.self, from: data) else {
       return nil
@@ -89,43 +80,36 @@ fileprivate struct ResponseData: Codable {
   }
 }
 
-/// Imternal data store
-///
-/// This data is kept outside TPPBookRegistry to preserve it when related book(s) are removed from the app.
-/// Time entries will be uploaded correctly in this case.
-fileprivate struct AudiobookDataManagerStore: Codable {
+struct AudiobookDataManagerStore: Codable {
   var urls: [LibraryBook: URL] = [:]
   var queue: [AudiobookTimeEntry] = []
-  
+
   init() { }
-  
+
   init?(data: Data) {
     guard let value = try? JSONDecoder().decode(AudiobookDataManagerStore.self, from: data) else {
       return nil
     }
     self = value
   }
-  
+
   var jsonRepresentation: Data? {
     try? JSONEncoder().encode(self)
   }
 }
 
-
-/// Data manager
 class AudiobookDataManager {
-  static let shared = AudiobookDataManager()
-  private let syncTimeInterval: TimeInterval = 60
+  private let syncTimeInterval: TimeInterval
   private var subscriptions: Set<AnyCancellable> = []
-  
-  private var store = AudiobookDataManagerStore()
-  
-  init() {
-    
-    // Palace uploads data:
-    // - every 60 seconds, when internet connection is available
-    // - every time internet connection becomes available
-    
+  private let syncQueue = DispatchQueue(label: "com.audiobook.syncQueue")
+  var store = AudiobookDataManagerStore()
+  private let audiobookLogger = AudiobookFileLogger.shared
+  private let networkService: TPPNetworkExecutor
+
+  init(syncTimeInterval: TimeInterval = 60, networkService: TPPNetworkExecutor = TPPNetworkExecutor.shared) {
+    self.syncTimeInterval = syncTimeInterval
+    self.networkService = networkService
+
     Timer.publish(every: syncTimeInterval, on: .main, in: .default)
       .autoconnect()
       .sink(receiveValue: syncValues)
@@ -140,72 +124,91 @@ class AudiobookDataManager {
   }
 
   func save(time: AudiobookTimeEntry) {
-    store.urls[LibraryBook(time: time)] = time.timeTrackingUrl
-    store.queue.append(time)
-    saveStore()
+    syncQueue.async {
+      self.store.urls[LibraryBook(time: time)] = time.timeTrackingUrl
+      self.store.queue.append(time)
+      self.saveStore()
+    }
   }
-  
+
   private func reachabilityStatusChanged(_ notification: Notification) {
     if let isConnected = notification.object as? Bool, isConnected {
       syncValues()
     }
   }
-  
-  private func syncValues(_: Date? = nil) {
-    let queuedLibraryBooks: Set<LibraryBook> = Set(store.queue.map { LibraryBook(time: $0) })
-    for libraryBook in queuedLibraryBooks {
-      let requestData = RequestData(
-        libraryBook: libraryBook,
-        timeEntries: store.queue.filter { libraryBook == LibraryBook(time: $0) }
-      )
-      // perform request
-      if let requestUrl = store.urls[libraryBook], let requestBody = requestData.jsonRepresentation {
-        var request = URLRequest(url: requestUrl)
-        request.httpMethod = "POST"
-        request.httpBody = requestBody
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.applyCustomUserAgent()
 
-        TPPNetworkExecutor.shared.POST(request, useTokenIfAvailable: true) { result, response, error in
-          if let response = response as? HTTPURLResponse, !response.isSuccess() {
-            TPPErrorLogger.logError(error, summary: "Error uploading audiobook tracker data", metadata: [
-              "libraryId": libraryBook.libraryId,
-              "bookId": libraryBook.bookId,
-              "requestUrl": requestUrl,
-              "requestBody": String(data: requestBody, encoding: .utf8) ?? "",
-              "responseCode": response.statusCode,
-              "responseBody": String(data: (result ?? Data()), encoding: .utf8) ?? ""
-            ])
-            return
-          }
-          if let data = result, let responseData = ResponseData(data: data) {
-            for responseEntry in responseData.responses {
-              if responseEntry.status >= 400 {
-                TPPErrorLogger.logError(error, summary: "Error entry in audiobook tracker response", metadata: [
-                  "libraryId": libraryBook.libraryId,
-                  "bookId": libraryBook.bookId,
-                  "requestUrl": requestUrl,
-                  "requestBody": String(data: requestBody, encoding: .utf8) ?? "",
-                  "entryId": responseEntry.id,
-                  "entryStatus": responseEntry.status,
-                  "entryMessage": responseEntry.message
-                ])
-              }
+  func syncValues(_: Date? = nil) {
+    syncQueue.async {
+      let queuedLibraryBooks: Set<LibraryBook> = Set(self.store.queue.map { LibraryBook(time: $0) })
+
+      for libraryBook in queuedLibraryBooks {
+        let requestData = RequestData(
+          libraryBook: libraryBook,
+          timeEntries: self.store.queue.filter { libraryBook == LibraryBook(time: $0) }
+        )
+
+        self.audiobookLogger.logEvent(
+          forBookId: libraryBook.bookId,
+          event: """
+                        Preparing to upload time entries:
+                        Book ID: \(libraryBook.bookId)
+                        Library ID: \(libraryBook.libraryId)
+                        Time Entries: \(requestData.timeEntries.map { "\($0)" }.joined(separator: ", "))
+                        """
+        )
+
+        if let requestUrl = self.store.urls[libraryBook], let requestBody = requestData.jsonRepresentation {
+          var request = TPPNetworkExecutor.shared.request(for: requestUrl)
+          request.httpMethod = "POST"
+          request.httpBody = requestBody
+          request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+          request.applyCustomUserAgent()
+
+          self.networkService.POST(request, useTokenIfAvailable: true) { [self] result, response, error in
+            if let response = response as? HTTPURLResponse, !response.isSuccess() {
+              TPPErrorLogger.logError(error, summary: "Error uploading audiobook tracker data", metadata: [
+                "libraryId": libraryBook.libraryId,
+                "bookId": libraryBook.bookId,
+                "requestUrl": requestUrl,
+                "requestBody": String(data: requestBody, encoding: .utf8) ?? "",
+                "responseCode": response.statusCode,
+                "responseBody": String(data: (result ?? Data()), encoding: .utf8) ?? ""
+              ])
+
+              self.audiobookLogger.logEvent(forBookId: libraryBook.bookId, event: """
+                                Failed to upload time entries:
+                                Book ID: \(libraryBook.bookId)
+                                Error: \(error?.localizedDescription ?? "Unknown error")
+                                Response Code: \(response.statusCode)
+                                """)
             }
-            self.removeSynchronizedEntries(ids: responseData.responses.map { $0.id } )
-            self.cleanUpUrls()
+
+            if let data = result, let responseData = ResponseData(data: data) {
+              for responseEntry in responseData.responses {
+                if responseEntry.status >= 400 {
+                  TPPErrorLogger.logError(error, summary: "Error entry in audiobook tracker response", metadata: [
+                    "libraryId": libraryBook.libraryId,
+                    "bookId": libraryBook.bookId,
+                    "requestUrl": requestUrl,
+                    "requestBody": String(data: requestBody, encoding: .utf8) ?? "",
+                    "entryId": responseEntry.id,
+                    "entryStatus": responseEntry.status,
+                    "entryMessage": responseEntry.message
+                  ])
+                } else {
+                  self.audiobookLogger.logEvent(forBookId: libraryBook.bookId, event: """
+                                        Successfully uploaded time entry: \(responseEntry.id)
+                                        """)
+                }
+              }
+
+              self.removeSynchronizedEntries(ids: responseData.responses.map { $0.id })
+              self.cleanUpUrls()
+            }
           }
         }
       }
     }
-  }
-  
-  private var storeDirectoryUrl: URL? {
-    return TPPBookContentMetadataFilesHelper.directory(for: "timetracker")
-  }
-  
-  private var storeUrl: URL? {
-    return storeDirectoryUrl?.appendingPathComponent("store.json")
   }
 
   private func loadStore() {
@@ -221,7 +224,7 @@ class AudiobookDataManager {
       TPPErrorLogger.logError(error, summary: "AudiobookDataManager error opening time tracker store")
     }
   }
-  
+
   private func saveStore() {
     guard let storeDirectoryUrl, let storeUrl else {
       return
@@ -235,23 +238,26 @@ class AudiobookDataManager {
       TPPErrorLogger.logError(error, summary: "AudiobookDataManager error saving time tracker store")
     }
   }
-  
-  /// Removes `timeTrackingURL`s of books not available in the store.
+
+  private var storeDirectoryUrl: URL? {
+    return TPPBookContentMetadataFilesHelper.directory(for: "timetracker")
+  }
+
+  private var storeUrl: URL? {
+    return storeDirectoryUrl?.appendingPathComponent("store.json")
+  }
+
   private func cleanUpUrls() {
     let remainingLibraryBooks: Set<LibraryBook> = Set(store.queue.map { LibraryBook(time: $0) })
     store.urls = store.urls.filter { remainingLibraryBooks.contains($0.key) }
     saveStore()
   }
-  
-  /// Removes uploaded store entries
+
   private func removeSynchronizedEntries(ids: [String]) {
     store.queue = store.queue.filter { !ids.contains($0.id) }
     saveStore()
   }
-  
 }
-
-// MARK: - DataManager protocol
 
 extension AudiobookDataManager: DataManager {
   func save(time: TimeEntry) {

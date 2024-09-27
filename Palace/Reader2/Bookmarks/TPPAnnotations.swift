@@ -10,7 +10,7 @@ protocol AnnotationsManager {
   var syncIsPossibleAndPermitted: Bool { get }
   func postListeningPosition(forBook bookID: String, selectorValue: String, completion: ((_ response: AnnotationResponse?) -> Void)?)
   func postAudiobookBookmark(forBook bookID: String, selectorValue: String) async throws -> AnnotationResponse?
-  func getServerBookmarks(forBook bookID:String?,
+  func getServerBookmarks(forBook book: TPPBook?,
                                 atURL annotationURL:URL?,
                                 motivation: TPPBookmarkSpec.Motivation,
                                 completion: @escaping (_ bookmarks: [Bookmark]?) -> ())
@@ -28,8 +28,8 @@ protocol AnnotationsManager {
     try await TPPAnnotations.postAudiobookBookmark(forBook: bookID, selectorValue: selectorValue)
   }
   
-  func getServerBookmarks(forBook bookID: String?, atURL annotationURL: URL?, motivation: TPPBookmarkSpec.Motivation = .bookmark, completion: @escaping ([Bookmark]?) -> ()) {
-    TPPAnnotations.getServerBookmarks(forBook: bookID, atURL: annotationURL, motivation: motivation, completion: completion)
+  func getServerBookmarks(forBook book: TPPBook?, atURL annotationURL: URL?, motivation: TPPBookmarkSpec.Motivation = .bookmark, completion: @escaping ([Bookmark]?) -> ()) {
+    TPPAnnotations.getServerBookmarks(forBook: book, atURL: annotationURL, motivation: motivation, completion: completion)
   }
   
   func deleteBookmark(annotationId: String, completionHandler: @escaping (Bool) -> ()) {
@@ -42,7 +42,7 @@ protocol AnnotationsManager {
 
   /// Reads the current reading position from the server, parses the response
   /// and returns the result to the `completionHandler`.
-  class func syncReadingPosition(ofBook bookID: String?, toURL url:URL?,
+  class func syncReadingPosition(ofBook book: TPPBook?, toURL url:URL?,
                                  completion: @escaping (_ readPos: Bookmark?) -> ()) {
 
     guard syncIsPossibleAndPermitted() else {
@@ -51,7 +51,7 @@ protocol AnnotationsManager {
       return
     }
 
-    TPPAnnotations.getServerBookmarks(forBook: bookID, atURL: url, motivation: .readingProgress) { bookmarks in
+    TPPAnnotations.getServerBookmarks(forBook: book, atURL: url, motivation: .readingProgress) { bookmarks in
       completion(bookmarks?.first)
     }
   }
@@ -110,14 +110,14 @@ protocol AnnotationsManager {
     }
   }
   
-  class func postBookmark(_ page: TPPPDFPage, forBookID bookID: String, completion: @escaping (_ annotationResponse: AnnotationResponse?) -> Void) {
+  class func postBookmark(_ page: TPPPDFPage, annotationsURL: URL?, forBookID bookID: String, completion: @escaping (_ annotationResponse: AnnotationResponse?) -> Void) {
     guard syncIsPossibleAndPermitted() else {
       Log.debug(#file, "Account does not support sync or sync is disabled.")
       completion(nil)
       return
     }
 
-    guard let annotationsURL = TPPAnnotations.annotationsURL else {
+    guard let annotationsURL = annotationsURL ?? TPPAnnotations.annotationsURL else {
       Log.error(#file, "Annotations URL was nil while posting bookmark")
       return
     }
@@ -258,7 +258,7 @@ protocol AnnotationsManager {
 
   // Completion handler will return a nil parameter if there are any failures with
   // the network request, deserialization, or sync permission is not allowed.
-  class func getServerBookmarks(forBook bookID:String?,
+  class func getServerBookmarks(forBook book:TPPBook?,
                                 atURL annotationURL:URL?,
                                 motivation: TPPBookmarkSpec.Motivation = .bookmark,
                                 completion: @escaping (_ bookmarks: [Bookmark]?) -> ()) {
@@ -269,7 +269,7 @@ protocol AnnotationsManager {
       return
     }
 
-    guard let bookID, let annotationURL else {
+    guard let book, let annotationURL else {
       Log.error(#file, "Required parameter was nil.")
       completion(nil)
       return
@@ -301,7 +301,7 @@ protocol AnnotationsManager {
       let bookmarks = items.compactMap {
         TPPBookmarkFactory.make(fromServerAnnotation: $0,
                                  annotationType: motivation,
-                                 bookID: bookID)
+                                 book: book)
       }
 
       completion(bookmarks)

@@ -157,12 +157,11 @@ class TPPReaderBookmarksBusinessLogicTests: XCTestCase {
       bookRegistryMock.add(secondBookmark, forIdentifier: bookIdentifier)
       XCTAssertEqual(self.bookRegistryMock.readiumBookmarks(forIdentifier: self.bookIdentifier).count, 2)
 
-      // There are one duplicated bookmark and one extra (local) bookmark,
-      // which means it has been delete from another device and should be removed locally
+      // There are one duplicated bookmark and one (local) bookmark, there should be 2 bookmarks
       bookmarkBusinessLogic.updateLocalBookmarks(serverBookmarks: serverBookmarks,
                                                  localBookmarks: bookRegistryMock.readiumBookmarks(forIdentifier: self.bookIdentifier),
                                                  bookmarksFailedToUpload: [TPPReadiumBookmark]()) {
-        XCTAssertEqual(self.bookRegistryMock.readiumBookmarks(forIdentifier: self.bookIdentifier).count, 1)
+        XCTAssertEqual(self.bookRegistryMock.readiumBookmarks(forIdentifier: self.bookIdentifier).count, 2)
       }
     }
     

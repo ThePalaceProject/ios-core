@@ -154,7 +154,7 @@ import PalaceAudiobookToolkit
   }
   
   private func fetchServerBookmarks(completion: @escaping ([AudioBookmark]) -> Void) {
-    annotationsManager.getServerBookmarks(forBook: book.identifier, atURL: self.book.annotationsURL, motivation: .bookmark) { serverBookmarks in
+    annotationsManager.getServerBookmarks(forBook: book, atURL: self.book.annotationsURL, motivation: .bookmark) { serverBookmarks in
       guard let audioBookmarks = serverBookmarks as? [AudioBookmark] else {
         completion([])
         return

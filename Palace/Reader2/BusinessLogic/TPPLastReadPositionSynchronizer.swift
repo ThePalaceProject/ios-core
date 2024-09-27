@@ -77,7 +77,7 @@ class TPPLastReadPositionSynchronizer {
     let localLocation = bookRegistry.location(forIdentifier: book.identifier)
 
     TPPAnnotations
-      .syncReadingPosition(ofBook: book.identifier, toURL: TPPAnnotations.annotationsURL) { bookmark in
+      .syncReadingPosition(ofBook: book, toURL: TPPAnnotations.annotationsURL) { bookmark in
 
         guard let bookmark = bookmark else {
           Log.info(#function, "No reading position annotation exists on the server for \(book.loggableShortString()).")

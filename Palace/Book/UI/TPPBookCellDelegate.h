@@ -15,7 +15,6 @@ shared cover registry, shared download center, et cetera. */
 + (instancetype)sharedDelegate;
 @property (nonatomic) TPPBook *book;
 @property (nonatomic) bool isSyncing;
-@property (nonatomic) NSTimer *timer;
 @property (nonatomic) NSDate *lastServerUpdate;
 @property (nonatomic, weak) UIViewController *audiobookViewController;
 @property (nonatomic) DefaultAudiobookManager *manager;

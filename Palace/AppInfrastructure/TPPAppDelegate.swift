@@ -15,7 +15,6 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
   
   var window: UIWindow?
   var audiobookLifecycleManager: AudiobookLifecycleManager!
-  var reachabilityManager: TPPReachability!
   var notificationsManager: TPPUserNotifications!
   var isSigningIn = false
 
@@ -36,9 +35,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     
     NotificationCenter.default .addObserver(forName: .TPPIsSigningIn, object: nil, queue: nil, using: signingIn)
     
-    // TODO: Remove old reachability functions
     NetworkQueue.shared().addObserverForOfflineQueue()
-    reachabilityManager = TPPReachability.shared()
     
     // New reachability notifications
     Reachability.shared.startMonitoring()

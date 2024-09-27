@@ -22,6 +22,7 @@ enum HTTPMethodType: String {
  will retry any queued requests and purge them if necessary.
  */
 final class NetworkQueue: NSObject {
+  typealias Expression = SQLite.Expression
 
   static let sharedInstance = NetworkQueue()
 
@@ -67,14 +68,13 @@ final class NetworkQueue: NSObject {
   private let sqlHeader = Expression<Data?>("request_header")
   private let sqlRetries = Expression<Int>("retry_count")
   private let sqlDateCreated = Expression<Data>("date_created")
+
   
   
   // MARK: - Public Functions
 
   @objc func addObserverForOfflineQueue() {
-    NotificationCenter.default.addObserver(forName: NSNotification.Name.NYPLReachabilityHostIsReachable,
-                                           object: nil,
-                                           queue: nil) { notification in self.retryQueue() }
+    NotificationCenter.default.addObserver(self, selector: #selector(retryQueue), name: .TPPReachabilityChanged, object: nil)
   }
 
   func addRequest(_ libraryID: String,
@@ -179,7 +179,7 @@ final class NetworkQueue: NSObject {
     }
   }
 
-  private func retryQueue()
+  @objc private func retryQueue()
   {
     self.serialQueue.async {
 
