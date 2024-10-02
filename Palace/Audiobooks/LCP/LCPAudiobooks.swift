@@ -86,7 +86,7 @@ import PalaceAudiobookToolkit
   /// - Returns: NSError object
   private static func nsError(for error: Error) -> NSError {
     let description = (error as? LCPError)?.errorDescription ?? error.localizedDescription
-    return NSError(domain: "SimplyE.LCPAudiobooks", code: 0, userInfo: [
+    return NSError(domain: "Lyrasis.LCPAudiobooks", code: 0, userInfo: [
       NSLocalizedDescriptionKey: description,
       "Error": error
     ])

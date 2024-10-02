@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PalaceAudiobookToolkit
 
 #if FEATURE_OVERDRIVE
 import OverdriveProcessor
@@ -486,13 +487,42 @@ extension MyBooksDownloadCenter {
   }
   
 #if LCP
+//  private func deleteLCPLocalContent(for book: TPPBook, at bookURL: URL) {
+//    LCPAudiobooks(for: bookURL)?.contentDictionary { dict, error in
+//      guard error == nil, let dict = dict as? [String: Any] else { return }
+//      self.deleteAudiobookContent(dict, for: book, bookURL: bookURL)
+//    }
+//  }
+//  
+//  private func deleteAudiobookContent(_ dict: [String: Any], for book: TPPBook, bookURL: URL) {
+//    // Assuming we create and use an audiobook object to manage deletion
+//    guard let jsonData = try? JSONSerialization.data(withJSONObject: dict, options: []),
+//          let manifest = try? Manifest.customDecoder().decode(Manifest.self, from: jsonData),
+//          let audiobook = AudiobookFactory.audiobook(
+//            for: manifest,
+//            bookIdentifier: book.identifier,
+//            decryptor: nil,
+//            token: book.bearerToken
+//          ) else {
+//      return
+//    }
+//    audiobook.deleteLocalContent(completion: { _, _ in })
+//    if FileManager.default.fileExists(atPath: bookURL.path) {
+//      try? FileManager.default.removeItem(at: bookURL)
+//    }
+//  }
   private func deleteLCPLocalContent(for book: TPPBook, at bookURL: URL) {
+    // Attempt to retrieve the content dictionary first
     LCPAudiobooks(for: bookURL)?.contentDictionary { dict, error in
-      guard error == nil, let dict = dict as? [String: Any] else { return }
-      self.deleteAudiobookContent(dict, for: book, bookURL: bookURL)
+      if let dict = dict as? [String: Any], error == nil {
+        // Proceed with content deletion if dictionary is available
+        self.deleteAudiobookContent(dict, for: book, bookURL: bookURL)
+      } else {
+        self.deleteFile(at:bookURL)
+      }
     }
   }
-  
+
   private func deleteAudiobookContent(_ dict: [String: Any], for book: TPPBook, bookURL: URL) {
     // Assuming we create and use an audiobook object to manage deletion
     guard let jsonData = try? JSONSerialization.data(withJSONObject: dict, options: []),
@@ -503,11 +533,27 @@ extension MyBooksDownloadCenter {
             decryptor: nil,
             token: book.bearerToken
           ) else {
+      // If unable to create an audiobook object, still ensure the file is deleted
+      self.deleteFile(at: bookURL)
       return
     }
-    audiobook.deleteLocalContent(completion: { _, _ in })
+
+    // Delete audiobook content if possible
+    audiobook.deleteLocalContent(completion: { _, _ in
+      self.deleteFile(at: bookURL)
+    })
+  }
+
+  private func deleteFile(at bookURL: URL) {
     if FileManager.default.fileExists(atPath: bookURL.path) {
-      try? FileManager.default.removeItem(at: bookURL)
+      do {
+        try FileManager.default.removeItem(at: bookURL)
+        NSLog("Successfully deleted file at \(bookURL.path)")
+      } catch {
+        NSLog("Failed to delete file at \(bookURL.path): \(error.localizedDescription)")
+      }
+    } else {
+      NSLog("File does not exist at: \(bookURL.path)")
     }
   }
 #endif
@@ -524,7 +570,10 @@ extension MyBooksDownloadCenter {
     guard let book = bookRegistry.book(forIdentifier: identifier) else {
       return
     }
-    
+
+    // Delete cached files for the book
+    AudiobookFileCacheManager.shared.deleteCache(for: identifier)
+
     let state = bookRegistry.state(for: identifier)
     let downloaded = (state == .DownloadSuccessful) || (state == .Used)
     
