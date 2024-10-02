@@ -10,6 +10,7 @@ import Foundation
 @testable import Palace
 
 class TPPBookRegistryMock: NSObject, TPPBookRegistrySyncing, TPPBookRegistryProvider {
+
   var isSyncing = false
   var registry = [String: TPPBookRegistryRecord]()
   var processing = [String: Bool]()
@@ -108,8 +109,9 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistrySyncing, TPPBookRegistryProv
     self.processing[bookIdentifier] = processing
   }
   
-  func state(for bookIdentifier: String) -> Palace.TPPBookState {
-    self.registry[bookIdentifier]?.state ?? .Unregistered
+  func state(for bookIdentifier: String?) -> Palace.TPPBookState {
+    guard let bookIdentifier else { return .Unregistered }
+    return self.registry[bookIdentifier]?.state ?? .Unregistered
   }
   
   func addBook(_ book: Palace.TPPBook, location: Palace.TPPBookLocation?, state: Palace.TPPBookState, fulfillmentId: String?, readiumBookmarks: [Palace.TPPReadiumBookmark]?, genericBookmarks: [Palace.TPPBookLocation]?) {
@@ -128,12 +130,14 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistrySyncing, TPPBookRegistryProv
     self.registry[bookIdentifier]?.state = state
   }
   
-  func book(forIdentifier bookIdentifier: String) -> Palace.TPPBook? {
-    self.registry[bookIdentifier]?.book
+  func book(forIdentifier bookIdentifier: String?) -> Palace.TPPBook? {
+    guard let bookIdentifier else { return nil }
+    return self.registry[bookIdentifier]?.book
   }
   
-  func fulfillmentId(forIdentifier bookIdentifier: String) -> String? {
-    self.registry[bookIdentifier]?.fulfillmentId
+  func fulfillmentId(forIdentifier bookIdentifier: String?) -> String? {
+    guard let bookIdentifier else { return nil }
+    return self.registry[bookIdentifier]?.fulfillmentId
   }
   
   func setFulfillmentId(_ fulfillmentId: String, for bookIdentifier: String) {
