@@ -1,20 +1,20 @@
+////
+////  TPPSAMLHelper.h
+////  The Palace Project
+////
+////  Created by Ettore Pasquini on 10/21/20.
+////  Copyright © 2020 NYPL Labs. All rights reserved.
+////
 //
-//  TPPSAMLHelper.h
-//  The Palace Project
+//#import <Foundation/Foundation.h>
 //
-//  Created by Ettore Pasquini on 10/21/20.
-//  Copyright © 2020 NYPL Labs. All rights reserved.
+//@class TPPSignInBusinessLogic;
 //
-
-#import <Foundation/Foundation.h>
-
-@class TPPSignInBusinessLogic;
-
-@interface TPPSAMLHelper : NSObject
-
-@property (weak) TPPSignInBusinessLogic *businessLogic;
-
-// Log in via SAML.
-- (void)logIn;
-
-@end
+//@interface TPPSAMLHelper : NSObject
+//
+//@property (weak) TPPSignInBusinessLogic *businessLogic;
+//
+//// Log in via SAML.
+//- (void)logIn;
+//
+//@end

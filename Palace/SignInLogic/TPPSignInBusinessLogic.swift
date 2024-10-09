@@ -387,7 +387,9 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
       case .oauthIntermediary:
         oauthLogIn()
       case .saml:
-        samlHelper.logIn()
+        samlHelper.logIn {
+          self.uiDelegate?.businessLogicDidCancelSignIn(self)
+        }
       case .token:
         guard let username = self.uiDelegate?.username,
               let password = self.uiDelegate?.pin,
