@@ -49,6 +49,7 @@ typedef NS_ENUM(NSInteger, Section) {
 @property (nonatomic) UITableViewCell *logInCell;
 @property (nonatomic) UIButton *PINShowHideButton;
 @property (nonatomic) NSArray *tableData;
+@property (nonatomic) TPPSamlIDPCell *idpCell;
 
 // account state
 @property (nonatomic) NSString *defaultUsername;
@@ -349,6 +350,13 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
   }
 }
 
+- (void)businessLogicDidCancelSignIn:(TPPSignInBusinessLogic *)businessLogic
+{
+  if (businessLogic.selectedAuthentication.isSaml) {
+    [self removeSAMLActivityView];
+  }
+}
+
 #pragma mark UITableViewDataSource
 
 - (UITableViewCell *)tableView:(__attribute__((unused)) UITableView *)tableView
@@ -366,9 +374,13 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
     return cell;
   } else if ([sectionArray[indexPath.row] isKindOfClass:[TPPSamlIdpCellType class]]) {
     TPPSamlIdpCellType *idpCell = sectionArray[indexPath.row];
-    TPPSamlIDPCell *cell = [[TPPSamlIDPCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
-    cell.idpName.text = idpCell.idp.displayName;
-    return cell;
+    self.idpCell = [[TPPSamlIDPCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
+    self.idpCell.idpName.text = idpCell.idp.displayName;
+//    [self showSAMLLoginActivityView];
+
+//    self.businessLogic.selectedIDP = cellType.idp;
+
+    return self.idpCell;
   } else if ([sectionArray[indexPath.row] isKindOfClass:[TPPInfoHeaderCellType class]]) {
     TPPInfoHeaderCellType *infoCell = sectionArray[indexPath.row];
     TPPLibraryDescriptionCell *cell = [[TPPLibraryDescriptionCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
@@ -445,6 +457,54 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
       return [self passwordResetCell];
     }
 }
+
+- (void)showSAMLLoginActivityView
+{
+  if (!self.idpCell) {
+    return;
+  }
+
+  UIActivityIndicatorView *activityIndicatorView = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
+  activityIndicatorView.color = [UIColor labelColor];
+  [activityIndicatorView startAnimating];
+
+  UILabel *label = [[UILabel alloc] init];
+  label.text = NSLocalizedString(@"Signing In", nil);
+  label.textColor = [UIColor labelColor];
+  label.font = [UIFont systemFontOfSize:16];
+
+  UIView *linearView = [[UIView alloc] init];
+  linearView.tag = sLinearViewTag;
+
+  [linearView addSubview:activityIndicatorView];
+  [linearView addSubview:label];
+
+  [self.idpCell.contentView addSubview:linearView];
+
+  [self.idpCell.idpName setHidden:YES];
+  [self.idpCell setUserInteractionEnabled:NO];
+
+  [activityIndicatorView autoPinEdgeToSuperviewEdge:ALEdgeLeading withInset:5.0];
+  [activityIndicatorView autoAlignAxisToSuperviewAxis:ALAxisHorizontal];
+
+  [label autoPinEdge:ALEdgeLeading toEdge:ALEdgeTrailing ofView:activityIndicatorView withOffset:8.0];
+  [label autoPinEdgeToSuperviewEdge:ALEdgeTrailing];
+
+  [label autoAlignAxisToSuperviewAxis:ALAxisHorizontal];
+
+  [linearView autoAlignAxisToSuperviewAxis: ALAxisHorizontal];
+  [linearView autoAlignAxisToSuperviewAxis: ALAxisVertical];
+}
+
+- (void)removeSAMLActivityView
+{
+  [self.idpCell.idpName setHidden: NO];
+  [self.idpCell setUserInteractionEnabled: YES];
+
+  UIView *view = [self.idpCell.contentView viewWithTag:sLinearViewTag];
+  [view removeFromSuperview];
+}
+
 
 - (UITableViewCell *)passwordResetCell {
   UITableViewCell *cell = [[UITableViewCell alloc] init];
@@ -952,6 +1012,8 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
     [self.usernameTextField resignFirstResponder];
     [self.PINTextField resignFirstResponder];
     [self setActivityTitleWithText:NSLocalizedString(@"Verifying", nil)];
+  } else {
+    [self showSAMLLoginActivityView];
   }
 }
 
@@ -968,6 +1030,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
 {
   [[NSOperationQueue mainQueue] addOperationWithBlock:^{
     [self removeActivityTitle];
+    [self removeSAMLActivityView];
   }];
 }
 
@@ -977,6 +1040,7 @@ didEncounterValidationError:(NSError *)error
                  andMessage:(NSString *)serverMessage
 {
   [self removeActivityTitle];
+  [self removeSAMLActivityView];
 
   if (error.code == NSURLErrorCancelled) {
     // We cancelled the request when asked to answer the server's challenge

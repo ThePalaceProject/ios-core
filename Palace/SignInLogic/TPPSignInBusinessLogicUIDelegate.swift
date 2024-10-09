@@ -21,6 +21,11 @@ import Foundation
   /// - Parameter businessLogic: The business logic in charge of signing in.
   func businessLogicWillSignIn(_ businessLogic: TPPSignInBusinessLogic)
 
+  /// Notifies the delegate that the process of cancellation of signIn.
+  /// - Note: This is always called on the main thread.
+  /// - Parameter businessLogic: The business logic in charge of signing in.
+  func businessLogicDidCancelSignIn(_ businessLogic: TPPSignInBusinessLogic)
+
   /// Notifies the delegate that the process of signing in is completed,
   /// successfully or not.
   /// - Note: This is always called on the main thread.

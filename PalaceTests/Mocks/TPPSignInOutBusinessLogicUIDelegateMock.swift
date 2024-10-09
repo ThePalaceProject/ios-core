@@ -21,6 +21,9 @@ class TPPSignInOutBusinessLogicUIDelegateMock: NSObject, TPPSignInOutBusinessLog
   func businessLogicDidFinishDeauthorizing(_ logic: TPPSignInBusinessLogic) {
   }
 
+  func businessLogicDidCancelSignIn(_ businessLogic: TPPSignInBusinessLogic) {
+  }
+
   var context = "Unit Tests Context"
 
   func businessLogicWillSignIn(_ businessLogic: TPPSignInBusinessLogic) {
