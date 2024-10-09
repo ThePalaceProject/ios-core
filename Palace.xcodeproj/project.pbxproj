@@ -1758,8 +1758,6 @@
 		5DD567AE22B95A30001F0C83 /* String+MD5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "String+MD5.swift"; sourceTree = "<group>"; };
 		5DD567B422B97344001F0C83 /* Data+Base64.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Data+Base64.swift"; sourceTree = "<group>"; };
 		7300D469258829E1002256A3 /* unit-testing.yml */ = {isa = PBXFileReference; lastKnownFileType = text.yaml; path = "unit-testing.yml"; sourceTree = "<group>"; };
-		730263AA2540DE4200A53891 /* TPPSAMLHelper.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TPPSAMLHelper.h; sourceTree = "<group>"; };
-		730263AB2540DE4200A53891 /* TPPSAMLHelper.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = TPPSAMLHelper.m; sourceTree = "<group>"; };
 		7307A5EC23FF1A8500DE53DE /* TPPOpenSearchDescriptionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPOpenSearchDescriptionTests.swift; sourceTree = "<group>"; };
 		73085E192502DE88008F6244 /* TPPPresentationUtils.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPPresentationUtils.swift; sourceTree = "<group>"; };
 		73085E3425030D27008F6244 /* SEMigrations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SEMigrations.swift; sourceTree = "<group>"; };
@@ -2586,8 +2584,6 @@
 				086C45D524AE77CA00F5108E /* TPPBasicAuth.swift */,
 				089E42C5249A823800310360 /* TPPCookiesWebViewController.swift */,
 				734B78982565F7DE006FB8AD /* TPPReauthenticator.swift */,
-				730263AA2540DE4200A53891 /* TPPSAMLHelper.h */,
-				730263AB2540DE4200A53891 /* TPPSAMLHelper.m */,
 				731A5B1124621F2B00B5E663 /* TPPSignInBusinessLogic.swift */,
 				E74752F627FF044400F5E7FA /* TPPSignInBusinessLogic+CardCreation.swift */,
 				730D17CB25535954004CAC83 /* TPPSignInBusinessLogic+BookmarkSyncing.swift */,
