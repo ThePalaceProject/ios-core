@@ -29,7 +29,6 @@
 #import "TPPOPDS.h"
 #import "TPPReloadView.h"
 #import "TPPRootTabBarController.h"
-#import "TPPSAMLHelper.h"
 #import "TPPSettingsAccountDetailViewController.h"
 #import "TPPXML.h"
 #import "UIFont+TPPSystemFontOverride.h"
