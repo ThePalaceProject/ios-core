@@ -162,9 +162,10 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
       let cell = tableView.dequeueReusableCell(withIdentifier: reuseIdentifierBookmark,
                                                for: indexPath)
       let bookmark = self.bookmarksBusinessLogic?.bookmark(at: indexPath.row)
+      let chapter = tocBusinessLogic?.title(for: bookmark?.href ?? "") ?? bookmark?.chapter
 
       if let cell = cell as? TPPReaderBookmarkCell, let bookmark = bookmark {
-        cell.config(withChapterName: bookmark.chapter ?? "",
+        cell.config(withChapterName: chapter ?? "",
                     percentInChapter: bookmark.percentInChapter,
                     rfc3339DateString: bookmark.time)
       }

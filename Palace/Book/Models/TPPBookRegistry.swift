@@ -11,7 +11,7 @@ import UIKit
 
 protocol TPPBookRegistryProvider {
   func setProcessing(_ processing: Bool, for bookIdentifier: String)
-  func state(for bookIdentifier: String) -> TPPBookState
+  func state(for bookIdentifier: String?) -> TPPBookState
   func readiumBookmarks(forIdentifier identifier: String) -> [TPPReadiumBookmark]
   func setLocation(_ location: TPPBookLocation?, forIdentifier identifier: String)
   func location(forIdentifier identifier: String) -> TPPBookLocation?
@@ -27,8 +27,8 @@ protocol TPPBookRegistryProvider {
   func removeBook(forIdentifier bookIdentifier: String)
   func updateAndRemoveBook(_ book: TPPBook)
   func setState(_ state: TPPBookState, for bookIdentifier: String)
-  func book(forIdentifier bookIdentifier: String) -> TPPBook?
-  func fulfillmentId(forIdentifier bookIdentifier: String) -> String?
+  func book(forIdentifier bookIdentifier: String?) -> TPPBook?
+  func fulfillmentId(forIdentifier bookIdentifier: String?) -> String?
   func setFulfillmentId(_ fulfillmentId: String, for bookIdentifier: String)
   func with(account: String, perform block: (_ registry: TPPBookRegistry) -> Void)
 }
@@ -450,7 +450,8 @@ class TPPBookRegistry: NSObject {
   }
 
   /// Returns the state of a book given its identifier.
-  func state(for bookIdentifier: String) -> TPPBookState {
+  func state(for bookIdentifier: String?) -> TPPBookState {
+    guard let bookIdentifier else { return .Unregistered }
     return registry[bookIdentifier]?.state ?? .Unregistered
   }
   
@@ -461,8 +462,9 @@ class TPPBookRegistry: NSObject {
   }
   
   /// Returns the book for a given identifier if it is registered, else nil.
-  func book(forIdentifier bookIdentifier: String) -> TPPBook? {
-    registry[bookIdentifier]?.book
+  func book(forIdentifier bookIdentifier: String?) -> TPPBook? {
+    guard let bookIdentifier else { return nil }
+    return registry[bookIdentifier]?.book
   }
   
   /// Sets the fulfillmentId for a book previously registered given its identifier.
@@ -472,8 +474,9 @@ class TPPBookRegistry: NSObject {
   }
 
   /// Returns the fulfillmentId of a book given its identifier.
-  func fulfillmentId(forIdentifier bookIdentifier: String) -> String? {
-    registry[bookIdentifier]?.fulfillmentId
+  func fulfillmentId(forIdentifier bookIdentifier: String?) -> String? {
+    guard let bookIdentifier else { return nil }
+    return registry[bookIdentifier]?.fulfillmentId
   }
   
   /// Sets the processing flag for a book previously registered given its identifier.
@@ -505,7 +508,11 @@ class TPPBookRegistry: NSObject {
   
   /// Returns the thumbnail for a book via a handler called on the main thread. The book does not have
   /// to be registered in order to retrieve a cover.
-  func thumbnailImage(for book: TPPBook, handler: @escaping (_ image: UIImage?) -> Void) {
+  func thumbnailImage(for book: TPPBook?, handler: @escaping (_ image: UIImage?) -> Void) {
+    guard let book else {
+      handler(nil)
+      return
+    }
     coverRegistry.thumbnailImageForBook(book, handler: handler)
   }
 

@@ -52,6 +52,15 @@ class TPPReaderTOCBusinessLogic {
     return (title: (item.link.title ?? item.link.href), level: item.level)
   }
 
+  func title(for href: String) -> String? {
+    for tocElement in tocElements {
+      if tocElement.link.href.contains(href) {
+        return tocElement.link.title ?? tocElement.link.href
+      }
+    }
+    return nil
+  }
+
   func isCurrentChapterTitled(_ title: String) -> Bool {
     guard let currentLocationTitle = currentLocation?.title?.lowercased() else {
       return false
