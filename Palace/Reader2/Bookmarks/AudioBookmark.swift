@@ -99,18 +99,18 @@ enum BookmarkType: String, Codable {
   static func create(locatorData: [String: Any], timeStamp: String? = Date().iso8601, annotationId: String = "") -> AudioBookmark? {
     guard let typeString = locatorData["@type"] as? String,
           let type = BookmarkType(rawValue: typeString) else { return nil }
-    
+
     let version = locatorData["@version"] as? Int ?? 1
-    let lastSavedTimeStamp = locatorData["timeStamp"] as? String ?? timeStamp
+    let lastSavedTimeStamp = timeStamp ?? locatorData["timeStamp"] as? String
     let id = locatorData["annotationId"] as? String ?? annotationId
-    
+
     let readingOrderItem = locatorData["readingOrderItem"] as? String
     let readingOrderItemOffsetMilliseconds = locatorData["readingOrderItemOffsetMilliseconds"] as? Int ?? locatorData["time"] as? Int
     let chapter = locatorData["chapter"] as? String ?? String(locatorData["chapter"] as? Int ?? 0)
     let title = locatorData["title"] as? String
     let part = locatorData["part"] as? Int
     let time = locatorData["time"] as? Int
-    
+
     return AudioBookmark(
       type: type,
       version: version,
@@ -124,7 +124,7 @@ enum BookmarkType: String, Codable {
       time: time
     )
   }
-  
+
   public func toData() -> Data? {
     return try? JSONEncoder().encode(self)
   }

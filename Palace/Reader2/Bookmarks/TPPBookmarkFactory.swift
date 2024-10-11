@@ -123,7 +123,13 @@ class TPPBookmarkFactory {
         return nil
     }
     
-    if book.isAudiobook, let selectorValueDict, let audioBookmark = AudioBookmark.create(locatorData: selectorValueDict, timeStamp: time, annotationId: annotationID) {
+    if book.isAudiobook,
+       let selectorValueDict,
+       let audioBookmark = AudioBookmark.create(
+        locatorData: selectorValueDict,
+        timeStamp: time,
+        annotationId: annotationID
+       ) {
       return audioBookmark
     }
     
