@@ -101,7 +101,7 @@ enum BookmarkType: String, Codable {
           let type = BookmarkType(rawValue: typeString) else { return nil }
 
     let version = locatorData["@version"] as? Int ?? 1
-    let lastSavedTimeStamp = timeStamp ?? locatorData["timeStamp"] as? String
+    let lastSavedTimeStamp = (locatorData["timeStamp"] as? String)?.isEmpty == false ? locatorData["timeStamp"] as? String : timeStamp
     let id = locatorData["annotationId"] as? String ?? annotationId
 
     let readingOrderItem = locatorData["readingOrderItem"] as? String
