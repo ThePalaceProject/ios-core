@@ -1,3 +1,5 @@
+@import PureLayout;
+
 #import "TPPBookDetailViewController.h"
 
 #import "TPPCatalogFeedViewController.h"
@@ -14,8 +16,6 @@
 #import "TPPCatalogFacet.h"
 #import "Palace-Swift.h"
 #import "TPPCatalogGroupedFeedViewController.h"
-
-#import <PureLayout/PureLayout.h>
 
 static CGFloat const kRowHeight = 115.0;
 static CGFloat const kSectionHeaderHeight = 50.0;

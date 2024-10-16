@@ -6,7 +6,7 @@
 #import "UIView+TPPViewAdditions.h"
 #import "Palace-Swift.h"
 
-#import <PureLayout/PureLayout.h>
+@import PureLayout;
 
 @interface TPPRemoteViewController () <NSURLConnectionDataDelegate>
 

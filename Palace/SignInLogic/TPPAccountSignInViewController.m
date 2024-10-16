@@ -1,7 +1,6 @@
 @import LocalAuthentication;
 @import CoreLocation;
-
-#import <PureLayout/PureLayout.h>
+@import PureLayout;
 
 #import "Palace-Swift.h"
 

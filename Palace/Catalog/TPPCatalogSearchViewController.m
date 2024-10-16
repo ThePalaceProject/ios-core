@@ -1,5 +1,6 @@
 // TODO: This class duplicates much of the functionality of TPPCatalogUngroupedFeedViewController.
 // After it is complete, the common portions must be factored out.
+@import PureLayout;
 
 #import "NSString+TPPStringAdditions.h"
 
@@ -9,7 +10,6 @@
 #import "TPPOpenSearchDescription.h"
 #import "TPPReloadView.h"
 #import "UIView+TPPViewAdditions.h"
-#import <PureLayout/PureLayout.h>
 #import "Palace-Swift.h"
 
 #import "TPPCatalogSearchViewController.h"
