@@ -7,7 +7,7 @@
 //
 
 import Foundation
-import R2Shared
+import ReadiumShared
 
 /// A front-end to the Annotations api to post a new reading progress for
 /// a given book.

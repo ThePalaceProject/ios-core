@@ -1,5 +1,5 @@
 import UIKit
-import R2Shared
+import ReadiumShared
 
 public struct AnnotationResponse {
   var serverId: String?

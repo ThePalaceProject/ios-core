@@ -10,8 +10,8 @@
 
 import SafariServices
 import UIKit
-import R2Navigator
-import R2Shared
+import ReadiumNavigator
+import ReadiumShared
 import Combine
 
 /// This class is meant to be subclassed by each publication format view controller. It contains the shared behavior, eg. navigation bar toggling.
@@ -380,7 +380,8 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   }
 
   @objc private func goBackward() {
-    navigator.goBackward(animated: false) {
+    Task {
+      await navigator.goBackward(options: NavigatorGoOptions(animated: false))
       if let title = self.navigator.currentLocation?.title {
         UIAccessibility.post(notification: .announcement, argument: title)
       }
@@ -388,50 +389,61 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   }
 
   @objc private func goForward() {
-    navigator.goForward(animated: false) {
+    Task {
+    await navigator.goForward(options: NavigatorGoOptions(animated: false))
       if let title = self.navigator.currentLocation?.title {
         UIAccessibility.post(notification: .announcement, argument: title)
       }
     }
   }
-
 }
 
 //------------------------------------------------------------------------------
 // MARK: - NavigatorDelegate
 
 extension TPPBaseReaderViewController: NavigatorDelegate {
-
   func navigator(_ navigator: Navigator, locationDidChange locator: Locator) {
-    Log.info(#function, "R2 locator changed to: \(locator)")
+    Task {
+      Log.info(#function, "R2 locator changed to: \(locator)")
 
-    // Save location here only if VoiceOver is not running; it doesn't save exact location on page
-    if !isVoiceOverRunning {
-      lastReadPositionPoster.storeReadPosition(locator: locator)
-    }
-
-    positionLabel.text = {
-      var chapterTitle = ""
-      if let title = locator.title {
-        chapterTitle = " (\(title))"
+      // Save location here only if VoiceOver is not running; it doesn't save exact location on page
+      if !isVoiceOverRunning {
+        lastReadPositionPoster.storeReadPosition(locator: locator)
       }
-      
-      if let position = locator.locations.position {
-        return String(format: Strings.TPPBaseReaderViewController.pageOf, position) + "\(publication.positions.count)" + chapterTitle
-      } else if let progression = locator.locations.totalProgression {
-        return "\(progression)%" + chapterTitle
+
+      positionLabel.text = await {
+        var chapterTitle = ""
+        if let title = locator.title {
+          chapterTitle = " (\(title))"
+        }
+
+        var positions: [Locator] = []
+
+        let result = await publication.positions()
+        switch result {
+        case .success(let locators):
+          positions = locators
+        case .failure(let error):
+          moduleDelegate?.presentError(error, from: self)
+        }
+
+        if let position = locator.locations.position {
+          return String(format: Strings.TPPBaseReaderViewController.pageOf, position) + "\(positions)" + chapterTitle
+        } else if let progression = locator.locations.totalProgression {
+          return "\(progression)%" + chapterTitle
+        } else {
+          return nil
+        }
+      }()
+
+      bookTitleLabel.text = publication.metadata.title
+
+      if let resourceIndex = publication.resourceIndex(forLocator: locator),
+         let _ = bookmarksBusinessLogic.isBookmarkExisting(at: TPPBookmarkR2Location(resourceIndex: resourceIndex, locator: locator)) {
+        updateBookmarkButton(withState: true)
       } else {
-        return nil
+        updateBookmarkButton(withState: false)
       }
-    }()
-    
-    bookTitleLabel.text = publication.metadata.title
-
-    if let resourceIndex = publication.resourceIndex(forLocator: locator),
-      let _ = bookmarksBusinessLogic.isBookmarkExisting(at: TPPBookmarkR2Location(resourceIndex: resourceIndex, locator: locator)) {
-      updateBookmarkButton(withState: true)
-    } else {
-      updateBookmarkButton(withState: false)
     }
   }
 
@@ -447,6 +459,9 @@ extension TPPBaseReaderViewController: NavigatorDelegate {
     moduleDelegate?.presentError(error, from: self)
   }
 
+  func navigator(_ navigator: any ReadiumNavigator.Navigator, didFailToLoadResourceAt href: ReadiumShared.RelativeURL, withError error: ReadiumShared.ReadError) {
+    moduleDelegate?.presentError(error, from: self)
+  }
 }
 
 //------------------------------------------------------------------------------
@@ -456,20 +471,21 @@ extension TPPBaseReaderViewController: VisualNavigatorDelegate {
 
   func navigator(_ navigator: VisualNavigator, didTapAt point: CGPoint) {
     let viewport = navigator.view.bounds
-    // Skips to previous/next pages if the tap is on the content edges.
     let thresholdRange = 0...(0.2 * viewport.width)
-    var moved = false
-    if thresholdRange ~= point.x {
-      moved = navigator.goLeft(animated: false)
-    } else if thresholdRange ~= (viewport.maxX - point.x) {
-      moved = navigator.goRight(animated: false)
-    }
 
-    if !moved {
-      toggleNavigationBar()
+    Task {
+      var moved = false
+      if thresholdRange ~= point.x {
+        moved = await navigator.goLeft(options: NavigatorGoOptions(animated: false))
+      } else if thresholdRange ~= (viewport.maxX - point.x) {
+        moved = await navigator.goRight(options: NavigatorGoOptions(animated: false))
+      }
+
+      if !moved {
+        toggleNavigationBar()
+      }
     }
   }
-
 }
 
 //------------------------------------------------------------------------------
@@ -483,8 +499,10 @@ extension TPPBaseReaderViewController: TPPReaderPositionsDelegate {
       navigationController?.popViewController(animated: true)
     }
 
-    if let location = loc as? Locator {
-      navigator.go(to: location)
+    Task {
+      if let location = loc as? Locator {
+        await navigator.go(to: location)
+      }
     }
   }
 
@@ -497,9 +515,11 @@ extension TPPBaseReaderViewController: TPPReaderPositionsDelegate {
       navigationController?.popViewController(animated: true)
     }
 
-    let r2bookmark = bookmark.convertToR2(from: publication)
-    if let locator = r2bookmark?.locator {
-      navigator.go(to: locator)
+    Task {
+      let r2bookmark = bookmark.convertToR2(from: publication)
+      if let locator = r2bookmark?.locator {
+        await navigator.go(to: locator)
+      }
     }
   }
 

@@ -7,7 +7,7 @@
 //
 
 import Foundation
-import R2Shared
+import ReadiumShared
 import ReadiumLCP
 import ZIPFoundation
 

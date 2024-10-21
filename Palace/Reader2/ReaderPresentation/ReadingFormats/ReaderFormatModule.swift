@@ -12,7 +12,7 @@
 
 import Foundation
 import UIKit
-import R2Shared
+import ReadiumShared
 
 
 /// A ReaderFormatModule handles presentation of publications in a

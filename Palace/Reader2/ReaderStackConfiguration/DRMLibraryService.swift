@@ -8,7 +8,7 @@
 //
 
 import Foundation
-import R2Shared
+import ReadiumShared
 
 struct DRMFulfilledPublication {
   let localURL: URL
@@ -26,5 +26,5 @@ protocol DRMLibraryService {
   func canFulfill(_ file: URL) -> Bool
   
   /// Fulfills the given file to the fully protected publication.
-  func fulfill(_ file: URL) -> Deferred<DRMFulfilledPublication, Error>
+  func fulfill(_ file: URL) async throws -> DRMFulfilledPublication
 }

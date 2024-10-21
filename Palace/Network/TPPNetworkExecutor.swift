@@ -413,3 +413,17 @@ private extension URLRequest {
   }
 }
 
+extension TPPNetworkExecutor {
+  func GET(_ reqURL: URL, useTokenIfAvailable: Bool = true) async throws -> (Data, URLResponse?) {
+    return try await withCheckedThrowingContinuation { continuation in
+      GET(reqURL, useTokenIfAvailable: useTokenIfAvailable) { result in
+        switch result {
+        case let .success(data, response):
+          continuation.resume(returning: (data, response))
+        case let .failure(error, response):
+          continuation.resume(throwing: error)
+        }
+      }
+    }
+  }
+}

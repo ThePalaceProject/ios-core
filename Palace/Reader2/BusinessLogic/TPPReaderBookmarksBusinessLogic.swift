@@ -7,8 +7,8 @@
 //
 
 import Foundation
-import R2Shared
-import R2Navigator
+import ReadiumShared
+import ReadiumNavigator
 
 /// Encapsulates all of the SimplyE business logic related to bookmarking
 /// for a given book.

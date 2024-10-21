@@ -12,15 +12,15 @@
 
 import Foundation
 import UIKit
-import R2Shared
+import ReadiumShared
 
 
 final class EPUBModule: ReaderFormatModule {
   
   weak var delegate: ModuleDelegate?
-  let resourcesServer: ResourcesServer
-  
-  init(delegate: ModuleDelegate?, resourcesServer: ResourcesServer) {
+  let resourcesServer: HTTPServer
+
+  init(delegate: ModuleDelegate?, resourcesServer: HTTPServer) {
     self.delegate = delegate
     self.resourcesServer = resourcesServer
   }

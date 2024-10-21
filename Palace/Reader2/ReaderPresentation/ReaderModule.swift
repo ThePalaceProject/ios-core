@@ -12,7 +12,7 @@
 
 import Foundation
 import UIKit
-import R2Shared
+import ReadiumShared
 
 
 /// Base module delegate, that sub-modules' delegate can extend.
@@ -48,9 +48,8 @@ protocol ReaderModuleAPI {
 /// It contains sub-modules implementing `ReaderFormatModule` to handle each
 /// publication format (e.g. EPUB, PDF, etc).
 final class ReaderModule: ReaderModuleAPI {
-  
+
   weak var delegate: ModuleDelegate?
-  private let resourcesServer: ResourcesServer
   private let bookRegistry: TPPBookRegistryProvider
   private let progressSynchronizer: TPPLastReadPositionSynchronizer
 
@@ -58,18 +57,19 @@ final class ReaderModule: ReaderModuleAPI {
   var formatModules: [ReaderFormatModule] = []
 
   init(delegate: ModuleDelegate?,
-       resourcesServer: ResourcesServer,
+       resourcesServer: HTTPServer,
        bookRegistry: TPPBookRegistryProvider) {
     self.delegate = delegate
-    self.resourcesServer = resourcesServer
     self.bookRegistry = bookRegistry
     self.progressSynchronizer = TPPLastReadPositionSynchronizer(bookRegistry: bookRegistry)
 
+    // Assuming that resourcesServer is no longer needed, we remove it.
+    // If resource handling is required, check how Readium handles it now.
     formatModules = [
       EPUBModule(delegate: self.delegate, resourcesServer: resourcesServer)
     ]
   }
-  
+
   func presentPublication(_ publication: Publication,
                           book: TPPBook,
                           in navigationController: UINavigationController,
@@ -77,7 +77,7 @@ final class ReaderModule: ReaderModuleAPI {
     if delegate == nil {
       TPPErrorLogger.logError(nil, summary: "ReaderModule delegate is not set")
     }
-    
+
     guard let formatModule = self.formatModules.first(where:{ $0.supports(publication) }) else {
       delegate?.presentError(ReaderError.formatNotSupported, from: navigationController)
       return
@@ -89,11 +89,11 @@ final class ReaderModule: ReaderModuleAPI {
                               book: book,
                               drmDeviceID: drmDeviceID) { [weak self] in
 
-                                self?.finalizePresentation(for: publication,
-                                                           book: book,
-                                                           formatModule: formatModule,
-                                                           in: navigationController,
-                                                           forSample: forSample)
+      self?.finalizePresentation(for: publication,
+                                 book: book,
+                                 formatModule: formatModule,
+                                 in: navigationController,
+                                 forSample: forSample)
     }
   }
 
