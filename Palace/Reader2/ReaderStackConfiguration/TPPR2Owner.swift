@@ -11,8 +11,8 @@
 
 import Foundation
 import UIKit
-import R2Shared
-import R2Streamer
+import ReadiumShared
+import ReadiumStreamer
 
 /// This class is the main root of R2 objects. It:
 /// - owns the sub-modules (library, reader, etc.)
@@ -25,19 +25,13 @@ import R2Streamer
 
   override init() {
     super.init()
-    guard let server = PublicationServer() else {
-      /// FIXME: we should recover properly if the publication server can't
-      /// start, maybe this should only forbid opening a publication?
-      fatalError("Can't start publication server")
-    }
-
-    libraryService = LibraryService(publicationServer: server)
+    libraryService = LibraryService()
     readerModule = ReaderModule(delegate: self,
-                                resourcesServer: server,
+                                resourcesServer: libraryService.httpServer,
                                 bookRegistry: TPPBookRegistry.shared)
 
     // Set Readium 2's logging minimum level.
-    R2EnableLog(withMinimumSeverityLevel: .debug)
+    ReadiumEnableLog(withMinimumSeverityLevel: .debug)
   }
 
   deinit {

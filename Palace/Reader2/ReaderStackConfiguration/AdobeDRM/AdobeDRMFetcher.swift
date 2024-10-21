@@ -7,62 +7,81 @@
 //
 
 import Foundation
-import R2Shared
+import ReadiumShared
 
 #if FEATURE_DRM_CONNECTOR
 
-/// Adobe DRM fetcher
-/// Decrypts .epub contents data
-class AdobeDRMFetcher: Fetcher {
-  
-  /// AdobeDRMContainer calls Adobe DRM software
-  let container: AdobeDRMContainer
-  
-  /// ArchiveFetcher for the publication
-  let fetcher: Fetcher
-  
+/// Adobe DRM container fetcher.
+/// This fetcher decrypts .epub contents data by using an Adobe DRM container.
+class AdobeDRMFetcher: Container {
+
+  /// Adobe DRM Container to interact with Adobe DRM software
+  let drmContainer: AdobeDRMContainer
+
+  /// Original container that holds the publication data
+  let container: Container
+
   /// Adobe DRM Fetcher initializer
   /// - Parameters:
-  ///   - url: Publication URL
-  ///   - fetcher: ArchiveFetcher for the publication
-  ///   - encryptionData: `META-INF/encryption.xml` file contents
-  init(url: URL, fetcher: Fetcher, encryptionData: Data) throws {
-    self.container = AdobeDRMContainer(url: url, encryptionData: encryptionData)
+  ///   - url: The URL of the publication
+  ///   - container: The original container (replacing `fetcher`)
+  ///   - encryptionData: The contents of the `META-INF/encryption.xml` file
+  init(url: URL, container: Container, encryptionData: Data) throws {
+    self.drmContainer = AdobeDRMContainer(url: url, encryptionData: encryptionData)
     // Check if the book can still be displayed
-    if let displayUntilDate = container.displayUntilDate, displayUntilDate < Date() {
+    if let displayUntilDate = drmContainer.displayUntilDate, displayUntilDate < Date() {
       throw AdobeDRMFetcherError.expiredDisplayUntilDate
     }
-    self.fetcher = fetcher
-    self.links = fetcher.links
+    self.container = container
   }
-  
-  /// Known resources available in the medium, such as file paths on the file system.
-  var links: [Link]
-  
-  /// Get resource such as content file by its link.
-  ///
-  /// `AdobeDRMFetcher` `get` function open .epub resources using the `fetcher` passed to `init`.
-  ///  After resource is found and its data is read, AdobeDRMContainer decodes the resource data.
-  ///
-  /// - Parameter link: Resource link (URL of content HREF)
-  /// - Returns: Decrypted `Resource` object; `DataResource` in case of success or `FailureResource` otherwise.
-  func get(_ link: Link) -> Resource {
-    do {
-      let resource = fetcher.get(link)
-      let encryptedData = try resource.read().get()
-      let href = link.href.starts(with: "/") ? String(link.href.dropFirst()) : link.href // remove leading /
-      let data = container.decode(encryptedData, at: href)
-      if let error = container.epubDecodingError, error == AdobeDRMContainerExpiredLicenseError {
-        return FailureResource(link: link, error: .forbidden(AdobeDRMFetcherError.expiredDisplayUntilDate))
-      }
-      return DataResource(link: link, data: data)
-    } catch {
-      return FailureResource(link: link, error: .other(error))
+
+  /// The source URL for the container
+  var sourceURL: AbsoluteURL? {
+    return container.sourceURL
+  }
+
+  /// List of all the container entries
+  var entries: Set<AnyURL> {
+    return container.entries
+  }
+
+  /// Fetches the resource by decrypting it using Adobe DRM.
+  /// - Parameter url: The resource URL
+  /// - Returns: A decrypted `Resource` or a failure in case of error
+  subscript(url: any URLConvertible) -> Resource? {
+    guard let resource = container[url] else {
+      return FailureResource(error: .access(.fileSystem(.fileNotFound(nil))))
     }
+
+    // Create a placeholder resource to return for now
+    let failureResource = FailureResource(error: .access(.fileSystem(.forbidden(AdobeDRMFetcherError.expiredDisplayUntilDate))))
+
+    // Launch a task to handle the DRM decryption asynchronously
+    Task {
+        let drmResult = await resource.read()
+
+        // Handle the DRM result
+        switch drmResult {
+        case .success(let decryptedData):
+          // Check if any DRM error occurred (e.g., expired license)
+          if let error = drmContainer.epubDecodingError, error == AdobeDRMContainerExpiredLicenseError {
+            return FailureResource(error: .access(.fileSystem(.forbidden(AdobeDRMFetcherError.expiredDisplayUntilDate)))) as Resource
+          }
+          // Return the decrypted data as a DataResource
+          return DataResource(data: decryptedData)
+        case .failure(let readError):
+          // Handle DRM decryption failure
+          return FailureResource(error: .access(.fileSystem(.io(readError))))
+        }
+    }
+
+    // Return a placeholder failure resource for now, while the Task executes
+    return failureResource
   }
-  
+
+  /// Close the fetcher and all resources
   func close() {
-    fetcher.close()
+    container.close()
   }
 }
 

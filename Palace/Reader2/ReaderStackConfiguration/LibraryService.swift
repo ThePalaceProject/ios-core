@@ -1,141 +1,163 @@
-//
-//  LibraryService.swift
-//  The Palace Project
-//
-//  Created by Mickaël Menu on 20.02.19.
-//
-//  Copyright 2019 European Digital Reading Lab. All rights reserved.
-//  Licensed to the Readium Foundation under one or more contributor license agreements.
-//  Use of this source code is governed by a BSD-style license which is detailed in the
-//  LICENSE file present in the project repository where this source code is maintained.
-//
-
 import Foundation
 import UIKit
-import R2Shared
-import R2Streamer
+import ReadiumShared
+import ReadiumStreamer
+import ReadiumAdapterGCDWebServer
 
 /// The LibraryService makes a book ready for presentation without dealing
 /// with the specifics of how a book should be presented.
 ///
 /// It sets up the various components necessary for presenting a book,
-/// such as the streamer, publication server, DRM systems.  Presentation
-/// iself is handled by the `ReaderModule`.
+/// such as the HTTP server, DRM systems, etc.
 final class LibraryService: Loggable {
-  
-  private let streamer: Streamer
-  private let publicationServer: PublicationServer
+
+  private let assetRetriever: AssetRetriever
+  private let publicationOpener: PublicationOpener
   private var drmLibraryServices = [DRMLibraryService]()
-  
+
+  let httpServer: GCDHTTPServer
+
   private lazy var documentDirectory = try! FileManager.default.url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
-  
-  init(publicationServer: PublicationServer) {
-    self.publicationServer = publicationServer
-    
-    #if LCP
-    drmLibraryServices.append(LCPLibraryService())
-    #endif
-    
-    #if FEATURE_DRM_CONNECTOR
-    drmLibraryServices.append(AdobeDRMLibraryService())
-    #endif
-    
-    streamer = Streamer(
-      contentProtections: drmLibraryServices.compactMap { $0.contentProtection }
+
+  init() {
+    let httpClient = DefaultHTTPClient()
+    assetRetriever = AssetRetriever(httpClient: httpClient)
+
+    httpServer = GCDHTTPServer(assetRetriever: assetRetriever)
+#if LCP
+    let lcpService = LCPLibraryService()
+    drmLibraryServices.append(lcpService)
+#endif
+
+    // Set up content protections (DRM) for the PublicationOpener
+    let contentProtections = drmLibraryServices.compactMap { $0.contentProtection }
+
+    // Initialize PublicationOpener with content protection and HTTP client
+    publicationOpener = PublicationOpener(
+      parser: DefaultPublicationParser(
+        httpClient: httpClient,
+        assetRetriever: assetRetriever,
+        pdfFactory: DefaultPDFDocumentFactory()
+      ),
+      contentProtections: contentProtections
     )
   }
-  
-  
-  // MARK: Opening
-  
-  /// Opens the Readium 2 Publication for the given `book`.
-  ///
-  /// - Parameters:
-  ///   - book: The book to be opened.
-  ///   - sender: The VC that requested the opening and that will handle
-  ///   error alerts or other messages for the user.
-  ///   - completion: When this is called, the book is ready for
-  ///   presentation if there are no errors.
+
+  // MARK: Opening a Book
+
   func openBook(_ book: TPPBook,
                 sender: UIViewController,
-                completion: @escaping (CancellableResult<Publication, LibraryServiceError>) -> Void) {
+                completion: @escaping (Result<Publication, LibraryServiceError>) -> Void) {
 
-    guard let bookUrl =  book.url else {
+    guard let bookUrl = book.url else {
       completion(.failure(.invalidBook))
       return
     }
-    deferredCatching { .success(bookUrl) }
-      .flatMap { self.openPublication(at: $0, allowUserInteraction: true, sender: sender) }
-      .flatMap { publication in
+
+    openPublication(at: bookUrl, allowUserInteraction: true, sender: sender) { result in
+      switch result {
+      case .success(let publication):
         guard !publication.isRestricted else {
           self.stopOpeningIndicator(identifier: book.identifier)
           if let error = publication.protectionError {
-            return .failure(error)
+            completion(.failure(LibraryServiceError.openFailed(error)))
           } else {
-            return .cancelled
+            completion(.failure(.invalidBook))
           }
+          return
         }
-        
-        self.preparePresentation(of: publication, book: book)
-        return .success(publication)
+
+//        self.preparePresentation(of: publication, book: book)
+        completion(.success(publication))
+
+      case .failure(let error):
+        self.stopOpeningIndicator(identifier: book.identifier)
+        completion(.failure(.openFailed(error)))
+      }
     }
-    .mapError {
-      self.stopOpeningIndicator(identifier: book.identifier)
-      return LibraryServiceError.openFailed($0)
-    }
-    .resolve(completion)
   }
-  
+
   func openSample(_ book: TPPBook,
                   sampleURL: URL,
-                sender: UIViewController,
-                completion: @escaping (CancellableResult<Publication, LibraryServiceError>) -> Void) {
+                  sender: UIViewController,
+                  completion: @escaping (Result<Publication, LibraryServiceError>) -> Void) {
 
-    deferredCatching { .success(sampleURL) }
-      .flatMap { self.openPublication(at: $0, allowUserInteraction: true, sender: sender) }
-      .flatMap { publication in
+    openPublication(at: sampleURL, allowUserInteraction: true, sender: sender) { result in
+      switch result {
+      case .success(let publication):
         guard !publication.isRestricted else {
           self.stopOpeningIndicator(identifier: book.identifier)
           if let error = publication.protectionError {
-            return .failure(error)
+            completion(.failure(LibraryServiceError.openFailed(error)))
           } else {
-            return .cancelled
+            completion(.failure(.invalidBook))
           }
+          return
         }
-        
-        self.preparePresentation(of: publication, book: book)
-        return .success(publication)
-    }
-    .mapError {
-      self.stopOpeningIndicator(identifier: book.identifier)
-      return LibraryServiceError.openFailed($0)
-    }
-    .resolve(completion)
-  }
-  
-  /// Opens the Readium 2 Publication at the given `url`.
-  private func openPublication(at url: URL, allowUserInteraction: Bool, sender: UIViewController?) -> Deferred<Publication, Error> {
-    return deferred {
-      self.streamer.open(asset: FileAsset(url: url), allowUserInteraction: allowUserInteraction, sender: sender, completion: $0)
-    }
-    .eraseToAnyError()
-  }
-  
-  private func preparePresentation(of publication: Publication, book: TPPBook) {
-    // If the book is a webpub, it means it is loaded remotely from a URL, and it doesn't need to be added to the publication server.
-    guard publication.format != .webpub else {
-      return
-    }
-    
-    publicationServer.removeAll()
-    do {
-      try publicationServer.add(publication)
-    } catch {
-      log(.error, error)
+
+//        self.preparePresentation(of: publication, book: book)
+        completion(.success(publication))
+
+      case .failure(let error):
+        self.stopOpeningIndicator(identifier: book.identifier)
+        completion(.failure(.openFailed(error)))
+      }
     }
   }
 
-  /// Stops activity indicator on the`Read` button.
+  // MARK: Open Publication
+
+  /// Opens a publication using Readium's new AssetRetriever and PublicationOpener.
+  private func openPublication(at url: URL, allowUserInteraction: Bool, sender: UIViewController?, completion: @escaping (Result<Publication, Error>) -> Void) {
+    Task {
+      // Convert the URL to a FileURL (Readium's type for file-based assets)
+      guard let fileURL = FileURL(url: url) else {
+        completion(.failure(LibraryServiceError.invalidBook))
+        return
+      }
+
+      // Attempt to retrieve the asset from the URL
+      let assetResult = await assetRetriever.retrieve(url: fileURL)
+
+      switch assetResult {
+      case .success(let asset):
+        // Open the publication using the retrieved asset
+        let result = await self.publicationOpener.open(asset: asset, allowUserInteraction: allowUserInteraction, sender: sender)
+        switch result {
+        case .success(let publication):
+          completion(.success(publication))
+        case .failure(let error):
+          completion(.failure(error))
+
+        }
+      case .failure(let error):
+        // Handle the asset retrieval error
+        completion(.failure(error))
+      }
+    }
+  }
+
+  // MARK: Presentation Preparation
+
+//  /// Prepare the publication for presentation, adding it to the GCDHTTPServer.
+//  private func preparePresentation(of publication: Publication, book: TPPBook) {
+//    // Check if the publication has a self link with an HTTP URL to identify if it's loaded remotely
+//    if let selfLink = publication.linkWithRel(.self), selfLink.href.isHTTPURL {
+//      // This is likely a web publication, no need to add to the server
+//      return
+//    }
+//
+//    // Add the publication to the HTTP server
+//    httpServer.removeAll()
+//    httpServer.
+//    do {
+//      try httpServer.add(publication)
+//    } catch {
+//      log(.error, error)
+//    }
+//  }
+
+  /// Stops activity indicator on the `Read` button.
   private func stopOpeningIndicator(identifier: String) {
     let userInfo: [String: Any] = [
       TPPNotificationKeys.bookProcessingBookIDKey: identifier,
@@ -143,5 +165,13 @@ final class LibraryService: Loggable {
     ]
     NotificationCenter.default.post(name: NSNotification.TPPBookProcessingDidChange, object: nil, userInfo: userInfo)
   }
-  
+}
+
+extension String {
+  var isHTTPURL: Bool {
+    if let url = URL(string: self), url.scheme == "http" || url.scheme == "https" {
+      return true
+    }
+    return false
+  }
 }

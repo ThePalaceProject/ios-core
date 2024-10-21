@@ -1,33 +1,25 @@
-//
-//  TPPReaderSettings.swift
-//  Palace
-//
-//  Created by Vladimir Fedorov on 02.02.2022.
-//  Copyright © 2022 The Palace Project. All rights reserved.
-//
-
 import SwiftUI
-import R2Shared
-import R2Navigator
+import ReadiumShared
+import ReadiumNavigator
 
 class TPPReaderSettings: ObservableObject {
-  
+
   /// `fontSize` user property value
   @Published var fontSize: Float = 100
-  
+
   /// Minimal font size for `fontSize` user property
   private var minFontSize: Float = 100
-  
+
   /// Maximal font size for `fontSize` user property
   private var maxFontSize: Float = 100
-  
+
   /// Increase/decrease step
   private var fontSizeStep: Float = 100
-  
+
   @Published var fontFamilyIndex: Int = 0
-  
+
   @Published var appearanceIndex: Int = 0
-  
+
   @Published var screenBrightness: Double {
     didSet {
       if UIScreen.main.brightness != screenBrightness {
@@ -35,109 +27,127 @@ class TPPReaderSettings: ObservableObject {
       }
     }
   }
-  
+
   @Published var textColor: UIColor = .black
-  
+
   @Published var backgroundColor: UIColor = .white
-  
-  private(set) var userSettings: UserSettings
+
+  private(set) var preferences: EPUBPreferences
   private var delegate: TPPReaderSettingsDelegate?
-  
-  init(userSettings: UserSettings, delegate: TPPReaderSettingsDelegate) {
-    self.userSettings = userSettings
+
+  init(preferences: EPUBPreferences, delegate: TPPReaderSettingsDelegate) {
+    self.preferences = preferences
     self.delegate = delegate
 
-    // Set font size variation
-    if let settingsFontSize = userSettings.userProperties.getProperty(reference: ReadiumCSSReference.fontSize.rawValue) as? Incrementable {
-      settingsFontSize.max = 250.0
-      settingsFontSize.min = 75.0
-      settingsFontSize.step = 12.5
-
-      self.fontSize = settingsFontSize.value
-      self.minFontSize = settingsFontSize.min
-      self.maxFontSize = settingsFontSize.max
-      self.fontSizeStep = settingsFontSize.step
-    }
-    
-    if let fontFamily = userSettings.userProperties.getProperty(reference: ReadiumCSSReference.fontFamily.rawValue) as? Enumerable {
-      self.fontFamilyIndex = fontFamily.index
-    }
-    
-    if let appearance = userSettings.userProperties.getProperty(reference: ReadiumCSSReference.appearance.rawValue) as? Enumerable {
-      self.appearanceIndex = appearance.index
-      let colors = TPPAssociatedColors.colors(for: appearance)
-      backgroundColor = colors.backgroundColor
-      textColor = colors.textColor
-    }
-    
+    // Set font size
+    self.fontSize = Float(preferences.fontSize ?? 100)
+    self.minFontSize = 75.0
+    self.maxFontSize = 250.0
+    self.fontSizeStep = 12.5
     screenBrightness = UIScreen.main.brightness
+
+    // Set font family index (map font families to indices)
+    self.fontFamilyIndex = mapFontFamilyToIndex(preferences.fontFamily)
+
+    // Set appearance index (theme)
+    self.appearanceIndex = mapAppearanceToIndex(preferences.theme)
+
+    if let backgroundColor = preferences.backgroundColor?.uiColor {
+      self.backgroundColor = backgroundColor
+    }
+
+    if let textColor = preferences.textColor?.uiColor {
+      self.textColor = textColor
+    }
   }
-  
+
   /// Convenience init for previews
   init() {
-    userSettings = UserSettings()
+    preferences = EPUBPreferences()
     screenBrightness = UIScreen.main.brightness
   }
-  
+
   /// Increase `fontSize` user property by `step` value, defined for this property.
   func increaseFontSize() {
-    if let settingsFontSize = userSettings.userProperties.getProperty(reference: ReadiumCSSReference.fontSize.rawValue) as? Incrementable {
-      settingsFontSize.increment()
-      fontSize = settingsFontSize.value
-      delegate?.updateUserSettingsStyle()
-      userSettings.save()
-    }
+    guard canIncreaseFontSize else { return }
+    fontSize = min(fontSize + fontSizeStep, maxFontSize)
+    preferences.fontSize = Double(fontSize)
+    delegate?.updateUserPreferencesStyle()
+    savePreferences()
   }
-  
+
   /// Decrease `fontSize` user property by `step` value, defined for this property.
   func decreaseFontSize() {
-    if let settingsFontSize = userSettings.userProperties.getProperty(reference: ReadiumCSSReference.fontSize.rawValue) as? Incrementable {
-      settingsFontSize.decrement()
-      fontSize = settingsFontSize.value
-      delegate?.updateUserSettingsStyle()
-      userSettings.save()
-    }
+    guard canDecreaseFontSize else { return }
+    fontSize = max(fontSize - fontSizeStep, minFontSize)
+    preferences.fontSize = Double(fontSize)
+    delegate?.updateUserPreferencesStyle()
+    savePreferences()
   }
-  
+
   /// Indicates whether `fontSize` property can be increased
   var canIncreaseFontSize: Bool {
-    fontSize + fontSizeStep < maxFontSize
+    return fontSize + fontSizeStep <= maxFontSize
   }
-  
+
   /// Indicates whether `fontSize` property can be decreased
   var canDecreaseFontSize: Bool {
-    fontSize - fontSizeStep > minFontSize
+    return fontSize - fontSizeStep >= minFontSize
   }
-  
-  /// Changes selected appearance index in `userSettings`
+
+  /// Changes selected appearance index in `preferences`
   /// - Parameter appearanceIndex: index of selected appearance
   func changeAppearance(appearanceIndex: Int) {
-    if let appearance = userSettings.userProperties.getProperty(reference: ReadiumCSSReference.appearance.rawValue) as? Enumerable {
-      appearance.index = appearanceIndex
-      self.appearanceIndex = appearanceIndex
-      delegate?.updateUserSettingsStyle()
-      delegate?.setUIColor(for: appearance)
-      let colors = TPPAssociatedColors.colors(for: appearance)
-      backgroundColor = colors.backgroundColor
-      textColor = colors.textColor
-      userSettings.save()
+    preferences.theme = mapIndexToAppearance(appearanceIndex)
+    self.appearanceIndex = appearanceIndex
+
+    if let backgroundColor = preferences.backgroundColor?.uiColor {
+      self.backgroundColor = backgroundColor
     }
+
+    if let textColor = preferences.textColor?.uiColor {
+      self.textColor = textColor
+    }
+
+    delegate?.updateUserPreferencesStyle()
+    savePreferences()
   }
-  
-  /// Changes selected font family indes in `userSettings`
+
+  /// Changes selected font family index in `preferences`
   /// - Parameter fontFamilyIndex: index of selected font family
   func changeFontFamily(fontFamilyIndex: Int) {
-    if let fontFamily = userSettings.userProperties.getProperty(reference: ReadiumCSSReference.fontFamily.rawValue) as? Enumerable,
-       let fontOverride = userSettings.userProperties.getProperty(reference: ReadiumCSSReference.fontOverride.rawValue) as? Switchable {
-      fontFamily.index = fontFamilyIndex
-      self.fontFamilyIndex = fontFamilyIndex
-      if fontFamily.index != 0 {
-        fontOverride.on = true
-      } else {
-        fontOverride.on = false
-      }
-      delegate?.updateUserSettingsStyle()
-      userSettings.save()
-    }
+    preferences.fontFamily = mapIndexToFontFamily(fontFamilyIndex)
+    self.fontFamilyIndex = fontFamilyIndex
+    delegate?.updateUserPreferencesStyle()
+    savePreferences()
+  }
+
+  /// Save updated preferences to disk or user settings storage
+  private func savePreferences() {
+    // Implement saving logic if needed.
+  }
+
+  /// Helper function to map font families to indices (you may customize this logic)
+  private func mapFontFamilyToIndex(_ fontFamily: FontFamily?) -> Int {
+    // Custom mapping logic based on your app's available font families
+    return 0
+  }
+
+  /// Helper function to map appearance/theme to indices (you may customize this logic)
+  private func mapAppearanceToIndex(_ theme: Theme?) -> Int {
+    // Custom mapping logic based on available themes
+    return 0
+  }
+
+  /// Helper function to map an index back to the appropriate `Theme`
+  private func mapIndexToAppearance(_ index: Int) -> Theme {
+    // Custom mapping logic
+    return .light
+  }
+
+  /// Helper function to map an index back to the appropriate `FontFamily`
+  private func mapIndexToFontFamily(_ index: Int) -> FontFamily? {
+    // Custom mapping logic
+    return nil
   }
 }

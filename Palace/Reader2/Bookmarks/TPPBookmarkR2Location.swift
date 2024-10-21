@@ -6,7 +6,7 @@
 //
 
 import Foundation
-import R2Shared
+import ReadiumShared
 
 /// Collects the information from R2 required to build (or refer to) a bookmark,
 /// identify a given location as a bookmark, compare bookmarks.
