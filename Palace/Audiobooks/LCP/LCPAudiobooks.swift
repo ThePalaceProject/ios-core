@@ -39,16 +39,19 @@ import PalaceAudiobookToolkit
       return nil
     }
 
-    let assetRetriever = AssetRetriever(httpClient: DefaultHTTPClient())
-    self.assetRetriever = assetRetriever
+    self.assetRetriever = AssetRetriever(httpClient: DefaultHTTPClient())
 
-    // Initialize LCPService and content protection
     guard let contentProtection = lcpService.contentProtection else {
       TPPErrorLogger.logError(nil, summary: "Uninitialized contentProtection in LCPAudiobooks")
       return nil
     }
 
-    let parser = DefaultPublicationParser(httpClient: DefaultHTTPClient(), assetRetriever: assetRetriever, pdfFactory: DefaultPDFDocumentFactory())
+    let parser = DefaultPublicationParser(
+      httpClient: DefaultHTTPClient(),
+      assetRetriever: assetRetriever,
+      pdfFactory: DefaultPDFDocumentFactory()
+    )
+
     self.publicationOpener = PublicationOpener(
       parser: parser,
       contentProtections: [contentProtection]
@@ -67,8 +70,6 @@ import PalaceAudiobookToolkit
   }
   
   private func loadContentDictionary(completion: @escaping (_ json: NSDictionary?, _ error: NSError?) -> ()) {
-    let manifestPath = "manifest.json"
-
     Task {
       switch await assetRetriever.retrieve(url: audiobookUrl) {
       case .success(let asset):
@@ -76,20 +77,29 @@ import PalaceAudiobookToolkit
 
         switch result {
         case .success(let publication):
-          guard let resource = publication.getResource(at: manifestPath) else {
+          guard let jsonManifestString = publication.jsonManifest else {
             TPPErrorLogger.logError(nil, summary: "No resource found for audiobook.", metadata: [self.audiobookUrlKey: self.audiobookUrl])
             completion(nil, nil)
             return 
           }
 
-          // Since `readAsJSONObject()` returns a `Result`, we need to unwrap it.
-          switch await resource.readAsJSONObject() {
-          case .success(let jsonObject):
-            completion(jsonObject as NSDictionary, nil)
-          case .failure(let readError):
-            // Handle read error
-            TPPErrorLogger.logError(readError, summary: "Failed to read JSON object from LCP file", metadata: [self.audiobookUrlKey: self.audiobookUrl])
-            completion(nil, LCPAudiobooks.nsError(for: readError))
+          guard let jsonData = jsonManifestString.data(using: .utf8) else {
+            TPPErrorLogger.logError(nil, summary: "Failed to convert manifest string to data.", metadata: [self.audiobookUrlKey: self.audiobookUrl])
+            completion(nil, nil)
+            return
+          }
+
+          // Convert the Data to a JSON object
+          do {
+            if let jsonObject = try JSONSerialization.jsonObject(with: jsonData, options: []) as? NSDictionary {
+              completion(jsonObject, nil) // Success, pass the JSON dictionary to the completion
+            } else {
+              TPPErrorLogger.logError(nil, summary: "Failed to convert manifest data to JSON object.", metadata: [self.audiobookUrlKey: self.audiobookUrl])
+              completion(nil, nil) // Error converting the manifest data to a JSON object
+            }
+          } catch {
+            TPPErrorLogger.logError(error, summary: "Error parsing JSON manifest.", metadata: [self.audiobookUrlKey: self.audiobookUrl])
+            completion(nil, LCPAudiobooks.nsError(for: error)) // Pass the error through
           }
         case .failure(let error):
           TPPErrorLogger.logError(error, summary: "Failed to open LCP audiobook", metadata: [self.audiobookUrlKey: self.audiobookUrl])
@@ -161,14 +171,14 @@ extension LCPAudiobooks: DRMDecryptor {
   }
 }
 
-//private extension Publication {
-//  func getResource(at path: String) -> Resource {
-//    let resource = get("/" + path)
-//    guard type(of: resource) != FailureResource.self else {
-//      return get(path)
-//    }
-//    return resource
-//  }
-//}
+private extension Publication {
+  func getResource(at path: String) -> Resource? {
+    let resource = get(Link(href: "/" + path))
+    guard type(of: resource) != FailureResource.self else {
+      return get(Link(href:path))
+    }
 
+    return resource
+  }
+}
 #endif

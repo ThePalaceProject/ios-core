@@ -33,18 +33,13 @@ import ReadiumAdapterLCPSQLite
   /// [LicenseDocument.id: passphrase callback]
   private var authenticationCallbacks: [String: (String?) -> Void] = [:]
 
-  let licenseRepository = LCPSQLiteLicenseRepository()
-  let passphraseRepository = LCPSQLitePassphraseRepository()
-  let assetRetriever = AssetRetriever(httpClient: DefaultHTTPClient())
-  let httpClient = DefaultHTTPClient()
-
   override init() {
     self.lcpService = LCPService(
-      client: TPPLCPClient(),
-      licenseRepository: licenseRepository,
-      passphraseRepository: passphraseRepository,
-      assetRetriever: assetRetriever,
-      httpClient: httpClient
+      client: lcpClient,
+      licenseRepository: LCPSQLiteLicenseRepository(),
+      passphraseRepository: LCPSQLitePassphraseRepository(),
+      assetRetriever: AssetRetriever(httpClient: DefaultHTTPClient()),
+      httpClient: DefaultHTTPClient()
     )
     super.init()
   }
