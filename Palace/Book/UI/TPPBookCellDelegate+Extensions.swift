@@ -56,9 +56,9 @@ extension TPPBookCellDelegate {
   public func openAudiobook(withBook book: TPPBook, json: [String: Any], drmDecryptor: DRMDecryptor?, completion: (() -> Void)?) {
     AudioBookVendorsHelper.updateVendorKey(book: json) { [weak self] error in
       DispatchQueue.main.async {
-        guard let self = self else { return }
+        guard let self else { return }
         
-        if let error = error {
+        if let error {
           self.presentDRMKeyError(error)
           completion?()
           return
