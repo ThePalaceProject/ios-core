@@ -67,7 +67,7 @@ final class LibraryService: Loggable {
           return
         }
 
-//        self.preparePresentation(of: publication, book: book)
+        //        self.preparePresentation(of: publication, book: book)
         completion(.success(publication))
 
       case .failure(let error):
@@ -95,7 +95,7 @@ final class LibraryService: Loggable {
           return
         }
 
-//        self.preparePresentation(of: publication, book: book)
+        self.preparePresentation(of: publication, book: book)
         completion(.success(publication))
 
       case .failure(let error):
@@ -122,6 +122,7 @@ final class LibraryService: Loggable {
       switch assetResult {
       case .success(let asset):
         // Open the publication using the retrieved asset
+        
         let result = await self.publicationOpener.open(asset: asset, allowUserInteraction: allowUserInteraction, sender: sender)
         switch result {
         case .success(let publication):
@@ -139,23 +140,22 @@ final class LibraryService: Loggable {
 
   // MARK: Presentation Preparation
 
-//  /// Prepare the publication for presentation, adding it to the GCDHTTPServer.
-//  private func preparePresentation(of publication: Publication, book: TPPBook) {
-//    // Check if the publication has a self link with an HTTP URL to identify if it's loaded remotely
-//    if let selfLink = publication.linkWithRel(.self), selfLink.href.isHTTPURL {
-//      // This is likely a web publication, no need to add to the server
-//      return
-//    }
-//
-//    // Add the publication to the HTTP server
-//    httpServer.removeAll()
-//    httpServer.
-//    do {
-//      try httpServer.add(publication)
-//    } catch {
-//      log(.error, error)
-//    }
-//  }
+  //  /// Prepare the publication for presentation, adding it to the GCDHTTPServer.
+  private func preparePresentation(of publication: Publication, book: TPPBook) {
+    // Check if the publication has a self link with an HTTP URL to identify if it's loaded remotely
+    if let selfLink = publication.linkWithRel(.self), selfLink.href.isHTTPURL {
+      // This is likely a web publication, no need to add to the server
+      return
+    }
+
+    let endpoint = "/publications/\(book.identifier)" 
+
+    do {
+      try httpServer.serve(at: endpoint, publication: publication)
+    } catch {
+      log(.error, error)
+    }
+  }
 
   /// Stops activity indicator on the `Read` button.
   private func stopOpeningIndicator(identifier: String) {

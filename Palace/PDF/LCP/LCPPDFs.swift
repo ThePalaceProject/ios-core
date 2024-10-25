@@ -37,7 +37,7 @@ import ZIPFoundation
   private let pdfUrl: URL
   private let assetRetriever: AssetRetriever
   private let publicationOpener: PublicationOpener
-  private var lcpService = LCPLibraryService()
+  let lcpService = LCPLibraryService()
 
   @objc init?(url: URL) {
     guard let contentProtection = lcpService.contentProtection else {

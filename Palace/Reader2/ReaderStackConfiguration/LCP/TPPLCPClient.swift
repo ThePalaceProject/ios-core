@@ -13,7 +13,6 @@ import R2LCPClient
 import ReadiumLCP
 import ReadiumShared
 
-
 let lcpService = LCPLibraryService()
 
 /// Facade to the private R2LCPClient.framework.
@@ -21,7 +20,7 @@ class TPPLCPClient: ReadiumLCP.LCPClient {
   
   // Use optional to explicitly release the context when not needed
   private var context: LCPClientContext?
-  
+
   // Ensure the context is released when not needed
   deinit {
     context = nil

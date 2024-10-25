@@ -89,17 +89,16 @@ import PalaceAudiobookToolkit
             return
           }
 
-          // Convert the Data to a JSON object
           do {
             if let jsonObject = try JSONSerialization.jsonObject(with: jsonData, options: []) as? NSDictionary {
-              completion(jsonObject, nil) // Success, pass the JSON dictionary to the completion
+              completion(jsonObject, nil)
             } else {
               TPPErrorLogger.logError(nil, summary: "Failed to convert manifest data to JSON object.", metadata: [self.audiobookUrlKey: self.audiobookUrl])
-              completion(nil, nil) // Error converting the manifest data to a JSON object
+              completion(nil, nil)
             }
           } catch {
             TPPErrorLogger.logError(error, summary: "Error parsing JSON manifest.", metadata: [self.audiobookUrlKey: self.audiobookUrl])
-            completion(nil, LCPAudiobooks.nsError(for: error)) // Pass the error through
+            completion(nil, LCPAudiobooks.nsError(for: error))
           }
         case .failure(let error):
           TPPErrorLogger.logError(error, summary: "Failed to open LCP audiobook", metadata: [self.audiobookUrlKey: self.audiobookUrl])
@@ -173,9 +172,11 @@ extension LCPAudiobooks: DRMDecryptor {
 
 private extension Publication {
   func getResource(at path: String) -> Resource? {
-    let resource = get(Link(href: "/" + path))
+    // Directly pass the path without prepending "/"
+    let resource = get(Link(href: path))
     guard type(of: resource) != FailureResource.self else {
-      return get(Link(href:path))
+      // Attempt again with prepending "/"
+      return get(Link(href: "/" + path))
     }
 
     return resource
