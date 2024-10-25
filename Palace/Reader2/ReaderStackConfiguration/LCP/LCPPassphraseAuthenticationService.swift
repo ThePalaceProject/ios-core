@@ -31,8 +31,24 @@ class LCPPassphraseAuthenticationService: LCPAuthenticating {
 
       for entry in entries {
         if let entryId = entry.firstChild(withName: "id")?.value, entryId == book.identifier {
-          if let passphrase = entry.firstChild(withName: "link")?.firstChild(withName: "hashed_passphrase")?.value {
-            return passphrase
+
+          // Iterate through all 'link' elements in the entry
+          let links = entry.children(withName: "link") as? [TPPXML] ?? []
+          if links.isEmpty {
+            continue
+          }
+
+          for link in links {
+
+            // Iterate through all children of the link to find 'hashed_passphrase'
+            if let children = link.children as? [TPPXML], !children.isEmpty {
+              for child in children {
+
+                if child.name == "hashed_passphrase", let passphrase = child.value {
+                  return passphrase
+                }
+              }
+            }
           }
         }
       }

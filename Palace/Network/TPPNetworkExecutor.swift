@@ -416,13 +416,28 @@ private extension URLRequest {
 extension TPPNetworkExecutor {
   func GET(_ reqURL: URL, useTokenIfAvailable: Bool = true) async throws -> (Data, URLResponse?) {
     return try await withCheckedThrowingContinuation { continuation in
+      var didResume = false  // Track if the continuation has been resumed
+
       GET(reqURL, useTokenIfAvailable: useTokenIfAvailable) { result in
+        guard !didResume else {
+          return
+        }
+        didResume = true
+
         switch result {
         case let .success(data, response):
           continuation.resume(returning: (data, response))
-        case let .failure(error, response):
+        case let .failure(error, _):
           continuation.resume(throwing: error)
         }
+      }
+
+      // Handle timeout scenario if necessary (assuming there could be a time-based failure)
+      DispatchQueue.global().asyncAfter(deadline: .now() + 10.0) {
+        guard !didResume else { return }
+        didResume = true
+        let timeoutError = NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut, userInfo: nil)
+        continuation.resume(throwing: timeoutError)
       }
     }
   }
