@@ -46,13 +46,17 @@ class TPPBookCoverRegistry {
     }
     
     guard let thumbnailUrl = book.imageThumbnailURL else {
-      handler(generateBookCoverImage(book))
+      DispatchQueue.main.async {
+        handler(self.generateBookCoverImage(book))
+      }
       return
     }
     
     fetchImage(from: thumbnailUrl, for: book) { [weak self] image in
       guard let strongSelf = self, let image = image else {
-        handler(self?.generateBookCoverImage(book))
+        DispatchQueue.main.async {
+          handler(self?.generateBookCoverImage(book))
+        }
         return
       }
       strongSelf.inMemoryCache.setObject(image, forKey: book.identifier as NSString)

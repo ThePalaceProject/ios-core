@@ -35,7 +35,7 @@ import ReadiumAdapterLCPSQLite
 
   override init() {
     self.lcpService = LCPService(
-      client: lcpClient,
+      client: TPPLCPClient(),
       licenseRepository: LCPSQLiteLicenseRepository(),
       passphraseRepository: LCPSQLitePassphraseRepository(),
       assetRetriever: AssetRetriever(httpClient: DefaultHTTPClient()),
