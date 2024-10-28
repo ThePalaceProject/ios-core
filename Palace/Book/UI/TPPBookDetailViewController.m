@@ -8,7 +8,6 @@
 #import "TPPSession.h"
 #import "TPPProblemReportViewController.h"
 #import "NSURLRequest+NYPLURLRequestAdditions.h"
-#import <PureLayout/PureLayout.h>
 
 #import "TPPBookDetailViewController.h"
 

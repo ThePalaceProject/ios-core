@@ -16,7 +16,6 @@
 #import "Palace-Swift.h"
 #import "TPPCatalogUngroupedFeedViewController.h"
 
-#import <PureLayout/PureLayout.h>
 
 static const CGFloat kActivityIndicatorPadding = 20.0;
 static const CGFloat kCollectionViewCrossfadeDuration = 0.3;

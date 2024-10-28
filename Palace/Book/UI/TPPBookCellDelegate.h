@@ -17,7 +17,7 @@ shared cover registry, shared download center, et cetera. */
 @property (nonatomic) bool isSyncing;
 @property (nonatomic) NSDate *lastServerUpdate;
 @property (nonatomic, weak) UIViewController *audiobookViewController;
-@property (nonatomic) DefaultAudiobookManager *manager;
+@property (nonatomic, weak) DefaultAudiobookManager *manager;
 @property (nonatomic) NSTimeInterval previousPlayheadOffset;
 
 - (void) startLoading:(UIViewController *)hostViewController;

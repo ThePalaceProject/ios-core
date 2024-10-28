@@ -28,7 +28,8 @@ class TPPBookCoverRegistry {
     configuration.urlCredentialStorage = nil
     return URLSession(configuration: configuration)
   }()
-  
+
+  @MainActor
   func thumbnailImageForBook(_ book: TPPBook, handler: @escaping (_ image: UIImage?) -> Void) {
     cacheLock.lock()
     if let cachedImage = inMemoryCache.object(forKey: book.identifier as NSString) {
