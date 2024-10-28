@@ -43,11 +43,10 @@ extension Publication {
   ///
   /// - Returns: The `idref` related to the resource in question. This *should*
   /// be usable in R1 contexts.
-//  func idref(forHref href: String) -> String? {
-//    self.linkWithHREF(<#T##href: URLConvertible##URLConvertible#>)
-////    let link = self.linkWithHREF(withHREF: href)
-////    return link?.properties["id"] as? String
-//  }
+  func idref(forHref href: String) -> String? {
+    let link = Link(href: href)
+    return link.properties["id"] as? String
+  }
 
   /// Shortcut helper to get the publication ID.
   var id: String? {

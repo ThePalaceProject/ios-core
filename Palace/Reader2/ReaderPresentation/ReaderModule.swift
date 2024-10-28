@@ -63,8 +63,6 @@ final class ReaderModule: ReaderModuleAPI {
     self.bookRegistry = bookRegistry
     self.progressSynchronizer = TPPLastReadPositionSynchronizer(bookRegistry: bookRegistry)
 
-    // Assuming that resourcesServer is no longer needed, we remove it.
-    // If resource handling is required, check how Readium handles it now.
     formatModules = [
       EPUBModule(delegate: self.delegate, resourcesServer: resourcesServer)
     ]

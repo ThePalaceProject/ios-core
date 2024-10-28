@@ -23,7 +23,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
 
   // Side margins for long labels
   static let overlayLabelMargin: CGFloat = 20
-  
+
   // TODO: SIMPLY-2656 See if we still need this.
   weak var moduleDelegate: ModuleDelegate?
 
@@ -45,7 +45,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   private var currentLocationIsBookmarked: Bool {
     bookmarksBusinessLogic.currentLocation(in: navigator) != nil
   }
-  
+
   // MARK: - Lifecycle
 
   /// Designated initializer.
@@ -64,7 +64,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     self.publication = publication
     self.isShowingSample = forSample
     self.initialLocation = initialLocation
-    
+
     lastReadPositionPoster = TPPLastReadPositionPoster(
       book: book,
       r2Publication: publication,
@@ -137,7 +137,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
       positionLabel.leftAnchor.constraint(equalTo: navigator.view.leftAnchor, constant: TPPBaseReaderViewController.overlayLabelMargin),
       positionLabel.rightAnchor.constraint(equalTo: navigator.view.rightAnchor, constant: -TPPBaseReaderViewController.overlayLabelMargin)
     ])
-    
+
     bookTitleLabel.translatesAutoresizingMaskIntoConstraints = false
     bookTitleLabel.font = .systemFont(ofSize: 12)
     bookTitleLabel.textAlignment = .center
@@ -154,21 +154,21 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
       layoutConstraints.append(bookTitleLabel.topAnchor.constraint(equalTo: navigator.view.topAnchor, constant: TPPBaseReaderViewController.overlayLabelMargin))
     }
     NSLayoutConstraint.activate(layoutConstraints)
-    
+
     // Accessibility
     updateViewsForVoiceOver(isRunning: UIAccessibility.isVoiceOverRunning)
-    
+
   }
 
   override func willMove(toParent parent: UIViewController?) {
     super.willMove(toParent: parent)
   }
-  
+
   override func viewDidAppear(_ animated: Bool) {
     super.viewDidAppear(animated)
     accessibilityToolbar.accessibilityElementsHidden = false
   }
-  
+
   override func viewWillDisappear(_ animated: Bool) {
     super.viewWillDisappear(animated)
     if let locator = navigator.currentLocation {
@@ -176,7 +176,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     }
   }
 
-  
+
   // MARK: - Navigation bar
 
   private var navigationBarHidden: Bool = true {
@@ -199,7 +199,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
                                     target: self,
                                     action: #selector(presentPositionsVC))
     tocButton.accessibilityLabel = Strings.Accessibility.viewBookmarksAndTocButton
-    
+
     if !isShowingSample {
       buttons.append(bookmarkBtn)
     }
@@ -257,7 +257,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     let positionsVC = TPPReaderPositionsVC.newInstance()
 
     positionsVC.tocBusinessLogic = TPPReaderTOCBusinessLogic(r2Publication: publication,
-                                                              currentLocation: currentLocation)
+                                                             currentLocation: currentLocation)
     positionsVC.bookmarksBusinessLogic = bookmarksBusinessLogic
     positionsVC.delegate = self
 
@@ -290,11 +290,11 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   private func addBookmark(at location: TPPBookmarkR2Location) {
     guard let bookmark = bookmarksBusinessLogic.addBookmark(location) else {
       let alert = TPPAlertUtils.alert(title: "Bookmarking Error",
-                                       message: "A bookmark could not be created on the current page.")
+                                      message: "A bookmark could not be created on the current page.")
       TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert,
-                                                    viewController: self,
-                                                    animated: true,
-                                                    completion: nil)
+                                                   viewController: self,
+                                                   animated: true,
+                                                   completion: nil)
       return
     }
 
@@ -341,11 +341,11 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
       button.accessibilityLabel = label
       return button
     }
-        
+
     let toolbar = UIToolbar(frame: .zero)
     let forwardButton = makeItem(.fastForward, label: DisplayStrings.nextChapter, action: #selector(goForward))
     let backButton = makeItem(.rewind, label: DisplayStrings.previousChapter, action: #selector(goBackward))
-    
+
     toolbar.items = [
       backButton,
       makeItem(.flexibleSpace),
@@ -355,7 +355,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     toolbar.tintColor = UIColor.black
     return toolbar
   }()
-    
+
   private var isVoiceOverRunning = UIAccessibility.isVoiceOverRunning
 
   @objc func voiceOverStatusDidChange() {
@@ -366,7 +366,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     }
     updateViewsForVoiceOver(isRunning: isRunning)
   }
-  
+
   func updateViewsForVoiceOver(isRunning: Bool) {
     updateNavigationBar()
     isVoiceOverRunning = isRunning
@@ -390,7 +390,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
 
   @objc private func goForward() {
     Task {
-    await navigator.goForward(options: NavigatorGoOptions(animated: false))
+      await navigator.goForward(options: NavigatorGoOptions(animated: false))
       if let title = self.navigator.currentLocation?.title {
         UIAccessibility.post(notification: .announcement, argument: title)
       }

@@ -24,15 +24,17 @@ final class LibraryService: Loggable {
     assetRetriever = AssetRetriever(httpClient: httpClient)
 
     httpServer = GCDHTTPServer(assetRetriever: assetRetriever)
+
 #if LCP
-    let lcpService = LCPLibraryService()
-    drmLibraryServices.append(lcpService)
+    drmLibraryServices.append(LCPLibraryService())
 #endif
 
-    // Set up content protections (DRM) for the PublicationOpener
-    let contentProtections = drmLibraryServices.compactMap { $0.contentProtection }
+#if FEATURE_DRM_CONNECTOR
+    drmLibraryServices.append(AdobeDRMLibraryService())
+#endif
 
-    // Initialize PublicationOpener with content protection and HTTP client
+s    let contentProtections = drmLibraryServices.compactMap { $0.contentProtection }
+
     publicationOpener = PublicationOpener(
       parser: DefaultPublicationParser(
         httpClient: httpClient,
@@ -44,7 +46,7 @@ final class LibraryService: Loggable {
   }
 
   // MARK: Opening a Book
-
+  @MainActor
   func openBook(_ book: TPPBook,
                 sender: UIViewController,
                 completion: @escaping (Result<Publication, LibraryServiceError>) -> Void) {
@@ -54,20 +56,14 @@ final class LibraryService: Loggable {
       return
     }
 
-    openPublication(at: bookUrl, allowUserInteraction: true, sender: sender) { result in
+    openPublication(at: bookUrl, allowUserInteraction: true, sender: sender) { [weak self] result in
+      guard let self = self else { return }
       switch result {
       case .success(let publication):
-        guard !publication.isRestricted else {
-          self.stopOpeningIndicator(identifier: book.identifier)
-          if let error = publication.protectionError {
-            completion(.failure(LibraryServiceError.openFailed(error)))
-          } else {
-            completion(.failure(.invalidBook))
-          }
+        if !self.validatePublication(publication, for: book.identifier, completion: completion) {
           return
         }
-
-        //        self.preparePresentation(of: publication, book: book)
+        self.preparePresentation(of: publication, book: book)
         completion(.success(publication))
 
       case .failure(let error):
@@ -77,24 +73,19 @@ final class LibraryService: Loggable {
     }
   }
 
+  @MainActor
   func openSample(_ book: TPPBook,
                   sampleURL: URL,
                   sender: UIViewController,
                   completion: @escaping (Result<Publication, LibraryServiceError>) -> Void) {
 
-    openPublication(at: sampleURL, allowUserInteraction: true, sender: sender) { result in
+    openPublication(at: sampleURL, allowUserInteraction: true, sender: sender) { [weak self] result in
+      guard let self = self else { return }
       switch result {
       case .success(let publication):
-        guard !publication.isRestricted else {
-          self.stopOpeningIndicator(identifier: book.identifier)
-          if let error = publication.protectionError {
-            completion(.failure(LibraryServiceError.openFailed(error)))
-          } else {
-            completion(.failure(.invalidBook))
-          }
+        if !self.validatePublication(publication, for: book.identifier, completion: completion) {
           return
         }
-
         self.preparePresentation(of: publication, book: book)
         completion(.success(publication))
 
@@ -108,31 +99,23 @@ final class LibraryService: Loggable {
   // MARK: Open Publication
 
   /// Opens a publication using Readium's new AssetRetriever and PublicationOpener.
+  @MainActor
   private func openPublication(at url: URL, allowUserInteraction: Bool, sender: UIViewController?, completion: @escaping (Result<Publication, Error>) -> Void) {
     Task {
-      // Convert the URL to a FileURL (Readium's type for file-based assets)
       guard let fileURL = FileURL(url: url) else {
         completion(.failure(LibraryServiceError.invalidBook))
         return
       }
 
-      // Attempt to retrieve the asset from the URL
       let assetResult = await assetRetriever.retrieve(url: fileURL)
 
       switch assetResult {
       case .success(let asset):
-        // Open the publication using the retrieved asset
-        
         let result = await self.publicationOpener.open(asset: asset, allowUserInteraction: allowUserInteraction, sender: sender)
-        switch result {
-        case .success(let publication):
-          completion(.success(publication))
-        case .failure(let error):
-          completion(.failure(error))
 
-        }
+        completion(result.mapError { $0 as Error })
+
       case .failure(let error):
-        // Handle the asset retrieval error
         completion(.failure(error))
       }
     }
@@ -140,20 +123,19 @@ final class LibraryService: Loggable {
 
   // MARK: Presentation Preparation
 
-  //  /// Prepare the publication for presentation, adding it to the GCDHTTPServer.
+  /// Prepares the publication for presentation, adding it to the GCDHTTPServer.
   private func preparePresentation(of publication: Publication, book: TPPBook) {
     // Check if the publication has a self link with an HTTP URL to identify if it's loaded remotely
     if let selfLink = publication.linkWithRel(.self), selfLink.href.isHTTPURL {
-      // This is likely a web publication, no need to add to the server
-      return
+      return // Likely a web publication; no need to add to the server
     }
 
-    let endpoint = "/publications/\(book.identifier)" 
+    let endpoint = "/publications/\(book.identifier)"
 
     do {
       try httpServer.serve(at: endpoint, publication: publication)
     } catch {
-      log(.error, error)
+      log(.error, "Failed to serve publication at endpoint \(endpoint): \(error)")
     }
   }
 
@@ -164,6 +146,20 @@ final class LibraryService: Loggable {
       TPPNotificationKeys.bookProcessingValueKey: false
     ]
     NotificationCenter.default.post(name: NSNotification.TPPBookProcessingDidChange, object: nil, userInfo: userInfo)
+  }
+
+  /// Validates if the publication is restricted and handles errors if necessary.
+  private func validatePublication(_ publication: Publication, for identifier: String, completion: (Result<Publication, LibraryServiceError>) -> Void) -> Bool {
+    guard !publication.isRestricted else {
+      stopOpeningIndicator(identifier: identifier)
+      if let error = publication.protectionError {
+        completion(.failure(.openFailed(error)))
+      } else {
+        completion(.failure(.invalidBook))
+      }
+      return false
+    }
+    return true
   }
 }
 
