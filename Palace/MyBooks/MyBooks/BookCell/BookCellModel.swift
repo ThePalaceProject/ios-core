@@ -88,9 +88,9 @@ class BookCellModel: ObservableObject {
   
   private func loadBookCoverImage() {
     guard let cachedImage = TPPBookRegistry.shared.cachedThumbnailImage(for: book) else {
-      TPPBookRegistry.shared.thumbnailImage(for: book) { image in
+      DispatchQueue.main.async {
+        TPPBookRegistry.shared.thumbnailImage(for: self.book) { image in
         guard let image else { return }
-        DispatchQueue.main.async {
           self.image = image
         }
       }

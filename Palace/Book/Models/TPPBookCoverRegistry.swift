@@ -61,7 +61,8 @@ class TPPBookCoverRegistry {
       handler(image)
     }
   }
-  
+
+  @MainActor
   func coverImageForBook(_ book: TPPBook, handler: @escaping (_ image: UIImage?) -> Void) {
     thumbnailImageForBook(book) { [weak self] thumbnail in
       guard let self = self else { return }
@@ -78,7 +79,8 @@ class TPPBookCoverRegistry {
       }
     }
   }
-  
+
+  @MainActor
   func thumbnailImagesForBooks(_ books: Set<TPPBook>, handler: @escaping (_ bookIdentifiersToImages: [String: UIImage]) -> Void) {
     var result = [String: UIImage]()
     let dispatchGroup = DispatchGroup()

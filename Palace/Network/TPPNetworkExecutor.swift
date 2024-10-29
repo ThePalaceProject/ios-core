@@ -87,26 +87,26 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
   @discardableResult
   func executeRequest(_ req: URLRequest, enableTokenRefresh: Bool, completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask? {
     let userAccount = TPPUserAccount.sharedAccount()
-    
+
     if let authDefinition = userAccount.authDefinition, authDefinition.isSaml {
       return performDataTask(with: req, completion: completion)
     }
-    
-    if userAccount.isTokenRefreshRequired() && enableTokenRefresh {
-      let task = urlSession.dataTask(with: req)
-      refreshTokenAndResume(task: task, completion: completion)
-      return task
+
+    if userAccount.isTokenRefreshRequired() {
+      if enableTokenRefresh {
+        let task = urlSession.dataTask(with: req)
+        refreshTokenAndResume(task: task, completion: completion)
+        return task
+      } else if req.hasRetried {
+        let error = createErrorForRetryFailure()
+        completion(NYPLResult.failure(error, nil))
+        return nil
+      }
     }
-    
-    if req.hasRetried && userAccount.isTokenRefreshRequired() {
-      let error = createErrorForRetryFailure()
-      completion(NYPLResult.failure(error, nil))
-      return nil
-    }
-    
+
     return performDataTask(with: req, completion: completion)
   }
-  
+
   private func performDataTask(with request: URLRequest,
                                completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask {
     let task = urlSession.dataTask(with: request)
