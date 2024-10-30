@@ -464,6 +464,8 @@
 - (void)didSelectRead
 {
   self.activityIndicator.center = self.readButton.center;
+  [self.downloadingDelegate didCloseDetailView];
+
   [self updateProcessingState:YES];
   [self.delegate didSelectReadForBook:self.book completion:^{
     [self updateProcessingState:NO];
