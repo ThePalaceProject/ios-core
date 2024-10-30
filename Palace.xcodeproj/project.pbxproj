@@ -136,14 +136,8 @@
 		217595DD27B680D400BA0FDD /* TPPReaderSettingsVC.swift in Sources */ = {isa = PBXBuildFile; fileRef = 217595DC27B680D400BA0FDD /* TPPReaderSettingsVC.swift */; };
 		217595DE27B680D400BA0FDD /* TPPReaderSettingsVC.swift in Sources */ = {isa = PBXBuildFile; fileRef = 217595DC27B680D400BA0FDD /* TPPReaderSettingsVC.swift */; };
 		219747FC26D9218400FA25DF /* TPPLCPClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 219747F626D9218400FA25DF /* TPPLCPClient.swift */; };
-		2198690D267E29B00041369E /* Minizip.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2198690C267E29B00041369E /* Minizip.xcframework */; };
-		2198690E267E29B00041369E /* Minizip.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 2198690C267E29B00041369E /* Minizip.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		21986922267E29D70041369E /* PureLayout.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 21986921267E29D70041369E /* PureLayout.xcframework */; };
-		21986923267E29D70041369E /* PureLayout.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 21986921267E29D70041369E /* PureLayout.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		2198695B267E2A440041369E /* Minizip.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2198690C267E29B00041369E /* Minizip.xcframework */; };
-		2198695C267E2A440041369E /* Minizip.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 2198690C267E29B00041369E /* Minizip.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		21986961267E2A450041369E /* PureLayout.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 21986921267E29D70041369E /* PureLayout.xcframework */; };
-		21986962267E2A450041369E /* PureLayout.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 21986921267E29D70041369E /* PureLayout.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		21989A1027B6FF0E00539B7F /* TPPReaderSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21989A0F27B6FF0D00539B7F /* TPPReaderSettings.swift */; };
 		21989A1127B6FF0E00539B7F /* TPPReaderSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21989A0F27B6FF0D00539B7F /* TPPReaderSettings.swift */; };
 		2198F910250A90EE000D9DAB /* AudioBookVendorsHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2198F90F250A90EE000D9DAB /* AudioBookVendorsHelper.swift */; };
@@ -1000,9 +994,7 @@
 		D570B6F02BA20139003FE991 /* AudioEngine.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E58565CE269774C400A5FBD5 /* AudioEngine.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		D570B6F12BA20139003FE991 /* R2LCPClient.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E7F287782956566800EEB1E0 /* R2LCPClient.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		D570B6F22BA20139003FE991 /* (null) in Embed Frameworks */ = {isa = PBXBuildFile; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		D570B6F32BA20139003FE991 /* PureLayout.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 21986921267E29D70041369E /* PureLayout.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		D570B6F42BA20139003FE991 /* PalaceUIKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E7E96B9E2B0E82210036B23A /* PalaceUIKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		D570B6F52BA20139003FE991 /* Minizip.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 2198690C267E29B00041369E /* Minizip.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		D570B6F62BA20139003FE991 /* PalaceAudiobookToolkit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E7F9BABE2A8E6811001697DE /* PalaceAudiobookToolkit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		D787E8441FB6B0290016D9D5 /* TPPSettingsAdvancedViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D787E8431FB6B0290016D9D5 /* TPPSettingsAdvancedViewController.swift */; };
 		E501710F27A3948C004B3392 /* TPPBookmarkFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 730EF265260967FF008E1DC3 /* TPPBookmarkFactory.swift */; };
@@ -1104,6 +1096,7 @@
 		E5824BE12994AF4800DE76C2 /* DownloadingBookCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5824BE02994AF4800DE76C2 /* DownloadingBookCell.swift */; };
 		E5824BE32994B29700DE76C2 /* ButtonView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5824BE22994B29700DE76C2 /* ButtonView.swift */; };
 		E58565CF269774C400A5FBD5 /* AudioEngine.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E58565CE269774C400A5FBD5 /* AudioEngine.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		E587BCE62CCFFB6F003AE1AD /* PureLayout in Frameworks */ = {isa = PBXBuildFile; productRef = E587BCE52CCFFB6F003AE1AD /* PureLayout */; };
 		E58C330A2AD98F61005C44A2 /* EPUBSearchViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E57345502AD6EB600021D768 /* EPUBSearchViewModel.swift */; };
 		E59526EB28D24FC000C179DA /* AudiobookSample.swift in Sources */ = {isa = PBXBuildFile; fileRef = E59526EA28D24FC000C179DA /* AudiobookSample.swift */; };
 		E59892E128A9AC2600C44A85 /* Sample.swift in Sources */ = {isa = PBXBuildFile; fileRef = E59892E028A9AC2600C44A85 /* Sample.swift */; };
@@ -1428,9 +1421,7 @@
 				E5C1F55327990A96005FC6B2 /* OverdriveProcessor.framework in Embed Frameworks */,
 				E58565CF269774C400A5FBD5 /* AudioEngine.xcframework in Embed Frameworks */,
 				E7F2877A2956566900EEB1E0 /* R2LCPClient.xcframework in Embed Frameworks */,
-				21986923267E29D70041369E /* PureLayout.xcframework in Embed Frameworks */,
 				E7E96BB42B0E82220036B23A /* PalaceUIKit.framework in Embed Frameworks */,
-				2198690E267E29B00041369E /* Minizip.xcframework in Embed Frameworks */,
 				E72429642AC3276500D8AF75 /* PalaceAudiobookToolkit.framework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
@@ -1444,8 +1435,6 @@
 			files = (
 				E784949A2A8E99CF0059B4B0 /* PalaceAudiobookToolkit.framework in Embed Frameworks */,
 				E7E96BBC2B0E82550036B23A /* PalaceUIKit.framework in Embed Frameworks */,
-				21986962267E2A450041369E /* PureLayout.xcframework in Embed Frameworks */,
-				2198695C267E2A440041369E /* Minizip.xcframework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -1460,9 +1449,7 @@
 				D570B6F02BA20139003FE991 /* AudioEngine.xcframework in Embed Frameworks */,
 				D570B6F12BA20139003FE991 /* R2LCPClient.xcframework in Embed Frameworks */,
 				D570B6F22BA20139003FE991 /* (null) in Embed Frameworks */,
-				D570B6F32BA20139003FE991 /* PureLayout.xcframework in Embed Frameworks */,
 				D570B6F42BA20139003FE991 /* PalaceUIKit.framework in Embed Frameworks */,
-				D570B6F52BA20139003FE991 /* Minizip.xcframework in Embed Frameworks */,
 				D570B6F62BA20139003FE991 /* PalaceAudiobookToolkit.framework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
@@ -2227,15 +2214,14 @@
 				E77D02252931357400544180 /* SwiftSoup in Frameworks */,
 				A823D815192BABA400B55DE2 /* UIKit.framework in Frameworks */,
 				E7498A8C2A0E7F460037DD93 /* FirebaseMessaging in Frameworks */,
+				E587BCE62CCFFB6F003AE1AD /* PureLayout in Frameworks */,
 				E7498A8A2A0E7F460037DD93 /* FirebaseDynamicLinks in Frameworks */,
 				A823D811192BABA400B55DE2 /* Foundation.framework in Frameworks */,
 				E7CA1C4E29381068009CC6FD /* SQLite in Frameworks */,
 				1112A8431A3249B4002B8CC1 /* libTenPrintCover.a in Frameworks */,
-				21986922267E29D70041369E /* PureLayout.xcframework in Frameworks */,
 				E795A7822A744F0A00314EC8 /* ULID in Frameworks */,
 				119503E91993F919009FB788 /* libz.dylib in Frameworks */,
 				119503E71993F914009FB788 /* libxml2.dylib in Frameworks */,
-				2198690D267E29B00041369E /* Minizip.xcframework in Frameworks */,
 				E77D02202931337000544180 /* ReadiumLCP in Frameworks */,
 				E72429632AC3276500D8AF75 /* PalaceAudiobookToolkit.framework in Frameworks */,
 				E7498A882A0E7F460037DD93 /* FirebaseCrashlytics in Frameworks */,
@@ -3830,6 +3816,7 @@
 				E7498A892A0E7F460037DD93 /* FirebaseDynamicLinks */,
 				E7498A8B2A0E7F460037DD93 /* FirebaseMessaging */,
 				E795A7812A744F0A00314EC8 /* ULID */,
+				E587BCE52CCFFB6F003AE1AD /* PureLayout */,
 			);
 			productName = Simplified;
 			productReference = A823D80D192BABA400B55DE2 /* Palace.app */;
@@ -3940,6 +3927,7 @@
 				E7CA1C4C29381068009CC6FD /* XCRemoteSwiftPackageReference "SQLite.swift" */,
 				E7498A842A0E7F460037DD93 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
 				E795A7802A744F0A00314EC8 /* XCRemoteSwiftPackageReference "ULID.swift" */,
+				E587BCE42CCFFB6F003AE1AD /* XCRemoteSwiftPackageReference "PureLayout" */,
 			);
 			productRefGroup = A823D80E192BABA400B55DE2 /* Products */;
 			projectDirPath = "";
@@ -5679,7 +5667,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1.4;
+				MARKETING_VERSION = 1.1.5;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PRODUCT_MODULE_NAME = Palace;
 				PRODUCT_NAME = "Palace-noDRM";
@@ -5738,7 +5726,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1.4;
+				MARKETING_VERSION = 1.1.5;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PRODUCT_MODULE_NAME = Palace;
 				PRODUCT_NAME = "Palace-noDRM";
@@ -5901,7 +5889,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 299;
+				CURRENT_PROJECT_VERSION = 300;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -5928,7 +5916,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1.4;
+				MARKETING_VERSION = 1.1.5;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PROVISIONING_PROFILE_SPECIFIER = "Ad Hoc 2";
 				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "Ad Hoc 2";
@@ -5962,7 +5950,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 299;
+				CURRENT_PROJECT_VERSION = 300;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -5989,7 +5977,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1.4;
+				MARKETING_VERSION = 1.1.5;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PROVISIONING_PROFILE_SPECIFIER = "App Store";
 				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "App Store 2";
@@ -6024,7 +6012,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 299;
+				CURRENT_PROJECT_VERSION = 300;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -6050,7 +6038,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1.4;
+				MARKETING_VERSION = 1.1.5;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PRODUCT_NAME = Palace;
 				PROVISIONING_PROFILE_SPECIFIER = "Ad Hoc 2";
@@ -6085,7 +6073,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 299;
+				CURRENT_PROJECT_VERSION = 300;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -6111,7 +6099,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1.4;
+				MARKETING_VERSION = 1.1.5;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PRODUCT_NAME = Palace;
 				PROVISIONING_PROFILE_SPECIFIER = "App Store";
@@ -6358,6 +6346,14 @@
 				minimumVersion = 1.0.0;
 			};
 		};
+		E587BCE42CCFFB6F003AE1AD /* XCRemoteSwiftPackageReference "PureLayout" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/PureLayout/PureLayout";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 3.1.9;
+			};
+		};
 		E7498A842A0E7F460037DD93 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
@@ -6455,6 +6451,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = D570B54C2BA20139003FE991 /* XCRemoteSwiftPackageReference "ULID.swift" */;
 			productName = ULID;
+		};
+		E587BCE52CCFFB6F003AE1AD /* PureLayout */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E587BCE42CCFFB6F003AE1AD /* XCRemoteSwiftPackageReference "PureLayout" */;
+			productName = PureLayout;
 		};
 		E7498A852A0E7F460037DD93 /* FirebaseAnalytics */ = {
 			isa = XCSwiftPackageProductDependency;

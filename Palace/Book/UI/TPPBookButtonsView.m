@@ -6,8 +6,6 @@
 //  Copyright (c) 2015 NYPL Labs. All rights reserved.
 //
 
-@import PureLayout;
-
 #import "TPPBookButtonsView.h"
 #import "TPPConfiguration.h"
 #import "TPPRootTabBarController.h"
