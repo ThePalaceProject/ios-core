@@ -33,7 +33,7 @@ final class LibraryService: Loggable {
     drmLibraryServices.append(AdobeDRMLibraryService())
 #endif
 
-s    let contentProtections = drmLibraryServices.compactMap { $0.contentProtection }
+    let contentProtections = drmLibraryServices.compactMap { $0.contentProtection }
 
     publicationOpener = PublicationOpener(
       parser: DefaultPublicationParser(
@@ -107,9 +107,7 @@ s    let contentProtections = drmLibraryServices.compactMap { $0.contentProtecti
         return
       }
 
-      let assetResult = await assetRetriever.retrieve(url: fileURL)
-
-      switch assetResult {
+      switch await assetRetriever.retrieve(url: fileURL) {
       case .success(let asset):
         let result = await self.publicationOpener.open(asset: asset, allowUserInteraction: allowUserInteraction, sender: sender)
 
