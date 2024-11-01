@@ -39,7 +39,7 @@ final class EPUBModule: ReaderFormatModule {
       throw ReaderError.epubNotValid
     }
     
-    let epubVC = TPPEPUBViewController(publication: publication,
+    let epubVC = try TPPEPUBViewController(publication: publication,
                                         book: book,
                                         initialLocation: initialLocation,
                                         resourcesServer: resourcesServer,

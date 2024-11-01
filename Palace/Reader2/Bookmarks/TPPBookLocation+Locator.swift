@@ -9,9 +9,9 @@ extension TPPBookLocation {
                     type: String,
                     publication: Publication,
                     renderer: String = TPPBookLocation.r2Renderer) {
-    // Update the dictionary to store locator properties
+
     let dict: [String: Any] = [
-      TPPBookLocation.hrefKey: locator.href,
+      TPPBookLocation.hrefKey: locator.href.string,
       TPPBookLocation.typeKey: type,
       TPPBookLocation.chapterProgressKey: locator.locations.progression ?? 0.0,
       TPPBookLocation.bookProgressKey: locator.locations.totalProgression ?? 0.0,
@@ -21,7 +21,7 @@ extension TPPBookLocation {
     ]
 
     guard let jsonString = serializeJSONString(dict) else {
-      Log.warn(#file, "Failed to serialize json string from dictionary - \(dict.debugDescription)")
+      Log.warn(#file, "Failed to serialize JSON string from dictionary - \(dict.debugDescription)")
       return nil
     }
 
@@ -42,8 +42,14 @@ extension TPPBookLocation {
                     publication: Publication? = nil,
                     renderer: String = TPPBookLocation.r2Renderer) {
 
+    // Ensure href is converted to a valid format
+    guard let normalizedHref = AnyURL(legacyHREF: href)?.string else {
+      Log.warn(#file, "Invalid href format")
+      return nil
+    }
+
     let dict: [String: Any] = [
-      TPPBookLocation.hrefKey: href,
+      TPPBookLocation.hrefKey: normalizedHref,
       TPPBookLocation.typeKey: type,
       TPPBookLocation.timeKey: time ?? 0.0,
       TPPBookLocation.partKey: part ?? 0.0,
@@ -56,30 +62,43 @@ extension TPPBookLocation {
     ]
 
     guard let jsonString = serializeJSONString(dict) else {
-      Log.warn(#file, "Failed to serialize json string from dictionary - \(dict.debugDescription)")
+      Log.warn(#file, "Failed to serialize JSON string from dictionary - \(dict.debugDescription)")
       return nil
     }
 
     self.init(locationString: jsonString, renderer: renderer)
   }
 
-  // Convert to Locator object
+  // Convert to Locator object, supporting both legacy and new formats
   func convertToLocator() -> Locator? {
     guard self.renderer == TPPBookLocation.r2Renderer,
           let data = self.locationString.data(using: .utf8),
-          let dict = (try? JSONSerialization.jsonObject(with: data, options: [])) as? [String: Any],
-          let hrefString = dict[TPPBookLocation.hrefKey] as? String,
-          let type = dict[TPPBookLocation.typeKey] as? String,
-          let mediaType = MediaType(type),
-          let progressWithinChapter = dict[TPPBookLocation.chapterProgressKey] as? Double,
-          let progressWithinBook = dict[TPPBookLocation.bookProgressKey] as? Double else {
+          let dict = (try? JSONSerialization.jsonObject(with: data, options: [])) as? [String: Any] else {
       Log.error(#file, "Failed to convert TPPBookLocation to Locator object with location string: \(locationString)")
       return nil
     }
 
-    // Convert the href string to a typed URL (FileURL, HTTPURL, etc.)
-    guard let href = FileURL(string: hrefString)?.httpURL ?? HTTPURL(string: hrefString) else {
-      Log.error(#file, "Invalid href URL: \(hrefString)")
+    // Parse HREF with backward compatibility
+    let hrefString = dict[TPPBookLocation.hrefKey] as? String
+    let normalizedHref: String?
+
+    // Try new method first, fallback to legacy method
+    if let hrefString = hrefString, let newHref = AnyURL(legacyHREF: hrefString)?.string {
+      normalizedHref = newHref
+    } else if let legacyHref = hrefString {
+      normalizedHref = legacyHref
+    } else {
+      Log.error(#file, "Failed to parse HREF in location string")
+      return nil
+    }
+
+    // Other properties extraction
+    guard let type = dict[TPPBookLocation.typeKey] as? String,
+          let mediaType = MediaType(type),
+          let progressWithinChapter = dict[TPPBookLocation.chapterProgressKey] as? Double,
+          let progressWithinBook = dict[TPPBookLocation.bookProgressKey] as? Double,
+          let href = FileURL(string: normalizedHref ?? "")?.httpURL ?? HTTPURL(string: normalizedHref ?? "") else {
+      Log.error(#file, "Failed to parse other properties in location string")
       return nil
     }
 
@@ -91,16 +110,20 @@ extension TPPBookLocation {
       otherLocations[TPPBookLocation.cssSelector] = cssSelector
     }
 
-    let locations = Locator.Locations(fragments: [],
-                                      progression: progressWithinChapter,
-                                      totalProgression: progressWithinBook,
-                                      position: position,
-                                      otherLocations: otherLocations)
+    let locations = Locator.Locations(
+      fragments: [],
+      progression: progressWithinChapter,
+      totalProgression: progressWithinBook,
+      position: position,
+      otherLocations: otherLocations
+    )
 
-    return Locator(href: href,
-                   mediaType: mediaType,
-                   title: title,
-                   locations: locations)
+    return Locator(
+      href: href,
+      mediaType: mediaType,
+      title: title,
+      locations: locations
+    )
   }
 }
 

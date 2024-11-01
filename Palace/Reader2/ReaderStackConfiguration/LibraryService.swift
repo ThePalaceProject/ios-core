@@ -21,10 +21,28 @@ final class LibraryService: Loggable {
 
   init() {
     let httpClient = DefaultHTTPClient()
-    assetRetriever = AssetRetriever(httpClient: httpClient)
+
+    let resourceFactory = CompositeResourceFactory([
+      DefaultResourceFactory(httpClient: httpClient)
+    ])
+
+    let archiveOpener = CompositeArchiveOpener([
+      DefaultArchiveOpener()
+    ])
+
+    let formatSniffer = CompositeFormatSniffer([
+      DefaultFormatSniffer()
+    ])
+
+    assetRetriever = AssetRetriever(
+      formatSniffer: formatSniffer,
+      resourceFactory: resourceFactory,
+      archiveOpener: archiveOpener
+    )
 
     httpServer = GCDHTTPServer(assetRetriever: assetRetriever)
 
+    // DRM configurations
 #if LCP
     drmLibraryServices.append(LCPLibraryService())
 #endif
@@ -33,23 +51,25 @@ final class LibraryService: Loggable {
     drmLibraryServices.append(AdobeDRMLibraryService())
 #endif
 
+    // Content protections for DRM
     let contentProtections = drmLibraryServices.compactMap { $0.contentProtection }
 
-    publicationOpener = PublicationOpener(
-      parser: DefaultPublicationParser(
+    // Using CompositePublicationParser for flexibility in supported formats
+    let parser = CompositePublicationParser([
+      DefaultPublicationParser(
         httpClient: httpClient,
         assetRetriever: assetRetriever,
         pdfFactory: DefaultPDFDocumentFactory()
       ),
-      contentProtections: contentProtections
-    )
+      // Add any additional parsers if necessary
+    ])
+
+    publicationOpener = PublicationOpener(parser: parser, contentProtections: contentProtections)
   }
 
   // MARK: Opening a Book
   @MainActor
-  func openBook(_ book: TPPBook,
-                sender: UIViewController,
-                completion: @escaping (Result<Publication, LibraryServiceError>) -> Void) {
+  func openBook(_ book: TPPBook, sender: UIViewController, completion: @escaping (Result<Publication, LibraryServiceError>) -> Void) {
 
     guard let bookUrl = book.url else {
       completion(.failure(.invalidBook))
@@ -96,9 +116,6 @@ final class LibraryService: Loggable {
     }
   }
 
-  // MARK: Open Publication
-
-  /// Opens a publication using Readium's new AssetRetriever and PublicationOpener.
   @MainActor
   private func openPublication(at url: URL, allowUserInteraction: Bool, sender: UIViewController?, completion: @escaping (Result<Publication, Error>) -> Void) {
     Task {
@@ -110,26 +127,20 @@ final class LibraryService: Loggable {
       switch await assetRetriever.retrieve(url: fileURL) {
       case .success(let asset):
         let result = await self.publicationOpener.open(asset: asset, allowUserInteraction: allowUserInteraction, sender: sender)
-
         completion(result.mapError { $0 as Error })
-
       case .failure(let error):
         completion(.failure(error))
       }
     }
   }
 
-  // MARK: Presentation Preparation
-
-  /// Prepares the publication for presentation, adding it to the GCDHTTPServer.
+  // MARK: Presentation Preparation and Validation
   private func preparePresentation(of publication: Publication, book: TPPBook) {
-    // Check if the publication has a self link with an HTTP URL to identify if it's loaded remotely
     if let selfLink = publication.linkWithRel(.self), selfLink.href.isHTTPURL {
       return // Likely a web publication; no need to add to the server
     }
 
     let endpoint = "/publications/\(book.identifier)"
-
     do {
       try httpServer.serve(at: endpoint, publication: publication)
     } catch {
@@ -137,16 +148,6 @@ final class LibraryService: Loggable {
     }
   }
 
-  /// Stops activity indicator on the `Read` button.
-  private func stopOpeningIndicator(identifier: String) {
-    let userInfo: [String: Any] = [
-      TPPNotificationKeys.bookProcessingBookIDKey: identifier,
-      TPPNotificationKeys.bookProcessingValueKey: false
-    ]
-    NotificationCenter.default.post(name: NSNotification.TPPBookProcessingDidChange, object: nil, userInfo: userInfo)
-  }
-
-  /// Validates if the publication is restricted and handles errors if necessary.
   private func validatePublication(_ publication: Publication, for identifier: String, completion: (Result<Publication, LibraryServiceError>) -> Void) -> Bool {
     guard !publication.isRestricted else {
       stopOpeningIndicator(identifier: identifier)
@@ -158,6 +159,14 @@ final class LibraryService: Loggable {
       return false
     }
     return true
+  }
+
+  private func stopOpeningIndicator(identifier: String) {
+    let userInfo: [String: Any] = [
+      TPPNotificationKeys.bookProcessingBookIDKey: identifier,
+      TPPNotificationKeys.bookProcessingValueKey: false
+    ]
+    NotificationCenter.default.post(name: NSNotification.TPPBookProcessingDidChange, object: nil, userInfo: userInfo)
   }
 }
 
