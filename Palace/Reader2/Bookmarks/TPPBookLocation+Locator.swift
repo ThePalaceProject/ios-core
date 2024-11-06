@@ -37,7 +37,7 @@ extension TPPBookLocation {
                     chapterProgression: Float? = nil,
                     totalProgression: Float? = nil,
                     title: String? = nil,
-                    position: Int? = nil,
+                    position: Double? = nil,
                     cssSelector: String? = nil,
                     publication: Publication? = nil,
                     renderer: String = TPPBookLocation.r2Renderer) {
@@ -69,8 +69,7 @@ extension TPPBookLocation {
     self.init(locationString: jsonString, renderer: renderer)
   }
 
-  // Convert to Locator object, supporting both legacy and new formats
-  func convertToLocator() -> Locator? {
+  func convertToLocator() async -> Locator? {
     guard self.renderer == TPPBookLocation.r2Renderer,
           let data = self.locationString.data(using: .utf8),
           let dict = (try? JSONSerialization.jsonObject(with: data, options: [])) as? [String: Any] else {
@@ -80,30 +79,40 @@ extension TPPBookLocation {
 
     // Parse HREF with backward compatibility
     let hrefString = dict[TPPBookLocation.hrefKey] as? String
-    let normalizedHref: String?
-
-    // Try new method first, fallback to legacy method
-    if let hrefString = hrefString, let newHref = AnyURL(legacyHREF: hrefString)?.string {
-      normalizedHref = newHref
-    } else if let legacyHref = hrefString {
-      normalizedHref = legacyHref
+    let normalizedHrefString: String
+    if let hrefString, !hrefString.isEmpty {
+      normalizedHrefString = AnyURL(legacyHREF: hrefString)?.string ?? hrefString.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? hrefString
     } else {
-      Log.error(#file, "Failed to parse HREF in location string")
+      Log.error(#file, "HREF is missing or empty")
       return nil
     }
 
-    // Other properties extraction
-    guard let type = dict[TPPBookLocation.typeKey] as? String,
-          let mediaType = MediaType(type),
-          let progressWithinChapter = dict[TPPBookLocation.chapterProgressKey] as? Double,
-          let progressWithinBook = dict[TPPBookLocation.bookProgressKey] as? Double,
-          let href = FileURL(string: normalizedHref ?? "")?.httpURL ?? HTTPURL(string: normalizedHref ?? "") else {
-      Log.error(#file, "Failed to parse other properties in location string")
+    // Resolve relative path to full file URL
+    var fileURL = URL(fileURLWithPath: normalizedHrefString)
+
+    if normalizedHrefString.hasPrefix("/") {
+      // Assumes absolute path if starting with "/"
+      fileURL = URL(fileURLWithPath: normalizedHrefString)
+    } else {
+      // Assume relative path from the EPUB base directory (e.g., app's Documents directory)
+      let baseDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+      fileURL = baseDirectory?.appendingPathComponent(normalizedHrefString) ?? URL(fileURLWithPath: normalizedHrefString)
+    }
+
+    // Determine media type based on file extension
+    let mediaType: MediaType
+    switch fileURL.pathExtension.lowercased() {
+    case "epub":
+      mediaType = MediaType.epub
+    case "xhtml", "html":
+      mediaType = MediaType.xhtml
+    default:
+      Log.error(#file, "Unsupported file extension: \(fileURL.pathExtension)")
       return nil
     }
 
-    let title: String = dict[TPPBookLocation.titleKey] as? String ?? ""
-    let position: Int? = dict[TPPBookLocation.positionKey] as? Int
+    let title = dict[TPPBookLocation.titleKey] as? String ?? ""
+    let position = dict[TPPBookLocation.positionKey] as? Int
 
     var otherLocations = [String: Any]()
     if let cssSelector = dict[TPPBookLocation.cssSelector] as? String, !cssSelector.isEmpty {
@@ -112,14 +121,14 @@ extension TPPBookLocation {
 
     let locations = Locator.Locations(
       fragments: [],
-      progression: progressWithinChapter,
-      totalProgression: progressWithinBook,
+      progression: dict[TPPBookLocation.chapterProgressKey] as? Double ?? 0.0,
+      totalProgression: dict[TPPBookLocation.bookProgressKey] as? Double ?? 0.0,
       position: position,
       otherLocations: otherLocations
     )
 
     return Locator(
-      href: href,
+      href: fileURL,
       mediaType: mediaType,
       title: title,
       locations: locations

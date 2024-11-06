@@ -29,23 +29,22 @@ final class EPUBModule: ReaderFormatModule {
     // .allAreHTML matches .wepub format
     return publication.conforms(to: .epub) || publication.readingOrder.allAreHTML
   }
-  
+
   func makeReaderViewController(for publication: Publication,
                                 book: TPPBook,
                                 initialLocation: Locator?,
                                 forSample: Bool = false) throws -> UIViewController {
-      
+
     guard publication.metadata.identifier != nil else {
       throw ReaderError.epubNotValid
     }
-    
-    let epubVC = try TPPEPUBViewController(publication: publication,
-                                        book: book,
-                                        initialLocation: initialLocation,
-                                        resourcesServer: resourcesServer,
-                                        forSample: forSample)
-    epubVC.moduleDelegate = delegate
-    return epubVC
-  }
-  
+
+      let epubVC = try TPPEPUBViewController(publication: publication,
+                                             book: book,
+                                             initialLocation: initialLocation,
+                                             resourcesServer: resourcesServer,
+                                             forSample: forSample)
+      epubVC.moduleDelegate = delegate
+      return epubVC
+    }
 }

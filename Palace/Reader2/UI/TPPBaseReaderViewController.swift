@@ -33,7 +33,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   private let lastReadPositionPoster: TPPLastReadPositionPoster
 
   // UI
-  let navigator: UIViewController & Navigator
+  var navigator: UIViewController & Navigator
   private var tocBarButton: UIBarButtonItem?
   private var bookmarkBarButton: UIBarButtonItem?
   private(set) var stackView: UIStackView!

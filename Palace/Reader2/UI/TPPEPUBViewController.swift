@@ -7,33 +7,40 @@ import WebKit
 class TPPEPUBViewController: TPPBaseReaderViewController {
   var popoverUserconfigurationAnchor: UIBarButtonItem?
   private let systemUserInterfaceStyle: UIUserInterfaceStyle
-  private let searchButton = UIBarButtonItem(barButtonSystemItem: .search, target: self, action: #selector(presentEPUBSearch))
+  private let searchButton: UIBarButtonItem
   private var preferences: EPUBPreferences
+
+  private var safeAreaInsets: UIEdgeInsets = {
+    return DispatchQueue.main.sync {
+      guard let window = UIApplication.shared.connectedScenes
+        .compactMap({ $0 as? UIWindowScene })
+        .flatMap({ $0.windows })
+        .first(where: { $0.isKeyWindow }) else {
+        return UIEdgeInsets()
+      }
+      return window.safeAreaInsets
+    }
+  }()
 
   init(publication: Publication,
        book: TPPBook,
        initialLocation: Locator?,
        resourcesServer: HTTPServer,
-       preferences: EPUBPreferences = .init(),
+       preferences: EPUBPreferences = TPPReaderSettings.loadPreferences(),
        forSample: Bool = false) throws {
 
     self.systemUserInterfaceStyle = UITraitCollection.current.userInterfaceStyle
-    var updatedPreferences = preferences
-    updatedPreferences.backgroundColor = ReadiumNavigator.Color.init(color: .black)
-    updatedPreferences.textColor = ReadiumNavigator.Color.init(color: .white)
-    updatedPreferences.fontFamily = .arial
-    self.preferences = updatedPreferences
+    self.preferences = preferences
 
-    let safeAreaInsets = UIApplication.shared.keyWindow?.safeAreaInsets ?? UIEdgeInsets()
+    self.searchButton = UIBarButtonItem(barButtonSystemItem: .search, target: nil, action: #selector(presentEPUBSearch))
     let overlayLabelInset = TPPBaseReaderViewController.overlayLabelMargin * 2
     let contentInset: [UIUserInterfaceSizeClass: EPUBContentInsets] = [
       .compact: (top: max(overlayLabelInset, safeAreaInsets.top), bottom: max(overlayLabelInset, safeAreaInsets.bottom)),
       .regular: (top: max(overlayLabelInset, safeAreaInsets.top), bottom: max(overlayLabelInset, safeAreaInsets.bottom))
     ]
 
-    // Configuring the EPUB navigator with appropriate templates and actions
-    var config = EPUBNavigatorViewController.Configuration(
-      preferences: updatedPreferences,
+    let config = EPUBNavigatorViewController.Configuration(
+      preferences: preferences,
       editingActions: EditingAction.defaultActions.appending(EditingAction(
         title: "Highlight",
         action: #selector(highlightSelection))),
@@ -53,28 +60,38 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
 
     super.init(navigator: navigator, publication: publication, book: book, forSample: forSample, initialLocation: initialLocation)
 
+    self.searchButton.target = self
     setupViewHierarchy()
     setUIColor(for: preferences)
     log(.info, "TPPEPUBViewController initialized with publication: \(publication.metadata.title ?? "Unknown Title").")
   }
 
   private func setupViewHierarchy() {
-    addChild(navigator)
-    view.addSubview(navigator.view)
+    DispatchQueue.main.async {
+      self.addChild(self.navigator)
+      self.view.addSubview(self.navigator.view)
 
-    navigator.view.translatesAutoresizingMaskIntoConstraints = false
-    NSLayoutConstraint.activate([
-      navigator.view.topAnchor.constraint(equalTo: view.topAnchor),
-      navigator.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-      navigator.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-      navigator.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)
-    ])
+      self.navigator.view.translatesAutoresizingMaskIntoConstraints = false
+      NSLayoutConstraint.activate([
+        self.navigator.view.topAnchor.constraint(equalTo: self.view.topAnchor),
+        self.navigator.view.bottomAnchor.constraint(equalTo: self.view.bottomAnchor),
+        self.navigator.view.leadingAnchor.constraint(equalTo: self.view.leadingAnchor),
+        self.navigator.view.trailingAnchor.constraint(equalTo: self.view.trailingAnchor)
+      ])
 
-    navigator.didMove(toParent: self)
+      self.navigator.didMove(toParent: self)
+    }
   }
 
   var epubNavigator: EPUBNavigatorViewController {
     self.navigator as! EPUBNavigatorViewController
+  }
+
+  override func willMove(toParent parent: UIViewController?) {
+    super.willMove(toParent: parent)
+
+    navigationController?.navigationBar.barStyle = .default
+    navigationController?.navigationBar.barTintColor = nil
   }
 
   override func viewWillAppear(_ animated: Bool) {
@@ -145,16 +162,36 @@ extension TPPEPUBViewController: TPPReaderSettingsDelegate {
     return preferences
   }
 
-  func updateUserPreferencesStyle() {
+  func updateUserPreferencesStyle(for appearance: EPUBPreferences) {
+    self.preferences = appearance
     DispatchQueue.main.async {
-      self.epubNavigator.submitPreferences(self.preferences)
+      self.epubNavigator.submitPreferences(appearance)
+      self.setUIColor(for: appearance)
     }
   }
 
   func setUIColor(for appearance: EPUBPreferences) {
-    navigator.view.backgroundColor = appearance.backgroundColor?.uiColor
-    view.backgroundColor = appearance.backgroundColor?.uiColor
-    view.tintColor = appearance.textColor?.uiColor
+    DispatchQueue.main.async {
+      self.navigator.view.backgroundColor = appearance.backgroundColor?.uiColor
+      self.view.backgroundColor = appearance.backgroundColor?.uiColor
+      self.view.tintColor = appearance.textColor?.uiColor
+
+      if let backgroundColor = appearance.backgroundColor?.uiColor,
+        let textColor = appearance.textColor?.uiColor {
+        self.navigator.view.backgroundColor = backgroundColor
+        self.view.backgroundColor = backgroundColor
+        self.view.tintColor = textColor
+
+        guard let appearanceConfig = TPPConfiguration.appearance(withBackgroundColor: backgroundColor) else { return }
+        self.navigationController?.navigationBar.setAppearance(appearanceConfig)
+
+        let isDarkText = (textColor == .black)
+        self.navigationController?.navigationBar.forceUpdateAppearance(style: isDarkText ? .light : .dark)
+
+        self.navigationController?.navigationBar.tintColor = textColor
+        self.tabBarController?.tabBar.tintColor = textColor
+      }
+    }
   }
 }
 
