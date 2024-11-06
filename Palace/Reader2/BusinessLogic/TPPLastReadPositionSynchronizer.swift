@@ -73,45 +73,46 @@ class TPPLastReadPositionSynchronizer {
   private func syncReadPosition(for book: TPPBook,
                                 drmDeviceID: String?,
                                 completion: @escaping (Locator?) -> ()) {
-
     let localLocation = bookRegistry.location(forIdentifier: book.identifier)
 
     TPPAnnotations
-      .syncReadingPosition(ofBook: book, toURL: TPPAnnotations.annotationsURL) { bookmark in
+        .syncReadingPosition(ofBook: book, toURL: TPPAnnotations.annotationsURL) { bookmark in
 
-        guard let bookmark = bookmark else {
-          Log.info(#function, "No reading position annotation exists on the server for \(book.loggableShortString()).")
-          completion(nil)
-          return
+          Task {
+            guard let bookmark = bookmark else {
+              Log.info(#function, "No reading position annotation exists on the server for \(book.loggableShortString()).")
+              completion(nil)
+              return
+            }
+
+            guard let bookmark = bookmark as? TPPReadiumBookmark else {
+              completion(nil)
+              return
+            }
+
+            let deviceID = bookmark.device ?? ""
+            let serverLocationString = bookmark.location
+
+            // Pass through returning nil (meaning the server doesn't have a
+            // last read location worth restoring) if:
+            // 1 - The most recent page on the server comes from the same device and there is no localLocation, or
+            // 2 - The server and the client have the same page marked
+            if (deviceID == drmDeviceID && localLocation != nil)
+                || localLocation?.locationString == serverLocationString {
+
+              // server location does not differ from or should take no precedence
+              // over the local position
+              completion(nil)
+              return
+            }
+
+            // we got a server location that differs from the local: return that
+            // so that clients can decide what to do
+            let bookLocation = TPPBookLocation(locationString: serverLocationString,
+                                               renderer: TPPBookLocation.r2Renderer)
+            completion(await bookLocation?.convertToLocator())
+          }
         }
-
-        guard let bookmark = bookmark as? TPPReadiumBookmark else {
-          completion(nil)
-          return
-        }
-
-        let deviceID = bookmark.device ?? ""
-        let serverLocationString = bookmark.location
-
-        // Pass through returning nil (meaning the server doesn't have a
-        // last read location worth restoring) if:
-        // 1 - The most recent page on the server comes from the same device and there is no localLocation, or
-        // 2 - The server and the client have the same page marked
-        if (deviceID == drmDeviceID && localLocation != nil)
-          || localLocation?.locationString == serverLocationString {
-
-          // server location does not differ from or should take no precedence
-          // over the local position
-          completion(nil)
-          return
-        }
-
-        // we got a server location that differs from the local: return that
-        // so that clients can decide what to do
-        let bookLocation = TPPBookLocation(locationString: serverLocationString,
-                                            renderer: TPPBookLocation.r2Renderer)
-        completion(bookLocation?.convertToLocator())
-    }
   }
 
   private func presentNavigationAlert(for serverLocator: Locator,

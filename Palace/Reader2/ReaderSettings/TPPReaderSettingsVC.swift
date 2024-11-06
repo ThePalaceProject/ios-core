@@ -13,7 +13,7 @@ import ReadiumShared
 
 protocol TPPReaderSettingsDelegate: AnyObject {
   func getUserPreferences() -> EPUBPreferences
-  func updateUserPreferencesStyle()
+  func updateUserPreferencesStyle(for appearance: EPUBPreferences)
   func setUIColor(for appearance: EPUBPreferences)
 }
 

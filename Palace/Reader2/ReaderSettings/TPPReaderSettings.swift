@@ -3,21 +3,14 @@ import ReadiumShared
 import ReadiumNavigator
 
 class TPPReaderSettings: ObservableObject {
+  private static let preferencesKey = "TPPReaderSettings"
 
-  /// `fontSize` user property value
-  @Published var fontSize: Float = 100
-
-  /// Minimal font size for `fontSize` user property
-  private var minFontSize: Float = 100
-
-  /// Maximal font size for `fontSize` user property
-  private var maxFontSize: Float = 100
-
-  /// Increase/decrease step
-  private var fontSizeStep: Float = 100
+  @Published var fontSize: Float = 1.0
+  private var minFontSize: Float = 1.0
+  private var maxFontSize: Float = 5.0
+  private var fontSizeStep: Float = 0.5
 
   @Published var fontFamilyIndex: Int = 0
-
   @Published var appearanceIndex: Int = 0
 
   @Published var screenBrightness: Double {
@@ -29,7 +22,6 @@ class TPPReaderSettings: ObservableObject {
   }
 
   @Published var textColor: UIColor = .black
-
   @Published var backgroundColor: UIColor = .white
 
   private(set) var preferences: EPUBPreferences
@@ -39,115 +31,120 @@ class TPPReaderSettings: ObservableObject {
     self.preferences = preferences
     self.delegate = delegate
 
-    // Set font size
-    self.fontSize = Float(preferences.fontSize ?? 100)
-    self.minFontSize = 75.0
-    self.maxFontSize = 250.0
-    self.fontSizeStep = 12.5
+    // Initialize font size
+    self.fontSize = Float(preferences.fontSize ?? 0.5)
     screenBrightness = UIScreen.main.brightness
 
-    // Set font family index (map font families to indices)
-    self.fontFamilyIndex = mapFontFamilyToIndex(preferences.fontFamily)
+    // Set font and appearance based on initial preferences
+    self.fontFamilyIndex = TPPReaderSettings.mapFontFamilyToIndex(preferences.fontFamily)
+    self.appearanceIndex = TPPReaderSettings.mapAppearanceToIndex(preferences.theme)
 
-    // Set appearance index (theme)
-    self.appearanceIndex = mapAppearanceToIndex(preferences.theme)
-
-    if let backgroundColor = preferences.backgroundColor?.uiColor {
-      self.backgroundColor = backgroundColor
-    }
-
-    if let textColor = preferences.textColor?.uiColor {
-      self.textColor = textColor
-    }
+    updateColors(for: TPPReaderAppearance(rawValue: appearanceIndex) ?? .blackOnWhite)
   }
 
-  /// Convenience init for previews
+  // Convenience initializer for previews
   init() {
     preferences = EPUBPreferences()
     screenBrightness = UIScreen.main.brightness
   }
 
-  /// Increase `fontSize` user property by `step` value, defined for this property.
+  // Font size increase method
   func increaseFontSize() {
     guard canIncreaseFontSize else { return }
     fontSize = min(fontSize + fontSizeStep, maxFontSize)
     preferences.fontSize = Double(fontSize)
-    delegate?.updateUserPreferencesStyle()
+    delegate?.updateUserPreferencesStyle(for: preferences)
     savePreferences()
   }
 
-  /// Decrease `fontSize` user property by `step` value, defined for this property.
+  // Font size decrease method
   func decreaseFontSize() {
     guard canDecreaseFontSize else { return }
     fontSize = max(fontSize - fontSizeStep, minFontSize)
     preferences.fontSize = Double(fontSize)
-    delegate?.updateUserPreferencesStyle()
+    delegate?.updateUserPreferencesStyle(for: preferences)
     savePreferences()
   }
 
-  /// Indicates whether `fontSize` property can be increased
   var canIncreaseFontSize: Bool {
-    return fontSize + fontSizeStep <= maxFontSize
+    fontSize + fontSizeStep <= maxFontSize
   }
 
-  /// Indicates whether `fontSize` property can be decreased
   var canDecreaseFontSize: Bool {
-    return fontSize - fontSizeStep >= minFontSize
+    fontSize - fontSizeStep >= minFontSize
   }
 
-  /// Changes selected appearance index in `preferences`
-  /// - Parameter appearanceIndex: index of selected appearance
   func changeAppearance(appearanceIndex: Int) {
-    preferences.theme = mapIndexToAppearance(appearanceIndex)
     self.appearanceIndex = appearanceIndex
+    preferences.theme = TPPReaderSettings.mapIndexToAppearance(appearanceIndex)
 
-    if let backgroundColor = preferences.backgroundColor?.uiColor {
-      self.backgroundColor = backgroundColor
-    }
-
-    if let textColor = preferences.textColor?.uiColor {
-      self.textColor = textColor
-    }
-
-    delegate?.updateUserPreferencesStyle()
+    updateColors(for: TPPReaderAppearance(rawValue: appearanceIndex) ?? .blackOnWhite)
+    delegate?.updateUserPreferencesStyle(for: preferences)
     savePreferences()
   }
 
-  /// Changes selected font family index in `preferences`
-  /// - Parameter fontFamilyIndex: index of selected font family
   func changeFontFamily(fontFamilyIndex: Int) {
-    preferences.fontFamily = mapIndexToFontFamily(fontFamilyIndex)
     self.fontFamilyIndex = fontFamilyIndex
-    delegate?.updateUserPreferencesStyle()
+    preferences.fontFamily = TPPReaderSettings.mapIndexToFontFamily(fontFamilyIndex)
+    delegate?.updateUserPreferencesStyle(for: preferences)
     savePreferences()
   }
 
-  /// Save updated preferences to disk or user settings storage
+  private func updateColors(for appearance: TPPReaderAppearance) {
+    let colors = appearance.associatedColors
+    backgroundColor = colors.backgroundColor
+    textColor = colors.textColor
+    preferences.backgroundColor = ReadiumNavigator.Color(color: Color(backgroundColor))
+    preferences.textColor = ReadiumNavigator.Color(color: Color(textColor))
+  }
+
   private func savePreferences() {
-    // Implement saving logic if needed.
+    if let data = try? JSONEncoder().encode(preferences) {
+      UserDefaults.standard.set(data, forKey: TPPReaderSettings.preferencesKey)
+    }
   }
 
-  /// Helper function to map font families to indices (you may customize this logic)
-  private func mapFontFamilyToIndex(_ fontFamily: FontFamily?) -> Int {
-    // Custom mapping logic based on your app's available font families
-    return 0
+  static func loadPreferences() -> EPUBPreferences {
+    if let data = UserDefaults.standard.data(forKey: TPPReaderSettings.preferencesKey),
+       let preferences = try? JSONDecoder().decode(EPUBPreferences.self, from: data) {
+      return preferences
+    }
+    return EPUBPreferences()
   }
 
-  /// Helper function to map appearance/theme to indices (you may customize this logic)
-  private func mapAppearanceToIndex(_ theme: Theme?) -> Int {
-    // Custom mapping logic based on available themes
-    return 0
+  // Mapping helper for font families
+  static func mapFontFamilyToIndex(_ fontFamily: FontFamily?) -> Int {
+    switch fontFamily {
+    case .some(.sansSerif): return TPPReaderFont.sansSerif.propertyIndex
+    case .some(.serif): return TPPReaderFont.serif.propertyIndex
+    case .some(.openDyslexic): return TPPReaderFont.dyslexic.propertyIndex
+    default: return TPPReaderFont.original.propertyIndex
+    }
   }
 
-  /// Helper function to map an index back to the appropriate `Theme`
-  private func mapIndexToAppearance(_ index: Int) -> Theme {
-    // Custom mapping logic
-    return .light
+  // Mapping helper for appearance themes
+  static func mapAppearanceToIndex(_ theme: Theme?) -> Int {
+    switch theme {
+    case .dark: return TPPReaderAppearance.whiteOnBlack.propertyIndex
+    case .sepia: return TPPReaderAppearance.blackOnSepia.propertyIndex
+    default: return TPPReaderAppearance.blackOnWhite.propertyIndex
+    }
   }
 
-  /// Helper function to map an index back to the appropriate `FontFamily`
-  private func mapIndexToFontFamily(_ index: Int) -> FontFamily? {
-    // Custom mapping logic
-    return nil
+  static func mapIndexToAppearance(_ index: Int) -> Theme {
+    switch index {
+    case TPPReaderAppearance.whiteOnBlack.propertyIndex: return .dark
+    case TPPReaderAppearance.blackOnSepia.propertyIndex: return .sepia
+    default: return .light
+    }
+  }
+
+  static func mapIndexToFontFamily(_ index: Int) -> FontFamily? {
+    switch index {
+    case TPPReaderFont.sansSerif.propertyIndex: return .sansSerif
+    case TPPReaderFont.serif.propertyIndex: return .serif
+    case TPPReaderFont.dyslexic.propertyIndex: return .openDyslexic
+    default: return nil
+    }
   }
 }

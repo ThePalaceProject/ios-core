@@ -100,25 +100,37 @@ final class ReaderModule: ReaderModuleAPI {
                             formatModule: ReaderFormatModule,
                             in navigationController: UINavigationController,
                             forSample: Bool = false) {
-    do {
-      let lastSavedLocation = bookRegistry.location(forIdentifier: book.identifier)
-      let initialLocator = lastSavedLocation?.convertToLocator()
+    Task {
+      do {
+        let lastSavedLocation = bookRegistry.location(forIdentifier: book.identifier)
+        let initialLocator = await lastSavedLocation?.convertToLocator()
+        var normalizedLocator: Locator?
+        if let jsonString = initialLocator?.jsonString {
+          normalizedLocator = try Locator(legacyJSONString: jsonString)
+        }
 
-      let readerVC = try formatModule.makeReaderViewController(
-        for: publication,
-        book: book,
-        initialLocation: initialLocator,
-        forSample: forSample)
+        let readerVC = try formatModule.makeReaderViewController(
+          for: publication,
+          book: book,
+          initialLocation: normalizedLocator,
+          forSample: forSample
+        )
 
-      let backItem = UIBarButtonItem()
-      backItem.title = Strings.Generic.back
-      readerVC.navigationItem.backBarButtonItem = backItem
-      readerVC.extendedLayoutIncludesOpaqueBars = true
-      readerVC.hidesBottomBarWhenPushed = true
-      navigationController.pushViewController(readerVC, animated: true)
+        // Ensure all UI updates are performed on the main thread
+        DispatchQueue.main.async {
+          let backItem = UIBarButtonItem()
+          backItem.title = Strings.Generic.back
+          readerVC.navigationItem.backBarButtonItem = backItem
+          readerVC.extendedLayoutIncludesOpaqueBars = true
+          readerVC.hidesBottomBarWhenPushed = true
+          navigationController.pushViewController(readerVC, animated: true)
+        }
 
-    } catch {
-      delegate?.presentError(error, from: navigationController)
+      } catch {
+        DispatchQueue.main.async { [weak self] in
+          self?.delegate?.presentError(error, from: navigationController)
+        }
+      }
     }
   }
 }

@@ -95,7 +95,7 @@
 		17631AED25E488CD006079C4 /* TPPAgeCheckViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17631AEC25E488CD006079C4 /* TPPAgeCheckViewController.swift */; };
 		17631AF025E488CD006079C4 /* TPPAgeCheckViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17631AEC25E488CD006079C4 /* TPPAgeCheckViewController.swift */; };
 		1763C0D624F460FE00A4D0E2 /* TPPAnnouncementManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1763C0D524F460FE00A4D0E2 /* TPPAnnouncementManagerTests.swift */; };
-		179699D124131BA500EC309F /* UIColor+LabelColor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 179699D024131BA500EC309F /* UIColor+LabelColor.swift */; };
+		179699D124131BA500EC309F /* UIColo+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 179699D024131BA500EC309F /* UIColo+Extensions.swift */; };
 		1798538B255A4092009F94D9 /* TPPBookLocation+Locator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1798538A255A4092009F94D9 /* TPPBookLocation+Locator.swift */; };
 		17A5AB4F25D201BD005DFF05 /* LCPPassphraseAuthenticationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17A5AB4E25D201BD005DFF05 /* LCPPassphraseAuthenticationService.swift */; };
 		17ADCF4F254BB84800D0A5FE /* TPPReaderBookmarksBusinessLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17ADCF4E254BB84800D0A5FE /* TPPReaderBookmarksBusinessLogicTests.swift */; };
@@ -465,7 +465,7 @@
 		73EB0AFE25821DF4006BC997 /* NSNotification+TPP.swift in Sources */ = {isa = PBXBuildFile; fileRef = 739ECB2325101CCE00691A70 /* NSNotification+TPP.swift */; };
 		73EB0AFF25821DF4006BC997 /* URLResponse+TPPAuthentication.swift in Sources */ = {isa = PBXBuildFile; fileRef = 734B789025659611006FB8AD /* URLResponse+TPPAuthentication.swift */; };
 		73EB0B0025821DF4006BC997 /* TPPCatalogSearchViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 118A0B1A19915BDF00792DDE /* TPPCatalogSearchViewController.m */; };
-		73EB0B0125821DF4006BC997 /* UIColor+LabelColor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 179699D024131BA500EC309F /* UIColor+LabelColor.swift */; };
+		73EB0B0125821DF4006BC997 /* UIColo+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 179699D024131BA500EC309F /* UIColo+Extensions.swift */; };
 		73EB0B0225821DF4006BC997 /* TPPNetworkResponder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 735FED252427494900144C97 /* TPPNetworkResponder.swift */; };
 		73EB0B0425821DF4006BC997 /* TPPKeychain.m in Sources */ = {isa = PBXBuildFile; fileRef = 11C5DD15197727A6005A9945 /* TPPKeychain.m */; };
 		73EB0B0525821DF4006BC997 /* TPPSignInBusinessLogic+SignOut.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7314D13F2551E73C00723E26 /* TPPSignInBusinessLogic+SignOut.swift */; };
@@ -830,7 +830,7 @@
 		D570B6472BA20139003FE991 /* TPPAppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7498A7A2A0E349A0037DD93 /* TPPAppDelegate.swift */; };
 		D570B6482BA20139003FE991 /* TPPReaderBookmarksBusinessLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = 737DCB8B245CCF2300A8F297 /* TPPReaderBookmarksBusinessLogic.swift */; };
 		D570B6492BA20139003FE991 /* EpubSample.swift in Sources */ = {isa = PBXBuildFile; fileRef = E52E3BFF28C19BAD0073DC4D /* EpubSample.swift */; };
-		D570B64A2BA20139003FE991 /* UIColor+LabelColor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 179699D024131BA500EC309F /* UIColor+LabelColor.swift */; };
+		D570B64A2BA20139003FE991 /* UIColo+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 179699D024131BA500EC309F /* UIColo+Extensions.swift */; };
 		D570B64B2BA20139003FE991 /* TokenRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = E56067742A4C8858002ACE93 /* TokenRequest.swift */; };
 		D570B64C2BA20139003FE991 /* TPPNetworkResponder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 735FED252427494900144C97 /* TPPNetworkResponder.swift */; };
 		D570B64D2BA20139003FE991 /* TPPAccountListCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AD65DC2684FACA00C62951 /* TPPAccountListCell.swift */; };
@@ -1623,7 +1623,7 @@
 		175E480724EF36520066A6CF /* TPPAnnouncementBusinessLogic.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAnnouncementBusinessLogic.swift; sourceTree = "<group>"; };
 		17631AEC25E488CD006079C4 /* TPPAgeCheckViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAgeCheckViewController.swift; sourceTree = "<group>"; };
 		1763C0D524F460FE00A4D0E2 /* TPPAnnouncementManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAnnouncementManagerTests.swift; sourceTree = "<group>"; };
-		179699D024131BA500EC309F /* UIColor+LabelColor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UIColor+LabelColor.swift"; sourceTree = "<group>"; };
+		179699D024131BA500EC309F /* UIColo+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UIColo+Extensions.swift"; sourceTree = "<group>"; };
 		1798538A255A4092009F94D9 /* TPPBookLocation+Locator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPBookLocation+Locator.swift"; sourceTree = "<group>"; };
 		17A5AB4E25D201BD005DFF05 /* LCPPassphraseAuthenticationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LCPPassphraseAuthenticationService.swift; sourceTree = "<group>"; };
 		17ADCF4E254BB84800D0A5FE /* TPPReaderBookmarksBusinessLogicTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPReaderBookmarksBusinessLogicTests.swift; sourceTree = "<group>"; };
@@ -2930,7 +2930,7 @@
 				081387591BC5767F003DEA6A /* UIButton+NYPLAppearanceAdditions.m */,
 				11A14DF21A1BF94F00D6C510 /* UIColor+TPPColorAdditions.h */,
 				11A14DF31A1BF94F00D6C510 /* UIColor+TPPColorAdditions.m */,
-				179699D024131BA500EC309F /* UIColor+LabelColor.swift */,
+				179699D024131BA500EC309F /* UIColo+Extensions.swift */,
 				11E0208B197F05D9009DEA93 /* UIFont+TPPSystemFontOverride.h */,
 				11E0208C197F05D9009DEA93 /* UIFont+TPPSystemFontOverride.m */,
 				081387551BC574DA003DEA6A /* UILabel+NYPLAppearanceAdditions.h */,
@@ -4657,7 +4657,7 @@
 				73DB56CF25F7F73A003788EE /* TPPLastReadPositionPoster.swift in Sources */,
 				21562CC4276BB52700C03372 /* AdobeDRMAlerts.swift in Sources */,
 				E551B363267D42A20026FC1B /* TPPAccountList.swift in Sources */,
-				73EB0B0125821DF4006BC997 /* UIColor+LabelColor.swift in Sources */,
+				73EB0B0125821DF4006BC997 /* UIColo+Extensions.swift in Sources */,
 				73EB0B0225821DF4006BC997 /* TPPNetworkResponder.swift in Sources */,
 				73EB0B0425821DF4006BC997 /* TPPKeychain.m in Sources */,
 				73EB0B0525821DF4006BC997 /* TPPSignInBusinessLogic+SignOut.swift in Sources */,
@@ -4976,7 +4976,7 @@
 				E7498A802A0E662E0037DD93 /* TPPAppDelegate.swift in Sources */,
 				737DCB8C245CCF2300A8F297 /* TPPReaderBookmarksBusinessLogic.swift in Sources */,
 				E52E3C0528C19BAD0073DC4D /* EpubSample.swift in Sources */,
-				179699D124131BA500EC309F /* UIColor+LabelColor.swift in Sources */,
+				179699D124131BA500EC309F /* UIColo+Extensions.swift in Sources */,
 				E56067752A4C8858002ACE93 /* TokenRequest.swift in Sources */,
 				735FED262427494900144C97 /* TPPNetworkResponder.swift in Sources */,
 				E5AD65DD2684FACA00C62951 /* TPPAccountListCell.swift in Sources */,
@@ -5326,7 +5326,7 @@
 				D570B6472BA20139003FE991 /* TPPAppDelegate.swift in Sources */,
 				D570B6482BA20139003FE991 /* TPPReaderBookmarksBusinessLogic.swift in Sources */,
 				D570B6492BA20139003FE991 /* EpubSample.swift in Sources */,
-				D570B64A2BA20139003FE991 /* UIColor+LabelColor.swift in Sources */,
+				D570B64A2BA20139003FE991 /* UIColo+Extensions.swift in Sources */,
 				D570B64B2BA20139003FE991 /* TokenRequest.swift in Sources */,
 				D570B64C2BA20139003FE991 /* TPPNetworkResponder.swift in Sources */,
 				D570B64D2BA20139003FE991 /* TPPAccountListCell.swift in Sources */,
