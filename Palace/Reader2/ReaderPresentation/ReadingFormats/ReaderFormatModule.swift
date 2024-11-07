@@ -25,6 +25,7 @@ protocol ReaderFormatModule {
   func supports(_ publication: Publication) -> Bool
 
   /// Creates the view controller to present the publication.
+  @MainActor
   func makeReaderViewController(for publication: Publication,
                                 book: TPPBook,
                                 initialLocation: Locator?,

@@ -109,15 +109,16 @@ final class ReaderModule: ReaderModuleAPI {
           normalizedLocator = try Locator(legacyJSONString: jsonString)
         }
 
-        let readerVC = try formatModule.makeReaderViewController(
+
+        let readerVC = try await formatModule.makeReaderViewController(
           for: publication,
           book: book,
           initialLocation: normalizedLocator,
           forSample: forSample
         )
 
-        // Ensure all UI updates are performed on the main thread
         DispatchQueue.main.async {
+        // Ensure all UI updates are performed on the main thread
           let backItem = UIBarButtonItem()
           backItem.title = Strings.Generic.back
           readerVC.navigationItem.backBarButtonItem = backItem

@@ -11,15 +11,13 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
   private var preferences: EPUBPreferences
 
   private var safeAreaInsets: UIEdgeInsets = {
-    return DispatchQueue.main.sync {
-      guard let window = UIApplication.shared.connectedScenes
-        .compactMap({ $0 as? UIWindowScene })
-        .flatMap({ $0.windows })
-        .first(where: { $0.isKeyWindow }) else {
-        return UIEdgeInsets()
-      }
-      return window.safeAreaInsets
+    guard let window = UIApplication.shared.connectedScenes
+      .compactMap({ $0 as? UIWindowScene })
+      .flatMap({ $0.windows })
+      .first(where: { $0.isKeyWindow }) else {
+      return UIEdgeInsets()
     }
+    return window.safeAreaInsets
   }()
 
   init(publication: Publication,
@@ -149,8 +147,8 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
 
   @objc private func highlightSelection() {
     if let selection = epubNavigator.currentSelection {
-//      let highlight = Highlight(bookId: book.bookID, locator: selection.locator, color: .yellow)
-//      saveHighlight(highlight)
+      //      let highlight = Highlight(bookId: book.bookID, locator: selection.locator, color: .yellow)
+      //      saveHighlight(highlight)
       epubNavigator.clearSelection()
     }
   }
@@ -177,7 +175,7 @@ extension TPPEPUBViewController: TPPReaderSettingsDelegate {
       self.view.tintColor = appearance.textColor?.uiColor
 
       if let backgroundColor = appearance.backgroundColor?.uiColor,
-        let textColor = appearance.textColor?.uiColor {
+         let textColor = appearance.textColor?.uiColor {
         self.navigator.view.backgroundColor = backgroundColor
         self.view.backgroundColor = backgroundColor
         self.view.tintColor = textColor
@@ -210,7 +208,7 @@ extension TPPEPUBViewController: EPUBSearchDelegate {
             id: "search",
             locator: location,
             style: .highlight(tint: .red)))
-           decorableNavigator.apply(decorations: decorations, in: "search")
+          decorableNavigator.apply(decorations: decorations, in: "search")
         }
       }
     }
