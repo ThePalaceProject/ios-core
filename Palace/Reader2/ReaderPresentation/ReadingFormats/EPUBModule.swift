@@ -14,7 +14,6 @@ import Foundation
 import UIKit
 import ReadiumShared
 
-
 final class EPUBModule: ReaderFormatModule {
   
   weak var delegate: ModuleDelegate?
@@ -30,6 +29,7 @@ final class EPUBModule: ReaderFormatModule {
     return publication.conforms(to: .epub) || publication.readingOrder.allAreHTML
   }
 
+  @MainActor
   func makeReaderViewController(for publication: Publication,
                                 book: TPPBook,
                                 initialLocation: Locator?,

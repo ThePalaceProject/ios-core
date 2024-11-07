@@ -103,21 +103,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
 
     navigationItem.rightBarButtonItems = makeNavigationBarButtons()
     updateNavigationBar(animated: false)
-
-    stackView = UIStackView(frame: view.bounds)
-    stackView.distribution = .fill
-    stackView.axis = .vertical
-    view.addSubview(stackView)
-    stackView.translatesAutoresizingMaskIntoConstraints = false
-    let topConstraint = stackView.topAnchor.constraint(equalTo: view.topAnchor)
-    // `accessibilityTopMargin` takes precedence when VoiceOver is enabled.
-    topConstraint.priority = .defaultHigh
-    NSLayoutConstraint.activate([
-      topConstraint,
-      stackView.rightAnchor.constraint(equalTo: view.rightAnchor),
-      stackView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
-      stackView.leftAnchor.constraint(equalTo: view.leftAnchor)
-    ])
+    setupStackView()
 
     addChild(navigator)
     stackView.addArrangedSubview(navigator.view)
@@ -157,7 +143,21 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
 
     // Accessibility
     updateViewsForVoiceOver(isRunning: UIAccessibility.isVoiceOverRunning)
+  }
 
+  private func setupStackView() {
+    stackView = UIStackView(frame: .zero)
+    stackView.translatesAutoresizingMaskIntoConstraints = false
+    stackView.distribution = .fill
+    stackView.axis = .vertical
+    view.addSubview(stackView)
+
+    NSLayoutConstraint.activate([
+      stackView.topAnchor.constraint(equalTo: view.topAnchor),
+      stackView.rightAnchor.constraint(equalTo: view.rightAnchor),
+      stackView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
+      stackView.leftAnchor.constraint(equalTo: view.leftAnchor)
+    ])
   }
 
   override func willMove(toParent parent: UIViewController?) {
