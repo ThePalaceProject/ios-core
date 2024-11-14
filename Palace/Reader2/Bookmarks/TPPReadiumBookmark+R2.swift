@@ -6,7 +6,7 @@
 //
 
 import Foundation
-import ReadiumShared
+import R2Shared
 
 extension TPPReadiumBookmark {
 
@@ -26,9 +26,9 @@ extension TPPReadiumBookmark {
   /// - Returns: An object with R2 location information pointing at the same
   /// position the bookmark model is pointing to.
   func convertToR2(from publication: Publication) -> TPPBookmarkR2Location? {
-    guard let fileURL = FileURL(string: self.href),
-          let link = publication.linkWithHREF(fileURL),
-          let mediaType =  link.mediaType ?? MediaType("application/xhtml+xml") else {
+    let adjustedHref = self.href.hasPrefix("/") ? self.href : "/" + self.href
+
+    guard let link = publication.link(withHREF: adjustedHref) else {
       return nil
     }
 
@@ -36,27 +36,23 @@ extension TPPReadiumBookmark {
     if let page = page, let pos = Int(page) {
       position = pos
     }
-
+    
     let locations = Locator.Locations(progression: Double(progressWithinChapter),
                                       totalProgression: Double(progressWithinBook),
                                       position: position)
+    let locator = Locator(href: link.href,
+                          type: publication.metadata.type ?? MediaType.xhtml.string,
+                          title: self.chapter,
+                          locations: locations)
 
-    // Updated the initializer to use the correct `MediaType` initialization.
-    let locator = Locator(
-      href: fileURL,
-      mediaType: mediaType,
-      title: self.chapter,
-      locations: locations
-    )
-
-    guard let resourceIndex = publication.readingOrder.firstIndexWithHREF(locator.href) else {
+    guard let resourceIndex = publication.readingOrder.firstIndex(withHREF: locator.href) else {
       return nil
     }
 
     let creationDate = NSDate(rfc3339String: self.time) as Date?
     return TPPBookmarkR2Location(resourceIndex: resourceIndex,
-                                 locator: locator,
-                                 creationDate: creationDate ?? Date())
+                                  locator: locator,
+                                  creationDate: creationDate ?? Date())
   }
 
   /// Determines if a given locator matches the location addressed by this
@@ -92,3 +88,4 @@ extension TPPReadiumBookmark {
     return self.progressWithinChapter =~= locatorChapterProgress && self.progressWithinBook =~= locatorTotalProgress
   }
 }
+
