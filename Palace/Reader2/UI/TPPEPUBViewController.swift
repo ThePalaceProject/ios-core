@@ -63,6 +63,7 @@ class TPPEPUBViewController: TPPBaseReaderViewController, EPUBSearchDelegate {
 
     super.init(navigator: navigator, publication: publication, book: book, forSample: forSample, initialLocation: initialLocation)
 
+    navigator.delegate = self
     self.searchButton.target = self
     setupViewHierarchy()
     setUIColor(for: preferences)
