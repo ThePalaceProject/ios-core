@@ -205,20 +205,18 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
           }
         }
       }
-      return nil
+      return indexPath
 
     case .bookmarks:
       guard let bizLogic = bookmarksBusinessLogic else {
         return nil
       }
 
-        let shouldSelect = bizLogic.shouldSelectBookmark(at: indexPath.row)
-        DispatchQueue.main.async {
-          if shouldSelect {
-            tv.selectRow(at: indexPath, animated: true, scrollPosition: .none)
-          }
-        }
-      return nil
+      if bizLogic.shouldSelectBookmark(at: indexPath.row) {
+        return indexPath
+      } else {
+        return nil
+      }
     }
   }
 

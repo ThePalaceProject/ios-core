@@ -516,8 +516,8 @@ extension TPPBaseReaderViewController: TPPReaderPositionsDelegate {
     }
 
     Task {
-      let r2bookmark = bookmark.convertToR2(from: publication)
-      if let locator = r2bookmark?.locator {
+      let r3bookmark = bookmark.convertToR3(from: publication)
+      if let locator = r3bookmark?.locator {
         await navigator.go(to: locator)
       }
     }
