@@ -3,8 +3,13 @@ import SwiftUI
 import ReadiumShared
 import ReadiumNavigator
 import WebKit
+import SwiftSoup
 
-class TPPEPUBViewController: TPPBaseReaderViewController {
+class TPPEPUBViewController: TPPBaseReaderViewController, EPUBSearchDelegate {
+  func didSelect(location: ReadiumShared.Locator) {
+    
+  }
+  
   var popoverUserconfigurationAnchor: UIBarButtonItem?
   private let systemUserInterfaceStyle: UIUserInterfaceStyle
   private let searchButton: UIBarButtonItem
@@ -87,7 +92,6 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
 
   override func willMove(toParent parent: UIViewController?) {
     super.willMove(toParent: parent)
-
     navigationController?.navigationBar.barStyle = .default
     navigationController?.navigationBar.barTintColor = nil
   }
@@ -96,6 +100,7 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     super.viewWillAppear(animated)
     setUIColor(for: preferences)
     log(.info, "TPPEPUBViewController will appear. UI color set based on preferences.")
+    epubNavigator.submitPreferences(preferences)
   }
 
   override func viewWillDisappear(_ animated: Bool) {
@@ -173,51 +178,13 @@ extension TPPEPUBViewController: TPPReaderSettingsDelegate {
       self.navigator.view.backgroundColor = appearance.backgroundColor?.uiColor
       self.view.backgroundColor = appearance.backgroundColor?.uiColor
       self.view.tintColor = appearance.textColor?.uiColor
-
-      if let backgroundColor = appearance.backgroundColor?.uiColor,
-         let textColor = appearance.textColor?.uiColor {
-        self.navigator.view.backgroundColor = backgroundColor
-        self.view.backgroundColor = backgroundColor
-        self.view.tintColor = textColor
-
-        guard let appearanceConfig = TPPConfiguration.appearance(withBackgroundColor: backgroundColor) else { return }
-        self.navigationController?.navigationBar.setAppearance(appearanceConfig)
-
-        let isDarkText = (textColor == .black)
-        self.navigationController?.navigationBar.forceUpdateAppearance(style: isDarkText ? .light : .dark)
-
-        self.navigationController?.navigationBar.tintColor = textColor
-        self.tabBarController?.tabBar.tintColor = textColor
-      }
     }
   }
 }
 
-extension TPPEPUBViewController: EPUBSearchDelegate {
-  func didSelect(location: ReadiumShared.Locator) {
-
-    presentedViewController?.dismiss(animated: true) { [weak self] in
-      guard let self = self else { return }
-
-      Task {
-        await self.navigator.go(to: location)
-
-        if let decorableNavigator = self.navigator as? DecorableNavigator {
-          var decorations: [Decoration] = []
-          decorations.append(Decoration(
-            id: "search",
-            locator: location,
-            style: .highlight(tint: .red)))
-          decorableNavigator.apply(decorations: decorations, in: "search")
-        }
-      }
-    }
-  }
-}
-
-extension TPPEPUBViewController: UIGestureRecognizerDelegate {
-  func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
-    return true
+extension TPPEPUBViewController: EPUBNavigatorDelegate {
+  func navigator(_ navigator: Navigator, didFailWithError error: NavigatorError) {
+    log(.error, "Navigator error: \(error.localizedDescription)")
   }
 }
 

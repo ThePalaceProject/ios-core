@@ -51,17 +51,14 @@ final class LibraryService: Loggable {
     drmLibraryServices.append(AdobeDRMLibraryService())
 #endif
 
-    // Content protections for DRM
     let contentProtections = drmLibraryServices.compactMap { $0.contentProtection }
 
-    // Using CompositePublicationParser for flexibility in supported formats
     let parser = CompositePublicationParser([
       DefaultPublicationParser(
         httpClient: httpClient,
         assetRetriever: assetRetriever,
         pdfFactory: DefaultPDFDocumentFactory()
       ),
-      // Add any additional parsers if necessary
     ])
 
     publicationOpener = PublicationOpener(parser: parser, contentProtections: contentProtections)
@@ -120,6 +117,7 @@ final class LibraryService: Loggable {
   private func openPublication(at url: URL, allowUserInteraction: Bool, sender: UIViewController?, completion: @escaping (Result<Publication, Error>) -> Void) {
     Task {
       guard let fileURL = FileURL(url: url) else {
+        log(.error, "Failed to convert URL to FileURL: \(url.absoluteString)")
         completion(.failure(LibraryServiceError.invalidBook))
         return
       }
@@ -129,25 +127,30 @@ final class LibraryService: Loggable {
         let result = await self.publicationOpener.open(asset: asset, allowUserInteraction: allowUserInteraction, sender: sender)
         completion(result.mapError { $0 as Error })
       case .failure(let error):
+        log(.error, "Asset retrieval failed: \(error.localizedDescription)")
         completion(.failure(error))
       }
     }
   }
 
-  // MARK: Presentation Preparation and Validation
   private func preparePresentation(of publication: Publication, book: TPPBook) {
-    if let selfLink = publication.linkWithRel(.self), selfLink.href.isHTTPURL {
-      return // Likely a web publication; no need to add to the server
+    guard let selfLink = publication.linkWithRel(.self), selfLink.href.isHTTPURL else {
+      let endpoint = "/publications/\(book.identifier)"
+
+      do {
+        try httpServer.serve(at: endpoint, publication: publication)
+      } catch {
+        log(.error, "Failed to serve publication at endpoint \(endpoint): \(error)")
+      }
+      return
     }
 
-    let endpoint = "/publications/\(book.identifier)"
-    do {
-      try httpServer.serve(at: endpoint, publication: publication)
-    } catch {
-      log(.error, "Failed to serve publication at endpoint \(endpoint): \(error)")
+    if let selfLinkURL = URL(string: selfLink.href)?.standardized {
+      log(.debug, "Serving at URL: \(selfLinkURL)")
+    } else {
+      log(.error, "Malformed self link: \(selfLink.href)")
     }
   }
-
   private func validatePublication(_ publication: Publication, for identifier: String, completion: (Result<Publication, LibraryServiceError>) -> Void) -> Bool {
     guard !publication.isRestricted else {
       stopOpeningIndicator(identifier: identifier)
