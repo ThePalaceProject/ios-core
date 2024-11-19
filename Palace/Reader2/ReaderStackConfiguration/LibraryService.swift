@@ -64,7 +64,6 @@ final class LibraryService: Loggable {
     publicationOpener = PublicationOpener(parser: parser, contentProtections: contentProtections)
   }
 
-  // MARK: Opening a Book
   @MainActor
   func openBook(_ book: TPPBook, sender: UIViewController, completion: @escaping (Result<Publication, LibraryServiceError>) -> Void) {
 
