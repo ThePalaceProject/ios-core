@@ -5,15 +5,13 @@ import ReadiumNavigator
 import WebKit
 import SwiftSoup
 
-class TPPEPUBViewController: TPPBaseReaderViewController, EPUBSearchDelegate {
-  func didSelect(location: ReadiumShared.Locator) {
-    
-  }
-  
+class TPPEPUBViewController: TPPBaseReaderViewController {
   var popoverUserconfigurationAnchor: UIBarButtonItem?
   private let systemUserInterfaceStyle: UIUserInterfaceStyle
   private let searchButton: UIBarButtonItem
   private var preferences: EPUBPreferences
+  private var highlights: [Decoration] = []
+  private var highlightGroup = "highlights"
 
   private var safeAreaInsets: UIEdgeInsets = {
     guard let window = UIApplication.shared.connectedScenes
@@ -150,12 +148,27 @@ class TPPEPUBViewController: TPPBaseReaderViewController, EPUBSearchDelegate {
     hostingController.modalPresentationStyle = .overFullScreen
     present(hostingController, animated: true)
   }
+}
 
-  @objc private func highlightSelection() {
-    if let selection = epubNavigator.currentSelection {
-      //      let highlight = Highlight(bookId: book.bookID, locator: selection.locator, color: .yellow)
-      //      saveHighlight(highlight)
-      epubNavigator.clearSelection()
+extension TPPEPUBViewController: EPUBSearchDelegate {
+  func didSelect(location: ReadiumShared.Locator) {
+
+    presentedViewController?.dismiss(animated: true) { [weak self] in
+      guard let self = self else { return }
+
+      Task {
+        await self.navigator.go(to: location)
+
+
+        if let decorableNavigator = self.navigator as? DecorableNavigator {
+          var decorations: [Decoration] = []
+          decorations.append(Decoration(
+            id: "search",
+            locator: location,
+            style: .highlight(tint: .red)))
+          decorableNavigator.apply(decorations: decorations, in: "search")
+        }
+      }
     }
   }
 }
@@ -190,3 +203,52 @@ extension TPPEPUBViewController: EPUBNavigatorDelegate {
 }
 
 extension TPPEPUBViewController: UIPopoverPresentationControllerDelegate {}
+
+extension TPPEPUBViewController: DecorableNavigator {
+  func apply(decorations: [Decoration], in group: String) {
+    guard let navigator = navigator as? DecorableNavigator else { return }
+    navigator.apply(decorations: decorations, in: group)
+  }
+
+  func supports(decorationStyle style: Decoration.Style.Id) -> Bool {
+    guard let navigator = navigator as? DecorableNavigator else { return false }
+    return navigator.supports(decorationStyle: style)
+  }
+
+  func observeDecorationInteractions(inGroup group: String, onActivated: @escaping OnActivatedCallback) {
+    guard let navigator = navigator as? DecorableNavigator else { return }
+    navigator.observeDecorationInteractions(inGroup: group, onActivated: onActivated)
+  }
+
+  func addHighlight(for locator: Locator, color: UIColor = .yellow) {
+    let highlight = Decoration(
+      id: UUID().uuidString,
+      locator: locator,
+      style: .highlight(tint: color)
+    )
+
+    highlights.append(highlight)
+    apply(decorations: highlights, in: highlightGroup)
+  }
+
+  func removeHighlight(_ id: String) {
+    highlights.removeAll { $0.id == id }
+    apply(decorations: highlights, in: highlightGroup)
+  }
+
+  @objc private func highlightSelection() {
+    guard let selection = epubNavigator.currentSelection else { return }
+    addHighlight(for: selection.locator, color: .yellow)
+    epubNavigator.clearSelection()
+  }
+
+  override func viewDidLoad() {
+    super.viewDidLoad()
+
+    observeDecorationInteractions(inGroup: highlightGroup) { event in
+      self.handleHighlightInteraction(event)
+    }
+  }
+
+  private func handleHighlightInteraction(_ event: OnDecorationActivatedEvent) {}
+}

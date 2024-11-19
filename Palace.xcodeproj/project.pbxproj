@@ -1127,6 +1127,12 @@
 		E5C2C422268BA5140046F415 /* TPPRegistryDebuggingCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5C2C421268BA5140046F415 /* TPPRegistryDebuggingCell.swift */; };
 		E5D3288A292C0D34008BFD01 /* txstrings.json in Resources */ = {isa = PBXBuildFile; fileRef = E5D32881292C0D34008BFD01 /* txstrings.json */; };
 		E5D3288B292C0D68008BFD01 /* txstrings.json in Resources */ = {isa = PBXBuildFile; fileRef = E5D32881292C0D34008BFD01 /* txstrings.json */; };
+		E5E03F342CED172200D9979D /* TPPReadiumBookmark+R3.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E03F332CED171D00D9979D /* TPPReadiumBookmark+R3.swift */; };
+		E5E03F352CED172200D9979D /* TPPReadiumBookmark+R3.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E03F332CED171D00D9979D /* TPPReadiumBookmark+R3.swift */; };
+		E5E03F362CED172200D9979D /* TPPReadiumBookmark+R3.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E03F332CED171D00D9979D /* TPPReadiumBookmark+R3.swift */; };
+		E5E03F382CED176F00D9979D /* TPPBookmarkR3Location.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E03F372CED176500D9979D /* TPPBookmarkR3Location.swift */; };
+		E5E03F392CED176F00D9979D /* TPPBookmarkR3Location.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E03F372CED176500D9979D /* TPPBookmarkR3Location.swift */; };
+		E5E03F3A2CED176F00D9979D /* TPPBookmarkR3Location.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E03F372CED176500D9979D /* TPPBookmarkR3Location.swift */; };
 		E5E2F8D42CB631C700A95840 /* TPPSAMLHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E2F8D32CB631C100A95840 /* TPPSAMLHelper.swift */; };
 		E5E2F8D52CB631C700A95840 /* TPPSAMLHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E2F8D32CB631C100A95840 /* TPPSAMLHelper.swift */; };
 		E5E2F8D62CB631C700A95840 /* TPPSAMLHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E2F8D32CB631C100A95840 /* TPPSAMLHelper.swift */; };
@@ -2033,6 +2039,8 @@
 		E5C1F52927990929005FC6B2 /* OverdriveProcessor.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = OverdriveProcessor.xcodeproj; path = "ios-audiobook-overdrive/OverdriveProcessor/OverdriveProcessor.xcodeproj"; sourceTree = "<group>"; };
 		E5C2C421268BA5140046F415 /* TPPRegistryDebuggingCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPRegistryDebuggingCell.swift; sourceTree = "<group>"; };
 		E5D32881292C0D34008BFD01 /* txstrings.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = txstrings.json; sourceTree = "<group>"; };
+		E5E03F332CED171D00D9979D /* TPPReadiumBookmark+R3.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPReadiumBookmark+R3.swift"; sourceTree = "<group>"; };
+		E5E03F372CED176500D9979D /* TPPBookmarkR3Location.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBookmarkR3Location.swift; sourceTree = "<group>"; };
 		E5E2F8D32CB631C100A95840 /* TPPSAMLHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPSAMLHelper.swift; sourceTree = "<group>"; };
 		E5EFDE77298C43D300258CA3 /* BookButtonState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookButtonState.swift; sourceTree = "<group>"; };
 		E5EFDE7B298C4F8000258CA3 /* BookCellModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookCellModel.swift; sourceTree = "<group>"; };
@@ -3129,6 +3137,8 @@
 		73DE8984260BF61B003D9135 /* Bookmarks */ = {
 			isa = PBXGroup;
 			children = (
+				E5E03F372CED176500D9979D /* TPPBookmarkR3Location.swift */,
+				E5E03F332CED171D00D9979D /* TPPReadiumBookmark+R3.swift */,
 				E5FD62122BFD30E400DD4B94 /* AudiobookBookmarkBusinessLogic.swift */,
 				2DF321821DC3B83500E1858F /* TPPAnnotations.swift */,
 				1798538A255A4092009F94D9 /* TPPBookLocation+Locator.swift */,
@@ -4629,6 +4639,7 @@
 				E55E2FA629E7A9670093F916 /* AudioBookmark.swift in Sources */,
 				73EB0AF625821DF4006BC997 /* TPPCatalogFacetGroup.m in Sources */,
 				E501711127A3948C004B3392 /* TPPBookmarkFactory.swift in Sources */,
+				E5E03F392CED176F00D9979D /* TPPBookmarkR3Location.swift in Sources */,
 				E7861C4E2846937400B3A38A /* TPPEncryptedPDFView.swift in Sources */,
 				73EB0AF725821DF4006BC997 /* TPPOPDSAcquisition.m in Sources */,
 				21E4177E292810E000A78606 /* TPPPDFPageBookmark.swift in Sources */,
@@ -4665,6 +4676,7 @@
 				73EB0B0725821DF4006BC997 /* TPPOPDSEntry.m in Sources */,
 				E78AE807291C1D9600884446 /* TPPBookRegistry+Extensions.swift in Sources */,
 				73EB0B0925821DF4006BC997 /* TPPIndeterminateProgressView.m in Sources */,
+				E5E03F342CED172200D9979D /* TPPReadiumBookmark+R3.swift in Sources */,
 				73EB0B0A25821DF4006BC997 /* NSString+TPPStringAdditions.m in Sources */,
 				73EB0B0B25821DF4006BC997 /* TPPKeychainManager.swift in Sources */,
 				73DE897D260BEA13003D9135 /* TPPRequestExecuting.swift in Sources */,
@@ -4762,6 +4774,7 @@
 				E5FFB96428AED4850042907F /* ImageProvider.swift in Sources */,
 				7386C1F724525AFF004C78BD /* TPPReaderTOCBusinessLogic.swift in Sources */,
 				B51C1E0222861BBF003B49A5 /* OPDS2Publication.swift in Sources */,
+				E5E03F3A2CED176F00D9979D /* TPPBookmarkR3Location.swift in Sources */,
 				E5B2B8E12759583200150ED4 /* TPPSettingsViewController.swift in Sources */,
 				5DD567AF22B95A30001F0C83 /* String+MD5.swift in Sources */,
 				E671FF7D1E3A7068002AB13F /* TPPNetworkQueue.swift in Sources */,
@@ -4911,6 +4924,7 @@
 				2D754BC22002F1B10061D34F /* TPPOPDSIndirectAcquisition.m in Sources */,
 				21E35FC3268CC8AC00066F9D /* AdobeContentProtectionService.swift in Sources */,
 				21C7B87E25AE1DBA000E8BF3 /* LibraryServiceError.swift in Sources */,
+				E5E03F362CED172200D9979D /* TPPReadiumBookmark+R3.swift in Sources */,
 				E6B3269F1EE066DE00DB877A /* TPPBookDetailTableView.swift in Sources */,
 				E5BDA0252A2A7D0300C133CB /* RegistrationCell.swift in Sources */,
 				734B78992565F7DE006FB8AD /* TPPReauthenticator.swift in Sources */,
@@ -5189,6 +5203,7 @@
 				D570B5C12BA20139003FE991 /* TPPPDFView.swift in Sources */,
 				D570B5C22BA20139003FE991 /* UIViewController+TPP.swift in Sources */,
 				D570B5C32BA20139003FE991 /* TPPCaching.swift in Sources */,
+				E5E03F382CED176F00D9979D /* TPPBookmarkR3Location.swift in Sources */,
 				E5FD62152BFD30F500DD4B94 /* LoadingViewController.swift in Sources */,
 				D570B5C42BA20139003FE991 /* UIView+TPPViewAdditions.m in Sources */,
 				D570B5C52BA20139003FE991 /* TPPLoadingViewController.swift in Sources */,
@@ -5266,6 +5281,7 @@
 				D570B60C2BA20139003FE991 /* TPPAnnouncementBusinessLogic.swift in Sources */,
 				D570B60D2BA20139003FE991 /* Account.swift in Sources */,
 				D570B60E2BA20139003FE991 /* DRMLibraryService.swift in Sources */,
+				E5E03F352CED172200D9979D /* TPPReadiumBookmark+R3.swift in Sources */,
 				D570B60F2BA20139003FE991 /* TPPPDFReaderMode.swift in Sources */,
 				D570B6102BA20139003FE991 /* TPPBookDownloadFailedCell.m in Sources */,
 				D570B6112BA20139003FE991 /* TPPBookDetailViewController.m in Sources */,
