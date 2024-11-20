@@ -1143,6 +1143,7 @@
 		E5EFDE79298C43DD00258CA3 /* BookButtonState.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5EFDE77298C43D300258CA3 /* BookButtonState.swift */; };
 		E5EFDE7C298C4F8000258CA3 /* BookCellModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5EFDE7B298C4F8000258CA3 /* BookCellModel.swift */; };
 		E5EFDE7D298C510500258CA3 /* BookCellModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5EFDE7B298C4F8000258CA3 /* BookCellModel.swift */; };
+		E5F2E9A22CEE7583007EA6C9 /* ReadiumLCP in Frameworks */ = {isa = PBXBuildFile; productRef = E5F2E9A12CEE7583007EA6C9 /* ReadiumLCP */; };
 		E5F8A57D28A48B8300A229AE /* BookPreviewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5F8A57C28A48B8300A229AE /* BookPreviewTests.swift */; };
 		E5FD62132BFD30E400DD4B94 /* AudiobookBookmarkBusinessLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5FD62122BFD30E400DD4B94 /* AudiobookBookmarkBusinessLogic.swift */; };
 		E5FD62142BFD30F500DD4B94 /* LoadingViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E523124C28641505007D1DB5 /* LoadingViewController.swift */; };
@@ -2144,6 +2145,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E5F2E9A22CEE7583007EA6C9 /* ReadiumLCP in Frameworks */,
 				E5E9B2182CC1A5C100366A2E /* ReadiumAdapterLCPSQLite in Frameworks */,
 				E7FFEAA62A745F600006030A /* ULID in Frameworks */,
 				73EB0B2E25821DF4006BC997 /* MediaPlayer.framework in Frameworks */,
@@ -3783,6 +3785,7 @@
 				E5E9AFFF2CC035AC00366A2E /* ReadiumStreamer */,
 				E5E9B2172CC1A5C100366A2E /* ReadiumAdapterLCPSQLite */,
 				E5E9B2192CC1A7AC00366A2E /* ReadiumAdapterGCDWebServer */,
+				E5F2E9A12CEE7583007EA6C9 /* ReadiumLCP */,
 			);
 			productName = Simplified;
 			productReference = 73EB0B7525821DF4006BC997 /* Palace-noDRM.app */;
@@ -6518,6 +6521,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = E77D02182931337000544180 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
 			productName = ReadiumAdapterGCDWebServer;
+		};
+		E5F2E9A12CEE7583007EA6C9 /* ReadiumLCP */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E77D02182931337000544180 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
+			productName = ReadiumLCP;
 		};
 		E7498A852A0E7F460037DD93 /* FirebaseAnalytics */ = {
 			isa = XCSwiftPackageProductDependency;
