@@ -7,8 +7,8 @@
 //
 
 import Foundation
-import R2Shared
-import R2Navigator
+import ReadiumShared
+import ReadiumNavigator
 
 /// Encapsulates all of the SimplyE business logic related to bookmarking
 /// for a given book.
@@ -54,21 +54,21 @@ class TPPReaderBookmarksBusinessLogic: NSObject {
   /// - Parameter navigator: The `Navigator` object used to browse
   /// the `publication`.
   /// - Returns: Location information related to the current reading position.
-  func currentLocation(in navigator: Navigator) -> TPPBookmarkR2Location? {
+  func currentLocation(in navigator: Navigator) -> TPPBookmarkR3Location? {
     guard
       let locator = navigator.currentLocation,
       let index = publication.resourceIndex(forLocator: locator) else {
         return nil
     }
 
-    return TPPBookmarkR2Location(resourceIndex: index, locator: locator)
+    return TPPBookmarkR3Location(resourceIndex: index, locator: locator)
   }
 
   /// Verifies if a bookmark exists at the given location.
   /// - Parameter location: The Readium 2 location to be checked.
   /// - Returns: The bookmark at the given `location` if it exists,
   /// otherwise nil.
-  func isBookmarkExisting(at location: TPPBookmarkR2Location?) -> TPPReadiumBookmark? {
+  func isBookmarkExisting(at location: TPPBookmarkR3Location?) -> TPPReadiumBookmark? {
     guard let currentLocator = location?.locator else {
       return nil
     }
@@ -85,12 +85,15 @@ class TPPReaderBookmarksBusinessLogic: NSObject {
   ///
   /// - Returns: A newly created bookmark object, unless the input location
   /// lacked progress information.
-  func addBookmark(_ bookmarkLoc: TPPBookmarkR2Location) -> TPPReadiumBookmark? {
+  func addBookmark(_ bookmarkLoc: TPPBookmarkR3Location) async -> TPPReadiumBookmark? {
     guard let bookmark =
-      bookmarksFactory.make(fromR2Location: bookmarkLoc,
-                            usingBookRegistry: bookRegistry) else {
-                              //TODO: log error
-                              return nil
+            await bookmarksFactory.make(
+              fromR3Location: bookmarkLoc,
+              usingBookRegistry: bookRegistry,
+              for: self.book,
+              publication: publication
+            ) else {
+      return nil
     }
 
     bookmarks.append(bookmark)

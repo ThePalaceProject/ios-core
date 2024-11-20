@@ -1,14 +1,6 @@
-//
-//  TPPAssociatedColors.swift
-//  Palace
-//
-//  Created by Vladimir Fedorov on 17.02.2022.
-//  Copyright © 2022 The Palace Project. All rights reserved.
-//
-
 import Foundation
-import R2Shared
-import R2Navigator
+import ReadiumShared
+import ReadiumNavigator
 import UIKit
 
 struct TPPAppearanceColors {
@@ -19,8 +11,7 @@ struct TPPAppearanceColors {
   let foregroundColor: UIColor
   let selectedForegroundColor: UIColor
   let tintColor: UIColor
-  
-  /// Black text on white background set of colors
+
   static var blackOnWhiteColors: TPPAppearanceColors {
     TPPAppearanceColors(
       backgroundColor: TPPConfiguration.readerBackgroundColor(),
@@ -33,7 +24,7 @@ struct TPPAppearanceColors {
     )
   }
 
-  /// Black text on sepia background set of colors
+  // Black text on sepia background set of colors
   static var blackOnSepiaColors: TPPAppearanceColors {
     TPPAppearanceColors(
       backgroundColor: TPPConfiguration.readerBackgroundSepiaColor(),
@@ -46,7 +37,7 @@ struct TPPAppearanceColors {
     )
   }
 
-  /// White text on black background set of colors
+  // White text on black background set of colors
   static var whiteOnBlackColors: TPPAppearanceColors {
     TPPAppearanceColors(
       backgroundColor: TPPConfiguration.readerBackgroundDarkColor(),
@@ -58,37 +49,33 @@ struct TPPAppearanceColors {
       tintColor: .white
     )
   }
-
 }
 
 class TPPAssociatedColors {
-
   static let shared = TPPAssociatedColors()
-  
-  /// epubNavigaor property, set this one when user opens a book
-  var userSettings: UserSettings?
-  
-  /// Colors for selected appearance
+
+  /// `EPUBPreferences` object from Readium 3 API containing user appearance settings
+  var preferences: EPUBPreferences?
+
+  /// Colors for the selected appearance based on Readium 3 `EPUBPreferences`.
   var appearanceColors: TPPAppearanceColors {
-    let appearance = userSettings?.userProperties.getProperty(reference: ReadiumCSSReference.appearance.rawValue)
-    return TPPAssociatedColors.colors(for: appearance)
-  }
-  
-  /// Get associated colors for a specific appearance setting.
-  /// - parameter appearance: The selected appearance.
-  /// - Returns: A tuple with a background color and a text color.
-  static func colors(for appearance: UserProperty? = nil) -> TPPAppearanceColors {
-    if let appearance = appearance {
-      switch appearance.toString() {
-      case "readium-sepia-on":
-        return .blackOnSepiaColors
-      case "readium-night-on":
-        return .whiteOnBlackColors
-      default:
-        return .blackOnWhiteColors
-      }
+    guard let theme = preferences?.theme else {
+      return .blackOnWhiteColors // Fallback to default if no theme is set
     }
-    return .blackOnWhiteColors
+    return TPPAssociatedColors.colors(for: theme)
   }
 
+  /// Get associated colors for a specific theme setting from `EPUBPreferences`.
+  /// - Parameter theme: The selected theme from the new `EPUBPreferences` API.
+  /// - Returns: A set of colors based on the theme.
+  static func colors(for theme: Theme) -> TPPAppearanceColors {
+    switch theme {
+    case .sepia:
+      return .blackOnSepiaColors
+    case .dark:
+      return .whiteOnBlackColors
+    default:
+      return .blackOnWhiteColors
+    }
+  }
 }

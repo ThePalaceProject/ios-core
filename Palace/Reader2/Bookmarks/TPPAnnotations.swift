@@ -1,5 +1,5 @@
 import UIKit
-import R2Shared
+import ReadiumShared
 
 public struct AnnotationResponse {
   var serverId: String?
@@ -40,20 +40,24 @@ protocol AnnotationsManager {
 @objcMembers final class TPPAnnotations: NSObject {
   // MARK: - Reading Position
 
-  /// Reads the current reading position from the server, parses the response
-  /// and returns the result to the `completionHandler`.
-  class func syncReadingPosition(ofBook book: TPPBook?, toURL url:URL?,
-                                 completion: @escaping (_ readPos: Bookmark?) -> ()) {
-
+  /// Asynchronously syncs the reading position of a book.
+  /// - Parameters:
+  ///   - book: The `TPPBook` whose reading position is being synced.
+  ///   - url: The server URL for syncing the reading position.
+  /// - Returns: The most recent reading position (`Bookmark?`) from the server.
+  class func syncReadingPosition(ofBook book: TPPBook?, toURL url: URL?) async -> Bookmark? {
     guard syncIsPossibleAndPermitted() else {
       Log.debug(#file, "Account does not support sync or sync is disabled.")
-      completion(nil)
-      return
+      return nil
     }
 
-    TPPAnnotations.getServerBookmarks(forBook: book, atURL: url, motivation: .readingProgress) { bookmarks in
-      completion(bookmarks?.first)
+    let bookmarks = await withCheckedContinuation { continuation in
+      getServerBookmarks(forBook: book, atURL: url, motivation: .readingProgress) { bookmarks in
+        continuation.resume(returning: bookmarks)
+      }
     }
+
+    return bookmarks?.first
   }
 
   class func postListeningPosition(forBook bookID: String, selectorValue: String, completion: ((_ response: AnnotationResponse?) -> Void)? = nil) {
@@ -283,7 +287,7 @@ protocol AnnotationsManager {
         return
       }
 
-      guard let data = data,
+      guard let data,
         let jsonObject = try? JSONSerialization.jsonObject(with: data, options: []),
         let json = jsonObject as? [String: Any] else {
           Log.error(#file, "Response from annotation server could not be serialized.")
