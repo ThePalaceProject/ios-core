@@ -21,7 +21,6 @@
 
 @protocol TPPBookDownloadCancellationDelegate
 
-- (void)didCloseDetailView;
 - (void)didSelectCancelForBookDetailDownloadingView:(TPPBookButtonsView *_Nullable)view;
 - (void)didSelectCancelForBookDetailDownloadFailedView:(TPPBookButtonsView *_Nullable)failedView;
 

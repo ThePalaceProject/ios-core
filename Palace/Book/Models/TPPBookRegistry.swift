@@ -369,12 +369,10 @@ class TPPBookRegistry: NSObject {
   /// state provided must be one of `TPPBookState` and must not be `TPPBookState.Unregistered`.
   func addBook(_ book: TPPBook, location: TPPBookLocation? = nil, state: TPPBookState = .DownloadNeeded, fulfillmentId: String? = nil, readiumBookmarks: [TPPReadiumBookmark]? = nil, genericBookmarks: [TPPBookLocation]? = nil) {
     // Cache the thumbnail image if it exists
-    DispatchQueue.main.async { [weak self] in
-      self?.coverRegistry.thumbnailImageForBook(book) { _ in
-        // The image is automatically cached by `thumbnailImageForBook`, so no need to handle it here
-      }
+    coverRegistry.thumbnailImageForBook(book) { _ in
+      // The image is automatically cached by `thumbnailImageForBook`, so no need to handle it here
     }
-
+    
     // Create and store the book record in the registry
     registry[book.identifier] = TPPBookRegistryRecord(
       book: book,
@@ -453,16 +451,10 @@ class TPPBookRegistry: NSObject {
 
   /// Returns the state of a book given its identifier.
   func state(for bookIdentifier: String?) -> TPPBookState {
-    guard let bookIdentifier = bookIdentifier, !bookIdentifier.isEmpty else {
-      return .Unregistered
-    }
-
-    guard let record = registry[bookIdentifier] else {
-      return .Unregistered
-    }
-
-    return record.state
+    guard let bookIdentifier else { return .Unregistered }
+    return registry[bookIdentifier]?.state ?? .Unregistered
   }
+  
   /// Sets the state for a book previously registered given its identifier.
   func setState(_ state: TPPBookState, for bookIdentifier: String) {
     registry[bookIdentifier]?.state = state
@@ -471,13 +463,10 @@ class TPPBookRegistry: NSObject {
   
   /// Returns the book for a given identifier if it is registered, else nil.
   func book(forIdentifier bookIdentifier: String?) -> TPPBook? {
-    guard let bookIdentifier = bookIdentifier, !bookIdentifier.isEmpty,
-          let record = registry[bookIdentifier] else {
-      return nil
-    }
-    return record.book
+    guard let bookIdentifier else { return nil }
+    return registry[bookIdentifier]?.book
   }
-
+  
   /// Sets the fulfillmentId for a book previously registered given its identifier.
   func setFulfillmentId(_ fulfillmentId: String, for bookIdentifier: String) {
     registry[bookIdentifier]?.fulfillmentId = fulfillmentId
@@ -486,13 +475,10 @@ class TPPBookRegistry: NSObject {
 
   /// Returns the fulfillmentId of a book given its identifier.
   func fulfillmentId(forIdentifier bookIdentifier: String?) -> String? {
-    guard let bookIdentifier = bookIdentifier, !bookIdentifier.isEmpty,
-          let record = registry[bookIdentifier] else {
-      return nil
-    }
-    return record.fulfillmentId
+    guard let bookIdentifier else { return nil }
+    return registry[bookIdentifier]?.fulfillmentId
   }
-
+  
   /// Sets the processing flag for a book previously registered given its identifier.
   func setProcessing(_ processing: Bool, for bookIdentifier: String) {
     if processing {
@@ -522,7 +508,6 @@ class TPPBookRegistry: NSObject {
   
   /// Returns the thumbnail for a book via a handler called on the main thread. The book does not have
   /// to be registered in order to retrieve a cover.
-  @MainActor
   func thumbnailImage(for book: TPPBook?, handler: @escaping (_ image: UIImage?) -> Void) {
     guard let book else {
       handler(nil)
@@ -534,13 +519,11 @@ class TPPBookRegistry: NSObject {
   /// The dictionary passed to the handler maps book identifiers to images.
   /// The handler is always called on the main thread.
   /// The books do not have to be registered in order to retrieve covers.
-  @MainActor
   func thumbnailImages(forBooks books: Set<TPPBook>, handler: @escaping (_ bookIdentifiersToImages: [String: UIImage]) -> Void) {
     coverRegistry.thumbnailImagesForBooks(books, handler: handler)
   }
   
   /// Returns cover image if it exists, or falls back to thumbnail image load.
-  @MainActor
   func coverImage(for book: TPPBook, handler: @escaping (_ image: UIImage?) -> Void) {
     coverRegistry.coverImageForBook(book, handler: handler)
   }
@@ -552,25 +535,19 @@ extension TPPBookRegistry: TPPBookRegistryProvider {
   
   /// Sets the location for a book previously registered given its identifier.
   func setLocation(_ location: TPPBookLocation?, forIdentifier bookIdentifier: String) {
-    guard !bookIdentifier.isEmpty else { return }
     registry[bookIdentifier]?.location = location
     save()
   }
-
+  
   /// Returns the location of a book given its identifier.
   func location(forIdentifier bookIdentifier: String) -> TPPBookLocation? {
-    guard let record = registry[bookIdentifier] else {
-      return nil
-    }
-    return record.location
+    registry[bookIdentifier]?.location
   }
-
+  
   /// Returns the bookmarks for a book given its identifier.
   func readiumBookmarks(forIdentifier bookIdentifier: String) -> [TPPReadiumBookmark] {
-    guard let record = registry[bookIdentifier] else {
-      return []
-    }
-    return record.readiumBookmarks?.sorted { $0.progressWithinBook < $1.progressWithinBook } ?? []
+    registry[bookIdentifier]?.readiumBookmarks?
+      .sorted { $0.progressWithinBook < $1.progressWithinBook } ?? []
   }
 
   /// Adds bookmark for a book given its identifier

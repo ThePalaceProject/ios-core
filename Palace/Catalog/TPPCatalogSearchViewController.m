@@ -2,7 +2,6 @@
 // After it is complete, the common portions must be factored out.
 @import PureLayout;
 
-
 #import "NSString+TPPStringAdditions.h"
 
 #import "TPPBookCell.h"

@@ -9,145 +9,135 @@
 import Foundation
 import FirebaseCore
 import FirebaseDynamicLinks
-import BackgroundTasks
 
 @main
 class TPPAppDelegate: UIResponder, UIApplicationDelegate {
-
+  
   var window: UIWindow?
   var audiobookLifecycleManager: AudiobookLifecycleManager!
   var notificationsManager: TPPUserNotifications!
   var isSigningIn = false
 
   // MARK: - Application Lifecycle
-
+  
   func applicationDidFinishLaunching(_ application: UIApplication) {
     FirebaseApp.configure()
     TPPErrorLogger.configureCrashAnalytics()
 
-    // Perform data migrations early
+    // Perform data migrations as early as possible before anything has a chance to access them
     TPPKeychainManager.validateKeychain()
     TPPMigrationManager.migrate()
-
+    
     audiobookLifecycleManager = AudiobookLifecycleManager()
     audiobookLifecycleManager.didFinishLaunching()
-
+    
     TransifexManager.setup()
-
-    NotificationCenter.default.addObserver(forName: .TPPIsSigningIn, object: nil, queue: nil) { [weak self] notification in
-      self?.signingIn(notification)
-    }
-
+    
+    NotificationCenter.default .addObserver(forName: .TPPIsSigningIn, object: nil, queue: nil, using: signingIn)
+    
     NetworkQueue.shared().addObserverForOfflineQueue()
-
-    // Start reachability monitoring
+    
+    // New reachability notifications
     Reachability.shared.startMonitoring()
-
-    setupWindow()
-    configureUIAppearance()
+    
+    // TODO: Refactor this to use SceneDelegate instead
+    // If we use SceneDelegate now, the app crashes during TPPRootTabBarController.shared initialization.
+    // There can be other places in code that use TPPAppDelegate.window property.
+    window = UIWindow()
+    window?.tintColor = TPPConfiguration.mainColor()
+    window?.tintAdjustmentMode = .normal
+    window?.makeKeyAndVisible()
+    window?.rootViewController = TPPRootTabBarController.shared()
+    
+    UITabBar.appearance().tintColor = TPPConfiguration.iconColor()
+    UITabBar.appearance().backgroundColor = TPPConfiguration.backgroundColor()
+    UITabBarItem.appearance().setTitleTextAttributes([.font: UIFont.palaceFont(ofSize: 12)], for: .normal)
+    
+    UINavigationBar.appearance().tintColor = TPPConfiguration.iconColor()
+    UINavigationBar.appearance().standardAppearance = TPPConfiguration.defaultAppearance()
+    UINavigationBar.appearance().compactAppearance = TPPConfiguration.defaultAppearance()
+    UINavigationBar.appearance().scrollEdgeAppearance = TPPConfiguration.defaultAppearance()
+    if #available(iOS 15.0, *) {
+      UINavigationBar.appearance().compactScrollEdgeAppearance = TPPConfiguration.defaultAppearance()
+    }
 
     TPPErrorLogger.logNewAppLaunch()
-
-    // Initialize book registry lazily
-    DispatchQueue.global().async {
-      _ = TPPBookRegistry.shared
-    }
-
+    
+    // Initialize book registry
+    _ = TPPBookRegistry.shared
+    
+    // Push Notificatoins
     NotificationService.shared.setupPushNotifications()
-
-    // Register for background tasks
-    registerBackgroundTasks()
   }
-
-  // Background tasks registration
-  private func registerBackgroundTasks() {
-    BGTaskScheduler.shared.register(forTaskWithIdentifier: "org.thepalaceproject.palace.refresh", using: nil) { task in
-      self.handleAppRefresh(task: task as! BGAppRefreshTask)
-    }
-  }
-
-  private func handleAppRefresh(task: BGAppRefreshTask) {
-    scheduleAppRefresh()
-
+  
+  // TODO: This method is deprecated, we should migrate to BGAppRefreshTask in the BackgroundTasks framework instead
+  func application(_ application: UIApplication, performFetchWithCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
     let startDate = Date()
-
-    TPPBookRegistry.shared.sync { errorDocument, newBooks in
-      if errorDocument != nil {
-        Log.log("[Background Refresh] Failed. Error Document Present. Elapsed Time: \(-startDate.timeIntervalSinceNow)")
-        task.setTaskCompleted(success: false)
-      } else if newBooks {
-        Log.log("[Background Refresh] New books available. Elapsed Time: \(-startDate.timeIntervalSinceNow)")
-        task.setTaskCompleted(success: true)
-      } else {
-        Log.log("[Background Refresh] No new books fetched. Elapsed Time: \(-startDate.timeIntervalSinceNow)")
-        task.setTaskCompleted(success: true)
+    if TPPUserNotifications.backgroundFetchIsNeeded() {
+      Log.log(String(format: "%@: %@", #function, "[Background Fetch] Starting book registry sync. ElapsedTime=\(-startDate.timeIntervalSinceNow)"))
+      TPPBookRegistry.shared.sync { errorDocument, newBooks in
+        var result: String
+        if errorDocument != nil {
+          result = "error document"
+          completionHandler(.failed)
+        } else if newBooks {
+          result = "new ready books available"
+          completionHandler(.newData)
+        } else {
+          result = "no ready books fetched"
+          completionHandler(.noData)
+        }
+        Log.log(String(format: "%@: %@", #function, "[Background Fetch] Completed with \(result). ElapsedTime=\(-startDate.timeIntervalSinceNow)"))
       }
-    }
-
-    task.expirationHandler = {
-      Log.log("[Background Refresh] Task expired. Elapsed Time: \(-startDate.timeIntervalSinceNow)")
-      task.setTaskCompleted(success: false)
+    } else {
+      completionHandler(.noData)
     }
   }
-
-  private func scheduleAppRefresh() {
-    let request = BGAppRefreshTaskRequest(identifier: "org.thepalaceproject.palace.refresh")
-    request.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60) // 15 minutes
-
-    do {
-      try BGTaskScheduler.shared.submit(request)
-    } catch {
-      Log.error(error.localizedDescription, "Failed to submit BGAppRefreshTask: \(error.localizedDescription)")
-    }
-  }
-
+  
   func application(_ application: UIApplication, continue userActivity: NSUserActivity, restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void) -> Bool {
-    if let url = userActivity.webpageURL {
-      return DynamicLinks.dynamicLinks().handleUniversalLink(url) { [weak self] dynamicLink, error in
-        if let error = error {
-          Log.error(error.localizedDescription, "Dynamic Link error")
-          return
-        }
-        if let dynamicLink = dynamicLink, DLNavigator.shared.isValidLink(dynamicLink) {
-          DLNavigator.shared.navigate(to: dynamicLink)
-        }
+    if let url = userActivity.webpageURL, DynamicLinks.dynamicLinks().handleUniversalLink(url, completion: { dynamicLink, error in
+      if let error {
+        // Cannot parse the link
+        return
       }
-    }
-
-    if userActivity.activityType == NSUserActivityTypeBrowsingWeb &&
+      if let dynamicLink, DLNavigator.shared.isValidLink(dynamicLink) {
+        DLNavigator.shared.navigate(to: dynamicLink)
+      }
+    }) {
+      // handleUniversalLink returns true if it receives a link,
+      // dynamicLink is processed in the completion handler
+    } else if userActivity.activityType == NSUserActivityTypeBrowsingWeb &&
         userActivity.webpageURL?.host == TPPSettings.shared.universalLinksURL.host {
       NotificationCenter.default.post(name: .TPPAppDelegateDidReceiveCleverRedirectURL, object: userActivity.webpageURL)
       return true
     }
     return false
   }
-
-  func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
+  
+  func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey : Any] = [:]) -> Bool {
     if let dynamicLink = DynamicLinks.dynamicLinks().dynamicLink(fromCustomSchemeURL: url) {
       if DLNavigator.shared.isValidLink(dynamicLink) {
         DLNavigator.shared.navigate(to: dynamicLink)
-        return true
       }
+      return true
     }
     return false
   }
-
+  
   func applicationDidBecomeActive(_ application: UIApplication) {
     TPPErrorLogger.setUserID(TPPUserAccount.sharedAccount().barcode)
   }
-
+  
   func applicationWillTerminate(_ application: UIApplication) {
-    audiobookLifecycleManager.willTerminate()
+    self.audiobookLifecycleManager.willTerminate()
     postListeningLocationIfAvailable()
-
     NotificationCenter.default.removeObserver(self)
-    Reachability.shared.stopMonitoring()
   }
-
+  
   private func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String, completionHandler: @escaping () -> Void) {
-    audiobookLifecycleManager.handleEventsForBackgroundURLSession(for: identifier, completionHandler: completionHandler)
+    self.audiobookLifecycleManager.handleEventsForBackgroundURLSession(for: identifier, completionHandler: completionHandler)
   }
-
+  
   private func postListeningLocationIfAvailable() {
     if let latestAudiobookLocation {
       TPPAnnotations.postListeningPosition(forBook: latestAudiobookLocation.book, selectorValue: latestAudiobookLocation.location)
@@ -156,30 +146,8 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
   func signingIn(_ notification: Notification) {
     if let boolValue = notification.object as? Bool {
-      isSigningIn = boolValue
+      self.isSigningIn = boolValue
     }
   }
-
-  private func setupWindow() {
-    window = UIWindow()
-    window?.tintColor = TPPConfiguration.mainColor()
-    window?.tintAdjustmentMode = .normal
-    window?.makeKeyAndVisible()
-    window?.rootViewController = TPPRootTabBarController.shared()
-  }
-
-  private func configureUIAppearance() {
-    UITabBar.appearance().tintColor = TPPConfiguration.iconColor()
-    UITabBar.appearance().backgroundColor = TPPConfiguration.backgroundColor()
-    UITabBarItem.appearance().setTitleTextAttributes([.font: UIFont.palaceFont(ofSize: 12)], for: .normal)
-
-    UINavigationBar.appearance().tintColor = TPPConfiguration.iconColor()
-
-    if let defaultAppearance = TPPConfiguration.defaultAppearance() {
-      UINavigationBar.appearance().standardAppearance = defaultAppearance
-      UINavigationBar.appearance().compactAppearance = defaultAppearance
-      UINavigationBar.appearance().scrollEdgeAppearance = defaultAppearance
-      UINavigationBar.appearance().compactScrollEdgeAppearance = defaultAppearance
-    }
-  }
+  
 }

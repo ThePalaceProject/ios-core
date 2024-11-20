@@ -674,10 +674,6 @@ static NSString *DetailHTMLTemplate = nil;
   [self.detailViewDelegate didSelectCancelDownloadFailedForBookDetailView:self];
 }
 
-- (void)didCloseDetailView {
-  [self closeButtonPressed];
-}
-
 #pragma mark TPPBookSampleDelegate
 
 NSString *PlaySampleNotification = @"ToggleSampleNotification";

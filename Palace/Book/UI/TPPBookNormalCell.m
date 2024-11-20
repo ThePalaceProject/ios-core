@@ -1,3 +1,4 @@
+@import PureLayout;
 #import "TPPAttributedString.h"
 
 #import "TPPConfiguration.h"
