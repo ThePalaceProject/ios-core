@@ -81,7 +81,6 @@ final class ReaderModule: ReaderModuleAPI {
       return
     }
 
-    // TODO: SIMPLY-2656 remove implicit dependency (TPPUserAccount.shared)
     let drmDeviceID = TPPUserAccount.sharedAccount().deviceID
     progressSynchronizer.sync(for: publication,
                               book: book,
@@ -113,7 +112,6 @@ final class ReaderModule: ReaderModuleAPI {
         )
 
         DispatchQueue.main.async {
-        // Ensure all UI updates are performed on the main thread
           let backItem = UIBarButtonItem()
           backItem.title = Strings.Generic.back
           readerVC.navigationItem.backBarButtonItem = backItem
