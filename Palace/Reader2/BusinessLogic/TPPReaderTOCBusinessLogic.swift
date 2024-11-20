@@ -21,7 +21,16 @@ class TPPReaderTOCBusinessLogic {
   init(r2Publication: Publication, currentLocation: Locator?) {
     self.publication = r2Publication
     self.currentLocation = currentLocation
-    self.tocElements = flatten(publication.tableOfContents)
+
+    Task {
+      let tocResult = await publication.tableOfContents()
+      switch tocResult {
+      case .success(let toc):
+        self.tocElements = flatten(toc)
+      case .failure:
+        return
+      }
+    }
   }
 
   private func flatten(_ links: [Link], level: Int = 0) -> [(level: Int, link: Link)] {

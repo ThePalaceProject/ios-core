@@ -85,9 +85,9 @@ class TPPReaderBookmarksBusinessLogic: NSObject {
   ///
   /// - Returns: A newly created bookmark object, unless the input location
   /// lacked progress information.
-  func addBookmark(_ bookmarkLoc: TPPBookmarkR3Location) -> TPPReadiumBookmark? {
+  func addBookmark(_ bookmarkLoc: TPPBookmarkR3Location) async -> TPPReadiumBookmark? {
     guard let bookmark =
-            bookmarksFactory.make(
+            await bookmarksFactory.make(
               fromR3Location: bookmarkLoc,
               usingBookRegistry: bookRegistry,
               for: self.book,

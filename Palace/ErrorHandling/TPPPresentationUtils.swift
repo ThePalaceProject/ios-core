@@ -12,7 +12,7 @@ class TPPPresentationUtils: NSObject {
   /// This function does not assume anything regarding the current view
   /// controller. In particular, it does _not_ assume that it is the
   /// `NYPLRootTabBarController::shared` instance.
-  /// 
+  ///
   /// If the input and topmost view controllers are both
   /// UINavigationControllers, this method bails presentation if they
   /// both contain a first view controller of the same type.
@@ -23,15 +23,23 @@ class TPPPresentationUtils: NSObject {
   ///   - completion: Completion handler to be called when the presentation ends.
   @objc class func safelyPresent(_ vc: UIViewController,
                                  animated: Bool = true,
-                                 completion: (()->Void)? = nil) {
-
+                                 completion: (() -> Void)? = nil) {
+    // Ensure this block is always executed on the main thread
+    if !Thread.isMainThread {
+      DispatchQueue.main.async {
+        safelyPresent(vc, animated: animated, completion: completion)
+      }
+      return
+    }
+    
     let delegate = UIApplication.shared.delegate
     guard var base = delegate?.window??.rootViewController else {
       TPPErrorLogger.logError(withCode: .missingExpectedObject,
-                               summary: "Unable to find rootViewController",
-                               metadata: [
-                                "DelegateIsNil" : (delegate == nil),
-                                "WindowIsNil": (delegate?.window == nil)])
+                              summary: "Unable to find rootViewController",
+                              metadata: [
+                                "DelegateIsNil": (delegate == nil),
+                                "WindowIsNil": (delegate?.window == nil)
+                              ])
       return
     }
     
@@ -41,18 +49,18 @@ class TPPPresentationUtils: NSObject {
       }
       base = topBase
     }
-
+    
     if let baseNavController = base as? UINavigationController,
-      let inputNavController = vc as? UINavigationController,
-      baseNavController.viewControllers.count == inputNavController.viewControllers.count,
-      let baseVC = baseNavController.viewControllers.first,
-      let inputVC = inputNavController.viewControllers.first {
-
+       let inputNavController = vc as? UINavigationController,
+       baseNavController.viewControllers.count == inputNavController.viewControllers.count,
+       let baseVC = baseNavController.viewControllers.first,
+       let inputVC = inputNavController.viewControllers.first {
+      
       if type(of: baseVC) == type(of: inputVC) {
         return
       }
     }
-
-    base.present(vc, animated:animated, completion:completion)
+    
+    base.present(vc, animated: animated, completion: completion)
   }
 }
