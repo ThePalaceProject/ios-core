@@ -6,8 +6,6 @@
 //  Copyright (c) 2015 NYPL Labs. All rights reserved.
 //
 
-@import PureLayout;
-
 #import "TPPBookButtonsView.h"
 #import "TPPConfiguration.h"
 #import "TPPRootTabBarController.h"
@@ -466,6 +464,8 @@
 - (void)didSelectRead
 {
   self.activityIndicator.center = self.readButton.center;
+  [self.downloadingDelegate didCloseDetailView];
+
   [self updateProcessingState:YES];
   [self.delegate didSelectReadForBook:self.book completion:^{
     [self updateProcessingState:NO];
