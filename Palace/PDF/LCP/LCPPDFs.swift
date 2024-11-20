@@ -242,33 +242,27 @@ import ZIPFoundation
 
 private extension Publication {
   func getResource(at path: String) -> Resource? {
-    // Try to find the resource by its exact path
     if let link = findLink(at: path) {
       return get(link)
     }
 
-    // If the resource isn't found, try adding a leading slash
     let leadingSlashPath = "/" + path
     if let link = findLink(at: leadingSlashPath) {
       return get(link)
     }
 
-    // If still not found, return a failure resource
     return FailureResource(error: .access(.fileSystem(.fileNotFound(nil))))
   }
 
   private func findLink(at path: String) -> ReadiumShared.Link? {
-    // First, try to find the link in the readingOrder
     if let link = readingOrder.first(where: { $0.href == path }) {
       return link
     }
 
-    // If not found in readingOrder, look in the resources
     if let link = resources.first(where: { $0.href == path }) {
       return link
     }
 
-    // If no link is found, return nil
     return nil
   }
 }

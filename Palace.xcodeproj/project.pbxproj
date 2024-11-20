@@ -154,8 +154,6 @@
 		21D746E72718A4C000C0E1B4 /* AdobeDRMFetcherError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21D746E62718A4C000C0E1B4 /* AdobeDRMFetcherError.swift */; };
 		21D746E82718A4C000C0E1B4 /* AdobeDRMFetcherError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21D746E62718A4C000C0E1B4 /* AdobeDRMFetcherError.swift */; };
 		21D746F42719AFD600C0E1B4 /* AdobeContentProtectionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21E35FC2268CC8AC00066F9D /* AdobeContentProtectionService.swift */; };
-		21D746FC2719B00E00C0E1B4 /* PublicationOpeningError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21D746FB2719B00E00C0E1B4 /* PublicationOpeningError.swift */; };
-		21D746FD2719B00E00C0E1B4 /* PublicationOpeningError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21D746FB2719B00E00C0E1B4 /* PublicationOpeningError.swift */; };
 		21DCC39C27BE4AF900064B37 /* TPPReaderFont.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21DCC39B27BE4AF900064B37 /* TPPReaderFont.swift */; };
 		21DCC39D27BE4AF900064B37 /* TPPReaderFont.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21DCC39B27BE4AF900064B37 /* TPPReaderFont.swift */; };
 		21DCC3AB27BEC38F00064B37 /* TPPAssociatedColors.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21DCC3AA27BEC38F00064B37 /* TPPAssociatedColors.swift */; };
@@ -598,7 +596,6 @@
 		D570B55F2BA20139003FE991 /* AudiobookTimeTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = E795A7642A74074300314EC8 /* AudiobookTimeTracker.swift */; };
 		D570B5602BA20139003FE991 /* TPPReaderAdvancedSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = E52E3BBB28C0EF410073DC4D /* TPPReaderAdvancedSettings.swift */; };
 		D570B5612BA20139003FE991 /* URL+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7498A7D2A0E4F6A0037DD93 /* URL+Extensions.swift */; };
-		D570B5622BA20139003FE991 /* PublicationOpeningError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21D746FB2719B00E00C0E1B4 /* PublicationOpeningError.swift */; };
 		D570B5632BA20139003FE991 /* MyBooksDownloadCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = E544C4E82A395BE000B2DC9D /* MyBooksDownloadCenter.swift */; };
 		D570B5642BA20139003FE991 /* AdobeDRMContainer.mm in Sources */ = {isa = PBXBuildFile; fileRef = 21F238C12499155E004DC0B1 /* AdobeDRMContainer.mm */; };
 		D570B5652BA20139003FE991 /* TPPOnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21045C572761095B00D2D407 /* TPPOnboardingView.swift */; };
@@ -1683,7 +1680,6 @@
 		21C184DB27B12347008CC4F8 /* UINavigationBar+appearance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UINavigationBar+appearance.swift"; sourceTree = "<group>"; };
 		21C7B87D25AE1DB9000E8BF3 /* LibraryServiceError.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = LibraryServiceError.swift; sourceTree = "<group>"; };
 		21D746E62718A4C000C0E1B4 /* AdobeDRMFetcherError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdobeDRMFetcherError.swift; sourceTree = "<group>"; };
-		21D746FB2719B00E00C0E1B4 /* PublicationOpeningError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublicationOpeningError.swift; sourceTree = "<group>"; };
 		21DCC39B27BE4AF900064B37 /* TPPReaderFont.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPReaderFont.swift; sourceTree = "<group>"; };
 		21DCC3AA27BEC38F00064B37 /* TPPAssociatedColors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAssociatedColors.swift; sourceTree = "<group>"; };
 		21DCC3AD27BEDB5A00064B37 /* TPPReaderAppearance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPReaderAppearance.swift; sourceTree = "<group>"; };
@@ -2666,7 +2662,6 @@
 				73A2299E240F3BEA006B9EAD /* LibraryService.swift */,
 				733DEC8B24108D8D008C74BC /* DRMLibraryService.swift */,
 				21C7B87D25AE1DB9000E8BF3 /* LibraryServiceError.swift */,
-				21D746FB2719B00E00C0E1B4 /* PublicationOpeningError.swift */,
 				21F238B72498F7FB004DC0B1 /* AdobeDRM */,
 				2171AD9F251E37D30003CABA /* LCP */,
 			);
@@ -4435,7 +4430,6 @@
 				73EB0A8425821DF4006BC997 /* TPPReloadView.m in Sources */,
 				E5FFB96528AED4990042907F /* ImageProvider.swift in Sources */,
 				E523A458299FD81D00EF833B /* DownloadingBookCell.swift in Sources */,
-				21D746FD2719B00E00C0E1B4 /* PublicationOpeningError.swift in Sources */,
 				21E41781292810EE00A78606 /* Binding+onChange.swift in Sources */,
 				2126FE6625C089110095C45C /* ReaderFormatModule.swift in Sources */,
 				21E41787292810EE00A78606 /* CGSize.swift in Sources */,
@@ -4744,7 +4738,6 @@
 				E795A7692A74074300314EC8 /* AudiobookTimeTracker.swift in Sources */,
 				E52E3BBC28C0EF410073DC4D /* TPPReaderAdvancedSettings.swift in Sources */,
 				E7498A7E2A0E4F6A0037DD93 /* URL+Extensions.swift in Sources */,
-				21D746FC2719B00E00C0E1B4 /* PublicationOpeningError.swift in Sources */,
 				E544C4E92A395BE000B2DC9D /* MyBooksDownloadCenter.swift in Sources */,
 				21DDE31F25D2CEAF002CBCE3 /* AdobeDRMContainer.mm in Sources */,
 				21045C582761095B00D2D407 /* TPPOnboardingView.swift in Sources */,
@@ -5093,7 +5086,6 @@
 				D570B55F2BA20139003FE991 /* AudiobookTimeTracker.swift in Sources */,
 				D570B5602BA20139003FE991 /* TPPReaderAdvancedSettings.swift in Sources */,
 				D570B5612BA20139003FE991 /* URL+Extensions.swift in Sources */,
-				D570B5622BA20139003FE991 /* PublicationOpeningError.swift in Sources */,
 				D570B5632BA20139003FE991 /* MyBooksDownloadCenter.swift in Sources */,
 				D570B5642BA20139003FE991 /* AdobeDRMContainer.mm in Sources */,
 				D570B5652BA20139003FE991 /* TPPOnboardingView.swift in Sources */,

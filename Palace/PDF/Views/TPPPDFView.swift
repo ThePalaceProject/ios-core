@@ -31,7 +31,7 @@ struct TPPPDFView: View {
         .edgesIgnoringSafeArea([.all])
 
       VStack {
-        TPPPDFLabel(documentTitle)  // Use the state property for the title
+        TPPPDFLabel(documentTitle)
           .padding(.top)
         Spacer()
         if let pageLabel = document.page(at: metadata.currentPage)?.label, Int(pageLabel) != (metadata.currentPage + 1) {
@@ -70,9 +70,7 @@ struct TPPPDFView: View {
     }
   }
 
-  // Simulate an async fetch, adjust as per your real logic
   private func fetchDocumentTitle() async -> String? {
-    return try? await document.title() ?? metadata.book.title
-
+    try? await document.title() ?? metadata.book.title
   }
 }

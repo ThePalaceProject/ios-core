@@ -4,7 +4,6 @@ import ReadiumShared
 extension TPPBookLocation {
   static let r3Renderer = "readium3"
 
-  // Initialize from Locator
   convenience init?(locator: Locator,
                     type: String,
                     publication: Publication,
@@ -42,7 +41,6 @@ extension TPPBookLocation {
                     publication: Publication? = nil,
                     renderer: String = TPPBookLocation.r3Renderer) {
 
-    // Ensure href is converted to a valid format
     guard let normalizedHref = AnyURL(legacyHREF: href)?.string else {
       Log.warn(#file, "Invalid href format")
       return nil
