@@ -294,19 +294,21 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   }
 
   private func addBookmark(at location: TPPBookmarkR3Location) {
-    guard let bookmark = bookmarksBusinessLogic.addBookmark(location) else {
-      let alert = TPPAlertUtils.alert(title: "Bookmarking Error",
-                                      message: "A bookmark could not be created on the current page.")
-      TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert,
-                                                   viewController: self,
-                                                   animated: true,
-                                                   completion: nil)
-      return
+    Task {
+      guard let bookmark = await bookmarksBusinessLogic.addBookmark(location) else {
+        let alert = TPPAlertUtils.alert(title: "Bookmarking Error",
+                                        message: "A bookmark could not be created on the current page.")
+        TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert,
+                                                     viewController: self,
+                                                     animated: true,
+                                                     completion: nil)
+        return
+      }
+
+      Log.info(#file, "Created bookmark: \(bookmark)")
+
+      updateBookmarkButton(withState: true)
     }
-
-    Log.info(#file, "Created bookmark: \(bookmark)")
-
-    updateBookmarkButton(withState: true)
   }
 
   private func deleteBookmark(_ bookmark: TPPReadiumBookmark) {

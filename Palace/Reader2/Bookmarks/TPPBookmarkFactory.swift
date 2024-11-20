@@ -24,7 +24,7 @@ class TPPBookmarkFactory {
   func make(fromR3Location bookmarkLoc: TPPBookmarkR3Location,
             usingBookRegistry bookRegistry: TPPBookRegistryProvider,
             for book: TPPBook,
-            publication: Publication) -> TPPReadiumBookmark? {
+            publication: Publication) async -> TPPReadiumBookmark? {
 
     guard let chapterProgress = bookmarkLoc.locator.locations.progression.map(Float.init),
           let totalProgress = bookmarkLoc.locator.locations.totalProgression.map(Float.init) else {
@@ -35,8 +35,14 @@ class TPPBookmarkFactory {
 
     let href = bookmarkLoc.locator.href.string
 
-    let chapter: String? = bookmarkLoc.locator.title
-    ?? publication.tableOfContents.firstWithHREF(bookmarkLoc.locator.href)?.title
+    var chapter: String? = nil
+    let tocResult = await publication.tableOfContents()
+    switch tocResult {
+    case .success(let toc):
+      chapter = toc.firstWithHREF(bookmarkLoc.locator.href)?.title
+    case .failure:
+      chapter = nil
+    }
 
     let registryLocation = bookRegistry.location(forIdentifier: book.identifier)?.locationString
 
