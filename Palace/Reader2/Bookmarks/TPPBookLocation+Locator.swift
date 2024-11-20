@@ -2,13 +2,13 @@ import Foundation
 import ReadiumShared
 
 extension TPPBookLocation {
-  static let r2Renderer = "readium2"
+  static let r3Renderer = "readium3"
 
   // Initialize from Locator
   convenience init?(locator: Locator,
                     type: String,
                     publication: Publication,
-                    renderer: String = TPPBookLocation.r2Renderer) {
+                    renderer: String = TPPBookLocation.r3Renderer) {
 
     let dict: [String: Any] = [
       TPPBookLocation.hrefKey: locator.href.string,
@@ -40,7 +40,7 @@ extension TPPBookLocation {
                     position: Double? = nil,
                     cssSelector: String? = nil,
                     publication: Publication? = nil,
-                    renderer: String = TPPBookLocation.r2Renderer) {
+                    renderer: String = TPPBookLocation.r3Renderer) {
 
     // Ensure href is converted to a valid format
     guard let normalizedHref = AnyURL(legacyHREF: href)?.string else {
@@ -69,66 +69,38 @@ extension TPPBookLocation {
     self.init(locationString: jsonString, renderer: renderer)
   }
 
-  func convertToLocator() async -> Locator? {
-    guard self.renderer == TPPBookLocation.r2Renderer,
+  func convertToLocator(publication: Publication) async -> Locator? {
+    guard self.renderer == TPPBookLocation.r3Renderer,
           let data = self.locationString.data(using: .utf8),
           let dict = (try? JSONSerialization.jsonObject(with: data, options: [])) as? [String: Any] else {
-      Log.error(#file, "Failed to convert TPPBookLocation to Locator object with location string: \(locationString)")
+      Log.error(#file, "Failed to convert TPPBookLocation to Locator with string: \(locationString)")
       return nil
     }
 
-    // Parse HREF with backward compatibility
-    let hrefString = dict[TPPBookLocation.hrefKey] as? String
-    let normalizedHrefString: String
-    if let hrefString, !hrefString.isEmpty {
-      normalizedHrefString = AnyURL(legacyHREF: hrefString)?.string ?? hrefString.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? hrefString
-    } else {
-      Log.error(#file, "HREF is missing or empty")
-      return nil
-    }
-
-    // Resolve relative path to full file URL
-    var fileURL = URL(fileURLWithPath: normalizedHrefString)
-
-    if normalizedHrefString.hasPrefix("/") {
-      // Assumes absolute path if starting with "/"
-      fileURL = URL(fileURLWithPath: normalizedHrefString)
-    } else {
-      // Assume relative path from the EPUB base directory (e.g., app's Documents directory)
-      let baseDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
-      fileURL = baseDirectory?.appendingPathComponent(normalizedHrefString) ?? URL(fileURLWithPath: normalizedHrefString)
-    }
-
-    // Determine media type based on file extension
-    let mediaType: MediaType
-    switch fileURL.pathExtension.lowercased() {
-    case "epub":
-      mediaType = MediaType.epub
-    case "xhtml", "html":
-      mediaType = MediaType.xhtml
-    default:
-      Log.error(#file, "Unsupported file extension: \(fileURL.pathExtension)")
+    let hrefString = dict[TPPBookLocation.hrefKey] as? String ?? ""
+    guard
+      let url = AnyURL(string: hrefString),
+      let publicationLink = publication.linkWithHREF(url),
+      let mediaType = publicationLink.mediaType,
+      let publicationHref = AnyURL(string: publicationLink.href)
+    else {
+      Log.error(#file, "Failed to resolve HREF in publication: \(hrefString)")
       return nil
     }
 
     let title = dict[TPPBookLocation.titleKey] as? String ?? ""
-    let position = dict[TPPBookLocation.positionKey] as? Int
-
-    var otherLocations = [String: Any]()
-    if let cssSelector = dict[TPPBookLocation.cssSelector] as? String, !cssSelector.isEmpty {
-      otherLocations[TPPBookLocation.cssSelector] = cssSelector
-    }
+    let position = dict[TPPBookLocation.positionKey] as? Int ?? 1
 
     let locations = Locator.Locations(
       fragments: [],
-      progression: dict[TPPBookLocation.chapterProgressKey] as? Double ?? 0.0,
-      totalProgression: dict[TPPBookLocation.bookProgressKey] as? Double ?? 0.0,
+      progression: dict[TPPBookLocation.chapterProgressKey] as? Double,
+      totalProgression: dict[TPPBookLocation.bookProgressKey] as? Double,
       position: position,
-      otherLocations: otherLocations
+      otherLocations: dict[TPPBookLocation.cssSelector] != nil ? [TPPBookLocation.cssSelector: dict[TPPBookLocation.cssSelector]!] : [:]
     )
 
     return Locator(
-      href: fileURL,
+      href: publicationHref,
       mediaType: mediaType,
       title: title,
       locations: locations

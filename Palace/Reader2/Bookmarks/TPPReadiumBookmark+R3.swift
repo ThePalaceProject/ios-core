@@ -28,14 +28,12 @@ extension TPPReadiumBookmark {
 
     let mediaType = link.mediaType ?? MediaType.xhtml
 
-    // Create locations based on bookmark properties.
     let locations = Locator.Locations(
       progression: Double(progressWithinChapter),
       totalProgression: Double(progressWithinBook),
-      position: Int(page ?? "0") // Position might be from page info
+      position: Int(page ?? "0")
     )
 
-    // Generate a Readium 3 locator.
     let locator = Locator(
       href: href,
       mediaType: mediaType,
@@ -44,7 +42,6 @@ extension TPPReadiumBookmark {
       text: Locator.Text(highlight: nil)
     )
 
-    // Determine the resource index from the publication's reading order.
     guard let resourceIndex = publication.readingOrder.firstIndex(where: { $0.href == link.href }) else {
       return nil
     }
@@ -52,5 +49,23 @@ extension TPPReadiumBookmark {
     let creationDate = NSDate(rfc3339String: self.time) as Date? ?? Date()
 
     return TPPBookmarkR3Location(resourceIndex: resourceIndex, locator: locator, creationDate: creationDate)
+  }
+
+  func locationMatches(_ locator: Locator) -> Bool {
+    let locatorTotalProgress: Float?
+    if let totalProgress = locator.locations.totalProgression {
+      locatorTotalProgress = Float(totalProgress)
+    } else {
+      locatorTotalProgress = nil
+    }
+
+    let locatorChapterProgress: Float?
+    if let chapterProgress = locator.locations.progression {
+      locatorChapterProgress = Float(chapterProgress)
+    } else {
+      locatorChapterProgress = nil
+    }
+
+    return self.progressWithinChapter =~= locatorChapterProgress && self.progressWithinBook =~= locatorTotalProgress
   }
 }

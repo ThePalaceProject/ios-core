@@ -103,17 +103,12 @@ final class ReaderModule: ReaderModuleAPI {
     Task {
       do {
         let lastSavedLocation = bookRegistry.location(forIdentifier: book.identifier)
-        let initialLocator = await lastSavedLocation?.convertToLocator()
-        var normalizedLocator: Locator?
-        if let jsonString = initialLocator?.jsonString {
-          normalizedLocator = try Locator(legacyJSONString: jsonString)
-        }
-
-
+        let initialLocator = await lastSavedLocation?.convertToLocator(publication: publication)
+        
         let readerVC = try await formatModule.makeReaderViewController(
           for: publication,
           book: book,
-          initialLocation: normalizedLocator,
+          initialLocation: initialLocator,
           forSample: forSample
         )
 
