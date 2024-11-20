@@ -9,29 +9,28 @@
 import Foundation
 import ReadiumShared
 
-/// A front-end to the Annotations api to post a new reading progress for
-/// a given book.
+/// A front-end to the Annotations API to post a new reading progress for a given book.
 class TPPLastReadPositionPoster {
   /// Interval used to throttle request submission.
-  static let throttlingInterval = 15.0
+  static let throttlingInterval: TimeInterval = 15.0
 
-  // models
+  // Models
   private let publication: Publication
   private let book: TPPBook
 
-  // external dependencies
+  // External dependencies
   private let bookRegistryProvider: TPPBookRegistryProvider
 
-  // internal state management
+  // Internal state management
   private var lastReadPositionUploadDate: Date
-  private var queuedReadPosition: String = ""
-  private let serialQueue = DispatchQueue(label: "\(Bundle.main.bundleIdentifier!).lastReadPositionPoster", target: .global(qos: .utility))
+  private var queuedReadPosition: Locator?
+  private let serialQueue = DispatchQueue(label: "\(Bundle.main.bundleIdentifier!).lastReadPositionPoster", qos: .utility)
 
   init(book: TPPBook,
-       r2Publication: Publication,
+       publication: Publication,
        bookRegistryProvider: TPPBookRegistryProvider) {
     self.book = book
-    self.publication = r2Publication
+    self.publication = publication
     self.bookRegistryProvider = bookRegistryProvider
     self.lastReadPositionUploadDate = Date()
       .addingTimeInterval(-TPPLastReadPositionPoster.throttlingInterval)
@@ -42,41 +41,35 @@ class TPPLastReadPositionPoster {
                                            object: nil)
   }
 
-  // MARK:- Storing
+  // MARK: - Storing
 
   /// Stores a new reading progress location on the server.
   /// - Parameter locator: The new local progress to be stored.
   func storeReadPosition(locator: Locator) {
-    // Avoid overwriting location when reader first open
-    guard (locator.locations.totalProgression ?? 0) != 0 || locator.locations.otherLocations["cssSelector"] != nil else {
-      return
-    }
+    guard shouldStore(locator: locator) else { return }
 
-    guard let location = TPPBookLocation(locator: locator, type: "LocatorHrefProgression", publication: publication) else {
-      return
-    }
-
+    // Save location locally
+    let location = TPPBookLocation(locator: locator, type: "LocatorHrefProgression", publication: publication)
     bookRegistryProvider.setLocation(location, forIdentifier: book.identifier)
-    postReadPosition(selectorValue: location.locationString)
+
+    // Queue posting of this position
+    postReadPosition(locator: locator)
   }
 
-  /// Deprecated
+  /// Determines if a locator should be stored and posted.
+  private func shouldStore(locator: Locator) -> Bool {
+    let progression = locator.locations.totalProgression ?? 0
+    return progression > 0 || locator.locations.otherLocations["cssSelector"] != nil
+  }
+
+  /// Queues the read position for posting.
   ///
-  /// Post the read position to server.
-  ///
-  /// Requests are throttled by a `throttlingInterval` to avoid an unreasonably
-  /// high frequency of updates.
-  ///
-  /// - Parameter selectorValue: A JSON string that includes a serialized
-  /// [locator](https://git.io/JYTyx) that uniquely identifies a position
-  /// within the book.
-  private func postReadPosition(selectorValue: String) {
+  /// Requests are throttled to avoid excessive updates.
+  private func postReadPosition(locator: Locator) {
     serialQueue.async { [weak self] in
       guard let self = self else { return }
 
-      // save location string anyway so that if the app becomes inactive
-      // we still have a chance to post it.
-      self.queuedReadPosition = selectorValue
+      self.queuedReadPosition = locator
 
       if Date() > self.lastReadPositionUploadDate.addingTimeInterval(TPPLastReadPositionPoster.throttlingInterval) {
         self.postQueuedReadPosition()
@@ -85,13 +78,14 @@ class TPPLastReadPositionPoster {
   }
 
   private func postQueuedReadPosition() {
-    if self.queuedReadPosition != "" {
-      TPPAnnotations.postReadingPosition(forBook: book.identifier,
-                                          selectorValue: self.queuedReadPosition,
-                                          motivation: .readingProgress)
-      self.queuedReadPosition = ""
-      self.lastReadPositionUploadDate = Date()
-    }
+    guard let locator = self.queuedReadPosition, let selectorValue = locator.jsonString else { return }
+
+    TPPAnnotations.postReadingPosition(forBook: book.identifier,
+                                       selectorValue: selectorValue,
+                                       motivation: .readingProgress)
+
+    self.queuedReadPosition = nil
+    self.lastReadPositionUploadDate = Date()
   }
 
   @objc private func postQueuedReadPositionInSerialQueue() {

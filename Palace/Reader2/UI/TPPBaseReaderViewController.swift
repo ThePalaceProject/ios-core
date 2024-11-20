@@ -67,7 +67,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
 
     lastReadPositionPoster = TPPLastReadPositionPoster(
       book: book,
-      r2Publication: publication,
+      publication: publication,
       bookRegistryProvider: TPPBookRegistry.shared)
 
     bookmarksBusinessLogic = TPPReaderBookmarksBusinessLogic(
@@ -143,6 +143,12 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
 
     // Accessibility
     updateViewsForVoiceOver(isRunning: UIAccessibility.isVoiceOverRunning)
+
+    if let initialLocation = initialLocation {
+      Task {
+        await navigator.go(to: initialLocation)
+      }
+    }
   }
 
   private func setupStackView() {
@@ -287,7 +293,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     }
   }
 
-  private func addBookmark(at location: TPPBookmarkR2Location) {
+  private func addBookmark(at location: TPPBookmarkR3Location) {
     guard let bookmark = bookmarksBusinessLogic.addBookmark(location) else {
       let alert = TPPAlertUtils.alert(title: "Bookmarking Error",
                                       message: "A bookmark could not be created on the current page.")
@@ -404,7 +410,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
 extension TPPBaseReaderViewController: NavigatorDelegate {
   func navigator(_ navigator: Navigator, locationDidChange locator: Locator) {
     Task {
-      Log.info(#function, "R2 locator changed to: \(locator)")
+      Log.info(#function, "R3 locator changed to: \(locator)")
 
       // Save location here only if VoiceOver is not running; it doesn't save exact location on page
       if !isVoiceOverRunning {
@@ -439,7 +445,7 @@ extension TPPBaseReaderViewController: NavigatorDelegate {
       bookTitleLabel.text = publication.metadata.title
 
       if let resourceIndex = publication.resourceIndex(forLocator: locator),
-         let _ = bookmarksBusinessLogic.isBookmarkExisting(at: TPPBookmarkR2Location(resourceIndex: resourceIndex, locator: locator)) {
+         let _ = bookmarksBusinessLogic.isBookmarkExisting(at: TPPBookmarkR3Location(resourceIndex: resourceIndex, locator: locator)) {
         updateBookmarkButton(withState: true)
       } else {
         updateBookmarkButton(withState: false)
