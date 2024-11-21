@@ -1135,8 +1135,6 @@
 		E5E9B0002CC035AC00366A2E /* ReadiumStreamer in Frameworks */ = {isa = PBXBuildFile; productRef = E5E9AFFF2CC035AC00366A2E /* ReadiumStreamer */; };
 		E5E9B2142CC1A5AE00366A2E /* ReadiumAdapterLCPSQLite in Frameworks */ = {isa = PBXBuildFile; productRef = E5E9B2132CC1A5AE00366A2E /* ReadiumAdapterLCPSQLite */; };
 		E5E9B2162CC1A5B600366A2E /* ReadiumAdapterLCPSQLite in Frameworks */ = {isa = PBXBuildFile; productRef = E5E9B2152CC1A5B600366A2E /* ReadiumAdapterLCPSQLite */; };
-		E5E9B2182CC1A5C100366A2E /* ReadiumAdapterLCPSQLite in Frameworks */ = {isa = PBXBuildFile; productRef = E5E9B2172CC1A5C100366A2E /* ReadiumAdapterLCPSQLite */; };
-		E5E9B21A2CC1A7AC00366A2E /* ReadiumAdapterGCDWebServer in Frameworks */ = {isa = PBXBuildFile; productRef = E5E9B2192CC1A7AC00366A2E /* ReadiumAdapterGCDWebServer */; };
 		E5E9B21C2CC1A7B400366A2E /* ReadiumAdapterGCDWebServer in Frameworks */ = {isa = PBXBuildFile; productRef = E5E9B21B2CC1A7B400366A2E /* ReadiumAdapterGCDWebServer */; };
 		E5E9B21E2CC1A7BB00366A2E /* ReadiumAdapterGCDWebServer in Frameworks */ = {isa = PBXBuildFile; productRef = E5E9B21D2CC1A7BB00366A2E /* ReadiumAdapterGCDWebServer */; };
 		E5EFDE78298C43D300258CA3 /* BookButtonState.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5EFDE77298C43D300258CA3 /* BookButtonState.swift */; };
@@ -2147,7 +2145,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				E5F2E9B72CEE8550007EA6C9 /* PureLayout in Frameworks */,
-				E5E9B2182CC1A5C100366A2E /* ReadiumAdapterLCPSQLite in Frameworks */,
 				E7FFEAA62A745F600006030A /* ULID in Frameworks */,
 				73EB0B2E25821DF4006BC997 /* MediaPlayer.framework in Frameworks */,
 				E7498A902A0E7F840037DD93 /* FirebaseCrashlytics in Frameworks */,
@@ -2157,7 +2154,6 @@
 				73EB0B3225821DF4006BC997 /* AudioToolbox.framework in Frameworks */,
 				73EB0B3325821DF4006BC997 /* libiconv.tbd in Frameworks */,
 				73EB0B3425821DF4006BC997 /* CoreGraphics.framework in Frameworks */,
-				E5E9B21A2CC1A7AC00366A2E /* ReadiumAdapterGCDWebServer in Frameworks */,
 				73EB0B3525821DF4006BC997 /* QuartzCore.framework in Frameworks */,
 				73EB0B3825821DF4006BC997 /* libRDServices.a in Frameworks */,
 				E5E9AFFE2CC035AC00366A2E /* ReadiumShared in Frameworks */,
