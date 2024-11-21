@@ -235,9 +235,7 @@ class TPPReaderBookmarksBusinessLogic: NSObject {
 
     for serverBookmark in serverBookmarks {
       if let localBookmark = localBookmarks.first(where: { $0.annotationId == serverBookmark.annotationId }) {
-        serverBookmarksToAdd.append(serverBookmark)
-        self.bookRegistry.delete(localBookmark, forIdentifier: self.book.identifier)
-//        localBookmarksToKeep.append(localBookmark)
+        localBookmarksToKeep.append(localBookmark)
       } else {
           serverBookmarksToAdd.append(serverBookmark)
       }
