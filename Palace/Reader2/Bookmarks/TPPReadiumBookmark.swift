@@ -180,15 +180,14 @@ extension TPPReadiumBookmark {
     dict["time"] = self.time
     dict["readingOrderItemOffsetMilliseconds"] = self.readingOrderItemOffsetMilliseconds
     dict["readingOrderItem"] = self.readingOrderItem
-    
+
     if let locationData = self.location.data(using: .utf8),
-       let locationDict = try? JSONSerialization.jsonObject(with: locationData, options: []) as? [String: Any],
-       let locationDict {
+       let locationDict = try? JSONSerialization.jsonObject(with: locationData, options: []) as? [String: Any] {
       for (key, value) in locationDict {
         dict[key] = value
       }
     }
-    
+
     return dict
   }
 }

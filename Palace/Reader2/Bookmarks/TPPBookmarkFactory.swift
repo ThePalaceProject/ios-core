@@ -117,7 +117,6 @@ class TPPBookmarkFactory {
     }
     
     if book.isAudiobook,
-       let selectorValueDict,
        let audioBookmark = AudioBookmark.create(
         locatorData: selectorValueDict,
         timeStamp: time,
