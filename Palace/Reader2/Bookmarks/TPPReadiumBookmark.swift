@@ -151,13 +151,14 @@ protocol Bookmark: NSObject {}
       return false
     }
 
+    if let id = annotationId, let otherId = other.annotationId, id == otherId { return true }
+
     return self.href == other.href
       && self.progressWithinBook =~= other.progressWithinBook
       && self.progressWithinChapter =~= other.progressWithinChapter
       && self.chapter == other.chapter
       && self.readingOrderItem == other.readingOrderItem
       && self.readingOrderItemOffsetMilliseconds =~= other.readingOrderItemOffsetMilliseconds
-
   }
 }
 
