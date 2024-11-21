@@ -1083,8 +1083,6 @@
 		E58565CF269774C400A5FBD5 /* AudioEngine.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E58565CE269774C400A5FBD5 /* AudioEngine.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		E58C330A2AD98F61005C44A2 /* EPUBSearchViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E57345502AD6EB600021D768 /* EPUBSearchViewModel.swift */; };
 		E59526EB28D24FC000C179DA /* AudiobookSample.swift in Sources */ = {isa = PBXBuildFile; fileRef = E59526EA28D24FC000C179DA /* AudiobookSample.swift */; };
-		E596B6242CEFDE1E005C9069 /* ReadiumAdapterLCPSQLite in Frameworks */ = {isa = PBXBuildFile; productRef = E5E9B2172CC1A5C100366A2E /* ReadiumAdapterLCPSQLite */; };
-		E596B6252CEFDE1E005C9069 /* ReadiumAdapterGCDWebServer in Frameworks */ = {isa = PBXBuildFile; productRef = E5E9B2192CC1A7AC00366A2E /* ReadiumAdapterGCDWebServer */; };
 		E59892E128A9AC2600C44A85 /* Sample.swift in Sources */ = {isa = PBXBuildFile; fileRef = E59892E028A9AC2600C44A85 /* Sample.swift */; };
 		E59892ED28AC909000C44A85 /* AudiobookSampleToolbar.swift in Sources */ = {isa = PBXBuildFile; fileRef = E59892EC28AC909000C44A85 /* AudiobookSampleToolbar.swift */; };
 		E59A998A2BFC4D3700BE3BF4 /* TrackPosition+Annotations.swift in Sources */ = {isa = PBXBuildFile; fileRef = E59A99892BFC4D3700BE3BF4 /* TrackPosition+Annotations.swift */; };
@@ -2146,8 +2144,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				E596B6252CEFDE1E005C9069 /* ReadiumAdapterGCDWebServer in Frameworks */,
-				E596B6242CEFDE1E005C9069 /* ReadiumAdapterLCPSQLite in Frameworks */,
 				E5F2E9B72CEE8550007EA6C9 /* PureLayout in Frameworks */,
 				E7FFEAA62A745F600006030A /* ULID in Frameworks */,
 				73EB0B2E25821DF4006BC997 /* MediaPlayer.framework in Frameworks */,
