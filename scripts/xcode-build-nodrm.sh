@@ -11,6 +11,9 @@
 #
 #     ./scripts/xcode-build-nodrm.sh
 
+echo "Clearing Derived Data..."
+rm -rf ~/Library/Developer/Xcode/DerivedData/*
+
 echo "Building Palace without DRM support..."
 
 fastlane ios nodrm
