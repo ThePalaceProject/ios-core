@@ -4,8 +4,13 @@ jobs:
   build-and-test:
     runs-on: macOS-latest
     steps:
-      - name: Use the latest Xcode
+      - name: List Xcode Versions
+        run: ls /Applications | grep Xcode
+      
+      # Step 2: Use Xcode 16.1
+      - name: Use Xcode 16.1
         run: sudo xcode-select -switch /Applications/Xcode_16.1.app
+
       - name: Checkout main repo and submodules
         uses: actions/checkout@v3
         with:
