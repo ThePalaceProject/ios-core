@@ -60,6 +60,7 @@ typedef NS_ENUM(NSInteger, CellKind) {
 @property (nonatomic) UIView *accountInfoFooterView;
 @property (nonatomic) UIView *syncFooterView;
 @property (nonatomic) UIActivityIndicatorView *juvenileActivityView;
+@property (nonatomic) TPPSamlIDPCell *idpCell;
 
 // account state
 @property TPPUserAccountFrontEndValidation *frontEndValidator;
@@ -543,13 +544,20 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
     self.businessLogic.selectedIDP = nil;
     self.businessLogic.selectedAuthentication = methodCell.authenticationMethod;
     [self setupTableData];
+    [self setupTableData];
     return;
   } else if ([sectionArray[indexPath.row] isKindOfClass:[TPPSamlIdpCellType class]]) {
-    TPPSamlIdpCellType *idpCell = sectionArray[indexPath.row];
+
+    TPPSamlIdpCellType *cellType = sectionArray[indexPath.row];
     [self.tableView deselectRowAtIndexPath:indexPath animated:YES];
 
-    self.businessLogic.selectedIDP = idpCell.idp;
+    self.idpCell = [self.tableView cellForRowAtIndexPath:indexPath];
+
+    [self showSAMLLoginActivityView];
+
+    self.businessLogic.selectedIDP = cellType.idp;
     [self.businessLogic logIn];
+
     return;
   } else if ([sectionArray[indexPath.row] isKindOfClass:[TPPInfoHeaderCellType class]]) {
     [self.tableView deselectRowAtIndexPath:indexPath animated:YES];
@@ -735,6 +743,53 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
     }];
 
   }];
+}
+
+- (void)showSAMLLoginActivityView
+{
+  if (!self.idpCell) {
+    return;
+  }
+
+  UIActivityIndicatorView *activityIndicatorView = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
+  activityIndicatorView.color = [UIColor labelColor];
+  [activityIndicatorView startAnimating];
+
+  UILabel *label = [[UILabel alloc] init];
+  label.text = NSLocalizedString(@"Signing In", nil);
+  label.textColor = [UIColor labelColor];
+  label.font = [UIFont systemFontOfSize:16];
+
+  UIView *linearView = [[UIView alloc] init];
+  linearView.tag = sLinearViewTag;
+
+  [linearView addSubview:activityIndicatorView];
+  [linearView addSubview:label];
+
+  [self.idpCell.contentView addSubview:linearView];
+
+  [self.idpCell.idpName setHidden:YES];
+  [self.idpCell setUserInteractionEnabled:NO];
+
+  [activityIndicatorView autoPinEdgeToSuperviewEdge:ALEdgeLeading withInset:5.0];
+  [activityIndicatorView autoAlignAxisToSuperviewAxis:ALAxisHorizontal];
+
+  [label autoPinEdge:ALEdgeLeading toEdge:ALEdgeTrailing ofView:activityIndicatorView withOffset:8.0];
+  [label autoPinEdgeToSuperviewEdge:ALEdgeTrailing];
+
+  [label autoAlignAxisToSuperviewAxis:ALAxisHorizontal];
+
+  [linearView autoAlignAxisToSuperviewAxis: ALAxisHorizontal];
+  [linearView autoAlignAxisToSuperviewAxis: ALAxisVertical];
+}
+
+- (void)removeSAMLActivityView
+{
+  [self.idpCell.idpName setHidden: NO];
+  [self.idpCell setUserInteractionEnabled: YES];
+
+  UIView *view = [self.idpCell.contentView viewWithTag:sLinearViewTag];
+  [view removeFromSuperview];
 }
 
 - (void)didSelectBackForSignUp
@@ -1245,11 +1300,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
       self.logInSignOutCell.textLabel.textColor = [TPPConfiguration mainColor];
     } else {
       self.logInSignOutCell.userInteractionEnabled = NO;
-      if (@available(iOS 13.0, *)) {
-        self.logInSignOutCell.textLabel.textColor = [UIColor systemGray2Color];
-      } else {
-        self.logInSignOutCell.textLabel.textColor = [UIColor lightGrayColor];
-      }
+      self.logInSignOutCell.textLabel.textColor = [UIColor systemGray2Color];
     }
   }
 }
@@ -1267,13 +1318,9 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
     return;
   }
 
-  UIActivityIndicatorView *aiv;
-  if (@available(iOS 13.0, *)) {
-    aiv = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
-    aiv.color = [UIColor labelColor];
-  } else {
-    aiv = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleGray];
-  }
+  UIActivityIndicatorView *aiv = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
+  aiv.color = [UIColor labelColor];
+
   UIActivityIndicatorView *const activityIndicatorView = aiv;
   [activityIndicatorView startAnimating];
   
@@ -1396,11 +1443,20 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
       && !businessLogic.selectedAuthentication.isSaml) {
     [self.usernameTextField resignFirstResponder];
     [self.PINTextField resignFirstResponder];
+    dispatch_async(dispatch_get_main_queue(), ^{
     [self setActivityTitleWithText:NSLocalizedString(@"Verifying", nil)];
+    });
   }
 }
 
-- (void)      businessLogic:(TPPSignInBusinessLogic *)businessLogic
+- (void)businessLogicDidCancelSignIn:(TPPSignInBusinessLogic *)businessLogic
+{
+  if (businessLogic.selectedAuthentication.isSaml) {
+    [self removeSAMLActivityView];
+  }
+}
+
+- (void) businessLogic:(TPPSignInBusinessLogic *)businessLogic
 didEncounterValidationError:(NSError *)error
      userFriendlyErrorTitle:(NSString *)title
                  andMessage:(NSString *)serverMessage
@@ -1433,6 +1489,7 @@ didEncounterValidationError:(NSError *)error
 {
   [[NSOperationQueue mainQueue] addOperationWithBlock:^{
     [self removeActivityTitle];
+    [self removeSAMLActivityView];
   }];
 }
 
@@ -1442,6 +1499,7 @@ didEncounterSignOutError:(NSError *)error
 {
   [self showLogoutAlertWithError:error responseCode:statusCode];
   [self removeActivityTitle];
+  [self removeSAMLActivityView];
 }
 
 - (void)businessLogicWillSignOut:(TPPSignInBusinessLogic *)businessLogic
