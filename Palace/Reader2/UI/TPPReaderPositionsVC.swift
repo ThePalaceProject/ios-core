@@ -196,12 +196,27 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
       guard let bizLogic = tocBusinessLogic else {
         return nil
       }
-      return bizLogic.shouldSelectTOCItem(at: indexPath.row) ? indexPath : nil
+
+      Task {
+        let shouldSelect = await bizLogic.shouldSelectTOCItem(at: indexPath.row)
+        DispatchQueue.main.async {
+          if shouldSelect {
+            tv.selectRow(at: indexPath, animated: true, scrollPosition: .none)
+          }
+        }
+      }
+      return indexPath
+
     case .bookmarks:
       guard let bizLogic = bookmarksBusinessLogic else {
         return nil
       }
-      return bizLogic.shouldSelectBookmark(at: indexPath.row) ? indexPath : nil
+
+      if bizLogic.shouldSelectBookmark(at: indexPath.row) {
+        return indexPath
+      } else {
+        return nil
+      }
     }
   }
 
@@ -212,11 +227,20 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
 
     switch currentTab {
     case .toc:
-      if let locator = tocBusinessLogic?.tocLocator(at: indexPath.row) {
-        delegate?.positionsVC(self, didSelectTOCLocation: locator)
+      guard let bizLogic = tocBusinessLogic else { return }
+
+      Task {
+        if let locator = await bizLogic.tocLocator(at: indexPath.row) {
+          DispatchQueue.main.async {
+            self.delegate?.positionsVC(self, didSelectTOCLocation: locator)
+          }
+        }
       }
+
     case .bookmarks:
-      if let bookmark = bookmarksBusinessLogic?.bookmark(at: indexPath.row) {
+      guard let bizLogic = bookmarksBusinessLogic else { return }
+
+      if let bookmark = bizLogic.bookmark(at: indexPath.row) {
         delegate?.positionsVC(self, didSelectBookmark: bookmark)
       }
     }

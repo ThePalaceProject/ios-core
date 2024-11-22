@@ -11,17 +11,21 @@ import UIKit
 
 /// Encrypted PDF document.
 @objcMembers class TPPEncryptedPDFDocument: NSObject {
-  
+
   private var thumbnailsCache = NSCache<NSNumber, NSData>()
-  
+
   /// PDF document data.
   let data: Data
   /// Decryptor for document data.
   let decryptor: (_ data: Data, _ start: UInt, _ end: UInt) -> Data
-  
+
   /// PDF document.
   var document: CGPDFDocument?
-  
+
+  var pageCount: Int = 0
+  var title: String?
+  var cover: UIImage?
+
   init(encryptedData: Data, decryptor: @escaping (_ data: Data, _ start: UInt, _ end: UInt) -> Data) {
     self.data = encryptedData
     self.decryptor = decryptor
@@ -29,49 +33,62 @@ import UIKit
     let dataProvider = pdfDataProvider.dataProvider().takeUnretainedValue()
     self.document = CGPDFDocument(dataProvider)
     super.init()
+
+    setPageCount()
+    setTitle()
+    setCover()
   }
-  
-  var pageCount: Int {
-    document?.pageCount ?? 0
+
+  func setPageCount() {
+    Task {
+      self.pageCount = (try? await document?.pageCount() ?? 0) ?? 0
+    }
   }
-  
-  var title: String? {
-    document?.title
+
+  func setTitle() {
+    Task {
+      self.title = try? await document?.title() ?? ""
+    }
   }
-  
-  var cover: UIImage? {
-    document?.cover
+
+  func setCover() {
+    Task {
+      self.cover = try? await document?.cover() ?? UIImage()
+
+    }
   }
-  
+
   func page(at n: Int) -> CGPDFPage? {
     // Bookmarks compatibility:
     // CGPDFDocument counts pages from 1; PDFDocument from 0
     document?.page(at: n + 1)
   }
-  
+
   func makeThumbnails() {
-    let pageCount = self.document?.pageCount ?? 0
-    DispatchQueue.pdfThumbnailRenderingQueue.async {
-      for page in 0..<pageCount {
-        let pageNumber = NSNumber(value: page)
-        if self.thumbnailsCache.object(forKey: pageNumber) != nil {
-          continue
-        }
-        if let thumbnail = self.thumbnail(for: page), let thumbnailData = thumbnail.jpegData(compressionQuality: 0.5) {
-          DispatchQueue.main.async {
-            self.thumbnailsCache.setObject(thumbnailData as NSData, forKey: pageNumber)
+    Task {
+      DispatchQueue.pdfThumbnailRenderingQueue.async {
+        for page in 0..<self.pageCount {
+          let pageNumber = NSNumber(value: page)
+          if self.thumbnailsCache.object(forKey: pageNumber) != nil {
+            continue
+          }
+          if let thumbnail = self.thumbnail(for: page), let thumbnailData = thumbnail.jpegData(compressionQuality: 0.5) {
+            DispatchQueue.main.async {
+              self.thumbnailsCache.setObject(thumbnailData as NSData, forKey: pageNumber)
+            }
           }
         }
       }
     }
   }
-  
+
   var tableOfContents: [TPPPDFLocation] = []
-  
-  func search(text: String) -> [TPPPDFLocation] {
+
+  func search(text: String) async -> [TPPPDFLocation] {
     guard let document else {
       return []
     }
+
     let searchText = text.lowercased()
     var result = [TPPPDFLocation]()
     for pageNumber in 1...pageCount {
@@ -89,8 +106,9 @@ import UIKit
       }
     }
     return result
+
   }
-  
+
 }
 
 extension TPPEncryptedPDFDocument {
@@ -111,7 +129,7 @@ extension TPPEncryptedPDFDocument {
   func preview(for page: Int) -> UIImage? {
     self.page(at: page)?.preview
   }
-  
+
   /// Thumbnail image for a page
   /// - Parameter page: Page number
   /// - Returns: Rendered page image
@@ -132,7 +150,7 @@ extension TPPEncryptedPDFDocument {
       }
     }
   }
-  
+
   /// Cached thumbnail image for a page
   /// - Parameter page: Page number
   /// - Returns: Thumbnail image, if it is available in cached images, `nil` otherwise.
@@ -145,7 +163,7 @@ extension TPPEncryptedPDFDocument {
     }
     return nil
   }
-  
+
   /// Image for a page
   /// - Parameters:
   ///   - page: Page number

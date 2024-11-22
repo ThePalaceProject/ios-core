@@ -33,11 +33,12 @@ static id acsdrm_lock = nil;
 
 @synthesize displayUntilDate = _displayUntilDate;
 
+
 - (instancetype)initWithURL:(NSURL *)fileURL encryptionData:(NSData *)data {
-  
   if (self = [super init]) {
     acsdrm_lock = [[NSObject alloc] init];
     encryptionData = data;
+    self.fileURL = fileURL;
     NSString *path = fileURL.path;
 
     // Device data

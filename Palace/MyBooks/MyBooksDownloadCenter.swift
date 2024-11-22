@@ -913,7 +913,7 @@ extension MyBooksDownloadCenter {
 #if LCP
     let lcpService = LCPLibraryService()
     let licenseUrl = fileUrl.deletingPathExtension().appendingPathExtension(lcpService.licenseExtension)
-    
+
     do {
       _ = try FileManager.default.replaceItemAt(licenseUrl, withItemAt: fileUrl)
     } catch {

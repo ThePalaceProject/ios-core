@@ -1,3 +1,5 @@
+@import PureLayout;
+
 #import "TPPAttributedString.h"
 
 #import "TPPBookCellDelegate.h"
@@ -17,7 +19,6 @@
 #import "TPPOPDSFeed.h"
 #import "Palace-Swift.h"
 #import "UIFont+TPPSystemFontOverride.h"
-
 
 @interface TPPBookDetailView () <TPPBookDownloadCancellationDelegate, TPPBookButtonsSampleDelegate, BookDetailTableViewDelegate>
 

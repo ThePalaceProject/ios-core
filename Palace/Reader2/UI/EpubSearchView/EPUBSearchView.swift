@@ -8,8 +8,8 @@
 
 import SwiftUI
 import Combine
-import R2Shared
-import R2Navigator
+import ReadiumShared
+import ReadiumNavigator
 import PalaceUIKit
 
 struct EPUBSearchView: View {
@@ -87,8 +87,10 @@ struct EPUBSearchView: View {
     ForEach(section.locators, id: \.self) { locator in
       rowView(locator)
         .onAppear(perform: {
-          if shouldFetchMoreResults(for: locator) {
-            viewModel.fetchNextBatch()
+          Task {
+            if shouldFetchMoreResults(for: locator) {
+              await viewModel.fetchNextBatch()
+            }
           }
         })
     }
@@ -157,7 +159,9 @@ struct EPUBSearchView: View {
     debounceSearch = Just(newValue)
       .delay(for: .seconds(0.5), scheduler: RunLoop.main)
       .sink { value in
-        viewModel.search(with: value)
+        Task {
+         await viewModel.search(with: value)
+        }
       }
   }
 }

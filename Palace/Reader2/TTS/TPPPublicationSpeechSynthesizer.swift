@@ -9,8 +9,8 @@
 import Foundation
 import Combine
 import AVFoundation
-import R2Shared
-import R2Navigator
+import ReadiumShared
+import ReadiumNavigator
 
 /// Iterator direction
 private enum Direction {
@@ -116,22 +116,24 @@ public class TPPPublicationSpeechSynthesizer: NSObject, Loggable {
   
   /// (Re)starts the synthesizer from the given locator or the beginning of the publication.
   public func start(from locator: Locator? = nil) {
-    publicationIterator = publication.content(from: locator)?.iterator()
-    
-    if let cssSelector = locator?.locations.cssSelector {
-      var utteranceAtLocator: Utterance?
-      while utterances.current()?.locator.locations.cssSelector != cssSelector {
-        utteranceAtLocator = nextUtterance(.forward)
+    Task {
+      publicationIterator = publication.content(from: locator)?.iterator()
+      
+      if let cssSelector = locator?.locations.cssSelector {
+        var utteranceAtLocator: Utterance?
+        while utterances.current()?.locator.locations.cssSelector != cssSelector {
+          utteranceAtLocator = await nextUtterance(.forward)
+          if utteranceAtLocator == nil {
+            break
+          }
+        }
+        // Reload publication content if utterance is not found
         if utteranceAtLocator == nil {
-          break
+          publicationIterator = publication.content(from: locator)?.iterator()
         }
       }
-      // Reload publication content if utterance is not found
-      if utteranceAtLocator == nil {
-        publicationIterator = publication.content(from: locator)?.iterator()
-      }
+      playNextUtterance(.forward)
     }
-    playNextUtterance(.forward)
   }
   
   /// Stops the synthesizer.
@@ -163,19 +165,21 @@ public class TPPPublicationSpeechSynthesizer: NSObject, Loggable {
   
   /// Resumes an utterance interrupted with `pause()`.
   public func resume() {
-    if case let .paused(utterance) = state {
-      if UIAccessibility.isVoiceOverRunning {
-        if let previousUtterance = nextUtterance(.backward) {
-          play(previousUtterance)
+    Task {
+      if case let .paused(utterance) = state {
+        if UIAccessibility.isVoiceOverRunning {
+          if let previousUtterance = await nextUtterance(.backward) {
+            play(previousUtterance)
+          } else {
+            play(utterance)
+          }
+        } else if synthesizer.isPaused {
+          synthesizer.continueSpeaking()
         } else {
-          play(utterance)
+          playNextUtterance(.forward)
         }
-      } else if synthesizer.isPaused {
-        synthesizer.continueSpeaking()
-      } else {
-        playNextUtterance(.forward)
+        state = .playing(utterance, range: nil)
       }
-      state = .playing(utterance, range: nil)
     }
   }
   
@@ -210,11 +214,13 @@ public class TPPPublicationSpeechSynthesizer: NSObject, Loggable {
   
   /// Plays the next utterance in the given `direction`.
   private func playNextUtterance(_ direction: Direction) {
-    guard let utterance = nextUtterance(direction) else {
-      state = .stopped
-      return
+    Task {
+      guard let utterance = await nextUtterance(direction) else {
+        state = .stopped
+        return
+      }
+      play(utterance)
     }
-    play(utterance)
   }
   
   /// Plays the given `utterance`
@@ -236,10 +242,10 @@ public class TPPPublicationSpeechSynthesizer: NSObject, Loggable {
   }
     
   /// Gets the next utterance in the given `direction`, or null when reaching the beginning or the end.
-  private func nextUtterance(_ direction: Direction) -> Utterance? {
+  private func nextUtterance(_ direction: Direction) async -> Utterance? {
     guard let utterance = utterances.next(direction) else {
-      if loadNextUtterances(direction) {
-        return nextUtterance(direction)
+      if await loadNextUtterances(direction) {
+        return await nextUtterance(direction)
       }
       return nil
     }
@@ -247,9 +253,9 @@ public class TPPPublicationSpeechSynthesizer: NSObject, Loggable {
   }
   
   /// Loads the utterances for the next publication `ContentElement` item in the given `direction`.
-  private func loadNextUtterances(_ direction: Direction) -> Bool {
+  private func loadNextUtterances(_ direction: Direction) async -> Bool {
     do {
-      guard let content = try publicationIterator?.next(direction) else {
+      guard let content = try await publicationIterator?.next(direction) else {
         return false
       }
       
@@ -257,7 +263,7 @@ public class TPPPublicationSpeechSynthesizer: NSObject, Loggable {
         .flatMap { utterances(for: $0) }
       
       if nextUtterances.isEmpty {
-        return loadNextUtterances(direction)
+        return await loadNextUtterances(direction)
       }
       
       utterances = CursorList(
@@ -384,12 +390,12 @@ private extension CursorList {
 }
 
 private extension ContentIterator {
-  func next(_ direction: Direction) throws -> ContentElement? {
+  func next(_ direction: Direction) async throws -> ContentElement? {
     switch direction {
     case .forward:
-      return try next()
+      return try await next()
     case .backward:
-      return try previous()
+      return try await previous()
     }
   }
 }

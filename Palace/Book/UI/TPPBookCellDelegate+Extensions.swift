@@ -56,16 +56,16 @@ extension TPPBookCellDelegate {
   public func openAudiobook(withBook book: TPPBook, json: [String: Any], drmDecryptor: DRMDecryptor?, completion: (() -> Void)?) {
     AudioBookVendorsHelper.updateVendorKey(book: json) { [weak self] error in
       DispatchQueue.main.async {
-        guard let self = self else { return }
+        guard let self else { return }
         
-        if let error = error {
+        if let error {
           self.presentDRMKeyError(error)
           completion?()
           return
         }
         
         let manifestDecoder = Manifest.customDecoder()
-        
+
         guard let jsonData = try? JSONSerialization.data(withJSONObject: json, options: []),
               let manifest = try? manifestDecoder.decode(Manifest.self, from: jsonData),
               let audiobook = AudiobookFactory.audiobook(for: manifest, bookIdentifier: book.identifier, decryptor: drmDecryptor, token: book.bearerToken)

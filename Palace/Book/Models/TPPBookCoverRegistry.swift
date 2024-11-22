@@ -47,7 +47,9 @@ class TPPBookCoverRegistry {
     }
 
     guard let thumbnailUrl = book.imageThumbnailURL else {
-      handler(generateBookCoverImage(book))
+      DispatchQueue.main.async {
+        handler(self.generateBookCoverImage(book))
+      }
       return
     }
 

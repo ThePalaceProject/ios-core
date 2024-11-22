@@ -12,7 +12,7 @@
 
 import Foundation
 import UIKit
-import R2Shared
+import ReadiumShared
 
 
 /// Base module delegate, that sub-modules' delegate can extend.
@@ -48,9 +48,8 @@ protocol ReaderModuleAPI {
 /// It contains sub-modules implementing `ReaderFormatModule` to handle each
 /// publication format (e.g. EPUB, PDF, etc).
 final class ReaderModule: ReaderModuleAPI {
-  
+
   weak var delegate: ModuleDelegate?
-  private let resourcesServer: ResourcesServer
   private let bookRegistry: TPPBookRegistryProvider
   private let progressSynchronizer: TPPLastReadPositionSynchronizer
 
@@ -58,10 +57,9 @@ final class ReaderModule: ReaderModuleAPI {
   var formatModules: [ReaderFormatModule] = []
 
   init(delegate: ModuleDelegate?,
-       resourcesServer: ResourcesServer,
+       resourcesServer: HTTPServer,
        bookRegistry: TPPBookRegistryProvider) {
     self.delegate = delegate
-    self.resourcesServer = resourcesServer
     self.bookRegistry = bookRegistry
     self.progressSynchronizer = TPPLastReadPositionSynchronizer(bookRegistry: bookRegistry)
 
@@ -69,7 +67,7 @@ final class ReaderModule: ReaderModuleAPI {
       EPUBModule(delegate: self.delegate, resourcesServer: resourcesServer)
     ]
   }
-  
+
   func presentPublication(_ publication: Publication,
                           book: TPPBook,
                           in navigationController: UINavigationController,
@@ -77,23 +75,22 @@ final class ReaderModule: ReaderModuleAPI {
     if delegate == nil {
       TPPErrorLogger.logError(nil, summary: "ReaderModule delegate is not set")
     }
-    
+
     guard let formatModule = self.formatModules.first(where:{ $0.supports(publication) }) else {
       delegate?.presentError(ReaderError.formatNotSupported, from: navigationController)
       return
     }
 
-    // TODO: SIMPLY-2656 remove implicit dependency (TPPUserAccount.shared)
     let drmDeviceID = TPPUserAccount.sharedAccount().deviceID
     progressSynchronizer.sync(for: publication,
                               book: book,
                               drmDeviceID: drmDeviceID) { [weak self] in
 
-                                self?.finalizePresentation(for: publication,
-                                                           book: book,
-                                                           formatModule: formatModule,
-                                                           in: navigationController,
-                                                           forSample: forSample)
+      self?.finalizePresentation(for: publication,
+                                 book: book,
+                                 formatModule: formatModule,
+                                 in: navigationController,
+                                 forSample: forSample)
     }
   }
 
@@ -102,25 +99,32 @@ final class ReaderModule: ReaderModuleAPI {
                             formatModule: ReaderFormatModule,
                             in navigationController: UINavigationController,
                             forSample: Bool = false) {
-    do {
-      let lastSavedLocation = bookRegistry.location(forIdentifier: book.identifier)
-      let initialLocator = lastSavedLocation?.convertToLocator()
+    Task {
+      do {
+        let lastSavedLocation = bookRegistry.location(forIdentifier: book.identifier)
+        let initialLocator = await lastSavedLocation?.convertToLocator(publication: publication)
+        
+        let readerVC = try await formatModule.makeReaderViewController(
+          for: publication,
+          book: book,
+          initialLocation: initialLocator,
+          forSample: forSample
+        )
 
-      let readerVC = try formatModule.makeReaderViewController(
-        for: publication,
-        book: book,
-        initialLocation: initialLocator,
-        forSample: forSample)
+        DispatchQueue.main.async {
+          let backItem = UIBarButtonItem()
+          backItem.title = Strings.Generic.back
+          readerVC.navigationItem.backBarButtonItem = backItem
+          readerVC.extendedLayoutIncludesOpaqueBars = true
+          readerVC.hidesBottomBarWhenPushed = true
+          navigationController.pushViewController(readerVC, animated: true)
+        }
 
-      let backItem = UIBarButtonItem()
-      backItem.title = Strings.Generic.back
-      readerVC.navigationItem.backBarButtonItem = backItem
-      readerVC.extendedLayoutIncludesOpaqueBars = true
-      readerVC.hidesBottomBarWhenPushed = true
-      navigationController.pushViewController(readerVC, animated: true)
-
-    } catch {
-      delegate?.presentError(error, from: navigationController)
+      } catch {
+        DispatchQueue.main.async { [weak self] in
+          self?.delegate?.presentError(error, from: navigationController)
+        }
+      }
     }
   }
 }

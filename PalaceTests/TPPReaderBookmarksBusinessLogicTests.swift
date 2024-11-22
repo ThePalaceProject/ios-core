@@ -7,7 +7,7 @@
 //
 
 import XCTest
-import R2Shared
+import ReadiumShared
 @testable import Palace
 
 class TPPReaderBookmarksBusinessLogicTests: XCTestCase {
