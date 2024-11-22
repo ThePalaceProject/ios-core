@@ -4,14 +4,8 @@ jobs:
   build-and-test:
     runs-on: macOS-latest
     steps:
-      - name: List available Xcode versions
-        run: ls /Applications | grep Xcode
-
-      - name: Use the latest Xcode
-        run: |
-          latest_xcode=$(ls /Applications | grep Xcode | sort -V | tail -n 1)
-          echo "Using $latest_xcode"
-          sudo xcode-select -switch "/Applications/$latest_xcode"
+      - name: Force Xcode 15
+        run: sudo xcode-select -switch /Applications/Xcode_15.0.1.app
 
       - name: Checkout main repo and submodules
         uses: actions/checkout@v3
