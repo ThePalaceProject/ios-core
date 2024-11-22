@@ -159,14 +159,17 @@ extension TPPEPUBViewController: EPUBSearchDelegate {
       Task {
         await self.navigator.go(to: location)
 
-
         if let decorableNavigator = self.navigator as? DecorableNavigator {
-          var decorations: [Decoration] = []
-          decorations.append(Decoration(
-            id: "search",
-            locator: location,
-            style: .highlight(tint: .red)))
-          await decorableNavigator.applyDecorationsAsync(decorations, in: "search")
+          await MainActor.run {
+            let decorations = [
+              Decoration(
+                id: "search",
+                locator: location,
+                style: .highlight(tint: .red)
+              )
+            ]
+            decorableNavigator.apply(decorations: decorations, in: "search")
+          }
         }
       }
     }
