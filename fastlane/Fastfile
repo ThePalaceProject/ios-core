@@ -1,21 +1,13 @@
 default_platform(:ios)
 
 platform :ios do
-  before_all do
-    # Clean DerivedData to prevent conflicts
-    sh "rm -rf ~/Library/Developer/Xcode/DerivedData"
-  end
-
   lane :test do
     run_tests(
       project: "Palace.xcodeproj",
       devices: ["iPhone 12 Pro"],
-      scheme: "Palace",
-      derived_data_path: "./DerivedData",
-      clean: true
+      scheme: "Palace"
     )
   end
-
   lane :nodrm do
     build_app(
       project: "Palace.xcodeproj",
@@ -23,11 +15,9 @@ platform :ios do
       skip_package_ipa: true,
       skip_archive: true,
       skip_codesigning: true,
-      silent: true,
-      clean: true
+      silent: true
     )
   end
-
   lane :beta do |options|
     build_app(
       project: "Palace.xcodeproj",
@@ -35,28 +25,25 @@ platform :ios do
       include_symbols: true,
       include_bitcode: false,
       silent: true,
-      clean: true,
       output_name: options[:output_name],
       output_directory: options[:export_path],
       export_options: {
         method: "ad-hoc",
-        provisioningProfiles: {
+        provisioningProfiles: { 
           "org.thepalaceproject.palace" => "Ad Hoc 2"
         }
       }
     )
   end
-
   lane :appstore do |options|
     build_app(
       project: "Palace.xcodeproj",
       scheme: "Palace",
       include_symbols: true,
       include_bitcode: false,
-      clean: true,
       export_options: {
         method: "app-store",
-        provisioningProfiles: {
+        provisioningProfiles: { 
           "org.thepalaceproject.palace" => "App Store 2"
         }
       }
@@ -65,18 +52,6 @@ platform :ios do
       api_key_path: "fastlane/fastlane.json",
       skip_submission: true,
       changelog: options[:changelog]
-    )
-  end
-
-  after_all do
-    slack(
-      message: "All lanes completed successfully!"
-    )
-  end
-
-  error do |lane, exception|
-    slack(
-      message: "Lane #{lane} failed with error: #{exception.message}"
     )
   end
 end
