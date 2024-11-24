@@ -1100,6 +1100,7 @@
 		E5AD65E12684FDA300C62951 /* TPPAccountListDataSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AD65E02684FDA300C62951 /* TPPAccountListDataSource.swift */; };
 		E5B2B8DA275952EC00150ED4 /* TPPSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5B2B8D9275952EC00150ED4 /* TPPSettingsView.swift */; };
 		E5B2B8E12759583200150ED4 /* TPPSettingsViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5B2B8DC2759552F00150ED4 /* TPPSettingsViewController.swift */; };
+		E5BBA5BB2CF2FD5000911CE1 /* AudioEngine.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E58565CE269774C400A5FBD5 /* AudioEngine.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		E5BDA0252A2A7D0300C133CB /* RegistrationCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5BDA0242A2A7D0300C133CB /* RegistrationCell.swift */; };
 		E5BDA0262A2A7DC100C133CB /* RegistrationCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5BDA0242A2A7D0300C133CB /* RegistrationCell.swift */; };
 		E5BEF00226BD919F00C2A50B /* OpenSans-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E5BEEFF526BD919D00C2A50B /* OpenSans-Bold.ttf */; };
@@ -1433,6 +1434,7 @@
 			dstPath = "";
 			dstSubfolderSpec = 10;
 			files = (
+				E5BBA5BB2CF2FD5000911CE1 /* AudioEngine.xcframework in Embed Frameworks */,
 				E7E96BBC2B0E82550036B23A /* PalaceUIKit.framework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
