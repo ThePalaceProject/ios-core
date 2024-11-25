@@ -5,7 +5,8 @@ platform :ios do
     run_tests(
       project: "Palace.xcodeproj",
       devices: ["iPhone 12 Pro"],
-      scheme: "Palace"
+      scheme: "Palace",
+      clean: true
     )
   end
   lane :nodrm do
