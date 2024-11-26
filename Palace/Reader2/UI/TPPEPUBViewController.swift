@@ -210,7 +210,12 @@ extension TPPEPUBViewController: UIPopoverPresentationControllerDelegate {}
 extension TPPEPUBViewController: DecorableNavigator {
   func apply(decorations: [Decoration], in group: String) {
     guard let navigator = navigator as? DecorableNavigator else { return }
-    navigator.apply(decorations: decorations, in: group)
+
+    Task {
+      await MainActor.run {
+        navigator.apply(decorations: decorations, in: group)
+      }
+    }
   }
 
   func supports(decorationStyle style: Decoration.Style.Id) -> Bool {
