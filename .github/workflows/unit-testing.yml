@@ -6,6 +6,17 @@ jobs:
     steps:
       - name: Force Xcode 15
         run: sudo xcode-select -switch /Applications/Xcode_15.0.1.app
+
+      - name: Install swiftenv and Set Swift Version
+        run: |
+          git clone https://github.com/kylef/swiftenv.git ~/.swiftenv
+          export SWIFTENV_ROOT="$HOME/.swiftenv"
+          export PATH="$SWIFTENV_ROOT/bin:$PATH"
+          eval "$(swiftenv init -)"
+          swiftenv install 5.0
+          swiftenv global 5.0
+        shell: bash
+
       - name: Verify Swift Version
         run: |
           export SWIFTENV_ROOT="$HOME/.swiftenv"
