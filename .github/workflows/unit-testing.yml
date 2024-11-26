@@ -10,18 +10,20 @@ jobs:
       - name: Install swiftenv and Set Swift Version
         run: |
           git clone https://github.com/kylef/swiftenv.git ~/.swiftenv
-          echo "export SWIFTENV_ROOT=\"$HOME/.swiftenv\"" >> $GITHUB_ENV
-          echo "export PATH=\"$SWIFTENV_ROOT/bin:\$PATH\"" >> $GITHUB_ENV
-
-      - name: Initialize swiftenv
-        shell: bash
-        run: |
-          eval "$(~/.swiftenv/bin/swiftenv init -)"
+          export SWIFTENV_ROOT="$HOME/.swiftenv"
+          export PATH="$SWIFTENV_ROOT/bin:$PATH"
+          eval "$(swiftenv init -)"
           swiftenv install 5.7
           swiftenv global 5.7
+        shell: bash
 
       - name: Verify Swift Version
-        run: swift --version
+        run: |
+          export SWIFTENV_ROOT="$HOME/.swiftenv"
+          export PATH="$SWIFTENV_ROOT/bin:$PATH"
+          eval "$(swiftenv init -)"
+          swift --version
+        shell: bash
 
       - name: Checkout main repo and submodules
         uses: actions/checkout@v3
