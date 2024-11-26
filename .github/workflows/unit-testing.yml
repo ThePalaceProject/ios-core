@@ -17,6 +17,10 @@ jobs:
           swiftenv install 5.7
           swiftenv global 5.7
 
+        - name: Verify Swift Version
+          run: swift --version
+
+
       - name: Checkout main repo and submodules
         uses: actions/checkout@v3
         with:
