@@ -1,65 +1,41 @@
 name: Unit Tests
-on: [pull_request, workflow_dispatch]
+on: [ pull_request, workflow_dispatch ]
 jobs:
   build-and-test:
-    runs-on: macOS-latest
+    runs-on: macOS-13
     steps:
       - name: Force Xcode 15
         run: sudo xcode-select -switch /Applications/Xcode_15.0.1.app
-
-      - name: Install swiftenv and Set Swift Version
-        run: |
-          git clone https://github.com/kylef/swiftenv.git ~/.swiftenv
-          export SWIFTENV_ROOT="$HOME/.swiftenv"
-          export PATH="$SWIFTENV_ROOT/bin:$PATH"
-          eval "$(swiftenv init -)"
-          swiftenv install 5.0
-          swiftenv global 5.0
-        shell: bash
-
-      - name: Verify Swift Version
-        run: |
-          export SWIFTENV_ROOT="$HOME/.swiftenv"
-          export PATH="$SWIFTENV_ROOT/bin:$PATH"
-          eval "$(swiftenv init -)"
-          swift --version
-        shell: bash
 
       - name: Checkout main repo and submodules
         uses: actions/checkout@v3
         with:
           submodules: true
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
-
       - name: Checkout Certificates
         uses: actions/checkout@v3
         with:
           repository: ThePalaceProject/mobile-certificates
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
           path: ./mobile-certificates
-
       - name: Checkout Adobe RMSDK
         uses: actions/checkout@v3
         with:
           repository: ThePalaceProject/mobile-drm-adeptconnector
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
           path: ./mobile-drm-adeptconnector
-
       - name: Uncompress Adobe RMSDK
         run: ./scripts/setup-repo-drm.sh
         env:
           BUILD_CONTEXT: ci
-
       - name: Build non-Carthage 3rd party dependencies
         run: ./scripts/build-3rd-party-dependencies.sh
         env:
           BUILD_CONTEXT: ci
-
       - name: Build Palace without DRM support
         run: ./scripts/xcode-build-nodrm.sh
         env:
           BUILD_CONTEXT: ci
-
       - name: Run Palace unit tests
         run: ./scripts/xcode-test.sh
         env:
