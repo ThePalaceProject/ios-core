@@ -5655,7 +5655,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.1.5;
-				OTHER_SWIFT_FLAGS = "\"-Xfrontend -disable-availability-checking\"";
+				OTHER_SWIFT_FLAGS = "";
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PRODUCT_MODULE_NAME = Palace;
 				PRODUCT_NAME = "Palace-noDRM";
@@ -5715,7 +5715,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.1.5;
-				OTHER_SWIFT_FLAGS = "\"-Xfrontend -disable-availability-checking\"";
+				OTHER_SWIFT_FLAGS = "";
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PRODUCT_MODULE_NAME = Palace;
 				PRODUCT_NAME = "Palace-noDRM";
@@ -5906,7 +5906,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.1.5;
-				OTHER_SWIFT_FLAGS = "\"-Xfrontend -disable-availability-checking\"";
+				OTHER_SWIFT_FLAGS = "";
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PROVISIONING_PROFILE_SPECIFIER = "Ad Hoc 2";
 				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "Ad Hoc 2";
@@ -5968,7 +5968,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.1.5;
-				OTHER_SWIFT_FLAGS = "\"-Xfrontend -disable-availability-checking\"";
+				OTHER_SWIFT_FLAGS = "";
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PROVISIONING_PROFILE_SPECIFIER = "App Store";
 				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "App Store 2";
@@ -6030,7 +6030,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.1.5;
-				OTHER_SWIFT_FLAGS = "\"-Xfrontend -disable-availability-checking\"";
+				OTHER_SWIFT_FLAGS = "";
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PRODUCT_NAME = Palace;
 				PROVISIONING_PROFILE_SPECIFIER = "Ad Hoc 2";
@@ -6092,7 +6092,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.1.5;
-				OTHER_SWIFT_FLAGS = "\"-Xfrontend -disable-availability-checking\"";
+				OTHER_SWIFT_FLAGS = "";
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PRODUCT_NAME = Palace;
 				PROVISIONING_PROFILE_SPECIFIER = "App Store";

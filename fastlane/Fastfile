@@ -6,9 +6,11 @@ platform :ios do
       project: "Palace.xcodeproj",
       devices: ["iPhone 12 Pro"],
       scheme: "Palace",
-      clean: true
+      clean: true,
+      xcargs: "-Xfrontend -disable-availability-checking"
     )
   end
+
   lane :nodrm do
     build_app(
       project: "Palace.xcodeproj",
@@ -17,9 +19,11 @@ platform :ios do
       skip_archive: true,
       skip_codesigning: true,
       silent: true,
-      clean: true
+      clean: true,
+      xcargs: "-Xfrontend -disable-availability-checking"
     )
   end
+
   lane :beta do |options|
     build_app(
       project: "Palace.xcodeproj",
@@ -29,6 +33,7 @@ platform :ios do
       silent: true,
       output_name: options[:output_name],
       output_directory: options[:export_path],
+      xcargs: "-Xfrontend -disable-availability-checking",
       export_options: {
         method: "ad-hoc",
         provisioningProfiles: { 
@@ -37,12 +42,14 @@ platform :ios do
       }
     )
   end
+
   lane :appstore do |options|
     build_app(
       project: "Palace.xcodeproj",
       scheme: "Palace",
       include_symbols: true,
       include_bitcode: false,
+      xcargs: "-Xfrontend -disable-availability-checking",
       export_options: {
         method: "app-store",
         provisioningProfiles: { 
