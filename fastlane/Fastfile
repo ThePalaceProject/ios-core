@@ -6,8 +6,7 @@ platform :ios do
       project: "Palace.xcodeproj",
       devices: ["iPhone 12 Pro"],
       scheme: "Palace",
-      clean: true,
-      xcargs: "-Xfrontend -disable-availability-checking"
+      clean: true
     )
   end
 
@@ -19,8 +18,7 @@ platform :ios do
       skip_archive: true,
       skip_codesigning: true,
       silent: true,
-      clean: true,
-      xcargs: "-Xfrontend -disable-availability-checking"
+      clean: true
     )
   end
 
@@ -33,7 +31,6 @@ platform :ios do
       silent: true,
       output_name: options[:output_name],
       output_directory: options[:export_path],
-      xcargs: "-Xfrontend -disable-availability-checking",
       export_options: {
         method: "ad-hoc",
         provisioningProfiles: { 
@@ -49,7 +46,6 @@ platform :ios do
       scheme: "Palace",
       include_symbols: true,
       include_bitcode: false,
-      xcargs: "-Xfrontend -disable-availability-checking",
       export_options: {
         method: "app-store",
         provisioningProfiles: { 
