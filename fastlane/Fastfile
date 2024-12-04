@@ -5,7 +5,7 @@ platform :ios do
     run_tests(
       project: "Palace.xcodeproj",
       devices: ["iPhone 12 Pro"],
-      scheme: "Palace-noDRM",
+      scheme: "Palace",
       clean: true
     )
   end

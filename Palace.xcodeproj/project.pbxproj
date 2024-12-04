@@ -3913,7 +3913,7 @@
 						DevelopmentTeam = 88CBA74T8K;
 						LastSwiftMigration = 1130;
 						ProvisioningStyle = Manual;
-						TestTargetID = 73EB0A6325821DF4006BC997;
+						TestTargetID = A823D80C192BABA400B55DE2;
 					};
 					A823D80C192BABA400B55DE2 = {
 						LastSwiftMigration = 1130;
@@ -5547,7 +5547,7 @@
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_SWIFT3_OBJC_INFERENCE = Default;
 				SWIFT_VERSION = 4.2;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Palace-noDRM.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Palace-noDRM";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Palace.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Palace";
 				WARNING_CFLAGS = (
 					"-Wall",
 					"-Wextra",
@@ -5611,7 +5611,7 @@
 				SWIFT_OBJC_BRIDGING_HEADER = "PalaceTests/PalaceTests-Bridging-Header.h";
 				SWIFT_SWIFT3_OBJC_INFERENCE = Default;
 				SWIFT_VERSION = 4.2;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Palace-noDRM.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Palace-noDRM";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Palace.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Palace";
 				WARNING_CFLAGS = (
 					"-Wall",
 					"-Wextra",
