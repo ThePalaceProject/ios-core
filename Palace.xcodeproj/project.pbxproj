@@ -2216,7 +2216,6 @@
 				E77D02252931357400544180 /* SwiftSoup in Frameworks */,
 				A823D815192BABA400B55DE2 /* UIKit.framework in Frameworks */,
 				E7498A8C2A0E7F460037DD93 /* FirebaseMessaging in Frameworks */,
-				E587BCE62CCFFB6F003AE1AD /* PureLayout in Frameworks */,
 				E5E9AFF42CC0357500366A2E /* ReadiumStreamer in Frameworks */,
 				E5E9AFF42CC0357500366A2E /* ReadiumStreamer in Frameworks */,
 				E50BC9DD2CBF6FE900660937 /* PureLayout in Frameworks */,
@@ -3821,7 +3820,6 @@
 				E7498A892A0E7F460037DD93 /* FirebaseDynamicLinks */,
 				E7498A8B2A0E7F460037DD93 /* FirebaseMessaging */,
 				E795A7812A744F0A00314EC8 /* ULID */,
-				E587BCE52CCFFB6F003AE1AD /* PureLayout */,
 				E50BC9DC2CBF6FE900660937 /* PureLayout */,
 				E5E9AFEF2CC0357500366A2E /* ReadiumNavigator */,
 				E5E9AFF12CC0357500366A2E /* ReadiumShared */,
@@ -6537,81 +6535,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = E50BC9DB2CBF6FE900660937 /* XCRemoteSwiftPackageReference "PureLayout" */;
 			productName = PureLayout;
-		};
-		E5E9AFEF2CC0357500366A2E /* ReadiumNavigator */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E77D02182931337000544180 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
-			productName = ReadiumNavigator;
-		};
-		E5E9AFF12CC0357500366A2E /* ReadiumShared */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E77D02182931337000544180 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
-			productName = ReadiumShared;
-		};
-		E5E9AFF32CC0357500366A2E /* ReadiumStreamer */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E77D02182931337000544180 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
-			productName = ReadiumStreamer;
-		};
-		E5E9AFF52CC0358D00366A2E /* ReadiumNavigator */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E77D02182931337000544180 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
-			productName = ReadiumNavigator;
-		};
-		E5E9AFF72CC0358D00366A2E /* ReadiumShared */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E77D02182931337000544180 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
-			productName = ReadiumShared;
-		};
-		E5E9AFF92CC0358D00366A2E /* ReadiumStreamer */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E77D02182931337000544180 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
-			productName = ReadiumStreamer;
-		};
-		E5E9AFFB2CC035AC00366A2E /* ReadiumNavigator */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E77D02182931337000544180 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
-			productName = ReadiumNavigator;
-		};
-		E5E9AFFD2CC035AC00366A2E /* ReadiumShared */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E77D02182931337000544180 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
-			productName = ReadiumShared;
-		};
-		E5E9AFFF2CC035AC00366A2E /* ReadiumStreamer */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E77D02182931337000544180 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
-			productName = ReadiumStreamer;
-		};
-		E5E9B2132CC1A5AE00366A2E /* ReadiumAdapterLCPSQLite */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E77D02182931337000544180 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
-			productName = ReadiumAdapterLCPSQLite;
-		};
-		E5E9B2152CC1A5B600366A2E /* ReadiumAdapterLCPSQLite */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E77D02182931337000544180 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
-			productName = ReadiumAdapterLCPSQLite;
-		};
-		E5E9B2172CC1A5C100366A2E /* ReadiumAdapterLCPSQLite */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E77D02182931337000544180 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
-			productName = ReadiumAdapterLCPSQLite;
-		};
-		E5E9B2192CC1A7AC00366A2E /* ReadiumAdapterGCDWebServer */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E77D02182931337000544180 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
-			productName = ReadiumAdapterGCDWebServer;
-		};
-		E5E9B21B2CC1A7B400366A2E /* ReadiumAdapterGCDWebServer */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E77D02182931337000544180 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
-			productName = ReadiumAdapterGCDWebServer;
-		};
-		E5E9B21D2CC1A7BB00366A2E /* ReadiumAdapterGCDWebServer */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E77D02182931337000544180 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
-			productName = ReadiumAdapterGCDWebServer;
 		};
 		E7498A852A0E7F460037DD93 /* FirebaseAnalytics */ = {
 			isa = XCSwiftPackageProductDependency;
