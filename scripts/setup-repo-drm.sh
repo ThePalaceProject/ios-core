@@ -11,7 +11,7 @@
 #     ./scripts/setup-repo-drm.sh
 #
 
-set -eo pipefail
+set -xeo pipefail
 
 if [ "$BUILD_CONTEXT" == "" ]; then
   echo "Setting up repo for building with DRM support..."
@@ -29,7 +29,17 @@ else
   ADOBE_SDK_PATH=../mobile-drm-adeptconnector
 fi
 
+if [ ! -d "$ADOBE_SDK_PATH" ]; then
+  echo "Error: Adobe SDK path $ADOBE_SDK_PATH does not exist."
+  exit 1
+fi
+
 ln -sf $ADOBE_SDK_PATH/uncompressed adobe-rmsdk
 
 cd $ADOBE_SDK_PATH
-./uncompress.sh
+if [ -f "./uncompress.sh" ]; then
+  ./uncompress.sh
+else
+  echo "Error: uncompress.sh not found in $ADOBE_SDK_PATH"
+  exit 1
+fi
