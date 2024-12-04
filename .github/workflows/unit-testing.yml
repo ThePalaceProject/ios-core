@@ -6,7 +6,7 @@ jobs:
     steps:
       - name: Force Xcode 16
         run: sudo xcode-select -switch /Applications/Xcode_16.1.app
-        - name: Checkout main repo and submodules
+      - name: Checkout main repo and submodules
         uses: actions/checkout@v3
         with:
           submodules: true
