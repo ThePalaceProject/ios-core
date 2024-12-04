@@ -1360,6 +1360,20 @@
 			remoteGlobalIDString = E7E96B9D2B0E82210036B23A;
 			remoteInfo = PalaceUIKit;
 		};
+		E5969B012D0016F400E6DA90 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A823D805192BABA400B55DE2 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = D570B53A2BA20139003FE991;
+			remoteInfo = "Palace-noAdobe";
+		};
+		E5969B032D0016F600E6DA90 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A823D805192BABA400B55DE2 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 73EB0A6325821DF4006BC997;
+			remoteInfo = "Palace-noDRM";
+		};
 		E5C1F52F27990929005FC6B2 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = E5C1F52927990929005FC6B2 /* OverdriveProcessor.xcodeproj */;
@@ -3749,6 +3763,8 @@
 			);
 			dependencies = (
 				2D2B47781D08F808007F7764 /* PBXTargetDependency */,
+				E5969B022D0016F400E6DA90 /* PBXTargetDependency */,
+				E5969B042D0016F600E6DA90 /* PBXTargetDependency */,
 			);
 			name = PalaceTests;
 			productName = SimplyETests;
@@ -3897,7 +3913,7 @@
 						DevelopmentTeam = 88CBA74T8K;
 						LastSwiftMigration = 1130;
 						ProvisioningStyle = Manual;
-						TestTargetID = A823D80C192BABA400B55DE2;
+						TestTargetID = 73EB0A6325821DF4006BC997;
 					};
 					A823D80C192BABA400B55DE2 = {
 						LastSwiftMigration = 1130;
@@ -5390,6 +5406,16 @@
 			target = E7E96B9D2B0E82210036B23A /* PalaceUIKit */;
 			targetProxy = D570B53C2BA20139003FE991 /* PBXContainerItemProxy */;
 		};
+		E5969B022D0016F400E6DA90 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = D570B53A2BA20139003FE991 /* Palace-noAdobe */;
+			targetProxy = E5969B012D0016F400E6DA90 /* PBXContainerItemProxy */;
+		};
+		E5969B042D0016F600E6DA90 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 73EB0A6325821DF4006BC997 /* Palace-noDRM */;
+			targetProxy = E5969B032D0016F600E6DA90 /* PBXContainerItemProxy */;
+		};
 		E7E96BB22B0E82220036B23A /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = E7E96B9D2B0E82210036B23A /* PalaceUIKit */;
@@ -5521,7 +5547,7 @@
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_SWIFT3_OBJC_INFERENCE = Default;
 				SWIFT_VERSION = 4.2;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Palace.app/Palace";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Palace-noDRM.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Palace-noDRM";
 				WARNING_CFLAGS = (
 					"-Wall",
 					"-Wextra",
@@ -5585,7 +5611,7 @@
 				SWIFT_OBJC_BRIDGING_HEADER = "PalaceTests/PalaceTests-Bridging-Header.h";
 				SWIFT_SWIFT3_OBJC_INFERENCE = Default;
 				SWIFT_VERSION = 4.2;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Palace.app/Palace";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Palace-noDRM.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Palace-noDRM";
 				WARNING_CFLAGS = (
 					"-Wall",
 					"-Wextra",
