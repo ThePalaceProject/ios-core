@@ -1,3 +1,4 @@
+@import PureLayout;
 
 #import "TPPBookDetailViewController.h"
 #import "TPPBookNormalCell.h"
@@ -15,7 +16,6 @@
 
 #import "Palace-Swift.h"
 #import "TPPCatalogUngroupedFeedViewController.h"
-
 
 static const CGFloat kActivityIndicatorPadding = 20.0;
 static const CGFloat kCollectionViewCrossfadeDuration = 0.3;

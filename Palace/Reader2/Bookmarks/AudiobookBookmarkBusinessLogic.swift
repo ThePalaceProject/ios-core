@@ -79,8 +79,8 @@ import PalaceAudiobookToolkit
         }
         
         if let annotationResponse = try? await self.annotationsManager.postAudiobookBookmark(forBook: self.book.identifier, selectorValue: locationString) {
-          location.annotationId = annotationResponse?.serverId ?? ""
-          location.lastSavedTimeStamp = annotationResponse?.timeStamp ?? ""
+          location.annotationId = annotationResponse.serverId ?? ""
+          location.lastSavedTimeStamp = annotationResponse.timeStamp ?? ""
         }
       }
     }

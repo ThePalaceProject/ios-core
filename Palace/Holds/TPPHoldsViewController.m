@@ -14,6 +14,7 @@
 
 #import "Palace-Swift.h"
 
+@import PureLayout;
 @interface TPPHoldsViewController ()
 <UICollectionViewDataSource, UICollectionViewDelegate, TPPFacetBarViewDelegate, UICollectionViewDelegateFlowLayout>
 

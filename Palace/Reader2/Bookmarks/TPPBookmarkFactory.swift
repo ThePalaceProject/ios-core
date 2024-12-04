@@ -117,7 +117,6 @@ class TPPBookmarkFactory {
     }
     
     if book.isAudiobook,
-       let selectorValueDict,
        let audioBookmark = AudioBookmark.create(
         locatorData: selectorValueDict,
         timeStamp: time,
@@ -139,7 +138,7 @@ class TPPBookmarkFactory {
   
       let href = selectorValueJSON["href"] as? String ?? ""
       let chapter = body[TPPBookmarkSpec.Body.ChapterTitle.key] as? String ?? selectorValueJSON["title"] as? String
-      let progressWithinChapter = selectorValueJSON["progressWithinChapter"] as? Float
+      let progressWithinChapter = selectorValueJSON["progressWithinChapter"] as? Float ?? Float((selectorValueJSON["progressWithinChapter"] as? Double) ?? 0.0)
       let progressWithinBook = Float(selectorValueJSON["progressWithinBook"] as? Double ?? body[TPPBookmarkSpec.Body.ProgressWithinBook.key] as? Double ?? 0.0)
       let readingOrderItem = selectorValueJSON["readingOrderItem"] as? String
       let readingOrderItemOffsetMilliseconds = selectorValueJSON["readingOrderItemOffsetMilliseconds"] as? Float
@@ -150,7 +149,7 @@ class TPPBookmarkFactory {
         chapter: chapter,
         page: nil,
         location: selectorValueEscJSON,
-        progressWithinChapter: progressWithinChapter ?? 0.0,
+        progressWithinChapter: progressWithinChapter,
         progressWithinBook: progressWithinBook,
         readingOrderItem: readingOrderItem,
         readingOrderItemOffsetMilliseconds: readingOrderItemOffsetMilliseconds,

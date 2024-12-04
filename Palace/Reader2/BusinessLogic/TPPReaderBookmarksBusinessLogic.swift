@@ -234,8 +234,8 @@ class TPPReaderBookmarksBusinessLogic: NSObject {
     var serverBookmarksToDelete = [TPPReadiumBookmark]()
 
     for serverBookmark in serverBookmarks {
-      if localBookmarks.contains(where: { $0.annotationId == serverBookmark.annotationId }) {
-        localBookmarksToKeep.append(serverBookmark)
+      if let localBookmark = localBookmarks.first(where: { $0.annotationId == serverBookmark.annotationId }) {
+        localBookmarksToKeep.append(localBookmark)
       } else {
           serverBookmarksToAdd.append(serverBookmark)
       }

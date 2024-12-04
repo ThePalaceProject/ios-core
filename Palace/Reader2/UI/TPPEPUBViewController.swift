@@ -166,7 +166,8 @@ extension TPPEPUBViewController: EPUBSearchDelegate {
             id: "search",
             locator: location,
             style: .highlight(tint: .red)))
-          decorableNavigator.apply(decorations: decorations, in: "search")
+
+          await decorableNavigator.applyDecorationsAsync(decorations, in: "search")
         }
       }
     }
@@ -251,4 +252,12 @@ extension TPPEPUBViewController: DecorableNavigator {
   }
 
   private func handleHighlightInteraction(_ event: OnDecorationActivatedEvent) {}
+}
+
+public extension DecorableNavigator {
+  func applyDecorationsAsync(_ decorations: [Decoration], in group: String) async {
+    await MainActor.run {
+      self.apply(decorations: decorations, in: group)
+    }
+  }
 }

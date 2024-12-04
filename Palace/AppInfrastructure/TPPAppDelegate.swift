@@ -144,7 +144,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     Reachability.shared.stopMonitoring()
   }
 
-  private func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String, completionHandler: @escaping () -> Void) {
+  internal func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String, completionHandler: @escaping () -> Void) {
     audiobookLifecycleManager.handleEventsForBackgroundURLSession(for: identifier, completionHandler: completionHandler)
   }
 
