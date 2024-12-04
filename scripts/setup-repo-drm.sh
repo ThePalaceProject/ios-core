@@ -29,7 +29,7 @@ else
   ADOBE_SDK_PATH=../mobile-drm-adeptconnector
 fi
 
-ln -s $ADOBE_SDK_PATH/uncompressed adobe-rmsdk
+ln -sf $ADOBE_SDK_PATH/uncompressed adobe-rmsdk
 
 cd $ADOBE_SDK_PATH
 ./uncompress.sh
