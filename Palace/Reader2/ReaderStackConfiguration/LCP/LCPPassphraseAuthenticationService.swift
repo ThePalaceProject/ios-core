@@ -73,7 +73,7 @@ class LCPPassphraseAuthenticationService: LCPAuthenticating {
     do {
       let (data, _) = try await TPPNetworkExecutor.shared.GET(hintURL)
       if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-         let passphrase = json?["passphrase"] as? String {
+         let passphrase = json["passphrase"] as? String {
         return passphrase
       } else {
         logError("LCP Passphrase JSON Parse Error", "responseBody", String(data: data, encoding: .utf8) ?? "N/A")
