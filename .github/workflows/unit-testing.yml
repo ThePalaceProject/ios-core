@@ -2,10 +2,10 @@ name: Unit Tests
 on: [ pull_request, workflow_dispatch ]
 jobs:
   build-and-test:
-    runs-on: macOS-13
+    runs-on: macOS-latest
     steps:
-      - name: Force Xcode 15
-        run: sudo xcode-select -switch /Applications/Xcode_15.0.1.app
+      - name: Force Xcode 16
+        run: sudo xcode-select -switch /Applications/Xcode_16.1.app
 
       - name: Checkout main repo and submodules
         uses: actions/checkout@v3
