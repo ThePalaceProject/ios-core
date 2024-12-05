@@ -1,3 +1,4 @@
+@import PureLayout;
 
 #import "TPPBookDetailView.h"
 #import "TPPCatalogFeedViewController.h"
@@ -8,7 +9,6 @@
 #import "TPPSession.h"
 #import "TPPProblemReportViewController.h"
 #import "NSURLRequest+NYPLURLRequestAdditions.h"
-
 #import "TPPBookDetailViewController.h"
 
 @interface TPPBookDetailViewController () <TPPBookDetailViewDelegate, TPPProblemReportViewControllerDelegate, TPPCatalogLaneCellDelegate, UIAdaptivePresentationControllerDelegate>

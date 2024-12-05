@@ -129,18 +129,18 @@
   // fetched (which otherwise would cause a flickering effect and pointless bandwidth usage).
   self.cover.image = [[TPPBookRegistry shared] cachedThumbnailImageFor:book];
   
-  if(!self.cover.image) {
+  if (!self.cover.image) {
     [[TPPBookRegistry shared]
      thumbnailImageFor:book
      handler:^(UIImage *const image) {
-       // This check prevents old operations from overwriting cover images in the case of cells
-       // being reused before those operations completed.
-       if([book.identifier isEqualToString:self.book.identifier]) {
-         self.cover.image = image;
-       }
-     }];
+      dispatch_async(dispatch_get_main_queue(), ^{
+        if ([book.identifier isEqualToString:self.book.identifier]) {
+          self.cover.image = image;
+        }
+      });
+    }];
   }
-  
+
   [self setNeedsLayout];
 }
 

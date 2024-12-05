@@ -365,7 +365,7 @@ let TimeTrackingURLURLKey = "time-tracking-url"
   }
 
   @objc var isExpired: Bool {
-    guard let date = getExpirationDate() else { return true }
+    guard let date = getExpirationDate() else { return false }
     return date < Date()
   }
 

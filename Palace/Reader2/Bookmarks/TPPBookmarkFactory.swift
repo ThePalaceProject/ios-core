@@ -7,7 +7,7 @@
 //
 
 import Foundation
-import R2Shared
+import ReadiumShared
 
 class TPPBookmarkFactory {
 
@@ -21,44 +21,37 @@ class TPPBookmarkFactory {
     self.drmDeviceID = drmDeviceID
   }
 
-  func make(fromR2Location bookmarkLoc: TPPBookmarkR2Location,
-            usingBookRegistry bookRegistry: TPPBookRegistryProvider) -> TPPReadiumBookmark? {
+  func make(fromR3Location bookmarkLoc: TPPBookmarkR3Location,
+            usingBookRegistry bookRegistry: TPPBookRegistryProvider,
+            for book: TPPBook,
+            publication: Publication) async -> TPPReadiumBookmark? {
 
-    guard let progression = bookmarkLoc.locator.locations.progression else {
+    guard let chapterProgress = bookmarkLoc.locator.locations.progression.map(Float.init),
+          let totalProgress = bookmarkLoc.locator.locations.totalProgression.map(Float.init) else {
       return nil
     }
-    let chapterProgress = Float(progression)
 
-    guard let total = bookmarkLoc.locator.locations.totalProgression else {
-      return nil
-    }
-    let totalProgress = Float(total)
+    let page: String? = bookmarkLoc.locator.locations.position.map { "\($0)" }
 
-    var page: String? = nil
-    if let position = bookmarkLoc.locator.locations.position {
-      page = "\(position)"
-    }
+    let href = bookmarkLoc.locator.href.string
 
-    let registryLoc = bookRegistry.location(forIdentifier: book.identifier)
-    var href: String? = nil
-
-    href = bookmarkLoc.locator.href
-
-    let chapter: String?
-    if let locatorChapter = bookmarkLoc.locator.title {
-      chapter = locatorChapter
-    } else if let tocLink = publication.tableOfContents.first(withHREF: bookmarkLoc.locator.href) {
-      chapter = tocLink.title
-    } else {
+    var chapter: String? = nil
+    let tocResult = await publication.tableOfContents()
+    switch tocResult {
+    case .success(let toc):
+      chapter = toc.firstWithHREF(bookmarkLoc.locator.href)?.title
+    case .failure:
       chapter = nil
     }
+
+    let registryLocation = bookRegistry.location(forIdentifier: book.identifier)?.locationString
 
     return TPPReadiumBookmark(
       annotationId: nil,
       href: href,
       chapter: chapter,
       page: page,
-      location: registryLoc?.locationString,
+      location: registryLocation,
       progressWithinChapter: chapterProgress,
       progressWithinBook: totalProgress,
       readingOrderItem: nil,
@@ -124,7 +117,6 @@ class TPPBookmarkFactory {
     }
     
     if book.isAudiobook,
-       let selectorValueDict,
        let audioBookmark = AudioBookmark.create(
         locatorData: selectorValueDict,
         timeStamp: time,
@@ -146,7 +138,7 @@ class TPPBookmarkFactory {
   
       let href = selectorValueJSON["href"] as? String ?? ""
       let chapter = body[TPPBookmarkSpec.Body.ChapterTitle.key] as? String ?? selectorValueJSON["title"] as? String
-      let progressWithinChapter = selectorValueJSON["progressWithinChapter"] as? Float
+      let progressWithinChapter = selectorValueJSON["progressWithinChapter"] as? Float ?? Float((selectorValueJSON["progressWithinChapter"] as? Double) ?? 0.0)
       let progressWithinBook = Float(selectorValueJSON["progressWithinBook"] as? Double ?? body[TPPBookmarkSpec.Body.ProgressWithinBook.key] as? Double ?? 0.0)
       let readingOrderItem = selectorValueJSON["readingOrderItem"] as? String
       let readingOrderItemOffsetMilliseconds = selectorValueJSON["readingOrderItemOffsetMilliseconds"] as? Float
@@ -157,7 +149,7 @@ class TPPBookmarkFactory {
         chapter: chapter,
         page: nil,
         location: selectorValueEscJSON,
-        progressWithinChapter: progressWithinChapter ?? 0.0,
+        progressWithinChapter: progressWithinChapter,
         progressWithinBook: progressWithinBook,
         readingOrderItem: readingOrderItem,
         readingOrderItemOffsetMilliseconds: readingOrderItemOffsetMilliseconds,

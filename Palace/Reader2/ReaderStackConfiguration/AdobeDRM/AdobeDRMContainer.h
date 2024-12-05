@@ -33,6 +33,7 @@ NS_ASSUME_NONNULL_END
 @property (nonatomic, strong) NSString * _Nullable epubDecodingError;
 /// Display until date from epub_rights.xml document permissions
 @property (nonatomic, strong) NSDate * _Nullable displayUntilDate;
+@property (nonatomic, strong) NSURL * _Nullable fileURL;
 @end
 
 #endif /* AdobeDRMContainer_h */

@@ -9,23 +9,23 @@
 #if LCP
 
 import Foundation
-import R2Shared
-import R2Streamer
+import ReadiumShared
+import ReadiumStreamer
 import ReadiumLCP
 import ZIPFoundation
 
 /// LCP PDF helper class
 @objc class LCPPDFs: NSObject {
-  
+
   struct PDFManifest: Codable {
     struct ReadingOrderItem: Codable {
       let href: String
     }
     let readingOrder: [ReadingOrderItem]
   }
-  
+
   private static let expectedAcquisitionType = "application/vnd.readium.lcp.license.v1.0+json"
- 
+
   /// Check if the book is LCPPDF
   /// - Parameter book: pdf
   /// - Returns: `true` if the book is an LCP DRM protected PDF, `false` otherwise
@@ -33,40 +33,77 @@ import ZIPFoundation
     guard let defualtAcquisition = book.defaultAcquisition else { return false }
     return book.defaultBookContentType == .pdf && defualtAcquisition.type == expectedAcquisitionType
   }
-  
+
   private let pdfUrl: URL
-  private var lcpService = LCPLibraryService()
-  private let streamer: Streamer
-  
-  
+  private let assetRetriever: AssetRetriever
+  private let publicationOpener: PublicationOpener
+  let lcpService = LCPLibraryService()
+
   @objc init?(url: URL) {
     guard let contentProtection = lcpService.contentProtection else {
       TPPErrorLogger.logError(nil, summary: "Uninitialized contentProtection in LCPPDFs")
       return nil
     }
     self.pdfUrl = url
-    self.streamer = Streamer(contentProtections: [contentProtection])
+
+    let httpClient = DefaultHTTPClient()
+    self.assetRetriever = AssetRetriever(httpClient: httpClient)
+    self.publicationOpener = PublicationOpener(
+      parser: DefaultPublicationParser(
+        httpClient: httpClient,
+        assetRetriever: assetRetriever,
+        pdfFactory: DefaultPDFDocumentFactory()
+      ),
+      contentProtections: [contentProtection]
+    )
   }
-  
+
   /// Get PDF file name from the manifest file.
   private func getPdfHref(completion: @escaping (_ pdfHref: String?, _ error: NSError?) -> ()) {
     let manifestPath = "manifest.json"
-    let asset = FileAsset(url: self.pdfUrl)
-    streamer.open(asset: asset, allowUserInteraction: false) { result in
-      do {
-        let publication = try result.get()
-        let resource = publication.getResource(at: manifestPath)
-        let manifestData = try resource.read().get()
-        let pdfManifest = try JSONDecoder().decode(PDFManifest.self, from: manifestData)
-        resource.close()
-        completion(pdfManifest.readingOrder.first?.href, nil)
-      } catch {
-        TPPErrorLogger.logError(error, summary: "Error reading PDF path")
-        let nsError = NSError(domain: "Palace.LCPPDFs", code: 0, userInfo: [
-          NSLocalizedDescriptionKey: error.localizedDescription,
-          "Error": error
-        ])
-        completion(nil, nsError)
+    guard let fileUrl = FileURL(url: self.pdfUrl) else {
+      completion(nil, nil)
+      return 
+    }
+
+    Task {
+      switch await assetRetriever.retrieve(url: fileUrl) {
+      case .success(let asset):
+        let result = await publicationOpener.open(asset: asset, allowUserInteraction: false, sender: nil)
+
+        switch result {
+        case .success(let publication):
+          do {
+            guard let resource = publication.getResource(at: manifestPath) else {
+              completion(nil,nil)
+              return
+            }
+
+            switch await resource.readAsJSONObject() {
+            case .success(let jsonObject):
+              let jsonData = try JSONSerialization.data(withJSONObject: jsonObject)
+              let pdfManifest = try JSONDecoder().decode(PDFManifest.self, from: jsonData)
+              completion(pdfManifest.readingOrder.first?.href, nil)
+            case .failure(let error):
+              throw error
+            }
+          } catch {
+            TPPErrorLogger.logError(error, summary: "Error reading PDF path")
+            let nsError = NSError(domain: "Palace.LCPPDFs", code: 0, userInfo: [
+              NSLocalizedDescriptionKey: error.localizedDescription,
+              "Error": error
+            ])
+            completion(nil, nsError)
+          }
+
+        case .failure(let error):
+          TPPErrorLogger.logError(error, summary: "Failed to open LCP PDF")
+          completion(nil, NSError(domain: error.localizedDescription, code: -1))
+        }
+
+      case .failure(let error):
+        TPPErrorLogger.logError(error, summary: "Failed to retrieve LCP PDF asset")
+        completion(nil, NSError(domain: error.localizedDescription, code: -1))
       }
     }
   }
@@ -77,7 +114,7 @@ import ZIPFoundation
   private var dataCache: Data?
   private var dataCacheSize = 1024 * 1024
   private var dataCachePage: Int?
-  
+
   /// Update cached data
   /// - Parameters:
   ///   - encryptedData: Encrypted data
@@ -92,7 +129,7 @@ import ZIPFoundation
       dataCachePage = page
     }
   }
-  
+
   /// Simple cache read function
   /// - Parameters:
   ///   - start: Start position of the block to read
@@ -106,7 +143,7 @@ import ZIPFoundation
     let cacheEnd = end % dataCacheSize
     return data[cacheStart..<cacheEnd]
   }
-  
+
   /// Decrypt data
   /// - Parameters:
   ///   - encryptedData: Encrypted data
@@ -127,7 +164,7 @@ import ZIPFoundation
     }
     return data ?? decryptRawData(data: encryptedData, start: start, end: end)
   }
-  
+
   /// Decrypt data
   /// - Parameters:
   ///   - encryptedData: Encrypted data
@@ -137,11 +174,6 @@ import ZIPFoundation
   ///
   /// This function reads and decrypts raw encrypted data without caching.
   private func decryptRawData(data encryptedData: Data, start: Int, end: Int) -> Data? {
-    //  Start of block of data aligned to aesBlockSize
-    //       |
-    //       [      | <- data the function is trying to read -> |      ]
-    //                                                                 |
-    //                              End of block of data aligned to aesBlockSize
     autoreleasepool {
       let aesBlockSize = 4096 // should be a multiple of 16; smaller and larger block sizes slow reading down
       let paddingSize = 16    // AES padding size; lcpService cuts it off
@@ -157,7 +189,7 @@ import ZIPFoundation
       return decryptedBlock?.subdata(in: resultRange)
     }
   }
-  
+
   /// Returns URL in temporary directory for the file
   /// - Parameter url: Arcive URL
   /// - Returns: URL in temporary directory for extracted PDF file
@@ -165,7 +197,7 @@ import ZIPFoundation
     let filename = "\(url.lastPathComponent).pdf"
     return FileManager.default.temporaryDirectory.appendingPathComponent(filename)
   }
-  
+
   /// Extract PDF from `.zip` archive
   /// - Parameters:
   ///   - url: Source `.zip` archive with PDF file
@@ -197,7 +229,7 @@ import ZIPFoundation
       }
     }
   }
-  
+
   /// Delete temporary unarchived file content, if it exists
   /// - Parameter url: PDF archive URL
   @objc static func deletePdfContent(url: URL) throws {
@@ -209,16 +241,30 @@ import ZIPFoundation
 }
 
 private extension Publication {
-  // R2 has changed its expectation about the leading slash;
-  // here we verify both cases.
-  func getResource(at path: String) -> Resource {
-    let resource = get("/" + path)
-    guard type(of: resource) != FailureResource.self else {
-      return get(path)
+  func getResource(at path: String) -> Resource? {
+    if let link = findLink(at: path) {
+      return get(link)
     }
-    return resource
+
+    let leadingSlashPath = "/" + path
+    if let link = findLink(at: leadingSlashPath) {
+      return get(link)
+    }
+
+    return FailureResource(error: .access(.fileSystem(.fileNotFound(nil))))
+  }
+
+  private func findLink(at path: String) -> ReadiumShared.Link? {
+    if let link = readingOrder.first(where: { $0.href == path }) {
+      return link
+    }
+
+    if let link = resources.first(where: { $0.href == path }) {
+      return link
+    }
+
+    return nil
   }
 }
 
 #endif
-

@@ -14,15 +14,16 @@ import PDFKit
 /// instead of reading blocks of data with data provider.
 /// The analog for encrypted documents - `TPPEncryptedPDFView`
 struct TPPPDFView: View {
-  
+
   let document: PDFDocument
   let pdfView = PDFView()
   private let pageChangePublisher = NotificationCenter.default.publisher(for: .PDFViewPageChanged)
 
   @EnvironmentObject var metadata: TPPPDFDocumentMetadata
-  
+
   @State private var showingDocumentInfo = true
   @State private var isTracking = false
+  @State private var documentTitle: String = ""
 
   var body: some View {
     ZStack {
@@ -30,7 +31,7 @@ struct TPPPDFView: View {
         .edgesIgnoringSafeArea([.all])
 
       VStack {
-        TPPPDFLabel(document.title ?? metadata.book.title)
+        TPPPDFLabel(documentTitle)
           .padding(.top)
         Spacer()
         if let pageLabel = document.page(at: metadata.currentPage)?.label, Int(pageLabel) != (metadata.currentPage + 1) {
@@ -52,13 +53,24 @@ struct TPPPDFView: View {
       .contentShape(Rectangle())
     }
     .navigationBarHidden(!showingDocumentInfo)
+    .onAppear {
+      Task {
+        if let title = await fetchDocumentTitle() {
+          documentTitle = title
+        }
+      }
+    }
     .onReceive(pageChangePublisher) { value in
       if let pdfView = (value.object as? PDFView), let page = pdfView.currentPage, let pageIndex = pdfView.document?.index(for: page) {
         metadata.currentPage = pageIndex
         if isTracking {
-            showingDocumentInfo = false
+          showingDocumentInfo = false
         }
       }
     }
+  }
+
+  private func fetchDocumentTitle() async -> String? {
+    try? await document.title() ?? metadata.book.title
   }
 }

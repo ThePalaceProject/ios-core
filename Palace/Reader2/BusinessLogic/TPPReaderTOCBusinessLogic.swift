@@ -7,7 +7,7 @@
 //
 
 import Foundation
-import R2Shared
+import ReadiumShared
 
 typealias TPPReaderTOCLink = (level: Int, link: Link)
 
@@ -21,7 +21,16 @@ class TPPReaderTOCBusinessLogic {
   init(r2Publication: Publication, currentLocation: Locator?) {
     self.publication = r2Publication
     self.currentLocation = currentLocation
-    self.tocElements = flatten(publication.tableOfContents)
+
+    Task {
+      let tocResult = await publication.tableOfContents()
+      switch tocResult {
+      case .success(let toc):
+        self.tocElements = flatten(toc)
+      case .failure:
+        return
+      }
+    }
   }
 
   private func flatten(_ links: [Link], level: Int = 0) -> [(level: Int, link: Link)] {
@@ -32,16 +41,17 @@ class TPPReaderTOCBusinessLogic {
     Strings.TPPReaderTOCBusinessLogic.tocDisplayTitle
   }
 
-  func tocLocator(at index: Int) -> Locator? {
+  func tocLocator(at index: Int) async -> Locator? {
     guard tocElements.indices.contains(index) else {
       return nil
     }
-    return Locator(link: tocElements[index].link)
+
+    return await publication.locate(tocElements[index].link)
   }
 
-  func shouldSelectTOCItem(at index: Int) -> Bool {
+  func shouldSelectTOCItem(at index: Int) async -> Bool {
     // If the locator's href is #, then the item is not a link.
-    guard let locator = tocLocator(at: index), locator.href != "#" else {
+    guard let locator = await tocLocator(at: index), locator.href.string != "#" else {
       return false
     }
     return true

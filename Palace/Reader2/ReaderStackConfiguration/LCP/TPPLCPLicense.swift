@@ -9,7 +9,7 @@
 #if LCP
 
 import Foundation
-import R2Shared
+import ReadiumShared
 
 struct TPPLCPLicenseLink: Codable {
   let rel: String?

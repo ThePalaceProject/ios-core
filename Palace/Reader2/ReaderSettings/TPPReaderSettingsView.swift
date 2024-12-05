@@ -7,8 +7,8 @@
 //
 
 import SwiftUI
-import R2Shared
-import R2Navigator
+import ReadiumShared
+import ReadiumNavigator
 import CryptoKit
 
 /// Height of settings view controls
