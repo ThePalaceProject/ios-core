@@ -1088,8 +1088,6 @@
 		E59DE0D32D015EED00B46706 /* ReadiumAdapterLCPSQLite in Frameworks */ = {isa = PBXBuildFile; productRef = E5E9B2172CC1A5C100366A2E /* ReadiumAdapterLCPSQLite */; };
 		E59DE0D42D015EED00B46706 /* ReadiumAdapterGCDWebServer in Frameworks */ = {isa = PBXBuildFile; productRef = E5E9B2192CC1A7AC00366A2E /* ReadiumAdapterGCDWebServer */; };
 		E59DE0E72D016C9600B46706 /* PureLayout in Frameworks */ = {isa = PBXBuildFile; productRef = E50BC9DC2CBF6FE900660937 /* PureLayout */; };
-		E59DE0E82D016C9600B46706 /* PureLayout in Frameworks */ = {isa = PBXBuildFile; productRef = E5F2E9B42CEE8544007EA6C9 /* PureLayout */; };
-		E59DE0E92D016C9600B46706 /* PureLayout in Frameworks */ = {isa = PBXBuildFile; productRef = E5F2E9B62CEE8550007EA6C9 /* PureLayout */; };
 		E5A0CEA12AA9850300C304EC /* MyBooksDownloadCenterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D73DA3D22A07B9A00162CB8 /* MyBooksDownloadCenterTests.swift */; };
 		E5A0CEA42AA9855200C304EC /* TPPBookMock.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A0CEA32AA9855200C304EC /* TPPBookMock.swift */; };
 		E5A0CEA62AA9856000C304EC /* TPPReauthenticatorMock.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A0CEA52AA9856000C304EC /* TPPReauthenticatorMock.swift */; };
@@ -2146,7 +2144,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				E59DE0E92D016C9600B46706 /* PureLayout in Frameworks */,
 				E59DE0D42D015EED00B46706 /* ReadiumAdapterGCDWebServer in Frameworks */,
 				E59DE0D32D015EED00B46706 /* ReadiumAdapterLCPSQLite in Frameworks */,
 				E7FFEAA62A745F600006030A /* ULID in Frameworks */,
@@ -2236,7 +2233,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				E59DE0E82D016C9600B46706 /* PureLayout in Frameworks */,
 				D570B6A62BA20139003FE991 /* R2LCPClient.xcframework in Frameworks */,
 				D570B6A72BA20139003FE991 /* OverdriveProcessor.framework in Frameworks */,
 				D570B6A82BA20139003FE991 /* MediaPlayer.framework in Frameworks */,
