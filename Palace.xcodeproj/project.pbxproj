@@ -1005,6 +1005,8 @@
 		E51919D82B508EE400C08E86 /* URLRequest+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E51919D72B508EE400C08E86 /* URLRequest+Extensions.swift */; };
 		E51919D92B50902000C08E86 /* URLRequest+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E51919D72B508EE400C08E86 /* URLRequest+Extensions.swift */; };
 		E51EB51529D5F46400022D24 /* String+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E57E798329D4D407006D0F87 /* String+Extensions.swift */; };
+		E51F26652D017A4000DF71EC /* PureLayout in Frameworks */ = {isa = PBXBuildFile; productRef = E5F2E9B42CEE8544007EA6C9 /* PureLayout */; };
+		E51F26662D017A4000DF71EC /* PureLayout in Frameworks */ = {isa = PBXBuildFile; productRef = E5F2E9B62CEE8550007EA6C9 /* PureLayout */; };
 		E523124B285C3828007D1DB5 /* TPPBookRegistry+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E523124A285C3828007D1DB5 /* TPPBookRegistry+Extensions.swift */; };
 		E5239A1F2992107D00850941 /* BookCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E567C72B296743990079C28C /* BookCell.swift */; };
 		E523A453299FCA5300EF833B /* AlertModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E523A452299FCA5300EF833B /* AlertModel.swift */; };
@@ -2144,6 +2146,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E51F26662D017A4000DF71EC /* PureLayout in Frameworks */,
 				E59DE0D42D015EED00B46706 /* ReadiumAdapterGCDWebServer in Frameworks */,
 				E59DE0D32D015EED00B46706 /* ReadiumAdapterLCPSQLite in Frameworks */,
 				E7FFEAA62A745F600006030A /* ULID in Frameworks */,
@@ -2233,6 +2236,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E51F26652D017A4000DF71EC /* PureLayout in Frameworks */,
 				D570B6A62BA20139003FE991 /* R2LCPClient.xcframework in Frameworks */,
 				D570B6A72BA20139003FE991 /* OverdriveProcessor.framework in Frameworks */,
 				D570B6A82BA20139003FE991 /* MediaPlayer.framework in Frameworks */,
@@ -3760,7 +3764,6 @@
 				73EB0A6425821DF4006BC997 /* Sources */,
 				73EB0B2C25821DF4006BC997 /* Frameworks */,
 				73EB0B5825821DF4006BC997 /* Resources */,
-				73EB0B6E25821DF4006BC997 /* Copy Frameworks (Carthage) */,
 				73EB0B7125821DF4006BC997 /* Crashlytics */,
 				21986971267E2A480041369E /* Embed Frameworks */,
 			);
@@ -4230,24 +4233,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "\"${BUILD_DIR%/Build/*}/SourcePackages/checkouts/firebase-ios-sdk/Crashlytics/run\"\n";
-		};
-		73EB0B6E25821DF4006BC997 /* Copy Frameworks (Carthage) */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-			);
-			name = "Copy Frameworks (Carthage)";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "/usr/local/bin/carthage copy-frameworks\n";
 		};
 		73EB0B7125821DF4006BC997 /* Crashlytics */ = {
 			isa = PBXShellScriptBuildPhase;
