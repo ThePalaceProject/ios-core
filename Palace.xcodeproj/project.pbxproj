@@ -6332,8 +6332,8 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/readium/swift-toolkit.git";
 			requirement = {
-				kind = exactVersion;
-				version = "3.0.0-beta.1";
+				branch = develop;
+				kind = branch;
 			};
 		};
 		E77D02232931357400544180 /* XCRemoteSwiftPackageReference "SwiftSoup" */ = {
