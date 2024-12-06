@@ -1051,9 +1051,6 @@
 		E54ACECE2D03410500693EA8 /* PureLayout in Frameworks */ = {isa = PBXBuildFile; productRef = E54ACECD2D03410500693EA8 /* PureLayout */; };
 		E54ACED02D03412400693EA8 /* PureLayout in Frameworks */ = {isa = PBXBuildFile; productRef = E54ACECF2D03412400693EA8 /* PureLayout */; };
 		E54ACED22D03412E00693EA8 /* PureLayout in Frameworks */ = {isa = PBXBuildFile; productRef = E54ACED12D03412E00693EA8 /* PureLayout */; };
-		E54ACF9E2D0381F900693EA8 /* fetch-audioengine.sh in Resources */ = {isa = PBXBuildFile; fileRef = E54ACF9D2D0381F900693EA8 /* fetch-audioengine.sh */; };
-		E54ACF9F2D0381F900693EA8 /* fetch-audioengine.sh in Resources */ = {isa = PBXBuildFile; fileRef = E54ACF9D2D0381F900693EA8 /* fetch-audioengine.sh */; };
-		E54ACFA02D0381F900693EA8 /* fetch-audioengine.sh in Resources */ = {isa = PBXBuildFile; fileRef = E54ACF9D2D0381F900693EA8 /* fetch-audioengine.sh */; };
 		E54DD4D5275C7C940013C200 /* View+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E54DD4D4275C7C940013C200 /* View+Extensions.swift */; };
 		E54DD4E6275C8EAA0013C200 /* Font+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E54DD4E5275C8EAA0013C200 /* Font+Extensions.swift */; };
 		E54DD4F9275D9E7F0013C200 /* UIViewControllerWrapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = E54DD4C6275C60E70013C200 /* UIViewControllerWrapper.swift */; };
@@ -4081,7 +4078,6 @@
 				73EB0B5A25821DF4006BC997 /* simplified.js in Resources */,
 				73EB0B5B25821DF4006BC997 /* TPPProblemReportViewController.xib in Resources */,
 				E5BEF00926BD919F00C2A50B /* OpenSans-Regular.ttf in Resources */,
-				E54ACF9E2D0381F900693EA8 /* fetch-audioengine.sh in Resources */,
 				E50221B829881C5100A8A80B /* Localizable.strings in Resources */,
 				73EB0B5C25821DF4006BC997 /* readium-shared-js_all.js in Resources */,
 				73EB0B5D25821DF4006BC997 /* ReaderClientCert.sig in Resources */,
@@ -4119,7 +4115,6 @@
 				11C113D719F84613005B3F63 /* simplified.js in Resources */,
 				085D31D91BE29ED4007F7672 /* TPPProblemReportViewController.xib in Resources */,
 				E5BEF00826BD919F00C2A50B /* OpenSans-Regular.ttf in Resources */,
-				E54ACFA02D0381F900693EA8 /* fetch-audioengine.sh in Resources */,
 				E50221B529881BC900A8A80B /* Localizable.strings in Resources */,
 				5A69290E1B95ACC600FB4C10 /* readium-shared-js_all.js in Resources */,
 				2D4379FE1C46FDB600AE1AD5 /* ReaderClientCert.sig in Resources */,
@@ -4157,7 +4152,6 @@
 				D570B6D02BA20139003FE991 /* simplified.js in Resources */,
 				D570B6D12BA20139003FE991 /* TPPProblemReportViewController.xib in Resources */,
 				D570B6D22BA20139003FE991 /* OpenSans-Regular.ttf in Resources */,
-				E54ACF9F2D0381F900693EA8 /* fetch-audioengine.sh in Resources */,
 				D570B6D32BA20139003FE991 /* Localizable.strings in Resources */,
 				D570B6D42BA20139003FE991 /* readium-shared-js_all.js in Resources */,
 				D570B6D52BA20139003FE991 /* ReaderClientCert.sig in Resources */,
@@ -5903,11 +5897,9 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/PalaceDebug.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
-				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 303;
-				DEVELOPMENT_TEAM = "";
-				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
+				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -5934,8 +5926,7 @@
 				);
 				MARKETING_VERSION = 1.1.5;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
-				PROVISIONING_PROFILE_SPECIFIER = "Ad Hoc 2";
-				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "Ad Hoc 2";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				RUN_CLANG_STATIC_ANALYZER = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG SIMPLYE FEATURE_DRM_CONNECTOR FEATURE_CRASH_REPORTING LCP FEATURE_OVERDRIVE";
 				SWIFT_OBJC_BRIDGING_HEADER = "Palace/AppInfrastructure/Palace-Bridging-Header.h";
@@ -6151,13 +6142,11 @@
 				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CODE_SIGN_IDENTITY = "Apple Development";
-				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEFINES_MODULE = YES;
-				DEVELOPMENT_TEAM = "";
-				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
+				DEVELOPMENT_TEAM = 88CBA74T8K;
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
 				DYLIB_INSTALL_NAME_BASE = "@rpath";
