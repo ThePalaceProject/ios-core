@@ -1,4 +1,5 @@
 import Combine
+
 import Foundation
 import ReadiumNavigator
 import ReadiumShared
@@ -11,6 +12,7 @@ class TPPTextToSpeech: ObservableObject {
 
   @Published private(set) var isPlaying: Bool = false
   @Published private(set) var playingUtterance: Locator?
+  private var isMoving: Bool = false
 
   private let playingWordRangeSubject = PassthroughSubject<Locator, Never>()
 
@@ -49,19 +51,16 @@ class TPPTextToSpeech: ObservableObject {
         .store(in: &subscriptions)
     }
 
-    // Navigate to the currently spoken utterance word.
-    // This will automatically turn pages when needed.
-    var isMoving = false
     playingWordRangeSubject
       .removeDuplicates()
     // Improve performances by throttling the moves to maximum one per second.
       .throttle(for: 1, scheduler: RunLoop.main, latest: true)
-      .drop(while: { _ in isMoving })
+      .drop(while: { _ in self.isMoving })
       .sink { locator in
         Task {
-          isMoving = true
+          self.isMoving = true
           await navigator.go(to: locator, options: NavigatorGoOptions(animated: true))
-          isMoving = false
+          self.isMoving = false
         }
       }
       .store(in: &subscriptions)

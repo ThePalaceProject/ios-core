@@ -159,14 +159,17 @@ extension TPPEPUBViewController: EPUBSearchDelegate {
       Task {
         await self.navigator.go(to: location)
 
-
         if let decorableNavigator = self.navigator as? DecorableNavigator {
-          var decorations: [Decoration] = []
-          decorations.append(Decoration(
-            id: "search",
-            locator: location,
-            style: .highlight(tint: .red)))
-          await decorableNavigator.applyDecorationsAsync(decorations, in: "search")
+          await MainActor.run {
+            let decorations = [
+              Decoration(
+                id: "search",
+                locator: location,
+                style: .highlight(tint: .red)
+              )
+            ]
+            decorableNavigator.apply(decorations: decorations, in: "search")
+          }
         }
       }
     }
@@ -207,7 +210,12 @@ extension TPPEPUBViewController: UIPopoverPresentationControllerDelegate {}
 extension TPPEPUBViewController: DecorableNavigator {
   func apply(decorations: [Decoration], in group: String) {
     guard let navigator = navigator as? DecorableNavigator else { return }
-    navigator.apply(decorations: decorations, in: group)
+
+    Task {
+      await MainActor.run {
+        navigator.apply(decorations: decorations, in: group)
+      }
+    }
   }
 
   func supports(decorationStyle style: Decoration.Style.Id) -> Bool {
