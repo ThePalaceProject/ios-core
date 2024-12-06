@@ -1051,6 +1051,7 @@
 		E54ACECE2D03410500693EA8 /* PureLayout in Frameworks */ = {isa = PBXBuildFile; productRef = E54ACECD2D03410500693EA8 /* PureLayout */; };
 		E54ACED02D03412400693EA8 /* PureLayout in Frameworks */ = {isa = PBXBuildFile; productRef = E54ACECF2D03412400693EA8 /* PureLayout */; };
 		E54ACED22D03412E00693EA8 /* PureLayout in Frameworks */ = {isa = PBXBuildFile; productRef = E54ACED12D03412E00693EA8 /* PureLayout */; };
+		E54ACF512D03783F00693EA8 /* AudioEngine.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E58565CE269774C400A5FBD5 /* AudioEngine.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		E54DD4D5275C7C940013C200 /* View+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E54DD4D4275C7C940013C200 /* View+Extensions.swift */; };
 		E54DD4E6275C8EAA0013C200 /* Font+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E54DD4E5275C8EAA0013C200 /* Font+Extensions.swift */; };
 		E54DD4F9275D9E7F0013C200 /* UIViewControllerWrapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = E54DD4C6275C60E70013C200 /* UIViewControllerWrapper.swift */; };
@@ -1434,6 +1435,7 @@
 			dstPath = "";
 			dstSubfolderSpec = 10;
 			files = (
+				E54ACF512D03783F00693EA8 /* AudioEngine.xcframework in Embed Frameworks */,
 				E784949A2A8E99CF0059B4B0 /* PalaceAudiobookToolkit.framework in Embed Frameworks */,
 				E7E96BBC2B0E82550036B23A /* PalaceUIKit.framework in Embed Frameworks */,
 			);
