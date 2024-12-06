@@ -1051,6 +1051,9 @@
 		E54ACECE2D03410500693EA8 /* PureLayout in Frameworks */ = {isa = PBXBuildFile; productRef = E54ACECD2D03410500693EA8 /* PureLayout */; };
 		E54ACED02D03412400693EA8 /* PureLayout in Frameworks */ = {isa = PBXBuildFile; productRef = E54ACECF2D03412400693EA8 /* PureLayout */; };
 		E54ACED22D03412E00693EA8 /* PureLayout in Frameworks */ = {isa = PBXBuildFile; productRef = E54ACED12D03412E00693EA8 /* PureLayout */; };
+		E54ACF9E2D0381F900693EA8 /* fetch-audioengine.sh in Resources */ = {isa = PBXBuildFile; fileRef = E54ACF9D2D0381F900693EA8 /* fetch-audioengine.sh */; };
+		E54ACF9F2D0381F900693EA8 /* fetch-audioengine.sh in Resources */ = {isa = PBXBuildFile; fileRef = E54ACF9D2D0381F900693EA8 /* fetch-audioengine.sh */; };
+		E54ACFA02D0381F900693EA8 /* fetch-audioengine.sh in Resources */ = {isa = PBXBuildFile; fileRef = E54ACF9D2D0381F900693EA8 /* fetch-audioengine.sh */; };
 		E54DD4D5275C7C940013C200 /* View+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E54DD4D4275C7C940013C200 /* View+Extensions.swift */; };
 		E54DD4E6275C8EAA0013C200 /* Font+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E54DD4E5275C8EAA0013C200 /* Font+Extensions.swift */; };
 		E54DD4F9275D9E7F0013C200 /* UIViewControllerWrapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = E54DD4C6275C60E70013C200 /* UIViewControllerWrapper.swift */; };
@@ -1974,6 +1977,7 @@
 		E544E7132C8A14D400802EB9 /* AudiobookTrackerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudiobookTrackerTests.swift; sourceTree = "<group>"; };
 		E549954728EE1AAA00EA0D9B /* TransifexManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransifexManager.swift; sourceTree = "<group>"; };
 		E549955128EE1ADB00EA0D9B /* TXNativeExtensions.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TXNativeExtensions.swift; sourceTree = "<group>"; };
+		E54ACF9D2D0381F900693EA8 /* fetch-audioengine.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "fetch-audioengine.sh"; sourceTree = "<group>"; };
 		E54DD4C6275C60E70013C200 /* UIViewControllerWrapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UIViewControllerWrapper.swift; sourceTree = "<group>"; };
 		E54DD4CF275C66F30013C200 /* Strings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Strings.swift; sourceTree = "<group>"; };
 		E54DD4D4275C7C940013C200 /* View+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "View+Extensions.swift"; sourceTree = "<group>"; };
@@ -2997,6 +3001,7 @@
 				73EB0B7F2582CCE9006BC997 /* build-3rd-party-dependencies.sh */,
 				73DA43A62404BA5600985482 /* build-carthage.sh */,
 				738E4715258ABB6300BEEC1D /* build-carthage-R2-integration.sh */,
+				E54ACF9D2D0381F900693EA8 /* fetch-audioengine.sh */,
 				73609AD8245B53CB00F0E08B /* update-certificates.sh */,
 				7358A9532589A70B00E66D34 /* decode-install-secrets.sh */,
 				733E3E08257ED49D00BEBA32 /* archive-and-upload-adhoc.sh */,
@@ -4076,6 +4081,7 @@
 				73EB0B5A25821DF4006BC997 /* simplified.js in Resources */,
 				73EB0B5B25821DF4006BC997 /* TPPProblemReportViewController.xib in Resources */,
 				E5BEF00926BD919F00C2A50B /* OpenSans-Regular.ttf in Resources */,
+				E54ACF9E2D0381F900693EA8 /* fetch-audioengine.sh in Resources */,
 				E50221B829881C5100A8A80B /* Localizable.strings in Resources */,
 				73EB0B5C25821DF4006BC997 /* readium-shared-js_all.js in Resources */,
 				73EB0B5D25821DF4006BC997 /* ReaderClientCert.sig in Resources */,
@@ -4113,6 +4119,7 @@
 				11C113D719F84613005B3F63 /* simplified.js in Resources */,
 				085D31D91BE29ED4007F7672 /* TPPProblemReportViewController.xib in Resources */,
 				E5BEF00826BD919F00C2A50B /* OpenSans-Regular.ttf in Resources */,
+				E54ACFA02D0381F900693EA8 /* fetch-audioengine.sh in Resources */,
 				E50221B529881BC900A8A80B /* Localizable.strings in Resources */,
 				5A69290E1B95ACC600FB4C10 /* readium-shared-js_all.js in Resources */,
 				2D4379FE1C46FDB600AE1AD5 /* ReaderClientCert.sig in Resources */,
@@ -4150,6 +4157,7 @@
 				D570B6D02BA20139003FE991 /* simplified.js in Resources */,
 				D570B6D12BA20139003FE991 /* TPPProblemReportViewController.xib in Resources */,
 				D570B6D22BA20139003FE991 /* OpenSans-Regular.ttf in Resources */,
+				E54ACF9F2D0381F900693EA8 /* fetch-audioengine.sh in Resources */,
 				D570B6D32BA20139003FE991 /* Localizable.strings in Resources */,
 				D570B6D42BA20139003FE991 /* readium-shared-js_all.js in Resources */,
 				D570B6D52BA20139003FE991 /* ReaderClientCert.sig in Resources */,
