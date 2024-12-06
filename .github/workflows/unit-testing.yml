@@ -31,7 +31,7 @@ jobs:
           path: ./mobile-drm-adeptconnector
 
       - name: Resolve Swift Packages
-        run: xcodebuild -resolvePackageDependencies
+        run: xcodebuild -project Palace.xcodeproj -scheme Palace -resolvePackageDependencies
 
       - name: Set up repo for nonDRM build
         run: |
