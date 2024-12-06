@@ -6,15 +6,38 @@ jobs:
     steps:
       - name: Force Xcode 15
         run: sudo xcode-select -switch /Applications/Xcode_15.0.1.app
+
+      - name: Print Xcode and Swift versions
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Clean Derived Data
+        run: rm -rf ~/Library/Developer/Xcode/DerivedData
+
       - name: Checkout main repo
         uses: actions/checkout@v3
+
+      - name: Resolve Swift Packages
+        run: xcodebuild -resolvePackageDependencies
+
       - name: Set up repo for nonDRM build
-        run: exec ./scripts/setup-repo-nodrm.sh
+        run: |
+          set -x
+          ./scripts/setup-repo-nodrm.sh
         env:
           BUILD_CONTEXT: ci
+
       - name: Build 3rd party dependencies
-        run: ./scripts/build-3rd-party-dependencies.sh --no-private
+        run: |
+          set -x
+          ./scripts/build-3rd-party-dependencies.sh --no-private
         env:
           BUILD_CONTEXT: ci
+
       - name: Build Palace without DRM support
-        run: ./scripts/xcode-build-nodrm.sh
+        run: |
+          set -x
+          ./scripts/xcode-build-nodrm.sh
+        env:
+          BUILD_CONTEXT: ci
