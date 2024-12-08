@@ -3766,7 +3766,6 @@
 				73EB0A6425821DF4006BC997 /* Sources */,
 				73EB0B2C25821DF4006BC997 /* Frameworks */,
 				73EB0B5825821DF4006BC997 /* Resources */,
-				E54ACF022D036A7F00693EA8 /* Copy Frameworks (Carthage) */,
 				73EB0B7125821DF4006BC997 /* Crashlytics */,
 				21986971267E2A480041369E /* Embed Frameworks */,
 			);
@@ -4298,24 +4297,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "\"${BUILD_DIR%/Build/*}/SourcePackages/checkouts/firebase-ios-sdk/Crashlytics/run\"\n";
-		};
-		E54ACF022D036A7F00693EA8 /* Copy Frameworks (Carthage) */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-			);
-			name = "Copy Frameworks (Carthage)";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "/usr/local/bin/carthage copy-frameworks\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
