@@ -1,1 +1,2 @@
+github "readium/r2-lcp-swift" ~> 2.5.0
 binary "https://liblcp.dita.digital/readium/liblcp/ios/carthage/xHwy01rpnw/liblcp.json" ~> 3.0.0
