@@ -4,6 +4,7 @@ enum AudioBookVendors: String, CaseIterable {
   case cantook = "cantook"
 }
 
+@objcMembers
 class TPPSecrets: NSObject {
   private static let salt: [UInt8] = [0]
 
