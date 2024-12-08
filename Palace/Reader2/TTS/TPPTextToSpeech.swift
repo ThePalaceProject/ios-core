@@ -4,7 +4,6 @@ import ReadiumNavigator
 import ReadiumShared
 
 class TPPTextToSpeech: ObservableObject {
-
   private let publication: Publication
   private let navigator: Navigator
   private let synthesizer: TPPPublicationSpeechSynthesizer
@@ -16,11 +15,26 @@ class TPPTextToSpeech: ObservableObject {
 
   private var subscriptions: Set<AnyCancellable> = []
 
+  /// Actor to manage isMoving state for thread safety
+  actor MovingState {
+    private(set) var isMoving = false
+
+    func startMoving() {
+      isMoving = true
+    }
+
+    func stopMoving() {
+      isMoving = false
+    }
+
+    func getIsMoving() -> Bool {
+      isMoving
+    }
+  }
+
+  private let movingState = MovingState()
+
   /// Initialize text-to-speech engine
-  /// - Parameters:
-  ///   - navigator: Readium Navigator object
-  ///   - publication: Readium Publication object
-  ///   - locator: initial locator
   init?(navigator: Navigator, publication: Publication) {
     guard let synthesizer = TPPPublicationSpeechSynthesizer(publication: publication) else {
       return nil
@@ -32,40 +46,13 @@ class TPPTextToSpeech: ObservableObject {
     synthesizer.delegate = self
 
     // Highlight currently spoken utterance.
-    if let navigator = navigator as? DecorableNavigator {
-      $playingUtterance
-        .removeDuplicates()
-        .sink { locator in
-          var decorations: [Decoration] = []
-          if let locator = locator {
-            decorations.append(Decoration(
-              id: "tts-utterance",
-              locator: locator,
-              style: .highlight(tint: .red)
-            ))
-          }
-          navigator.apply(decorations: decorations, in: "tts")
-        }
-        .store(in: &subscriptions)
-    }
+    setupHighlighting(for: navigator)
 
     // Navigate to the currently spoken utterance word.
-    // This will automatically turn pages when needed.
-    var isMoving = false
-    playingWordRangeSubject
-      .removeDuplicates()
-    // Improve performances by throttling the moves to maximum one per second.
-      .throttle(for: 1, scheduler: RunLoop.main, latest: true)
-      .drop(while: { _ in isMoving })
-      .sink { locator in
-        Task {
-          isMoving = true
-          await navigator.go(to: locator, options: NavigatorGoOptions(animated: true))
-          isMoving = false
-        }
-      }
-      .store(in: &subscriptions)
+    setupWordNavigation(for: navigator)
   }
+
+  // MARK: - Public API
 
   func start(from startLocator: Locator? = nil) {
     if let locator = startLocator {
@@ -101,26 +88,71 @@ class TPPTextToSpeech: ObservableObject {
   @objc func next() {
     synthesizer.next()
   }
+
+  // MARK: - Private Helpers
+
+  private func setupHighlighting(for navigator: Navigator) {
+    guard let navigator = navigator as? DecorableNavigator else { return }
+
+    $playingUtterance
+      .removeDuplicates()
+      .sink { locator in
+        var decorations: [Decoration] = []
+        if let locator = locator {
+          decorations.append(
+            Decoration(
+              id: "tts-utterance",
+              locator: locator,
+              style: .highlight(tint: .red)
+            )
+          )
+        }
+        navigator.apply(decorations: decorations, in: "tts")
+      }
+      .store(in: &subscriptions)
+  }
+
+  private func setupWordNavigation(for navigator: Navigator) {
+    playingWordRangeSubject
+      .removeDuplicates()
+      .throttle(for: 1, scheduler: RunLoop.main, latest: true)
+      .sink { [weak self] locator in
+        guard let self = self else { return }
+        Task {
+          let isCurrentlyMoving = await self.movingState.getIsMoving()
+          guard !isCurrentlyMoving else { return }
+
+          await self.movingState.startMoving()
+          await self.navigator.go(to: locator, options: NavigatorGoOptions(animated: true))
+          await self.movingState.stopMoving()
+        }
+      }
+      .store(in: &subscriptions)
+  }
 }
 
 extension TPPTextToSpeech: TPPPublicationSpeechSynthesizerDelegate {
+  func publicationSpeechSynthesizer(
+    _ synthesizer: TPPPublicationSpeechSynthesizer,
+    stateDidChange synthesizerState: TPPPublicationSpeechSynthesizer.State
+  ) {
+    Task { @MainActor in
+      switch synthesizerState {
+      case .stopped:
+        self.isPlaying = false
+        self.playingUtterance = nil
 
-  public func publicationSpeechSynthesizer(_ synthesizer: TPPPublicationSpeechSynthesizer, stateDidChange synthesizerState: TPPPublicationSpeechSynthesizer.State) {
-    switch synthesizerState {
-    case .stopped:
-      self.isPlaying = false
-      playingUtterance = nil
+      case let .playing(utterance, range: wordRange):
+        self.isPlaying = true
+        self.playingUtterance = utterance.locator
+        if let wordRange = wordRange {
+          self.playingWordRangeSubject.send(wordRange)
+        }
 
-    case let .playing(utterance, range: wordRange):
-      self.isPlaying = true
-      playingUtterance = utterance.locator
-      if let wordRange = wordRange {
-        playingWordRangeSubject.send(wordRange)
+      case let .paused(utterance):
+        self.isPlaying = false
+        self.playingUtterance = utterance.locator
       }
-
-    case let .paused(utterance):
-      self.isPlaying = false
-      playingUtterance = utterance.locator
     }
   }
 }

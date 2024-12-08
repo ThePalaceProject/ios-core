@@ -42,9 +42,9 @@ if [ "$1" != "--no-private" ]; then
   fi
 
   swift $CERTIFICATES_PATH_PREFIX/mobile-certificates/Certificates/Palace/iOS/AddLCP.swift
-
-  ./scripts/fetch-audioengine.sh
 fi
+
+./scripts/fetch-audioengine.sh
 
 echo "Carthage build..."
 carthage bootstrap --use-xcframeworks --platform ios

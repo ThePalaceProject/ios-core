@@ -4,6 +4,7 @@ enum AudioBookVendors: String, CaseIterable {
   case cantook = "cantook"
 }
 
+@objcMembers
 class TPPSecrets: NSObject {
   private static let salt: [UInt8] = [0]
 
@@ -50,6 +51,14 @@ class TPPSecrets: NSObject {
   @objc static var platformClientSecret: String? {
     #if !DEBUG
     #error("Secrets file not generated")
+    #endif
+    let encoded: [UInt8] = [0]
+    return decode(encoded, cipher: salt)
+  }
+
+  @objc static var transifexToken: String? {
+    #if !DEBUG
+      #error("Secrets file not generated")
     #endif
     let encoded: [UInt8] = [0]
     return decode(encoded, cipher: salt)
