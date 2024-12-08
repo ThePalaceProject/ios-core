@@ -56,6 +56,14 @@ class TPPSecrets: NSObject {
     return decode(encoded, cipher: salt)
   }
 
+  @objc static var transifexToken: String? {
+    #if !DEBUG
+      #error("Secrets file not generated")
+    #endif
+    let encoded: [UInt8] = [0]
+    return decode(encoded, cipher: salt)
+  }
+
   static func feedbookKeys(forVendor name: AudioBookVendors) -> String? {
     #if !DEBUG
       #error("Secrets file not generated")
