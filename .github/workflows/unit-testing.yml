@@ -36,6 +36,6 @@ jobs:
         env:
           BUILD_CONTEXT: ci
       - name: Run Palace unit tests
-        run: ./scripts/xcode-test.sh
+        run: arch -x86_64 ./scripts/xcode-test.sh
         env:
           BUILD_CONTEXT: ci
