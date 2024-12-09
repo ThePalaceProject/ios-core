@@ -9,8 +9,6 @@
 #import "OverdriveProcessor/OverdriveProcessor.h"
 #endif
 
-@import PureLayout;
-
 #import "NSDate+NYPLDateAdditions.h"
 #import "TPPAccountSignInViewController.h"
 #import "TPPBookDetailView.h"

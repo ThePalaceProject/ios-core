@@ -1,6 +1,7 @@
 @import LocalAuthentication;
 @import CoreLocation;
 @import MessageUI;
+@import PureLayout;
 
 #import "TPPCatalogNavigationController.h"
 #import "TPPConfiguration.h"
