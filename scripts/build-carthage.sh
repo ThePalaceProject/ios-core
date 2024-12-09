@@ -46,6 +46,14 @@ fi
 
 ./scripts/fetch-audioengine.sh
 
+echo "Building r2-lcp-swift Carthage dependencies..."
+cd ../r2-lcp-swift
+git checkout 2.0.0-beta.1
+rm -rf Carthage
+swift ../Certificates/SimplyE/iOS/LCPLib.swift
+carthage checkout
+carthage build --platform iOS
+
 echo "Carthage build..."
 carthage bootstrap --use-xcframeworks --platform ios
 
