@@ -23,8 +23,16 @@ echo "Building Carthages for R2 dependencies..."
 rm -rf ~/Library/Caches/org.carthage.CarthageKit
 rm -rf Carthage
 
+echo "Building r2-lcp-swift Carthage dependencies..."
+cd ../r2-lcp-swift
+git checkout 2.0.0-beta.1
+rm -rf Carthage
+swift ../Certificates/SimplyE/iOS/LCPLib.swift
 carthage checkout
-./Carthage/Checkouts/NYPLAEToolkit/scripts/fetch-audioengine.sh
+carthage build --platform iOS
+
+carthage checkout
+./scripts/fetch-audioengine.sh
 
 # also update SimplyE's dependencies so the framework versions all match
 carthage build --platform ios
