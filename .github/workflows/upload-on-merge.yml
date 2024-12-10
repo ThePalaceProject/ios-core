@@ -6,17 +6,20 @@ on:
       - hotfix
       - beta
     types: [closed]
+
 jobs:
   check-version:
     runs-on: macOS-latest
     steps:
       - name: Force Xcode 15
         run: sudo xcode-select -switch /Applications/Xcode_15.4.app
+
       - name: Checkout main repo and submodules
         uses: actions/checkout@v3
         with:
           submodules: true
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
+
       - id: checkVersion
         name: Check Build Version
         run: ./scripts/ios-check-version.sh
@@ -24,44 +27,52 @@ jobs:
           BUILD_CONTEXT: ci
     outputs:
       should_upload: ${{ steps.checkVersion.outputs.version_changed }}
+
   upload-build:
-    runs-on: macOS-13
+    runs-on: macOS-latest
     needs: check-version
     if: github.event.pull_request.merged == true && needs.check-version.outputs.should_upload == '1'
     steps:
       - name: Force Xcode 15
-        run: sudo xcode-select -switch /Applications/Xcode_15.0.1.app
+        run: sudo xcode-select -switch /Applications/Xcode_15.4.app
+
       - name: Checkout main repo and submodules
         uses: actions/checkout@v3
         with:
           submodules: true
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
+
       - name: Checkout Binaries
         uses: actions/checkout@v3
         with:
           repository: ThePalaceProject/ios-binaries
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
           path: ./ios-binaries
+
       - name: Checkout Certificates
         uses: actions/checkout@v3
         with:
           repository: ThePalaceProject/mobile-certificates
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
           path: ./mobile-certificates
+
       - name: Checkout Adobe RMSDK
         uses: actions/checkout@v3
         with:
           repository: ThePalaceProject/mobile-drm-adeptconnector
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
           path: ./mobile-drm-adeptconnector
+
       - name: Uncompress Adobe RMSDK
         run: ./scripts/setup-repo-drm.sh
         env:
           BUILD_CONTEXT: ci
+
       - name: Build non-Carthage 3rd party dependencies
         run: ./scripts/build-3rd-party-dependencies.sh
         env:
           BUILD_CONTEXT: ci
+
       - name: Install provisioning profile
         run: ./scripts/install-profile.sh
         env:
@@ -72,15 +83,32 @@ jobs:
           CI_DISTRIBUTION_CERT_PW: ${{ secrets.CI_DISTRIBUTION_CERT_PW }}
           CI_KEYCHAIN_PW: ${{ secrets.CI_KEYCHAIN_PW }}
           CI_APPLE_FASTLANE_JSON: ${{ secrets.CI_APPLE_FASTLANE_JSON }}
+
       - name: Export to binaries
         run: ./scripts/xcode-export-adhoc.sh
         env:
           BUILD_CONTEXT: ci
+
+      # Set up Python environment and install requests
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        run: |
+          python3 -m venv .venv
+          source .venv/bin/activate
+          python3 -m pip install requests
+
       - name: Create release notes
-        run: ./scripts/create-release-notes.sh
+        run: |
+          source .venv/bin/activate
+          ./scripts/create-release-notes.sh
         env:
           BUILD_CONTEXT: ci
           GITHUB_TOKEN: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
+
       - name: Verify path and version
         run: |
           echo "Release notes path: " $RELEASE_NOTES_PATH
@@ -92,6 +120,7 @@ jobs:
           RELEASE_NOTES_PATH: ${{ env.RELEASE_NOTES_PATH }}
           CHANGELOG_PATH: ${{ env.CHANGELOG_PATH }}
           VERSION_NUM: ${{ env.VERSION_NUM }}
+
       - name: Export for App Store
         run: ./scripts/xcode-export-appstore.sh
         env:
