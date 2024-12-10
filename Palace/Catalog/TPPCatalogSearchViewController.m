@@ -63,10 +63,10 @@
   }
 
   self.searchActivityIndicatorView = [[UIActivityIndicatorView alloc]
-                                initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleGray];
+                                      initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleGray];
   self.searchActivityIndicatorView.hidden = YES;
   [self.view addSubview:self.searchActivityIndicatorView];
-  
+
   self.searchActivityIndicatorLabel = [[UILabel alloc] init];
   self.searchActivityIndicatorLabel.font = [UIFont palaceFontOfSize:14.0];
   self.searchActivityIndicatorLabel.text = NSLocalizedString(@"Loading... Please wait.", @"Message explaining that the download is still going");
@@ -74,41 +74,47 @@
   [self.view addSubview:self.searchActivityIndicatorLabel];
   [self.searchActivityIndicatorLabel autoAlignAxis:ALAxisVertical toSameAxisOfView:self.searchActivityIndicatorView];
   [self.searchActivityIndicatorLabel autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.searchActivityIndicatorView withOffset:8.0];
-  
+
   self.searchBar = [[UISearchBar alloc] init];
   self.searchBar.delegate = self;
   self.searchBar.placeholder = self.searchDescription.humanReadableDescription;
   [self.searchBar sizeToFit];
-  [self.searchBar becomeFirstResponder];
-  
+  [self.view addSubview:self.searchBar];
+
   self.noResultsLabel = [[UILabel alloc] init];
   self.noResultsLabel.text = NSLocalizedString(@"No Results Found", nil);
   self.noResultsLabel.font = [UIFont palaceFontOfSize:17];
   [self.noResultsLabel sizeToFit];
   self.noResultsLabel.hidden = YES;
   [self.view addSubview:self.noResultsLabel];
-  
+
   __weak TPPCatalogSearchViewController *weakSelf = self;
   self.reloadView = [[TPPReloadView alloc] init];
   self.reloadView.handler = ^{
     weakSelf.reloadView.hidden = YES;
-    // |weakSelf.searchBar| will always contain the last search because the reload view is hidden as
-    // soon as editing begins (and thus cannot be clicked if the search bar text has changed).
     [weakSelf searchBarSearchButtonClicked:weakSelf.searchBar];
   };
   self.reloadView.hidden = YES;
   [self.view addSubview:self.reloadView];
-  
-  self.navigationItem.titleView = self.searchBar;
+
+  [self createAndConfigureFacetBarView];
 }
 
 - (void)viewWillLayoutSubviews
 {
   [super viewWillLayoutSubviews];
 
+  // Layout the search bar
+  self.searchBar.frame = CGRectMake(0,
+                                    self.topLayoutGuide.length,
+                                    self.view.bounds.size.width,
+                                    self.searchBar.bounds.size.height);
+
+  // Layout the activity indicator
   self.searchActivityIndicatorView.center = self.view.center;
   [self.searchActivityIndicatorView integralizeFrame];
 
+  // Layout the "no results" label
   self.noResultsLabel.center = self.view.center;
   self.noResultsLabel.frame = CGRectMake(CGRectGetMinX(self.noResultsLabel.frame),
                                          CGRectGetHeight(self.view.frame) * 0.333,
@@ -116,7 +122,34 @@
                                          CGRectGetHeight(self.noResultsLabel.frame));
   [self.noResultsLabel integralizeFrame];
 
+  // Layout the reload view
   [self.reloadView centerInSuperview];
+
+  // Adjust insets for the collection view
+  UIEdgeInsets newInsets = UIEdgeInsetsMake(CGRectGetMaxY(self.searchBar.frame) + CGRectGetMaxY(self.facetBarView.frame),
+                                            0,
+                                            self.bottomLayoutGuide.length,
+                                            0);
+  if (!UIEdgeInsetsEqualToEdgeInsets(self.collectionView.contentInset, newInsets)) {
+    self.collectionView.contentInset = newInsets;
+    self.collectionView.scrollIndicatorInsets = newInsets;
+  }
+}
+
+- (void)createAndConfigureFacetBarView
+{
+  if (self.facetBarView) {
+    [self.facetBarView removeFromSuperview];
+  }
+
+  self.facetBarView = [[TPPFacetBarView alloc] initWithOrigin:CGPointZero width:self.view.bounds.size.width];
+  self.facetBarView.entryPointView.delegate = self;
+  self.facetBarView.entryPointView.dataSource = self;
+
+  [self.view addSubview:self.facetBarView];
+  [self.facetBarView autoPinEdge:ALEdgeLeading toEdge:ALEdgeLeading ofView:self.view];
+  [self.facetBarView autoPinEdge:ALEdgeTrailing toEdge:ALEdgeTrailing ofView:self.view];
+  [self.facetBarView autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.searchBar];
 }
 
 - (void)viewDidLayoutSubviews
@@ -300,23 +333,6 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
   self.reloadView.hidden = YES;
   
   return YES;
-}
-
-- (void)createAndConfigureFacetBarView
-{
-  if (self.facetBarView) {
-    [self.facetBarView removeFromSuperview];
-  }
-
-  self.facetBarView = [[TPPFacetBarView alloc] initWithOrigin:CGPointZero width:self.view.bounds.size.width];
-  self.facetBarView.entryPointView.delegate = self;
-  self.facetBarView.entryPointView.dataSource = self;
-  self.facetBarView.alpha = 0;
-
-  [self.view addSubview:self.facetBarView];
-  [self.facetBarView autoPinEdgeToSuperviewEdge:ALEdgeLeading];
-  [self.facetBarView autoPinEdgeToSuperviewEdge:ALEdgeTrailing];
-  [self.facetBarView autoPinEdgeToSuperviewMargin:ALEdgeTop];
 }
 
 #pragma mark NYPLEntryPointViewDelegate

@@ -13,43 +13,66 @@ import PalaceUIKit
 struct MyBooksView: View {
   typealias DisplayStrings = Strings.MyBooksView
   @ObservedObject var model: MyBooksViewModel
+  @State private var searchQuery = ""
   @State var selectNewLibrary = false
   @State var showLibraryAccountView = false
   @State var showDetailForBook: TPPBook?
 
   var body: some View {
-    NavigationLink(destination: accountScreen, isActive: $model.showAccountScreen) {}
-    NavigationLink(destination: searchView, isActive: $model.showSearchSheet) {}
-    NavigationLink(destination: accountPickerList, isActive: $showLibraryAccountView) {}
-
-    //TODO: This is a workaround for an apparent bug in iOS14 that prevents us from wrapping
-    // the body in a NavigationView. Once iOS14 support is dropped, this can be removed/replaced
-    // with a NavigationView
-    EmptyView()
-      .alert(item: $model.alert) { alert in
-        Alert(
-          title: Text(alert.title),
-          message: Text(alert.message),
-          dismissButton: .cancel()
-        )
-      }
-    
     ZStack {
-      VStack(alignment: .leading) {
+      VStack(alignment: .leading, spacing: 0) {
+        if model.showSearchSheet {
+          searchBar
+            .transition(.move(edge: .top).combined(with: .opacity))
+        }
         facetView
         content
       }
       .background(Color(TPPConfiguration.backgroundColor()))
       .navigationBarItems(leading: leadingBarButton, trailing: trailingBarButton)
+
       loadingView
     }
+    .onAppear {
+      model.showSearchSheet = false
+    }
     .background(Color(TPPConfiguration.backgroundColor()))
+    .alert(item: $model.alert) { alert in
+      Alert(
+        title: Text(alert.title),
+        message: Text(alert.message),
+        dismissButton: .cancel()
+      )
+    }
   }
-  
+
+  @ViewBuilder private var searchBar: some View {
+    HStack {
+      TextField(DisplayStrings.searchBooks, text: $searchQuery)
+        .padding(8)
+        .textFieldStyle(.automatic)
+        .background(Color.gray.opacity(0.2))
+        .cornerRadius(10)
+        .padding(.vertical, 8)
+        .onChange(of: searchQuery) { newQuery in
+          filterBooks(with: newQuery)
+        }
+      Button(action: {
+        searchQuery = ""
+        filterBooks(with: "")
+      }) {
+        Image(systemName: "xmark.circle.fill")
+          .foregroundColor(.gray)
+          .padding(.trailing, 8)
+      }
+    }
+    .padding(.horizontal)
+  }
+
   @ViewBuilder private var facetView: some View {
     FacetView(model: model.facetViewModel)
   }
-  
+
   @ViewBuilder private var loadingView: some View {
     if model.isLoading {
       ProgressView()
@@ -57,7 +80,7 @@ struct MyBooksView: View {
         .horizontallyCentered()
     }
   }
-  
+
   @ViewBuilder private var emptyView: some View {
     Text(DisplayStrings.emptyViewMessage)
       .multilineTextAlignment(.center)
@@ -66,7 +89,7 @@ struct MyBooksView: View {
       .verticallyCentered()
       .palaceFont(.body)
   }
-  
+
   @ViewBuilder private var content: some View {
     GeometryReader { geometry in
       if model.showInstructionsLabel {
@@ -85,12 +108,12 @@ struct MyBooksView: View {
       }
     }
   }
-    
+
   @ViewBuilder private var listView: some View {
     AdaptableGridLayout {
-      ForEach(0..<model.books.count, id: \.self) { i in
+      ForEach(model.books, id: \.self) { book in
         ZStack(alignment: .leading) {
-            cell(for: model.books[i])
+          cell(for: book)
         }
         .opacity(model.isLoading ? 0.5 : 1.0)
         .disabled(model.isLoading)
@@ -98,7 +121,17 @@ struct MyBooksView: View {
     }
     .onAppear { model.loadData() }
   }
-    
+
+  private func filterBooks(with query: String) {
+    if query.isEmpty {
+      model.books = TPPBookRegistry.shared.myBooks
+    } else {
+      model.books = TPPBookRegistry.shared.myBooks.filter {
+        $0.title.localizedCaseInsensitiveContains(query) || ($0.authors?.localizedCaseInsensitiveContains(query) ?? false)
+      }
+    }
+  }
+
   private func cell(for book: TPPBook) -> some View {
     let model = BookCellModel(book: book)
 
@@ -111,7 +144,7 @@ struct MyBooksView: View {
         showDetailForBook = book
       } label: {
         BookCell(model: model)
-          .border(width: 0.5, edges: [.bottom, .trailing], color: self.model.isPad ? Color(TPPConfiguration.mainColor()) : .clear)
+          .border(width: 0.5, edges: [.bottom, .trailing], color: Color(TPPConfiguration.mainColor()))
       }
       .sheet(item: $showDetailForBook) { item in
         UIViewControllerWrapper(TPPBookDetailViewController(book: item), updater: { _ in })
@@ -124,8 +157,8 @@ struct MyBooksView: View {
       .anyView()
     }
   }
-  
-  @ViewBuilder private var leadingBarButton: some View {
+
+  private var leadingBarButton: some View {
     Button {
       selectNewLibrary.toggle()
     } label: {
@@ -135,22 +168,24 @@ struct MyBooksView: View {
       libraryPicker
     }
   }
-  
-  @ViewBuilder private var trailingBarButton: some View {
+
+  private var trailingBarButton: some View {
     Button {
-      model.showSearchSheet.toggle()
+      withAnimation {
+        model.showSearchSheet.toggle()
+      }
     } label: {
       ImageProviders.MyBooksView.search
     }
   }
-  
+
   private var libraryPicker: ActionSheet {
     ActionSheet(
       title: Text(DisplayStrings.findYourLibrary),
       buttons: existingLibraryButtons() + [addLibraryButton, .cancel()]
     )
   }
-  
+
   private func existingLibraryButtons() -> [ActionSheet.Button] {
     TPPSettings.shared.settingsAccountsList.map { account in
         .default(Text(account.name)) {
@@ -160,82 +195,57 @@ struct MyBooksView: View {
         }
     }
   }
-  
+
   private var addLibraryButton: Alert.Button {
     .default(Text(DisplayStrings.addLibrary)) {
       showLibraryAccountView = true
     }
   }
-  
-  private var accountPickerList: some View {
-    let accountList = TPPAccountList { account in
-      model.authenticateAndLoad(account)
-      showLibraryAccountView = false
-      selectNewLibrary = false
-    }
-    
-    return UIViewControllerWrapper(accountList, updater: {_ in })
-  }
-  
-  private var searchView: some View {
-    let searchDescription = TPPOpenSearchDescription(title: DisplayStrings.searchBooks, books: model.books)
-    let navController = UINavigationController(rootViewController: TPPCatalogSearchViewController(openSearchDescription: searchDescription))
-    return UIViewControllerWrapper(navController, updater: { _ in })
-  }
-  
-  private var accountScreen: some View {
-    guard let url = model.accountURL else {
-      return EmptyView().anyView()
-    }
-    
-    let webController = BundledHTMLViewController(fileURL: url, title: "TEST")
-    webController.hidesBottomBarWhenPushed = true
-    return  UIViewControllerWrapper(webController, updater: { _ in } ).anyView()
-  }
 }
 
+
 extension View {
-    func border(width: CGFloat, edges: [Edge], color: Color) -> some View {
-        overlay(EdgeBorder(width: width, edges: edges).foregroundColor(color))
-    }
+  func border(width: CGFloat, edges: [Edge], color: Color) -> some View {
+    overlay(EdgeBorder(width: width, edges: edges).foregroundColor(color))
+  }
 }
 
 struct EdgeBorder: Shape {
-    var width: CGFloat
-    var edges: [Edge]
+  var width: CGFloat
+  var edges: [Edge]
 
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        for edge in edges {
-            var x: CGFloat {
-                switch edge {
-                case .top, .bottom, .leading: return rect.minX
-                case .trailing: return rect.maxX - width
-                }
-            }
-
-            var y: CGFloat {
-                switch edge {
-                case .top, .leading, .trailing: return rect.minY
-                case .bottom: return rect.maxY - width
-                }
-            }
-
-            var w: CGFloat {
-                switch edge {
-                case .top, .bottom: return rect.width
-                case .leading, .trailing: return width
-                }
-            }
-
-            var h: CGFloat {
-                switch edge {
-                case .top, .bottom: return width
-                case .leading, .trailing: return rect.height
-                }
-            }
-            path.addRect(CGRect(x: x, y: y, width: w, height: h))
+  func path(in rect: CGRect) -> Path {
+    var path = Path()
+    for edge in edges {
+      var x: CGFloat {
+        switch edge {
+        case .top, .bottom, .leading: return rect.minX
+        case .trailing: return rect.maxX - width
         }
-        return path
+      }
+
+      var y: CGFloat {
+        switch edge {
+        case .top, .leading, .trailing: return rect.minY
+        case .bottom: return rect.maxY - width
+        }
+      }
+
+      var w: CGFloat {
+        switch edge {
+        case .top, .bottom: return rect.width
+        case .leading, .trailing: return width
+        }
+      }
+
+      var h: CGFloat {
+        switch edge {
+        case .top, .bottom: return width
+        case .leading, .trailing: return rect.height
+        }
+      }
+      path.addRect(CGRect(x: x, y: y, width: w, height: h))
     }
+    return path
+  }
 }
