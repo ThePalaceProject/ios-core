@@ -25,7 +25,7 @@ jobs:
     outputs:
       should_upload: ${{ steps.checkVersion.outputs.version_changed }}
   upload-build:
-    runs-on: macOS-15
+    runs-on: macOS-latest
     needs: check-version
     if: github.event.pull_request.merged == true && needs.check-version.outputs.should_upload == '1'
     steps:
