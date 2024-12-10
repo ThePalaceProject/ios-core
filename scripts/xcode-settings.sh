@@ -21,6 +21,9 @@ fatal()
   exit 1
 }
 
+# Set Xcode to version 15 explicitly
+export DEVELOPER_DIR="/Applications/Xcode_15.4.app/Contents/Developer"
+
 # determine which app we're going to work on
 TARGET_NAME=Palace
 SCHEME=Palace

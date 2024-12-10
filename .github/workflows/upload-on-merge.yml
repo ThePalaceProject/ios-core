@@ -25,12 +25,12 @@ jobs:
     outputs:
       should_upload: ${{ steps.checkVersion.outputs.version_changed }}
   upload-build:
-    runs-on: macOS-13
+    runs-on: macOS-15
     needs: check-version
     if: github.event.pull_request.merged == true && needs.check-version.outputs.should_upload == '1'
     steps:
       - name: Force Xcode 15
-        run: sudo xcode-select -switch /Applications/Xcode_15.0.1.app
+        run: sudo xcode-select -switch /Applications/Xcode_15.4.app
       - name: Checkout main repo and submodules
         uses: actions/checkout@v3
         with:
