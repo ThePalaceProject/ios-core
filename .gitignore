@@ -9,9 +9,9 @@ Build
 adobe-rmsdk
 **/ReaderClientCert.sig
 **/APIKeys.swift
+**/TPPSecrets.swift
 Carthage*
 **/GoogleService-Info.plist
-**/TPPSecrets.swift
 fastlane/report.xml
 fastlane/*_output
 Palace.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved

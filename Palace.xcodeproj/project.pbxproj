@@ -1114,6 +1114,8 @@
 		E5C2C422268BA5140046F415 /* TPPRegistryDebuggingCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5C2C421268BA5140046F415 /* TPPRegistryDebuggingCell.swift */; };
 		E5D3288A292C0D34008BFD01 /* txstrings.json in Resources */ = {isa = PBXBuildFile; fileRef = E5D32881292C0D34008BFD01 /* txstrings.json */; };
 		E5D3288B292C0D68008BFD01 /* txstrings.json in Resources */ = {isa = PBXBuildFile; fileRef = E5D32881292C0D34008BFD01 /* txstrings.json */; };
+		E5DA92E52D06A412005AEEC3 /* ReadiumAdapterLCPSQLite in Frameworks */ = {isa = PBXBuildFile; productRef = E5E9B2172CC1A5C100366A2E /* ReadiumAdapterLCPSQLite */; };
+		E5DA92E62D06A412005AEEC3 /* ReadiumAdapterGCDWebServer in Frameworks */ = {isa = PBXBuildFile; productRef = E5E9B2192CC1A7AC00366A2E /* ReadiumAdapterGCDWebServer */; };
 		E5E03F342CED172200D9979D /* TPPReadiumBookmark+R3.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E03F332CED171D00D9979D /* TPPReadiumBookmark+R3.swift */; };
 		E5E03F352CED172200D9979D /* TPPReadiumBookmark+R3.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E03F332CED171D00D9979D /* TPPReadiumBookmark+R3.swift */; };
 		E5E03F362CED172200D9979D /* TPPReadiumBookmark+R3.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E03F332CED171D00D9979D /* TPPReadiumBookmark+R3.swift */; };
@@ -2144,6 +2146,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E5DA92E62D06A412005AEEC3 /* ReadiumAdapterGCDWebServer in Frameworks */,
+				E5DA92E52D06A412005AEEC3 /* ReadiumAdapterLCPSQLite in Frameworks */,
 				E5F2E9B72CEE8550007EA6C9 /* PureLayout in Frameworks */,
 				E7FFEAA62A745F600006030A /* ULID in Frameworks */,
 				73EB0B2E25821DF4006BC997 /* MediaPlayer.framework in Frameworks */,
@@ -3760,7 +3764,6 @@
 				73EB0A6425821DF4006BC997 /* Sources */,
 				73EB0B2C25821DF4006BC997 /* Frameworks */,
 				73EB0B5825821DF4006BC997 /* Resources */,
-				73EB0B6E25821DF4006BC997 /* Copy Frameworks (Carthage) */,
 				73EB0B7125821DF4006BC997 /* Crashlytics */,
 				21986971267E2A480041369E /* Embed Frameworks */,
 			);
@@ -3796,7 +3799,6 @@
 				A823D809192BABA400B55DE2 /* Sources */,
 				A823D80A192BABA400B55DE2 /* Frameworks */,
 				A823D80B192BABA400B55DE2 /* Resources */,
-				145DA48C215441260055DB93 /* Copy Frameworks (Carthage) */,
 				219868F9267E29840041369E /* Embed Frameworks */,
 				73DA43AD2404CA9500985482 /* Crashlytics */,
 			);
@@ -4190,24 +4192,6 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		145DA48C215441260055DB93 /* Copy Frameworks (Carthage) */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-			);
-			name = "Copy Frameworks (Carthage)";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "/usr/local/bin/carthage copy-frameworks\n";
-		};
 		73DA43AD2404CA9500985482 /* Crashlytics */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 12;
@@ -4230,24 +4214,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "\"${BUILD_DIR%/Build/*}/SourcePackages/checkouts/firebase-ios-sdk/Crashlytics/run\"\n";
-		};
-		73EB0B6E25821DF4006BC997 /* Copy Frameworks (Carthage) */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-			);
-			name = "Copy Frameworks (Carthage)";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "/usr/local/bin/carthage copy-frameworks\n";
 		};
 		73EB0B7125821DF4006BC997 /* Crashlytics */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -5649,7 +5615,7 @@
 				CODE_SIGN_IDENTITY = "Apple Distribution";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 303;
+				CURRENT_PROJECT_VERSION = 304;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -5708,7 +5674,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 303;
+				CURRENT_PROJECT_VERSION = 304;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -5893,7 +5859,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 303;
+				CURRENT_PROJECT_VERSION = 304;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -5954,7 +5920,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 303;
+				CURRENT_PROJECT_VERSION = 304;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -6016,7 +5982,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 303;
+				CURRENT_PROJECT_VERSION = 304;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -6077,7 +6043,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 303;
+				CURRENT_PROJECT_VERSION = 304;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;

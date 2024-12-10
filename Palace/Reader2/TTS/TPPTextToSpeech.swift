@@ -49,19 +49,17 @@ class TPPTextToSpeech: ObservableObject {
         .store(in: &subscriptions)
     }
 
-    // Navigate to the currently spoken utterance word.
-    // This will automatically turn pages when needed.
-    var isMoving = false
+    let isMovingSubject = CurrentValueSubject<Bool, Never>(false)
+
     playingWordRangeSubject
       .removeDuplicates()
-    // Improve performances by throttling the moves to maximum one per second.
       .throttle(for: 1, scheduler: RunLoop.main, latest: true)
-      .drop(while: { _ in isMoving })
+      .drop(while: { _ in isMovingSubject.value })
       .sink { locator in
+        isMovingSubject.send(true)
         Task {
-          isMoving = true
           await navigator.go(to: locator, options: NavigatorGoOptions(animated: true))
-          isMoving = false
+          isMovingSubject.send(false)
         }
       }
       .store(in: &subscriptions)
