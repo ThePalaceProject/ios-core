@@ -4195,6 +4195,7 @@
 /* Begin PBXShellScriptBuildPhase section */
 		145DA48C215441260055DB93 /* Copy Frameworks (Carthage) */ = {
 			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
 			files = (
 			);
