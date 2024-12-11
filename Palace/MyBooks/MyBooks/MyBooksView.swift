@@ -44,6 +44,7 @@ struct MyBooksView: View {
         dismissButton: .cancel()
       )
     }
+    .navigationViewStyle(StackNavigationViewStyle())
   }
 
   @ViewBuilder private var searchBar: some View {
