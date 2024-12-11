@@ -10,6 +10,7 @@ adobe-rmsdk
 **/ReaderClientCert.sig
 **/APIKeys.swift
 Carthage*
+**/TPPSecrets.swift
 **/GoogleService-Info.plist
 fastlane/report.xml
 fastlane/*_output
