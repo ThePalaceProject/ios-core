@@ -18,7 +18,32 @@ struct EPUBSearchView: View {
   @State private var debounceSearch: AnyCancellable?
 
   @FocusState private var isSearchFieldFocused: Bool
-  
+  @Environment(\.presentationMode) var presentationMode
+
+  var body: some View {
+    VStack {
+      HStack {
+        Button(action: {
+          presentationMode.wrappedValue.dismiss()
+        }) {
+          Image(systemName: "chevron.left")
+            .foregroundColor(.primary)
+            .padding(.trailing, 8)
+        }
+        Text(Strings.Generic.search)
+          .font(.headline)
+        Spacer()
+      }
+      .padding()
+
+      searchBar
+      listView
+    }
+    .onChange(of: searchQuery, perform: search)
+    .padding()
+    .ignoresSafeArea(.keyboard)
+  }
+
   @ViewBuilder private var searchBar: some View {
     HStack {
       TextField("\(Strings.Generic.search)...", text: $searchQuery)
@@ -42,16 +67,6 @@ struct EPUBSearchView: View {
       }
     }
   }
-  
-  var body: some View {
-    VStack {
-      searchBar
-      listView
-    }
-    .onChange(of: searchQuery, perform: search)
-    .padding()
-    .ignoresSafeArea(.keyboard)
-  }
 
   @ViewBuilder private var listView: some View {
     ZStack {
@@ -69,7 +84,7 @@ struct EPUBSearchView: View {
         }
       }
       .listStyle(.plain)
-      
+
       VStack {
         Spacer()
         if viewModel.state.isLoadingState {
@@ -82,7 +97,7 @@ struct EPUBSearchView: View {
       }
     }
   }
-  
+
   @ViewBuilder private func sectionContent(_ section: SearchViewSection) -> some View {
     ForEach(section.locators, id: \.self) { locator in
       rowView(locator)
@@ -99,7 +114,7 @@ struct EPUBSearchView: View {
   private func shouldFetchMoreResults(for locator: Locator) -> Bool {
     if let lastSection = viewModel.sections.last,
        let lastLocator = lastSection.locators.last {
-      return locator.href == lastLocator.href
+      return locator.href.isEquivalentTo(lastLocator.href)
     }
     return false
   }
@@ -111,7 +126,7 @@ struct EPUBSearchView: View {
       .textCase(.none)
       .frame(maxWidth: .infinity, alignment: .leading)
   }
-  
+
   @ViewBuilder private var footer: some View {
     switch viewModel.state {
     case .failure(let error):
@@ -123,17 +138,17 @@ struct EPUBSearchView: View {
 
   private func rowView(_ locator: Locator) -> some View {
     let text = locator.text.sanitized()
-    
+
     if #available(iOS 15.0, *) {
       var combinedText = AttributedString(text.before ?? "")
-      
+
       var highlight = AttributedString(text.highlight ?? "")
       highlight.backgroundColor = .red.opacity(0.3)
       highlight.font = .semiBoldPalaceFont(ofSize: UIFont.preferredFont(forTextStyle: .body).pointSize)
-      
+
       combinedText.append(highlight)
       combinedText.append(AttributedString(text.after ?? ""))
-      
+
       return Text(combinedText)
         .palaceFont(.body)
         .onTapGesture {
@@ -160,9 +175,8 @@ struct EPUBSearchView: View {
       .delay(for: .seconds(0.5), scheduler: RunLoop.main)
       .sink { value in
         Task {
-         await viewModel.search(with: value)
+          await viewModel.search(with: value)
         }
       }
   }
 }
-
