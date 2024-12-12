@@ -436,7 +436,7 @@ extension TPPBaseReaderViewController: NavigatorDelegate {
         }
 
         if let position = locator.locations.position {
-          return String(format: Strings.TPPBaseReaderViewController.pageOf, position) + "\(positions)" + chapterTitle
+          return String(format: Strings.TPPBaseReaderViewController.pageOf, position) + "\(positions.count)" + chapterTitle
         } else if let progression = locator.locations.totalProgression {
           return "\(progression)%" + chapterTitle
         } else {

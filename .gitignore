@@ -9,8 +9,8 @@ Build
 adobe-rmsdk
 **/ReaderClientCert.sig
 **/APIKeys.swift
-**/TPPSecrets.swift
 Carthage*
+**/TPPSecrets.swift
 **/GoogleService-Info.plist
 fastlane/report.xml
 fastlane/*_output
