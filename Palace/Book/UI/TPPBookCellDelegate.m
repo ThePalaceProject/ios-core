@@ -183,50 +183,66 @@
   [[TPPRootTabBarController sharedController] pushViewController:vc animated:YES];
 }
 
-- (void)openAudiobook:(TPPBook *)book completion:(void (^ _Nullable)(void))completion{
+- (void)openAudiobook:(TPPBook *)book completion:(void (^ _Nullable)(void))completion {
   NSURL *const url = [[MyBooksDownloadCenter shared] fileUrlFor:book.identifier];
-  NSMutableDictionary *dict = nil;
-  
-  NSError *error = nil;
-  NSData *const data = [NSData dataWithContentsOfURL:url options:NSDataReadingMappedIfSafe error:&error];
-  
-  if (data == nil) {
+  if (!url) {
+    NSLog(@"DEBUGGER URL is nil for book identifier: %@", book.identifier);
     [self presentCorruptedItemErrorForBook:book fromURL:url];
-    completion();
+    if (completion) completion();
     return;
   }
-  
-  id const json = TPPJSONObjectFromData(data);
-    
-#if FEATURE_OVERDRIVE
-  if ([book.distributor isEqualToString:OverdriveDistributorKey]) {
-    dict = [(NSMutableDictionary *)json mutableCopy];
-    dict[@"id"] = book.identifier;
-  }
-#endif
-  
+
+  NSLog(@"DEBUGGER Checking if the book is an LCP audiobook.");
+
 #if defined(LCP)
   if ([LCPAudiobooks canOpenBook:book]) {
     LCPAudiobooks *lcpAudiobooks = [[LCPAudiobooks alloc] initFor:url];
     [lcpAudiobooks contentDictionaryWithCompletion:^(NSDictionary * _Nullable dict, NSError * _Nullable error) {
       if (error) {
         [self presentUnsupportedItemError];
-        completion();
+        if (completion) completion();
         return;
       }
-      if (dict) {
-        NSMutableDictionary *mutableDict = [dict mutableCopy];
-        mutableDict[@"id"] = book.identifier;
-        [self openAudiobookWithBook:book json:mutableDict drmDecryptor:lcpAudiobooks completion: completion];
+
+      if (!dict) {
+        [self presentCorruptedItemErrorForBook:book fromURL:url];
+        if (completion) completion();
+        return;
       }
+
+      NSMutableDictionary *mutableDict = [dict mutableCopy];
+      mutableDict[@"id"] = book.identifier;
+
+      [self openAudiobookWithBook:book json:mutableDict drmDecryptor:lcpAudiobooks completion:completion];
     }];
-  } else {
-    // Not an LCP book
-    [self openAudiobookWithBook:book json:dict ?: json drmDecryptor:nil completion: completion];
+    return;
   }
-#else
-  [self openAudiobookWithBook:book json:dict ?: json drmDecryptor:nil completion: completion];
 #endif
+
+  NSError *error = nil;
+  NSData *data = [NSData dataWithContentsOfURL:url options:NSDataReadingMappedIfSafe error:&error];
+
+  if (!data) {
+    [self presentCorruptedItemErrorForBook:book fromURL:url];
+    if (completion) completion();
+    return;
+  }
+
+  id json = TPPJSONObjectFromData(data);
+  if (!json) {
+    [self presentUnsupportedItemError];
+    if (completion) completion();
+    return;
+  }
+
+  NSMutableDictionary *dict = [json mutableCopy];
+#if FEATURE_OVERDRIVE
+  if ([book.distributor isEqualToString:OverdriveDistributorKey]) {
+    dict[@"id"] = book.identifier;
+  }
+#endif
+
+  [self openAudiobookWithBook:book json:dict drmDecryptor:nil completion:completion];
 }
 
 /// Requests whether the user wants to ysnc current listening position

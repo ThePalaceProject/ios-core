@@ -49,9 +49,19 @@ class BookCellModel: ObservableObject {
     }
   }
 
+  @Published private var currentBookIdentifier: String?
+  private var imageUpdateSubject = PassthroughSubject<UIImage, Never>()
+
   var statePublisher = PassthroughSubject<Bool, Never>()
   var state: BookCellState
-  var book: TPPBook
+  var book: TPPBook {
+    didSet {
+      if book.identifier != currentBookIdentifier {
+        currentBookIdentifier = book.identifier
+        loadBookCoverImage()
+      }
+    }
+  }
   var title: String { book.title }
   var authors: String { book.authors ?? "" }
   var showUnreadIndicator: Bool {
@@ -61,63 +71,78 @@ class BookCellModel: ObservableObject {
       return false
     }
   }
-  
+
   var buttonTypes: [BookButtonType] {
     state.buttonState.buttonTypes(book: book)
   }
-  
+
   private weak var buttonDelegate = TPPBookCellDelegate.shared()
   private weak var sampleDelegate: TPPBookButtonsSampleDelegate?
   private weak var downloadDelegate: TPPBookDownloadCancellationDelegate?
 
+  private var cancellables = Set<AnyCancellable>()
+
   init(book: TPPBook) {
     self.book = book
-
     self.state = BookCellState(BookButtonState(book) ?? .unsupported)
     self.isLoading = TPPBookRegistry.shared.processing(forIdentifier: book.identifier)
+    self.currentBookIdentifier = book.identifier
     registerForNotifications()
+    bindImageUpdate()
     loadBookCoverImage()
   }
-  
+
   private func registerForNotifications() {
     NotificationCenter.default.addObserver(self, selector: #selector(updateButtons),
                                            name: .TPPReachabilityChanged,
                                            object: nil)
   }
 
-  
   private func loadBookCoverImage() {
     guard let cachedImage = TPPBookRegistry.shared.cachedThumbnailImage(for: book) else {
-      DispatchQueue.main.async {
-        TPPBookRegistry.shared.thumbnailImage(for: self.book) { image in
-        guard let image else { return }
-          self.image = image
-        }
-      }
+      fetchAndCacheImage()
       return
     }
-
     self.image = cachedImage
   }
 
-  func indicatorDate(for buttonType: BookButtonType) -> Date? {
-    guard buttonType.displaysIndicator else {
-      return nil
+
+  private func bindImageUpdate() {
+    imageUpdateSubject
+      .receive(on: DispatchQueue.main)
+      .assign(to: &$image)
+  }
+
+  private func fetchAndCacheImage() {
+    DispatchQueue.global(qos: .background).async { [weak self] in
+      guard let self = self else { return }
+      TPPBookRegistry.shared.thumbnailImage(for: self.book) { image in
+        guard let image else { return }
+        self.imageUpdateSubject.send(image)
+      }
     }
+  }
+
+  func indicatorDate(for buttonType: BookButtonType) -> Date? {
+    guard buttonType.displaysIndicator else { return nil }
 
     var date: Date?
 
     book.defaultAcquisition?.availability.matchUnavailable(
-        nil,
-        limited: { limited in
-          if let until = limited.until, until.timeIntervalSinceNow > 0 { date = until }
-        },
-        unlimited: nil,
-        reserved: nil,
-        ready: { ready in
-          if let until = ready.until, until.timeIntervalSinceNow > 0 { date = until }
+      nil,
+      limited: { limited in
+        if let until = limited.until, until.timeIntervalSinceNow > 0 {
+          date = until
         }
-      )
+      },
+      unlimited: nil,
+      reserved: nil,
+      ready: { ready in
+        if let until = ready.until, until.timeIntervalSinceNow > 0 {
+          date = until
+        }
+      }
+    )
 
     return date
   }
@@ -202,7 +227,6 @@ extension BookCellModel {
 
   func didSelectSample() {
     isLoading = true
-
     self.sampleDelegate?.didSelectPlaySample(book)
   }
 

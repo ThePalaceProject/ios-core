@@ -131,9 +131,9 @@ import PalaceAudiobookToolkit
   }
 }
 
-/// DRM Decryptor for LCP audiobooks
+///// DRM Decryptor for LCP audiobooks
 extension LCPAudiobooks: DRMDecryptor {
-  
+
   /// Decrypt protected file
   /// - Parameters:
   ///   - url: encrypted file URL.
@@ -141,28 +141,26 @@ extension LCPAudiobooks: DRMDecryptor {
   ///   - completion: decryptor callback with optional `Error`.
   func decrypt(url: URL, to resultUrl: URL, completion: @escaping (Error?) -> Void) {
     Task {
-      switch await assetRetriever.retrieve(url: audiobookUrl) {
+      let result = await self.assetRetriever.retrieve(url: audiobookUrl)
+      switch result {
       case .success(let asset):
-        let result = await publicationOpener.open(asset: asset, allowUserInteraction: false, sender: nil)
-
-        switch result {
+        let publicationResult = await publicationOpener.open(asset: asset, allowUserInteraction: false, sender: nil)
+        switch publicationResult {
         case .success(let publication):
-          do {
-            guard let resource = publication.getResource(at: url.path) else {
+          if let resource = publication.getResource(at: url.path) {
+            do {
+              let data = try await resource.read().get()
+              try data.write(to: resultUrl, options: .atomic)
               completion(nil)
-              return
+            } catch {
+              completion(error)
             }
-
-            let data = try await resource.read().get()
-            try data.write(to: resultUrl)
-            completion(nil)
-          } catch {
-            completion(error)
+          } else {
+            completion(NSError(domain: "AudiobookResourceError", code: 404, userInfo: [NSLocalizedDescriptionKey: "Resource not found"]))
           }
         case .failure(let error):
           completion(error)
         }
-
       case .failure(let error):
         completion(error)
       }

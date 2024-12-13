@@ -231,24 +231,32 @@ static NSString *DetailHTMLTemplate = nil;
                            [UIFont systemFontOfSize: 12],
                            self.book.summary ?: @""] stringByDecodingHTMLEntities];
 
-  NSData *htmlData = [htmlString dataUsingEncoding:NSUnicodeStringEncoding];
-  NSAttributedString *attrString;
-  if (htmlData) {
-    NSError *error = nil;
-    attrString = [[NSAttributedString alloc]
-                  initWithData:htmlData
-                  options:@{NSDocumentTypeDocumentAttribute:
-                              NSHTMLTextDocumentType}
-                  documentAttributes:nil
-                  error:&error];
-    if (error) {
-      TPPLOG_F(@"Attributed string rendering error for %@ book description: %@",
-                [self.book loggableShortString], error);
+  dispatch_async(dispatch_get_global_queue(QOS_CLASS_BACKGROUND, 0), ^{
+    NSData *htmlData = [htmlString dataUsingEncoding:NSUnicodeStringEncoding];
+    NSAttributedString *attrString = nil;
+
+    if (htmlData) {
+      NSError *error = nil;
+      attrString = [[NSAttributedString alloc]
+                    initWithData:htmlData
+                    options:@{NSDocumentTypeDocumentAttribute: NSHTMLTextDocumentType}
+                    documentAttributes:nil
+                    error:&error];
+      if (error) {
+        TPPLOG_F(@"Attributed string rendering error for %@ book description: %@",
+                 [self.book loggableShortString], error);
+        attrString = [[NSAttributedString alloc] initWithString:@""];
+      }
+    } else {
+      attrString = [[NSAttributedString alloc] initWithString:@""];
     }
-  } else {
-    attrString = [[NSAttributedString alloc] initWithString:@""];
-  }
-  self.summaryTextView.attributedText = attrString;
+
+    // Update UI on the main thread
+    dispatch_async(dispatch_get_main_queue(), ^{
+      self.summaryTextView.attributedText = attrString;
+    });
+  });
+
   [[NSOperationQueue mainQueue] addOperationWithBlock:^{
     // this needs to happen asynchronously because the HTML text may overwrite
     // our color

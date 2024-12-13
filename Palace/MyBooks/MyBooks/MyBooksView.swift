@@ -13,82 +13,62 @@ import PalaceUIKit
 struct MyBooksView: View {
   typealias DisplayStrings = Strings.MyBooksView
   @ObservedObject var model: MyBooksViewModel
-  @State private var searchQuery = ""
-  @State var selectNewLibrary = false
-  @State var showLibraryAccountView = false
-  @State var showDetailForBook: TPPBook?
 
   var body: some View {
     ZStack {
-      VStack(alignment: .leading, spacing: 0) {
-        if model.showSearchSheet {
-          searchBar
-            .transition(.move(edge: .top).combined(with: .opacity))
-        }
-        facetView
-        content
-      }
-      .background(Color(TPPConfiguration.backgroundColor()))
-      .navigationBarItems(leading: leadingBarButton, trailing: trailingBarButton)
-
-      loadingView
-    }
-    .onAppear {
-      model.showSearchSheet = false
+      mainContent
+      if model.isLoading { loadingOverlay }
     }
     .background(Color(TPPConfiguration.backgroundColor()))
-    .alert(item: $model.alert) { alert in
-      Alert(
-        title: Text(alert.title),
-        message: Text(alert.message),
-        dismissButton: .cancel()
-      )
+    .navigationBarTitleDisplayMode(.inline)
+    .toolbar {
+      ToolbarItem(placement: .navigationBarLeading) { leadingBarButton }
+      ToolbarItem(placement: .navigationBarTrailing) { trailingBarButton }
     }
-    .navigationViewStyle(StackNavigationViewStyle())
+    .onAppear { model.showSearchSheet = false }
+    .alert(item: $model.alert) { alert in
+      createAlert(alert)
+    }
+    .sheet(item: $model.selectedBook) { book in
+      UIViewControllerWrapper(TPPBookDetailViewController(book: book), updater: { _ in })
+        .onDisappear {
+          DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            model.selectedBook = nil
+          }
+        }
+    }
+  }
+
+  private var mainContent: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      if model.showSearchSheet { searchBar }
+      facetView
+      content
+    }
   }
 
   @ViewBuilder private var searchBar: some View {
     HStack {
-      TextField(DisplayStrings.searchBooks, text: $searchQuery)
-        .padding(8)
-        .textFieldStyle(.automatic)
-        .background(Color.gray.opacity(0.2))
-        .cornerRadius(10)
-        .padding(.vertical, 8)
-        .onChange(of: searchQuery) { newQuery in
-          filterBooks(with: newQuery)
-        }
-      Button(action: {
-        searchQuery = ""
-        filterBooks(with: "")
-      }) {
-        Image(systemName: "xmark.circle.fill")
-          .foregroundColor(.gray)
-          .padding(.trailing, 8)
-      }
+      TextField(DisplayStrings.searchBooks, text: $model.searchQuery)
+        .searchBarStyle()
+        .onChange(of: model.searchQuery, perform: model.filterBooks)
+      clearSearchButton
     }
     .padding(.horizontal)
   }
 
-  @ViewBuilder private var facetView: some View {
-    FacetView(model: model.facetViewModel)
-  }
-
-  @ViewBuilder private var loadingView: some View {
-    if model.isLoading {
-      ProgressView()
-        .scaleEffect(x: 2, y: 2, anchor: .center)
-        .horizontallyCentered()
+  private var clearSearchButton: some View {
+    Button(action: {
+      model.searchQuery = ""
+      model.filterBooks(query: "")
+    }) {
+      Image(systemName: "xmark.circle.fill")
+        .foregroundColor(.gray)
     }
   }
 
-  @ViewBuilder private var emptyView: some View {
-    Text(DisplayStrings.emptyViewMessage)
-      .multilineTextAlignment(.center)
-      .foregroundColor(.gray)
-      .horizontallyCentered()
-      .verticallyCentered()
-      .palaceFont(.body)
+  @ViewBuilder private var facetView: some View {
+    FacetView(model: model.facetViewModel)
   }
 
   @ViewBuilder private var content: some View {
@@ -98,84 +78,47 @@ struct MyBooksView: View {
           emptyView
         }
         .frame(minHeight: geometry.size.height)
-        .refreshable {
-          model.reloadData()
-        }
+        .refreshable { model.reloadData() }
       } else {
         listView
-          .refreshable {
-            model.reloadData()
-          }
+          .refreshable { model.reloadData() }
       }
     }
   }
 
-  @ViewBuilder private var listView: some View {
-    AdaptableGridLayout {
-      ForEach(model.books, id: \.self) { book in
-        ZStack(alignment: .leading) {
-          cell(for: book)
-        }
-        .opacity(model.isLoading ? 0.5 : 1.0)
-        .disabled(model.isLoading)
-      }
-    }
+  private var listView: some View {
+    BookListView(
+      books: model.books,
+      isLoading: model.isLoading,
+      onSelect: { book in model.selectedBook = book }
+    )
     .onAppear { model.loadData() }
   }
 
-  private func filterBooks(with query: String) {
-    if query.isEmpty {
-      model.books = TPPBookRegistry.shared.myBooks
-    } else {
-      model.books = TPPBookRegistry.shared.myBooks.filter {
-        $0.title.localizedCaseInsensitiveContains(query) || ($0.authors?.localizedCaseInsensitiveContains(query) ?? false)
-      }
-    }
+  private func createAlert(_ alert: AlertModel) -> Alert {
+    Alert(
+      title: Text(alert.title),
+      message: Text(alert.message),
+      dismissButton: .cancel()
+    )
   }
 
-  private func cell(for book: TPPBook) -> some View {
-    let model = BookCellModel(book: book)
-
-    model
-      .statePublisher.assign(to: \.isLoading, on: self.model)
-      .store(in: &self.model.observers)
-
-    if self.model.isPad {
-      return Button {
-        showDetailForBook = book
-      } label: {
-        BookCell(model: model)
-          .border(width: 0.5, edges: [.bottom, .trailing], color: Color(TPPConfiguration.mainColor()))
-      }
-      .sheet(item: $showDetailForBook) { item in
-        UIViewControllerWrapper(TPPBookDetailViewController(book: item), updater: { _ in })
-      }
-      .anyView()
-    } else {
-      return NavigationLink(destination: UIViewControllerWrapper(TPPBookDetailViewController(book: book), updater: { _ in })) {
-        BookCell(model: model)
-      }
-      .anyView()
-    }
+  private var loadingOverlay: some View {
+    ProgressView()
+      .scaleEffect(2)
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
+      .background(Color.black.opacity(0.5).ignoresSafeArea())
   }
 
   private var leadingBarButton: some View {
-    Button {
-      selectNewLibrary.toggle()
-    } label: {
+    Button(action: { model.selectNewLibrary.toggle() }) {
       ImageProviders.MyBooksView.myLibraryIcon
     }
-    .actionSheet(isPresented: $selectNewLibrary) {
-      libraryPicker
-    }
+    .actionSheet(isPresented: $model.selectNewLibrary) { libraryPicker }
   }
 
   private var trailingBarButton: some View {
-    Button {
-      withAnimation {
-        model.showSearchSheet.toggle()
-      }
-    } label: {
+    Button(action: { withAnimation { model.showSearchSheet.toggle() } }) {
       ImageProviders.MyBooksView.search
     }
   }
@@ -191,19 +134,42 @@ struct MyBooksView: View {
     TPPSettings.shared.settingsAccountsList.map { account in
         .default(Text(account.name)) {
           model.loadAccount(account)
-          showLibraryAccountView = false
-          selectNewLibrary = false
+          model.showLibraryAccountView = false
+          model.selectNewLibrary = false
         }
     }
   }
 
-  private var addLibraryButton: Alert.Button {
-    .default(Text(DisplayStrings.addLibrary)) {
-      showLibraryAccountView = true
-    }
+  private var addLibraryButton: ActionSheet.Button {
+    .default(Text(DisplayStrings.addLibrary)) { model.showLibraryAccountView = true }
+  }
+
+  @ViewBuilder private var emptyView: some View {
+    Text(DisplayStrings.emptyViewMessage)
+      .multilineTextAlignment(.center)
+      .foregroundColor(.gray)
+      .centered()
+      .palaceFont(.body)
   }
 }
 
+extension View {
+  func searchBarStyle() -> some View {
+    self.padding(8)
+      .textFieldStyle(.automatic)
+      .background(Color.gray.opacity(0.2))
+      .cornerRadius(10)
+      .padding(.vertical, 8)
+  }
+
+  func borderStyle() -> some View {
+    self.border(width: 0.5, edges: [.bottom, .trailing], color: Color(TPPConfiguration.mainColor()))
+  }
+
+  func centered() -> some View {
+    self.horizontallyCentered().verticallyCentered()
+  }
+}
 
 extension View {
   func border(width: CGFloat, edges: [Edge], color: Color) -> some View {
@@ -248,5 +214,27 @@ struct EdgeBorder: Shape {
       path.addRect(CGRect(x: x, y: y, width: w, height: h))
     }
     return path
+  }
+}
+
+struct BookListView: View {
+  let books: [TPPBook]
+  let isLoading: Bool
+  let onSelect: (TPPBook) -> Void
+
+  var body: some View {
+    AdaptableGridLayout {
+      ForEach(books, id: \.identifier) { book in
+        Button {
+          onSelect(book)
+        } label: {
+          BookCell(model: BookCellModel(book: book))
+            .borderStyle()
+        }
+        .buttonStyle(.plain)
+        .opacity(isLoading ? 0.5 : 1.0)
+        .disabled(isLoading)
+      }
+    }
   }
 }
