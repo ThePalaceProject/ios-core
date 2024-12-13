@@ -186,13 +186,10 @@
 - (void)openAudiobook:(TPPBook *)book completion:(void (^ _Nullable)(void))completion {
   NSURL *const url = [[MyBooksDownloadCenter shared] fileUrlFor:book.identifier];
   if (!url) {
-    NSLog(@"DEBUGGER URL is nil for book identifier: %@", book.identifier);
     [self presentCorruptedItemErrorForBook:book fromURL:url];
     if (completion) completion();
     return;
   }
-
-  NSLog(@"DEBUGGER Checking if the book is an LCP audiobook.");
 
 #if defined(LCP)
   if ([LCPAudiobooks canOpenBook:book]) {
