@@ -62,7 +62,10 @@ class MyBooksViewModel: ObservableObject {
   // MARK: - Public Methods
   func loadData() {
     guard !isLoading else { return }
-    isLoading = true
+
+    DispatchQueue.main.async {
+      self.isLoading = true
+    }
 
     DispatchQueue.global(qos: .userInitiated).async { [weak self] in
       guard let self = self else { return }
