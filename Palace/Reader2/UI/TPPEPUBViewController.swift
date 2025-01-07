@@ -63,26 +63,8 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
 
     navigator.delegate = self
     self.searchButton.target = self
-    setupViewHierarchy()
     setUIColor(for: preferences)
     log(.info, "TPPEPUBViewController initialized with publication: \(publication.metadata.title ?? "Unknown Title").")
-  }
-
-  private func setupViewHierarchy() {
-    DispatchQueue.main.async {
-      self.addChild(self.navigator)
-      self.view.addSubview(self.navigator.view)
-
-      self.navigator.view.translatesAutoresizingMaskIntoConstraints = false
-      NSLayoutConstraint.activate([
-        self.navigator.view.topAnchor.constraint(equalTo: self.view.topAnchor),
-        self.navigator.view.bottomAnchor.constraint(equalTo: self.view.bottomAnchor),
-        self.navigator.view.leadingAnchor.constraint(equalTo: self.view.leadingAnchor),
-        self.navigator.view.trailingAnchor.constraint(equalTo: self.view.trailingAnchor)
-      ])
-
-      self.navigator.didMove(toParent: self)
-    }
   }
 
   var epubNavigator: EPUBNavigatorViewController {
