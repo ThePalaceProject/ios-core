@@ -19,7 +19,7 @@ class MyBooksViewModel: ObservableObject {
 
   // MARK: - Public Properties
   @Published private(set) var books: [TPPBook] = []
-  @Published private(set) var isLoading = false
+  @Published var isLoading = false
   @Published var alert: AlertModel?
   @Published var searchQuery = ""
   @Published var showInstructionsLabel = false

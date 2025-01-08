@@ -83,8 +83,8 @@ struct NormalBookCell: View {
           indicatorDate: model.indicatorDate(for: type),
           action: { model.callDelegate(for: type) }
         )
-        .disabled(type.isDisabled)
-        .opacity(type.isDisabled ? 0.5 : 1.0)
+        .disabled(model.isLoading || type.isDisabled)
+        .opacity(model.isLoading || type.isDisabled ? 0.5 : 1.0)
         .palaceFont(.body)
       }
     }

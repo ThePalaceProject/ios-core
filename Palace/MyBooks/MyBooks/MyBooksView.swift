@@ -67,7 +67,7 @@ struct MyBooksView: View {
       } else {
         BookListView(
           books: model.books,
-          isLoading: model.isLoading,
+          isLoading: $model.isLoading,
           onSelect: { book in model.selectedBook = book }
         )
         .refreshable { model.reloadData() }
@@ -244,22 +244,36 @@ struct EdgeBorder: Shape {
 
 struct BookListView: View {
   let books: [TPPBook]
-  let isLoading: Bool
+  @Binding var isLoading: Bool
   let onSelect: (TPPBook) -> Void
+
+  @State private var cancellables = Set<AnyCancellable>()
 
   var body: some View {
     AdaptableGridLayout {
       ForEach(Array(books.enumerated()), id: \.element.identifier) { index, book in
-        Button {
-          onSelect(book)
-        } label: {
-          BookCell(model: BookCellModel(book: book))
-            .applyBorderStyle(index: index, totalItems: books.count)
-        }
-        .buttonStyle(.plain)
-        .opacity(isLoading ? 0.5 : 1.0)
-        .disabled(isLoading)
+        let cellModel = BookCellModel(book: book)
+        BookCell(model: cellModel)
+          .applyBorderStyle(index: index, totalItems: books.count)
+          .onAppear {
+            observeCellLoadingState(cellModel)
+          }
+          .onTapGesture {
+            onSelect(book)
+          }
+          .buttonStyle(.plain)
+          .opacity(isLoading ? 0.5 : 1.0)
+          .disabled(isLoading)
       }
     }
+  }
+
+  private func observeCellLoadingState(_ cellModel: BookCellModel) {
+    cellModel.statePublisher
+      .receive(on: DispatchQueue.main)
+      .sink { isLoading in
+        self.isLoading = isLoading
+      }
+      .store(in: &cancellables)
   }
 }
