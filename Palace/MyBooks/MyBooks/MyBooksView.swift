@@ -27,6 +27,7 @@ struct MyBooksView: View {
     }
     .onAppear { model.showSearchSheet = false }
     .alert(item: $model.alert, content: createAlert)
+    // Sheet for selected book
     .sheet(item: $model.selectedBook) { book in
       UIViewControllerWrapper(TPPBookDetailViewController(book: book), updater: { _ in })
         .onDisappear {
@@ -35,6 +36,23 @@ struct MyBooksView: View {
           }
         }
     }
+    // Sheet for Library Account View
+    .sheet(isPresented: $model.showLibraryAccountView) {
+      UIViewControllerWrapper(
+        TPPAccountList { account in
+          model.authenticateAndLoad(account: account)
+          model.showLibraryAccountView = false
+        },
+        updater: { _ in }
+      )
+    }
+    .sheet(isPresented: $model.showAccountScreen) {
+      if let url = model.accountURL {
+        return UIViewControllerWrapper(BundledHTMLViewController(fileURL: url, title: "Account")) { _ in }
+          .anyView()
+      } else {
+        return EmptyView().anyView()
+      }    }
   }
 
   private var mainContent: some View {
