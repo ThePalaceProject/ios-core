@@ -163,7 +163,7 @@ extension View {
   }
 
   func borderStyle() -> some View {
-    self.border(width: 0.5, edges: [.bottom, .trailing], color: Color(TPPConfiguration.mainColor()))
+    self.modifier(BorderStyleModifier())
   }
 
   func centered() -> some View {
@@ -174,6 +174,25 @@ extension View {
 extension View {
   func border(width: CGFloat, edges: [Edge], color: Color) -> some View {
     overlay(EdgeBorder(width: width, edges: edges).foregroundColor(color))
+  }
+}
+
+struct BorderStyleModifier: ViewModifier {
+  func body(content: Content) -> some View {
+    content
+      .border(
+        width: 0.5,
+        edges: edgesForDevice(),
+        color: Color(TPPConfiguration.mainColor())
+      )
+  }
+
+  private func edgesForDevice() -> [Edge] {
+#if os(iOS)
+    return UIDevice.current.userInterfaceIdiom == .phone ? [.bottom] : [.bottom, .trailing]
+#else
+    return [.bottom, .trailing]
+#endif
   }
 }
 

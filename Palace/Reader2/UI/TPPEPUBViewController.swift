@@ -36,8 +36,8 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     self.searchButton = UIBarButtonItem(barButtonSystemItem: .search, target: nil, action: #selector(presentEPUBSearch))
     let overlayLabelInset = TPPBaseReaderViewController.overlayLabelMargin * 2
     let contentInset: [UIUserInterfaceSizeClass: EPUBContentInsets] = [
-      .compact: (top: max(overlayLabelInset, safeAreaInsets.top), bottom: max(overlayLabelInset, safeAreaInsets.bottom)),
-      .regular: (top: max(overlayLabelInset, safeAreaInsets.top), bottom: max(overlayLabelInset, safeAreaInsets.bottom))
+      .compact: (top: safeAreaInsets.top + TPPBaseReaderViewController.overlayLabelMargin * 2, bottom: safeAreaInsets.bottom + TPPBaseReaderViewController.overlayLabelMargin * 2),
+      .regular: (top: safeAreaInsets.top + TPPBaseReaderViewController.overlayLabelMargin * 2, bottom: safeAreaInsets.bottom + TPPBaseReaderViewController.overlayLabelMargin * 2)
     ]
 
     let config = EPUBNavigatorViewController.Configuration(
