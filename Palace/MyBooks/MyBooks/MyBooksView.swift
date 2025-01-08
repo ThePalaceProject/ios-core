@@ -15,6 +15,17 @@ struct MyBooksView: View {
   @ObservedObject var model: MyBooksViewModel
 
   var body: some View {
+    // TODO: This enables subviews to also present alerts. Consider a refactor to create a global navigation stack
+    // to more effectively manage the view hierarchy.
+    EmptyView()
+      .alert(item: $model.alert) { alert in
+        Alert(
+          title: Text(alert.title),
+          message: Text(alert.message),
+          dismissButton: .cancel()
+        )
+      }
+
     ZStack {
       mainContent
       if model.isLoading { loadingOverlay }
@@ -26,8 +37,6 @@ struct MyBooksView: View {
       ToolbarItem(placement: .navigationBarTrailing) { trailingBarButton }
     }
     .onAppear { model.showSearchSheet = false }
-    .alert(item: $model.alert, content: createAlert)
-    // Sheet for selected book
     .sheet(item: $model.selectedBook) { book in
       UIViewControllerWrapper(TPPBookDetailViewController(book: book), updater: { _ in })
         .onDisappear {
@@ -36,7 +45,6 @@ struct MyBooksView: View {
           }
         }
     }
-    // Sheet for Library Account View
     .sheet(isPresented: $model.showLibraryAccountView) {
       UIViewControllerWrapper(
         TPPAccountList { account in
