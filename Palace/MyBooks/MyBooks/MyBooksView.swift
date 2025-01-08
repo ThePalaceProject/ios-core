@@ -26,9 +26,7 @@ struct MyBooksView: View {
       ToolbarItem(placement: .navigationBarTrailing) { trailingBarButton }
     }
     .onAppear { model.showSearchSheet = false }
-    .alert(item: $model.alert) { alert in
-      createAlert(alert)
-    }
+    .alert(item: $model.alert, content: createAlert)
     .sheet(item: $model.selectedBook) { book in
       UIViewControllerWrapper(TPPBookDetailViewController(book: book), updater: { _ in })
         .onDisappear {
@@ -42,57 +40,39 @@ struct MyBooksView: View {
   private var mainContent: some View {
     VStack(alignment: .leading, spacing: 0) {
       if model.showSearchSheet { searchBar }
-      facetView
+      FacetView(model: model.facetViewModel)
       content
     }
   }
 
-  @ViewBuilder private var searchBar: some View {
+  private var searchBar: some View {
     HStack {
       TextField(DisplayStrings.searchBooks, text: $model.searchQuery)
         .searchBarStyle()
         .onChange(of: model.searchQuery, perform: model.filterBooks)
-      clearSearchButton
+      Button(action: clearSearch, label: {
+        Image(systemName: "xmark.circle.fill")
+          .foregroundColor(.gray)
+      })
     }
     .padding(.horizontal)
   }
 
-  private var clearSearchButton: some View {
-    Button(action: {
-      model.searchQuery = ""
-      model.filterBooks(query: "")
-    }) {
-      Image(systemName: "xmark.circle.fill")
-        .foregroundColor(.gray)
-    }
-  }
-
-  @ViewBuilder private var facetView: some View {
-    FacetView(model: model.facetViewModel)
-  }
-
-  @ViewBuilder private var content: some View {
+  private var content: some View {
     GeometryReader { geometry in
       if model.showInstructionsLabel {
-        VStack {
-          emptyView
-        }
-        .frame(minHeight: geometry.size.height)
-        .refreshable { model.reloadData() }
-      } else {
-        listView
+        emptyView
+          .frame(minHeight: geometry.size.height)
           .refreshable { model.reloadData() }
+      } else {
+        BookListView(
+          books: model.books,
+          isLoading: model.isLoading,
+          onSelect: { book in model.selectedBook = book }
+        )
+        .refreshable { model.reloadData() }
       }
     }
-  }
-
-  private var listView: some View {
-    BookListView(
-      books: model.books,
-      isLoading: model.isLoading,
-      onSelect: { book in model.selectedBook = book }
-    )
-    .onAppear { model.loadData() }
   }
 
   private func createAlert(_ alert: AlertModel) -> Alert {
@@ -101,6 +81,11 @@ struct MyBooksView: View {
       message: Text(alert.message),
       dismissButton: .cancel()
     )
+  }
+
+  private func clearSearch() {
+    model.searchQuery = ""
+    model.filterBooks(query: "")
   }
 
   private var loadingOverlay: some View {
@@ -144,7 +129,7 @@ struct MyBooksView: View {
     .default(Text(DisplayStrings.addLibrary)) { model.showLibraryAccountView = true }
   }
 
-  @ViewBuilder private var emptyView: some View {
+  private var emptyView: some View {
     Text(DisplayStrings.emptyViewMessage)
       .multilineTextAlignment(.center)
       .foregroundColor(.gray)
