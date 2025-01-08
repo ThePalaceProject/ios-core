@@ -177,6 +177,27 @@ extension View {
   }
 }
 
+extension View {
+  func applyBorderStyle(index: Int, totalItems: Int) -> some View {
+#if os(iOS)
+    let isPhone = UIDevice.current.userInterfaceIdiom == .phone
+#else
+    let isPhone = false
+#endif
+
+    return self
+      .if(!(isPhone && index == totalItems - 1)) { $0.borderStyle() }
+  }
+
+  @ViewBuilder func `if`<Content: View>(_ condition: Bool, transform: (Self) -> Content) -> some View {
+    if condition {
+      transform(self)
+    } else {
+      self
+    }
+  }
+}
+
 struct BorderStyleModifier: ViewModifier {
   func body(content: Content) -> some View {
     content
@@ -243,12 +264,12 @@ struct BookListView: View {
 
   var body: some View {
     AdaptableGridLayout {
-      ForEach(books, id: \.identifier) { book in
+      ForEach(Array(books.enumerated()), id: \.element.identifier) { index, book in
         Button {
           onSelect(book)
         } label: {
           BookCell(model: BookCellModel(book: book))
-            .borderStyle()
+            .applyBorderStyle(index: index, totalItems: books.count)
         }
         .buttonStyle(.plain)
         .opacity(isLoading ? 0.5 : 1.0)

@@ -96,7 +96,7 @@ class MyBooksViewModel: ObservableObject {
 
   func filterBooks(query: String) {
     if query.isEmpty {
-      loadData() // Reset to all books
+      loadData()
     } else {
       DispatchQueue.global(qos: .userInitiated).async { [weak self] in
         guard let self = self else { return }

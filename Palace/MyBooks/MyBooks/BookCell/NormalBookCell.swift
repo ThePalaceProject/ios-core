@@ -24,6 +24,7 @@ struct NormalBookCell: View {
         infoView
         Spacer()
         buttons
+          .padding(.bottom, 10)
       }
       .alert(item: $model.showAlert) { alert in
         Alert(
