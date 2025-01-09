@@ -15,6 +15,17 @@ struct MyBooksView: View {
   @ObservedObject var model: MyBooksViewModel
 
   var body: some View {
+    // TODO: This enables subviews to also present alerts. Consider a refactor to create a global navigation stack
+    // to more effectively manage the view hierarchy.
+    EmptyView()
+      .alert(item: $model.alert) { alert in
+        Alert(
+          title: Text(alert.title),
+          message: Text(alert.message),
+          dismissButton: .cancel()
+        )
+      }
+
     ZStack {
       mainContent
       if model.isLoading { loadingOverlay }
@@ -26,9 +37,6 @@ struct MyBooksView: View {
       ToolbarItem(placement: .navigationBarTrailing) { trailingBarButton }
     }
     .onAppear { model.showSearchSheet = false }
-    .alert(item: $model.alert) { alert in
-      createAlert(alert)
-    }
     .sheet(item: $model.selectedBook) { book in
       UIViewControllerWrapper(TPPBookDetailViewController(book: book), updater: { _ in })
         .onDisappear {
@@ -37,62 +45,60 @@ struct MyBooksView: View {
           }
         }
     }
+    .sheet(isPresented: $model.showLibraryAccountView) {
+      UIViewControllerWrapper(
+        TPPAccountList { account in
+          model.authenticateAndLoad(account: account)
+          model.showLibraryAccountView = false
+        },
+        updater: { _ in }
+      )
+    }
+    .sheet(isPresented: $model.showAccountScreen) {
+      if let url = model.accountURL {
+        return UIViewControllerWrapper(BundledHTMLViewController(fileURL: url, title: "Account")) { _ in }
+          .anyView()
+      } else {
+        return EmptyView().anyView()
+      }    }
   }
 
   private var mainContent: some View {
     VStack(alignment: .leading, spacing: 0) {
       if model.showSearchSheet { searchBar }
-      facetView
+      FacetView(model: model.facetViewModel)
       content
     }
   }
 
-  @ViewBuilder private var searchBar: some View {
+  private var searchBar: some View {
     HStack {
       TextField(DisplayStrings.searchBooks, text: $model.searchQuery)
         .searchBarStyle()
         .onChange(of: model.searchQuery, perform: model.filterBooks)
-      clearSearchButton
+      Button(action: clearSearch, label: {
+        Image(systemName: "xmark.circle.fill")
+          .foregroundColor(.gray)
+      })
     }
     .padding(.horizontal)
   }
 
-  private var clearSearchButton: some View {
-    Button(action: {
-      model.searchQuery = ""
-      model.filterBooks(query: "")
-    }) {
-      Image(systemName: "xmark.circle.fill")
-        .foregroundColor(.gray)
-    }
-  }
-
-  @ViewBuilder private var facetView: some View {
-    FacetView(model: model.facetViewModel)
-  }
-
-  @ViewBuilder private var content: some View {
+  private var content: some View {
     GeometryReader { geometry in
       if model.showInstructionsLabel {
-        VStack {
-          emptyView
-        }
-        .frame(minHeight: geometry.size.height)
-        .refreshable { model.reloadData() }
-      } else {
-        listView
+        emptyView
+          .frame(minHeight: geometry.size.height)
           .refreshable { model.reloadData() }
+      } else {
+        BookListView(
+          books: model.books,
+          isLoading: $model.isLoading,
+          onSelect: { book in model.selectedBook = book }
+        )
+        .refreshable { model.reloadData() }
       }
     }
-  }
-
-  private var listView: some View {
-    BookListView(
-      books: model.books,
-      isLoading: model.isLoading,
-      onSelect: { book in model.selectedBook = book }
-    )
-    .onAppear { model.loadData() }
   }
 
   private func createAlert(_ alert: AlertModel) -> Alert {
@@ -101,6 +107,11 @@ struct MyBooksView: View {
       message: Text(alert.message),
       dismissButton: .cancel()
     )
+  }
+
+  private func clearSearch() {
+    model.searchQuery = ""
+    model.filterBooks(query: "")
   }
 
   private var loadingOverlay: some View {
@@ -144,7 +155,7 @@ struct MyBooksView: View {
     .default(Text(DisplayStrings.addLibrary)) { model.showLibraryAccountView = true }
   }
 
-  @ViewBuilder private var emptyView: some View {
+  private var emptyView: some View {
     Text(DisplayStrings.emptyViewMessage)
       .multilineTextAlignment(.center)
       .foregroundColor(.gray)
@@ -163,7 +174,7 @@ extension View {
   }
 
   func borderStyle() -> some View {
-    self.border(width: 0.5, edges: [.bottom, .trailing], color: Color(TPPConfiguration.mainColor()))
+    self.modifier(BorderStyleModifier())
   }
 
   func centered() -> some View {
@@ -174,6 +185,46 @@ extension View {
 extension View {
   func border(width: CGFloat, edges: [Edge], color: Color) -> some View {
     overlay(EdgeBorder(width: width, edges: edges).foregroundColor(color))
+  }
+}
+
+extension View {
+  func applyBorderStyle(index: Int, totalItems: Int) -> some View {
+#if os(iOS)
+    let isPhone = UIDevice.current.userInterfaceIdiom == .phone
+#else
+    let isPhone = false
+#endif
+
+    return self
+      .if(!(isPhone && index == totalItems - 1)) { $0.borderStyle() }
+  }
+
+  @ViewBuilder func `if`<Content: View>(_ condition: Bool, transform: (Self) -> Content) -> some View {
+    if condition {
+      transform(self)
+    } else {
+      self
+    }
+  }
+}
+
+struct BorderStyleModifier: ViewModifier {
+  func body(content: Content) -> some View {
+    content
+      .border(
+        width: 0.5,
+        edges: edgesForDevice(),
+        color: Color(TPPConfiguration.mainColor())
+      )
+  }
+
+  private func edgesForDevice() -> [Edge] {
+#if os(iOS)
+    return UIDevice.current.userInterfaceIdiom == .phone ? [.bottom] : [.bottom, .trailing]
+#else
+    return [.bottom, .trailing]
+#endif
   }
 }
 
@@ -219,22 +270,36 @@ struct EdgeBorder: Shape {
 
 struct BookListView: View {
   let books: [TPPBook]
-  let isLoading: Bool
+  @Binding var isLoading: Bool
   let onSelect: (TPPBook) -> Void
+
+  @State private var cancellables = Set<AnyCancellable>()
 
   var body: some View {
     AdaptableGridLayout {
-      ForEach(books, id: \.identifier) { book in
-        Button {
-          onSelect(book)
-        } label: {
-          BookCell(model: BookCellModel(book: book))
-            .borderStyle()
-        }
-        .buttonStyle(.plain)
-        .opacity(isLoading ? 0.5 : 1.0)
-        .disabled(isLoading)
+      ForEach(Array(books.enumerated()), id: \.element.identifier) { index, book in
+        let cellModel = BookCellModel(book: book)
+        BookCell(model: cellModel)
+          .applyBorderStyle(index: index, totalItems: books.count)
+          .onAppear {
+            observeCellLoadingState(cellModel)
+          }
+          .onTapGesture {
+            onSelect(book)
+          }
+          .buttonStyle(.plain)
+          .opacity(isLoading ? 0.5 : 1.0)
+          .disabled(isLoading)
       }
     }
+  }
+
+  private func observeCellLoadingState(_ cellModel: BookCellModel) {
+    cellModel.statePublisher
+      .receive(on: DispatchQueue.main)
+      .sink { isLoading in
+        self.isLoading = isLoading
+      }
+      .store(in: &cancellables)
   }
 }

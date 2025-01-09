@@ -19,7 +19,7 @@ class MyBooksViewModel: ObservableObject {
 
   // MARK: - Public Properties
   @Published private(set) var books: [TPPBook] = []
-  @Published private(set) var isLoading = false
+  @Published var isLoading = false
   @Published var alert: AlertModel?
   @Published var searchQuery = ""
   @Published var showInstructionsLabel = false
@@ -62,7 +62,10 @@ class MyBooksViewModel: ObservableObject {
   // MARK: - Public Methods
   func loadData() {
     guard !isLoading else { return }
-    isLoading = true
+
+    DispatchQueue.main.async {
+      self.isLoading = true
+    }
 
     DispatchQueue.global(qos: .userInitiated).async { [weak self] in
       guard let self = self else { return }
@@ -93,7 +96,7 @@ class MyBooksViewModel: ObservableObject {
 
   func filterBooks(query: String) {
     if query.isEmpty {
-      loadData() // Reset to all books
+      loadData()
     } else {
       DispatchQueue.global(qos: .userInitiated).async { [weak self] in
         guard let self = self else { return }
