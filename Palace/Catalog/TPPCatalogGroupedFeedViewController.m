@@ -342,7 +342,10 @@ viewForHeaderInSection:(NSInteger const)section
   TPPBook *const localBook = [[TPPBookRegistry shared] bookForIdentifier:feedBook.identifier];
   TPPBook *const book = (localBook != nil) ? localBook : feedBook;
   TPPLOG_F(@"Presenting book: %@", [book loggableShortString]);
-  [[[TPPBookDetailViewController alloc] initWithBook:book] presentFromViewController:self];
+  BookDetailHostingController *bookDetailVC = [[BookDetailHostingController alloc] initWithBook:book];
+  [self presentViewController:bookDetailVC animated:YES completion:nil];
+
+
   self.mostRecentBookSelected = book;
 }
 

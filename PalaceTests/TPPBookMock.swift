@@ -7,7 +7,6 @@
 //
 
 import Foundation
-@testable import Palace
 
 enum DistributorType: String {
   case OPDSCatalog = "application/atom+xml;type=entry;profile=opds-catalog"

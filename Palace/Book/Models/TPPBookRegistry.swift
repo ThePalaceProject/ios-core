@@ -7,9 +7,14 @@
 //
 
 import Foundation
+import Combine
 import UIKit
 
 protocol TPPBookRegistryProvider {
+  var registryPublisher: AnyPublisher<[String: TPPBookRegistryRecord], Never> { get }
+  var bookStatePublisher: AnyPublisher<(String, TPPBookState), Never> { get }
+
+  func coverImage(for book: TPPBook, handler: @escaping (_ image: UIImage?) -> Void)
   func setProcessing(_ processing: Bool, for bookIdentifier: String)
   func state(for bookIdentifier: String?) -> TPPBookState
   func readiumBookmarks(forIdentifier identifier: String) -> [TPPReadiumBookmark]
@@ -113,6 +118,7 @@ class TPPBookRegistry: NSObject {
   /// Book registry with book identifiers as keys.
   private var registry = [String: TPPBookRegistryRecord]() {
     didSet {
+      registrySubject.send(registry)
       NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil, userInfo: nil)
     }
   }
@@ -124,9 +130,19 @@ class TPPBookRegistry: NSObject {
   private var processingIdentifiers = Set<String>()
   
   static let shared = TPPBookRegistry()
-  
+
+  private let registrySubject = CurrentValueSubject<[String: TPPBookRegistryRecord], Never>([:])
+  private let bookStateSubject = PassthroughSubject<(String, TPPBookState), Never>()
+
+  var registryPublisher: AnyPublisher<[String: TPPBookRegistryRecord], Never> {
+    registrySubject.eraseToAnyPublisher()
+  }
+  var bookStatePublisher: AnyPublisher<(String, TPPBookState), Never> {
+    bookStateSubject.eraseToAnyPublisher()
+  }
   /// Identifies that the synchronsiation process is going on.
-  private(set) var isSyncing: Bool {
+  private(set) var isSyncing: Bool
+  {
     get {
       syncState.value
     }
@@ -148,7 +164,7 @@ class TPPBookRegistry: NSObject {
       NotificationCenter.default.post(name: .TPPBookRegistryStateDidChange, object: nil, userInfo: nil)
     }
   }
-  
+
   /// Keeps loans URL of current synchronisation process.
   /// TPPBookRegistry is a shared object, this value is used to cancel synchronisation callback when the user changes library account.
   private var syncUrl: URL?
@@ -302,7 +318,6 @@ class TPPBookRegistry: NSObject {
       }
     }
   }
-
 
   /// Saves book registry data.
   private func save() {
@@ -466,9 +481,23 @@ class TPPBookRegistry: NSObject {
   /// Sets the state for a book previously registered given its identifier.
   func setState(_ state: TPPBookState, for bookIdentifier: String) {
     registry[bookIdentifier]?.state = state
+    bookStateSubject.send((bookIdentifier, state))
+    postStateNotification(bookIdentifier: bookIdentifier, state: state)
     save()
   }
-  
+
+  @available(*, deprecated, message: "Use Combine publishers instead.")
+  private func postStateNotification(bookIdentifier: String, state: TPPBookState) {
+    NotificationCenter.default.post(
+      name: .TPPBookRegistryStateDidChange,
+      object: nil,
+      userInfo: [
+        "bookIdentifier": bookIdentifier,
+        "state": state.rawValue
+      ]
+    )
+  }
+
   /// Returns the book for a given identifier if it is registered, else nil.
   func book(forIdentifier bookIdentifier: String?) -> TPPBook? {
     guard let bookIdentifier = bookIdentifier, !bookIdentifier.isEmpty,
@@ -540,8 +569,7 @@ class TPPBookRegistry: NSObject {
   }
   
   /// Returns cover image if it exists, or falls back to thumbnail image load.
-  @MainActor
-  func coverImage(for book: TPPBook, handler: @escaping (_ image: UIImage?) -> Void) {
+  @MainActor func coverImage(for book: TPPBook, handler: @escaping (_ image: UIImage?) -> Void) {
     coverRegistry.coverImageForBook(book, handler: handler)
   }
 }
