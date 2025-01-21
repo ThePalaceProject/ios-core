@@ -343,7 +343,8 @@ viewForHeaderInSection:(NSInteger const)section
   TPPBook *const book = (localBook != nil) ? localBook : feedBook;
   TPPLOG_F(@"Presenting book: %@", [book loggableShortString]);
   BookDetailHostingController *bookDetailVC = [[BookDetailHostingController alloc] initWithBook:book];
-  [self presentViewController:bookDetailVC animated:YES completion:nil];
+//  [self presentViewController:bookDetailVC animated:YES completion:nil];
+  [self.navigationController pushViewController:bookDetailVC animated:true];
 
 
   self.mostRecentBookSelected = book;

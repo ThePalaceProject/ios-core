@@ -1,11 +1,13 @@
-import SwiftUI
 import Combine
+import SwiftUI
 
 @objcMembers class BookDetailViewModel: NSObject, ObservableObject {
   @Published var book: TPPBook
   @Published var state: TPPBookState
   @Published var bookmarks: [TPPReadiumBookmark] = []
-  @Published var coverImage: Image = Image(systemName: "book")
+  @Published var coverImage: UIImage = UIImage()
+  @Published var backgroundColor: Color = .gray
+  @Published var renderedSummary: NSAttributedString?
 
   private var cancellables = Set<AnyCancellable>()
   private let registry: TPPBookRegistryProvider
@@ -23,7 +25,6 @@ import Combine
 
   // MARK: - Registry Binding
   private func bindRegistry() {
-    // Subscribe to state updates for the current book
     registry.bookStatePublisher
       .filter { $0.0 == self.book.identifier }
       .map { $0.1 }
@@ -41,21 +42,18 @@ import Combine
   // MARK: - Load Cover Image
   private func loadCoverImage(book: TPPBook) {
     registry.coverImage(for: book) { [weak self] uiImage in
-      guard let self else { return }
-      if let uiImage {
-        DispatchQueue.main.async {
-          self.coverImage = Image(uiImage: uiImage)
-        }
+      guard let self = self else { return }
+      DispatchQueue.main.async {
+        self.updateCoverImage(uiImage)
       }
     }
-    //      registry.coverImage(for: book) { [weak self] uiImage in
-    //        guard let self else { return }
-    //        if let uiImage {
-    //          DispatchQueue.main.async {
-    //            self.coverImage = Image(uiImage: uiImage)
-    //          }
-    //        }
-    //      }
+  }
+
+  private func updateCoverImage(_ uiImage: UIImage?) {
+    if let uiImage {
+      coverImage = uiImage
+      backgroundColor = Color(uiImage.mainColor() ?? .gray)
+    }
   }
 
   // MARK: - Bookmark Management

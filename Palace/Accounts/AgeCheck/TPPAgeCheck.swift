@@ -1,6 +1,6 @@
 import Foundation
 
-protocol TPPAgeCheckValidationDelegate: class {
+protocol TPPAgeCheckValidationDelegate: AnyObject {
   var minYear : Int { get }
   var currentYear : Int { get }
   var birthYearList : [Int] { get }

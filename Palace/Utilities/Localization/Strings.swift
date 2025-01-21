@@ -294,4 +294,17 @@ struct Strings {
     static let borrowFailedMessage = NSLocalizedString("Borrowing %@ could not be completed.", comment: "")
     static let loanAlreadyExistsAlertMessage = NSLocalizedString("You have already checked out this loan. You may need to refresh your My Books list to download the title.", comment: "")
   }
+
+  struct BookDetailView {
+    static let audiobookAvailable = NSLocalizedString("Also available as an audiobook.", comment: "")
+    static let description = NSLocalizedString("Description", comment: "")
+    static let information = NSLocalizedString("Information", comment: "")
+    static let preview = NSLocalizedString("Preview", comment: "")
+    static let format = NSLocalizedString("Format", comment: "")
+    static let published = NSLocalizedString("Published", comment: "")
+    static let publisher = NSLocalizedString("Publisher", comment: "")
+    static let category = NSLocalizedString("Category", comment: "")
+    static let categories = NSLocalizedString("Categories", comment: "")
+    static let distributor = NSLocalizedString("Distributor", comment: "")
+  }
 }

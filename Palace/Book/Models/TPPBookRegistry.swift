@@ -576,7 +576,7 @@ class TPPBookRegistry: NSObject {
 
 // MARK: - TPPBookRegistryProvider
 
-extension TPPBookRegistry: TPPBookRegistryProvider {
+extension TPPBookRegistry: @preconcurrency TPPBookRegistryProvider {
   
   /// Sets the location for a book previously registered given its identifier.
   func setLocation(_ location: TPPBookLocation?, forIdentifier bookIdentifier: String) {
