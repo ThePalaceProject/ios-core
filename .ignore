@@ -1,0 +1,9 @@
+# Files ignored for scc line of code calculation
+readium-sdk/
+readium-shared-js/
+TestResources
+mobile-bookmark-spec/
+PalaceTests/
+adobe-rmsdk/
+PalaceConfig/
+*.xcassets
