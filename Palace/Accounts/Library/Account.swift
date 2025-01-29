@@ -397,7 +397,8 @@ protocol AccountLogoDelegate: AnyObject {
       details = AccountDetails(authenticationDocument: authenticationDocument, uuid: uuid)
     }
   }
-  
+  var logoUrl: URL? = nil
+
 
   var loansUrl: URL? {
     return details?.loansUrl
@@ -423,12 +424,9 @@ protocol AccountLogoDelegate: AnyObject {
     logo = UIImage(named: "LibraryLogoMagic")!
     
     homePageUrl = publication.links.first(where: { $0.rel == "alternate" })?.href
+    logoUrl = publication.thumbnailURL
 
     super.init()
-    
-    DispatchQueue.main.async {
-      self.loadLogo(imageURL: publication.thumbnailURL)
-    }
   }
 
   /// Load authentication documents from the network or cache.
@@ -515,8 +513,8 @@ protocol AccountLogoDelegate: AnyObject {
     }
   }
   
-  private func loadLogo(imageURL: URL?) {
-    guard let url = imageURL else { return }
+  func loadLogo() {
+    guard let url = self.logoUrl else { return }
 
       self.fetchImage(from: url, completion: {
         guard let image = $0 else { return }

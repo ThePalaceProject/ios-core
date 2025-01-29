@@ -191,6 +191,7 @@ let currentAccountIdentifierKey  = "TPPCurrentAccountIdentifier"
       // changing the `accountsSets` dictionary will also change `currentAccount`
       Log.debug(#function, "hadAccount=\(hadAccount) currentAccountID=\(currentAccountId ?? "N/A") currentAcct=\(String(describing: currentAccount))")
       if hadAccount != (self.currentAccount != nil) {
+        self.currentAccount?.loadLogo()
         self.currentAccount?.loadAuthenticationDocument(using: TPPUserAccount.sharedAccount(), completion: { success in
           DispatchQueue.main.async {
             var mainFeed = URL(string: self.currentAccount?.catalogUrl ?? "")
@@ -224,6 +225,9 @@ let currentAccountIdentifierKey  = "TPPCurrentAccountIdentifier"
         // we pass `true` because at this point we know the catalogs loaded
         // successfully
         completion(true)
+      }
+      for account in accountSet {
+        account.loadLogo()
       }
     } catch (let error) {
       TPPErrorLogger.logError(error,
