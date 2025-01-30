@@ -157,7 +157,7 @@ extension AdobeDRMContainer: Container {
       return nil
     }
 
-    return DRMResource(data: data, path: url.anyURL.string, drmContainer: self)
+    return DataResource(data: self.decode(data, at: url.anyURL.string), sourceURL: url.absoluteURL)
   }
 
   // MARK: - Helpers
@@ -189,69 +189,6 @@ extension AdobeDRMContainer: Container {
     } catch {
       return nil
     }
-  }
-}
-
-struct DRMResource: Resource {
-  private let data: Data
-  private let path: String
-  private let drmContainer: AdobeDRMContainer
-
-  init(data: Data, path: String, drmContainer: AdobeDRMContainer) {
-    self.data = data
-    self.path = path
-    self.drmContainer = drmContainer
-  }
-
-  func read(range: Range<UInt64>?) async throws -> Data {
-    let fullData = drmContainer.decode(data, at: path)
-
-    if let range = range {
-      let start = Int(clamping: range.lowerBound)
-      let end = Int(clamping: range.upperBound)
-      let intRange = start..<end
-
-      guard intRange.lowerBound >= 0, intRange.upperBound <= fullData.count else {
-        throw ReadError.access(.fileSystem(.fileNotFound(nil)))
-      }
-
-      return fullData.subdata(in: intRange)
-    } else {
-      return fullData
-    }
-  }
-
-  var sourceURL: AbsoluteURL? {
-    nil
-  }
-
-  func properties() async -> ReadResult<ResourceProperties> {
-    var props = ResourceProperties()
-    props.length = UInt64(data.count)
-    return .success(props)
-  }
-
-  func estimatedLength() async -> ReadResult<UInt64?> {
-    return .success(UInt64(data.count))
-  }
-
-  func stream(range: Range<UInt64>?, consume: @escaping (Data) -> Void) async -> ReadResult<Void> {
-    do {
-      let chunk = try await read(range: range)
-      consume(chunk)
-      return .success(())
-    } catch {
-      return .failure(.access(.other(error)))
-    }
-  }
-
-  func close() {}
-}
-
-extension ResourceProperties {
-  public var length: UInt64? {
-    get { self["length"] }
-    set { self["length"] = newValue }
   }
 }
 #endif
