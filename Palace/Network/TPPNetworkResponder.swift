@@ -188,7 +188,7 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
   private func logTaskCompletion(taskID: Int, startDate: Date, metadata: inout [String: Any]) {
     let elapsed = Date().timeIntervalSince(startDate)
     metadata["elapsedTime"] = elapsed
-    Log.info(#file, "Task \(taskID) completed, elapsed time: \(elapsed) sec")
+    Log.info(#file, "Task \(taskID) completed (\(metadata["currentRequest"] ?? "nil")), elapsed time: \(elapsed) sec")
   }
 
   
