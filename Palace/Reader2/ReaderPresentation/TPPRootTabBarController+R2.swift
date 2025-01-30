@@ -10,7 +10,7 @@ import Foundation
 
 @objc extension TPPRootTabBarController {
   func presentBook(_ book: TPPBook) {
-    guard let libraryService = r2Owner?.libraryService, let readerModule = r2Owner?.readerModule else {
+    guard let libraryService = r3Owner?.libraryService, let readerModule = r3Owner?.readerModule else {
       return
     }
 
@@ -44,7 +44,7 @@ import Foundation
       isPresentingSample = false
     }
 
-    guard let libraryService = r2Owner?.libraryService, let readerModule = r2Owner?.readerModule else {
+    guard let libraryService = r3Owner?.libraryService, let readerModule = r3Owner?.readerModule else {
       return
     }
     
