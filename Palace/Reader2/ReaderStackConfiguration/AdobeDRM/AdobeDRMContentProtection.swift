@@ -36,52 +36,25 @@ final class AdobeDRMContentProtection: ContentProtection, Loggable {
           return .failure(.assetNotSupported(DebugError("Invalid source URL")))
         }
 
-        do {
-          let decryptor = try AdobeDRMDecryptor(url: sourceURL, encryptionData: encryptionData)
-          let decryptedContainer = decryptor.drmContainer
+        let decryptedContainer = AdobeDRMContainer(url: sourceURL, encryptionData: encryptionData)
 
-          guard validateDecryptedContainer(decryptedContainer) else {
-            return .failure(.assetNotSupported(DebugError("Decrypted container is missing required files.")))
-          }
+        let newContainerAsset = ContainerAsset(container: decryptedContainer, format: container.format)
+        let cpAsset = ContentProtectionAsset(asset: .container(newContainerAsset)) { manifest, _, services in
+          let copyManifest = manifest
 
-          let newContainerAsset = ContainerAsset(container: decryptedContainer, format: container.format)
-          let cpAsset = ContentProtectionAsset(asset: .container(newContainerAsset)) { manifest, _, services in
-            let copyManifest = manifest
-
-            services.setContentProtectionServiceFactory { factory in
-              AdobeContentProtectionService(
-                context: PublicationServiceContext(
-                  publication: factory.publication,
-                  manifest: copyManifest,
-                  container: decryptedContainer
-                )
+          services.setContentProtectionServiceFactory { factory in
+            AdobeContentProtectionService(
+              context: PublicationServiceContext(
+                publication: factory.publication,
+                manifest: copyManifest,
+                container: decryptedContainer
               )
-            }
+            )
           }
-
-          return .success(cpAsset)
-        } catch {
-          return .failure(.assetNotSupported(error))
         }
+
+        return .success(cpAsset)
       }
-  }
-
-  private func validateDecryptedContainer(_ container: Container) -> Bool {
-    let requiredFiles = ["META-INF/container.xml"]
-
-    for path in requiredFiles {
-      guard let urlPath = AnyURL(string: path) else {
-        log(.error, "Invalid URL for required file path: \(path)")
-        return false
-      }
-
-      if container[urlPath] == nil {
-        log(.error, "Missing required file in decrypted container: \(path)")
-        return false
-      }
-    }
-
-    return true
   }
 }
 
@@ -110,29 +83,6 @@ private extension AdobeDRMContentProtection {
     }
 
     return .failure(DebugError("Invalid encryption.xml path"))
-  }
-
-  final class AdobeDRMDecryptor {
-    let drmContainer: AdobeDRMContainer
-
-    init(url: URL, encryptionData: Data) throws {
-      self.drmContainer = AdobeDRMContainer(url: url, encryptionData: encryptionData)
-
-      if let displayUntilDate = drmContainer.displayUntilDate, displayUntilDate < Date() {
-        throw AdobeDRMFetcherError.expiredDisplayUntilDate
-      }
-    }
-
-    func decrypt(_ data: Data, at path: String) -> Data {
-      let decryptedData = drmContainer.decode(data, at: path)
-
-      if let error = drmContainer.epubDecodingError {
-        Log.debug(#file, "Decryption failed for path \(path): \(error)")
-        return Data()
-      }
-
-      return decryptedData
-    }
   }
 }
 
@@ -174,7 +124,7 @@ extension AdobeDRMContainer: Container {
   }
 
   private func readDataFromArchive(at path: String) -> Data? {
-    guard let archive = Archive(url: self.fileURL!, accessMode: .read) else {
+    guard let fileURL, let archive = try? Archive(url: fileURL, accessMode: .read, pathEncoding: nil) else {
       return nil
     }
 
@@ -222,7 +172,7 @@ struct DRMResource: Resource {
   }
 
   var sourceURL: AbsoluteURL? {
-    nil
+    drmContainer.sourceURL
   }
 
   func properties() async -> ReadResult<ResourceProperties> {
