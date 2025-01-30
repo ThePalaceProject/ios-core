@@ -215,7 +215,6 @@
 		2D382BD71D08BA99002C423D /* Log.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D382BD61D08BA99002C423D /* Log.swift */; };
 		2D4379FE1C46FDB600AE1AD5 /* ReaderClientCert.sig in Resources */ = {isa = PBXBuildFile; fileRef = 085D31FB1BE7BE86007F7672 /* ReaderClientCert.sig */; };
 		2D62568B1D412BCB0080A81F /* BundledHTMLViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D62568A1D412BCB0080A81F /* BundledHTMLViewController.swift */; };
-		2D6256911D41582A0080A81F /* software-licenses.html in Resources */ = {isa = PBXBuildFile; fileRef = 2D6256901D41582A0080A81F /* software-licenses.html */; };
 		2D754BBB2002E2FB0061D34F /* TPPOPDSAcquisition.m in Sources */ = {isa = PBXBuildFile; fileRef = 2D754BBA2002E2FB0061D34F /* TPPOPDSAcquisition.m */; };
 		2D754BC22002F1B10061D34F /* TPPOPDSIndirectAcquisition.m in Sources */ = {isa = PBXBuildFile; fileRef = 2D754BC12002F1B10061D34F /* TPPOPDSIndirectAcquisition.m */; };
 		2D87909D20127AA300E2763F /* TPPOPDSAcquisitionPath.m in Sources */ = {isa = PBXBuildFile; fileRef = 2D87909C20127AA300E2763F /* TPPOPDSAcquisitionPath.m */; };
@@ -517,7 +516,6 @@
 		73EB0B5B25821DF4006BC997 /* TPPProblemReportViewController.xib in Resources */ = {isa = PBXBuildFile; fileRef = 085D31D81BE29ED4007F7672 /* TPPProblemReportViewController.xib */; };
 		73EB0B5C25821DF4006BC997 /* readium-shared-js_all.js in Resources */ = {isa = PBXBuildFile; fileRef = 5A69290D1B95ACC600FB4C10 /* readium-shared-js_all.js */; };
 		73EB0B5D25821DF4006BC997 /* ReaderClientCert.sig in Resources */ = {isa = PBXBuildFile; fileRef = 085D31FB1BE7BE86007F7672 /* ReaderClientCert.sig */; };
-		73EB0B5E25821DF4006BC997 /* software-licenses.html in Resources */ = {isa = PBXBuildFile; fileRef = 2D6256901D41582A0080A81F /* software-licenses.html */; };
 		73EB0B5F25821DF4006BC997 /* TPP_Launch_Screen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = E65977C41F82AC91003CD6BC /* TPP_Launch_Screen.storyboard */; };
 		73EB0B6025821DF4006BC997 /* Accounts.json in Resources */ = {isa = PBXBuildFile; fileRef = 03F94CCE1DD627AA00CE8F4F /* Accounts.json */; };
 		73EB0B6125821DF4006BC997 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = A823D819192BABA400B55DE2 /* InfoPlist.strings */; };
@@ -949,7 +947,6 @@
 		D570B6D42BA20139003FE991 /* readium-shared-js_all.js in Resources */ = {isa = PBXBuildFile; fileRef = 5A69290D1B95ACC600FB4C10 /* readium-shared-js_all.js */; };
 		D570B6D52BA20139003FE991 /* ReaderClientCert.sig in Resources */ = {isa = PBXBuildFile; fileRef = 085D31FB1BE7BE86007F7672 /* ReaderClientCert.sig */; };
 		D570B6D62BA20139003FE991 /* Localizable.stringsdict in Resources */ = {isa = PBXBuildFile; fileRef = 17E81F32261FF758001003C2 /* Localizable.stringsdict */; };
-		D570B6D72BA20139003FE991 /* software-licenses.html in Resources */ = {isa = PBXBuildFile; fileRef = 2D6256901D41582A0080A81F /* software-licenses.html */; };
 		D570B6D82BA20139003FE991 /* TPP_Launch_Screen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = E65977C41F82AC91003CD6BC /* TPP_Launch_Screen.storyboard */; };
 		D570B6D92BA20139003FE991 /* Accounts.json in Resources */ = {isa = PBXBuildFile; fileRef = 03F94CCE1DD627AA00CE8F4F /* Accounts.json */; };
 		D570B6DA2BA20139003FE991 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = A823D819192BABA400B55DE2 /* InfoPlist.strings */; };
@@ -1701,7 +1698,6 @@
 		2D382BCF1D08B1F5002C423D /* Palace-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Palace-Bridging-Header.h"; sourceTree = "<group>"; };
 		2D382BD61D08BA99002C423D /* Log.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Log.swift; sourceTree = "<group>"; };
 		2D62568A1D412BCB0080A81F /* BundledHTMLViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = BundledHTMLViewController.swift; sourceTree = "<group>"; };
-		2D6256901D41582A0080A81F /* software-licenses.html */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.html; path = "software-licenses.html"; sourceTree = "<group>"; };
 		2D6AF74A1E7E341F005CEC90 /* Palace+RMSDK.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = "Palace+RMSDK.xcconfig"; path = "../Palace+RMSDK.xcconfig"; sourceTree = "<group>"; };
 		2D754BB92002E2FB0061D34F /* TPPOPDSAcquisition.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TPPOPDSAcquisition.h; sourceTree = "<group>"; };
 		2D754BBA2002E2FB0061D34F /* TPPOPDSAcquisition.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = TPPOPDSAcquisition.m; sourceTree = "<group>"; };
@@ -3340,7 +3336,6 @@
 				84B7A3421B84E8FE00584FB2 /* OpenDyslexicFont */,
 				11C113D319F842E2005B3F63 /* Reader */,
 				E61D7F631F6AC78B0091C781 /* SimplyE.entitlements */,
-				2D6256901D41582A0080A81F /* software-licenses.html */,
 				110F853C19D5FA7300052DF7 /* DetailSummaryTemplate.html */,
 				738EF2D12405E3D900F388FB /* .gitignore */,
 				73DA43A12404B4A900985482 /* Cartfile */,
@@ -4073,7 +4068,6 @@
 				73EB0B5C25821DF4006BC997 /* readium-shared-js_all.js in Resources */,
 				73EB0B5D25821DF4006BC997 /* ReaderClientCert.sig in Resources */,
 				17E81F2F261FF758001003C2 /* Localizable.stringsdict in Resources */,
-				73EB0B5E25821DF4006BC997 /* software-licenses.html in Resources */,
 				73EB0B5F25821DF4006BC997 /* TPP_Launch_Screen.storyboard in Resources */,
 				73EB0B6025821DF4006BC997 /* Accounts.json in Resources */,
 				73EB0B6125821DF4006BC997 /* InfoPlist.strings in Resources */,
@@ -4110,7 +4104,6 @@
 				5A69290E1B95ACC600FB4C10 /* readium-shared-js_all.js in Resources */,
 				2D4379FE1C46FDB600AE1AD5 /* ReaderClientCert.sig in Resources */,
 				17E81F2C261FF758001003C2 /* Localizable.stringsdict in Resources */,
-				2D6256911D41582A0080A81F /* software-licenses.html in Resources */,
 				E65977C51F82AC91003CD6BC /* TPP_Launch_Screen.storyboard in Resources */,
 				03F94CCF1DD627AA00CE8F4F /* Accounts.json in Resources */,
 				A823D81B192BABA400B55DE2 /* InfoPlist.strings in Resources */,
@@ -4147,7 +4140,6 @@
 				D570B6D42BA20139003FE991 /* readium-shared-js_all.js in Resources */,
 				D570B6D52BA20139003FE991 /* ReaderClientCert.sig in Resources */,
 				D570B6D62BA20139003FE991 /* Localizable.stringsdict in Resources */,
-				D570B6D72BA20139003FE991 /* software-licenses.html in Resources */,
 				D570B6D82BA20139003FE991 /* TPP_Launch_Screen.storyboard in Resources */,
 				D570B6D92BA20139003FE991 /* Accounts.json in Resources */,
 				D570B6DA2BA20139003FE991 /* InfoPlist.strings in Resources */,
