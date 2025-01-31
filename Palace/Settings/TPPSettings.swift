@@ -22,7 +22,8 @@ import Foundation
   static let TPPAboutPalaceURLString = "http://thepalaceproject.org/"
   static let TPPUserAgreementURLString = "https://legal.palaceproject.io/End%20User%20License%20Agreement.html"
   static let TPPPrivacyPolicyURLString = "https://legal.palaceproject.io/Privacy%20Policy.html"
-  
+  static let TPPSoftwareLicensesURLString = "https://legal.palaceproject.io/software-licenses.html"
+
   static private let customMainFeedURLKey = "NYPLSettingsCustomMainFeedURL"
   static private let accountMainFeedURLKey = "NYPLSettingsAccountMainFeedURL"
   static private let userPresentedAgeCheckKey = "NYPLUserPresentedAgeCheckKey"

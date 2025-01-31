@@ -48,7 +48,6 @@ final class AdobeContentProtectionService: ContentProtectionService {
     LocalizedString.nonlocalized("Adobe DRM")
   }
 
-  /// Known technology for this type of Content Protection (Adobe DRM).
   var scheme: ContentProtectionScheme {
     .adept
   }

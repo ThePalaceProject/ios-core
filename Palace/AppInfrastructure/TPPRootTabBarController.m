@@ -9,7 +9,7 @@
 @property (nonatomic) TPPMyBooksViewController *myBooksNavigationController;
 @property (nonatomic) TPPHoldsNavigationController *holdsNavigationController;
 @property (nonatomic) TPPSettingsViewController *settingsViewController;
-@property (readwrite) TPPR2Owner *r2Owner;
+@property (readwrite) TPPR3Owner *r3Owner;
 
 @end
 
@@ -55,7 +55,7 @@
                                                name:NSNotification.TPPCurrentAccountDidChange
                                              object:nil];
   
-  self.r2Owner = [[TPPR2Owner alloc] init];
+  self.r3Owner = [[TPPR3Owner alloc] init];
   return self;
 }
 

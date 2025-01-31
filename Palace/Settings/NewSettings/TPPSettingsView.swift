@@ -117,9 +117,10 @@ struct TPPSettingsView: View {
   }
 
   @ViewBuilder private var softwareLicenseRow: some View {
-    let viewController = BundledHTMLViewController(
-      fileURL: Bundle.main.url(forResource: "software-licenses", withExtension: "html")!,
-      title: Strings.Settings.softwareLicenses
+    let viewController = RemoteHTMLViewController(
+      URL: URL(string: TPPSettings.TPPSoftwareLicensesURLString)!,
+      title: Strings.Settings.softwareLicenses,
+      failureMessage: Strings.Error.loadFailedError
     )
     
     let wrapper = UIViewControllerWrapper(viewController, updater: { _ in })

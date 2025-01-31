@@ -89,7 +89,6 @@ jobs:
         env:
           BUILD_CONTEXT: ci
 
-      # Set up Python environment and install requests
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
@@ -103,7 +102,6 @@ jobs:
 
       - name: Create release notes
         run: |
-          source .venv/bin/activate
           ./scripts/create-release-notes.sh
         env:
           BUILD_CONTEXT: ci
