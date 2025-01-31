@@ -105,6 +105,7 @@ jobs:
           ./scripts/create-release-notes.sh
         env:
           BUILD_CONTEXT: ci
+          GITHUB_TOKEN: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
 
       - name: Verify path and version
         run: |
