@@ -4377,7 +4377,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				73D8D26E25A68CA900DF5F69 /* LibraryService.swift in Sources */,
-				73D8D26825A68C6500DF5F69 /* TPPR2Owner.swift in Sources */,
+				73D8D26825A68C6500DF5F69 /* TPPR3Owner.swift in Sources */,
 				E562DDA72D36D04A003A1A40 /* TPPBookMock.swift in Sources */,
 				73D8D26825A68C6500DF5F69 /* TPPR3Owner.swift in Sources */,
 				73EB0A6525821DF4006BC997 /* TPPLibraryDescriptionCell.swift in Sources */,
@@ -5926,9 +5926,6 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/PalaceDebug.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 308;
-				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
 				CURRENT_PROJECT_VERSION = 309;
