@@ -89,6 +89,17 @@ jobs:
         env:
           BUILD_CONTEXT: ci
 
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        run: |
+          python3 -m venv .venv
+          source .venv/bin/activate
+          python3 -m pip install requests
+
       - name: Create release notes
         run: |
           ./scripts/create-release-notes.sh
