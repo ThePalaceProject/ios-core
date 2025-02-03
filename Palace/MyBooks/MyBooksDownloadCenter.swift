@@ -468,8 +468,10 @@ extension MyBooksDownloadCenter {
     let isLcpAudiobook = false
 #endif
 
-    // LCP Audiobooks are a single binary file, without an easily loaded manifest. So they skip this logic
-    // that deleted the local audio files, used by other audiobook types.
+    // LCP Audiobooks are a single binary file, without an easily loaded manifest.
+    // So they skip this logic that deleted the local audio files, used by other
+    // audiobook types.
+    // TODO: Update LCP so we don't have to special case it here.
     if (!isLcpAudiobook) {
       let manifestData = try Data(contentsOf: bookURL)
       let manifest = try Manifest.customDecoder().decode(Manifest.self, from: manifestData)
