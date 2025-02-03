@@ -306,5 +306,7 @@ struct Strings {
     static let category = NSLocalizedString("Category", comment: "")
     static let categories = NSLocalizedString("Categories", comment: "")
     static let distributor = NSLocalizedString("Distributor", comment: "")
+    static let more = NSLocalizedString("More", comment: "")
+    static let less = NSLocalizedString("Less", comment: "")
   }
 }

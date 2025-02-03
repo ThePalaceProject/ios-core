@@ -43,16 +43,15 @@ import SwiftUI
   private func loadCoverImage(book: TPPBook) {
     registry.coverImage(for: book) { [weak self] uiImage in
       guard let self = self else { return }
-      DispatchQueue.main.async {
-        self.updateCoverImage(uiImage)
-      }
+      self.updateCoverImage(uiImage)
     }
   }
 
   private func updateCoverImage(_ uiImage: UIImage?) {
-    if let uiImage {
-      coverImage = uiImage
-      backgroundColor = Color(uiImage.mainColor() ?? .gray)
+    guard let uiImage = uiImage else { return }
+    DispatchQueue.main.async {
+      self.coverImage = uiImage
+      self.backgroundColor = Color(uiImage.mainColor() ?? .gray)
     }
   }
 

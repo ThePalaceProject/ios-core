@@ -5,6 +5,7 @@ struct BookDetailView: View {
   typealias DisplayStrings = Strings.BookDetailView
 
   @StateObject var viewModel: BookDetailViewModel
+  @State private var isExpanded: Bool = false
 
   var body: some View {
     ZStack(alignment: .top) {
@@ -25,7 +26,7 @@ struct BookDetailView: View {
   }
 
   private var fullView: some View {
-    VStack(alignment: .leading, spacing: 16) {
+    VStack(alignment: .leading, spacing: 30) {
       HStack(alignment: .top, spacing: 25) {
         imageView
         titleView
@@ -35,7 +36,7 @@ struct BookDetailView: View {
       descriptionView
       informationView
     }
-    .padding()
+    .padding(30)
   }
 
   private var compactView: some View {
@@ -130,10 +131,15 @@ struct BookDetailView: View {
             .foregroundColor(.black)
             .font(.body)
             .lineLimit(nil)
-            .padding(.vertical, 4)
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+        Button(isExpanded ? DisplayStrings.less.capitalized : DisplayStrings.more.capitalized) {
+          isExpanded.toggle()
+        }
+        .foregroundColor(.black)
+        .bottomrRightJustified()
       }
-      .padding()
+      .frame(maxWidth: .infinity, maxHeight: isExpanded ? .infinity : 150)
     } else {
       ProgressView()
     }
@@ -145,31 +151,42 @@ struct BookDetailView: View {
         .font(.headline)
         .foregroundColor(.black)
       Divider()
-      infoLabel(label: DisplayStrings.format, value: self.viewModel.book.format)
-      infoLabel(label: DisplayStrings.published, value: self.viewModel.book.published?.rfc339String ?? "")
-      infoLabel(label: DisplayStrings.publisher, value: self.viewModel.book.publisher ?? "")
-      infoLabel(label: self.viewModel.book.categoryStrings?.count == 1 ? DisplayStrings.categories : DisplayStrings.category, value: self.viewModel.book.categories ?? "")
-      infoLabel(label: DisplayStrings.distributor, value: self.viewModel.book.distributor ?? "")
+      HStack(spacing: 100) {
+        VStack(alignment: .leading) {
+          infoLabel(label: DisplayStrings.format)
+          infoLabel(label: DisplayStrings.published)
+          infoLabel(label: DisplayStrings.publisher)
+          infoLabel(label: self.viewModel.book.categoryStrings?.count == 1 ? DisplayStrings.categories : DisplayStrings.category)
+          infoLabel(label: DisplayStrings.distributor)
+        }
+        VStack(alignment: .leading) {
+          infoValue(value: self.viewModel.book.format)
+          infoValue(value: self.viewModel.book.published?.monthDayYearString ?? "")
+          infoValue(value: self.viewModel.book.publisher ?? "")
+          infoValue(value: self.viewModel.book.categories ?? "")
+          infoValue(value: self.viewModel.book.distributor ?? "")
+        }
+      }
+      Spacer()
     }
-    Spacer()
   }
 
-  @ViewBuilder private func infoLabel(label: String, value: String) -> some View {
-    HStack(spacing: 20) {
-      Text(label)
-        .font(Font.boldPalaceFont(size: 12))
-        .foregroundColor(.gray)
+  @ViewBuilder private func infoLabel(label: String) -> some View {
+    Text(label)
+      .font(Font.boldPalaceFont(size: 12))
+      .foregroundColor(.gray)
+  }
 
-      if let url = URL(string: value), UIApplication.shared.canOpenURL(url) {
-        Link(value, destination: url)
-          .font(.subheadline)
-          .underline()
-          .foregroundColor(.black)
-      } else {
-        Text(value)
-          .font(.subheadline)
-          .foregroundColor(.black)
-      }
+  @ViewBuilder private func infoValue(value: String) -> some View {
+    if let url = URL(string: value), UIApplication.shared.canOpenURL(url) {
+      Link(value, destination: url)
+        .font(.subheadline)
+        .underline()
+        .foregroundColor(.black)
+    } else {
+      Text(value)
+        .font(.subheadline)
+        .foregroundColor(.black)
     }
   }
 }
