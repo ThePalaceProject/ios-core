@@ -83,8 +83,8 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistrySyncing, TPPBookRegistryProv
 
   // MARK: - Book State Management
   func state(for bookIdentifier: String?) -> TPPBookState {
-    guard let bookIdentifier else { return .Unregistered }
-    return registry[bookIdentifier]?.state ?? .Unregistered
+    guard let bookIdentifier else { return .unregistered }
+    return registry[bookIdentifier]?.state ?? .unregistered
   }
 
   func setState(_ state: TPPBookState, for bookIdentifier: String) {

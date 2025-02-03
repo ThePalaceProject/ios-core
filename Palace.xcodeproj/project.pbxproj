@@ -1003,6 +1003,9 @@
 		E521E9BB2D4D706700C08ADF /* Date+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E521E9BA2D4D706400C08ADF /* Date+Extensions.swift */; };
 		E521E9BC2D4D706700C08ADF /* Date+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E521E9BA2D4D706400C08ADF /* Date+Extensions.swift */; };
 		E521E9BD2D4D706700C08ADF /* Date+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E521E9BA2D4D706400C08ADF /* Date+Extensions.swift */; };
+		E521E9C72D513E3F00C08ADF /* BookButtonsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E521E9C62D513E3900C08ADF /* BookButtonsView.swift */; };
+		E521E9C82D513E3F00C08ADF /* BookButtonsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E521E9C62D513E3900C08ADF /* BookButtonsView.swift */; };
+		E521E9C92D513E3F00C08ADF /* BookButtonsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E521E9C62D513E3900C08ADF /* BookButtonsView.swift */; };
 		E523124B285C3828007D1DB5 /* TPPBookRegistry+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E523124A285C3828007D1DB5 /* TPPBookRegistry+Extensions.swift */; };
 		E5239A1F2992107D00850941 /* BookCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E567C72B296743990079C28C /* BookCell.swift */; };
 		E523A453299FCA5300EF833B /* AlertModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E523A452299FCA5300EF833B /* AlertModel.swift */; };
@@ -1971,6 +1974,7 @@
 		E5180AB929A91D42002A18F8 /* AdaptableGridLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdaptableGridLayout.swift; sourceTree = "<group>"; };
 		E51919D72B508EE400C08E86 /* URLRequest+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "URLRequest+Extensions.swift"; sourceTree = "<group>"; };
 		E521E9BA2D4D706400C08ADF /* Date+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Date+Extensions.swift"; sourceTree = "<group>"; };
+		E521E9C62D513E3900C08ADF /* BookButtonsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookButtonsView.swift; sourceTree = "<group>"; };
 		E523116928504B85007D1DB5 /* TPPBook+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPBook+Extensions.swift"; sourceTree = "<group>"; };
 		E5231240285C291D007D1DB5 /* AudioBookmark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioBookmark.swift; sourceTree = "<group>"; };
 		E523124A285C3828007D1DB5 /* TPPBookRegistry+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPBookRegistry+Extensions.swift"; sourceTree = "<group>"; };
@@ -3496,9 +3500,10 @@
 		E562DD942D35AB83003A1A40 /* BookDetail */ = {
 			isa = PBXGroup;
 			children = (
+				E521E9C62D513E3900C08ADF /* BookButtonsView.swift */,
 				E562DDAB2D36E7B5003A1A40 /* BookDetailHostingViewController.swift */,
-				E562DD992D35ABBF003A1A40 /* BookDetailView.swift */,
 				E562DD952D35AB88003A1A40 /* BookDetailViewModel.swift */,
+				E562DD992D35ABBF003A1A40 /* BookDetailView.swift */,
 			);
 			path = BookDetail;
 			sourceTree = "<group>";
@@ -4675,6 +4680,7 @@
 				73EB0B0925821DF4006BC997 /* TPPIndeterminateProgressView.m in Sources */,
 				E5E03F342CED172200D9979D /* TPPReadiumBookmark+R3.swift in Sources */,
 				73EB0B0A25821DF4006BC997 /* NSString+TPPStringAdditions.m in Sources */,
+				E521E9C72D513E3F00C08ADF /* BookButtonsView.swift in Sources */,
 				73EB0B0B25821DF4006BC997 /* TPPKeychainManager.swift in Sources */,
 				73DE897D260BEA13003D9135 /* TPPRequestExecuting.swift in Sources */,
 				73EB0B0C25821DF4006BC997 /* TPPCookiesWebViewController.swift in Sources */,
@@ -4927,6 +4933,7 @@
 				E562DE3F2D38B98F003A1A40 /* UIImage+Extension.swift in Sources */,
 				2D754BC22002F1B10061D34F /* TPPOPDSIndirectAcquisition.m in Sources */,
 				21E35FC3268CC8AC00066F9D /* AdobeContentProtectionService.swift in Sources */,
+				E521E9C82D513E3F00C08ADF /* BookButtonsView.swift in Sources */,
 				21C7B87E25AE1DBA000E8BF3 /* LibraryServiceError.swift in Sources */,
 				E5E03F362CED172200D9979D /* TPPReadiumBookmark+R3.swift in Sources */,
 				E6B3269F1EE066DE00DB877A /* TPPBookDetailTableView.swift in Sources */,
@@ -5391,6 +5398,7 @@
 				D570B66F2BA20139003FE991 /* TPPBook+Extensions.swift in Sources */,
 				D570B6702BA20139003FE991 /* View+Extensions.swift in Sources */,
 				D570B6712BA20139003FE991 /* TPPProblemDocumentCacheManager.swift in Sources */,
+				E521E9C92D513E3F00C08ADF /* BookButtonsView.swift in Sources */,
 				D570B6722BA20139003FE991 /* TPPBookButtonsView.m in Sources */,
 				D570B6732BA20139003FE991 /* TPPMyBooksSimplifiedBearerToken.m in Sources */,
 				D570B6742BA20139003FE991 /* TPPPDFPage.swift in Sources */,

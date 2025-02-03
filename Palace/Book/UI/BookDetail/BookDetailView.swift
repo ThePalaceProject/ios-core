@@ -44,11 +44,18 @@ struct BookDetailView: View {
   }
 
   private var imageView: some View {
-    Image(uiImage: viewModel.coverImage)
-      .resizable()
-      .scaledToFit()
-      .frame(height: 280)
-      .shadow(color: .black.opacity(0.3), radius: 10, x: 0, y: 5)
+    ZStack(alignment: .bottomTrailing) {
+      Image(uiImage: viewModel.coverImage)
+        .resizable()
+        .scaledToFit()
+        .frame(height: 280)
+        .shadow(color: .black.opacity(0.3), radius: 10, x: 0, y: 5)
+
+      if viewModel.book.isAudiobook {
+        audiobookIndicator
+          .padding(8)
+      }
+    }
   }
 
   private var titleView: some View {
@@ -62,45 +69,37 @@ struct BookDetailView: View {
           .foregroundColor(.secondary)
       }
 
-      HStack(spacing: 25) {
-        Button("Borrow") {
+      BookButtonsView(viewModel: BookDetailViewModel(book: viewModel.book))
 
-        }
-        .padding(10)
-        .foregroundColor(.black)
-        .background(.white)
-        .cornerRadius(10)
-
-        Button(DisplayStrings.preview) {
-
-        }
-        .buttonStyle(.plain)
+      if !viewModel.book.isAudiobook && viewModel.book.hasAudiobookSample {
+        audiobookAvailable
+          .padding(.top)
       }
-      .padding(.vertical)
-
-      audiobookIndicator
-        .padding(.top, 50)
     }
   }
 
-  @ViewBuilder private var audiobookIndicator: some View {
+  @ViewBuilder private var audiobookAvailable: some View {
     VStack(alignment: .leading, spacing: 10) {
       Divider()
       HStack(alignment: .center, spacing: 5) {
-        ImageProviders.MyBooksView.audiobookBadge
-          .resizable()
-          .scaledToFit()
-          .frame(width: 28, height: 28)
-          .background(
-            Circle()
-              .fill(Color("PalaceBlueLight"))
-          )
+        audiobookIndicator
           .padding(8)
         Text(Strings.BookDetailView.audiobookAvailable)
           .foregroundColor(.black)
       }
       Divider()
     }
+  }
+
+  @ViewBuilder private var audiobookIndicator: some View {
+    ImageProviders.MyBooksView.audiobookBadge
+      .resizable()
+      .scaledToFit()
+      .frame(width: 28, height: 28)
+      .background(
+        Circle()
+          .fill(Color("PalaceBlueLight"))
+      )
   }
 
   private var backgroundView: some View {
@@ -151,21 +150,25 @@ struct BookDetailView: View {
         .font(.headline)
         .foregroundColor(.black)
       Divider()
-      HStack(spacing: 100) {
-        VStack(alignment: .leading) {
-          infoLabel(label: DisplayStrings.format)
-          infoLabel(label: DisplayStrings.published)
-          infoLabel(label: DisplayStrings.publisher)
-          infoLabel(label: self.viewModel.book.categoryStrings?.count == 1 ? DisplayStrings.categories : DisplayStrings.category)
-          infoLabel(label: DisplayStrings.distributor)
-        }
-        VStack(alignment: .leading) {
-          infoValue(value: self.viewModel.book.format)
-          infoValue(value: self.viewModel.book.published?.monthDayYearString ?? "")
-          infoValue(value: self.viewModel.book.publisher ?? "")
-          infoValue(value: self.viewModel.book.categories ?? "")
-          infoValue(value: self.viewModel.book.distributor ?? "")
-        }
+      HStack(alignment: .bottom) {
+        infoLabel(label: DisplayStrings.format)
+        infoValue(value: self.viewModel.book.format)
+      }
+      HStack(alignment: .bottom) {
+        infoLabel(label: DisplayStrings.published)
+        infoValue(value: self.viewModel.book.published?.monthDayYearString ?? "")
+      }
+      HStack(alignment: .bottom) {
+        infoLabel(label: DisplayStrings.publisher)
+        infoValue(value: self.viewModel.book.publisher ?? "")
+      }
+      HStack(alignment: .bottom) {
+        infoLabel(label: self.viewModel.book.categoryStrings?.count == 1 ? DisplayStrings.categories : DisplayStrings.category)
+        infoValue(value: self.viewModel.book.categories ?? "")
+      }
+      HStack(alignment: .bottom) {
+        infoLabel(label: DisplayStrings.distributor)
+        infoValue(value: self.viewModel.book.distributor ?? "")
       }
       Spacer()
     }
@@ -175,6 +178,7 @@ struct BookDetailView: View {
     Text(label)
       .font(Font.boldPalaceFont(size: 12))
       .foregroundColor(.gray)
+      .frame(width: 100, alignment: .leading)
   }
 
   @ViewBuilder private func infoValue(value: String) -> some View {

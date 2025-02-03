@@ -201,22 +201,22 @@ extension BookCellModel {
     let deleteAvailable = (book.defaultAcquisitionIfOpenAccess != nil) || !(TPPUserAccount.sharedAccount().authDefinition?.needsAuth ?? true)
 
     switch TPPBookRegistry.shared.state(for: book.identifier) {
-    case .Used,
+    case .used,
         .SAMLStarted,
-        .Downloading,
-        .Unregistered,
-        .DownloadFailed,
-        .DownloadNeeded,
-        .DownloadSuccessful:
+        .downloading,
+        .unregistered,
+        .downloadFailed,
+        .downloadNeeded,
+        .downloadSuccessful:
       title = deleteAvailable ? DisplayStrings.delete : DisplayStrings.return
       message = deleteAvailable ? String.localizedStringWithFormat(DisplayStrings.deleteMessage, book.title) :
       String.localizedStringWithFormat(DisplayStrings.returnMessage, book.title)
       confirmButtonTitle = deleteAvailable ? DisplayStrings.delete : DisplayStrings.return
-    case .Holding:
+    case .holding:
       title = DisplayStrings.removeReservation
       message = DisplayStrings.returnMessage
       confirmButtonTitle = DisplayStrings.remove
-    case .Unsupported:
+    case .unsupported:
       return
     }
 

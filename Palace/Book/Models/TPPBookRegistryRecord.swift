@@ -38,10 +38,10 @@ class TPPBookRegistryRecord: NSObject {
       } unlimited: { _ in
         
       } reserved: { [weak self] _ in
-        self?.state = .Holding
+        self?.state = .holding
         actuallyOnHold = true
       } ready: { [weak self] _ in
-        self?.state = .Holding
+        self?.state = .holding
         actuallyOnHold = true
       }
 
@@ -53,14 +53,14 @@ class TPPBookRegistryRecord: NSObject {
       // ignore it as appropriate. Unsupported books should generally only appear
       // when a user has checked out or reserved a book in an unsupported format
       // using another app.
-      self.state = .Unsupported
+      self.state = .unsupported
     }
     
     if !actuallyOnHold {
-      if self.state == .Holding || self.state == .Unsupported {
+      if self.state == .holding || self.state == .unsupported {
         // Since we're not in some download-related state and we're not unregistered,
         // we must need to be downloaded.
-        self.state = .DownloadNeeded
+        self.state = .downloadNeeded
       }
     }
     

@@ -215,8 +215,8 @@ class TPPBookRegistry: NSObject {
           guard let record = TPPBookRegistryRecord(record: recordObject) else {
             continue
           }
-          if record.state == .Downloading || record.state == .SAMLStarted {
-            record.state = .DownloadFailed
+          if record.state == .downloading || record.state == .SAMLStarted {
+            record.state = .downloadFailed
           }
           self.registry[record.book.identifier] = record
         }
@@ -289,10 +289,10 @@ class TPPBookRegistry: NSObject {
           
           // Handle expired books
           recordsToDelete.forEach { identifier in
-            if let state = self.registry[identifier]?.state, state == .DownloadSuccessful || state == .Used {
+            if let state = self.registry[identifier]?.state, state == .downloadSuccessful || state == .used {
               MyBooksDownloadCenter.shared.deleteLocalContent(for: identifier)
             }
-            self.registry[identifier]?.state = .Unregistered
+            self.registry[identifier]?.state = .unregistered
             self.removeBook(forIdentifier: identifier)
           }
           
@@ -363,14 +363,14 @@ class TPPBookRegistry: NSObject {
   var heldBooks: [TPPBook] {
     registry
       .map { $0.value }
-      .filter { $0.state == .Holding }
+      .filter { $0.state == .holding }
       .map { $0.book }
   }
   
   /// Returns all books not on hold (borrowed or kept).
   var myBooks: [TPPBook] {
     let matchingStates: [TPPBookState] = [
-      .DownloadNeeded, .Downloading, .SAMLStarted, .DownloadFailed, .DownloadSuccessful, .Used
+      .downloadNeeded, .downloading, .SAMLStarted, .downloadFailed, .downloadSuccessful, .used
     ]
     return registry
       .map { $0.value }
@@ -381,8 +381,8 @@ class TPPBookRegistry: NSObject {
   /// Adds a book to the book registry until it is manually removed. It allows the application to
   /// present information about obtained books when offline. Attempting to add a book already present
   /// will overwrite the existing book as if `updateBook` were called. The location may be nil. The
-  /// state provided must be one of `TPPBookState` and must not be `TPPBookState.Unregistered`.
-  func addBook(_ book: TPPBook, location: TPPBookLocation? = nil, state: TPPBookState = .DownloadNeeded, fulfillmentId: String? = nil, readiumBookmarks: [TPPReadiumBookmark]? = nil, genericBookmarks: [TPPBookLocation]? = nil) {
+  /// state provided must be one of `TPPBookState` and must not be `TPPBookState.unregistered`.
+  func addBook(_ book: TPPBook, location: TPPBookLocation? = nil, state: TPPBookState = .downloadNeeded, fulfillmentId: String? = nil, readiumBookmarks: [TPPReadiumBookmark]? = nil, genericBookmarks: [TPPBookLocation]? = nil) {
     // Cache the thumbnail image if it exists
     DispatchQueue.main.async { [weak self] in
       self?.coverRegistry.thumbnailImageForBook(book) { _ in
@@ -414,7 +414,7 @@ class TPPBookRegistry: NSObject {
     
     // Update the book in the registry, set it to unregistered, and then save the changes
     existingRecord.book = book
-    existingRecord.state = .Unregistered
+    existingRecord.state = .unregistered
     
     // Save the updated registry
     save()
@@ -469,11 +469,11 @@ class TPPBookRegistry: NSObject {
   /// Returns the state of a book given its identifier.
   func state(for bookIdentifier: String?) -> TPPBookState {
     guard let bookIdentifier = bookIdentifier, !bookIdentifier.isEmpty else {
-      return .Unregistered
+      return .unregistered
     }
 
     guard let record = registry[bookIdentifier] else {
-      return .Unregistered
+      return .unregistered
     }
 
     return record.state

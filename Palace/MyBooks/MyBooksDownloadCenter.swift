@@ -72,7 +72,7 @@ import OverdriveProcessor
         self?.bookRegistry.addBook(
           borrowedBook,
           location: location,
-          state: .DownloadNeeded,
+          state: .downloadNeeded,
           fulfillmentId: nil,
           readiumBookmarks: nil,
           genericBookmarks: nil
@@ -154,17 +154,17 @@ import OverdriveProcessor
     let loginRequired = userAccount.authDefinition?.needsAuth
     
     switch state {
-    case .Unregistered:
+    case .unregistered:
       state = processUnregisteredState(
         for: book,
         location: location,
         loginRequired: loginRequired
       )
-    case .Downloading:
+    case .downloading:
       return
-    case .DownloadFailed, .DownloadNeeded, .Holding, .SAMLStarted:
+    case .downloadFailed, .downloadNeeded, .holding, .SAMLStarted:
       break
-    case .DownloadSuccessful, .Used, .Unsupported:
+    case .downloadSuccessful, .used, .unsupported:
       NSLog("Ignoring nonsensical download request.")
       return
     }
@@ -178,10 +178,10 @@ import OverdriveProcessor
 
   private func processUnregisteredState(for book: TPPBook, location: TPPBookLocation?, loginRequired: Bool?) -> TPPBookState {
     if book.defaultAcquisitionIfBorrow == nil && (book.defaultAcquisitionIfOpenAccess != nil || !(loginRequired ?? false)) {
-      bookRegistry.addBook(book, location: location, state: .DownloadNeeded, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
-      return .DownloadNeeded
+      bookRegistry.addBook(book, location: location, state: .downloadNeeded, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+      return .downloadNeeded
     }
-    return .Unregistered
+    return .unregistered
   }
 
   private func requestCredentialsAndStartDownload(for book: TPPBook) {
@@ -206,7 +206,7 @@ import OverdriveProcessor
     withState state: TPPBookState,
     andRequest initedRequest: URLRequest?
   ) {
-    if state == .Unregistered || state == .Holding {
+    if state == .unregistered || state == .holding {
       startBorrow(for: book, attemptDownload: true, borrowCompletion: nil)
     } else {
 #if FEATURE_OVERDRIVE
@@ -321,7 +321,7 @@ import OverdriveProcessor
       mutableRequest.cachePolicy = .reloadIgnoringCacheData
       
       let loginCancelHandler: () -> Void = { [weak self] in
-        self?.bookRegistry.setState(.DownloadNeeded, for: book.identifier)
+        self?.bookRegistry.setState(.downloadNeeded, for: book.identifier)
         self?.cancelDownload(for: book.identifier)
       }
       
@@ -332,7 +332,7 @@ import OverdriveProcessor
       
       let problemFoundHandler: (_ problemDocument: TPPProblemDocument?) -> Void = { [weak self] problemDocument in
         guard let self = self else { return }
-        self.bookRegistry.setState(.DownloadNeeded, for: book.identifier)
+        self.bookRegistry.setState(.downloadNeeded, for: book.identifier)
         
         self.reauthenticator.authenticateIfNeeded(self.userAccount, usingExistingCredentials: false) { [weak self] in
           self?.startDownload(for: book)
@@ -374,7 +374,7 @@ import OverdriveProcessor
   }
   
   private func handleLoginCancellation(for book: TPPBook) {
-    bookRegistry.setState(.DownloadNeeded, for: book.identifier)
+    bookRegistry.setState(.downloadNeeded, for: book.identifier)
     cancelDownload(for: book.identifier)
   }
   
@@ -386,7 +386,7 @@ import OverdriveProcessor
   }
 
   private func handleProblem(for book: TPPBook, problemDocument: TPPProblemDocument?) {
-    bookRegistry.setState(.DownloadNeeded, for: book.identifier)
+    bookRegistry.setState(.downloadNeeded, for: book.identifier)
     reauthenticator.authenticateIfNeeded(userAccount, usingExistingCredentials: false) {
       self.startDownload(for: book)
     }
@@ -410,12 +410,12 @@ import OverdriveProcessor
   @objc func cancelDownload(for identifier: String) {
     guard let info = downloadInfo(forBookIdentifier: identifier) else {
       let state = bookRegistry.state(for: identifier)
-      if state != .DownloadFailed {
+      if state != .downloadFailed {
         NSLog("Ignoring nonsensical cancellation request.")
         return
       }
       
-      bookRegistry.setState(.DownloadNeeded, for: identifier)
+      bookRegistry.setState(.downloadNeeded, for: identifier)
       return
     }
     
@@ -427,7 +427,7 @@ import OverdriveProcessor
 #endif
 
     info.downloadTask.cancel { [weak self] resumeData in
-      self?.bookRegistry.setState(.DownloadNeeded, for: identifier)
+      self?.bookRegistry.setState(.downloadNeeded, for: identifier)
       self?.broadcastUpdate()
     }
   }
@@ -526,7 +526,7 @@ extension MyBooksDownloadCenter {
     }
     
     let state = bookRegistry.state(for: identifier)
-    let downloaded = (state == .DownloadSuccessful) || (state == .Used)
+    let downloaded = (state == .downloadSuccessful) || (state == .used)
     
     // Process Adobe Return
 #if FEATURE_DRM_CONNECTOR
@@ -761,7 +761,7 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
         }
         self.alertForProblemDocument(problemDoc, error: failureError, book: book)
       }
-      bookRegistry.setState(.DownloadFailed, for: book.identifier)
+      bookRegistry.setState(.downloadFailed, for: book.identifier)
     }
     
     broadcastUpdate()
@@ -883,7 +883,7 @@ extension MyBooksDownloadCenter: URLSessionTaskDelegate {
     task.resume()
     bookRegistry.addBook(book,
                          location: bookRegistry.location(forIdentifier: book.identifier),
-                         state: .Downloading,
+                         state: .downloading,
                          fulfillmentId: nil,
                          readiumBookmarks: nil,
                          genericBookmarks: nil)
@@ -959,9 +959,9 @@ extension MyBooksDownloadCenter {
       
       if book.defaultBookContentType == .pdf,
          let bookURL = self.fileUrl(for: book.identifier) {
-        self.bookRegistry.setState(.Downloading, for: book.identifier)
+        self.bookRegistry.setState(.downloading, for: book.identifier)
         LCPPDFs(url: bookURL)?.extract(url: bookURL) { _, _ in
-          self.bookRegistry.setState(.DownloadSuccessful, for: book.identifier)
+          self.bookRegistry.setState(.downloadSuccessful, for: book.identifier)
         }
       }
     }
@@ -978,7 +978,7 @@ extension MyBooksDownloadCenter {
     
     bookRegistry.addBook(book,
                                    location: location,
-                                   state: .DownloadFailed,
+                                   state: .downloadFailed,
                                    fulfillmentId: nil,
                                    readiumBookmarks: nil,
                                    genericBookmarks: nil)
@@ -1038,7 +1038,7 @@ extension MyBooksDownloadCenter {
     }
     
     if success {
-      bookRegistry.setState(.DownloadSuccessful, for: book.identifier)
+      bookRegistry.setState(.downloadSuccessful, for: book.identifier)
     } else if let moveError = moveError {
       logBookDownloadFailure(book, reason: "Couldn't move book to final disk location", downloadTask: downloadTask, metadata: [
         "moveError": moveError,
@@ -1055,7 +1055,7 @@ extension MyBooksDownloadCenter {
     guard let destURL = fileUrl(for: book.identifier) else { return false }
     do {
       let _ = try FileManager.default.replaceItemAt(destURL, withItemAt: sourceLocation, options: .usingNewMetadataOnly)
-      bookRegistry.setState(.DownloadSuccessful, for: book.identifier)
+      bookRegistry.setState(.downloadSuccessful, for: book.identifier)
       return true
     } catch {
       logBookDownloadFailure(book,
@@ -1259,7 +1259,7 @@ extension MyBooksDownloadCenter: NYPLADEPTDelegate {
       bookRegistry.setFulfillmentId(fulfillmentID, for: book.identifier)
     }
     
-    bookRegistry.setState(.DownloadSuccessful, for: book.identifier)
+    bookRegistry.setState(.downloadSuccessful, for: book.identifier)
     
     self.broadcastUpdate()
   }
@@ -1271,7 +1271,7 @@ extension MyBooksDownloadCenter: NYPLADEPTDelegate {
   }
   
   func adept(_ adept: NYPLADEPT, didCancelDownloadWithTag tag: String) {
-    bookRegistry.setState(.DownloadNeeded, for: tag)
+    bookRegistry.setState(.downloadNeeded, for: tag)
     self.broadcastUpdate()
   }
   

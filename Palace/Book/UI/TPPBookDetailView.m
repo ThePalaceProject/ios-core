@@ -95,35 +95,35 @@ static NSString *DetailHTMLTemplate = nil;
 {
   self = [super init];
   if(!self) return nil;
-  
+
   if(!book) {
     @throw NSInvalidArgumentException;
   }
-  
+
   self.book = book;
   self.detailViewDelegate = delegate;
   self.backgroundColor = [TPPConfiguration backgroundColor];
   self.translatesAutoresizingMaskIntoConstraints = NO;
-  
+
   self.scrollView = [[UIScrollView alloc] init];
   self.scrollView.alwaysBounceVertical = YES;
-  
+
   self.containerView = [[UIView alloc] init];
   self.containerView.layoutMargins = UIEdgeInsetsMake(self.layoutMargins.top,
-                                                    self.layoutMargins.left+12,
-                                                    self.layoutMargins.bottom,
-                                                    self.layoutMargins.right+12);
-  
+                                                      self.layoutMargins.left+12,
+                                                      self.layoutMargins.bottom,
+                                                      self.layoutMargins.right+12);
+
   [self createHeaderLabels];
   [self createButtonsView];
   [self createBookDescriptionViews];
   [self createFooterLabels];
   [self createDownloadViews];
   [self updateFonts];
-  
+
   [self addSubview:self.scrollView];
   [self.scrollView addSubview:self.containerView];
-  
+
   [self.containerView addSubview:self.blurCoverImageView];
   [self.containerView addSubview:self.visualEffectView];
   [self.containerView addSubview:self.coverImageView];
@@ -136,7 +136,7 @@ static NSString *DetailHTMLTemplate = nil;
   [self.containerView addSubview:self.summarySectionLabel];
   [self.containerView addSubview:self.summaryTextView];
   [self.containerView addSubview:self.readMoreLabel];
-  
+
   [self.containerView addSubview:self.topFootnoteSeparater];
   [self.containerView addSubview:self.infoSectionLabel];
   [self.containerView addSubview:self.publishedLabelKey];
@@ -156,14 +156,14 @@ static NSString *DetailHTMLTemplate = nil;
   [self.containerView addSubview:self.distributorLabelValue];
   [self.containerView addSubview:self.bookFormatLabelValue];
   [self.containerView addSubview:self.narratorsLabelValue];
-  
+
   if (self.book.isAudiobook) {
     [self.containerView addSubview:self.bookDurationLabelValue];
   }
-  
+
   [self.containerView addSubview:self.footerTableView];
   [self.containerView addSubview:self.bottomFootnoteSeparator];
-  
+
   if(UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad &&
      [[TPPRootTabBarController sharedController] traitCollection].horizontalSizeClass != UIUserInterfaceSizeClassCompact) {
     self.closeButton = [UIButton buttonWithType:UIButtonTypeSystem];
@@ -180,11 +180,11 @@ static NSString *DetailHTMLTemplate = nil;
 
 - (void)showAudiobookSampleToolbar
 {
-    self.audiobookSampleToolbar = [[AudiobookSampleToolbarWrapper createWithBook:self.book] view];
-    [self addSubview: self.audiobookSampleToolbar];
-    self.isShowingSample = true;
-    self.didSetupConstraints = false;
-    [self setupAutolayoutConstraints];
+  self.audiobookSampleToolbar = [[AudiobookSampleToolbarWrapper createWithBook:self.book] view];
+  [self addSubview: self.audiobookSampleToolbar];
+  self.isShowingSample = true;
+  self.didSetupConstraints = false;
+  [self setupAutolayoutConstraints];
 }
 
 - (void)updateFonts
@@ -217,7 +217,7 @@ static NSString *DetailHTMLTemplate = nil;
   self.summarySectionLabel.text = NSLocalizedString(@"Description", nil);
   self.infoSectionLabel = [[UILabel alloc] init];
   self.infoSectionLabel.text = NSLocalizedString(@"Information", nil);
-  
+
   self.summaryTextView = [[UITextView alloc] init];
   self.summaryTextView.backgroundColor = [UIColor clearColor];
   self.summaryTextView.scrollEnabled = NO;
@@ -267,7 +267,7 @@ static NSString *DetailHTMLTemplate = nil;
   self.readMoreLabel.hidden = YES;
   self.readMoreLabel.titleLabel.textAlignment = NSTextAlignmentRight;
   [self.readMoreLabel addTarget:self action:@selector(readMoreTapped:) forControlEvents:UIControlEventTouchUpInside];
-  
+
   [self.readMoreLabel setContentHorizontalAlignment:UIControlContentHorizontalAlignmentRight];
   [self.readMoreLabel setTitle:NSLocalizedString(@"More...", nil) forState:UIControlStateNormal];
   [self.readMoreLabel setTitleColor:[TPPConfiguration mainColor] forState:UIControlStateNormal];
@@ -336,10 +336,10 @@ static NSString *DetailHTMLTemplate = nil;
 
   self.downloadFailedView = [[TPPBookDetailDownloadFailedView alloc] init];
   self.downloadFailedView.hidden = YES;
-  
+
   self.downloadingView = [[TPPBookDetailDownloadingView alloc] init];
   self.downloadingView.hidden = YES;
-  
+
   [self.containerView addSubview:self.normalView];
   [self.containerView addSubview:self.downloadFailedView];
   [self.containerView addSubview:self.downloadingView];
@@ -351,19 +351,19 @@ static NSString *DetailHTMLTemplate = nil;
   dateFormatter.timeStyle = NSDateFormatterNoStyle;
   dateFormatter.dateStyle = NSDateFormatterLongStyle;
   dateFormatter.timeZone = [NSTimeZone timeZoneForSecondsFromGMT:0];
-  
+
   NSString *const publishedKeyString =
   self.book.published
   ? [NSString stringWithFormat:@"%@: ",
      NSLocalizedString(@"Published", nil)]
   : nil;
-  
+
   NSString *const publisherKeyString =
   self.book.publisher
   ? [NSString stringWithFormat:@"%@: ",
      NSLocalizedString(@"Publisher", nil)]
   : nil;
-  
+
   NSString *const categoriesKeyString =
   self.book.categoryStrings.count
   ? [NSString stringWithFormat:@"%@: ",
@@ -375,8 +375,8 @@ static NSString *DetailHTMLTemplate = nil;
   NSString *const bookFormatKeyString = NSLocalizedString(@"Book format:", nil);
 
   NSString *const narratorsKeyString =
-    self.book.narrators ? [NSString stringWithFormat:@"%@: ", NSLocalizedString(@"Narrators", nil)] : nil;
-  
+  self.book.narrators ? [NSString stringWithFormat:@"%@: ", NSLocalizedString(@"Narrators", nil)] : nil;
+
   NSString *const bookDurationKeyString = [NSString stringWithFormat:@"%@:", NSLocalizedString(@"Duration", nil)];
 
   NSString *const categoriesValueString = self.book.categories;
@@ -385,12 +385,12 @@ static NSString *DetailHTMLTemplate = nil;
   NSString *const distributorKeyString = self.book.distributor ? [NSString stringWithFormat:NSLocalizedString(@"Distributed by: ", nil)] : nil;
   NSString *const bookFormatValueString = self.book.format;
   NSString *const narratorsValueString = self.book.narrators;
-  
+
   if (!categoriesValueString && !publishedValueString && !publisherValueString && !self.book.distributor) {
     self.topFootnoteSeparater.hidden = YES;
     self.bottomFootnoteSeparator.hidden = YES;
   }
-  
+
   self.categoriesLabelKey = [self createFooterLabelWithString:categoriesKeyString alignment:NSTextAlignmentRight];
   self.publisherLabelKey = [self createFooterLabelWithString:publisherKeyString alignment:NSTextAlignmentRight];
   self.publishedLabelKey = [self createFooterLabelWithString:publishedKeyString alignment:NSTextAlignmentRight];
@@ -410,12 +410,12 @@ static NSString *DetailHTMLTemplate = nil;
   self.bookDurationLabelValue = [self createFooterLabelWithString:[self displayStringForDuration: self.book.bookDuration] alignment:NSTextAlignmentLeft];
 
   self.narratorsLabelValue.numberOfLines = 0;
-  
+
   self.topFootnoteSeparater = [[UIView alloc] init];
   self.topFootnoteSeparater.backgroundColor = [UIColor lightGrayColor];
   self.bottomFootnoteSeparator = [[UIView alloc] init];
   self.bottomFootnoteSeparator.backgroundColor = [UIColor lightGrayColor];
-  
+
   self.footerTableView = [[TPPBookDetailTableView alloc] init];
   self.footerTableView.isAccessibilityElement = NO;
   self.tableViewDelegate = [[TPPBookDetailTableViewDelegate alloc] init:self.footerTableView book:self.book];
@@ -439,39 +439,39 @@ static NSString *DetailHTMLTemplate = nil;
   double totalSeconds = [durationInSeconds doubleValue];
   int hours = (int)(totalSeconds / 3600);
   int minutes = (int)((totalSeconds - (hours * 3600)) / 60);
-  
+
   return [NSString stringWithFormat:@"%d hours, %d minutes", hours, minutes];
 }
 
 - (void)setupAutolayoutConstraints {
   [self.scrollView autoPinEdgeToSuperviewEdge:ALEdgeTop];
   [self.scrollView autoPinEdgeToSuperviewEdge:ALEdgeBottom];
-  
+
   if ([self.book showAudiobookToolbar] && self.isShowingSample) {
     [self.audiobookSampleToolbar autoPinEdgeToSuperviewEdge:ALEdgeLeft];
     [self.audiobookSampleToolbar autoPinEdgeToSuperviewEdge:ALEdgeRight];
-    
+
     CGFloat bottomInset = 0;
     if ([UIDevice currentDevice].userInterfaceIdiom != UIUserInterfaceIdiomPad) {
       bottomInset = TabBarHeight;
     }
-    
+
     [self.audiobookSampleToolbar autoPinEdgeToSuperviewEdge:ALEdgeBottom withInset:bottomInset];
     [self.audiobookSampleToolbar autoSetDimension:ALDimensionHeight toSize:SampleToolbarHeight relation:NSLayoutRelationLessThanOrEqual];
     [self.audiobookSampleToolbar autoMatchDimension:ALDimensionWidth toDimension:ALDimensionWidth ofView:self];
     self.scrollView.contentInset = UIEdgeInsetsMake(0, 0, SampleToolbarHeight, 0);
   }
-  
+
   [self.scrollView autoPinEdgeToSuperviewEdge:ALEdgeLeft];
   [self.scrollView autoPinEdgeToSuperviewEdge:ALEdgeRight];
   [self.scrollView autoMatchDimension:ALDimensionWidth toDimension:ALDimensionWidth ofView:self.containerView];
-  
+
   [self.containerView autoPinEdgesToSuperviewEdges];
   [self.containerView autoMatchDimension:ALDimensionWidth toDimension:ALDimensionWidth ofView:self];
-  
+
   [self.visualEffectView autoPinEdgesToSuperviewEdgesWithInsets:UIEdgeInsetsZero excludingEdge:ALEdgeBottom];
   [self.visualEffectView autoPinEdge:ALEdgeBottom toEdge:ALEdgeTop ofView:self.normalView];
-  
+
   [self.coverImageView autoPinEdgeToSuperviewMargin:ALEdgeLeading];
   [self.coverImageView autoPinEdgeToSuperviewEdge:ALEdgeTop withInset:VerticalPadding];
   [self.coverImageView autoMatchDimension:ALDimensionWidth toDimension:ALDimensionHeight ofView:self.coverImageView withMultiplier:CoverImageAspectRatio];
@@ -480,21 +480,21 @@ static NSString *DetailHTMLTemplate = nil;
   [self.blurCoverImageView autoPinEdge:ALEdgeTrailing toEdge:ALEdgeTrailing ofView:self.coverImageView];
   [self.blurCoverImageView autoPinEdge:ALEdgeTop toEdge:ALEdgeTop ofView:self.coverImageView];
   [self.blurCoverImageView autoPinEdge:ALEdgeBottom toEdge:ALEdgeBottom ofView:self.coverImageView];
-  
+
   [TPPContentBadgeImageView pinWithBadge:self.contentTypeBadge toView:self.coverImageView];
-  
+
   [self.titleLabel autoPinEdge:ALEdgeLeading toEdge:ALEdgeTrailing ofView:self.coverImageView withOffset:MainTextPaddingLeft];
   [self.titleLabel autoPinEdge:ALEdgeTop toEdge:ALEdgeTop ofView:self.coverImageView];
   [self.titleLabel autoSetDimension:ALDimensionWidth toSize:TitleLabelMinimumWidth relation:NSLayoutRelationGreaterThanOrEqual];
-  
+
   // Ensure titleLabelConstraint is properly set up
   NSLayoutConstraint *titleLabelConstraint = [self.titleLabel autoPinEdgeToSuperviewMargin:ALEdgeTrailing];
   titleLabelConstraint.priority = UILayoutPriorityRequired;  // Ensure it has a valid priority
-  
+
   [self.subtitleLabel autoPinEdge:ALEdgeLeading toEdge:ALEdgeTrailing ofView:self.coverImageView withOffset:MainTextPaddingLeft];
   [self.subtitleLabel autoPinEdge:ALEdgeTrailing toEdge:ALEdgeTrailing ofView:self.titleLabel];
   [self.subtitleLabel autoConstrainAttribute:ALAttributeTop toAttribute:ALAttributeBaseline ofView:self.titleLabel withOffset:SubtitleBaselineOffset];
-  
+
   [self.audiobookLabel autoPinEdge:ALEdgeLeading toEdge:ALEdgeTrailing ofView:self.coverImageView withOffset:MainTextPaddingLeft];
   [self.audiobookLabel autoPinEdge:ALEdgeTrailing toEdge:ALEdgeTrailing ofView:self.titleLabel];
   if (self.subtitleLabel.text) {
@@ -502,7 +502,7 @@ static NSString *DetailHTMLTemplate = nil;
   } else {
     [self.audiobookLabel autoConstrainAttribute:ALAttributeTop toAttribute:ALAttributeBaseline ofView:self.titleLabel withOffset:AuthorBaselineOffset];
   }
-  
+
   [self.authorsLabel autoPinEdge:ALEdgeLeading toEdge:ALEdgeTrailing ofView:self.coverImageView withOffset:MainTextPaddingLeft];
   [self.authorsLabel autoPinEdge:ALEdgeTrailing toEdge:ALEdgeTrailing ofView:self.titleLabel];
   if (self.audiobookLabel.text) {
@@ -512,110 +512,110 @@ static NSString *DetailHTMLTemplate = nil;
   } else {
     [self.authorsLabel autoConstrainAttribute:ALAttributeTop toAttribute:ALAttributeBaseline ofView:self.titleLabel withOffset:AuthorBaselineOffset];
   }
-  
+
   [self.buttonsView autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.authorsLabel withOffset:VerticalPadding relation:NSLayoutRelationGreaterThanOrEqual];
   [NSLayoutConstraint autoSetPriority:UILayoutPriorityDefaultLow forConstraints:^{
     [self.buttonsView autoPinEdge:ALEdgeBottom toEdge:ALEdgeBottom ofView:self.coverImageView];
   }];
   [self.buttonsView autoPinEdge:ALEdgeLeading toEdge:ALEdgeTrailing ofView:self.coverImageView withOffset:MainTextPaddingLeft];
-  
+
   [self.normalView autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.buttonsView withOffset:VerticalPadding];
   [self.normalView autoPinEdgeToSuperviewEdge:ALEdgeRight];
   [self.normalView autoPinEdgeToSuperviewEdge:ALEdgeLeft];
   [self.normalView autoSetDimension:ALDimensionHeight toSize:NormalViewMinimumHeight relation:NSLayoutRelationGreaterThanOrEqual];
-  
+
   [self.downloadingView autoPinEdgeToSuperviewEdge:ALEdgeRight];
   [self.downloadingView autoPinEdgeToSuperviewEdge:ALEdgeLeft];
   [self.downloadingView autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.buttonsView withOffset:VerticalPadding];
   [self.downloadingView autoConstrainAttribute:ALAttributeHeight toAttribute:ALAttributeHeight ofView:self.normalView];
-  
+
   [self.downloadFailedView autoPinEdgeToSuperviewEdge:ALEdgeRight];
   [self.downloadFailedView autoPinEdgeToSuperviewEdge:ALEdgeLeft];
   [self.downloadFailedView autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.buttonsView withOffset:VerticalPadding];
   [self.downloadFailedView autoConstrainAttribute:ALAttributeHeight toAttribute:ALAttributeHeight ofView:self.normalView];
-  
+
   [self.summarySectionLabel autoPinEdgeToSuperviewMargin:ALEdgeLeading];
   [self.summarySectionLabel autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.normalView withOffset:VerticalPadding + 4];
-  
+
   [self.summaryTextView autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.summarySectionLabel withOffset:VerticalPadding];
   [self.summaryTextView autoPinEdgeToSuperviewMargin:ALEdgeTrailing];
   [self.summaryTextView autoPinEdgeToSuperviewMargin:ALEdgeLeading];
   self.textHeightConstraint = [self.summaryTextView autoSetDimension:ALDimensionHeight toSize:SummaryTextAbbreviatedHeight relation:NSLayoutRelationLessThanOrEqual];
-  
+
   [self.readMoreLabel autoPinEdgeToSuperviewMargin:ALEdgeLeading];
   [self.readMoreLabel autoPinEdgeToSuperviewMargin:ALEdgeTrailing];
   [self.readMoreLabel autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.summaryTextView];
   [self.readMoreLabel autoPinEdge:ALEdgeBottom toEdge:ALEdgeTop ofView:self.topFootnoteSeparater];
-  
+
   [self.infoSectionLabel autoPinEdgeToSuperviewMargin:ALEdgeLeading];
-  
+
   [self.publishedLabelValue autoPinEdgeToSuperviewMargin:ALEdgeTrailing relation:NSLayoutRelationGreaterThanOrEqual];
   [self.publishedLabelValue autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.infoSectionLabel withOffset:VerticalPadding];
   [self.publishedLabelValue autoPinEdge:ALEdgeLeading toEdge:ALEdgeTrailing ofView:self.publishedLabelKey withOffset:MainTextPaddingLeft];
-  
+
   [self.publisherLabelValue autoPinEdgeToSuperviewMargin:ALEdgeTrailing relation:NSLayoutRelationGreaterThanOrEqual];
   [self.publisherLabelValue autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.publishedLabelValue];
   [self.publisherLabelValue autoPinEdge:ALEdgeLeading toEdge:ALEdgeTrailing ofView:self.publisherLabelKey withOffset:MainTextPaddingLeft];
-  
+
   [self.categoriesLabelValue autoPinEdgeToSuperviewMargin:ALEdgeTrailing relation:NSLayoutRelationGreaterThanOrEqual];
   [self.categoriesLabelValue autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.publisherLabelValue];
   [self.categoriesLabelValue autoPinEdge:ALEdgeLeading toEdge:ALEdgeTrailing ofView:self.categoriesLabelKey withOffset:MainTextPaddingLeft];
-  
+
   [self.distributorLabelValue autoPinEdgeToSuperviewMargin:ALEdgeTrailing relation:NSLayoutRelationGreaterThanOrEqual];
   [self.distributorLabelValue autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.categoriesLabelValue];
   [self.distributorLabelValue autoPinEdge:ALEdgeLeading toEdge:ALEdgeTrailing ofView:self.distributorLabelKey withOffset:MainTextPaddingLeft];
-  
+
   [self.bookFormatLabelValue autoPinEdgeToSuperviewMargin:ALEdgeTrailing relation:NSLayoutRelationGreaterThanOrEqual];
   [self.bookFormatLabelValue autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.distributorLabelValue];
   [self.bookFormatLabelValue autoPinEdge:ALEdgeLeading toEdge:ALEdgeTrailing ofView:self.bookFormatLabelKey withOffset:MainTextPaddingLeft];
-  
+
   [self.narratorsLabelValue autoPinEdgeToSuperviewMargin:ALEdgeTrailing relation:NSLayoutRelationGreaterThanOrEqual];
   [self.narratorsLabelValue autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.bookFormatLabelValue];
   [self.narratorsLabelValue autoPinEdge:ALEdgeLeading toEdge:ALEdgeTrailing ofView:self.narratorsLabelKey withOffset:MainTextPaddingLeft];
-  
+
   if (self.book.hasDuration) {
     [self.bookDurationLabelValue autoPinEdgeToSuperviewMargin:ALEdgeTrailing relation:NSLayoutRelationGreaterThanOrEqual];
     [self.bookDurationLabelValue autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.narratorsLabelValue];
     [self.bookDurationLabelValue autoPinEdge:ALEdgeLeading toEdge:ALEdgeTrailing ofView:self.bookDurationLabelKey withOffset:MainTextPaddingLeft];
   }
-  
+
   [self.publishedLabelKey autoPinEdgeToSuperviewMargin:ALEdgeLeading];
   [self.publishedLabelKey autoPinEdgeToSuperviewMargin:ALEdgeLeading];
   [self.publishedLabelKey autoPinEdge:ALEdgeTrailing toEdge:ALEdgeTrailing ofView:self.publisherLabelKey];
   [self.publishedLabelKey autoPinEdge:ALEdgeTop toEdge:ALEdgeTop ofView:self.publishedLabelValue];
   [self.publishedLabelKey setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
-  
+
   [self.publisherLabelKey autoPinEdgeToSuperviewMargin:ALEdgeLeading];
   [self.publisherLabelKey autoPinEdge:ALEdgeTrailing toEdge:ALEdgeTrailing ofView:self.categoriesLabelKey];
   [self.publisherLabelKey autoPinEdge:ALEdgeTop toEdge:ALEdgeTop ofView:self.publisherLabelValue];
   [self.publisherLabelKey setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
-  
+
   [self.categoriesLabelKey autoPinEdgeToSuperviewMargin:ALEdgeLeading];
   [self.categoriesLabelKey autoPinEdge:ALEdgeTrailing toEdge:ALEdgeTrailing ofView:self.distributorLabelKey];
   [self.categoriesLabelKey autoPinEdge:ALEdgeTop toEdge:ALEdgeTop ofView:self.categoriesLabelValue];
   [self.categoriesLabelKey setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
-  
+
   [self.distributorLabelKey autoPinEdgeToSuperviewMargin:ALEdgeLeading];
   [self.distributorLabelKey autoPinEdge:ALEdgeTrailing toEdge:ALEdgeTrailing ofView:self.bookFormatLabelKey];
   [self.distributorLabelKey autoPinEdge:ALEdgeTop toEdge:ALEdgeTop ofView:self.distributorLabelValue];
   [self.distributorLabelKey setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
-  
+
   [self.bookFormatLabelKey autoPinEdgeToSuperviewMargin:ALEdgeLeading];
   [self.bookFormatLabelKey autoPinEdge:ALEdgeTrailing toEdge:ALEdgeTrailing ofView:self.narratorsLabelKey];
   [self.bookFormatLabelKey autoPinEdge:ALEdgeTop toEdge:ALEdgeTop ofView:self.bookFormatLabelValue];
   [self.bookFormatLabelKey setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
-  
+
   [self.narratorsLabelKey autoPinEdgeToSuperviewMargin:ALEdgeLeading];
   [self.narratorsLabelKey autoPinEdge:ALEdgeTop toEdge:ALEdgeTop ofView:self.narratorsLabelValue];
   [self.narratorsLabelKey setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
-  
+
   if (self.book.hasDuration) {
     [self.bookDurationLabelKey autoPinEdgeToSuperviewMargin:ALEdgeLeading];
     [self.bookDurationLabelKey autoPinEdge:ALEdgeTop toEdge:ALEdgeTop ofView:self.bookDurationLabelValue];
     [self.bookDurationLabelKey autoPinEdge:ALEdgeTrailing toEdge:ALEdgeTrailing ofView:self.narratorsLabelKey];
     [self.bookDurationLabelKey setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
   }
-  
+
   if (self.closeButton) {
     [self.closeButton autoPinEdgeToSuperviewMargin:ALEdgeTrailing];
     [self.closeButton autoPinEdge:ALEdgeTop toEdge:ALEdgeTop ofView:self.titleLabel];
@@ -624,22 +624,22 @@ static NSString *DetailHTMLTemplate = nil;
     [self.closeButton autoPinEdge:ALEdgeLeading toEdge:ALEdgeTrailing ofView:self.titleLabel withOffset:MainTextPaddingLeft];
     [self.closeButton setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
   }
-  
+
   [self.topFootnoteSeparater autoSetDimension:ALDimensionHeight toSize:1.0f / [UIScreen mainScreen].scale];
   [self.topFootnoteSeparater autoPinEdgeToSuperviewEdge:ALEdgeRight];
   [self.topFootnoteSeparater autoPinEdgeToSuperviewMargin:ALEdgeLeft];
   [self.topFootnoteSeparater autoPinEdge:ALEdgeBottom toEdge:ALEdgeTop ofView:self.infoSectionLabel withOffset:-VerticalPadding];
-  
+
   [self.bottomFootnoteSeparator autoSetDimension:ALDimensionHeight toSize:1.0f / [UIScreen mainScreen].scale];
   [self.bottomFootnoteSeparator autoPinEdgeToSuperviewEdge:ALEdgeRight];
   [self.bottomFootnoteSeparator autoPinEdgeToSuperviewMargin:ALEdgeLeft];
-  
+
   if (self.book.hasDuration) {
     [self.bottomFootnoteSeparator autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.bookDurationLabelKey withOffset:VerticalPadding];
   } else {
     [self.bottomFootnoteSeparator autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.narratorsLabelValue withOffset:VerticalPadding];
   }
-  
+
   [self.footerTableView autoPinEdgesToSuperviewEdgesWithInsets:UIEdgeInsetsZero excludingEdge:ALEdgeTop];
   [self.footerTableView autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.narratorsLabelValue withOffset:VerticalPadding];
 }
@@ -655,7 +655,7 @@ static NSString *DetailHTMLTemplate = nil;
                                                  withExtension:@"html"]
                         encoding:NSUTF8StringEncoding
                         error:NULL];
-  
+
   assert(DetailHTMLTemplate);
 }
 
@@ -717,11 +717,11 @@ NSString *PlaySampleNotification = @"ToggleSampleNotification";
         self.isProcessingSample = NO;
       }];
     }
-    
+
     completion();
   }
 }
-  
+
 - (void)presentWebView:(NSURL *)url {
   BundledHTMLViewController *webController = [[BundledHTMLViewController alloc] initWithFileURL:url title:AccountsManager.shared.currentAccount.name];
   webController.hidesBottomBarWhenPushed = true;
@@ -733,7 +733,7 @@ NSString *PlaySampleNotification = @"ToggleSampleNotification";
 - (void)setState:(TPPBookState)state
 {
   _state = state;
-  
+
   switch(state) {
     case TPPBookStateUnregistered:
       self.normalView.hidden = NO;

@@ -309,4 +309,19 @@ struct Strings {
     static let more = NSLocalizedString("More", comment: "")
     static let less = NSLocalizedString("Less", comment: "")
   }
+
+  struct BookButton {
+    static let borrow = NSLocalizedString("Borrow", comment: "")
+    static let preview = NSLocalizedString("Preview", comment: "")
+    static let retry = NSLocalizedString("Retry", comment: "")
+    static let read = NSLocalizedString("Read", comment: "")
+    static let listen = NSLocalizedString("Listen", comment: "")
+    static let download = NSLocalizedString("Download", comment: "")
+    static let `return` = NSLocalizedString("Return", comment: "")
+    static let placeHold = NSLocalizedString("Place Hold", comment: "")
+    static let onHold = NSLocalizedString("On Hold", comment: "")
+    static let keepHold = NSLocalizedString("Keep Hold", comment: "")
+    static let cancelHold = NSLocalizedString("Cancel Hold", comment: "")
+    static let otherBooks = NSLocalizedString("Other books by this author", comment: "")
+  }
 }
