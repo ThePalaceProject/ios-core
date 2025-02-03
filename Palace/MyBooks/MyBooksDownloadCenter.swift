@@ -435,9 +435,10 @@ import OverdriveProcessor
 
 extension MyBooksDownloadCenter {
   func deleteLocalContent(for identifier: String, account: String? = nil) {
+    let current_account: String? = account ?? AccountsManager.shared.currentAccountId
     guard let book = bookRegistry.book(forIdentifier: identifier),
-          let bookURL = fileUrl(for: identifier, account: account) else {
-      NSLog("WARNING: Could not find book to delete local content.")
+          let bookURL = fileUrl(for: identifier, account: current_account) else {
+      Log.warn(#file, "Could not find book to delete local content \(identifier)")
       return
     }
     
@@ -451,69 +452,32 @@ extension MyBooksDownloadCenter {
         }
 #endif
       case .audiobook:
-        deleteLocalContent(forAudiobook: book, at: bookURL)
+        try deleteLocalAudiobookContent(forAudiobook: book, at: bookURL)
       case .unsupported:
-        NSLog("Unsupported content type for deletion.")
+        Log.warn(#file, "Unsupported content type for deletion.")
       }
     } catch {
-      NSLog("Failed to remove local content for book with identifier \(identifier): \(error.localizedDescription)")
+      Log.error(#file, "Failed to remove local content for book with identifier \(identifier): \(error.localizedDescription)")
     }
   }
 
-  func deleteLocalContent(forAudiobook book: TPPBook, at bookURL: URL) {
-#if FEATURE_OVERDRIVE
-    if book.distributor == OverdriveDistributorKey,
-        let data = try? Data(contentsOf: bookURL),
-        let json = try? JSONSerialization.jsonObject(with: data, options: []),
-        let jsonDict = json as? [String: Any] {
-      handleOverdriveContentDeletion(jsonDict, for: book)
-    }
-#endif
-    
+  private func deleteLocalAudiobookContent(forAudiobook book: TPPBook, at bookURL: URL) throws {
 #if LCP
-    if LCPAudiobooks.canOpenBook(book) {
-      deleteLCPLocalContent(for: book, at: bookURL)
-    } else {
-      deleteNonLCPLocalContent(at: bookURL)
-    }
+    let isLcpAudiobook = LCPAudiobooks.canOpenBook(book)
 #else
-    deleteNonLCPLocalContent(at: bookURL)
+    let isLcpAudiobook = false
 #endif
-  }
-  
-  private func handleOverdriveContentDeletion(_ dict: [String: Any], for book: TPPBook) {
-    // Implement specific deletion logic for Overdrive content if required.
-  }
-  
-#if LCP
-  private func deleteLCPLocalContent(for book: TPPBook, at bookURL: URL) {
-    LCPAudiobooks(for: bookURL)?.contentDictionary { dict, error in
-      guard error == nil, let dict = dict as? [String: Any] else { return }
-      self.deleteAudiobookContent(dict, for: book, bookURL: bookURL)
+
+    // LCP Audiobooks are a single binary file, without an easily loaded manifest. So they skip this logic
+    // that deleted the local audio files, used by other audiobook types.
+    if (!isLcpAudiobook) {
+      let manifestData = try Data(contentsOf: bookURL)
+      let manifest = try Manifest.customDecoder().decode(Manifest.self, from: manifestData)
+      AudiobookFactory.audiobookClass(for: manifest).deleteLocalContent(manifest: manifest, bookIdentifier: book.identifier)
     }
-  }
-  
-  private func deleteAudiobookContent(_ dict: [String: Any], for book: TPPBook, bookURL: URL) {
-    // Assuming we create and use an audiobook object to manage deletion
-    guard let jsonData = try? JSONSerialization.data(withJSONObject: dict, options: []),
-          let manifest = try? Manifest.customDecoder().decode(Manifest.self, from: jsonData),
-          let audiobook = AudiobookFactory.audiobook(
-            for: manifest,
-            bookIdentifier: book.identifier,
-            decryptor: nil,
-            token: book.bearerToken
-          ) else {
-      return
-    }
-    audiobook.deleteLocalContent(completion: { _, _ in })
-    if FileManager.default.fileExists(atPath: bookURL.path) {
-      try? FileManager.default.removeItem(at: bookURL)
-    }
-  }
-#endif
-  
-  private func deleteNonLCPLocalContent(at bookURL: URL) {
-    try? FileManager.default.removeItem(at: bookURL)
+
+    try FileManager.default.removeItem(at: bookURL)
+    Log.info(#file, "Successfully deleted audiobook manifest & content \(book.identifier)")
   }
   
   @objc func returnBook(withIdentifier identifier: String, completion: (() -> Void)? = nil) {
