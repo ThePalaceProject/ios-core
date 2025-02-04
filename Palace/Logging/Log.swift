@@ -68,7 +68,7 @@ final class Log: NSObject {
   }
 
   // Avoid including source paths related to the build machine/user such as
-  // "/Users/<username>/<local-path>/.../Simplified"
+  // "/Users/<username>/<local-path>/.../Palace"
   private class func trimTag(_ tag: String) -> String {
     guard tag.starts(with: "/") else {
       return tag
@@ -77,7 +77,7 @@ final class Log: NSObject {
     var components = tag.components(separatedBy: "/")
 
     // remove any local path components before the source root in repo
-    let sourcesRootIndex = (components.index(of: "Simplified") ?? 0) + 1
+    let sourcesRootIndex = (components.index(of: "Palace") ?? 0) + 1
 
     if sourcesRootIndex < components.count {
       components.removeFirst(sourcesRootIndex)
