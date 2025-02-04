@@ -10,6 +10,7 @@ protocol BookDetailViewDelegate: AnyObject {
   func didSelectViewIssues(for book: TPPBook, sender: Any)
 }
 
+@MainActor
 @objcMembers class BookDetailViewModel: NSObject, ObservableObject {
   @Published var book: TPPBook
   @Published var state: TPPBookState
@@ -18,6 +19,7 @@ protocol BookDetailViewDelegate: AnyObject {
   @Published var backgroundColor: Color = .gray
   @Published var renderedSummary: NSAttributedString?
   @Published var buttonState: BookButtonState = .unsupported
+  @Published private var processingButtons: Set<BookButtonType> = []
 
   private var cancellables = Set<AnyCancellable>()
   private let registry: TPPBookRegistryProvider
@@ -79,24 +81,35 @@ protocol BookDetailViewDelegate: AnyObject {
     }
   }
 
-  func handleAction(for buttonType: BookButtonType) {
-    switch buttonType {
-    case .get:
-      registry.setState(.downloadNeeded, for: book.identifier)
+  func handleAction(for button: BookButtonType) {
+    guard !isProcessing(for: button) else { return }
+
+    processingButtons.insert(button)
+
+
+    defer {
+      DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+        self.processingButtons.remove(button)
+      }
+    }
+
+    switch button {
     case .reserve:
       registry.setState(.holding, for: book.identifier)
     case .remove, .return:
       registry.setState(.unregistered, for: book.identifier)
-    case .download:
+    case .download, .get, .retry:
       registry.setState(.downloading, for: book.identifier)
+      didSelectDownload(for: book)
     case .read, .listen:
-      openBook()
+      didSelectRead(for: book) {
+        self.processingButtons.remove(button)
+      }
     case .cancel:
       registry.setState(.unregistered, for: book.identifier)
-    case .retry:
-      registry.setState(.downloading, for: book.identifier)
     case .sample, .audiobookSample:
-      playSample()
+      print("Show sample")
+//      playSample()
     }
   }
 
@@ -106,14 +119,6 @@ protocol BookDetailViewDelegate: AnyObject {
       self.coverImage = uiImage
       self.backgroundColor = Color(uiImage.mainColor() ?? .gray)
     }
-  }
-
-  private func openBook() {
-    // Logic to open the book
-  }
-
-  private func playSample() {
-    // Logic to play sample
   }
 
   // MARK: - Bookmark Management
@@ -128,6 +133,10 @@ protocol BookDetailViewDelegate: AnyObject {
   // MARK: - State Management
   func updateState(to newState: TPPBookState) {
     registry.setState(newState, for: book.identifier)
+  }
+
+  func isProcessing(for button: BookButtonType) -> Bool {
+    processingButtons.contains(button)
   }
 }
 

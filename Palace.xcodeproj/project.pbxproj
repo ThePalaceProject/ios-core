@@ -1006,6 +1006,9 @@
 		E521E9C72D513E3F00C08ADF /* BookButtonsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E521E9C62D513E3900C08ADF /* BookButtonsView.swift */; };
 		E521E9C82D513E3F00C08ADF /* BookButtonsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E521E9C62D513E3900C08ADF /* BookButtonsView.swift */; };
 		E521E9C92D513E3F00C08ADF /* BookButtonsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E521E9C62D513E3900C08ADF /* BookButtonsView.swift */; };
+		E521E9CB2D51CB8B00C08ADF /* BookCellDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = E521E9CA2D51CB7000C08ADF /* BookCellDelegate.swift */; };
+		E521E9CC2D51CB8B00C08ADF /* BookCellDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = E521E9CA2D51CB7000C08ADF /* BookCellDelegate.swift */; };
+		E521E9CD2D51CB8B00C08ADF /* BookCellDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = E521E9CA2D51CB7000C08ADF /* BookCellDelegate.swift */; };
 		E523124B285C3828007D1DB5 /* TPPBookRegistry+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E523124A285C3828007D1DB5 /* TPPBookRegistry+Extensions.swift */; };
 		E5239A1F2992107D00850941 /* BookCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E567C72B296743990079C28C /* BookCell.swift */; };
 		E523A453299FCA5300EF833B /* AlertModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E523A452299FCA5300EF833B /* AlertModel.swift */; };
@@ -1975,6 +1978,7 @@
 		E51919D72B508EE400C08E86 /* URLRequest+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "URLRequest+Extensions.swift"; sourceTree = "<group>"; };
 		E521E9BA2D4D706400C08ADF /* Date+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Date+Extensions.swift"; sourceTree = "<group>"; };
 		E521E9C62D513E3900C08ADF /* BookButtonsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookButtonsView.swift; sourceTree = "<group>"; };
+		E521E9CA2D51CB7000C08ADF /* BookCellDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookCellDelegate.swift; sourceTree = "<group>"; };
 		E523116928504B85007D1DB5 /* TPPBook+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPBook+Extensions.swift"; sourceTree = "<group>"; };
 		E5231240285C291D007D1DB5 /* AudioBookmark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioBookmark.swift; sourceTree = "<group>"; };
 		E523124A285C3828007D1DB5 /* TPPBookRegistry+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPBookRegistry+Extensions.swift"; sourceTree = "<group>"; };
@@ -3500,6 +3504,7 @@
 		E562DD942D35AB83003A1A40 /* BookDetail */ = {
 			isa = PBXGroup;
 			children = (
+				E521E9CA2D51CB7000C08ADF /* BookCellDelegate.swift */,
 				E521E9C62D513E3900C08ADF /* BookButtonsView.swift */,
 				E562DDAB2D36E7B5003A1A40 /* BookDetailHostingViewController.swift */,
 				E562DD952D35AB88003A1A40 /* BookDetailViewModel.swift */,
@@ -4584,6 +4589,7 @@
 				73EB0AD125821DF4006BC997 /* ProblemReportEmail.swift in Sources */,
 				21E41788292810F600A78606 /* TPPPDFThumbnailView.swift in Sources */,
 				E795A76E2A74074300314EC8 /* DataManager.swift in Sources */,
+				E521E9CB2D51CB8B00C08ADF /* BookCellDelegate.swift in Sources */,
 				73EB0AD225821DF4006BC997 /* TPPBookCellDelegate.m in Sources */,
 				E733E4AE2AFD792100D5052A /* UserProfileDocument+Links.swift in Sources */,
 				E5EFDE79298C43DD00258CA3 /* BookButtonState.swift in Sources */,
@@ -4956,6 +4962,7 @@
 				E544C4F72A3C1E4A00B2DC9D /* Dictionary+Extensions.swift in Sources */,
 				219747FC26D9218400FA25DF /* TPPLCPClient.swift in Sources */,
 				11C5DCF21976D1E0005A9945 /* TPPHoldsNavigationController.m in Sources */,
+				E521E9CC2D51CB8B00C08ADF /* BookCellDelegate.swift in Sources */,
 				73DB56CC25F7F739003788EE /* TPPLastReadPositionPoster.swift in Sources */,
 				A42E0DF11B3F5A490095EBAE /* TPPRemoteViewController.m in Sources */,
 				1798538B255A4092009F94D9 /* TPPBookLocation+Locator.swift in Sources */,
@@ -5434,6 +5441,7 @@
 				D570B6912BA20139003FE991 /* TPPAssociatedColors.swift in Sources */,
 				D570B6922BA20139003FE991 /* UserProfileDocument.swift in Sources */,
 				D570B6932BA20139003FE991 /* AccountsManager.swift in Sources */,
+				E521E9CD2D51CB8B00C08ADF /* BookCellDelegate.swift in Sources */,
 				D570B6942BA20139003FE991 /* TPPLocalization.m in Sources */,
 				D570B6952BA20139003FE991 /* TPPSecrets.swift in Sources */,
 				E562DE402D38B98F003A1A40 /* UIImage+Extension.swift in Sources */,

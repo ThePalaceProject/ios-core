@@ -8,7 +8,7 @@ struct BookButtonsView: View {
   var body: some View {
     HStack(spacing: 10) {
       ForEach(viewModel.buttonState.buttonTypes(book: viewModel.book), id: \.self) { buttonType in
-        ActionButton(type: buttonType, viewModel: viewModel)
+        ActionButton(type: buttonType, viewModel: viewModel, isProcessing: viewModel.isProcessing(for: buttonType))
       }
     }
     .padding(.vertical)
@@ -19,24 +19,32 @@ struct ActionButton: View {
   let type: BookButtonType
   @ObservedObject var viewModel: BookDetailViewModel
   @Environment(\.colorScheme) var colorScheme
+  let isProcessing: Bool
 
   var body: some View {
     Button(action: {
       viewModel.handleAction(for: type)
     }) {
-      Text(type.title)
-        .font(.semiBoldPalaceFont(size: 14))
-        .padding()
-        .frame(minWidth: 100)
-        .background(type.buttonBackgroundColor(colorScheme))
-        .foregroundColor(type.buttonTextColor(colorScheme))
-        .cornerRadius(8)
-        .overlay(
-          RoundedRectangle(cornerRadius: 8)
-            .stroke(type.borderColor(colorScheme), lineWidth: type.hasBorder ? 2 : 0)
-        )
+      ZStack {
+        if isProcessing {
+          ProgressView()
+            .progressViewStyle(CircularProgressViewStyle(tint: type.buttonTextColor(colorScheme)))
+        }
+        Text(type.title)
+          .font(.semiBoldPalaceFont(size: 14))
+      }
+      .padding()
+      .frame(minWidth: 100)
+      .background(type.buttonBackgroundColor(colorScheme))
+      .foregroundColor(type.buttonTextColor(colorScheme))
+      .cornerRadius(8)
+      .overlay(
+        RoundedRectangle(cornerRadius: 8)
+          .stroke(type.borderColor(colorScheme), lineWidth: type.hasBorder ? 2 : 0)
+      )
     }
     .buttonStyle(.plain)
+    .disabled(isProcessing) // Disable button while processing
   }
 }
 
