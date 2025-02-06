@@ -49,9 +49,24 @@ class BookCellModel: ObservableObject {
     }
   }
 
+  @Published private var currentBookIdentifier: String?
+
+  private var cancellables = Set<AnyCancellable>()
+  private static var imageCache = NSCache<NSString, UIImage>()
+  private var isFetchingImage = false
+
   var statePublisher = PassthroughSubject<Bool, Never>()
   var state: BookCellState
-  var book: TPPBook
+
+  var book: TPPBook {
+    didSet {
+      if book.identifier != currentBookIdentifier {
+        currentBookIdentifier = book.identifier
+        loadBookCoverImage()
+      }
+    }
+  }
+
   var title: String { book.title }
   var authors: String { book.authors ?? "" }
   var showUnreadIndicator: Bool {
@@ -61,69 +76,98 @@ class BookCellModel: ObservableObject {
       return false
     }
   }
-  
+
   var buttonTypes: [BookButtonType] {
     state.buttonState.buttonTypes(book: book)
   }
-  
+
   private weak var buttonDelegate = TPPBookCellDelegate.shared()
   private weak var sampleDelegate: TPPBookButtonsSampleDelegate?
   private weak var downloadDelegate: TPPBookDownloadCancellationDelegate?
 
+  // MARK: - Initializer
+
   init(book: TPPBook) {
     self.book = book
-
     self.state = BookCellState(BookButtonState(book) ?? .unsupported)
     self.isLoading = TPPBookRegistry.shared.processing(forIdentifier: book.identifier)
+    self.currentBookIdentifier = book.identifier
     registerForNotifications()
     loadBookCoverImage()
   }
-  
-  private func registerForNotifications() {
-    NotificationCenter.default.addObserver(self, selector: #selector(updateButtons),
-                                           name: .TPPReachabilityChanged,
-                                           object: nil)
+
+  deinit {
+    NotificationCenter.default.removeObserver(self)
   }
 
-  
-  private func loadBookCoverImage() {
-    guard let cachedImage = TPPBookRegistry.shared.cachedThumbnailImage(for: book) else {
-      TPPBookRegistry.shared.thumbnailImage(for: book) { image in
-        guard let image else { return }
+  // MARK: - Image Loading
+
+  func loadBookCoverImage() {
+    if let cachedImage = Self.imageCache.object(forKey: book.identifier as NSString) {
+      image = cachedImage
+    } else if let registryImage = TPPBookRegistry.shared.cachedThumbnailImage(for: book) {
+      setImageAndCache(registryImage)
+    } else {
+      fetchAndCacheImage()
+    }
+  }
+
+  private func fetchAndCacheImage() {
+    guard !isFetchingImage else { return }
+    isFetchingImage = true
+    isLoading = true
+
+    DispatchQueue.global(qos: .background).async { [weak self] in
+      guard let self = self else { return }
+      TPPBookRegistry.shared.thumbnailImage(for: self.book) { [weak self] fetchedImage in
+        guard let self = self, let fetchedImage else { return }
         DispatchQueue.main.async {
-          self.image = image
+          self.setImageAndCache(fetchedImage)
+          self.isLoading = false
+          self.isFetchingImage = false
         }
       }
-      return
     }
-
-    self.image = cachedImage
   }
 
-  func indicatorDate(for buttonType: BookButtonType) -> Date? {
-    guard buttonType.displaysIndicator else {
-      return nil
-    }
+  private func setImageAndCache(_ image: UIImage) {
+    Self.imageCache.setObject(image, forKey: book.identifier as NSString)
+    self.image = image
+  }
 
-    var date: Date?
+  // MARK: - Notification Handling
 
-    book.defaultAcquisition?.availability.matchUnavailable(
-        nil,
-        limited: { limited in
-          if let until = limited.until, until.timeIntervalSinceNow > 0 { date = until }
-        },
-        unlimited: nil,
-        reserved: nil,
-        ready: { ready in
-          if let until = ready.until, until.timeIntervalSinceNow > 0 { date = until }
-        }
-      )
-
-    return date
+  private func registerForNotifications() {
+    NotificationCenter.default.addObserver(self, selector: #selector(updateButtons),
+                                           name: .TPPReachabilityChanged, object: nil)
   }
 
   @objc private func updateButtons() {
     isLoading = false
+  }
+
+  // MARK: - Button Actions
+
+  func indicatorDate(for buttonType: BookButtonType) -> Date? {
+    guard buttonType.displaysIndicator else { return nil }
+
+    var date: Date?
+    book.defaultAcquisition?.availability.matchUnavailable(
+      nil,
+      limited: { limited in
+        if let until = limited.until, until.timeIntervalSinceNow > 0 {
+          date = until
+        }
+      },
+      unlimited: nil,
+      reserved: nil,
+      ready: { ready in
+        if let until = ready.until, until.timeIntervalSinceNow > 0 {
+          date = until
+        }
+      }
+    )
+    return date
   }
 }
 
@@ -202,7 +246,6 @@ extension BookCellModel {
 
   func didSelectSample() {
     isLoading = true
-
     self.sampleDelegate?.didSelectPlaySample(book)
   }
 

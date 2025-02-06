@@ -42,7 +42,6 @@ class TPPAnnotationMock: NSObject, AnnotationsManager {
       }
       
       if let audiobookmark = try? JSONDecoder().decode(AudioBookmark.self, from: selectorValueData) {
-        audiobookmark.lastSavedTimeStamp = Date().ISO8601Format()
         return audiobookmark
       } else {
         return nil

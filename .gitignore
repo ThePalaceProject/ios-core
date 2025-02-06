@@ -10,8 +10,8 @@ adobe-rmsdk
 **/ReaderClientCert.sig
 **/APIKeys.swift
 Carthage*
-**/GoogleService-Info.plist
 **/TPPSecrets.swift
+**/GoogleService-Info.plist
 fastlane/report.xml
 fastlane/*_output
 Palace.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved

@@ -191,8 +191,8 @@ struct TPPBookmarkSpec {
 
     if let value = selectorValue.data(using: .utf8),
        let dict = try? JSONSerialization.jsonObject(with: value, options: []) as? [String: Any] {
-      title = dict?["title"] as? String ?? ""
-      progressWithinBook = dict?["progressWithinBook"] as? Double ?? 0.0
+      title = dict["title"] as? String ?? ""
+      progressWithinBook = dict["progressWithinBook"] as? Double ?? 0.0
     }
   
     self.body = Body(time: time.rfc3339String(), device: device, chapterTitle: title, progressWithinBook: progressWithinBook)

@@ -87,26 +87,26 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
   @discardableResult
   func executeRequest(_ req: URLRequest, enableTokenRefresh: Bool, completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask? {
     let userAccount = TPPUserAccount.sharedAccount()
-    
+
     if let authDefinition = userAccount.authDefinition, authDefinition.isSaml {
       return performDataTask(with: req, completion: completion)
     }
-    
-    if userAccount.isTokenRefreshRequired() && enableTokenRefresh {
-      let task = urlSession.dataTask(with: req)
-      refreshTokenAndResume(task: task, completion: completion)
-      return task
+
+    if userAccount.isTokenRefreshRequired() {
+      if enableTokenRefresh {
+        let task = urlSession.dataTask(with: req)
+        refreshTokenAndResume(task: task, completion: completion)
+        return task
+      } else if req.hasRetried {
+        let error = createErrorForRetryFailure()
+        completion(NYPLResult.failure(error, nil))
+        return nil
+      }
     }
-    
-    if req.hasRetried && userAccount.isTokenRefreshRequired() {
-      let error = createErrorForRetryFailure()
-      completion(NYPLResult.failure(error, nil))
-      return nil
-    }
-    
+
     return performDataTask(with: req, completion: completion)
   }
-  
+
   private func performDataTask(with request: URLRequest,
                                completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask {
     let task = urlSession.dataTask(with: request)
@@ -413,3 +413,32 @@ private extension URLRequest {
   }
 }
 
+extension TPPNetworkExecutor {
+  func GET(_ reqURL: URL, useTokenIfAvailable: Bool = true) async throws -> (Data, URLResponse?) {
+    return try await withCheckedThrowingContinuation { continuation in
+      var didResume = false  // Track if the continuation has been resumed
+
+      GET(reqURL, useTokenIfAvailable: useTokenIfAvailable) { result in
+        guard !didResume else {
+          return
+        }
+        didResume = true
+
+        switch result {
+        case let .success(data, response):
+          continuation.resume(returning: (data, response))
+        case let .failure(error, _):
+          continuation.resume(throwing: error)
+        }
+      }
+
+      // Handle timeout scenario if necessary (assuming there could be a time-based failure)
+      DispatchQueue.global().asyncAfter(deadline: .now() + 10.0) {
+        guard !didResume else { return }
+        didResume = true
+        let timeoutError = NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut, userInfo: nil)
+        continuation.resume(throwing: timeoutError)
+      }
+    }
+  }
+}

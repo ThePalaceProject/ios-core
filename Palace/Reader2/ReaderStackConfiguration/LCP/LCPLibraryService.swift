@@ -12,12 +12,13 @@
 
 import Foundation
 import UIKit
-import R2Shared
+import ReadiumShared
 import ReadiumLCP
+import ReadiumAdapterLCPSQLite
 
 
 @objc class LCPLibraryService: NSObject, DRMLibraryService {
-  
+
   /// Readium licensee file extension
   @objc public let licenseExtension = "lcpl"
   
@@ -31,9 +32,15 @@ import ReadiumLCP
   
   /// [LicenseDocument.id: passphrase callback]
   private var authenticationCallbacks: [String: (String?) -> Void] = [:]
-  
+
   override init() {
-    self.lcpService = LCPService(client: lcpClient)
+    self.lcpService = LCPService(
+      client: TPPLCPClient(),
+      licenseRepository: LCPSQLiteLicenseRepository(),
+      passphraseRepository: LCPSQLitePassphraseRepository(),
+      assetRetriever: AssetRetriever(httpClient: DefaultHTTPClient()),
+      httpClient: DefaultHTTPClient()
+    )
     super.init()
   }
   
@@ -47,19 +54,21 @@ import ReadiumLCP
   /// Fulfill LCP license publication.
   /// - Parameter file: LCP license file.
   /// - Returns: fulfilled publication as `Deferred` (`CancellableReesult` interenally) object.
-  func fulfill(_ file: URL) -> Deferred<DRMFulfilledPublication, Error> {
-    return deferred { completion in
-      self.lcpService.acquirePublication(from: file) { result in
-        completion(result
-          .map {
-            DRMFulfilledPublication(
-              localURL: $0.localURL,
-              suggestedFilename: $0.suggestedFilename
-            )
-        }
-        .eraseToAnyError()
-        )
-      }
+  func fulfill(_ file: URL) async throws -> DRMFulfilledPublication {
+    guard let fileURL = file.fileURL else {
+      throw LCPError.unknown(nil)
+    }
+
+    let licenseSource = LicenseDocumentSource.file(fileURL)
+    let result = await lcpService.acquirePublication(from: licenseSource)
+    switch result {
+    case .success(let publication):
+      return DRMFulfilledPublication(
+        localURL: publication.localURL.url,
+        suggestedFilename: publication.suggestedFilename
+      )
+    case .failure(let error):
+      throw error
     }
   }
 
@@ -78,7 +87,7 @@ import ReadiumLCP
       guard error == nil else {
         let domain = "LCP fulfillment error"
         let code = TPPErrorCode.lcpDRMFulfillmentFail.rawValue
-        let errorDescription = (error as? LCPError)?.errorDescription ?? (error as? TPPLicensesServiceError)?.description ?? error?.localizedDescription
+        let errorDescription = (error as? LCPError)?.localizedDescription ?? (error as? TPPLicensesServiceError)?.description ?? error?.localizedDescription
         let nsError = NSError(domain: domain, code: code, userInfo: [
           NSLocalizedDescriptionKey: errorDescription as Any
         ])

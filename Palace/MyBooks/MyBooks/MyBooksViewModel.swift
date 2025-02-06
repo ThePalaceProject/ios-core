@@ -17,179 +17,170 @@ enum Group: Int {
 class MyBooksViewModel: ObservableObject {
   typealias DisplayStrings = Strings.MyBooksView
 
-  @Published var books = [TPPBook]()
+  // MARK: - Public Properties
+  @Published private(set) var books: [TPPBook] = []
   @Published var isLoading = false
   @Published var alert: AlertModel?
-  @Published var showSearchSheet = false
+  @Published var searchQuery = ""
   @Published var showInstructionsLabel = false
+  @Published var showSearchSheet = false
+  @Published var selectNewLibrary = false
+  @Published var showLibraryAccountView = false
+  @Published var selectedBook: TPPBook?
   @Published var showAccountScreen = false {
     didSet {
       accountURL = facetViewModel.accountScreenURL
     }
   }
-  @Published var accountURL: URL?
-  
-  var isPad : Bool { UIDevice.current.userInterfaceIdiom == .pad }
 
-  var activeFacetSort: Facet {
-    didSet {
-      sortData()
-    }
-  }
+  var accountURL: URL?
+  var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
 
-  let facetViewModel: FacetViewModel = FacetViewModel(
-    groupName: DisplayStrings.sortBy,
-    facets: [.title, .author]
-  )
-  
-  var observers = Set<AnyCancellable>()
+  // MARK: - Private Properties
+  var activeFacetSort: Facet
+  let facetViewModel: FacetViewModel
+  private var observers = Set<AnyCancellable>()
+  private var bookRegistry: TPPBookRegistry { TPPBookRegistry.shared }
 
+  // MARK: - Initialization
   init() {
-    activeFacetSort = Facet.author
-    registerForPublishers()
-    registerForNotifications()
+    self.activeFacetSort = .author
+    self.facetViewModel = FacetViewModel(
+      groupName: DisplayStrings.sortBy,
+      facets: [.title, .author]
+    )
+
+    registerPublishers()
+    registerNotifications()
     loadData()
   }
-  
+
   deinit {
     NotificationCenter.default.removeObserver(self)
   }
-  
+
+  // MARK: - Public Methods
   func loadData() {
-    DispatchQueue.main.async {
-      self.books =  Reachability.shared.isConnectedToNetwork() ?
-      TPPBookRegistry.shared.myBooks :
-      TPPBookRegistry.shared.myBooks.filter { !$0.isExpired }
-      self.sortData()
-    }
-  }
+    guard !isLoading else { return }
 
-  private func sortData() {
-   switch activeFacetSort {
-    case .author:
-      books.sort {
-        let aString = "\($0.authors!) \($0.title)"
-        let bString = "\($1.authors!) \($1.title)"
-        return aString < bString
-      }
-    case .title:
-     books.sort {
-        let aString = "\($0.title) \($0.authors!)"
-        let bString = "\($1.title) \($1.authors!)"
-        return aString < bString
+    DispatchQueue.main.async {
+      self.isLoading = true
+    }
+
+    DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+      guard let self = self else { return }
+
+      let books = Reachability.shared.isConnectedToNetwork()
+      ? self.bookRegistry.myBooks
+      : self.bookRegistry.myBooks.filter { !$0.isExpired }
+
+      DispatchQueue.main.async {
+        self.books = books
+        self.showInstructionsLabel = books.isEmpty || self.bookRegistry.state == .unloaded
+        self.sortData()
+        self.isLoading = false
       }
     }
-  }
-  
-  private func registerForPublishers() {
-    facetViewModel.$activeSort
-      .assign(to: \.activeFacetSort, on: self)
-      .store(in: &observers)
-    
-    facetViewModel.$showAccountScreen
-      .assign(to: \.showAccountScreen, on: self)
-      .store(in: &observers)
-  }
-  
-  private func registerForNotifications() {
-    NotificationCenter.default.addObserver(self, selector: #selector(bookRegistryDidChange),
-                                           name: .TPPBookRegistryDidChange,
-                                           object: nil)
-    NotificationCenter.default.addObserver(self, selector: #selector(bookRegistryStateDidChange),
-                                           name: .TPPBookRegistryDidChange,
-                                           object: nil)
-    NotificationCenter.default.addObserver(self, selector: #selector(syncBegan),
-                                           name: .TPPSyncBegan,
-                                           object: nil)
-    NotificationCenter.default.addObserver(self, selector: #selector(syncEnded),
-                                           name: .TPPSyncEnded,
-                                           object: nil)
-    NotificationCenter.default.addObserver(self, selector: #selector(stopLoading),
-                                           name: .TPPBookProcessingDidChange,
-                                           object: nil)
-  }
-  
-  @objc private func stopLoading() {
-    DispatchQueue.main.async {
-      self.isLoading.toggle()
-    }
-  }
-
-  @objc private func bookRegistryDidChange() {
-      self.loadData()
-    DispatchQueue.main.async {
-      self.showInstructionsLabel = self.books.count == 0 || TPPBookRegistry.shared.state == .unloaded
-    }
-  }
-
-  @objc private func bookRegistryStateDidChange() {}
-  @objc private func syncBegan() {}
-  @objc private func syncEnded() {
-      self.loadData()
   }
 
   func reloadData() {
-    defer {
-      loadData()
-    }
+    guard !isLoading else { return }
 
-    if TPPUserAccount.sharedAccount().needsAuth && !TPPUserAccount.sharedAccount().hasCredentials() {
+    if TPPUserAccount.sharedAccount().needsAuth, !TPPUserAccount.sharedAccount().hasCredentials() {
       TPPAccountSignInViewController.requestCredentials(completion: nil)
     } else {
-      TPPBookRegistry.shared.sync()
+      bookRegistry.sync()
+      loadData()
     }
   }
-  
-  func refresh() {
-    if AccountsManager.shared.currentAccount?.loansUrl != nil {
-      reloadData()
-    }
-  }
-  
-  func authenticateAndLoad(_ account: Account) {
-    account.loadAuthenticationDocument { success in
-      guard success else {
-        return
+
+  func filterBooks(query: String) {
+    if query.isEmpty {
+      loadData()
+    } else {
+      DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+        guard let self = self else { return }
+        let filteredBooks = self.books.filter {
+          $0.title.localizedCaseInsensitiveContains(query) || ($0.authors?.localizedCaseInsensitiveContains(query) ?? false)
+        }
+        DispatchQueue.main.async {
+          self.books = filteredBooks
+        }
       }
-      
+    }
+  }
+
+  func authenticateAndLoad(account: Account) {
+    account.loadAuthenticationDocument { [weak self] success in
+      guard let self = self, success else { return }
+
       DispatchQueue.main.async {
         if !TPPSettings.shared.settingsAccountIdsList.contains(account.uuid) {
-          TPPSettings.shared.settingsAccountIdsList = TPPSettings.shared.settingsAccountIdsList + [account.uuid]
+          TPPSettings.shared.settingsAccountIdsList.append(account.uuid)
         }
-        
         self.loadAccount(account)
       }
     }
   }
-  
+
   func loadAccount(_ account: Account) {
-    var workflowsInProgress = false
-
-#if FEATURE_DRM_CONNECTOR
-    if !(AdobeCertificate.defaultCertificate?.hasExpired ?? true) {
-      workflowsInProgress = NYPLADEPT.sharedInstance().workflowsInProgress || TPPBookRegistry.shared.isSyncing
-    } else {
-      workflowsInProgress = TPPBookRegistry.shared.isSyncing
-    }
-#else
-    workflowsInProgress = TPPBookRegistry.shared.isSyncing
-#endif
-
-    if workflowsInProgress {
+    if bookRegistry.isSyncing {
       alert = AlertModel(
-        title: Strings.MyBooksView.accountSyncingAlertTitle,
-        message: Strings.MyBooksView.accountSyncingAlertTitle)
+        title: DisplayStrings.accountSyncingAlertTitle,
+        message: DisplayStrings.accountSyncingAlertMessage
+      )
     } else {
-      self.updateFeed(account)
+      updateFeed(account)
     }
   }
-  
+
+  // MARK: - Private Methods
+  private func sortData() {
+    books.sort { first, second in
+      switch activeFacetSort {
+      case .author:
+        return "\(first.authors ?? "") \(first.title)" < "\(second.authors ?? "") \(second.title)"
+      case .title:
+        return "\(first.title) \(first.authors ?? "")" < "\(second.title) \(second.authors ?? "")"
+      }
+    }
+  }
+
   private func updateFeed(_ account: Account) {
     AccountsManager.shared.currentAccount = account
-    (TPPRootTabBarController.shared().viewControllers?.first as? TPPCatalogNavigationController)?.updateFeedAndRegistryOnAccountChange()
+    if let catalogNavController = TPPRootTabBarController.shared().viewControllers?.first as? TPPCatalogNavigationController {
+      catalogNavController.updateFeedAndRegistryOnAccountChange()
+    }
   }
-  
-  @objc func dismissSearchSheet() {
-    showSearchSheet.toggle()
+
+  // MARK: - Notification Handling
+  private func registerNotifications() {
+    NotificationCenter.default.addObserver(self, selector: #selector(handleBookRegistryChange), name: .TPPBookRegistryDidChange, object: nil)
+    NotificationCenter.default.addObserver(self, selector: #selector(handleSyncEnd), name: .TPPSyncEnded, object: nil)
+  }
+
+  @objc private func handleBookRegistryChange() {
+    loadData()
+  }
+
+  @objc private func handleSyncEnd() {
+    loadData()
+  }
+
+  // MARK: - Combine Publishers
+  private func registerPublishers() {
+    facetViewModel.$activeSort
+      .sink { [weak self] sort in
+        guard let self = self else { return }
+        self.activeFacetSort = sort
+        self.sortData()
+      }
+      .store(in: &observers)
+
+    facetViewModel.$showAccountScreen
+      .sink { [weak self] show in
+        self?.showAccountScreen = show
+      }
+      .store(in: &observers)
   }
 }

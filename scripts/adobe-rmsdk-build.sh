@@ -23,9 +23,9 @@ SDKS=(iphoneos iphonesimulator)
 
 for SDK in ${SDKS[@]}; do
   if [ $SDK == "iphoneos" ]; then
-    ARCHS="arm64 armv7 armv7s"
+    ARCHS="arm64"
   else
-    ARCHS="i386 x86_64"
+    ARCHS="x86_64 arm64"
   fi
   for CONFIGURATION in ${CONFIGURATIONS[@]}; do
     cd "$ADOBE_RMSDK/dp/build/xc5"

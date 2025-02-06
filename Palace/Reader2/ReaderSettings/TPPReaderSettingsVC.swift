@@ -8,18 +8,18 @@
 
 import UIKit
 import SwiftUI
-import R2Navigator
-import R2Shared
+import ReadiumNavigator
+import ReadiumShared
 
 protocol TPPReaderSettingsDelegate: AnyObject {
-    func getUserSettings() -> UserSettings
-    func updateUserSettingsStyle()
-    func setUIColor(for appearance: UserProperty)
+  func getUserPreferences() -> EPUBPreferences
+  func updateUserPreferencesStyle(for appearance: EPUBPreferences)
+  func setUIColor(for appearance: EPUBPreferences)
 }
 
 class TPPReaderSettingsVC: UIViewController {
-  static func makeSwiftUIView(settings: UserSettings, delegate: TPPReaderSettingsDelegate) -> UIViewController {
-    let readerSettings = TPPReaderSettings(userSettings: settings, delegate: delegate)
+  static func makeSwiftUIView(preferences: EPUBPreferences, delegate: TPPReaderSettingsDelegate) -> UIViewController {
+    let readerSettings = TPPReaderSettings(preferences: preferences, delegate: delegate)
     let controller = UIHostingController(rootView: TPPReaderSettingsView(settings: readerSettings))
     return controller
   }

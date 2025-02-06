@@ -7,8 +7,8 @@
 //
 
 @import MessageUI;
+@import PureLayout;
 
-#import <PureLayout/PureLayout.h>
 #import "TPPProblemReportViewController.h"
 #import "UIFont+TPPSystemFontOverride.h"
 

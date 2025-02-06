@@ -98,15 +98,17 @@ import Combine
     guard canSync, let url = TPPAnnotations.annotationsURL else {
       return
     }
-    TPPAnnotations.syncReadingPosition(ofBook: book, toURL: url) { [weak self] bookmark in
+
+    Task {
+      let bookmark = await TPPAnnotations.syncReadingPosition(ofBook: book, toURL: url)
       if let pdfBookmark = bookmark as? TPPPDFPageBookmark {
-        DispatchQueue.main.async {
+        DispatchQueue.main.async { [weak self] in
           self?.remotePage = pdfBookmark.page
         }
       }
     }
   }
-  
+
   /// Synchronize reading position with the fetched position from the server.
   func syncReadingPosition() {
     guard let remotePage = remotePage else {
