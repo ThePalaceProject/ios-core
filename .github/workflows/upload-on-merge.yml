@@ -84,10 +84,10 @@ jobs:
           CI_KEYCHAIN_PW: ${{ secrets.CI_KEYCHAIN_PW }}
           CI_APPLE_FASTLANE_JSON: ${{ secrets.CI_APPLE_FASTLANE_JSON }}
 
-        - name: Export to binaries
-          run: ./scripts/xcode-export-adhoc.sh
-            env:
-              BUILD_CONTEXT: ci
+      - name: Export to binaries
+        run: ./scripts/xcode-export-adhoc.sh
+          env:
+          BUILD_CONTEXT: ci
 
       - name: Set up Python
         uses: actions/setup-python@v4
