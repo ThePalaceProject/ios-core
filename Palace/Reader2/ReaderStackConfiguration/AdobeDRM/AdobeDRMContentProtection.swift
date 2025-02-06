@@ -124,7 +124,7 @@ extension AdobeDRMContainer: Container {
   }
 
   private func readDataFromArchive(at path: String) -> Data? {
-    guard let fileURL, let archive = try? Archive(url: fileURL, accessMode: .read, pathEncoding: nil) else {
+    guard let fileURL, let archive = Archive(url: fileURL, accessMode: .read) else {
       return nil
     }
 

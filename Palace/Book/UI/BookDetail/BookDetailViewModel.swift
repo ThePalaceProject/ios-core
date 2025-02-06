@@ -20,9 +20,12 @@ protocol BookDetailViewDelegate: AnyObject {
   @Published var renderedSummary: NSAttributedString?
   @Published var buttonState: BookButtonState = .unsupported
   @Published private var processingButtons: Set<BookButtonType> = []
+  @Published var showSampleToolbar = false
 
   private var cancellables = Set<AnyCancellable>()
   private let registry: TPPBookRegistryProvider
+  var isShowingSample = false
+  var isProcessingSample = false
 
 
   @objc init(book: TPPBook) {
@@ -86,12 +89,11 @@ protocol BookDetailViewDelegate: AnyObject {
 
     processingButtons.insert(button)
 
-
-    defer {
-      DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-        self.processingButtons.remove(button)
-      }
-    }
+//    defer {
+//      DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+//        self.processingButtons.remove(button)
+//      }
+//    }
 
     switch button {
     case .reserve:
@@ -99,7 +101,10 @@ protocol BookDetailViewDelegate: AnyObject {
     case .remove, .return:
       registry.setState(.unregistered, for: book.identifier)
     case .download, .get, .retry:
-      registry.setState(.downloading, for: book.identifier)
+      if buttonState == .canHold {
+        TPPUserNotifications.requestAuthorization()
+      }
+
       didSelectDownload(for: book)
     case .read, .listen:
       didSelectRead(for: book) {
@@ -107,9 +112,12 @@ protocol BookDetailViewDelegate: AnyObject {
       }
     case .cancel:
       registry.setState(.unregistered, for: book.identifier)
+      didSelectCancel()
+      self.processingButtons.remove(button)
     case .sample, .audiobookSample:
-      print("Show sample")
-//      playSample()
+      didSelectPlaySample(for: book) {
+        self.processingButtons.remove(button)
+      }
     }
   }
 

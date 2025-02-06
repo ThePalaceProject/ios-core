@@ -26,17 +26,21 @@ struct BookDetailView: View {
   }
 
   private var fullView: some View {
-    VStack(alignment: .leading, spacing: 30) {
-      HStack(alignment: .top, spacing: 25) {
-        imageView
-        titleView
-      }
-      .padding(.top, 85)
+    ZStack {
+      sampleToolbar
 
-      descriptionView
-      informationView
+      VStack(alignment: .leading, spacing: 30) {
+        HStack(alignment: .top, spacing: 25) {
+          imageView
+          titleView
+        }
+        .padding(.top, 85)
+
+        descriptionView
+        informationView
+      }
+      .padding(30)
     }
-    .padding(30)
   }
 
   private var compactView: some View {
@@ -88,6 +92,15 @@ struct BookDetailView: View {
           .foregroundColor(.black)
       }
       Divider()
+    }
+  }
+
+  @ViewBuilder private var sampleToolbar: some View {
+    if viewModel.showSampleToolbar {
+      VStack {
+        Spacer()
+        AudiobookSampleToolbar(book: viewModel.book)
+      }
     }
   }
 

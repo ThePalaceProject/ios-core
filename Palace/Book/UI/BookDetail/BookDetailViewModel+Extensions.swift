@@ -44,6 +44,15 @@ extension BookDetailViewModel {
 #endif
   }
 
+  func didSelectCancel() {
+    switch TPPBookRegistry.shared.state(for: self.book.identifier) {
+    case .SAMLStarted, .downloading, .downloadFailed:
+      MyBooksDownloadCenter.shared.cancelDownload(for: self.book.identifier)
+    default:
+      break
+    }
+  }
+
   func openBook(_ book: TPPBook, completion: (() -> Void)?) {
     TPPCirculationAnalytics.postEvent("open_book", withBook: book)
 
@@ -505,5 +514,62 @@ extension BookDetailViewModel {
     } else if let remotePosition = remotePosition {
       operation(remotePosition)
     }
+  }
+}
+
+extension BookDetailViewModel {
+
+  func didSelectPlaySample(for book: TPPBook, completion: (() -> Void)?) {
+    guard !isProcessingSample else { return }
+
+    isProcessingSample = true
+
+    if book.defaultBookContentType == .audiobook {
+      handleAudiobookSample(for: book)
+    } else {
+      handleEPUBSample(for: book)
+    }
+
+    completion?()
+  }
+
+  // MARK: - Audiobook Sample Handling
+
+  private func handleAudiobookSample(for book: TPPBook) {
+    if book.sampleAcquisition?.type == "text/html" {
+      presentWebView(book.sampleAcquisition?.hrefURL)
+    } else if !isShowingSample {
+      isShowingSample = true
+      showSampleToolbar = true
+      isProcessingSample = false
+    }
+
+    NotificationCenter.default.post(name: Notification.Name("ToggleSampleNotification"), object: self)
+  }
+
+  // MARK: - EPUB Sample Handling
+
+  private func handleEPUBSample(for book: TPPBook) {
+    EpubSampleFactory.createSample(book: book) { sampleURL, error in
+      DispatchQueue.main.async {
+        if let error = error {
+          Log.debug("Sample generation error for \(book.title): \(error.localizedDescription)", "")
+        } else if let sampleWebURL = sampleURL as? EpubSampleWebURL {
+          self.presentWebView(sampleWebURL.url)
+        } else if let sampleURL = sampleURL?.url {
+          TPPRootTabBarController.shared().presentSample(book, url: sampleURL)
+        }
+
+        self.isProcessingSample = false
+      }
+    }
+  }
+
+  // MARK: - WebView Presentation
+
+  private func presentWebView(_ url: URL?) {
+    guard let url = url else { return }
+    let webViewController = BundledHTMLViewController(fileURL: url, title: AccountsManager.shared.currentAccount?.name ?? "")
+    TPPRootTabBarController.shared().pushViewController(webViewController, animated: true)
   }
 }

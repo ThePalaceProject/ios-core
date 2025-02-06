@@ -415,3 +415,10 @@ extension TPPBook: Comparable {
     lhs.identifier < rhs.identifier
   }
 }
+
+extension TPPBook {
+  func requiresAuthForReturnOrDeletion() -> Bool {
+    let userAuthRequired = TPPUserAccount.sharedAccount().authDefinition?.needsAuth ?? false
+    return self.defaultAcquisitionIfOpenAccess == nil && userAuthRequired
+  }
+}
