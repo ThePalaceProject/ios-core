@@ -7,7 +7,7 @@
 //
 
 import Foundation
-import R2Shared
+import ReadiumShared
 
 /// A front-end to the Annotations api to sync the reading progress for
 /// a given book with the progress on the server.
@@ -41,105 +41,99 @@ class TPPLastReadPositionSynchronizer {
             book: TPPBook,
             drmDeviceID: String?,
             completion: @escaping () -> Void) {
-
-    syncReadPosition(for: book, drmDeviceID: drmDeviceID) { serverLocator in
+    Task {
+      await sync(for: publication, book: book, drmDeviceID: drmDeviceID)
       TPPMainThreadRun.asyncIfNeeded {
-        if let serverLocator = serverLocator {
-          self.presentNavigationAlert(for: serverLocator,
-                                      publication: publication,
-                                      book: book,
-                                      completion: completion)
-        } else {
-          completion()
-        }
+        completion()
       }
+    }
+  }
+
+  func sync(for publication: Publication,
+            book: TPPBook,
+            drmDeviceID: String?) async {
+    let serverLocator = await syncReadPosition(for: book, drmDeviceID: drmDeviceID, publication: publication)
+
+    if let serverLocator = serverLocator {
+      await presentNavigationAlert(for: serverLocator,
+                                   publication: publication,
+                                   book: book)
     }
   }
 
   // MARK:- Private methods
 
-  /// Fetch the read position from the server and return it to the client
-  /// if it differs from the local position or if it comes from a
-  /// different device.
-  ///
-  /// - Parameters:
-  ///   - book: The book whose position needs syncing.
-  ///   - drmDeviceID: The device ID is used to identify if the last read
-  ///   position retrieved from the server was from a different device.
-  ///   - completion: always called at the end of the sync process. If the
-  ///   server finds a different last read location on another device, this
-  ///   completion will return that position, and `nil` in all other case.
-  ///   This closure is not retained by `self`.
-  private func syncReadPosition(for book: TPPBook,
-                                drmDeviceID: String?,
-                                completion: @escaping (Locator?) -> ()) {
-
+  private func syncReadPosition(for book: TPPBook, drmDeviceID: String?, publication: Publication) async -> Locator? {
     let localLocation = bookRegistry.location(forIdentifier: book.identifier)
 
-    TPPAnnotations
-      .syncReadingPosition(ofBook: book, toURL: TPPAnnotations.annotationsURL) { bookmark in
-
-        guard let bookmark = bookmark else {
-          Log.info(#function, "No reading position annotation exists on the server for \(book.loggableShortString()).")
-          completion(nil)
-          return
-        }
-
-        guard let bookmark = bookmark as? TPPReadiumBookmark else {
-          completion(nil)
-          return
-        }
-
-        let deviceID = bookmark.device ?? ""
-        let serverLocationString = bookmark.location
-
-        // Pass through returning nil (meaning the server doesn't have a
-        // last read location worth restoring) if:
-        // 1 - The most recent page on the server comes from the same device and there is no localLocation, or
-        // 2 - The server and the client have the same page marked
-        if (deviceID == drmDeviceID && localLocation != nil)
-          || localLocation?.locationString == serverLocationString {
-
-          // server location does not differ from or should take no precedence
-          // over the local position
-          completion(nil)
-          return
-        }
-
-        // we got a server location that differs from the local: return that
-        // so that clients can decide what to do
-        let bookLocation = TPPBookLocation(locationString: serverLocationString,
-                                            renderer: TPPBookLocation.r2Renderer)
-        completion(bookLocation?.convertToLocator())
+    guard let bookmark = await TPPAnnotations.syncReadingPosition(ofBook: book, toURL: TPPAnnotations.annotationsURL) else {
+      Log.info(#function, "No reading position annotation exists on the server for \(book.loggableShortString()).")
+      return nil
     }
+
+    guard let bookmark = bookmark as? TPPReadiumBookmark else {
+      return nil
+    }
+
+    let deviceID = bookmark.device ?? ""
+    let serverLocationString = bookmark.location
+
+    // Pass through returning nil (meaning the server doesn't have a
+    // last read location worth restoring) if:
+    // 1 - The most recent page on the server comes from the same device and there is no localLocation, or
+    // 2 - The server and the client have the same page marked
+    if (deviceID == drmDeviceID && localLocation != nil)
+        || localLocation?.locationString == serverLocationString {
+
+      // Server location does not differ from or should take no precedence
+      // over the local position.
+      return nil
+    }
+
+    // We got a server location that differs from the local: return that
+    // so that clients can decide what to do.
+    let bookLocation = TPPBookLocation(locationString: serverLocationString,
+                                       renderer: TPPBookLocation.r3Renderer)
+    return await bookLocation?.convertToLocator(publication: publication)
   }
 
   private func presentNavigationAlert(for serverLocator: Locator,
                                       publication: Publication,
                                       book: TPPBook,
                                       completion: @escaping () -> Void) {
-    let alert = UIAlertController(title: DisplayStrings.syncReadingPositionAlertTitle,
-                                  message: DisplayStrings.syncReadingPositionAlertBody,
-                                  preferredStyle: .alert)
-
-    let stayText = DisplayStrings.stay
-    let stayAction = UIAlertAction(title: stayText, style: .cancel) { _ in
+    Task {
+      await presentNavigationAlert(for: serverLocator, publication: publication, book: book)
       completion()
     }
-
-    let moveText = DisplayStrings.move
-    let moveAction = UIAlertAction(title: moveText, style: .default) { _ in
-      let loc = TPPBookLocation(locator: serverLocator,
-                                type: "LocatorHrefProgression",
-                                 publication: publication)
-      self.bookRegistry.setLocation(loc, forIdentifier: book.identifier)
-      completion()
-    }
-
-    alert.addAction(stayAction)
-    alert.addAction(moveAction)
-
-    TPPPresentationUtils.safelyPresent(alert)
   }
 
+  /// Async version of `presentNavigationAlert`.
+  private func presentNavigationAlert(for serverLocator: Locator,
+                                      publication: Publication,
+                                      book: TPPBook) async {
+    await withCheckedContinuation { continuation in
+      let alert = UIAlertController(title: DisplayStrings.syncReadingPositionAlertTitle,
+                                    message: DisplayStrings.syncReadingPositionAlertBody,
+                                    preferredStyle: .alert)
+
+      let stayText = DisplayStrings.stay
+      let stayAction = UIAlertAction(title: stayText, style: .cancel) { _ in
+        continuation.resume()
+      }
+
+      let moveText = DisplayStrings.move
+      let moveAction = UIAlertAction(title: moveText, style: .default) { _ in
+        let loc = TPPBookLocation(locator: serverLocator,
+                                  type: "LocatorHrefProgression",
+                                  publication: publication)
+        self.bookRegistry.setLocation(loc, forIdentifier: book.identifier)
+        continuation.resume()
+      }
+
+      alert.addAction(stayAction)
+      alert.addAction(moveAction)
+
+      TPPPresentationUtils.safelyPresent(alert)
+    }
+  }
 }

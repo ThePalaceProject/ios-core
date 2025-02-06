@@ -12,7 +12,7 @@
 
 import Foundation
 import UIKit
-import R2Shared
+import ReadiumShared
 
 
 /// A ReaderFormatModule handles presentation of publications in a
@@ -25,6 +25,7 @@ protocol ReaderFormatModule {
   func supports(_ publication: Publication) -> Bool
 
   /// Creates the view controller to present the publication.
+  @MainActor
   func makeReaderViewController(for publication: Publication,
                                 book: TPPBook,
                                 initialLocation: Locator?,

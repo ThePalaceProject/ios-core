@@ -13,18 +13,10 @@ import PalaceUIKit
 struct MyBooksView: View {
   typealias DisplayStrings = Strings.MyBooksView
   @ObservedObject var model: MyBooksViewModel
-  @State var selectNewLibrary = false
-  @State var showLibraryAccountView = false
-  @State var showDetailForBook: TPPBook?
 
   var body: some View {
-    NavigationLink(destination: accountScreen, isActive: $model.showAccountScreen) {}
-    NavigationLink(destination: searchView, isActive: $model.showSearchSheet) {}
-    NavigationLink(destination: accountPickerList, isActive: $showLibraryAccountView) {}
-
-    //TODO: This is a workaround for an apparent bug in iOS14 that prevents us from wrapping
-    // the body in a NavigationView. Once iOS14 support is dropped, this can be removed/replaced
-    // with a NavigationView
+    // TODO: This enables subviews to also present alerts. Consider a refactor to create a global navigation stack
+    // to more effectively manage the view hierarchy.
     EmptyView()
       .alert(item: $model.alert) { alert in
         Alert(
@@ -33,209 +25,281 @@ struct MyBooksView: View {
           dismissButton: .cancel()
         )
       }
-    
+
     ZStack {
-      VStack(alignment: .leading) {
-        facetView
-        content
-      }
-      .background(Color(TPPConfiguration.backgroundColor()))
-      .navigationBarItems(leading: leadingBarButton, trailing: trailingBarButton)
-      loadingView
+      mainContent
+      if model.isLoading { loadingOverlay }
     }
     .background(Color(TPPConfiguration.backgroundColor()))
+    .navigationBarTitleDisplayMode(.inline)
+    .toolbar {
+      ToolbarItem(placement: .navigationBarLeading) { leadingBarButton }
+      ToolbarItem(placement: .navigationBarTrailing) { trailingBarButton }
+    }
+    .onAppear { model.showSearchSheet = false }
+    .sheet(item: $model.selectedBook) { book in
+      UIViewControllerWrapper(TPPBookDetailViewController(book: book), updater: { _ in })
+        .onDisappear {
+          DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            model.selectedBook = nil
+          }
+        }
+    }
+    .sheet(isPresented: $model.showLibraryAccountView) {
+      UIViewControllerWrapper(
+        TPPAccountList { account in
+          model.authenticateAndLoad(account: account)
+          model.showLibraryAccountView = false
+        },
+        updater: { _ in }
+      )
+    }
+    .sheet(isPresented: $model.showAccountScreen) {
+      if let url = model.accountURL {
+        return UIViewControllerWrapper(BundledHTMLViewController(fileURL: url, title: "Account")) { _ in }
+          .anyView()
+      } else {
+        return EmptyView().anyView()
+      }    }
   }
-  
-  @ViewBuilder private var facetView: some View {
-    FacetView(model: model.facetViewModel)
-  }
-  
-  @ViewBuilder private var loadingView: some View {
-    if model.isLoading {
-      ProgressView()
-        .scaleEffect(x: 2, y: 2, anchor: .center)
-        .horizontallyCentered()
+
+  private var mainContent: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      if model.showSearchSheet { searchBar }
+      FacetView(model: model.facetViewModel)
+      content
     }
   }
-  
-  @ViewBuilder private var emptyView: some View {
-    Text(DisplayStrings.emptyViewMessage)
-      .multilineTextAlignment(.center)
-      .foregroundColor(.gray)
-      .horizontallyCentered()
-      .verticallyCentered()
-      .palaceFont(.body)
+
+  private var searchBar: some View {
+    HStack {
+      TextField(DisplayStrings.searchBooks, text: $model.searchQuery)
+        .searchBarStyle()
+        .onChange(of: model.searchQuery, perform: model.filterBooks)
+      Button(action: clearSearch, label: {
+        Image(systemName: "xmark.circle.fill")
+          .foregroundColor(.gray)
+      })
+    }
+    .padding(.horizontal)
   }
-  
-  @ViewBuilder private var content: some View {
+
+  private var content: some View {
     GeometryReader { geometry in
       if model.showInstructionsLabel {
-        VStack {
-          emptyView
-        }
-        .frame(minHeight: geometry.size.height)
-        .refreshable {
-          model.reloadData()
-        }
+        emptyView
+          .frame(minHeight: geometry.size.height)
+          .refreshable { model.reloadData() }
       } else {
-        listView
-          .refreshable {
-            model.reloadData()
-          }
+        BookListView(
+          books: model.books,
+          isLoading: $model.isLoading,
+          onSelect: { book in model.selectedBook = book }
+        )
+        .refreshable { model.reloadData() }
       }
     }
   }
-    
-  @ViewBuilder private var listView: some View {
-    AdaptableGridLayout {
-      ForEach(0..<model.books.count, id: \.self) { i in
-        ZStack(alignment: .leading) {
-            cell(for: model.books[i])
-        }
-        .opacity(model.isLoading ? 0.5 : 1.0)
-        .disabled(model.isLoading)
-      }
-    }
-    .onAppear { model.loadData() }
-  }
-    
-  private func cell(for book: TPPBook) -> some View {
-    let model = BookCellModel(book: book)
 
-    model
-      .statePublisher.assign(to: \.isLoading, on: self.model)
-      .store(in: &self.model.observers)
-
-    if self.model.isPad {
-      return Button {
-        showDetailForBook = book
-      } label: {
-        BookCell(model: model)
-          .border(width: 0.5, edges: [.bottom, .trailing], color: self.model.isPad ? Color(TPPConfiguration.mainColor()) : .clear)
-      }
-      .sheet(item: $showDetailForBook) { item in
-        UIViewControllerWrapper(TPPBookDetailViewController(book: item), updater: { _ in })
-      }
-      .anyView()
-    } else {
-      return NavigationLink(destination: UIViewControllerWrapper(TPPBookDetailViewController(book: book), updater: { _ in })) {
-        BookCell(model: model)
-      }
-      .anyView()
-    }
+  private func createAlert(_ alert: AlertModel) -> Alert {
+    Alert(
+      title: Text(alert.title),
+      message: Text(alert.message),
+      dismissButton: .cancel()
+    )
   }
-  
-  @ViewBuilder private var leadingBarButton: some View {
-    Button {
-      selectNewLibrary.toggle()
-    } label: {
+
+  private func clearSearch() {
+    model.searchQuery = ""
+    model.filterBooks(query: "")
+  }
+
+  private var loadingOverlay: some View {
+    ProgressView()
+      .scaleEffect(2)
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
+      .background(Color.black.opacity(0.5).ignoresSafeArea())
+  }
+
+  private var leadingBarButton: some View {
+    Button(action: { model.selectNewLibrary.toggle() }) {
       ImageProviders.MyBooksView.myLibraryIcon
     }
-    .actionSheet(isPresented: $selectNewLibrary) {
-      libraryPicker
-    }
+    .actionSheet(isPresented: $model.selectNewLibrary) { libraryPicker }
   }
-  
-  @ViewBuilder private var trailingBarButton: some View {
-    Button {
-      model.showSearchSheet.toggle()
-    } label: {
+
+  private var trailingBarButton: some View {
+    Button(action: { withAnimation { model.showSearchSheet.toggle() } }) {
       ImageProviders.MyBooksView.search
     }
   }
-  
+
   private var libraryPicker: ActionSheet {
     ActionSheet(
       title: Text(DisplayStrings.findYourLibrary),
       buttons: existingLibraryButtons() + [addLibraryButton, .cancel()]
     )
   }
-  
+
   private func existingLibraryButtons() -> [ActionSheet.Button] {
     TPPSettings.shared.settingsAccountsList.map { account in
         .default(Text(account.name)) {
           model.loadAccount(account)
-          showLibraryAccountView = false
-          selectNewLibrary = false
+          model.showLibraryAccountView = false
+          model.selectNewLibrary = false
         }
     }
   }
-  
-  private var addLibraryButton: Alert.Button {
-    .default(Text(DisplayStrings.addLibrary)) {
-      showLibraryAccountView = true
-    }
+
+  private var addLibraryButton: ActionSheet.Button {
+    .default(Text(DisplayStrings.addLibrary)) { model.showLibraryAccountView = true }
   }
-  
-  private var accountPickerList: some View {
-    let accountList = TPPAccountList { account in
-      model.authenticateAndLoad(account)
-      showLibraryAccountView = false
-      selectNewLibrary = false
-    }
-    
-    return UIViewControllerWrapper(accountList, updater: {_ in })
-  }
-  
-  private var searchView: some View {
-    let searchDescription = TPPOpenSearchDescription(title: DisplayStrings.searchBooks, books: model.books)
-    let navController = UINavigationController(rootViewController: TPPCatalogSearchViewController(openSearchDescription: searchDescription))
-    return UIViewControllerWrapper(navController, updater: { _ in })
-  }
-  
-  private var accountScreen: some View {
-    guard let url = model.accountURL else {
-      return EmptyView().anyView()
-    }
-    
-    let webController = BundledHTMLViewController(fileURL: url, title: "TEST")
-    webController.hidesBottomBarWhenPushed = true
-    return  UIViewControllerWrapper(webController, updater: { _ in } ).anyView()
+
+  private var emptyView: some View {
+    Text(DisplayStrings.emptyViewMessage)
+      .multilineTextAlignment(.center)
+      .foregroundColor(.gray)
+      .centered()
+      .palaceFont(.body)
   }
 }
 
 extension View {
-    func border(width: CGFloat, edges: [Edge], color: Color) -> some View {
-        overlay(EdgeBorder(width: width, edges: edges).foregroundColor(color))
+  func searchBarStyle() -> some View {
+    self.padding(8)
+      .textFieldStyle(.automatic)
+      .background(Color.gray.opacity(0.2))
+      .cornerRadius(10)
+      .padding(.vertical, 8)
+  }
+
+  func borderStyle() -> some View {
+    self.modifier(BorderStyleModifier())
+  }
+
+  func centered() -> some View {
+    self.horizontallyCentered().verticallyCentered()
+  }
+}
+
+extension View {
+  func border(width: CGFloat, edges: [Edge], color: Color) -> some View {
+    overlay(EdgeBorder(width: width, edges: edges).foregroundColor(color))
+  }
+}
+
+extension View {
+  func applyBorderStyle(index: Int, totalItems: Int) -> some View {
+#if os(iOS)
+    let isPhone = UIDevice.current.userInterfaceIdiom == .phone
+#else
+    let isPhone = false
+#endif
+
+    return self
+      .if(!(isPhone && index == totalItems - 1)) { $0.borderStyle() }
+  }
+
+  @ViewBuilder func `if`<Content: View>(_ condition: Bool, transform: (Self) -> Content) -> some View {
+    if condition {
+      transform(self)
+    } else {
+      self
     }
+  }
+}
+
+struct BorderStyleModifier: ViewModifier {
+  func body(content: Content) -> some View {
+    content
+      .border(
+        width: 0.5,
+        edges: edgesForDevice(),
+        color: Color(TPPConfiguration.mainColor())
+      )
+  }
+
+  private func edgesForDevice() -> [Edge] {
+#if os(iOS)
+    return UIDevice.current.userInterfaceIdiom == .phone ? [.bottom] : [.bottom, .trailing]
+#else
+    return [.bottom, .trailing]
+#endif
+  }
 }
 
 struct EdgeBorder: Shape {
-    var width: CGFloat
-    var edges: [Edge]
+  var width: CGFloat
+  var edges: [Edge]
 
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        for edge in edges {
-            var x: CGFloat {
-                switch edge {
-                case .top, .bottom, .leading: return rect.minX
-                case .trailing: return rect.maxX - width
-                }
-            }
-
-            var y: CGFloat {
-                switch edge {
-                case .top, .leading, .trailing: return rect.minY
-                case .bottom: return rect.maxY - width
-                }
-            }
-
-            var w: CGFloat {
-                switch edge {
-                case .top, .bottom: return rect.width
-                case .leading, .trailing: return width
-                }
-            }
-
-            var h: CGFloat {
-                switch edge {
-                case .top, .bottom: return width
-                case .leading, .trailing: return rect.height
-                }
-            }
-            path.addRect(CGRect(x: x, y: y, width: w, height: h))
+  func path(in rect: CGRect) -> Path {
+    var path = Path()
+    for edge in edges {
+      var x: CGFloat {
+        switch edge {
+        case .top, .bottom, .leading: return rect.minX
+        case .trailing: return rect.maxX - width
         }
-        return path
+      }
+
+      var y: CGFloat {
+        switch edge {
+        case .top, .leading, .trailing: return rect.minY
+        case .bottom: return rect.maxY - width
+        }
+      }
+
+      var w: CGFloat {
+        switch edge {
+        case .top, .bottom: return rect.width
+        case .leading, .trailing: return width
+        }
+      }
+
+      var h: CGFloat {
+        switch edge {
+        case .top, .bottom: return width
+        case .leading, .trailing: return rect.height
+        }
+      }
+      path.addRect(CGRect(x: x, y: y, width: w, height: h))
     }
+    return path
+  }
+}
+
+struct BookListView: View {
+  let books: [TPPBook]
+  @Binding var isLoading: Bool
+  let onSelect: (TPPBook) -> Void
+
+  @State private var cancellables = Set<AnyCancellable>()
+
+  var body: some View {
+    AdaptableGridLayout {
+      ForEach(Array(books.enumerated()), id: \.element.identifier) { index, book in
+        let cellModel = BookCellModel(book: book)
+        BookCell(model: cellModel)
+          .applyBorderStyle(index: index, totalItems: books.count)
+          .onAppear {
+            observeCellLoadingState(cellModel)
+          }
+          .onTapGesture {
+            onSelect(book)
+          }
+          .buttonStyle(.plain)
+          .opacity(isLoading ? 0.5 : 1.0)
+          .disabled(isLoading)
+      }
+    }
+  }
+
+  private func observeCellLoadingState(_ cellModel: BookCellModel) {
+    cellModel.statePublisher
+      .receive(on: DispatchQueue.main)
+      .sink { isLoading in
+        self.isLoading = isLoading
+      }
+      .store(in: &cancellables)
+  }
 }

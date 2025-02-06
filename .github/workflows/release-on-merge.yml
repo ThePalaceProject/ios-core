@@ -6,10 +6,10 @@ on:
     types: [closed]
 jobs:
   create-release:
-    runs-on: macOS-13
+    runs-on: macOS-latest
     steps:
       - name: Force Xcode 15
-        run: sudo xcode-select -switch /Applications/Xcode_15.0.1.app
+        run: sudo xcode-select -switch /Applications/Xcode_15.4.app
       - name: Checkout main repo and submodules
         uses: actions/checkout@v3
         with:

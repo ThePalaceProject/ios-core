@@ -1,5 +1,5 @@
 //
-//  AdobeDRMFetcherError.swift
+//  AdobeDRMError.swift
 //  Palace
 //
 //  Created by Vladimir Fedorov on 14.10.2021.
@@ -10,7 +10,7 @@ import Foundation
 
 #if FEATURE_DRM_CONNECTOR
 
-enum AdobeDRMFetcherError: LocalizedError {
+enum AdobeDRMError: LocalizedError {
   
   /// Indicates the item license has expired
   case expiredDisplayUntilDate

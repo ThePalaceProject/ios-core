@@ -75,7 +75,7 @@ class DLNavigator {
         self?.login(libraryId: libraryId, barcode: barcode)
       }
       DispatchQueue.main.async {
-        MyBooksViewModel().authenticateAndLoad(newAccount)
+        MyBooksViewModel().authenticateAndLoad(account: newAccount)
       }
       return
     }

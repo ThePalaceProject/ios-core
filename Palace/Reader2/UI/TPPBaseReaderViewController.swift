@@ -10,8 +10,8 @@
 
 import SafariServices
 import UIKit
-import R2Navigator
-import R2Shared
+import ReadiumNavigator
+import ReadiumShared
 import Combine
 
 /// This class is meant to be subclassed by each publication format view controller. It contains the shared behavior, eg. navigation bar toggling.
@@ -23,7 +23,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
 
   // Side margins for long labels
   static let overlayLabelMargin: CGFloat = 20
-  
+
   // TODO: SIMPLY-2656 See if we still need this.
   weak var moduleDelegate: ModuleDelegate?
 
@@ -33,7 +33,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   private let lastReadPositionPoster: TPPLastReadPositionPoster
 
   // UI
-  let navigator: UIViewController & Navigator
+  var navigator: UIViewController & Navigator
   private var tocBarButton: UIBarButtonItem?
   private var bookmarkBarButton: UIBarButtonItem?
   private(set) var stackView: UIStackView!
@@ -45,7 +45,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   private var currentLocationIsBookmarked: Bool {
     bookmarksBusinessLogic.currentLocation(in: navigator) != nil
   }
-  
+
   // MARK: - Lifecycle
 
   /// Designated initializer.
@@ -64,10 +64,10 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     self.publication = publication
     self.isShowingSample = forSample
     self.initialLocation = initialLocation
-    
+
     lastReadPositionPoster = TPPLastReadPositionPoster(
       book: book,
-      r2Publication: publication,
+      publication: publication,
       bookRegistryProvider: TPPBookRegistry.shared)
 
     bookmarksBusinessLogic = TPPReaderBookmarksBusinessLogic(
@@ -103,21 +103,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
 
     navigationItem.rightBarButtonItems = makeNavigationBarButtons()
     updateNavigationBar(animated: false)
-
-    stackView = UIStackView(frame: view.bounds)
-    stackView.distribution = .fill
-    stackView.axis = .vertical
-    view.addSubview(stackView)
-    stackView.translatesAutoresizingMaskIntoConstraints = false
-    let topConstraint = stackView.topAnchor.constraint(equalTo: view.topAnchor)
-    // `accessibilityTopMargin` takes precedence when VoiceOver is enabled.
-    topConstraint.priority = .defaultHigh
-    NSLayoutConstraint.activate([
-      topConstraint,
-      stackView.rightAnchor.constraint(equalTo: view.rightAnchor),
-      stackView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
-      stackView.leftAnchor.constraint(equalTo: view.leftAnchor)
-    ])
+    setupStackView()
 
     addChild(navigator)
     stackView.addArrangedSubview(navigator.view)
@@ -137,7 +123,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
       positionLabel.leftAnchor.constraint(equalTo: navigator.view.leftAnchor, constant: TPPBaseReaderViewController.overlayLabelMargin),
       positionLabel.rightAnchor.constraint(equalTo: navigator.view.rightAnchor, constant: -TPPBaseReaderViewController.overlayLabelMargin)
     ])
-    
+
     bookTitleLabel.translatesAutoresizingMaskIntoConstraints = false
     bookTitleLabel.font = .systemFont(ofSize: 12)
     bookTitleLabel.textAlignment = .center
@@ -154,21 +140,41 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
       layoutConstraints.append(bookTitleLabel.topAnchor.constraint(equalTo: navigator.view.topAnchor, constant: TPPBaseReaderViewController.overlayLabelMargin))
     }
     NSLayoutConstraint.activate(layoutConstraints)
-    
+
     // Accessibility
     updateViewsForVoiceOver(isRunning: UIAccessibility.isVoiceOverRunning)
-    
+
+    if let initialLocation = initialLocation {
+      Task {
+        await navigator.go(to: initialLocation)
+      }
+    }
+  }
+
+  private func setupStackView() {
+    stackView = UIStackView(frame: .zero)
+    stackView.translatesAutoresizingMaskIntoConstraints = false
+    stackView.distribution = .fill
+    stackView.axis = .vertical
+    view.addSubview(stackView)
+
+    NSLayoutConstraint.activate([
+      stackView.topAnchor.constraint(equalTo: view.topAnchor),
+      stackView.rightAnchor.constraint(equalTo: view.rightAnchor),
+      stackView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
+      stackView.leftAnchor.constraint(equalTo: view.leftAnchor)
+    ])
   }
 
   override func willMove(toParent parent: UIViewController?) {
     super.willMove(toParent: parent)
   }
-  
+
   override func viewDidAppear(_ animated: Bool) {
     super.viewDidAppear(animated)
     accessibilityToolbar.accessibilityElementsHidden = false
   }
-  
+
   override func viewWillDisappear(_ animated: Bool) {
     super.viewWillDisappear(animated)
     if let locator = navigator.currentLocation {
@@ -176,7 +182,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     }
   }
 
-  
+
   // MARK: - Navigation bar
 
   private var navigationBarHidden: Bool = true {
@@ -199,7 +205,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
                                     target: self,
                                     action: #selector(presentPositionsVC))
     tocButton.accessibilityLabel = Strings.Accessibility.viewBookmarksAndTocButton
-    
+
     if !isShowingSample {
       buttons.append(bookmarkBtn)
     }
@@ -257,7 +263,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     let positionsVC = TPPReaderPositionsVC.newInstance()
 
     positionsVC.tocBusinessLogic = TPPReaderTOCBusinessLogic(r2Publication: publication,
-                                                              currentLocation: currentLocation)
+                                                             currentLocation: currentLocation)
     positionsVC.bookmarksBusinessLogic = bookmarksBusinessLogic
     positionsVC.delegate = self
 
@@ -287,20 +293,22 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     }
   }
 
-  private func addBookmark(at location: TPPBookmarkR2Location) {
-    guard let bookmark = bookmarksBusinessLogic.addBookmark(location) else {
-      let alert = TPPAlertUtils.alert(title: "Bookmarking Error",
-                                       message: "A bookmark could not be created on the current page.")
-      TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert,
-                                                    viewController: self,
-                                                    animated: true,
-                                                    completion: nil)
-      return
+  private func addBookmark(at location: TPPBookmarkR3Location) {
+    Task {
+      guard let bookmark = await bookmarksBusinessLogic.addBookmark(location) else {
+        let alert = TPPAlertUtils.alert(title: "Bookmarking Error",
+                                        message: "A bookmark could not be created on the current page.")
+        TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert,
+                                                     viewController: self,
+                                                     animated: true,
+                                                     completion: nil)
+        return
+      }
+
+      Log.info(#file, "Created bookmark: \(bookmark)")
+
+      updateBookmarkButton(withState: true)
     }
-
-    Log.info(#file, "Created bookmark: \(bookmark)")
-
-    updateBookmarkButton(withState: true)
   }
 
   private func deleteBookmark(_ bookmark: TPPReadiumBookmark) {
@@ -341,11 +349,11 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
       button.accessibilityLabel = label
       return button
     }
-        
+
     let toolbar = UIToolbar(frame: .zero)
     let forwardButton = makeItem(.fastForward, label: DisplayStrings.nextChapter, action: #selector(goForward))
     let backButton = makeItem(.rewind, label: DisplayStrings.previousChapter, action: #selector(goBackward))
-    
+
     toolbar.items = [
       backButton,
       makeItem(.flexibleSpace),
@@ -355,7 +363,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     toolbar.tintColor = UIColor.black
     return toolbar
   }()
-    
+
   private var isVoiceOverRunning = UIAccessibility.isVoiceOverRunning
 
   @objc func voiceOverStatusDidChange() {
@@ -366,7 +374,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     }
     updateViewsForVoiceOver(isRunning: isRunning)
   }
-  
+
   func updateViewsForVoiceOver(isRunning: Bool) {
     updateNavigationBar()
     isVoiceOverRunning = isRunning
@@ -380,7 +388,8 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   }
 
   @objc private func goBackward() {
-    navigator.goBackward(animated: false) {
+    Task {
+      await navigator.goBackward(options: NavigatorGoOptions(animated: false))
       if let title = self.navigator.currentLocation?.title {
         UIAccessibility.post(notification: .announcement, argument: title)
       }
@@ -388,50 +397,61 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   }
 
   @objc private func goForward() {
-    navigator.goForward(animated: false) {
+    Task {
+      await navigator.goForward(options: NavigatorGoOptions(animated: false))
       if let title = self.navigator.currentLocation?.title {
         UIAccessibility.post(notification: .announcement, argument: title)
       }
     }
   }
-
 }
 
 //------------------------------------------------------------------------------
 // MARK: - NavigatorDelegate
 
 extension TPPBaseReaderViewController: NavigatorDelegate {
-
   func navigator(_ navigator: Navigator, locationDidChange locator: Locator) {
-    Log.info(#function, "R2 locator changed to: \(locator)")
+    Task {
+      Log.info(#function, "R3 locator changed to: \(locator)")
 
-    // Save location here only if VoiceOver is not running; it doesn't save exact location on page
-    if !isVoiceOverRunning {
-      lastReadPositionPoster.storeReadPosition(locator: locator)
-    }
-
-    positionLabel.text = {
-      var chapterTitle = ""
-      if let title = locator.title {
-        chapterTitle = " (\(title))"
+      // Save location here only if VoiceOver is not running; it doesn't save exact location on page
+      if !isVoiceOverRunning {
+        lastReadPositionPoster.storeReadPosition(locator: locator)
       }
-      
-      if let position = locator.locations.position {
-        return String(format: Strings.TPPBaseReaderViewController.pageOf, position) + "\(publication.positions.count)" + chapterTitle
-      } else if let progression = locator.locations.totalProgression {
-        return "\(progression)%" + chapterTitle
+
+      positionLabel.text = await {
+        var chapterTitle = ""
+        if let title = locator.title {
+          chapterTitle = " (\(title))"
+        }
+
+        var positions: [Locator] = []
+
+        let result = await publication.positions()
+        switch result {
+        case .success(let locators):
+          positions = locators
+        case .failure(let error):
+          moduleDelegate?.presentError(error, from: self)
+        }
+
+        if let position = locator.locations.position {
+          return String(format: Strings.TPPBaseReaderViewController.pageOf, position) + "\(positions.count)" + chapterTitle
+        } else if let progression = locator.locations.totalProgression {
+          return "\(progression)%" + chapterTitle
+        } else {
+          return nil
+        }
+      }()
+
+      bookTitleLabel.text = publication.metadata.title
+
+      if let resourceIndex = publication.resourceIndex(forLocator: locator),
+         let _ = bookmarksBusinessLogic.isBookmarkExisting(at: TPPBookmarkR3Location(resourceIndex: resourceIndex, locator: locator)) {
+        updateBookmarkButton(withState: true)
       } else {
-        return nil
+        updateBookmarkButton(withState: false)
       }
-    }()
-    
-    bookTitleLabel.text = publication.metadata.title
-
-    if let resourceIndex = publication.resourceIndex(forLocator: locator),
-      let _ = bookmarksBusinessLogic.isBookmarkExisting(at: TPPBookmarkR2Location(resourceIndex: resourceIndex, locator: locator)) {
-      updateBookmarkButton(withState: true)
-    } else {
-      updateBookmarkButton(withState: false)
     }
   }
 
@@ -447,6 +467,9 @@ extension TPPBaseReaderViewController: NavigatorDelegate {
     moduleDelegate?.presentError(error, from: self)
   }
 
+  func navigator(_ navigator: any ReadiumNavigator.Navigator, didFailToLoadResourceAt href: ReadiumShared.RelativeURL, withError error: ReadiumShared.ReadError) {
+    moduleDelegate?.presentError(error, from: self)
+  }
 }
 
 //------------------------------------------------------------------------------
@@ -456,20 +479,21 @@ extension TPPBaseReaderViewController: VisualNavigatorDelegate {
 
   func navigator(_ navigator: VisualNavigator, didTapAt point: CGPoint) {
     let viewport = navigator.view.bounds
-    // Skips to previous/next pages if the tap is on the content edges.
     let thresholdRange = 0...(0.2 * viewport.width)
-    var moved = false
-    if thresholdRange ~= point.x {
-      moved = navigator.goLeft(animated: false)
-    } else if thresholdRange ~= (viewport.maxX - point.x) {
-      moved = navigator.goRight(animated: false)
-    }
 
-    if !moved {
-      toggleNavigationBar()
+    Task {
+      var moved = false
+      if thresholdRange ~= point.x {
+        moved = await navigator.goLeft(options: NavigatorGoOptions(animated: false))
+      } else if thresholdRange ~= (viewport.maxX - point.x) {
+        moved = await navigator.goRight(options: NavigatorGoOptions(animated: false))
+      }
+
+      if !moved {
+        toggleNavigationBar()
+      }
     }
   }
-
 }
 
 //------------------------------------------------------------------------------
@@ -483,8 +507,10 @@ extension TPPBaseReaderViewController: TPPReaderPositionsDelegate {
       navigationController?.popViewController(animated: true)
     }
 
-    if let location = loc as? Locator {
-      navigator.go(to: location)
+    Task {
+      if let location = loc as? Locator {
+        await navigator.go(to: location)
+      }
     }
   }
 
@@ -497,9 +523,11 @@ extension TPPBaseReaderViewController: TPPReaderPositionsDelegate {
       navigationController?.popViewController(animated: true)
     }
 
-    let r2bookmark = bookmark.convertToR2(from: publication)
-    if let locator = r2bookmark?.locator {
-      navigator.go(to: locator)
+    Task {
+      let r3bookmark = bookmark.convertToR3(from: publication)
+      if let locator = r3bookmark?.locator {
+        await navigator.go(to: locator)
+      }
     }
   }
 

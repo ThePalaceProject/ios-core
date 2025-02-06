@@ -11,26 +11,22 @@
 //
 
 import Foundation
-import R2Shared
+import ReadiumShared
 
 enum LibraryServiceError: LocalizedError {
   
   case invalidBook
+  case cancelled
   case openFailed(Error)
   
   var errorDescription: String? {
     switch self {
     case .invalidBook:
-      return Strings.Error.invalidBookError
+      Strings.Error.invalidBookError
     case .openFailed(let error):
-      var errorDescription = error.localizedDescription
-      // Publication opening may fail due to DRM error
-      // Trying to get DRM error description
-      if let openingError = error as? Publication.OpeningError,
-         let drmErrorDescription = openingError.drmErrorDescription {
-        errorDescription = drmErrorDescription
-      }
-      return String(format: Strings.Error.openFailedError, errorDescription)
+       String(format: Strings.Error.openFailedError, error.localizedDescription)
+    case .cancelled:
+      nil
     }
   }
   

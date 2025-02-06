@@ -11,6 +11,7 @@
 #
 #     ./scripts/xcode-build-nodrm.sh
 
+
 echo "Building Palace without DRM support..."
 
 fastlane ios nodrm

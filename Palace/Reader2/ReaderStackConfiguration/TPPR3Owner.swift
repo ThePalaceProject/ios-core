@@ -1,5 +1,5 @@
 //
-//  TPPR2Owner.swift
+//  TPPR3Owner.swift
 //
 //  Created by Mickaël Menu on 20.02.19.
 //
@@ -11,41 +11,34 @@
 
 import Foundation
 import UIKit
-import R2Shared
-import R2Streamer
+import ReadiumShared
+import ReadiumStreamer
 
-/// This class is the main root of R2 objects. It:
+/// This class is the main root of R3 objects. It:
 /// - owns the sub-modules (library, reader, etc.)
 /// - orchestrates the communication between its sub-modules, through the
 /// modules' delegates.
-@objc public final class TPPR2Owner: NSObject {
+@objc public final class TPPR3Owner: NSObject {
 
   var libraryService: LibraryService! = nil
   var readerModule: ReaderModuleAPI! = nil
 
   override init() {
     super.init()
-    guard let server = PublicationServer() else {
-      /// FIXME: we should recover properly if the publication server can't
-      /// start, maybe this should only forbid opening a publication?
-      fatalError("Can't start publication server")
-    }
-
-    libraryService = LibraryService(publicationServer: server)
+    libraryService = LibraryService()
     readerModule = ReaderModule(delegate: self,
-                                resourcesServer: server,
+                                resourcesServer: libraryService.httpServer,
                                 bookRegistry: TPPBookRegistry.shared)
 
-    // Set Readium 2's logging minimum level.
-    R2EnableLog(withMinimumSeverityLevel: .debug)
+    ReadiumEnableLog(withMinimumSeverityLevel: .debug)
   }
 
   deinit {
-    Log.warn(#file, "TPPR2Owner being dealloced")
+    Log.warn(#file, "TPPR3Owner being dealloced")
   }
 }
 
-extension TPPR2Owner: ModuleDelegate {
+extension TPPR3Owner: ModuleDelegate {
   func presentAlert(_ title: String,
                     message: String,
                     from viewController: UIViewController) {
