@@ -30,7 +30,6 @@ else
   CERTIFICATES_PATH="../mobile-certificates/Certificates"
 fi
 
- Ensure virtual environment is used
 if [ -d ".venv" ]; then
   source .venv/bin/activate
 else
