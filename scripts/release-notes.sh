@@ -30,16 +30,9 @@ else
   CERTIFICATES_PATH="../mobile-certificates/Certificates"
 fi
 
-if [ -d ".venv" ]; then
-  source .venv/bin/activate
-else
-  echo "❌ Virtual environment not found!"
-  exit 1
-fi
-
 # Debug Python environment
-which python3
+echo "Python Location: $(which python3)"
 python3 -m pip list
-python3 -m pip show requests || { echo "❌ 'requests' module not found!"; exit 1; }
+python3 -m pip show requests || { echo "'requests' module not found!"; exit 1; }
 
 python3 $CERTIFICATES_PATH/Palace/iOS/ReleaseNotes.py "$@"
