@@ -33,6 +33,6 @@ fi
 # Debug Python environment
 echo "Python Location: $(which python3)"
 python3 -m pip list
-python3 -m pip show requests || { echo "'requests' module not found!"; exit 1; }
+python3 -m pip show requests || { echo "'requests' module not found!!"; exit 1; }
 
 python3 $CERTIFICATES_PATH/Palace/iOS/ReleaseNotes.py "$@"
