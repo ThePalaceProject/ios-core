@@ -29,9 +29,10 @@ struct ActionButton: View {
         if isProcessing {
           ProgressView()
             .progressViewStyle(CircularProgressViewStyle(tint: type.buttonTextColor(colorScheme)))
+        } else {
+          Text(type.title)
+            .font(.semiBoldPalaceFont(size: 14))
         }
-        Text(type.title)
-          .font(.semiBoldPalaceFont(size: 14))
       }
       .padding()
       .frame(minWidth: 100)
@@ -44,7 +45,7 @@ struct ActionButton: View {
       )
     }
     .buttonStyle(.plain)
-    .disabled(isProcessing) // Disable button while processing
+    .disabled(isProcessing)
   }
 }
 
@@ -54,16 +55,16 @@ extension BookButtonType {
     case .get: return DisplayStrings.borrow
     case .reserve: return DisplayStrings.placeHold
     case .download: return DisplayStrings.download
-    case .return, .remove: return DisplayStrings.return
+    case .return: return DisplayStrings.return
+    case .remove: return DisplayStrings.cancelHold
     case .read: return DisplayStrings.read
     case .listen: return DisplayStrings.listen
-    case .cancel: return DisplayStrings.cancelHold
+    case .cancel: return DisplayStrings.cancel
     case .retry: return DisplayStrings.retry
     case .sample, .audiobookSample: return DisplayStrings.preview
     }
   }
 
-  /// Categorizing buttons into Primary, Secondary, and Tertiary
   var buttonStyle: ButtonStyleType {
     switch self {
     case .sample, .audiobookSample:
@@ -75,17 +76,14 @@ extension BookButtonType {
     }
   }
 
-  /// Checks if the button is primary
   var isPrimary: Bool {
     return buttonStyle == .primary
   }
 
-  /// Checks if the button is secondary (bordered)
   var hasBorder: Bool {
     return buttonStyle == .secondary
   }
 
-  /// Defines background color based on button style and color scheme
   func buttonBackgroundColor(_ colorScheme: ColorScheme) -> Color {
     switch buttonStyle {
     case .primary:
@@ -95,7 +93,6 @@ extension BookButtonType {
     }
   }
 
-  /// Defines text color based on button style and color scheme
   func buttonTextColor(_ colorScheme: ColorScheme) -> Color {
     switch buttonStyle {
     case .primary:
@@ -105,13 +102,11 @@ extension BookButtonType {
     }
   }
 
-  /// Defines border color for secondary buttons
   func borderColor(_ colorScheme: ColorScheme) -> Color {
     return hasBorder ? (colorScheme == .dark ? .white : .black) : .clear
   }
 }
 
-/// Enum to classify button styles
 enum ButtonStyleType {
   case primary
   case secondary

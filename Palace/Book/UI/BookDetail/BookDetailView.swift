@@ -15,6 +15,19 @@ struct BookDetailView: View {
       mainView
       Spacer()
     }
+    .overlay(
+      VStack {
+        if viewModel.state == .downloading {
+          BookDetailDownloadingView(
+            progress: viewModel.downloadProgress,
+            onCancel: { viewModel.handleAction(for: .cancel) }
+          )
+          .padding(.bottom, 16)
+          .transition(.move(edge: .bottom))
+        }
+      },
+      alignment: .bottom
+    )
   }
 
   @ViewBuilder private var mainView: some View {
@@ -208,3 +221,19 @@ struct BookDetailView: View {
   }
 }
 
+struct BookDetailDownloadingView: View {
+  let progress: Double
+  let onCancel: () -> Void
+
+  var body: some View {
+    VStack {
+      ProgressView(value: progress, total: 1.0)
+        .progressViewStyle(LinearProgressViewStyle())
+        .frame(maxWidth: .infinity)
+    }
+    .padding()
+    .background(Color.primary.opacity(0.9))
+    .cornerRadius(8)
+    .shadow(radius: 10)
+  }
+}
