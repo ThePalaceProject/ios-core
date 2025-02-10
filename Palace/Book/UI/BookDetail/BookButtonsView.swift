@@ -4,10 +4,11 @@ fileprivate typealias DisplayStrings = Strings.BookButton
 
 struct BookButtonsView: View {
   @ObservedObject var viewModel: BookDetailViewModel
+  var previewEnabled: Bool = true
 
   var body: some View {
     HStack(spacing: 10) {
-      ForEach(viewModel.buttonState.buttonTypes(book: viewModel.book), id: \.self) { buttonType in
+      ForEach(viewModel.buttonState.buttonTypes(book: viewModel.book, previewEnabled: previewEnabled), id: \.self) { buttonType in
         ActionButton(type: buttonType, viewModel: viewModel, isProcessing: viewModel.isProcessing(for: buttonType))
       }
     }

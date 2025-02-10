@@ -11,9 +11,8 @@ import SwiftUI
 //  func didSelectViewIssues(for book: TPPBook, sender: Any)
 //}
 
-@MainActor
-@objcMembers
-class BookDetailViewModel: NSObject, ObservableObject {
+//@MainActor
+class BookDetailViewModel: ObservableObject {
   // MARK: - Published State
 
   /// The book model.
@@ -27,6 +26,7 @@ class BookDetailViewModel: NSObject, ObservableObject {
   @Published var renderedSummary: NSAttributedString?
   @Published var showSampleToolbar = false
   @Published var downloadProgress: Double = 0.0
+  @Published var isPresentingHalfSheet = false
 
   @Published var coverImage: UIImage = UIImage()
   @Published var backgroundColor: Color = .gray
@@ -49,8 +49,6 @@ class BookDetailViewModel: NSObject, ObservableObject {
     self.book = book
     self.registry = TPPBookRegistry.shared
     self.state = registry.state(for: book.identifier)
-
-    super.init()
 
     bindRegistryState()
     loadCoverImage(book: book)
@@ -164,7 +162,6 @@ class BookDetailViewModel: NSObject, ObservableObject {
 
     switch button {
     case .reserve:
-      // "Holding" a book
       registry.setState(.holding, for: book.identifier)
 
     case .remove:
@@ -177,11 +174,16 @@ class BookDetailViewModel: NSObject, ObservableObject {
       }
 
     case .download, .get, .retry:
-      if buttonState == .canHold {
-        // Possibly a hold or "Reserve" flow
-        TPPUserNotifications.requestAuthorization()
+      if isPresentingHalfSheet {
+        if buttonState == .canHold {
+          // Possibly a hold or "Reserve" flow
+          TPPUserNotifications.requestAuthorization()
+        }
+        didSelectDownload(for: book)
+      } else {
+        self.processingButtons.remove(button)
+        isPresentingHalfSheet = true
       }
-      didSelectDownload(for: book)
 
     case .read, .listen:
       didSelectRead(for: book) {

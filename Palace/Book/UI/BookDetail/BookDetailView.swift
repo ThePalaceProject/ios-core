@@ -6,6 +6,7 @@ struct BookDetailView: View {
 
   @StateObject var viewModel: BookDetailViewModel
   @State private var isExpanded: Bool = false
+  @State private var showHalfSheet: Bool = false
 
   var body: some View {
     ZStack(alignment: .top) {
@@ -14,20 +15,27 @@ struct BookDetailView: View {
 
       mainView
       Spacer()
+
+      Button("Show half sheet") {
+        self.showHalfSheet.toggle()
+      }
+      .sheet(isPresented: $showHalfSheet) {
+        HalfSheetView(viewModel: viewModel)
+      }
     }
-    .overlay(
-      VStack {
-        if viewModel.state == .downloading {
-          BookDetailDownloadingView(
-            progress: viewModel.downloadProgress,
-            onCancel: { viewModel.handleAction(for: .cancel) }
-          )
-          .padding(.bottom, 16)
-          .transition(.move(edge: .bottom))
-        }
-      },
-      alignment: .bottom
-    )
+//    .overlay(
+//      VStack {
+//        if viewModel.state == .downloading {
+//          BookDetailDownloadingView(
+//            progress: viewModel.downloadProgress,
+//            onCancel: { viewModel.handleAction(for: .cancel) }
+//          )
+//          .padding(.bottom, 16)
+//          .transition(.move(edge: .bottom))
+//        }
+//      },
+//      alignment: .bottom
+//    )
   }
 
   @ViewBuilder private var mainView: some View {

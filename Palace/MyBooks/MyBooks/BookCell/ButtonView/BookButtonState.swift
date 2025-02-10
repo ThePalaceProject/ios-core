@@ -22,23 +22,23 @@ enum BookButtonState {
 }
 
 extension BookButtonState {
-  func buttonTypes(book: TPPBook) -> [BookButtonType] {
+  func buttonTypes(book: TPPBook, previewEnabled: Bool = true) -> [BookButtonType] {
     var buttons = [BookButtonType]()
   
     switch self {
     case .canBorrow:
       buttons.append(.get)
-      if book.hasSample {
+      if book.hasSample && previewEnabled {
         buttons.append(book.isAudiobook ? .audiobookSample : .sample)
       }
     case .canHold:
       buttons.append(.reserve)
-      if book.hasSample {
+      if book.hasSample && previewEnabled {
         buttons.append(book.isAudiobook ? .audiobookSample : .sample)
       }
     case .holding:
       buttons.append(.remove)
-      if book.hasSample {
+      if book.hasSample && previewEnabled {
         buttons.append(book.isAudiobook ? .audiobookSample : .sample)
       }
     case .holdingFrontOfQueue:

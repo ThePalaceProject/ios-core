@@ -1009,6 +1009,9 @@
 		E521E9CB2D51CB8B00C08ADF /* BookDetailViewModel+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E521E9CA2D51CB7000C08ADF /* BookDetailViewModel+Extensions.swift */; };
 		E521E9CC2D51CB8B00C08ADF /* BookDetailViewModel+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E521E9CA2D51CB7000C08ADF /* BookDetailViewModel+Extensions.swift */; };
 		E521E9CD2D51CB8B00C08ADF /* BookDetailViewModel+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E521E9CA2D51CB7000C08ADF /* BookDetailViewModel+Extensions.swift */; };
+		E521EADC2D56B5A000C08ADF /* HalfSheetview.swift in Sources */ = {isa = PBXBuildFile; fileRef = E521EADB2D56B59C00C08ADF /* HalfSheetview.swift */; };
+		E521EADD2D56B5A000C08ADF /* HalfSheetview.swift in Sources */ = {isa = PBXBuildFile; fileRef = E521EADB2D56B59C00C08ADF /* HalfSheetview.swift */; };
+		E521EADE2D56B5A000C08ADF /* HalfSheetview.swift in Sources */ = {isa = PBXBuildFile; fileRef = E521EADB2D56B59C00C08ADF /* HalfSheetview.swift */; };
 		E523124B285C3828007D1DB5 /* TPPBookRegistry+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E523124A285C3828007D1DB5 /* TPPBookRegistry+Extensions.swift */; };
 		E5239A1F2992107D00850941 /* BookCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E567C72B296743990079C28C /* BookCell.swift */; };
 		E523A453299FCA5300EF833B /* AlertModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E523A452299FCA5300EF833B /* AlertModel.swift */; };
@@ -1979,6 +1982,7 @@
 		E521E9BA2D4D706400C08ADF /* Date+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Date+Extensions.swift"; sourceTree = "<group>"; };
 		E521E9C62D513E3900C08ADF /* BookButtonsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookButtonsView.swift; sourceTree = "<group>"; };
 		E521E9CA2D51CB7000C08ADF /* BookDetailViewModel+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BookDetailViewModel+Extensions.swift"; sourceTree = "<group>"; };
+		E521EADB2D56B59C00C08ADF /* HalfSheetview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HalfSheetview.swift; sourceTree = "<group>"; };
 		E523116928504B85007D1DB5 /* TPPBook+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPBook+Extensions.swift"; sourceTree = "<group>"; };
 		E5231240285C291D007D1DB5 /* AudioBookmark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioBookmark.swift; sourceTree = "<group>"; };
 		E523124A285C3828007D1DB5 /* TPPBookRegistry+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPBookRegistry+Extensions.swift"; sourceTree = "<group>"; };
@@ -3504,6 +3508,7 @@
 		E562DD942D35AB83003A1A40 /* BookDetail */ = {
 			isa = PBXGroup;
 			children = (
+				E521EADB2D56B59C00C08ADF /* HalfSheetview.swift */,
 				E521E9CA2D51CB7000C08ADF /* BookDetailViewModel+Extensions.swift */,
 				E521E9C62D513E3900C08ADF /* BookButtonsView.swift */,
 				E562DDAB2D36E7B5003A1A40 /* BookDetailHostingViewController.swift */,
@@ -4593,6 +4598,7 @@
 				73EB0AD225821DF4006BC997 /* TPPBookCellDelegate.m in Sources */,
 				E733E4AE2AFD792100D5052A /* UserProfileDocument+Links.swift in Sources */,
 				E5EFDE79298C43DD00258CA3 /* BookButtonState.swift in Sources */,
+				E521EADE2D56B5A000C08ADF /* HalfSheetview.swift in Sources */,
 				73EB0AD325821DF4006BC997 /* TPPBookDetailNormalView.m in Sources */,
 				73EB0AD525821DF4006BC997 /* TPPCatalogUngroupedFeedViewController.m in Sources */,
 				73EB0AD625821DF4006BC997 /* TPPSettingsAdvancedViewController.swift in Sources */,
@@ -4869,6 +4875,7 @@
 				733875672423E540000FEB67 /* TPPCaching.swift in Sources */,
 				1107835E19816E3D0071AB1E /* UIView+TPPViewAdditions.m in Sources */,
 				E551B35A267D396A0026FC1B /* TPPLoadingViewController.swift in Sources */,
+				E521EADC2D56B5A000C08ADF /* HalfSheetview.swift in Sources */,
 				E7347D0B287F2A1600CCE65A /* UIImage.swift in Sources */,
 				E50D684726AB235400F1042B /* TPPReaderTOCCell.swift in Sources */,
 				2199020824FD35DC001BC727 /* JWKResponse.swift in Sources */,
@@ -5211,6 +5218,7 @@
 				D570B5B52BA20139003FE991 /* LCPPassphraseAuthenticationService.swift in Sources */,
 				E562DDA92D36D0AD003A1A40 /* TPPBookRegistryMock.swift in Sources */,
 				D570B5B62BA20139003FE991 /* DispatchQueue.swift in Sources */,
+				E521EADD2D56B5A000C08ADF /* HalfSheetview.swift in Sources */,
 				D570B5B72BA20139003FE991 /* TPPCatalogNavigationController.m in Sources */,
 				D570B5B82BA20139003FE991 /* TPPContentType.swift in Sources */,
 				D570B5B92BA20139003FE991 /* BundleExtension.swift in Sources */,
@@ -5951,13 +5959,8 @@
 				CODE_SIGN_ENTITLEMENTS = Palace/PalaceDebug.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 309;
-				DEVELOPMENT_TEAM = 88CBA74T8K;
-				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
-				CODE_SIGN_STYLE = Manual;
 				CURRENT_PROJECT_VERSION = 310;
-				DEVELOPMENT_TEAM = "";
-				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
+				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
