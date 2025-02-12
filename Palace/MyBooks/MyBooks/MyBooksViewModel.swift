@@ -60,26 +60,26 @@ class MyBooksViewModel: ObservableObject {
   }
 
   // MARK: - Public Methods
+  @MainActor
   func loadData() {
-    guard !isLoading else { return }
+    DispatchQueue.main.async { [weak self] in
+      guard let self else { return }
 
-    DispatchQueue.main.async {
-      self.isLoading = true
-    }
+      guard !isLoading else { return }
+      isLoading = true
 
-    DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-      guard let self = self else { return }
+      let registryBooks = bookRegistry.myBooks
+      let isConnected = Reachability.shared.isConnectedToNetwork()
 
-      let books = Reachability.shared.isConnectedToNetwork()
-      ? self.bookRegistry.myBooks
-      : self.bookRegistry.myBooks.filter { !$0.isExpired }
+      let books = isConnected
+      ? registryBooks
+      : registryBooks.filter { !$0.isExpired }
 
-      DispatchQueue.main.async {
-        self.books = books
-        self.showInstructionsLabel = books.isEmpty || self.bookRegistry.state == .unloaded
-        self.sortData()
-        self.isLoading = false
-      }
+      // Update published properties
+      self.books = books
+      self.showInstructionsLabel = books.isEmpty || bookRegistry.state == .unloaded
+      self.sortData()
+      self.isLoading = false
     }
   }
 
@@ -94,19 +94,26 @@ class MyBooksViewModel: ObservableObject {
     }
   }
 
-  func filterBooks(query: String) {
+  @MainActor
+  func filterBooks(query: String) async {
     if query.isEmpty {
       loadData()
     } else {
-      DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-        guard let self = self else { return }
-        let filteredBooks = self.books.filter {
-          $0.title.localizedCaseInsensitiveContains(query) || ($0.authors?.localizedCaseInsensitiveContains(query) ?? false)
-        }
-        DispatchQueue.main.async {
-          self.books = filteredBooks
+      let currentBooks = self.books
+
+      // Offload filtering to a background task.
+      let filteredBooks = await withCheckedContinuation { continuation in
+        DispatchQueue.global(qos: .userInitiated).async {
+          let result = currentBooks.filter {
+            $0.title.localizedCaseInsensitiveContains(query) ||
+            ($0.authors?.localizedCaseInsensitiveContains(query) ?? false)
+          }
+          continuation.resume(returning: result)
         }
       }
+
+      // Update the UI on the main actor.
+      self.books = filteredBooks
     }
   }
 

@@ -150,14 +150,36 @@
         [TPPAlertUtils presentFromViewControllerOrNilWithAlertController:alert viewController:nil animated:YES completion:nil];
         return;
       }
+
+      if (!encryptedUrl) {
+        NSError *urlError = [NSError errorWithDomain:@"com.Palace.pdf" code:1001 userInfo:@{NSLocalizedDescriptionKey: NSLocalizedString(@"Invalid encrypted URL", nil)}];
+        NSString *errorMessage = NSLocalizedString(@"Error extracting encrypted PDF file", nil);
+        [TPPErrorLogger logError:urlError
+                         summary:errorMessage
+                        metadata:@{ @"error": urlError }];
+        UIAlertController *alert = [TPPAlertUtils alertWithTitle:errorMessage error:urlError];
+        [TPPAlertUtils presentFromViewControllerOrNilWithAlertController:alert viewController:nil animated:YES completion:nil];
+        return;
+      }
+
       NSData *encryptedData = [[NSData alloc] initWithContentsOfURL:encryptedUrl options:NSDataReadingMappedAlways error:nil];
+      if (!encryptedData) {
+        NSError *dataError = [NSError errorWithDomain:@"com.Palace.pdf" code:1002 userInfo:@{NSLocalizedDescriptionKey: NSLocalizedString(@"Unable to load encrypted PDF data", nil)}];
+        NSString *errorMessage = NSLocalizedString(@"Error extracting encrypted PDF file", nil);
+        [TPPErrorLogger logError:dataError
+                         summary:errorMessage
+                        metadata:@{ @"error": dataError }];
+        UIAlertController *alert = [TPPAlertUtils alertWithTitle:errorMessage error:dataError];
+        [TPPAlertUtils presentFromViewControllerOrNilWithAlertController:alert viewController:nil animated:YES completion:nil];
+        return;
+      }
 
       TPPPDFDocumentMetadata *metadata = [[TPPPDFDocumentMetadata alloc] initWith:book];
 
       TPPPDFDocument *document = [[TPPPDFDocument alloc] initWithEncryptedData:encryptedData decryptor:^NSData * _Nonnull(NSData *data, NSUInteger start, NSUInteger end) {
         return [decryptor decryptDataWithData:data start:start end:end];
       }];
-      
+
       UIViewController *vc = [TPPPDFViewController createWithDocument:document metadata:metadata];
       [[TPPRootTabBarController sharedController] pushViewController:vc animated:YES];
     }];

@@ -854,7 +854,9 @@ extension MyBooksDownloadCenter: URLSessionTaskDelegate {
                          readiumBookmarks: nil,
                          genericBookmarks: nil)
 
-    NotificationCenter.default.post(name: .TPPMyBooksDownloadCenterDidChange, object: self)
+    DispatchQueue.main.async {
+      NotificationCenter.default.post(name: .TPPMyBooksDownloadCenterDidChange, object: self)
+    }
   }
 }
 

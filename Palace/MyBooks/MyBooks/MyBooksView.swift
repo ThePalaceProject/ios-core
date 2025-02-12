@@ -75,7 +75,11 @@ struct MyBooksView: View {
     HStack {
       TextField(DisplayStrings.searchBooks, text: $model.searchQuery)
         .searchBarStyle()
-        .onChange(of: model.searchQuery, perform: model.filterBooks)
+        .onChange(of: model.searchQuery) { query in
+          Task {
+            await model.filterBooks(query: query)
+          }
+        }
       Button(action: clearSearch, label: {
         Image(systemName: "xmark.circle.fill")
           .foregroundColor(.gray)
@@ -110,8 +114,10 @@ struct MyBooksView: View {
   }
 
   private func clearSearch() {
-    model.searchQuery = ""
-    model.filterBooks(query: "")
+    Task {
+      model.searchQuery = ""
+      await model.filterBooks(query: "")
+    }
   }
 
   private var loadingOverlay: some View {

@@ -103,7 +103,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
   func application(_ application: UIApplication, continue userActivity: NSUserActivity, restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void) -> Bool {
     if let url = userActivity.webpageURL {
-      return DynamicLinks.dynamicLinks().handleUniversalLink(url) { [weak self] dynamicLink, error in
+      return DynamicLinks.dynamicLinks().handleUniversalLink(url) { dynamicLink, error in
         if let error = error {
           Log.error(error.localizedDescription, "Dynamic Link error")
           return
