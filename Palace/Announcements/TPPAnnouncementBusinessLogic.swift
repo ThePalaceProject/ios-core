@@ -63,7 +63,7 @@ class TPPAnnouncementBusinessLogic {
     }
     
     do {
-      let codedData = NSKeyedArchiver.archivedData(withRootObject: presentedAnnouncements)
+      let codedData = try NSKeyedArchiver.archivedData(withRootObject: presentedAnnouncements, requiringSecureCoding: false)
       try codedData.write(to: filePathURL)
     } catch {
       TPPErrorLogger.logError(error,
