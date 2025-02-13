@@ -19,23 +19,10 @@ struct BookDetailView: View {
       Button("Show half sheet") {
         self.showHalfSheet.toggle()
       }
-      .sheet(isPresented: $showHalfSheet) {
-        HalfSheetView(viewModel: viewModel)
-      }
     }
-//    .overlay(
-//      VStack {
-//        if viewModel.state == .downloading {
-//          BookDetailDownloadingView(
-//            progress: viewModel.downloadProgress,
-//            onCancel: { viewModel.handleAction(for: .cancel) }
-//          )
-//          .padding(.bottom, 16)
-//          .transition(.move(edge: .bottom))
-//        }
-//      },
-//      alignment: .bottom
-//    )
+    .sheet(isPresented: $showHalfSheet) {
+      HalfSheetView(viewModel: viewModel)
+    }
   }
 
   @ViewBuilder private var mainView: some View {
@@ -59,8 +46,12 @@ struct BookDetailView: View {
 
         descriptionView
         informationView
+        relatedBooksSection
       }
       .padding(30)
+    }
+    .onAppear {
+      viewModel.fetchRelatedBooks()
     }
   }
 
@@ -100,6 +91,30 @@ struct BookDetailView: View {
         audiobookAvailable
           .padding(.top)
       }
+    }
+  }
+
+  @ViewBuilder private var relatedBooksSection: some View {
+    if !viewModel.relatedBooks.isEmpty {
+      VStack(alignment: .leading, spacing: 10) {
+        Text("OTHER BOOKS BY THIS AUTHOR")
+          .font(.headline)
+          .foregroundColor(.black)
+          .fontWeight(.bold)
+          .padding(.leading, 10)
+
+        Divider()
+
+        ScrollView(.horizontal, showsIndicators: false) {
+          HStack(spacing: 12) {
+            ForEach(viewModel.relatedBooks, id: \.identifier) { book in
+              BookThumbnailView(book: book)
+            }
+          }
+          .padding(.horizontal)
+        }
+      }
+      .padding(.top, 10)
     }
   }
 
@@ -243,5 +258,43 @@ struct BookDetailDownloadingView: View {
     .background(Color.primary.opacity(0.9))
     .cornerRadius(8)
     .shadow(radius: 10)
+  }
+}
+
+
+struct BookThumbnailView: View {
+  let book: TPPBook
+
+  @State private var image: UIImage? = nil
+
+  var body: some View {
+    VStack {
+      if let uiImage = image {
+        Image(uiImage: uiImage)
+          .resizable()
+          .scaledToFit()
+          .frame(width: 90, height: 160)
+      } else {
+        ProgressView()
+          .frame(width: 90, height: 160)
+          .onAppear {
+            loadImage()
+          }
+      }
+
+    }
+    .frame(width: 100)
+  }
+
+  private func loadImage() {
+    guard let url = book.imageThumbnailURL ?? book.imageURL else { return }
+
+    DispatchQueue.global(qos: .background).async {
+      if let data = try? Data(contentsOf: url), let uiImage = UIImage(data: data) {
+        DispatchQueue.main.async {
+          self.image = uiImage
+        }
+      }
+    }
   }
 }

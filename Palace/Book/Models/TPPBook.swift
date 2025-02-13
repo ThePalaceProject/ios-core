@@ -369,7 +369,7 @@ let TimeTrackingURLURLKey = "time-tracking-url"
     return date < Date()
   }
 
-  private func getExpirationDate() -> Date? {
+  @objc func getExpirationDate() -> Date? {
     var date: Date?
     
     defaultAcquisition?.availability.matchUnavailable(
@@ -385,6 +385,94 @@ let TimeTrackingURLURLKey = "time-tracking-url"
     )
 
     return date
+  }
+
+  struct ReservationDetails {
+    var holdPosition: Int = 0
+    var remainingTime: Int = 0
+    var timeUnit: String =  ""
+    var copiesAvailable: Int = 0
+  }
+
+  struct AvailabilityDetails {
+    var availableSince: String = "Unknown"
+    var availableUntil: String = "Unknown"
+  }
+
+  func getReservationDetails() -> ReservationDetails {
+    var untilDate: Date?
+    var reservationDetails = ReservationDetails()
+
+    defaultAcquisition?.availability.matchUnavailable(
+      nil,
+      limited: nil,
+      unlimited: nil,
+      reserved: { reserved in
+        if reserved.holdPosition > 0 {
+          reservationDetails.holdPosition = Int(reserved.holdPosition)
+        }
+        if let until = reserved.until, until.timeIntervalSinceNow > 0 {
+          untilDate = until
+        }
+
+        reservationDetails.copiesAvailable = Int(reserved.copiesTotal)
+
+      },
+      ready: { ready in
+        if let until = ready.until, until.timeIntervalSinceNow > 0 {
+          untilDate = until
+        }
+      }
+    )
+
+    // Convert untilDate into a readable format
+    if let untilDate = untilDate {
+      let now = Date()
+      let calendar = Calendar.current
+      let components = calendar.dateComponents([.day], from: now, to: untilDate)
+
+      if let days = components.day {
+        if days < 7 {
+          reservationDetails.remainingTime = days
+          reservationDetails.timeUnit = "day\(days == 1 ? "" : "s")"
+        } else if days < 30 {
+          reservationDetails.remainingTime = days / 7
+          reservationDetails.timeUnit = "week\(days == 1 ? "" : "s")"
+        } else {
+          reservationDetails.remainingTime = days / 30
+          reservationDetails.timeUnit = "month\(days == 1 ? "" : "s")"
+        }
+      }
+    }
+
+    return reservationDetails
+  }
+
+  func getAvailabilityDetails() -> AvailabilityDetails {
+    var details = AvailabilityDetails()
+    defaultAcquisition?.availability.matchUnavailable(nil, limited: { limited in
+      if let sinceDate = limited.since {
+        let (value, unit) = sinceDate.timeUntil()
+        details.availableSince = "\(value) \(unit)"
+      }
+
+      if let untilDate = limited.until, untilDate.timeIntervalSinceNow > 0 {
+        let (value, unit) = untilDate.timeUntil()
+        details.availableUntil = "\(value) \(unit)"
+      }
+    }, unlimited: { unlimited in
+      if let sinceDate = unlimited.since {
+        let (value, unit) = sinceDate.timeUntil()
+        details.availableSince = "\(value) \(unit)"
+      }
+
+      if let untilDate = unlimited.until, untilDate.timeIntervalSinceNow > 0 {
+        let (value, unit) = untilDate.timeUntil()
+        details.availableUntil = "\(value) \(unit)"
+      }
+    }, reserved: nil)
+
+    return details
   }
 
   @objc var defaultAcquisitionIfBorrow: TPPOPDSAcquisition? {

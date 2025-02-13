@@ -31,6 +31,7 @@ class BookDetailViewModel: ObservableObject {
   @Published var coverImage: UIImage = UIImage()
   @Published var backgroundColor: Color = .gray
   @Published var buttonState: BookButtonState = .unsupported
+  @Published var relatedBooks: [TPPBook] = []
 
   // Tracks whether a given button action is processing, so you can disable UI.
   @Published private var processingButtons: Set<BookButtonType> = []
@@ -125,6 +126,27 @@ class BookDetailViewModel: ObservableObject {
     }
   }
 
+  func fetchRelatedBooks() {
+    guard let url = book.relatedWorksURL else { return }
+
+    TPPOPDSFeed.withURL(url, shouldResetCache: true, useTokenIfAvailable: true) { [weak self] feed, _ in
+      guard let self = self, let groupedFeed = TPPCatalogGroupedFeed(opdsFeed: feed) else {
+        return
+      }
+
+      let books: [TPPBook] = groupedFeed.lanes.compactMap { lane in
+        if let catalogLane = lane as? TPPCatalogLane {
+          return catalogLane.books as? [TPPBook]
+        } else {
+          return nil
+        }
+      }.flatMap { $0 }
+
+      DispatchQueue.main.async {
+        self.relatedBooks = books.filter { $0.identifier != self.book.identifier }
+      }
+    }
+  }
   // MARK: - Button State Mapping
 
   /// Maps registry `state` to `buttonState` for simpler SwiftUI usage.
@@ -163,10 +185,11 @@ class BookDetailViewModel: ObservableObject {
     switch button {
     case .reserve:
       registry.setState(.holding, for: book.identifier)
+      self.processingButtons.remove(button)
 
     case .remove:
-      // "Remove" from shelf or hold queue
       registry.setState(.unregistered, for: book.identifier)
+      self.processingButtons.remove(button)
 
     case .return:
       didSelectReturn(for: book) {
@@ -176,7 +199,6 @@ class BookDetailViewModel: ObservableObject {
     case .download, .get, .retry:
       if isPresentingHalfSheet {
         if buttonState == .canHold {
-          // Possibly a hold or "Reserve" flow
           TPPUserNotifications.requestAuthorization()
         }
         didSelectDownload(for: book)

@@ -10,40 +10,17 @@ struct HalfSheetView: View {
 
       Divider()
 
-      HStack(alignment: .top, spacing: 16) {
-        Image(uiImage: viewModel.coverImage)
-          .resizable()
-          .scaledToFit()
-          .frame(width: 60, height: 90)
-          .cornerRadius(4)
-
-        VStack(alignment: .leading, spacing: 4) {
-          Text(viewModel.book.title)
-            .font(.body)
-            .foregroundColor(.primary)
-
-          if let authors = viewModel.book.authors, !authors.isEmpty {
-            Text(authors)
-              .font(.subheadline)
-              .foregroundColor(.secondary)
-          }
-        }
-        Spacer()
-      }
+      bookInfoView
 
       Divider()
 
-      // Example: "Borrowing for 21 days" or "Borrowed until March 12, 2024"
-      if viewModel.state == .downloading || viewModel.state == .downloadNeeded {
-        borrowingInfoView
-        // Progress bar if downloading
-        if viewModel.state == .downloading {
-          ProgressView(value: viewModel.downloadProgress, total: 1.0)
-            .progressViewStyle(LinearProgressViewStyle())
-            .frame(height: 6)
-        }
-      } else if viewModel.state == .downloadSuccessful || viewModel.state == .used {
-        borrowedInfoView
+      statusInfoView
+
+      if viewModel.state == .downloading {
+        ProgressView(value: viewModel.downloadProgress, total: 1.0)
+          .progressViewStyle(LinearProgressViewStyle())
+          .frame(height: 6)
+          .transition(.opacity)
       }
 
       BookButtonsView(viewModel: viewModel, previewEnabled: false)
@@ -51,28 +28,90 @@ struct HalfSheetView: View {
     .padding()
     .presentationDetents([.medium])
     .presentationDragIndicator(.visible)
+    .onReceive(viewModel.$state) { _ in
+      withAnimation {
+      }
+    }
   }
+}
 
+// MARK: - Subviews
+private extension HalfSheetView {
   @ViewBuilder
-  private var borrowingInfoView: some View {
-    HStack {
-      Text("Borrowing for")
-        .foregroundColor(.secondary)
+  var bookInfoView: some View {
+    HStack(alignment: .top, spacing: 16) {
+      Image(uiImage: viewModel.coverImage)
+        .resizable()
+        .scaledToFit()
+        .frame(width: 60, height: 90)
+        .cornerRadius(4)
+
+      VStack(alignment: .leading, spacing: 4) {
+        Text(viewModel.book.title)
+          .font(.body)
+          .foregroundColor(.primary)
+
+        if let authors = viewModel.book.authors, !authors.isEmpty {
+          Text(authors)
+            .font(.subheadline)
+            .foregroundColor(.secondary)
+        }
+      }
       Spacer()
-      Text("21 days") // you could store in viewModel or parse from availability
-        .foregroundColor(.green)
     }
   }
 
   @ViewBuilder
-  private var borrowedInfoView: some View {
-    HStack {
-      Text("Borrowed until")
-        .foregroundColor(.secondary)
-      Spacer()
-      // Example dueDate logic
-      Text("March 12, 2024")
-        .foregroundColor(.green)
+  var statusInfoView: some View {
+    switch viewModel.state {
+    case .downloadSuccessful, .used:
+      borrowedInfoView
+    case .downloading, .downloadNeeded:
+      borrowingInfoView
+    default:
+      if viewModel.buttonState == .canHold {
+        holdingInfoView
+      }
+    }
+  }
+
+  @ViewBuilder
+  var holdingInfoView: some View {
+    let details = viewModel.book.getReservationDetails()
+    VStack {
+      Text("Approximately \(details.remainingTime) \(details.timeUnit) wait.")
+        .font(.subheadline)
+        .fontWeight(.semibold)
+      Text("You are \(details.holdPosition.ordinal()) in line. \(details.copiesAvailable) \(details.copiesAvailable == 1 ? "copy" : "copies") in use.")
+        .font(.footnote)
+    }
+  }
+
+  @ViewBuilder
+  var borrowingInfoView: some View {
+    if let timeUntil = viewModel.book.getExpirationDate()?.timeUntil() {
+      HStack {
+        Text("Borrowing for")
+          .font(.subheadline)
+          .foregroundColor(.secondary)
+        Spacer()
+        Text("\(timeUntil.value) \(timeUntil.unit)")
+          .foregroundColor(.palaceSuccessDark)
+      }
+    }
+  }
+
+  @ViewBuilder
+  var borrowedInfoView: some View {
+    if let expirationDate = viewModel.book.getExpirationDate() {
+      HStack {
+        Text("Borrowed until")
+          .font(.subheadline)
+          .foregroundColor(.secondary)
+        Spacer()
+        Text(expirationDate.monthDayYearString)
+          .foregroundColor(.palaceSuccessDark)
+      }
     }
   }
 }
