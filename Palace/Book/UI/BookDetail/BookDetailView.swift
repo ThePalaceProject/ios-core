@@ -320,6 +320,7 @@ struct BookThumbnailView: View {
       } else {
         ProgressView()
           .frame(width: 90, height: 160)
+          .tint(.primary)
           .onAppear {
             loadImage()
           }
