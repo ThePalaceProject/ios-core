@@ -1,17 +1,7 @@
 
 import Combine
 import SwiftUI
-//
-//protocol BookDetailViewDelegate: AnyObject {
-//  func didSelectCancelDownloadFailed(for detailView: TPPBookDetailView)
-//  func didSelectCancelDownloading(for detailView: TPPBookDetailView)
-//  func didSelectCloseButton(for detailView: TPPBookDetailView)
-//  func didSelectMoreBooks(for lane: TPPCatalogLane)
-//  func didSelectReportProblem(for book: TPPBook, sender: Any)
-//  func didSelectViewIssues(for book: TPPBook, sender: Any)
-//}
 
-//@MainActor
 class BookDetailViewModel: ObservableObject {
   // MARK: - Published State
 
@@ -23,7 +13,6 @@ class BookDetailViewModel: ObservableObject {
 
   /// Misc published fields for UI updates.
   @Published var bookmarks: [TPPReadiumBookmark] = []
-  @Published var renderedSummary: NSAttributedString?
   @Published var showSampleToolbar = false
   @Published var downloadProgress: Double = 0.0
   @Published var isPresentingHalfSheet = false
@@ -32,6 +21,8 @@ class BookDetailViewModel: ObservableObject {
   @Published var backgroundColor: Color = .gray
   @Published var buttonState: BookButtonState = .unsupported
   @Published var relatedBooks: [TPPBook] = []
+  @Published var isLoadingRelatedBooks = false
+  @Published var isLoadingDescription = false
 
   // Tracks whether a given button action is processing, so you can disable UI.
   @Published private var processingButtons: Set<BookButtonType> = []
@@ -86,6 +77,14 @@ class BookDetailViewModel: ObservableObject {
     )
   }
 
+  func selectRelatedBook(_ newBook: TPPBook) {
+    guard newBook.identifier != book.identifier else { return }
+    book = newBook
+    loadCoverImage(book: book)
+    determineButtonState()
+    fetchRelatedBooks()
+  }
+
   // MARK: - Notifications
 
   @objc func handleBookRegistryChange(_ notification: Notification) {
@@ -129,8 +128,10 @@ class BookDetailViewModel: ObservableObject {
   func fetchRelatedBooks() {
     guard let url = book.relatedWorksURL else { return }
 
-    TPPOPDSFeed.withURL(url, shouldResetCache: true, useTokenIfAvailable: true) { [weak self] feed, _ in
-      guard let self = self, let groupedFeed = TPPCatalogGroupedFeed(opdsFeed: feed) else {
+    isLoadingRelatedBooks = true // Start loading
+    TPPOPDSFeed.withURL(url, shouldResetCache: false, useTokenIfAvailable: TPPUserAccount.sharedAccount().hasAdobeToken()) { [weak self] feed, _ in
+      guard let self = self, feed?.type == .acquisitionGrouped, let groupedFeed = TPPCatalogGroupedFeed(opdsFeed: feed) else {
+        self?.isLoadingRelatedBooks = false
         return
       }
 
@@ -144,9 +145,11 @@ class BookDetailViewModel: ObservableObject {
 
       DispatchQueue.main.async {
         self.relatedBooks = books.filter { $0.identifier != self.book.identifier }
+        self.isLoadingRelatedBooks = false // Stop loading
       }
     }
   }
+  
   // MARK: - Button State Mapping
 
   /// Maps registry `state` to `buttonState` for simpler SwiftUI usage.

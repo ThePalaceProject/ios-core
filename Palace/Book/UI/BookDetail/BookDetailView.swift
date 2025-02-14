@@ -3,25 +3,40 @@ import UIKit
 
 struct BookDetailView: View {
   typealias DisplayStrings = Strings.BookDetailView
+  @State private var selectedBook: TPPBook?
+  @State private var showBookDetail = false
+  @State private var descriptionText = ""
+
 
   @StateObject var viewModel: BookDetailViewModel
   @State private var isExpanded: Bool = false
   @State private var showHalfSheet: Bool = false
 
   var body: some View {
-    ZStack(alignment: .top) {
-      backgroundView
-        .edgesIgnoringSafeArea(.all)
+    ScrollView {
+      ZStack(alignment: .top) {
+        backgroundView
+          .edgesIgnoringSafeArea(.all)
 
-      mainView
-      Spacer()
+        mainView
 
-      Button("Show half sheet") {
-        self.showHalfSheet.toggle()
+        Button("Show half sheet") {
+          self.showHalfSheet.toggle()
+        }
+      }
+      .sheet(isPresented: $showHalfSheet) {
+        HalfSheetView(viewModel: viewModel)
       }
     }
-    .sheet(isPresented: $showHalfSheet) {
-      HalfSheetView(viewModel: viewModel)
+    .onAppear {
+      self.descriptionText =  viewModel.book.summary ?? ""
+    }
+    .onChange(of: viewModel.book) { newValue in
+      self.descriptionText =  newValue.summary ?? ""
+    }
+    .background(Color.white)
+    .fullScreenCover(item: $selectedBook) { book in
+      BookDetailView(viewModel: BookDetailViewModel(book: book))
     }
   }
 
@@ -47,6 +62,7 @@ struct BookDetailView: View {
         descriptionView
         informationView
         relatedBooksSection
+        Spacer()
       }
       .padding(30)
     }
@@ -95,27 +111,32 @@ struct BookDetailView: View {
   }
 
   @ViewBuilder private var relatedBooksSection: some View {
-    if !viewModel.relatedBooks.isEmpty {
-      VStack(alignment: .leading, spacing: 10) {
-        Text("OTHER BOOKS BY THIS AUTHOR")
-          .font(.headline)
-          .foregroundColor(.black)
-          .fontWeight(.bold)
-          .padding(.leading, 10)
+    VStack(alignment: .leading, spacing: 10) {
+      Text("OTHER BOOKS BY THIS AUTHOR")
+        .font(.headline)
+        .foregroundColor(.black)
 
-        Divider()
+      Divider()
 
+      if viewModel.isLoadingRelatedBooks {
+        ProgressView("Loading...")
+          .frame(height: 100)
+          .frame(maxWidth: .infinity)
+          .padding()
+      } else if !viewModel.relatedBooks.isEmpty {
         ScrollView(.horizontal, showsIndicators: false) {
           HStack(spacing: 12) {
             ForEach(viewModel.relatedBooks, id: \.identifier) { book in
-              BookThumbnailView(book: book)
+              Button(action: { viewModel.selectRelatedBook(book) }) {
+                BookThumbnailView(book: book)
+              }
             }
           }
           .padding(.horizontal)
         }
       }
-      .padding(.top, 10)
     }
+    .padding(.top, 10)
   }
 
   @ViewBuilder private var audiobookAvailable: some View {
@@ -163,7 +184,7 @@ struct BookDetailView: View {
         startPoint: .bottom,
         endPoint: .top
       )
-      .frame(height: 340)
+      .frame(height: 280)
     }
     .edgesIgnoringSafeArea(.top)
   }
@@ -175,21 +196,20 @@ struct BookDetailView: View {
           .font(.headline)
           .foregroundColor(.black)
         Divider()
-          AttributedTextView(htmlContent: htmlSummary)
+        Text(htmlSummary)
+        AttributedTextView(htmlContent: $descriptionText)
             .foregroundColor(.black)
             .font(.body)
             .lineLimit(nil)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: .infinity)
 
         Button(isExpanded ? DisplayStrings.less.capitalized : DisplayStrings.more.capitalized) {
-          isExpanded.toggle()
+          isExpanded = !isExpanded
         }
         .foregroundColor(.black)
         .bottomrRightJustified()
       }
-      .frame(maxWidth: .infinity, maxHeight: isExpanded ? .infinity : 150)
-    } else {
-      ProgressView()
+      .frame(maxWidth: .infinity, maxHeight: isExpanded ? .infinity : 100)
     }
   }
 
