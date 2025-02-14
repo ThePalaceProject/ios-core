@@ -415,3 +415,5 @@ extension TPPBook: Comparable {
     lhs.identifier < rhs.identifier
   }
 }
+
+extension TPPBook: @unchecked Sendable {}

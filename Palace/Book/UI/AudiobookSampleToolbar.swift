@@ -124,11 +124,12 @@ struct AudiobookSampleToolbar: View {
   }
 
   @ViewBuilder private var loadingView: some View {
+    withAnimation {
       ProgressView()
         .progressViewStyle(CircularProgressViewStyle())
         .scaleEffect(1.25)
         .transition(.opacity)
-        .animation(.easeInOut)
+    }
   }
 }
 

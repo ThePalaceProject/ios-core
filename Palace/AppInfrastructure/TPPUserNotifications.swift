@@ -4,7 +4,6 @@ let HoldNotificationCategoryIdentifier = "NYPLHoldToReserveNotificationCategory"
 let CheckOutActionIdentifier = "NYPLCheckOutNotificationAction"
 let DefaultActionIdentifier = "UNNotificationDefaultActionIdentifier"
 
-@available (iOS 10.0, *)
 @objcMembers class TPPUserNotifications: NSObject
 {
   typealias DisplayStrings = Strings.UserNotifications

@@ -52,7 +52,12 @@ protocol AnnotationsManager {
     }
 
     let bookmarks = await withCheckedContinuation { continuation in
+      var didResume = false
+
       getServerBookmarks(forBook: book, atURL: url, motivation: .readingProgress) { bookmarks in
+        guard !didResume else { return }
+        didResume = true
+
         continuation.resume(returning: bookmarks)
       }
     }
@@ -229,7 +234,7 @@ protocol AnnotationsManager {
       Log.error(#file, "No Annotation ID saved: No data received from server.")
       return nil
     }
-    guard let json = try? JSONSerialization.jsonObject(with: data, options: []) as! [String:Any] else {
+    guard let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String:Any] else {
       Log.error(#file, "No Annotation ID saved: JSON could not be created from data.")
       return nil
     }
@@ -246,7 +251,7 @@ protocol AnnotationsManager {
       Log.error(#file, "No Annotation ID saved: No data received from server.")
       return nil
     }
-    guard let json = try? JSONSerialization.jsonObject(with: data, options: []) as! [String:Any] else {
+    guard let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String:Any] else {
       Log.error(#file, "No Annotation ID saved: JSON could not be created from data.")
       return nil
     }
