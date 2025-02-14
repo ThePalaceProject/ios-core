@@ -2,6 +2,8 @@ import SwiftUI
 
 struct HalfSheetView: View {
   @ObservedObject var viewModel: BookDetailViewModel
+  var backgroundColor: Color
+  var coverImage: UIImage
 
   var body: some View {
     VStack(spacing: 20) {
@@ -40,7 +42,7 @@ private extension HalfSheetView {
   @ViewBuilder
   var bookInfoView: some View {
     HStack(alignment: .top, spacing: 16) {
-      Image(uiImage: viewModel.coverImage)
+      Image(uiImage: coverImage)
         .resizable()
         .scaledToFit()
         .frame(width: 60, height: 90)

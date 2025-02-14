@@ -52,7 +52,7 @@ struct AttributedTextView: UIViewRepresentable {
                 </html>
                 """
 
-      guard let data = htmlTemplate.data(using: .utf8) else {
+      guard let data = htmlTemplate.stringByDecodingHTMLEntities.data(using: .utf8) else {
         textView.attributedText = nil
         return
       }

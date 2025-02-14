@@ -17,17 +17,13 @@ class BookDetailViewModel: ObservableObject {
   @Published var downloadProgress: Double = 0.0
   @Published var isPresentingHalfSheet = false
 
-  @Published var coverImage: UIImage = UIImage()
-  @Published var backgroundColor: Color = .gray
   @Published var buttonState: BookButtonState = .unsupported
   @Published var relatedBooks: [TPPBook] = []
   @Published var isLoadingRelatedBooks = false
   @Published var isLoadingDescription = false
 
-  // Tracks whether a given button action is processing, so you can disable UI.
   @Published private var processingButtons: Set<BookButtonType> = []
 
-  // Track sample usage
   var isShowingSample = false
   var isProcessingSample = false
 
@@ -43,7 +39,6 @@ class BookDetailViewModel: ObservableObject {
     self.state = registry.state(for: book.identifier)
 
     bindRegistryState()
-    loadCoverImage(book: book)
     determineButtonState()
     setupObservers()
     self.downloadProgress = downloadCenter.downloadProgress(for: book.identifier)
@@ -80,7 +75,7 @@ class BookDetailViewModel: ObservableObject {
   func selectRelatedBook(_ newBook: TPPBook) {
     guard newBook.identifier != book.identifier else { return }
     book = newBook
-    loadCoverImage(book: book)
+//    loadCoverImage(book: book)
     determineButtonState()
     fetchRelatedBooks()
   }
@@ -112,19 +107,6 @@ class BookDetailViewModel: ObservableObject {
     }
   }
 
-  // MARK: - Cover Image
-  private func loadCoverImage(book: TPPBook) {
-    registry.coverImage(for: book) { [weak self] uiImage in
-      guard let self = self else { return }
-
-      Task { @MainActor [weak self] in
-        guard let self = self, let uiImage = uiImage else { return }
-        self.coverImage = uiImage
-        self.backgroundColor = Color(uiImage.mainColor() ?? .gray)
-      }
-    }
-  }
-
   func fetchRelatedBooks() {
     guard let url = book.relatedWorksURL else { return }
 
@@ -145,7 +127,7 @@ class BookDetailViewModel: ObservableObject {
 
       DispatchQueue.main.async {
         self.relatedBooks = books.filter { $0.identifier != self.book.identifier }
-        self.isLoadingRelatedBooks = false // Stop loading
+        self.isLoadingRelatedBooks = false
       }
     }
   }
@@ -298,10 +280,9 @@ class BookDetailViewModel: ObservableObject {
       return
     }
 
-    // If LCP / Overdrive logic is needed, do it here...
     do {
       let data = try Data(contentsOf: url)
-      guard var json = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] else {
+      guard let json = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] else {
         presentUnsupportedItemError()
         completion?()
         return

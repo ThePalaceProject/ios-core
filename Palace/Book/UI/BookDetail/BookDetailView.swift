@@ -11,6 +11,8 @@ struct BookDetailView: View {
   @StateObject var viewModel: BookDetailViewModel
   @State private var isExpanded: Bool = false
   @State private var showHalfSheet: Bool = false
+  @State private var coverImage: UIImage = UIImage()
+  @State private var backgroundColor: Color = .gray
 
   var body: some View {
     ScrollView {
@@ -25,13 +27,15 @@ struct BookDetailView: View {
         }
       }
       .sheet(isPresented: $showHalfSheet) {
-        HalfSheetView(viewModel: viewModel)
+        HalfSheetView(viewModel: viewModel, backgroundColor: backgroundColor, coverImage: self.$coverImage.wrappedValue)
       }
     }
     .onAppear {
+      loadCoverImage()
       self.descriptionText =  viewModel.book.summary ?? ""
     }
     .onChange(of: viewModel.book) { newValue in
+      loadCoverImage()
       self.descriptionText =  newValue.summary ?? ""
     }
     .background(Color.white)
@@ -77,7 +81,7 @@ struct BookDetailView: View {
 
   private var imageView: some View {
     ZStack(alignment: .bottomTrailing) {
-      Image(uiImage: viewModel.coverImage)
+      Image(uiImage: coverImage)
         .resizable()
         .scaledToFit()
         .frame(height: 280)
@@ -110,20 +114,39 @@ struct BookDetailView: View {
     }
   }
 
+  private func loadCoverImage() {
+    viewModel.registry.coverImage(for: viewModel.book) { uiImage in
+        guard let uiImage = uiImage else { return }
+        self.coverImage = uiImage
+        self.backgroundColor = Color(uiImage.mainColor() ?? .gray)
+    }
+  }
+
   @ViewBuilder private var relatedBooksSection: some View {
     VStack(alignment: .leading, spacing: 10) {
-      Text("OTHER BOOKS BY THIS AUTHOR")
-        .font(.headline)
-        .foregroundColor(.black)
-
-      Divider()
-
       if viewModel.isLoadingRelatedBooks {
-        ProgressView("Loading...")
+        Text("OTHER BOOKS BY THIS AUTHOR")
+          .font(.headline)
+          .foregroundColor(.black)
+
+        Divider()
+
+        ProgressView()
+          .tint(.black)
           .frame(height: 100)
           .frame(maxWidth: .infinity)
           .padding()
+          .foregroundColor(.black)
+          .horizontallyCentered()
+
       } else if !viewModel.relatedBooks.isEmpty {
+        
+        Text("OTHER BOOKS BY THIS AUTHOR")
+          .font(.headline)
+          .foregroundColor(.black)
+
+        Divider()
+
         ScrollView(.horizontal, showsIndicators: false) {
           HStack(spacing: 12) {
             ForEach(viewModel.relatedBooks, id: \.identifier) { book in
@@ -178,8 +201,8 @@ struct BookDetailView: View {
         .edgesIgnoringSafeArea(.all)
       LinearGradient(
         gradient: Gradient(colors: [
-          viewModel.backgroundColor.opacity(1.0),
-          viewModel.backgroundColor.opacity(0.5)
+          backgroundColor.opacity(1.0),
+          backgroundColor.opacity(0.5)
         ]),
         startPoint: .bottom,
         endPoint: .top
