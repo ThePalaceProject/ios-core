@@ -7,12 +7,15 @@ struct BookDetailView: View {
   @State private var showBookDetail = false
   @State private var descriptionText = ""
 
-
-  @StateObject var viewModel: BookDetailViewModel
+  @ObservedObject var viewModel: BookDetailViewModel
   @State private var isExpanded: Bool = false
-  @State private var showHalfSheet: Bool = false
   @State private var coverImage: UIImage = UIImage()
   @State private var backgroundColor: Color = .gray
+  @State private var showHalfSheet = false
+
+  init(book: TPPBook) {
+    self.viewModel = BookDetailViewModel(book: book)
+  }
 
   var body: some View {
     ScrollView {
@@ -21,14 +24,10 @@ struct BookDetailView: View {
           .edgesIgnoringSafeArea(.all)
 
         mainView
-
-        Button("Show half sheet") {
-          self.showHalfSheet.toggle()
-        }
       }
-      .sheet(isPresented: $showHalfSheet) {
-        HalfSheetView(viewModel: viewModel, backgroundColor: backgroundColor, coverImage: self.$coverImage.wrappedValue)
-      }
+    }
+    .onDisappear {
+      showHalfSheet = false
     }
     .onAppear {
       loadCoverImage()
@@ -40,7 +39,10 @@ struct BookDetailView: View {
     }
     .background(Color.white)
     .fullScreenCover(item: $selectedBook) { book in
-      BookDetailView(viewModel: BookDetailViewModel(book: book))
+      BookDetailView(book: book)
+    }
+    .sheet(isPresented: $showHalfSheet) {
+      HalfSheetView(viewModel: viewModel, backgroundColor: backgroundColor, coverImage: self.$coverImage.wrappedValue)
     }
   }
 
@@ -105,7 +107,9 @@ struct BookDetailView: View {
           .foregroundColor(.secondary)
       }
 
-      BookButtonsView(viewModel: BookDetailViewModel(book: viewModel.book))
+      BookButtonsView(viewModel: BookDetailViewModel(book: viewModel.book)) { type in
+          showHalfSheet.toggle()
+      }
 
       if !viewModel.book.isAudiobook && viewModel.book.hasAudiobookSample {
         audiobookAvailable
@@ -213,26 +217,33 @@ struct BookDetailView: View {
   }
 
   @ViewBuilder private var descriptionView: some View {
-    if let htmlSummary = viewModel.book.summary {
+    if let _ = viewModel.book.summary {
       VStack(alignment: .leading, spacing: 5) {
         Text(DisplayStrings.description)
           .font(.headline)
           .foregroundColor(.black)
         Divider()
-        Text(htmlSummary)
-        AttributedTextView(htmlContent: $descriptionText)
+
+        VStack {
+          AttributedTextView(htmlContent: $descriptionText)
             .foregroundColor(.black)
             .font(.body)
             .lineLimit(nil)
             .frame(maxWidth: .infinity)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: isExpanded ? 200 : 50)
+        .clipped()
 
         Button(isExpanded ? DisplayStrings.less.capitalized : DisplayStrings.more.capitalized) {
-          isExpanded = !isExpanded
+          withAnimation {
+            isExpanded.toggle()
+          }
         }
-        .foregroundColor(.black)
         .bottomrRightJustified()
+        .foregroundColor(.black)
+        .padding(.top, 5)
       }
-      .frame(maxWidth: .infinity, maxHeight: isExpanded ? .infinity : 100)
     }
   }
 

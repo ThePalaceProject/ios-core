@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import Combine
 
 #if FEATURE_OVERDRIVE
 import OverdriveProcessor
@@ -31,6 +32,7 @@ import OverdriveProcessor
   private var taskIdentifierToBook: [Int: TPPBook] = [:]
   private var taskIdentifierToRedirectAttempts: [Int: Int] = [:]
   private let downloadQueue = DispatchQueue(label: "com.palace.downloadQueue", qos: .background)
+  let downloadProgressPublisher = PassthroughSubject<(String, Double), Never>()
 
   init(
     userAccount: TPPUserAccount = TPPUserAccount.sharedAccount(),
@@ -56,7 +58,7 @@ import OverdriveProcessor
     let configuration = URLSessionConfiguration.background(withIdentifier: backgroundIdentifier)
     self.session = URLSession(configuration: configuration, delegate: self, delegateQueue: .main)
   }
-  
+
   func startBorrow(for book: TPPBook, attemptDownload shouldAttemptDownload: Bool, borrowCompletion: (() -> Void)? = nil) {
     bookRegistry.setProcessing(true, for: book.identifier)
   
@@ -737,23 +739,21 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
     bookIdentifierToDownloadInfo[bookIdentifier]
   }
 
-  private func broadcastUpdate() {
-    guard !broadcastScheduled else { return }
-    
-    broadcastScheduled = true
-    
+  func broadcastUpdate() {
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
       self.broadcastUpdateNow()
     }
   }
 
   private func broadcastUpdateNow() {
-    broadcastScheduled = false
-    
     NotificationCenter.default.post(
       name: Notification.Name.TPPMyBooksDownloadCenterDidChange,
       object: self
     )
+
+    for (bookID, progress) in bookIdentifierToDownloadProgress {
+      downloadProgressPublisher.send((bookID, progress.fractionCompleted))
+    }
   }
 }
 

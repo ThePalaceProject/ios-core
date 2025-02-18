@@ -6,7 +6,7 @@ struct HalfSheetView: View {
   var coverImage: UIImage
 
   var body: some View {
-    VStack(spacing: 20) {
+    VStack(alignment: .leading, spacing: 20) {
       Text(AccountsManager.shared.currentAccount?.name ?? "")
         .font(.headline)
 
@@ -18,7 +18,7 @@ struct HalfSheetView: View {
 
       statusInfoView
 
-      if viewModel.state == .downloading {
+      if viewModel.state == .downloading && viewModel.buttonState != .downloadSuccessful {
         ProgressView(value: viewModel.downloadProgress, total: 1.0)
           .progressViewStyle(LinearProgressViewStyle())
           .frame(height: 6)
@@ -26,6 +26,7 @@ struct HalfSheetView: View {
       }
 
       BookButtonsView(viewModel: viewModel, previewEnabled: false)
+        .horizontallyCentered()
     }
     .padding()
     .presentationDetents([.medium])
@@ -73,6 +74,8 @@ private extension HalfSheetView {
     default:
       if viewModel.buttonState == .canHold {
         holdingInfoView
+      } else {
+        borrowedInfoView
       }
     }
   }
@@ -105,13 +108,13 @@ private extension HalfSheetView {
 
   @ViewBuilder
   var borrowedInfoView: some View {
-    if let expirationDate = viewModel.book.getExpirationDate() {
+    if let availableUntil = viewModel.book.getAvailabilityDetails().availableUntil {
       HStack {
         Text("Borrowed until")
           .font(.subheadline)
           .foregroundColor(.secondary)
         Spacer()
-        Text(expirationDate.monthDayYearString)
+        Text(availableUntil)
           .foregroundColor(.palaceSuccessDark)
       }
     }

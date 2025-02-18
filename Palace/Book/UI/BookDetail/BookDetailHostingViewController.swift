@@ -1,10 +1,10 @@
 import SwiftUI
 
 @objcMembers class BookDetailHostingController: UIViewController {
-  private let viewModel: BookDetailViewModel
+  private let book: TPPBook
 
   init(book: TPPBook) {
-    self.viewModel = BookDetailViewModel(book: book)
+    self.book = book
     super.init(nibName: nil, bundle: nil)
   }
 
@@ -15,7 +15,7 @@ import SwiftUI
   override func viewDidLoad() {
     super.viewDidLoad()
 
-    let bookDetailView = BookDetailView(viewModel: self.viewModel)
+    let bookDetailView = BookDetailView(book: self.book)
     let hostingController = UIHostingController(rootView: bookDetailView)
     addChild(hostingController)
     view.addSubview(hostingController.view)

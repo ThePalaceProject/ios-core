@@ -5,11 +5,12 @@ fileprivate typealias DisplayStrings = Strings.BookButton
 struct BookButtonsView: View {
   @ObservedObject var viewModel: BookDetailViewModel
   var previewEnabled: Bool = true
+  var onButtonTapped: ((BookButtonType) -> Void)?
 
   var body: some View {
     HStack(spacing: 10) {
       ForEach(viewModel.buttonState.buttonTypes(book: viewModel.book, previewEnabled: previewEnabled), id: \.self) { buttonType in
-        ActionButton(type: buttonType, viewModel: viewModel, isProcessing: viewModel.isProcessing(for: buttonType))
+        ActionButton(type: buttonType, viewModel: viewModel, onButtonTapped: onButtonTapped)
       }
     }
     .padding(.vertical)
@@ -20,20 +21,15 @@ struct ActionButton: View {
   let type: BookButtonType
   @ObservedObject var viewModel: BookDetailViewModel
   @Environment(\.colorScheme) var colorScheme
-  let isProcessing: Bool
+  var onButtonTapped: ((BookButtonType) -> Void)?
 
   var body: some View {
     Button(action: {
-      viewModel.handleAction(for: type)
+      onButtonTapped?(type) ?? viewModel.handleAction(for: type)
     }) {
       ZStack {
-        if isProcessing {
-          ProgressView()
-            .progressViewStyle(CircularProgressViewStyle(tint: type.buttonTextColor(colorScheme)))
-        } else {
-          Text(type.title)
-            .font(.semiBoldPalaceFont(size: 14))
-        }
+        Text(type.title)
+          .font(.semiBoldPalaceFont(size: 14))
       }
       .padding()
       .frame(minWidth: 100)
@@ -46,7 +42,6 @@ struct ActionButton: View {
       )
     }
     .buttonStyle(.plain)
-    .disabled(isProcessing)
   }
 }
 

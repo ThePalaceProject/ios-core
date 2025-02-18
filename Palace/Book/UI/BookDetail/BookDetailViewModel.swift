@@ -15,14 +15,19 @@ class BookDetailViewModel: ObservableObject {
   @Published var bookmarks: [TPPReadiumBookmark] = []
   @Published var showSampleToolbar = false
   @Published var downloadProgress: Double = 0.0
-  @Published var isPresentingHalfSheet = false
 
   @Published var buttonState: BookButtonState = .unsupported
   @Published var relatedBooks: [TPPBook] = []
   @Published var isLoadingRelatedBooks = false
   @Published var isLoadingDescription = false
 
-  @Published private var processingButtons: Set<BookButtonType> = []
+  @Published private var processingButtons: Set<BookButtonType> = [] {
+    didSet {
+      isProcessing = processingButtons.count > 0
+    }
+  }
+
+  @Published var isProcessing: Bool = false
 
   var isShowingSample = false
   var isProcessingSample = false
@@ -63,7 +68,6 @@ class BookDetailViewModel: ObservableObject {
       .assign(to: &$state)
   }
 
-  /// Listen for notifications (like the old TPPBookDetailViewController).
   private func setupObservers() {
     NotificationCenter.default.addObserver(
       self,
@@ -78,12 +82,17 @@ class BookDetailViewModel: ObservableObject {
       name: .TPPMyBooksDownloadCenterDidChange,
       object: nil
     )
+
+    downloadCenter.downloadProgressPublisher
+      .filter { $0.0 == self.book.identifier }
+      .map { $0.1 }
+      .receive(on: DispatchQueue.main)
+      .assign(to: &$downloadProgress)
   }
 
   func selectRelatedBook(_ newBook: TPPBook) {
     guard newBook.identifier != book.identifier else { return }
     book = newBook
-//    loadCoverImage(book: book)
     determineButtonState()
     fetchRelatedBooks()
   }
@@ -103,11 +112,9 @@ class BookDetailViewModel: ObservableObject {
   @objc func handleMyBooksDidChange(_ notification: Notification) {
     DispatchQueue.main.async { [weak self] in
       guard let self else { return }
-      // Update progress from MyBooksDownloadCenter
       self.downloadProgress = downloadCenter.downloadProgress(for: book.identifier)
       let info = downloadCenter.downloadInfo(forBookIdentifier: book.identifier)
       if let rights = info?.rightsManagement, rights != .unknown {
-        // If user started a download or it's in progress
         if state != .downloading {
           state = .downloading
         }
@@ -118,61 +125,62 @@ class BookDetailViewModel: ObservableObject {
   func fetchRelatedBooks() {
     guard let url = book.relatedWorksURL else { return }
 
-    isLoadingRelatedBooks = true // Start loading
+    isLoadingRelatedBooks = true
     TPPOPDSFeed.withURL(url, shouldResetCache: false, useTokenIfAvailable: TPPUserAccount.sharedAccount().hasAdobeToken()) { [weak self] feed, _ in
-      guard let self = self, feed?.type == .acquisitionGrouped, let groupedFeed = TPPCatalogGroupedFeed(opdsFeed: feed) else {
-        self?.isLoadingRelatedBooks = false
-        return
-      }
+      DispatchQueue.main.async { [weak self] in
+        guard let self = self else { return }
 
-      let books: [TPPBook] = groupedFeed.lanes.compactMap { lane in
-        if let catalogLane = lane as? TPPCatalogLane {
-          return catalogLane.books as? [TPPBook]
-        } else {
-          return nil
+        guard feed?.type == .acquisitionGrouped,
+              let groupedFeed = TPPCatalogGroupedFeed(opdsFeed: feed) else {
+          self.isLoadingRelatedBooks = false
+          return
         }
-      }.flatMap { $0 }
 
-      DispatchQueue.main.async {
+        let books: [TPPBook] = groupedFeed.lanes.compactMap { lane in
+          (lane as? TPPCatalogLane)?.books as? [TPPBook]
+        }.flatMap { $0 }
+
         self.relatedBooks = books.filter { $0.identifier != self.book.identifier }
         self.isLoadingRelatedBooks = false
       }
     }
   }
-  
+
   // MARK: - Button State Mapping
 
   /// Maps registry `state` to `buttonState` for simpler SwiftUI usage.
   private func determineButtonState() {
-    DispatchQueue.main.async { [weak self] in
-      guard let self else { return }
+    let newState: BookButtonState
 
-      switch state {
-      case .unregistered:
-        buttonState = .canBorrow
-      case .downloadNeeded:
-        buttonState = .downloadNeeded
-      case .downloading:
-        buttonState = .downloadInProgress
-      case .downloadSuccessful:
-        buttonState = .downloadSuccessful
-      case .holding:
-        buttonState = .holding
-      case .downloadFailed:
-        buttonState = .downloadFailed
-      case .used:
-        buttonState = .used
-      default:
-        buttonState = .unsupported
-      }
+    switch state {
+    case .unregistered:
+      newState = .canBorrow
+    case .downloadNeeded:
+      newState = .downloadNeeded
+    case .downloading:
+      newState = .downloadInProgress
+    case .downloadSuccessful:
+      newState = .downloadSuccessful
+    case .holding:
+      newState = .holding
+    case .downloadFailed:
+      newState = .downloadFailed
+    case .used:
+      newState = .used
+    default:
+      newState = .unsupported
+    }
+
+    if buttonState != newState {
+      buttonState = newState
     }
   }
 
   // MARK: - Actions: Unified Handle
 
-  /// Central entry point for handling button taps (download, read, cancel, return, etc.).
   func handleAction(for button: BookButtonType) {
     guard !isProcessing(for: button) else { return }
+
     processingButtons.insert(button)
 
     switch button {
@@ -190,15 +198,11 @@ class BookDetailViewModel: ObservableObject {
       }
 
     case .download, .get, .retry:
-      if isPresentingHalfSheet {
-        if buttonState == .canHold {
-          TPPUserNotifications.requestAuthorization()
-        }
-        didSelectDownload(for: book)
-      } else {
-        self.processingButtons.remove(button)
-        isPresentingHalfSheet = true
+      if buttonState == .canHold {
+        TPPUserNotifications.requestAuthorization()
       }
+      didSelectDownload(for: book)
+      self.processingButtons.remove(button)
 
     case .read, .listen:
       didSelectRead(for: book) {
@@ -216,26 +220,21 @@ class BookDetailViewModel: ObservableObject {
     }
   }
 
-  // Helper
   func isProcessing(for button: BookButtonType) -> Bool {
     processingButtons.contains(button)
   }
 
   // MARK: - Download/Return/Cancel
 
-  /// Start or retry download
   func didSelectDownload(for book: TPPBook) {
     downloadCenter.startDownload(for: book)
-    // We'll rely on .downloading state from MyBooksDownloadCenter to update progress
   }
 
-  /// Cancel any current download
   func didSelectCancel() {
     downloadCenter.cancelDownload(for: book.identifier)
     self.downloadProgress = 0
   }
 
-  /// Return the book
   func didSelectReturn(for book: TPPBook, completion: (() -> Void)?) {
     downloadCenter.returnBook(withIdentifier: book.identifier, completion: completion)
   }
@@ -265,9 +264,9 @@ class BookDetailViewModel: ObservableObject {
     openBook(book, completion: completion)
   }
 
-  /// Opens the given book in the correct reader (EPUB, PDF, or Audiobook).
   func openBook(_ book: TPPBook, completion: (() -> Void)?) {
     TPPCirculationAnalytics.postEvent("open_book", withBook: book)
+    processingButtons.removeAll()
 
     switch book.defaultBookContentType {
     case .epub:
@@ -431,10 +430,8 @@ class BookDetailViewModel: ObservableObject {
     let audiobookPlayer = AudiobookPlayer(audiobookManager: audiobookManager!)
     TPPRootTabBarController.shared().pushViewController(audiobookPlayer, animated: true)
 
-    // Sync location if available
     syncAudiobookLocation(for: book)
 
-    // Schedule tracking
     scheduleTimer()
   }
 
@@ -455,7 +452,6 @@ class BookDetailViewModel: ObservableObject {
 
     audiobookManager?.audiobook.player.play(at: localPosition, completion: nil)
 
-    // Fetch and merge remote bookmark if available
     TPPBookRegistry.shared.syncLocation(for: book) { [weak self] remoteBookmark in
       guard let remoteBookmark, let self, let audiobookManager else { return }
 
@@ -484,7 +480,6 @@ class BookDetailViewModel: ObservableObject {
     isProcessingSample = true
 
     if book.defaultBookContentType == .audiobook {
-      // Audiobook Sample
       if book.sampleAcquisition?.type == "text/html" {
         presentWebView(book.sampleAcquisition?.hrefURL)
       } else if !isShowingSample {
@@ -494,7 +489,6 @@ class BookDetailViewModel: ObservableObject {
       }
       NotificationCenter.default.post(name: Notification.Name("ToggleSampleNotification"), object: self)
     } else {
-      // EPUB Sample
       EpubSampleFactory.createSample(book: book) { sampleURL, error in
         DispatchQueue.main.async {
           if let error = error {

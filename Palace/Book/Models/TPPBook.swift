@@ -395,8 +395,8 @@ let TimeTrackingURLURLKey = "time-tracking-url"
   }
 
   struct AvailabilityDetails {
-    var availableSince: String = "Unknown"
-    var availableUntil: String = "Unknown"
+    var availableSince: String?
+    var availableUntil: String?
   }
 
   func getReservationDetails() -> ReservationDetails {
