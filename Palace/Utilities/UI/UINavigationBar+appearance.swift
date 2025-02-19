@@ -15,11 +15,9 @@ extension UINavigationBar {
     standardAppearance = appearance
     scrollEdgeAppearance = appearance
     compactAppearance = appearance
-    if #available(iOS 15.0, *) {
-      compactScrollEdgeAppearance = appearance
-    }
+    compactScrollEdgeAppearance = appearance
   }
-  
+
   /// Updatign the appearance of the navbar, when presented, will not cause the changes to propogage.
   /// Calling this function will trigger the view to redraw itself, forcing an appearance update
   func forceUpdateAppearance(style: UIUserInterfaceStyle) {

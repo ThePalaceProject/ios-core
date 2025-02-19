@@ -14,9 +14,12 @@ struct BookButtonsView: View {
     HStack(spacing: 10) {
       ForEach(viewModel.buttonState.buttonTypes(book: viewModel.book, previewEnabled: previewEnabled), id: \.self) { buttonType in
         ActionButton(type: buttonType, viewModel: viewModel, isDarkBackground: isDarkBackground, onButtonTapped: onButtonTapped)
+          .transition(.asymmetric(insertion: .scale(scale: 0.8).combined(with: .opacity),
+                                  removal: .opacity))
       }
     }
     .padding(.vertical)
+    .animation(.spring(response: 0.4, dampingFraction: 0.7), value: viewModel.buttonState)
   }
 }
 
@@ -28,15 +31,19 @@ struct ActionButton: View {
 
   var body: some View {
     Button(action: {
-      onButtonTapped?(type) ?? viewModel.handleAction(for: type)
+      withAnimation {
+        onButtonTapped?(type) ?? viewModel.handleAction(for: type)
+      }
     }) {
       ZStack {
         if viewModel.isProcessing(for: type) {
           ProgressView()
+            .transition(.opacity)
         }
 
         Text(type.title)
           .font(.semiBoldPalaceFont(size: 14))
+          .transition(.opacity)
       }
       .padding()
       .frame(minWidth: 100)
@@ -47,8 +54,10 @@ struct ActionButton: View {
         RoundedRectangle(cornerRadius: 8)
           .stroke(type.borderColor(isDarkBackground), lineWidth: type.hasBorder ? 2 : 0)
       )
+      .scaleEffect(viewModel.isProcessing(for: type) ? 0.95 : 1.0)
+      .animation(.easeInOut(duration: 0.2), value: viewModel.isProcessing(for: type))
     }
-    .disabled(viewModel.isProcessing)
+    .disabled(viewModel.isProcessing(for: type))
     .buttonStyle(.plain)
   }
 }

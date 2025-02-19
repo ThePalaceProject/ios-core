@@ -3,8 +3,6 @@ import SwiftUI
 import PalaceAudiobookToolkit
 
 class BookDetailViewModel: ObservableObject {
-  // MARK: - Published State
-
   /// The book model.
   @Published var book: TPPBook
 
@@ -20,6 +18,8 @@ class BookDetailViewModel: ObservableObject {
   @Published var relatedBooks: [TPPBook] = []
   @Published var isLoadingRelatedBooks = false
   @Published var isLoadingDescription = false
+
+  var isFullSize: Bool { UIDevice.current.isIpad }
 
   @Published private var processingButtons: Set<BookButtonType> = [] {
     didSet {

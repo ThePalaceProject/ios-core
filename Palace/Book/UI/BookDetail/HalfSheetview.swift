@@ -1,19 +1,19 @@
 import SwiftUI
 
 struct HalfSheetView: View {
+  @Environment(\.colorScheme) var colorScheme
+
   @ObservedObject var viewModel: BookDetailViewModel
   var backgroundColor: Color
   var coverImage: UIImage
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 20) {
+    VStack(alignment: .leading, spacing: viewModel.isFullSize ? 20 : 10) {
       Text(AccountsManager.shared.currentAccount?.name ?? "")
         .font(.headline)
 
       Divider()
-
       bookInfoView
-
       Divider()
 
       statusInfoView
@@ -25,8 +25,12 @@ struct HalfSheetView: View {
           .transition(.opacity)
       }
 
-      BookButtonsView(viewModel: viewModel, previewEnabled: false)
-        .horizontallyCentered()
+      if viewModel.isFullSize {
+        BookButtonsView(viewModel: viewModel, previewEnabled: false)
+          .horizontallyCentered()
+      } else {
+        BookButtonsView(viewModel: viewModel, previewEnabled: false)
+      }
     }
     .padding()
     .presentationDetents([.medium])
@@ -101,7 +105,7 @@ private extension HalfSheetView {
           .foregroundColor(.secondary)
         Spacer()
         Text("\(timeUntil.value) \(timeUntil.unit)")
-          .foregroundColor(.palaceSuccessDark)
+        .foregroundColor(colorScheme == .dark ? .palaceSuccessLight : .palaceSuccessDark)
       }
     }
   }
@@ -115,7 +119,7 @@ private extension HalfSheetView {
           .foregroundColor(.secondary)
         Spacer()
         Text(availableUntil)
-          .foregroundColor(.palaceSuccessDark)
+          .foregroundColor(colorScheme == .dark ? .palaceSuccessLight : .palaceSuccessDark)
       }
     }
   }

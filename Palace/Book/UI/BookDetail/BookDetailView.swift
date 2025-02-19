@@ -10,7 +10,7 @@ struct BookDetailView: View {
   @ObservedObject var viewModel: BookDetailViewModel
   @State private var isExpanded: Bool = false
   @State private var coverImage: UIImage = UIImage()
-  @State private var backgroundColor: Color = .gray
+  @State private var headerBackgroundColor: Color = .gray
   @State private var showHalfSheet = false
 
   init(book: TPPBook) {
@@ -31,6 +31,7 @@ struct BookDetailView: View {
     }
     .onAppear {
       loadCoverImage()
+      setTransparentNavigationBar()
       self.descriptionText =  viewModel.book.summary ?? ""
     }
     .onChange(of: viewModel.book) { newValue in
@@ -42,12 +43,12 @@ struct BookDetailView: View {
       BookDetailView(book: book)
     }
     .sheet(isPresented: $showHalfSheet) {
-      HalfSheetView(viewModel: viewModel, backgroundColor: backgroundColor, coverImage: self.$coverImage.wrappedValue)
+      HalfSheetView(viewModel: viewModel, backgroundColor: headerBackgroundColor, coverImage: self.$coverImage.wrappedValue)
     }
   }
 
   @ViewBuilder private var mainView: some View {
-    if UIDevice.current.isIpad {
+    if viewModel.isFullSize {
       fullView
     } else {
       compactView
@@ -78,7 +79,24 @@ struct BookDetailView: View {
   }
 
   private var compactView: some View {
-    Text("Empty View")
+    ZStack {
+      VStack {
+        imageView
+          .padding(.vertical, 25)
+        titleView
+        descriptionView
+        informationView
+        relatedBooksSection
+      }
+      VStack {
+        Spacer()
+        sampleToolbar
+      }
+    }
+    .padding(30)
+    .onAppear {
+      viewModel.fetchRelatedBooks()
+    }
   }
 
   private var imageView: some View {
@@ -97,16 +115,18 @@ struct BookDetailView: View {
   }
 
   private var titleView: some View {
-    VStack(alignment: .leading, spacing: 8) {
+    VStack(alignment: viewModel.isFullSize ? .leading : .center, spacing: 8) {
       Text(viewModel.book.title)
         .font(.title3)
+        .lineLimit(0)
+        .fixedSize(horizontal: false, vertical: true)
 
       if let authors = viewModel.book.authors, !authors.isEmpty {
         Text(authors)
           .font(.footnote)
       }
 
-      BookButtonsView(viewModel: viewModel, backgroundColor: backgroundColor) { type in
+      BookButtonsView(viewModel: viewModel, backgroundColor: viewModel.isFullSize ? headerBackgroundColor : .white) { type in
         switch type {
         case .sample, .audiobookSample:
           viewModel.handleAction(for: type)
@@ -120,14 +140,14 @@ struct BookDetailView: View {
           .padding(.top)
       }
     }
-    .foregroundColor(backgroundColor.isDark ? .white : .black)
+    .foregroundColor(headerBackgroundColor.isDark && viewModel.isFullSize ? .white : .black)
   }
 
   private func loadCoverImage() {
     viewModel.registry.coverImage(for: viewModel.book) { uiImage in
         guard let uiImage = uiImage else { return }
         self.coverImage = uiImage
-        self.backgroundColor = Color(uiImage.mainColor() ?? .gray)
+        self.headerBackgroundColor = Color(uiImage.mainColor() ?? .gray)
     }
   }
 
@@ -210,8 +230,8 @@ struct BookDetailView: View {
         .edgesIgnoringSafeArea(.all)
       LinearGradient(
         gradient: Gradient(colors: [
-          backgroundColor.opacity(1.0),
-          backgroundColor.opacity(0.5)
+          headerBackgroundColor.opacity(1.0),
+          headerBackgroundColor.opacity(0.5)
         ]),
         startPoint: .bottom,
         endPoint: .top
@@ -300,6 +320,17 @@ struct BookDetailView: View {
         .font(.subheadline)
         .foregroundColor(.black)
     }
+  }
+
+  private func setTransparentNavigationBar() {
+    let appearance = UINavigationBarAppearance()
+    appearance.configureWithTransparentBackground()
+    appearance.backgroundColor = .clear
+    appearance.shadowColor = .clear
+    appearance.titleTextAttributes = [.foregroundColor: UIColor.white]
+    appearance.largeTitleTextAttributes = [.foregroundColor: UIColor.white]
+
+    UINavigationBar.appearance().setAppearance(appearance)
   }
 }
 

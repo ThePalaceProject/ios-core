@@ -14,21 +14,20 @@ extension Date {
     let components = calendar.dateComponents([.day, .hour, .minute], from: now, to: self)
 
     if let days = components.day, days > 0 {
-      if days < 7 {
-        return (days, "days")
-      } else if days < 30 {
-        return (days / 7, "weeks")
-      } else {
-        return (days / 30, "months")
+      switch days {
+      case 1: return (1, "day")
+      case 2..<7: return (days, "days")
+      case 7..<30: return (days / 7, days / 7 == 1 ? "week" : "weeks")
+      default: return (days / 30, days / 30 == 1 ? "month" : "months")
       }
     }
 
     if let hours = components.hour, hours > 0 {
-      return (hours, "hours")
+      return (hours, hours == 1 ? "hour" : "hours")
     }
 
     if let minutes = components.minute, minutes > 0 {
-      return (minutes, "minutes")
+      return (minutes, minutes == 1 ? "minute" : "minutes")
     }
 
     return (0, "expired")

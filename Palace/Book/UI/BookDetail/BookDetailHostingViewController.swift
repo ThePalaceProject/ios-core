@@ -18,6 +18,7 @@ import SwiftUI
     let bookDetailView = BookDetailView(book: self.book)
     let hostingController = UIHostingController(rootView: bookDetailView)
     addChild(hostingController)
+
     view.addSubview(hostingController.view)
 
     hostingController.view.translatesAutoresizingMaskIntoConstraints = false
@@ -29,5 +30,22 @@ import SwiftUI
     ])
 
     hostingController.didMove(toParent: self)
+  }
+
+  override func viewWillAppear(_ animated: Bool) {
+    super.viewWillAppear(animated)
+
+    setTransparentNavigationBar()
+  }
+
+  private func setTransparentNavigationBar() {
+    let appearance = UINavigationBarAppearance()
+    appearance.configureWithTransparentBackground() // ✅ Ensures transparency
+    appearance.backgroundColor = .clear // ✅ No background color
+    appearance.shadowColor = .clear // ✅ Removes bottom shadow
+    appearance.titleTextAttributes = [.foregroundColor: UIColor.white] // ✅ White title for visibility
+    appearance.largeTitleTextAttributes = [.foregroundColor: UIColor.white]
+
+    UINavigationBar.appearance().setAppearance(appearance)
   }
 }
