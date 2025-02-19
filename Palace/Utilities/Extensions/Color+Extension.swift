@@ -27,3 +27,15 @@ extension Color {
   static let palaceSuccessLight = Color("PalaceSuccessLight")
   static let palaceSuccessMedium = Color("PalaceSuccessMedium")
 }
+
+
+extension Color {
+  var isDark: Bool {
+    guard let components = UIColor(self).cgColor.components else { return false }
+    let red = components[0] * 299
+    let green = components[1] * 587
+    let blue = components[2] * 114
+    let brightness = (red + green + blue) / 1000
+    return brightness < 0.5
+  }
+}

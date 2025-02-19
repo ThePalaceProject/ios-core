@@ -179,7 +179,9 @@ class BookDetailViewModel: ObservableObject {
   // MARK: - Actions: Unified Handle
 
   func handleAction(for button: BookButtonType) {
-    guard !isProcessing(for: button) else { return }
+    guard !isProcessing else {
+      return
+    }
 
     processingButtons.insert(button)
 
@@ -482,10 +484,13 @@ class BookDetailViewModel: ObservableObject {
     if book.defaultBookContentType == .audiobook {
       if book.sampleAcquisition?.type == "text/html" {
         presentWebView(book.sampleAcquisition?.hrefURL)
+        isProcessingSample = false
+        completion?()
       } else if !isShowingSample {
         isShowingSample = true
         showSampleToolbar = true
         isProcessingSample = false
+        completion?()
       }
       NotificationCenter.default.post(name: Notification.Name("ToggleSampleNotification"), object: self)
     } else {
@@ -499,11 +504,10 @@ class BookDetailViewModel: ObservableObject {
             TPPRootTabBarController.shared().presentSample(book, url: sampleURL)
           }
           self.isProcessingSample = false
+          completion?()
         }
       }
     }
-
-    completion?()
   }
 
   private func presentWebView(_ url: URL?) {

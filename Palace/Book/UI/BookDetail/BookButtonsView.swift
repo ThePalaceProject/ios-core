@@ -5,12 +5,15 @@ fileprivate typealias DisplayStrings = Strings.BookButton
 struct BookButtonsView: View {
   @ObservedObject var viewModel: BookDetailViewModel
   var previewEnabled: Bool = true
+  var backgroundColor: Color?
   var onButtonTapped: ((BookButtonType) -> Void)?
 
   var body: some View {
+    let isDarkBackground = backgroundColor?.isDark ?? true
+
     HStack(spacing: 10) {
       ForEach(viewModel.buttonState.buttonTypes(book: viewModel.book, previewEnabled: previewEnabled), id: \.self) { buttonType in
-        ActionButton(type: buttonType, viewModel: viewModel, onButtonTapped: onButtonTapped)
+        ActionButton(type: buttonType, viewModel: viewModel, isDarkBackground: isDarkBackground, onButtonTapped: onButtonTapped)
       }
     }
     .padding(.vertical)
@@ -20,7 +23,7 @@ struct BookButtonsView: View {
 struct ActionButton: View {
   let type: BookButtonType
   @ObservedObject var viewModel: BookDetailViewModel
-  @Environment(\.colorScheme) var colorScheme
+  var isDarkBackground: Bool = true
   var onButtonTapped: ((BookButtonType) -> Void)?
 
   var body: some View {
@@ -28,19 +31,24 @@ struct ActionButton: View {
       onButtonTapped?(type) ?? viewModel.handleAction(for: type)
     }) {
       ZStack {
+        if viewModel.isProcessing(for: type) {
+          ProgressView()
+        }
+
         Text(type.title)
           .font(.semiBoldPalaceFont(size: 14))
       }
       .padding()
       .frame(minWidth: 100)
-      .background(type.buttonBackgroundColor(colorScheme))
-      .foregroundColor(type.buttonTextColor(colorScheme))
+      .background(type.buttonBackgroundColor(isDarkBackground))
+      .foregroundColor(type.buttonTextColor(isDarkBackground))
       .cornerRadius(8)
       .overlay(
         RoundedRectangle(cornerRadius: 8)
-          .stroke(type.borderColor(colorScheme), lineWidth: type.hasBorder ? 2 : 0)
+          .stroke(type.borderColor(isDarkBackground), lineWidth: type.hasBorder ? 2 : 0)
       )
     }
+    .disabled(viewModel.isProcessing)
     .buttonStyle(.plain)
   }
 }
@@ -80,26 +88,26 @@ extension BookButtonType {
     return buttonStyle == .secondary
   }
 
-  func buttonBackgroundColor(_ colorScheme: ColorScheme) -> Color {
+  func buttonBackgroundColor(_ isDarkBackground: Bool) -> Color {
     switch buttonStyle {
     case .primary:
-      return colorScheme == .dark ? .white : .black
+      return isDarkBackground ? .white : .black
     case .secondary, .tertiary:
       return .clear
     }
   }
 
-  func buttonTextColor(_ colorScheme: ColorScheme) -> Color {
+  func buttonTextColor(_ isDarkBackground: Bool) -> Color {
     switch buttonStyle {
     case .primary:
-      return colorScheme == .dark ? .black : .white
+      return isDarkBackground ? .black : .white
     case .secondary, .tertiary:
-      return colorScheme == .dark ? .white : .black
+      return isDarkBackground ? .white : .black
     }
   }
 
-  func borderColor(_ colorScheme: ColorScheme) -> Color {
-    return hasBorder ? (colorScheme == .dark ? .white : .black) : .clear
+  func borderColor(_ isDarkBackground: Bool) -> Color {
+    return hasBorder ? (isDarkBackground ? .white : .black) : .clear
   }
 }
 

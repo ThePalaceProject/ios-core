@@ -104,11 +104,15 @@ struct BookDetailView: View {
       if let authors = viewModel.book.authors, !authors.isEmpty {
         Text(authors)
           .font(.footnote)
-          .foregroundColor(.secondary)
       }
 
-      BookButtonsView(viewModel: BookDetailViewModel(book: viewModel.book)) { type in
+      BookButtonsView(viewModel: viewModel, backgroundColor: backgroundColor) { type in
+        switch type {
+        case .sample, .audiobookSample:
+          viewModel.handleAction(for: type)
+        default:
           showHalfSheet.toggle()
+        }
       }
 
       if !viewModel.book.isAudiobook && viewModel.book.hasAudiobookSample {
@@ -116,6 +120,7 @@ struct BookDetailView: View {
           .padding(.top)
       }
     }
+    .foregroundColor(backgroundColor.isDark ? .white : .black)
   }
 
   private func loadCoverImage() {
