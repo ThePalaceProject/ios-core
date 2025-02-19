@@ -2,6 +2,7 @@ import SwiftUI
 
 @objcMembers class BookDetailHostingController: UIViewController {
   private let book: TPPBook
+  private var initialAppearance: UINavigationBarAppearance?
 
   init(book: TPPBook) {
     self.book = book
@@ -35,17 +36,41 @@ import SwiftUI
   override func viewWillAppear(_ animated: Bool) {
     super.viewWillAppear(animated)
 
+    if initialAppearance == nil {
+      initialAppearance = navigationController?.navigationBar.standardAppearance
+    }
+
     setTransparentNavigationBar()
   }
 
+  override func viewWillDisappear(_ animated: Bool) {
+    super.viewWillDisappear(animated)
+
+//    restoreNavigationBar()
+  }
+
   private func setTransparentNavigationBar() {
+    guard let navigationController = navigationController else { return }
+
     let appearance = UINavigationBarAppearance()
-    appearance.configureWithTransparentBackground() // ✅ Ensures transparency
-    appearance.backgroundColor = .clear // ✅ No background color
-    appearance.shadowColor = .clear // ✅ Removes bottom shadow
-    appearance.titleTextAttributes = [.foregroundColor: UIColor.white] // ✅ White title for visibility
+    appearance.configureWithTransparentBackground()
+    appearance.backgroundColor = .clear
+    appearance.shadowColor = .clear
+    appearance.titleTextAttributes = [.foregroundColor: UIColor.white]
     appearance.largeTitleTextAttributes = [.foregroundColor: UIColor.white]
 
-    UINavigationBar.appearance().setAppearance(appearance)
+    navigationController.navigationBar.setAppearance(appearance)
+    navigationController.navigationBar.isTranslucent = true
+    navigationController.navigationBar.forceUpdateAppearance(style: traitCollection.userInterfaceStyle)
+  }
+
+  private func restoreNavigationBar() {
+//    guard let navigationController = navigationController, let initialAppearance = initialAppearance else { return }
+//
+//
+//    navigationController.navigationBar.setAppearance(initialAppearance)
+//    navigationController.navigationBar.isTranslucent = false
+////    navigationController.navigationBar.forceUpdateAppearance(style: traitCollection.userInterfaceStyle)
+//    additionalSafeAreaInsets.top = 0
   }
 }

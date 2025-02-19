@@ -49,7 +49,7 @@ static CGFloat const kTableViewCrossfadeDuration = 0.3;
 {
   self = [super init];
   if(!self) return nil;
-  
+
   self.bookIdentifiersToImages = [NSMutableDictionary dictionary];
   self.cachedLaneCells = [NSMutableDictionary dictionary];
   self.feed = feed;
@@ -73,12 +73,12 @@ static CGFloat const kTableViewCrossfadeDuration = 0.3;
 - (void)viewDidLoad
 {
   [super viewDidLoad];
-  
+
   self.view.backgroundColor = [TPPConfiguration backgroundColor];
-  
+
   self.refreshControl = [[UIRefreshControl alloc] init];
   [self.refreshControl addTarget:self action:@selector(userDidRefresh:) forControlEvents:UIControlEventValueChanged];
-  
+
   self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStylePlain];
   self.tableView.autoresizingMask = (UIViewAutoresizingFlexibleWidth |
                                      UIViewAutoresizingFlexibleHeight);
@@ -98,9 +98,9 @@ static CGFloat const kTableViewCrossfadeDuration = 0.3;
   self.facetBarView.entryPointView.delegate = self;
   self.facetBarView.entryPointView.dataSource = self;
   self.facetBarView.delegate = self;
-  
+
   [self.view addSubview:self.facetBarView];
-  
+
   [self.facetBarView autoPinEdgeToSuperviewEdge:ALEdgeLeading];
   [self.facetBarView autoPinEdgeToSuperviewEdge:ALEdgeTrailing];
   [self.facetBarView autoPinEdgeToSuperviewMargin:ALEdgeTop];
@@ -119,10 +119,10 @@ static CGFloat const kTableViewCrossfadeDuration = 0.3;
                                              initWithTitle:NSLocalizedString(@"Back", @"Back button text")
                                              style:UIBarButtonItemStylePlain
                                              target:nil action:nil];
-    
+
     [self fetchOpenSearchDescription];
   }
-  
+
   [self downloadImages];
   [self enable3DTouch];
 }
@@ -130,16 +130,16 @@ static CGFloat const kTableViewCrossfadeDuration = 0.3;
 - (void)didMoveToParentViewController:(UIViewController *)parent
 {
   [super didMoveToParentViewController:parent];
-  
+
   if(parent) {
     CGFloat top = parent.topLayoutGuide.length;
-    
+
     if (self.facetBarView.frame.size.height > 0) {
       top = CGRectGetMaxY(self.facetBarView.frame) + kTableViewInsetAdjustmentWithEntryPoints;
     }
-    
+
     CGFloat bottom = parent.bottomLayoutGuide.length;
-    
+
     UIEdgeInsets insets = UIEdgeInsetsMake(top, 0, bottom, 0);
     self.tableView.contentInset = insets;
     self.tableView.scrollIndicatorInsets = insets;
@@ -150,7 +150,7 @@ static CGFloat const kTableViewCrossfadeDuration = 0.3;
 - (void)didReceiveMemoryWarning
 {
   [super didReceiveMemoryWarning];
-  
+
   [self.cachedLaneCells removeAllObjects];
 }
 
@@ -161,9 +161,14 @@ static CGFloat const kTableViewCrossfadeDuration = 0.3;
     TPPCatalogFeedViewController *viewController = (TPPCatalogFeedViewController *)self.navigationController.visibleViewController;
     [viewController load];
   }
-  
+
   [refreshControl endRefreshing];
   [[NSNotificationCenter defaultCenter] postNotificationName:NSNotification.TPPSyncEnded object:nil];
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+  [super viewWillAppear:animated];
+  self.navigationController.navigationBar.translucent = NO;
 }
 
 - (void)viewDidAppear:(BOOL)animated

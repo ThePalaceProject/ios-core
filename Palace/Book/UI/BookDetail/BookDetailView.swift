@@ -21,17 +21,17 @@ struct BookDetailView: View {
     ScrollView {
       ZStack(alignment: .top) {
         backgroundView
-          .edgesIgnoringSafeArea(.all)
 
         mainView
+          .padding(.bottom, 100)
       }
     }
+    .edgesIgnoringSafeArea(.all)
     .onDisappear {
       showHalfSheet = false
     }
     .onAppear {
       loadCoverImage()
-      setTransparentNavigationBar()
       self.descriptionText =  viewModel.book.summary ?? ""
     }
     .onChange(of: viewModel.book) { newValue in
@@ -80,20 +80,25 @@ struct BookDetailView: View {
 
   private var compactView: some View {
     ZStack {
-      VStack {
-        imageView
-          .padding(.vertical, 25)
-        titleView
-        descriptionView
-        informationView
+      VStack(spacing: 10) {
+        VStack {
+          imageView
+            .padding(.top, 110)
+            .padding(.bottom, 25)
+          titleView
+          descriptionView
+          informationView
+        }
+        .padding(.horizontal, 30)
+
         relatedBooksSection
+
       }
       VStack {
         Spacer()
         sampleToolbar
       }
     }
-    .padding(30)
     .onAppear {
       viewModel.fetchRelatedBooks()
     }
@@ -152,13 +157,16 @@ struct BookDetailView: View {
   }
 
   @ViewBuilder private var relatedBooksSection: some View {
-    VStack(alignment: .leading, spacing: 10) {
+    VStack(alignment: .leading, spacing: 0) {
       if viewModel.isLoadingRelatedBooks {
-        Text("OTHER BOOKS BY THIS AUTHOR")
-          .font(.headline)
-          .foregroundColor(.black)
+        VStack(alignment: .leading, spacing: 0) {
+          Text("OTHER BOOKS BY THIS AUTHOR")
+            .font(.headline)
+            .foregroundColor(.black)
 
-        Divider()
+          Divider()
+        }
+        .padding(.horizontal, 30)
 
         ProgressView()
           .tint(.black)
@@ -169,12 +177,15 @@ struct BookDetailView: View {
           .horizontallyCentered()
 
       } else if !viewModel.relatedBooks.isEmpty {
-        
-        Text("OTHER BOOKS BY THIS AUTHOR")
-          .font(.headline)
-          .foregroundColor(.black)
 
-        Divider()
+        VStack(alignment: .leading, spacing: 0) {
+          Text("OTHER BOOKS BY THIS AUTHOR")
+            .font(.headline)
+            .foregroundColor(.black)
+          Divider()
+        }
+        .padding(.horizontal, 30)
+
 
         ScrollView(.horizontal, showsIndicators: false) {
           HStack(spacing: 12) {
@@ -320,17 +331,6 @@ struct BookDetailView: View {
         .font(.subheadline)
         .foregroundColor(.black)
     }
-  }
-
-  private func setTransparentNavigationBar() {
-    let appearance = UINavigationBarAppearance()
-    appearance.configureWithTransparentBackground()
-    appearance.backgroundColor = .clear
-    appearance.shadowColor = .clear
-    appearance.titleTextAttributes = [.foregroundColor: UIColor.white]
-    appearance.largeTitleTextAttributes = [.foregroundColor: UIColor.white]
-
-    UINavigationBar.appearance().setAppearance(appearance)
   }
 }
 

@@ -116,6 +116,11 @@ static const CGFloat kCollectionViewCrossfadeDuration = 0.3;
   [self enable3DTouch];
 }
 
+- (void)viewWillAppear:(BOOL)animated {
+  [super viewWillAppear:animated];
+  self.navigationController.navigationBar.translucent = NO;
+}
+
 - (void)viewDidAppear:(BOOL)animated
 {
   [super viewDidAppear:animated];

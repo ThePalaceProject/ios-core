@@ -206,13 +206,6 @@
 
 #pragma mark UICollectionViewDelegate
 
-//- (void)collectionView:(__attribute__((unused)) UICollectionView *)collectionView
-//didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
-//{
-//  TPPBook *const book = self.books[indexPath.row];
-//  
-//  [[[TPPBookDetailViewController alloc] initWithBook:book] presentFromViewController:self];
-//}
 - (void)collectionView:(UICollectionView *)collectionView
 didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
 {
