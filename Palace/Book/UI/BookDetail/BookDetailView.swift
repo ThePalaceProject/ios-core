@@ -20,53 +20,59 @@ struct BookDetailView: View {
   @State private var animationDuration: CGFloat = 0
   @State private var imageScale: CGFloat = 1.0
   @State private var imageOpacity: CGFloat = 1.0
+  @State private var sampleToolbar: AudiobookSampleToolbar? = nil
 
   init(book: TPPBook) {
     self.viewModel = BookDetailViewModel(book: book)
   }
 
   var body: some View {
-    ScrollView {
-      ZStack(alignment: .top) {
-        backgroundView
-          .frame(height: headerHeight)
+    ZStack {
+      ScrollView {
+        ZStack(alignment: .top) {
+          backgroundView
+            .frame(height: headerHeight)
 
-        if showCompactHeader {
-          compactHeaderContent
-            .padding(.top, 75)
-            .opacity(showCompactHeader ? 1 : 0)
-            .offset(y: showCompactHeader ? 0 : -20)
-            .animation(.easeInOut(duration: animationDuration), value: showCompactHeader)
+          if showCompactHeader {
+            compactHeaderContent
+              .padding(.top, 75)
+              .opacity(showCompactHeader ? 1 : 0)
+              .offset(y: showCompactHeader ? 0 : -20)
+              .animation(.easeInOut(duration: animationDuration), value: showCompactHeader)
+          }
+
+          mainView
+            .padding(.bottom, 100)
         }
-
-        mainView
-          .padding(.bottom, 100)
       }
-    }
-    .onChange(of: headerBackgroundColor) { newColor in
-      delegate?.didUpdateHeaderBackground(isDark: newColor.isDark)
-    }
-    .onChange(of: showCompactHeader) { newValue in
-      self.delegate?.didChangeToCompactView(newValue)
-    }
-    .edgesIgnoringSafeArea(.all)
-    .onDisappear {
-      showHalfSheet = false
-    }
-    .onAppear {
-      loadCoverImage()
-      self.descriptionText = viewModel.book.summary ?? ""
-    }
-    .onChange(of: viewModel.book) { newValue in
-      loadCoverImage()
-      self.descriptionText = newValue.summary ?? ""
-    }
-    .background(Color.white)
-    .fullScreenCover(item: $selectedBook) { book in
-      BookDetailView(book: book)
-    }
-    .sheet(isPresented: $showHalfSheet) {
-      HalfSheetView(viewModel: viewModel, backgroundColor: headerBackgroundColor, coverImage: coverImage)
+      .edgesIgnoringSafeArea(.all)
+      .background(Color.white)
+      .onChange(of: headerBackgroundColor) { newColor in
+        delegate?.didUpdateHeaderBackground(isDark: newColor.isDark)
+      }
+      .onChange(of: showCompactHeader) { newValue in
+        self.delegate?.didChangeToCompactView(newValue)
+      }
+      .onChange(of: viewModel.book) { newValue in
+        loadCoverImage()
+        self.descriptionText = newValue.summary ?? ""
+      }
+      .onAppear {
+        viewModel.fetchRelatedBooks()
+        loadCoverImage()
+        self.descriptionText = viewModel.book.summary ?? ""
+      }
+      .onDisappear {
+        showHalfSheet = false
+      }
+      .fullScreenCover(item: $selectedBook) { book in
+        BookDetailView(book: book)
+      }
+      .sheet(isPresented: $showHalfSheet) {
+        HalfSheetView(viewModel: viewModel, backgroundColor: headerBackgroundColor, coverImage: coverImage)
+      }
+
+      sampleToolbarView
     }
   }
 
@@ -79,9 +85,6 @@ struct BookDetailView: View {
   }
 
   private var fullView: some View {
-    ZStack {
-      sampleToolbar
-
       VStack(alignment: .leading, spacing: 30) {
         HStack(alignment: .top, spacing: 25) {
           imageView
@@ -95,10 +98,6 @@ struct BookDetailView: View {
         Spacer()
       }
       .padding(30)
-    }
-    .onAppear {
-      viewModel.fetchRelatedBooks()
-    }
   }
 
   private var compactView: some View {
@@ -122,13 +121,6 @@ struct BookDetailView: View {
 
         relatedBooksView
       }
-      VStack {
-        Spacer()
-        sampleToolbar
-      }
-    }
-    .onAppear {
-      viewModel.fetchRelatedBooks()
     }
   }
 
@@ -200,7 +192,7 @@ struct BookDetailView: View {
           .padding(.horizontal, 30)
 
         ScrollView(.horizontal, showsIndicators: false) {
-          LazyHStack(spacing: 12) { // Use LazyHStack to load items on demand
+          LazyHStack(spacing: 12) {
             ForEach(viewModel.relatedBooks, id: \.identifier) { book in
               Button(action: { viewModel.selectRelatedBook(book) }) {
                 BookThumbnailView(book: book)
@@ -229,11 +221,30 @@ struct BookDetailView: View {
     }
   }
 
-  @ViewBuilder private var sampleToolbar: some View {
+  @State private var currentBookID: String? = nil
+  @ViewBuilder private var sampleToolbarView: some View {
     if viewModel.showSampleToolbar {
       VStack {
         Spacer()
-        AudiobookSampleToolbar(book: viewModel.book)
+        if let toolbar = sampleToolbar {
+          toolbar
+        } else {
+          AudiobookSampleToolbar(book: viewModel.book)
+            .onAppear {
+              setupSampleToolbarIfNeeded()
+            }
+        }
+      }
+    }
+  }
+
+  private func setupSampleToolbarIfNeeded() {
+    let bookID = viewModel.book.identifier
+
+    if sampleToolbar == nil || bookID != currentBookID {
+      if let newToolbar = AudiobookSampleToolbar(book: viewModel.book) {
+        sampleToolbar = newToolbar
+        currentBookID = bookID
       }
     }
   }
@@ -292,7 +303,12 @@ struct BookDetailView: View {
       }
       Spacer()
       BookButtonsView(viewModel: viewModel, backgroundColor: headerBackgroundColor, size: .small) { type in
-        showHalfSheet.toggle()
+        switch type {
+        case .sample, .audiobookSample:
+          viewModel.handleAction(for: type)
+        default:
+          showHalfSheet.toggle()
+        }
       }
     }
     .frame(height: 50)
@@ -387,12 +403,6 @@ struct BookDetailView: View {
     let maxHeight: CGFloat = 280
     let compactThreshold: CGFloat = 150
     let expandThreshold: CGFloat = 280
-    let baseStiffness: CGFloat = 85
-    let baseDamping: CGFloat = 20
-    let maxStiffness: CGFloat = 90
-    let minStiffness: CGFloat = 80
-    let maxDamping: CGFloat = 25
-    let minDamping: CGFloat = 15
     let now = Date().timeIntervalSince1970
     let timeDelta = now - lastTimestamp
     let offsetDelta = abs(offset) - lastOffset

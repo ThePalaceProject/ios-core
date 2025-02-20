@@ -100,6 +100,12 @@
   [self createAndConfigureFacetBarView];
 }
 
+- (void)viewWillAppear:(BOOL)animated {
+  [super viewWillAppear:animated];
+  self.navigationController.navigationBar.translucent = NO;
+}
+
+
 - (void)viewWillLayoutSubviews
 {
   [super viewWillLayoutSubviews];
@@ -211,7 +217,7 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
 {
   TPPBook *book = self.books[indexPath.row];
   BookDetailHostingController *bookDetailVC = [[BookDetailHostingController alloc] initWithBook:book];
-  [self presentViewController:bookDetailVC animated:YES completion:nil];
+  [self.navigationController pushViewController:bookDetailVC animated:YES];
 }
 
 #pragma mark NYPLCatalogUngroupedFeedDelegate
