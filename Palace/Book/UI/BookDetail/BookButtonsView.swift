@@ -6,6 +6,7 @@ struct BookButtonsView: View {
   @ObservedObject var viewModel: BookDetailViewModel
   var previewEnabled: Bool = true
   var backgroundColor: Color?
+  var size: ButtonSize = .regular
   var onButtonTapped: ((BookButtonType) -> Void)?
 
   var body: some View {
@@ -13,7 +14,7 @@ struct BookButtonsView: View {
 
     HStack(spacing: 10) {
       ForEach(viewModel.buttonState.buttonTypes(book: viewModel.book, previewEnabled: previewEnabled), id: \.self) { buttonType in
-        ActionButton(type: buttonType, viewModel: viewModel, isDarkBackground: isDarkBackground, onButtonTapped: onButtonTapped)
+        ActionButton(type: buttonType, viewModel: viewModel, isDarkBackground: isDarkBackground, size: size, onButtonTapped: onButtonTapped)
           .transition(.asymmetric(insertion: .scale(scale: 0.8).combined(with: .opacity),
                                   removal: .opacity))
       }
@@ -27,10 +28,12 @@ struct ActionButton: View {
   let type: BookButtonType
   @ObservedObject var viewModel: BookDetailViewModel
   var isDarkBackground: Bool = true
+  var size: ButtonSize = .regular
   var onButtonTapped: ((BookButtonType) -> Void)?
 
   var body: some View {
     Button(action: {
+      HapticFeedback.medium()
       withAnimation {
         onButtonTapped?(type) ?? viewModel.handleAction(for: type)
       }
@@ -42,11 +45,13 @@ struct ActionButton: View {
         }
 
         Text(type.title)
-          .font(.semiBoldPalaceFont(size: 14))
-          .transition(.opacity)
+          .font(size.font)
+          .opacity(viewModel.isProcessing(for: type) ? 0.5 : 1)
+          .scaleEffect(viewModel.isProcessing(for: type) ? 0.95 : 1.0)
+          .animation(.easeInOut(duration: 0.2), value: viewModel.isProcessing(for: type))
       }
-      .padding()
-      .frame(minWidth: 100)
+      .padding(size.padding)
+      .frame(minWidth: 100, minHeight: size.height)
       .background(type.buttonBackgroundColor(isDarkBackground))
       .foregroundColor(type.buttonTextColor(isDarkBackground))
       .cornerRadius(8)
@@ -54,11 +59,45 @@ struct ActionButton: View {
         RoundedRectangle(cornerRadius: 8)
           .stroke(type.borderColor(isDarkBackground), lineWidth: type.hasBorder ? 2 : 0)
       )
-      .scaleEffect(viewModel.isProcessing(for: type) ? 0.95 : 1.0)
-      .animation(.easeInOut(duration: 0.2), value: viewModel.isProcessing(for: type))
     }
     .disabled(viewModel.isProcessing(for: type))
     .buttonStyle(.plain)
+  }
+}
+
+// MARK: - Button Size Enum
+enum ButtonSize {
+  case regular
+  case small
+
+  var height: CGFloat {
+    switch self {
+    case .regular: return 44
+    case .small: return 34
+    }
+  }
+
+  var font: Font {
+    switch self {
+    case .regular: return .semiBoldPalaceFont(size: 14)
+    case .small: return .semiBoldPalaceFont(size: 12)
+    }
+  }
+
+  var padding: EdgeInsets {
+    switch self {
+    case .regular: return EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16)
+    case .small: return EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12)
+    }
+  }
+}
+
+// MARK: - Haptic Feedback Utility
+struct HapticFeedback {
+  static func medium() {
+    let generator = UIImpactFeedbackGenerator(style: .medium)
+    generator.prepare()
+    generator.impactOccurred()
   }
 }
 

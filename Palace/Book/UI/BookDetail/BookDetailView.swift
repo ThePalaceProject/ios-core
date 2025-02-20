@@ -3,6 +3,7 @@ import UIKit
 
 struct BookDetailView: View {
   typealias DisplayStrings = Strings.BookDetailView
+  weak var delegate: BookDetailViewDelegate?
   @State private var selectedBook: TPPBook?
   @State private var showBookDetail = false
   @State private var descriptionText = ""
@@ -12,6 +13,13 @@ struct BookDetailView: View {
   @State private var coverImage: UIImage = UIImage()
   @State private var headerBackgroundColor: Color = .gray
   @State private var showHalfSheet = false
+  @State private var headerHeight: CGFloat = 280
+  @State private var showCompactHeader: Bool = false
+  @State private var lastOffset: CGFloat = 0
+  @State private var lastTimestamp: TimeInterval = 0
+  @State private var animationDuration: CGFloat = 0
+  @State private var imageScale: CGFloat = 1.0
+  @State private var imageOpacity: CGFloat = 1.0
 
   init(book: TPPBook) {
     self.viewModel = BookDetailViewModel(book: book)
@@ -21,10 +29,26 @@ struct BookDetailView: View {
     ScrollView {
       ZStack(alignment: .top) {
         backgroundView
+          .frame(height: headerHeight)
 
-        mainView
-          .padding(.bottom, 100)
+        GeometryReader { geometry in
+          let offset = geometry.frame(in: .global).minY
+          let scale = min(1, 1 - (offset / 280))
+
+          if showCompactHeader {
+            compactHeaderContent
+              .padding(.top, 75)
+          }
+
+          mainView
+            .padding(.bottom, 100)
+            .scaleEffect(scale, anchor: .top)
+            .offset(y: offset > 0 ? 0 : offset)
+        }
       }
+    }
+    .onChange(of: showCompactHeader) { newValue in
+      self.delegate?.didChangeToCompactView(newValue)
     }
     .edgesIgnoringSafeArea(.all)
     .onDisappear {
@@ -36,7 +60,7 @@ struct BookDetailView: View {
     }
     .onChange(of: viewModel.book) { newValue in
       loadCoverImage()
-      self.descriptionText =  newValue.summary ?? ""
+      self.descriptionText = newValue.summary ?? ""
     }
     .background(Color.white)
     .fullScreenCover(item: $selectedBook) { book in
@@ -45,6 +69,8 @@ struct BookDetailView: View {
     .sheet(isPresented: $showHalfSheet) {
       HalfSheetView(viewModel: viewModel, backgroundColor: headerBackgroundColor, coverImage: self.$coverImage.wrappedValue)
     }
+    .navigationTitle("")
+    .navigationBarBackButtonHidden(showCompactHeader)
   }
 
   @ViewBuilder private var mainView: some View {
@@ -85,15 +111,24 @@ struct BookDetailView: View {
           imageView
             .padding(.top, 110)
             .padding(.bottom, 25)
+
           titleView
-          descriptionView
-          informationView
+            .opacity(showCompactHeader ? 0 : 1)
+            .scaleEffect(showCompactHeader ? 0.95 : 1.0)
+            .animation(.easeInOut(duration: animationDuration), value: showCompactHeader)
+
+          VStack {
+            descriptionView
+            informationView
+          }
+          .padding(.top, showCompactHeader ? -75 : 0)
+          .animation(.easeInOut(duration: animationDuration), value: showCompactHeader)
         }
         .padding(.horizontal, 30)
 
         relatedBooksSection
-
       }
+
       VStack {
         Spacer()
         sampleToolbar
@@ -105,19 +140,19 @@ struct BookDetailView: View {
   }
 
   private var imageView: some View {
-    ZStack(alignment: .bottomTrailing) {
+  ZStack(alignment: .bottomTrailing) {
+    if !showCompactHeader {
       Image(uiImage: coverImage)
         .resizable()
         .scaledToFit()
-        .frame(height: 280)
+        .frame(height: max(0, 280 * imageScale))
+        .opacity(imageOpacity)
         .shadow(color: .black.opacity(0.3), radius: 10, x: 0, y: 5)
-
-      if viewModel.book.isAudiobook {
-        audiobookIndicator
-          .padding(8)
-      }
+        .animation(.easeInOut(duration: animationDuration), value: imageScale)
+        .animation(.easeInOut(duration: animationDuration), value: imageOpacity)
     }
   }
+}
 
   private var titleView: some View {
     VStack(alignment: viewModel.isFullSize ? .leading : .center, spacing: 8) {
@@ -150,9 +185,9 @@ struct BookDetailView: View {
 
   private func loadCoverImage() {
     viewModel.registry.coverImage(for: viewModel.book) { uiImage in
-        guard let uiImage = uiImage else { return }
-        self.coverImage = uiImage
-        self.headerBackgroundColor = Color(uiImage.mainColor() ?? .gray)
+      guard let uiImage = uiImage else { return }
+      self.coverImage = uiImage
+      self.headerBackgroundColor = Color(uiImage.mainColor() ?? .gray)
     }
   }
 
@@ -185,7 +220,6 @@ struct BookDetailView: View {
           Divider()
         }
         .padding(.horizontal, 30)
-
 
         ScrollView(.horizontal, showsIndicators: false) {
           HStack(spacing: 12) {
@@ -239,6 +273,7 @@ struct BookDetailView: View {
     ZStack(alignment: .top) {
       Color.white
         .edgesIgnoringSafeArea(.all)
+
       LinearGradient(
         gradient: Gradient(colors: [
           headerBackgroundColor.opacity(1.0),
@@ -247,9 +282,50 @@ struct BookDetailView: View {
         startPoint: .bottom,
         endPoint: .top
       )
-      .frame(height: 280)
+      .frame(height: headerHeight)
+      .animation(.easeInOut(duration: animationDuration), value: headerHeight)
+      .background(GeometryReader { proxy in
+        Color.clear
+          .onAppear { updateHeaderHeight(for: proxy.frame(in: .global).minY) }
+          .onChange(of: proxy.frame(in: .global).minY) { newValue in
+            updateHeaderHeight(for: newValue)
+          }
+      })
+
     }
     .edgesIgnoringSafeArea(.top)
+  }
+
+  private var compactHeaderContent: some View {
+    HStack {
+      VStack(alignment: .leading) {
+        Spacer()
+        Text(viewModel.book.title)
+          .lineLimit(0)
+          .fixedSize(horizontal: false, vertical: true)
+          .font(.subheadline)
+          .foregroundColor(headerBackgroundColor.isDark ? .white : .black)
+
+        if let authors = viewModel.book.authors, !authors.isEmpty {
+          Text(authors)
+            .font(.caption)
+            .foregroundColor(headerBackgroundColor.isDark ? .white.opacity(0.8) : .black.opacity(0.8))
+        }
+      }
+      Spacer()
+      BookButtonsView(viewModel: viewModel, backgroundColor: .clear, size: .small) { type in
+        switch type {
+        case .sample, .audiobookSample:
+          viewModel.handleAction(for: type)
+        default:
+          showHalfSheet.toggle()
+        }
+      }
+    }
+    .frame(height: 50)
+    .padding(.horizontal, 20)
+    .padding(.bottom, 10)
+    .transition(.opacity.animation(.easeInOut(duration: 0.3)))
   }
 
   @ViewBuilder private var descriptionView: some View {
@@ -332,22 +408,41 @@ struct BookDetailView: View {
         .foregroundColor(.black)
     }
   }
-}
 
-struct BookDetailDownloadingView: View {
-  let progress: Double
-  let onCancel: () -> Void
+  private func updateHeaderHeight(for offset: CGFloat) {
+    let maxHeight: CGFloat = 280
+    let compactThreshold: CGFloat = 150
+    let expandThreshold: CGFloat = 250
+    let now = Date().timeIntervalSince1970
+    let timeDelta = now - lastTimestamp
+    let offsetDelta = abs(offset) - lastOffset
 
-  var body: some View {
-    VStack {
-      ProgressView(value: progress, total: 1.0)
-        .progressViewStyle(LinearProgressViewStyle())
-        .frame(maxWidth: .infinity)
+    let scrollSpeed = abs(offsetDelta / (timeDelta > 0 ? timeDelta : 0.01))
+    animationDuration = max(0.1, min(0.3, 0.3 - (scrollSpeed / 10)))
+
+    let newHeight = headerHeight + offset
+    let adjustedHeight = max(0, min(newHeight, maxHeight))
+
+    let progress = max(0, min(1, (adjustedHeight - compactThreshold) / (maxHeight - compactThreshold)))
+    let scaleFactor = progress
+    let opacityFactor = progress
+
+    withAnimation(.easeInOut(duration: animationDuration)) {
+      headerHeight = max(compactThreshold, adjustedHeight)
+
+      if adjustedHeight <= compactThreshold {
+        showCompactHeader = true
+      }
+      else if adjustedHeight >= expandThreshold {
+        showCompactHeader = false
+      }
+
+      imageScale = scaleFactor
+      imageOpacity = opacityFactor
     }
-    .padding()
-    .background(Color.primary.opacity(0.9))
-    .cornerRadius(8)
-    .shadow(radius: 10)
+
+    lastOffset = abs(offset)
+    lastTimestamp = now
   }
 }
 

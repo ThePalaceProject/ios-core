@@ -1,8 +1,13 @@
 import SwiftUI
 
-@objcMembers class BookDetailHostingController: UIViewController {
+protocol BookDetailViewDelegate: AnyObject {
+  func didChangeToCompactView(_ isCompact: Bool)
+}
+
+@objcMembers class BookDetailHostingController: UIViewController, BookDetailViewDelegate {
   private let book: TPPBook
   private var initialAppearance: UINavigationBarAppearance?
+  private var hostingController: UIHostingController<BookDetailView>?
 
   init(book: TPPBook) {
     self.book = book
@@ -16,23 +21,26 @@ import SwiftUI
   override func viewDidLoad() {
     super.viewDidLoad()
 
-    let bookDetailView = BookDetailView(book: self.book)
-    let hostingController = UIHostingController(rootView: bookDetailView)
-    addChild(hostingController)
+    var bookDetailView = BookDetailView(book: self.book)
+    bookDetailView.delegate = self
+    self.hostingController = UIHostingController(rootView: bookDetailView)
 
-    view.addSubview(hostingController.view)
+    // Setup the hosting controller
+    if let hostingController = self.hostingController {
+      addChild(hostingController)
+      view.addSubview(hostingController.view)
 
-    hostingController.view.translatesAutoresizingMaskIntoConstraints = false
-    NSLayoutConstraint.activate([
-      hostingController.view.topAnchor.constraint(equalTo: view.topAnchor),
-      hostingController.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-      hostingController.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-      hostingController.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)
-    ])
+      hostingController.view.translatesAutoresizingMaskIntoConstraints = false
+      NSLayoutConstraint.activate([
+        hostingController.view.topAnchor.constraint(equalTo: view.topAnchor),
+        hostingController.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        hostingController.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+        hostingController.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)
+      ])
 
-    hostingController.didMove(toParent: self)
+      hostingController.didMove(toParent: self)
+    }
   }
-
   override func viewWillAppear(_ animated: Bool) {
     super.viewWillAppear(animated)
 
@@ -45,8 +53,6 @@ import SwiftUI
 
   override func viewWillDisappear(_ animated: Bool) {
     super.viewWillDisappear(animated)
-
-//    restoreNavigationBar()
   }
 
   private func setTransparentNavigationBar() {
@@ -64,13 +70,9 @@ import SwiftUI
     navigationController.navigationBar.forceUpdateAppearance(style: traitCollection.userInterfaceStyle)
   }
 
-  private func restoreNavigationBar() {
-//    guard let navigationController = navigationController, let initialAppearance = initialAppearance else { return }
-//
-//
-//    navigationController.navigationBar.setAppearance(initialAppearance)
-//    navigationController.navigationBar.isTranslucent = false
-////    navigationController.navigationBar.forceUpdateAppearance(style: traitCollection.userInterfaceStyle)
-//    additionalSafeAreaInsets.top = 0
+  func didChangeToCompactView(_ isCompact: Bool) {
+    DispatchQueue.main.async {
+      self.navigationItem.setHidesBackButton(isCompact, animated: true)
+    }
   }
 }
