@@ -308,6 +308,7 @@ struct Strings {
     static let distributor = NSLocalizedString("Distributor", comment: "")
     static let more = NSLocalizedString("More", comment: "")
     static let less = NSLocalizedString("Less", comment: "")
+    static let otherBooks = NSLocalizedString("Other books by this author", comment: "Section header for related books")
   }
 
   struct BookButton {

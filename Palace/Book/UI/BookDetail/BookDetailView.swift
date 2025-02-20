@@ -31,21 +31,20 @@ struct BookDetailView: View {
         backgroundView
           .frame(height: headerHeight)
 
-        GeometryReader { geometry in
-          let offset = geometry.frame(in: .global).minY
-          let scale = min(1, 1 - (offset / 280))
-
-          if showCompactHeader {
-            compactHeaderContent
-              .padding(.top, 75)
-          }
-
-          mainView
-            .padding(.bottom, 100)
-            .scaleEffect(scale, anchor: .top)
-            .offset(y: offset > 0 ? 0 : offset)
+        if showCompactHeader {
+          compactHeaderContent
+            .padding(.top, 75)
+            .opacity(showCompactHeader ? 1 : 0)
+            .offset(y: showCompactHeader ? 0 : -20)
+            .animation(.easeInOut(duration: animationDuration), value: showCompactHeader)
         }
+
+        mainView
+          .padding(.bottom, 100)
       }
+    }
+    .onChange(of: headerBackgroundColor) { newColor in
+      delegate?.didUpdateHeaderBackground(isDark: newColor.isDark)
     }
     .onChange(of: showCompactHeader) { newValue in
       self.delegate?.didChangeToCompactView(newValue)
@@ -56,7 +55,7 @@ struct BookDetailView: View {
     }
     .onAppear {
       loadCoverImage()
-      self.descriptionText =  viewModel.book.summary ?? ""
+      self.descriptionText = viewModel.book.summary ?? ""
     }
     .onChange(of: viewModel.book) { newValue in
       loadCoverImage()
@@ -67,10 +66,8 @@ struct BookDetailView: View {
       BookDetailView(book: book)
     }
     .sheet(isPresented: $showHalfSheet) {
-      HalfSheetView(viewModel: viewModel, backgroundColor: headerBackgroundColor, coverImage: self.$coverImage.wrappedValue)
+      HalfSheetView(viewModel: viewModel, backgroundColor: headerBackgroundColor, coverImage: coverImage)
     }
-    .navigationTitle("")
-    .navigationBarBackButtonHidden(showCompactHeader)
   }
 
   @ViewBuilder private var mainView: some View {
@@ -94,7 +91,7 @@ struct BookDetailView: View {
 
         descriptionView
         informationView
-        relatedBooksSection
+        relatedBooksView
         Spacer()
       }
       .padding(30)
@@ -114,21 +111,17 @@ struct BookDetailView: View {
 
           titleView
             .opacity(showCompactHeader ? 0 : 1)
-            .scaleEffect(showCompactHeader ? 0.95 : 1.0)
-            .animation(.easeInOut(duration: animationDuration), value: showCompactHeader)
 
           VStack {
             descriptionView
             informationView
           }
-          .padding(.top, showCompactHeader ? -75 : 0)
-          .animation(.easeInOut(duration: animationDuration), value: showCompactHeader)
+          .padding(.top, showCompactHeader ? -115 : 0)
         }
         .padding(.horizontal, 30)
 
-        relatedBooksSection
+        relatedBooksView
       }
-
       VStack {
         Spacer()
         sampleToolbar
@@ -140,8 +133,7 @@ struct BookDetailView: View {
   }
 
   private var imageView: some View {
-  ZStack(alignment: .bottomTrailing) {
-    if !showCompactHeader {
+    ZStack(alignment: .bottomTrailing) {
       Image(uiImage: coverImage)
         .resizable()
         .scaledToFit()
@@ -149,17 +141,16 @@ struct BookDetailView: View {
         .opacity(imageOpacity)
         .shadow(color: .black.opacity(0.3), radius: 10, x: 0, y: 5)
         .animation(.easeInOut(duration: animationDuration), value: imageScale)
-        .animation(.easeInOut(duration: animationDuration), value: imageOpacity)
     }
-  }
 }
 
   private var titleView: some View {
     VStack(alignment: viewModel.isFullSize ? .leading : .center, spacing: 8) {
       Text(viewModel.book.title)
         .font(.title3)
-        .lineLimit(0)
-        .fixedSize(horizontal: false, vertical: true)
+        .lineLimit(nil)
+        .multilineTextAlignment(.center)
+        .frame(maxWidth: .infinity, alignment: viewModel.isFullSize ? .leading : .center)
 
       if let authors = viewModel.book.authors, !authors.isEmpty {
         Text(authors)
@@ -181,6 +172,7 @@ struct BookDetailView: View {
       }
     }
     .foregroundColor(headerBackgroundColor.isDark && viewModel.isFullSize ? .white : .black)
+    .animation(.easeInOut(duration: animationDuration), value: imageScale)
   }
 
   private func loadCoverImage() {
@@ -188,52 +180,40 @@ struct BookDetailView: View {
       guard let uiImage = uiImage else { return }
       self.coverImage = uiImage
       self.headerBackgroundColor = Color(uiImage.mainColor() ?? .gray)
+
+      DispatchQueue.main.async {
+          self.delegate?.didUpdateHeaderBackground(isDark: headerBackgroundColor.isDark)
+      }
     }
   }
 
-  @ViewBuilder private var relatedBooksSection: some View {
-    VStack(alignment: .leading, spacing: 0) {
+  @ViewBuilder private var relatedBooksView: some View {
+    VStack(alignment: .leading, spacing: 10) {
       if viewModel.isLoadingRelatedBooks {
-        VStack(alignment: .leading, spacing: 0) {
-          Text("OTHER BOOKS BY THIS AUTHOR")
-            .font(.headline)
-            .foregroundColor(.black)
-
-          Divider()
-        }
-        .padding(.horizontal, 30)
-
         ProgressView()
-          .tint(.black)
           .frame(height: 100)
           .frame(maxWidth: .infinity)
-          .padding()
-          .foregroundColor(.black)
-          .horizontallyCentered()
-
       } else if !viewModel.relatedBooks.isEmpty {
-
-        VStack(alignment: .leading, spacing: 0) {
-          Text("OTHER BOOKS BY THIS AUTHOR")
-            .font(.headline)
-            .foregroundColor(.black)
-          Divider()
-        }
-        .padding(.horizontal, 30)
+        Text(DisplayStrings.otherBooks)
+          .font(.headline)
+          .foregroundColor(.black)
+          .padding(.horizontal, 30)
 
         ScrollView(.horizontal, showsIndicators: false) {
-          HStack(spacing: 12) {
+          LazyHStack(spacing: 12) { // Use LazyHStack to load items on demand
             ForEach(viewModel.relatedBooks, id: \.identifier) { book in
               Button(action: { viewModel.selectRelatedBook(book) }) {
                 BookThumbnailView(book: book)
+                  .frame(width: 100)
               }
             }
           }
-          .padding(.horizontal)
+          .padding(.horizontal, 30)
         }
+        .frame(height: 180)
       }
     }
-    .padding(.top, 10)
+    .animation(nil, value: viewModel.relatedBooks)
   }
 
   @ViewBuilder private var audiobookAvailable: some View {
@@ -282,8 +262,6 @@ struct BookDetailView: View {
         startPoint: .bottom,
         endPoint: .top
       )
-      .frame(height: headerHeight)
-      .animation(.easeInOut(duration: animationDuration), value: headerHeight)
       .background(GeometryReader { proxy in
         Color.clear
           .onAppear { updateHeaderHeight(for: proxy.frame(in: .global).minY) }
@@ -297,12 +275,12 @@ struct BookDetailView: View {
   }
 
   private var compactHeaderContent: some View {
-    HStack {
+    HStack(alignment: .top) {
       VStack(alignment: .leading) {
         Spacer()
         Text(viewModel.book.title)
-          .lineLimit(0)
-          .fixedSize(horizontal: false, vertical: true)
+          .lineLimit(nil)
+          .multilineTextAlignment(.center)
           .font(.subheadline)
           .foregroundColor(headerBackgroundColor.isDark ? .white : .black)
 
@@ -313,19 +291,13 @@ struct BookDetailView: View {
         }
       }
       Spacer()
-      BookButtonsView(viewModel: viewModel, backgroundColor: .clear, size: .small) { type in
-        switch type {
-        case .sample, .audiobookSample:
-          viewModel.handleAction(for: type)
-        default:
-          showHalfSheet.toggle()
-        }
+      BookButtonsView(viewModel: viewModel, backgroundColor: headerBackgroundColor, size: .small) { type in
+        showHalfSheet.toggle()
       }
     }
     .frame(height: 50)
     .padding(.horizontal, 20)
     .padding(.bottom, 10)
-    .transition(.opacity.animation(.easeInOut(duration: 0.3)))
   }
 
   @ViewBuilder private var descriptionView: some View {
@@ -410,15 +382,23 @@ struct BookDetailView: View {
   }
 
   private func updateHeaderHeight(for offset: CGFloat) {
+    guard !viewModel.isFullSize else { return }
+
     let maxHeight: CGFloat = 280
     let compactThreshold: CGFloat = 150
-    let expandThreshold: CGFloat = 250
+    let expandThreshold: CGFloat = 280
+    let baseStiffness: CGFloat = 85
+    let baseDamping: CGFloat = 20
+    let maxStiffness: CGFloat = 90
+    let minStiffness: CGFloat = 80
+    let maxDamping: CGFloat = 25
+    let minDamping: CGFloat = 15
     let now = Date().timeIntervalSince1970
     let timeDelta = now - lastTimestamp
     let offsetDelta = abs(offset) - lastOffset
 
     let scrollSpeed = abs(offsetDelta / (timeDelta > 0 ? timeDelta : 0.01))
-    animationDuration = max(0.1, min(0.3, 0.3 - (scrollSpeed / 10)))
+    animationDuration = max(0.2, min(0.3, 0.3 - (scrollSpeed / 10)))
 
     let newHeight = headerHeight + offset
     let adjustedHeight = max(0, min(newHeight, maxHeight))
@@ -427,13 +407,12 @@ struct BookDetailView: View {
     let scaleFactor = progress
     let opacityFactor = progress
 
-    withAnimation(.easeInOut(duration: animationDuration)) {
+    withAnimation(.interactiveSpring(duration: animationDuration, extraBounce: 0.1, blendDuration: animationDuration)) {
       headerHeight = max(compactThreshold, adjustedHeight)
 
       if adjustedHeight <= compactThreshold {
         showCompactHeader = true
-      }
-      else if adjustedHeight >= expandThreshold {
+      } else if adjustedHeight >= expandThreshold {
         showCompactHeader = false
       }
 
@@ -451,6 +430,7 @@ struct BookThumbnailView: View {
   let book: TPPBook
 
   @State private var image: UIImage? = nil
+
 
   var body: some View {
     VStack {

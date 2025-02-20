@@ -2,12 +2,13 @@ import SwiftUI
 
 protocol BookDetailViewDelegate: AnyObject {
   func didChangeToCompactView(_ isCompact: Bool)
+  func didUpdateHeaderBackground(isDark: Bool)
 }
 
 @objcMembers class BookDetailHostingController: UIViewController, BookDetailViewDelegate {
   private let book: TPPBook
-  private var initialAppearance: UINavigationBarAppearance?
   private var hostingController: UIHostingController<BookDetailView>?
+  private var isDarkBackground: Bool = true
 
   init(book: TPPBook) {
     self.book = book
@@ -25,7 +26,6 @@ protocol BookDetailViewDelegate: AnyObject {
     bookDetailView.delegate = self
     self.hostingController = UIHostingController(rootView: bookDetailView)
 
-    // Setup the hosting controller
     if let hostingController = self.hostingController {
       addChild(hostingController)
       view.addSubview(hostingController.view)
@@ -43,11 +43,6 @@ protocol BookDetailViewDelegate: AnyObject {
   }
   override func viewWillAppear(_ animated: Bool) {
     super.viewWillAppear(animated)
-
-    if initialAppearance == nil {
-      initialAppearance = navigationController?.navigationBar.standardAppearance
-    }
-
     setTransparentNavigationBar()
   }
 
@@ -55,15 +50,28 @@ protocol BookDetailViewDelegate: AnyObject {
     super.viewWillDisappear(animated)
   }
 
+  func didUpdateHeaderBackground(isDark: Bool) {
+    isDarkBackground = isDark
+    setTransparentNavigationBar()
+  }
+
+  @MainActor
   private func setTransparentNavigationBar() {
     guard let navigationController = navigationController else { return }
+
+    let textColor = isDarkBackground ? UIColor.white : UIColor.black
 
     let appearance = UINavigationBarAppearance()
     appearance.configureWithTransparentBackground()
     appearance.backgroundColor = .clear
     appearance.shadowColor = .clear
-    appearance.titleTextAttributes = [.foregroundColor: UIColor.white]
-    appearance.largeTitleTextAttributes = [.foregroundColor: UIColor.white]
+    appearance.titleTextAttributes = [.foregroundColor: textColor]
+    appearance.largeTitleTextAttributes = [.foregroundColor: textColor]
+
+    navigationController.navigationBar.standardAppearance = appearance
+    navigationController.navigationBar.scrollEdgeAppearance = appearance
+    navigationController.navigationBar.compactAppearance = appearance
+    navigationController.navigationBar.tintColor = textColor
 
     navigationController.navigationBar.setAppearance(appearance)
     navigationController.navigationBar.isTranslucent = true
