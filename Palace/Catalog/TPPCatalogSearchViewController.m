@@ -6,7 +6,6 @@
 #import "NSString+TPPStringAdditions.h"
 
 #import "TPPBookCell.h"
-#import "TPPBookDetailViewController.h"
 #import "TPPCatalogUngroupedFeed.h"
 #import "TPPOpenSearchDescription.h"
 #import "TPPReloadView.h"

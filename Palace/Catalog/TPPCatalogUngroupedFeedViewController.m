@@ -1,6 +1,5 @@
 @import PureLayout;
 
-#import "TPPBookDetailViewController.h"
 #import "TPPBookNormalCell.h"
 #import "TPPCatalogUngroupedFeed.h"
 #import "TPPCatalogFacet.h"
@@ -181,7 +180,8 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
 {
   TPPBook *const book = self.feed.books[indexPath.row];
   
-  [[[TPPBookDetailViewController alloc] initWithBook:book] presentFromViewController:self];
+  BookDetailHostingController *bookDetailVC = [[BookDetailHostingController alloc] initWithBook:book];
+  [self.navigationController pushViewController:bookDetailVC animated:true];
 }
 
 #pragma mark TPPCatalogUngroupedFeedDelegate
@@ -300,7 +300,8 @@ didSelectFacetAtIndexPath:(NSIndexPath *const)indexPath
      commitViewController:(UIViewController *)viewControllerToCommit
 {
   TPPBook *const book = self.feed.books[viewControllerToCommit.view.tag];
-  [[[TPPBookDetailViewController alloc] initWithBook:book] presentFromViewController:self];
+  BookDetailHostingController *bookDetailVC = [[BookDetailHostingController alloc] initWithBook:book];
+  [self.navigationController pushViewController:bookDetailVC animated:true];
 }
 
 #pragma mark -

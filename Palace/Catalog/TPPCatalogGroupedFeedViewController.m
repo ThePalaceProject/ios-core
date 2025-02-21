@@ -1,7 +1,5 @@
 @import PureLayout;
 
-#import "TPPBookDetailViewController.h"
-
 #import "TPPCatalogFeedViewController.h"
 #import "TPPCatalogGroupedFeed.h"
 #import "TPPCatalogLane.h"
@@ -215,7 +213,8 @@ static CGFloat const kTableViewCrossfadeDuration = 0.3;
   }
 
   TPPLOG_F(@"Presenting book: %@", [self.mostRecentBookSelected loggableShortString]);
-  [[[TPPBookDetailViewController alloc] initWithBook:self.mostRecentBookSelected] presentFromViewController:self];
+  BookDetailHostingController *bookDetailVC = [[BookDetailHostingController alloc] initWithBook:self.mostRecentBookSelected];
+  [self.navigationController pushViewController:bookDetailVC animated:true];
 }
 
 #pragma mark UITableViewDataSource
@@ -348,7 +347,6 @@ viewForHeaderInSection:(NSInteger const)section
   BookDetailHostingController *bookDetailVC = [[BookDetailHostingController alloc] initWithBook:book];
   [self.navigationController pushViewController:bookDetailVC animated:true];
 
-
   self.mostRecentBookSelected = book;
 }
 
@@ -407,7 +405,10 @@ viewForHeaderInSection:(NSInteger const)section
   TPPBook *const localBook = [[TPPBookRegistry shared] bookForIdentifier:feedBook.identifier];
   TPPBook *const book = (localBook != nil) ? localBook : feedBook;
   TPPLOG_F(@"Presenting book: %@", [book loggableShortString]);
-  [[[TPPBookDetailViewController alloc] initWithBook:book] presentFromViewController:self];
+
+
+  BookDetailHostingController *bookDetailVC = [[BookDetailHostingController alloc] initWithBook:book];
+  [self.navigationController pushViewController:bookDetailVC animated:true];
 }
 
 #pragma mark - TPPEntryPointViewDataSource
