@@ -104,7 +104,8 @@ class TPPBookRegistry: NSObject {
 
   private var registry = [String: TPPBookRegistryRecord]() {
     didSet {
-      DispatchQueue.main.async {
+      DispatchQueue.main.async { [weak self] in
+        guard let self else { return }
         registrySubject.send(registry)
         NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil, userInfo: nil)
       }
@@ -198,8 +199,8 @@ class TPPBookRegistry: NSObject {
           self.registry[record.book.identifier] = record
         }
       }
-      DispatchQueue.main.async {
-        self.state = .loaded
+      DispatchQueue.main.async { [weak self] in
+        self?.state = .loaded
       }
     }
   }
@@ -224,7 +225,9 @@ class TPPBookRegistry: NSObject {
     state = .syncing
     syncUrl = loansUrl
     TPPOPDSFeed.withURL(loansUrl, shouldResetCache: true, useTokenIfAvailable: true) { feed, errorDocument in
-      DispatchQueue.main.async {
+      DispatchQueue.main.async { [weak self] in
+        guard let self else { return }
+
         defer {
           self.state = .loaded
           self.syncUrl = nil
@@ -352,27 +355,22 @@ class TPPBookRegistry: NSObject {
     syncQueue.async {
       self.registry[book.identifier] = TPPBookRegistryRecord(book: book, location: location, state: state, fulfillmentId: fulfillmentId, readiumBookmarks: readiumBookmarks, genericBookmarks: genericBookmarks)
       self.save()
+
+
+      DispatchQueue.main.async {
+        self.registrySubject.send(self.registry)
+      }
     }
   }
 
   func updateAndRemoveBook(_ book: TPPBook) {
-    syncQueue.async {
-      guard let existingRecord = self.registry[book.identifier] else { return }
+    syncQueue.async { [weak self] in
+      guard let self, let existingRecord = self.registry[book.identifier] else { return }
       self.coverRegistry.cachedThumbnailImageForBook(book)
       existingRecord.book = book
-      existingRecord.state = .Unregistered
+      existingRecord.state = .unregistered
       self.save()
     }
-    
-    // Remove the pinned thumbnail image if cached
-    coverRegistry.cachedThumbnailImageForBook(book)
-    
-    // Update the book in the registry, set it to unregistered, and then save the changes
-    existingRecord.book = book
-    existingRecord.state = .unregistered
-    
-    // Save the updated registry
-    save()
   }
 
   func removeBook(forIdentifier bookIdentifier: String) {
@@ -380,9 +378,15 @@ class TPPBookRegistry: NSObject {
       let book = self.registry[bookIdentifier]?.book
       self.registry.removeValue(forKey: bookIdentifier)
       self.save()
+
+      DispatchQueue.main.async {
+        self.registrySubject.send(self.registry)
+      }
+
+      //TODO: Investigate why we are doing this
       if let book = book {
-        DispatchQueue.main.async {
-          self.coverRegistry.cachedThumbnailImageForBook(book)
+        DispatchQueue.main.async { [weak self] in
+          self?.coverRegistry.cachedThumbnailImageForBook(book)
         }
       }
     }
@@ -392,7 +396,18 @@ class TPPBookRegistry: NSObject {
     syncQueue.async {
       guard let record = self.registry[book.identifier] else { return }
       TPPUserNotifications.compareAvailability(cachedRecord: record, andNewBook: book)
-      self.registry[book.identifier] = TPPBookRegistryRecord(book: book, location: record.location, state: record.state, fulfillmentId: record.fulfillmentId, readiumBookmarks: record.readiumBookmarks, genericBookmarks: record.genericBookmarks)
+      self.registry[book.identifier] = TPPBookRegistryRecord(
+        book: book,
+        location: record.location,
+        state: record.state,
+        fulfillmentId: record.fulfillmentId,
+        readiumBookmarks: record.readiumBookmarks,
+        genericBookmarks: record.genericBookmarks
+      )
+    }
+
+    DispatchQueue.main.async {
+      self.registrySubject.send(self.registry)
     }
   }
 
@@ -416,9 +431,12 @@ class TPPBookRegistry: NSObject {
   func setState(_ state: TPPBookState, for bookIdentifier: String) {
     syncQueue.async {
     self.registry[bookIdentifier]?.state = state
-    self.bookStateSubject.send((bookIdentifier, state))
     self.postStateNotification(bookIdentifier: bookIdentifier, state: state)
     self.save()
+
+      DispatchQueue.main.async {
+        self.bookStateSubject.send((bookIdentifier, state)) // 🔹 Publish state change
+      }
     }
   }
 
