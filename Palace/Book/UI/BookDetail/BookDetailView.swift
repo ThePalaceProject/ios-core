@@ -55,6 +55,8 @@ struct BookDetailView: View {
       }
       .onChange(of: viewModel.book) { newValue in
         loadCoverImage()
+        viewModel.showSampleToolbar = false
+        sampleToolbar?.player.state = .paused
         self.descriptionText = newValue.summary ?? ""
       }
       .onAppear {

@@ -41,6 +41,8 @@ struct ActionButton: View {
       ZStack {
         if viewModel.isProcessing(for: type) {
           ProgressView()
+            .progressViewStyle(CircularProgressViewStyle())
+            .tint(type.buttonTextColor(isDarkBackground))
             .transition(.opacity)
         }
 

@@ -179,7 +179,7 @@ class BookDetailViewModel: ObservableObject {
   // MARK: - Actions: Unified Handle
 
   func handleAction(for button: BookButtonType) {
-    guard !isProcessing else {
+    guard !isProcessing(for: button) else {
       return
     }
 
@@ -188,15 +188,15 @@ class BookDetailViewModel: ObservableObject {
     switch button {
     case .reserve:
       registry.setState(.holding, for: book.identifier)
-      self.processingButtons.remove(button)
+      removeProcessingButton(button)
 
     case .remove:
       registry.setState(.unregistered, for: book.identifier)
-      self.processingButtons.remove(button)
+      removeProcessingButton(button)
 
     case .return:
       didSelectReturn(for: book) {
-        self.processingButtons.remove(button)
+        self.removeProcessingButton(button)
       }
 
     case .download, .get, .retry:
@@ -204,21 +204,27 @@ class BookDetailViewModel: ObservableObject {
         TPPUserNotifications.requestAuthorization()
       }
       didSelectDownload(for: book)
-      self.processingButtons.remove(button)
+      removeProcessingButton(button)
 
     case .read, .listen:
       didSelectRead(for: book) {
-        self.processingButtons.remove(button)
+        self.removeProcessingButton(button)
       }
 
     case .cancel:
       didSelectCancel()
-      self.processingButtons.remove(button)
+      removeProcessingButton(button)
 
     case .sample, .audiobookSample:
       didSelectPlaySample(for: book) {
-        self.processingButtons.remove(button)
+        self.removeProcessingButton(button)
       }
+    }
+  }
+
+  private func removeProcessingButton(_ button: BookButtonType) {
+    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+      self.processingButtons.remove(button)
     }
   }
 
@@ -513,7 +519,7 @@ class BookDetailViewModel: ObservableObject {
   private func presentWebView(_ url: URL?) {
     guard let url = url else { return }
     let webController = BundledHTMLViewController(fileURL: url, title: AccountsManager.shared.currentAccount?.name ?? "")
-    TPPRootTabBarController.shared().navigationController?.pushViewController(webController, animated: true)
+    TPPRootTabBarController.shared().present(webController, animated: true)
   }
 
   // MARK: - Error Alerts

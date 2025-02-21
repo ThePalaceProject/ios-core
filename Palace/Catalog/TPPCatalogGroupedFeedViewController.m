@@ -127,23 +127,21 @@ static CGFloat const kTableViewCrossfadeDuration = 0.3;
   [self enable3DTouch];
 }
 
-- (void)didMoveToParentViewController:(UIViewController *)parent
-{
+- (void)didMoveToParentViewController:(UIViewController *)parent {
   [super didMoveToParentViewController:parent];
 
-  if(parent) {
-    CGFloat top = parent.topLayoutGuide.length;
+  if (parent) {
+    CGFloat topInset = parent.view.safeAreaInsets.top;
+    CGFloat bottomInset = parent.view.safeAreaInsets.bottom + kRowHeight;
 
     if (self.facetBarView.frame.size.height > 0) {
-      top = CGRectGetMaxY(self.facetBarView.frame) + kTableViewInsetAdjustmentWithEntryPoints;
+      topInset = CGRectGetMaxY(self.facetBarView.frame) + kTableViewInsetAdjustmentWithEntryPoints;
     }
 
-    CGFloat bottom = parent.bottomLayoutGuide.length;
-
-    UIEdgeInsets insets = UIEdgeInsetsMake(top, 0, bottom, 0);
+    UIEdgeInsets insets = UIEdgeInsetsMake(topInset, 0, bottomInset, 0);
     self.tableView.contentInset = insets;
     self.tableView.scrollIndicatorInsets = insets;
-    [self.tableView setContentOffset:CGPointMake(0, -top) animated:NO];
+    [self.tableView setContentOffset:CGPointMake(0, -topInset) animated:NO];
   }
 }
 

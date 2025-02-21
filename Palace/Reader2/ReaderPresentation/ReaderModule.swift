@@ -116,6 +116,7 @@ final class ReaderModule: ReaderModuleAPI {
           backItem.title = Strings.Generic.back
           readerVC.navigationItem.backBarButtonItem = backItem
           readerVC.extendedLayoutIncludesOpaqueBars = true
+          readerVC.navigationController?.isNavigationBarHidden = false
           readerVC.hidesBottomBarWhenPushed = true
           navigationController.pushViewController(readerVC, animated: true)
         }
