@@ -165,7 +165,7 @@ struct BookDetailView: View {
           .font(.footnote)
       }
 
-      BookButtonsView(viewModel: viewModel, backgroundColor: viewModel.isFullSize ? headerBackgroundColor : .white) { type in
+      BookButtonsView(provider: viewModel, backgroundColor: viewModel.isFullSize ? headerBackgroundColor : .white) { type in
         switch type {
         case .sample, .audiobookSample:
           viewModel.handleAction(for: type)
@@ -318,7 +318,7 @@ struct BookDetailView: View {
         }
       }
       Spacer()
-      BookButtonsView(viewModel: viewModel, backgroundColor: headerBackgroundColor, size: .small) { type in
+      BookButtonsView(provider: viewModel, backgroundColor: headerBackgroundColor, size: .small) { type in
         switch type {
         case .sample, .audiobookSample:
           viewModel.handleAction(for: type)

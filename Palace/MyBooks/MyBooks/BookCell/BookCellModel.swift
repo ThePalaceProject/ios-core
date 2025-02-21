@@ -253,3 +253,13 @@ extension BookCellModel {
     MyBooksDownloadCenter.shared.cancelDownload(for: book.identifier)
   }
 }
+
+extension BookCellModel: BookButtonProvider {
+  func handleAction(for type: BookButtonType) {
+    callDelegate(for: type)
+  }
+
+  func isProcessing(for type: BookButtonType) -> Bool {
+    isLoading
+  }
+}

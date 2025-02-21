@@ -74,19 +74,11 @@ struct NormalBookCell: View {
         .palaceFont(size: 12)
     }
   }
-  
+
+
   @ViewBuilder private var buttons: some View {
-    HStack {
-      ForEach(model.buttonTypes, id: \.self) { type in
-        ButtonView(
-          title: type.localizedTitle.capitalized,
-          indicatorDate: model.indicatorDate(for: type),
-          action: { model.callDelegate(for: type) }
-        )
-        .disabled(model.isLoading || type.isDisabled)
-        .opacity(model.isLoading || type.isDisabled ? 0.5 : 1.0)
-        .palaceFont(.body)
-      }
+    BookButtonsView(provider: model, size: .medium) { type in
+      model.callDelegate(for: type)
     }
   }
   

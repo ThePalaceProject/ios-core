@@ -646,3 +646,13 @@ extension BookDetailViewModel {
     }
   }
 }
+
+extension BookDetailViewModel: BookButtonProvider {
+  var buttonTypes: [BookButtonType] {
+    buttonState.buttonTypes(book: book)
+  }
+
+  func indicatorDate(for type: BookButtonType) -> Date? {
+    nil
+  }
+}

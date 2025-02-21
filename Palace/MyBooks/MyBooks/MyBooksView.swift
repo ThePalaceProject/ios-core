@@ -73,14 +73,7 @@ struct MyBooksView: View {
   }
 
   private func presentBookDetail(for book: TPPBook) {
-    let detailVC = UIHostingController(rootView: BookDetailView(book: book))
-    detailVC.modalPresentationStyle = .fullScreen
-
-    let navigationController = UINavigationController(rootViewController: detailVC)
-    navigationController.modalPresentationStyle = .fullScreen
-    navigationController.navigationBar.isTranslucent = true
-    navigationController.navigationBar.tintColor = .black
-
+    let detailVC = BookDetailHostingController(book: book)
     TPPRootTabBarController.shared().pushViewController(detailVC, animated: true)
   }
 

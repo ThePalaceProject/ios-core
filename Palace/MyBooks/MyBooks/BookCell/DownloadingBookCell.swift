@@ -27,6 +27,7 @@ struct DownloadingBookCell: View {
       .frame(height: cellHeight)
       overlay
     }
+    .padding()
     .background(Color(TPPConfiguration.mainColor()))
   }
 
@@ -68,21 +69,12 @@ struct DownloadingBookCell: View {
   }
 
   @ViewBuilder private var buttons: some View {
-    HStack {
-      Spacer()
-      ForEach(model.buttonTypes, id: \.self) { type in
-        ButtonView(
-          title: type.localizedTitle.capitalized,
-          indicatorDate: model.indicatorDate(for: type),
-          backgroundFill: Color(TPPConfiguration.backgroundColor())) {
-          model.callDelegate(for: type)
-        }
-          .palaceFont(.body)
-      }
-      Spacer()
+    BookButtonsView(provider: model, backgroundColor: .white, size: .medium) { type in
+      model.callDelegate(for: type)
     }
+    .horizontallyCentered()
   }
-  
+
   @ViewBuilder private var overlay: some View {
     switch model.state.buttonState {
     case .downloadFailed:

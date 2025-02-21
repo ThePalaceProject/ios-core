@@ -26,10 +26,10 @@ struct HalfSheetView: View {
       }
 
       if viewModel.isFullSize {
-        BookButtonsView(viewModel: viewModel, previewEnabled: false)
+        BookButtonsView(provider: viewModel, previewEnabled: false)
           .horizontallyCentered()
       } else {
-        BookButtonsView(viewModel: viewModel, previewEnabled: false)
+        BookButtonsView(provider: viewModel, previewEnabled: false)
       }
     }
     .padding()
