@@ -61,7 +61,6 @@ struct BookDetailView: View {
         self.descriptionText = newValue.summary ?? ""
       }
       .onAppear {
-        setTranslucentNavbar()
         viewModel.fetchRelatedBooks()
         loadCoverImage()
         self.descriptionText = viewModel.book.summary ?? ""
@@ -78,18 +77,6 @@ struct BookDetailView: View {
 
       sampleToolbarView
     }
-  }
-
-  private func setTranslucentNavbar() {
-    let appearance = UINavigationBarAppearance()
-    appearance.configureWithTransparentBackground()
-    appearance.backgroundColor = .clear
-    appearance.titleTextAttributes = [.foregroundColor: UIColor.black]
-    appearance.largeTitleTextAttributes = [.foregroundColor: UIColor.black]
-
-    UINavigationBar.appearance().setAppearance(appearance)
-    UINavigationBar.appearance().isTranslucent = true
-    UINavigationBar.appearance().forceUpdateAppearance(style: .dark)
   }
 
   @ViewBuilder private var mainView: some View {

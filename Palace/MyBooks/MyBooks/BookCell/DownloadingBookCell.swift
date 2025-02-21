@@ -69,7 +69,7 @@ struct DownloadingBookCell: View {
   }
 
   @ViewBuilder private var buttons: some View {
-    BookButtonsView(provider: model, backgroundColor: .white, size: .medium) { type in
+    BookButtonsView(provider: model, backgroundColor: Color(uiColor: TPPConfiguration.mainColor()), size: .medium) { type in
       model.callDelegate(for: type)
     }
     .horizontallyCentered()

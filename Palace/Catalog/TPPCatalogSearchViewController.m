@@ -101,7 +101,24 @@
 
 - (void)viewWillAppear:(BOOL)animated {
   [super viewWillAppear:animated];
-  self.navigationController.navigationBar.translucent = NO;
+
+  UINavigationBar *navBar = self.navigationController.navigationBar;
+  UINavigationBarAppearance *appearance = [[UINavigationBarAppearance alloc] init];
+
+  if (UITraitCollection.currentTraitCollection.userInterfaceStyle == UIUserInterfaceStyleDark) {
+    appearance.backgroundColor = [UIColor clearColor];
+    appearance.titleTextAttributes = @{NSForegroundColorAttributeName: [UIColor whiteColor]};
+    navBar.tintColor = [UIColor whiteColor];
+    navBar.translucent = YES;
+  } else {
+    appearance.backgroundColor = [UIColor whiteColor];
+    appearance.titleTextAttributes = @{NSForegroundColorAttributeName: [UIColor blackColor]};
+    navBar.tintColor = [UIColor blackColor];
+    navBar.translucent = NO;
+  }
+
+  [navBar setAppearance:appearance];
+  [navBar forceUpdateAppearanceWithStyle:UITraitCollection.currentTraitCollection.userInterfaceStyle];
 }
 
 

@@ -117,15 +117,13 @@ class BookCellModel: ObservableObject {
     isFetchingImage = true
     isLoading = true
 
-    DispatchQueue.global(qos: .background).async { [weak self] in
+    DispatchQueue.main.async { [weak self] in
       guard let self = self else { return }
       TPPBookRegistry.shared.thumbnailImage(for: self.book) { [weak self] fetchedImage in
         guard let self = self, let fetchedImage else { return }
-        DispatchQueue.main.async {
-          self.setImageAndCache(fetchedImage)
-          self.isLoading = false
-          self.isFetchingImage = false
-        }
+        self.setImageAndCache(fetchedImage)
+        self.isLoading = false
+        self.isFetchingImage = false
       }
     }
   }
@@ -144,30 +142,6 @@ class BookCellModel: ObservableObject {
 
   @objc private func updateButtons() {
     isLoading = false
-  }
-
-  // MARK: - Button Actions
-
-  func indicatorDate(for buttonType: BookButtonType) -> Date? {
-    guard buttonType.displaysIndicator else { return nil }
-
-    var date: Date?
-    book.defaultAcquisition?.availability.matchUnavailable(
-      nil,
-      limited: { limited in
-        if let until = limited.until, until.timeIntervalSinceNow > 0 {
-          date = until
-        }
-      },
-      unlimited: nil,
-      reserved: nil,
-      ready: { ready in
-        if let until = ready.until, until.timeIntervalSinceNow > 0 {
-          date = until
-        }
-      }
-    )
-    return date
   }
 }
 

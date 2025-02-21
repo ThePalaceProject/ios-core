@@ -117,8 +117,20 @@ static const CGFloat kCollectionViewCrossfadeDuration = 0.3;
 
 - (void)viewWillAppear:(BOOL)animated {
   [super viewWillAppear:animated];
-  self.navigationController.navigationBar.translucent = NO;
-  [self viewWillLayoutSubviews];
+
+  UINavigationBar *navBar = self.navigationController.navigationBar;
+
+  if (UITraitCollection.currentTraitCollection.userInterfaceStyle == UIUserInterfaceStyleDark) {
+    navBar.translucent = YES;
+    navBar.barTintColor = [UIColor blackColor];
+    navBar.titleTextAttributes = @{NSForegroundColorAttributeName: [UIColor whiteColor]};
+  } else {
+    navBar.translucent = NO;
+    navBar.barTintColor = [UIColor whiteColor];
+    navBar.titleTextAttributes = @{NSForegroundColorAttributeName: [UIColor blackColor]};
+  }
+
+  [navBar setNeedsLayout];
 }
 
 - (void)viewDidAppear:(BOOL)animated

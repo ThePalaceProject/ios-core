@@ -67,10 +67,6 @@ protocol BookDetailViewDelegate: AnyObject {
     appearance.shadowColor = .clear
     appearance.titleTextAttributes = [.foregroundColor: textColor]
     appearance.largeTitleTextAttributes = [.foregroundColor: textColor]
-
-    navigationController.navigationBar.standardAppearance = appearance
-    navigationController.navigationBar.scrollEdgeAppearance = appearance
-    navigationController.navigationBar.compactAppearance = appearance
     navigationController.navigationBar.tintColor = textColor
 
     navigationController.navigationBar.setAppearance(appearance)

@@ -6,7 +6,6 @@ protocol BookButtonProvider: ObservableObject {
   var book: TPPBook { get }
   var buttonTypes: [BookButtonType] { get }
   func handleAction(for type: BookButtonType)
-  func indicatorDate(for type: BookButtonType) -> Date?
   func isProcessing(for type: BookButtonType) -> Bool
 }
 
@@ -17,9 +16,10 @@ struct BookButtonsView<T: BookButtonProvider>: View {
   var backgroundColor: Color?
   var size: ButtonSize = .regular
   var onButtonTapped: ((BookButtonType) -> Void)?
+  @Environment(\.colorScheme) private var colorScheme
 
   var body: some View {
-    let isDarkBackground = backgroundColor?.isDark ?? true
+    let isDarkBackground = backgroundColor?.isDark ?? (colorScheme == .dark)
 
     HStack(spacing: 10) {
       ForEach(provider.buttonTypes, id: \.self) { buttonType in
@@ -50,9 +50,6 @@ struct ActionButton<T: BookButtonProvider>: View {
   var onButtonTapped: ((BookButtonType) -> Void)?
 
   private var accessibilityString: String {
-    if let untilDate = provider.indicatorDate(for: type)?.timeUntilString(suffixType: .long) {
-      return "\(type.title). \(untilDate) remaining"
-    }
     return type.title
   }
 
@@ -63,21 +60,18 @@ struct ActionButton<T: BookButtonProvider>: View {
         onButtonTapped?(type) ?? provider.handleAction(for: type)
       }
     }) {
-      HStack(spacing: 5) {
-        indicatorView
-        ZStack {
-          if provider.isProcessing(for: type) {
-            ProgressView()
-              .progressViewStyle(CircularProgressViewStyle())
-              .tint(type.buttonTextColor(isDarkBackground))
-              .transition(.opacity)
-          }
-          Text(type.title)
-            .font(size.font)
-            .opacity(provider.isProcessing(for: type) ? 0.5 : 1)
-            .scaleEffect(provider.isProcessing(for: type) ? 0.95 : 1.0)
-            .animation(.easeInOut(duration: 0.2), value: provider.isProcessing(for: type))
+      ZStack {
+        if provider.isProcessing(for: type) {
+          ProgressView()
+            .progressViewStyle(CircularProgressViewStyle())
+            .tint(type.buttonTextColor(isDarkBackground))
+            .transition(.opacity)
         }
+        Text(type.title)
+          .font(size.font)
+          .opacity(provider.isProcessing(for: type) ? 0.5 : 1)
+          .scaleEffect(provider.isProcessing(for: type) ? 0.95 : 1.0)
+          .animation(.easeInOut(duration: 0.2), value: provider.isProcessing(for: type))
       }
       .padding(size.padding)
       .frame(minWidth: 100, minHeight: size.height)
@@ -92,19 +86,6 @@ struct ActionButton<T: BookButtonProvider>: View {
     .disabled(provider.isProcessing(for: type))
     .buttonStyle(.plain)
     .accessibilityLabel(accessibilityString)
-  }
-
-  @ViewBuilder private var indicatorView: some View {
-    if let untilDate = provider.indicatorDate(for: type)?.timeUntilString(suffixType: .short) {
-      VStack(spacing: 2) {
-        ImageProviders.MyBooksView.clock
-          .resizable()
-          .square(length: 14)
-        Text(untilDate)
-          .palaceFont(size: 9)
-      }
-      .foregroundColor(type.buttonTextColor(isDarkBackground))
-    }
   }
 }
 
