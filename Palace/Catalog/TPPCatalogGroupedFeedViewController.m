@@ -1,7 +1,5 @@
 @import PureLayout;
 
-#import "TPPBookDetailViewController.h"
-
 #import "TPPCatalogFeedViewController.h"
 #import "TPPCatalogGroupedFeed.h"
 #import "TPPCatalogLane.h"
@@ -49,7 +47,7 @@ static CGFloat const kTableViewCrossfadeDuration = 0.3;
 {
   self = [super init];
   if(!self) return nil;
-  
+
   self.bookIdentifiersToImages = [NSMutableDictionary dictionary];
   self.cachedLaneCells = [NSMutableDictionary dictionary];
   self.feed = feed;
@@ -73,12 +71,12 @@ static CGFloat const kTableViewCrossfadeDuration = 0.3;
 - (void)viewDidLoad
 {
   [super viewDidLoad];
-  
+
   self.view.backgroundColor = [TPPConfiguration backgroundColor];
-  
+
   self.refreshControl = [[UIRefreshControl alloc] init];
   [self.refreshControl addTarget:self action:@selector(userDidRefresh:) forControlEvents:UIControlEventValueChanged];
-  
+
   self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStylePlain];
   self.tableView.autoresizingMask = (UIViewAutoresizingFlexibleWidth |
                                      UIViewAutoresizingFlexibleHeight);
@@ -98,9 +96,9 @@ static CGFloat const kTableViewCrossfadeDuration = 0.3;
   self.facetBarView.entryPointView.delegate = self;
   self.facetBarView.entryPointView.dataSource = self;
   self.facetBarView.delegate = self;
-  
+
   [self.view addSubview:self.facetBarView];
-  
+
   [self.facetBarView autoPinEdgeToSuperviewEdge:ALEdgeLeading];
   [self.facetBarView autoPinEdgeToSuperviewEdge:ALEdgeTrailing];
   [self.facetBarView autoPinEdgeToSuperviewMargin:ALEdgeTop];
@@ -119,38 +117,36 @@ static CGFloat const kTableViewCrossfadeDuration = 0.3;
                                              initWithTitle:NSLocalizedString(@"Back", @"Back button text")
                                              style:UIBarButtonItemStylePlain
                                              target:nil action:nil];
-    
+
     [self fetchOpenSearchDescription];
   }
-  
+
   [self downloadImages];
   [self enable3DTouch];
 }
 
-- (void)didMoveToParentViewController:(UIViewController *)parent
-{
+- (void)didMoveToParentViewController:(UIViewController *)parent {
   [super didMoveToParentViewController:parent];
-  
-  if(parent) {
-    CGFloat top = parent.topLayoutGuide.length;
-    
+
+  if (parent) {
+    CGFloat topInset = parent.view.safeAreaInsets.top;
+    CGFloat bottomInset = parent.view.safeAreaInsets.bottom + kRowHeight;
+
     if (self.facetBarView.frame.size.height > 0) {
-      top = CGRectGetMaxY(self.facetBarView.frame) + kTableViewInsetAdjustmentWithEntryPoints;
+      topInset = CGRectGetMaxY(self.facetBarView.frame) + kTableViewInsetAdjustmentWithEntryPoints;
     }
-    
-    CGFloat bottom = parent.bottomLayoutGuide.length;
-    
-    UIEdgeInsets insets = UIEdgeInsetsMake(top, 0, bottom, 0);
+
+    UIEdgeInsets insets = UIEdgeInsetsMake(topInset, 0, bottomInset, 0);
     self.tableView.contentInset = insets;
     self.tableView.scrollIndicatorInsets = insets;
-    [self.tableView setContentOffset:CGPointMake(0, -top) animated:NO];
+    [self.tableView setContentOffset:CGPointMake(0, -topInset) animated:NO];
   }
 }
 
 - (void)didReceiveMemoryWarning
 {
   [super didReceiveMemoryWarning];
-  
+
   [self.cachedLaneCells removeAllObjects];
 }
 
@@ -161,9 +157,31 @@ static CGFloat const kTableViewCrossfadeDuration = 0.3;
     TPPCatalogFeedViewController *viewController = (TPPCatalogFeedViewController *)self.navigationController.visibleViewController;
     [viewController load];
   }
-  
+
   [refreshControl endRefreshing];
   [[NSNotificationCenter defaultCenter] postNotificationName:NSNotification.TPPSyncEnded object:nil];
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+  [super viewWillAppear:animated];
+
+  UINavigationBar *navBar = self.navigationController.navigationBar;
+  UINavigationBarAppearance *appearance = [[UINavigationBarAppearance alloc] init];
+
+  if (UITraitCollection.currentTraitCollection.userInterfaceStyle == UIUserInterfaceStyleDark) {
+    appearance.backgroundColor = [UIColor clearColor];
+    appearance.titleTextAttributes = @{NSForegroundColorAttributeName: [UIColor whiteColor]};
+    navBar.tintColor = [UIColor whiteColor];
+    navBar.translucent = YES;
+  } else {
+    appearance.backgroundColor = [UIColor whiteColor];
+    appearance.titleTextAttributes = @{NSForegroundColorAttributeName: [UIColor blackColor]};
+    navBar.tintColor = [UIColor blackColor];
+    navBar.translucent = NO;
+  }
+
+  [navBar setAppearance:appearance];
+  [navBar forceUpdateAppearanceWithStyle:UITraitCollection.currentTraitCollection.userInterfaceStyle];
 }
 
 - (void)viewDidAppear:(BOOL)animated
@@ -212,7 +230,8 @@ static CGFloat const kTableViewCrossfadeDuration = 0.3;
   }
 
   TPPLOG_F(@"Presenting book: %@", [self.mostRecentBookSelected loggableShortString]);
-  [[[TPPBookDetailViewController alloc] initWithBook:self.mostRecentBookSelected] presentFromViewController:self];
+  BookDetailHostingController *bookDetailVC = [[BookDetailHostingController alloc] initWithBook:self.mostRecentBookSelected];
+  [self.navigationController pushViewController:bookDetailVC animated:true];
 }
 
 #pragma mark UITableViewDataSource
@@ -342,7 +361,9 @@ viewForHeaderInSection:(NSInteger const)section
   TPPBook *const localBook = [[TPPBookRegistry shared] bookForIdentifier:feedBook.identifier];
   TPPBook *const book = (localBook != nil) ? localBook : feedBook;
   TPPLOG_F(@"Presenting book: %@", [book loggableShortString]);
-  [[[TPPBookDetailViewController alloc] initWithBook:book] presentFromViewController:self];
+  BookDetailHostingController *bookDetailVC = [[BookDetailHostingController alloc] initWithBook:book];
+  [self.navigationController pushViewController:bookDetailVC animated:true];
+
   self.mostRecentBookSelected = book;
 }
 
@@ -401,7 +422,10 @@ viewForHeaderInSection:(NSInteger const)section
   TPPBook *const localBook = [[TPPBookRegistry shared] bookForIdentifier:feedBook.identifier];
   TPPBook *const book = (localBook != nil) ? localBook : feedBook;
   TPPLOG_F(@"Presenting book: %@", [book loggableShortString]);
-  [[[TPPBookDetailViewController alloc] initWithBook:book] presentFromViewController:self];
+
+
+  BookDetailHostingController *bookDetailVC = [[BookDetailHostingController alloc] initWithBook:book];
+  [self.navigationController pushViewController:bookDetailVC animated:true];
 }
 
 #pragma mark - TPPEntryPointViewDataSource

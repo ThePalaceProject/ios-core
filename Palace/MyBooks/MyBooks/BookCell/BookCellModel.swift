@@ -117,15 +117,13 @@ class BookCellModel: ObservableObject {
     isFetchingImage = true
     isLoading = true
 
-    DispatchQueue.global(qos: .background).async { [weak self] in
+    DispatchQueue.main.async { [weak self] in
       guard let self = self else { return }
       TPPBookRegistry.shared.thumbnailImage(for: self.book) { [weak self] fetchedImage in
         guard let self = self, let fetchedImage else { return }
-        DispatchQueue.main.async {
-          self.setImageAndCache(fetchedImage)
-          self.isLoading = false
-          self.isFetchingImage = false
-        }
+        self.setImageAndCache(fetchedImage)
+        self.isLoading = false
+        self.isFetchingImage = false
       }
     }
   }
@@ -144,30 +142,6 @@ class BookCellModel: ObservableObject {
 
   @objc private func updateButtons() {
     isLoading = false
-  }
-
-  // MARK: - Button Actions
-
-  func indicatorDate(for buttonType: BookButtonType) -> Date? {
-    guard buttonType.displaysIndicator else { return nil }
-
-    var date: Date?
-    book.defaultAcquisition?.availability.matchUnavailable(
-      nil,
-      limited: { limited in
-        if let until = limited.until, until.timeIntervalSinceNow > 0 {
-          date = until
-        }
-      },
-      unlimited: nil,
-      reserved: nil,
-      ready: { ready in
-        if let until = ready.until, until.timeIntervalSinceNow > 0 {
-          date = until
-        }
-      }
-    )
-    return date
   }
 }
 
@@ -201,22 +175,22 @@ extension BookCellModel {
     let deleteAvailable = (book.defaultAcquisitionIfOpenAccess != nil) || !(TPPUserAccount.sharedAccount().authDefinition?.needsAuth ?? true)
 
     switch TPPBookRegistry.shared.state(for: book.identifier) {
-    case .Used,
+    case .used,
         .SAMLStarted,
-        .Downloading,
-        .Unregistered,
-        .DownloadFailed,
-        .DownloadNeeded,
-        .DownloadSuccessful:
+        .downloading,
+        .unregistered,
+        .downloadFailed,
+        .downloadNeeded,
+        .downloadSuccessful:
       title = deleteAvailable ? DisplayStrings.delete : DisplayStrings.return
       message = deleteAvailable ? String.localizedStringWithFormat(DisplayStrings.deleteMessage, book.title) :
       String.localizedStringWithFormat(DisplayStrings.returnMessage, book.title)
       confirmButtonTitle = deleteAvailable ? DisplayStrings.delete : DisplayStrings.return
-    case .Holding:
+    case .holding:
       title = DisplayStrings.removeReservation
       message = DisplayStrings.returnMessage
       confirmButtonTitle = DisplayStrings.remove
-    case .Unsupported:
+    case .unsupported:
       return
     }
 
@@ -251,5 +225,15 @@ extension BookCellModel {
 
   func didSelectCancel() {
     MyBooksDownloadCenter.shared.cancelDownload(for: book.identifier)
+  }
+}
+
+extension BookCellModel: BookButtonProvider {
+  func handleAction(for type: BookButtonType) {
+    callDelegate(for: type)
+  }
+
+  func isProcessing(for type: BookButtonType) -> Bool {
+    isLoading
   }
 }

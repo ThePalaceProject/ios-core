@@ -52,7 +52,7 @@ class MyBooksDownloadCenterTests: XCTestCase {
     NotificationCenter.default.removeObserver(notificationObserver)
     
     let bookState = mockBookRegistry.state(for: expectedDownloadTitle!.identifier)
-    XCTAssertEqual(bookState, TPPBookState.Downloading, "The book should be in the 'Downloading' state.")
+    XCTAssertEqual(bookState, TPPBookState.downloading, "The book should be in the 'Downloading' state.")
   }
   
   func testBorrowBook_withReauthentication() {
@@ -77,7 +77,7 @@ class MyBooksDownloadCenterTests: XCTestCase {
     
     XCTAssertTrue(mockReauthenticator.reauthenticationPerformed)
     let bookState = mockBookRegistry.state(for: book.identifier)
-    XCTAssertEqual(bookState, TPPBookState.Downloading, "The book should be in the 'Downloading' state.")
+    XCTAssertEqual(bookState, TPPBookState.downloading, "The book should be in the 'Downloading' state.")
   }
   
   private func swizzle(selector: Selector) {

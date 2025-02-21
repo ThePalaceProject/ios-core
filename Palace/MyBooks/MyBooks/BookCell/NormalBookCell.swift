@@ -17,14 +17,13 @@ struct NormalBookCell: View {
   private let imageViewWidth: CGFloat = 100
 
   var body: some View {
-    HStack(alignment: .center) {
+    HStack(alignment: .center, spacing: 10) {
       unreadImageView
       titleCoverImageView
-      VStack(alignment: .leading) {
+      VStack(alignment: .leading, spacing: 10) {
         infoView
-        Spacer()
         buttons
-          .padding(.bottom, 10)
+          .padding(.bottom, 5)
       }
       .alert(item: $model.showAlert) { alert in
         Alert(
@@ -38,10 +37,10 @@ struct NormalBookCell: View {
     }
     .multilineTextAlignment(.leading)
     .padding(5)
-    .frame(height: cellHeight)
+    .frame(minHeight: 125)
     .onDisappear { model.isLoading = false }
   }
-  
+
   @ViewBuilder private var titleCoverImageView: some View {
     ZStack {
       Image(uiImage: model.image)
@@ -74,19 +73,11 @@ struct NormalBookCell: View {
         .palaceFont(size: 12)
     }
   }
-  
+
+
   @ViewBuilder private var buttons: some View {
-    HStack {
-      ForEach(model.buttonTypes, id: \.self) { type in
-        ButtonView(
-          title: type.localizedTitle.capitalized,
-          indicatorDate: model.indicatorDate(for: type),
-          action: { model.callDelegate(for: type) }
-        )
-        .disabled(model.isLoading || type.isDisabled)
-        .opacity(model.isLoading || type.isDisabled ? 0.5 : 1.0)
-        .palaceFont(.body)
-      }
+    BookButtonsView(provider: model, size: .medium) { type in
+      model.callDelegate(for: type)
     }
   }
   

@@ -6,7 +6,6 @@
 #import "NSString+TPPStringAdditions.h"
 
 #import "TPPBookCell.h"
-#import "TPPBookDetailViewController.h"
 #import "TPPCatalogUngroupedFeed.h"
 #import "TPPOpenSearchDescription.h"
 #import "TPPReloadView.h"
@@ -99,6 +98,29 @@
 
   [self createAndConfigureFacetBarView];
 }
+
+- (void)viewWillAppear:(BOOL)animated {
+  [super viewWillAppear:animated];
+
+  UINavigationBar *navBar = self.navigationController.navigationBar;
+  UINavigationBarAppearance *appearance = [[UINavigationBarAppearance alloc] init];
+
+  if (UITraitCollection.currentTraitCollection.userInterfaceStyle == UIUserInterfaceStyleDark) {
+    appearance.backgroundColor = [UIColor clearColor];
+    appearance.titleTextAttributes = @{NSForegroundColorAttributeName: [UIColor whiteColor]};
+    navBar.tintColor = [UIColor whiteColor];
+    navBar.translucent = YES;
+  } else {
+    appearance.backgroundColor = [UIColor whiteColor];
+    appearance.titleTextAttributes = @{NSForegroundColorAttributeName: [UIColor blackColor]};
+    navBar.tintColor = [UIColor blackColor];
+    navBar.translucent = NO;
+  }
+
+  [navBar setAppearance:appearance];
+  [navBar forceUpdateAppearanceWithStyle:UITraitCollection.currentTraitCollection.userInterfaceStyle];
+}
+
 
 - (void)viewWillLayoutSubviews
 {
@@ -206,12 +228,12 @@
 
 #pragma mark UICollectionViewDelegate
 
-- (void)collectionView:(__attribute__((unused)) UICollectionView *)collectionView
+- (void)collectionView:(UICollectionView *)collectionView
 didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
 {
-  TPPBook *const book = self.books[indexPath.row];
-  
-  [[[TPPBookDetailViewController alloc] initWithBook:book] presentFromViewController:self];
+  TPPBook *book = self.books[indexPath.row];
+  BookDetailHostingController *bookDetailVC = [[BookDetailHostingController alloc] initWithBook:book];
+  [self.navigationController pushViewController:bookDetailVC animated:YES];
 }
 
 #pragma mark NYPLCatalogUngroupedFeedDelegate
