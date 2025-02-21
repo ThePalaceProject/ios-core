@@ -30,14 +30,6 @@ struct MyBooksView: View {
           updater: { _ in }
         )
       }
-      .sheet(isPresented: $model.showAccountScreen) {
-        if let url = model.accountURL {
-          return UIViewControllerWrapper(BundledHTMLViewController(fileURL: url, title: "Account")) { _ in }
-            .anyView()
-        } else {
-          return EmptyView().anyView()
-        }
-      }
   }
 
   private var mainContent: some View {
