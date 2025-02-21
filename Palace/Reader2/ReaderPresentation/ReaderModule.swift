@@ -99,13 +99,13 @@ final class ReaderModule: ReaderModuleAPI {
                             formatModule: ReaderFormatModule,
                             in navigationController: UINavigationController,
                             forSample: Bool = false) {
-    Task { [weak self] in
-      guard let self = self else { return }
+    Task.detached { [weak self] in
+      guard let self else { return }
 
       do {
-        let lastSavedLocation = bookRegistry.location(forIdentifier: book.identifier)
+        let lastSavedLocation = self.bookRegistry.location(forIdentifier: book.identifier)
         let initialLocator = await lastSavedLocation?.convertToLocator(publication: publication)
-        
+
         let readerVC = try await formatModule.makeReaderViewController(
           for: publication,
           book: book,
@@ -113,7 +113,7 @@ final class ReaderModule: ReaderModuleAPI {
           forSample: forSample
         )
 
-        DispatchQueue.main.async {
+        await MainActor.run {
           let backItem = UIBarButtonItem()
           backItem.title = Strings.Generic.back
           readerVC.navigationItem.backBarButtonItem = backItem
@@ -124,10 +124,11 @@ final class ReaderModule: ReaderModuleAPI {
         }
 
       } catch {
-        DispatchQueue.main.async {
+        await MainActor.run {
           self.delegate?.presentError(error, from: navigationController)
         }
       }
     }
+  }
   }
 }
