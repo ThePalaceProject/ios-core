@@ -4,6 +4,7 @@ struct BookListView: View {
   let books: [TPPBook]
   @Binding var isLoading: Bool
   let onSelect: (TPPBook) -> Void
+  @StateObject private var orientation = DeviceOrientation()
 
   var body: some View {
     ScrollView {
@@ -11,40 +12,37 @@ struct BookListView: View {
         ForEach(books, id: \.identifier) { book in
           Button(action: { onSelect(book) }) {
             BookCell(model: BookCellModel(book: book))
-              .frame(height: 170)
-              .applyBorderStyle()
           }
           .buttonStyle(.plain)
+          .padding(5)
+          .applyBorderStyle()
         }
       }
       .padding()
+      .onAppear {
+        orientation.startTracking()
+      }
+      .onDisappear {
+        orientation.stopTracking()
+      }
     }
   }
 
   private var gridLayout: [GridItem] {
-    UIDevice.current.isIpad
-    ? [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())]
-    : [GridItem(.flexible())]
+    Array(repeating: GridItem(.fixed(columnWidth), spacing: 0), count: columnCount)
+  }
+
+  private var columnCount: Int {
+    UIDevice.current.userInterfaceIdiom == .pad ? (orientation.isLandscape ? 4 : 3) : 1
+  }
+
+  private var columnWidth: CGFloat {
+    UIScreen.main.bounds.width / CGFloat(columnCount) - (UIDevice.current.isIpad ? 8 : 0)
+  }
+}
+extension View {
+  func applyBorderStyle() -> some View {
+    modifier(BorderStyleModifier())
   }
 }
 
-extension View {
-  func applyBorderStyle() -> some View {
-    if UIDevice.current.isIpad {
-      return self.overlay(
-        Rectangle()
-          .stroke(Color.gray.opacity(0.5), lineWidth: 2)
-      )
-      .anyView()
-    } else {
-      return self.overlay(
-        Rectangle()
-          .frame(height: 1)
-          .foregroundColor(Color.gray.opacity(0.5))
-          .offset(y: 0.5),
-        alignment: .bottom
-      )
-      .anyView()
-    }
-  }
-}

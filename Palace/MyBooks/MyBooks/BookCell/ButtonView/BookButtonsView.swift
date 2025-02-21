@@ -14,7 +14,7 @@ struct BookButtonsView<T: BookButtonProvider>: View {
   @ObservedObject var provider: T
   var previewEnabled: Bool = true
   var backgroundColor: Color?
-  var size: ButtonSize = .regular
+  var size: ButtonSize = .large
   var onButtonTapped: ((BookButtonType) -> Void)?
   @Environment(\.colorScheme) private var colorScheme
 
@@ -46,7 +46,7 @@ struct ActionButton<T: BookButtonProvider>: View {
   let type: BookButtonType
   @ObservedObject var provider: T
   var isDarkBackground: Bool = true
-  var size: ButtonSize = .regular
+  var size: ButtonSize = .large
   var onButtonTapped: ((BookButtonType) -> Void)?
 
   private var accessibilityString: String {
@@ -68,13 +68,16 @@ struct ActionButton<T: BookButtonProvider>: View {
             .transition(.opacity)
         }
         Text(type.title)
+          .fixedSize(horizontal: false, vertical: true)
+          .lineLimit(1)
+          .minimumScaleFactor(0.8)
           .font(size.font)
           .opacity(provider.isProcessing(for: type) ? 0.5 : 1)
           .scaleEffect(provider.isProcessing(for: type) ? 0.95 : 1.0)
           .animation(.easeInOut(duration: 0.2), value: provider.isProcessing(for: type))
       }
       .padding(size.padding)
-      .frame(minWidth: 100, minHeight: size.height)
+      .frame(minHeight: size.height)
       .background(type.buttonBackgroundColor(isDarkBackground))
       .foregroundColor(type.buttonTextColor(isDarkBackground))
       .cornerRadius(8)
@@ -91,13 +94,13 @@ struct ActionButton<T: BookButtonProvider>: View {
 
 // MARK: - Button Size Enum
 enum ButtonSize {
-  case regular
+  case large
   case medium
   case small
 
   var height: CGFloat {
     switch self {
-    case .regular: return 44
+    case .large: return 44
     case .medium: return 40
     case .small: return 34
     }
@@ -105,7 +108,7 @@ enum ButtonSize {
 
   var font: Font {
     switch self {
-    case .regular: return .semiBoldPalaceFont(size: 14)
+    case .large: return .semiBoldPalaceFont(size: 14)
     case .medium: return .semiBoldPalaceFont(size: 13)
     case .small: return .semiBoldPalaceFont(size: 12)
     }
@@ -113,7 +116,7 @@ enum ButtonSize {
 
   var padding: EdgeInsets {
     switch self {
-    case .regular: return EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16)
+    case .large: return EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16)
     case .medium: return EdgeInsets(top: 8, leading: 14, bottom: 8, trailing: 14)
     case .small: return EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12)
     }

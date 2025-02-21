@@ -31,11 +31,29 @@ extension Color {
 
 extension Color {
   var isDark: Bool {
-    guard let components = UIColor(self).cgColor.components else { return false }
-    let red = components[0] * 299
-    let green = components[1] * 587
-    let blue = components[2] * 114
-    let brightness = (red + green + blue) / 1000
+    let uiColor = UIColor(self)
+    guard let components = uiColor.cgColor.components else { return false }
+
+    let red, green, blue: CGFloat
+
+    switch components.count {
+    case 2: // Grayscale (white/black, etc.)
+      red = components[0]
+      green = components[0]
+      blue = components[0]
+    case 3: // RGB
+      red = components[0]
+      green = components[1]
+      blue = components[2]
+    case 4: // RGBA
+      red = components[0]
+      green = components[1]
+      blue = components[2]
+    default:
+      return false // Unexpected case, assume non-dark color
+    }
+
+    let brightness = (red * 299 + green * 587 + blue * 114) / 1000
     return brightness < 0.5
   }
 }

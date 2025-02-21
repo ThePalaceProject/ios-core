@@ -1098,6 +1098,12 @@
 		E57F92B22D683564003D9180 /* BookListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E57F92B12D683562003D9180 /* BookListView.swift */; };
 		E57F92B32D683564003D9180 /* BookListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E57F92B12D683562003D9180 /* BookListView.swift */; };
 		E57F92B42D683564003D9180 /* BookListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E57F92B12D683562003D9180 /* BookListView.swift */; };
+		E57F92B62D6918CC003D9180 /* DeviceOrientation.swift in Sources */ = {isa = PBXBuildFile; fileRef = E57F92B52D6918CC003D9180 /* DeviceOrientation.swift */; };
+		E57F92B72D6918CC003D9180 /* DeviceOrientation.swift in Sources */ = {isa = PBXBuildFile; fileRef = E57F92B52D6918CC003D9180 /* DeviceOrientation.swift */; };
+		E57F92B82D6918CC003D9180 /* DeviceOrientation.swift in Sources */ = {isa = PBXBuildFile; fileRef = E57F92B52D6918CC003D9180 /* DeviceOrientation.swift */; };
+		E57F92BA2D6918E4003D9180 /* BorderStyleModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = E57F92B92D6918E4003D9180 /* BorderStyleModifier.swift */; };
+		E57F92BB2D6918E4003D9180 /* BorderStyleModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = E57F92B92D6918E4003D9180 /* BorderStyleModifier.swift */; };
+		E57F92BC2D6918E4003D9180 /* BorderStyleModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = E57F92B92D6918E4003D9180 /* BorderStyleModifier.swift */; };
 		E580CDA327ECF0E100B14475 /* LCPPDFs.swift in Sources */ = {isa = PBXBuildFile; fileRef = E580CD7A27EABBEE00B14475 /* LCPPDFs.swift */; };
 		E580CDA427ECF0E200B14475 /* LCPPDFs.swift in Sources */ = {isa = PBXBuildFile; fileRef = E580CD7A27EABBEE00B14475 /* LCPPDFs.swift */; };
 		E5824BDF2994AC2900DE76C2 /* NormalBookCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5824BDE2994AC2900DE76C2 /* NormalBookCell.swift */; };
@@ -2023,6 +2029,8 @@
 		E577061C2D3A129D00ED56F8 /* AttributedTextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttributedTextView.swift; sourceTree = "<group>"; };
 		E57E798329D4D407006D0F87 /* String+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "String+Extensions.swift"; sourceTree = "<group>"; };
 		E57F92B12D683562003D9180 /* BookListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookListView.swift; sourceTree = "<group>"; };
+		E57F92B52D6918CC003D9180 /* DeviceOrientation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceOrientation.swift; sourceTree = "<group>"; };
+		E57F92B92D6918E4003D9180 /* BorderStyleModifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BorderStyleModifier.swift; sourceTree = "<group>"; };
 		E580CD7A27EABBEE00B14475 /* LCPPDFs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LCPPDFs.swift; sourceTree = "<group>"; };
 		E5824BDE2994AC2900DE76C2 /* NormalBookCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NormalBookCell.swift; sourceTree = "<group>"; };
 		E5824BE02994AF4800DE76C2 /* DownloadingBookCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadingBookCell.swift; sourceTree = "<group>"; };
@@ -3451,6 +3459,7 @@
 			isa = PBXGroup;
 			children = (
 				E57F92B12D683562003D9180 /* BookListView.swift */,
+				E57F92B92D6918E4003D9180 /* BorderStyleModifier.swift */,
 				E53573D1295613FF008BDCA4 /* MyBooksViewModel.swift */,
 				E53573CE295612BA008BDCA4 /* MyBooksView.swift */,
 				E53573D829653095008BDCA4 /* FacetViewModel.swift */,
@@ -3463,6 +3472,7 @@
 		E53CDA862A2FBCCA00C6008A /* System */ = {
 			isa = PBXGroup;
 			children = (
+				E57F92B52D6918CC003D9180 /* DeviceOrientation.swift */,
 				E53CDA872A2FBCD800C6008A /* LocationManager.swift */,
 			);
 			path = System;
@@ -4473,6 +4483,7 @@
 				73DB56C925F769FF003788EE /* TPPLastReadPositionSynchronizer.swift in Sources */,
 				E708F721284781D50028405B /* TPPEncryptedPDFViewController.swift in Sources */,
 				73D8D27925A68D3B00DF5F69 /* TPPReaderPositionsVC.swift in Sources */,
+				E57F92B62D6918CC003D9180 /* DeviceOrientation.swift in Sources */,
 				21D746E82718A4C000C0E1B4 /* AdobeDRMError.swift in Sources */,
 				73EB0A9425821DF4006BC997 /* UIButton+NYPLAppearanceAdditions.m in Sources */,
 				E5E2F8D52CB631C700A95840 /* TPPSAMLHelper.swift in Sources */,
@@ -4519,6 +4530,7 @@
 				E78AE803291C1D8600884446 /* TPPBookRegistryRecord.swift in Sources */,
 				E5BFCF0E2A5455170046A48D /* TokenRequest.swift in Sources */,
 				E562DE412D38B98F003A1A40 /* UIImage+Extension.swift in Sources */,
+				E57F92BC2D6918E4003D9180 /* BorderStyleModifier.swift in Sources */,
 				73EB0AA625821DF4006BC997 /* TPPOPDSGroup.m in Sources */,
 				73EB0AA825821DF4006BC997 /* TPPAppReviewPrompt.swift in Sources */,
 				73EB0AA925821DF4006BC997 /* TPPFacetBarView.swift in Sources */,
@@ -4872,6 +4884,7 @@
 				73B5DFDC26052A1800225C12 /* TPPBookButtonsState.m in Sources */,
 				E6207B652118973800864143 /* TPPAppTheme.swift in Sources */,
 				E56576002C933527005953BD /* AudiobookFileLogger.swift in Sources */,
+				E57F92BA2D6918E4003D9180 /* BorderStyleModifier.swift in Sources */,
 				E7B20B39285B3AC400C49FE1 /* TPPPDFPreviewGrid.swift in Sources */,
 				11A14DF41A1BF94F00D6C510 /* UIColor+TPPColorAdditions.m in Sources */,
 				E562DD9C2D35ABC4003A1A40 /* BookDetailView.swift in Sources */,
@@ -5007,6 +5020,7 @@
 				E5AA6F4129A6BA4000601B02 /* RefreshableView.swift in Sources */,
 				E562DE452D38BA3B003A1A40 /* UIDevice+Extension.swift in Sources */,
 				73A229A2240F3BEB006B9EAD /* LibraryService.swift in Sources */,
+				E57F92B82D6918CC003D9180 /* DeviceOrientation.swift in Sources */,
 				730B7868249AB9D7008F28B3 /* Float+TPPAdditions.swift in Sources */,
 				AE77E9B832371587493FF281 /* TPPOPDSEntry.m in Sources */,
 				E53573D929653095008BDCA4 /* FacetViewModel.swift in Sources */,
@@ -5327,6 +5341,7 @@
 				D570B62E2BA20139003FE991 /* DownloadingBookCell.swift in Sources */,
 				D570B62F2BA20139003FE991 /* TPPCatalogFacetGroup.m in Sources */,
 				D570B6302BA20139003FE991 /* TPPReaderAppearance.swift in Sources */,
+				E57F92B72D6918CC003D9180 /* DeviceOrientation.swift in Sources */,
 				D570B6312BA20139003FE991 /* TPPBookmarkSpec.swift in Sources */,
 				D570B6322BA20139003FE991 /* TPPOPDSAcquisition.m in Sources */,
 				D570B6332BA20139003FE991 /* TPPPublicationSpeechSynthesizer.swift in Sources */,
@@ -5392,6 +5407,7 @@
 				D570B66F2BA20139003FE991 /* TPPBook+Extensions.swift in Sources */,
 				D570B6702BA20139003FE991 /* View+Extensions.swift in Sources */,
 				D570B6712BA20139003FE991 /* TPPProblemDocumentCacheManager.swift in Sources */,
+				E57F92BB2D6918E4003D9180 /* BorderStyleModifier.swift in Sources */,
 				E521E9C92D513E3F00C08ADF /* BookButtonsView.swift in Sources */,
 				D570B6722BA20139003FE991 /* TPPBookButtonsView.m in Sources */,
 				D570B6732BA20139003FE991 /* TPPMyBooksSimplifiedBearerToken.m in Sources */,

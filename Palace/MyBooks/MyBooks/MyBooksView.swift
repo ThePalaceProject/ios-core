@@ -1,11 +1,3 @@
-//
-//  MyBooksView.swift
-//  Palace
-//
-//  Created by Maurice Carrier on 12/23/22.
-//  Copyright © 2022 The Palace Project. All rights reserved.
-//
-
 import SwiftUI
 import Combine
 import PalaceUIKit

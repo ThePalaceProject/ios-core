@@ -17,14 +17,13 @@ struct NormalBookCell: View {
   private let imageViewWidth: CGFloat = 100
 
   var body: some View {
-    HStack(alignment: .center) {
+    HStack(alignment: .center, spacing: 10) {
       unreadImageView
       titleCoverImageView
-      VStack(alignment: .leading) {
+      VStack(alignment: .leading, spacing: 10) {
         infoView
-        Spacer()
         buttons
-          .padding(.bottom, 10)
+          .padding(.bottom, 5)
       }
       .alert(item: $model.showAlert) { alert in
         Alert(
@@ -38,10 +37,10 @@ struct NormalBookCell: View {
     }
     .multilineTextAlignment(.leading)
     .padding(5)
-    .frame(height: cellHeight)
+    .frame(minHeight: 125)
     .onDisappear { model.isLoading = false }
   }
-  
+
   @ViewBuilder private var titleCoverImageView: some View {
     ZStack {
       Image(uiImage: model.image)
