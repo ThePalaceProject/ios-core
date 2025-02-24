@@ -197,7 +197,6 @@ struct BookDetailView: View {
             ForEach(viewModel.relatedBooks, id: \.identifier) { book in
               Button(action: { viewModel.selectRelatedBook(book) }) {
                 BookImageView(book: book, height: 160)
-                  .frame(width: 100)
               }
             }
           }

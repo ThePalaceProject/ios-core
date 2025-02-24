@@ -14,7 +14,6 @@ struct BookImageView: View {
           book.fetchCoverImage()
         }
 
-      // Audiobook Badge
       if book.isAudiobook {
         Image(ImageResource.audiobookBadge)
           .resizable()
