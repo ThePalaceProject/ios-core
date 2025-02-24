@@ -10,7 +10,6 @@ struct BookDetailView: View {
 
   @ObservedObject var viewModel: BookDetailViewModel
   @State private var isExpanded: Bool = false
-  @State private var coverImage: UIImage = UIImage()
   @State private var headerBackgroundColor: Color = .gray
   @State private var showHalfSheet = false
   @State private var headerHeight: CGFloat = 280
@@ -72,7 +71,7 @@ struct BookDetailView: View {
         BookDetailView(book: book)
       }
       .sheet(isPresented: $showHalfSheet) {
-        HalfSheetView(viewModel: viewModel, backgroundColor: headerBackgroundColor, coverImage: coverImage)
+        HalfSheetView(viewModel: viewModel, backgroundColor: headerBackgroundColor, coverImage: viewModel.book.coverImage)
       }
 
       sampleToolbarView
