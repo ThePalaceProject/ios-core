@@ -512,3 +512,71 @@ extension TPPBook {
     return self.defaultAcquisitionIfOpenAccess == nil && userAuthRequired
   }
 }
+
+extension TPPBook: ObservableObject {
+  private static var cachedCoverImages: [String: UIImage] = [:]
+  private static var cachedThumbnailImages: [String: UIImage] = [:]
+  private static let coverRegistry = TPPBookCoverRegistry()
+
+  /// A computed property that updates automatically when the cover image is available.
+  var coverImage: UIImage {
+    get {
+      if let cachedImage = TPPBook.cachedCoverImages[identifier] {
+        return cachedImage
+      }
+      return UIImage(systemName: "book.closed")?.withRenderingMode(.alwaysTemplate) ?? UIImage()
+    }
+    set {
+      DispatchQueue.main.async {
+        TPPBook.cachedCoverImages[self.identifier] = newValue
+        self.objectWillChange.send()
+      }
+    }
+  }
+
+  /// Loads the cover image asynchronously and updates `coverImage`
+  @MainActor
+  func fetchCoverImage() {
+    guard TPPBook.cachedCoverImages[identifier] == nil else { return }
+
+    TPPBook.coverRegistry.coverImageForBook(self) { image in
+      if let image = image {
+        self.coverImage = image
+      }
+    }
+  }
+
+  /// A computed property that updates automatically when the thumbnail is available.
+  var thumbnailImage: UIImage {
+    get {
+      if let cachedImage = TPPBook.cachedThumbnailImages[identifier] {
+        return cachedImage
+      }
+      return UIImage(systemName: "book")?.withRenderingMode(.alwaysTemplate) ?? UIImage()
+    }
+    set {
+      DispatchQueue.main.async {
+        TPPBook.cachedThumbnailImages[self.identifier] = newValue
+        self.objectWillChange.send()
+      }
+    }
+  }
+
+  /// Loads the thumbnail asynchronously and updates `thumbnailImage`
+  @MainActor
+  func fetchThumbnailImage() {
+    guard TPPBook.cachedThumbnailImages[identifier] == nil else { return } // Avoid re-fetching
+
+    TPPBook.coverRegistry.thumbnailImageForBook(self) { image in
+      if let image = image {
+        self.thumbnailImage = image
+      }
+    }
+  }
+
+  /// Clears cached images for this book.
+  func clearCachedImages() {
+    TPPBook.cachedCoverImages.removeValue(forKey: identifier)
+    TPPBook.cachedThumbnailImages.removeValue(forKey: identifier)
+  }
+}

@@ -140,8 +140,10 @@ class BookDetailViewModel: ObservableObject {
           (lane as? TPPCatalogLane)?.books as? [TPPBook]
         }.flatMap { $0 }
 
-        self.relatedBooks = books.filter { $0.identifier != self.book.identifier }
-        self.isLoadingRelatedBooks = false
+        DispatchQueue.main.async {
+          self.relatedBooks = books.filter { $0.identifier != self.book.identifier }
+          self.isLoadingRelatedBooks = false
+        }
       }
     }
   }

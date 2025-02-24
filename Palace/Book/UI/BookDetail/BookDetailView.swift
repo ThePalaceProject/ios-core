@@ -61,8 +61,8 @@ struct BookDetailView: View {
         self.descriptionText = newValue.summary ?? ""
       }
       .onAppear {
-        viewModel.fetchRelatedBooks()
         loadCoverImage()
+        viewModel.fetchRelatedBooks()
         self.descriptionText = viewModel.book.summary ?? ""
       }
       .onDisappear {
@@ -88,6 +88,7 @@ struct BookDetailView: View {
   }
 
   private var fullView: some View {
+    VStack(alignment: .leading, spacing: 0) {
       VStack(alignment: .leading, spacing: 30) {
         HStack(alignment: .top, spacing: 25) {
           imageView
@@ -97,10 +98,11 @@ struct BookDetailView: View {
 
         descriptionView
         informationView
-        relatedBooksView
         Spacer()
       }
       .padding(30)
+      relatedBooksView
+    }
   }
 
   private var compactView: some View {
@@ -128,16 +130,12 @@ struct BookDetailView: View {
   }
 
   private var imageView: some View {
-    ZStack(alignment: .bottomTrailing) {
-      Image(uiImage: coverImage)
-        .resizable()
-        .scaledToFit()
-        .frame(height: max(0, 280 * imageScale))
-        .opacity(imageOpacity)
-        .shadow(color: .black.opacity(0.3), radius: 10, x: 0, y: 5)
-        .animation(.easeInOut(duration: animationDuration), value: imageScale)
-    }
-}
+    BookImageView(book: viewModel.book, height: 280)
+      .frame(height: max(0, 280 * imageScale))
+      .opacity(imageOpacity)
+      .shadow(color: .black.opacity(0.3), radius: 10, x: 0, y: 5)
+      .animation(.easeInOut(duration: animationDuration), value: imageScale)
+  }
 
   private var titleView: some View {
     VStack(alignment: viewModel.isFullSize ? .leading : .center, spacing: 8) {
@@ -171,13 +169,13 @@ struct BookDetailView: View {
   }
 
   private func loadCoverImage() {
-    viewModel.registry.coverImage(for: viewModel.book) { uiImage in
-      guard let uiImage = uiImage else { return }
-      self.coverImage = uiImage
-      self.headerBackgroundColor = Color(uiImage.mainColor() ?? .gray)
+    DispatchQueue.main.async {
+      viewModel.registry.coverImage(for: viewModel.book) { uiImage in
+        guard let uiImage = uiImage else { return }
 
-      DispatchQueue.main.async {
-          self.delegate?.didUpdateHeaderBackground(isDark: headerBackgroundColor.isDark)
+        self.coverImage = uiImage
+        self.headerBackgroundColor = Color(uiImage.mainColor() ?? .gray)
+        self.delegate?.didUpdateHeaderBackground(isDark: headerBackgroundColor.isDark)
       }
     }
   }
@@ -198,7 +196,7 @@ struct BookDetailView: View {
           LazyHStack(spacing: 12) {
             ForEach(viewModel.relatedBooks, id: \.identifier) { book in
               Button(action: { viewModel.selectRelatedBook(book) }) {
-                BookThumbnailView(book: book)
+                BookImageView(book: book, height: 160)
                   .frame(width: 100)
               }
             }
@@ -278,7 +276,7 @@ struct BookDetailView: View {
       )
       .background(GeometryReader { proxy in
         Color.clear
-          .onAppear { updateHeaderHeight(for: proxy.frame(in: .global).minY) }
+//          .onAppear { updateHeaderHeight(for: proxy.frame(in: .global).minY) }
           .onChange(of: proxy.frame(in: .global).minY) { newValue in
             updateHeaderHeight(for: newValue)
           }
@@ -435,45 +433,5 @@ struct BookDetailView: View {
 
     lastOffset = abs(offset)
     lastTimestamp = now
-  }
-}
-
-
-struct BookThumbnailView: View {
-  let book: TPPBook
-
-  @State private var image: UIImage? = nil
-
-
-  var body: some View {
-    VStack {
-      if let uiImage = image {
-        Image(uiImage: uiImage)
-          .resizable()
-          .scaledToFit()
-          .frame(width: 90, height: 160)
-      } else {
-        ProgressView()
-          .frame(width: 90, height: 160)
-          .tint(.primary)
-          .onAppear {
-            loadImage()
-          }
-      }
-
-    }
-    .frame(width: 100)
-  }
-
-  private func loadImage() {
-    guard let url = book.imageThumbnailURL ?? book.imageURL else { return }
-
-    DispatchQueue.global(qos: .background).async {
-      if let data = try? Data(contentsOf: url), let uiImage = UIImage(data: data) {
-        DispatchQueue.main.async {
-          self.image = uiImage
-        }
-      }
-    }
   }
 }
