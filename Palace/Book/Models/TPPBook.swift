@@ -131,6 +131,11 @@ let TimeTrackingURLURLKey = "time-tracking-url"
     self.contributors = contributors
     self.bookTokenLock = NSRecursiveLock()
     self.bookDuration = bookDuration
+
+    super.init()
+    DispatchQueue.main.async { [weak self] in
+      self?.fetchCoverImage()
+    }
   }
 
   @objc convenience init?(entry: TPPOPDSEntry?) {

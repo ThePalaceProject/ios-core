@@ -169,15 +169,8 @@ struct BookDetailView: View {
   }
 
   private func loadCoverImage() {
-    DispatchQueue.main.async {
-      viewModel.registry.coverImage(for: viewModel.book) { uiImage in
-        guard let uiImage = uiImage else { return }
-
-        self.coverImage = uiImage
-        self.headerBackgroundColor = Color(uiImage.mainColor() ?? .gray)
-        self.delegate?.didUpdateHeaderBackground(isDark: headerBackgroundColor.isDark)
-      }
-    }
+    self.headerBackgroundColor = Color(viewModel.book.coverImage.mainColor() ?? .gray)
+    self.delegate?.didUpdateHeaderBackground(isDark: headerBackgroundColor.isDark)
   }
 
   @ViewBuilder private var relatedBooksView: some View {
@@ -275,7 +268,6 @@ struct BookDetailView: View {
       )
       .background(GeometryReader { proxy in
         Color.clear
-//          .onAppear { updateHeaderHeight(for: proxy.frame(in: .global).minY) }
           .onChange(of: proxy.frame(in: .global).minY) { newValue in
             updateHeaderHeight(for: newValue)
           }
