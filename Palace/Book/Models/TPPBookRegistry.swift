@@ -519,7 +519,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
   }
 }
 
-extension TPPBookRegistry: TPPBookRegistryProvider {
+extension TPPBookRegistry: @preconcurrency TPPBookRegistryProvider {
   func setLocation(_ location: TPPBookLocation?, forIdentifier bookIdentifier: String) {
     guard !bookIdentifier.isEmpty else { return }
     syncQueue.async {

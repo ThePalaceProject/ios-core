@@ -13,7 +13,7 @@ class TPPBookCoverRegistry {
 
   // MARK: - Properties
 
-  private let inMemoryCache: NSCache<NSString, UIImage> = {
+  private let cache: NSCache<NSString, UIImage> = {
     let cache = NSCache<NSString, UIImage>()
     cache.countLimit = 100
     return cache
@@ -36,7 +36,7 @@ class TPPBookCoverRegistry {
 
   @MainActor
   func thumbnailImageForBook(_ book: TPPBook, handler: @escaping (_ image: UIImage?) -> Void) {
-    if let cachedImage = getCachedImage(forKey: book.identifier) {
+    if let cachedImage = cachedImage(for: book, isCover: false) {
       handler(cachedImage)
       return
     }
@@ -61,7 +61,7 @@ class TPPBookCoverRegistry {
 
       let finalImage = image ?? self.generateBookCoverImage(book)
       if let finalImage = finalImage {
-        self.cacheImage(finalImage, forKey: book.identifier)
+        self.cacheImage(finalImage, for: book, isCover: false)
         self.saveImageToDisk(finalImage, for: book)
       }
       handler(finalImage)
@@ -69,18 +69,25 @@ class TPPBookCoverRegistry {
   }
 
   @MainActor
+
   func coverImageForBook(_ book: TPPBook, handler: @escaping (_ image: UIImage?) -> Void) {
-    thumbnailImageForBook(book) { [weak self] thumbnail in
-      guard let self = self else { return }
-      handler(thumbnail)
+    if let cachedImage = cachedImage(for: book, isCover: true) {
+      handler(cachedImage)
+      return
+    }
 
-      guard let imageUrl = book.imageURL else { return }
+    guard let imageUrl = book.imageURL else {
+      thumbnailImageForBook(book) { [weak self] thumbnail in
+        handler(thumbnail)
+      }
+      return
+    }
 
-      self.fetchImage(from: imageUrl) { image in
-        if let image = image {
-          DispatchQueue.main.async {
-            handler(image)
-          }
+    self.fetchImage(from: imageUrl) { image in
+      if let image {
+        self.cacheImage(image, for: book, isCover: true)
+        DispatchQueue.main.async {
+          handler(image)
         }
       }
     }
@@ -122,23 +129,23 @@ class TPPBookCoverRegistry {
       }
     }
   }
+
   @discardableResult
   func cachedThumbnailImageForBook(_ book: TPPBook) -> UIImage? {
-    return getCachedImage(forKey: book.identifier)
+    return cachedImage(for: book, isCover: false)
   }
 
   // MARK: - Private Methods
 
-  private func getCachedImage(forKey key: String) -> UIImage? {
-    cacheQueue.sync {
-      return inMemoryCache.object(forKey: key as NSString)
-    }
+  func cachedImage(for book: TPPBook, isCover: Bool) -> UIImage? {
+    let key = cacheKey(for: book, isCover: isCover)
+    return cache.object(forKey: key as NSString)
   }
 
-  private func cacheImage(_ image: UIImage, forKey key: String) {
-    cacheQueue.async(flags: .barrier) {
-      self.inMemoryCache.setObject(image, forKey: key as NSString)
-    }
+  /// Saves an image (either thumbnail or cover) in the cache
+  func cacheImage(_ image: UIImage, for book: TPPBook, isCover: Bool) {
+    let key = cacheKey(for: book, isCover: isCover)
+    cache.setObject(image, forKey: key as NSString)
   }
 
   private func loadImageFromDisk(for book: TPPBook) -> UIImage? {
@@ -147,6 +154,10 @@ class TPPBookCoverRegistry {
       return nil
     }
     return UIImage(contentsOfFile: imagePath)
+  }
+
+  private func cacheKey(for book: TPPBook, isCover: Bool) -> String {
+    return "\(book.identifier)_\(isCover ? "cover" : "thumbnail")"
   }
 
   private func saveImageToDisk(_ image: UIImage, for book: TPPBook) {

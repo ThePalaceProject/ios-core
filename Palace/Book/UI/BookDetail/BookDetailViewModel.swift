@@ -411,14 +411,7 @@ class BookDetailViewModel: ObservableObject {
     audiobookBookmarkBusinessLogic = AudiobookBookmarkBusinessLogic(book: book)
     audiobookManager?.bookmarkDelegate = audiobookBookmarkBusinessLogic
     audiobookPlayer = AudiobookPlayer(audiobookManager: audiobookManager!)
-
-    TPPBookRegistry.shared.coverImage(for: book) { [weak self] image in
-      if let image {
-        DispatchQueue.main.async {
-          self?.audiobookPlayer?.updateImage(image)
-        }
-      }
-    }
+    self.audiobookPlayer?.updateImage(self.book.coverImage)
 
     TPPRootTabBarController.shared().pushViewController(audiobookPlayer!, animated: true)
 
