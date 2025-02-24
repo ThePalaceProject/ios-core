@@ -514,12 +514,14 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
   }
   
   /// Returns cover image if it exists, or falls back to thumbnail image load.
-  @MainActor func coverImage(for book: TPPBook, handler: @escaping (_ image: UIImage?) -> Void) {
-    coverRegistry.coverImageForBook(book, handler: handler)
+  func coverImage(for book: TPPBook, handler: @escaping (_ image: UIImage?) -> Void) {
+    DispatchQueue.main.async { [weak self] in
+      self?.coverRegistry.coverImageForBook(book, handler: handler)
+    }
   }
 }
 
-extension TPPBookRegistry: @preconcurrency TPPBookRegistryProvider {
+extension TPPBookRegistry: TPPBookRegistryProvider {
   func setLocation(_ location: TPPBookLocation?, forIdentifier bookIdentifier: String) {
     guard !bookIdentifier.isEmpty else { return }
     syncQueue.async {
