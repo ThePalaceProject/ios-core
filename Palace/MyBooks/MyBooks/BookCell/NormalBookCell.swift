@@ -17,9 +17,12 @@ struct NormalBookCell: View {
   private let imageViewWidth: CGFloat = 100
 
   var body: some View {
-    HStack(alignment: .center, spacing: 10) {
-      unreadImageView
-      titleCoverImageView
+    HStack(alignment: .center, spacing: 20) {
+      HStack(spacing: 5) {
+        unreadImageView
+        titleCoverImageView
+      }
+
       VStack(alignment: .leading, spacing: 10) {
         infoView
         buttons

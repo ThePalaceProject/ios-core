@@ -28,7 +28,7 @@ struct BookDetailView: View {
 
   var body: some View {
     ZStack {
-      ScrollView {
+      ScrollView(showsIndicators: false) {
         ZStack(alignment: .top) {
           backgroundView
             .frame(height: headerHeight)

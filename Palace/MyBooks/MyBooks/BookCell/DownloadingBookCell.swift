@@ -14,7 +14,8 @@ struct DownloadingBookCell: View {
   private let cellHeight = 125.0
   @State private var progress = 0.0
   var downloadPublisher = NotificationCenter.default.publisher(for: NSNotification.Name.TPPMyBooksDownloadCenterDidChange)
-  
+  @Environment(\.colorScheme) private var colorScheme
+
   var body: some View {
     ZStack {
       VStack(alignment: .leading) {
@@ -69,7 +70,7 @@ struct DownloadingBookCell: View {
   }
 
   @ViewBuilder private var buttons: some View {
-    BookButtonsView(provider: model, backgroundColor: Color(uiColor: TPPConfiguration.mainColor()), size: .medium) { type in
+    BookButtonsView(provider: model, backgroundColor: colorScheme == .dark ? .white : .black, size: .medium) { type in
       model.callDelegate(for: type)
     }
     .horizontallyCentered()

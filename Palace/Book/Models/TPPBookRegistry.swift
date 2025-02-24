@@ -118,6 +118,11 @@ class TPPBookRegistry: NSObject {
 
   static let shared = TPPBookRegistry()
 
+  private(set) var isSyncing: Bool {
+    get { return syncState.value }
+    set { }
+  }
+
   private let registrySubject = CurrentValueSubject<[String: TPPBookRegistryRecord], Never>([:])
   private let bookStateSubject = PassthroughSubject<(String, TPPBookState), Never>()
 
@@ -126,14 +131,6 @@ class TPPBookRegistry: NSObject {
   }
   var bookStatePublisher: AnyPublisher<(String, TPPBookState), Never> {
     bookStateSubject.eraseToAnyPublisher()
-  }
-  /// Identifies that the synchronsiation process is going on.
-  private(set) var isSyncing: Bool
-  {
-    get {
-      syncState.value
-    }
-    set { }
   }
 
   private var syncState = BoolWithDelay { value in
@@ -327,20 +324,24 @@ class TPPBookRegistry: NSObject {
   }
 
   var heldBooks: [TPPBook] {
-    registry
-      .map { $0.value }
-      .filter { $0.state == .holding }
-      .map { $0.book }
+    return performSync {
+      registry
+        .map { $0.value }
+        .filter { $0.state == .holding }
+        .map { $0.book }
+    }
   }
 
   var myBooks: [TPPBook] {
     let matchingStates: [TPPBookState] = [
       .downloadNeeded, .downloading, .SAMLStarted, .downloadFailed, .downloadSuccessful, .used
     ]
-    return registry
-      .map { $0.value }
-      .filter { matchingStates.contains($0.state) }
-      .map { $0.book }
+    return performSync {
+      registry
+        .map { $0.value }
+        .filter { matchingStates.contains($0.state) }
+        .map { $0.book }
+    }
   }
   
   /// Adds a book to the book registry until it is manually removed. It allows the application to

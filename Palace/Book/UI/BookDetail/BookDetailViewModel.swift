@@ -61,7 +61,7 @@ class BookDetailViewModel: ObservableObject {
 
   /// Automatically updates `state` whenever `registry.bookStatePublisher` changes for this book.
   private func bindRegistryState() {
-    registry.bookStatePublisher
+    (registry as? TPPBookRegistry)?.bookStatePublisher
       .filter { $0.0 == self.book.identifier }
       .map { $0.1 }
       .receive(on: DispatchQueue.main)
