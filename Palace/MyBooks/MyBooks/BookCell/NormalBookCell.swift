@@ -77,9 +77,12 @@ struct NormalBookCell: View {
     }
   }
 
+  private var buttonSize: ButtonSize {
+    UIDevice.current.isIpad && UIDevice.current.orientation != .portrait ? .small : .medium
+  }
 
   @ViewBuilder private var buttons: some View {
-    BookButtonsView(provider: model, size: .medium) { type in
+    BookButtonsView(provider: model, size: buttonSize) { type in
       model.callDelegate(for: type)
     }
   }

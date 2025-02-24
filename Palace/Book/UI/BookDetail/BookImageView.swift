@@ -18,7 +18,7 @@ struct BookImageView: View {
         Image(ImageResource.audiobookBadge)
           .resizable()
           .scaledToFit()
-          .frame(width: height * 0.15, height: height * 0.15)
+          .frame(width: height * 0.12, height: height * 0.12)
           .background(Color.red)
       }
     }

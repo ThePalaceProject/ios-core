@@ -18,9 +18,11 @@ struct BookButtonsView<T: BookButtonProvider>: View {
   var onButtonTapped: ((BookButtonType) -> Void)?
   @Environment(\.colorScheme) private var colorScheme
 
-  var body: some View {
-    let isDarkBackground = backgroundColor?.isDark ?? (colorScheme == .dark)
+  private var isDarkBackground: Bool {
+    backgroundColor?.isDark ?? (colorScheme == .dark)
+  }
 
+  var body: some View {
     HStack(spacing: 10) {
       ForEach(provider.buttonTypes, id: \.self) { buttonType in
         ActionButton(
