@@ -174,13 +174,24 @@ class TPPBookCoverRegistry {
   }
 
   private func fetchImage(from url: URL, completion: @escaping (_ image: UIImage?) -> Void) {
-    urlSession.dataTask(with: url) { data, _, error in
-      guard let data = data, let image = UIImage(data: data) else {
-        ATLog(.error, "Failed to load image from \(url): \(error?.localizedDescription ?? "Unknown error")")
-        completion(nil)
+    urlSession.dataTask(with: url) { [weak self] data, _, error in
+      guard let self = self else { return }
+
+      if let error = error {
+        ATLog(.error, "Failed to load image from \(url): \(error.localizedDescription)")
+        DispatchQueue.main.async { completion(nil) }
         return
       }
-      completion(image)
+
+      guard let data = data, let image = UIImage(data: data) else {
+        ATLog(.error, "Failed to create image from data at \(url)")
+        DispatchQueue.main.async { completion(nil) }
+        return
+      }
+
+      DispatchQueue.main.async {
+        completion(image)
+      }
     }.resume()
   }
 
