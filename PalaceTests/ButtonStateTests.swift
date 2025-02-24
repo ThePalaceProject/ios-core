@@ -175,14 +175,14 @@ final class ButtonStateTests: XCTestCase {
 
   func testDownloadSuccessfulEpub() {
     let testState = BookButtonState.downloadSuccessful
-    let expectedButtons = [BookButtonType.download, .remove]
+    let expectedButtons = [BookButtonType.read, .remove]
     let resultButtons = testState.buttonTypes(book: testEpub)
     XCTAssertEqual(Set(expectedButtons), Set(resultButtons))
   }
 
   func testUsedEpub() {
     let testState = BookButtonState.used
-    let expectedButtons = [BookButtonType.download, .remove]
+    let expectedButtons = [BookButtonType.read, .remove]
     let resultButtons = testState.buttonTypes(book: testEpub)
     XCTAssertEqual(Set(expectedButtons), Set(resultButtons))
   }
