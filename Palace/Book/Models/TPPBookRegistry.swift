@@ -85,7 +85,7 @@ fileprivate class BoolWithDelay {
 }
 
 @objcMembers
-class TPPBookRegistry: NSObject {
+class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
   private let syncQueueKey = DispatchSpecificKey<Void>()
 
   @objc enum RegistryState: Int {

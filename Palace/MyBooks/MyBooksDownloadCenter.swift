@@ -112,36 +112,44 @@ import OverdriveProcessor
       showGenericBorrowFailedAlert(for: book)
       return
     }
-    
+
     let alertTitle = DisplayStrings.borrowFailed
     var alertMessage: String
     var alert: UIAlertController
-    
+
     switch errorType {
     case TPPProblemDocument.TypeLoanAlreadyExists:
       alertMessage = DisplayStrings.loanAlreadyExistsAlertMessage
       alert = TPPAlertUtils.alert(title: alertTitle, message: alertMessage)
-      
+
     case TPPProblemDocument.TypeInvalidCredentials:
       NSLog("Invalid credentials problem when borrowing a book, present sign in VC")
       reauthenticator.authenticateIfNeeded(userAccount, usingExistingCredentials: false) { [weak self] in
-        self?.startDownload(for: book)
+        guard let self = self else {
+          NSLog("❌ Self is nil after authentication, skipping startDownload")
+          return
+        }
+
+        DispatchQueue.main.async {
+          self.startDownload(for: book)
+        }
       }
       return
+
     default:
       alertMessage = String(format: DisplayStrings.borrowFailedMessage, book.title)
       alert = TPPAlertUtils.alert(title: alertTitle, message: alertMessage)
-      
+
       if let error = error {
-        TPPAlertUtils.setProblemDocument(controller: alert, document:  TPPProblemDocument.fromDictionary(error), append: false)
+        TPPAlertUtils.setProblemDocument(controller: alert, document: TPPProblemDocument.fromDictionary(error), append: false)
       }
     }
-    
+
     DispatchQueue.main.async {
       TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
     }
   }
-  
+
   private func showGenericBorrowFailedAlert(for book: TPPBook) {
     let formattedMessage = String(format: DisplayStrings.borrowFailedMessage, book.title)
     let alert = TPPAlertUtils.alert(title: DisplayStrings.borrowFailed, message: formattedMessage)
