@@ -73,7 +73,9 @@ struct FacetView: View {
   @ViewBuilder private var accountLogoView: some View {
     if let account = model.currentAccount {
       Button {
-        model.showAccountScreen = true
+        if let urlString = account.homePageUrl, let url = URL(string: urlString) {
+          UIApplication.shared.open(url, options: [:], completionHandler: nil)
+        }
       } label: {
           HStack {
             Image(uiImage: model.logo ?? UIImage())

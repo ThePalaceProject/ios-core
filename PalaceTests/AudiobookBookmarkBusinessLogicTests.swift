@@ -72,7 +72,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
   
   func testSaveListeningPosition() {
     mockRegistry = TPPBookRegistryMock()
-    mockRegistry.addBook(book: fakeBook, state: .DownloadSuccessful)
+    mockRegistry.addBook(fakeBook, state: .downloadSuccessful)
     mockAnnotations = TPPAnnotationMock()
     
     tracks = try! loadTracks(for: manifestJSON)
@@ -102,7 +102,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
   
   func testSaveBookmark() {
     mockRegistry = TPPBookRegistryMock()
-    mockRegistry.addBook(book: fakeBook, state: .DownloadSuccessful)
+    mockRegistry.addBook(fakeBook, state: .downloadSuccessful)
     mockAnnotations = TPPAnnotationMock()
     
     tracks = try! loadTracks(for: manifestJSON)
@@ -124,7 +124,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
   
   func testFetchBookmarksDuplicate_LocalAndRemote() {
     mockRegistry = TPPBookRegistryMock()
-    mockRegistry.addBook(book: fakeBook, state: .DownloadSuccessful)
+    mockRegistry.addBook(fakeBook, state: .downloadSuccessful)
     mockAnnotations = TPPAnnotationMock()
     
     tracks = try! loadTracks(for: manifestJSON)
@@ -171,7 +171,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
   
   func testFetchBookmarks_localOnly() {
     mockRegistry = TPPBookRegistryMock()
-    mockRegistry.addBook(book: fakeBook, state: .DownloadSuccessful)
+    mockRegistry.addBook(fakeBook, state: .downloadSuccessful)
     mockAnnotations = TPPAnnotationMock()
     
     tracks = try! loadTracks(for: manifestJSON)
@@ -200,7 +200,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
   
   func testFetchBookmarks_RemoteOnly() {
     mockRegistry = TPPBookRegistryMock()
-    mockRegistry.addBook(book: fakeBook, state: .DownloadSuccessful)
+    mockRegistry.addBook(fakeBook, state: .downloadSuccessful)
     mockAnnotations = TPPAnnotationMock()
     
     tracks = try! loadTracks(for: manifestJSON)
@@ -233,7 +233,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
   
   func testBookmarkSync_RemoteToLocal() {
     mockRegistry = TPPBookRegistryMock()
-    mockRegistry.addBook(book: fakeBook, state: .DownloadSuccessful)
+    mockRegistry.addBook(fakeBook, state: .downloadSuccessful)
     mockAnnotations = TPPAnnotationMock()
     
     tracks = try! loadTracks(for: manifestJSON)
@@ -272,7 +272,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
   
   func testBookmarkSync_LocalToRemote() {
     mockRegistry = TPPBookRegistryMock()
-    mockRegistry.addBook(book: fakeBook, state: .DownloadSuccessful)
+    mockRegistry.addBook(fakeBook, state: .downloadSuccessful)
     mockAnnotations = TPPAnnotationMock()
     
     tracks = try! loadTracks(for: manifestJSON)
@@ -302,7 +302,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
   
   func testDeleteBookmark_localOnly() {
     mockRegistry = TPPBookRegistryMock()
-    mockRegistry.addBook(book: fakeBook, state: .DownloadSuccessful)
+    mockRegistry.addBook(fakeBook, state: .downloadSuccessful)
     mockAnnotations = TPPAnnotationMock()
     
     tracks = try! loadTracks(for: manifestJSON)
@@ -352,7 +352,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
   
   func testDeleteBookmark_localAndRemote() {
     mockRegistry = TPPBookRegistryMock()
-    mockRegistry.addBook(book: fakeBook, state: .DownloadSuccessful)
+    mockRegistry.addBook(fakeBook, state: .downloadSuccessful)
     mockAnnotations = TPPAnnotationMock()
     
     tracks = try! loadTracks(for: manifestJSON)

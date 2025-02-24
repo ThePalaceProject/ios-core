@@ -139,8 +139,6 @@ import Foundation
   
   @objc private func showAccountPage() {
     guard let homePageUrl = AccountsManager.shared.currentAccount?.homePageUrl, let url = URL(string: homePageUrl) else { return }
-    let webController = BundledHTMLViewController(fileURL: url, title: AccountsManager.shared.currentAccount?.name.capitalized ?? "")
-    webController.hidesBottomBarWhenPushed = true
-    delegate?.present(webController)
+    UIApplication.shared.open(url, options: [:], completionHandler: nil)
   }
 }

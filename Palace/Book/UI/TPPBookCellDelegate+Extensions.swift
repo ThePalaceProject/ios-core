@@ -114,12 +114,7 @@ extension TPPBookCellDelegate {
         }
         
         TPPRootTabBarController.shared().pushViewController(audiobookPlayer, animated: true)
-        TPPBookRegistry.shared.coverImage(for: book) { image in
-          if let image {
-            audiobookPlayer.updateImage(image)
-          }
-        }
-        
+        audiobookPlayer.updateImage(book.coverImage)
         self.startLoading(audiobookPlayer)
         
         let localAudiobookLocation = TPPBookRegistry.shared.location(forIdentifier: book.identifier)
