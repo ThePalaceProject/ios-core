@@ -5,7 +5,7 @@ struct HalfSheetView: View {
 
   @ObservedObject var viewModel: BookDetailViewModel
   var backgroundColor: Color
-  var coverImage: UIImage
+  @Binding var coverImage: UIImage?
 
   var body: some View {
     VStack(alignment: .leading, spacing: viewModel.isFullSize ? 20 : 10) {
@@ -47,11 +47,15 @@ private extension HalfSheetView {
   @ViewBuilder
   var bookInfoView: some View {
     HStack(alignment: .top, spacing: 16) {
-      Image(uiImage: coverImage)
-        .resizable()
-        .scaledToFit()
-        .frame(width: 60, height: 90)
-        .cornerRadius(4)
+      if let coverImage {
+        Image(uiImage: coverImage)
+          .resizable()
+          .scaledToFit()
+          .frame(width: 60, height: 90)
+          .cornerRadius(4)
+      } else {
+        ShimmerView(width: 60, height: 90)
+      }
 
       VStack(alignment: .leading, spacing: 4) {
         Text(viewModel.book.title)

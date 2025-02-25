@@ -71,7 +71,7 @@ struct BookDetailView: View {
         BookDetailView(book: book)
       }
       .sheet(isPresented: $showHalfSheet) {
-        HalfSheetView(viewModel: viewModel, backgroundColor: headerBackgroundColor, coverImage: viewModel.book.coverImage)
+        HalfSheetView(viewModel: viewModel, backgroundColor: headerBackgroundColor, coverImage: $viewModel.book.coverImage)
       }
 
       sampleToolbarView
@@ -168,7 +168,7 @@ struct BookDetailView: View {
   }
 
   private func loadCoverImage() {
-    self.headerBackgroundColor = Color(viewModel.book.coverImage.mainColor() ?? .gray)
+    self.headerBackgroundColor = Color(viewModel.book.coverImage?.mainColor() ?? .gray)
     self.delegate?.didUpdateHeaderBackground(isDark: headerBackgroundColor.isDark)
   }
 

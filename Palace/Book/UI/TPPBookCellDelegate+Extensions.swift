@@ -8,8 +8,10 @@
 
 import Foundation
 import PalaceAudiobookToolkit
+import Combine
 
 let kTimerInterval: Double = 5.0
+
 
 private struct AssociatedKeys {
   static var audiobookBookmarkBusinessLogic = "audiobookBookmarkBusinessLogic"
@@ -91,8 +93,8 @@ extension TPPBookCellDelegate {
         self.audiobookBookmarkBusinessLogic = AudiobookBookmarkBusinessLogic(book: book)
         audiobookManager.bookmarkDelegate = self.audiobookBookmarkBusinessLogic
         
-        let audiobookPlayer = AudiobookPlayer(audiobookManager: audiobookManager)
-        
+        let audiobookPlayer = AudiobookPlayer(audiobookManager: audiobookManager, coverImagePublisher: book.$coverImage.eraseToAnyPublisher())
+
         defer {
           self.scheduleTimer(forAudiobook: book, manager: audiobookManager, viewController: audiobookPlayer)
         }
@@ -114,7 +116,7 @@ extension TPPBookCellDelegate {
         }
         
         TPPRootTabBarController.shared().pushViewController(audiobookPlayer, animated: true)
-        audiobookPlayer.updateImage(book.coverImage)
+
         self.startLoading(audiobookPlayer)
         
         let localAudiobookLocation = TPPBookRegistry.shared.location(forIdentifier: book.identifier)

@@ -1,7 +1,5 @@
 import SwiftUI
 
-import SwiftUI
-
 struct BookImageView: View {
   @ObservedObject var book: TPPBook
   var height: CGFloat = 280
@@ -12,13 +10,12 @@ struct BookImageView: View {
 
   var body: some View {
     ZStack(alignment: .bottomTrailing) {
-      if !showShimmer || !isShimmering {
-        Image(uiImage: book.coverImage)
+      if let coverImage = book.coverImage, !isShimmering {
+        Image(uiImage: coverImage)
           .resizable()
           .scaledToFit()
           .frame(height: height)
           .transition(.opacity)
-
 
         if book.isAudiobook {
           Image(ImageResource.audiobookBadge)
@@ -29,16 +26,25 @@ struct BookImageView: View {
         }
       } else {
         ShimmerView(width: 180, height: height)
+          .onAppear {
+            if showShimmer {
+              if let duration = shimmerDuration {
+                DispatchQueue.main.asyncAfter(deadline: .now() + duration) {
+                  withAnimation(.easeInOut(duration: 0.3)) {
+                    isShimmering = false
+                  }
+                }
+              }
+            }
+          }
       }
     }
     .onAppear {
-      if showShimmer, let duration = shimmerDuration {
-        DispatchQueue.main.asyncAfter(deadline: .now() + duration) {
-          withAnimation(.easeInOut(duration: 0.3)) {
-            isShimmering = false
-          }
-        }
-      }
+      isShimmering = showShimmer
+    }
+    .animation(nil, value: book.coverImage)
+    .onChange(of: book.coverImage) { _ in
+      isShimmering = false
     }
   }
 }

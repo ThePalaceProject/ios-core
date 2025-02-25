@@ -420,10 +420,12 @@ class BookDetailViewModel: ObservableObject {
       playbackTrackerDelegate: timeTracker
     )
 
+    guard let audiobookManager else { return }
+
     audiobookBookmarkBusinessLogic = AudiobookBookmarkBusinessLogic(book: book)
-    audiobookManager?.bookmarkDelegate = audiobookBookmarkBusinessLogic
-    audiobookPlayer = AudiobookPlayer(audiobookManager: audiobookManager!)
-    self.audiobookPlayer?.updateImage(self.book.coverImage)
+    audiobookManager.bookmarkDelegate = audiobookBookmarkBusinessLogic
+    audiobookPlayer = AudiobookPlayer(audiobookManager: audiobookManager, coverImagePublisher: book.$coverImage.eraseToAnyPublisher())
+
 
     TPPRootTabBarController.shared().pushViewController(audiobookPlayer!, animated: true)
 
@@ -439,10 +441,12 @@ class BookDetailViewModel: ObservableObject {
       networkService: DefaultAudiobookNetworkService(tracks: audiobook.tableOfContents.allTracks)
     )
 
-    audiobookBookmarkBusinessLogic = AudiobookBookmarkBusinessLogic(book: book)
-    audiobookManager?.bookmarkDelegate = audiobookBookmarkBusinessLogic
+    guard let audiobookManager else { return }
 
-    let audiobookPlayer = AudiobookPlayer(audiobookManager: audiobookManager!)
+    audiobookBookmarkBusinessLogic = AudiobookBookmarkBusinessLogic(book: book)
+    audiobookManager.bookmarkDelegate = audiobookBookmarkBusinessLogic
+
+    let audiobookPlayer = AudiobookPlayer(audiobookManager: audiobookManager, coverImagePublisher: book.$coverImage.eraseToAnyPublisher())
     TPPRootTabBarController.shared().pushViewController(audiobookPlayer, animated: true)
 
     syncAudiobookLocation(for: book)
