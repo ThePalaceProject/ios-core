@@ -53,7 +53,7 @@ extension BookButtonType {
     case .reserve: return DisplayStrings.placeHold
     case .download: return DisplayStrings.download
     case .return: return DisplayStrings.return
-    case .remove: return DisplayStrings.cancelHold
+    case .remove: return DisplayStrings.return
     case .read: return DisplayStrings.read
     case .listen: return DisplayStrings.listen
     case .cancel: return DisplayStrings.cancel

@@ -15,7 +15,7 @@ class BookDetailViewModel: ObservableObject {
   @Published var downloadProgress: Double = 0.0
 
   @Published var buttonState: BookButtonState = .unsupported
-  @Published var relatedBooks: [TPPBook] = []
+  @Published var relatedBooks: [TPPBook?] = []
   @Published var isLoadingRelatedBooks = false
   @Published var isLoadingDescription = false
 
@@ -126,6 +126,8 @@ class BookDetailViewModel: ObservableObject {
     guard let url = book.relatedWorksURL else { return }
 
     isLoadingRelatedBooks = true
+    relatedBooks = []
+
     TPPOPDSFeed.withURL(url, shouldResetCache: false, useTokenIfAvailable: TPPUserAccount.sharedAccount().hasAdobeToken()) { [weak self] feed, _ in
       DispatchQueue.main.async { [weak self] in
         guard let self = self else { return }
@@ -139,15 +141,25 @@ class BookDetailViewModel: ObservableObject {
         let books: [TPPBook] = groupedFeed.lanes.compactMap { lane in
           (lane as? TPPCatalogLane)?.books as? [TPPBook]
         }.flatMap { $0 }
+          .filter { $0.identifier != self.book.identifier }
 
         DispatchQueue.main.async {
-          self.relatedBooks = books.filter { $0.identifier != self.book.identifier }
-          self.isLoadingRelatedBooks = false
+          self.relatedBooks = Array(repeating: nil, count: books.count)
         }
+
+        for (index, book) in books.enumerated() {
+          DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 0.2) {
+            withAnimation {
+              self.relatedBooks[index] = book
+            }
+          }
+        }
+
+        self.isLoadingRelatedBooks = false
       }
     }
   }
-
+ 
   // MARK: - Button State Mapping
 
   /// Maps registry `state` to `buttonState` for simpler SwiftUI usage.

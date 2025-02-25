@@ -984,6 +984,9 @@
 		E51818442927FD8E00C03AD5 /* Strings.swift in Sources */ = {isa = PBXBuildFile; fileRef = E54DD4CF275C66F30013C200 /* Strings.swift */; };
 		E51919D82B508EE400C08E86 /* URLRequest+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E51919D72B508EE400C08E86 /* URLRequest+Extensions.swift */; };
 		E51919D92B50902000C08E86 /* URLRequest+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E51919D72B508EE400C08E86 /* URLRequest+Extensions.swift */; };
+		E519460F2D6E6B450081172E /* LoadingOverlayModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = E519460E2D6E6B3D0081172E /* LoadingOverlayModifier.swift */; };
+		E51946102D6E6B450081172E /* LoadingOverlayModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = E519460E2D6E6B3D0081172E /* LoadingOverlayModifier.swift */; };
+		E51946112D6E6B450081172E /* LoadingOverlayModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = E519460E2D6E6B3D0081172E /* LoadingOverlayModifier.swift */; };
 		E51EB51529D5F46400022D24 /* String+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E57E798329D4D407006D0F87 /* String+Extensions.swift */; };
 		E521E9BB2D4D706700C08ADF /* Date+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E521E9BA2D4D706400C08ADF /* Date+Extensions.swift */; };
 		E521E9BC2D4D706700C08ADF /* Date+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E521E9BA2D4D706400C08ADF /* Date+Extensions.swift */; };
@@ -1971,6 +1974,7 @@
 		E5024A8E2A0EB9D6006BF653 /* AudiobookBookmarkBusinessLogicTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudiobookBookmarkBusinessLogicTests.swift; sourceTree = "<group>"; };
 		E5037FE629A3FF83002DA132 /* ButtonStateTests.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ButtonStateTests.swift; sourceTree = "<group>"; };
 		E51919D72B508EE400C08E86 /* URLRequest+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "URLRequest+Extensions.swift"; sourceTree = "<group>"; };
+		E519460E2D6E6B3D0081172E /* LoadingOverlayModifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoadingOverlayModifier.swift; sourceTree = "<group>"; };
 		E521E9BA2D4D706400C08ADF /* Date+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Date+Extensions.swift"; sourceTree = "<group>"; };
 		E521E9C62D513E3900C08ADF /* BookButtonsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookButtonsView.swift; sourceTree = "<group>"; };
 		E521E9CA2D51CB7000C08ADF /* BookDetailViewModel+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BookDetailViewModel+Extensions.swift"; sourceTree = "<group>"; };
@@ -3479,6 +3483,7 @@
 		E54DD4D3275C7C6B0013C200 /* SwiftUI */ = {
 			isa = PBXGroup;
 			children = (
+				E519460E2D6E6B3D0081172E /* LoadingOverlayModifier.swift */,
 				E577061C2D3A129D00ED56F8 /* AttributedTextView.swift */,
 				E5AA6F4029A6BA4000601B02 /* RefreshableView.swift */,
 				E5FFB96328AED4850042907F /* ImageProvider.swift */,
@@ -4611,6 +4616,7 @@
 				21E41786292810EE00A78606 /* UIImage.swift in Sources */,
 				E551B365267D42AF0026FC1B /* TPPLoadingViewController.swift in Sources */,
 				E795A76A2A74074300314EC8 /* AudiobookTimeTracker.swift in Sources */,
+				E51946112D6E6B450081172E /* LoadingOverlayModifier.swift in Sources */,
 				E523A456299FD7DC00EF833B /* AlertModel.swift in Sources */,
 				73D8D27525A68D2C00DF5F69 /* TPPBaseReaderViewController.swift in Sources */,
 				E50D684326AB235400F1042B /* TPPReaderBookmarkCell.swift in Sources */,
@@ -5001,6 +5007,7 @@
 				E5FFB9CB28AFE8AF0042907F /* AsyncImage.swift in Sources */,
 				734B789125659611006FB8AD /* URLResponse+TPPAuthentication.swift in Sources */,
 				217595DA27B6800100BA0FDD /* TPPReaderSettingsView.swift in Sources */,
+				E519460F2D6E6B450081172E /* LoadingOverlayModifier.swift in Sources */,
 				21C184DC27B12347008CC4F8 /* UINavigationBar+appearance.swift in Sources */,
 				E5C2C422268BA5140046F415 /* TPPRegistryDebuggingCell.swift in Sources */,
 				118A0B1B19915BDF00792DDE /* TPPCatalogSearchViewController.m in Sources */,
@@ -5246,6 +5253,7 @@
 				D570B5D42BA20139003FE991 /* TPPCredentials.swift in Sources */,
 				D570B5D52BA20139003FE991 /* TPPCatalogFeedViewController.m in Sources */,
 				D570B5D62BA20139003FE991 /* TPPBookDownloadingCell.m in Sources */,
+				E51946102D6E6B450081172E /* LoadingOverlayModifier.swift in Sources */,
 				D570B5D72BA20139003FE991 /* Publication+NYPLAdditions.swift in Sources */,
 				D570B5D82BA20139003FE991 /* TPPNetworkExecutor.swift in Sources */,
 				D570B5D92BA20139003FE991 /* TPPSignInBusinessLogic+OAuth.swift in Sources */,
@@ -5950,11 +5958,9 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/PalaceDebug.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
-				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 311;
-				DEVELOPMENT_TEAM = "";
-				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
+				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -5981,8 +5987,7 @@
 				);
 				MARKETING_VERSION = 1.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
-				PROVISIONING_PROFILE_SPECIFIER = "Ad Hoc 2";
-				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "Ad Hoc 2";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				RUN_CLANG_STATIC_ANALYZER = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG SIMPLYE FEATURE_DRM_CONNECTOR FEATURE_CRASH_REPORTING LCP FEATURE_OVERDRIVE";
 				SWIFT_OBJC_BRIDGING_HEADER = "Palace/AppInfrastructure/Palace-Bridging-Header.h";
@@ -6198,13 +6203,11 @@
 				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CODE_SIGN_IDENTITY = "Apple Development";
-				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEFINES_MODULE = YES;
-				DEVELOPMENT_TEAM = "";
-				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
+				DEVELOPMENT_TEAM = 88CBA74T8K;
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
 				DYLIB_INSTALL_NAME_BASE = "@rpath";

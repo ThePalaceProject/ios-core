@@ -129,7 +129,7 @@ struct BookDetailView: View {
   }
 
   private var imageView: some View {
-    BookImageView(book: viewModel.book, height: 280)
+    BookImageView(book: viewModel.book, height: 280, showShimmer: true, shimmerDuration: 0.8)
       .frame(height: max(0, 280 * imageScale))
       .opacity(imageOpacity)
       .shadow(color: .black.opacity(0.3), radius: 10, x: 0, y: 5)
@@ -174,11 +174,7 @@ struct BookDetailView: View {
 
   @ViewBuilder private var relatedBooksView: some View {
     VStack(alignment: .leading, spacing: 10) {
-      if viewModel.isLoadingRelatedBooks {
-        ProgressView()
-          .frame(height: 100)
-          .frame(maxWidth: .infinity)
-      } else if !viewModel.relatedBooks.isEmpty {
+      if !viewModel.relatedBooks.isEmpty {
         Text(DisplayStrings.otherBooks)
           .font(.headline)
           .foregroundColor(.black)
@@ -186,9 +182,14 @@ struct BookDetailView: View {
 
         ScrollView(.horizontal, showsIndicators: false) {
           LazyHStack(spacing: 12) {
-            ForEach(viewModel.relatedBooks, id: \.identifier) { book in
-              Button(action: { viewModel.selectRelatedBook(book) }) {
-                BookImageView(book: book, height: 160)
+            ForEach(viewModel.relatedBooks.indices, id: \.self) { index in
+              if let book = viewModel.relatedBooks[index] {
+                Button(action: { viewModel.selectRelatedBook(book) }) {
+                  BookImageView(book: book, height: 160)
+                    .transition(.opacity.combined(with: .scale))
+                }
+              } else {
+                ShimmerView(width: 100, height: 160)
               }
             }
           }
@@ -197,7 +198,6 @@ struct BookDetailView: View {
         .frame(height: 180)
       }
     }
-    .animation(nil, value: viewModel.relatedBooks)
   }
 
   @ViewBuilder private var audiobookAvailable: some View {

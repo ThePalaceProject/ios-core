@@ -1,11 +1,3 @@
-//
-//  TPPAppDelegate.swift
-//  Palace
-//
-//  Created by Vladimir Fedorov on 12/05/2023.
-//  Copyright © 2023 The Palace Project. All rights reserved.
-//
-
 import Foundation
 import FirebaseCore
 import FirebaseDynamicLinks
@@ -22,44 +14,56 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
   // MARK: - Application Lifecycle
 
   func applicationDidFinishLaunching(_ application: UIApplication) {
-    FirebaseApp.configure()
-    TPPErrorLogger.configureCrashAnalytics()
+    let startupQueue = DispatchQueue.global(qos: .userInitiated)
 
-    // Perform data migrations early
+    FirebaseApp.configure()
+
+    TPPErrorLogger.configureCrashAnalytics()
+    TPPErrorLogger.logNewAppLaunch()
+
+    setupWindow()
+    configureUIAppearance()
+
+    startupQueue.async {
+      self.performBackgroundStartupTasks()
+    }
+
+    startupQueue.asyncAfter(deadline: .now() + 0.5) {
+      self.setupBookRegistryAndNotifications()
+    }
+
+    registerBackgroundTasks()
+  }
+
+  // Background startup tasks (Runs in background)
+  private func performBackgroundStartupTasks() {
     TPPKeychainManager.validateKeychain()
     TPPMigrationManager.migrate()
+    NetworkQueue.shared().addObserverForOfflineQueue()
+    Reachability.shared.startMonitoring()
 
-    audiobookLifecycleManager = AudiobookLifecycleManager()
-    audiobookLifecycleManager.didFinishLaunching()
+    DispatchQueue.main.async {
+      self.audiobookLifecycleManager = AudiobookLifecycleManager()
+      self.audiobookLifecycleManager.didFinishLaunching()
+    }
 
     TransifexManager.setup()
 
     NotificationCenter.default.addObserver(forName: .TPPIsSigningIn, object: nil, queue: nil) { [weak self] notification in
       self?.signingIn(notification)
     }
+  }
 
-    NetworkQueue.shared().addObserverForOfflineQueue()
-
-    // Start reachability monitoring
-    Reachability.shared.startMonitoring()
-
-    setupWindow()
-    configureUIAppearance()
-
-    TPPErrorLogger.logNewAppLaunch()
-
-    // Initialize book registry lazily
-    DispatchQueue.global().async {
+  private func setupBookRegistryAndNotifications() {
+    DispatchQueue.global(qos: .background).async {
       _ = TPPBookRegistry.shared
     }
 
     NotificationService.shared.setupPushNotifications()
-
-    // Register for background tasks
-    registerBackgroundTasks()
   }
 
-  // Background tasks registration
+  // MARK: - Background Task Registration
+
   private func registerBackgroundTasks() {
     BGTaskScheduler.shared.register(forTaskWithIdentifier: "org.thepalaceproject.palace.refresh", using: nil) { task in
       self.handleAppRefresh(task: task as! BGAppRefreshTask)
@@ -68,18 +72,14 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
   private func handleAppRefresh(task: BGAppRefreshTask) {
     scheduleAppRefresh()
-
     let startDate = Date()
 
     TPPBookRegistry.shared.sync { errorDocument, newBooks in
       if errorDocument != nil {
         Log.log("[Background Refresh] Failed. Error Document Present. Elapsed Time: \(-startDate.timeIntervalSinceNow)")
         task.setTaskCompleted(success: false)
-      } else if newBooks {
-        Log.log("[Background Refresh] New books available. Elapsed Time: \(-startDate.timeIntervalSinceNow)")
-        task.setTaskCompleted(success: true)
       } else {
-        Log.log("[Background Refresh] No new books fetched. Elapsed Time: \(-startDate.timeIntervalSinceNow)")
+        Log.log("[Background Refresh] \(newBooks ? "New books available" : "No new books fetched"). Elapsed Time: \(-startDate.timeIntervalSinceNow)")
         task.setTaskCompleted(success: true)
       }
     }
@@ -100,6 +100,8 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
       Log.error(error.localizedDescription, "Failed to submit BGAppRefreshTask: \(error.localizedDescription)")
     }
   }
+
+  // MARK: - URL Handling (Dynamic Links)
 
   func application(_ application: UIApplication, continue userActivity: NSUserActivity, restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void) -> Bool {
     if let url = userActivity.webpageURL {
@@ -137,9 +139,8 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
   }
 
   func applicationWillTerminate(_ application: UIApplication) {
-    audiobookLifecycleManager.willTerminate()
+    audiobookLifecycleManager?.willTerminate()
     postListeningLocationIfAvailable()
-
     NotificationCenter.default.removeObserver(self)
     Reachability.shared.stopMonitoring()
   }
@@ -154,11 +155,15 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     }
   }
 
+  // MARK: - User Sign-in Tracking
+
   func signingIn(_ notification: Notification) {
     if let boolValue = notification.object as? Bool {
       isSigningIn = boolValue
     }
   }
+
+  // MARK: - UI Configuration
 
   private func setupWindow() {
     window = UIWindow()

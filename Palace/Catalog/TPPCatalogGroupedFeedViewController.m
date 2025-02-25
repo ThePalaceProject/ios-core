@@ -86,9 +86,7 @@ static CGFloat const kTableViewCrossfadeDuration = 0.3;
   self.tableView.delegate = self;
   self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
   self.tableView.allowsSelection = NO;
-  if (@available(iOS 11.0, *)) {
-    self.tableView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
-  }
+  self.tableView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
   [self.tableView addSubview:self.refreshControl];
   [self.view addSubview:self.tableView];
 
