@@ -71,11 +71,18 @@ protocol AnnotationsManager {
 
   class func postAudiobookBookmark(forBook bookID: String, selectorValue: String) async throws -> AnnotationResponse? {
     return try await withCheckedThrowingContinuation { continuation in
+      var didResume = false
+
       postReadingPosition(forBook: bookID, selectorValue: selectorValue, motivation: .bookmark) { response in
-        if let response {
-          continuation.resume(returning: response)
-        } else {
-          continuation.resume(throwing: NSError(domain: "Error posting bookmark", code: 1, userInfo: nil))
+        DispatchQueue.main.async {
+          guard !didResume else { return }
+          didResume = true
+
+          if let response {
+            continuation.resume(returning: response)
+          } else {
+            continuation.resume(throwing: NSError(domain: "Error posting bookmark", code: 1, userInfo: nil))
+          }
         }
       }
     }
