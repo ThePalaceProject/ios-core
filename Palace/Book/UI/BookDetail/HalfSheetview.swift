@@ -116,13 +116,13 @@ private extension HalfSheetView {
 
   @ViewBuilder
   var borrowedInfoView: some View {
-    if let availableUntil = viewModel.book.getAvailabilityDetails().availableUntil {
+    if let availableUntil = viewModel.book.getExpirationDate()?.timeUntil() {
       HStack {
         Text("Borrowed until")
           .font(.subheadline)
           .foregroundColor(.secondary)
         Spacer()
-        Text(availableUntil)
+        Text("\(availableUntil.value) \(availableUntil.unit)")
           .foregroundColor(colorScheme == .dark ? .palaceSuccessLight : .palaceSuccessDark)
       }
     }

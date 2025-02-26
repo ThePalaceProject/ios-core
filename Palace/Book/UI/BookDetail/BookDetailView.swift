@@ -178,6 +178,11 @@ struct BookDetailView: View {
         switch type {
         case .sample, .audiobookSample:
           viewModel.handleAction(for: type)
+        case .download, .get:
+          showHalfSheet.toggle()
+          DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
+            viewModel.handleAction(for: type)
+          }
         default:
           showHalfSheet.toggle()
         }

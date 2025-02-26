@@ -64,7 +64,7 @@ struct NormalBookCell: View {
         .bottomrRightJustified()
     }
   }
-  
+
   @ViewBuilder private var infoView: some View {
     VStack(alignment: .leading) {
       Text(model.title)
@@ -82,19 +82,32 @@ struct NormalBookCell: View {
   }
 
   @ViewBuilder private var buttons: some View {
-    BookButtonsView(provider: model, size: buttonSize) { type in
-      model.callDelegate(for: type)
+    VStack(alignment: .leading, spacing: 0) {
+      BookButtonsView(provider: model, size: buttonSize) { type in
+        model.callDelegate(for: type)
+      }
+      borrowedInfoView
     }
   }
-  
+
   @ViewBuilder private var unreadImageView: some View {
-      VStack {
-        ImageProviders.MyBooksView.unreadBadge
-          .resizable()
-          .frame(width: 10, height: 10)
-          .foregroundColor(Color(TPPConfiguration.accentColor()))
-        Spacer()
-      }
-      .opacity(model.showUnreadIndicator ? 1.0 : 0.0)
+    VStack {
+      ImageProviders.MyBooksView.unreadBadge
+        .resizable()
+        .frame(width: 10, height: 10)
+        .foregroundColor(Color(TPPConfiguration.accentColor()))
+      Spacer()
+    }
+    .opacity(model.showUnreadIndicator ? 1.0 : 0.0)
+  }
+
+  @ViewBuilder var borrowedInfoView: some View {
+    if let availableUntil = model.book.getExpirationDate()?.monthDayYearString {
+      Text("Borrowed until \(availableUntil)")
+        .fixedSize(horizontal: false, vertical: true)
+        .minimumScaleFactor(0.5)
+        .font(.subheadline)
+        .foregroundColor(.secondary)
+    }
   }
 }
