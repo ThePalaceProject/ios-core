@@ -2,8 +2,9 @@ import SwiftUI
 import UIKit
 
 struct BookDetailView: View {
+  @Environment(\.presentationMode) var presentationMode
+
   typealias DisplayStrings = Strings.BookDetailView
-  weak var delegate: BookDetailViewDelegate?
   @State private var selectedBook: TPPBook?
   @State private var showBookDetail = false
   @State private var descriptionText = ""
@@ -20,13 +21,15 @@ struct BookDetailView: View {
   @State private var imageScale: CGFloat = 1.0
   @State private var imageOpacity: CGFloat = 1.0
   @State private var sampleToolbar: AudiobookSampleToolbar? = nil
+  @State private var dragOffset: CGFloat = 0
+  @State private var isAtTop: Bool = true
 
   init(book: TPPBook) {
     self.viewModel = BookDetailViewModel(book: book)
   }
 
   var body: some View {
-    ZStack {
+    ZStack(alignment: .top) {
       ScrollView(showsIndicators: false) {
         ZStack(alignment: .top) {
           backgroundView
@@ -46,12 +49,6 @@ struct BookDetailView: View {
       }
       .edgesIgnoringSafeArea(.all)
       .background(Color.white)
-      .onChange(of: headerBackgroundColor) { newColor in
-        delegate?.didUpdateHeaderBackground(isDark: newColor.isDark)
-      }
-      .onChange(of: showCompactHeader) { newValue in
-        self.delegate?.didChangeToCompactView(newValue)
-      }
       .onChange(of: viewModel.book) { newValue in
         loadCoverImage()
         viewModel.showSampleToolbar = false
@@ -73,8 +70,36 @@ struct BookDetailView: View {
       .sheet(isPresented: $showHalfSheet) {
         HalfSheetView(viewModel: viewModel, backgroundColor: headerBackgroundColor, coverImage: $viewModel.book.coverImage)
       }
+      .presentationDetents([.medium])
 
+      backbutton
       sampleToolbarView
+    }
+    .offset(x: dragOffset)
+    .animation(.interactiveSpring(), value: dragOffset)
+    .gesture(edgeSwipeGesture)
+  }
+
+  @ViewBuilder private var backbutton: some View {
+    if !showCompactHeader {
+      Button(action: {
+        presentationMode.wrappedValue.dismiss()
+      }) {
+        HStack {
+          Image(systemName: "chevron.left")
+          Text("Back")
+        }
+        .font(.title3)
+        .foregroundColor(headerBackgroundColor.isDark ? .white : .black)
+        .opacity(0.8)
+      }
+      .animation(.easeInOut(duration: animationDuration), value: imageScale)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .frame(height: 50)
+      .padding(.top, UIDevice.current.isIpad ? 40 : 50)
+      .padding(.leading)
+      .zIndex(10)
+      .edgesIgnoringSafeArea(.top)
     }
   }
 
@@ -169,7 +194,6 @@ struct BookDetailView: View {
 
   private func loadCoverImage() {
     self.headerBackgroundColor = Color(viewModel.book.coverImage?.mainColor() ?? .gray)
-    self.delegate?.didUpdateHeaderBackground(isDark: headerBackgroundColor.isDark)
   }
 
   @ViewBuilder private var relatedBooksView: some View {
@@ -183,9 +207,9 @@ struct BookDetailView: View {
         ScrollView(.horizontal, showsIndicators: false) {
           LazyHStack(spacing: 12) {
             ForEach(viewModel.relatedBooks.indices, id: \.self) { index in
-              if let book = viewModel.relatedBooks[index] {
+              if let book = viewModel.relatedBooks[safe: index], let book {
                 Button(action: { viewModel.selectRelatedBook(book) }) {
-                  BookImageView(book: book, height: 160)
+                  BookImageView(book: book, height: 160, showShimmer: true)
                     .transition(.opacity.combined(with: .scale))
                 }
               } else {
@@ -423,5 +447,23 @@ struct BookDetailView: View {
 
     lastOffset = abs(offset)
     lastTimestamp = now
+  }
+
+  private var edgeSwipeGesture: some Gesture {
+    DragGesture()
+      .onChanged { value in
+        if value.startLocation.x < 40 {
+          if value.translation.width > 0 {
+            dragOffset = value.translation.width
+          }
+        }
+      }
+      .onEnded { value in
+        if value.translation.width > 150 {
+          presentationMode.wrappedValue.dismiss()
+        } else {
+          dragOffset = 0
+        }
+      }
   }
 }

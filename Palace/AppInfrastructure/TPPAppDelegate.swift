@@ -28,7 +28,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
       self.performBackgroundStartupTasks()
     }
 
-    startupQueue.asyncAfter(deadline: .now() + 0.5) {
+    startupQueue.async {
       self.setupBookRegistryAndNotifications()
     }
 

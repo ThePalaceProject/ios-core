@@ -229,7 +229,7 @@ static CGFloat const kTableViewCrossfadeDuration = 0.3;
 
   TPPLOG_F(@"Presenting book: %@", [self.mostRecentBookSelected loggableShortString]);
   BookDetailHostingController *bookDetailVC = [[BookDetailHostingController alloc] initWithBook:self.mostRecentBookSelected];
-  [self.navigationController pushViewController:bookDetailVC animated:true];
+  [self.navigationController pushViewController:bookDetailVC animated:YES];
 }
 
 #pragma mark UITableViewDataSource
@@ -360,7 +360,7 @@ viewForHeaderInSection:(NSInteger const)section
   TPPBook *const book = (localBook != nil) ? localBook : feedBook;
   TPPLOG_F(@"Presenting book: %@", [book loggableShortString]);
   BookDetailHostingController *bookDetailVC = [[BookDetailHostingController alloc] initWithBook:book];
-  [self.navigationController pushViewController:bookDetailVC animated:true];
+  [self.navigationController pushViewController:bookDetailVC animated:YES];
 
   self.mostRecentBookSelected = book;
 }
@@ -423,7 +423,7 @@ viewForHeaderInSection:(NSInteger const)section
 
 
   BookDetailHostingController *bookDetailVC = [[BookDetailHostingController alloc] initWithBook:book];
-  [self.navigationController pushViewController:bookDetailVC animated:true];
+  [self.navigationController pushViewController:bookDetailVC animated:YES];
 }
 
 #pragma mark - TPPEntryPointViewDataSource

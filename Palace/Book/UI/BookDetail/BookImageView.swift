@@ -10,12 +10,18 @@ struct BookImageView: View {
 
   var body: some View {
     ZStack(alignment: .bottomTrailing) {
-      if let coverImage = book.coverImage, !isShimmering {
+      if let coverImage = book.coverImage {
         Image(uiImage: coverImage)
           .resizable()
           .scaledToFit()
           .frame(height: height)
+          .opacity(isShimmering ? 0 : 1)
           .transition(.opacity)
+          .onAppear {
+            withAnimation(.easeInOut(duration: 0.6)) {
+              isShimmering = false
+            }
+          }
 
         if book.isAudiobook {
           Image(ImageResource.audiobookBadge)
@@ -23,28 +29,25 @@ struct BookImageView: View {
             .scaledToFit()
             .frame(width: height * 0.12, height: height * 0.12)
             .background(Color.red)
+            .transition(.opacity)
         }
-      } else {
+      }
+
+      if showShimmer && isShimmering {
         ShimmerView(width: 180, height: height)
+          .opacity(isShimmering ? 1 : 0)
+          .transition(.opacity)
           .onAppear {
-            if showShimmer {
-              if let duration = shimmerDuration {
-                DispatchQueue.main.asyncAfter(deadline: .now() + duration) {
-                  withAnimation(.easeInOut(duration: 0.3)) {
-                    isShimmering = false
-                  }
+            if let duration = shimmerDuration {
+              DispatchQueue.main.asyncAfter(deadline: .now() + duration) {
+                withAnimation(.easeInOut(duration: 0.3)) {
+                  isShimmering = false
                 }
               }
             }
           }
       }
     }
-    .onAppear {
-      isShimmering = showShimmer
-    }
-    .animation(nil, value: book.coverImage)
-    .onChange(of: book.coverImage) { _ in
-      isShimmering = false
-    }
+//    .animation(.easeInOut(duration: 0.5), value: book.coverImage)
   }
 }

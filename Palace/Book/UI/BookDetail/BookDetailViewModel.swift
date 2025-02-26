@@ -129,12 +129,14 @@ class BookDetailViewModel: ObservableObject {
     relatedBooks = []
 
     TPPOPDSFeed.withURL(url, shouldResetCache: false, useTokenIfAvailable: TPPUserAccount.sharedAccount().hasAdobeToken()) { [weak self] feed, _ in
-      DispatchQueue.main.async { [weak self] in
-        guard let self = self else { return }
+      guard let self = self else { return }
 
+      DispatchQueue.global(qos: .userInitiated).async {
         guard feed?.type == .acquisitionGrouped,
               let groupedFeed = TPPCatalogGroupedFeed(opdsFeed: feed) else {
-          self.isLoadingRelatedBooks = false
+          DispatchQueue.main.async {
+            self.isLoadingRelatedBooks = false
+          }
           return
         }
 
@@ -143,23 +145,23 @@ class BookDetailViewModel: ObservableObject {
         }.flatMap { $0 }
           .filter { $0.identifier != self.book.identifier }
 
-        DispatchQueue.main.async {
-          self.relatedBooks = Array(repeating: nil, count: books.count)
-        }
+        var safeRelatedBooks = Array(repeating: nil as TPPBook?, count: books.count)
 
-        for (index, book) in books.enumerated() {
-          DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 0.2) {
-            withAnimation {
-              self.relatedBooks[index] = book
+        DispatchQueue.main.async {
+          self.relatedBooks = safeRelatedBooks
+
+          for (index, book) in books.enumerated() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 0.2) {
+              self.relatedBooks[safe: index] = book
             }
           }
-        }
 
-        self.isLoadingRelatedBooks = false
+          self.isLoadingRelatedBooks = false
+        }
       }
     }
   }
- 
+
   // MARK: - Button State Mapping
 
   /// Maps registry `state` to `buttonState` for simpler SwiftUI usage.

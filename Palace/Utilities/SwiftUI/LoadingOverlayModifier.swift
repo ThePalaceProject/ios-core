@@ -69,7 +69,7 @@ extension View {
 struct ShimmerView: View {
   var width: CGFloat
   var height: CGFloat
-  var cornerRadius: CGFloat = 8
+  var cornerRadius: CGFloat = 0
 
   var body: some View {
     RoundedRectangle(cornerRadius: cornerRadius)

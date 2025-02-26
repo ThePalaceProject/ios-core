@@ -14,7 +14,7 @@ let kTimerInterval: Double = 5.0
 
 
 private struct AssociatedKeys {
-  static var audiobookBookmarkBusinessLogic = "audiobookBookmarkBusinessLogic"
+  static var audiobookBookmarkBusinessLogic: UInt8 = 0
 }
 
 private let locationQueue = DispatchQueue(label: "com.palace.latestAudiobookLocation", attributes: .concurrent)
@@ -54,7 +54,7 @@ extension TPPBookCellDelegate {
       )
     }
   }
-  
+
   public func openAudiobook(withBook book: TPPBook, json: [String: Any], drmDecryptor: DRMDecryptor?, completion: (() -> Void)?) {
     AudioBookVendorsHelper.updateVendorKey(book: json) { [weak self] error in
       DispatchQueue.main.async {

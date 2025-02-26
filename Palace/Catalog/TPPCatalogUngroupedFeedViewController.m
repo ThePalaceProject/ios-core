@@ -193,7 +193,7 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
   TPPBook *const book = self.feed.books[indexPath.row];
   
   BookDetailHostingController *bookDetailVC = [[BookDetailHostingController alloc] initWithBook:book];
-  [self.navigationController pushViewController:bookDetailVC animated:true];
+  [self.navigationController pushViewController:bookDetailVC animated:YES];
 }
 
 #pragma mark TPPCatalogUngroupedFeedDelegate
@@ -313,7 +313,7 @@ didSelectFacetAtIndexPath:(NSIndexPath *const)indexPath
 {
   TPPBook *const book = self.feed.books[viewControllerToCommit.view.tag];
   BookDetailHostingController *bookDetailVC = [[BookDetailHostingController alloc] initWithBook:book];
-  [self.navigationController pushViewController:bookDetailVC animated:true];
+  [self.navigationController pushViewController:bookDetailVC animated:YES];
 }
 
 #pragma mark -

@@ -994,9 +994,6 @@
 		E521E9C72D513E3F00C08ADF /* BookButtonsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E521E9C62D513E3900C08ADF /* BookButtonsView.swift */; };
 		E521E9C82D513E3F00C08ADF /* BookButtonsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E521E9C62D513E3900C08ADF /* BookButtonsView.swift */; };
 		E521E9C92D513E3F00C08ADF /* BookButtonsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E521E9C62D513E3900C08ADF /* BookButtonsView.swift */; };
-		E521E9CB2D51CB8B00C08ADF /* BookDetailViewModel+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E521E9CA2D51CB7000C08ADF /* BookDetailViewModel+Extensions.swift */; };
-		E521E9CC2D51CB8B00C08ADF /* BookDetailViewModel+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E521E9CA2D51CB7000C08ADF /* BookDetailViewModel+Extensions.swift */; };
-		E521E9CD2D51CB8B00C08ADF /* BookDetailViewModel+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E521E9CA2D51CB7000C08ADF /* BookDetailViewModel+Extensions.swift */; };
 		E521EADC2D56B5A000C08ADF /* HalfSheetview.swift in Sources */ = {isa = PBXBuildFile; fileRef = E521EADB2D56B59C00C08ADF /* HalfSheetview.swift */; };
 		E521EADD2D56B5A000C08ADF /* HalfSheetview.swift in Sources */ = {isa = PBXBuildFile; fileRef = E521EADB2D56B59C00C08ADF /* HalfSheetview.swift */; };
 		E521EADE2D56B5A000C08ADF /* HalfSheetview.swift in Sources */ = {isa = PBXBuildFile; fileRef = E521EADB2D56B59C00C08ADF /* HalfSheetview.swift */; };
@@ -1121,6 +1118,9 @@
 		E5AA6F4229A6BA4500601B02 /* RefreshableView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AA6F4029A6BA4000601B02 /* RefreshableView.swift */; };
 		E5AD65DD2684FACA00C62951 /* TPPAccountListCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AD65DC2684FACA00C62951 /* TPPAccountListCell.swift */; };
 		E5AD65E12684FDA300C62951 /* TPPAccountListDataSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AD65E02684FDA300C62951 /* TPPAccountListDataSource.swift */; };
+		E5B0ACEE2D6EBE6D00F9B89B /* Array+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5B0ACED2D6EBE6800F9B89B /* Array+Extensions.swift */; };
+		E5B0ACEF2D6EBE6D00F9B89B /* Array+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5B0ACED2D6EBE6800F9B89B /* Array+Extensions.swift */; };
+		E5B0ACF02D6EBE6D00F9B89B /* Array+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5B0ACED2D6EBE6800F9B89B /* Array+Extensions.swift */; };
 		E5B2B8DA275952EC00150ED4 /* TPPSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5B2B8D9275952EC00150ED4 /* TPPSettingsView.swift */; };
 		E5B2B8E12759583200150ED4 /* TPPSettingsViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5B2B8DC2759552F00150ED4 /* TPPSettingsViewController.swift */; };
 		E5BDA0252A2A7D0300C133CB /* RegistrationCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5BDA0242A2A7D0300C133CB /* RegistrationCell.swift */; };
@@ -1977,7 +1977,6 @@
 		E519460E2D6E6B3D0081172E /* LoadingOverlayModifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoadingOverlayModifier.swift; sourceTree = "<group>"; };
 		E521E9BA2D4D706400C08ADF /* Date+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Date+Extensions.swift"; sourceTree = "<group>"; };
 		E521E9C62D513E3900C08ADF /* BookButtonsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookButtonsView.swift; sourceTree = "<group>"; };
-		E521E9CA2D51CB7000C08ADF /* BookDetailViewModel+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BookDetailViewModel+Extensions.swift"; sourceTree = "<group>"; };
 		E521EADB2D56B59C00C08ADF /* HalfSheetview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HalfSheetview.swift; sourceTree = "<group>"; };
 		E523116928504B85007D1DB5 /* TPPBook+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPBook+Extensions.swift"; sourceTree = "<group>"; };
 		E5231240285C291D007D1DB5 /* AudioBookmark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioBookmark.swift; sourceTree = "<group>"; };
@@ -2055,6 +2054,7 @@
 		E5AA6F4029A6BA4000601B02 /* RefreshableView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RefreshableView.swift; sourceTree = "<group>"; };
 		E5AD65DC2684FACA00C62951 /* TPPAccountListCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAccountListCell.swift; sourceTree = "<group>"; };
 		E5AD65E02684FDA300C62951 /* TPPAccountListDataSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAccountListDataSource.swift; sourceTree = "<group>"; };
+		E5B0ACED2D6EBE6800F9B89B /* Array+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Array+Extensions.swift"; sourceTree = "<group>"; };
 		E5B2B8D9275952EC00150ED4 /* TPPSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPSettingsView.swift; sourceTree = "<group>"; };
 		E5B2B8DC2759552F00150ED4 /* TPPSettingsViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPSettingsViewController.swift; sourceTree = "<group>"; };
 		E5BDA0242A2A7D0300C133CB /* RegistrationCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RegistrationCell.swift; sourceTree = "<group>"; };
@@ -3508,7 +3508,6 @@
 			children = (
 				E5DE86FB2D6C39C6003D356E /* BookImageView.swift */,
 				E521EADB2D56B59C00C08ADF /* HalfSheetview.swift */,
-				E521E9CA2D51CB7000C08ADF /* BookDetailViewModel+Extensions.swift */,
 				E562DDAB2D36E7B5003A1A40 /* BookDetailHostingViewController.swift */,
 				E562DD952D35AB88003A1A40 /* BookDetailViewModel.swift */,
 				E562DD992D35ABBF003A1A40 /* BookDetailView.swift */,
@@ -3519,6 +3518,7 @@
 		E57706242D3A13C700ED56F8 /* Extensions */ = {
 			isa = PBXGroup;
 			children = (
+				E5B0ACED2D6EBE6800F9B89B /* Array+Extensions.swift */,
 				E5EE380D2D5DB19D00252001 /* Color+Extension.swift */,
 				E5EE38092D5DA74C00252001 /* Int+Extensions.swift */,
 				E521E9BA2D4D706400C08ADF /* Date+Extensions.swift */,
@@ -4496,6 +4496,7 @@
 				73EB0A9725821DF4006BC997 /* TPPBookDetailDownloadingView.m in Sources */,
 				E562DDAD2D36E7C0003A1A40 /* BookDetailHostingViewController.swift in Sources */,
 				21E41799292813A000A78606 /* AsyncImage.swift in Sources */,
+				E5B0ACF02D6EBE6D00F9B89B /* Array+Extensions.swift in Sources */,
 				73EB0A9825821DF4006BC997 /* TPPWelcomeScreenViewController.swift in Sources */,
 				21E41793292811CB00A78606 /* TPPReaderAdvancedSettings.swift in Sources */,
 				73EB0A9925821DF4006BC997 /* TPPOPDSCategory.m in Sources */,
@@ -4597,7 +4598,6 @@
 				73EB0AD125821DF4006BC997 /* ProblemReportEmail.swift in Sources */,
 				21E41788292810F600A78606 /* TPPPDFThumbnailView.swift in Sources */,
 				E795A76E2A74074300314EC8 /* DataManager.swift in Sources */,
-				E521E9CB2D51CB8B00C08ADF /* BookDetailViewModel+Extensions.swift in Sources */,
 				73EB0AD225821DF4006BC997 /* TPPBookCellDelegate.m in Sources */,
 				E733E4AE2AFD792100D5052A /* UserProfileDocument+Links.swift in Sources */,
 				E5EFDE79298C43DD00258CA3 /* BookButtonState.swift in Sources */,
@@ -4874,6 +4874,7 @@
 				733875672423E540000FEB67 /* TPPCaching.swift in Sources */,
 				1107835E19816E3D0071AB1E /* UIView+TPPViewAdditions.m in Sources */,
 				E551B35A267D396A0026FC1B /* TPPLoadingViewController.swift in Sources */,
+				E5B0ACEF2D6EBE6D00F9B89B /* Array+Extensions.swift in Sources */,
 				E521EADC2D56B5A000C08ADF /* HalfSheetview.swift in Sources */,
 				E7347D0B287F2A1600CCE65A /* UIImage.swift in Sources */,
 				E50D684726AB235400F1042B /* TPPReaderTOCCell.swift in Sources */,
@@ -4967,7 +4968,6 @@
 				E544C4F72A3C1E4A00B2DC9D /* Dictionary+Extensions.swift in Sources */,
 				219747FC26D9218400FA25DF /* TPPLCPClient.swift in Sources */,
 				11C5DCF21976D1E0005A9945 /* TPPHoldsNavigationController.m in Sources */,
-				E521E9CC2D51CB8B00C08ADF /* BookDetailViewModel+Extensions.swift in Sources */,
 				73DB56CC25F7F739003788EE /* TPPLastReadPositionPoster.swift in Sources */,
 				A42E0DF11B3F5A490095EBAE /* TPPRemoteViewController.m in Sources */,
 				1798538B255A4092009F94D9 /* TPPBookLocation+Locator.swift in Sources */,
@@ -5296,6 +5296,7 @@
 				D570B5FE2BA20139003FE991 /* Date+NYPLAdditions.swift in Sources */,
 				D570B5FF2BA20139003FE991 /* TPPBasicAuth.swift in Sources */,
 				D570B6002BA20139003FE991 /* OPDS2AuthenticationDocument.swift in Sources */,
+				E5B0ACEE2D6EBE6D00F9B89B /* Array+Extensions.swift in Sources */,
 				D570B6012BA20139003FE991 /* TPPCatalogs+SE.swift in Sources */,
 				D570B6022BA20139003FE991 /* TPPPDFPreviewBar.swift in Sources */,
 				D570B6032BA20139003FE991 /* TPPDeveloperSettingsTableViewController.swift in Sources */,
@@ -5448,7 +5449,6 @@
 				D570B6922BA20139003FE991 /* UserProfileDocument.swift in Sources */,
 				D570B6932BA20139003FE991 /* AccountsManager.swift in Sources */,
 				E5EE380F2D5DB1A100252001 /* Color+Extension.swift in Sources */,
-				E521E9CD2D51CB8B00C08ADF /* BookDetailViewModel+Extensions.swift in Sources */,
 				D570B6942BA20139003FE991 /* TPPLocalization.m in Sources */,
 				D570B6952BA20139003FE991 /* TPPSecrets.swift in Sources */,
 				E562DE402D38B98F003A1A40 /* UIImage+Extension.swift in Sources */,

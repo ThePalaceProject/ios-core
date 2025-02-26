@@ -543,8 +543,8 @@ extension TPPBook {
     TPPBook.coverRegistry.coverImageForBook(self) { [weak self] image in
       guard let self = self else { return }
       DispatchQueue.main.async {
-        self.coverImage = image
-        TPPBook.cachedCoverImages[self.identifier] = image ?? UIImage(systemName: "book.closed")
+        self.coverImage = image ?? self.thumbnailImage
+        TPPBook.cachedCoverImages[self.identifier] = image ?? self.thumbnailImage
         self.isCoverLoading = false
       }
     }
@@ -558,7 +558,7 @@ extension TPPBook {
       return
     }
 
-    guard !isThumbnailLoading else { return } // Prevent duplicate fetches
+    guard !isThumbnailLoading else { return }
     isThumbnailLoading = true
 
     TPPBook.coverRegistry.thumbnailImageForBook(self) { [weak self] image in

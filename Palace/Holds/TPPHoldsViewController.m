@@ -171,7 +171,7 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
   TPPBook *const book = [self bookArrayForSection:indexPath.section][indexPath.row];
   
   BookDetailHostingController *bookDetailVC = [[BookDetailHostingController alloc] initWithBook:book];
-  [self.navigationController pushViewController:bookDetailVC animated:true];
+  [self.navigationController pushViewController:bookDetailVC animated:YES];
 }
 
 #pragma mark UICollectionViewDataSource
