@@ -25,20 +25,19 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     configureUIAppearance()
 
     startupQueue.async {
-      self.performBackgroundStartupTasks()
+      self.setupBookRegistryAndNotifications()
     }
 
-    startupQueue.async {
-      self.setupBookRegistryAndNotifications()
+    startupQueue.asyncAfter(deadline: .now() + 0.5) {
+      self.performBackgroundStartupTasks()
     }
 
     registerBackgroundTasks()
   }
 
-  // Background startup tasks (Runs in background)
   private func performBackgroundStartupTasks() {
-    TPPKeychainManager.validateKeychain()
-    TPPMigrationManager.migrate()
+//    TPPKeychainManager.validateKeychain()
+//    TPPMigrationManager.migrate()
     NetworkQueue.shared().addObserverForOfflineQueue()
     Reachability.shared.startMonitoring()
 

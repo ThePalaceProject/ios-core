@@ -139,10 +139,8 @@ public class TPPBook: NSObject, ObservableObject {
     self.bookDuration = bookDuration
 
     super.init()
-    DispatchQueue.main.async { [weak self] in
-      self?.fetchCoverImage()
-      self?.fetchThumbnailImage()
-    }
+      self.fetchThumbnailImage()
+      self.fetchCoverImage()
   }
 
   @objc convenience init?(entry: TPPOPDSEntry?) {
@@ -530,7 +528,6 @@ extension TPPBook {
   private static var cachedThumbnailImages: [String: UIImage] = [:]
   private static let coverRegistry = TPPBookCoverRegistry()
 
-  @MainActor
   func fetchCoverImage() {
     if let cachedImage = TPPBook.cachedCoverImages[identifier] {
       self.coverImage = cachedImage
@@ -550,8 +547,6 @@ extension TPPBook {
     }
   }
 
-
-  @MainActor
   func fetchThumbnailImage() {
     if let cachedImage = TPPBook.cachedThumbnailImages[identifier] {
       self.thumbnailImage = cachedImage

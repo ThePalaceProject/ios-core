@@ -22,13 +22,15 @@ class TPPBookCoverRegistry {
     return URLSession(configuration: configuration)
   }()
 
-  private let cacheQueue = DispatchQueue(label: "com.thepalaceproject.TPPBookCoverRegistry.cacheQueue", attributes: .concurrent)
-
   private let fileManager = FileManager.default
+  private let cacheQueue = DispatchQueue(label: "com.thepalaceproject.TPPBookCoverRegistry.cacheQueue", attributes: .concurrent)
 
   // MARK: - Public Methods
 
-  @MainActor
+  init() {
+    cleanUpOldImages()
+  }
+
   func thumbnailImageForBook(_ book: TPPBook, handler: @escaping (_ image: UIImage?) -> Void) {
     if let cachedImage = cachedImage(for: book, isCover: false) {
       handler(cachedImage)
@@ -36,7 +38,7 @@ class TPPBookCoverRegistry {
     }
 
     if let localImage = loadImageFromDisk(for: book, isCover: false) {
-      cacheImage(localImage, for: book, isCover: false) // Cache for quick reuse
+      cacheImage(localImage, for: book, isCover: false)
       handler(localImage)
       return
     }
@@ -63,7 +65,6 @@ class TPPBookCoverRegistry {
     }
   }
 
-
   @MainActor
   func thumbnailImagesForBooks(_ books: Set<TPPBook>, handler: @escaping (_ bookIdentifiersToImages: [String: UIImage]) -> Void) {
     var result: [String: UIImage] = [:]
@@ -84,7 +85,6 @@ class TPPBookCoverRegistry {
     }
   }
 
-  @MainActor
   func coverImageForBook(_ book: TPPBook, handler: @escaping (_ image: UIImage?) -> Void) {
     if let cachedImage = cachedImage(for: book, isCover: true) {
       handler(cachedImage)
@@ -215,7 +215,7 @@ class TPPBookCoverRegistry {
 
       do {
         let fileURLs = try self.fileManager.contentsOfDirectory(at: imagesDir, includingPropertiesForKeys: nil)
-        let expirationDate = Date().addingTimeInterval(-7 * 24 * 60 * 60) // 7 days
+        let expirationDate = Date().addingTimeInterval(-7 * 24 * 60 * 60)
 
         for fileURL in fileURLs {
           let attributes = try self.fileManager.attributesOfItem(atPath: fileURL.path)

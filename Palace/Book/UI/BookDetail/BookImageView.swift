@@ -3,14 +3,14 @@ import SwiftUI
 struct BookImageView: View {
   @ObservedObject var book: TPPBook
   var height: CGFloat = 280
-  var showShimmer: Bool = false
-  var shimmerDuration: Double?
+  var showShimmer: Bool = true
+  var shimmerDuration: Double? = nil
 
-  @State private var isShimmering = true
+  @State private var isShimmering: Bool = true
 
   var body: some View {
     ZStack(alignment: .bottomTrailing) {
-      if let coverImage = book.coverImage {
+      if let coverImage = book.coverImage ?? book.thumbnailImage {
         Image(uiImage: coverImage)
           .resizable()
           .scaledToFit()
@@ -37,17 +37,26 @@ struct BookImageView: View {
         ShimmerView(width: 180, height: height)
           .opacity(isShimmering ? 1 : 0)
           .transition(.opacity)
-          .onAppear {
-            if let duration = shimmerDuration {
-              DispatchQueue.main.asyncAfter(deadline: .now() + duration) {
-                withAnimation(.easeInOut(duration: 0.3)) {
-                  isShimmering = false
-                }
-              }
-            }
-          }
       }
     }
-//    .animation(.easeInOut(duration: 0.5), value: book.coverImage)
+    .onAppear {
+      if book.coverImage == nil && book.thumbnailImage == nil {
+        book.fetchCoverImage()
+      }
+    }
+    .onChange(of: book.coverImage) { newImage in
+      if newImage != nil {
+        withAnimation(.easeInOut(duration: 0.3)) {
+          isShimmering = false
+        }
+      }
+    }
+    .onChange(of: book.thumbnailImage) { newImage in
+      if newImage != nil && book.coverImage == nil {
+        withAnimation(.easeInOut(duration: 0.3)) {
+          isShimmering = false
+        }
+      }
+    }
   }
 }
