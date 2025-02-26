@@ -27,13 +27,18 @@ class TPPLCPClient: ReadiumLCP.LCPClient {
   }
   
   func createContext(jsonLicense: String, hashedPassphrase: String, pemCrl: String) throws -> LCPClientContext {
-    // Make sure the old context is deallocated if it exists
-    context = try R2LCPClient.createContext(jsonLicense: jsonLicense, hashedPassphrase: hashedPassphrase, pemCrl: pemCrl)
-    return context!
+    context = nil
+
+    let newContext = try R2LCPClient.createContext(jsonLicense: jsonLicense, hashedPassphrase: hashedPassphrase, pemCrl: pemCrl)
+
+    self.context = newContext
+
+    return newContext
   }
-  
+
   func decrypt(data: Data, using context: LCPClientContext) -> Data? {
-    return R2LCPClient.decrypt(data: data, using: context as! DRMContext)
+    guard let context as? DRMContext else { return nil }
+    return R2LCPClient.decrypt(data: data, using: context)
   }
   
   func findOneValidPassphrase(jsonLicense: String, hashedPassphrases: [String]) -> String? {
@@ -44,10 +49,10 @@ class TPPLCPClient: ReadiumLCP.LCPClient {
 /// Provides access to data decryptor
 extension TPPLCPClient {
   func decrypt(data: Data) -> Data? {
-    guard let context = context else {
+    guard let context = context as? DRMContext else {
       return nil
     }
-    return R2LCPClient.decrypt(data: data, using: context as! DRMContext)
+    return R2LCPClient.decrypt(data: data, using: context)
   }
 }
 
