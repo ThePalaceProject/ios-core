@@ -34,16 +34,26 @@ import ReadiumAdapterLCPSQLite
   private var authenticationCallbacks: [String: (String?) -> Void] = [:]
 
   override init() {
+    super.init()
+
+    if !Thread.isMainThread {
+      DispatchQueue.main.sync {
+        self.initializeLCPService()
+      }
+    } else {
+      self.initializeLCPService()
+    }
+  }
+
+  private func initializeLCPService() {
     self.lcpService = LCPService(
       client: TPPLCPClient(),
       licenseRepository: LCPSQLiteLicenseRepository(),
       passphraseRepository: LCPSQLitePassphraseRepository(),
       assetRetriever: AssetRetriever(httpClient: DefaultHTTPClient()),
       httpClient: DefaultHTTPClient()
-    )
-    super.init()
-  }
-  
+
+
   /// Returns whether this DRM can fulfill the given file into a protected publication.
   /// - Parameter file: file URL
   /// - Returns: `true` if file contains LCP DRM license information.
