@@ -31,19 +31,13 @@ import ReadiumAdapterLCPSQLite
   private var authenticationCallbacks: [String: (String?) -> Void] = [:]
 
   private lazy var lcpService: LCPService = {
-    var service: LCPService!
-
-    DispatchQueue.main.sync {
-      service = LCPService(
-        client: TPPLCPClient(),
-        licenseRepository: LCPSQLiteLicenseRepository(),  // Ensure DB is accessed safely
-        passphraseRepository: LCPSQLitePassphraseRepository(),
-        assetRetriever: AssetRetriever(httpClient: DefaultHTTPClient()),
-        httpClient: DefaultHTTPClient()
-      )
-    }
-
-    return service
+    LCPService(
+      client: TPPLCPClient(),
+      licenseRepository: LCPSQLiteLicenseRepository(),
+      passphraseRepository: LCPSQLitePassphraseRepository(),
+      assetRetriever: AssetRetriever(httpClient: DefaultHTTPClient()),
+      httpClient: DefaultHTTPClient()
+    )
   }()
 
   override init() {

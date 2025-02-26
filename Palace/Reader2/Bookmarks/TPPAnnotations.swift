@@ -373,13 +373,9 @@ protocol AnnotationsManager {
     task?.resume()
   }
 
-
-  // Method is called when the SyncManager is syncing bookmarks
-  // If an existing local bookmark is missing an annotationID, assume it still needs to be uploaded.
   class func uploadLocalBookmarks(_ bookmarks: [TPPReadiumBookmark],
                                   forBook bookID: String,
                                   completion: @escaping ([TPPReadiumBookmark], [TPPReadiumBookmark])->()) {
-
     if !syncIsPossibleAndPermitted() {
       Log.debug(#file, "Account does not support sync or sync is disabled.")
       return
@@ -391,9 +387,13 @@ protocol AnnotationsManager {
     var bookmarksUpdated = [TPPReadiumBookmark]()
 
     for localBookmark in bookmarks {
-      if localBookmark.annotationId == nil {
-        uploadGroup.enter()
-        postBookmark(localBookmark, forBookID: bookID) { response in
+      guard localBookmark.annotationId == nil else { continue }
+
+      uploadGroup.enter()
+      postBookmark(localBookmark, forBookID: bookID) { response in
+        DispatchQueue.main.async {
+          defer { uploadGroup.leave() }
+
           if let serverId = response?.serverId {
             localBookmark.annotationId = serverId
             bookmarksUpdated.append(localBookmark)
@@ -401,7 +401,6 @@ protocol AnnotationsManager {
             Log.error(#file, "Local Bookmark not uploaded: \(localBookmark)")
             bookmarksFailedToUpdate.append(localBookmark)
           }
-          uploadGroup.leave()
         }
       }
     }
@@ -411,7 +410,6 @@ protocol AnnotationsManager {
       completion(bookmarksUpdated, bookmarksFailedToUpdate)
     }
   }
-
   // MARK: -
 
   /// Annotation-syncing is possible only if the given `account` is signed-in
