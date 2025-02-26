@@ -104,12 +104,19 @@ shouldSelectViewController:(nonnull UIViewController *)viewController
                            animated:(BOOL)animated
                          completion:(void (^)(void))completion
 {
+  if (![NSThread isMainThread]) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+      [self safelyPresentViewController:viewController animated:animated completion:completion];
+    });
+    return;
+  }
+
   UIViewController *baseController = self;
-  
-  while(baseController.presentedViewController) {
+
+  while (baseController.presentedViewController) {
     baseController = baseController.presentedViewController;
   }
-  
+
   [baseController presentViewController:viewController animated:animated completion:completion];
 }
 
