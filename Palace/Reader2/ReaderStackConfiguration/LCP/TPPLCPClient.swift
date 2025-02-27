@@ -1,12 +1,3 @@
-//
-//  TPPLCPClient.swift
-//  Palace
-//
-//  Created by Vladimir Fedorov on 25.08.2021.
-//  Copyright © 2021 The Palace Project. All rights reserved.
-//
-//  This framework facade is required by LCP as described here:
-//  https://github.com/readium/r2-lcp-swift/blob/888417b0563c2dc56f80209542bc51c54a0b5e32/README.md
 #if LCP
 
 import R2LCPClient
@@ -17,17 +8,17 @@ let lcpService = LCPLibraryService()
 
 /// Facade to the private R2LCPClient.framework.
 class TPPLCPClient: ReadiumLCP.LCPClient {
-  
-  // Use optional to explicitly release the context when not needed
+
   private var context: LCPClientContext?
 
-  // Ensure the context is released when not needed
   deinit {
     context = nil
   }
-  
+
   func createContext(jsonLicense: String, hashedPassphrase: String, pemCrl: String) throws -> LCPClientContext {
-    context = nil
+    if context != nil {
+      context = nil
+    }
 
     let newContext = try R2LCPClient.createContext(jsonLicense: jsonLicense, hashedPassphrase: hashedPassphrase, pemCrl: pemCrl)
 
@@ -37,10 +28,12 @@ class TPPLCPClient: ReadiumLCP.LCPClient {
   }
 
   func decrypt(data: Data, using context: LCPClientContext) -> Data? {
-    guard let context as? DRMContext else { return nil }
-    return R2LCPClient.decrypt(data: data, using: context)
+    guard let drmContext = context as? DRMContext else {
+      return nil
+    }
+    return R2LCPClient.decrypt(data: data, using: drmContext)
   }
-  
+
   func findOneValidPassphrase(jsonLicense: String, hashedPassphrases: [String]) -> String? {
     return R2LCPClient.findOneValidPassphrase(jsonLicense: jsonLicense, hashedPassphrases: hashedPassphrases)
   }
@@ -49,10 +42,10 @@ class TPPLCPClient: ReadiumLCP.LCPClient {
 /// Provides access to data decryptor
 extension TPPLCPClient {
   func decrypt(data: Data) -> Data? {
-    guard let context = context as? DRMContext else {
+    guard let drmContext = context as? DRMContext else {
       return nil
     }
-    return R2LCPClient.decrypt(data: data, using: context)
+    return R2LCPClient.decrypt(data: data, using: drmContext)
   }
 }
 
