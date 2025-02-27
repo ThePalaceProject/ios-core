@@ -18,7 +18,8 @@ import PalaceAudiobookToolkit
   private var debounceTimer: Timer?
   private let debounceInterval: TimeInterval = 1.0
   private var completionHandlersQueue: [([AudioBookmark]) -> Void] = []
-  
+  private var debounceWorkItem: DispatchWorkItem?
+
   @objc convenience init(book: TPPBook) {
     self.init(book: book, registry: TPPBookRegistry.shared, annotationsManager: TPPAnnotationsWrapper())
   }
