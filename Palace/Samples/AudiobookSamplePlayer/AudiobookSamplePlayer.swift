@@ -51,6 +51,7 @@ class AudiobookSamplePlayer: NSObject, ObservableObject {
 
   deinit {
     self.timer?.invalidate()
+    timer = nil
     self.player?.stop()
     self.player = nil
   }
@@ -98,7 +99,10 @@ class AudiobookSamplePlayer: NSObject, ObservableObject {
   }
 
   private func startTimer() {
-    self.timer = Timer.scheduledTimer(
+    timer?.invalidate()
+    timer = nil
+
+    timer = Timer.scheduledTimer(
       timeInterval: 1.0,
       target: self,
       selector: #selector(setDuration),
@@ -111,14 +115,15 @@ class AudiobookSamplePlayer: NSObject, ObservableObject {
     state = .loading
 
     let _ = sample.fetchSample { [weak self]  result in
+      guard let self = self else { return }
+
       switch result {
       case let .failure(error, _):
-        // TODO: Surface error and display alert
         TPPErrorLogger.logError(error, summary: "Failed to download sample")
         return
       case let .success(result, _):
         DispatchQueue.main.async {
-          try? self?.setupPlayer(data: result)
+          try? self.setupPlayer(data: result)
         }
       }
     }

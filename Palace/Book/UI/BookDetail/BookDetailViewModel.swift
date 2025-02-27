@@ -57,6 +57,11 @@ class BookDetailViewModel: ObservableObject {
     self.downloadProgress = downloadCenter.downloadProgress(for: book.identifier)
   }
 
+  deinit {
+    timer?.cancel()
+    timer = nil
+  }
+
   // MARK: - Book State Binding
 
   /// Automatically updates `state` whenever `registry.bookStatePublisher` changes for this book.
@@ -145,17 +150,21 @@ class BookDetailViewModel: ObservableObject {
         }.flatMap { $0 }
           .filter { $0.identifier != self.book.identifier }
 
-        var safeRelatedBooks = Array(repeating: nil as TPPBook?, count: books.count)
+        let safeRelatedBooks = Array(repeating: nil as TPPBook?, count: books.count)
 
         DispatchQueue.main.async {
           self.relatedBooks = safeRelatedBooks
+        }
 
-          for (index, book) in books.enumerated() {
-            DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 0.2) {
-              self.relatedBooks[safe: index] = book
-            }
+        books.enumerated().publisher
+          .delay(for: .seconds(0.2), scheduler: DispatchQueue.main)
+          .sink { [weak self] (index, book) in
+            guard let self = self else { return }
+            self.relatedBooks[safe: index] = book
           }
+          .store(in: &self.cancellables)
 
+        DispatchQueue.main.async {
           self.isLoadingRelatedBooks = false
         }
       }
@@ -414,7 +423,7 @@ class BookDetailViewModel: ObservableObject {
     }
 
     let metadata = AudiobookMetadata(title: book.title, authors: [book.authors ?? ""])
-    
+
     audiobookManager = DefaultAudiobookManager(
       metadata: metadata,
       audiobook: audiobook,
@@ -583,31 +592,37 @@ extension BookDetailViewModel {
 
   @objc public func pollAudiobookReadingLocation() {
 
-      guard let _ = self.audiobookViewController else {
-        timer?.cancel()
-        timer = nil
-        self.audiobookManager = nil
-        return
-      }
+    guard let _ = self.audiobookViewController else {
+      timer?.cancel()
+      timer = nil
+      self.audiobookManager = nil
+      return
+    }
 
-      guard let currentTrackPosition = self.audiobookManager?.audiobook.player.currentTrackPosition else {
-        return
-      }
+    guard let currentTrackPosition = self.audiobookManager?.audiobook.player.currentTrackPosition else {
+      return
+    }
 
-      let playheadOffset = currentTrackPosition.timestamp
-      if self.previousPlayheadOffset != playheadOffset && playheadOffset > 0 {
-        self.previousPlayheadOffset = playheadOffset
+    let playheadOffset = currentTrackPosition.timestamp
+    if self.previousPlayheadOffset != playheadOffset && playheadOffset > 0 {
+      self.previousPlayheadOffset = playheadOffset
 
-        DispatchQueue.global(qos: .background).async { [weak self] in
-          guard let self = self else { return }
+      DispatchQueue.global(qos: .background).async { [weak self] in
+        guard let self = self else { return }
 
-          let locationData = try? JSONEncoder().encode(currentTrackPosition.toAudioBookmark())
-          let locationString = String(data: locationData ?? Data(), encoding: .utf8) ?? ""
+        let locationData = try? JSONEncoder().encode(currentTrackPosition.toAudioBookmark())
+        let locationString = String(data: locationData ?? Data(), encoding: .utf8) ?? ""
 
-          TPPBookRegistry.shared.setLocation(TPPBookLocation(locationString: locationString, renderer: "PalaceAudiobookToolkit"), forIdentifier: self.book.identifier)
+        DispatchQueue.main.async {
+          TPPBookRegistry.shared.setLocation(
+            TPPBookLocation(locationString: locationString, renderer: "PalaceAudiobookToolkit"),
+            forIdentifier: self.book.identifier
+          )
+
           latestAudiobookLocation = (book: self.book.identifier, location: locationString)
         }
       }
+    }
   }
 }
 

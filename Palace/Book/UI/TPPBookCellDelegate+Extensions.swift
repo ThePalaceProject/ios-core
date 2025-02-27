@@ -242,24 +242,65 @@ public extension TPPBookCellDelegate {
 
 extension TPPBookCellDelegate {
 
-  public func scheduleTimer(forAudiobook book: TPPBook, manager: DefaultAudiobookManager, viewController: UIViewController) {
-    self.lastServerUpdate = Date()
-    self.audiobookViewController = viewController
-    self.manager = manager
-    self.book = book
-    
-    timer?.cancel()
-    timer = nil
-    
-    let queue = DispatchQueue(label: "com.palace.pollAudiobookLocation", qos: .background, attributes: .concurrent)
-    timer = DispatchSource.makeTimerSource(queue: queue)
-    
-    timer?.schedule(deadline: .now() + kTimerInterval, repeating: kTimerInterval)
-    
-    timer?.setEventHandler { [weak self] in
-      self?.pollAudiobookReadingLocation()
+  extension TPPBookCellDelegate {
+
+    public func scheduleTimer(forAudiobook book: TPPBook, manager: DefaultAudiobookManager, viewController: UIViewController) {
+      timer?.cancel()
+      timer = nil
+
+      self.audiobookViewController = viewController
+      self.manager = manager
+      self.book = book
+
+      let queue = DispatchQueue(label: "com.palace.pollAudiobookLocation", qos: .background, attributes: .concurrent)
+      timer = DispatchSource.makeTimerSource(queue: queue)
+
+      timer?.schedule(deadline: .now() + kTimerInterval, repeating: kTimerInterval)
+
+      timer?.setEventHandler { [weak self] in
+        self?.pollAudiobookReadingLocation()
+      }
+
+      timer?.resume()
     }
-    
+
+    @objc public func pollAudiobookReadingLocation() {
+      guard let manager = self.manager, let bookID = self.book?.identifier else {
+        cancelTimer()
+        return
+      }
+
+      guard let currentTrackPosition = manager.audiobook.player.currentTrackPosition else {
+        return
+      }
+
+      let playheadOffset = currentTrackPosition.timestamp
+      if self.previousPlayheadOffset != playheadOffset && playheadOffset > 0 {
+        self.previousPlayheadOffset = playheadOffset
+
+        DispatchQueue.global(qos: .background).async { [weak self] in
+          guard let self = self else { return }
+
+          let locationData = try? JSONEncoder().encode(currentTrackPosition.toAudioBookmark())
+          let locationString = String(data: locationData ?? Data(), encoding: .utf8) ?? ""
+
+          DispatchQueue.main.async {
+            TPPBookRegistry.shared.setLocation(
+              TPPBookLocation(locationString: locationString, renderer: "PalaceAudiobookToolkit"),
+              forIdentifier: bookID
+            )
+            latestAudiobookLocation = (book: bookID, location: locationString)
+          }
+        }
+      }
+    }
+
+    private func cancelTimer() {
+      timer?.cancel()
+      timer = nil
+      self.manager = nil
+    }
+  }
     timer?.resume()
   }
 

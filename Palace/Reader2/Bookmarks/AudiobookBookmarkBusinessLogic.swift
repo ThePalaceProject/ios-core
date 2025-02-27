@@ -18,7 +18,7 @@ import PalaceAudiobookToolkit
   private var debounceTimer: Timer?
   private let debounceInterval: TimeInterval = 1.0
   private var completionHandlersQueue: [([AudioBookmark]) -> Void] = []
-
+  
   @objc convenience init(book: TPPBook) {
     self.init(book: book, registry: TPPBookRegistry.shared, annotationsManager: TPPAnnotationsWrapper())
   }
@@ -30,7 +30,7 @@ import PalaceAudiobookToolkit
   }
   
   // MARK: - Bookmark Management
-
+  
   public func saveListeningPosition(at position: TrackPosition, completion: ((String?) -> Void)?) {
     debounce {
       self.saveListeningPositionImmediate(at: position, completion: completion)
@@ -56,10 +56,11 @@ import PalaceAudiobookToolkit
       }
     }
   }
-
+  
   public func saveBookmark(at position: TrackPosition, completion: ((_ position: TrackPosition?) -> Void)? = nil) {
     debounce {
-      Task {
+      Task { [weak self] in
+        guard let self else { return }
         let location = position.toAudioBookmark()
         var updatedPosition = position
         
@@ -69,12 +70,12 @@ import PalaceAudiobookToolkit
           if let updatedLocation = updatedPosition.toAudioBookmark().toTPPBookLocation() {
             self.registry.addOrReplaceGenericBookmark(updatedLocation, forIdentifier: self.book.identifier)
           }
-          completion?(updatedPosition)
+          DispatchQueue.main.async { completion?(updatedPosition) }
         }
         
         guard let data = location.toData(), let locationString = String(data: data, encoding: .utf8) else {
           Log.error(#file, "Failed to encode location data for bookmark.")
-          completion?(nil)
+          DispatchQueue.main.async { completion?(nil) }
           return
         }
         
@@ -87,7 +88,8 @@ import PalaceAudiobookToolkit
   }
   
   public func fetchBookmarks(for tracks: Tracks, toc: [Chapter], completion: @escaping ([TrackPosition]) -> Void) {
-    queue.async {
+    queue.async { [weak self] in
+      guard let self else { return }
       let localBookmarks: [AudioBookmark] = self.fetchLocalBookmarks()
       
       self.syncBookmarks(localBookmarks: localBookmarks) { syncedBookmarks in
@@ -110,12 +112,12 @@ import PalaceAudiobookToolkit
     }
     
     guard !bookmark.isUnsynced else {
-      completion?(true)
+      DispatchQueue.main.async { completion?(true) }
       return
     }
     
     annotationsManager.deleteBookmark(annotationId: bookmark.annotationId) { success in
-      completion?(success)
+      DispatchQueue.main.async { completion?(success) }
     }
   }
   
@@ -130,7 +132,8 @@ import PalaceAudiobookToolkit
     }
     
     isSyncing = true
-    Task {
+    Task { [weak self] in
+      guard let self else { return }
       await uploadUnsyncedBookmarks(localBookmarks)
       
       fetchServerBookmarks { [weak self] remoteBookmarks in
@@ -164,9 +167,7 @@ import PalaceAudiobookToolkit
   }
   
   private func uploadUnsyncedBookmarks(_ localBookmarks: [AudioBookmark]) async {
-    let unsyncedLocalBookmarks = localBookmarks.filter { $0.isUnsynced }
-    
-    for bookmark in unsyncedLocalBookmarks {
+    for bookmark in localBookmarks where bookmark.isUnsynced {
       do {
         try await uploadBookmark(bookmark)
       } catch {
@@ -234,9 +235,11 @@ import PalaceAudiobookToolkit
   
   private func finalizeSync(with bookmarks: [AudioBookmark], completion: (([AudioBookmark]) -> Void)?) {
     isSyncing = false
-    completion?(bookmarks)
-    completionHandlersQueue.forEach { $0(bookmarks) }
-    completionHandlersQueue.removeAll()
+    DispatchQueue.main.async {
+      completion?(bookmarks)
+      self.completionHandlersQueue.forEach { $0(bookmarks) }
+      self.completionHandlersQueue.removeAll()
+    }
   }
   
   private func replace(oldLocation: AudioBookmark, with newLocation: AudioBookmark) {
@@ -249,23 +252,22 @@ import PalaceAudiobookToolkit
   // MARK: - Helpers
   
   private func debounce(action: @escaping () -> Void) {
-    debounceTimer?.invalidate()
-    debounceTimer = Timer.scheduledTimer(withTimeInterval: debounceInterval, repeats: false) { _ in
-      action()
-    }
+    debounceWorkItem?.cancel()
+    
+    let workItem = DispatchWorkItem(block: action)
+    debounceWorkItem = workItem
+    DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + debounceInterval, execute: workItem)
   }
 }
 
 private extension Array where Element == AudioBookmark {
   func combineAndRemoveDuplicates(with otherArray: [AudioBookmark]) -> [AudioBookmark] {
-    let combinedArray = self + otherArray
     var uniqueArray: [AudioBookmark] = []
     
-    for location in combinedArray {
-      if !uniqueArray.contains(where: { $0.isSimilar(to: location) }) {
-        uniqueArray.append(location)
-      }
+    for location in (self + otherArray) where !uniqueArray.contains(where: { $0.isSimilar(to: location) }) {
+      uniqueArray.append(location)
     }
+    
     return uniqueArray
   }
 }
