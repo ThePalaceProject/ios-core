@@ -28,8 +28,7 @@ class TPPBookRegistryRecord: NSObject {
     self.genericBookmarks = genericBookmarks
     
     super.init()
-    
-    var actuallyOnHold = false
+
     if let defaultAcquisition = book.defaultAcquisition {
       defaultAcquisition.availability.matchUnavailable { _ in
         
@@ -39,10 +38,8 @@ class TPPBookRegistryRecord: NSObject {
         
       } reserved: { [weak self] _ in
         self?.state = .holding
-        actuallyOnHold = true
       } ready: { [weak self] _ in
         self?.state = .holding
-        actuallyOnHold = true
       }
 
     } else {
@@ -55,15 +52,6 @@ class TPPBookRegistryRecord: NSObject {
       // using another app.
       self.state = .unsupported
     }
-    
-    if !actuallyOnHold {
-      if self.state == .holding || self.state == .unsupported {
-        // Since we're not in some download-related state and we're not unregistered,
-        // we must need to be downloaded.
-        self.state = .downloadNeeded
-      }
-    }
-    
   }
   
   init?(record: TPPBookRegistryData) {
