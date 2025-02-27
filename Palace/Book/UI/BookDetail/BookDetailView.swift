@@ -175,17 +175,7 @@ struct BookDetailView: View {
       }
 
       BookButtonsView(provider: viewModel, backgroundColor: viewModel.isFullSize ? headerBackgroundColor : .white) { type in
-        switch type {
-        case .sample, .audiobookSample:
-          viewModel.handleAction(for: type)
-        case .download, .get:
-          showHalfSheet.toggle()
-          DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
-            viewModel.handleAction(for: type)
-          }
-        default:
-          showHalfSheet.toggle()
-        }
+        handleButtonAction(type)
       }
 
       if !viewModel.book.isAudiobook && viewModel.book.hasAudiobookSample {
@@ -199,6 +189,20 @@ struct BookDetailView: View {
 
   private func loadCoverImage() {
     self.headerBackgroundColor = Color(viewModel.book.coverImage?.mainColor() ?? .gray)
+  }
+
+  private func handleButtonAction(_ buttonType: BookButtonType) {
+    switch buttonType {
+    case .sample, .audiobookSample:
+      viewModel.handleAction(for: buttonType)
+    case .download, .get:
+      showHalfSheet.toggle()
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
+        viewModel.handleAction(for: buttonType)
+      }
+    default:
+      showHalfSheet.toggle()
+    }
   }
 
   @ViewBuilder private var relatedBooksView: some View {
@@ -323,12 +327,7 @@ struct BookDetailView: View {
       }
       Spacer()
       BookButtonsView(provider: viewModel, backgroundColor: headerBackgroundColor, size: .small) { type in
-        switch type {
-        case .sample, .audiobookSample:
-          viewModel.handleAction(for: type)
-        default:
-          showHalfSheet.toggle()
-        }
+        handleButtonAction(type)
       }
     }
     .frame(height: 50)
