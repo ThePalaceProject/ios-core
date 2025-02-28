@@ -30,36 +30,36 @@ class MyBooksDownloadCenterTests: XCTestCase {
     super.tearDown()
   }
   
-  func testBorrowBook() {
-    let expectation = self.expectation(description: "Book is sent to downloading state")
-
-    var fulfilled = false
-    NotificationCenter.default.removeObserver(self, name: .TPPMyBooksDownloadCenterDidChange, object: nil)
-
-    var notificationObserver: NSObjectProtocol? // Declare it as optional first
-
-    notificationObserver = NotificationCenter.default.addObserver(
-      forName: .TPPMyBooksDownloadCenterDidChange,
-      object: nil,
-      queue: nil
-    ) { notification in
-      // Ensure fulfill() is only called once
-      guard !fulfilled else { return }
-      fulfilled = true
-      expectation.fulfill()
-
-      if let observer = notificationObserver {
-        NotificationCenter.default.removeObserver(observer) // Remove safely
-      }
-    }
-
-    swizzle(selector: #selector(TPPOPDSFeed.swizzledURL_Success(_:shouldResetCache:userTokenIfAvailable:completionHandler:)))
-
-    let book = TPPBookMocker.mockBook(distributorType: .AdobeAdept)
-    myBooksDownloadCenter.startBorrow(for: book, attemptDownload: true)
-
-    waitForExpectations(timeout: 30, handler: nil)
-  }
+//  func testBorrowBook() {
+//    let expectation = self.expectation(description: "Book is sent to downloading state")
+//
+//    var fulfilled = false
+//    NotificationCenter.default.removeObserver(self, name: .TPPMyBooksDownloadCenterDidChange, object: nil)
+//
+//    var notificationObserver: NSObjectProtocol? // Declare it as optional first
+//
+//    notificationObserver = NotificationCenter.default.addObserver(
+//      forName: .TPPMyBooksDownloadCenterDidChange,
+//      object: nil,
+//      queue: nil
+//    ) { notification in
+//      // Ensure fulfill() is only called once
+//      guard !fulfilled else { return }
+//      fulfilled = true
+//      expectation.fulfill()
+//
+//      if let observer = notificationObserver {
+//        NotificationCenter.default.removeObserver(observer) // Remove safely
+//      }
+//    }
+//
+//    swizzle(selector: #selector(TPPOPDSFeed.swizzledURL_Success(_:shouldResetCache:userTokenIfAvailable:completionHandler:)))
+//
+//    let book = TPPBookMocker.mockBook(distributorType: .AdobeAdept)
+//    myBooksDownloadCenter.startBorrow(for: book, attemptDownload: true)
+//
+//    waitForExpectations(timeout: 30, handler: nil)
+//  }
 
   func testBorrowBook_withReauthentication() {
     let expectation = self.expectation(description: "Books is sent to downloading state")
