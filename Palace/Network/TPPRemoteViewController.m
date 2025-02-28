@@ -108,7 +108,6 @@
 
 #pragma mark - Helper Methods
 
-/// ✅ Efficiently remove all child view controllers
 - (void)removeAllChildViewControllers {
   for (UIViewController *childVC in self.childViewControllers) {
     [childVC willMoveToParentViewController:nil];
@@ -117,7 +116,6 @@
   }
 }
 
-/// ✅ Handle missing URL case efficiently
 - (void)handleMissingURL {
   dispatch_async(dispatch_get_main_queue(), ^{
     [TPPErrorLogger logErrorWithCode:TPPErrorCodeNoURL
@@ -129,7 +127,6 @@
   });
 }
 
-/// ✅ Improved error handling with proper user feedback
 - (void)handleNetworkError:(NSError * _Nullable)error response:(NSURLResponse * _Nullable)response data:(NSData * _Nullable)data {
   TPPProblemDocument *problemDoc = [TPPProblemDocument fromResponseError:error responseData:data];
 
@@ -144,7 +141,6 @@
   }];
 }
 
-/// ✅ Handle successful data load and display parsed content
 - (void)handleLoadedData:(NSData *)data response:(NSURLResponse *)response {
   UIViewController *viewController = self.handler(self, data, response);
 
@@ -171,7 +167,6 @@
   [viewController didMoveToParentViewController:self];
 }
 
-/// ✅ Copy navigation bar properties from the new ViewController
 - (void)updateNavigationBarWithViewController:(UIViewController *)viewController {
   if (viewController.navigationItem.rightBarButtonItems) {
     self.navigationItem.rightBarButtonItems = viewController.navigationItem.rightBarButtonItems;
