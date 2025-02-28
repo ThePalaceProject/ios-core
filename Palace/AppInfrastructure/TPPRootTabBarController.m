@@ -104,13 +104,27 @@ shouldSelectViewController:(nonnull UIViewController *)viewController
                            animated:(BOOL)animated
                          completion:(void (^)(void))completion
 {
+  // Ensure we are on the main thread
+  if (![NSThread isMainThread]) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+      if (!self.presentedViewController) { // Avoid infinite loop
+        [self safelyPresentViewController:viewController animated:animated completion:completion];
+      }
+    });
+    return;
+  }
+
   UIViewController *baseController = self;
-  
-  while(baseController.presentedViewController) {
+
+  // Traverse up only if `presentedViewController` is fully presented
+  while (baseController.presentedViewController && !baseController.presentedViewController.isBeingDismissed) {
     baseController = baseController.presentedViewController;
   }
-  
-  [baseController presentViewController:viewController animated:animated completion:completion];
+
+  // Ensure it's safe to present a new VC
+  if (!baseController.presentedViewController) {
+    [baseController presentViewController:viewController animated:animated completion:completion];
+  }
 }
 
 - (void)pushViewController:(UIViewController *const)viewController

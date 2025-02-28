@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import Combine
 
 let DeprecatedAcquisitionKey = "acquisition"
 let DeprecatedAvailableCopiesKey = "available-copies"
@@ -39,7 +40,7 @@ let TitleKey = "title"
 let UpdatedKey = "updated"
 let TimeTrackingURLURLKey = "time-tracking-url"
 
-@objc public class TPPBook: NSObject {
+public class TPPBook: NSObject, ObservableObject {
   @objc var acquisitions: [TPPOPDSAcquisition]
   @objc var bookAuthors: [TPPBookAuthor]?
   @objc var categoryStrings: [String]?
@@ -65,6 +66,11 @@ let TimeTrackingURLURLKey = "time-tracking-url"
   @objc var contributors: [String: Any]?
   @objc var bookTokenLock = NSRecursiveLock()
   @objc var bookDuration: String?
+
+  @Published var coverImage: UIImage?
+  @Published var thumbnailImage: UIImage?
+  @Published var isCoverLoading: Bool = false
+  @Published var isThumbnailLoading: Bool = false
 
   static let SimplifiedScheme = "http://librarysimplified.org/terms/genres/Simplified/"
 
@@ -133,9 +139,8 @@ let TimeTrackingURLURLKey = "time-tracking-url"
     self.bookDuration = bookDuration
 
     super.init()
-    DispatchQueue.main.async { [weak self] in
-      self?.fetchCoverImage()
-    }
+      self.fetchThumbnailImage()
+      self.fetchCoverImage()
   }
 
   @objc convenience init?(entry: TPPOPDSEntry?) {
@@ -518,70 +523,71 @@ extension TPPBook {
   }
 }
 
-extension TPPBook: ObservableObject {
+extension TPPBook {
   private static var cachedCoverImages: [String: UIImage] = [:]
   private static var cachedThumbnailImages: [String: UIImage] = [:]
   private static let coverRegistry = TPPBookCoverRegistry()
-
-  /// A computed property that updates automatically when the cover image is available.
-  var coverImage: UIImage {
-    get {
-      if let cachedImage = TPPBook.cachedCoverImages[identifier] {
-        return cachedImage
-      }
-      return UIImage(systemName: "book.closed")?.withRenderingMode(.alwaysTemplate) ?? UIImage()
-    }
-    set {
-      DispatchQueue.main.async {
-        TPPBook.cachedCoverImages[self.identifier] = newValue
-        self.objectWillChange.send()
-      }
-    }
-  }
-
-  /// Loads the cover image asynchronously and updates `coverImage`
-  @MainActor
+  
   func fetchCoverImage() {
-    guard TPPBook.cachedCoverImages[identifier] == nil else { return }
+    if let cachedImage = TPPBook.cachedCoverImages[identifier] {
+      self.coverImage = cachedImage
+      return
+    }
 
-    TPPBook.coverRegistry.coverImageForBook(self) { image in
-      if let image = image {
-        self.coverImage = image
+    guard !isCoverLoading else { return }
+    isCoverLoading = true
+
+    Task { @MainActor in
+      TPPBook.coverRegistry.coverImageForBook(self) { [weak self] image in
+        guard let self = self else { return }
+
+        DispatchQueue.main.async {
+          let validImage = image ?? self.thumbnailImage
+          self.coverImage = validImage
+          if let validImage = validImage {
+            TPPBook.cachedCoverImages[self.identifier] = validImage
+          }
+          self.isCoverLoading = false
+        }
       }
     }
   }
 
-  /// A computed property that updates automatically when the thumbnail is available.
-  var thumbnailImage: UIImage {
-    get {
-      if let cachedImage = TPPBook.cachedThumbnailImages[identifier] {
-        return cachedImage
-      }
-      return UIImage(systemName: "book")?.withRenderingMode(.alwaysTemplate) ?? UIImage()
-    }
-    set {
-      DispatchQueue.main.async {
-        TPPBook.cachedThumbnailImages[self.identifier] = newValue
-        self.objectWillChange.send()
-      }
-    }
-  }
-
-  /// Loads the thumbnail asynchronously and updates `thumbnailImage`
-  @MainActor
   func fetchThumbnailImage() {
-    guard TPPBook.cachedThumbnailImages[identifier] == nil else { return } // Avoid re-fetching
+    if let cachedImage = TPPBook.cachedThumbnailImages[identifier] {
+      self.thumbnailImage = cachedImage
+      return
+    }
 
-    TPPBook.coverRegistry.thumbnailImageForBook(self) { image in
-      if let image = image {
-        self.thumbnailImage = image
+    guard !isThumbnailLoading else { return }
+    isThumbnailLoading = true
+
+    Task { @MainActor in
+      TPPBook.coverRegistry.thumbnailImageForBook(self) { [weak self] image in
+        guard let self = self else { return }
+
+        DispatchQueue.main.async {
+          let validImage = image ?? UIImage(systemName: "book")
+          self.thumbnailImage = validImage
+          if let validImage = validImage {
+            TPPBook.cachedThumbnailImages[self.identifier] = validImage
+          }
+          self.isThumbnailLoading = false
+        }
       }
     }
   }
 
-  /// Clears cached images for this book.
   func clearCachedImages() {
     TPPBook.cachedCoverImages.removeValue(forKey: identifier)
     TPPBook.cachedThumbnailImages.removeValue(forKey: identifier)
+    coverImage = nil
+    thumbnailImage = nil
+  }
+}
+
+extension TPPBook {
+  var wrappedCoverImage: UIImage? {
+    coverImage
   }
 }

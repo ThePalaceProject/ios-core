@@ -105,15 +105,16 @@ class AudiobookDataManager {
   var store = AudiobookDataManagerStore()
   private let audiobookLogger = AudiobookFileLogger.shared
   private let networkService: TPPNetworkExecutor
+  private var syncTimer: Cancellable?
 
   init(syncTimeInterval: TimeInterval = 60, networkService: TPPNetworkExecutor = TPPNetworkExecutor.shared) {
     self.syncTimeInterval = syncTimeInterval
     self.networkService = networkService
 
-    Timer.publish(every: syncTimeInterval, on: .main, in: .default)
+    syncTimer = Timer.publish(every: syncTimeInterval, on: .main, in: .default)
       .autoconnect()
       .sink(receiveValue: syncValues)
-      .store(in: &subscriptions)
+      .store(in: &subscriptions) as? any Cancellable
 
     NotificationCenter.default.publisher(for: .TPPReachabilityChanged)
       .receive(on: RunLoop.main)
@@ -123,8 +124,12 @@ class AudiobookDataManager {
     loadStore()
   }
 
+  deinit {
+    syncTimer?.cancel()
+  }
+
   func save(time: AudiobookTimeEntry) {
-    syncQueue.async {
+    syncQueue.async(flags: .barrier) {
       self.store.urls[LibraryBook(time: time)] = time.timeTrackingUrl
       self.store.queue.append(time)
       self.saveStore()
@@ -138,7 +143,9 @@ class AudiobookDataManager {
   }
 
   func syncValues(_: Date? = nil) {
-    syncQueue.async {
+    syncQueue.async { [weak self] in
+      guard let self = self else { return }
+
       let queuedLibraryBooks: Set<LibraryBook> = Set(self.store.queue.map { LibraryBook(time: $0) })
 
       for libraryBook in queuedLibraryBooks {
@@ -150,11 +157,11 @@ class AudiobookDataManager {
         self.audiobookLogger.logEvent(
           forBookId: libraryBook.bookId,
           event: """
-                        Preparing to upload time entries:
-                        Book ID: \(libraryBook.bookId)
-                        Library ID: \(libraryBook.libraryId)
-                        Time Entries: \(requestData.timeEntries.map { "\($0)" }.joined(separator: ", "))
-                        """
+                            Preparing to upload time entries:
+                            Book ID: \(libraryBook.bookId)
+                            Library ID: \(libraryBook.libraryId)
+                            Time Entries: \(requestData.timeEntries.map { "\($0)" }.joined(separator: ", "))
+                            """
         )
 
         if let requestUrl = self.store.urls[libraryBook], let requestBody = requestData.jsonRepresentation {
@@ -164,7 +171,8 @@ class AudiobookDataManager {
           request.setValue("application/json", forHTTPHeaderField: "Content-Type")
           request.applyCustomUserAgent()
 
-          self.networkService.POST(request, useTokenIfAvailable: true) { [self] result, response, error in
+          self.networkService.POST(request, useTokenIfAvailable: true) { [weak self] result, response, error in
+            guard let self = self else { return }
             if let response = response as? HTTPURLResponse, !response.isSuccess() {
               TPPErrorLogger.logError(error, summary: "Error uploading audiobook tracker data", metadata: [
                 "libraryId": libraryBook.libraryId,
@@ -176,11 +184,11 @@ class AudiobookDataManager {
               ])
 
               self.audiobookLogger.logEvent(forBookId: libraryBook.bookId, event: """
-                                Failed to upload time entries:
-                                Book ID: \(libraryBook.bookId)
-                                Error: \(error?.localizedDescription ?? "Unknown error")
-                                Response Code: \(response.statusCode)
-                                """)
+                                    Failed to upload time entries:
+                                    Book ID: \(libraryBook.bookId)
+                                    Error: \(error?.localizedDescription ?? "Unknown error")
+                                    Response Code: \(response.statusCode)
+                                    """)
             }
 
             if let data = result, let responseData = ResponseData(data: data) {
@@ -197,8 +205,8 @@ class AudiobookDataManager {
                   ])
                 } else {
                   self.audiobookLogger.logEvent(forBookId: libraryBook.bookId, event: """
-                                        Successfully uploaded time entry: \(responseEntry.id)
-                                        """)
+                                            Successfully uploaded time entry: \(responseEntry.id)
+                                            """)
                 }
               }
 

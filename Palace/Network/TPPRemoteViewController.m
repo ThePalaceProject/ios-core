@@ -64,147 +64,122 @@
   [self load];
 }
 
-- (void)load
-{
+- (void)load {
   self.reloadView.hidden = YES;
-  
-  while(self.childViewControllers.count > 0) {
-    UIViewController *const childViewController = self.childViewControllers[0];
-    [childViewController.view removeFromSuperview];
-    [childViewController removeFromParentViewController];
-    [childViewController didMoveToParentViewController:nil];
+
+  [self removeAllChildViewControllers];
+
+  if (self.dataTask) {
+    [self.dataTask cancel];
+    self.dataTask = nil;
   }
-  
-  [self.dataTask cancel];
-  
-  NSTimeInterval timeoutInterval = 30.0;
-  NSTimeInterval activityLabelTimer = 10.0;
 
-  // NSURLRequestUseProtocolCachePolicy originally, but pull to refresh on a catalog
-  NSURLRequest *const request = [NSURLRequest requestWithURL:self.URL
-                                                 cachePolicy:self.cachePolicy
-                                             timeoutInterval:timeoutInterval];
-
-
-  [self.activityIndicatorView startAnimating];
-
-  // TODO: SIMPLY-2862
-  // From the point of view of this VC, there is no point in attempting to
-  // load a remote page if we have no URL. Upon inspection of the codebase,
-  // this happens only in 2 situations:
-  // 1. at navigation controllers / app initialization time, when they are
-  //    initialized with dummy VCs that have nil URLs. These VCs will be
-  //    replaced once we obtain the catalog from the authentication document of
-  //    the current library. Expressing this in code is the point of SIMPLY-2862.
-  // 2. If the request for loading the library accounts and the current
-  //    library's authentication document fail.
-  // These 2 situations are hard to distinguish from here. However, both
-  // can be handled by attempting a reload of the library accounts
-  // and auth doc. This is ok even for case #1 bc there's instrumentation in
-  // AccountManager for ignoring a call if there's one already ongoing.
-  // If those request succeed, there's instrumentation in AccountManager and
-  // TPPRootTabBarController to trigger the creation of a new
-  // TPPRemoteViewController furnished this time with a non-nil catalog URL.
-  //
-  // There's a 3rd case to consider also, and that is if the VC was purposedly
-  // set up with a nil URL. While that looks like a programmer error, it will
-  // result in a needless reload of the accounts/auth doc, but it will end up
-  // showing the reload UI anyway.
-  //
-  // Obviously this level of coupling is dreadful, and SIMPLY-2862 should
-  // address this as well.
-  if (self.URL == nil) {
-    [TPPErrorLogger logErrorWithCode:TPPErrorCodeNoURL
-                              summary:@"RemoteViewController: Prevented load with no URL"
-                             metadata:@{
-                               @"ChildVCs": self.childViewControllers
-                             }];
-    [self reloadAccountsAndAuthenticationDocument];
-    self.cachePolicy = NSURLRequestReloadIgnoringCacheData;
+  if (!self.URL) {
+    [self handleMissingURL];
     return;
   }
 
-  // show "slow loading" label after `activityLabelTimer` seconds
-  self.activityIndicatorLabel.hidden = YES;
-  [NSTimer scheduledTimerWithTimeInterval: activityLabelTimer target: self
-                                 selector: @selector(addActivityIndicatorLabel:) userInfo: nil repeats: NO];
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [self.activityIndicatorView startAnimating];
+  });
 
-  TPPLOG_F(@"RemoteVC: issueing request [%@]", [request loggableString]);
+  NSTimeInterval timeoutInterval = 30.0;
+  NSURLRequest *request = [NSURLRequest requestWithURL:self.URL
+                                           cachePolicy:self.cachePolicy
+                                       timeoutInterval:timeoutInterval];
+
+  TPPLOG_F(@"RemoteVC: Issuing request [%@]", [request loggableString]);
+
   self.dataTask = [TPPNetworkExecutor.shared addBearerAndExecute:request
-                           completion:^(NSData * _Nullable data, NSURLResponse * _Nullable response, NSError * _Nullable error) {
-    // Ignore cache if request returns an error
-    // This helps to reload data faster.
-    self.cachePolicy = error == nil ? NSURLRequestUseProtocolCachePolicy : NSURLRequestReloadIgnoringCacheData;
-    NSHTTPURLResponse *httpResponse = nil;
-    if ([response isKindOfClass: [NSHTTPURLResponse class]]) {
-      httpResponse = (NSHTTPURLResponse *) response;
-    }
+                                                      completion:^(NSData * _Nullable data, NSURLResponse * _Nullable response, NSError * _Nullable error) {
+
     dispatch_async(dispatch_get_main_queue(), ^{
       [self.activityIndicatorView stopAnimating];
-      self.activityIndicatorLabel.hidden = YES;
-      NSURLSessionDataTask *dataTaskCopy = self.dataTask;
-      self.dataTask = nil;
 
-      TPPProblemDocument *problemDoc = [TPPProblemDocument
-                                         fromResponseError:error
-                                         responseData: data];
-      self.needsReauthentication = [response indicatesAuthenticationNeedsRefresh:problemDoc];
-
-      if (error || self.needsReauthentication || ![httpResponse isSuccess]) {
-        [self showReloadViewWithMessage:[self messageFromProblemDocument:problemDoc
-                                                                   error:error]];
-        NSDictionary<NSString*, NSObject*> *metadata = @{
-          @"remoteVC.URL": self.URL ?: @"none",
-          @"connection.currentRequest": dataTaskCopy.currentRequest ?: @"none",
-          @"connection.originalRequest": dataTaskCopy.originalRequest ?: @"none",
-        };
-        [TPPErrorLogger logError:error
-                          summary:@"RemoteViewController server-side load error"
-                         metadata:metadata];
-
+      if (error || ![(NSHTTPURLResponse *)response isSuccess]) {
+        [self handleNetworkError:error response:response data:data];
         return;
       }
 
-      self.needsReauthentication = NO;
-
-      UIViewController *const viewController = self.handler(self, data, response);
-
-      if (viewController) {
-        [self addChildViewController:viewController];
-        viewController.view.frame = self.view.bounds;
-        [self.view addSubview:viewController.view];
-
-        // If `viewController` has its own bar button items or title, use whatever
-        // has been set by default.
-        if(viewController.navigationItem.rightBarButtonItems) {
-          self.navigationItem.rightBarButtonItems = viewController.navigationItem.rightBarButtonItems;
-        }
-        if(viewController.navigationItem.leftBarButtonItems) {
-          self.navigationItem.leftBarButtonItems = viewController.navigationItem.leftBarButtonItems;
-        }
-        if(viewController.navigationItem.backBarButtonItem) {
-          self.navigationItem.backBarButtonItem = viewController.navigationItem.backBarButtonItem;
-        }
-        if(viewController.navigationItem.title) {
-          self.navigationItem.title = viewController.navigationItem.title;
-        }
-
-        [viewController didMoveToParentViewController:self];
-      } else {
-        [TPPErrorLogger logErrorWithCode:TPPErrorCodeUnableToMakeVCAfterLoading
-                                  summary:@"RemoteViewController: Failed to create VC after server-side load"
-                                 metadata:@{
-                                   @"HTTPstatusCode": @(httpResponse.statusCode ?: -1),
-                                   @"mimeType": response.MIMEType ?: @"N/A",
-                                   @"URL": self.URL ?: @"N/A",
-                                   @"response": response ?: @"N/A"
-                                 }];
-        [self showReloadViewWithMessage:
-         NSLocalizedString(@"An error was encountered while parsing the server response.",
-                           @"Generic error message for catalog load errors")];
-      }
+      [self handleLoadedData:data response:response];
     });
   }];
+}
+
+#pragma mark - Helper Methods
+
+- (void)removeAllChildViewControllers {
+  for (UIViewController *childVC in self.childViewControllers) {
+    [childVC willMoveToParentViewController:nil];
+    [childVC.view removeFromSuperview];
+    [childVC removeFromParentViewController];
+  }
+}
+
+- (void)handleMissingURL {
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [TPPErrorLogger logErrorWithCode:TPPErrorCodeNoURL
+                             summary:@"RemoteViewController: Prevented load with no URL"
+                            metadata:@{@"ChildVCs": self.childViewControllers}];
+
+    [self reloadAccountsAndAuthenticationDocument];
+    self.cachePolicy = NSURLRequestReloadIgnoringCacheData;
+  });
+}
+
+- (void)handleNetworkError:(NSError * _Nullable)error response:(NSURLResponse * _Nullable)response data:(NSData * _Nullable)data {
+  TPPProblemDocument *problemDoc = [TPPProblemDocument fromResponseError:error responseData:data];
+
+  [self showReloadViewWithMessage:[self messageFromProblemDocument:problemDoc error:error]];
+
+  [TPPErrorLogger logError:error
+                   summary:@"RemoteViewController server-side load error"
+                  metadata:@{
+    @"remoteVC.URL": self.URL ?: @"none",
+    @"connection.currentRequest": self.dataTask.currentRequest ?: @"none",
+    @"connection.originalRequest": self.dataTask.originalRequest ?: @"none",
+  }];
+}
+
+- (void)handleLoadedData:(NSData *)data response:(NSURLResponse *)response {
+  UIViewController *viewController = self.handler(self, data, response);
+
+  if (!viewController) {
+    [TPPErrorLogger logErrorWithCode:TPPErrorCodeUnableToMakeVCAfterLoading
+                             summary:@"RemoteViewController: Failed to create VC after server-side load"
+                            metadata:@{
+      @"HTTPstatusCode": @([(NSHTTPURLResponse *)response statusCode] ?: -1),
+      @"mimeType": response.MIMEType ?: @"N/A",
+      @"URL": self.URL ?: @"N/A",
+      @"response": response ?: @"N/A"
+    }];
+    [self showReloadViewWithMessage:NSLocalizedString(@"An error was encountered while parsing the server response.",
+                                                      @"Generic error message for catalog load errors")];
+    return;
+  }
+
+  [self addChildViewController:viewController];
+  viewController.view.frame = self.view.bounds;
+  [self.view addSubview:viewController.view];
+
+  [self updateNavigationBarWithViewController:viewController];
+
+  [viewController didMoveToParentViewController:self];
+}
+
+- (void)updateNavigationBarWithViewController:(UIViewController *)viewController {
+  if (viewController.navigationItem.rightBarButtonItems) {
+    self.navigationItem.rightBarButtonItems = viewController.navigationItem.rightBarButtonItems;
+  }
+  if (viewController.navigationItem.leftBarButtonItems) {
+    self.navigationItem.leftBarButtonItems = viewController.navigationItem.leftBarButtonItems;
+  }
+  if (viewController.navigationItem.backBarButtonItem) {
+    self.navigationItem.backBarButtonItem = viewController.navigationItem.backBarButtonItem;
+  }
+  if (viewController.navigationItem.title) {
+    self.navigationItem.title = viewController.navigationItem.title;
+  }
 }
 
 // TODO: SIMPLY-2862 This method should be removed as part of this ticket

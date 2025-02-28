@@ -1,11 +1,3 @@
-//
-//  TPPBookCoverRegistry.swift
-//  Palace
-//
-//  Created by Vladimir Fedorov on 26.10.2022.
-//  Copyright © 2022 The Palace Project. All rights reserved.
-//
-
 import Foundation
 import UIKit
 
@@ -30,7 +22,15 @@ class TPPBookCoverRegistry {
     return URLSession(configuration: configuration)
   }()
 
+  private let fileManager = FileManager.default
   private let cacheQueue = DispatchQueue(label: "com.thepalaceproject.TPPBookCoverRegistry.cacheQueue", attributes: .concurrent)
+
+  // MARK: - Initialization
+
+  init() {
+    cleanUpOldImages()
+    NotificationCenter.default.addObserver(self, selector: #selector(clearMemoryCache), name: UIApplication.didReceiveMemoryWarningNotification, object: nil)
+  }
 
   // MARK: - Public Methods
 
@@ -41,15 +41,14 @@ class TPPBookCoverRegistry {
       return
     }
 
-    if let localImage = loadImageFromDisk(for: book) {
+    if let localImage = loadImageFromDisk(for: book, isCover: false) {
+      cacheImage(localImage, for: book, isCover: false)
       handler(localImage)
       return
     }
 
     guard let thumbnailUrl = book.imageThumbnailURL else {
-      DispatchQueue.main.async {
-        handler(self.generateBookCoverImage(book))
-      }
+      handler(generateBookCoverImage(book))
       return
     }
 
@@ -62,71 +61,61 @@ class TPPBookCoverRegistry {
       let finalImage = image ?? self.generateBookCoverImage(book)
       if let finalImage = finalImage {
         self.cacheImage(finalImage, for: book, isCover: false)
-        self.saveImageToDisk(finalImage, for: book)
+        self.saveImageToDisk(finalImage, for: book, isCover: false)
       }
       handler(finalImage)
     }
   }
 
   @MainActor
-
   func coverImageForBook(_ book: TPPBook, handler: @escaping (_ image: UIImage?) -> Void) {
     if let cachedImage = cachedImage(for: book, isCover: true) {
       handler(cachedImage)
       return
     }
 
-    guard let imageUrl = book.imageURL else {
-      thumbnailImageForBook(book) { [weak self] thumbnail in
-        handler(thumbnail)
-      }
+    if let localImage = loadImageFromDisk(for: book, isCover: true) {
+      cacheImage(localImage, for: book, isCover: true)
+      handler(localImage)
       return
     }
 
-    self.fetchImage(from: imageUrl) { image in
-      if let image {
-        self.cacheImage(image, for: book, isCover: true)
-        DispatchQueue.main.async {
-          handler(image)
-        }
+    guard let imageUrl = book.imageURL else {
+      thumbnailImageForBook(book, handler: handler)
+      return
+    }
+
+    fetchImage(from: imageUrl) { [weak self] image in
+      guard let self = self else {
+        handler(nil)
+        return
       }
-    }
-  }
 
-  actor ResultAggregator {
-    private var result: [String: UIImage] = [:]
-
-    func add(_ key: String, image: UIImage) {
-      result[key] = image
-    }
-
-    func getResult() -> [String: UIImage] {
-      return result
+      if let image = image {
+        self.cacheImage(image, for: book, isCover: true)
+        self.saveImageToDisk(image, for: book, isCover: true)
+      }
+      handler(image)
     }
   }
 
   @MainActor
   func thumbnailImagesForBooks(_ books: Set<TPPBook>, handler: @escaping (_ bookIdentifiersToImages: [String: UIImage]) -> Void) {
-    let resultAggregator = ResultAggregator()
+    var result: [String: UIImage] = [:]
     let dispatchGroup = DispatchGroup()
 
     for book in books {
       dispatchGroup.enter()
       thumbnailImageForBook(book) { image in
         if let image = image {
-          Task {
-            await resultAggregator.add(book.identifier, image: image)
-          }
+          result[book.identifier] = image
         }
         dispatchGroup.leave()
       }
     }
 
     dispatchGroup.notify(queue: .main) {
-      Task {
-        let finalResult = await resultAggregator.getResult()
-        handler(finalResult)
-      }
+      handler(result)
     }
   }
 
@@ -137,45 +126,49 @@ class TPPBookCoverRegistry {
 
   // MARK: - Private Methods
 
-  func cachedImage(for book: TPPBook, isCover: Bool) -> UIImage? {
+  private func cachedImage(for book: TPPBook, isCover: Bool) -> UIImage? {
     let key = cacheKey(for: book, isCover: isCover)
     return cache.object(forKey: key as NSString)
   }
 
-  /// Saves an image (either thumbnail or cover) in the cache
-  func cacheImage(_ image: UIImage, for book: TPPBook, isCover: Bool) {
+  private func cacheImage(_ image: UIImage, for book: TPPBook, isCover: Bool) {
     let key = cacheKey(for: book, isCover: isCover)
     cache.setObject(image, forKey: key as NSString)
   }
 
-  private func loadImageFromDisk(for book: TPPBook) -> UIImage? {
-    guard let imagePath = pinnedThumbnailImageUrlOfBookIdentifier(book.identifier)?.path,
-          FileManager.default.fileExists(atPath: imagePath) else {
+  private func loadImageFromDisk(for book: TPPBook, isCover: Bool) -> UIImage? {
+    guard let imagePath = imageFileURL(for: book, isCover: isCover)?.path,
+          fileManager.fileExists(atPath: imagePath) else {
       return nil
     }
     return UIImage(contentsOfFile: imagePath)
   }
 
-  private func cacheKey(for book: TPPBook, isCover: Bool) -> String {
-    return "\(book.identifier)_\(isCover ? "cover" : "thumbnail")"
-  }
+  private func saveImageToDisk(_ image: UIImage, for book: TPPBook, isCover: Bool) {
+    guard let fileUrl = imageFileURL(for: book, isCover: isCover),
+          let data = image.jpegData(compressionQuality: 0.85) else { return }
 
-  private func saveImageToDisk(_ image: UIImage, for book: TPPBook) {
-    guard let fileUrl = pinnedThumbnailImageUrlOfBookIdentifier(book.identifier),
-          let data = image.pngData() else { return }
+    let directoryUrl = fileUrl.deletingLastPathComponent() // Get the folder path
 
     DispatchQueue.global(qos: .background).async {
       do {
+        if !FileManager.default.fileExists(atPath: directoryUrl.path) {
+          try FileManager.default.createDirectory(at: directoryUrl, withIntermediateDirectories: true, attributes: nil)
+        }
+
         try data.write(to: fileUrl, options: .atomic)
       } catch {
-        ATLog(.error, "Failed to write image to file: \(error.localizedDescription)")
+        ATLog(.error, "Failed to write image to file \(fileUrl.lastPathComponent): \(error.localizedDescription)")
       }
     }
   }
 
   private func fetchImage(from url: URL, completion: @escaping (_ image: UIImage?) -> Void) {
     urlSession.dataTask(with: url) { [weak self] data, _, error in
-      guard let self else { return }
+      guard let self = self else {
+        DispatchQueue.main.async { completion(nil) }
+        return
+      }
 
       if let error = error {
         ATLog(.error, "Failed to load image from \(url): \(error.localizedDescription)")
@@ -183,16 +176,31 @@ class TPPBookCoverRegistry {
         return
       }
 
-      guard let data = data, let image = UIImage(data: data) else {
-        ATLog(.error, "Failed to create image from data at \(url)")
+      guard let data = data else {
+        ATLog(.error, "Received empty data from \(url)")
         DispatchQueue.main.async { completion(nil) }
         return
       }
 
+      let image = self.safeImage(from: data)
       DispatchQueue.main.async {
         completion(image)
       }
     }.resume()
+  }
+
+  private func safeImage(from data: Data) -> UIImage? {
+    guard let imageSource = CGImageSourceCreateWithData(data as CFData, nil) else {
+      ATLog(.error, "Failed to create CGImageSource from data")
+      return nil
+    }
+
+    guard CGImageSourceGetCount(imageSource) > 0 else {
+      ATLog(.error, "Image source contains no images")
+      return nil
+    }
+
+    return UIImage(data: data)
   }
 
   private func generateBookCoverImage(_ book: TPPBook) -> UIImage? {
@@ -200,7 +208,7 @@ class TPPBookCoverRegistry {
     let height: CGFloat = 120
     let coverView = NYPLTenPrintCoverView(frame: CGRect(x: 0, y: 0, width: width, height: height),
                                           withTitle: book.title,
-                                          withAuthor: book.authors,
+                                          withAuthor: book.authors ?? "Unknown Author",
                                           withScale: 0.4)
 
     UIGraphicsBeginImageContextWithOptions(CGSize(width: width, height: height), true, 0)
@@ -214,16 +222,51 @@ class TPPBookCoverRegistry {
     return UIGraphicsGetImageFromCurrentImageContext()
   }
 
-  private func pinnedThumbnailImageUrlOfBookIdentifier(_ bookIdentifier: String) -> URL? {
-    return pinnedThumbnailImageDirectoryURL?.appendingPathComponent(bookIdentifier.sha256())
+  private func cacheKey(for book: TPPBook, isCover: Bool) -> String {
+    return "\(book.identifier)_\(isCover ? "cover" : "thumbnail")"
   }
 
-  private var pinnedThumbnailImageDirectoryURL: URL? {
-    guard let accountsDirectoryUrl = TPPBookContentMetadataFilesHelper.currentAccountDirectory() else {
-      return nil
+  private func imageFileURL(for book: TPPBook, isCover: Bool) -> URL? {
+    let filename = "\(book.identifier)_\(isCover ? "cover" : "thumbnail").jpg"
+    return imagesDirectoryURL?.appendingPathComponent(filename)
+  }
+
+  private var imagesDirectoryURL: URL? {
+    let urls = fileManager.urls(for: .cachesDirectory, in: .userDomainMask)
+    let imagesDir = urls.first?.appendingPathComponent("book_covers")
+    try? fileManager.createDirectory(at: imagesDir!, withIntermediateDirectories: true)
+    return imagesDir
+  }
+
+  // MARK: - Cache Cleanup
+
+  func cleanUpOldImages() {
+    DispatchQueue.global(qos: .background).async {
+      guard let imagesDir = self.imagesDirectoryURL else { return }
+
+      do {
+        let fileURLs = try self.fileManager.contentsOfDirectory(at: imagesDir, includingPropertiesForKeys: [.contentModificationDateKey])
+
+        let expirationDate = Date().addingTimeInterval(-7 * 24 * 60 * 60)
+
+        for fileURL in fileURLs {
+          do {
+            let attributes = try self.fileManager.attributesOfItem(atPath: fileURL.path)
+            if let modificationDate = attributes[.modificationDate] as? Date, modificationDate < expirationDate {
+              try self.fileManager.removeItem(at: fileURL)
+              ATLog(.info, "Deleted old image: \(fileURL.lastPathComponent)")
+            }
+          } catch {
+            ATLog(.error, "Failed to check or delete image: \(error.localizedDescription)")
+          }
+        }
+      } catch {
+        ATLog(.error, "Failed to clean up old images: \(error.localizedDescription)")
+      }
     }
-    let pinnedThumbnailsFolderUrl = accountsDirectoryUrl.appendingPathComponent("pinned-thumbnail-images")
-    try? FileManager.default.createDirectory(at: pinnedThumbnailsFolderUrl, withIntermediateDirectories: true)
-    return pinnedThumbnailsFolderUrl
+  }
+
+  @objc private func clearMemoryCache() {
+    cache.removeAllObjects()
   }
 }

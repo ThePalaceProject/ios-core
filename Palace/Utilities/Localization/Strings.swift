@@ -320,6 +320,7 @@ struct Strings {
     static let download = NSLocalizedString("Download", comment: "")
     static let cancel = NSLocalizedString("Cancel", comment: "")
     static let `return` = NSLocalizedString("Return", comment: "")
+    static let remove = NSLocalizedString("Remove", comment: "")
     static let placeHold = NSLocalizedString("Place Hold", comment: "")
     static let onHold = NSLocalizedString("On Hold", comment: "")
     static let keepHold = NSLocalizedString("Keep Hold", comment: "")

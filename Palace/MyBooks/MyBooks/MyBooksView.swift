@@ -14,6 +14,7 @@ struct MyBooksView: View {
       .background(Color(TPPConfiguration.backgroundColor()))
       .navigationTitle(DisplayStrings.navTitle)
       .navigationBarTitleDisplayMode(.inline)
+      .navigationBarHidden(false)
       .toolbar {
         ToolbarItem(placement: .navigationBarLeading) { leadingBarButton }
         ToolbarItem(placement: .navigationBarTrailing) { trailingBarButton }

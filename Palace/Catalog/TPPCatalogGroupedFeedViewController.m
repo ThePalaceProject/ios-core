@@ -86,9 +86,7 @@ static CGFloat const kTableViewCrossfadeDuration = 0.3;
   self.tableView.delegate = self;
   self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
   self.tableView.allowsSelection = NO;
-  if (@available(iOS 11.0, *)) {
-    self.tableView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
-  }
+  self.tableView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
   [self.tableView addSubview:self.refreshControl];
   [self.view addSubview:self.tableView];
 
@@ -162,28 +160,6 @@ static CGFloat const kTableViewCrossfadeDuration = 0.3;
   [[NSNotificationCenter defaultCenter] postNotificationName:NSNotification.TPPSyncEnded object:nil];
 }
 
-- (void)viewWillAppear:(BOOL)animated {
-  [super viewWillAppear:animated];
-
-  UINavigationBar *navBar = self.navigationController.navigationBar;
-  UINavigationBarAppearance *appearance = [[UINavigationBarAppearance alloc] init];
-
-  if (UITraitCollection.currentTraitCollection.userInterfaceStyle == UIUserInterfaceStyleDark) {
-    appearance.backgroundColor = [UIColor clearColor];
-    appearance.titleTextAttributes = @{NSForegroundColorAttributeName: [UIColor whiteColor]};
-    navBar.tintColor = [UIColor whiteColor];
-    navBar.translucent = YES;
-  } else {
-    appearance.backgroundColor = [UIColor whiteColor];
-    appearance.titleTextAttributes = @{NSForegroundColorAttributeName: [UIColor blackColor]};
-    navBar.tintColor = [UIColor blackColor];
-    navBar.translucent = NO;
-  }
-
-  [navBar setAppearance:appearance];
-  [navBar forceUpdateAppearanceWithStyle:UITraitCollection.currentTraitCollection.userInterfaceStyle];
-}
-
 - (void)viewDidAppear:(BOOL)animated
 {
   [super viewDidAppear:animated];
@@ -231,7 +207,7 @@ static CGFloat const kTableViewCrossfadeDuration = 0.3;
 
   TPPLOG_F(@"Presenting book: %@", [self.mostRecentBookSelected loggableShortString]);
   BookDetailHostingController *bookDetailVC = [[BookDetailHostingController alloc] initWithBook:self.mostRecentBookSelected];
-  [self.navigationController pushViewController:bookDetailVC animated:true];
+  [self.navigationController pushViewController:bookDetailVC animated:YES];
 }
 
 #pragma mark UITableViewDataSource
@@ -362,7 +338,7 @@ viewForHeaderInSection:(NSInteger const)section
   TPPBook *const book = (localBook != nil) ? localBook : feedBook;
   TPPLOG_F(@"Presenting book: %@", [book loggableShortString]);
   BookDetailHostingController *bookDetailVC = [[BookDetailHostingController alloc] initWithBook:book];
-  [self.navigationController pushViewController:bookDetailVC animated:true];
+  [self.navigationController pushViewController:bookDetailVC animated:YES];
 
   self.mostRecentBookSelected = book;
 }
@@ -425,7 +401,7 @@ viewForHeaderInSection:(NSInteger const)section
 
 
   BookDetailHostingController *bookDetailVC = [[BookDetailHostingController alloc] initWithBook:book];
-  [self.navigationController pushViewController:bookDetailVC animated:true];
+  [self.navigationController pushViewController:bookDetailVC animated:YES];
 }
 
 #pragma mark - TPPEntryPointViewDataSource

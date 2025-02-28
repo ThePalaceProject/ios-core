@@ -23,27 +23,27 @@ import ReadiumAdapterLCPSQLite
   @objc public let licenseExtension = "lcpl"
   
   private var lcpClient = TPPLCPClient()
-  
-  /// Readium LCPService
-  private var lcpService: LCPService
-  
+
   /// ContentProtection unlocks protected publication, providing a custom `Fetcher`
   lazy var contentProtection: ContentProtection? = lcpService.contentProtection(with: LCPPassphraseAuthenticationService())
   
   /// [LicenseDocument.id: passphrase callback]
   private var authenticationCallbacks: [String: (String?) -> Void] = [:]
 
-  override init() {
-    self.lcpService = LCPService(
+  private lazy var lcpService: LCPService = {
+    LCPService(
       client: TPPLCPClient(),
       licenseRepository: LCPSQLiteLicenseRepository(),
       passphraseRepository: LCPSQLitePassphraseRepository(),
       assetRetriever: AssetRetriever(httpClient: DefaultHTTPClient()),
       httpClient: DefaultHTTPClient()
     )
+  }()
+
+  override init() {
     super.init()
   }
-  
+
   /// Returns whether this DRM can fulfill the given file into a protected publication.
   /// - Parameter file: file URL
   /// - Returns: `true` if file contains LCP DRM license information.

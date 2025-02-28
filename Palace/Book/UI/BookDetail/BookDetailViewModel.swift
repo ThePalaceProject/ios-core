@@ -15,7 +15,7 @@ class BookDetailViewModel: ObservableObject {
   @Published var downloadProgress: Double = 0.0
 
   @Published var buttonState: BookButtonState = .unsupported
-  @Published var relatedBooks: [TPPBook] = []
+  @Published var relatedBooks: [TPPBook?] = []
   @Published var isLoadingRelatedBooks = false
   @Published var isLoadingDescription = false
 
@@ -55,6 +55,11 @@ class BookDetailViewModel: ObservableObject {
     determineButtonState()
     setupObservers()
     self.downloadProgress = downloadCenter.downloadProgress(for: book.identifier)
+  }
+
+  deinit {
+    timer?.cancel()
+    timer = nil
   }
 
   // MARK: - Book State Binding
@@ -126,22 +131,40 @@ class BookDetailViewModel: ObservableObject {
     guard let url = book.relatedWorksURL else { return }
 
     isLoadingRelatedBooks = true
-    TPPOPDSFeed.withURL(url, shouldResetCache: false, useTokenIfAvailable: TPPUserAccount.sharedAccount().hasAdobeToken()) { [weak self] feed, _ in
-      DispatchQueue.main.async { [weak self] in
-        guard let self = self else { return }
+    relatedBooks = []
 
+    TPPOPDSFeed.withURL(url, shouldResetCache: false, useTokenIfAvailable: TPPUserAccount.sharedAccount().hasAdobeToken()) { [weak self] feed, _ in
+      guard let self = self else { return }
+
+      DispatchQueue.global(qos: .userInitiated).async {
         guard feed?.type == .acquisitionGrouped,
               let groupedFeed = TPPCatalogGroupedFeed(opdsFeed: feed) else {
-          self.isLoadingRelatedBooks = false
+          DispatchQueue.main.async {
+            self.isLoadingRelatedBooks = false
+          }
           return
         }
 
         let books: [TPPBook] = groupedFeed.lanes.compactMap { lane in
           (lane as? TPPCatalogLane)?.books as? [TPPBook]
         }.flatMap { $0 }
+          .filter { $0.identifier != self.book.identifier }
+
+        let safeRelatedBooks = Array(repeating: nil as TPPBook?, count: books.count)
 
         DispatchQueue.main.async {
-          self.relatedBooks = books.filter { $0.identifier != self.book.identifier }
+          self.relatedBooks = safeRelatedBooks
+        }
+
+        books.enumerated().publisher
+          .delay(for: .seconds(0.2), scheduler: DispatchQueue.main)
+          .sink { [weak self] (index, book) in
+            guard let self = self else { return }
+            self.relatedBooks[safe: index] = book
+          }
+          .store(in: &self.cancellables)
+
+        DispatchQueue.main.async {
           self.isLoadingRelatedBooks = false
         }
       }
@@ -400,7 +423,7 @@ class BookDetailViewModel: ObservableObject {
     }
 
     let metadata = AudiobookMetadata(title: book.title, authors: [book.authors ?? ""])
-    
+
     audiobookManager = DefaultAudiobookManager(
       metadata: metadata,
       audiobook: audiobook,
@@ -408,10 +431,12 @@ class BookDetailViewModel: ObservableObject {
       playbackTrackerDelegate: timeTracker
     )
 
+    guard let audiobookManager else { return }
+
     audiobookBookmarkBusinessLogic = AudiobookBookmarkBusinessLogic(book: book)
-    audiobookManager?.bookmarkDelegate = audiobookBookmarkBusinessLogic
-    audiobookPlayer = AudiobookPlayer(audiobookManager: audiobookManager!)
-    self.audiobookPlayer?.updateImage(self.book.coverImage)
+    audiobookManager.bookmarkDelegate = audiobookBookmarkBusinessLogic
+    audiobookPlayer = AudiobookPlayer(audiobookManager: audiobookManager, coverImagePublisher: book.$coverImage.eraseToAnyPublisher())
+
 
     TPPRootTabBarController.shared().pushViewController(audiobookPlayer!, animated: true)
 
@@ -427,10 +452,12 @@ class BookDetailViewModel: ObservableObject {
       networkService: DefaultAudiobookNetworkService(tracks: audiobook.tableOfContents.allTracks)
     )
 
-    audiobookBookmarkBusinessLogic = AudiobookBookmarkBusinessLogic(book: book)
-    audiobookManager?.bookmarkDelegate = audiobookBookmarkBusinessLogic
+    guard let audiobookManager else { return }
 
-    let audiobookPlayer = AudiobookPlayer(audiobookManager: audiobookManager!)
+    audiobookBookmarkBusinessLogic = AudiobookBookmarkBusinessLogic(book: book)
+    audiobookManager.bookmarkDelegate = audiobookBookmarkBusinessLogic
+
+    let audiobookPlayer = AudiobookPlayer(audiobookManager: audiobookManager, coverImagePublisher: book.$coverImage.eraseToAnyPublisher())
     TPPRootTabBarController.shared().pushViewController(audiobookPlayer, animated: true)
 
     syncAudiobookLocation(for: book)
@@ -565,31 +592,37 @@ extension BookDetailViewModel {
 
   @objc public func pollAudiobookReadingLocation() {
 
-      guard let _ = self.audiobookViewController else {
-        timer?.cancel()
-        timer = nil
-        self.audiobookManager = nil
-        return
-      }
+    guard let _ = self.audiobookViewController else {
+      timer?.cancel()
+      timer = nil
+      self.audiobookManager = nil
+      return
+    }
 
-      guard let currentTrackPosition = self.audiobookManager?.audiobook.player.currentTrackPosition else {
-        return
-      }
+    guard let currentTrackPosition = self.audiobookManager?.audiobook.player.currentTrackPosition else {
+      return
+    }
 
-      let playheadOffset = currentTrackPosition.timestamp
-      if self.previousPlayheadOffset != playheadOffset && playheadOffset > 0 {
-        self.previousPlayheadOffset = playheadOffset
+    let playheadOffset = currentTrackPosition.timestamp
+    if self.previousPlayheadOffset != playheadOffset && playheadOffset > 0 {
+      self.previousPlayheadOffset = playheadOffset
 
-        DispatchQueue.global(qos: .background).async { [weak self] in
-          guard let self = self else { return }
+      DispatchQueue.global(qos: .background).async { [weak self] in
+        guard let self = self else { return }
 
-          let locationData = try? JSONEncoder().encode(currentTrackPosition.toAudioBookmark())
-          let locationString = String(data: locationData ?? Data(), encoding: .utf8) ?? ""
+        let locationData = try? JSONEncoder().encode(currentTrackPosition.toAudioBookmark())
+        let locationString = String(data: locationData ?? Data(), encoding: .utf8) ?? ""
 
-          TPPBookRegistry.shared.setLocation(TPPBookLocation(locationString: locationString, renderer: "PalaceAudiobookToolkit"), forIdentifier: self.book.identifier)
+        DispatchQueue.main.async {
+          TPPBookRegistry.shared.setLocation(
+            TPPBookLocation(locationString: locationString, renderer: "PalaceAudiobookToolkit"),
+            forIdentifier: self.book.identifier
+          )
+
           latestAudiobookLocation = (book: self.book.identifier, location: locationString)
         }
       }
+    }
   }
 }
 

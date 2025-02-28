@@ -1,11 +1,6 @@
 import SwiftUI
 
-protocol BookDetailViewDelegate: AnyObject {
-  func didChangeToCompactView(_ isCompact: Bool)
-  func didUpdateHeaderBackground(isDark: Bool)
-}
-
-@objcMembers class BookDetailHostingController: UIViewController, BookDetailViewDelegate {
+@objcMembers class BookDetailHostingController: UIViewController {
   private let book: TPPBook
   private var hostingController: UIHostingController<BookDetailView>?
   private var isDarkBackground: Bool = true
@@ -22,9 +17,7 @@ protocol BookDetailViewDelegate: AnyObject {
   override func viewDidLoad() {
     super.viewDidLoad()
 
-    var bookDetailView = BookDetailView(book: self.book)
-    bookDetailView.delegate = self
-    self.hostingController = UIHostingController(rootView: bookDetailView)
+    self.hostingController = UIHostingController(rootView: BookDetailView(book: self.book))
 
     if let hostingController = self.hostingController {
       addChild(hostingController)
@@ -43,35 +36,12 @@ protocol BookDetailViewDelegate: AnyObject {
   }
   override func viewWillAppear(_ animated: Bool) {
     super.viewWillAppear(animated)
-    setTransparentNavigationBar()
+    navigationController?.setNavigationBarHidden(true, animated: false)
   }
 
   override func viewWillDisappear(_ animated: Bool) {
     super.viewWillDisappear(animated)
-  }
-
-  func didUpdateHeaderBackground(isDark: Bool) {
-    isDarkBackground = isDark
-    setTransparentNavigationBar()
-  }
-
-  @MainActor
-  private func setTransparentNavigationBar() {
-    guard let navigationController = navigationController else { return }
-
-    let textColor = isDarkBackground ? UIColor.white : UIColor.black
-
-    let appearance = UINavigationBarAppearance()
-    appearance.configureWithTransparentBackground()
-    appearance.backgroundColor = .clear
-    appearance.shadowColor = .clear
-    appearance.titleTextAttributes = [.foregroundColor: textColor]
-    appearance.largeTitleTextAttributes = [.foregroundColor: textColor]
-    navigationController.navigationBar.tintColor = textColor
-
-    navigationController.navigationBar.setAppearance(appearance)
-    navigationController.navigationBar.isTranslucent = true
-    navigationController.navigationBar.forceUpdateAppearance(style: traitCollection.userInterfaceStyle)
+    navigationController?.setNavigationBarHidden(false, animated: false)
   }
 
   func didChangeToCompactView(_ isCompact: Bool) {
