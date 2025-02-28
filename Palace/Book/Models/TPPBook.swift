@@ -527,7 +527,7 @@ extension TPPBook {
   private static var cachedCoverImages: [String: UIImage] = [:]
   private static var cachedThumbnailImages: [String: UIImage] = [:]
   private static let coverRegistry = TPPBookCoverRegistry()
-
+  
   func fetchCoverImage() {
     if let cachedImage = TPPBook.cachedCoverImages[identifier] {
       self.coverImage = cachedImage
@@ -537,12 +537,18 @@ extension TPPBook {
     guard !isCoverLoading else { return }
     isCoverLoading = true
 
-    TPPBook.coverRegistry.coverImageForBook(self) { [weak self] image in
-      guard let self = self else { return }
-      DispatchQueue.main.async {
-        self.coverImage = image ?? self.thumbnailImage
-        TPPBook.cachedCoverImages[self.identifier] = image ?? self.thumbnailImage
-        self.isCoverLoading = false
+    Task { @MainActor in
+      TPPBook.coverRegistry.coverImageForBook(self) { [weak self] image in
+        guard let self = self else { return }
+
+        DispatchQueue.main.async {
+          let validImage = image ?? self.thumbnailImage
+          self.coverImage = validImage
+          if let validImage = validImage {
+            TPPBook.cachedCoverImages[self.identifier] = validImage
+          }
+          self.isCoverLoading = false
+        }
       }
     }
   }
@@ -556,12 +562,18 @@ extension TPPBook {
     guard !isThumbnailLoading else { return }
     isThumbnailLoading = true
 
-    TPPBook.coverRegistry.thumbnailImageForBook(self) { [weak self] image in
-      guard let self = self else { return }
-      DispatchQueue.main.async {
-        self.thumbnailImage = image
-        TPPBook.cachedThumbnailImages[self.identifier] = image ?? UIImage(systemName: "book")
-        self.isThumbnailLoading = false
+    Task { @MainActor in
+      TPPBook.coverRegistry.thumbnailImageForBook(self) { [weak self] image in
+        guard let self = self else { return }
+
+        DispatchQueue.main.async {
+          let validImage = image ?? UIImage(systemName: "book")
+          self.thumbnailImage = validImage
+          if let validImage = validImage {
+            TPPBook.cachedThumbnailImages[self.identifier] = validImage
+          }
+          self.isThumbnailLoading = false
+        }
       }
     }
   }
