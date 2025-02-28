@@ -7,7 +7,7 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider {
 
   // MARK: - Publishers
   private let registrySubject = CurrentValueSubject<[String: TPPBookRegistryRecord], Never>([:])
-  private let bookStateSubject = PassthroughSubject<(String, TPPBookState), Never>()
+  private let bookStateSubject = CurrentValueSubject<(String, TPPBookState), Never>(("", .unregistered))
   var isSyncing: Bool = false
 
   var registryPublisher: AnyPublisher<[String: TPPBookRegistryRecord], Never> {
@@ -112,6 +112,9 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider {
     registry[book.identifier] = record
     registrySubject.send(registry)
     bookStateSubject.send((book.identifier, state))
+
+    // Simulate Notification (if real registry sends one)
+    NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
   }
 
   func removeBook(forIdentifier bookIdentifier: String) {
@@ -158,10 +161,8 @@ extension TPPBookRegistryMock: TPPBookRegistrySyncing {
 
   func sync() {
     isSyncing = true
-    DispatchQueue.global(qos: .background).async {
-      sleep(1) // Simulate syncing delay
-      self.isSyncing = false
-    }
+    sleep(1) // Simulate syncing delay
+    isSyncing = false
   }
 
   func save() {
