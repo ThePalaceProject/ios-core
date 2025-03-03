@@ -60,7 +60,8 @@ struct NormalBookCell: View {
       ImageProviders.MyBooksView.audiobookBadge
         .resizable()
         .frame(width: 24, height: 24)
-        .background(Color(TPPConfiguration.palaceRed()))
+        .background(Circle().fill(Color.colorAudiobookBackground))
+        .clipped()
         .bottomrRightJustified()
     }
   }

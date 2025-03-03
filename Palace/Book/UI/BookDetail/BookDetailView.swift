@@ -279,10 +279,8 @@ struct BookDetailView: View {
       .resizable()
       .scaledToFit()
       .frame(width: 28, height: 28)
-      .background(
-        Circle()
-          .fill(Color("PalaceBlueLight"))
-      )
+      .background(Circle().fill(Color.colorAudiobookBackground))
+      .clipped()
   }
 
   private var backgroundView: some View {

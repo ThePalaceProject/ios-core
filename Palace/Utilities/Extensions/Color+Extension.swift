@@ -6,6 +6,7 @@ extension Color {
   static let colorIconLogoBlue = Color("ColorIconLogoBlue")
   static let colorInverseLabel = Color("ColorInverseLabel")
   static let onboardingBackground = Color("OnboardingBackground")
+  static let colorAudiobookBackground = Color("ColorAudiobookBackground")
 
   static let palaceBlueBase = Color("PalaceBlueBase")
   static let palaceBlueLight = Color("PalaceBlueLight")
