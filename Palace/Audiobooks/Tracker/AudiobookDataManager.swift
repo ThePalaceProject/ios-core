@@ -157,11 +157,11 @@ class AudiobookDataManager {
         self.audiobookLogger.logEvent(
           forBookId: libraryBook.bookId,
           event: """
-                            Preparing to upload time entries:
-                            Book ID: \(libraryBook.bookId)
-                            Library ID: \(libraryBook.libraryId)
-                            Time Entries: \(requestData.timeEntries.map { "\($0)" }.joined(separator: ", "))
-                            """
+                        Preparing to upload time entries:
+                        Book ID: \(libraryBook.bookId)
+                        Library ID: \(libraryBook.libraryId)
+                        Time Entries: \(requestData.timeEntries.map { "\($0)" }.joined(separator: ", "))
+                        """
         )
 
         if let requestUrl = self.store.urls[libraryBook], let requestBody = requestData.jsonRepresentation {
@@ -173,22 +173,43 @@ class AudiobookDataManager {
 
           self.networkService.POST(request, useTokenIfAvailable: true) { [weak self] result, response, error in
             guard let self = self else { return }
-            if let response = response as? HTTPURLResponse, !response.isSuccess() {
-              TPPErrorLogger.logError(error, summary: "Error uploading audiobook tracker data", metadata: [
-                "libraryId": libraryBook.libraryId,
-                "bookId": libraryBook.bookId,
-                "requestUrl": requestUrl,
-                "requestBody": String(data: requestBody, encoding: .utf8) ?? "",
-                "responseCode": response.statusCode,
-                "responseBody": String(data: (result ?? Data()), encoding: .utf8) ?? ""
-              ])
 
-              self.audiobookLogger.logEvent(forBookId: libraryBook.bookId, event: """
+            if let response = response as? HTTPURLResponse {
+              if response.statusCode == 404 {
+                TPPErrorLogger.logError(nil, summary: "Audiobook tracker data no longer valid", metadata: [
+                  "libraryId": libraryBook.libraryId,
+                  "bookId": libraryBook.bookId,
+                  "requestUrl": requestUrl,
+                  "requestBody": String(data: requestBody, encoding: .utf8) ?? ""
+                ])
+
+                self.audiobookLogger.logEvent(forBookId: libraryBook.bookId, event: """
+                                    Removing time entries due to 404:
+                                    Book ID: \(libraryBook.bookId)
+                                    Library ID: \(libraryBook.libraryId)
+                                    """)
+
+                self.store.queue.removeAll { $0.bookId == libraryBook.bookId && $0.libraryId == libraryBook.libraryId }
+                self.store.urls.removeValue(forKey: libraryBook)
+                self.saveStore()
+                return
+              } else if !response.isSuccess() {
+                TPPErrorLogger.logError(error, summary: "Error uploading audiobook tracker data", metadata: [
+                  "libraryId": libraryBook.libraryId,
+                  "bookId": libraryBook.bookId,
+                  "requestUrl": requestUrl,
+                  "requestBody": String(data: requestBody, encoding: .utf8) ?? "",
+                  "responseCode": response.statusCode,
+                  "responseBody": String(data: (result ?? Data()), encoding: .utf8) ?? ""
+                ])
+
+                self.audiobookLogger.logEvent(forBookId: libraryBook.bookId, event: """
                                     Failed to upload time entries:
                                     Book ID: \(libraryBook.bookId)
                                     Error: \(error?.localizedDescription ?? "Unknown error")
                                     Response Code: \(response.statusCode)
                                     """)
+              }
             }
 
             if let data = result, let responseData = ResponseData(data: data) {
@@ -205,8 +226,8 @@ class AudiobookDataManager {
                   ])
                 } else {
                   self.audiobookLogger.logEvent(forBookId: libraryBook.bookId, event: """
-                                            Successfully uploaded time entry: \(responseEntry.id)
-                                            """)
+                                        Successfully uploaded time entry: \(responseEntry.id)
+                                        """)
                 }
               }
 
