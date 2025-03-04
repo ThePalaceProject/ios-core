@@ -133,6 +133,7 @@ import Foundation
   }
 
   @objc func updateLogo() {
+    AccountsManager.shared.currentAccount?.logoDelegate = self
     imageView.image = AccountsManager.shared.currentAccount?.logo
     titleLabel.text = AccountsManager.shared.currentAccount?.name
   }
@@ -140,5 +141,12 @@ import Foundation
   @objc private func showAccountPage() {
     guard let homePageUrl = AccountsManager.shared.currentAccount?.homePageUrl, let url = URL(string: homePageUrl) else { return }
     UIApplication.shared.open(url, options: [:], completionHandler: nil)
+  }
+}
+
+extension TPPFacetBarView: AccountLogoDelegate {
+  func logoDidUpdate(in account: Account, to newLogo: UIImage) {
+    imageView.image = newLogo
+    titleLabel.text = account.name
   }
 }

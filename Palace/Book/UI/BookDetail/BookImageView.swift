@@ -28,8 +28,9 @@ struct BookImageView: View {
             .resizable()
             .scaledToFit()
             .frame(width: height * 0.12, height: height * 0.12)
-            .background(Color.red)
-            .transition(.opacity)
+            .background(Circle().fill(Color.colorAudiobookBackground))
+            .clipShape(Circle())
+            .padding([.trailing, .bottom], 5)
         }
       }
 

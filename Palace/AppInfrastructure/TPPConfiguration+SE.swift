@@ -54,14 +54,13 @@ extension TPPConfiguration {
   }
 
   @objc static func iconLogoBlueColor() -> UIColor {
-    if #available(iOS 13, *) {
-      if let color = UIColor(named: "ColorIconLogoBlue") {
-        return color
-      }
-    }
-
-    return UIColor(red: 17.0/255.0, green: 50.0/255.0, blue: 84.0/255.0, alpha: 1.0)
+    UIColor(named: "ColorIconLogoBlue")!
   }
+
+  @objc static func audiobookIconColor() -> UIColor {
+    UIColor(named: "ColorAudiobookBackground")!
+  }
+
 
   @objc static func iconLogoGreenColor() -> UIColor {
     UIColor(red: 141.0/255.0, green: 199.0/255.0, blue: 64.0/255.0, alpha: 1.0)

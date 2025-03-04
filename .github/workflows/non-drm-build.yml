@@ -4,8 +4,8 @@ jobs:
   build:
     runs-on: macOS-latest
     steps:
-      - name: Force Xcode 15
-        run: sudo xcode-select -switch /Applications/Xcode_15.4.app
+      - name: Use the latest Xcode
+        run: sudo xcode-select -switch /Applications/Xcode.app
       - name: Checkout main repo
         uses: actions/checkout@v3
       - name: Set up repo for nonDRM build
