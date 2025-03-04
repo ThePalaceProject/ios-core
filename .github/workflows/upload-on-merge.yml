@@ -11,8 +11,8 @@ jobs:
   check-version:
     runs-on: macOS-latest
     steps:
-      - name: Force Xcode 15
-        run: sudo xcode-select -switch /Applications/Xcode_15.4.app
+      - name: Force Xcode 16
+        run: sudo xcode-select -switch /Applications/Xcode_16.app
 
       - name: Checkout main repo and submodules
         uses: actions/checkout@v3
@@ -33,8 +33,8 @@ jobs:
     needs: check-version
     if: github.event.pull_request.merged == true && needs.check-version.outputs.should_upload == '1'
     steps:
-      - name: Force Xcode 15
-        run: sudo xcode-select -switch /Applications/Xcode_15.4.app
+      - name: Force Xcode 16
+        run: sudo xcode-select -switch /Applications/Xcode_16.app
 
       - name: Checkout main repo and submodules
         uses: actions/checkout@v3
