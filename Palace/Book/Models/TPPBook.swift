@@ -552,7 +552,7 @@ extension TPPBook {
       }
     }
   }
-
+ 
   func fetchThumbnailImage() {
     if let cachedImage = TPPBook.cachedThumbnailImages[identifier] {
       self.thumbnailImage = cachedImage
