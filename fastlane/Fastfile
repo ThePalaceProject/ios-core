@@ -23,6 +23,9 @@ platform :ios do
     )
   end
   lane :beta do |options|
+    ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "90"
+    ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"] = "4"
+
     build_app(
       project: "Palace.xcodeproj",
       scheme: "Palace",
@@ -40,6 +43,9 @@ platform :ios do
     )
   end
   lane :appstore do |options|
+    ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "90"
+    ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"] = "4"
+
     build_app(
       project: "Palace.xcodeproj",
       scheme: "Palace",
