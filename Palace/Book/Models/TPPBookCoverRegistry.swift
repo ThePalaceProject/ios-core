@@ -8,6 +8,7 @@ class TPPBookCoverRegistry {
   private let cache: NSCache<NSString, UIImage> = {
     let cache = NSCache<NSString, UIImage>()
     cache.countLimit = 100
+    cache.totalCostLimit = 20 * 1024 * 1024
     return cache
   }()
 
@@ -25,11 +26,25 @@ class TPPBookCoverRegistry {
   private let fileManager = FileManager.default
   private let cacheQueue = DispatchQueue(label: "com.thepalaceproject.TPPBookCoverRegistry.cacheQueue", attributes: .concurrent)
 
+  private let operationQueue: OperationQueue = {
+    let queue = OperationQueue()
+    queue.name = "com.thepalaceproject.TPPBookCoverRegistry.downloadQueue"
+    queue.maxConcurrentOperationCount = 4
+    return queue
+  }()
+
+  private var inProgressRequests: [URL: [(_ image: UIImage?) -> Void]] = [:]
+  private let requestsLock = NSLock()
+
   // MARK: - Initialization
 
   init() {
     cleanUpOldImages()
     NotificationCenter.default.addObserver(self, selector: #selector(clearMemoryCache), name: UIApplication.didReceiveMemoryWarningNotification, object: nil)
+  }
+
+  deinit {
+    NotificationCenter.default.removeObserver(self)
   }
 
   // MARK: - Public Methods
@@ -42,13 +57,19 @@ class TPPBookCoverRegistry {
     }
 
     if let localImage = loadImageFromDisk(for: book, isCover: false) {
-      cacheImage(localImage, for: book, isCover: false)
-      handler(localImage)
+      let decompressedImage = decompressImage(localImage)
+      cacheImage(decompressedImage, for: book, isCover: false)
+      handler(decompressedImage)
       return
     }
 
     guard let thumbnailUrl = book.imageThumbnailURL else {
-      handler(generateBookCoverImage(book))
+      let generatedImage = generateBookCoverImage(book)
+      handler(generatedImage)
+      if let generatedImage = generatedImage {
+        cacheImage(generatedImage, for: book, isCover: false)
+        saveImageToDisk(generatedImage, for: book, isCover: false)
+      }
       return
     }
 
@@ -75,8 +96,9 @@ class TPPBookCoverRegistry {
     }
 
     if let localImage = loadImageFromDisk(for: book, isCover: true) {
-      cacheImage(localImage, for: book, isCover: true)
-      handler(localImage)
+      let decompressedImage = decompressImage(localImage)
+      cacheImage(decompressedImage, for: book, isCover: true)
+      handler(decompressedImage)
       return
     }
 
@@ -102,15 +124,47 @@ class TPPBookCoverRegistry {
   @MainActor
   func thumbnailImagesForBooks(_ books: Set<TPPBook>, handler: @escaping (_ bookIdentifiersToImages: [String: UIImage]) -> Void) {
     var result: [String: UIImage] = [:]
+    let resultLock = NSLock()
     let dispatchGroup = DispatchGroup()
 
     for book in books {
+      if let cachedImage = cachedImage(for: book, isCover: false) {
+        result[book.identifier] = cachedImage
+        continue
+      }
+
       dispatchGroup.enter()
-      thumbnailImageForBook(book) { image in
-        if let image = image {
-          result[book.identifier] = image
+      cacheQueue.async {
+        if let localImage = self.loadImageFromDisk(for: book, isCover: false) {
+          let decompressedImage = self.decompressImage(localImage)
+          Task { @MainActor in
+            self.cacheImage(decompressedImage, for: book, isCover: false)
+          }
+          resultLock.lock()
+          result[book.identifier] = decompressedImage
+          resultLock.unlock()
+          dispatchGroup.leave()
+          return
         }
-        dispatchGroup.leave()
+
+        self.operationQueue.addOperation {
+          let operationGroup = DispatchGroup()
+          operationGroup.enter()
+
+          Task { @MainActor in
+            self.thumbnailImageForBook(book) { image in
+              if let image = image {
+                resultLock.lock()
+                result[book.identifier] = image
+                resultLock.unlock()
+              }
+              operationGroup.leave()
+            }
+          }
+
+          operationGroup.wait()
+          dispatchGroup.leave()
+        }
       }
     }
 
@@ -124,6 +178,16 @@ class TPPBookCoverRegistry {
     return cachedImage(for: book, isCover: false)
   }
 
+  func cancelImageDownloadsForBook(_ book: TPPBook) {
+    if let thumbnailUrl = book.imageThumbnailURL {
+      cancelImageDownload(for: thumbnailUrl)
+    }
+
+    if let coverUrl = book.imageURL {
+      cancelImageDownload(for: coverUrl)
+    }
+  }
+
   // MARK: - Private Methods
 
   private func cachedImage(for book: TPPBook, isCover: Bool) -> UIImage? {
@@ -133,7 +197,8 @@ class TPPBookCoverRegistry {
 
   private func cacheImage(_ image: UIImage, for book: TPPBook, isCover: Bool) {
     let key = cacheKey(for: book, isCover: isCover)
-    cache.setObject(image, forKey: key as NSString)
+    let estimatedSize = Int(image.size.width * image.size.height * 4)
+    cache.setObject(image, forKey: key as NSString, cost: estimatedSize)
   }
 
   private func loadImageFromDisk(for book: TPPBook, isCover: Bool) -> UIImage? {
@@ -148,12 +213,12 @@ class TPPBookCoverRegistry {
     guard let fileUrl = imageFileURL(for: book, isCover: isCover),
           let data = image.jpegData(compressionQuality: 0.85) else { return }
 
-    let directoryUrl = fileUrl.deletingLastPathComponent() // Get the folder path
+    let directoryUrl = fileUrl.deletingLastPathComponent()
 
-    DispatchQueue.global(qos: .background).async {
+    cacheQueue.async(flags: .barrier) {
       do {
-        if !FileManager.default.fileExists(atPath: directoryUrl.path) {
-          try FileManager.default.createDirectory(at: directoryUrl, withIntermediateDirectories: true, attributes: nil)
+        if !self.fileManager.fileExists(atPath: directoryUrl.path) {
+          try self.fileManager.createDirectory(at: directoryUrl, withIntermediateDirectories: true, attributes: nil)
         }
 
         try data.write(to: fileUrl, options: .atomic)
@@ -164,29 +229,81 @@ class TPPBookCoverRegistry {
   }
 
   private func fetchImage(from url: URL, completion: @escaping (_ image: UIImage?) -> Void) {
+    requestsLock.lock()
+
+    if var handlers = inProgressRequests[url] {
+      handlers.append(completion)
+      inProgressRequests[url] = handlers
+      requestsLock.unlock()
+      return
+    }
+
+    inProgressRequests[url] = [completion]
+    requestsLock.unlock()
+
     urlSession.dataTask(with: url) { [weak self] data, _, error in
       guard let self = self else {
-        DispatchQueue.main.async { completion(nil) }
+        self?.completeAllRequests(for: url, with: nil)
         return
       }
 
       if let error = error {
         ATLog(.error, "Failed to load image from \(url): \(error.localizedDescription)")
-        DispatchQueue.main.async { completion(nil) }
+        self.completeAllRequests(for: url, with: nil)
         return
       }
 
       guard let data = data else {
         ATLog(.error, "Received empty data from \(url)")
-        DispatchQueue.main.async { completion(nil) }
+        self.completeAllRequests(for: url, with: nil)
         return
       }
 
-      let image = self.safeImage(from: data)
-      DispatchQueue.main.async {
-        completion(image)
+      DispatchQueue.global(qos: .userInitiated).async {
+        if let image = self.safeImage(from: data) {
+          let decompressedImage = self.decompressImage(image)
+          self.completeAllRequests(for: url, with: decompressedImage)
+        } else {
+          self.completeAllRequests(for: url, with: nil)
+        }
       }
     }.resume()
+  }
+
+  private func completeAllRequests(for url: URL, with image: UIImage?) {
+    requestsLock.lock()
+    guard let handlers = inProgressRequests[url] else {
+      requestsLock.unlock()
+      return
+    }
+
+    inProgressRequests.removeValue(forKey: url)
+    requestsLock.unlock()
+
+    DispatchQueue.main.async {
+      for handler in handlers {
+        handler(image)
+      }
+    }
+  }
+
+  private func cancelImageDownload(for url: URL) {
+    requestsLock.lock()
+    inProgressRequests.removeValue(forKey: url)
+    requestsLock.unlock()
+  }
+
+  private func decompressImage(_ image: UIImage) -> UIImage {
+    if image.size.width * image.size.height < 200 * 200 {
+      return image
+    }
+
+    let imageRect = CGRect(origin: .zero, size: image.size)
+    UIGraphicsBeginImageContextWithOptions(image.size, false, image.scale)
+    defer { UIGraphicsEndImageContext() }
+
+    image.draw(in: imageRect)
+    return UIGraphicsGetImageFromCurrentImageContext() ?? image
   }
 
   private func safeImage(from data: Data) -> UIImage? {
@@ -241,7 +358,7 @@ class TPPBookCoverRegistry {
   // MARK: - Cache Cleanup
 
   func cleanUpOldImages() {
-    DispatchQueue.global(qos: .background).async {
+    cacheQueue.async {
       guard let imagesDir = self.imagesDirectoryURL else { return }
 
       do {
@@ -268,5 +385,9 @@ class TPPBookCoverRegistry {
 
   @objc private func clearMemoryCache() {
     cache.removeAllObjects()
+
+    requestsLock.lock()
+    inProgressRequests.removeAll()
+    requestsLock.unlock()
   }
 }
