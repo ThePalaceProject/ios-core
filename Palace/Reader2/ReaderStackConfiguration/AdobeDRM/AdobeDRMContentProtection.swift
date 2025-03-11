@@ -10,7 +10,7 @@
 
 import Foundation
 import ReadiumShared
-import ZIPFoundation
+import ReadiumZIPFoundation
 
 final class AdobeDRMContentProtection: ContentProtection, Loggable {
 
@@ -105,11 +105,23 @@ extension AdobeDRMContainer: Container {
   public subscript(url: any URLConvertible) -> Resource? {
     let path = url.anyURL.string
 
-    guard let data = try? retrieveData(for: path) else {
+    let data: Data? = {
+      var result: Data?
+      let semaphore = DispatchSemaphore(value: 0)
+
+      self.retrieveDataSynchronously(for: path) { retrievedData in
+        result = retrievedData
+        semaphore.signal()
+      }
+
+      semaphore.wait()
+      return result
+    }()
+
+    guard let data = data else {
       return nil
     }
 
-    // **Decryption strategy**
     let fullyDecryptedFiles = Set(["content.opf", "nav.xhtml", "toc.ncx", "encryption.xml"])
     let imageExtensions = Set(["jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff"])
 
@@ -125,10 +137,39 @@ extension AdobeDRMContainer: Container {
     return DRMResource(data: data, path: path, drmContainer: self)
   }
 
+  private func retrieveDataSynchronously(for path: String, completion: @escaping (Data?) -> Void) {
+    DispatchQueue.global(qos: .userInitiated).async {
+      let runLoop = CFRunLoopGetCurrent()
+      var retrievedData: Data?
+      var isCompleted = false
+      Task {
+        do {
+          retrievedData = try await self.retrieveData(for: path)
+        } catch {
+          retrievedData = nil
+        }
+
+        isCompleted = true
+        CFRunLoopStop(runLoop)
+      }
+
+      while !isCompleted {
+        let nextFireDate = Date(timeIntervalSinceNow: 0.1)
+        CFRunLoopRunInMode(CFRunLoopMode.defaultMode, 0.1, false)
+
+        if Date() > Date(timeIntervalSinceNow: 10) {
+          break
+        }
+      }
+
+      completion(retrievedData)
+    }
+  }
+
   // MARK: - Helpers
   /// Retrieves encrypted data for the resource at a given path.
-  private func retrieveData(for path: String) throws -> Data {
-    guard let rawData = readDataFromArchive(at: path) else {
+  private func retrieveData(for path: String) async throws -> Data {
+    guard let rawData = try await readDataFromArchive(at: path) else {
       throw DebugError("Failed to locate resource at path: \(path)")
     }
     return rawData
@@ -138,18 +179,17 @@ extension AdobeDRMContainer: Container {
     return ["META-INF/container.xml", "OEBPS/content.opf"]
   }
 
-  private func readDataFromArchive(at path: String) -> Data? {
-    guard let fileURL, let archive = Archive(url: fileURL, accessMode: .read) else {
-      return nil
-    }
+  private func readDataFromArchive(at path: String) async throws -> Data? {
+    guard let fileURL else { return nil }
+    let archive = try await Archive(url: fileURL, accessMode: .read)
 
-    guard let entry = archive.first(where: { $0.path == path }) else {
+    guard let entry = try await archive.first(where: { $0.path == path }) else {
       return nil
     }
 
     do {
       var data = Data()
-      _ = try archive.extract(entry, consumer: { data.append($0) })
+      _ = try await archive.extract(entry, consumer: { data.append($0) })
       return data
     } catch {
       return nil

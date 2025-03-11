@@ -31,13 +31,20 @@ import ReadiumAdapterLCPSQLite
   private var authenticationCallbacks: [String: (String?) -> Void] = [:]
 
   private lazy var lcpService: LCPService = {
-    LCPService(
-      client: TPPLCPClient(),
-      licenseRepository: LCPSQLiteLicenseRepository(),
-      passphraseRepository: LCPSQLitePassphraseRepository(),
-      assetRetriever: AssetRetriever(httpClient: DefaultHTTPClient()),
-      httpClient: DefaultHTTPClient()
-    )
+    do {
+      let licenseRepo = try LCPSQLiteLicenseRepository()
+      let passphraseRepo = try LCPSQLitePassphraseRepository()
+
+      return LCPService(
+        client: TPPLCPClient(),
+        licenseRepository: licenseRepo,
+        passphraseRepository: passphraseRepo,
+        assetRetriever: AssetRetriever(httpClient: DefaultHTTPClient()),
+        httpClient: DefaultHTTPClient()
+      )
+    } catch {
+      fatalError("Failed to initialize LCPService: \(error)")
+    }
   }()
 
   override init() {

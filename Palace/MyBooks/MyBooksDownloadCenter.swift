@@ -921,7 +921,6 @@ extension MyBooksDownloadCenter {
         self.failDownloadWithAlert(for: book, withMessage: errorMessage)
         return
       }
-      
       guard let localUrl = localUrl,
             let license = TPPLCPLicense(url: licenseUrl),
             self.replaceBook(book, withFileAtURL: localUrl, forDownloadTask: downloadTask)
@@ -930,13 +929,13 @@ extension MyBooksDownloadCenter {
         self.failDownloadWithAlert(for: book, withMessage: errorMessage)
         return
       }
-      
       self.bookRegistry.setFulfillmentId(license.identifier, for: book.identifier)
-      
-      if book.defaultBookContentType == .pdf,
-         let bookURL = self.fileUrl(for: book.identifier) {
-        self.bookRegistry.setState(.downloading, for: book.identifier)
-        LCPPDFs(url: bookURL)?.extract(url: bookURL) { _, _ in
+
+      Task {
+        if book.defaultBookContentType == .pdf,
+          let bookURL = self.fileUrl(for: book.identifier) {
+          self.bookRegistry.setState(.downloading, for: book.identifier)
+          let _ = try? await LCPPDFs(url: bookURL)?.extract(url: bookURL)
           self.bookRegistry.setState(.downloadSuccessful, for: book.identifier)
         }
       }
