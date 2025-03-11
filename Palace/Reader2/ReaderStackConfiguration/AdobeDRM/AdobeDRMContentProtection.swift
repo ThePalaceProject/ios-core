@@ -10,7 +10,7 @@
 
 import Foundation
 import ReadiumShared
-import ZIPFoundation
+import ReadiumZIPFoundation
 
 final class AdobeDRMContentProtection: ContentProtection, Loggable {
 
@@ -104,8 +104,17 @@ extension AdobeDRMContainer: Container {
 
   public subscript(url: any URLConvertible) -> Resource? {
     let path = url.anyURL.string
+    var retrievedData: Data?
+    let semaphore = DispatchSemaphore(value: 0)
 
-    guard let data = try? retrieveData(for: path) else {
+    Task {
+      retrievedData = try? await retrieveData(for: path)
+      semaphore.signal()
+    }
+
+    semaphore.wait()
+
+    guard let data = retrievedData else {
       return nil
     }
 
@@ -127,8 +136,8 @@ extension AdobeDRMContainer: Container {
 
   // MARK: - Helpers
   /// Retrieves encrypted data for the resource at a given path.
-  private func retrieveData(for path: String) throws -> Data {
-    guard let rawData = readDataFromArchive(at: path) else {
+  private func retrieveData(for path: String) async throws -> Data {
+    guard let rawData = try await readDataFromArchive(at: path) else {
       throw DebugError("Failed to locate resource at path: \(path)")
     }
     return rawData
@@ -138,18 +147,17 @@ extension AdobeDRMContainer: Container {
     return ["META-INF/container.xml", "OEBPS/content.opf"]
   }
 
-  private func readDataFromArchive(at path: String) -> Data? {
-    guard let fileURL, let archive = Archive(url: fileURL, accessMode: .read) else {
-      return nil
-    }
+  private func readDataFromArchive(at path: String) async throws -> Data? {
+    guard let fileURL else { return nil }
+    let archive = try await Archive(url: fileURL, accessMode: .read)
 
-    guard let entry = archive.first(where: { $0.path == path }) else {
+    guard let entry = try await archive.first(where: { $0.path == path }) else {
       return nil
     }
 
     do {
       var data = Data()
-      _ = try archive.extract(entry, consumer: { data.append($0) })
+      _ = try await archive.extract(entry, consumer: { data.append($0) })
       return data
     } catch {
       return nil

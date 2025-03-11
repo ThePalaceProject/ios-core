@@ -12,7 +12,7 @@ import Foundation
 import ReadiumShared
 import ReadiumStreamer
 import ReadiumLCP
-import ZIPFoundation
+import ReadiumZIPFoundation
 
 /// LCP PDF helper class
 @objc class LCPPDFs: NSObject {
@@ -59,52 +59,55 @@ import ZIPFoundation
   }
 
   /// Get PDF file name from the manifest file.
-  private func getPdfHref(completion: @escaping (_ pdfHref: String?, _ error: NSError?) -> ()) {
+  private func getPdfHref() async throws -> String {
     let manifestPath = "manifest.json"
+
     guard let fileUrl = FileURL(url: self.pdfUrl) else {
-      completion(nil, nil)
-      return 
+      throw NSError(domain: "Palace.LCPPDFs", code: 0, userInfo: [NSLocalizedDescriptionKey: "Invalid file URL"])
     }
 
-    Task {
-      switch await assetRetriever.retrieve(url: fileUrl) {
-      case .success(let asset):
-        let result = await publicationOpener.open(asset: asset, allowUserInteraction: false, sender: nil)
+    let assetResult = await assetRetriever.retrieve(url: fileUrl)
 
-        switch result {
-        case .success(let publication):
-          do {
-            guard let resource = publication.getResource(at: manifestPath) else {
-              completion(nil,nil)
-              return
-            }
+    switch assetResult {
+    case .success(let asset):
+      let result = await publicationOpener.open(asset: asset, allowUserInteraction: false, sender: nil)
 
-            switch await resource.readAsJSONObject() {
-            case .success(let jsonObject):
-              let jsonData = try JSONSerialization.data(withJSONObject: jsonObject)
-              let pdfManifest = try JSONDecoder().decode(PDFManifest.self, from: jsonData)
-              completion(pdfManifest.readingOrder.first?.href, nil)
-            case .failure(let error):
-              throw error
-            }
-          } catch {
-            TPPErrorLogger.logError(error, summary: "Error reading PDF path")
-            let nsError = NSError(domain: "Palace.LCPPDFs", code: 0, userInfo: [
-              NSLocalizedDescriptionKey: error.localizedDescription,
-              "Error": error
-            ])
-            completion(nil, nsError)
+      switch result {
+      case .success(let publication):
+        do {
+          guard let resource = publication.getResource(at: manifestPath) else {
+            throw NSError(domain: "Palace.LCPPDFs", code: 0, userInfo: [NSLocalizedDescriptionKey: "Manifest resource not found"])
           }
 
-        case .failure(let error):
-          TPPErrorLogger.logError(error, summary: "Failed to open LCP PDF")
-          completion(nil, NSError(domain: error.localizedDescription, code: -1))
+          let resourceResult = await resource.readAsJSONObject()
+          switch resourceResult {
+          case .success(let jsonObject):
+            let jsonData = try JSONSerialization.data(withJSONObject: jsonObject)
+            let pdfManifest = try JSONDecoder().decode(PDFManifest.self, from: jsonData)
+            guard let pdfHref = pdfManifest.readingOrder.first?.href else {
+              throw NSError(domain: "Palace.LCPPDFs", code: 0, userInfo: [NSLocalizedDescriptionKey: "Missing PDF href in manifest"])
+            }
+            return pdfHref
+
+          case .failure(let error):
+            throw error
+          }
+        } catch {
+          TPPErrorLogger.logError(error, summary: "Error reading PDF path")
+          throw NSError(domain: "Palace.LCPPDFs", code: 0, userInfo: [
+            NSLocalizedDescriptionKey: error.localizedDescription,
+            "Error": error
+          ])
         }
 
       case .failure(let error):
-        TPPErrorLogger.logError(error, summary: "Failed to retrieve LCP PDF asset")
-        completion(nil, NSError(domain: error.localizedDescription, code: -1))
+        TPPErrorLogger.logError(error, summary: "Failed to open LCP PDF")
+        throw NSError(domain: "Palace.LCPPDFs", code: -1, userInfo: [NSLocalizedDescriptionKey: error.localizedDescription])
       }
+
+    case .failure(let error):
+      TPPErrorLogger.logError(error, summary: "Failed to retrieve LCP PDF asset")
+      throw NSError(domain: "Palace.LCPPDFs", code: -1, userInfo: [NSLocalizedDescriptionKey: error.localizedDescription])
     }
   }
 
@@ -198,34 +201,40 @@ import ZIPFoundation
     return FileManager.default.temporaryDirectory.appendingPathComponent(filename)
   }
 
+  @objc func extract(url: URL) async throws -> URL {
+    let resultUrl = LCPPDFs.temporaryUrlForPDF(url: url)
+
+    if FileManager.default.fileExists(atPath: resultUrl.path) {
+      return resultUrl
+    }
+
+    let pdfHref = try await getPdfHref()
+    let archive = try await Archive(url: url, accessMode: .read)
+
+    guard let pdfEntry = try await archive.get(pdfHref) else {
+      throw NSError(domain: "ExtractError", code: 3, userInfo: nil)
+    }
+
+    _ = try await archive.extract(pdfEntry, to: resultUrl)
+
+    return resultUrl
+  }
+
   /// Extract PDF from `.zip` archive
   /// - Parameters:
   ///   - url: Source `.zip` archive with PDF file
   ///   - completion: `URL` of the unarchived file, `Error` in case of an error
-  @objc func extract(url: URL, completion: @escaping (_ resultUrl: URL?, _ error: Error?) -> Void) {
-    let resultUrl = LCPPDFs.temporaryUrlForPDF(url: url)
-    getPdfHref { pdfHref, error in
-      if FileManager.default.fileExists(atPath: resultUrl.path) {
-        completion(resultUrl, nil)
-        return
-      }
-      guard let pdfHref = pdfHref else {
-        completion(nil, nil)
-        return
-      }
-      guard let archive = Archive(url: url, accessMode: .read) else {
-        completion(nil, nil)
-        return
-      }
-      guard let pdfEntry = archive[pdfHref] else {
-        completion(nil, nil)
-        return
-      }
+  @objc func extract(url: URL, completion: @escaping (NSURL?, NSError?) -> Void) {
+    Task {
       do {
-        _ = try archive.extract(pdfEntry, to: resultUrl)
-        completion(resultUrl, nil)
+        let extractedUrl = try await extract(url: url)
+        DispatchQueue.main.async {
+          completion(extractedUrl as NSURL, nil)
+        }
       } catch {
-        completion(nil, error)
+        DispatchQueue.main.async {
+          completion(nil, error as NSError)
+        }
       }
     }
   }
