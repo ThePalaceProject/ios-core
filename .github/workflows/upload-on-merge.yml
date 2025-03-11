@@ -142,4 +142,5 @@ jobs:
         run: ./scripts/xcode-export-appstore.sh
         env:
           BUILD_CONTEXT: ci
+          timeout-minutes: 15
           CHANGELOG_PATH: ${{ env.CHANGELOG_PATH }}
