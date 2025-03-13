@@ -5,8 +5,6 @@ platform :ios do
     ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "90"
     ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"] = "4"
     
-    xcode_select "/Applications/Xcode_16.1.app"
-
     run_tests(
       project: "Palace.xcodeproj",
       devices: ["iPhone SE (3rd generation)"],
