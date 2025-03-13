@@ -56,7 +56,8 @@ platform :ios do
         provisioningProfiles: { 
           "org.thepalaceproject.palace" => "App Store 2"
         }
-      }
+      },
+      xcargs: "CODE_SIGN_IDENTITY='iPhone Distribution' PROVISIONING_PROFILE_SPECIFIER='App Store 2' -verbose"
     )
     pilot(
       api_key_path: "fastlane/fastlane.json",
