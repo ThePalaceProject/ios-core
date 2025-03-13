@@ -17,7 +17,6 @@ platform :ios do
   end
 
   lane :nodrm do
-    xcode_select "/Applications/Xcode_16.1.app"
     
     build_app(
       project: "Palace.xcodeproj",
