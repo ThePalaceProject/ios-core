@@ -104,21 +104,24 @@ extension AdobeDRMContainer: Container {
 
   public subscript(url: any URLConvertible) -> Resource? {
     let path = url.anyURL.string
-    var retrievedData: Data?
-    let semaphore = DispatchSemaphore(value: 0)
 
-    Task {
-      retrievedData = try? await retrieveData(for: path)
-      semaphore.signal()
-    }
+    let data: Data? = {
+      var result: Data?
+      let semaphore = DispatchSemaphore(value: 0)
 
-    semaphore.wait()
+      self.retrieveDataSynchronously(for: path) { retrievedData in
+        result = retrievedData
+        semaphore.signal()
+      }
 
-    guard let data = retrievedData else {
+      semaphore.wait()
+      return result
+    }()
+
+    guard let data = data else {
       return nil
     }
 
-    // **Decryption strategy**
     let fullyDecryptedFiles = Set(["content.opf", "nav.xhtml", "toc.ncx", "encryption.xml"])
     let imageExtensions = Set(["jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff"])
 
@@ -132,6 +135,35 @@ extension AdobeDRMContainer: Container {
     }
 
     return DRMResource(data: data, path: path, drmContainer: self)
+  }
+
+  private func retrieveDataSynchronously(for path: String, completion: @escaping (Data?) -> Void) {
+    DispatchQueue.global(qos: .userInitiated).async {
+      let runLoop = CFRunLoopGetCurrent()
+      var retrievedData: Data?
+      var isCompleted = false
+      Task {
+        do {
+          retrievedData = try await self.retrieveData(for: path)
+        } catch {
+          retrievedData = nil
+        }
+
+        isCompleted = true
+        CFRunLoopStop(runLoop)
+      }
+
+      while !isCompleted {
+        let nextFireDate = Date(timeIntervalSinceNow: 0.1)
+        CFRunLoopRunInMode(CFRunLoopMode.defaultMode, 0.1, false)
+
+        if Date() > Date(timeIntervalSinceNow: 10) {
+          break
+        }
+      }
+
+      completion(retrievedData)
+    }
   }
 
   // MARK: - Helpers
