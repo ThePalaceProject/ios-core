@@ -4,6 +4,9 @@ platform :ios do
   lane :test do
     ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "90"
     ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"] = "4"
+    
+    xcode_select "/Applications/Xcode_16.1.app"  # Explicitly select Xcode 16.1
+
     run_tests(
       project: "Palace.xcodeproj",
       devices: ["iPhone SE (3rd generation)"],
@@ -12,7 +15,10 @@ platform :ios do
       xcargs: "ARCHS=x86_64 ONLY_ACTIVE_ARCH=NO"
     )
   end
+
   lane :nodrm do
+    xcode_select "/Applications/Xcode_16.1.app"  # Explicitly select Xcode 16.1
+    
     build_app(
       project: "Palace.xcodeproj",
       scheme: "Palace-noDRM",
@@ -22,9 +28,12 @@ platform :ios do
       silent: true
     )
   end
+
   lane :beta do |options|
     ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "90"
     ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"] = "4"
+
+    xcode_select "/Applications/Xcode_16.1.app"  # Explicitly select Xcode 16.1
 
     build_app(
       project: "Palace.xcodeproj",
@@ -42,9 +51,12 @@ platform :ios do
       }
     )
   end
+
   lane :appstore do |options|
     ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "90"
     ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"] = "4"
+
+    xcode_select "/Applications/Xcode_16.1.app"  # Explicitly select Xcode 16.1
 
     build_app(
       project: "Palace.xcodeproj",
@@ -59,6 +71,7 @@ platform :ios do
       },
       xcargs: "CODE_SIGN_IDENTITY='iPhone Distribution' PROVISIONING_PROFILE_SPECIFIER='App Store 2' -verbose"
     )
+
     pilot(
       api_key_path: "fastlane/fastlane.json",
       skip_submission: true,
