@@ -1076,9 +1076,6 @@
 		E573454C2AD6E8410021D768 /* EPUBSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E573454A2AD6E8410021D768 /* EPUBSearchView.swift */; };
 		E573454E2AD6E8530021D768 /* EPUBSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E573454A2AD6E8410021D768 /* EPUBSearchView.swift */; };
 		E57345512AD6EB600021D768 /* EPUBSearchViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E57345502AD6EB600021D768 /* EPUBSearchViewModel.swift */; };
-		E577061D2D3A12A100ED56F8 /* AttributedTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E577061C2D3A129D00ED56F8 /* AttributedTextView.swift */; };
-		E577061E2D3A12A100ED56F8 /* AttributedTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E577061C2D3A129D00ED56F8 /* AttributedTextView.swift */; };
-		E577061F2D3A12A100ED56F8 /* AttributedTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E577061C2D3A129D00ED56F8 /* AttributedTextView.swift */; };
 		E57E798429D4D407006D0F87 /* String+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E57E798329D4D407006D0F87 /* String+Extensions.swift */; };
 		E57F92B22D683564003D9180 /* BookListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E57F92B12D683562003D9180 /* BookListView.swift */; };
 		E57F92B32D683564003D9180 /* BookListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E57F92B12D683562003D9180 /* BookListView.swift */; };
@@ -1133,6 +1130,9 @@
 		E5C2C422268BA5140046F415 /* TPPRegistryDebuggingCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5C2C421268BA5140046F415 /* TPPRegistryDebuggingCell.swift */; };
 		E5D3288A292C0D34008BFD01 /* txstrings.json in Resources */ = {isa = PBXBuildFile; fileRef = E5D32881292C0D34008BFD01 /* txstrings.json */; };
 		E5D3288B292C0D68008BFD01 /* txstrings.json in Resources */ = {isa = PBXBuildFile; fileRef = E5D32881292C0D34008BFD01 /* txstrings.json */; };
+		E5D8C8DD2D829B2000667A99 /* HTMLTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5D8C8DC2D829B2000667A99 /* HTMLTextView.swift */; };
+		E5D8C8DE2D829B2000667A99 /* HTMLTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5D8C8DC2D829B2000667A99 /* HTMLTextView.swift */; };
+		E5D8C8DF2D829B2000667A99 /* HTMLTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5D8C8DC2D829B2000667A99 /* HTMLTextView.swift */; };
 		E5DA92E52D06A412005AEEC3 /* ReadiumAdapterLCPSQLite in Frameworks */ = {isa = PBXBuildFile; productRef = E5E9B2172CC1A5C100366A2E /* ReadiumAdapterLCPSQLite */; };
 		E5DA92E62D06A412005AEEC3 /* ReadiumAdapterGCDWebServer in Frameworks */ = {isa = PBXBuildFile; productRef = E5E9B2192CC1A7AC00366A2E /* ReadiumAdapterGCDWebServer */; };
 		E5DE86FC2D6C39D7003D356E /* BookImageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5DE86FB2D6C39C6003D356E /* BookImageView.swift */; };
@@ -2055,6 +2055,7 @@
 		E5C1F52927990929005FC6B2 /* OverdriveProcessor.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = OverdriveProcessor.xcodeproj; path = "ios-audiobook-overdrive/OverdriveProcessor/OverdriveProcessor.xcodeproj"; sourceTree = "<group>"; };
 		E5C2C421268BA5140046F415 /* TPPRegistryDebuggingCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPRegistryDebuggingCell.swift; sourceTree = "<group>"; };
 		E5D32881292C0D34008BFD01 /* txstrings.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = txstrings.json; sourceTree = "<group>"; };
+		E5D8C8DC2D829B2000667A99 /* HTMLTextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTMLTextView.swift; sourceTree = "<group>"; };
 		E5DE86FB2D6C39C6003D356E /* BookImageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookImageView.swift; sourceTree = "<group>"; };
 		E5E03F332CED171D00D9979D /* TPPReadiumBookmark+R3.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPReadiumBookmark+R3.swift"; sourceTree = "<group>"; };
 		E5E03F372CED176500D9979D /* TPPBookmarkR3Location.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBookmarkR3Location.swift; sourceTree = "<group>"; };
@@ -3494,6 +3495,7 @@
 			children = (
 				E5DE86FB2D6C39C6003D356E /* BookImageView.swift */,
 				E521EADB2D56B59C00C08ADF /* HalfSheetview.swift */,
+				E5D8C8DC2D829B2000667A99 /* HTMLTextView.swift */,
 				E562DDAB2D36E7B5003A1A40 /* BookDetailHostingViewController.swift */,
 				E562DD952D35AB88003A1A40 /* BookDetailViewModel.swift */,
 				E562DD992D35ABBF003A1A40 /* BookDetailView.swift */,
@@ -4436,6 +4438,7 @@
 				21E41795292812B700A78606 /* TPPSignInBusinessLogic+CardCreation.swift in Sources */,
 				E562DE472D38BB8C003A1A40 /* Image+Extension.swift in Sources */,
 				E7861C512846937B00B3A38A /* TPPPDFViewController.swift in Sources */,
+				E5D8C8DF2D829B2000667A99 /* HTMLTextView.swift in Sources */,
 				E708F724284783250028405B /* TPPEncryptedPDFViewer.swift in Sources */,
 				73EB0A8225821DF4006BC997 /* NSURL+NYPLURLAdditions.m in Sources */,
 				21E41778292810E000A78606 /* TPPEncryptedPDFDocument.swift in Sources */,
@@ -4708,7 +4711,6 @@
 				E5515EC22AD8E843000BDFE9 /* UIHostingController+Extensions.swift in Sources */,
 				73EB0B1E25821DF4006BC997 /* TPPAccountSignInViewController.m in Sources */,
 				73EB0B1F25821DF4006BC997 /* UserProfileDocument.swift in Sources */,
-				E577061E2D3A12A100ED56F8 /* AttributedTextView.swift in Sources */,
 				21E41777292810E000A78606 /* TPPPDFDocumentMetadata.swift in Sources */,
 				E76AD92C296DCB76008ECC61 /* NotificationService.swift in Sources */,
 				73EB0B2025821DF4006BC997 /* AccountsManager.swift in Sources */,
@@ -4806,7 +4808,6 @@
 				17E81F08261522B3001003C2 /* TPPRoundedButton.swift in Sources */,
 				7380E702254B3E77004613B1 /* TPPBookContentMetadataFilesHelper.swift in Sources */,
 				E7B20B49285B4E5600C49FE1 /* TPPPDFLabel.swift in Sources */,
-				E577061F2D3A12A100ED56F8 /* AttributedTextView.swift in Sources */,
 				E7EB9A9428736696004F484D /* TPPPDFBackButton.swift in Sources */,
 				E7B20B46285B3BC800C49FE1 /* TPPPDFPreviewGridController.swift in Sources */,
 				119BEBB919902A8800121439 /* TPPOpenSearchDescription.m in Sources */,
@@ -5059,6 +5060,7 @@
 				73C3CF5425C8EB6900CA8166 /* TPPUserAccount.swift in Sources */,
 				E7FD4E54286CD0E000D26A3B /* TPPPDFLocationView.swift in Sources */,
 				7384C757252D20AA0012C2DD /* TPPBook+DistributorChecks.swift in Sources */,
+				E5D8C8DE2D829B2000667A99 /* HTMLTextView.swift in Sources */,
 				E573454C2AD6E8410021D768 /* EPUBSearchView.swift in Sources */,
 				E562DD962D35AB8F003A1A40 /* BookDetailViewModel.swift in Sources */,
 				089E430C24A2459100310360 /* TPPLoginCellTypes.swift in Sources */,
@@ -5139,7 +5141,6 @@
 				D570B5792BA20139003FE991 /* TPPPDFDocumentView.swift in Sources */,
 				D570B57A2BA20139003FE991 /* TPPPDFTextExtractor.swift in Sources */,
 				E562DE442D38BA3B003A1A40 /* UIDevice+Extension.swift in Sources */,
-				E577061D2D3A12A100ED56F8 /* AttributedTextView.swift in Sources */,
 				D570B57B2BA20139003FE991 /* TPPSignInBusinessLogicUIDelegate.swift in Sources */,
 				D570B57C2BA20139003FE991 /* String+Extensions.swift in Sources */,
 				D570B57D2BA20139003FE991 /* CGSize.swift in Sources */,
@@ -5287,6 +5288,7 @@
 				D570B6082BA20139003FE991 /* LibraryServiceError.swift in Sources */,
 				D570B60A2BA20139003FE991 /* RegistrationCell.swift in Sources */,
 				D570B60B2BA20139003FE991 /* TPPReauthenticator.swift in Sources */,
+				E5D8C8DD2D829B2000667A99 /* HTMLTextView.swift in Sources */,
 				D570B60C2BA20139003FE991 /* TPPAnnouncementBusinessLogic.swift in Sources */,
 				D570B60D2BA20139003FE991 /* Account.swift in Sources */,
 				D570B60E2BA20139003FE991 /* DRMLibraryService.swift in Sources */,
@@ -5696,7 +5698,7 @@
 				CODE_SIGN_IDENTITY = "Apple Distribution";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 319;
+				CURRENT_PROJECT_VERSION = 320;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -5755,7 +5757,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 319;
+				CURRENT_PROJECT_VERSION = 320;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -5939,8 +5941,8 @@
 				CODE_SIGN_ENTITLEMENTS = Palace/PalaceDebug.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 319;
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 320;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -5969,7 +5971,8 @@
 				);
 				MARKETING_VERSION = 1.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
-				PROVISIONING_PROFILE_SPECIFIER = "";
+				PROVISIONING_PROFILE_SPECIFIER = "Ad Hoc 2";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "Ad Hoc 2";
 				RUN_CLANG_STATIC_ANALYZER = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG SIMPLYE FEATURE_DRM_CONNECTOR FEATURE_CRASH_REPORTING LCP FEATURE_OVERDRIVE";
 				SWIFT_OBJC_BRIDGING_HEADER = "Palace/AppInfrastructure/Palace-Bridging-Header.h";
@@ -6000,7 +6003,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 319;
+				CURRENT_PROJECT_VERSION = 320;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -6062,7 +6065,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 319;
+				CURRENT_PROJECT_VERSION = 320;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -6123,7 +6126,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 319;
+				CURRENT_PROJECT_VERSION = 320;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -6185,11 +6188,13 @@
 				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
+				CODE_SIGN_STYLE = Manual;
 				CURRENT_PROJECT_VERSION = 1;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEFINES_MODULE = YES;
-				DEVELOPMENT_TEAM = 88CBA74T8K;
+				DEVELOPMENT_TEAM = "";
+				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
 				DYLIB_INSTALL_NAME_BASE = "@rpath";
