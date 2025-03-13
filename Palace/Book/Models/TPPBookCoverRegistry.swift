@@ -103,7 +103,9 @@ class TPPBookCoverRegistry {
     }
 
     guard let imageUrl = book.imageURL else {
-      thumbnailImageForBook(book, handler: handler)
+      if cachedImage(for: book, isCover: false) == nil {
+        thumbnailImageForBook(book, handler: handler)
+      }
       return
     }
 
@@ -169,7 +171,9 @@ class TPPBookCoverRegistry {
     }
 
     dispatchGroup.notify(queue: .main) {
-      handler(result)
+      if !result.isEmpty {
+        handler(result)
+      }
     }
   }
 

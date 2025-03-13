@@ -1076,9 +1076,6 @@
 		E573454C2AD6E8410021D768 /* EPUBSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E573454A2AD6E8410021D768 /* EPUBSearchView.swift */; };
 		E573454E2AD6E8530021D768 /* EPUBSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E573454A2AD6E8410021D768 /* EPUBSearchView.swift */; };
 		E57345512AD6EB600021D768 /* EPUBSearchViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E57345502AD6EB600021D768 /* EPUBSearchViewModel.swift */; };
-		E577061D2D3A12A100ED56F8 /* AttributedTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E577061C2D3A129D00ED56F8 /* AttributedTextView.swift */; };
-		E577061E2D3A12A100ED56F8 /* AttributedTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E577061C2D3A129D00ED56F8 /* AttributedTextView.swift */; };
-		E577061F2D3A12A100ED56F8 /* AttributedTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E577061C2D3A129D00ED56F8 /* AttributedTextView.swift */; };
 		E57E798429D4D407006D0F87 /* String+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E57E798329D4D407006D0F87 /* String+Extensions.swift */; };
 		E57F92B22D683564003D9180 /* BookListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E57F92B12D683562003D9180 /* BookListView.swift */; };
 		E57F92B32D683564003D9180 /* BookListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E57F92B12D683562003D9180 /* BookListView.swift */; };
@@ -4714,7 +4711,6 @@
 				E5515EC22AD8E843000BDFE9 /* UIHostingController+Extensions.swift in Sources */,
 				73EB0B1E25821DF4006BC997 /* TPPAccountSignInViewController.m in Sources */,
 				73EB0B1F25821DF4006BC997 /* UserProfileDocument.swift in Sources */,
-				E577061E2D3A12A100ED56F8 /* AttributedTextView.swift in Sources */,
 				21E41777292810E000A78606 /* TPPPDFDocumentMetadata.swift in Sources */,
 				E76AD92C296DCB76008ECC61 /* NotificationService.swift in Sources */,
 				73EB0B2025821DF4006BC997 /* AccountsManager.swift in Sources */,
@@ -4812,7 +4808,6 @@
 				17E81F08261522B3001003C2 /* TPPRoundedButton.swift in Sources */,
 				7380E702254B3E77004613B1 /* TPPBookContentMetadataFilesHelper.swift in Sources */,
 				E7B20B49285B4E5600C49FE1 /* TPPPDFLabel.swift in Sources */,
-				E577061F2D3A12A100ED56F8 /* AttributedTextView.swift in Sources */,
 				E7EB9A9428736696004F484D /* TPPPDFBackButton.swift in Sources */,
 				E7B20B46285B3BC800C49FE1 /* TPPPDFPreviewGridController.swift in Sources */,
 				119BEBB919902A8800121439 /* TPPOpenSearchDescription.m in Sources */,
@@ -5146,7 +5141,6 @@
 				D570B5792BA20139003FE991 /* TPPPDFDocumentView.swift in Sources */,
 				D570B57A2BA20139003FE991 /* TPPPDFTextExtractor.swift in Sources */,
 				E562DE442D38BA3B003A1A40 /* UIDevice+Extension.swift in Sources */,
-				E577061D2D3A12A100ED56F8 /* AttributedTextView.swift in Sources */,
 				D570B57B2BA20139003FE991 /* TPPSignInBusinessLogicUIDelegate.swift in Sources */,
 				D570B57C2BA20139003FE991 /* String+Extensions.swift in Sources */,
 				D570B57D2BA20139003FE991 /* CGSize.swift in Sources */,
