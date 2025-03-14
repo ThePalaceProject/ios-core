@@ -5,7 +5,7 @@ platform :ios do
     ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "300"
     ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"] = "4"
     
-    run("xcodebuild clean -project Palace.xcodeproj -scheme Palace")  # Clean derived data
+    run("xcodebuild clean -project Palace.xcodeproj -scheme Palace")
     
     xcode_select "/Applications/Xcode_16.1.app"
 
@@ -19,6 +19,9 @@ platform :ios do
   end
 
   lane :nodrm do
+
+    run("xcodebuild clean -project Palace.xcodeproj -scheme Palace")
+
     xcode_select "/Applications/Xcode_16.1.app"
     
     build_app(
