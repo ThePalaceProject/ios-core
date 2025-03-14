@@ -9,8 +9,8 @@ platform :ios do
       project: "Palace.xcodeproj",
       devices: ["iPhone SE (3rd generation)"],
       scheme: "Palace",
-      destination: "platform=iOS Simulator,name=iPhone SE (3rd generation),OS=latest",
-      xcargs: "ARCHS=arm64 ONLY_ACTIVE_ARCH=NO -verbose"
+      destination: "platform=iOS Simulator,name=iPhone SE (3rd generation),OS=latest,arch=x86_64",
+      xcargs: "ARCHS=x86_64 ONLY_ACTIVE_ARCH=NO"
     )
   end
 
