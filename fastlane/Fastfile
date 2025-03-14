@@ -2,24 +2,24 @@ default_platform(:ios)
 
 platform :ios do
   lane :test do
-    ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "180"  # Increased timeout
+    ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "300"
     ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"] = "4"
     
-    # Ensure the correct Xcode version is selected
-    xcode_select "/Applications/Xcode_16.1.app"  # Explicitly select Xcode 16.1
+    run("xcodebuild clean -project Palace.xcodeproj -scheme Palace")  # Clean derived data
+    
+    xcode_select "/Applications/Xcode_16.1.app"
 
     run_tests(
       project: "Palace.xcodeproj",
       devices: ["iPhone SE (3rd generation)"],
       scheme: "Palace",
-      destination: "platform=iOS Simulator,name=iPhone SE (3rd generation),OS=latest",  # Removed x86_64 architecture
-      xcargs: "ARCHS=arm64 ONLY_ACTIVE_ARCH=NO"
+      destination: "platform=iOS Simulator,name=iPhone SE (3rd generation),OS=latest",
+      xcargs: "ARCHS=arm64 ONLY_ACTIVE_ARCH=NO -verbose"
     )
   end
 
   lane :nodrm do
-    # Ensure the correct Xcode version is selected
-    xcode_select "/Applications/Xcode_16.1.app"  # Explicitly select Xcode 16.1
+    xcode_select "/Applications/Xcode_16.1.app"
     
     build_app(
       project: "Palace.xcodeproj",
@@ -32,11 +32,10 @@ platform :ios do
   end
 
   lane :beta do |options|
-    ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "180"  # Increased timeout
+    ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "300"
     ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"] = "4"
 
-    # Ensure the correct Xcode version is selected
-    xcode_select "/Applications/Xcode_16.1.app"  # Explicitly select Xcode 16.1
+    xcode_select "/Applications/Xcode_16.1.app"
 
     build_app(
       project: "Palace.xcodeproj",
@@ -56,10 +55,9 @@ platform :ios do
   end
 
   lane :appstore do |options|
-    ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "180"  # Increased timeout
+    ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "300" 
 
-    # Ensure the correct Xcode version is selected
-    xcode_select "/Applications/Xcode_16.1.app"  # Explicitly select Xcode 16.1
+    xcode_select "/Applications/Xcode_16.1.app"
 
     build_app(
       project: "Palace.xcodeproj",
