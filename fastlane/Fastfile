@@ -1,9 +1,10 @@
 default_platform(:ios)
 
 platform :ios do
-  lane :test do
-    ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "90"
+  lane :test do    
+    ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "300"
     ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"] = "4"
+
     run_tests(
       project: "Palace.xcodeproj",
       devices: ["iPhone SE (3rd generation)"],
@@ -12,7 +13,11 @@ platform :ios do
       xcargs: "ARCHS=x86_64 ONLY_ACTIVE_ARCH=NO"
     )
   end
+
   lane :nodrm do
+    ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "300"
+    ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"] = "4"
+
     build_app(
       project: "Palace.xcodeproj",
       scheme: "Palace-noDRM",
@@ -22,9 +27,8 @@ platform :ios do
       silent: true
     )
   end
+
   lane :beta do |options|
-    ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "90"
-    ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"] = "4"
 
     build_app(
       project: "Palace.xcodeproj",
@@ -42,9 +46,15 @@ platform :ios do
       }
     )
   end
+
   lane :appstore do |options|
-    ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "90"
+    ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "300"
     ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"] = "4"
+
+    run("rm -rf ~/Library/Developer/Xcode/DerivedData/*")
+
+    # Ensure the correct Xcode version is selected
+    xcode_select "/Applications/Xcode_16.1.app"
 
     build_app(
       project: "Palace.xcodeproj",
@@ -58,6 +68,7 @@ platform :ios do
         }
       }
     )
+
     pilot(
       api_key_path: "fastlane/fastlane.json",
       skip_submission: true,
