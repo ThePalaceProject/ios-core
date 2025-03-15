@@ -51,9 +51,8 @@ platform :ios do
     ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "300"
     ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"] = "4"
 
-    run("rm -rf ~/Library/Developer/Xcode/DerivedData/*")
+    sh("rm -rf ~/Library/Developer/Xcode/DerivedData/*")
 
-    # Ensure the correct Xcode version is selected
     xcode_select "/Applications/Xcode_16.1.app"
 
     build_app(
