@@ -5592,7 +5592,7 @@
 					"\"$(SRCROOT)/adobe-rmsdk/xml/uft/public\"",
 				);
 				INFOPLIST_FILE = PalaceTests/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -5657,7 +5657,7 @@
 					"\"$(SRCROOT)/adobe-rmsdk/xml/uft/public\"",
 				);
 				INFOPLIST_FILE = PalaceTests/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -5715,7 +5715,7 @@
 					"$(inherited)",
 				);
 				INFOPLIST_FILE = "PalaceConfig/Palace-Info.plist";
-				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -5774,7 +5774,7 @@
 					"$(inherited)",
 				);
 				INFOPLIST_FILE = "PalaceConfig/Palace-Info.plist";
-				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -5964,7 +5964,7 @@
 					"FEATURE_OVERDRIVE=1",
 				);
 				INFOPLIST_FILE = "PalaceConfig/Palace-Info.plist";
-				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -6025,7 +6025,7 @@
 					"FEATURE_OVERDRIVE=1",
 				);
 				INFOPLIST_FILE = "PalaceConfig/Palace-Info.plist";
-				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -6086,7 +6086,7 @@
 					"FEATURE_OVERDRIVE=1",
 				);
 				INFOPLIST_FILE = "PalaceConfig/Palace-Info.plist";
-				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -6147,7 +6147,7 @@
 					"FEATURE_OVERDRIVE=1",
 				);
 				INFOPLIST_FILE = "PalaceConfig/Palace-Info.plist";
-				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -6205,7 +6205,7 @@
 				INFOPLIST_FILE = PalaceUIKit/Info.plist;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2023 The Palace Project. All rights reserved.";
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
-				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
@@ -6268,7 +6268,7 @@
 				INFOPLIST_FILE = PalaceUIKit/Info.plist;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2023 The Palace Project. All rights reserved.";
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
-				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
