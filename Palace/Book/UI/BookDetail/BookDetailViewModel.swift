@@ -2,6 +2,12 @@ import Combine
 import SwiftUI
 import PalaceAudiobookToolkit
 
+struct BookLane {
+  let title: String
+  let books: [TPPBook]
+  let subsectionURL: URL?
+}
+
 class BookDetailViewModel: ObservableObject {
   /// The book model.
   @Published var book: TPPBook
@@ -15,9 +21,10 @@ class BookDetailViewModel: ObservableObject {
   @Published var downloadProgress: Double = 0.0
 
   @Published var buttonState: BookButtonState = .unsupported
-  @Published var relatedBooksByLane: [String: [TPPBook]] = [:]
+  @Published var relatedBooksByLane: [String: BookLane] = [:]
   @Published var isLoadingRelatedBooks = false
   @Published var isLoadingDescription = false
+  @Published var selectedBookURL: URL? = nil
 
   var isFullSize: Bool { UIDevice.current.isIpad }
 
@@ -147,50 +154,58 @@ class BookDetailViewModel: ObservableObject {
     }
   }
 
+  // MARK: - Create Related Books Cells
   private func createRelatedBooksCells(_ groupedFeed: TPPCatalogGroupedFeed?) {
     guard let feed = groupedFeed else {
       self.isLoadingRelatedBooks = false
       return
     }
 
-    var groupedBooks = [String: [TPPBook]]()
+    var groupedBooks = [String: BookLane]()
 
     for lane in feed.lanes as! [TPPCatalogLane] {
       if let books = lane.books as? [TPPBook] {
         let laneTitle = lane.title ?? "Unknown Lane"
-        if groupedBooks[laneTitle] != nil {
-          groupedBooks[laneTitle]?.append(contentsOf: books)
-        } else {
-          groupedBooks[laneTitle] = books
-        }
+        let subsectionURL = lane.subsectionURL
+
+        let bookLane = BookLane(title: laneTitle, books: books, subsectionURL: subsectionURL)
+
+        groupedBooks[laneTitle] = bookLane
       }
     }
 
-    var prioritizedBooks: [String: [TPPBook]] = [:]
     if let author = book.authors, !author.isEmpty {
-      for (laneTitle, books) in groupedBooks {
-        if books.contains(where: { $0.authors?.contains(author) ?? false }) {
-          prioritizedBooks[laneTitle] = books
-          groupedBooks.removeValue(forKey: laneTitle)
-          break
-        }
-      }
-    }
+      if let authorLane = groupedBooks.first(where: { $0.value.books.contains(where: { $0.authors?.contains(author) ?? false }) }) {
+        groupedBooks.removeValue(forKey: authorLane.key)
 
-    for (laneTitle, books) in groupedBooks {
-      prioritizedBooks[laneTitle] = books
+        var reorderedBooks = [String: BookLane]()
+        reorderedBooks[authorLane.key] = authorLane.value
+        reorderedBooks.merge(groupedBooks) { _, new in new }
+        groupedBooks = reorderedBooks
+      }
     }
 
     DispatchQueue.main.async {
-      self.relatedBooksByLane = prioritizedBooks
+      self.relatedBooksByLane = groupedBooks
     }
 
     self.isLoadingRelatedBooks = false
   }
 
-  func showMoreBooksforLane() {
-    
+  // MARK: - Show More Books for Lane
+  func showMoreBooksForLane(laneTitle: String) {
+    guard let lane = relatedBooksByLane[laneTitle] else {
+      print("No books available for lane: \(laneTitle)")
+      return
+    }
+
+    if let subsectionURL = lane.subsectionURL {
+      self.selectedBookURL = subsectionURL
+    } else {
+      print("Lane \(laneTitle) has no URL to load more books.")
+    }
   }
+
 
   // MARK: - Button State Mapping
 
