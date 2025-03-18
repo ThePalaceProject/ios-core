@@ -306,7 +306,10 @@ class TPPBookCoverRegistry {
     UIGraphicsBeginImageContextWithOptions(image.size, false, image.scale)
     defer { UIGraphicsEndImageContext() }
 
-    image.draw(in: imageRect)
+    if image.size.width > 0 && image.size.height > 0 {
+      image.draw(in: imageRect)
+    }
+
     return UIGraphicsGetImageFromCurrentImageContext() ?? image
   }
 

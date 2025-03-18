@@ -35,31 +35,35 @@ struct BookDetailView: View {
 
   var body: some View {
     ZStack(alignment: .top) {
-      ScrollView(showsIndicators: false) {
-        ZStack {
-          if viewModel.isFullSize {
-            VStack {
-              backgroundView
-                .frame(height: headerHeight)
-              Spacer()
+      ScrollViewReader { proxy in
+        ScrollView(showsIndicators: false) {
+          ZStack {
+            if viewModel.isFullSize {
+              VStack {
+                backgroundView
+                  .frame(height: headerHeight)
+                Spacer()
+              }
             }
-          }
 
-          mainView
-            .padding(.bottom, 100)
-            .background(GeometryReader { proxy in
-              Color.clear
-                .onChange(of: proxy.frame(in: .global).minY) { newValue in
-                  updateHeaderHeight(for: newValue)
-                }
-            })
+            mainView
+              .padding(.bottom, 100)
+              .background(GeometryReader { proxy in
+                Color.clear
+                  .onChange(of: proxy.frame(in: .global).minY) { newValue in
+                    updateHeaderHeight(for: newValue)
+                  }
+              })
+          }
         }
-      }
-      .edgesIgnoringSafeArea(.all)
-      .onChange(of: viewModel.book) { newValue in
-        loadCoverImage()
-        resetSampleToolbar()
-        self.descriptionText = newValue.summary ?? ""
+        .edgesIgnoringSafeArea(.all)
+        .onChange(of: viewModel.book) { newValue in
+          loadCoverImage()
+          resetSampleToolbar()
+          self.descriptionText = newValue.summary ?? ""
+          proxy.scrollTo(0, anchor: .top)
+
+        }
       }
       .onAppear {
         headerHeight = viewModel.isFullSize ? 300 : 225
@@ -318,32 +322,49 @@ struct BookDetailView: View {
       }
   }
 
-  @ViewBuilder private var relatedBooksView: some View {
+  private var relatedBooksView: some View {
     VStack(alignment: .leading, spacing: 20) {
-      if !viewModel.relatedBooks.isEmpty {
-        Text(DisplayStrings.otherBooks.uppercased())
-          .font(.headline)
-          .foregroundColor(.black)
-          .padding(.horizontal, 30)
+      ForEach(viewModel.relatedBooksByLane.keys.sorted(), id: \.self) { laneTitle in
+        if laneTitle != viewModel.relatedBooksByLane.keys.sorted().first {
+          Divider()
+        }
 
-        ScrollView(.horizontal, showsIndicators: false) {
-          LazyHStack(spacing: 12) {
-            ForEach(viewModel.relatedBooks.indices, id: \.self) { index in
-              if let book = viewModel.relatedBooks[safe: index], let book {
-                Button(action: { viewModel.selectRelatedBook(book) }) {
-                  BookImageView(book: book, height: 160, showShimmer: true)
-                    .transition(.opacity.combined(with: .scale))
+        if let lane = viewModel.relatedBooksByLane[laneTitle] {
+          VStack(alignment: .leading, spacing: 20) {
+            HStack {
+              Text(lane.title)
+                .font(.headline)
+              Spacer()
+              if let url = lane.subsectionURL {
+                NavigationLink(destination: TPPCatalogFeedView(url: url)) {
+                  Text(DisplayStrings.more.capitalized)
                 }
-              } else {
-                ShimmerView(width: 100, height: 160)
               }
             }
+            .foregroundColor(.black)
+            .padding(.horizontal, 30)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+              LazyHStack(spacing: 12) {
+                ForEach(lane.books.indices, id: \.self) { index in
+                  if let book = lane.books[safe: index] {
+                    Button(action: {
+                      viewModel.selectRelatedBook(book)
+                    }) {
+                      BookImageView(book: book, height: 160, showShimmer: true)
+                        .transition(.opacity.combined(with: .scale))
+                    }
+                  } else {
+                    ShimmerView(width: 100, height: 160)
+                  }
+                }
+              }
+              .padding(.horizontal, 30)
+            }
           }
-          .padding(.horizontal, 30)
         }
       }
     }
-    .frame(minHeight: 180)
   }
 
   @ViewBuilder private var audiobookAvailable: some View {
@@ -403,7 +424,9 @@ struct BookDetailView: View {
       infoRow(label: DisplayStrings.distributor.uppercased(), value: self.viewModel.book.distributor ?? "")
 
       if viewModel.book.isAudiobook {
-        infoRow(label: DisplayStrings.narrators.uppercased(), value: self.viewModel.book.narrators ?? "")
+        if let narrators = self.viewModel.book.narrators {
+          infoRow(label: DisplayStrings.narrators.uppercased(), value: narrators)
+        }
 
         if let duration = self.viewModel.book.bookDuration {
           infoRow(label: DisplayStrings.duration.uppercased(), value: formatDuration(duration))
@@ -545,5 +568,17 @@ struct BookDetailView: View {
           dragOffset = 0
         }
       }
+  }
+}
+
+
+struct TPPCatalogFeedView: UIViewControllerRepresentable {
+  var url: URL
+
+  func makeUIViewController(context: Context) -> TPPCatalogFeedViewController {
+    return TPPCatalogFeedViewController(url: url)
+  }
+
+  func updateUIViewController(_ uiViewController: TPPCatalogFeedViewController, context: Context) {
   }
 }

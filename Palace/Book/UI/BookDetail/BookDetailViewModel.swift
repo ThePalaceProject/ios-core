@@ -2,6 +2,12 @@ import Combine
 import SwiftUI
 import PalaceAudiobookToolkit
 
+struct BookLane {
+  let title: String
+  let books: [TPPBook]
+  let subsectionURL: URL?
+}
+
 class BookDetailViewModel: ObservableObject {
   /// The book model.
   @Published var book: TPPBook
@@ -15,9 +21,10 @@ class BookDetailViewModel: ObservableObject {
   @Published var downloadProgress: Double = 0.0
 
   @Published var buttonState: BookButtonState = .unsupported
-  @Published var relatedBooks: [TPPBook?] = []
+  @Published var relatedBooksByLane: [String: BookLane] = [:]
   @Published var isLoadingRelatedBooks = false
   @Published var isLoadingDescription = false
+  @Published var selectedBookURL: URL? = nil
 
   var isFullSize: Bool { UIDevice.current.isIpad }
 
@@ -131,45 +138,74 @@ class BookDetailViewModel: ObservableObject {
     guard let url = book.relatedWorksURL else { return }
 
     isLoadingRelatedBooks = true
-    relatedBooks = []
+    relatedBooksByLane = [:]
 
     TPPOPDSFeed.withURL(url, shouldResetCache: false, useTokenIfAvailable: TPPUserAccount.sharedAccount().hasAdobeToken()) { [weak self] feed, _ in
       guard let self = self else { return }
 
-      DispatchQueue.global(qos: .userInitiated).async {
-        guard feed?.type == .acquisitionGrouped,
-              let groupedFeed = TPPCatalogGroupedFeed(opdsFeed: feed) else {
-          DispatchQueue.main.async {
-            self.isLoadingRelatedBooks = false
-          }
-          return
-        }
-
-        let books: [TPPBook] = groupedFeed.lanes.compactMap { lane in
-          (lane as? TPPCatalogLane)?.books as? [TPPBook]
-        }.flatMap { $0 }
-          .filter { $0.identifier != self.book.identifier }
-
-        let safeRelatedBooks = Array(repeating: nil as TPPBook?, count: books.count)
-
-        DispatchQueue.main.async {
-          self.relatedBooks = safeRelatedBooks
-        }
-
-        books.enumerated().publisher
-          .delay(for: .seconds(0.2), scheduler: DispatchQueue.main)
-          .sink { [weak self] (index, book) in
-            guard let self = self else { return }
-            self.relatedBooks[safe: index] = book
-          }
-          .store(in: &self.cancellables)
-
-        DispatchQueue.main.async {
+      DispatchQueue.main.async {
+        if feed?.type == .acquisitionGrouped {
+          let groupedFeed = TPPCatalogGroupedFeed(opdsFeed: feed)
+          self.createRelatedBooksCells(groupedFeed)
+        } else {
           self.isLoadingRelatedBooks = false
         }
       }
     }
   }
+
+  // MARK: - Create Related Books Cells
+  private func createRelatedBooksCells(_ groupedFeed: TPPCatalogGroupedFeed?) {
+    guard let feed = groupedFeed else {
+      self.isLoadingRelatedBooks = false
+      return
+    }
+
+    var groupedBooks = [String: BookLane]()
+
+    for lane in feed.lanes as! [TPPCatalogLane] {
+      if let books = lane.books as? [TPPBook] {
+        let laneTitle = lane.title ?? "Unknown Lane"
+        let subsectionURL = lane.subsectionURL
+
+        let bookLane = BookLane(title: laneTitle, books: books, subsectionURL: subsectionURL)
+
+        groupedBooks[laneTitle] = bookLane
+      }
+    }
+
+    if let author = book.authors, !author.isEmpty {
+      if let authorLane = groupedBooks.first(where: { $0.value.books.contains(where: { $0.authors?.contains(author) ?? false }) }) {
+        groupedBooks.removeValue(forKey: authorLane.key)
+
+        var reorderedBooks = [String: BookLane]()
+        reorderedBooks[authorLane.key] = authorLane.value
+        reorderedBooks.merge(groupedBooks) { _, new in new }
+        groupedBooks = reorderedBooks
+      }
+    }
+
+    DispatchQueue.main.async {
+      self.relatedBooksByLane = groupedBooks
+    }
+
+    self.isLoadingRelatedBooks = false
+  }
+
+  // MARK: - Show More Books for Lane
+  func showMoreBooksForLane(laneTitle: String) {
+    guard let lane = relatedBooksByLane[laneTitle] else {
+      print("No books available for lane: \(laneTitle)")
+      return
+    }
+
+    if let subsectionURL = lane.subsectionURL {
+      self.selectedBookURL = subsectionURL
+    } else {
+      print("Lane \(laneTitle) has no URL to load more books.")
+    }
+  }
+
 
   // MARK: - Button State Mapping
 
