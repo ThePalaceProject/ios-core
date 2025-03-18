@@ -318,34 +318,47 @@ struct BookDetailView: View {
       }
   }
 
-  @ViewBuilder private var relatedBooksView: some View {
+  private var relatedBooksView: some View {
     VStack(alignment: .leading, spacing: 20) {
-      if !viewModel.relatedBooks.isEmpty {
-        Text(DisplayStrings.otherBooks.uppercased())
+      ForEach(viewModel.relatedBooksByLane.keys.sorted(), id: \.self) { laneTitle in
+        if laneTitle != viewModel.relatedBooksByLane.keys.sorted().first {
+          Divider()
+        }
+
+        let booksInLane = viewModel.relatedBooksByLane[laneTitle] ?? []
+
+        VStack(alignment: .leading, spacing: 20) {
+          HStack {
+            Text(laneTitle)
+            Button {
+              viewModel.showMoreBooksforLane(laneTitle)
+            } label: {
+              Text(DisplayStrings.more.capitalized)
+            }
+          }
           .font(.headline)
           .foregroundColor(.black)
           .padding(.horizontal, 30)
 
-        ScrollView(.horizontal, showsIndicators: false) {
-          LazyHStack(spacing: 12) {
-            ForEach(viewModel.relatedBooks.indices, id: \.self) { index in
-              if let book = viewModel.relatedBooks[safe: index], let book {
-                Button(action: { viewModel.selectRelatedBook(book) }) {
-                  BookImageView(book: book, height: 160, showShimmer: true)
-                    .transition(.opacity.combined(with: .scale))
+          ScrollView(.horizontal, showsIndicators: false) {
+            LazyHStack(spacing: 12) {
+              ForEach(booksInLane.indices, id: \.self) { index in
+                if let book = booksInLane[safe: index] {
+                  Button(action: { viewModel.selectRelatedBook(book) }) {
+                    BookImageView(book: book, height: 160, showShimmer: true)
+                      .transition(.opacity.combined(with: .scale))
+                  }
+                } else {
+                  ShimmerView(width: 100, height: 160)
                 }
-              } else {
-                ShimmerView(width: 100, height: 160)
               }
             }
+            .padding(.horizontal, 30)
           }
-          .padding(.horizontal, 30)
         }
       }
     }
-    .frame(minHeight: 180)
   }
-
   @ViewBuilder private var audiobookAvailable: some View {
     VStack(alignment: .leading, spacing: 10) {
       Divider()
@@ -403,7 +416,9 @@ struct BookDetailView: View {
       infoRow(label: DisplayStrings.distributor.uppercased(), value: self.viewModel.book.distributor ?? "")
 
       if viewModel.book.isAudiobook {
-        infoRow(label: DisplayStrings.narrators.uppercased(), value: self.viewModel.book.narrators ?? "")
+        if let narrators = !self.viewModel.book.narrators {
+          infoRow(label: DisplayStrings.narrators.uppercased(), value: narrators)
+        }
 
         if let duration = self.viewModel.book.bookDuration {
           infoRow(label: DisplayStrings.duration.uppercased(), value: formatDuration(duration))

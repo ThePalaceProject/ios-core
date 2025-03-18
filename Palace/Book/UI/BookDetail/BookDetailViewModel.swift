@@ -15,7 +15,7 @@ class BookDetailViewModel: ObservableObject {
   @Published var downloadProgress: Double = 0.0
 
   @Published var buttonState: BookButtonState = .unsupported
-  @Published var relatedBooks: [TPPBook?] = []
+  @Published var relatedBooksByLane: [String: [TPPBook]] = [:]
   @Published var isLoadingRelatedBooks = false
   @Published var isLoadingDescription = false
 
@@ -131,44 +131,65 @@ class BookDetailViewModel: ObservableObject {
     guard let url = book.relatedWorksURL else { return }
 
     isLoadingRelatedBooks = true
-    relatedBooks = []
+    relatedBooksByLane = [:]
 
     TPPOPDSFeed.withURL(url, shouldResetCache: false, useTokenIfAvailable: TPPUserAccount.sharedAccount().hasAdobeToken()) { [weak self] feed, _ in
       guard let self = self else { return }
 
-      DispatchQueue.global(qos: .userInitiated).async {
-        guard feed?.type == .acquisitionGrouped,
-              let groupedFeed = TPPCatalogGroupedFeed(opdsFeed: feed) else {
-          DispatchQueue.main.async {
-            self.isLoadingRelatedBooks = false
-          }
-          return
-        }
-
-        let books: [TPPBook] = groupedFeed.lanes.compactMap { lane in
-          (lane as? TPPCatalogLane)?.books as? [TPPBook]
-        }.flatMap { $0 }
-          .filter { $0.identifier != self.book.identifier }
-
-        let safeRelatedBooks = Array(repeating: nil as TPPBook?, count: books.count)
-
-        DispatchQueue.main.async {
-          self.relatedBooks = safeRelatedBooks
-        }
-
-        books.enumerated().publisher
-          .delay(for: .seconds(0.2), scheduler: DispatchQueue.main)
-          .sink { [weak self] (index, book) in
-            guard let self = self else { return }
-            self.relatedBooks[safe: index] = book
-          }
-          .store(in: &self.cancellables)
-
-        DispatchQueue.main.async {
+      DispatchQueue.main.async {
+        if feed?.type == .acquisitionGrouped {
+          let groupedFeed = TPPCatalogGroupedFeed(opdsFeed: feed)
+          self.createRelatedBooksCells(groupedFeed)
+        } else {
           self.isLoadingRelatedBooks = false
         }
       }
     }
+  }
+
+  private func createRelatedBooksCells(_ groupedFeed: TPPCatalogGroupedFeed?) {
+    guard let feed = groupedFeed else {
+      self.isLoadingRelatedBooks = false
+      return
+    }
+
+    var groupedBooks = [String: [TPPBook]]()
+
+    for lane in feed.lanes as! [TPPCatalogLane] {
+      if let books = lane.books as? [TPPBook] {
+        let laneTitle = lane.title ?? "Unknown Lane"
+        if groupedBooks[laneTitle] != nil {
+          groupedBooks[laneTitle]?.append(contentsOf: books)
+        } else {
+          groupedBooks[laneTitle] = books
+        }
+      }
+    }
+
+    var prioritizedBooks: [String: [TPPBook]] = [:]
+    if let author = book.authors, !author.isEmpty {
+      for (laneTitle, books) in groupedBooks {
+        if books.contains(where: { $0.authors?.contains(author) ?? false }) {
+          prioritizedBooks[laneTitle] = books
+          groupedBooks.removeValue(forKey: laneTitle)
+          break
+        }
+      }
+    }
+
+    for (laneTitle, books) in groupedBooks {
+      prioritizedBooks[laneTitle] = books
+    }
+
+    DispatchQueue.main.async {
+      self.relatedBooksByLane = prioritizedBooks
+    }
+
+    self.isLoadingRelatedBooks = false
+  }
+
+  func showMoreBooksforLane() {
+    
   }
 
   // MARK: - Button State Mapping
