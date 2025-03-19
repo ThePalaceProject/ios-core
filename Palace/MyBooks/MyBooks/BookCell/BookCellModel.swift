@@ -151,6 +151,7 @@ extension BookCellModel {
     case .download, .retry, .get, .reserve:
       didSelectDownload()
     case .return, .remove:
+      self.isLoading = true
       didSelectReturn()
     case .cancel:
       didSelectCancel()
@@ -200,12 +201,11 @@ extension BookCellModel {
       buttonTitle: confirmButtonTitle,
       primaryAction: { [weak self] in
         self?.isLoading = true
-        self?.buttonDelegate?.didSelectReturn(for: self?.book) {
-          self?.isLoading = false
-        }
+        self?.buttonDelegate?.didSelectReturn(for: self?.book) { }
       },
       secondaryAction: { [weak self] in
         self?.showAlert = nil
+        self?.isLoading = false
       }
     )
   }

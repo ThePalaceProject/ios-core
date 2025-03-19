@@ -19,14 +19,14 @@ class TPPBookRegistryRecord: NSObject {
   var readiumBookmarks: [TPPReadiumBookmark]?
   var genericBookmarks: [TPPBookLocation]?
   
-  init(book: TPPBook, location: TPPBookLocation? = nil, state: TPPBookState, fulfillmentId: String? = nil, readiumBookmarks: [TPPReadiumBookmark]? = nil, genericBookmarks: [TPPBookLocation]? = nil) {
+  init(book: TPPBook, location: TPPBookLocation? = nil, state: TPPBookState, fulfillmentId: String? = nil, readiumBookmarks: [TPPReadiumBookmark]? = [], genericBookmarks: [TPPBookLocation]? = []) {
     self.book = book
     self.location = location
     self.state = state
     self.fulfillmentId = fulfillmentId
     self.readiumBookmarks = readiumBookmarks
     self.genericBookmarks = genericBookmarks
-    
+
     super.init()
 
     if let defaultAcquisition = book.defaultAcquisition {
