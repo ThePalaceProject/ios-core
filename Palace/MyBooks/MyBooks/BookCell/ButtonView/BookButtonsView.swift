@@ -70,7 +70,7 @@ struct ActionButton<T: BookButtonProvider>: View {
             .transition(.opacity)
         }
         Text(type.title)
-          .fixedSize(horizontal: false, vertical: true)
+          .fixedSize(horizontal: true, vertical: true)
           .lineLimit(1)
           .minimumScaleFactor(0.8)
           .font(size.font)

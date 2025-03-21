@@ -12,6 +12,7 @@ struct BookListView: View {
         ForEach(books, id: \.identifier) { book in
           Button(action: { onSelect(book) }) {
             BookCell(model: BookCellModel(book: book))
+              .frame(maxWidth: .infinity, minHeight: 180, maxHeight: 180)
           }
           .buttonStyle(.plain)
           .padding(5)
@@ -29,17 +30,14 @@ struct BookListView: View {
   }
 
   private var gridLayout: [GridItem] {
-    Array(repeating: GridItem(.fixed(columnWidth), spacing: 0), count: columnCount)
+    [GridItem(.adaptive(minimum: minColumnWidth), spacing: 0)]
   }
 
-  private var columnCount: Int {
-    UIDevice.current.userInterfaceIdiom == .pad ? (orientation.isLandscape ? 4 : 3) : 1
-  }
-
-  private var columnWidth: CGFloat {
-    UIScreen.main.bounds.width / CGFloat(columnCount) - (UIDevice.current.isIpad ? 8 : 0)
+  private var minColumnWidth: CGFloat {
+    UIDevice.current.userInterfaceIdiom == .pad ? 320 : 300
   }
 }
+
 extension View {
   func applyBorderStyle() -> some View {
     modifier(BorderStyleModifier())
