@@ -17,17 +17,19 @@ struct NormalBookCell: View {
   private let imageViewWidth: CGFloat = 100
 
   var body: some View {
-    HStack(alignment: .center, spacing: 20) {
+    HStack(alignment: .center, spacing: 15) {
       HStack(spacing: 5) {
         unreadImageView
         titleCoverImageView
       }
+      .frame(maxWidth: 140, alignment: .leading)
 
       VStack(alignment: .leading, spacing: 10) {
         infoView
         buttons
           .padding(.bottom, 5)
       }
+      .frame(maxWidth: .infinity, alignment: .leading)
       .alert(item: $model.showAlert) { alert in
         Alert(
           title: Text(alert.title),
@@ -36,23 +38,22 @@ struct NormalBookCell: View {
           secondaryButton: .cancel(alert.secondaryAction)
         )
       }
-      Spacer()
     }
     .multilineTextAlignment(.leading)
     .padding(5)
-    .frame(minHeight: 125)
+    .frame(minHeight: cellHeight)
     .onDisappear { model.isLoading = false }
   }
 
   @ViewBuilder private var titleCoverImageView: some View {
-    ZStack {
+    ZStack(alignment: .bottomTrailing) {
       Image(uiImage: model.image)
         .resizable()
         .aspectRatio(contentMode: .fit)
       audiobookIndicator
+        .padding([.trailing, .bottom], 5)
     }
     .frame(width: imageViewWidth)
-    .padding(.trailing, 2)
   }
 
   @ViewBuilder private var audiobookIndicator: some View {
@@ -62,7 +63,6 @@ struct NormalBookCell: View {
         .frame(width: 24, height: 24)
         .background(Circle().fill(Color.colorAudiobookBackground))
         .clipped()
-        .bottomrRightJustified()
     }
   }
 
@@ -107,7 +107,7 @@ struct NormalBookCell: View {
       Text("Borrowed until \(availableUntil)")
         .fixedSize(horizontal: false, vertical: true)
         .minimumScaleFactor(0.5)
-        .font(.subheadline)
+        .font(.footnote)
         .foregroundColor(.secondary)
     }
   }
