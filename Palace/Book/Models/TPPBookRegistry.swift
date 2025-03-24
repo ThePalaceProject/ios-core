@@ -588,10 +588,7 @@ extension TPPBookRegistry: TPPBookRegistryProvider {
   }
 
   func addGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String) {
-    syncQueue.async {
-      self.registry[bookIdentifier]?.genericBookmarks?.append(location)
-      self.save()
-    }
+    addOrReplaceGenericBookmark(location, forIdentifier: bookIdentifier)
   }
 
   func deleteGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String) {
