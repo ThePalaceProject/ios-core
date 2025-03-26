@@ -1174,9 +1174,6 @@
 		E5F2E9B52CEE8544007EA6C9 /* PureLayout in Frameworks */ = {isa = PBXBuildFile; productRef = E5F2E9B42CEE8544007EA6C9 /* PureLayout */; };
 		E5F2E9B72CEE8550007EA6C9 /* PureLayout in Frameworks */ = {isa = PBXBuildFile; productRef = E5F2E9B62CEE8550007EA6C9 /* PureLayout */; };
 		E5F8A57D28A48B8300A229AE /* BookPreviewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5F8A57C28A48B8300A229AE /* BookPreviewTests.swift */; };
-		E5F998D32D934F57002F0B0B /* DRMDataSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5F998D22D934F51002F0B0B /* DRMDataSource.swift */; };
-		E5F998D42D934F57002F0B0B /* DRMDataSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5F998D22D934F51002F0B0B /* DRMDataSource.swift */; };
-		E5F998D52D934F57002F0B0B /* DRMDataSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5F998D22D934F51002F0B0B /* DRMDataSource.swift */; };
 		E5FD62132BFD30E400DD4B94 /* AudiobookBookmarkBusinessLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5FD62122BFD30E400DD4B94 /* AudiobookBookmarkBusinessLogic.swift */; };
 		E5FD62142BFD30F500DD4B94 /* LoadingViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E523124C28641505007D1DB5 /* LoadingViewController.swift */; };
 		E5FD62152BFD30F500DD4B94 /* LoadingViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E523124C28641505007D1DB5 /* LoadingViewController.swift */; };
@@ -2068,7 +2065,6 @@
 		E5EFDE77298C43D300258CA3 /* BookButtonState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookButtonState.swift; sourceTree = "<group>"; };
 		E5EFDE7B298C4F8000258CA3 /* BookCellModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookCellModel.swift; sourceTree = "<group>"; };
 		E5F8A57C28A48B8300A229AE /* BookPreviewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookPreviewTests.swift; sourceTree = "<group>"; };
-		E5F998D22D934F51002F0B0B /* DRMDataSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DRMDataSource.swift; sourceTree = "<group>"; };
 		E5FD62122BFD30E400DD4B94 /* AudiobookBookmarkBusinessLogic.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AudiobookBookmarkBusinessLogic.swift; sourceTree = "<group>"; };
 		E5FFB96328AED4850042907F /* ImageProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageProvider.swift; sourceTree = "<group>"; };
 		E5FFB9CA28AFE8AF0042907F /* AsyncImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AsyncImage.swift; sourceTree = "<group>"; };
@@ -2447,7 +2443,6 @@
 		21F238B72498F7FB004DC0B1 /* AdobeDRM */ = {
 			isa = PBXGroup;
 			children = (
-				E5F998D22D934F51002F0B0B /* DRMDataSource.swift */,
 				21F238C02499155E004DC0B1 /* AdobeDRMContainer.h */,
 				21F238C12499155E004DC0B1 /* AdobeDRMContainer.mm */,
 				21F238C724991A2A004DC0B1 /* AdobeDRMLibraryService.swift */,
@@ -4717,7 +4712,6 @@
 				73EB0B1E25821DF4006BC997 /* TPPAccountSignInViewController.m in Sources */,
 				73EB0B1F25821DF4006BC997 /* UserProfileDocument.swift in Sources */,
 				21E41777292810E000A78606 /* TPPPDFDocumentMetadata.swift in Sources */,
-				E5F998D42D934F57002F0B0B /* DRMDataSource.swift in Sources */,
 				E76AD92C296DCB76008ECC61 /* NotificationService.swift in Sources */,
 				73EB0B2025821DF4006BC997 /* AccountsManager.swift in Sources */,
 				217595DE27B680D400BA0FDD /* TPPReaderSettingsVC.swift in Sources */,
@@ -4869,7 +4863,6 @@
 				E7347D0B287F2A1600CCE65A /* UIImage.swift in Sources */,
 				E50D684726AB235400F1042B /* TPPReaderTOCCell.swift in Sources */,
 				2199020824FD35DC001BC727 /* JWKResponse.swift in Sources */,
-				E5F998D52D934F57002F0B0B /* DRMDataSource.swift in Sources */,
 				E7F8DA5F287854F2006996BC /* TPPPDFThumbnailView.swift in Sources */,
 				11E0208D197F05D9009DEA93 /* UIFont+TPPSystemFontOverride.m in Sources */,
 				03690E291EB2B44300F75D5F /* TPPReadiumBookmark.swift in Sources */,
@@ -5186,7 +5179,6 @@
 				D570B5A02BA20139003FE991 /* AdobeDRMLibraryService.swift in Sources */,
 				D570B5A12BA20139003FE991 /* UIButton+NYPLAppearanceAdditions.m in Sources */,
 				D570B5A22BA20139003FE991 /* TPPPDFReaderView.swift in Sources */,
-				E5F998D32D934F57002F0B0B /* DRMDataSource.swift in Sources */,
 				D570B5A32BA20139003FE991 /* AdobeDRMError.swift in Sources */,
 				D570B5A42BA20139003FE991 /* TPPEPUBViewController.swift in Sources */,
 				D570B5A52BA20139003FE991 /* SEMigrations.swift in Sources */,
