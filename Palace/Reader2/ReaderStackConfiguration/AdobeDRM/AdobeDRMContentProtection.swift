@@ -108,33 +108,19 @@ extension AdobeDRMContainer: Container {
     let data: Data? = {
       var result: Data?
       let semaphore = DispatchSemaphore(value: 0)
-
       self.retrieveDataSynchronously(for: path) { retrievedData in
         result = retrievedData
         semaphore.signal()
       }
-
       semaphore.wait()
       return result
     }()
 
-    guard let data = data else {
+    guard let data else {
       return nil
     }
 
-    let fullyDecryptedFiles = Set(["content.opf", "nav.xhtml", "toc.ncx", "encryption.xml"])
-    let imageExtensions = Set(["jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff"])
-
-    if fullyDecryptedFiles.contains(where: { path.hasSuffix($0) }) {
-      return DataResource(data: self.decode(data, at: path), sourceURL: url.absoluteURL)
-    }
-
-    if let fileExtension = path.split(separator: ".").last,
-       imageExtensions.contains(String(fileExtension)) {
-      return DataResource(data: self.decode(data, at: path), sourceURL: url.absoluteURL)
-    }
-
-    return DRMResource(data: data, path: path, drmContainer: self)
+    return DRMDataResource(encryptedData: data, path: path, drmContainer: self, sourceURL: sourceURL)
   }
 
   private func retrieveDataSynchronously(for path: String, completion: @escaping (Data?) -> Void) {
@@ -194,71 +180,6 @@ extension AdobeDRMContainer: Container {
     } catch {
       return nil
     }
-  }
-}
-
-// MARK: - DRMResource (Efficient Data Handling)
-struct DRMResource: Resource {
-  private let data: Data
-  private let path: String
-  private let drmContainer: AdobeDRMContainer
-
-  init(data: Data, path: String, drmContainer: AdobeDRMContainer) {
-    self.data = data
-    self.path = path
-    self.drmContainer = drmContainer
-  }
-
-  func read(range: Range<UInt64>?) async throws -> Data {
-    let fullData = drmContainer.decode(data, at: path)
-
-    if let range = range {
-      let start = Int(clamping: range.lowerBound)
-      let end = Int(clamping: range.upperBound)
-      let intRange = start..<end
-
-      guard intRange.lowerBound >= 0, intRange.upperBound <= fullData.count else {
-        throw ReadError.access(.fileSystem(.fileNotFound(nil)))
-      }
-
-      return fullData.subdata(in: intRange)
-    } else {
-      return fullData
-    }
-  }
-
-  var sourceURL: AbsoluteURL? {
-    nil
-  }
-
-  func properties() async -> ReadResult<ResourceProperties> {
-    var props = ResourceProperties()
-    props.length = UInt64(data.count)
-    return .success(props)
-  }
-
-  func estimatedLength() async -> ReadResult<UInt64?> {
-    return .success(UInt64(data.count))
-  }
-
-  func stream(range: Range<UInt64>?, consume: @escaping (Data) -> Void) async -> ReadResult<Void> {
-    do {
-      let chunk = try await read(range: range)
-      consume(chunk)
-      return .success(())
-    } catch {
-      return .failure(.access(.other(error)))
-    }
-  }
-
-  func close() {}
-}
-
-// MARK: - ResourceProperties Extension
-extension ResourceProperties {
-  public var length: UInt64? {
-    get { self["length"] }
-    set { self["length"] = newValue }
   }
 }
 #endif
