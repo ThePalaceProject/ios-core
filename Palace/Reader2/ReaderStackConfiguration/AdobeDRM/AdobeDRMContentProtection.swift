@@ -108,33 +108,19 @@ extension AdobeDRMContainer: Container {
     let data: Data? = {
       var result: Data?
       let semaphore = DispatchSemaphore(value: 0)
-
       self.retrieveDataSynchronously(for: path) { retrievedData in
         result = retrievedData
         semaphore.signal()
       }
-
       semaphore.wait()
       return result
     }()
 
-    guard let data = data else {
+    guard let data else {
       return nil
     }
 
-    let fullyDecryptedFiles = Set(["content.opf", "nav.xhtml", "toc.ncx", "encryption.xml"])
-    let imageExtensions = Set(["jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff"])
-
-    if fullyDecryptedFiles.contains(where: { path.hasSuffix($0) }) {
-      return DataResource(data: self.decode(data, at: path), sourceURL: url.absoluteURL)
-    }
-
-    if let fileExtension = path.split(separator: ".").last,
-       imageExtensions.contains(String(fileExtension)) {
-      return DataResource(data: self.decode(data, at: path), sourceURL: url.absoluteURL)
-    }
-
-    return DRMResource(data: data, path: path, drmContainer: self)
+    return DRMDataResource(encryptedData: data, path: path, drmContainer: self, sourceURL: sourceURL)
   }
 
   private func retrieveDataSynchronously(for path: String, completion: @escaping (Data?) -> Void) {
@@ -197,51 +183,53 @@ extension AdobeDRMContainer: Container {
   }
 }
 
-// MARK: - DRMResource (Efficient Data Handling)
-struct DRMResource: Resource {
-  private let data: Data
+
+/// A DRM-enabled Resource that decrypts (decodes) its data once and then serves
+/// range requests (to support pagination) using the cached decrypted data.
+public actor DRMDataResource: Resource {
+  public let sourceURL: AbsoluteURL?
+
+  private let encryptedData: Data
   private let path: String
   private let drmContainer: AdobeDRMContainer
 
-  init(data: Data, path: String, drmContainer: AdobeDRMContainer) {
-    self.data = data
+  // Cache for the decrypted data once computed.
+  private var _decryptedData: ReadResult<Data>?
+
+  /// Initializes the resource with the encrypted data and related DRM container.
+  public init(encryptedData: Data, path: String, drmContainer: AdobeDRMContainer, sourceURL: AbsoluteURL? = nil) {
+    self.encryptedData = encryptedData
     self.path = path
     self.drmContainer = drmContainer
+    self.sourceURL = sourceURL
   }
 
-  func read(range: Range<UInt64>?) async throws -> Data {
-    let fullData = drmContainer.decode(data, at: path)
+  /// Returns the decrypted data, caching it after the first decryption.
+  private func decryptedData() async -> ReadResult<Data> {
+    if let cached = _decryptedData {
+      return cached
+    }
+    let decrypted = drmContainer.decode(encryptedData, at: path)
+    let result: ReadResult<Data> = .success(decrypted)
+    _decryptedData = result
+    return result
+  }
 
+  public func read(range: Range<UInt64>?) async throws -> Data {
+    let fullData = try await decryptedData().get()
     if let range = range {
-      let start = Int(clamping: range.lowerBound)
-      let end = Int(clamping: range.upperBound)
+      let start = Int(range.lowerBound)
+      let end = Int(range.upperBound)
       let intRange = start..<end
-
       guard intRange.lowerBound >= 0, intRange.upperBound <= fullData.count else {
         throw ReadError.access(.fileSystem(.fileNotFound(nil)))
       }
-
       return fullData.subdata(in: intRange)
-    } else {
-      return fullData
     }
+    return fullData
   }
 
-  var sourceURL: AbsoluteURL? {
-    nil
-  }
-
-  func properties() async -> ReadResult<ResourceProperties> {
-    var props = ResourceProperties()
-    props.length = UInt64(data.count)
-    return .success(props)
-  }
-
-  func estimatedLength() async -> ReadResult<UInt64?> {
-    return .success(UInt64(data.count))
-  }
-
-  func stream(range: Range<UInt64>?, consume: @escaping (Data) -> Void) async -> ReadResult<Void> {
+  public func stream(range: Range<UInt64>?, consume: @escaping (Data) -> Void) async -> ReadResult<Void> {
     do {
       let chunk = try await read(range: range)
       consume(chunk)
@@ -251,14 +239,24 @@ struct DRMResource: Resource {
     }
   }
 
-  func close() {}
+  public func properties() async -> ReadResult<ResourceProperties> {
+    let fullData = try? await decryptedData().get()
+    var props = ResourceProperties()
+    props.length = fullData.map { UInt64($0.count) }
+    return .success(props)
+  }
+
+  public func estimatedLength() async -> ReadResult<UInt64?> {
+    let fullData = try? await decryptedData().get()
+    return .success(fullData.map { UInt64($0.count) })
+  }
 }
 
-// MARK: - ResourceProperties Extension
 extension ResourceProperties {
   public var length: UInt64? {
     get { self["length"] }
     set { self["length"] = newValue }
   }
 }
+
 #endif
