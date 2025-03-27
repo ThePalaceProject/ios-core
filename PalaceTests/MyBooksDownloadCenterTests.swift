@@ -113,7 +113,7 @@ extension TPPOPDSFeed {
   @objc func swizzledURL_Success(
     _ url: URL,
     shouldResetCache: Bool,
-    userTokenIfAvailable: Bool,
+    useTokenIfAvailable: Bool,
     completionHandler: @escaping (TPPOPDSFeed?, [String: Any]?) -> Void) {
     completionHandler(mockFeed, nil)
   }
