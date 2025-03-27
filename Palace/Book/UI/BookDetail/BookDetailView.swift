@@ -440,8 +440,9 @@ struct BookDetailView: View {
   // MARK: - Helper Functions
 
   private func infoRow(label: String, value: String) -> some View {
-    HStack(alignment: .bottom) {
+    HStack(alignment: .bottom, spacing: 10) {
       infoLabel(label: label)
+        .frame(width: 100, alignment: .leading)
       infoValue(value: value)
     }
   }
