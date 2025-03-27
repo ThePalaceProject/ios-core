@@ -14,7 +14,7 @@ enum Group: Int {
 }
 
 @MainActor
-class MyBooksViewModel: ObservableObject {
+@objc class MyBooksViewModel: NSObject, ObservableObject {
   typealias DisplayStrings = Strings.MyBooksView
 
   // MARK: - Public Properties
@@ -37,12 +37,13 @@ class MyBooksViewModel: ObservableObject {
   private var bookRegistry: TPPBookRegistry { TPPBookRegistry.shared }
 
   // MARK: - Initialization
-  init() {
+  override init() {
     self.activeFacetSort = .author
     self.facetViewModel = FacetViewModel(
       groupName: DisplayStrings.sortBy,
       facets: [.title, .author]
     )
+    super.init()
 
     registerPublishers()
     registerNotifications()
@@ -111,7 +112,7 @@ class MyBooksViewModel: ObservableObject {
     }
   }
 
-  func authenticateAndLoad(account: Account) {
+  @objc func authenticateAndLoad(account: Account) {
     account.loadAuthenticationDocument { [weak self] success in
       guard let self = self, success else { return }
 
