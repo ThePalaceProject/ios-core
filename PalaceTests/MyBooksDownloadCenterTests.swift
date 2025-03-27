@@ -53,7 +53,7 @@ class MyBooksDownloadCenterTests: XCTestCase {
       }
     }
 
-    swizzle(selector: #selector(TPPOPDSFeed.swizzledURL_Success(_:shouldResetCache:userTokenIfAvailable:completionHandler:)))
+    swizzle(selector: #selector(TPPOPDSFeed.swizzledURL_Success(_:shouldResetCache:useTokenIfAvailable:completionHandler:)))
 
     let book = TPPBookMocker.mockBook(distributorType: .AdobeAdept)
     myBooksDownloadCenter.startBorrow(for: book, attemptDownload: true)
