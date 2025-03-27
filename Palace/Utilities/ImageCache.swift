@@ -63,7 +63,7 @@ class ImageCache {
           }
         }
       } catch {
-        print("Failed to cleanup cache: \(error)")
+        Log.error("Failed to cleanup cache: )", error.localizedDescription)
       }
     }
   }

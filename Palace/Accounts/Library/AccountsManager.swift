@@ -100,7 +100,6 @@ let currentAccountIdentifierKey = "TPPCurrentAccountIdentifier"
     }
   }
 
-  /// Checks if accounts have been loaded
   var accountsHaveLoaded: Bool {
     performLocked {
       return !(accountSets[accountSet]?.isEmpty ?? true)
@@ -221,7 +220,6 @@ let currentAccountIdentifierKey = "TPPCurrentAccountIdentifier"
         UIApplication.shared.delegate?.window??.tintColor = TPPConfiguration.mainColor()
         NotificationCenter.default.post(name: NSNotification.Name.TPPCurrentAccountDidChange, object: nil)
 
-        // Call the completion exactly once after all work is done.
         completion(true)
       }
     } catch {
