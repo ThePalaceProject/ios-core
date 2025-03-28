@@ -260,8 +260,11 @@ private enum StorageKey: String {
   }
   
   func isTokenRefreshRequired() -> Bool {
-    let isTokenAuthAndMissing = (authDefinition?.isToken ?? false) && !hasAuthToken() && ((TPPUserAccount.sharedAccount().authDefinition?.tokenURL) != nil)
-    return authTokenHasExpired || isTokenAuthAndMissing
+    let isTokenAuthAndMissing = (authDefinition?.isToken ?? false) &&
+    !hasAuthToken() &&
+    ((TPPUserAccount.sharedAccount().authDefinition?.tokenURL) != nil)
+    
+    return (authTokenHasExpired || isTokenAuthAndMissing) && hasCredentials()
   }
   
   func hasAdobeToken() -> Bool {

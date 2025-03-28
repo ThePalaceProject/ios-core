@@ -89,7 +89,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
   private let syncQueueKey = DispatchSpecificKey<Void>()
 
   @objc enum RegistryState: Int {
-    case unloaded, loading, loaded, syncing
+    case unloaded, loading, loaded, syncing, synced
   }
 
   private let registryFolderName = "registry"
@@ -219,28 +219,34 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
 
   func sync(completion: ((_ errorDocument: [AnyHashable: Any]?, _ newBooks: Bool) -> Void)? = nil) {
     guard let loansUrl = AccountsManager.shared.currentAccount?.loansUrl else { return }
+
+    if state == .synced || state == .syncing {
+      return
+    }
+
     state = .syncing
     syncUrl = loansUrl
-    TPPOPDSFeed.withURL(loansUrl, shouldResetCache: true, useTokenIfAvailable: true) { feed, errorDocument in
-      DispatchQueue.main.async { [weak self] in
-        guard let self else { return }
 
-        defer {
+    TPPOPDSFeed.withURL(loansUrl, shouldResetCache: true, useTokenIfAvailable: true) { [weak self] feed, errorDocument in
+      DispatchQueue.main.async { [weak self] in
+        guard let self = self else { return }
+        if self.syncUrl != loansUrl { return }
+
+        if let errorDocument = errorDocument {
           self.state = .loaded
           self.syncUrl = nil
-        }
-        if self.syncUrl != loansUrl { return }
-        if let errorDocument = errorDocument {
           completion?(errorDocument, false)
           return
         }
+
         guard let feed = feed else {
+          self.state = .loaded
+          self.syncUrl = nil
           completion?(nil, false)
           return
         }
-        if let licensor = feed.licensor as? [String: Any] {
-          TPPUserAccount.sharedAccount().setLicensor(licensor)
-        }
+
+        var changesMade = false
         self.syncQueue.sync {
           var recordsToDelete = Set<String>(self.registry.keys)
           for entry in feed.entries {
@@ -248,42 +254,34 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
                   let book = TPPBook(entry: opdsEntry)
             else { continue }
             recordsToDelete.remove(book.identifier)
+
             if self.registry[book.identifier] != nil {
               self.updateBook(book)
+              changesMade = true
             } else {
               self.addBook(book)
+              changesMade = true
             }
           }
           recordsToDelete.forEach { identifier in
-            if let state = self.registry[identifier]?.state, state == .downloadSuccessful || state == .used {
+            if let recordState = self.registry[identifier]?.state,
+               recordState == .downloadSuccessful || recordState == .used {
               MyBooksDownloadCenter.shared.deleteLocalContent(for: identifier)
             }
             self.registry[identifier]?.state = .unregistered
             self.removeBook(forIdentifier: identifier)
+            changesMade = true
           }
           self.save()
         }
-        self.myBooks.forEach { book in
-          book.defaultAcquisition?.availability.matchUnavailable({ _ in
-            MyBooksDownloadCenter.shared.returnBook(withIdentifier: book.identifier)
-            self.removeBook(forIdentifier: book.identifier)
-          }, limited: { limited in
-            if let until = limited.until, until.timeIntervalSinceNow <= 0 {
-              MyBooksDownloadCenter.shared.returnBook(withIdentifier: book.identifier)
-              self.removeBook(forIdentifier: book.identifier)
-            }
-          }, unlimited: nil, reserved: nil, ready: { ready in
-            if let until = ready.until, until.timeIntervalSinceNow <= 0 {
-              MyBooksDownloadCenter.shared.returnBook(withIdentifier: book.identifier)
-              self.removeBook(forIdentifier: book.identifier)
-            }
-          })
-        }
+
+        self.state = .synced
+        self.syncUrl = nil
+        completion?(nil, changesMade)
       }
     }
   }
 
-  /// Saves book registry data.
   private func save() {
     guard let account = AccountsManager.shared.currentAccount?.uuid,
           let registryUrl = registryUrl(for: account)

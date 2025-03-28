@@ -620,7 +620,7 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
           if let info = downloadInfo(forBookIdentifier: book.identifier)?.withRightsManagement(.none) {
             bookIdentifierToDownloadInfo[book.identifier] = info
           }
-        } else {
+        } else if TPPUserAccount.sharedAccount().hasCredentials() {
           NSLog("Authentication might be needed after all")
           TPPNetworkExecutor.shared.refreshTokenAndResume(task: downloadTask)
           return
