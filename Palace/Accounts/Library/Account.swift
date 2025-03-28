@@ -524,19 +524,20 @@ protocol AccountLogoDelegate: AnyObject {
   }
 
   private func fetchImage(from url: URL, completion: @escaping (UIImage?) -> ()) {
+    if let cachedImage = ImageCache.shared.loadImage(forAccount: self.uuid) {
+      completion(cachedImage)
+      return
+    }
+
     TPPNetworkExecutor.shared.GET(url, useTokenIfAvailable: false) { result in
       DispatchQueue.main.async {
         switch result {
         case .success(let serverData, _):
           guard let image = UIImage(data: serverData) else {
-            TPPErrorLogger.logError(
-              withCode: .authDocLoadFail,
-              summary: "Invalid image data received",
-              metadata: ["url": url.absoluteString]
-            )
             completion(nil)
             return
           }
+          ImageCache.shared.save(image: image, forAccount: self.uuid)
           completion(image)
         case .failure(let error, _):
           TPPErrorLogger.logError(

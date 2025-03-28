@@ -17,7 +17,7 @@ class TPPAccountListDataSource: NSObject {
     loadData()
   }
   
-  private func loadData(_ filterString: String? = nil) {
+  func loadData(_ filterString: String? = nil) {
     accounts = AccountsManager.shared.accounts()
     accounts.sort { $0.name < $1.name }
     
@@ -38,6 +38,20 @@ class TPPAccountListDataSource: NSObject {
   
   func account(at indexPath: IndexPath) -> Account {
     indexPath.section == .zero ? nationalAccounts[indexPath.row] : accounts[indexPath.row]
+  }
+}
+
+extension TPPAccountListDataSource {
+  func indexPath(for account: Account) -> IndexPath? {
+    for section in 0..<2 {
+      let count = accounts(in: section)
+      for row in 0..<count {
+        if self.account(at: IndexPath(row: row, section: section)) === account {
+          return IndexPath(row: row, section: section)
+        }
+      }
+    }
+    return nil
   }
 }
 

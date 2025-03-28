@@ -100,7 +100,6 @@ let currentAccountIdentifierKey = "TPPCurrentAccountIdentifier"
     }
   }
 
-  /// Checks if accounts have been loaded
   var accountsHaveLoaded: Bool {
     performLocked {
       return !(accountSets[accountSet]?.isEmpty ?? true)
@@ -109,17 +108,38 @@ let currentAccountIdentifierKey = "TPPCurrentAccountIdentifier"
 
   // MARK: - Account Loading
 
+  var isLoading = false
+  private var loadCatalogCompletions: [((Bool) -> ())] = []
 
   func loadCatalogs(completion: ((Bool) -> ())?) {
+    if accountsHaveLoaded {
+      completion?(true)
+      return
+    }
+
+    if isLoading {
+      if let completion = completion {
+        loadCatalogCompletions.append(completion)
+      }
+      return
+    }
+
+    isLoading = true
+    if let completion = completion {
+      loadCatalogCompletions.append(completion)
+    }
+
     Log.debug(#file, "Entering loadCatalog...")
     let targetUrl = TPPConfiguration.customUrl() ?? (TPPSettings.shared.useBetaLibraries ? TPPConfiguration.betaUrl : TPPConfiguration.prodUrl)
     let hash = targetUrl.absoluteString.md5().base64EncodedStringUrlSafe().trimmingCharacters(in: ["="])
 
-    TPPNetworkExecutor(cachingStrategy: .fallback).GET(targetUrl, useTokenIfAvailable: false) { result in
+    TPPNetworkExecutor(cachingStrategy: .fallback).GET(targetUrl, useTokenIfAvailable: false) { [weak self] result in
+      guard let self = self else { return }
       switch result {
       case .success(let data, _):
         self.loadAccountSetsAndAuthDoc(fromCatalogData: data, key: hash) { success in
           NotificationCenter.default.post(name: NSNotification.Name.TPPCatalogDidLoad, object: nil)
+          self.completeLoadCatalogs(with: success)
         }
       case .failure(let error, _):
         TPPErrorLogger.logError(
@@ -129,9 +149,15 @@ let currentAccountIdentifierKey = "TPPCurrentAccountIdentifier"
             NSUnderlyingErrorKey: error,
             "targetUrl": targetUrl
           ])
-        completion?(false)
+        self.completeLoadCatalogs(with: false)
       }
     }
+  }
+
+  private func completeLoadCatalogs(with success: Bool) {
+    isLoading = false
+    loadCatalogCompletions.forEach { $0(success) }
+    loadCatalogCompletions.removeAll()
   }
 
   /// Clears cached accounts & authentication data
@@ -153,34 +179,30 @@ let currentAccountIdentifierKey = "TPPCurrentAccountIdentifier"
       let hadAccount = self.currentAccount != nil
       let accountSet = catalogsFeed.catalogs.map { Account(publication: $0) }
 
-      accountSetsLock.async(flags: .barrier) { self.accountSets[key] = accountSet }
-
-      if hadAccount != (self.currentAccount != nil) {
-        self.currentAccount?.loadLogo()
-        self.currentAccount?.loadAuthenticationDocument(using: TPPUserAccount.sharedAccount()) { _ in
-          DispatchQueue.main.async {
-            var mainFeed = URL(string: self.currentAccount?.catalogUrl ?? "")
-            let resolveFn = {
-              TPPSettings.shared.accountMainFeedURL = mainFeed
-              UIApplication.shared.delegate?.window??.tintColor = TPPConfiguration.mainColor()
-              NotificationCenter.default.post(name: NSNotification.Name.TPPCurrentAccountDidChange, object: nil)
-              completion(true)
-            }
-            if self.currentAccount?.details?.needsAgeCheck ?? false {
-              self.ageCheck.verifyCurrentAccountAgeRequirement(userAccountProvider: TPPUserAccount.sharedAccount(), currentLibraryAccountProvider: self) {
-                mainFeed = self.currentAccount?.details?.defaultAuth?.coppaURL(isOfAge: $0)
-                resolveFn()
-              }
-            } else {
-              resolveFn()
-            }
-          }
-        }
-      } else {
-        completion(true)
+      accountSetsLock.async(flags: .barrier) {
+        self.accountSets[key] = accountSet
       }
 
       let group = DispatchGroup()
+
+      if hadAccount != (self.currentAccount != nil), let current = self.currentAccount {
+        group.enter()
+        current.loadLogo()
+
+        current.loadAuthenticationDocument(using: TPPUserAccount.sharedAccount()) { _ in
+          if current.details?.needsAgeCheck ?? false {
+            group.enter()
+            self.ageCheck.verifyCurrentAccountAgeRequirement(
+              userAccountProvider: TPPUserAccount.sharedAccount(),
+              currentLibraryAccountProvider: self
+            ) { isOfAge in
+              group.leave()
+            }
+          }
+          group.leave()
+        }
+      }
+
       for account in accountSet {
         group.enter()
         DispatchQueue.global(qos: .background).async {
@@ -188,7 +210,16 @@ let currentAccountIdentifierKey = "TPPCurrentAccountIdentifier"
           group.leave()
         }
       }
+
       group.notify(queue: .main) {
+        var mainFeed = URL(string: self.currentAccount?.catalogUrl ?? "")
+        if let current = self.currentAccount, current.details?.needsAgeCheck ?? false {
+          mainFeed = current.details?.defaultAuth?.coppaURL(isOfAge: true)
+        }
+        TPPSettings.shared.accountMainFeedURL = mainFeed
+        UIApplication.shared.delegate?.window??.tintColor = TPPConfiguration.mainColor()
+        NotificationCenter.default.post(name: NSNotification.Name.TPPCurrentAccountDidChange, object: nil)
+
         completion(true)
       }
     } catch {
