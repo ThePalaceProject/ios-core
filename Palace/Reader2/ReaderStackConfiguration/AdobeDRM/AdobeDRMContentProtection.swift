@@ -168,7 +168,7 @@ extension AdobeDRMContainer: Container {
     guard let fileURL else { return nil }
     let archive = try await Archive(url: fileURL, accessMode: .read)
 
-    guard let entry = try await archive.entries().first(where: { $0.path == path }) else {
+    guard let entry = try await archive.first(where: { $0.path == path }) else {
       return nil
     }
 
