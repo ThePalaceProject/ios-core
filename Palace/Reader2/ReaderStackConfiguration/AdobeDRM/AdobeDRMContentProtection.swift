@@ -140,7 +140,6 @@ extension AdobeDRMContainer: Container {
       }
 
       while !isCompleted {
-        let nextFireDate = Date(timeIntervalSinceNow: 0.1)
         CFRunLoopRunInMode(CFRunLoopMode.defaultMode, 0.1, false)
 
         if Date() > Date(timeIntervalSinceNow: 10) {

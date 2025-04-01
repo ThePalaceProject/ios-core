@@ -185,6 +185,7 @@
 // TODO: SIMPLY-2862 This method should be removed as part of this ticket
 - (void)reloadAccountsAndAuthenticationDocument
 {
+  return;
   TPPLOG_F(@"Reloading accounts from RemoteVC: %@", self.title);
   [AccountsManager.shared updateAccountSetWithCompletion:^(BOOL success) {
     dispatch_async(dispatch_get_main_queue(), ^{
