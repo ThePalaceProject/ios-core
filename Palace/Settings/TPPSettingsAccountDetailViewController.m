@@ -631,7 +631,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
           alertController.view.tintColor = [TPPConfiguration mainColor];
         }];
       } else {
-        [self.businessLogic logIn];
+        [self.businessLogic logInWith:[self.selectedUserAccount.authDefinition tokenURL]];
       }
       break;
     }

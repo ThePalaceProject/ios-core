@@ -43,7 +43,7 @@ private enum StorageKey: String {
   private lazy var keychainTransaction = TPPKeychainVariableTransaction(accountInfoLock: accountInfoLock)
   private var notifyAccountChange: Bool = true
 
-  private var libraryUUID: String? {
+  var libraryUUID: String? {
     didSet {
       guard libraryUUID != oldValue else { return }
       let variables: [StorageKey: Keyable] = [
