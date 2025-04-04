@@ -96,9 +96,7 @@ extension TPPOPDSFeed {
     shouldResetCache: Bool,
     userTokenIfAvailable: Bool,
     completionHandler: @escaping (TPPOPDSFeed?, [String: Any]?) -> Void) {
-      // Immediately simulate a successful response.
       completionHandler(mockFeed, nil)
-      // Optionally post the notification if that is what the download center relies on.
       NotificationCenter.default.post(name: .TPPMyBooksDownloadCenterDidChange, object: nil)
     }
 
@@ -107,7 +105,6 @@ extension TPPOPDSFeed {
     shouldResetCache: Bool,
     useTokenIfAvailable: Bool,
     completionHandler: @escaping (TPPOPDSFeed?, [String: Any]?) -> Void) {
-      // Simulate an error that triggers reauthentication.
       completionHandler(nil, ["type": TPPProblemDocument.TypeInvalidCredentials])
       NotificationCenter.default.post(name: .TPPMyBooksDownloadCenterDidChange, object: nil)
     }
