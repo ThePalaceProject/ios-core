@@ -84,8 +84,9 @@ enum Group: Int {
     if TPPUserAccount.sharedAccount().needsAuth, !TPPUserAccount.sharedAccount().hasCredentials() {
       TPPAccountSignInViewController.requestCredentials(completion: nil)
     } else {
-      bookRegistry.sync()
-      loadData()
+      bookRegistry.sync { [weak self] _, _ in
+        self?.loadData()
+      }
     }
   }
 
