@@ -1249,10 +1249,6 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
 
 - (void)accountDidChange
 {
-  if (self.businessLogic.isValidatingCredentials) {
-    return;
-  }
-
   [[NSOperationQueue mainQueue] addOperationWithBlock:^{
     if(self.selectedUserAccount.hasCredentials) {
       self.usernameTextField.text = self.selectedUserAccount.barcode;
