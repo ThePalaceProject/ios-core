@@ -53,6 +53,7 @@ struct MyBooksView: View {
           isLoading: $model.isLoading,
           onSelect: { book in presentBookDetail(for: book) }
         )
+        .refreshable { model.reloadData() }
       }
     }
   }

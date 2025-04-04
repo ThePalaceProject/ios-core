@@ -220,7 +220,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
   func sync(completion: ((_ errorDocument: [AnyHashable: Any]?, _ newBooks: Bool) -> Void)? = nil) {
     guard let loansUrl = AccountsManager.shared.currentAccount?.loansUrl else { return }
 
-    if state == .synced || state == .syncing {
+    if state == .syncing {
       return
     }
 
