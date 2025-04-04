@@ -47,10 +47,10 @@ import Foundation
     }
     let base64LoginString = loginData.base64EncodedString()
     request.addValue("Basic \(base64LoginString)", forHTTPHeaderField: "Authorization")
- 
+    
     do {
       let (data, _) = try await URLSession.shared.data(for: request)
-
+      
       let decoder = JSONDecoder()
       decoder.keyDecodingStrategy = .convertFromSnakeCase
       let tokenResponse = try decoder.decode(TokenResponse.self, from: data)
@@ -59,6 +59,7 @@ import Foundation
       return .failure(error)
     }
   }
+}
 
 extension TokenRequest {
   @objc func execute(completion: @escaping (TokenResponse?, Error?) -> Void) {
