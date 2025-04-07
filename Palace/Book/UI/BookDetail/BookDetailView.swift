@@ -195,7 +195,6 @@ struct BookDetailView: View {
     BookImageView(book: viewModel.book, height: 280 * imageScale, showShimmer: true, shimmerDuration: 0.8)
       .opacity(imageOpacity)
       .adaptiveShadow()
-//      .shadow(color: Color(UIColor.label).opacity(0.3), radius: 8, x: 0, y: 5)
       .animation(scaleAnimation, value: imageScale)
       .animation(scaleAnimation, value: imageOpacity)
       .background(GeometryReader { _ in
@@ -350,7 +349,6 @@ struct BookDetailView: View {
                       BookImageView(book: book, height: 160, showShimmer: true)
                         .padding()
                         .adaptiveShadow()
-//                        .shadow(color: Color(UIColor.label).opacity(0.2), radius: 5, x: 0, y: 2)
                         .transition(.opacity.combined(with: .scale))
                     }
                   } else {
