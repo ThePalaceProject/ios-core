@@ -80,7 +80,7 @@ struct BookDetailView: View {
       .sheet(isPresented: $showHalfSheet) {
         HalfSheetView(viewModel: viewModel, backgroundColor: headerBackgroundColor, coverImage: $viewModel.book.coverImage)
       }
-      .presentationDetents([.medium])
+      .presentationDetents(UIDevice.current.userInterfaceIdiom == .pad ? [.height(400)] : [.medium])
 
       if !viewModel.isFullSize {
         backgroundView
@@ -98,7 +98,6 @@ struct BookDetailView: View {
       backbutton
       sampleToolbarView
     }
-    .background(.white)
     .offset(x: dragOffset)
     .animation(.interactiveSpring(), value: dragOffset)
     .gesture(edgeSwipeGesture)
@@ -195,7 +194,7 @@ struct BookDetailView: View {
   private var imageView: some View {
     BookImageView(book: viewModel.book, height: 280 * imageScale, showShimmer: true, shimmerDuration: 0.8)
       .opacity(imageOpacity)
-      .shadow(color: .black.opacity(0.3), radius: 10, x: 0, y: 5)
+      .adaptiveShadow()
       .animation(scaleAnimation, value: imageScale)
       .animation(scaleAnimation, value: imageOpacity)
       .background(GeometryReader { _ in
@@ -218,7 +217,7 @@ struct BookDetailView: View {
           .font(.footnote)
       }
 
-      BookButtonsView(provider: viewModel, backgroundColor: viewModel.isFullSize ? headerBackgroundColor : .white) { type in
+      BookButtonsView(provider: viewModel, backgroundColor: viewModel.isFullSize ? headerBackgroundColor : Color(.systemBackground)) { type in
         handleButtonAction(type)
       }
 
@@ -227,13 +226,13 @@ struct BookDetailView: View {
           .padding(.top)
       }
     }
-    .foregroundColor(headerBackgroundColor.isDark && viewModel.isFullSize ? .white : .black)
+    .foregroundColor(headerBackgroundColor.isDark && viewModel.isFullSize ? .white : Color(UIColor.label))
     .animation(scaleAnimation, value: imageScale)
   }
 
   private var backgroundView: some View {
     ZStack(alignment: .top) {
-      Color.white
+      Color.primary
         .edgesIgnoringSafeArea(.all)
 
       LinearGradient(
@@ -280,14 +279,12 @@ struct BookDetailView: View {
           VStack(alignment: .leading, spacing: 10) {
             Text(DisplayStrings.description.uppercased())
               .font(.headline)
-              .foregroundColor(.black)
 
             Divider()
               .padding(.vertical)
 
             VStack {
               HTMLTextView(htmlContent: summary)
-                .foregroundColor(.black)
                 .lineLimit(nil)
                 .frame(maxWidth: .infinity)
                 .fixedSize(horizontal: false, vertical: true)
@@ -300,9 +297,9 @@ struct BookDetailView: View {
           if !isExpanded {
             LinearGradient(
               gradient: Gradient(colors: [
-                Color.white.opacity(0.0),
-                Color.white.opacity(0.9),
-                Color.white
+                Color.colorInverseLabel.opacity(0.3),
+                Color.colorInverseLabel.opacity(0.75),
+                Color.colorInverseLabel
               ]),
               startPoint: .top,
               endPoint: .bottom
@@ -316,7 +313,6 @@ struct BookDetailView: View {
             }
           }
           .bottomrRightJustified()
-          .foregroundColor(.black)
         }
         .padding(.bottom)
       }
@@ -341,7 +337,6 @@ struct BookDetailView: View {
                 }
               }
             }
-            .foregroundColor(.black)
             .padding(.horizontal, 30)
 
             ScrollView(.horizontal, showsIndicators: false) {
@@ -352,6 +347,8 @@ struct BookDetailView: View {
                       viewModel.selectRelatedBook(book)
                     }) {
                       BookImageView(book: book, height: 160, showShimmer: true)
+                        .padding()
+                        .adaptiveShadow()
                         .transition(.opacity.combined(with: .scale))
                     }
                   } else {
@@ -374,7 +371,6 @@ struct BookDetailView: View {
         audiobookIndicator
           .padding(8)
         Text(Strings.BookDetailView.audiobookAvailable)
-          .foregroundColor(.black)
       }
       Divider()
     }
@@ -410,7 +406,7 @@ struct BookDetailView: View {
     VStack(alignment: .leading, spacing: 5) {
       Text(DisplayStrings.information.uppercased())
         .font(.headline)
-        .foregroundColor(.black)
+//        .foregroundColor(Color(UIColor.label))
       Divider()
         .padding(.vertical)
 
@@ -450,7 +446,6 @@ struct BookDetailView: View {
   @ViewBuilder private func infoLabel(label: String) -> some View {
     Text(label)
       .font(Font.boldPalaceFont(size: 12))
-      .foregroundColor(.gray)
       .lineLimit(nil)
       .multilineTextAlignment(.leading)
       .fixedSize(horizontal: false, vertical: true)
@@ -461,14 +456,12 @@ struct BookDetailView: View {
       Link(value, destination: url)
         .font(.subheadline)
         .underline()
-        .foregroundColor(.black)
         .lineLimit(nil)
         .multilineTextAlignment(.leading)
         .fixedSize(horizontal: false, vertical: true)
     } else {
       Text(value)
         .font(.subheadline)
-        .foregroundColor(.black)
         .lineLimit(nil)
         .multilineTextAlignment(.leading)
         .fixedSize(horizontal: false, vertical: true)
@@ -583,3 +576,4 @@ struct TPPCatalogFeedView: UIViewControllerRepresentable {
   func updateUIViewController(_ uiViewController: TPPCatalogFeedViewController, context: Context) {
   }
 }
+

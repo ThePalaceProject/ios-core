@@ -29,32 +29,32 @@ extension Color {
   static let palaceSuccessMedium = Color("PalaceSuccessMedium")
 }
 
-
 extension Color {
   var isDark: Bool {
-    let uiColor = UIColor(self)
-    guard let components = uiColor.cgColor.components else { return false }
+    let baseUIColor = UIColor(self)
+    var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
 
-    let red, green, blue: CGFloat
+    guard baseUIColor.getRed(&red, green: &green, blue: &blue, alpha: &alpha) else {
+      return false
+    }
 
-    switch components.count {
-    case 2: // Grayscale (white/black, etc.)
-      red = components[0]
-      green = components[0]
-      blue = components[0]
-    case 3: // RGB
-      red = components[0]
-      green = components[1]
-      blue = components[2]
-    case 4: // RGBA
-      red = components[0]
-      green = components[1]
-      blue = components[2]
-    default:
-      return false // Unexpected case, assume non-dark color
+    if alpha < 1.0 {
+      var bgRed: CGFloat = 0, bgGreen: CGFloat = 0, bgBlue: CGFloat = 0, bgAlpha: CGFloat = 0
+      let bgColor = UIColor.systemBackground
+      bgColor.getRed(&bgRed, green: &bgGreen, blue: &bgBlue, alpha: &bgAlpha)
+
+      red = red * alpha + bgRed * (1 - alpha)
+      green = green * alpha + bgGreen * (1 - alpha)
+      blue = blue * alpha + bgBlue * (1 - alpha)
     }
 
     let brightness = (red * 299 + green * 587 + blue * 114) / 1000
-    return brightness < 0.5
+
+    let maxVal = max(red, green, blue)
+    let minVal = min(red, green, blue)
+    let saturation: CGFloat = (maxVal == 0) ? 0 : (maxVal - minVal) / maxVal
+    let threshold: CGFloat = saturation < 0.1 ? 0.4 : 0.5
+
+    return brightness < threshold
   }
 }

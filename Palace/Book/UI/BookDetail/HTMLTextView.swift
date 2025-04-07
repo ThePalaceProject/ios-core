@@ -7,9 +7,11 @@ struct HTMLTextView: View {
   var body: some View {
     if let attributedString = htmlToAttributedString(htmlContent) {
       Text(attributedString)
+        .foregroundColor(.white)
         .frame(maxWidth: .infinity, alignment: .leading)
     } else {
       Text(htmlContent)
+        .foregroundColor(.white)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
   }
@@ -25,6 +27,7 @@ struct HTMLTextView: View {
     if let nsAttributedString = try? NSAttributedString(data: data, options: options, documentAttributes: nil) {
       let mutableAttributedString = NSMutableAttributedString(attributedString: nsAttributedString)
       mutableAttributedString.addAttribute(.font, value: UIFont.palaceFont(ofSize: 15), range: NSRange(location: 0, length: mutableAttributedString.length))
+      mutableAttributedString.addAttribute(.foregroundColor, value: UIColor.label, range: NSRange(location: 0, length: mutableAttributedString.length))
       return AttributedString(mutableAttributedString)
     }
 

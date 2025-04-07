@@ -22,7 +22,7 @@ struct NormalBookCell: View {
         unreadImageView
         titleCoverImageView
       }
-      .frame(maxWidth: 140, alignment: .leading)
+      .frame(alignment: .leading)
 
       VStack(alignment: .leading, spacing: 10) {
         infoView
