@@ -2016,7 +2016,6 @@
 		E567C72B296743990079C28C /* BookCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookCell.swift; sourceTree = "<group>"; };
 		E573454A2AD6E8410021D768 /* EPUBSearchView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = EPUBSearchView.swift; sourceTree = "<group>"; };
 		E57345502AD6EB600021D768 /* EPUBSearchViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EPUBSearchViewModel.swift; sourceTree = "<group>"; };
-		E577061C2D3A129D00ED56F8 /* AttributedTextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttributedTextView.swift; sourceTree = "<group>"; };
 		E57E798329D4D407006D0F87 /* String+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "String+Extensions.swift"; sourceTree = "<group>"; };
 		E57F92B12D683562003D9180 /* BookListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookListView.swift; sourceTree = "<group>"; };
 		E57F92B52D6918CC003D9180 /* DeviceOrientation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceOrientation.swift; sourceTree = "<group>"; };
@@ -3463,7 +3462,6 @@
 			isa = PBXGroup;
 			children = (
 				E519460E2D6E6B3D0081172E /* LoadingOverlayModifier.swift */,
-				E577061C2D3A129D00ED56F8 /* AttributedTextView.swift */,
 				E5AA6F4029A6BA4000601B02 /* RefreshableView.swift */,
 				E5FFB96328AED4850042907F /* ImageProvider.swift */,
 				E54DD4C6275C60E70013C200 /* UIViewControllerWrapper.swift */,
