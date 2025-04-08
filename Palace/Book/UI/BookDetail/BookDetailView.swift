@@ -80,7 +80,7 @@ struct BookDetailView: View {
       .sheet(isPresented: $showHalfSheet) {
         HalfSheetView(viewModel: viewModel, backgroundColor: headerBackgroundColor, coverImage: $viewModel.book.coverImage)
       }
-      .presentationDetents(UIDevice.current.userInterfaceIdiom == .pad ? [.height(400)] : [.medium])
+      .presentationDetents([.height(0), .height(300)])
 
       if !viewModel.isFullSize {
         backgroundView
@@ -226,7 +226,7 @@ struct BookDetailView: View {
           .padding(.top)
       }
     }
-    .foregroundColor(headerBackgroundColor.isDark && viewModel.isFullSize ? .white : Color(UIColor.label))
+    .foregroundColor(viewModel.isFullSize ? (headerBackgroundColor.isDark ? .white : .black) : Color(UIColor.label))
     .animation(scaleAnimation, value: imageScale)
   }
 
@@ -275,47 +275,47 @@ struct BookDetailView: View {
 
   @ViewBuilder private var descriptionView: some View {
     if let summary = viewModel.book.summary {
-        ZStack(alignment: .bottom) {
-          VStack(alignment: .leading, spacing: 10) {
-            Text(DisplayStrings.description.uppercased())
-              .font(.headline)
+      ZStack(alignment: .bottom) {
+        VStack(alignment: .leading, spacing: 10) {
+          Text(DisplayStrings.description.uppercased())
+            .font(.headline)
 
-            Divider()
-              .padding(.vertical)
+          Divider()
+            .padding(.vertical)
 
-            VStack {
-              HTMLTextView(htmlContent: summary)
-                .lineLimit(nil)
-                .frame(maxWidth: .infinity)
-                .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(.bottom, 60)
-            .frame(maxHeight: isExpanded ? .infinity : 100, alignment: .top)
-            .clipped()
+          VStack {
+            HTMLTextView(htmlContent: summary)
+              .lineLimit(nil)
+              .frame(maxWidth: .infinity)
+              .fixedSize(horizontal: false, vertical: true)
           }
-
-          if !isExpanded {
-            LinearGradient(
-              gradient: Gradient(colors: [
-                Color.colorInverseLabel.opacity(0.3),
-                Color.colorInverseLabel.opacity(0.75),
-                Color.colorInverseLabel
-              ]),
-              startPoint: .top,
-              endPoint: .bottom
-            )
-            .frame(height: 60)
-          }
-
-          Button(isExpanded ? DisplayStrings.less.capitalized : DisplayStrings.more.capitalized) {
-            withAnimation {
-              isExpanded.toggle()
-            }
-          }
-          .bottomrRightJustified()
+          .padding(.bottom, 60)
+          .frame(maxHeight: isExpanded ? .infinity : 100, alignment: .top)
+          .clipped()
         }
-        .padding(.bottom)
+
+        if !isExpanded {
+          LinearGradient(
+            gradient: Gradient(stops: [
+              .init(color: Color.colorInverseLabel.opacity(0.0), location: 0.0),
+              .init(color: Color.colorInverseLabel.opacity(0.5), location: 0.7),
+              .init(color: Color.colorInverseLabel, location: 1.0)
+            ]),
+            startPoint: .top,
+            endPoint: .bottom
+          )
+          .frame(height: 60)
+        }
+
+        Button(isExpanded ? DisplayStrings.less.capitalized : DisplayStrings.more.capitalized) {
+          withAnimation {
+            isExpanded.toggle()
+          }
+        }
+        .bottomrRightJustified()
       }
+      .padding(.bottom)
+    }
   }
 
   private var relatedBooksView: some View {
