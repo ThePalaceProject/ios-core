@@ -348,7 +348,7 @@ struct BookDetailView: View {
                     }) {
                       BookImageView(book: book, height: 160, showShimmer: true)
                         .padding()
-                        .adaptiveShadow()
+                        .adaptiveShadow(radius: 5)
                         .transition(.opacity.combined(with: .scale))
                     }
                   } else {
