@@ -43,7 +43,7 @@ private enum StorageKey: String {
   private lazy var keychainTransaction = TPPKeychainVariableTransaction(accountInfoLock: accountInfoLock)
   private var notifyAccountChange: Bool = true
 
-  private var libraryUUID: String? {
+  var libraryUUID: String? {
     didSet {
       guard libraryUUID != oldValue else { return }
       let variables: [StorageKey: Keyable] = [
@@ -359,12 +359,13 @@ private enum StorageKey: String {
   var cookies: [HTTPCookie]? { _cookies.read() }
 
   var authToken: String? {
-    if let credentials = credentials, case let TPPCredentials.token(authToken: token) = credentials {
-      return token.authToken
+    if let credentials = _credentials.read(),
+       case let TPPCredentials.token(authToken: token, barcode: _, pin: _, expirationDate: _) = credentials {
+      return token
     }
     return nil
   }
-  
+
   var authTokenHasExpired: Bool {
     guard let credentials = credentials,
             case let TPPCredentials.token(authToken: token) = credentials,
@@ -460,7 +461,9 @@ private enum StorageKey: String {
   
   @objc(setAuthToken::::)
   func setAuthToken(_ token: String, barcode: String?, pin: String?, expirationDate: Date?) {
-    credentials = .token(authToken: token, barcode: barcode, pin: pin, expirationDate: expirationDate)
+    keychainTransaction.perform {
+      _credentials.write(.token(authToken: token, barcode: barcode, pin: pin, expirationDate: expirationDate))
+    }
   }
 
   @objc(setCookies:)
