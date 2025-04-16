@@ -61,7 +61,7 @@ import Combine
   @objc init(with book: TPPBook) {
     self.book = book
     currentPage = TPPBookRegistry.shared.location(forIdentifier: book.identifier)?.pageNumber ?? 0
-    TPPBookRegistry.shared.setState(.Used, for: book.identifier)
+    TPPBookRegistry.shared.setState(.used, for: book.identifier)
     super.init()
     bookmarks = localBookmarks
     fetchReadingPosition()

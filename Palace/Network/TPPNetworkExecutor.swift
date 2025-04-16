@@ -417,7 +417,7 @@ private extension URLRequest {
 extension TPPNetworkExecutor {
   func GET(_ reqURL: URL, useTokenIfAvailable: Bool = true) async throws -> (Data, URLResponse?) {
     return try await withCheckedThrowingContinuation { continuation in
-      var didResume = false  // Track if the continuation has been resumed
+      var didResume = false
 
       GET(reqURL, useTokenIfAvailable: useTokenIfAvailable) { result in
         guard !didResume else {
@@ -433,7 +433,6 @@ extension TPPNetworkExecutor {
         }
       }
 
-      // Handle timeout scenario if necessary (assuming there could be a time-based failure)
       DispatchQueue.global().asyncAfter(deadline: .now() + 10.0) {
         guard !didResume else { return }
         didResume = true

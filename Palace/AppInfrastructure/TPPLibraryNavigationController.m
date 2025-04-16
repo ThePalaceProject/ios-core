@@ -32,7 +32,6 @@
   vc.navigationItem.leftBarButtonItem.accessibilityLabel = NSLocalizedString(@"librarySwitchButton", nil);
 }
 
-// for converting this to Swift, see https://bit.ly/3mM9QoH
 - (void)switchLibrary
 {
   UIViewController *viewController = self.visibleViewController;
@@ -61,7 +60,7 @@
       [account loadAuthenticationDocumentUsingSignedInStateProvider:nil completion:^(BOOL success) {
         if (success) {
           dispatch_async(dispatch_get_main_queue(), ^{
-            
+
             if (![TPPSettings.shared.settingsAccountIdsList containsObject:account.uuid]) {
               TPPSettings.shared.settingsAccountIdsList = [TPPSettings.shared.settingsAccountIdsList arrayByAddingObject:account.uuid];
             }

@@ -36,8 +36,15 @@ class MyBooksDownloadCenterTests: XCTestCase {
     let notificationObserver = NotificationCenter.default.addObserver(
       forName: .TPPMyBooksDownloadCenterDidChange,
       object: nil,
-      queue: nil) { notification in
-        expectation.fulfill()
+      queue: nil
+    ) { notification in
+      // Ensure fulfill() is only called once
+      guard !fulfilled else { return }
+      fulfilled = true
+      expectation.fulfill()
+
+      if let observer = notificationObserver {
+        NotificationCenter.default.removeObserver(observer) // Remove safely
       }
 
     swizzle(selector: #selector(TPPOPDSFeed.swizzledURL_Success(_:shouldResetCache:userTokenIfAvailable:completionHandler:)))
@@ -94,7 +101,7 @@ extension TPPOPDSFeed {
   @objc func swizzledURL_Success(
     _ url: URL,
     shouldResetCache: Bool,
-    userTokenIfAvailable: Bool,
+    useTokenIfAvailable: Bool,
     completionHandler: @escaping (TPPOPDSFeed?, [String: Any]?) -> Void) {
       completionHandler(mockFeed, nil)
       NotificationCenter.default.post(name: .TPPMyBooksDownloadCenterDidChange, object: nil)

@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import Combine
 
 let DeprecatedAcquisitionKey = "acquisition"
 let DeprecatedAvailableCopiesKey = "available-copies"
@@ -39,7 +40,7 @@ let TitleKey = "title"
 let UpdatedKey = "updated"
 let TimeTrackingURLURLKey = "time-tracking-url"
 
-@objc public class TPPBook: NSObject {
+public class TPPBook: NSObject, ObservableObject {
   @objc var acquisitions: [TPPOPDSAcquisition]
   @objc var bookAuthors: [TPPBookAuthor]?
   @objc var categoryStrings: [String]?
@@ -65,21 +66,26 @@ let TimeTrackingURLURLKey = "time-tracking-url"
   @objc var contributors: [String: Any]?
   @objc var bookTokenLock = NSRecursiveLock()
   @objc var bookDuration: String?
-  
+
+  @Published var coverImage: UIImage?
+  @Published var thumbnailImage: UIImage?
+  @Published var isCoverLoading: Bool = false
+  @Published var isThumbnailLoading: Bool = false
+
   static let SimplifiedScheme = "http://librarysimplified.org/terms/genres/Simplified/"
-  
+
   static func categoryStringsFromCategories(categories: [TPPOPDSCategory]) -> [String] {
     categories.compactMap { $0.scheme == nil || $0.scheme?.absoluteString == SimplifiedScheme ? $0.label ?? $0.term : nil }
   }
-  
+
   @objc var isAudiobook: Bool {
     defaultBookContentType == .audiobook
   }
-  
+
   @objc var hasDuration: Bool {
     !(bookDuration?.isEmpty ?? true)
   }
-  
+
   init(
     acquisitions: [TPPOPDSAcquisition],
     authors: [TPPBookAuthor]?,
@@ -131,26 +137,30 @@ let TimeTrackingURLURLKey = "time-tracking-url"
     self.contributors = contributors
     self.bookTokenLock = NSRecursiveLock()
     self.bookDuration = bookDuration
+
+    super.init()
+      self.fetchThumbnailImage()
+      self.fetchCoverImage()
   }
-  
+
   @objc convenience init?(entry: TPPOPDSEntry?) {
     guard let entry = entry else {
       Log.debug(#file, ("Failed to create book with nil entry."))
       return nil
     }
-    
+
     let authors = entry.authorStrings.enumerated().map { index, element in
       TPPBookAuthor(
         authorName: (element as? String) ?? "",
         relatedBooksURL: index < entry.authorLinks.count ? entry.authorLinks[index].href : nil
       )
     }
-    
+
     var image: URL?
     var imageThumbnail: URL?
     var report: URL?
     var revoke: URL?
-    
+
     (entry.links as? [TPPOPDSLink])?.forEach {
       switch $0.rel {
       case TPPOPDSRelationAcquisitionRevoke:
@@ -165,7 +175,7 @@ let TimeTrackingURLURLKey = "time-tracking-url"
         break
       }
     }
-    
+
     self.init(
       acquisitions: entry.acquisitions,
       authors: authors,
@@ -193,18 +203,18 @@ let TimeTrackingURLURLKey = "time-tracking-url"
       bookDuration: entry.duration
     )
   }
-  
+
   @objc convenience init?(dictionary: [String: Any]) {
     guard let categoryStrings = dictionary[CategoriesKey] as? [String],
           let identifier = dictionary[IdentifierKey] as? String,
           let title = dictionary[TitleKey] as? String else {
       return nil
     }
-    
+
     let acquisitions: [TPPOPDSAcquisition] = (dictionary[AcquisitionsKey] as? [[String: Any]] ?? []).compactMap {
       TPPOPDSAcquisition(dictionary: $0)
     }
-    
+
     let authorStrings: [String] = {
       if let authorObject = dictionary[AuthorsKey] as? [[String]], let values = authorObject.first {
         return values
@@ -214,7 +224,7 @@ let TimeTrackingURLURLKey = "time-tracking-url"
         return []
       }
     }()
-    
+
     let authorLinkStrings: [String] = {
       if let authorLinkObject = dictionary[AuthorLinksKey] as? [[String]], let values = authorLinkObject.first {
         return values
@@ -224,19 +234,19 @@ let TimeTrackingURLURLKey = "time-tracking-url"
         return []
       }
     }()
-    
+
     let authors = authorStrings.enumerated().map { index, name in
       TPPBookAuthor(
         authorName: name,
         relatedBooksURL: index < authorLinkStrings.count ? URL(string: authorLinkStrings[index]) : nil
       )
     }
-    
+
     let revokeURL = URL(string: dictionary[RevokeURLKey] as? String ?? "")
     let reportURL = URL(string: dictionary[ReportURLKey] as? String ?? "")
-    
+
     guard let updated = NSDate(iso8601DateString: dictionary[UpdatedKey] as? String ?? "") as? Date else { return nil }
-    
+
     self.init(
       acquisitions: acquisitions,
       authors: authors,
@@ -296,7 +306,7 @@ let TimeTrackingURLURLKey = "time-tracking-url"
 
   @objc func dictionaryRepresentation() -> [String: Any] {
     let acquisitions = self.acquisitions.map { $0.dictionaryRepresentation() }
-  
+
     return [
       AcquisitionsKey: acquisitions,
       AlternateURLKey: alternateURL?.absoluteString ?? "",
@@ -369,9 +379,9 @@ let TimeTrackingURLURLKey = "time-tracking-url"
     return date < Date()
   }
 
-  private func getExpirationDate() -> Date? {
+  @objc func getExpirationDate() -> Date? {
     var date: Date?
-    
+
     defaultAcquisition?.availability.matchUnavailable(
       nil,
       limited: { limited in
@@ -387,14 +397,102 @@ let TimeTrackingURLURLKey = "time-tracking-url"
     return date
   }
 
+  struct ReservationDetails {
+    var holdPosition: Int = 0
+    var remainingTime: Int = 0
+    var timeUnit: String =  ""
+    var copiesAvailable: Int = 0
+  }
+
+  struct AvailabilityDetails {
+    var availableSince: String?
+    var availableUntil: String?
+  }
+
+  func getReservationDetails() -> ReservationDetails {
+    var untilDate: Date?
+    var reservationDetails = ReservationDetails()
+
+    defaultAcquisition?.availability.matchUnavailable(
+      nil,
+      limited: nil,
+      unlimited: nil,
+      reserved: { reserved in
+        if reserved.holdPosition > 0 {
+          reservationDetails.holdPosition = Int(reserved.holdPosition)
+        }
+        if let until = reserved.until, until.timeIntervalSinceNow > 0 {
+          untilDate = until
+        }
+
+        reservationDetails.copiesAvailable = Int(reserved.copiesTotal)
+
+      },
+      ready: { ready in
+        if let until = ready.until, until.timeIntervalSinceNow > 0 {
+          untilDate = until
+        }
+      }
+    )
+
+    // Convert untilDate into a readable format
+    if let untilDate = untilDate {
+      let now = Date()
+      let calendar = Calendar.current
+      let components = calendar.dateComponents([.day], from: now, to: untilDate)
+
+      if let days = components.day {
+        if days < 7 {
+          reservationDetails.remainingTime = days
+          reservationDetails.timeUnit = "day\(days == 1 ? "" : "s")"
+        } else if days < 30 {
+          reservationDetails.remainingTime = days / 7
+          reservationDetails.timeUnit = "week\(days == 1 ? "" : "s")"
+        } else {
+          reservationDetails.remainingTime = days / 30
+          reservationDetails.timeUnit = "month\(days == 1 ? "" : "s")"
+        }
+      }
+    }
+
+    return reservationDetails
+  }
+
+  func getAvailabilityDetails() -> AvailabilityDetails {
+    var details = AvailabilityDetails()
+    defaultAcquisition?.availability.matchUnavailable(nil, limited: { limited in
+      if let sinceDate = limited.since {
+        let (value, unit) = sinceDate.timeUntil()
+        details.availableSince = "\(value) \(unit)"
+      }
+
+      if let untilDate = limited.until, untilDate.timeIntervalSinceNow > 0 {
+        let (value, unit) = untilDate.timeUntil()
+        details.availableUntil = "\(value) \(unit)"
+      }
+    }, unlimited: { unlimited in
+      if let sinceDate = unlimited.since {
+        let (value, unit) = sinceDate.timeUntil()
+        details.availableSince = "\(value) \(unit)"
+      }
+
+      if let untilDate = unlimited.until, untilDate.timeIntervalSinceNow > 0 {
+        let (value, unit) = untilDate.timeUntil()
+        details.availableUntil = "\(value) \(unit)"
+      }
+    }, reserved: nil)
+
+    return details
+  }
+
   @objc var defaultAcquisitionIfBorrow: TPPOPDSAcquisition? {
     defaultAcquisition?.relation == .borrow ? defaultAcquisition : nil
   }
-  
+
   @objc var defaultAcquisitionIfOpenAccess: TPPOPDSAcquisition? {
     defaultAcquisition?.relation == .openAccess ? defaultAcquisition : nil
   }
-  
+
   @objc var defaultBookContentType: TPPBookContentType {
     guard let acquisition = defaultAcquisition else {
       return .unsupported
@@ -417,3 +515,79 @@ extension TPPBook: Comparable {
 }
 
 extension TPPBook: @unchecked Sendable {}
+
+extension TPPBook {
+  func requiresAuthForReturnOrDeletion() -> Bool {
+    let userAuthRequired = TPPUserAccount.sharedAccount().authDefinition?.needsAuth ?? false
+    return self.defaultAcquisitionIfOpenAccess == nil && userAuthRequired
+  }
+}
+
+extension TPPBook {
+  private static var cachedCoverImages: [String: UIImage] = [:]
+  private static var cachedThumbnailImages: [String: UIImage] = [:]
+  private static let coverRegistry = TPPBookCoverRegistry()
+  
+  func fetchCoverImage() {
+    if let cachedImage = TPPBook.cachedCoverImages[identifier] {
+      self.coverImage = cachedImage
+      return
+    }
+
+    guard !isCoverLoading else { return }
+    isCoverLoading = true
+
+    Task { @MainActor in
+      TPPBook.coverRegistry.coverImageForBook(self) { [weak self] image in
+        guard let self = self else { return }
+
+        DispatchQueue.main.async {
+          let validImage = image ?? self.thumbnailImage
+          self.coverImage = validImage
+          if let validImage = validImage {
+            TPPBook.cachedCoverImages[self.identifier] = validImage
+          }
+          self.isCoverLoading = false
+        }
+      }
+    }
+  }
+ 
+  func fetchThumbnailImage() {
+    if let cachedImage = TPPBook.cachedThumbnailImages[identifier] {
+      self.thumbnailImage = cachedImage
+      return
+    }
+
+    guard !isThumbnailLoading else { return }
+    isThumbnailLoading = true
+
+    Task { @MainActor in
+      TPPBook.coverRegistry.thumbnailImageForBook(self) { [weak self] image in
+        guard let self = self else { return }
+
+        DispatchQueue.main.async {
+          let validImage = image ?? UIImage(systemName: "book")
+          self.thumbnailImage = validImage
+          if let validImage = validImage {
+            TPPBook.cachedThumbnailImages[self.identifier] = validImage
+          }
+          self.isThumbnailLoading = false
+        }
+      }
+    }
+  }
+
+  func clearCachedImages() {
+    TPPBook.cachedCoverImages.removeValue(forKey: identifier)
+    TPPBook.cachedThumbnailImages.removeValue(forKey: identifier)
+    coverImage = nil
+    thumbnailImage = nil
+  }
+}
+
+extension TPPBook {
+  var wrappedCoverImage: UIImage? {
+    coverImage
+  }
+}

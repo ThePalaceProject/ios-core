@@ -19,17 +19,16 @@ class TPPBookRegistryRecord: NSObject {
   var readiumBookmarks: [TPPReadiumBookmark]?
   var genericBookmarks: [TPPBookLocation]?
   
-  init(book: TPPBook, location: TPPBookLocation? = nil, state: TPPBookState, fulfillmentId: String? = nil, readiumBookmarks: [TPPReadiumBookmark]? = nil, genericBookmarks: [TPPBookLocation]? = nil) {
+  init(book: TPPBook, location: TPPBookLocation? = nil, state: TPPBookState, fulfillmentId: String? = nil, readiumBookmarks: [TPPReadiumBookmark]? = [], genericBookmarks: [TPPBookLocation]? = []) {
     self.book = book
     self.location = location
     self.state = state
     self.fulfillmentId = fulfillmentId
     self.readiumBookmarks = readiumBookmarks
     self.genericBookmarks = genericBookmarks
-    
+
     super.init()
-    
-    var actuallyOnHold = false
+
     if let defaultAcquisition = book.defaultAcquisition {
       defaultAcquisition.availability.matchUnavailable { _ in
         
@@ -38,11 +37,9 @@ class TPPBookRegistryRecord: NSObject {
       } unlimited: { _ in
         
       } reserved: { [weak self] _ in
-        self?.state = .Holding
-        actuallyOnHold = true
+        self?.state = .holding
       } ready: { [weak self] _ in
-        self?.state = .Holding
-        actuallyOnHold = true
+        self?.state = .holding
       }
 
     } else {
@@ -53,17 +50,8 @@ class TPPBookRegistryRecord: NSObject {
       // ignore it as appropriate. Unsupported books should generally only appear
       // when a user has checked out or reserved a book in an unsupported format
       // using another app.
-      self.state = .Unsupported
+      self.state = .unsupported
     }
-    
-    if !actuallyOnHold {
-      if self.state == .Holding || self.state == .Unsupported {
-        // Since we're not in some download-related state and we're not unregistered,
-        // we must need to be downloaded.
-        self.state = .DownloadNeeded
-      }
-    }
-    
   }
   
   init?(record: TPPBookRegistryData) {

@@ -1,6 +1,5 @@
 @import PureLayout;
 
-#import "TPPBookDetailViewController.h"
 #import "TPPBookNormalCell.h"
 #import "TPPCatalogUngroupedFeed.h"
 #import "TPPCatalogFacet.h"
@@ -116,6 +115,24 @@ static const CGFloat kCollectionViewCrossfadeDuration = 0.3;
   [self enable3DTouch];
 }
 
+- (void)viewWillAppear:(BOOL)animated {
+  [super viewWillAppear:animated];
+
+  UINavigationBar *navBar = self.navigationController.navigationBar;
+
+  if (UITraitCollection.currentTraitCollection.userInterfaceStyle == UIUserInterfaceStyleDark) {
+    navBar.translucent = YES;
+    navBar.barTintColor = [UIColor blackColor];
+    navBar.titleTextAttributes = @{NSForegroundColorAttributeName: [UIColor whiteColor]};
+  } else {
+    navBar.translucent = NO;
+    navBar.barTintColor = [UIColor whiteColor];
+    navBar.titleTextAttributes = @{NSForegroundColorAttributeName: [UIColor blackColor]};
+  }
+
+  [navBar setNeedsLayout];
+}
+
 - (void)viewDidAppear:(BOOL)animated
 {
   [super viewDidAppear:animated];
@@ -175,7 +192,8 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
 {
   TPPBook *const book = self.feed.books[indexPath.row];
   
-  [[[TPPBookDetailViewController alloc] initWithBook:book] presentFromViewController:self];
+  BookDetailHostingController *bookDetailVC = [[BookDetailHostingController alloc] initWithBook:book];
+  [self.navigationController pushViewController:bookDetailVC animated:YES];
 }
 
 #pragma mark TPPCatalogUngroupedFeedDelegate
@@ -294,7 +312,8 @@ didSelectFacetAtIndexPath:(NSIndexPath *const)indexPath
      commitViewController:(UIViewController *)viewControllerToCommit
 {
   TPPBook *const book = self.feed.books[viewControllerToCommit.view.tag];
-  [[[TPPBookDetailViewController alloc] initWithBook:book] presentFromViewController:self];
+  BookDetailHostingController *bookDetailVC = [[BookDetailHostingController alloc] initWithBook:book];
+  [self.navigationController pushViewController:bookDetailVC animated:YES];
 }
 
 #pragma mark -

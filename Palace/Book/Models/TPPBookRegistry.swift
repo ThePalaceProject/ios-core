@@ -1,7 +1,12 @@
 import Foundation
+import Combine
 import UIKit
 
 protocol TPPBookRegistryProvider {
+  var registryPublisher: AnyPublisher<[String: TPPBookRegistryRecord], Never> { get }
+  var bookStatePublisher: AnyPublisher<(String, TPPBookState), Never> { get }
+
+  func coverImage(for book: TPPBook, handler: @escaping (_ image: UIImage?) -> Void)
   func setProcessing(_ processing: Bool, for bookIdentifier: String)
   func state(for bookIdentifier: String?) -> TPPBookState
   func readiumBookmarks(forIdentifier identifier: String) -> [TPPReadiumBookmark]
@@ -80,11 +85,11 @@ fileprivate class BoolWithDelay {
 }
 
 @objcMembers
-class TPPBookRegistry: NSObject {
+class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
   private let syncQueueKey = DispatchSpecificKey<Void>()
 
   @objc enum RegistryState: Int {
-    case unloaded, loading, loaded, syncing
+    case unloaded, loading, loaded, syncing, synced
   }
 
   private let registryFolderName = "registry"
@@ -99,7 +104,9 @@ class TPPBookRegistry: NSObject {
 
   private var registry = [String: TPPBookRegistryRecord]() {
     didSet {
-      DispatchQueue.main.async {
+      DispatchQueue.main.async { [weak self] in
+        guard let self else { return }
+        registrySubject.send(registry)
         NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil, userInfo: nil)
       }
     }
@@ -114,6 +121,16 @@ class TPPBookRegistry: NSObject {
   private(set) var isSyncing: Bool {
     get { return syncState.value }
     set { }
+  }
+
+  private let registrySubject = CurrentValueSubject<[String: TPPBookRegistryRecord], Never>([:])
+  private let bookStateSubject = PassthroughSubject<(String, TPPBookState), Never>()
+
+  var registryPublisher: AnyPublisher<[String: TPPBookRegistryRecord], Never> {
+    registrySubject.eraseToAnyPublisher()
+  }
+  var bookStatePublisher: AnyPublisher<(String, TPPBookState), Never> {
+    bookStateSubject.eraseToAnyPublisher()
   }
 
   private var syncState = BoolWithDelay { value in
@@ -168,15 +185,17 @@ class TPPBookRegistry: NSObject {
          let registryObject = jsonObject as? TPPBookRegistryData,
          let records = registryObject.array(for: .records) {
         for recordObject in records {
-          guard let record = TPPBookRegistryRecord(record: recordObject) else { continue }
-          if record.state == .Downloading || record.state == .SAMLStarted {
-            record.state = .DownloadFailed
+          guard let record = TPPBookRegistryRecord(record: recordObject) else {
+            continue
+          }
+          if record.state == .downloading || record.state == .SAMLStarted {
+            record.state = .downloadFailed
           }
           self.registry[record.book.identifier] = record
         }
       }
-      DispatchQueue.main.async {
-        self.state = .loaded
+      DispatchQueue.main.async { [weak self] in
+        self?.state = .loaded
       }
     }
   }
@@ -198,26 +217,37 @@ class TPPBookRegistry: NSObject {
 
   func sync(completion: ((_ errorDocument: [AnyHashable: Any]?, _ newBooks: Bool) -> Void)? = nil) {
     guard let loansUrl = AccountsManager.shared.currentAccount?.loansUrl else { return }
+
+    if state == .syncing {
+      return
+    }
+
     state = .syncing
     syncUrl = loansUrl
-    TPPOPDSFeed.withURL(loansUrl, shouldResetCache: true, useTokenIfAvailable: true) { feed, errorDocument in
-      DispatchQueue.main.async {
-        defer {
+
+    TPPOPDSFeed.withURL(loansUrl, shouldResetCache: true, useTokenIfAvailable: true) { [weak self] feed, errorDocument in
+      DispatchQueue.main.async { [weak self] in
+        guard let self = self else { return }
+        if self.syncUrl != loansUrl { return }
+
+        if let errorDocument = errorDocument {
           self.state = .loaded
           self.syncUrl = nil
-        }
-        if self.syncUrl != loansUrl { return }
-        if let errorDocument = errorDocument {
           completion?(errorDocument, false)
           return
         }
+
         guard let feed = feed else {
+          self.state = .loaded
+          self.syncUrl = nil
           completion?(nil, false)
           return
         }
         if let licensor = feed.licensor as? [String: Any] {
           TPPUserAccount.sharedAccount().setLicensor(licensor)
         }
+
+        var changesMade = false
         self.syncQueue.sync {
           var recordsToDelete = Set<String>(self.registry.keys)
           for entry in feed.entries {
@@ -227,17 +257,20 @@ class TPPBookRegistry: NSObject {
             recordsToDelete.remove(book.identifier)
             if self.registry[book.identifier] != nil {
               self.updateBook(book)
+              changesMade = true
             } else {
               self.addBook(book)
+              changesMade = true
             }
           }
           recordsToDelete.forEach { identifier in
             if let state = self.registry[identifier]?.state,
-               state == .DownloadSuccessful || state == .Used {
+               state == .downloadSuccessful || state == .used {
               MyBooksDownloadCenter.shared.deleteLocalContent(for: identifier)
             }
-            self.registry[identifier]?.state = .Unregistered
+            self.registry[identifier]?.state = .unregistered
             self.removeBook(forIdentifier: identifier)
+            changesMade = true
           }
           self.save()
         }
@@ -257,6 +290,10 @@ class TPPBookRegistry: NSObject {
             }
           })
         }
+
+        self.state = .synced
+        self.syncUrl = nil
+        completion?(nil, changesMade)
       }
     }
   }
@@ -302,33 +339,51 @@ class TPPBookRegistry: NSObject {
 
   var heldBooks: [TPPBook] {
     return performSync {
-      registry.values.filter { $0.state == .Holding }.map { $0.book }
+      registry
+        .map { $0.value }
+        .filter { $0.state == .holding }
+        .map { $0.book }
     }
   }
 
   var myBooks: [TPPBook] {
-    let matchingStates: [TPPBookState] = [.DownloadNeeded, .Downloading, .SAMLStarted, .DownloadFailed, .DownloadSuccessful, .Used]
+    let matchingStates: [TPPBookState] = [
+      .downloadNeeded, .downloading, .SAMLStarted, .downloadFailed, .downloadSuccessful, .used
+    ]
     return performSync {
-      registry.values.filter { matchingStates.contains($0.state) }.map { $0.book }
+      registry
+        .map { $0.value }
+        .filter { matchingStates.contains($0.state) }
+        .map { $0.book }
     }
   }
-
-  func addBook(_ book: TPPBook, location: TPPBookLocation? = nil, state: TPPBookState = .DownloadNeeded, fulfillmentId: String? = nil, readiumBookmarks: [TPPReadiumBookmark]? = nil, genericBookmarks: [TPPBookLocation]? = nil) {
+  
+  /// Adds a book to the book registry until it is manually removed. It allows the application to
+  /// present information about obtained books when offline. Attempting to add a book already present
+  /// will overwrite the existing book as if `updateBook` were called. The location may be nil. The
+  /// state provided must be one of `TPPBookState` and must not be `TPPBookState.unregistered`.
+  func addBook(_ book: TPPBook, location: TPPBookLocation? = nil, state: TPPBookState = .downloadNeeded, fulfillmentId: String? = nil, readiumBookmarks: [TPPReadiumBookmark]? = nil, genericBookmarks: [TPPBookLocation]? = nil) {
+    // Cache the thumbnail image if it exists
     DispatchQueue.main.async { [weak self] in
       self?.coverRegistry.thumbnailImageForBook(book) { _ in }
     }
     syncQueue.async {
       self.registry[book.identifier] = TPPBookRegistryRecord(book: book, location: location, state: state, fulfillmentId: fulfillmentId, readiumBookmarks: readiumBookmarks, genericBookmarks: genericBookmarks)
       self.save()
+
+
+      DispatchQueue.main.async {
+        self.registrySubject.send(self.registry)
+      }
     }
   }
 
   func updateAndRemoveBook(_ book: TPPBook) {
-    syncQueue.async {
-      guard let existingRecord = self.registry[book.identifier] else { return }
+    syncQueue.async { [weak self] in
+      guard let self, let existingRecord = self.registry[book.identifier] else { return }
       self.coverRegistry.cachedThumbnailImageForBook(book)
       existingRecord.book = book
-      existingRecord.state = .Unregistered
+      existingRecord.state = .unregistered
       self.save()
     }
   }
@@ -338,9 +393,15 @@ class TPPBookRegistry: NSObject {
       let book = self.registry[bookIdentifier]?.book
       self.registry.removeValue(forKey: bookIdentifier)
       self.save()
+
+      DispatchQueue.main.async {
+        self.registrySubject.send(self.registry)
+      }
+
+      //TODO: Investigate why we are doing this
       if let book = book {
-        DispatchQueue.main.async {
-          self.coverRegistry.cachedThumbnailImageForBook(book)
+        DispatchQueue.main.async { [weak self] in
+          self?.coverRegistry.cachedThumbnailImageForBook(book)
         }
       }
     }
@@ -350,7 +411,18 @@ class TPPBookRegistry: NSObject {
     syncQueue.async {
       guard let record = self.registry[book.identifier] else { return }
       TPPUserNotifications.compareAvailability(cachedRecord: record, andNewBook: book)
-      self.registry[book.identifier] = TPPBookRegistryRecord(book: book, location: record.location, state: record.state, fulfillmentId: record.fulfillmentId, readiumBookmarks: record.readiumBookmarks, genericBookmarks: record.genericBookmarks)
+      self.registry[book.identifier] = TPPBookRegistryRecord(
+        book: book,
+        location: record.location,
+        state: record.state,
+        fulfillmentId: record.fulfillmentId,
+        readiumBookmarks: record.readiumBookmarks,
+        genericBookmarks: record.genericBookmarks
+      )
+    }
+
+    DispatchQueue.main.async {
+      self.registrySubject.send(self.registry)
     }
   }
 
@@ -365,19 +437,37 @@ class TPPBookRegistry: NSObject {
   }
 
   func state(for bookIdentifier: String?) -> TPPBookState {
-    guard let bookIdentifier = bookIdentifier, !bookIdentifier.isEmpty else { return .Unregistered }
+    guard let bookIdentifier = bookIdentifier, !bookIdentifier.isEmpty else { return .unregistered }
     return performSync {
-      self.registry[bookIdentifier]?.state ?? .Unregistered
+      self.registry[bookIdentifier]?.state ?? .unregistered
     }
   }
 
   func setState(_ state: TPPBookState, for bookIdentifier: String) {
     syncQueue.async {
-      self.registry[bookIdentifier]?.state = state
-      self.save()
+    self.registry[bookIdentifier]?.state = state
+    self.postStateNotification(bookIdentifier: bookIdentifier, state: state)
+    self.save()
+
+      DispatchQueue.main.async {
+        self.bookStateSubject.send((bookIdentifier, state)) // 🔹 Publish state change
+      }
     }
   }
 
+  @available(*, deprecated, message: "Use Combine publishers instead.")
+  private func postStateNotification(bookIdentifier: String, state: TPPBookState) {
+    NotificationCenter.default.post(
+      name: .TPPBookRegistryStateDidChange,
+      object: nil,
+      userInfo: [
+        "bookIdentifier": bookIdentifier,
+        "state": state.rawValue
+      ]
+    )
+  }
+
+  /// Returns the book for a given identifier if it is registered, else nil.
   func book(forIdentifier bookIdentifier: String?) -> TPPBook? {
     guard let bookIdentifier = bookIdentifier, !bookIdentifier.isEmpty else { return nil }
     guard let record = performSync({ self.registry[bookIdentifier] }) else { return nil }
@@ -436,10 +526,12 @@ class TPPBookRegistry: NSObject {
   func thumbnailImages(forBooks books: Set<TPPBook>, handler: @escaping (_ bookIdentifiersToImages: [String: UIImage]) -> Void) {
     coverRegistry.thumbnailImagesForBooks(books, handler: handler)
   }
-
-  @MainActor
+  
+  /// Returns cover image if it exists, or falls back to thumbnail image load.
   func coverImage(for book: TPPBook, handler: @escaping (_ image: UIImage?) -> Void) {
-    coverRegistry.coverImageForBook(book, handler: handler)
+    DispatchQueue.main.async { [weak self] in
+      self?.coverRegistry.coverImageForBook(book, handler: handler)
+    }
   }
 }
 
@@ -511,6 +603,11 @@ extension TPPBookRegistry: TPPBookRegistryProvider {
 
   func addGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String) {
     syncQueue.async {
+      guard self.registry[bookIdentifier] != nil else { return }
+      if self.registry[bookIdentifier]?.genericBookmarks == nil {
+        self.registry[bookIdentifier]?.genericBookmarks = [TPPBookLocation]()
+      }
+      
       self.registry[bookIdentifier]?.genericBookmarks?.append(location)
       self.save()
     }

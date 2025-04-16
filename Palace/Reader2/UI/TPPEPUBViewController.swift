@@ -89,6 +89,7 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
 
   private func resetNavigationAppearance() {
     if let appearance = TPPConfiguration.defaultAppearance() {
+      navigationController?.navigationBar.isTranslucent = false
       navigationController?.navigationBar.setAppearance(appearance)
       navigationController?.navigationBar.forceUpdateAppearance(style: systemUserInterfaceStyle)
     }
