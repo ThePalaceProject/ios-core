@@ -265,7 +265,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
           }
           recordsToDelete.forEach { identifier in
             if let state = self.registry[identifier]?.state,
-               state == .DownloadSuccessful || state == .Used {
+               state == .downloadSuccessful || state == .used {
               MyBooksDownloadCenter.shared.deleteLocalContent(for: identifier)
             }
             self.registry[identifier]?.state = .unregistered
