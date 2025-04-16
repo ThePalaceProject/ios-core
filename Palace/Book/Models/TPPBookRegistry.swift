@@ -40,10 +40,10 @@ extension TPPBookRegistryData {
     self[key.rawValue] = value
   }
   func object(for key: TPPBookRegistryKey) -> TPPBookRegistryData? {
-    self[key.rawValue] as? TPPBookRegistryData
+    return self[key.rawValue] as? TPPBookRegistryData
   }
   func array(for key: TPPBookRegistryKey) -> [TPPBookRegistryData]? {
-    self[key.rawValue] as? [TPPBookRegistryData]
+    return self[key.rawValue] as? [TPPBookRegistryData]
   }
 }
 
@@ -150,8 +150,6 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     }
   }
 
-  /// Keeps loans URL of current synchronisation process.
-  /// TPPBookRegistry is a shared object, this value is used to cancel synchronisation callback when the user changes library account.
   private var syncUrl: URL?
 
   private override init() {
@@ -245,6 +243,9 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
           completion?(nil, false)
           return
         }
+        if let licensor = feed.licensor as? [String: Any] {
+          TPPUserAccount.sharedAccount().setLicensor(licensor)
+        }
 
         var changesMade = false
         self.syncQueue.sync {
@@ -254,7 +255,6 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
                   let book = TPPBook(entry: opdsEntry)
             else { continue }
             recordsToDelete.remove(book.identifier)
-
             if self.registry[book.identifier] != nil {
               self.updateBook(book)
               changesMade = true
@@ -264,8 +264,8 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
             }
           }
           recordsToDelete.forEach { identifier in
-            if let recordState = self.registry[identifier]?.state,
-               recordState == .downloadSuccessful || recordState == .used {
+            if let state = self.registry[identifier]?.state,
+               state == .DownloadSuccessful || state == .Used {
               MyBooksDownloadCenter.shared.deleteLocalContent(for: identifier)
             }
             self.registry[identifier]?.state = .unregistered
@@ -273,6 +273,22 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
             changesMade = true
           }
           self.save()
+        }
+        self.myBooks.forEach { book in
+          book.defaultAcquisition?.availability.matchUnavailable({ _ in
+            MyBooksDownloadCenter.shared.returnBook(withIdentifier: book.identifier)
+            self.removeBook(forIdentifier: book.identifier)
+          }, limited: { limited in
+            if let until = limited.until, until.timeIntervalSinceNow <= 0 {
+              MyBooksDownloadCenter.shared.returnBook(withIdentifier: book.identifier)
+              self.removeBook(forIdentifier: book.identifier)
+            }
+          }, unlimited: nil, reserved: nil, ready: { ready in
+            if let until = ready.until, until.timeIntervalSinceNow <= 0 {
+              MyBooksDownloadCenter.shared.returnBook(withIdentifier: book.identifier)
+              self.removeBook(forIdentifier: book.identifier)
+            }
+          })
         }
 
         self.state = .synced
