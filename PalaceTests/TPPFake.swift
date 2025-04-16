@@ -11,7 +11,7 @@ import Foundation
 
 class TPPFake {
   class var genericAcquisition: TPPOPDSAcquisition {
-    return TPPOPDSAcquisition(
+    TPPOPDSAcquisition(
       relation: .generic,
       type: "application/epub+zip",
       hrefURL: URL(fileURLWithPath: ""),
@@ -43,7 +43,7 @@ class TPPFake {
   class var genericAudiobookSample: TPPOPDSAcquisition {
     TPPOPDSAcquisition(
       relation: .sample,
-      type: "application/json",
+      type: "application/audiobook+json",
       hrefURL: URL(string:"https://market.feedbooks.com/item/3877422/preview")!,
       indirectAcquisitions: [],
       availability: TPPOPDSAcquisitionAvailabilityUnlimited()

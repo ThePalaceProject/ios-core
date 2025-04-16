@@ -9,10 +9,15 @@ on:
 
 jobs:
   check-version:
-    runs-on: macOS-latest
+    runs-on: macos-15
     steps:
-      - name: Force Xcode 15
-        run: sudo xcode-select -switch /Applications/Xcode_15.4.app
+      - name: Set up Xcode 16.2
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16.2'
+
+      - name: Verify Xcode Version
+        run: xcodebuild -version
 
       - name: Checkout main repo and submodules
         uses: actions/checkout@v3
@@ -29,12 +34,17 @@ jobs:
       should_upload: ${{ steps.checkVersion.outputs.version_changed }}
 
   upload-build:
-    runs-on: macOS-latest
+    runs-on: macos-15
     needs: check-version
     if: github.event.pull_request.merged == true && needs.check-version.outputs.should_upload == '1'
     steps:
-      - name: Force Xcode 15
-        run: sudo xcode-select -switch /Applications/Xcode_15.4.app
+      - name: Set up Xcode 16.2
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16.2'
+
+      - name: Verify Xcode Version
+        run: xcodebuild -version
 
       - name: Checkout main repo and submodules
         uses: actions/checkout@v3
@@ -132,4 +142,5 @@ jobs:
         run: ./scripts/xcode-export-appstore.sh
         env:
           BUILD_CONTEXT: ci
+          timeout-minutes: 15
           CHANGELOG_PATH: ${{ env.CHANGELOG_PATH }}

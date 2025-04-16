@@ -11,13 +11,11 @@ import WebKit
   
   required init(fileURL: URL, title: String) {
     self.fileURL = fileURL
-    if #available(iOS 10.0, *) {
-      let config = WKWebViewConfiguration()
-      config.dataDetectorTypes = WKDataDetectorTypes()
-      self.webView = WKWebView(frame: .zero, configuration: config)
-    } else {
-      self.webView = WKWebView()
-    }
+    let config = WKWebViewConfiguration()
+    config.dataDetectorTypes = WKDataDetectorTypes()
+    config.allowsInlineMediaPlayback = true
+    config.mediaTypesRequiringUserActionForPlayback = []
+    self.webView = WKWebView(frame: .zero, configuration: config)
     self.webViewDelegate = WebViewDelegate()
     super.init(nibName: nil, bundle: nil)
     self.title = title

@@ -11,8 +11,7 @@
 
 #import "NSDate+NYPLDateAdditions.h"
 #import "TPPAccountSignInViewController.h"
-#import "TPPBookDetailView.h"
-#import "TPPBookDetailViewController.h"
+#import "TPPOPDSAcquisition.h"
 #import "TPPCatalogFacet.h"
 #import "TPPCatalogFacetGroup.h"
 #import "TPPCatalogUngroupedFeed.h"

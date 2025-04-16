@@ -17,4 +17,3 @@ extension String {
     return d1.addingTimeInterval(delay) > d2
   }
 }
-
