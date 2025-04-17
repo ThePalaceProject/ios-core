@@ -17,15 +17,19 @@ struct NormalBookCell: View {
   private let imageViewWidth: CGFloat = 100
 
   var body: some View {
-    HStack(alignment: .center) {
-      unreadImageView
-      titleCoverImageView
-      VStack(alignment: .leading) {
-        infoView
-        Spacer()
-        buttons
-          .padding(.bottom, 10)
+    HStack(alignment: .center, spacing: 15) {
+      HStack(spacing: 5) {
+        unreadImageView
+        titleCoverImageView
       }
+      .frame(alignment: .leading)
+
+      VStack(alignment: .leading, spacing: 10) {
+        infoView
+        buttons
+          .padding(.bottom, 5)
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
       .alert(item: $model.showAlert) { alert in
         Alert(
           title: Text(alert.title),
@@ -34,23 +38,22 @@ struct NormalBookCell: View {
           secondaryButton: .cancel(alert.secondaryAction)
         )
       }
-      Spacer()
     }
     .multilineTextAlignment(.leading)
     .padding(5)
-    .frame(height: cellHeight)
+    .frame(minHeight: cellHeight)
     .onDisappear { model.isLoading = false }
   }
-  
+
   @ViewBuilder private var titleCoverImageView: some View {
-    ZStack {
+    ZStack(alignment: .bottomTrailing) {
       Image(uiImage: model.image)
         .resizable()
         .aspectRatio(contentMode: .fit)
       audiobookIndicator
+        .padding([.trailing, .bottom], 5)
     }
     .frame(width: imageViewWidth)
-    .padding(.trailing, 2)
   }
 
   @ViewBuilder private var audiobookIndicator: some View {
@@ -58,11 +61,11 @@ struct NormalBookCell: View {
       ImageProviders.MyBooksView.audiobookBadge
         .resizable()
         .frame(width: 24, height: 24)
-        .background(Color(TPPConfiguration.palaceRed()))
-        .bottomrRightJustified()
+        .background(Circle().fill(Color.colorAudiobookBackground))
+        .clipped()
     }
   }
-  
+
   @ViewBuilder private var infoView: some View {
     VStack(alignment: .leading) {
       Text(model.title)
@@ -74,30 +77,38 @@ struct NormalBookCell: View {
         .palaceFont(size: 12)
     }
   }
-  
+
+  private var buttonSize: ButtonSize {
+    UIDevice.current.isIpad && UIDevice.current.orientation != .portrait ? .small : .medium
+  }
+
   @ViewBuilder private var buttons: some View {
-    HStack {
-      ForEach(model.buttonTypes, id: \.self) { type in
-        ButtonView(
-          title: type.localizedTitle.capitalized,
-          indicatorDate: model.indicatorDate(for: type),
-          action: { model.callDelegate(for: type) }
-        )
-        .disabled(model.isLoading || type.isDisabled)
-        .opacity(model.isLoading || type.isDisabled ? 0.5 : 1.0)
-        .palaceFont(.body)
+    VStack(alignment: .leading, spacing: 0) {
+      BookButtonsView(provider: model, size: buttonSize) { type in
+        model.callDelegate(for: type)
       }
+      borrowedInfoView
     }
   }
-  
+
   @ViewBuilder private var unreadImageView: some View {
-      VStack {
-        ImageProviders.MyBooksView.unreadBadge
-          .resizable()
-          .frame(width: 10, height: 10)
-          .foregroundColor(Color(TPPConfiguration.accentColor()))
-        Spacer()
-      }
-      .opacity(model.showUnreadIndicator ? 1.0 : 0.0)
+    VStack {
+      ImageProviders.MyBooksView.unreadBadge
+        .resizable()
+        .frame(width: 10, height: 10)
+        .foregroundColor(Color(TPPConfiguration.accentColor()))
+      Spacer()
+    }
+    .opacity(model.showUnreadIndicator ? 1.0 : 0.0)
+  }
+
+  @ViewBuilder var borrowedInfoView: some View {
+    if let availableUntil = model.book.getExpirationDate()?.monthDayYearString {
+      Text("Borrowed until \(availableUntil)")
+        .fixedSize(horizontal: false, vertical: true)
+        .minimumScaleFactor(0.5)
+        .font(.footnote)
+        .foregroundColor(.secondary)
+    }
   }
 }

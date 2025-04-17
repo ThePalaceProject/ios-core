@@ -1,18 +1,23 @@
 default_platform(:ios)
 
 platform :ios do
-  lane :test do
-    ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "60"
+  lane :test do    
+    ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "300"
     ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"] = "4"
+
     run_tests(
       project: "Palace.xcodeproj",
       devices: ["iPhone SE (3rd generation)"],
       scheme: "Palace",
-      destination: "platform=iOS Simulator,name=iPhone SE (3rd generation),OS=17.0,arch=x86_64",
+      destination: "platform=iOS Simulator,name=iPhone SE (3rd generation),OS=latest,arch=x86_64",
       xcargs: "ARCHS=x86_64 ONLY_ACTIVE_ARCH=NO"
     )
   end
+
   lane :nodrm do
+    ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "300"
+    ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"] = "4"
+
     build_app(
       project: "Palace.xcodeproj",
       scheme: "Palace-noDRM",
@@ -22,7 +27,9 @@ platform :ios do
       silent: true
     )
   end
+
   lane :beta do |options|
+
     build_app(
       project: "Palace.xcodeproj",
       scheme: "Palace",
@@ -39,7 +46,13 @@ platform :ios do
       }
     )
   end
+
   lane :appstore do |options|
+    ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "300"
+    ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"] = "4"
+
+    sh("rm -rf ~/Library/Developer/Xcode/DerivedData/*")
+
     build_app(
       project: "Palace.xcodeproj",
       scheme: "Palace",
@@ -52,6 +65,7 @@ platform :ios do
         }
       }
     )
+
     pilot(
       api_key_path: "fastlane/fastlane.json",
       skip_submission: true,

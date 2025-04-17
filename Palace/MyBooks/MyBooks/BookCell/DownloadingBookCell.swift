@@ -14,7 +14,8 @@ struct DownloadingBookCell: View {
   private let cellHeight = 125.0
   @State private var progress = 0.0
   var downloadPublisher = NotificationCenter.default.publisher(for: NSNotification.Name.TPPMyBooksDownloadCenterDidChange)
-  
+  @Environment(\.colorScheme) private var colorScheme
+
   var body: some View {
     ZStack {
       VStack(alignment: .leading) {
@@ -27,6 +28,7 @@ struct DownloadingBookCell: View {
       .frame(height: cellHeight)
       overlay
     }
+    .padding()
     .background(Color(TPPConfiguration.mainColor()))
   }
 
@@ -68,21 +70,12 @@ struct DownloadingBookCell: View {
   }
 
   @ViewBuilder private var buttons: some View {
-    HStack {
-      Spacer()
-      ForEach(model.buttonTypes, id: \.self) { type in
-        ButtonView(
-          title: type.localizedTitle.capitalized,
-          indicatorDate: model.indicatorDate(for: type),
-          backgroundFill: Color(TPPConfiguration.backgroundColor())) {
-          model.callDelegate(for: type)
-        }
-          .palaceFont(.body)
-      }
-      Spacer()
+    BookButtonsView(provider: model, backgroundColor: colorScheme == .dark ? .white : .black, size: .medium) { type in
+      model.callDelegate(for: type)
     }
+    .horizontallyCentered()
   }
-  
+
   @ViewBuilder private var overlay: some View {
     switch model.state.buttonState {
     case .downloadFailed:

@@ -133,14 +133,20 @@ import Foundation
   }
 
   @objc func updateLogo() {
+    AccountsManager.shared.currentAccount?.logoDelegate = self
     imageView.image = AccountsManager.shared.currentAccount?.logo
     titleLabel.text = AccountsManager.shared.currentAccount?.name
   }
   
   @objc private func showAccountPage() {
     guard let homePageUrl = AccountsManager.shared.currentAccount?.homePageUrl, let url = URL(string: homePageUrl) else { return }
-    let webController = BundledHTMLViewController(fileURL: url, title: AccountsManager.shared.currentAccount?.name.capitalized ?? "")
-    webController.hidesBottomBarWhenPushed = true
-    delegate?.present(webController)
+    UIApplication.shared.open(url, options: [:], completionHandler: nil)
+  }
+}
+
+extension TPPFacetBarView: AccountLogoDelegate {
+  func logoDidUpdate(in account: Account, to newLogo: UIImage) {
+    imageView.image = newLogo
+    titleLabel.text = account.name
   }
 }

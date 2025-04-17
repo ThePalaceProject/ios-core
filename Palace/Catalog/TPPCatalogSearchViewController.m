@@ -6,7 +6,6 @@
 #import "NSString+TPPStringAdditions.h"
 
 #import "TPPBookCell.h"
-#import "TPPBookDetailViewController.h"
 #import "TPPCatalogUngroupedFeed.h"
 #import "TPPOpenSearchDescription.h"
 #import "TPPReloadView.h"
@@ -206,12 +205,12 @@
 
 #pragma mark UICollectionViewDelegate
 
-- (void)collectionView:(__attribute__((unused)) UICollectionView *)collectionView
+- (void)collectionView:(UICollectionView *)collectionView
 didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
 {
-  TPPBook *const book = self.books[indexPath.row];
-  
-  [[[TPPBookDetailViewController alloc] initWithBook:book] presentFromViewController:self];
+  TPPBook *book = self.books[indexPath.row];
+  BookDetailHostingController *bookDetailVC = [[BookDetailHostingController alloc] initWithBook:book];
+  [self.navigationController pushViewController:bookDetailVC animated:YES];
 }
 
 #pragma mark NYPLCatalogUngroupedFeedDelegate

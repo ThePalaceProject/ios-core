@@ -1,7 +1,6 @@
 
 
 #import "TPPBookCell.h"
-#import "TPPBookDetailViewController.h"
 #import "TPPCatalogSearchViewController.h"
 #import "TPPConfiguration.h"
 #import "TPPOpenSearchDescription.h"
@@ -171,7 +170,8 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
 {
   TPPBook *const book = [self bookArrayForSection:indexPath.section][indexPath.row];
   
-  [[[TPPBookDetailViewController alloc] initWithBook:book] presentFromViewController:self];
+  BookDetailHostingController *bookDetailVC = [[BookDetailHostingController alloc] initWithBook:book];
+  [self.navigationController pushViewController:bookDetailVC animated:YES];
 }
 
 #pragma mark UICollectionViewDataSource

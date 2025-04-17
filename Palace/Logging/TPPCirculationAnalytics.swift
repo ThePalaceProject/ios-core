@@ -12,28 +12,29 @@ import Foundation
     }
   }
   
-  private class func post(_ event: String, withURL url: URL) -> Void
-  {
-    var request = URLRequest(url: url, applyingCustomUserAgent: true)
-    request.httpMethod = "GET"
-
-    let dataTask = URLSession.shared.dataTask(with: request) { (data, response, error) in
-      
-      if let response = response as? HTTPURLResponse {
-        if response.statusCode == 200 {
-          debugPrint(#file, "Analytics Upload: Success")
+  private class func post(_ event: String, withURL url: URL) {
+    Task {
+      do {
+        let (_, response) = try await TPPNetworkExecutor.shared.GET(url)
+        if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 {
+          Log.info(#file, "Analytics Upload: Success for event \(event)")
+        } else {
+          handleFailure(event: event, url: url, response: response)
         }
-      } else {
-        guard let error = error as NSError? else { return }
-        if NetworkQueue.StatusCodes.contains(error.code) {
-          self.addToOfflineAnalyticsQueue(event, url)
-        }
-        Log.error(#file, "URLRequest Error: \(error.code). Description: \(error.localizedDescription)")
+      } catch {
+        Log.error(#file, "Analytics request failed: \(error.localizedDescription)")
+        handleFailure(event: event, url: url, response: nil)
       }
     }
-    dataTask.resume()
   }
-  
+
+  private class func handleFailure(event: String, url: URL, response: URLResponse?) {
+    if let httpResponse = response as? HTTPURLResponse, NetworkQueue.StatusCodes.contains(httpResponse.statusCode) {
+      addToOfflineAnalyticsQueue(event, url)
+    }
+  }
+
+
   private class func addToOfflineAnalyticsQueue(_ event: String, _ bookURL: URL) -> Void
   {
     let libraryID = AccountsManager.shared.currentAccount?.uuid ?? ""

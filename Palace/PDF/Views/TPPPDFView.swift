@@ -50,7 +50,6 @@ struct TPPPDFView: View {
         }
       }
       .opacity(showingDocumentInfo ? 1 : 0)
-      .contentShape(Rectangle())
     }
     .navigationBarHidden(!showingDocumentInfo)
     .onAppear {

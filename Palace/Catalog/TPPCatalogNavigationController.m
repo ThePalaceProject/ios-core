@@ -200,15 +200,9 @@
     void (^completion)(void) = ^() {
       [[TPPSettings sharedSettings] setAccountMainFeedURL:mainFeedUrl];
       [UIApplication sharedApplication].delegate.window.tintColor = [TPPConfiguration mainColor];
-      
-      TPPWelcomeScreenViewController *welcomeScreenVC = [[TPPWelcomeScreenViewController alloc] initWithCompletion:^(Account *const account) {
-        if (![NSThread isMainThread]) {
-          dispatch_async(dispatch_get_main_queue(), ^{
-            [self welcomeScreenCompletionHandlerForAccount:account];
-          });
-        } else {
-          [self welcomeScreenCompletionHandlerForAccount:account];
-        }
+
+      TPPAccountList *accountListVC = [[TPPAccountList alloc] initWithCompletion:^(Account *account) {
+          [self accountPicked:account];
       }];
 
       // Update current registry hash if registry changed
@@ -216,7 +210,7 @@
         [TPPConfiguration updateSavedeRegistryKey];
       }
 
-      UINavigationController *navController = [[UINavigationController alloc] initWithRootViewController:welcomeScreenVC];
+      UINavigationController *navController = [[UINavigationController alloc] initWithRootViewController:accountListVC];
 
       [navController setModalPresentationStyle:UIModalPresentationFullScreen];
       [navController setModalTransitionStyle:UIModalTransitionStyleCrossDissolve];
@@ -249,7 +243,7 @@
   }
 }
 
-- (void)welcomeScreenCompletionHandlerForAccount:(Account *const)account
+- (void)accountPicked:(Account *const)account
 {
   [[TPPSettings sharedSettings] setUserHasSeenWelcomeScreen:YES];
   [AccountsManager sharedInstance].currentAccount = account;

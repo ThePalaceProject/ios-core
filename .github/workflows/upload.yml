@@ -4,8 +4,8 @@ jobs:
   check-version:
     runs-on: macOS-latest
     steps:
-      - name: Force Xcode 15
-        run: sudo xcode-select -switch /Applications/Xcode_15.4.app
+      - name: Use the latest Xcode
+        run: sudo xcode-select -switch /Applications/Xcode.app
       - name: Checkout main repo and submodules
         uses: actions/checkout@v3
         with:
@@ -23,8 +23,8 @@ jobs:
     needs: check-version
     if: needs.check-version.outputs.should_upload == '1'
     steps:
-      - name: Force Xcode 15
-        run: sudo xcode-select -switch /Applications/Xcode_15.4.app
+      - name: Force Xcode 16
+        run: sudo xcode-select -switch /Applications/Xcode_16.app
       - name: Checkout main repo and submodules
         uses: actions/checkout@v3
         with:

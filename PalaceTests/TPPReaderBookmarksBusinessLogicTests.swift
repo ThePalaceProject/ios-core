@@ -57,7 +57,7 @@ class TPPReaderBookmarksBusinessLogicTests: XCTestCase {
       )
             
       bookRegistryMock = TPPBookRegistryMock()
-      bookRegistryMock.addBook(book: fakeBook, state: .DownloadSuccessful)
+      bookRegistryMock.addBook(fakeBook, location: nil, state: .downloadSuccessful, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
       libraryAccountMock = TPPLibraryAccountMock()
       let manifest = Manifest(metadata: Metadata(title: "fakeMetadata"))
       let pub = Publication(manifest: manifest)
@@ -74,7 +74,7 @@ class TPPReaderBookmarksBusinessLogicTests: XCTestCase {
       try super.tearDownWithError()
       bookmarkBusinessLogic = nil
       libraryAccountMock = nil
-      bookRegistryMock?.registry.removeAll()
+      bookRegistryMock?.registry  = [:]
       bookRegistryMock = nil
       bookmarkCounter = 0
     }

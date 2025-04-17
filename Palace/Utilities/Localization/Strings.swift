@@ -294,4 +294,39 @@ struct Strings {
     static let borrowFailedMessage = NSLocalizedString("Borrowing %@ could not be completed.", comment: "")
     static let loanAlreadyExistsAlertMessage = NSLocalizedString("You have already checked out this loan. You may need to refresh your My Books list to download the title.", comment: "")
   }
+
+  struct BookDetailView {
+    static let audiobookAvailable = NSLocalizedString("Also available as an audiobook.", comment: "")
+    static let description = NSLocalizedString("Description", comment: "")
+    static let information = NSLocalizedString("Information", comment: "")
+    static let preview = NSLocalizedString("Preview", comment: "")
+    static let format = NSLocalizedString("Format", comment: "")
+    static let published = NSLocalizedString("Published", comment: "")
+    static let publisher = NSLocalizedString("Publisher", comment: "")
+    static let category = NSLocalizedString("Category", comment: "")
+    static let categories = NSLocalizedString("Categories", comment: "")
+    static let distributor = NSLocalizedString("Distributor", comment: "")
+    static let narrators = NSLocalizedString("Narrators", comment: "")
+    static let duration = NSLocalizedString("Duration", comment: "")
+    static let more = NSLocalizedString("More", comment: "")
+    static let less = NSLocalizedString("Less", comment: "")
+    static let otherBooks = NSLocalizedString("Other books by this author", comment: "Section header for related books")
+  }
+
+  struct BookButton {
+    static let borrow = NSLocalizedString("Borrow", comment: "")
+    static let preview = NSLocalizedString("Preview", comment: "")
+    static let retry = NSLocalizedString("Retry", comment: "")
+    static let read = NSLocalizedString("Read", comment: "")
+    static let listen = NSLocalizedString("Listen", comment: "")
+    static let download = NSLocalizedString("Download", comment: "")
+    static let cancel = NSLocalizedString("Cancel", comment: "")
+    static let `return` = NSLocalizedString("Return", comment: "")
+    static let remove = NSLocalizedString("Remove", comment: "")
+    static let placeHold = NSLocalizedString("Place Hold", comment: "")
+    static let onHold = NSLocalizedString("On Hold", comment: "")
+    static let keepHold = NSLocalizedString("Keep Hold", comment: "")
+    static let cancelHold = NSLocalizedString("Cancel Hold", comment: "")
+    static let otherBooks = NSLocalizedString("Other books by this author", comment: "")
+  }
 }
