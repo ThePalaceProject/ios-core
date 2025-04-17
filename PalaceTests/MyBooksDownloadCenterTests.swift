@@ -1,17 +1,16 @@
 import XCTest
-
 @testable import Palace
 
-let testFeedUrl = Bundle.init(for: OPDS2CatalogsFeedTests.self)
+let testFeedUrl = Bundle(for: OPDS2CatalogsFeedTests.self)
   .url(forResource: "OPDS2CatalogsFeed", withExtension: "json")!
 
 class MyBooksDownloadCenterTests: XCTestCase {
-  
+
   var myBooksDownloadCenter: MyBooksDownloadCenter!
   var mockUserAccount: TPPUserAccount!
   var mockReauthenticator: TPPReauthenticatorMock!
   var mockBookRegistry: TPPBookRegistryProvider!
-    
+
   override func setUp() {
     super.setUp()
 
@@ -25,11 +24,11 @@ class MyBooksDownloadCenterTests: XCTestCase {
       bookRegistry: mockBookRegistry
     )
   }
-  
+
   override func tearDown() {
     super.tearDown()
   }
-  
+
   func testBorrowBook() {
     let expectation = self.expectation(description: "Book is sent to downloading state")
 
