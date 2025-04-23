@@ -6,10 +6,10 @@ class TPPBookCoverRegistry {
   // MARK: - Properties
 
   private let cache: NSCache<NSString, UIImage> = {
-    let cache = NSCache<NSString, UIImage>()
-    cache.countLimit = 100
-    cache.totalCostLimit = 20 * 1024 * 1024
-    return cache
+    let c = NSCache<NSString, UIImage>()
+    c.countLimit     = 50
+    c.totalCostLimit = 2 * 1024 * 1024
+    return c
   }()
 
   private lazy var urlSession: URLSession = {
@@ -56,19 +56,11 @@ class TPPBookCoverRegistry {
       return
     }
 
-    if let localImage = loadImageFromDisk(for: book, isCover: false) {
-      let decompressedImage = decompressImage(localImage)
-      cacheImage(decompressedImage, for: book, isCover: false)
-      handler(decompressedImage)
-      return
-    }
-
     guard let thumbnailUrl = book.imageThumbnailURL else {
       let generatedImage = generateBookCoverImage(book)
       handler(generatedImage)
       if let generatedImage = generatedImage {
         cacheImage(generatedImage, for: book, isCover: false)
-        saveImageToDisk(generatedImage, for: book, isCover: false)
       }
       return
     }
@@ -82,7 +74,6 @@ class TPPBookCoverRegistry {
       let finalImage = image ?? self.generateBookCoverImage(book)
       if let finalImage = finalImage {
         self.cacheImage(finalImage, for: book, isCover: false)
-        self.saveImageToDisk(finalImage, for: book, isCover: false)
       }
       handler(finalImage)
     }
@@ -92,13 +83,6 @@ class TPPBookCoverRegistry {
   func coverImageForBook(_ book: TPPBook, handler: @escaping (_ image: UIImage?) -> Void) {
     if let cachedImage = cachedImage(for: book, isCover: true) {
       handler(cachedImage)
-      return
-    }
-
-    if let localImage = loadImageFromDisk(for: book, isCover: true) {
-      let decompressedImage = decompressImage(localImage)
-      cacheImage(decompressedImage, for: book, isCover: true)
-      handler(decompressedImage)
       return
     }
 
@@ -117,7 +101,6 @@ class TPPBookCoverRegistry {
 
       if let image = image {
         self.cacheImage(image, for: book, isCover: true)
-        self.saveImageToDisk(image, for: book, isCover: true)
       }
       handler(image)
     }
@@ -137,18 +120,6 @@ class TPPBookCoverRegistry {
 
       dispatchGroup.enter()
       cacheQueue.async {
-        if let localImage = self.loadImageFromDisk(for: book, isCover: false) {
-          let decompressedImage = self.decompressImage(localImage)
-          Task { @MainActor in
-            self.cacheImage(decompressedImage, for: book, isCover: false)
-          }
-          resultLock.lock()
-          result[book.identifier] = decompressedImage
-          resultLock.unlock()
-          dispatchGroup.leave()
-          return
-        }
-
         self.operationQueue.addOperation {
           let operationGroup = DispatchGroup()
           operationGroup.enter()
@@ -203,33 +174,6 @@ class TPPBookCoverRegistry {
     let key = cacheKey(for: book, isCover: isCover)
     let estimatedSize = Int(image.size.width * image.size.height * 4)
     cache.setObject(image, forKey: key as NSString, cost: estimatedSize)
-  }
-
-  private func loadImageFromDisk(for book: TPPBook, isCover: Bool) -> UIImage? {
-    guard let imagePath = imageFileURL(for: book, isCover: isCover)?.path,
-          fileManager.fileExists(atPath: imagePath) else {
-      return nil
-    }
-    return UIImage(contentsOfFile: imagePath)
-  }
-
-  private func saveImageToDisk(_ image: UIImage, for book: TPPBook, isCover: Bool) {
-    guard let fileUrl = imageFileURL(for: book, isCover: isCover),
-          let data = image.jpegData(compressionQuality: 0.85) else { return }
-
-    let directoryUrl = fileUrl.deletingLastPathComponent()
-
-    cacheQueue.async(flags: .barrier) {
-      do {
-        if !self.fileManager.fileExists(atPath: directoryUrl.path) {
-          try self.fileManager.createDirectory(at: directoryUrl, withIntermediateDirectories: true, attributes: nil)
-        }
-
-        try data.write(to: fileUrl, options: .atomic)
-      } catch {
-        ATLog(.error, "Failed to write image to file \(fileUrl.lastPathComponent): \(error.localizedDescription)")
-      }
-    }
   }
 
   private func fetchImage(from url: URL, completion: @escaping (_ image: UIImage?) -> Void) {
