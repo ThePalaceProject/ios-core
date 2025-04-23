@@ -38,6 +38,8 @@ class TPPBookCoverRegistry {
 
   // MARK: - Initialization
 
+  static var shared = TPPBookCoverRegistry()
+
   init() {
     cleanUpOldImages()
     NotificationCenter.default.addObserver(self, selector: #selector(clearMemoryCache), name: UIApplication.didReceiveMemoryWarningNotification, object: nil)
