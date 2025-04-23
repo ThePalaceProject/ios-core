@@ -242,19 +242,28 @@ class TPPBookCoverRegistry {
   }
 
   private func decompressImage(_ image: UIImage) -> UIImage {
-    if image.size.width * image.size.height < 200 * 200 {
-      return image
+    let pixelCount = image.size.width * image.size.height
+    if pixelCount < (200 * 200) { return image }
+
+    let maxDim: CGFloat = 2048
+    var targetSize = image.size
+    if targetSize.width > maxDim || targetSize.height > maxDim {
+      let aspect = targetSize.width / targetSize.height
+      if aspect > 1 {
+        targetSize.width  = maxDim
+        targetSize.height = maxDim / aspect
+      } else {
+        targetSize.width  = maxDim * aspect
+        targetSize.height = maxDim
+      }
     }
 
-    let imageRect = CGRect(origin: .zero, size: image.size)
-    UIGraphicsBeginImageContextWithOptions(image.size, false, image.scale)
-    defer { UIGraphicsEndImageContext() }
-
-    if image.size.width > 0 && image.size.height > 0 {
-      image.draw(in: imageRect)
+    let format = UIGraphicsImageRendererFormat()
+    format.scale = image.scale
+    let renderer = UIGraphicsImageRenderer(size: targetSize, format: format)
+    return renderer.image { _ in
+      image.draw(in: CGRect(origin: .zero, size: targetSize))
     }
-
-    return UIGraphicsGetImageFromCurrentImageContext() ?? image
   }
 
   private func safeImage(from data: Data) -> UIImage? {
