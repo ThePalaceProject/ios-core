@@ -140,9 +140,15 @@ class TPPPDFPreviewGridController: UICollectionViewController {
   }
   
   private func scrollToCurrentItem() {
-    if isVisible && indices == nil {
-      collectionView.scrollToItem(at: IndexPath(item: currentPage, section: 0), at: .centeredVertically, animated: false)
+    guard isVisible else { return }
+
+    let totalItems = indices?.count ?? document?.pageCount ?? 0
+    guard currentPage >= 0, currentPage < totalItems else {
+      return
     }
+
+    let indexPath = IndexPath(item: currentPage, section: 0)
+    collectionView.scrollToItem(at: indexPath, at: .centeredVertically, animated: false)
   }
 }
 
