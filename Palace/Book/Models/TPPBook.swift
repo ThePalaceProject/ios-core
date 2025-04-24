@@ -526,8 +526,8 @@ extension TPPBook {
 extension TPPBook {
   private static var cachedCoverImages: [String: UIImage] = [:]
   private static var cachedThumbnailImages: [String: UIImage] = [:]
-  private static let coverRegistry = TPPBookCoverRegistry()
-  
+  private static let coverRegistry = TPPBookCoverRegistry.shared
+
   func fetchCoverImage() {
     if let cachedImage = TPPBook.cachedCoverImages[identifier] {
       self.coverImage = cachedImage
