@@ -62,10 +62,6 @@ struct HTMLTextView: View {
 
     safeHTML = safeHTML.replacingOccurrences(of: "position:\\s?absolute;", with: "", options: .regularExpression)
 
-    if safeHTML.count > 10_000 || !safeHTML.contains("<") {
-      return ""
-    }
-
     return safeHTML
   }
 }
