@@ -60,8 +60,6 @@ struct HTMLTextView: View {
       safeHTML = safeHTML.replacingOccurrences(of: pattern, with: "", options: .regularExpression)
     }
 
-    safeHTML = safeHTML.replacingOccurrences(of: "position:\\s?absolute;", with: "", options: .regularExpression)
-
     return safeHTML
   }
 }
