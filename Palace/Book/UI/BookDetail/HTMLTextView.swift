@@ -17,20 +17,55 @@ struct HTMLTextView: View {
   }
 
   private func htmlToAttributedString(_ html: String) -> AttributedString? {
-    guard let data = html.data(using: .utf8) else { return nil }
+    let cleanHTML = sanitizeHTML(html)
+
+    guard let data = cleanHTML.data(using: .utf8) else { return nil }
 
     let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [
       .documentType: NSAttributedString.DocumentType.html,
       .characterEncoding: String.Encoding.utf8.rawValue
     ]
 
-    if let nsAttributedString = try? NSAttributedString(data: data, options: options, documentAttributes: nil) {
+    do {
+      let nsAttributedString = try NSAttributedString(data: data, options: options, documentAttributes: nil)
       let mutableAttributedString = NSMutableAttributedString(attributedString: nsAttributedString)
-      mutableAttributedString.addAttribute(.font, value: UIFont.palaceFont(ofSize: 15), range: NSRange(location: 0, length: mutableAttributedString.length))
-      mutableAttributedString.addAttribute(.foregroundColor, value: UIColor.label, range: NSRange(location: 0, length: mutableAttributedString.length))
+
+      mutableAttributedString.addAttribute(
+        .font,
+        value: UIFont.palaceFont(ofSize: 15),
+        range: NSRange(location: 0, length: mutableAttributedString.length)
+      )
+
+      mutableAttributedString.addAttribute(
+        .foregroundColor,
+        value: UIColor.label,
+        range: NSRange(location: 0, length: mutableAttributedString.length)
+      )
+
       return AttributedString(mutableAttributedString)
+    } catch {
+      return nil
+    }
+  }
+
+  private func sanitizeHTML(_ html: String) -> String {
+    var safeHTML = html
+
+    let blacklist = [
+      "<style[^>]*?>[\\s\\S]*?<\\/style>",
+      "<script[^>]*?>[\\s\\S]*?<\\/script>"
+    ]
+
+    for pattern in blacklist {
+      safeHTML = safeHTML.replacingOccurrences(of: pattern, with: "", options: .regularExpression)
     }
 
-    return nil
+    safeHTML = safeHTML.replacingOccurrences(of: "position:\\s?absolute;", with: "", options: .regularExpression)
+
+    if safeHTML.count > 10_000 || !safeHTML.contains("<") {
+      return ""
+    }
+
+    return safeHTML
   }
 }
