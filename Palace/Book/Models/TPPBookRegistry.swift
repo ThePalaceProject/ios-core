@@ -112,7 +112,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     }
   }
 
-  private var coverRegistry = TPPBookCoverRegistry()
+  private var coverRegistry = TPPBookCoverRegistry.shared
   private let syncQueue = DispatchQueue(label: "com.palace.syncQueue")
   private var processingIdentifiers = Set<String>()
 
