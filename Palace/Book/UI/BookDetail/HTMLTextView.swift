@@ -5,21 +5,18 @@ struct HTMLTextView: View {
   let htmlContent: String
 
   var body: some View {
-    if let attributedString = htmlToAttributedString(htmlContent) {
-      Text(attributedString)
-        .foregroundColor(.white)
-        .frame(maxWidth: .infinity, alignment: .leading)
-    } else {
-      Text(htmlContent)
-        .foregroundColor(.white)
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
+    Text(makeAttributedString(from: htmlContent))
+      .frame(maxWidth: .infinity, alignment: .leading)
   }
 
-  private func htmlToAttributedString(_ html: String) -> AttributedString? {
-    let cleanHTML = sanitizeHTML(html)
+  private func makeAttributedString(from html: String) -> AttributedString {
+    guard html.contains("<"), html.count < 10_000 else {
+      return AttributedString(html)
+    }
 
-    guard let data = cleanHTML.data(using: .utf8) else { return nil }
+    guard let data = html.data(using: .utf8) else {
+      return AttributedString(html)
+    }
 
     let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [
       .documentType: NSAttributedString.DocumentType.html,
@@ -27,39 +24,21 @@ struct HTMLTextView: View {
     ]
 
     do {
-      let nsAttributedString = try NSAttributedString(data: data, options: options, documentAttributes: nil)
-      let mutableAttributedString = NSMutableAttributedString(attributedString: nsAttributedString)
+      let nsAttr = try NSAttributedString(data: data, options: options, documentAttributes: nil)
+      let mutable = NSMutableAttributedString(attributedString: nsAttr)
 
-      mutableAttributedString.addAttribute(
-        .font,
-        value: UIFont.palaceFont(ofSize: 15),
-        range: NSRange(location: 0, length: mutableAttributedString.length)
-      )
+      mutable.enumerateAttribute(.font, in: NSRange(location: 0, length: mutable.length)) { value, range, _ in
+        if value == nil {
+          mutable.addAttribute(.font, value: UIFont.palaceFont(ofSize: 15), range: range)
+        }
+      }
 
-      mutableAttributedString.addAttribute(
-        .foregroundColor,
-        value: UIColor.label,
-        range: NSRange(location: 0, length: mutableAttributedString.length)
-      )
+      mutable.addAttribute(.foregroundColor, value: UIColor.label, range: NSRange(location: 0, length: mutable.length))
 
-      return AttributedString(mutableAttributedString)
+      return AttributedString(mutable)
     } catch {
-      return nil
+      // Fallback to plain string if parsing fails
+      return AttributedString(html)
     }
-  }
-
-  private func sanitizeHTML(_ html: String) -> String {
-    var safeHTML = html
-
-    let blacklist = [
-      "<style[^>]*?>[\\s\\S]*?<\\/style>",
-      "<script[^>]*?>[\\s\\S]*?<\\/script>"
-    ]
-
-    for pattern in blacklist {
-      safeHTML = safeHTML.replacingOccurrences(of: pattern, with: "", options: .regularExpression)
-    }
-
-    return safeHTML
   }
 }
