@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 let currentAccountIdentifierKey = "TPPCurrentAccountIdentifier"
 
@@ -16,9 +17,9 @@ let currentAccountIdentifierKey = "TPPCurrentAccountIdentifier"
 @objcMembers final class AccountsManager: NSObject, TPPLibraryAccountsProvider {
 
   static let shared = AccountsManager()
-  class func sharedInstance() -> AccountsManager {
-    shared
-  }
+  class func sharedInstance() -> AccountsManager { shared }
+
+  // MARK: – Config / state
 
   static let TPPAccountUUIDs = [
     "urn:uuid:065c0c11-0d0f-42a3-82e4-277b18786949", // NYPL proper
@@ -37,25 +38,41 @@ let currentAccountIdentifierKey = "TPPCurrentAccountIdentifier"
   private var accountSets = [String: [Account]]()
   private let accountSetsLock = DispatchQueue(label: "com.tpp.accountSetsLock", attributes: .concurrent)
 
+  // Per‐catalog in‐flight tracking:
+  private var loadingCompletionHandlers = [String: [(Bool) -> Void]]()
+  private let loadingHandlersQueue = DispatchQueue(label: "com.tpp.loadingHandlers", attributes: .concurrent)
+
   private override init() {
-    self.accountSet = TPPConfiguration.customUrlHash() ?? (TPPSettings.shared.useBetaLibraries ? TPPConfiguration.betaUrlHash : TPPConfiguration.prodUrlHash)
+    self.accountSet = TPPConfiguration.customUrlHash()
+    ?? (TPPSettings.shared.useBetaLibraries
+        ? TPPConfiguration.betaUrlHash
+        : TPPConfiguration.prodUrlHash)
     self.ageCheck = TPPAgeCheck(ageCheckChoiceStorage: TPPSettings.shared)
     super.init()
-
     NotificationCenter.default.addObserver(
       self,
       selector: #selector(updateAccountSetFromNotification(_:)),
-      name: NSNotification.Name.TPPUseBetaDidChange,
+      name: .TPPUseBetaDidChange,
       object: nil
     )
 
-    DispatchQueue.global(qos: .background).async {
-      self.loadCatalogs(completion: nil)
+    DispatchQueue.global(qos: .background).async { [weak self] in
+      self?.loadCatalogs(completion: nil)
     }
   }
 
-  private func performLocked<T>(_ action: () -> T) -> T {
-    accountSetsLock.sync { action() }
+  // MARK: – Thread‐safe accountSets access
+
+  private func performRead<T>(_ block: () -> T) -> T {
+    return accountSetsLock.sync {
+      block()
+    }
+  }
+
+  private func performWrite(_ block: @escaping () -> Void) {
+    accountSetsLock.async(flags: .barrier) {
+      block()
+    }
   }
 
   // MARK: - Account Retrieval
@@ -69,175 +86,235 @@ let currentAccountIdentifierKey = "TPPCurrentAccountIdentifier"
       self.currentAccount?.hasUpdatedToken = false
       currentAccountId = newValue?.uuid
       TPPErrorLogger.setUserID(TPPUserAccount.sharedAccount().barcode)
-
-      NotificationCenter.default.post(name: NSNotification.Name.TPPCurrentAccountDidChange, object: nil)
+      NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
     }
   }
 
   private(set) var currentAccountId: String? {
     get { UserDefaults.standard.string(forKey: currentAccountIdentifierKey) }
     set {
-      Log.debug(#file, "Setting currentAccountId to \(newValue ?? "N/A")>")
+      Log.debug(#file, "Setting currentAccountId to \(newValue ?? "N/A")")
       UserDefaults.standard.set(newValue, forKey: currentAccountIdentifierKey)
     }
   }
 
   func account(_ uuid: String) -> Account? {
-    return performLocked {
-      for accounts in accountSets.values {
-        if let account = accounts.first(where: { $0.uuid == uuid }) {
-          return account
-        }
-      }
-      return nil
+    return performRead {
+      accountSets.values
+        .first { $0.contains(where: { $0.uuid == uuid }) }?
+        .first(where: { $0.uuid == uuid })
     }
   }
 
   func accounts(_ key: String? = nil) -> [Account] {
-    return performLocked {
+    return performRead {
       let k = key ?? self.accountSet
       return self.accountSets[k] ?? []
     }
   }
 
   var accountsHaveLoaded: Bool {
-    performLocked {
-      return !(accountSets[accountSet]?.isEmpty ?? true)
+    return performRead {
+      !(self.accountSets[self.accountSet]?.isEmpty ?? true)
     }
   }
 
-  // MARK: - Account Loading
+  // MARK: – Load logic
 
-  var isLoading = false
-  private var loadCatalogCompletions: [((Bool) -> ())] = []
+  /// Adds a completion handler for the given catalog hash,
+  /// returns true if a load is already underway.
+  private func addLoadingHandler(for hash: String, _ handler: ((Bool) -> Void)?) -> Bool {
+    var alreadyLoading = false
+    loadingHandlersQueue.sync {
+      alreadyLoading = loadingCompletionHandlers[hash] != nil
+    }
 
+    guard !alreadyLoading else {
+      if let h = handler {
+        loadingHandlersQueue.async(flags: .barrier) { [weak self] in
+          self?.loadingCompletionHandlers[hash]?.append(h)
+        }
+      }
+      return true
+    }
+
+    // first request for this hash
+    loadingHandlersQueue.async(flags: .barrier) {
+      self.loadingCompletionHandlers[hash] = handler.map { [$0] } ?? []
+    }
+    return false
+  }
+
+  /// Calls & clears all handlers for the given hash
+  private func callAndClearLoadingHandlers(for hash: String, _ success: Bool) {
+    var handlers: [(Bool)->Void] = []
+    loadingHandlersQueue.sync {
+      handlers = loadingCompletionHandlers[hash] ?? []
+    }
+    loadingHandlersQueue.async(flags: .barrier) {
+      self.loadingCompletionHandlers[hash] = nil
+    }
+    handlers.forEach { $0(success) }
+  }
+
+  /// Public entrypoint
   func loadCatalogs(completion: ((Bool) -> ())?) {
-    if accountsHaveLoaded {
+    let targetUrl = TPPConfiguration.customUrl()
+    ?? (TPPSettings.shared.useBetaLibraries
+        ? TPPConfiguration.betaUrl
+        : TPPConfiguration.prodUrl)
+    let hash = targetUrl.absoluteString
+      .md5()
+      .base64EncodedStringUrlSafe()
+      .trimmingCharacters(in: ["="])
+
+    // if already loaded for this hash, immediately call back
+    if performRead({ self.accountSets[hash]?.isEmpty == false }) {
       completion?(true)
       return
     }
 
-    if isLoading {
-      if let completion = completion {
-        loadCatalogCompletions.append(completion)
-      }
-      return
-    }
+    // dedupe concurrent loads
+    if addLoadingHandler(for: hash, completion) { return }
 
-    isLoading = true
-    if let completion = completion {
-      loadCatalogCompletions.append(completion)
-    }
-
-    Log.debug(#file, "Entering loadCatalog...")
-    let targetUrl = TPPConfiguration.customUrl() ?? (TPPSettings.shared.useBetaLibraries ? TPPConfiguration.betaUrl : TPPConfiguration.prodUrl)
-    let hash = targetUrl.absoluteString.md5().base64EncodedStringUrlSafe().trimmingCharacters(in: ["="])
-
+    Log.debug(#file, "Loading catalogs for hash \(hash)…")
     TPPNetworkExecutor(cachingStrategy: .fallback).GET(targetUrl, useTokenIfAvailable: false) { [weak self] result in
       guard let self = self else { return }
       switch result {
       case .success(let data, _):
+        self.cacheAccountsCatalogData(data, hash: hash)
         self.loadAccountSetsAndAuthDoc(fromCatalogData: data, key: hash) { success in
-          NotificationCenter.default.post(name: NSNotification.Name.TPPCatalogDidLoad, object: nil)
-          self.completeLoadCatalogs(with: success)
+          NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
+          self.callAndClearLoadingHandlers(for: hash, success)
         }
-      case .failure(let error, _):
-        TPPErrorLogger.logError(
-          withCode: .libraryListLoadFail,
-          summary: "Unable to load libraries list",
-          metadata: [
-            NSUnderlyingErrorKey: error,
-            "targetUrl": targetUrl
-          ])
-        self.completeLoadCatalogs(with: false)
+
+      case .failure:
+        // fallback to disk
+        if let data = self.readCachedAccountsCatalogData(hash: hash) {
+          self.loadAccountSetsAndAuthDoc(fromCatalogData: data, key: hash) { success in
+            NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
+            self.callAndClearLoadingHandlers(for: hash, success)
+          }
+        } else {
+          // truly failed
+          self.callAndClearLoadingHandlers(for: hash, false)
+        }
       }
     }
   }
 
-  private func completeLoadCatalogs(with success: Bool) {
-    isLoading = false
-    loadCatalogCompletions.forEach { $0(success) }
-    loadCatalogCompletions.removeAll()
+  // MARK: – Disk cache helpers
+
+  private func accountsCatalogUrl(hash: String) -> URL? {
+    guard let appSupport = try? FileManager.default.url(
+      for: .applicationSupportDirectory,
+      in: .userDomainMask,
+      appropriateFor: nil,
+      create: true)
+    else { return nil }
+    return appSupport.appendingPathComponent("accounts_catalog_\(hash).json")
   }
 
-  /// Clears cached accounts & authentication data
-  func clearCache() {
-    TPPNetworkExecutor.shared.clearCache()
-    let cacheKeys = ["library_list_", "accounts_catalog_", "authentication_document_"]
-    let cacheURLs = cacheKeys.compactMap { key -> URL? in
-      guard let appSupportUrl = try? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: false) else { return nil }
-      return appSupportUrl.appendingPathComponent("\(key).json")
-    }
-    for cacheURL in cacheURLs {
-      try? FileManager.default.removeItem(at: cacheURL)
-    }
+  private func cacheAccountsCatalogData(_ data: Data, hash: String) {
+    guard let url = accountsCatalogUrl(hash: hash) else { return }
+    try? data.write(to: url)
   }
 
-  private func loadAccountSetsAndAuthDoc(fromCatalogData data: Data, key: String, completion: @escaping (Bool) -> ()) {
+  private func readCachedAccountsCatalogData(hash: String) -> Data? {
+    guard let url = accountsCatalogUrl(hash: hash) else { return nil }
+    return try? Data(contentsOf: url)
+  }
+
+  // MARK: – Parsing & notifying
+
+  private func loadAccountSetsAndAuthDoc(
+    fromCatalogData data: Data,
+    key hash: String,
+    completion: @escaping (Bool) -> Void
+  ) {
     do {
-      let catalogsFeed = try OPDS2CatalogsFeed.fromData(data)
+      let feed = try OPDS2CatalogsFeed.fromData(data)
       let hadAccount = self.currentAccount != nil
-      let accountSet = catalogsFeed.catalogs.map { Account(publication: $0) }
+      let newAccounts = feed.catalogs.map { Account(publication: $0) }
 
-      accountSetsLock.async(flags: .barrier) {
-        self.accountSets[key] = accountSet
+      // write under-barrier
+      self.performWrite {
+        self.accountSets[hash] = newAccounts
       }
 
+      // then do your logo+auth dispatchgroup dance…
       let group = DispatchGroup()
 
       if hadAccount != (self.currentAccount != nil), let current = self.currentAccount {
         group.enter()
         current.loadLogo()
-
         current.loadAuthenticationDocument(using: TPPUserAccount.sharedAccount()) { _ in
           if current.details?.needsAgeCheck ?? false {
             group.enter()
             self.ageCheck.verifyCurrentAccountAgeRequirement(
               userAccountProvider: TPPUserAccount.sharedAccount(),
               currentLibraryAccountProvider: self
-            ) { isOfAge in
-              group.leave()
-            }
+            ) { _ in group.leave() }
           }
           group.leave()
         }
       }
 
-      for account in accountSet {
+      for acct in newAccounts {
         group.enter()
         DispatchQueue.global(qos: .background).async {
-          account.loadLogo()
+          acct.loadLogo()
           group.leave()
         }
       }
 
       group.notify(queue: .main) {
         var mainFeed = URL(string: self.currentAccount?.catalogUrl ?? "")
-        if let current = self.currentAccount, current.details?.needsAgeCheck ?? false {
-          mainFeed = current.details?.defaultAuth?.coppaURL(isOfAge: true)
+        if let cur = self.currentAccount, cur.details?.needsAgeCheck ?? false {
+          mainFeed = cur.details?.defaultAuth?.coppaURL(isOfAge: true)
         }
         TPPSettings.shared.accountMainFeedURL = mainFeed
         UIApplication.shared.delegate?.window??.tintColor = TPPConfiguration.mainColor()
-        NotificationCenter.default.post(name: NSNotification.Name.TPPCurrentAccountDidChange, object: nil)
-
+        NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
         completion(true)
       }
+
     } catch {
       TPPErrorLogger.logError(error, summary: "Error parsing catalog feed")
       completion(false)
     }
   }
 
-  @objc private func updateAccountSetFromNotification(_ notif: NSNotification) {
+  @objc private func updateAccountSetFromNotification(_ notif: Notification) {
     updateAccountSet(completion: nil)
   }
 
-  func updateAccountSet(completion: ((Bool) -> ())?) {
-    accountSetsLock.async(flags: .barrier) {
-      self.accountSet = TPPConfiguration.customUrlHash() ?? (TPPSettings.shared.useBetaLibraries ? TPPConfiguration.betaUrlHash : TPPConfiguration.prodUrlHash)
-    }
-    if accounts().isEmpty || TPPConfiguration.customUrlHash() != nil {
+  func updateAccountSet(completion: ((Bool) -> Void)?) {
+    let newHash = TPPConfiguration.customUrlHash()
+    ?? (TPPSettings.shared.useBetaLibraries
+        ? TPPConfiguration.betaUrlHash
+        : TPPConfiguration.prodUrlHash)
+
+    performWrite { self.accountSet = newHash }
+    if performRead({ self.accountSets[newHash]?.isEmpty ?? true }) || TPPConfiguration.customUrlHash() != nil {
       loadCatalogs(completion: completion)
+    } else {
+      completion?(true)
+    }
+  }
+
+  /// Clears all local catalog and authentication caches
+  func clearCache() {
+    // network cache
+    TPPNetworkExecutor.shared.clearCache()
+    // file caches
+    let keys = ["library_list_", "accounts_catalog_", "authentication_document_"]
+    let fm = FileManager.default
+    if let appSupport = try? fm.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: false) {
+      for key in keys {
+        let url = appSupport.appendingPathComponent("\(key).json")
+        try? fm.removeItem(at: url)
+      }
     }
   }
 }
