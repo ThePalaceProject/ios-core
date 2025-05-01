@@ -30,10 +30,6 @@ import CoreLocation
   func deauthorize(withUsername username: String!, password: String!, userID: String!, deviceID: String!, completion: ((Bool, Error?) -> Void)!)
 }
 
-#if FEATURE_DRM_CONNECTOR
-extension NYPLADEPT: TPPDRMAuthorizing {}
-#endif
-
 class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibraryAccountProvider {
   var onLocationAuthorizationCompletion: (UINavigationController?, Error?) -> Void = {_,_ in }
 
@@ -600,3 +596,48 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     return libraryAccount?.details?.getLicenseURL(.eula) != nil
   }
 }
+
+#if FEATURE_DRM_CONNECTOR
+import Foundation
+
+extension AdobeDRMServiceBridge: TPPDRMAuthorizing {
+  
+  // MARK: — TPPDRMAuthorizing
+  @objc var workflowsInProgress: Bool {
+    // bridge doesn’t currently expose in-flight state, so:
+    return false
+  }
+  
+  @objc func isUserAuthorized(_ userID: String!, withDevice deviceID: String!) -> Bool {
+    // we don’t store vendorID/userID in the simple bridge, so ignore those:
+    return isDeviceAuthorized()
+  }
+  
+  @objc func authorize(
+    withVendorID vendorID: String!,
+    username: String!,
+    password: String!,
+    completion: ((Bool, Error?, String?, String?) -> Void)!
+  ) {
+    // Note: your bridge callback only returns success+error—
+    // if you need to propagate the Adobe userID/deviceID you’ll
+    // need to update the bridge to hand those back.
+    authorizeDevice(withUserID: username, password: password) { success, error in
+      completion(success, error, /* deviceID: */ nil, /* userID: */ nil)
+    }
+  }
+  
+  @objc func deauthorize(
+    withUsername username: String!,
+    password: String!,
+    userID: String!,
+    deviceID: String!,
+    completion: ((Bool, Error?) -> Void)!
+  ) {
+    deauthorize(withUsername: username, password: password, userID: userID, deviceID: deviceID)
+    { success, error in
+      completion(success, error)
+    }
+  }
+}
+#endif

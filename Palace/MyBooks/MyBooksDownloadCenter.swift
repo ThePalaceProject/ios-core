@@ -46,10 +46,7 @@ import OverdriveProcessor
     super.init()
     
 #if FEATURE_DRM_CONNECTOR
-    if !(AdobeCertificate.defaultCertificate?.hasExpired ?? true)
-    {
-      NYPLADEPT.sharedInstance().delegate = self
-    }
+     _ = AdobeDRMServiceBridge.shared()
 #else
     NSLog("Cannot import ADEPT")
 #endif
@@ -444,7 +441,7 @@ import OverdriveProcessor
     
 #if FEATURE_DRM_CONNECTOR
     if info.rightsManagement == .adobe {
-      NYPLADEPT.sharedInstance().cancelFulfillment(withTag: identifier)
+      AdobeDRMServiceBridge.shared().cancelFulfillment(withTag: identifier)
       return
     }
 #endif
@@ -522,9 +519,11 @@ extension MyBooksDownloadCenter {
     if let fulfillmentId = bookRegistry.fulfillmentId(forIdentifier: identifier),
        userAccount.authDefinition?.needsAuth == true {
       NSLog("Return attempt for book. userID: %@", userAccount.userID ?? "")
-      NYPLADEPT.sharedInstance().returnLoan(fulfillmentId,
-                                            userID: userAccount.userID,
-                                            deviceID: userAccount.deviceID) { success, error in
+      AdobeDRMServiceBridge.shared().returnLoan(
+        withID: fulfillmentId,
+        userID: userAccount.userID ?? "",
+        deviceID: userAccount.deviceID ?? "")
+      { success, error in
         if !success {
           NSLog("Failed to return loan via NYPLAdept.")
         }
@@ -701,7 +700,44 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
           failureRequiringAlert = true
         } else if let acsmData = try? Data(contentsOf: location) {
           NSLog("Download finished. Fulfilling with userID: \(userAccount.userID ?? "")")
-          NYPLADEPT.sharedInstance().fulfill(withACSMData: acsmData, tag: book.identifier, userID: userAccount.userID, deviceID: userAccount.deviceID)
+          
+          AdobeDRMServiceBridge.shared().fulfill(
+            withACSMData: acsmData,
+            tag: book.identifier,
+            userID: userAccount.userID ?? "",
+            deviceID: userAccount.deviceID ?? ""
+          ) { success, error in
+            DispatchQueue.main.async {
+              guard success, error == nil else {
+                // log and show failure
+                TPPErrorLogger.logError(
+                  error as NSError? ?? NSError(domain: "DRM", code: -1, userInfo:nil),
+                  summary: "Adobe DRM fulfill failed",
+                  metadata: ["book": book.loggableDictionary]
+                )
+                self.failDownloadWithAlert(for: book)
+                return
+              }
+
+              guard
+                let destURL = self.fileUrl(for: book.identifier),
+                FileManager.default.fileExists(atPath: destURL.path)
+              else {
+                self.failDownloadWithAlert(for: book)
+                return
+              }
+
+              let rightsPath = destURL.deletingPathExtension().appendingPathExtension("rights.xml")
+              do {
+                try acsmData.write(to: rightsPath)
+              } catch {
+                NSLog("Failed to write rights.xml: \(error)")
+              }
+
+              self.bookRegistry.setState(.downloadSuccessful, for: book.identifier)
+              self.broadcastUpdate()
+            }
+          }
         }
 #endif
       case .lcp:
@@ -1173,101 +1209,3 @@ extension MyBooksDownloadCenter: TPPBookDownloadsDeleting {
   }
 }
 
-#if FEATURE_DRM_CONNECTOR
-extension MyBooksDownloadCenter: NYPLADEPTDelegate {
-  
-  func adept(_ adept: NYPLADEPT, didFinishDownload: Bool, to adeptToURL: URL?, fulfillmentID: String?, isReturnable: Bool, rightsData: Data, tag: String, error adeptError: Error?) {
-    guard let book = bookRegistry.book(forIdentifier: tag),
-          let rights = String(data: rightsData, encoding: .utf8) else { return }
-    
-    var didSucceedCopying = false
-    
-    if didFinishDownload {
-      guard let fileURL = fileUrl(for: book.identifier) else { return }
-      let fileManager = FileManager.default
-      
-      do {
-        try fileManager.removeItem(at: fileURL)
-      } catch {
-        print("Remove item error: \(error)")
-      }
-      
-      guard let destURL = fileUrl(for: book.identifier), let adeptToURL = adeptToURL else {
-        TPPErrorLogger.logError(withCode: .adobeDRMFulfillmentFail, summary: "Adobe DRM error: destination file URL unavailable", metadata: [
-          "adeptError": adeptError ?? "N/A",
-          "fileURLToRemove": adeptToURL ?? "N/A",
-          "book": book.loggableDictionary,
-          "AdobeFulfilmmentID": fulfillmentID ?? "N/A",
-          "AdobeRights": rights,
-          "AdobeTag": tag
-        ])
-        self.failDownloadWithAlert(for: book)
-        return
-      }
-      
-      do {
-        try fileManager.copyItem(at: adeptToURL, to: destURL)
-        didSucceedCopying = true
-      } catch {
-        TPPErrorLogger.logError(withCode: .adobeDRMFulfillmentFail, summary: "Adobe DRM error: failure copying file", metadata: [
-          "adeptError": adeptError ?? "N/A",
-          "copyError": error,
-          "fromURL": adeptToURL,
-          "destURL": destURL,
-          "book": book.loggableDictionary,
-          "AdobeFulfilmmentID": fulfillmentID ?? "N/A",
-          "AdobeRights": rights,
-          "AdobeTag": tag
-        ])
-      }
-    } else {
-      TPPErrorLogger.logError(withCode: .adobeDRMFulfillmentFail, summary: "Adobe DRM error: did not finish download", metadata: [
-        "adeptError": adeptError ?? "N/A",
-        "adeptToURL": adeptToURL ?? "N/A",
-        "book": book.loggableDictionary,
-        "AdobeFulfilmmentID": fulfillmentID ?? "N/A",
-        "AdobeRights": rights,
-        "AdobeTag": tag
-      ])
-    }
-    
-    if !didFinishDownload || !didSucceedCopying {
-      self.failDownloadWithAlert(for: book)
-      return
-    }
-    
-    guard let rightsFilePath = fileUrl(for: book.identifier)?.path.appending("_rights.xml") else { return }
-    do {
-      try rightsData.write(to: URL(fileURLWithPath: rightsFilePath))
-    } catch {
-      print("Failed to store rights data.")
-    }
-    
-    if isReturnable, let fulfillmentID = fulfillmentID {
-      bookRegistry.setFulfillmentId(fulfillmentID, for: book.identifier)
-    }
-    
-    bookRegistry.setState(.downloadSuccessful, for: book.identifier)
-    
-    self.broadcastUpdate()
-  }
-  
-  func adept(_ adept: NYPLADEPT, didUpdateProgress progress: Double, tag: String) {
-    self.bookIdentifierToDownloadInfo[tag] = self.downloadInfo(forBookIdentifier: tag)?.withDownloadProgress(progress)
-    self.broadcastUpdate()
-  }
-  
-  func adept(_ adept: NYPLADEPT, didCancelDownloadWithTag tag: String) {
-    bookRegistry.setState(.downloadNeeded, for: tag)
-    self.broadcastUpdate()
-  }
-  
-  func didIgnoreFulfillmentWithNoAuthorizationPresent() {
-    // NOTE: This is cut and pasted from a previous implementation:
-    // "This handles a bug that seems to occur when the user updates,
-    // where the barcode and pin are entered but according to ADEPT the device
-    // is not authorized. To be used, the account must have a barcode and pin."
-    self.reauthenticator.authenticateIfNeeded(userAccount, usingExistingCredentials: true, authenticationCompletion: nil)
-  }
-}
-#endif

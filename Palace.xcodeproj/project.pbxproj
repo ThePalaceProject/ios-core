@@ -37,7 +37,6 @@
 		08A352241BDE8E640040BF1D /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 08A352231BDE8E640040BF1D /* Security.framework */; };
 		08A352261BDE8E700040BF1D /* SystemConfiguration.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 08A352251BDE8E700040BF1D /* SystemConfiguration.framework */; };
 		08A352271BDE91B80040BF1D /* libRDServices.a in Frameworks */ = {isa = PBXBuildFile; fileRef = A49C25461AE05A2600D63B89 /* libRDServices.a */; };
-		08C469C11BDAAEB1009D8AFD /* libADEPT.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A569A2C1B8351C6003B5B61 /* libADEPT.a */; settings = {ATTRIBUTES = (Weak, ); }; };
 		11068C55196DD37900E8A94B /* TPPNull.m in Sources */ = {isa = PBXBuildFile; fileRef = 11068C54196DD37900E8A94B /* TPPNull.m */; };
 		11078357198160A50071AB1E /* TPPBookDownloadFailedCell.m in Sources */ = {isa = PBXBuildFile; fileRef = 11078356198160A50071AB1E /* TPPBookDownloadFailedCell.m */; };
 		1107835E19816E3D0071AB1E /* UIView+TPPViewAdditions.m in Sources */ = {isa = PBXBuildFile; fileRef = 1107835D19816E3D0071AB1E /* UIView+TPPViewAdditions.m */; };
@@ -155,9 +154,7 @@
 		21DCC3AE27BEDB5A00064B37 /* TPPReaderAppearance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21DCC3AD27BEDB5A00064B37 /* TPPReaderAppearance.swift */; };
 		21DCC3AF27BEDB5A00064B37 /* TPPReaderAppearance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21DCC3AD27BEDB5A00064B37 /* TPPReaderAppearance.swift */; };
 		21DDE31325D2CE9A002CBCE3 /* AdobeDRMLibraryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21F238C724991A2A004DC0B1 /* AdobeDRMLibraryService.swift */; };
-		21DDE31F25D2CEAF002CBCE3 /* AdobeDRMContainer.mm in Sources */ = {isa = PBXBuildFile; fileRef = 21F238C12499155E004DC0B1 /* AdobeDRMContainer.mm */; };
 		21DDE32425D2CEC6002CBCE3 /* AdobeDRMLibraryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21F238C724991A2A004DC0B1 /* AdobeDRMLibraryService.swift */; };
-		21DDE32625D2CECC002CBCE3 /* AdobeDRMContainer.mm in Sources */ = {isa = PBXBuildFile; fileRef = 21F238C12499155E004DC0B1 /* AdobeDRMContainer.mm */; };
 		21DDE32825D2CEFC002CBCE3 /* AdobeDRMContentProtection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21DDE32725D2CEFC002CBCE3 /* AdobeDRMContentProtection.swift */; };
 		21DDE32C25D2CEFC002CBCE3 /* AdobeDRMContentProtection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21DDE32725D2CEFC002CBCE3 /* AdobeDRMContentProtection.swift */; };
 		21DF7F9325AF5E1E0090402A /* ReaderModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21DF7F9225AF5E1E0090402A /* ReaderModule.swift */; };
@@ -578,7 +575,6 @@
 		D570B5602BA20139003FE991 /* TPPReaderAdvancedSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = E52E3BBB28C0EF410073DC4D /* TPPReaderAdvancedSettings.swift */; };
 		D570B5612BA20139003FE991 /* URL+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7498A7D2A0E4F6A0037DD93 /* URL+Extensions.swift */; };
 		D570B5632BA20139003FE991 /* MyBooksDownloadCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = E544C4E82A395BE000B2DC9D /* MyBooksDownloadCenter.swift */; };
-		D570B5642BA20139003FE991 /* AdobeDRMContainer.mm in Sources */ = {isa = PBXBuildFile; fileRef = 21F238C12499155E004DC0B1 /* AdobeDRMContainer.mm */; };
 		D570B5652BA20139003FE991 /* TPPOnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21045C572761095B00D2D407 /* TPPOnboardingView.swift */; };
 		D570B5662BA20139003FE991 /* LCPLibraryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2171ADA0251E38140003CABA /* LCPLibraryService.swift */; };
 		D570B5672BA20139003FE991 /* TPPJSON.m in Sources */ = {isa = PBXBuildFile; fileRef = 11369D47199527C200BB11F8 /* TPPJSON.m */; };
@@ -1048,6 +1044,12 @@
 		E55E2FA529E7A9660093F916 /* AudioBookmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5231240285C291D007D1DB5 /* AudioBookmark.swift */; };
 		E55E2FA629E7A9670093F916 /* AudioBookmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5231240285C291D007D1DB5 /* AudioBookmark.swift */; };
 		E56067752A4C8858002ACE93 /* TokenRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = E56067742A4C8858002ACE93 /* TokenRequest.swift */; };
+		E562CB9E2DC10EB40038D52B /* AdobeDRMBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = E562CB9D2DC10EA30038D52B /* AdobeDRMBridge.swift */; };
+		E562CB9F2DC10EB40038D52B /* AdobeDRMBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = E562CB9D2DC10EA30038D52B /* AdobeDRMBridge.swift */; };
+		E562CBA02DC10EB40038D52B /* AdobeDRMBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = E562CB9D2DC10EA30038D52B /* AdobeDRMBridge.swift */; };
+		E562CBA52DC120DA0038D52B /* AdobeDRMContainer.mm in Sources */ = {isa = PBXBuildFile; fileRef = 21F238C12499155E004DC0B1 /* AdobeDRMContainer.mm */; };
+		E562CBA62DC120DA0038D52B /* AdobeDRMContainer.mm in Sources */ = {isa = PBXBuildFile; fileRef = 21F238C12499155E004DC0B1 /* AdobeDRMContainer.mm */; };
+		E562CBA72DC120DA0038D52B /* AdobeDRMContainer.mm in Sources */ = {isa = PBXBuildFile; fileRef = 21F238C12499155E004DC0B1 /* AdobeDRMContainer.mm */; };
 		E562DD962D35AB8F003A1A40 /* BookDetailViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E562DD952D35AB88003A1A40 /* BookDetailViewModel.swift */; };
 		E562DD972D35AB8F003A1A40 /* BookDetailViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E562DD952D35AB88003A1A40 /* BookDetailViewModel.swift */; };
 		E562DD982D35AB8F003A1A40 /* BookDetailViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E562DD952D35AB88003A1A40 /* BookDetailViewModel.swift */; };
@@ -2008,6 +2010,7 @@
 		E551B360267D402B0026FC1B /* TPPAccountList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAccountList.swift; sourceTree = "<group>"; };
 		E553424F293FB23F004FF34A /* PalaceAudiobookToolkit.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = PalaceAudiobookToolkit.xcodeproj; path = "ios-audiobooktoolkit/PalaceAudiobookToolkit.xcodeproj"; sourceTree = "<group>"; };
 		E56067742A4C8858002ACE93 /* TokenRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenRequest.swift; sourceTree = "<group>"; };
+		E562CB9D2DC10EA30038D52B /* AdobeDRMBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdobeDRMBridge.swift; sourceTree = "<group>"; };
 		E562DD952D35AB88003A1A40 /* BookDetailViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookDetailViewModel.swift; sourceTree = "<group>"; };
 		E562DD992D35ABBF003A1A40 /* BookDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookDetailView.swift; sourceTree = "<group>"; };
 		E562DDAB2D36E7B5003A1A40 /* BookDetailHostingViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookDetailHostingViewController.swift; sourceTree = "<group>"; };
@@ -2238,7 +2241,6 @@
 				03B092261E7883C400AD338D /* libiconv.tbd in Frameworks */,
 				A823D813192BABA400B55DE2 /* CoreGraphics.framework in Frameworks */,
 				03B092241E78839D00AD338D /* QuartzCore.framework in Frameworks */,
-				08C469C11BDAAEB1009D8AFD /* libADEPT.a in Frameworks */,
 				08A352271BDE91B80040BF1D /* libRDServices.a in Frameworks */,
 				E5E9AFF22CC0357500366A2E /* ReadiumShared in Frameworks */,
 				08A352221BDE8E560040BF1D /* libicucore.tbd in Frameworks */,
@@ -2446,6 +2448,7 @@
 		21F238B72498F7FB004DC0B1 /* AdobeDRM */ = {
 			isa = PBXGroup;
 			children = (
+				E562CB9D2DC10EA30038D52B /* AdobeDRMBridge.swift */,
 				21F238C02499155E004DC0B1 /* AdobeDRMContainer.h */,
 				21F238C12499155E004DC0B1 /* AdobeDRMContainer.mm */,
 				21F238C724991A2A004DC0B1 /* AdobeDRMLibraryService.swift */,
@@ -4568,6 +4571,7 @@
 				73EB0AC725821DF4006BC997 /* AudioBookVendorsHelper.swift in Sources */,
 				219C769A27629B8F00483647 /* TPPPagerDotsView.swift in Sources */,
 				73D8D28025A68D4300DF5F69 /* TPPBookLocation+Locator.swift in Sources */,
+				E562CBA02DC10EB40038D52B /* AdobeDRMBridge.swift in Sources */,
 				73EB0AC925821DF4006BC997 /* TPPBarcode.swift in Sources */,
 				215C866E27064198005F9621 /* BundleExtension.swift in Sources */,
 				73EB0ACA25821DF4006BC997 /* TPPSession.m in Sources */,
@@ -4595,7 +4599,6 @@
 				73EB0ADB25821DF4006BC997 /* OPDS2AuthenticationDocument.swift in Sources */,
 				73EB0ADC25821DF4006BC997 /* TPPCatalogs+SE.swift in Sources */,
 				73EB0ADE25821DF4006BC997 /* TPPDeveloperSettingsTableViewController.swift in Sources */,
-				21DDE32625D2CECC002CBCE3 /* AdobeDRMContainer.mm in Sources */,
 				21E41786292810EE00A78606 /* UIImage.swift in Sources */,
 				E551B365267D42AF0026FC1B /* TPPLoadingViewController.swift in Sources */,
 				E795A76A2A74074300314EC8 /* AudiobookTimeTracker.swift in Sources */,
@@ -4716,6 +4719,7 @@
 				E51919D92B50902000C08E86 /* URLRequest+Extensions.swift in Sources */,
 				73D8D27D25A68D4300DF5F69 /* TPPReaderTOCBusinessLogic.swift in Sources */,
 				73EB0B2225821DF4006BC997 /* TPPSecrets.swift in Sources */,
+				E562CBA72DC120DA0038D52B /* AdobeDRMContainer.mm in Sources */,
 				E50D684426AB235400F1042B /* TPPReaderTOCCell.swift in Sources */,
 				73C3CF5825C8EB6B00CA8166 /* TPPUserAccount.swift in Sources */,
 				73EB0B2425821DF4006BC997 /* TPPBookDetailDownloadFailedView.m in Sources */,
@@ -4756,7 +4760,6 @@
 				E52E3BBC28C0EF410073DC4D /* TPPReaderAdvancedSettings.swift in Sources */,
 				E7498A7E2A0E4F6A0037DD93 /* URL+Extensions.swift in Sources */,
 				E544C4E92A395BE000B2DC9D /* MyBooksDownloadCenter.swift in Sources */,
-				21DDE31F25D2CEAF002CBCE3 /* AdobeDRMContainer.mm in Sources */,
 				21045C582761095B00D2D407 /* TPPOnboardingView.swift in Sources */,
 				E5DE86FE2D6C39D7003D356E /* BookImageView.swift in Sources */,
 				2146872D2559A64B007B401A /* LCPLibraryService.swift in Sources */,
@@ -4801,6 +4804,7 @@
 				5D1B141522CBE3570006C964 /* TPPProblemDocument.swift in Sources */,
 				E706F6092863831F000B7431 /* TPPPDFPage+serialization.swift in Sources */,
 				A92FB0F921CDCE3D004740F4 /* TPPReturnPromptHelper.swift in Sources */,
+				E562CBA52DC120DA0038D52B /* AdobeDRMContainer.mm in Sources */,
 				E5E683682D95CEAC006D3CA5 /* ImageCache.swift in Sources */,
 				17E81F08261522B3001003C2 /* TPPRoundedButton.swift in Sources */,
 				7380E702254B3E77004613B1 /* TPPBookContentMetadataFilesHelper.swift in Sources */,
@@ -5050,6 +5054,7 @@
 				8CE9C471237F84820072E964 /* TPPBookDetailsProblemDocumentViewController.swift in Sources */,
 				E54DD4F9275D9E7F0013C200 /* UIViewControllerWrapper.swift in Sources */,
 				E5E443FC2DA4591C00AD4BC9 /* AdaptiveShadowModifier.swift in Sources */,
+				E562CB9E2DC10EB40038D52B /* AdobeDRMBridge.swift in Sources */,
 				73A2299B240F3B9B006B9EAD /* TPPR3Owner.swift in Sources */,
 				A4BA1D131B43046B006F83DF /* TPPCatalogGroupedFeed.m in Sources */,
 				E7CBF977285CA41400F00C02 /* TPPPDFDocument.swift in Sources */,
@@ -5115,7 +5120,6 @@
 				D570B5602BA20139003FE991 /* TPPReaderAdvancedSettings.swift in Sources */,
 				D570B5612BA20139003FE991 /* URL+Extensions.swift in Sources */,
 				D570B5632BA20139003FE991 /* MyBooksDownloadCenter.swift in Sources */,
-				D570B5642BA20139003FE991 /* AdobeDRMContainer.mm in Sources */,
 				D570B5652BA20139003FE991 /* TPPOnboardingView.swift in Sources */,
 				D570B5662BA20139003FE991 /* LCPLibraryService.swift in Sources */,
 				D570B5672BA20139003FE991 /* TPPJSON.m in Sources */,
@@ -5244,6 +5248,7 @@
 				D570B5DE2BA20139003FE991 /* NSError+NYPLAdditions.swift in Sources */,
 				D570B5E02BA20139003FE991 /* TPPCatalogLaneCell.m in Sources */,
 				D570B5E12BA20139003FE991 /* URLResponse+NYPL.swift in Sources */,
+				E562CBA62DC120DA0038D52B /* AdobeDRMContainer.mm in Sources */,
 				D570B5E22BA20139003FE991 /* TPPBook.swift in Sources */,
 				D570B5E32BA20139003FE991 /* TPPSettings+SE.swift in Sources */,
 				D570B5E42BA20139003FE991 /* Strings+objC.swift in Sources */,
@@ -5371,6 +5376,7 @@
 				D570B65A2BA20139003FE991 /* TPPKeychainManager.swift in Sources */,
 				D570B65B2BA20139003FE991 /* String+HTMLEntities.swift in Sources */,
 				D570B65C2BA20139003FE991 /* TPPEncryptedPDFViewer.swift in Sources */,
+				E562CB9F2DC10EB40038D52B /* AdobeDRMBridge.swift in Sources */,
 				D570B65D2BA20139003FE991 /* UserProfileDocument+Links.swift in Sources */,
 				D570B65E2BA20139003FE991 /* TPPCookiesWebViewController.swift in Sources */,
 				D570B6602BA20139003FE991 /* TPPSamlIDPCell.swift in Sources */,
@@ -5588,6 +5594,8 @@
 					"\"$(SRCROOT)/adobe-content-filter/public\"",
 					"\"$(SRCROOT)/adobe-rmsdk/dp/public\"",
 					"\"$(SRCROOT)/adobe-rmsdk/xml/uft/public\"",
+					"$(SRCROOT)/mobile-drm-adeptconnector/compressed/Adobe.Connector.Object.iOS/dp/public",
+					"$(SRCROOT)/../../mobile-drm-adeptconnector/compressed/Adobe.Connector.Object.iOS/dp/public",
 				);
 				INFOPLIST_FILE = PalaceTests/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
@@ -5653,6 +5661,8 @@
 					"\"$(SRCROOT)/adobe-content-filter/public\"",
 					"\"$(SRCROOT)/adobe-rmsdk/dp/public\"",
 					"\"$(SRCROOT)/adobe-rmsdk/xml/uft/public\"",
+					"$(SRCROOT)/mobile-drm-adeptconnector/compressed/Adobe.Connector.Object.iOS/dp/public",
+					"$(SRCROOT)/../../mobile-drm-adeptconnector/compressed/Adobe.Connector.Object.iOS/dp/public",
 				);
 				INFOPLIST_FILE = PalaceTests/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
@@ -5712,6 +5722,18 @@
 					"DEBUG=1",
 					"$(inherited)",
 				);
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"\"$(SDKROOT)/usr/include/libxml2\"",
+					"\"$(SRCROOT)/readium-sdk/Platform/Apple/RDServices\"",
+					"\"$(SRCROOT)/readium-sdk/Platform/Apple/include\"",
+					"\"$(SRCROOT)/ios-tenprintcover/TenPrintCover\"",
+					"\"$(SRCROOT)/ios-audiobook-overdrive/OverdriveProcessor\"",
+					"\"$(SRCROOT)/adept-ios\"",
+					"\"$(SRCROOT)/adobe-content-filter/public\"",
+					"\"$(SRCROOT)/adobe-rmsdk/dp/public\"",
+					"\"$(SRCROOT)/adobe-rmsdk/xml/uft/public\"",
+				);
 				INFOPLIST_FILE = "PalaceConfig/Palace-Info.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -5770,6 +5792,18 @@
 					"SIMPLYE=1",
 					"DEBUG=0",
 					"$(inherited)",
+				);
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"\"$(SDKROOT)/usr/include/libxml2\"",
+					"\"$(SRCROOT)/readium-sdk/Platform/Apple/RDServices\"",
+					"\"$(SRCROOT)/readium-sdk/Platform/Apple/include\"",
+					"\"$(SRCROOT)/ios-tenprintcover/TenPrintCover\"",
+					"\"$(SRCROOT)/ios-audiobook-overdrive/OverdriveProcessor\"",
+					"\"$(SRCROOT)/adept-ios\"",
+					"\"$(SRCROOT)/adobe-content-filter/public\"",
+					"\"$(SRCROOT)/adobe-rmsdk/dp/public\"",
+					"\"$(SRCROOT)/adobe-rmsdk/xml/uft/public\"",
 				);
 				INFOPLIST_FILE = "PalaceConfig/Palace-Info.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
@@ -5854,6 +5888,20 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"\"$(SDKROOT)/usr/include/libxml2\"",
+					"\"$(SRCROOT)/readium-sdk/Platform/Apple/RDServices\"",
+					"\"$(SRCROOT)/readium-sdk/Platform/Apple/include\"",
+					"\"$(SRCROOT)/ios-tenprintcover/TenPrintCover\"",
+					"\"$(SRCROOT)/ios-audiobook-overdrive/OverdriveProcessor\"",
+					"\"$(SRCROOT)/adept-ios\"",
+					"\"$(SRCROOT)/adobe-content-filter/public\"",
+					"\"$(SRCROOT)/adobe-rmsdk/dp/public\"",
+					"\"$(SRCROOT)/adobe-rmsdk/xml/uft/public\"",
+					"\"$(SRCROOT)/../mobile-drm-adeptconnector/compressed/Adobe.Connector.Object.iOS/dp/public\"",
+					"\"$(SRCROOT)/../mobile-drm-adeptconnector/compressed/Adobe.Connector.Object.iOS/xml/uft/public\"",
+				);
 				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
 				ONLY_ACTIVE_ARCH = YES;
 				OTHER_LDFLAGS = (
@@ -5912,6 +5960,18 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"\"$(SDKROOT)/usr/include/libxml2\"",
+					"\"$(SRCROOT)/readium-sdk/Platform/Apple/RDServices\"",
+					"\"$(SRCROOT)/readium-sdk/Platform/Apple/include\"",
+					"\"$(SRCROOT)/ios-tenprintcover/TenPrintCover\"",
+					"\"$(SRCROOT)/ios-audiobook-overdrive/OverdriveProcessor\"",
+					"\"$(SRCROOT)/adept-ios\"",
+					"\"$(SRCROOT)/adobe-content-filter/public\"",
+					"\"$(SRCROOT)/adobe-rmsdk/dp/public\"",
+					"\"$(SRCROOT)/adobe-rmsdk/xml/uft/public\"",
+				);
 				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
@@ -5961,6 +6021,7 @@
 					"LCP=1",
 					"FEATURE_OVERDRIVE=1",
 				);
+				HEADER_SEARCH_PATHS = "\"<Multiple values>\"";
 				INFOPLIST_FILE = "PalaceConfig/Palace-Info.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -6022,6 +6083,7 @@
 					"LCP=1",
 					"FEATURE_OVERDRIVE=1",
 				);
+				HEADER_SEARCH_PATHS = "\"<Multiple values>\"";
 				INFOPLIST_FILE = "PalaceConfig/Palace-Info.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -6083,6 +6145,18 @@
 					"LCP=1",
 					"FEATURE_OVERDRIVE=1",
 				);
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"\"$(SDKROOT)/usr/include/libxml2\"",
+					"\"$(SRCROOT)/readium-sdk/Platform/Apple/RDServices\"",
+					"\"$(SRCROOT)/readium-sdk/Platform/Apple/include\"",
+					"\"$(SRCROOT)/ios-tenprintcover/TenPrintCover\"",
+					"\"$(SRCROOT)/ios-audiobook-overdrive/OverdriveProcessor\"",
+					"\"$(SRCROOT)/adept-ios\"",
+					"\"$(SRCROOT)/adobe-content-filter/public\"",
+					"\"$(SRCROOT)/adobe-rmsdk/dp/public\"",
+					"\"$(SRCROOT)/adobe-rmsdk/xml/uft/public\"",
+				);
 				INFOPLIST_FILE = "PalaceConfig/Palace-Info.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -6143,6 +6217,18 @@
 					"FEATURE_CRASH_REPORTING=1",
 					"LCP=1",
 					"FEATURE_OVERDRIVE=1",
+				);
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"\"$(SDKROOT)/usr/include/libxml2\"",
+					"\"$(SRCROOT)/readium-sdk/Platform/Apple/RDServices\"",
+					"\"$(SRCROOT)/readium-sdk/Platform/Apple/include\"",
+					"\"$(SRCROOT)/ios-tenprintcover/TenPrintCover\"",
+					"\"$(SRCROOT)/ios-audiobook-overdrive/OverdriveProcessor\"",
+					"\"$(SRCROOT)/adept-ios\"",
+					"\"$(SRCROOT)/adobe-content-filter/public\"",
+					"\"$(SRCROOT)/adobe-rmsdk/dp/public\"",
+					"\"$(SRCROOT)/adobe-rmsdk/xml/uft/public\"",
 				);
 				INFOPLIST_FILE = "PalaceConfig/Palace-Info.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 16.6;

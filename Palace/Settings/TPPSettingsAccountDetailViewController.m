@@ -147,10 +147,10 @@ Authenticating with any of those barcodes should work.
   self = [super initWithStyle:UITableViewStyleGrouped];
   if(!self) return nil;
 
-  id<TPPDRMAuthorizing> drmAuthorizer = nil;
-#if defined(FEATURE_DRM_CONNECTOR)
-  if ([AdobeCertificate.defaultCertificate hasExpired] == NO) {
-    drmAuthorizer = [NYPLADEPT sharedInstance];
+  AdobeDRMServiceBridge *drmBridge = nil;
+#if FEATURE_DRM_CONNECTOR
+  if (AdobeCertificate.defaultCertificate.hasExpired == NO) {
+    drmBridge = [AdobeDRMServiceBridge sharedBridge];
   }
 #endif
 
@@ -162,7 +162,7 @@ Authenticating with any of those barcodes should work.
                         bookDownloadsCenter:[MyBooksDownloadCenter shared]
                         userAccountProvider:[TPPUserAccount class]
                         uiDelegate:self
-                        drmAuthorizer:drmAuthorizer];
+                        drmAuthorizer:drmBridge];
 
   self.title = NSLocalizedString(@"Account", nil);
 

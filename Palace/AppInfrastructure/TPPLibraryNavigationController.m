@@ -9,7 +9,7 @@
 #import "Palace-Swift.h"
 
 #if defined(FEATURE_DRM_CONNECTOR)
-#import <ADEPT/ADEPT.h>
+#import "ADEPT/AdobeDRMServiceBridge.h"
 #endif
 
 #import "TPPLibraryNavigationController.h"
@@ -78,27 +78,28 @@
   [[TPPRootTabBarController sharedController] safelyPresentViewController:alert animated:YES completion:nil];
 }
 
-- (void) loadAccount:(Account *)account {
-    BOOL workflowsInProgress;
-  #if defined(FEATURE_DRM_CONNECTOR)
-    if ([AdobeCertificate.defaultCertificate hasExpired] == NO) {
-      workflowsInProgress = ([NYPLADEPT sharedInstance].workflowsInProgress || [TPPBookRegistry shared].isSyncing == YES);
-    } else {
-      workflowsInProgress = ([TPPBookRegistry shared].isSyncing == YES);
-    }
-  #else
-    workflowsInProgress = ([TPPBookRegistry shared].isSyncing == YES);
-  #endif
-    
-    if (workflowsInProgress) {
-      [self presentViewController:[TPPAlertUtils
-                                   alertWithTitle:@"Please Wait"
-                                   message:@"Please wait a moment before switching library accounts."]
-                         animated:YES
-                       completion:nil];
-    } else {
-      [self updateCatalogFeedSettingCurrentAccount:account];
-    }
+- (void)loadAccount:(Account *)account {
+  // Start out assuming only your own sync flag is in flight:
+  BOOL workflowsInProgress = [TPPBookRegistry shared].isSyncing;
+
+#if FEATURE_DRM_CONNECTOR
+  // Only try to ask the bridge if the certificate is still valid
+  if (AdobeCertificate.defaultCertificate.hasExpired == NO) {
+    AdobeDRMServiceBridge *drmBridge = [AdobeDRMServiceBridge sharedBridge];
+    // the bridge exposes the same “workflowsInProgress” flag you were reading
+    workflowsInProgress = drmBridge.workflowsInProgress || workflowsInProgress;
+  }
+#endif
+
+  if (workflowsInProgress) {
+    [self presentViewController:
+      [TPPAlertUtils alertWithTitle:NSLocalizedString(@"Please Wait",nil)
+                             message:NSLocalizedString(@"Please wait a moment before switching library accounts.",nil)]
+                       animated:YES
+                     completion:nil];
+  } else {
+    [self updateCatalogFeedSettingCurrentAccount:account];
+  }
 }
 
 - (void)updateCatalogFeedSettingCurrentAccount:(Account *)account

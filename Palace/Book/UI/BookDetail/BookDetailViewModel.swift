@@ -319,7 +319,7 @@ class BookDetailViewModel: ObservableObject {
         openBook(book, completion: completion)
         return
       } else if !(AdobeCertificate.defaultCertificate?.hasExpired ?? false) &&
-                  !NYPLADEPT.sharedInstance().isUserAuthorized(user.userID, withDevice: user.deviceID) {
+                  !AdobeDRMServiceBridge.shared().isUserAuthorized(user.userID, withDevice: user.deviceID) {
         let reauthenticator = TPPReauthenticator()
         reauthenticator.authenticateIfNeeded(user, usingExistingCredentials: true) {
           DispatchQueue.main.async {

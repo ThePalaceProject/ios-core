@@ -17,7 +17,7 @@
 #import "TPPBookCellDelegate.h"
 
 #if defined(FEATURE_DRM_CONNECTOR)
-#import <ADEPT/ADEPT.h>
+#import <ADEPT/AdobeDRMServiceBridge.h>
 #endif
 
 @interface TPPBookCellDelegate ()
@@ -74,37 +74,35 @@
   [[MyBooksDownloadCenter shared] startDownloadFor:book withRequest:nil];
 }
 
-- (void)didSelectReadForBook:(TPPBook *)book completion:(void (^ _Nullable)(void))completion
-{ 
-#if defined(FEATURE_DRM_CONNECTOR)
-  // Try to prevent blank books bug
-
+- (void)didSelectReadForBook:(TPPBook *)book completion:(void (^ _Nullable)(void))completion {
+#if FEATURE_DRM_CONNECTOR
   TPPUserAccount *user = [TPPUserAccount sharedAccount];
-  if ([user hasCredentials]) {
-    if ([user hasAuthToken]) {
-      [self openBook:book completion:completion];
-    } else
-      if ([AdobeCertificate.defaultCertificate hasExpired] == NO
-          && ![[NYPLADEPT sharedInstance] isUserAuthorized:[user userID]
-                                                withDevice:[user deviceID]]) {
-        // NOTE: This was cut and pasted while refactoring preexisting work:
-        // "This handles a bug that seems to occur when the user updates,
-        // where the barcode and pin are entered but according to ADEPT the device
-        // is not authorized. To be used, the account must have a barcode and pin."
+
+  // If the user has credentials but no fresh auth token, we need to ensure DRM is activated
+  if ([user hasCredentials] && ![user hasAuthToken]) {
+    // Only check the bridge if our Adobe cert is still valid
+    if (AdobeCertificate.defaultCertificate.hasExpired == NO) {
+      AdobeDRMServiceBridge *drmBridge = [AdobeDRMServiceBridge sharedBridge];
+
+      // Mirror the old isUserAuthorized:withDevice: call
+      if (![drmBridge isUserAuthorized:user.userID
+                              withDevice:user.deviceID]) {
+        // Trigger a re-auth if needed, then re-open once activation succeeds
         TPPReauthenticator *reauthenticator = [[TPPReauthenticator alloc] init];
         [reauthenticator authenticateIfNeeded:user
-                     usingExistingCredentials:YES
-                     authenticationCompletion:^{
+                         usingExistingCredentials:YES
+                         authenticationCompletion:^{
           dispatch_async(dispatch_get_main_queue(), ^{
-            [self openBook:book completion:completion];   // with successful DRM activation
+            [self openBook:book completion:completion];
           });
         }];
-      } else {
-        [self openBook:book completion:completion];
+        return;
       }
-  } else {
-    [self openBook:book completion:completion];
+    }
   }
+
+  // Otherwise just open it immediately
+  [self openBook:book completion:completion];
 #else
   [self openBook:book completion:completion];
 #endif

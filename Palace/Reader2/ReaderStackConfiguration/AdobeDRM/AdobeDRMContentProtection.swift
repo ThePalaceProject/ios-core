@@ -36,9 +36,29 @@ final class AdobeDRMContentProtection: ContentProtection, Loggable {
           return .failure(.assetNotSupported(DebugError("Invalid source URL")))
         }
 
-        let decryptedContainer = AdobeDRMContainer(url: sourceURL, encryptionData: encryptionData)
+        let rightsURL = sourceURL
+          .deletingLastPathComponent()
+          .appendingPathComponent(sourceURL.lastPathComponent + RIGHTS_XML_SUFFIX)
 
-        let newContainerAsset = ContainerAsset(container: decryptedContainer, format: container.format)
+        let rightsData: Data
+        do {
+          rightsData = try Data(contentsOf: rightsURL)
+        } catch {
+          return .failure(.assetNotSupported(
+            DebugError("Unable to load rights XML at \(rightsURL)")))
+        }
+
+        let drmContainer = AdobeDRMContainer(
+          url: sourceURL,
+          encryptionData: encryptionData,
+          rightsData: rightsData
+        )
+
+        let newContainerAsset = ContainerAsset(
+          container: drmContainer,
+          format: container.format
+        )
+        
         let cpAsset = ContentProtectionAsset(asset: .container(newContainerAsset)) { manifest, _, services in
           let copyManifest = manifest
 
@@ -47,7 +67,7 @@ final class AdobeDRMContentProtection: ContentProtection, Loggable {
               context: PublicationServiceContext(
                 publication: factory.publication,
                 manifest: copyManifest,
-                container: decryptedContainer
+                container: drmContainer
               )
             )
           }
@@ -90,7 +110,6 @@ private extension AdobeDRMContentProtection {
 extension AdobeDRMContainer: Container {
 
   public var sourceURL: AbsoluteURL? {
-    guard let fileURL else { return nil }
     return FileURL(url: fileURL)
   }
 
@@ -165,7 +184,6 @@ extension AdobeDRMContainer: Container {
   }
 
   private func readDataFromArchive(at path: String) async throws -> Data? {
-    guard let fileURL else { return nil }
     let archive = try await Archive(url: fileURL, accessMode: .read)
 
     guard let entry = try await archive.first(where: { $0.path == path }) else {
@@ -208,7 +226,7 @@ public actor DRMDataResource: Resource {
     if let cached = _decryptedData {
       return cached
     }
-    let decrypted = drmContainer.decode(encryptedData, at: path)
+    let decrypted = drmContainer.decode(encryptedData, atPath: path)
     let result: ReadResult<Data> = .success(decrypted)
     _decryptedData = result
     return result

@@ -14,8 +14,8 @@
 #import "UIView+TPPViewAdditions.h"
 #import "UIFont+TPPSystemFontOverride.h"
 
-#if defined(FEATURE_DRM_CONNECTOR)
-#import <ADEPT/ADEPT.h>
+#if FEATURE_DRM_CONNECTOR
+#import "ADEPT/AdobeDRMServiceBridge.h"
 #endif
 
 static NSInteger sLinearViewTag = 1111;
@@ -89,10 +89,9 @@ CGFloat const marginPadding = 2.0;
   if(!self) return nil;
 
 #if FEATURE_DRM_CONNECTOR
-  NYPLADEPT *adeptInstance = nil;
-  if ([AdobeCertificate.defaultCertificate hasExpired] == NO) {
-    adeptInstance = [NYPLADEPT sharedInstance];
-  }
+  AdobeDRMServiceBridge *drmBridge = [AdobeDRMServiceBridge sharedBridge];
+#else
+  id drmBridge = nil;
 #endif
   
   self.businessLogic = [[TPPSignInBusinessLogic alloc]
@@ -105,7 +104,7 @@ CGFloat const marginPadding = 2.0;
                         uiDelegate:self
                         drmAuthorizer:
 #if FEATURE_DRM_CONNECTOR
-                        adeptInstance
+                        drmBridge
 #else
                         nil
 #endif

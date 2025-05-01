@@ -21,17 +21,6 @@ final class AdobeContentProtectionService: ContentProtectionService {
   init(context: PublicationServiceContext) {
     self.context = context
     self.error = nil
-
-    // Remove epubDecodingError reference and check if the container is an AdobeDRMContainer.
-    if let adobeContainer = context.container as? AdobeDRMContainer {
-      if let drmError = adobeContainer.epubDecodingError {
-        self.error = NSError(
-          domain: "Adobe DRM decoding error",
-          code: TPPErrorCode.adobeDRMFulfillmentFail.rawValue,
-          userInfo: ["AdobeDRMContainer error msg": drmError]
-        )
-      }
-    }
   }
 
   /// A restricted publication has limited access to its manifest and resources, and can't be rendered in a navigator.
