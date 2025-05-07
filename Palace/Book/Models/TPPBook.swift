@@ -537,22 +537,25 @@ extension TPPBook {
     guard !isCoverLoading else { return }
     isCoverLoading = true
 
+    let identifierCopy = self.identifier
+    let fallbackThumbnail = self.thumbnailImage
+
     Task { @MainActor in
       TPPBook.coverRegistry.coverImageForBook(self) { [weak self] image in
-        guard let self = self else { return }
-
         DispatchQueue.main.async {
-          let validImage = image ?? self.thumbnailImage
+          guard let self = self else { return }
+
+          let validImage = image ?? fallbackThumbnail
           self.coverImage = validImage
           if let validImage = validImage {
-            TPPBook.cachedCoverImages[self.identifier] = validImage
+            TPPBook.cachedCoverImages[identifierCopy] = validImage
           }
           self.isCoverLoading = false
         }
       }
     }
   }
- 
+
   func fetchThumbnailImage() {
     if let cachedImage = TPPBook.cachedThumbnailImages[identifier] {
       self.thumbnailImage = cachedImage

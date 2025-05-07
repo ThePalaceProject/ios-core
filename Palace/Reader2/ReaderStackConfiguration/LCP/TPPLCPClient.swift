@@ -16,14 +16,13 @@ class TPPLCPClient: ReadiumLCP.LCPClient {
   }
 
   func createContext(jsonLicense: String, hashedPassphrase: String, pemCrl: String) throws -> LCPClientContext {
-    if context != nil {
-      context = nil
-    }
-
-    let newContext = try R2LCPClient.createContext(jsonLicense: jsonLicense, hashedPassphrase: hashedPassphrase, pemCrl: pemCrl)
+    let newContext = try R2LCPClient.createContext(
+      jsonLicense: jsonLicense,
+      hashedPassphrase: hashedPassphrase,
+      pemCrl: pemCrl
+    )
 
     self.context = newContext
-
     return newContext
   }
 

@@ -373,12 +373,6 @@ extension TPPNetworkExecutor {
 
   
   func executeTokenRefresh(username: String, password: String, tokenURL: URL, completion: @escaping (Result<TokenResponse, Error>) -> Void) {
-//    guard let tokenURL = tokenURL ?? TPPUserAccount.sharedAccount().authDefinition?.tokenURL else {
-//      Log.error(#file, "Unable to refresh token, missing credentials")
-//      completion(.failure(NSError(domain: "Unable to refresh token, missing credentials", code: 401)))
-//      return
-//    }
-//    
     Task {
       let tokenRequest = TokenRequest(url: tokenURL, username: username, password: password)
       let result = await tokenRequest.execute()

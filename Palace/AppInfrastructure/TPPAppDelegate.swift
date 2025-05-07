@@ -7,7 +7,7 @@ import BackgroundTasks
 class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
   var window: UIWindow?
-  var audiobookLifecycleManager: AudiobookLifecycleManager!
+  let audiobookLifecycleManager = AudiobookLifecycleManager()
   var notificationsManager: TPPUserNotifications!
   var isSigningIn = false
 
@@ -42,7 +42,6 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     Reachability.shared.startMonitoring()
 
     DispatchQueue.main.async {
-      self.audiobookLifecycleManager = AudiobookLifecycleManager()
       self.audiobookLifecycleManager.didFinishLaunching()
     }
 
@@ -138,7 +137,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
   }
 
   func applicationWillTerminate(_ application: UIApplication) {
-    audiobookLifecycleManager?.willTerminate()
+    audiobookLifecycleManager.willTerminate()
     postListeningLocationIfAvailable()
     NotificationCenter.default.removeObserver(self)
     Reachability.shared.stopMonitoring()

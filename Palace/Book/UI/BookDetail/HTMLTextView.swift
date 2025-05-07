@@ -5,32 +5,40 @@ struct HTMLTextView: View {
   let htmlContent: String
 
   var body: some View {
-    if let attributedString = htmlToAttributedString(htmlContent) {
-      Text(attributedString)
-        .foregroundColor(.white)
-        .frame(maxWidth: .infinity, alignment: .leading)
-    } else {
-      Text(htmlContent)
-        .foregroundColor(.white)
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
+    Text(makeAttributedString(from: htmlContent))
+      .frame(maxWidth: .infinity, alignment: .leading)
   }
 
-  private func htmlToAttributedString(_ html: String) -> AttributedString? {
-    guard let data = html.data(using: .utf8) else { return nil }
+  private func makeAttributedString(from html: String) -> AttributedString {
+    guard html.contains("<"), html.count < 10_000 else {
+      return AttributedString(html)
+    }
+
+    guard let data = html.data(using: .utf8) else {
+      return AttributedString(html)
+    }
 
     let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [
       .documentType: NSAttributedString.DocumentType.html,
       .characterEncoding: String.Encoding.utf8.rawValue
     ]
 
-    if let nsAttributedString = try? NSAttributedString(data: data, options: options, documentAttributes: nil) {
-      let mutableAttributedString = NSMutableAttributedString(attributedString: nsAttributedString)
-      mutableAttributedString.addAttribute(.font, value: UIFont.palaceFont(ofSize: 15), range: NSRange(location: 0, length: mutableAttributedString.length))
-      mutableAttributedString.addAttribute(.foregroundColor, value: UIColor.label, range: NSRange(location: 0, length: mutableAttributedString.length))
-      return AttributedString(mutableAttributedString)
-    }
+    do {
+      let nsAttr = try NSAttributedString(data: data, options: options, documentAttributes: nil)
+      let mutable = NSMutableAttributedString(attributedString: nsAttr)
 
-    return nil
+      mutable.enumerateAttribute(.font, in: NSRange(location: 0, length: mutable.length)) { value, range, _ in
+        if value == nil {
+          mutable.addAttribute(.font, value: UIFont.palaceFont(ofSize: 15), range: range)
+        }
+      }
+
+      mutable.addAttribute(.foregroundColor, value: UIColor.label, range: NSRange(location: 0, length: mutable.length))
+
+      return AttributedString(mutable)
+    } catch {
+      // Fallback to plain string if parsing fails
+      return AttributedString(html)
+    }
   }
 }
