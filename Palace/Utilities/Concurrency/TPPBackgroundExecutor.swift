@@ -87,48 +87,56 @@ import Dispatch
   /// the related logging) are handled here.
   @objc func dispatchBackgroundWork() {
     var bgTask: UIBackgroundTaskIdentifier = .invalid
-    
-    func endTaskIfNeeded(context: String, timeRemaining: TimeInterval) {
-      endLock.lock()
-      Log.info(#file, """
-        \(context) \(taskName) background task \(bgTask.rawValue). \
-        Time remaining: \(timeRemaining)
-        """)
-      
-      if bgTask != .invalid {
-        UIApplication.shared.endBackgroundTask(bgTask)
-        bgTask = .invalid
+
+    let endQueue = DispatchQueue(label: "com.thepalaceproject.backgroundEndQueue")
+
+    func endTaskIfNeeded(context: String) {
+      endQueue.async {
+        let timeRemaining: TimeInterval = DispatchQueue.main.sync {
+          UIApplication.shared.backgroundTimeRemaining
+        }
+
+        Log.info(#file, """
+          \(context) \(self.taskName) background task \(bgTask.rawValue). \
+          Time remaining: \(timeRemaining)
+          """)
+
+        if bgTask != .invalid {
+          UIApplication.shared.endBackgroundTask(bgTask)
+          bgTask = .invalid
+        }
       }
-      endLock.unlock()
-    }
-    
-    bgTask = UIApplication.shared
-      .beginBackgroundTask(withName: taskName) {
-        endTaskIfNeeded(context: "Expiring",
-                        timeRemaining: UIApplication.shared.backgroundTimeRemaining)
     }
 
-    Log.debug(#file, "Beginning \(taskName) background task \(bgTask.rawValue)")
-    
-    if bgTask == .invalid {
-      Log.warn(#file, "Unable to run background task \(taskName)")
-    }
-
-    var timeRemaining: TimeInterval = 0.0
-    let workItem = owner?.setUpWorkItem(wrapping: { [weak self] in
-      self?.owner?.performBackgroundWork()
-
-      TPPMainThreadRun.sync {
-        timeRemaining = UIApplication.shared.backgroundTimeRemaining
+    let startBackground: () -> Void = {
+      bgTask = UIApplication.shared.beginBackgroundTask(withName: self.taskName) {
+        endTaskIfNeeded(context: "Expiring")
       }
 
-      endTaskIfNeeded(context: "Finishing up", timeRemaining: timeRemaining)
-    })
-    
-    if let backgroundWorkItem = workItem {
-      queue.async(execute: backgroundWorkItem)
+      Log.debug(#file, "Beginning \(self.taskName) background task \(bgTask.rawValue)")
+
+      if bgTask == .invalid {
+        Log.warn(#file, "Unable to run background task \(self.taskName)")
+      }
+
+      guard let workItem = self.owner?.setUpWorkItem(wrapping: { [weak self] in
+        self?.owner?.performBackgroundWork()
+
+        endTaskIfNeeded(context: "Finishing up")
+      }) else {
+        Log.warn(#file,
+                 "No work item for \(self.taskName) background task \(bgTask.rawValue)!")
+        endTaskIfNeeded(context: "No work item")
+        return
+      }
+
+      self.queue.async(execute: workItem)
+    }
+
+    if Thread.isMainThread {
+      startBackground()
     } else {
-      Log.warn(#file, "No work item available for \(taskName) background task \(bgTask.rawValue)!")
+      DispatchQueue.main.async(execute: startBackground)
     }
   }
 }
