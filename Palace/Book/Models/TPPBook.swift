@@ -73,19 +73,19 @@ public class TPPBook: NSObject, ObservableObject {
   @Published var isThumbnailLoading: Bool = false
   
   static let SimplifiedScheme = "http://librarysimplified.org/terms/genres/Simplified/"
-  
+
   static func categoryStringsFromCategories(categories: [TPPOPDSCategory]) -> [String] {
     categories.compactMap { $0.scheme == nil || $0.scheme?.absoluteString == SimplifiedScheme ? $0.label ?? $0.term : nil }
   }
-  
+
   @objc var isAudiobook: Bool {
     defaultBookContentType == .audiobook
   }
-  
+
   @objc var hasDuration: Bool {
     !(bookDuration?.isEmpty ?? true)
   }
-  
+
   init(
     acquisitions: [TPPOPDSAcquisition],
     authors: [TPPBookAuthor]?,
@@ -142,25 +142,25 @@ public class TPPBook: NSObject, ObservableObject {
     self.fetchThumbnailImage()
     self.fetchCoverImage()
   }
-  
+
   @objc convenience init?(entry: TPPOPDSEntry?) {
     guard let entry = entry else {
       Log.debug(#file, ("Failed to create book with nil entry."))
       return nil
     }
-    
+
     let authors = entry.authorStrings.enumerated().map { index, element in
       TPPBookAuthor(
         authorName: (element as? String) ?? "",
         relatedBooksURL: index < entry.authorLinks.count ? entry.authorLinks[index].href : nil
       )
     }
-    
+
     var image: URL?
     var imageThumbnail: URL?
     var report: URL?
     var revoke: URL?
-    
+
     (entry.links as? [TPPOPDSLink])?.forEach {
       switch $0.rel {
       case TPPOPDSRelationAcquisitionRevoke:
@@ -175,7 +175,7 @@ public class TPPBook: NSObject, ObservableObject {
         break
       }
     }
-    
+
     self.init(
       acquisitions: entry.acquisitions,
       authors: authors,
@@ -203,18 +203,18 @@ public class TPPBook: NSObject, ObservableObject {
       bookDuration: entry.duration
     )
   }
-  
+
   @objc convenience init?(dictionary: [String: Any]) {
     guard let categoryStrings = dictionary[CategoriesKey] as? [String],
           let identifier = dictionary[IdentifierKey] as? String,
           let title = dictionary[TitleKey] as? String else {
       return nil
     }
-    
+
     let acquisitions: [TPPOPDSAcquisition] = (dictionary[AcquisitionsKey] as? [[String: Any]] ?? []).compactMap {
       TPPOPDSAcquisition(dictionary: $0)
     }
-    
+
     let authorStrings: [String] = {
       if let authorObject = dictionary[AuthorsKey] as? [[String]], let values = authorObject.first {
         return values
@@ -224,7 +224,7 @@ public class TPPBook: NSObject, ObservableObject {
         return []
       }
     }()
-    
+
     let authorLinkStrings: [String] = {
       if let authorLinkObject = dictionary[AuthorLinksKey] as? [[String]], let values = authorLinkObject.first {
         return values
@@ -234,19 +234,19 @@ public class TPPBook: NSObject, ObservableObject {
         return []
       }
     }()
-    
+
     let authors = authorStrings.enumerated().map { index, name in
       TPPBookAuthor(
         authorName: name,
         relatedBooksURL: index < authorLinkStrings.count ? URL(string: authorLinkStrings[index]) : nil
       )
     }
-    
+
     let revokeURL = URL(string: dictionary[RevokeURLKey] as? String ?? "")
     let reportURL = URL(string: dictionary[ReportURLKey] as? String ?? "")
-    
+
     guard let updated = NSDate(iso8601DateString: dictionary[UpdatedKey] as? String ?? "") as? Date else { return nil }
-    
+
     self.init(
       acquisitions: acquisitions,
       authors: authors,
@@ -381,7 +381,7 @@ public class TPPBook: NSObject, ObservableObject {
   
   @objc func getExpirationDate() -> Date? {
     var date: Date?
-    
+
     defaultAcquisition?.availability.matchUnavailable(
       nil,
       limited: { limited in
@@ -488,11 +488,11 @@ public class TPPBook: NSObject, ObservableObject {
   @objc var defaultAcquisitionIfBorrow: TPPOPDSAcquisition? {
     defaultAcquisition?.relation == .borrow ? defaultAcquisition : nil
   }
-  
+
   @objc var defaultAcquisitionIfOpenAccess: TPPOPDSAcquisition? {
     defaultAcquisition?.relation == .openAccess ? defaultAcquisition : nil
   }
-  
+
   @objc var defaultBookContentType: TPPBookContentType {
     guard let acquisition = defaultAcquisition else {
       return .unsupported
