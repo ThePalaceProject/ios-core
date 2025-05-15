@@ -80,7 +80,7 @@ private extension HalfSheetView {
     case .downloading, .downloadNeeded:
       borrowingInfoView
     default:
-      if viewModel.buttonState == .canHold {
+      if viewModel.buttonState == .holding {
         holdingInfoView
       } else {
         borrowedInfoView
@@ -91,13 +91,8 @@ private extension HalfSheetView {
   @ViewBuilder
   var holdingInfoView: some View {
     let details = viewModel.book.getReservationDetails()
-    VStack {
-      Text("Approximately \(details.remainingTime) \(details.timeUnit) wait.")
-        .font(.subheadline)
-        .fontWeight(.semibold)
-      Text("You are \(details.holdPosition.ordinal()) in line. \(details.copiesAvailable) \(details.copiesAvailable == 1 ? "copy" : "copies") in use.")
-        .font(.footnote)
-    }
+    Text("You are \(details.holdPosition.ordinal()) in line. \(details.copiesAvailable) \(details.copiesAvailable == 1 ? "copy" : "copies") in use.")
+      .font(.footnote)
   }
 
   @ViewBuilder

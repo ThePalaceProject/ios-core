@@ -59,7 +59,7 @@ class BookDetailViewModel: ObservableObject {
     self.state = registry.state(for: book.identifier)
 
     bindRegistryState()
-    determineButtonState()
+    buttonState = BookButtonState.stateForAvailability(self.book.defaultAcquisition?.availability) ?? .unsupported
     setupObservers()
     self.downloadProgress = downloadCenter.downloadProgress(for: book.identifier)
   }
@@ -215,7 +215,7 @@ class BookDetailViewModel: ObservableObject {
 
     switch state {
     case .unregistered:
-      newState = .canBorrow
+      newState = BookButtonState.stateForAvailability(book.defaultAcquisition?.availability) ?? .canBorrow
     case .downloadNeeded:
       newState = .downloadNeeded
     case .downloading:
@@ -248,22 +248,16 @@ class BookDetailViewModel: ObservableObject {
 
     switch button {
     case .reserve:
+      didSelectDownload(for: book)
+
       registry.setState(.holding, for: book.identifier)
       removeProcessingButton(button)
-
-    case .remove:
-      registry.setState(.unregistered, for: book.identifier)
-      removeProcessingButton(button)
-
-    case .return:
+    case .return, .remove:
       didSelectReturn(for: book) {
         self.removeProcessingButton(button)
       }
 
     case .download, .get, .retry:
-      if buttonState == .canHold {
-        TPPUserNotifications.requestAuthorization()
-      }
       didSelectDownload(for: book)
       removeProcessingButton(button)
 
