@@ -87,11 +87,30 @@ extension BookButtonState {
 
 extension BookButtonState {
   init?(_ book: TPPBook) {
-    guard let state = Self.stateForAvailability(book.defaultAcquisition?.availability) else {
-      return nil
+    let bookState = TPPBookRegistry.shared.state(for: book.identifier)
+    switch bookState {
+    case .unregistered, .holding:
+      guard let buttonState = Self.stateForAvailability(book.defaultAcquisition?.availability) else {
+        TPPErrorLogger.logError(withCode: .noURL, summary: "Unable to determine BookButtonsViewState because no Availability was provided")
+        return nil
+      }
+      
+      self = buttonState
+    case .downloadNeeded:
+      self = .downloadNeeded
+    case .downloadSuccessful:
+      self = .downloadSuccessful
+    case .SAMLStarted, .downloading:
+      // SAML started is part of download process, in this step app does authenticate user but didn't begin file downloading yet
+      // The cell should present progress bar and "Requesting" description on its side
+      self = .downloadInProgress
+    case .downloadFailed:
+      self = .downloadFailed
+    case .used:
+      self = .used
+    case .unsupported:
+      self = .unsupported
     }
-    
-    self = state
   }
 }
 
