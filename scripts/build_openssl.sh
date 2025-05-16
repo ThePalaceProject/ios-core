@@ -74,7 +74,7 @@ build()
    SDK=$4
    EXTRA=$5
    rm -rf "openssl-${OPENSSL_VERSION}"
-   tar xfz "openssl-${OPENSSL_VERSION}.tar.gz"
+   tar xvfz "openssl-${OPENSSL_VERSION}.tar.gz"
    pushd .
    cd "openssl-${OPENSSL_VERSION}"
    sed -i '' "s#'File::Glob' => qw/glob/;#'File::Glob' => qw/bsd_glob/;#g" ./Configure
@@ -96,24 +96,24 @@ build "BSD-generic64" "x86_64" "${IPHONESIMULATOR_GCC}" "${IPHONESIMULATOR_SDK}"
 
 #
 
-mkdir include
-cp -r /tmp/openssl-${OPENSSL_VERSION}-i386/include/openssl include/
+mkdir -p ../public/ios/include
+cp -r /tmp/openssl-${OPENSSL_VERSION}-i386/include/openssl ../public/ios/include/
 
-mkdir lib
+mkdir -p ../public/ios/lib
 lipo \
 	"/tmp/openssl-${OPENSSL_VERSION}-armv7/lib/libcrypto.a" \
 	"/tmp/openssl-${OPENSSL_VERSION}-armv7s/lib/libcrypto.a" \
 	"/tmp/openssl-${OPENSSL_VERSION}-arm64/lib/libcrypto.a" \
 	"/tmp/openssl-${OPENSSL_VERSION}-i386/lib/libcrypto.a" \
 	"/tmp/openssl-${OPENSSL_VERSION}-x86_64/lib/libcrypto.a" \
-	-create -output lib/libcrypto.a
+	-create -output ../public/ios/lib/libcrypto.a
 lipo \
 	"/tmp/openssl-${OPENSSL_VERSION}-armv7/lib/libssl.a" \
 	"/tmp/openssl-${OPENSSL_VERSION}-armv7s/lib/libssl.a" \
 	"/tmp/openssl-${OPENSSL_VERSION}-arm64/lib/libssl.a" \
 	"/tmp/openssl-${OPENSSL_VERSION}-i386/lib/libssl.a" \
 	"/tmp/openssl-${OPENSSL_VERSION}-x86_64/lib/libssl.a" \
-	-create -output lib/libssl.a
+	-create -output ../public/ios/lib/libssl.a
 
 rm -rf "/tmp/openssl-${OPENSSL_VERSION}-*"
 rm -rf "/tmp/openssl-${OPENSSL_VERSION}-*.*-log"

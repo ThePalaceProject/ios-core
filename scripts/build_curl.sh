@@ -85,8 +85,6 @@ build()
     rm -rf "curl-${CURL_VERSION}"
 }
 
-build "armv7-apple-darwin"  "armv7"  "${IPHONEOS_SDK}" ""
-build "armv7s-apple-darwin" "armv7s" "${IPHONEOS_SDK}" ""
 build "arm-apple-darwin"    "arm64"  "${IPHONEOS_SDK}" ""
 build "i386-apple-darwin"   "i386"   "${IPHONESIMULATOR_SDK}" "-D__IPHONE_OS_VERSION_MIN_REQUIRED=${IPHONEOS_DEPLOYMENT_TARGET%%.*}0000"
 build "x86_64-apple-darwin" "x86_64" "${IPHONESIMULATOR_SDK}" "-D__IPHONE_OS_VERSION_MIN_REQUIRED=${IPHONEOS_DEPLOYMENT_TARGET%%.*}0000"
@@ -95,8 +93,6 @@ mkdir -p ../public/ios/lib ../public/ios/include-32 ../public/ios/include-64
 cp -r /tmp/curl-${CURL_VERSION}-i386/include/curl ../public/ios/include-32/
 cp -r /tmp/curl-${CURL_VERSION}-x86_64/include/curl ../public/ios/include-64/
 lipo \
-"/tmp/curl-${CURL_VERSION}-armv7/lib/libcurl.a" \
-"/tmp/curl-${CURL_VERSION}-armv7s/lib/libcurl.a" \
 "/tmp/curl-${CURL_VERSION}-arm64/lib/libcurl.a" \
 "/tmp/curl-${CURL_VERSION}-i386/lib/libcurl.a" \
 "/tmp/curl-${CURL_VERSION}-x86_64/lib/libcurl.a" \
