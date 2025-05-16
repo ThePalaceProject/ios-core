@@ -15,6 +15,7 @@
 @property (nonatomic) UILabel *title;
 @property (nonatomic) UIImageView *unreadImageView;
 @property (nonatomic) UIImageView *contentBadge;
+@property (nonatomic) UILabel *holdingInfoLabel;
 
 @end
 
@@ -97,10 +98,39 @@
     [self.contentView addSubview:self.buttonsView];
     self.buttonsView.translatesAutoresizingMaskIntoConstraints = NO;
     [self.buttonsView autoPinEdge:ALEdgeLeft toEdge:ALEdgeLeft ofView:self.title];
-    [self.buttonsView autoPinEdge:ALEdgeBottom toEdge:ALEdgeBottom ofView:self.cover];
   }
   self.buttonsView.book = book;
-  
+
+  if (!self.holdingInfoLabel) {
+     self.holdingInfoLabel = [[UILabel alloc] init];
+     self.holdingInfoLabel.font = [UIFont palaceFontOfSize:12];
+     self.holdingInfoLabel.textColor = [UIColor secondaryLabelColor];
+     self.holdingInfoLabel.numberOfLines = 0;
+     self.holdingInfoLabel.translatesAutoresizingMaskIntoConstraints = NO;
+     [self.contentView addSubview:self.holdingInfoLabel];
+     [self.holdingInfoLabel autoPinEdge:ALEdgeTop
+                                toEdge:ALEdgeBottom
+                                ofView:self.buttonsView
+                            withOffset:4];
+     [self.holdingInfoLabel autoPinEdge:ALEdgeLeft
+                                toEdge:ALEdgeLeft
+                                ofView:self.title];
+     [self.holdingInfoLabel autoMatchDimension:ALDimensionWidth
+                                   toDimension:ALDimensionWidth
+                                   ofView:self.title];
+    [self.holdingInfoLabel autoPinEdge:ALEdgeBottom toEdge:ALEdgeBottom ofView:self.cover];
+   }
+
+   ReservationDetails *details = [book getReservationDetails];
+   NSString *ordinal = [TPPBook ordinalStringFor:details.holdPosition];
+   NSString *copies = details.copiesAvailable == 1 ? @"copy" : @"copies";
+   self.holdingInfoLabel.text = [NSString stringWithFormat:
+     NSLocalizedString(@"You are %@ in line. %ld %@ in use.", nil),
+     ordinal,
+     (long)details.copiesAvailable,
+     copies
+   ];
+    
   if(!self.unreadImageView) {
     self.unreadImageView = [[UIImageView alloc] initWithImage:[UIImage imageNamed:@"Unread"]];
     self.unreadImageView.image = [self.unreadImageView.image
@@ -157,6 +187,9 @@
   _state = state;
   self.buttonsView.state = state;
   self.unreadImageView.hidden = (state != TPPBookButtonsStateDownloadSuccessful);
+  BOOL isHolding = (state == TPPBookButtonsStateHolding);
+  self.holdingInfoLabel.hidden = !isHolding;
+
   [self setNeedsLayout];
 }
 

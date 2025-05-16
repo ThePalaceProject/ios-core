@@ -86,16 +86,15 @@ extension BookButtonState {
 }
 
 extension BookButtonState {
-
   init?(_ book: TPPBook) {
     let bookState = TPPBookRegistry.shared.state(for: book.identifier)
     switch bookState {
     case .unregistered, .holding:
-      guard let buttonState = Self.init(book.defaultAcquisition?.availability) else {
+      guard let buttonState = Self.stateForAvailability(book.defaultAcquisition?.availability) else {
         TPPErrorLogger.logError(withCode: .noURL, summary: "Unable to determine BookButtonsViewState because no Availability was provided")
         return nil
       }
-
+      
       self = buttonState
     case .downloadNeeded:
       self = .downloadNeeded
@@ -113,9 +112,11 @@ extension BookButtonState {
       self = .unsupported
     }
   }
+}
 
-  init?(_ availability: TPPOPDSAcquisitionAvailability?) {
-    guard let availability = availability else {
+extension BookButtonState {
+  static func stateForAvailability(_ availability: TPPOPDSAcquisitionAvailability?) -> BookButtonState? {
+    guard let availability else {
       return nil
     }
 
@@ -130,7 +131,7 @@ extension BookButtonState {
       state = .holdingFrontOfQueue
     }
 
-    self = state
+    return state
   }
 }
 

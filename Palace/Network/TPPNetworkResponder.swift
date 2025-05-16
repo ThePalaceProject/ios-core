@@ -183,20 +183,26 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
       }
       // 4b) Non-2xx HTTP status
       if !http.isSuccess() {
-        let err = NSError(domain: "Api call with failure HTTP status",
-                          code: TPPErrorCode.responseFail.rawValue,
-                          userInfo: logMetadata)
+        let err: TPPUserFriendlyError
+        let data = info.progressData
+
+        if !data.isEmpty {
+          err = task.parseAndLogError(
+            fromProblemDocumentData: data,
+            networkError: networkError,
+            logMetadata: logMetadata
+          )
+        } else {
+          err = NSError(
+            domain: "Api call with failure HTTP status",
+            code: TPPErrorCode.responseFail.rawValue,
+            userInfo: logMetadata
+          )
+        }
+
         result = .failure(err, task.response)
       }
-      // 4c) Problem-document payload
-      else if let response = task.response, response.isProblemDocument() {
-        let pdError = task.parseAndLogError(
-          fromProblemDocumentData: info.progressData,
-          networkError: networkError,
-          logMetadata: logMetadata
-        )
-        result = .failure(pdError, task.response)
-      }
+      
       // 4d) Network-level error
       else if let netErr = networkError {
         let ue = netErr as TPPUserFriendlyError

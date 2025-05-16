@@ -397,19 +397,7 @@ public class TPPBook: NSObject, ObservableObject {
     return date
   }
   
-  struct ReservationDetails {
-    var holdPosition: Int = 0
-    var remainingTime: Int = 0
-    var timeUnit: String =  ""
-    var copiesAvailable: Int = 0
-  }
-  
-  struct AvailabilityDetails {
-    var availableSince: String?
-    var availableUntil: String?
-  }
-  
-  func getReservationDetails() -> ReservationDetails {
+  @objc func getReservationDetails() -> ReservationDetails {
     var untilDate: Date?
     var reservationDetails = ReservationDetails()
     
@@ -596,4 +584,21 @@ extension TPPBook {
   var wrappedCoverImage: UIImage? {
     coverImage
   }
+  
+  @objc public class func ordinalString(for n: Int) -> String {
+    return n.ordinal()
+  }
+}
+
+@objcMembers
+public class ReservationDetails: NSObject {
+  public var holdPosition: Int = 0
+  public var remainingTime: Int = 0
+  public var timeUnit: String = ""
+  public var copiesAvailable: Int = 0
+}
+
+struct AvailabilityDetails {
+  var availableSince: String?
+  var availableUntil: String?
 }
