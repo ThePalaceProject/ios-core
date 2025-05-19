@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct HalfSheetView: View {
+  typealias DisplayStrings = Strings.BookDetailView
   @Environment(\.colorScheme) var colorScheme
 
   @ObservedObject var viewModel: BookDetailViewModel
@@ -91,15 +92,22 @@ private extension HalfSheetView {
   @ViewBuilder
   var holdingInfoView: some View {
     let details = viewModel.book.getReservationDetails()
-    Text("You are \(details.holdPosition.ordinal()) in line. \(details.copiesAvailable) \(details.copiesAvailable == 1 ? "copy" : "copies") in use.")
-      .font(.footnote)
+    Text(
+      String(
+        format: DisplayStrings.holdStatus,
+        details.holdPosition.ordinal(),
+        details.copiesAvailable,
+        details.copiesAvailable == 1 ? DisplayStrings.copy : DisplayStrings.copies
+      )
+    )
+    .font(.footnote)
   }
 
   @ViewBuilder
   var borrowingInfoView: some View {
     if let timeUntil = viewModel.book.getExpirationDate()?.timeUntil() {
       HStack {
-        Text("Borrowing for")
+        Text(DisplayStrings.borrowingFor)
           .font(.subheadline)
           .foregroundColor(.secondary)
         Spacer()
@@ -113,7 +121,7 @@ private extension HalfSheetView {
   var borrowedInfoView: some View {
     if let availableUntil = viewModel.book.getExpirationDate()?.timeUntil() {
       HStack {
-        Text("Borrowed until")
+        Text(DisplayStrings.borrowedFor)
           .font(.subheadline)
           .foregroundColor(.secondary)
         Spacer()

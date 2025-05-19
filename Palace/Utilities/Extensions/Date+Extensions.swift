@@ -16,9 +16,7 @@ extension Date {
     if let days = components.day, days > 0 {
       switch days {
       case 1: return (1, "day")
-      case 2..<7: return (days, "days")
-      case 7..<30: return (days / 7, days / 7 == 1 ? "week" : "weeks")
-      default: return (days / 30, days / 30 == 1 ? "month" : "months")
+      default: return (days, "days")
       }
     }
 
