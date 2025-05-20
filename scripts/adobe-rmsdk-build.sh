@@ -28,7 +28,10 @@ for SDK in ${SDKS[@]}; do
     ARCHS="x86_64 arm64"
   fi
   for CONFIGURATION in ${CONFIGURATIONS[@]}; do
+    cd "$ADOBE_RMSDK"
+    rm lib/ios/${CONFIGURATION}-${SDK}/libdp-iOS.a
     cd "$ADOBE_RMSDK/dp/build/xc5"
+    rm -Rf build
     xcodebuild \
       -project dp.xcodeproj \
       -configuration ${CONFIGURATION} \
@@ -36,6 +39,8 @@ for SDK in ${SDKS[@]}; do
       ONLY_ACTIVE_ARCH=NO \
       ENABLE_BITCODE=NO \
       ARCHS="${ARCHS}" \
+      VALID_ARCHS="${ARCHS}" \
+      IPHONEOS_DEPLOYMENT_TARGET="12.0"\
       -sdk ${SDK} \
       build
     cd "$ADOBE_RMSDK"

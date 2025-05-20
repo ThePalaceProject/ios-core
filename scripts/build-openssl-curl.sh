@@ -14,8 +14,6 @@
 # /Applications, you'll need to update the $DEVELOPER env variable mentioned
 # at the top of both the build.sh / build_curl.sh scripts below.
 
-cp scripts/build_curl.sh adobe-rmsdk/thirdparty/curl/iOS-libcurl/
-cp scripts/build_openssl.sh adobe-rmsdk/thirdparty/openssl/iOS-openssl
 SDKVERSION=`xcodebuild -version -sdk iphoneos | grep SDKVersion | sed 's/SDKVersion[: ]*//'`
 
 # edit as required if OpenSSL and cURL need updating or retargeting
@@ -26,8 +24,9 @@ CURL_URL="https://curl.se/download/curl-7.64.1.zip"
 
 echo "======================================="
 echo "Building OpenSSL..."
+cp scripts/build_openssl.sh adobe-rmsdk/thirdparty/openssl/iOS-openssl
 pushd adobe-rmsdk/thirdparty/openssl
-rm -Rf public
+rm -Rf public/ios
 cd iOS-openssl
 curl -OL $OPENSSL_URL
 sed -i '' "s/OPENSSL_VERSION=\".*\"/OPENSSL_VERSION=\"$OPENSSL_VERSION\"/" build_openssl.sh
@@ -40,8 +39,9 @@ popd
 
 echo "======================================="
 echo "Building cURL..."
+cp scripts/build_curl.sh adobe-rmsdk/thirdparty/curl/iOS-libcurl/
 pushd adobe-rmsdk/thirdparty/curl
-rm -Rf public
+rm -Rf public/ios
 cd iOS-libcurl
 curl -OL $CURL_URL
 sed -i '' "s/CURL_VERSION=\".*\"/CURL_VERSION=\"$CURL_VERSION\"/" build_curl.sh

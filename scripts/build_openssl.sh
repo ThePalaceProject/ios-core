@@ -10,7 +10,7 @@
 # * below code is verified on XCode 12.4 and iOS SDK version 13.4
 #
 
-set -x
+set -ex
 
 # Setup paths to stuff we need
 
@@ -64,56 +64,56 @@ fi
 
 rm -rf include lib
 rm -rf /tmp/openssl-${OPENSSL_VERSION}-*
-rm -rf /tmp/openssl-${OPENSSL_VERSION}-*.*-log
+rm -rf /tmp/openssl-${OPENSSL_VERSION}-*.*log
 
 build()
 {
    TARGET=$1
    ARCH=$2
-   GCC=$3
-   SDK=$4
-   EXTRA=$5
+   SDK_TYPE=$3
+   GCC=$4
+   SDK=$5
+   EXTRA=$6
    rm -rf "openssl-${OPENSSL_VERSION}"
    tar xvfz "openssl-${OPENSSL_VERSION}.tar.gz"
    pushd .
    cd "openssl-${OPENSSL_VERSION}"
    sed -i '' "s#'File::Glob' => qw/glob/;#'File::Glob' => qw/bsd_glob/;#g" ./Configure
    sed -i '' "s#'File::Glob' => qw/glob/;#'File::Glob' => qw/bsd_glob/;#g" ./test/build.info 
-   ./Configure ${TARGET} no-shared --openssldir="/tmp/openssl-${OPENSSL_VERSION}-${ARCH}" --prefix="/tmp/openssl-${OPENSSL_VERSION}-${ARCH}" ${EXTRA} &> "/tmp/openssl-${OPENSSL_VERSION}-$i{ARCH}.log"
+   ./Configure ${TARGET} no-shared --openssldir="/tmp/openssl-${OPENSSL_VERSION}-${ARCH}-${SDK_TYPE}" --prefix="/tmp/openssl-${OPENSSL_VERSION}-${ARCH}-${SDK_TYPE}" ${EXTRA} &> "/tmp/openssl-${OPENSSL_VERSION}-${ARCH}-${SDK_TYPE}.log"
    perl -i -pe 's|static volatile sig_atomic_t intr_signal|static volatile int intr_signal|' crypto/ui/ui_openssl.c
    perl -i -pe "s|CFLAGS=-DDSO_DLFCN |CFLAGS=-arch ${ARCH} -isysroot ${SDK} -DDSO_DLFCN \$1|g" Makefile
-   make 
+   make -j `sysctl -n hw.logicalcpu_max`
    make install 
    popd
    rm -rf "openssl-${OPENSSL_VERSION}"
 }
 
-build "BSD-generic32" "armv7" "${IPHONEOS_GCC}" "${IPHONEOS_SDK}" ""
-build "BSD-generic32" "armv7s" "${IPHONEOS_GCC}" "${IPHONEOS_SDK}" ""
-build "BSD-generic64" "arm64" "${IPHONEOS_GCC}" "${IPHONEOS_SDK}" ""
-build "BSD-generic32" "i386" "${IPHONESIMULATOR_GCC}" "${IPHONESIMULATOR_SDK}" ""
-build "BSD-generic64" "x86_64" "${IPHONESIMULATOR_GCC}" "${IPHONESIMULATOR_SDK}" "-DOPENSSL_NO_ASM"
+build "BSD-generic64" "arm64" "iphoneos" "${IPHONEOS_GCC}" "${IPHONEOS_SDK}" ""
+build "BSD-generic64" "x86_64" "iphonesimulator" "${IPHONESIMULATOR_GCC}" "${IPHONESIMULATOR_SDK}" "-DOPENSSL_NO_ASM"
+build "BSD-generic64" "arm64" "iphonesimulator" "${IPHONESIMULATOR_GCC}" "${IPHONESIMULATOR_SDK}" ""
 
 #
 
 mkdir -p ../public/ios/include
-cp -r /tmp/openssl-${OPENSSL_VERSION}-i386/include/openssl ../public/ios/include/
+cp -r /tmp/openssl-${OPENSSL_VERSION}-arm64-iphoneos/include/openssl ../public/ios/include/
 
-mkdir -p ../public/ios/lib
+mkdir -p ../public/ios/lib/-iphoneos ../public/ios/lib/-iphonesimulator
 lipo \
-	"/tmp/openssl-${OPENSSL_VERSION}-armv7/lib/libcrypto.a" \
-	"/tmp/openssl-${OPENSSL_VERSION}-armv7s/lib/libcrypto.a" \
-	"/tmp/openssl-${OPENSSL_VERSION}-arm64/lib/libcrypto.a" \
-	"/tmp/openssl-${OPENSSL_VERSION}-i386/lib/libcrypto.a" \
-	"/tmp/openssl-${OPENSSL_VERSION}-x86_64/lib/libcrypto.a" \
-	-create -output ../public/ios/lib/libcrypto.a
+	"/tmp/openssl-${OPENSSL_VERSION}-arm64-iphoneos/lib/libcrypto.a" \
+	-create -output ../public/ios/lib/-iphoneos/libcrypto.a
 lipo \
-	"/tmp/openssl-${OPENSSL_VERSION}-armv7/lib/libssl.a" \
-	"/tmp/openssl-${OPENSSL_VERSION}-armv7s/lib/libssl.a" \
-	"/tmp/openssl-${OPENSSL_VERSION}-arm64/lib/libssl.a" \
-	"/tmp/openssl-${OPENSSL_VERSION}-i386/lib/libssl.a" \
-	"/tmp/openssl-${OPENSSL_VERSION}-x86_64/lib/libssl.a" \
-	-create -output ../public/ios/lib/libssl.a
+  "/tmp/openssl-${OPENSSL_VERSION}-arm64-iphonesimulator/lib/libcrypto.a" \
+  "/tmp/openssl-${OPENSSL_VERSION}-x86_64-iphonesimulator/lib/libcrypto.a" \
+  -create -output ../public/ios/lib/-iphonesimulator/libcrypto.a
 
-rm -rf "/tmp/openssl-${OPENSSL_VERSION}-*"
-rm -rf "/tmp/openssl-${OPENSSL_VERSION}-*.*-log"
+lipo \
+	"/tmp/openssl-${OPENSSL_VERSION}-arm64-iphoneos/lib/libssl.a" \
+	-create -output ../public/ios/lib/-iphoneos/libssl.a
+lipo \
+  "/tmp/openssl-${OPENSSL_VERSION}-arm64-iphonesimulator/lib/libssl.a" \
+  "/tmp/openssl-${OPENSSL_VERSION}-x86_64-iphonesimulator/lib/libssl.a" \
+  -create -output ../public/ios/lib/-iphonesimulator/libssl.a
+
+rm -rf /tmp/openssl-${OPENSSL_VERSION}-*
+rm -rf /tmp/openssl-${OPENSSL_VERSION}-*.*log

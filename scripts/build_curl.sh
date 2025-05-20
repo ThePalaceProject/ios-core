@@ -7,7 +7,7 @@
 # Based off of build script from RMSDK
 # Patched by cross-referencing with: https://github.com/sinofool/build-libcurl-ios
 
-set -x
+set -ex
 
 # Setup paths to stuff we need
 
@@ -60,43 +60,45 @@ fi
 
 # Clean up whatever was left from our previous build
 
-rm -rf lib include-32 include-64
+rm -rf lib include-64
 rm -rf /tmp/curl-${CURL_VERSION}-*
-rm -rf /tmp/curl-${CURL_VERSION}-*.*-log
+rm -f /tmp/curl-${CURL_VERSION}*.log
 
 build()
 {
     HOST=$1
     ARCH=$2
-    SDK=$3
-    MOREFLAGS=$4
+    SDK_TYPE=$3
+    SDK=$4
+    MOREFLAGS=$5
     rm -rf "curl-${CURL_VERSION}"
     unzip "curl-${CURL_VERSION}.zip" -d "."
     pushd .
     cd "curl-${CURL_VERSION}"
     export IPHONEOS_DEPLOYMENT_TARGET=${MIN_VERSION}
-    export CFLAGS="-arch ${ARCH} -pipe -Os -gdwarf-2 -isysroot ${SDK} -miphoneos-version-min=${MIN_VERSION}"
-    export CPPFLAGS=${MOREFLAGS}
+    export CFLAGS="-arch ${ARCH} -pipe -Os -gdwarf-2 -isysroot ${SDK} -miphoneos-version-min=${MIN_VERSION} $MOREFLAGS"
+    export CPPFLAGS="-arch ${ARCH} -isysroot ${SDK} -miphoneos-version-min=${MIN_VERSION} $MOREFLAGS"
     export LDFLAGS="-arch ${ARCH} -isysroot ${SDK}"
-    ./configure --disable-shared --enable-static --enable-ipv6 --host=${HOST} --prefix="/tmp/curl-${CURL_VERSION}-${ARCH}" --with-darwinssl --without-libidn2 --enable-threaded-resolver &> "/tmp/curl-${CURL_VERSION}-${ARCH}.log"
-    make -j `sysctl -n hw.logicalcpu_max` &> "/tmp/curl-${CURL_VERSION}-${ARCH}-build.log"
-    make install &> "/tmp/curl-${CURL_VERSION}-${ARCH}-install.log"
+    ./configure --disable-shared --enable-static --enable-ipv6 --host=${HOST} --prefix="/tmp/curl-${CURL_VERSION}-${ARCH}-${SDK_TYPE}" --with-darwinssl --without-libidn2 --enable-threaded-resolver &> "/tmp/curl-${CURL_VERSION}-${ARCH}-${SDK_TYPE}.log"
+    make -j `sysctl -n hw.logicalcpu_max` &> "/tmp/curl-${CURL_VERSION}-${ARCH}-${SDK_TYPE}-build.log"
+    make install &> "/tmp/curl-${CURL_VERSION}-${ARCH}-${SDK_TYPE}-install.log"
     popd
     rm -rf "curl-${CURL_VERSION}"
 }
 
-build "arm-apple-darwin"    "arm64"  "${IPHONEOS_SDK}" ""
-build "i386-apple-darwin"   "i386"   "${IPHONESIMULATOR_SDK}" "-D__IPHONE_OS_VERSION_MIN_REQUIRED=${IPHONEOS_DEPLOYMENT_TARGET%%.*}0000"
-build "x86_64-apple-darwin" "x86_64" "${IPHONESIMULATOR_SDK}" "-D__IPHONE_OS_VERSION_MIN_REQUIRED=${IPHONEOS_DEPLOYMENT_TARGET%%.*}0000"
+build "arm-apple-darwin"    "arm64"  "iphoneos"  "${IPHONEOS_SDK}"  ""
+build "x86_64-apple-darwin" "x86_64" "iphonesimulator"  "${IPHONESIMULATOR_SDK}"  "-miphonesimulator-version-min=${MIN_VERSION}"
+build "arm-apple-darwin"    "arm64"  "iphonesimulator"  "${IPHONESIMULATOR_SDK}"  "-miphonesimulator-version-min=${MIN_VERSION}"
 
-mkdir -p ../public/ios/lib ../public/ios/include-32 ../public/ios/include-64
-cp -r /tmp/curl-${CURL_VERSION}-i386/include/curl ../public/ios/include-32/
-cp -r /tmp/curl-${CURL_VERSION}-x86_64/include/curl ../public/ios/include-64/
+mkdir -p ../public/ios/lib/-iphoneos ../public/ios/lib/-iphonesimulator ../public/ios/include-64
+cp -r /tmp/curl-${CURL_VERSION}-arm64-iphoneos/include/curl ../public/ios/include-64/
 lipo \
-"/tmp/curl-${CURL_VERSION}-arm64/lib/libcurl.a" \
-"/tmp/curl-${CURL_VERSION}-i386/lib/libcurl.a" \
-"/tmp/curl-${CURL_VERSION}-x86_64/lib/libcurl.a" \
--create -output ../public/ios/lib/libcurl.a
+"/tmp/curl-${CURL_VERSION}-arm64-iphoneos/lib/libcurl.a" \
+-create -output ../public/ios/lib/-iphoneos/libcurl.a
+lipo \
+"/tmp/curl-${CURL_VERSION}-x86_64-iphonesimulator/lib/libcurl.a" \
+"/tmp/curl-${CURL_VERSION}-arm64-iphonesimulator/lib/libcurl.a" \
+-create -output ../public/ios/lib/-iphonesimulator/libcurl.a
 
-rm -rf "/tmp/curl-${CURL_VERSION}-*"
-rm -rf "/tmp/curl-${CURL_VERSION}-*.*-log"
+rm -Rf /tmp/curl-${CURL_VERSION}-*
+rm -f /tmp/curl-${CURL_VERSION}*.log
