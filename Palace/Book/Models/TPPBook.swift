@@ -430,16 +430,8 @@ public class TPPBook: NSObject, ObservableObject {
       let components = calendar.dateComponents([.day], from: now, to: untilDate)
       
       if let days = components.day {
-        if days < 7 {
-          reservationDetails.remainingTime = days
-          reservationDetails.timeUnit = "day\(days == 1 ? "" : "s")"
-        } else if days < 30 {
-          reservationDetails.remainingTime = days / 7
-          reservationDetails.timeUnit = "week\(days == 1 ? "" : "s")"
-        } else {
-          reservationDetails.remainingTime = days / 30
-          reservationDetails.timeUnit = "month\(days == 1 ? "" : "s")"
-        }
+        reservationDetails.remainingTime = days
+        reservationDetails.timeUnit = "day\(days == 1 ? "" : "s")"
       }
     }
     

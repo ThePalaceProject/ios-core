@@ -303,8 +303,13 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
 
 - (void)updateUIAfterSearchSuccess:(BOOL)success
 {
-  [self createAndConfigureFacetBarView];
 
+  if (self.facetBarView == nil) {
+    [self createAndConfigureFacetBarView];
+  } else {
+    [self.facetBarView.entryPointView reloadData];
+  }
+  
   self.collectionView.alpha = 0.0;
   self.searchActivityIndicatorView.hidden = YES;
   [self.searchActivityIndicatorView stopAnimating];
@@ -325,6 +330,9 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
   } else {
     self.reloadView.hidden = NO;
   }
+
+  [self.view setNeedsLayout];
+  [self.view layoutIfNeeded];
 
   [UIView animateWithDuration:0.3 animations:^{
     self.searchBar.alpha = 1.0;
