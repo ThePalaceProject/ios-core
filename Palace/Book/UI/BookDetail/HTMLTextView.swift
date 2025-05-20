@@ -28,9 +28,7 @@ struct HTMLTextView: View {
       let mutable = NSMutableAttributedString(attributedString: nsAttr)
 
       mutable.enumerateAttribute(.font, in: NSRange(location: 0, length: mutable.length)) { value, range, _ in
-        if value == nil {
-          mutable.addAttribute(.font, value: UIFont.palaceFont(ofSize: 15), range: range)
-        }
+         mutable.addAttribute(.font, value: UIFont.palaceFont(ofSize: 17), range: range)
       }
 
       mutable.addAttribute(.foregroundColor, value: UIColor.label, range: NSRange(location: 0, length: mutable.length))
