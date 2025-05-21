@@ -1874,12 +1874,9 @@
 		73CEF82F252699C9006B2820 /* FirebaseCrashlytics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = FirebaseCrashlytics.framework; path = Carthage/Build/iOS/FirebaseCrashlytics.framework; sourceTree = "<group>"; };
 		73CEF8352526FE80006B2820 /* run */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = run; sourceTree = "<group>"; };
 		73CEF8362526FE80006B2820 /* upload-symbols */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.executable"; path = "upload-symbols"; sourceTree = "<group>"; };
-		73CEF83E25270F38006B2820 /* adobe-rmsdk-build.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; name = "adobe-rmsdk-build.sh"; path = "scripts/adobe-rmsdk-build.sh"; sourceTree = SOURCE_ROOT; };
 		73DA43A12404B4A900985482 /* Cartfile */ = {isa = PBXFileReference; lastKnownFileType = text; path = Cartfile; sourceTree = SOURCE_ROOT; };
 		73DA43A32404B92E00985482 /* Cartfile.resolved */ = {isa = PBXFileReference; lastKnownFileType = text; path = Cartfile.resolved; sourceTree = SOURCE_ROOT; };
 		73DA43A62404BA5600985482 /* build-carthage.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; name = "build-carthage.sh"; path = "scripts/build-carthage.sh"; sourceTree = SOURCE_ROOT; };
-		73DA43A72404BA5600985482 /* build_curl.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; name = build_curl.sh; path = scripts/build_curl.sh; sourceTree = SOURCE_ROOT; };
-		73DA43A82404BA5600985482 /* build-openssl-curl.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; name = "build-openssl-curl.sh"; path = "scripts/build-openssl-curl.sh"; sourceTree = SOURCE_ROOT; };
 		73DB56C125F769FF003788EE /* TPPLastReadPositionSynchronizer.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPLastReadPositionSynchronizer.swift; sourceTree = "<group>"; };
 		73DB56CB25F7F684003788EE /* TPPLastReadPositionPoster.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPLastReadPositionPoster.swift; sourceTree = "<group>"; };
 		73DE8979260BEA13003D9135 /* TPPRequestExecuting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPRequestExecuting.swift; sourceTree = "<group>"; };
@@ -3031,9 +3028,6 @@
 				73EB0B802582CD59006BC997 /* bootstrap-drm.sh */,
 				73EB0B812582CD59006BC997 /* setup-repo-drm.sh */,
 				73EB0B822582CD5A006BC997 /* setup-repo-nodrm.sh */,
-				73CEF83E25270F38006B2820 /* adobe-rmsdk-build.sh */,
-				73DA43A72404BA5600985482 /* build_curl.sh */,
-				73DA43A82404BA5600985482 /* build-openssl-curl.sh */,
 			);
 			path = scripts;
 			sourceTree = SOURCE_ROOT;
