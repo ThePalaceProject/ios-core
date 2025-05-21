@@ -23,6 +23,23 @@ jobs:
           repository: ThePalaceProject/ios-drm-adeptconnector
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
           path: ./ios-drm-adeptconnector
+      - name: Create Adobe RMSDK Git LFS file list
+        run: git lfs ls-files -l |cut -d' ' -f1 |sort >.git/lfs-hashes.txt
+        working-directory: ./ios-drm-adeptconnector
+      - name: Restore Adobe RMSDK Git LFS object cache
+        uses: actions/cache@v4
+        with:
+          path: ./ios-drm-adeptconnector/.git/lfs
+          key: ${{ runner.os }}-lfsdata-v1-${{ hashFiles('./ios-drm-adeptconnector/.git/lfs-hashes.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-rmsdk-lfsdata-v1-
+            ${{ runner.os }}-rmsdk-lfsdata
+      - name: Fetch any needed Adobe RMSDK Git LFS objects and prune extraneous ones
+        run: git lfs fetch --prune
+        working-directory: ./ios-drm-adeptconnector
+      - name: Check out Adobe RMSDK Git LFS content
+        run: git lfs checkout
+        working-directory: ./ios-drm-adeptconnector
       - name: Setup repo with DRM
         run: ./scripts/setup-repo-drm.sh
         env:
