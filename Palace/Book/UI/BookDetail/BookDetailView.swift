@@ -509,7 +509,7 @@ struct BookDetailView: View {
     switch buttonType {
     case .sample, .audiobookSample:
       viewModel.handleAction(for: buttonType)
-    case .download, .get:
+    case .download, .get, .reserve:
       showHalfSheet.toggle()
       DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
         viewModel.handleAction(for: buttonType)
