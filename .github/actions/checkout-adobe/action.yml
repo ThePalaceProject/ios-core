@@ -39,7 +39,7 @@ runs:
       uses: actions/cache@v4
       with:
         path: ${{ inputs.path }}/.git/lfs
-        key: ${{ runner.os }}-rmsdk-lfsdata-v1-${{ hashFiles(format('{0}/.git/lfs-hashes.txt', inputs.path) }}
+        key: ${{ runner.os }}-rmsdk-lfsdata-v1-${{ hashFiles(format('{0}/.git/lfs-hashes.txt', inputs.path)) }}
         restore-keys: |
           ${{ runner.os }}-rmsdk-lfsdata-v1-
           ${{ runner.os }}-rmsdk-lfsdata
