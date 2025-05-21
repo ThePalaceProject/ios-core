@@ -32,6 +32,7 @@ runs:
     - name: Create Adobe RMSDK Git LFS file list
       run: git lfs ls-files -l |cut -d' ' -f1 |sort >.git/lfs-hashes.txt
       working-directory: ${{ inputs.path }}
+      shell: bash
 
     - name: Restore Adobe RMSDK Git LFS object cache
       uses: actions/cache@v4
@@ -45,7 +46,9 @@ runs:
     - name: Fetch any needed Adobe RMSDK Git LFS objects and prune extraneous ones
       run: git lfs fetch --prune
       working-directory: ${{ inputs.path }}
+      shell: bash
 
     - name: Check out Adobe RMSDK Git LFS content
       run: git lfs checkout
       working-directory: ${{ inputs.path }}
+      shell: bash
