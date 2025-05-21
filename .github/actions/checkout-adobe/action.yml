@@ -29,6 +29,7 @@ runs:
         path: ${{ inputs.path }}
         ref: ${{ inputs.ref }}
 
+    # LFS Caching strategy taken from: https://github.com/actions/checkout/issues/165#issuecomment-2776048200
     - name: Create Adobe RMSDK Git LFS file list
       run: git lfs ls-files -l |cut -d' ' -f1 |sort >.git/lfs-hashes.txt
       working-directory: ${{ inputs.path }}
@@ -38,7 +39,7 @@ runs:
       uses: actions/cache@v4
       with:
         path: ${{ inputs.path }}/.git/lfs
-        key: ${{ runner.os }}-rmsdk-lfsdata-v1-${{ hashFiles('${{ inputs.path }}/.git/lfs-hashes.txt') }}
+        key: ${{ runner.os }}-rmsdk-lfsdata-v1-${{ hashFiles(format('{0}/.git/lfs-hashes.txt', inputs.path) }}
         restore-keys: |
           ${{ runner.os }}-rmsdk-lfsdata-v1-
           ${{ runner.os }}-rmsdk-lfsdata
