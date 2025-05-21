@@ -23,6 +23,7 @@ jobs:
           repository: ThePalaceProject/mobile-drm-adeptconnector
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
           path: ./mobile-drm-adeptconnector
+          ref: feature/adobe-connector-update
       - name: Uncompress Adobe RMSDK
         run: ./scripts/setup-repo-drm.sh
         env:
