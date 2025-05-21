@@ -47,5 +47,6 @@ for SDK in ${SDKS[@]}; do
     cp \
       dp/build/xc5/Build/${CONFIGURATION}-${SDK}/libdp-iOS.a \
       lib/ios/${CONFIGURATION}-${SDK}
+    rm -Rf "$ADOBE_RMSDK/dp/build/xc5/build"
   done
 done
