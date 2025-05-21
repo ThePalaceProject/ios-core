@@ -29,4 +29,4 @@ else
   ADOBE_SDK_PATH=../ios-drm-adeptconnector
 fi
 
-ln -s $ADOBE_SDK_PATH/connector adobe-rmsdk
+ln -sf $ADOBE_SDK_PATH/connector adobe-rmsdk
