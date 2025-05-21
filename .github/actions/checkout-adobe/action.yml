@@ -1,0 +1,51 @@
+name: 'Checkout Adobe RMSDK'
+description: 'Checkout Adobe RMSDK, caching relevant large files'
+
+inputs:
+  token:
+    description: "Access token to use"
+    required: true
+  path:
+    description: "Path where it should be checked out"
+    required: false
+    default: "./ios-drm-adeptconnector"
+  ref:
+    description: "Branch to checkout"
+    required: false
+    default: "main"
+  repo:
+    description: "Repository to checkout"
+    required: false
+    default: "ThePalaceProject/ios-drm-adeptconnector"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout Adobe RMSDK
+      uses: actions/checkout@v4
+      with:
+        repository: ${{ inputs.repo }}
+        token: ${{ inputs.token }}
+        path: ${{ inputs.path }}
+        ref: ${{ inputs.ref }}
+
+    - name: Create Adobe RMSDK Git LFS file list
+      run: git lfs ls-files -l |cut -d' ' -f1 |sort >.git/lfs-hashes.txt
+      working-directory: ${{ inputs.path }}
+
+    - name: Restore Adobe RMSDK Git LFS object cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ inputs.path }}/.git/lfs
+        key: ${{ runner.os }}-rmsdk-lfsdata-v1-${{ hashFiles('${{ inputs.path }}/.git/lfs-hashes.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-rmsdk-lfsdata-v1-
+          ${{ runner.os }}-rmsdk-lfsdata
+
+    - name: Fetch any needed Adobe RMSDK Git LFS objects and prune extraneous ones
+      run: git lfs fetch --prune
+      working-directory: ${{ inputs.path }}
+
+    - name: Check out Adobe RMSDK Git LFS content
+      run: git lfs checkout
+      working-directory: ${{ inputs.path }}
