@@ -514,6 +514,9 @@ struct BookDetailView: View {
       DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
         viewModel.handleAction(for: buttonType)
       }
+    case .return:
+      viewModel.buttonState = .returning
+      showHalfSheet.toggle()
     default:
       showHalfSheet.toggle()
     }

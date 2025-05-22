@@ -59,7 +59,6 @@ class BookDetailViewModel: ObservableObject {
     self.state = registry.state(for: book.identifier)
 
     bindRegistryState()
-//    buttonState = BookButtonState.stateForAvailability(self.book.defaultAcquisition?.availability) ?? .unsupported
     buttonState = BookButtonState(book) ?? BookButtonState.stateForAvailability(self.book.defaultAcquisition?.availability) ?? .unsupported
     setupObservers()
     self.downloadProgress = downloadCenter.downloadProgress(for: book.identifier)
@@ -196,14 +195,11 @@ class BookDetailViewModel: ObservableObject {
   // MARK: - Show More Books for Lane
   func showMoreBooksForLane(laneTitle: String) {
     guard let lane = relatedBooksByLane[laneTitle] else {
-      print("No books available for lane: \(laneTitle)")
       return
     }
 
     if let subsectionURL = lane.subsectionURL {
       self.selectedBookURL = subsectionURL
-    } else {
-      print("Lane \(laneTitle) has no URL to load more books.")
     }
   }
 
@@ -253,7 +249,7 @@ class BookDetailViewModel: ObservableObject {
 
       registry.setState(.holding, for: book.identifier)
       removeProcessingButton(button)
-    case .return, .remove:
+    case .return, .remove, .returning:
       didSelectReturn(for: book) {
         self.removeProcessingButton(button)
       }

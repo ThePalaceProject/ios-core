@@ -150,7 +150,7 @@ extension BookCellModel {
     switch action {
     case .download, .retry, .get, .reserve:
       didSelectDownload()
-    case .return, .remove:
+    case .return, .remove, .returning:
       self.isLoading = true
       didSelectReturn()
     case .cancel:
@@ -182,7 +182,8 @@ extension BookCellModel {
         .unregistered,
         .downloadFailed,
         .downloadNeeded,
-        .downloadSuccessful:
+        .downloadSuccessful,
+        .returning:
       title = deleteAvailable ? DisplayStrings.delete : DisplayStrings.return
       message = deleteAvailable ? String.localizedStringWithFormat(DisplayStrings.deleteMessage, book.title) :
       String.localizedStringWithFormat(DisplayStrings.returnMessage, book.title)

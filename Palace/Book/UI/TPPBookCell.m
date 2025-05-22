@@ -125,7 +125,9 @@ TPPBookCell *TPPBookCellDequeue(UICollectionView *const collectionView,
       cell.state = TPPBookButtonsStateUsed;
       return cell;
     }
-    case TPPBookStateUnsupported: {
+    case TPPBookStateUnsupported:
+    case TPPBookStateReturning:
+    {
       TPPBookNormalCell *const cell = [collectionView
                                         dequeueReusableCellWithReuseIdentifier:reuseIdentifierNormal
                                         forIndexPath:indexPath];
