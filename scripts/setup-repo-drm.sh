@@ -24,12 +24,9 @@ if [ "$BUILD_CONTEXT" != "ci" ]; then
 fi
 
 if [ "$BUILD_CONTEXT" == "ci" ]; then
-  ADOBE_SDK_PATH=./mobile-drm-adeptconnector
+  ADOBE_SDK_PATH=./ios-drm-adeptconnector
 else
-  ADOBE_SDK_PATH=../mobile-drm-adeptconnector
+  ADOBE_SDK_PATH=../ios-drm-adeptconnector
 fi
 
-ln -s $ADOBE_SDK_PATH/uncompressed adobe-rmsdk
-
-cd $ADOBE_SDK_PATH
-./uncompress.sh
+ln -sf $ADOBE_SDK_PATH/connector adobe-rmsdk
