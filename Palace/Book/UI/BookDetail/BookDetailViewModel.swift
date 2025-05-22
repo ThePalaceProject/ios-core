@@ -59,7 +59,8 @@ class BookDetailViewModel: ObservableObject {
     self.state = registry.state(for: book.identifier)
 
     bindRegistryState()
-    buttonState = BookButtonState.stateForAvailability(self.book.defaultAcquisition?.availability) ?? .unsupported
+//    buttonState = BookButtonState.stateForAvailability(self.book.defaultAcquisition?.availability) ?? .unsupported
+    buttonState = BookButtonState(book) ?? BookButtonState.stateForAvailability(self.book.defaultAcquisition?.availability) ?? .unsupported
     setupObservers()
     self.downloadProgress = downloadCenter.downloadProgress(for: book.identifier)
   }

@@ -311,7 +311,7 @@ struct Strings {
     static let more = NSLocalizedString("More", comment: "")
     static let less = NSLocalizedString("Less", comment: "")
     static let otherBooks = NSLocalizedString("Other books by this author", comment: "Section header for related books")
-    static let borrowedFor = NSLocalizedString("Borrowed for", comment: "")
+    static let borrowedUntil = NSLocalizedString("Borrowed until", comment: "")
     static let borrowingFor = NSLocalizedString("Borrowing for", comment: "")
     static let holdStatus = NSLocalizedString(
       "You are %1$@ in line. %2$d %3$@ in use.",
