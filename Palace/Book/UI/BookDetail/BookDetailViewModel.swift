@@ -567,8 +567,14 @@ class BookDetailViewModel: ObservableObject {
 
   private func presentWebView(_ url: URL?) {
     guard let url = url else { return }
-    let webController = BundledHTMLViewController(fileURL: url, title: AccountsManager.shared.currentAccount?.name ?? "")
-    TPPRootTabBarController.shared().present(webController, animated: true)
+    let webController = BundledHTMLViewController(
+      fileURL: url,
+      title: AccountsManager.shared.currentAccount?.name ?? ""
+    )
+
+    let root = TPPRootTabBarController.shared()
+    let top = root?.topMostViewController
+    top?.present(webController, animated: true)
   }
 
   // MARK: - Error Alerts

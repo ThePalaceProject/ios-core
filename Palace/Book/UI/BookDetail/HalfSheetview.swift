@@ -45,10 +45,6 @@ struct HalfSheetView: View {
     .padding()
     .presentationDetents([.medium])
     .presentationDragIndicator(.visible)
-    .onReceive(viewModel.$state) { _ in
-      withAnimation {
-      }
-    }
     .onDisappear {
       if viewModel.buttonState == .returning {
         viewModel.buttonState = .downloadSuccessful
