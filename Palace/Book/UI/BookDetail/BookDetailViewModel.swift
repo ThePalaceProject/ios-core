@@ -59,7 +59,7 @@ class BookDetailViewModel: ObservableObject {
     self.state = registry.state(for: book.identifier)
 
     bindRegistryState()
-    buttonState = BookButtonState.stateForAvailability(self.book.defaultAcquisition?.availability) ?? .unsupported
+    buttonState = BookButtonState(book) ?? BookButtonState.stateForAvailability(self.book.defaultAcquisition?.availability) ?? .unsupported
     setupObservers()
     self.downloadProgress = downloadCenter.downloadProgress(for: book.identifier)
   }
@@ -73,11 +73,17 @@ class BookDetailViewModel: ObservableObject {
 
   /// Automatically updates `state` whenever `registry.bookStatePublisher` changes for this book.
   private func bindRegistryState() {
-    (registry as? TPPBookRegistry)?.bookStatePublisher
+    (registry as? TPPBookRegistry)?
+      .bookStatePublisher
       .filter { $0.0 == self.book.identifier }
       .map { $0.1 }
       .receive(on: DispatchQueue.main)
-      .assign(to: &$state)
+      .sink { [weak self] newState in
+        guard let self = self else { return }
+        self.state = newState
+        self.determineButtonState()
+      }
+      .store(in: &cancellables)
   }
 
   private func setupObservers() {
@@ -127,7 +133,7 @@ class BookDetailViewModel: ObservableObject {
       self.downloadProgress = downloadCenter.downloadProgress(for: book.identifier)
       let info = downloadCenter.downloadInfo(forBookIdentifier: book.identifier)
       if let rights = info?.rightsManagement, rights != .unknown {
-        if state != .downloading {
+        if state != .downloading && state != .downloadSuccessful {
           state = .downloading
         }
       }
@@ -195,14 +201,11 @@ class BookDetailViewModel: ObservableObject {
   // MARK: - Show More Books for Lane
   func showMoreBooksForLane(laneTitle: String) {
     guard let lane = relatedBooksByLane[laneTitle] else {
-      print("No books available for lane: \(laneTitle)")
       return
     }
 
     if let subsectionURL = lane.subsectionURL {
       self.selectedBookURL = subsectionURL
-    } else {
-      print("Lane \(laneTitle) has no URL to load more books.")
     }
   }
 
@@ -253,6 +256,10 @@ class BookDetailViewModel: ObservableObject {
       registry.setState(.holding, for: book.identifier)
       removeProcessingButton(button)
     case .return, .remove:
+      buttonState = .returning
+      state = .returning
+//      registry.setState(.returning, for: book.identifier)
+    case .returning:
       didSelectReturn(for: book) {
         self.removeProcessingButton(button)
       }
@@ -570,8 +577,14 @@ class BookDetailViewModel: ObservableObject {
 
   private func presentWebView(_ url: URL?) {
     guard let url = url else { return }
-    let webController = BundledHTMLViewController(fileURL: url, title: AccountsManager.shared.currentAccount?.name ?? "")
-    TPPRootTabBarController.shared().present(webController, animated: true)
+    let webController = BundledHTMLViewController(
+      fileURL: url,
+      title: AccountsManager.shared.currentAccount?.name ?? ""
+    )
+
+    let root = TPPRootTabBarController.shared()
+    let top = root?.topMostViewController
+    top?.present(webController, animated: true)
   }
 
   // MARK: - Error Alerts

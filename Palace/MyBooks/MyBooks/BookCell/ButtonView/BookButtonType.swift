@@ -20,6 +20,7 @@ enum BookButtonType: String {
   case audiobookSample
   case remove
   case `return`
+  case returning
 
   var localizedTitle: String {
     NSLocalizedString(self.rawValue, comment: "Book Action Button title")
@@ -59,6 +60,7 @@ extension BookButtonType {
     case .cancel: return DisplayStrings.cancel
     case .retry: return DisplayStrings.retry
     case .sample, .audiobookSample: return DisplayStrings.preview
+    case .returning: return DisplayStrings.returnLoan
     }
   }
 
@@ -66,7 +68,7 @@ extension BookButtonType {
     switch self {
     case .sample, .audiobookSample:
       return .tertiary
-    case .get, .reserve, .download, .read, .listen, .retry:
+    case .get, .reserve, .download, .read, .listen, .retry, .returning:
       return .primary
     case .return, .cancel, .remove:
       return .secondary

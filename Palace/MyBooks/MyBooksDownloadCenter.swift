@@ -187,7 +187,7 @@ import OverdriveProcessor
       return
     case .downloadFailed, .downloadNeeded, .holding, .SAMLStarted:
       break
-    case .downloadSuccessful, .used, .unsupported:
+    case .downloadSuccessful, .used, .unsupported, .returning:
       NSLog("Ignoring nonsensical download request.")
       return
     }
