@@ -73,11 +73,17 @@ class BookDetailViewModel: ObservableObject {
 
   /// Automatically updates `state` whenever `registry.bookStatePublisher` changes for this book.
   private func bindRegistryState() {
-    (registry as? TPPBookRegistry)?.bookStatePublisher
+    (registry as? TPPBookRegistry)?
+      .bookStatePublisher
       .filter { $0.0 == self.book.identifier }
       .map { $0.1 }
       .receive(on: DispatchQueue.main)
-      .assign(to: &$state)
+      .sink { [weak self] newState in
+        guard let self = self else { return }
+        self.state = newState
+        self.determineButtonState()
+      }
+      .store(in: &cancellables)
   }
 
   private func setupObservers() {
@@ -127,7 +133,7 @@ class BookDetailViewModel: ObservableObject {
       self.downloadProgress = downloadCenter.downloadProgress(for: book.identifier)
       let info = downloadCenter.downloadInfo(forBookIdentifier: book.identifier)
       if let rights = info?.rightsManagement, rights != .unknown {
-        if state != .downloading {
+        if state != .downloading && state != .downloadSuccessful {
           state = .downloading
         }
       }
