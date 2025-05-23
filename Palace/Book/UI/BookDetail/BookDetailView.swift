@@ -528,6 +528,7 @@ struct BookDetailView: View {
       }
     case .return:
       viewModel.buttonState = .returning
+      viewModel.state = .returning
       showHalfSheet.toggle()
     default:
       showHalfSheet.toggle()

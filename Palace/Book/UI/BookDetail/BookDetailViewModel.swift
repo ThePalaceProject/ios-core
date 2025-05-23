@@ -255,7 +255,11 @@ class BookDetailViewModel: ObservableObject {
 
       registry.setState(.holding, for: book.identifier)
       removeProcessingButton(button)
-    case .return, .remove, .returning:
+    case .return, .remove:
+      buttonState = .returning
+      state = .returning
+//      registry.setState(.returning, for: book.identifier)
+    case .returning:
       didSelectReturn(for: book) {
         self.removeProcessingButton(button)
       }
