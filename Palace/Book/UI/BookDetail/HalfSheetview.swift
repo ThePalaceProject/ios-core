@@ -1,17 +1,25 @@
 import SwiftUI
 
-struct HalfSheetView: View {
+protocol HalfSheetProvider: ObservableObject, BookButtonProvider {
+  var isFullSize: Bool { get }
+  var bookState: TPPBookState { get }
+  var buttonState: BookButtonState { get set }
+  var downloadProgress: Double { get }
+  var book: TPPBook { get }
+}
+
+struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
   typealias DisplayStrings = Strings.BookDetailView
   @Environment(\.colorScheme) var colorScheme
   
-  @ObservedObject var viewModel: BookDetailViewModel
+  @ObservedObject var viewModel: ViewModel
   var backgroundColor: Color
   @Binding var coverImage: UIImage?
   
   var body: some View {
     VStack(alignment: .leading, spacing: viewModel.isFullSize ? 20 : 10) {
       
-      if viewModel.state == .returning {
+      if viewModel.bookState == .returning {
         VStack(alignment: .leading) {
           Text(DisplayStrings.returning.uppercased())
             .font(.subheadline)
@@ -28,7 +36,7 @@ struct HalfSheetView: View {
       
       statusInfoView
       
-      if viewModel.state == .downloading && viewModel.buttonState != .downloadSuccessful {
+      if viewModel.bookState == .downloading && viewModel.buttonState != .downloadSuccessful {
         ProgressView(value: viewModel.downloadProgress, total: 1.0)
           .progressViewStyle(LinearProgressViewStyle())
           .frame(height: 6)
@@ -93,7 +101,7 @@ private extension HalfSheetView {
   @ViewBuilder
   var statusInfoView: some View {
     VStack(alignment: .leading) {
-      switch viewModel.state {
+      switch viewModel.bookState {
       case .downloadSuccessful, .used:
         borrowedInfoView
       case .downloading, .downloadNeeded:

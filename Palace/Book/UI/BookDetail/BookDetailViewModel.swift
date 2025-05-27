@@ -8,12 +8,12 @@ struct BookLane {
   let subsectionURL: URL?
 }
 
-class BookDetailViewModel: ObservableObject {
+class BookDetailViewModel: HalfSheetProvider, ObservableObject {
   /// The book model.
   @Published var book: TPPBook
 
   /// The registry state, e.g. `unregistered`, `downloading`, `downloadSuccessful` etc.
-  @Published var state: TPPBookState
+  @Published var bookState: TPPBookState
 
   /// Misc published fields for UI updates.
   @Published var bookmarks: [TPPReadiumBookmark] = []
@@ -56,7 +56,7 @@ class BookDetailViewModel: ObservableObject {
   @objc init(book: TPPBook) {
     self.book = book
     self.registry = TPPBookRegistry.shared
-    self.state = registry.state(for: book.identifier)
+    self.bookState = registry.state(for: book.identifier)
 
     bindRegistryState()
     buttonState = BookButtonState(book) ?? BookButtonState.stateForAvailability(self.book.defaultAcquisition?.availability) ?? .unsupported
@@ -80,7 +80,7 @@ class BookDetailViewModel: ObservableObject {
       .receive(on: DispatchQueue.main)
       .sink { [weak self] newState in
         guard let self = self else { return }
-        self.state = newState
+        self.bookState = newState
         self.determineButtonState()
       }
       .store(in: &cancellables)
@@ -122,7 +122,7 @@ class BookDetailViewModel: ObservableObject {
       guard let self else { return }
       let newBook = registry.book(forIdentifier: book.identifier) ?? book
       self.book = newBook
-      self.state = registry.state(for: book.identifier)
+      self.bookState = registry.state(for: book.identifier)
       determineButtonState()
     }
   }
@@ -133,8 +133,8 @@ class BookDetailViewModel: ObservableObject {
       self.downloadProgress = downloadCenter.downloadProgress(for: book.identifier)
       let info = downloadCenter.downloadInfo(forBookIdentifier: book.identifier)
       if let rights = info?.rightsManagement, rights != .unknown {
-        if state != .downloading && state != .downloadSuccessful {
-          state = .downloading
+        if bookState != .downloading && bookState != .downloadSuccessful {
+          bookState = .downloading
         }
       }
     }
@@ -216,7 +216,7 @@ class BookDetailViewModel: ObservableObject {
   private func determineButtonState() {
     let newState: BookButtonState
 
-    switch state {
+    switch bookState {
     case .unregistered:
       newState = BookButtonState.stateForAvailability(book.defaultAcquisition?.availability) ?? .canBorrow
     case .downloadNeeded:
@@ -257,8 +257,7 @@ class BookDetailViewModel: ObservableObject {
       removeProcessingButton(button)
     case .return, .remove:
       buttonState = .returning
-      state = .returning
-//      registry.setState(.returning, for: book.identifier)
+      bookState = .returning
     case .returning:
       didSelectReturn(for: book) {
         self.removeProcessingButton(button)
