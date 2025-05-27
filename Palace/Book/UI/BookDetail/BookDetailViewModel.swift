@@ -258,6 +258,8 @@ class BookDetailViewModel: HalfSheetProvider, ObservableObject {
     case .return, .remove:
       buttonState = .returning
       bookState = .returning
+      self.removeProcessingButton(button)
+
     case .returning:
       didSelectReturn(for: book) {
         self.removeProcessingButton(button)

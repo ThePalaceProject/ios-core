@@ -57,7 +57,8 @@ class BookCellModel: ObservableObject {
 
   var statePublisher = PassthroughSubject<Bool, Never>()
   var state: BookCellState
-
+  var bookState: TPPBookState = .returning
+  
   var book: TPPBook {
     didSet {
       if book.identifier != currentBookIdentifier {
@@ -249,10 +250,6 @@ extension BookCellModel: HalfSheetProvider {
   
   var isFullSize: Bool {
     UIDevice().isIpad
-  }
-  
-  var bookState: TPPBookState {
-    .returning
   }
   
   var downloadProgress: Double {

@@ -2,7 +2,7 @@ import SwiftUI
 
 protocol HalfSheetProvider: ObservableObject, BookButtonProvider {
   var isFullSize: Bool { get }
-  var bookState: TPPBookState { get }
+  var bookState: TPPBookState { get set }
   var buttonState: BookButtonState { get set }
   var downloadProgress: Double { get }
   var book: TPPBook { get }
@@ -56,6 +56,7 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
     .onDisappear {
       if viewModel.buttonState == .returning {
         viewModel.buttonState = .downloadSuccessful
+        viewModel.bookState = .downloadSuccessful
       }
     }
   }
