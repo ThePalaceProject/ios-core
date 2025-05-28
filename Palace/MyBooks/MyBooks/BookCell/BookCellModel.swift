@@ -57,7 +57,8 @@ class BookCellModel: ObservableObject {
 
   var statePublisher = PassthroughSubject<Bool, Never>()
   var state: BookCellState
-
+  var bookState: TPPBookState = .returning
+  
   var book: TPPBook {
     didSet {
       if book.identifier != currentBookIdentifier {
@@ -152,7 +153,7 @@ extension BookCellModel {
       didSelectDownload()
     case .return, .remove, .returning:
       self.isLoading = true
-      didSelectReturn()
+      self.buttonDelegate?.didSelectReturn(for: self.book) {}
     case .cancel:
       didSelectCancel()
     case .sample, .audiobookSample:
@@ -236,5 +237,22 @@ extension BookCellModel: BookButtonProvider {
 
   func isProcessing(for type: BookButtonType) -> Bool {
     isLoading
+  }
+}
+
+extension BookCellModel: HalfSheetProvider {
+  var buttonState: BookButtonState {
+    get {
+      .returning
+    }
+    set { }
+  }
+  
+  var isFullSize: Bool {
+    UIDevice().isIpad
+  }
+  
+  var downloadProgress: Double {
+    0.0
   }
 }

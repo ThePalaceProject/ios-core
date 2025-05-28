@@ -12,6 +12,9 @@ import Combine
 import PalaceUIKit
 
 struct NormalBookCell: View {
+  @Environment(\.colorScheme) var colorScheme
+  @State var showHalfSheet: Bool = false
+
   @ObservedObject var model: BookCellModel
   private let cellHeight: CGFloat = 125
   private let imageViewWidth: CGFloat = 100
@@ -30,6 +33,13 @@ struct NormalBookCell: View {
           .padding(.bottom, 5)
       }
       .frame(maxWidth: .infinity, alignment: .leading)
+      .sheet(isPresented: $showHalfSheet) {
+        HalfSheetView(
+          viewModel: model,
+          backgroundColor: Color(model.book.coverImage?.mainColor() ?? .gray),
+          coverImage: $model.book.coverImage
+        )
+      }
       .alert(item: $model.showAlert) { alert in
         Alert(
           title: Text(alert.title),
@@ -85,6 +95,11 @@ struct NormalBookCell: View {
   @ViewBuilder private var buttons: some View {
     VStack(alignment: .leading, spacing: 0) {
       BookButtonsView(provider: model, size: buttonSize) { type in
+        if type == .return {
+          model.state = .normal(.returning)
+          self.showHalfSheet = true
+          return
+        }
         model.callDelegate(for: type)
       }
       borrowedInfoView
@@ -103,12 +118,16 @@ struct NormalBookCell: View {
   }
 
   @ViewBuilder var borrowedInfoView: some View {
-    if let availableUntil = model.book.getExpirationDate()?.monthDayYearString {
-      Text("Borrowed until \(availableUntil)")
-        .fixedSize(horizontal: false, vertical: true)
-        .minimumScaleFactor(0.5)
-        .font(.footnote)
-        .foregroundColor(.secondary)
+    if let expirationDate = model.book.getExpirationDate() {
+      HStack {
+        Text("Due \(expirationDate.monthDayYearString)")
+          .font(.subheadline)
+          .foregroundColor(.secondary)
+        Spacer()
+        Text("\(expirationDate.timeUntil().value) \(expirationDate.timeUntil().unit)")
+          .foregroundColor(colorScheme == .dark ? .palaceSuccessLight : .palaceSuccessDark)
+      }
+      .padding(.trailing)
     }
   }
 }
