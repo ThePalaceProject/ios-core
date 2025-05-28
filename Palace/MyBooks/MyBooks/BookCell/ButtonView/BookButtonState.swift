@@ -17,6 +17,7 @@ enum BookButtonState {
   case downloadSuccessful
   case used
   case downloadInProgress
+  case returning
   case downloadFailed
   case unsupported
 }
@@ -71,6 +72,8 @@ extension BookButtonState {
       buttons = [.cancel]
     case .downloadFailed:
       buttons = [.cancel, .retry]
+    case .returning:
+      buttons = [.returning]
     case .unsupported:
       return []
     }
@@ -110,6 +113,8 @@ extension BookButtonState {
       self = .used
     case .unsupported:
       self = .unsupported
+    case .returning:
+      self = .returning
     }
   }
 }

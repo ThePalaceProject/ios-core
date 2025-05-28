@@ -318,45 +318,57 @@ struct BookDetailView: View {
     }
   }
 
-  private var relatedBooksView: some View {
-    VStack(alignment: .leading, spacing: 20) {
-      ForEach(viewModel.relatedBooksByLane.keys.sorted(), id: \.self) { laneTitle in
-        if laneTitle != viewModel.relatedBooksByLane.keys.sorted().first {
+  @ViewBuilder private var relatedBooksView: some View {
+    if viewModel.relatedBooksByLane.count > 0 {
+      VStack(alignment: .leading, spacing: 20) {
+        VStack(alignment: .leading, spacing: 0) {
+          Text(DisplayStrings.otherBooks.uppercased())
+            .font(.headline)
+          
           Divider()
+            .padding(.vertical, 20)
         }
-
-        if let lane = viewModel.relatedBooksByLane[laneTitle] {
-          VStack(alignment: .leading, spacing: 20) {
-            HStack {
-              Text(lane.title)
-                .font(.headline)
-              Spacer()
-              if let url = lane.subsectionURL {
-                NavigationLink(destination: TPPCatalogFeedView(url: url)) {
-                  Text(DisplayStrings.more.capitalized)
-                }
-              }
-            }
-            .padding(.horizontal, 30)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-              LazyHStack(spacing: 12) {
-                ForEach(lane.books.indices, id: \.self) { index in
-                  if let book = lane.books[safe: index] {
-                    Button(action: {
-                      viewModel.selectRelatedBook(book)
-                    }) {
-                      BookImageView(book: book, height: 160, showShimmer: true)
-                        .padding()
-                        .adaptiveShadow(radius: 5)
-                        .transition(.opacity.combined(with: .scale))
-                    }
-                  } else {
-                    ShimmerView(width: 100, height: 160)
+        .padding(.horizontal, 30)
+        
+        ForEach(viewModel.relatedBooksByLane.keys.sorted(), id: \.self) { laneTitle in
+          if laneTitle != viewModel.relatedBooksByLane.keys.sorted().first {
+            Divider()
+          }
+          
+          if let lane = viewModel.relatedBooksByLane[laneTitle] {
+            VStack(alignment: .leading, spacing: 20) {
+              HStack {
+                Text(lane.title)
+                  .font(.headline)
+                Spacer()
+                if let url = lane.subsectionURL {
+                  NavigationLink(destination: TPPCatalogFeedView(url: url)) {
+                    Text(DisplayStrings.more.capitalized)
                   }
                 }
               }
               .padding(.horizontal, 30)
+              
+              ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 12) {
+                  ForEach(lane.books.indices, id: \.self) { index in
+                    if let book = lane.books[safe: index] {
+                      Button(action: {
+                        viewModel.selectRelatedBook(book)
+                      }) {
+                        BookImageView(book: book, height: 160, showShimmer: true)
+                          .padding()
+                          .adaptiveShadow(radius: 5)
+                          .transition(.opacity.combined(with: .scale))
+                      }
+                    } else {
+                      ShimmerView(width: 100, height: 160)
+                    }
+                  }
+                }
+                .padding(.horizontal, 30)
+
+              }
             }
           }
         }
@@ -514,6 +526,10 @@ struct BookDetailView: View {
       DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
         viewModel.handleAction(for: buttonType)
       }
+    case .return:
+      viewModel.buttonState = .returning
+      viewModel.bookState = .returning
+      showHalfSheet.toggle()
     default:
       showHalfSheet.toggle()
     }

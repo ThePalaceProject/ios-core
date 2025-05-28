@@ -311,19 +311,22 @@ struct Strings {
     static let more = NSLocalizedString("More", comment: "")
     static let less = NSLocalizedString("Less", comment: "")
     static let otherBooks = NSLocalizedString("Other books by this author", comment: "Section header for related books")
-    static let borrowedFor = NSLocalizedString("Borrowed for", comment: "")
+    static let borrowedUntil = NSLocalizedString("Borrowed until", comment: "")
     static let borrowingFor = NSLocalizedString("Borrowing for", comment: "")
+    static let due = NSLocalizedString("Due", comment: "")
     static let holdStatus = NSLocalizedString(
       "You are %1$@ in line. %2$d %3$@ in use.",
       comment: "User hold position and number of copies in use. Format: 'You are 5th in line. 3 copies in use.'"
     )
     static let copy = NSLocalizedString("copy", comment: "")
     static let copies = NSLocalizedString("copies", comment: "")
+    static let returning = NSLocalizedString("returning", comment: "")
   }
 
   struct BookButton {
     static let borrow = NSLocalizedString("Borrow", comment: "")
     static let preview = NSLocalizedString("Preview", comment: "")
+    static let returnLoan = NSLocalizedString("Return Loan", comment: "")
     static let retry = NSLocalizedString("Retry", comment: "")
     static let read = NSLocalizedString("Read", comment: "")
     static let listen = NSLocalizedString("Listen", comment: "")
