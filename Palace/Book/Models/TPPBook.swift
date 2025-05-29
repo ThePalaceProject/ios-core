@@ -505,26 +505,22 @@ extension TPPBook {
 
 extension TPPBook {
   static let coverCache = NSCache<NSString, UIImage>()
-  static let thumbnailCache = NSCache<NSString, UIImage>()
-  static let coverRegistry = TPPBookCoverRegistry.shared
+  private static let thumbnailCache = NSCache<NSString, UIImage>()
+  private static let coverRegistry = TPPBookCoverRegistry.shared
   
   func fetchCoverImage() {
-      // 1) VM-level cache
       if let img = TPPBook.coverCache.object(forKey: identifier as NSString) {
         coverImage = img
         return
       }
 
-      // 2) Dedupe
       guard !isCoverLoading else { return }
       isCoverLoading = true
 
-      // 3) Obj-C bridge call (guarantees completion on main thread)
       TPPBookCoverRegistryBridge.shared.coverImageForBook(self) { [weak self] image in
         guard let self = self else { return }
         let final = image ?? self.thumbnailImage
 
-        // 4) Update UI state + VM cache
         self.coverImage = final
         if let img = final {
           TPPBook.coverCache.setObject(img, forKey: self.identifier as NSString)
@@ -534,22 +530,18 @@ extension TPPBook {
     }
 
     func fetchThumbnailImage() {
-      // 1) VM-level cache
       if let img = TPPBook.thumbnailCache.object(forKey: identifier as NSString) {
         thumbnailImage = img
         return
       }
 
-      // 2) Dedupe
       guard !isThumbnailLoading else { return }
       isThumbnailLoading = true
 
-      // 3) Obj-C bridge call
       TPPBookCoverRegistryBridge.shared.thumbnailImageForBook(self) { [weak self] image in
         guard let self = self else { return }
         let final = image ?? UIImage(systemName: "book")
 
-        // 4) Update UI state + VM cache
         self.thumbnailImage = final
         if let img = final {
           TPPBook.thumbnailCache.setObject(img, forKey: self.identifier as NSString)

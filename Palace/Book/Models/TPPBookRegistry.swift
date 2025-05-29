@@ -508,7 +508,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
   }
 
   func cachedThumbnailImage(for book: TPPBook) -> UIImage? {
-      return TPPBook.coverCache.object(forKey: book.identifier as NSString)
+      TPPBook.coverCache.object(forKey: book.identifier as NSString)
     }
 
     /// Single‐book thumbnail
