@@ -1,8 +1,3 @@
-//import Foundation
-//import UIKit
-//
-//class TPPBookCoverRegistry {
-
 import Foundation
 import UIKit
 

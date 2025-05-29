@@ -352,10 +352,8 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
                  fulfillmentId: String? = nil,
                  readiumBookmarks: [TPPReadiumBookmark]? = nil,
                  genericBookmarks: [TPPBookLocation]? = nil) {
-      // 1) kick off thumbnail preload via the bridge (caches in actor)
       TPPBookCoverRegistryBridge.shared.thumbnailImageForBook(book) { _ in }
 
-      // 2) mutate your registry on your serial queue
       syncQueue.async {
         self.registry[book.identifier] = TPPBookRegistryRecord(
           book: book,
@@ -373,24 +371,19 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     }
 
     func updateAndRemoveBook(_ book: TPPBook) {
-      // 1) refresh the actor’s cache for this book’s thumbnail
       TPPBookCoverRegistryBridge.shared.thumbnailImageForBook(book) { _ in }
 
-      // 2) update your local record
       syncQueue.async {
         guard let record = self.registry[book.identifier] else { return }
         record.book = book
         record.state = .unregistered
         self.save()
-        // you can notify via registrySubject here if needed
       }
     }
 
     func removeBook(forIdentifier bookIdentifier: String) {
-      // 1) grab a copy so we can still prime cache after removal
       let removedBook = registry[bookIdentifier]?.book
 
-      // 2) remove & persist
       syncQueue.async {
         self.registry.removeValue(forKey: bookIdentifier)
         self.save()
@@ -399,7 +392,6 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
         }
       }
 
-      // 3) prime cache one last time (if you really need it)
       if let book = removedBook {
         TPPBookCoverRegistryBridge.shared.thumbnailImageForBook(book) { _ in }
       }
@@ -448,7 +440,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     self.save()
 
       DispatchQueue.main.async {
-        self.bookStateSubject.send((bookIdentifier, state)) // 🔹 Publish state change
+        self.bookStateSubject.send((bookIdentifier, state))
       }
     }
   }
@@ -511,7 +503,6 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
       TPPBook.coverCache.object(forKey: book.identifier as NSString)
     }
 
-    /// Single‐book thumbnail
     func thumbnailImage(
       for book: TPPBook?,
       handler: @escaping (_ image: UIImage?) -> Void
@@ -525,7 +516,6 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
         .thumbnailImageForBook(book, completion: handler)
     }
 
-    /// Batch thumbnail fetch
     func thumbnailImages(
       forBooks books: Set<TPPBook>,
       handler: @escaping (_ bookIdentifiersToImages: [String: UIImage]) -> Void
@@ -545,7 +535,6 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
           }
       }
 
-      // When all are done, callback on main
       group.notify(queue: .main) {
         handler(result)
       }
