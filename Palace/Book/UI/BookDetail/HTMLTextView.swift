@@ -35,7 +35,6 @@ struct HTMLTextView: View {
 
       return AttributedString(mutable)
     } catch {
-      // Fallback to plain string if parsing fails
       return AttributedString(html)
     }
   }

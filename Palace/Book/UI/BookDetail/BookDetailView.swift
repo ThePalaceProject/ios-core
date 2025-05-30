@@ -274,7 +274,7 @@ struct BookDetailView: View {
   }
 
   @ViewBuilder private var descriptionView: some View {
-    if let summary = viewModel.book.summary {
+    if !self.descriptionText.isEmpty {
       ZStack(alignment: .bottom) {
         VStack(alignment: .leading, spacing: 10) {
           Text(DisplayStrings.description.uppercased())
@@ -284,7 +284,7 @@ struct BookDetailView: View {
             .padding(.vertical)
 
           VStack {
-            HTMLTextView(htmlContent: summary)
+            HTMLTextView(htmlContent: self.descriptionText)
               .lineLimit(nil)
               .frame(maxWidth: .infinity)
               .fixedSize(horizontal: false, vertical: true)
