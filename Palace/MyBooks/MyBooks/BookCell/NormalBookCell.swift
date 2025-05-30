@@ -29,8 +29,11 @@ struct NormalBookCell: View {
 
       VStack(alignment: .leading, spacing: 10) {
         infoView
-        buttons
-          .padding(.bottom, 5)
+        VStack(alignment: .leading, spacing: 0) {
+          buttons
+          borrowedInfoView
+        }
+        .padding(.bottom, 5)
       }
       .frame(maxWidth: .infinity, alignment: .leading)
       .sheet(isPresented: $showHalfSheet) {
@@ -93,7 +96,6 @@ struct NormalBookCell: View {
   }
 
   @ViewBuilder private var buttons: some View {
-    VStack(alignment: .leading, spacing: 0) {
       BookButtonsView(provider: model, size: buttonSize) { type in
         if type == .return {
           model.state = .normal(.returning)
@@ -102,8 +104,6 @@ struct NormalBookCell: View {
         }
         model.callDelegate(for: type)
       }
-      borrowedInfoView
-    }
   }
 
   @ViewBuilder private var unreadImageView: some View {
@@ -119,7 +119,7 @@ struct NormalBookCell: View {
 
   @ViewBuilder var borrowedInfoView: some View {
     if let expirationDate = model.book.getExpirationDate() {
-      HStack {
+      HStack(alignment: .bottom) {
         Text("Due \(expirationDate.monthDayYearString)")
           .font(.subheadline)
           .foregroundColor(.secondary)
@@ -127,6 +127,8 @@ struct NormalBookCell: View {
         Text("\(expirationDate.timeUntil().value) \(expirationDate.timeUntil().unit)")
           .foregroundColor(colorScheme == .dark ? .palaceSuccessLight : .palaceSuccessDark)
       }
+      .fixedSize(horizontal: true, vertical: false)
+      .minimumScaleFactor(0.8)
       .padding(.trailing)
     }
   }
