@@ -346,51 +346,57 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
   /// present information about obtained books when offline. Attempting to add a book already present
   /// will overwrite the existing book as if `updateBook` were called. The location may be nil. The
   /// state provided must be one of `TPPBookState` and must not be `TPPBookState.unregistered`.
-  func addBook(_ book: TPPBook, location: TPPBookLocation? = nil, state: TPPBookState = .downloadNeeded, fulfillmentId: String? = nil, readiumBookmarks: [TPPReadiumBookmark]? = nil, genericBookmarks: [TPPBookLocation]? = nil) {
-    // Cache the thumbnail image if it exists
-    DispatchQueue.main.async { [weak self] in
-      self?.coverRegistry.thumbnailImageForBook(book) { _ in }
-    }
-    syncQueue.async {
-      self.registry[book.identifier] = TPPBookRegistryRecord(book: book, location: location, state: state, fulfillmentId: fulfillmentId, readiumBookmarks: readiumBookmarks, genericBookmarks: genericBookmarks)
-      self.save()
+  func addBook(_ book: TPPBook,
+                 location: TPPBookLocation? = nil,
+                 state: TPPBookState = .downloadNeeded,
+                 fulfillmentId: String? = nil,
+                 readiumBookmarks: [TPPReadiumBookmark]? = nil,
+                 genericBookmarks: [TPPBookLocation]? = nil) {
+      TPPBookCoverRegistryBridge.shared.thumbnailImageForBook(book) { _ in }
 
-
-      DispatchQueue.main.async {
-        self.registrySubject.send(self.registry)
-      }
-    }
-  }
-
-  func updateAndRemoveBook(_ book: TPPBook) {
-    syncQueue.async { [weak self] in
-      guard let self, let existingRecord = self.registry[book.identifier] else { return }
-      self.coverRegistry.cachedThumbnailImageForBook(book)
-      existingRecord.book = book
-      existingRecord.state = .unregistered
-      self.save()
-    }
-  }
-
-  func removeBook(forIdentifier bookIdentifier: String) {
-    syncQueue.async {
-      let book = self.registry[bookIdentifier]?.book
-      self.registry.removeValue(forKey: bookIdentifier)
-      self.save()
-
-      DispatchQueue.main.async {
-        self.registrySubject.send(self.registry)
-      }
-
-      //TODO: Investigate why we are doing this
-      if let book = book {
-        DispatchQueue.main.async { [weak self] in
-          self?.coverRegistry.cachedThumbnailImageForBook(book)
+      syncQueue.async {
+        self.registry[book.identifier] = TPPBookRegistryRecord(
+          book: book,
+          location: location,
+          state: state,
+          fulfillmentId: fulfillmentId,
+          readiumBookmarks: readiumBookmarks,
+          genericBookmarks: genericBookmarks
+        )
+        self.save()
+        DispatchQueue.main.async {
+          self.registrySubject.send(self.registry)
         }
       }
     }
-  }
 
+    func updateAndRemoveBook(_ book: TPPBook) {
+      TPPBookCoverRegistryBridge.shared.thumbnailImageForBook(book) { _ in }
+
+      syncQueue.async {
+        guard let record = self.registry[book.identifier] else { return }
+        record.book = book
+        record.state = .unregistered
+        self.save()
+      }
+    }
+
+    func removeBook(forIdentifier bookIdentifier: String) {
+      let removedBook = registry[bookIdentifier]?.book
+
+      syncQueue.async {
+        self.registry.removeValue(forKey: bookIdentifier)
+        self.save()
+        DispatchQueue.main.async {
+          self.registrySubject.send(self.registry)
+        }
+      }
+
+      if let book = removedBook {
+        TPPBookCoverRegistryBridge.shared.thumbnailImageForBook(book) { _ in }
+      }
+    }
+  
   func updateBook(_ book: TPPBook) {
     syncQueue.async {
       guard let record = self.registry[book.identifier] else { return }
@@ -434,7 +440,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     self.save()
 
       DispatchQueue.main.async {
-        self.bookStateSubject.send((bookIdentifier, state)) // 🔹 Publish state change
+        self.bookStateSubject.send((bookIdentifier, state))
       }
     }
   }
@@ -494,29 +500,55 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
   }
 
   func cachedThumbnailImage(for book: TPPBook) -> UIImage? {
-    return coverRegistry.cachedThumbnailImageForBook(book)
-  }
-
-  @MainActor
-  func thumbnailImage(for book: TPPBook?, handler: @escaping (_ image: UIImage?) -> Void) {
-    guard let book = book else {
-      handler(nil)
-      return
+      TPPBook.coverCache.object(forKey: book.identifier as NSString)
     }
-    coverRegistry.thumbnailImageForBook(book, handler: handler)
-  }
 
-  @MainActor
-  func thumbnailImages(forBooks books: Set<TPPBook>, handler: @escaping (_ bookIdentifiersToImages: [String: UIImage]) -> Void) {
-    coverRegistry.thumbnailImagesForBooks(books, handler: handler)
-  }
-  
-  /// Returns cover image if it exists, or falls back to thumbnail image load.
-  func coverImage(for book: TPPBook, handler: @escaping (_ image: UIImage?) -> Void) {
-    DispatchQueue.main.async { [weak self] in
-      self?.coverRegistry.coverImageForBook(book, handler: handler)
+    func thumbnailImage(
+      for book: TPPBook?,
+      handler: @escaping (_ image: UIImage?) -> Void
+    ) {
+      guard let book = book else {
+        handler(nil)
+        return
+      }
+      TPPBookCoverRegistryBridge
+        .shared
+        .thumbnailImageForBook(book, completion: handler)
     }
-  }
+
+    func thumbnailImages(
+      forBooks books: Set<TPPBook>,
+      handler: @escaping (_ bookIdentifiersToImages: [String: UIImage]) -> Void
+    ) {
+      let group = DispatchGroup()
+      var result = [String: UIImage]()
+
+      for book in books {
+        group.enter()
+        TPPBookCoverRegistryBridge
+          .shared
+          .thumbnailImageForBook(book) { image in
+            if let img = image {
+              result[book.identifier] = img
+            }
+            group.leave()
+          }
+      }
+
+      group.notify(queue: .main) {
+        handler(result)
+      }
+    }
+
+    /// Single‐book cover (with thumbnail fallback inside bridge)
+    func coverImage(
+      for book: TPPBook,
+      handler: @escaping (_ image: UIImage?) -> Void
+    ) {
+      TPPBookCoverRegistryBridge
+        .shared
+        .coverImageForBook(book, completion: handler)
+    }
 }
 
 extension TPPBookRegistry: TPPBookRegistryProvider {

@@ -23,6 +23,7 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
         VStack(alignment: .leading) {
           Text(DisplayStrings.returning.uppercased())
             .font(.subheadline)
+            .padding(.top, 8)
           
           Divider()
             .padding(.vertical, 8)
@@ -51,7 +52,7 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
       }
     }
     .padding()
-    .presentationDetents([.medium])
+    .presentationDetents([UIDevice.current.isIpad ? .height(540) : .medium])
     .presentationDragIndicator(.visible)
     .onDisappear {
       if viewModel.buttonState == .returning {
