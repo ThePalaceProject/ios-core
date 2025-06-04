@@ -173,15 +173,15 @@ class BookDetailViewModel: HalfSheetProvider, ObservableObject {
       if let books = lane.books as? [TPPBook] {
         let laneTitle = lane.title ?? "Unknown Lane"
         let subsectionURL = lane.subsectionURL
-
         let bookLane = BookLane(title: laneTitle, books: books, subsectionURL: subsectionURL)
-
         groupedBooks[laneTitle] = bookLane
       }
     }
 
     if let author = book.authors, !author.isEmpty {
-      if let authorLane = groupedBooks.first(where: { $0.value.books.contains(where: { $0.authors?.contains(author) ?? false }) }) {
+      if let authorLane = groupedBooks.first(where: {
+        $0.value.books.contains(where: { $0.authors?.contains(author) ?? false })
+      }) {
         groupedBooks.removeValue(forKey: authorLane.key)
 
         var reorderedBooks = [String: BookLane]()
@@ -193,9 +193,8 @@ class BookDetailViewModel: HalfSheetProvider, ObservableObject {
 
     DispatchQueue.main.async {
       self.relatedBooksByLane = groupedBooks
+      self.isLoadingRelatedBooks = false
     }
-
-    self.isLoadingRelatedBooks = false
   }
 
   // MARK: - Show More Books for Lane
