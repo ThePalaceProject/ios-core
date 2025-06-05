@@ -19,22 +19,12 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
   var body: some View {
     VStack(alignment: .leading, spacing: viewModel.isFullSize ? 20 : 10) {
       
-      if viewModel.bookState == .returning {
-        VStack(alignment: .leading) {
-          Text(DisplayStrings.returning.uppercased())
-            .font(.subheadline)
-            .padding(.top, 8)
-          
-          Divider()
-            .padding(.vertical, 8)
-        }
-      }
+      headerView
       
       Text(AccountsManager.shared.currentAccount?.name ?? "")
         .font(.headline)
       
       bookInfoView
-      
       statusInfoView
       
       if viewModel.bookState == .downloading && viewModel.buttonState != .downloadSuccessful {
@@ -58,6 +48,20 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
       if viewModel.buttonState == .returning {
         viewModel.buttonState = .downloadSuccessful
         viewModel.bookState = .downloadSuccessful
+      }
+    }
+  }
+  
+  
+  @ViewBuilder private var headerView: some View {
+    if viewModel.bookState == .returning || viewModel.buttonState == .managingHold {
+      VStack(alignment: .leading) {
+        Text(viewModel.buttonState == .managingHold ? DisplayStrings.manageHold.uppercased() : DisplayStrings.returning.uppercased())
+          .font(.subheadline)
+          .padding(.top, 8)
+        
+        Divider()
+          .padding(.vertical, 8)
       }
     }
   }
@@ -111,7 +115,7 @@ private extension HalfSheetView {
       case .returning:
         returningInfoView
       default:
-        if viewModel.buttonState == .holding {
+        if viewModel.buttonState == .managingHold {
           holdingInfoView
         } else {
           borrowedInfoView

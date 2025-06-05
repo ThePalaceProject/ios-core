@@ -255,11 +255,14 @@ class BookDetailViewModel: HalfSheetProvider, ObservableObject {
 
       registry.setState(.holding, for: book.identifier)
       removeProcessingButton(button)
-    case .return, .remove:
+    case .return, .remove, .cancelHold:
       buttonState = .returning
       bookState = .returning
       self.removeProcessingButton(button)
 
+    case .manageHold:
+      buttonState = .managingHold
+      bookState = .returning
     case .returning:
       didSelectReturn(for: book) {
         self.removeProcessingButton(button)
@@ -282,6 +285,8 @@ class BookDetailViewModel: HalfSheetProvider, ObservableObject {
       didSelectPlaySample(for: book) {
         self.removeProcessingButton(button)
       }
+    case .close:
+      break
     }
   }
 

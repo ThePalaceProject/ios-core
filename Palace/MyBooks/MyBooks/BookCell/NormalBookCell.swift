@@ -97,12 +97,16 @@ struct NormalBookCell: View {
 
   @ViewBuilder private var buttons: some View {
       BookButtonsView(provider: model, size: buttonSize) { type in
-        if type == .return {
-          model.state = .normal(.returning)
+        switch type {
+        case .return:
+            model.state = .normal(.returning)
+            self.showHalfSheet = true
+        case .manageHold:
+          model.state = .normal(.managingHold)
           self.showHalfSheet = true
-          return
+        default:
+          model.callDelegate(for: type)
         }
-        model.callDelegate(for: type)
       }
   }
 

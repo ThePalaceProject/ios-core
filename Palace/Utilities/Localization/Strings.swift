@@ -321,12 +321,14 @@ struct Strings {
     static let copy = NSLocalizedString("copy", comment: "")
     static let copies = NSLocalizedString("copies", comment: "")
     static let returning = NSLocalizedString("returning", comment: "")
+    static let manageHold = BookButton.manageHold
   }
 
   struct BookButton {
     static let borrow = NSLocalizedString("Borrow", comment: "")
     static let preview = NSLocalizedString("Preview", comment: "")
     static let returnLoan = NSLocalizedString("Return Loan", comment: "")
+    static let manageHold = NSLocalizedString("Manage Hold", comment: "")
     static let retry = NSLocalizedString("Retry", comment: "")
     static let read = NSLocalizedString("Read", comment: "")
     static let listen = NSLocalizedString("Listen", comment: "")
@@ -339,5 +341,6 @@ struct Strings {
     static let keepHold = NSLocalizedString("Keep Hold", comment: "")
     static let cancelHold = NSLocalizedString("Cancel Hold", comment: "")
     static let otherBooks = NSLocalizedString("Other books by this author", comment: "")
+    static let close = NSLocalizedString("Close", comment: "")
   }
 }

@@ -16,9 +16,12 @@ enum BookButtonType: String {
   case listen
   case retry
   case cancel
+  case close
   case sample
   case audiobookSample
   case remove
+  case cancelHold
+  case manageHold
   case `return`
   case returning
 
@@ -61,16 +64,19 @@ extension BookButtonType {
     case .retry: return DisplayStrings.retry
     case .sample, .audiobookSample: return DisplayStrings.preview
     case .returning: return DisplayStrings.returnLoan
+    case .manageHold: return DisplayStrings.manageHold
+    case .cancelHold: return DisplayStrings.cancelHold
+    case .close: return DisplayStrings.close
     }
   }
 
   var buttonStyle: ButtonStyleType {
     switch self {
-    case .sample, .audiobookSample:
+    case .sample, .audiobookSample, .close:
       return .tertiary
-    case .get, .reserve, .download, .read, .listen, .retry, .returning:
+    case .get, .reserve, .download, .read, .listen, .retry, .returning, .manageHold:
       return .primary
-    case .return, .cancel, .remove:
+    case .return, .cancel, .remove, .cancelHold:
       return .secondary
     }
   }

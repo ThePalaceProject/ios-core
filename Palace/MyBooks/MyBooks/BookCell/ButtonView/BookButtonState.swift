@@ -18,6 +18,7 @@ enum BookButtonState {
   case used
   case downloadInProgress
   case returning
+  case managingHold
   case downloadFailed
   case unsupported
 }
@@ -37,13 +38,15 @@ extension BookButtonState {
       if book.hasSample && previewEnabled {
         buttons.append(book.isAudiobook ? .audiobookSample : .sample)
       }
-    case .holding:
-      buttons.append(.remove)
+    case .holding, .holdingFrontOfQueue:
+      buttons.append(.manageHold)
       if book.hasSample && previewEnabled {
         buttons.append(book.isAudiobook ? .audiobookSample : .sample)
       }
-    case .holdingFrontOfQueue:
-      buttons = [.get, .remove]
+//    case .holdingFrontOfQueue:
+//      buttons = [.get, .remove]
+    case .managingHold:
+      buttons = [.cancelHold, .close]
     case .downloadNeeded:
       if let authDef = TPPUserAccount.sharedAccount().authDefinition,
          authDef.needsAuth || book.defaultAcquisitionIfOpenAccess != nil {
