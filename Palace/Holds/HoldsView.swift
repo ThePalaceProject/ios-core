@@ -2,6 +2,8 @@ import SwiftUI
 import UIKit
 
 struct HoldsView: View {
+  typealias DisplayStrings = Strings.HoldsView
+  
   @StateObject private var model = HoldsViewModel()
   private var allBooks: [TPPBook] {
     model.reservedBookVMs.map { $0.book } + model.heldBookVMs.map { $0.book }
@@ -27,7 +29,7 @@ struct HoldsView: View {
       }
       .padding(.top, 100)
       .background(Color(TPPConfiguration.backgroundColor()))
-      .navigationTitle(NSLocalizedString("Reservations", comment: "Nav title"))
+      .navigationTitle(Strings.HoldsView.reservations)
       .navigationBarTitleDisplayMode(.inline)
       .toolbar {
         ToolbarItem(placement: .navigationBarLeading) { leadingBarButton }
@@ -95,10 +97,7 @@ struct HoldsView: View {
   
   /// Placeholder text when there are no holds at all
   private var emptyView: some View {
-    Text("""
-            When you reserve a book from the catalog, it will show up here. \
-            Look here from time to time to see if your book is available to download.
-            """)
+    Text(DisplayStrings.emptyMessage)
     .multilineTextAlignment(.center)
     .foregroundColor(Color(white: 0.667))
     .font(.system(size: 18))
@@ -128,7 +127,7 @@ struct HoldsView: View {
       }
       buttons.append(.cancel())
       return ActionSheet(
-        title: Text(NSLocalizedString("Find Your Library", comment: "")),
+        title: Text(NSLocalizedString(DisplayStrings.findYourLibrary, comment: "")),
         buttons: buttons
       )
     }
@@ -149,50 +148,6 @@ struct HoldsView: View {
   }
 }
 
-
-///// A grid of “HoldsBookViewModel” items. Mirrors BookListView but accepts view models.
-//private struct BooksGridView: View {
-//    let bookVMs: [HoldsBookViewModel]
-//    let onSelect: (HoldsBookViewModel) -> Void
-//
-//    @StateObject private var orientation = DeviceOrientation()
-//
-//    var body: some View {
-//        LazyVGrid(columns: gridColumns, spacing: 0) {
-//            ForEach(bookVMs) { bookVM in
-//                Button {
-//                    onSelect(bookVM)
-//                } label: {
-//                    BookCell(model: BookCellModel(book: bookVM.book))
-//                        .frame(maxWidth: .infinity, minHeight: 180, maxHeight: 180)
-//                }
-//                .buttonStyle(.plain)
-//                .padding(5)
-//                .applyBorderStyle()
-//            }
-//        }
-//        .padding(.vertical, 8)
-//        .onAppear {
-//            orientation.startTracking()
-//        }
-//        .onDisappear {
-//            orientation.stopTracking()
-//        }
-//    }
-//
-//    private var gridColumns: [GridItem] {
-//        [GridItem(.adaptive(minimum: minColumnWidth), spacing: 0)]
-//    }
-//
-//    private var minColumnWidth: CGFloat {
-//        UIDevice.current.userInterfaceIdiom == .pad ? 320 : 300
-//    }
-//}
-
-
-import SwiftUI
-import UIKit
-
 @objc final class TPPHoldsViewController: NSObject {
   
   /// Returns a `UINavigationController` containing our SwiftUI `HoldsView`.
@@ -206,7 +161,6 @@ import UIKit
     hosting.title = NSLocalizedString("Reservations", comment: "Nav title for Holds")
     hosting.tabBarItem.image = UIImage(named: "Holds")
     
-    //    let nav = UINavigationController(rootViewController: hosting)
     return hosting
   }
 }

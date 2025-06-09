@@ -343,4 +343,13 @@ struct Strings {
     static let otherBooks = NSLocalizedString("Other books by this author", comment: "")
     static let close = NSLocalizedString("Close", comment: "")
   }
+  
+  struct HoldsView {
+    static let reservations = NSLocalizedString("Reservations", comment: "Nav title")
+    static let emptyMessage = NSLocalizedString("""
+            When you reserve a book from the catalog, it will show up here. \
+            Look here from time to time to see if your book is available to download.
+            """, comment: "")
+    static let findYourLibrary = NSLocalizedString("Find Your Library", comment: "")
+  }
 }
