@@ -9,7 +9,6 @@ struct HoldsView: View {
   var body: some View {
     ZStack {
       VStack(spacing: 0) {
-        logoImageView
         
         if allBooks.isEmpty {
           Spacer()
@@ -26,6 +25,7 @@ struct HoldsView: View {
           }
         }
       }
+      .padding(.top, 100)
       .background(Color(TPPConfiguration.backgroundColor()))
       .navigationTitle(NSLocalizedString("Reservations", comment: "Nav title"))
       .navigationBarTitleDisplayMode(.inline)
@@ -51,6 +51,11 @@ struct HoldsView: View {
       
       if model.isLoading {
         loadingOverlay
+      }
+      
+      VStack {
+        logoImageView
+        Spacer()
       }
     }
     .sheet(isPresented: $model.showSearchView) {

@@ -104,6 +104,8 @@ struct NormalBookCell: View {
         case .manageHold:
           model.state = .normal(.managingHold)
           self.showHalfSheet = true
+        case .close:
+          self.showHalfSheet = false
         default:
           model.callDelegate(for: type)
         }

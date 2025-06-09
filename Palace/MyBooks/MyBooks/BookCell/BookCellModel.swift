@@ -57,7 +57,6 @@ class BookCellModel: ObservableObject {
   
   var statePublisher = PassthroughSubject<Bool, Never>()
   var state: BookCellState
-  var bookState: TPPBookState = .returning
   
   var book: TPPBook {
     didSet {
@@ -164,97 +163,111 @@ extension BookCellModel {
       return
     }
   }
+  
+  func didSelectRead() {
+    isLoading = true
+    self.buttonDelegate?.didSelectRead(for: book) { [weak self] in
+      self?.isLoading = false
+    }
+  }
+  
+  func didSelectReturn() {
+    var title = ""
+    var message = ""
+    var confirmButtonTitle = ""
+    let deleteAvailable = (book.defaultAcquisitionIfOpenAccess != nil) || !(TPPUserAccount.sharedAccount().authDefinition?.needsAuth ?? true)
     
-    func didSelectRead() {
-      isLoading = true
-      self.buttonDelegate?.didSelectRead(for: book) { [weak self] in
+    switch TPPBookRegistry.shared.state(for: book.identifier) {
+    case .used,
+        .SAMLStarted,
+        .downloading,
+        .unregistered,
+        .downloadFailed,
+        .downloadNeeded,
+        .downloadSuccessful,
+        .returning:
+      title = deleteAvailable ? DisplayStrings.delete : DisplayStrings.return
+      message = deleteAvailable ? String.localizedStringWithFormat(DisplayStrings.deleteMessage, book.title) :
+      String.localizedStringWithFormat(DisplayStrings.returnMessage, book.title)
+      confirmButtonTitle = deleteAvailable ? DisplayStrings.delete : DisplayStrings.return
+    case .holding:
+      title = DisplayStrings.removeReservation
+      message = DisplayStrings.returnMessage
+      confirmButtonTitle = DisplayStrings.remove
+    case .unsupported:
+      return
+    }
+    
+    showAlert = AlertModel(
+      title: title,
+      message: message,
+      buttonTitle: confirmButtonTitle,
+      primaryAction: { [weak self] in
+        self?.isLoading = true
+        self?.buttonDelegate?.didSelectReturn(for: self?.book) { }
+      },
+      secondaryAction: { [weak self] in
+        self?.showAlert = nil
         self?.isLoading = false
       }
+    )
+  }
+  
+  func didSelectDownload() {
+    if case .canHold = state.buttonState {
+      TPPUserNotifications.requestAuthorization()
     }
     
-    func didSelectReturn() {
-      var title = ""
-      var message = ""
-      var confirmButtonTitle = ""
-      let deleteAvailable = (book.defaultAcquisitionIfOpenAccess != nil) || !(TPPUserAccount.sharedAccount().authDefinition?.needsAuth ?? true)
-      
-      switch TPPBookRegistry.shared.state(for: book.identifier) {
-      case .used,
-          .SAMLStarted,
-          .downloading,
-          .unregistered,
-          .downloadFailed,
-          .downloadNeeded,
-          .downloadSuccessful,
-          .returning:
-        title = deleteAvailable ? DisplayStrings.delete : DisplayStrings.return
-        message = deleteAvailable ? String.localizedStringWithFormat(DisplayStrings.deleteMessage, book.title) :
-        String.localizedStringWithFormat(DisplayStrings.returnMessage, book.title)
-        confirmButtonTitle = deleteAvailable ? DisplayStrings.delete : DisplayStrings.return
-      case .holding:
-        title = DisplayStrings.removeReservation
-        message = DisplayStrings.returnMessage
-        confirmButtonTitle = DisplayStrings.remove
-      case .unsupported:
-        return
-      }
-      
-      showAlert = AlertModel(
-        title: title,
-        message: message,
-        buttonTitle: confirmButtonTitle,
-        primaryAction: { [weak self] in
-          self?.isLoading = true
-          self?.buttonDelegate?.didSelectReturn(for: self?.book) { }
-        },
-        secondaryAction: { [weak self] in
-          self?.showAlert = nil
-          self?.isLoading = false
-        }
-      )
+    buttonDelegate?.didSelectDownload(for: book)
+  }
+  
+  func didSelectSample() {
+    isLoading = true
+    self.sampleDelegate?.didSelectPlaySample(book)
+  }
+  
+  func didSelectCancel() {
+    MyBooksDownloadCenter.shared.cancelDownload(for: book.identifier)
+  }
+}
+
+extension BookCellModel: BookButtonProvider {
+  func handleAction(for type: BookButtonType) {
+    callDelegate(for: type)
+  }
+  
+  func isProcessing(for type: BookButtonType) -> Bool {
+    isLoading
+  }
+}
+
+extension BookCellModel: HalfSheetProvider {
+  /// Always read the “live” state from the registry.
+  var bookState: TPPBookState {
+    get {
+      TPPBookRegistry.shared.state(for: book.identifier)
     }
-    
-    func didSelectDownload() {
-      if case .canHold = state.buttonState {
-        TPPUserNotifications.requestAuthorization()
-      }
-      
-      buttonDelegate?.didSelectDownload(for: book)
-    }
-    
-    func didSelectSample() {
-      isLoading = true
-      self.sampleDelegate?.didSelectPlaySample(book)
-    }
-    
-    func didSelectCancel() {
-      MyBooksDownloadCenter.shared.cancelDownload(for: book.identifier)
+    set {
+      TPPBookRegistry.shared.setState(newValue, for: book.identifier)
     }
   }
   
-  extension BookCellModel: BookButtonProvider {
-    func handleAction(for type: BookButtonType) {
-      callDelegate(for: type)
-    }
-    
-    func isProcessing(for type: BookButtonType) -> Bool {
-      isLoading
-    }
+  var buttonState: BookButtonState {
+    let registryState = TPPBookRegistry.shared.state(for: book.identifier)
+    let availability = book.defaultAcquisition?.availability
+    let isDownloading = isLoading || registryState == .downloading
+    return BookButtonMapper.map(
+      registryState: registryState,
+      availability: availability,
+      isProcessingDownload: isDownloading
+    )
   }
   
-  extension BookCellModel: HalfSheetProvider {
-    var buttonState: BookButtonState {
-      get {
-        .returning
-      }
-      set { }
-    }
-    
-    var isFullSize: Bool {
-      UIDevice().isIpad
-    }
-    
-    var downloadProgress: Double {
-      0.0
-    }
+  var isFullSize: Bool {
+    UIDevice.current.userInterfaceIdiom == .pad
   }
+  
+  var downloadProgress: Double {
+    MyBooksDownloadCenter.shared.downloadProgress(for: book.identifier)
+  }
+}

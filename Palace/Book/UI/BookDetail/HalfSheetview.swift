@@ -3,37 +3,54 @@ import SwiftUI
 protocol HalfSheetProvider: ObservableObject, BookButtonProvider {
   var isFullSize: Bool { get }
   var bookState: TPPBookState { get set }
-  var buttonState: BookButtonState { get set }
+  var buttonState: BookButtonState { get }
+  var isReturning: Bool { get }
+  var isManagingHold: Bool { get }
   var downloadProgress: Double { get }
   var book: TPPBook { get }
+}
+
+extension HalfSheetProvider {
+  var isReturning: Bool {
+    bookState == .returning
+  }
+  
+  var isManagingHold: Bool {
+    switch buttonState {
+    case .managingHold, .holding, .holdingFrontOfQueue:
+      true
+    default:
+      false
+    }
+  }
 }
 
 struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
   typealias DisplayStrings = Strings.BookDetailView
   @Environment(\.colorScheme) var colorScheme
-  
+
   @ObservedObject var viewModel: ViewModel
   var backgroundColor: Color
   @Binding var coverImage: UIImage?
-  
+
   var body: some View {
     VStack(alignment: .leading, spacing: viewModel.isFullSize ? 20 : 10) {
-      
+
       headerView
-      
+
       Text(AccountsManager.shared.currentAccount?.name ?? "")
         .font(.headline)
-      
+
       bookInfoView
       statusInfoView
-      
+
       if viewModel.bookState == .downloading && viewModel.buttonState != .downloadSuccessful {
         ProgressView(value: viewModel.downloadProgress, total: 1.0)
           .progressViewStyle(LinearProgressViewStyle())
           .frame(height: 6)
           .transition(.opacity)
       }
-      
+
       if viewModel.isFullSize {
         BookButtonsView(provider: viewModel, previewEnabled: false)
           .horizontallyCentered()
@@ -45,21 +62,25 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
     .presentationDetents([UIDevice.current.isIpad ? .height(540) : .medium])
     .presentationDragIndicator(.visible)
     .onDisappear {
-      if viewModel.buttonState == .returning {
-        viewModel.buttonState = .downloadSuccessful
+      if viewModel.bookState == .returning {
         viewModel.bookState = .downloadSuccessful
+      } else if viewModel.isManagingHold {
+        viewModel.bookState = .holding
       }
     }
   }
-  
-  
+
   @ViewBuilder private var headerView: some View {
-    if viewModel.bookState == .returning || viewModel.buttonState == .managingHold {
+    if viewModel.isReturning || viewModel.isManagingHold {
       VStack(alignment: .leading) {
-        Text(viewModel.buttonState == .managingHold ? DisplayStrings.manageHold.uppercased() : DisplayStrings.returning.uppercased())
-          .font(.subheadline)
-          .padding(.top, 8)
-        
+        Text(
+          viewModel.isManagingHold
+            ? DisplayStrings.manageHold.uppercased()
+            : DisplayStrings.returning.uppercased()
+        )
+        .font(.subheadline)
+        .padding(.top, 8)
+
         Divider()
           .padding(.vertical, 8)
       }
@@ -85,12 +106,12 @@ private extension HalfSheetView {
         } else {
           ShimmerView(width: 60, height: 90)
         }
-        
+
         VStack(alignment: .leading, spacing: 4) {
           Text(viewModel.book.title)
             .font(.body)
             .foregroundColor(.primary)
-          
+
           if let authors = viewModel.book.authors, !authors.isEmpty {
             Text(authors)
               .font(.subheadline)
@@ -103,7 +124,7 @@ private extension HalfSheetView {
         .padding(.vertical, 8)
     }
   }
-  
+
   @ViewBuilder
   var statusInfoView: some View {
     VStack(alignment: .leading) {
@@ -123,7 +144,7 @@ private extension HalfSheetView {
       }
     }
   }
-  
+
   @ViewBuilder
   var holdingInfoView: some View {
     let details = viewModel.book.getReservationDetails()
@@ -137,7 +158,7 @@ private extension HalfSheetView {
     )
     .font(.footnote)
   }
-  
+
   @ViewBuilder
   var borrowingInfoView: some View {
     if let timeUntil = viewModel.book.getExpirationDate()?.timeUntil() {
@@ -150,13 +171,13 @@ private extension HalfSheetView {
           Text("\(timeUntil.value) \(timeUntil.unit)")
             .foregroundColor(colorScheme == .dark ? .palaceSuccessLight : .palaceSuccessDark)
         }
-        
+
         Divider()
           .padding(.vertical, 8)
       }
     }
   }
-  
+
   @ViewBuilder
   var borrowedInfoView: some View {
     if let availableUntil = viewModel.book.getExpirationDate()?.monthDayYearString {
@@ -169,13 +190,13 @@ private extension HalfSheetView {
           Text(availableUntil)
             .foregroundColor(colorScheme == .dark ? .palaceSuccessLight : .palaceSuccessDark)
         }
-        
+
         Divider()
           .padding(.vertical, 8)
       }
     }
   }
-  
+
   @ViewBuilder
   var returningInfoView: some View {
     if let expirationDate = viewModel.book.getExpirationDate() {
@@ -188,10 +209,9 @@ private extension HalfSheetView {
           Text("\(expirationDate.timeUntil().value) \(expirationDate.timeUntil().unit)")
             .foregroundColor(colorScheme == .dark ? .palaceSuccessLight : .palaceSuccessDark)
         }
-        
+
         Divider()
           .padding(.vertical, 8)
-
       }
     }
   }

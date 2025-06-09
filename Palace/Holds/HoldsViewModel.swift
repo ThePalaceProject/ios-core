@@ -1,4 +1,5 @@
 import Combine
+import SwiftUI
 
 final class HoldsBookViewModel: ObservableObject, Identifiable {
     let book: TPPBook
@@ -23,25 +24,23 @@ final class HoldsBookViewModel: ObservableObject, Identifiable {
     }
 }
 
-
 final class HoldsViewModel: ObservableObject {
-
-    /// Books “available for checkout”
+    /// Books "available for checkout"
     @Published var reservedBookVMs: [HoldsBookViewModel] = []
 
-    /// Books “waiting for availability”
+    /// Books "waiting for availability"
     @Published var heldBookVMs: [HoldsBookViewModel] = []
 
     /// Loading indicator (sync in progress)
     @Published var isLoading: Bool = false
 
-    /// Whether to show the “pick library” sheet
+    /// Whether to show the "pick library" sheet
     @Published var showLibraryAccountView: Bool = false
 
     /// Whether to show the action sheet of existing libraries
     @Published var selectNewLibrary: Bool = false
 
-    /// Whether to show the “search reservations” sheet
+    /// Whether to show the "search reservations" sheet
     @Published var showSearchView: Bool = false
 
     private var cancellables = Set<AnyCancellable>()
@@ -68,8 +67,8 @@ final class HoldsViewModel: ObservableObject {
     func reloadData() {
         isLoading = true
 
-      let allHeld = TPPBookRegistry.shared.heldBooks
-      var reservedVMs: [HoldsBookViewModel] = []
+        let allHeld = TPPBookRegistry.shared.heldBooks
+        var reservedVMs: [HoldsBookViewModel] = []
         var heldVMs: [HoldsBookViewModel] = []
 
         for book in allHeld {
@@ -97,7 +96,7 @@ final class HoldsViewModel: ObservableObject {
                 TPPBookRegistry.shared.sync()
             } else {
                 DispatchQueue.main.async {
-                  TPPAccountSignInViewController.requestCredentials {
+                    TPPAccountSignInViewController.requestCredentials {
                         self.reloadData()
                     }
                 }
@@ -107,33 +106,32 @@ final class HoldsViewModel: ObservableObject {
         }
     }
 
-    /// Update application icon badge & tab‐bar badge to match the count of “reserved” books
-  private func updateBadgeCount() {
-    UIApplication.shared.applicationIconBadgeNumber = reservedBookVMs.count
-    
-    if let items = TPPRootTabBarController.shared().tabBar.items,
-       items.indices.contains(1)
-    {
-      items[1].badgeValue = reservedBookVMs.isEmpty ? nil : "\(reservedBookVMs.count)"
+    /// Update application icon badge & tab‐bar badge to match the count of "reserved" books
+    private func updateBadgeCount() {
+        UIApplication.shared.applicationIconBadgeNumber = reservedBookVMs.count
+        
+        if let items = TPPRootTabBarController.shared().tabBar.items,
+           items.indices.contains(1) {
+            items[1].badgeValue = reservedBookVMs.isEmpty ? nil : "\(reservedBookVMs.count)"
+        }
     }
-  }
 
     /// Change the current loaded account, then reload data
-  func loadAccount(_ account: Account) {
-    updateFeed(account)
+    func loadAccount(_ account: Account) {
+        updateFeed(account)
         showLibraryAccountView = false
         selectNewLibrary = false
         reloadData()
     }
-  
-  private func updateFeed(_ account: Account) {
-    AccountsManager.shared.currentAccount = account
-    if let catalogNavController = TPPRootTabBarController.shared().viewControllers?.first as? TPPCatalogNavigationController {
-      catalogNavController.updateFeedAndRegistryOnAccountChange()
+    
+    private func updateFeed(_ account: Account) {
+        AccountsManager.shared.currentAccount = account
+        if let catalogNavController = TPPRootTabBarController.shared().viewControllers?.first as? TPPCatalogNavigationController {
+            catalogNavController.updateFeedAndRegistryOnAccountChange()
+        }
     }
-  }
 
-    /// Build the OpenSearch descriptor for “Search Reservations”
+    /// Build the OpenSearch descriptor for "Search Reservations"
     var openSearchDescription: TPPOpenSearchDescription {
         let title = NSLocalizedString("Search Reservations", comment: "")
         // We pass ALL held books (both reserved and waiting) into the search screen:
