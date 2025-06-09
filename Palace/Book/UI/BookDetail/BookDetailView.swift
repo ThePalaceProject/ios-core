@@ -581,7 +581,6 @@ struct BookDetailView: View {
   }
 }
 
-// Add a view modifier to handle state changes
 private struct BookStateModifier: ViewModifier {
     @ObservedObject var viewModel: BookDetailViewModel
     @Binding var showHalfSheet: Bool
