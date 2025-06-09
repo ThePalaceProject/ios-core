@@ -28,6 +28,7 @@ extension HalfSheetProvider {
 struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
   typealias DisplayStrings = Strings.BookDetailView
   @Environment(\.colorScheme) var colorScheme
+  @Environment(\.dismiss) private var dismiss
 
   @ObservedObject var viewModel: ViewModel
   var backgroundColor: Color
@@ -52,10 +53,24 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
       }
 
       if viewModel.isFullSize {
-        BookButtonsView(provider: viewModel, previewEnabled: false)
+        BookButtonsView(provider: viewModel, previewEnabled: false, onButtonTapped: { type in
+          switch type {
+          case .close:
+            dismiss()
+          default:
+            viewModel.handleAction(for: type)
+          }
+        })
           .horizontallyCentered()
       } else {
-        BookButtonsView(provider: viewModel, previewEnabled: false)
+        BookButtonsView(provider: viewModel, previewEnabled: false, onButtonTapped: { type in
+          switch type {
+          case .close:
+            dismiss()
+          default:
+            viewModel.handleAction(for: type)
+          }
+        })
       }
     }
     .padding()

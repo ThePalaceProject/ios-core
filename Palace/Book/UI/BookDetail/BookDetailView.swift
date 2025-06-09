@@ -521,17 +521,17 @@ struct BookDetailView: View {
   private func handleButtonAction(_ buttonType: BookButtonType) {
     switch buttonType {
     case .sample, .audiobookSample:
-        viewModel.handleAction(for: buttonType)
+      viewModel.handleAction(for: buttonType)
     case .download, .get, .reserve:
-        showHalfSheet.toggle()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
-            viewModel.handleAction(for: buttonType)
-        }
+      showHalfSheet.toggle()
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
+        viewModel.handleAction(for: buttonType)
+      }
     case .return:
         viewModel.bookState = .returning
         showHalfSheet.toggle()
     default:
-        showHalfSheet.toggle()
+      showHalfSheet.toggle()
     }
   }
 

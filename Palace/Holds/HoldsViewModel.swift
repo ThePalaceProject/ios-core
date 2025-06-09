@@ -59,6 +59,12 @@ final class HoldsViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
+        NotificationCenter.default.publisher(for: .TPPBookRegistryDidChange)
+            .sink { [weak self] _ in
+                self?.reloadData()
+            }
+            .store(in: &cancellables)
+
         reloadData()
     }
 
