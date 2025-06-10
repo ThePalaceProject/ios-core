@@ -321,12 +321,14 @@ struct Strings {
     static let copy = NSLocalizedString("copy", comment: "")
     static let copies = NSLocalizedString("copies", comment: "")
     static let returning = NSLocalizedString("returning", comment: "")
+    static let manageHold = BookButton.manageHold
   }
 
   struct BookButton {
     static let borrow = NSLocalizedString("Borrow", comment: "")
     static let preview = NSLocalizedString("Preview", comment: "")
     static let returnLoan = NSLocalizedString("Return Loan", comment: "")
+    static let manageHold = NSLocalizedString("Manage Hold", comment: "")
     static let retry = NSLocalizedString("Retry", comment: "")
     static let read = NSLocalizedString("Read", comment: "")
     static let listen = NSLocalizedString("Listen", comment: "")
@@ -339,5 +341,15 @@ struct Strings {
     static let keepHold = NSLocalizedString("Keep Hold", comment: "")
     static let cancelHold = NSLocalizedString("Cancel Hold", comment: "")
     static let otherBooks = NSLocalizedString("Other books by this author", comment: "")
+    static let close = NSLocalizedString("Close", comment: "")
+  }
+  
+  struct HoldsView {
+    static let reservations = NSLocalizedString("Reservations", comment: "Nav title")
+    static let emptyMessage = NSLocalizedString("""
+            When you reserve a book from the catalog, it will show up here. \
+            Look here from time to time to see if your book is available to download.
+            """, comment: "")
+    static let findYourLibrary = NSLocalizedString("Find Your Library", comment: "")
   }
 }

@@ -16,9 +16,12 @@ enum BookButtonType: String {
   case listen
   case retry
   case cancel
+  case close
   case sample
   case audiobookSample
   case remove
+  case cancelHold
+  case manageHold
   case `return`
   case returning
 
@@ -29,18 +32,18 @@ enum BookButtonType: String {
   var displaysIndicator: Bool {
     switch self {
     case .read, .remove, .get, .download, .listen:
-      return true
+      true
     default:
-      return false
+      false
     }
   }
   
   var isDisabled: Bool {
     switch self {
     case .read, .listen, .remove:
-      return false
+      false
     default:
-      return !Reachability.shared.isConnectedToNetwork()
+      !Reachability.shared.isConnectedToNetwork()
     }
   }
 }
@@ -50,59 +53,74 @@ fileprivate typealias DisplayStrings = Strings.BookButton
 extension BookButtonType {
   var title: String {
     switch self {
-    case .get: return DisplayStrings.borrow
-    case .reserve: return DisplayStrings.placeHold
-    case .download: return DisplayStrings.download
-    case .return: return DisplayStrings.return
-    case .remove: return DisplayStrings.remove
-    case .read: return DisplayStrings.read
-    case .listen: return DisplayStrings.listen
-    case .cancel: return DisplayStrings.cancel
-    case .retry: return DisplayStrings.retry
-    case .sample, .audiobookSample: return DisplayStrings.preview
-    case .returning: return DisplayStrings.returnLoan
+    case .get: DisplayStrings.borrow
+    case .reserve: DisplayStrings.placeHold
+    case .download: DisplayStrings.download
+    case .return: DisplayStrings.return
+    case .remove: DisplayStrings.remove
+    case .read: DisplayStrings.read
+    case .listen: DisplayStrings.listen
+    case .cancel: DisplayStrings.cancel
+    case .retry: DisplayStrings.retry
+    case .sample, .audiobookSample: DisplayStrings.preview
+    case .returning: DisplayStrings.returnLoan
+    case .manageHold: DisplayStrings.manageHold
+    case .cancelHold: DisplayStrings.cancelHold
+    case .close: DisplayStrings.close
     }
   }
 
   var buttonStyle: ButtonStyleType {
     switch self {
-    case .sample, .audiobookSample:
-      return .tertiary
-    case .get, .reserve, .download, .read, .listen, .retry, .returning:
-      return .primary
+    case .sample, .audiobookSample, .close:
+      .tertiary
+    case .get, .reserve, .download, .read, .listen, .retry, .returning, .manageHold:
+      .primary
     case .return, .cancel, .remove:
-      return .secondary
+      .secondary
+    case .cancelHold:
+      .destructive
     }
   }
 
   var isPrimary: Bool {
-    return buttonStyle == .primary
+    buttonStyle == .primary
   }
 
   var hasBorder: Bool {
-    return buttonStyle == .secondary
+    buttonStyle == .secondary || buttonStyle == .destructive
   }
 
   func buttonBackgroundColor(_ isDarkBackground: Bool) -> Color {
     switch buttonStyle {
     case .primary:
-      return isDarkBackground ? .white : .black
-    case .secondary, .tertiary:
-      return .clear
+      isDarkBackground ? .white : .black
+    case .secondary, .tertiary, .destructive:
+      .clear
     }
   }
 
   func buttonTextColor(_ isDarkBackground: Bool) -> Color {
     switch buttonStyle {
     case .primary:
-      return isDarkBackground ? .black : .white
+      isDarkBackground ? .black : .white
     case .secondary, .tertiary:
-      return isDarkBackground ? .white : .black
+      isDarkBackground ? .white : .black
+    case .destructive:
+        .palaceErrorBase
+
     }
   }
 
   func borderColor(_ isDarkBackground: Bool) -> Color {
-    return hasBorder ? (isDarkBackground ? .white : .black) : .clear
+    switch buttonStyle {
+    case .secondary:
+      (isDarkBackground ? .white : .black)
+    case .destructive:
+        .palaceErrorBase
+    default:
+        .clear
+    }
   }
 }
 
@@ -110,4 +128,5 @@ enum ButtonStyleType {
   case primary
   case secondary
   case tertiary
+  case destructive
 }

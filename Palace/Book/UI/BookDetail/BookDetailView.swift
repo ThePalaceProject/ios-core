@@ -101,6 +101,7 @@ struct BookDetailView: View {
     .offset(x: dragOffset)
     .animation(.interactiveSpring(), value: dragOffset)
     .gesture(edgeSwipeGesture)
+    .modifier(BookStateModifier(viewModel: viewModel, showHalfSheet: $showHalfSheet))
   }
 
   // MARK: - View Components
@@ -527,9 +528,8 @@ struct BookDetailView: View {
         viewModel.handleAction(for: buttonType)
       }
     case .return:
-      viewModel.buttonState = .returning
-      viewModel.bookState = .returning
-      showHalfSheet.toggle()
+        viewModel.bookState = .returning
+        showHalfSheet.toggle()
     default:
       showHalfSheet.toggle()
     }
@@ -581,6 +581,21 @@ struct BookDetailView: View {
   }
 }
 
+private struct BookStateModifier: ViewModifier {
+    @ObservedObject var viewModel: BookDetailViewModel
+    @Binding var showHalfSheet: Bool
+    @Environment(\.presentationMode) var presentationMode
+    
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: viewModel.bookState) { newState in
+                if newState == .downloadSuccessful {
+                    showHalfSheet = false
+                    presentationMode.wrappedValue.dismiss()
+                }
+            }
+    }
+}
 
 struct TPPCatalogFeedView: UIViewControllerRepresentable {
   var url: URL
