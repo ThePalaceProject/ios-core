@@ -50,9 +50,8 @@ final class BookDetailViewModel: ObservableObject {
 
   // MARK: – Computed Button State
 
-  /// Combines registry state + OPDS availability + download progress into one state.
   var buttonState: BookButtonState {
-    let isDownloading = (bookState == .downloading) || (downloadProgress > 0 && downloadProgress < 1.0)
+    let isDownloading = (bookState == .downloading)
     let avail = book.defaultAcquisition?.availability
     return BookButtonMapper.map(
       registryState: bookState,
@@ -82,14 +81,16 @@ final class BookDetailViewModel: ObservableObject {
   // MARK: - Book State Binding
 
   private func bindRegistryState() {
-    (registry as? TPPBookRegistry)?
+    registry
       .bookStatePublisher
       .filter { $0.0 == self.book.identifier }
       .map { $0.1 }
       .receive(on: DispatchQueue.main)
       .sink { [weak self] newState in
         guard let self else { return }
-        self.bookState = newState
+        let updatedBook = registry.book(forIdentifier: book.identifier) ?? book
+        self.book = updatedBook
+        self.bookState = registry.state(for: book.identifier)
       }
       .store(in: &cancellables)
   }
@@ -97,14 +98,7 @@ final class BookDetailViewModel: ObservableObject {
   private func setupObservers() {
     NotificationCenter.default.addObserver(
       self,
-      selector: #selector(handleBookRegistryChange(_:)),
-      name: .TPPBookRegistryDidChange,
-      object: nil
-    )
-
-    NotificationCenter.default.addObserver(
-      self,
-      selector: #selector(handleMyBooksDidChange(_:)),
+      selector: #selector(handleDownloadStateDidChange(_:)),
       name: .TPPMyBooksDownloadCenterDidChange,
       object: nil
     )
@@ -116,7 +110,6 @@ final class BookDetailViewModel: ObservableObject {
       .assign(to: &$downloadProgress)
   }
 
-  /// Swap in a new book when user taps a related book
   func selectRelatedBook(_ newBook: TPPBook) {
     guard newBook.identifier != book.identifier else { return }
     book = newBook
@@ -126,23 +119,15 @@ final class BookDetailViewModel: ObservableObject {
 
   // MARK: - Notifications
 
-  @objc func handleBookRegistryChange(_ notification: Notification) {
-    DispatchQueue.main.async { [weak self] in
-      guard let self else { return }
-      let updatedBook = registry.book(forIdentifier: book.identifier) ?? book
-      self.book = updatedBook
-      self.bookState = registry.state(for: book.identifier)
-    }
-  }
 
-  @objc func handleMyBooksDidChange(_ notification: Notification) {
+  @objc func handleDownloadStateDidChange(_ notification: Notification) {
     DispatchQueue.main.async { [weak self] in
       guard let self else { return }
       self.downloadProgress = downloadCenter.downloadProgress(for: book.identifier)
       let info = downloadCenter.downloadInfo(forBookIdentifier: book.identifier)
       if let rights = info?.rightsManagement, rights != .unknown {
         if bookState != .downloading && bookState != .downloadSuccessful {
-          self.bookState = .downloading
+          self.bookState = registry.state(for: book.identifier)
         }
       }
     }
