@@ -12,6 +12,10 @@
 #
 #   invocation:
 #     xcode-archive.sh
+#
+# ENVIRONMENT VARIABLES
+#   XCODE_VERSION - Optional. The version of Xcode to use (e.g. "16.0")
+#                   If not set, uses the system default Xcode
 
 set -eo pipefail
 
@@ -21,8 +25,20 @@ fatal()
   exit 1
 }
 
-# Set Xcode to version 15 explicitly
-export DEVELOPER_DIR="/Applications/Xcode_15.4.app/Contents/Developer"
+# Set Xcode version if specified
+if [ -n "$XCODE_VERSION" ]; then
+  export DEVELOPER_DIR="/Applications/Xcode_${XCODE_VERSION}.app/Contents/Developer"
+  if [ ! -d "$DEVELOPER_DIR" ]; then
+    fatal "Xcode ${XCODE_VERSION} not found at ${DEVELOPER_DIR}"
+  fi
+else
+  # Default to Xcode 16 if not specified
+  export DEVELOPER_DIR="/Applications/Xcode_16.0.app/Contents/Developer"
+  if [ ! -d "$DEVELOPER_DIR" ]; then
+    echo "Warning: Xcode 16.0 not found at ${DEVELOPER_DIR}, falling back to system default"
+    unset DEVELOPER_DIR
+  fi
+fi
 
 # determine which app we're going to work on
 TARGET_NAME=Palace
