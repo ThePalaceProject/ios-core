@@ -37,7 +37,11 @@ actor TPPBookCoverRegistry {
   
   private func fetchImage(from url: URL, for book: TPPBook, isCover: Bool) async -> UIImage? {
     let key = cacheKey(for: book, isCover: isCover)
-    if isCachingEnabled, let img = memoryCache.object(forKey: key) { return img }
+    
+    if isCachingEnabled, let img = memoryCache.object(forKey: key) { 
+      return img 
+    }
+    
     if isCachingEnabled,
        let fileURL = diskCacheURL?.appendingPathComponent(key as String),
        let data = try? Data(contentsOf: fileURL),
@@ -45,21 +49,31 @@ actor TPPBookCoverRegistry {
       memoryCache.setObject(img, forKey: key, cost: cost(for: img))
       return img
     }
+    
     if let existing = inProgressTasks[url] {
       return await existing.value
     }
     
-    let task = Task<UIImage?, Never> {
-      if let (data, _) = try? await URLSession.shared.data(from: url),
-         let image = UIImage(data: data) {
+    let task = Task<UIImage?, Never> { [weak self] in
+      guard let self = self else { return nil }
+      
+      do {
+        let (data, _) = try await URLSession.shared.data(from: url)
+        guard let image = UIImage(data: data) else { return nil }
+        
         await self.store(image: image, forKey: key)
         return image
+      } catch {
+        Log.error(#file, "Failed to fetch image: \(error.localizedDescription)")
+        return nil
       }
-      return nil
     }
+    
     inProgressTasks[url] = task
     let image = await task.value
+    
     inProgressTasks[url] = nil
+    
     return image
   }
   
@@ -69,11 +83,19 @@ actor TPPBookCoverRegistry {
     memoryCache.setObject(image, forKey: key, cost: cost(for: image))
 
     if let dir = diskCacheURL,
-      let data = image.jpegData(compressionQuality: 0.8) {
+       let data = image.jpegData(compressionQuality: 0.8) {
       let destination = dir.appendingPathComponent(key as String)
-
-      diskQueue.async {
-        try? data.write(to: destination)
+      
+      await withCheckedContinuation { continuation in
+        diskQueue.async {
+          do {
+            try data.write(to: destination)
+            continuation.resume()
+          } catch {
+            Log.error(#file, "Failed to write image to disk: \(error.localizedDescription)")
+            continuation.resume()
+          }
+        }
       }
     }
   }

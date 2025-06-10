@@ -311,7 +311,7 @@ import OverdriveProcessor
 #endif
   
   private func processRegularDownload(for book: TPPBook, withState state: TPPBookState, andRequest initedRequest: URLRequest?) {
-    guard let request = initedRequest ?? book.defaultAcquisition?.hrefURL.map({ URLRequest(url: $0) }) else {
+    guard let request = initedRequest ?? (book.defaultAcquisition?.hrefURL != nil ? URLRequest(url: book.defaultAcquisition!.hrefURL) : nil) else {
       failDownloadWithAlert(for: book, withMessage: "No valid download URL found")
       return
     }
@@ -612,7 +612,7 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
     if bytesWritten == totalBytesWritten {
       guard let mimeType = downloadTask.response?.mimeType else { return }
       
-      let rightsManagement: MyBooksDownloadRightsManagement
+      let rightsManagement: MyBooksDownloadInfo.MyBooksDownloadRightsManagement
       switch mimeType {
       case ContentTypeAdobeAdept:
         rightsManagement = .adobe

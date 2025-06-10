@@ -148,7 +148,6 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
     taskInfoLock.unlock()
 
     guard let info = maybeInfo else {
-      // No registered completion handler → log and bail
       TPPErrorLogger.logNetworkError(
         nil,
         code: .noTaskInfoAvailable,
@@ -160,7 +159,6 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
       return
     }
 
-    // 2) Handle cancellation (no completion call)
     if let nsErr = networkError as NSError?,
        nsErr.domain == NSURLErrorDomain,
        nsErr.code == NSURLErrorCancelled {
@@ -168,20 +166,11 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
       return
     }
 
-    // 3) Log elapsed time
     let elapsed = Date().timeIntervalSince(info.startDate)
     logMetadata["elapsedTime"] = elapsed
     Log.info(#file, "Task \(taskID) completed (\(logMetadata)[\"currentRequest\"] ?? \"nil\")), elapsed: \(elapsed)s")
 
-    // 4) Build the result
-    let result: NYPLResult<Data>
-    if let error = networkError {
-      result = .failure(error, task.response)
-    } else {
-      result = .success(info.progressData, task.response)
-    }
-
-    // 5) Call completion handler
+    let result: NYPLResult<Data> = .success(info.progressData, task.response)
     info.completion(result)
   }
   
