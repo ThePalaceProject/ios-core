@@ -66,7 +66,8 @@ import Dispatch
   private let taskName: String
   private weak var owner: NYPLBackgroundWorkOwner?
   private let queue = DispatchQueue.global(qos: .background)
-  private let endLock = NSRecursiveLock()
+  private let endLock = NSLock()
+  private var isEndingTask = false
   
   //----------------------------------------------------------------------------
 
@@ -88,10 +89,21 @@ import Dispatch
   @objc func dispatchBackgroundWork() {
     var bgTask: UIBackgroundTaskIdentifier = .invalid
 
-    let endQueue = DispatchQueue(label: "com.thepalaceproject.backgroundEndQueue")
+    let endQueue = DispatchQueue(label: "com.thepalaceproject.backgroundEndQueue", qos: .userInitiated)
 
     func endTaskIfNeeded(context: String) {
-      endQueue.async {
+      endQueue.async { [weak self] in
+        guard let self = self else { return }
+        
+        self.endLock.lock()
+        defer { self.endLock.unlock() }
+        
+        // Prevent multiple end task calls
+        if self.isEndingTask {
+          return
+        }
+        self.isEndingTask = true
+        
         let timeRemaining: TimeInterval = DispatchQueue.main.sync {
           UIApplication.shared.backgroundTimeRemaining
         }
@@ -105,6 +117,8 @@ import Dispatch
           UIApplication.shared.endBackgroundTask(bgTask)
           bgTask = .invalid
         }
+        
+        self.isEndingTask = false
       }
     }
 

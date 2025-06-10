@@ -29,7 +29,7 @@ class TPPNetworkResponder: NSObject {
   
   private var tokenRefreshAttempts: Int = 0
   private var taskInfo: [TaskID: TPPNetworkTaskInfo]
-  private let taskInfoLock: NSRecursiveLock
+  private let taskInfoLock: NSLock
   private let useFallbackCaching: Bool
   private let credentialsProvider: NYPLBasicAuthCredentialsProvider?
 
@@ -42,7 +42,7 @@ class TPPNetworkResponder: NSObject {
   init(credentialsProvider: NYPLBasicAuthCredentialsProvider? = nil,
        useFallbackCaching: Bool = false) {
     self.taskInfo = [Int: TPPNetworkTaskInfo]()
-    self.taskInfoLock = NSRecursiveLock()
+    self.taskInfoLock = NSLock()
     self.useFallbackCaching = useFallbackCaching
     self.credentialsProvider = credentialsProvider
     super.init()
@@ -175,57 +175,13 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
 
     // 4) Build the result
     let result: NYPLResult<Data>
-    if let http = task.response as? HTTPURLResponse {
-      // 4a) 401 → try refresh
-      if http.statusCode == 401,
-         handleExpiredTokenIfNeeded(for: http, with: task) {
-        return
-      }
-      // 4b) Non-2xx HTTP status
-      if !http.isSuccess() {
-        let err: TPPUserFriendlyError
-        let data = info.progressData
-
-        if !data.isEmpty {
-          err = task.parseAndLogError(
-            fromProblemDocumentData: data,
-            networkError: networkError,
-            logMetadata: logMetadata
-          )
-        } else {
-          err = NSError(
-            domain: "Api call with failure HTTP status",
-            code: TPPErrorCode.responseFail.rawValue,
-            userInfo: logMetadata
-          )
-        }
-
-        result = .failure(err, task.response)
-      }
-      
-      // 4d) Network-level error
-      else if let netErr = networkError {
-        let ue = netErr as TPPUserFriendlyError
-        result = .failure(ue, task.response)
-        TPPErrorLogger.logNetworkError(netErr,
-                                       summary: "Network task completed with error",
-                                       request: task.originalRequest,
-                                       response: task.response,
-                                       metadata: logMetadata)
-      }
-      // 4e) Success
-      else {
-        result = .success(info.progressData, task.response)
-      }
+    if let error = networkError {
+      result = .failure(error, task.response)
     } else {
-      // 4f) No HTTP response at all
-      let err = NSError(domain: "Api call with failure HTTP status",
-                        code: TPPErrorCode.invalidOrNoHTTPResponse.rawValue,
-                        userInfo: logMetadata)
-      result = .failure(err, task.response)
+      result = .success(info.progressData, task.response)
     }
 
-    // 5) Invoke completion outside the lock
+    // 5) Call completion handler
     info.completion(result)
   }
   
