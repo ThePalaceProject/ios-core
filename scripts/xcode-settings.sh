@@ -14,7 +14,7 @@
 #     xcode-archive.sh
 #
 # ENVIRONMENT VARIABLES
-#   XCODE_VERSION - Optional. The version of Xcode to use (e.g. "16.0")
+#   XCODE_VERSION - Optional. The version of Xcode to use (e.g. "16.2")
 #                   If not set, uses the system default Xcode
 
 set -eo pipefail
@@ -32,8 +32,8 @@ if [ -n "$XCODE_VERSION" ]; then
     fatal "Xcode ${XCODE_VERSION} not found at ${DEVELOPER_DIR}"
   fi
 else
-  # Default to Xcode 16 if not specified
-  export DEVELOPER_DIR="/Applications/Xcode_16.0.app/Contents/Developer"
+  # Default to Xcode 16.2 if not specified
+  export DEVELOPER_DIR="/Applications/Xcode_16.2.app/Contents/Developer"
   if [ ! -d "$DEVELOPER_DIR" ]; then
     echo "Warning: Xcode 16.0 not found at ${DEVELOPER_DIR}, falling back to system default"
     unset DEVELOPER_DIR
