@@ -311,27 +311,30 @@ import OverdriveProcessor
 #endif
   
   private func processRegularDownload(for book: TPPBook, withState state: TPPBookState, andRequest initedRequest: URLRequest?) {
-    let request: URLRequest
-    if let initedRequest = initedRequest {
-      request = initedRequest
-    } else if let url = book.defaultAcquisition?.hrefURL {
-      request = TPPNetworkExecutor.bearerAuthorized(request: URLRequest(url: url, applyingCustomUserAgent: true))
-    } else {
-      logInvalidURLRequest(for: book, withState: state, url: nil, request: nil)
+    guard let request = initedRequest ?? book.defaultAcquisition?.hrefURL.map({ URLRequest(url: $0) }) else {
+      failDownloadWithAlert(for: book, withMessage: "No valid download URL found")
       return
     }
+
+    let task = session.downloadTask(with: request)
+    let info = MyBooksDownloadInfo(
+      downloadProgress: 0.0,
+      downloadTask: task,
+      rightsManagement: .unknown
+    )
     
-    guard let _ = request.url else {
-      logInvalidURLRequest(for: book, withState: state, url: book.defaultAcquisition?.hrefURL, request: request)
-      return
-    }
+    updateDownloadInfo(info, forBookIdentifier: book.identifier)
+    taskIdentifierToBook[task.taskIdentifier] = book
+    task.resume()
     
-    if let cookies = userAccount.cookies, state != .SAMLStarted {
-      handleSAMLStartedState(for: book, withRequest: request, cookies: cookies)
-    } else {
-      clearAndSetCookies()
-      addDownloadTask(with: request, book: book)
-    }
+    bookRegistry.addBook(
+      book,
+      location: bookRegistry.location(forIdentifier: book.identifier),
+      state: .downloading,
+      fulfillmentId: nil,
+      readiumBookmarks: nil,
+      genericBookmarks: nil
+    )
   }
   
   private func logInvalidURLRequest(for book: TPPBook, withState state: TPPBookState, url: URL?, request: URLRequest?) {
@@ -609,45 +612,47 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
     if bytesWritten == totalBytesWritten {
       guard let mimeType = downloadTask.response?.mimeType else { return }
       
+      let rightsManagement: MyBooksDownloadRightsManagement
       switch mimeType {
       case ContentTypeAdobeAdept:
-        bookIdentifierToDownloadInfo[book.identifier] =
-        downloadInfo(forBookIdentifier: book.identifier)?.withRightsManagement(.adobe)
+        rightsManagement = .adobe
       case ContentTypeReadiumLCP:
-        bookIdentifierToDownloadInfo[book.identifier] =
-        downloadInfo(forBookIdentifier: book.identifier)?.withRightsManagement(.lcp)
+        rightsManagement = .lcp
       case ContentTypeEpubZip:
-        bookIdentifierToDownloadInfo[book.identifier] =
-        downloadInfo(forBookIdentifier: book.identifier)?.withRightsManagement(.none)
+        rightsManagement = .none
       case ContentTypeBearerToken:
-        bookIdentifierToDownloadInfo[book.identifier] =
-        downloadInfo(forBookIdentifier: book.identifier)?.withRightsManagement(.simplifiedBearerTokenJSON)
+        rightsManagement = .simplifiedBearerTokenJSON
 #if FEATURE_OVERDRIVE
       case "application/json":
-        bookIdentifierToDownloadInfo[book.identifier] =
-        downloadInfo(forBookIdentifier: book.identifier)?.withRightsManagement(.overdriveManifestJSON)
+        rightsManagement = .overdriveManifestJSON
 #endif
       default:
         if TPPOPDSAcquisitionPath.supportedTypes().contains(mimeType) {
           NSLog("Presuming no DRM for unrecognized MIME type \"\(mimeType)\".")
-          if let info = downloadInfo(forBookIdentifier: book.identifier)?.withRightsManagement(.none) {
-            bookIdentifierToDownloadInfo[book.identifier] = info
-          }
+          rightsManagement = .none
         } else if TPPUserAccount.sharedAccount().hasCredentials() {
           NSLog("Authentication might be needed after all")
           TPPNetworkExecutor.shared.refreshTokenAndResume(task: downloadTask)
           return
+        } else {
+          return
         }
+      }
+      
+      if let info = downloadInfo(forBookIdentifier: book.identifier) {
+        updateDownloadInfo(info.withRightsManagement(rightsManagement), forBookIdentifier: book.identifier)
       }
     }
     
     let rightsManagement = downloadInfo(forBookIdentifier: book.identifier)?.rightsManagement ?? .none
     if rightsManagement != .adobe && rightsManagement != .simplifiedBearerTokenJSON && rightsManagement != .overdriveManifestJSON {
       if totalBytesExpectedToWrite > 0 {
-        bookIdentifierToDownloadInfo[book.identifier] =
-        downloadInfo(forBookIdentifier: book.identifier)?
-          .withDownloadProgress(Double(totalBytesWritten) / Double(totalBytesExpectedToWrite))
-        broadcastUpdate()
+        if let info = downloadInfo(forBookIdentifier: book.identifier) {
+          updateDownloadInfo(
+            info.withDownloadProgress(Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)),
+            forBookIdentifier: book.identifier
+          )
+        }
       }
     }
   }
@@ -757,7 +762,21 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
   }
   
   @objc func downloadInfo(forBookIdentifier bookIdentifier: String) -> MyBooksDownloadInfo? {
-    bookIdentifierToDownloadInfo[bookIdentifier]
+    downloadQueue.sync {
+      return bookIdentifierToDownloadInfo[bookIdentifier]
+    }
+  }
+  
+  private func updateDownloadInfo(_ info: MyBooksDownloadInfo?, forBookIdentifier bookIdentifier: String) {
+    downloadQueue.async { [weak self] in
+      guard let self = self else { return }
+      if let info = info {
+        self.bookIdentifierToDownloadInfo[bookIdentifier] = info
+      } else {
+        self.bookIdentifierToDownloadInfo.removeValue(forKey: bookIdentifier)
+      }
+      self.broadcastUpdate()
+    }
   }
   
   func broadcastUpdate() {

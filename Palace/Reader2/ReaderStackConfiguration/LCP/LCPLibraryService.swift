@@ -24,6 +24,8 @@ import ReadiumAdapterLCPSQLite
   
   private var lcpClient = TPPLCPClient()
   private var _lcpService: LCPService?
+  private let serviceQueue = DispatchQueue(label: "com.palace.LCPLibraryService.serviceQueue", qos: .userInitiated)
+  private let serviceLock = NSLock()
 
   /// ContentProtection unlocks protected publication, providing a custom `Fetcher`
   lazy var contentProtection: ContentProtection? = lcpService?.contentProtection(with: LCPPassphraseAuthenticationService())
@@ -32,25 +34,32 @@ import ReadiumAdapterLCPSQLite
   private var authenticationCallbacks: [String: (String?) -> Void] = [:]
 
   private var lcpService: LCPService? {
-    if _lcpService == nil {
-      do {
-        let licenseRepo = try LCPSQLiteLicenseRepository()
-        let passphraseRepo = try LCPSQLitePassphraseRepository()
+    serviceQueue.sync {
+      if _lcpService == nil {
+        do {
+          let licenseRepo = try LCPSQLiteLicenseRepository()
+          let passphraseRepo = try LCPSQLitePassphraseRepository()
 
-        _lcpService = LCPService(
-          client: TPPLCPClient(),
-          licenseRepository: licenseRepo,
-          passphraseRepository: passphraseRepo,
-          assetRetriever: AssetRetriever(httpClient: DefaultHTTPClient()),
-          httpClient: DefaultHTTPClient()
-        )
-      } catch {
-        TPPErrorLogger.logError(error, summary: "Failed to initialize LCPService", metadata: [
-          "error": error.localizedDescription
-        ])
+          serviceLock.lock()
+          defer { serviceLock.unlock() }
+          
+          _lcpService = LCPService(
+            client: TPPLCPClient(),
+            licenseRepository: licenseRepo,
+            passphraseRepository: passphraseRepo,
+            assetRetriever: AssetRetriever(httpClient: DefaultHTTPClient()),
+            httpClient: DefaultHTTPClient()
+          )
+        } catch {
+          TPPErrorLogger.logError(error, summary: "Failed to initialize LCPService", metadata: [
+            "error": error.localizedDescription,
+            "errorType": String(describing: type(of: error))
+          ])
+          return nil
+        }
       }
+      return _lcpService
     }
-    return _lcpService
   }
 
   override init() {
@@ -75,7 +84,9 @@ import ReadiumAdapterLCPSQLite
     }
 
     guard let fileURL = file.fileURL else {
-      throw LCPError.unknown(nil)
+      throw LCPError.unknown(NSError(domain: "LCPLibraryService", code: -2, userInfo: [
+        NSLocalizedDescriptionKey: "Invalid file URL"
+      ]))
     }
 
     let licenseSource = LicenseDocumentSource.file(fileURL)
