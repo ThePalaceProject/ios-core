@@ -3,11 +3,11 @@ import UIKit
 
 struct BookDetailView: View {
   @Environment(\.presentationMode) var presentationMode
-  
+
   typealias DisplayStrings = Strings.BookDetailView
   @State private var selectedBook: TPPBook?
   @State private var descriptionText = ""
-  
+
   @ObservedObject var viewModel: BookDetailViewModel
   @State private var isExpanded: Bool = false
   @State private var headerBackgroundColor: Color = .gray

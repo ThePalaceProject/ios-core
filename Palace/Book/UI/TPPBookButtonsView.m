@@ -425,11 +425,11 @@
     case TPPBookStateDownloadNeeded:
     case TPPBookStateDownloadSuccessful:
       title = ((self.book.defaultAcquisitionIfOpenAccess || !TPPUserAccount.sharedAccount.authDefinition.needsAuth)
-               ? NSLocalizedString(@"Delete", nil)
-               : NSLocalizedString(@"Return", nil));
+               ? NSLocalizedString(@"Delete", @"")
+               : NSLocalizedString(@"Return", @""));
       message = ((self.book.defaultAcquisitionIfOpenAccess || !TPPUserAccount.sharedAccount.authDefinition.needsAuth)
-                 ? NSLocalizedString(@"Are you sure you want to delete \"%@\"?", nil)
-                 : NSLocalizedString(@"Are you sure you want to return \"%@\"?", nil));
+                 ? NSLocalizedString(@"Are you sure you want to delete \"%@\"?", @"")
+                 : NSLocalizedString(@"Are you sure you want to return \"%@\"?", @""));
       confirmButtonTitle = ((self.book.defaultAcquisitionIfOpenAccess || !TPPUserAccount.sharedAccount.authDefinition.needsAuth)
                             ? NSLocalizedString(@"Delete", nil)
                             : NSLocalizedString(@"Return", nil));
@@ -445,9 +445,10 @@
       @throw NSInternalInconsistencyException;
   }
   
+  NSString *bookTitle = (self.book.title != nil ? self.book.title : @"");
   UIAlertController *alertController = [UIAlertController alertControllerWithTitle:title
                                                                            message:[NSString stringWithFormat:
-                                                                                    message, self.book.title]
+                                                                                    message, bookTitle]
                                                                     preferredStyle:UIAlertControllerStyleAlert];
   
   [alertController addAction:[UIAlertAction actionWithTitle:NSLocalizedString(@"Cancel", nil)

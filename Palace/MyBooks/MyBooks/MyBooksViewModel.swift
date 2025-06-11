@@ -47,7 +47,10 @@ enum Group: Int {
 
     registerPublishers()
     registerNotifications()
-    loadData()
+    
+    DispatchQueue.main.async { [weak self] in
+      self?.loadData()
+    }
   }
 
   deinit {
@@ -85,7 +88,9 @@ enum Group: Int {
       TPPAccountSignInViewController.requestCredentials(completion: nil)
     } else {
       bookRegistry.sync { [weak self] _, _ in
-        self?.loadData()
+        DispatchQueue.main.async { [weak self] in
+          self?.loadData()
+        }
       }
     }
   }
@@ -163,11 +168,15 @@ enum Group: Int {
   }
 
   @objc private func handleBookRegistryChange() {
-    loadData()
+    DispatchQueue.main.async { [weak self] in
+      self?.loadData()
+    }
   }
 
   @objc private func handleSyncEnd() {
-    loadData()
+    DispatchQueue.main.async { [weak self] in
+      self?.loadData()
+    }
   }
 
   private func registerPublishers() {
