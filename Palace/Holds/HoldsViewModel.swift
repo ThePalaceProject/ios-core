@@ -71,8 +71,6 @@ final class HoldsViewModel: ObservableObject {
     /// Fetch all held books from the registry, wrap them in `HoldsBookViewModel`,
     /// and split into reserved vs held.
     func reloadData() {
-        isLoading = true
-
         let allHeld = TPPBookRegistry.shared.heldBooks
         var reservedVMs: [HoldsBookViewModel] = []
         var heldVMs: [HoldsBookViewModel] = []
@@ -87,10 +85,10 @@ final class HoldsViewModel: ObservableObject {
         }
 
         DispatchQueue.main.async { [weak self] in
-            self?.reservedBookVMs = reservedVMs
-            self?.heldBookVMs = heldVMs
-            self?.isLoading = false
-            self?.updateBadgeCount()
+            guard let self = self else { return }
+            self.reservedBookVMs = reservedVMs
+            self.heldBookVMs = heldVMs
+            self.updateBadgeCount()
         }
     }
 
