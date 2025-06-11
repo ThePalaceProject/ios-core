@@ -39,7 +39,7 @@ struct BookButtonMapper {
     }
 
     if registryState == .holding {
-      return .holdingFrontOfQueue
+      return .holding
     }
 
     if registryState == .returning {
