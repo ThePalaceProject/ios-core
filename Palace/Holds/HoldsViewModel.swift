@@ -25,24 +25,12 @@ final class HoldsBookViewModel: ObservableObject, Identifiable {
 }
 
 final class HoldsViewModel: ObservableObject {
-    /// Books "available for checkout"
     @Published var reservedBookVMs: [HoldsBookViewModel] = []
-
-    /// Books "waiting for availability"
     @Published var heldBookVMs: [HoldsBookViewModel] = []
-
-    /// Loading indicator (sync in progress)
     @Published var isLoading: Bool = false
-
-    /// Whether to show the "pick library" sheet
     @Published var showLibraryAccountView: Bool = false
-
-    /// Whether to show the action sheet of existing libraries
     @Published var selectNewLibrary: Bool = false
-
-    /// Whether to show the "search reservations" sheet
     @Published var showSearchView: Bool = false
-
     private var cancellables = Set<AnyCancellable>()
 
     init() {
@@ -67,10 +55,8 @@ final class HoldsViewModel: ObservableObject {
 
         reloadData()
     }
-
-    /// Fetch all held books from the registry, wrap them in `HoldsBookViewModel`,
-    /// and split into reserved vs held.
-    func reloadData() {
+  
+  func reloadData() {
         let allHeld = TPPBookRegistry.shared.heldBooks
         var reservedVMs: [HoldsBookViewModel] = []
         var heldVMs: [HoldsBookViewModel] = []
@@ -84,19 +70,20 @@ final class HoldsViewModel: ObservableObject {
             }
         }
 
+        // Update both lists atomically on the main thread
         DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            self.reservedBookVMs = reservedVMs
-            self.heldBookVMs = heldVMs
-            self.updateBadgeCount()
+            guard let self else { return }
+            withAnimation {
+                self.reservedBookVMs = reservedVMs
+                self.heldBookVMs = heldVMs
+                self.updateBadgeCount()
+            }
         }
     }
 
     func refresh() {
-        // If the user needs to sign in first:
         if TPPUserAccount.sharedAccount().needsAuth {
             if TPPUserAccount.sharedAccount().hasCredentials() {
-                // We have credentials: trigger a sync
                 TPPBookRegistry.shared.sync()
             } else {
                 DispatchQueue.main.async {
@@ -110,7 +97,6 @@ final class HoldsViewModel: ObservableObject {
         }
     }
 
-    /// Update application icon badge & tab‐bar badge to match the count of "reserved" books
     private func updateBadgeCount() {
         UIApplication.shared.applicationIconBadgeNumber = reservedBookVMs.count
         
@@ -120,7 +106,6 @@ final class HoldsViewModel: ObservableObject {
         }
     }
 
-    /// Change the current loaded account, then reload data
     func loadAccount(_ account: Account) {
         updateFeed(account)
         showLibraryAccountView = false
@@ -135,7 +120,6 @@ final class HoldsViewModel: ObservableObject {
         }
     }
 
-    /// Build the OpenSearch descriptor for "Search Reservations"
     var openSearchDescription: TPPOpenSearchDescription {
         let title = NSLocalizedString("Search Reservations", comment: "")
         // We pass ALL held books (both reserved and waiting) into the search screen:
