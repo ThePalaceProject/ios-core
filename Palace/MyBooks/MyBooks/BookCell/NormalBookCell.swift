@@ -144,7 +144,6 @@ struct NormalBookCell: View {
     .font(.footnote)
   }
 
-
   @ViewBuilder var loanTermsInfoView: some View {
     if let expirationDate = model.book.getExpirationDate() {
       HStack(alignment: .bottom) {
