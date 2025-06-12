@@ -36,8 +36,8 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
   }
 
   private func performBackgroundStartupTasks() {
-//    TPPKeychainManager.validateKeychain()
-//    TPPMigrationManager.migrate()
+    TPPKeychainManager.validateKeychain()
+    TPPMigrationManager.migrate()
     NetworkQueue.shared().addObserverForOfflineQueue()
     Reachability.shared.startMonitoring()
 

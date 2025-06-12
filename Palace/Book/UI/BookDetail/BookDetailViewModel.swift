@@ -22,10 +22,12 @@ final class BookDetailViewModel: ObservableObject {
   @Published var isLoadingRelatedBooks = false
   @Published var isLoadingDescription = false
   @Published var selectedBookURL: URL? = nil
+  @Published var isManagingHold: Bool = false
+  @Published var showHalfSheet = false
 
   var isFullSize: Bool { UIDevice.current.isIpad }
 
-  @Published private var processingButtons: Set<BookButtonType> = [] {
+  @Published var processingButtons: Set<BookButtonType> = [] {
     didSet {
       isProcessing = processingButtons.count > 0
     }
@@ -53,6 +55,11 @@ final class BookDetailViewModel: ObservableObject {
   var buttonState: BookButtonState {
     let isDownloading = (bookState == .downloading)
     let avail = book.defaultAcquisition?.availability
+    
+    if case .holding = bookState, isManagingHold {
+      return .managingHold
+    }
+    
     return BookButtonMapper.map(
       registryState: bookState,
       availability: avail,
@@ -96,6 +103,13 @@ final class BookDetailViewModel: ObservableObject {
   }
 
   private func setupObservers() {
+      NotificationCenter.default.addObserver(
+       self,
+       selector: #selector(handleBookRegistryChange(_:)),
+       name: .TPPBookRegistryDidChange,
+       object: nil
+     )
+                                                 
     NotificationCenter.default.addObserver(
       self,
       selector: #selector(handleDownloadStateDidChange(_:)),
@@ -108,6 +122,15 @@ final class BookDetailViewModel: ObservableObject {
       .map { $0.1 }
       .receive(on: DispatchQueue.main)
       .assign(to: &$downloadProgress)
+  }
+  
+  @objc func handleBookRegistryChange(_ notification: Notification) {
+    DispatchQueue.main.async { [weak self] in
+      guard let self else { return }
+      let updatedBook = registry.book(forIdentifier: book.identifier) ?? book
+      self.book = updatedBook
+      self.bookState = registry.state(for: book.identifier)
+    }
   }
 
   func selectRelatedBook(_ newBook: TPPBook) {
@@ -173,9 +196,7 @@ final class BookDetailViewModel: ObservableObject {
     }
 
     if let author = book.authors, !author.isEmpty {
-      if let authorLane = groupedBooks.first(where: {
-        $0.value.books.contains(where: { $0.authors?.contains(author) ?? false })
-      }) {
+      if let authorLane = groupedBooks.first(where: { $0.value.books.contains(where: { $0.authors?.contains(author) ?? false }) }) {
         groupedBooks.removeValue(forKey: authorLane.key)
         var reorderedBooks = [String: BookLane]()
         reorderedBooks[authorLane.key] = authorLane.value
@@ -208,14 +229,17 @@ final class BookDetailViewModel: ObservableObject {
       downloadCenter.startDownload(for: book)
       registry.setState(.holding, for: book.identifier)
       removeProcessingButton(button)
-
-    case .return, .remove, .cancelHold:
+      showHalfSheet = false
+    case .return, .remove:
       bookState = .returning
       removeProcessingButton(button)
-
-    case .returning:
+      
+    case .returning, .cancelHold:
       didSelectReturn(for: book) {
+        self.showHalfSheet = false
         self.removeProcessingButton(button)
+        self.bookState = .unregistered
+        self.isManagingHold = false
       }
 
     case .download, .get, .retry:
@@ -236,7 +260,12 @@ final class BookDetailViewModel: ObservableObject {
         self.removeProcessingButton(button)
       }
 
-    case .close, .manageHold:
+    case .close:
+      break
+      
+    case .manageHold:
+      isManagingHold = true
+      bookState = .holding
       break
     }
   }
@@ -674,6 +703,7 @@ final class BookDetailViewModel: ObservableObject {
       }
     }
   }
+
 // MARK: – BookButtonProvider
 extension BookDetailViewModel: BookButtonProvider {
   var buttonTypes: [BookButtonType] {

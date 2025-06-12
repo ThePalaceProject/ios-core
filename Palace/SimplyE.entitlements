@@ -9,9 +9,5 @@
 		<string>applinks:thepalaceproject.org</string>
 		<string>applinks:thepalaceproject.page.link</string>
 	</array>
-	<key>keychain-access-groups</key>
-	<array>
-		<string>$(AppIdentifierPrefix)88CBA74T8K.org.thepalaceproject.palace.SharedKeychainGroup</string>
-	</array>
 </dict>
 </plist>

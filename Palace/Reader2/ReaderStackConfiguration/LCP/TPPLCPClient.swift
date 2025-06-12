@@ -24,11 +24,8 @@ class TPPLCPClient: ReadiumLCP.LCPClient {
   )
   
   deinit {
-    let oldContext = context
-    if let toRelease = oldContext {
-      DispatchQueue.main.sync {
-        _ = toRelease
-      }
+    contextQueue.sync {
+      _context = nil
     }
   }
 
