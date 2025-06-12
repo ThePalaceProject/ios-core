@@ -151,7 +151,7 @@ private extension HalfSheetView {
       case .returning:
         returningInfoView
       default:
-        if viewModel.buttonState == .managingHold {
+        if viewModel.isManagingHold {
           holdingInfoView
         } else {
           borrowedInfoView

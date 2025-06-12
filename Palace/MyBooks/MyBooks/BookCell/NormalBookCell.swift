@@ -122,8 +122,30 @@ struct NormalBookCell: View {
     }
     .opacity(model.showUnreadIndicator ? 1.0 : 0.0)
   }
-
+  
   @ViewBuilder var borrowedInfoView: some View {
+    if model.isManagingHold {
+      holdingInfoView
+    } else {
+      loanTermsInfoView
+    }
+  }
+  
+  @ViewBuilder var holdingInfoView: some View {
+    let details = model.book.getReservationDetails()
+    Text(
+      String(
+        format: Strings.BookDetailView.holdStatus,
+        details.holdPosition.ordinal(),
+        details.copiesAvailable,
+        details.copiesAvailable == 1 ? Strings.BookDetailView.copy : Strings.BookDetailView.copies
+      )
+    )
+    .font(.footnote)
+  }
+
+
+  @ViewBuilder var loanTermsInfoView: some View {
     if let expirationDate = model.book.getExpirationDate() {
       HStack(alignment: .bottom) {
         Text("Due \(expirationDate.monthDayYearString)")
