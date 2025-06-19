@@ -38,6 +38,7 @@ extension BookCellState {
   }
 }
 
+@MainActor
 class BookCellModel: ObservableObject {
   typealias DisplayStrings = Strings.BookCell
   
@@ -150,7 +151,9 @@ class BookCellModel: ObservableObject {
   }
   
   @objc private func updateButtons() {
-    isLoading = false
+    Task { @MainActor [weak self] in
+      self?.isLoading = false
+    }
   }
 }
 
@@ -176,7 +179,9 @@ extension BookCellModel {
   func didSelectRead() {
     isLoading = true
     self.buttonDelegate?.didSelectRead(for: book) { [weak self] in
-      self?.isLoading = false
+      DispatchQueue.main.async {
+        self?.isLoading = false
+      }
     }
   }
   
