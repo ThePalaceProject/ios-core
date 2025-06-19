@@ -8,6 +8,7 @@ let UnregisteredKey = "unregistered"
 let HoldingKey = "holding"
 let UsedKey = "used"
 let UnsupportedKey = "unsupported"
+let ReturningKey = "returning"
 let SAMLStartedKey = "saml-started"
 
 @objc public enum TPPBookState : Int, CaseIterable {
@@ -16,6 +17,7 @@ let SAMLStartedKey = "saml-started"
   case downloading
   case downloadFailed
   case downloadSuccessful
+  case returning
   case holding
   case used
   case unsupported
@@ -65,6 +67,8 @@ let SAMLStartedKey = "saml-started"
         return UsedKey;
       case .unsupported:
         return UnsupportedKey;
+      case .returning:
+        return ReturningKey
     case .SAMLStarted:
       return SAMLStartedKey;
     }

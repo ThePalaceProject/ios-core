@@ -12,6 +12,9 @@ import Combine
 import PalaceUIKit
 
 struct NormalBookCell: View {
+  @Environment(\.colorScheme) var colorScheme
+  @State var showHalfSheet: Bool = false
+
   @ObservedObject var model: BookCellModel
   private let cellHeight: CGFloat = 125
   private let imageViewWidth: CGFloat = 100
@@ -26,10 +29,20 @@ struct NormalBookCell: View {
 
       VStack(alignment: .leading, spacing: 10) {
         infoView
-        buttons
-          .padding(.bottom, 5)
+        VStack(alignment: .leading, spacing: 0) {
+          buttons
+          borrowedInfoView
+        }
+        .padding(.bottom, 5)
       }
       .frame(maxWidth: .infinity, alignment: .leading)
+      .sheet(isPresented: $showHalfSheet) {
+        HalfSheetView(
+          viewModel: model,
+          backgroundColor: Color(model.book.coverImage?.mainColor() ?? .gray),
+          coverImage: $model.book.coverImage
+        )
+      }
       .alert(item: $model.showAlert) { alert in
         Alert(
           title: Text(alert.title),
@@ -83,12 +96,20 @@ struct NormalBookCell: View {
   }
 
   @ViewBuilder private var buttons: some View {
-    VStack(alignment: .leading, spacing: 0) {
       BookButtonsView(provider: model, size: buttonSize) { type in
-        model.callDelegate(for: type)
+        switch type {
+        case .return:
+            model.state = .normal(.returning)
+            self.showHalfSheet = true
+        case .manageHold:
+          model.state = .normal(.managingHold)
+          self.showHalfSheet = true
+        case .close:
+          self.showHalfSheet = false
+        default:
+          model.callDelegate(for: type)
+        }
       }
-      borrowedInfoView
-    }
   }
 
   @ViewBuilder private var unreadImageView: some View {
@@ -101,14 +122,41 @@ struct NormalBookCell: View {
     }
     .opacity(model.showUnreadIndicator ? 1.0 : 0.0)
   }
-
+  
   @ViewBuilder var borrowedInfoView: some View {
-    if let availableUntil = model.book.getExpirationDate()?.monthDayYearString {
-      Text("Borrowed until \(availableUntil)")
-        .fixedSize(horizontal: false, vertical: true)
-        .minimumScaleFactor(0.5)
-        .font(.footnote)
-        .foregroundColor(.secondary)
+    if model.isManagingHold {
+      holdingInfoView
+    } else {
+      loanTermsInfoView
+    }
+  }
+  
+  @ViewBuilder var holdingInfoView: some View {
+    let details = model.book.getReservationDetails()
+    Text(
+      String(
+        format: Strings.BookDetailView.holdStatus,
+        details.holdPosition.ordinal(),
+        details.copiesAvailable,
+        details.copiesAvailable == 1 ? Strings.BookDetailView.copy : Strings.BookDetailView.copies
+      )
+    )
+    .font(.footnote)
+  }
+
+  @ViewBuilder var loanTermsInfoView: some View {
+    if let expirationDate = model.book.getExpirationDate() {
+      HStack(alignment: .bottom) {
+        Text("Due \(expirationDate.monthDayYearString)")
+          .font(.subheadline)
+          .foregroundColor(.secondary)
+        Spacer()
+        Text("\(expirationDate.timeUntil().value) \(expirationDate.timeUntil().unit)")
+          .foregroundColor(colorScheme == .dark ? .palaceSuccessLight : .palaceSuccessDark)
+      }
+      .fixedSize(horizontal: true, vertical: false)
+      .minimumScaleFactor(0.8)
+      .padding(.trailing)
     }
   }
 }

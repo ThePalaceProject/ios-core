@@ -17,7 +17,7 @@ NSInteger TPPBookCellColumnCountForCollectionViewWidth(CGFloat const collectionV
 
 CGSize TPPBookCellSize(NSIndexPath *const indexPath, CGFloat const collectionViewWidth)
 {
-  static CGFloat const height = 110;
+  static CGFloat const height = 130;
   
   NSInteger const cellsPerRow = collectionViewWidth / 320;
   CGFloat const averageCellWidth = collectionViewWidth / (CGFloat)cellsPerRow;
@@ -125,7 +125,9 @@ TPPBookCell *TPPBookCellDequeue(UICollectionView *const collectionView,
       cell.state = TPPBookButtonsStateUsed;
       return cell;
     }
-    case TPPBookStateUnsupported: {
+    case TPPBookStateUnsupported:
+    case TPPBookStateReturning:
+    {
       TPPBookNormalCell *const cell = [collectionView
                                         dequeueReusableCellWithReuseIdentifier:reuseIdentifierNormal
                                         forIndexPath:indexPath];

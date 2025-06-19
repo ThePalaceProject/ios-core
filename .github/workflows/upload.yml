@@ -43,12 +43,10 @@ jobs:
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
           path: ./mobile-certificates
       - name: Checkout Adobe RMSDK
-        uses: actions/checkout@v3
+        uses: ./.github/actions/checkout-adobe
         with:
-          repository: ThePalaceProject/mobile-drm-adeptconnector
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
-          path: ./mobile-drm-adeptconnector
-      - name: Uncompress Adobe RMSDK
+      - name: Setup repo with DRM
         run: ./scripts/setup-repo-drm.sh
         env:
           BUILD_CONTEXT: ci

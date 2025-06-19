@@ -30,13 +30,18 @@ Open `Palace.xcodeproj` and build the `Palace-noDRM` target.
 ## Building the Application from Scratch
 
 01. Contact project lead and ensure you have access to all the required private repos.
-02. Then run:
-```bash
-git clone git@github.com:ThePalaceProject/ios-core.git
-cd ios-core
-./scripts/bootstrap-drm.sh
-```
-03. Open Palace.xcodeproj and build the `Palace` target.
+02. Make sure you have [git-lfs](https://git-lfs.com/) installed. Installation [instructions](https://github.com/git-lfs/git-lfs#installing). To install with [brew](https://brew.sh/):
+     ```bash
+     brew install git-lfs
+     git lfs install
+     ```
+03. Then run:
+    ```bash
+    git clone git@github.com:ThePalaceProject/ios-core.git
+    cd ios-core
+    ./scripts/bootstrap-drm.sh
+    ```
+04. Open Palace.xcodeproj and build the `Palace` target.
 
 ## Building Dependencies Individually
 

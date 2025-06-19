@@ -504,28 +504,23 @@ extension TPPBook {
 }
 
 extension TPPBook {
-  private static let coverCache = NSCache<NSString, UIImage>()
+  static let coverCache = NSCache<NSString, UIImage>()
   private static let thumbnailCache = NSCache<NSString, UIImage>()
   private static let coverRegistry = TPPBookCoverRegistry.shared
   
   func fetchCoverImage() {
-    if let img = TPPBook.coverCache.object(forKey: identifier as NSString) {
-      DispatchQueue.main.async {
-        self.coverImage = img
+      if let img = TPPBook.coverCache.object(forKey: identifier as NSString) {
+        coverImage = img
+        return
       }
-      return
-    }
-    
-    guard !isCoverLoading else { return }
-    DispatchQueue.main.async {
-      self.isCoverLoading = true
-    }
-    
-    TPPBook.coverRegistry.coverImageForBook(self) { [weak self] image in
-      guard let self = self else { return }
-      let final = image ?? self.thumbnailImage
-      
-      DispatchQueue.main.async {
+
+      guard !isCoverLoading else { return }
+      isCoverLoading = true
+
+      TPPBookCoverRegistryBridge.shared.coverImageForBook(self) { [weak self] image in
+        guard let self = self else { return }
+        let final = image ?? self.thumbnailImage
+
         self.coverImage = final
         if let img = final {
           TPPBook.coverCache.setObject(img, forKey: self.identifier as NSString)
@@ -533,26 +528,20 @@ extension TPPBook {
         self.isCoverLoading = false
       }
     }
-  }
-  
-  func fetchThumbnailImage() {
-    if let img = TPPBook.thumbnailCache.object(forKey: identifier as NSString) {
-      DispatchQueue.main.async {
-        self.thumbnailImage = img
+
+    func fetchThumbnailImage() {
+      if let img = TPPBook.thumbnailCache.object(forKey: identifier as NSString) {
+        thumbnailImage = img
+        return
       }
-      return
-    }
-    
-    guard !isThumbnailLoading else { return }
-    DispatchQueue.main.async {
-      self.isThumbnailLoading = true
-    }
-    
-    TPPBook.coverRegistry.thumbnailImageForBook(self) { [weak self] image in
-      guard let self = self else { return }
-      let final = image ?? UIImage(systemName: "book")
-      
-      DispatchQueue.main.async {
+
+      guard !isThumbnailLoading else { return }
+      isThumbnailLoading = true
+
+      TPPBookCoverRegistryBridge.shared.thumbnailImageForBook(self) { [weak self] image in
+        guard let self = self else { return }
+        let final = image ?? UIImage(systemName: "book")
+
         self.thumbnailImage = final
         if let img = final {
           TPPBook.thumbnailCache.setObject(img, forKey: self.identifier as NSString)
@@ -560,7 +549,6 @@ extension TPPBook {
         self.isThumbnailLoading = false
       }
     }
-  }
   
   func clearCachedImages() {
     TPPBook.coverCache.removeObject(forKey: identifier as NSString)

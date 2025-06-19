@@ -1,250 +1,155 @@
 import Foundation
 import UIKit
 
-class TPPBookCoverRegistry {
-
-  // MARK: - Shared Instance
+// MARK: - Swift Concurrency Actor
+actor TPPBookCoverRegistry {
   static let shared = TPPBookCoverRegistry()
-
-  // MARK: - Cache Toggle based on Device Memory
-  private let isCachingEnabled: Bool = {
-    ProcessInfo.processInfo.physicalMemory >= 2 * 1024 * 1024 * 1024
-  }()
-
-  // MARK: - Caches & Queues
+  
+  private let isCachingEnabled: Bool = ProcessInfo.processInfo.physicalMemory >= 2 * 1024 * 1024 * 1024
   private let memoryCache: NSCache<NSString, UIImage> = {
     let cache = NSCache<NSString, UIImage>()
     cache.countLimit = 100
     cache.totalCostLimit = 10 * 1024 * 1024
     return cache
   }()
-
   private let diskCacheURL: URL? = {
     let fm = FileManager.default
-    guard let caches = fm.urls(for: .cachesDirectory, in: .userDomainMask).first else {
-      return nil
-    }
+    guard let caches = fm.urls(for: .cachesDirectory, in: .userDomainMask).first else { return nil }
     let dir = caches.appendingPathComponent("TPPBookCovers", isDirectory: true)
     try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
     return dir
   }()
-
-  private let syncQueue = DispatchQueue(label: "com.thepalaceproject.TPPBookCoverRegistry.syncQueue", attributes: .concurrent)
   private let diskQueue = DispatchQueue(label: "com.thepalaceproject.TPPBookCoverRegistry.diskQueue")
-
-  private let downloadQueue: OperationQueue = {
-    let q = OperationQueue()
-    q.name = "com.thepalaceproject.TPPBookCoverRegistry.downloadQueue"
-    q.maxConcurrentOperationCount = 4
-    return q
-  }()
-
-  private let decodeQueue: OperationQueue = {
-    let q = OperationQueue()
-    q.name = "com.thepalaceproject.TPPBookCoverRegistry.decodeQueue"
-    q.maxConcurrentOperationCount = 2
-    return q
-  }()
-
-  private var inProgressRequests: [URL: [(UIImage?) -> Void]] = [:]
-
-  // MARK: - Initialization
-  init() {
-    NotificationCenter.default.addObserver(self,
-                                           selector: #selector(clearMemoryCache),
-                                           name: UIApplication.didReceiveMemoryWarningNotification,
-                                           object: nil)
+  private var inProgressTasks: [URL: Task<UIImage?, Never>] = [:]
+  
+  func coverImage(for book: TPPBook) async -> UIImage? {
+    guard let url = book.imageURL else { return await thumbnailImage(for: book) }
+    return await fetchImage(from: url, for: book, isCover: true)
   }
-
-  deinit {
-    NotificationCenter.default.removeObserver(self)
+  
+  func thumbnailImage(for book: TPPBook) async -> UIImage? {
+    guard let url = book.imageThumbnailURL else {
+      return await placeholder(for: book)
+    }
+    
+    return await fetchImage(from: url, for: book, isCover: false)
   }
-
-  // MARK: - Public API
-
-  func thumbnailImageForBook(_ book: TPPBook, handler: @escaping (UIImage?) -> Void) {
-    let key = cacheKey(for: book, isCover: false)
-
-    if isCachingEnabled, let img = memoryCache.object(forKey: key as NSString) {
-      DispatchQueue.main.async { handler(img) }
-      return
+  
+  private func fetchImage(from url: URL, for book: TPPBook, isCover: Bool) async -> UIImage? {
+    let key = cacheKey(for: book, isCover: isCover)
+    
+    if isCachingEnabled, let img = memoryCache.object(forKey: key) { 
+      return img 
     }
-
-    if isCachingEnabled, let diskURL = imageFileURL(for: book, isCover: false) {
-      diskQueue.async {
-        if let data = try? Data(contentsOf: diskURL), let img = UIImage(data: data) {
-          let cost = Int(img.size.width * img.size.height * 4)
-          self.memoryCache.setObject(img, forKey: key as NSString, cost: cost)
-          DispatchQueue.main.async { handler(img) }
-          return
-        }
-        self.fetchCoverImage(from: book.imageThumbnailURL, book: book, isCover: false, handler: handler)
-      }
-    } else {
-      fetchCoverImage(from: book.imageThumbnailURL, book: book, isCover: false, handler: handler)
+    
+    if isCachingEnabled,
+       let fileURL = diskCacheURL?.appendingPathComponent(key as String),
+       let data = try? Data(contentsOf: fileURL),
+       let img = UIImage(data: data) {
+      memoryCache.setObject(img, forKey: key, cost: cost(for: img))
+      return img
     }
-  }
-
-  func coverImageForBook(_ book: TPPBook, handler: @escaping (UIImage?) -> Void) {
-    guard let url = book.imageURL else {
-      thumbnailImageForBook(book, handler: handler)
-      return
+    
+    if let existing = inProgressTasks[url] {
+      return await existing.value
     }
-    let key = cacheKey(for: book, isCover: true)
-
-    if isCachingEnabled, let img = memoryCache.object(forKey: key as NSString) {
-      DispatchQueue.main.async { handler(img) }
-      return
-    }
-
-    if isCachingEnabled, let diskURL = imageFileURL(for: book, isCover: true) {
-      diskQueue.async {
-        if let data = try? Data(contentsOf: diskURL), let img = UIImage(data: data) {
-          let cost = Int(img.size.width * img.size.height * 4)
-          self.memoryCache.setObject(img, forKey: key as NSString, cost: cost)
-          DispatchQueue.main.async { handler(img) }
-          return
-        }
-        self.fetchCoverImage(from: url, book: book, isCover: true, handler: handler)
-      }
-    } else {
-      fetchCoverImage(from: url, book: book, isCover: true, handler: handler)
-    }
-  }
-
-  @MainActor
-  func thumbnailImagesForBooks(_ books: Set<TPPBook>, handler: @escaping ([String: UIImage]) -> Void) {
-    var result: [String: UIImage] = [:]
-    let total = books.count
-    var completed = 0
-    books.forEach { book in
-      thumbnailImageForBook(book) { image in
-        if let image = image {
-          result[book.identifier] = image
-        }
-        completed += 1
-        if completed == total {
-          handler(result)
-        }
+    
+    let task = Task<UIImage?, Never> { [weak self] in
+      guard let self = self else { return nil }
+      
+      do {
+        let (data, _) = try await URLSession.shared.data(from: url)
+        guard let image = UIImage(data: data) else { return nil }
+        
+        await self.store(image: image, forKey: key)
+        return image
+      } catch {
+        Log.error(#file, "Failed to fetch image: \(error.localizedDescription)")
+        return nil
       }
     }
+    
+    inProgressTasks[url] = task
+    let image = await task.value
+    
+    inProgressTasks[url] = nil
+    
+    return image
   }
+  
+  private func store(image: UIImage, forKey key: NSString) async {
+    guard isCachingEnabled else { return }
 
-  func cancelImageDownloadsForBook(_ book: TPPBook) {
-    if let url = book.imageThumbnailURL { cancelRequest(for: url) }
-    if let url = book.imageURL { cancelRequest(for: url) }
-  }
+    memoryCache.setObject(image, forKey: key, cost: cost(for: image))
 
-  @discardableResult
-  func cachedThumbnailImageForBook(_ book: TPPBook) -> UIImage? {
-    guard isCachingEnabled else { return nil }
-    let key = cacheKey(for: book, isCover: false)
-    return memoryCache.object(forKey: key as NSString)
-  }
-
-  // MARK: - Private Helpers
-
-  private func fetchCoverImage(from urlOpt: URL?, book: TPPBook, isCover: Bool, handler: @escaping (UIImage?) -> Void) {
-    guard let url = urlOpt else {
-      let placeholder = generateBookCoverImage(book)
-      DispatchQueue.main.async { handler(placeholder) }
-      return
-    }
-
-    syncQueue.sync {
-      if var handlers = inProgressRequests[url] {
-        handlers.append(handler)
-        inProgressRequests[url] = handlers
-        return
-      }
-      inProgressRequests[url] = [handler]
-      downloadQueue.addOperation { [weak self] in
-        guard let self = self else { return }
-        let task = URLSession.shared.dataTask(with: url) { data, _, error in
-          if let data = data {
-            self.decodeQueue.addOperation {
-              let img = UIImage(data: data)
-              if let image = img {
-                self.store(image: image, for: book, isCover: isCover)
-              }
-              self.complete(url: url, image: img)
-            }
-          } else {
-            self.complete(url: url, image: nil)
+    if let dir = diskCacheURL,
+       let data = image.jpegData(compressionQuality: 0.8) {
+      let destination = dir.appendingPathComponent(key as String)
+      
+      await withCheckedContinuation { continuation in
+        diskQueue.async {
+          do {
+            try data.write(to: destination)
+            continuation.resume()
+          } catch {
+            Log.error(#file, "Failed to write image to disk: \(error.localizedDescription)")
+            continuation.resume()
           }
         }
-        task.resume()
       }
     }
   }
-
-  private func complete(url: URL, image: UIImage?) {
-    var handlers: [(UIImage?) -> Void] = []
-    syncQueue.sync(flags: .barrier) {
-      handlers = inProgressRequests[url] ?? []
-      inProgressRequests.removeValue(forKey: url)
-    }
-    DispatchQueue.main.async {
-      handlers.forEach { $0(image) }
-    }
-  }
-
-  private func cancelRequest(for url: URL) {
-    syncQueue.sync(flags: .barrier) {
-      inProgressRequests.removeValue(forKey: url)
-    }
-  }
-
-  private func store(image: UIImage, for book: TPPBook, isCover: Bool) {
-    guard isCachingEnabled else { return }
-    let key = cacheKey(for: book, isCover: isCover)
-    let cost = Int(image.size.width * image.size.height * 4)
-    memoryCache.setObject(image, forKey: key as NSString, cost: cost)
-    
-    if let diskDir = diskCacheURL,
-       let data = image.jpegData(compressionQuality: 0.8) {
-      let fileURL = diskDir.appendingPathComponent(key)
-      diskQueue.async {
-        try? data.write(to: fileURL)
-      }
+  
+  private func placeholder(for book: TPPBook) async -> UIImage? {
+    await MainActor.run {
+      let size = CGSize(width: 80, height: 120)
+      let format = UIGraphicsImageRendererFormat()
+      format.scale = UIScreen.main.scale
+      return UIGraphicsImageRenderer(size: size, format: format)
+        .image { ctx in
+          if let view = NYPLTenPrintCoverView(
+            frame: CGRect(origin: .zero, size: size),
+            withTitle: book.title,
+            withAuthor: book.authors ?? "Unknown Author",
+            withScale: 0.4
+          ) {
+            view.layer.render(in: ctx.cgContext)
+          }
+        }
     }
   }
+  
+  private func cost(for image: UIImage) -> Int {
+    Int(image.size.width * image.size.height * 4)
+  }
+  
+  private func cacheKey(for book: TPPBook, isCover: Bool) -> NSString {
+    NSString(string: "\(book.identifier)_\(isCover ? "cover" : "thumbnail")")
+  }
+}
 
-  private func generateBookCoverImage(_ book: TPPBook) -> UIImage? {
-    // Ensure UI code runs on main thread
-    if !Thread.isMainThread {
-      return DispatchQueue.main.sync {
-        self.generateBookCoverImage(book)
-      }
+
+// MARK: - Objective-C Bridge
+@objcMembers
+public class TPPBookCoverRegistryBridge: NSObject {
+  public static let shared = TPPBookCoverRegistryBridge()
+  
+  /// Asynchronous, Objective-C friendly cover fetch
+  /// - Parameters:
+  ///   - book: The TPPBook instance
+  ///   - completion: Block called on main thread with the UIImage or nil
+  @objc public func coverImageForBook(_ book: TPPBook, completion: @escaping (UIImage?) -> Void) {
+    Task {
+      let img = await TPPBookCoverRegistry.shared.coverImage(for: book)
+      DispatchQueue.main.async { completion(img) }
     }
-    let width: CGFloat = 80
-    let height: CGFloat = 120
-    let format = UIGraphicsImageRendererFormat()
-    format.scale = UIScreen.main.scale
-    let renderer = UIGraphicsImageRenderer(size: CGSize(width: width, height: height), format: format)
-    return renderer.image { context in
-      if let coverView = NYPLTenPrintCoverView(
-        frame: CGRect(x: 0, y: 0, width: width, height: height),
-        withTitle: book.title,
-        withAuthor: book.authors ?? "Unknown Author",
-        withScale: 0.4
-      ) {
-        coverView.layer.render(in: context.cgContext)
-      }
+  }
+  
+  /// Asynchronous, Objective-C friendly thumbnail fetch
+  @objc public func thumbnailImageForBook(_ book: TPPBook, completion: @escaping (UIImage?) -> Void) {
+    Task {
+      let img = await TPPBookCoverRegistry.shared.thumbnailImage(for: book)
+      DispatchQueue.main.async { completion(img) }
     }
-  }
-
-  private func cacheKey(for book: TPPBook, isCover: Bool) -> String {
-    "\(book.identifier)_\(isCover ? "cover" : "thumbnail")"
-  }
-
-  private func imageFileURL(for book: TPPBook, isCover: Bool) -> URL? {
-    guard let dir = diskCacheURL else { return nil }
-    let filename = cacheKey(for: book, isCover: isCover)
-    return dir.appendingPathComponent(filename)
-  }
-
-  @objc private func clearMemoryCache() {
-    memoryCache.removeAllObjects()
   }
 }
