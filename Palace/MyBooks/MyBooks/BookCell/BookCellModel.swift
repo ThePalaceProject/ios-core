@@ -256,7 +256,7 @@ extension BookCellModel: BookButtonProvider {
 }
 
 extension BookCellModel: HalfSheetProvider {
-  /// Always read the “live” state from the registry.
+  /// Always read the "live" state from the registry.
   var bookState: TPPBookState {
     get {
       TPPBookRegistry.shared.state(for: book.identifier)

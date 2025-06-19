@@ -170,7 +170,58 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
     logMetadata["elapsedTime"] = elapsed
     Log.info(#file, "Task \(taskID) completed (\(logMetadata)[\"currentRequest\"] ?? \"nil\")), elapsed: \(elapsed)s")
 
-    let result: NYPLResult<Data> = .success(info.progressData, task.response)
+    // 4) Build the result
+    let result: NYPLResult<Data>
+    if let http = task.response as? HTTPURLResponse {
+      // 4a) 401 → try refresh
+      if http.statusCode == 401,
+         handleExpiredTokenIfNeeded(for: http, with: task) {
+        return
+      }
+      // 4b) Non-2xx HTTP status
+      if !http.isSuccess() {
+        let err: TPPUserFriendlyError
+        let data = info.progressData
+        
+        if !data.isEmpty {
+          err = task.parseAndLogError(
+            fromProblemDocumentData: data,
+            networkError: networkError,
+            logMetadata: logMetadata
+          )
+        } else {
+          err = NSError(
+            domain: "Api call with failure HTTP status",
+            code: TPPErrorCode.responseFail.rawValue,
+            userInfo: logMetadata
+          )
+        }
+        
+        result = .failure(err, task.response)
+      }
+      
+      // 4d) Network-level error
+      else if let netErr = networkError {
+        let ue = netErr as TPPUserFriendlyError
+        result = .failure(ue, task.response)
+        TPPErrorLogger.logNetworkError(netErr,
+                                       summary: "Network task completed with error",
+                                       request: task.originalRequest,
+                                       response: task.response,
+                                       metadata: logMetadata)
+      }
+      // 4e) Success
+      else {
+        result = .success(info.progressData, task.response)
+      }
+    } else {
+      // 4f) No HTTP response at all
+      let err = NSError(domain: "Api call with failure HTTP status",
+                        code: TPPErrorCode.invalidOrNoHTTPResponse.rawValue,
+                        userInfo: logMetadata)
+      result = .failure(err, task.response)
+    }
+    
     info.completion(result)
   }
   

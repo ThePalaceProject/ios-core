@@ -410,8 +410,8 @@ import OverdriveProcessor
   
   private func handleProblem(for book: TPPBook, problemDocument: TPPProblemDocument?) {
     bookRegistry.setState(.downloadNeeded, for: book.identifier)
-    reauthenticator.authenticateIfNeeded(userAccount, usingExistingCredentials: false) {
-      self.startDownload(for: book)
+    reauthenticator.authenticateIfNeeded(userAccount, usingExistingCredentials: false) { [weak self] in
+      self?.startDownload(for: book)
     }
   }
   
@@ -561,8 +561,7 @@ extension MyBooksDownloadCenter {
               self.bookRegistry.removeBook(forIdentifier: identifier)
             } else if errorType == TPPProblemDocument.TypeInvalidCredentials {
               NSLog("Invalid credentials problem when returning a book, present sign in VC")
-              self.reauthenticator.authenticateIfNeeded(self.userAccount,
-                                                        usingExistingCredentials: false) { [weak self] in
+              self.reauthenticator.authenticateIfNeeded(self.userAccount, usingExistingCredentials: false) { [weak self] in
                 self?.returnBook(withIdentifier: identifier)
               }
             }

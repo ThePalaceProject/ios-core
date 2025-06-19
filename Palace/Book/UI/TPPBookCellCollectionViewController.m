@@ -56,14 +56,15 @@
   [super viewWillAppear:animated];
   
   // Notifications are installed so the view will update while visible.
+  __weak typeof(self) weakSelf = self;
   [self.observers addObject:
    [[NSNotificationCenter defaultCenter]
     addObserverForName:NSNotification.TPPBookRegistryDidChange
     object:nil
     queue:[NSOperationQueue mainQueue]
     usingBlock:^(__attribute__((unused)) NSNotification *note) {
-      [self willReloadCollectionViewData];
-      [self.collectionView reloadData];
+      [weakSelf willReloadCollectionViewData];
+      [weakSelf.collectionView reloadData];
     }]];
   
   [self.observers addObject:
@@ -72,7 +73,7 @@
     object:nil
     queue:[NSOperationQueue mainQueue]
     usingBlock:^(__attribute__((unused)) NSNotification *note) {
-      for(UICollectionViewCell *const cell in [self.collectionView visibleCells]) {
+      for(UICollectionViewCell *const cell in [weakSelf.collectionView visibleCells]) {
         if([cell isKindOfClass:[TPPBookDownloadingCell class]]) {
           TPPBookDownloadingCell *const downloadingCell = (TPPBookDownloadingCell *)cell;
           NSString *const bookIdentifier = downloadingCell.book.identifier;
