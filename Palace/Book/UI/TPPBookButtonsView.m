@@ -83,10 +83,9 @@
                              object:nil
                              queue:[NSOperationQueue mainQueue]
                              usingBlock:^(NSNotification *note) {
-    __weak typeof(self) weakSelf = self;
-    if ([note.userInfo[TPPNotificationKeys.bookProcessingBookIDKey] isEqualToString:weakSelf.book.identifier]) {
+    if ([note.userInfo[TPPNotificationKeys.bookProcessingBookIDKey] isEqualToString:self.book.identifier]) {
       BOOL isProcessing = [note.userInfo[TPPNotificationKeys.bookProcessingValueKey] boolValue];
-      [weakSelf updateProcessingState:isProcessing];
+      [self updateProcessingState:isProcessing];
     }
   }]];
     
@@ -95,8 +94,7 @@
                              object:nil
                              queue:[NSOperationQueue mainQueue]
                              usingBlock:^(NSNotification * _Nonnull note) {
-    __weak typeof(self) weakSelf = self;
-    [weakSelf updateButtons];
+    [self updateButtons];
   }]];
   
   return self;
