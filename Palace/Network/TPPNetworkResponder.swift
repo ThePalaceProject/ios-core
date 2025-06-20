@@ -142,7 +142,6 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
       "taskID": taskID
     ]
 
-    // 1) Remove & grab the TPPNetworkTaskInfo under lock
     taskInfoLock.lock()
     let maybeInfo = taskInfo.removeValue(forKey: taskID)
     taskInfoLock.unlock()
@@ -170,15 +169,12 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
     logMetadata["elapsedTime"] = elapsed
     Log.info(#file, "Task \(taskID) completed (\(logMetadata)[\"currentRequest\"] ?? \"nil\")), elapsed: \(elapsed)s")
 
-    // 4) Build the result
     let result: NYPLResult<Data>
     if let http = task.response as? HTTPURLResponse {
-      // 4a) 401 → try refresh
       if http.statusCode == 401,
          handleExpiredTokenIfNeeded(for: http, with: task) {
         return
       }
-      // 4b) Non-2xx HTTP status
       if !http.isSuccess() {
         let err: TPPUserFriendlyError
         let data = info.progressData
@@ -200,7 +196,6 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
         result = .failure(err, task.response)
       }
       
-      // 4d) Network-level error
       else if let netErr = networkError {
         let ue = netErr as TPPUserFriendlyError
         result = .failure(ue, task.response)
@@ -210,12 +205,10 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
                                        response: task.response,
                                        metadata: logMetadata)
       }
-      // 4e) Success
       else {
         result = .success(info.progressData, task.response)
       }
     } else {
-      // 4f) No HTTP response at all
       let err = NSError(domain: "Api call with failure HTTP status",
                         code: TPPErrorCode.invalidOrNoHTTPResponse.rawValue,
                         userInfo: logMetadata)
