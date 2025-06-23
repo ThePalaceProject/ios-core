@@ -19,9 +19,7 @@ struct MyBooksView: View {
         ToolbarItem(placement: .navigationBarLeading) { leadingBarButton }
         ToolbarItem(placement: .navigationBarTrailing) { trailingBarButton }
       }
-      .onAppear {
-        model.showSearchSheet = false
-      }
+      .showFloatingTabBar()
       .sheet(isPresented: $model.showLibraryAccountView) {
         UIViewControllerWrapper(
           TPPAccountList { account in

@@ -146,15 +146,14 @@ struct NormalBookCell: View {
 
   @ViewBuilder var loanTermsInfoView: some View {
     if let expirationDate = model.book.getExpirationDate() {
-      HStack(alignment: .bottom) {
+      HStack(alignment: .bottom, spacing: 10) {
         Text("Due \(expirationDate.monthDayYearString)")
           .font(.subheadline)
           .foregroundColor(.secondary)
-        Spacer()
         Text("\(expirationDate.timeUntil().value) \(expirationDate.timeUntil().unit)")
           .foregroundColor(colorScheme == .dark ? .palaceSuccessLight : .palaceSuccessDark)
       }
-      .fixedSize(horizontal: true, vertical: false)
+      .palaceFont(size: 12)
       .minimumScaleFactor(0.8)
       .padding(.trailing)
     }

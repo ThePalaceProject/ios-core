@@ -46,9 +46,10 @@ struct TPPPDFReaderView: View {
       }
       .sheet(isPresented: .constant(isShowingSearch)) {
         TPPPDFSearchView(document: document, done: done)
-          .environmentObject(metadata) // iOS 13 crashes if metadata is not 
+          .environmentObject(metadata)
       }
     }
+    .toolbar(.hidden, for: .tabBar)
     .navigationBarBackButtonHidden(true)
   }
   
