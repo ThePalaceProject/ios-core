@@ -2,32 +2,19 @@ name: NonDRM Build
 on: workflow_dispatch
 jobs:
   build:
-    runs-on: macos-latest
+    runs-on: macOS-latest
     steps:
-      - name: Checkout repo
+      - name: Use the latest Xcode
+        run: sudo xcode-select -switch /Applications/Xcode.app
+      - name: Checkout main repo
         uses: actions/checkout@v3
-
-      - name: Install Xcode 16.2
-        uses: actions/setup-xcode@v2
-        with:
-          xcode-version: '16.2'
-
-      - name: Verify Xcode
-        run: |
-          echo "Xcode path: $(xcode-select -p)"
-          xcodebuild -version
-
-      - name: Setup repo for nonDRM
-        run: ./scripts/setup-repo-nodrm.sh
+      - name: Set up repo for nonDRM build
+        run: exec ./scripts/setup-repo-nodrm.sh
         env:
           BUILD_CONTEXT: ci
-
       - name: Build 3rd party dependencies
         run: ./scripts/build-3rd-party-dependencies.sh --no-private
         env:
           BUILD_CONTEXT: ci
-
       - name: Build Palace without DRM support
         run: ./scripts/xcode-build-nodrm.sh
-        env:
-          BUILD_CONTEXT: ci

@@ -1,6 +1,11 @@
 default_platform(:ios)
 
 platform :ios do
+  # Ensure Xcode 16.2 is selected for all lanes (iOS 18 SDK)
+  before_all do
+    xcode_select "/Applications/Xcode_16.2.app/Contents/Developer"
+  end
+
   lane :test do    
     ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "300"
     ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"] = "4"
