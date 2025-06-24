@@ -71,7 +71,8 @@ public class TPPBook: NSObject, ObservableObject {
   @Published var thumbnailImage: UIImage?
   @Published var isCoverLoading: Bool = false
   @Published var isThumbnailLoading: Bool = false
-  
+  var dominantUIColor: UIColor { coverImage?.mainColor() ?? .gray }
+
   static let SimplifiedScheme = "http://librarysimplified.org/terms/genres/Simplified/"
 
   static func categoryStringsFromCategories(categories: [TPPOPDSCategory]) -> [String] {
@@ -399,7 +400,7 @@ public class TPPBook: NSObject, ObservableObject {
   
   @objc func getReservationDetails() -> ReservationDetails {
     var untilDate: Date?
-    var reservationDetails = ReservationDetails()
+    let reservationDetails = ReservationDetails()
     
     defaultAcquisition?.availability.matchUnavailable(
       nil,
@@ -522,6 +523,7 @@ extension TPPBook {
         let final = image ?? self.thumbnailImage
 
         self.coverImage = final
+        
         if let img = final {
           TPPBook.coverCache.setObject(img, forKey: self.identifier as NSString)
         }

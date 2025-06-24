@@ -130,18 +130,36 @@ shouldSelectViewController:(nonnull UIViewController *)viewController
 - (void)pushViewController:(UIViewController *const)viewController
                   animated:(BOOL const)animated
 {
-  if(![self.selectedViewController isKindOfClass:[UINavigationController class]]) {
+  if (![self.selectedViewController isKindOfClass:[UINavigationController class]]) {
     TPPLOG(@"Selected view controller is not a navigation controller.");
     return;
   }
-  
-  if(self.presentedViewController) {
+
+  if (self.presentedViewController) {
     [self dismissViewControllerAnimated:YES completion:nil];
   }
-  
+
+  // Only on iPad + iOS 18+
+  if (@available(iOS 18.0, *)) {
+    if (UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad) {
+      [self setTabBarHidden:YES animated:NO];
+    }
+  }
+
   [(UINavigationController *)self.selectedViewController
-   pushViewController:viewController
-   animated:animated];
+    pushViewController:viewController
+              animated:animated];
+}
+
+- (UIViewController *)popViewControllerAnimated:(BOOL)animated {
+  if (@available(iOS 18.0, *)) {
+    if (UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad) {
+      [self setTabBarHidden:NO animated:NO];
+    }
+  }
+
+  UINavigationController *nav = (UINavigationController *)self.selectedViewController;
+  return [nav popViewControllerAnimated:animated];
 }
 
 @end

@@ -746,6 +746,8 @@
 		E5E9B0002CC035AC00366A2E /* ReadiumStreamer in Frameworks */ = {isa = PBXBuildFile; productRef = E5E9AFFF2CC035AC00366A2E /* ReadiumStreamer */; };
 		E5E9B2142CC1A5AE00366A2E /* ReadiumAdapterLCPSQLite in Frameworks */ = {isa = PBXBuildFile; productRef = E5E9B2132CC1A5AE00366A2E /* ReadiumAdapterLCPSQLite */; };
 		E5E9B21E2CC1A7BB00366A2E /* ReadiumAdapterGCDWebServer in Frameworks */ = {isa = PBXBuildFile; productRef = E5E9B21D2CC1A7BB00366A2E /* ReadiumAdapterGCDWebServer */; };
+		E5ECB2562E0ADFFD00B9B221 /* UITabBarController+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5ECB2552E0ADFF400B9B221 /* UITabBarController+Extensions.swift */; };
+		E5ECB2572E0ADFFD00B9B221 /* UITabBarController+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5ECB2552E0ADFF400B9B221 /* UITabBarController+Extensions.swift */; };
 		E5EE380B2D5DA75600252001 /* Int+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5EE38092D5DA74C00252001 /* Int+Extensions.swift */; };
 		E5EE380C2D5DA75600252001 /* Int+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5EE38092D5DA74C00252001 /* Int+Extensions.swift */; };
 		E5EE380E2D5DB1A100252001 /* Color+Extension.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5EE380D2D5DB19D00252001 /* Color+Extension.swift */; };
@@ -1616,6 +1618,7 @@
 		E5E2F8D32CB631C100A95840 /* TPPSAMLHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPSAMLHelper.swift; sourceTree = "<group>"; };
 		E5E443F92DA4591C00AD4BC9 /* AdaptiveShadowModifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdaptiveShadowModifier.swift; sourceTree = "<group>"; };
 		E5E683652D95CEA6006D3CA5 /* ImageCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageCache.swift; sourceTree = "<group>"; };
+		E5ECB2552E0ADFF400B9B221 /* UITabBarController+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UITabBarController+Extensions.swift"; sourceTree = "<group>"; };
 		E5EE38092D5DA74C00252001 /* Int+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Int+Extensions.swift"; sourceTree = "<group>"; };
 		E5EE380D2D5DB19D00252001 /* Color+Extension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Color+Extension.swift"; sourceTree = "<group>"; };
 		E5EFDE77298C43D300258CA3 /* BookButtonState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookButtonState.swift; sourceTree = "<group>"; };
@@ -2181,6 +2184,7 @@
 		7361615325F705A500395337 /* ReaderPresentation */ = {
 			isa = PBXGroup;
 			children = (
+				E5ECB2552E0ADFF400B9B221 /* UITabBarController+Extensions.swift */,
 				733DEC91241090C7008C74BC /* TPPRootTabBarController+R2.swift */,
 				21DF7F9225AF5E1E0090402A /* ReaderModule.swift */,
 				2126FE2D25C059240095C45C /* ReaderError.swift */,
@@ -3997,6 +4001,7 @@
 				21DDE32425D2CEC6002CBCE3 /* AdobeDRMLibraryService.swift in Sources */,
 				73EB0AE325821DF4006BC997 /* TPPReauthenticator.swift in Sources */,
 				E573454E2AD6E8530021D768 /* EPUBSearchView.swift in Sources */,
+				E5ECB2562E0ADFFD00B9B221 /* UITabBarController+Extensions.swift in Sources */,
 				73EB0AE425821DF4006BC997 /* TPPAnnouncementBusinessLogic.swift in Sources */,
 				73EB0AE525821DF4006BC997 /* Account.swift in Sources */,
 				E7F66E0C29E7565300B62900 /* BarcodeScanner.swift in Sources */,
@@ -4273,6 +4278,7 @@
 				733875652423E1B0000FEB67 /* TPPNetworkExecutor.swift in Sources */,
 				733FF9BE2530F9E700CDAA13 /* TPPSignInBusinessLogic+OAuth.swift in Sources */,
 				2D87909D20127AA300E2763F /* TPPOPDSAcquisitionPath.m in Sources */,
+				E5ECB2572E0ADFFD00B9B221 /* UITabBarController+Extensions.swift in Sources */,
 				E5515EC12AD8E827000BDFE9 /* UIHostingController+Extensions.swift in Sources */,
 				2DCB71EE2017DFB5000E041A /* TPPOPDSAcquisitionAvailability.m in Sources */,
 				E7861C572846B38C00B3A38A /* TPPEncryptedPDFDataProvider.m in Sources */,
