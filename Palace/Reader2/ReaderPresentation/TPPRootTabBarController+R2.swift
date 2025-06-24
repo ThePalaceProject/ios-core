@@ -14,14 +14,13 @@ import Foundation
       return
     }
     
-    hideFloatingTabBarIfNeeded()
-
     libraryService.openBook(book, sender: self) { [weak self] result in
       guard let navVC = self?.selectedViewController as? UINavigationController else {
         preconditionFailure("No navigation controller, unable to present reader")
       }
       switch result {
       case .success(let publication):
+        self?.hideFloatingTabBarIfNeeded()
         readerModule.presentPublication(publication, book: book, in: navVC, forSample: false)
       case .failure(let error):
         self?.restoreFloatingTabBar()
