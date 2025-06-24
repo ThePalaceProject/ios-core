@@ -71,7 +71,6 @@ struct BookDetailView: View {
         self.descriptionText = viewModel.book.summary ?? ""
       }
       .onDisappear {
-        UITabBarController.showFloatingTabBar()
         viewModel.showHalfSheet = false
       }
       .fullScreenCover(item: $selectedBook) { book in

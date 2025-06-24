@@ -164,6 +164,7 @@ static CGFloat const kTableViewCrossfadeDuration = 0.3;
 {
   [super viewDidAppear:animated];
 
+  [UITabBarController showFloatingTabBarWithAnimated:YES];
   [UIView animateWithDuration:kTableViewCrossfadeDuration animations:^{
     self.tableView.alpha = 1.0;
     self.facetBarView.alpha = 1.0;
