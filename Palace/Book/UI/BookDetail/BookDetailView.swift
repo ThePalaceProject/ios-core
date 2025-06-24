@@ -1,3 +1,4 @@
+
 import SwiftUI
 import UIKit
 
@@ -10,7 +11,6 @@ struct BookDetailView: View {
 
   @ObservedObject var viewModel: BookDetailViewModel
   @State private var isExpanded: Bool = false
-  @State private var headerBackgroundColor: Color = .gray
   @State private var headerHeight: CGFloat = UIDevice.current.isIpad ? 300 : 225
   @State private var showCompactHeader: Bool = false
   @State private var lastOffset: CGFloat = 0
@@ -22,7 +22,8 @@ struct BookDetailView: View {
   @State private var imageBottomPosition: CGFloat = 400
   
   private let scaleAnimation = Animation.linear(duration: 0.35)
-  
+  @MainActor private var headerBackgroundColor: Color { Color(viewModel.book.dominantUIColor) }
+
   private let maxHeaderHeight: CGFloat = 225
   private let minHeaderHeight: CGFloat = 80
   private let imageTopPadding: CGFloat = 80
@@ -57,7 +58,6 @@ struct BookDetailView: View {
         }
         .edgesIgnoringSafeArea(.all)
         .onChange(of: viewModel.book) { newValue in
-          loadCoverImage()
           resetSampleToolbar()
           self.descriptionText = newValue.summary ?? ""
           proxy.scrollTo(0, anchor: .top)
@@ -65,8 +65,8 @@ struct BookDetailView: View {
         }
       }
       .onAppear {
+        UITabBarController.hideFloatingTabBar()
         headerHeight = viewModel.isFullSize ? 300 : 225
-        loadCoverImage()
         viewModel.fetchRelatedBooks()
         self.descriptionText = viewModel.book.summary ?? ""
       }
@@ -501,11 +501,7 @@ struct BookDetailView: View {
     let imageHeight = max(280 * imageScale, 80)
     imageBottomPosition = imageTopPadding + imageHeight + 70
   }
-  
-  private func loadCoverImage() {
-    self.headerBackgroundColor = Color(viewModel.book.coverImage?.mainColor() ?? .gray)
-  }
-  
+ 
   private func resetSampleToolbar() {
     viewModel.showSampleToolbar = false
     sampleToolbar?.player.state = .paused
@@ -614,4 +610,3 @@ struct TPPCatalogFeedView: UIViewControllerRepresentable {
   func updateUIViewController(_ uiViewController: TPPCatalogFeedViewController, context: Context) {
   }
 }
-
