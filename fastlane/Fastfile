@@ -21,6 +21,7 @@ platform :ios do
     build_app(
       project: "Palace.xcodeproj",
       scheme: "Palace-noDRM",
+      destination: "platform=iOS Simulator,name=iPhone SE (3rd generation),OS=latest,arch=x86_64",
       skip_package_ipa: true,
       skip_archive: true,
       skip_codesigning: true,
