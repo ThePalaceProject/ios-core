@@ -92,7 +92,7 @@ actor TPPBookCoverRegistry {
             try data.write(to: destination)
             continuation.resume()
           } catch {
-            Log.error(#file, "Failed to write image to disk: \(error.localizedDescription)")
+            Log.debug(#file, "Failed to write image to disk: \(error.localizedDescription)")
             continuation.resume()
           }
         }
