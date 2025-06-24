@@ -38,19 +38,11 @@ import Foundation
   }
   
   private func hideFloatingTabBarIfNeeded() {
-//    if #available(iOS 18.0, *),
-//       UIDevice.current.userInterfaceIdiom == .pad
-//    {
-//      setTabBarHidden(true, animated: false)
-//    }
+    UITabBarController.hideFloatingTabBar()
   }
   
   @objc private func restoreFloatingTabBar() {
-//    if #available(iOS 18.0, *),
-//       UIDevice.current.userInterfaceIdiom == .pad
-//    {
-//      setTabBarHidden(false, animated: true)
-//    }
+    UITabBarController.showFloatingTabBar()
   }
 
   func presentSample(_ book: TPPBook, url: URL) {
@@ -84,6 +76,79 @@ import Foundation
         let alertController = TPPAlertUtils.alert(title: "Content Protection Error", message: error.localizedDescription)
         TPPAlertUtils.presentFromViewControllerOrNil(alertController: alertController, viewController: self, animated: true, completion: nil)
       }
+    }
+  }
+}
+
+
+//extension UITabBarController {
+//  func setFloatingTabBarHidden(_ hidden: Bool, animated: Bool) {
+//    let sel = NSSelectorFromString("setTabBarHidden:animated:")
+//    if responds(to: sel) {
+//      _ = (self as AnyObject).perform(sel, with: hidden, with: animated)
+//    } else {
+//      tabBar.isHidden = hidden
+//    }
+//  }
+//}
+//
+//import UIKit
+
+extension UITabBarController {
+  private static func findTabBarController(in vc: UIViewController) -> UITabBarController? {
+    if let tbc = vc as? UITabBarController { return tbc }
+    if let nav = vc as? UINavigationController {
+      return nav.viewControllers.first.flatMap(findTabBarController)
+    }
+    if let presented = vc.presentedViewController {
+      return findTabBarController(in: presented)
+    }
+    return nil
+  }
+
+  private static func root() -> UITabBarController? {
+    for scene in UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }) {
+      if let win = scene.windows.first(where: \.isKeyWindow),
+         let root = win.rootViewController,
+         let tbc  = findTabBarController(in: root) {
+        return tbc
+      }
+    }
+    if let win = UIApplication.shared.windows.first(where: \.isKeyWindow),
+       let root = win.rootViewController
+    {
+      return findTabBarController(in: root)
+    }
+    return nil
+  }
+
+  @objc static public func hideFloatingTabBar(animated: Bool = false) {
+    guard UIDevice.current.userInterfaceIdiom == .pad,
+          let tbc = root()
+    else { return }
+
+    let sel = NSSelectorFromString("setTabBarHidden:animated:")
+    if let imp = tbc.method(for: sel) {
+      typealias Fn = @convention(c) (AnyObject, Selector, Bool, Bool) -> Void
+      let fn = unsafeBitCast(imp, to: Fn.self)
+      fn(tbc, sel, true, animated)
+    } else {
+      tbc.tabBar.isHidden = true
+    }
+  }
+
+  @objc static public func showFloatingTabBar(animated: Bool = true) {
+    guard UIDevice.current.userInterfaceIdiom == .pad,
+          let tbc = root()
+    else { return }
+
+    let sel = NSSelectorFromString("setTabBarHidden:animated:")
+    if let imp = tbc.method(for: sel) {
+      typealias Fn = @convention(c) (AnyObject, Selector, Bool, Bool) -> Void
+      let fn = unsafeBitCast(imp, to: Fn.self)
+      fn(tbc, sel, false, animated)
+    } else {
+      tbc.tabBar.isHidden = false
     }
   }
 }

@@ -65,13 +65,13 @@ struct BookDetailView: View {
         }
       }
       .onAppear {
-//        UITabBarController.hideFloatingTabBar()
+        UITabBarController.hideFloatingTabBar()
         headerHeight = viewModel.isFullSize ? 300 : 225
         viewModel.fetchRelatedBooks()
         self.descriptionText = viewModel.book.summary ?? ""
       }
       .onDisappear {
-//        UITabBarController.showFloatingTabBar()
+        UITabBarController.showFloatingTabBar()
         viewModel.showHalfSheet = false
       }
       .fullScreenCover(item: $selectedBook) { book in

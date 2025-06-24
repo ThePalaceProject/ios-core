@@ -139,24 +139,19 @@ shouldSelectViewController:(nonnull UIViewController *)viewController
     [self dismissViewControllerAnimated:YES completion:nil];
   }
 
-//  // Only on iPad + iOS 18+
-//  if (@available(iOS 18.0, *)) {
-//    if (UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad) {
-//      [self setTabBarHidden:YES animated:NO];
-//    }
-//  }
-
+  if (UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad) {
+    [UITabBarController hideFloatingTabBarWithAnimated:YES];
+  }
+  
   [(UINavigationController *)self.selectedViewController
     pushViewController:viewController
               animated:animated];
 }
 
 - (UIViewController *)popViewControllerAnimated:(BOOL)animated {
-//  if (@available(iOS 18.0, *)) {
-//    if (UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad) {
-//      [self setTabBarHidden:NO animated:NO];
-//    }
-//  }
+  if (UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad) {
+    [UITabBarController showFloatingTabBarWithAnimated:YES];
+  }
 
   UINavigationController *nav = (UINavigationController *)self.selectedViewController;
   return [nav popViewControllerAnimated:animated];
