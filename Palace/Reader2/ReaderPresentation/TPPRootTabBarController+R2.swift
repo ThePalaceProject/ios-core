@@ -80,18 +80,6 @@ import Foundation
   }
 }
 
-
-//extension UITabBarController {
-//  func setFloatingTabBarHidden(_ hidden: Bool, animated: Bool) {
-//    let sel = NSSelectorFromString("setTabBarHidden:animated:")
-//    if responds(to: sel) {
-//      _ = (self as AnyObject).perform(sel, with: hidden, with: animated)
-//    } else {
-//      tabBar.isHidden = hidden
-//    }
-//  }
-//}
-//
 //import UIKit
 
 extension UITabBarController {
@@ -122,33 +110,48 @@ extension UITabBarController {
     return nil
   }
 
-  @objc static public func hideFloatingTabBar(animated: Bool = false) {
+  @objc static func hideFloatingTabBar(animated: Bool = false) {
     guard UIDevice.current.userInterfaceIdiom == .pad,
           let tbc = root()
     else { return }
-
+    
     let sel = NSSelectorFromString("setTabBarHidden:animated:")
-    if let imp = tbc.method(for: sel) {
-      typealias Fn = @convention(c) (AnyObject, Selector, Bool, Bool) -> Void
-      let fn = unsafeBitCast(imp, to: Fn.self)
-      fn(tbc, sel, true, animated)
-    } else {
-      tbc.tabBar.isHidden = true
+    DispatchQueue.main.async {
+      if tbc.responds(to: sel) {
+        let imp = tbc.method(for: sel)!
+        typealias Fn = @convention(c) (AnyObject, Selector, Bool, Bool) -> Void
+        let fn = unsafeBitCast(imp, to: Fn.self)
+        fn(tbc, sel, true, animated)
+      } else {
+        let duration = animated ? 0.25 : 0
+        UIView.animate(withDuration: duration) {
+          tbc.tabBar.alpha = 0
+        } completion: { _ in
+          tbc.tabBar.isHidden = true
+        }
+      }
     }
   }
-
-  @objc static public func showFloatingTabBar(animated: Bool = true) {
+  
+  @objc static func showFloatingTabBar(animated: Bool = true) {
     guard UIDevice.current.userInterfaceIdiom == .pad,
           let tbc = root()
     else { return }
-
+    
     let sel = NSSelectorFromString("setTabBarHidden:animated:")
-    if let imp = tbc.method(for: sel) {
-      typealias Fn = @convention(c) (AnyObject, Selector, Bool, Bool) -> Void
-      let fn = unsafeBitCast(imp, to: Fn.self)
-      fn(tbc, sel, false, animated)
-    } else {
-      tbc.tabBar.isHidden = false
+    DispatchQueue.main.async {
+      if tbc.responds(to: sel) {
+        let imp = tbc.method(for: sel)!
+        typealias Fn = @convention(c) (AnyObject, Selector, Bool, Bool) -> Void
+        let fn = unsafeBitCast(imp, to: Fn.self)
+        fn(tbc, sel, false, animated)
+      } else {
+        tbc.tabBar.isHidden = false
+        let duration = animated ? 0.25 : 0
+        UIView.animate(withDuration: duration) {
+          tbc.tabBar.alpha = 1
+        }
+      }
     }
   }
 }
