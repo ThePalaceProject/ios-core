@@ -27,12 +27,17 @@ final class GeneralCache<Key: Hashable & Codable, Value: Codable> {
     private let queue = DispatchQueue(label: "GeneralCacheQueue", attributes: .concurrent)
     private let mode: CachingMode
 
-    struct Entry: Codable {
+    final class Entry: Codable {
         let value: Value
         let expiration: Date?
+
+        init(value: Value, expiration: Date?) {
+            self.value = value
+            self.expiration = expiration
+        }
     }
 
-    private class WrappedKey: NSObject {
+    class WrappedKey: NSObject {
         let key: Key
         init(_ key: Key) { self.key = key }
         override var hash: Int { key.hashValue }

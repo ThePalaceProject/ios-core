@@ -7,7 +7,7 @@ private struct TestValue: Codable, Equatable {
 }
 
 final class GeneralCacheTests: XCTestCase {
-    var cache: GeneralCache<String, TestValue>!
+    fileprivate var cache: GeneralCache<String, TestValue>!
 
     override func setUp() {
         super.setUp()
