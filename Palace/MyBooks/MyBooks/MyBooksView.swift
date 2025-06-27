@@ -21,6 +21,7 @@ struct MyBooksView: View {
       }
       .onAppear {
         model.showSearchSheet = false
+        UITabBarController.showFloatingTabBar()
       }
       .sheet(isPresented: $model.showLibraryAccountView) {
         UIViewControllerWrapper(
