@@ -234,7 +234,7 @@ let currentAccountIdentifierKey = "TPPCurrentAccountIdentifier"
     do {
       let feed = try OPDS2CatalogsFeed.fromData(data)
       let hadAccount = self.currentAccount != nil
-      let newAccounts = feed.catalogs.map { Account(publication: $0) }
+      let newAccounts = feed.catalogs.map { Account(publication: $0, imageCache: ImageCache.shared) }
 
       // write under-barrier
       self.performWrite {

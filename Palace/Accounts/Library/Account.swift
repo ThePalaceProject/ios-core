@@ -1,4 +1,3 @@
-
 private let userAboveAgeKey              = "TPPSettingsUserAboveAgeKey"
 private let accountSyncEnabledKey        = "TPPAccountSyncEnabledKey"
 
@@ -399,19 +398,18 @@ protocol AccountLogoDelegate: AnyObject {
   }
   var logoUrl: URL? = nil
 
+  // Injected image cache
+  let imageCache: ImageCacheType
 
   var loansUrl: URL? {
     return details?.loansUrl
   }
 
-  init(publication: OPDS2Publication) {
-
+  init(publication: OPDS2Publication, imageCache: ImageCacheType) {
     name = publication.metadata.title
     subtitle = publication.metadata.description
     uuid = publication.metadata.id
-
     catalogUrl = publication.links.first(where: { $0.rel == "http://opds-spec.org/catalog" })?.href
-
     if let link = publication.links.first(where: { $0.rel == "help" })?.href {
       if let emailAddress = EmailAddress(rawValue: link) {
         supportEmail = emailAddress
@@ -419,13 +417,11 @@ protocol AccountLogoDelegate: AnyObject {
         supportURL = URL(string: link)
       }
     }
-
     authenticationDocumentUrl = publication.links.first(where: { $0.type == "application/vnd.opds.authentication.v1.0+json" })?.href
     logo = UIImage(named: "LibraryLogoMagic")!
-
     homePageUrl = publication.links.first(where: { $0.rel == "alternate" })?.href
     logoUrl = publication.thumbnailURL
-
+    self.imageCache = imageCache
     super.init()
   }
 
@@ -524,11 +520,10 @@ protocol AccountLogoDelegate: AnyObject {
   }
 
   private func fetchImage(from url: URL, completion: @escaping (UIImage?) -> ()) {
-    if let cachedImage = ImageCache.shared.loadImage(forAccount: self.uuid) {
+    if let cachedImage = imageCache.get(for: self.uuid) {
       completion(cachedImage)
       return
     }
-
     TPPNetworkExecutor.shared.GET(url, useTokenIfAvailable: false) { result in
       DispatchQueue.main.async {
         switch result {
@@ -537,7 +532,7 @@ protocol AccountLogoDelegate: AnyObject {
             completion(nil)
             return
           }
-          ImageCache.shared.save(image: image, forAccount: self.uuid)
+          self.imageCache.set(image, for: self.uuid)
           completion(image)
         case .failure(let error, _):
           TPPErrorLogger.logError(

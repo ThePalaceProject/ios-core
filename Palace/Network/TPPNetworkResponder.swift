@@ -97,11 +97,11 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
   func urlSession(_ session: URLSession,
                   dataTask: URLSessionDataTask,
                   didReceive data: Data) {
-    taskInfoQueue.async {
-       var info = self.taskInfo[dataTask.taskIdentifier]
+    taskInfoQueue.async { [ weak self] in
+       var info = self?.taskInfo[dataTask.taskIdentifier]
        info?.progressData.append(data)
        if let updated = info {
-         self.taskInfo[dataTask.taskIdentifier] = updated
+         self?.taskInfo[dataTask.taskIdentifier] = updated
        }
      }
   }
