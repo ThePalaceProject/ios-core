@@ -398,7 +398,6 @@ protocol AccountLogoDelegate: AnyObject {
   }
   var logoUrl: URL? = nil
 
-  // Injected image cache
   let imageCache: ImageCacheType
 
   var loansUrl: URL? {

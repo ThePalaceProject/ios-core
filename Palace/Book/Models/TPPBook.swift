@@ -64,7 +64,7 @@ public class TPPBook: NSObject, ObservableObject {
   @objc var reportURL: URL?
   @objc var timeTrackingURL: URL?
   @objc var contributors: [String: Any]?
-  @objc var bookTokenLock = NSRecursiveLock()
+  @objc var bookTokenQueue: DispatchQueue
   @objc var bookDuration: String?
   
   @Published var coverImage: UIImage?
@@ -139,7 +139,7 @@ public class TPPBook: NSObject, ObservableObject {
     self.reportURL = reportURL
     self.timeTrackingURL = timeTrackingURL
     self.contributors = contributors
-    self.bookTokenLock = NSRecursiveLock()
+    self.bookTokenQueue = DispatchQueue(label: "TPPBook.bookTokenQueue.\(identifier)")
     self.bookDuration = bookDuration
     self.imageCache = imageCache
     

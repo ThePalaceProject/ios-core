@@ -17,23 +17,19 @@ class TPPKeychainVariable<VariableType>: Keyable {
     didSet {
       guard key != oldValue else { return }
 
-      // invalidate current cache if key changed
       alreadyInited = false
     }
   }
 
   fileprivate let transaction: TPPKeychainVariableTransaction
 
-  // marks whether or not was the `cachedValue` initialized
   fileprivate var alreadyInited = false
 
-  // stores the last variable that was written to the keychain, or read from it
-  // The stored value will also be invalidated once the key changes
   fileprivate var cachedValue: VariableType?
 
-  init(key: String, accountInfoLock: NSRecursiveLock) {
+  init(key: String, accountInfoQueue: DispatchQueue) {
     self.key = key
-    self.transaction = TPPKeychainVariableTransaction(accountInfoLock: accountInfoLock)
+    self.transaction = TPPKeychainVariableTransaction(accountInfoQueue: accountInfoQueue)
   }
 
   func read() -> VariableType? {
@@ -54,19 +50,14 @@ class TPPKeychainVariable<VariableType>: Keyable {
 
   func write(_ newValue: VariableType?) {
     transaction.perform {
-      // set new value to cache
       cachedValue = newValue
 
-      // set a flag indicating that current cache is good to use
       alreadyInited = true
 
-      // write new data to keychain in background
       DispatchQueue.global(qos: .userInitiated).async { [key] in
         if let newValue = newValue {
-          // if there is a new value, set it
           TPPKeychain.shared()?.setObject(newValue, forKey: key)
         } else {
-          // otherwise remove old value from keychain
           TPPKeychain.shared()?.removeObject(forKey: key)
         }
       }
@@ -106,18 +97,21 @@ class TPPKeychainCodableVariable<VariableType: Codable>: TPPKeychainVariable<Var
 }
 
 class TPPKeychainVariableTransaction {
-  fileprivate let accountInfoLock: NSRecursiveLock
+  fileprivate let accountInfoQueue: DispatchQueue
+  private let queueKey = DispatchSpecificKey<Void>()
 
-  init(accountInfoLock: NSRecursiveLock) {
-    self.accountInfoLock = accountInfoLock
+  init(accountInfoQueue: DispatchQueue) {
+    self.accountInfoQueue = accountInfoQueue
+    self.accountInfoQueue.setSpecific(key: queueKey, value: ())
   }
 
   func perform(tasks: () -> Void) {
-    accountInfoLock.lock()
-    defer {
-      accountInfoLock.unlock()
+    if DispatchQueue.getSpecific(key: queueKey) != nil {
+      tasks()
+    } else {
+      accountInfoQueue.sync {
+        tasks()
+      }
     }
-
-    tasks()
   }
 }

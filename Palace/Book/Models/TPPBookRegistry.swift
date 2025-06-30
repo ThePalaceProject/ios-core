@@ -391,18 +391,16 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     }
 
     func removeBook(forIdentifier bookIdentifier: String) {
-      let removedBook = registry[bookIdentifier]?.book
-
       syncQueue.async {
+        let removedBook = self.registry[bookIdentifier]?.book
         self.registry.removeValue(forKey: bookIdentifier)
         self.save()
         DispatchQueue.main.async {
           self.registrySubject.send(self.registry)
+          if let book = removedBook {
+            TPPBookCoverRegistryBridge.shared.thumbnailImageForBook(book) { _ in }
+          }
         }
-      }
-
-      if let book = removedBook {
-        TPPBookCoverRegistryBridge.shared.thumbnailImageForBook(book) { _ in }
       }
     }
   
