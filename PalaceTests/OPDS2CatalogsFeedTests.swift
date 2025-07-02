@@ -75,10 +75,10 @@ class OPDS2CatalogsFeedTests: XCTestCase {
       let data = try Data(contentsOf: testFeedUrl)
       let feed = try OPDS2CatalogsFeed.fromData(data)
       
-      let gpl = Account(publication: feed.catalogs.first(where: { $0.metadata.title == "Glendora Public Library" })!)
-      let acl = Account(publication: feed.catalogs.first(where: { $0.metadata.title == "Alameda County Library" })!)
-      let dpl = Account(publication: feed.catalogs.first(where: { $0.metadata.title == "Digital Public Library of America" })!)
-      let nypl = Account(publication: feed.catalogs.first(where: { $0.metadata.title == "The New York Public Library" })!)
+      let gpl = Account(publication: feed.catalogs.first(where: { $0.metadata.title == "Glendora Public Library" })!, imageCache: MockImageCache())
+      let acl = Account(publication: feed.catalogs.first(where: { $0.metadata.title == "Alameda County Library" })!, imageCache: MockImageCache())
+      let dpl = Account(publication: feed.catalogs.first(where: { $0.metadata.title == "Digital Public Library of America" })!, imageCache: MockImageCache())
+      let nypl = Account(publication: feed.catalogs.first(where: { $0.metadata.title == "The New York Public Library" })!, imageCache: MockImageCache())
       
       XCTAssertEqual(gpl.name, "Glendora Public Library")
       XCTAssertEqual(gpl.subtitle, "Connecting people to the world of ideas, information, and imagination")
@@ -122,10 +122,10 @@ class OPDS2CatalogsFeedTests: XCTestCase {
       let data = try Data(contentsOf: testFeedUrl)
       let feed = try OPDS2CatalogsFeed.fromData(data)
       
-      let gpl = Account(publication: feed.catalogs.first(where: { $0.metadata.title == "Glendora Public Library" })!)
-      let acl = Account(publication: feed.catalogs.first(where: { $0.metadata.title == "Alameda County Library" })!)
-      let dpl = Account(publication: feed.catalogs.first(where: { $0.metadata.title == "Digital Public Library of America" })!)
-      let nypl = Account(publication: feed.catalogs.first(where: { $0.metadata.title == "The New York Public Library" })!)
+      let gpl = Account(publication: feed.catalogs.first(where: { $0.metadata.title == "Glendora Public Library" })!, imageCache: MockImageCache())
+      let acl = Account(publication: feed.catalogs.first(where: { $0.metadata.title == "Alameda County Library" })!, imageCache: MockImageCache())
+      let dpl = Account(publication: feed.catalogs.first(where: { $0.metadata.title == "Digital Public Library of America" })!, imageCache: MockImageCache())
+      let nypl = Account(publication: feed.catalogs.first(where: { $0.metadata.title == "The New York Public Library" })!, imageCache: MockImageCache())
       
       gpl.authenticationDocument = try OPDS2AuthenticationDocument.fromData(try Data(contentsOf: gplAuthUrl))
       acl.authenticationDocument = try OPDS2AuthenticationDocument.fromData(try Data(contentsOf: aclAuthUrl))
