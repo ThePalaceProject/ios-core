@@ -54,7 +54,9 @@ public final class ImageCache: ImageCacheType {
         if let img = memoryImages.object(forKey: key as NSString) {
             return img
         }
+      
         guard let data = dataCache.get(for: key) else { return nil }
+      
         guard let img = UIImage(data: data) else {
             remove(for: key)
             return nil

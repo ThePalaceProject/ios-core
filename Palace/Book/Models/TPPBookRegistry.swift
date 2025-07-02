@@ -525,6 +525,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
         handler(nil)
         return
       }
+      
       TPPBookCoverRegistryBridge
         .shared
         .thumbnailImageForBook(book, completion: handler)

@@ -378,10 +378,10 @@ protocol AccountLogoDelegate: AnyObject {
   let uuid:String
   let name:String
   let subtitle:String?
-  var supportEmail:EmailAddress? = nil
+  var supportEmail: EmailAddress? = nil
   var supportURL:URL? = nil
   let catalogUrl:String?
-  var details:AccountDetails?
+  var details: AccountDetails?
   var homePageUrl: String?
   lazy var hasSupportOption = { supportEmail != nil || supportURL != nil }()
   weak var logoDelegate: AccountLogoDelegate?

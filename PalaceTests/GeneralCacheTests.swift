@@ -30,15 +30,14 @@ final class GeneralCacheTests: XCTestCase {
     func testSetAndGetFromDisk() {
         let value = TestValue(text: "disk", number: 99)
         cache.set(value, for: "key2")
-        // Remove from memory to force disk load
-        cache.memoryCache.removeAllObjects()
+        cache.clearMemory()
         let result = cache.get(for: "key2")
         XCTAssertEqual(result, value)
     }
 
     func testExpiration() {
         let value = TestValue(text: "expire", number: 1)
-        cache.set(value, for: "key3", expiresIn: 1) // 1 second
+        cache.set(value, for: "key3", expiresIn: 1)
         XCTAssertEqual(cache.get(for: "key3"), value)
         sleep(2)
         XCTAssertNil(cache.get(for: "key3"))
@@ -65,8 +64,7 @@ final class GeneralCacheTests: XCTestCase {
         let value = TestValue(text: "mem", number: 1)
         cache.set(value, for: "k")
         XCTAssertEqual(cache.get(for: "k"), value)
-        // Remove from memory, should not be able to get from disk
-        cache.memoryCache.removeAllObjects()
+        cache.clearMemory()
         XCTAssertNil(cache.get(for: "k"))
     }
 
@@ -75,7 +73,6 @@ final class GeneralCacheTests: XCTestCase {
         let value = TestValue(text: "disk", number: 2)
         cache.set(value, for: "k")
         XCTAssertEqual(cache.get(for: "k"), value)
-        // Remove file and check
         cache.remove(for: "k")
         XCTAssertNil(cache.get(for: "k"))
     }
@@ -85,8 +82,8 @@ final class GeneralCacheTests: XCTestCase {
         let value = TestValue(text: "both", number: 3)
         cache.set(value, for: "k")
         XCTAssertEqual(cache.get(for: "k"), value)
-        cache.memoryCache.removeAllObjects()
-        XCTAssertEqual(cache.get(for: "k"), value) // Should load from disk
+        cache.clearMemory()
+        XCTAssertEqual(cache.get(for: "k"), value)
     }
 
     func testNoneMode() {
@@ -104,12 +101,10 @@ final class GeneralCacheTests: XCTestCase {
             fetchCount += 1
             return TestValue(text: "fetched", number: 1)
         }
-        // First call: should fetch
-        let v1 = try await cache.get(for: "k", policy: .cacheFirst, fetcher: fetcher)
+        let v1 = try await cache.get("k", policy: .cacheFirst, fetcher: fetcher)
         XCTAssertEqual(v1, TestValue(text: "fetched", number: 1))
         XCTAssertEqual(fetchCount, 1)
-        // Second call: should use cache
-        let v2 = try await cache.get(for: "k", policy: .cacheFirst, fetcher: fetcher)
+        let v2 = try await cache.get("k", policy: .cacheFirst, fetcher: fetcher)
         XCTAssertEqual(v2, v1)
         XCTAssertEqual(fetchCount, 1)
     }
@@ -121,9 +116,8 @@ final class GeneralCacheTests: XCTestCase {
             fetchCount += 1
             return TestValue(text: "net", number: fetchCount)
         }
-        // Always fetch
-        let v1 = try await cache.get(for: "k", policy: .networkFirst, fetcher: fetcher)
-        let v2 = try await cache.get(for: "k", policy: .networkFirst, fetcher: fetcher)
+        let v1 = try await cache.get("k", policy: .networkFirst, fetcher: fetcher)
+        let v2 = try await cache.get("k", policy: .networkFirst, fetcher: fetcher)
         XCTAssertEqual(v1.text, "net")
         XCTAssertEqual(v2.text, "net")
         XCTAssertEqual(fetchCount, 2)
@@ -136,19 +130,15 @@ final class GeneralCacheTests: XCTestCase {
             fetchCount += 1
             return TestValue(text: "ctn", number: fetchCount)
         }
-        // First call: fetch
-        let v1 = try await cache.get(for: "k", policy: .cacheThenNetwork, fetcher: fetcher)
+        let v1 = try await cache.get("k", policy: .cacheThenNetwork, fetcher: fetcher)
         XCTAssertEqual(v1, TestValue(text: "ctn", number: 1))
-        // Second call: should return cached, but update in background
-        let v2 = try await cache.get(for: "k", policy: .cacheThenNetwork, fetcher: fetcher)
+        let v2 = try await cache.get("k", policy: .cacheThenNetwork, fetcher: fetcher)
         XCTAssertEqual(v2, v1)
-        // Wait for background update
         let exp = expectation(description: "Background update")
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
             exp.fulfill()
         }
         await fulfillment(of: [exp], timeout: 2)
-        // Now cache should have updated value
         let v3 = cache.get(for: "k")
         XCTAssertEqual(v3, TestValue(text: "ctn", number: 2))
     }
@@ -160,15 +150,12 @@ final class GeneralCacheTests: XCTestCase {
             fetchCount += 1
             return TestValue(text: "timed", number: fetchCount)
         }
-        // First call: fetch and cache for 1 second
-        let v1 = try await cache.get(for: "k", policy: .timedCache(1), fetcher: fetcher)
+        let v1 = try await cache.get("k", policy: .timedCache(1), fetcher: fetcher)
         XCTAssertEqual(v1, TestValue(text: "timed", number: 1))
-        // Second call within 1 second: should use cache
-        let v2 = try await cache.get(for: "k", policy: .timedCache(1), fetcher: fetcher)
+        let v2 = try await cache.get("k", policy: .timedCache(1), fetcher: fetcher)
         XCTAssertEqual(v2, v1)
-        // Wait for expiration
         sleep(2)
-        let v3 = try await cache.get(for: "k", policy: .timedCache(1), fetcher: fetcher)
+        let v3 = try await cache.get("k", policy: .timedCache(1), fetcher: fetcher)
         XCTAssertEqual(v3, TestValue(text: "timed", number: 2))
     }
 
@@ -179,9 +166,9 @@ final class GeneralCacheTests: XCTestCase {
             fetchCount += 1
             return TestValue(text: "no", number: fetchCount)
         }
-        let v1 = try await cache.get(for: "k", policy: .noCache, fetcher: fetcher)
-        let v2 = try await cache.get(for: "k", policy: .noCache, fetcher: fetcher)
+        let v1 = try await cache.get("k", policy: .noCache, fetcher: fetcher)
+        let v2 = try await cache.get("k", policy: .noCache, fetcher: fetcher)
         XCTAssertEqual(fetchCount, 2)
         XCTAssertNotEqual(v1, v2)
     }
-} 
+}
