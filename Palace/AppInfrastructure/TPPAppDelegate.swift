@@ -20,6 +20,8 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
     TPPErrorLogger.configureCrashAnalytics()
     TPPErrorLogger.logNewAppLaunch()
+    
+    GeneralCache<String, Data>.clearCacheOnUpdate()
 
     setupWindow()
     configureUIAppearance()
