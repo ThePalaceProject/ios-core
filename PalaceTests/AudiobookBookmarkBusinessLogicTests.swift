@@ -65,8 +65,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
       reportURL: emptyUrl,
       timeTrackingURL: emptyUrl,
       contributors: [:],
-      bookDuration: nil,
-      imageCache: MockImageCache()
+      bookDuration: nil
     )
     
   }

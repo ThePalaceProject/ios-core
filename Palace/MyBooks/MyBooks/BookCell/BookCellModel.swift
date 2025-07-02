@@ -53,7 +53,7 @@ class BookCellModel: ObservableObject {
   @Published private var currentBookIdentifier: String?
   
   private var cancellables = Set<AnyCancellable>()
-  let imageCache: ImageCacheType
+  private static var imageCache = NSCache<NSString, UIImage>()
   private var isFetchingImage = false
   
   var statePublisher = PassthroughSubject<Bool, Never>()
@@ -97,12 +97,11 @@ class BookCellModel: ObservableObject {
   
   // MARK: - Initializer
   
-  init(book: TPPBook, imageCache: ImageCacheType) {
+  init(book: TPPBook) {
     self.book = book
     self.state = BookCellState(BookButtonState(book) ?? .unsupported)
     self.isLoading = TPPBookRegistry.shared.processing(forIdentifier: book.identifier)
     self.currentBookIdentifier = book.identifier
-    self.imageCache = imageCache
     registerForNotifications()
     loadBookCoverImage()
   }
@@ -114,7 +113,7 @@ class BookCellModel: ObservableObject {
   // MARK: - Image Loading
   
   func loadBookCoverImage() {
-    if let cachedImage = imageCache.get(for: book.identifier) {
+    if let cachedImage = Self.imageCache.object(forKey: book.identifier as NSString) {
       image = cachedImage
     } else if let registryImage = TPPBookRegistry.shared.cachedThumbnailImage(for: book) {
       setImageAndCache(registryImage)
@@ -140,7 +139,7 @@ class BookCellModel: ObservableObject {
   }
   
   private func setImageAndCache(_ image: UIImage) {
-    imageCache.set(image, for: book.identifier)
+    Self.imageCache.setObject(image, forKey: book.identifier as NSString)
     self.image = image
   }
   

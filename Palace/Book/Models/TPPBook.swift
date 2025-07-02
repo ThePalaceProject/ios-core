@@ -64,7 +64,7 @@ public class TPPBook: NSObject, ObservableObject {
   @objc var reportURL: URL?
   @objc var timeTrackingURL: URL?
   @objc var contributors: [String: Any]?
-  @objc var bookTokenQueue: DispatchQueue
+  @objc var bookTokenLock = NSRecursiveLock()
   @objc var bookDuration: String?
   
   @Published var coverImage: UIImage?
@@ -86,8 +86,6 @@ public class TPPBook: NSObject, ObservableObject {
   @objc var hasDuration: Bool {
     !(bookDuration?.isEmpty ?? true)
   }
-
-  let imageCache: ImageCacheType
 
   init(
     acquisitions: [TPPOPDSAcquisition],
@@ -113,8 +111,7 @@ public class TPPBook: NSObject, ObservableObject {
     reportURL: URL?,
     timeTrackingURL: URL?,
     contributors: [String: Any]?,
-    bookDuration: String?,
-    imageCache: ImageCacheType
+    bookDuration: String?
   ) {
     self.acquisitions = acquisitions
     self.bookAuthors = authors
@@ -139,9 +136,8 @@ public class TPPBook: NSObject, ObservableObject {
     self.reportURL = reportURL
     self.timeTrackingURL = timeTrackingURL
     self.contributors = contributors
-    self.bookTokenQueue = DispatchQueue(label: "TPPBook.bookTokenQueue.\(identifier)")
+    self.bookTokenLock = NSRecursiveLock()
     self.bookDuration = bookDuration
-    self.imageCache = imageCache
     
     super.init()
     self.fetchThumbnailImage()
@@ -205,8 +201,7 @@ public class TPPBook: NSObject, ObservableObject {
       reportURL: report,
       timeTrackingURL: entry.timeTrackingLink?.href,
       contributors: entry.contributors,
-      bookDuration: entry.duration,
-      imageCache: ImageCache.shared
+      bookDuration: entry.duration
     )
   }
 
@@ -277,8 +272,7 @@ public class TPPBook: NSObject, ObservableObject {
       reportURL: reportURL,
       timeTrackingURL: URL(string: dictionary[TimeTrackingURLURLKey] as? String ?? ""),
       contributors: nil,
-      bookDuration: nil,
-      imageCache: ImageCache.shared
+      bookDuration: nil
     )
   }
   
@@ -307,8 +301,7 @@ public class TPPBook: NSObject, ObservableObject {
       reportURL: self.reportURL,
       timeTrackingURL: self.timeTrackingURL,
       contributors: book.contributors,
-      bookDuration: book.bookDuration,
-      imageCache: self.imageCache
+      bookDuration: book.bookDuration
     )
   }
   
@@ -512,10 +505,12 @@ extension TPPBook {
 }
 
 extension TPPBook {
+  static let coverCache = NSCache<NSString, UIImage>()
+  private static let thumbnailCache = NSCache<NSString, UIImage>()
   private static let coverRegistry = TPPBookCoverRegistry.shared
   
   func fetchCoverImage() {
-      if let img = imageCache.get(for: identifier) {
+      if let img = TPPBook.coverCache.object(forKey: identifier as NSString) {
         coverImage = img
         return
       }
@@ -529,14 +524,14 @@ extension TPPBook {
 
         self.coverImage = final
         if let img = final {
-          self.imageCache.set(img, for: self.identifier)
+          TPPBook.coverCache.setObject(img, forKey: self.identifier as NSString)
         }
         self.isCoverLoading = false
       }
     }
 
     func fetchThumbnailImage() {
-      if let img = imageCache.get(for: identifier) {
+      if let img = TPPBook.thumbnailCache.object(forKey: identifier as NSString) {
         thumbnailImage = img
         return
       }
@@ -550,14 +545,15 @@ extension TPPBook {
 
         self.thumbnailImage = final
         if let img = final {
-          self.imageCache.set(img, for: self.identifier)
+          TPPBook.thumbnailCache.setObject(img, forKey: self.identifier as NSString)
         }
         self.isThumbnailLoading = false
       }
     }
   
   func clearCachedImages() {
-    imageCache.remove(for: identifier)
+    TPPBook.coverCache.removeObject(forKey: identifier as NSString)
+    TPPBook.thumbnailCache.removeObject(forKey: identifier as NSString)
     DispatchQueue.main.async {
       self.coverImage = nil
       self.thumbnailImage = nil

@@ -146,7 +146,6 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     
     if Section(rawValue: indexPath.section) == .dataManagement {
       AccountsManager.shared.clearCache()
-      ImageCache.shared.clear()
       let alert = TPPAlertUtils.alert(title: "Data Management", message: "Cache Cleared")
       self.present(alert, animated: true, completion: nil)
     } else if Section(rawValue: indexPath.section) == .developerTools {

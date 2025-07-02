@@ -11,7 +11,7 @@ struct BookListView: View {
       LazyVGrid(columns: gridLayout, spacing: 0) {
         ForEach(books, id: \.identifier) { book in
           Button(action: { onSelect(book) }) {
-            BookCell(model: BookCellModel(book: book, imageCache: ImageCache.shared))
+            BookCell(model: BookCellModel(book: book))
               .frame(maxWidth: .infinity, minHeight: 180, maxHeight: 180)
           }
           .buttonStyle(.plain)

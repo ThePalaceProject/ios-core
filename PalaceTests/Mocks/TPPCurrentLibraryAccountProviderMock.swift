@@ -22,7 +22,7 @@ class TPPCurrentLibraryAccountProviderMock: NSObject, TPPCurrentLibraryAccountPr
     let feedData = try! Data(contentsOf: feedURL)
     let feed = try! OPDS2CatalogsFeed.fromData(feedData)
 
-    currentAccount = Account(publication: feed.catalogs.first(where: { $0.metadata.title == "The SimplyE Collection" })!, imageCache: MockImageCache())
+    currentAccount = Account(publication: feed.catalogs.first(where: { $0.metadata.title == "The SimplyE Collection" })!)
     
     super.init()
     
