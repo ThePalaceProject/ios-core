@@ -1,7 +1,6 @@
 import Foundation
-import UIKit
+import CryptoKit
 
-/// Where to store cached data
 public enum CachingMode {
     case memoryOnly
     case diskOnly
@@ -9,7 +8,6 @@ public enum CachingMode {
     case none
 }
 
-/// How to use/update the cache
 public enum CachePolicy {
     case cacheFirst
     case networkFirst
@@ -18,32 +16,31 @@ public enum CachePolicy {
     case noCache
 }
 
-/// A general-purpose cache supporting in-memory and optional disk caching with expiration and cache policies.
+/// A thread-safe general-purpose cache supporting in-memory and optional disk caching with expiration and cache policies.
 /// Key must be Hashable & Codable, Value must be Codable.
 public final class GeneralCache<Key: Hashable & Codable, Value: Codable> {
+    // MARK: - In-memory
     private let memoryCache = NSCache<WrappedKey, Entry>()
+    
+    // MARK: - Disk
     private let fileManager = FileManager.default
     private let cacheDirectory: URL
-    private let queue = DispatchQueue(label: "GeneralCacheQueue", attributes: .concurrent)
+    private let queue = DispatchQueue(label: "com.Palace.GeneralCache", attributes: .concurrent)
     private let mode: CachingMode
-
+    
+    // MARK: - Entry
     private final class Entry: Codable {
         let value: Value
         let expiration: Date?
-
         init(value: Value, expiration: Date?) {
             self.value = value
             self.expiration = expiration
         }
-
         var isExpired: Bool {
-            if let exp = expiration {
-                return exp < Date()
-            }
+            if let exp = expiration { return exp < Date() }
             return false
         }
     }
-
     private final class WrappedKey: NSObject {
         let key: Key
         init(_ key: Key) { self.key = key }
@@ -53,7 +50,7 @@ public final class GeneralCache<Key: Hashable & Codable, Value: Codable> {
             return other.key == key
         }
     }
-
+    
     /// Initializes the cache
     public init(cacheName: String = "GeneralCache", mode: CachingMode = .memoryAndDisk) {
         self.mode = mode
@@ -61,48 +58,78 @@ public final class GeneralCache<Key: Hashable & Codable, Value: Codable> {
         cacheDirectory = cachesDir.appendingPathComponent(cacheName, isDirectory: true)
         try? fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
     }
-
-    /// Store a value with optional expiration
+    
+    /// Store a value with optional expiration (thread-safe)
     public func set(_ value: Value, for key: Key, expiresIn interval: TimeInterval? = nil) {
         let expiration = interval.map { Date().addingTimeInterval($0) }
         let entry = Entry(value: value, expiration: expiration)
-        let wrapped = WrappedKey(key)
-
+        let wrappedKey = WrappedKey(key)
+        
         queue.async(flags: .barrier) {
-            switch self.mode {
-            case .memoryOnly:
-                self.memoryCache.setObject(entry, forKey: wrapped)
-            case .diskOnly:
-                self.save(entry, for: key)
-            case .memoryAndDisk:
-                self.memoryCache.setObject(entry, forKey: wrapped)
-                self.save(entry, for: key)
-            case .none:
-                break
+            // memory
+            if self.mode == .memoryOnly || self.mode == .memoryAndDisk {
+                self.memoryCache.setObject(entry, forKey: wrappedKey)
+            }
+            // disk
+            if self.mode == .diskOnly || self.mode == .memoryAndDisk {
+                self.saveToDisk(entry, for: key)
             }
         }
     }
-
-    /// Retrieve a value if present and not expired
+    
+    /// Retrieve a value if present and not expired (thread-safe-ish)
     public func get(for key: Key) -> Value? {
-        guard let value = loadValue(for: key) else { return nil }
-        return value
+        return queue.sync {
+            // 1) memory
+            let wrappedKey = WrappedKey(key)
+            if self.mode == .memoryOnly || self.mode == .memoryAndDisk,
+               let entry = self.memoryCache.object(forKey: wrappedKey), !entry.isExpired {
+                return entry.value
+            }
+            if self.mode == .memoryOnly { return nil }
+            // 2) disk
+            guard self.mode == .diskOnly || self.mode == .memoryAndDisk else { return nil }
+            let url = self.fileURL(for: key)
+            do {
+                let attrs = try fileManager.attributesOfItem(atPath: url.path)
+                if let exp = attrs[.modificationDate] as? Date, exp < Date() {
+                    self.remove(for: key)
+                    return nil
+                }
+                let raw = try Data(contentsOf: url, options: .mappedIfSafe)
+                let value: Value
+                if Value.self == Data.self, let d = raw as? Value {
+                    value = d
+                } else {
+                    let entry = try JSONDecoder().decode(Entry.self, from: raw)
+                    guard !entry.isExpired else { self.remove(for: key); return nil }
+                    value = entry.value
+                }
+                // re-prime memory
+                if self.mode == .memoryAndDisk {
+                    let entry = Entry(value: value, expiration: attrs[.modificationDate] as? Date)
+                    self.memoryCache.setObject(entry, forKey: wrappedKey)
+                }
+                return value
+            } catch {
+                return nil
+            }
+        }
     }
-
-    /// Remove a value from cache
+    
     public func remove(for key: Key) {
-        let wrapped = WrappedKey(key)
+        let wrappedKey = WrappedKey(key)
         queue.async(flags: .barrier) {
             if self.mode == .memoryOnly || self.mode == .memoryAndDisk {
-                self.memoryCache.removeObject(forKey: wrapped)
+                self.memoryCache.removeObject(forKey: wrappedKey)
             }
             if self.mode == .diskOnly || self.mode == .memoryAndDisk {
                 try? self.fileManager.removeItem(at: self.fileURL(for: key))
             }
         }
     }
-
-    /// Clear entire cache (memory + disk)
+    
+    /// Clear whole cache (thread-safe)
     public func clear() {
         queue.async(flags: .barrier) {
             if self.mode == .memoryOnly || self.mode == .memoryAndDisk {
@@ -114,118 +141,43 @@ public final class GeneralCache<Key: Hashable & Codable, Value: Codable> {
             }
         }
     }
-
-    /// Clear only the in-memory cache
+    
+    /// Clear only in-memory (thread-safe)
     public func clearMemory() {
         queue.async(flags: .barrier) {
             self.memoryCache.removeAllObjects()
         }
     }
-
-    // MARK: - Policy-based API
-    @discardableResult
-    public func get(
-        _ key: Key,
-        policy: CachePolicy,
-        fetcher: @escaping () async throws -> Value
-    ) async throws -> Value {
-        switch policy {
-        case .cacheFirst:
-            if let cached = get(for: key) { return cached }
-            fallthrough
-        case .networkFirst:
-            let value = try await fetcher()
-            set(value, for: key)
-            return value
-        case .cacheThenNetwork:
-            if let cached = get(for: key) {
-                Task.detached {
-                    if let fresh = try? await fetcher() {
-                        self.set(fresh, for: key)
-                    }
-                }
-                return cached
-            } else {
-                let value = try await fetcher()
-                set(value, for: key)
-                return value
-            }
-        case .timedCache(let interval):
-            if let entryValue = loadValue(for: key) {
-                return entryValue
-            }
-            let fresh = try await fetcher()
-            set(fresh, for: key, expiresIn: interval)
-            return fresh
-        case .noCache:
-            return try await fetcher()
-        }
-    }
-
-    // MARK: - Private Helpers
-
-    private func loadValue(for key: Key) -> Value? {
-        let wrapped = WrappedKey(key)
-        // in-memory
-        if mode == .memoryOnly || mode == .memoryAndDisk {
-            if let entry = memoryCache.object(forKey: wrapped), !entry.isExpired {
-                return entry.value
-            }
-            if mode == .memoryAndDisk {
-                memoryCache.removeObject(forKey: wrapped)
-            }
-        }
-        // disk
-        if mode == .diskOnly || mode == .memoryAndDisk {
-            let url = fileURL(for: key)
-            // check expiration via file attribute
-            if let attrs = try? fileManager.attributesOfItem(atPath: url.path),
-               let exp = attrs[.modificationDate] as? Date,
-               exp < Date() {
-                remove(for: key)
-                return nil
-            }
-            // read raw data
-            guard let raw = try? Data(contentsOf: url) else { return nil }
-            // decode
-            let value: Value
-            if Value.self == Data.self {
-                // direct Data
-                value = raw as! Value
-            } else if let entry = try? JSONDecoder().decode(Entry.self, from: raw), !entry.isExpired {
-                value = entry.value
-                // prime memory
-                if mode == .memoryAndDisk {
-                    queue.async(flags: .barrier) {
-                        self.memoryCache.setObject(entry, forKey: wrapped)
-                    }
-                }
-            } else {
-                remove(for: key)
-                return nil
-            }
-            return value
-        }
-        return nil
-    }
-
-    private func save(_ entry: Entry, for key: Key) {
+    
+    // MARK: - Private I/O
+    private func saveToDisk(_ entry: Entry, for key: Key) {
         let url = fileURL(for: key)
-        if Value.self == Data.self, let raw = entry.value as? Data {
-            try? raw.write(to: url)
-        } else if let data = try? JSONEncoder().encode(entry) {
-            try? data.write(to: url)
-        }
-        // set expiration as file modification date
-        if let exp = entry.expiration {
-            try? fileManager.setAttributes([.modificationDate: exp], ofItemAtPath: url.path)
+        do {
+            let raw: Data
+            if Value.self == Data.self, let d = entry.value as? Data {
+                raw = d
+            } else {
+                raw = try JSONEncoder().encode(entry)
+            }
+            try raw.write(to: url, options: .atomic)
+            if let exp = entry.expiration {
+                try fileManager.setAttributes([.modificationDate: exp], ofItemAtPath: url.path)
+            }
+        } catch {
+          ATLog(.error, "Failed to save cache item to disk")
         }
     }
-
-    func fileURL(for key: Key) -> URL {
-        guard let data = try? JSONEncoder().encode(key) else {
-            return cacheDirectory.appendingPathComponent(String(describing: key))
+    
+    /// Sanitize and hash key for filename safety
+    public func fileURL(for key: Key) -> URL {
+        let name: String
+        if let str = key as? String {
+            name = str.replacingOccurrences(of: "[^a-zA-Z0-9_-]", with: "", options: .regularExpression)
+        } else {
+            let data = try? JSONEncoder().encode(key)
+            let hash = data.map { SHA256.hash(data: $0).compactMap { String(format: "%02x", $0) }.joined() } ?? String(describing: key)
+            name = hash
         }
-        return cacheDirectory.appendingPathComponent(data.base64EncodedString())
+        return cacheDirectory.appendingPathComponent(name)
     }
 }
