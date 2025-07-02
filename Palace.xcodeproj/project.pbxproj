@@ -710,6 +710,7 @@
 		E5B8E95F2E0EF93B002E0F3D /* GeneralCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5B8E95D2E0EF93B002E0F3D /* GeneralCache.swift */; };
 		E5B8E9822E0F0492002E0F3D /* ImageCacheType.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5B8E9812E0F0492002E0F3D /* ImageCacheType.swift */; };
 		E5B8E9832E0F0492002E0F3D /* ImageCacheType.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5B8E9812E0F0492002E0F3D /* ImageCacheType.swift */; };
+		E5B8E9A62E14DE8B002E0F3D /* MockImageCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5B8E9A52E14DE8B002E0F3D /* MockImageCache.swift */; };
 		E5BDA0252A2A7D0300C133CB /* RegistrationCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5BDA0242A2A7D0300C133CB /* RegistrationCell.swift */; };
 		E5BDA0262A2A7DC100C133CB /* RegistrationCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5BDA0242A2A7D0300C133CB /* RegistrationCell.swift */; };
 		E5BEF00226BD919F00C2A50B /* OpenSans-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E5BEEFF526BD919D00C2A50B /* OpenSans-Bold.ttf */; };
@@ -1607,6 +1608,7 @@
 		E5B8E95B2E0EF8E1002E0F3D /* GeneralCacheTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneralCacheTests.swift; sourceTree = "<group>"; };
 		E5B8E95D2E0EF93B002E0F3D /* GeneralCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneralCache.swift; sourceTree = "<group>"; };
 		E5B8E9812E0F0492002E0F3D /* ImageCacheType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageCacheType.swift; sourceTree = "<group>"; };
+		E5B8E9A52E14DE8B002E0F3D /* MockImageCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockImageCache.swift; sourceTree = "<group>"; };
 		E5BDA0242A2A7D0300C133CB /* RegistrationCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RegistrationCell.swift; sourceTree = "<group>"; };
 		E5BEEFF526BD919D00C2A50B /* OpenSans-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "OpenSans-Bold.ttf"; sourceTree = "<group>"; };
 		E5BEEFF826BD919E00C2A50B /* OpenSans-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "OpenSans-Regular.ttf"; sourceTree = "<group>"; };
@@ -2170,6 +2172,7 @@
 				17BE24E625FABCDE00AE707F /* TPPUserAccountProviderMock.swift */,
 				17BE24EC25FB09F000AE707F /* TPPCurrentLibraryAccountProviderMock.swift */,
 				E56724C02A132C1300972828 /* TPPAnnotationMock.swift */,
+				E5B8E9A52E14DE8B002E0F3D /* MockImageCache.swift */,
 			);
 			path = Mocks;
 			sourceTree = "<group>";
@@ -3737,6 +3740,7 @@
 				E75ED6D32977223A006BBD5F /* TPPKeychainTests.m in Sources */,
 				735DD0C225229DAC0096D1F9 /* TPPCatalogFacetTests.m in Sources */,
 				7384C800242BB43400D5F960 /* TPPCachingTests.swift in Sources */,
+				E5B8E9A62E14DE8B002E0F3D /* MockImageCache.swift in Sources */,
 				5D3A28D522D400D00042B3BD /* UserProfileDocumentTests.swift in Sources */,
 				7307A5ED23FF1A8500DE53DE /* TPPOpenSearchDescriptionTests.swift in Sources */,
 				735771A8253763E800067CEA /* TPPBookRegistryMock.swift in Sources */,
@@ -4742,7 +4746,7 @@
 				CODE_SIGN_IDENTITY = "Apple Distribution";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 354;
+				CURRENT_PROJECT_VERSION = 355;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -4801,7 +4805,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 354;
+				CURRENT_PROJECT_VERSION = 355;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
