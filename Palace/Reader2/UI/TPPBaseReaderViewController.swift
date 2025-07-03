@@ -238,8 +238,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   }
 
   func updateNavigationBar(animated: Bool = true) {
-    let hidden = navigationBarHidden && !UIAccessibility.isVoiceOverRunning
-    navigationController?.setNavigationBarHidden(hidden, animated: animated)
+    navigationController?.setNavigationBarHidden(navigationBarHidden, animated: animated)
     setNeedsStatusBarAppearanceUpdate()
   }
 
@@ -248,7 +247,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   }
 
   override var prefersStatusBarHidden: Bool {
-    return navigationBarHidden && !UIAccessibility.isVoiceOverRunning
+    return navigationBarHidden
   }
 
   //----------------------------------------------------------------------------
