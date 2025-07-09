@@ -1,9 +1,9 @@
-
 import SwiftUI
 import UIKit
 
 struct BookDetailView: View {
   @Environment(\.presentationMode) var presentationMode
+  @Environment(\.colorScheme) private var colorScheme
 
   typealias DisplayStrings = Strings.BookDetailView
   @State private var selectedBook: TPPBook?
@@ -121,6 +121,8 @@ struct BookDetailView: View {
       .foregroundColor(headerBackgroundColor.isDark ? .white : .black)
       .opacity(0.8)
     }
+    .accessibilityLabel("Back")
+    .accessibilityHint("Go back to the previous screen")
     .frame(maxWidth: .infinity, alignment: .leading)
     .frame(height: 50)
     .padding(.top, dynamicTopPadding())
@@ -223,7 +225,7 @@ struct BookDetailView: View {
       
       BookButtonsView(
         provider: viewModel,
-        backgroundColor: viewModel.isFullSize ? headerBackgroundColor : Color(.systemBackground)
+        backgroundColor: viewModel.isFullSize ? headerBackgroundColor : (colorScheme == .dark ? .black : .white)
       ) { type in
         handleButtonAction(type)
       }
