@@ -229,14 +229,19 @@ public final class GeneralCache<Key: Hashable & Codable, Value: Codable> {
   }
   
   public static func clearCacheOnUpdate() {
-    let cacheVersionKey = "AppCacheVersion"
-    let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
+    let cacheVersionKey = "AppCacheVersionBuild"
+
+    let info = Bundle.main.infoDictionary
+    let version = info?["CFBundleShortVersionString"] as? String ?? "0"
+    let build   = info?["CFBundleVersion"] as? String ?? "0"
+
+    let versionBuild = "\(version) (\(build))"
+
     let defaults = UserDefaults.standard
-    let previousVersion = defaults.string(forKey: cacheVersionKey)
-    if previousVersion != appVersion {
+    let previous = defaults.string(forKey: cacheVersionKey)
+
+    if previous != versionBuild {
       Self.clearAllCaches()
-      defaults.set(appVersion, forKey: cacheVersionKey)
-      defaults.synchronize()
+      defaults.set(versionBuild, forKey: cacheVersionKey)
     }
-  }
-}
+  }}
