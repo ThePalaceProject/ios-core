@@ -22,7 +22,8 @@ struct BookDetailView: View {
   @State private var imageBottomPosition: CGFloat = 400
   
   private let scaleAnimation = Animation.linear(duration: 0.35)
-  @MainActor private var headerBackgroundColor: Color { Color(viewModel.book.dominantUIColor) }
+
+  @State private var headerColor: Color = .white
 
   private let maxHeaderHeight: CGFloat = 225
   private let minHeaderHeight: CGFloat = 80
@@ -58,6 +59,7 @@ struct BookDetailView: View {
         }
         .edgesIgnoringSafeArea(.all)
         .onChange(of: viewModel.book) { newValue in
+          headerColor = Color(viewModel.book.dominantUIColor)
           resetSampleToolbar()
           self.descriptionText = newValue.summary ?? ""
           proxy.scrollTo(0, anchor: .top)
@@ -65,6 +67,8 @@ struct BookDetailView: View {
         }
       }
       .onAppear {
+        headerColor = Color(viewModel.book.dominantUIColor)
+
         UITabBarController.hideFloatingTabBar()
         headerHeight = viewModel.isFullSize ? 300 : 225
         viewModel.fetchRelatedBooks()
@@ -77,7 +81,7 @@ struct BookDetailView: View {
         BookDetailView(book: book)
       }
       .sheet(isPresented: $viewModel.showHalfSheet) {
-        HalfSheetView(viewModel: viewModel, backgroundColor: headerBackgroundColor, coverImage: $viewModel.book.coverImage)
+        HalfSheetView(viewModel: viewModel, backgroundColor: headerColor, coverImage: $viewModel.book.coverImage)
           .onDisappear {
             viewModel.isManagingHold = false
             viewModel.processingButtons.removeAll()
@@ -118,7 +122,7 @@ struct BookDetailView: View {
         Text("Back")
       }
       .font(.title3)
-      .foregroundColor(headerBackgroundColor.isDark ? .white : .black)
+      .foregroundColor(headerColor.isDark ? .white : .black)
       .opacity(0.8)
     }
     .accessibilityLabel("Back")
@@ -225,7 +229,7 @@ struct BookDetailView: View {
       
       BookButtonsView(
         provider: viewModel,
-        backgroundColor: viewModel.isFullSize ? headerBackgroundColor : (colorScheme == .dark ? .black : .white)
+        backgroundColor: viewModel.isFullSize ? headerColor : (colorScheme == .dark ? .black : .white)
       ) { type in
         handleButtonAction(type)
       }
@@ -235,7 +239,7 @@ struct BookDetailView: View {
           .padding(.top)
       }
     }
-    .foregroundColor(viewModel.isFullSize ? (headerBackgroundColor.isDark ? .white : .black) : Color(UIColor.label))
+    .foregroundColor(viewModel.isFullSize ? (headerColor.isDark ? .white : .black) : Color(UIColor.label))
     .animation(scaleAnimation, value: imageScale)
   }
   
@@ -246,8 +250,8 @@ struct BookDetailView: View {
       
       LinearGradient(
         gradient: Gradient(colors: [
-          headerBackgroundColor.opacity(1.0),
-          headerBackgroundColor.opacity(0.5)
+          headerColor.opacity(1.0),
+          headerColor.opacity(0.5)
         ]),
         startPoint: .bottom,
         endPoint: .top
@@ -264,16 +268,16 @@ struct BookDetailView: View {
           .lineLimit(nil)
           .multilineTextAlignment(.center)
           .font(.subheadline)
-          .foregroundColor(headerBackgroundColor.isDark ? .white : .black)
+          .foregroundColor(headerColor.isDark ? .white : .black)
         
         if let authors = viewModel.book.authors, !authors.isEmpty {
           Text(authors)
             .font(.caption)
-            .foregroundColor(headerBackgroundColor.isDark ? .white.opacity(0.8) : .black.opacity(0.8))
+            .foregroundColor(headerColor.isDark ? .white.opacity(0.8) : .black.opacity(0.8))
         }
       }
       Spacer()
-      BookButtonsView(provider: viewModel, backgroundColor: headerBackgroundColor, size: .small) { type in
+      BookButtonsView(provider: viewModel, backgroundColor: headerColor, size: .small) { type in
         handleButtonAction(type)
       }
     }
