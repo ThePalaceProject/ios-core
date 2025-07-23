@@ -73,6 +73,12 @@ class Reachability: NSObject {
   // MARK: - Reachability Check
 
   func isConnectedToNetwork() -> Bool {
+    // First check NWPathMonitor status if available
+    if connectionMonitor.currentPath.status == .satisfied {
+      return true
+    }
+    
+    // Fallback to SystemConfiguration approach
     var zeroAddress = sockaddr_in()
     zeroAddress.sin_len = UInt8(MemoryLayout.size(ofValue: zeroAddress))
     zeroAddress.sin_family = sa_family_t(AF_INET)
@@ -82,16 +88,63 @@ class Reachability: NSObject {
         SCNetworkReachabilityCreateWithAddress(nil, $0)
       }
     }) else {
+      Log.error(#file, "Failed to create reachability reference")
       return false
     }
 
     var flags = SCNetworkReachabilityFlags()
     if !SCNetworkReachabilityGetFlags(defaultRouteReachability, &flags) {
+      Log.error(#file, "Failed to get reachability flags")
       return false
     }
 
     let reachable = flags.contains(.reachable)
     let needsConnection = flags.contains(.connectionRequired)
-    return (reachable && !needsConnection)
+    let isConnected = (reachable && !needsConnection)
+    
+    Log.debug(#file, "Reachability check: reachable=\(reachable), needsConnection=\(needsConnection), result=\(isConnected)")
+    
+    return isConnected
+  }
+  
+  /// Enhanced connectivity check that provides more detailed status
+  func getDetailedConnectivityStatus() -> (isConnected: Bool, connectionType: String, details: String) {
+    let currentPath = connectionMonitor.currentPath
+    
+    switch currentPath.status {
+    case .satisfied:
+      var connectionType = "Unknown"
+      var details = "Connected"
+      
+      if currentPath.usesInterfaceType(.wifi) {
+        connectionType = "WiFi"
+        details += " via WiFi"
+      } else if currentPath.usesInterfaceType(.cellular) {
+        connectionType = "Cellular"
+        details += " via Cellular"
+      } else if currentPath.usesInterfaceType(.wiredEthernet) {
+        connectionType = "Ethernet"
+        details += " via Ethernet"
+      }
+      
+      if currentPath.isExpensive {
+        details += " (Expensive)"
+      }
+      
+      if currentPath.isConstrained {
+        details += " (Constrained)"
+      }
+      
+      return (true, connectionType, details)
+      
+    case .unsatisfied:
+      return (false, "None", "No network connection")
+      
+    case .requiresConnection:
+      return (false, "Pending", "Connection required but not established")
+      
+    @unknown default:
+      return (false, "Unknown", "Unknown network status")
+    }
   }
 }

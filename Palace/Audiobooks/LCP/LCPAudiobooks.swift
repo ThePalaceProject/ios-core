@@ -25,7 +25,11 @@ import PalaceAudiobookToolkit
   private let audiobookUrl: AbsoluteURL
   private let lcpService = LCPLibraryService()
   private let assetRetriever: AssetRetriever
+  private let httpRangeRetriever: HTTPRangeRetriever
   private let publicationOpener: PublicationOpener
+  
+  private var _publication: Publication?
+  private let publicationLock = NSLock()
 
   /// Initialize for an LCP audiobook
   /// - Parameter audiobookUrl: must be a file with `.lcpa` extension
@@ -39,7 +43,9 @@ import PalaceAudiobookToolkit
       return nil
     }
 
-    self.assetRetriever = AssetRetriever(httpClient: DefaultHTTPClient())
+    let httpClient = DefaultHTTPClient()
+    self.assetRetriever = AssetRetriever(httpClient: httpClient)
+    self.httpRangeRetriever = HTTPRangeRetriever(httpClient: httpClient)
 
     guard let contentProtection = lcpService.contentProtection else {
       TPPErrorLogger.logError(nil, summary: "Uninitialized contentProtection in LCPAudiobooks")
@@ -47,7 +53,7 @@ import PalaceAudiobookToolkit
     }
 
     let parser = DefaultPublicationParser(
-      httpClient: DefaultHTTPClient(),
+      httpClient: httpClient,
       assetRetriever: assetRetriever,
       pdfFactory: DefaultPDFDocumentFactory()
     )
@@ -77,6 +83,10 @@ import PalaceAudiobookToolkit
 
         switch result {
         case .success(let publication):
+          publicationLock.lock()
+          _publication = publication
+          publicationLock.unlock()
+          
           guard let jsonManifestString = publication.jsonManifest else {
             TPPErrorLogger.logError(nil, summary: "No resource found for audiobook.", metadata: [self.audiobookUrlKey: self.audiobookUrl])
             completion(nil, nil)
@@ -129,6 +139,22 @@ import PalaceAudiobookToolkit
       "Error": error
     ])
   }
+  
+  // MARK: - Streaming Support
+  
+  /// Get the LCP publication for streaming use
+  /// - Returns: The opened Publication object, or nil if not available
+  func getPublication() -> Publication? {
+    publicationLock.lock()
+    defer { publicationLock.unlock() }
+    return _publication
+  }
+  
+  /// Get the HTTP range retriever for streaming operations
+  /// - Returns: The HTTPRangeRetriever instance
+  func getHTTPRangeRetriever() -> HTTPRangeRetriever {
+    return httpRangeRetriever
+  }
 }
 
 ///// DRM Decryptor for LCP audiobooks
@@ -140,32 +166,69 @@ extension LCPAudiobooks: DRMDecryptor {
   ///   - resultUrl: URL to save decrypted file at.
   ///   - completion: decryptor callback with optional `Error`.
   func decrypt(url: URL, to resultUrl: URL, completion: @escaping (Error?) -> Void) {
+      decryptForStreaming(url: url, to: resultUrl, completion: completion)
+  }
+  
+  private func decryptForStreaming(url: URL, to resultUrl: URL, completion: @escaping (Error?) -> Void) {
+    // In streaming mode, we shouldn't be doing full-file decryption
+    // This is a fallback that logs a warning and fails gracefully
+    TPPErrorLogger.logError(nil, summary: "Full-file decryption called in streaming mode - this should not happen", metadata: [
+      "url": url.absoluteString,
+      "resultUrl": resultUrl.absoluteString
+    ])
+    
+    completion(NSError(domain: "LCPStreamingError", code: -1, userInfo: [
+      NSLocalizedDescriptionKey: "Full-file decryption not supported in streaming mode"
+    ]))
+  }
+}
+
+// MARK: - LCP Range Decryption Support
+
+extension LCPAudiobooks: LCPStreamingDecryptor {
+  
+  /// Decrypt a specific byte range of LCP-protected content
+  /// - Parameters:
+  ///   - url: The URL of the resource within the LCP container
+  ///   - range: The byte range to decrypt
+  ///   - completion: Completion handler with decrypted data or error
+  func decryptRange(url: URL, range: Range<Int>, completion: @escaping (Result<Data, Error>) -> Void) {
     Task {
-      let result = await self.assetRetriever.retrieve(url: audiobookUrl)
-      switch result {
-      case .success(let asset):
-        let publicationResult = await publicationOpener.open(asset: asset, allowUserInteraction: false, sender: nil)
-        switch publicationResult {
-        case .success(let publication):
-          if let resource = publication.getResource(at: url.path) {
-            do {
-              let data = try await resource.read().get()
-              try data.write(to: resultUrl, options: .atomic)
-              completion(nil)
-            } catch {
-              completion(error)
-            }
-          } else {
-            completion(NSError(domain: "AudiobookResourceError", code: 404, userInfo: [NSLocalizedDescriptionKey: "Resource not found"]))
-          }
-        case .failure(let error):
-          completion(error)
+      do {
+        guard let publication = getPublication() else {
+          throw NSError(domain: "LCPStreamingError", code: -3, userInfo: [
+            NSLocalizedDescriptionKey: "No publication available for range decryption"
+          ])
         }
-      case .failure(let error):
-        completion(error)
+        
+        guard let resource = publication.getResource(at: url.path) else {
+          throw NSError(domain: "LCPStreamingError", code: -4, userInfo: [
+            NSLocalizedDescriptionKey: "Resource not found: \(url.path)"
+          ])
+        }
+        
+        let uint64Range = UInt64(range.lowerBound)..<UInt64(range.upperBound)
+        let decryptedData = await resource.read(range: uint64Range)
+        
+        completion(decryptedData.eraseToAnyError())
+        
+      } catch {
+        completion(.failure(error))
       }
     }
   }
+}
+
+// MARK: - LCPStreamingDecryptor Protocol
+
+/// Protocol for range-based LCP decryption during streaming
+ protocol LCPStreamingDecryptor {
+  /// Decrypt a specific byte range of LCP-protected content
+  /// - Parameters:
+  ///   - url: The URL of the resource within the LCP container
+  ///   - range: The byte range to decrypt
+  ///   - completion: Completion handler with decrypted data or error
+  func decryptRange(url: URL, range: Range<Int>, completion: @escaping (Result<Data, Error>) -> Void)
 }
 
 private extension Publication {
@@ -180,4 +243,6 @@ private extension Publication {
     return resource
   }
 }
+
+extension LCPAudiobooks: LCPStreamingProvider {}
 #endif
