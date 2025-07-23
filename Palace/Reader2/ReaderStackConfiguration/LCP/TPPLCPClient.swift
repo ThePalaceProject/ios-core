@@ -70,14 +70,11 @@ class TPPLCPClient: ReadiumLCP.LCPClient {
       return nil 
     }
     
-    // Verify data is not empty
     guard !data.isEmpty else {
       ATLog(.error, "Cannot decrypt empty data")
       return nil
     }
     
-    // Remove the main thread synchronization that was causing deadlocks
-    // LCP decryption does not need to be on the main thread
     do {
       let decrypted = R2LCPClient.decrypt(data: data, using: drmContext)
       if decrypted == nil {
@@ -97,7 +94,6 @@ class TPPLCPClient: ReadiumLCP.LCPClient {
   }
 }
 
-/// Provides access to data decryptor
 extension TPPLCPClient {
   func decrypt(data: Data) -> Data? {
     guard let drmContext = context as? DRMContext else { 
@@ -105,14 +101,11 @@ extension TPPLCPClient {
       return nil 
     }
     
-    // Verify data is not empty
     guard !data.isEmpty else {
       ATLog(.error, "Cannot decrypt empty data")
       return nil
     }
     
-    // Remove the main thread synchronization that was causing deadlocks
-    // LCP decryption does not need to be on the main thread
     do {
       let result = R2LCPClient.decrypt(data: data, using: drmContext)
       if result == nil {

@@ -14,7 +14,6 @@ import ReadiumStreamer
 import ReadiumLCP
 import PalaceAudiobookToolkit
 
-/// LCP Audiobooks helper class
 @objc class LCPAudiobooks: NSObject {
   
   private let audiobookUrlKey = "audiobookUrl"
@@ -64,7 +63,6 @@ import PalaceAudiobookToolkit
     )
   }
 
-  /// Content dictionary for `AudiobookFactory`
   @objc func contentDictionary(completion: @escaping (_ json: NSDictionary?, _ error: NSError?) -> ()) {
     DispatchQueue.global(qos: .userInitiated).async {
       self.loadContentDictionary { json, error in
@@ -170,8 +168,6 @@ extension LCPAudiobooks: DRMDecryptor {
   }
   
   private func decryptForStreaming(url: URL, to resultUrl: URL, completion: @escaping (Error?) -> Void) {
-    // In streaming mode, we shouldn't be doing full-file decryption
-    // This is a fallback that logs a warning and fails gracefully
     TPPErrorLogger.logError(nil, summary: "Full-file decryption called in streaming mode - this should not happen", metadata: [
       "url": url.absoluteString,
       "resultUrl": resultUrl.absoluteString

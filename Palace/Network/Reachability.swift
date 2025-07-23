@@ -73,12 +73,10 @@ class Reachability: NSObject {
   // MARK: - Reachability Check
 
   func isConnectedToNetwork() -> Bool {
-    // First check NWPathMonitor status if available
     if connectionMonitor.currentPath.status == .satisfied {
       return true
     }
     
-    // Fallback to SystemConfiguration approach
     var zeroAddress = sockaddr_in()
     zeroAddress.sin_len = UInt8(MemoryLayout.size(ofValue: zeroAddress))
     zeroAddress.sin_family = sa_family_t(AF_INET)
@@ -107,7 +105,6 @@ class Reachability: NSObject {
     return isConnected
   }
   
-  /// Enhanced connectivity check that provides more detailed status
   func getDetailedConnectivityStatus() -> (isConnected: Bool, connectionType: String, details: String) {
     let currentPath = connectionMonitor.currentPath
     
