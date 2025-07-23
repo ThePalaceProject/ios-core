@@ -16,8 +16,3 @@ fastlane/report.xml
 fastlane/*_output
 Palace.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
 Palace.xcodeproj/xcshareddata/xcschemes/Palace.xcscheme
-
-# Build optimization caches
-.carthage-cache/
-.build-cache/
-.venv/
