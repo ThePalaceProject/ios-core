@@ -1,35 +1,44 @@
 default_platform(:ios)
 
 platform :ios do
-  lane :test do    
-    ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "300"
-    ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"] = "4"
+  # Global optimizations
+  before_all do
+    # Increase build timeout for complex projects
+    ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "600"  # Increased from 300
+    ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"] = "2"    # Reduced from 4
+    
+    # Enable more efficient Xcode settings
+    ENV["FASTLANE_EXPLICIT_OPEN_SIMULATOR"] = "2"
+  end
 
+  lane :test do
     run_tests(
       project: "Palace.xcodeproj",
       devices: ["iPhone SE (3rd generation)"],
       scheme: "Palace",
       destination: "platform=iOS Simulator,name=iPhone SE (3rd generation),OS=latest,arch=x86_64",
-      xcargs: "ARCHS=x86_64 ONLY_ACTIVE_ARCH=NO"
+      xcargs: "ARCHS=x86_64 ONLY_ACTIVE_ARCH=YES", # Changed to YES for faster builds
+      build_for_testing: true,  # Separate build and test phases
+      test_without_building: false,
+      parallel_testing: true,   # Enable parallel testing
+      max_concurrent_simulators: 2
     )
   end
 
   lane :nodrm do
-    ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "300"
-    ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"] = "4"
-
     build_app(
       project: "Palace.xcodeproj",
       scheme: "Palace-noDRM",
       skip_package_ipa: true,
       skip_archive: true,
       skip_codesigning: true,
-      silent: true
+      silent: true,
+      build_path: "Build/nodrm",  # Separate build path
+      derived_data_path: "Build/DerivedData/nodrm"  # Dedicated derived data
     )
   end
 
   lane :beta do |options|
-
     build_app(
       project: "Palace.xcodeproj",
       scheme: "Palace",
@@ -38,38 +47,71 @@ platform :ios do
       silent: true,
       output_name: options[:output_name],
       output_directory: options[:export_path],
+      build_path: "Build/beta",  # Separate build path
+      derived_data_path: "Build/DerivedData/beta",
       export_options: {
         method: "ad-hoc",
         provisioningProfiles: { 
           "org.thepalaceproject.palace" => "Ad Hoc"
-        }
+        },
+        compileBitcode: false,  # Faster exports
+        uploadBitcode: false,
+        uploadSymbols: false    # We handle symbols separately
       }
     )
   end
 
   lane :appstore do |options|
-    ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "300"
-    ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"] = "4"
-
-    sh("rm -rf ~/Library/Developer/Xcode/DerivedData/*")
+    # Only clean DerivedData if explicitly requested
+    if options[:clean_derived_data]
+      sh("rm -rf ~/Library/Developer/Xcode/DerivedData/*")
+    end
 
     build_app(
       project: "Palace.xcodeproj",
       scheme: "Palace",
       include_symbols: true,
       include_bitcode: false,
+      build_path: "Build/appstore",  # Separate build path
+      derived_data_path: "Build/DerivedData/appstore",
       export_options: {
         method: "app-store",
         provisioningProfiles: { 
           "org.thepalaceproject.palace" => "App Store"
-        }
+        },
+        compileBitcode: false,  # App Store no longer requires bitcode
+        uploadBitcode: false,
+        uploadSymbols: true     # Required for App Store
       }
     )
 
+    # Upload with optimized settings
     pilot(
       api_key_path: "fastlane/fastlane.json",
       skip_submission: true,
-      changelog: options[:changelog]
+      changelog: options[:changelog],
+      skip_waiting_for_build_processing: true,  # Don't wait for processing
+      distribute_external: false  # Only internal testing initially
     )
+  end
+  
+  # New lane for quick local development builds
+  lane :dev do
+    build_app(
+      project: "Palace.xcodeproj",
+      scheme: "Palace",
+      skip_package_ipa: true,
+      skip_archive: true,
+      skip_codesigning: true,
+      build_path: "Build/dev",
+      derived_data_path: "Build/DerivedData/dev",
+      xcargs: "ONLY_ACTIVE_ARCH=YES DEBUG_INFORMATION_FORMAT=dwarf"  # Fastest debug builds
+    )
+  end
+  
+  # Error handling
+  error do |lane, exception|
+    UI.error("Lane #{lane} failed with exception: #{exception}")
+    # Don't clean up on error to allow debugging
   end
 end
