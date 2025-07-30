@@ -70,7 +70,16 @@ class BookCellModel: ObservableObject {
   
   var isManagingHold: Bool {
     switch buttonState {
-    case .managingHold, .holding, .holdingFrontOfQueue:
+    case .managingHold, .holding:
+      true
+    default:
+      false
+    }
+  }
+  
+  var isBorrowed: Bool {
+    switch buttonState {
+    case .downloadNeeded, .downloadSuccessful, .downloadInProgress, .returning:
       true
     default:
       false
@@ -99,8 +108,16 @@ class BookCellModel: ObservableObject {
   
   init(book: TPPBook) {
     self.book = book
-    self.state = BookCellState(BookButtonState(book) ?? .unsupported)
-    self.isLoading = TPPBookRegistry.shared.processing(forIdentifier: book.identifier)
+    let registryState = TPPBookRegistry.shared.state(for: book.identifier)
+    let availability = book.defaultAcquisition?.availability
+    let isDownloading = TPPBookRegistry.shared.processing(forIdentifier: book.identifier)
+    let buttonState = BookButtonMapper.map(
+      registryState: registryState,
+      availability: availability,
+      isProcessingDownload: isDownloading
+    )
+    self.state = BookCellState(buttonState)
+    self.isLoading = isDownloading
     self.currentBookIdentifier = book.identifier
     registerForNotifications()
     loadBookCoverImage()
