@@ -16,8 +16,14 @@ actor TPPBookCoverRegistry {
     let fm = FileManager.default
     guard let caches = fm.urls(for: .cachesDirectory, in: .userDomainMask).first else { return nil }
     let dir = caches.appendingPathComponent("TPPBookCovers", isDirectory: true)
-    try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
-    return dir
+    
+    do {
+      try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+      return dir
+    } catch {
+      Log.error(#file, "Failed to create book cover cache directory: \(error.localizedDescription)")
+      return nil
+    }
   }()
   private let diskQueue = DispatchQueue(label: "com.thepalaceproject.TPPBookCoverRegistry.diskQueue")
   private var inProgressTasks: [URL: Task<UIImage?, Never>] = [:]
@@ -89,10 +95,16 @@ actor TPPBookCoverRegistry {
       await withCheckedContinuation { continuation in
         diskQueue.async {
           do {
+            // Ensure parent directory still exists
+            let parentDir = destination.deletingLastPathComponent()
+            if !FileManager.default.fileExists(atPath: parentDir.path) {
+              try FileManager.default.createDirectory(at: parentDir, withIntermediateDirectories: true)
+            }
+            
             try data.write(to: destination)
             continuation.resume()
           } catch {
-            Log.debug(#file, "Failed to write image to disk: \(error.localizedDescription)")
+            Log.error(#file, "Failed to write image cache file '\(destination.lastPathComponent)' to disk: \(error.localizedDescription). Directory: \(destination.deletingLastPathComponent().path)")
             continuation.resume()
           }
         }
