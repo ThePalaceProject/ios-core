@@ -126,7 +126,7 @@ struct NormalBookCell: View {
   @ViewBuilder var borrowedInfoView: some View {
     if model.isManagingHold {
       holdingInfoView
-    } else {
+    } else if model.isBorrowed {
       loanTermsInfoView
     }
   }
