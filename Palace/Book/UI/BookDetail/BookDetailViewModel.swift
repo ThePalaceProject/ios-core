@@ -2,6 +2,11 @@ import Combine
 import SwiftUI
 import PalaceAudiobookToolkit
 
+#if LCP
+import ReadiumShared
+import ReadiumStreamer
+#endif
+
 struct BookLane {
   let title: String
   let books: [TPPBook]
@@ -59,6 +64,29 @@ final class BookDetailViewModel: ObservableObject {
     if case .holding = bookState, isManagingHold {
       return .managingHold
     }
+    
+#if LCP
+    // For LCP audiobooks, show as ready if they can be opened (license can be fulfilled)
+    if LCPAudiobooks.canOpenBook(book) {
+      switch bookState {
+      case .downloadNeeded:
+        // LCP audiobooks can be "opened" to start license fulfillment
+        return .downloadSuccessful
+      case .downloading:
+        // Show as downloading while license fulfillment is in progress
+        return BookButtonMapper.map(
+          registryState: bookState,
+          availability: avail,
+          isProcessingDownload: isDownloading
+        )
+      case .downloadSuccessful, .used:
+        // Already downloaded/fulfilled
+        return .downloadSuccessful
+      default:
+        break
+      }
+    }
+#endif
     
     return BookButtonMapper.map(
       registryState: bookState,
@@ -352,13 +380,222 @@ final class BookDetailViewModel: ObservableObject {
     // MARK: - Audiobook Opening
 
     func openAudiobook(_ book: TPPBook, completion: (() -> Void)? = nil) {
-      guard let url = downloadCenter.fileUrl(for: book.identifier) else {
-        presentCorruptedItemError()
+      // Check if we have a local file already
+//      if let url = downloadCenter.fileUrl(for: book.identifier) {
+//        // File exists, proceed with normal flow
+//        openAudiobookWithLocalFile(book: book, url: url, completion: completion)
+//        return
+//      }
+      
+      // No local file - for LCP audiobooks, check for license-based streaming
+#if LCP
+      if LCPAudiobooks.canOpenBook(book) {
+        // Check if we have license file for streaming
+        if let licenseUrl = getLCPLicenseURL(for: book) {
+          // Have license, open in streaming mode using swifttoolkit 2.1.0
+          Log.info(#file, "Opening LCP audiobook in streaming mode: \(book.identifier)")
+          openAudiobookWithStreaming(book: book, licenseUrl: licenseUrl, completion: completion)
+          return
+        }
+        
+        // License not found yet - check if fulfillment is in progress
+        if bookState == .downloadSuccessful {
+          // Book is marked as ready but license not found - fulfillment may be in progress
+          Log.info(#file, "License fulfillment may be in progress, waiting for completion: \(book.identifier)")
+          waitForLicenseFulfillment(book: book, completion: completion)
+          return
+        }
+        
+        // No license yet, start fulfillment
+        Log.info(#file, "No local file for LCP audiobook, starting license fulfillment: \(book.identifier)")
+        Log.info(#file, "Expected LCP MIME type: application/vnd.readium.lcp.license.v1.0+json")
+        if let acqURL = book.defaultAcquisition?.hrefURL {
+          Log.info(#file, "Downloading LCP license from: \(acqURL.absoluteString)")
+        }
+        downloadCenter.startDownload(for: book)
+        // Note: MyBooksDownloadCenter will set bookState to .downloadSuccessful when fulfillment starts
         completion?()
         return
       }
+#endif
+      
+      presentCorruptedItemError()
+      completion?()
+    }
+    
+    private func getLCPLicenseURL(for book: TPPBook) -> URL? {
+#if LCP
+      // Check for license file in the same location as content files
+      // License is stored as {hashedIdentifier}.lcpl in the content directory
+      guard let bookFileURL = downloadCenter.fileUrl(for: book.identifier) else {
+        return nil
+      }
+      
+      // License has same path but .lcpl extension
+      let licenseURL = bookFileURL.deletingPathExtension().appendingPathExtension("lcpl")
+      
+      if FileManager.default.fileExists(atPath: licenseURL.path) {
+        Log.debug(#file, "Found LCP license at: \(licenseURL.path)")
+        return licenseURL
+      }
+      
+      Log.debug(#file, "No LCP license found at: \(licenseURL.path)")
+      return nil
+#else
+      return nil
+#endif
+    }
+    
+    private func waitForLicenseFulfillment(book: TPPBook, completion: (() -> Void)? = nil, attempt: Int = 0) {
+      let maxAttempts = 10 // Wait up to 10 seconds
+      let retryDelay: TimeInterval = 1.0
+      
+      // Check if license file is now available
+      if let licenseUrl = getLCPLicenseURL(for: book) {
+        Log.info(#file, "License fulfillment completed, opening in streaming mode: \(book.identifier)")
+        openAudiobookWithStreaming(book: book, licenseUrl: licenseUrl, completion: completion)
+        return
+      }
+      
+      // If we've exceeded max attempts, show error
+      if attempt >= maxAttempts {
+        Log.error(#file, "Timeout waiting for license fulfillment after \(attempt) attempts")
+        presentUnsupportedItemError()
+        completion?()
+        return
+      }
+      
+      // Wait and retry
+      Log.debug(#file, "License not ready yet, waiting... (attempt \(attempt + 1)/\(maxAttempts))")
+      DispatchQueue.main.asyncAfter(deadline: .now() + retryDelay) { [weak self] in
+        self?.waitForLicenseFulfillment(book: book, completion: completion, attempt: attempt + 1)
+      }
+    }
+    
+    private func openAudiobookWithStreaming(book: TPPBook, licenseUrl: URL, completion: (() -> Void)?) {
+#if LCP
+      Log.info(#file, "Opening LCP audiobook for streaming using Readium toolkit: \(book.identifier)")
+      Log.debug(#file, "License available at: \(licenseUrl.absoluteString)")
+      
+      // Use Readium LCP service directly to get publication manifest for streaming
+      // This avoids the need for a local .lcpa file that LCPAudiobooks expects
+      getPublicationManifestForStreaming(licenseUrl: licenseUrl) { [weak self] result in
+        DispatchQueue.main.async {
+          guard let self = self else { return }
+          
+          switch result {
+          case .success(let manifestDict):
+            var jsonDict = manifestDict
+            jsonDict["id"] = book.identifier
+            jsonDict["streamingEnabled"] = true  // Enable swift-toolkit 2.1.0 streaming
+            
+            // For streaming, create an LCPAudiobooks instance using the publication URL from the manifest
+            // The LCPAudiobooks class can handle HTTP URLs for streaming
+            if let publicationUrl = self.getPublicationUrlFromManifest(manifestDict),
+               let lcpAudiobooks = LCPAudiobooks(for: publicationUrl) {
+              
+              Log.info(#file, "Opening LCP audiobook for streaming with PalaceAudiobookToolkit: \(book.identifier)")
+              self.openAudiobook(with: book, json: jsonDict, drmDecryptor: lcpAudiobooks, completion: completion)
+            } else {
+              Log.error(#file, "Failed to create LCPAudiobooks for streaming decryption")
+              self.presentUnsupportedItemError()
+              completion?()
+            }
+            
+          case .failure(let error):
+            Log.error(#file, "Failed to get publication manifest for streaming: \(error)")
+            self.presentUnsupportedItemError()
+            completion?()
+          }
+        }
+      }
+#endif
+    }
+    
+    /// Gets the publication manifest for streaming using Readium LCP service directly
+    /// This bypasses the need for a local .lcpa file by using just the license
+  private func getPublicationManifestForStreaming(licenseUrl: URL, completion: @escaping (Result<[String: Any], Error>) -> Void) {
+    #if LCP
+    let lcpService = LCPLibraryService()
+    
+    Task {
+      do {
+        // 1️⃣ Parse the license
+        guard let license = TPPLCPLicense(url: licenseUrl) else {
+          throw NSError(domain: "LCPStreaming", code: 1, userInfo: [ NSLocalizedDescriptionKey: "Failed to parse license file" ])
+        }
 
-  #if LCP
+        // 2️⃣ Extract the publication URL
+        guard let publicationLink = license.firstLink(withRel: .publication),
+              let href = publicationLink.href,
+              let publicationUrl = URL(string: href) else {
+          throw NSError(domain: "LCPStreaming", code: 2, userInfo: [ NSLocalizedDescriptionKey: "No publication URL found in license" ])
+                 }
+         Log.debug(#file, "Found publication URL for streaming: \(publicationUrl)")
+         
+         // Cache the publication URL for later use
+         self.cachedPublicationUrl = publicationUrl
+ 
+         // 3️⃣ Prepare Readium
+        guard let contentProtection = lcpService.contentProtection else {
+          throw NSError(domain: "LCPStreaming", code: 3, userInfo: [ NSLocalizedDescriptionKey: "LCP content protection not available" ])
+        }
+        let httpClient = DefaultHTTPClient()
+        let assetRetriever = AssetRetriever(httpClient: httpClient)
+        let parser = DefaultPublicationParser(httpClient: httpClient,
+                                               assetRetriever: assetRetriever,
+                                               pdfFactory: DefaultPDFDocumentFactory())
+        let publicationOpener = PublicationOpener(parser: parser,
+                                                  contentProtections: [contentProtection])
+
+        // 4️⃣ Retrieve the asset (unwrap the Result)
+        let retrieveResult = await assetRetriever.retrieve(url: publicationUrl.absoluteURL!)
+        let asset: Asset
+        switch retrieveResult {
+        case .success(let a):
+          asset = a
+        case .failure(let retrievalError):
+          completion(.failure(retrievalError))
+          return
+        }
+
+        // 5️⃣ Open the publication
+        let openResult = await publicationOpener.open(asset: asset,
+                                                      allowUserInteraction: false,
+                                                      sender: nil)
+
+        switch openResult {
+        case .success(let publication):
+          guard let jsonManifestString = publication.jsonManifest,
+                let jsonData = jsonManifestString.data(using: .utf8),
+                let manifestDict = try JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else {
+            throw NSError(domain: "LCPStreaming", code: 4, userInfo: [ NSLocalizedDescriptionKey: "No manifest or failed JSON parse" ])
+          }
+          Log.debug(#file, "Successfully retrieved publication manifest for streaming")
+          completion(.success(manifestDict))
+
+        case .failure(let error):
+          completion(.failure(error))
+        }
+
+      } catch {
+        completion(.failure(error))
+      }
+    }
+    #endif
+  }
+    
+    /// Extracts the publication URL from the license for use with LCPAudiobooks
+    /// Since we already have the publication URL from parsing the license, we can store and reuse it
+    private var cachedPublicationUrl: URL?
+    
+    private func getPublicationUrlFromManifest(_ manifest: [String: Any]) -> URL? {
+      // Return the cached publication URL that we got from the license
+      return cachedPublicationUrl
+    }
+    
+    private func openAudiobookWithLocalFile(book: TPPBook, url: URL, completion: (() -> Void)?) {
+#if LCP
       if LCPAudiobooks.canOpenBook(book) {
         let lcpAudiobooks = LCPAudiobooks(for: url)
         lcpAudiobooks?.contentDictionary { [weak self] dict, error in
@@ -383,7 +620,7 @@ final class BookDetailViewModel: ObservableObject {
         }
         return
       }
-  #endif
+#endif
 
       do {
         let data = try Data(contentsOf: url)
@@ -393,14 +630,14 @@ final class BookDetailViewModel: ObservableObject {
           return
         }
 
-  #if FEATURE_OVERDRIVE
+#if FEATURE_OVERDRIVE
         if book.distributor == OverdriveDistributorKey {
           var overdriveJson = json
           overdriveJson["id"] = book.identifier
           openAudiobook(with: book, json: overdriveJson, drmDecryptor: nil, completion: completion)
           return
         }
-  #endif
+#endif
 
         openAudiobook(with: book, json: json, drmDecryptor: nil, completion: completion)
       } catch {

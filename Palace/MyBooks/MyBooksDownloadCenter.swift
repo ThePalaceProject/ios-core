@@ -606,7 +606,12 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
     }
     
     if bytesWritten == totalBytesWritten {
-      guard let mimeType = downloadTask.response?.mimeType else { return }
+      guard let mimeType = downloadTask.response?.mimeType else { 
+        Log.error(#file, "No MIME type in response for book: \(book.identifier)")
+        return 
+      }
+      
+      Log.info(#file, "Download MIME type detected for \(book.identifier): \(mimeType)")
       
       switch mimeType {
       case ContentTypeAdobeAdept:
@@ -663,6 +668,8 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
     var problemDoc: TPPProblemDocument?
     let rights = downloadInfo(forBookIdentifier: book.identifier)?.rightsManagement ?? .unknown
     
+    Log.info(#file, "Download completed for \(book.identifier) with rights: \(rights)")
+    
     if let response = downloadTask.response, response.isProblemDocument() {
       do {
         let problemDocData = try Data(contentsOf: location)
@@ -687,6 +694,7 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
       
       switch rights {
       case .unknown:
+        Log.error(#file, "❌ Rights management is unknown for book: \(book.identifier) - LCP fulfillment will NOT be called")
         logBookDownloadFailure(book, reason: "Unknown rights management", downloadTask: downloadTask, metadata: nil)
         failureRequiringAlert = true
       case .adobe:
@@ -704,6 +712,7 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
         }
 #endif
       case .lcp:
+        Log.info(#file, "✅ Calling fulfillLCPLicense for book: \(book.identifier)")
         fulfillLCPLicense(fileUrl: location, forBook: book, downloadTask: downloadTask)
       case .simplifiedBearerTokenJSON:
         if let data = try? Data(contentsOf: location) {
@@ -943,6 +952,11 @@ extension MyBooksDownloadCenter {
       }
       self.bookRegistry.setFulfillmentId(license.identifier, for: book.identifier)
       
+      // For audiobooks, also copy license to content directory for streaming support
+      if book.defaultBookContentType == .audiobook {
+        self.copyLicenseForStreaming(book: book, sourceLicenseUrl: licenseUrl)
+      }
+      
       Task {
         if book.defaultBookContentType == .pdf,
            let bookURL = self.fileUrl(for: book.identifier) {
@@ -954,8 +968,41 @@ extension MyBooksDownloadCenter {
     }
     
     let fulfillmentDownloadTask = lcpService.fulfill(licenseUrl, progress: lcpProgress, completion: lcpCompletion)
+    if book.defaultBookContentType == .audiobook {
+      bookRegistry.setState(.downloadSuccessful, for: book.identifier)
+    }
+    
     if let fulfillmentDownloadTask = fulfillmentDownloadTask {
       self.bookIdentifierToDownloadInfo[book.identifier] = MyBooksDownloadInfo(downloadProgress: 0.0, downloadTask: fulfillmentDownloadTask, rightsManagement: .none)
+    }
+#endif
+  }
+  
+  /// Copies the LCP license file to the content directory for streaming support
+  /// while preserving the existing fulfillment flow
+  private func copyLicenseForStreaming(book: TPPBook, sourceLicenseUrl: URL) {
+#if LCP
+    guard let finalContentURL = self.fileUrl(for: book.identifier) else {
+      Log.error(#file, "Unable to determine final content URL for streaming license copy")
+      return
+    }
+    
+    let streamingLicenseUrl = finalContentURL.deletingPathExtension().appendingPathExtension("lcpl")
+    
+    do {
+      // Remove any existing license file first
+      try? FileManager.default.removeItem(at: streamingLicenseUrl)
+      
+      // Copy license to content directory for streaming
+      try FileManager.default.copyItem(at: sourceLicenseUrl, to: streamingLicenseUrl)
+      Log.debug(#file, "Copied LCP license for streaming: \(streamingLicenseUrl.path)")
+    } catch {
+      Log.error(#file, "Failed to copy LCP license for streaming: \(error.localizedDescription)")
+      TPPErrorLogger.logError(error, summary: "Failed to copy LCP license for streaming", metadata: [
+        "book": book.loggableDictionary,
+        "sourceLicenseUrl": sourceLicenseUrl.absoluteString,
+        "targetLicenseUrl": streamingLicenseUrl.absoluteString
+      ])
     }
 #endif
   }
