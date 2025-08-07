@@ -134,6 +134,51 @@ import PalaceAudiobookToolkit
 ///// DRM Decryptor for LCP audiobooks
 extension LCPAudiobooks: DRMDecryptor {
 
+  /// Get streamable resource URL for AVPlayer (for true streaming without local files)
+  /// - Parameters:
+  ///   - trackPath: internal track path from manifest (e.g., "track1.mp3")
+  ///   - completion: callback with streamable URL or error
+  @objc func getStreamableURL(for trackPath: String, completion: @escaping (URL?, Error?) -> Void) {
+    Task {
+      let result = await self.assetRetriever.retrieve(url: audiobookUrl)
+      switch result {
+      case .success(let asset):
+        let publicationResult = await publicationOpener.open(asset: asset, allowUserInteraction: false, sender: nil)
+        switch publicationResult {
+        case .success(let publication):
+          if let resource = publication.getResource(at: trackPath) {
+            // For LCP streaming, we need to create a custom URL that can be handled by Readium
+            // This would ideally be a streamable URL that AVPlayer can use
+            // For now, let's construct the HTTP URL manually based on the publication URL
+            if let httpUrl = constructStreamingURL(for: trackPath) {
+              completion(httpUrl, nil)
+            } else {
+              completion(nil, NSError(domain: "LCPStreaming", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to construct streaming URL"]))
+            }
+          } else {
+            completion(nil, NSError(domain: "AudiobookResourceError", code: 404, userInfo: [NSLocalizedDescriptionKey: "Resource not found"]))
+          }
+        case .failure(let error):
+          completion(nil, error)
+        }
+      case .failure(let error):
+        completion(nil, error)
+      }
+    }
+  }
+  
+  /// Construct HTTP streaming URL for a track path
+  private func constructStreamingURL(for trackPath: String) -> URL? {
+    // The audiobookUrl should be the HTTP publication URL when streaming
+    guard let httpUrl = audiobookUrl as? HTTPURL else {
+      return nil
+    }
+    
+    // Construct the full HTTP URL for the track
+    let baseUrl = httpUrl.url
+    return URL(string: trackPath, relativeTo: baseUrl)
+  }
+
   /// Decrypt protected file
   /// - Parameters:
   ///   - url: encrypted file URL.
