@@ -951,18 +951,6 @@ extension MyBooksDownloadCenter {
       }
       self.bookRegistry.setFulfillmentId(license.identifier, for: book.identifier)
       
-//      // For audiobooks: License is ready, mark as downloadSuccessful immediately for streaming
-//      // Content download continues in background for offline use
-//      if book.defaultBookContentType == .audiobook {
-//        Log.info(#file, "LCP audiobook license fulfilled, ready for streaming: \(book.identifier)")
-//        self.copyLicenseForStreaming(book: book, sourceLicenseUrl: licenseUrl)
-//        self.bookRegistry.setState(.downloadSuccessful, for: book.identifier)
-//        
-//        // Broadcast immediately so UI updates
-//        DispatchQueue.main.async {
-//          self.broadcastUpdate()
-//        }
-//      }
       
       // For all content types: Continue with content storage (background for audiobooks, required for others)
       if !self.replaceBook(book, withFileAtURL: localUrl, forDownloadTask: downloadTask) {

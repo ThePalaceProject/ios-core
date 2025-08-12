@@ -86,7 +86,7 @@ extension TPPBookCellDelegate {
         let audiobookManager = DefaultAudiobookManager(
           metadata: metadata,
           audiobook: audiobook,
-          networkService: DefaultAudiobookNetworkService(tracks: audiobook.tableOfContents.allTracks),
+          networkService: DefaultAudiobookNetworkService(tracks: audiobook.tableOfContents.allTracks, decryptor: drmDecryptor),
           playbackTrackerDelegate: timeTracker
         )
 
