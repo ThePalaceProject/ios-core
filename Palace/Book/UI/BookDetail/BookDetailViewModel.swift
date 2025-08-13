@@ -54,6 +54,7 @@ final class BookDetailViewModel: ObservableObject {
   private var audiobookBookmarkBusinessLogic: AudiobookBookmarkBusinessLogic?
   private var timer: DispatchSourceTimer?
   private var previousPlayheadOffset: TimeInterval = 0
+  private var didPrefetchLCPStreaming = false
   
   // MARK: – Computed Button State
   
@@ -66,27 +67,19 @@ final class BookDetailViewModel: ObservableObject {
     }
     
 #if LCP
-    // For LCP audiobooks, show as ready if they can be opened (license can be fulfilled)
     if LCPAudiobooks.canOpenBook(book) {
       switch bookState {
       case .downloadNeeded:
-        // LCP audiobooks can be "opened" to start license fulfillment
-        // Log.debug(#file, "🎵 LCP audiobook downloadNeeded → showing downloadSuccessful")
         return .downloadSuccessful
       case .downloading:
-        // Show as downloading while license fulfillment is in progress
-        // Log.debug(#file, "🎵 LCP audiobook downloading → showing downloadInProgress")
         return BookButtonMapper.map(
           registryState: bookState,
           availability: avail,
           isProcessingDownload: isDownloading
         )
       case .downloadSuccessful, .used:
-        // Already downloaded/fulfilled
-        // Log.debug(#file, "🎵 LCP audiobook downloadSuccessful → showing LISTEN button")
         return .downloadSuccessful
       default:
-        Log.debug(#file, "🎵 LCP audiobook other state: \(bookState)")
         break
       }
     }
@@ -97,7 +90,6 @@ final class BookDetailViewModel: ObservableObject {
       availability: avail,
       isProcessingDownload: isDownloading
     )
-    Log.debug(#file, "🎵 Default button mapping: \(bookState) → \(mappedState)")
     return mappedState
   }
   
@@ -111,12 +103,27 @@ final class BookDetailViewModel: ObservableObject {
     bindRegistryState()
     setupObservers()
     self.downloadProgress = downloadCenter.downloadProgress(for: book.identifier)
+#if LCP
+    // Warm LCP streaming as early as possible to minimize UI blocking when opening
+    self.prefetchLCPStreamingIfPossible()
+#endif
   }
   
   deinit {
     timer?.cancel()
     timer = nil
     NotificationCenter.default.removeObserver(self)
+#if LCP
+    // Cancel any in-flight LCP prefetch when leaving the detail view
+    if let licenseUrl = getLCPLicenseURL(for: book),
+       let license = TPPLCPLicense(url: licenseUrl),
+       let publicationLink = license.firstLink(withRel: .publication),
+       let href = publicationLink.href,
+       let publicationUrl = URL(string: href),
+       let lcpAudiobooks = LCPAudiobooks(for: publicationUrl) {
+      lcpAudiobooks.cancelPrefetch()
+    }
+#endif
   }
   
   // MARK: - Book State Binding
@@ -132,10 +139,7 @@ final class BookDetailViewModel: ObservableObject {
         let updatedBook = registry.book(forIdentifier: book.identifier) ?? book
         let currentState = self.bookState
         let registryState = registry.state(for: book.identifier)
-        
-        Log.info(#file, "🎵 Publisher state change for \(book.identifier): \(currentState) → \(registryState)")
-        Log.info(#file, "🎵 New button state will be: \(buttonState)")
-        
+                
         self.book = updatedBook
         self.bookState = registryState
       }
@@ -169,10 +173,7 @@ final class BookDetailViewModel: ObservableObject {
       guard let self else { return }
       let updatedBook = registry.book(forIdentifier: book.identifier) ?? book
       let newState = registry.state(for: book.identifier)
-      
-      Log.info(#file, "🎵 Registry state change for \(book.identifier): \(bookState) → \(newState)")
-      Log.info(#file, "🎵 Button state will be: \(buttonState)")
-      
+            
       self.book = updatedBook
       self.bookState = newState
     }
@@ -197,6 +198,10 @@ final class BookDetailViewModel: ObservableObject {
         if bookState != .downloading && bookState != .downloadSuccessful {
           self.bookState = registry.state(for: book.identifier)
         }
+        #if LCP
+        // Prefetch LCP streaming manifest in background once license is around
+        self.prefetchLCPStreamingIfPossible()
+        #endif
       }
     }
   }
@@ -397,42 +402,26 @@ final class BookDetailViewModel: ObservableObject {
   // MARK: - Audiobook Opening
   
   func openAudiobook(_ book: TPPBook, completion: (() -> Void)? = nil) {
-    // First priority: Check if we have a local file already - verify file actually exists
     if let url = downloadCenter.fileUrl(for: book.identifier),
        FileManager.default.fileExists(atPath: url.path) {
-      // File exists, proceed with normal flow
-      Log.info(#file, "Opening LCP audiobook with local file: \(book.identifier)")
       openAudiobookWithLocalFile(book: book, url: url, completion: completion)
       return
     }
     
-    // No local file - for LCP audiobooks, check for license-based streaming
 #if LCP
     if LCPAudiobooks.canOpenBook(book) {
-      // Check if we have license file for streaming
       if let licenseUrl = getLCPLicenseURL(for: book) {
-        // Have license, open in streaming mode as fallback
-        Log.info(#file, "Opening LCP audiobook in streaming mode: \(book.identifier)")
         openAudiobookUnified(book: book, licenseUrl: licenseUrl, completion: completion)
+        downloadCenter.startDownload(for: book)
         return
       }
       
-      // License not found yet - check if fulfillment is in progress
       if bookState == .downloadSuccessful {
-        // Book is marked as ready but license not found - fulfillment may be in progress
-        Log.info(#file, "License fulfillment may be in progress, waiting for completion: \(book.identifier)")
         waitForLicenseFulfillment(book: book, completion: completion)
         return
       }
       
-      // No license yet, start fulfillment
-      Log.info(#file, "No local file for LCP audiobook, starting license fulfillment: \(book.identifier)")
-      Log.info(#file, "Expected LCP MIME type: application/vnd.readium.lcp.license.v1.0+json")
-      if let acqURL = book.defaultAcquisition?.hrefURL {
-        Log.info(#file, "Downloading LCP license from: \(acqURL.absoluteString)")
-      }
       downloadCenter.startDownload(for: book)
-      // Note: MyBooksDownloadCenter will set bookState to .downloadSuccessful when fulfillment completes
       completion?()
       return
     }
@@ -444,21 +433,16 @@ final class BookDetailViewModel: ObservableObject {
   
   private func getLCPLicenseURL(for book: TPPBook) -> URL? {
 #if LCP
-    // Check for license file in the same location as content files
-    // License is stored as {hashedIdentifier}.lcpl in the content directory
     guard let bookFileURL = downloadCenter.fileUrl(for: book.identifier) else {
       return nil
     }
     
-    // License has same path but .lcpl extension
     let licenseURL = bookFileURL.deletingPathExtension().appendingPathExtension("lcpl")
     
     if FileManager.default.fileExists(atPath: licenseURL.path) {
-      Log.debug(#file, "Found LCP license at: \(licenseURL.path)")
       return licenseURL
     }
     
-    Log.debug(#file, "No LCP license found at: \(licenseURL.path)")
     return nil
 #else
     return nil
@@ -466,26 +450,22 @@ final class BookDetailViewModel: ObservableObject {
   }
   
   private func waitForLicenseFulfillment(book: TPPBook, completion: (() -> Void)? = nil, attempt: Int = 0) {
-    let maxAttempts = 10 // Wait up to 10 seconds
+    let maxAttempts = 10
     let retryDelay: TimeInterval = 1.0
     
-    // Check if license file is now available
     if let licenseUrl = getLCPLicenseURL(for: book) {
-      Log.info(#file, "License fulfillment completed, opening in streaming mode: \(book.identifier)")
       openAudiobookUnified(book: book, licenseUrl: licenseUrl, completion: completion)
+      // Start background download once license is available
+      downloadCenter.startDownload(for: book)
       return
     }
     
-    // If we've exceeded max attempts, show error
     if attempt >= maxAttempts {
-      Log.error(#file, "Timeout waiting for license fulfillment after \(attempt) attempts")
       presentUnsupportedItemError()
       completion?()
       return
     }
     
-    // Wait and retry
-    Log.debug(#file, "License not ready yet, waiting... (attempt \(attempt + 1)/\(maxAttempts))")
     DispatchQueue.main.asyncAfter(deadline: .now() + retryDelay) { [weak self] in
       self?.waitForLicenseFulfillment(book: book, completion: completion, attempt: attempt + 1)
     }
@@ -493,10 +473,7 @@ final class BookDetailViewModel: ObservableObject {
   
   private func openAudiobookUnified(book: TPPBook, licenseUrl: URL, completion: (() -> Void)?) {
 #if LCP
-    Log.info(#file, "Opening LCP audiobook for streaming: \(book.identifier)")
-    Log.debug(#file, "License available at: \(licenseUrl.absoluteString)")
     
-    // Get the publication URL from the license
     guard let license = TPPLCPLicense(url: licenseUrl),
           let publicationLink = license.firstLink(withRel: .publication),
           let href = publicationLink.href,
@@ -507,49 +484,85 @@ final class BookDetailViewModel: ObservableObject {
       return
     }
     
-    Log.info(#file, "Using publication URL for streaming: \(publicationUrl.absoluteString)")
     
-    // Create LCPAudiobooks with the HTTP publication URL (this works since LCPAudiobooks supports HTTP URLs)
     guard let lcpAudiobooks = LCPAudiobooks(for: publicationUrl) else {
-      Log.error(#file, "Failed to create LCPAudiobooks for streaming URL")
       self.presentUnsupportedItemError()
       completion?()
       return
     }
     
-    // Use the same contentDictionary pattern as local files - this is the proven path!
+    // If the publication is already cached (prefetched), open immediately without waiting
+    if let cachedDict = lcpAudiobooks.cachedContentDictionary() {
+      var jsonDict = cachedDict as? [String: Any] ?? [:]
+      jsonDict["id"] = book.identifier
+      self.openAudiobook(with: book, json: jsonDict, drmDecryptor: lcpAudiobooks, completion: completion)
+      return
+    }
+
+    // Fallback to asynchronous content retrieval (still opens quickly after prefetch warms cache)
     lcpAudiobooks.contentDictionary { [weak self] dict, error in
       DispatchQueue.main.async {
         guard let self = self else { return }
-        
-        if let error {
-          Log.error(#file, "Failed to get content dictionary for streaming: \(error)")
+        if let _ = error {
           self.presentUnsupportedItemError()
           completion?()
           return
         }
-        
         guard let dict else {
-          Log.error(#file, "No content dictionary returned for streaming")
           self.presentCorruptedItemError()
           completion?()
           return
         }
-        
-        // Use the exact same pattern as openAudiobookWithLocalFile
         var jsonDict = dict as? [String: Any] ?? [:]
         jsonDict["id"] = book.identifier
-        
-        Log.info(#file, "✅ Got content dictionary for streaming, opening with AudiobookFactory")
         self.openAudiobook(with: book, json: jsonDict, drmDecryptor: lcpAudiobooks, completion: completion)
       }
     }
 #endif
   }
+
+#if LCP
+  private func prefetchLCPStreamingIfPossible() {
+    guard !didPrefetchLCPStreaming, LCPAudiobooks.canOpenBook(book), let licenseUrl = getLCPLicenseURL(for: book) else { return }
+
+    // Skip prefetch if the audiobook file is fully downloaded locally
+    if let localURL = downloadCenter.fileUrl(for: book.identifier), FileManager.default.fileExists(atPath: localURL.path) {
+      return
+    }
+    guard let license = TPPLCPLicense(url: licenseUrl),
+          let publicationLink = license.firstLink(withRel: .publication),
+          let href = publicationLink.href,
+          let publicationUrl = URL(string: href),
+          let lcpAudiobooks = LCPAudiobooks(for: publicationUrl) else { return }
+
+    didPrefetchLCPStreaming = true
+    lcpAudiobooks.startPrefetch()
+  }
+#endif
   
   /// Gets the publication manifest for streaming using Readium LCP service directly
 
   
+  // Lightweight manifest fetch to reduce startup latency for streaming
+  private func fetchStreamingManifest(from url: URL, completion: @escaping (NSDictionary?, NSError?) -> Void) {
+    var request = URLRequest(url: url)
+    request.httpMethod = "GET"
+    request.setValue("application/audiobook+json, application/json;q=0.9, */*;q=0.1", forHTTPHeaderField: "Accept")
+    let task = URLSession.shared.dataTask(with: request) { data, response, error in
+      if let error = error { completion(nil, error as NSError); return }
+      guard let data = data else { completion(nil, NSError(domain: "StreamingManifest", code: -1, userInfo: [NSLocalizedDescriptionKey: "No data"])) ; return }
+      do {
+        if let jsonObject = try JSONSerialization.jsonObject(with: data, options: []) as? NSDictionary {
+          completion(jsonObject, nil)
+        } else {
+          completion(nil, NSError(domain: "StreamingManifest", code: -2, userInfo: [NSLocalizedDescriptionKey: "Invalid JSON"]))
+        }
+      } catch {
+        completion(nil, error as NSError)
+      }
+    }
+    task.resume()
+  }
   /// Extracts the publication URL from the license for use with LCPAudiobooks
   /// Since we already have the publication URL from parsing the license, we can store and reuse it
   private var cachedPublicationUrl: URL?
@@ -624,48 +637,28 @@ final class BookDetailViewModel: ObservableObject {
         
         let manifestDecoder = Manifest.customDecoder()
         guard let jsonData = try? JSONSerialization.data(withJSONObject: json, options: []) else {
-          Log.error(#file, "❌ Failed to serialize manifest JSON")
           self.presentUnsupportedItemError()
           completion?()
           return
         }
         
         guard let manifest = try? manifestDecoder.decode(Manifest.self, from: jsonData) else {
-          Log.error(#file, "❌ Failed to decode manifest from JSON")
           self.presentUnsupportedItemError()
           completion?()
           return
         }
-        
-        // DEBUG: Log which manifest we're actually using
-        Log.info(#file, "✅ Manifest decoded successfully - contains \(manifest.readingOrder?.count ?? 0) reading order items")
-        if let readingOrder = manifest.readingOrder {
-          Log.debug(#file, "🔍 First 5 tracks: \(readingOrder.prefix(5).compactMap { $0.title })")
-          Log.debug(#file, "🔍 Last 5 tracks: \(readingOrder.suffix(5).compactMap { $0.title })")
-        }
-        
-        Log.info(#file, "✅ Creating audiobook with AudiobookFactory")
-        
-        // Use the original Readium manifest - no enhancement needed for proper Readium streaming
-        
+                
         guard let audiobook = AudiobookFactory.audiobook(
           for: manifest,
           bookIdentifier: book.identifier,
           decryptor: drmDecryptor,
           token: book.bearerToken
         ) else {
-          Log.error(#file, "❌ AudiobookFactory failed to create audiobook")
           self.presentUnsupportedItemError()
           completion?()
           return
         }
-        
-        Log.info(#file, "✅ Audiobook created successfully")
-        
-        // Streaming resources are now handled automatically by LCPPlayer - no early population needed
-        
-        Log.info(#file, "✅ Launching audiobook player")
-        
+
         self.launchAudiobook(book: book, audiobook: audiobook, drmDecryptor: drmDecryptor)
         completion?()
       }
@@ -673,9 +666,6 @@ final class BookDetailViewModel: ObservableObject {
   }
   
   @MainActor private func launchAudiobook(book: TPPBook, audiobook: Audiobook, drmDecryptor: DRMDecryptor?) {
-    Log.info(#file, "🎵 Launching audiobook player for: \(book.identifier)")
-    Log.info(#file, "🎵 Audiobook has \(audiobook.tableOfContents.allTracks.count) tracks")
-    
     var timeTracker: AudiobookTimeTracker?
     if let libraryId = AccountsManager.shared.currentAccount?.uuid, let timeTrackingURL = book.timeTrackingURL {
       timeTracker = AudiobookTimeTracker(libraryId: libraryId, bookId: book.identifier, timeTrackingUrl: timeTrackingURL)

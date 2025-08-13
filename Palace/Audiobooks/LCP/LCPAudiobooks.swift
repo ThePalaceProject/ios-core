@@ -29,6 +29,7 @@ import PalaceAudiobookToolkit
   
   private var cachedPublication: Publication?
   private let publicationCacheLock = NSLock()
+  private var currentPrefetchTask: Task<Void, Never>?
 
   /// Initialize for an LCP audiobook
   /// - Parameter audiobookUrl: must be a file with `.lcpa` extension
@@ -73,13 +74,23 @@ import PalaceAudiobookToolkit
   }
   
   private func loadContentDictionary(completion: @escaping (_ json: NSDictionary?, _ error: NSError?) -> ()) {
-    Task {
+    // Cancel any prior prefetch task to avoid duplicate work
+    publicationCacheLock.lock()
+    currentPrefetchTask?.cancel()
+    publicationCacheLock.unlock()
+
+    let task = Task { [weak self] in
+      guard let self else { return }
+      if Task.isCancelled { return }
+
       switch await assetRetriever.retrieve(url: audiobookUrl) {
       case .success(let asset):
+        if Task.isCancelled { return }
         let result = await publicationOpener.open(asset: asset, allowUserInteraction: false, sender: nil)
 
         switch result {
         case .success(let publication):
+          if Task.isCancelled { return }
           publicationCacheLock.lock()
           cachedPublication = publication
           publicationCacheLock.unlock()
@@ -116,7 +127,15 @@ import PalaceAudiobookToolkit
         TPPErrorLogger.logError(error, summary: "Failed to retrieve audiobook asset", metadata: [self.audiobookUrlKey: self.audiobookUrl])
         completion(nil, LCPAudiobooks.nsError(for: error))
       }
+
+      self.publicationCacheLock.lock()
+      if self.currentPrefetchTask?.isCancelled == true { self.currentPrefetchTask = nil }
+      self.publicationCacheLock.unlock()
     }
+
+    publicationCacheLock.lock()
+    currentPrefetchTask = task
+    publicationCacheLock.unlock()
   }
 
   /// Check if the book is LCP audiobook
@@ -178,6 +197,41 @@ extension LCPAudiobooks: LCPStreamingProvider {
     
     streamingPlayer.setStreamingProvider(self)
     return true
+  }
+}
+
+// MARK: - Cached manifest access
+extension LCPAudiobooks {
+  /// Returns the cached content dictionary if the publication has already been opened.
+  /// This avoids re-opening the asset and enables immediate UI presentation.
+  public func cachedContentDictionary() -> NSDictionary? {
+    publicationCacheLock.lock()
+    let publication = cachedPublication
+    publicationCacheLock.unlock()
+
+    guard let publication, let jsonManifestString = publication.jsonManifest,
+          let jsonData = jsonManifestString.data(using: .utf8) else {
+      return nil
+    }
+
+    if let jsonObject = try? JSONSerialization.jsonObject(with: jsonData, options: []) as? NSDictionary {
+      return jsonObject
+    }
+    return nil
+  }
+
+  /// Start a cancellable background prefetch of the publication/manifest
+  public func startPrefetch() {
+    // Kick off a background load; completion is ignored
+    self.contentDictionary { _, _ in }
+  }
+
+  /// Cancel any in-flight prefetch task
+  public func cancelPrefetch() {
+    publicationCacheLock.lock()
+    currentPrefetchTask?.cancel()
+    currentPrefetchTask = nil
+    publicationCacheLock.unlock()
   }
 }
 

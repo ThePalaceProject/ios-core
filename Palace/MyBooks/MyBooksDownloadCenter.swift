@@ -1019,10 +1019,7 @@ extension MyBooksDownloadCenter {
       
       // Verify the copy was successful
       let fileExists = FileManager.default.fileExists(atPath: streamingLicenseUrl.path)
-      Log.info(#file, "🎵 ✅ License copy successful, file exists: \(fileExists)")
-      Log.info(#file, "🎵 ✅ License ready for streaming at: \(streamingLicenseUrl.path)")
     } catch {
-      Log.error(#file, "🎵 ❌ Failed to copy LCP license for streaming: \(error.localizedDescription)")
       TPPErrorLogger.logError(error, summary: "Failed to copy LCP license for streaming", metadata: [
         "book": book.loggableDictionary,
         "sourceLicenseUrl": sourceLicenseUrl.absoluteString,
