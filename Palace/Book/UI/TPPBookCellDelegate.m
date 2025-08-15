@@ -208,13 +208,11 @@
 - (void)openAudiobook:(TPPBook *)book completion:(void (^ _Nullable)(void))completion {
 #if defined(LCP)
   if ([LCPAudiobooks canOpenBook:book]) {
-    // Use new unified LCP streaming approach from Swift extension
     [self openAudiobookWithUnifiedStreaming:book completion:completion];
     return;
   }
 #endif
   
-  // Non-LCP audiobook fallback
   NSURL *const url = [[MyBooksDownloadCenter shared] fileUrlFor:book.identifier];
   if (!url) {
     [self presentCorruptedItemErrorForBook:book fromURL:url];

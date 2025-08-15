@@ -619,35 +619,6 @@ final class BookDetailViewModel: ObservableObject {
   }
 #endif
   
-  /// Gets the publication manifest for streaming using Readium LCP service directly
-
-  
-  private func fetchStreamingManifest(from url: URL, completion: @escaping (NSDictionary?, NSError?) -> Void) {
-    var request = URLRequest(url: url)
-    request.httpMethod = "GET"
-    request.setValue("application/audiobook+json, application/json;q=0.9, */*;q=0.1", forHTTPHeaderField: "Accept")
-    let task = URLSession.shared.dataTask(with: request) { data, response, error in
-      if let error = error { completion(nil, error as NSError); return }
-      guard let data = data else { completion(nil, NSError(domain: "StreamingManifest", code: -1, userInfo: [NSLocalizedDescriptionKey: "No data"])) ; return }
-      do {
-        if let jsonObject = try JSONSerialization.jsonObject(with: data, options: []) as? NSDictionary {
-          completion(jsonObject, nil)
-        } else {
-          completion(nil, NSError(domain: "StreamingManifest", code: -2, userInfo: [NSLocalizedDescriptionKey: "Invalid JSON"]))
-        }
-      } catch {
-        completion(nil, error as NSError)
-      }
-    }
-    task.resume()
-  }
-  /// Extracts the publication URL from the license for use with LCPAudiobooks
-  /// Since we already have the publication URL from parsing the license, we can store and reuse it
-  private var cachedPublicationUrl: URL?
-  
-  private func getPublicationUrlFromManifest(_ manifest: [String: Any]) -> URL? {
-    return cachedPublicationUrl
-  }
   
   private func openAudiobookWithLocalFile(book: TPPBook, url: URL, completion: (() -> Void)?) {
 #if LCP

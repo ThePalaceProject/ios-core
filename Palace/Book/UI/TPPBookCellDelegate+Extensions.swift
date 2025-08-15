@@ -261,7 +261,6 @@ extension TPPBookCellDelegate {
 
         self.startLoading(audiobookPlayer)
 
-        // Extra safety: dismiss loading overlay when playback actually starts (or fails)
         let cancellable = audiobookManager.audiobook.player.playbackStatePublisher
           .receive(on: DispatchQueue.main)
           .sink { [weak self] state in
