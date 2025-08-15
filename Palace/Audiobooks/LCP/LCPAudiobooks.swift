@@ -14,7 +14,6 @@ import ReadiumStreamer
 import ReadiumLCP
 import PalaceAudiobookToolkit
 
-/// LCP Audiobooks helper class
 @objc class LCPAudiobooks: NSObject {
   
   private static let expectedAcquisitionType = "application/vnd.readium.lcp.license.v1.0+json"
@@ -22,6 +21,7 @@ import PalaceAudiobookToolkit
   private let audiobookUrl: AbsoluteURL
   private let licenseUrl: URL?
   private let assetRetriever: AssetRetriever
+  private let httpRangeRetriever: HTTPRangeRetriever
   private let publicationOpener: PublicationOpener
   private let httpClient: DefaultHTTPClient
   
