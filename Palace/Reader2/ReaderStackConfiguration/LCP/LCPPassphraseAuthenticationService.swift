@@ -23,6 +23,7 @@ class LCPPassphraseAuthenticationService: LCPAuthenticating {
 
     do {
       let (data, _) = try await TPPNetworkExecutor.shared.GET(loansUrl, useTokenIfAvailable: true)
+      
       guard let xml = TPPXML(data: data),
             let entries = xml.children(withName: "entry") as? [TPPXML] else {
         logError("LCP passphrase retrieval error: loans XML parsing failed", "responseBody", String(data: data, encoding: .utf8) ?? "N/A")
@@ -65,7 +66,6 @@ class LCPPassphraseAuthenticationService: LCPAuthenticating {
   private func retrievePassphraseFromHint(for license: LCPAuthenticatedLicense, reason: LCPAuthenticationReason, allowUserInteraction: Bool, sender: Any?) async -> String? {
     guard let hintLink = license.hintLink,
           let hintURL = URL(string: hintLink.href) else {
-      Log.error(#file, "LCP Authenticated License does not contain valid hint link")
       return nil
     }
 
