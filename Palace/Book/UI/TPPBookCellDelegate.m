@@ -215,7 +215,7 @@
 
 #if defined(LCP)
   if ([LCPAudiobooks canOpenBook:book]) {
-    LCPAudiobooks *lcpAudiobooks = [[LCPAudiobooks alloc] initFor:url];
+    LCPAudiobooks *lcpAudiobooks = [[LCPAudiobooks alloc] initFor:url licenseUrl:nil];
     [lcpAudiobooks contentDictionaryWithCompletion:^(NSDictionary * _Nullable dict, NSError * _Nullable error) {
       if (error) {
         [self presentUnsupportedItemError];

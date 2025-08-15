@@ -23,17 +23,21 @@ import PalaceAudiobookToolkit
   private static let expectedAcquisitionType = "application/vnd.readium.lcp.license.v1.0+json"
   
   private let audiobookUrl: AbsoluteURL
-  private let lcpService = LCPLibraryService()
+  private let licenseUrl: URL?
+  private let lcpLibraryService = LCPLibraryService()
   private let assetRetriever: AssetRetriever
   private let publicationOpener: PublicationOpener
+  private let httpClient: DefaultHTTPClient
   
   private var cachedPublication: Publication?
   private let publicationCacheLock = NSLock()
   private var currentPrefetchTask: Task<Void, Never>?
+  private var containerURL: URL?
 
   /// Initialize for an LCP audiobook
-  /// - Parameter audiobookUrl: must be a file with `.lcpa` extension
-  @objc init?(for audiobookUrl: URL) {
+  /// - Parameter audiobookUrl: can be a local `.lcpa` package URL OR an `.lcpl` license URL for streaming
+  /// - Parameter licenseUrl: optional license URL for streaming authentication (deprecated, use audiobookUrl)
+  @objc init?(for audiobookUrl: URL, licenseUrl: URL? = nil) {
 
     if let fileUrl = FileURL(url: audiobookUrl) {
       self.audiobookUrl = fileUrl
@@ -43,15 +47,18 @@ import PalaceAudiobookToolkit
       return nil
     }
 
-    self.assetRetriever = AssetRetriever(httpClient: DefaultHTTPClient())
+    self.licenseUrl = licenseUrl ?? (audiobookUrl.pathExtension.lowercased() == "lcpl" ? audiobookUrl : nil)
+
+    let httpClient = DefaultHTTPClient()
+    self.httpClient = httpClient
+    self.assetRetriever = AssetRetriever(httpClient: httpClient)
 
     guard let contentProtection = lcpService.contentProtection else {
-      TPPErrorLogger.logError(nil, summary: "Uninitialized contentProtection in LCPAudiobooks")
       return nil
     }
 
     let parser = DefaultPublicationParser(
-      httpClient: DefaultHTTPClient(),
+      httpClient: httpClient,
       assetRetriever: assetRetriever,
       pdfFactory: DefaultPDFDocumentFactory()
     )
@@ -62,7 +69,6 @@ import PalaceAudiobookToolkit
     )
   }
 
-  /// Content dictionary for `AudiobookFactory`
   @objc func contentDictionary(completion: @escaping (_ json: NSDictionary?, _ error: NSError?) -> ()) {
     DispatchQueue.global(qos: .userInitiated).async {
       self.loadContentDictionary { json, error in
@@ -74,7 +80,6 @@ import PalaceAudiobookToolkit
   }
   
   private func loadContentDictionary(completion: @escaping (_ json: NSDictionary?, _ error: NSError?) -> ()) {
-    // Cancel any prior prefetch task to avoid duplicate work
     publicationCacheLock.lock()
     currentPrefetchTask?.cancel()
     publicationCacheLock.unlock()
@@ -83,48 +88,67 @@ import PalaceAudiobookToolkit
       guard let self else { return }
       if Task.isCancelled { return }
 
-      switch await assetRetriever.retrieve(url: audiobookUrl) {
+      var urlToOpen: AbsoluteURL = audiobookUrl
+      if let licenseUrl {
+        if let fileUrl = FileURL(url: licenseUrl) {
+          urlToOpen = fileUrl
+        } else if let httpUrl = HTTPURL(url: licenseUrl) {
+          urlToOpen = httpUrl
+        } else {
+          completion(nil, NSError(domain: "LCPAudiobooks", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid license URL"]))
+          return
+        }
+      }
+      
+      let result = await assetRetriever.retrieve(url: urlToOpen)
+      
+      switch result {
       case .success(let asset):
         if Task.isCancelled { return }
-        let result = await publicationOpener.open(asset: asset, allowUserInteraction: false, sender: nil)
+        
+        let hostVC = TPPRootTabBarController.shared()
+        
+        var credentials: String? = nil
+        if let licenseUrl = licenseUrl, licenseUrl.isFileURL {
+          credentials = try? String(contentsOf: licenseUrl)
+        }
+        
+        let result = await publicationOpener.open(asset: asset, allowUserInteraction: true, credentials: credentials, sender: hostVC)
 
         switch result {
         case .success(let publication):
+          
           if Task.isCancelled { return }
           publicationCacheLock.lock()
           cachedPublication = publication
           publicationCacheLock.unlock()
           
-          guard let jsonManifestString = publication.jsonManifest else {
-            TPPErrorLogger.logError(nil, summary: "No resource found for audiobook.", metadata: [self.audiobookUrlKey: self.audiobookUrl])
-            completion(nil, nil)
-            return 
-          }
-
-          guard let jsonData = jsonManifestString.data(using: .utf8) else {
-            TPPErrorLogger.logError(nil, summary: "Failed to convert manifest string to data.", metadata: [self.audiobookUrlKey: self.audiobookUrl])
-            completion(nil, nil)
-            return
-          }
-
-          do {
-            if let jsonObject = try JSONSerialization.jsonObject(with: jsonData, options: []) as? NSDictionary {
-              completion(jsonObject, nil)
-            } else {
-              TPPErrorLogger.logError(nil, summary: "Failed to convert manifest data to JSON object.", metadata: [self.audiobookUrlKey: self.audiobookUrl])
-              completion(nil, nil)
+          if let jsonManifestString = publication.jsonManifest, let jsonData = jsonManifestString.data(using: .utf8),
+             let jsonObject = try? JSONSerialization.jsonObject(with: jsonData, options: []) as? NSDictionary {
+            completion(jsonObject, nil)
+          } else {
+            let links = publication.readingOrder.map { link in
+              let hrefString = String(describing: link.href)
+              let typeString = link.mediaType.map { String(describing: $0) } ?? "audio/mpeg"
+              return [
+                "href": hrefString,
+                "type": typeString
+              ]
             }
-          } catch {
-            TPPErrorLogger.logError(error, summary: "Error parsing JSON manifest.", metadata: [self.audiobookUrlKey: self.audiobookUrl])
-            completion(nil, LCPAudiobooks.nsError(for: error))
+            let minimal: [String: Any] = [
+              "metadata": [
+                "identifier": UUID().uuidString,
+                "title": String(describing: publication.metadata.title)
+              ],
+              "readingOrder": links
+            ]
+            completion(minimal as NSDictionary, nil)
           }
         case .failure(let error):
-          TPPErrorLogger.logError(error, summary: "Failed to open LCP audiobook", metadata: [self.audiobookUrlKey: self.audiobookUrl])
           completion(nil, LCPAudiobooks.nsError(for: error))
         }
 
       case .failure(let error):
-        TPPErrorLogger.logError(error, summary: "Failed to retrieve audiobook asset", metadata: [self.audiobookUrlKey: self.audiobookUrl])
         completion(nil, LCPAudiobooks.nsError(for: error))
       }
 
@@ -150,7 +174,7 @@ import PalaceAudiobookToolkit
   /// - Parameter error: Error object
   /// - Returns: NSError object
   private static func nsError(for error: Error) -> NSError {
-    return NSError(domain: "SimplyE.LCPAudiobooks", code: 0, userInfo: [
+    return NSError(domain: "Palace.LCPAudiobooks", code: 0, userInfo: [
       NSLocalizedDescriptionKey: error.localizedDescription,
       "Error": error
     ])
@@ -162,7 +186,11 @@ extension LCPAudiobooks: LCPStreamingProvider {
   public func getPublication() -> Publication? {
     publicationCacheLock.lock()
     defer { publicationCacheLock.unlock() }
-    return cachedPublication
+    if let publication = cachedPublication {
+      return publication
+    } else {
+      return nil
+    }
   }
   
   public func supportsStreaming() -> Bool {
@@ -171,32 +199,25 @@ extension LCPAudiobooks: LCPStreamingProvider {
   
   public func setupStreamingFor(_ player: Any) -> Bool {
     guard let streamingPlayer = player as? StreamingCapablePlayer else {
-      ATLog(.error, "🎵 [LCPAudiobooks] Player does not support streaming")
       return false
     }
+    streamingPlayer.setStreamingProvider(self)
     
     publicationCacheLock.lock()
     let hasPublication = cachedPublication != nil
     publicationCacheLock.unlock()
     
     if !hasPublication {
-      let semaphore = DispatchSemaphore(value: 0)
-      var loadSuccess = false
-      
-      loadContentDictionary { json, error in
-        loadSuccess = (json != nil && error == nil)
-        semaphore.signal()
-      }
-      
-      semaphore.wait()
-      
-      if !loadSuccess {
-        return false
+      DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+        self?.loadContentDictionary { _, _ in /* ignore; loader will retry if needed */ }
       }
     }
     
-    streamingPlayer.setStreamingProvider(self)
     return true
+  }
+  
+  public func getContainerURL() -> URL? {
+    return containerURL
   }
 }
 
@@ -242,7 +263,6 @@ extension LCPAudiobooks: DRMDecryptor {
   ///   - trackPath: internal track path from manifest (e.g., "track1.mp3")
   ///   - completion: callback with streamable URL or error
   @objc func getStreamableURL(for trackPath: String, completion: @escaping (URL?, Error?) -> Void) {
-    // Use fast URL construction first (avoids expensive license processing)
     if let streamingUrl = constructStreamingURL(for: trackPath) {
       completion(streamingUrl, nil)
       return
@@ -289,7 +309,21 @@ extension LCPAudiobooks: DRMDecryptor {
       return .success(cached)
     }
     
-    let result = await self.assetRetriever.retrieve(url: audiobookUrl)
+    // Use license URL if available, otherwise use audiobook URL
+    let urlToOpen: AbsoluteURL
+    if let licenseUrl = licenseUrl {
+      if let fileUrl = FileURL(url: licenseUrl) {
+        urlToOpen = fileUrl
+      } else if let httpUrl = HTTPURL(url: licenseUrl) {
+        urlToOpen = httpUrl
+      } else {
+        return .failure(NSError(domain: "LCPAudiobooks", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid license URL"]))
+      }
+    } else {
+      urlToOpen = audiobookUrl
+    }
+    
+    let result = await self.assetRetriever.retrieve(url: urlToOpen)
     switch result {
     case .success(let asset):
       let publicationResult = await publicationOpener.open(asset: asset, allowUserInteraction: false, sender: nil)
@@ -306,38 +340,35 @@ extension LCPAudiobooks: DRMDecryptor {
   }
   
   private func constructStreamingURL(for trackPath: String) -> URL? {
-    if let httpUrl = audiobookUrl as? HTTPURL {
-      return URL(string: trackPath, relativeTo: httpUrl.url)
-    }
-
-    guard let fileUrl = audiobookUrl as? FileURL else {
-      return nil
-    }
-
-    var licenseURL = fileUrl.url
-    if licenseURL.pathExtension.lowercased() != "lcpl" {
-      let sibling = licenseURL.deletingPathExtension().appendingPathExtension("lcpl")
-      if FileManager.default.fileExists(atPath: sibling.path) {
-        licenseURL = sibling
+    let trackIndex: Int
+    
+    publicationCacheLock.lock()
+    defer { publicationCacheLock.unlock() }
+    
+    if let publication = cachedPublication {
+      if let index = publication.readingOrder.firstIndex(where: { link in
+        link.href.contains(trackPath) || link.href.hasSuffix(trackPath)
+      }) {
+        trackIndex = index
       } else {
-        let dir = licenseURL.deletingLastPathComponent()
-        if let contents = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil),
-           let found = contents.first(where: { $0.pathExtension.lowercased() == "lcpl" }) {
-          licenseURL = found
-        } else {
-          TPPErrorLogger.logError(nil, summary: "LCP streaming: license file not found near content", metadata: [
-            "contentURL": licenseURL.absoluteString
-          ])
-          return nil
-        }
+        let numbers = trackPath.compactMap { Int(String($0)) }
+        trackIndex = numbers.first ?? 0
       }
+    } else {
+      let numbers = trackPath.compactMap { Int(String($0)) }
+      trackIndex = numbers.first ?? 0
     }
+    
+    let fakeUrl = URL(string: "fake://lcp-streaming/track/\(trackIndex)")
+    return fakeUrl
+  }
 
+  private func publicationURLFromLocalLicense(_ fileUrl: FileURL) -> URL? {
     do {
-      let licenseData = try Data(contentsOf: licenseURL)
+      let licenseData = try Data(contentsOf: fileUrl.url)
       guard let licenseJson = try JSONSerialization.jsonObject(with: licenseData) as? [String: Any] else {
         TPPErrorLogger.logError(nil, summary: "LCP streaming: license is not valid JSON", metadata: [
-          "licenseURL": licenseURL.absoluteString
+          "licenseURL": fileUrl.url.absoluteString
         ])
         return nil
       }
@@ -349,17 +380,17 @@ extension LCPAudiobooks: DRMDecryptor {
              rel == "publication",
              let href = link["href"] as? String,
              let publicationUrl = URL(string: href) {
-            return URL(string: trackPath, relativeTo: publicationUrl)
+            return publicationUrl
           }
         }
       }
 
       TPPErrorLogger.logError(nil, summary: "LCP streaming: publication link not found in license", metadata: [
-        "licenseURL": licenseURL.absoluteString
+        "licenseURL": fileUrl.url.absoluteString
       ])
     } catch {
       TPPErrorLogger.logError(error, summary: "Failed to read/parse license file for streaming URL construction", metadata: [
-        "licenseURL": licenseURL.absoluteString
+        "licenseURL": fileUrl.url.absoluteString
       ])
     }
 
@@ -373,7 +404,22 @@ extension LCPAudiobooks: DRMDecryptor {
   ///   - completion: decryptor callback with optional `Error`.
   func decrypt(url: URL, to resultUrl: URL, completion: @escaping (Error?) -> Void) {
     Task {
-      let result = await self.assetRetriever.retrieve(url: audiobookUrl)
+      // Use license URL if available, otherwise use audiobook URL
+      let urlToOpen: AbsoluteURL
+      if let licenseUrl = licenseUrl {
+        if let fileUrl = FileURL(url: licenseUrl) {
+          urlToOpen = fileUrl
+        } else if let httpUrl = HTTPURL(url: licenseUrl) {
+          urlToOpen = httpUrl
+        } else {
+          completion(NSError(domain: "LCPAudiobooks", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid license URL"]))
+          return
+        }
+      } else {
+        urlToOpen = audiobookUrl
+      }
+      
+      let result = await self.assetRetriever.retrieve(url: urlToOpen)
       switch result {
       case .success(let asset):
         let publicationResult = await publicationOpener.open(asset: asset, allowUserInteraction: false, sender: nil)
@@ -400,6 +446,7 @@ extension LCPAudiobooks: DRMDecryptor {
   }
 }
 
+
 private extension Publication {
   func getResource(at path: String) -> Resource? {
     let resource = get(Link(href: path))
@@ -411,3 +458,4 @@ private extension Publication {
   }
 }
 #endif
+

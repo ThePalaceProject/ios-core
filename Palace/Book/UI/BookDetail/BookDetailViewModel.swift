@@ -114,14 +114,17 @@ final class BookDetailViewModel: ObservableObject {
     timer = nil
     NotificationCenter.default.removeObserver(self)
 #if LCP
-    // Cancel any in-flight LCP prefetch when leaving the detail view
-    if let licenseUrl = getLCPLicenseURL(for: book),
-       let license = TPPLCPLicense(url: licenseUrl),
-       let publicationLink = license.firstLink(withRel: .publication),
-       let href = publicationLink.href,
-       let publicationUrl = URL(string: href),
-       let lcpAudiobooks = LCPAudiobooks(for: publicationUrl) {
-      lcpAudiobooks.cancelPrefetch()
+    if let licenseUrl = getLCPLicenseURL(for: book) {
+      var lcpAudiobooks: LCPAudiobooks?
+      
+      if let localURL = downloadCenter.fileUrl(for: book.identifier),
+         FileManager.default.fileExists(atPath: localURL.path) {
+        lcpAudiobooks = LCPAudiobooks(for: localURL)
+      } else {
+        lcpAudiobooks = LCPAudiobooks(for: licenseUrl)
+      }
+      
+      lcpAudiobooks?.cancelPrefetch()
     }
 #endif
   }
@@ -402,16 +405,22 @@ final class BookDetailViewModel: ObservableObject {
   // MARK: - Audiobook Opening
   
   func openAudiobook(_ book: TPPBook, completion: (() -> Void)? = nil) {
-    if let url = downloadCenter.fileUrl(for: book.identifier),
-       FileManager.default.fileExists(atPath: url.path) {
-      openAudiobookWithLocalFile(book: book, url: url, completion: completion)
-      return
-    }
+//    if let url = downloadCenter.fileUrl(for: book.identifier),
+//       FileManager.default.fileExists(atPath: url.path) {
+//      openAudiobookWithLocalFile(book: book, url: url, completion: completion)
+//      return
+//    }
     
 #if LCP
     if LCPAudiobooks.canOpenBook(book) {
       if let licenseUrl = getLCPLicenseURL(for: book) {
         openAudiobookUnified(book: book, licenseUrl: licenseUrl, completion: completion)
+        downloadCenter.startDownload(for: book)
+        return
+      }
+      // Fallback: open via publication URL directly (Readium will retrieve LCPL and stream)
+      if let publicationURL = book.defaultAcquisition?.hrefURL {
+        openAudiobookUnified(book: book, licenseUrl: publicationURL, completion: completion)
         downloadCenter.startDownload(for: book)
         return
       }
@@ -471,21 +480,42 @@ final class BookDetailViewModel: ObservableObject {
     }
   }
   
+
+  
   private func openAudiobookUnified(book: TPPBook, licenseUrl: URL, completion: (() -> Void)?) {
 #if LCP
     
-    guard let license = TPPLCPLicense(url: licenseUrl),
-          let publicationLink = license.firstLink(withRel: .publication),
-          let href = publicationLink.href,
-          let publicationUrl = URL(string: href) else {
-      Log.error(#file, "Failed to extract publication URL from license")
-      self.presentUnsupportedItemError()
-      completion?()
+    if let localURL = downloadCenter.fileUrl(for: book.identifier),
+       FileManager.default.fileExists(atPath: localURL.path) {
+      guard let lcpAudiobooks = LCPAudiobooks(for: localURL) else {
+        self.presentUnsupportedItemError()
+        completion?()
+        return
+      }
+      
+      lcpAudiobooks.contentDictionary { [weak self] dict, error in
+        DispatchQueue.main.async {
+          guard let self = self else { return }
+          if let _ = error {
+            self.presentUnsupportedItemError()
+            completion?()
+            return
+          }
+          guard let dict else {
+            self.presentCorruptedItemError()
+            completion?()
+            return
+          }
+          var jsonDict = dict as? [String: Any] ?? [:]
+          jsonDict["id"] = book.identifier
+          self.openAudiobook(with: book, json: jsonDict, drmDecryptor: lcpAudiobooks, completion: completion)
+        }
+      }
       return
     }
     
-    
-    guard let lcpAudiobooks = LCPAudiobooks(for: publicationUrl) else {
+    // Use the license directly for streaming (Readium approach)
+    guard let lcpAudiobooks = LCPAudiobooks(for: licenseUrl) else {
       self.presentUnsupportedItemError()
       completion?()
       return
@@ -499,7 +529,6 @@ final class BookDetailViewModel: ObservableObject {
       return
     }
 
-    // Fallback to asynchronous content retrieval (still opens quickly after prefetch warms cache)
     lcpAudiobooks.contentDictionary { [weak self] dict, error in
       DispatchQueue.main.async {
         guard let self = self else { return }
@@ -524,16 +553,11 @@ final class BookDetailViewModel: ObservableObject {
 #if LCP
   private func prefetchLCPStreamingIfPossible() {
     guard !didPrefetchLCPStreaming, LCPAudiobooks.canOpenBook(book), let licenseUrl = getLCPLicenseURL(for: book) else { return }
-
-    // Skip prefetch if the audiobook file is fully downloaded locally
     if let localURL = downloadCenter.fileUrl(for: book.identifier), FileManager.default.fileExists(atPath: localURL.path) {
       return
     }
-    guard let license = TPPLCPLicense(url: licenseUrl),
-          let publicationLink = license.firstLink(withRel: .publication),
-          let href = publicationLink.href,
-          let publicationUrl = URL(string: href),
-          let lcpAudiobooks = LCPAudiobooks(for: publicationUrl) else { return }
+    
+    guard let lcpAudiobooks = LCPAudiobooks(for: licenseUrl) else { return }
 
     didPrefetchLCPStreaming = true
     lcpAudiobooks.startPrefetch()
@@ -543,7 +567,6 @@ final class BookDetailViewModel: ObservableObject {
   /// Gets the publication manifest for streaming using Readium LCP service directly
 
   
-  // Lightweight manifest fetch to reduce startup latency for streaming
   private func fetchStreamingManifest(from url: URL, completion: @escaping (NSDictionary?, NSError?) -> Void) {
     var request = URLRequest(url: url)
     request.httpMethod = "GET"
@@ -568,7 +591,6 @@ final class BookDetailViewModel: ObservableObject {
   private var cachedPublicationUrl: URL?
   
   private func getPublicationUrlFromManifest(_ manifest: [String: Any]) -> URL? {
-    // Return the cached publication URL that we got from the license
     return cachedPublicationUrl
   }
   
@@ -948,37 +970,17 @@ extension BookDetailViewModel: BookButtonProvider {
 // MARK: - LCP Streaming Enhancement
 
 private extension BookDetailViewModel {
-  /// For LCP audiobooks, Readium 2.1.0 already provides proper streaming support
-  /// No enhancement needed - just use the manifest as-is from Readium
-  func enhanceManifestForLCPStreaming(manifest: PalaceAudiobookToolkit.Manifest, drmDecryptor: DRMDecryptor?) -> PalaceAudiobookToolkit.Manifest {
-    Log.debug(#file, "🔍 enhanceManifestForLCPStreaming called with drmDecryptor: \(type(of: drmDecryptor))")
-    
-    // For LCP audiobooks, Readium already handles streaming correctly via DRMDecryptor.decrypt
-    if drmDecryptor is LCPAudiobooks {
-      Log.info(#file, "✅ LCP audiobook detected - using Readium 2.1.0 streaming (no enhancement needed)")
-      Log.info(#file, "✅ Manifest has \(manifest.readingOrder?.count ?? 0) tracks, will use Readium streaming")
-      return manifest // Use as-is - Readium handles streaming via decrypt() calls
-    }
-    
-    Log.debug(#file, "Not an LCP audiobook, using original manifest")
-    return manifest
-  }
-  
   /// Extract publication URL from LCPAudiobooks instance
   func getPublicationUrl(from lcpAudiobooks: LCPAudiobooks) -> URL? {
-    // For now, we need to reconstruct the publication URL
-    // Since we know this came from openAudiobookUnified, we can get it from the book's license
     
     guard let licenseUrl = getLCPLicenseURL(for: book),
           let license = TPPLCPLicense(url: licenseUrl),
           let publicationLink = license.firstLink(withRel: .publication),
           let href = publicationLink.href,
           let publicationUrl = URL(string: href) else {
-      Log.error(#file, "Failed to extract publication URL from license for streaming enhancement")
       return nil
     }
     
-    Log.debug(#file, "📥 Extracted publication URL for streaming: \(publicationUrl.absoluteString)")
     return publicationUrl
   }
   

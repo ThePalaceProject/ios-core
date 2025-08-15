@@ -15,6 +15,7 @@ let kTimerInterval: Double = 5.0
 
 private struct AssociatedKeys {
   static var audiobookBookmarkBusinessLogic: UInt8 = 0
+  static var playbackLoadingCancellable: UInt8 = 0
 }
 
 private let locationQueue = DispatchQueue(label: "com.palace.latestAudiobookLocation", attributes: .concurrent)
@@ -118,6 +119,20 @@ extension TPPBookCellDelegate {
         TPPRootTabBarController.shared().pushViewController(audiobookPlayer, animated: true)
 
         self.startLoading(audiobookPlayer)
+
+        // Extra safety: dismiss loading overlay when playback actually starts (or fails)
+        let cancellable = audiobookManager.audiobook.player.playbackStatePublisher
+          .receive(on: DispatchQueue.main)
+          .sink { [weak self] state in
+            guard let self = self else { return }
+            switch state {
+            case .started(_), .failed(_, _), .stopped(_):
+              self.stopLoading()
+            default:
+              break
+            }
+          }
+        objc_setAssociatedObject(self, &AssociatedKeys.playbackLoadingCancellable, cancellable, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
 
         let localAudiobookLocation = TPPBookRegistry.shared.location(forIdentifier: book.identifier)
 
