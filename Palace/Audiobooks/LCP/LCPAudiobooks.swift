@@ -21,7 +21,6 @@ import PalaceAudiobookToolkit
   private let audiobookUrl: AbsoluteURL
   private let licenseUrl: URL?
   private let assetRetriever: AssetRetriever
-  private let httpRangeRetriever: HTTPRangeRetriever
   private let publicationOpener: PublicationOpener
   private let httpClient: DefaultHTTPClient
   
