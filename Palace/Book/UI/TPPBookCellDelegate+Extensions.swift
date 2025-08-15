@@ -55,6 +55,118 @@ extension TPPBookCellDelegate {
       )
     }
   }
+  
+  // MARK: - Main Audiobook Opening Entry Point
+  
+  @objc func openAudiobookWithUnifiedStreaming(_ book: TPPBook, completion: (() -> Void)? = nil) {
+#if LCP
+    if LCPAudiobooks.canOpenBook(book) {
+      if let localURL = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier),
+         FileManager.default.fileExists(atPath: localURL.path) {
+        openAudiobookUnified(book: book, licenseUrl: localURL, completion: completion)
+        return
+      }
+      
+      if let licenseUrl = getLCPLicenseURL(for: book) {
+        openAudiobookUnified(book: book, licenseUrl: licenseUrl, completion: completion)
+        return
+      }
+      
+      if let publicationURL = book.defaultAcquisition?.hrefURL {
+        openAudiobookUnified(book: book, licenseUrl: publicationURL, completion: completion)
+        return
+      }
+      
+      presentUnsupportedItemError()
+      completion?()
+      return
+    }
+#endif
+    
+    presentUnsupportedItemError()
+    completion?()
+  }
+  
+  private func getLCPLicenseURL(for book: TPPBook) -> URL? {
+#if LCP
+    guard let bookFileURL = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier) else {
+      return nil
+    }
+    
+    let licenseURL = bookFileURL.deletingPathExtension().appendingPathExtension("lcpl")
+    
+    if FileManager.default.fileExists(atPath: licenseURL.path) {
+      return licenseURL
+    }
+#endif
+    return nil
+  }
+  
+  private func openAudiobookUnified(book: TPPBook, licenseUrl: URL, completion: (() -> Void)?) {
+#if LCP
+    if let localURL = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier),
+       FileManager.default.fileExists(atPath: localURL.path),
+       licenseUrl.path == localURL.path {
+      guard let lcpAudiobooks = LCPAudiobooks(for: localURL) else {
+        self.presentUnsupportedItemError()
+        completion?()
+        return
+      }
+      
+      lcpAudiobooks.contentDictionary { [weak self] dict, error in
+        DispatchQueue.main.async {
+          guard let self = self else { return }
+          if let _ = error {
+            self.presentUnsupportedItemError()
+            completion?()
+            return
+          }
+          guard let dict else {
+            self.presentUnsupportedItemError()
+            completion?()
+            return
+          }
+          var jsonDict = dict as? [String: Any] ?? [:]
+          jsonDict["id"] = book.identifier
+          self.openAudiobook(withBook: book, json: jsonDict, drmDecryptor: lcpAudiobooks, completion: completion)
+        }
+      }
+      return
+    }
+    
+    guard let lcpAudiobooks = LCPAudiobooks(for: licenseUrl) else {
+      self.presentUnsupportedItemError()
+      completion?()
+      return
+    }
+    
+    if let cachedDict = lcpAudiobooks.cachedContentDictionary() {
+      var jsonDict = cachedDict as? [String: Any] ?? [:]
+      jsonDict["id"] = book.identifier
+      self.openAudiobook(withBook: book, json: jsonDict, drmDecryptor: lcpAudiobooks, completion: completion)
+      return
+    }
+
+    lcpAudiobooks.contentDictionary { [weak self] dict, error in
+      DispatchQueue.main.async {
+        guard let self = self else { return }
+        if let _ = error {
+          self.presentUnsupportedItemError()
+          completion?()
+          return
+        }
+        guard let dict else {
+          self.presentUnsupportedItemError()
+          completion?()
+          return
+        }
+        var jsonDict = dict as? [String: Any] ?? [:]
+        jsonDict["id"] = book.identifier
+        self.openAudiobook(withBook: book, json: jsonDict, drmDecryptor: lcpAudiobooks, completion: completion)
+      }
+    }
+#endif
+  }
 
   public func openAudiobook(withBook book: TPPBook, json: [String: Any], drmDecryptor: DRMDecryptor?, completion: (() -> Void)?) {
     AudioBookVendorsHelper.updateVendorKey(book: json) { [weak self] error in

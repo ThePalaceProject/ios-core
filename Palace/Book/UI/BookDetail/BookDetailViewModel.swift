@@ -104,7 +104,6 @@ final class BookDetailViewModel: ObservableObject {
     setupObservers()
     self.downloadProgress = downloadCenter.downloadProgress(for: book.identifier)
 #if LCP
-    // Warm LCP streaming as early as possible to minimize UI blocking when opening
     self.prefetchLCPStreamingIfPossible()
 #endif
   }
@@ -202,7 +201,6 @@ final class BookDetailViewModel: ObservableObject {
           self.bookState = registry.state(for: book.identifier)
         }
         #if LCP
-        // Prefetch LCP streaming manifest in background once license is around
         self.prefetchLCPStreamingIfPossible()
         #endif
       }
@@ -301,7 +299,9 @@ final class BookDetailViewModel: ObservableObject {
       
     case .read, .listen:
       didSelectRead(for: book) {
-        self.removeProcessingButton(button)
+        if self.book.defaultBookContentType != .audiobook {
+          self.removeProcessingButton(button)
+        }
       }
       
     case .cancel:
@@ -375,16 +375,23 @@ final class BookDetailViewModel: ObservableObject {
   
   func openBook(_ book: TPPBook, completion: (() -> Void)?) {
     TPPCirculationAnalytics.postEvent("open_book", withBook: book)
-    processingButtons.removeAll()
     
     switch book.defaultBookContentType {
     case .epub:
+      processingButtons.removeAll()
       presentEPUB(book)
     case .pdf:
+      processingButtons.removeAll()
       presentPDF(book)
     case .audiobook:
-      openAudiobook(book, completion: completion)
+      openAudiobook(book) { [weak self] in
+        DispatchQueue.main.async {
+          self?.processingButtons.removeAll()
+          completion?()
+        }
+      }
     default:
+      processingButtons.removeAll()
       presentUnsupportedItemError()
     }
   }
@@ -405,11 +412,12 @@ final class BookDetailViewModel: ObservableObject {
   // MARK: - Audiobook Opening
   
   func openAudiobook(_ book: TPPBook, completion: (() -> Void)? = nil) {
-//    if let url = downloadCenter.fileUrl(for: book.identifier),
-//       FileManager.default.fileExists(atPath: url.path) {
-//      openAudiobookWithLocalFile(book: book, url: url, completion: completion)
-//      return
-//    }
+    if let url = downloadCenter.fileUrl(for: book.identifier),
+       FileManager.default.fileExists(atPath: url.path) {
+      openAudiobookUnified(book: book, licenseUrl: url, completion: completion)
+      downloadCenter.startDownload(for: book)
+      return
+    }
     
 #if LCP
     if LCPAudiobooks.canOpenBook(book) {
@@ -418,7 +426,7 @@ final class BookDetailViewModel: ObservableObject {
         downloadCenter.startDownload(for: book)
         return
       }
-      // Fallback: open via publication URL directly (Readium will retrieve LCPL and stream)
+
       if let publicationURL = book.defaultAcquisition?.hrefURL {
         openAudiobookUnified(book: book, licenseUrl: publicationURL, completion: completion)
         downloadCenter.startDownload(for: book)
@@ -464,7 +472,6 @@ final class BookDetailViewModel: ObservableObject {
     
     if let licenseUrl = getLCPLicenseURL(for: book) {
       openAudiobookUnified(book: book, licenseUrl: licenseUrl, completion: completion)
-      // Start background download once license is available
       downloadCenter.startDownload(for: book)
       return
     }
@@ -514,7 +521,6 @@ final class BookDetailViewModel: ObservableObject {
       return
     }
     
-    // Use the license directly for streaming (Readium approach)
     guard let lcpAudiobooks = LCPAudiobooks(for: licenseUrl) else {
       self.presentUnsupportedItemError()
       completion?()
@@ -706,17 +712,13 @@ final class BookDetailViewModel: ObservableObject {
       Log.error(#file, "❌ Failed to create audiobook manager")
       return
     }
-    
-    Log.info(#file, "✅ AudiobookManager created successfully")
-    
+        
     audiobookBookmarkBusinessLogic = AudiobookBookmarkBusinessLogic(book: book)
     audiobookManager.bookmarkDelegate = audiobookBookmarkBusinessLogic
     audiobookPlayer = AudiobookPlayer(audiobookManager: audiobookManager, coverImagePublisher: book.$coverImage.eraseToAnyPublisher())
     
-    Log.info(#file, "✅ AudiobookPlayer created, presenting view controller")
     TPPRootTabBarController.shared().pushViewController(audiobookPlayer!, animated: true)
     
-    Log.info(#file, "🎵 Syncing audiobook location and starting playback")
     syncAudiobookLocation(for: book)
     scheduleTimer()
   }
@@ -773,12 +775,7 @@ final class BookDetailViewModel: ObservableObject {
       return
     }
     
-    // Create position for start of first track
     let startPosition = TrackPosition(track: firstTrack, timestamp: 0.0, tracks: manager.audiobook.tableOfContents.tracks)
-    
-    // Streaming resources are now handled automatically by LCPPlayer
-    
-    Log.info(#file, "Starting audiobook playbook from beginning")
     audiobookManager?.audiobook.player.play(at: startPosition, completion: nil)
   }
   

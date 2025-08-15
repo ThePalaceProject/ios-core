@@ -206,37 +206,21 @@
 }
 
 - (void)openAudiobook:(TPPBook *)book completion:(void (^ _Nullable)(void))completion {
+#if defined(LCP)
+  if ([LCPAudiobooks canOpenBook:book]) {
+    // Use new unified LCP streaming approach from Swift extension
+    [self openAudiobookWithUnifiedStreaming:book completion:completion];
+    return;
+  }
+#endif
+  
+  // Non-LCP audiobook fallback
   NSURL *const url = [[MyBooksDownloadCenter shared] fileUrlFor:book.identifier];
   if (!url) {
     [self presentCorruptedItemErrorForBook:book fromURL:url];
     if (completion) completion();
     return;
   }
-
-#if defined(LCP)
-  if ([LCPAudiobooks canOpenBook:book]) {
-    LCPAudiobooks *lcpAudiobooks = [[LCPAudiobooks alloc] initFor:url licenseUrl:nil];
-    [lcpAudiobooks contentDictionaryWithCompletion:^(NSDictionary * _Nullable dict, NSError * _Nullable error) {
-      if (error) {
-        [self presentUnsupportedItemError];
-        if (completion) completion();
-        return;
-      }
-
-      if (!dict) {
-        [self presentCorruptedItemErrorForBook:book fromURL:url];
-        if (completion) completion();
-        return;
-      }
-
-      NSMutableDictionary *mutableDict = [dict mutableCopy];
-      mutableDict[@"id"] = book.identifier;
-
-      [self openAudiobookWithBook:book json:mutableDict drmDecryptor:lcpAudiobooks completion:completion];
-    }];
-    return;
-  }
-#endif
 
   NSError *error = nil;
   NSData *data = [NSData dataWithContentsOfURL:url options:NSDataReadingMappedIfSafe error:&error];
