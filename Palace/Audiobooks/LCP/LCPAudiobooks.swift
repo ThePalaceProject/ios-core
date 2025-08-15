@@ -233,9 +233,7 @@ extension LCPAudiobooks {
     return nil
   }
 
-  /// Start a cancellable background prefetch of the publication/manifest
   public func startPrefetch() {
-    // Kick off a background load; completion is ignored
     self.contentDictionary { _, _ in }
   }
   
@@ -243,7 +241,6 @@ extension LCPAudiobooks {
     completion(nil) // No Op, Readium handles decryption //
   }
 
-  /// Cancel any in-flight prefetch task
   public func cancelPrefetch() {
     publicationCacheLock.lock()
     currentPrefetchTask?.cancel()
@@ -251,8 +248,6 @@ extension LCPAudiobooks {
     publicationCacheLock.unlock()
   }
 }
-
-
 
 #endif
 
