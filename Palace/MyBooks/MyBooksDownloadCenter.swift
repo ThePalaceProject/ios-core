@@ -1112,10 +1112,15 @@ extension MyBooksDownloadCenter {
     do {
       let _ = try FileManager.default.replaceItemAt(destURL, withItemAt: sourceLocation, options: .usingNewMetadataOnly)
       // Note: For LCP audiobooks, state is set in fulfillLCPLicense after license is ready
-      // For other content types, set state here after content is successfully stored
-      if book.defaultBookContentType != .audiobook {
+      // For non-LCP audiobooks and other content types, set state here after content is successfully stored
+#if LCP
+      let isLCPAudiobook = book.defaultBookContentType == .audiobook && LCPAudiobooks.canOpenBook(book)
+      if !isLCPAudiobook {
         bookRegistry.setState(.downloadSuccessful, for: book.identifier)
       }
+#else
+      bookRegistry.setState(.downloadSuccessful, for: book.identifier)
+#endif
       return true
     } catch {
       logBookDownloadFailure(book,

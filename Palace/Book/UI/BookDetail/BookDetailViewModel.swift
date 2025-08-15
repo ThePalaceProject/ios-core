@@ -415,24 +415,41 @@ final class BookDetailViewModel: ObservableObject {
   // MARK: - Audiobook Opening
   
   func openAudiobook(_ book: TPPBook, completion: (() -> Void)? = nil) {
-    if let url = downloadCenter.fileUrl(for: book.identifier),
-       FileManager.default.fileExists(atPath: url.path) {
-      openAudiobookUnified(book: book, licenseUrl: url, completion: completion)
+#if LCP
+    if LCPAudiobooks.canOpenBook(book) {
+      openAudiobookWithUnifiedStreaming(book: book, completion: completion)
+      return
+    }
+#endif
+    
+    guard let url = downloadCenter.fileUrl(for: book.identifier),
+          FileManager.default.fileExists(atPath: url.path) else {
       downloadCenter.startDownload(for: book)
+      completion?()
       return
     }
     
+    openAudiobookWithLocalFile(book: book, url: url, completion: completion)
+  }
+  
+  private func openAudiobookWithUnifiedStreaming(book: TPPBook, completion: (() -> Void)? = nil) {
 #if LCP
     if LCPAudiobooks.canOpenBook(book) {
+      if let localURL = downloadCenter.fileUrl(for: book.identifier),
+         FileManager.default.fileExists(atPath: localURL.path) {
+        openLocalLCPAudiobook(book: book, localURL: localURL, completion: completion)
+        downloadCenter.startDownload(for: book)
+        return
+      }
+      
       if let licenseUrl = getLCPLicenseURL(for: book) {
         openAudiobookUnified(book: book, licenseUrl: licenseUrl, completion: completion)
         downloadCenter.startDownload(for: book)
         return
       }
-
+      
       if let publicationURL = book.defaultAcquisition?.hrefURL {
         openAudiobookUnified(book: book, licenseUrl: publicationURL, completion: completion)
-        downloadCenter.startDownload(for: book)
         return
       }
       
@@ -449,6 +466,35 @@ final class BookDetailViewModel: ObservableObject {
     
     presentCorruptedItemError()
     completion?()
+  }
+  
+  private func openLocalLCPAudiobook(book: TPPBook, localURL: URL, completion: (() -> Void)?) {
+#if LCP
+    guard let lcpAudiobooks = LCPAudiobooks(for: localURL) else {
+      self.presentCorruptedItemError()
+      completion?()
+      return
+    }
+    
+    lcpAudiobooks.contentDictionary { [weak self] dict, error in
+      DispatchQueue.main.async {
+        guard let self = self else { return }
+        if let _ = error {
+          self.presentCorruptedItemError()
+          completion?()
+          return
+        }
+        guard let dict else {
+          self.presentCorruptedItemError()
+          completion?()
+          return
+        }
+        var jsonDict = dict as? [String: Any] ?? [:]
+        jsonDict["id"] = book.identifier
+        self.openAudiobook(with: book, json: jsonDict, drmDecryptor: lcpAudiobooks, completion: completion)
+      }
+    }
+#endif
   }
   
   private func getLCPLicenseURL(for book: TPPBook) -> URL? {

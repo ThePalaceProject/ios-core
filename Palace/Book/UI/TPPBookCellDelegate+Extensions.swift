@@ -63,7 +63,7 @@ extension TPPBookCellDelegate {
     if LCPAudiobooks.canOpenBook(book) {
       if let localURL = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier),
          FileManager.default.fileExists(atPath: localURL.path) {
-        openAudiobookUnified(book: book, licenseUrl: localURL, completion: completion)
+        openLocalLCPAudiobook(book: book, localURL: localURL, completion: completion)
         return
       }
       
@@ -85,6 +85,35 @@ extension TPPBookCellDelegate {
     
     presentUnsupportedItemError()
     completion?()
+  }
+  
+  private func openLocalLCPAudiobook(book: TPPBook, localURL: URL, completion: (() -> Void)?) {
+#if LCP
+    guard let lcpAudiobooks = LCPAudiobooks(for: localURL) else {
+      self.presentUnsupportedItemError()
+      completion?()
+      return
+    }
+    
+    lcpAudiobooks.contentDictionary { [weak self] dict, error in
+      DispatchQueue.main.async {
+        guard let self = self else { return }
+        if let _ = error {
+          self.presentUnsupportedItemError()
+          completion?()
+          return
+        }
+        guard let dict else {
+          self.presentUnsupportedItemError()
+          completion?()
+          return
+        }
+        var jsonDict = dict as? [String: Any] ?? [:]
+        jsonDict["id"] = book.identifier
+        self.openAudiobook(withBook: book, json: jsonDict, drmDecryptor: lcpAudiobooks, completion: completion)
+      }
+    }
+#endif
   }
   
   private func getLCPLicenseURL(for book: TPPBook) -> URL? {
