@@ -16,7 +16,7 @@ import PalaceAudiobookToolkit
   private var isSyncing: Bool = false
   private let queue = DispatchQueue(label: "com.palace.audiobookBookmarkBusinessLogic", attributes: .concurrent)
   private var debounceTimer: Timer?
-  private let debounceInterval: TimeInterval = 1.0
+  private let debounceInterval: TimeInterval = 0.5 // Faster saves to prevent position loss
   private var completionHandlersQueue: [([AudioBookmark]) -> Void] = []
   private var debounceWorkItem: DispatchWorkItem?
 

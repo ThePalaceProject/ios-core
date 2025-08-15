@@ -14,6 +14,9 @@ struct BookLane {
 }
 
 final class BookDetailViewModel: ObservableObject {
+  // MARK: - Constants
+  private let kTimerInterval: TimeInterval = 3.0 // Save position every 3 seconds
+  
   @Published var book: TPPBook
   
   /// The registry state, e.g. `unregistered`, `downloading`, `downloadSuccessful`, etc.
@@ -715,6 +718,15 @@ final class BookDetailViewModel: ObservableObject {
         
     audiobookBookmarkBusinessLogic = AudiobookBookmarkBusinessLogic(book: book)
     audiobookManager.bookmarkDelegate = audiobookBookmarkBusinessLogic
+    
+    // Set up end-of-book completion handler
+    audiobookManager.playbackCompletionHandler = { [weak self] in
+      guard let self = self else { return }
+      DispatchQueue.main.async {
+        self.presentEndOfBookAlert()
+      }
+    }
+    
     audiobookPlayer = AudiobookPlayer(audiobookManager: audiobookManager, coverImagePublisher: book.$coverImage.eraseToAnyPublisher())
     
     TPPRootTabBarController.shared().pushViewController(audiobookPlayer!, animated: true)
@@ -873,20 +885,20 @@ extension BookDetailViewModel {
   }
   
   @objc public func pollAudiobookReadingLocation() {
-    
-    guard let _ = self.audiobookViewController else {
+    guard let _ = self.audiobookViewController,
+          let audiobookManager = self.audiobookManager else {
       timer?.cancel()
       timer = nil
       self.audiobookManager = nil
       return
     }
     
-    guard let currentTrackPosition = self.audiobookManager?.audiobook.player.currentTrackPosition else {
+    guard let currentTrackPosition = audiobookManager.audiobook.player.currentTrackPosition else {
       return
     }
     
     let playheadOffset = currentTrackPosition.timestamp
-    if self.previousPlayheadOffset != playheadOffset && playheadOffset > 0 {
+    if abs(self.previousPlayheadOffset - playheadOffset) > 1.0 && playheadOffset > 0 {
       self.previousPlayheadOffset = playheadOffset
       
       DispatchQueue.global(qos: .background).async { [weak self] in
@@ -953,6 +965,31 @@ extension BookDetailViewModel {
       alertController.addAction(stayAction)
       
       TPPAlertUtils.presentFromViewControllerOrNil(alertController: alertController, viewController: nil, animated: true, completion: nil)
+    }
+  }
+  
+  private func presentEndOfBookAlert() {
+    let paths = TPPOPDSAcquisitionPath.supportedAcquisitionPaths(
+      forAllowedTypes: TPPOPDSAcquisitionPath.supportedTypes(),
+      allowedRelations: [.borrow, .generic],
+      acquisitions: book.acquisitions
+    )
+    
+    if paths.count > 0 {
+      let alert = TPPReturnPromptHelper.audiobookPrompt { [weak self] returnWasChosen in
+        guard let self else { return }
+        
+        if returnWasChosen {
+          if let navController = TPPRootTabBarController.shared()?.topMostViewController.navigationController {
+            navController.popViewController(animated: true)
+          }
+          self.didSelectReturn(for: self.book, completion: nil)
+        }
+        TPPAppStoreReviewPrompt.presentIfAvailable()
+      }
+      TPPRootTabBarController.shared().present(alert, animated: true, completion: nil)
+    } else {
+      TPPAppStoreReviewPrompt.presentIfAvailable()
     }
   }
 }
