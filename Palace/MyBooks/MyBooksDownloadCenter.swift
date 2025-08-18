@@ -765,7 +765,17 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
   }
   
   @objc func downloadInfo(forBookIdentifier bookIdentifier: String) -> MyBooksDownloadInfo? {
-    bookIdentifierToDownloadInfo[bookIdentifier]
+    guard let downloadInfo = bookIdentifierToDownloadInfo[bookIdentifier] else {
+      return nil
+    }
+    
+    if downloadInfo is MyBooksDownloadInfo {
+      return downloadInfo
+    } else {
+      Log.error(#file, "Corrupted download info detected for book \(bookIdentifier), removing entry")
+      bookIdentifierToDownloadInfo.removeValue(forKey: bookIdentifier)
+      return nil
+    }
   }
   
   func broadcastUpdate() {
