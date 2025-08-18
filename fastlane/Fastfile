@@ -9,7 +9,7 @@ platform :ios do
       project: "Palace.xcodeproj",
       devices: ["iPhone SE (3rd generation)"],
       scheme: "Palace",
-      destination: "platform=iOS Simulator,name=iPhone SE (3rd generation),OS=16.1",
+      destination: "platform=iOS Simulator,name=iPhone SE (3rd generation)",
       xcargs: "ARCHS=x86_64 ONLY_ACTIVE_ARCH=NO"
     )
   end
@@ -21,7 +21,7 @@ platform :ios do
     xcodebuild(
       project: "Palace.xcodeproj",
       scheme: "Palace-noDRM",
-      destination: "platform=iOS Simulator,id=00E82424-9E89-403B-B393-ACF5F521158A",
+      destination: "generic/platform=iOS Simulator",
       configuration: "Debug",
       build: true,
       xcargs: "ONLY_ACTIVE_ARCH=NO CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO"
