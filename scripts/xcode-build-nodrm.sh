@@ -17,7 +17,7 @@ echo "Building Palace without DRM support..."
 xcodebuild \
   -project Palace.xcodeproj \
   -scheme Palace-noDRM \
-  -destination 'platform=iOS Simulator,id=00E82424-9E89-403B-B393-ACF5F521158A' \
+  -destination 'generic/platform=iOS Simulator' \
   -configuration Debug \
   build \
   ONLY_ACTIVE_ARCH=NO \
