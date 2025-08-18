@@ -9,7 +9,7 @@ platform :ios do
       project: "Palace.xcodeproj",
       devices: ["iPhone SE (3rd generation)"],
       scheme: "Palace",
-      destination: "platform=iOS Simulator,name=iPhone SE (3rd generation),OS=latest,arch=x86_64",
+      destination: "platform=iOS Simulator,name=iPhone SE (3rd generation),OS=16.1",
       xcargs: "ARCHS=x86_64 ONLY_ACTIVE_ARCH=NO"
     )
   end
@@ -18,19 +18,19 @@ platform :ios do
     ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "300"
     ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"] = "4"
 
-    build_app(
+    xcodebuild(
       project: "Palace.xcodeproj",
       scheme: "Palace-noDRM",
-      skip_package_ipa: true,
-      skip_archive: true,
-      skip_codesigning: true,
-      silent: true
+      destination: "platform=iOS Simulator,name=iPhone 13,OS=16.1",
+      configuration: "Debug",
+      build: true,
+      xcargs: "ONLY_ACTIVE_ARCH=NO CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO"
     )
   end
 
   lane :beta do |options|
 
-    build_app(
+    gym(
       project: "Palace.xcodeproj",
       scheme: "Palace",
       include_symbols: true,
@@ -38,12 +38,7 @@ platform :ios do
       silent: true,
       output_name: options[:output_name],
       output_directory: options[:export_path],
-      export_options: {
-        method: "ad-hoc",
-        provisioningProfiles: { 
-          "org.thepalaceproject.palace" => "Ad Hoc"
-        }
-      }
+      export_method: "ad-hoc"
     )
   end
 
@@ -53,17 +48,12 @@ platform :ios do
 
     sh("rm -rf ~/Library/Developer/Xcode/DerivedData/*")
 
-    build_app(
+    gym(
       project: "Palace.xcodeproj",
       scheme: "Palace",
       include_symbols: true,
       include_bitcode: false,
-      export_options: {
-        method: "app-store",
-        provisioningProfiles: { 
-          "org.thepalaceproject.palace" => "App Store"
-        }
-      }
+      export_method: "app-store"
     )
 
     pilot(
