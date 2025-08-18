@@ -14,6 +14,19 @@ platform :ios do
     )
   end
 
+  lane :test_fast do
+    ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "180"
+    ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"] = "2"
+
+    run_tests(
+      project: "Palace.xcodeproj",
+      scheme: "Palace",
+      destination: "generic/platform=iOS Simulator",
+      code_coverage: false,
+      xcargs: "ONLY_ACTIVE_ARCH=YES CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO GCC_OPTIMIZATION_LEVEL=0 SWIFT_OPTIMIZATION_LEVEL=-Onone ENABLE_TESTABILITY=YES -parallel-testing-enabled YES -maximum-parallel-testing-workers 4"
+    )
+  end
+
   lane :nodrm do
     ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "300"
     ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"] = "4"
