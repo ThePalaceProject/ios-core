@@ -21,21 +21,24 @@ echo "Running optimized unit tests for Palace..."
 if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
     echo "Running in CI mode with optimizations..."
     
-    # Find an available iOS simulator for CI
-    AVAILABLE_SIMULATOR=$(xcrun simctl list devices available | grep iPhone | head -1 | sed 's/^ *//' | sed 's/ (.*//')
+    # Find an available iOS simulator for CI using ID for reliability
+    SIMULATOR_INFO=$(xcrun simctl list devices available | grep iPhone | grep -v "iPad" | head -1)
+    SIMULATOR_ID=$(echo "$SIMULATOR_INFO" | grep -o '[A-F0-9-]\{36\}')
+    SIMULATOR_NAME=$(echo "$SIMULATOR_INFO" | sed 's/^ *//' | sed 's/ (.*//')
     
-    if [ -z "$AVAILABLE_SIMULATOR" ]; then
-        echo "No available iOS simulator found, trying iPhone 15..."
-        AVAILABLE_SIMULATOR="iPhone 15"
+    if [ -z "$SIMULATOR_ID" ]; then
+        echo "No available iOS simulator found, using generic destination..."
+        DESTINATION="platform=iOS Simulator,name=iPhone SE (3rd generation)"
+    else
+        echo "Using simulator: $SIMULATOR_NAME (ID: $SIMULATOR_ID)"
+        DESTINATION="platform=iOS Simulator,id=$SIMULATOR_ID"
     fi
-    
-    echo "Using simulator: $AVAILABLE_SIMULATOR"
     
     # Use available simulator for CI execution
     xcodebuild test \
         -project Palace.xcodeproj \
         -scheme Palace \
-        -destination "platform=iOS Simulator,name=$AVAILABLE_SIMULATOR" \
+        -destination "$DESTINATION" \
         -configuration Debug \
         -enableCodeCoverage NO \
         -quiet \
