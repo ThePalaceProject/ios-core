@@ -19,13 +19,13 @@ echo "Running optimized unit tests for Palace..."
 # Use parallel testing and optimized flags
 
 # Use direct xcodebuild for faster execution (skip Fastlane overhead)
-# Generic destination works better for CI compatibility
-echo "Running optimized tests with generic destination..."
+# Use the placeholder ID for generic iOS Simulator compatibility
+echo "Running optimized tests with generic iOS Simulator placeholder..."
 
 xcodebuild test \
     -project Palace.xcodeproj \
     -scheme Palace \
-    -destination 'platform=iOS Simulator,name=Any iOS Simulator Device' \
+    -destination 'platform=iOS Simulator,id=dvtdevice-DVTiOSDeviceSimulatorPlaceholder-iphonesimulator:placeholder' \
     -configuration Debug \
     -enableCodeCoverage NO \
     -parallel-testing-enabled YES \
