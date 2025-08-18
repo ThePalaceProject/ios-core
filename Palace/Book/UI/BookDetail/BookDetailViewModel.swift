@@ -1019,6 +1019,7 @@ extension BookDetailViewModel: BookButtonProvider {
 }
 
 // MARK: - LCP Streaming Enhancement
+#if LCP
 
 private extension BookDetailViewModel {
   /// Extract publication URL from LCPAudiobooks instance
@@ -1034,10 +1035,8 @@ private extension BookDetailViewModel {
     
     return publicationUrl
   }
-  
-
-  
-
 }
+#endif
+
 
 extension BookDetailViewModel: HalfSheetProvider {}
