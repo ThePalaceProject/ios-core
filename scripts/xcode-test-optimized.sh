@@ -21,11 +21,21 @@ echo "Running optimized unit tests for Palace..."
 if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
     echo "Running in CI mode with optimizations..."
     
-    # Use generic simulator for faster CI execution
+    # Find an available iOS simulator for CI
+    AVAILABLE_SIMULATOR=$(xcrun simctl list devices available | grep iPhone | head -1 | sed 's/^ *//' | sed 's/ (.*//')
+    
+    if [ -z "$AVAILABLE_SIMULATOR" ]; then
+        echo "No available iOS simulator found, trying iPhone 15..."
+        AVAILABLE_SIMULATOR="iPhone 15"
+    fi
+    
+    echo "Using simulator: $AVAILABLE_SIMULATOR"
+    
+    # Use available simulator for CI execution
     xcodebuild test \
         -project Palace.xcodeproj \
         -scheme Palace \
-        -destination 'generic/platform=iOS Simulator' \
+        -destination "platform=iOS Simulator,name=$AVAILABLE_SIMULATOR" \
         -configuration Debug \
         -enableCodeCoverage NO \
         -quiet \
@@ -41,7 +51,7 @@ else
     echo "Running in local development mode..."
     
     # Use fastlane for local development (more user-friendly output)
-    fastlane ios test_fast
+    fastlane ios test
 fi
 
 echo "✅ Unit tests completed successfully!"
