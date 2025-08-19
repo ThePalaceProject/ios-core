@@ -44,6 +44,7 @@ platform :ios do
     gym(
       project: "Palace.xcodeproj",
       scheme: "Palace",
+      destination: "platform=iOS,name=Any iOS Device",
       include_symbols: true,
       include_bitcode: false,
       silent: true,
