@@ -212,7 +212,7 @@ extension LCPAudiobooks: LCPStreamingProvider {
         }
       }
       
-      let waitResult = semaphore.wait(timeout: .now() + 1.0)
+      let waitResult = semaphore.wait(timeout: .now() + 0.5)
       
       if waitResult == .timedOut && !loadSuccess {
         DispatchQueue.global(qos: .userInteractive).async { [weak self] in
@@ -247,7 +247,10 @@ extension LCPAudiobooks {
   }
 
   public func startPrefetch() {
-    self.contentDictionary { _, _ in }
+    DispatchQueue.global(qos: .userInteractive).async { [weak self] in
+      self?.loadContentDictionary { _, _ in
+      }
+    }
   }
   
   func decrypt(url: URL, to resultUrl: URL, completion: @escaping (Error?) -> Void) {
