@@ -18,7 +18,6 @@ let DefaultActionIdentifier = "UNNotificationDefaultActionIdentifier"
     unCenter.delegate = self
     unCenter.getNotificationSettings { (settings) in
       if settings.authorizationStatus == .notDetermined {
-        Log.info(#file, "Deferring first-time UN Auth to a later time.")
       } else {
         self.registerNotificationCategories()
         TPPUserNotifications.requestAuthorization()
@@ -153,17 +152,14 @@ extension TPPUserNotifications: UNUserNotificationCenterDelegate
       completionHandler()
     }
     else if response.actionIdentifier == CheckOutActionIdentifier {
-      Log.debug(#file, "'Check Out' Notification Action.")
       let userInfo = response.notification.request.content.userInfo
       let downloadCenter = MyBooksDownloadCenter.shared
 
       guard let bookID = userInfo["bookID"] as? String else {
-        Log.error(#file, "Bad user info in Local Notification. UserInfo: \n\(userInfo)")
         completionHandler()
         return
       }
       guard let book = TPPBookRegistry.shared.book(forIdentifier: bookID) else {
-          Log.error(#file, "Problem creating book. BookID: \(bookID)")
           completionHandler()
           return
       }
@@ -171,7 +167,6 @@ extension TPPUserNotifications: UNUserNotificationCenterDelegate
       borrow(book, inBackgroundFrom: downloadCenter, completion: completionHandler)
     }
     else {
-      Log.warn(#file, "Unknown action identifier: \(response.actionIdentifier)")
       completionHandler()
     }
   }
@@ -179,7 +174,6 @@ extension TPPUserNotifications: UNUserNotificationCenterDelegate
   private func borrow(_ book: TPPBook,
                       inBackgroundFrom downloadCenter: MyBooksDownloadCenter,
                       completion: @escaping () -> Void) {
-    // Asynchronous network task in the background app state.
     var bgTask: UIBackgroundTaskIdentifier = .invalid
     bgTask = UIApplication.shared.beginBackgroundTask {
       if bgTask != .invalid {
@@ -190,19 +184,12 @@ extension TPPUserNotifications: UNUserNotificationCenterDelegate
       }
     }
 
-    Log.debug(#file, "Beginning background borrow task \(bgTask.rawValue)")
 
-    if bgTask == .invalid {
-      Log.debug(#file, "Unable to run borrow task in background")
-    }
-
-    // bg task body
     downloadCenter.startBorrow(for: book, attemptDownload: false) {
       completion()
       guard bgTask != .invalid else {
         return
       }
-      Log.info(#file, "Finishing up background borrow task \(bgTask.rawValue)")
       UIApplication.shared.endBackgroundTask(bgTask)
       bgTask = .invalid
     }

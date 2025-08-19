@@ -14,4 +14,12 @@
 
 echo "Building Palace without DRM support..."
 
-fastlane ios nodrm
+xcodebuild \
+  -project Palace.xcodeproj \
+  -scheme Palace-noDRM \
+  -destination 'generic/platform=iOS Simulator' \
+  -configuration Debug \
+  build \
+  ONLY_ACTIVE_ARCH=NO \
+  CODE_SIGNING_REQUIRED=NO \
+  CODE_SIGNING_ALLOWED=NO

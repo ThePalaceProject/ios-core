@@ -1,5 +1,5 @@
 {
-  "originHash" : "03d932ab8364af0525c21dc16ed5703bd10b33b6c79bd7dcbf9f4fc639ee5a8d",
+  "originHash" : "eb359fe7a3c949174cd90f187987f826d45ece13623d166fd4d2d3a6ae14f61a",
   "pins" : [
     {
       "identity" : "abseil-cpp-binary",
@@ -164,15 +164,6 @@
       }
     },
     {
-      "identity" : "swift-log",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/apple/swift-log.git",
-      "state" : {
-        "revision" : "3d8596ed08bd13520157f0355e35caed215ffbfa",
-        "version" : "1.6.3"
-      }
-    },
-    {
       "identity" : "swift-protobuf",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-protobuf.git",
@@ -195,17 +186,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/readium/swift-toolkit.git",
       "state" : {
-        "revision" : "8219531e3d83a8d7b77e1753e4e06e9101eb2aee",
-        "version" : "3.1.0"
-      }
-    },
-    {
-      "identity" : "swiftminizip",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/iharkatkavets/SwiftMiniZip.git",
-      "state" : {
-        "revision" : "05a76136bc767b0e16b986a90493bbad14e95be8",
-        "version" : "1.0.5"
+        "revision" : "4ae36cf2f6e888f8d2ece7a8bd6f8af832aad350",
+        "version" : "3.3.0"
       }
     },
     {
@@ -213,8 +195,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/scinfu/SwiftSoup.git",
       "state" : {
-        "revision" : "d1d6add8f277bd76992a0f7e72961a896609b707",
-        "version" : "2.9.5"
+        "revision" : "3a439f9eccc391b264d54516ce640251552eb0c4",
+        "version" : "2.10.3"
       }
     },
     {
@@ -249,8 +231,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/readium/ZIPFoundation.git",
       "state" : {
-        "revision" : "4484b17f0d3c872aa200f0ecc9ff004e3991c43e",
-        "version" : "2.0.0"
+        "revision" : "175c389832d90cb0e992b2cb9d5d7878eccfe725",
+        "version" : "3.0.0"
       }
     }
   ],

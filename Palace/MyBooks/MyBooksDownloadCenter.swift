@@ -606,7 +606,12 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
     }
     
     if bytesWritten == totalBytesWritten {
-      guard let mimeType = downloadTask.response?.mimeType else { return }
+      guard let mimeType = downloadTask.response?.mimeType else { 
+        Log.error(#file, "No MIME type in response for book: \(book.identifier)")
+        return 
+      }
+      
+      Log.info(#file, "Download MIME type detected for \(book.identifier): \(mimeType)")
       
       switch mimeType {
       case ContentTypeAdobeAdept:
@@ -663,6 +668,8 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
     var problemDoc: TPPProblemDocument?
     let rights = downloadInfo(forBookIdentifier: book.identifier)?.rightsManagement ?? .unknown
     
+    Log.info(#file, "Download completed for \(book.identifier) with rights: \(rights)")
+    
     if let response = downloadTask.response, response.isProblemDocument() {
       do {
         let problemDocData = try Data(contentsOf: location)
@@ -687,6 +694,7 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
       
       switch rights {
       case .unknown:
+        Log.error(#file, "❌ Rights management is unknown for book: \(book.identifier) - LCP fulfillment will NOT be called")
         logBookDownloadFailure(book, reason: "Unknown rights management", downloadTask: downloadTask, metadata: nil)
         failureRequiringAlert = true
       case .adobe:
@@ -704,6 +712,7 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
         }
 #endif
       case .lcp:
+        Log.info(#file, "✅ Calling fulfillLCPLicense for book: \(book.identifier)")
         fulfillLCPLicense(fileUrl: location, forBook: book, downloadTask: downloadTask)
       case .simplifiedBearerTokenJSON:
         if let data = try? Data(contentsOf: location) {
@@ -756,7 +765,17 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
   }
   
   @objc func downloadInfo(forBookIdentifier bookIdentifier: String) -> MyBooksDownloadInfo? {
-    bookIdentifierToDownloadInfo[bookIdentifier]
+    guard let downloadInfo = bookIdentifierToDownloadInfo[bookIdentifier] else {
+      return nil
+    }
+    
+    if downloadInfo is MyBooksDownloadInfo {
+      return downloadInfo
+    } else {
+      Log.error(#file, "Corrupted download info detected for book \(bookIdentifier), removing entry")
+      bookIdentifierToDownloadInfo.removeValue(forKey: bookIdentifier)
+      return nil
+    }
   }
   
   func broadcastUpdate() {
@@ -934,14 +953,29 @@ extension MyBooksDownloadCenter {
         return
       }
       guard let localUrl = localUrl,
-            let license = TPPLCPLicense(url: licenseUrl),
-            self.replaceBook(book, withFileAtURL: localUrl, forDownloadTask: downloadTask)
+            let license = TPPLCPLicense(url: licenseUrl)
       else {
-        let errorMessage = "Error replacing license file with file \(localUrl?.absoluteString ?? "")"
+        let errorMessage = "Error with LCP license fulfillment: \(localUrl?.absoluteString ?? "")"
         self.failDownloadWithAlert(for: book, withMessage: errorMessage)
         return
       }
       self.bookRegistry.setFulfillmentId(license.identifier, for: book.identifier)
+      
+      
+      // For all content types: Continue with content storage (background for audiobooks, required for others)
+      if !self.replaceBook(book, withFileAtURL: localUrl, forDownloadTask: downloadTask) {
+        if book.defaultBookContentType == .audiobook {
+          Log.warn(#file, "Content storage failed for audiobook, but streaming still available")
+        } else {
+          let errorMessage = "Error replacing content file with file \(localUrl.absoluteString)"
+          self.failDownloadWithAlert(for: book, withMessage: errorMessage)
+          return
+        }
+      } else {
+        if book.defaultBookContentType == .audiobook {
+          Log.info(#file, "Audiobook content stored successfully, offline playback now available")
+        }
+      }
       
       Task {
         if book.defaultBookContentType == .pdf,
@@ -954,8 +988,53 @@ extension MyBooksDownloadCenter {
     }
     
     let fulfillmentDownloadTask = lcpService.fulfill(licenseUrl, progress: lcpProgress, completion: lcpCompletion)
+    
+    if book.defaultBookContentType == .audiobook {
+      Log.info(#file, "LCP audiobook license fulfilled, ready for streaming: \(book.identifier)")
+      self.copyLicenseForStreaming(book: book, sourceLicenseUrl: licenseUrl)
+      self.bookRegistry.setState(.downloadSuccessful, for: book.identifier)
+      
+      DispatchQueue.main.async {
+        self.broadcastUpdate()
+      }
+    }
+    
     if let fulfillmentDownloadTask = fulfillmentDownloadTask {
       self.bookIdentifierToDownloadInfo[book.identifier] = MyBooksDownloadInfo(downloadProgress: 0.0, downloadTask: fulfillmentDownloadTask, rightsManagement: .none)
+    }
+#endif
+  }
+  
+  /// Copies the LCP license file to the content directory for streaming support
+  /// while preserving the existing fulfillment flow
+  private func copyLicenseForStreaming(book: TPPBook, sourceLicenseUrl: URL) {
+#if LCP
+    Log.info(#file, "🎵 Starting license copy for streaming: \(book.identifier)")
+    
+    guard let finalContentURL = self.fileUrl(for: book.identifier) else {
+      Log.error(#file, "🎵 ❌ Unable to determine final content URL for streaming license copy")
+      return
+    }
+    
+    let streamingLicenseUrl = finalContentURL.deletingPathExtension().appendingPathExtension("lcpl")
+    Log.info(#file, "🎵 Copying license FROM: \(sourceLicenseUrl.path)")
+    Log.info(#file, "🎵 Copying license TO: \(streamingLicenseUrl.path)")
+    
+    do {
+      // Remove any existing license file first
+      try? FileManager.default.removeItem(at: streamingLicenseUrl)
+      
+      // Copy license to content directory for streaming
+      try FileManager.default.copyItem(at: sourceLicenseUrl, to: streamingLicenseUrl)
+      
+      // Verify the copy was successful
+      let fileExists = FileManager.default.fileExists(atPath: streamingLicenseUrl.path)
+    } catch {
+      TPPErrorLogger.logError(error, summary: "Failed to copy LCP license for streaming", metadata: [
+        "book": book.loggableDictionary,
+        "sourceLicenseUrl": sourceLicenseUrl.absoluteString,
+        "targetLicenseUrl": streamingLicenseUrl.absoluteString
+      ])
     }
 #endif
   }
@@ -1042,7 +1121,16 @@ extension MyBooksDownloadCenter {
     guard let destURL = fileUrl(for: book.identifier) else { return false }
     do {
       let _ = try FileManager.default.replaceItemAt(destURL, withItemAt: sourceLocation, options: .usingNewMetadataOnly)
+      // Note: For LCP audiobooks, state is set in fulfillLCPLicense after license is ready
+      // For non-LCP audiobooks and other content types, set state here after content is successfully stored
+#if LCP
+      let isLCPAudiobook = book.defaultBookContentType == .audiobook && LCPAudiobooks.canOpenBook(book)
+      if !isLCPAudiobook {
+        bookRegistry.setState(.downloadSuccessful, for: book.identifier)
+      }
+#else
       bookRegistry.setState(.downloadSuccessful, for: book.identifier)
+#endif
       return true
     } catch {
       logBookDownloadFailure(book,
