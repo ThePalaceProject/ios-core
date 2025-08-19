@@ -247,7 +247,10 @@ extension LCPAudiobooks {
   }
 
   public func startPrefetch() {
-    self.contentDictionary { _, _ in }
+    DispatchQueue.global(qos: .userInteractive).async { [weak self] in
+      self?.loadContentDictionary { _, _ in
+      }
+    }
   }
   
   func decrypt(url: URL, to resultUrl: URL, completion: @escaping (Error?) -> Void) {
