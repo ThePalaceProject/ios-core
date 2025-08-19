@@ -19,13 +19,13 @@ echo "Running optimized unit tests for Palace..."
 # Use parallel testing and optimized flags
 
 # Use direct xcodebuild for faster execution (skip Fastlane overhead)
-# Use the placeholder ID for generic iOS Simulator compatibility
-echo "Running optimized tests with generic iOS Simulator placeholder..."
+# Use iPhone SE (3rd generation) as it's commonly available and reliable
+echo "Running optimized tests with iPhone SE (3rd generation)..."
 
 xcodebuild test \
     -project Palace.xcodeproj \
     -scheme Palace \
-    -destination 'platform=iOS Simulator,id=dvtdevice-DVTiOSDeviceSimulatorPlaceholder-iphonesimulator:placeholder' \
+    -destination 'platform=iOS Simulator,name=iPhone SE (3rd generation)' \
     -configuration Debug \
     -enableCodeCoverage NO \
     -parallel-testing-enabled YES \
