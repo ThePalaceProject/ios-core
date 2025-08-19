@@ -85,8 +85,6 @@ else
                 CODE_SIGNING_REQUIRED=NO \
                 CODE_SIGNING_ALLOWED=NO \
                 ONLY_ACTIVE_ARCH=YES \
-                VALID_ARCHS="arm64 x86_64" \
-                ARCHS="arm64" \
                 GCC_OPTIMIZATION_LEVEL=0 \
                 SWIFT_OPTIMIZATION_LEVEL=-Onone \
                 ENABLE_TESTABILITY=YES 2>/dev/null; then
@@ -112,8 +110,6 @@ else
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
             ONLY_ACTIVE_ARCH=YES \
-            VALID_ARCHS="arm64 x86_64" \
-            ARCHS="arm64" \
             GCC_OPTIMIZATION_LEVEL=0 \
             SWIFT_OPTIMIZATION_LEVEL=-Onone \
             ENABLE_TESTABILITY=YES
