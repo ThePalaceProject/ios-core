@@ -202,8 +202,22 @@ extension LCPAudiobooks: LCPStreamingProvider {
     publicationCacheLock.unlock()
     
     if !hasPublication {
-      DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-        self?.loadContentDictionary { _, _ in /* ignore; loader will retry if needed */ }
+      let semaphore = DispatchSemaphore(value: 0)
+      var loadSuccess = false
+      
+      DispatchQueue.global(qos: .userInteractive).async { [weak self] in
+        self?.loadContentDictionary { _, error in 
+          loadSuccess = error == nil
+          semaphore.signal()
+        }
+      }
+      
+      let waitResult = semaphore.wait(timeout: .now() + 1.0)
+      
+      if waitResult == .timedOut && !loadSuccess {
+        DispatchQueue.global(qos: .userInteractive).async { [weak self] in
+          self?.loadContentDictionary { _, _ in /* Continue in background */ }
+        }
       }
     }
     
@@ -237,7 +251,50 @@ extension LCPAudiobooks {
   }
   
   func decrypt(url: URL, to resultUrl: URL, completion: @escaping (Error?) -> Void) {
-    completion(nil) // No Op, Readium handles decryption //
+    if let publication = getPublication() {
+      decryptWithPublication(publication, url: url, to: resultUrl, completion: completion)
+    } else {
+      Task {
+        let result = await self.assetRetriever.retrieve(url: audiobookUrl)
+        switch result {
+        case .success(let asset):
+          let publicationResult = await publicationOpener.open(asset: asset, allowUserInteraction: false, sender: nil)
+          switch publicationResult {
+          case .success(let publication):
+            publicationCacheLock.lock()
+            cachedPublication = publication
+            publicationCacheLock.unlock()
+            
+            self.decryptWithPublication(publication, url: url, to: resultUrl, completion: completion)
+            
+          case .failure(let error):
+            completion(error)
+          }
+        case .failure(let error):
+          completion(error)
+        }
+      }
+    }
+  }
+  
+  private func decryptWithPublication(_ publication: Publication, url: URL, to resultUrl: URL, completion: @escaping (Error?) -> Void) {
+    if let resource = publication.getResource(at: url.path) {
+      Task {
+        do {
+          let data = try await resource.read().get()
+          try data.write(to: resultUrl, options: .atomic)
+          DispatchQueue.main.async {
+            completion(nil)
+          }
+        } catch {
+          DispatchQueue.main.async {
+            completion(error)
+          }
+        }
+      }
+    } else {
+      completion(NSError(domain: "AudiobookResourceError", code: 404, userInfo: [NSLocalizedDescriptionKey: "Resource not found at path: \(url.path)"]))
+    }
   }
 
   public func cancelPrefetch() {
@@ -245,6 +302,17 @@ extension LCPAudiobooks {
     currentPrefetchTask?.cancel()
     currentPrefetchTask = nil
     publicationCacheLock.unlock()
+  }
+}
+
+private extension Publication {
+  func getResource(at path: String) -> Resource? {
+    let resource = get(Link(href: path))
+    guard type(of: resource) != FailureResource.self else {
+      return get(Link(href: "/" + path))
+    }
+
+    return resource
   }
 }
 

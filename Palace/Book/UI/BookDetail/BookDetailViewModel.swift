@@ -438,13 +438,13 @@ final class BookDetailViewModel: ObservableObject {
       if let localURL = downloadCenter.fileUrl(for: book.identifier),
          FileManager.default.fileExists(atPath: localURL.path) {
         openLocalLCPAudiobook(book: book, localURL: localURL, completion: completion)
-        downloadCenter.startDownload(for: book)
         return
       }
       
+
+      
       if let licenseUrl = getLCPLicenseURL(for: book) {
         openAudiobookUnified(book: book, licenseUrl: licenseUrl, completion: completion)
-        downloadCenter.startDownload(for: book)
         return
       }
       
@@ -453,18 +453,13 @@ final class BookDetailViewModel: ObservableObject {
         return
       }
       
-      if bookState == .downloadSuccessful {
-        waitForLicenseFulfillment(book: book, completion: completion)
-        return
-      }
-      
-      downloadCenter.startDownload(for: book)
+      presentUnsupportedItemError()
       completion?()
       return
     }
 #endif
     
-    presentCorruptedItemError()
+    presentUnsupportedItemError()
     completion?()
   }
   
@@ -485,7 +480,7 @@ final class BookDetailViewModel: ObservableObject {
           return
         }
         guard let dict else {
-          self.presentCorruptedItemError()
+          self.presentUnsupportedItemError()
           completion?()
           return
         }
@@ -515,26 +510,7 @@ final class BookDetailViewModel: ObservableObject {
 #endif
   }
   
-  private func waitForLicenseFulfillment(book: TPPBook, completion: (() -> Void)? = nil, attempt: Int = 0) {
-    let maxAttempts = 10
-    let retryDelay: TimeInterval = 1.0
-    
-    if let licenseUrl = getLCPLicenseURL(for: book) {
-      openAudiobookUnified(book: book, licenseUrl: licenseUrl, completion: completion)
-      downloadCenter.startDownload(for: book)
-      return
-    }
-    
-    if attempt >= maxAttempts {
-      presentUnsupportedItemError()
-      completion?()
-      return
-    }
-    
-    DispatchQueue.main.asyncAfter(deadline: .now() + retryDelay) { [weak self] in
-      self?.waitForLicenseFulfillment(book: book, completion: completion, attempt: attempt + 1)
-    }
-  }
+
   
 
   
@@ -576,14 +552,13 @@ final class BookDetailViewModel: ObservableObject {
       return
     }
     
-    // If the publication is already cached (prefetched), open immediately without waiting
     if let cachedDict = lcpAudiobooks.cachedContentDictionary() {
       var jsonDict = cachedDict as? [String: Any] ?? [:]
       jsonDict["id"] = book.identifier
       self.openAudiobook(with: book, json: jsonDict, drmDecryptor: lcpAudiobooks, completion: completion)
       return
     }
-
+    
     lcpAudiobooks.contentDictionary { [weak self] dict, error in
       DispatchQueue.main.async {
         guard let self = self else { return }
@@ -593,7 +568,7 @@ final class BookDetailViewModel: ObservableObject {
           return
         }
         guard let dict else {
-          self.presentCorruptedItemError()
+          self.presentUnsupportedItemError()
           completion?()
           return
         }

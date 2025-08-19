@@ -712,7 +712,6 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
         }
 #endif
       case .lcp:
-        Log.info(#file, "✅ Calling fulfillLCPLicense for book: \(book.identifier)")
         fulfillLCPLicense(fileUrl: location, forBook: book, downloadTask: downloadTask)
       case .simplifiedBearerTokenJSON:
         if let data = try? Data(contentsOf: location) {
