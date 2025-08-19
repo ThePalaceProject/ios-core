@@ -8,7 +8,7 @@ platform :ios do
     run_tests(
       project: "Palace.xcodeproj",
       scheme: "Palace",
-      destination: "platform=iOS Simulator,name=iPhone 15",
+      destination: "platform=iOS Simulator,name=iPhone SE (3rd generation)",
       code_coverage: false,
       xcargs: "ONLY_ACTIVE_ARCH=YES CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO -parallel-testing-enabled YES -maximum-parallel-testing-workers 4"
     )
