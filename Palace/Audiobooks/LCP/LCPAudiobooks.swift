@@ -212,7 +212,7 @@ extension LCPAudiobooks: LCPStreamingProvider {
         }
       }
       
-      let waitResult = semaphore.wait(timeout: .now() + 1.0)
+      let waitResult = semaphore.wait(timeout: .now() + 0.5)
       
       if waitResult == .timedOut && !loadSuccess {
         DispatchQueue.global(qos: .userInteractive).async { [weak self] in
