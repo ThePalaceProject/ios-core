@@ -212,9 +212,9 @@ extension LCPAudiobooks: LCPStreamingProvider {
         }
       }
       
-      let waitResult = semaphore.wait(timeout: .now() + 0.0)
+      let waitResult = semaphore.wait(timeout: .now() + 1.0)
       
-      if waitResult == .timedOut || !loadSuccess {
+      if waitResult == .timedOut && !loadSuccess {
         DispatchQueue.global(qos: .userInteractive).async { [weak self] in
           self?.loadContentDictionary { _, _ in /* Continue in background */ }
         }

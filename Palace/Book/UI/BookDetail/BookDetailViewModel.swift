@@ -552,14 +552,13 @@ final class BookDetailViewModel: ObservableObject {
       return
     }
     
-    // If the publication is already cached (prefetched), open immediately without waiting
     if let cachedDict = lcpAudiobooks.cachedContentDictionary() {
       var jsonDict = cachedDict as? [String: Any] ?? [:]
       jsonDict["id"] = book.identifier
       self.openAudiobook(with: book, json: jsonDict, drmDecryptor: lcpAudiobooks, completion: completion)
       return
     }
-
+    
     lcpAudiobooks.contentDictionary { [weak self] dict, error in
       DispatchQueue.main.async {
         guard let self = self else { return }
