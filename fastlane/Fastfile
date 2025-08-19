@@ -5,10 +5,19 @@ platform :ios do
     ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "300"
     ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"] = "4"
 
+    # Find first available iPhone simulator dynamically
+    simulator_id = sh("xcodebuild -project Palace.xcodeproj -scheme Palace -showdestinations 2>/dev/null | grep 'platform:iOS Simulator' | grep 'iPhone' | grep -v 'error:' | head -1 | sed 's/.*id:\\([^,]*\\).*/\\1/'").strip
+    
+    if simulator_id.empty?
+      UI.user_error!("No available iPhone simulator found")
+    end
+    
+    UI.message("Using iPhone simulator ID: #{simulator_id}")
+
     run_tests(
       project: "Palace.xcodeproj",
       scheme: "Palace",
-      destination: "platform=iOS Simulator,name=iPhone SE (3rd generation)",
+      destination: "platform=iOS Simulator,id=#{simulator_id}",
       code_coverage: false,
       xcargs: "ONLY_ACTIVE_ARCH=YES CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO -parallel-testing-enabled YES -maximum-parallel-testing-workers 4"
     )
