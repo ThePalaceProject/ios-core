@@ -101,7 +101,9 @@ public final class GeneralCache<Key: Hashable & Codable, Value: Codable> {
         }
         return value
       } catch {
-        print("[GeneralCache] Failed to load or decode cache for key \(key): \(error)")
+        if (error as NSError).code != 260 {
+          print("[GeneralCache] Cache error for key \(key): \(error)")
+        }
         return nil
       }
     }

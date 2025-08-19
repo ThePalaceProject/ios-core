@@ -5,53 +5,41 @@ platform :ios do
     ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "300"
     ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"] = "4"
 
-    # Find first available iPhone simulator dynamically
-    simulator_id = sh("xcodebuild -project Palace.xcodeproj -scheme Palace -showdestinations 2>/dev/null | grep 'platform:iOS Simulator' | grep 'iPhone' | grep -v 'error:' | head -1 | sed 's/.*id:\\([^,]*\\).*/\\1/'").strip
-    
-    if simulator_id.empty?
-      UI.user_error!("No available iPhone simulator found")
-    end
-    
-    UI.message("Using iPhone simulator ID: #{simulator_id}")
-
     run_tests(
       project: "Palace.xcodeproj",
+      devices: ["iPhone SE (3rd generation)"],
       scheme: "Palace",
-      destination: "platform=iOS Simulator,id=#{simulator_id}",
-      code_coverage: false,
-      xcargs: "ONLY_ACTIVE_ARCH=YES CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO -parallel-testing-enabled YES -maximum-parallel-testing-workers 4"
+      destination: "platform=iOS Simulator,name=iPhone SE (3rd generation),OS=latest,arch=x86_64",
+      xcargs: "ARCHS=x86_64 ONLY_ACTIVE_ARCH=NO"
     )
   end
-
-
 
   lane :nodrm do
     ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "300"
     ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"] = "4"
 
-    xcodebuild(
+    build_app(
       project: "Palace.xcodeproj",
       scheme: "Palace-noDRM",
-      destination: "generic/platform=iOS Simulator",
-      configuration: "Debug",
-      build: true,
-      xcargs: "ONLY_ACTIVE_ARCH=NO CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO"
+      skip_package_ipa: true,
+      skip_archive: true,
+      skip_codesigning: true,
+      silent: true
     )
   end
 
   lane :beta do |options|
 
-    gym(
+    build_app(
       project: "Palace.xcodeproj",
       scheme: "Palace",
-      destination: "platform=iOS,name=Any iOS Device",
       include_symbols: true,
       include_bitcode: false,
       silent: true,
       output_name: options[:output_name],
       output_directory: options[:export_path],
-      export_method: "ad-hoc",
       export_options: {
+        method: "ad-hoc",
         provisioningProfiles: { 
           "org.thepalaceproject.palace" => "Ad Hoc"
         }
@@ -65,12 +53,17 @@ platform :ios do
 
     sh("rm -rf ~/Library/Developer/Xcode/DerivedData/*")
 
-    gym(
+    build_app(
       project: "Palace.xcodeproj",
       scheme: "Palace",
       include_symbols: true,
       include_bitcode: false,
-      export_method: "app-store"
+      export_options: {
+        method: "app-store",
+        provisioningProfiles: { 
+          "org.thepalaceproject.palace" => "App Store"
+        }
+      }
     )
 
     pilot(
