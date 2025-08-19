@@ -49,7 +49,12 @@ platform :ios do
       silent: true,
       output_name: options[:output_name],
       output_directory: options[:export_path],
-      export_method: "ad-hoc"
+      export_method: "ad-hoc",
+      export_options: {
+        provisioningProfiles: { 
+          "org.thepalaceproject.palace" => "Ad Hoc"
+        }
+      }
     )
   end
 
