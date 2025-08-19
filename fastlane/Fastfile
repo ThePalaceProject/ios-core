@@ -40,8 +40,12 @@ platform :ios do
   end
 
   lane :beta do |options|
+    ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "300"
+    ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"] = "4"
 
-    gym(
+    UI.message("Building for iPhone simulator")
+
+    xcodebuild(
       project: "Palace.xcodeproj",
       scheme: "Palace",
       destination: "platform=iOS,name=Any iOS Device",
