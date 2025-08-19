@@ -1,26 +1,43 @@
 default_platform(:ios)
 
+# Optional but recommended if you can guarantee this Xcode exists on the runner:
+# before_all do
+#   setup_xcode(version: "16.2") # <-- pin your exact CI Xcode here
+# end
+
 platform :ios do
-  lane :test do    
+  lane :test do
     ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "300"
-    ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"] = "4"
+    ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"]  = "4"
+
+    # Resolve SPM once, explicitly, to avoid version drift
+    sh("xcodebuild -resolvePackageDependencies -project Palace.xcodeproj -scheme Palace")
 
     run_tests(
       project: "Palace.xcodeproj",
-      devices: ["iPhone SE (3rd generation)"],
-      scheme: "Palace",
-      destination: "platform=iOS Simulator,name=iPhone SE (3rd generation),OS=latest,arch=x86_64",
-      xcargs: "ARCHS=x86_64 ONLY_ACTIVE_ARCH=NO"
+      scheme:  "Palace",                 # (or "Palace-iOS-CI" if you create an iOS-only scheme)
+      clean:   true,
+      derived_data_path: "fastlane/DerivedData/test",  # fresh per-run
+      # Let scan pick the right arch for the host. Do NOT force x86_64.
+      devices: ["iPhone SE (3rd generation)"],         # OS auto-selects latest installed
+      # Remove arch pin + custom destination; both cause flakiness on Apple Silicon
+      xcargs: "-parallelizeTargets"
     )
   end
 
   lane :nodrm do
     ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "300"
-    ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"] = "4"
+    ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"]  = "4"
+
+    sh("xcodebuild -resolvePackageDependencies -project Palace.xcodeproj -scheme Palace-noDRM")
 
     build_app(
       project: "Palace.xcodeproj",
-      scheme: "Palace-noDRM",
+      scheme:  "Palace-noDRM",           # ensure this scheme is Shared and iOS-only
+      sdk: "iphoneos",
+      destination: "generic/platform=iOS",
+      clean: true,
+      derived_data_path: "fastlane/DerivedData/nodrm",
       skip_package_ipa: true,
       skip_archive: true,
       skip_codesigning: true,
@@ -29,18 +46,24 @@ platform :ios do
   end
 
   lane :beta do |options|
+    # Ad Hoc lane for internal distribution — keep profiles consistent with export_method
+    sh("xcodebuild -resolvePackageDependencies -project Palace.xcodeproj -scheme Palace")
 
     build_app(
       project: "Palace.xcodeproj",
-      scheme: "Palace",
+      scheme:  "Palace",                 # or "Palace-iOS-CI" if you make one
+      sdk: "iphoneos",
+      destination: "generic/platform=iOS",
+      clean: true,
+      derived_data_path: "fastlane/DerivedData/beta",
       include_symbols: true,
       include_bitcode: false,
       silent: true,
       output_name: options[:output_name],
       output_directory: options[:export_path],
+      export_method: "ad-hoc",
       export_options: {
-        method: "ad-hoc",
-        provisioningProfiles: { 
+        provisioningProfiles: {
           "org.thepalaceproject.palace" => "Ad Hoc"
         }
       }
@@ -49,18 +72,24 @@ platform :ios do
 
   lane :appstore do |options|
     ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "300"
-    ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"] = "4"
+    ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"]  = "4"
 
-    sh("rm -rf ~/Library/Developer/Xcode/DerivedData/*")
+    # Always start clean (and avoid ~ globbing races)
+    sh("rm -rf #{File.expand_path('~/Library/Developer/Xcode/DerivedData')}/*")
+    sh("xcodebuild -resolvePackageDependencies -project Palace.xcodeproj -scheme Palace")
 
     build_app(
       project: "Palace.xcodeproj",
-      scheme: "Palace",
+      scheme:  "Palace",                 # or "Palace-iOS-CI"
+      sdk: "iphoneos",
+      destination: "generic/platform=iOS",
+      clean: true,
+      derived_data_path: "fastlane/DerivedData/appstore",
       include_symbols: true,
       include_bitcode: false,
+      export_method: "app-store",
       export_options: {
-        method: "app-store",
-        provisioningProfiles: { 
+        provisioningProfiles: {
           "org.thepalaceproject.palace" => "App Store"
         }
       }
