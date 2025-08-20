@@ -54,7 +54,8 @@ else
 fi
 
 # Inject C++ compatibility shim for vendored code without editing vendor files
-export EXTRA_COMPILER_FLAGS="$EXTRA_COMPILER_FLAGS -Xcc -include -Xcc Palace/BuildSupport/cpp_compat.hpp -Xcxx -include -Xcxx Palace/BuildSupport/cpp_compat.hpp"
+# Use -include via build settings flags (no -Xcc for xcodebuild)
+export EXTRA_COMPILER_FLAGS="-include \\\$(SRCROOT)/Palace/BuildSupport/cpp_compat.hpp"
 
 # determine which app we're going to work on
 TARGET_NAME=Palace

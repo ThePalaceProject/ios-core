@@ -26,7 +26,7 @@ if ! xcodebuild -showsdks | grep -q "iphoneos"; then
 fi
 
 # Force iPhoneOS SDK usage and inject compatibility shim
-FASTLANE_XCARGS="-sdk iphoneos OTHER_CFLAGS=\"$EXTRA_COMPILER_FLAGS\" OTHER_CPLUSPLUSFLAGS=\"$EXTRA_COMPILER_FLAGS\""
+FASTLANE_XCARGS="-sdk iphoneos OTHER_CFLAGS=\"$EXTRA_COMPILER_FLAGS\" OTHER_CPLUSPLUSFLAGS=\"$EXTRA_COMPILER_FLAGS\" OTHER_SWIFT_FLAGS=\"$EXTRA_COMPILER_FLAGS\""
 
 CHANGELOG=$(<"$CHANGELOG_PATH")
 fastlane ios appstore changelog:"$CHANGELOG" xcargs:"$FASTLANE_XCARGS"
