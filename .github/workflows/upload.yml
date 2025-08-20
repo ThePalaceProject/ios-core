@@ -1,15 +1,32 @@
 name: Palace Manual Build
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref (branch or tag) to build"
+        required: false
+        default: "develop"
+      xcode-version:
+        description: "Xcode version to use"
+        required: false
+        default: "16.4"
+      runner:
+        description: "Runner label (macos-14, macos-15, etc.)"
+        required: false
+        default: "macos-15"
 jobs:
   check-version:
-    runs-on: macOS-latest
+    runs-on: ${{ inputs.runner }}
     steps:
-      - name: Use the latest Xcode
-        run: sudo xcode-select -switch /Applications/Xcode.app
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: ${{ inputs["xcode-version"] }}
       - name: Checkout main repo and submodules
         uses: actions/checkout@v3
         with:
           submodules: true
+          ref: ${{ inputs.ref }}
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
       - id: checkVersion
         name: Check Build Version
@@ -19,16 +36,19 @@ jobs:
     outputs:
       should_upload: ${{ steps.checkVersion.outputs.version_changed }}
   upload-build:
-    runs-on: macOS-latest
+    runs-on: ${{ inputs.runner }}
     needs: check-version
     if: needs.check-version.outputs.should_upload == '1'
     steps:
-      - name: Force Xcode 16
-        run: sudo xcode-select -switch /Applications/Xcode_16.app
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: ${{ inputs["xcode-version"] }}
       - name: Checkout main repo and submodules
         uses: actions/checkout@v3
         with:
           submodules: true
+          ref: ${{ inputs.ref }}
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
       - name: Checkout Binaries
         uses: actions/checkout@v3
@@ -50,6 +70,11 @@ jobs:
         run: ./scripts/setup-repo-drm.sh
         env:
           BUILD_CONTEXT: ci
+      - name: Show available SDKs (debug)
+        run: |
+          xcode-select -p
+          xcodebuild -version
+          xcodebuild -showsdks | cat
       - name: Build non-Carthage 3rd party dependencies
         run: ./scripts/build-3rd-party-dependencies.sh
         env:
