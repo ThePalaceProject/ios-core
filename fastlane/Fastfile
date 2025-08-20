@@ -38,7 +38,7 @@ platform :ios do
       silent: true,
       output_name: options[:output_name],
       output_directory: options[:export_path],
-      xcargs: "-sdk iphoneos",
+      xcargs: "-sdk iphoneos OTHER_CFLAGS=\\\"$EXTRA_COMPILER_FLAGS\\\" OTHER_CPLUSPLUSFLAGS=\\\"$EXTRA_COMPILER_FLAGS\\\"",
       export_options: {
         method: "ad-hoc",
         provisioningProfiles: { 
@@ -59,7 +59,7 @@ platform :ios do
       scheme: "Palace",
       include_symbols: true,
       include_bitcode: false,
-      xcargs: "-sdk iphoneos",
+      xcargs: "-sdk iphoneos OTHER_CFLAGS=\\\"$EXTRA_COMPILER_FLAGS\\\" OTHER_CPLUSPLUSFLAGS=\\\"$EXTRA_COMPILER_FLAGS\\\"",
       export_options: {
         method: "app-store",
         provisioningProfiles: { 
