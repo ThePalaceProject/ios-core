@@ -30,7 +30,8 @@ if ! xcodebuild -showsdks | grep -q "iphoneos"; then
 fi
 
 # Force iPhoneOS SDK usage to avoid generic destination resolution problems
-FASTLANE_XCARGS="-sdk iphoneos"
+# and inject compatibility shim
+FASTLANE_XCARGS="-sdk iphoneos OTHER_CFLAGS=\"$EXTRA_COMPILER_FLAGS\" OTHER_CPLUSPLUSFLAGS=\"$EXTRA_COMPILER_FLAGS\""
 
 fastlane ios beta output_name:$ARCHIVE_NAME.ipa export_path:$ARCHIVE_DIR xcargs:"$FASTLANE_XCARGS"
 
