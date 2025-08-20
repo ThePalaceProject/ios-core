@@ -39,7 +39,7 @@
   
   self.delegate = self;
   
-  self.catalogNavigationController = [[TPPCatalogNavigationController alloc] init];
+  self.catalogNavigationController = (TPPCatalogNavigationController * ) [TPPCatalogHostViewController makeSwiftUIView];
   self.myBooksNavigationController = (TPPMyBooksViewController * ) [TPPMyBooksViewController makeSwiftUIViewWithDismissHandler:^{
     [[self presentedViewController] dismissViewControllerAnimated:YES completion:nil];
   }];
