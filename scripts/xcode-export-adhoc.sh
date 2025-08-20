@@ -22,7 +22,17 @@ source "$(dirname $0)/xcode-settings.sh"
 
 echo "Exporting $ARCHIVE_NAME for Ad-Hoc distribution..."
 
-fastlane ios beta output_name:$ARCHIVE_NAME.ipa export_path:$ARCHIVE_DIR
+# Ensure required iOS SDK is present to avoid CI image platform issues
+if ! xcodebuild -showsdks | grep -q "iphoneos"; then
+  echo "error: iPhoneOS SDK not found in selected Xcode at ${DEVELOPER_DIR:-$(xcode-select -p)}" 1>&2
+  xcodebuild -showsdks | cat
+  exit 70
+fi
+
+# Force iPhoneOS SDK usage to avoid generic destination resolution problems
+FASTLANE_XCARGS="-sdk iphoneos"
+
+fastlane ios beta output_name:$ARCHIVE_NAME.ipa export_path:$ARCHIVE_DIR xcargs:"$FASTLANE_XCARGS"
 
 echo "Uploading archive:"
 

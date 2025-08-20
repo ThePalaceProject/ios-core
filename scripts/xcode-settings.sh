@@ -26,19 +26,30 @@ fatal()
   exit 1
 }
 
-# Set Xcode version if specified
-if [ -n "$XCODE_VERSION" ]; then
-  export DEVELOPER_DIR="/Applications/Xcode_${XCODE_VERSION}.app/Contents/Developer"
-  if [ ! -d "$DEVELOPER_DIR" ]; then
-    fatal "Xcode ${XCODE_VERSION} not found at ${DEVELOPER_DIR}"
-  fi
+# Respect DEVELOPER_DIR if already set (e.g., by CI setup-xcode action)
+if [ -n "$DEVELOPER_DIR" ] && [ -d "$DEVELOPER_DIR" ]; then
+  : # keep existing DEVELOPER_DIR
 else
-  # Default to Xcode 16.2 if not specified
-  export DEVELOPER_DIR="/Applications/Xcode_16.2.app/Contents/Developer"
-
-  if [ ! -d "$DEVELOPER_DIR" ]; then
-    echo "Warning: Xcode 16.0 not found at ${DEVELOPER_DIR}, falling back to system default"
-    unset DEVELOPER_DIR
+  # Use explicit Xcode if requested
+  if [ -n "$XCODE_VERSION" ]; then
+    export DEVELOPER_DIR="/Applications/Xcode_${XCODE_VERSION}.app/Contents/Developer"
+    if [ ! -d "$DEVELOPER_DIR" ]; then
+      fatal "Xcode ${XCODE_VERSION} not found at ${DEVELOPER_DIR}"
+    fi
+  else
+    # Prefer newer Xcode that includes Swift 6 and recent iOS SDKs; fall back if unavailable
+    for XVER in 16.4 16.3 16.2; do
+      CANDIDATE="/Applications/Xcode_${XVER}.app/Contents/Developer"
+      if [ -d "$CANDIDATE" ]; then
+        export DEVELOPER_DIR="$CANDIDATE"
+        break
+      fi
+    done
+    # If none found, rely on system default Xcode
+    if [ -z "$DEVELOPER_DIR" ] || [ ! -d "$DEVELOPER_DIR" ]; then
+      echo "Info: No preferred Xcode (16.4/16.3/16.2) found, using system default Xcode"
+      unset DEVELOPER_DIR
+    fi
   fi
 fi
 
