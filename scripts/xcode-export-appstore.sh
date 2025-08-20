@@ -25,8 +25,17 @@ if ! xcodebuild -showsdks | grep -q "iphoneos"; then
   exit 70
 fi
 
-# Force iPhoneOS SDK usage and inject compatibility shim
-FASTLANE_XCARGS="-sdk iphoneos OTHER_CFLAGS=\"$EXTRA_COMPILER_FLAGS\" OTHER_CPLUSPLUSFLAGS=\"$EXTRA_COMPILER_FLAGS\" OTHER_SWIFT_FLAGS=\"$EXTRA_COMPILER_FLAGS\""
+# Prepare an xcconfig to inject compatibility shim via build settings
+mkdir -p "$BUILD_PATH"
+XC_CFG_PATH="$BUILD_PATH/ci-compat.xcconfig"
+cat > "$XC_CFG_PATH" <<'EOF'
+OTHER_CFLAGS = $(inherited) -include $(SRCROOT)/Palace/BuildSupport/cpp_compat.hpp
+OTHER_CPLUSPLUSFLAGS = $(inherited) -include $(SRCROOT)/Palace/BuildSupport/cpp_compat.hpp
+OTHER_SWIFT_FLAGS = $(inherited) -Xcc -include -Xcc $(SRCROOT)/Palace/BuildSupport/cpp_compat.hpp
+EOF
+
+# Force iPhoneOS SDK usage and pass xcconfig
+FASTLANE_XCARGS="-sdk iphoneos -xcconfig $XC_CFG_PATH"
 
 CHANGELOG=$(<"$CHANGELOG_PATH")
 fastlane ios appstore changelog:"$CHANGELOG" xcargs:"$FASTLANE_XCARGS"
