@@ -1,19 +1,37 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-# SUMMARY
-#   Exports The Palace Projects archive for App Store distribution
-#   generating the related ipa.
-#
-# SYNOPSIS
-#   xcode-export-appstore.sh
-#
-# USAGE
-#   Run this script from the root of `ios-core` repo, e.g.:
-#
-#     ./scripts/xcode-export-appstore.sh
-#
-# RESULTS
-#   The generated .ipa is uploaded to TestFlight.
+source "$(dirname "$0")/xcode-settings.sh"
 
-CHANGELOG=$(<"$CHANGELOG_PATH")
-fastlane ios appstore changelog:"$CHANGELOG"
+echo "🔧 Using DEVELOPER_DIR=${DEVELOPER_DIR:-$(xcode-select -p || true)}"
+xcodebuild -version
+xcodebuild -showsdks
+
+echo "Exporting ${ARCHIVE_NAME} for App Store…"
+
+if ! xcodebuild -showsdks | grep -q "iphoneos"; then
+  echo "error: iPhoneOS SDK not found in ${DEVELOPER_DIR:-$(xcode-select -p)}" 1>&2
+  xcodebuild -showsdks || true
+  exit 70
+fi
+
+DERIVED_DATA="${PWD}/Build/DerivedData"
+rm -rf "$DERIVED_DATA"
+
+xcodebuild -resolvePackageDependencies \
+  -project Palace.xcodeproj \
+  -scheme Palace
+
+bundle exec fastlane gym \
+  --project Palace.xcodeproj \
+  --scheme "Palace" \
+  --clean \
+  --derived_data_path "$DERIVED_DATA" \
+  --sdk iphoneos \
+  --destination "generic/platform=iOS" \
+  --include_symbols true \
+  --include_bitcode false \
+  --output_directory "$ARCHIVE_DIR" \
+  --output_name "${ARCHIVE_NAME}.ipa" \
+  --export_method app-store \
+  --export_options '{ "provisioningProfiles": { "org.thepalaceproject.palace": "App Store" } }'
