@@ -34,7 +34,8 @@ xcodebuild -resolvePackageDependencies \
 
 if ! bundle check > /dev/null 2>&1; then
   echo "Installing Ruby gems with Bundler…"
-  bundle install --path vendor/bundle --jobs 4 --retry 3
+  bundle config set path 'vendor/bundle'
+  bundle install --jobs 4 --retry 3
 fi
 
 bundle exec fastlane gym \
