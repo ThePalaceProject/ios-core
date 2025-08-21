@@ -51,7 +51,6 @@ fi
 
 # Resolve current iPhoneOS SDK version and prefer explicit destination on Apple Silicon runners
 IOS_SDK_VERSION=$(xcodebuild -version -sdk iphoneos SDKVersion 2>/dev/null || echo "")
-DESTINATION_ARG="generic/platform=iOS,name=Any iOS Device (arm64)"
 
 # Deterministic export: gym with explicit export_method and iOS-only destination
 bundle exec fastlane gym \
@@ -60,7 +59,6 @@ bundle exec fastlane gym \
   --clean \
   --derived_data_path "$DERIVED_DATA" \
   ${IOS_SDK_VERSION:+--sdk iphoneos${IOS_SDK_VERSION}} \
-  --destination "$DESTINATION_ARG" \
   --include_symbols true \
   --include_bitcode false \
   --output_directory "$ARCHIVE_DIR" \
