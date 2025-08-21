@@ -45,7 +45,8 @@ xcodebuild -resolvePackageDependencies \
 # Ensure required Ruby gems (fastlane, etc.) are installed
 if ! bundle check > /dev/null 2>&1; then
   echo "Installing Ruby gems with Bundler…"
-  bundle install --path vendor/bundle --jobs 4 --retry 3
+  bundle config set path 'vendor/bundle'
+  bundle install --jobs 4 --retry 3
 fi
 
 # Deterministic export: gym with explicit export_method and iOS-only destination
