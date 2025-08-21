@@ -38,16 +38,20 @@ if ! bundle check > /dev/null 2>&1; then
   bundle install --jobs 4 --retry 3
 fi
 
+IOS_SDK_VERSION=$(xcodebuild -version -sdk iphoneos SDKVersion 2>/dev/null || echo "")
+DESTINATION_ARG="generic/platform=iOS,name=Any iOS Device (arm64)"
+
 bundle exec fastlane gym \
   --project Palace.xcodeproj \
   --scheme "Palace" \
   --clean \
   --derived_data_path "$DERIVED_DATA" \
-  --sdk iphoneos \
-  --destination "generic/platform=iOS" \
+  ${IOS_SDK_VERSION:+--sdk iphoneos${IOS_SDK_VERSION}} \
+  --destination "$DESTINATION_ARG" \
   --include_symbols true \
   --include_bitcode false \
   --output_directory "$ARCHIVE_DIR" \
   --output_name "${ARCHIVE_NAME}.ipa" \
   --export_method app-store \
+  --skip_profile_detection true \
   --export_options '{ "provisioningProfiles": { "org.thepalaceproject.palace": "App Store" } }'
