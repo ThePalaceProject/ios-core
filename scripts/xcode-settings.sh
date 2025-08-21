@@ -20,6 +20,21 @@
 
 set -eo pipefail
 
+# --- Safe DEVELOPER_DIR defaults for CI & local runs -----------------------
+# If CI sets MD_APPLE_SDK_ROOT (e.g., /Applications/Xcode_16.2.app), prefer it
+# and map to the 'Contents/Developer' path. Otherwise, fall back to xcode-select.
+if [ -z "${DEVELOPER_DIR:-}" ]; then
+  if [ -n "${MD_APPLE_SDK_ROOT:-}" ]; then
+    # strip any trailing slash then append /Contents/Developer
+    _sdk_root="${MD_APPLE_SDK_ROOT%/}"
+    export DEVELOPER_DIR="${_sdk_root}/Contents/Developer"
+  else
+    export DEVELOPER_DIR="$(
+      /usr/bin/xcode-select -p 2>/dev/null || true
+    )"
+  fi
+fi
+
 fatal()
 {
   echo "$0 error: $1" 1>&2

@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Define DEVELOPER_DIR safely before sourcing settings (robust under set -u)
+if [ -z "${DEVELOPER_DIR:-}" ]; then
+  if [ -n "${MD_APPLE_SDK_ROOT:-}" ]; then
+    _sdk_root="${MD_APPLE_SDK_ROOT%/}"
+    export DEVELOPER_DIR="${_sdk_root}/Contents/Developer"
+  else
+    export DEVELOPER_DIR="$([ -x /usr/bin/xcode-select ] && /usr/bin/xcode-select -p 2>/dev/null || true)"
+  fi
+fi
+
 source "$(dirname "$0")/xcode-settings.sh"
 
 echo "🔧 Using DEVELOPER_DIR=${DEVELOPER_DIR:-$(xcode-select -p || true)}"
