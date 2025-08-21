@@ -64,6 +64,12 @@ jobs:
           xcodebuild -version
           xcodebuild -showsdks
 
+      - name: Ensure iOS platform components are installed
+        run: |
+          echo "Ensuring iOS platform components are present…"
+          xcodebuild -downloadPlatform iOS | cat || true
+          xcodebuild -showsdks
+
       - name: Guard against xcode-select in repo scripts
         run: |
           if grep -R --line-number --fixed-strings "xcode-select" scripts || true; then
