@@ -46,40 +46,6 @@ fi
 # determine which app we're going to work on
 TARGET_NAME=Palace
 SCHEME=Palace
-# Respect DEVELOPER_DIR if already set (e.g., by CI setup-xcode action)
-if [ -n "$DEVELOPER_DIR" ] && [ -d "$DEVELOPER_DIR" ]; then
-  : # keep existing DEVELOPER_DIR
-else
-  # Use explicit Xcode if requested
-  if [ -n "$XCODE_VERSION" ]; then
-    export DEVELOPER_DIR="/Applications/Xcode_${XCODE_VERSION}.app/Contents/Developer"
-    if [ ! -d "$DEVELOPER_DIR" ]; then
-      fatal "Xcode ${XCODE_VERSION} not found at ${DEVELOPER_DIR}"
-    fi
-  else
-    # Prefer newer Xcode that includes Swift 6 and recent iOS SDKs; fall back if unavailable
-    for XVER in 16.4 16.3 16.2; do
-      CANDIDATE="/Applications/Xcode_${XVER}.app/Contents/Developer"
-      if [ -d "$CANDIDATE" ]; then
-        export DEVELOPER_DIR="$CANDIDATE"
-        break
-      fi
-    done
-    # If none found, rely on system default Xcode
-    if [ -z "$DEVELOPER_DIR" ] || [ ! -d "$DEVELOPER_DIR" ]; then
-      echo "Info: No preferred Xcode (16.4/16.3/16.2) found, using system default Xcode"
-      unset DEVELOPER_DIR
-    fi
-  fi
-fi
-
-# Inject C++ compatibility shim for vendored code without editing vendor files
-# Use -include via build settings flags (no -Xcc for xcodebuild)
-export EXTRA_COMPILER_FLAGS="-include \\\$(SRCROOT)/Palace/BuildSupport/cpp_compat.hpp"
-
-# determine which app we're going to work on
-TARGET_NAME=Palace
-SCHEME=Palace
 
 # app-agnostic settings
 APP_NAME="Palace"

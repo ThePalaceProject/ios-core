@@ -1,172 +1,92 @@
 name: Palace Manual Build
-on: workflow_dispatch
 
+on: workflow_dispatch
 jobs:
   check-version:
-    runs-on: macos-14
+    runs-on: macOS-latest
     steps:
-      - name: Select Xcode 16.x
-        uses: apple-actions/setup-xcode@v1
-        with:
-          xcode-version: '16'   # latest 16.x on the runner
-
-      - name: Show Xcode & SDKs
-        run: |
-          echo "DEVELOPER_DIR=$DEVELOPER_DIR"
-          xcodebuild -version
-          xcodebuild -showsdks
-
+      - name: Use the latest Xcode
+        run: sudo xcode-select -switch /Applications/Xcode.app
       - name: Checkout main repo and submodules
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
         with:
           submodules: true
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
-
-      - name: Cache SwiftPM
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/Library/Developer/Xcode/DerivedData
-            ~/Library/Caches/org.swift.swiftpm
-            ~/.swiftpm
-          key: spm-${{ runner.os }}-${{ hashFiles('**/Package.resolved') }}
-          restore-keys: |
-            spm-${{ runner.os }}-
-
-      - name: Resolve Swift Packages
-        run: |
-          xcodebuild -resolvePackageDependencies \
-            -project Palace.xcodeproj \
-            -scheme Palace
-
       - id: checkVersion
         name: Check Build Version
         run: ./scripts/ios-check-version.sh
         env:
           BUILD_CONTEXT: ci
-
     outputs:
       should_upload: ${{ steps.checkVersion.outputs.version_changed }}
-
   upload-build:
-    runs-on: macos-14
+    runs-on: macOS-latest
     needs: check-version
     if: needs.check-version.outputs.should_upload == '1'
     steps:
-      - name: Select Xcode 16.x
-        uses: apple-actions/setup-xcode@v1
-        with:
-          xcode-version: '16'
-
-      - name: Show Xcode & SDKs (locked)
-        run: |
-          echo "DEVELOPER_DIR=$DEVELOPER_DIR"
-          xcodebuild -version
-          xcodebuild -showsdks
-
-      - name: Ensure iOS platform components are installed
-        run: |
-          echo "Ensuring iOS platform components are present…"
-          xcodebuild -downloadPlatform iOS | cat || true
-          xcodebuild -showsdks
-
-      - name: Guard against xcode-select in repo scripts
-        run: |
-          if grep -R --line-number --fixed-strings "xcode-select" scripts || true; then
-            echo "❌ Do not call xcode-select inside CI scripts. Use setup-xcode action instead."
-            exit 1
-          fi
-
+      - name: Force Xcode 16
+        run: sudo xcode-select -switch /Applications/Xcode_16.app
       - name: Checkout main repo and submodules
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
         with:
           submodules: true
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
-
       - name: Checkout Binaries
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
         with:
           repository: ThePalaceProject/ios-binaries
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
           path: ./ios-binaries
-
       - name: Checkout Certificates
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
         with:
           repository: ThePalaceProject/mobile-certificates
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
           path: ./mobile-certificates
-
       - name: Checkout Adobe RMSDK
         uses: ./.github/actions/checkout-adobe
         with:
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
-
       - name: Setup repo with DRM
         run: ./scripts/setup-repo-drm.sh
         env:
           BUILD_CONTEXT: ci
-
       - name: Build non-Carthage 3rd party dependencies
         run: ./scripts/build-3rd-party-dependencies.sh
         env:
           BUILD_CONTEXT: ci
-
-      - name: Set up Ruby (Fastlane via Bundler)
-        uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: '3.2'
-          bundler-cache: true
-
-      - name: Clean DerivedData
-        run: rm -rf ~/Library/Developer/Xcode/DerivedData/*
-
-      - name: Export to binaries (Ad Hoc)
+      - name: Install provisioning profile
+        run: ./scripts/install-profile.sh
+        env:
+          BUILD_CONTEXT: ci
+          CI_APPSTORE_MP_BASE64: ${{ secrets.CI_APPSTORE_MP_BASE64 }}
+          CI_ADHOC_MP_BASE64: ${{ secrets.CI_ADHOC_MP_BASE64 }}
+          CI_DISTRIBUTION_CERT_BASE64: ${{ secrets.CI_DISTRIBUTION_CERT_BASE64 }}
+          CI_DISTRIBUTION_CERT_PW: ${{ secrets.CI_DISTRIBUTION_CERT_PW }}
+          CI_KEYCHAIN_PW: ${{ secrets.CI_KEYCHAIN_PW }}
+          CI_APPLE_FASTLANE_JSON: ${{ secrets.CI_APPLE_FASTLANE_JSON }}
+      - name: Export to binaries
         run: ./scripts/xcode-export-adhoc.sh
         env:
           BUILD_CONTEXT: ci
-
       - name: Create release notes
         run: ./scripts/create-release-notes.sh
         env:
           BUILD_CONTEXT: ci
           GITHUB_TOKEN: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
-
       - name: Verify path and version
         run: |
-          echo "Release notes path: $RELEASE_NOTES_PATH"
-          cat "$RELEASE_NOTES_PATH"
-          echo "Changelog path:     $CHANGELOG_PATH"
-          cat "$CHANGELOG_PATH"
-          echo "Version:            $VERSION_NUM"
+          echo "Release notes path: " $RELEASE_NOTES_PATH
+          cat $RELEASE_NOTES_PATH
+          echo "Changelog path:     " $CHANGELOG_PATH
+          cat $CHANGELOG_PATH
+          echo "Version:            " $VERSION_NUM
         env:
           RELEASE_NOTES_PATH: ${{ env.RELEASE_NOTES_PATH }}
           CHANGELOG_PATH: ${{ env.CHANGELOG_PATH }}
           VERSION_NUM: ${{ env.VERSION_NUM }}
-
       - name: Export for App Store
         run: ./scripts/xcode-export-appstore.sh
         env:
           BUILD_CONTEXT: ci
           CHANGELOG_PATH: ${{ env.CHANGELOG_PATH }}
-
-      - name: Upload Xcode Logs (always)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: xcode-logs
-          path: |
-            ~/Library/Logs/scan
-            ~/Library/Developer/Xcode/DerivedData/**/Logs/**
-          if-no-files-found: ignore
-
-      - name: Upload IPAs (if present)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ipa-outputs
-          path: |
-            *.ipa
-            output/*.ipa
-            fastlane/output/*.ipa
-          if-no-files-found: ignore
