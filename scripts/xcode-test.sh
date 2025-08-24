@@ -12,6 +12,5 @@
 #     ./scripts/xcode-test.sh
 
 echo "Running unit tests for Palace..."
-echo "💡 For faster tests, use: ./scripts/xcode-test-optimized.sh"
 
 fastlane ios test
