@@ -30,6 +30,10 @@ platform :ios do
 
   lane :beta do |options|
 
+    repo_root = Dir.pwd
+    shim_flags = "OTHER_CPLUSPLUSFLAGS='$(inherited) -include #{repo_root}/Palace/BuildSupport/cpp_compat.hpp'"
+    merged_xcargs = [options[:xcargs], "-sdk iphoneos", shim_flags].compact.join(" ")
+
     build_app(
       project: "Palace.xcodeproj",
       scheme: "Palace",
@@ -38,7 +42,7 @@ platform :ios do
       silent: true,
       output_name: options[:output_name],
       output_directory: options[:export_path],
-      xcargs: "-sdk iphoneos",
+      xcargs: merged_xcargs,
       export_options: {
         method: "ad-hoc",
         provisioningProfiles: { 
@@ -54,12 +58,16 @@ platform :ios do
 
     sh("rm -rf ~/Library/Developer/Xcode/DerivedData/*")
 
+    repo_root = Dir.pwd
+    shim_flags = "OTHER_CPLUSPLUSFLAGS='$(inherited) -include #{repo_root}/Palace/BuildSupport/cpp_compat.hpp'"
+    merged_xcargs = [options[:xcargs], "-sdk iphoneos", shim_flags].compact.join(" ")
+
     build_app(
       project: "Palace.xcodeproj",
       scheme: "Palace",
       include_symbols: true,
       include_bitcode: false,
-      xcargs: "-sdk iphoneos",
+      xcargs: merged_xcargs,
       export_options: {
         method: "app-store",
         provisioningProfiles: { 
