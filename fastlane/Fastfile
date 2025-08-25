@@ -25,6 +25,8 @@ platform :ios do
       skip_archive: true,
       skip_codesigning: true,
       silent: true
+    )
+  end
 
   lane :beta do |options|
     build_app(
