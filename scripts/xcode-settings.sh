@@ -1,23 +1,3 @@
-#!/bin/bash
-
-# SUMMARY
-#   Configures common environment variables for building Palace app.
-#
-# USAGE
-#   Source this script from other scripts (e.g. xcode-archive.sh)
-#
-#   in xcode-archive.sh:
-#     source "path/to/xcode-settings.sh"
-#     ...
-#
-#   invocation:
-#     xcode-archive.sh
-#
-# ENVIRONMENT VARIABLES
-
-#   XCODE_VERSION - Optional. The version of Xcode to use (e.g. "16.2")
-#                   If not set, uses the system default Xcode
-
 set -eo pipefail
 
 fatal()
@@ -45,7 +25,6 @@ fi
 # determine which app we're going to work on
 TARGET_NAME=Palace
 SCHEME=Palace
-
 # app-agnostic settings
 APP_NAME="Palace"
 PROV_PROFILES_DIR_PATH="$HOME/Library/MobileDevice/Provisioning Profiles"
