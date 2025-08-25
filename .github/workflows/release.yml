@@ -4,8 +4,7 @@ jobs:
   create-release:
     runs-on: macOS-latest
     steps:
-      - name: Set up Xcode 16.2
-        - name: Use the latest Xcode
+      - name: Use the latest Xcode
         run: sudo xcode-select -switch /Applications/Xcode.app
       - name: Checkout main repo and submodules
         uses: actions/checkout@v3
