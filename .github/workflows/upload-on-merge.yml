@@ -11,10 +11,10 @@ jobs:
   check-version:
     runs-on: macos-15
     steps:
-      - name: Set up Xcode 16.2
+      - name: Set up Xcode 16
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: '16.2'
+          xcode-version: '16'
 
       - name: Verify Xcode Version
         run: xcodebuild -version
@@ -38,10 +38,10 @@ jobs:
     needs: check-version
     if: github.event.pull_request.merged == true && needs.check-version.outputs.should_upload == '1'
     steps:
-      - name: Set up Xcode 16.2
+      - name: Set up Xcode 16
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: '16.2'
+          xcode-version: '16'
 
       - name: Verify Xcode Version
         run: xcodebuild -version
