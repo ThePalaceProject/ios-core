@@ -18,12 +18,6 @@ platform :ios do
     ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "300"
     ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"] = "4"
 
-    # Force Xcode 16 in CI so we get a compatible simulator runtime
-    if ENV["BUILD_CONTEXT"] == "ci" && File.directory?("/Applications/Xcode_16.app/Contents/Developer")
-      ENV["DEVELOPER_DIR"] = "/Applications/Xcode_16.app/Contents/Developer"
-      UI.message("Using DEVELOPER_DIR=#{ENV['DEVELOPER_DIR']} (nodrm)")
-    end
-
     build_app(
       project: "Palace.xcodeproj",
       scheme: "Palace-noDRM",
