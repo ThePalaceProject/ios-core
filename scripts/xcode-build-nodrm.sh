@@ -29,4 +29,10 @@ if [ "${BUILD_CONTEXT:-}" = "ci" ]; then
   fi
 fi
 
-fastlane ios nodrm
+# Prefer running via Bundler if Gemfile is present
+if [ -f "Gemfile" ]; then
+  echo "Invoking via bundle exec fastlane"
+  bundle exec fastlane ios nodrm
+else
+  fastlane ios nodrm
+fi
