@@ -21,7 +21,6 @@ platform :ios do
       scheme: "Palace-noDRM",
 
   lane :beta do |options|
-
     build_app(
       project: "Palace.xcodeproj",
       scheme: "Palace",
