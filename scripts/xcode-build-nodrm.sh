@@ -31,7 +31,12 @@ fi
 
 # Prefer running via Bundler if Gemfile is present
 if [ -f "Gemfile" ]; then
-  echo "Invoking via bundle exec fastlane"
+  echo "Installing bundle and invoking via bundle exec fastlane"
+  if ! command -v bundle >/dev/null 2>&1; then
+    gem install bundler -N || true
+  fi
+  bundle config set path vendor/bundle || true
+  bundle install --jobs 4 --retry 3
   bundle exec fastlane ios nodrm
 else
   fastlane ios nodrm
