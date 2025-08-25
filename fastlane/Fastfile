@@ -24,7 +24,7 @@ platform :ios do
       skip_package_ipa: true,
       skip_archive: true,
       skip_codesigning: true,
-      silent: true,
+      silent: true
     )
   end
 
