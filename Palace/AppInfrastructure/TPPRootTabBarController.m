@@ -9,7 +9,7 @@
 @property (nonatomic) TPPMyBooksViewController *myBooksNavigationController;
 @property (nonatomic) TPPHoldsNavigationController *holdsNavigationController;
 @property (nonatomic) TPPSettingsViewController *settingsViewController;
-@property (readwrite) TPPR2Owner *r2Owner;
+@property (readwrite) TPPR3Owner *r3Owner;
 
 @end
 
@@ -55,7 +55,7 @@
                                                name:NSNotification.TPPCurrentAccountDidChange
                                              object:nil];
   
-  self.r2Owner = [[TPPR2Owner alloc] init];
+  self.r3Owner = [[TPPR3Owner alloc] init];
   return self;
 }
 
@@ -104,30 +104,57 @@ shouldSelectViewController:(nonnull UIViewController *)viewController
                            animated:(BOOL)animated
                          completion:(void (^)(void))completion
 {
+  // Ensure we are on the main thread
+  if (![NSThread isMainThread]) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+      if (!self.presentedViewController) { // Avoid infinite loop
+        [self safelyPresentViewController:viewController animated:animated completion:completion];
+      }
+    });
+    return;
+  }
+
   UIViewController *baseController = self;
-  
-  while(baseController.presentedViewController) {
+
+  // Traverse up only if `presentedViewController` is fully presented
+  while (baseController.presentedViewController && !baseController.presentedViewController.isBeingDismissed) {
     baseController = baseController.presentedViewController;
   }
-  
-  [baseController presentViewController:viewController animated:animated completion:completion];
+
+  // Ensure it's safe to present a new VC
+  if (!baseController.presentedViewController) {
+    [baseController presentViewController:viewController animated:animated completion:completion];
+  }
 }
 
 - (void)pushViewController:(UIViewController *const)viewController
                   animated:(BOOL const)animated
 {
-  if(![self.selectedViewController isKindOfClass:[UINavigationController class]]) {
+  if (![self.selectedViewController isKindOfClass:[UINavigationController class]]) {
     TPPLOG(@"Selected view controller is not a navigation controller.");
     return;
   }
-  
-  if(self.presentedViewController) {
+
+  if (self.presentedViewController) {
     [self dismissViewControllerAnimated:YES completion:nil];
+  }
+
+  if (UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad) {
+    [UITabBarController hideFloatingTabBarWithAnimated:YES];
   }
   
   [(UINavigationController *)self.selectedViewController
-   pushViewController:viewController
-   animated:animated];
+    pushViewController:viewController
+              animated:animated];
+}
+
+- (UIViewController *)popViewControllerAnimated:(BOOL)animated {
+  if (UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad) {
+    [UITabBarController showFloatingTabBarWithAnimated:YES];
+  }
+
+  UINavigationController *nav = (UINavigationController *)self.selectedViewController;
+  return [nav popViewControllerAnimated:animated];
 }
 
 @end

@@ -1,4 +1,4 @@
-@class TPPR2Owner;
+@class TPPR3Owner;
 @class TPPCatalogNavigationController;
 
 @interface TPPRootTabBarController : UITabBarController
@@ -10,7 +10,7 @@
 
 + (instancetype)sharedController;
 
-@property (readonly) TPPR2Owner *r2Owner;
+@property (readonly) TPPR3Owner *r3Owner;
 @property (nonatomic) BOOL isPresentingSample;
 @property(nonatomic, readonly) TPPCatalogNavigationController *catalogNavigationController;
 

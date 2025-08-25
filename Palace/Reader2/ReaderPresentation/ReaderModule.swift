@@ -99,11 +99,13 @@ final class ReaderModule: ReaderModuleAPI {
                             formatModule: ReaderFormatModule,
                             in navigationController: UINavigationController,
                             forSample: Bool = false) {
-    Task {
+    Task.detached { [weak self] in
+      guard let self else { return }
+
       do {
-        let lastSavedLocation = bookRegistry.location(forIdentifier: book.identifier)
+        let lastSavedLocation = self.bookRegistry.location(forIdentifier: book.identifier)
         let initialLocator = await lastSavedLocation?.convertToLocator(publication: publication)
-        
+
         let readerVC = try await formatModule.makeReaderViewController(
           for: publication,
           book: book,
@@ -111,18 +113,19 @@ final class ReaderModule: ReaderModuleAPI {
           forSample: forSample
         )
 
-        DispatchQueue.main.async {
+        await MainActor.run {
           let backItem = UIBarButtonItem()
           backItem.title = Strings.Generic.back
           readerVC.navigationItem.backBarButtonItem = backItem
           readerVC.extendedLayoutIncludesOpaqueBars = true
+          readerVC.navigationController?.isNavigationBarHidden = false
           readerVC.hidesBottomBarWhenPushed = true
           navigationController.pushViewController(readerVC, animated: true)
         }
 
       } catch {
-        DispatchQueue.main.async { [weak self] in
-          self?.delegate?.presentError(error, from: navigationController)
+        await MainActor.run {
+          self.delegate?.presentError(error, from: navigationController)
         }
       }
     }

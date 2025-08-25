@@ -34,10 +34,10 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     self.preferences = preferences
 
     self.searchButton = UIBarButtonItem(barButtonSystemItem: .search, target: nil, action: #selector(presentEPUBSearch))
-    let overlayLabelInset = TPPBaseReaderViewController.overlayLabelMargin * 2
+    let overlayLabelInset = 80.0
     let contentInset: [UIUserInterfaceSizeClass: EPUBContentInsets] = [
-      .compact: (top: safeAreaInsets.top + TPPBaseReaderViewController.overlayLabelMargin * 2, bottom: safeAreaInsets.bottom + TPPBaseReaderViewController.overlayLabelMargin * 2),
-      .regular: (top: safeAreaInsets.top + TPPBaseReaderViewController.overlayLabelMargin * 2, bottom: safeAreaInsets.bottom + TPPBaseReaderViewController.overlayLabelMargin * 2)
+      .compact: (top: safeAreaInsets.top + overlayLabelInset, bottom: safeAreaInsets.bottom + overlayLabelInset),
+      .regular: (top: safeAreaInsets.top + overlayLabelInset, bottom: safeAreaInsets.bottom + overlayLabelInset)
     ]
 
     let config = EPUBNavigatorViewController.Configuration(
@@ -46,8 +46,6 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
         title: "Highlight",
         action: #selector(highlightSelection))),
       contentInset: contentInset,
-      preloadPreviousPositionCount: 2,
-      preloadNextPositionCount: 2,
       decorationTemplates: HTMLDecorationTemplate.defaultTemplates(),
       debugState: false
     )
@@ -91,6 +89,7 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
 
   private func resetNavigationAppearance() {
     if let appearance = TPPConfiguration.defaultAppearance() {
+      navigationController?.navigationBar.isTranslucent = false
       navigationController?.navigationBar.setAppearance(appearance)
       navigationController?.navigationBar.forceUpdateAppearance(style: systemUserInterfaceStyle)
     }
@@ -141,7 +140,6 @@ extension TPPEPUBViewController: EPUBSearchDelegate {
       Task {
         await self.navigator.go(to: location)
 
-
         if let decorableNavigator = self.navigator as? DecorableNavigator {
           var decorations: [Decoration] = []
           decorations.append(Decoration(
@@ -184,7 +182,11 @@ extension TPPEPUBViewController: EPUBNavigatorDelegate {
   }
 }
 
-extension TPPEPUBViewController: UIPopoverPresentationControllerDelegate {}
+extension TPPEPUBViewController: UIPopoverPresentationControllerDelegate {
+  func adaptivePresentationStyle(for controller: UIPresentationController) -> UIModalPresentationStyle {
+    return .none
+  }
+}
 
 extension TPPEPUBViewController: DecorableNavigator {
   func apply(decorations: [Decoration], in group: String) {
@@ -242,3 +244,4 @@ public extension DecorableNavigator {
     }
   }
 }
+

@@ -47,14 +47,16 @@ extension AdobeCertificate {
   }
     
   /// Default certificate for Palace app.
-  @objc static var defaultCertificate: AdobeCertificate? {
-    guard let adobeCertUrl = Bundle.main.url(forResource: "ReaderClientCert", withExtension: "sig"),
-          let adobeCertData = try? Data(contentsOf: adobeCertUrl) else {
+  @objc static var defaultCertificate: AdobeCertificate? = {
+    let bundle: Bundle = (ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil) ? Bundle(for: TPPAppDelegate.self) : Bundle.main
+    guard let adobeCertUrl = bundle.url(forResource: "ReaderClientCert", withExtension: "sig"),
+          let adobeCertData = try? Data(contentsOf: adobeCertUrl),
+          !adobeCertData.isEmpty else {
       return nil
     }
     return AdobeCertificate(data: adobeCertData)
-  }
-  
+  }()
+
   /// Initialise with Adobe DRM certificate data.
   /// - Parameter data: `ReaderClientCert.sig` data.
   @objc convenience init?(data: Data) {

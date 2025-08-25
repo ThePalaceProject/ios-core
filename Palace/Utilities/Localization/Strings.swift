@@ -294,4 +294,62 @@ struct Strings {
     static let borrowFailedMessage = NSLocalizedString("Borrowing %@ could not be completed.", comment: "")
     static let loanAlreadyExistsAlertMessage = NSLocalizedString("You have already checked out this loan. You may need to refresh your My Books list to download the title.", comment: "")
   }
+
+  struct BookDetailView {
+    static let audiobookAvailable = NSLocalizedString("Also available as an audiobook.", comment: "")
+    static let description = NSLocalizedString("Description", comment: "")
+    static let information = NSLocalizedString("Information", comment: "")
+    static let preview = NSLocalizedString("Preview", comment: "")
+    static let format = NSLocalizedString("Format", comment: "")
+    static let published = NSLocalizedString("Published", comment: "")
+    static let publisher = NSLocalizedString("Publisher", comment: "")
+    static let category = NSLocalizedString("Category", comment: "")
+    static let categories = NSLocalizedString("Categories", comment: "")
+    static let distributor = NSLocalizedString("Distributor", comment: "")
+    static let narrators = NSLocalizedString("Narrators", comment: "")
+    static let duration = NSLocalizedString("Duration", comment: "")
+    static let more = NSLocalizedString("More", comment: "")
+    static let less = NSLocalizedString("Less", comment: "")
+    static let otherBooks = NSLocalizedString("Other books by this author", comment: "Section header for related books")
+    static let borrowedUntil = NSLocalizedString("Borrowed until", comment: "")
+    static let borrowingFor = NSLocalizedString("Borrowing for", comment: "")
+    static let due = NSLocalizedString("Due", comment: "")
+    static let holdStatus = NSLocalizedString(
+      "You are %1$@ in line. %2$d %3$@ in use.",
+      comment: "User hold position and number of copies in use. Format: 'You are 5th in line. 3 copies in use.'"
+    )
+    static let copy = NSLocalizedString("copy", comment: "")
+    static let copies = NSLocalizedString("copies", comment: "")
+    static let returning = NSLocalizedString("returning", comment: "")
+    static let manageHold = BookButton.manageHold
+  }
+
+  struct BookButton {
+    static let borrow = NSLocalizedString("Borrow", comment: "")
+    static let preview = NSLocalizedString("Preview", comment: "")
+    static let returnLoan = NSLocalizedString("Return Loan", comment: "")
+    static let manageHold = NSLocalizedString("Manage Hold", comment: "")
+    static let retry = NSLocalizedString("Retry", comment: "")
+    static let read = NSLocalizedString("Read", comment: "")
+    static let listen = NSLocalizedString("Listen", comment: "")
+    static let download = NSLocalizedString("Download", comment: "")
+    static let cancel = NSLocalizedString("Cancel", comment: "")
+    static let `return` = NSLocalizedString("Return", comment: "")
+    static let remove = NSLocalizedString("Remove", comment: "")
+    static let placeHold = NSLocalizedString("Place Hold", comment: "")
+    static let onHold = NSLocalizedString("On Hold", comment: "")
+    static let keepHold = NSLocalizedString("Keep Hold", comment: "")
+    static let cancelHold = NSLocalizedString("Cancel Hold", comment: "")
+    static let otherBooks = NSLocalizedString("Other books by this author", comment: "")
+    static let close = NSLocalizedString("Close", comment: "")
+  }
+  
+  struct HoldsView {
+    static let reservations = NSLocalizedString("Reservations", comment: "Nav title")
+    static let emptyMessage = NSLocalizedString("""
+            When you reserve a book from the catalog, it will show up here. \
+            Look here from time to time to see if your book is available to download.
+            """, comment: "")
+    static let findYourLibrary = NSLocalizedString("Find Your Library", comment: "")
+  }
 }

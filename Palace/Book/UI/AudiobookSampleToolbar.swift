@@ -32,7 +32,7 @@ struct AudiobookSampleToolbar: View {
       imageLoader.loadImage(url: imageURL)
     }
   }
- 
+
   var body: some View {
     HStack {
       imageView
@@ -78,7 +78,7 @@ struct AudiobookSampleToolbar: View {
     Button {
       togglePlay()
     } label: {
-     playButtonImage
+      playButtonImage
     }
   }
 
@@ -124,11 +124,12 @@ struct AudiobookSampleToolbar: View {
   }
 
   @ViewBuilder private var loadingView: some View {
+    withAnimation {
       ProgressView()
         .progressViewStyle(CircularProgressViewStyle())
         .scaleEffect(1.25)
         .transition(.opacity)
-        .animation(.easeInOut)
+    }
   }
 }
 

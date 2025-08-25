@@ -1,4 +1,3 @@
-
 private let userAboveAgeKey              = "TPPSettingsUserAboveAgeKey"
 private let accountSyncEnabledKey        = "TPPAccountSyncEnabledKey"
 
@@ -42,7 +41,7 @@ protocol AccountLogoDelegate: AnyObject {
     case token = "http://thepalaceproject.org/authtype/basic-token"
     case none
   }
-  
+
   @objc(AccountDetailsAuthentication)
   @objcMembers
   class Authentication: NSObject, Codable, NSCoding {
@@ -139,10 +138,10 @@ protocol AccountLogoDelegate: AnyObject {
     var isToken: Bool {
       authType == .token
     }
-    
+
     var catalogRequiresAuthentication: Bool {
       // you need an oauth token in order to access catalogs if authentication type is either oauth with intermediary (ex. Clever), or SAML
-      authType == .oauthIntermediary 
+      authType == .oauthIntermediary
     }
 
     func encode(with coder: NSCoder) {
@@ -198,7 +197,7 @@ protocol AccountLogoDelegate: AnyObject {
   fileprivate var urlContentLicenses:URL?
   fileprivate var urlEULA:URL?
   fileprivate var urlPrivacyPolicy:URL?
-  
+
   var eulaIsAccepted:Bool {
     get {
       return getAccountDictionaryKey(TPPSettings.userHasAcceptedEULAKey) as? Bool ?? false
@@ -226,7 +225,7 @@ protocol AccountLogoDelegate: AnyObject {
       setAccountDictionaryKey(userAboveAgeKey, toValue: newValue as AnyObject)
     }
   }
-  
+
   init(authenticationDocument: OPDS2AuthenticationDocument, uuid: String) {
     defaults = .standard
     self.uuid = uuid
@@ -235,19 +234,19 @@ protocol AccountLogoDelegate: AnyObject {
       return Authentication.init(auth: opdsAuth)
     }) ?? []
 
-//    // TODO: Code below will remove all oauth only auth methods, this behaviour wasn't tested though
-//    // and may produce undefined results in viewcontrollers that do present auth methods if none are available
-//    auths = authenticationDocument.authentication?.map({ (opdsAuth) -> Authentication in
-//      return Authentication.init(auth: opdsAuth)
-//    }).filter { $0.authType != .oauthIntermediary } ?? []
+    //    // TODO: Code below will remove all oauth only auth methods, this behaviour wasn't tested though
+    //    // and may produce undefined results in viewcontrollers that do present auth methods if none are available
+    //    auths = authenticationDocument.authentication?.map({ (opdsAuth) -> Authentication in
+    //      return Authentication.init(auth: opdsAuth)
+    //    }).filter { $0.authType != .oauthIntermediary } ?? []
 
     supportsReservations = authenticationDocument.features?.disabled?.contains("https://librarysimplified.org/rel/policy/reservations") != true
     userProfileUrl = authenticationDocument.links?.first(where: { $0.rel == "http://librarysimplified.org/terms/rel/user-profile" })?.href
     loansUrl = URL.init(string: authenticationDocument.links?.first(where: { $0.rel == "http://opds-spec.org/shelf" })?.href ?? "")
     supportsSimplyESync = userProfileUrl != nil
-    
+
     mainColor = authenticationDocument.colorScheme
-    
+
     let registerUrlStr = authenticationDocument.links?.first(where: { $0.rel == "register" })?.href
     if let registerUrlStr = registerUrlStr {
       let trimmedUrlStr = registerUrlStr.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -265,26 +264,26 @@ protocol AccountLogoDelegate: AnyObject {
       signUpUrl = nil
       supportsCardCreator = false
     }
-    
+
     super.init()
-    
+
     if let urlString = authenticationDocument.links?.first(where: { $0.rel == "privacy-policy" })?.href,
-      let url = URL(string: urlString) {
+       let url = URL(string: urlString) {
       setURL(url, forLicense: .privacyPolicy)
     }
-    
+
     if let urlString = authenticationDocument.links?.first(where: { $0.rel == "terms-of-service" })?.href,
-      let url = URL(string: urlString) {
+       let url = URL(string: urlString) {
       setURL(url, forLicense: .eula)
     }
-    
+
     if let urlString = authenticationDocument.links?.first(where: { $0.rel == "license" })?.href,
-      let url = URL(string: urlString) {
+       let url = URL(string: urlString) {
       setURL(url, forLicense: .contentLicenses)
     }
-    
+
     if let urlString = authenticationDocument.links?.first(where: { $0.rel == "copyright" })?.href,
-      let url = URL(string: urlString) {
+       let url = URL(string: urlString) {
       setURL(url, forLicense: .acknowledgements)
     }
   }
@@ -308,7 +307,7 @@ protocol AccountLogoDelegate: AnyObject {
       setAccountDictionaryKey("urlAnnotations", toValue: URL.absoluteString as AnyObject)
     }
   }
-  
+
   func getLicenseURL(_ type: URLType) -> URL? {
     switch type {
     case .acknowledgements:
@@ -353,7 +352,7 @@ protocol AccountLogoDelegate: AnyObject {
       }
     }
   }
-  
+
   fileprivate func setAccountDictionaryKey(_ key: String, toValue value: AnyObject) {
     if var savedDict = defaults.value(forKey: self.uuid) as? [String: AnyObject] {
       savedDict[key] = value
@@ -362,7 +361,7 @@ protocol AccountLogoDelegate: AnyObject {
       defaults.set([key:value], forKey: self.uuid)
     }
   }
-  
+
   fileprivate func getAccountDictionaryKey(_ key: String) -> AnyObject? {
     let savedDict = defaults.value(forKey: self.uuid) as? [String: AnyObject]
     guard let result = savedDict?[key] else { return nil }
@@ -379,10 +378,10 @@ protocol AccountLogoDelegate: AnyObject {
   let uuid:String
   let name:String
   let subtitle:String?
-  var supportEmail:EmailAddress? = nil
+  var supportEmail: EmailAddress? = nil
   var supportURL:URL? = nil
   let catalogUrl:String?
-  var details:AccountDetails?
+  var details: AccountDetails?
   var homePageUrl: String?
   lazy var hasSupportOption = { supportEmail != nil || supportURL != nil }()
   weak var logoDelegate: AccountLogoDelegate?
@@ -397,20 +396,19 @@ protocol AccountLogoDelegate: AnyObject {
       details = AccountDetails(authenticationDocument: authenticationDocument, uuid: uuid)
     }
   }
-  
+  var logoUrl: URL? = nil
+
+  let imageCache: ImageCacheType
 
   var loansUrl: URL? {
     return details?.loansUrl
   }
-  
-  init(publication: OPDS2Publication) {
-    
+
+  init(publication: OPDS2Publication, imageCache: ImageCacheType) {
     name = publication.metadata.title
     subtitle = publication.metadata.description
     uuid = publication.metadata.id
-  
     catalogUrl = publication.links.first(where: { $0.rel == "http://opds-spec.org/catalog" })?.href
-
     if let link = publication.links.first(where: { $0.rel == "help" })?.href {
       if let emailAddress = EmailAddress(rawValue: link) {
         supportEmail = emailAddress
@@ -418,17 +416,12 @@ protocol AccountLogoDelegate: AnyObject {
         supportURL = URL(string: link)
       }
     }
-  
     authenticationDocumentUrl = publication.links.first(where: { $0.type == "application/vnd.opds.authentication.v1.0+json" })?.href
     logo = UIImage(named: "LibraryLogoMagic")!
-    
     homePageUrl = publication.links.first(where: { $0.rel == "alternate" })?.href
-
+    logoUrl = publication.thumbnailURL
+    self.imageCache = imageCache
     super.init()
-    
-    DispatchQueue.main.async {
-      self.loadLogo(imageURL: publication.thumbnailURL)
-    }
   }
 
   /// Load authentication documents from the network or cache.
@@ -450,13 +443,13 @@ protocol AccountLogoDelegate: AnyObject {
       completion(false)
       return
     }
-    
+
     fetchAuthenticationDocument(urlString) { (document) in
       guard let authenticationDocument = document else {
         completion(false)
         return
       }
-      
+
       self.authenticationDocument = authenticationDocument
 
       // Completion should be called before announcements,
@@ -470,10 +463,10 @@ protocol AccountLogoDelegate: AnyObject {
       }
     }
   }
-  
+
   private func fetchAuthenticationDocument(_ urlString: String, completion: @escaping (OPDS2AuthenticationDocument?) -> Void) {
     var document: OPDS2AuthenticationDocument?
-    
+
     guard let url = URL(string: urlString) else {
       TPPErrorLogger.logError(
         withCode: .noURL,
@@ -484,7 +477,7 @@ protocol AccountLogoDelegate: AnyObject {
       completion(document)
       return
     }
-    
+
     TPPNetworkExecutor.shared.GET(url, useTokenIfAvailable: false) { result in
       switch result {
       case .success(let serverData, _):
@@ -514,23 +507,32 @@ protocol AccountLogoDelegate: AnyObject {
       }
     }
   }
-  
-  private func loadLogo(imageURL: URL?) {
-    guard let url = imageURL else { return }
 
-      self.fetchImage(from: url, completion: {
-        guard let image = $0 else { return }
-        self.logo = image
-        self.logoDelegate?.logoDidUpdate(in: self, to: image)
-      })
+  func loadLogo() {
+    guard let url = self.logoUrl else { return }
+
+    self.fetchImage(from: url, completion: {
+      guard let image = $0 else { return }
+      self.logo = image
+      self.logoDelegate?.logoDidUpdate(in: self, to: image)
+    })
   }
 
   private func fetchImage(from url: URL, completion: @escaping (UIImage?) -> ()) {
+    if let cachedImage = imageCache.get(for: self.uuid) {
+      completion(cachedImage)
+      return
+    }
     TPPNetworkExecutor.shared.GET(url, useTokenIfAvailable: false) { result in
       DispatchQueue.main.async {
         switch result {
         case .success(let serverData, _):
-          completion(UIImage(data: serverData))
+          guard let image = UIImage(data: serverData) else {
+            completion(nil)
+            return
+          }
+          self.imageCache.set(image, for: self.uuid)
+          completion(image)
         case .failure(let error, _):
           TPPErrorLogger.logError(
             withCode: .authDocLoadFail,

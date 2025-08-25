@@ -468,7 +468,7 @@ Authenticating with any of those barcodes should work.
 
   // The new credentials are not yet saved after signup or after scanning. As such,
   // reloading the table would lose the values in the barcode and PIN fields.
-  if (self.businessLogic.isLoggingInAfterSignUp || self.loggingInAfterBarcodeScan) {
+  if (self.businessLogic.isLoggingInAfterSignUp || self.loggingInAfterBarcodeScan || self.businessLogic.isValidatingCredentials) {
     return;
   } else {
     self.hiddenPIN = YES;
@@ -631,7 +631,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
           alertController.view.tintColor = [TPPConfiguration mainColor];
         }];
       } else {
-        [self.businessLogic logIn];
+        [self.businessLogic logInWith:[self.selectedUserAccount.authDefinition tokenURL]];
       }
       break;
     }

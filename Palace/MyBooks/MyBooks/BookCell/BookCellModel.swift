@@ -38,9 +38,10 @@ extension BookCellState {
   }
 }
 
+@MainActor
 class BookCellModel: ObservableObject {
   typealias DisplayStrings = Strings.BookCell
-
+  
   @Published var image = ImageProviders.MyBooksView.bookPlaceholder ?? UIImage()
   @Published var showAlert: AlertModel?
   @Published var isLoading: Bool = false {
@@ -48,16 +49,16 @@ class BookCellModel: ObservableObject {
       statePublisher.send(isLoading)
     }
   }
-
+  
   @Published private var currentBookIdentifier: String?
-
+  
   private var cancellables = Set<AnyCancellable>()
-  private static var imageCache = NSCache<NSString, UIImage>()
+  let imageCache: ImageCacheType
   private var isFetchingImage = false
-
+  
   var statePublisher = PassthroughSubject<Bool, Never>()
   var state: BookCellState
-
+  
   var book: TPPBook {
     didSet {
       if book.identifier != currentBookIdentifier {
@@ -66,7 +67,16 @@ class BookCellModel: ObservableObject {
       }
     }
   }
-
+  
+  var isManagingHold: Bool {
+    switch buttonState {
+    case .managingHold, .holding, .holdingFrontOfQueue:
+      true
+    default:
+      false
+    }
+  }
+  
   var title: String { book.title }
   var authors: String { book.authors ?? "" }
   var showUnreadIndicator: Bool {
@@ -76,34 +86,35 @@ class BookCellModel: ObservableObject {
       return false
     }
   }
-
+  
   var buttonTypes: [BookButtonType] {
     state.buttonState.buttonTypes(book: book)
   }
-
+  
   private weak var buttonDelegate = TPPBookCellDelegate.shared()
   private weak var sampleDelegate: TPPBookButtonsSampleDelegate?
   private weak var downloadDelegate: TPPBookDownloadCancellationDelegate?
-
+  
   // MARK: - Initializer
-
-  init(book: TPPBook) {
+  
+  init(book: TPPBook, imageCache: ImageCacheType) {
     self.book = book
     self.state = BookCellState(BookButtonState(book) ?? .unsupported)
     self.isLoading = TPPBookRegistry.shared.processing(forIdentifier: book.identifier)
     self.currentBookIdentifier = book.identifier
+    self.imageCache = imageCache
     registerForNotifications()
     loadBookCoverImage()
   }
-
+  
   deinit {
     NotificationCenter.default.removeObserver(self)
   }
-
+  
   // MARK: - Image Loading
-
+  
   func loadBookCoverImage() {
-    if let cachedImage = Self.imageCache.object(forKey: book.identifier as NSString) {
+    if let cachedImage = imageCache.get(for: book.identifier) {
       image = cachedImage
     } else if let registryImage = TPPBookRegistry.shared.cachedThumbnailImage(for: book) {
       setImageAndCache(registryImage)
@@ -111,63 +122,39 @@ class BookCellModel: ObservableObject {
       fetchAndCacheImage()
     }
   }
-
+  
   private func fetchAndCacheImage() {
     guard !isFetchingImage else { return }
     isFetchingImage = true
     isLoading = true
-
-    DispatchQueue.global(qos: .background).async { [weak self] in
+    
+    DispatchQueue.main.async { [weak self] in
       guard let self = self else { return }
       TPPBookRegistry.shared.thumbnailImage(for: self.book) { [weak self] fetchedImage in
         guard let self = self, let fetchedImage else { return }
-        DispatchQueue.main.async {
-          self.setImageAndCache(fetchedImage)
-          self.isLoading = false
-          self.isFetchingImage = false
-        }
+        self.setImageAndCache(fetchedImage)
+        self.isLoading = false
+        self.isFetchingImage = false
       }
     }
   }
-
+  
   private func setImageAndCache(_ image: UIImage) {
-    Self.imageCache.setObject(image, forKey: book.identifier as NSString)
+    imageCache.set(image, for: book.identifier)
     self.image = image
   }
-
+  
   // MARK: - Notification Handling
-
+  
   private func registerForNotifications() {
     NotificationCenter.default.addObserver(self, selector: #selector(updateButtons),
                                            name: .TPPReachabilityChanged, object: nil)
   }
-
+  
   @objc private func updateButtons() {
-    isLoading = false
-  }
-
-  // MARK: - Button Actions
-
-  func indicatorDate(for buttonType: BookButtonType) -> Date? {
-    guard buttonType.displaysIndicator else { return nil }
-
-    var date: Date?
-    book.defaultAcquisition?.availability.matchUnavailable(
-      nil,
-      limited: { limited in
-        if let until = limited.until, until.timeIntervalSinceNow > 0 {
-          date = until
-        }
-      },
-      unlimited: nil,
-      reserved: nil,
-      ready: { ready in
-        if let until = ready.until, until.timeIntervalSinceNow > 0 {
-          date = until
-        }
-      }
-    )
-    return date
+    Task { @MainActor [weak self] in
+      self?.isLoading = false
+    }
   }
 }
 
@@ -176,80 +163,126 @@ extension BookCellModel {
     switch action {
     case .download, .retry, .get, .reserve:
       didSelectDownload()
-    case .return, .remove:
-      didSelectReturn()
+    case .return, .remove, .returning, .cancelHold, .manageHold:
+      self.isLoading = true
+      self.buttonDelegate?.didSelectReturn(for: self.book) {}
     case .cancel:
       didSelectCancel()
     case .sample, .audiobookSample:
       didSelectSample()
     case .read, .listen:
       didSelectRead()
+    case .close:
+      return
     }
   }
-
+  
   func didSelectRead() {
     isLoading = true
     self.buttonDelegate?.didSelectRead(for: book) { [weak self] in
-      self?.isLoading = false
+      DispatchQueue.main.async {
+        self?.isLoading = false
+      }
     }
   }
-
+  
   func didSelectReturn() {
     var title = ""
     var message = ""
     var confirmButtonTitle = ""
     let deleteAvailable = (book.defaultAcquisitionIfOpenAccess != nil) || !(TPPUserAccount.sharedAccount().authDefinition?.needsAuth ?? true)
-
+    
     switch TPPBookRegistry.shared.state(for: book.identifier) {
-    case .Used,
+    case .used,
         .SAMLStarted,
-        .Downloading,
-        .Unregistered,
-        .DownloadFailed,
-        .DownloadNeeded,
-        .DownloadSuccessful:
+        .downloading,
+        .unregistered,
+        .downloadFailed,
+        .downloadNeeded,
+        .downloadSuccessful,
+        .returning:
       title = deleteAvailable ? DisplayStrings.delete : DisplayStrings.return
       message = deleteAvailable ? String.localizedStringWithFormat(DisplayStrings.deleteMessage, book.title) :
       String.localizedStringWithFormat(DisplayStrings.returnMessage, book.title)
       confirmButtonTitle = deleteAvailable ? DisplayStrings.delete : DisplayStrings.return
-    case .Holding:
+    case .holding:
       title = DisplayStrings.removeReservation
       message = DisplayStrings.returnMessage
       confirmButtonTitle = DisplayStrings.remove
-    case .Unsupported:
+    case .unsupported:
       return
     }
-
+    
     showAlert = AlertModel(
       title: title,
       message: message,
       buttonTitle: confirmButtonTitle,
       primaryAction: { [weak self] in
         self?.isLoading = true
-        self?.buttonDelegate?.didSelectReturn(for: self?.book) {
-          self?.isLoading = false
-        }
+        self?.buttonDelegate?.didSelectReturn(for: self?.book) { }
       },
       secondaryAction: { [weak self] in
         self?.showAlert = nil
+        self?.isLoading = false
       }
     )
   }
-
+  
   func didSelectDownload() {
     if case .canHold = state.buttonState {
       TPPUserNotifications.requestAuthorization()
     }
-
+    
     buttonDelegate?.didSelectDownload(for: book)
   }
-
+  
   func didSelectSample() {
     isLoading = true
     self.sampleDelegate?.didSelectPlaySample(book)
   }
-
+  
   func didSelectCancel() {
     MyBooksDownloadCenter.shared.cancelDownload(for: book.identifier)
+  }
+}
+
+extension BookCellModel: BookButtonProvider {
+  func handleAction(for type: BookButtonType) {
+    callDelegate(for: type)
+  }
+  
+  func isProcessing(for type: BookButtonType) -> Bool {
+    isLoading
+  }
+}
+
+extension BookCellModel: HalfSheetProvider {
+  /// Always read the "live" state from the registry.
+  var bookState: TPPBookState {
+    get {
+      TPPBookRegistry.shared.state(for: book.identifier)
+    }
+    set {
+      TPPBookRegistry.shared.setState(newValue, for: book.identifier)
+    }
+  }
+  
+  var buttonState: BookButtonState {
+    let registryState = TPPBookRegistry.shared.state(for: book.identifier)
+    let availability = book.defaultAcquisition?.availability
+    let isDownloading = isLoading || registryState == .downloading
+    return BookButtonMapper.map(
+      registryState: registryState,
+      availability: availability,
+      isProcessingDownload: isDownloading
+    )
+  }
+  
+  var isFullSize: Bool {
+    UIDevice.current.userInterfaceIdiom == .pad
+  }
+  
+  var downloadProgress: Double {
+    MyBooksDownloadCenter.shared.downloadProgress(for: book.identifier)
   }
 }

@@ -8,38 +8,40 @@ let UnregisteredKey = "unregistered"
 let HoldingKey = "holding"
 let UsedKey = "used"
 let UnsupportedKey = "unsupported"
+let ReturningKey = "returning"
 let SAMLStartedKey = "saml-started"
 
 @objc public enum TPPBookState : Int, CaseIterable {
-  case Unregistered = 0
-  case DownloadNeeded = 1
-  case Downloading
-  case DownloadFailed
-  case DownloadSuccessful
-  case Holding
-  case Used
-  case Unsupported
+  case unregistered = 0
+  case downloadNeeded = 1
+  case downloading
+  case downloadFailed
+  case downloadSuccessful
+  case returning
+  case holding
+  case used
+  case unsupported
   // This state means that user is logged using SAML environment and app begun download process, but didn't transition to download center yet
   case SAMLStarted
 
   init?(_ stringValue: String) {
     switch stringValue {
       case DownloadingKey:
-        self = .Downloading
+        self = .downloading
       case DownloadFailedKey:
-        self = .DownloadFailed
+        self = .downloadFailed
       case DownloadNeededKey:
-        self = .DownloadNeeded
+        self = .downloadNeeded
       case DownloadSuccessfulKey:
-        self = .DownloadSuccessful
+        self = .downloadSuccessful
       case UnregisteredKey:
-        self = .Unregistered
+        self = .unregistered
       case HoldingKey:
-        self = .Holding
+        self = .holding
       case UsedKey:
-        self = .Used
+        self = .used
       case UnsupportedKey:
-        self = .Unsupported
+        self = .unsupported
       case SAMLStartedKey:
         self = .SAMLStarted
       default:
@@ -49,22 +51,24 @@ let SAMLStartedKey = "saml-started"
     
   func stringValue() -> String {
     switch self {
-      case .Downloading:
+      case .downloading:
         return DownloadingKey;
-      case .DownloadFailed:
+      case .downloadFailed:
         return DownloadFailedKey;
-      case .DownloadNeeded:
+      case .downloadNeeded:
         return DownloadNeededKey;
-      case .DownloadSuccessful:
+      case .downloadSuccessful:
         return DownloadSuccessfulKey;
-      case .Unregistered:
+      case .unregistered:
         return UnregisteredKey;
-      case .Holding:
+      case .holding:
         return HoldingKey;
-      case .Used:
+      case .used:
         return UsedKey;
-      case .Unsupported:
+      case .unsupported:
         return UnsupportedKey;
+      case .returning:
+        return ReturningKey
     case .SAMLStarted:
       return SAMLStartedKey;
     }

@@ -126,6 +126,15 @@ class TPPUserAccountMock: TPPUserAccount {
     return nil
   }
 
+  private var _authToken: String?
+  override var authToken: String? {
+    return _authToken
+  }
+
+  override func setAuthToken(_ token: String, barcode: String?, pin: String?, expirationDate: Date?) {
+    _authToken = token
+  }
+
   // MARK:- Clean everything up
   
   override func removeAll() {
@@ -136,6 +145,7 @@ class TPPUserAccountMock: TPPUserAccount {
     _userID = nil
     _deviceID = nil
     _authDefinition = nil
+    _authToken = nil
     _credentials = nil
     _cookies = nil
     _authorizationIdentifier = nil

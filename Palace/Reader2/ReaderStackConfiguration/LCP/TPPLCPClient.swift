@@ -1,53 +1,123 @@
-//
-//  TPPLCPClient.swift
-//  Palace
-//
-//  Created by Vladimir Fedorov on 25.08.2021.
-//  Copyright © 2021 The Palace Project. All rights reserved.
-//
-//  This framework facade is required by LCP as described here:
-//  https://github.com/readium/r2-lcp-swift/blob/888417b0563c2dc56f80209542bc51c54a0b5e32/README.md
 #if LCP
 
 import R2LCPClient
 import ReadiumLCP
 import ReadiumShared
 
+enum LCPContextError: Error {
+  case creationReturnedNil
+}
+
 let lcpService = LCPLibraryService()
 
 /// Facade to the private R2LCPClient.framework.
 class TPPLCPClient: ReadiumLCP.LCPClient {
-  
-  // Use optional to explicitly release the context when not needed
-  private var context: LCPClientContext?
 
-  // Ensure the context is released when not needed
+  private var _context: LCPClientContext?
+  public var context: LCPClientContext? {
+    contextQueue.sync { _context }
+  }
+
+  private let contextQueue = DispatchQueue(
+    label: "com.yourapp.tpplcpclient.contextQueue",
+    qos: .userInitiated
+  )
+  
   deinit {
-    context = nil
+    contextQueue.sync {
+      _context = nil
+    }
   }
-  
-  func createContext(jsonLicense: String, hashedPassphrase: String, pemCrl: String) throws -> LCPClientContext {
-    // Make sure the old context is deallocated if it exists
-    context = try R2LCPClient.createContext(jsonLicense: jsonLicense, hashedPassphrase: hashedPassphrase, pemCrl: pemCrl)
-    return context!
-  }
-  
+
+  func createContext(
+     jsonLicense: String,
+     hashedPassphrase: String,
+     pemCrl: String
+   ) throws -> LCPClientContext {
+     var rawResult: LCPClientContext?
+     var caughtError: Error?
+
+     contextQueue.sync {
+       do {
+         rawResult = try R2LCPClient.createContext(
+           jsonLicense: jsonLicense,
+           hashedPassphrase: hashedPassphrase,
+           pemCrl: pemCrl
+         )
+       } catch {
+         caughtError = error
+       }
+     }
+
+     if let error = caughtError {
+       throw error
+     }
+
+     guard let newCtx = rawResult else {
+       throw LCPContextError.creationReturnedNil
+     }
+
+     contextQueue.sync {
+       self._context = newCtx
+     }
+
+     return newCtx
+   }
+
   func decrypt(data: Data, using context: LCPClientContext) -> Data? {
-    return R2LCPClient.decrypt(data: data, using: context as! DRMContext)
+    guard let drmContext = context as? DRMContext else { 
+      ATLog(.error, "Invalid DRM context for decryption")
+      return nil 
+    }
+    
+    guard !data.isEmpty else {
+      ATLog(.error, "Cannot decrypt empty data")
+      return nil
+    }
+    
+    do {
+      let decrypted = R2LCPClient.decrypt(data: data, using: drmContext)
+      if decrypted == nil {
+        ATLog(.error, "R2LCPClient.decrypt returned nil for \(data.count) bytes")
+      } else {
+        ATLog(.debug, "Successfully decrypted \(data.count) bytes -> \(decrypted?.count ?? 0) bytes")
+      }
+      return decrypted
+    } catch {
+      ATLog(.error, "Exception during decryption: \(error)")
+      return nil
+    }
   }
-  
+
   func findOneValidPassphrase(jsonLicense: String, hashedPassphrases: [String]) -> String? {
     return R2LCPClient.findOneValidPassphrase(jsonLicense: jsonLicense, hashedPassphrases: hashedPassphrases)
   }
 }
 
-/// Provides access to data decryptor
 extension TPPLCPClient {
   func decrypt(data: Data) -> Data? {
-    guard let context = context else {
+    guard let drmContext = context as? DRMContext else { 
+      ATLog(.error, "No valid DRM context available for decryption")
+      return nil 
+    }
+    
+    guard !data.isEmpty else {
+      ATLog(.error, "Cannot decrypt empty data")
       return nil
     }
-    return R2LCPClient.decrypt(data: data, using: context as! DRMContext)
+    
+    do {
+      let result = R2LCPClient.decrypt(data: data, using: drmContext)
+      if result == nil {
+        ATLog(.error, "R2LCPClient.decrypt returned nil for \(data.count) bytes")
+      } else {
+        ATLog(.debug, "Successfully decrypted \(data.count) bytes -> \(result?.count ?? 0) bytes")
+      }
+      return result
+    } catch {
+      ATLog(.error, "Exception during decryption: \(error)")
+      return nil
+    }
   }
 }
 

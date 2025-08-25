@@ -431,10 +431,12 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
         self.PINTextField.preservesSuperviewLayoutMargins = YES;
         [self.PINTextField autoPinEdgeToSuperviewMargin:ALEdgeRight];
         [self.PINTextField autoPinEdgeToSuperviewMargin:ALEdgeLeft];
-        [self.PINTextField autoConstrainAttribute:ALAttributeTop toAttribute:ALAttributeMarginTop
+        [self.PINTextField autoConstrainAttribute:ALAttributeTop
+                                      toAttribute:ALAttributeMarginTop
                                            ofView:[self.PINTextField superview]
                                        withOffset:marginPadding];
-        [self.PINTextField autoConstrainAttribute:ALAttributeBottom toAttribute:ALAttributeMarginBottom
+        [self.PINTextField autoConstrainAttribute:ALAttributeBottom
+                                      toAttribute:ALAttributeMarginBottom
                                            ofView:[self.PINTextField superview]
                                        withOffset:-marginPadding];
       }

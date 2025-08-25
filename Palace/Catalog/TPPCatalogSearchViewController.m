@@ -6,7 +6,6 @@
 #import "NSString+TPPStringAdditions.h"
 
 #import "TPPBookCell.h"
-#import "TPPBookDetailViewController.h"
 #import "TPPCatalogUngroupedFeed.h"
 #import "TPPOpenSearchDescription.h"
 #import "TPPReloadView.h"
@@ -97,6 +96,8 @@
   self.reloadView.hidden = YES;
   [self.view addSubview:self.reloadView];
 
+  self.collectionView.keyboardDismissMode = UIScrollViewKeyboardDismissModeOnDrag;
+
   [self createAndConfigureFacetBarView];
 }
 
@@ -136,6 +137,12 @@
   }
 }
 
+- (void)viewDidAppear:(BOOL)animated
+{
+  [super viewDidAppear:animated];
+  [self.searchBar becomeFirstResponder];
+}
+
 - (void)createAndConfigureFacetBarView
 {
   if (self.facetBarView) {
@@ -169,6 +176,34 @@
 {
   [super viewWillDisappear:animated];
   [self.searchBar resignFirstResponder];
+}
+
+- (void)dismissKeyboard
+{
+  [self.searchBar resignFirstResponder];
+}
+
+- (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event
+{
+  [super touchesBegan:touches withEvent:event];
+  
+  // Dismiss keyboard when touching safe areas (not on interactive elements)
+  UITouch *touch = [touches anyObject];
+  CGPoint location = [touch locationInView:self.view];
+  
+  // Only dismiss if touching outside interactive areas:
+  // - Search bar (where user types)
+  // - Collection view (contains tappable book cells)
+  // - Facet bar (contains filter buttons)
+  // - Reload view (contains retry button)
+  BOOL touchingSearchBar = CGRectContainsPoint(self.searchBar.frame, location);
+  BOOL touchingCollectionView = CGRectContainsPoint(self.collectionView.frame, location);
+  BOOL touchingFacetBar = self.facetBarView && CGRectContainsPoint(self.facetBarView.frame, location);
+  BOOL touchingReloadView = !self.reloadView.hidden && CGRectContainsPoint(self.reloadView.frame, location);
+  
+  if (!touchingSearchBar && !touchingCollectionView && !touchingFacetBar && !touchingReloadView) {
+    [self dismissKeyboard];
+  }
 }
 
 - (void)addActivityIndicatorLabel:(NSTimer*)timer
@@ -206,12 +241,17 @@
 
 #pragma mark UICollectionViewDelegate
 
-- (void)collectionView:(__attribute__((unused)) UICollectionView *)collectionView
+- (void)collectionView:(UICollectionView *)collectionView
 didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
 {
-  TPPBook *const book = self.books[indexPath.row];
-  
-  [[[TPPBookDetailViewController alloc] initWithBook:book] presentFromViewController:self];
+  TPPBook *book = self.books[indexPath.row];
+  BookDetailHostingController *bookDetailVC = [[BookDetailHostingController alloc] initWithBook:book];
+  [self.navigationController pushViewController:bookDetailVC animated:YES];
+}
+
+- (void)scrollViewWillBeginDragging:(UIScrollView *)scrollView
+{
+  [self dismissKeyboard];
 }
 
 #pragma mark NYPLCatalogUngroupedFeedDelegate
@@ -298,8 +338,6 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
 
 - (void)updateUIAfterSearchSuccess:(BOOL)success
 {
-  [self createAndConfigureFacetBarView];
-
   self.collectionView.alpha = 0.0;
   self.searchActivityIndicatorView.hidden = YES;
   [self.searchActivityIndicatorView stopAnimating];
@@ -320,6 +358,9 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
   } else {
     self.reloadView.hidden = NO;
   }
+
+  [self.view setNeedsLayout];
+  [self.view layoutIfNeeded];
 
   [UIView animateWithDuration:0.3 animations:^{
     self.searchBar.alpha = 1.0;

@@ -14,7 +14,7 @@ enum Group: Int {
 }
 
 @MainActor
-class MyBooksViewModel: ObservableObject {
+@objc class MyBooksViewModel: NSObject, ObservableObject {
   typealias DisplayStrings = Strings.MyBooksView
 
   // MARK: - Public Properties
@@ -27,14 +27,8 @@ class MyBooksViewModel: ObservableObject {
   @Published var selectNewLibrary = false
   @Published var showLibraryAccountView = false
   @Published var selectedBook: TPPBook?
-  @Published var showAccountScreen = false {
-    didSet {
-      accountURL = facetViewModel.accountScreenURL
-    }
-  }
 
-  var accountURL: URL?
-  var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
+  var isPad: Bool { UIDevice.current.isIpad }
 
   // MARK: - Private Properties
   var activeFacetSort: Facet
@@ -43,16 +37,20 @@ class MyBooksViewModel: ObservableObject {
   private var bookRegistry: TPPBookRegistry { TPPBookRegistry.shared }
 
   // MARK: - Initialization
-  init() {
+  override init() {
     self.activeFacetSort = .author
     self.facetViewModel = FacetViewModel(
       groupName: DisplayStrings.sortBy,
       facets: [.title, .author]
     )
+    super.init()
 
     registerPublishers()
     registerNotifications()
-    loadData()
+    
+    DispatchQueue.main.async { [weak self] in
+      self?.loadData()
+    }
   }
 
   deinit {
@@ -60,26 +58,26 @@ class MyBooksViewModel: ObservableObject {
   }
 
   // MARK: - Public Methods
+  @MainActor
   func loadData() {
-    guard !isLoading else { return }
+    DispatchQueue.main.async { [weak self] in
+      guard let self else { return }
 
-    DispatchQueue.main.async {
-      self.isLoading = true
-    }
+      guard !isLoading else { return }
+      isLoading = true
 
-    DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-      guard let self = self else { return }
+      let registryBooks = bookRegistry.myBooks
+      let isConnected = Reachability.shared.isConnectedToNetwork()
 
-      let books = Reachability.shared.isConnectedToNetwork()
-      ? self.bookRegistry.myBooks
-      : self.bookRegistry.myBooks.filter { !$0.isExpired }
+      let books = isConnected
+      ? registryBooks
+      : registryBooks.filter { !$0.isExpired }
 
-      DispatchQueue.main.async {
-        self.books = books
-        self.showInstructionsLabel = books.isEmpty || self.bookRegistry.state == .unloaded
-        self.sortData()
-        self.isLoading = false
-      }
+      // Update published properties
+      self.books = books
+      self.showInstructionsLabel = books.isEmpty || bookRegistry.state == .unloaded
+      self.sortData()
+      self.isLoading = false
     }
   }
 
@@ -89,28 +87,38 @@ class MyBooksViewModel: ObservableObject {
     if TPPUserAccount.sharedAccount().needsAuth, !TPPUserAccount.sharedAccount().hasCredentials() {
       TPPAccountSignInViewController.requestCredentials(completion: nil)
     } else {
-      bookRegistry.sync()
-      loadData()
-    }
-  }
-
-  func filterBooks(query: String) {
-    if query.isEmpty {
-      loadData()
-    } else {
-      DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-        guard let self = self else { return }
-        let filteredBooks = self.books.filter {
-          $0.title.localizedCaseInsensitiveContains(query) || ($0.authors?.localizedCaseInsensitiveContains(query) ?? false)
-        }
-        DispatchQueue.main.async {
-          self.books = filteredBooks
+      bookRegistry.sync { [weak self] _, _ in
+        DispatchQueue.main.async { [weak self] in
+          self?.loadData()
         }
       }
     }
   }
 
-  func authenticateAndLoad(account: Account) {
+  @MainActor
+  func filterBooks(query: String) async {
+    if query.isEmpty {
+      loadData()
+    } else {
+      let currentBooks = self.books
+
+      // Offload filtering to a background task.
+      let filteredBooks = await withCheckedContinuation { continuation in
+        DispatchQueue.global(qos: .userInitiated).async {
+          let result = currentBooks.filter {
+            $0.title.localizedCaseInsensitiveContains(query) ||
+            ($0.authors?.localizedCaseInsensitiveContains(query) ?? false)
+          }
+          continuation.resume(returning: result)
+        }
+      }
+
+      // Update the UI on the main actor.
+      self.books = filteredBooks
+    }
+  }
+
+  @objc func authenticateAndLoad(account: Account) {
     account.loadAuthenticationDocument { [weak self] success in
       guard let self = self, success else { return }
 
@@ -160,26 +168,23 @@ class MyBooksViewModel: ObservableObject {
   }
 
   @objc private func handleBookRegistryChange() {
-    loadData()
+    DispatchQueue.main.async { [weak self] in
+      self?.loadData()
+    }
   }
 
   @objc private func handleSyncEnd() {
-    loadData()
+    DispatchQueue.main.async { [weak self] in
+      self?.loadData()
+    }
   }
 
-  // MARK: - Combine Publishers
   private func registerPublishers() {
     facetViewModel.$activeSort
       .sink { [weak self] sort in
         guard let self = self else { return }
         self.activeFacetSort = sort
         self.sortData()
-      }
-      .store(in: &observers)
-
-    facetViewModel.$showAccountScreen
-      .sink { [weak self] show in
-        self?.showAccountScreen = show
       }
       .store(in: &observers)
   }

@@ -43,13 +43,16 @@
                                       __attribute__((unused)) BOOL *stop) {
     UIButton *const button = [UIButton buttonWithType:UIButtonTypeCustom];
     button.tag = bookIndex;
-    UIImage *const image = bookIdentifiersToImages[book.identifier];
-    if(!image) {
-//      NSDictionary *infodict = @{@"title":book.title, @"identifier":book.identifier};
+    __unsafe_unretained UIImage *cachedImage =
+    [bookIdentifiersToImages objectForKey:book.identifier];
+    
+    if (cachedImage == nil) {
       TPPLOG_F(@"Did not receive cover for '%@'.", book.title);
     }
-    [button setImage:(image ? image : [UIImage imageNamed:@"NoCover"])
-            forState:UIControlStateNormal];
+   
+    UIImage *toDisplay = cachedImage ?: [UIImage imageNamed:@"NoCover"];
+    [button setImage:toDisplay forState:UIControlStateNormal];
+    
     if (@available(iOS 11.0, *)) {
       button.accessibilityIgnoresInvertColors = YES;
     }

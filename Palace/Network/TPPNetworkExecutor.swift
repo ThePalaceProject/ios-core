@@ -299,7 +299,8 @@ extension TPPNetworkExecutor {
       self.isRefreshing = true
       
       guard let username = TPPUserAccount.sharedAccount().username,
-            let password = TPPUserAccount.sharedAccount().pin else {
+            let password = TPPUserAccount.sharedAccount().pin,
+            let tokenURL = TPPUserAccount.sharedAccount().authDefinition?.tokenURL else {
         Log.info(#file, "Failed to refresh token due to missing credentials!")
         self.isRefreshing = false
         let error = NSError(domain: TPPErrorLogger.clientDomain, code: TPPErrorCode.invalidCredentials.rawValue, userInfo: [NSLocalizedDescriptionKey: "Unauthorized HTTP"])
@@ -316,7 +317,7 @@ extension TPPNetworkExecutor {
         self.retryQueueLock.unlock()
       }
       
-      self.executeTokenRefresh(username: username, password: password) { result in
+      self.executeTokenRefresh(username: username, password: password, tokenURL: tokenURL) { result in
         defer { self.isRefreshing = false }
         
         switch result {
@@ -371,13 +372,7 @@ extension TPPNetworkExecutor {
   }
 
   
-  func executeTokenRefresh(username: String, password: String, completion: @escaping (Result<TokenResponse, Error>) -> Void) {
-    guard let tokenURL = TPPUserAccount.sharedAccount().authDefinition?.tokenURL else {
-      Log.error(#file, "Unable to refresh token, missing credentials")
-      completion(.failure(NSError(domain: "Unable to refresh token, missing credentials", code: 401)))
-      return
-    }
-    
+  func executeTokenRefresh(username: String, password: String, tokenURL: URL, completion: @escaping (Result<TokenResponse, Error>) -> Void) {
     Task {
       let tokenRequest = TokenRequest(url: tokenURL, username: username, password: password)
       let result = await tokenRequest.execute()
@@ -416,7 +411,7 @@ private extension URLRequest {
 extension TPPNetworkExecutor {
   func GET(_ reqURL: URL, useTokenIfAvailable: Bool = true) async throws -> (Data, URLResponse?) {
     return try await withCheckedThrowingContinuation { continuation in
-      var didResume = false  // Track if the continuation has been resumed
+      var didResume = false
 
       GET(reqURL, useTokenIfAvailable: useTokenIfAvailable) { result in
         guard !didResume else {
@@ -432,7 +427,6 @@ extension TPPNetworkExecutor {
         }
       }
 
-      // Handle timeout scenario if necessary (assuming there could be a time-based failure)
       DispatchQueue.global().asyncAfter(deadline: .now() + 10.0) {
         guard !didResume else { return }
         didResume = true

@@ -113,11 +113,11 @@ extension TPPCredentials: Codable {
 }
 
 extension String {
-  func asKeychainVariable<VariableType>(with accountInfoLock: NSRecursiveLock) -> TPPKeychainVariable<VariableType> {
-    return TPPKeychainVariable<VariableType>(key: self, accountInfoLock: accountInfoLock)
+  func asKeychainVariable<VariableType>(with accountInfoQueue: DispatchQueue) -> TPPKeychainVariable<VariableType> {
+    return TPPKeychainVariable<VariableType>(key: self, accountInfoQueue: accountInfoQueue)
   }
 
-  func asKeychainCodableVariable<VariableType: Codable>(with accountInfoLock: NSRecursiveLock) -> TPPKeychainCodableVariable<VariableType> {
-    return TPPKeychainCodableVariable<VariableType>(key: self, accountInfoLock: accountInfoLock)
+  func asKeychainCodableVariable<VariableType: Codable>(with accountInfoQueue: DispatchQueue) -> TPPKeychainCodableVariable<VariableType> {
+    return TPPKeychainCodableVariable<VariableType>(key: self, accountInfoQueue: accountInfoQueue)
   }
 }

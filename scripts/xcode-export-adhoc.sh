@@ -22,7 +22,7 @@ source "$(dirname $0)/xcode-settings.sh"
 
 echo "Exporting $ARCHIVE_NAME for Ad-Hoc distribution..."
 
-fastlane ios beta output_name:$ARCHIVE_NAME.ipa export_path:$ARCHIVE_DIR
+fastlane ios beta output_name:$ARCHIVE_NAME.ipa export_path:$ARCHIVE_DIR xcargs:"-sdk iphoneos -destination 'generic/platform=iOS'"
 
 echo "Uploading archive:"
 

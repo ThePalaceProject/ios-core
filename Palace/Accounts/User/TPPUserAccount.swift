@@ -39,11 +39,11 @@ private enum StorageKey: String {
 
 @objcMembers class TPPUserAccount : NSObject, TPPUserAccountProvider {
   static private let shared = TPPUserAccount()
-  private let accountInfoLock = NSRecursiveLock()
-  private lazy var keychainTransaction = TPPKeychainVariableTransaction(accountInfoLock: accountInfoLock)
+  private let accountInfoQueue = DispatchQueue(label: "TPPUserAccount.accountInfoQueue")
+  private lazy var keychainTransaction = TPPKeychainVariableTransaction(accountInfoQueue: accountInfoQueue)
   private var notifyAccountChange: Bool = true
 
-  private var libraryUUID: String? {
+  var libraryUUID: String? {
     didSet {
       guard libraryUUID != oldValue else { return }
       let variables: [StorageKey: Keyable] = [
@@ -175,13 +175,9 @@ private enum StorageKey: String {
   }
     
   class func sharedAccount(libraryUUID: String?) -> TPPUserAccount {
-    shared.accountInfoLock.lock()
-    defer {
-      shared.accountInfoLock.unlock()
+    shared.accountInfoQueue.sync {
+      shared.libraryUUID = libraryUUID
     }
-
-    shared.libraryUUID = libraryUUID
-
     return shared
   }
 
@@ -200,48 +196,48 @@ private enum StorageKey: String {
   // MARK: - Storage
   private lazy var _authorizationIdentifier: TPPKeychainVariable<String> = StorageKey.authorizationIdentifier
     .keyForLibrary(uuid: libraryUUID)
-    .asKeychainVariable(with: accountInfoLock)
+    .asKeychainVariable(with: accountInfoQueue)
   private lazy var _adobeToken: TPPKeychainVariable<String> = StorageKey.adobeToken
     .keyForLibrary(uuid: libraryUUID)
-    .asKeychainVariable(with: accountInfoLock)
+    .asKeychainVariable(with: accountInfoQueue)
   private lazy var _licensor: TPPKeychainVariable<[String:Any]> = StorageKey.licensor
     .keyForLibrary(uuid: libraryUUID)
-    .asKeychainVariable(with: accountInfoLock)
+    .asKeychainVariable(with: accountInfoQueue)
   private lazy var _patron: TPPKeychainVariable<[String:Any]> = StorageKey.patron
     .keyForLibrary(uuid: libraryUUID)
-    .asKeychainVariable(with: accountInfoLock)
+    .asKeychainVariable(with: accountInfoQueue)
   private lazy var _adobeVendor: TPPKeychainVariable<String> = StorageKey.adobeVendor
     .keyForLibrary(uuid: libraryUUID)
-    .asKeychainVariable(with: accountInfoLock)
+    .asKeychainVariable(with: accountInfoQueue)
   private lazy var _provider: TPPKeychainVariable<String> = StorageKey.provider
     .keyForLibrary(uuid: libraryUUID)
-    .asKeychainVariable(with: accountInfoLock)
+    .asKeychainVariable(with: accountInfoQueue)
   private lazy var _userID: TPPKeychainVariable<String> = StorageKey.userID
     .keyForLibrary(uuid: libraryUUID)
-    .asKeychainVariable(with: accountInfoLock)
+    .asKeychainVariable(with: accountInfoQueue)
   private lazy var _deviceID: TPPKeychainVariable<String> = StorageKey.deviceID
     .keyForLibrary(uuid: libraryUUID)
-    .asKeychainVariable(with: accountInfoLock)
+    .asKeychainVariable(with: accountInfoQueue)
   private lazy var _credentials: TPPKeychainCodableVariable<TPPCredentials> = StorageKey.credentials
     .keyForLibrary(uuid: libraryUUID)
-    .asKeychainCodableVariable(with: accountInfoLock)
+    .asKeychainCodableVariable(with: accountInfoQueue)
   private lazy var _authDefinition: TPPKeychainCodableVariable<AccountDetails.Authentication> = StorageKey.authDefinition
     .keyForLibrary(uuid: libraryUUID)
-    .asKeychainCodableVariable(with: accountInfoLock)
+    .asKeychainCodableVariable(with: accountInfoQueue)
   private lazy var _cookies: TPPKeychainVariable<[HTTPCookie]> = StorageKey.cookies
     .keyForLibrary(uuid: libraryUUID)
-    .asKeychainVariable(with: accountInfoLock)
+    .asKeychainVariable(with: accountInfoQueue)
 
   // Legacy
   private lazy var _barcode: TPPKeychainVariable<String> = StorageKey.barcode
     .keyForLibrary(uuid: libraryUUID)
-    .asKeychainVariable(with: accountInfoLock)
+    .asKeychainVariable(with: accountInfoQueue)
   private lazy var _pin: TPPKeychainVariable<String> = StorageKey.PIN
     .keyForLibrary(uuid: libraryUUID)
-    .asKeychainVariable(with: accountInfoLock)
+    .asKeychainVariable(with: accountInfoQueue)
   private lazy var _authToken: TPPKeychainVariable<String> = StorageKey.authToken
     .keyForLibrary(uuid: libraryUUID)
-    .asKeychainVariable(with: accountInfoLock)
+    .asKeychainVariable(with: accountInfoQueue)
 
   // MARK: - Check
     
@@ -260,8 +256,11 @@ private enum StorageKey: String {
   }
   
   func isTokenRefreshRequired() -> Bool {
-    let isTokenAuthAndMissing = (authDefinition?.isToken ?? false) && !hasAuthToken() && ((TPPUserAccount.sharedAccount().authDefinition?.tokenURL) != nil)
-    return authTokenHasExpired || isTokenAuthAndMissing
+    let isTokenAuthAndMissing = (authDefinition?.isToken ?? false) &&
+    !hasAuthToken() &&
+    ((TPPUserAccount.sharedAccount().authDefinition?.tokenURL) != nil)
+    
+    return (authTokenHasExpired || isTokenAuthAndMissing) && hasCredentials()
   }
   
   func hasAdobeToken() -> Bool {
@@ -359,12 +358,13 @@ private enum StorageKey: String {
   var cookies: [HTTPCookie]? { _cookies.read() }
 
   var authToken: String? {
-    if let credentials = credentials, case let TPPCredentials.token(authToken: token) = credentials {
-      return token.authToken
+    if let credentials = _credentials.read(),
+       case let TPPCredentials.token(authToken: token, barcode: _, pin: _, expirationDate: _) = credentials {
+      return token
     }
     return nil
   }
-  
+
   var authTokenHasExpired: Bool {
     guard let credentials = credentials,
             case let TPPCredentials.token(authToken: token) = credentials,
@@ -460,7 +460,9 @@ private enum StorageKey: String {
   
   @objc(setAuthToken::::)
   func setAuthToken(_ token: String, barcode: String?, pin: String?, expirationDate: Date?) {
-    credentials = .token(authToken: token, barcode: barcode, pin: pin, expirationDate: expirationDate)
+    keychainTransaction.perform {
+      _credentials.write(.token(authToken: token, barcode: barcode, pin: pin, expirationDate: expirationDate))
+    }
   }
 
   @objc(setCookies:)

@@ -8,11 +8,14 @@
 
 import Foundation
 import PalaceAudiobookToolkit
+import Combine
 
 let kTimerInterval: Double = 5.0
 
+
 private struct AssociatedKeys {
-  static var audiobookBookmarkBusinessLogic = "audiobookBookmarkBusinessLogic"
+  static var audiobookBookmarkBusinessLogic: UInt8 = 0
+  static var playbackLoadingCancellable: UInt8 = 0
 }
 
 private let locationQueue = DispatchQueue(label: "com.palace.latestAudiobookLocation", attributes: .concurrent)
@@ -53,17 +56,158 @@ extension TPPBookCellDelegate {
     }
   }
   
-  public func openAudiobook(withBook book: TPPBook, json: [String: Any], drmDecryptor: DRMDecryptor?, completion: (() -> Void)?) {
+  // MARK: - Main Audiobook Opening Entry Point
+  
+  @objc func openAudiobookWithUnifiedStreaming(_ book: TPPBook, completion: (() -> Void)? = nil) {
+#if LCP
+    if LCPAudiobooks.canOpenBook(book) {
+      if let localURL = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier),
+         FileManager.default.fileExists(atPath: localURL.path) {
+        openLocalLCPAudiobook(book: book, localURL: localURL, completion: completion)
+        return
+      }
+      
+      if let licenseUrl = getLCPLicenseURL(for: book) {
+        openAudiobookUnified(book: book, licenseUrl: licenseUrl, completion: completion)
+        return
+      }
+      
+      if let publicationURL = book.defaultAcquisition?.hrefURL {
+        openAudiobookUnified(book: book, licenseUrl: publicationURL, completion: completion)
+        return
+      }
+      
+      presentUnsupportedItemError()
+      completion?()
+      return
+    }
+#endif
+    
+    presentUnsupportedItemError()
+    completion?()
+  }
+  
+  private func openLocalLCPAudiobook(book: TPPBook, localURL: URL, completion: (() -> Void)?) {
+#if LCP
+    guard let lcpAudiobooks = LCPAudiobooks(for: localURL) else {
+      self.presentUnsupportedItemError()
+      completion?()
+      return
+    }
+    
+    lcpAudiobooks.contentDictionary { [weak self] dict, error in
+      DispatchQueue.main.async {
+        guard let self = self else { return }
+        if let _ = error {
+          self.presentUnsupportedItemError()
+          completion?()
+          return
+        }
+        guard let dict else {
+          self.presentUnsupportedItemError()
+          completion?()
+          return
+        }
+        var jsonDict = dict as? [String: Any] ?? [:]
+        jsonDict["id"] = book.identifier
+        self.openAudiobook(withBook: book, json: jsonDict, drmDecryptor: lcpAudiobooks, completion: completion)
+      }
+    }
+#endif
+  }
+  
+  private func getLCPLicenseURL(for book: TPPBook) -> URL? {
+#if LCP
+    guard let bookFileURL = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier) else {
+      return nil
+    }
+    
+    let licenseURL = bookFileURL.deletingPathExtension().appendingPathExtension("lcpl")
+    
+    if FileManager.default.fileExists(atPath: licenseURL.path) {
+      return licenseURL
+    }
+#endif
+    return nil
+  }
+  
+  private func openAudiobookUnified(book: TPPBook, licenseUrl: URL, completion: (() -> Void)?) {
+#if LCP
+    if let localURL = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier),
+       FileManager.default.fileExists(atPath: localURL.path),
+       licenseUrl.path == localURL.path {
+      guard let lcpAudiobooks = LCPAudiobooks(for: localURL) else {
+        self.presentUnsupportedItemError()
+        completion?()
+        return
+      }
+      
+      lcpAudiobooks.contentDictionary { [weak self] dict, error in
+        DispatchQueue.main.async {
+          guard let self = self else { return }
+          if let _ = error {
+            self.presentUnsupportedItemError()
+            completion?()
+            return
+          }
+          guard let dict else {
+            self.presentUnsupportedItemError()
+            completion?()
+            return
+          }
+          var jsonDict = dict as? [String: Any] ?? [:]
+          jsonDict["id"] = book.identifier
+          self.openAudiobook(withBook: book, json: jsonDict, drmDecryptor: lcpAudiobooks, completion: completion)
+        }
+      }
+      return
+    }
+    
+    guard let lcpAudiobooks = LCPAudiobooks(for: licenseUrl) else {
+      self.presentUnsupportedItemError()
+      completion?()
+      return
+    }
+    
+    if let cachedDict = lcpAudiobooks.cachedContentDictionary() {
+      var jsonDict = cachedDict as? [String: Any] ?? [:]
+      jsonDict["id"] = book.identifier
+      self.openAudiobook(withBook: book, json: jsonDict, drmDecryptor: lcpAudiobooks, completion: completion)
+      return
+    }
+
+    lcpAudiobooks.contentDictionary { [weak self] dict, error in
+      DispatchQueue.main.async {
+        guard let self = self else { return }
+        if let _ = error {
+          self.presentUnsupportedItemError()
+          completion?()
+          return
+        }
+        guard let dict else {
+          self.presentUnsupportedItemError()
+          completion?()
+          return
+        }
+        var jsonDict = dict as? [String: Any] ?? [:]
+        jsonDict["id"] = book.identifier
+        self.openAudiobook(withBook: book, json: jsonDict, drmDecryptor: lcpAudiobooks, completion: completion)
+      }
+    }
+#endif
+  }
+
+  @objc public func openAudiobook(withBook book: TPPBook, json: [String: Any], drmDecryptor: DRMDecryptor?, completion: (() -> Void)?) {
     AudioBookVendorsHelper.updateVendorKey(book: json) { [weak self] error in
       DispatchQueue.main.async {
         guard let self else { return }
-        
+
         if let error {
           self.presentDRMKeyError(error)
           completion?()
           return
         }
-        
+
         let manifestDecoder = Manifest.customDecoder()
 
         guard let jsonData = try? JSONSerialization.data(withJSONObject: json, options: []),
@@ -74,29 +218,29 @@ extension TPPBookCellDelegate {
           completion?()
           return
         }
-        
+
         var timeTracker: AudiobookTimeTracker?
         if let libraryId = AccountsManager.shared.currentAccount?.uuid, let timeTrackingURL = book.timeTrackingURL {
           timeTracker = AudiobookTimeTracker(libraryId: libraryId, bookId: book.identifier, timeTrackingUrl: timeTrackingURL)
         }
-        
+
         let metadata = AudiobookMetadata(title: book.title, authors: [book.authors ?? ""])
         let audiobookManager = DefaultAudiobookManager(
           metadata: metadata,
           audiobook: audiobook,
-          networkService: DefaultAudiobookNetworkService(tracks: audiobook.tableOfContents.allTracks),
+          networkService: DefaultAudiobookNetworkService(tracks: audiobook.tableOfContents.allTracks, decryptor: drmDecryptor),
           playbackTrackerDelegate: timeTracker
         )
-      
+
         self.audiobookBookmarkBusinessLogic = AudiobookBookmarkBusinessLogic(book: book)
         audiobookManager.bookmarkDelegate = self.audiobookBookmarkBusinessLogic
-        
-        let audiobookPlayer = AudiobookPlayer(audiobookManager: audiobookManager)
-        
+
+        let audiobookPlayer = AudiobookPlayer(audiobookManager: audiobookManager, coverImagePublisher: book.$coverImage.eraseToAnyPublisher())
+
         defer {
           self.scheduleTimer(forAudiobook: book, manager: audiobookManager, viewController: audiobookPlayer)
         }
-        
+
         audiobookManager.playbackCompletionHandler = {
           let paths = TPPOPDSAcquisitionPath.supportedAcquisitionPaths(forAllowedTypes: TPPOPDSAcquisitionPath.supportedTypes(), allowedRelations:  [.borrow, .generic], acquisitions: book.acquisitions)
           if paths.count > 0 {
@@ -112,18 +256,26 @@ extension TPPBookCellDelegate {
             TPPAppStoreReviewPrompt.presentIfAvailable()
           }
         }
-        
+
         TPPRootTabBarController.shared().pushViewController(audiobookPlayer, animated: true)
-        TPPBookRegistry.shared.coverImage(for: book) { image in
-          if let image {
-            audiobookPlayer.updateImage(image)
-          }
-        }
-        
+
         self.startLoading(audiobookPlayer)
-        
+
+        let cancellable = audiobookManager.audiobook.player.playbackStatePublisher
+          .receive(on: DispatchQueue.main)
+          .sink { [weak self] state in
+            guard let self = self else { return }
+            switch state {
+            case .started(_), .failed(_, _), .stopped(_):
+              self.stopLoading()
+            default:
+              break
+            }
+          }
+        objc_setAssociatedObject(self, &AssociatedKeys.playbackLoadingCancellable, cancellable, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+
         let localAudiobookLocation = TPPBookRegistry.shared.location(forIdentifier: book.identifier)
-        
+
         guard let dictionary = localAudiobookLocation?.locationStringDictionary(),
               let localBookmark = AudioBookmark.create(locatorData: dictionary),
               let localPosition = TrackPosition(
@@ -134,7 +286,7 @@ extension TPPBookCellDelegate {
           self.stopLoading()
           return
         }
-        
+
         func moveCompletionHandler(_ error: Error?) {
           if let error = error {
             self.presentLocationRecoveryError(error)
@@ -142,12 +294,12 @@ extension TPPBookCellDelegate {
           }
           self.stopLoading()
         }
-        
+
         audiobookManager.audiobook.player.play(at: localPosition) { error in
           moveCompletionHandler(error)
           self.stopLoading()
         }
-        
+
         TPPBookRegistry.shared.syncLocation(for: book) { remoteBookmark in
           guard let remoteBookmark else { return }
           let remotePosition = TrackPosition(
@@ -155,13 +307,13 @@ extension TPPBookCellDelegate {
             toc: audiobook.tableOfContents.toc,
             tracks: audiobook.tableOfContents.tracks
           )
-          
+
           self.chooseLocalLocation(
             localPosition: localPosition,
             remotePosition: remotePosition,
             serverUpdateDelay: 300
           ) { position in
-            
+
             DispatchQueue.main.async {
               Log.debug("Returning to Audiobook Position: %@", position.description)
               audiobookManager.audiobook.player.play(at: position) { error in
@@ -173,7 +325,7 @@ extension TPPBookCellDelegate {
       }
     }
   }
-  
+
   @objc func presentDRMKeyError(_ error: Error) {
     let title = NSLocalizedString("DRM Error", comment: "")
     let message = error.localizedDescription
@@ -181,7 +333,7 @@ extension TPPBookCellDelegate {
     alert.addAction(UIAlertAction(title: NSLocalizedString("OK", comment: ""), style: .default))
     TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
   }
-  
+
   @objc func presentUnsupportedItemError() {
     let title = NSLocalizedString("Unsupported Item", comment: "")
     let message = NSLocalizedString("The item you are trying to open is not currently supported.", comment: "")
@@ -197,13 +349,13 @@ extension TPPBookCellDelegate {
 public extension TPPBookCellDelegate {
   func chooseLocalLocation(localPosition: TrackPosition?, remotePosition: TrackPosition?, serverUpdateDelay: TimeInterval, operation: @escaping (TrackPosition) -> Void) {
     let remoteLocationIsNewer: Bool
-    
+
     if let localPosition = localPosition, let remotePosition = remotePosition {
       remoteLocationIsNewer = String.isDate(remotePosition.lastSavedTimeStamp, moreRecentThan: localPosition.lastSavedTimeStamp, with: serverUpdateDelay)
     } else {
       remoteLocationIsNewer = localPosition == nil && remotePosition != nil
     }
-    
+
     if let remotePosition = remotePosition,
        remotePosition.description != localPosition?.description,
        remoteLocationIsNewer {
@@ -217,27 +369,27 @@ public extension TPPBookCellDelegate {
       operation(remotePosition)
     }
   }
-  
+
   func requestSyncWithCompletion(completion: @escaping (Bool) -> Void) {
     DispatchQueue.main.async {
       let title = LocalizedStrings.syncListeningPositionAlertTitle
       let message = LocalizedStrings.syncListeningPositionAlertBody
       let moveTitle = LocalizedStrings.move
       let stayTitle = LocalizedStrings.stay
-      
+
       let alertController = UIAlertController(title: title, message: message, preferredStyle: .alert)
-      
+
       let moveAction = UIAlertAction(title: moveTitle, style: .default) { _ in
         completion(true)
       }
-      
+
       let stayAction = UIAlertAction(title: stayTitle, style: .cancel) { _ in
         completion(false)
       }
-      
+
       alertController.addAction(moveAction)
       alertController.addAction(stayAction)
-      
+
       TPPAlertUtils.presentFromViewControllerOrNil(alertController: alertController, viewController: nil, animated: true, completion: nil)
     }
   }
@@ -246,55 +398,59 @@ public extension TPPBookCellDelegate {
 extension TPPBookCellDelegate {
 
   public func scheduleTimer(forAudiobook book: TPPBook, manager: DefaultAudiobookManager, viewController: UIViewController) {
-    self.lastServerUpdate = Date()
+    timer?.cancel()
+    timer = nil
+
     self.audiobookViewController = viewController
     self.manager = manager
     self.book = book
-    
-    timer?.cancel()
-    timer = nil
-    
+
     let queue = DispatchQueue(label: "com.palace.pollAudiobookLocation", qos: .background, attributes: .concurrent)
     timer = DispatchSource.makeTimerSource(queue: queue)
-    
+
     timer?.schedule(deadline: .now() + kTimerInterval, repeating: kTimerInterval)
-    
+
     timer?.setEventHandler { [weak self] in
       self?.pollAudiobookReadingLocation()
     }
-    
+
     timer?.resume()
   }
 
   @objc public func pollAudiobookReadingLocation() {
-    DispatchQueue.main.async { [weak self] in
-      guard let self else { return }
+    guard let manager = self.manager, let bookID = self.book?.identifier else {
+      cancelTimer()
+      return
+    }
 
-      guard let _ = self.audiobookViewController else {
-        timer?.cancel()
-        timer = nil
-        self.manager = nil
-        return
-      }
-      
-      guard let currentTrackPosition = self.manager?.audiobook.player.currentTrackPosition else {
-        return
-      }
-      
-      let playheadOffset = currentTrackPosition.timestamp
-      if self.previousPlayheadOffset != playheadOffset && playheadOffset > 0 {
-        self.previousPlayheadOffset = playheadOffset
-        
-        DispatchQueue.global(qos: .background).async { [weak self] in
-          guard let self = self else { return }
-          
-          let locationData = try? JSONEncoder().encode(currentTrackPosition.toAudioBookmark())
-          let locationString = String(data: locationData ?? Data(), encoding: .utf8) ?? ""
-          
-          TPPBookRegistry.shared.setLocation(TPPBookLocation(locationString: locationString, renderer: "PalaceAudiobookToolkit"), forIdentifier: self.book.identifier)
-          latestAudiobookLocation = (book: self.book.identifier, location: locationString)
+    guard let currentTrackPosition = manager.audiobook.player.currentTrackPosition else {
+      return
+    }
+
+    let playheadOffset = currentTrackPosition.timestamp
+    if self.previousPlayheadOffset != playheadOffset && playheadOffset > 0 {
+      self.previousPlayheadOffset = playheadOffset
+
+      DispatchQueue.global(qos: .background).async { [weak self] in
+        guard let self = self else { return }
+
+        let locationData = try? JSONEncoder().encode(currentTrackPosition.toAudioBookmark())
+        let locationString = String(data: locationData ?? Data(), encoding: .utf8) ?? ""
+
+        DispatchQueue.main.async {
+          TPPBookRegistry.shared.setLocation(
+            TPPBookLocation(locationString: locationString, renderer: "PalaceAudiobookToolkit"),
+            forIdentifier: bookID
+          )
+          latestAudiobookLocation = (book: bookID, location: locationString)
         }
       }
     }
+  }
+
+  private func cancelTimer() {
+    timer?.cancel()
+    timer = nil
+    self.manager = nil
   }
 }

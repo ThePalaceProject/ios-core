@@ -239,7 +239,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     var req = URLRequest(url: url, applyingCustomUserAgent: true)
 
     if let selectedAuth = selectedAuthentication,
-       (selectedAuth.isOauth || selectedAuth.isSaml) {
+       (selectedAuth.isOauth || selectedAuth.isSaml || selectedAuth.isToken) {
 
       // The nil-coalescing on the authToken covers 2 cases:
       // - sign in, where uiDelegate has the token because we just obtained it
@@ -321,8 +321,8 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     }
   }
   
-  func getBearerToken(username: String, password: String, completion: (() -> Void)? = nil) {
-    TPPNetworkExecutor.shared.executeTokenRefresh(username: username, password: password) {  [weak self] result in
+  func getBearerToken(username: String, password: String, tokenURL: URL, completion: (() -> Void)? = nil) {
+    TPPNetworkExecutor.shared.executeTokenRefresh(username: username, password: password, tokenURL: tokenURL) {  [weak self] result in
       defer {
         completion?()
       }
@@ -371,8 +371,12 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     }
   }
 
-  /// Initiates process of signing in with the server.
   @objc func logIn() {
+    logIn(with: nil)
+  }
+
+  /// Initiates process of signing in with the server.
+  @objc func logIn(with tokenURL: URL? = nil) {
     NotificationCenter.default.post(name: .TPPIsSigningIn, object: true)
 
     TPPMainThreadRun.asyncIfNeeded {
@@ -393,13 +397,13 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
       case .token:
         guard let username = self.uiDelegate?.username,
               let password = self.uiDelegate?.pin,
-              TPPUserAccount.sharedAccount().authDefinition?.tokenURL != nil
+              let tokenURL = tokenURL ?? TPPUserAccount.sharedAccount().authDefinition?.tokenURL
         else {
           validateCredentials()
           return
         }
 
-        getBearerToken(username: username, password: password)
+        getBearerToken(username: username, password: password, tokenURL: tokenURL)
       default:
         validateCredentials()
       }
@@ -466,8 +470,8 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
         }
       }
       
-      if authDef.isToken, let barcode = userAccount.barcode, let pin = userAccount.pin {
-        getBearerToken(username: barcode, password: pin, completion: completion)
+      if authDef.isToken, let barcode = userAccount.barcode, let pin = userAccount.pin, let tokenURL = TPPUserAccount.sharedAccount().authDefinition?.tokenURL {
+        getBearerToken(username: barcode, password: pin, tokenURL: tokenURL, completion: completion)
       } else if authDef.isBasic {
         if usingExistingCredentials && userAccount.hasBarcodeAndPIN() {
           if uiDelegate == nil {

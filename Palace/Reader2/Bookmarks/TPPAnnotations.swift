@@ -52,7 +52,12 @@ protocol AnnotationsManager {
     }
 
     let bookmarks = await withCheckedContinuation { continuation in
+      var didResume = false
+
       getServerBookmarks(forBook: book, atURL: url, motivation: .readingProgress) { bookmarks in
+        guard !didResume else { return }
+        didResume = true
+
         continuation.resume(returning: bookmarks)
       }
     }
@@ -66,11 +71,18 @@ protocol AnnotationsManager {
 
   class func postAudiobookBookmark(forBook bookID: String, selectorValue: String) async throws -> AnnotationResponse? {
     return try await withCheckedThrowingContinuation { continuation in
+      var didResume = false
+
       postReadingPosition(forBook: bookID, selectorValue: selectorValue, motivation: .bookmark) { response in
-        if let response {
-          continuation.resume(returning: response)
-        } else {
-          continuation.resume(throwing: NSError(domain: "Error posting bookmark", code: 1, userInfo: nil))
+        DispatchQueue.main.async {
+          guard !didResume else { return }
+          didResume = true
+
+          if let response {
+            continuation.resume(returning: response)
+          } else {
+            continuation.resume(throwing: NSError(domain: "Error posting bookmark", code: 1, userInfo: nil))
+          }
         }
       }
     }
@@ -229,7 +241,7 @@ protocol AnnotationsManager {
       Log.error(#file, "No Annotation ID saved: No data received from server.")
       return nil
     }
-    guard let json = try? JSONSerialization.jsonObject(with: data, options: []) as! [String:Any] else {
+    guard let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String:Any] else {
       Log.error(#file, "No Annotation ID saved: JSON could not be created from data.")
       return nil
     }
@@ -246,7 +258,7 @@ protocol AnnotationsManager {
       Log.error(#file, "No Annotation ID saved: No data received from server.")
       return nil
     }
-    guard let json = try? JSONSerialization.jsonObject(with: data, options: []) as! [String:Any] else {
+    guard let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String:Any] else {
       Log.error(#file, "No Annotation ID saved: JSON could not be created from data.")
       return nil
     }
@@ -368,13 +380,9 @@ protocol AnnotationsManager {
     task?.resume()
   }
 
-
-  // Method is called when the SyncManager is syncing bookmarks
-  // If an existing local bookmark is missing an annotationID, assume it still needs to be uploaded.
   class func uploadLocalBookmarks(_ bookmarks: [TPPReadiumBookmark],
                                   forBook bookID: String,
                                   completion: @escaping ([TPPReadiumBookmark], [TPPReadiumBookmark])->()) {
-
     if !syncIsPossibleAndPermitted() {
       Log.debug(#file, "Account does not support sync or sync is disabled.")
       return
@@ -386,9 +394,13 @@ protocol AnnotationsManager {
     var bookmarksUpdated = [TPPReadiumBookmark]()
 
     for localBookmark in bookmarks {
-      if localBookmark.annotationId == nil {
-        uploadGroup.enter()
-        postBookmark(localBookmark, forBookID: bookID) { response in
+      guard localBookmark.annotationId == nil else { continue }
+
+      uploadGroup.enter()
+      postBookmark(localBookmark, forBookID: bookID) { response in
+        DispatchQueue.main.async {
+          defer { uploadGroup.leave() }
+
           if let serverId = response?.serverId {
             localBookmark.annotationId = serverId
             bookmarksUpdated.append(localBookmark)
@@ -396,7 +408,6 @@ protocol AnnotationsManager {
             Log.error(#file, "Local Bookmark not uploaded: \(localBookmark)")
             bookmarksFailedToUpdate.append(localBookmark)
           }
-          uploadGroup.leave()
         }
       }
     }
@@ -406,7 +417,6 @@ protocol AnnotationsManager {
       completion(bookmarksUpdated, bookmarksFailedToUpdate)
     }
   }
-
   // MARK: -
 
   /// Annotation-syncing is possible only if the given `account` is signed-in

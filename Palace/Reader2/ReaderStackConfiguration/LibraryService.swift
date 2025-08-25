@@ -17,29 +17,9 @@ final class LibraryService: Loggable {
 
   let httpServer: GCDHTTPServer
 
-  private lazy var documentDirectory = try! FileManager.default.url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
-
   init() {
     let httpClient = DefaultHTTPClient()
-
-    let resourceFactory = CompositeResourceFactory([
-      DefaultResourceFactory(httpClient: httpClient)
-    ])
-
-    let archiveOpener = CompositeArchiveOpener([
-      DefaultArchiveOpener()
-    ])
-
-    let formatSniffer = CompositeFormatSniffer([
-      DefaultFormatSniffer()
-    ])
-
-    assetRetriever = AssetRetriever(
-      formatSniffer: formatSniffer,
-      resourceFactory: resourceFactory,
-      archiveOpener: archiveOpener
-    )
-
+    assetRetriever = AssetRetriever(httpClient: httpClient)
     httpServer = GCDHTTPServer(assetRetriever: assetRetriever)
 
     // DRM configurations

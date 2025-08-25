@@ -26,19 +26,15 @@ fileprivate struct TPPNetworkTaskInfo {
 /// handlers in a thread-safe way.
 class TPPNetworkResponder: NSObject {
   typealias TaskID = Int
+  
   private var tokenRefreshAttempts: Int = 0
-
   private var taskInfo: [TaskID: TPPNetworkTaskInfo]
-
-  /// Protects access to `taskInfo` to ensure thread-safety.
-  private let taskInfoLock: NSRecursiveLock
-
-  /// Whether the fallback caching system should be active or not.
   private let useFallbackCaching: Bool
-
-  /// The object providing the credentials to respond to an authentication
-  /// challenge. If `nil`, the shared `NYPLUserAccount` singleton will be used.
   private let credentialsProvider: NYPLBasicAuthCredentialsProvider?
+  
+  private let taskInfoQueue = DispatchQueue(
+    label: "com.thepalaceproject.networkResponder.taskInfo"
+  )
 
   //----------------------------------------------------------------------------
   /// - Parameter shouldEnableFallbackCaching: If set to `true`, the executor
@@ -49,7 +45,6 @@ class TPPNetworkResponder: NSObject {
   init(credentialsProvider: NYPLBasicAuthCredentialsProvider? = nil,
        useFallbackCaching: Bool = false) {
     self.taskInfo = [Int: TPPNetworkTaskInfo]()
-    self.taskInfoLock = NSRecursiveLock()
     self.useFallbackCaching = useFallbackCaching
     self.credentialsProvider = credentialsProvider
     super.init()
@@ -58,41 +53,40 @@ class TPPNetworkResponder: NSObject {
   //----------------------------------------------------------------------------
   func addCompletion(_ completion: @escaping (NYPLResult<Data>) -> Void,
                      taskID: TaskID) {
-    taskInfoLock.lock()
-    defer {
-      taskInfoLock.unlock()
-    }
-
-    taskInfo[taskID] = TPPNetworkTaskInfo(completion: completion)
+    taskInfoQueue.async {
+        self.taskInfo[taskID] = TPPNetworkTaskInfo(completion: completion)
+      }
   }
   
   func updateCompletionId(_ oldId: TaskID, newId: TaskID) {
-    taskInfoLock.lock()
-    defer {
-      taskInfoLock.unlock()
+    taskInfoQueue.async {
+      self.taskInfo[newId] = self.taskInfo[oldId]
     }
-    
-    taskInfo[newId] = taskInfo[oldId]
   }
 }
 
 // MARK: - URLSessionDelegate
+// MARK: - URLSessionDelegate
 extension TPPNetworkResponder: URLSessionDelegate {
-  //----------------------------------------------------------------------------
-  func urlSession(_ session: URLSession, didBecomeInvalidWithError err: Error?) {
-    if let err = err {
-      TPPErrorLogger.logError(err, summary: "URLSession became invalid")
-    } else {
-      TPPErrorLogger.logError(withCode: .invalidURLSession,
-                               summary: "URLSessionDelegate: session became invalid")
+  func urlSession(_ session: URLSession, didBecomeInvalidWithError error: Error?) {
+    taskInfoQueue.async {
+      let pending = self.taskInfo
+      self.taskInfo.removeAll()
+      
+      let cancelError = NSError(domain: NSURLErrorDomain,
+                                code: NSURLErrorCancelled,
+                                userInfo: nil)
+      for (_, info) in pending {
+        info.completion(.failure(cancelError, nil))
+      }
+      
+      if let err = error {
+        TPPErrorLogger.logError(err, summary: "URLSession invalidated with error")
+      } else {
+        TPPErrorLogger.logError(withCode: .invalidURLSession,
+                                summary: "URLSession invalidated without error")
+      }
     }
-
-    taskInfoLock.lock()
-    defer {
-      taskInfoLock.unlock()
-    }
-
-    taskInfo.removeAll()
   }
 }
 
@@ -103,14 +97,13 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
   func urlSession(_ session: URLSession,
                   dataTask: URLSessionDataTask,
                   didReceive data: Data) {
-    taskInfoLock.lock()
-    defer {
-      taskInfoLock.unlock()
-    }
-    
-    var currentTaskInfo = taskInfo[dataTask.taskIdentifier]
-    currentTaskInfo?.progressData.append(data)
-    taskInfo[dataTask.taskIdentifier] = currentTaskInfo
+    taskInfoQueue.async { [ weak self] in
+       var info = self?.taskInfo[dataTask.taskIdentifier]
+       info?.progressData.append(data)
+       if let updated = info {
+         self?.taskInfo[dataTask.taskIdentifier] = updated
+       }
+     }
   }
   
   //----------------------------------------------------------------------------
@@ -135,54 +128,90 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
 
   //----------------------------------------------------------------------------
 
-  func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError networkError: Error?) {
+  func urlSession(_ session: URLSession,
+                  task: URLSessionTask,
+                  didCompleteWithError networkError: Error?) {
     let taskID = task.taskIdentifier
     var logMetadata: [String: Any] = [
       "currentRequest": task.currentRequest?.loggableString ?? "N/A",
       "taskID": taskID
     ]
-    
-    taskInfoLock.lock()
-    defer { taskInfoLock.unlock() }
-    
-    guard let currentTaskInfo = taskInfo.removeValue(forKey: taskID) else {
-      handleNoTaskInfo(for: task, with: networkError, logMetadata: &logMetadata)
+
+    var maybeInfo: TPPNetworkTaskInfo?
+    taskInfoQueue.sync {
+      maybeInfo = self.taskInfo.removeValue(forKey: task.taskIdentifier)
+    }
+
+    guard let info = maybeInfo else {
+      TPPErrorLogger.logNetworkError(
+        nil,
+        code: .noTaskInfoAvailable,
+        summary: "No taskInfo for task \(taskID)",
+        request: task.originalRequest,
+        response: task.response,
+        metadata: logMetadata
+      )
       return
     }
-    
-    if let networkError = networkError as NSError?,
-       networkError.domain == NSURLErrorDomain,
-       networkError.code == NSURLErrorCancelled
-    {
-      Log.info(#file, "Task was cancelled: \(networkError.localizedDescription)")
+
+    if let nsErr = networkError as NSError?,
+       nsErr.domain == NSURLErrorDomain,
+       nsErr.code == NSURLErrorCancelled {
+      Log.info(#file, "Task \(taskID) cancelled: \(nsErr.localizedDescription)")
       return
     }
-    
-    logTaskCompletion(taskID: taskID, startDate: currentTaskInfo.startDate, metadata: &logMetadata)
-    
-    guard let httpResponse = task.response as? HTTPURLResponse else {
-      let error = NSError(domain: "Api call with failure HTTP status",
-                          code: TPPErrorCode.invalidOrNoHTTPResponse.rawValue,
-                          userInfo: logMetadata)
-      currentTaskInfo.completion(.failure(error, nil))
-      return
+
+    let elapsed = Date().timeIntervalSince(info.startDate)
+    logMetadata["elapsedTime"] = elapsed
+    Log.info(#file, "Task \(taskID) completed (\(logMetadata)[\"currentRequest\"] ?? \"nil\")), elapsed: \(elapsed)s")
+
+    let result: NYPLResult<Data>
+    if let http = task.response as? HTTPURLResponse {
+      if http.statusCode == 401,
+         handleExpiredTokenIfNeeded(for: http, with: task) {
+        return
+      }
+      if !http.isSuccess() {
+        let err: TPPUserFriendlyError
+        let data = info.progressData
+        
+        if !data.isEmpty {
+          err = task.parseAndLogError(
+            fromProblemDocumentData: data,
+            networkError: networkError,
+            logMetadata: logMetadata
+          )
+        } else {
+          err = NSError(
+            domain: "Api call with failure HTTP status",
+            code: TPPErrorCode.responseFail.rawValue,
+            userInfo: logMetadata
+          )
+        }
+        
+        result = .failure(err, task.response)
+      }
+      
+      else if let netErr = networkError {
+        let ue = netErr as TPPUserFriendlyError
+        result = .failure(ue, task.response)
+        TPPErrorLogger.logNetworkError(netErr,
+                                       summary: "Network task completed with error",
+                                       request: task.originalRequest,
+                                       response: task.response,
+                                       metadata: logMetadata)
+      }
+      else {
+        result = .success(info.progressData, task.response)
+      }
+    } else {
+      let err = NSError(domain: "Api call with failure HTTP status",
+                        code: TPPErrorCode.invalidOrNoHTTPResponse.rawValue,
+                        userInfo: logMetadata)
+      result = .failure(err, task.response)
     }
     
-    if let response = task.response, response.isProblemDocument() {
-      handleProblemDocument(for: task, with: currentTaskInfo.progressData, currentTaskInfo: currentTaskInfo, networkError: networkError, logMetadata: logMetadata)
-      return
-    }
-    
-    if let networkError = networkError {
-      handleNetworkError(networkError, for: task, currentTaskInfo: currentTaskInfo, logMetadata: logMetadata)
-      return
-    }
-    
-    guard handleHTTPResponse(httpResponse, for: task, currentTaskInfo: currentTaskInfo, logMetadata: &logMetadata) else {
-      return
-    }
-    
-    currentTaskInfo.completion(.success(currentTaskInfo.progressData, task.response))
+    info.completion(result)
   }
   
   private func logTaskCompletion(taskID: Int, startDate: Date, metadata: inout [String: Any]) {
@@ -258,7 +287,7 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
 
 
 private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse, with task: URLSessionTask) -> Bool {
-  if response.statusCode == 401 {
+  if response.statusCode == 401 && TPPUserAccount.sharedAccount().hasCredentials() {
     TPPNetworkExecutor.shared.refreshTokenAndResume(task: task)
     return true
   }

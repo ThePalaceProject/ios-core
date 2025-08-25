@@ -69,7 +69,9 @@ import UIKit
 //    @unknown default:         // for Xcode < 15
 //      idiom = "unspecified"
     }
-    let bodyWithoutBook = "\n\n---\nIdiom: \(idiom)\nHeight: \(nativeHeight)\nOS: \(systemVersion)"
+    
+    let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+    let bodyWithoutBook = "\n\n---\nIdiom: \(idiom)\nPlatform: iOS\nOS: \(systemVersion)\nHeight: \(nativeHeight)\nPalace Version: \(appVersion)\nLibrary: \(AccountsManager.shared.currentAccount?.name ?? "")"
     let body: String
     if let book = book {
       body = bodyWithoutBook + "\nTitle: \(book.title)\nID: \(book.identifier)"

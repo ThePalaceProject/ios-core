@@ -62,29 +62,29 @@
     object:nil
     queue:[NSOperationQueue mainQueue]
     usingBlock:^(__attribute__((unused)) NSNotification *note) {
-      [self willReloadCollectionViewData];
-      [self.collectionView reloadData];
-    }]];
-  
-  [self.observers addObject:
-   [[NSNotificationCenter defaultCenter]
-    addObserverForName:NSNotification.TPPMyBooksDownloadCenterDidChange
-    object:nil
-    queue:[NSOperationQueue mainQueue]
-    usingBlock:^(__attribute__((unused)) NSNotification *note) {
-      for(UICollectionViewCell *const cell in [self.collectionView visibleCells]) {
-        if([cell isKindOfClass:[TPPBookDownloadingCell class]]) {
-          TPPBookDownloadingCell *const downloadingCell = (TPPBookDownloadingCell *)cell;
-          NSString *const bookIdentifier = downloadingCell.book.identifier;
-          downloadingCell.downloadProgress = [[MyBooksDownloadCenter shared]
-                                              downloadProgressFor:bookIdentifier];
-        }
+    [self willReloadCollectionViewData];
+    [self.collectionView reloadData];
+  }]];
+     
+   [self.observers addObject:
+    [[NSNotificationCenter defaultCenter]
+     addObserverForName:NSNotification.TPPMyBooksDownloadCenterDidChange
+     object:nil
+     queue:[NSOperationQueue mainQueue]
+     usingBlock:^(__attribute__((unused)) NSNotification *note) {
+    for(UICollectionViewCell *const cell in [self.collectionView visibleCells]) {
+      if([cell isKindOfClass:[TPPBookDownloadingCell class]]) {
+        TPPBookDownloadingCell *const downloadingCell = (TPPBookDownloadingCell *)cell;
+        NSString *const bookIdentifier = downloadingCell.book.identifier;
+        downloadingCell.downloadProgress = [[MyBooksDownloadCenter shared]
+                                            downloadProgressFor:bookIdentifier];
       }
-    }]];
-  
-  // We must reload data because prior notifications may have been missed.
-  [self willReloadCollectionViewData];
-  [self.collectionView reloadData];
+    }
+  }]];
+   
+   // We must reload data because prior notifications may have been missed.
+   [self willReloadCollectionViewData];
+   [self.collectionView reloadData];
 }
 
 - (void)viewWillDisappear:(BOOL)animated
@@ -101,7 +101,7 @@
 
 - (void)viewWillTransitionToSize:(CGSize)size
        withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)coordinator
-{  
+{
   if(self.traitCollection.horizontalSizeClass != UIUserInterfaceSizeClassRegular) {
     return;
   }
@@ -131,8 +131,8 @@
                                  UIViewAutoresizingFlexibleWidth);
   [self.view addSubview:shieldView];
   UIActivityIndicatorView *const activityIndicatorView =
-    [[UIActivityIndicatorView alloc]
-     initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
+  [[UIActivityIndicatorView alloc]
+   initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
   activityIndicatorView.center = shieldView.center;
   [activityIndicatorView integralizeFrame];
   activityIndicatorView.autoresizingMask = (UIViewAutoresizingFlexibleTopMargin |
@@ -145,10 +145,10 @@
   [coordinator
    animateAlongsideTransition:nil
    completion:^(__attribute__((unused)) id<UIViewControllerTransitionCoordinatorContext> context) {
-     self.collectionView.contentOffset = CGPointMake(self.collectionView.contentOffset.x, y);
-     [self.collectionView.collectionViewLayout invalidateLayout];
-     [shieldView removeFromSuperview];
-   }];
+    self.collectionView.contentOffset = CGPointMake(self.collectionView.contentOffset.x, y);
+    [self.collectionView.collectionViewLayout invalidateLayout];
+    [shieldView removeFromSuperview];
+  }];
 }
 
 #pragma mark UICollectionViewDelegateFlowLayout

@@ -140,22 +140,27 @@ extension TPPPDFDocument {
   /// - Parameter text: Text string to look for
   /// - Returns: Array of PDF locations
   func search(text: String) {
-    Task {
-      let searchString = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-      if isEncrypted {
+    let searchString = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+
+    if isEncrypted {
+      Task {
         if let locations = await encryptedDocument?.search(text: searchString) {
+          // Make sure the delegate is called on the main thread
           for location in locations {
-            delegate?.didMatchString(location)
+            DispatchQueue.main.async {
+              self.delegate?.didMatchString(location)
+            }
           }
         }
-      } else {
-        document?.delegate = self
-        document?.cancelFindString()
-        document?.beginFindString(searchString, withOptions: .caseInsensitive)
       }
+    } else {
+      // Handle regular PDF search
+      document?.delegate = self
+      document?.cancelFindString()
+      document?.beginFindString(searchString, withOptions: .caseInsensitive)
     }
   }
-  
+
   func cancelSearch() {
     document?.cancelFindString()
   }

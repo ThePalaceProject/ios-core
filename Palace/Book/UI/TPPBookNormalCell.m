@@ -15,6 +15,7 @@
 @property (nonatomic) UILabel *title;
 @property (nonatomic) UIImageView *unreadImageView;
 @property (nonatomic) UIImageView *contentBadge;
+@property (nonatomic) UILabel *holdingInfoLabel;
 
 @end
 
@@ -22,44 +23,52 @@
 
 #pragma mark UIView
 
-- (void)layoutSubviews
-{
+
+- (void)layoutSubviews {
   [super layoutSubviews];
-  self.cover.frame = CGRectMake(20,
-                                5,
-                                (CGRectGetHeight([self contentFrame]) - 10) * (10 / 12.0),
-                                CGRectGetHeight([self contentFrame]) - 10);
+
+  CGRect content = [self contentFrame];
+
+  CGFloat const vPad = 5.0;
+  CGFloat const hPad = 20.0;
+  CGFloat const spacing = 7.0;
+
+  CGFloat coverH = CGRectGetHeight(content) - (2 * vPad);
+  CGFloat coverW = coverH * (10.0 / 12.0);
+  self.cover.frame = CGRectMake(hPad,
+                                vPad,
+                                coverW,
+                                coverH);
   self.cover.contentMode = UIViewContentModeScaleAspectFit;
 
-  // The extra five height pixels account for a bug in |sizeThatFits:| that does not properly take
-  // into account |lineHeightMultiple|.
-  CGFloat const titleWidth = CGRectGetWidth([self contentFrame]) - 120;
-  self.title.frame = CGRectMake(115,
-                                5,
-                                titleWidth,
-                                [self.title sizeThatFits:
-                                 CGSizeMake(titleWidth, CGFLOAT_MAX)].height + 5);
-  
-  [self.authors sizeToFit];
-  CGSize authorsSize = [self.authors sizeThatFits:CGSizeMake(titleWidth, CGFLOAT_MAX)];
-  CGRect authorsRect = CGRectMake(0, 0, authorsSize.width, authorsSize.height);
-  self.authors.frame = authorsRect;
-  CGRect authorFrame = self.authors.frame;
-  authorFrame.origin = CGPointMake(115, CGRectGetMaxY(self.title.frame));
-  authorFrame.size.width = CGRectGetWidth([self contentFrame]) - 120;
-  self.authors.frame = authorFrame;
-  
-  [self.buttonsView sizeToFit];
-  CGRect frame = self.buttonsView.frame;
-  frame.origin = CGPointMake(115,
-                             (CGRectGetHeight([self contentFrame]) -
-                              CGRectGetHeight(frame) - 5));
-  self.buttonsView.frame = frame;
-  CGRect unreadImageViewFrame = self.unreadImageView.frame;
-  unreadImageViewFrame.origin.x = (CGRectGetMinX(self.cover.frame) -
-                                   CGRectGetWidth(unreadImageViewFrame) - 5);
-  unreadImageViewFrame.origin.y = 5;
-  self.unreadImageView.frame = unreadImageViewFrame;
+  CGFloat textX = CGRectGetMaxX(self.cover.frame) + spacing;
+  CGFloat textW = CGRectGetWidth(content) - textX - hPad;
+
+  CGSize titleSize = [self.title sizeThatFits:CGSizeMake(textW, CGFLOAT_MAX)];
+  self.title.frame = CGRectMake(textX,
+                                vPad,
+                                textW,
+                                titleSize.height + vPad);
+
+  CGSize authSize = [self.authors sizeThatFits:CGSizeMake(textW, CGFLOAT_MAX)];
+  self.authors.frame = CGRectMake(textX,
+                                  CGRectGetMaxY(self.title.frame),
+                                  textW,
+                                  authSize.height);
+
+  CGSize btnSize = [self.buttonsView sizeThatFits:CGSizeMake(textW, CGFLOAT_MAX)];
+  CGFloat btnY = CGRectGetHeight(content) - vPad - btnSize.height;
+  self.buttonsView.frame = CGRectMake(textX,
+                                      btnY,
+                                      btnSize.width,
+                                      btnSize.height);
+
+  CGRect unreadF = self.unreadImageView.frame;
+  unreadF.origin.x = CGRectGetMinX(self.cover.frame)
+                    - CGRectGetWidth(unreadF)
+                    - spacing;
+  unreadF.origin.y = vPad;
+  self.unreadImageView.frame = unreadF;
 }
 
 #pragma mark -
@@ -97,10 +106,41 @@
     [self.contentView addSubview:self.buttonsView];
     self.buttonsView.translatesAutoresizingMaskIntoConstraints = NO;
     [self.buttonsView autoPinEdge:ALEdgeLeft toEdge:ALEdgeLeft ofView:self.title];
-    [self.buttonsView autoPinEdge:ALEdgeBottom toEdge:ALEdgeBottom ofView:self.cover];
   }
   self.buttonsView.book = book;
-  
+
+  if (!self.holdingInfoLabel) {
+     self.holdingInfoLabel = [[UILabel alloc] init];
+     self.holdingInfoLabel.font = [UIFont palaceFontOfSize:12];
+     self.holdingInfoLabel.textColor = [UIColor secondaryLabelColor];
+     self.holdingInfoLabel.numberOfLines = 0;
+     self.holdingInfoLabel.translatesAutoresizingMaskIntoConstraints = NO;
+     [self.contentView addSubview:self.holdingInfoLabel];
+     [self.holdingInfoLabel autoPinEdge:ALEdgeTop
+                                toEdge:ALEdgeBottom
+                                ofView:self.buttonsView
+                            withOffset:4];
+     [self.holdingInfoLabel autoPinEdge:ALEdgeLeft
+                                toEdge:ALEdgeLeft
+                                ofView:self.title];
+     [self.holdingInfoLabel autoMatchDimension:ALDimensionWidth
+                                   toDimension:ALDimensionWidth
+                                   ofView:self.title];
+    [self.holdingInfoLabel autoPinEdge:ALEdgeBottom
+                                toEdge:ALEdgeBottom
+                                ofView:self.contentView];
+   }
+
+   ReservationDetails *details = [book getReservationDetails];
+   NSString *ordinal = [TPPBook ordinalStringFor:details.holdPosition];
+   NSString *copies = details.copiesAvailable == 1 ? @"copy" : @"copies";
+   self.holdingInfoLabel.text = [NSString stringWithFormat:
+     NSLocalizedString(@"You are %@ in line. %ld %@ in use.", nil),
+     ordinal,
+     (long)details.copiesAvailable,
+     copies
+   ];
+    
   if(!self.unreadImageView) {
     self.unreadImageView = [[UIImageView alloc] initWithImage:[UIImage imageNamed:@"Unread"]];
     self.unreadImageView.image = [self.unreadImageView.image
@@ -157,6 +197,9 @@
   _state = state;
   self.buttonsView.state = state;
   self.unreadImageView.hidden = (state != TPPBookButtonsStateDownloadSuccessful);
+  BOOL isHolding = (state == TPPBookButtonsStateHolding);
+  self.holdingInfoLabel.hidden = !isHolding;
+
   [self setNeedsLayout];
 }
 

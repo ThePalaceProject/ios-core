@@ -3,10 +3,6 @@ import PalaceAudiobookToolkit
 
 @objcMembers final class TPPKeychainManager: NSObject {
 
-  private enum KeychainGroups: String {
-    case groupKeychainID = "88CBA74T8K.org.thepalaceproject.palace.SharedKeychainGroup"
-  }
-
   private static let secClassItems: [String] = [
     kSecClassGenericPassword as String,
     kSecClassInternetPassword as String,
@@ -15,76 +11,106 @@ import PalaceAudiobookToolkit
     kSecClassIdentity as String
   ]
 
-  private static let secAttrAccessGroups: [String] = [
-    KeychainGroups.groupKeychainID.rawValue,
-  ]
-
   class func validateKeychain() {
-    removeItemsFromPreviousInstalls()
-    updateKeychainForBackgroundFetch()
-    manageFeedbooksData()
-    manageFeedbookDrmPrivateKey()
-  }
-
-  // The app does not handle DRM Authentication logic when assuming a user
-  // is already logged in when finding a username/pin stored in the keychain
-  // from a previous app install.
-  private class func removeItemsFromPreviousInstalls() {
-    if (TPPSettings.shared.appVersion != nil) {
-      return
+    if TPPSettings.shared.appVersion == nil {
+      Log.info(#file, "Fresh install detected. Cleaning up all keychain items...")
+      cleanupAllKeychainItems()
     }
-    Log.info(#file, "Fresh install detected. Purging any existing keychain items...")
-
-    let secClassItems: [String] = [
-      kSecClassGenericPassword as String,
-      kSecClassInternetPassword as String,
-      kSecClassCertificate as String,
-      kSecClassKey as String,
-      kSecClassIdentity as String
-    ]
     
-    for secClass in secClassItems {
-      let query: [String: Any] = [kSecClass as String: secClass]
-      
-      let status = SecItemDelete(query as CFDictionary)
-      if status != errSecSuccess && status != errSecItemNotFound {
-        Log.info(#file, "Error deleting Keychain item for class \(secClass): \(status)")
-        
-      }
+    if TPPSettings.shared.appVersion != nil {
+      updateKeychainForBackgroundFetch()
+      manageFeedbooksData()
+      manageFeedbookDrmPrivateKey()
     }
   }
-  
-  private class func getAllKeyChainItemsOfClass(_ secClass: String,
-                                                group: KeychainGroups) -> [String:AnyObject] {
 
-    let query: [String: AnyObject] = [
-      kSecClass as String : secClass as AnyObject,
-      kSecAttrAccessGroup as String : group as AnyObject,
-      kSecReturnData as String  : kCFBooleanTrue,
-      kSecReturnAttributes as String : kCFBooleanTrue,
-      kSecReturnRef as String : kCFBooleanTrue,
-      kSecMatchLimit as String : kSecMatchLimitAll
-    ]
+  // Clean up all keychain items
+  private class func cleanupAllKeychainItems() {
+    Log.info(#file, "Starting keychain cleanup...")
+    
+    // First, try to get all items to log what we're cleaning up
+    for secClass in secClassItems {
+      let query: [String: AnyObject] = [
+        kSecClass as String: secClass as AnyObject,
+        kSecReturnData as String: kCFBooleanTrue,
+        kSecReturnAttributes as String: kCFBooleanTrue,
+        kSecReturnRef as String: kCFBooleanTrue,
+        kSecMatchLimit as String: kSecMatchLimitAll
+      ]
 
-    var result: AnyObject?
-    let lastResultCode = withUnsafeMutablePointer(to: &result) {
-      SecItemCopyMatching(query as CFDictionary, UnsafeMutablePointer($0))
-    }
+      var result: AnyObject?
+      let status = withUnsafeMutablePointer(to: &result) {
+        SecItemCopyMatching(query as CFDictionary, UnsafeMutablePointer($0))
+      }
 
-    var values = [String:AnyObject]()
-    if lastResultCode == noErr {
-      guard let array = result as? Array<Dictionary<String, Any>> else { return values }
-      for item in array {
-        if let keyData = item[kSecAttrAccount as String] as? Data,
-          let valueData = item[kSecValueData as String] as? Data,
-          let keyString = NSKeyedUnarchiver.unarchiveObject(with: keyData) as? String {
-            Log.debug(#file, "Value found for keychain key: \(keyString)")
-            let value = NSKeyedUnarchiver.unarchiveObject(with: valueData) as AnyObject
-            values[keyString] = value
+      if status == errSecSuccess {
+        if let array = result as? Array<Dictionary<String, Any>> {
+          for item in array {
+            if let keyData = item[kSecAttrAccount as String] as? Data,
+               let keyString = NSKeyedUnarchiver.unarchiveObject(with: keyData) as? String {
+              Log.info(#file, "Found keychain item to clean up: \(keyString)")
+            }
+          }
         }
       }
     }
-    return values
+
+    // Now perform the actual cleanup
+    for secClass in secClassItems {
+      let query: [String: Any] = [
+        kSecClass as String: secClass
+      ]
+      let status = SecItemDelete(query as CFDictionary)
+      if status != errSecSuccess && status != errSecItemNotFound {
+        Log.error(#file, "Error deleting keychain items for class \(secClass): \(status)")
+      }
+    }
+
+    // Additional cleanup for specific known items
+    let knownKeys = [
+      "barcode",
+      "pin",
+      "authToken",
+      "adobeToken",
+      "patron",
+      "adobeVendor",
+      "provider",
+      "userID",
+      "deviceID",
+      "credentials",
+      "authDefinition",
+      "cookies",
+      "authorizationIdentifier",
+      // Add library-specific keys
+      "TPPAccountAuthorization",
+      "TPPAccountBarcode",
+      "TPPAccountPIN",
+      "TPPAccountAdobeTokenKey",
+      "TPPAccountLicensorKey",
+      "TPPAccountPatronKey",
+      "TPPAccountAuthTokenKey",
+      "TPPAccountAdobeVendorKey",
+      "TPPAccountProviderKey",
+      "TPPAccountUserIDKey",
+      "TPPAccountDeviceIDKey",
+      "TPPAccountCredentialsKey",
+      "TPPAccountAuthDefinitionKey",
+      "TPPAccountAuthCookiesKey"
+    ]
+
+    for key in knownKeys {
+      TPPKeychain.shared().removeObject(forKey: key)
+    }
+
+    // Also clean up any library-specific keys
+    for libraryUUID in AccountsManager.TPPAccountUUIDs {
+      for key in knownKeys {
+        let libraryKey = "\(key)_\(libraryUUID)"
+        TPPKeychain.shared().removeObject(forKey: libraryKey)
+      }
+    }
+
+    Log.info(#file, "Keychain cleanup completed")
   }
 
   /// Credentials need to be accessed while the phone is locked during a
@@ -92,7 +118,6 @@ import PalaceAudiobookToolkit
   /// level lowered one notch, if not already, to allow access any time after
   /// the first unlock per phone reboot.
   class func updateKeychainForBackgroundFetch() {
-
     let query: [String: AnyObject] = [
       kSecClass as String : kSecClassGenericPassword,
       kSecAttrAccessible as String : kSecAttrAccessibleWhenUnlocked,  //old default
@@ -158,7 +183,7 @@ import PalaceAudiobookToolkit
     }
   }
     
-  class func logKeychainError(forVendor vendor:String, status: OSStatus, message: String) {
+  class func logKeychainError(forVendor vendor: String, status: OSStatus, message: String) {
     // This is unexpected
     var errMsg = ""
     if #available(iOS 11.3, *) {

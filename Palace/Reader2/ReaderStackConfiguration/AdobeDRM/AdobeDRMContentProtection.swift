@@ -10,7 +10,7 @@
 
 import Foundation
 import ReadiumShared
-import ZIPFoundation
+import ReadiumZIPFoundation
 
 final class AdobeDRMContentProtection: ContentProtection, Loggable {
 
@@ -36,60 +36,33 @@ final class AdobeDRMContentProtection: ContentProtection, Loggable {
           return .failure(.assetNotSupported(DebugError("Invalid source URL")))
         }
 
-        do {
-          let decryptor = try AdobeDRMDecryptor(url: sourceURL, encryptionData: encryptionData)
-          let decryptedContainer = decryptor.drmContainer
+        let decryptedContainer = AdobeDRMContainer(url: sourceURL, encryptionData: encryptionData)
 
-          guard validateDecryptedContainer(decryptedContainer) else {
-            return .failure(.assetNotSupported(DebugError("Decrypted container is missing required files.")))
-          }
+        let newContainerAsset = ContainerAsset(container: decryptedContainer, format: container.format)
+        let cpAsset = ContentProtectionAsset(asset: .container(newContainerAsset)) { manifest, _, services in
+          let copyManifest = manifest
 
-          let newContainerAsset = ContainerAsset(container: decryptedContainer, format: container.format)
-          let cpAsset = ContentProtectionAsset(asset: .container(newContainerAsset)) { manifest, _, services in
-            let copyManifest = manifest
-
-            services.setContentProtectionServiceFactory { factory in
-              AdobeContentProtectionService(
-                context: PublicationServiceContext(
-                  publication: factory.publication,
-                  manifest: copyManifest,
-                  container: decryptedContainer
-                )
+          services.setContentProtectionServiceFactory { factory in
+            AdobeContentProtectionService(
+              context: PublicationServiceContext(
+                publication: factory.publication,
+                manifest: copyManifest,
+                container: decryptedContainer
               )
-            }
+            )
           }
-
-          return .success(cpAsset)
-        } catch {
-          return .failure(.assetNotSupported(error))
         }
+
+        return .success(cpAsset)
       }
-  }
-
-  private func validateDecryptedContainer(_ container: Container) -> Bool {
-    let requiredFiles = ["META-INF/container.xml"]
-
-    for path in requiredFiles {
-      guard let urlPath = AnyURL(string: path) else {
-        log(.error, "Invalid URL for required file path: \(path)")
-        return false
-      }
-
-      if container[urlPath] == nil {
-        log(.error, "Missing required file in decrypted container: \(path)")
-        return false
-      }
-    }
-
-    return true
   }
 }
 
-  extension Container {
-    func url(forEntryPath path: String) -> AnyURL? {
-      entries.first { $0.string == path }
-    }
+extension Container {
+  func url(forEntryPath path: String) -> AnyURL? {
+    entries.first { $0.string == path }
   }
+}
 
 
 private extension AdobeDRMContentProtection {
@@ -111,29 +84,6 @@ private extension AdobeDRMContentProtection {
 
     return .failure(DebugError("Invalid encryption.xml path"))
   }
-
-  final class AdobeDRMDecryptor {
-    let drmContainer: AdobeDRMContainer
-
-    init(url: URL, encryptionData: Data) throws {
-      self.drmContainer = AdobeDRMContainer(url: url, encryptionData: encryptionData)
-
-      if let displayUntilDate = drmContainer.displayUntilDate, displayUntilDate < Date() {
-        throw AdobeDRMFetcherError.expiredDisplayUntilDate
-      }
-    }
-
-    func decrypt(_ data: Data, at path: String) -> Data {
-      let decryptedData = drmContainer.decode(data, at: path)
-
-      if let error = drmContainer.epubDecodingError {
-        Log.debug(#file, "Decryption failed for path \(path): \(error)")
-        return Data()
-      }
-
-      return decryptedData
-    }
-  }
 }
 
 
@@ -153,17 +103,58 @@ extension AdobeDRMContainer: Container {
   }
 
   public subscript(url: any URLConvertible) -> Resource? {
-    guard let data = try? retrieveData(for: url.anyURL.string) else {
+    let path = url.anyURL.string
+
+    let data: Data? = {
+      var result: Data?
+      let semaphore = DispatchSemaphore(value: 0)
+      self.retrieveDataSynchronously(for: path) { retrievedData in
+        result = retrievedData
+        semaphore.signal()
+      }
+      semaphore.wait()
+      return result
+    }()
+
+    guard let data else {
       return nil
     }
 
-    return DRMResource(data: data, path: url.anyURL.string, drmContainer: self)
+    return DRMDataResource(encryptedData: data, path: path, drmContainer: self, sourceURL: sourceURL)
+  }
+
+  private func retrieveDataSynchronously(for path: String, completion: @escaping (Data?) -> Void) {
+    DispatchQueue.global(qos: .userInitiated).async {
+      let runLoop = CFRunLoopGetCurrent()
+      var retrievedData: Data?
+      var isCompleted = false
+      Task {
+        do {
+          retrievedData = try await self.retrieveData(for: path)
+        } catch {
+          retrievedData = nil
+        }
+
+        isCompleted = true
+        CFRunLoopStop(runLoop)
+      }
+
+      while !isCompleted {
+        CFRunLoopRunInMode(CFRunLoopMode.defaultMode, 0.1, false)
+
+        if Date() > Date(timeIntervalSinceNow: 10) {
+          break
+        }
+      }
+
+      completion(retrievedData)
+    }
   }
 
   // MARK: - Helpers
   /// Retrieves encrypted data for the resource at a given path.
-  private func retrieveData(for path: String) throws -> Data {
-    guard let rawData = readDataFromArchive(at: path) else {
+  private func retrieveData(for path: String) async throws -> Data {
+    guard let rawData = try await readDataFromArchive(at: path) else {
       throw DebugError("Failed to locate resource at path: \(path)")
     }
     return rawData
@@ -173,18 +164,17 @@ extension AdobeDRMContainer: Container {
     return ["META-INF/container.xml", "OEBPS/content.opf"]
   }
 
-  private func readDataFromArchive(at path: String) -> Data? {
-    guard let archive = Archive(url: self.fileURL!, accessMode: .read) else {
-      return nil
-    }
+  private func readDataFromArchive(at path: String) async throws -> Data? {
+    guard let fileURL else { return nil }
+    let archive = try await Archive(url: fileURL, accessMode: .read)
 
-    guard let entry = archive[path] else {
+    guard let entry = try await archive.get(path) else {
       return nil
     }
 
     do {
       var data = Data()
-      _ = try archive.extract(entry, consumer: { data.append($0) })
+      _ = try await archive.extract(entry, consumer: { data.append($0) })
       return data
     } catch {
       return nil
@@ -192,50 +182,53 @@ extension AdobeDRMContainer: Container {
   }
 }
 
-struct DRMResource: Resource {
-  private let data: Data
+
+/// A DRM-enabled Resource that decrypts (decodes) its data once and then serves
+/// range requests (to support pagination) using the cached decrypted data.
+public actor DRMDataResource: Resource {
+  public let sourceURL: AbsoluteURL?
+
+  private let encryptedData: Data
   private let path: String
   private let drmContainer: AdobeDRMContainer
 
-  init(data: Data, path: String, drmContainer: AdobeDRMContainer) {
-    self.data = data
+  // Cache for the decrypted data once computed.
+  private var _decryptedData: ReadResult<Data>?
+
+  /// Initializes the resource with the encrypted data and related DRM container.
+  public init(encryptedData: Data, path: String, drmContainer: AdobeDRMContainer, sourceURL: AbsoluteURL? = nil) {
+    self.encryptedData = encryptedData
     self.path = path
     self.drmContainer = drmContainer
+    self.sourceURL = sourceURL
   }
 
-  func read(range: Range<UInt64>?) async throws -> Data {
-    let fullData = drmContainer.decode(data, at: path)
+  /// Returns the decrypted data, caching it after the first decryption.
+  private func decryptedData() async -> ReadResult<Data> {
+    if let cached = _decryptedData {
+      return cached
+    }
+    let decrypted = drmContainer.decode(encryptedData, at: path)
+    let result: ReadResult<Data> = .success(decrypted)
+    _decryptedData = result
+    return result
+  }
 
+  public func read(range: Range<UInt64>?) async throws -> Data {
+    let fullData = try await decryptedData().get()
     if let range = range {
-      let start = Int(clamping: range.lowerBound)
-      let end = Int(clamping: range.upperBound)
+      let start = Int(range.lowerBound)
+      let end = Int(range.upperBound)
       let intRange = start..<end
-
       guard intRange.lowerBound >= 0, intRange.upperBound <= fullData.count else {
         throw ReadError.access(.fileSystem(.fileNotFound(nil)))
       }
-
       return fullData.subdata(in: intRange)
-    } else {
-      return fullData
     }
+    return fullData
   }
 
-  var sourceURL: AbsoluteURL? {
-    nil
-  }
-
-  func properties() async -> ReadResult<ResourceProperties> {
-    var props = ResourceProperties()
-    props.length = UInt64(data.count)
-    return .success(props)
-  }
-
-  func estimatedLength() async -> ReadResult<UInt64?> {
-    return .success(UInt64(data.count))
-  }
-
-  func stream(range: Range<UInt64>?, consume: @escaping (Data) -> Void) async -> ReadResult<Void> {
+  public func stream(range: Range<UInt64>?, consume: @escaping (Data) -> Void) async -> ReadResult<Void> {
     do {
       let chunk = try await read(range: range)
       consume(chunk)
@@ -245,7 +238,17 @@ struct DRMResource: Resource {
     }
   }
 
-  func close() {}
+  public func properties() async -> ReadResult<ResourceProperties> {
+    let fullData = try? await decryptedData().get()
+    var props = ResourceProperties()
+    props.length = fullData.map { UInt64($0.count) }
+    return .success(props)
+  }
+
+  public func estimatedLength() async -> ReadResult<UInt64?> {
+    let fullData = try? await decryptedData().get()
+    return .success(fullData.map { UInt64($0.count) })
+  }
 }
 
 extension ResourceProperties {
@@ -254,4 +257,5 @@ extension ResourceProperties {
     set { self["length"] = newValue }
   }
 }
+
 #endif

@@ -86,12 +86,11 @@ class DLNavigator {
       accountDetailVC.setUserName(barcode)
     } else {
       TPPAccountSignInViewController.requestCredentials(forUsername: barcode) {
-        // Remove Welcome screen if it is still present.
-        if let welcomeController = (topViewController.presentingViewController as? UINavigationController)?.topViewController as? TPPWelcomeScreenViewController {
-          welcomeController.completion?(newAccount)
-          welcomeController.presentedViewController?.dismiss(animated: false)
-          welcomeController.dismiss(animated: false)
+        let accountList = TPPAccountList { account in
+          MyBooksViewModel().authenticateAndLoad(account: account)
         }
+        let nav = UINavigationController(rootViewController: accountList)
+        topViewController.present(nav, animated: true)
       }
     }
   }

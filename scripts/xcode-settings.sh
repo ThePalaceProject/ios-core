@@ -12,6 +12,12 @@
 #
 #   invocation:
 #     xcode-archive.sh
+#
+# ENVIRONMENT VARIABLES
+
+#   XCODE_VERSION - Optional. The version of Xcode to use (e.g. "16.2")
+#                   If not set, uses the system default Xcode
+
 
 set -eo pipefail
 
@@ -21,8 +27,16 @@ fatal()
   exit 1
 }
 
-# Set Xcode to version 15 explicitly
-export DEVELOPER_DIR="/Applications/Xcode_15.4.app/Contents/Developer"
+if [ -z "${DEVELOPER_DIR:-}" ]; then
+  if [ -n "${MD_APPLE_SDK_ROOT:-}" ]; then
+    _sdk_root="${MD_APPLE_SDK_ROOT%/}"
+    export DEVELOPER_DIR="${_sdk_root}/Contents/Developer"
+  else
+    export DEVELOPER_DIR="$(
+      /usr/bin/xcode-select -p 2>/dev/null || true
+    )"
+  fi
+fi
 
 # determine which app we're going to work on
 TARGET_NAME=Palace
