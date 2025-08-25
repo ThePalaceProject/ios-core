@@ -32,7 +32,8 @@ platform :ios do
 
     repo_root = Dir.pwd
     shim_flags = "OTHER_CPLUSPLUSFLAGS='$(inherited) -include #{repo_root}/Palace/BuildSupport/cpp_compat.hpp'"
-    merged_xcargs = [options[:xcargs], "-sdk iphoneos", shim_flags].compact.join(" ")
+    base_xcargs = options[:xcargs] && options[:xcargs].length > 0 ? options[:xcargs] : "-sdk iphoneos"
+    merged_xcargs = [base_xcargs, shim_flags].compact.join(" ")
 
     build_app(
       project: "Palace.xcodeproj",
@@ -60,7 +61,8 @@ platform :ios do
 
     repo_root = Dir.pwd
     shim_flags = "OTHER_CPLUSPLUSFLAGS='$(inherited) -include #{repo_root}/Palace/BuildSupport/cpp_compat.hpp'"
-    merged_xcargs = [options[:xcargs], "-sdk iphoneos", shim_flags].compact.join(" ")
+    base_xcargs = options[:xcargs] && options[:xcargs].length > 0 ? options[:xcargs] : "-sdk iphoneos"
+    merged_xcargs = [base_xcargs, shim_flags].compact.join(" ")
 
     build_app(
       project: "Palace.xcodeproj",
