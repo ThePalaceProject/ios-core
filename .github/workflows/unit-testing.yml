@@ -39,10 +39,7 @@ jobs:
         env:
           BUILD_CONTEXT: ci
           
-      - name: List available simulators for debugging
-        run: xcrun simctl list devices available | grep iPhone | head -10
-        
-      - name: Run Palace unit tests (builds automatically)
-        run: ./scripts/xcode-test-optimized.sh
+      - name: Run Palace unit tests
+        run: ./scripts/xcode-test.sh
         env:
           BUILD_CONTEXT: ci
