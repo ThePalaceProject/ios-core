@@ -1,60 +1,90 @@
 name: Palace Manual Build
 
 on: workflow_dispatch
+
 jobs:
   check-version:
-    runs-on: macOS-latest
+    runs-on: macos-14
     steps:
-      - name: Use the latest Xcode
-        run: sudo xcode-select -switch /Applications/Xcode.app
+      - name: Select Xcode 16.2
+        uses: apple-actions/setup-xcode@v1
+        with:
+          xcode-version: '16.2'
+
+      - name: Verify iOS SDK (expect iPhoneOS18.2)
+        run: |
+          echo "DEVELOPER_DIR=$DEVELOPER_DIR"
+          xcodebuild -version
+          xcodebuild -showsdks | tee /tmp/sdks.txt
+          grep -q "iPhoneOS18.2" /tmp/sdks.txt || { echo "iPhoneOS 18.2 SDK not found in selected Xcode"; exit 70; }
+
       - name: Checkout main repo and submodules
         uses: actions/checkout@v3
         with:
           submodules: true
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
+
       - id: checkVersion
         name: Check Build Version
         run: ./scripts/ios-check-version.sh
         env:
           BUILD_CONTEXT: ci
+
     outputs:
       should_upload: ${{ steps.checkVersion.outputs.version_changed }}
+
   upload-build:
-    runs-on: macOS-latest
+    runs-on: macos-14
     needs: check-version
     if: needs.check-version.outputs.should_upload == '1'
     steps:
-      - name: Force Xcode 16
-        run: sudo xcode-select -switch /Applications/Xcode_16.app
+      - name: Select Xcode 16.2
+        uses: apple-actions/setup-xcode@v1
+        with:
+          xcode-version: '16.2'
+
+      - name: Verify iOS SDK (expect iPhoneOS18.2)
+        run: |
+          echo "DEVELOPER_DIR=$DEVELOPER_DIR"
+          xcodebuild -version
+          xcodebuild -showsdks | tee /tmp/sdks.txt
+          grep -q "iPhoneOS18.2" /tmp/sdks.txt || { echo "iPhoneOS 18.2 SDK not found in selected Xcode"; exit 70; }
+
       - name: Checkout main repo and submodules
         uses: actions/checkout@v3
         with:
           submodules: true
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
+
       - name: Checkout Binaries
         uses: actions/checkout@v3
         with:
           repository: ThePalaceProject/ios-binaries
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
           path: ./ios-binaries
+
       - name: Checkout Certificates
         uses: actions/checkout@v3
         with:
           repository: ThePalaceProject/mobile-certificates
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
           path: ./mobile-certificates
+
       - name: Checkout Adobe RMSDK
         uses: ./.github/actions/checkout-adobe
         with:
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
+
       - name: Setup repo with DRM
         run: ./scripts/setup-repo-drm.sh
         env:
           BUILD_CONTEXT: ci
+
       - name: Build non-Carthage 3rd party dependencies
         run: ./scripts/build-3rd-party-dependencies.sh
         env:
           BUILD_CONTEXT: ci
+
       - name: Install provisioning profile
         run: ./scripts/install-profile.sh
         env:
@@ -65,15 +95,18 @@ jobs:
           CI_DISTRIBUTION_CERT_PW: ${{ secrets.CI_DISTRIBUTION_CERT_PW }}
           CI_KEYCHAIN_PW: ${{ secrets.CI_KEYCHAIN_PW }}
           CI_APPLE_FASTLANE_JSON: ${{ secrets.CI_APPLE_FASTLANE_JSON }}
+
       - name: Export to binaries
         run: ./scripts/xcode-export-adhoc.sh
         env:
           BUILD_CONTEXT: ci
+
       - name: Create release notes
         run: ./scripts/create-release-notes.sh
         env:
           BUILD_CONTEXT: ci
           GITHUB_TOKEN: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
+
       - name: Verify path and version
         run: |
           echo "Release notes path: " $RELEASE_NOTES_PATH
@@ -85,6 +118,7 @@ jobs:
           RELEASE_NOTES_PATH: ${{ env.RELEASE_NOTES_PATH }}
           CHANGELOG_PATH: ${{ env.CHANGELOG_PATH }}
           VERSION_NUM: ${{ env.VERSION_NUM }}
+
       - name: Export for App Store
         run: ./scripts/xcode-export-appstore.sh
         env:
