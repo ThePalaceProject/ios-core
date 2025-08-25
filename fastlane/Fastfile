@@ -30,8 +30,9 @@ platform :ios do
 
   lane :beta do |options|
 
-    repo_root = Dir.pwd
-    shim_flags = "OTHER_CPLUSPLUSFLAGS='$(inherited) -include #{repo_root}/Palace/BuildSupport/cpp_compat.hpp'"
+    project_root = File.expand_path('..', __dir__)
+    shim_path = File.join(project_root, 'Palace', 'BuildSupport', 'cpp_compat.hpp')
+    shim_flags = "OTHER_CPLUSPLUSFLAGS='$(inherited) -include \"#{shim_path}\"'"
     base_xcargs = options[:xcargs] && options[:xcargs].length > 0 ? options[:xcargs] : "-sdk iphoneos"
     merged_xcargs = [base_xcargs, shim_flags].compact.join(" ")
 
@@ -59,8 +60,9 @@ platform :ios do
 
     sh("rm -rf ~/Library/Developer/Xcode/DerivedData/*")
 
-    repo_root = Dir.pwd
-    shim_flags = "OTHER_CPLUSPLUSFLAGS='$(inherited) -include #{repo_root}/Palace/BuildSupport/cpp_compat.hpp'"
+    project_root = File.expand_path('..', __dir__)
+    shim_path = File.join(project_root, 'Palace', 'BuildSupport', 'cpp_compat.hpp')
+    shim_flags = "OTHER_CPLUSPLUSFLAGS='$(inherited) -include \"#{shim_path}\"'" 
     base_xcargs = options[:xcargs] && options[:xcargs].length > 0 ? options[:xcargs] : "-sdk iphoneos"
     merged_xcargs = [base_xcargs, shim_flags].compact.join(" ")
 
