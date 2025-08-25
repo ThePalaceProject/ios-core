@@ -1,5 +1,4 @@
 #!/bin/bash
-
 # SUMMARY
 #   Configures common environment variables for building Palace app.
 #
@@ -14,10 +13,8 @@
 #     xcode-archive.sh
 #
 # ENVIRONMENT VARIABLES
-
 #   XCODE_VERSION - Optional. The version of Xcode to use (e.g. "16.2")
 #                   If not set, uses the system default Xcode
-
 
 set -eo pipefail
 
@@ -27,14 +24,19 @@ fatal()
   exit 1
 }
 
-if [ -z "${DEVELOPER_DIR:-}" ]; then
-  if [ -n "${MD_APPLE_SDK_ROOT:-}" ]; then
-    _sdk_root="${MD_APPLE_SDK_ROOT%/}"
-    export DEVELOPER_DIR="${_sdk_root}/Contents/Developer"
-  else
-    export DEVELOPER_DIR="$(
-      /usr/bin/xcode-select -p 2>/dev/null || true
-    )"
+# Set Xcode version if specified
+if [ -n "$XCODE_VERSION" ]; then
+  export DEVELOPER_DIR="/Applications/Xcode_${XCODE_VERSION}.app/Contents/Developer"
+  if [ ! -d "$DEVELOPER_DIR" ]; then
+    fatal "Xcode ${XCODE_VERSION} not found at ${DEVELOPER_DIR}"
+  fi
+else
+  # Default to Xcode 16.2 if not specified
+  export DEVELOPER_DIR="/Applications/Xcode_16.2.app/Contents/Developer"
+
+  if [ ! -d "$DEVELOPER_DIR" ]; then
+    echo "Warning: Xcode 16.0 not found at ${DEVELOPER_DIR}, falling back to system default"
+    unset DEVELOPER_DIR
   fi
 fi
 

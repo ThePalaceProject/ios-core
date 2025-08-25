@@ -11,10 +11,10 @@ jobs:
   check-version:
     runs-on: macos-15
     steps:
-      - name: Set up Xcode 16
+      - name: Set up Xcode 16.2
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: '16'
+          xcode-version: '16.2'
 
       - name: Verify Xcode Version
         run: xcodebuild -version
@@ -38,10 +38,10 @@ jobs:
     needs: check-version
     if: github.event.pull_request.merged == true && needs.check-version.outputs.should_upload == '1'
     steps:
-      - name: Set up Xcode 16
+      - name: Set up Xcode 16.2
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: '16'
+          xcode-version: '16.2'
 
       - name: Verify Xcode Version
         run: xcodebuild -version
@@ -108,14 +108,12 @@ jobs:
           source .venv/bin/activate
           python3 -m pip install --upgrade pip
           python3 -m pip install requests
-
       - name: Debug Python Environment
         run: |
           source .venv/bin/activate
           echo "✅ Python Location: $(which python3)"
           python3 -m pip list
           python3 -m pip show requests || echo "❌ requests not found"
-
       - name: Create release notes
         run: |
           source .venv/bin/activate
