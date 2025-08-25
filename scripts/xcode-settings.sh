@@ -41,7 +41,6 @@ fi
 # determine which app we're going to work on
 TARGET_NAME=Palace
 SCHEME=Palace
-
 # app-agnostic settings
 APP_NAME="Palace"
 PROV_PROFILES_DIR_PATH="$HOME/Library/MobileDevice/Provisioning Profiles"
