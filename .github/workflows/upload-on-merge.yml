@@ -9,6 +9,7 @@ on:
 
 jobs:
   check-version:
+    # Using macos-14 until GitHub Actions adds macos-15 support
     runs-on: macos-14
     steps:
       - name: Set up Xcode 16.2
@@ -34,6 +35,7 @@ jobs:
       should_upload: ${{ steps.checkVersion.outputs.version_changed }}
 
   upload-build:
+    # Using macos-14 until GitHub Actions adds macos-15 support
     runs-on: macos-14
     needs: check-version
     if: github.event.pull_request.merged == true && needs.check-version.outputs.should_upload == '1'
@@ -91,6 +93,12 @@ jobs:
           CI_DISTRIBUTION_CERT_PW: ${{ secrets.CI_DISTRIBUTION_CERT_PW }}
           CI_KEYCHAIN_PW: ${{ secrets.CI_KEYCHAIN_PW }}
           CI_APPLE_FASTLANE_JSON: ${{ secrets.CI_APPLE_FASTLANE_JSON }}
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.0'
+          bundler-cache: true
 
       - name: Export to binaries
         run: ./scripts/xcode-export-adhoc.sh
