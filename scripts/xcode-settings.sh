@@ -28,24 +28,14 @@ fatal()
 export FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT=300
 export FASTLANE_XCODEBUILD_SETTINGS_RETRIES=4
 
-# Set Xcode version if specified
-if [ -n "$XCODE_VERSION" ]; then
+# Always try to use Xcode 16.2 first
+if [ -d "/Applications/Xcode_16.2.app/Contents/Developer" ]; then
+  export DEVELOPER_DIR="/Applications/Xcode_16.2.app/Contents/Developer"
+elif [ -n "$XCODE_VERSION" ]; then
+  # If specific version requested, try to use it
   export DEVELOPER_DIR="/Applications/Xcode_${XCODE_VERSION}.app/Contents/Developer"
   if [ ! -d "$DEVELOPER_DIR" ]; then
-    fatal "Xcode ${XCODE_VERSION} not found at ${DEVELOPER_DIR}"
-  fi
-elif [ "$BUILD_CONTEXT" = "ci" ]; then
-  # In CI, always use Xcode 16.2
-  export DEVELOPER_DIR="/Applications/Xcode_16.2.app/Contents/Developer"
-  if [ ! -d "$DEVELOPER_DIR" ]; then
-    fatal "Xcode 16.2 not found at ${DEVELOPER_DIR}"
-  fi
-else
-  # For local builds, try Xcode 16.2 first
-  if [ -d "/Applications/Xcode_16.2.app/Contents/Developer" ]; then
-    export DEVELOPER_DIR="/Applications/Xcode_16.2.app/Contents/Developer"
-  else
-    echo "Warning: Xcode 16.2 not found, falling back to system default"
+    echo "Warning: Xcode ${XCODE_VERSION} not found, falling back to system default"
     unset DEVELOPER_DIR
   fi
 fi
