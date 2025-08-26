@@ -2,12 +2,10 @@ name: Palace Manual Release
 on: workflow_dispatch
 jobs:
   create-release:
-    runs-on: macos-15
+    runs-on: macOS-latest
     steps:
-      - name: Set up Xcode 16.2
-        uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: '16.2'
+      - name: Use the latest Xcode
+        run: sudo xcode-select -switch /Applications/Xcode.app
 
       - name: Verify Xcode Version
         run: xcodebuild -version

@@ -2,7 +2,7 @@ name: NonDRM Build
 on: workflow_dispatch
 jobs:
   build:
-    runs-on: macos-15
+    runs-on: macOS-latest
     steps:
       - name: Set up Xcode 16.2
         uses: maxim-lobanov/setup-xcode@v1
