@@ -24,6 +24,10 @@ platform :ios do
       skip_package_ipa: true,
       skip_archive: true,
       skip_codesigning: true,
+      sdk: "iphonesimulator",
+      destination: "generic/platform=iOS Simulator",
+      xcargs: "ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO",
+      skip_profile_detection: true,
       silent: true
     )
   end
