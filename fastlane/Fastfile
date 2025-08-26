@@ -1,8 +1,10 @@
 default_platform(:ios)
+
 platform :ios do
   lane :test do    
     ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "300"
     ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"] = "4"
+
     run_tests(
       project: "Palace.xcodeproj",
       devices: ["iPhone SE (3rd generation)"],
@@ -11,9 +13,11 @@ platform :ios do
       xcargs: "ARCHS=x86_64 ONLY_ACTIVE_ARCH=NO"
     )
   end
+
   lane :nodrm do
     ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "300"
     ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"] = "4"
+
     build_app(
       project: "Palace.xcodeproj",
       scheme: "Palace-noDRM",
@@ -26,12 +30,6 @@ platform :ios do
 
   lane :beta do |options|
 
-    project_root = File.expand_path('..', __dir__)
-    shim_path = File.join(project_root, 'Palace', 'BuildSupport', 'cpp_compat.hpp')
-    shim_flags = "OTHER_CPLUSPLUSFLAGS='$(inherited) -include \"#{shim_path}\"'"
-    base_xcargs = options[:xcargs] && options[:xcargs].length > 0 ? options[:xcargs] : "-sdk iphoneos"
-    merged_xcargs = [base_xcargs, shim_flags].compact.join(" ")
-
     build_app(
       project: "Palace.xcodeproj",
       scheme: "Palace",
@@ -40,7 +38,6 @@ platform :ios do
       silent: true,
       output_name: options[:output_name],
       output_directory: options[:export_path],
-      xcargs: merged_xcargs,
       export_options: {
         method: "ad-hoc",
         provisioningProfiles: { 
@@ -49,24 +46,18 @@ platform :ios do
       }
     )
   end
+
   lane :appstore do |options|
     ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "300"
     ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"] = "4"
 
     sh("rm -rf ~/Library/Developer/Xcode/DerivedData/*")
 
-    project_root = File.expand_path('..', __dir__)
-    shim_path = File.join(project_root, 'Palace', 'BuildSupport', 'cpp_compat.hpp')
-    shim_flags = "OTHER_CPLUSPLUSFLAGS='$(inherited) -include \"#{shim_path}\"'" 
-    base_xcargs = options[:xcargs] && options[:xcargs].length > 0 ? options[:xcargs] : "-sdk iphoneos"
-    merged_xcargs = [base_xcargs, shim_flags].compact.join(" ")
-
     build_app(
       project: "Palace.xcodeproj",
       scheme: "Palace",
       include_symbols: true,
       include_bitcode: false,
-      xcargs: merged_xcargs,
       export_options: {
         method: "app-store",
         provisioningProfiles: { 
@@ -74,6 +65,7 @@ platform :ios do
         }
       }
     )
+
     pilot(
       api_key_path: "fastlane/fastlane.json",
       skip_submission: true,
