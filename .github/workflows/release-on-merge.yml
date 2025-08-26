@@ -6,7 +6,7 @@ on:
     types: [closed]
 jobs:
   create-release:
-    runs-on: macOS-latest
+    runs-on: macos-14
     steps:
       - name: Set up Xcode 16.2
         uses: maxim-lobanov/setup-xcode@v1

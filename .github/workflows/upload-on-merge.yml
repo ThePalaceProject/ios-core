@@ -9,7 +9,10 @@ on:
 
 jobs:
   check-version:
-    runs-on: macOS-latest
+    # Using macos-14 explicitly to avoid transition issues with macos-latest
+    # See: https://github.com/actions/runner-images/issues/12520
+    # TODO: Plan migration to macos-15 before August 2025
+    runs-on: macos-14
     steps:
 
       
@@ -36,7 +39,7 @@ jobs:
       should_upload: ${{ steps.checkVersion.outputs.version_changed }}
 
   upload-build:
-    runs-on: macOS-latest
+    runs-on: macos-14
     needs: check-version
     if: github.event.pull_request.merged == true && needs.check-version.outputs.should_upload == '1'
     steps:
