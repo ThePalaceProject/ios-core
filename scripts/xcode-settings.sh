@@ -24,21 +24,36 @@ fatal()
   exit 1
 }
 
+# Set build environment variables
+export FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT=300
+export FASTLANE_XCODEBUILD_SETTINGS_RETRIES=4
+
 # Set Xcode version if specified
 if [ -n "$XCODE_VERSION" ]; then
   export DEVELOPER_DIR="/Applications/Xcode_${XCODE_VERSION}.app/Contents/Developer"
   if [ ! -d "$DEVELOPER_DIR" ]; then
     fatal "Xcode ${XCODE_VERSION} not found at ${DEVELOPER_DIR}"
   fi
-else
-  # Default to Xcode 16.2 if not specified
+elif [ "$BUILD_CONTEXT" = "ci" ]; then
+  # In CI, always use Xcode 16.2
   export DEVELOPER_DIR="/Applications/Xcode_16.2.app/Contents/Developer"
-
   if [ ! -d "$DEVELOPER_DIR" ]; then
-    echo "Warning: Xcode 16.0 not found at ${DEVELOPER_DIR}, falling back to system default"
+    fatal "Xcode 16.2 not found at ${DEVELOPER_DIR}"
+  fi
+else
+  # For local builds, try Xcode 16.2 first
+  if [ -d "/Applications/Xcode_16.2.app/Contents/Developer" ]; then
+    export DEVELOPER_DIR="/Applications/Xcode_16.2.app/Contents/Developer"
+  else
+    echo "Warning: Xcode 16.2 not found, falling back to system default"
     unset DEVELOPER_DIR
   fi
 fi
+
+# Set additional build settings
+export IPHONEOS_DEPLOYMENT_TARGET=16.0
+export ONLY_ACTIVE_ARCH=NO
+export ARCHS=arm64
 
 # determine which app we're going to work on
 TARGET_NAME=Palace
