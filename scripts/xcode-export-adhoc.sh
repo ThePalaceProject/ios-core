@@ -22,14 +22,11 @@ source "$(dirname $0)/xcode-settings.sh"
 
 echo "Exporting $ARCHIVE_NAME for Ad-Hoc distribution..."
 
-# Ensure Bundler 2 is used and gems are installed
+# Use bundler if available, otherwise fallback to global fastlane
 if [ -f Gemfile ]; then
   echo "Installing bundle and invoking via bundle exec fastlane"
-  if ! command -v bundle >/dev/null 2>&1; then
-    gem install bundler -v "~> 2.7" --no-document
-  fi
-  bundle _2.7.1_ install --path vendor/bundle
-  bundle _2.7.1_ exec fastlane ios beta output_name:$ARCHIVE_NAME.ipa export_path:$ARCHIVE_DIR
+  bundle install
+  bundle exec fastlane ios beta output_name:$ARCHIVE_NAME.ipa export_path:$ARCHIVE_DIR
 else
   fastlane ios beta output_name:$ARCHIVE_NAME.ipa export_path:$ARCHIVE_DIR
 fi
