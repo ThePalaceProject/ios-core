@@ -9,13 +9,10 @@ on:
 
 jobs:
   check-version:
-    # Using macos-14 until GitHub Actions adds macos-15 support
-    runs-on: macos-14
+    runs-on: macOS-latest
     steps:
-      - name: Set up Xcode 16.2
-        uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: '16.2'
+      - name: Use the latest Xcode
+        run: sudo xcode-select -switch /Applications/Xcode.app
 
       - name: Verify Xcode Version
         run: xcodebuild -version
@@ -35,15 +32,12 @@ jobs:
       should_upload: ${{ steps.checkVersion.outputs.version_changed }}
 
   upload-build:
-    # Using macos-14 until GitHub Actions adds macos-15 support
-    runs-on: macos-14
+    runs-on: macOS-latest
     needs: check-version
     if: github.event.pull_request.merged == true && needs.check-version.outputs.should_upload == '1'
     steps:
-      - name: Set up Xcode 16.2
-        uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: '16.2'
+      - name: Force Xcode 16
+        run: sudo xcode-select -switch /Applications/Xcode_16.app
 
       - name: Verify Xcode Version
         run: xcodebuild -version
