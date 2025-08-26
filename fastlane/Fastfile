@@ -33,6 +33,8 @@ platform :ios do
   end
 
   lane :beta do |options|
+    # Best-effort DerivedData clean (ignore failures)
+    sh("rm -rf ~/Library/Developer/Xcode/DerivedData/* || true")
 
     build_app(
       project: "Palace.xcodeproj",
@@ -40,6 +42,7 @@ platform :ios do
       include_symbols: true,
       include_bitcode: false,
       silent: true,
+      sdk: "iphoneos",
       output_name: options[:output_name],
       output_directory: options[:export_path],
       export_options: {
@@ -55,13 +58,15 @@ platform :ios do
     ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "300"
     ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"] = "4"
 
-    sh("rm -rf ~/Library/Developer/Xcode/DerivedData/*")
+    # Best-effort DerivedData clean (ignore failures)
+    sh("rm -rf ~/Library/Developer/Xcode/DerivedData/* || true")
 
     build_app(
       project: "Palace.xcodeproj",
       scheme: "Palace",
       include_symbols: true,
       include_bitcode: false,
+      sdk: "iphoneos",
       export_options: {
         method: "app-store",
         provisioningProfiles: { 
