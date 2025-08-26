@@ -7,10 +7,10 @@ platform :ios do
 
     run_tests(
       project: "Palace.xcodeproj",
-      devices: ["iPhone SE (3rd generation)"],
+      devices: ["iPhone 14"],
       scheme: "Palace",
-      destination: "platform=iOS Simulator,name=iPhone SE (3rd generation),OS=latest,arch=x86_64",
-      xcargs: "ARCHS=x86_64 ONLY_ACTIVE_ARCH=NO"
+      destination: "platform=iOS Simulator,name=iPhone 14,OS=16.1",
+      xcargs: "ARCHS=x86_64 ONLY_ACTIVE_ARCH=NO IPHONEOS_DEPLOYMENT_TARGET=16.0"
     )
   end
 
@@ -26,13 +26,20 @@ platform :ios do
       skip_codesigning: true,
       sdk: "iphonesimulator",
       destination: "generic/platform=iOS Simulator",
-      xcargs: "ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO",
+      xcargs: "ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO IPHONEOS_DEPLOYMENT_TARGET=16.0",
       skip_profile_detection: true,
       silent: true
     )
   end
 
   lane :beta do |options|
+    ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "300"
+    ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"] = "4"
+    
+    if ENV["BUILD_CONTEXT"] == "ci"
+      xcode_select("/Applications/Xcode_16.2.app") if File.directory?("/Applications/Xcode_16.2.app")
+    end
+    
     # Best-effort DerivedData clean (ignore failures)
     sh("rm -rf ~/Library/Developer/Xcode/DerivedData/* || true")
 
@@ -43,6 +50,7 @@ platform :ios do
       include_bitcode: false,
       silent: true,
       sdk: "iphoneos",
+      xcargs: "ONLY_ACTIVE_ARCH=NO ARCHS=arm64",
       output_name: options[:output_name],
       output_directory: options[:export_path],
       export_options: {
@@ -67,6 +75,7 @@ platform :ios do
       include_symbols: true,
       include_bitcode: false,
       sdk: "iphoneos",
+      xcargs: "ONLY_ACTIVE_ARCH=NO ARCHS=arm64 IPHONEOS_DEPLOYMENT_TARGET=16.0",
       export_options: {
         method: "app-store",
         provisioningProfiles: { 
