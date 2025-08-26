@@ -25,7 +25,6 @@ echo "Exporting $ARCHIVE_NAME for Ad-Hoc distribution..."
 # Use bundler if available, otherwise try global fastlane
 if [ -f Gemfile ]; then
   echo "Installing bundle and invoking via bundle exec fastlane"
-  gem install bundler -v "~> 2.0" --no-document || true
   bundle install --jobs 4 --retry 3 || gem install fastlane -N
   bundle exec fastlane ios beta output_name:$ARCHIVE_NAME.ipa export_path:$ARCHIVE_DIR || fastlane ios beta output_name:$ARCHIVE_NAME.ipa export_path:$ARCHIVE_DIR
 else
