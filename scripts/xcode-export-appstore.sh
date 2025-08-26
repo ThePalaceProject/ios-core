@@ -17,11 +17,9 @@
 
 CHANGELOG=$(<"$CHANGELOG_PATH")
 
-# Use bundler if available, otherwise fallback to global fastlane
-if [ -f Gemfile ]; then
-  echo "Installing bundle and invoking via bundle exec fastlane"
-  bundle install
-  bundle exec fastlane ios appstore changelog:"$CHANGELOG"
-else
-  fastlane ios appstore changelog:"$CHANGELOG"
+# Use system Ruby and fastlane
+if ! command -v fastlane >/dev/null 2>&1; then
+  sudo gem install fastlane -N
 fi
+
+fastlane ios appstore changelog:"$CHANGELOG"
