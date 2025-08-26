@@ -33,6 +33,10 @@ platform :ios do
   end
 
   lane :beta do |options|
+    if ENV["BUILD_CONTEXT"] == "ci"
+      xcode_select("/Applications/Xcode_16.2.app") if File.directory?("/Applications/Xcode_16.2.app")
+    end
+    
     # Best-effort DerivedData clean (ignore failures)
     sh("rm -rf ~/Library/Developer/Xcode/DerivedData/* || true")
 
