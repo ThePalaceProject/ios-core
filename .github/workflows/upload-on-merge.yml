@@ -16,6 +16,12 @@ jobs:
     steps:
 
       
+      - name: Set up Ruby and Bundler
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '2.7.8'  # Compatible with our dependencies
+          bundler-cache: true    # Caches gems between runs
+
       - name: Set up Xcode 16.2
         uses: maxim-lobanov/setup-xcode@v1
         with:
