@@ -16,11 +16,11 @@ jobs:
     steps:
 
       
-      - name: Set up Ruby and Bundler
-        uses: ruby/setup-ruby@v1
+      - name: Checkout main repo and submodules
+        uses: actions/checkout@v3
         with:
-          ruby-version: '2.7.8'  # Compatible with our dependencies
-          bundler-cache: true    # Caches gems between runs
+          submodules: true
+          token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
 
       - name: Set up Xcode 16.2
         uses: maxim-lobanov/setup-xcode@v1
@@ -29,12 +29,6 @@ jobs:
 
       - name: Verify Xcode Version
         run: xcodebuild -version
-
-      - name: Checkout main repo and submodules
-        uses: actions/checkout@v3
-        with:
-          submodules: true
-          token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
 
       - id: checkVersion
         name: Check Build Version
