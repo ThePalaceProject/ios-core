@@ -17,5 +17,5 @@
 
 CHANGELOG=$(<"$CHANGELOG_PATH")
 
-# Use bundler with cached gems from setup-ruby action
-bundle exec fastlane ios appstore changelog:"$CHANGELOG"
+# Use fastlane from runner environment
+fastlane ios appstore changelog:"$CHANGELOG"
