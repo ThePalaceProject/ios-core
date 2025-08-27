@@ -11,9 +11,11 @@ import SwiftUI
       TPPSettings.shared.accountMainFeedURL
     }
     let controller = UIHostingController(rootView: CatalogView(viewModel: viewModel))
-    controller.title = NSLocalizedString("Catalog", comment: "")
+    controller.title = NSLocalizedString("Catalog", comment: "") // used for tab bar label
     controller.tabBarItem.image = UIImage(named: "CatalogTab")
-    return UINavigationController(rootViewController: controller)
+    let nav = UINavigationController(rootViewController: controller)
+    nav.setNavigationBarHidden(true, animated: false)
+    return nav
   }
 }
 

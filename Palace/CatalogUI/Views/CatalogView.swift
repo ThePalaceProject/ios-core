@@ -10,7 +10,38 @@ struct CatalogView: View {
   var body: some View {
     NavigationView {
       content
-        .navigationTitle(viewModel.title.isEmpty ? "Catalog" : viewModel.title)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+          ToolbarItem(placement: .principal) {
+            Button(action: { openLibraryHome() }) {
+              HStack(spacing: 8) {
+                if let logo = AccountsManager.shared.currentAccount?.logo {
+                  Image(uiImage: logo)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 24, height: 24)
+                    .clipShape(Circle())
+                }
+                Text(AccountsManager.shared.currentAccount?.name ?? (viewModel.title.isEmpty ? "Catalog" : viewModel.title))
+                  .font(.headline)
+              }
+            }
+            .buttonStyle(.plain)
+          }
+          ToolbarItem(placement: .navigationBarLeading) {
+            Button(action: { presentAccountPicker() }) {
+              ImageProviders.MyBooksView.myLibraryIcon
+            }
+          }
+          ToolbarItem(placement: .navigationBarTrailing) {
+            Button(action: { presentSearch() }) {
+              ImageProviders.MyBooksView.search
+            }
+          }
+        }
+        .toolbar {
+          // remove duplicate toolbar; keep only the principal/leading/trailing defined above
+        }
     }
     .task { await viewModel.load() }
   }
@@ -66,6 +97,25 @@ private extension CatalogView {
   func presentBookDetail(_ book: TPPBook) {
     let detailVC = BookDetailHostingController(book: book)
     TPPRootTabBarController.shared().pushViewController(detailVC, animated: true)
+  }
+
+  func presentSearch() {
+    let searchVC = TPPCatalogSearchViewController(openSearchDescription: nil)
+    TPPRootTabBarController.shared().pushViewController(searchVC, animated: true)
+  }
+
+  func openLibraryHome() {
+    if let urlString = AccountsManager.shared.currentAccount?.homePageUrl, let url = URL(string: urlString) {
+      UIApplication.shared.open(url, options: [:], completionHandler: nil)
+    }
+  }
+
+  func presentAccountPicker() {
+    let vc = TPPAccountList { account in
+      // minimal behavior: switch account via MyBooks pattern
+      AccountsManager.shared.currentAccount = account
+    }
+    TPPRootTabBarController.shared().safelyPresentViewController(vc, animated: true, completion: nil)
   }
 }
 
