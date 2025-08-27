@@ -17,12 +17,5 @@
 
 CHANGELOG=$(<"$CHANGELOG_PATH")
 
-# Use bundler if available, otherwise try global fastlane
-if [ -f Gemfile ]; then
-  echo "Installing bundle and invoking via bundle exec fastlane"
-  bundle install --jobs 4 --retry 3 || gem install fastlane -N
-  bundle exec fastlane ios appstore changelog:"$CHANGELOG" || fastlane ios appstore changelog:"$CHANGELOG"
-else
-  gem install fastlane -N || true
-  fastlane ios appstore changelog:"$CHANGELOG"
-fi
+# Use bundler with cached gems from setup-ruby action
+bundle exec fastlane ios appstore changelog:"$CHANGELOG"
