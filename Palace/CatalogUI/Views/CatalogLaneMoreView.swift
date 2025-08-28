@@ -4,7 +4,8 @@ struct CatalogLaneMoreView: View {
   let title: String
   let url: URL
 
-  @State private var books: [TPPBook] = []
+  @State private var lanes: [CatalogLaneModel] = []
+  @State private var ungroupedBooks: [TPPBook] = []
   @State private var isLoading = true
   @State private var error: String?
   @StateObject private var logoObserver = CatalogLogoObserver()
@@ -21,30 +22,69 @@ struct CatalogLaneMoreView: View {
 
   var body: some View {
     VStack(spacing: 0) {
-      FacetToolbarView(
-        title: title,
-        showFilter: !facetGroups.isEmpty,
-        onSort: { showingSortSheet = true },
-        onFilter: { showingFiltersSheet = true },
-        currentSortTitle: currentSort.localizedString,
-        appliedFiltersCount: activeFiltersCount
-      )
-      .padding(.bottom)
-      .overlay(alignment: .trailing) {
-        if isLoading || isApplyingFilters {
-          ProgressView().padding(.trailing, 12)
+      if !facetGroups.isEmpty {
+        FacetToolbarView(
+          title: title,
+          showFilter: true,
+          onSort: { showingSortSheet = true },
+          onFilter: { showingFiltersSheet = true },
+          currentSortTitle: currentSort.localizedString,
+          appliedFiltersCount: activeFiltersCount
+        )
+        .padding(.bottom, 5)
+        .overlay(alignment: .trailing) {
+          if isLoading || isApplyingFilters {
+            ProgressView().padding(.trailing, 12)
+          }
         }
+        Divider()
       }
 
-      Divider()
-
       if isLoading {
-        BookListSkeletonView(rows: 10, imageSize: CGSize(width: 100, height: 150))
-          .frame(maxWidth: .infinity, maxHeight: .infinity)
+        ScrollView {
+          VStack(alignment: .leading, spacing: 24) {
+            ForEach(0..<3, id: \.self) { _ in
+              CatalogLaneSkeletonView()
+            }
+          }
+          .padding(.vertical, 12)
+          .padding(.horizontal, 8)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
       } else if let error {
         Text(error).padding()
+      } else if !lanes.isEmpty {
+        ScrollView {
+          VStack(alignment: .leading, spacing: 24) {
+            ForEach(lanes) { lane in
+              VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                  Text(lane.title).font(.title3).bold()
+                  Spacer()
+                  if let more = lane.moreURL {
+                    NavigationLink("More…", destination: CatalogLaneMoreView(title: lane.title, url: more))
+                  }
+                }
+                ScrollView(.horizontal, showsIndicators: false) {
+                  LazyHStack(spacing: 12) {
+                    ForEach(lane.books, id: \.identifier) { book in
+                      Button(action: { presentBookDetail(book) }) {
+                        BookImageView(book: book, width: nil, height: 180)
+                      }
+                      .buttonStyle(.plain)
+                    }
+                  }
+                  .padding(.horizontal, 12)
+                }
+              }
+            }
+          }
+          .padding(.vertical, 12)
+          .padding(.horizontal, 8)
+        }
+        .refreshable { await fetchAndApplyFeed(at: url) }
       } else {
-        BookListView(books: books, isLoading: $isLoading) { book in
+        BookListView(books: ungroupedBooks, isLoading: $isLoading) { book in
           presentBookDetail(book)
         }
         .refreshable { await fetchAndApplyFeed(at: url) }
@@ -107,23 +147,43 @@ struct CatalogLaneMoreView: View {
       let api = DefaultCatalogAPI(client: client, parser: parser)
 
       if let feed = try await api.fetchFeed(at: url) {
-        if let entries = feed.opdsFeed.entries as? [TPPOPDSEntry] {
-          books = entries.compactMap { CatalogViewModel.makeBook(from: $0) }
-          sortBooksInPlace()
-        }
+        lanes.removeAll()
+        ungroupedBooks.removeAll()
+        facetGroups.removeAll()
 
-        if feed.opdsFeed.type == TPPOPDSFeedType.acquisitionUngrouped {
-          let ungrouped = TPPCatalogUngroupedFeed(opdsFeed: feed.opdsFeed)
-          facetGroups = (ungrouped?.facetGroups as? [TPPCatalogFacetGroup]) ?? []
-        } else {
-          facetGroups = []
+        let feedObjc = feed.opdsFeed
+        if let entries = feedObjc.entries as? [TPPOPDSEntry] {
+          switch feedObjc.type {
+          case .acquisitionGrouped:
+            var groupTitleToBooks: [String: [TPPBook]] = [:]
+            var groupTitleToMoreURL: [String: URL?] = [:]
+            for entry in entries {
+              guard let group = entry.groupAttributes else { continue }
+              let groupTitle = group.title ?? ""
+              if let book = CatalogViewModel.makeBook(from: entry) {
+                groupTitleToBooks[groupTitle, default: []].append(book)
+                if groupTitleToMoreURL[groupTitle] == nil { groupTitleToMoreURL[groupTitle] = group.href }
+              }
+            }
+            lanes = groupTitleToBooks.map { title, books in
+              CatalogLaneModel(title: title, books: books, moreURL: groupTitleToMoreURL[title] ?? nil)
+            }.sorted { $0.title < $1.title }
+          case .acquisitionUngrouped:
+            ungroupedBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0) }
+            let ungrouped = TPPCatalogUngroupedFeed(opdsFeed: feedObjc)
+            facetGroups = (ungrouped?.facetGroups as? [TPPCatalogFacetGroup]) ?? []
+            appliedSelections = Set(
+              selectionKeysFromActiveFacets(includeDefaults: false)
+                .compactMap(parseKey)
+                .map { makeGroupTitleKey(group: $0.group, title: $0.title) }
+            )
+            sortBooksInPlace()
+          case .navigation, .invalid:
+            break
+          @unknown default:
+            break
+          }
         }
-
-        appliedSelections = Set(
-          selectionKeysFromActiveFacets(includeDefaults: false)
-            .compactMap(parseKey)
-            .map { makeGroupTitleKey(group: $0.group, title: $0.title) }
-        )
       }
     } catch {
       self.error = error.localizedDescription
@@ -222,7 +282,7 @@ struct CatalogLaneMoreView: View {
       for href in desiredHrefs.sorted(by: { $0.absoluteString < $1.absoluteString }) {
         if let feed = try await api.fetchFeed(at: href) {
           if let entries = feed.opdsFeed.entries as? [TPPOPDSEntry] {
-            books = entries.compactMap { CatalogViewModel.makeBook(from: $0) }
+            ungroupedBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0) }
             sortBooksInPlace()
           }
           if feed.opdsFeed.type == TPPOPDSFeedType.acquisitionUngrouped {
@@ -269,17 +329,17 @@ struct CatalogLaneMoreView: View {
   private func sortBooksInPlace() {
     switch currentSort {
     case .authorAZ:
-      books.sort { (($0.authors ?? "") + " " + $0.title) < (($1.authors ?? "") + " " + $1.title) }
+      ungroupedBooks.sort { (($0.authors ?? "") + " " + $0.title) < (($1.authors ?? "") + " " + $1.title) }
     case .authorZA:
-      books.sort { (($0.authors ?? "") + " " + $0.title) > (($1.authors ?? "") + " " + $1.title) }
+      ungroupedBooks.sort { (($0.authors ?? "") + " " + $0.title) > (($1.authors ?? "") + " " + $1.title) }
     case .recentlyAddedAZ:
-      books.sort { $0.updated < $1.updated }
+      ungroupedBooks.sort { $0.updated < $1.updated }
     case .recentlyAddedZA:
-      books.sort { $0.updated > $1.updated }
+      ungroupedBooks.sort { $0.updated > $1.updated }
     case .titleAZ:
-      books.sort { ($0.title + " " + ($0.authors ?? "")) < ($1.title + " " + ($1.authors ?? "")) }
+      ungroupedBooks.sort { ($0.title + " " + ($0.authors ?? "")) < ($1.title + " " + ($1.authors ?? "")) }
     case .titleZA:
-      books.sort { ($0.title + " " + ($0.authors ?? "")) > ($1.title + " " + ($1.authors ?? "")) }
+      ungroupedBooks.sort { ($0.title + " " + ($0.authors ?? "")) > ($1.title + " " + ($1.authors ?? "")) }
     }
   }
 

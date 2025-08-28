@@ -84,7 +84,7 @@ private extension CatalogView {
                   LazyHStack(spacing: 12) {
                     ForEach(lane.books, id: \.identifier) { book in
                       Button(action: { presentBookDetail(book) }) {
-                        BookImageView(book: book, width: 140, height: 180)
+                        BookImageView(book: book, width: nil, height: 180)
                       }
                       .buttonStyle(.plain)
                     }
