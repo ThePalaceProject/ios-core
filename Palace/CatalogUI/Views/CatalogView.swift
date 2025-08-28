@@ -68,7 +68,7 @@ private extension CatalogView {
 
           if !viewModel.entryPoints.isEmpty {
             EntryPointsSelectorView(entryPoints: viewModel.entryPoints) { facet in
-              Task { await viewModel.applyFacet(facet) }
+              Task { await viewModel.applyEntryPoint(facet) }
             }
           }
 
@@ -78,13 +78,36 @@ private extension CatalogView {
             }
           }
           if !viewModel.lanes.isEmpty {
-            ForEach(viewModel.lanes) { lane in
-              CatalogLaneRowView(
-                title: lane.title,
-                books: lane.books,
-                moreURL: lane.moreURL,
-                onSelect: { presentBookDetail($0) }
-              )
+            LazyVStack(alignment: .leading, spacing: 24, pinnedViews: [.sectionHeaders]) {
+              ForEach(viewModel.lanes) { lane in
+                Section(
+                  header:
+                    HStack {
+                      Text(lane.title).font(.title3).bold()
+                      Spacer()
+                      if let more = lane.moreURL {
+                        NavigationLink("More…", destination: CatalogLaneMoreView(title: lane.title, url: more))
+                      }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color(UIColor.systemBackground))
+                ) {
+                  ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(spacing: 12) {
+                      ForEach(lane.books, id: \.identifier) { book in
+                        Button(action: { presentBookDetail(book) }) {
+                          BookImageView(book: book, width: nil, height: 180, usePulseSkeleton: true)
+                            .adaptiveShadowLight(radius: 1.0)
+                            .padding(.vertical)
+                        }
+                        .buttonStyle(.plain)
+                      }
+                    }
+                    .padding(.horizontal, 12)
+                  }
+                }
+              }
             }
           } else {
             BookListView(books: viewModel.ungroupedBooks, isLoading: .constant(false)) { book in

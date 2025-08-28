@@ -48,9 +48,7 @@ enum Group: Int {
     registerPublishers()
     registerNotifications()
     
-    DispatchQueue.main.async { [weak self] in
-      self?.loadData()
-    }
+    loadData()
   }
 
   deinit {
@@ -58,27 +56,22 @@ enum Group: Int {
   }
 
   // MARK: - Public Methods
-  @MainActor
   func loadData() {
-    DispatchQueue.main.async { [weak self] in
-      guard let self else { return }
+    guard !isLoading else { return }
+    isLoading = true
 
-      guard !isLoading else { return }
-      isLoading = true
+    let registryBooks = bookRegistry.myBooks
+    let isConnected = Reachability.shared.isConnectedToNetwork()
 
-      let registryBooks = bookRegistry.myBooks
-      let isConnected = Reachability.shared.isConnectedToNetwork()
+    let newBooks = isConnected
+    ? registryBooks
+    : registryBooks.filter { !$0.isExpired }
 
-      let books = isConnected
-      ? registryBooks
-      : registryBooks.filter { !$0.isExpired }
-
-      // Update published properties
-      self.books = books
-      self.showInstructionsLabel = books.isEmpty || bookRegistry.state == .unloaded
-      self.sortData()
-      self.isLoading = false
-    }
+    // Update published properties
+    self.books = newBooks
+    self.showInstructionsLabel = newBooks.isEmpty || bookRegistry.state == .unloaded
+    self.sortData()
+    self.isLoading = false
   }
 
   func reloadData() {
@@ -88,9 +81,7 @@ enum Group: Int {
       TPPAccountSignInViewController.requestCredentials(completion: nil)
     } else {
       bookRegistry.sync { [weak self] _, _ in
-        DispatchQueue.main.async { [weak self] in
-          self?.loadData()
-        }
+        self?.loadData()
       }
     }
   }
