@@ -268,6 +268,10 @@ struct Strings {
     static let title = NSLocalizedString("Title", comment: "")
   }
   
+  struct Catalog {
+    static let filter = NSLocalizedString("Filter", comment: "")
+  }
+  
   struct BookCell {
     static let delete = NSLocalizedString("Delete", comment: "")
     static let `return` = NSLocalizedString("Return", comment: "")

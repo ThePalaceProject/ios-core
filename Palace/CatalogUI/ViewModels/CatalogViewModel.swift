@@ -9,9 +9,11 @@ final class CatalogViewModel: ObservableObject {
   @Published private(set) var ungroupedBooks: [TPPBook] = []
   @Published private(set) var isLoading: Bool = false
   @Published private(set) var errorMessage: String?
+  @Published private(set) var facetGroups: [TPPCatalogFacetGroup] = []
 
   private let repository: CatalogRepositoryProtocol
   private let topLevelURLProvider: () -> URL?
+  private var lastLoadedURL: URL?
 
   init(repository: CatalogRepositoryProtocol, topLevelURLProvider: @escaping () -> URL?) {
     self.repository = repository
@@ -61,15 +63,74 @@ final class CatalogViewModel: ObservableObject {
         if let opdsEntries = feedObjc.entries as? [TPPOPDSEntry] {
           ungroupedBooks = opdsEntries.compactMap { Self.makeBook(from: $0) }
         }
+        // Load facet groups for filtering/sorting
+        let ungrouped = TPPCatalogUngroupedFeed(opdsFeed: feedObjc)
+        facetGroups = (ungrouped?.facetGroups as? [TPPCatalogFacetGroup]) ?? []
       case .navigation, .invalid:
         break
       @unknown default:
         break
       }
+      lastLoadedURL = url
     } catch {
       errorMessage = error.localizedDescription
     }
     isLoading = false
+  }
+
+  func refresh() async {
+    guard let url = topLevelURLProvider() else { return }
+    (repository as? CatalogRepository)?.invalidateCache(for: url)
+    lanes.removeAll()
+    ungroupedBooks.removeAll()
+    await load()
+  }
+
+  @MainActor
+  func applyFacet(_ facet: TPPCatalogFacet) async {
+    guard let href = facet.href else { return }
+    isLoading = true
+    errorMessage = nil
+    lanes.removeAll()
+    ungroupedBooks.removeAll()
+    do {
+      if let feed = try await repository.loadTopLevelCatalog(at: href) {
+        let feedObjc = feed.opdsFeed
+        if let opdsEntries = feedObjc.entries as? [TPPOPDSEntry] {
+          switch feedObjc.type {
+          case .acquisitionUngrouped:
+            ungroupedBooks = opdsEntries.compactMap { Self.makeBook(from: $0) }
+          case .acquisitionGrouped:
+            // For simplicity, flatten to ungrouped when facet applied
+            ungroupedBooks = opdsEntries.compactMap { Self.makeBook(from: $0) }
+          case .navigation, .invalid:
+            break
+          @unknown default:
+            break
+          }
+        }
+        let ungrouped = TPPCatalogUngroupedFeed(opdsFeed: feedObjc)
+        facetGroups = (ungrouped?.facetGroups as? [TPPCatalogFacetGroup]) ?? []
+      }
+    } catch {
+      errorMessage = error.localizedDescription
+    }
+    isLoading = false
+  }
+
+  func handleAccountChange() async {
+    guard let url = topLevelURLProvider() else { return }
+    // Only refresh if the URL actually changed, to prevent double-load on startup
+    if lastLoadedURL == nil || url != lastLoadedURL {
+      // Immediately show loading state and clear previous content while new feed loads
+      await MainActor.run {
+        self.isLoading = true
+        self.errorMessage = nil
+        self.lanes.removeAll()
+        self.ungroupedBooks.removeAll()
+      }
+      await refresh()
+    }
   }
 }
 

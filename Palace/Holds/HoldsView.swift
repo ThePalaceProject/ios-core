@@ -11,8 +11,10 @@ struct HoldsView: View {
   var body: some View {
     ZStack {
       VStack(spacing: 0) {
-        
-        if allBooks.isEmpty {
+
+        if model.isLoading {
+          BookListSkeletonView(rows: 10, imageSize: CGSize(width: 100, height: 150))
+        } else if allBooks.isEmpty {
           Spacer()
           emptyView
           Spacer()
@@ -29,9 +31,15 @@ struct HoldsView: View {
       }
       .padding(.top, 100)
       .background(Color(TPPConfiguration.backgroundColor()))
-      .navigationTitle(Strings.HoldsView.reservations)
       .navigationBarTitleDisplayMode(.inline)
       .toolbar {
+        ToolbarItem(placement: .principal) {
+          LibraryNavTitleView(onTap: {
+            if let urlString = AccountsManager.shared.currentAccount?.homePageUrl, let url = URL(string: urlString) {
+              UIApplication.shared.open(url, options: [:], completionHandler: nil)
+            }
+          })
+        }
         ToolbarItem(placement: .navigationBarLeading) { leadingBarButton }
         ToolbarItem(placement: .navigationBarTrailing) { trailingBarButton }
       }
@@ -54,44 +62,12 @@ struct HoldsView: View {
       if model.isLoading {
         loadingOverlay
       }
-      
-      VStack {
-        logoImageView
-        Spacer()
-      }
     }
     .sheet(isPresented: $model.showSearchView) {
       UIViewControllerWrapper(
         TPPCatalogSearchViewController(openSearchDescription: model.openSearchDescription),
         updater: { _ in }
       )
-    }
-  }
-  
-  @ViewBuilder private var logoImageView: some View {
-    if let account = AccountsManager.shared.currentAccount {
-      Button {
-        if let urlString = account.homePageUrl, let url = URL(string: urlString) {
-          UIApplication.shared.open(url, options: [:], completionHandler: nil)
-        }
-      } label: {
-        HStack {
-          Image(uiImage: account.logo)
-            .resizable()
-            .aspectRatio(contentMode: .fit)
-            .square(length: 50)
-          Text(account.name)
-            .fixedSize(horizontal: false, vertical: true)
-            .font(Font(uiFont: UIFont.boldSystemFont(ofSize: 18.0)))
-            .foregroundColor(.gray)
-            .multilineTextAlignment(.center)
-        }
-        .padding()
-        .background(Color(TPPConfiguration.readerBackgroundColor()))
-        .frame(height: 70.0)
-        .cornerRadius(35)
-      }
-      .padding(.vertical, 20)
     }
   }
   

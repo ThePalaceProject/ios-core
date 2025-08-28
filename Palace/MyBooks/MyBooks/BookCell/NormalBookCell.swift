@@ -59,25 +59,11 @@ struct NormalBookCell: View {
   }
 
   @ViewBuilder private var titleCoverImageView: some View {
-    ZStack(alignment: .bottomTrailing) {
-      Image(uiImage: model.image)
-        .resizable()
-        .aspectRatio(contentMode: .fit)
-      audiobookIndicator
-        .padding([.trailing, .bottom], 5)
-    }
-    .frame(width: imageViewWidth)
+    BookImageView(book: model.book, width: imageViewWidth, height: cellHeight)
+      .frame(width: imageViewWidth)
   }
 
-  @ViewBuilder private var audiobookIndicator: some View {
-    if model.book.defaultBookContentType == .audiobook {
-      ImageProviders.MyBooksView.audiobookBadge
-        .resizable()
-        .frame(width: 24, height: 24)
-        .background(Circle().fill(Color.colorAudiobookBackground))
-        .clipped()
-    }
-  }
+  
 
   @ViewBuilder private var infoView: some View {
     VStack(alignment: .leading) {

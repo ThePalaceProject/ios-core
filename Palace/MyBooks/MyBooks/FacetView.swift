@@ -25,8 +25,6 @@ struct FacetView: View {
       .actionSheet(isPresented: $showAlert) { alert }
       .palaceFont(size: 12)
       dividerView
-      accountLogoView
-        .horizontallyCentered()
     }
   }
 
@@ -68,31 +66,5 @@ struct FacetView: View {
     }
 
     return ActionSheet(title: Text(""), message: Text(""), buttons:buttons)
-  }
-  
-  @ViewBuilder private var accountLogoView: some View {
-    if let account = model.currentAccount {
-      Button {
-        if let urlString = account.homePageUrl, let url = URL(string: urlString) {
-          UIApplication.shared.open(url, options: [:], completionHandler: nil)
-        }
-      } label: {
-          HStack {
-            Image(uiImage: model.logo ?? UIImage())
-              .resizable()
-              .aspectRatio(contentMode: .fit)
-              .square(length: 50)
-            Text(account.name)
-              .fixedSize(horizontal: false, vertical: true)
-              .font(Font(uiFont: UIFont.boldSystemFont(ofSize: 18.0)))
-              .foregroundColor(.gray)
-              .multilineTextAlignment(.center)
-          }
-          .padding()
-          .background(Color(TPPConfiguration.readerBackgroundColor()))
-          .frame(height: 70.0)
-          .cornerRadius(35)
-        }
-    }
   }
 }

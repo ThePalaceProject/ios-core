@@ -10,11 +10,15 @@ import SwiftUI
     let viewModel = CatalogViewModel(repository: repository) {
       TPPSettings.shared.accountMainFeedURL
     }
-    let controller = UIHostingController(rootView: CatalogView(viewModel: viewModel))
-    controller.title = NSLocalizedString("Catalog", comment: "") // used for tab bar label
-    controller.tabBarItem.image = UIImage(named: "CatalogTab")
-    let nav = UINavigationController(rootViewController: controller)
-    nav.setNavigationBarHidden(true, animated: false)
+    let hosting = UIHostingController(rootView: CatalogView(viewModel: viewModel))
+    hosting.title = nil
+    hosting.tabBarItem.title = NSLocalizedString("Catalog", comment: "")
+    hosting.tabBarItem.image = UIImage(named: "Catalog")
+    hosting.navigationItem.largeTitleDisplayMode = .never
+
+    let nav = UINavigationController(rootViewController: hosting)
+    nav.navigationBar.prefersLargeTitles = false
+    nav.setNavigationBarHidden(false, animated: false)
     return nav
   }
 }

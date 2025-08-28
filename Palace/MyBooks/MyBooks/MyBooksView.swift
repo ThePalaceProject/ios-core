@@ -5,17 +5,26 @@ import PalaceUIKit
 struct MyBooksView: View {
   typealias DisplayStrings = Strings.MyBooksView
   @ObservedObject var model: MyBooksViewModel
+  @State private var showSortSheet: Bool = false
 
   var body: some View {
       ZStack {
-        mainContent
-        if model.isLoading { loadingOverlay }
+        if model.isLoading {
+          BookListSkeletonView(rows: 10, imageSize: CGSize(width: 100, height: 150))
+        } else {
+          mainContent
+        }
       }
       .background(Color(TPPConfiguration.backgroundColor()))
-      .navigationTitle(DisplayStrings.navTitle)
       .navigationBarTitleDisplayMode(.inline)
-      .navigationBarHidden(false)
       .toolbar {
+        ToolbarItem(placement: .principal) {
+          LibraryNavTitleView(onTap: {
+            if let urlString = AccountsManager.shared.currentAccount?.homePageUrl, let url = URL(string: urlString) {
+              UIApplication.shared.open(url, options: [:], completionHandler: nil)
+            }
+          })
+        }
         ToolbarItem(placement: .navigationBarLeading) { leadingBarButton }
         ToolbarItem(placement: .navigationBarTrailing) { trailingBarButton }
       }
@@ -32,12 +41,19 @@ struct MyBooksView: View {
           updater: { _ in }
         )
       }
+      .actionSheet(isPresented: $showSortSheet) { sortActionSheet }
   }
 
   private var mainContent: some View {
     VStack(alignment: .leading, spacing: 0) {
       if model.showSearchSheet { searchBar }
-      FacetView(model: model.facetViewModel)
+      FacetToolbarView(
+        title: nil,
+        showFilter: false,
+        onSort: { showSortSheet = true },
+        onFilter: {},
+        currentSortTitle: model.facetViewModel.activeSort.localizedString
+      )
       content
     }
   }
@@ -106,6 +122,16 @@ struct MyBooksView: View {
     Button(action: { withAnimation { model.showSearchSheet.toggle() } }) {
       ImageProviders.MyBooksView.search
     }
+  }
+
+  private var sortActionSheet: ActionSheet {
+    let author = ActionSheet.Button.default(Text(Strings.FacetView.author)) {
+      model.facetViewModel.activeSort = .author
+    }
+    let title = ActionSheet.Button.default(Text(Strings.FacetView.title)) {
+      model.facetViewModel.activeSort = .title
+    }
+    return ActionSheet(title: Text(DisplayStrings.sortBy), buttons: [author, title, .cancel()])
   }
 
   private var libraryPicker: ActionSheet {

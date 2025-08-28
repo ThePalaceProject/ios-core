@@ -149,14 +149,7 @@
     [self.facetBarView removeFromSuperview];
   }
 
-  self.facetBarView = [[TPPFacetBarView alloc] initWithOrigin:CGPointZero width:self.view.bounds.size.width];
-  self.facetBarView.entryPointView.delegate = self;
-  self.facetBarView.entryPointView.dataSource = self;
-
-  [self.view addSubview:self.facetBarView];
-  [self.facetBarView autoPinEdge:ALEdgeLeading toEdge:ALEdgeLeading ofView:self.view];
-  [self.facetBarView autoPinEdge:ALEdgeTrailing toEdge:ALEdgeTrailing ofView:self.view];
-  [self.facetBarView autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:self.searchBar];
+  // Facet bar removed in SwiftUI redesign; keep layout simple under search bar
 }
 
 - (void)viewDidLayoutSubviews

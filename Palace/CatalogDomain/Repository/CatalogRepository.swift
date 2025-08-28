@@ -3,6 +3,7 @@ import Foundation
 public protocol CatalogRepositoryProtocol {
   func loadTopLevelCatalog(at url: URL) async throws -> CatalogFeed?
   func search(query: String, baseURL: URL) async throws -> CatalogFeed?
+  func invalidateCache(for url: URL)
 }
 
 public final class CatalogRepository: CatalogRepositoryProtocol {
@@ -23,6 +24,10 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
   public func search(query: String, baseURL: URL) async throws -> CatalogFeed? {
     // Do not cache searches in memory for now
     try await api.search(query: query, baseURL: baseURL)
+  }
+
+  public func invalidateCache(for url: URL) {
+    memoryCache[url] = nil
   }
 }
 

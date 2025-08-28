@@ -202,7 +202,7 @@ struct BookDetailView: View {
   }
   
   private var imageView: some View {
-    BookImageView(book: viewModel.book, height: 280 * imageScale, showShimmer: true, shimmerDuration: 0.8)
+    BookImageView(book: viewModel.book, height: 280 * imageScale)
       .opacity(imageOpacity)
       .adaptiveShadow()
       .animation(scaleAnimation, value: imageScale)
@@ -369,7 +369,7 @@ struct BookDetailView: View {
                       Button(action: {
                         viewModel.selectRelatedBook(book)
                       }) {
-                        BookImageView(book: book, height: 160, showShimmer: true)
+                        BookImageView(book: book, height: 160)
                           .padding()
                           .adaptiveShadow(radius: 5)
                           .transition(.opacity.combined(with: .scale))
