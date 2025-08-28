@@ -6,6 +6,8 @@ struct MyBooksView: View {
   typealias DisplayStrings = Strings.MyBooksView
   @ObservedObject var model: MyBooksViewModel
   @State private var showSortSheet: Bool = false
+  @StateObject private var logoObserver = CatalogLogoObserver()
+  @State private var currentAccountUUID: String = AccountsManager.shared.currentAccount?.uuid ?? ""
 
   var body: some View {
       ZStack {
@@ -24,6 +26,7 @@ struct MyBooksView: View {
               UIApplication.shared.open(url, options: [:], completionHandler: nil)
             }
           })
+          .id(logoObserver.token.uuidString + currentAccountUUID)
         }
         ToolbarItem(placement: .navigationBarLeading) { leadingBarButton }
         ToolbarItem(placement: .navigationBarTrailing) { trailingBarButton }
@@ -31,6 +34,16 @@ struct MyBooksView: View {
       .onAppear {
         model.showSearchSheet = false
         UITabBarController.showFloatingTabBar()
+        let account = AccountsManager.shared.currentAccount
+        account?.logoDelegate = logoObserver
+        account?.loadLogo()
+        currentAccountUUID = account?.uuid ?? ""
+      }
+      .onReceive(NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)) { _ in
+        let account = AccountsManager.shared.currentAccount
+        account?.logoDelegate = logoObserver
+        account?.loadLogo()
+        currentAccountUUID = account?.uuid ?? ""
       }
       .sheet(isPresented: $model.showLibraryAccountView) {
         UIViewControllerWrapper(

@@ -10,16 +10,13 @@ struct BookImageView: View {
   @State private var pulse: Bool = false
 
   var body: some View {
-    let computedWidth: CGFloat? = {
-      if let width { return width }
-      return usePulseSkeleton ? height * 2.0 / 3.0 : nil
-    }()
+    let computedWidth: CGFloat? = width
 
     ZStack(alignment: .bottomTrailing) {
       if isShimmering {
         RoundedRectangle(cornerRadius: 8)
           .fill(Color.gray.opacity(0.25))
-          .frame(width: computedWidth, height: height)
+          .frame(width: width ?? (height * 2.0 / 3.0), height: height)
           .opacity(usePulseSkeleton ? (pulse ? 0.6 : 1.0) : 1.0)
           .transition(.opacity)
       }

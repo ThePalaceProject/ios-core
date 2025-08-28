@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct CatalogView: View {
   @StateObject private var viewModel: CatalogViewModel
@@ -133,16 +134,42 @@ private extension CatalogView {
   }
 
   func presentAccountPicker() {
-    let vc = TPPAccountList { account in
-      AccountsManager.shared.currentAccount = account
-      if let urlString = account.catalogUrl, let url = URL(string: urlString) {
-        TPPSettings.shared.accountMainFeedURL = url
+    let actionSheet = UIAlertController(title: Strings.MyBooksView.findYourLibrary, message: nil, preferredStyle: .actionSheet)
+    let accounts = TPPSettings.shared.settingsAccountsList
+    for account in accounts {
+      let action = UIAlertAction(title: account.name, style: .default) { _ in
+        AccountsManager.shared.currentAccount = account
+        if let urlString = account.catalogUrl, let url = URL(string: urlString) {
+          TPPSettings.shared.accountMainFeedURL = url
+        }
+        NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
+        Task { await viewModel.refresh() }
       }
-      NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
-      Task { await viewModel.refresh() }
-      TPPRootTabBarController.shared().dismiss(animated: true, completion: nil)
+      actionSheet.addAction(action)
     }
-    TPPRootTabBarController.shared().safelyPresentViewController(vc, animated: true, completion: nil)
+    let addLibrary = UIAlertAction(title: Strings.MyBooksView.addLibrary, style: .default) { _ in
+      let wrapper = UIViewControllerWrapper(
+        TPPAccountList { account in
+          if !TPPSettings.shared.settingsAccountIdsList.contains(account.uuid) {
+            TPPSettings.shared.settingsAccountIdsList.append(account.uuid)
+          }
+          AccountsManager.shared.currentAccount = account
+          if let urlString = account.catalogUrl, let url = URL(string: urlString) {
+            TPPSettings.shared.accountMainFeedURL = url
+          }
+          NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
+          Task { await viewModel.refresh() }
+          TPPRootTabBarController.shared().dismiss(animated: true, completion: nil)
+        },
+        updater: { _ in }
+      )
+      let hosting = UIHostingController(rootView: wrapper)
+      let nav = UINavigationController(rootViewController: hosting)
+      TPPRootTabBarController.shared().safelyPresentViewController(nav, animated: true, completion: nil)
+    }
+    actionSheet.addAction(addLibrary)
+    actionSheet.addAction(UIAlertAction(title: Strings.Generic.cancel, style: .cancel, handler: nil))
+    TPPRootTabBarController.shared().safelyPresentViewController(actionSheet, animated: true, completion: nil)
   }
 }
 

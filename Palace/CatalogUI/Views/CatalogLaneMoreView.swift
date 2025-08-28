@@ -125,8 +125,16 @@ struct CatalogLaneMoreView: View {
     .onChange(of: currentSort) { _ in
       sortBooksInPlace()
     }
-    .sheet(isPresented: $showingSortSheet) { SortOptionsSheet }
-    .sheet(isPresented: $showingFiltersSheet) { FiltersSheetWrapper }
+    .sheet(isPresented: $showingSortSheet) {
+      SortOptionsSheet
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+    .sheet(isPresented: $showingFiltersSheet) {
+      FiltersSheetWrapper
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
   }
 
   // MARK: - Loading
@@ -444,25 +452,30 @@ struct CatalogLaneMoreView: View {
   }
   
   private var SortOptionsSheet: some View {
-    NavigationView {
-      List {
-        ForEach(CatalogSort.allCases, id: \.self) { sort in
-          HStack {
-            Image(systemName: currentSort == sort ? "largecircle.fill.circle" : "circle")
-              .foregroundColor(currentSort == sort ? .accentColor : .secondary)
-            Text(sort.localizedString)
-            Spacer()
+    VStack(alignment: .leading, spacing: 0) {
+      Text(Strings.Catalog.sortBy)
+        .font(.headline)
+        .padding(.horizontal)
+        .padding(.top, 12)
+      ScrollView {
+        LazyVStack(alignment: .leading, spacing: 0) {
+          ForEach(CatalogSort.allCases, id: \.self) { sort in
+            Button(action: { currentSort = sort }) {
+              HStack {
+                Image(systemName: currentSort == sort ? "largecircle.fill.circle" : "circle")
+                  .foregroundColor(.primary)
+                Text(sort.localizedString)
+                  .foregroundColor(.primary)
+                Spacer()
+              }
+              .padding(.vertical, 12)
+              .padding(.horizontal)
+            }
+            .buttonStyle(.plain)
           }
-          .contentShape(Rectangle())
-          .onTapGesture { currentSort = sort }
         }
       }
-      .navigationTitle("Sort")
-      .toolbar {
-        ToolbarItem(placement: .navigationBarTrailing) {
-          Button("Done") { showingSortSheet = false }
-        }
-      }
+      .background(Color(UIColor.systemBackground))
     }
   }
 }

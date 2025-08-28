@@ -77,6 +77,7 @@ struct Strings {
     static let close = NSLocalizedString("Close", comment: "Title for close button")
     static let search = NSLocalizedString("Search", comment: "Placeholder for Search Field")
     static let done =  NSLocalizedString("Done", comment: "Title for Done button")
+    static let clear = NSLocalizedString("Clear", comment: "Button to clear selection")
   }
   
   struct OETutorialChoiceViewController {
@@ -270,6 +271,8 @@ struct Strings {
   
   struct Catalog {
     static let filter = NSLocalizedString("Filter", comment: "")
+    static let sortBy = NSLocalizedString("Sort By", comment: "Header label for sort options")
+    static let showResults = NSLocalizedString("SHOW RESULTS", comment: "Button to apply filters and show results")
   }
   
   struct BookCell {

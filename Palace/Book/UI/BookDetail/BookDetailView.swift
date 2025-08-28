@@ -20,6 +20,7 @@ struct BookDetailView: View {
   @State private var sampleToolbar: AudiobookSampleToolbar? = nil
   @State private var dragOffset: CGFloat = 0
   @State private var imageBottomPosition: CGFloat = 400
+  @State private var pulseSkeleton: Bool = false
   
   private let scaleAnimation = Animation.linear(duration: 0.35)
 
@@ -73,6 +74,9 @@ struct BookDetailView: View {
         headerHeight = viewModel.isFullSize ? 300 : 225
         viewModel.fetchRelatedBooks()
         self.descriptionText = viewModel.book.summary ?? ""
+        withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+          pulseSkeleton = true
+        }
       }
       .onDisappear {
         viewModel.showHalfSheet = false
@@ -375,7 +379,10 @@ struct BookDetailView: View {
                           .transition(.opacity.combined(with: .scale))
                       }
                     } else {
-                      ShimmerView(width: 100, height: 160)
+                      RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.gray.opacity(0.25))
+                        .frame(width: 100, height: 160)
+                        .opacity(pulseSkeleton ? 0.6 : 1.0)
                     }
                   }
                 }
