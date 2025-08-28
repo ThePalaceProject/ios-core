@@ -2,24 +2,32 @@ import SwiftUI
 
 struct CatalogLaneSkeletonView: View {
   var titleWidth: CGFloat = 120
-  var itemSize: CGSize = CGSize(width: 140, height: 200)
+  var itemSize: CGSize = CGSize(width: 120, height: 180)
   var itemCount: Int = 6
+  @State private var pulse: Bool = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
       RoundedRectangle(cornerRadius: 6)
         .fill(Color.gray.opacity(0.25))
         .frame(width: titleWidth, height: 16)
+        .opacity(pulse ? 0.6 : 1.0)
 
       ScrollView(.horizontal, showsIndicators: false) {
         LazyHStack(spacing: 12) {
           ForEach(0..<itemCount, id: \.self) { _ in
-            ShimmerView(width: itemSize.width, height: itemSize.height)
+            RoundedRectangle(cornerRadius: 8)
+              .fill(Color.gray.opacity(0.25))
               .frame(width: itemSize.width, height: itemSize.height)
-              .clipShape(RoundedRectangle(cornerRadius: 8))
+              .opacity(pulse ? 0.6 : 1.0)
           }
         }
         .padding(.horizontal, 12)
+      }
+    }
+    .onAppear {
+      withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+        pulse = true
       }
     }
   }

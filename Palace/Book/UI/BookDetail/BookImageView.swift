@@ -4,19 +4,23 @@ struct BookImageView: View {
   @ObservedObject var book: TPPBook
   var width: CGFloat? = nil
   var height: CGFloat = 280
+  var usePulseSkeleton: Bool = false
 
   @State private var isShimmering: Bool = true
+  @State private var pulse: Bool = false
 
   var body: some View {
+    let computedWidth: CGFloat? = {
+      if let width { return width }
+      return usePulseSkeleton ? height * 2.0 / 3.0 : nil
+    }()
+
     ZStack(alignment: .bottomTrailing) {
       if isShimmering {
         RoundedRectangle(cornerRadius: 8)
           .fill(Color.gray.opacity(0.25))
-          .frame(width: width, height: height)
-          .overlay(
-            ShimmerView(width: width ?? 140, height: height)
-              .clipShape(RoundedRectangle(cornerRadius: 8))
-          )
+          .frame(width: computedWidth, height: height)
+          .opacity(usePulseSkeleton ? (pulse ? 0.6 : 1.0) : 1.0)
           .transition(.opacity)
       }
 
@@ -24,7 +28,7 @@ struct BookImageView: View {
         Image(uiImage: coverImage)
           .resizable()
           .aspectRatio(contentMode: .fit)
-          .frame(width: width, height: height)
+          .frame(width: computedWidth, height: height)
           .opacity(isShimmering ? 0 : 1)
           .transition(.opacity)
           .onAppear { withAnimation(.easeInOut(duration: 0.25)) { isShimmering = false } }
@@ -40,10 +44,15 @@ struct BookImageView: View {
           .padding([.trailing, .bottom], 10)
       }
     }
-    .frame(width: width, height: height)
+    .frame(width: computedWidth, height: height)
     .onAppear {
       if book.coverImage == nil && book.thumbnailImage == nil {
         book.fetchCoverImage()
+      }
+      if usePulseSkeleton {
+        withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+          pulse = true
+        }
       }
     }
     .onChange(of: book.coverImage) { newImage in

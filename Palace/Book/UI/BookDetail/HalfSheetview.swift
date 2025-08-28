@@ -119,7 +119,10 @@ private extension HalfSheetView {
             .frame(width: 60, height: 90)
             .cornerRadius(4)
         } else {
-          ShimmerView(width: 60, height: 90)
+          RoundedRectangle(cornerRadius: 8)
+            .fill(Color.gray.opacity(0.25))
+            .frame(width: 60, height: 90)
+            .opacity(0.8)
         }
 
         VStack(alignment: .leading, spacing: 4) {
