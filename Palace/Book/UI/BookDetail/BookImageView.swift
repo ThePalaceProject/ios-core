@@ -14,7 +14,7 @@ struct BookImageView: View {
 
     ZStack(alignment: .bottomTrailing) {
       if isShimmering {
-        RoundedRectangle(cornerRadius: 8)
+        Rectangle()
           .fill(Color.gray.opacity(0.25))
           .frame(width: width ?? (height * 2.0 / 3.0), height: height)
           .opacity(usePulseSkeleton ? (pulse ? 0.6 : 1.0) : 1.0)
@@ -26,6 +26,7 @@ struct BookImageView: View {
           .resizable()
           .aspectRatio(contentMode: .fit)
           .frame(width: computedWidth, height: height)
+          .adaptiveShadow(radius: 6)
           .opacity(isShimmering ? 0 : 1)
           .transition(.opacity)
           .onAppear { withAnimation(.easeInOut(duration: 0.25)) { isShimmering = false } }

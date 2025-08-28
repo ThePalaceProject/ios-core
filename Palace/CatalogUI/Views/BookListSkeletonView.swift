@@ -5,18 +5,18 @@ struct BookRowSkeletonView: View {
   @State private var pulse: Bool = false
   var body: some View {
     HStack(alignment: .top, spacing: 12) {
-      RoundedRectangle(cornerRadius: 8)
+      Rectangle()
         .fill(Color.gray.opacity(0.25))
         .frame(width: imageSize.width, height: imageSize.height)
         .opacity(pulse ? 0.6 : 1.0)
 
       VStack(alignment: .leading, spacing: 10) {
-        RoundedRectangle(cornerRadius: 4)
+        Rectangle()
           .fill(Color.gray.opacity(0.25))
           .frame(width: 180, height: 14)
           .opacity(pulse ? 0.6 : 1.0)
 
-        RoundedRectangle(cornerRadius: 4)
+        Rectangle()
           .fill(Color.gray.opacity(0.25))
           .frame(width: 120, height: 12)
           .opacity(pulse ? 0.6 : 1.0)

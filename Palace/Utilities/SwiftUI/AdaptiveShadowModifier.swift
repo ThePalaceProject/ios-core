@@ -16,3 +16,18 @@ extension View {
     self.modifier(AdaptiveShadowModifier(radius: radius))
   }
 }
+
+// Lightweight variant optimized for scrolling lists and large collections
+struct AdaptiveShadowLightModifier: ViewModifier {
+  var radius: CGFloat
+  func body(content: Content) -> some View {
+    content
+      .shadow(color: Color.black.opacity(0.18), radius: radius, x: 0, y: 1)
+  }
+}
+
+extension View {
+  func adaptiveShadowLight(radius: CGFloat = 2) -> some View {
+    self.modifier(AdaptiveShadowLightModifier(radius: radius))
+  }
+}

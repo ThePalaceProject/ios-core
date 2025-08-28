@@ -57,30 +57,15 @@ struct CatalogLaneMoreView: View {
         ScrollView {
           VStack(alignment: .leading, spacing: 24) {
             ForEach(lanes) { lane in
-              VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                  Text(lane.title).font(.title3).bold()
-                  Spacer()
-                  if let more = lane.moreURL {
-                    NavigationLink("More…", destination: CatalogLaneMoreView(title: lane.title, url: more))
-                  }
-                }
-                ScrollView(.horizontal, showsIndicators: false) {
-                  LazyHStack(spacing: 12) {
-                    ForEach(lane.books, id: \.identifier) { book in
-                      Button(action: { presentBookDetail(book) }) {
-                        BookImageView(book: book, width: nil, height: 180, usePulseSkeleton: true)
-                      }
-                      .buttonStyle(.plain)
-                    }
-                  }
-                  .padding(.horizontal, 12)
-                }
-              }
+              CatalogLaneRowView(
+                title: lane.title,
+                books: lane.books,
+                moreURL: lane.moreURL,
+                onSelect: { presentBookDetail($0) }
+              )
             }
           }
           .padding(.vertical, 12)
-          .padding(.horizontal, 8)
         }
         .refreshable { await fetchAndApplyFeed(at: url) }
       } else {

@@ -8,7 +8,7 @@ struct CatalogLaneSkeletonView: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
-      RoundedRectangle(cornerRadius: 6)
+      Rectangle()
         .fill(Color.gray.opacity(0.25))
         .frame(width: titleWidth, height: 16)
         .opacity(pulse ? 0.6 : 1.0)
@@ -16,7 +16,7 @@ struct CatalogLaneSkeletonView: View {
       ScrollView(.horizontal, showsIndicators: false) {
         LazyHStack(spacing: 12) {
           ForEach(0..<itemCount, id: \.self) { _ in
-            RoundedRectangle(cornerRadius: 8)
+            Rectangle()
               .fill(Color.gray.opacity(0.25))
               .frame(width: itemSize.width, height: itemSize.height)
               .opacity(pulse ? 0.6 : 1.0)

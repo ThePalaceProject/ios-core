@@ -60,6 +60,7 @@ struct NormalBookCell: View {
 
   @ViewBuilder private var titleCoverImageView: some View {
     BookImageView(book: model.book, width: imageViewWidth, height: cellHeight)
+      .adaptiveShadowLight(radius: 1.5)
       .frame(width: imageViewWidth)
   }
 

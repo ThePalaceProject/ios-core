@@ -76,6 +76,7 @@ struct HoldsView: View {
     Text(DisplayStrings.emptyMessage)
     .multilineTextAlignment(.center)
     .foregroundColor(Color(white: 0.667))
+    .background(Color(TPPConfiguration.backgroundColor()))
     .font(.system(size: 18))
     .padding(.horizontal, 24)
   }
