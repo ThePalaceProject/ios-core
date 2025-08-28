@@ -10,6 +10,7 @@ final class CatalogViewModel: ObservableObject {
   @Published private(set) var isLoading: Bool = false
   @Published private(set) var errorMessage: String?
   @Published private(set) var facetGroups: [TPPCatalogFacetGroup] = []
+  @Published private(set) var entryPoints: [TPPCatalogFacet] = []
 
   private let repository: CatalogRepositoryProtocol
   private let topLevelURLProvider: () -> URL?
@@ -42,6 +43,9 @@ final class CatalogViewModel: ObservableObject {
       let feedObjc = feed.opdsFeed
       switch feedObjc.type {
       case .acquisitionGrouped:
+        // Entry points for grouped feeds (e.g., Audiobooks, Ebooks)
+        let grouped = TPPCatalogGroupedFeed(opdsFeed: feedObjc)
+        entryPoints = grouped?.entryPoints ?? []
         var groupTitleToBooks: [String: [TPPBook]] = [:]
         var groupTitleToMoreURL: [String: URL?] = [:]
         if let opdsEntries = feedObjc.entries as? [TPPOPDSEntry] {
@@ -66,6 +70,7 @@ final class CatalogViewModel: ObservableObject {
         // Load facet groups for filtering/sorting
         let ungrouped = TPPCatalogUngroupedFeed(opdsFeed: feedObjc)
         facetGroups = (ungrouped?.facetGroups as? [TPPCatalogFacetGroup]) ?? []
+        entryPoints = ungrouped?.entryPoints ?? []
       case .navigation, .invalid:
         break
       @unknown default:
@@ -83,39 +88,65 @@ final class CatalogViewModel: ObservableObject {
     (repository as? CatalogRepository)?.invalidateCache(for: url)
     lanes.removeAll()
     ungroupedBooks.removeAll()
+    entryPoints.removeAll()
     await load()
   }
 
   @MainActor
   func applyFacet(_ facet: TPPCatalogFacet) async {
     guard let href = facet.href else { return }
-    isLoading = true
     errorMessage = nil
-    lanes.removeAll()
-    ungroupedBooks.removeAll()
     do {
       if let feed = try await repository.loadTopLevelCatalog(at: href) {
         let feedObjc = feed.opdsFeed
-        if let opdsEntries = feedObjc.entries as? [TPPOPDSEntry] {
-          switch feedObjc.type {
-          case .acquisitionUngrouped:
-            ungroupedBooks = opdsEntries.compactMap { Self.makeBook(from: $0) }
-          case .acquisitionGrouped:
-            // For simplicity, flatten to ungrouped when facet applied
-            ungroupedBooks = opdsEntries.compactMap { Self.makeBook(from: $0) }
-          case .navigation, .invalid:
-            break
-          @unknown default:
-            break
+        switch feedObjc.type {
+        case .acquisitionUngrouped:
+          if let opdsEntries = feedObjc.entries as? [TPPOPDSEntry] {
+            let newUngrouped = opdsEntries.compactMap { Self.makeBook(from: $0) }
+            // Swap atomically to avoid flicker
+            self.lanes = []
+            self.ungroupedBooks = newUngrouped
           }
+          if let ungrouped = TPPCatalogUngroupedFeed(opdsFeed: feedObjc) {
+            self.facetGroups = (ungrouped.facetGroups as? [TPPCatalogFacetGroup]) ?? []
+            self.entryPoints = ungrouped.entryPoints
+          } else {
+            self.facetGroups = []
+            self.entryPoints = []
+          }
+        case .acquisitionGrouped:
+          // Rebuild lanes instead of flattening
+          var groupTitleToBooks: [String: [TPPBook]] = [:]
+          var groupTitleToMoreURL: [String: URL?] = [:]
+          if let opdsEntries = feedObjc.entries as? [TPPOPDSEntry] {
+            for entry in opdsEntries {
+              guard let group = entry.groupAttributes else { continue }
+              let groupTitle = group.title ?? ""
+              if let book = Self.makeBook(from: entry) {
+                groupTitleToBooks[groupTitle, default: []].append(book)
+                if groupTitleToMoreURL[groupTitle] == nil { groupTitleToMoreURL[groupTitle] = group.href }
+              }
+            }
+          }
+          self.ungroupedBooks = []
+          self.facetGroups = []
+          if let grouped = TPPCatalogGroupedFeed(opdsFeed: feedObjc) {
+            self.entryPoints = grouped.entryPoints
+          } else {
+            self.entryPoints = []
+          }
+          self.lanes = groupTitleToBooks.map { title, books in
+            CatalogLaneModel(title: title, books: books, moreURL: groupTitleToMoreURL[title] ?? nil)
+          }.sorted { $0.title < $1.title }
+        case .navigation, .invalid:
+          break
+        @unknown default:
+          break
         }
-        let ungrouped = TPPCatalogUngroupedFeed(opdsFeed: feedObjc)
-        facetGroups = (ungrouped?.facetGroups as? [TPPCatalogFacetGroup]) ?? []
       }
     } catch {
       errorMessage = error.localizedDescription
     }
-    isLoading = false
   }
 
   func handleAccountChange() async {

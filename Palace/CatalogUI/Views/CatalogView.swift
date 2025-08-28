@@ -64,6 +64,12 @@ private extension CatalogView {
     } else {
       ScrollView {
         VStack(alignment: .leading, spacing: 24) {
+          // Entry points (for grouped feeds)
+          if !viewModel.entryPoints.isEmpty {
+            EntryPointsSelectorView(entryPoints: viewModel.entryPoints) { facet in
+              Task { await viewModel.applyFacet(facet) }
+            }
+          }
           // Facet bar when ungrouped lists are shown
           if !viewModel.facetGroups.isEmpty {
             FacetsSelectorView(facetGroups: viewModel.facetGroups) { facet in

@@ -28,6 +28,54 @@ struct FacetsSelectorView: View {
   }
 }
 
+// MARK: - Entry Points (Grouped feed filtering)
+
+struct EntryPointsSelectorView: View {
+  let entryPoints: [TPPCatalogFacet]
+  let onSelect: (TPPCatalogFacet) -> Void
+  @State private var selectionIndex: Int = 0
+  @State private var pendingIndex: Int = 0
+
+  var body: some View {
+    Picker("", selection: $selectionIndex) {
+      ForEach(entryPoints.indices, id: \.self) { idx in
+        Text(entryPoints[idx].title).tag(idx)
+      }
+    }
+    .pickerStyle(.segmented)
+    .padding(.horizontal, 12)
+    .padding(.vertical, 8)
+    .onAppear {
+      if let idx = entryPoints.firstIndex(where: { $0.active }) {
+        selectionIndex = idx
+        pendingIndex = idx
+      } else {
+        selectionIndex = min(selectionIndex, max(entryPoints.count - 1, 0))
+        pendingIndex = selectionIndex
+      }
+    }
+    .onChange(of: selectionIndex) { idx in
+      guard entryPoints.indices.contains(idx) else { return }
+      pendingIndex = idx
+      // Debounce slight delay to avoid double reloads when tabs change
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+        if pendingIndex == idx, entryPoints.indices.contains(idx) {
+          onSelect(entryPoints[idx])
+        }
+      }
+    }
+    .onChange(of: entryPoints.count) { _ in
+      if let idx = entryPoints.firstIndex(where: { $0.active }) {
+        selectionIndex = idx
+        pendingIndex = idx
+      } else {
+        selectionIndex = min(selectionIndex, max(entryPoints.count - 1, 0))
+        pendingIndex = selectionIndex
+      }
+    }
+  }
+}
+
 private extension NSObject {
   @objc var _uuid: String { String(ObjectIdentifier(self).hashValue) }
 }
