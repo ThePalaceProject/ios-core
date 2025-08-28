@@ -569,6 +569,24 @@
 		E5024A8D2A0E8761006BF653 /* TPPBookCellDelegate+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5024A8C2A0E8761006BF653 /* TPPBookCellDelegate+Extensions.swift */; };
 		E5024A8F2A0EB9D6006BF653 /* AudiobookBookmarkBusinessLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5024A8E2A0EB9D6006BF653 /* AudiobookBookmarkBusinessLogicTests.swift */; };
 		E5037FE729A3FF84002DA132 /* ButtonStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5037FE629A3FF83002DA132 /* ButtonStateTests.swift */; };
+		E50543642E5F68B2007CCFAB /* LibraryNavTitle.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50543632E5F68B2007CCFAB /* LibraryNavTitle.swift */; };
+		E50543652E5F68B2007CCFAB /* LibraryNavTitle.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50543632E5F68B2007CCFAB /* LibraryNavTitle.swift */; };
+		E50543672E5F6A4F007CCFAB /* CatalogSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50543662E5F6A4F007CCFAB /* CatalogSearchView.swift */; };
+		E50543682E5F6A4F007CCFAB /* CatalogSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50543662E5F6A4F007CCFAB /* CatalogSearchView.swift */; };
+		E505436A2E5F6A68007CCFAB /* CatalogSearchViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50543692E5F6A68007CCFAB /* CatalogSearchViewModel.swift */; };
+		E505436B2E5F6A68007CCFAB /* CatalogSearchViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50543692E5F6A68007CCFAB /* CatalogSearchViewModel.swift */; };
+		E50543822E5F949D007CCFAB /* LibraryLogoNotifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50543812E5F949D007CCFAB /* LibraryLogoNotifier.swift */; };
+		E50543832E5F949D007CCFAB /* LibraryLogoNotifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50543812E5F949D007CCFAB /* LibraryLogoNotifier.swift */; };
+		E50543852E5F96BC007CCFAB /* CatalogLaneSkeletonView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50543842E5F96BC007CCFAB /* CatalogLaneSkeletonView.swift */; };
+		E50543862E5F96BC007CCFAB /* CatalogLaneSkeletonView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50543842E5F96BC007CCFAB /* CatalogLaneSkeletonView.swift */; };
+		E50543882E5F98B9007CCFAB /* CatalogLoadingViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50543872E5F98B9007CCFAB /* CatalogLoadingViewController.swift */; };
+		E50543892E5F98B9007CCFAB /* CatalogLoadingViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50543872E5F98B9007CCFAB /* CatalogLoadingViewController.swift */; };
+		E505438B2E5FAEEA007CCFAB /* FacetToolbarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E505438A2E5FAEEA007CCFAB /* FacetToolbarView.swift */; };
+		E505438C2E5FAEEA007CCFAB /* FacetToolbarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E505438A2E5FAEEA007CCFAB /* FacetToolbarView.swift */; };
+		E505438E2E5FAEF1007CCFAB /* CatalogFiltersSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E505438D2E5FAEF1007CCFAB /* CatalogFiltersSheetView.swift */; };
+		E505438F2E5FAEF1007CCFAB /* CatalogFiltersSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E505438D2E5FAEF1007CCFAB /* CatalogFiltersSheetView.swift */; };
+		E50543912E600145007CCFAB /* BookListSkeletonView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50543902E600145007CCFAB /* BookListSkeletonView.swift */; };
+		E50543922E600145007CCFAB /* BookListSkeletonView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50543902E600145007CCFAB /* BookListSkeletonView.swift */; };
 		E50BC9DD2CBF6FE900660937 /* PureLayout in Frameworks */ = {isa = PBXBuildFile; productRef = E50BC9DC2CBF6FE900660937 /* PureLayout */; };
 		E50D684326AB235400F1042B /* TPPReaderBookmarkCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03690E221EB2B35000F75D5F /* TPPReaderBookmarkCell.swift */; };
 		E50D684426AB235400F1042B /* TPPReaderTOCCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7386C1F9245276CA004C78BD /* TPPReaderTOCCell.swift */; };
@@ -1540,6 +1558,15 @@
 		E5024A8C2A0E8761006BF653 /* TPPBookCellDelegate+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPBookCellDelegate+Extensions.swift"; sourceTree = "<group>"; };
 		E5024A8E2A0EB9D6006BF653 /* AudiobookBookmarkBusinessLogicTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudiobookBookmarkBusinessLogicTests.swift; sourceTree = "<group>"; };
 		E5037FE629A3FF83002DA132 /* ButtonStateTests.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ButtonStateTests.swift; sourceTree = "<group>"; };
+		E50543632E5F68B2007CCFAB /* LibraryNavTitle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryNavTitle.swift; sourceTree = "<group>"; };
+		E50543662E5F6A4F007CCFAB /* CatalogSearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogSearchView.swift; sourceTree = "<group>"; };
+		E50543692E5F6A68007CCFAB /* CatalogSearchViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogSearchViewModel.swift; sourceTree = "<group>"; };
+		E50543812E5F949D007CCFAB /* LibraryLogoNotifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryLogoNotifier.swift; sourceTree = "<group>"; };
+		E50543842E5F96BC007CCFAB /* CatalogLaneSkeletonView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogLaneSkeletonView.swift; sourceTree = "<group>"; };
+		E50543872E5F98B9007CCFAB /* CatalogLoadingViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogLoadingViewController.swift; sourceTree = "<group>"; };
+		E505438A2E5FAEEA007CCFAB /* FacetToolbarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FacetToolbarView.swift; sourceTree = "<group>"; };
+		E505438D2E5FAEF1007CCFAB /* CatalogFiltersSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogFiltersSheetView.swift; sourceTree = "<group>"; };
+		E50543902E600145007CCFAB /* BookListSkeletonView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookListSkeletonView.swift; sourceTree = "<group>"; };
 		E512240B2DDFC41700D034A4 /* UIViewController+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UIViewController+Extensions.swift"; sourceTree = "<group>"; };
 		E51919D72B508EE400C08E86 /* URLRequest+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "URLRequest+Extensions.swift"; sourceTree = "<group>"; };
 		E519460E2D6E6B3D0081172E /* LoadingOverlayModifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoadingOverlayModifier.swift; sourceTree = "<group>"; };
@@ -2988,6 +3015,7 @@
 		E53573D42965306A008BDCA4 /* MyBooks */ = {
 			isa = PBXGroup;
 			children = (
+				E50543902E600145007CCFAB /* BookListSkeletonView.swift */,
 				E57F92B12D683562003D9180 /* BookListView.swift */,
 				E57F92B92D6918E4003D9180 /* BorderStyleModifier.swift */,
 				E53573D1295613FF008BDCA4 /* MyBooksViewModel.swift */,
@@ -3171,6 +3199,7 @@
 		E5AD72D82E5520FB005A8070 /* ViewModels */ = {
 			isa = PBXGroup;
 			children = (
+				E50543692E5F6A68007CCFAB /* CatalogSearchViewModel.swift */,
 				E5AD72D72E5520FB005A8070 /* CatalogViewModel.swift */,
 			);
 			path = ViewModels;
@@ -3179,9 +3208,16 @@
 		E5AD72DA2E5520FB005A8070 /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				E505438D2E5FAEF1007CCFAB /* CatalogFiltersSheetView.swift */,
+				E505438A2E5FAEEA007CCFAB /* FacetToolbarView.swift */,
+				E50543872E5F98B9007CCFAB /* CatalogLoadingViewController.swift */,
+				E50543842E5F96BC007CCFAB /* CatalogLaneSkeletonView.swift */,
+				E50543812E5F949D007CCFAB /* LibraryLogoNotifier.swift */,
+				E50543632E5F68B2007CCFAB /* LibraryNavTitle.swift */,
 				E5AD72F42E552A36005A8070 /* FacetsSelectorView.swift */,
 				E5AD72F12E5526B1005A8070 /* CatalogLaneMoreView.swift */,
 				E5AD72D92E5520FB005A8070 /* CatalogView.swift */,
+				E50543662E5F6A4F007CCFAB /* CatalogSearchView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -3935,6 +3971,7 @@
 				73EB0A7825821DF4006BC997 /* String+MD5.swift in Sources */,
 				73EB0A7925821DF4006BC997 /* TPPNetworkQueue.swift in Sources */,
 				E75499F82A1D6863009FF821 /* TPPAppDelegate+Extensions.swift in Sources */,
+				E505438E2E5FAEF1007CCFAB /* CatalogFiltersSheetView.swift in Sources */,
 				73EB0A7B25821DF4006BC997 /* TPPSignInBusinessLogicUIDelegate.swift in Sources */,
 				73D8D28325A6921400DF5F69 /* Float+TPPAdditions.swift in Sources */,
 				73EB0A7C25821DF4006BC997 /* TPPBookCellCollectionViewController.m in Sources */,
@@ -3956,6 +3993,7 @@
 				E5BEF01A26BD94D600C2A50B /* UIFont+Extensions.swift in Sources */,
 				21E41795292812B700A78606 /* TPPSignInBusinessLogic+CardCreation.swift in Sources */,
 				E562DE472D38BB8C003A1A40 /* Image+Extension.swift in Sources */,
+				E50543922E600145007CCFAB /* BookListSkeletonView.swift in Sources */,
 				E7861C512846937B00B3A38A /* TPPPDFViewController.swift in Sources */,
 				E5D8C8DF2D829B2000667A99 /* HTMLTextView.swift in Sources */,
 				E708F724284783250028405B /* TPPEncryptedPDFViewer.swift in Sources */,
@@ -3996,6 +4034,7 @@
 				21E41784292810EE00A78606 /* CGPDFPage+previews.swift in Sources */,
 				21E4178F2928112600A78606 /* Sample.swift in Sources */,
 				73EB0A9125821DF4006BC997 /* BundledHTMLViewController.swift in Sources */,
+				E50543882E5F98B9007CCFAB /* CatalogLoadingViewController.swift in Sources */,
 				73DB56C925F769FF003788EE /* TPPLastReadPositionSynchronizer.swift in Sources */,
 				E708F721284781D50028405B /* TPPEncryptedPDFViewController.swift in Sources */,
 				73D8D27925A68D3B00DF5F69 /* TPPReaderPositionsVC.swift in Sources */,
@@ -4007,6 +4046,7 @@
 				73EB0A9625821DF4006BC997 /* SEMigrations.swift in Sources */,
 				E562DDAD2D36E7C0003A1A40 /* BookDetailHostingViewController.swift in Sources */,
 				21E41799292813A000A78606 /* AsyncImage.swift in Sources */,
+				E50543852E5F96BC007CCFAB /* CatalogLaneSkeletonView.swift in Sources */,
 				E5B0ACF02D6EBE6D00F9B89B /* Array+Extensions.swift in Sources */,
 				21E41793292811CB00A78606 /* TPPReaderAdvancedSettings.swift in Sources */,
 				73EB0A9925821DF4006BC997 /* TPPOPDSCategory.m in Sources */,
@@ -4088,12 +4128,14 @@
 				73EB0AC325821DF4006BC997 /* TPPCatalogLaneCell.m in Sources */,
 				73EB0AC425821DF4006BC997 /* URLResponse+NYPL.swift in Sources */,
 				73EB0AC525821DF4006BC997 /* TPPSettings+SE.swift in Sources */,
+				E50543642E5F68B2007CCFAB /* LibraryNavTitle.swift in Sources */,
 				E562DD972D35AB8F003A1A40 /* BookDetailViewModel.swift in Sources */,
 				73EB0AC625821DF4006BC997 /* TPPSettingsAccountDetailViewController.m in Sources */,
 				21E417912928115400A78606 /* EpubSample.swift in Sources */,
 				21E4177F292810E500A78606 /* TPPPDFPreviewGridDelegate.swift in Sources */,
 				E5E443FB2DA4591C00AD4BC9 /* AdaptiveShadowModifier.swift in Sources */,
 				73EB0AC725821DF4006BC997 /* AudioBookVendorsHelper.swift in Sources */,
+				E50543682E5F6A4F007CCFAB /* CatalogSearchView.swift in Sources */,
 				E544A19F2DF0BB6C008679D6 /* HoldsView.swift in Sources */,
 				219C769A27629B8F00483647 /* TPPPagerDotsView.swift in Sources */,
 				73D8D28025A68D4300DF5F69 /* TPPBookLocation+Locator.swift in Sources */,
@@ -4132,11 +4174,13 @@
 				E51946112D6E6B450081172E /* LoadingOverlayModifier.swift in Sources */,
 				E523A456299FD7DC00EF833B /* AlertModel.swift in Sources */,
 				73D8D27525A68D2C00DF5F69 /* TPPBaseReaderViewController.swift in Sources */,
+				E505436B2E5F6A68007CCFAB /* CatalogSearchViewModel.swift in Sources */,
 				E50D684326AB235400F1042B /* TPPReaderBookmarkCell.swift in Sources */,
 				73EB0AE025821DF4006BC997 /* TPPOPDSIndirectAcquisition.m in Sources */,
 				21DDE32425D2CEC6002CBCE3 /* AdobeDRMLibraryService.swift in Sources */,
 				73EB0AE325821DF4006BC997 /* TPPReauthenticator.swift in Sources */,
 				E573454E2AD6E8530021D768 /* EPUBSearchView.swift in Sources */,
+				E505438B2E5FAEEA007CCFAB /* FacetToolbarView.swift in Sources */,
 				73EB0AE425821DF4006BC997 /* TPPAnnouncementBusinessLogic.swift in Sources */,
 				73EB0AE525821DF4006BC997 /* Account.swift in Sources */,
 				E5AD72DD2E5520FB005A8070 /* CatalogHostViewController.swift in Sources */,
@@ -4214,6 +4258,7 @@
 				73EB0B0925821DF4006BC997 /* TPPIndeterminateProgressView.m in Sources */,
 				E5E03F342CED172200D9979D /* TPPReadiumBookmark+R3.swift in Sources */,
 				73EB0B0A25821DF4006BC997 /* NSString+TPPStringAdditions.m in Sources */,
+				E50543832E5F949D007CCFAB /* LibraryLogoNotifier.swift in Sources */,
 				E521E9C72D513E3F00C08ADF /* BookButtonsView.swift in Sources */,
 				73EB0B0B25821DF4006BC997 /* TPPKeychainManager.swift in Sources */,
 				73DE897D260BEA13003D9135 /* TPPRequestExecuting.swift in Sources */,
@@ -4288,6 +4333,7 @@
 				2D382BD71D08BA99002C423D /* Log.swift in Sources */,
 				21DCC39C27BE4AF900064B37 /* TPPReaderFont.swift in Sources */,
 				081387571BC574DA003DEA6A /* UILabel+NYPLAppearanceAdditions.m in Sources */,
+				E50543822E5F949D007CCFAB /* LibraryLogoNotifier.swift in Sources */,
 				21F4BF3A26BC62D4000CF592 /* AdobeCertificate.swift in Sources */,
 				216D2E39274286D200472538 /* TPPLCPLicense.swift in Sources */,
 				E79289292861F5B0000313D7 /* TPPPDFSearchView.swift in Sources */,
@@ -4320,6 +4366,7 @@
 				E671FF7D1E3A7068002AB13F /* TPPNetworkQueue.swift in Sources */,
 				E706F60F286388B3000B7431 /* TPPPDFDocumentMetadata.swift in Sources */,
 				E7861C4B28468AB200B3A38A /* TPPPDFDocumentView.swift in Sources */,
+				E505438F2E5FAEF1007CCFAB /* CatalogFiltersSheetView.swift in Sources */,
 				E78ED2312B18026A00773278 /* TPPPDFTextExtractor.swift in Sources */,
 				739062D225358CF900D0743D /* TPPSignInBusinessLogicUIDelegate.swift in Sources */,
 				E57E798429D4D407006D0F87 /* String+Extensions.swift in Sources */,
@@ -4388,6 +4435,7 @@
 				17A5AB4F25D201BD005DFF05 /* LCPPassphraseAuthenticationService.swift in Sources */,
 				E7376ECC287DF1C30095AADF /* DispatchQueue.swift in Sources */,
 				11548C0E1939147D009DBF2E /* TPPCatalogNavigationController.m in Sources */,
+				E50543912E600145007CCFAB /* BookListSkeletonView.swift in Sources */,
 				E5A1413528D94DDA0091AD2D /* TPPContentType.swift in Sources */,
 				E5E2F8D42CB631C700A95840 /* TPPSAMLHelper.swift in Sources */,
 				215C866D27064198005F9621 /* BundleExtension.swift in Sources */,
@@ -4397,6 +4445,7 @@
 				A93F9F9721CDACF700BD3B0C /* TPPAppReviewPrompt.swift in Sources */,
 				73DB56C625F769FF003788EE /* TPPLastReadPositionSynchronizer.swift in Sources */,
 				E74752F727FF044400F5E7FA /* TPPSignInBusinessLogic+CardCreation.swift in Sources */,
+				E505438C2E5FAEEA007CCFAB /* FacetToolbarView.swift in Sources */,
 				E7861C492846875D00B3A38A /* TPPPDFView.swift in Sources */,
 				73F713682417240100C63B81 /* UIViewController+TPP.swift in Sources */,
 				733875672423E540000FEB67 /* TPPCaching.swift in Sources */,
@@ -4469,6 +4518,7 @@
 				5DD5674522B303DF001F0C83 /* TPPDeveloperSettingsTableViewController.swift in Sources */,
 				E512240C2DDFC41D00D034A4 /* UIViewController+Extensions.swift in Sources */,
 				E5FD62162BFD30F600DD4B94 /* LoadingViewController.swift in Sources */,
+				E50543892E5F98B9007CCFAB /* CatalogLoadingViewController.swift in Sources */,
 				E5AD65E12684FDA300C62951 /* TPPAccountListDataSource.swift in Sources */,
 				E5EFDE7C298C4F8000258CA3 /* BookCellModel.swift in Sources */,
 				E562DE3F2D38B98F003A1A40 /* UIImage+Extension.swift in Sources */,
@@ -4502,6 +4552,7 @@
 				1798538B255A4092009F94D9 /* TPPBookLocation+Locator.swift in Sources */,
 				E59A998A2BFC4D3700BE3BF4 /* TrackPosition+Annotations.swift in Sources */,
 				21989A1027B6FF0E00539B7F /* TPPReaderSettings.swift in Sources */,
+				E50543672E5F6A4F007CCFAB /* CatalogSearchView.swift in Sources */,
 				110AD83D19E497D6005724C3 /* TPPOPDSAttribute.m in Sources */,
 				E71A422B29017C58008FC910 /* TPPBookRegistry.swift in Sources */,
 				1114A6A1195884CB007507A2 /* TPPCatalogUngroupedFeed.m in Sources */,
@@ -4529,6 +4580,7 @@
 				E5FD62132BFD30E400DD4B94 /* AudiobookBookmarkBusinessLogic.swift in Sources */,
 				B51C1E0022861BAD003B49A5 /* OPDS2Link.swift in Sources */,
 				730D17CC25535954004CAC83 /* TPPSignInBusinessLogic+BookmarkSyncing.swift in Sources */,
+				E505436A2E5F6A68007CCFAB /* CatalogSearchViewModel.swift in Sources */,
 				E6DA7EA01F2A718600CFBEC8 /* TPPBookAuthor.swift in Sources */,
 				21045C552761092C00D2D407 /* TPPOnboardingViewController.swift in Sources */,
 				739ECB2425101CCE00691A70 /* NSNotification+TPP.swift in Sources */,
@@ -4570,6 +4622,7 @@
 				0826CD2924AA21B2000F4030 /* TPPSamlIDPCell.swift in Sources */,
 				2126FE2E25C059250095C45C /* ReaderError.swift in Sources */,
 				21562CC3276BB52700C03372 /* AdobeDRMAlerts.swift in Sources */,
+				E50543862E5F96BC007CCFAB /* CatalogLaneSkeletonView.swift in Sources */,
 				5D7CF8B922C3FC06007CAA34 /* TPPErrorLogger.swift in Sources */,
 				E7A9909027EE4EF400D9486F /* LicensesService.swift in Sources */,
 				E7FD4E52286CCF2C00D26A3B /* TPPPDFLocation.swift in Sources */,
@@ -4622,6 +4675,7 @@
 				E792891C2861F58B000313D7 /* TPPPDFTOCView.swift in Sources */,
 				21DCC3AB27BEC38F00064B37 /* TPPAssociatedColors.swift in Sources */,
 				5D3A28CC22D3DA850042B3BD /* UserProfileDocument.swift in Sources */,
+				E50543652E5F68B2007CCFAB /* LibraryNavTitle.swift in Sources */,
 				03F94CD11DD6288C00CE8F4F /* AccountsManager.swift in Sources */,
 				52592BB821220A1100587288 /* TPPLocalization.m in Sources */,
 				17071065242A923400E2648F /* TPPSecrets.swift in Sources */,
