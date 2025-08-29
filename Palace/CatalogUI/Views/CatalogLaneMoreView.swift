@@ -186,9 +186,11 @@ struct CatalogLaneMoreView: View {
 
   // MARK: - Navigation
 
+  @EnvironmentObject private var coordinator: NavigationCoordinator
+
   private func presentBookDetail(_ book: TPPBook) {
-    let detailVC = BookDetailHostingController(book: book)
-    TPPRootTabBarController.shared().pushViewController(detailVC, animated: true)
+    coordinator.store(book: book)
+    coordinator.push(.bookDetail(BookRoute(id: book.identifier)))
   }
 
   private func openLibraryHome() {

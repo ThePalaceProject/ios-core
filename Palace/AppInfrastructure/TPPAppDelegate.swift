@@ -170,7 +170,8 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     window?.tintColor = TPPConfiguration.mainColor()
     window?.tintAdjustmentMode = .normal
     window?.makeKeyAndVisible()
-    window?.rootViewController = TPPRootTabBarController.shared()
+    let root = AppTabHostView()
+    window?.rootViewController = UIHostingController(rootView: root)
   }
 
   private func configureUIAppearance() {

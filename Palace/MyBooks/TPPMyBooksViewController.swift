@@ -11,9 +11,10 @@ import SwiftUI
 
 class TPPMyBooksViewController: NSObject {
   @MainActor @objc static func makeSwiftUIView(dismissHandler: @escaping (() -> Void)) -> UIViewController {
-    let controller = UIHostingController(rootView: MyBooksView(model: MyBooksViewModel()))
+    let root = NavigationHostView(rootView: MyBooksView(model: MyBooksViewModel()))
+    let controller = UIHostingController(rootView: root)
     controller.title = Strings.MyBooksView.navTitle
     controller.tabBarItem.image = UIImage(named: "MyBooks")
-    return UINavigationController(rootViewController: controller)
+    return controller
   }
 }

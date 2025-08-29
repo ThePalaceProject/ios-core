@@ -2,6 +2,7 @@ import SwiftUI
 import UIKit
 
 struct HoldsView: View {
+  @EnvironmentObject private var coordinator: NavigationCoordinator
   typealias DisplayStrings = Strings.HoldsView
   
   @StateObject private var model = HoldsViewModel()
@@ -65,7 +66,7 @@ struct HoldsView: View {
     }
     .sheet(isPresented: $model.showSearchView) {
       let books = allBooks
-      NavigationView { CatalogSearchView(books: books) }
+      CatalogSearchView(books: books)
     }
   }
   
@@ -110,7 +111,9 @@ struct HoldsView: View {
   
   private var trailingBarButton: some View {
     Button {
-      model.showSearchView = true
+      let books = allBooks
+      let route = coordinator.storeSearchBooks(books)
+      coordinator.push(.search(route))
     } label: {
       ImageProviders.MyBooksView.search
     }
@@ -118,8 +121,8 @@ struct HoldsView: View {
   }
   
   private func presentBookDetail(_ book: TPPBook) {
-    let detailVC = BookDetailHostingController(book: book)
-    TPPRootTabBarController.shared().pushViewController(detailVC, animated: true)
+    coordinator.store(book: book)
+    coordinator.push(.bookDetail(BookRoute(id: book.identifier)))
   }
 }
 

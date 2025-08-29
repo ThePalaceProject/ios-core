@@ -2,9 +2,12 @@ import SwiftUI
 import UIKit
 
 struct CatalogView: View {
+  @EnvironmentObject private var coordinator: NavigationCoordinator
   @StateObject private var viewModel: CatalogViewModel
   @StateObject private var logoObserver = CatalogLogoObserver()
   @State private var currentAccountUUID: String = AccountsManager.shared.currentAccount?.uuid ?? ""
+  @State private var showAccountDialog: Bool = false
+  @State private var showAddLibrarySheet: Bool = false
 
   init(viewModel: CatalogViewModel) {
     _viewModel = StateObject(wrappedValue: viewModel)
@@ -20,7 +23,7 @@ struct CatalogView: View {
             .id(logoObserver.token.uuidString + currentAccountUUID)
         }
         ToolbarItem(placement: .navigationBarLeading) {
-          Button(action: { presentAccountPicker() }) {
+          Button(action: { showAccountDialog = true }) {
             ImageProviders.MyBooksView.myLibraryIcon
           }
         }
@@ -35,6 +38,37 @@ struct CatalogView: View {
         account?.logoDelegate = logoObserver
         account?.loadLogo()
         currentAccountUUID = account?.uuid ?? ""
+      }
+      .confirmationDialog(Strings.MyBooksView.findYourLibrary, isPresented: $showAccountDialog, titleVisibility: .visible) {
+        ForEach(TPPSettings.shared.settingsAccountsList, id: \.uuid) { account in
+          Button(account.name) {
+            AccountsManager.shared.currentAccount = account
+            if let urlString = account.catalogUrl, let url = URL(string: urlString) {
+              TPPSettings.shared.accountMainFeedURL = url
+            }
+            NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
+            Task { await viewModel.refresh() }
+          }
+        }
+        Button(Strings.MyBooksView.addLibrary) { showAddLibrarySheet = true }
+        Button(Strings.Generic.cancel, role: .cancel) {}
+      }
+      .sheet(isPresented: $showAddLibrarySheet) {
+        UIViewControllerWrapper(
+          TPPAccountList { account in
+            if !TPPSettings.shared.settingsAccountIdsList.contains(account.uuid) {
+              TPPSettings.shared.settingsAccountIdsList.append(account.uuid)
+            }
+            AccountsManager.shared.currentAccount = account
+            if let urlString = account.catalogUrl, let url = URL(string: urlString) {
+              TPPSettings.shared.accountMainFeedURL = url
+            }
+            NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
+            Task { await viewModel.refresh() }
+            showAddLibrarySheet = false
+          },
+          updater: { _ in }
+        )
       }
       .task { await viewModel.load() }
       .onReceive(NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)) { _ in
@@ -61,14 +95,15 @@ private extension CatalogView {
           contentArea
         }
         .padding(.vertical, 12)
+        .padding(.bottom, 100)
       }
       .refreshable { await viewModel.refresh() }
     }
   }
   
   func presentBookDetail(_ book: TPPBook) {
-    let detailVC = BookDetailHostingController(book: book)
-    TPPRootTabBarController.shared().pushViewController(detailVC, animated: true)
+    coordinator.store(book: book)
+    coordinator.push(.bookDetail(BookRoute(id: book.identifier)))
   }
 
   func openLibraryHome() {
@@ -79,11 +114,8 @@ private extension CatalogView {
 
   func presentSearch() {
     let books: [TPPBook] = !viewModel.lanes.isEmpty ? viewModel.lanes.flatMap { $0.books } : viewModel.ungroupedBooks
-    let swiftUIView = CatalogSearchView(books: books)
-    let hosting = UIHostingController(rootView: swiftUIView)
-    hosting.navigationItem.titleView = LibraryNavTitleFactory.makeTitleView()
-    let nav = UINavigationController(rootViewController: hosting)
-    TPPRootTabBarController.shared().safelyPresentViewController(nav, animated: true, completion: nil)
+    let route = coordinator.storeSearchBooks(books)
+    coordinator.push(.search(route))
   }
 
   func presentAccountPicker() {
@@ -176,7 +208,7 @@ private extension CatalogView {
                 Text(lane.title).font(.title3).bold()
                 Spacer()
                 if let more = lane.moreURL {
-                  NavigationLink("More…", destination: CatalogLaneMoreView(title: lane.title, url: more))
+                  Button("More…") { coordinator.push(.catalogLaneMore(title: lane.title, url: more)) }
                 }
               }
               .padding(.horizontal, 12)

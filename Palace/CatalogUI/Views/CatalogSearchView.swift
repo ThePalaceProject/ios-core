@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct CatalogSearchView: View {
+  @EnvironmentObject private var coordinator: NavigationCoordinator
   @StateObject private var viewModel: CatalogSearchViewModel
 
   init(books: [TPPBook]) {
@@ -45,8 +46,8 @@ struct CatalogSearchView: View {
   }
 
   private func presentBookDetail(_ book: TPPBook) {
-    let detailVC = BookDetailHostingController(book: book)
-    TPPRootTabBarController.shared().pushViewController(detailVC, animated: true)
+    coordinator.store(book: book)
+    coordinator.push(.bookDetail(BookRoute(id: book.identifier)))
   }
 }
 

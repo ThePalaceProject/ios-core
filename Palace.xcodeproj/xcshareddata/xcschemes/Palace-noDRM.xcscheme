@@ -28,7 +28,26 @@
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       shouldUseLaunchSchemeArgsEnv = "YES">
       <Testables>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "2D2B47711D08F807007F7764"
+               BuildableName = "PalaceTests.xctest"
+               BlueprintName = "PalaceTests"
+               ReferencedContainer = "container:Palace.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
+      <MacroExpansion>
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "73EB0A6325821DF4006BC997"
+            BuildableName = "Palace-noDRM.app"
+            BlueprintName = "Palace-noDRM"
+            ReferencedContainer = "container:Palace.xcodeproj">
+         </BuildableReference>
+      </MacroExpansion>
    </TestAction>
    <LaunchAction
       buildConfiguration = "Debug"

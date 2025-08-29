@@ -3,6 +3,7 @@ import Combine
 import PalaceUIKit
 
 struct MyBooksView: View {
+  @EnvironmentObject private var coordinator: NavigationCoordinator
   typealias DisplayStrings = Strings.MyBooksView
   @ObservedObject var model: MyBooksViewModel
   @State private var showSortSheet: Bool = false
@@ -89,8 +90,8 @@ struct MyBooksView: View {
   }
 
   private func presentBookDetail(for book: TPPBook) {
-    let detailVC = BookDetailHostingController(book: book)
-    TPPRootTabBarController.shared().pushViewController(detailVC, animated: true)
+    coordinator.store(book: book)
+    coordinator.push(.bookDetail(BookRoute(id: book.identifier)))
   }
 
   private var searchBar: some View {
