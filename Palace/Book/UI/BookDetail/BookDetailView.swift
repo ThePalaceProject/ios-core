@@ -149,7 +149,14 @@ struct BookDetailView: View {
     if UIDevice.current.userInterfaceIdiom == .pad {
       return iPadPadding
     } else {
-      return UIApplication.shared.windows.first?.safeAreaInsets.top ?? 0 > 20 ? notchPadding : basePadding
+      let topInset: CGFloat
+      if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+         let win = windowScene.windows.first {
+        topInset = win.safeAreaInsets.top
+      } else {
+        topInset = 0
+      }
+      return topInset > 20 ? notchPadding : basePadding
     }
   }
   

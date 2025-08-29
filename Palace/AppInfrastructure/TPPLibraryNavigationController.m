@@ -14,7 +14,7 @@
 
 #import "TPPLibraryNavigationController.h"
 #import "TPPRootTabBarController.h"
-#import "TPPCatalogNavigationController.h"
+// #import "TPPCatalogNavigationController.h" // No longer needed with SwiftUI Catalog
 
 @interface TPPLibraryNavigationController ()
 
@@ -104,8 +104,8 @@
 - (void)updateCatalogFeedSettingCurrentAccount:(Account *)account
 {
   [AccountsManager shared].currentAccount = account;
-  TPPCatalogNavigationController * catalog = (TPPCatalogNavigationController*)[TPPRootTabBarController sharedController].viewControllers[0];
-  [catalog updateFeedAndRegistryOnAccountChange];
+  // Notify Catalog to refresh via SwiftUI route
+  [[NSNotificationCenter defaultCenter] postNotificationName:NSNotification.TPPCurrentAccountDidChange object:nil];
 
   UIViewController *visibleVC = self.visibleViewController;
   visibleVC.navigationItem.title = [AccountsManager shared].currentAccount.name;

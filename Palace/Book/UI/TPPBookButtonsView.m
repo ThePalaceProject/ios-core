@@ -82,7 +82,7 @@
                              addObserverForName:NSNotification.TPPBookProcessingDidChange
                              object:nil
                              queue:[NSOperationQueue mainQueue]
-                             usingBlock:^(NSNotification *note) {
+                             usingBlock:^(__attribute__((unused)) NSNotification *note) {
     if ([note.userInfo[TPPNotificationKeys.bookProcessingBookIDKey] isEqualToString:self.book.identifier]) {
       BOOL isProcessing = [note.userInfo[TPPNotificationKeys.bookProcessingValueKey] boolValue];
       [self updateProcessingState:isProcessing];
@@ -93,7 +93,7 @@
                              addObserverForName:NSNotification.TPPReachabilityChanged
                              object:nil
                              queue:[NSOperationQueue mainQueue]
-                             usingBlock:^(NSNotification * _Nonnull note) {
+                             usingBlock:^(__attribute__((unused)) NSNotification * _Nonnull note) {
     [self updateButtons];
   }]];
   
@@ -261,6 +261,9 @@
                          AddIndicatorKey: @(YES)};
           break;
         case TPPBookContentTypeUnsupported:
+          buttonInfo = @{};
+          break;
+        default:
           buttonInfo = @{};
           break;
       }

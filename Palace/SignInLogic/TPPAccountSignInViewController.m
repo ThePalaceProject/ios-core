@@ -411,6 +411,9 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
         if (self.businessLogic.selectedAuthentication.supportsBarcodeScanner) {
           [cell.contentView addSubview:self.barcodeScanButton];
           CGFloat rightMargin = cell.layoutMargins.right;
+          if (@available(iOS 15.0, *)) {
+            // contentEdgeInsets is ignored with UIButtonConfiguration, but keep for older OS
+          }
           self.barcodeScanButton.contentEdgeInsets = UIEdgeInsetsMake(0, rightMargin * 2, 0, rightMargin);
           [self.barcodeScanButton autoPinEdgesToSuperviewEdgesWithInsets:UIEdgeInsetsZero excludingEdge:ALEdgeLeading];
           if (!self.usernameTextField.enabled) {

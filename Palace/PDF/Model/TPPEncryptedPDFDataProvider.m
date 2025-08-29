@@ -17,15 +17,15 @@
 NSData *_encryptedData;
 NSData * (^_decryptor)(NSData *data, NSUInteger start, NSUInteger end);
 
-static const void *dataPointer(void *info) {
+static const void *dataPointer(__attribute__((unused)) void *info) {
   return info;
 }
 
-static void releaseData(void *info, const void *pointer) {
+static void releaseData(__attribute__((unused)) void *info, const void *pointer) {
   free(pointer);
 }
 
-static size_t bytesAtPosition(void *info, void *buffer, off_t pos, size_t n) {
+static size_t bytesAtPosition(__attribute__((unused)) void *info, void *buffer, off_t pos, size_t n) {
   NSUInteger start = pos;
   NSUInteger end = pos + n;
   NSData *data = _decryptor(_encryptedData, start, end);

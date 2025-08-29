@@ -139,7 +139,7 @@ shouldSelectViewController:(nonnull UIViewController *)viewController
     [self dismissViewControllerAnimated:YES completion:nil];
   }
 
-  if (UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad) {
+  if ([UIDevice currentDevice].userInterfaceIdiom == UIUserInterfaceIdiomPad) {
     [UITabBarController hideFloatingTabBarWithAnimated:YES];
   }
   
@@ -149,7 +149,7 @@ shouldSelectViewController:(nonnull UIViewController *)viewController
 }
 
 - (UIViewController *)popViewControllerAnimated:(BOOL)animated {
-  if (UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad) {
+  if ([UIDevice currentDevice].userInterfaceIdiom == UIUserInterfaceIdiomPad) {
     [UITabBarController showFloatingTabBarWithAnimated:YES];
   }
 
