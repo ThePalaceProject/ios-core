@@ -612,14 +612,3 @@ private struct BookStateModifier: ViewModifier {
       }
   }
 }
-
-struct TPPCatalogFeedView: UIViewControllerRepresentable {
-  var url: URL
-  
-  func makeUIViewController(context: Context) -> TPPCatalogFeedViewController {
-    return TPPCatalogFeedViewController(url: url)
-  }
-  
-  func updateUIViewController(_ uiViewController: TPPCatalogFeedViewController, context: Context) {
-  }
-}

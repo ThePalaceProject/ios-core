@@ -12,9 +12,3 @@ extension TPPCatalogNavigationController {
   @objc func didSignOut() {
   }
 }
-
-extension TPPCatalogFeedViewController {
-  @objc func shouldLoad() -> Bool {
-    return TPPSettings.shared.userHasSeenWelcomeScreen
-  }
-}

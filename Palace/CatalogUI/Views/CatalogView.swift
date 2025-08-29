@@ -60,6 +60,16 @@ private extension CatalogView {
         .padding(.vertical, 12)
         .padding(.horizontal, 8)
       }
+    } else if viewModel.isContentReloading {
+      ScrollView {
+        VStack(alignment: .leading, spacing: 24) {
+          ForEach(0..<3, id: \.self) { _ in
+            CatalogLaneSkeletonView()
+          }
+        }
+        .padding(.vertical, 12)
+        .padding(.horizontal, 8)
+      }
     } else if let error = viewModel.errorMessage {
       Text(error)
     } else {

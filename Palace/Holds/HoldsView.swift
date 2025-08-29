@@ -64,10 +64,9 @@ struct HoldsView: View {
       }
     }
     .sheet(isPresented: $model.showSearchView) {
-      UIViewControllerWrapper(
-        TPPCatalogSearchViewController(openSearchDescription: model.openSearchDescription),
-        updater: { _ in }
-      )
+      let books = allBooks
+      let swiftUIView = CatalogSearchView(books: books)
+      UIHostingController(rootView: swiftUIView)
     }
   }
   
