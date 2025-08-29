@@ -37,12 +37,17 @@ struct EntryPointsSelectorView: View {
   @State private var pendingIndex: Int = 0
 
   var body: some View {
-    Picker("", selection: $selectionIndex) {
-      ForEach(entryPoints.indices, id: \.self) { idx in
-        Text(entryPoints[idx].title).tag(idx)
+    HStack {
+      Picker("", selection: $selectionIndex) {
+        ForEach(entryPoints.indices, id: \.self) { idx in
+          Text(entryPoints[idx].title).tag(idx)
+        }
       }
+      .pickerStyle(.segmented)
+      .frame(maxWidth: .infinity)
     }
-    .pickerStyle(.segmented)
+    .frame(maxWidth: 700)
+    .frame(maxWidth: .infinity, alignment: .center)
     .padding(.horizontal, 12)
     .padding(.vertical, 8)
     .onAppear {

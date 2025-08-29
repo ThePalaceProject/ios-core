@@ -17,7 +17,6 @@
 #import "TPPCatalogUngroupedFeed.h"
 #import "TPPCatalogLane.h"
 #import "TPPCatalogLaneCell.h"
-#import "TPPCatalogNavigationController.h"
 #import "TPPCatalogGroupedFeed.h"
 #import "TPPConfiguration.h"
 #import "TPPFacetView.h"

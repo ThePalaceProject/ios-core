@@ -359,7 +359,7 @@ struct BookDetailView: View {
                   .font(.headline)
                 Spacer()
                 if let url = lane.subsectionURL {
-                  NavigationLink(destination: TPPCatalogFeedView(url: url)) {
+                  NavigationLink(destination: CatalogLaneMoreView(url: url)) {
                     Text(DisplayStrings.more.capitalized)
                   }
                 }

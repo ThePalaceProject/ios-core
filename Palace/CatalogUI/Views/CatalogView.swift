@@ -51,79 +51,14 @@ private extension CatalogView {
   @ViewBuilder
   var content: some View {
     if viewModel.isLoading {
-      ScrollView {
-        VStack(alignment: .leading, spacing: 24) {
-          ForEach(0..<3, id: \.self) { _ in
-            CatalogLaneSkeletonView()
-          }
-        }
-        .padding(.vertical, 12)
-        .padding(.horizontal, 8)
-      }
-    } else if viewModel.isContentReloading {
-      ScrollView {
-        VStack(alignment: .leading, spacing: 24) {
-          ForEach(0..<3, id: \.self) { _ in
-            CatalogLaneSkeletonView()
-          }
-        }
-        .padding(.vertical, 12)
-        .padding(.horizontal, 8)
-      }
+      skeletonList
     } else if let error = viewModel.errorMessage {
       Text(error)
     } else {
       ScrollView {
         VStack(alignment: .leading, spacing: 24) {
-
-          if !viewModel.entryPoints.isEmpty {
-            EntryPointsSelectorView(entryPoints: viewModel.entryPoints) { facet in
-              Task { await viewModel.applyEntryPoint(facet) }
-            }
-          }
-
-          if !viewModel.facetGroups.isEmpty {
-            FacetsSelectorView(facetGroups: viewModel.facetGroups) { facet in
-              Task { await viewModel.applyFacet(facet) }
-            }
-          }
-          if !viewModel.lanes.isEmpty {
-            LazyVStack(alignment: .leading, spacing: 24, pinnedViews: [.sectionHeaders]) {
-              ForEach(viewModel.lanes) { lane in
-                Section(
-                  header:
-                    HStack {
-                      Text(lane.title).font(.title3).bold()
-                      Spacer()
-                      if let more = lane.moreURL {
-                        NavigationLink("More…", destination: CatalogLaneMoreView(title: lane.title, url: more))
-                      }
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Color(UIColor.systemBackground))
-                ) {
-                  ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(spacing: 12) {
-                      ForEach(lane.books, id: \.identifier) { book in
-                        Button(action: { presentBookDetail(book) }) {
-                          BookImageView(book: book, width: nil, height: 180, usePulseSkeleton: true)
-                            .adaptiveShadowLight(radius: 1.0)
-                            .padding(.vertical)
-                        }
-                        .buttonStyle(.plain)
-                      }
-                    }
-                    .padding(.horizontal, 12)
-                  }
-                }
-              }
-            }
-          } else {
-            BookListView(books: viewModel.ungroupedBooks, isLoading: .constant(false)) { book in
-              presentBookDetail(book)
-            }
-          }
+          selectorsView
+          contentArea
         }
         .padding(.vertical, 12)
       }
@@ -188,6 +123,84 @@ private extension CatalogView {
     actionSheet.addAction(addLibrary)
     actionSheet.addAction(UIAlertAction(title: Strings.Generic.cancel, style: .cancel, handler: nil))
     TPPRootTabBarController.shared().safelyPresentViewController(actionSheet, animated: true, completion: nil)
+  }
+
+  // MARK: - Subviews
+
+  /// Top-level skeleton used during initial load.
+  @ViewBuilder
+  var skeletonList: some View {
+    ScrollView {
+      VStack(alignment: .leading, spacing: 24) {
+        ForEach(0..<3, id: \.self) { _ in
+          CatalogLaneSkeletonView()
+        }
+      }
+      .padding(.vertical, 12)
+      .padding(.horizontal, 8)
+    }
+  }
+
+  /// Entry point and facet selectors rendered above the content area.
+  @ViewBuilder
+  var selectorsView: some View {
+    if !viewModel.entryPoints.isEmpty {
+      EntryPointsSelectorView(entryPoints: viewModel.entryPoints) { facet in
+        Task { await viewModel.applyEntryPoint(facet) }
+      }
+    }
+
+    if !viewModel.facetGroups.isEmpty {
+      FacetsSelectorView(facetGroups: viewModel.facetGroups) { facet in
+        Task { await viewModel.applyFacet(facet) }
+      }
+    }
+  }
+
+  /// Content area below selectors: shows skeletons while reloading, otherwise lanes or ungrouped list.
+  @ViewBuilder
+  var contentArea: some View {
+    if viewModel.isContentReloading {
+      VStack(alignment: .leading, spacing: 24) {
+        ForEach(0..<3, id: \.self) { _ in
+          CatalogLaneSkeletonView()
+        }
+      }
+      .padding(.vertical, 0)
+    } else if !viewModel.lanes.isEmpty {
+      LazyVStack(alignment: .leading, spacing: 24, pinnedViews: [.sectionHeaders]) {
+        ForEach(viewModel.lanes) { lane in
+          Section(
+            header:
+              HStack {
+                Text(lane.title).font(.title3).bold()
+                Spacer()
+                if let more = lane.moreURL {
+                  NavigationLink("More…", destination: CatalogLaneMoreView(title: lane.title, url: more))
+                }
+              }
+              .padding(.horizontal, 12)
+              .background(Color(UIColor.systemBackground))
+          ) {
+            ScrollView(.horizontal, showsIndicators: false) {
+              LazyHStack(spacing: 12) {
+                ForEach(lane.books, id: \.identifier) { book in
+                  Button(action: { presentBookDetail(book) }) {
+                    BookImageView(book: book, width: nil, height: 180, usePulseSkeleton: true)
+                  }
+                  .buttonStyle(.plain)
+                }
+              }
+              .padding(.horizontal, 12)
+            }
+          }
+        }
+      }
+    } else {
+      BookListView(books: viewModel.ungroupedBooks, isLoading: .constant(false)) { book in
+        presentBookDetail(book)
+      }
+    }
   }
 }
 

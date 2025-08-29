@@ -1,5 +1,4 @@
 #import "Palace-Swift.h"
-#import "TPPCatalogFeedViewController.h"
 #import "TPPConfiguration.h"
 #import "TPPCatalogNavigationController.h"
 #import "TPPAccountSignInViewController.h"
@@ -7,9 +6,6 @@
 #import "NSString+TPPStringAdditions.h"
 
 @interface TPPCatalogNavigationController()
-
-@property (nonatomic) TPPCatalogFeedViewController *const viewController;
-
 @end
 
 
@@ -30,26 +26,9 @@
 
 - (void)loadTopLevelCatalogViewControllerInternal
 {
-  // TODO: SIMPLY-2862
-  // unfortunately it is possible to get here with a nil feed URL. This is
-  // the result of an early initialization of the navigation controller
-  // while the account is not yet set up. While this is definitely not
-  // ideal, in my observations this seems to always be followed by
-  // another `load` command once the authentication document is received.
-  NSURL *urlToLoad = [TPPSettings sharedSettings].accountMainFeedURL;
-  TPPLOG_F(@"urlToLoad for NYPLCatalogFeedViewController: %@", urlToLoad);
-  self.viewController = [[TPPCatalogFeedViewController alloc]
-                         initWithURL:urlToLoad];
-  
-  self.viewController.title = NSLocalizedString(@"Catalog", nil);
-
-#ifdef SIMPLYE
-  [self setNavigationLeftBarButtonForVC:self.viewController];
-#endif
-
-  self.viewController.navigationItem.backBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:NSLocalizedString(@"Catalog", nil) style:UIBarButtonItemStylePlain target:nil action:nil];
-
-  self.viewControllers = @[self.viewController];
+  UIViewController *vc = [TPPCatalogHostViewController makeSwiftUIView];
+  vc.title = NSLocalizedString(@"Catalog", nil);
+  self.viewControllers = @[vc];
 }
 
 #pragma mark NSObject
@@ -57,18 +36,10 @@
 - (instancetype)init
 {
   self = [super init];
-  
   self.tabBarItem.title = NSLocalizedString(@"Catalog", nil);
   self.tabBarItem.image = [UIImage imageNamed:@"Catalog"];
   self.navigationItem.title = NSLocalizedString(@"Catalog", nil);
-  
   [self loadTopLevelCatalogViewController];
-  
-  [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(currentAccountChanged) name:NSNotification.TPPCurrentAccountDidChange object:nil];
-  [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(syncBegan) name:NSNotification.TPPSyncBegan object:nil];
-  [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(syncEnded) name:NSNotification.TPPSyncEnded object:nil];
-  [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(didSignOut) name:NSNotification.TPPDidSignOut object:nil];
-
   return self;
 }
 
@@ -85,13 +56,13 @@
 - (void)syncBegan
 {
   self.navigationItem.leftBarButtonItem.enabled = NO;
-  self.viewController.navigationItem.leftBarButtonItem.enabled = NO;
+  self.topViewController.navigationItem.leftBarButtonItem.enabled = NO;
 }
 
 - (void)syncEnded
 {
   self.navigationItem.leftBarButtonItem.enabled = YES;
-  self.viewController.navigationItem.leftBarButtonItem.enabled = YES;
+  self.topViewController.navigationItem.leftBarButtonItem.enabled = YES;
 }
 
 #ifdef SIMPLYE

@@ -8,7 +8,7 @@
 
 import Foundation
 
-extension TPPCatalogNavigationController {
-  @objc func didSignOut() {
+@objc extension TPPRootTabBarController {
+  func didSignOut() {
   }
 }

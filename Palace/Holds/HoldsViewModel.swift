@@ -115,9 +115,8 @@ final class HoldsViewModel: ObservableObject {
     
     private func updateFeed(_ account: Account) {
         AccountsManager.shared.currentAccount = account
-        if let catalogNavController = TPPRootTabBarController.shared().viewControllers?.first as? TPPCatalogNavigationController {
-            catalogNavController.updateFeedAndRegistryOnAccountChange()
-        }
+        // Notify app of account change; observers will refresh Catalog/UI
+        NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
     }
 
     var openSearchDescription: TPPOpenSearchDescription {

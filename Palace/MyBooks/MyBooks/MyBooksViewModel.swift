@@ -147,9 +147,8 @@ enum Group: Int {
 
   private func updateFeed(_ account: Account) {
     AccountsManager.shared.currentAccount = account
-    if let catalogNavController = TPPRootTabBarController.shared().viewControllers?.first as? TPPCatalogNavigationController {
-      catalogNavController.updateFeedAndRegistryOnAccountChange()
-    }
+    // Notify the app that the account changed so Catalog and UI refresh appropriately
+    NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
   }
 
   // MARK: - Notification Handling

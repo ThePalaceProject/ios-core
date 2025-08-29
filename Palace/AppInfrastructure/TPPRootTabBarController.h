@@ -1,5 +1,4 @@
 @class TPPR3Owner;
-@class TPPCatalogNavigationController;
 
 @interface TPPRootTabBarController : UITabBarController
 
@@ -12,7 +11,7 @@
 
 @property (readonly) TPPR3Owner *r3Owner;
 @property (nonatomic) BOOL isPresentingSample;
-@property(nonatomic, readonly) TPPCatalogNavigationController *catalogNavigationController;
+@property(nonatomic, readonly) UINavigationController *catalogNavigationController;
 
 /// This method will present a view controller from the receiver, or from the
 /// controller currently being presented from the receiver, or from the

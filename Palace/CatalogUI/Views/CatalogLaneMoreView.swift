@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct CatalogLaneMoreView: View {
-  let title: String
+  var title: String = ""
   let url: URL
 
   @State private var lanes: [CatalogLaneModel] = []
@@ -61,7 +61,8 @@ struct CatalogLaneMoreView: View {
                 title: lane.title,
                 books: lane.books,
                 moreURL: lane.moreURL,
-                onSelect: { presentBookDetail($0) }
+                onSelect: { presentBookDetail($0) },
+                showHeader: true
               )
             }
           }

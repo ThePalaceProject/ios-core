@@ -13,17 +13,18 @@ struct BookRowSkeletonView: View {
       VStack(alignment: .leading, spacing: 10) {
         Rectangle()
           .fill(Color.gray.opacity(0.25))
-          .frame(width: 180, height: 14)
+          .frame(width: 220, height: 14)
           .opacity(pulse ? 0.6 : 1.0)
 
         Rectangle()
           .fill(Color.gray.opacity(0.25))
-          .frame(width: 120, height: 12)
+          .frame(width: 160, height: 12)
           .opacity(pulse ? 0.6 : 1.0)
       }
       Spacer()
     }
-    .padding(5)
+    .padding(.horizontal, 12)
+    .padding(.vertical, 10)
     .overlay(
       Rectangle()
         .frame(height: 1)
@@ -40,7 +41,7 @@ struct BookRowSkeletonView: View {
 }
 
 struct BookListSkeletonView: View {
-  var rows: Int = 8
+  var rows: Int = 10
   var imageSize: CGSize = CGSize(width: 100, height: 150)
 
   var body: some View {
@@ -50,7 +51,7 @@ struct BookListSkeletonView: View {
           BookRowSkeletonView(imageSize: imageSize)
         }
       }
-      .padding()
+      .padding(.vertical, 12)
     }
   }
 }

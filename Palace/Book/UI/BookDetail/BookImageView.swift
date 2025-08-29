@@ -26,7 +26,6 @@ struct BookImageView: View {
           .resizable()
           .aspectRatio(contentMode: .fit)
           .frame(width: computedWidth, height: height)
-          .adaptiveShadow(radius: 6)
           .opacity(isShimmering ? 0 : 1)
           .transition(.opacity)
           .onAppear { withAnimation(.easeInOut(duration: 0.25)) { isShimmering = false } }

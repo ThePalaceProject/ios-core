@@ -65,8 +65,7 @@ struct HoldsView: View {
     }
     .sheet(isPresented: $model.showSearchView) {
       let books = allBooks
-      let swiftUIView = CatalogSearchView(books: books)
-      UIHostingController(rootView: swiftUIView)
+      NavigationView { CatalogSearchView(books: books) }
     }
   }
   

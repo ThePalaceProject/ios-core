@@ -1,15 +1,15 @@
-#import "TPPCatalogNavigationController.h"
+#import <UIKit/UIKit.h>
 #import "TPPHoldsNavigationController.h"
 #import "TPPRootTabBarController.h"
 #import "Palace-Swift.h"
 
 @interface TPPRootTabBarController () <UITabBarControllerDelegate>
 
-@property (nonatomic) TPPCatalogNavigationController *catalogNavigationController;
-@property (nonatomic) TPPMyBooksViewController *myBooksNavigationController;
-@property (nonatomic) TPPHoldsNavigationController *holdsNavigationController;
-@property (nonatomic) TPPSettingsViewController *settingsViewController;
-@property (readwrite) TPPR3Owner *r3Owner;
+@property (nonatomic, strong) UINavigationController *catalogNavigationController;
+@property (nonatomic, strong) TPPMyBooksViewController *myBooksNavigationController;
+@property (nonatomic, strong) TPPHoldsNavigationController *holdsNavigationController;
+@property (nonatomic, strong) TPPSettingsViewController *settingsViewController;
+@property (readwrite, nonatomic, strong) TPPR3Owner *r3Owner;
 
 @end
 
@@ -39,7 +39,7 @@
   
   self.delegate = self;
   
-  self.catalogNavigationController = (TPPCatalogNavigationController * ) [TPPCatalogHostViewController makeSwiftUIView];
+  _catalogNavigationController = (UINavigationController * ) [TPPCatalogHostViewController makeSwiftUIView];
   self.myBooksNavigationController = (TPPMyBooksViewController * ) [TPPMyBooksViewController makeSwiftUIViewWithDismissHandler:^{
     [[self presentedViewController] dismissViewControllerAnimated:YES completion:nil];
   }];

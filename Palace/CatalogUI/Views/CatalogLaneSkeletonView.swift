@@ -1,13 +1,13 @@
 import SwiftUI
 
 struct CatalogLaneSkeletonView: View {
-  var titleWidth: CGFloat = 120
+  var titleWidth: CGFloat = 160
   var itemSize: CGSize = CGSize(width: 120, height: 180)
-  var itemCount: Int = 6
+  var itemCount: Int = 8
   @State private var pulse: Bool = false
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 8) {
+    VStack(alignment: .leading, spacing: 12) {
       Rectangle()
         .fill(Color.gray.opacity(0.25))
         .frame(width: titleWidth, height: 16)
