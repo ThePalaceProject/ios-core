@@ -8,8 +8,7 @@
 
 import Foundation
 
-extension TPPRootTabBarController {
-  @objc func setInitialSelectedTab() {
-    self.selectedIndex = 0
-  }
+// Removed in SwiftUI shell; kept temporarily to avoid missing symbol if referenced.
+@objc class TPPRootTabBarController_SE_Shunt: NSObject {
+  @objc func setInitialSelectedTab() {}
 }

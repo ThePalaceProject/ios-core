@@ -23,7 +23,7 @@ class TPPAnnouncementBusinessLogic {
     guard let alert = self.alert(announcements: presentableAnnouncements) else {
       return
     }
-    TPPRootTabBarController.shared()?.safelyPresentViewController(alert, animated: true, completion: nil)
+    TPPPresentationUtils.safelyPresent(alert, animated: true, completion: nil)
   }
   
   // MARK: - Read
@@ -94,7 +94,7 @@ class TPPAnnouncementBusinessLogic {
       if i > 0 {
         let action = UIAlertAction.init(title: DisplayStrings.ok,
                                         style: .default) { [weak self] _ in
-          TPPRootTabBarController.shared()?.safelyPresentViewController(alert, animated: true, completion: nil)
+          TPPPresentationUtils.safelyPresent(alert, animated: true, completion: nil)
           self?.addPresentedAnnouncement(id: announcements[i - 1].id)
         }
         currentAlert?.addAction(action)

@@ -251,13 +251,13 @@ extension TPPBookCellDelegate {
               }
               TPPAppStoreReviewPrompt.presentIfAvailable()
             }
-            TPPRootTabBarController.shared().present(alert, animated: true, completion: nil)
+            TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
           } else {
             TPPAppStoreReviewPrompt.presentIfAvailable()
           }
         }
 
-        TPPRootTabBarController.shared().pushViewController(audiobookPlayer, animated: true)
+        // Present via coordinator in Swift; legacy push removed in migration
 
         self.startLoading(audiobookPlayer)
 

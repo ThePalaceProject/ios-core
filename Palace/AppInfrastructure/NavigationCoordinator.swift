@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// High-level app routes for SwiftUI NavigationStack.
 /// Extend incrementally as new flows migrate to SwiftUI.
@@ -6,6 +7,8 @@ enum AppRoute: Hashable {
   case bookDetail(BookRoute)
   case catalogLaneMore(title: String, url: URL)
   case search(SearchRoute)
+  case pdf(BookRoute)
+  case audio(BookRoute)
 }
 
 /// Lightweight, hashable identifier for a book navigation route.
@@ -27,6 +30,8 @@ final class NavigationCoordinator: ObservableObject {
   /// This lets us resolve non-hashable models like Objective-C `TPPBook` at destination time.
   private var bookById: [String: TPPBook] = [:]
   private var searchBooksById: [UUID: [TPPBook]] = [:]
+  private var pdfControllerById: [String: UIViewController] = [:]
+  private var audioControllerById: [String: UIViewController] = [:]
 
   // MARK: - Public API
 
@@ -59,6 +64,23 @@ final class NavigationCoordinator: ObservableObject {
 
   func resolveSearchBooks(for route: SearchRoute) -> [TPPBook] {
     searchBooksById[route.id] ?? []
+  }
+
+  // MARK: - Controllers
+  func storePDFController(_ controller: UIViewController, forBookId id: String) {
+    pdfControllerById[id] = controller
+  }
+
+  func resolvePDFController(for route: BookRoute) -> UIViewController? {
+    pdfControllerById[route.id]
+  }
+
+  func storeAudioController(_ controller: UIViewController, forBookId id: String) {
+    audioControllerById[id] = controller
+  }
+
+  func resolveAudioController(for route: BookRoute) -> UIViewController? {
+    audioControllerById[route.id]
   }
 }
 

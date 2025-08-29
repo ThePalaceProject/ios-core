@@ -144,17 +144,21 @@ private extension CatalogView {
           }
           NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
           Task { await viewModel.refresh() }
-          TPPRootTabBarController.shared().dismiss(animated: true, completion: nil)
+          showAddLibrarySheet = false
         },
         updater: { _ in }
       )
       let hosting = UIHostingController(rootView: wrapper)
       let nav = UINavigationController(rootViewController: hosting)
-      TPPRootTabBarController.shared().safelyPresentViewController(nav, animated: true, completion: nil)
+      if let top = UIApplication.shared.keyWindow?.rootViewController {
+        top.present(nav, animated: true)
+      }
     }
     actionSheet.addAction(addLibrary)
     actionSheet.addAction(UIAlertAction(title: Strings.Generic.cancel, style: .cancel, handler: nil))
-    TPPRootTabBarController.shared().safelyPresentViewController(actionSheet, animated: true, completion: nil)
+    if let top = UIApplication.shared.keyWindow?.rootViewController {
+      top.present(actionSheet, animated: true)
+    }
   }
 
   // MARK: - Subviews

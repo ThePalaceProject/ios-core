@@ -34,7 +34,6 @@ struct MyBooksView: View {
       }
       .onAppear {
         model.showSearchSheet = false
-        UITabBarController.showFloatingTabBar()
         let account = AccountsManager.shared.currentAccount
         account?.logoDelegate = logoObserver
         account?.loadLogo()

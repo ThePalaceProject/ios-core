@@ -400,7 +400,7 @@ final class BookDetailViewModel: ObservableObject {
   }
   
   private func presentEPUB(_ book: TPPBook) {
-    TPPRootTabBarController.shared().presentBook(book)
+    ReaderService.shared.openEPUB(book)
   }
   
   private func presentPDF(_ book: TPPBook) {
@@ -409,7 +409,10 @@ final class BookDetailViewModel: ObservableObject {
     let metadata = TPPPDFDocumentMetadata(with: book)
     let document = TPPPDFDocument(data: data ?? Data())
     let pdfViewController = TPPPDFViewController.create(document: document, metadata: metadata)
-    TPPRootTabBarController.shared().pushViewController(pdfViewController, animated: true)
+    if let coordinator = NavigationCoordinatorHub.shared.coordinator {
+      coordinator.storePDFController(pdfViewController, forBookId: book.identifier)
+      coordinator.push(.pdf(BookRoute(id: book.identifier)))
+    }
   }
   
   // MARK: - Audiobook Opening
@@ -720,8 +723,10 @@ final class BookDetailViewModel: ObservableObject {
     }
     
     audiobookPlayer = AudiobookPlayer(audiobookManager: audiobookManager, coverImagePublisher: book.$coverImage.eraseToAnyPublisher())
-    
-    TPPRootTabBarController.shared().pushViewController(audiobookPlayer!, animated: true)
+    if let coordinator = NavigationCoordinatorHub.shared.coordinator, let player = audiobookPlayer {
+      coordinator.storeAudioController(player, forBookId: book.identifier)
+      coordinator.push(.audio(BookRoute(id: book.identifier)))
+    }
     
     syncAudiobookLocation(for: book)
     scheduleTimer()
@@ -809,7 +814,10 @@ final class BookDetailViewModel: ObservableObject {
           } else if let sampleWebURL = sampleURL as? EpubSampleWebURL {
             self.presentWebView(sampleWebURL.url)
           } else if let sampleURL = sampleURL?.url {
-            TPPRootTabBarController.shared().presentSample(book, url: sampleURL)
+            let web = BundledHTMLViewController(fileURL: sampleURL, title: book.title)
+            if let top = UIApplication.shared.keyWindow?.rootViewController {
+              top.present(web, animated: true)
+            }
           }
           self.isProcessingSample = false
           completion?()
@@ -825,9 +833,9 @@ final class BookDetailViewModel: ObservableObject {
       title: AccountsManager.shared.currentAccount?.name ?? ""
     )
     
-    let root = TPPRootTabBarController.shared()
-    let top = root?.topMostViewController
-    top?.present(webController, animated: true)
+    if let top = UIApplication.shared.keyWindow?.rootViewController {
+      top.present(webController, animated: true)
+    }
   }
   
   // MARK: - Error Alerts
@@ -972,14 +980,12 @@ extension BookDetailViewModel {
         guard let self else { return }
         
         if returnWasChosen {
-          if let navController = TPPRootTabBarController.shared()?.topMostViewController.navigationController {
-            navController.popViewController(animated: true)
-          }
+          NavigationCoordinatorHub.shared.coordinator?.pop()
           self.didSelectReturn(for: self.book, completion: nil)
         }
         TPPAppStoreReviewPrompt.presentIfAvailable()
       }
-      TPPRootTabBarController.shared().present(alert, animated: true, completion: nil)
+      TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
     } else {
       TPPAppStoreReviewPrompt.presentIfAvailable()
     }

@@ -38,9 +38,6 @@ struct NavigationHostView<Content: View>: View {
             } else {
               EmptyView()
             }
-          case .epub(_):
-            // EPUB handled by ReaderService pushing its own controller; this route exists for parity.
-            EmptyView()
           @unknown default:
             EmptyView()
           }

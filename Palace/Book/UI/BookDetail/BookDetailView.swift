@@ -70,7 +70,6 @@ struct BookDetailView: View {
       .onAppear {
         headerColor = Color(viewModel.book.dominantUIColor)
 
-        UITabBarController.hideFloatingTabBar()
         headerHeight = viewModel.isFullSize ? 300 : 225
         viewModel.fetchRelatedBooks()
         self.descriptionText = viewModel.book.summary ?? ""

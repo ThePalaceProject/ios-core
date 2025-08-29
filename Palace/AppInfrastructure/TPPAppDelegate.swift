@@ -2,6 +2,7 @@ import Foundation
 import FirebaseCore
 import FirebaseDynamicLinks
 import BackgroundTasks
+import SwiftUI
 
 @main
 class TPPAppDelegate: UIResponder, UIApplicationDelegate {

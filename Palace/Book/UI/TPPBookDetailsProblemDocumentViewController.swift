@@ -41,7 +41,7 @@
     
     // NavBar
     var navBar: UIView?
-    if UIDevice.current.userInterfaceIdiom == .pad && TPPRootTabBarController.shared()!.traitCollection.horizontalSizeClass != .compact {
+    if UIDevice.current.userInterfaceIdiom == .pad && (UIApplication.shared.keyWindow?.traitCollection.horizontalSizeClass != .compact) {
       navBar = UIView.init()
       navBar!.translatesAutoresizingMaskIntoConstraints = false
       

@@ -1,20 +1,43 @@
 import SwiftUI
 
 struct AppTabHostView: View {
+  @StateObject private var router = AppTabRouter()
+  
   var body: some View {
-    TabView {
+    TabView(selection: $router.selected) {
       NavigationHostView(rootView: TPPCatalogHostViewController.makeSwiftUIViewSwiftUI())
-        .tabItem { Label(NSLocalizedString("Catalog", comment: ""), image: "Catalog") }
+        .tabItem {
+          VStack {
+            Image("Catalog").renderingMode(.template)
+            Text(NSLocalizedString("Catalog", comment: ""))
+          }
+        }
+        .tag(AppTab.catalog)
 
       NavigationHostView(rootView: MyBooksView(model: MyBooksViewModel()))
-        .tabItem { Label(Strings.MyBooksView.navTitle, image: "MyBooks") }
+        .tabItem {
+          VStack {
+            Image("MyBooks").renderingMode(.template)
+            Text(Strings.MyBooksView.navTitle)
+          }
+        }
+        .tag(AppTab.myBooks)
 
       NavigationHostView(rootView: HoldsView())
-        .tabItem { Label(NSLocalizedString("Reservations", comment: ""), image: "Holds") }
+        .tabItem {
+          VStack {
+            Image("Holds").renderingMode(.template)
+            Text(NSLocalizedString("Reservations", comment: ""))
+          }
+        }
+        .tag(AppTab.holds)
 
       NavigationHostView(rootView: TPPSettingsView())
         .tabItem { Label(NSLocalizedString("Settings", comment: ""), systemImage: "gearshape") }
+        .tag(AppTab.settings)
     }
+    .tint(Color.accentColor)
+    .onAppear { AppTabRouterHub.shared.router = router }
   }
 }
 

@@ -1,7 +1,6 @@
 @import PureLayout;
 
 #import "TPPLinearView.h"
-#import "TPPRootTabBarController.h"
 #import "UIView+TPPViewAdditions.h"
 #import "Palace-Swift.h"
 
@@ -182,10 +181,7 @@ CGFloat const toolbarHeight = 40;
     ++facetIndex;
   }
   
-  [[TPPRootTabBarController sharedController]
-   safelyPresentViewController:alertController
-   animated:YES
-   completion:nil];
+  [TPPPresentationUtils safelyPresent:alertController animated:YES completion:nil];
 }
 
 #pragma mark UIView

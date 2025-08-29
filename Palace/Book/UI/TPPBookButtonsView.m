@@ -10,7 +10,6 @@
 
 #import "TPPBookButtonsView.h"
 #import "TPPConfiguration.h"
-#import "TPPRootTabBarController.h"
 #import "TPPOPDS.h"
 #import "Palace-Swift.h"
 
@@ -464,7 +463,7 @@
                                                       [self.delegate didSelectReturnForBook:self.book completion:nil];
                                                     }]];
   
-  [[TPPRootTabBarController sharedController] safelyPresentViewController:alertController animated:YES completion:nil];
+  [TPPPresentationUtils safelyPresent:alertController animated:YES completion:nil];
 }
 
 - (void)didSelectRead

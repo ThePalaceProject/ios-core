@@ -13,7 +13,6 @@
 #endif
 
 #import "TPPLibraryNavigationController.h"
-#import "TPPRootTabBarController.h"
 // #import "TPPCatalogNavigationController.h" // No longer needed with SwiftUI Catalog
 
 @interface TPPLibraryNavigationController ()
@@ -75,7 +74,7 @@
 
   [alert addAction:[UIAlertAction actionWithTitle:NSLocalizedString(@"Cancel", nil) style:(UIAlertActionStyleCancel) handler:nil]];
 
-  [[TPPRootTabBarController sharedController] safelyPresentViewController:alert animated:YES completion:nil];
+  [TPPPresentationUtils safelyPresent:alert animated:YES completion:nil];
 }
 
 - (void) loadAccount:(Account *)account {

@@ -7,7 +7,6 @@
 #import "TPPConfiguration.h"
 #import "TPPLinearView.h"
 #import "TPPOPDS.h"
-#import "TPPRootTabBarController.h"
 #import "TPPSettingsAccountDetailViewController.h"
 #import "TPPSettingsEULAViewController.h"
 #import "TPPXML.h"
@@ -585,8 +584,7 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
             }
             // Notify and let SwiftUI Catalog handle refresh
             [[NSNotificationCenter defaultCenter] postNotificationName:NSNotification.TPPCurrentAccountDidChange object:nil];
-            UINavigationController *nav = (UINavigationController *)[TPPRootTabBarController sharedController].viewControllers.firstObject;
-            [nav popToRootViewControllerAnimated:NO];
+            // SwiftUI Catalog listens to TPPCurrentAccountDidChange and updates
           }];
         }];
       }
@@ -1484,9 +1482,7 @@ didEncounterValidationError:(NSError *)error
                                      error:error];
   }
 
-  [[TPPRootTabBarController sharedController] safelyPresentViewController:alert
-                                                                  animated:YES
-                                                                completion:nil];
+  [TPPPresentationUtils safelyPresent:alert animated:YES completion:nil];
 }
 
 - (void)businessLogicDidCompleteSignIn:(TPPSignInBusinessLogic *)businessLogic

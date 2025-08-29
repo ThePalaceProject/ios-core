@@ -100,10 +100,7 @@ final class HoldsViewModel: ObservableObject {
     private func updateBadgeCount() {
         UIApplication.shared.applicationIconBadgeNumber = reservedBookVMs.count
         
-        if let items = TPPRootTabBarController.shared().tabBar.items,
-           items.indices.contains(1) {
-            items[1].badgeValue = reservedBookVMs.isEmpty ? nil : "\(reservedBookVMs.count)"
-        }
+        // Badge counts can be supported by app icon badges; tab badges removed in SwiftUI TabView
     }
 
     func loadAccount(_ account: Account) {

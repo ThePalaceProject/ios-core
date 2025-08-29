@@ -8,7 +8,7 @@
 
 import Foundation
 
-@objc extension TPPRootTabBarController {
+@objc extension NSObject {
   func didSignOut() {
   }
 }

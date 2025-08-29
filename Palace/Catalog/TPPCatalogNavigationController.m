@@ -2,7 +2,6 @@
 #import "TPPConfiguration.h"
 #import "TPPCatalogNavigationController.h"
 #import "TPPAccountSignInViewController.h"
-#import "TPPRootTabBarController.h"
 #import "NSString+TPPStringAdditions.h"
 
 @interface TPPCatalogNavigationController()
@@ -186,8 +185,7 @@
       [navController setModalPresentationStyle:UIModalPresentationFullScreen];
       [navController setModalTransitionStyle:UIModalTransitionStyleCrossDissolve];
 
-      TPPRootTabBarController *vc = [TPPRootTabBarController sharedController];
-      [vc safelyPresentViewController:navController animated:YES completion:nil];
+      [TPPPresentationUtils safelyPresent:navController animated:YES completion:nil];
 
       // Present onboarding screens above the welcome screen.
       UIViewController *onboardingVC = [TPPOnboardingViewController makeSwiftUIViewWithDismissHandler:^{

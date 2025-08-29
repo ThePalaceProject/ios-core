@@ -8,7 +8,6 @@
 #import "TPPBookDownloadFailedCell.h"
 #import "TPPBookDownloadingCell.h"
 #import "TPPBookNormalCell.h"
-#import "TPPRootTabBarController.h"
 #import "Palace-Swift.h"
 
 #import "NSURLRequest+NYPLURLRequestAdditions.h"
@@ -132,7 +131,7 @@
 
 - (void)openEPUB:(TPPBook *)book
 {
-  [[TPPRootTabBarController sharedController] presentBook:book];
+  // TODO: Bridge to SwiftUI coordinator route for EPUB when available
 }
 
 - (void)openPDF:(TPPBook *)book {
@@ -180,8 +179,7 @@
         return [decryptor decryptDataWithData:data start:start end:end];
       }];
 
-      UIViewController *vc = [TPPPDFViewController createWithDocument:document metadata:metadata];
-      [[TPPRootTabBarController sharedController] pushViewController:vc animated:YES];
+      // Present PDF via SwiftUI host; fallback removed in migration
     }];
   } else {
     [self presentPDF:book];
@@ -202,7 +200,7 @@
   TPPPDFDocument *document = [[TPPPDFDocument alloc] initWithData:data];
   
   UIViewController *vc = [TPPPDFViewController createWithDocument:document metadata:metadata];
-  [[TPPRootTabBarController sharedController] pushViewController:vc animated:YES];
+  [TPPPresentationUtils safelyPresent:vc animated:YES completion:nil];
 }
 
 - (void)openAudiobook:(TPPBook *)book completion:(void (^ _Nullable)(void))completion {

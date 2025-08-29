@@ -100,14 +100,31 @@ import PalaceAudiobookToolkit
       case .success(let asset):
         if Task.isCancelled { return }
         
-        let hostVC = TPPRootTabBarController.shared()
+        // SwiftUI hosts navigation; no need to query TPPRootTabBarController
         
         var credentials: String? = nil
         if let licenseUrl = licenseUrl, licenseUrl.isFileURL {
           credentials = try? String(contentsOf: licenseUrl)
         }
         
-        let result = await publicationOpener.open(asset: asset, allowUserInteraction: true, credentials: credentials, sender: hostVC)
+        // Provide a presenter UIViewController now that TPPRootTabBarController is removed
+        let presenter: UIViewController = {
+          if let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first,
+             let win = scene.windows.first(where: { $0.isKeyWindow }),
+             let root = win.rootViewController {
+            var base: UIViewController = root
+            while let presented = base.presentedViewController { base = presented }
+            return base
+          }
+          if let win = UIApplication.shared.windows.first(where: { $0.isKeyWindow }),
+             let root = win.rootViewController {
+            var base: UIViewController = root
+            while let presented = base.presentedViewController { base = presented }
+            return base
+          }
+          return UIViewController()
+        }()
+        let result = await publicationOpener.open(asset: asset, allowUserInteraction: true, credentials: credentials, sender: presenter)
 
         switch result {
         case .success(let publication):
