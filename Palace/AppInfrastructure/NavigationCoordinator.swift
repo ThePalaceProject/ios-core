@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import PalaceAudiobookToolkit
 
 /// High-level app routes for SwiftUI NavigationStack.
 /// Extend incrementally as new flows migrate to SwiftUI.
@@ -9,6 +10,7 @@ enum AppRoute: Hashable {
   case search(SearchRoute)
   case pdf(BookRoute)
   case audio(BookRoute)
+  case epub(BookRoute)
 }
 
 /// Lightweight, hashable identifier for a book navigation route.
@@ -32,6 +34,10 @@ final class NavigationCoordinator: ObservableObject {
   private var searchBooksById: [UUID: [TPPBook]] = [:]
   private var pdfControllerById: [String: UIViewController] = [:]
   private var audioControllerById: [String: UIViewController] = [:]
+  private var epubControllerById: [String: UIViewController] = [:]
+  // SwiftUI-first payloads
+  private var audioModelById: [String: AudiobookPlaybackModel] = [:]
+  private var pdfContentById: [String: (TPPPDFDocument, TPPPDFDocumentMetadata)] = [:]
 
   // MARK: - Public API
 
@@ -81,6 +87,31 @@ final class NavigationCoordinator: ObservableObject {
 
   func resolveAudioController(for route: BookRoute) -> UIViewController? {
     audioControllerById[route.id]
+  }
+
+  func storeEPUBController(_ controller: UIViewController, forBookId id: String) {
+    epubControllerById[id] = controller
+  }
+
+  func resolveEPUBController(for route: BookRoute) -> UIViewController? {
+    epubControllerById[route.id]
+  }
+
+  // MARK: - SwiftUI payloads
+  func storeAudioModel(_ model: AudiobookPlaybackModel, forBookId id: String) {
+    audioModelById[id] = model
+  }
+
+  func resolveAudioModel(for route: BookRoute) -> AudiobookPlaybackModel? {
+    audioModelById[route.id]
+  }
+
+  func storePDF(document: TPPPDFDocument, metadata: TPPPDFDocumentMetadata, forBookId id: String) {
+    pdfContentById[id] = (document, metadata)
+  }
+
+  func resolvePDF(for route: BookRoute) -> (TPPPDFDocument, TPPPDFDocumentMetadata)? {
+    pdfContentById[route.id]
   }
 }
 

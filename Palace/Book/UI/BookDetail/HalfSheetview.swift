@@ -57,6 +57,11 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
           switch type {
           case .close:
             dismiss()
+          case .read, .listen:
+            dismiss()
+            DispatchQueue.main.async {
+              viewModel.handleAction(for: type)
+            }
           default:
             viewModel.handleAction(for: type)
           }
@@ -67,6 +72,11 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
           switch type {
           case .close:
             dismiss()
+          case .read, .listen:
+            dismiss()
+            DispatchQueue.main.async {
+              viewModel.handleAction(for: type)
+            }
           default:
             viewModel.handleAction(for: type)
           }

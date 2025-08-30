@@ -9,6 +9,7 @@
 import Foundation
 import Combine
 import SwiftUI
+import PalaceAudiobookToolkit
 
 enum BookCellState {
   case normal(BookButtonState)
@@ -91,7 +92,7 @@ class BookCellModel: ObservableObject {
     state.buttonState.buttonTypes(book: book)
   }
   
-  private weak var buttonDelegate = TPPBookCellDelegate.shared()
+  // Delegates removed; route actions through Swift services and coordinator
   private weak var sampleDelegate: TPPBookButtonsSampleDelegate?
   private weak var downloadDelegate: TPPBookDownloadCancellationDelegate?
   
@@ -164,8 +165,7 @@ extension BookCellModel {
     case .download, .retry, .get, .reserve:
       didSelectDownload()
     case .return, .remove, .returning, .cancelHold, .manageHold:
-      self.isLoading = true
-      self.buttonDelegate?.didSelectReturn(for: self.book) {}
+      didSelectReturn()
     case .cancel:
       didSelectCancel()
     case .sample, .audiobookSample:
@@ -179,14 +179,118 @@ extension BookCellModel {
   
   func didSelectRead() {
     isLoading = true
-    self.buttonDelegate?.didSelectRead(for: book) { [weak self] in
+    switch book.defaultBookContentType {
+    case .epub:
+      ReaderService.shared.openEPUB(book)
+      self.isLoading = false
+    case .pdf:
+      guard let url = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier) else { self.isLoading = false; return }
+      let data = try? Data(contentsOf: url)
+      let metadata = TPPPDFDocumentMetadata(with: book)
+      let document = TPPPDFDocument(data: data ?? Data())
+      if let coordinator = NavigationCoordinatorHub.shared.coordinator {
+        coordinator.storePDF(document: document, metadata: metadata, forBookId: book.identifier)
+        coordinator.push(.pdf(BookRoute(id: book.identifier)))
+      }
+      self.isLoading = false
+    case .audiobook:
+      openAudiobookFromCell()
+    default:
+      self.isLoading = false
+    }
+  }
+
+  private func openAudiobookFromCell() {
+#if LCP
+    if LCPAudiobooks.canOpenBook(book) {
+      if let localURL = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier), FileManager.default.fileExists(atPath: localURL.path) {
+        buildAndPresentAudiobook(lcpSourceURL: localURL)
+      } else {
+        let lcpLicenseURL = licenseURL(forBookIdentifier: book.identifier)
+        if let lcpLicenseURL {
+          buildAndPresentAudiobook(lcpSourceURL: lcpLicenseURL)
+        } else {
+          self.isLoading = false
+        }
+      }
+      return
+    }
+#endif
+    guard let url = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier) else { self.isLoading = false; return }
+    do {
+      let data = try Data(contentsOf: url)
+      guard let json = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] else {
+        self.isLoading = false
+        return
+      }
+      presentAudiobookFrom(json: json, decryptor: nil)
+    } catch {
+      self.isLoading = false
+    }
+  }
+
+#if LCP
+  private func buildAndPresentAudiobook(lcpSourceURL: URL) {
+    guard let lcpAudiobooks = LCPAudiobooks(for: lcpSourceURL) else {
+      self.isLoading = false
+      return
+    }
+    if let cached = lcpAudiobooks.cachedContentDictionary() as? [String: Any] {
+      presentAudiobookFrom(json: cached, decryptor: lcpAudiobooks)
+      return
+    }
+    lcpAudiobooks.contentDictionary { [weak self] dict, error in
       DispatchQueue.main.async {
-        self?.isLoading = false
+        guard let self else { return }
+        guard error == nil, let json = dict as? [String: Any] else {
+          self.isLoading = false
+          return
+        }
+        self.presentAudiobookFrom(json: json, decryptor: lcpAudiobooks)
       }
     }
   }
+#endif
+
+  private func presentAudiobookFrom(json: [String: Any], decryptor: DRMDecryptor?) {
+    var jsonDict = json
+    jsonDict["id"] = book.identifier
+    guard let jsonData = try? JSONSerialization.data(withJSONObject: jsonDict, options: []),
+          let manifest = try? Manifest.customDecoder().decode(Manifest.self, from: jsonData),
+          let audiobook = AudiobookFactory.audiobook(for: manifest, bookIdentifier: book.identifier, decryptor: decryptor, token: book.bearerToken)
+    else {
+      self.isLoading = false
+      return
+    }
+
+    let metadata = AudiobookMetadata(title: book.title, authors: [book.authors ?? ""])
+    let manager = DefaultAudiobookManager(
+      metadata: metadata,
+      audiobook: audiobook,
+      networkService: DefaultAudiobookNetworkService(tracks: audiobook.tableOfContents.allTracks, decryptor: decryptor),
+      playbackTrackerDelegate: nil
+    )
+
+    let playbackModel = AudiobookPlaybackModel(audiobookManager: manager)
+    if let coordinator = NavigationCoordinatorHub.shared.coordinator {
+      coordinator.storeAudioModel(playbackModel, forBookId: book.identifier)
+      coordinator.push(.audio(BookRoute(id: book.identifier)))
+    }
+    self.isLoading = false
+  }
+
+  private func licenseURL(forBookIdentifier identifier: String) -> URL? {
+#if LCP
+    guard let contentURL = MyBooksDownloadCenter.shared.fileUrl(for: identifier) else { return nil }
+    let license = contentURL.deletingPathExtension().appendingPathExtension("lcpl")
+    return FileManager.default.fileExists(atPath: license.path) ? license : nil
+#else
+    return nil
+#endif
+  }
   
   func didSelectReturn() {
+    self.isLoading = true
     var title = ""
     var message = ""
     var confirmButtonTitle = ""
@@ -218,8 +322,33 @@ extension BookCellModel {
       message: message,
       buttonTitle: confirmButtonTitle,
       primaryAction: { [weak self] in
-        self?.isLoading = true
-        self?.buttonDelegate?.didSelectReturn(for: self?.book) { }
+        guard let self = self else { return }
+        let identifier = self.book.identifier
+        let downloaded = {
+          let state = TPPBookRegistry.shared.state(for: identifier)
+          return state == .downloadSuccessful || state == .used
+        }()
+        // Mirror BookDetailViewModel: attempt server return if revokeURL else delete local/remove registry
+        if let revokeURL = self.book.revokeURL {
+          TPPBookRegistry.shared.setProcessing(true, for: identifier)
+          TPPOPDSFeed.withURL(revokeURL, shouldResetCache: false, useTokenIfAvailable: true) { feed, error in
+            TPPBookRegistry.shared.setProcessing(false, for: identifier)
+            if let feed = feed, feed.entries.count == 1, let entry = feed.entries[0] as? TPPOPDSEntry, let returnedBook = TPPBook(entry: entry) {
+              if downloaded { MyBooksDownloadCenter.shared.deleteLocalContent(for: identifier) }
+              TPPBookRegistry.shared.updateAndRemoveBook(returnedBook)
+            } else {
+              if let errorType = (error as? [String: Any])?["type"] as? String, errorType == TPPProblemDocument.TypeNoActiveLoan {
+                if downloaded { MyBooksDownloadCenter.shared.deleteLocalContent(for: identifier) }
+                TPPBookRegistry.shared.removeBook(forIdentifier: identifier)
+              }
+            }
+            DispatchQueue.main.async { self.isLoading = false }
+          }
+        } else {
+          if downloaded { MyBooksDownloadCenter.shared.deleteLocalContent(for: identifier) }
+          TPPBookRegistry.shared.removeBook(forIdentifier: identifier)
+          DispatchQueue.main.async { self.isLoading = false }
+        }
       },
       secondaryAction: { [weak self] in
         self?.showAlert = nil
@@ -232,8 +361,7 @@ extension BookCellModel {
     if case .canHold = state.buttonState {
       TPPUserNotifications.requestAuthorization()
     }
-    
-    buttonDelegate?.didSelectDownload(for: book)
+    MyBooksDownloadCenter.shared.startDownload(for: book)
   }
   
   func didSelectSample() {

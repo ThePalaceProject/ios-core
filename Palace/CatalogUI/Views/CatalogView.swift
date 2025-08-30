@@ -8,6 +8,8 @@ struct CatalogView: View {
   @State private var currentAccountUUID: String = AccountsManager.shared.currentAccount?.uuid ?? ""
   @State private var showAccountDialog: Bool = false
   @State private var showAddLibrarySheet: Bool = false
+  @State private var showSearch: Bool = false
+  @State private var searchQuery: String = ""
 
   init(viewModel: CatalogViewModel) {
     _viewModel = StateObject(wrappedValue: viewModel)
@@ -28,7 +30,7 @@ struct CatalogView: View {
           }
         }
         ToolbarItem(placement: .navigationBarTrailing) {
-          Button(action: { presentSearch() }) {
+          Button(action: { withAnimation { showSearch.toggle() } }) {
             ImageProviders.MyBooksView.search
           }
         }
@@ -84,7 +86,14 @@ struct CatalogView: View {
 private extension CatalogView {
   @ViewBuilder
   var content: some View {
-    if viewModel.isLoading {
+    if showSearch {
+      VStack(spacing: 0) {
+        searchBar
+        BookListView(books: filteredBooks, isLoading: .constant(false)) { book in
+          presentBookDetail(book)
+        }
+      }
+    } else if viewModel.isLoading {
       skeletonList
     } else if let error = viewModel.errorMessage {
       Text(error)
@@ -113,9 +122,7 @@ private extension CatalogView {
   }
 
   func presentSearch() {
-    let books: [TPPBook] = !viewModel.lanes.isEmpty ? viewModel.lanes.flatMap { $0.books } : viewModel.ungroupedBooks
-    let route = coordinator.storeSearchBooks(books)
-    coordinator.push(.search(route))
+    withAnimation { showSearch = true }
   }
 
   func presentAccountPicker() {
@@ -180,13 +187,13 @@ private extension CatalogView {
   /// Entry point and facet selectors rendered above the content area.
   @ViewBuilder
   var selectorsView: some View {
-    if !viewModel.entryPoints.isEmpty {
+    if !showSearch && !viewModel.entryPoints.isEmpty {
       EntryPointsSelectorView(entryPoints: viewModel.entryPoints) { facet in
         Task { await viewModel.applyEntryPoint(facet) }
       }
     }
 
-    if !viewModel.facetGroups.isEmpty {
+    if !showSearch && !viewModel.facetGroups.isEmpty {
       FacetsSelectorView(facetGroups: viewModel.facetGroups) { facet in
         Task { await viewModel.applyFacet(facet) }
       }
@@ -196,7 +203,14 @@ private extension CatalogView {
   /// Content area below selectors: shows skeletons while reloading, otherwise lanes or ungrouped list.
   @ViewBuilder
   var contentArea: some View {
-    if viewModel.isContentReloading {
+    if showSearch {
+      VStack(spacing: 0) {
+        searchBar
+        BookListView(books: filteredBooks, isLoading: .constant(false)) { book in
+          presentBookDetail(book)
+        }
+      }
+    } else if viewModel.isContentReloading {
       VStack(alignment: .leading, spacing: 24) {
         ForEach(0..<3, id: \.self) { _ in
           CatalogLaneSkeletonView()
@@ -237,6 +251,45 @@ private extension CatalogView {
         presentBookDetail(book)
       }
     }
+  }
+}
+
+// MARK: - Search helpers
+private extension CatalogView {
+  var allBooks: [TPPBook] {
+    if !viewModel.lanes.isEmpty {
+      return viewModel.lanes.flatMap { $0.books }
+    }
+    return viewModel.ungroupedBooks
+  }
+
+  var filteredBooks: [TPPBook] {
+    let q = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !q.isEmpty else { return allBooks }
+    let lower = q.lowercased()
+    // Use identifier as unique id; ForEach uses id: \.identifier already
+    return allBooks.filter { book in
+      let title = book.title.lowercased()
+      let authors = (book.authors ?? "").lowercased()
+      return title.contains(lower) || authors.contains(lower)
+    }
+  }
+
+  var searchBar: some View {
+    HStack {
+      TextField(NSLocalizedString("Search Catalog", comment: ""), text: $searchQuery)
+        .padding(8)
+        .background(Color.gray.opacity(0.2))
+        .cornerRadius(10)
+        .padding(.horizontal)
+      if !searchQuery.isEmpty {
+        Button(action: { searchQuery = "" }) {
+          Image(systemName: "xmark.circle.fill").foregroundColor(.gray)
+        }
+        .padding(.trailing)
+      }
+    }
+    .padding(.vertical, 8)
   }
 }
 

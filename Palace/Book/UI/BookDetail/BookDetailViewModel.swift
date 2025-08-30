@@ -13,6 +13,7 @@ struct BookLane {
   let subsectionURL: URL?
 }
 
+@MainActor
 final class BookDetailViewModel: ObservableObject {
   // MARK: - Constants
   private let kTimerInterval: TimeInterval = 3.0 // Save position every 3 seconds
@@ -58,6 +59,7 @@ final class BookDetailViewModel: ObservableObject {
   private var timer: DispatchSourceTimer?
   private var previousPlayheadOffset: TimeInterval = 0
   private var didPrefetchLCPStreaming = false
+  private let bookIdentifier: String
   
   // MARK: – Computed Button State
   
@@ -102,6 +104,7 @@ final class BookDetailViewModel: ObservableObject {
     self.book = book
     self.registry = TPPBookRegistry.shared
     self.bookState = registry.state(for: book.identifier)
+    self.bookIdentifier = book.identifier
     
     bindRegistryState()
     setupObservers()
@@ -116,16 +119,14 @@ final class BookDetailViewModel: ObservableObject {
     timer = nil
     NotificationCenter.default.removeObserver(self)
 #if LCP
-    if let licenseUrl = getLCPLicenseURL(for: book) {
+    if let licenseUrl = Self.lcpLicenseURL(forBookIdentifier: bookIdentifier) {
       var lcpAudiobooks: LCPAudiobooks?
-      
-      if let localURL = downloadCenter.fileUrl(for: book.identifier),
+      if let localURL = MyBooksDownloadCenter.shared.fileUrl(for: bookIdentifier),
          FileManager.default.fileExists(atPath: localURL.path) {
         lcpAudiobooks = LCPAudiobooks(for: localURL)
       } else {
         lcpAudiobooks = LCPAudiobooks(for: licenseUrl)
       }
-      
       lcpAudiobooks?.cancelPrefetch()
     }
 #endif
@@ -339,6 +340,14 @@ final class BookDetailViewModel: ObservableObject {
   // MARK: - Download/Return/Cancel
   
   func didSelectDownload(for book: TPPBook) {
+    let account = TPPUserAccount.sharedAccount()
+    if account.needsAuth && !account.hasCredentials() {
+      TPPAccountSignInViewController.requestCredentials { [weak self] in
+        guard let self else { return }
+        self.downloadCenter.startDownload(for: book)
+      }
+      return
+    }
     downloadCenter.startDownload(for: book)
   }
   
@@ -353,7 +362,17 @@ final class BookDetailViewModel: ObservableObject {
   
   // MARK: - Reading
   
+  @MainActor
   func didSelectRead(for book: TPPBook, completion: (() -> Void)?) {
+    let account = TPPUserAccount.sharedAccount()
+    if account.needsAuth && !account.hasCredentials() {
+      TPPAccountSignInViewController.requestCredentials { [weak self] in
+        Task { @MainActor in
+          self?.openBook(book, completion: completion)
+        }
+      }
+      return
+    }
 #if FEATURE_DRM_CONNECTOR
     let user = TPPUserAccount.sharedAccount()
     
@@ -365,7 +384,7 @@ final class BookDetailViewModel: ObservableObject {
                   !NYPLADEPT.sharedInstance().isUserAuthorized(user.userID, withDevice: user.deviceID) {
         let reauthenticator = TPPReauthenticator()
         reauthenticator.authenticateIfNeeded(user, usingExistingCredentials: true) {
-          DispatchQueue.main.async {
+          Task { @MainActor in
             self.openBook(book, completion: completion)
           }
         }
@@ -376,6 +395,7 @@ final class BookDetailViewModel: ObservableObject {
     openBook(book, completion: completion)
   }
   
+  @MainActor
   func openBook(_ book: TPPBook, completion: (() -> Void)?) {
     TPPCirculationAnalytics.postEvent("open_book", withBook: book)
     
@@ -399,40 +419,19 @@ final class BookDetailViewModel: ObservableObject {
     }
   }
   
-  private func presentEPUB(_ book: TPPBook) {
-    ReaderService.shared.openEPUB(book)
+  @MainActor private func presentEPUB(_ book: TPPBook) {
+    BookOpenService.open(book)
   }
   
-  private func presentPDF(_ book: TPPBook) {
-    guard let bookUrl = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier) else { return }
-    let data = try? Data(contentsOf: bookUrl)
-    let metadata = TPPPDFDocumentMetadata(with: book)
-    let document = TPPPDFDocument(data: data ?? Data())
-    let pdfViewController = TPPPDFViewController.create(document: document, metadata: metadata)
-    if let coordinator = NavigationCoordinatorHub.shared.coordinator {
-      coordinator.storePDFController(pdfViewController, forBookId: book.identifier)
-      coordinator.push(.pdf(BookRoute(id: book.identifier)))
-    }
+  @MainActor private func presentPDF(_ book: TPPBook) {
+    BookOpenService.open(book)
   }
   
   // MARK: - Audiobook Opening
   
   func openAudiobook(_ book: TPPBook, completion: (() -> Void)? = nil) {
-#if LCP
-    if LCPAudiobooks.canOpenBook(book) {
-      openAudiobookWithUnifiedStreaming(book: book, completion: completion)
-      return
-    }
-#endif
-    
-    guard let url = downloadCenter.fileUrl(for: book.identifier),
-          FileManager.default.fileExists(atPath: url.path) else {
-      downloadCenter.startDownload(for: book)
-      completion?()
-      return
-    }
-    
-    openAudiobookWithLocalFile(book: book, url: url, completion: completion)
+    BookOpenService.open(book)
+    completion?()
   }
   
   private func openAudiobookWithUnifiedStreaming(book: TPPBook, completion: (() -> Void)? = nil) {
@@ -512,6 +511,16 @@ final class BookDetailViewModel: ObservableObject {
     return nil
 #endif
   }
+
+#if LCP
+  nonisolated static func lcpLicenseURL(forBookIdentifier identifier: String) -> URL? {
+    guard let bookFileURL = MyBooksDownloadCenter.shared.fileUrl(for: identifier) else {
+      return nil
+    }
+    let licenseURL = bookFileURL.deletingPathExtension().appendingPathExtension("lcpl")
+    return FileManager.default.fileExists(atPath: licenseURL.path) ? licenseURL : nil
+  }
+#endif
   
 
   
@@ -585,8 +594,8 @@ final class BookDetailViewModel: ObservableObject {
 
 #if LCP
   private func prefetchLCPStreamingIfPossible() {
-    guard !didPrefetchLCPStreaming, LCPAudiobooks.canOpenBook(book), let licenseUrl = getLCPLicenseURL(for: book) else { return }
-    if let localURL = downloadCenter.fileUrl(for: book.identifier), FileManager.default.fileExists(atPath: localURL.path) {
+    guard !didPrefetchLCPStreaming, LCPAudiobooks.canOpenBook(book), let licenseUrl = Self.lcpLicenseURL(forBookIdentifier: bookIdentifier) else { return }
+    if let localURL = downloadCenter.fileUrl(for: bookIdentifier), FileManager.default.fileExists(atPath: localURL.path) {
       return
     }
     

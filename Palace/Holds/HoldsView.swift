@@ -15,14 +15,14 @@ struct HoldsView: View {
 
         if model.isLoading {
           BookListSkeletonView(rows: 10, imageSize: CGSize(width: 100, height: 150))
-        } else if allBooks.isEmpty {
+        } else if model.visibleBooks.isEmpty {
           Spacer()
           emptyView
           Spacer()
         } else {
           ScrollView {
             BookListView(
-              books: allBooks,
+              books: model.visibleBooks,
               isLoading: $model.isLoading,
               onSelect: { book in presentBookDetail(book) }
             )
@@ -45,7 +45,7 @@ struct HoldsView: View {
         ToolbarItem(placement: .navigationBarTrailing) { trailingBarButton }
       }
       .onAppear {
-        model.showSearchView = false
+        model.showSearchSheet = false
         model.showLibraryAccountView = false
       }
       .refreshable {
@@ -64,9 +64,12 @@ struct HoldsView: View {
         loadingOverlay
       }
     }
-    .sheet(isPresented: $model.showSearchView) {
-      let books = allBooks
-      CatalogSearchView(books: books)
+    .overlay(alignment: .top) {
+      if model.showSearchSheet {
+        searchBar
+          .padding(.top, 8)
+          .transition(.move(edge: .top).combined(with: .opacity))
+      }
     }
   }
   
@@ -111,9 +114,7 @@ struct HoldsView: View {
   
   private var trailingBarButton: some View {
     Button {
-      let books = allBooks
-      let route = coordinator.storeSearchBooks(books)
-      coordinator.push(.search(route))
+      withAnimation { model.showSearchSheet.toggle() }
     } label: {
       ImageProviders.MyBooksView.search
     }
@@ -123,6 +124,27 @@ struct HoldsView: View {
   private func presentBookDetail(_ book: TPPBook) {
     coordinator.store(book: book)
     coordinator.push(.bookDetail(BookRoute(id: book.identifier)))
+  }
+
+  private var searchBar: some View {
+    HStack {
+      TextField(Strings.MyBooksView.searchBooks, text: $model.searchQuery)
+        .searchBarStyle()
+        .onChange(of: model.searchQuery) { query in
+          Task { await model.filterBooks(query: query) }
+        }
+      Button(action: clearSearch, label: {
+        Image(systemName: "xmark.circle.fill").foregroundColor(.gray)
+      })
+    }
+    .padding(.horizontal)
+  }
+
+  private func clearSearch() {
+    Task {
+      model.searchQuery = ""
+      await model.filterBooks(query: "")
+    }
   }
 }
 

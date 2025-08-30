@@ -93,6 +93,8 @@ struct NormalBookCell: View {
           self.showHalfSheet = true
         case .close:
           self.showHalfSheet = false
+        case .read, .listen:
+          self.showHalfSheet = true
         default:
           model.callDelegate(for: type)
         }
