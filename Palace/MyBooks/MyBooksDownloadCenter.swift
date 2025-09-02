@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PalaceAudiobookToolkit
 import Combine
 
 #if FEATURE_OVERDRIVE

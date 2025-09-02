@@ -59,6 +59,10 @@ final class BookDetailViewModel: ObservableObject {
   private var timer: DispatchSourceTimer?
   private var previousPlayheadOffset: TimeInterval = 0
   private var didPrefetchLCPStreaming = false
+  // Location reconciliation guards to avoid local/remote races
+  private var isReconcilingLocation: Bool = false
+  private var recentMoveAt: Date? = nil
+  private var isSyncingLocation: Bool = false
   private let bookIdentifier: String
   
   // MARK: – Computed Button State
@@ -434,65 +438,7 @@ final class BookDetailViewModel: ObservableObject {
     completion?()
   }
   
-  private func openAudiobookWithUnifiedStreaming(book: TPPBook, completion: (() -> Void)? = nil) {
-#if LCP
-    if LCPAudiobooks.canOpenBook(book) {
-      if let localURL = downloadCenter.fileUrl(for: book.identifier),
-         FileManager.default.fileExists(atPath: localURL.path) {
-        openLocalLCPAudiobook(book: book, localURL: localURL, completion: completion)
-        return
-      }
-      
-
-      
-      if let licenseUrl = getLCPLicenseURL(for: book) {
-        openAudiobookUnified(book: book, licenseUrl: licenseUrl, completion: completion)
-        return
-      }
-      
-      if let publicationURL = book.defaultAcquisition?.hrefURL {
-        openAudiobookUnified(book: book, licenseUrl: publicationURL, completion: completion)
-        return
-      }
-      
-      presentUnsupportedItemError()
-      completion?()
-      return
-    }
-#endif
-    
-    presentUnsupportedItemError()
-    completion?()
-  }
   
-  private func openLocalLCPAudiobook(book: TPPBook, localURL: URL, completion: (() -> Void)?) {
-#if LCP
-    guard let lcpAudiobooks = LCPAudiobooks(for: localURL) else {
-      self.presentCorruptedItemError()
-      completion?()
-      return
-    }
-    
-    lcpAudiobooks.contentDictionary { [weak self] dict, error in
-      DispatchQueue.main.async {
-        guard let self = self else { return }
-        if let _ = error {
-          self.presentCorruptedItemError()
-          completion?()
-          return
-        }
-        guard let dict else {
-          self.presentUnsupportedItemError()
-          completion?()
-          return
-        }
-        var jsonDict = dict as? [String: Any] ?? [:]
-        jsonDict["id"] = book.identifier
-        self.openAudiobook(with: book, json: jsonDict, drmDecryptor: lcpAudiobooks, completion: completion)
-      }
-    }
-#endif
-  }
   
   private func getLCPLicenseURL(for book: TPPBook) -> URL? {
 #if LCP
@@ -526,71 +472,6 @@ final class BookDetailViewModel: ObservableObject {
   
 
   
-  private func openAudiobookUnified(book: TPPBook, licenseUrl: URL, completion: (() -> Void)?) {
-#if LCP
-    
-    if let localURL = downloadCenter.fileUrl(for: book.identifier),
-       FileManager.default.fileExists(atPath: localURL.path) {
-      guard let lcpAudiobooks = LCPAudiobooks(for: localURL) else {
-        self.presentUnsupportedItemError()
-        completion?()
-        return
-      }
-      
-      lcpAudiobooks.contentDictionary { [weak self] dict, error in
-        DispatchQueue.main.async {
-          guard let self = self else { return }
-          if let _ = error {
-            self.presentUnsupportedItemError()
-            completion?()
-            return
-          }
-          guard let dict else {
-            self.presentCorruptedItemError()
-            completion?()
-            return
-          }
-          var jsonDict = dict as? [String: Any] ?? [:]
-          jsonDict["id"] = book.identifier
-          self.openAudiobook(with: book, json: jsonDict, drmDecryptor: lcpAudiobooks, completion: completion)
-        }
-      }
-      return
-    }
-    
-    guard let lcpAudiobooks = LCPAudiobooks(for: licenseUrl) else {
-      self.presentUnsupportedItemError()
-      completion?()
-      return
-    }
-    
-    if let cachedDict = lcpAudiobooks.cachedContentDictionary() {
-      var jsonDict = cachedDict as? [String: Any] ?? [:]
-      jsonDict["id"] = book.identifier
-      self.openAudiobook(with: book, json: jsonDict, drmDecryptor: lcpAudiobooks, completion: completion)
-      return
-    }
-    
-    lcpAudiobooks.contentDictionary { [weak self] dict, error in
-      DispatchQueue.main.async {
-        guard let self = self else { return }
-        if let _ = error {
-          self.presentUnsupportedItemError()
-          completion?()
-          return
-        }
-        guard let dict else {
-          self.presentUnsupportedItemError()
-          completion?()
-          return
-        }
-        var jsonDict = dict as? [String: Any] ?? [:]
-        jsonDict["id"] = book.identifier
-        self.openAudiobook(with: book, json: jsonDict, drmDecryptor: lcpAudiobooks, completion: completion)
-      }
-    }
-#endif
-  }
 
 #if LCP
   private func prefetchLCPStreamingIfPossible() {
@@ -607,60 +488,9 @@ final class BookDetailViewModel: ObservableObject {
 #endif
   
   
-  private func openAudiobookWithLocalFile(book: TPPBook, url: URL, completion: (() -> Void)?) {
-#if LCP
-    if LCPAudiobooks.canOpenBook(book) {
-      let lcpAudiobooks = LCPAudiobooks(for: url)
-      lcpAudiobooks?.contentDictionary { [weak self] dict, error in
-        DispatchQueue.main.async {
-          guard let self = self else { return }
-          if let error {
-            self.presentUnsupportedItemError()
-            completion?()
-            return
-          }
-          
-          guard let dict else {
-            self.presentCorruptedItemError()
-            completion?()
-            return
-          }
-          
-          var jsonDict = dict as? [String: Any] ?? [:]
-          jsonDict["id"] = book.identifier
-          self.openAudiobook(with: book, json: jsonDict, drmDecryptor: lcpAudiobooks, completion: completion)
-        }
-      }
-      return
-    }
-#endif
-    
-    do {
-      let data = try Data(contentsOf: url)
-      guard let json = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] else {
-        presentUnsupportedItemError()
-        completion?()
-        return
-      }
-      
-#if FEATURE_OVERDRIVE
-      if book.distributor == OverdriveDistributorKey {
-        var overdriveJson = json
-        overdriveJson["id"] = book.identifier
-        openAudiobook(with: book, json: overdriveJson, drmDecryptor: nil, completion: completion)
-        return
-      }
-#endif
-      
-      openAudiobook(with: book, json: json, drmDecryptor: nil, completion: completion)
-    } catch {
-      presentCorruptedItemError()
-      completion?()
-    }
-  }
   
   func openAudiobook(with book: TPPBook, json: [String: Any], drmDecryptor: DRMDecryptor?, completion: (() -> Void)?) {
-    AudioBookVendorsHelper.updateVendorKey(book: json) { [weak self] error in
+    let vendorCompletion: (NSError?) -> Void = { [weak self] (error: NSError?) in
       DispatchQueue.main.async {
         guard let self else { return }
         
@@ -698,6 +528,7 @@ final class BookDetailViewModel: ObservableObject {
         completion?()
       }
     }
+    AudioBookVendorsHelper.updateVendorKey(book: json, completion: vendorCompletion)
   }
   
   @MainActor private func launchAudiobook(book: TPPBook, audiobook: Audiobook, drmDecryptor: DRMDecryptor?) {
@@ -708,10 +539,14 @@ final class BookDetailViewModel: ObservableObject {
     
     let metadata = AudiobookMetadata(title: book.title, authors: [book.authors ?? ""])
     
+    let networkService: AudiobookNetworkService = DefaultAudiobookNetworkService(
+      tracks: audiobook.tableOfContents.allTracks,
+      decryptor: drmDecryptor
+    )
     audiobookManager = DefaultAudiobookManager(
       metadata: metadata,
       audiobook: audiobook,
-      networkService: DefaultAudiobookNetworkService(tracks: audiobook.tableOfContents.allTracks, decryptor: drmDecryptor),
+      networkService: networkService,
       playbackTrackerDelegate: timeTracker
     )
     
@@ -743,6 +578,8 @@ final class BookDetailViewModel: ObservableObject {
   
   /// Syncs audiobook playback position from local or remote bookmarks
   private func syncAudiobookLocation(for book: TPPBook) {
+    // Begin reconciliation window to avoid racing local saves against a remote move
+    isReconcilingLocation = true
     let localLocation = TPPBookRegistry.shared.location(forIdentifier: book.identifier)
     
     guard let dictionary = localLocation?.locationStringDictionary(),
@@ -755,6 +592,10 @@ final class BookDetailViewModel: ObservableObject {
           ) else {
       // No saved location - start playing from the beginning
       startPlaybackFromBeginning()
+      // End reconciliation after a short grace period
+      DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+        self?.isReconcilingLocation = false
+      }
       return
     }
     
@@ -762,6 +603,9 @@ final class BookDetailViewModel: ObservableObject {
     
     audiobookManager?.audiobook.player.play(at: localPosition, completion: nil)
     
+    // Single-flight remote sync
+    guard !isSyncingLocation else { return }
+    isSyncingLocation = true
     TPPBookRegistry.shared.syncLocation(for: book) { [weak self] remoteBookmark in
       guard let remoteBookmark, let self, let audiobookManager else { return }
       
@@ -778,10 +622,16 @@ final class BookDetailViewModel: ObservableObject {
       ) { position in
         DispatchQueue.main.async {
           // Streaming resources are now handled automatically by LCPPlayer
-          
+          // Mark programmatic move to suppress immediate save thrash
+          self.recentMoveAt = Date()
           self.audiobookManager?.audiobook.player.play(at: position, completion: nil)
+          // End reconciliation shortly after final move
+          DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            self.isReconcilingLocation = false
+          }
         }
       }
+      self.isSyncingLocation = false
     }
   }
   
@@ -905,6 +755,14 @@ extension BookDetailViewModel {
     guard let currentTrackPosition = audiobookManager.audiobook.player.currentTrackPosition else {
       return
     }
+
+    // Avoid racing saves during reconciliation and right after programmatic moves
+    if isReconcilingLocation {
+      return
+    }
+    if let movedAt = recentMoveAt, Date().timeIntervalSince(movedAt) < 3.0 {
+      return
+    }
     
     let playheadOffset = currentTrackPosition.timestamp
     if abs(self.previousPlayheadOffset - playheadOffset) > 1.0 && playheadOffset > 0 {
@@ -921,8 +779,6 @@ extension BookDetailViewModel {
             TPPBookLocation(locationString: locationString, renderer: "PalaceAudiobookToolkit"),
             forIdentifier: self.book.identifier
           )
-          
-          latestAudiobookLocation = (book: self.book.identifier, location: locationString)
         }
       }
     }

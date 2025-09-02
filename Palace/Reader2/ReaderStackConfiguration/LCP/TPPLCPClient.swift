@@ -3,6 +3,7 @@
 import R2LCPClient
 import ReadiumLCP
 import ReadiumShared
+import PalaceAudiobookToolkit
 
 enum LCPContextError: Error {
   case creationReturnedNil

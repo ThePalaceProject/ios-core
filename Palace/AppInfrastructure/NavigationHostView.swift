@@ -1,4 +1,5 @@
 import SwiftUI
+import PalaceAudiobookToolkit
 
 /// Generic host that provides a NavigationStack and a NavigationCoordinator environment object.
 struct NavigationHostView<Content: View>: View {
@@ -15,6 +16,7 @@ struct NavigationHostView<Content: View>: View {
         .environmentObject(coordinator)
         .onAppear { NavigationCoordinatorHub.shared.coordinator = coordinator }
         .navigationDestination(for: AppRoute.self) { route in
+          
           switch route {
           case .bookDetail(let bookRoute):
             if let book = coordinator.resolveBook(for: bookRoute) {

@@ -3,6 +3,7 @@ import FirebaseCore
 import FirebaseDynamicLinks
 import BackgroundTasks
 import SwiftUI
+import PalaceAudiobookToolkit
 
 @main
 class TPPAppDelegate: UIResponder, UIApplicationDelegate {
@@ -141,19 +142,12 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
   func applicationWillTerminate(_ application: UIApplication) {
     audiobookLifecycleManager.willTerminate()
-    postListeningLocationIfAvailable()
     NotificationCenter.default.removeObserver(self)
     Reachability.shared.stopMonitoring()
   }
 
   internal func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String, completionHandler: @escaping () -> Void) {
     audiobookLifecycleManager.handleEventsForBackgroundURLSession(for: identifier, completionHandler: completionHandler)
-  }
-
-  private func postListeningLocationIfAvailable() {
-    if let latestAudiobookLocation {
-      TPPAnnotations.postListeningPosition(forBook: latestAudiobookLocation.book, selectorValue: latestAudiobookLocation.location)
-    }
   }
 
   // MARK: - User Sign-in Tracking

@@ -92,9 +92,6 @@ class BookCellModel: ObservableObject {
     state.buttonState.buttonTypes(book: book)
   }
   
-  // Delegates removed; route actions through Swift services and coordinator
-  private weak var sampleDelegate: TPPBookButtonsSampleDelegate?
-  private weak var downloadDelegate: TPPBookDownloadCancellationDelegate?
   
   // MARK: - Initializer
   
@@ -298,7 +295,16 @@ extension BookCellModel {
   
   func didSelectSample() {
     isLoading = true
-    self.sampleDelegate?.didSelectPlaySample(book)
+    if book.defaultBookContentType == .audiobook {
+      NotificationCenter.default.post(name: Notification.Name("ToggleSampleNotification"), object: nil)
+      self.isLoading = false
+      return
+    }
+    EpubSampleFactory.createSample(book: book) { sampleURL, error in
+      DispatchQueue.main.async {
+        self.isLoading = false
+      }
+    }
   }
   
   func didSelectCancel() {
