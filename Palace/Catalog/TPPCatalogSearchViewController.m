@@ -96,6 +96,8 @@
   self.reloadView.hidden = YES;
   [self.view addSubview:self.reloadView];
 
+  self.collectionView.keyboardDismissMode = UIScrollViewKeyboardDismissModeOnDrag;
+
   [self createAndConfigureFacetBarView];
 }
 
@@ -176,6 +178,34 @@
   [self.searchBar resignFirstResponder];
 }
 
+- (void)dismissKeyboard
+{
+  [self.searchBar resignFirstResponder];
+}
+
+- (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event
+{
+  [super touchesBegan:touches withEvent:event];
+  
+  // Dismiss keyboard when touching safe areas (not on interactive elements)
+  UITouch *touch = [touches anyObject];
+  CGPoint location = [touch locationInView:self.view];
+  
+  // Only dismiss if touching outside interactive areas:
+  // - Search bar (where user types)
+  // - Collection view (contains tappable book cells)
+  // - Facet bar (contains filter buttons)
+  // - Reload view (contains retry button)
+  BOOL touchingSearchBar = CGRectContainsPoint(self.searchBar.frame, location);
+  BOOL touchingCollectionView = CGRectContainsPoint(self.collectionView.frame, location);
+  BOOL touchingFacetBar = self.facetBarView && CGRectContainsPoint(self.facetBarView.frame, location);
+  BOOL touchingReloadView = !self.reloadView.hidden && CGRectContainsPoint(self.reloadView.frame, location);
+  
+  if (!touchingSearchBar && !touchingCollectionView && !touchingFacetBar && !touchingReloadView) {
+    [self dismissKeyboard];
+  }
+}
+
 - (void)addActivityIndicatorLabel:(NSTimer*)timer
 {
   if (!self.searchActivityIndicatorView.isHidden) {
@@ -217,6 +247,11 @@ didSelectItemAtIndexPath:(NSIndexPath *const)indexPath
   TPPBook *book = self.books[indexPath.row];
   BookDetailHostingController *bookDetailVC = [[BookDetailHostingController alloc] initWithBook:book];
   [self.navigationController pushViewController:bookDetailVC animated:YES];
+}
+
+- (void)scrollViewWillBeginDragging:(UIScrollView *)scrollView
+{
+  [self dismissKeyboard];
 }
 
 #pragma mark NYPLCatalogUngroupedFeedDelegate

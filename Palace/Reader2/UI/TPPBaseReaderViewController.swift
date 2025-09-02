@@ -152,18 +152,19 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   }
 
   private func setupStackView() {
-    stackView = UIStackView(frame: .zero)
-    stackView.translatesAutoresizingMaskIntoConstraints = false
-    stackView.distribution = .fill
-    stackView.axis = .vertical
-    view.addSubview(stackView)
+    if stackView == nil {
+      stackView = UIStackView()
+      stackView.axis = .vertical
+      stackView.translatesAutoresizingMaskIntoConstraints = false
+      view.addSubview(stackView)
 
-    NSLayoutConstraint.activate([
-      stackView.topAnchor.constraint(equalTo: view.topAnchor),
-      stackView.rightAnchor.constraint(equalTo: view.rightAnchor),
-      stackView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
-      stackView.leftAnchor.constraint(equalTo: view.leftAnchor)
-    ])
+      NSLayoutConstraint.activate([
+        stackView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+        stackView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
+        stackView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+        stackView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+      ])
+    }
   }
 
   override func willMove(toParent parent: UIViewController?) {
@@ -234,12 +235,11 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
 
   func toggleNavigationBar() {
     navigationBarHidden = !navigationBarHidden
-    bookTitleLabel.isHidden = UIAccessibility.isVoiceOverRunning || !navigationBarHidden
+    bookTitleLabel.isHidden = isVoiceOverRunning || !navigationBarHidden
   }
 
   func updateNavigationBar(animated: Bool = true) {
-    let hidden = navigationBarHidden && !UIAccessibility.isVoiceOverRunning
-    navigationController?.setNavigationBarHidden(hidden, animated: animated)
+    navigationController?.setNavigationBarHidden(isVoiceOverRunning ? false : navigationBarHidden, animated: animated)
     setNeedsStatusBarAppearanceUpdate()
   }
 
@@ -248,7 +248,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   }
 
   override var prefersStatusBarHidden: Bool {
-    return navigationBarHidden && !UIAccessibility.isVoiceOverRunning
+    return navigationBarHidden
   }
 
   //----------------------------------------------------------------------------
@@ -331,18 +331,6 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   //----------------------------------------------------------------------------
   // MARK: - Accessibility
 
-  /// Constraint used to shift the content under the navigation bar, since it is always visible when VoiceOver is running.
-  private lazy var accessibilityTopMargin: NSLayoutConstraint = {
-    let topAnchor: NSLayoutYAxisAnchor = {
-      if #available(iOS 11.0, *) {
-        return self.view.safeAreaLayoutGuide.topAnchor
-      } else {
-        return self.topLayoutGuide.bottomAnchor
-      }
-    }()
-    return self.stackView.topAnchor.constraint(equalTo: topAnchor)
-  }()
-
   private lazy var accessibilityToolbar: UIToolbar = {
     func makeItem(_ item: UIBarButtonItem.SystemItem, label: String? = nil, action: UIKit.Selector? = nil) -> UIBarButtonItem {
       let button = UIBarButtonItem(barButtonSystemItem: item, target: (action != nil) ? self : nil, action: action)
@@ -359,7 +347,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
       makeItem(.flexibleSpace),
       forwardButton,
     ]
-    toolbar.isHidden = !UIAccessibility.isVoiceOverRunning
+    toolbar.isHidden = !isVoiceOverRunning
     toolbar.tintColor = UIColor.black
     return toolbar
   }()
@@ -376,12 +364,26 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   }
 
   func updateViewsForVoiceOver(isRunning: Bool) {
-    updateNavigationBar()
     isVoiceOverRunning = isRunning
-    accessibilityTopMargin.isActive = isRunning
+    updateNavigationBar()
     accessibilityToolbar.isHidden = !isRunning
     positionLabel.isHidden = isRunning
     bookTitleLabel.isHidden = isRunning
+
+    // Adjust bottom inset for accessibility toolbar
+    if let scrollView = (navigator.view as? UIScrollView) ?? navigator.view.subviews.compactMap({ $0 as? UIScrollView }).first {
+      if isRunning {
+        // Ensure layout is up to date to get correct toolbar height
+        view.layoutIfNeeded()
+        let toolbarHeight = accessibilityToolbar.frame.height
+        scrollView.contentInset.bottom = toolbarHeight
+        scrollView.scrollIndicatorInsets.bottom = toolbarHeight
+      } else {
+        scrollView.contentInset.bottom = 0
+        scrollView.scrollIndicatorInsets.bottom = 0
+      }
+    }
+
     if isRunning {
       UIAccessibility.post(notification: .layoutChanged, argument: navigationController?.navigationBar)
     }
