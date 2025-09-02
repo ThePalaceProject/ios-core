@@ -387,8 +387,9 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
         return
       }
       
+      let removedBook = self.registry[bookIdentifier]?.book
+
       syncQueue.async {
-        let removedBook = self.registry[bookIdentifier]?.book
         self.registry.removeValue(forKey: bookIdentifier)
         self.save()
         DispatchQueue.main.async {
