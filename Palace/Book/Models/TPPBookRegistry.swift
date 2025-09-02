@@ -382,7 +382,12 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     }
 
     func removeBook(forIdentifier bookIdentifier: String) {
-      let removedBook = registry[bookIdentifier]?.book
+      guard !bookIdentifier.isEmpty else {
+        Log.error(#file, "removeBook called with empty bookIdentifier")
+        return
+      }
+      
+      let removedBook = self.registry[bookIdentifier]?.book
 
       syncQueue.async {
         self.registry.removeValue(forKey: bookIdentifier)

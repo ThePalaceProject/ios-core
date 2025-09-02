@@ -65,12 +65,28 @@ class TPPLCPClient: ReadiumLCP.LCPClient {
    }
 
   func decrypt(data: Data, using context: LCPClientContext) -> Data? {
-    guard let drmContext = context as? DRMContext else { return nil }
-    var decrypted: Data?
-    DispatchQueue.main.sync {
-      decrypted = R2LCPClient.decrypt(data: data, using: drmContext)
+    guard let drmContext = context as? DRMContext else { 
+      ATLog(.error, "Invalid DRM context for decryption")
+      return nil 
     }
-    return decrypted
+    
+    guard !data.isEmpty else {
+      ATLog(.error, "Cannot decrypt empty data")
+      return nil
+    }
+    
+    do {
+      let decrypted = R2LCPClient.decrypt(data: data, using: drmContext)
+      if decrypted == nil {
+        ATLog(.error, "R2LCPClient.decrypt returned nil for \(data.count) bytes")
+      } else {
+        ATLog(.debug, "Successfully decrypted \(data.count) bytes -> \(decrypted?.count ?? 0) bytes")
+      }
+      return decrypted
+    } catch {
+      ATLog(.error, "Exception during decryption: \(error)")
+      return nil
+    }
   }
 
   func findOneValidPassphrase(jsonLicense: String, hashedPassphrases: [String]) -> String? {
@@ -78,15 +94,30 @@ class TPPLCPClient: ReadiumLCP.LCPClient {
   }
 }
 
-/// Provides access to data decryptor
 extension TPPLCPClient {
   func decrypt(data: Data) -> Data? {
-    guard let drmContext = context as? DRMContext else { return nil }
-    var result: Data?
-    DispatchQueue.main.sync {
-      result = R2LCPClient.decrypt(data: data, using: drmContext)
+    guard let drmContext = context as? DRMContext else { 
+      ATLog(.error, "No valid DRM context available for decryption")
+      return nil 
     }
-    return result
+    
+    guard !data.isEmpty else {
+      ATLog(.error, "Cannot decrypt empty data")
+      return nil
+    }
+    
+    do {
+      let result = R2LCPClient.decrypt(data: data, using: drmContext)
+      if result == nil {
+        ATLog(.error, "R2LCPClient.decrypt returned nil for \(data.count) bytes")
+      } else {
+        ATLog(.debug, "Successfully decrypted \(data.count) bytes -> \(result?.count ?? 0) bytes")
+      }
+      return result
+    } catch {
+      ATLog(.error, "Exception during decryption: \(error)")
+      return nil
+    }
   }
 }
 
