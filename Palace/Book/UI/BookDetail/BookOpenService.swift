@@ -91,25 +91,57 @@ enum BookOpenService {
           networkService: DefaultAudiobookNetworkService(tracks: audiobook.tableOfContents.allTracks, decryptor: decryptor),
           playbackTrackerDelegate: timeTracker
         )
+        // Bookmark delegate from new architecture
+        let bookmarkLogic = AudiobookBookmarkBusinessLogic(book: book)
+        manager.bookmarkDelegate = bookmarkLogic
 
+        // Seed cover image and fetch if missing
+        let playbackModel = AudiobookPlaybackModel(audiobookManager: manager)
+        if let cover = book.coverImage {
+          playbackModel.updateCoverImage(cover)
+        } else {
+          Task {
+            if let img = await TPPBookCoverRegistry.shared.coverImage(for: book) {
+              await MainActor.run { playbackModel.updateCoverImage(img) }
+            }
+          }
+        }
+
+        // Start playback or resume from last local bookmark
         if let dict = TPPBookRegistry.shared.location(forIdentifier: book.identifier)?.locationStringDictionary(),
-           let localBookmark = AudioBookmark.create(locatorData: dict) {
-          if let localPosition = TrackPosition(
+           let localBookmark = AudioBookmark.create(locatorData: dict), let localPosition = TrackPosition(
             audioBookmark: localBookmark,
             toc: audiobook.tableOfContents.toc,
             tracks: audiobook.tableOfContents.tracks
-          ) {
-            manager.audiobook.player.play(at: localPosition, completion: nil)
-          }
+           ) {
+          manager.audiobook.player.play(at: localPosition, completion: nil)
         } else {
           manager.audiobook.player.play()
         }
-        let playbackModel = AudiobookPlaybackModel(audiobookManager: manager)
         if let coordinator = NavigationCoordinatorHub.shared.coordinator {
           let route = BookRoute(id: book.identifier)
           coordinator.storeAudioModel(playbackModel, forBookId: route.id)
           DispatchQueue.main.async {
             coordinator.push(.audio(route))
+          }
+          // After push, check remote bookmark and move if newer
+          TPPBookRegistry.shared.syncLocation(for: book) { remoteBookmark in
+            guard let remoteBookmark, let remotePosition = TrackPosition(
+              audioBookmark: remoteBookmark,
+              toc: audiobook.tableOfContents.toc,
+              tracks: audiobook.tableOfContents.tracks
+            ) else { return }
+            
+            let localDict = TPPBookRegistry.shared.location(forIdentifier: book.identifier)?.locationStringDictionary()
+            var shouldMove = true
+            if let localDict,
+               let local = AudioBookmark.create(locatorData: localDict), let localPos = TrackPosition(audioBookmark: local, toc: audiobook.tableOfContents.toc, tracks: audiobook.tableOfContents.tracks) {
+              shouldMove = remotePosition.timestamp > localPos.timestamp && remotePosition.description != localPos.description
+            }
+            
+            if shouldMove {
+              manager.audiobook.player.play(at: remotePosition, completion: nil)
+            }
           }
         }
       }

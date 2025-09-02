@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import UIKit
 import PalaceAudiobookToolkit
 import Combine
 
@@ -59,31 +60,8 @@ extension TPPBookCellDelegate {
   // MARK: - Main Audiobook Opening Entry Point
   
   @objc func openAudiobookWithUnifiedStreaming(_ book: TPPBook, completion: (() -> Void)? = nil) {
-#if LCP
-    if LCPAudiobooks.canOpenBook(book) {
-      if let localURL = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier),
-         FileManager.default.fileExists(atPath: localURL.path) {
-        openLocalLCPAudiobook(book: book, localURL: localURL, completion: completion)
-        return
-      }
-      
-      if let licenseUrl = getLCPLicenseURL(for: book) {
-        openAudiobookUnified(book: book, licenseUrl: licenseUrl, completion: completion)
-        return
-      }
-      
-      if let publicationURL = book.defaultAcquisition?.hrefURL {
-        openAudiobookUnified(book: book, licenseUrl: publicationURL, completion: completion)
-        return
-      }
-      
-      presentUnsupportedItemError()
-      completion?()
-      return
-    }
-#endif
-    
-    presentUnsupportedItemError()
+    // Consolidated presentation through BookOpenService + NavigationCoordinator
+    BookOpenService.open(book)
     completion?()
   }
   
@@ -236,6 +214,11 @@ extension TPPBookCellDelegate {
         audiobookManager.bookmarkDelegate = self.audiobookBookmarkBusinessLogic
 
         let audiobookPlayer = AudiobookPlayer(audiobookManager: audiobookManager, coverImagePublisher: book.$coverImage.eraseToAnyPublisher())
+
+        // Present the player UI in a full-screen navigation stack
+        let nav = UINavigationController(rootViewController: audiobookPlayer)
+        nav.modalPresentationStyle = .fullScreen
+        TPPPresentationUtils.safelyPresent(nav, animated: true, completion: nil)
 
         defer {
           self.scheduleTimer(forAudiobook: book, manager: audiobookManager, viewController: audiobookPlayer)

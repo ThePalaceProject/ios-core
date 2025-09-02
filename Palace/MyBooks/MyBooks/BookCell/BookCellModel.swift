@@ -201,81 +201,13 @@ extension BookCellModel {
   }
 
   private func openAudiobookFromCell() {
-#if LCP
-    if LCPAudiobooks.canOpenBook(book) {
-      if let localURL = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier), FileManager.default.fileExists(atPath: localURL.path) {
-        buildAndPresentAudiobook(lcpSourceURL: localURL)
-      } else {
-        let lcpLicenseURL = licenseURL(forBookIdentifier: book.identifier)
-        if let lcpLicenseURL {
-          buildAndPresentAudiobook(lcpSourceURL: lcpLicenseURL)
-        } else {
-          self.isLoading = false
-        }
-      }
-      return
-    }
-#endif
-    guard let url = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier) else { self.isLoading = false; return }
-    do {
-      let data = try Data(contentsOf: url)
-      guard let json = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] else {
-        self.isLoading = false
-        return
-      }
-      presentAudiobookFrom(json: json, decryptor: nil)
-    } catch {
-      self.isLoading = false
-    }
+    BookOpenService.open(book)
+    self.isLoading = false
   }
 
-#if LCP
-  private func buildAndPresentAudiobook(lcpSourceURL: URL) {
-    guard let lcpAudiobooks = LCPAudiobooks(for: lcpSourceURL) else {
-      self.isLoading = false
-      return
-    }
-    if let cached = lcpAudiobooks.cachedContentDictionary() as? [String: Any] {
-      presentAudiobookFrom(json: cached, decryptor: lcpAudiobooks)
-      return
-    }
-    lcpAudiobooks.contentDictionary { [weak self] dict, error in
-      DispatchQueue.main.async {
-        guard let self else { return }
-        guard error == nil, let json = dict as? [String: Any] else {
-          self.isLoading = false
-          return
-        }
-        self.presentAudiobookFrom(json: json, decryptor: lcpAudiobooks)
-      }
-    }
-  }
-#endif
 
   private func presentAudiobookFrom(json: [String: Any], decryptor: DRMDecryptor?) {
-    var jsonDict = json
-    jsonDict["id"] = book.identifier
-    guard let jsonData = try? JSONSerialization.data(withJSONObject: jsonDict, options: []),
-          let manifest = try? Manifest.customDecoder().decode(Manifest.self, from: jsonData),
-          let audiobook = AudiobookFactory.audiobook(for: manifest, bookIdentifier: book.identifier, decryptor: decryptor, token: book.bearerToken)
-    else {
-      self.isLoading = false
-      return
-    }
-
-    let metadata = AudiobookMetadata(title: book.title, authors: [book.authors ?? ""])
-    let manager = DefaultAudiobookManager(
-      metadata: metadata,
-      audiobook: audiobook,
-      networkService: DefaultAudiobookNetworkService(tracks: audiobook.tableOfContents.allTracks, decryptor: decryptor),
-      playbackTrackerDelegate: nil
-    )
-
-    let playbackModel = AudiobookPlaybackModel(audiobookManager: manager)
-    if let coordinator = NavigationCoordinatorHub.shared.coordinator {
-      coordinator.storeAudioModel(playbackModel, forBookId: book.identifier)
-      coordinator.push(.audio(BookRoute(id: book.identifier)))
-    }
+    BookOpenService.open(book)
     self.isLoading = false
   }
 
