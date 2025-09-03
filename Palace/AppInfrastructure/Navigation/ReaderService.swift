@@ -29,6 +29,7 @@ final class ReaderService {
       case .success(let publication):
         let nav = UINavigationController()
         self.r3Owner.readerModule.presentPublication(publication, book: book, in: nav, forSample: false)
+        nav.setNavigationBarHidden(true, animated: false)
         if let coordinator = NavigationCoordinatorHub.shared.coordinator {
           coordinator.storeEPUBController(nav, forBookId: book.identifier)
           coordinator.push(.epub(BookRoute(id: book.identifier)))
@@ -48,6 +49,7 @@ final class ReaderService {
       case .success(let publication):
         let nav = UINavigationController()
         self.r3Owner.readerModule.presentPublication(publication, book: book, in: nav, forSample: true)
+        nav.setNavigationBarHidden(true, animated: false)
         if let coordinator = NavigationCoordinatorHub.shared.coordinator {
           coordinator.storeEPUBController(nav, forBookId: book.identifier)
           coordinator.push(.epub(BookRoute(id: book.identifier)))

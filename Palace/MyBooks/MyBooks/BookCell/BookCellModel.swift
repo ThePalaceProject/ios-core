@@ -265,10 +265,15 @@ extension BookCellModel {
             if let feed = feed, feed.entries.count == 1, let entry = feed.entries[0] as? TPPOPDSEntry, let returnedBook = TPPBook(entry: entry) {
               if downloaded { MyBooksDownloadCenter.shared.deleteLocalContent(for: identifier) }
               TPPBookRegistry.shared.updateAndRemoveBook(returnedBook)
+              NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil, userInfo: [:])
             } else {
               if let errorType = (error as? [String: Any])?["type"] as? String, errorType == TPPProblemDocument.TypeNoActiveLoan {
                 if downloaded { MyBooksDownloadCenter.shared.deleteLocalContent(for: identifier) }
                 TPPBookRegistry.shared.removeBook(forIdentifier: identifier)
+                NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil, userInfo: [:])
+              } else {
+                // Unknown error case: ensure UI stops loading
+                DispatchQueue.main.async { self.isLoading = false }
               }
             }
             DispatchQueue.main.async { self.isLoading = false }
@@ -276,6 +281,7 @@ extension BookCellModel {
         } else {
           if downloaded { MyBooksDownloadCenter.shared.deleteLocalContent(for: identifier) }
           TPPBookRegistry.shared.removeBook(forIdentifier: identifier)
+          NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil, userInfo: [:])
           DispatchQueue.main.async { self.isLoading = false }
         }
       },

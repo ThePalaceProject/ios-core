@@ -29,9 +29,13 @@ final class ReaderService {
       switch result {
       case .success(let publication):
         let nav = UINavigationController()
-        nav.modalPresentationStyle = .fullScreen
         self.r3Owner.readerModule.presentPublication(publication, book: book, in: nav, forSample: false)
-        TPPPresentationUtils.safelyPresent(nav, animated: true, completion: nil)
+        if let coordinator = NavigationCoordinatorHub.shared.coordinator {
+          coordinator.storeEPUBController(nav, forBookId: book.identifier)
+          coordinator.push(.epub(BookRoute(id: book.identifier)))
+        } else {
+          TPPPresentationUtils.safelyPresent(nav, animated: true, completion: nil)
+        }
       case .failure(let error):
         let alert = TPPAlertUtils.alert(title: "Content Protection Error", message: error.localizedDescription)
         TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
@@ -45,9 +49,13 @@ final class ReaderService {
       switch result {
       case .success(let publication):
         let nav = UINavigationController()
-        nav.modalPresentationStyle = .fullScreen
         self.r3Owner.readerModule.presentPublication(publication, book: book, in: nav, forSample: true)
-        TPPPresentationUtils.safelyPresent(nav, animated: true, completion: nil)
+        if let coordinator = NavigationCoordinatorHub.shared.coordinator {
+          coordinator.storeEPUBController(nav, forBookId: book.identifier)
+          coordinator.push(.epub(BookRoute(id: book.identifier)))
+        } else {
+          TPPPresentationUtils.safelyPresent(nav, animated: true, completion: nil)
+        }
       case .failure(let error):
         let alert = TPPAlertUtils.alert(title: "Content Protection Error", message: error.localizedDescription)
         TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)

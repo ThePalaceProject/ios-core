@@ -671,8 +671,6 @@
 		E562DD9C2D35ABC4003A1A40 /* BookDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E562DD992D35ABBF003A1A40 /* BookDetailView.swift */; };
 		E562DDAD2D36E7C0003A1A40 /* BookDetailHostingViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E562DDAB2D36E7B5003A1A40 /* BookDetailHostingViewController.swift */; };
 		E562DDAE2D36E7C0003A1A40 /* BookDetailHostingViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E562DDAB2D36E7B5003A1A40 /* BookDetailHostingViewController.swift */; };
-		E562DE3F2D38B98F003A1A40 /* UIImage+Extension.swift in Sources */ = {isa = PBXBuildFile; fileRef = E562DE3E2D38B987003A1A40 /* UIImage+Extension.swift */; };
-		E562DE412D38B98F003A1A40 /* UIImage+Extension.swift in Sources */ = {isa = PBXBuildFile; fileRef = E562DE3E2D38B987003A1A40 /* UIImage+Extension.swift */; };
 		E562DE432D38BA3B003A1A40 /* UIDevice+Extension.swift in Sources */ = {isa = PBXBuildFile; fileRef = E562DE422D38BA35003A1A40 /* UIDevice+Extension.swift */; };
 		E562DE452D38BA3B003A1A40 /* UIDevice+Extension.swift in Sources */ = {isa = PBXBuildFile; fileRef = E562DE422D38BA35003A1A40 /* UIDevice+Extension.swift */; };
 		E562DE472D38BB8C003A1A40 /* Image+Extension.swift in Sources */ = {isa = PBXBuildFile; fileRef = E562DE462D38BB8A003A1A40 /* Image+Extension.swift */; };
@@ -885,14 +883,12 @@
 		E785BA2A2B1519E600A12EFA /* OpenSans-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E5BEF01C26BDA9EA00C2A50B /* OpenSans-SemiBold.ttf */; };
 		E785BA2B2B1519E600A12EFA /* OpenDyslexic3-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 84B7A3441B84E8FE00584FB2 /* OpenDyslexic3-Bold.ttf */; };
 		E785BA2C2B1519E600A12EFA /* OpenDyslexic3-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 84B7A3451B84E8FE00584FB2 /* OpenDyslexic3-Regular.ttf */; };
-		E7861C472846868800B3A38A /* TPPPDFViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7861C462846868800B3A38A /* TPPPDFViewController.swift */; };
 		E7861C492846875D00B3A38A /* TPPPDFView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7861C482846875D00B3A38A /* TPPPDFView.swift */; };
 		E7861C4B28468AB200B3A38A /* TPPPDFDocumentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7861C4A28468AB200B3A38A /* TPPPDFDocumentView.swift */; };
 		E7861C4D2846937400B3A38A /* TPPEncryptedPDFView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7861C4C2846937400B3A38A /* TPPEncryptedPDFView.swift */; };
 		E7861C4E2846937400B3A38A /* TPPEncryptedPDFView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7861C4C2846937400B3A38A /* TPPEncryptedPDFView.swift */; };
 		E7861C4F2846937B00B3A38A /* TPPPDFView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7861C482846875D00B3A38A /* TPPPDFView.swift */; };
 		E7861C502846937B00B3A38A /* TPPPDFDocumentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7861C4A28468AB200B3A38A /* TPPPDFDocumentView.swift */; };
-		E7861C512846937B00B3A38A /* TPPPDFViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7861C462846868800B3A38A /* TPPPDFViewController.swift */; };
 		E7861C53284695DE00B3A38A /* TPPEncryptedPDFDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7861C52284695DE00B3A38A /* TPPEncryptedPDFDocument.swift */; };
 		E7861C572846B38C00B3A38A /* TPPEncryptedPDFDataProvider.m in Sources */ = {isa = PBXBuildFile; fileRef = E7861C562846B38C00B3A38A /* TPPEncryptedPDFDataProvider.m */; };
 		E7862A1D277391C100BE8AB8 /* TPPSettingsViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5B2B8DC2759552F00150ED4 /* TPPSettingsViewController.swift */; };
@@ -1595,7 +1591,6 @@
 		E562DD952D35AB88003A1A40 /* BookDetailViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookDetailViewModel.swift; sourceTree = "<group>"; };
 		E562DD992D35ABBF003A1A40 /* BookDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookDetailView.swift; sourceTree = "<group>"; };
 		E562DDAB2D36E7B5003A1A40 /* BookDetailHostingViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookDetailHostingViewController.swift; sourceTree = "<group>"; };
-		E562DE3E2D38B987003A1A40 /* UIImage+Extension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UIImage+Extension.swift"; sourceTree = "<group>"; };
 		E562DE422D38BA35003A1A40 /* UIDevice+Extension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UIDevice+Extension.swift"; sourceTree = "<group>"; };
 		E562DE462D38BB8A003A1A40 /* Image+Extension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Image+Extension.swift"; sourceTree = "<group>"; };
 		E56575FF2C933527005953BD /* AudiobookFileLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudiobookFileLogger.swift; sourceTree = "<group>"; };
@@ -1725,7 +1720,6 @@
 		E75F4A2829C3AB1F006DFBD8 /* TPPPublicationSpeechSynthesizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPublicationSpeechSynthesizer.swift; sourceTree = "<group>"; };
 		E76AD92A296DCB76008ECC61 /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
 		E785BA272B1519C200A12EFA /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
-		E7861C462846868800B3A38A /* TPPPDFViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFViewController.swift; sourceTree = "<group>"; };
 		E7861C482846875D00B3A38A /* TPPPDFView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFView.swift; sourceTree = "<group>"; };
 		E7861C4A28468AB200B3A38A /* TPPPDFDocumentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFDocumentView.swift; sourceTree = "<group>"; };
 		E7861C4C2846937400B3A38A /* TPPEncryptedPDFView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPEncryptedPDFView.swift; sourceTree = "<group>"; };
@@ -3047,7 +3041,6 @@
 				E544C4F62A3C1E4A00B2DC9D /* Dictionary+Extensions.swift */,
 				E562DE462D38BB8A003A1A40 /* Image+Extension.swift */,
 				E562DE422D38BA35003A1A40 /* UIDevice+Extension.swift */,
-				E562DE3E2D38B987003A1A40 /* UIImage+Extension.swift */,
 				E54DD4D4275C7C940013C200 /* View+Extensions.swift */,
 				E54DD4E5275C8EAA0013C200 /* Font+Extensions.swift */,
 			);
@@ -3318,7 +3311,6 @@
 		E706F61028638FA5000B7431 /* Views */ = {
 			isa = PBXGroup;
 			children = (
-				E7861C462846868800B3A38A /* TPPPDFViewController.swift */,
 				E704804D2859253900019B31 /* TPPPDFReaderView.swift */,
 				E7048071285A72A600019B31 /* TPPPDFNavigation.swift */,
 				E7B20B48285B4E5600C49FE1 /* TPPPDFLabel.swift */,
@@ -3959,7 +3951,6 @@
 				21E41795292812B700A78606 /* TPPSignInBusinessLogic+CardCreation.swift in Sources */,
 				E562DE472D38BB8C003A1A40 /* Image+Extension.swift in Sources */,
 				E50543922E600145007CCFAB /* BookListSkeletonView.swift in Sources */,
-				E7861C512846937B00B3A38A /* TPPPDFViewController.swift in Sources */,
 				E5D8C8DF2D829B2000667A99 /* HTMLTextView.swift in Sources */,
 				E708F724284783250028405B /* TPPEncryptedPDFViewer.swift in Sources */,
 				73EB0A8225821DF4006BC997 /* NSURL+NYPLURLAdditions.m in Sources */,
@@ -4048,7 +4039,6 @@
 				73EB0AA525821DF4006BC997 /* TPPEntryPointView.swift in Sources */,
 				E78AE803291C1D8600884446 /* TPPBookRegistryRecord.swift in Sources */,
 				E5BFCF0E2A5455170046A48D /* TokenRequest.swift in Sources */,
-				E562DE412D38B98F003A1A40 /* UIImage+Extension.swift in Sources */,
 				E57F92BC2D6918E4003D9180 /* BorderStyleModifier.swift in Sources */,
 				73EB0AA625821DF4006BC997 /* TPPOPDSGroup.m in Sources */,
 				73EB0AA825821DF4006BC997 /* TPPAppReviewPrompt.swift in Sources */,
@@ -4479,7 +4469,6 @@
 				E50543892E5F98B9007CCFAB /* CatalogLoadingViewController.swift in Sources */,
 				E5AD65E12684FDA300C62951 /* TPPAccountListDataSource.swift in Sources */,
 				E5EFDE7C298C4F8000258CA3 /* BookCellModel.swift in Sources */,
-				E562DE3F2D38B98F003A1A40 /* UIImage+Extension.swift in Sources */,
 				2D754BC22002F1B10061D34F /* TPPOPDSIndirectAcquisition.m in Sources */,
 				21E35FC3268CC8AC00066F9D /* AdobeContentProtectionService.swift in Sources */,
 				E521E9C82D513E3F00C08ADF /* BookButtonsView.swift in Sources */,
@@ -4601,7 +4590,6 @@
 				730EE001251567820038DD9F /* TPPLibraryNavigationController.m in Sources */,
 				E53573D2295613FF008BDCA4 /* MyBooksViewModel.swift in Sources */,
 				E6BA02B81DE4B6F600F76404 /* RemoteHTMLViewController.swift in Sources */,
-				E7861C472846868800B3A38A /* TPPPDFViewController.swift in Sources */,
 				21F0992727629AC000CD85E2 /* TPPPagerDotsView.swift in Sources */,
 				E57F92B32D683564003D9180 /* BookListView.swift in Sources */,
 				2126FE6225C0890E0095C45C /* ReaderFormatModule.swift in Sources */,

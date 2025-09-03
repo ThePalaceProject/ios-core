@@ -69,6 +69,7 @@ struct BookDetailView: View {
       }
       .onAppear {
         headerColor = Color(viewModel.book.dominantUIColor)
+        headerColor = Color(viewModel.book.dominantUIColor)
 
         headerHeight = viewModel.isFullSize ? 300 : 225
         viewModel.fetchRelatedBooks()
@@ -79,6 +80,9 @@ struct BookDetailView: View {
       }
       .onDisappear {
         viewModel.showHalfSheet = false
+      }
+      .onReceive(viewModel.book.$dominantUIColor) { newColor in
+        headerColor = Color(newColor)
       }
       .fullScreenCover(item: $selectedBook) { book in
         BookDetailView(book: book)
@@ -91,6 +95,9 @@ struct BookDetailView: View {
           }
       }
       .presentationDetents([.height(0), .height(300)])
+      .toolbarBackground(.hidden, for: .navigationBar)
+      .toolbarColorScheme(headerColor.isDark ? .dark : .light, for: .navigationBar)
+      .tint(headerColor.isDark ? .white : .black)
       
       if !viewModel.isFullSize {
         backgroundView
@@ -98,47 +105,24 @@ struct BookDetailView: View {
           .animation(scaleAnimation, value: headerHeight)
         
         imageView
-          .padding(.top, 50)
+          .padding(.top, 40)
       }
       
       compactHeaderContent
         .opacity(showCompactHeader ? 1 : 0)
         .animation(scaleAnimation, value: -headerHeight)
-      
-      backbutton
+
       sampleToolbarView
     }
     .offset(x: dragOffset)
     .animation(.interactiveSpring(), value: dragOffset)
-    .gesture(edgeSwipeGesture)
+    
     .modifier(BookStateModifier(viewModel: viewModel, showHalfSheet: $viewModel.showHalfSheet))
   }
   
   // MARK: - View Components
   
-  @ViewBuilder private var backbutton: some View {
-    Button(action: {
-      presentationMode.wrappedValue.dismiss()
-    }) {
-      HStack {
-        Image(systemName: "chevron.left")
-        Text("Back")
-      }
-      .font(.title3)
-      .foregroundColor(headerColor.isDark ? .white : .black)
-      .opacity(0.8)
-    }
-    .accessibilityLabel("Back")
-    .accessibilityHint("Go back to the previous screen")
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .frame(height: 50)
-    .padding(.top, dynamicTopPadding())
-    .padding(.leading)
-    .zIndex(10)
-    .edgesIgnoringSafeArea(.top)
-    .opacity(showCompactHeader ? 0 : 1)
-    .animation(scaleAnimation, value: headerHeight)
-  }
+  
   
   private func dynamicTopPadding() -> CGFloat {
     let basePadding: CGFloat = 20
@@ -173,6 +157,7 @@ struct BookDetailView: View {
         HStack(alignment: .top, spacing: 25) {
           imageView
           titleView
+            .padding(.top, 20)
         }
         .padding(.top, 110)
         
@@ -293,7 +278,7 @@ struct BookDetailView: View {
     }
     .frame(height: 50)
     .padding(.horizontal, 20)
-    .padding(.vertical, 10)
+    .padding(.bottom, 10)
   }
   
   @ViewBuilder private var descriptionView: some View {
@@ -543,9 +528,15 @@ struct BookDetailView: View {
     case .sample, .audiobookSample:
       viewModel.handleAction(for: buttonType)
     case .download, .get:
-      viewModel.showHalfSheet.toggle()
-      DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
+      let account = TPPUserAccount.sharedAccount()
+      if account.needsAuth && !account.hasCredentials() {
+        // Present sign-in directly; don't show half sheet first
         viewModel.handleAction(for: buttonType)
+      } else {
+        viewModel.showHalfSheet.toggle()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
+          viewModel.handleAction(for: buttonType)
+        }
       }
     case .manageHold:
       viewModel.isManagingHold = true
@@ -587,21 +578,7 @@ struct BookDetailView: View {
     lastOffset = offset
   }
   
-  private var edgeSwipeGesture: some Gesture {
-    DragGesture()
-      .onChanged { value in
-        if value.startLocation.x < 40 && value.translation.width > 0 {
-          dragOffset = value.translation.width
-        }
-      }
-      .onEnded { value in
-        if value.translation.width > 150 {
-          presentationMode.wrappedValue.dismiss()
-        } else {
-          dragOffset = 0
-        }
-      }
-  }
+  
 }
 
 private struct BookStateModifier: ViewModifier {

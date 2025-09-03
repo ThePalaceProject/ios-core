@@ -29,8 +29,17 @@ struct NavigationHostView<Content: View>: View {
           case .search(let searchRoute):
             CatalogSearchView(books: coordinator.resolveSearchBooks(for: searchRoute))
           case .pdf(let bookRoute):
-            if let vc = coordinator.resolvePDFController(for: bookRoute) {
+            if let (document, metadata) = coordinator.resolvePDF(for: bookRoute) {
+              TPPPDFReaderView(document: document)
+                .environmentObject(metadata)
+            } else {
+              EmptyView()
+            }
+          case .epub(let bookRoute):
+            if let vc = coordinator.resolveEPUBController(for: bookRoute) {
               UIViewControllerWrapper(vc, updater: { _ in })
+                .navigationBarBackButtonHidden(true)
+                .toolbar(.hidden, for: .navigationBar)
             } else {
               EmptyView()
             }

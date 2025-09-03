@@ -39,7 +39,7 @@ struct NormalBookCell: View {
       .sheet(isPresented: $showHalfSheet) {
         HalfSheetView(
           viewModel: model,
-          backgroundColor: Color(model.book.coverImage?.mainColor() ?? .gray),
+          backgroundColor: Color(model.book.dominantUIColor),
           coverImage: $model.book.coverImage
         )
       }

@@ -346,6 +346,8 @@ final class BookDetailViewModel: ObservableObject {
   func didSelectDownload(for book: TPPBook) {
     let account = TPPUserAccount.sharedAccount()
     if account.needsAuth && !account.hasCredentials() {
+      // Present login immediately; do not show action sheet first
+      showHalfSheet = false
       TPPAccountSignInViewController.requestCredentials { [weak self] in
         guard let self else { return }
         self.downloadCenter.startDownload(for: book)

@@ -35,7 +35,6 @@ final class NavigationCoordinator: ObservableObject {
   private var pdfControllerById: [String: UIViewController] = [:]
   private var audioControllerById: [String: UIViewController] = [:]
   private var epubControllerById: [String: UIViewController] = [:]
-  // SwiftUI-first payloads
   private var audioModelById: [String: AudiobookPlaybackModel] = [:]
   private var pdfContentById: [String: (TPPPDFDocument, TPPPDFDocumentMetadata)] = [:]
 
