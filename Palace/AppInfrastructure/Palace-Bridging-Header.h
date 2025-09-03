@@ -12,11 +12,6 @@
 #import "NSDate+NYPLDateAdditions.h"
 #import "TPPAccountSignInViewController.h"
 #import "TPPOPDSAcquisition.h"
-//#import "TPPCatalogFacet.h"
-//#import "TPPCatalogFacetGroup.h"
-// Removed: Bridging not needed after Swift migration of catalog
-//#import "TPPCatalogUngroupedFeed.h"
-//#import "TPPCatalogGroupedFeed.h"
 #import "TPPConfiguration.h"
 #import "TPPKeychain.h"
 #import "TPPLocalization.h"
