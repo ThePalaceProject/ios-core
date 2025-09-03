@@ -15,6 +15,8 @@ struct TPPSettingsView: View {
   @AppStorage(TPPSettings.showDeveloperSettingsKey) private var showDeveloperSettings: Bool = false
   @State private var selectedView: Int? = 0
   @State private var orientation: UIDeviceOrientation = UIDevice.current.orientation
+  @State private var showAddLibrarySheet: Bool = false
+  @State private var librariesRefreshToken: UUID = UUID()
 
   private var sideBarEnabled: Bool {
     UIDevice.current.userInterfaceIdiom == .pad
@@ -49,17 +51,33 @@ struct TPPSettingsView: View {
     .onReceive(NotificationCenter.default.publisher(for: UIDevice.orientationDidChangeNotification)) { _ in
       self.orientation = UIDevice.current.orientation
     }
+    .onReceive(NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)) { _ in
+      librariesRefreshToken = UUID()
+    }
+    .onReceive(NotificationCenter.default.publisher(for: .TPPBookRegistryDidChange)) { _ in
+      librariesRefreshToken = UUID()
+    }
+    .sheet(isPresented: $showAddLibrarySheet) {
+      UIViewControllerWrapper(
+        TPPAccountList { account in
+          MyBooksViewModel().loadAccount(account)
+          showAddLibrarySheet = false
+        },
+        updater: { _ in }
+      )
+    }
   }
 
   @ViewBuilder private var librariesSection: some View {
     let viewController = TPPSettingsAccountsTableViewController(accounts: TPPSettings.shared.settingsAccountsList)
     let navButton = Button(DisplayStrings.addLibrary) {
-      viewController.addAccount()
+      showAddLibrarySheet = true
     }
 
     let wrapper = UIViewControllerWrapper(viewController) { _ in }
       .navigationBarTitle(Text(DisplayStrings.libraries))
       .navigationBarItems(trailing: navButton)
+      .id(librariesRefreshToken)
 
     Section {
       row(title: DisplayStrings.libraries, index: 1, selection: self.$selectedView, destination: wrapper.anyView())
