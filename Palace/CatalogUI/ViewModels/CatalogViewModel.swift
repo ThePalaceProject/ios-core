@@ -23,14 +23,14 @@ final class CatalogViewModel: ObservableObject {
     self.topLevelURLProvider = topLevelURLProvider
   }
 
+  // MARK: - Public API
+
   func load() async {
-    // Avoid reloading if we already have data
     if !lanes.isEmpty || !ungroupedBooks.isEmpty { return }
     guard let url = topLevelURLProvider() else { return }
     isLoading = true
     errorMessage = nil
 
-    // Cancel any in-flight load and start a new one
     currentLoadTask?.cancel()
     currentLoadTask = Task { [weak self] in
       guard let self else { return }
@@ -40,50 +40,8 @@ final class CatalogViewModel: ObservableObject {
           return
         }
 
-        // Map feed off the main actor to reduce UI contention
-        let mapped = try await Task.detached(priority: .userInitiated) { () -> (title: String, entries: [CatalogEntry], lanes: [CatalogLaneModel], ungrouped: [TPPBook], facets: [TPPCatalogFacetGroup], entryPoints: [TPPCatalogFacet]) in
-          let title = feed.title
-          let entries = feed.entries
-          var lanesOut: [CatalogLaneModel] = []
-          var ungroupedOut: [TPPBook] = []
-          var facetsOut: [TPPCatalogFacetGroup] = []
-          var entryPointsOut: [TPPCatalogFacet] = []
-          let feedObjc = feed.opdsFeed
-          switch feedObjc.type {
-          case .acquisitionGrouped:
-            if let grouped = TPPCatalogGroupedFeed(opdsFeed: feedObjc) {
-              entryPointsOut = grouped.entryPoints
-            }
-            var groupTitleToBooks: [String: [TPPBook]] = [:]
-            var groupTitleToMoreURL: [String: URL?] = [:]
-            if let opdsEntries = feedObjc.entries as? [TPPOPDSEntry] {
-              for entry in opdsEntries {
-                if Task.isCancelled { break }
-                guard let group = entry.groupAttributes else { continue }
-                let groupTitle = group.title ?? ""
-                if let book = Self.makeBookBackground(from: entry) {
-                  groupTitleToBooks[groupTitle, default: []].append(book)
-                  if groupTitleToMoreURL[groupTitle] == nil { groupTitleToMoreURL[groupTitle] = group.href }
-                }
-              }
-            }
-            lanesOut = groupTitleToBooks.map { title, books in
-              CatalogLaneModel(title: title, books: books, moreURL: groupTitleToMoreURL[title] ?? nil)
-            }.sorted { $0.title < $1.title }
-          case .acquisitionUngrouped:
-            if let opdsEntries = feedObjc.entries as? [TPPOPDSEntry] {
-              ungroupedOut = opdsEntries.compactMap { Self.makeBookBackground(from: $0) }
-            }
-            if let ungrouped = TPPCatalogUngroupedFeed(opdsFeed: feedObjc) {
-              facetsOut = (ungrouped.facetGroups as? [TPPCatalogFacetGroup]) ?? []
-              entryPointsOut = ungrouped.entryPoints
-            }
-          case .navigation, .invalid:
-            break
-          @unknown default:
-            break
-          }
-          return (title, entries, lanesOut, ungroupedOut, facetsOut, entryPointsOut)
+        let mapped = await Task.detached(priority: .userInitiated) { () -> MappedCatalog in
+          return await Self.mapFeed(feed)
         }.value
 
         if Task.isCancelled { return }
@@ -91,8 +49,8 @@ final class CatalogViewModel: ObservableObject {
           self.title = mapped.title
           self.entries = mapped.entries
           self.lanes = mapped.lanes
-          self.ungroupedBooks = mapped.ungrouped
-          self.facetGroups = mapped.facets
+          self.ungroupedBooks = mapped.ungroupedBooks
+          self.facetGroups = mapped.facetGroups
           self.entryPoints = mapped.entryPoints
           self.lastLoadedURL = url
           self.isLoading = false
@@ -101,8 +59,8 @@ final class CatalogViewModel: ObservableObject {
         // Prefetch some thumbnails to speed perceived loading
         if !mapped.lanes.isEmpty {
           self.prefetchThumbnails(for: mapped.lanes.first?.books ?? [])
-        } else if !mapped.ungrouped.isEmpty {
-          self.prefetchThumbnails(for: Array(mapped.ungrouped.prefix(20)))
+        } else if !mapped.ungroupedBooks.isEmpty {
+          self.prefetchThumbnails(for: Array(mapped.ungroupedBooks.prefix(20)))
         }
       } catch {
         if Task.isCancelled { return }
@@ -135,7 +93,6 @@ final class CatalogViewModel: ObservableObject {
         case .acquisitionUngrouped:
           if let opdsEntries = feedObjc.entries as? [TPPOPDSEntry] {
             let newUngrouped = opdsEntries.compactMap { Self.makeBook(from: $0) }
-            // Swap atomically to avoid flicker
             self.lanes = []
             self.ungroupedBooks = newUngrouped
           }
@@ -147,7 +104,6 @@ final class CatalogViewModel: ObservableObject {
             self.entryPoints = []
           }
         case .acquisitionGrouped:
-          // Rebuild lanes instead of flattening
           var groupTitleToBooks: [String: [TPPBook]] = [:]
           var groupTitleToMoreURL: [String: URL?] = [:]
           if let opdsEntries = feedObjc.entries as? [TPPOPDSEntry] {
@@ -239,9 +195,8 @@ final class CatalogViewModel: ObservableObject {
 
   func handleAccountChange() async {
     guard let url = topLevelURLProvider() else { return }
-    // Only refresh if the URL actually changed, to prevent double-load on startup
+
     if lastLoadedURL == nil || url != lastLoadedURL {
-      // Immediately show loading state and clear previous content while new feed loads
       await MainActor.run {
         self.isLoading = true
         self.errorMessage = nil
@@ -266,6 +221,87 @@ struct CatalogLaneModel: Identifiable {
 // MARK: - Helpers
 
 extension CatalogViewModel {
+  /// Result of mapping an OPDS feed to view model data
+  struct MappedCatalog {
+    let title: String
+    let entries: [CatalogEntry]
+    let lanes: [CatalogLaneModel]
+    let ungroupedBooks: [TPPBook]
+    let facetGroups: [TPPCatalogFacetGroup]
+    let entryPoints: [TPPCatalogFacet]
+  }
+
+  /// Produce a MappedCatalog from a CatalogFeed
+  static func mapFeed(_ feed: CatalogFeed) -> MappedCatalog {
+    let title = feed.title
+    let entries = feed.entries
+    let feedObjc = feed.opdsFeed
+
+    switch feedObjc.type {
+    case .acquisitionGrouped:
+      let entryPoints: [TPPCatalogFacet] = TPPCatalogGroupedFeed(opdsFeed: feedObjc)?.entryPoints ?? []
+      let (lanes, _) = buildGroupedContent(from: feedObjc)
+      return MappedCatalog(
+        title: title,
+        entries: entries,
+        lanes: lanes,
+        ungroupedBooks: [],
+        facetGroups: [],
+        entryPoints: entryPoints
+      )
+    case .acquisitionUngrouped:
+      let ungroupedBooks = (feedObjc.entries as? [TPPOPDSEntry])?.compactMap { makeBookBackground(from: $0) } ?? []
+      let ungrouped = TPPCatalogUngroupedFeed(opdsFeed: feedObjc)
+      let facetGroups = (ungrouped?.facetGroups as? [TPPCatalogFacetGroup]) ?? []
+      let entryPoints = ungrouped?.entryPoints ?? []
+      return MappedCatalog(
+        title: title,
+        entries: entries,
+        lanes: [],
+        ungroupedBooks: ungroupedBooks,
+        facetGroups: facetGroups,
+        entryPoints: entryPoints
+      )
+    case .navigation, .invalid:
+      return MappedCatalog(
+        title: title,
+        entries: entries,
+        lanes: [],
+        ungroupedBooks: [],
+        facetGroups: [],
+        entryPoints: []
+      )
+    @unknown default:
+      return MappedCatalog(
+        title: title,
+        entries: entries,
+        lanes: [],
+        ungroupedBooks: [],
+        facetGroups: [],
+        entryPoints: []
+      )
+    }
+  }
+
+  private static func buildGroupedContent(from feed: TPPOPDSFeed) -> ([CatalogLaneModel], [TPPBook]) {
+    var titleToBooks: [String: [TPPBook]] = [:]
+    var titleToMoreURL: [String: URL?] = [:]
+    if let entries = feed.entries as? [TPPOPDSEntry] {
+      for entry in entries {
+        if let group = entry.groupAttributes,
+           let book = makeBookBackground(from: entry) {
+          let title = group.title ?? ""
+          titleToBooks[title, default: []].append(book)
+          if titleToMoreURL[title] == nil { titleToMoreURL[title] = group.href }
+        }
+      }
+    }
+    let lanes = titleToBooks
+      .map { title, books in CatalogLaneModel(title: title, books: books, moreURL: titleToMoreURL[title] ?? nil) }
+      .sorted { $0.title < $1.title }
+    return (lanes, [])
+  }
+
   private func prefetchThumbnails(for books: [TPPBook]) {
     let set = Set(books)
     TPPBookRegistry.shared.thumbnailImages(forBooks: set) { _ in }
