@@ -15,13 +15,13 @@ private struct FacetKey {
 private struct FacetGroupModel: Identifiable {
   let id: String
   let name: String
-  let items: [TPPCatalogFacet]
+  let items: [CatalogFilter]
   
-  var orderedItems: [TPPCatalogFacet] {
+  var orderedItems: [CatalogFilter] {
     items.sorted { lhs, rhs in
       let la = FacetKey.isAllTitle(lhs.title)
       let ra = FacetKey.isAllTitle(rhs.title)
-      if la == ra { return (lhs.title ?? "") < (rhs.title ?? "") }
+      if la == ra { return lhs.title < rhs.title }
       return la && !ra
     }
   }
@@ -30,7 +30,7 @@ private struct FacetGroupModel: Identifiable {
 // MARK: - Public Sheet
 
 struct CatalogFiltersSheetView: View {
-  let facetGroups: [TPPCatalogFacetGroup]
+  let facetGroups: [CatalogFilterGroup]
   @Binding var selection: Set<String>
   let onApply: () -> Void
   let isApplying: Bool
@@ -42,9 +42,9 @@ struct CatalogFiltersSheetView: View {
       .filter { !$0.name.lowercased().contains("sort") }
       .map { g in
         FacetGroupModel(
-          id: g.name,
+          id: g.id,
           name: g.name,
-          items: g.facets.compactMap { $0 as? TPPCatalogFacet }
+          items: g.filters
         )
       }
   }
@@ -66,10 +66,10 @@ struct CatalogFiltersSheetView: View {
               .background(Color(UIColor.systemBackground))
               
               if expanded.contains(group.id) {
-                ForEach(group.orderedItems, id: \.href) { facet in
+                ForEach(group.orderedItems, id: \.id) { facet in
                   FacetRowButton(
                     isSelected: selection.contains(key(for: group, facet: facet)),
-                    title: facet.title ?? "",
+                    title: facet.title,
                     onTap: { toggleSelection(in: group, facet: facet) }
                   )
                   .padding(.horizontal)
@@ -96,10 +96,10 @@ struct CatalogFiltersSheetView: View {
 // MARK: - Intent / Logic
 
 private extension CatalogFiltersSheetView {
-  func key(for group: FacetGroupModel, facet: TPPCatalogFacet) -> String {
+  func key(for group: FacetGroupModel, facet: CatalogFilter) -> String {
     FacetKey.make(
       group: group.id,
-      title: facet.title ?? "",
+      title: facet.title,
       href: facet.href?.absoluteString ?? ""
     )
   }
@@ -116,7 +116,7 @@ private extension CatalogFiltersSheetView {
     }
   }
   
-  func toggleSelection(in group: FacetGroupModel, facet: TPPCatalogFacet) {
+  func toggleSelection(in group: FacetGroupModel, facet: CatalogFilter) {
     let k = key(for: group, facet: facet)
     let groupKeys = Set(group.items.map { key(for: group, facet: $0) })
     

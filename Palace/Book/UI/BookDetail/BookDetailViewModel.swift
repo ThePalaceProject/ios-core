@@ -228,8 +228,19 @@ final class BookDetailViewModel: ObservableObject {
       
       DispatchQueue.main.async {
         if feed?.type == .acquisitionGrouped {
-          let groupedFeed = TPPCatalogGroupedFeed(opdsFeed: feed)
-          self.createRelatedBooksCells(groupedFeed)
+          var groupTitleToBooks: [String: [TPPBook]] = [:]
+          var groupTitleToMoreURL: [String: URL?] = [:]
+          if let entries = feed?.entries as? [TPPOPDSEntry] {
+            for entry in entries {
+              guard let group = entry.groupAttributes else { continue }
+              let groupTitle = group.title ?? ""
+              if let b = CatalogViewModel.makeBook(from: entry) {
+                groupTitleToBooks[groupTitle, default: []].append(b)
+                if groupTitleToMoreURL[groupTitle] == nil { groupTitleToMoreURL[groupTitle] = group.href }
+              }
+            }
+          }
+          self.createRelatedBooksCells(groupedBooks: groupTitleToBooks, moreURLs: groupTitleToMoreURL)
         } else {
           self.isLoadingRelatedBooks = false
         }
@@ -237,35 +248,25 @@ final class BookDetailViewModel: ObservableObject {
     }
   }
   
-  private func createRelatedBooksCells(_ groupedFeed: TPPCatalogGroupedFeed?) {
-    guard let feed = groupedFeed else {
-      self.isLoadingRelatedBooks = false
-      return
-    }
-    
-    var groupedBooks = [String: BookLane]()
-    
-    for lane in feed.lanes as! [TPPCatalogLane] {
-      if let books = lane.books as? [TPPBook] {
-        let laneTitle = lane.title ?? "Unknown Lane"
-        let subsectionURL = lane.subsectionURL
-        let bookLane = BookLane(title: laneTitle, books: books, subsectionURL: subsectionURL)
-        groupedBooks[laneTitle] = bookLane
-      }
+  private func createRelatedBooksCells(groupedBooks: [String: [TPPBook]], moreURLs: [String: URL?]) {
+    var lanesMap = [String: BookLane]()
+    for (title, books) in groupedBooks {
+      let lane = BookLane(title: title, books: books, subsectionURL: moreURLs[title] ?? nil)
+      lanesMap[title] = lane
     }
     
     if let author = book.authors, !author.isEmpty {
-      if let authorLane = groupedBooks.first(where: { $0.value.books.contains(where: { $0.authors?.contains(author) ?? false }) }) {
-        groupedBooks.removeValue(forKey: authorLane.key)
+      if let authorLane = lanesMap.first(where: { $0.value.books.contains(where: { $0.authors?.contains(author) ?? false }) }) {
+        lanesMap.removeValue(forKey: authorLane.key)
         var reorderedBooks = [String: BookLane]()
         reorderedBooks[authorLane.key] = authorLane.value
-        reorderedBooks.merge(groupedBooks) { _, new in new }
-        groupedBooks = reorderedBooks
+        reorderedBooks.merge(lanesMap) { _, new in new }
+        lanesMap = reorderedBooks
       }
     }
     
     DispatchQueue.main.async {
-      self.relatedBooksByLane = groupedBooks
+      self.relatedBooksByLane = lanesMap
       self.isLoadingRelatedBooks = false
     }
   }
@@ -346,7 +347,6 @@ final class BookDetailViewModel: ObservableObject {
   func didSelectDownload(for book: TPPBook) {
     let account = TPPUserAccount.sharedAccount()
     if account.needsAuth && !account.hasCredentials() {
-      // Present login immediately; do not show action sheet first
       showHalfSheet = false
       TPPAccountSignInViewController.requestCredentials { [weak self] in
         guard let self else { return }

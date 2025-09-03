@@ -1,15 +1,15 @@
 import SwiftUI
 
 struct FacetsSelectorView: View {
-  let facetGroups: [TPPCatalogFacetGroup]
-  let onSelect: (TPPCatalogFacet) -> Void
+  let facetGroups: [CatalogFilterGroup]
+  let onSelect: (CatalogFilter) -> Void
 
   var body: some View {
     ScrollView(.horizontal, showsIndicators: false) {
       HStack(spacing: 12) {
-        ForEach(facetGroups, id: \._uuid) { group in
+        ForEach(facetGroups, id: \.id) { group in
           HStack(spacing: 8) {
-            ForEach(group.facets.compactMap { $0 as? TPPCatalogFacet }, id: \._uuid) { facet in
+            ForEach(group.filters, id: \.id) { facet in
               Button(action: { onSelect(facet) }) {
                 Text(facet.title)
                   .padding(.vertical, 8)
@@ -31,8 +31,8 @@ struct FacetsSelectorView: View {
 // MARK: - Entry Points (Grouped feed filtering)
 
 struct EntryPointsSelectorView: View {
-  let entryPoints: [TPPCatalogFacet]
-  let onSelect: (TPPCatalogFacet) -> Void
+  let entryPoints: [CatalogFilter]
+  let onSelect: (CatalogFilter) -> Void
   @State private var selectionIndex: Int = 0
   @State private var pendingIndex: Int = 0
 

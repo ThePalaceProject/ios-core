@@ -11,7 +11,7 @@ struct CatalogLaneMoreView: View {
   @StateObject private var logoObserver = CatalogLogoObserver()
   @State private var currentAccountUUID: String = AccountsManager.shared.currentAccount?.uuid ?? ""
 
-  @State private var facetGroups: [TPPCatalogFacetGroup] = []
+  @State private var facetGroups: [CatalogFilterGroup] = []
   @State private var showingSortSheet: Bool = false
   @State private var showingFiltersSheet: Bool = false
   @State private var currentSort: CatalogSort = .titleAZ
@@ -95,7 +95,7 @@ struct CatalogLaneMoreView: View {
       account?.logoDelegate = logoObserver
       account?.loadLogo()
       currentAccountUUID = account?.uuid ?? ""
-      // Refetch feed and reset selections for the newly selected library
+
       appliedSelections.removeAll()
       pendingSelections.removeAll()
       Task { await load() }
@@ -133,6 +133,8 @@ struct CatalogLaneMoreView: View {
     await fetchAndApplyFeed(at: url)
   }
 
+  
+
   @MainActor
   private func fetchAndApplyFeed(at url: URL) async {
     do {
@@ -164,8 +166,7 @@ struct CatalogLaneMoreView: View {
             }.sorted { $0.title < $1.title }
           case .acquisitionUngrouped:
             ungroupedBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0) }
-            let ungrouped = TPPCatalogUngroupedFeed(opdsFeed: feedObjc)
-            facetGroups = (ungrouped?.facetGroups as? [TPPCatalogFacetGroup]) ?? []
+            facetGroups = CatalogViewModel.extractFacets(from: feedObjc).0
             appliedSelections = Set(
               selectionKeysFromActiveFacets(includeDefaults: false)
                 .compactMap(parseKey)
@@ -215,7 +216,7 @@ struct CatalogLaneMoreView: View {
   @MainActor
   private func clearActiveFacets() async {
     for group in facetGroups {
-      let facets = group.facets.compactMap { $0 as? TPPCatalogFacet }
+      let facets = group.filters
       if facets.contains(where: { $0.active }), let first = facets.first, let href = first.href {
         await applyFacetHref(href)
       }
@@ -255,7 +256,6 @@ struct CatalogLaneMoreView: View {
       return
     }
 
-    // Compare against currently active non-default hrefs; if no change, just dismiss
     let currentHrefs = activeFacetHrefs(includeDefaults: false)
     if Set(desiredHrefs) == Set(currentHrefs) {
       showingFiltersSheet = false
@@ -271,7 +271,6 @@ struct CatalogLaneMoreView: View {
       showingFiltersSheet = false
     }
 
-    // Apply each selection in a stable order; server should accumulate state.
     var workingGroups = facetGroups
     do {
       let client = URLSessionNetworkClient()
@@ -285,22 +284,18 @@ struct CatalogLaneMoreView: View {
             sortBooksInPlace()
           }
           if feed.opdsFeed.type == TPPOPDSFeedType.acquisitionUngrouped {
-            let ungrouped = TPPCatalogUngroupedFeed(opdsFeed: feed.opdsFeed)
-            workingGroups = (ungrouped?.facetGroups as? [TPPCatalogFacetGroup]) ?? []
+            workingGroups = CatalogViewModel.extractFacets(from: feed.opdsFeed).0
           }
         }
       }
 
-      // Commit groups and refresh derived selections
       facetGroups = workingGroups
-      // Keep user's chosen non-default selections in-memory as group|title keys
       appliedSelections = Set(
         pendingSelections
           .compactMap(parseKey)
           .filter { !$0.isDefaultTitle }
           .map { makeGroupTitleKey(group: $0.group, title: $0.title) }
       )
-      // Keep the sheet selection in sync with user's choices using current hrefs
       pendingSelections = keysForCurrentFacets(fromGroupTitleKeys: appliedSelections)
 
     } catch {
@@ -379,10 +374,10 @@ struct CatalogLaneMoreView: View {
     }) { $0.0 }.mapValues { Set($0.map { normalizeTitle($0.1) }) }
     for group in facetGroups where !group.name.lowercased().contains("sort") {
       let titles = wanted[group.name] ?? []
-      let facets = group.facets.compactMap { $0 as? TPPCatalogFacet }
+      let facets = group.filters
       var foundAnyInGroup = false
       for facet in facets {
-        let title = facet.title ?? ""
+        let title = facet.title
         if titles.contains(normalizeTitle(title)) {
           let href = facet.href?.absoluteString ?? ""
           out.insert(makeKey(group: group.name, title: title, hrefString: href))
@@ -391,8 +386,8 @@ struct CatalogLaneMoreView: View {
       }
       // Ensure at least All if nothing matched for this group
       if !foundAnyInGroup {
-        if let allFacet = facets.first(where: { ($0.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "all" }) {
-          out.insert(makeKey(group: group.name, title: allFacet.title ?? "", hrefString: allFacet.href?.absoluteString ?? ""))
+        if let allFacet = facets.first(where: { ($0.title).trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "all" }) {
+          out.insert(makeKey(group: group.name, title: allFacet.title, hrefString: allFacet.href?.absoluteString ?? ""))
         }
       }
     }
@@ -408,9 +403,9 @@ struct CatalogLaneMoreView: View {
     var out: [String] = []
     for group in facetGroups {
       if group.name.lowercased().contains("sort") { continue }
-      let facets = group.facets.compactMap { $0 as? TPPCatalogFacet }.filter { $0.active }
+      let facets = group.filters.filter { $0.active }
       for facet in facets {
-        let rawTitle = (facet.title ?? "")
+        let rawTitle = facet.title
         let parsed = ParsedKey(group: group.name, title: rawTitle, hrefString: facet.href?.absoluteString ?? "")
         if includeDefaults || !parsed.isDefaultTitle {
           out.append(makeKey(group: parsed.group, title: rawTitle, hrefString: parsed.hrefString))
@@ -425,10 +420,10 @@ struct CatalogLaneMoreView: View {
     facetGroups
       .filter { !$0.name.lowercased().contains("sort") }
       .flatMap { group in
-        group.facets.compactMap { $0 as? TPPCatalogFacet }
+        group.filters
           .filter { $0.active }
           .compactMap { facet -> (String, URL)? in
-            let title = (facet.title ?? "")
+            let title = facet.title
             let url = facet.href
             guard let url else { return nil }
             let parsed = ParsedKey(group: group.name, title: title, hrefString: url.absoluteString)

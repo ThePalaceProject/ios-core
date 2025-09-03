@@ -9,8 +9,8 @@ final class CatalogViewModel: ObservableObject {
   @Published private(set) var ungroupedBooks: [TPPBook] = []
   @Published private(set) var isLoading: Bool = false
   @Published private(set) var errorMessage: String?
-  @Published private(set) var facetGroups: [TPPCatalogFacetGroup] = []
-  @Published private(set) var entryPoints: [TPPCatalogFacet] = []
+  @Published private(set) var facetGroups: [CatalogFilterGroup] = []
+  @Published private(set) var entryPoints: [CatalogFilter] = []
   @Published var isContentReloading: Bool = false
 
   private let repository: CatalogRepositoryProtocol
@@ -83,7 +83,7 @@ final class CatalogViewModel: ObservableObject {
   }
 
   @MainActor
-  func applyFacet(_ facet: TPPCatalogFacet) async {
+  func applyFacet(_ facet: CatalogFilter) async {
     guard let href = facet.href else { return }
     errorMessage = nil
     do {
@@ -96,13 +96,9 @@ final class CatalogViewModel: ObservableObject {
             self.lanes = []
             self.ungroupedBooks = newUngrouped
           }
-          if let ungrouped = TPPCatalogUngroupedFeed(opdsFeed: feedObjc) {
-            self.facetGroups = (ungrouped.facetGroups as? [TPPCatalogFacetGroup]) ?? []
-            self.entryPoints = ungrouped.entryPoints
-          } else {
-            self.facetGroups = []
-            self.entryPoints = []
-          }
+          let (groups, entries) = Self.extractFacets(from: feedObjc)
+          self.facetGroups = groups
+          self.entryPoints = entries
         case .acquisitionGrouped:
           var groupTitleToBooks: [String: [TPPBook]] = [:]
           var groupTitleToMoreURL: [String: URL?] = [:]
@@ -117,12 +113,9 @@ final class CatalogViewModel: ObservableObject {
             }
           }
           self.ungroupedBooks = []
+          let (_, entries) = Self.extractFacets(from: feedObjc)
           self.facetGroups = []
-          if let grouped = TPPCatalogGroupedFeed(opdsFeed: feedObjc) {
-            self.entryPoints = grouped.entryPoints
-          } else {
-            self.entryPoints = []
-          }
+          self.entryPoints = entries
           self.lanes = groupTitleToBooks.map { title, books in
             CatalogLaneModel(title: title, books: books, moreURL: groupTitleToMoreURL[title] ?? nil)
           }.sorted { $0.title < $1.title }
@@ -139,7 +132,7 @@ final class CatalogViewModel: ObservableObject {
 
   /// Applies an entry point (e.g., Ebooks/Audiobooks) and shows skeleton while loading.
   @MainActor
-  func applyEntryPoint(_ facet: TPPCatalogFacet) async {
+  func applyEntryPoint(_ facet: CatalogFilter) async {
     guard let href = facet.href else { return }
     // Keep top-level skeleton off; only show content skeleton
     isContentReloading = true
@@ -155,12 +148,9 @@ final class CatalogViewModel: ObservableObject {
           if let opdsEntries = feedObjc.entries as? [TPPOPDSEntry] {
             self.ungroupedBooks = opdsEntries.compactMap { Self.makeBook(from: $0) }
           }
-          if let ungrouped = TPPCatalogUngroupedFeed(opdsFeed: feedObjc) {
-            self.facetGroups = (ungrouped.facetGroups as? [TPPCatalogFacetGroup]) ?? []
-            self.entryPoints = ungrouped.entryPoints
-          } else {
-            self.facetGroups = []
-          }
+          let (groups, entries) = Self.extractFacets(from: feedObjc)
+          self.facetGroups = groups
+          self.entryPoints = entries
         case .acquisitionGrouped:
           var groupTitleToBooks: [String: [TPPBook]] = [:]
           var groupTitleToMoreURL: [String: URL?] = [:]
@@ -175,9 +165,8 @@ final class CatalogViewModel: ObservableObject {
             }
           }
           self.ungroupedBooks = []
-          if let grouped = TPPCatalogGroupedFeed(opdsFeed: feedObjc) {
-            self.entryPoints = grouped.entryPoints
-          }
+          let (_, entries) = Self.extractFacets(from: feedObjc)
+          self.entryPoints = entries
           self.lanes = groupTitleToBooks.map { title, books in
             CatalogLaneModel(title: title, books: books, moreURL: groupTitleToMoreURL[title] ?? nil)
           }.sorted { $0.title < $1.title }
@@ -227,8 +216,8 @@ extension CatalogViewModel {
     let entries: [CatalogEntry]
     let lanes: [CatalogLaneModel]
     let ungroupedBooks: [TPPBook]
-    let facetGroups: [TPPCatalogFacetGroup]
-    let entryPoints: [TPPCatalogFacet]
+    let facetGroups: [CatalogFilterGroup]
+    let entryPoints: [CatalogFilter]
   }
 
   /// Produce a MappedCatalog from a CatalogFeed
@@ -239,21 +228,19 @@ extension CatalogViewModel {
 
     switch feedObjc.type {
     case .acquisitionGrouped:
-      let entryPoints: [TPPCatalogFacet] = TPPCatalogGroupedFeed(opdsFeed: feedObjc)?.entryPoints ?? []
+      let (facetGroups, entryPoints) = extractFacets(from: feedObjc)
       let (lanes, _) = buildGroupedContent(from: feedObjc)
       return MappedCatalog(
         title: title,
         entries: entries,
         lanes: lanes,
         ungroupedBooks: [],
-        facetGroups: [],
+        facetGroups: facetGroups.isEmpty ? [] : facetGroups,
         entryPoints: entryPoints
       )
     case .acquisitionUngrouped:
       let ungroupedBooks = (feedObjc.entries as? [TPPOPDSEntry])?.compactMap { makeBookBackground(from: $0) } ?? []
-      let ungrouped = TPPCatalogUngroupedFeed(opdsFeed: feedObjc)
-      let facetGroups = (ungrouped?.facetGroups as? [TPPCatalogFacetGroup]) ?? []
-      let entryPoints = ungrouped?.entryPoints ?? []
+      let (facetGroups, entryPoints) = extractFacets(from: feedObjc)
       return MappedCatalog(
         title: title,
         entries: entries,
@@ -300,6 +287,54 @@ extension CatalogViewModel {
       .map { title, books in CatalogLaneModel(title: title, books: books, moreURL: titleToMoreURL[title] ?? nil) }
       .sorted { $0.title < $1.title }
     return (lanes, [])
+  }
+
+  /// Extract facet groups and entry points directly from OPDS links without ObjC wrappers
+  static func extractFacets(from feed: TPPOPDSFeed) -> ([CatalogFilterGroup], [CatalogFilter]) {
+    var groupNames: [String] = []
+    var groupToFacets: [String: [CatalogFilter]] = [:]
+    var entryPoints: [CatalogFilter] = []
+
+    for case let link as TPPOPDSLink in feed.links {
+      guard link.rel == TPPOPDSRelationFacet else { continue }
+
+      var isEntryPoint = false
+      var groupName: String?
+      for (key, value) in link.attributes {
+        if let keyStr = key as? String, TPPOPDSAttributeKeyStringIsFacetGroupType(keyStr) {
+          isEntryPoint = true
+        } else if let keyStr = key as? String, TPPOPDSAttributeKeyStringIsFacetGroup(keyStr) {
+          groupName = (value as? String) ?? String(describing: value)
+        }
+      }
+
+      // Determine active flag from attributes
+      let isActive: Bool = link.attributes.contains { (k, v) in
+        guard let keyStr = k as? String, TPPOPDSAttributeKeyStringIsActiveFacet(keyStr) else { return false }
+        if let s = v as? String { return s.localizedCaseInsensitiveContains("true") }
+        return false
+      }
+
+      let facet = CatalogFilter(
+        id: UUID().uuidString,
+        title: link.title ?? "",
+        href: link.href,
+        active: isActive
+      )
+
+      if isEntryPoint {
+        entryPoints.append(facet)
+      } else if let groupName = groupName {
+        if !groupNames.contains(groupName) { groupNames.append(groupName) }
+        groupToFacets[groupName, default: []].append(facet)
+      }
+    }
+
+    let groups: [CatalogFilterGroup] = groupNames.map { name in
+      CatalogFilterGroup(id: name, name: name, filters: groupToFacets[name] ?? [])
+    }
+
+    return (groups, entryPoints)
   }
 
   private func prefetchThumbnails(for books: [TPPBook]) {
