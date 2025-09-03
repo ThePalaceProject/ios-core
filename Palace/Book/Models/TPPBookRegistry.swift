@@ -213,7 +213,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
   func reset(_ account: String) {
     state = .unloaded
     syncUrl = nil
-    syncQueue.async {
+    syncQueue.async(flags: .barrier) {
       self.registry.removeAll()
     }
     if let registryUrl = registryUrl(for: account) {
@@ -294,13 +294,18 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     guard let account = AccountsManager.shared.currentAccount?.uuid,
           let registryUrl = registryUrl(for: account)
     else { return }
-    syncQueue.async {
+
+    let snapshot: [[String: Any]] = performSync {
+      self.registry.values.map { $0.dictionaryRepresentation }
+    }
+    let registryObject = [TPPBookRegistryKey.records.rawValue: snapshot]
+
+    DispatchQueue.global(qos: .utility).async {
       do {
-        if !FileManager.default.fileExists(atPath: registryUrl.path) {
-          try FileManager.default.createDirectory(at: registryUrl.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let directoryURL = registryUrl.deletingLastPathComponent()
+        if !FileManager.default.fileExists(atPath: directoryURL.path) {
+          try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
         }
-        let registryValues = self.registry.values.map { $0.dictionaryRepresentation }
-        let registryObject = [TPPBookRegistryKey.records.rawValue: registryValues]
         let registryData = try JSONSerialization.data(withJSONObject: registryObject, options: .fragmentsAllowed)
         try registryData.write(to: registryUrl, options: .atomic)
         DispatchQueue.main.async {
@@ -396,7 +401,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
         return
       }
       
-      syncQueue.async {
+      syncQueue.async(flags: .barrier) {
         let removedBook = self.registry[bookIdentifier]?.book
         self.registry.removeValue(forKey: bookIdentifier)
         self.save()
@@ -662,7 +667,7 @@ extension TPPBookRegistry: TPPBookRegistryProvider {
   }
 
   func deleteGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String) {
-    syncQueue.async {
+    syncQueue.async(flags: .barrier) {
       self.registry[bookIdentifier]?.genericBookmarks?.removeAll { $0.isSimilarTo(location) }
       self.save()
     }

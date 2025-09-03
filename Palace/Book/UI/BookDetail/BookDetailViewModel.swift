@@ -426,17 +426,17 @@ final class BookDetailViewModel: ObservableObject {
   }
   
   @MainActor private func presentEPUB(_ book: TPPBook) {
-    BookOpenService.open(book)
+    BookService.open(book)
   }
   
   @MainActor private func presentPDF(_ book: TPPBook) {
-    BookOpenService.open(book)
+    BookService.open(book)
   }
   
   // MARK: - Audiobook Opening
   
   func openAudiobook(_ book: TPPBook, completion: (() -> Void)? = nil) {
-    BookOpenService.open(book)
+    BookService.open(book)
     completion?()
   }
   

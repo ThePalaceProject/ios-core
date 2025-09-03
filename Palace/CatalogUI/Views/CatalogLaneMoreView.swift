@@ -189,6 +189,9 @@ struct CatalogLaneMoreView: View {
   @EnvironmentObject private var coordinator: NavigationCoordinator
 
   private func presentBookDetail(_ book: TPPBook) {
+    if NavigationCoordinatorHub.shared.coordinator == nil {
+      NavigationCoordinatorHub.shared.coordinator = coordinator
+    }
     coordinator.store(book: book)
     coordinator.push(.bookDetail(BookRoute(id: book.identifier)))
   }

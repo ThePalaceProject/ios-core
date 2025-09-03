@@ -579,8 +579,8 @@
 		E50546CE2E621C39007CCFAB /* AppTabRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50546CC2E621C39007CCFAB /* AppTabRouter.swift */; };
 		E505473F2E6233D0007CCFAB /* ReaderService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E505473E2E6233D0007CCFAB /* ReaderService.swift */; };
 		E50547402E6233D0007CCFAB /* ReaderService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E505473E2E6233D0007CCFAB /* ReaderService.swift */; };
-		E50547482E625377007CCFAB /* BookOpenService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50547472E625377007CCFAB /* BookOpenService.swift */; };
-		E50547492E625377007CCFAB /* BookOpenService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50547472E625377007CCFAB /* BookOpenService.swift */; };
+		E50547482E625377007CCFAB /* BookService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50547472E625377007CCFAB /* BookService.swift */; };
+		E50547492E625377007CCFAB /* BookService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50547472E625377007CCFAB /* BookService.swift */; };
 		E50BC9DD2CBF6FE900660937 /* PureLayout in Frameworks */ = {isa = PBXBuildFile; productRef = E50BC9DC2CBF6FE900660937 /* PureLayout */; };
 		E50D684326AB235400F1042B /* TPPReaderBookmarkCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03690E221EB2B35000F75D5F /* TPPReaderBookmarkCell.swift */; };
 		E50D684426AB235400F1042B /* TPPReaderTOCCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7386C1F9245276CA004C78BD /* TPPReaderTOCCell.swift */; };
@@ -1541,7 +1541,7 @@
 		E50546C92E621B75007CCFAB /* NavigationCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationCoordinator.swift; sourceTree = "<group>"; };
 		E50546CC2E621C39007CCFAB /* AppTabRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTabRouter.swift; sourceTree = "<group>"; };
 		E505473E2E6233D0007CCFAB /* ReaderService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderService.swift; sourceTree = "<group>"; };
-		E50547472E625377007CCFAB /* BookOpenService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookOpenService.swift; sourceTree = "<group>"; };
+		E50547472E625377007CCFAB /* BookService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookService.swift; sourceTree = "<group>"; };
 		E512240B2DDFC41700D034A4 /* UIViewController+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UIViewController+Extensions.swift"; sourceTree = "<group>"; };
 		E51919D72B508EE400C08E86 /* URLRequest+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "URLRequest+Extensions.swift"; sourceTree = "<group>"; };
 		E519460E2D6E6B3D0081172E /* LoadingOverlayModifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoadingOverlayModifier.swift; sourceTree = "<group>"; };
@@ -3022,7 +3022,7 @@
 				E562DDAB2D36E7B5003A1A40 /* BookDetailHostingViewController.swift */,
 				E562DD952D35AB88003A1A40 /* BookDetailViewModel.swift */,
 				E562DD992D35ABBF003A1A40 /* BookDetailView.swift */,
-				E50547472E625377007CCFAB /* BookOpenService.swift */,
+				E50547472E625377007CCFAB /* BookService.swift */,
 			);
 			path = BookDetail;
 			sourceTree = "<group>";
@@ -3980,7 +3980,7 @@
 				21DCC3AC27BEC38F00064B37 /* TPPAssociatedColors.swift in Sources */,
 				73EB0A8A25821DF4006BC997 /* TPPReturnPromptHelper.swift in Sources */,
 				73EB0A8C25821DF4006BC997 /* TPPOpenSearchDescription.m in Sources */,
-				E50547492E625377007CCFAB /* BookOpenService.swift in Sources */,
+				E50547492E625377007CCFAB /* BookService.swift in Sources */,
 				E7E8939A284A1EB800C7A4F3 /* TPPPDFPreviewBar.swift in Sources */,
 				216D2E3A274286D200472538 /* TPPLCPLicense.swift in Sources */,
 				E5158C202935345F0007ABDB /* TransifexManager.swift in Sources */,
@@ -4440,7 +4440,7 @@
 				E55E2FA529E7A9660093F916 /* AudioBookmark.swift in Sources */,
 				2198F910250A90EE000D9DAB /* AudioBookVendorsHelper.swift in Sources */,
 				E68CCFC51F9F80CF003DDA6C /* TPPBarcode.swift in Sources */,
-				E50547482E625377007CCFAB /* BookOpenService.swift in Sources */,
+				E50547482E625377007CCFAB /* BookService.swift in Sources */,
 				E53573D629653076008BDCA4 /* FacetView.swift in Sources */,
 				21DF7F9325AF5E1E0090402A /* ReaderModule.swift in Sources */,
 				E78AE7F6291BFC6200884446 /* TPPBookCoverRegistry.swift in Sources */,

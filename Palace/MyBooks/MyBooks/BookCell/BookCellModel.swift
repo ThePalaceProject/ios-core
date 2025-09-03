@@ -198,13 +198,13 @@ extension BookCellModel {
   }
 
   private func openAudiobookFromCell() {
-    BookOpenService.open(book)
+    BookService.open(book)
     self.isLoading = false
   }
 
 
   private func presentAudiobookFrom(json: [String: Any], decryptor: DRMDecryptor?) {
-    BookOpenService.open(book)
+    BookService.open(book)
     self.isLoading = false
   }
 
@@ -220,76 +220,10 @@ extension BookCellModel {
   
   func didSelectReturn() {
     self.isLoading = true
-    var title = ""
-    var message = ""
-    var confirmButtonTitle = ""
-    let deleteAvailable = (book.defaultAcquisitionIfOpenAccess != nil) || !(TPPUserAccount.sharedAccount().authDefinition?.needsAuth ?? true)
-    
-    switch TPPBookRegistry.shared.state(for: book.identifier) {
-    case .used,
-        .SAMLStarted,
-        .downloading,
-        .unregistered,
-        .downloadFailed,
-        .downloadNeeded,
-        .downloadSuccessful,
-        .returning:
-      title = deleteAvailable ? DisplayStrings.delete : DisplayStrings.return
-      message = deleteAvailable ? String.localizedStringWithFormat(DisplayStrings.deleteMessage, book.title) :
-      String.localizedStringWithFormat(DisplayStrings.returnMessage, book.title)
-      confirmButtonTitle = deleteAvailable ? DisplayStrings.delete : DisplayStrings.return
-    case .holding:
-      title = DisplayStrings.removeReservation
-      message = DisplayStrings.returnMessage
-      confirmButtonTitle = DisplayStrings.remove
-    case .unsupported:
-      return
+    let identifier = self.book.identifier
+    MyBooksDownloadCenter.shared.returnBook(withIdentifier: identifier) { [weak self] in
+      DispatchQueue.main.async { self?.isLoading = false }
     }
-    
-    showAlert = AlertModel(
-      title: title,
-      message: message,
-      buttonTitle: confirmButtonTitle,
-      primaryAction: { [weak self] in
-        guard let self = self else { return }
-        let identifier = self.book.identifier
-        let downloaded = {
-          let state = TPPBookRegistry.shared.state(for: identifier)
-          return state == .downloadSuccessful || state == .used
-        }()
-        // Mirror BookDetailViewModel: attempt server return if revokeURL else delete local/remove registry
-        if let revokeURL = self.book.revokeURL {
-          TPPBookRegistry.shared.setProcessing(true, for: identifier)
-          TPPOPDSFeed.withURL(revokeURL, shouldResetCache: false, useTokenIfAvailable: true) { feed, error in
-            TPPBookRegistry.shared.setProcessing(false, for: identifier)
-            if let feed = feed, feed.entries.count == 1, let entry = feed.entries[0] as? TPPOPDSEntry, let returnedBook = TPPBook(entry: entry) {
-              if downloaded { MyBooksDownloadCenter.shared.deleteLocalContent(for: identifier) }
-              TPPBookRegistry.shared.updateAndRemoveBook(returnedBook)
-              NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil, userInfo: [:])
-            } else {
-              if let errorType = (error as? [String: Any])?["type"] as? String, errorType == TPPProblemDocument.TypeNoActiveLoan {
-                if downloaded { MyBooksDownloadCenter.shared.deleteLocalContent(for: identifier) }
-                TPPBookRegistry.shared.removeBook(forIdentifier: identifier)
-                NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil, userInfo: [:])
-              } else {
-                // Unknown error case: ensure UI stops loading
-                DispatchQueue.main.async { self.isLoading = false }
-              }
-            }
-            DispatchQueue.main.async { self.isLoading = false }
-          }
-        } else {
-          if downloaded { MyBooksDownloadCenter.shared.deleteLocalContent(for: identifier) }
-          TPPBookRegistry.shared.removeBook(forIdentifier: identifier)
-          NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil, userInfo: [:])
-          DispatchQueue.main.async { self.isLoading = false }
-        }
-      },
-      secondaryAction: { [weak self] in
-        self?.showAlert = nil
-        self?.isLoading = false
-      }
-    )
   }
   
   func didSelectDownload() {

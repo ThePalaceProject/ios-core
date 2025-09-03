@@ -3,7 +3,7 @@ import SwiftUI
 import Combine
 import PalaceAudiobookToolkit
 
-enum BookOpenService {
+enum BookService {
   static func open(_ book: TPPBook) {
     switch book.defaultBookContentType {
     case .epub:

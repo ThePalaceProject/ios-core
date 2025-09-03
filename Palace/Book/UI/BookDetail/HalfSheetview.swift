@@ -33,6 +33,7 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
   @ObservedObject var viewModel: ViewModel
   var backgroundColor: Color
   @Binding var coverImage: UIImage?
+  @State private var originalState: TPPBookState = .unregistered
 
   var body: some View {
     VStack(alignment: .leading, spacing: viewModel.isFullSize ? 20 : 10) {
@@ -56,12 +57,15 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
         BookButtonsView(provider: viewModel, previewEnabled: false, onButtonTapped: { type in
           switch type {
           case .close:
+            viewModel.bookState = originalState
             dismiss()
           case .read, .listen:
             dismiss()
             DispatchQueue.main.async {
               viewModel.handleAction(for: type)
             }
+          case .return, .remove:
+            viewModel.handleAction(for: type)
           default:
             viewModel.handleAction(for: type)
           }
@@ -71,12 +75,15 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
         BookButtonsView(provider: viewModel, previewEnabled: false, onButtonTapped: { type in
           switch type {
           case .close:
+            viewModel.bookState = originalState
             dismiss()
           case .read, .listen:
             dismiss()
             DispatchQueue.main.async {
               viewModel.handleAction(for: type)
             }
+          case .return, .remove:
+            viewModel.handleAction(for: type)
           default:
             viewModel.handleAction(for: type)
           }
@@ -86,11 +93,21 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
     .padding()
     .presentationDetents([UIDevice.current.isIpad ? .height(540) : .medium])
     .presentationDragIndicator(.visible)
-    .onDisappear {
-      if viewModel.bookState == .returning {
-        viewModel.bookState = .downloadSuccessful
-      } else if viewModel.isManagingHold {
-        viewModel.bookState = .holding
+    .interactiveDismissDisabled(viewModel.isReturning)
+    .onAppear { originalState = viewModel.bookState }
+    .onDisappear { viewModel.bookState = originalState }
+    .onReceive(NotificationCenter.default.publisher(for: .TPPBookRegistryStateDidChange)) { note in
+      guard
+        let info = note.userInfo as? [String: Any],
+        let identifier = info["bookIdentifier"] as? String,
+        identifier == viewModel.book.identifier,
+        let raw = info["state"] as? Int,
+        let newState = TPPBookState(rawValue: raw)
+      else { return }
+
+      // Dismiss only when a return/remove completed for this book
+      if viewModel.isReturning && (newState == .unregistered || newState == .downloadNeeded) {
+        dismiss()
       }
     }
   }

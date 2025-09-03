@@ -13,7 +13,6 @@ struct NavigationHostView<Content: View>: View {
   var body: some View {
     NavigationStack(path: $coordinator.path) {
       rootView
-        .environmentObject(coordinator)
         .onAppear { NavigationCoordinatorHub.shared.coordinator = coordinator }
         .navigationDestination(for: AppRoute.self) { route in
           
@@ -56,6 +55,7 @@ struct NavigationHostView<Content: View>: View {
           }
         }
     }
+    .environmentObject(coordinator)
   }
 }
 
