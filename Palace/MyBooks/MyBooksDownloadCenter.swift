@@ -507,11 +507,8 @@ extension MyBooksDownloadCenter {
   }
   
   @objc func returnBook(withIdentifier identifier: String, completion: (() -> Void)? = nil) {
-    defer {
-      completion?()
-    }
-    
     guard let book = bookRegistry.book(forIdentifier: identifier) else {
+      completion?()
       return
     }
     
@@ -537,7 +534,11 @@ extension MyBooksDownloadCenter {
       if downloaded {
         deleteLocalContent(for: identifier)
       }
+
+      bookRegistry.setState(.unregistered, for: identifier)
       bookRegistry.removeBook(forIdentifier: identifier)
+      TPPBookRegistry.shared.sync()
+      DispatchQueue.main.async { completion?() }
     } else {
       bookRegistry.setProcessing(true, for: book.identifier)
       
@@ -550,8 +551,13 @@ extension MyBooksDownloadCenter {
           }
           if let returnedBook = TPPBook(entry: entry) {
             self.bookRegistry.updateAndRemoveBook(returnedBook)
+            self.bookRegistry.setState(.unregistered, for: identifier)
+            TPPBookRegistry.shared.sync()
+            DispatchQueue.main.async { completion?() }
           } else {
             NSLog("Failed to create book from entry. Book not removed from registry.")
+            TPPBookRegistry.shared.sync()
+            DispatchQueue.main.async { completion?() }
           }
         } else {
           if let errorType = error?["type"] as? String {
@@ -559,11 +565,14 @@ extension MyBooksDownloadCenter {
               if downloaded {
                 self.deleteLocalContent(for: identifier)
               }
+              self.bookRegistry.setState(.unregistered, for: identifier)
               self.bookRegistry.removeBook(forIdentifier: identifier)
+              TPPBookRegistry.shared.sync()
+              DispatchQueue.main.async { completion?() }
             } else if errorType == TPPProblemDocument.TypeInvalidCredentials {
               NSLog("Invalid credentials problem when returning a book, present sign in VC")
               self.reauthenticator.authenticateIfNeeded(self.userAccount, usingExistingCredentials: false) { [weak self] in
-                self?.returnBook(withIdentifier: identifier)
+                self?.returnBook(withIdentifier: identifier, completion: completion)
               }
             }
           } else {
@@ -577,6 +586,7 @@ extension MyBooksDownloadCenter {
                 TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
               }
             }
+            DispatchQueue.main.async { completion?() }
           }
         }
       }
@@ -607,9 +617,9 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
     }
     
     if bytesWritten == totalBytesWritten {
-      guard let mimeType = downloadTask.response?.mimeType else { 
+      guard let mimeType = downloadTask.response?.mimeType else {
         Log.error(#file, "No MIME type in response for book: \(book.identifier)")
-        return 
+        return
       }
       
       Log.info(#file, "Download MIME type detected for \(book.identifier): \(mimeType)")
@@ -1350,10 +1360,6 @@ extension MyBooksDownloadCenter: NYPLADEPTDelegate {
   }
   
   func didIgnoreFulfillmentWithNoAuthorizationPresent() {
-    // NOTE: This is cut and pasted from a previous implementation:
-    // "This handles a bug that seems to occur when the user updates,
-    // where the barcode and pin are entered but according to ADEPT the device
-    // is not authorized. To be used, the account must have a barcode and pin."
     self.reauthenticator.authenticateIfNeeded(userAccount, usingExistingCredentials: true, authenticationCompletion: nil)
   }
 }

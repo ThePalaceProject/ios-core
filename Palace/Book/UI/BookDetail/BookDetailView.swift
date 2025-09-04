@@ -84,6 +84,20 @@ struct BookDetailView: View {
       .onReceive(viewModel.book.$dominantUIColor) { newColor in
         headerColor = Color(newColor)
       }
+      // Dismiss BookDetail when the registry reports this book was returned/removed
+      .onReceive(NotificationCenter.default.publisher(for: .TPPBookRegistryStateDidChange).receive(on: RunLoop.main)) { note in
+        guard
+          let info = note.userInfo as? [String: Any],
+          let identifier = info["bookIdentifier"] as? String,
+          identifier == viewModel.book.identifier,
+          let raw = info["state"] as? Int,
+          let newState = TPPBookState(rawValue: raw)
+        else { return }
+
+        if newState == .unregistered || newState == .downloadNeeded {
+          presentationMode.wrappedValue.dismiss()
+        }
+      }
       .fullScreenCover(item: $selectedBook) { book in
         BookDetailView(book: book)
       }
@@ -105,7 +119,7 @@ struct BookDetailView: View {
           .animation(scaleAnimation, value: headerHeight)
         
         imageView
-          .padding(.top, 40)
+          .padding(.top, 50)
       }
       
       compactHeaderContent
@@ -278,6 +292,7 @@ struct BookDetailView: View {
     }
     .frame(height: 50)
     .padding(.horizontal, 20)
+    .padding(.top, 20)
     .padding(.bottom, 10)
   }
   

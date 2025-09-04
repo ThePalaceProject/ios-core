@@ -93,10 +93,18 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
     .padding()
     .presentationDetents([UIDevice.current.isIpad ? .height(540) : .medium])
     .presentationDragIndicator(.visible)
-    .interactiveDismissDisabled(viewModel.isReturning)
+    .interactiveDismissDisabled(viewModel.isProcessing(for: .returning))
     .onAppear { originalState = viewModel.bookState }
-    .onDisappear { viewModel.bookState = originalState }
-    .onReceive(NotificationCenter.default.publisher(for: .TPPBookRegistryStateDidChange)) { note in
+    .onDisappear {
+      // If dismissed while in returning flow, sync from registry so buttons update post-dismiss
+      if viewModel.isReturning {
+        viewModel.bookState = TPPBookRegistry.shared.state(for: viewModel.book.identifier)
+      } else {
+        // Otherwise restore prior state (e.g., close/cancel paths)
+        viewModel.bookState = originalState
+      }
+    }
+    .onReceive(NotificationCenter.default.publisher(for: .TPPBookRegistryStateDidChange).receive(on: RunLoop.main)) { note in
       guard
         let info = note.userInfo as? [String: Any],
         let identifier = info["bookIdentifier"] as? String,

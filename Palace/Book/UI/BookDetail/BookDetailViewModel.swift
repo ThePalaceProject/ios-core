@@ -182,10 +182,8 @@ final class BookDetailViewModel: ObservableObject {
     DispatchQueue.main.async { [weak self] in
       guard let self else { return }
       let updatedBook = registry.book(forIdentifier: book.identifier) ?? book
-      let newState = registry.state(for: book.identifier)
-            
+      // Update local book metadata, but prefer bookStatePublisher for state transitions
       self.book = updatedBook
-      self.bookState = newState
     }
   }
   
@@ -296,13 +294,15 @@ final class BookDetailViewModel: ObservableObject {
       
     case .returning, .cancelHold:
       didSelectReturn(for: book) {
+        self.removeProcessingButton(.returning)
         self.showHalfSheet = false
-        self.removeProcessingButton(button)
-        self.bookState = .unregistered
         self.isManagingHold = false
       }
       
     case .download, .get, .retry:
+
+      self.downloadProgress = 0
+      bookState = .downloading
       didSelectDownload(for: book)
       removeProcessingButton(button)
       
@@ -345,6 +345,8 @@ final class BookDetailViewModel: ObservableObject {
   // MARK: - Download/Return/Cancel
   
   func didSelectDownload(for book: TPPBook) {
+    // Reset progress so the linear indicator does not flash as full from a prior value
+    self.downloadProgress = 0
     let account = TPPUserAccount.sharedAccount()
     if account.needsAuth && !account.hasCredentials() {
       showHalfSheet = false

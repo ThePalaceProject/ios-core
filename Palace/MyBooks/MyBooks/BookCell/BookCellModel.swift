@@ -69,15 +69,8 @@ class BookCellModel: ObservableObject {
     }
   }
   
-  var isManagingHold: Bool {
-    switch buttonState {
-    case .managingHold, .holding, .holdingFrontOfQueue:
-      true
-    default:
-      false
-    }
-  }
-  
+  var isManagingHold: Bool = false
+
   var title: String { book.title }
   var authors: String { book.authors ?? "" }
   var showUnreadIndicator: Bool {

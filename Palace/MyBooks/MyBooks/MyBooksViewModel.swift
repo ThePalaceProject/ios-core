@@ -92,19 +92,13 @@ enum Group: Int {
       loadData()
     } else {
       let currentBooks = self.books
-
-      // Offload filtering to a background task.
-      let filteredBooks = await withCheckedContinuation { continuation in
-        DispatchQueue.global(qos: .userInitiated).async {
-          let result = currentBooks.filter {
-            $0.title.localizedCaseInsensitiveContains(query) ||
-            ($0.authors?.localizedCaseInsensitiveContains(query) ?? false)
-          }
-          continuation.resume(returning: result)
+      let filteredBooks = await Task.detached(priority: .userInitiated) {
+        currentBooks.filter {
+          $0.title.localizedCaseInsensitiveContains(query) ||
+          ($0.authors?.localizedCaseInsensitiveContains(query) ?? false)
         }
-      }
+      }.value
 
-      // Update the UI on the main actor.
       self.books = filteredBooks
     }
   }
@@ -153,8 +147,19 @@ enum Group: Int {
 
   // MARK: - Notification Handling
   private func registerNotifications() {
-    NotificationCenter.default.addObserver(self, selector: #selector(handleBookRegistryChange), name: .TPPBookRegistryDidChange, object: nil)
-    NotificationCenter.default.addObserver(self, selector: #selector(handleSyncEnd), name: .TPPSyncEnded, object: nil)
+    NotificationCenter.default.addObserver(self, selector: #selector(handleBookRegistryStateChange(_:)), name: .TPPBookRegistryStateDidChange, object: nil)
+
+    // Debounce high-frequency updates from registry changes and sync end
+    let registryChange = NotificationCenter.default.publisher(for: .TPPBookRegistryDidChange)
+    let syncEnd = NotificationCenter.default.publisher(for: .TPPSyncEnded)
+
+    registryChange
+      .merge(with: syncEnd)
+      .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
+      .sink { [weak self] _ in
+        self?.loadData()
+      }
+      .store(in: &observers)
   }
 
   @objc private func handleBookRegistryChange() {
@@ -166,6 +171,28 @@ enum Group: Int {
   @objc private func handleSyncEnd() {
     DispatchQueue.main.async { [weak self] in
       self?.loadData()
+    }
+  }
+
+  @objc private func handleBookRegistryStateChange(_ notification: Notification) {
+    guard
+      let info = notification.userInfo as? [String: Any],
+      let identifier = info["bookIdentifier"] as? String,
+      let raw = info["state"] as? Int,
+      let newState = TPPBookState(rawValue: raw)
+    else {
+      DispatchQueue.main.async { [weak self] in self?.loadData() }
+      return
+    }
+
+    DispatchQueue.main.async { [weak self] in
+      guard let self else { return }
+      if newState == .unregistered {
+        // Remove locally so it doesn't flash back in until next sync
+        self.books.removeAll { $0.identifier == identifier }
+      } else {
+        self.loadData()
+      }
     }
   }
 
