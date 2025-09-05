@@ -21,6 +21,7 @@ struct BookDetailView: View {
   @State private var dragOffset: CGFloat = 0
   @State private var imageBottomPosition: CGFloat = 400
   @State private var pulseSkeleton: Bool = false
+  @State private var lastBookIdentifier: String? = nil
   
   private let scaleAnimation = Animation.linear(duration: 0.35)
 
@@ -60,16 +61,21 @@ struct BookDetailView: View {
         }
         .edgesIgnoringSafeArea(.all)
         .onChange(of: viewModel.book) { newValue in
-          headerColor = Color(viewModel.book.dominantUIColor)
-          resetSampleToolbar()
-          self.descriptionText = newValue.summary ?? ""
-          proxy.scrollTo(0, anchor: .top)
-          
+          if lastBookIdentifier != newValue.identifier {
+            lastBookIdentifier = newValue.identifier
+            headerColor = Color(newValue.dominantUIColor)
+            resetSampleToolbar()
+            self.descriptionText = newValue.summary ?? ""
+            proxy.scrollTo(0, anchor: .top)
+          } else {
+            self.descriptionText = newValue.summary ?? self.descriptionText
+          }
         }
       }
       .onAppear {
         headerColor = Color(viewModel.book.dominantUIColor)
         headerColor = Color(viewModel.book.dominantUIColor)
+        lastBookIdentifier = viewModel.book.identifier
 
         headerHeight = viewModel.isFullSize ? 300 : 225
         viewModel.fetchRelatedBooks()

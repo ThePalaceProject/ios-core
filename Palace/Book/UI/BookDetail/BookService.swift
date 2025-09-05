@@ -142,7 +142,14 @@ enum BookService {
           // Suppress immediate save thrash while we reconcile with remote
           playbackModel.beginSaveSuppression(for: 3.0)
         } else {
-          manager.audiobook.player.play()
+          if let firstTrack = audiobook.tableOfContents.allTracks.first {
+            let startPosition = TrackPosition(track: firstTrack, timestamp: 0.0, tracks: audiobook.tableOfContents.tracks)
+            manager.audiobook.player.play(at: startPosition, completion: nil)
+            playbackModel.jumpToInitialLocation(startPosition)
+            playbackModel.beginSaveSuppression(for: 2.0)
+          } else {
+            manager.audiobook.player.play()
+          }
         }
 
         if let coordinator = NavigationCoordinatorHub.shared.coordinator {

@@ -85,6 +85,11 @@ struct CatalogLaneMoreView: View {
     }
     .task { await load() }
     .onAppear {
+      if NavigationCoordinatorHub.shared.coordinator == nil {
+        NavigationCoordinatorHub.shared.coordinator = coordinator
+      }
+    }
+    .onAppear {
       let account = AccountsManager.shared.currentAccount
       account?.logoDelegate = logoObserver
       account?.loadLogo()
@@ -99,6 +104,15 @@ struct CatalogLaneMoreView: View {
       appliedSelections.removeAll()
       pendingSelections.removeAll()
       Task { await load() }
+    }
+    .onReceive(NotificationCenter.default.publisher(for: .TPPBookRegistryDidChange).receive(on: RunLoop.main)) { _ in
+      applyRegistryUpdates()
+    }
+    .onReceive(NotificationCenter.default.publisher(for: .TPPBookRegistryStateDidChange).receive(on: RunLoop.main)) { _ in
+      applyRegistryUpdates()
+    }
+    .onReceive(NotificationCenter.default.publisher(for: .TPPMyBooksDownloadCenterDidChange).receive(on: RunLoop.main)) { _ in
+      applyRegistryUpdates()
     }
     .onChange(of: showingFiltersSheet) { presented in
       guard presented else { return }
@@ -182,6 +196,26 @@ struct CatalogLaneMoreView: View {
       }
     } catch {
       self.error = error.localizedDescription
+    }
+  }
+
+  // MARK: - Registry Sync
+
+  /// Refresh visible books with updated metadata from the registry so button states reflect current status.
+  private func applyRegistryUpdates() {
+    if !lanes.isEmpty {
+      lanes = lanes.map { lane in
+        let updated = lane.books.map { book in
+          TPPBookRegistry.shared.updatedBookMetadata(book) ?? book
+        }
+        return CatalogLaneModel(title: lane.title, books: updated, moreURL: lane.moreURL)
+      }
+    }
+
+    if !ungroupedBooks.isEmpty {
+      ungroupedBooks = ungroupedBooks.map { book in
+        TPPBookRegistry.shared.updatedBookMetadata(book) ?? book
+      }
     }
   }
 

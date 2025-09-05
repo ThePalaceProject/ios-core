@@ -301,6 +301,14 @@ extension LCPAudiobooks {
     currentPrefetchTask = nil
     publicationCacheLock.unlock()
   }
+
+  /// Release all held resources for the current publication and cancel any background work
+  public func releaseResources() {
+    cancelPrefetch()
+    publicationCacheLock.lock()
+    cachedPublication = nil
+    publicationCacheLock.unlock()
+  }
 }
 
 private extension Publication {
