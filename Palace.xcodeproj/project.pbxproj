@@ -693,14 +693,12 @@
 		E5AA6F4229A6BA4500601B02 /* RefreshableView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AA6F4029A6BA4000601B02 /* RefreshableView.swift */; };
 		E5AD65DD2684FACA00C62951 /* TPPAccountListCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AD65DC2684FACA00C62951 /* TPPAccountListCell.swift */; };
 		E5AD65E12684FDA300C62951 /* TPPAccountListDataSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AD65E02684FDA300C62951 /* TPPAccountListDataSource.swift */; };
-		E5AD72DD2E5520FB005A8070 /* CatalogHostViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AD72DB2E5520FB005A8070 /* CatalogHostViewController.swift */; };
 		E5AD72DE2E5520FB005A8070 /* CatalogRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AD72D42E5520FB005A8070 /* CatalogRepository.swift */; };
 		E5AD72DF2E5520FB005A8070 /* CatalogViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AD72D72E5520FB005A8070 /* CatalogViewModel.swift */; };
 		E5AD72E02E5520FB005A8070 /* OPDSParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AD72D22E5520FB005A8070 /* OPDSParser.swift */; };
 		E5AD72E12E5520FB005A8070 /* CatalogModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AD72D02E5520FB005A8070 /* CatalogModels.swift */; };
 		E5AD72E22E5520FB005A8070 /* CatalogAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AD72CE2E5520FB005A8070 /* CatalogAPI.swift */; };
 		E5AD72E32E5520FB005A8070 /* CatalogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AD72D92E5520FB005A8070 /* CatalogView.swift */; };
-		E5AD72E42E5520FB005A8070 /* CatalogHostViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AD72DB2E5520FB005A8070 /* CatalogHostViewController.swift */; };
 		E5AD72E52E5520FB005A8070 /* CatalogRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AD72D42E5520FB005A8070 /* CatalogRepository.swift */; };
 		E5AD72E62E5520FB005A8070 /* CatalogViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AD72D72E5520FB005A8070 /* CatalogViewModel.swift */; };
 		E5AD72E72E5520FB005A8070 /* OPDSParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AD72D22E5520FB005A8070 /* OPDSParser.swift */; };
@@ -1601,7 +1599,6 @@
 		E5AD72D42E5520FB005A8070 /* CatalogRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogRepository.swift; sourceTree = "<group>"; };
 		E5AD72D72E5520FB005A8070 /* CatalogViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogViewModel.swift; sourceTree = "<group>"; };
 		E5AD72D92E5520FB005A8070 /* CatalogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogView.swift; sourceTree = "<group>"; };
-		E5AD72DB2E5520FB005A8070 /* CatalogHostViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogHostViewController.swift; sourceTree = "<group>"; };
 		E5AD72EB2E55218A005A8070 /* NetworkClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkClient.swift; sourceTree = "<group>"; };
 		E5AD72EC2E55218A005A8070 /* URLSessionNetworkClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = URLSessionNetworkClient.swift; sourceTree = "<group>"; };
 		E5AD72F12E5526B1005A8070 /* CatalogLaneMoreView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogLaneMoreView.swift; sourceTree = "<group>"; };
@@ -3137,7 +3134,6 @@
 			children = (
 				E5AD72D82E5520FB005A8070 /* ViewModels */,
 				E5AD72DA2E5520FB005A8070 /* Views */,
-				E5AD72DB2E5520FB005A8070 /* CatalogHostViewController.swift */,
 				E50546982E620C9B007CCFAB /* CatalogNavigationHostView.swift */,
 			);
 			path = CatalogUI;
@@ -4091,7 +4087,6 @@
 				E505438B2E5FAEEA007CCFAB /* FacetToolbarView.swift in Sources */,
 				73EB0AE425821DF4006BC997 /* TPPAnnouncementBusinessLogic.swift in Sources */,
 				73EB0AE525821DF4006BC997 /* Account.swift in Sources */,
-				E5AD72DD2E5520FB005A8070 /* CatalogHostViewController.swift in Sources */,
 				E5AD72DE2E5520FB005A8070 /* CatalogRepository.swift in Sources */,
 				E5AD72DF2E5520FB005A8070 /* CatalogViewModel.swift in Sources */,
 				E5AD72E02E5520FB005A8070 /* OPDSParser.swift in Sources */,
@@ -4280,7 +4275,6 @@
 				731A5B1224621F2B00B5E663 /* TPPSignInBusinessLogic.swift in Sources */,
 				E708F720284781D50028405B /* TPPEncryptedPDFViewController.swift in Sources */,
 				738CB2062509A87700891F31 /* TPPConfiguration+SE.swift in Sources */,
-				E5AD72E42E5520FB005A8070 /* CatalogHostViewController.swift in Sources */,
 				E5AD72E52E5520FB005A8070 /* CatalogRepository.swift in Sources */,
 				E5AD72E62E5520FB005A8070 /* CatalogViewModel.swift in Sources */,
 				E5AD72E72E5520FB005A8070 /* OPDSParser.swift in Sources */,
