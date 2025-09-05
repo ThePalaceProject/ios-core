@@ -36,7 +36,7 @@ struct NormalBookCell: View {
         .padding(.bottom, 5)
       }
       .frame(maxWidth: .infinity, alignment: .leading)
-      .sheet(isPresented: $showHalfSheet) {
+      .sheet(isPresented: $showHalfSheet, onDismiss: { model.showHalfSheet = false }) {
         HalfSheetView(
           viewModel: model,
           backgroundColor: Color(model.book.dominantUIColor),
@@ -86,10 +86,10 @@ struct NormalBookCell: View {
       BookButtonsView(provider: model, size: buttonSize) { type in
         switch type {
         case .close:
-          self.showHalfSheet = false
+          withAnimation(.spring()) { self.showHalfSheet = false }
         default:
           model.callDelegate(for: type)
-          self.showHalfSheet = model.showHalfSheet
+          withAnimation(.spring()) { self.showHalfSheet = model.showHalfSheet }
         }
       }
   }

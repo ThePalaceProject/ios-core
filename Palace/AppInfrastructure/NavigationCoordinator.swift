@@ -41,16 +41,23 @@ final class NavigationCoordinator: ObservableObject {
   // MARK: - Public API
 
   func push(_ route: AppRoute) {
-    path.append(route)
+    withAnimation(.easeInOut) {
+      path.append(route)
+    }
   }
 
   func pop() {
     guard !path.isEmpty else { return }
-    path.removeLast()
+    withAnimation(.easeInOut) {
+      path.removeLast()
+    }
   }
 
   func popToRoot() {
-    path.removeLast(path.count)
+    guard !path.isEmpty else { return }
+    withAnimation(.easeInOut) {
+      path.removeLast(path.count)
+    }
   }
 
   func store(book: TPPBook) {

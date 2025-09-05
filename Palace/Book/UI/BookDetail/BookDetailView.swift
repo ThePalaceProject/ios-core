@@ -552,12 +552,18 @@ struct BookDetailView: View {
       }
     case .manageHold:
       viewModel.isManagingHold = true
-      viewModel.showHalfSheet.toggle()
+      withAnimation(.spring()) {
+        viewModel.showHalfSheet.toggle()
+      }
     case .return:
       viewModel.bookState = .returning
-      viewModel.showHalfSheet = true
+      withAnimation(.spring()) {
+        viewModel.showHalfSheet = true
+      }
     default:
-      viewModel.showHalfSheet.toggle()
+      withAnimation(.spring()) {
+        viewModel.showHalfSheet.toggle()
+      }
     }
   }
   

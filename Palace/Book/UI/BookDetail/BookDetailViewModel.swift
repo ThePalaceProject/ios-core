@@ -16,14 +16,13 @@ struct BookLane {
 @MainActor
 final class BookDetailViewModel: ObservableObject {
   // MARK: - Constants
-  private let kTimerInterval: TimeInterval = 3.0 // Save position every 3 seconds
+  private let kTimerInterval: TimeInterval = 3.0
   
   @Published var book: TPPBook
   
   /// The registry state, e.g. `unregistered`, `downloading`, `downloadSuccessful`, etc.
   @Published var bookState: TPPBookState {
     didSet {
-      // Mirror MyBooks behavior: keep a local override while returning
       if bookState == .returning {
         localBookStateOverride = .returning
       } else if bookState == .unregistered {
@@ -69,12 +68,10 @@ final class BookDetailViewModel: ObservableObject {
   private var timer: DispatchSourceTimer?
   private var previousPlayheadOffset: TimeInterval = 0
   private var didPrefetchLCPStreaming = false
-  // Location reconciliation guards to avoid local/remote races
   private var isReconcilingLocation: Bool = false
   private var recentMoveAt: Date? = nil
   private var isSyncingLocation: Bool = false
   private let bookIdentifier: String
-  // Local override to hold transient UI state such as .returning, preventing flicker
   private var localBookStateOverride: TPPBookState? = nil
   
   // MARK: – Computed Button State
@@ -88,7 +85,7 @@ final class BookDetailViewModel: ObservableObject {
     self.registry = TPPBookRegistry.shared
     self.bookState = registry.state(for: book.identifier)
     self.bookIdentifier = book.identifier
-    self.stableButtonState = self.computeButtonState(book: book, state: self.bookState, isManagingHold: self.isManagingHold)
+    self.stableButtonState = self.computeButtonState(book: book, state: self.bookState, isManagingHold: self.isManagingHold, isProcessing: self.isProcessing)
     
     bindRegistryState()
     setupStableButtonState()
@@ -157,31 +154,21 @@ final class BookDetailViewModel: ObservableObject {
       .assign(to: &$downloadProgress)
   }
 
-  private func computeButtonState(book: TPPBook, state: TPPBookState, isManagingHold: Bool) -> BookButtonState {
-    let isDownloading = (state == .downloading)
-    let avail = book.defaultAcquisition?.availability
+  private func computeButtonState(book: TPPBook, state: TPPBookState, isManagingHold: Bool, isProcessing: Bool) -> BookButtonState {
+    let availability = book.defaultAcquisition?.availability
+    let isProcessingDownload = isProcessing || state == .downloading
     if case .holding = state, isManagingHold { return .managingHold }
-#if LCP
-    if LCPAudiobooks.canOpenBook(book) {
-      switch state {
-      case .downloadNeeded:
-        return .downloadSuccessful
-      case .downloading:
-        return BookButtonMapper.map(registryState: state, availability: avail, isProcessingDownload: isDownloading)
-      case .downloadSuccessful, .used:
-        return .downloadSuccessful
-      default:
-        break
-      }
-    }
-#endif
-    return BookButtonMapper.map(registryState: state, availability: avail, isProcessingDownload: isDownloading)
+    return BookButtonMapper.map(
+      registryState: state,
+      availability: availability,
+      isProcessingDownload: isProcessingDownload
+    )
   }
 
   private func setupStableButtonState() {
-    Publishers.CombineLatest3($book, $bookState, $isManagingHold)
-      .map { [weak self] book, state, isManaging in
-        self?.computeButtonState(book: book, state: state, isManagingHold: isManaging) ?? .unsupported
+    Publishers.CombineLatest4($book, $bookState, $isManagingHold, $isProcessing)
+      .map { [weak self] book, state, isManaging, isProcessing in
+        self?.computeButtonState(book: book, state: state, isManagingHold: isManaging, isProcessing: isProcessing) ?? .unsupported
       }
       .removeDuplicates()
       .debounce(for: .milliseconds(180), scheduler: DispatchQueue.main)
@@ -376,7 +363,10 @@ final class BookDetailViewModel: ObservableObject {
   }
   
   func didSelectReturn(for book: TPPBook, completion: (() -> Void)?) {
-    downloadCenter.returnBook(withIdentifier: book.identifier, completion: completion)
+    downloadCenter.returnBook(withIdentifier: book.identifier) { [weak self] in
+      self?.bookState = .unregistered
+      completion?()
+    }
   }
   
   // MARK: - Reading
@@ -589,7 +579,7 @@ final class BookDetailViewModel: ObservableObject {
   
   /// Syncs audiobook playback position from local or remote bookmarks
   private func syncAudiobookLocation(for book: TPPBook) {
-    // Begin reconciliation window to avoid racing local saves against a remote move
+
     isReconcilingLocation = true
     let localLocation = TPPBookRegistry.shared.location(forIdentifier: book.identifier)
     
@@ -601,20 +591,15 @@ final class BookDetailViewModel: ObservableObject {
             toc: manager.audiobook.tableOfContents.toc,
             tracks: manager.audiobook.tableOfContents.tracks
           ) else {
-      // No saved location - start playing from the beginning
       startPlaybackFromBeginning()
-      // End reconciliation after a short grace period
       DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
         self?.isReconcilingLocation = false
       }
       return
     }
-    
-    // Streaming resources are now handled automatically by LCPPlayer
-    
+        
     audiobookManager?.audiobook.player.play(at: localPosition, completion: nil)
     
-    // Single-flight remote sync
     guard !isSyncingLocation else { return }
     isSyncingLocation = true
     TPPBookRegistry.shared.syncLocation(for: book) { [weak self] remoteBookmark in
@@ -632,11 +617,8 @@ final class BookDetailViewModel: ObservableObject {
         serverUpdateDelay: 300
       ) { position in
         DispatchQueue.main.async {
-          // Streaming resources are now handled automatically by LCPPlayer
-          // Mark programmatic move to suppress immediate save thrash
           self.recentMoveAt = Date()
           self.audiobookManager?.audiobook.player.play(at: position, completion: nil)
-          // End reconciliation shortly after final move
           DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
             self.isReconcilingLocation = false
           }
@@ -766,7 +748,6 @@ extension BookDetailViewModel {
       return
     }
 
-    // Avoid racing saves during reconciliation and right after programmatic moves
     if isReconcilingLocation {
       return
     }

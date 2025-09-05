@@ -101,7 +101,15 @@ extension BookButtonState {
       
       self = buttonState
     case .downloadNeeded:
+      #if LCP
+      if LCPAudiobooks.canOpenBook(book) {
+        self = .downloadSuccessful
+      } else {
+        self = .downloadNeeded
+      }
+      #else
       self = .downloadNeeded
+      #endif
     case .downloadSuccessful:
       self = .downloadSuccessful
     case .SAMLStarted, .downloading:
