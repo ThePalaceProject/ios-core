@@ -60,7 +60,7 @@ class BookCellModel: ObservableObject {
   var statePublisher = PassthroughSubject<Bool, Never>()
   var state: BookCellState
   
-  var book: TPPBook {
+  @Published var book: TPPBook {
     didSet {
       if book.identifier != currentBookIdentifier {
         currentBookIdentifier = book.identifier
@@ -69,7 +69,10 @@ class BookCellModel: ObservableObject {
     }
   }
   
-  var isManagingHold: Bool = false
+  @Published var isManagingHold: Bool = false
+
+  @Published private(set) var stableButtonState: BookButtonState = .unsupported
+  @Published private var registryState: TPPBookState
 
   var title: String { book.title }
   var authors: String { book.authors ?? "" }
@@ -82,7 +85,7 @@ class BookCellModel: ObservableObject {
   }
   
   var buttonTypes: [BookButtonType] {
-    state.buttonState.buttonTypes(book: book)
+    stableButtonState.buttonTypes(book: book)
   }
   
   
@@ -94,8 +97,12 @@ class BookCellModel: ObservableObject {
     self.isLoading = TPPBookRegistry.shared.processing(forIdentifier: book.identifier)
     self.currentBookIdentifier = book.identifier
     self.imageCache = imageCache
+    self.registryState = TPPBookRegistry.shared.state(for: book.identifier)
+    self.stableButtonState = self.computeButtonState(book: book, registryState: self.registryState, isManagingHold: self.isManagingHold)
     registerForNotifications()
     loadBookCoverImage()
+    bindRegistryState()
+    setupStableButtonState()
   }
   
   deinit {
@@ -140,6 +147,39 @@ class BookCellModel: ObservableObject {
   private func registerForNotifications() {
     NotificationCenter.default.addObserver(self, selector: #selector(updateButtons),
                                            name: .TPPReachabilityChanged, object: nil)
+  }
+
+  private func bindRegistryState() {
+    TPPBookRegistry.shared.bookStatePublisher
+      .filter { [weak self] in $0.0 == self?.book.identifier }
+      .map { $0.1 }
+      .receive(on: DispatchQueue.main)
+      .sink { [weak self] newState in
+        self?.registryState = newState
+      }
+      .store(in: &cancellables)
+  }
+
+  private func computeButtonState(book: TPPBook, registryState: TPPBookState, isManagingHold: Bool) -> BookButtonState {
+    let availability = book.defaultAcquisition?.availability
+    let isProcessingDownload = isLoading || registryState == .downloading
+    if case .holding = registryState, isManagingHold { return .managingHold }
+    return BookButtonMapper.map(
+      registryState: registryState,
+      availability: availability,
+      isProcessingDownload: isProcessingDownload
+    )
+  }
+
+  private func setupStableButtonState() {
+    Publishers.CombineLatest3($book, $registryState, $isManagingHold)
+      .map { [weak self] book, state, isManaging in
+        self?.computeButtonState(book: book, registryState: state, isManagingHold: isManaging) ?? .unsupported
+      }
+      .removeDuplicates()
+      .debounce(for: .milliseconds(180), scheduler: DispatchQueue.main)
+      .receive(on: DispatchQueue.main)
+      .assign(to: &$stableButtonState)
   }
   
   @objc private func updateButtons() {
@@ -246,14 +286,14 @@ extension BookCellModel {
         }
         if let sampleWebURL = sampleURL as? EpubSampleWebURL {
           let web = BundledHTMLViewController(fileURL: sampleWebURL.url, title: self.book.title)
-          if let top = UIApplication.shared.keyWindow?.rootViewController {
+          if let appDelegate = UIApplication.shared.delegate as? TPPAppDelegate, let top = appDelegate.topViewController() {
             top.present(web, animated: true)
           }
           return
         }
         if let url = sampleURL?.url {
           let web = BundledHTMLViewController(fileURL: url, title: self.book.title)
-          if let top = UIApplication.shared.keyWindow?.rootViewController {
+          if let appDelegate = UIApplication.shared.delegate as? TPPAppDelegate, let top = appDelegate.topViewController() {
             top.present(web, animated: true)
           }
         }

@@ -8,7 +8,7 @@
 
 import Foundation
 
-enum BookButtonState {
+enum BookButtonState: Equatable {
   case canBorrow
   case canHold
   case holding

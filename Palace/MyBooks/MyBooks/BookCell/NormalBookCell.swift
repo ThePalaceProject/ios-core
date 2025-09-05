@@ -86,10 +86,11 @@ struct NormalBookCell: View {
       BookButtonsView(provider: model, size: buttonSize) { type in
         switch type {
         case .return:
-            model.state = .normal(.returning)
+            model.isManagingHold = false
+            model.bookState = .returning
             self.showHalfSheet = true
         case .manageHold:
-          model.state = .normal(.managingHold)
+          model.isManagingHold = true
           self.showHalfSheet = true
         case .close:
           self.showHalfSheet = false

@@ -33,6 +33,7 @@ final class BookDetailViewModel: ObservableObject {
   @Published var selectedBookURL: URL? = nil
   @Published var isManagingHold: Bool = false
   @Published var showHalfSheet = false
+  @Published private(set) var stableButtonState: BookButtonState = .unsupported
   
   var isFullSize: Bool { UIDevice.current.isIpad }
   
@@ -67,40 +68,7 @@ final class BookDetailViewModel: ObservableObject {
   
   // MARK: – Computed Button State
   
-  var buttonState: BookButtonState {
-    let isDownloading = (bookState == .downloading)
-    let avail = book.defaultAcquisition?.availability
-    
-    if case .holding = bookState, isManagingHold {
-      return .managingHold
-    }
-    
-#if LCP
-    if LCPAudiobooks.canOpenBook(book) {
-      switch bookState {
-      case .downloadNeeded:
-        return .downloadSuccessful
-      case .downloading:
-        return BookButtonMapper.map(
-          registryState: bookState,
-          availability: avail,
-          isProcessingDownload: isDownloading
-        )
-      case .downloadSuccessful, .used:
-        return .downloadSuccessful
-      default:
-        break
-      }
-    }
-#endif
-    
-    let mappedState = BookButtonMapper.map(
-      registryState: bookState,
-      availability: avail,
-      isProcessingDownload: isDownloading
-    )
-    return mappedState
-  }
+  var buttonState: BookButtonState { stableButtonState }
   
   // MARK: - Initializer
   
@@ -109,8 +77,10 @@ final class BookDetailViewModel: ObservableObject {
     self.registry = TPPBookRegistry.shared
     self.bookState = registry.state(for: book.identifier)
     self.bookIdentifier = book.identifier
+    self.stableButtonState = self.computeButtonState(book: book, state: self.bookState, isManagingHold: self.isManagingHold)
     
     bindRegistryState()
+    setupStableButtonState()
     setupObservers()
     self.downloadProgress = downloadCenter.downloadProgress(for: book.identifier)
 #if LCP
@@ -176,6 +146,39 @@ final class BookDetailViewModel: ObservableObject {
       .map { $0.1 }
       .receive(on: DispatchQueue.main)
       .assign(to: &$downloadProgress)
+  }
+
+  private func computeButtonState(book: TPPBook, state: TPPBookState, isManagingHold: Bool) -> BookButtonState {
+    let isDownloading = (state == .downloading)
+    let avail = book.defaultAcquisition?.availability
+    if case .holding = state, isManagingHold { return .managingHold }
+#if LCP
+    if LCPAudiobooks.canOpenBook(book) {
+      switch state {
+      case .downloadNeeded:
+        return .downloadSuccessful
+      case .downloading:
+        return BookButtonMapper.map(registryState: state, availability: avail, isProcessingDownload: isDownloading)
+      case .downloadSuccessful, .used:
+        return .downloadSuccessful
+      default:
+        break
+      }
+    }
+#endif
+    return BookButtonMapper.map(registryState: state, availability: avail, isProcessingDownload: isDownloading)
+  }
+
+  private func setupStableButtonState() {
+    // Debounce and deduplicate to avoid UI thrash
+    Publishers.CombineLatest3($book, $bookState, $isManagingHold)
+      .map { [weak self] book, state, isManaging in
+        self?.computeButtonState(book: book, state: state, isManagingHold: isManaging) ?? .unsupported
+      }
+      .removeDuplicates()
+      .debounce(for: .milliseconds(180), scheduler: DispatchQueue.main)
+      .receive(on: DispatchQueue.main)
+      .assign(to: &self.$stableButtonState)
   }
   
   @objc func handleBookRegistryChange(_ notification: Notification) {
