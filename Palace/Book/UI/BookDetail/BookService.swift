@@ -44,24 +44,38 @@ enum BookService {
     }
 #endif
     // Non-LCP audiobook
-    guard let url = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier) else { return }
+    guard let url = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier) else {
+      showAudiobookTryAgainError()
+      return
+    }
     do {
       let data = try Data(contentsOf: url)
-      guard let json = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] else { return }
+      guard let json = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] else {
+        showAudiobookTryAgainError()
+        return
+      }
       presentAudiobookFrom(book: book, json: json, decryptor: nil)
-    } catch { }
+    } catch {
+      showAudiobookTryAgainError()
+    }
   }
 
 #if LCP
   private static func buildAndPresentAudiobook(book: TPPBook, lcpSourceURL: URL) {
-    guard let lcpAudiobooks = LCPAudiobooks(for: lcpSourceURL) else { return }
+    guard let lcpAudiobooks = LCPAudiobooks(for: lcpSourceURL) else {
+      showAudiobookTryAgainError()
+      return
+    }
     if let cached = lcpAudiobooks.cachedContentDictionary() as? [String: Any] {
       presentAudiobookFrom(book: book, json: cached, decryptor: lcpAudiobooks)
       return
     }
     lcpAudiobooks.contentDictionary { dict, error in
       DispatchQueue.main.async {
-        guard error == nil, let json = dict as? [String: Any] else { return }
+        guard error == nil, let json = dict as? [String: Any] else {
+          showAudiobookTryAgainError()
+          return
+        }
         presentAudiobookFrom(book: book, json: json, decryptor: lcpAudiobooks)
       }
     }
@@ -79,7 +93,10 @@ enum BookService {
 
     let vendorCompletion: (Foundation.NSError?) -> Void = { (error: Foundation.NSError?) in
       Task { @MainActor in
-        guard error == nil else { return }
+        guard error == nil else {
+          showAudiobookTryAgainError()
+          return
+        }
 
         guard
           let jsonData = try? JSONSerialization.data(withJSONObject: jsonDict, options: []),
@@ -90,7 +107,10 @@ enum BookService {
             decryptor: decryptor,
             token: book.bearerToken
           )
-        else { return }
+        else {
+          showAudiobookTryAgainError()
+          return
+        }
 
         let metadata = AudiobookMetadata(title: book.title, authors: [book.authors ?? ""])
         var timeTracker: AudiobookTimeTracker?
@@ -190,6 +210,9 @@ enum BookService {
               playbackModel.beginSaveSuppression(for: 2.0)
             }
           }
+        } else {
+          // Presentation route failed, show Try Again error instead of any alternate/VO-only startup
+          showAudiobookTryAgainError()
         }
       }
     }
@@ -205,6 +228,13 @@ enum BookService {
 #else
     return nil
 #endif
+  }
+}
+
+private extension BookService {
+  static func showAudiobookTryAgainError() {
+    let alert = TPPAlertUtils.alert(title: Strings.Error.openFailedError, message: Strings.Error.tryAgain)
+    TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
   }
 }
 

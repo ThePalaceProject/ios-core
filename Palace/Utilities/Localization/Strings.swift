@@ -60,6 +60,7 @@ struct Strings {
     static let userDeniedLocationAccess = NSLocalizedString("User denied location access. Go to system settings to enable location access for the Palace App.", comment: "Error message shown to user when location services are denied.")
     static let uknownLocationError = NSLocalizedString("Unkown error occurred. Please try again.", comment: "Error message shown to user when an unknown location error occurs.")
     static let locationFetchFailed = NSLocalizedString("Failed to get current location. Please try again.", comment: "Error message shown to user when CoreLocation does not return the current location.")
+    static let tryAgain = NSLocalizedString("Please try again later.", comment: "Error message to please try again.")
   }
   
   struct Generic {

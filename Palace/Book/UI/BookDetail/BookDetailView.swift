@@ -90,7 +90,6 @@ struct BookDetailView: View {
       .onReceive(viewModel.book.$dominantUIColor) { newColor in
         headerColor = Color(newColor)
       }
-      // Dismiss BookDetail when the registry reports this book was returned/removed
       .onReceive(NotificationCenter.default.publisher(for: .TPPBookRegistryStateDidChange).receive(on: RunLoop.main)) { note in
         guard
           let info = note.userInfo as? [String: Any],
@@ -100,7 +99,9 @@ struct BookDetailView: View {
           let newState = TPPBookState(rawValue: raw)
         else { return }
 
-        if newState == .unregistered || newState == .downloadNeeded {
+        // Only dismiss the detail view when the title is actually unregistered (removed).
+        // Do NOT dismiss on .downloadNeeded to avoid closing the sheet during active downloads.
+        if newState == .unregistered {
           presentationMode.wrappedValue.dismiss()
         }
       }
@@ -212,7 +213,7 @@ struct BookDetailView: View {
       
       Spacer(minLength: 50)
     }
-    .padding(.top, imageBottomPosition)
+    .padding(.top, imageBottomPosition + 10)
     .animation(scaleAnimation, value: imageBottomPosition)
   }
   
@@ -554,7 +555,8 @@ struct BookDetailView: View {
         // Present sign-in directly; don't show half sheet first
         viewModel.handleAction(for: buttonType)
       } else {
-        viewModel.showHalfSheet.toggle()
+        // Force present the half-sheet; avoid toggle to prevent accidental dismissal on rapid state changes
+        viewModel.showHalfSheet = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
           viewModel.handleAction(for: buttonType)
         }
@@ -564,7 +566,8 @@ struct BookDetailView: View {
       viewModel.showHalfSheet.toggle()
     case .return:
       viewModel.bookState = .returning
-      viewModel.showHalfSheet.toggle()
+      // Keep half-sheet visible during return operation
+      viewModel.showHalfSheet = true
     default:
       viewModel.showHalfSheet.toggle()
     }

@@ -85,19 +85,12 @@ struct NormalBookCell: View {
   @ViewBuilder private var buttons: some View {
       BookButtonsView(provider: model, size: buttonSize) { type in
         switch type {
-        case .return:
-            model.isManagingHold = false
-            model.bookState = .returning
-            self.showHalfSheet = true
-        case .manageHold:
-          model.isManagingHold = true
-          self.showHalfSheet = true
         case .close:
           self.showHalfSheet = false
-        case .read, .listen:
-          self.showHalfSheet = true
         default:
           model.callDelegate(for: type)
+          // Reflect delegate-driven presentation
+          self.showHalfSheet = model.showHalfSheet
         }
       }
   }

@@ -305,7 +305,7 @@ final class BookDetailViewModel: ObservableObject {
     case .download, .get, .retry:
 
       self.downloadProgress = 0
-      bookState = .downloading
+
       didSelectDownload(for: book)
       removeProcessingButton(button)
       
@@ -355,10 +355,14 @@ final class BookDetailViewModel: ObservableObject {
       showHalfSheet = false
       TPPAccountSignInViewController.requestCredentials { [weak self] in
         guard let self else { return }
+        self.bookState = .downloading
         self.downloadCenter.startDownload(for: book)
       }
       return
     }
+    bookState = .downloading
+    // Keep half-sheet visible during initial borrow/download
+    showHalfSheet = true
     downloadCenter.startDownload(for: book)
   }
   

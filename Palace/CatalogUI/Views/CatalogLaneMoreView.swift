@@ -20,6 +20,10 @@ struct CatalogLaneMoreView: View {
   @State private var appliedSelections: Set<String> = []
   @State private var isApplyingFilters: Bool = false
 
+  // MARK: - Audiobook Sample Toolbar
+  @State private var sampleToolbar: AudiobookSampleToolbar? = nil
+  @State private var currentSampleBookID: String? = nil
+
   var body: some View {
     VStack(spacing: 0) {
       if !facetGroups.isEmpty {
@@ -76,6 +80,14 @@ struct CatalogLaneMoreView: View {
         .refreshable { await fetchAndApplyFeed(at: url) }
       }
     }
+    .overlay(alignment: .bottom) {
+      if let toolbar = sampleToolbar {
+        VStack(spacing: 0) {
+          Spacer(minLength: 0)
+          toolbar
+        }
+      }
+    }
     .navigationBarTitleDisplayMode(.inline)
     .toolbar {
       ToolbarItem(placement: .principal) {
@@ -104,6 +116,30 @@ struct CatalogLaneMoreView: View {
       appliedSelections.removeAll()
       pendingSelections.removeAll()
       Task { await load() }
+    }
+    // Show/Toggle audiobook preview bar when sample is triggered
+    .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ToggleSampleNotification")).receive(on: RunLoop.main)) { note in
+      guard
+        let info = note.userInfo as? [String: Any],
+        let identifier = info["bookIdentifier"] as? String
+      else { return }
+
+      // Toggle close if the same book is already showing
+      if let current = currentSampleBookID, current == identifier, let toolbar = sampleToolbar {
+        toolbar.player.pauseAudiobook()
+        withAnimation {
+          sampleToolbar = nil
+          currentSampleBookID = nil
+        }
+        return
+      }
+
+      if let book = TPPBookRegistry.shared.book(forIdentifier: identifier) ??
+          (lanes.flatMap { $0.books } + ungroupedBooks).first(where: { $0.identifier == identifier }) {
+        sampleToolbar = AudiobookSampleToolbar(book: book)
+        currentSampleBookID = identifier
+      }
+      // Toolbar itself toggles play on this notification
     }
     .onReceive(NotificationCenter.default.publisher(for: .TPPBookRegistryDidChange).receive(on: RunLoop.main)) { _ in
       applyRegistryUpdates()

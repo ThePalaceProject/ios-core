@@ -62,7 +62,8 @@ extension BookButtonType {
     case .listen: DisplayStrings.listen
     case .cancel: DisplayStrings.cancel
     case .retry: DisplayStrings.retry
-    case .sample, .audiobookSample: DisplayStrings.preview
+    case .sample: DisplayStrings.preview
+    case .audiobookSample: DisplayStrings.preview
     case .returning: DisplayStrings.returnLoan
     case .manageHold: DisplayStrings.manageHold
     case .cancelHold: DisplayStrings.cancelHold

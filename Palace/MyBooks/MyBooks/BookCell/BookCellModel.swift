@@ -73,6 +73,8 @@ class BookCellModel: ObservableObject {
 
   @Published private(set) var stableButtonState: BookButtonState = .unsupported
   @Published private var registryState: TPPBookState
+  @Published private var localBookStateOverride: TPPBookState? = nil
+  @Published var showHalfSheet: Bool = false
 
   var title: String { book.title }
   var authors: String { book.authors ?? "" }
@@ -85,7 +87,10 @@ class BookCellModel: ObservableObject {
   }
   
   var buttonTypes: [BookButtonType] {
-    stableButtonState.buttonTypes(book: book)
+    // While the half sheet is shown in a transient state (e.g., .returning),
+    // force the button set to match that state so we don't show read/listen.
+    if localBookStateOverride == .returning { return BookButtonState.returning.buttonTypes(book: book) }
+    return stableButtonState.buttonTypes(book: book)
   }
   
   
@@ -194,7 +199,11 @@ extension BookCellModel {
     switch action {
     case .download, .retry, .get, .reserve:
       didSelectDownload()
-    case .return, .remove, .returning, .cancelHold, .manageHold:
+    case .return:
+      isManagingHold = false
+      bookState = .returning
+      showHalfSheet = true
+    case .remove, .returning, .cancelHold, .manageHold:
       didSelectReturn()
     case .cancel:
       didSelectCancel()
@@ -272,7 +281,7 @@ extension BookCellModel {
       NotificationCenter.default.post(
         name: Notification.Name("ToggleSampleNotification"),
         object: nil,
-        userInfo: ["bookIdentifier": book.identifier]
+        userInfo: ["bookIdentifier": book.identifier, "action": "toggle"]
       )
       self.isLoading = false
       return
@@ -320,10 +329,18 @@ extension BookCellModel: HalfSheetProvider {
   /// Always read the "live" state from the registry.
   var bookState: TPPBookState {
     get {
-      TPPBookRegistry.shared.state(for: book.identifier)
+      // Mirror BookDetail behavior by using a local override for transient UI states
+      // like .returning, while otherwise reflecting the registry state.
+      localBookStateOverride ?? registryState
     }
     set {
-      TPPBookRegistry.shared.setState(newValue, for: book.identifier)
+      // Only persist a local override for the returning flow; otherwise clear it
+      // to fall back to the live registry state.
+      if newValue == .returning {
+        localBookStateOverride = .returning
+      } else {
+        localBookStateOverride = nil
+      }
     }
   }
   

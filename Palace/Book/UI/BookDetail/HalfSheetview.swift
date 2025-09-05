@@ -34,6 +34,7 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
   var backgroundColor: Color
   @Binding var coverImage: UIImage?
   @State private var originalState: TPPBookState = .unregistered
+  @State private var didChangeState: Bool = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: viewModel.isFullSize ? 20 : 10) {
@@ -60,13 +61,16 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
             viewModel.bookState = originalState
             dismiss()
           case .read, .listen:
+            didChangeState = true
             dismiss()
             DispatchQueue.main.async {
               viewModel.handleAction(for: type)
             }
           case .return, .remove:
+            didChangeState = true
             viewModel.handleAction(for: type)
           default:
+            didChangeState = true
             viewModel.handleAction(for: type)
           }
         })
@@ -78,13 +82,16 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
             viewModel.bookState = originalState
             dismiss()
           case .read, .listen:
+            didChangeState = true
             dismiss()
             DispatchQueue.main.async {
               viewModel.handleAction(for: type)
             }
           case .return, .remove:
+            didChangeState = true
             viewModel.handleAction(for: type)
           default:
+            didChangeState = true
             viewModel.handleAction(for: type)
           }
         })
@@ -94,15 +101,12 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
     .presentationDetents([UIDevice.current.isIpad ? .height(540) : .medium])
     .presentationDragIndicator(.visible)
     .interactiveDismissDisabled(viewModel.isProcessing(for: .returning))
-    .onAppear { originalState = viewModel.bookState }
+    .onAppear {
+      originalState = TPPBookRegistry.shared.state(for: viewModel.book.identifier)
+    }
     .onDisappear {
-      // If dismissed while in returning flow, sync from registry so buttons update post-dismiss
-      if viewModel.isReturning {
-        viewModel.bookState = TPPBookRegistry.shared.state(for: viewModel.book.identifier)
-      } else {
-        // Otherwise restore prior state (e.g., close/cancel paths)
-        viewModel.bookState = originalState
-      }
+      // Always sync to latest registry state to avoid reverting the UI after a successful download
+      viewModel.bookState = TPPBookRegistry.shared.state(for: viewModel.book.identifier)
     }
     .onReceive(NotificationCenter.default.publisher(for: .TPPBookRegistryStateDidChange).receive(on: RunLoop.main)) { note in
       guard
@@ -113,8 +117,8 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
         let newState = TPPBookState(rawValue: raw)
       else { return }
 
-      // Dismiss only when a return/remove completed for this book
-      if viewModel.isReturning && (newState == .unregistered || newState == .downloadNeeded) {
+      // Dismiss only when a return/remove fully completed to unregistered
+      if viewModel.isReturning && newState == .unregistered {
         dismiss()
       }
     }
