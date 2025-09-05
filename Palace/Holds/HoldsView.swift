@@ -2,6 +2,7 @@ import SwiftUI
 import UIKit
 
 struct HoldsView: View {
+  @EnvironmentObject private var coordinator: NavigationCoordinator
   typealias DisplayStrings = Strings.HoldsView
   
   @StateObject private var model = HoldsViewModel()
@@ -11,15 +12,17 @@ struct HoldsView: View {
   var body: some View {
     ZStack {
       VStack(spacing: 0) {
-        
-        if allBooks.isEmpty {
+
+        if model.isLoading {
+          BookListSkeletonView(rows: 10, imageSize: CGSize(width: 100, height: 150))
+        } else if model.visibleBooks.isEmpty {
           Spacer()
           emptyView
           Spacer()
         } else {
           ScrollView {
             BookListView(
-              books: allBooks,
+              books: model.visibleBooks,
               isLoading: $model.isLoading,
               onSelect: { book in presentBookDetail(book) }
             )
@@ -29,14 +32,20 @@ struct HoldsView: View {
       }
       .padding(.top, 100)
       .background(Color(TPPConfiguration.backgroundColor()))
-      .navigationTitle(Strings.HoldsView.reservations)
       .navigationBarTitleDisplayMode(.inline)
       .toolbar {
+        ToolbarItem(placement: .principal) {
+          LibraryNavTitleView(onTap: {
+            if let urlString = AccountsManager.shared.currentAccount?.homePageUrl, let url = URL(string: urlString) {
+              UIApplication.shared.open(url, options: [:], completionHandler: nil)
+            }
+          })
+        }
         ToolbarItem(placement: .navigationBarLeading) { leadingBarButton }
         ToolbarItem(placement: .navigationBarTrailing) { trailingBarButton }
       }
       .onAppear {
-        model.showSearchView = false
+        model.showSearchSheet = false
         model.showLibraryAccountView = false
       }
       .refreshable {
@@ -54,44 +63,13 @@ struct HoldsView: View {
       if model.isLoading {
         loadingOverlay
       }
-      
-      VStack {
-        logoImageView
-        Spacer()
-      }
     }
-    .sheet(isPresented: $model.showSearchView) {
-      UIViewControllerWrapper(
-        TPPCatalogSearchViewController(openSearchDescription: model.openSearchDescription),
-        updater: { _ in }
-      )
-    }
-  }
-  
-  @ViewBuilder private var logoImageView: some View {
-    if let account = AccountsManager.shared.currentAccount {
-      Button {
-        if let urlString = account.homePageUrl, let url = URL(string: urlString) {
-          UIApplication.shared.open(url, options: [:], completionHandler: nil)
-        }
-      } label: {
-        HStack {
-          Image(uiImage: account.logo)
-            .resizable()
-            .aspectRatio(contentMode: .fit)
-            .square(length: 50)
-          Text(account.name)
-            .fixedSize(horizontal: false, vertical: true)
-            .font(Font(uiFont: UIFont.boldSystemFont(ofSize: 18.0)))
-            .foregroundColor(.gray)
-            .multilineTextAlignment(.center)
-        }
-        .padding()
-        .background(Color(TPPConfiguration.readerBackgroundColor()))
-        .frame(height: 70.0)
-        .cornerRadius(35)
+    .overlay(alignment: .top) {
+      if model.showSearchSheet {
+        searchBar
+          .padding(.top, 8)
+          .transition(.move(edge: .top).combined(with: .opacity))
       }
-      .padding(.vertical, 20)
     }
   }
   
@@ -100,6 +78,7 @@ struct HoldsView: View {
     Text(DisplayStrings.emptyMessage)
     .multilineTextAlignment(.center)
     .foregroundColor(Color(white: 0.667))
+    .background(Color(TPPConfiguration.backgroundColor()))
     .font(.system(size: 18))
     .padding(.horizontal, 24)
   }
@@ -135,7 +114,7 @@ struct HoldsView: View {
   
   private var trailingBarButton: some View {
     Button {
-      model.showSearchView = true
+      withAnimation { model.showSearchSheet.toggle() }
     } label: {
       ImageProviders.MyBooksView.search
     }
@@ -143,8 +122,29 @@ struct HoldsView: View {
   }
   
   private func presentBookDetail(_ book: TPPBook) {
-    let detailVC = BookDetailHostingController(book: book)
-    TPPRootTabBarController.shared().pushViewController(detailVC, animated: true)
+    coordinator.store(book: book)
+    coordinator.push(.bookDetail(BookRoute(id: book.identifier)))
+  }
+
+  private var searchBar: some View {
+    HStack {
+      TextField(Strings.MyBooksView.searchBooks, text: $model.searchQuery)
+        .searchBarStyle()
+        .onChange(of: model.searchQuery) { query in
+          Task { await model.filterBooks(query: query) }
+        }
+      Button(action: clearSearch, label: {
+        Image(systemName: "xmark.circle.fill").foregroundColor(.gray)
+      })
+    }
+    .padding(.horizontal)
+  }
+
+  private func clearSearch() {
+    Task {
+      model.searchQuery = ""
+      await model.filterBooks(query: "")
+    }
   }
 }
 

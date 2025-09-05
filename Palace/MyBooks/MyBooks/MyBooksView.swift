@@ -3,25 +3,49 @@ import Combine
 import PalaceUIKit
 
 struct MyBooksView: View {
+  @EnvironmentObject private var coordinator: NavigationCoordinator
   typealias DisplayStrings = Strings.MyBooksView
   @ObservedObject var model: MyBooksViewModel
+  @State private var showSortSheet: Bool = false
+  @StateObject private var logoObserver = CatalogLogoObserver()
+  @State private var currentAccountUUID: String = AccountsManager.shared.currentAccount?.uuid ?? ""
+  // Centralized sample preview manager overlay
 
   var body: some View {
       ZStack {
-        mainContent
-        if model.isLoading { loadingOverlay }
+        if model.isLoading {
+          BookListSkeletonView(rows: 10, imageSize: CGSize(width: 100, height: 150))
+        } else {
+          mainContent
+        }
       }
       .background(Color(TPPConfiguration.backgroundColor()))
-      .navigationTitle(DisplayStrings.navTitle)
+      .overlay(alignment: .bottom) { SamplePreviewBarView() }
       .navigationBarTitleDisplayMode(.inline)
-      .navigationBarHidden(false)
       .toolbar {
+        ToolbarItem(placement: .principal) {
+          LibraryNavTitleView(onTap: {
+            if let urlString = AccountsManager.shared.currentAccount?.homePageUrl, let url = URL(string: urlString) {
+              UIApplication.shared.open(url, options: [:], completionHandler: nil)
+            }
+          })
+          .id(logoObserver.token.uuidString + currentAccountUUID)
+        }
         ToolbarItem(placement: .navigationBarLeading) { leadingBarButton }
         ToolbarItem(placement: .navigationBarTrailing) { trailingBarButton }
       }
       .onAppear {
         model.showSearchSheet = false
-        UITabBarController.showFloatingTabBar()
+        let account = AccountsManager.shared.currentAccount
+        account?.logoDelegate = logoObserver
+        account?.loadLogo()
+        currentAccountUUID = account?.uuid ?? ""
+      }
+      .onReceive(NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)) { _ in
+        let account = AccountsManager.shared.currentAccount
+        account?.logoDelegate = logoObserver
+        account?.loadLogo()
+        currentAccountUUID = account?.uuid ?? ""
       }
       .sheet(isPresented: $model.showLibraryAccountView) {
         UIViewControllerWrapper(
@@ -32,12 +56,31 @@ struct MyBooksView: View {
           updater: { _ in }
         )
       }
+      .actionSheet(isPresented: $showSortSheet) { sortActionSheet }
+      // Notification still supported but routed through manager for compatibility
+      .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ToggleSampleNotification")).receive(on: RunLoop.main)) { note in
+        guard let info = note.userInfo as? [String: Any], let identifier = info["bookIdentifier"] as? String else { return }
+        let action = (info["action"] as? String) ?? "toggle"
+        if action == "close" {
+          SamplePreviewManager.shared.close()
+          return
+        }
+        if let book = TPPBookRegistry.shared.book(forIdentifier: identifier) ?? model.books.first(where: { $0.identifier == identifier }) {
+          SamplePreviewManager.shared.toggle(for: book)
+        }
+      }
   }
 
   private var mainContent: some View {
     VStack(alignment: .leading, spacing: 0) {
       if model.showSearchSheet { searchBar }
-      FacetView(model: model.facetViewModel)
+      FacetToolbarView(
+        title: nil,
+        showFilter: false,
+        onSort: { showSortSheet = true },
+        onFilter: {},
+        currentSortTitle: model.facetViewModel.activeSort.localizedString
+      )
       content
     }
   }
@@ -60,8 +103,8 @@ struct MyBooksView: View {
   }
 
   private func presentBookDetail(for book: TPPBook) {
-    let detailVC = BookDetailHostingController(book: book)
-    TPPRootTabBarController.shared().pushViewController(detailVC, animated: true)
+    coordinator.store(book: book)
+    coordinator.push(.bookDetail(BookRoute(id: book.identifier)))
   }
 
   private var searchBar: some View {
@@ -106,6 +149,16 @@ struct MyBooksView: View {
     Button(action: { withAnimation { model.showSearchSheet.toggle() } }) {
       ImageProviders.MyBooksView.search
     }
+  }
+
+  private var sortActionSheet: ActionSheet {
+    let author = ActionSheet.Button.default(Text(Strings.FacetView.author)) {
+      model.facetViewModel.activeSort = .author
+    }
+    let title = ActionSheet.Button.default(Text(Strings.FacetView.title)) {
+      model.facetViewModel.activeSort = .title
+    }
+    return ActionSheet(title: Text(DisplayStrings.sortBy), buttons: [author, title, .cancel()])
   }
 
   private var libraryPicker: ActionSheet {

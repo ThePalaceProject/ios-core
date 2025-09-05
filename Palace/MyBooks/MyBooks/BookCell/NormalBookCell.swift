@@ -36,10 +36,10 @@ struct NormalBookCell: View {
         .padding(.bottom, 5)
       }
       .frame(maxWidth: .infinity, alignment: .leading)
-      .sheet(isPresented: $showHalfSheet) {
+      .sheet(isPresented: $showHalfSheet, onDismiss: { model.showHalfSheet = false }) {
         HalfSheetView(
           viewModel: model,
-          backgroundColor: Color(model.book.coverImage?.mainColor() ?? .gray),
+          backgroundColor: Color(model.book.dominantUIColor),
           coverImage: $model.book.coverImage
         )
       }
@@ -59,25 +59,12 @@ struct NormalBookCell: View {
   }
 
   @ViewBuilder private var titleCoverImageView: some View {
-    ZStack(alignment: .bottomTrailing) {
-      Image(uiImage: model.image)
-        .resizable()
-        .aspectRatio(contentMode: .fit)
-      audiobookIndicator
-        .padding([.trailing, .bottom], 5)
-    }
-    .frame(width: imageViewWidth)
+    BookImageView(book: model.book, width: imageViewWidth, height: cellHeight)
+      .adaptiveShadowLight(radius: 1.5)
+      .frame(width: imageViewWidth)
   }
 
-  @ViewBuilder private var audiobookIndicator: some View {
-    if model.book.defaultBookContentType == .audiobook {
-      ImageProviders.MyBooksView.audiobookBadge
-        .resizable()
-        .frame(width: 24, height: 24)
-        .background(Circle().fill(Color.colorAudiobookBackground))
-        .clipped()
-    }
-  }
+  
 
   @ViewBuilder private var infoView: some View {
     VStack(alignment: .leading) {
@@ -98,16 +85,11 @@ struct NormalBookCell: View {
   @ViewBuilder private var buttons: some View {
       BookButtonsView(provider: model, size: buttonSize) { type in
         switch type {
-        case .return:
-            model.state = .normal(.returning)
-            self.showHalfSheet = true
-        case .manageHold:
-          model.state = .normal(.managingHold)
-          self.showHalfSheet = true
         case .close:
-          self.showHalfSheet = false
+          withAnimation(.spring()) { self.showHalfSheet = false }
         default:
           model.callDelegate(for: type)
+          withAnimation(.spring()) { self.showHalfSheet = model.showHalfSheet }
         }
       }
   }

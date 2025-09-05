@@ -8,6 +8,8 @@
 
 import Foundation
 import Combine
+import CoreImage
+import CoreImage.CIFilterBuiltins
 
 let DeprecatedAcquisitionKey = "acquisition"
 let DeprecatedAvailableCopiesKey = "available-copies"
@@ -71,7 +73,7 @@ public class TPPBook: NSObject, ObservableObject {
   @Published var thumbnailImage: UIImage?
   @Published var isCoverLoading: Bool = false
   @Published var isThumbnailLoading: Bool = false
-  var dominantUIColor: UIColor { coverImage?.mainColor() ?? .gray }
+  @Published var dominantUIColor: UIColor = .gray
   
   static let SimplifiedScheme = "http://librarysimplified.org/terms/genres/Simplified/"
 
@@ -517,6 +519,7 @@ extension TPPBook {
   func fetchCoverImage() {
       if let img = imageCache.get(for: identifier) {
         coverImage = img
+        updateDominantColor(using: img)
         return
       }
 
@@ -530,6 +533,7 @@ extension TPPBook {
         self.coverImage = final
         if let img = final {
           self.imageCache.set(img, for: self.identifier)
+          self.updateDominantColor(using: img)
         }
         self.isCoverLoading = false
       }
@@ -551,6 +555,9 @@ extension TPPBook {
         self.thumbnailImage = final
         if let img = final {
           self.imageCache.set(img, for: self.identifier)
+          if self.coverImage == nil {
+            self.updateDominantColor(using: img)
+          }
         }
         self.isThumbnailLoading = false
       }
@@ -561,6 +568,7 @@ extension TPPBook {
     DispatchQueue.main.async {
       self.coverImage = nil
       self.thumbnailImage = nil
+      self.dominantUIColor = .gray
     }
   }
 }
@@ -572,6 +580,45 @@ extension TPPBook {
   
   @objc public class func ordinalString(for n: Int) -> String {
     return n.ordinal()
+  }
+}
+
+// MARK: - Dominant Color (async, off main thread)
+private extension TPPBook {
+  func updateDominantColor(using image: UIImage) {
+    let inputImage = image
+    DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+      guard let self = self else { return }
+
+      let ciImage = CIImage(image: inputImage)
+      let filter = CIFilter.areaAverage()
+      filter.inputImage = ciImage
+      filter.extent = ciImage?.extent ?? .zero
+
+      guard let outputImage = filter.outputImage else { return }
+
+      var bitmap = [UInt8](repeating: 0, count: 4)
+      let context = CIContext(options: [CIContextOption.useSoftwareRenderer: false])
+      context.render(
+        outputImage,
+        toBitmap: &bitmap,
+        rowBytes: 4,
+        bounds: CGRect(x: 0, y: 0, width: 1, height: 1),
+        format: .RGBA8,
+        colorSpace: nil
+      )
+
+      let color = UIColor(
+        red: CGFloat(bitmap[0]) / 255.0,
+        green: CGFloat(bitmap[1]) / 255.0,
+        blue: CGFloat(bitmap[2]) / 255.0,
+        alpha: CGFloat(bitmap[3]) / 255.0
+      )
+
+      DispatchQueue.main.async {
+        self.dominantUIColor = color
+      }
+    }
   }
 }
 

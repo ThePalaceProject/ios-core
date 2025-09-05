@@ -13,14 +13,23 @@ struct BookLane {
   let subsectionURL: URL?
 }
 
+@MainActor
 final class BookDetailViewModel: ObservableObject {
   // MARK: - Constants
-  private let kTimerInterval: TimeInterval = 3.0 // Save position every 3 seconds
+  private let kTimerInterval: TimeInterval = 3.0
   
   @Published var book: TPPBook
   
   /// The registry state, e.g. `unregistered`, `downloading`, `downloadSuccessful`, etc.
-  @Published var bookState: TPPBookState
+  @Published var bookState: TPPBookState {
+    didSet {
+      if bookState == .returning {
+        localBookStateOverride = .returning
+      } else if bookState == .unregistered {
+        localBookStateOverride = nil
+      }
+    }
+  }
   
   @Published var bookmarks: [TPPReadiumBookmark] = []
   @Published var showSampleToolbar = false
@@ -32,6 +41,7 @@ final class BookDetailViewModel: ObservableObject {
   @Published var selectedBookURL: URL? = nil
   @Published var isManagingHold: Bool = false
   @Published var showHalfSheet = false
+  @Published private(set) var stableButtonState: BookButtonState = .unsupported
   
   var isFullSize: Bool { UIDevice.current.isIpad }
   
@@ -58,43 +68,15 @@ final class BookDetailViewModel: ObservableObject {
   private var timer: DispatchSourceTimer?
   private var previousPlayheadOffset: TimeInterval = 0
   private var didPrefetchLCPStreaming = false
+  private var isReconcilingLocation: Bool = false
+  private var recentMoveAt: Date? = nil
+  private var isSyncingLocation: Bool = false
+  private let bookIdentifier: String
+  private var localBookStateOverride: TPPBookState? = nil
   
   // MARK: – Computed Button State
   
-  var buttonState: BookButtonState {
-    let isDownloading = (bookState == .downloading)
-    let avail = book.defaultAcquisition?.availability
-    
-    if case .holding = bookState, isManagingHold {
-      return .managingHold
-    }
-    
-#if LCP
-    if LCPAudiobooks.canOpenBook(book) {
-      switch bookState {
-      case .downloadNeeded:
-        return .downloadSuccessful
-      case .downloading:
-        return BookButtonMapper.map(
-          registryState: bookState,
-          availability: avail,
-          isProcessingDownload: isDownloading
-        )
-      case .downloadSuccessful, .used:
-        return .downloadSuccessful
-      default:
-        break
-      }
-    }
-#endif
-    
-    let mappedState = BookButtonMapper.map(
-      registryState: bookState,
-      availability: avail,
-      isProcessingDownload: isDownloading
-    )
-    return mappedState
-  }
+  var buttonState: BookButtonState { stableButtonState }
   
   // MARK: - Initializer
   
@@ -102,8 +84,11 @@ final class BookDetailViewModel: ObservableObject {
     self.book = book
     self.registry = TPPBookRegistry.shared
     self.bookState = registry.state(for: book.identifier)
+    self.bookIdentifier = book.identifier
+    self.stableButtonState = self.computeButtonState(book: book, state: self.bookState, isManagingHold: self.isManagingHold, isProcessing: self.isProcessing)
     
     bindRegistryState()
+    setupStableButtonState()
     setupObservers()
     self.downloadProgress = downloadCenter.downloadProgress(for: book.identifier)
 #if LCP
@@ -116,16 +101,14 @@ final class BookDetailViewModel: ObservableObject {
     timer = nil
     NotificationCenter.default.removeObserver(self)
 #if LCP
-    if let licenseUrl = getLCPLicenseURL(for: book) {
+    if let licenseUrl = Self.lcpLicenseURL(forBookIdentifier: bookIdentifier) {
       var lcpAudiobooks: LCPAudiobooks?
-      
-      if let localURL = downloadCenter.fileUrl(for: book.identifier),
+      if let localURL = MyBooksDownloadCenter.shared.fileUrl(for: bookIdentifier),
          FileManager.default.fileExists(atPath: localURL.path) {
         lcpAudiobooks = LCPAudiobooks(for: localURL)
       } else {
         lcpAudiobooks = LCPAudiobooks(for: licenseUrl)
       }
-      
       lcpAudiobooks?.cancelPrefetch()
     }
 #endif
@@ -142,10 +125,13 @@ final class BookDetailViewModel: ObservableObject {
       .sink { [weak self] newState in
         guard let self else { return }
         let updatedBook = registry.book(forIdentifier: book.identifier) ?? book
-        let currentState = self.bookState
         let registryState = registry.state(for: book.identifier)
-                
+
         self.book = updatedBook
+        // If we are in a local returning override, hold it until unregistered
+        if let override = self.localBookStateOverride, override == .returning, registryState != .unregistered {
+          return
+        }
         self.bookState = registryState
       }
       .store(in: &cancellables)
@@ -159,12 +145,7 @@ final class BookDetailViewModel: ObservableObject {
       object: nil
     )
     
-    NotificationCenter.default.addObserver(
-      self,
-      selector: #selector(handleDownloadStateDidChange(_:)),
-      name: .TPPMyBooksDownloadCenterDidChange,
-      object: nil
-    )
+    // Avoid general download center change notifications; we already subscribe to fine-grained progress and registry state publishers
     
     downloadCenter.downloadProgressPublisher
       .filter { $0.0 == self.book.identifier }
@@ -172,15 +153,34 @@ final class BookDetailViewModel: ObservableObject {
       .receive(on: DispatchQueue.main)
       .assign(to: &$downloadProgress)
   }
+
+  private func computeButtonState(book: TPPBook, state: TPPBookState, isManagingHold: Bool, isProcessing: Bool) -> BookButtonState {
+    let availability = book.defaultAcquisition?.availability
+    let isProcessingDownload = isProcessing || state == .downloading
+    if case .holding = state, isManagingHold { return .managingHold }
+    return BookButtonMapper.map(
+      registryState: state,
+      availability: availability,
+      isProcessingDownload: isProcessingDownload
+    )
+  }
+
+  private func setupStableButtonState() {
+    Publishers.CombineLatest4($book, $bookState, $isManagingHold, $isProcessing)
+      .map { [weak self] book, state, isManaging, isProcessing in
+        self?.computeButtonState(book: book, state: state, isManagingHold: isManaging, isProcessing: isProcessing) ?? .unsupported
+      }
+      .removeDuplicates()
+      .debounce(for: .milliseconds(180), scheduler: DispatchQueue.main)
+      .receive(on: DispatchQueue.main)
+      .assign(to: &self.$stableButtonState)
+  }
   
   @objc func handleBookRegistryChange(_ notification: Notification) {
     DispatchQueue.main.async { [weak self] in
       guard let self else { return }
       let updatedBook = registry.book(forIdentifier: book.identifier) ?? book
-      let newState = registry.state(for: book.identifier)
-            
       self.book = updatedBook
-      self.bookState = newState
     }
   }
   
@@ -192,7 +192,6 @@ final class BookDetailViewModel: ObservableObject {
   }
   
   // MARK: - Notifications
-  
   
   @objc func handleDownloadStateDidChange(_ notification: Notification) {
     DispatchQueue.main.async { [weak self] in
@@ -223,8 +222,19 @@ final class BookDetailViewModel: ObservableObject {
       
       DispatchQueue.main.async {
         if feed?.type == .acquisitionGrouped {
-          let groupedFeed = TPPCatalogGroupedFeed(opdsFeed: feed)
-          self.createRelatedBooksCells(groupedFeed)
+          var groupTitleToBooks: [String: [TPPBook]] = [:]
+          var groupTitleToMoreURL: [String: URL?] = [:]
+          if let entries = feed?.entries as? [TPPOPDSEntry] {
+            for entry in entries {
+              guard let group = entry.groupAttributes else { continue }
+              let groupTitle = group.title ?? ""
+              if let b = CatalogViewModel.makeBook(from: entry) {
+                groupTitleToBooks[groupTitle, default: []].append(b)
+                if groupTitleToMoreURL[groupTitle] == nil { groupTitleToMoreURL[groupTitle] = group.href }
+              }
+            }
+          }
+          self.createRelatedBooksCells(groupedBooks: groupTitleToBooks, moreURLs: groupTitleToMoreURL)
         } else {
           self.isLoadingRelatedBooks = false
         }
@@ -232,35 +242,25 @@ final class BookDetailViewModel: ObservableObject {
     }
   }
   
-  private func createRelatedBooksCells(_ groupedFeed: TPPCatalogGroupedFeed?) {
-    guard let feed = groupedFeed else {
-      self.isLoadingRelatedBooks = false
-      return
-    }
-    
-    var groupedBooks = [String: BookLane]()
-    
-    for lane in feed.lanes as! [TPPCatalogLane] {
-      if let books = lane.books as? [TPPBook] {
-        let laneTitle = lane.title ?? "Unknown Lane"
-        let subsectionURL = lane.subsectionURL
-        let bookLane = BookLane(title: laneTitle, books: books, subsectionURL: subsectionURL)
-        groupedBooks[laneTitle] = bookLane
-      }
+  private func createRelatedBooksCells(groupedBooks: [String: [TPPBook]], moreURLs: [String: URL?]) {
+    var lanesMap = [String: BookLane]()
+    for (title, books) in groupedBooks {
+      let lane = BookLane(title: title, books: books, subsectionURL: moreURLs[title] ?? nil)
+      lanesMap[title] = lane
     }
     
     if let author = book.authors, !author.isEmpty {
-      if let authorLane = groupedBooks.first(where: { $0.value.books.contains(where: { $0.authors?.contains(author) ?? false }) }) {
-        groupedBooks.removeValue(forKey: authorLane.key)
+      if let authorLane = lanesMap.first(where: { $0.value.books.contains(where: { $0.authors?.contains(author) ?? false }) }) {
+        lanesMap.removeValue(forKey: authorLane.key)
         var reorderedBooks = [String: BookLane]()
         reorderedBooks[authorLane.key] = authorLane.value
-        reorderedBooks.merge(groupedBooks) { _, new in new }
-        groupedBooks = reorderedBooks
+        reorderedBooks.merge(lanesMap) { _, new in new }
+        lanesMap = reorderedBooks
       }
     }
     
     DispatchQueue.main.async {
-      self.relatedBooksByLane = groupedBooks
+      self.relatedBooksByLane = lanesMap
       self.isLoadingRelatedBooks = false
     }
   }
@@ -290,13 +290,15 @@ final class BookDetailViewModel: ObservableObject {
       
     case .returning, .cancelHold:
       didSelectReturn(for: book) {
+        self.removeProcessingButton(.returning)
         self.showHalfSheet = false
-        self.removeProcessingButton(button)
-        self.bookState = .unregistered
         self.isManagingHold = false
       }
       
     case .download, .get, .retry:
+
+      self.downloadProgress = 0
+
       didSelectDownload(for: book)
       removeProcessingButton(button)
       
@@ -339,6 +341,19 @@ final class BookDetailViewModel: ObservableObject {
   // MARK: - Download/Return/Cancel
   
   func didSelectDownload(for book: TPPBook) {
+    self.downloadProgress = 0
+    let account = TPPUserAccount.sharedAccount()
+    if account.needsAuth && !account.hasCredentials() {
+      showHalfSheet = false
+      TPPAccountSignInViewController.requestCredentials { [weak self] in
+        guard let self else { return }
+        self.bookState = .downloading
+        self.downloadCenter.startDownload(for: book)
+      }
+      return
+    }
+    bookState = .downloading
+    showHalfSheet = true
     downloadCenter.startDownload(for: book)
   }
   
@@ -348,12 +363,25 @@ final class BookDetailViewModel: ObservableObject {
   }
   
   func didSelectReturn(for book: TPPBook, completion: (() -> Void)?) {
-    downloadCenter.returnBook(withIdentifier: book.identifier, completion: completion)
+    downloadCenter.returnBook(withIdentifier: book.identifier) { [weak self] in
+      self?.bookState = .unregistered
+      completion?()
+    }
   }
   
   // MARK: - Reading
   
+  @MainActor
   func didSelectRead(for book: TPPBook, completion: (() -> Void)?) {
+    let account = TPPUserAccount.sharedAccount()
+    if account.needsAuth && !account.hasCredentials() {
+      TPPAccountSignInViewController.requestCredentials { [weak self] in
+        Task { @MainActor in
+          self?.openBook(book, completion: completion)
+        }
+      }
+      return
+    }
 #if FEATURE_DRM_CONNECTOR
     let user = TPPUserAccount.sharedAccount()
     
@@ -365,7 +393,7 @@ final class BookDetailViewModel: ObservableObject {
                   !NYPLADEPT.sharedInstance().isUserAuthorized(user.userID, withDevice: user.deviceID) {
         let reauthenticator = TPPReauthenticator()
         reauthenticator.authenticateIfNeeded(user, usingExistingCredentials: true) {
-          DispatchQueue.main.async {
+          Task { @MainActor in
             self.openBook(book, completion: completion)
           }
         }
@@ -376,6 +404,7 @@ final class BookDetailViewModel: ObservableObject {
     openBook(book, completion: completion)
   }
   
+  @MainActor
   func openBook(_ book: TPPBook, completion: (() -> Void)?) {
     TPPCirculationAnalytics.postEvent("open_book", withBook: book)
     
@@ -399,97 +428,19 @@ final class BookDetailViewModel: ObservableObject {
     }
   }
   
-  private func presentEPUB(_ book: TPPBook) {
-    TPPRootTabBarController.shared().presentBook(book)
+  @MainActor private func presentEPUB(_ book: TPPBook) {
+    BookService.open(book)
   }
   
-  private func presentPDF(_ book: TPPBook) {
-    guard let bookUrl = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier) else { return }
-    let data = try? Data(contentsOf: bookUrl)
-    let metadata = TPPPDFDocumentMetadata(with: book)
-    let document = TPPPDFDocument(data: data ?? Data())
-    let pdfViewController = TPPPDFViewController.create(document: document, metadata: metadata)
-    TPPRootTabBarController.shared().pushViewController(pdfViewController, animated: true)
+  @MainActor private func presentPDF(_ book: TPPBook) {
+    BookService.open(book)
   }
   
   // MARK: - Audiobook Opening
   
   func openAudiobook(_ book: TPPBook, completion: (() -> Void)? = nil) {
-#if LCP
-    if LCPAudiobooks.canOpenBook(book) {
-      openAudiobookWithUnifiedStreaming(book: book, completion: completion)
-      return
-    }
-#endif
-    
-    guard let url = downloadCenter.fileUrl(for: book.identifier),
-          FileManager.default.fileExists(atPath: url.path) else {
-      downloadCenter.startDownload(for: book)
-      completion?()
-      return
-    }
-    
-    openAudiobookWithLocalFile(book: book, url: url, completion: completion)
-  }
-  
-  private func openAudiobookWithUnifiedStreaming(book: TPPBook, completion: (() -> Void)? = nil) {
-#if LCP
-    if LCPAudiobooks.canOpenBook(book) {
-      if let localURL = downloadCenter.fileUrl(for: book.identifier),
-         FileManager.default.fileExists(atPath: localURL.path) {
-        openLocalLCPAudiobook(book: book, localURL: localURL, completion: completion)
-        return
-      }
-      
-
-      
-      if let licenseUrl = getLCPLicenseURL(for: book) {
-        openAudiobookUnified(book: book, licenseUrl: licenseUrl, completion: completion)
-        return
-      }
-      
-      if let publicationURL = book.defaultAcquisition?.hrefURL {
-        openAudiobookUnified(book: book, licenseUrl: publicationURL, completion: completion)
-        return
-      }
-      
-      presentUnsupportedItemError()
-      completion?()
-      return
-    }
-#endif
-    
-    presentUnsupportedItemError()
+    BookService.open(book)
     completion?()
-  }
-  
-  private func openLocalLCPAudiobook(book: TPPBook, localURL: URL, completion: (() -> Void)?) {
-#if LCP
-    guard let lcpAudiobooks = LCPAudiobooks(for: localURL) else {
-      self.presentCorruptedItemError()
-      completion?()
-      return
-    }
-    
-    lcpAudiobooks.contentDictionary { [weak self] dict, error in
-      DispatchQueue.main.async {
-        guard let self = self else { return }
-        if let _ = error {
-          self.presentCorruptedItemError()
-          completion?()
-          return
-        }
-        guard let dict else {
-          self.presentUnsupportedItemError()
-          completion?()
-          return
-        }
-        var jsonDict = dict as? [String: Any] ?? [:]
-        jsonDict["id"] = book.identifier
-        self.openAudiobook(with: book, json: jsonDict, drmDecryptor: lcpAudiobooks, completion: completion)
-      }
-    }
-#endif
   }
   
   private func getLCPLicenseURL(for book: TPPBook) -> URL? {
@@ -509,81 +460,26 @@ final class BookDetailViewModel: ObservableObject {
     return nil
 #endif
   }
-  
 
-  
-
-  
-  private func openAudiobookUnified(book: TPPBook, licenseUrl: URL, completion: (() -> Void)?) {
 #if LCP
-    
-    if let localURL = downloadCenter.fileUrl(for: book.identifier),
-       FileManager.default.fileExists(atPath: localURL.path) {
-      guard let lcpAudiobooks = LCPAudiobooks(for: localURL) else {
-        self.presentUnsupportedItemError()
-        completion?()
-        return
-      }
-      
-      lcpAudiobooks.contentDictionary { [weak self] dict, error in
-        DispatchQueue.main.async {
-          guard let self = self else { return }
-          if let _ = error {
-            self.presentUnsupportedItemError()
-            completion?()
-            return
-          }
-          guard let dict else {
-            self.presentCorruptedItemError()
-            completion?()
-            return
-          }
-          var jsonDict = dict as? [String: Any] ?? [:]
-          jsonDict["id"] = book.identifier
-          self.openAudiobook(with: book, json: jsonDict, drmDecryptor: lcpAudiobooks, completion: completion)
-        }
-      }
-      return
+  nonisolated static func lcpLicenseURL(forBookIdentifier identifier: String) -> URL? {
+    guard let bookFileURL = MyBooksDownloadCenter.shared.fileUrl(for: identifier) else {
+      return nil
     }
-    
-    guard let lcpAudiobooks = LCPAudiobooks(for: licenseUrl) else {
-      self.presentUnsupportedItemError()
-      completion?()
-      return
-    }
-    
-    if let cachedDict = lcpAudiobooks.cachedContentDictionary() {
-      var jsonDict = cachedDict as? [String: Any] ?? [:]
-      jsonDict["id"] = book.identifier
-      self.openAudiobook(with: book, json: jsonDict, drmDecryptor: lcpAudiobooks, completion: completion)
-      return
-    }
-    
-    lcpAudiobooks.contentDictionary { [weak self] dict, error in
-      DispatchQueue.main.async {
-        guard let self = self else { return }
-        if let _ = error {
-          self.presentUnsupportedItemError()
-          completion?()
-          return
-        }
-        guard let dict else {
-          self.presentUnsupportedItemError()
-          completion?()
-          return
-        }
-        var jsonDict = dict as? [String: Any] ?? [:]
-        jsonDict["id"] = book.identifier
-        self.openAudiobook(with: book, json: jsonDict, drmDecryptor: lcpAudiobooks, completion: completion)
-      }
-    }
-#endif
+    let licenseURL = bookFileURL.deletingPathExtension().appendingPathExtension("lcpl")
+    return FileManager.default.fileExists(atPath: licenseURL.path) ? licenseURL : nil
   }
+#endif
+  
+
+  
+
+  
 
 #if LCP
   private func prefetchLCPStreamingIfPossible() {
-    guard !didPrefetchLCPStreaming, LCPAudiobooks.canOpenBook(book), let licenseUrl = getLCPLicenseURL(for: book) else { return }
-    if let localURL = downloadCenter.fileUrl(for: book.identifier), FileManager.default.fileExists(atPath: localURL.path) {
+    guard !didPrefetchLCPStreaming, LCPAudiobooks.canOpenBook(book), let licenseUrl = Self.lcpLicenseURL(forBookIdentifier: bookIdentifier) else { return }
+    if let localURL = downloadCenter.fileUrl(for: bookIdentifier), FileManager.default.fileExists(atPath: localURL.path) {
       return
     }
     
@@ -594,61 +490,8 @@ final class BookDetailViewModel: ObservableObject {
   }
 #endif
   
-  
-  private func openAudiobookWithLocalFile(book: TPPBook, url: URL, completion: (() -> Void)?) {
-#if LCP
-    if LCPAudiobooks.canOpenBook(book) {
-      let lcpAudiobooks = LCPAudiobooks(for: url)
-      lcpAudiobooks?.contentDictionary { [weak self] dict, error in
-        DispatchQueue.main.async {
-          guard let self = self else { return }
-          if let error {
-            self.presentUnsupportedItemError()
-            completion?()
-            return
-          }
-          
-          guard let dict else {
-            self.presentCorruptedItemError()
-            completion?()
-            return
-          }
-          
-          var jsonDict = dict as? [String: Any] ?? [:]
-          jsonDict["id"] = book.identifier
-          self.openAudiobook(with: book, json: jsonDict, drmDecryptor: lcpAudiobooks, completion: completion)
-        }
-      }
-      return
-    }
-#endif
-    
-    do {
-      let data = try Data(contentsOf: url)
-      guard let json = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] else {
-        presentUnsupportedItemError()
-        completion?()
-        return
-      }
-      
-#if FEATURE_OVERDRIVE
-      if book.distributor == OverdriveDistributorKey {
-        var overdriveJson = json
-        overdriveJson["id"] = book.identifier
-        openAudiobook(with: book, json: overdriveJson, drmDecryptor: nil, completion: completion)
-        return
-      }
-#endif
-      
-      openAudiobook(with: book, json: json, drmDecryptor: nil, completion: completion)
-    } catch {
-      presentCorruptedItemError()
-      completion?()
-    }
-  }
-  
   func openAudiobook(with book: TPPBook, json: [String: Any], drmDecryptor: DRMDecryptor?, completion: (() -> Void)?) {
-    AudioBookVendorsHelper.updateVendorKey(book: json) { [weak self] error in
+    let vendorCompletion: (NSError?) -> Void = { [weak self] (error: NSError?) in
       DispatchQueue.main.async {
         guard let self else { return }
         
@@ -686,6 +529,7 @@ final class BookDetailViewModel: ObservableObject {
         completion?()
       }
     }
+    AudioBookVendorsHelper.updateVendorKey(book: json, completion: vendorCompletion)
   }
   
   @MainActor private func launchAudiobook(book: TPPBook, audiobook: Audiobook, drmDecryptor: DRMDecryptor?) {
@@ -696,10 +540,14 @@ final class BookDetailViewModel: ObservableObject {
     
     let metadata = AudiobookMetadata(title: book.title, authors: [book.authors ?? ""])
     
+    let networkService: AudiobookNetworkService = DefaultAudiobookNetworkService(
+      tracks: audiobook.tableOfContents.allTracks,
+      decryptor: drmDecryptor
+    )
     audiobookManager = DefaultAudiobookManager(
       metadata: metadata,
       audiobook: audiobook,
-      networkService: DefaultAudiobookNetworkService(tracks: audiobook.tableOfContents.allTracks, decryptor: drmDecryptor),
+      networkService: networkService,
       playbackTrackerDelegate: timeTracker
     )
     
@@ -720,8 +568,10 @@ final class BookDetailViewModel: ObservableObject {
     }
     
     audiobookPlayer = AudiobookPlayer(audiobookManager: audiobookManager, coverImagePublisher: book.$coverImage.eraseToAnyPublisher())
-    
-    TPPRootTabBarController.shared().pushViewController(audiobookPlayer!, animated: true)
+    if let coordinator = NavigationCoordinatorHub.shared.coordinator, let player = audiobookPlayer {
+      coordinator.storeAudioController(player, forBookId: book.identifier)
+      coordinator.push(.audio(BookRoute(id: book.identifier)))
+    }
     
     syncAudiobookLocation(for: book)
     scheduleTimer()
@@ -729,6 +579,8 @@ final class BookDetailViewModel: ObservableObject {
   
   /// Syncs audiobook playback position from local or remote bookmarks
   private func syncAudiobookLocation(for book: TPPBook) {
+
+    isReconcilingLocation = true
     let localLocation = TPPBookRegistry.shared.location(forIdentifier: book.identifier)
     
     guard let dictionary = localLocation?.locationStringDictionary(),
@@ -739,15 +591,17 @@ final class BookDetailViewModel: ObservableObject {
             toc: manager.audiobook.tableOfContents.toc,
             tracks: manager.audiobook.tableOfContents.tracks
           ) else {
-      // No saved location - start playing from the beginning
       startPlaybackFromBeginning()
+      DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+        self?.isReconcilingLocation = false
+      }
       return
     }
-    
-    // Streaming resources are now handled automatically by LCPPlayer
-    
+        
     audiobookManager?.audiobook.player.play(at: localPosition, completion: nil)
     
+    guard !isSyncingLocation else { return }
+    isSyncingLocation = true
     TPPBookRegistry.shared.syncLocation(for: book) { [weak self] remoteBookmark in
       guard let remoteBookmark, let self, let audiobookManager else { return }
       
@@ -763,11 +617,14 @@ final class BookDetailViewModel: ObservableObject {
         serverUpdateDelay: 300
       ) { position in
         DispatchQueue.main.async {
-          // Streaming resources are now handled automatically by LCPPlayer
-          
+          self.recentMoveAt = Date()
           self.audiobookManager?.audiobook.player.play(at: position, completion: nil)
+          DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            self.isReconcilingLocation = false
+          }
         }
       }
+      self.isSyncingLocation = false
     }
   }
   
@@ -794,13 +651,12 @@ final class BookDetailViewModel: ObservableObject {
         presentWebView(book.sampleAcquisition?.hrefURL)
         isProcessingSample = false
         completion?()
-      } else if !isShowingSample {
-        isShowingSample = true
-        showSampleToolbar = true
+      } else {
+        // Use centralized preview manager for audiobooks
+        SamplePreviewManager.shared.toggle(for: book)
         isProcessingSample = false
         completion?()
       }
-      NotificationCenter.default.post(name: Notification.Name("ToggleSampleNotification"), object: self)
     } else {
       EpubSampleFactory.createSample(book: book) { sampleURL, error in
         DispatchQueue.main.async {
@@ -809,7 +665,10 @@ final class BookDetailViewModel: ObservableObject {
           } else if let sampleWebURL = sampleURL as? EpubSampleWebURL {
             self.presentWebView(sampleWebURL.url)
           } else if let sampleURL = sampleURL?.url {
-            TPPRootTabBarController.shared().presentSample(book, url: sampleURL)
+            let web = BundledHTMLViewController(fileURL: sampleURL, title: book.title)
+            if let top = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController() {
+              top.present(web, animated: true)
+            }
           }
           self.isProcessingSample = false
           completion?()
@@ -825,17 +684,17 @@ final class BookDetailViewModel: ObservableObject {
       title: AccountsManager.shared.currentAccount?.name ?? ""
     )
     
-    let root = TPPRootTabBarController.shared()
-    let top = root?.topMostViewController
-    top?.present(webController, animated: true)
+    if let top = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController() {
+      top.present(webController, animated: true)
+    }
   }
   
   // MARK: - Error Alerts
   
   private func presentCorruptedItemError() {
     let alert = UIAlertController(
-      title: NSLocalizedString("Corrupted Audiobook", comment: ""),
-      message: NSLocalizedString("The audiobook you are trying to open appears to be corrupted. Try downloading it again.", comment: ""),
+      title: Strings.Error.epubNotValidError,
+      message: Strings.Error.epubNotValidError,
       preferredStyle: .alert
     )
     alert.addAction(UIAlertAction(title: "OK", style: .default))
@@ -844,8 +703,8 @@ final class BookDetailViewModel: ObservableObject {
   
   private func presentUnsupportedItemError() {
     let alert = UIAlertController(
-      title: NSLocalizedString("Unsupported Item", comment: ""),
-      message: NSLocalizedString("This item format is not supported.", comment: ""),
+      title: Strings.Error.formatNotSupportedError,
+      message: Strings.Error.formatNotSupportedError,
       preferredStyle: .alert
     )
     alert.addAction(UIAlertAction(title: "OK", style: .default))
@@ -888,6 +747,13 @@ extension BookDetailViewModel {
     guard let currentTrackPosition = audiobookManager.audiobook.player.currentTrackPosition else {
       return
     }
+
+    if isReconcilingLocation {
+      return
+    }
+    if let movedAt = recentMoveAt, Date().timeIntervalSince(movedAt) < 3.0 {
+      return
+    }
     
     let playheadOffset = currentTrackPosition.timestamp
     if abs(self.previousPlayheadOffset - playheadOffset) > 1.0 && playheadOffset > 0 {
@@ -904,8 +770,6 @@ extension BookDetailViewModel {
             TPPBookLocation(locationString: locationString, renderer: "PalaceAudiobookToolkit"),
             forIdentifier: self.book.identifier
           )
-          
-          latestAudiobookLocation = (book: self.book.identifier, location: locationString)
         }
       }
     }
@@ -972,14 +836,12 @@ extension BookDetailViewModel {
         guard let self else { return }
         
         if returnWasChosen {
-          if let navController = TPPRootTabBarController.shared()?.topMostViewController.navigationController {
-            navController.popViewController(animated: true)
-          }
+          NavigationCoordinatorHub.shared.coordinator?.pop()
           self.didSelectReturn(for: self.book, completion: nil)
         }
         TPPAppStoreReviewPrompt.presentIfAvailable()
       }
-      TPPRootTabBarController.shared().present(alert, animated: true, completion: nil)
+      TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
     } else {
       TPPAppStoreReviewPrompt.presentIfAvailable()
     }

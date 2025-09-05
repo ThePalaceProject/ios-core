@@ -80,11 +80,20 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     setUIColor(for: preferences)
     log(.info, "TPPEPUBViewController will appear. UI color set based on preferences.")
     epubNavigator.submitPreferences(preferences)
+
+    if navigationItem.leftBarButtonItem == nil {
+      let backItem = UIBarButtonItem(image: UIImage(systemName: "chevron.left"), style: .plain, target: self, action: #selector(closeEPUB))
+      navigationItem.leftBarButtonItem = backItem
+    }
   }
 
   override func viewWillDisappear(_ animated: Bool) {
     super.viewWillDisappear(animated)
     resetNavigationAppearance()
+  }
+
+  @objc private func closeEPUB() {
+    NavigationCoordinatorHub.shared.coordinator?.pop()
   }
 
   private func resetNavigationAppearance() {

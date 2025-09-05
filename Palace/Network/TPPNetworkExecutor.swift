@@ -38,6 +38,19 @@ enum NYPLResult<SuccessInfo> {
                                  delegateQueue: delegateQueue)
     super.init()
   }
+
+  /// Test-friendly initializer allowing a custom URLSessionConfiguration (e.g., with custom URLProtocol classes)
+  @objc init(credentialsProvider: NYPLBasicAuthCredentialsProvider? = nil,
+             cachingStrategy: NYPLCachingStrategy,
+             sessionConfiguration: URLSessionConfiguration,
+             delegateQueue: OperationQueue? = nil) {
+    self.responder = TPPNetworkResponder(credentialsProvider: credentialsProvider,
+                                         useFallbackCaching: cachingStrategy == .fallback)
+    self.urlSession = URLSession(configuration: sessionConfiguration,
+                                 delegate: self.responder,
+                                 delegateQueue: delegateQueue)
+    super.init()
+  }
   
   deinit {
     urlSession.finishTasksAndInvalidate()

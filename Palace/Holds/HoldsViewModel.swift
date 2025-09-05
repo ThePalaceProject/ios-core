@@ -30,7 +30,9 @@ final class HoldsViewModel: ObservableObject {
     @Published var isLoading: Bool = false
     @Published var showLibraryAccountView: Bool = false
     @Published var selectNewLibrary: Bool = false
-    @Published var showSearchView: Bool = false
+    @Published var showSearchSheet: Bool = false
+    @Published var searchQuery: String = ""
+    @Published var visibleBooks: [TPPBook] = []
     private var cancellables = Set<AnyCancellable>()
 
     init() {
@@ -55,8 +57,12 @@ final class HoldsViewModel: ObservableObject {
 
         reloadData()
     }
-  
-  func reloadData() {
+
+    private var allBooks: [TPPBook] {
+        reservedBookVMs.map { $0.book } + heldBookVMs.map { $0.book }
+    }
+
+    func reloadData() {
         let allHeld = TPPBookRegistry.shared.heldBooks
         var reservedVMs: [HoldsBookViewModel] = []
         var heldVMs: [HoldsBookViewModel] = []
@@ -70,12 +76,12 @@ final class HoldsViewModel: ObservableObject {
             }
         }
 
-        // Update both lists atomically on the main thread
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             withAnimation {
                 self.reservedBookVMs = reservedVMs
                 self.heldBookVMs = heldVMs
+                self.visibleBooks = self.allBooks
                 self.updateBadgeCount()
             }
         }
@@ -99,11 +105,6 @@ final class HoldsViewModel: ObservableObject {
 
     private func updateBadgeCount() {
         UIApplication.shared.applicationIconBadgeNumber = reservedBookVMs.count
-        
-        if let items = TPPRootTabBarController.shared().tabBar.items,
-           items.indices.contains(1) {
-            items[1].badgeValue = reservedBookVMs.isEmpty ? nil : "\(reservedBookVMs.count)"
-        }
     }
 
     func loadAccount(_ account: Account) {
@@ -115,16 +116,31 @@ final class HoldsViewModel: ObservableObject {
     
     private func updateFeed(_ account: Account) {
         AccountsManager.shared.currentAccount = account
-        if let catalogNavController = TPPRootTabBarController.shared().viewControllers?.first as? TPPCatalogNavigationController {
-            catalogNavController.updateFeedAndRegistryOnAccountChange()
-        }
+        NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
     }
 
     var openSearchDescription: TPPOpenSearchDescription {
         let title = NSLocalizedString("Search Reservations", comment: "")
-        // We pass ALL held books (both reserved and waiting) into the search screen:
-        let allVMs = reservedBookVMs + heldBookVMs
-        let allBooks = allVMs.map { $0.book }
-        return TPPOpenSearchDescription(title: title, books: allBooks)
+        let books = allBooks
+        return TPPOpenSearchDescription(title: title, books: books)
+    }
+
+    @MainActor
+    func filterBooks(query: String) async {
+        if query.isEmpty {
+            self.visibleBooks = self.allBooks
+        } else {
+            let sourceBooks = self.allBooks
+            let filtered = await withCheckedContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let result = sourceBooks.filter {
+                        $0.title.localizedCaseInsensitiveContains(query) ||
+                        ($0.authors?.localizedCaseInsensitiveContains(query) ?? false)
+                    }
+                    continuation.resume(returning: result)
+                }
+            }
+            self.visibleBooks = filtered
+        }
     }
 }

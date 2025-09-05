@@ -17,9 +17,10 @@ struct BookDetailView: View {
   @State private var imageScale: CGFloat = 1.0
   @State private var imageOpacity: CGFloat = 1.0
   @State private var titleOpacity: CGFloat = 1.0
-  @State private var sampleToolbar: AudiobookSampleToolbar? = nil
   @State private var dragOffset: CGFloat = 0
   @State private var imageBottomPosition: CGFloat = 400
+  @State private var pulseSkeleton: Bool = false
+  @State private var lastBookIdentifier: String? = nil
   
   private let scaleAnimation = Animation.linear(duration: 0.35)
 
@@ -58,24 +59,48 @@ struct BookDetailView: View {
           }
         }
         .edgesIgnoringSafeArea(.all)
-        .onChange(of: viewModel.book) { newValue in
-          headerColor = Color(viewModel.book.dominantUIColor)
-          resetSampleToolbar()
-          self.descriptionText = newValue.summary ?? ""
-          proxy.scrollTo(0, anchor: .top)
-          
+        .onChange(of: viewModel.book.identifier) { newIdentifier in
+          if lastBookIdentifier != newIdentifier {
+            lastBookIdentifier = newIdentifier
+            resetSampleToolbar()
+            let newSummary = viewModel.book.summary ?? ""
+            if self.descriptionText != newSummary { self.descriptionText = newSummary }
+            proxy.scrollTo(0, anchor: .top)
+          } else {
+            let newSummary = viewModel.book.summary ?? self.descriptionText
+            if self.descriptionText != newSummary { self.descriptionText = newSummary }
+          }
         }
       }
       .onAppear {
         headerColor = Color(viewModel.book.dominantUIColor)
+        lastBookIdentifier = viewModel.book.identifier
 
-        UITabBarController.hideFloatingTabBar()
         headerHeight = viewModel.isFullSize ? 300 : 225
         viewModel.fetchRelatedBooks()
         self.descriptionText = viewModel.book.summary ?? ""
+        withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+          pulseSkeleton = true
+        }
       }
       .onDisappear {
         viewModel.showHalfSheet = false
+      }
+      .onReceive(viewModel.book.$dominantUIColor) { newColor in
+        headerColor = Color(newColor)
+      }
+      .onReceive(NotificationCenter.default.publisher(for: .TPPBookRegistryStateDidChange).receive(on: RunLoop.main)) { note in
+        guard
+          let info = note.userInfo as? [String: Any],
+          let identifier = info["bookIdentifier"] as? String,
+          identifier == viewModel.book.identifier,
+          let raw = info["state"] as? Int,
+          let newState = TPPBookState(rawValue: raw)
+        else { return }
+
+        if newState == .unregistered {
+          presentationMode.wrappedValue.dismiss()
+        }
       }
       .fullScreenCover(item: $selectedBook) { book in
         BookDetailView(book: book)
@@ -88,6 +113,9 @@ struct BookDetailView: View {
           }
       }
       .presentationDetents([.height(0), .height(300)])
+      .toolbarBackground(.hidden, for: .navigationBar)
+      .toolbarColorScheme(headerColor.isDark ? .dark : .light, for: .navigationBar)
+      .tint(headerColor.isDark ? .white : .black)
       
       if !viewModel.isFullSize {
         backgroundView
@@ -101,41 +129,30 @@ struct BookDetailView: View {
       compactHeaderContent
         .opacity(showCompactHeader ? 1 : 0)
         .animation(scaleAnimation, value: -headerHeight)
-      
-      backbutton
-      sampleToolbarView
+
+      SamplePreviewBarView()
     }
     .offset(x: dragOffset)
     .animation(.interactiveSpring(), value: dragOffset)
-    .gesture(edgeSwipeGesture)
+    
     .modifier(BookStateModifier(viewModel: viewModel, showHalfSheet: $viewModel.showHalfSheet))
+    .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ToggleSampleNotification")).receive(on: RunLoop.main)) { note in
+      guard let info = note.userInfo as? [String: Any], let identifier = info["bookIdentifier"] as? String else { return }
+      let action = (info["action"] as? String) ?? "toggle"
+      if action == "close" {
+        SamplePreviewManager.shared.close()
+        return
+      }
+      if let book = TPPBookRegistry.shared.book(forIdentifier: identifier) ?? (viewModel.relatedBooksByLane.values.flatMap { $0.books }).first(where: { $0.identifier == identifier }) {
+        SamplePreviewManager.shared.toggle(for: book)
+      } else if viewModel.book.identifier == identifier {
+        SamplePreviewManager.shared.toggle(for: viewModel.book)
+      }
+    }
+    .onDisappear { SamplePreviewManager.shared.close() }
   }
   
   // MARK: - View Components
-  
-  @ViewBuilder private var backbutton: some View {
-    Button(action: {
-      presentationMode.wrappedValue.dismiss()
-    }) {
-      HStack {
-        Image(systemName: "chevron.left")
-        Text("Back")
-      }
-      .font(.title3)
-      .foregroundColor(headerColor.isDark ? .white : .black)
-      .opacity(0.8)
-    }
-    .accessibilityLabel("Back")
-    .accessibilityHint("Go back to the previous screen")
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .frame(height: 50)
-    .padding(.top, dynamicTopPadding())
-    .padding(.leading)
-    .zIndex(10)
-    .edgesIgnoringSafeArea(.top)
-    .opacity(showCompactHeader ? 0 : 1)
-    .animation(scaleAnimation, value: headerHeight)
-  }
   
   private func dynamicTopPadding() -> CGFloat {
     let basePadding: CGFloat = 20
@@ -145,7 +162,14 @@ struct BookDetailView: View {
     if UIDevice.current.userInterfaceIdiom == .pad {
       return iPadPadding
     } else {
-      return UIApplication.shared.windows.first?.safeAreaInsets.top ?? 0 > 20 ? notchPadding : basePadding
+      let topInset: CGFloat
+      if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+         let win = windowScene.windows.first {
+        topInset = win.safeAreaInsets.top
+      } else {
+        topInset = 0
+      }
+      return topInset > 20 ? notchPadding : basePadding
     }
   }
   
@@ -163,6 +187,7 @@ struct BookDetailView: View {
         HStack(alignment: .top, spacing: 25) {
           imageView
           titleView
+            .padding(.top, 20)
         }
         .padding(.top, 110)
         
@@ -197,12 +222,12 @@ struct BookDetailView: View {
       
       Spacer(minLength: 50)
     }
-    .padding(.top, imageBottomPosition)
+    .padding(.top, imageBottomPosition + 10)
     .animation(scaleAnimation, value: imageBottomPosition)
   }
   
   private var imageView: some View {
-    BookImageView(book: viewModel.book, height: 280 * imageScale, showShimmer: true, shimmerDuration: 0.8)
+    BookImageView(book: viewModel.book, height: 280 * imageScale)
       .opacity(imageOpacity)
       .adaptiveShadow()
       .animation(scaleAnimation, value: imageScale)
@@ -283,7 +308,8 @@ struct BookDetailView: View {
     }
     .frame(height: 50)
     .padding(.horizontal, 20)
-    .padding(.vertical, 10)
+    .padding(.top, 20)
+    .padding(.bottom, 10)
   }
   
   @ViewBuilder private var descriptionView: some View {
@@ -355,7 +381,7 @@ struct BookDetailView: View {
                   .font(.headline)
                 Spacer()
                 if let url = lane.subsectionURL {
-                  NavigationLink(destination: TPPCatalogFeedView(url: url)) {
+                  NavigationLink(destination: CatalogLaneMoreView(url: url)) {
                     Text(DisplayStrings.more.capitalized)
                   }
                 }
@@ -369,13 +395,16 @@ struct BookDetailView: View {
                       Button(action: {
                         viewModel.selectRelatedBook(book)
                       }) {
-                        BookImageView(book: book, height: 160, showShimmer: true)
+                        BookImageView(book: book, height: 160)
                           .padding()
                           .adaptiveShadow(radius: 5)
                           .transition(.opacity.combined(with: .scale))
                       }
                     } else {
-                      ShimmerView(width: 100, height: 160)
+                      RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.gray.opacity(0.25))
+                        .frame(width: 100, height: 160)
+                        .opacity(pulseSkeleton ? 0.6 : 1.0)
                     }
                   }
                 }
@@ -402,21 +431,6 @@ struct BookDetailView: View {
   }
   
   @State private var currentBookID: String? = nil
-  @ViewBuilder private var sampleToolbarView: some View {
-    if viewModel.showSampleToolbar {
-      VStack {
-        Spacer()
-        if let toolbar = sampleToolbar {
-          toolbar
-        } else {
-          AudiobookSampleToolbar(book: viewModel.book)
-            .onAppear {
-              setupSampleToolbarIfNeeded()
-            }
-        }
-      }
-    }
-  }
   
   @ViewBuilder private var audiobookIndicator: some View {
     ImageProviders.MyBooksView.audiobookBadge
@@ -510,18 +524,14 @@ struct BookDetailView: View {
  
   private func resetSampleToolbar() {
     viewModel.showSampleToolbar = false
-    sampleToolbar?.player.state = .paused
-    sampleToolbar = nil
+    SamplePreviewManager.shared.close()
   }
   
   private func setupSampleToolbarIfNeeded() {
     let bookID = viewModel.book.identifier
     
-    if sampleToolbar == nil || bookID != currentBookID {
-      if let newToolbar = AudiobookSampleToolbar(book: viewModel.book) {
-        sampleToolbar = newToolbar
-        currentBookID = bookID
-      }
+    if !SamplePreviewManager.shared.isShowingPreview(for: viewModel.book) || bookID != currentBookID {
+      currentBookID = bookID
     }
   }
   
@@ -530,18 +540,30 @@ struct BookDetailView: View {
     case .sample, .audiobookSample:
       viewModel.handleAction(for: buttonType)
     case .download, .get:
-      viewModel.showHalfSheet.toggle()
-      DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
+      let account = TPPUserAccount.sharedAccount()
+      if account.needsAuth && !account.hasCredentials() {
+        // Present sign-in directly; don't show half sheet first
         viewModel.handleAction(for: buttonType)
+      } else {
+        viewModel.showHalfSheet = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
+          viewModel.handleAction(for: buttonType)
+        }
       }
     case .manageHold:
       viewModel.isManagingHold = true
-      viewModel.showHalfSheet.toggle()
+      withAnimation(.spring()) {
+        viewModel.showHalfSheet.toggle()
+      }
     case .return:
       viewModel.bookState = .returning
-      viewModel.showHalfSheet.toggle()
+      withAnimation(.spring()) {
+        viewModel.showHalfSheet = true
+      }
     default:
-      viewModel.showHalfSheet.toggle()
+      withAnimation(.spring()) {
+        viewModel.showHalfSheet.toggle()
+      }
     }
   }
   
@@ -574,21 +596,7 @@ struct BookDetailView: View {
     lastOffset = offset
   }
   
-  private var edgeSwipeGesture: some Gesture {
-    DragGesture()
-      .onChanged { value in
-        if value.startLocation.x < 40 && value.translation.width > 0 {
-          dragOffset = value.translation.width
-        }
-      }
-      .onEnded { value in
-        if value.translation.width > 150 {
-          presentationMode.wrappedValue.dismiss()
-        } else {
-          dragOffset = 0
-        }
-      }
-  }
+  
 }
 
 private struct BookStateModifier: ViewModifier {
@@ -603,16 +611,5 @@ private struct BookStateModifier: ViewModifier {
           showHalfSheet = false
         }
       }
-  }
-}
-
-struct TPPCatalogFeedView: UIViewControllerRepresentable {
-  var url: URL
-  
-  func makeUIViewController(context: Context) -> TPPCatalogFeedViewController {
-    return TPPCatalogFeedViewController(url: url)
-  }
-  
-  func updateUIViewController(_ uiViewController: TPPCatalogFeedViewController, context: Context) {
   }
 }

@@ -99,15 +99,13 @@ import PalaceAudiobookToolkit
       switch result {
       case .success(let asset):
         if Task.isCancelled { return }
-        
-        let hostVC = TPPRootTabBarController.shared()
-        
+                
         var credentials: String? = nil
         if let licenseUrl = licenseUrl, licenseUrl.isFileURL {
           credentials = try? String(contentsOf: licenseUrl)
         }
         
-        let result = await publicationOpener.open(asset: asset, allowUserInteraction: true, credentials: credentials, sender: hostVC)
+        let result = await publicationOpener.open(asset: asset, allowUserInteraction: true, credentials: credentials, sender: nil)
 
         switch result {
         case .success(let publication):
@@ -304,6 +302,14 @@ extension LCPAudiobooks {
     publicationCacheLock.lock()
     currentPrefetchTask?.cancel()
     currentPrefetchTask = nil
+    publicationCacheLock.unlock()
+  }
+
+  /// Release all held resources for the current publication and cancel any background work
+  public func releaseResources() {
+    cancelPrefetch()
+    publicationCacheLock.lock()
+    cachedPublication = nil
     publicationCacheLock.unlock()
   }
 }

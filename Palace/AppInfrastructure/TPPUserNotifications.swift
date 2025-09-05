@@ -142,12 +142,7 @@ extension TPPUserNotifications: UNUserNotificationCenterDelegate
       }
 
       if currentAccount.details?.supportsReservations == true {
-        if let holdsTab = TPPRootTabBarController.shared()?.viewControllers?[2],
-        holdsTab.isKind(of: TPPHoldsNavigationController.self) {
-          TPPRootTabBarController.shared()?.selectedIndex = 2
-        } else {
-          Log.error(#file, "Error moving to Holds tab from notification.")
-        }
+        AppTabRouterHub.shared.router?.selected = .holds
       }
       completionHandler()
     }

@@ -49,7 +49,6 @@ struct TPPPDFReaderView: View {
         .environmentObject(metadata)
       }
     }
-    .navigationBarBackButtonHidden(true)
   }
   
   @ViewBuilder

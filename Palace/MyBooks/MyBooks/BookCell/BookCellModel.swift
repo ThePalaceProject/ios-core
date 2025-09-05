@@ -9,6 +9,7 @@
 import Foundation
 import Combine
 import SwiftUI
+import PalaceAudiobookToolkit
 
 enum BookCellState {
   case normal(BookButtonState)
@@ -59,7 +60,7 @@ class BookCellModel: ObservableObject {
   var statePublisher = PassthroughSubject<Bool, Never>()
   var state: BookCellState
   
-  var book: TPPBook {
+  @Published var book: TPPBook {
     didSet {
       if book.identifier != currentBookIdentifier {
         currentBookIdentifier = book.identifier
@@ -68,15 +69,13 @@ class BookCellModel: ObservableObject {
     }
   }
   
-  var isManagingHold: Bool {
-    switch buttonState {
-    case .managingHold, .holding, .holdingFrontOfQueue:
-      true
-    default:
-      false
-    }
-  }
-  
+  @Published var isManagingHold: Bool = false
+
+  @Published private(set) var stableButtonState: BookButtonState = .unsupported
+  @Published private var registryState: TPPBookState
+  @Published private var localBookStateOverride: TPPBookState? = nil
+  @Published var showHalfSheet: Bool = false
+
   var title: String { book.title }
   var authors: String { book.authors ?? "" }
   var showUnreadIndicator: Bool {
@@ -88,12 +87,10 @@ class BookCellModel: ObservableObject {
   }
   
   var buttonTypes: [BookButtonType] {
-    state.buttonState.buttonTypes(book: book)
+    if localBookStateOverride == .returning { return BookButtonState.returning.buttonTypes(book: book) }
+    return stableButtonState.buttonTypes(book: book)
   }
   
-  private weak var buttonDelegate = TPPBookCellDelegate.shared()
-  private weak var sampleDelegate: TPPBookButtonsSampleDelegate?
-  private weak var downloadDelegate: TPPBookDownloadCancellationDelegate?
   
   // MARK: - Initializer
   
@@ -103,8 +100,12 @@ class BookCellModel: ObservableObject {
     self.isLoading = TPPBookRegistry.shared.processing(forIdentifier: book.identifier)
     self.currentBookIdentifier = book.identifier
     self.imageCache = imageCache
+    self.registryState = TPPBookRegistry.shared.state(for: book.identifier)
+    self.stableButtonState = self.computeButtonState(book: book, registryState: self.registryState, isManagingHold: self.isManagingHold)
     registerForNotifications()
     loadBookCoverImage()
+    bindRegistryState()
+    setupStableButtonState()
   }
   
   deinit {
@@ -150,6 +151,39 @@ class BookCellModel: ObservableObject {
     NotificationCenter.default.addObserver(self, selector: #selector(updateButtons),
                                            name: .TPPReachabilityChanged, object: nil)
   }
+
+  private func bindRegistryState() {
+    TPPBookRegistry.shared.bookStatePublisher
+      .filter { [weak self] in $0.0 == self?.book.identifier }
+      .map { $0.1 }
+      .receive(on: DispatchQueue.main)
+      .sink { [weak self] newState in
+        self?.registryState = newState
+      }
+      .store(in: &cancellables)
+  }
+
+  private func computeButtonState(book: TPPBook, registryState: TPPBookState, isManagingHold: Bool) -> BookButtonState {
+    let availability = book.defaultAcquisition?.availability
+    let isProcessingDownload = isLoading || registryState == .downloading
+    if case .holding = registryState, isManagingHold { return .managingHold }
+    return BookButtonMapper.map(
+      registryState: registryState,
+      availability: availability,
+      isProcessingDownload: isProcessingDownload
+    )
+  }
+
+  private func setupStableButtonState() {
+    Publishers.CombineLatest3($book, $registryState, $isManagingHold)
+      .map { [weak self] book, state, isManaging in
+        self?.computeButtonState(book: book, registryState: state, isManagingHold: isManaging) ?? .unsupported
+      }
+      .removeDuplicates()
+      .debounce(for: .milliseconds(180), scheduler: DispatchQueue.main)
+      .receive(on: DispatchQueue.main)
+      .assign(to: &$stableButtonState)
+  }
   
   @objc private func updateButtons() {
     Task { @MainActor [weak self] in
@@ -163,9 +197,12 @@ extension BookCellModel {
     switch action {
     case .download, .retry, .get, .reserve:
       didSelectDownload()
-    case .return, .remove, .returning, .cancelHold, .manageHold:
-      self.isLoading = true
-      self.buttonDelegate?.didSelectReturn(for: self.book) {}
+    case .return:
+      isManagingHold = false
+      bookState = .returning
+      showHalfSheet = true
+    case .remove, .returning, .cancelHold, .manageHold:
+      didSelectReturn()
     case .cancel:
       didSelectCancel()
     case .sample, .audiobookSample:
@@ -179,66 +216,92 @@ extension BookCellModel {
   
   func didSelectRead() {
     isLoading = true
-    self.buttonDelegate?.didSelectRead(for: book) { [weak self] in
-      DispatchQueue.main.async {
-        self?.isLoading = false
+    switch book.defaultBookContentType {
+    case .epub:
+      ReaderService.shared.openEPUB(book)
+      self.isLoading = false
+    case .pdf:
+      guard let url = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier) else { self.isLoading = false; return }
+      let data = try? Data(contentsOf: url)
+      let metadata = TPPPDFDocumentMetadata(with: book)
+      let document = TPPPDFDocument(data: data ?? Data())
+      if let coordinator = NavigationCoordinatorHub.shared.coordinator {
+        coordinator.storePDF(document: document, metadata: metadata, forBookId: book.identifier)
+        coordinator.push(.pdf(BookRoute(id: book.identifier)))
       }
+      self.isLoading = false
+    case .audiobook:
+      openAudiobookFromCell()
+    default:
+      self.isLoading = false
     }
+  }
+
+  private func openAudiobookFromCell() {
+    BookService.open(book)
+    self.isLoading = false
+  }
+
+
+  private func presentAudiobookFrom(json: [String: Any], decryptor: DRMDecryptor?) {
+    BookService.open(book)
+    self.isLoading = false
+  }
+
+  private func licenseURL(forBookIdentifier identifier: String) -> URL? {
+#if LCP
+    guard let contentURL = MyBooksDownloadCenter.shared.fileUrl(for: identifier) else { return nil }
+    let license = contentURL.deletingPathExtension().appendingPathExtension("lcpl")
+    return FileManager.default.fileExists(atPath: license.path) ? license : nil
+#else
+    return nil
+#endif
   }
   
   func didSelectReturn() {
-    var title = ""
-    var message = ""
-    var confirmButtonTitle = ""
-    let deleteAvailable = (book.defaultAcquisitionIfOpenAccess != nil) || !(TPPUserAccount.sharedAccount().authDefinition?.needsAuth ?? true)
-    
-    switch TPPBookRegistry.shared.state(for: book.identifier) {
-    case .used,
-        .SAMLStarted,
-        .downloading,
-        .unregistered,
-        .downloadFailed,
-        .downloadNeeded,
-        .downloadSuccessful,
-        .returning:
-      title = deleteAvailable ? DisplayStrings.delete : DisplayStrings.return
-      message = deleteAvailable ? String.localizedStringWithFormat(DisplayStrings.deleteMessage, book.title) :
-      String.localizedStringWithFormat(DisplayStrings.returnMessage, book.title)
-      confirmButtonTitle = deleteAvailable ? DisplayStrings.delete : DisplayStrings.return
-    case .holding:
-      title = DisplayStrings.removeReservation
-      message = DisplayStrings.returnMessage
-      confirmButtonTitle = DisplayStrings.remove
-    case .unsupported:
-      return
+    self.isLoading = true
+    let identifier = self.book.identifier
+    MyBooksDownloadCenter.shared.returnBook(withIdentifier: identifier) { [weak self] in
+      DispatchQueue.main.async { self?.isLoading = false }
     }
-    
-    showAlert = AlertModel(
-      title: title,
-      message: message,
-      buttonTitle: confirmButtonTitle,
-      primaryAction: { [weak self] in
-        self?.isLoading = true
-        self?.buttonDelegate?.didSelectReturn(for: self?.book) { }
-      },
-      secondaryAction: { [weak self] in
-        self?.showAlert = nil
-        self?.isLoading = false
-      }
-    )
   }
   
   func didSelectDownload() {
     if case .canHold = state.buttonState {
       TPPUserNotifications.requestAuthorization()
     }
-    
-    buttonDelegate?.didSelectDownload(for: book)
+    MyBooksDownloadCenter.shared.startDownload(for: book)
   }
   
   func didSelectSample() {
     isLoading = true
-    self.sampleDelegate?.didSelectPlaySample(book)
+    if book.defaultBookContentType == .audiobook {
+      SamplePreviewManager.shared.toggle(for: book)
+      self.isLoading = false
+      return
+    }
+    EpubSampleFactory.createSample(book: book) { sampleURL, error in
+      DispatchQueue.main.async {
+        self.isLoading = false
+        if let error = error {
+          Log.debug("Sample generation error for \(self.book.title): \(error.localizedDescription)", "")
+          return
+        }
+        if let sampleWebURL = sampleURL as? EpubSampleWebURL {
+          let web = BundledHTMLViewController(fileURL: sampleWebURL.url, title: self.book.title)
+          if let appDelegate = UIApplication.shared.delegate as? TPPAppDelegate, let top = appDelegate.topViewController() {
+            top.present(web, animated: true)
+          }
+          return
+        }
+        if let url = sampleURL?.url {
+          let web = BundledHTMLViewController(fileURL: url, title: self.book.title)
+          if let appDelegate = UIApplication.shared.delegate as? TPPAppDelegate, let top = appDelegate.topViewController() {
+            top.present(web, animated: true)
+          }
+        }
+      }
+    }
   }
   
   func didSelectCancel() {
@@ -257,13 +320,16 @@ extension BookCellModel: BookButtonProvider {
 }
 
 extension BookCellModel: HalfSheetProvider {
-  /// Always read the "live" state from the registry.
   var bookState: TPPBookState {
     get {
-      TPPBookRegistry.shared.state(for: book.identifier)
+      localBookStateOverride ?? registryState
     }
     set {
-      TPPBookRegistry.shared.setState(newValue, for: book.identifier)
+      if newValue == .returning {
+        localBookStateOverride = .returning
+      } else {
+        localBookStateOverride = nil
+      }
     }
   }
   

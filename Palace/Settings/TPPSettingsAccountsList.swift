@@ -170,8 +170,7 @@
     AccountsManager.shared.currentAccount = account
     self.tableView.reloadData()
   
-    let catalog = TPPRootTabBarController.shared()?.viewControllers?.first as? TPPCatalogNavigationController
-    catalog?.updateFeedAndRegistryOnAccountChange()
+    NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
     self.tabBarController?.selectedIndex = 0
     (navigationController?.parent as? UINavigationController)?.popToRootViewController(animated: false)
   }

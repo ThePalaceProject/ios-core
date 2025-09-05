@@ -60,6 +60,7 @@ struct Strings {
     static let userDeniedLocationAccess = NSLocalizedString("User denied location access. Go to system settings to enable location access for the Palace App.", comment: "Error message shown to user when location services are denied.")
     static let uknownLocationError = NSLocalizedString("Unkown error occurred. Please try again.", comment: "Error message shown to user when an unknown location error occurs.")
     static let locationFetchFailed = NSLocalizedString("Failed to get current location. Please try again.", comment: "Error message shown to user when CoreLocation does not return the current location.")
+    static let tryAgain = NSLocalizedString("Please try again later.", comment: "Error message to please try again.")
   }
   
   struct Generic {
@@ -77,6 +78,7 @@ struct Strings {
     static let close = NSLocalizedString("Close", comment: "Title for close button")
     static let search = NSLocalizedString("Search", comment: "Placeholder for Search Field")
     static let done =  NSLocalizedString("Done", comment: "Title for Done button")
+    static let clear = NSLocalizedString("Clear", comment: "Button to clear selection")
   }
   
   struct OETutorialChoiceViewController {
@@ -266,6 +268,12 @@ struct Strings {
   struct FacetView {
     static let author = NSLocalizedString("Author", comment: "")
     static let title = NSLocalizedString("Title", comment: "")
+  }
+  
+  struct Catalog {
+    static let filter = NSLocalizedString("Filter", comment: "")
+    static let sortBy = NSLocalizedString("Sort By", comment: "Header label for sort options")
+    static let showResults = NSLocalizedString("SHOW RESULTS", comment: "Button to apply filters and show results")
   }
   
   struct BookCell {

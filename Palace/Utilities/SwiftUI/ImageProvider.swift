@@ -22,5 +22,7 @@ struct ImageProviders {
     static let clock = Image("Clock")
     static let myLibraryIcon = Image("MyLibraryIcon")
     static let search = Image("Search")
+    static let sort = Image(systemName: "arrow.up.arrow.down")
+    static let filter = Image(systemName: "line.3.horizontal.decrease")
   }
 }

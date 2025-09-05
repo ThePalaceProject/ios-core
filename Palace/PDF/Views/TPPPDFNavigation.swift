@@ -61,10 +61,6 @@ struct TPPPDFNavigation<Content>: View where Content: View {
   @ViewBuilder
   var leadingItems: some View {
     HStack {
-      TPPPDFBackButton {
-        presentationMode.wrappedValue.dismiss()
-      }
-      
       ZStack(alignment: .leading) {
         TPPPDFToolbarButton(icon: "list.bullet") {
           readerMode = TPPPDFReaderModeValues(rawValue: pickerSelection)?.readerMode ?? .previews
