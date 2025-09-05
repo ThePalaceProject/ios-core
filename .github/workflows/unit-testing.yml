@@ -2,7 +2,7 @@ name: Unit Tests
 on: [ pull_request, workflow_dispatch ]
 jobs:
   build-and-test:
-    runs-on: macos-15
+    runs-on: macos-14
     steps:
       - name: Set up Xcode 16.2
         uses: maxim-lobanov/setup-xcode@v1

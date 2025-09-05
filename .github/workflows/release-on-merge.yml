@@ -6,7 +6,7 @@ on:
     types: [closed]
 jobs:
   create-release:
-    runs-on: macos-15
+    runs-on: macos-14
     steps:
       - name: Set up Xcode 16.2
         uses: maxim-lobanov/setup-xcode@v1
@@ -41,7 +41,7 @@ jobs:
         env:
           RELEASE_NOTES_PATH: ${{ env.RELEASE_NOTES_PATH }}
           CHANGELOG_PATH: ${{ env.CHANGELOG_PATH }}
-          VERSION_NUM: ${{ env.VERSION_NUM }}          
+          VERSION_NUM: ${{ env.VERSION_NUM }}
       - name: Create Release
         id: create_release
         uses: actions/create-release@v1
