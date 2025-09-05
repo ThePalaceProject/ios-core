@@ -61,7 +61,6 @@ struct TPPPDFNavigation<Content>: View where Content: View {
   @ViewBuilder
   var leadingItems: some View {
     HStack {
-      // Use only the system back button provided by the navigation stack
       ZStack(alignment: .leading) {
         TPPPDFToolbarButton(icon: "list.bullet") {
           readerMode = TPPPDFReaderModeValues(rawValue: pickerSelection)?.readerMode ?? .previews

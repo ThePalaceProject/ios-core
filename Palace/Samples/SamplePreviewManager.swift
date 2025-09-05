@@ -1,8 +1,5 @@
 import SwiftUI
 
-/// Centralized manager for audiobook sample preview presentation.
-/// Provides a single source of truth for the currently presented sample toolbar
-/// and exposes convenience methods to toggle/close it from anywhere.
 final class SamplePreviewManager: ObservableObject {
   static let shared = SamplePreviewManager()
 
@@ -28,7 +25,6 @@ final class SamplePreviewManager: ObservableObject {
 
     toolbar = toolbarView
     currentBookID = book.identifier
-    // Start playback immediately on present
     try? toolbar?.player.playAudiobook()
   }
 
@@ -41,7 +37,6 @@ final class SamplePreviewManager: ObservableObject {
   }
 }
 
-/// Reusable overlay view that shows the preview toolbar when active.
 struct SamplePreviewBarView: View {
   @ObservedObject private var manager = SamplePreviewManager.shared
 

@@ -3,7 +3,6 @@
 @import MessageUI;
 @import PureLayout;
 
-// #import "TPPCatalogNavigationController.h" // No longer needed with SwiftUI Catalog
 #import "TPPConfiguration.h"
 #import "TPPLinearView.h"
 #import "TPPOPDS.h"

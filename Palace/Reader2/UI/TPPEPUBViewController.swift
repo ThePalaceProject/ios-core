@@ -81,7 +81,6 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     log(.info, "TPPEPUBViewController will appear. UI color set based on preferences.")
     epubNavigator.submitPreferences(preferences)
 
-    // Ensure a visible back button inside the EPUB nav when embedded in SwiftUI stack
     if navigationItem.leftBarButtonItem == nil {
       let backItem = UIBarButtonItem(image: UIImage(systemName: "chevron.left"), style: .plain, target: self, action: #selector(closeEPUB))
       navigationItem.leftBarButtonItem = backItem
@@ -94,7 +93,6 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
   }
 
   @objc private func closeEPUB() {
-    // Pop SwiftUI NavigationStack if available
     NavigationCoordinatorHub.shared.coordinator?.pop()
   }
 

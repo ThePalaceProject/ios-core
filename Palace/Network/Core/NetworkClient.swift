@@ -2,7 +2,6 @@
 //  NetworkClient.swift
 //  Palace
 //
-//  Created as part of networking unification.
 //
 
 import Foundation
