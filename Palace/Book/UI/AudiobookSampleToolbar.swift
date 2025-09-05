@@ -7,7 +7,6 @@
 //
 
 import SwiftUI
-import Combine
 import PalaceUIKit
 
 struct AudiobookSampleToolbar: View {
@@ -22,8 +21,6 @@ struct AudiobookSampleToolbar: View {
   private let playbackButtonLength: CGFloat = 35
   private let buttonViewSpacing: CGFloat = 10
 
-  private let notificationPublisher = NotificationCenter.default.publisher(for: NSNotification.Name("ToggleSampleNotification"))
-
   init?(book: TPPBook) {
     self.book = book
     guard let sample = book.sample as? AudiobookSample else { return nil }
@@ -34,6 +31,9 @@ struct AudiobookSampleToolbar: View {
   }
 
   var body: some View {
+    SwiftUI.Group {
+      // HStack body
+    }
     HStack {
       imageView
       infoView
@@ -45,9 +45,6 @@ struct AudiobookSampleToolbar: View {
     .background(Color.init(.lightGray))
     .onDisappear {
       player.pauseAudiobook()
-    }
-    .onReceive(notificationPublisher) { _ in
-      self.togglePlay()
     }
   }
 

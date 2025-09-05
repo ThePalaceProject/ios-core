@@ -21,7 +21,16 @@ final class BookDetailViewModel: ObservableObject {
   @Published var book: TPPBook
   
   /// The registry state, e.g. `unregistered`, `downloading`, `downloadSuccessful`, etc.
-  @Published var bookState: TPPBookState
+  @Published var bookState: TPPBookState {
+    didSet {
+      // Mirror MyBooks behavior: keep a local override while returning
+      if bookState == .returning {
+        localBookStateOverride = .returning
+      } else if bookState == .unregistered {
+        localBookStateOverride = nil
+      }
+    }
+  }
   
   @Published var bookmarks: [TPPReadiumBookmark] = []
   @Published var showSampleToolbar = false
@@ -65,6 +74,8 @@ final class BookDetailViewModel: ObservableObject {
   private var recentMoveAt: Date? = nil
   private var isSyncingLocation: Bool = false
   private let bookIdentifier: String
+  // Local override to hold transient UI state such as .returning, preventing flicker
+  private var localBookStateOverride: TPPBookState? = nil
   
   // MARK: – Computed Button State
   
@@ -117,10 +128,13 @@ final class BookDetailViewModel: ObservableObject {
       .sink { [weak self] newState in
         guard let self else { return }
         let updatedBook = registry.book(forIdentifier: book.identifier) ?? book
-        let currentState = self.bookState
         let registryState = registry.state(for: book.identifier)
-                
+
         self.book = updatedBook
+        // If we are in a local returning override, hold it until unregistered
+        if let override = self.localBookStateOverride, override == .returning, registryState != .unregistered {
+          return
+        }
         self.bookState = registryState
       }
       .store(in: &cancellables)
@@ -134,12 +148,7 @@ final class BookDetailViewModel: ObservableObject {
       object: nil
     )
     
-    NotificationCenter.default.addObserver(
-      self,
-      selector: #selector(handleDownloadStateDidChange(_:)),
-      name: .TPPMyBooksDownloadCenterDidChange,
-      object: nil
-    )
+    // Avoid general download center change notifications; we already subscribe to fine-grained progress and registry state publishers
     
     downloadCenter.downloadProgressPublisher
       .filter { $0.0 == self.book.identifier }
@@ -669,13 +678,12 @@ final class BookDetailViewModel: ObservableObject {
         presentWebView(book.sampleAcquisition?.hrefURL)
         isProcessingSample = false
         completion?()
-      } else if !isShowingSample {
-        isShowingSample = true
-        showSampleToolbar = true
+      } else {
+        // Use centralized preview manager for audiobooks
+        SamplePreviewManager.shared.toggle(for: book)
         isProcessingSample = false
         completion?()
       }
-      NotificationCenter.default.post(name: Notification.Name("ToggleSampleNotification"), object: self)
     } else {
       EpubSampleFactory.createSample(book: book) { sampleURL, error in
         DispatchQueue.main.async {

@@ -278,11 +278,7 @@ extension BookCellModel {
   func didSelectSample() {
     isLoading = true
     if book.defaultBookContentType == .audiobook {
-      NotificationCenter.default.post(
-        name: Notification.Name("ToggleSampleNotification"),
-        object: nil,
-        userInfo: ["bookIdentifier": book.identifier, "action": "toggle"]
-      )
+      SamplePreviewManager.shared.toggle(for: book)
       self.isLoading = false
       return
     }

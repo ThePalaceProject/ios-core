@@ -17,7 +17,7 @@ struct BookDetailView: View {
   @State private var imageScale: CGFloat = 1.0
   @State private var imageOpacity: CGFloat = 1.0
   @State private var titleOpacity: CGFloat = 1.0
-  @State private var sampleToolbar: AudiobookSampleToolbar? = nil
+  // Centralized sample toolbar handled by SamplePreviewManager
   @State private var dragOffset: CGFloat = 0
   @State private var imageBottomPosition: CGFloat = 400
   @State private var pulseSkeleton: Bool = false
@@ -60,20 +60,20 @@ struct BookDetailView: View {
           }
         }
         .edgesIgnoringSafeArea(.all)
-        .onChange(of: viewModel.book) { newValue in
-          if lastBookIdentifier != newValue.identifier {
-            lastBookIdentifier = newValue.identifier
-            headerColor = Color(newValue.dominantUIColor)
+        .onChange(of: viewModel.book.identifier) { newIdentifier in
+          if lastBookIdentifier != newIdentifier {
+            lastBookIdentifier = newIdentifier
             resetSampleToolbar()
-            self.descriptionText = newValue.summary ?? ""
+            let newSummary = viewModel.book.summary ?? ""
+            if self.descriptionText != newSummary { self.descriptionText = newSummary }
             proxy.scrollTo(0, anchor: .top)
           } else {
-            self.descriptionText = newValue.summary ?? self.descriptionText
+            let newSummary = viewModel.book.summary ?? self.descriptionText
+            if self.descriptionText != newSummary { self.descriptionText = newSummary }
           }
         }
       }
       .onAppear {
-        headerColor = Color(viewModel.book.dominantUIColor)
         headerColor = Color(viewModel.book.dominantUIColor)
         lastBookIdentifier = viewModel.book.identifier
 
@@ -133,12 +133,27 @@ struct BookDetailView: View {
         .opacity(showCompactHeader ? 1 : 0)
         .animation(scaleAnimation, value: -headerHeight)
 
-      sampleToolbarView
+      SamplePreviewBarView()
     }
     .offset(x: dragOffset)
     .animation(.interactiveSpring(), value: dragOffset)
     
     .modifier(BookStateModifier(viewModel: viewModel, showHalfSheet: $viewModel.showHalfSheet))
+    // Preview notification routing (for compatibility with existing triggers)
+    .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ToggleSampleNotification")).receive(on: RunLoop.main)) { note in
+      guard let info = note.userInfo as? [String: Any], let identifier = info["bookIdentifier"] as? String else { return }
+      let action = (info["action"] as? String) ?? "toggle"
+      if action == "close" {
+        SamplePreviewManager.shared.close()
+        return
+      }
+      if let book = TPPBookRegistry.shared.book(forIdentifier: identifier) ?? (viewModel.relatedBooksByLane.values.flatMap { $0.books }).first(where: { $0.identifier == identifier }) {
+        SamplePreviewManager.shared.toggle(for: book)
+      } else if viewModel.book.identifier == identifier {
+        SamplePreviewManager.shared.toggle(for: viewModel.book)
+      }
+    }
+    .onDisappear { SamplePreviewManager.shared.close() }
   }
   
   // MARK: - View Components
@@ -422,21 +437,6 @@ struct BookDetailView: View {
   }
   
   @State private var currentBookID: String? = nil
-  @ViewBuilder private var sampleToolbarView: some View {
-    if viewModel.showSampleToolbar {
-      VStack {
-        Spacer()
-        if let toolbar = sampleToolbar {
-          toolbar
-        } else {
-          AudiobookSampleToolbar(book: viewModel.book)
-            .onAppear {
-              setupSampleToolbarIfNeeded()
-            }
-        }
-      }
-    }
-  }
   
   @ViewBuilder private var audiobookIndicator: some View {
     ImageProviders.MyBooksView.audiobookBadge
@@ -530,18 +530,14 @@ struct BookDetailView: View {
  
   private func resetSampleToolbar() {
     viewModel.showSampleToolbar = false
-    sampleToolbar?.player.state = .paused
-    sampleToolbar = nil
+    SamplePreviewManager.shared.close()
   }
   
   private func setupSampleToolbarIfNeeded() {
     let bookID = viewModel.book.identifier
     
-    if sampleToolbar == nil || bookID != currentBookID {
-      if let newToolbar = AudiobookSampleToolbar(book: viewModel.book) {
-        sampleToolbar = newToolbar
-        currentBookID = bookID
-      }
+    if !SamplePreviewManager.shared.isShowingPreview(for: viewModel.book) || bookID != currentBookID {
+      currentBookID = bookID
     }
   }
   

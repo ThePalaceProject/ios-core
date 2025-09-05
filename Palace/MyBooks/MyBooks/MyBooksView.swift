@@ -9,9 +9,7 @@ struct MyBooksView: View {
   @State private var showSortSheet: Bool = false
   @StateObject private var logoObserver = CatalogLogoObserver()
   @State private var currentAccountUUID: String = AccountsManager.shared.currentAccount?.uuid ?? ""
-  // Audiobook sample toolbar
-  @State private var sampleToolbar: AudiobookSampleToolbar? = nil
-  @State private var currentSampleBookID: String? = nil
+  // Centralized sample preview manager overlay
 
   var body: some View {
       ZStack {
@@ -22,14 +20,7 @@ struct MyBooksView: View {
         }
       }
       .background(Color(TPPConfiguration.backgroundColor()))
-      .overlay(alignment: .bottom) {
-        if let toolbar = sampleToolbar {
-          VStack(spacing: 0) {
-            Spacer(minLength: 0)
-            toolbar
-          }
-        }
-      }
+      .overlay(alignment: .bottom) { SamplePreviewBarView() }
       .navigationBarTitleDisplayMode(.inline)
       .toolbar {
         ToolbarItem(placement: .principal) {
@@ -66,29 +57,17 @@ struct MyBooksView: View {
         )
       }
       .actionSheet(isPresented: $showSortSheet) { sortActionSheet }
-      // Listen for audiobook sample toggles and show/close toolbar
+      // Notification still supported but routed through manager for compatibility
       .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ToggleSampleNotification")).receive(on: RunLoop.main)) { note in
-        guard
-          let info = note.userInfo as? [String: Any],
-          let identifier = info["bookIdentifier"] as? String
-        else { return }
-
-        // Toggle close if same book is already showing
-        if let current = currentSampleBookID, current == identifier, let toolbar = sampleToolbar {
-          toolbar.player.pauseAudiobook()
-          withAnimation {
-            sampleToolbar = nil
-            currentSampleBookID = nil
-          }
+        guard let info = note.userInfo as? [String: Any], let identifier = info["bookIdentifier"] as? String else { return }
+        let action = (info["action"] as? String) ?? "toggle"
+        if action == "close" {
+          SamplePreviewManager.shared.close()
           return
         }
-
-        if let book = TPPBookRegistry.shared.book(forIdentifier: identifier) ??
-            model.books.first(where: { $0.identifier == identifier }) {
-          sampleToolbar = AudiobookSampleToolbar(book: book)
-          currentSampleBookID = identifier
+        if let book = TPPBookRegistry.shared.book(forIdentifier: identifier) ?? model.books.first(where: { $0.identifier == identifier }) {
+          SamplePreviewManager.shared.toggle(for: book)
         }
-        // Toolbar itself toggles play on this notification
       }
   }
 

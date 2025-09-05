@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 struct CatalogLaneMoreView: View {
   var title: String = ""
@@ -20,9 +21,7 @@ struct CatalogLaneMoreView: View {
   @State private var appliedSelections: Set<String> = []
   @State private var isApplyingFilters: Bool = false
 
-  // MARK: - Audiobook Sample Toolbar
-  @State private var sampleToolbar: AudiobookSampleToolbar? = nil
-  @State private var currentSampleBookID: String? = nil
+  // MARK: - Audiobook Sample Toolbar (centralized)
 
   var body: some View {
     VStack(spacing: 0) {
@@ -80,14 +79,7 @@ struct CatalogLaneMoreView: View {
         .refreshable { await fetchAndApplyFeed(at: url) }
       }
     }
-    .overlay(alignment: .bottom) {
-      if let toolbar = sampleToolbar {
-        VStack(spacing: 0) {
-          Spacer(minLength: 0)
-          toolbar
-        }
-      }
-    }
+    .overlay(alignment: .bottom) { SamplePreviewBarView() }
     .navigationBarTitleDisplayMode(.inline)
     .toolbar {
       ToolbarItem(placement: .principal) {
@@ -117,39 +109,35 @@ struct CatalogLaneMoreView: View {
       pendingSelections.removeAll()
       Task { await load() }
     }
-    // Show/Toggle audiobook preview bar when sample is triggered
+    // Show/Toggle audiobook preview via centralized manager
     .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ToggleSampleNotification")).receive(on: RunLoop.main)) { note in
-      guard
-        let info = note.userInfo as? [String: Any],
-        let identifier = info["bookIdentifier"] as? String
-      else { return }
-
-      // Toggle close if the same book is already showing
-      if let current = currentSampleBookID, current == identifier, let toolbar = sampleToolbar {
-        toolbar.player.pauseAudiobook()
-        withAnimation {
-          sampleToolbar = nil
-          currentSampleBookID = nil
-        }
+      guard let info = note.userInfo as? [String: Any], let identifier = info["bookIdentifier"] as? String else { return }
+      let action = (info["action"] as? String) ?? "toggle"
+      if action == "close" {
+        SamplePreviewManager.shared.close()
         return
       }
-
-      if let book = TPPBookRegistry.shared.book(forIdentifier: identifier) ??
-          (lanes.flatMap { $0.books } + ungroupedBooks).first(where: { $0.identifier == identifier }) {
-        sampleToolbar = AudiobookSampleToolbar(book: book)
-        currentSampleBookID = identifier
+      if let book = TPPBookRegistry.shared.book(forIdentifier: identifier) ?? (lanes.flatMap { $0.books } + ungroupedBooks).first(where: { $0.identifier == identifier }) {
+        SamplePreviewManager.shared.toggle(for: book)
       }
-      // Toolbar itself toggles play on this notification
     }
-    .onReceive(NotificationCenter.default.publisher(for: .TPPBookRegistryDidChange).receive(on: RunLoop.main)) { _ in
-      applyRegistryUpdates()
+    .onDisappear { SamplePreviewManager.shared.close() }
+    // Avoid broad reloads; rely on targeted state changes and progress updates
+    .onReceive(
+      NotificationCenter.default
+        .publisher(for: .TPPBookRegistryStateDidChange)
+        .throttle(for: .milliseconds(350), scheduler: RunLoop.main, latest: true)
+    ) { note in
+      let changedId = (note.userInfo as? [String: Any])?["bookIdentifier"] as? String
+      applyRegistryUpdates(changedIdentifier: changedId)
     }
-    .onReceive(NotificationCenter.default.publisher(for: .TPPBookRegistryStateDidChange).receive(on: RunLoop.main)) { _ in
-      applyRegistryUpdates()
-    }
-    .onReceive(NotificationCenter.default.publisher(for: .TPPMyBooksDownloadCenterDidChange).receive(on: RunLoop.main)) { _ in
-      applyRegistryUpdates()
-    }
+    // Prefer targeted updates using the download progress publisher to avoid rebuilding all lanes per tick
+    .onReceive(MyBooksDownloadCenter.shared.downloadProgressPublisher
+      .throttle(for: .milliseconds(350), scheduler: RunLoop.main, latest: true)
+      .map { $0.0 }
+      .removeDuplicates()) { changedId in
+        applyRegistryUpdates(changedIdentifier: changedId)
+      }
     .onChange(of: showingFiltersSheet) { presented in
       guard presented else { return }
       if !appliedSelections.isEmpty {
@@ -237,21 +225,38 @@ struct CatalogLaneMoreView: View {
 
   // MARK: - Registry Sync
 
-  /// Refresh visible books with updated metadata from the registry so button states reflect current status.
-  private func applyRegistryUpdates() {
+  /// Refresh visible books with updated metadata so button states reflect current status.
+  /// Only update items that actually changed to keep identity stable and avoid flicker.
+  private func applyRegistryUpdates(changedIdentifier: String?) {
     if !lanes.isEmpty {
-      lanes = lanes.map { lane in
-        let updated = lane.books.map { book in
-          TPPBookRegistry.shared.updatedBookMetadata(book) ?? book
+      var newLanes = lanes
+      for idx in newLanes.indices {
+        var books = newLanes[idx].books
+        var changed = false
+        for bIdx in books.indices {
+          let book = books[bIdx]
+          if let changedIdentifier, book.identifier != changedIdentifier { continue }
+          let updated = TPPBookRegistry.shared.updatedBookMetadata(book) ?? book
+          if updated != book {
+            books[bIdx] = updated
+            changed = true
+          }
         }
-        return CatalogLaneModel(title: lane.title, books: updated, moreURL: lane.moreURL)
+        if changed { newLanes[idx] = CatalogLaneModel(title: newLanes[idx].title, books: books, moreURL: newLanes[idx].moreURL) }
       }
+      lanes = newLanes
     }
 
     if !ungroupedBooks.isEmpty {
-      ungroupedBooks = ungroupedBooks.map { book in
-        TPPBookRegistry.shared.updatedBookMetadata(book) ?? book
+      var books = ungroupedBooks
+      var anyChanged = false
+      for idx in books.indices {
+        let book = books[idx]
+        if let changedIdentifier, book.identifier != changedIdentifier { continue }
+        let updated = TPPBookRegistry.shared.updatedBookMetadata(book) ?? book
+        if updated != book { books[idx] = updated; anyChanged = true }
       }
+      if anyChanged { ungroupedBooks = books }
     }
   }
 
