@@ -160,7 +160,7 @@ class TPPRegistryDebuggingCell: UITableViewCell {
   private func showAlert(title: String, message: String) {
     let alert = TPPAlertUtils.alert(title: title, message: message)
     DispatchQueue.main.async {
-      UIApplication.shared.keyWindow?.rootViewController?.present(alert, animated: true, completion: nil)
+      (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController()?.present(alert, animated: true, completion: nil)
     }
   }
 }

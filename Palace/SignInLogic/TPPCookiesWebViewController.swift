@@ -292,7 +292,7 @@ class TPPCookiesWebViewController: UIViewController, WKNavigationDelegate {
 
         // we can present
         let navigationWrapper = UINavigationController(rootViewController: self)
-        UIApplication.shared.keyWindow?.rootViewController?.present(navigationWrapper, animated: true)
+        (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController()?.present(navigationWrapper, animated: true)
 
         // and actually remove reference to self, as this controller already is added to the UI stack
         TPPCookiesWebViewController.automaticBrowserStorage[self.uuid] = nil

@@ -684,7 +684,7 @@ final class BookDetailViewModel: ObservableObject {
             self.presentWebView(sampleWebURL.url)
           } else if let sampleURL = sampleURL?.url {
             let web = BundledHTMLViewController(fileURL: sampleURL, title: book.title)
-            if let top = UIApplication.shared.keyWindow?.rootViewController {
+            if let top = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController() {
               top.present(web, animated: true)
             }
           }
@@ -702,7 +702,7 @@ final class BookDetailViewModel: ObservableObject {
       title: AccountsManager.shared.currentAccount?.name ?? ""
     )
     
-    if let top = UIApplication.shared.keyWindow?.rootViewController {
+    if let top = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController() {
       top.present(webController, animated: true)
     }
   }
@@ -711,8 +711,8 @@ final class BookDetailViewModel: ObservableObject {
   
   private func presentCorruptedItemError() {
     let alert = UIAlertController(
-      title: NSLocalizedString("Corrupted Audiobook", comment: ""),
-      message: NSLocalizedString("The audiobook you are trying to open appears to be corrupted. Try downloading it again.", comment: ""),
+      title: Strings.Error.epubNotValidError,
+      message: Strings.Error.epubNotValidError,
       preferredStyle: .alert
     )
     alert.addAction(UIAlertAction(title: "OK", style: .default))
@@ -721,8 +721,8 @@ final class BookDetailViewModel: ObservableObject {
   
   private func presentUnsupportedItemError() {
     let alert = UIAlertController(
-      title: NSLocalizedString("Unsupported Item", comment: ""),
-      message: NSLocalizedString("This item format is not supported.", comment: ""),
+      title: Strings.Error.formatNotSupportedError,
+      message: Strings.Error.formatNotSupportedError,
       preferredStyle: .alert
     )
     alert.addAction(UIAlertAction(title: "OK", style: .default))

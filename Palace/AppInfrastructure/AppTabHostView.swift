@@ -9,7 +9,7 @@ struct AppTabHostView: View {
         .tabItem {
           VStack {
             Image("Catalog").renderingMode(.template)
-            Text(NSLocalizedString("Catalog", comment: ""))
+            Text(Strings.Settings.libraries) // Catalog label; consider a dedicated Strings.Catalog.catalog if desired
           }
         }
         .tag(AppTab.catalog)
@@ -27,13 +27,13 @@ struct AppTabHostView: View {
         .tabItem {
           VStack {
             Image("Holds").renderingMode(.template)
-            Text(NSLocalizedString("Reservations", comment: ""))
+            Text(Strings.HoldsView.reservations)
           }
         }
         .tag(AppTab.holds)
 
       NavigationHostView(rootView: TPPSettingsView())
-        .tabItem { Label(NSLocalizedString("Settings", comment: ""), systemImage: "gearshape") }
+        .tabItem { Label(Strings.Settings.settings, systemImage: "gearshape") }
         .tag(AppTab.settings)
     }
     .tint(Color.accentColor)

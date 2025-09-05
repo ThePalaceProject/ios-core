@@ -76,7 +76,6 @@ final class HoldsViewModel: ObservableObject {
             }
         }
 
-        // Update both lists atomically on the main thread
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             withAnimation {
@@ -106,8 +105,6 @@ final class HoldsViewModel: ObservableObject {
 
     private func updateBadgeCount() {
         UIApplication.shared.applicationIconBadgeNumber = reservedBookVMs.count
-        
-        // Badge counts can be supported by app icon badges; tab badges removed in SwiftUI TabView
     }
 
     func loadAccount(_ account: Account) {
@@ -119,13 +116,11 @@ final class HoldsViewModel: ObservableObject {
     
     private func updateFeed(_ account: Account) {
         AccountsManager.shared.currentAccount = account
-        // Notify app of account change; observers will refresh Catalog/UI
         NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
     }
 
     var openSearchDescription: TPPOpenSearchDescription {
         let title = NSLocalizedString("Search Reservations", comment: "")
-        // We pass ALL held books (both reserved and waiting) into the search screen:
         let books = allBooks
         return TPPOpenSearchDescription(title: title, books: books)
     }

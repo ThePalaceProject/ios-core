@@ -89,7 +89,6 @@ struct NormalBookCell: View {
           self.showHalfSheet = false
         default:
           model.callDelegate(for: type)
-          // Reflect delegate-driven presentation
           self.showHalfSheet = model.showHalfSheet
         }
       }

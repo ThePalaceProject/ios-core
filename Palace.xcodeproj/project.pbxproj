@@ -542,8 +542,6 @@
 		E50546752E6201D4007CCFAB /* OPDSFeedParsingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50546742E6201D4007CCFAB /* OPDSFeedParsingTests.swift */; };
 		E50546772E6201E6007CCFAB /* HTTPStubURLProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50546762E6201E6007CCFAB /* HTTPStubURLProtocol.swift */; };
 		E50546792E62020D007CCFAB /* URLSession+Stubbing.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50546782E62020D007CCFAB /* URLSession+Stubbing.swift */; };
-		E50546992E620C9B007CCFAB /* CatalogNavigationHostView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50546982E620C9B007CCFAB /* CatalogNavigationHostView.swift */; };
-		E505469A2E620C9B007CCFAB /* CatalogNavigationHostView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50546982E620C9B007CCFAB /* CatalogNavigationHostView.swift */; };
 		E50546C12E62194F007CCFAB /* AppTabHostView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50546C02E62194F007CCFAB /* AppTabHostView.swift */; };
 		E50546C22E62194F007CCFAB /* AppTabHostView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50546C02E62194F007CCFAB /* AppTabHostView.swift */; };
 		E50546C42E621981007CCFAB /* NavigationHostView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50546C32E621981007CCFAB /* NavigationHostView.swift */; };
@@ -1491,7 +1489,6 @@
 		E50546742E6201D4007CCFAB /* OPDSFeedParsingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OPDSFeedParsingTests.swift; sourceTree = "<group>"; };
 		E50546762E6201E6007CCFAB /* HTTPStubURLProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPStubURLProtocol.swift; sourceTree = "<group>"; };
 		E50546782E62020D007CCFAB /* URLSession+Stubbing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "URLSession+Stubbing.swift"; sourceTree = "<group>"; };
-		E50546982E620C9B007CCFAB /* CatalogNavigationHostView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogNavigationHostView.swift; sourceTree = "<group>"; };
 		E50546C02E62194F007CCFAB /* AppTabHostView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTabHostView.swift; sourceTree = "<group>"; };
 		E50546C32E621981007CCFAB /* NavigationHostView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationHostView.swift; sourceTree = "<group>"; };
 		E50546C62E621A8E007CCFAB /* NavigationCoordinatorHub.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationCoordinatorHub.swift; sourceTree = "<group>"; };
@@ -3120,7 +3117,6 @@
 			children = (
 				E5AD72D82E5520FB005A8070 /* ViewModels */,
 				E5AD72DA2E5520FB005A8070 /* Views */,
-				E50546982E620C9B007CCFAB /* CatalogNavigationHostView.swift */,
 			);
 			path = CatalogUI;
 			sourceTree = "<group>";
@@ -4080,7 +4076,6 @@
 				E5AD72E22E5520FB005A8070 /* CatalogAPI.swift in Sources */,
 				E5AD72E32E5520FB005A8070 /* CatalogView.swift in Sources */,
 				E7F66E0C29E7565300B62900 /* BarcodeScanner.swift in Sources */,
-				E505469A2E620C9B007CCFAB /* CatalogNavigationHostView.swift in Sources */,
 				73EB0AE925821DF4006BC997 /* TPPBookContentMetadataFilesHelper.swift in Sources */,
 				73EB0AEA25821DF4006BC997 /* TPPContentTypeBadge.swift in Sources */,
 				E5FD62182BFD45BD00DD4B94 /* AudiobookBookmarkBusinessLogic.swift in Sources */,
@@ -4293,7 +4288,6 @@
 				21DDE31325D2CE9A002CBCE3 /* AdobeDRMLibraryService.swift in Sources */,
 				0813875A1BC5767F003DEA6A /* UIButton+NYPLAppearanceAdditions.m in Sources */,
 				E704804E2859253900019B31 /* TPPPDFReaderView.swift in Sources */,
-				E50546992E620C9B007CCFAB /* CatalogNavigationHostView.swift in Sources */,
 				21D746E72718A4C000C0E1B4 /* AdobeDRMError.swift in Sources */,
 				E5515EBE2AD8E13E000BDFE9 /* TPPEPUBViewController.swift in Sources */,
 				73085E3525030D27008F6244 /* SEMigrations.swift in Sources */,

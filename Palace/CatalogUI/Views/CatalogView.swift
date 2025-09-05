@@ -157,13 +157,13 @@ private extension CatalogView {
       )
       let hosting = UIHostingController(rootView: wrapper)
       let nav = UINavigationController(rootViewController: hosting)
-      if let top = UIApplication.shared.keyWindow?.rootViewController {
+      if let top = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController() {
         top.present(nav, animated: true)
       }
     }
     actionSheet.addAction(addLibrary)
     actionSheet.addAction(UIAlertAction(title: Strings.Generic.cancel, style: .cancel, handler: nil))
-    if let top = UIApplication.shared.keyWindow?.rootViewController {
+    if let top = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController() {
       top.present(actionSheet, animated: true)
     }
   }

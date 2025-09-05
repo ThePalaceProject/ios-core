@@ -22,7 +22,12 @@ extension TPPLoadingViewController {
     
     let loadingOverlay = loadingOverlayView()
       DispatchQueue.main.async {
-        UIApplication.shared.keyWindow?.addSubview(loadingOverlay)
+        if let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first,
+           let win = scene.windows.first(where: { $0.isKeyWindow }) {
+          win.addSubview(loadingOverlay)
+        } else if let win = UIApplication.shared.windows.first(where: { $0.isKeyWindow }) {
+          win.addSubview(loadingOverlay)
+        }
         loadingOverlay.autoPinEdgesToSuperviewEdges()
       }
     

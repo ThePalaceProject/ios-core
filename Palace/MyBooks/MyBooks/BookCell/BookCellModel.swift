@@ -87,8 +87,6 @@ class BookCellModel: ObservableObject {
   }
   
   var buttonTypes: [BookButtonType] {
-    // While the half sheet is shown in a transient state (e.g., .returning),
-    // force the button set to match that state so we don't show read/listen.
     if localBookStateOverride == .returning { return BookButtonState.returning.buttonTypes(book: book) }
     return stableButtonState.buttonTypes(book: book)
   }
@@ -322,16 +320,11 @@ extension BookCellModel: BookButtonProvider {
 }
 
 extension BookCellModel: HalfSheetProvider {
-  /// Always read the "live" state from the registry.
   var bookState: TPPBookState {
     get {
-      // Mirror BookDetail behavior by using a local override for transient UI states
-      // like .returning, while otherwise reflecting the registry state.
       localBookStateOverride ?? registryState
     }
     set {
-      // Only persist a local override for the returning flow; otherwise clear it
-      // to fall back to the live registry state.
       if newValue == .returning {
         localBookStateOverride = .returning
       } else {

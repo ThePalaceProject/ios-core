@@ -17,7 +17,6 @@ extension View {
   }
 }
 
-// Lightweight variant optimized for scrolling lists and large collections
 struct AdaptiveShadowLightModifier: ViewModifier {
   @Environment(\.colorScheme) var colorScheme
   var radius: CGFloat

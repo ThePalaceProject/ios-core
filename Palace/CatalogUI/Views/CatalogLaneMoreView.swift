@@ -45,13 +45,10 @@ struct CatalogLaneMoreView: View {
 
       if isLoading {
         ScrollView {
-          VStack(alignment: .leading, spacing: 24) {
-            ForEach(0..<3, id: \.self) { _ in
-              CatalogLaneSkeletonView()
-            }
-          }
-          .padding(.vertical, 12)
-          .padding(.horizontal, 8)
+          BookListSkeletonView()
+            .padding(.vertical, 12)
+            .padding(.horizontal, 8)
+
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
       } else if let error {

@@ -196,7 +196,7 @@ import UIKit
     }
 
     // SwiftUI-first: present from the app's top-most UIKit controller
-    guard let root = UIApplication.shared.keyWindow?.rootViewController else { return }
+    guard let root = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController() else { return }
     let top = topMostViewController(from: root)
     DispatchQueue.main.async {
       top.present(alertController, animated: animated, completion: completion)
