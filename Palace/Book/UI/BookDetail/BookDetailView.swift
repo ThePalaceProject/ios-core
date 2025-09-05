@@ -17,7 +17,6 @@ struct BookDetailView: View {
   @State private var imageScale: CGFloat = 1.0
   @State private var imageOpacity: CGFloat = 1.0
   @State private var titleOpacity: CGFloat = 1.0
-  // Centralized sample toolbar handled by SamplePreviewManager
   @State private var dragOffset: CGFloat = 0
   @State private var imageBottomPosition: CGFloat = 400
   @State private var pulseSkeleton: Bool = false
@@ -99,8 +98,6 @@ struct BookDetailView: View {
           let newState = TPPBookState(rawValue: raw)
         else { return }
 
-        // Only dismiss the detail view when the title is actually unregistered (removed).
-        // Do NOT dismiss on .downloadNeeded to avoid closing the sheet during active downloads.
         if newState == .unregistered {
           presentationMode.wrappedValue.dismiss()
         }
@@ -139,7 +136,6 @@ struct BookDetailView: View {
     .animation(.interactiveSpring(), value: dragOffset)
     
     .modifier(BookStateModifier(viewModel: viewModel, showHalfSheet: $viewModel.showHalfSheet))
-    // Preview notification routing (for compatibility with existing triggers)
     .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ToggleSampleNotification")).receive(on: RunLoop.main)) { note in
       guard let info = note.userInfo as? [String: Any], let identifier = info["bookIdentifier"] as? String else { return }
       let action = (info["action"] as? String) ?? "toggle"
@@ -157,8 +153,6 @@ struct BookDetailView: View {
   }
   
   // MARK: - View Components
-  
-  
   
   private func dynamicTopPadding() -> CGFloat {
     let basePadding: CGFloat = 20
@@ -551,7 +545,6 @@ struct BookDetailView: View {
         // Present sign-in directly; don't show half sheet first
         viewModel.handleAction(for: buttonType)
       } else {
-        // Force present the half-sheet; avoid toggle to prevent accidental dismissal on rapid state changes
         viewModel.showHalfSheet = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
           viewModel.handleAction(for: buttonType)
@@ -562,7 +555,6 @@ struct BookDetailView: View {
       viewModel.showHalfSheet.toggle()
     case .return:
       viewModel.bookState = .returning
-      // Keep half-sheet visible during return operation
       viewModel.showHalfSheet = true
     default:
       viewModel.showHalfSheet.toggle()

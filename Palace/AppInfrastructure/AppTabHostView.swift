@@ -1,23 +1,46 @@
 import SwiftUI
 
 struct AppTabHostView: View {
+  @StateObject private var router = AppTabRouter()
+  
   var body: some View {
-    TabView {
-      NavigationHostView(rootView: Self.catalogView())
-        .tabItem { Label(NSLocalizedString("Catalog", comment: ""), image: "Catalog") }
+    TabView(selection: $router.selected) {
+      NavigationHostView(rootView: catalogView)
+        .tabItem {
+          VStack {
+            Image("Catalog").renderingMode(.template)
+            Text(NSLocalizedString("Catalog", comment: ""))
+          }
+        }
+        .tag(AppTab.catalog)
 
       NavigationHostView(rootView: MyBooksView(model: MyBooksViewModel()))
-        .tabItem { Label(Strings.MyBooksView.navTitle, image: "MyBooks") }
+        .tabItem {
+          VStack {
+            Image("MyBooks").renderingMode(.template)
+            Text(Strings.MyBooksView.navTitle)
+          }
+        }
+        .tag(AppTab.myBooks)
 
       NavigationHostView(rootView: HoldsView())
-        .tabItem { Label(NSLocalizedString("Reservations", comment: ""), image: "Holds") }
+        .tabItem {
+          VStack {
+            Image("Holds").renderingMode(.template)
+            Text(NSLocalizedString("Reservations", comment: ""))
+          }
+        }
+        .tag(AppTab.holds)
 
       NavigationHostView(rootView: TPPSettingsView())
         .tabItem { Label(NSLocalizedString("Settings", comment: ""), systemImage: "gearshape") }
+        .tag(AppTab.settings)
     }
+    .tint(Color.accentColor)
+    .onAppear { AppTabRouterHub.shared.router = router }
   }
-  
-  @MainActor static func catalogView() -> some View {
+
+  var catalogView: some View {
     let client = URLSessionNetworkClient()
     let parser = OPDSParser()
     let api = DefaultCatalogAPI(client: client, parser: parser)
@@ -28,5 +51,4 @@ struct AppTabHostView: View {
     return CatalogView(viewModel: viewModel)
   }
 }
-
 

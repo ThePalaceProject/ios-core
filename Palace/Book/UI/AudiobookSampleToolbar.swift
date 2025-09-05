@@ -31,9 +31,6 @@ struct AudiobookSampleToolbar: View {
   }
 
   var body: some View {
-    SwiftUI.Group {
-      // HStack body
-    }
     HStack {
       imageView
       infoView

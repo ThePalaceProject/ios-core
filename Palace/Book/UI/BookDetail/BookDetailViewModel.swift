@@ -179,7 +179,6 @@ final class BookDetailViewModel: ObservableObject {
   }
 
   private func setupStableButtonState() {
-    // Debounce and deduplicate to avoid UI thrash
     Publishers.CombineLatest3($book, $bookState, $isManagingHold)
       .map { [weak self] book, state, isManaging in
         self?.computeButtonState(book: book, state: state, isManagingHold: isManaging) ?? .unsupported
@@ -194,7 +193,6 @@ final class BookDetailViewModel: ObservableObject {
     DispatchQueue.main.async { [weak self] in
       guard let self else { return }
       let updatedBook = registry.book(forIdentifier: book.identifier) ?? book
-      // Update local book metadata, but prefer bookStatePublisher for state transitions
       self.book = updatedBook
     }
   }
@@ -207,7 +205,6 @@ final class BookDetailViewModel: ObservableObject {
   }
   
   // MARK: - Notifications
-  
   
   @objc func handleDownloadStateDidChange(_ notification: Notification) {
     DispatchQueue.main.async { [weak self] in
@@ -357,7 +354,6 @@ final class BookDetailViewModel: ObservableObject {
   // MARK: - Download/Return/Cancel
   
   func didSelectDownload(for book: TPPBook) {
-    // Reset progress so the linear indicator does not flash as full from a prior value
     self.downloadProgress = 0
     let account = TPPUserAccount.sharedAccount()
     if account.needsAuth && !account.hasCredentials() {
@@ -370,7 +366,6 @@ final class BookDetailViewModel: ObservableObject {
       return
     }
     bookState = .downloading
-    // Keep half-sheet visible during initial borrow/download
     showHalfSheet = true
     downloadCenter.startDownload(for: book)
   }
@@ -458,8 +453,6 @@ final class BookDetailViewModel: ObservableObject {
     completion?()
   }
   
-  
-  
   private func getLCPLicenseURL(for book: TPPBook) -> URL? {
 #if LCP
     guard let bookFileURL = downloadCenter.fileUrl(for: book.identifier) else {
@@ -506,8 +499,6 @@ final class BookDetailViewModel: ObservableObject {
     lcpAudiobooks.startPrefetch()
   }
 #endif
-  
-  
   
   func openAudiobook(with book: TPPBook, json: [String: Any], drmDecryptor: DRMDecryptor?, completion: (() -> Void)?) {
     let vendorCompletion: (NSError?) -> Void = { [weak self] (error: NSError?) in
