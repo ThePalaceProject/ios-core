@@ -22,7 +22,6 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
   }
 
   public func search(query: String, baseURL: URL) async throws -> CatalogFeed? {
-    // Do not cache searches in memory for now
     try await api.search(query: query, baseURL: baseURL)
   }
 

@@ -487,7 +487,11 @@ extension MyBooksDownloadCenter {
     do {
       switch book.defaultBookContentType {
       case .epub, .pdf:
-        try FileManager.default.removeItem(at: bookURL)
+        if FileManager.default.fileExists(atPath: bookURL.path) {
+          try FileManager.default.removeItem(at: bookURL)
+        } else {
+          Log.info(#file, "Content file already missing (nothing to delete): \(bookURL.lastPathComponent)")
+        }
 #if LCP
         if book.defaultBookContentType == .pdf {
           try LCPPDFs.deletePdfContent(url: bookURL)
@@ -520,7 +524,11 @@ extension MyBooksDownloadCenter {
       AudiobookFactory.audiobookClass(for: manifest).deleteLocalContent(manifest: manifest, bookIdentifier: book.identifier)
     }
     
-    try FileManager.default.removeItem(at: bookURL)
+    if FileManager.default.fileExists(atPath: bookURL.path) {
+      try FileManager.default.removeItem(at: bookURL)
+    } else {
+      Log.info(#file, "Audiobook content already missing (nothing to delete): \(bookURL.lastPathComponent)")
+    }
     Log.info(#file, "Successfully deleted audiobook manifest & content \(book.identifier)")
   }
   
@@ -967,7 +975,8 @@ extension MyBooksDownloadCenter {
   /// and makes room accordingly, deleting least-recently-used content first.
   @objc func enforceContentDiskBudgetIfNeeded(adding bytesToAdd: Int64) {
     let smallDevice = UIScreen.main.nativeBounds.height <= 1334 // iPhone 6/7/8 size and below
-    let budgetBytes: Int64 = smallDevice ? (600 * 1024 * 1024) : (1_200 * 1024 * 1024)
+    // Relax budgets: give small devices ~1.2GB, others ~2.5GB before eviction
+    let budgetBytes: Int64 = smallDevice ? (1_200 * 1024 * 1024) : (2_500 * 1024 * 1024)
 
     let currentUsage = contentDirectoryUsageBytes()
     var neededFree = (currentUsage + bytesToAdd) - budgetBytes
@@ -977,6 +986,9 @@ extension MyBooksDownloadCenter {
     let fm = FileManager.default
     for url in files {
       if neededFree <= 0 { break }
+      // Never delete LCP license/content files during eviction
+      let ext = url.pathExtension.lowercased()
+      if ext == "lcpl" || ext == "lcpa" { continue }
       if let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize {
         try? fm.removeItem(at: url)
         neededFree -= Int64(size)

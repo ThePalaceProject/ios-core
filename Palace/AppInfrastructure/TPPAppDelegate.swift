@@ -296,7 +296,8 @@ final class MemoryPressureMonitor {
 
     // Opportunistic cleanup at startup
     monitorQueue.async { [weak self] in
-      self?.reclaimDiskSpaceIfNeeded(minimumFreeMegabytes: 512)
+      // Relax startup reclamation threshold to avoid aggressive evictions on older devices
+      self?.reclaimDiskSpaceIfNeeded(minimumFreeMegabytes: 256)
     }
   }
 
@@ -313,8 +314,8 @@ final class MemoryPressureMonitor {
       // Pause downloads briefly to allow memory to recover
       MyBooksDownloadCenter.shared.pauseAllDownloads()
 
-      // Attempt to free disk space as well
-      self.reclaimDiskSpaceIfNeeded(minimumFreeMegabytes: 512)
+      // Attempt to free disk space as well, but less aggressively
+      self.reclaimDiskSpaceIfNeeded(minimumFreeMegabytes: 256)
 
       // Resume a limited number of downloads after a short delay
       self.monitorQueue.asyncAfter(deadline: .now() + 5) {

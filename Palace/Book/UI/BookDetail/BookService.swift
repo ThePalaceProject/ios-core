@@ -43,20 +43,22 @@ enum BookService {
       }
     }
 #endif
-    // Non-LCP audiobook
-    guard let url = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier) else {
-      showAudiobookTryAgainError()
+    // Non-LCP audiobook: prefer local manifest, but fall back to fetching remotely if offloaded
+    if let url = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier),
+       FileManager.default.fileExists(atPath: url.path),
+       let data = try? Data(contentsOf: url),
+       let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
+      presentAudiobookFrom(book: book, json: json, decryptor: nil)
       return
     }
-    do {
-      let data = try Data(contentsOf: url)
-      guard let json = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] else {
+
+    // Local manifest missing or unreadable: fetch from acquisition URL
+    fetchOpenAccessManifest(for: book) { json in
+      guard let json else {
         showAudiobookTryAgainError()
         return
       }
       presentAudiobookFrom(book: book, json: json, decryptor: nil)
-    } catch {
-      showAudiobookTryAgainError()
     }
   }
 
@@ -218,6 +220,20 @@ enum BookService {
     }
 
     AudioBookVendorsHelper.updateVendorKey(book: jsonDict, completion: vendorCompletion)
+  }
+
+  private static func fetchOpenAccessManifest(for book: TPPBook, completion: @escaping ([String: Any]?) -> Void) {
+    guard let url = book.defaultAcquisition?.hrefURL else { completion(nil); return }
+    let task = TPPNetworkExecutor.shared.download(url) { data, response, error in
+      guard error == nil,
+            let data = data,
+            let json = (try? JSONSerialization.jsonObject(with: data, options: [])) as? [String: Any] else {
+        completion(nil)
+        return
+      }
+      completion(json)
+    }
+    task.resume()
   }
 
   private static func licenseURL(forBookIdentifier identifier: String) -> URL? {
