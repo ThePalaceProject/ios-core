@@ -23,6 +23,26 @@ enum BookService {
     }
   }
 
+  static func open(_ book: TPPBook, onFinish: (() -> Void)?) {
+    let resolvedBook = TPPBookRegistry.shared.book(forIdentifier: book.identifier) ?? book
+
+    switch resolvedBook.defaultBookContentType {
+    case .epub:
+      Task { @MainActor in
+        ReaderService.shared.openEPUB(resolvedBook)
+        onFinish?()
+      }
+    case .pdf:
+      Task { @MainActor in
+        presentPDF(resolvedBook) { onFinish?() }
+      }
+    case .audiobook:
+      presentAudiobook(resolvedBook, onFinish: onFinish)
+    default:
+      onFinish?()
+    }
+  }
+
   @MainActor private static func presentPDF(_ book: TPPBook) {
     guard let url = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier) else { return }
     let data = try? Data(contentsOf: url)
@@ -32,6 +52,18 @@ enum BookService {
       coordinator.storePDF(document: document, metadata: metadata, forBookId: book.identifier)
       coordinator.push(.pdf(BookRoute(id: book.identifier)))
     }
+  }
+
+  @MainActor private static func presentPDF(_ book: TPPBook, completion: (() -> Void)?) {
+    guard let url = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier) else { completion?(); return }
+    let data = try? Data(contentsOf: url)
+    let metadata = TPPPDFDocumentMetadata(with: book)
+    let document = TPPPDFDocument(data: data ?? Data())
+    if let coordinator = NavigationCoordinatorHub.shared.coordinator {
+      coordinator.storePDF(document: document, metadata: metadata, forBookId: book.identifier)
+      coordinator.push(.pdf(BookRoute(id: book.identifier)))
+    }
+    completion?()
   }
 
   private static func presentAudiobook(_ book: TPPBook) {
@@ -66,6 +98,37 @@ enum BookService {
     }
   }
 
+  private static func presentAudiobook(_ book: TPPBook, onFinish: (() -> Void)?) {
+#if LCP
+    if LCPAudiobooks.canOpenBook(book) {
+      if let localURL = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier), FileManager.default.fileExists(atPath: localURL.path) {
+        buildAndPresentAudiobook(book: book, lcpSourceURL: localURL, onFinish: onFinish)
+        return
+      }
+      if let license = licenseURL(forBookIdentifier: book.identifier) {
+        buildAndPresentAudiobook(book: book, lcpSourceURL: license, onFinish: onFinish)
+        return
+      }
+    }
+#endif
+    if let url = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier),
+       FileManager.default.fileExists(atPath: url.path),
+       let data = try? Data(contentsOf: url),
+       let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
+      presentAudiobookFrom(book: book, json: json, decryptor: nil, onFinish: onFinish)
+      return
+    }
+
+    fetchOpenAccessManifest(for: book) { json in
+      guard let json else {
+        showAudiobookTryAgainError()
+        onFinish?()
+        return
+      }
+      presentAudiobookFrom(book: book, json: json, decryptor: nil, onFinish: onFinish)
+    }
+  }
+
 #if LCP
   private static func buildAndPresentAudiobook(book: TPPBook, lcpSourceURL: URL) {
     guard let lcpAudiobooks = LCPAudiobooks(for: lcpSourceURL) else {
@@ -88,11 +151,35 @@ enum BookService {
   }
 #endif
 
-//  @MainActor
+#if LCP
+  private static func buildAndPresentAudiobook(book: TPPBook, lcpSourceURL: URL, onFinish: (() -> Void)?) {
+    guard let lcpAudiobooks = LCPAudiobooks(for: lcpSourceURL) else {
+      showAudiobookTryAgainError()
+      onFinish?()
+      return
+    }
+    if let cached = lcpAudiobooks.cachedContentDictionary() as? [String: Any] {
+      presentAudiobookFrom(book: book, json: cached, decryptor: lcpAudiobooks, onFinish: onFinish)
+      return
+    }
+    lcpAudiobooks.contentDictionary { dict, error in
+      DispatchQueue.main.async {
+        guard error == nil, let json = dict as? [String: Any] else {
+          showAudiobookTryAgainError()
+          onFinish?()
+          return
+        }
+        presentAudiobookFrom(book: book, json: json, decryptor: lcpAudiobooks, onFinish: onFinish)
+      }
+    }
+  }
+#endif
+
   private static func presentAudiobookFrom(
     book: TPPBook,
     json: [String: Any],
-    decryptor: DRMDecryptor?
+    decryptor: DRMDecryptor?,
+    onFinish: (() -> Void)? = nil
   ) {
     var jsonDict = json
     jsonDict["id"] = book.identifier
@@ -101,6 +188,7 @@ enum BookService {
       Task { @MainActor in
         guard error == nil else {
           showAudiobookTryAgainError()
+          onFinish?()
           return
         }
 
@@ -115,10 +203,11 @@ enum BookService {
           )
         else {
           showAudiobookTryAgainError()
+          onFinish?()
           return
         }
 
-        let metadata = AudiobookMetadata(title: book.title, authors: [book.authors ?? ""])
+        let metadata = AudiobookMetadata(title: book.title, authors: [book.authors ?? ""]) 
         var timeTracker: AudiobookTimeTracker?
         if
           let libraryId = AccountsManager.shared.currentAccount?.uuid,
@@ -163,9 +252,7 @@ enum BookService {
           )
         {
           manager.audiobook.player.play(at: localPosition, completion: nil)
-          // Ensure UI reflects restored location immediately
           playbackModel.jumpToInitialLocation(localPosition)
-          // Suppress immediate save thrash while we reconcile with remote
           playbackModel.beginSaveSuppression(for: 3.0)
         } else {
           if let firstTrack = audiobook.tableOfContents.allTracks.first {
@@ -193,8 +280,7 @@ enum BookService {
               )
             else { return }
 
-            let localDict = TPPBookRegistry.shared.location(forIdentifier: book.identifier)?
-              .locationStringDictionary()
+            let localDict = TPPBookRegistry.shared.location(forIdentifier: book.identifier)?.locationStringDictionary()
 
             var shouldMove = true
             if
@@ -212,13 +298,14 @@ enum BookService {
 
             if shouldMove {
               manager.audiobook.player.play(at: remotePosition, completion: nil)
-              // Extend suppression briefly after remote move
               playbackModel.beginSaveSuppression(for: 2.0)
             }
           }
+
+          onFinish?()
         } else {
-          // Presentation route failed, show Try Again error instead of any alternate/VO-only startup
           showAudiobookTryAgainError()
+          onFinish?()
         }
       }
     }

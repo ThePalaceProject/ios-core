@@ -10,8 +10,6 @@ struct BookImageView: View {
   @State private var pulse: Bool = false
 
   var body: some View {
-    let computedWidth: CGFloat? = width
-
     ZStack(alignment: .bottomTrailing) {
       if isShimmering {
         Rectangle()
@@ -34,13 +32,13 @@ struct BookImageView: View {
         Image(ImageResource.audiobookBadge)
           .resizable()
           .scaledToFit()
-          .frame(width: height * 0.15, height: height * 0.15)
+          .frame(width: height * 0.12, height: height * 0.12)
           .background(Circle().fill(Color.colorAudiobookBackground))
           .clipShape(Circle())
           .padding([.trailing, .bottom], 10)
       }
     }
-    .frame(width: computedWidth, height: height)
+    .frame(width: width, height: height)
     .onAppear {
       if book.coverImage == nil && book.thumbnailImage == nil {
         book.fetchCoverImage()

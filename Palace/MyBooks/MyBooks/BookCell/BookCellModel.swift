@@ -56,6 +56,9 @@ class BookCellModel: ObservableObject {
   private var cancellables = Set<AnyCancellable>()
   let imageCache: ImageCacheType
   private var isFetchingImage = false
+  #if LCP
+  private var didPrefetchLCPStreaming = false
+  #endif
   
   var statePublisher = PassthroughSubject<Bool, Never>()
   var state: BookCellState
@@ -106,6 +109,9 @@ class BookCellModel: ObservableObject {
     loadBookCoverImage()
     bindRegistryState()
     setupStableButtonState()
+    #if LCP
+    prefetchLCPStreamingIfPossible()
+    #endif
   }
   
   deinit {
@@ -238,8 +244,9 @@ extension BookCellModel {
   }
 
   private func openAudiobookFromCell() {
-    BookService.open(book)
-    self.isLoading = false
+    BookService.open(book) { [weak self] in
+      DispatchQueue.main.async { self?.isLoading = false }
+    }
   }
 
 
@@ -257,6 +264,18 @@ extension BookCellModel {
     return nil
 #endif
   }
+
+  #if LCP
+  private func prefetchLCPStreamingIfPossible() {
+    guard !didPrefetchLCPStreaming, LCPAudiobooks.canOpenBook(book) else { return }
+    if let localURL = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier), FileManager.default.fileExists(atPath: localURL.path) {
+      return
+    }
+    guard let license = licenseURL(forBookIdentifier: book.identifier), let lcpAudiobooks = LCPAudiobooks(for: license) else { return }
+    didPrefetchLCPStreaming = true
+    lcpAudiobooks.startPrefetch()
+  }
+  #endif
   
   func didSelectReturn() {
     self.isLoading = true

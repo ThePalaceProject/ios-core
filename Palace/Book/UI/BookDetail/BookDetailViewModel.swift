@@ -441,8 +441,7 @@ final class BookDetailViewModel: ObservableObject {
   // MARK: - Audiobook Opening
   
   func openAudiobook(_ book: TPPBook, completion: (() -> Void)? = nil) {
-    BookService.open(book)
-    completion?()
+    BookService.open(book, onFinish: completion)
   }
   
   private func getLCPLicenseURL(for book: TPPBook) -> URL? {
