@@ -106,6 +106,7 @@ struct MyBooksView: View {
           onSelect: { book in presentBookDetail(for: book) }
         )
         .refreshable { model.reloadData() }
+        .dismissKeyboardOnTap(onDismiss: { if model.showSearchSheet { model.searchQuery = "" } })
       }
     }
   }

@@ -28,6 +28,7 @@ struct HoldsView: View {
             )
             .padding(.horizontal, 8)
           }
+          .dismissKeyboardOnTap()
         }
       }
       .padding(.top, 100)

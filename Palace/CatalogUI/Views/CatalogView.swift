@@ -251,7 +251,6 @@ private extension CatalogView {
     }
   }
 
-  /// Content area below selectors: shows skeletons while reloading, otherwise lanes or ungrouped list.
   @ViewBuilder
   var contentArea: some View {
     if showSearch {
@@ -273,11 +272,18 @@ private extension CatalogView {
         ForEach(viewModel.lanes) { lane in
           Section(
             header:
-              HStack {
-                Text(lane.title).font(.title3).bold()
+              HStack(alignment: .top) {
+                Text(lane.title)
+                  .font(.title2)
+                  .lineLimit(3)
+                  .multilineTextAlignment(.leading)
+                  .fixedSize(horizontal: false, vertical: true)
                 Spacer()
                 if let more = lane.moreURL {
-                  Button("More…") { coordinator.push(.catalogLaneMore(title: lane.title, url: more)) }
+                  Button("More…") {
+                    coordinator.push(.catalogLaneMore(title: lane.title, url: more))
+                  }
+                  .font(.footnote)
                 }
               }
               .padding(.horizontal, 12)

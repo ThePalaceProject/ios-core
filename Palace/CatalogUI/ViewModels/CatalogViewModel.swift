@@ -273,19 +273,21 @@ extension CatalogViewModel {
   private static func buildGroupedContent(from feed: TPPOPDSFeed) -> ([CatalogLaneModel], [TPPBook]) {
     var titleToBooks: [String: [TPPBook]] = [:]
     var titleToMoreURL: [String: URL?] = [:]
+    var orderedTitles: [String] = []
     if let entries = feed.entries as? [TPPOPDSEntry] {
       for entry in entries {
         if let group = entry.groupAttributes,
            let book = makeBookBackground(from: entry) {
           let title = group.title ?? ""
+          if titleToBooks[title] == nil { orderedTitles.append(title) }
           titleToBooks[title, default: []].append(book)
           if titleToMoreURL[title] == nil { titleToMoreURL[title] = group.href }
         }
       }
     }
-    let lanes = titleToBooks
-      .map { title, books in CatalogLaneModel(title: title, books: books, moreURL: titleToMoreURL[title] ?? nil) }
-      .sorted { $0.title < $1.title }
+    let lanes: [CatalogLaneModel] = orderedTitles.map { title in
+      CatalogLaneModel(title: title, books: titleToBooks[title] ?? [], moreURL: titleToMoreURL[title] ?? nil)
+    }
     return (lanes, [])
   }
 

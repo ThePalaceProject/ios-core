@@ -26,6 +26,7 @@ struct BookListView: View {
         orientation.stopTracking()
       }
     }
+    .dismissKeyboardOnTap()
   }
 
   private var gridLayout: [GridItem] {

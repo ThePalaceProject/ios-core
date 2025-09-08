@@ -48,3 +48,9 @@ extension View {
     modifier(RefreshableScrollView(refreshAction))
   }
 }
+
+extension View {
+  func dismissKeyboardOnTap(onDismiss: (() -> Void)? = nil) -> some View {
+    modifier(DismissKeyboardOnTap(onDismiss: onDismiss))
+  }
+}

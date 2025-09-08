@@ -20,6 +20,8 @@ struct CatalogLaneMoreView: View {
   @State private var pendingSelections: Set<String> = []
   @State private var appliedSelections: Set<String> = []
   @State private var isApplyingFilters: Bool = false
+  @State private var searchQuery: String = ""
+  @State private var showSearch: Bool = false
 
   // MARK: - Audiobook Sample Toolbar (centralized)
 
@@ -43,11 +45,17 @@ struct CatalogLaneMoreView: View {
         Divider()
       }
 
+      if showSearch { searchBar.transition(.move(edge: .top).combined(with: .opacity)) }
+
       if isLoading {
         ScrollView {
           BookListSkeletonView()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+      } else if showSearch && !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        BookListView(books: filteredBooks, isLoading: $isLoading) { book in
+          presentBookDetail(book)
+        }
       } else if let error {
         Text(error).padding()
       } else if !lanes.isEmpty {
@@ -62,6 +70,7 @@ struct CatalogLaneMoreView: View {
                 onSelect: { presentBookDetail($0) },
                 showHeader: true
               )
+              .dismissKeyboardOnTap()
             }
           }
           .padding(.vertical, 12)
@@ -81,6 +90,17 @@ struct CatalogLaneMoreView: View {
         LibraryNavTitleView(onTap: { openLibraryHome() })
           .id(logoObserver.token.uuidString + currentAccountUUID)
       }
+      ToolbarItem(placement: .navigationBarTrailing) {
+        if showSearch {
+          Button(action: { withAnimation { showSearch = false; searchQuery = "" } }) {
+            Text(Strings.Generic.cancel)
+          }
+        } else {
+          Button(action: { withAnimation { showSearch = true } }) {
+            ImageProviders.MyBooksView.search
+          }
+        }
+      }
     }
     .task { await load() }
     .onAppear {
@@ -93,6 +113,12 @@ struct CatalogLaneMoreView: View {
       account?.logoDelegate = logoObserver
       account?.loadLogo()
       currentAccountUUID = account?.uuid ?? ""
+    }
+    .onReceive(NotificationCenter.default.publisher(for: .AppTabSelectionDidChange)) { _ in
+      if showSearch {
+        withAnimation { showSearch = false }
+        searchQuery = ""
+      }
     }
     .onReceive(NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)) { _ in
       let account = AccountsManager.shared.currentAccount
@@ -250,6 +276,52 @@ struct CatalogLaneMoreView: View {
       }
       if anyChanged { ungroupedBooks = books }
     }
+  }
+
+  // MARK: - Inline Search
+
+  private var allBooks: [TPPBook] {
+    if !lanes.isEmpty {
+      return lanes.flatMap { $0.books }
+    }
+    return ungroupedBooks
+  }
+
+  private var refreshedAllBooks: [TPPBook] {
+    allBooks.map { TPPBookRegistry.shared.updatedBookMetadata($0) ?? $0 }
+  }
+
+  private var filteredBooks: [TPPBook] {
+    let q = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !q.isEmpty else { return refreshedAllBooks }
+    let lower = q.lowercased()
+    return refreshedAllBooks.filter { book in
+      let title = book.title.lowercased()
+      let authors = (book.authors ?? "").lowercased()
+      return title.contains(lower) || authors.contains(lower)
+    }
+  }
+
+  @ViewBuilder
+  private var searchBar: some View {
+    ZStack {
+      TextField(NSLocalizedString("Search Catalog", comment: ""), text: $searchQuery)
+        .padding(8)
+        .background(Color.gray.opacity(0.2))
+        .cornerRadius(10)
+        .padding(.horizontal)
+
+      if !searchQuery.isEmpty {
+        HStack {
+          Spacer()
+          Button(action: { searchQuery = "" }) {
+            Image(systemName: "xmark.circle.fill").foregroundColor(.gray)
+          }
+          .padding(.trailing, 20)
+        }
+      }
+    }
+    .padding(.vertical, 8)
   }
 
   // MARK: - Navigation

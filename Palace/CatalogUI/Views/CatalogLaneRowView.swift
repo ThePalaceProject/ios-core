@@ -37,11 +37,16 @@ struct CatalogLaneRowView: View {
 
   @ViewBuilder
   static func header(title: String, moreURL: URL?) -> some View {
-    HStack {
-      Text(title).font(.title3).bold()
+    HStack(alignment: .top) {
+      Text(title)
+        .font(.title2)
+        .lineLimit(3)
+        .multilineTextAlignment(.leading)
+        .fixedSize(horizontal: false, vertical: true)
       Spacer()
       if let more = moreURL {
         NavigationLink("More…", destination: CatalogLaneMoreView(title: title, url: more))
+          .font(.footnote)
       }
     }
   }
