@@ -4,26 +4,7 @@ import Combine
 import PalaceAudiobookToolkit
 
 enum BookService {
-  static func open(_ book: TPPBook) {
-    let resolvedBook = TPPBookRegistry.shared.book(forIdentifier: book.identifier) ?? book
-
-    switch resolvedBook.defaultBookContentType {
-    case .epub:
-      Task { @MainActor in
-        ReaderService.shared.openEPUB(resolvedBook)
-      }
-    case .pdf:
-      Task { @MainActor in
-        presentPDF(resolvedBook)
-      }
-    case .audiobook:
-      presentAudiobook(resolvedBook)
-    default:
-      break
-    }
-  }
-
-  static func open(_ book: TPPBook, onFinish: (() -> Void)?) {
+  static func open(_ book: TPPBook, onFinish: (() -> Void)? = nil) {
     let resolvedBook = TPPBookRegistry.shared.book(forIdentifier: book.identifier) ?? book
 
     switch resolvedBook.defaultBookContentType {
@@ -42,19 +23,8 @@ enum BookService {
       onFinish?()
     }
   }
-
-  @MainActor private static func presentPDF(_ book: TPPBook) {
-    guard let url = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier) else { return }
-    let data = try? Data(contentsOf: url)
-    let metadata = TPPPDFDocumentMetadata(with: book)
-    let document = TPPPDFDocument(data: data ?? Data())
-    if let coordinator = NavigationCoordinatorHub.shared.coordinator {
-      coordinator.storePDF(document: document, metadata: metadata, forBookId: book.identifier)
-      coordinator.push(.pdf(BookRoute(id: book.identifier)))
-    }
-  }
-
-  @MainActor private static func presentPDF(_ book: TPPBook, completion: (() -> Void)?) {
+  
+  @MainActor private static func presentPDF(_ book: TPPBook, completion: (() -> Void)? = nil) {
     guard let url = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier) else { completion?(); return }
     let data = try? Data(contentsOf: url)
     let metadata = TPPPDFDocumentMetadata(with: book)
@@ -66,39 +36,7 @@ enum BookService {
     completion?()
   }
 
-  private static func presentAudiobook(_ book: TPPBook) {
-#if LCP
-    if LCPAudiobooks.canOpenBook(book) {
-      if let localURL = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier), FileManager.default.fileExists(atPath: localURL.path) {
-        buildAndPresentAudiobook(book: book, lcpSourceURL: localURL)
-        return
-      }
-      if let license = licenseURL(forBookIdentifier: book.identifier) {
-        buildAndPresentAudiobook(book: book, lcpSourceURL: license)
-        return
-      }
-    }
-#endif
-    // Non-LCP audiobook: prefer local manifest, but fall back to fetching remotely if offloaded
-    if let url = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier),
-       FileManager.default.fileExists(atPath: url.path),
-       let data = try? Data(contentsOf: url),
-       let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
-      presentAudiobookFrom(book: book, json: json, decryptor: nil)
-      return
-    }
-
-    // Local manifest missing or unreadable: fetch from acquisition URL
-    fetchOpenAccessManifest(for: book) { json in
-      guard let json else {
-        showAudiobookTryAgainError()
-        return
-      }
-      presentAudiobookFrom(book: book, json: json, decryptor: nil)
-    }
-  }
-
-  private static func presentAudiobook(_ book: TPPBook, onFinish: (() -> Void)?) {
+  private static func presentAudiobook(_ book: TPPBook, onFinish: (() -> Void)? = nil) {
 #if LCP
     if LCPAudiobooks.canOpenBook(book) {
       if let localURL = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier), FileManager.default.fileExists(atPath: localURL.path) {
