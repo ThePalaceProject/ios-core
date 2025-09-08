@@ -25,7 +25,6 @@ struct BookImageView: View {
         Image(uiImage: coverImage)
           .resizable()
           .aspectRatio(contentMode: .fit)
-          .frame(width: computedWidth, height: height)
           .opacity(isShimmering ? 0 : 1)
           .transition(.opacity)
           .onAppear { withAnimation(.easeInOut(duration: 0.25)) { isShimmering = false } }
@@ -35,7 +34,7 @@ struct BookImageView: View {
         Image(ImageResource.audiobookBadge)
           .resizable()
           .scaledToFit()
-          .frame(width: height * 0.12, height: height * 0.12)
+          .frame(width: height * 0.15, height: height * 0.15)
           .background(Circle().fill(Color.colorAudiobookBackground))
           .clipShape(Circle())
           .padding([.trailing, .bottom], 10)

@@ -14,7 +14,7 @@ struct HoldsView: View {
       VStack(spacing: 0) {
 
         if model.isLoading {
-          BookListSkeletonView(rows: 10, imageSize: CGSize(width: 100, height: 150))
+          BookListSkeletonView(rows: 10)
         } else if model.visibleBooks.isEmpty {
           Spacer()
           emptyView

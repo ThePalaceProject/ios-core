@@ -8,18 +8,17 @@ struct BookListView: View {
 
   var body: some View {
     ScrollView {
-      LazyVGrid(columns: gridLayout, spacing: 0) {
+      LazyVGrid(columns: gridLayout, spacing: 12) {
         ForEach(books, id: \.identifier) { book in
           Button(action: { onSelect(book) }) {
             BookCell(model: BookCellModel(book: book, imageCache: ImageCache.shared))
-              .frame(maxWidth: .infinity, minHeight: 180, maxHeight: 180)
           }
           .buttonStyle(.plain)
-          .padding(5)
           .applyBorderStyle()
         }
       }
-      .padding()
+      .padding(.horizontal, 12)
+      .padding(.vertical, 12)
       .onAppear {
         orientation.startTracking()
       }
@@ -34,7 +33,7 @@ struct BookListView: View {
   }
 
   private var minColumnWidth: CGFloat {
-    UIDevice.current.userInterfaceIdiom == .pad ? 320 : 300
+    UIDevice.current.userInterfaceIdiom == .pad ? 240 : 220
   }
 }
 
