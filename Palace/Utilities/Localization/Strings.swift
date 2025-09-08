@@ -114,6 +114,7 @@ struct Strings {
   struct Settings {
     static let settings = NSLocalizedString("Settings", comment: "")
     static let libraries = NSLocalizedString("Libraries", comment: "A title for a list of libraries the user may select or add to.")
+    static let catalog = NSLocalizedString("Catalog", comment: "For the catalog tab")
     static let addLibrary = NSLocalizedString("Add Library", comment: "Title of button to add a new library")
     static let aboutApp = NSLocalizedString("About App", comment: "")
     static let softwareLicenses = NSLocalizedString("Software Licenses", comment: "")

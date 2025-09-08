@@ -171,7 +171,8 @@ class BookCellModel: ObservableObject {
 
   private func computeButtonState(book: TPPBook, registryState: TPPBookState, isManagingHold: Bool) -> BookButtonState {
     let availability = book.defaultAcquisition?.availability
-    let isProcessingDownload = isLoading || registryState == .downloading
+    // Only reflect actual download state from registry; do not treat UI image loading as download-in-progress
+    let isProcessingDownload = registryState == .downloading
     if case .holding = registryState, isManagingHold { return .managingHold }
     return BookButtonMapper.map(
       registryState: registryState,

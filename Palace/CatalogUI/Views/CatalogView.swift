@@ -30,8 +30,14 @@ struct CatalogView: View {
           }
         }
         ToolbarItem(placement: .navigationBarTrailing) {
-          Button(action: { withAnimation { showSearch.toggle() } }) {
-            ImageProviders.MyBooksView.search
+          if showSearch {
+            Button(action: { withAnimation { showSearch = false; searchQuery = "" } }) {
+              Text(Strings.Generic.cancel)
+            }
+          } else {
+            Button(action: { withAnimation { showSearch = true } }) {
+              ImageProviders.MyBooksView.search
+            }
           }
         }
       }
@@ -80,12 +86,29 @@ struct CatalogView: View {
         currentAccountUUID = account?.uuid ?? ""
         Task { await viewModel.handleAccountChange() }
       }
+      .onReceive(NotificationCenter.default.publisher(for: .AppTabSelectionDidChange)) { _ in
+        if showSearch {
+          withAnimation { showSearch = false }
+          searchQuery = ""
+        }
+      }
   }
 }
 
 private extension CatalogView {
   @ViewBuilder
   var content: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      searchSection
+      loadingSection
+      errorSection
+      mainCatalogSection
+    }
+  }
+
+
+  @ViewBuilder
+  private var searchSection: some View {
     if showSearch {
       VStack(spacing: 0) {
         searchBar
@@ -93,20 +116,48 @@ private extension CatalogView {
           presentBookDetail(book)
         }
       }
-    } else if viewModel.isLoading {
+    } else {
+      EmptyView()
+    }
+  }
+
+  @ViewBuilder
+  private var loadingSection: some View {
+    if !showSearch && viewModel.isLoading {
       skeletonList
-    } else if let error = viewModel.errorMessage {
+    } else {
+      EmptyView()
+    }
+  }
+
+  @ViewBuilder
+  private var errorSection: some View {
+    if !showSearch, let error = viewModel.errorMessage {
       Text(error)
     } else {
-      ScrollView {
-        VStack(alignment: .leading, spacing: 24) {
-          selectorsView
-          contentArea
+      EmptyView()
+    }
+  }
+
+  @ViewBuilder
+  private var mainCatalogSection: some View {
+    if !showSearch && !viewModel.isLoading && viewModel.errorMessage == nil {
+      VStack(alignment: .leading, spacing: 0) {
+        selectorsView
+
+        ScrollView {
+          LazyVStack(alignment: .leading, spacing: 24) {
+            SwiftUI.Group {
+              contentArea
+            }
+          }
+          .padding(.vertical, 12)
+          .padding(.bottom, 100)
         }
-        .padding(.vertical, 12)
-        .padding(.bottom, 100)
+        .refreshable { await viewModel.refresh() }
       }
-      .refreshable { await viewModel.refresh() }
+    } else {
+      EmptyView()
     }
   }
   
@@ -218,7 +269,7 @@ private extension CatalogView {
       }
       .padding(.vertical, 0)
     } else if !viewModel.lanes.isEmpty {
-      LazyVStack(alignment: .leading, spacing: 24, pinnedViews: [.sectionHeaders]) {
+      LazyVStack(alignment: .leading, spacing: 24) {
         ForEach(viewModel.lanes) { lane in
           Section(
             header:
@@ -236,7 +287,7 @@ private extension CatalogView {
               LazyHStack(spacing: 12) {
                 ForEach(lane.books, id: \.identifier) { book in
                   Button(action: { presentBookDetail(book) }) {
-                    BookImageView(book: book, width: nil, height: 180, usePulseSkeleton: true)
+                    BookImageView(book: book, width: nil, height: 150, usePulseSkeleton: true)
                   }
                   .buttonStyle(.plain)
                 }

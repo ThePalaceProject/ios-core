@@ -32,7 +32,15 @@ struct MyBooksView: View {
           .id(logoObserver.token.uuidString + currentAccountUUID)
         }
         ToolbarItem(placement: .navigationBarLeading) { leadingBarButton }
-        ToolbarItem(placement: .navigationBarTrailing) { trailingBarButton }
+        ToolbarItem(placement: .navigationBarTrailing) {
+          if model.showSearchSheet {
+            Button(action: { withAnimation { model.showSearchSheet = false; model.searchQuery = "" } }) {
+              Text(Strings.Generic.cancel)
+            }
+          } else {
+            trailingBarButton
+          }
+        }
       }
       .onAppear {
         model.showSearchSheet = false
