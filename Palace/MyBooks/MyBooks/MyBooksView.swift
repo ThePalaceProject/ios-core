@@ -14,7 +14,7 @@ struct MyBooksView: View {
   var body: some View {
       ZStack {
         if model.isLoading {
-          BookListSkeletonView(rows: 10, imageSize: CGSize(width: 100, height: 150))
+          BookListSkeletonView(rows: 10)
         } else {
           mainContent
         }

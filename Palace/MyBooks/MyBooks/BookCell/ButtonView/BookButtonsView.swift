@@ -2,6 +2,7 @@ import SwiftUI
 
 fileprivate typealias DisplayStrings = Strings.BookButton
 
+@MainActor
 protocol BookButtonProvider: ObservableObject {
   var book: TPPBook { get }
   var buttonTypes: [BookButtonType] { get }

@@ -7,6 +7,7 @@
 //
 
 
+@MainActor
 class DeviceOrientation: ObservableObject {
   @Published var isLandscape: Bool = UIDevice.current.orientation.isLandscape
 

@@ -16,6 +16,7 @@ protocol EPUBSearchDelegate: AnyObject {
 
 typealias SearchViewSection = (id: String, title: String, locators: [Locator])
 
+@MainActor
 final class EPUBSearchViewModel: ObservableObject {
   enum State {
     case empty

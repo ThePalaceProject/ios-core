@@ -142,7 +142,9 @@ extension TPPUserNotifications: UNUserNotificationCenterDelegate
       }
 
       if currentAccount.details?.supportsReservations == true {
-        AppTabRouterHub.shared.router?.selected = .holds
+        Task { @MainActor in
+          AppTabRouterHub.shared.router?.selected = .holds
+        }
       }
       completionHandler()
     }

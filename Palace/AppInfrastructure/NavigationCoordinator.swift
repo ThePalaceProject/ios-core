@@ -25,6 +25,7 @@ struct SearchRoute: Hashable {
 
 /// Centralized coordinator for NavigationStack-based routing.
 /// Owns a NavigationPath and transient payload storage to resolve non-hashable models.
+@MainActor
 final class NavigationCoordinator: ObservableObject {
   @Published var path = NavigationPath()
 

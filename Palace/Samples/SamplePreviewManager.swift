@@ -1,5 +1,6 @@
 import SwiftUI
 
+@MainActor
 final class SamplePreviewManager: ObservableObject {
   static let shared = SamplePreviewManager()
 

@@ -46,9 +46,6 @@ struct CatalogLaneMoreView: View {
       if isLoading {
         ScrollView {
           BookListSkeletonView()
-            .padding(.vertical, 12)
-            .padding(.horizontal, 8)
-
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
       } else if let error {
@@ -106,7 +103,6 @@ struct CatalogLaneMoreView: View {
       pendingSelections.removeAll()
       Task { await load() }
     }
-    // Show/Toggle audiobook preview via centralized manager
     .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ToggleSampleNotification")).receive(on: RunLoop.main)) { note in
       guard let info = note.userInfo as? [String: Any], let identifier = info["bookIdentifier"] as? String else { return }
       let action = (info["action"] as? String) ?? "toggle"
@@ -167,8 +163,6 @@ struct CatalogLaneMoreView: View {
     defer { isLoading = false }
     await fetchAndApplyFeed(at: url)
   }
-
-  
 
   @MainActor
   private func fetchAndApplyFeed(at url: URL) async {

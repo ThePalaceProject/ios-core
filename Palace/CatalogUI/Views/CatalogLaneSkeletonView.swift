@@ -23,6 +23,7 @@ struct CatalogLaneSkeletonView: View {
           }
         }
         .padding(.horizontal, 12)
+        .padding(.vertical)
       }
     }
     .onAppear {

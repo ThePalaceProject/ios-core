@@ -27,7 +27,7 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
        book: TPPBook,
        initialLocation: Locator?,
        resourcesServer: HTTPServer,
-       preferences: EPUBPreferences = TPPReaderSettings.loadPreferences(),
+       preferences: EPUBPreferences = TPPReaderPreferencesLoad(),
        forSample: Bool = false) throws {
 
     self.systemUserInterfaceStyle = UITraitCollection.current.userInterfaceStyle

@@ -2,6 +2,7 @@ import SwiftUI
 import ReadiumShared
 import ReadiumNavigator
 
+@MainActor
 class TPPReaderSettings: ObservableObject {
   private static let preferencesKey = "TPPReaderSettings"
 
@@ -147,4 +148,14 @@ class TPPReaderSettings: ObservableObject {
     default: return nil
     }
   }
+}
+
+// Non-isolated helper for loading reader preferences outside of MainActor contexts
+func TPPReaderPreferencesLoad() -> EPUBPreferences {
+  let key = "TPPReaderSettings"
+  if let data = UserDefaults.standard.data(forKey: key),
+     let preferences = try? JSONDecoder().decode(EPUBPreferences.self, from: data) {
+    return preferences
+  }
+  return EPUBPreferences()
 }

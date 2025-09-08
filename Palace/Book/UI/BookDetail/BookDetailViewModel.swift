@@ -408,15 +408,17 @@ final class BookDetailViewModel: ObservableObject {
   func openBook(_ book: TPPBook, completion: (() -> Void)?) {
     TPPCirculationAnalytics.postEvent("open_book", withBook: book)
     
-    switch book.defaultBookContentType {
+    let resolvedBook = registry.book(forIdentifier: book.identifier) ?? book
+
+    switch resolvedBook.defaultBookContentType {
     case .epub:
       processingButtons.removeAll()
-      presentEPUB(book)
+      presentEPUB(resolvedBook)
     case .pdf:
       processingButtons.removeAll()
-      presentPDF(book)
+      presentPDF(resolvedBook)
     case .audiobook:
-      openAudiobook(book) { [weak self] in
+      openAudiobook(resolvedBook) { [weak self] in
         DispatchQueue.main.async {
           self?.processingButtons.removeAll()
           completion?()
@@ -439,8 +441,7 @@ final class BookDetailViewModel: ObservableObject {
   // MARK: - Audiobook Opening
   
   func openAudiobook(_ book: TPPBook, completion: (() -> Void)? = nil) {
-    BookService.open(book)
-    completion?()
+    BookService.open(book, onFinish: completion)
   }
   
   private func getLCPLicenseURL(for book: TPPBook) -> URL? {

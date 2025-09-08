@@ -10,8 +10,6 @@ struct BookImageView: View {
   @State private var pulse: Bool = false
 
   var body: some View {
-    let computedWidth: CGFloat? = width
-
     ZStack(alignment: .bottomTrailing) {
       if isShimmering {
         Rectangle()
@@ -25,7 +23,6 @@ struct BookImageView: View {
         Image(uiImage: coverImage)
           .resizable()
           .aspectRatio(contentMode: .fit)
-          .frame(width: computedWidth, height: height)
           .opacity(isShimmering ? 0 : 1)
           .transition(.opacity)
           .onAppear { withAnimation(.easeInOut(duration: 0.25)) { isShimmering = false } }
@@ -41,7 +38,7 @@ struct BookImageView: View {
           .padding([.trailing, .bottom], 10)
       }
     }
-    .frame(width: computedWidth, height: height)
+    .frame(width: width, height: height)
     .onAppear {
       if book.coverImage == nil && book.thumbnailImage == nil {
         book.fetchCoverImage()

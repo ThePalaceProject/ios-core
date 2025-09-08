@@ -16,8 +16,7 @@ struct NormalBookCell: View {
   @State var showHalfSheet: Bool = false
 
   @ObservedObject var model: BookCellModel
-  private let cellHeight: CGFloat = 125
-  private let imageViewWidth: CGFloat = 100
+  private let cellHeight: CGFloat = 180
 
   var body: some View {
     HStack(alignment: .center, spacing: 15) {
@@ -59,9 +58,9 @@ struct NormalBookCell: View {
   }
 
   @ViewBuilder private var titleCoverImageView: some View {
-    BookImageView(book: model.book, width: imageViewWidth, height: cellHeight)
+    BookImageView(book: model.book, width: nil, height: cellHeight)
       .adaptiveShadowLight(radius: 1.5)
-      .frame(width: imageViewWidth)
+      .frame(width: cellHeight * 2.0 / 3.0)
   }
 
   

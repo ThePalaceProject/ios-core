@@ -7,6 +7,7 @@ enum AppTab: Hashable {
   case settings
 }
 
+@MainActor
 final class AppTabRouter: ObservableObject {
   @Published var selected: AppTab = .catalog
 }

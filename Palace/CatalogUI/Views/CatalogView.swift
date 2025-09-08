@@ -180,7 +180,7 @@ private extension CatalogView {
         }
       }
       .padding(.vertical, 12)
-      .padding(.horizontal, 8)
+      .padding(.horizontal, 12)
     }
   }
 
