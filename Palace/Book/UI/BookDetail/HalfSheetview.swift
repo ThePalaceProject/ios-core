@@ -1,5 +1,6 @@
 import SwiftUI
 
+@MainActor
 protocol HalfSheetProvider: ObservableObject, BookButtonProvider {
   var isFullSize: Bool { get }
   var bookState: TPPBookState { get set }
