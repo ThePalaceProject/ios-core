@@ -318,7 +318,7 @@ private extension CatalogView {
     let q = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !q.isEmpty else { return allBooks }
     let lower = q.lowercased()
-    // Use identifier as unique id; ForEach uses id: \.identifier already
+
     return allBooks.filter { book in
       let title = book.title.lowercased()
       let authors = (book.authors ?? "").lowercased()
@@ -327,17 +327,21 @@ private extension CatalogView {
   }
 
   var searchBar: some View {
-    HStack {
+    ZStack {
       TextField(NSLocalizedString("Search Catalog", comment: ""), text: $searchQuery)
         .padding(8)
         .background(Color.gray.opacity(0.2))
         .cornerRadius(10)
         .padding(.horizontal)
+      
       if !searchQuery.isEmpty {
-        Button(action: { searchQuery = "" }) {
-          Image(systemName: "xmark.circle.fill").foregroundColor(.gray)
+        HStack {
+          Spacer()
+          Button(action: { searchQuery = "" }) {
+            Image(systemName: "xmark.circle.fill").foregroundColor(.gray)
+          }
+          .padding(.trailing, 20)
         }
-        .padding(.trailing)
       }
     }
     .padding(.vertical, 8)
