@@ -1,6 +1,7 @@
 import Combine
 import SwiftUI
 
+@MainActor
 final class HoldsBookViewModel: ObservableObject, Identifiable {
     let book: TPPBook
 
@@ -24,6 +25,7 @@ final class HoldsBookViewModel: ObservableObject, Identifiable {
     }
 }
 
+@MainActor
 final class HoldsViewModel: ObservableObject {
     @Published var reservedBookVMs: [HoldsBookViewModel] = []
     @Published var heldBookVMs: [HoldsBookViewModel] = []
