@@ -5,21 +5,25 @@ import PalaceAudiobookToolkit
 
 enum BookService {
   static func open(_ book: TPPBook) {
-    switch book.defaultBookContentType {
+    let resolvedBook = TPPBookRegistry.shared.book(forIdentifier: book.identifier) ?? book
+
+    switch resolvedBook.defaultBookContentType {
     case .epub:
       Task { @MainActor in
-        ReaderService.shared.openEPUB(book)
+        ReaderService.shared.openEPUB(resolvedBook)
       }
     case .pdf:
-      presentPDF(book)
+      Task { @MainActor in
+        presentPDF(resolvedBook)
+      }
     case .audiobook:
-      presentAudiobook(book)
+      presentAudiobook(resolvedBook)
     default:
       break
     }
   }
 
-  private static func presentPDF(_ book: TPPBook) {
+  @MainActor private static func presentPDF(_ book: TPPBook) {
     guard let url = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier) else { return }
     let data = try? Data(contentsOf: url)
     let metadata = TPPPDFDocumentMetadata(with: book)
