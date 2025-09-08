@@ -7,10 +7,11 @@ struct AppTabHostView: View {
   var body: some View {
     TabView(selection: $router.selected) {
       NavigationHostView(rootView: catalogView)
+        .environmentObject(router)
         .tabItem {
           VStack {
             Image("Catalog").renderingMode(.template)
-            Text(Strings.Settings.libraries) // Catalog label; consider a dedicated Strings.Catalog.catalog if desired
+            Text(Strings.Settings.catalog)
           }
         }
         .tag(AppTab.catalog)
@@ -47,6 +48,7 @@ struct AppTabHostView: View {
          let top = appDelegate.topViewController() {
         top.dismiss(animated: true)
       }
+      NotificationCenter.default.post(name: .AppTabSelectionDidChange, object: nil)
     }
   }
 
@@ -60,5 +62,9 @@ struct AppTabHostView: View {
     }
     return CatalogView(viewModel: viewModel)
   }
+}
+
+extension Notification.Name {
+  static let AppTabSelectionDidChange = Notification.Name("AppTabSelectionDidChange")
 }
 
