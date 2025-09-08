@@ -98,6 +98,17 @@ struct CatalogView: View {
 private extension CatalogView {
   @ViewBuilder
   var content: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      searchSection
+      loadingSection
+      errorSection
+      mainCatalogSection
+    }
+  }
+
+
+  @ViewBuilder
+  private var searchSection: some View {
     if showSearch {
       VStack(spacing: 0) {
         searchBar
@@ -105,31 +116,48 @@ private extension CatalogView {
           presentBookDetail(book)
         }
       }
-    } else if viewModel.isLoading {
+    } else {
+      EmptyView()
+    }
+  }
+
+  @ViewBuilder
+  private var loadingSection: some View {
+    if !showSearch && viewModel.isLoading {
       skeletonList
-    } else if let error = viewModel.errorMessage {
+    } else {
+      EmptyView()
+    }
+  }
+
+  @ViewBuilder
+  private var errorSection: some View {
+    if !showSearch, let error = viewModel.errorMessage {
       Text(error)
     } else {
-      ScrollView {
-        LazyVStack(alignment: .leading, spacing: 24, pinnedViews: [.sectionHeaders]) {
-          Section(
-            header:
-              VStack(alignment: .leading, spacing: 0) {
-                selectorsView
-              }
-              .background(Color(UIColor.systemBackground))
-          ) {
-            EmptyView()
-          }
+      EmptyView()
+    }
+  }
 
-          SwiftUI.Group {
-            contentArea
+  @ViewBuilder
+  private var mainCatalogSection: some View {
+    if !showSearch && !viewModel.isLoading && viewModel.errorMessage == nil {
+      VStack(alignment: .leading, spacing: 0) {
+        selectorsView
+
+        ScrollView {
+          LazyVStack(alignment: .leading, spacing: 24) {
+            SwiftUI.Group {
+              contentArea
+            }
           }
+          .padding(.vertical, 12)
+          .padding(.bottom, 100)
         }
-        .padding(.vertical, 12)
-        .padding(.bottom, 100)
+        .refreshable { await viewModel.refresh() }
       }
-      .refreshable { await viewModel.refresh() }
+    } else {
+      EmptyView()
     }
   }
   
