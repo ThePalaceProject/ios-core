@@ -64,9 +64,12 @@ struct BookButtonMapper {
     availability.matchUnavailable { _ in
       // “unavailable” means no copies right now, but user can place a hold
       state = .canHold
-    } limited: { _ in
-      // “limited” means some copies exist (OR zero), so we treat it as “canBorrow”
-      state = .canBorrow
+    } limited: { limited in
+      if limited.copiesAvailable == TPPOPDSAcquisitionAvailabilityCopiesUnknown || limited.copiesAvailable > 0 {
+        state = .canBorrow
+      } else {
+        state = .canHold
+      }
     } unlimited: { _ in
       // “unlimited” means infinite/always‐available → canBorrow
       state = .canBorrow

@@ -210,7 +210,11 @@ extension BookCellModel {
       isManagingHold = false
       bookState = .returning
       showHalfSheet = true
-    case .remove, .returning, .cancelHold, .manageHold:
+    case .manageHold:
+      isManagingHold = true
+      bookState = .holding
+      showHalfSheet = true
+    case .remove, .returning, .cancelHold:
       didSelectReturn()
     case .cancel:
       didSelectCancel()
@@ -284,7 +288,11 @@ extension BookCellModel {
     self.isLoading = true
     let identifier = self.book.identifier
     MyBooksDownloadCenter.shared.returnBook(withIdentifier: identifier) { [weak self] in
-      DispatchQueue.main.async { self?.isLoading = false }
+      DispatchQueue.main.async {
+        self?.isLoading = false
+        self?.isManagingHold = false
+        self?.showHalfSheet = false
+      }
     }
   }
   
@@ -308,17 +316,22 @@ extension BookCellModel {
   }
 
   func didSelectReserve() {
+    isLoading = true
     let account = TPPUserAccount.sharedAccount()
     if account.needsAuth && !account.hasCredentials() {
       TPPAccountSignInViewController.requestCredentials { [weak self] in
         guard let self else { return }
         TPPUserNotifications.requestAuthorization()
-        TPPBookRegistry.shared.setState(.holding, for: self.book.identifier)
+        MyBooksDownloadCenter.shared.startBorrow(for: self.book, attemptDownload: false) { [weak self] in
+          DispatchQueue.main.async { self?.isLoading = false }
+        }
       }
       return
     }
     TPPUserNotifications.requestAuthorization()
-    TPPBookRegistry.shared.setState(.holding, for: book.identifier)
+    MyBooksDownloadCenter.shared.startBorrow(for: book, attemptDownload: false) { [weak self] in
+      DispatchQueue.main.async { self?.isLoading = false }
+    }
   }
   
   func didSelectSample() {

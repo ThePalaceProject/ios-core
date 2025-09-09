@@ -130,10 +130,14 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
   private let bookStateSubject = PassthroughSubject<(String, TPPBookState), Never>()
 
   var registryPublisher: AnyPublisher<[String: TPPBookRegistryRecord], Never> {
-    registrySubject.eraseToAnyPublisher()
+    registrySubject
+      .receive(on: RunLoop.main)
+      .eraseToAnyPublisher()
   }
   var bookStatePublisher: AnyPublisher<(String, TPPBookState), Never> {
-    bookStateSubject.eraseToAnyPublisher()
+    bookStateSubject
+      .receive(on: RunLoop.main)
+      .eraseToAnyPublisher()
   }
 
   private var syncState = BoolWithDelay { value in
@@ -418,11 +422,22 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     syncQueue.async(flags: .barrier) { [weak self] in
       guard let self, let record = self.registry[book.identifier] else { return }
       
+      var nextState = record.state
+      if record.state == .unregistered {
+        book.defaultAcquisition?.availability.matchUnavailable(
+          nil,
+          limited: nil,
+          unlimited: nil,
+          reserved: { _ in nextState = .holding },
+          ready: { _ in nextState = .holding }
+        )
+      }
+
       TPPUserNotifications.compareAvailability(cachedRecord: record, andNewBook: book)
       self.registry[book.identifier] = TPPBookRegistryRecord(
         book: book,
         location: record.location,
-        state: record.state,
+        state: nextState,
         fulfillmentId: record.fulfillmentId,
         readiumBookmarks: record.readiumBookmarks,
         genericBookmarks: record.genericBookmarks
@@ -467,14 +482,16 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
 
   @available(*, deprecated, message: "Use Combine publishers instead.")
   private func postStateNotification(bookIdentifier: String, state: TPPBookState) {
-    NotificationCenter.default.post(
-      name: .TPPBookRegistryStateDidChange,
-      object: nil,
-      userInfo: [
-        "bookIdentifier": bookIdentifier,
-        "state": state.rawValue
-      ]
-    )
+    DispatchQueue.main.async {
+      NotificationCenter.default.post(
+        name: .TPPBookRegistryStateDidChange,
+        object: nil,
+        userInfo: [
+          "bookIdentifier": bookIdentifier,
+          "state": state.rawValue
+        ]
+      )
+    }
   }
 
   /// Returns the book for a given identifier if it is registered, else nil.

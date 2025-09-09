@@ -13,10 +13,9 @@ final class HoldsBookViewModel: ObservableObject, Identifiable {
             nil,
             limited: nil,
             unlimited: nil,
-            reserved: nil
-        ) { (_: TPPOPDSAcquisitionAvailabilityReady) in
-            reservedFlag = true
-        }
+            reserved: { (_: TPPOPDSAcquisitionAvailabilityReserved) in reservedFlag = true },
+            ready: { (_: TPPOPDSAcquisitionAvailabilityReady) in reservedFlag = true }
+        )
         return reservedFlag
     }
 
@@ -39,12 +38,14 @@ final class HoldsViewModel: ObservableObject {
 
     init() {
         NotificationCenter.default.publisher(for: .TPPSyncBegan)
+            .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 self?.isLoading = true
             }
             .store(in: &cancellables)
 
         NotificationCenter.default.publisher(for: .TPPSyncEnded)
+            .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 self?.isLoading = false
                 self?.reloadData()
@@ -52,6 +53,7 @@ final class HoldsViewModel: ObservableObject {
             .store(in: &cancellables)
 
         NotificationCenter.default.publisher(for: .TPPBookRegistryDidChange)
+            .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 self?.reloadData()
             }

@@ -82,22 +82,35 @@ import OverdriveProcessor
       if let feed = feed,
          let borrowedEntry = feed.entries.first as? TPPOPDSEntry,
          let borrowedBook = TPPBook(entry: borrowedEntry) {
-        
+
         let location = self?.bookRegistry.location(forIdentifier: borrowedBook.identifier)
-        
+
+        // Determine correct registry state based on availability
+        var newState: TPPBookState = .downloadNeeded
+        borrowedBook.defaultAcquisition?.availability.matchUnavailable(
+          { _ in newState = .holding },
+          limited: { _ in newState = .downloadNeeded },
+          unlimited: { _ in newState = .downloadNeeded },
+          reserved: { _ in newState = .holding },
+          ready: { _ in newState = .downloadNeeded }
+        )
+
         self?.bookRegistry.addBook(
           borrowedBook,
           location: location,
-          state: .downloadNeeded,
+          state: newState,
           fulfillmentId: nil,
           readiumBookmarks: nil,
           genericBookmarks: nil
         )
-        
-        if shouldAttemptDownload {
+
+        // Emit explicit state update so SwiftUI lists refresh immediately
+        self?.bookRegistry.setState(newState, for: borrowedBook.identifier)
+
+        if shouldAttemptDownload && newState == .downloadNeeded {
           self?.startDownloadIfAvailable(book: borrowedBook)
         }
-        
+
       } else {
         self?.process(error: error as? [String: Any], for: book)
       }

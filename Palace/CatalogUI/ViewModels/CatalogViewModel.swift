@@ -27,25 +27,43 @@ final class CatalogViewModel: ObservableObject {
 
   func load() async {
     if !lanes.isEmpty || !ungroupedBooks.isEmpty { return }
-    guard let url = topLevelURLProvider() else { return }
-    isLoading = true
-    errorMessage = nil
+    guard let url = topLevelURLProvider() else { 
+      await MainActor.run { self.isLoading = false }
+      return 
+    }
+    
+    await MainActor.run {
+      self.isLoading = true
+      self.errorMessage = nil
+    }
 
     currentLoadTask?.cancel()
+    
     currentLoadTask = Task { [weak self] in
-      guard let self else { return }
+      guard let self, !Task.isCancelled else { return }
+      
       do {
         guard let feed = try await self.repository.loadTopLevelCatalog(at: url) else {
-          await MainActor.run { self.errorMessage = "Failed to load catalog" }
+          guard !Task.isCancelled else { return }
+          await MainActor.run { 
+            if !Task.isCancelled {
+              self.errorMessage = "Failed to load catalog"
+              self.isLoading = false
+            }
+          }
           return
         }
 
+        guard !Task.isCancelled else { return }
+        
         let mapped = await Task.detached(priority: .userInitiated) { () -> MappedCatalog in
           return await Self.mapFeed(feed)
         }.value
 
-        if Task.isCancelled { return }
+        guard !Task.isCancelled else { return }
+        
         await MainActor.run {
+          guard !Task.isCancelled else { return }
           self.title = mapped.title
           self.entries = mapped.entries
           self.lanes = mapped.lanes
@@ -56,17 +74,19 @@ final class CatalogViewModel: ObservableObject {
           self.isLoading = false
         }
 
-        // Prefetch some thumbnails to speed perceived loading
+        guard !Task.isCancelled else { return }
         if !mapped.lanes.isEmpty {
-          self.prefetchThumbnails(for: mapped.lanes.first?.books ?? [])
+          await self.prefetchThumbnails(for: mapped.lanes.first?.books ?? [])
         } else if !mapped.ungroupedBooks.isEmpty {
-          self.prefetchThumbnails(for: Array(mapped.ungroupedBooks.prefix(20)))
+          await self.prefetchThumbnails(for: Array(mapped.ungroupedBooks.prefix(20)))
         }
       } catch {
-        if Task.isCancelled { return }
+        guard !Task.isCancelled else { return }
         await MainActor.run {
-          self.errorMessage = error.localizedDescription
-          self.isLoading = false
+          if !Task.isCancelled {
+            self.errorMessage = error.localizedDescription
+            self.isLoading = false
+          }
         }
       }
     }

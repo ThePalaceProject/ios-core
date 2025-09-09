@@ -33,7 +33,6 @@ struct HoldsView: View {
           .dismissKeyboardOnTap()
         }
       }
-      .padding(.top, 100)
       .background(Color(TPPConfiguration.backgroundColor()))
       .navigationBarTitleDisplayMode(.inline)
       .toolbar {
@@ -95,6 +94,7 @@ struct HoldsView: View {
     .background(Color(TPPConfiguration.backgroundColor()))
     .font(.system(size: 18))
     .padding(.horizontal, 24)
+    .padding(.top, 100)
   }
   
   /// Semi‐transparent loading overlay
