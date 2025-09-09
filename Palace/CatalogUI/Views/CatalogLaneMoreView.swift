@@ -54,10 +54,9 @@ struct CatalogLaneMoreView: View {
         ScrollView {
           VStack(alignment: .leading, spacing: 24) {
             ForEach(lanes) { lane in
-              let refreshed = lane.books.map { TPPBookRegistry.shared.updatedBookMetadata($0) ?? $0 }
               CatalogLaneRowView(
                 title: lane.title,
-                books: refreshed,
+                books: lane.books,
                 moreURL: lane.moreURL,
                 onSelect: { presentBookDetail($0) },
                 showHeader: true
@@ -68,7 +67,7 @@ struct CatalogLaneMoreView: View {
         }
         .refreshable { await fetchAndApplyFeed(at: url) }
       } else {
-        BookListView(books: ungroupedBooks.map { TPPBookRegistry.shared.updatedBookMetadata($0) ?? $0 }, isLoading: $isLoading) { book in
+        BookListView(books: ungroupedBooks, isLoading: $isLoading) { book in
           presentBookDetail(book)
         }
         .refreshable { await fetchAndApplyFeed(at: url) }

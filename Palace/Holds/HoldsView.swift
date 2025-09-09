@@ -6,6 +6,8 @@ struct HoldsView: View {
   typealias DisplayStrings = Strings.HoldsView
   
   @StateObject private var model = HoldsViewModel()
+  @StateObject private var logoObserver = CatalogLogoObserver()
+  @State private var currentAccountUUID: String = AccountsManager.shared.currentAccount?.uuid ?? ""
   private var allBooks: [TPPBook] {
     model.reservedBookVMs.map { $0.book } + model.heldBookVMs.map { $0.book }
   }
@@ -28,9 +30,9 @@ struct HoldsView: View {
             )
             .padding(.horizontal, 8)
           }
+          .dismissKeyboardOnTap()
         }
       }
-      .padding(.top, 100)
       .background(Color(TPPConfiguration.backgroundColor()))
       .navigationBarTitleDisplayMode(.inline)
       .toolbar {
@@ -40,6 +42,7 @@ struct HoldsView: View {
               UIApplication.shared.open(url, options: [:], completionHandler: nil)
             }
           })
+          .id(logoObserver.token.uuidString + currentAccountUUID)
         }
         ToolbarItem(placement: .navigationBarLeading) { leadingBarButton }
         ToolbarItem(placement: .navigationBarTrailing) { trailingBarButton }
@@ -47,6 +50,16 @@ struct HoldsView: View {
       .onAppear {
         model.showSearchSheet = false
         model.showLibraryAccountView = false
+        let account = AccountsManager.shared.currentAccount
+        account?.logoDelegate = logoObserver
+        account?.loadLogo()
+        currentAccountUUID = account?.uuid ?? ""
+      }
+      .onReceive(NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)) { _ in
+        let account = AccountsManager.shared.currentAccount
+        account?.logoDelegate = logoObserver
+        account?.loadLogo()
+        currentAccountUUID = account?.uuid ?? ""
       }
       .refreshable {
         model.refresh()
@@ -81,6 +94,7 @@ struct HoldsView: View {
     .background(Color(TPPConfiguration.backgroundColor()))
     .font(.system(size: 18))
     .padding(.horizontal, 24)
+    .padding(.top, 100)
   }
   
   /// Semi‐transparent loading overlay

@@ -44,7 +44,7 @@ extension BookButtonState {
         buttons.append(book.isAudiobook ? .audiobookSample : .sample)
       }
     case .managingHold:
-      buttons = [.cancelHold, .close]
+      buttons = [.cancelHold]
     case .downloadNeeded:
       if let authDef = TPPUserAccount.sharedAccount().authDefinition,
          authDef.needsAuth || book.defaultAcquisitionIfOpenAccess != nil {
@@ -70,7 +70,7 @@ extension BookButtonState {
         buttons.append(.remove)
       }
     case .downloadInProgress:
-      buttons = [.cancel]
+      buttons = [.cancel, .retry]
     case .downloadFailed:
       buttons = [.cancel, .retry]
     case .returning:
@@ -80,9 +80,7 @@ extension BookButtonState {
     }
 
     if !book.supportsDeletion(for: self) {
-      buttons = buttons.filter {
-        $0 != .return || $0 != .remove
-      }
+      buttons = buttons.filter { $0 != .return && $0 != .remove }
     }
 
     return buttons

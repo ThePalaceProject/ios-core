@@ -1,42 +1,41 @@
 import Foundation
 import Combine
 
+// MARK: - SearchView Model
 @MainActor
-final class CatalogSearchViewModel: ObservableObject {
-  @Published var query: String = ""
-  @Published private(set) var isSearching: Bool = false
-  @Published private(set) var filteredBooks: [TPPBook] = []
-
-  private let allBooks: [TPPBook]
-
-  init(allBooks: [TPPBook]) {
-    self.allBooks = allBooks
-    self.filteredBooks = allBooks
+class CatalogSearchViewModel: ObservableObject {
+  @Published var searchQuery: String = ""
+  @Published var filteredBooks: [TPPBook] = []
+  
+  private var allBooks: [TPPBook] = []
+  
+  func updateBooks(_ books: [TPPBook]) {
+    allBooks = books
+    filterBooks()
   }
-
-  func updateQuery(_ newValue: String) {
-    query = newValue
-    applyLocalFilter()
+  
+  func updateSearchQuery(_ query: String) {
+    searchQuery = query
+    filterBooks()
   }
-
-  private func applyLocalFilter() {
-    let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmed.isEmpty else {
+  
+  func clearSearch() {
+    searchQuery = ""
+    filterBooks()
+  }
+  
+  private func filterBooks() {
+    let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !query.isEmpty else {
       filteredBooks = allBooks
       return
     }
     
-    let lower = trimmed.lowercased()
+    let lowercaseQuery = query.lowercased()
     filteredBooks = allBooks.filter { book in
-      if book.title.lowercased().contains(lower) { return true }
-     
-      book.authorNameArray?.map {
-        return ($0.lowercased().contains(lower)) != nil
-      }
-      
-      return false
+      let title = book.title.lowercased()
+      let authors = (book.authors ?? "").lowercased()
+      return title.contains(lowercaseQuery) || authors.contains(lowercaseQuery)
     }
   }
 }
-
-

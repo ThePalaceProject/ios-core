@@ -202,13 +202,19 @@ class BookCellModel: ObservableObject {
 extension BookCellModel {
   func callDelegate(for action: BookButtonType) {
     switch action {
-    case .download, .retry, .get, .reserve:
+    case .download, .retry, .get:
       didSelectDownload()
+    case .reserve:
+      didSelectReserve()
     case .return:
       isManagingHold = false
       bookState = .returning
       showHalfSheet = true
-    case .remove, .returning, .cancelHold, .manageHold:
+    case .manageHold:
+      isManagingHold = true
+      bookState = .holding
+      showHalfSheet = true
+    case .remove, .returning, .cancelHold:
       didSelectReturn()
     case .cancel:
       didSelectCancel()
@@ -282,15 +288,50 @@ extension BookCellModel {
     self.isLoading = true
     let identifier = self.book.identifier
     MyBooksDownloadCenter.shared.returnBook(withIdentifier: identifier) { [weak self] in
-      DispatchQueue.main.async { self?.isLoading = false }
+      DispatchQueue.main.async {
+        self?.isLoading = false
+        self?.isManagingHold = false
+        self?.showHalfSheet = false
+      }
     }
   }
   
   func didSelectDownload() {
+    let account = TPPUserAccount.sharedAccount()
+    if account.needsAuth && !account.hasCredentials() {
+      TPPAccountSignInViewController.requestCredentials { [weak self] in
+        guard let self else { return }
+        self.startDownloadNow()
+      }
+      return
+    }
+    startDownloadNow()
+  }
+
+  private func startDownloadNow() {
     if case .canHold = state.buttonState {
       TPPUserNotifications.requestAuthorization()
     }
     MyBooksDownloadCenter.shared.startDownload(for: book)
+  }
+
+  func didSelectReserve() {
+    isLoading = true
+    let account = TPPUserAccount.sharedAccount()
+    if account.needsAuth && !account.hasCredentials() {
+      TPPAccountSignInViewController.requestCredentials { [weak self] in
+        guard let self else { return }
+        TPPUserNotifications.requestAuthorization()
+        MyBooksDownloadCenter.shared.startBorrow(for: self.book, attemptDownload: false) { [weak self] in
+          DispatchQueue.main.async { self?.isLoading = false }
+        }
+      }
+      return
+    }
+    TPPUserNotifications.requestAuthorization()
+    MyBooksDownloadCenter.shared.startBorrow(for: book, attemptDownload: false) { [weak self] in
+      DispatchQueue.main.async { self?.isLoading = false }
+    }
   }
   
   func didSelectSample() {

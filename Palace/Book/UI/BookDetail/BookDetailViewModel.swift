@@ -133,6 +133,13 @@ final class BookDetailViewModel: ObservableObject {
           return
         }
         self.bookState = registryState
+        if registryState == .unregistered {
+          // Ensure UI is not left in a managing/processing state after returning
+          self.isManagingHold = false
+          self.showHalfSheet = false
+          self.processingButtons.remove(.returning)
+          self.processingButtons.remove(.cancelHold)
+        }
       }
       .store(in: &cancellables)
   }
@@ -280,8 +287,7 @@ final class BookDetailViewModel: ObservableObject {
     
     switch button {
     case .reserve:
-      downloadCenter.startDownload(for: book)
-      registry.setState(.holding, for: book.identifier)
+      didSelectReserve(for: book)
       removeProcessingButton(button)
       showHalfSheet = false
     case .return, .remove:
@@ -289,8 +295,9 @@ final class BookDetailViewModel: ObservableObject {
       removeProcessingButton(button)
       
     case .returning, .cancelHold:
+      // didSelectReturn will guard against duplicate requests using processingButtons
       didSelectReturn(for: book) {
-        self.removeProcessingButton(.returning)
+        self.removeProcessingButton(button)
         self.showHalfSheet = false
         self.isManagingHold = false
       }
@@ -347,14 +354,30 @@ final class BookDetailViewModel: ObservableObject {
       showHalfSheet = false
       TPPAccountSignInViewController.requestCredentials { [weak self] in
         guard let self else { return }
-        self.bookState = .downloading
-        self.downloadCenter.startDownload(for: book)
+        self.startDownloadAfterAuth(book: book)
       }
       return
     }
+    startDownloadAfterAuth(book: book)
+  }
+
+  private func startDownloadAfterAuth(book: TPPBook) {
     bookState = .downloading
     showHalfSheet = true
     downloadCenter.startDownload(for: book)
+  }
+
+  func didSelectReserve(for book: TPPBook) {
+    let account = TPPUserAccount.sharedAccount()
+    if account.needsAuth && !account.hasCredentials() {
+      showHalfSheet = false
+      TPPAccountSignInViewController.requestCredentials { [weak self] in
+        guard let self else { return }
+        self.downloadCenter.startBorrow(for: book, attemptDownload: false)
+      }
+      return
+    }
+    downloadCenter.startBorrow(for: book, attemptDownload: false)
   }
   
   func didSelectCancel() {
@@ -363,8 +386,12 @@ final class BookDetailViewModel: ObservableObject {
   }
   
   func didSelectReturn(for book: TPPBook, completion: (() -> Void)?) {
+    // Prevent multiple return requests and UI loops
+    processingButtons.insert(.returning)
     downloadCenter.returnBook(withIdentifier: book.identifier) { [weak self] in
-      self?.bookState = .unregistered
+      guard let self else { return }
+      self.bookState = .unregistered
+      self.processingButtons.remove(.returning)
       completion?()
     }
   }

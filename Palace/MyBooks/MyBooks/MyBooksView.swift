@@ -65,7 +65,6 @@ struct MyBooksView: View {
         )
       }
       .actionSheet(isPresented: $showSortSheet) { sortActionSheet }
-      // Notification still supported but routed through manager for compatibility
       .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ToggleSampleNotification")).receive(on: RunLoop.main)) { note in
         guard let info = note.userInfo as? [String: Any], let identifier = info["bookIdentifier"] as? String else { return }
         let action = (info["action"] as? String) ?? "toggle"
@@ -106,6 +105,7 @@ struct MyBooksView: View {
           onSelect: { book in presentBookDetail(for: book) }
         )
         .refreshable { model.reloadData() }
+        .dismissKeyboardOnTap(onDismiss: { if model.showSearchSheet { model.searchQuery = "" } })
       }
     }
   }
