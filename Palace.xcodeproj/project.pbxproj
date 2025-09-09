@@ -680,6 +680,8 @@
 		E5A1412A28D4F1B20091AD2D /* TPPBook.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A1412928D4F1B20091AD2D /* TPPBook.swift */; };
 		E5A1413328D9018A0091AD2D /* TPPBook.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A1412928D4F1B20091AD2D /* TPPBook.swift */; };
 		E5A1413528D94DDA0091AD2D /* TPPContentType.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A1413428D94DDA0091AD2D /* TPPContentType.swift */; };
+		E5A6DA412E708FAB00E9CB60 /* CatalogSearchViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A6DA402E708FAB00E9CB60 /* CatalogSearchViewModelTests.swift */; };
+		E5A6DA432E708FBB00E9CB60 /* CatalogViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A6DA422E708FBB00E9CB60 /* CatalogViewModelTests.swift */; };
 		E5AA6F4129A6BA4000601B02 /* RefreshableView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AA6F4029A6BA4000601B02 /* RefreshableView.swift */; };
 		E5AA6F4229A6BA4500601B02 /* RefreshableView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AA6F4029A6BA4000601B02 /* RefreshableView.swift */; };
 		E5AD65DD2684FACA00C62951 /* TPPAccountListCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AD65DC2684FACA00C62951 /* TPPAccountListCell.swift */; };
@@ -1576,6 +1578,8 @@
 		E5A0CEA52AA9856000C304EC /* TPPReauthenticatorMock.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPReauthenticatorMock.swift; sourceTree = "<group>"; };
 		E5A1412928D4F1B20091AD2D /* TPPBook.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBook.swift; sourceTree = "<group>"; };
 		E5A1413428D94DDA0091AD2D /* TPPContentType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPContentType.swift; sourceTree = "<group>"; };
+		E5A6DA402E708FAB00E9CB60 /* CatalogSearchViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogSearchViewModelTests.swift; sourceTree = "<group>"; };
+		E5A6DA422E708FBB00E9CB60 /* CatalogViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogViewModelTests.swift; sourceTree = "<group>"; };
 		E5AA6F4029A6BA4000601B02 /* RefreshableView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RefreshableView.swift; sourceTree = "<group>"; };
 		E5AD65DC2684FACA00C62951 /* TPPAccountListCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAccountListCell.swift; sourceTree = "<group>"; };
 		E5AD65E02684FDA300C62951 /* TPPAccountListDataSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAccountListDataSource.swift; sourceTree = "<group>"; };
@@ -2828,6 +2832,8 @@
 		A823D82F192BABA400B55DE2 /* PalaceTests */ = {
 			isa = PBXGroup;
 			children = (
+				E5A6DA402E708FAB00E9CB60 /* CatalogSearchViewModelTests.swift */,
+				E5A6DA422E708FBB00E9CB60 /* CatalogViewModelTests.swift */,
 				E50546782E62020D007CCFAB /* URLSession+Stubbing.swift */,
 				E50546762E6201E6007CCFAB /* HTTPStubURLProtocol.swift */,
 				E50546742E6201D4007CCFAB /* OPDSFeedParsingTests.swift */,
@@ -3781,6 +3787,7 @@
 				735DD0C225229DAC0096D1F9 /* TPPCatalogFacetTests.m in Sources */,
 				7384C800242BB43400D5F960 /* TPPCachingTests.swift in Sources */,
 				E5B8E9A62E14DE8B002E0F3D /* MockImageCache.swift in Sources */,
+				E5A6DA412E708FAB00E9CB60 /* CatalogSearchViewModelTests.swift in Sources */,
 				5D3A28D522D400D00042B3BD /* UserProfileDocumentTests.swift in Sources */,
 				7307A5ED23FF1A8500DE53DE /* TPPOpenSearchDescriptionTests.swift in Sources */,
 				735771A8253763E800067CEA /* TPPBookRegistryMock.swift in Sources */,
@@ -3818,6 +3825,7 @@
 				2D8790A520129AF200E2763F /* TPPOPDSAcquisitionPathTests.swift in Sources */,
 				735350B724918432006021BD /* URLRequest+NYPLTests.swift in Sources */,
 				73A794CA25492C9800C59CC1 /* TPPFake.swift in Sources */,
+				E5A6DA432E708FBB00E9CB60 /* CatalogViewModelTests.swift in Sources */,
 				7384C804242BCE5900D5F960 /* Date+NYPLAdditionsTests.swift in Sources */,
 				735DD0C125229C9A0096D1F9 /* UIColor+NYPLAdditionsTests.swift in Sources */,
 				E5A0CEA12AA9850300C304EC /* MyBooksDownloadCenterTests.swift in Sources */,
