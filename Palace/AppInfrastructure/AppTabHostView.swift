@@ -3,6 +3,7 @@ import UIKit
 
 struct AppTabHostView: View {
   @StateObject private var router = AppTabRouter()
+  @State private var holdsBadgeCount: Int = 0
   
   var body: some View {
     TabView(selection: $router.selected) {
@@ -32,6 +33,7 @@ struct AppTabHostView: View {
             Text(Strings.HoldsView.reservations)
           }
         }
+        .badge(holdsBadgeCount)
         .tag(AppTab.holds)
 
       NavigationHostView(rootView: TPPSettingsView())
@@ -50,6 +52,12 @@ struct AppTabHostView: View {
       }
       NotificationCenter.default.post(name: .AppTabSelectionDidChange, object: nil)
     }
+    .onAppear {
+      updateHoldsBadge()
+    }
+    .onReceive(NotificationCenter.default.publisher(for: .TPPBookRegistryStateDidChange)) { _ in
+      updateHoldsBadge()
+    }
   }
 
   var catalogView: some View {
@@ -61,6 +69,21 @@ struct AppTabHostView: View {
       TPPSettings.shared.accountMainFeedURL
     }
     return CatalogView(viewModel: viewModel)
+  }
+}
+
+private extension AppTabHostView {
+  func updateHoldsBadge() {
+    let held = TPPBookRegistry.shared.heldBooks
+    var readyCount = 0
+    for book in held {
+      book.defaultAcquisition?.availability.matchUnavailable(nil,
+                                                            limited: nil,
+                                                            unlimited: nil,
+                                                            reserved: nil,
+                                                            ready: { _ in readyCount += 1 })
+    }
+    holdsBadgeCount = readyCount
   }
 }
 

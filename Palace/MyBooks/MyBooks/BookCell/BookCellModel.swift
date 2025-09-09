@@ -202,8 +202,10 @@ class BookCellModel: ObservableObject {
 extension BookCellModel {
   func callDelegate(for action: BookButtonType) {
     switch action {
-    case .download, .retry, .get, .reserve:
+    case .download, .retry, .get:
       didSelectDownload()
+    case .reserve:
+      didSelectReserve()
     case .return:
       isManagingHold = false
       bookState = .returning
@@ -287,10 +289,36 @@ extension BookCellModel {
   }
   
   func didSelectDownload() {
+    let account = TPPUserAccount.sharedAccount()
+    if account.needsAuth && !account.hasCredentials() {
+      TPPAccountSignInViewController.requestCredentials { [weak self] in
+        guard let self else { return }
+        self.startDownloadNow()
+      }
+      return
+    }
+    startDownloadNow()
+  }
+
+  private func startDownloadNow() {
     if case .canHold = state.buttonState {
       TPPUserNotifications.requestAuthorization()
     }
     MyBooksDownloadCenter.shared.startDownload(for: book)
+  }
+
+  func didSelectReserve() {
+    let account = TPPUserAccount.sharedAccount()
+    if account.needsAuth && !account.hasCredentials() {
+      TPPAccountSignInViewController.requestCredentials { [weak self] in
+        guard let self else { return }
+        TPPUserNotifications.requestAuthorization()
+        TPPBookRegistry.shared.setState(.holding, for: self.book.identifier)
+      }
+      return
+    }
+    TPPUserNotifications.requestAuthorization()
+    TPPBookRegistry.shared.setState(.holding, for: book.identifier)
   }
   
   func didSelectSample() {

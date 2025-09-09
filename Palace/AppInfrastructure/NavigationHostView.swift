@@ -26,7 +26,13 @@ struct NavigationHostView<Content: View>: View {
           case .catalogLaneMore(let title, let url):
             CatalogLaneMoreView(title: title, url: url)
           case .search(let searchRoute):
-            CatalogSearchView(books: coordinator.resolveSearchBooks(for: searchRoute))
+            CatalogSearchView(
+              books: coordinator.resolveSearchBooks(for: searchRoute),
+              onBookSelected: { book in
+                coordinator.store(book: book)
+                coordinator.push(.bookDetail(BookRoute(id: book.identifier)))
+              }
+            )
           case .pdf(let bookRoute):
             if let (document, metadata) = coordinator.resolvePDF(for: bookRoute) {
               TPPPDFReaderView(document: document)

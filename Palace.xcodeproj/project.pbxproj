@@ -768,6 +768,8 @@
 		E5F2E9B72CEE8550007EA6C9 /* PureLayout in Frameworks */ = {isa = PBXBuildFile; productRef = E5F2E9B62CEE8550007EA6C9 /* PureLayout */; };
 		E5F4A2E12E6F65A5009B32AA /* KeyboardModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5F4A2E02E6F65A5009B32AA /* KeyboardModifier.swift */; };
 		E5F4A2E22E6F65A5009B32AA /* KeyboardModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5F4A2E02E6F65A5009B32AA /* KeyboardModifier.swift */; };
+		E5F4A3182E6FE6C7009B32AA /* CatalogContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5F4A3172E6FE6C7009B32AA /* CatalogContentView.swift */; };
+		E5F4A3192E6FE6C7009B32AA /* CatalogContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5F4A3172E6FE6C7009B32AA /* CatalogContentView.swift */; };
 		E5F8A57D28A48B8300A229AE /* BookPreviewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5F8A57C28A48B8300A229AE /* BookPreviewTests.swift */; };
 		E5FD62132BFD30E400DD4B94 /* AudiobookBookmarkBusinessLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5FD62122BFD30E400DD4B94 /* AudiobookBookmarkBusinessLogic.swift */; };
 		E5FD62142BFD30F500DD4B94 /* LoadingViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E523124C28641505007D1DB5 /* LoadingViewController.swift */; };
@@ -1615,6 +1617,7 @@
 		E5EFDE77298C43D300258CA3 /* BookButtonState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookButtonState.swift; sourceTree = "<group>"; };
 		E5EFDE7B298C4F8000258CA3 /* BookCellModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookCellModel.swift; sourceTree = "<group>"; };
 		E5F4A2E02E6F65A5009B32AA /* KeyboardModifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardModifier.swift; sourceTree = "<group>"; };
+		E5F4A3172E6FE6C7009B32AA /* CatalogContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogContentView.swift; sourceTree = "<group>"; };
 		E5F8A57C28A48B8300A229AE /* BookPreviewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookPreviewTests.swift; sourceTree = "<group>"; };
 		E5FD62122BFD30E400DD4B94 /* AudiobookBookmarkBusinessLogic.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AudiobookBookmarkBusinessLogic.swift; sourceTree = "<group>"; };
 		E5FFB96328AED4850042907F /* ImageProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageProvider.swift; sourceTree = "<group>"; };
@@ -3099,6 +3102,7 @@
 				E50543632E5F68B2007CCFAB /* LibraryNavTitle.swift */,
 				E5AD72F42E552A36005A8070 /* FacetsSelectorView.swift */,
 				E5AD72F12E5526B1005A8070 /* CatalogLaneMoreView.swift */,
+				E5F4A3172E6FE6C7009B32AA /* CatalogContentView.swift */,
 				E5AD72D92E5520FB005A8070 /* CatalogView.swift */,
 				E50543662E5F6A4F007CCFAB /* CatalogSearchView.swift */,
 			);
@@ -4079,6 +4083,7 @@
 				73EB0AEF25821DF4006BC997 /* TPPOPDSAttribute.m in Sources */,
 				E53573DA29653095008BDCA4 /* FacetViewModel.swift in Sources */,
 				E792892A2861F5B0000313D7 /* TPPPDFSearchView.swift in Sources */,
+				E5F4A3182E6FE6C7009B32AA /* CatalogContentView.swift in Sources */,
 				73EB0AF125821DF4006BC997 /* TPPSettings.swift in Sources */,
 				21E41782292810EE00A78606 /* TPPBookLocation+pageNumber.swift in Sources */,
 				73EB0AF325821DF4006BC997 /* TPPSettingsAccountsList.swift in Sources */,
@@ -4382,6 +4387,7 @@
 				E5EFDE7C298C4F8000258CA3 /* BookCellModel.swift in Sources */,
 				2D754BC22002F1B10061D34F /* TPPOPDSIndirectAcquisition.m in Sources */,
 				21E35FC3268CC8AC00066F9D /* AdobeContentProtectionService.swift in Sources */,
+				E5F4A3192E6FE6C7009B32AA /* CatalogContentView.swift in Sources */,
 				E521E9C82D513E3F00C08ADF /* BookButtonsView.swift in Sources */,
 				21C7B87E25AE1DBA000E8BF3 /* LibraryServiceError.swift in Sources */,
 				E5E03F362CED172200D9979D /* TPPReadiumBookmark+R3.swift in Sources */,

@@ -280,8 +280,7 @@ final class BookDetailViewModel: ObservableObject {
     
     switch button {
     case .reserve:
-      downloadCenter.startDownload(for: book)
-      registry.setState(.holding, for: book.identifier)
+      didSelectReserve(for: book)
       removeProcessingButton(button)
       showHalfSheet = false
     case .return, .remove:
@@ -347,14 +346,30 @@ final class BookDetailViewModel: ObservableObject {
       showHalfSheet = false
       TPPAccountSignInViewController.requestCredentials { [weak self] in
         guard let self else { return }
-        self.bookState = .downloading
-        self.downloadCenter.startDownload(for: book)
+        self.startDownloadAfterAuth(book: book)
       }
       return
     }
+    startDownloadAfterAuth(book: book)
+  }
+
+  private func startDownloadAfterAuth(book: TPPBook) {
     bookState = .downloading
     showHalfSheet = true
     downloadCenter.startDownload(for: book)
+  }
+
+  func didSelectReserve(for book: TPPBook) {
+    let account = TPPUserAccount.sharedAccount()
+    if account.needsAuth && !account.hasCredentials() {
+      showHalfSheet = false
+      TPPAccountSignInViewController.requestCredentials { [weak self] in
+        guard let self else { return }
+        self.registry.setState(.holding, for: book.identifier)
+      }
+      return
+    }
+    registry.setState(.holding, for: book.identifier)
   }
   
   func didSelectCancel() {
