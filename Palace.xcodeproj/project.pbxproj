@@ -251,7 +251,6 @@
 		735771AE2537687D00067CEA /* TPPURLSettingsProviderMock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 735771AD2537687D00067CEA /* TPPURLSettingsProviderMock.swift */; };
 		735771B12537691800067CEA /* TPPDRMAuthorizingMock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 735771B02537691800067CEA /* TPPDRMAuthorizingMock.swift */; };
 		735DD0C125229C9A0096D1F9 /* UIColor+NYPLAdditionsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 735DD0BD252299A90096D1F9 /* UIColor+NYPLAdditionsTests.swift */; };
-		735DD0C225229DAC0096D1F9 /* TPPCatalogFacetTests.m in Sources */ = {isa = PBXBuildFile; fileRef = 1142E4E719EEC7C500D9B3D9 /* TPPCatalogFacetTests.m */; };
 		735F41A3243E381D00046182 /* String+NYPLAdditionsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 735F41A2243E381D00046182 /* String+NYPLAdditionsTests.swift */; };
 		735FED262427494900144C97 /* TPPNetworkResponder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 735FED252427494900144C97 /* TPPNetworkResponder.swift */; };
 		7360D0D524BFCB9700C8AD16 /* TPPUserFriendlyError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7360D0D424BFCB9700C8AD16 /* TPPUserFriendlyError.swift */; };
@@ -680,8 +679,6 @@
 		E5A1412A28D4F1B20091AD2D /* TPPBook.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A1412928D4F1B20091AD2D /* TPPBook.swift */; };
 		E5A1413328D9018A0091AD2D /* TPPBook.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A1412928D4F1B20091AD2D /* TPPBook.swift */; };
 		E5A1413528D94DDA0091AD2D /* TPPContentType.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A1413428D94DDA0091AD2D /* TPPContentType.swift */; };
-		E5A6DA412E708FAB00E9CB60 /* CatalogSearchViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A6DA402E708FAB00E9CB60 /* CatalogSearchViewModelTests.swift */; };
-		E5A6DA432E708FBB00E9CB60 /* CatalogViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A6DA422E708FBB00E9CB60 /* CatalogViewModelTests.swift */; };
 		E5AA6F4129A6BA4000601B02 /* RefreshableView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AA6F4029A6BA4000601B02 /* RefreshableView.swift */; };
 		E5AA6F4229A6BA4500601B02 /* RefreshableView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AA6F4029A6BA4000601B02 /* RefreshableView.swift */; };
 		E5AD65DD2684FACA00C62951 /* TPPAccountListCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AD65DC2684FACA00C62951 /* TPPAccountListCell.swift */; };
@@ -1117,7 +1114,6 @@
 		11396FC8193F674F00E16EE8 /* NYPLOPDSFeedTests.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = NYPLOPDSFeedTests.m; sourceTree = "<group>"; };
 		113DB8A519C24E54004E1154 /* TPPIndeterminateProgressView.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPIndeterminateProgressView.h; sourceTree = "<group>"; };
 		113DB8A619C24E54004E1154 /* TPPIndeterminateProgressView.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPIndeterminateProgressView.m; sourceTree = "<group>"; };
-		1142E4E719EEC7C500D9B3D9 /* TPPCatalogFacetTests.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPCatalogFacetTests.m; sourceTree = "<group>"; };
 		1146EE3F1A5DD071009F7576 /* CoreText.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreText.framework; path = System/Library/Frameworks/CoreText.framework; sourceTree = SDKROOT; };
 		114C8CD519BE2FD300719B72 /* TPPAttributedString.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPAttributedString.h; sourceTree = "<group>"; };
 		114C8CD619BE2FD300719B72 /* TPPAttributedString.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPAttributedString.m; sourceTree = "<group>"; };
@@ -1578,8 +1574,6 @@
 		E5A0CEA52AA9856000C304EC /* TPPReauthenticatorMock.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPReauthenticatorMock.swift; sourceTree = "<group>"; };
 		E5A1412928D4F1B20091AD2D /* TPPBook.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBook.swift; sourceTree = "<group>"; };
 		E5A1413428D94DDA0091AD2D /* TPPContentType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPContentType.swift; sourceTree = "<group>"; };
-		E5A6DA402E708FAB00E9CB60 /* CatalogSearchViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogSearchViewModelTests.swift; sourceTree = "<group>"; };
-		E5A6DA422E708FBB00E9CB60 /* CatalogViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogViewModelTests.swift; sourceTree = "<group>"; };
 		E5AA6F4029A6BA4000601B02 /* RefreshableView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RefreshableView.swift; sourceTree = "<group>"; };
 		E5AD65DC2684FACA00C62951 /* TPPAccountListCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAccountListCell.swift; sourceTree = "<group>"; };
 		E5AD65E02684FDA300C62951 /* TPPAccountListDataSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAccountListDataSource.swift; sourceTree = "<group>"; };
@@ -2832,8 +2826,6 @@
 		A823D82F192BABA400B55DE2 /* PalaceTests */ = {
 			isa = PBXGroup;
 			children = (
-				E5A6DA402E708FAB00E9CB60 /* CatalogSearchViewModelTests.swift */,
-				E5A6DA422E708FBB00E9CB60 /* CatalogViewModelTests.swift */,
 				E50546782E62020D007CCFAB /* URLSession+Stubbing.swift */,
 				E50546762E6201E6007CCFAB /* HTTPStubURLProtocol.swift */,
 				E50546742E6201D4007CCFAB /* OPDSFeedParsingTests.swift */,
@@ -2852,7 +2844,6 @@
 				73A794BC2548E36100C59CC1 /* TPPBookCreationTests.swift */,
 				173F0822241AAA4E00A64658 /* TPPBookStateTests.swift */,
 				7384C7FF242BB43300D5F960 /* TPPCachingTests.swift */,
-				1142E4E719EEC7C500D9B3D9 /* TPPCatalogFacetTests.m */,
 				73A794C925492C9800C59CC1 /* TPPFake.swift */,
 				11C5DD171977335E005A9945 /* TPPKeychainTests.m */,
 				E5A0CEA22AA9853200C304EC /* MyBooksDownloadCenterTests */,
@@ -3784,10 +3775,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				E75ED6D32977223A006BBD5F /* TPPKeychainTests.m in Sources */,
-				735DD0C225229DAC0096D1F9 /* TPPCatalogFacetTests.m in Sources */,
 				7384C800242BB43400D5F960 /* TPPCachingTests.swift in Sources */,
 				E5B8E9A62E14DE8B002E0F3D /* MockImageCache.swift in Sources */,
-				E5A6DA412E708FAB00E9CB60 /* CatalogSearchViewModelTests.swift in Sources */,
 				5D3A28D522D400D00042B3BD /* UserProfileDocumentTests.swift in Sources */,
 				7307A5ED23FF1A8500DE53DE /* TPPOpenSearchDescriptionTests.swift in Sources */,
 				735771A8253763E800067CEA /* TPPBookRegistryMock.swift in Sources */,
@@ -3825,7 +3814,6 @@
 				2D8790A520129AF200E2763F /* TPPOPDSAcquisitionPathTests.swift in Sources */,
 				735350B724918432006021BD /* URLRequest+NYPLTests.swift in Sources */,
 				73A794CA25492C9800C59CC1 /* TPPFake.swift in Sources */,
-				E5A6DA432E708FBB00E9CB60 /* CatalogViewModelTests.swift in Sources */,
 				7384C804242BCE5900D5F960 /* Date+NYPLAdditionsTests.swift in Sources */,
 				735DD0C125229C9A0096D1F9 /* UIColor+NYPLAdditionsTests.swift in Sources */,
 				E5A0CEA12AA9850300C304EC /* MyBooksDownloadCenterTests.swift in Sources */,
