@@ -102,6 +102,8 @@ private extension CatalogView {
   private var searchSection: some View {
     if showSearch {
       CatalogSearchView(
+        repository: viewModel.searchRepository,
+        baseURL: viewModel.searchBaseURL,
         books: allBooks,
         onBookSelected: presentBookDetail
       )

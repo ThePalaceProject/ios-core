@@ -21,12 +21,55 @@ public final class DefaultCatalogAPI: CatalogAPI {
   }
 
   public func search(query: String, baseURL: URL) async throws -> CatalogFeed? {
-    var comps = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)
-    var items = comps?.queryItems ?? []
-    items.append(URLQueryItem(name: "q", value: query))
-    comps?.queryItems = items
-    guard let url = comps?.url else { throw NSError(domain: NSURLErrorDomain, code: NSURLErrorBadURL) }
-    return try await fetchFeed(at: url)
+    guard let catalogFeed = try await fetchFeed(at: baseURL) else {
+      throw NSError(domain: NSURLErrorDomain, code: NSURLErrorBadURL, userInfo: [NSLocalizedDescriptionKey: "Could not load catalog feed"])
+    }
+    
+    let opdsFeed = catalogFeed.opdsFeed
+    var searchURL: URL?
+    
+    if let links = opdsFeed.links as? [TPPOPDSLink] {
+      for link in links {
+        if link.rel == "search" && link.href != nil {
+          searchURL = link.href
+          break
+        }
+      }
+    }
+    
+    if let searchURL = searchURL {
+      return try await withCheckedThrowingContinuation { continuation in
+        TPPOpenSearchDescription.withURL(searchURL, shouldResetCache: false) { description in
+          guard let description = description else {
+            continuation.resume(throwing: NSError(domain: NSURLErrorDomain, code: NSURLErrorBadURL, userInfo: [NSLocalizedDescriptionKey: "Could not load OpenSearch description"]))
+            return
+          }
+          
+          guard let searchResultURL = description.opdsurl(forSearching: query) else {
+            continuation.resume(throwing: NSError(domain: NSURLErrorDomain, code: NSURLErrorBadURL, userInfo: [NSLocalizedDescriptionKey: "Could not create search URL"]))
+            return
+          }
+          
+          Task {
+            do {
+              let searchResults = try await self.fetchFeed(at: searchResultURL)
+              continuation.resume(returning: searchResults)
+            } catch {
+              continuation.resume(throwing: error)
+            }
+          }
+        }
+      }
+    } else {
+      var comps = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)
+      var items = comps?.queryItems ?? []
+      items.append(URLQueryItem(name: "q", value: query))
+      comps?.queryItems = items
+      guard let url = comps?.url else { 
+        throw NSError(domain: NSURLErrorDomain, code: NSURLErrorBadURL, userInfo: [NSLocalizedDescriptionKey: "Could not create search URL"]) 
+      }
+      return try await fetchFeed(at: url)
+    }
   }
 }
 

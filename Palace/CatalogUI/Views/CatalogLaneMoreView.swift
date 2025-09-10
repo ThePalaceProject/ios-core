@@ -20,12 +20,15 @@ struct CatalogLaneMoreView: View {
   @State private var pendingSelections: Set<String> = []
   @State private var appliedSelections: Set<String> = []
   @State private var isApplyingFilters: Bool = false
+  @State private var showSearch: Bool = false
 
   // MARK: - Audiobook Sample Toolbar (centralized)
 
   var body: some View {
     VStack(spacing: 0) {
-      if !facetGroups.isEmpty {
+      if showSearch {
+        searchSection
+      } else if !facetGroups.isEmpty {
         FacetToolbarView(
           title: title,
           showFilter: true,
@@ -43,14 +46,14 @@ struct CatalogLaneMoreView: View {
         Divider()
       }
 
-      if isLoading {
+      if !showSearch && isLoading {
         ScrollView {
           BookListSkeletonView()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-      } else if let error {
-        Text(error).padding()
-      } else if !lanes.isEmpty {
+      } else if !showSearch && error != nil {
+        Text(error!).padding()
+      } else if !showSearch && !lanes.isEmpty {
         ScrollView {
           VStack(alignment: .leading, spacing: 24) {
             ForEach(lanes) { lane in
@@ -66,7 +69,7 @@ struct CatalogLaneMoreView: View {
           .padding(.vertical, 12)
         }
         .refreshable { await fetchAndApplyFeed(at: url) }
-      } else {
+      } else if !showSearch {
         BookListView(books: ungroupedBooks, isLoading: $isLoading) { book in
           presentBookDetail(book)
         }
@@ -79,6 +82,17 @@ struct CatalogLaneMoreView: View {
       ToolbarItem(placement: .principal) {
         LibraryNavTitleView(onTap: { openLibraryHome() })
           .id(logoObserver.token.uuidString + currentAccountUUID)
+      }
+      ToolbarItem(placement: .navigationBarTrailing) {
+        if showSearch {
+          Button(action: { dismissSearch() }) {
+            Text(Strings.Generic.cancel)
+          }
+        } else {
+          Button(action: { presentSearch() }) {
+            ImageProviders.MyBooksView.search
+          }
+        }
       }
     }
     .task { await load() }
@@ -529,5 +543,32 @@ struct CatalogLaneMoreView: View {
       }
       .background(Color(UIColor.systemBackground))
     }
+  }
+  
+  // MARK: - Search Functionality
+  
+  @ViewBuilder
+  private var searchSection: some View {
+    CatalogSearchView(
+      repository: CatalogRepository(api: DefaultCatalogAPI(client: URLSessionNetworkClient(), parser: OPDSParser())),
+      baseURL: { url }, // Use the lane's URL as the search base to scope search to this lane
+      books: allBooks,
+      onBookSelected: presentBookDetail
+    )
+  }
+  
+  private var allBooks: [TPPBook] {
+    if !lanes.isEmpty {
+      return lanes.flatMap { $0.books }
+    }
+    return ungroupedBooks
+  }
+  
+  private func presentSearch() {
+    withAnimation { showSearch = true }
+  }
+  
+  private func dismissSearch() {
+    withAnimation { showSearch = false }
   }
 }

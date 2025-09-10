@@ -15,6 +15,10 @@ final class CatalogViewModel: ObservableObject {
 
   private let repository: CatalogRepositoryProtocol
   private let topLevelURLProvider: () -> URL?
+  
+  // MARK: - Public accessors for search
+  var searchRepository: CatalogRepositoryProtocol { repository }
+  var searchBaseURL: () -> URL? { topLevelURLProvider }
   private var lastLoadedURL: URL?
   private var currentLoadTask: Task<Void, Never>? = nil
 
