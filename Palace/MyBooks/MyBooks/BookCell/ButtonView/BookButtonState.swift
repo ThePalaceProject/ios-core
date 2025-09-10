@@ -70,7 +70,7 @@ extension BookButtonState {
         buttons.append(.remove)
       }
     case .downloadInProgress:
-      buttons = [.cancel, .retry]
+      buttons = [.cancel]
     case .downloadFailed:
       buttons = [.cancel, .retry]
     case .returning:
@@ -80,7 +80,9 @@ extension BookButtonState {
     }
 
     if !book.supportsDeletion(for: self) {
-      buttons = buttons.filter { $0 != .return && $0 != .remove }
+      buttons = buttons.filter {
+        $0 != .return || $0 != .remove
+      }
     }
 
     return buttons
