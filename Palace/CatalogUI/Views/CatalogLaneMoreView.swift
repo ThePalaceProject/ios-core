@@ -1,6 +1,16 @@
 import SwiftUI
 import Combine
 
+// MARK: - Filter State Management
+
+struct FilterState {
+  let appliedFilter: String  // The filter that was applied to get to this state
+  let books: [TPPBook]
+  let facetGroups: [CatalogFilterGroup]
+  let feedURL: URL
+  let selectedFilters: Set<String>  // All filters applied up to this point
+}
+
 struct CatalogLaneMoreView: View {
   var title: String = ""
   let url: URL
@@ -21,6 +31,7 @@ struct CatalogLaneMoreView: View {
   @State private var appliedSelections: Set<String> = []
   @State private var isApplyingFilters: Bool = false
   @State private var showSearch: Bool = false
+  
 
   // MARK: - Audiobook Sample Toolbar (centralized)
 
@@ -40,7 +51,17 @@ struct CatalogLaneMoreView: View {
         .padding(.bottom, 5)
         .overlay(alignment: .trailing) {
           if isLoading || isApplyingFilters {
-            ProgressView().padding(.trailing, 12)
+            HStack(spacing: 6) {
+              ProgressView()
+                .progressViewStyle(CircularProgressViewStyle(tint: .primary))
+                .scaleEffect(0.8)
+              if isApplyingFilters {
+                Text("Filtering...")
+                  .palaceFont(size: 12)
+                  .foregroundColor(.secondary)
+              }
+            }
+            .padding(.trailing, 12)
           }
         }
         Divider()
@@ -147,10 +168,12 @@ struct CatalogLaneMoreView: View {
       }
     .onChange(of: showingFiltersSheet) { presented in
       guard presented else { return }
+      // Set up pending selections based on current applied state
+      // Don't reset until user actually applies - preserve existing filtering if they cancel
       if !appliedSelections.isEmpty {
-        pendingSelections = keysForCurrentFacets(fromGroupTitleKeys: appliedSelections)
+        pendingSelections = reconstructSelectionsFromCurrentFacets()
       } else {
-        pendingSelections = selectionKeysFromActiveFacets(includeDefaults: true)
+        pendingSelections = []
       }
     }
     .onChange(of: currentSort) { _ in
@@ -306,81 +329,131 @@ struct CatalogLaneMoreView: View {
   // MARK: - Filter Sheet
 
   private var FiltersSheetWrapper: some View {
-    CatalogFiltersSheetView(
+    MultiSelectCatalogFiltersSheetView(
       facetGroups: facetGroups,
       selection: $pendingSelections,
-      onApply: { Task { await applyPendingFacets() } },
+      onApply: { Task { await applyMultipleFilters() } },
+      onCancel: { Task { await cancelFilterSelection() } },
       isApplying: isApplyingFilters
     )
   }
 
-  @MainActor
-  private func applyPendingFacets() async {
-    let desiredHrefs: [URL] = pendingSelections
-      .compactMap(parseKey) 
-      .filter { !$0.isDefaultTitle }
-      .compactMap { URL(string: $0.hrefString) }
+  // MARK: - Multi-Select Filter Handling
 
-    if desiredHrefs.isEmpty {
-      isLoading = true
-      isApplyingFilters = true
-      error = nil
-      defer {
-        isLoading = false
-        isApplyingFilters = false
-        showingFiltersSheet = false
+  @MainActor
+  private func applyMultipleFilters() async {
+    // Extract only non-default (non-"All") filters to apply
+    let specificFilters: [ParsedKey] = pendingSelections
+      .compactMap { selection in
+        guard let parsed = parseKey(selection) else { return nil }
+        return parsed.isDefaultTitle ? nil : parsed  // Skip "All" filters entirely
       }
+
+    if specificFilters.isEmpty {
+      // No specific filters selected - show original unfiltered feed
       await fetchAndApplyFeed(at: url)
       appliedSelections = []
-      pendingSelections = selectionKeysFromActiveFacets(includeDefaults: true)
-      return
-    }
-
-    let currentHrefs = activeFacetHrefs(includeDefaults: false)
-    if Set(desiredHrefs) == Set(currentHrefs) {
       showingFiltersSheet = false
       return
     }
 
-    isLoading = true
     isApplyingFilters = true
     error = nil
     defer {
-      isLoading = false
       isApplyingFilters = false
       showingFiltersSheet = false
     }
 
-    var workingGroups = facetGroups
     do {
       let client = URLSessionNetworkClient()
       let parser = OPDSParser()
       let api = DefaultCatalogAPI(client: client, parser: parser)
 
-      for href in desiredHrefs.sorted(by: { $0.absoluteString < $1.absoluteString }) {
-        if let feed = try await api.fetchFeed(at: href) {
-          if let entries = feed.opdsFeed.entries as? [TPPOPDSEntry] {
-            ungroupedBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0) }
-            sortBooksInPlace()
-          }
-          if feed.opdsFeed.type == TPPOPDSFeedType.acquisitionUngrouped {
-            workingGroups = CatalogViewModel.extractFacets(from: feed.opdsFeed).0
+      // FRESH START: Reset to original feed and rebuild filter sequence completely
+      await fetchAndApplyFeed(at: url)  // This gives us clean facet groups
+      var currentFacetGroups = facetGroups
+      
+      // Sort filters by priority for consistent application order
+      let sortedFilters = specificFilters.sorted { filter1, filter2 in
+        let priority1 = getGroupPriority(filter1.group)
+        let priority2 = getGroupPriority(filter2.group)
+        return priority1 < priority2
+      }
+      
+      // Apply each filter sequentially, starting fresh each time
+      for filter in sortedFilters {
+        // Find the filter in the current facet groups
+        if let filterURL = findFilterInCurrentFacets(filter, in: currentFacetGroups) {
+          if let feed = try await api.fetchFeed(at: filterURL) {
+            // Update books and facets with this filter's results
+            if let entries = feed.opdsFeed.entries as? [TPPOPDSEntry] {
+              ungroupedBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0) }
+              sortBooksInPlace()
+            }
+            
+            // Update facet groups for next filter (preserves current filter state)
+            if feed.opdsFeed.type == TPPOPDSFeedType.acquisitionUngrouped {
+              currentFacetGroups = CatalogViewModel.extractFacets(from: feed.opdsFeed).0
+            }
           }
         }
       }
 
-      facetGroups = workingGroups
+      // Set final results
+      facetGroups = currentFacetGroups
       appliedSelections = Set(
-        pendingSelections
-          .compactMap(parseKey)
-          .filter { !$0.isDefaultTitle }
-          .map { makeGroupTitleKey(group: $0.group, title: $0.title) }
+        specificFilters.map { makeGroupTitleKey(group: $0.group, title: $0.title) }
       )
-      pendingSelections = keysForCurrentFacets(fromGroupTitleKeys: appliedSelections)
 
     } catch {
       self.error = error.localizedDescription
     }
+  }
+  
+  @MainActor
+  private func cancelFilterSelection() async {
+    // Cancel means keep existing filtering - just close the sheet
+    showingFiltersSheet = false
+  }
+  
+  /// Reconstruct pending selections from applied selections using current facets
+  private func reconstructSelectionsFromCurrentFacets() -> Set<String> {
+    var reconstructed: Set<String> = []
+    
+    for appliedSelection in appliedSelections {
+      let parts = appliedSelection.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+      guard parts.count >= 2 else { continue }
+      
+      let groupName = parts[0]
+      let title = parts[1]
+      
+      // Find this filter in the fresh facet groups
+      for group in facetGroups where group.name == groupName {
+        for filter in group.filters where filter.title == title {
+          let key = makeKey(group: group.name, title: filter.title, hrefString: filter.href?.absoluteString ?? "")
+          reconstructed.insert(key)
+          break
+        }
+      }
+    }
+    
+    return reconstructed
+  }
+  
+  /// Find a specific filter in the current facet groups (simplified approach)
+  private func findFilterInCurrentFacets(_ filter: ParsedKey, in currentFacetGroups: [CatalogFilterGroup]) -> URL? {
+    for group in currentFacetGroups {
+      // Match by group name
+      if group.name.lowercased() == filter.group.lowercased() {
+        for facet in group.filters {
+          // Match by filter title
+          if facet.title.lowercased() == filter.title.lowercased() {
+            return facet.href
+          }
+        }
+      }
+    }
+    return nil
   }
 
   // MARK: - Sort
@@ -419,7 +492,7 @@ struct CatalogLaneMoreView: View {
 
   // MARK: - Keys & Helpers
 
-  private struct ParsedKey {
+  internal struct ParsedKey {
     let group: String
     let title: String
     let hrefString: String
@@ -438,7 +511,7 @@ struct CatalogLaneMoreView: View {
     "\(group)|\(title)"
   }
 
-  private func parseKey(_ key: String) -> ParsedKey? {
+  internal func parseKey(_ key: String) -> ParsedKey? {
     let parts = key.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
     guard parts.count >= 3 else { return nil }
     return ParsedKey(group: parts[0], title: parts[1], hrefString: parts[2])
@@ -464,12 +537,8 @@ struct CatalogLaneMoreView: View {
           foundAnyInGroup = true
         }
       }
-      // Ensure at least All if nothing matched for this group
-      if !foundAnyInGroup {
-        if let allFacet = facets.first(where: { ($0.title).trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "all" }) {
-          out.insert(makeKey(group: group.name, title: allFacet.title, hrefString: allFacet.href?.absoluteString ?? ""))
-        }
-      }
+      // Don't automatically add "All" filters - let the UI handle defaults
+      // This prevents "All" filters from being re-added when reopening filter sheet
     }
     return out
   }
@@ -514,7 +583,292 @@ struct CatalogLaneMoreView: View {
   }
 
   private var activeFiltersCount: Int {
-    appliedSelections.count
+    appliedSelections.filter { groupTitleKey in
+      // appliedSelections contains group|title keys, need to check if title is default
+      let parts = groupTitleKey.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+      guard parts.count >= 2 else { return false }
+      let title = parts[1]
+      let t = title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+      let isDefaultTitle = t == "all" || t == "all formats" || t == "all collections" || t == "all distributors"
+      return !isDefaultTitle  // Exclude "All" filters from count
+    }.count
+  }
+  
+  /// Groups selected filters by their facet groups in priority order for proper chaining
+  /// Returns [(groupName, [URL])] sorted by group priority
+  private func groupSelectedFiltersByFacetGroup(_ facetURLs: [URL], currentFacetGroups: [CatalogFilterGroup]) -> [(String, [URL])] {
+    var filtersByGroup: [String: [URL]] = [:]
+    
+    for url in facetURLs {
+      if let groupName = findFacetGroupName(for: url, in: currentFacetGroups) {
+        filtersByGroup[groupName, default: []].append(url)
+      } else {
+        // Fallback: categorize by URL content if no group found
+        let category = categorizeFacetURL(url)
+        filtersByGroup[category, default: []].append(url)
+      }
+    }
+    
+    // Sort groups by priority (Collection first, then others)
+    return filtersByGroup.sorted { (group1, group2) in
+      let priority1 = getGroupPriority(group1.key)
+      let priority2 = getGroupPriority(group2.key)
+      return priority1 < priority2
+    }
+  }
+  
+  /// Prioritizes selected filters for sequential application (additive OPDS 1.2 style)
+  /// Returns filters in order they should be applied, with each building on the previous
+  internal func prioritizeSelectedFilters(_ facetURLs: [URL], currentFacetGroups: [CatalogFilterGroup]) -> [URL] {
+    // Group filters by their facet group, then prioritize groups
+    var filtersByGroup: [String: [URL]] = [:]
+    
+    for url in facetURLs {
+      if let groupName = findFacetGroupName(for: url, in: currentFacetGroups) {
+        filtersByGroup[groupName, default: []].append(url)
+      } else {
+        // Fallback: categorize by URL content if no group found
+        let category = categorizeFacetURL(url)
+        filtersByGroup[category, default: []].append(url)
+      }
+    }
+    
+    // Sort groups by priority, then return one filter per group in priority order
+    let sortedGroups = filtersByGroup.sorted { (group1, group2) in
+      let priority1 = getGroupPriority(group1.key)
+      let priority2 = getGroupPriority(group2.key)
+      return priority1 < priority2
+    }
+    
+    // Take the first (or only) filter from each group
+    // In OPDS 1.2, you can only have one active filter per group anyway
+    return sortedGroups.compactMap { $0.value.first }
+  }
+  
+  /// Groups facet URLs by their type/group for sequential application
+  private func groupFacetsByType(_ facetURLs: [URL], currentFacetGroups: [CatalogFilterGroup]) -> [(String, [URL])] {
+    var groupedFacets: [String: [URL]] = [:]
+    
+    for url in facetURLs {
+      if let groupName = findFacetGroupName(for: url, in: currentFacetGroups) {
+        groupedFacets[groupName, default: []].append(url)
+      } else {
+        // Fallback: categorize by URL content if no group found
+        let category = categorizeFacetURL(url)
+        groupedFacets[category, default: []].append(url)
+      }
+    }
+    
+    // Sort groups by priority
+    return groupedFacets.sorted { (group1, group2) in
+      let priority1 = getGroupPriority(group1.key)
+      let priority2 = getGroupPriority(group2.key)
+      return priority1 < priority2
+    }
+  }
+  
+  /// Finds the group name for a facet URL by matching it against current facet groups
+  internal func findFacetGroupName(for url: URL, in facetGroups: [CatalogFilterGroup]) -> String? {
+    for group in facetGroups {
+      for filter in group.filters {
+        if filter.href?.absoluteString == url.absoluteString {
+          return group.name
+        }
+      }
+    }
+    return nil
+  }
+  
+  /// Categorizes a facet URL when no group is found
+  internal func categorizeFacetURL(_ url: URL) -> String {
+    let urlString = url.absoluteString.lowercased()
+    let queryString = url.query?.lowercased() ?? ""
+    
+    if urlString.contains("collection") || urlString.contains("library") {
+      return "Collection"
+    } else if urlString.contains("format") || urlString.contains("media") {
+      return "Format"
+    } else if urlString.contains("availability") || urlString.contains("available") {
+      return "Availability"
+    } else if urlString.contains("language") || urlString.contains("lang") {
+      return "Language"
+    } else if urlString.contains("subject") || urlString.contains("genre") {
+      return "Subject"
+    } else {
+      return "Other"
+    }
+  }
+  
+  /// Gets priority for group ordering
+  internal func getGroupPriority(_ groupName: String) -> Int {
+    let name = groupName.lowercased()
+    // Collection Name should be applied first (most restrictive)
+    if name.contains("collection") || name.contains("library") { return 1 }
+    // Distributor comes next
+    if name.contains("distributor") { return 2 }
+    // Format filters
+    if name.contains("format") || name.contains("media") { return 3 }
+    // Availability filters
+    if name.contains("availability") || name.contains("available") { return 4 }
+    // Language filters
+    if name.contains("language") || name.contains("lang") { return 5 }
+    // Subject/Genre filters
+    if name.contains("subject") || name.contains("genre") { return 6 }
+    return 10
+  }
+  
+  /// Finds the equivalent facet URL in the current (updated) facet groups
+  /// This ensures we use the server's updated links that preserve previous filter state
+  private func findEquivalentFacetURL(originalURL: URL, in currentFacetGroups: [CatalogFilterGroup]) -> URL? {
+    // Extract the filter title from the original URL to find the equivalent facet
+    let originalKey = makeKeyFromURL(originalURL)
+    guard let originalParsed = parseKey(originalKey) else { 
+      return originalURL 
+    }
+    
+    // Find the facet group that matches
+    for group in currentFacetGroups {
+      // Match by group name (case insensitive)
+      let groupMatches = group.name.lowercased().contains(originalParsed.group.lowercased()) ||
+                        originalParsed.group.lowercased().contains(group.name.lowercased()) ||
+                        group.id.lowercased() == originalParsed.group.lowercased()
+      
+      if groupMatches {
+        for filter in group.filters {
+          // Match by filter title (case insensitive)
+          if filter.title.lowercased() == originalParsed.title.lowercased() {
+            return filter.href
+          }
+        }
+      }
+    }
+    return originalURL
+  }
+  
+  /// Finds the best facet URL to apply from the current facet groups
+  /// This is key: it looks for the equivalent facet in the updated facet groups
+  private func findBestFacetURL(for originalURLs: [URL], in currentFacetGroups: [CatalogFilterGroup]) -> URL? {
+    // Try to find a matching facet in the current (updated) facet groups
+    for originalURL in originalURLs {
+      // First, try exact match
+      for group in currentFacetGroups {
+        for filter in group.filters {
+          if let filterURL = filter.href, filterURL.absoluteString == originalURL.absoluteString {
+            return filterURL
+          }
+        }
+      }
+      
+      // If no exact match, try to find a similar facet by title/content
+      if let parsedOriginal = parseKey(makeKeyFromURL(originalURL)) {
+        for group in currentFacetGroups {
+          for filter in group.filters {
+            if filter.title.lowercased() == parsedOriginal.title.lowercased() {
+              return filter.href
+            }
+          }
+        }
+      }
+    }
+    
+    // Fallback: return the first original URL if no match found in current facets
+    return originalURLs.first
+  }
+  
+  /// Helper to create a key from URL for parsing
+  private func makeKeyFromURL(_ url: URL) -> String {
+    // Extract meaningful parts from URL query parameters to create a parseable key
+    guard let components = URLComponents(url: url, resolvingAgainstBaseURL: true),
+          let queryItems = components.queryItems else {
+      return "unknown|unknown|\(url.absoluteString)"
+    }
+    
+    // Look for known facet parameters to determine group and title
+    var group = "unknown"
+    var title = "unknown"
+    
+    for item in queryItems {
+      switch item.name.lowercased() {
+      case "collectionname":
+        group = "Collection Name"
+        title = item.value?.replacingOccurrences(of: "+", with: " ") ?? "unknown"
+      case "distributor":
+        group = "Distributor"  
+        title = item.value?.replacingOccurrences(of: "+", with: " ") ?? "unknown"
+      case "available":
+        group = "Availability"
+        title = item.value == "now" ? "Available now" : 
+                item.value == "always" ? "Yours to keep" : 
+                item.value ?? "unknown"
+      case "format":
+        group = "Format"
+        title = item.value?.uppercased() ?? "unknown"
+      case "subject", "genre":
+        group = "Subject"
+        title = item.value?.replacingOccurrences(of: "+", with: " ") ?? "unknown"
+      default:
+        continue
+      }
+    }
+    
+    return "\(group)|\(title)|\(url.absoluteString)"
+  }
+  
+  /// Prioritizes facet URLs to ensure consistent application order
+  /// Priority order: Collection/Library -> Format -> Availability -> Language -> Other
+  private func prioritizeFacetURLs(_ facetURLs: [URL]) -> [URL] {
+    return facetURLs.sorted { url1, url2 in
+      let priority1 = getFacetPriority(url1)
+      let priority2 = getFacetPriority(url2)
+      
+      if priority1 != priority2 {
+        return priority1 < priority2  // Lower number = higher priority
+      }
+      
+      // If same priority, sort alphabetically for consistency
+      return url1.absoluteString < url2.absoluteString
+    }
+  }
+  
+  /// Determines the priority of a facet based on its URL or content
+  /// Lower numbers = higher priority (applied first)
+  private func getFacetPriority(_ url: URL) -> Int {
+    let urlString = url.absoluteString.lowercased()
+    let queryString = url.query?.lowercased() ?? ""
+    
+    // Collection/Library filters should be applied first (broadest filter)
+    if urlString.contains("collection") || urlString.contains("library") || 
+       queryString.contains("collection") || queryString.contains("library") {
+      return 1
+    }
+    
+    // Format filters (epub, pdf, audiobook, etc.)
+    if urlString.contains("format") || urlString.contains("media") ||
+       queryString.contains("format") || queryString.contains("media") ||
+       urlString.contains("epub") || urlString.contains("pdf") || urlString.contains("audiobook") {
+      return 2
+    }
+    
+    // Availability filters (available, checked out, etc.)
+    if urlString.contains("availability") || urlString.contains("available") ||
+       queryString.contains("availability") || queryString.contains("available") {
+      return 3
+    }
+    
+    // Language filters
+    if urlString.contains("language") || urlString.contains("lang") ||
+       queryString.contains("language") || queryString.contains("lang") {
+      return 4
+    }
+    
+    // Subject/Genre filters
+    if urlString.contains("subject") || urlString.contains("genre") ||
+       queryString.contains("subject") || queryString.contains("genre") {
+      return 5
+    }
+    
+    // All other filters get lowest priority (applied last for fine-tuning)
+    return 10
   }
   
   private var SortOptionsSheet: some View {
