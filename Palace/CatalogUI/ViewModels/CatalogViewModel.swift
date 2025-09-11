@@ -263,7 +263,7 @@ extension CatalogViewModel {
         entryPoints: entryPoints
       )
     case .acquisitionUngrouped:
-      let ungroupedBooks = (feedObjc.entries as? [TPPOPDSEntry])?.compactMap { makeBookBackground(from: $0) } ?? []
+      let ungroupedBooks = (feedObjc.entries as? [TPPOPDSEntry])?.compactMap { makeBook(from: $0) } ?? []
       let (facetGroups, entryPoints) = extractFacets(from: feedObjc)
       return MappedCatalog(
         title: title,
@@ -301,7 +301,7 @@ extension CatalogViewModel {
     if let entries = feed.entries as? [TPPOPDSEntry] {
       for entry in entries {
         if let group = entry.groupAttributes,
-           let book = makeBookBackground(from: entry) {
+           let book = makeBook(from: entry) {
           let title = group.title ?? ""
           if titleToBooks[title] == nil { orderedTitles.append(title) }
           titleToBooks[title, default: []].append(book)
