@@ -44,7 +44,7 @@ extension BookButtonState {
         buttons.append(book.isAudiobook ? .audiobookSample : .sample)
       }
     case .managingHold:
-      buttons = [.cancelHold]
+      buttons = [.get, .cancelHold]
     case .downloadNeeded:
       if let authDef = TPPUserAccount.sharedAccount().authDefinition,
          authDef.needsAuth || book.defaultAcquisitionIfOpenAccess != nil {
