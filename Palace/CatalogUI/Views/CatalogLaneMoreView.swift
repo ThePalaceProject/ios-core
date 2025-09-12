@@ -12,90 +12,50 @@ struct FilterState {
 }
 
 struct CatalogLaneMoreView: View {
-  var title: String = ""
+  // MARK: - Properties
+  
+  let title: String
   let url: URL
+  
+  // MARK: - Content State
 
   @State private var lanes: [CatalogLaneModel] = []
   @State private var ungroupedBooks: [TPPBook] = []
   @State private var isLoading = true
   @State private var error: String?
-  @StateObject private var logoObserver = CatalogLogoObserver()
-  @State private var currentAccountUUID: String = AccountsManager.shared.currentAccount?.uuid ?? ""
+  
+  // MARK: - UI State
 
-  @State private var facetGroups: [CatalogFilterGroup] = []
   @State private var showingSortSheet: Bool = false
   @State private var showingFiltersSheet: Bool = false
-  @State private var currentSort: CatalogSort = .titleAZ
+  @State private var showSearch: Bool = false
+  
+  // MARK: - Filter State
 
+  @State private var facetGroups: [CatalogFilterGroup] = []
   @State private var pendingSelections: Set<String> = []
   @State private var appliedSelections: Set<String> = []
   @State private var isApplyingFilters: Bool = false
-  @State private var showSearch: Bool = false
+  @State private var currentSort: CatalogSort = .titleAZ
   
+  // MARK: - Account & Logo State
+  
+  @StateObject private var logoObserver = CatalogLogoObserver()
+  @State private var currentAccountUUID: String = AccountsManager.shared.currentAccount?.uuid ?? ""
+  
+  // MARK: - Initialization
+  
+  init(title: String = "", url: URL) {
+    self.title = title
+    self.url = url
+  }
 
-  // MARK: - Audiobook Sample Toolbar (centralized)
+  // MARK: - Main View
 
   var body: some View {
     VStack(spacing: 0) {
-      if showSearch {
-        searchSection
-      } else if !facetGroups.isEmpty {
-        FacetToolbarView(
-          title: title,
-          showFilter: true,
-          onSort: { showingSortSheet = true },
-          onFilter: { showingFiltersSheet = true },
-          currentSortTitle: currentSort.localizedString,
-          appliedFiltersCount: activeFiltersCount
-        )
-        .padding(.bottom, 5)
-        .overlay(alignment: .trailing) {
-          if isLoading || isApplyingFilters {
-            HStack(spacing: 6) {
-              ProgressView()
-                .progressViewStyle(CircularProgressViewStyle(tint: .primary))
-                .scaleEffect(0.8)
-              if isApplyingFilters {
-                Text("Filtering...")
-                  .palaceFont(size: 12)
-                  .foregroundColor(.secondary)
-              }
-            }
-            .padding(.trailing, 12)
-          }
-        }
-        Divider()
-      }
-
-      if !showSearch && isLoading {
-        ScrollView {
-          BookListSkeletonView()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-      } else if !showSearch && error != nil {
-        Text(error!).padding()
-      } else if !showSearch && !lanes.isEmpty {
-        ScrollView {
-          VStack(alignment: .leading, spacing: 24) {
-            ForEach(lanes) { lane in
-              CatalogLaneRowView(
-                title: lane.title,
-                books: lane.books,
-                moreURL: lane.moreURL,
-                onSelect: { presentBookDetail($0) },
-                showHeader: true
-              )
-            }
-          }
-          .padding(.vertical, 12)
-        }
-        .refreshable { await fetchAndApplyFeed(at: url) }
-      } else if !showSearch {
-        BookListView(books: ungroupedBooks, isLoading: $isLoading) { book in
-          presentBookDetail(book)
-        }
-        .refreshable { await fetchAndApplyFeed(at: url) }
-      }
+      toolbarSection
+      contentSection
     }
     .overlay(alignment: .bottom) { SamplePreviewBarView() }
     .navigationBarTitleDisplayMode(.inline)
@@ -386,13 +346,13 @@ struct CatalogLaneMoreView: View {
         if let filterURL = findFilterInCurrentFacets(filter, in: currentFacetGroups) {
           if let feed = try await api.fetchFeed(at: filterURL) {
             // Update books and facets with this filter's results
-            if let entries = feed.opdsFeed.entries as? [TPPOPDSEntry] {
-              ungroupedBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0) }
-              sortBooksInPlace()
-            }
+          if let entries = feed.opdsFeed.entries as? [TPPOPDSEntry] {
+            ungroupedBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0) }
+            sortBooksInPlace()
+          }
             
             // Update facet groups for next filter (preserves current filter state)
-            if feed.opdsFeed.type == TPPOPDSFeedType.acquisitionUngrouped {
+          if feed.opdsFeed.type == TPPOPDSFeedType.acquisitionUngrouped {
               currentFacetGroups = CatalogViewModel.extractFacets(from: feed.opdsFeed).0
             }
           }
@@ -924,5 +884,115 @@ struct CatalogLaneMoreView: View {
   
   private func dismissSearch() {
     withAnimation { showSearch = false }
+  }
+}
+
+// MARK: - View Sections
+
+private extension CatalogLaneMoreView {
+  
+  @ViewBuilder
+  var toolbarSection: some View {
+    if showSearch {
+      searchToolbar
+    } else if !facetGroups.isEmpty {
+      filterToolbar
+    }
+  }
+  
+  @ViewBuilder
+  var searchToolbar: some View {
+    // Search toolbar would go here
+    EmptyView()
+  }
+  
+  @ViewBuilder
+  var filterToolbar: some View {
+    FacetToolbarView(
+      title: title,
+      showFilter: true,
+      onSort: { showingSortSheet = true },
+      onFilter: { showingFiltersSheet = true },
+      currentSortTitle: currentSort.localizedString,
+      appliedFiltersCount: activeFiltersCount
+    )
+    .padding(.bottom, 5)
+    .overlay(alignment: .trailing) {
+      if isLoading || isApplyingFilters {
+        loadingIndicator
+      }
+    }
+    
+    Divider()
+  }
+  
+  @ViewBuilder
+  var loadingIndicator: some View {
+    HStack(spacing: 6) {
+      ProgressView()
+        .progressViewStyle(CircularProgressViewStyle(tint: .primary))
+        .scaleEffect(0.8)
+      if isApplyingFilters {
+        Text("Filtering...")
+          .palaceFont(size: 12)
+          .foregroundColor(.secondary)
+      }
+    }
+    .padding(.trailing, 12)
+  }
+  
+  @ViewBuilder
+  var contentSection: some View {
+    if showSearch {
+      searchSection
+    } else if isLoading {
+      loadingView
+    } else if let error = error {
+      errorView(error)
+    } else if !lanes.isEmpty {
+      lanesView
+    } else {
+      booksView
+    }
+  }
+  
+  @ViewBuilder
+  var loadingView: some View {
+    ScrollView {
+      BookListSkeletonView()
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+  }
+  
+  func errorView(_ errorMessage: String) -> some View {
+    Text(errorMessage)
+      .padding()
+  }
+  
+  @ViewBuilder
+  var lanesView: some View {
+    ScrollView {
+      VStack(alignment: .leading, spacing: 24) {
+        ForEach(lanes) { lane in
+          CatalogLaneRowView(
+            title: lane.title,
+            books: lane.books,
+            moreURL: lane.moreURL,
+            onSelect: presentBookDetail,
+            showHeader: true
+          )
+        }
+      }
+      .padding(.vertical, 12)
+    }
+    .refreshable { await fetchAndApplyFeed(at: url) }
+  }
+  
+  @ViewBuilder
+  var booksView: some View {
+    BookListView(books: ungroupedBooks, isLoading: $isLoading) { book in
+      presentBookDetail(book)
+    }
+    .refreshable { await fetchAndApplyFeed(at: url) }
   }
 }

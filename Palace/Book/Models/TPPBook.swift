@@ -517,7 +517,10 @@ extension TPPBook {
   private static let coverRegistry = TPPBookCoverRegistry.shared
   
   func fetchCoverImage() {
-      if let img = imageCache.get(for: identifier) {
+      let simpleKey = identifier
+      let coverKey = "\(identifier)_cover"
+      
+      if let img = imageCache.get(for: simpleKey) ?? imageCache.get(for: coverKey) {
         coverImage = img
         updateDominantColor(using: img)
         return
@@ -533,6 +536,7 @@ extension TPPBook {
         self.coverImage = final
         if let img = final {
           self.imageCache.set(img, for: self.identifier)
+          self.imageCache.set(img, for: coverKey)
           self.updateDominantColor(using: img)
         }
         self.isCoverLoading = false
@@ -540,7 +544,10 @@ extension TPPBook {
     }
 
     func fetchThumbnailImage() {
-      if let img = imageCache.get(for: identifier) {
+      let simpleKey = identifier
+      let thumbnailKey = "\(identifier)_thumbnail"
+      
+      if let img = imageCache.get(for: simpleKey) ?? imageCache.get(for: thumbnailKey) {
         thumbnailImage = img
         return
       }
@@ -555,6 +562,7 @@ extension TPPBook {
         self.thumbnailImage = final
         if let img = final {
           self.imageCache.set(img, for: self.identifier)
+          self.imageCache.set(img, for: thumbnailKey)
           if self.coverImage == nil {
             self.updateDominantColor(using: img)
           }
@@ -565,6 +573,8 @@ extension TPPBook {
   
   func clearCachedImages() {
     imageCache.remove(for: identifier)
+    imageCache.remove(for: "\(identifier)_cover")
+    imageCache.remove(for: "\(identifier)_thumbnail")
     DispatchQueue.main.async {
       self.coverImage = nil
       self.thumbnailImage = nil

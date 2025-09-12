@@ -121,7 +121,10 @@ class BookCellModel: ObservableObject {
   // MARK: - Image Loading
   
   func loadBookCoverImage() {
-    if let cachedImage = imageCache.get(for: book.identifier) {
+    let simpleKey = book.identifier
+    let thumbnailKey = "\(book.identifier)_thumbnail"
+    
+    if let cachedImage = imageCache.get(for: simpleKey) ?? imageCache.get(for: thumbnailKey) {
       image = cachedImage
     } else if let registryImage = TPPBookRegistry.shared.cachedThumbnailImage(for: book) {
       setImageAndCache(registryImage)
@@ -147,7 +150,10 @@ class BookCellModel: ObservableObject {
   }
   
   private func setImageAndCache(_ image: UIImage) {
-    imageCache.set(image, for: book.identifier)
+    let simpleKey = book.identifier
+    let thumbnailKey = "\(book.identifier)_thumbnail"
+    imageCache.set(image, for: simpleKey)
+    imageCache.set(image, for: thumbnailKey)
     self.image = image
   }
   

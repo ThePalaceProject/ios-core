@@ -541,7 +541,9 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
   }
 
   func cachedThumbnailImage(for book: TPPBook) -> UIImage? {
-    book.imageCache.get(for: book.identifier)
+    let simpleKey = book.identifier
+    let thumbnailKey = "\(book.identifier)_thumbnail"
+    return book.imageCache.get(for: simpleKey) ?? book.imageCache.get(for: thumbnailKey)
   }
 
     func thumbnailImage(
