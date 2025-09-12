@@ -23,11 +23,6 @@ struct CatalogView: View {
       .navigationBarTitleDisplayMode(.inline)
       .toolbar { toolbarContent }
       .onAppear { setupCurrentAccount() }
-      .confirmationDialog(
-        Strings.MyBooksView.findYourLibrary,
-        isPresented: $showAccountDialog,
-        titleVisibility: .visible
-      ) { accountSelectionDialog }
       .sheet(isPresented: $showAddLibrarySheet) { addLibrarySheet }
       .task { await viewModel.load() }
       .onReceive(NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)) { _ in
@@ -51,7 +46,9 @@ private extension CatalogView {
       Button(action: { showAccountDialog = true }) {
         ImageProviders.MyBooksView.myLibraryIcon
       }
+      .actionSheet(isPresented: $showAccountDialog) { libraryPicker }
     }
+    
     ToolbarItem(placement: .navigationBarTrailing) {
       if showSearch {
         Button(action: { dismissSearch() }) {
@@ -65,15 +62,20 @@ private extension CatalogView {
     }
   }
   
-  @ViewBuilder
-  var accountSelectionDialog: some View {
-    ForEach(TPPSettings.shared.settingsAccountsList, id: \.uuid) { account in
-      Button(account.name) {
-        switchToAccount(account)
-      }
+  private var libraryPicker: ActionSheet {
+    var buttons: [ActionSheet.Button] = TPPSettings.shared.settingsAccountsList.map { account in
+        .default(Text(account.name)) {
+          switchToAccount(account)
+        }
     }
-    Button(Strings.MyBooksView.addLibrary) { showAddLibrarySheet = true }
-    Button(Strings.Generic.cancel, role: .cancel) {}
+    buttons.append(.default(Text(Strings.MyBooksView.addLibrary)) {
+      showAddLibrarySheet = true
+    })
+    buttons.append(.cancel())
+    return ActionSheet(
+      title: Text(Strings.MyBooksView.findYourLibrary),
+      buttons: buttons
+    )
   }
   
   @ViewBuilder
