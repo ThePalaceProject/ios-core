@@ -9,13 +9,17 @@
 
 @MainActor
 class DeviceOrientation: ObservableObject {
-  @Published var isLandscape: Bool = UIDevice.current.orientation.isLandscape
+  @Published var isLandscape: Bool = {
+    let screenWidth = UIScreen.main.bounds.width
+    let screenHeight = UIScreen.main.bounds.height
+    return screenWidth > screenHeight
+  }()
 
   func startTracking() {
     NotificationCenter.default.addObserver(
       self,
       selector: #selector(updateOrientation),
-      name: UIDevice.orientationDidChangeNotification,
+      name: UIApplication.didChangeStatusBarOrientationNotification,
       object: nil
     )
   }
@@ -25,8 +29,14 @@ class DeviceOrientation: ObservableObject {
   }
 
   @objc private func updateOrientation() {
-    DispatchQueue.main.async {
-      self.isLandscape = UIDevice.current.orientation.isLandscape
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+      let screenWidth = UIScreen.main.bounds.width
+      let screenHeight = UIScreen.main.bounds.height
+      let newIsLandscape = screenWidth > screenHeight
+      
+      if self.isLandscape != newIsLandscape {
+        self.isLandscape = newIsLandscape
+      }
     }
   }
 }
