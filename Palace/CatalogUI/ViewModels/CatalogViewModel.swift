@@ -80,7 +80,8 @@ final class CatalogViewModel: ObservableObject {
 
         guard !Task.isCancelled else { return }
         if !mapped.lanes.isEmpty {
-          await self.prefetchThumbnails(for: mapped.lanes.first?.books ?? [])
+          let visibleBooks = mapped.lanes.prefix(3).flatMap { $0.books }
+          await self.prefetchThumbnails(for: Array(visibleBooks.prefix(30)))
         } else if !mapped.ungroupedBooks.isEmpty {
           await self.prefetchThumbnails(for: Array(mapped.ungroupedBooks.prefix(20)))
         }
@@ -263,7 +264,7 @@ extension CatalogViewModel {
         entryPoints: entryPoints
       )
     case .acquisitionUngrouped:
-      let ungroupedBooks = (feedObjc.entries as? [TPPOPDSEntry])?.compactMap { makeBookBackground(from: $0) } ?? []
+      let ungroupedBooks = (feedObjc.entries as? [TPPOPDSEntry])?.compactMap { makeBook(from: $0) } ?? []
       let (facetGroups, entryPoints) = extractFacets(from: feedObjc)
       return MappedCatalog(
         title: title,
@@ -301,7 +302,7 @@ extension CatalogViewModel {
     if let entries = feed.entries as? [TPPOPDSEntry] {
       for entry in entries {
         if let group = entry.groupAttributes,
-           let book = makeBookBackground(from: entry) {
+           let book = makeBook(from: entry) {
           let title = group.title ?? ""
           if titleToBooks[title] == nil { orderedTitles.append(title) }
           titleToBooks[title, default: []].append(book)
@@ -367,24 +368,19 @@ extension CatalogViewModel {
     let set = Set(books)
     TPPBookRegistry.shared.thumbnailImages(forBooks: set) { _ in }
   }
+
   static func makeBook(from entry: TPPOPDSEntry) -> TPPBook? {
     guard var book = TPPBook(entry: entry) else { return nil }
-    // Update metadata from registry
+
     if let updated = TPPBookRegistry.shared.updatedBookMetadata(book) {
       book = updated
     }
-    // Filter unsupported
+
     if book.defaultBookContentType == .unsupported { return nil }
     if book.defaultAcquisition == nil { return nil }
     return book
   }
 
-  nonisolated static func makeBookBackground(from entry: TPPOPDSEntry) -> TPPBook? {
-    guard let book = TPPBook(entry: entry) else { return nil }
-    if book.defaultBookContentType == .unsupported { return nil }
-    if book.defaultAcquisition == nil { return nil }
-    return book
-  }
 }
 
 

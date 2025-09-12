@@ -40,7 +40,7 @@ actor TPPBookCoverRegistry {
       
       do {
         let (data, _) = try await URLSession.shared.data(from: url)
-        guard let image = UIImage(data: data) else { return UIImage() }
+        guard let image = UIImage(data: data) else { return nil }
         
         self.imageCache.set(image, for: key as String, expiresIn: nil)
         return image
@@ -99,7 +99,12 @@ public class TPPBookCoverRegistryBridge: NSObject {
   @objc public func coverImageForBook(_ book: TPPBook, completion: @escaping (UIImage?) -> Void) {
     Task {
       let img = await TPPBookCoverRegistry.shared.coverImage(for: book)
-      DispatchQueue.main.async { completion(img) }
+      DispatchQueue.main.async { 
+        if let img = img {
+          book.imageCache.set(img, for: book.identifier)
+        }
+        completion(img) 
+      }
     }
   }
   
@@ -107,7 +112,12 @@ public class TPPBookCoverRegistryBridge: NSObject {
   @objc public func thumbnailImageForBook(_ book: TPPBook, completion: @escaping (UIImage?) -> Void) {
     Task {
       let img = await TPPBookCoverRegistry.shared.thumbnailImage(for: book)
-      DispatchQueue.main.async { completion(img) }
+      DispatchQueue.main.async { 
+        if let img = img {
+          book.imageCache.set(img, for: book.identifier)
+        }
+        completion(img) 
+      }
     }
   }
 }
