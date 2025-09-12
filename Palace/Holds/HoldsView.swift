@@ -105,7 +105,7 @@ struct HoldsView: View {
       .background(Color.black.opacity(0.5).ignoresSafeArea())
   }
   
-  /// Leading bar button: “Pick a new library”
+  /// Leading bar button: "Pick a new library"
   private var leadingBarButton: some View {
     Button {
       model.selectNewLibrary = true
@@ -118,6 +118,9 @@ struct HoldsView: View {
             model.loadAccount(account)
           }
       }
+      buttons.append(.default(Text(Strings.MyBooksView.addLibrary)) {
+        model.showLibraryAccountView = true
+      })
       buttons.append(.cancel())
       return ActionSheet(
         title: Text(NSLocalizedString(DisplayStrings.findYourLibrary, comment: "")),
