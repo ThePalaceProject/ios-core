@@ -227,9 +227,6 @@ private struct ResultsButton: View {
               .progressViewStyle(CircularProgressViewStyle(tint: buttonForeground))
               .scaleEffect(0.8)
           }
-          
-          Text(isApplying ? "APPLYING..." : "SHOW RESULTS")
-            .bold()
         }
         .padding(.vertical, 12)
         .padding(.horizontal, 20)
