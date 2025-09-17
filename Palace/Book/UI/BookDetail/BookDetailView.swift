@@ -87,9 +87,7 @@ struct BookDetailView: View {
         viewModel.showHalfSheet = false
       }
       .onReceive(viewModel.book.$dominantUIColor) { newColor in
-        withAnimation(.easeInOut(duration: 0.3)) {
-          headerColor = Color(newColor)
-        }
+        headerColor = Color(newColor)
       }
       .onReceive(NotificationCenter.default.publisher(for: .TPPBookRegistryStateDidChange).receive(on: RunLoop.main)) { note in
         guard
@@ -118,7 +116,6 @@ struct BookDetailView: View {
       .toolbarBackground(.hidden, for: .navigationBar)
       .toolbarColorScheme(headerColor.isDark ? .dark : .light, for: .navigationBar)
       .tint(headerColor.isDark ? .white : .black)
-      .animation(.easeInOut(duration: 0.3), value: headerColor) // Smooth toolbar color transitions
       
       if !viewModel.isFullSize {
         backgroundView
@@ -284,7 +281,6 @@ struct BookDetailView: View {
         startPoint: .bottom,
         endPoint: .top
       )
-      .animation(.easeInOut(duration: 0.3), value: headerColor) // Smooth color transitions
     }
     .edgesIgnoringSafeArea(.top)
   }

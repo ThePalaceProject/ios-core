@@ -178,7 +178,7 @@ final class BookDetailViewModel: ObservableObject {
         self?.computeButtonState(book: book, state: state, isManagingHold: isManaging, isProcessing: isProcessing) ?? .unsupported
       }
       .removeDuplicates()
-      .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main) // Increased debounce to reduce flashing
+      .debounce(for: .milliseconds(180), scheduler: DispatchQueue.main)
       .receive(on: DispatchQueue.main)
       .assign(to: &self.$stableButtonState)
   }
@@ -303,26 +303,8 @@ final class BookDetailViewModel: ObservableObject {
       }
       
     case .download, .get, .retry:
-      // Set download progress immediately to provide visual feedback
       self.downloadProgress = 0
-      
-      // Temporarily set state to downloading to prevent button flashing
-      let previousState = self.bookState
-      self.bookState = .downloading
-      
       didSelectDownload(for: book)
-      
-      // Reset state if download didn't start properly
-      DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-        guard let self = self else { return }
-        if self.bookState == .downloading && self.downloadProgress == 0 {
-          let currentRegistryState = self.registry.state(for: self.book.identifier)
-          if currentRegistryState != .downloading {
-            self.bookState = currentRegistryState
-          }
-        }
-      }
-      
       removeProcessingButton(button)
       
     case .read, .listen:
@@ -378,11 +360,8 @@ final class BookDetailViewModel: ObservableObject {
   }
 
   private func startDownloadAfterAuth(book: TPPBook) {
-    // Set state to downloading with a slight delay to prevent UI flash
-    DispatchQueue.main.async {
-      self.bookState = .downloading
-      self.showHalfSheet = true
-    }
+    bookState = .downloading
+    showHalfSheet = true
     downloadCenter.startDownload(for: book)
   }
 

@@ -28,6 +28,8 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
+	<key>UIDesignRequiresCompatibility</key>
+	<true/>
 	<key>CFBundleSpokenName</key>
 	<string>Palace</string>
 	<key>CFBundleURLTypes</key>
