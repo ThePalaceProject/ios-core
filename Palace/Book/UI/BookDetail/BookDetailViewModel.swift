@@ -313,9 +313,10 @@ final class BookDetailViewModel: ObservableObject {
       didSelectDownload(for: book)
       
       // Reset state if download didn't start properly
-      DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+        guard let self = self else { return }
         if self.bookState == .downloading && self.downloadProgress == 0 {
-          let currentRegistryState = self.registry.state(for: book.identifier)
+          let currentRegistryState = self.registry.state(for: self.book.identifier)
           if currentRegistryState != .downloading {
             self.bookState = currentRegistryState
           }
