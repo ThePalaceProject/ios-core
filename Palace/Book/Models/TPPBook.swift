@@ -626,7 +626,15 @@ private extension TPPBook {
       )
 
       DispatchQueue.main.async {
-        self.dominantUIColor = color
+        // Only update if the color is significantly different to prevent flashing
+        let currentColor = self.dominantUIColor
+        let colorDistance = abs(color.redComponent - currentColor.redComponent) + 
+                           abs(color.greenComponent - currentColor.greenComponent) + 
+                           abs(color.blueComponent - currentColor.blueComponent)
+        
+        if colorDistance > 0.1 { // Only update if colors differ significantly
+          self.dominantUIColor = color
+        }
       }
     }
   }

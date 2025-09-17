@@ -3,6 +3,7 @@
 #import "ADEPT/NYPLADEPT.h"
 #import "ADEPT/ADEPT.h"
 #import "AdobeDRMContainer.h"
+#import "RDServicesStubs.h"
 #endif
 
 #if FEATURE_OVERDRIVE

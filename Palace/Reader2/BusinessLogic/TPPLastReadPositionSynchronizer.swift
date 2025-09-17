@@ -112,28 +112,30 @@ class TPPLastReadPositionSynchronizer {
                                       publication: Publication,
                                       book: TPPBook) async {
     await withCheckedContinuation { continuation in
-      let alert = UIAlertController(title: DisplayStrings.syncReadingPositionAlertTitle,
-                                    message: DisplayStrings.syncReadingPositionAlertBody,
-                                    preferredStyle: .alert)
+      DispatchQueue.main.async {
+        let alert = UIAlertController(title: DisplayStrings.syncReadingPositionAlertTitle,
+                                      message: DisplayStrings.syncReadingPositionAlertBody,
+                                      preferredStyle: .alert)
 
-      let stayText = DisplayStrings.stay
-      let stayAction = UIAlertAction(title: stayText, style: .cancel) { _ in
-        continuation.resume()
+        let stayText = DisplayStrings.stay
+        let stayAction = UIAlertAction(title: stayText, style: .cancel) { _ in
+          continuation.resume()
+        }
+
+        let moveText = DisplayStrings.move
+        let moveAction = UIAlertAction(title: moveText, style: .default) { _ in
+          let loc = TPPBookLocation(locator: serverLocator,
+                                    type: "LocatorHrefProgression",
+                                    publication: publication)
+          self.bookRegistry.setLocation(loc, forIdentifier: book.identifier)
+          continuation.resume()
+        }
+
+        alert.addAction(stayAction)
+        alert.addAction(moveAction)
+
+        TPPPresentationUtils.safelyPresent(alert)
       }
-
-      let moveText = DisplayStrings.move
-      let moveAction = UIAlertAction(title: moveText, style: .default) { _ in
-        let loc = TPPBookLocation(locator: serverLocator,
-                                  type: "LocatorHrefProgression",
-                                  publication: publication)
-        self.bookRegistry.setLocation(loc, forIdentifier: book.identifier)
-        continuation.resume()
-      }
-
-      alert.addAction(stayAction)
-      alert.addAction(moveAction)
-
-      TPPPresentationUtils.safelyPresent(alert)
     }
   }
 }
