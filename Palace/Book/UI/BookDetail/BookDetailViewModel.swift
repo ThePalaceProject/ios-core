@@ -303,9 +303,7 @@ final class BookDetailViewModel: ObservableObject {
       }
       
     case .download, .get, .retry:
-
       self.downloadProgress = 0
-
       didSelectDownload(for: book)
       removeProcessingButton(button)
       
