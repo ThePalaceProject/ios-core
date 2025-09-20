@@ -59,18 +59,16 @@ import OverdriveProcessor
 #endif
     
     let backgroundIdentifier = (Bundle.main.bundleIdentifier ?? "") + ".downloadCenterBackgroundIdentifier"
-    let configuration = URLSessionConfiguration.default
+    let configuration = NetworkConditionAdapter.shared.currentConfiguration()
     configuration.isDiscretionary = false
     configuration.waitsForConnectivity = false
-    configuration.httpMaximumConnectionsPerHost = 3
-    if #available(iOS 13.0, *) {
-      configuration.allowsExpensiveNetworkAccess = true
-    }
-    configuration.allowsExpensiveNetworkAccess = true
     if #available(iOS 13.0, *) {
       configuration.allowsConstrainedNetworkAccess = true
     }
     self.session = URLSession(configuration: configuration, delegate: self, delegateQueue: .main)
+    
+    // Setup intelligent download management
+    setupNetworkMonitoring()
   }
   
   func startBorrow(for book: TPPBook, attemptDownload shouldAttemptDownload: Bool, borrowCompletion: (() -> Void)? = nil) {
