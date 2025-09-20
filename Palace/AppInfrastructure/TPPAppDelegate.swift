@@ -267,6 +267,7 @@ final class MemoryPressureMonitor {
   static let shared = MemoryPressureMonitor()
 
   private let monitorQueue = DispatchQueue(label: "org.thepalaceproject.memory-pressure", qos: .utility)
+  private let memoryManager = AdaptiveMemoryManager.shared
 
   private init() {}
 
@@ -335,21 +336,22 @@ final class MemoryPressureMonitor {
   private func adjustDownloadLimitsForCurrentConditions() {
     monitorQueue.async {
       let processInfo = ProcessInfo.processInfo
-      var maxActive = 3
+      var maxActive = self.memoryManager.maxConcurrentDownloads
+      
       if #available(iOS 11.0, *) {
         switch processInfo.thermalState {
         case .critical:
           maxActive = 1
         case .serious:
-          maxActive = 2
+          maxActive = min(maxActive, 2)
         case .fair:
-          maxActive = 3
+          maxActive = min(maxActive, 3)
         default:
-          maxActive = 3
+          break
         }
       }
       if processInfo.isLowPowerModeEnabled {
-        maxActive = min(maxActive, 2)
+        maxActive = min(maxActive, 1)
       }
       MyBooksDownloadCenter.shared.limitActiveDownloads(max: maxActive)
     }
