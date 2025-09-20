@@ -551,11 +551,22 @@ final class BookDetailViewModel: ObservableObject {
           return
         }
 
-        self.launchAudiobook(book: book, audiobook: audiobook, drmDecryptor: drmDecryptor)
+        // Apply chapter parsing optimization
+        let optimizedAudiobook = self.applyOptimizations(to: audiobook)
+        
+        self.launchAudiobook(book: book, audiobook: optimizedAudiobook, drmDecryptor: drmDecryptor)
         completion?()
       }
     }
     AudioBookVendorsHelper.updateVendorKey(book: json, completion: vendorCompletion)
+  }
+  
+  private func applyOptimizations(to audiobook: Audiobook) -> Audiobook {
+    // Apply chapter parsing optimization
+    let optimizedTableOfContents = AudiobookOptimizationCoordinator.shared.optimizeTableOfContents(audiobook.tableOfContents)
+    
+    // Create new audiobook with optimized table of contents
+    return Audiobook(tableOfContents: optimizedTableOfContents, player: audiobook.player)
   }
   
   @MainActor private func launchAudiobook(book: TPPBook, audiobook: Audiobook, drmDecryptor: DRMDecryptor?) {

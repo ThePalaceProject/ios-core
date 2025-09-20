@@ -39,6 +39,9 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     registerBackgroundTasks()
 
     MemoryPressureMonitor.shared.start()
+    
+    // Initialize audiobook optimization systems
+    AudiobookOptimizationCoordinator.shared.initializeOptimizations()
 
     DispatchQueue.main.async { [weak self] in
       guard let self else { return }
