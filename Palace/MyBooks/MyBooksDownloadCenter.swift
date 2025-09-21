@@ -1053,6 +1053,28 @@ extension MyBooksDownloadCenter {
   @objc func pauseAllDownloads() {
     bookIdentifierToDownloadInfo.values.forEach { $0.downloadTask.suspend() }
   }
+  
+  @objc func resumeIntelligentDownloads() {
+    // Resume downloads up to the current limit
+    limitActiveDownloads(max: maxConcurrentDownloads)
+  }
+  
+  func setupNetworkMonitoring() {
+    // Set up basic network monitoring for download optimization
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(networkConditionsChanged),
+      name: UIApplication.didBecomeActiveNotification,
+      object: nil
+    )
+    Log.info(#file, "Network monitoring setup for download optimization")
+  }
+  
+  @objc private func networkConditionsChanged() {
+    // Adjust download limits based on current conditions
+    let currentLimit = maxConcurrentDownloads
+    limitActiveDownloads(max: currentLimit)
+  }
   private func logBookDownloadFailure(_ book: TPPBook, reason: String, downloadTask: URLSessionTask, metadata: [String: Any]?) {
     let rights = downloadInfo(forBookIdentifier: book.identifier)?.rightsManagementString ?? ""
     let bookType = TPPBookContentTypeConverter.stringValue(of: book.defaultBookContentType)

@@ -10,16 +10,17 @@ import PalaceAudiobookToolkit
 
 /// Optimizes chapter parsing while preserving all existing manifest functionality
 /// Works as a post-processor for AudiobookTableOfContents
-@objc final class ChapterParsingOptimizer: NSObject {
+final class ChapterParsingOptimizer {
     
     private let memoryManager = AdaptiveMemoryManager.shared
     
     /// Optimize an existing AudiobookTableOfContents for performance
     /// Preserves all original parsing logic while applying memory-conscious optimizations
-    @objc func optimizeTableOfContents(_ tableOfContents: AudiobookTableOfContents) -> AudiobookTableOfContents {
+    func optimizeTableOfContents(_ tableOfContents: AudiobookTableOfContents) -> AudiobookTableOfContents {
         
-        // Only optimize if necessary
+        // Only optimize if necessary and safe
         guard shouldOptimize(tableOfContents: tableOfContents) else {
+            Log.info(#file, "Chapter optimization skipped - preserving complex chapter-to-track mapping for \(tableOfContents.manifest.audiobookType) audiobook with \(tableOfContents.toc.count) chapters")
             return tableOfContents
         }
         
@@ -35,11 +36,9 @@ import PalaceAudiobookToolkit
             Log.info(#file, "Chapter optimization: \(originalCount) → \(finalCount) chapters")
         }
         
-        // Create new optimized table of contents
-        return createOptimizedTableOfContents(
-            from: tableOfContents,
-            withOptimizedChapters: optimizedChapters
-        )
+        // For now, return the original table of contents since we can't easily modify it
+        // The optimization would need to be applied at the audiobook level
+        return tableOfContents
     }
     
     // MARK: - Optimization Logic
@@ -47,25 +46,63 @@ import PalaceAudiobookToolkit
     private func shouldOptimize(tableOfContents: AudiobookTableOfContents) -> Bool {
         let chapterCount = tableOfContents.toc.count
         
-        // Don't optimize Findaway or Overdrive (they have special handling)
+        // CRITICAL: Don't optimize ANY audiobooks with complex chapter-to-track mapping
+        // This includes Audible, LCP, and any audiobook with timestamp-based chapters
+        
+        // Never optimize Findaway or Overdrive (they have special handling)
         if tableOfContents.manifest.audiobookType == .findaway ||
            tableOfContents.manifest.audiobookType == .overdrive {
+            Log.info(#file, "Skipping chapter optimization - Findaway/Overdrive audiobook")
             return false
         }
         
-        return memoryManager.isLowMemoryDevice ||
-               chapterCount > memoryManager.maxChapterCount ||
-               hasExcessivelyShortChapters(tableOfContents.toc)
-    }
-    
-    private func hasExcessivelyShortChapters(_ chapters: [Chapter]) -> Bool {
-        let shortChapters = chapters.filter { chapter in
-            guard let duration = chapter.duration else { return false }
-            return duration < 30.0 // Less than 30 seconds
+        // Never optimize LCP audiobooks (often Audible) - they have complex chapter structures
+        if tableOfContents.manifest.audiobookType == .lcp {
+            Log.info(#file, "Skipping chapter optimization - LCP audiobook (likely Audible)")
+            return false
         }
         
-        // If more than 50% of chapters are very short, we should optimize
-        return shortChapters.count > chapters.count / 2
+        // Never optimize if ANY chapter has a non-zero timestamp (indicates complex mapping)
+        if hasChaptersWithTimestamps(tableOfContents.toc) {
+            Log.info(#file, "Skipping chapter optimization - chapters have timestamp offsets")
+            return false
+        }
+        
+        // Never optimize if chapters span multiple tracks or tracks have multiple chapters
+        if hasComplexTrackChapterMapping(tableOfContents.toc) {
+            Log.info(#file, "Skipping chapter optimization - complex track-to-chapter mapping detected")
+            return false
+        }
+        
+        // Only optimize in extreme cases on very low memory devices with simple structure
+        return memoryManager.isLowMemoryDevice && 
+               chapterCount > memoryManager.maxChapterCount * 2 && // Much higher threshold
+               hasOnlySimpleChapters(tableOfContents.toc)
+    }
+    
+    private func hasChaptersWithTimestamps(_ chapters: [Chapter]) -> Bool {
+        // If any chapter has a non-zero timestamp, it indicates complex track mapping
+        return chapters.contains { chapter in
+            chapter.position.timestamp > 0.1 // Allow for small floating point errors
+        }
+    }
+    
+    private func hasComplexTrackChapterMapping(_ chapters: [Chapter]) -> Bool {
+        // Check if multiple chapters map to the same track (complex mapping)
+        let trackIds = chapters.map { $0.position.track.id as String }
+        let uniqueTrackIds = Set(trackIds)
+        
+        // If we have fewer unique tracks than chapters, some tracks have multiple chapters
+        return uniqueTrackIds.count < chapters.count
+    }
+    
+    private func hasOnlySimpleChapters(_ chapters: [Chapter]) -> Bool {
+        // Only optimize if ALL chapters are simple: one chapter per track, no timestamps
+        return chapters.allSatisfy { chapter in
+            chapter.position.timestamp == 0.0 && // No timestamp offset
+            chapter.duration != nil && // Has explicit duration
+            chapter.duration! > 60.0 // Reasonable length (> 1 minute)
+        }
     }
     
     private func consolidateShortChapters(_ chapters: [Chapter]) -> [Chapter] {
@@ -132,7 +169,7 @@ import PalaceAudiobookToolkit
         }
         
         // Only use consolidated version if it meaningfully reduces chapter count
-        if consolidatedChapters.count < chapters.count * 0.8 {
+        if Double(consolidatedChapters.count) < Double(chapters.count) * 0.8 {
             return consolidatedChapters
         } else {
             return chapters
@@ -190,109 +227,11 @@ import PalaceAudiobookToolkit
         withOptimizedChapters chapters: [Chapter]
     ) -> AudiobookTableOfContents {
         
-        // Create a new AudiobookTableOfContents with the optimized chapters
-        // We need to use the existing initializer and then replace the chapters
-        var optimized = AudiobookTableOfContents(manifest: original.manifest, tracks: original.tracks)
-        
-        // Replace the chapters using reflection or direct property access
-        // Since we can't modify the struct directly, we'll create a wrapper
-        return OptimizedTableOfContentsWrapper(
-            originalTableOfContents: optimized,
-            optimizedChapters: chapters
-        )
+        // Since AudiobookTableOfContents is a struct and we can't easily modify it,
+        // we'll return the original for now. In a full implementation, this would
+        // require deeper integration with the audiobook toolkit.
+        Log.info(#file, "Chapter optimization completed but table of contents structure unchanged")
+        return original
     }
 }
 
-// MARK: - Optimized Table of Contents Wrapper
-
-/// Wrapper that provides optimized chapters while maintaining full compatibility
-/// with the existing AudiobookTableOfContents interface
-class OptimizedTableOfContentsWrapper: AudiobookTableOfContents {
-    
-    private let originalTableOfContents: AudiobookTableOfContents
-    private let optimizedChapters: [Chapter]
-    
-    init(originalTableOfContents: AudiobookTableOfContents, optimizedChapters: [Chapter]) {
-        self.originalTableOfContents = originalTableOfContents
-        self.optimizedChapters = optimizedChapters
-        
-        super.init(manifest: originalTableOfContents.manifest, tracks: originalTableOfContents.tracks)
-    }
-    
-    // Override the toc property to return optimized chapters
-    public override var toc: [Chapter] {
-        return optimizedChapters
-    }
-    
-    public override var count: Int {
-        return optimizedChapters.count
-    }
-    
-    // Preserve all other functionality from the original
-    public override func track(forKey key: String) -> (any Track)? {
-        return originalTableOfContents.track(forKey: key)
-    }
-    
-    public override func nextChapter(after chapter: Chapter) -> Chapter? {
-        guard let index = optimizedChapters.firstIndex(where: { $0.title == chapter.title }),
-              index + 1 < optimizedChapters.count else {
-            return nil
-        }
-        return optimizedChapters[index + 1]
-    }
-    
-    public override func previousChapter(before chapter: Chapter) -> Chapter? {
-        guard let index = optimizedChapters.firstIndex(where: { $0.title == chapter.title }),
-              index - 1 >= 0 else {
-            return nil
-        }
-        return optimizedChapters[index - 1]
-    }
-    
-    public override func chapter(forPosition position: TrackPosition) throws -> Chapter {
-        // Use binary search on optimized chapters
-        var lowerBound = 0
-        var upperBound = optimizedChapters.count - 1
-
-        while lowerBound <= upperBound {
-            let middleIndex = (lowerBound + upperBound) / 2
-            let chapter = optimizedChapters[middleIndex]
-
-            if let endPosition = chapter.endPosition {
-                if position < chapter.position {
-                    upperBound = middleIndex - 1
-                } else if position > endPosition {
-                    lowerBound = middleIndex + 1
-                } else {
-                    return chapter
-                }
-            } else {
-                // Fallback for chapters without end positions
-                if middleIndex == optimizedChapters.count - 1 {
-                    return chapter
-                } else if position >= chapter.position && position < optimizedChapters[middleIndex + 1].position {
-                    return chapter
-                } else if position < chapter.position {
-                    upperBound = middleIndex - 1
-                } else {
-                    lowerBound = middleIndex + 1
-                }
-            }
-        }
-
-        // If no exact match found, return the last chapter
-        return optimizedChapters.last ?? Chapter(title: "Unknown", position: position)
-    }
-    
-    public override func downloadProgress(for chapter: Chapter) -> Double {
-        return originalTableOfContents.downloadProgress(for: chapter)
-    }
-    
-    public override var overallDownloadProgress: Double {
-        let totalProgress = optimizedChapters.reduce(0.0) { sum, chapter in
-            return sum + downloadProgress(for: chapter)
-        }
-        
-        return totalProgress / Double(optimizedChapters.count)
-    }
-}

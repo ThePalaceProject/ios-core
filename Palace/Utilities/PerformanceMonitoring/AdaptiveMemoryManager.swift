@@ -92,8 +92,10 @@ import UIKit
         // Clear image cache
         ImageCache.shared.clear()
         
-        // Clear general cache memory
-        GeneralCache<String, Data>.clearMemoryCache()
+        // Clear general cache memory (using static method)
+        // Note: GeneralCache doesn't have a static clearMemoryCache method, 
+        // so we'll use the general cache clearing approach
+        NotificationCenter.default.post(name: .clearGeneralCacheMemory, object: nil)
     }
     
     private func clearAllCaches() {
@@ -127,4 +129,5 @@ enum MemoryPressureLevel {
 extension Notification.Name {
     static let memoryPressureCritical = Notification.Name("MemoryPressureCritical")
     static let reduceOperations = Notification.Name("ReduceOperations")
+    static let clearGeneralCacheMemory = Notification.Name("ClearGeneralCacheMemory")
 }

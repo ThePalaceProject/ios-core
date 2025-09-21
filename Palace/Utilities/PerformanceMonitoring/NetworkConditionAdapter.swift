@@ -196,3 +196,4 @@ import Network
 extension Notification.Name {
     static let networkTypeChanged = Notification.Name("NetworkTypeChanged")
 }
+

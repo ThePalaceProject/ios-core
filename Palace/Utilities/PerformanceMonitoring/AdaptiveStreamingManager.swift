@@ -28,7 +28,7 @@ import PalaceAudiobookToolkit
         case audioOnly96kbps = 96
         case audioOnly128kbps = 128
         case standard = 256
-        case adaptive = 0 // Let system decide
+        case adaptive = 0
     }
     
     /// Configure streaming quality based on current conditions
@@ -73,7 +73,7 @@ import PalaceAudiobookToolkit
     // MARK: - Prefetch Configuration
     
     /// Get prefetch configuration based on current conditions
-    @objc func prefetchConfiguration() -> PrefetchConfiguration {
+    func prefetchConfiguration() -> PrefetchConfiguration {
         let networkType = networkAdapter.currentNetworkType
         let batteryLevel = UIDevice.current.batteryLevel
         let isLowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
@@ -115,13 +115,13 @@ import PalaceAudiobookToolkit
     struct PrefetchConfiguration {
         var prefetchEnabled: Bool = true
         var maxPrefetchChapters: Int = 3
-        var prefetchThresholdSeconds: Double = 30 // Start prefetching when 30s remain
+        var prefetchThresholdSeconds: Double = 30
     }
     
     // MARK: - Buffer Management
     
     /// Get buffer configuration for current conditions
-    @objc func bufferConfiguration() -> BufferConfiguration {
+    func bufferConfiguration() -> BufferConfiguration {
         let networkType = networkAdapter.currentNetworkType
         let thermalState = ProcessInfo.processInfo.thermalState
         
@@ -242,3 +242,4 @@ import PalaceAudiobookToolkit
 extension Notification.Name {
     static let streamingQualityUpdateNeeded = Notification.Name("StreamingQualityUpdateNeeded")
 }
+

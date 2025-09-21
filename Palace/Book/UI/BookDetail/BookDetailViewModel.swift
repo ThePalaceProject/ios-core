@@ -563,10 +563,13 @@ final class BookDetailViewModel: ObservableObject {
   
   private func applyOptimizations(to audiobook: Audiobook) -> Audiobook {
     // Apply chapter parsing optimization
-    let optimizedTableOfContents = AudiobookOptimizationCoordinator.shared.optimizeTableOfContents(audiobook.tableOfContents)
+    let optimizer = ChapterParsingOptimizer()
+    let optimizedTableOfContents = optimizer.optimizeTableOfContents(audiobook.tableOfContents)
     
-    // Create new audiobook with optimized table of contents
-    return Audiobook(tableOfContents: optimizedTableOfContents, player: audiobook.player)
+    // Update the audiobook's table of contents
+    audiobook.tableOfContents = optimizedTableOfContents
+    
+    return audiobook
   }
   
   @MainActor private func launchAudiobook(book: TPPBook, audiobook: Audiobook, drmDecryptor: DRMDecryptor?) {
