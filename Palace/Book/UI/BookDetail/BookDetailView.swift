@@ -384,6 +384,7 @@ struct BookDetailView: View {
                 if let url = lane.subsectionURL {
                   NavigationLink(destination: CatalogLaneMoreView(url: url)) {
                     Text(DisplayStrings.more.capitalized)
+                      .foregroundColor(.primary)
                   }
                 }
               }
