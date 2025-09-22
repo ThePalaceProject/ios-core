@@ -637,23 +637,25 @@ final class BookDetailViewModel: ObservableObject {
       }
       return
     }
+    
+    let validatedPosition = validateInitialPosition(localPosition, for: manager)
         
-    audiobookManager?.audiobook.player.play(at: localPosition, completion: nil)
+    audiobookManager?.audiobook.player.play(at: validatedPosition, completion: nil)
     
     guard !isSyncingLocation else { return }
     isSyncingLocation = true
     TPPBookRegistry.shared.syncLocation(for: book) { [weak self] remoteBookmark in
-      guard let remoteBookmark, let self, let audiobookManager else { return }
-      
-      let remotePosition = TrackPosition(
+      guard let remoteBookmark, let self, let audiobookManager, let remotePosition = TrackPosition(
         audioBookmark: remoteBookmark,
         toc: audiobookManager.audiobook.tableOfContents.toc,
         tracks: audiobookManager.audiobook.tableOfContents.tracks
-      )
+      ) else { return }
+      
+      let validatedRemotePosition = self.validateInitialPosition(remotePosition, for: audiobookManager)
       
       self.chooseLocalLocation(
-        localPosition: localPosition,
-        remotePosition: remotePosition,
+        localPosition: validatedPosition,
+        remotePosition: validatedRemotePosition,
         serverUpdateDelay: 300
       ) { position in
         DispatchQueue.main.async {
@@ -666,6 +668,39 @@ final class BookDetailViewModel: ObservableObject {
       }
       self.isSyncingLocation = false
     }
+  }
+  
+  private func validateInitialPosition(_ position: TrackPosition, for manager: AudiobookManager) -> TrackPosition {
+    let tracks = manager.audiobook.tableOfContents.tracks
+    
+    let totalDuration = tracks.tracks.reduce(0) { $0 + $1.duration }
+    let positionDuration = position.durationToSelf()
+    let percentageThrough = totalDuration > 0 ? positionDuration / totalDuration : 0
+    
+    
+    if percentageThrough < 0.01 && position.track.index > 2 {
+      Log.info(#file, "Detected potentially corrupted bookmark (track \(position.track.index), \(percentageThrough * 100)% through) - starting from beginning")
+      
+      guard let firstTrack = tracks.first else {
+        Log.error(#file, "No first track available for validation fallback")
+        return position
+      }
+      
+      return TrackPosition(track: firstTrack, timestamp: 0.0, tracks: tracks)
+    }
+    
+    if position.timestamp == 0.0 && position.track.index > 3 {
+      Log.info(#file, "Detected zero-timestamp bookmark in random chapter (track \(position.track.index)) - starting from beginning")
+      
+      guard let firstTrack = tracks.first else {
+        Log.error(#file, "No first track available for validation fallback")
+        return position
+      }
+      
+      return TrackPosition(track: firstTrack, timestamp: 0.0, tracks: tracks)
+    }
+    
+    return position
   }
   
   /// Starts audiobook playback from the beginning (first track, position 0)
