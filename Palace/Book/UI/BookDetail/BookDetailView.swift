@@ -351,6 +351,7 @@ struct BookDetailView: View {
             isExpanded.toggle()
           }
         }
+        .foregroundColor(.primary)
         .bottomrRightJustified()
       }
       .padding(.bottom)
