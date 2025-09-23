@@ -42,8 +42,8 @@ class TPPPDFPreviewGridController: UICollectionViewController {
   private let previewCache = NSCache<NSNumber, UIImage>()
   
   private func configurePreviewCache() {
-    previewCache.totalCostLimit = 20 * 1024 * 1024 // 20MB limit
-    previewCache.countLimit = 50 // Max 50 preview images
+    previewCache.totalCostLimit = 20 * 1024 * 1024
+    previewCache.countLimit = 50
   }
   private let itemSpacing = 10.0
 

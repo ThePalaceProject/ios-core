@@ -35,7 +35,6 @@ final class Log: NSObject {
     }
     #endif
 
-    // PERFORMANCE FIX: Throttle excessive logging in debug builds
     #if DEBUG
     if shouldThrottlePalaceLogging(level: level, tag: tag, message: message) {
       return
@@ -77,14 +76,13 @@ final class Log: NSObject {
   // MARK: - Performance Optimizations
   
   private static var lastPalaceLogMessages: [String: Date] = [:]
-  private static let palaceLogThrottleInterval: TimeInterval = 0.3 // 300ms throttle
+  private static let palaceLogThrottleInterval: TimeInterval = 0.3
   
   private class func shouldThrottlePalaceLogging(level: OSLogType, tag: String, message: String) -> Bool {
-    // Never throttle errors or faults - they're critical
     guard level != .error && level != .fault else { return false }
     
     let now = Date()
-    let messageKey = "\(tag):\(message.prefix(30))" // Use tag + first 30 chars as key
+    let messageKey = "\(tag):\(message.prefix(30))"
     
     if let lastTime = lastPalaceLogMessages[messageKey] {
       if now.timeIntervalSince(lastTime) < palaceLogThrottleInterval {
@@ -103,16 +101,12 @@ final class Log: NSObject {
     return false
   }
 
-  // Avoid including source paths related to the build machine/user such as
-  // "/Users/<username>/<local-path>/.../Palace"
   private class func trimTag(_ tag: String) -> String {
     guard tag.starts(with: "/") else {
       return tag
     }
 
     var components = tag.components(separatedBy: "/")
-
-    // remove any local path components before the source root in repo
     let sourcesRootIndex = (components.index(of: "Palace") ?? 0) + 1
 
     if sourcesRootIndex < components.count {

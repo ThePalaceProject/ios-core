@@ -14,11 +14,8 @@ final class ChapterParsingOptimizer {
     
     private let memoryManager = AdaptiveMemoryManager.shared
     
-    /// Optimize an existing AudiobookTableOfContents for performance
-    /// Preserves all original parsing logic while applying memory-conscious optimizations
     func optimizeTableOfContents(_ tableOfContents: AudiobookTableOfContents) -> AudiobookTableOfContents {
         
-        // Only optimize if necessary and safe
         guard shouldOptimize(tableOfContents: tableOfContents) else {
             Log.info(#file, "Chapter optimization skipped - preserving complex chapter-to-track mapping for \(tableOfContents.manifest.audiobookType) audiobook with \(tableOfContents.toc.count) chapters")
             return tableOfContents
@@ -27,7 +24,6 @@ final class ChapterParsingOptimizer {
         let originalCount = tableOfContents.toc.count
         var optimizedChapters = tableOfContents.toc
         
-        // Apply optimizations while preserving functionality
         optimizedChapters = consolidateShortChapters(optimizedChapters)
         optimizedChapters = limitExcessiveChapters(optimizedChapters, maxChapters: memoryManager.maxChapterCount)
         
@@ -36,8 +32,6 @@ final class ChapterParsingOptimizer {
             Log.info(#file, "Chapter optimization: \(originalCount) → \(finalCount) chapters")
         }
         
-        // For now, return the original table of contents since we can't easily modify it
-        // The optimization would need to be applied at the audiobook level
         return tableOfContents
     }
     
@@ -83,7 +77,7 @@ final class ChapterParsingOptimizer {
     private func hasChaptersWithTimestamps(_ chapters: [Chapter]) -> Bool {
         // If any chapter has a non-zero timestamp, it indicates complex track mapping
         return chapters.contains { chapter in
-            chapter.position.timestamp > 0.1 // Allow for small floating point errors
+            chapter.position.timestamp > 0.1
         }
     }
     

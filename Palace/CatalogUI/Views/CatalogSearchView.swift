@@ -38,7 +38,7 @@ struct CatalogSearchView: View {
       ScrollView {
         BookListView(
           books: viewModel.filteredBooks,
-          isLoading: .constant(false), // Always show as not loading for instant feel
+          isLoading: .constant(false),
           onSelect: onBookSelected
         )
       }

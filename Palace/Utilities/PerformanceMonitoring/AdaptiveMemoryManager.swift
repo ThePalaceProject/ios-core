@@ -16,7 +16,6 @@ import UIKit
     private let deviceMemory: UInt64
     private let processInfo: ProcessInfo
     
-    /// Device is considered low-memory if < 3GB RAM
     let isLowMemoryDevice: Bool
     
     init(processInfo: ProcessInfo = ProcessInfo.processInfo) {

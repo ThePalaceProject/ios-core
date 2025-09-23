@@ -9,8 +9,8 @@
 
 @end
 
-static NSUInteger const diskCacheInMegabytes = 15;  // Reduced from 20MB
-static NSUInteger const memoryCacheInMegabytes = 1; // Reduced from 2MB
+static NSUInteger const diskCacheInMegabytes = 15;
+static NSUInteger const memoryCacheInMegabytes = 1;
 
 static TPPSession *sharedSession = nil;
 
@@ -117,10 +117,6 @@ didReceiveChallenge:(NSURLAuthenticationChallenge *const)challenge
     };
 
   if (shouldResetCache) {
-    // NB: this sledgehammer approach is not ideal, and the only reason we
-    // don't use `removeCachedResponseForRequest:` (which is really what we
-    // should be using) is because that method has been buggy since iOS 8,
-    // and it still is in iOS 13.
     [TPPNetworkExecutor.shared clearCache];
   }
 

@@ -1055,12 +1055,10 @@ extension MyBooksDownloadCenter {
   }
   
   @objc func resumeIntelligentDownloads() {
-    // Resume downloads up to the current limit
     limitActiveDownloads(max: maxConcurrentDownloads)
   }
   
   func setupNetworkMonitoring() {
-    // Set up basic network monitoring for download optimization
     NotificationCenter.default.addObserver(
       self,
       selector: #selector(networkConditionsChanged),
@@ -1071,10 +1069,10 @@ extension MyBooksDownloadCenter {
   }
   
   @objc private func networkConditionsChanged() {
-    // Adjust download limits based on current conditions
     let currentLimit = maxConcurrentDownloads
     limitActiveDownloads(max: currentLimit)
   }
+  
   private func logBookDownloadFailure(_ book: TPPBook, reason: String, downloadTask: URLSessionTask, metadata: [String: Any]?) {
     let rights = downloadInfo(forBookIdentifier: book.identifier)?.rightsManagementString ?? ""
     let bookType = TPPBookContentTypeConverter.stringValue(of: book.defaultBookContentType)
@@ -1136,8 +1134,6 @@ extension MyBooksDownloadCenter {
       }
       self.bookRegistry.setFulfillmentId(license.identifier, for: book.identifier)
       
-      
-      // For all content types: Continue with content storage (background for audiobooks, required for others)
       if !self.replaceBook(book, withFileAtURL: localUrl, forDownloadTask: downloadTask) {
         if book.defaultBookContentType == .audiobook {
           Log.warn(#file, "Content storage failed for audiobook, but streaming still available")
@@ -1196,13 +1192,9 @@ extension MyBooksDownloadCenter {
     Log.info(#file, "🎵 Copying license TO: \(streamingLicenseUrl.path)")
     
     do {
-      // Remove any existing license file first
       try? FileManager.default.removeItem(at: streamingLicenseUrl)
-      
-      // Copy license to content directory for streaming
       try FileManager.default.copyItem(at: sourceLicenseUrl, to: streamingLicenseUrl)
       
-      // Verify the copy was successful
       let fileExists = FileManager.default.fileExists(atPath: streamingLicenseUrl.path)
     } catch {
       TPPErrorLogger.logError(error, summary: "Failed to copy LCP license for streaming", metadata: [

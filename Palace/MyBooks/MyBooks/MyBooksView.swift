@@ -111,7 +111,6 @@ struct MyBooksView: View {
           .frame(minHeight: geometry.size.height)
         }
         .scrollIndicators(.visible)
-//        .scrollBounceBehavior(.basedOnSize)
         .refreshable { model.reloadData() }
         .scrollDismissesKeyboard(.interactively)
         .simultaneousGesture(DragGesture().onChanged { _ in
