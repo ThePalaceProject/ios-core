@@ -647,7 +647,6 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
     }
     case CellKindBarcodeImage: {
       [self.tableView beginUpdates];
-      // Collapse barcode by adjusting certain constraints
       if (self.barcodeImageView.bounds.size.height > sConstantZero) {
         self.barcodeHeightConstraint.constant = sConstantZero;
         self.barcodeTextHeightConstraint.constant = sConstantZero;

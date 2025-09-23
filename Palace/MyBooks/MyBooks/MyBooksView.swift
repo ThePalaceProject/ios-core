@@ -95,17 +95,29 @@ struct MyBooksView: View {
   private var content: some View {
     GeometryReader { geometry in
       if model.showInstructionsLabel {
-        emptyView
-          .frame(minHeight: geometry.size.height)
-          .refreshable { model.reloadData() }
-      } else {
-        BookListView(
-          books: model.books,
-          isLoading: $model.isLoading,
-          onSelect: { book in presentBookDetail(for: book) }
-        )
+        ScrollView {
+          emptyView
+            .frame(minHeight: geometry.size.height)
+            .centered()
+        }
         .refreshable { model.reloadData() }
-        .dismissKeyboardOnTap(onDismiss: { if model.showSearchSheet { model.searchQuery = "" } })
+      } else {
+        ScrollView {
+          BookListView(
+            books: model.books,
+            isLoading: $model.isLoading,
+            onSelect: { book in presentBookDetail(for: book) }
+          )
+          .frame(minHeight: geometry.size.height)
+        }
+        .scrollIndicators(.visible)
+        .refreshable { model.reloadData() }
+        .scrollDismissesKeyboard(.interactively)
+        .simultaneousGesture(DragGesture().onChanged { _ in
+          if model.showSearchSheet { 
+            model.searchQuery = ""
+          }
+        })
       }
     }
   }

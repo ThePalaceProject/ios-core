@@ -54,16 +54,20 @@ private extension CatalogContentView {
             books: lane.books.map { TPPBookRegistry.shared.updatedBookMetadata($0) ?? $0 },
             moreURL: lane.moreURL,
             onSelect: onBookSelected,
-            showHeader: true
+            onMoreTapped: onLaneMoreTapped,
+            showHeader: true,
+            isLoading: lane.isLoading
           )
         }
       }
     } else {
-      BookListView(
-        books: viewModel.ungroupedBooks,
-        isLoading: .constant(false),
-        onSelect: onBookSelected
-      )
+      ScrollView {
+        BookListView(
+          books: viewModel.ungroupedBooks,
+          isLoading: .constant(false),
+          onSelect: onBookSelected
+        )
+      }
     }
   }
 }

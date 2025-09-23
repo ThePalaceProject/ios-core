@@ -59,18 +59,16 @@ import OverdriveProcessor
 #endif
     
     let backgroundIdentifier = (Bundle.main.bundleIdentifier ?? "") + ".downloadCenterBackgroundIdentifier"
-    let configuration = URLSessionConfiguration.default
+    let configuration = NetworkConditionAdapter.shared.currentConfiguration()
     configuration.isDiscretionary = false
     configuration.waitsForConnectivity = false
-    configuration.httpMaximumConnectionsPerHost = 3
-    if #available(iOS 13.0, *) {
-      configuration.allowsExpensiveNetworkAccess = true
-    }
-    configuration.allowsExpensiveNetworkAccess = true
     if #available(iOS 13.0, *) {
       configuration.allowsConstrainedNetworkAccess = true
     }
     self.session = URLSession(configuration: configuration, delegate: self, delegateQueue: .main)
+    
+    // Setup intelligent download management
+    setupNetworkMonitoring()
   }
   
   func startBorrow(for book: TPPBook, attemptDownload shouldAttemptDownload: Bool, borrowCompletion: (() -> Void)? = nil) {
@@ -1055,6 +1053,26 @@ extension MyBooksDownloadCenter {
   @objc func pauseAllDownloads() {
     bookIdentifierToDownloadInfo.values.forEach { $0.downloadTask.suspend() }
   }
+  
+  @objc func resumeIntelligentDownloads() {
+    limitActiveDownloads(max: maxConcurrentDownloads)
+  }
+  
+  func setupNetworkMonitoring() {
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(networkConditionsChanged),
+      name: UIApplication.didBecomeActiveNotification,
+      object: nil
+    )
+    Log.info(#file, "Network monitoring setup for download optimization")
+  }
+  
+  @objc private func networkConditionsChanged() {
+    let currentLimit = maxConcurrentDownloads
+    limitActiveDownloads(max: currentLimit)
+  }
+  
   private func logBookDownloadFailure(_ book: TPPBook, reason: String, downloadTask: URLSessionTask, metadata: [String: Any]?) {
     let rights = downloadInfo(forBookIdentifier: book.identifier)?.rightsManagementString ?? ""
     let bookType = TPPBookContentTypeConverter.stringValue(of: book.defaultBookContentType)
@@ -1116,8 +1134,6 @@ extension MyBooksDownloadCenter {
       }
       self.bookRegistry.setFulfillmentId(license.identifier, for: book.identifier)
       
-      
-      // For all content types: Continue with content storage (background for audiobooks, required for others)
       if !self.replaceBook(book, withFileAtURL: localUrl, forDownloadTask: downloadTask) {
         if book.defaultBookContentType == .audiobook {
           Log.warn(#file, "Content storage failed for audiobook, but streaming still available")
@@ -1176,13 +1192,9 @@ extension MyBooksDownloadCenter {
     Log.info(#file, "🎵 Copying license TO: \(streamingLicenseUrl.path)")
     
     do {
-      // Remove any existing license file first
       try? FileManager.default.removeItem(at: streamingLicenseUrl)
-      
-      // Copy license to content directory for streaming
       try FileManager.default.copyItem(at: sourceLicenseUrl, to: streamingLicenseUrl)
       
-      // Verify the copy was successful
       let fileExists = FileManager.default.fileExists(atPath: streamingLicenseUrl.path)
     } catch {
       TPPErrorLogger.logError(error, summary: "Failed to copy LCP license for streaming", metadata: [

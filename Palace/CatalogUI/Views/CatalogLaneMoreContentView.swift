@@ -42,6 +42,7 @@ private extension CatalogLaneMoreContentView {
             books: lane.books.map { TPPBookRegistry.shared.updatedBookMetadata($0) ?? $0 },
             moreURL: lane.moreURL,
             onSelect: onBookSelected,
+            onMoreTapped: onLaneMoreTapped,
             showHeader: true
           )
           .dismissKeyboardOnTap()
@@ -53,11 +54,13 @@ private extension CatalogLaneMoreContentView {
   }
   
   var booksListView: some View {
-    BookListView(
-      books: viewModel.sortedBooks,
-      isLoading: .constant(false),
-      onSelect: onBookSelected
-    )
+    ScrollView {
+      BookListView(
+        books: viewModel.sortedBooks,
+        isLoading: .constant(false),
+        onSelect: onBookSelected
+      )
+    }
     .refreshable { await viewModel.refresh() }
   }
 }

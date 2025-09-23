@@ -4,6 +4,10 @@ import UIKit
 struct BookDetailView: View {
   @Environment(\.presentationMode) var presentationMode
   @Environment(\.colorScheme) private var colorScheme
+  
+  private var coordinator: NavigationCoordinator? {
+    NavigationCoordinatorHub.shared.coordinator
+  }
 
   typealias DisplayStrings = Strings.BookDetailView
   @State private var selectedBook: TPPBook?
@@ -99,7 +103,11 @@ struct BookDetailView: View {
         else { return }
 
         if newState == .unregistered {
-          presentationMode.wrappedValue.dismiss()
+          if let coordinator = coordinator {
+            coordinator.pop()
+          } else {
+            presentationMode.wrappedValue.dismiss()
+          }
         }
       }
       .fullScreenCover(item: $selectedBook) { book in
@@ -605,6 +613,10 @@ private struct BookStateModifier: ViewModifier {
   @ObservedObject var viewModel: BookDetailViewModel
   @Binding var showHalfSheet: Bool
   @Environment(\.presentationMode) var presentationMode
+  
+  private var coordinator: NavigationCoordinator? {
+    NavigationCoordinatorHub.shared.coordinator
+  }
   
   func body(content: Content) -> some View {
     content
