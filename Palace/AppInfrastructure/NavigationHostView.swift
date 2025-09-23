@@ -20,11 +20,13 @@ struct NavigationHostView<Content: View>: View {
           case .bookDetail(let bookRoute):
             if let book = coordinator.resolveBook(for: bookRoute) {
               BookDetailView(book: book)
+                .environmentObject(coordinator)
             } else {
               Text("Missing book")
             }
           case .catalogLaneMore(let title, let url):
             CatalogLaneMoreView(title: title, url: url)
+              .environmentObject(coordinator)
           case .search(let searchRoute):
             CatalogSearchView(
               books: coordinator.resolveSearchBooks(for: searchRoute),

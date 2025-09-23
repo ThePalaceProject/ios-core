@@ -58,6 +58,7 @@ struct CatalogLaneMoreView: View {
       contentSection
     }
     .overlay(alignment: .bottom) { SamplePreviewBarView() }
+    .navigationTitle(title)
     .navigationBarTitleDisplayMode(.inline)
     .toolbar {
       ToolbarItem(placement: .principal) {
@@ -291,28 +292,26 @@ struct CatalogLaneMoreView: View {
   // MARK: - Filter Sheet
 
   private var FiltersSheetWrapper: some View {
-    MultiSelectCatalogFiltersSheetView(
+    CatalogFiltersSheetView(
       facetGroups: facetGroups,
       selection: $pendingSelections,
-      onApply: { Task { await applyMultipleFilters() } },
-      onCancel: { Task { await cancelFilterSelection() } },
+      onApply: { Task { await applySingleFilters() } },
+      onCancel: { showingFiltersSheet = false },
       isApplying: isApplyingFilters
     )
   }
 
-  // MARK: - Multi-Select Filter Handling
+  // MARK: - Single Filter Handling
 
   @MainActor
-  private func applyMultipleFilters() async {
-    // Extract only non-default (non-"All") filters to apply
+  private func applySingleFilters() async {
     let specificFilters: [ParsedKey] = pendingSelections
       .compactMap { selection in
         guard let parsed = parseKey(selection) else { return nil }
-        return parsed.isDefaultTitle ? nil : parsed  // Skip "All" filters entirely
+        return parsed.isDefaultTitle ? nil : parsed
       }
 
     if specificFilters.isEmpty {
-      // No specific filters selected - show original unfiltered feed
       await fetchAndApplyFeed(at: url)
       appliedSelections = []
       showingFiltersSheet = false
@@ -372,11 +371,6 @@ struct CatalogLaneMoreView: View {
     }
   }
   
-  @MainActor
-  private func cancelFilterSelection() async {
-    // Cancel means keep existing filtering - just close the sheet
-    showingFiltersSheet = false
-  }
   
   /// Reconstruct pending selections from applied selections using current facets
   private func reconstructSelectionsFromCurrentFacets() -> Set<String> {
@@ -981,6 +975,7 @@ private extension CatalogLaneMoreView {
             books: lane.books,
             moreURL: lane.moreURL,
             onSelect: presentBookDetail,
+            onMoreTapped: nil, // No further "More" navigation within lane more view
             showHeader: true
           )
         }

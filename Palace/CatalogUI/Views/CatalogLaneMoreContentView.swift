@@ -42,6 +42,7 @@ private extension CatalogLaneMoreContentView {
             books: lane.books.map { TPPBookRegistry.shared.updatedBookMetadata($0) ?? $0 },
             moreURL: lane.moreURL,
             onSelect: onBookSelected,
+            onMoreTapped: onLaneMoreTapped,
             showHeader: true
           )
           .dismissKeyboardOnTap()

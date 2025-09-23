@@ -144,7 +144,14 @@ final class CatalogViewModel: ObservableObject {
           self.facetGroups = []
           self.entryPoints = entries
           self.lanes = orderedTitles.map { title in
-            CatalogLaneModel(title: title, books: groupTitleToBooks[title] ?? [], moreURL: groupTitleToMoreURL[title] ?? nil)
+            let books = groupTitleToBooks[title] ?? []
+            let isLoading = books.count < 3
+            return CatalogLaneModel(
+              title: title, 
+              books: books, 
+              moreURL: groupTitleToMoreURL[title] ?? nil, 
+              isLoading: isLoading
+            )
           }
         case .navigation, .invalid:
           break
@@ -197,7 +204,14 @@ final class CatalogViewModel: ObservableObject {
           let (_, entries) = Self.extractFacets(from: feedObjc)
           self.entryPoints = entries
           self.lanes = orderedTitles.map { title in
-            CatalogLaneModel(title: title, books: groupTitleToBooks[title] ?? [], moreURL: groupTitleToMoreURL[title] ?? nil)
+            let books = groupTitleToBooks[title] ?? []
+            let isLoading = books.count < 3
+            return CatalogLaneModel(
+              title: title, 
+              books: books, 
+              moreURL: groupTitleToMoreURL[title] ?? nil, 
+              isLoading: isLoading
+            )
           }
         case .navigation, .invalid:
           break
@@ -234,6 +248,14 @@ struct CatalogLaneModel: Identifiable {
   let title: String
   let books: [TPPBook]
   let moreURL: URL?
+  let isLoading: Bool
+  
+  init(title: String, books: [TPPBook], moreURL: URL?, isLoading: Bool = false) {
+    self.title = title
+    self.books = books
+    self.moreURL = moreURL
+    self.isLoading = isLoading
+  }
 }
 
 // MARK: - Helpers
@@ -315,7 +337,14 @@ extension CatalogViewModel {
       }
     }
     let lanes: [CatalogLaneModel] = orderedTitles.map { title in
-      CatalogLaneModel(title: title, books: titleToBooks[title] ?? [], moreURL: titleToMoreURL[title] ?? nil)
+      let books = titleToBooks[title] ?? []
+      let isLoading = books.count < 3
+      return CatalogLaneModel(
+        title: title, 
+        books: books, 
+        moreURL: titleToMoreURL[title] ?? nil, 
+        isLoading: isLoading
+      )
     }
     return (lanes, [])
   }
