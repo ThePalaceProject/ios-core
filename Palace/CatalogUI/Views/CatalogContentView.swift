@@ -61,11 +61,13 @@ private extension CatalogContentView {
         }
       }
     } else {
-      BookListView(
-        books: viewModel.ungroupedBooks,
-        isLoading: .constant(false),
-        onSelect: onBookSelected
-      )
+      ScrollView {
+        BookListView(
+          books: viewModel.ungroupedBooks,
+          isLoading: .constant(false),
+          onSelect: onBookSelected
+        )
+      }
     }
   }
 }

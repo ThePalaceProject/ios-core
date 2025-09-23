@@ -35,11 +35,13 @@ struct CatalogSearchView: View {
     VStack(spacing: 0) {
       searchBar
       
-      BookListView(
-        books: viewModel.filteredBooks,
-        isLoading: .constant(false), // Always show as not loading for instant feel
-        onSelect: onBookSelected
-      )
+      ScrollView {
+        BookListView(
+          books: viewModel.filteredBooks,
+          isLoading: .constant(false), // Always show as not loading for instant feel
+          onSelect: onBookSelected
+        )
+      }
     }
     .onAppear {
       viewModel.updateBooks(books)

@@ -54,11 +54,13 @@ private extension CatalogLaneMoreContentView {
   }
   
   var booksListView: some View {
-    BookListView(
-      books: viewModel.sortedBooks,
-      isLoading: .constant(false),
-      onSelect: onBookSelected
-    )
+    ScrollView {
+      BookListView(
+        books: viewModel.sortedBooks,
+        isLoading: .constant(false),
+        onSelect: onBookSelected
+      )
+    }
     .refreshable { await viewModel.refresh() }
   }
 }
