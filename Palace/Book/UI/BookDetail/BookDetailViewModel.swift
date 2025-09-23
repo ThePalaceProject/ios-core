@@ -703,7 +703,7 @@ final class BookDetailViewModel: ObservableObject {
     return position
   }
   
-  /// Starts audiobook playback from the beginning (first track, position 0)
+  /// Sets audiobook position to the beginning (first track, position 0) without auto-starting playback
   private func startPlaybackFromBeginning() {
     guard let manager = audiobookManager,
           let firstTrack = manager.audiobook.tableOfContents.tracks.first else {

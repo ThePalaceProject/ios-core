@@ -52,7 +52,6 @@ final class AudiobookPerformanceMonitor {
     private func adjustForMemoryPressure() {
         Log.info(#file, "Adjusting for memory pressure")
         
-        // Reduce cache sizes and pause non-essential operations
         reduceCacheSizes()
         pauseNonEssentialOperations()
     }
@@ -60,21 +59,16 @@ final class AudiobookPerformanceMonitor {
     // MARK: - Memory Management
     
     private func reduceCacheSizes() {
-        // Clear image cache
         ImageCache.shared.clear()
         
-        // Reduce network cache
         URLCache.shared.removeAllCachedResponses()
         
-        // Clear general caches
         GeneralCache<String, Data>.clearAllCaches()
     }
     
     private func pauseNonEssentialOperations() {
-        // Pause non-critical downloads
         MyBooksDownloadCenter.shared.pauseAllDownloads()
         
-        // Resume after a delay with reduced limits
         DispatchQueue.main.asyncAfter(deadline: .now() + 10.0) {
             MyBooksDownloadCenter.shared.resumeIntelligentDownloads()
         }

@@ -15,9 +15,6 @@ public struct DismissKeyboardOnTap: ViewModifier {
         dismissKeyboard()
         onDismiss?()
       })
-      .simultaneousGesture(DragGesture(minimumDistance: 1).onChanged { _ in
-        dismissKeyboard()
-      })
   }
 }
 

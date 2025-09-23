@@ -7,31 +7,28 @@ struct BookListView: View {
   @State private var containerWidth: CGFloat = UIScreen.main.bounds.width
 
   var body: some View {
-    ScrollView {
-      LazyVGrid(columns: gridLayout, spacing: 0) {
-        ForEach(books, id: \.identifier) { book in
-          Button(action: { onSelect(book) }) {
-            BookCell(model: BookCellModel(book: book, imageCache: ImageCache.shared))
-          }
-          .buttonStyle(.plain)
-          .applyBorderStyle()
+    LazyVGrid(columns: gridLayout, spacing: 0) {
+      ForEach(books, id: \.identifier) { book in
+        Button(action: { onSelect(book) }) {
+          BookCell(model: BookCellModel(book: book, imageCache: ImageCache.shared))
         }
+        .buttonStyle(.plain)
+        .applyBorderStyle()
       }
-      .padding(.horizontal, 12)
-      .padding(.vertical, 12)
-      .background(
-        GeometryReader { geometry in
-          Color.clear
-            .onAppear {
-              containerWidth = geometry.size.width
-            }
-            .onChange(of: geometry.size.width) { newWidth in
-              containerWidth = newWidth
-            }
-        }
-      )
     }
-    .dismissKeyboardOnTap()
+    .padding(.horizontal, 12)
+    .padding(.vertical, 12)
+    .background(
+      GeometryReader { geometry in
+        Color.clear
+          .onAppear {
+            containerWidth = geometry.size.width
+          }
+          .onChange(of: geometry.size.width) { newWidth in
+            containerWidth = newWidth
+          }
+      }
+    )
   }
 
   private var gridLayout: [GridItem] {

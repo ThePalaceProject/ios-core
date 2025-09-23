@@ -9,8 +9,8 @@
 
 @end
 
-static NSUInteger const diskCacheInMegabytes = 20;
-static NSUInteger const memoryCacheInMegabytes = 2;
+static NSUInteger const diskCacheInMegabytes = 15;  // Reduced from 20MB
+static NSUInteger const memoryCacheInMegabytes = 1; // Reduced from 2MB
 
 static TPPSession *sharedSession = nil;
 

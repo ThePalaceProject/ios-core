@@ -40,7 +40,6 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
     MemoryPressureMonitor.shared.start()
     
-    // Initialize audiobook optimization systems
     AudiobookPerformanceMonitor.shared
   
     DispatchQueue.main.async { [weak self] in

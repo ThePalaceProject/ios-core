@@ -24,14 +24,45 @@ public final class ImageCache: ImageCacheType {
     private let compressionQuality: CGFloat = 0.7
 
     private init() {
-        memoryImages.totalCostLimit = 100 * 1024 * 1024
-        memoryImages.countLimit = 200
+        let deviceMemoryMB = ProcessInfo.processInfo.physicalMemory / (1024 * 1024)
+        let cacheMemoryMB: Int
+        
+        if deviceMemoryMB < 2048 {
+            cacheMemoryMB = 25
+            memoryImages.countLimit = 100
+        } else if deviceMemoryMB < 4096 {
+            cacheMemoryMB = 40
+            memoryImages.countLimit = 150
+        } else {
+            cacheMemoryMB = 60
+            memoryImages.countLimit = 200
+        }
+        
+        memoryImages.totalCostLimit = cacheMemoryMB * 1024 * 1024
+        
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleMemoryWarning),
             name: UIApplication.didReceiveMemoryWarningNotification,
             object: nil
         )
+        
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleMemoryPressure),
+            name: UIApplication.didReceiveMemoryWarningNotification,
+            object: nil
+        )
+    }
+    
+    @objc private func handleMemoryPressure() {
+        let currentCount = memoryImages.countLimit
+        memoryImages.countLimit = max(50, currentCount / 2)
+        memoryImages.totalCostLimit = memoryImages.totalCostLimit / 2
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
+            self?.memoryImages.countLimit = currentCount
+        }
     }
 
     @objc private func handleMemoryWarning() {
