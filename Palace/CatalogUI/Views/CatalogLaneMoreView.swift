@@ -177,19 +177,21 @@ struct CatalogLaneMoreView: View {
         if let entries = feedObjc.entries as? [TPPOPDSEntry] {
           switch feedObjc.type {
           case .acquisitionGrouped:
-            var groupTitleToBooks: [String: [TPPBook]] = [:]
-            var groupTitleToMoreURL: [String: URL?] = [:]
+            var orderedTitles: [String] = []
+            var titleToBooks: [String: [TPPBook]] = [:]
+            var titleToMoreURL: [String: URL?] = [:]
             for entry in entries {
               guard let group = entry.groupAttributes else { continue }
               let groupTitle = group.title ?? ""
               if let book = CatalogViewModel.makeBook(from: entry) {
-                groupTitleToBooks[groupTitle, default: []].append(book)
-                if groupTitleToMoreURL[groupTitle] == nil { groupTitleToMoreURL[groupTitle] = group.href }
+                if titleToBooks[groupTitle] == nil { orderedTitles.append(groupTitle) }
+                titleToBooks[groupTitle, default: []].append(book)
+                if titleToMoreURL[groupTitle] == nil { titleToMoreURL[groupTitle] = group.href }
               }
             }
-            lanes = groupTitleToBooks.map { title, books in
-              CatalogLaneModel(title: title, books: books, moreURL: groupTitleToMoreURL[title] ?? nil)
-            }.sorted { $0.title < $1.title }
+            lanes = orderedTitles.map { title in
+              CatalogLaneModel(title: title, books: titleToBooks[title] ?? [], moreURL: titleToMoreURL[title] ?? nil)
+            }
           case .acquisitionUngrouped:
             ungroupedBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0) }
             facetGroups = CatalogViewModel.extractFacets(from: feedObjc).0
