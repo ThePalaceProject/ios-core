@@ -987,8 +987,10 @@ private extension CatalogLaneMoreView {
   
   @ViewBuilder
   var booksView: some View {
-    BookListView(books: ungroupedBooks, isLoading: $isLoading) { book in
-      presentBookDetail(book)
+    ScrollView {
+      BookListView(books: ungroupedBooks, isLoading: $isLoading) { book in
+        presentBookDetail(book)
+      }
     }
     .refreshable { await fetchAndApplyFeed(at: url) }
   }
