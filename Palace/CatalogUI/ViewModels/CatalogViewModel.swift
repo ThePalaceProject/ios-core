@@ -127,11 +127,13 @@ final class CatalogViewModel: ObservableObject {
         case .acquisitionGrouped:
           var groupTitleToBooks: [String: [TPPBook]] = [:]
           var groupTitleToMoreURL: [String: URL?] = [:]
+          var orderedTitles: [String] = []
           if let opdsEntries = feedObjc.entries as? [TPPOPDSEntry] {
             for entry in opdsEntries {
               guard let group = entry.groupAttributes else { continue }
               let groupTitle = group.title ?? ""
               if let book = Self.makeBook(from: entry) {
+                if groupTitleToBooks[groupTitle] == nil { orderedTitles.append(groupTitle) }
                 groupTitleToBooks[groupTitle, default: []].append(book)
                 if groupTitleToMoreURL[groupTitle] == nil { groupTitleToMoreURL[groupTitle] = group.href }
               }
@@ -141,9 +143,9 @@ final class CatalogViewModel: ObservableObject {
           let (_, entries) = Self.extractFacets(from: feedObjc)
           self.facetGroups = []
           self.entryPoints = entries
-          self.lanes = groupTitleToBooks.map { title, books in
-            CatalogLaneModel(title: title, books: books, moreURL: groupTitleToMoreURL[title] ?? nil)
-          }.sorted { $0.title < $1.title }
+          self.lanes = orderedTitles.map { title in
+            CatalogLaneModel(title: title, books: groupTitleToBooks[title] ?? [], moreURL: groupTitleToMoreURL[title] ?? nil)
+          }
         case .navigation, .invalid:
           break
         @unknown default:
@@ -179,11 +181,13 @@ final class CatalogViewModel: ObservableObject {
         case .acquisitionGrouped:
           var groupTitleToBooks: [String: [TPPBook]] = [:]
           var groupTitleToMoreURL: [String: URL?] = [:]
+          var orderedTitles: [String] = []
           if let opdsEntries = feedObjc.entries as? [TPPOPDSEntry] {
             for entry in opdsEntries {
               guard let group = entry.groupAttributes else { continue }
               let groupTitle = group.title ?? ""
               if let book = Self.makeBook(from: entry) {
+                if groupTitleToBooks[groupTitle] == nil { orderedTitles.append(groupTitle) }
                 groupTitleToBooks[groupTitle, default: []].append(book)
                 if groupTitleToMoreURL[groupTitle] == nil { groupTitleToMoreURL[groupTitle] = group.href }
               }
@@ -192,9 +196,9 @@ final class CatalogViewModel: ObservableObject {
           self.ungroupedBooks = []
           let (_, entries) = Self.extractFacets(from: feedObjc)
           self.entryPoints = entries
-          self.lanes = groupTitleToBooks.map { title, books in
-            CatalogLaneModel(title: title, books: books, moreURL: groupTitleToMoreURL[title] ?? nil)
-          }.sorted { $0.title < $1.title }
+          self.lanes = orderedTitles.map { title in
+            CatalogLaneModel(title: title, books: groupTitleToBooks[title] ?? [], moreURL: groupTitleToMoreURL[title] ?? nil)
+          }
         case .navigation, .invalid:
           break
         @unknown default:
