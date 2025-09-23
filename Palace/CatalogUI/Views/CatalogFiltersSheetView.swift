@@ -83,7 +83,10 @@ struct CatalogFiltersSheetView: View {
         }
         .padding(.top)
         
-        ResultsButton(isApplying: isApplying, onApply: onApply, onCancel: onCancel)
+        ResultsButton(isApplying: isApplying, onApply: {
+          selection = tempSelection
+          onApply()
+        }, onCancel: onCancel)
           .padding(.horizontal)
           .padding(.vertical, 12)
           .background(Color(UIColor.systemBackground).ignoresSafeArea())
@@ -230,10 +233,7 @@ private struct ResultsButton: View {
       }
       .disabled(isApplying)
       
-      Button(action: {
-        selection = tempSelection
-        onApply()
-      }) {
+      Button(action: onApply) {
         HStack(spacing: 8) {
           if isApplying {
             ProgressView()
