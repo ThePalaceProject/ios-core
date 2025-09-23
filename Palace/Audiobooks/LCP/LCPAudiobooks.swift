@@ -200,21 +200,13 @@ extension LCPAudiobooks: LCPStreamingProvider {
     publicationCacheLock.unlock()
     
     if !hasPublication {
-      let semaphore = DispatchSemaphore(value: 0)
-      var loadSuccess = false
-      
       DispatchQueue.global(qos: .userInteractive).async { [weak self] in
         self?.loadContentDictionary { _, error in 
-          loadSuccess = error == nil
-          semaphore.signal()
-        }
-      }
-      
-      let waitResult = semaphore.wait(timeout: .now() + 0.5)
-      
-      if waitResult == .timedOut && !loadSuccess {
-        DispatchQueue.global(qos: .userInteractive).async { [weak self] in
-          self?.loadContentDictionary { _, _ in /* Continue in background */ }
+          if let error = error {
+            Log.error(#file, "Failed to load LCP publication for streaming: \(error)")
+          } else {
+            Log.info(#file, "Successfully loaded LCP publication for streaming in background")
+          }
         }
       }
     }
