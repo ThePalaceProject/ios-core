@@ -263,6 +263,13 @@ struct CatalogLaneMoreView: View {
     coordinator.push(.bookDetail(BookRoute(id: book.identifier)))
   }
 
+  private func presentLaneMore(title: String, url: URL) {
+    if NavigationCoordinatorHub.shared.coordinator == nil {
+      NavigationCoordinatorHub.shared.coordinator = coordinator
+    }
+    coordinator.push(.catalogLaneMore(title: title, url: url))
+  }
+
   private func openLibraryHome() {
     if let urlString = AccountsManager.shared.currentAccount?.homePageUrl, let url = URL(string: urlString) {
       UIApplication.shared.open(url, options: [:], completionHandler: nil)
@@ -975,7 +982,9 @@ private extension CatalogLaneMoreView {
             books: lane.books,
             moreURL: lane.moreURL,
             onSelect: presentBookDetail,
-            onMoreTapped: nil, // No further "More" navigation within lane more view
+            onMoreTapped: { title, url in
+              presentLaneMore(title: title, url: url)
+            },
             showHeader: true
           )
         }
