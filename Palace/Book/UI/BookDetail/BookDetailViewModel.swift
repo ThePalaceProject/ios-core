@@ -562,11 +562,9 @@ final class BookDetailViewModel: ObservableObject {
   }
   
   private func applyOptimizations(to audiobook: Audiobook) -> Audiobook {
-    // Apply chapter parsing optimization
     let optimizer = ChapterParsingOptimizer()
     let optimizedTableOfContents = optimizer.optimizeTableOfContents(audiobook.tableOfContents)
     
-    // Update the audiobook's table of contents
     audiobook.tableOfContents = optimizedTableOfContents
     
     return audiobook

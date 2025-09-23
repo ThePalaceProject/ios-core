@@ -77,7 +77,7 @@ class TPPPDFPreviewGridController: UICollectionViewController {
   
   override func viewDidLoad() {
     super.viewDidLoad()
-    configurePreviewCache() // MEMORY OPTIMIZATION: Initialize cache limits
+    configurePreviewCache()
     collectionView.bounces = true
     collectionView.decelerationRate = .normal
     collectionView.isUserInteractionEnabled = true
