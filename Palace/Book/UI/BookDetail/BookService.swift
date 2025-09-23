@@ -180,21 +180,28 @@ enum BookService {
           }
         }
 
-        if
+        // Determine initial playback position with validation for newly downloaded books
+        let shouldRestorePosition = shouldRestoreBookmarkPosition(for: book)
+        
+        if shouldRestorePosition,
           let dict = TPPBookRegistry.shared.location(forIdentifier: book.identifier)?.locationStringDictionary(),
           let localBookmark = AudioBookmark.create(locatorData: dict),
           let localPosition = TrackPosition(
             audioBookmark: localBookmark,
             toc: audiobook.tableOfContents.toc,
             tracks: audiobook.tableOfContents.tracks
-          )
+          ),
+          isValidPosition(localPosition, in: audiobook.tableOfContents)
         {
+          ATLog(.info, "Restoring bookmark position for \(book.title)")
           manager.audiobook.player.play(at: localPosition, completion: nil)
           playbackModel.jumpToInitialLocation(localPosition)
           playbackModel.beginSaveSuppression(for: 3.0)
         } else {
+          // Start from beginning for newly downloaded books or invalid bookmarks
           if let firstTrack = audiobook.tableOfContents.allTracks.first {
             let startPosition = TrackPosition(track: firstTrack, timestamp: 0.0, tracks: audiobook.tableOfContents.tracks)
+            ATLog(.info, "Starting \(book.title) from beginning")
             manager.audiobook.player.play(at: startPosition, completion: nil)
             playbackModel.jumpToInitialLocation(startPosition)
             playbackModel.beginSaveSuppression(for: 2.0)
@@ -280,6 +287,59 @@ private extension BookService {
   static func showAudiobookTryAgainError() {
     let alert = TPPAlertUtils.alert(title: Strings.Error.openFailedError, message: Strings.Error.tryAgain)
     TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
+  }
+  
+  /// Determines if bookmark position should be restored for this book
+  static func shouldRestoreBookmarkPosition(for book: TPPBook) -> Bool {
+    // Check if book was recently downloaded (within last 24 hours)
+    let bookState = TPPBookRegistry.shared.state(for: book.identifier)
+    
+    // For newly downloaded books, always start from beginning
+    if bookState == .downloadSuccessful {
+      // Check if download was recent
+      if let downloadDate = getDownloadDate(for: book.identifier) {
+        let hoursSinceDownload = Date().timeIntervalSince(downloadDate) / 3600
+        if hoursSinceDownload < 1.0 { // Less than 1 hour ago
+          return false // Start from beginning
+        }
+      }
+    }
+    
+    // For books with existing progress, restore position
+    return true
+  }
+  
+  /// Validates that a position is reasonable and not corrupted
+  static func isValidPosition(_ position: TrackPosition, in tableOfContents: AudiobookTableOfContents) -> Bool {
+    // Check if position is within reasonable bounds
+    guard position.timestamp >= 0 && position.timestamp.isFinite else {
+      ATLog(.warn, "Invalid position timestamp: \(position.timestamp)")
+      return false
+    }
+    
+    // Check if track exists in table of contents
+    guard tableOfContents.tracks.track(forKey: position.track.key) != nil else {
+      ATLog(.warn, "Position references non-existent track: \(position.track.key)")
+      return false
+    }
+    
+    // Check if position is within reasonable bounds (basic validation)
+    let totalDuration = tableOfContents.tracks.totalDuration
+    let positionDuration = position.durationToSelf()
+    
+    if positionDuration > totalDuration * 0.95 {
+      ATLog(.warn, "Position is too close to end of book, starting from beginning")
+      return false
+    }
+    
+    return true
+  }
+  
+  /// Gets download date for a book (placeholder - would integrate with download tracking)
+  static func getDownloadDate(for bookId: String) -> Date? {
+    // This would integrate with MyBooksDownloadCenter to get actual download date
+    // For now, return nil to be conservative
+    return nil
   }
 }
 

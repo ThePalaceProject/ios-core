@@ -35,6 +35,13 @@ final class Log: NSObject {
     }
     #endif
 
+    // PERFORMANCE FIX: Throttle excessive logging in debug builds
+    #if DEBUG
+    if shouldThrottlePalaceLogging(level: level, tag: tag, message: message) {
+      return
+    }
+    #endif
+
     os_log("%{public}@: %{public}@", type: level, tag, message)
   }
 
@@ -65,6 +72,35 @@ final class Log: NSObject {
    */
   class func fault(_ tag: String, _ message: String) {
     log(.fault, tag, message)
+  }
+
+  // MARK: - Performance Optimizations
+  
+  private static var lastPalaceLogMessages: [String: Date] = [:]
+  private static let palaceLogThrottleInterval: TimeInterval = 0.3 // 300ms throttle
+  
+  private class func shouldThrottlePalaceLogging(level: OSLogType, tag: String, message: String) -> Bool {
+    // Never throttle errors or faults - they're critical
+    guard level != .error && level != .fault else { return false }
+    
+    let now = Date()
+    let messageKey = "\(tag):\(message.prefix(30))" // Use tag + first 30 chars as key
+    
+    if let lastTime = lastPalaceLogMessages[messageKey] {
+      if now.timeIntervalSince(lastTime) < palaceLogThrottleInterval {
+        return true // Throttle this message
+      }
+    }
+    
+    lastPalaceLogMessages[messageKey] = now
+    
+    // Clean up old entries periodically to prevent memory growth
+    if lastPalaceLogMessages.count > 50 {
+      let cutoffTime = now.addingTimeInterval(-palaceLogThrottleInterval * 20)
+      lastPalaceLogMessages = lastPalaceLogMessages.filter { $0.value > cutoffTime }
+    }
+    
+    return false
   }
 
   // Avoid including source paths related to the build machine/user such as

@@ -38,6 +38,9 @@ final class NavigationCoordinator: ObservableObject {
   private var epubControllerById: [String: UIViewController] = [:]
   private var audioModelById: [String: AudiobookPlaybackModel] = [:]
   private var pdfContentById: [String: (TPPPDFDocument, TPPPDFDocumentMetadata)] = [:]
+  
+  private let maxStoredItems = 100
+  private var cleanupTimer: Timer?
 
   // MARK: - Public API
 
@@ -63,6 +66,43 @@ final class NavigationCoordinator: ObservableObject {
 
   func store(book: TPPBook) {
     bookById[book.identifier] = book
+    scheduleCleanupIfNeeded()
+  }
+  
+  private func scheduleCleanupIfNeeded() {
+    let totalItems = bookById.count + searchBooksById.count + pdfControllerById.count + 
+                    audioControllerById.count + epubControllerById.count + audioModelById.count + 
+                    pdfContentById.count
+    
+    if totalItems > maxStoredItems {
+      cleanupTimer?.invalidate()
+      cleanupTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { [weak self] _ in
+        self?.performCleanup()
+      }
+    }
+  }
+  
+  private func performCleanup() {
+    let keepCount = maxStoredItems / 2
+    
+    if bookById.count > keepCount {
+      let keysToRemove = Array(bookById.keys.prefix(bookById.count - keepCount))
+      keysToRemove.forEach { bookById.removeValue(forKey: $0) }
+    }
+    
+    if searchBooksById.count > keepCount {
+      let keysToRemove = Array(searchBooksById.keys.prefix(searchBooksById.count - keepCount))
+      keysToRemove.forEach { searchBooksById.removeValue(forKey: $0) }
+    }
+    
+    // Clear old controllers and models
+    pdfControllerById.removeAll()
+    audioControllerById.removeAll() 
+    epubControllerById.removeAll()
+    audioModelById.removeAll()
+    pdfContentById.removeAll()
+    
+    Log.info(#file, "🧹 NavigationCoordinator: Cleaned up cached items")
   }
 
   func resolveBook(for route: BookRoute) -> TPPBook? {

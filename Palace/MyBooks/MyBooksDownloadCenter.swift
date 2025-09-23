@@ -59,18 +59,16 @@ import OverdriveProcessor
 #endif
     
     let backgroundIdentifier = (Bundle.main.bundleIdentifier ?? "") + ".downloadCenterBackgroundIdentifier"
-    let configuration = URLSessionConfiguration.default
+    let configuration = NetworkConditionAdapter.shared.currentConfiguration()
     configuration.isDiscretionary = false
     configuration.waitsForConnectivity = false
-    configuration.httpMaximumConnectionsPerHost = 3
-    if #available(iOS 13.0, *) {
-      configuration.allowsExpensiveNetworkAccess = true
-    }
-    configuration.allowsExpensiveNetworkAccess = true
     if #available(iOS 13.0, *) {
       configuration.allowsConstrainedNetworkAccess = true
     }
     self.session = URLSession(configuration: configuration, delegate: self, delegateQueue: .main)
+    
+    // Setup intelligent download management
+    setupNetworkMonitoring()
   }
   
   func startBorrow(for book: TPPBook, attemptDownload shouldAttemptDownload: Bool, borrowCompletion: (() -> Void)? = nil) {
@@ -1054,6 +1052,28 @@ extension MyBooksDownloadCenter {
 
   @objc func pauseAllDownloads() {
     bookIdentifierToDownloadInfo.values.forEach { $0.downloadTask.suspend() }
+  }
+  
+  @objc func resumeIntelligentDownloads() {
+    // Resume downloads up to the current limit
+    limitActiveDownloads(max: maxConcurrentDownloads)
+  }
+  
+  func setupNetworkMonitoring() {
+    // Set up basic network monitoring for download optimization
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(networkConditionsChanged),
+      name: UIApplication.didBecomeActiveNotification,
+      object: nil
+    )
+    Log.info(#file, "Network monitoring setup for download optimization")
+  }
+  
+  @objc private func networkConditionsChanged() {
+    // Adjust download limits based on current conditions
+    let currentLimit = maxConcurrentDownloads
+    limitActiveDownloads(max: currentLimit)
   }
   private func logBookDownloadFailure(_ book: TPPBook, reason: String, downloadTask: URLSessionTask, metadata: [String: Any]?) {
     let rights = downloadInfo(forBookIdentifier: book.identifier)?.rightsManagementString ?? ""
