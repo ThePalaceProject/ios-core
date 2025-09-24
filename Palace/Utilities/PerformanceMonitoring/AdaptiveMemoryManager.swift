@@ -21,7 +21,7 @@ import UIKit
     init(processInfo: ProcessInfo = ProcessInfo.processInfo) {
         self.processInfo = processInfo
         self.deviceMemory = processInfo.physicalMemory
-        self.isLowMemoryDevice = deviceMemory < 3 * 1024 * 1024 * 1024 // 3GB
+        self.isLowMemoryDevice = deviceMemory < 2 * 1024 * 1024 * 1024 // 2GB
         
         Log.info(#file, "AdaptiveMemoryManager initialized - Device RAM: \(deviceMemory / (1024*1024))MB, Low Memory: \(isLowMemoryDevice)")
     }
@@ -88,19 +88,13 @@ import UIKit
     }
     
     private func clearNonEssentialCaches() {
-        // Clear image cache
         ImageCache.shared.clear()
-        
-        // Clear general cache memory (using static method)
-        // Note: GeneralCache doesn't have a static clearMemoryCache method, 
-        // so we'll use the general cache clearing approach
         NotificationCenter.default.post(name: .clearGeneralCacheMemory, object: nil)
     }
     
     private func clearAllCaches() {
         clearNonEssentialCaches()
         
-        // Notify all components to clear caches
         NotificationCenter.default.post(
             name: .memoryPressureCritical,
             object: nil
@@ -108,7 +102,6 @@ import UIKit
     }
     
     private func reduceOperations() {
-        // Reduce concurrent operations
         NotificationCenter.default.post(
             name: .reduceOperations,
             object: nil

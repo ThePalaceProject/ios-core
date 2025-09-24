@@ -58,7 +58,7 @@ import Network
                 newType = .cellular
             }
         } else if path.status == .satisfied {
-            newType = .wifi // Ethernet or other high-speed connection
+            newType = .wifi
         } else {
             newType = .unknown
         }
@@ -113,18 +113,18 @@ import Network
     }
     
     private func configureLowBandwidthOptimized(_ config: URLSessionConfiguration) {
-        config.httpMaximumConnectionsPerHost = 1
+        config.httpMaximumConnectionsPerHost = 2
         config.timeoutIntervalForRequest = 60
         config.timeoutIntervalForResource = 180
         config.allowsCellularAccess = true
         config.networkServiceType = .background
         
         if #available(iOS 13.0, *) {
-            config.allowsExpensiveNetworkAccess = false
+            config.allowsExpensiveNetworkAccess = true
             config.allowsConstrainedNetworkAccess = true
         }
         
-        Log.info(#file, "Configured for low bandwidth network")
+        Log.info(#file, "Configured for low bandwidth network (LCP-compatible)")
     }
     
     private func configureWiFiOptimized(_ config: URLSessionConfiguration) {
@@ -179,7 +179,7 @@ import Network
         case .cellular:
             return min(baseMax, 2)
         case .lowBandwidth:
-            return 1
+            return 2 // Increased from 1 to allow LCP streaming + background download
         case .unknown:
             return 1
         }
