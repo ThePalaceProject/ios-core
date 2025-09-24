@@ -75,7 +75,7 @@ class BookCellModel: ObservableObject {
   @Published var isManagingHold: Bool = false
 
   @Published private(set) var stableButtonState: BookButtonState = .unsupported
-  @Published private var registryState: TPPBookState
+  @Published private(set) var registryState: TPPBookState
   @Published private var localBookStateOverride: TPPBookState? = nil
   @Published var showHalfSheet: Bool = false
 

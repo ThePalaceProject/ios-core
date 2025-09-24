@@ -14,7 +14,7 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
     self.api = api
     self.feedCache = GeneralCache<String, CatalogFeed>(
       cacheName: "CatalogFeeds", 
-      mode: .memoryOnly  // Use memory-only since CatalogFeed contains non-Codable TPPOPDSFeed
+      mode: .memoryOnly
     )
   }
 
