@@ -147,6 +147,7 @@ final class NavigationCoordinator: ObservableObject {
   // MARK: - SwiftUI payloads
   func storeAudioModel(_ model: AudiobookPlaybackModel, forBookId id: String) {
     audioModelById[id] = model
+    scheduleCleanupIfNeeded()
   }
 
   func resolveAudioModel(for route: BookRoute) -> AudiobookPlaybackModel? {

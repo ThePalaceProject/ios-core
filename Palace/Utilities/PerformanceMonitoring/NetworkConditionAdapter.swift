@@ -51,14 +51,13 @@ import Network
         if path.usesInterfaceType(.wifi) {
             newType = .wifi
         } else if path.usesInterfaceType(.cellular) {
-            // Check if we're in low data mode or poor signal
             if path.isConstrained || path.isExpensive {
                 newType = .lowBandwidth
             } else {
                 newType = .cellular
             }
         } else if path.status == .satisfied {
-            newType = .wifi // Ethernet or other high-speed connection
+            newType = .wifi
         } else {
             newType = .unknown
         }
@@ -103,7 +102,6 @@ import Network
         config.allowsCellularAccess = true
         config.networkServiceType = .responsiveData
         
-        // Respect cellular data settings
         if #available(iOS 13.0, *) {
             config.allowsExpensiveNetworkAccess = true
             config.allowsConstrainedNetworkAccess = true
@@ -113,18 +111,18 @@ import Network
     }
     
     private func configureLowBandwidthOptimized(_ config: URLSessionConfiguration) {
-        config.httpMaximumConnectionsPerHost = 1
+        config.httpMaximumConnectionsPerHost = 2
         config.timeoutIntervalForRequest = 60
         config.timeoutIntervalForResource = 180
         config.allowsCellularAccess = true
         config.networkServiceType = .background
         
         if #available(iOS 13.0, *) {
-            config.allowsExpensiveNetworkAccess = false
+            config.allowsExpensiveNetworkAccess = true
             config.allowsConstrainedNetworkAccess = true
         }
         
-        Log.info(#file, "Configured for low bandwidth network")
+        Log.info(#file, "Configured for low bandwidth network (LCP-compatible)")
     }
     
     private func configureWiFiOptimized(_ config: URLSessionConfiguration) {
@@ -177,11 +175,11 @@ import Network
         case .wifi:
             return baseMax
         case .cellular:
-            return min(baseMax, 2)
+            return min(baseMax, 3)
         case .lowBandwidth:
-            return 1
+            return 3
         case .unknown:
-            return 1
+            return 2
         }
     }
     

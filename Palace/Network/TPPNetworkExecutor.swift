@@ -85,7 +85,19 @@ enum NYPLResult<SuccessInfo> {
   
   @objc func pauseAllTasks() {
     activeTasksLock.lock()
-    activeTasks.forEach { $0.suspend() }
+    activeTasks.forEach { task in
+      if let url = task.originalRequest?.url,
+         url.absoluteString.contains("audiobook") ||
+         url.absoluteString.contains(".mp3") ||
+         url.absoluteString.contains(".m4a") ||
+         url.absoluteString.contains("audio") ||
+         url.absoluteString.contains("readium") ||
+         url.absoluteString.contains("lcp") {
+        Log.info(#file, "Preserving audiobook network task: \(url.absoluteString)")
+        return
+      }
+      task.suspend()
+    }
     activeTasksLock.unlock()
   }
   

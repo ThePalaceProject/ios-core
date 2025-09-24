@@ -282,7 +282,10 @@ final class BookDetailViewModel: ObservableObject {
   // MARK: - Button Actions
   
   func handleAction(for button: BookButtonType) {
-    guard !isProcessing(for: button) else { return }
+    guard !isProcessing(for: button) else { 
+      Log.debug(#file, "Button \(button) is already processing, ignoring tap")
+      return 
+    }
     processingButtons.insert(button)
     
     switch button {
@@ -309,9 +312,7 @@ final class BookDetailViewModel: ObservableObject {
       
     case .read, .listen:
       didSelectRead(for: book) {
-        if self.book.defaultBookContentType != .audiobook {
-          self.removeProcessingButton(button)
-        }
+        self.removeProcessingButton(button)
       }
       
     case .cancel:
@@ -334,9 +335,7 @@ final class BookDetailViewModel: ObservableObject {
   }
   
   private func removeProcessingButton(_ button: BookButtonType) {
-    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-      self.processingButtons.remove(button)
-    }
+    self.processingButtons.remove(button)
   }
   
   func isProcessing(for button: BookButtonType) -> Bool {
@@ -551,10 +550,11 @@ final class BookDetailViewModel: ObservableObject {
           return
         }
 
-        // Apply chapter parsing optimization
-        let optimizedAudiobook = self.applyOptimizations(to: audiobook)
+        // Skip chapter parsing optimization for now - it was causing wrong chapter initialization
+        // The optimizer returns the original TOC unchanged but the assignment was corrupting the audiobook state
+        // let optimizedAudiobook = self.applyOptimizations(to: audiobook)
         
-        self.launchAudiobook(book: book, audiobook: optimizedAudiobook, drmDecryptor: drmDecryptor)
+        self.launchAudiobook(book: book, audiobook: audiobook, drmDecryptor: drmDecryptor)
         completion?()
       }
     }
@@ -597,7 +597,6 @@ final class BookDetailViewModel: ObservableObject {
     audiobookBookmarkBusinessLogic = AudiobookBookmarkBusinessLogic(book: book)
     audiobookManager.bookmarkDelegate = audiobookBookmarkBusinessLogic
     
-    // Set up end-of-book completion handler
     audiobookManager.playbackCompletionHandler = { [weak self] in
       guard let self = self else { return }
       DispatchQueue.main.async {
@@ -678,17 +677,6 @@ final class BookDetailViewModel: ObservableObject {
     
     if percentageThrough < 0.01 && position.track.index > 2 {
       Log.info(#file, "Detected potentially corrupted bookmark (track \(position.track.index), \(percentageThrough * 100)% through) - starting from beginning")
-      
-      guard let firstTrack = tracks.first else {
-        Log.error(#file, "No first track available for validation fallback")
-        return position
-      }
-      
-      return TrackPosition(track: firstTrack, timestamp: 0.0, tracks: tracks)
-    }
-    
-    if position.timestamp == 0.0 && position.track.index > 3 {
-      Log.info(#file, "Detected zero-timestamp bookmark in random chapter (track \(position.track.index)) - starting from beginning")
       
       guard let firstTrack = tracks.first else {
         Log.error(#file, "No first track available for validation fallback")

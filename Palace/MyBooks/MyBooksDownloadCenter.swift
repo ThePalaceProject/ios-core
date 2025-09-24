@@ -35,7 +35,7 @@ import OverdriveProcessor
   private var taskIdentifierToRedirectAttempts: [Int: Int] = [:]
   private let downloadQueue = DispatchQueue(label: "com.palace.downloadQueue", qos: .background)
   let downloadProgressPublisher = PassthroughSubject<(String, Double), Never>()
-  private var maxConcurrentDownloads: Int = 3
+  private var maxConcurrentDownloads: Int = 5  // Increased default to prevent over-throttling
   private var pendingStartQueue: [TPPBook] = []
   
   init(
@@ -1040,7 +1040,16 @@ extension MyBooksDownloadCenter {
     let suspended = bookIdentifierToDownloadInfo.values.compactMap { $0.downloadTask }.filter { $0.state == .suspended }
 
     if running.count > maxConcurrentDownloads {
-      for task in running.dropFirst(maxConcurrentDownloads) { task.suspend() }
+      let nonAudiobookTasks = running.filter { task in
+        guard let book = taskIdentifierToBook[task.taskIdentifier] else { return true }
+        return book.defaultBookContentType != .audiobook
+      }
+      
+      let tasksToSuspend = nonAudiobookTasks.dropFirst(Swift.max(0, maxConcurrentDownloads - (running.count - nonAudiobookTasks.count)))
+      for task in tasksToSuspend { 
+        Log.info(#file, "Suspending non-audiobook download to respect limits")
+        task.suspend() 
+      }
     } else if running.count < maxConcurrentDownloads {
       let toResume = min(maxConcurrentDownloads - running.count, suspended.count)
       if toResume > 0 {
@@ -1051,7 +1060,14 @@ extension MyBooksDownloadCenter {
   }
 
   @objc func pauseAllDownloads() {
-    bookIdentifierToDownloadInfo.values.forEach { $0.downloadTask.suspend() }
+    bookIdentifierToDownloadInfo.values.forEach { info in
+      if let book = taskIdentifierToBook[info.downloadTask.taskIdentifier],
+         book.defaultBookContentType == .audiobook {
+        Log.info(#file, "Preserving audiobook download/streaming for: \(book.title)")
+        return
+      }
+      info.downloadTask.suspend()
+    }
   }
   
   @objc func resumeIntelligentDownloads() {

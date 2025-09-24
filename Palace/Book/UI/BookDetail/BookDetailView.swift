@@ -556,9 +556,7 @@ struct BookDetailView: View {
         viewModel.handleAction(for: buttonType)
       } else {
         viewModel.showHalfSheet = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
-          viewModel.handleAction(for: buttonType)
-        }
+        viewModel.handleAction(for: buttonType)
       }
     case .manageHold:
       viewModel.isManagingHold = true

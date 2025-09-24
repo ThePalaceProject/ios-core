@@ -30,7 +30,9 @@ final class CatalogViewModel: ObservableObject {
   // MARK: - Public API
 
   func load() async {
-    if !lanes.isEmpty || !ungroupedBooks.isEmpty { return }
+    if (!lanes.isEmpty || !ungroupedBooks.isEmpty), let url = topLevelURLProvider(), url == lastLoadedURL { 
+      return 
+    }
     guard let url = topLevelURLProvider() else { 
       await MainActor.run { self.isLoading = false }
       return 

@@ -281,16 +281,14 @@ enum BookService {
     return nil
 #endif
   }
-}
 
-private extension BookService {
-  static func showAudiobookTryAgainError() {
+  private static func showAudiobookTryAgainError() {
     let alert = TPPAlertUtils.alert(title: Strings.Error.openFailedError, message: Strings.Error.tryAgain)
     TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
   }
   
   /// Determines if bookmark position should be restored for this book
-  static func shouldRestoreBookmarkPosition(for book: TPPBook) -> Bool {
+  private static func shouldRestoreBookmarkPosition(for book: TPPBook) -> Bool {
     // Check if book was recently downloaded (within last 24 hours)
     let bookState = TPPBookRegistry.shared.state(for: book.identifier)
     
@@ -310,7 +308,7 @@ private extension BookService {
   }
   
   /// Validates that a position is reasonable and not corrupted
-  static func isValidPosition(_ position: TrackPosition, in tableOfContents: AudiobookTableOfContents) -> Bool {
+  private static func isValidPosition(_ position: TrackPosition, in tableOfContents: AudiobookTableOfContents) -> Bool {
     // Check if position is within reasonable bounds
     guard position.timestamp >= 0 && position.timestamp.isFinite else {
       ATLog(.warn, "Invalid position timestamp: \(position.timestamp)")
@@ -336,7 +334,7 @@ private extension BookService {
   }
   
   /// Gets download date for a book (placeholder - would integrate with download tracking)
-  static func getDownloadDate(for bookId: String) -> Date? {
+  private static func getDownloadDate(for bookId: String) -> Date? {
     // This would integrate with MyBooksDownloadCenter to get actual download date
     // For now, return nil to be conservative
     return nil

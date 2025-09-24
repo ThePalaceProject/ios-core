@@ -222,11 +222,33 @@ public final class GeneralCache<Key: Hashable & Codable, Value: Codable> {
     do {
       let contents = try fileManager.contentsOfDirectory(at: cachesDir, includingPropertiesForKeys: nil)
       for url in contents {
+        // Preserve Adobe DRM directories and critical system data
+        let filename = url.lastPathComponent.lowercased()
+        let fullPath = url.path.lowercased()
+        let shouldPreserve = filename.contains("adobe") || 
+                            filename.contains("adept") || 
+                            filename.contains("drm") ||
+                            filename.contains("activation") ||
+                            filename.contains("device") ||
+                            filename.hasPrefix("com.adobe") ||
+                            filename.hasPrefix("acsm") ||
+                            filename.contains("rights") ||
+                            filename.contains("license") ||
+                            fullPath.contains("adobe") ||
+                            fullPath.contains("adept") ||
+                            fullPath.contains("/drm/") ||
+                            fullPath.contains("deviceprovider") ||
+                            fullPath.contains("authorization")
+        
+        if shouldPreserve {
+          NSLog("[GeneralCache] Preserving Adobe DRM directory: \(filename)")
+          continue
+        }
+        
         try? fileManager.removeItem(at: url)
       }
-      print("[GeneralCache] Cleared all caches at \(cachesDir.path)")
     } catch {
-      print("[GeneralCache] Failed to clear caches: \(error)")
+      NSLog("[GeneralCache] Failed to clear caches: \(error)")
     }
   }
   
