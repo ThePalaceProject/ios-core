@@ -282,7 +282,10 @@ final class BookDetailViewModel: ObservableObject {
   // MARK: - Button Actions
   
   func handleAction(for button: BookButtonType) {
-    guard !isProcessing(for: button) else { return }
+    guard !isProcessing(for: button) else { 
+      Log.debug(#file, "Button \(button) is already processing, ignoring tap")
+      return 
+    }
     processingButtons.insert(button)
     
     switch button {
@@ -309,9 +312,7 @@ final class BookDetailViewModel: ObservableObject {
       
     case .read, .listen:
       didSelectRead(for: book) {
-        if self.book.defaultBookContentType != .audiobook {
-          self.removeProcessingButton(button)
-        }
+        self.removeProcessingButton(button)
       }
       
     case .cancel:
@@ -551,10 +552,11 @@ final class BookDetailViewModel: ObservableObject {
           return
         }
 
-        // Apply chapter parsing optimization
-        let optimizedAudiobook = self.applyOptimizations(to: audiobook)
+        // Skip chapter parsing optimization for now - it was causing wrong chapter initialization
+        // The optimizer returns the original TOC unchanged but the assignment was corrupting the audiobook state
+        // let optimizedAudiobook = self.applyOptimizations(to: audiobook)
         
-        self.launchAudiobook(book: book, audiobook: optimizedAudiobook, drmDecryptor: drmDecryptor)
+        self.launchAudiobook(book: book, audiobook: audiobook, drmDecryptor: drmDecryptor)
         completion?()
       }
     }
@@ -687,16 +689,19 @@ final class BookDetailViewModel: ObservableObject {
       return TrackPosition(track: firstTrack, timestamp: 0.0, tracks: tracks)
     }
     
-    if position.timestamp == 0.0 && position.track.index > 3 {
-      Log.info(#file, "Detected zero-timestamp bookmark in random chapter (track \(position.track.index)) - starting from beginning")
-      
-      guard let firstTrack = tracks.first else {
-        Log.error(#file, "No first track available for validation fallback")
-        return position
-      }
-      
-      return TrackPosition(track: firstTrack, timestamp: 0.0, tracks: tracks)
-    }
+    // Remove overly aggressive validation that was forcing audiobooks to start from beginning
+    // A zero timestamp is valid - it could be the start of any chapter
+    // Only reset to beginning if we have clear evidence of corruption (very low percentage + high track index)
+    // if position.timestamp == 0.0 && position.track.index > 3 {
+    //   Log.info(#file, "Detected zero-timestamp bookmark in random chapter (track \(position.track.index)) - starting from beginning")
+    //   
+    //   guard let firstTrack = tracks.first else {
+    //     Log.error(#file, "No first track available for validation fallback")
+    //     return position
+    //   }
+    //   
+    //   return TrackPosition(track: firstTrack, timestamp: 0.0, tracks: tracks)
+    // }
     
     return position
   }
