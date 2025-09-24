@@ -35,7 +35,10 @@ struct NormalBookCell: View {
         .padding(.bottom, 5)
       }
       .frame(maxWidth: .infinity, alignment: .leading)
-      .sheet(isPresented: $showHalfSheet, onDismiss: { model.showHalfSheet = false }) {
+      .sheet(isPresented: $showHalfSheet, onDismiss: { 
+        model.showHalfSheet = false
+        model.isManagingHold = false  // Reset managing hold state when sheet is dismissed
+      }) {
         HalfSheetView(
           viewModel: model,
           backgroundColor: Color(model.book.dominantUIColor),

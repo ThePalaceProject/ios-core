@@ -8,35 +8,54 @@ public protocol CatalogRepositoryProtocol {
 
 public final class CatalogRepository: CatalogRepositoryProtocol {
   private let api: CatalogAPI
-  private let feedCache: GeneralCache<String, CatalogFeed>
+  private var memoryCache: [String: CachedFeed] = [:]
+  private let cacheQueue = DispatchQueue(label: "catalog.cache.queue", qos: .userInitiated)
+  
+  private struct CachedFeed {
+    let feed: CatalogFeed
+    let timestamp: Date
+    
+    var isExpired: Bool {
+      Date().timeIntervalSince(timestamp) > 600 // 10 minutes
+    }
+  }
   
   public init(api: CatalogAPI) {
     self.api = api
-    self.feedCache = GeneralCache<String, CatalogFeed>(
-      cacheName: "CatalogFeeds", 
-      mode: .memoryOnly
-    )
   }
 
   public func loadTopLevelCatalog(at url: URL) async throws -> CatalogFeed? {
     let cacheKey = url.absoluteString
-    let tenMinutes: TimeInterval = 10 * 60 // 10 minutes cache for fresh facet data
     
-    return try await feedCache.get(
-      cacheKey,
-      policy: .timedCache(tenMinutes)
-    ) {
-      guard let feed = try await self.api.fetchFeed(at: url) else {
-        throw NSError(domain: "CatalogRepository", code: 0, 
-                     userInfo: [NSLocalizedDescriptionKey: "Failed to fetch catalog feed"])
+    let cachedEntry = await withCheckedContinuation { continuation in
+      cacheQueue.async {
+        continuation.resume(returning: self.memoryCache[cacheKey])
       }
-      
-      Task.detached(priority: .background) {
-        await self.preloadRelatedFacets(from: feed)
-      }
-      
-      return feed
     }
+    
+    if let entry = cachedEntry, !entry.isExpired {
+      return entry.feed
+    }
+    
+    // Fetch from API
+    guard let feed = try await api.fetchFeed(at: url) else {
+      throw NSError(domain: "CatalogRepository", code: 0, 
+                   userInfo: [NSLocalizedDescriptionKey: "Failed to fetch catalog feed"])
+    }
+    
+    // Cache the result
+    await withCheckedContinuation { continuation in
+      cacheQueue.async {
+        self.memoryCache[cacheKey] = CachedFeed(feed: feed, timestamp: Date())
+        continuation.resume()
+      }
+    }
+    
+    Task.detached(priority: .background) {
+      await self.preloadRelatedFacets(from: feed)
+    }
+    
+    return feed
   }
 
   public func search(query: String, baseURL: URL) async throws -> CatalogFeed? {
@@ -45,7 +64,9 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
 
   public func invalidateCache(for url: URL) {
     let cacheKey = url.absoluteString
-    feedCache.remove(for: cacheKey)
+    cacheQueue.async {
+      self.memoryCache[cacheKey] = nil
+    }
   }
   
   // MARK: - Background Preloading
@@ -61,15 +82,26 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
     for url in facetURLs {
       let cacheKey = url.absoluteString
       
-      if feedCache.get(for: cacheKey) != nil {
-        continue // Already cached, skip
+      // Check if already cached
+      let isCached = await withCheckedContinuation { continuation in
+        cacheQueue.async {
+          continuation.resume(returning: self.memoryCache[cacheKey] != nil)
+        }
       }
+      
+      if isCached { continue }
       
       do {
         if let preloadedFeed = try await api.fetchFeed(at: url) {
-          feedCache.set(preloadedFeed, for: cacheKey, expiresIn: 600)
+          await withCheckedContinuation { continuation in
+            cacheQueue.async {
+              self.memoryCache[cacheKey] = CachedFeed(feed: preloadedFeed, timestamp: Date())
+              continuation.resume()
+            }
+          }
         }
       } catch {
+        // Silently fail preloading
       }
     }
   }

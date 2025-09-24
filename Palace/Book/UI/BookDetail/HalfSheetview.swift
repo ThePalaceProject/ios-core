@@ -108,6 +108,9 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
     .onDisappear {
       // Always sync to latest registry state to avoid reverting the UI after a successful download
       viewModel.bookState = TPPBookRegistry.shared.state(for: viewModel.book.identifier)
+      if let cellModel = viewModel as? BookCellModel {
+        cellModel.isManagingHold = false
+      }
     }
     .onReceive(NotificationCenter.default.publisher(for: .TPPBookRegistryStateDidChange).receive(on: RunLoop.main)) { note in
       guard
@@ -120,6 +123,10 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
 
       // Dismiss only when a return/remove fully completed to unregistered
       if viewModel.isReturning && newState == .unregistered {
+        // Reset state and dismiss sheet - parent BookDetailView will handle navigation dismissal
+        if let cellModel = viewModel as? BookCellModel {
+          cellModel.isManagingHold = false
+        }
         dismiss()
       }
     }
