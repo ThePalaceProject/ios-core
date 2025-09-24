@@ -10,17 +10,30 @@ struct CatalogContentView: View {
     VStack(alignment: .leading, spacing: 0) {
       selectorsView
       
-      ScrollView {
-        LazyVStack(alignment: .leading, spacing: 24) {
-          SwiftUI.Group {
-            contentArea
-              .padding(.vertical, 17)
+      ScrollViewReader { proxy in
+        ScrollView {
+          LazyVStack(alignment: .leading, spacing: 24) {
+            SwiftUI.Group {
+              contentArea
+                .padding(.vertical, 17)
+                .id("catalog-content-top")
+            }
+          }
+          .padding(.vertical, 17)
+          .padding(.bottom, 100)
+        }
+        .refreshable { await viewModel.refresh() }
+        .onReceive(viewModel.$shouldScrollToTop) { shouldScroll in
+          if shouldScroll {
+            withAnimation(.easeInOut(duration: 0.3)) {
+              proxy.scrollTo("catalog-content-top", anchor: .top)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+              viewModel.resetScrollTrigger()
+            }
           }
         }
-        .padding(.vertical, 17)
-        .padding(.bottom, 100)
       }
-      .refreshable { await viewModel.refresh() }
     }
   }
 }
@@ -56,18 +69,22 @@ private extension CatalogContentView {
             onSelect: onBookSelected,
             onMoreTapped: onLaneMoreTapped,
             showHeader: true,
-            isLoading: lane.isLoading
+            isLoading: lane.isLoading || viewModel.isOptimisticLoading
           )
         }
       }
+      .opacity(viewModel.isOptimisticLoading ? 0.6 : 1.0)
+      .animation(.easeInOut(duration: 0.2), value: viewModel.isOptimisticLoading)
     } else {
       ScrollView {
         BookListView(
           books: viewModel.ungroupedBooks,
-          isLoading: .constant(false),
+          isLoading: .constant(viewModel.isOptimisticLoading),
           onSelect: onBookSelected
         )
       }
+      .opacity(viewModel.isOptimisticLoading ? 0.6 : 1.0)
+      .animation(.easeInOut(duration: 0.2), value: viewModel.isOptimisticLoading)
     }
   }
 }
