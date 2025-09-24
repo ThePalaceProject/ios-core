@@ -13,40 +13,34 @@ struct HoldsView: View {
   }
   var body: some View {
     ZStack {
-      VStack(spacing: 0) {
-
-        if model.isLoading {
-          BookListSkeletonView(rows: 10)
-        } else if model.visibleBooks.isEmpty {
-          Spacer()
-          emptyView
-          Spacer()
-        } else {
-          ScrollView {
-            BookListView(
-              books: model.visibleBooks,
-              isLoading: $model.isLoading,
-              onSelect: { book in presentBookDetail(book) }
-            )
-            .padding(.horizontal, 8)
+      mainContent
+        .background(Color(TPPConfiguration.backgroundColor()))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+          ToolbarItem(placement: .principal) {
+            LibraryNavTitleView(onTap: {
+              if let urlString = AccountsManager.shared.currentAccount?.homePageUrl, let url = URL(string: urlString) {
+                UIApplication.shared.open(url, options: [:], completionHandler: nil)
+              }
+            })
+            .id(logoObserver.token.uuidString + currentAccountUUID)
           }
-          .dismissKeyboardOnTap()
-        }
-      }
-      .background(Color(TPPConfiguration.backgroundColor()))
-      .navigationBarTitleDisplayMode(.inline)
-      .toolbar {
-        ToolbarItem(placement: .principal) {
-          LibraryNavTitleView(onTap: {
-            if let urlString = AccountsManager.shared.currentAccount?.homePageUrl, let url = URL(string: urlString) {
-              UIApplication.shared.open(url, options: [:], completionHandler: nil)
+          ToolbarItem(placement: .navigationBarLeading) { leadingBarButton }
+          ToolbarItem(placement: .navigationBarTrailing) { 
+            if model.showSearchSheet {
+              Button(action: { 
+                withAnimation { 
+                  model.showSearchSheet = false
+                  model.searchQuery = "" 
+                } 
+              }) {
+                Text(Strings.Generic.cancel)
+              }
+            } else {
+              trailingBarButton
             }
-          })
-          .id(logoObserver.token.uuidString + currentAccountUUID)
+          }
         }
-        ToolbarItem(placement: .navigationBarLeading) { leadingBarButton }
-        ToolbarItem(placement: .navigationBarTrailing) { trailingBarButton }
-      }
       .onAppear {
         model.showSearchSheet = false
         model.showLibraryAccountView = false
@@ -77,12 +71,45 @@ struct HoldsView: View {
         loadingOverlay
       }
     }
-    .overlay(alignment: .top) {
-      if model.showSearchSheet {
+  }
+
+  private var mainContent: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      if model.showSearchSheet { 
         searchBar
-          .padding(.top, 8)
           .transition(.move(edge: .top).combined(with: .opacity))
       }
+      content
+    }
+  }
+
+  @ViewBuilder
+  private var content: some View {
+    if model.isLoading {
+      BookListSkeletonView(rows: 10)
+    } else if model.visibleBooks.isEmpty {
+      GeometryReader { geometry in
+        ScrollView {
+          VStack {
+            Spacer()
+            emptyView
+            Spacer()
+          }
+          .frame(minHeight: geometry.size.height)
+        }
+        .refreshable { model.refresh() }
+      }
+    } else {
+      ScrollView {
+        BookListView(
+          books: model.visibleBooks,
+          isLoading: $model.isLoading,
+          onSelect: { book in presentBookDetail(book) }
+        )
+        .padding(.horizontal, 8)
+      }
+      .dismissKeyboardOnTap()
+      .refreshable { model.refresh() }
     }
   }
   
@@ -145,13 +172,14 @@ struct HoldsView: View {
 
   private var searchBar: some View {
     HStack {
-      TextField(Strings.MyBooksView.searchBooks, text: $model.searchQuery)
+      TextField(NSLocalizedString("Search Reservations", comment: ""), text: $model.searchQuery)
         .searchBarStyle()
         .onChange(of: model.searchQuery) { query in
           Task { await model.filterBooks(query: query) }
         }
       Button(action: clearSearch, label: {
-        Image(systemName: "xmark.circle.fill").foregroundColor(.gray)
+        Image(systemName: "xmark.circle.fill")
+          .foregroundColor(.gray)
       })
     }
     .padding(.horizontal)
