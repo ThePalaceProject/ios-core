@@ -44,7 +44,7 @@ import UIKit
     
     /// Maximum concurrent downloads based on device capability
     var maxConcurrentDownloads: Int {
-        return isLowMemoryDevice ? 1 : 3
+        return isLowMemoryDevice ? 2 : 5  // Increased base limits to prevent over-throttling
     }
     
     /// Cache memory limit optimized for device

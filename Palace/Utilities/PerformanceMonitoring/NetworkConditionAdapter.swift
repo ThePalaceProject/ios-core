@@ -51,7 +51,6 @@ import Network
         if path.usesInterfaceType(.wifi) {
             newType = .wifi
         } else if path.usesInterfaceType(.cellular) {
-            // Check if we're in low data mode or poor signal
             if path.isConstrained || path.isExpensive {
                 newType = .lowBandwidth
             } else {
@@ -103,7 +102,6 @@ import Network
         config.allowsCellularAccess = true
         config.networkServiceType = .responsiveData
         
-        // Respect cellular data settings
         if #available(iOS 13.0, *) {
             config.allowsExpensiveNetworkAccess = true
             config.allowsConstrainedNetworkAccess = true
@@ -177,11 +175,11 @@ import Network
         case .wifi:
             return baseMax
         case .cellular:
-            return min(baseMax, 2)
+            return min(baseMax, 3)
         case .lowBandwidth:
-            return 2 // Increased from 1 to allow LCP streaming + background download
+            return 3
         case .unknown:
-            return 1
+            return 2
         }
     }
     

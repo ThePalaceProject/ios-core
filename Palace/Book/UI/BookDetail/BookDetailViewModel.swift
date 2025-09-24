@@ -335,9 +335,7 @@ final class BookDetailViewModel: ObservableObject {
   }
   
   private func removeProcessingButton(_ button: BookButtonType) {
-    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-      self.processingButtons.remove(button)
-    }
+    self.processingButtons.remove(button)
   }
   
   func isProcessing(for button: BookButtonType) -> Bool {
@@ -599,7 +597,6 @@ final class BookDetailViewModel: ObservableObject {
     audiobookBookmarkBusinessLogic = AudiobookBookmarkBusinessLogic(book: book)
     audiobookManager.bookmarkDelegate = audiobookBookmarkBusinessLogic
     
-    // Set up end-of-book completion handler
     audiobookManager.playbackCompletionHandler = { [weak self] in
       guard let self = self else { return }
       DispatchQueue.main.async {
