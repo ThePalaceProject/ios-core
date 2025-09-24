@@ -16,7 +16,7 @@ struct BookLane {
 @MainActor
 final class BookDetailViewModel: ObservableObject {
   // MARK: - Constants
-  private let kTimerInterval: TimeInterval = 1.0  // Reduced from 3.0 for more responsive home screen updates
+  private let kTimerInterval: TimeInterval = 3.0
   
   @Published var book: TPPBook
   
@@ -782,7 +782,6 @@ extension BookDetailViewModel {
     
     timer?.resume()
   }
-  
   @objc public func pollAudiobookReadingLocation() {
     guard let _ = self.audiobookViewController,
           let audiobookManager = self.audiobookManager else {
@@ -804,16 +803,8 @@ extension BookDetailViewModel {
     }
     
     let playheadOffset = currentTrackPosition.timestamp
-    let timeDifference = abs(self.previousPlayheadOffset - playheadOffset)
-    
-    if (timeDifference > 1.0 || timeDifference > 25.0) && playheadOffset > 0 {
+    if abs(self.previousPlayheadOffset - playheadOffset) > 1.0 && playheadOffset > 0 {
       self.previousPlayheadOffset = playheadOffset
-      
-      if timeDifference > 25.0 {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
-          self?.pollAudiobookReadingLocation()
-        }
-      }
       
       DispatchQueue.global(qos: .background).async { [weak self] in
         guard let self = self else { return }
