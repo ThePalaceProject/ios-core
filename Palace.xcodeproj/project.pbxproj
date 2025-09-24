@@ -588,17 +588,6 @@
 		E53CDABC2A2FD4D300C6008A /* LocationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E53CDA872A2FBCD800C6008A /* LocationManager.swift */; };
 		E541812F2C004923005ED059 /* snowcrash_manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = E541812E2C004923005ED059 /* snowcrash_manifest.json */; };
 		E5437D5F2C07C0B8005852DA /* TrackPosition+Annotations.swift in Sources */ = {isa = PBXBuildFile; fileRef = E59A99892BFC4D3700BE3BF4 /* TrackPosition+Annotations.swift */; };
-		E5439C2D2E7F9F9900B2FB56 /* NetworkConditionAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5439C2C2E7F9F9900B2FB56 /* NetworkConditionAdapter.swift */; };
-		E5439C2E2E7F9F9900B2FB56 /* NetworkConditionAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5439C2C2E7F9F9900B2FB56 /* NetworkConditionAdapter.swift */; };
-		E5439C302E7F9FCC00B2FB56 /* AdaptiveMemoryManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5439C2F2E7F9FCC00B2FB56 /* AdaptiveMemoryManager.swift */; };
-		E5439C312E7F9FCC00B2FB56 /* AdaptiveMemoryManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5439C2F2E7F9FCC00B2FB56 /* AdaptiveMemoryManager.swift */; };
-		E5439C3A2E7FA26200B2FB56 /* AudiobookPerformanceMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5439C392E7FA26200B2FB56 /* AudiobookPerformanceMonitor.swift */; };
-		E5439C3B2E7FA26200B2FB56 /* AudiobookPerformanceMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5439C392E7FA26200B2FB56 /* AudiobookPerformanceMonitor.swift */; };
-		E5439C3D2E7FA29700B2FB56 /* AdaptiveStreamingManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5439C3C2E7FA29700B2FB56 /* AdaptiveStreamingManager.swift */; };
-		E5439C3E2E7FA29700B2FB56 /* AdaptiveStreamingManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5439C3C2E7FA29700B2FB56 /* AdaptiveStreamingManager.swift */; };
-		E5439C402E7FA2C600B2FB56 /* ChapterParsingOptimizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5439C3F2E7FA2C600B2FB56 /* ChapterParsingOptimizer.swift */; };
-		E5439C412E7FA2C600B2FB56 /* ChapterParsingOptimizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5439C3F2E7FA2C600B2FB56 /* ChapterParsingOptimizer.swift */; };
-		E5439C502E7FAC9800B2FB56 /* NetworkOptimizationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5439C4F2E7FAC9800B2FB56 /* NetworkOptimizationTests.swift */; };
 		E544A19F2DF0BB6C008679D6 /* HoldsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E544A19E2DF0BB59008679D6 /* HoldsView.swift */; };
 		E544A1A02DF0BB6C008679D6 /* HoldsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E544A19E2DF0BB59008679D6 /* HoldsView.swift */; };
 		E544A1A12DF0BBF1008679D6 /* HoldsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E544A19D2DF0BB4B008679D6 /* HoldsViewModel.swift */; };
@@ -1500,12 +1489,6 @@
 		E53573D829653095008BDCA4 /* FacetViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FacetViewModel.swift; sourceTree = "<group>"; };
 		E53CDA872A2FBCD800C6008A /* LocationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationManager.swift; sourceTree = "<group>"; };
 		E541812E2C004923005ED059 /* snowcrash_manifest.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = snowcrash_manifest.json; sourceTree = "<group>"; };
-		E5439C2C2E7F9F9900B2FB56 /* NetworkConditionAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkConditionAdapter.swift; sourceTree = "<group>"; };
-		E5439C2F2E7F9FCC00B2FB56 /* AdaptiveMemoryManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdaptiveMemoryManager.swift; sourceTree = "<group>"; };
-		E5439C392E7FA26200B2FB56 /* AudiobookPerformanceMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudiobookPerformanceMonitor.swift; sourceTree = "<group>"; };
-		E5439C3C2E7FA29700B2FB56 /* AdaptiveStreamingManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdaptiveStreamingManager.swift; sourceTree = "<group>"; };
-		E5439C3F2E7FA2C600B2FB56 /* ChapterParsingOptimizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChapterParsingOptimizer.swift; sourceTree = "<group>"; };
-		E5439C4F2E7FAC9800B2FB56 /* NetworkOptimizationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkOptimizationTests.swift; sourceTree = "<group>"; };
 		E544A19D2DF0BB4B008679D6 /* HoldsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoldsViewModel.swift; sourceTree = "<group>"; };
 		E544A19E2DF0BB59008679D6 /* HoldsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoldsView.swift; sourceTree = "<group>"; };
 		E544A1E22DF35039008679D6 /* BookButtonMapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookButtonMapper.swift; sourceTree = "<group>"; };
@@ -2045,7 +2028,6 @@
 				11068C53196DD37900E8A94B /* TPPNull.h */,
 				11068C54196DD37900E8A94B /* TPPNull.m */,
 				E551116D283C93BC0095E723 /* EmailAddress.swift */,
-				E5439C382E7FA24F00B2FB56 /* PerformanceMonitoring */,
 			);
 			path = Utilities;
 			sourceTree = "<group>";
@@ -2799,7 +2781,6 @@
 		A823D82F192BABA400B55DE2 /* PalaceTests */ = {
 			isa = PBXGroup;
 			children = (
-				E5439C4F2E7FAC9800B2FB56 /* NetworkOptimizationTests.swift */,
 				E50546782E62020D007CCFAB /* URLSession+Stubbing.swift */,
 				E50546762E6201E6007CCFAB /* HTTPStubURLProtocol.swift */,
 				E50546742E6201D4007CCFAB /* OPDSFeedParsingTests.swift */,
@@ -2887,18 +2868,6 @@
 				E53CDA872A2FBCD800C6008A /* LocationManager.swift */,
 			);
 			path = System;
-			sourceTree = "<group>";
-		};
-		E5439C382E7FA24F00B2FB56 /* PerformanceMonitoring */ = {
-			isa = PBXGroup;
-			children = (
-				E5439C3F2E7FA2C600B2FB56 /* ChapterParsingOptimizer.swift */,
-				E5439C3C2E7FA29700B2FB56 /* AdaptiveStreamingManager.swift */,
-				E5439C392E7FA26200B2FB56 /* AudiobookPerformanceMonitor.swift */,
-				E5439C2F2E7F9FCC00B2FB56 /* AdaptiveMemoryManager.swift */,
-				E5439C2C2E7F9F9900B2FB56 /* NetworkConditionAdapter.swift */,
-			);
-			path = PerformanceMonitoring;
 			sourceTree = "<group>";
 		};
 		E54DD4D3275C7C6B0013C200 /* SwiftUI */ = {
@@ -3744,7 +3713,6 @@
 				735771A02537635600067CEA /* TPPSignInBusinessLogicTests.swift in Sources */,
 				17BE24DA25F85D2300AE707F /* TPPAgeCheckTests.swift in Sources */,
 				E75ED6DB29772C4B006BBD5F /* NYPLXMLTests.m in Sources */,
-				E5439C502E7FAC9800B2FB56 /* NetworkOptimizationTests.swift in Sources */,
 				17BE24E025FABA0900AE707F /* TPPAgeCheckChoiceStorageMock.swift in Sources */,
 				7375AE5A25382AC900C85211 /* TPPUserAccountMock.swift in Sources */,
 				73C3CF5A25CB8D6100CA8166 /* NYPLNetworkExecutorMock.swift in Sources */,
@@ -3807,11 +3775,9 @@
 				73EB0A7125821DF4006BC997 /* UILabel+NYPLAppearanceAdditions.m in Sources */,
 				21399902268F9F4C00B4EB60 /* TPPAccountListDataSource.swift in Sources */,
 				73EB0A7325821DF4006BC997 /* TPPJSON.m in Sources */,
-				E5439C2D2E7F9F9900B2FB56 /* NetworkConditionAdapter.swift in Sources */,
 				21E41789292810F600A78606 /* TPPPDFPreviewThumbnail.swift in Sources */,
 				73EB0A7425821DF4006BC997 /* TPPMainThreadChecker.swift in Sources */,
 				2126FE3525C059700095C45C /* ReaderModule.swift in Sources */,
-				E5439C402E7FA2C600B2FB56 /* ChapterParsingOptimizer.swift in Sources */,
 				E58C330A2AD98F61005C44A2 /* EPUBSearchViewModel.swift in Sources */,
 				73EB0A7525821DF4006BC997 /* TPPConfiguration.m in Sources */,
 				E5DE86FD2D6C39D7003D356E /* BookImageView.swift in Sources */,
@@ -3925,7 +3891,6 @@
 				E5239A1F2992107D00850941 /* BookCell.swift in Sources */,
 				73EB0AA025821DF4006BC997 /* TPPUserNotifications.swift in Sources */,
 				21DCC39D27BE4AF900064B37 /* TPPReaderFont.swift in Sources */,
-				E5439C3A2E7FA26200B2FB56 /* AudiobookPerformanceMonitor.swift in Sources */,
 				E7E9A22E298C6A82006C5D9E /* Reachability.swift in Sources */,
 				E78AE803291C1D8600884446 /* TPPBookRegistryRecord.swift in Sources */,
 				E5BFCF0E2A5455170046A48D /* TokenRequest.swift in Sources */,
@@ -4040,7 +4005,6 @@
 				E50546CD2E621C39007CCFAB /* AppTabRouter.swift in Sources */,
 				21D746F42719AFD600C0E1B4 /* AdobeContentProtectionService.swift in Sources */,
 				73EB0AEC25821DF4006BC997 /* TPPProblemReportViewController.m in Sources */,
-				E5439C302E7F9FCC00B2FB56 /* AdaptiveMemoryManager.swift in Sources */,
 				219E4D9325C34A8800588588 /* DRMLibraryService.swift in Sources */,
 				E544C4EA2A395BE000B2DC9D /* MyBooksDownloadCenter.swift in Sources */,
 				73EB0AEF25821DF4006BC997 /* TPPOPDSAttribute.m in Sources */,
@@ -4066,7 +4030,6 @@
 				73EB0AF825821DF4006BC997 /* NSURLRequest+NYPLURLRequestAdditions.m in Sources */,
 				E562DD9A2D35ABC4003A1A40 /* BookDetailView.swift in Sources */,
 				E7B20B47285B3BC800C49FE1 /* TPPPDFPreviewGridController.swift in Sources */,
-				E5439C3D2E7FA29700B2FB56 /* AdaptiveStreamingManager.swift in Sources */,
 				21E417942928125500A78606 /* OPDS2LinkArray.swift in Sources */,
 				73EB0AFA25821DF4006BC997 /* ExtendedNavBarView.swift in Sources */,
 				73EB0AFB25821DF4006BC997 /* OPDS2Link.swift in Sources */,
@@ -4228,7 +4191,6 @@
 				732F929323ECB51F0099244C /* TPPBackgroundExecutor.swift in Sources */,
 				E544A1A12DF0BBF1008679D6 /* HoldsViewModel.swift in Sources */,
 				5D1B141522CBE3570006C964 /* TPPProblemDocument.swift in Sources */,
-				E5439C312E7F9FCC00B2FB56 /* AdaptiveMemoryManager.swift in Sources */,
 				E706F6092863831F000B7431 /* TPPPDFPage+serialization.swift in Sources */,
 				A92FB0F921CDCE3D004740F4 /* TPPReturnPromptHelper.swift in Sources */,
 				E50546CA2E621B75007CCFAB /* NavigationCoordinator.swift in Sources */,
@@ -4303,7 +4265,6 @@
 				E5DF75322E6B4AF700971F19 /* SamplePreviewManager.swift in Sources */,
 				737F4A6B254A137900A3C34B /* TPPSignInBusinessLogic+DRM.swift in Sources */,
 				73CDA121243EDAD8009CC6A6 /* URLRequest+Logging.swift in Sources */,
-				E5439C2E2E7F9F9900B2FB56 /* NetworkConditionAdapter.swift in Sources */,
 				0857A0F72478337D00C7984E /* TPPCredentials.swift in Sources */,
 				7364D69C2492A38C0087B056 /* Publication+NYPLAdditions.swift in Sources */,
 				733875652423E1B0000FEB67 /* TPPNetworkExecutor.swift in Sources */,
@@ -4456,14 +4417,12 @@
 				A499BF261B39EFC7002F8B8B /* TPPOPDSEntryGroupAttributes.m in Sources */,
 				E731FF4E2864E609001DB7F2 /* View.swift in Sources */,
 				E75499F72A1D6863009FF821 /* TPPAppDelegate+Extensions.swift in Sources */,
-				E5439C3E2E7FA29700B2FB56 /* AdaptiveStreamingManager.swift in Sources */,
 				E706F60B2863864F000B7431 /* CGPDFPage+previews.swift in Sources */,
 				E57345512AD6EB600021D768 /* EPUBSearchViewModel.swift in Sources */,
 				E52E3C0E28C19F490073DC4D /* TPPBook+Extensions.swift in Sources */,
 				E54DD4D5275C7C940013C200 /* View+Extensions.swift in Sources */,
 				8C40D6A72375FF8B006EA63B /* TPPProblemDocumentCacheManager.swift in Sources */,
 				2DEF10BA201ECCEA0082843A /* TPPMyBooksSimplifiedBearerToken.m in Sources */,
-				E5439C3B2E7FA26200B2FB56 /* AudiobookPerformanceMonitor.swift in Sources */,
 				E706F60728638237000B7431 /* TPPPDFPage.swift in Sources */,
 				E78AE802291C1D8600884446 /* TPPBookRegistryRecord.swift in Sources */,
 				2DF321831DC3B83500E1858F /* TPPAnnotations.swift in Sources */,
@@ -4490,7 +4449,6 @@
 				E562DD962D35AB8F003A1A40 /* BookDetailViewModel.swift in Sources */,
 				089E430C24A2459100310360 /* TPPLoginCellTypes.swift in Sources */,
 				1158812E1A894F4E008672C3 /* TPPAccountSignInViewController.m in Sources */,
-				E5439C412E7FA2C600B2FB56 /* ChapterParsingOptimizer.swift in Sources */,
 				E59526EB28D24FC000C179DA /* AudiobookSample.swift in Sources */,
 				E5B2B8DA275952EC00150ED4 /* TPPSettingsView.swift in Sources */,
 				212B99D7258A36FD00C8BF79 /* LCPAudiobooks.swift in Sources */,
@@ -4995,9 +4953,9 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/PalaceDebug.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 378;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -5119,13 +5077,11 @@
 				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CODE_SIGN_IDENTITY = "Apple Development";
-				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEFINES_MODULE = YES;
-				DEVELOPMENT_TEAM = "";
-				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = "";
+				DEVELOPMENT_TEAM = 88CBA74T8K;
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
 				DYLIB_INSTALL_NAME_BASE = "@rpath";

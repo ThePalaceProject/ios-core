@@ -35,7 +35,7 @@ import OverdriveProcessor
   private var taskIdentifierToRedirectAttempts: [Int: Int] = [:]
   private let downloadQueue = DispatchQueue(label: "com.palace.downloadQueue", qos: .background)
   let downloadProgressPublisher = PassthroughSubject<(String, Double), Never>()
-  private var maxConcurrentDownloads: Int = 5  // Increased default to prevent over-throttling
+  private var maxConcurrentDownloads: Int = 5 
   private var pendingStartQueue: [TPPBook] = []
   
   init(
@@ -59,7 +59,7 @@ import OverdriveProcessor
 #endif
     
     let backgroundIdentifier = (Bundle.main.bundleIdentifier ?? "") + ".downloadCenterBackgroundIdentifier"
-    let configuration = NetworkConditionAdapter.shared.currentConfiguration()
+    let configuration = URLSessionConfiguration.background(withIdentifier: backgroundIdentifier)
     configuration.isDiscretionary = false
     configuration.waitsForConnectivity = false
     if #available(iOS 13.0, *) {

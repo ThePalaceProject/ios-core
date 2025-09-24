@@ -16,7 +16,7 @@ struct BookLane {
 @MainActor
 final class BookDetailViewModel: ObservableObject {
   // MARK: - Constants
-  private let kTimerInterval: TimeInterval = 3.0
+  private let kTimerInterval: TimeInterval = 1.0  // Reduced from 3.0 for more responsive home screen updates
   
   @Published var book: TPPBook
   
@@ -549,10 +549,6 @@ final class BookDetailViewModel: ObservableObject {
           completion?()
           return
         }
-
-        // Skip chapter parsing optimization for now - it was causing wrong chapter initialization
-        // The optimizer returns the original TOC unchanged but the assignment was corrupting the audiobook state
-        // let optimizedAudiobook = self.applyOptimizations(to: audiobook)
         
         self.launchAudiobook(book: book, audiobook: audiobook, drmDecryptor: drmDecryptor)
         completion?()
@@ -560,16 +556,7 @@ final class BookDetailViewModel: ObservableObject {
     }
     AudioBookVendorsHelper.updateVendorKey(book: json, completion: vendorCompletion)
   }
-  
-  private func applyOptimizations(to audiobook: Audiobook) -> Audiobook {
-    let optimizer = ChapterParsingOptimizer()
-    let optimizedTableOfContents = optimizer.optimizeTableOfContents(audiobook.tableOfContents)
-    
-    audiobook.tableOfContents = optimizedTableOfContents
-    
-    return audiobook
-  }
-  
+
   @MainActor private func launchAudiobook(book: TPPBook, audiobook: Audiobook, drmDecryptor: DRMDecryptor?) {
     var timeTracker: AudiobookTimeTracker?
     if let libraryId = AccountsManager.shared.currentAccount?.uuid, let timeTrackingURL = book.timeTrackingURL {
@@ -817,8 +804,16 @@ extension BookDetailViewModel {
     }
     
     let playheadOffset = currentTrackPosition.timestamp
-    if abs(self.previousPlayheadOffset - playheadOffset) > 1.0 && playheadOffset > 0 {
+    let timeDifference = abs(self.previousPlayheadOffset - playheadOffset)
+    
+    if (timeDifference > 1.0 || timeDifference > 25.0) && playheadOffset > 0 {
       self.previousPlayheadOffset = playheadOffset
+      
+      if timeDifference > 25.0 {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+          self?.pollAudiobookReadingLocation()
+        }
+      }
       
       DispatchQueue.global(qos: .background).async { [weak self] in
         guard let self = self else { return }
