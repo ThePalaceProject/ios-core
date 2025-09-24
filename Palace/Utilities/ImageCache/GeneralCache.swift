@@ -241,15 +241,14 @@ public final class GeneralCache<Key: Hashable & Codable, Value: Codable> {
                             fullPath.contains("authorization")
         
         if shouldPreserve {
-          print("[GeneralCache] Preserving Adobe DRM directory: \(filename)")
+          NSLog("[GeneralCache] Preserving Adobe DRM directory: \(filename)")
           continue
         }
         
         try? fileManager.removeItem(at: url)
       }
-      print("[GeneralCache] Cleared all caches at \(cachesDir.path) (preserving Adobe DRM data)")
     } catch {
-      print("[GeneralCache] Failed to clear caches: \(error)")
+      NSLog("[GeneralCache] Failed to clear caches: \(error)")
     }
   }
   

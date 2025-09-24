@@ -200,7 +200,6 @@ extension LCPAudiobooks: LCPStreamingProvider {
     publicationCacheLock.unlock()
     
     if !hasPublication {
-      // Load publication in background for streaming
       DispatchQueue.global(qos: .userInteractive).async { [weak self] in
         self?.loadContentDictionary { _, error in 
           if let error = error {

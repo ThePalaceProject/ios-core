@@ -102,7 +102,6 @@ final class NavigationCoordinator: ObservableObject {
     audioModelById.removeAll()
     pdfContentById.removeAll()
     
-    
     Log.info(#file, "🧹 NavigationCoordinator: Cleaned up cached items")
   }
 
@@ -147,7 +146,6 @@ final class NavigationCoordinator: ObservableObject {
 
   // MARK: - SwiftUI payloads
   func storeAudioModel(_ model: AudiobookPlaybackModel, forBookId id: String) {
-    // Replace any existing model (allows reopening the same book)
     audioModelById[id] = model
     scheduleCleanupIfNeeded()
   }
