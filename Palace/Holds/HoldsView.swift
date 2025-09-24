@@ -13,6 +13,7 @@ struct HoldsView: View {
   }
   var body: some View {
     ZStack {
+      ScrollView {
       mainContent
         .background(Color(TPPConfiguration.backgroundColor()))
         .navigationBarTitleDisplayMode(.inline)
@@ -26,13 +27,13 @@ struct HoldsView: View {
             .id(logoObserver.token.uuidString + currentAccountUUID)
           }
           ToolbarItem(placement: .navigationBarLeading) { leadingBarButton }
-          ToolbarItem(placement: .navigationBarTrailing) { 
+          ToolbarItem(placement: .navigationBarTrailing) {
             if model.showSearchSheet {
-              Button(action: { 
-                withAnimation { 
+              Button(action: {
+                withAnimation {
                   model.showSearchSheet = false
-                  model.searchQuery = "" 
-                } 
+                  model.searchQuery = ""
+                }
               }) {
                 Text(Strings.Generic.cancel)
               }
@@ -41,20 +42,21 @@ struct HoldsView: View {
             }
           }
         }
-      .onAppear {
-        model.showSearchSheet = false
-        model.showLibraryAccountView = false
-        let account = AccountsManager.shared.currentAccount
-        account?.logoDelegate = logoObserver
-        account?.loadLogo()
-        currentAccountUUID = account?.uuid ?? ""
-      }
-      .onReceive(NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)) { _ in
-        let account = AccountsManager.shared.currentAccount
-        account?.logoDelegate = logoObserver
-        account?.loadLogo()
-        currentAccountUUID = account?.uuid ?? ""
-      }
+        .onAppear {
+          model.showSearchSheet = false
+          model.showLibraryAccountView = false
+          let account = AccountsManager.shared.currentAccount
+          account?.logoDelegate = logoObserver
+          account?.loadLogo()
+          currentAccountUUID = account?.uuid ?? ""
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)) { _ in
+          let account = AccountsManager.shared.currentAccount
+          account?.logoDelegate = logoObserver
+          account?.loadLogo()
+          currentAccountUUID = account?.uuid ?? ""
+        }
+    }
       .refreshable {
         model.refresh()
       }
@@ -89,27 +91,21 @@ struct HoldsView: View {
       BookListSkeletonView(rows: 10)
     } else if model.visibleBooks.isEmpty {
       GeometryReader { geometry in
-        ScrollView {
           VStack {
             Spacer()
             emptyView
             Spacer()
           }
           .frame(minHeight: geometry.size.height)
-        }
-        .refreshable { model.refresh() }
       }
     } else {
-      ScrollView {
         BookListView(
           books: model.visibleBooks,
           isLoading: $model.isLoading,
           onSelect: { book in presentBookDetail(book) }
         )
         .padding(.horizontal, 8)
-      }
-      .dismissKeyboardOnTap()
-      .refreshable { model.refresh() }
+        .dismissKeyboardOnTap()
     }
   }
   
