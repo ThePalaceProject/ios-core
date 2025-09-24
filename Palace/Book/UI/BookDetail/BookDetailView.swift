@@ -121,9 +121,7 @@ struct BookDetailView: View {
           }
       }
       .presentationDetents([.height(0), .height(300)])
-      .toolbarBackground(.hidden, for: .navigationBar)
-      .toolbarColorScheme(headerColor.isDark ? .dark : .light, for: .navigationBar)
-      .tint(headerColor.isDark ? .white : .black)
+      .navigationBarHidden(true)
       
       if !viewModel.isFullSize {
         backgroundView
@@ -139,6 +137,8 @@ struct BookDetailView: View {
         .animation(scaleAnimation, value: -headerHeight)
 
       SamplePreviewBarView()
+      
+      customBackButton
     }
     .offset(x: dragOffset)
     .animation(.interactiveSpring(), value: dragOffset)
@@ -604,7 +604,32 @@ struct BookDetailView: View {
     lastOffset = offset
   }
   
-  
+  private var customBackButton: some View {
+    VStack {
+      HStack {
+        Button(action: {
+          if let coordinator = coordinator {
+            coordinator.pop()
+          } else {
+            presentationMode.wrappedValue.dismiss()
+          }
+        }) {
+          HStack(spacing: 4) {
+            Image(systemName: "chevron.left")
+              .font(.system(size: 16, weight: .medium))
+            Text(Strings.Generic.back)
+              .font(.system(size: 16, weight: .medium))
+          }
+          .foregroundColor(headerColor.isDark ? .white : .black)
+        }
+        .padding(.leading, 16)
+        
+        Spacer()
+      }
+      
+      Spacer()
+    }
+  }
 }
 
 private struct BookStateModifier: ViewModifier {
