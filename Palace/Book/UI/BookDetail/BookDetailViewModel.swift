@@ -61,8 +61,9 @@ final class BookDetailViewModel: ObservableObject {
   let downloadCenter = MyBooksDownloadCenter.shared
   private var cancellables = Set<AnyCancellable>()
   
-  private var audiobookViewController: UIViewController?
-  private var audiobookManager: DefaultAudiobookManager?
+  // Note: audiobook management moved to BookService
+  // private var audiobookViewController: UIViewController? // No longer used
+  // private var audiobookManager: DefaultAudiobookManager? // No longer used
   private var audiobookPlayer: AudiobookPlayer?
   private var audiobookBookmarkBusinessLogic: AudiobookBookmarkBusinessLogic?
   private var timer: DispatchSourceTimer?
@@ -468,6 +469,7 @@ final class BookDetailViewModel: ObservableObject {
     BookService.open(book, onFinish: completion)
   }
   
+  
   private func getLCPLicenseURL(for book: TPPBook) -> URL? {
 #if LCP
     guard let bookFileURL = downloadCenter.fileUrl(for: book.identifier) else {
@@ -515,178 +517,6 @@ final class BookDetailViewModel: ObservableObject {
   }
 #endif
   
-  func openAudiobook(with book: TPPBook, json: [String: Any], drmDecryptor: DRMDecryptor?, completion: (() -> Void)?) {
-    let vendorCompletion: (NSError?) -> Void = { [weak self] (error: NSError?) in
-      DispatchQueue.main.async {
-        guard let self else { return }
-        
-        if let error {
-          self.presentDRMKeyError(error)
-          completion?()
-          return
-        }
-        
-        let manifestDecoder = Manifest.customDecoder()
-        guard let jsonData = try? JSONSerialization.data(withJSONObject: json, options: []) else {
-          self.presentUnsupportedItemError()
-          completion?()
-          return
-        }
-        
-        guard let manifest = try? manifestDecoder.decode(Manifest.self, from: jsonData) else {
-          self.presentUnsupportedItemError()
-          completion?()
-          return
-        }
-                
-        guard let audiobook = AudiobookFactory.audiobook(
-          for: manifest,
-          bookIdentifier: book.identifier,
-          decryptor: drmDecryptor,
-          token: book.bearerToken
-        ) else {
-          self.presentUnsupportedItemError()
-          completion?()
-          return
-        }
-        
-        self.launchAudiobook(book: book, audiobook: audiobook, drmDecryptor: drmDecryptor)
-        completion?()
-      }
-    }
-    AudioBookVendorsHelper.updateVendorKey(book: json, completion: vendorCompletion)
-  }
-
-  @MainActor private func launchAudiobook(book: TPPBook, audiobook: Audiobook, drmDecryptor: DRMDecryptor?) {
-    var timeTracker: AudiobookTimeTracker?
-    if let libraryId = AccountsManager.shared.currentAccount?.uuid, let timeTrackingURL = book.timeTrackingURL {
-      timeTracker = AudiobookTimeTracker(libraryId: libraryId, bookId: book.identifier, timeTrackingUrl: timeTrackingURL)
-    }
-    
-    let metadata = AudiobookMetadata(title: book.title, authors: [book.authors ?? ""])
-    
-    let networkService: AudiobookNetworkService = DefaultAudiobookNetworkService(
-      tracks: audiobook.tableOfContents.allTracks,
-      decryptor: drmDecryptor
-    )
-    audiobookManager = DefaultAudiobookManager(
-      metadata: metadata,
-      audiobook: audiobook,
-      networkService: networkService,
-      playbackTrackerDelegate: timeTracker
-    )
-    
-    guard let audiobookManager else {
-      Log.error(#file, "❌ Failed to create audiobook manager")
-      return
-    }
-        
-    audiobookBookmarkBusinessLogic = AudiobookBookmarkBusinessLogic(book: book)
-    audiobookManager.bookmarkDelegate = audiobookBookmarkBusinessLogic
-    
-    audiobookManager.playbackCompletionHandler = { [weak self] in
-      guard let self = self else { return }
-      DispatchQueue.main.async {
-        self.presentEndOfBookAlert()
-      }
-    }
-    
-    audiobookPlayer = AudiobookPlayer(audiobookManager: audiobookManager, coverImagePublisher: book.$coverImage.eraseToAnyPublisher())
-    if let coordinator = NavigationCoordinatorHub.shared.coordinator, let player = audiobookPlayer {
-      coordinator.storeAudioController(player, forBookId: book.identifier)
-      coordinator.push(.audio(BookRoute(id: book.identifier)))
-    }
-    
-    syncAudiobookLocation(for: book)
-    scheduleTimer()
-  }
-  
-  /// Syncs audiobook playback position from local or remote bookmarks
-  private func syncAudiobookLocation(for book: TPPBook) {
-
-    isReconcilingLocation = true
-    let localLocation = TPPBookRegistry.shared.location(forIdentifier: book.identifier)
-    
-    guard let dictionary = localLocation?.locationStringDictionary(),
-          let localBookmark = AudioBookmark.create(locatorData: dictionary),
-          let manager = audiobookManager,
-          let localPosition = TrackPosition(
-            audioBookmark: localBookmark,
-            toc: manager.audiobook.tableOfContents.toc,
-            tracks: manager.audiobook.tableOfContents.tracks
-          ) else {
-      startPlaybackFromBeginning()
-      DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
-        self?.isReconcilingLocation = false
-      }
-      return
-    }
-    
-    let validatedPosition = validateInitialPosition(localPosition, for: manager)
-        
-    audiobookManager?.audiobook.player.play(at: validatedPosition, completion: nil)
-    
-    guard !isSyncingLocation else { return }
-    isSyncingLocation = true
-    TPPBookRegistry.shared.syncLocation(for: book) { [weak self] remoteBookmark in
-      guard let remoteBookmark, let self, let audiobookManager, let remotePosition = TrackPosition(
-        audioBookmark: remoteBookmark,
-        toc: audiobookManager.audiobook.tableOfContents.toc,
-        tracks: audiobookManager.audiobook.tableOfContents.tracks
-      ) else { return }
-      
-      let validatedRemotePosition = self.validateInitialPosition(remotePosition, for: audiobookManager)
-      
-      self.chooseLocalLocation(
-        localPosition: validatedPosition,
-        remotePosition: validatedRemotePosition,
-        serverUpdateDelay: 300
-      ) { position in
-        DispatchQueue.main.async {
-          self.recentMoveAt = Date()
-          self.audiobookManager?.audiobook.player.play(at: position, completion: nil)
-          DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-            self.isReconcilingLocation = false
-          }
-        }
-      }
-      self.isSyncingLocation = false
-    }
-  }
-  
-  private func validateInitialPosition(_ position: TrackPosition, for manager: AudiobookManager) -> TrackPosition {
-    let tracks = manager.audiobook.tableOfContents.tracks
-    
-    let totalDuration = tracks.tracks.reduce(0) { $0 + $1.duration }
-    let positionDuration = position.durationToSelf()
-    let percentageThrough = totalDuration > 0 ? positionDuration / totalDuration : 0
-    
-    
-    if percentageThrough < 0.01 && position.track.index > 2 {
-      Log.info(#file, "Detected potentially corrupted bookmark (track \(position.track.index), \(percentageThrough * 100)% through) - starting from beginning")
-      
-      guard let firstTrack = tracks.first else {
-        Log.error(#file, "No first track available for validation fallback")
-        return position
-      }
-      
-      return TrackPosition(track: firstTrack, timestamp: 0.0, tracks: tracks)
-    }
-    
-    return position
-  }
-  
-  /// Sets audiobook position to the beginning (first track, position 0) without auto-starting playback
-  private func startPlaybackFromBeginning() {
-    guard let manager = audiobookManager,
-          let firstTrack = manager.audiobook.tableOfContents.tracks.first else {
-      Log.error(#file, "Cannot start playback: no audiobook manager or tracks")
-      return
-    }
-    
-    let startPosition = TrackPosition(track: firstTrack, timestamp: 0.0, tracks: manager.audiobook.tableOfContents.tracks)
-    audiobookManager?.audiobook.player.play(at: startPosition, completion: nil)
-  }
   
   // MARK: - Samples
   
@@ -737,6 +567,7 @@ final class BookDetailViewModel: ObservableObject {
     }
   }
   
+  
   // MARK: - Error Alerts
   
   private func presentCorruptedItemError() {
@@ -783,43 +614,10 @@ extension BookDetailViewModel {
     timer?.resume()
   }
   @objc public func pollAudiobookReadingLocation() {
-    guard let _ = self.audiobookViewController,
-          let audiobookManager = self.audiobookManager else {
-      timer?.cancel()
-      timer = nil
-      self.audiobookManager = nil
-      return
-    }
-    
-    guard let currentTrackPosition = audiobookManager.audiobook.player.currentTrackPosition else {
-      return
-    }
-
-    if isReconcilingLocation {
-      return
-    }
-    if let movedAt = recentMoveAt, Date().timeIntervalSince(movedAt) < 3.0 {
-      return
-    }
-    
-    let playheadOffset = currentTrackPosition.timestamp
-    if abs(self.previousPlayheadOffset - playheadOffset) > 1.0 && playheadOffset > 0 {
-      self.previousPlayheadOffset = playheadOffset
-      
-      DispatchQueue.global(qos: .background).async { [weak self] in
-        guard let self = self else { return }
-        
-        let locationData = try? JSONEncoder().encode(currentTrackPosition.toAudioBookmark())
-        let locationString = String(data: locationData ?? Data(), encoding: .utf8) ?? ""
-        
-        DispatchQueue.main.async {
-          TPPBookRegistry.shared.setLocation(
-            TPPBookLocation(locationString: locationString, renderer: "PalaceAudiobookToolkit"),
-            forIdentifier: self.book.identifier
-          )
-        }
-      }
-    }
+    // Position polling is now handled by AudiobookPlaybackModel in BookService
+    // This legacy polling can interfere with the new system, so disable it
+    timer?.cancel()
+    timer = nil
   }
 }
 
