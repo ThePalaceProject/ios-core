@@ -193,9 +193,15 @@ enum BookService {
           coordinator.storeAudioModel(playbackModel, forBookId: route.id)
           coordinator.push(.audio(route))
           
-          // Now determine and start playback after a brief delay for UI to settle
-          DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            startPlaybackAfterPresentation(book: book, audiobook: audiobook, manager: manager, playbackModel: playbackModel)
+          var hasStartedPlayback = false
+          
+          let shouldRestorePosition = shouldRestoreBookmarkPosition(for: book)
+          if shouldRestorePosition, let localPosition = getValidLocalPosition(book: book, audiobook: audiobook) {
+            ATLog(.info, "Starting with immediate local position restore")
+            playbackModel.jumpToInitialLocation(localPosition)
+            playbackModel.beginSaveSuppression(for: 3.0)
+            manager.audiobook.player.play(at: localPosition, completion: nil)
+            hasStartedPlayback = true
           }
 
           TPPBookRegistry.shared.syncLocation(for: book) { (remoteBookmark: AudioBookmark?) in
@@ -224,11 +230,25 @@ enum BookService {
                 && remotePosition.description != localPos.description
             }
 
-            if shouldMove {
-              DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            if shouldMove && hasStartedPlayback {
+              // Only update position if we've already started - don't restart
+              DispatchQueue.main.async {
                 manager.audiobook.player.play(at: remotePosition, completion: nil)
+                playbackModel.beginSaveSuppression(for: 2.0)
               }
-              playbackModel.beginSaveSuppression(for: 2.0)
+            }
+          }
+          
+          // Fallback: Start from beginning if no valid position was found
+          if !hasStartedPlayback {
+            DispatchQueue.main.async {
+              if let firstTrack = audiobook.tableOfContents.allTracks.first {
+                let startPosition = TrackPosition(track: firstTrack, timestamp: 0.0, tracks: audiobook.tableOfContents.tracks)
+                ATLog(.info, "Starting \(book.title) from beginning - no saved position")
+                playbackModel.jumpToInitialLocation(startPosition)
+                playbackModel.beginSaveSuppression(for: 2.0)
+                manager.audiobook.player.play(at: startPosition, completion: nil)
+              }
             }
           }
 
@@ -298,6 +318,21 @@ enum BookService {
     return true
   }
   
+  /// Gets valid local position if available
+  private static func getValidLocalPosition(book: TPPBook, audiobook: Audiobook) -> TrackPosition? {
+    guard let dict = TPPBookRegistry.shared.location(forIdentifier: book.identifier)?.locationStringDictionary(),
+          let localBookmark = AudioBookmark.create(locatorData: dict),
+          let localPosition = TrackPosition(
+            audioBookmark: localBookmark,
+            toc: audiobook.tableOfContents.toc,
+            tracks: audiobook.tableOfContents.tracks
+          ),
+          isValidPosition(localPosition, in: audiobook.tableOfContents) else {
+      return nil
+    }
+    return localPosition
+  }
+  
   /// Validates that a position is reasonable and not corrupted
   private static func isValidPosition(_ position: TrackPosition, in tableOfContents: AudiobookTableOfContents) -> Bool {
     ATLog(.info, "Validating position: track=\(position.track.index), timestamp=\(position.timestamp)")
@@ -317,12 +352,20 @@ enum BookService {
     // Check if position is within reasonable bounds (basic validation)
     let totalDuration = tableOfContents.tracks.totalDuration
     let positionDuration = position.durationToSelf()
-    let percentageThrough = totalDuration > 0 ? positionDuration / totalDuration : 0
+    
+    // FIXED: If durations aren't available yet (common for Overdrive), skip validation
+    if totalDuration <= 0 {
+      ATLog(.info, "Position validation: Total duration not available yet, accepting position")
+      return true
+    }
+    
+    let percentageThrough = positionDuration / totalDuration
     
     ATLog(.info, "Position validation: \(Int(percentageThrough * 100))% through book")
     
-    if positionDuration > totalDuration * 0.95 {
-      ATLog(.warn, "Position is too close to end of book (\(Int(percentageThrough * 100))%), starting from beginning")
+    // More lenient validation - only reject if position is clearly invalid
+    if positionDuration > totalDuration * 1.1 { // Allow 10% overflow for timing variations
+      ATLog(.warn, "Position is beyond book duration (\(Int(percentageThrough * 100))%), starting from beginning")
       return false
     }
     
@@ -337,67 +380,6 @@ enum BookService {
     return nil
   }
 
-  private static func startPlaybackAfterPresentation(
-    book: TPPBook,
-    audiobook: Audiobook,
-    manager: DefaultAudiobookManager,
-    playbackModel: AudiobookPlaybackModel
-  ) {
-    // Determine initial playback position with validation for newly downloaded books
-    let shouldRestorePosition = shouldRestoreBookmarkPosition(for: book)
-    
-    ATLog(.info, "shouldRestorePosition = \(shouldRestorePosition) for \(book.title)")
-    
-    if shouldRestorePosition {
-      if let dict = TPPBookRegistry.shared.location(forIdentifier: book.identifier)?.locationStringDictionary() {
-        ATLog(.info, "Found location dictionary: \(dict)")
-        
-        if let localBookmark = AudioBookmark.create(locatorData: dict) {
-          ATLog(.info, "Created local bookmark successfully")
-          
-          if let localPosition = TrackPosition(
-            audioBookmark: localBookmark,
-            toc: audiobook.tableOfContents.toc,
-            tracks: audiobook.tableOfContents.tracks
-          ) {
-            ATLog(.info, "Created TrackPosition: track=\(localPosition.track.index), timestamp=\(localPosition.timestamp)")
-            
-            if isValidPosition(localPosition, in: audiobook.tableOfContents) {
-              ATLog(.info, "Position is valid - restoring bookmark position for \(book.title)")
-              playbackModel.jumpToInitialLocation(localPosition)
-              playbackModel.beginSaveSuppression(for: 3.0)
-              manager.audiobook.player.play(at: localPosition, completion: nil)
-              return
-            } else {
-              ATLog(.warn, "Position validation failed")
-            }
-          } else {
-            ATLog(.warn, "Failed to create TrackPosition from bookmark")
-          }
-        } else {
-          ATLog(.warn, "Failed to create AudioBookmark from location data")
-        }
-      } else {
-        ATLog(.warn, "No location dictionary found despite shouldRestorePosition = true")
-      }
-    }
-    
-    // Start from beginning for newly downloaded books or invalid bookmarks
-    if let firstTrack = audiobook.tableOfContents.allTracks.first {
-      let startPosition = TrackPosition(track: firstTrack, timestamp: 0.0, tracks: audiobook.tableOfContents.tracks)
-      ATLog(.info, "Starting \(book.title) from beginning")
-      playbackModel.jumpToInitialLocation(startPosition)
-      playbackModel.beginSaveSuppression(for: 2.0)
-      manager.audiobook.player.play(at: startPosition, completion: nil)
-    } else {
-      // Ensure we set a position even when falling back to basic play()
-      if let firstTrack = audiobook.tableOfContents.allTracks.first {
-        let fallbackPosition = TrackPosition(track: firstTrack, timestamp: 0.0, tracks: audiobook.tableOfContents.tracks)
-        playbackModel.jumpToInitialLocation(fallbackPosition)
-      }
-      manager.audiobook.player.play()
-    }
-  }
 
 
   private static func showAudiobookTryAgainError() {
