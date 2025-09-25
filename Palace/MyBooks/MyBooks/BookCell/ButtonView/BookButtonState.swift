@@ -44,7 +44,11 @@ extension BookButtonState {
         buttons.append(book.isAudiobook ? .audiobookSample : .sample)
       }
     case .managingHold:
-      buttons = [.get, .cancelHold]
+      if isHoldReady(book: book) {
+        buttons = [.get, .cancelHold]
+      } else {
+        buttons = [.cancelHold]
+      }
     case .downloadNeeded:
       if let authDef = TPPUserAccount.sharedAccount().authDefinition,
          authDef.needsAuth || book.defaultAcquisitionIfOpenAccess != nil {
@@ -86,6 +90,25 @@ extension BookButtonState {
     }
 
     return buttons
+  }
+  
+  private func isHoldReady(book: TPPBook) -> Bool {
+    guard let availability = book.defaultAcquisition?.availability else { return false }
+    
+    var isReady = false
+    availability.matchUnavailable { _ in
+      isReady = false
+    } limited: { _ in  
+      isReady = false
+    } unlimited: { _ in
+      isReady = false  
+    } reserved: { _ in
+      isReady = false  // Still waiting in queue
+    } ready: { _ in
+      isReady = true   // Hold is ready to borrow!
+    }
+    
+    return isReady
   }
 }
 
@@ -143,6 +166,8 @@ extension BookButtonState {
       state = .canBorrow
     } reserved: { _ in
       state = .holdingFrontOfQueue
+    } ready: { _ in
+      state = .canBorrow  // Hold is ready, user can borrow
     }
 
     return state

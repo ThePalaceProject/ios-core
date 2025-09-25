@@ -35,7 +35,10 @@ struct NormalBookCell: View {
         .padding(.bottom, 5)
       }
       .frame(maxWidth: .infinity, alignment: .leading)
-      .sheet(isPresented: $showHalfSheet, onDismiss: { model.showHalfSheet = false }) {
+      .sheet(isPresented: $showHalfSheet, onDismiss: { 
+        model.showHalfSheet = false
+        model.isManagingHold = false  // Reset managing hold state when sheet is dismissed
+      }) {
         HalfSheetView(
           viewModel: model,
           backgroundColor: Color(model.book.dominantUIColor),
@@ -105,7 +108,7 @@ struct NormalBookCell: View {
   }
   
   @ViewBuilder var borrowedInfoView: some View {
-    if model.isManagingHold {
+    if model.registryState == .holding {
       holdingInfoView
     } else {
       loanTermsInfoView
@@ -114,15 +117,17 @@ struct NormalBookCell: View {
   
   @ViewBuilder var holdingInfoView: some View {
     let details = model.book.getReservationDetails()
-    Text(
-      String(
-        format: Strings.BookDetailView.holdStatus,
-        details.holdPosition.ordinal(),
-        details.copiesAvailable,
-        details.copiesAvailable == 1 ? Strings.BookDetailView.copy : Strings.BookDetailView.copies
+    if details.holdPosition > 0 {
+      Text(
+        String(
+          format: Strings.BookDetailView.holdStatus,
+          details.holdPosition.ordinal(),
+          details.copiesAvailable,
+          details.copiesAvailable == 1 ? Strings.BookDetailView.copy : Strings.BookDetailView.copies
+        )
       )
-    )
-    .font(.footnote)
+      .font(.footnote)
+    }
   }
 
   @ViewBuilder var loanTermsInfoView: some View {

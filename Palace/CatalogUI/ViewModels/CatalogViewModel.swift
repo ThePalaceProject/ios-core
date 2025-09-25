@@ -12,9 +12,16 @@ final class CatalogViewModel: ObservableObject {
   @Published private(set) var facetGroups: [CatalogFilterGroup] = []
   @Published private(set) var entryPoints: [CatalogFilter] = []
   @Published var isContentReloading: Bool = false
+  @Published private(set) var isOptimisticLoading: Bool = false
+  @Published var shouldScrollToTop: Bool = false
 
   private let repository: CatalogRepositoryProtocol
   private let topLevelURLProvider: () -> URL?
+  
+  private var previousLanes: [CatalogLaneModel] = []
+  private var previousUngroupedBooks: [TPPBook] = []
+  private var previousFacetGroups: [CatalogFilterGroup] = []
+  private var previousEntryPoints: [CatalogFilter] = []
   
   // MARK: - Public accessors for search
   var searchRepository: CatalogRepositoryProtocol { repository }
@@ -112,7 +119,14 @@ final class CatalogViewModel: ObservableObject {
   @MainActor
   func applyFacet(_ facet: CatalogFilter) async {
     guard let href = facet.href else { return }
+    
+    storePreviousState()
+    
+    isOptimisticLoading = true
     errorMessage = nil
+    
+    updateFacetGroupsOptimistically(selectedFacet: facet)
+    
     do {
       if let feed = try await repository.loadTopLevelCatalog(at: href) {
         let feedObjc = feed.opdsFeed
@@ -161,21 +175,33 @@ final class CatalogViewModel: ObservableObject {
           break
         }
       }
+      isOptimisticLoading = false
+      
+      triggerScrollToTop()
     } catch {
+      restorePreviousState()
       errorMessage = error.localizedDescription
+      isOptimisticLoading = false
     }
   }
 
-  /// Applies an entry point (e.g., Ebooks/Audiobooks) and shows skeleton while loading.
+  /// Applies an entry point (e.g., Ebooks/Audiobooks) with optimistic loading.
   @MainActor
   func applyEntryPoint(_ facet: CatalogFilter) async {
     guard let href = facet.href else { return }
-    // Keep top-level skeleton off; only show content skeleton
+    
+    storePreviousState()
+    
     isContentReloading = true
+    isOptimisticLoading = true
     errorMessage = nil
+    
+    updateEntryPointsOptimistically(selectedEntryPoint: facet)
+    
     lanes.removeAll()
     ungroupedBooks.removeAll()
     currentLoadTask?.cancel()
+    
     do {
       if let feed = try await repository.loadTopLevelCatalog(at: href) {
         let feedObjc = feed.opdsFeed
@@ -221,8 +247,13 @@ final class CatalogViewModel: ObservableObject {
           break
         }
       }
+      isOptimisticLoading = false
+      
+      triggerScrollToTop()
     } catch {
+      restorePreviousState()
       errorMessage = error.localizedDescription
+      isOptimisticLoading = false
     }
     isContentReloading = false
   }
@@ -414,6 +445,98 @@ extension CatalogViewModel {
     if book.defaultBookContentType == .unsupported { return nil }
     if book.defaultAcquisition == nil { return nil }
     return book
+  }
+  
+  // MARK: - Scroll Management
+  
+  func triggerScrollToTop() {
+    shouldScrollToTop = false
+    DispatchQueue.main.async {
+      self.shouldScrollToTop = true
+    }
+  }
+  
+  func resetScrollTrigger() {
+    shouldScrollToTop = false
+  }
+  
+  // MARK: - Optimistic Loading Helpers
+  
+  private func storePreviousState() {
+    previousLanes = lanes
+    previousUngroupedBooks = ungroupedBooks
+    previousFacetGroups = facetGroups
+    previousEntryPoints = entryPoints
+  }
+  
+  private func restorePreviousState() {
+    lanes = previousLanes
+    ungroupedBooks = previousUngroupedBooks
+    facetGroups = previousFacetGroups
+    entryPoints = previousEntryPoints
+  }
+  
+  private func updateFacetGroupsOptimistically(selectedFacet: CatalogFilter) {
+    var updatedGroups: [CatalogFilterGroup] = []
+    
+    for group in facetGroups {
+      var updatedFilters: [CatalogFilter] = []
+      
+      for filter in group.filters {
+        if filter.id == selectedFacet.id {
+          let updatedFilter = CatalogFilter(
+            id: filter.id,
+            title: filter.title,
+            href: filter.href,
+            active: true
+          )
+          updatedFilters.append(updatedFilter)
+        } else {
+          let updatedFilter = CatalogFilter(
+            id: filter.id,
+            title: filter.title,
+            href: filter.href,
+            active: false
+          )
+          updatedFilters.append(updatedFilter)
+        }
+      }
+      
+      let updatedGroup = CatalogFilterGroup(
+        id: group.id,
+        name: group.name,
+        filters: updatedFilters
+      )
+      updatedGroups.append(updatedGroup)
+    }
+    
+    facetGroups = updatedGroups
+  }
+  
+  private func updateEntryPointsOptimistically(selectedEntryPoint: CatalogFilter) {
+    var updatedEntryPoints: [CatalogFilter] = []
+    
+    for entryPoint in entryPoints {
+      if entryPoint.id == selectedEntryPoint.id {
+        let updated = CatalogFilter(
+          id: entryPoint.id,
+          title: entryPoint.title,
+          href: entryPoint.href,
+          active: true
+        )
+        updatedEntryPoints.append(updated)
+      } else {
+        let updated = CatalogFilter(
+          id: entryPoint.id,
+          title: entryPoint.title,
+          href: entryPoint.href,
+          active: false
+        )
+        updatedEntryPoints.append(updated)
+      }
+    }
+    
+    entryPoints = updatedEntryPoints
   }
 
 }

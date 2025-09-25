@@ -6,8 +6,8 @@ public protocol CatalogAPI {
 }
 
 public final class DefaultCatalogAPI: CatalogAPI {
-  private let client: NetworkClient
-  private let parser: OPDSParser
+  public let client: NetworkClient
+  public let parser: OPDSParser
 
   public init(client: NetworkClient, parser: OPDSParser) {
     self.client = client

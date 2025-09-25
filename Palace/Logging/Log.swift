@@ -77,6 +77,7 @@ final class Log: NSObject {
   
   private static var lastPalaceLogMessages: [String: Date] = [:]
   private static let palaceLogThrottleInterval: TimeInterval = 0.3
+  private static let throttleQueue = DispatchQueue(label: "org.thepalaceproject.palace.logging.throttle", attributes: .concurrent)
   
   private class func shouldThrottlePalaceLogging(level: OSLogType, tag: String, message: String) -> Bool {
     guard level != .error && level != .fault else { return false }
@@ -84,21 +85,26 @@ final class Log: NSObject {
     let now = Date()
     let messageKey = "\(tag):\(message.prefix(30))"
     
-    if let lastTime = lastPalaceLogMessages[messageKey] {
-      if now.timeIntervalSince(lastTime) < palaceLogThrottleInterval {
-        return true // Throttle this message
+    return throttleQueue.sync {
+      if let lastTime = lastPalaceLogMessages[messageKey] {
+        if now.timeIntervalSince(lastTime) < palaceLogThrottleInterval {
+          return true // Throttle this message
+        }
       }
+      
+      // Use barrier to ensure exclusive write access
+      throttleQueue.async(flags: .barrier) {
+        lastPalaceLogMessages[messageKey] = now
+        
+        // Clean up old entries periodically to prevent memory growth
+        if lastPalaceLogMessages.count > 50 {
+          let cutoffTime = now.addingTimeInterval(-palaceLogThrottleInterval * 20)
+          lastPalaceLogMessages = lastPalaceLogMessages.filter { $0.value > cutoffTime }
+        }
+      }
+      
+      return false
     }
-    
-    lastPalaceLogMessages[messageKey] = now
-    
-    // Clean up old entries periodically to prevent memory growth
-    if lastPalaceLogMessages.count > 50 {
-      let cutoffTime = now.addingTimeInterval(-palaceLogThrottleInterval * 20)
-      lastPalaceLogMessages = lastPalaceLogMessages.filter { $0.value > cutoffTime }
-    }
-    
-    return false
   }
 
   private class func trimTag(_ tag: String) -> String {

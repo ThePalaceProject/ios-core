@@ -40,8 +40,6 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
     MemoryPressureMonitor.shared.start()
     
-    AudiobookPerformanceMonitor.shared
-  
     DispatchQueue.main.async { [weak self] in
       guard let self else { return }
       self.presentFirstRunFlowIfNeeded()
@@ -269,7 +267,6 @@ final class MemoryPressureMonitor {
   static let shared = MemoryPressureMonitor()
 
   private let monitorQueue = DispatchQueue(label: "org.thepalaceproject.memory-pressure", qos: .utility)
-  private let memoryManager = AdaptiveMemoryManager.shared
 
   private init() {}
 
@@ -306,24 +303,16 @@ final class MemoryPressureMonitor {
 
   @objc private func handleMemoryWarning() {
     monitorQueue.async {
-      // Purge URL caches
       URLCache.shared.removeAllCachedResponses()
       TPPNetworkExecutor.shared.clearCache()
 
-      // Purge app caches (memory and disk)
       ImageCache.shared.clear()
       GeneralCache<String, Data>.clearAllCaches()
 
-      // Pause downloads briefly to allow memory to recover
       MyBooksDownloadCenter.shared.pauseAllDownloads()
 
-      // Attempt to free disk space as well, but less aggressively
       self.reclaimDiskSpaceIfNeeded(minimumFreeMegabytes: 256)
 
-      // Resume a limited number of downloads after a short delay
-      self.monitorQueue.asyncAfter(deadline: .now() + 5) {
-        self.adjustDownloadLimitsForCurrentConditions()
-      }
     }
   }
 
@@ -338,7 +327,7 @@ final class MemoryPressureMonitor {
   private func adjustDownloadLimitsForCurrentConditions() {
     monitorQueue.async {
       let processInfo = ProcessInfo.processInfo
-      var maxActive = self.memoryManager.maxConcurrentDownloads
+      var maxActive = 10
       
       if #available(iOS 11.0, *) {
         switch processInfo.thermalState {
