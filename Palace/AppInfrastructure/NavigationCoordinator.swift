@@ -38,6 +38,7 @@ final class NavigationCoordinator: ObservableObject {
   private var epubControllerById: [String: UIViewController] = [:]
   private var audioModelById: [String: AudiobookPlaybackModel] = [:]
   private var pdfContentById: [String: (TPPPDFDocument, TPPPDFDocumentMetadata)] = [:]
+  private var catalogFilterStatesByURL: [String: CatalogLaneFilterState] = [:]
   
   private let maxStoredItems = 100
   private var cleanupTimer: Timer?
@@ -72,7 +73,7 @@ final class NavigationCoordinator: ObservableObject {
   private func scheduleCleanupIfNeeded() {
     let totalItems = bookById.count + searchBooksById.count + pdfControllerById.count + 
                     audioControllerById.count + epubControllerById.count + audioModelById.count + 
-                    pdfContentById.count
+                    pdfContentById.count + catalogFilterStatesByURL.count
     
     if totalItems > maxStoredItems {
       cleanupTimer?.invalidate()
@@ -101,6 +102,7 @@ final class NavigationCoordinator: ObservableObject {
     epubControllerById.removeAll()
     audioModelById.removeAll()
     pdfContentById.removeAll()
+    catalogFilterStatesByURL.removeAll()
     
     Log.info(#file, "🧹 NavigationCoordinator: Cleaned up cached items")
   }
@@ -161,6 +163,39 @@ final class NavigationCoordinator: ObservableObject {
   func resolvePDF(for route: BookRoute) -> (TPPPDFDocument, TPPPDFDocumentMetadata)? {
     pdfContentById[route.id]
   }
+  
+  // MARK: - Catalog Filter State Management
+  
+  func storeCatalogFilterState(_ state: CatalogLaneFilterState, for url: URL) {
+    let key = makeURLKey(url)
+    catalogFilterStatesByURL[key] = state
+  }
+  
+  func resolveCatalogFilterState(for url: URL) -> CatalogLaneFilterState? {
+    let key = makeURLKey(url)
+    return catalogFilterStatesByURL[key]
+  }
+  
+  func clearCatalogFilterState(for url: URL) {
+    let key = makeURLKey(url)
+    catalogFilterStatesByURL.removeValue(forKey: key)
+  }
+  
+  func clearAllCatalogFilterStates() {
+    catalogFilterStatesByURL.removeAll()
+  }
+  
+  private func makeURLKey(_ url: URL) -> String {
+    return "\(url.path)?\(url.query ?? "")"
+  }
+}
+
+// MARK: - Catalog Filter State
+
+struct CatalogLaneFilterState {
+  let appliedSelections: Set<String>
+  let currentSort: String  // Store as string to avoid enum duplication
+  let facetGroups: [CatalogFilterGroup]
 }
 
 

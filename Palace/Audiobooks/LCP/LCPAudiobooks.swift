@@ -205,7 +205,11 @@ extension LCPAudiobooks: LCPStreamingProvider {
           if let error = error {
             Log.error(#file, "Failed to load LCP publication for streaming: \(error)")
           } else {
-            Log.info(#file, "Successfully loaded LCP publication for streaming in background")
+            Log.info(#file, "Successfully loaded LCP publication for streaming")
+
+              DispatchQueue.main.async {
+                streamingPlayer.publicationDidLoad()
+            }
           }
         }
       }

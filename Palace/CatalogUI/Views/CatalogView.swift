@@ -22,7 +22,10 @@ struct CatalogView: View {
       .padding(.top)
       .navigationBarTitleDisplayMode(.inline)
       .toolbar { toolbarContent }
-      .onAppear { setupCurrentAccount() }
+      .onAppear { 
+        setupCurrentAccount()
+        coordinator.clearAllCatalogFilterStates()
+      }
       .sheet(isPresented: $showAddLibrarySheet) { addLibrarySheet }
       .task { await viewModel.load() }
       .onReceive(NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)) { _ in
@@ -187,6 +190,9 @@ private extension CatalogView {
     account?.logoDelegate = logoObserver
     account?.loadLogo()
     currentAccountUUID = account?.uuid ?? ""
+    
+    coordinator.clearAllCatalogFilterStates()
+    
     Task { await viewModel.handleAccountChange() }
   }
   

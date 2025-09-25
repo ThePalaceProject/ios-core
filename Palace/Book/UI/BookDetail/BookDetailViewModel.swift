@@ -530,7 +530,7 @@ final class BookDetailViewModel: ObservableObject {
         isProcessingSample = false
         completion?()
       } else {
-        // Use centralized preview manager for audiobooks
+
         SamplePreviewManager.shared.toggle(for: book)
         isProcessingSample = false
         completion?()
@@ -543,9 +543,19 @@ final class BookDetailViewModel: ObservableObject {
           } else if let sampleWebURL = sampleURL as? EpubSampleWebURL {
             self.presentWebView(sampleWebURL.url)
           } else if let sampleURL = sampleURL?.url {
-            let web = BundledHTMLViewController(fileURL: sampleURL, title: book.title)
-            if let top = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController() {
-              top.present(web, animated: true)
+            // Check if this is a Palace Marketplace EPUB sample
+            let isPalaceMarketplace = book.distributor == "Palace Marketplace"
+            let isEpubSample = book.sample?.type == .contentTypeEpubZip
+            
+            if isPalaceMarketplace && isEpubSample {
+              // Use Readium EPUB reader for Palace Marketplace EPUB samples
+              ReaderService.shared.openSample(book, url: sampleURL)
+            } else {
+              // Use WebKit for other samples (maintains backward compatibility)
+              let web = BundledHTMLViewController(fileURL: sampleURL, title: book.title)
+              if let top = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController() {
+                top.present(web, animated: true)
+              }
             }
           }
           self.isProcessingSample = false
