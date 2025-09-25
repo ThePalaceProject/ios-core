@@ -109,7 +109,6 @@ struct MyBooksView: View {
             onSelect: { book in presentBookDetail(for: book) }
           )
           .frame(minHeight: geometry.size.height)
-          .dismissKeyboardOnTap()
         }
         .scrollIndicators(.visible)
         .refreshable { model.reloadData() }

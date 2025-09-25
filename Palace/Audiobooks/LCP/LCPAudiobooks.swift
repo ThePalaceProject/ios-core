@@ -200,12 +200,17 @@ extension LCPAudiobooks: LCPStreamingProvider {
     publicationCacheLock.unlock()
     
     if !hasPublication {
+      // Load publication asynchronously but notify player when ready
       DispatchQueue.global(qos: .userInteractive).async { [weak self] in
         self?.loadContentDictionary { _, error in 
           if let error = error {
             Log.error(#file, "Failed to load LCP publication for streaming: \(error)")
           } else {
-            Log.info(#file, "Successfully loaded LCP publication for streaming in background")
+            Log.info(#file, "Successfully loaded LCP publication for streaming")
+
+              DispatchQueue.main.async {
+                streamingPlayer.publicationDidLoad()
+            }
           }
         }
       }
