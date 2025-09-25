@@ -189,7 +189,6 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     DispatchQueue.main.async { self.state = .loading }
 
     syncQueue.async(flags: .barrier) {
-      // build a brand-new dictionary
       var newRegistry = [String:TPPBookRegistryRecord]()
       if FileManager.default.fileExists(atPath: url.path),
          let data     = try? Data(contentsOf: url),

@@ -139,6 +139,7 @@ struct CatalogLaneMoreView: View {
     }
     .onChange(of: currentSort) { _ in
       sortBooksInPlace()
+      saveFilterState()
     }
     .sheet(isPresented: $showingSortSheet) {
       SortOptionsSheet
@@ -159,7 +160,19 @@ struct CatalogLaneMoreView: View {
     isLoading = true
     error = nil
     defer { isLoading = false }
-    await fetchAndApplyFeed(at: url)
+    
+    // Try to restore previous filter state
+    if let savedState = coordinator.resolveCatalogFilterState(for: url) {
+      restoreFilterState(savedState)
+      // Apply filters if we have selections
+      if !appliedSelections.isEmpty {
+        await applySingleFilters()
+      } else {
+        await fetchAndApplyFeed(at: url)
+      }
+    } else {
+      await fetchAndApplyFeed(at: url)
+    }
   }
 
   @MainActor
@@ -202,6 +215,9 @@ struct CatalogLaneMoreView: View {
                 .map { makeGroupTitleKey(group: $0.group, title: $0.title) }
             )
             sortBooksInPlace()
+            
+            // Save filter state for persistence
+            saveFilterState()
           case .navigation, .invalid:
             break
           @unknown default:
@@ -372,6 +388,9 @@ struct CatalogLaneMoreView: View {
       appliedSelections = Set(
         specificFilters.map { makeGroupTitleKey(group: $0.group, title: $0.title) }
       )
+      
+      // Save updated filter state
+      saveFilterState()
 
     } catch {
       self.error = error.localizedDescription
@@ -1002,5 +1021,27 @@ private extension CatalogLaneMoreView {
       }
     }
     .refreshable { await fetchAndApplyFeed(at: url) }
+  }
+  
+  // MARK: - Filter State Persistence
+  
+  private func saveFilterState() {
+    let sortString = currentSort.localizedString
+    let state = CatalogLaneFilterState(
+      appliedSelections: appliedSelections,
+      currentSort: sortString,
+      facetGroups: facetGroups
+    )
+    coordinator.storeCatalogFilterState(state, for: url)
+  }
+  
+  private func restoreFilterState(_ state: CatalogLaneFilterState) {
+    appliedSelections = state.appliedSelections
+    facetGroups = state.facetGroups
+    
+    // Convert string back to enum
+    if let restoredSort = CatalogSort.allCases.first(where: { $0.localizedString == state.currentSort }) {
+      currentSort = restoredSort
+    }
   }
 }

@@ -61,7 +61,7 @@
   }
   
   self.publisher = [entryXML firstChildWithName:@"publisher"].value;
-  self.summary = [entryXML firstChildWithName:@"summary"].value;
+  self.summary = [[entryXML firstChildWithName:@"summary"].value stringByDecodingHTMLEntities];
   
   if (![self parseTitleFromXML:entryXML]) return nil;
   if (![self parseUpdatedDateFromXML:entryXML]) return nil;
@@ -158,10 +158,22 @@
         continue;
       }
     } else if ([linkXML.attributes[@"rel"] containsString:TPPOPDSRelationPreview]) {
-      if (!self.previewLink) {
-        TPPOPDSAcquisition *acquisition = [TPPOPDSAcquisition acquisitionWithLinkXML:linkXML];
-        if (acquisition) {
-          self.previewLink = acquisition;
+      TPPOPDSAcquisition *acquisition = [TPPOPDSAcquisition acquisitionWithLinkXML:linkXML];
+      if (acquisition) {
+        NSString *mimeType = acquisition.type;
+        BOOL isEpubPreview = [mimeType isEqualToString:@"application/epub+zip"];
+        BOOL isPalaceMarketplace = [self.providerName isEqualToString:@"Palace Marketplace"];
+        
+        if (isPalaceMarketplace) {
+          if (isEpubPreview) {
+            if (!self.previewLink) {
+              self.previewLink = acquisition;
+            }
+          }
+        } else {
+          if (!self.previewLink) {
+            self.previewLink = acquisition;
+          }
         }
       }
     }

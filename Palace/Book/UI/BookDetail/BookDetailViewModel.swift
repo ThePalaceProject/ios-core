@@ -530,7 +530,7 @@ final class BookDetailViewModel: ObservableObject {
         isProcessingSample = false
         completion?()
       } else {
-        // Use centralized preview manager for audiobooks
+
         SamplePreviewManager.shared.toggle(for: book)
         isProcessingSample = false
         completion?()
