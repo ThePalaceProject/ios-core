@@ -161,10 +161,8 @@ struct CatalogLaneMoreView: View {
     error = nil
     defer { isLoading = false }
     
-    // Try to restore previous filter state
     if let savedState = coordinator.resolveCatalogFilterState(for: url) {
       restoreFilterState(savedState)
-      // Apply filters if we have selections
       if !appliedSelections.isEmpty {
         await applySingleFilters()
       } else {
@@ -215,8 +213,6 @@ struct CatalogLaneMoreView: View {
                 .map { makeGroupTitleKey(group: $0.group, title: $0.title) }
             )
             sortBooksInPlace()
-            
-            // Save filter state for persistence
             saveFilterState()
           case .navigation, .invalid:
             break
@@ -383,13 +379,11 @@ struct CatalogLaneMoreView: View {
         }
       }
 
-      // Set final results
       facetGroups = currentFacetGroups
       appliedSelections = Set(
         specificFilters.map { makeGroupTitleKey(group: $0.group, title: $0.title) }
       )
       
-      // Save updated filter state
       saveFilterState()
 
     } catch {
