@@ -156,8 +156,10 @@ class BarcodeScanner: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
       .compactMap { $0 as? AVMetadataMachineReadableCodeObject }
       .filter { metadataObject in
         // transforms coordinates
-        let barcodeObject = previewLayer
-          .transformedMetadataObject(for: metadataObject) as! AVMetadataMachineReadableCodeObject
+        guard let barcodeObject = previewLayer
+          .transformedMetadataObject(for: metadataObject) as? AVMetadataMachineReadableCodeObject else {
+          return false
+        }
         return scannerView.frame.contains(barcodeObject.bounds)
       }
     if barcodes.count == 1, let value = barcodes.first?.stringValue {
