@@ -6,22 +6,24 @@
 //  Copyright © 2023 The Palace Project. All rights reserved.
 //
 
-import Foundation
 import Combine
-import SwiftUI
+import Foundation
 import PalaceAudiobookToolkit
+import SwiftUI
+
+// MARK: - BookCellState
 
 enum BookCellState {
   case normal(BookButtonState)
   case downloading(BookButtonState)
   case downloadFailed(BookButtonState)
-  
+
   var buttonState: BookButtonState {
     switch self {
-    case .normal(let state),
-        .downloading(let state),
-        .downloadFailed(let state):
-      return state
+    case let .normal(state),
+         let .downloading(state),
+         let .downloadFailed(state):
+      state
     }
   }
 }
@@ -39,10 +41,12 @@ extension BookCellState {
   }
 }
 
+// MARK: - BookCellModel
+
 @MainActor
 class BookCellModel: ObservableObject {
   typealias DisplayStrings = Strings.BookCell
-  
+
   @Published var image = ImageProviders.MyBooksView.bookPlaceholder ?? UIImage()
   @Published var showAlert: AlertModel?
   @Published var isLoading: Bool = false {
@@ -50,19 +54,19 @@ class BookCellModel: ObservableObject {
       statePublisher.send(isLoading)
     }
   }
-  
+
   @Published private var currentBookIdentifier: String?
-  
+
   private var cancellables = Set<AnyCancellable>()
   let imageCache: ImageCacheType
   private var isFetchingImage = false
   #if LCP
   private var didPrefetchLCPStreaming = false
   #endif
-  
+
   var statePublisher = PassthroughSubject<Bool, Never>()
   var state: BookCellState
-  
+
   @Published var book: TPPBook {
     didSet {
       if book.identifier != currentBookIdentifier {
@@ -71,7 +75,7 @@ class BookCellModel: ObservableObject {
       }
     }
   }
-  
+
   @Published var isManagingHold: Bool = false
 
   @Published private(set) var stableButtonState: BookButtonState = .unsupported
@@ -82,29 +86,30 @@ class BookCellModel: ObservableObject {
   var title: String { book.title }
   var authors: String { book.authors ?? "" }
   var showUnreadIndicator: Bool {
-    if case .normal(let bookState) = state, bookState == .downloadSuccessful {
-      return true
+    if case let .normal(bookState) = state, bookState == .downloadSuccessful {
+      true
     } else {
-      return false
+      false
     }
   }
-  
+
   var buttonTypes: [BookButtonType] {
-    if localBookStateOverride == .returning { return BookButtonState.returning.buttonTypes(book: book) }
+    if localBookStateOverride == .returning {
+      return BookButtonState.returning.buttonTypes(book: book)
+    }
     return stableButtonState.buttonTypes(book: book)
   }
-  
-  
+
   // MARK: - Initializer
-  
+
   init(book: TPPBook, imageCache: ImageCacheType) {
     self.book = book
-    self.state = BookCellState(BookButtonState(book) ?? .unsupported)
-    self.isLoading = TPPBookRegistry.shared.processing(forIdentifier: book.identifier)
-    self.currentBookIdentifier = book.identifier
+    state = BookCellState(BookButtonState(book) ?? .unsupported)
+    isLoading = TPPBookRegistry.shared.processing(forIdentifier: book.identifier)
+    currentBookIdentifier = book.identifier
     self.imageCache = imageCache
-    self.registryState = TPPBookRegistry.shared.state(for: book.identifier)
-    self.stableButtonState = self.computeButtonState(book: book, registryState: self.registryState, isManagingHold: self.isManagingHold)
+    registryState = TPPBookRegistry.shared.state(for: book.identifier)
+    stableButtonState = computeButtonState(book: book, registryState: registryState, isManagingHold: isManagingHold)
     registerForNotifications()
     loadBookCoverImage()
     bindRegistryState()
@@ -113,17 +118,17 @@ class BookCellModel: ObservableObject {
     prefetchLCPStreamingIfPossible()
     #endif
   }
-  
+
   deinit {
     NotificationCenter.default.removeObserver(self)
   }
-  
+
   // MARK: - Image Loading
-  
+
   func loadBookCoverImage() {
     let simpleKey = book.identifier
     let thumbnailKey = "\(book.identifier)_thumbnail"
-    
+
     if let cachedImage = imageCache.get(for: simpleKey) ?? imageCache.get(for: thumbnailKey) {
       image = cachedImage
     } else if let registryImage = TPPBookRegistry.shared.cachedThumbnailImage(for: book) {
@@ -132,23 +137,29 @@ class BookCellModel: ObservableObject {
       fetchAndCacheImage()
     }
   }
-  
+
   private func fetchAndCacheImage() {
-    guard !isFetchingImage else { return }
+    guard !isFetchingImage else {
+      return
+    }
     isFetchingImage = true
     isLoading = true
-    
+
     DispatchQueue.main.async { [weak self] in
-      guard let self = self else { return }
-      TPPBookRegistry.shared.thumbnailImage(for: self.book) { [weak self] fetchedImage in
-        guard let self = self, let fetchedImage else { return }
-        self.setImageAndCache(fetchedImage)
-        self.isLoading = false
-        self.isFetchingImage = false
+      guard let self = self else {
+        return
+      }
+      TPPBookRegistry.shared.thumbnailImage(for: book) { [weak self] fetchedImage in
+        guard let self = self, let fetchedImage else {
+          return
+        }
+        setImageAndCache(fetchedImage)
+        isLoading = false
+        isFetchingImage = false
       }
     }
   }
-  
+
   private func setImageAndCache(_ image: UIImage) {
     let simpleKey = book.identifier
     let thumbnailKey = "\(book.identifier)_thumbnail"
@@ -156,18 +167,22 @@ class BookCellModel: ObservableObject {
     imageCache.set(image, for: thumbnailKey)
     self.image = image
   }
-  
+
   // MARK: - Notification Handling
-  
+
   private func registerForNotifications() {
-    NotificationCenter.default.addObserver(self, selector: #selector(updateButtons),
-                                           name: .TPPReachabilityChanged, object: nil)
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(updateButtons),
+      name: .TPPReachabilityChanged,
+      object: nil
+    )
   }
 
   private func bindRegistryState() {
     TPPBookRegistry.shared.bookStatePublisher
       .filter { [weak self] in $0.0 == self?.book.identifier }
-      .map { $0.1 }
+      .map(\.1)
       .receive(on: DispatchQueue.main)
       .sink { [weak self] newState in
         self?.registryState = newState
@@ -179,7 +194,9 @@ class BookCellModel: ObservableObject {
     let availability = book.defaultAcquisition?.availability
     // Only reflect actual download state from registry; do not treat UI image loading as download-in-progress
     let isProcessingDownload = registryState == .downloading
-    if case .holding = registryState, isManagingHold { return .managingHold }
+    if case .holding = registryState, isManagingHold {
+      return .managingHold
+    }
     return BookButtonMapper.map(
       registryState: registryState,
       availability: availability,
@@ -197,7 +214,7 @@ class BookCellModel: ObservableObject {
       .receive(on: DispatchQueue.main)
       .assign(to: &$stableButtonState)
   }
-  
+
   @objc private func updateButtons() {
     Task { @MainActor [weak self] in
       self?.isLoading = false
@@ -232,15 +249,17 @@ extension BookCellModel {
       return
     }
   }
-  
+
   func didSelectRead() {
     isLoading = true
     switch book.defaultBookContentType {
     case .epub:
       ReaderService.shared.openEPUB(book)
-      self.isLoading = false
+      isLoading = false
     case .pdf:
-      guard let url = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier) else { self.isLoading = false; return }
+      guard let url = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier) else {
+        isLoading = false; return
+      }
       let data = try? Data(contentsOf: url)
       let metadata = TPPPDFDocumentMetadata(with: book)
       let document = TPPPDFDocument(data: data ?? Data())
@@ -248,11 +267,11 @@ extension BookCellModel {
         coordinator.storePDF(document: document, metadata: metadata, forBookId: book.identifier)
         coordinator.push(.pdf(BookRoute(id: book.identifier)))
       }
-      self.isLoading = false
+      isLoading = false
     case .audiobook:
       openAudiobookFromCell()
     default:
-      self.isLoading = false
+      isLoading = false
     }
   }
 
@@ -262,37 +281,46 @@ extension BookCellModel {
     }
   }
 
-
-  private func presentAudiobookFrom(json: [String: Any], decryptor: DRMDecryptor?) {
+  private func presentAudiobookFrom(json _: [String: Any], decryptor _: DRMDecryptor?) {
     BookService.open(book)
-    self.isLoading = false
+    isLoading = false
   }
 
   private func licenseURL(forBookIdentifier identifier: String) -> URL? {
-#if LCP
-    guard let contentURL = MyBooksDownloadCenter.shared.fileUrl(for: identifier) else { return nil }
+    #if LCP
+    guard let contentURL = MyBooksDownloadCenter.shared.fileUrl(for: identifier) else {
+      return nil
+    }
     let license = contentURL.deletingPathExtension().appendingPathExtension("lcpl")
     return FileManager.default.fileExists(atPath: license.path) ? license : nil
-#else
+    #else
     return nil
-#endif
+    #endif
   }
 
   #if LCP
   private func prefetchLCPStreamingIfPossible() {
-    guard !didPrefetchLCPStreaming, LCPAudiobooks.canOpenBook(book) else { return }
-    if let localURL = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier), FileManager.default.fileExists(atPath: localURL.path) {
+    guard !didPrefetchLCPStreaming, LCPAudiobooks.canOpenBook(book) else {
       return
     }
-    guard let license = licenseURL(forBookIdentifier: book.identifier), let lcpAudiobooks = LCPAudiobooks(for: license) else { return }
+    if let localURL = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier),
+       FileManager.default.fileExists(atPath: localURL.path)
+    {
+      return
+    }
+    guard let license = licenseURL(forBookIdentifier: book.identifier),
+          let lcpAudiobooks = LCPAudiobooks(for: license)
+    else {
+      return
+    }
     didPrefetchLCPStreaming = true
     lcpAudiobooks.startPrefetch()
   }
   #endif
-  
+
   func didSelectReturn() {
-    self.isLoading = true
-    let identifier = self.book.identifier
+    isLoading = true
+    let identifier = book.identifier
     MyBooksDownloadCenter.shared.returnBook(withIdentifier: identifier) { [weak self] in
       DispatchQueue.main.async {
         self?.isLoading = false
@@ -301,13 +329,15 @@ extension BookCellModel {
       }
     }
   }
-  
+
   func didSelectDownload() {
     let account = TPPUserAccount.sharedAccount()
     if account.needsAuth && !account.hasCredentials() {
       TPPAccountSignInViewController.requestCredentials { [weak self] in
-        guard let self else { return }
-        self.startDownloadNow()
+        guard let self else {
+          return
+        }
+        startDownloadNow()
       }
       return
     }
@@ -326,9 +356,11 @@ extension BookCellModel {
     let account = TPPUserAccount.sharedAccount()
     if account.needsAuth && !account.hasCredentials() {
       TPPAccountSignInViewController.requestCredentials { [weak self] in
-        guard let self else { return }
+        guard let self else {
+          return
+        }
         TPPUserNotifications.requestAuthorization()
-        MyBooksDownloadCenter.shared.startBorrow(for: self.book, attemptDownload: false) { [weak self] in
+        MyBooksDownloadCenter.shared.startBorrow(for: book, attemptDownload: false) { [weak self] in
           DispatchQueue.main.async { self?.isLoading = false }
         }
       }
@@ -339,12 +371,12 @@ extension BookCellModel {
       DispatchQueue.main.async { self?.isLoading = false }
     }
   }
-  
+
   func didSelectSample() {
     isLoading = true
     if book.defaultBookContentType == .audiobook {
       SamplePreviewManager.shared.toggle(for: book)
-      self.isLoading = false
+      isLoading = false
       return
     }
     EpubSampleFactory.createSample(book: book) { sampleURL, error in
@@ -356,35 +388,43 @@ extension BookCellModel {
         }
         if let sampleWebURL = sampleURL as? EpubSampleWebURL {
           let web = BundledHTMLViewController(fileURL: sampleWebURL.url, title: self.book.title)
-          if let appDelegate = UIApplication.shared.delegate as? TPPAppDelegate, let top = appDelegate.topViewController() {
+          if let appDelegate = UIApplication.shared.delegate as? TPPAppDelegate,
+             let top = appDelegate.topViewController()
+          {
             top.present(web, animated: true)
           }
           return
         }
         if let url = sampleURL?.url {
           let web = BundledHTMLViewController(fileURL: url, title: self.book.title)
-          if let appDelegate = UIApplication.shared.delegate as? TPPAppDelegate, let top = appDelegate.topViewController() {
+          if let appDelegate = UIApplication.shared.delegate as? TPPAppDelegate,
+             let top = appDelegate.topViewController()
+          {
             top.present(web, animated: true)
           }
         }
       }
     }
   }
-  
+
   func didSelectCancel() {
     MyBooksDownloadCenter.shared.cancelDownload(for: book.identifier)
   }
 }
 
+// MARK: BookButtonProvider
+
 extension BookCellModel: BookButtonProvider {
   func handleAction(for type: BookButtonType) {
     callDelegate(for: type)
   }
-  
-  func isProcessing(for type: BookButtonType) -> Bool {
+
+  func isProcessing(for _: BookButtonType) -> Bool {
     isLoading
   }
 }
+
+// MARK: HalfSheetProvider
 
 extension BookCellModel: HalfSheetProvider {
   var bookState: TPPBookState {
@@ -399,7 +439,7 @@ extension BookCellModel: HalfSheetProvider {
       }
     }
   }
-  
+
   var buttonState: BookButtonState {
     let registryState = TPPBookRegistry.shared.state(for: book.identifier)
     let availability = book.defaultAcquisition?.availability
@@ -410,11 +450,11 @@ extension BookCellModel: HalfSheetProvider {
       isProcessingDownload: isDownloading
     )
   }
-  
+
   var isFullSize: Bool {
     UIDevice.current.userInterfaceIdiom == .pad
   }
-  
+
   var downloadProgress: Double {
     MyBooksDownloadCenter.shared.downloadProgress(for: book.identifier)
   }

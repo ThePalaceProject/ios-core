@@ -8,11 +8,12 @@
 
 import SwiftUI
 
+// MARK: - TPPPDFBackButton
+
 /// Preconfigured back button view
 struct TPPPDFBackButton: View {
-  
   let action: () -> Void
-  
+
   var body: some View {
     Button(action: action) {
       Image(systemName: "chevron.left")
@@ -22,10 +23,10 @@ struct TPPPDFBackButton: View {
   }
 }
 
+// MARK: - TPPPDFBackButton_Previews
+
 struct TPPPDFBackButton_Previews: PreviewProvider {
   static var previews: some View {
-    TPPPDFBackButton {
-      
-    }
+    TPPPDFBackButton {}
   }
 }

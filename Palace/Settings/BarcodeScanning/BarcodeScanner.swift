@@ -9,58 +9,61 @@
 import AVFoundation
 import UIKit
 
-fileprivate extension CGRect {
+private extension CGRect {
   func contains(_ rect: CGRect) -> Bool {
-    self.minX <= rect.minX && self.maxX >= rect.maxX && self.minY <= rect.minY && self.maxY >= rect.maxY
+    minX <= rect.minX && maxX >= rect.maxX && minY <= rect.minY && maxY >= rect.maxY
   }
 }
+
+// MARK: - BarcodeScanner
 
 class BarcodeScanner: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
   private var captureSession: AVCaptureSession!
   private var previewLayer: AVCaptureVideoPreviewLayer!
   private var scannerView: UIView!
   private var previewView = UIView(frame: .zero)
-  
+
   private var completion: (_ barcode: String?) -> Void
-  
-  
+
   init(completion: @escaping (_ barcode: String?) -> Void) {
     self.completion = completion
     super.init(nibName: nil, bundle: nil)
   }
-  
+
   @available(*, unavailable)
-  required init?(coder: NSCoder) {
+  required init?(coder _: NSCoder) {
     fatalError("init(coder:) has not been implemented")
   }
-  
+
   override func viewDidLoad() {
     super.viewDidLoad()
-    
+
     view.backgroundColor = UIColor.black
     captureSession = AVCaptureSession()
-    
-    guard let videoCaptureDevice = AVCaptureDevice.default(for: .video) else { return }
+
+    guard let videoCaptureDevice = AVCaptureDevice.default(for: .video) else {
+      return
+    }
     let videoInput: AVCaptureDeviceInput
-    
+
     do {
       videoInput = try AVCaptureDeviceInput(device: videoCaptureDevice)
     } catch {
       return
     }
-    
-    if (captureSession.canAddInput(videoInput)) {
+
+    if captureSession.canAddInput(videoInput) {
       captureSession.addInput(videoInput)
     } else {
       showError()
       return
     }
-    
+
     let metadataOutput = AVCaptureMetadataOutput()
-    
-    if (captureSession.canAddOutput(metadataOutput)) {
+
+    if captureSession.canAddOutput(metadataOutput) {
       captureSession.addOutput(metadataOutput)
-      
+
       metadataOutput.setMetadataObjectsDelegate(self, queue: DispatchQueue.main)
       if #available(iOS 15.4, *) {
         metadataOutput.metadataObjectTypes = [.code39, .code128, .qr, .codabar]
@@ -71,13 +74,13 @@ class BarcodeScanner: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
       showError()
       return
     }
-    
+
     // Camera view
     previewLayer = AVCaptureVideoPreviewLayer(session: captureSession)
     previewLayer.frame = view.layer.bounds
     previewLayer.videoGravity = .resizeAspectFill
     view.layer.addSublayer(previewLayer)
-    
+
     // Scanner view
     scannerView = UIView(frame: .zero)
     scannerView.layer.borderColor = UIColor.systemRed.cgColor
@@ -89,7 +92,7 @@ class BarcodeScanner: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
       scannerView.heightAnchor.constraint(equalTo: view.widthAnchor, multiplier: 0.5, constant: -20),
       scannerView.widthAnchor.constraint(equalTo: view.widthAnchor, multiplier: 1, constant: -20),
       scannerView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-      scannerView.centerYAnchor.constraint(equalTo: view.centerYAnchor)
+      scannerView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
     ]
     NSLayoutConstraint.activate(scannerViewContraints)
     previewView.layer.borderColor = UIColor.green.cgColor
@@ -101,12 +104,12 @@ class BarcodeScanner: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
       self.dismiss(animated: true)
     }))
     navigationItem.rightBarButtonItem = cancelButton
-    
+
     startCaptureSession()
   }
-  
+
   private func startCaptureSession() {
-    //-[AVCaptureSession startRunning] should be called from background thread. Calling it on the main thread can lead to UI unresponsiveness
+    // -[AVCaptureSession startRunning] should be called from background thread. Calling it on the main thread can lead to UI unresponsiveness
     DispatchQueue.global(qos: .background).async {
       if !self.captureSession.isRunning {
         self.captureSession.startRunning()
@@ -115,7 +118,7 @@ class BarcodeScanner: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
   }
 
   private func stopCaptureSession() {
-    //-[AVCaptureSession startRunning] should be called from background thread. Calling it on the main thread can lead to UI unresponsiveness
+    // -[AVCaptureSession startRunning] should be called from background thread. Calling it on the main thread can lead to UI unresponsiveness
     DispatchQueue.global(qos: .background).async {
       if self.captureSession.isRunning {
         self.captureSession.stopRunning()
@@ -127,29 +130,34 @@ class BarcodeScanner: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
     let ac = UIAlertController(
       title: Strings.TPPBarCode.cameraAccessDisabledTitle,
       message: Strings.TPPBarCode.cameraAccessDisabledBody,
-      preferredStyle: .alert)
+      preferredStyle: .alert
+    )
     ac.addAction(UIAlertAction(title: Strings.Generic.ok, style: .default))
     present(ac, animated: true)
     captureSession = nil
   }
-  
+
   override func viewWillAppear(_ animated: Bool) {
     super.viewWillAppear(animated)
     startCaptureSession()
   }
-  
+
   override func viewWillDisappear(_ animated: Bool) {
     super.viewWillDisappear(animated)
     stopCaptureSession()
   }
-  
-  func metadataOutput(_ output: AVCaptureMetadataOutput, didOutput metadataObjects: [AVMetadataObject], from connection: AVCaptureConnection) {
-    
+
+  func metadataOutput(
+    _: AVCaptureMetadataOutput,
+    didOutput metadataObjects: [AVMetadataObject],
+    from _: AVCaptureConnection
+  ) {
     let barcodes = metadataObjects
       .compactMap { $0 as? AVMetadataMachineReadableCodeObject }
       .filter { metadataObject in
         // transforms coordinates
-        let barcodeObject = previewLayer.transformedMetadataObject(for: metadataObject) as! AVMetadataMachineReadableCodeObject
+        let barcodeObject = previewLayer
+          .transformedMetadataObject(for: metadataObject) as! AVMetadataMachineReadableCodeObject
         return scannerView.frame.contains(barcodeObject.bounds)
       }
     if barcodes.count == 1, let value = barcodes.first?.stringValue {
@@ -157,7 +165,5 @@ class BarcodeScanner: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
       stopCaptureSession()
       dismiss(animated: true)
     }
-    
   }
-  
 }

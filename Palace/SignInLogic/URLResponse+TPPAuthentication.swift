@@ -9,7 +9,6 @@
 import Foundation
 
 extension URLResponse {
-
   /// Attempts to determine if the response indicates that the user's
   /// credentials are expired or invalid.
   ///
@@ -26,14 +25,13 @@ extension URLResponse {
   /// authentication needs to be refreshed.
   @objc(indicatesAuthenticationNeedsRefresh:)
   func indicatesAuthenticationNeedsRefresh(with problemDoc: TPPProblemDocument?) -> Bool {
-    return isProblemDocument() && problemDoc?.type == TPPProblemDocument.TypeInvalidCredentials 
+    isProblemDocument() && problemDoc?.type == TPPProblemDocument.TypeInvalidCredentials
   }
 }
 
 extension HTTPURLResponse {
   @objc(indicatesAuthenticationNeedsRefresh:)
   override func indicatesAuthenticationNeedsRefresh(with problemDoc: TPPProblemDocument?) -> Bool {
-
     if super.indicatesAuthenticationNeedsRefresh(with: problemDoc) {
       return true
     }

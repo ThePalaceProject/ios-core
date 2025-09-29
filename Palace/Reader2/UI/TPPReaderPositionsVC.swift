@@ -6,8 +6,10 @@
 //  Copyright © 2020 NYPL Labs. All rights reserved.
 //
 
-import UIKit
 import PureLayout
+import UIKit
+
+// MARK: - TPPReaderPositionsDelegate
 
 /// A protocol describing callbacks for the possible user actions related
 /// to TOC items and bookmarks (aka positions).
@@ -16,10 +18,14 @@ protocol TPPReaderPositionsDelegate: class {
   func positionsVC(_ positionsVC: TPPReaderPositionsVC, didSelectTOCLocation loc: Any)
   func positionsVC(_ positionsVC: TPPReaderPositionsVC, didSelectBookmark bookmark: TPPReadiumBookmark)
   func positionsVC(_ positionsVC: TPPReaderPositionsVC, didDeleteBookmark bookmark: TPPReadiumBookmark)
-  func positionsVC(_ positionsVC: TPPReaderPositionsVC, didRequestSyncBookmarksWithCompletion completion: @escaping (_ success: Bool, _ bookmarks: [TPPReadiumBookmark]) -> Void)
+  func positionsVC(
+    _ positionsVC: TPPReaderPositionsVC,
+    didRequestSyncBookmarksWithCompletion completion: @escaping (_ success: Bool, _ bookmarks: [TPPReadiumBookmark])
+      -> Void
+  )
 }
 
-// MARK: -
+// MARK: - TPPReaderPositionsVC
 
 /// A view controller for displaying "positions" inside a publication,
 /// where a position is either an element inside the Table of Contents or
@@ -29,9 +35,9 @@ protocol TPPReaderPositionsDelegate: class {
 /// business logic, and `TPPReaderBookmarksBusinessLogic` for bookmarks logic.
 class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableViewDelegate {
   typealias DisplayStrings = Strings.TPPReaderPositionsVC
-  @IBOutlet weak var tableView: UITableView!
-  @IBOutlet weak var segmentedControl: UISegmentedControl!
-  @IBOutlet weak var noBookmarksLabel: UILabel!
+  @IBOutlet var tableView: UITableView!
+  @IBOutlet var segmentedControl: UISegmentedControl!
+  @IBOutlet var noBookmarksLabel: UILabel!
   private var bookmarksRefreshControl: UIRefreshControl?
 
   private let reuseIdentifierTOC = "contentCell"
@@ -45,19 +51,19 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
   private enum Tab: Int, CaseIterable {
     case toc = 0
     case bookmarks
-    
+
     var title: String {
       switch self {
       case .toc:
-        return DisplayStrings.contents
+        DisplayStrings.contents
       case .bookmarks:
-        return DisplayStrings.bookmarks
+        DisplayStrings.bookmarks
       }
     }
   }
 
   private var currentTab: Tab {
-    return Tab(rawValue: segmentedControl.selectedSegmentIndex) ?? .toc
+    Tab(rawValue: segmentedControl.selectedSegmentIndex) ?? .toc
   }
 
   /// Uses default storyboard.
@@ -66,7 +72,7 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
     return storyboard.instantiateViewController(withIdentifier: "TPPReaderPositionsVC") as! TPPReaderPositionsVC
   }
 
-  @objc func didSelectSegment(_ segmentedControl: UISegmentedControl) {
+  @objc func didSelectSegment(_: UISegmentedControl) {
     tableView.reloadData()
 
     configRefreshControl()
@@ -110,10 +116,12 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
       segmentedControl.selectedSegmentTintColor = readerColors.tintColor
       segmentedControl.setTitleTextAttributes(
         [NSAttributedString.Key.foregroundColor: readerColors.tintColor],
-        for: .normal)
+        for: .normal
+      )
       segmentedControl.setTitleTextAttributes(
         [NSAttributedString.Key.foregroundColor: readerColors.selectedForegroundColor],
-        for: .selected)
+        for: .selected
+      )
     } else {
       segmentedControl.tintColor = readerColors.tintColor
     }
@@ -133,41 +141,50 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
 
   // MARK: - UITableViewDataSource
 
-  func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+  func tableView(_: UITableView, numberOfRowsInSection _: Int) -> Int {
     switch currentTab {
     case .toc:
-      return tocBusinessLogic?.tocElements.count ?? 0
+      tocBusinessLogic?.tocElements.count ?? 0
     case .bookmarks:
-      return bookmarksBusinessLogic?.bookmarks.count ?? 0
+      bookmarksBusinessLogic?.bookmarks.count ?? 0
     }
   }
 
-  @objc func tableView(_ tableView: UITableView,
-                       cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+  @objc func tableView(
+    _ tableView: UITableView,
+    cellForRowAt indexPath: IndexPath
+  ) -> UITableViewCell {
     switch currentTab {
-
     case .toc:
-      let cell = tableView.dequeueReusableCell(withIdentifier: reuseIdentifierTOC,
-                                               for: indexPath)
+      let cell = tableView.dequeueReusableCell(
+        withIdentifier: reuseIdentifierTOC,
+        for: indexPath
+      )
       if let cell = cell as? TPPReaderTOCCell,
-        let (title, level) = tocBusinessLogic?.titleAndLevel(forItemAt: indexPath.row) {
-
-        cell.config(withTitle: title,
-                    nestingLevel: level,
-                    isForCurrentChapter: tocBusinessLogic?.isCurrentChapterTitled(title) ?? false)
+         let (title, level) = tocBusinessLogic?.titleAndLevel(forItemAt: indexPath.row)
+      {
+        cell.config(
+          withTitle: title,
+          nestingLevel: level,
+          isForCurrentChapter: tocBusinessLogic?.isCurrentChapterTitled(title) ?? false
+        )
       }
       return cell
 
     case .bookmarks:
-      let cell = tableView.dequeueReusableCell(withIdentifier: reuseIdentifierBookmark,
-                                               for: indexPath)
-      let bookmark = self.bookmarksBusinessLogic?.bookmark(at: indexPath.row)
+      let cell = tableView.dequeueReusableCell(
+        withIdentifier: reuseIdentifierBookmark,
+        for: indexPath
+      )
+      let bookmark = bookmarksBusinessLogic?.bookmark(at: indexPath.row)
       let chapter = tocBusinessLogic?.title(for: bookmark?.href ?? "") ?? bookmark?.chapter
 
       if let cell = cell as? TPPReaderBookmarkCell, let bookmark = bookmark {
-        cell.config(withChapterName: chapter ?? "",
-                    percentInChapter: bookmark.percentInChapter,
-                    rfc3339DateString: bookmark.time)
+        cell.config(
+          withChapterName: chapter ?? "",
+          percentInChapter: bookmark.percentInChapter,
+          rfc3339DateString: bookmark.time
+        )
       }
       return cell
     }
@@ -175,19 +192,23 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
 
   // MARK: - UITableViewDelegate
 
-  func tableView(_ tableView: UITableView,
-                 estimatedHeightForRowAt indexPath: IndexPath) -> CGFloat {
+  func tableView(
+    _: UITableView,
+    estimatedHeightForRowAt _: IndexPath
+  ) -> CGFloat {
     switch currentTab {
     case .toc:
-      return TPPConfiguration.defaultTOCRowHeight()
+      TPPConfiguration.defaultTOCRowHeight()
     case .bookmarks:
-      return TPPConfiguration.defaultBookmarkRowHeight()
+      TPPConfiguration.defaultBookmarkRowHeight()
     }
   }
 
-  func tableView(_ tableView: UITableView,
-                 heightForRowAt indexPath: IndexPath) -> CGFloat {
-    return UITableView.automaticDimension
+  func tableView(
+    _: UITableView,
+    heightForRowAt _: IndexPath
+  ) -> CGFloat {
+    UITableView.automaticDimension
   }
 
   func tableView(_ tv: UITableView, willSelectRowAt indexPath: IndexPath) -> IndexPath? {
@@ -227,7 +248,9 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
 
     switch currentTab {
     case .toc:
-      guard let bizLogic = tocBusinessLogic else { return }
+      guard let bizLogic = tocBusinessLogic else {
+        return
+      }
 
       Task {
         if let locator = await bizLogic.tocLocator(at: indexPath.row) {
@@ -238,7 +261,9 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
       }
 
     case .bookmarks:
-      guard let bizLogic = bookmarksBusinessLogic else { return }
+      guard let bizLogic = bookmarksBusinessLogic else {
+        return
+      }
 
       if let bookmark = bizLogic.bookmark(at: indexPath.row) {
         delegate?.positionsVC(self, didSelectBookmark: bookmark)
@@ -246,36 +271,40 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
     }
   }
 
-  func tableView(_ tableView: UITableView,
-                 editingStyleForRowAt indexPath: IndexPath) -> UITableViewCell.EditingStyle {
+  func tableView(
+    _: UITableView,
+    editingStyleForRowAt _: IndexPath
+  ) -> UITableViewCell.EditingStyle {
     switch currentTab {
     case .toc:
-      return .none
+      .none
     case .bookmarks:
-      return .delete
+      .delete
     }
   }
 
-  func tableView(_ tv: UITableView, canEditRowAt indexPath: IndexPath) -> Bool {
+  func tableView(_: UITableView, canEditRowAt _: IndexPath) -> Bool {
     switch currentTab {
     case .toc:
-      return false
+      false
     case .bookmarks:
-      return true
+      true
     }
   }
 
-  func tableView(_ tv: UITableView,
-                 commit editingStyle: UITableViewCell.EditingStyle,
-                 forRowAt indexPath: IndexPath) {
+  func tableView(
+    _: UITableView,
+    commit editingStyle: UITableViewCell.EditingStyle,
+    forRowAt indexPath: IndexPath
+  ) {
     switch currentTab {
     case .toc:
-      break;
+      break
     case .bookmarks:
       guard editingStyle == .delete else {
         return
       }
-      
+
       if let removedBookmark = bookmarksBusinessLogic?.deleteBookmark(at: indexPath.row) {
         delegate?.positionsVC(self, didDeleteBookmark: removedBookmark)
         tableView.deleteRows(at: [indexPath], with: .fade)
@@ -286,14 +315,16 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
   // MARK: - Helpers
 
   @objc(userDidRefreshBookmarksWith:)
-  private func userDidRefreshBookmarks(with refreshControl: UIRefreshControl) {
-    delegate?.positionsVC(self, didRequestSyncBookmarksWithCompletion: { (success, bookmarks) in
+  private func userDidRefreshBookmarks(with _: UIRefreshControl) {
+    delegate?.positionsVC(self, didRequestSyncBookmarksWithCompletion: { success, _ in
       TPPMainThreadRun.asyncIfNeeded { [weak self] in
         self?.tableView.reloadData()
         self?.bookmarksRefreshControl?.endRefreshing()
         if !success {
-          let alert = TPPAlertUtils.alert(title: "Error Syncing Bookmarks",
-                                           message: "There was an error syncing bookmarks to the server. Ensure your device is connected to the internet or try again later.")
+          let alert = TPPAlertUtils.alert(
+            title: "Error Syncing Bookmarks",
+            message: "There was an error syncing bookmarks to the server. Ensure your device is connected to the internet or try again later."
+          )
           self?.present(alert, animated: true)
         }
       }
@@ -310,9 +341,11 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
       if bookmarksBusinessLogic?.shouldAllowRefresh() ?? false {
         let refreshCtrl = UIRefreshControl()
         bookmarksRefreshControl = refreshCtrl
-        refreshCtrl.addTarget(self,
-                              action: #selector(userDidRefreshBookmarks(with:)),
-                              for: .valueChanged)
+        refreshCtrl.addTarget(
+          self,
+          action: #selector(userDidRefreshBookmarks(with:)),
+          for: .valueChanged
+        )
         tableView.addSubview(refreshCtrl)
       }
     }

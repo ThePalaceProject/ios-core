@@ -2,10 +2,10 @@ import UIKit
 
 extension UIViewController {
   @objc func dismissSelf() {
-    if let navigationController = self.navigationController, navigationController.presentingViewController != nil {
+    if let navigationController = navigationController, navigationController.presentingViewController != nil {
       navigationController.dismiss(animated: true)
     } else {
-      self.dismiss(animated: true)
+      dismiss(animated: true)
     }
   }
 }
@@ -18,11 +18,13 @@ extension UIViewController {
       return presented.topMostViewController
     }
     if let nav = self as? UINavigationController,
-       let visible = nav.visibleViewController {
+       let visible = nav.visibleViewController
+    {
       return visible.topMostViewController
     }
     if let tab = self as? UITabBarController,
-       let selected = tab.selectedViewController {
+       let selected = tab.selectedViewController
+    {
       return selected.topMostViewController
     }
     return self

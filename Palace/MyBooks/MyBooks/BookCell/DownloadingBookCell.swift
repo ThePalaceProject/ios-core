@@ -6,14 +6,15 @@
 //  Copyright © 2023 The Palace Project. All rights reserved.
 //
 
-import SwiftUI
 import PalaceUIKit
+import SwiftUI
 
 struct DownloadingBookCell: View {
   @ObservedObject var model: BookCellModel
   private let cellHeight = 125.0
   @State private var progress = 0.0
-  var downloadPublisher = NotificationCenter.default.publisher(for: NSNotification.Name.TPPMyBooksDownloadCenterDidChange)
+  var downloadPublisher = NotificationCenter.default
+    .publisher(for: NSNotification.Name.TPPMyBooksDownloadCenterDidChange)
   @Environment(\.colorScheme) private var colorScheme
 
   var body: some View {
@@ -41,7 +42,7 @@ struct DownloadingBookCell: View {
     }
     .foregroundColor(Color(TPPConfiguration.backgroundColor()))
   }
-  
+
   @ViewBuilder private var statusView: some View {
     switch model.state.buttonState {
     case .downloadFailed:
@@ -65,7 +66,7 @@ struct DownloadingBookCell: View {
     .palaceFont(size: 12)
     .foregroundColor(Color(TPPConfiguration.backgroundColor()))
     .onReceive(downloadPublisher) { _ in
-      self.progress = MyBooksDownloadCenter.shared.downloadProgress(for: model.book.identifier)
+      progress = MyBooksDownloadCenter.shared.downloadProgress(for: model.book.identifier)
     }
   }
 

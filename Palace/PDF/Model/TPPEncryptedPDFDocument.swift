@@ -9,9 +9,10 @@
 import Foundation
 import UIKit
 
+// MARK: - TPPEncryptedPDFDocument
+
 /// Encrypted PDF document.
 @objcMembers class TPPEncryptedPDFDocument: NSObject {
-
   private var thumbnailsCache = NSCache<NSNumber, NSData>()
 
   /// PDF document data.
@@ -27,11 +28,11 @@ import UIKit
   var cover: UIImage?
 
   init(encryptedData: Data, decryptor: @escaping (_ data: Data, _ start: UInt, _ end: UInt) -> Data) {
-    self.data = encryptedData
+    data = encryptedData
     self.decryptor = decryptor
     let pdfDataProvider = TPPEncryptedPDFDataProvider(data: encryptedData, decryptor: decryptor)
     let dataProvider = pdfDataProvider.dataProvider().takeUnretainedValue()
-    self.document = CGPDFDocument(dataProvider)
+    document = CGPDFDocument(dataProvider)
     super.init()
 
     setPageCount()
@@ -54,7 +55,6 @@ import UIKit
   func setCover() {
     Task {
       self.cover = try? await document?.cover() ?? UIImage()
-
     }
   }
 
@@ -72,7 +72,9 @@ import UIKit
           if self.thumbnailsCache.object(forKey: pageNumber) != nil {
             continue
           }
-          if let thumbnail = self.thumbnail(for: page), let thumbnailData = thumbnail.jpegData(compressionQuality: 0.5) {
+          if let thumbnail = self.thumbnail(for: page),
+             let thumbnailData = thumbnail.jpegData(compressionQuality: 0.5)
+          {
             DispatchQueue.main.async {
               self.thumbnailsCache.setObject(thumbnailData as NSData, forKey: pageNumber)
             }
@@ -101,22 +103,26 @@ import UIKit
       for (i, textBlock) in lowercaseBlocks.enumerated() {
         if textBlock.contains(searchText) {
           // ! CGPDF first page index is 1, that's why we subtract 1 from pageNumber
-          result.append(TPPPDFLocation(title: textBlocks[i], subtitle: nil, pageLabel: nil, pageNumber: page.pageNumber - 1))
+          result.append(TPPPDFLocation(
+            title: textBlocks[i],
+            subtitle: nil,
+            pageLabel: nil,
+            pageNumber: page.pageNumber - 1
+          ))
         }
       }
     }
     return result
-
   }
-
 }
 
 extension TPPEncryptedPDFDocument {
   func encryptedData() -> Data {
-    self.data
+    data
   }
+
   func decrypt(data: Data, start: UInt, end: UInt) -> Data {
-    return self.decryptor(data, start, end)
+    decryptor(data, start, end)
   }
 }
 
@@ -139,7 +145,9 @@ extension TPPEncryptedPDFDocument {
   /// This function caches thumbnail image data and returnes a cached image when one is available.
   func thumbnail(for page: Int) -> UIImage? {
     let pageNumber = NSNumber(value: page)
-    if let cachedData = thumbnailsCache.object(forKey: pageNumber), let cachedImage = UIImage(data: cachedData as Data) {
+    if let cachedData = thumbnailsCache.object(forKey: pageNumber),
+       let cachedImage = UIImage(data: cachedData as Data)
+    {
       return cachedImage
     } else {
       if let image = self.page(at: page)?.thumbnail, let data = image.jpegData(compressionQuality: 0.5) {
@@ -158,7 +166,9 @@ extension TPPEncryptedPDFDocument {
   /// This function doesn't render new thumbnail images.
   func cachedThumbnail(for page: Int) -> UIImage? {
     let pageNumber = NSNumber(value: page)
-    if let cachedData = thumbnailsCache.object(forKey: pageNumber), let cachedImage = UIImage(data: cachedData as Data) {
+    if let cachedData = thumbnailsCache.object(forKey: pageNumber),
+       let cachedImage = UIImage(data: cachedData as Data)
+    {
       return cachedImage
     }
     return nil
@@ -177,7 +187,7 @@ extension TPPEncryptedPDFDocument {
 extension TPPEncryptedPDFDocument {
   /// `TPPEncryptedPDFDocument` for SwiftUI previews
   static var preview: TPPEncryptedPDFDocument {
-    TPPEncryptedPDFDocument(encryptedData: Data()) { data, start, end in
+    TPPEncryptedPDFDocument(encryptedData: Data()) { data, _, _ in
       data
     }
   }

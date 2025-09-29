@@ -4,11 +4,12 @@ import ReadiumShared
 extension TPPBookLocation {
   static let r3Renderer = "readium3"
 
-  convenience init?(locator: Locator,
-                    type: String,
-                    publication: Publication,
-                    renderer: String = TPPBookLocation.r3Renderer) {
-
+  convenience init?(
+    locator: Locator,
+    type: String,
+    publication _: Publication,
+    renderer: String = TPPBookLocation.r3Renderer
+  ) {
     let dict: [String: Any] = [
       TPPBookLocation.hrefKey: locator.href.string,
       TPPBookLocation.typeKey: type,
@@ -16,7 +17,7 @@ extension TPPBookLocation {
       TPPBookLocation.bookProgressKey: locator.locations.totalProgression ?? 0.0,
       TPPBookLocation.titleKey: locator.title ?? "",
       TPPBookLocation.positionKey: locator.locations.position ?? 0,
-      TPPBookLocation.cssSelector: locator.locations.otherLocations[TPPBookLocation.cssSelector] ?? ""
+      TPPBookLocation.cssSelector: locator.locations.otherLocations[TPPBookLocation.cssSelector] ?? "",
     ]
 
     guard let jsonString = serializeJSONString(dict) else {
@@ -28,19 +29,20 @@ extension TPPBookLocation {
   }
 
   // Initialize with properties directly
-  convenience init?(href: String,
-                    type: String,
-                    time: Double? = nil,
-                    part: Float? = nil,
-                    chapter: String? = nil,
-                    chapterProgression: Float? = nil,
-                    totalProgression: Float? = nil,
-                    title: String? = nil,
-                    position: Double? = nil,
-                    cssSelector: String? = nil,
-                    publication: Publication? = nil,
-                    renderer: String = TPPBookLocation.r3Renderer) {
-
+  convenience init?(
+    href: String,
+    type: String,
+    time: Double? = nil,
+    part: Float? = nil,
+    chapter: String? = nil,
+    chapterProgression: Float? = nil,
+    totalProgression: Float? = nil,
+    title: String? = nil,
+    position: Double? = nil,
+    cssSelector: String? = nil,
+    publication _: Publication? = nil,
+    renderer: String = TPPBookLocation.r3Renderer
+  ) {
     guard let normalizedHref = AnyURL(legacyHREF: href)?.string else {
       Log.warn(#file, "Invalid href format")
       return nil
@@ -56,7 +58,7 @@ extension TPPBookLocation {
       TPPBookLocation.bookProgressKey: totalProgression ?? 0.0,
       TPPBookLocation.titleKey: title ?? "",
       TPPBookLocation.positionKey: position ?? 0,
-      TPPBookLocation.cssSelector: cssSelector ?? ""
+      TPPBookLocation.cssSelector: cssSelector ?? "",
     ]
 
     guard let jsonString = serializeJSONString(dict) else {
@@ -68,9 +70,10 @@ extension TPPBookLocation {
   }
 
   func convertToLocator(publication: Publication) async -> Locator? {
-    guard self.renderer == TPPBookLocation.r3Renderer,
-          let data = self.locationString.data(using: .utf8),
-          let dict = (try? JSONSerialization.jsonObject(with: data, options: [])) as? [String: Any] else {
+    guard renderer == TPPBookLocation.r3Renderer,
+          let data = locationString.data(using: .utf8),
+          let dict = (try? JSONSerialization.jsonObject(with: data, options: [])) as? [String: Any]
+    else {
       Log.error(#file, "Failed to convert TPPBookLocation to Locator with string: \(locationString)")
       return nil
     }
@@ -94,7 +97,8 @@ extension TPPBookLocation {
       progression: dict[TPPBookLocation.chapterProgressKey] as? Double,
       totalProgression: dict[TPPBookLocation.bookProgressKey] as? Double,
       position: position,
-      otherLocations: dict[TPPBookLocation.cssSelector] != nil ? [TPPBookLocation.cssSelector: dict[TPPBookLocation.cssSelector]!] : [:]
+      otherLocations: dict[TPPBookLocation.cssSelector] != nil ?
+        [TPPBookLocation.cssSelector: dict[TPPBookLocation.cssSelector]!] : [:]
     )
 
     return Locator(

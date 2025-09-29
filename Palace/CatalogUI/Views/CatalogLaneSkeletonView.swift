@@ -2,7 +2,7 @@ import SwiftUI
 
 struct CatalogLaneSkeletonView: View {
   var titleWidth: CGFloat = 160
-  var itemSize: CGSize = CGSize(width: 120, height: 180)
+  var itemSize: CGSize = .init(width: 120, height: 180)
   var itemCount: Int = 8
   @State private var pulse: Bool = false
 
@@ -33,5 +33,3 @@ struct CatalogLaneSkeletonView: View {
     }
   }
 }
-
-

@@ -9,6 +9,8 @@
 import Foundation
 @testable import Palace
 
+// MARK: - DistributorType
+
 enum DistributorType: String {
   case OPDSCatalog = "application/atom+xml;type=entry;profile=opds-catalog"
   case AdobeAdept = "application/vnd.adobe.adept+xml"
@@ -25,28 +27,30 @@ enum DistributorType: String {
   case AudiobookLCP = "application/audiobook+lcp"
   case AudiobookZip = "application/audiobook+zip"
   case Biblioboard = "application/json"
-  
+
   static func randomIdentifier() -> String {
-    return UUID().uuidString
+    UUID().uuidString
   }
 }
 
-struct TPPBookMocker {
+// MARK: - TPPBookMocker
+
+enum TPPBookMocker {
   static func mockBook(distributorType: DistributorType) -> TPPBook {
     let configType = distributorType.rawValue
-    
+
     // Randomly generated values for other fields
     let identifier = DistributorType.randomIdentifier()
     let emptyUrl = URL(string: "http://example.com/\(identifier)")!
-    
+
     let fakeAcquisition = TPPOPDSAcquisition(
       relation: .generic,
       type: configType,
       hrefURL: emptyUrl,
       indirectAcquisitions: [TPPOPDSIndirectAcquisition](),
-      availability: TPPOPDSAcquisitionAvailabilityUnlimited.init()
+      availability: TPPOPDSAcquisitionAvailabilityUnlimited()
     )
-    
+
     let fakeBook = TPPBook(
       acquisitions: [fakeAcquisition],
       authors: [TPPBookAuthor(authorName: "Author \(identifier)", relatedBooksURL: nil)],
@@ -55,12 +59,12 @@ struct TPPBookMocker {
       identifier: identifier,
       imageURL: emptyUrl,
       imageThumbnailURL: emptyUrl,
-      published: Date.init(),
+      published: Date(),
       publisher: "Publisher \(identifier)",
       subtitle: "Subtitle \(identifier)",
       summary: "Summary \(identifier)",
       title: "Title \(identifier)",
-      updated: Date.init(),
+      updated: Date(),
       annotationsURL: emptyUrl,
       analyticsURL: emptyUrl,
       alternateURL: emptyUrl,
@@ -74,7 +78,7 @@ struct TPPBookMocker {
       bookDuration: nil,
       imageCache: MockImageCache()
     )
-    
+
     return fakeBook
   }
 }

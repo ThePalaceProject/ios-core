@@ -7,14 +7,18 @@
 //
 
 import Foundation
-import ReadiumShared
 import ReadiumNavigator
+import ReadiumShared
+
+// MARK: - EPUBSearchDelegate
 
 protocol EPUBSearchDelegate: AnyObject {
   func didSelect(location: Locator)
 }
 
 typealias SearchViewSection = (id: String, title: String, locators: [Locator])
+
+// MARK: - EPUBSearchViewModel
 
 @MainActor
 final class EPUBSearchViewModel: ObservableObject {
@@ -29,9 +33,9 @@ final class EPUBSearchViewModel: ObservableObject {
     var isLoadingState: Bool {
       switch self {
       case .starting, .loadingNext:
-        return true
+        true
       default:
-        return false
+        false
       }
     }
   }
@@ -53,10 +57,10 @@ final class EPUBSearchViewModel: ObservableObject {
     state = .starting
     let result = await publication.search(query: query)
     switch result {
-    case .success(let iterator):
+    case let .success(iterator):
       state = .idle(iterator, isFetching: false)
       await fetchNextBatch()
-    case .failure(let error):
+    case let .failure(error):
       state = .failure(error)
     }
   }
@@ -70,9 +74,9 @@ final class EPUBSearchViewModel: ObservableObject {
 
     let result = await iterator.next()
     switch result {
-    case .success(let collection):
+    case let .success(collection):
       handleNewCollection(iterator, collection: collection)
-    case .failure(let error):
+    case let .failure(error):
       state = .end
       state = .failure(error)
     }
@@ -106,14 +110,14 @@ final class EPUBSearchViewModel: ObservableObject {
 
       if !groupedResults[titleKey]!.contains(where: { existingLocator in
         existingLocator.href.isEquivalentTo(locator.href) &&
-        existingLocator.locations.progression == locator.locations.progression &&
-        existingLocator.locations.totalProgression == locator.locations.totalProgression
+          existingLocator.locations.progression == locator.locations.progression &&
+          existingLocator.locations.totalProgression == locator.locations.totalProgression
       }) {
         groupedResults[titleKey]!.append(locator)
       }
     }
 
-    self.sections = groupedResults
+    sections = groupedResults
       .map { (id: UUID().uuidString, title: $0.value.first?.title ?? "", locators: $0.value) }
       .sorted { section1, section2 in
         let href1 = section1.locators.first?.href.string ?? ""
@@ -123,10 +127,10 @@ final class EPUBSearchViewModel: ObservableObject {
   }
 
   private func isDuplicate(_ locator: Locator) -> Bool {
-    return results.contains { existingLocator in
+    results.contains { existingLocator in
       existingLocator.href.isEquivalentTo(locator.href) &&
-      existingLocator.locations.progression == locator.locations.progression &&
-      existingLocator.locations.totalProgression == locator.locations.totalProgression
+        existingLocator.locations.progression == locator.locations.progression &&
+        existingLocator.locations.totalProgression == locator.locations.totalProgression
     }
   }
 

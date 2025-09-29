@@ -6,8 +6,8 @@
 //  Copyright © 2021 The Palace Project. All rights reserved.
 //
 
-import SwiftUI
 import PalaceUIKit
+import SwiftUI
 
 struct TPPSettingsView: View {
   typealias DisplayStrings = Strings.Settings
@@ -16,12 +16,12 @@ struct TPPSettingsView: View {
   @State private var selectedView: Int? = 0
   @State private var orientation: UIDeviceOrientation = UIDevice.current.orientation
   @State private var showAddLibrarySheet: Bool = false
-  @State private var librariesRefreshToken: UUID = UUID()
+  @State private var librariesRefreshToken: UUID = .init()
 
   private var sideBarEnabled: Bool {
     UIDevice.current.userInterfaceIdiom == .pad
-      &&  UIDevice.current.orientation != .portrait
-      &&  UIDevice.current.orientation != .portraitUpsideDown
+      && UIDevice.current.orientation != .portrait
+      && UIDevice.current.orientation != .portraitUpsideDown
   }
 
   var body: some View {
@@ -49,7 +49,7 @@ struct TPPSettingsView: View {
     .navigationBarTitle(DisplayStrings.settings)
     .listStyle(GroupedListStyle())
     .onReceive(NotificationCenter.default.publisher(for: UIDevice.orientationDidChangeNotification)) { _ in
-      self.orientation = UIDevice.current.orientation
+      orientation = UIDevice.current.orientation
     }
     .onReceive(NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)) { _ in
       librariesRefreshToken = UUID()
@@ -80,18 +80,18 @@ struct TPPSettingsView: View {
       .id(librariesRefreshToken)
 
     Section {
-      row(title: DisplayStrings.libraries, index: 1, selection: self.$selectedView, destination: wrapper.anyView())
+      row(title: DisplayStrings.libraries, index: 1, selection: $selectedView, destination: wrapper.anyView())
     }
   }
 
   @ViewBuilder private var infoSection: some View {
     let view: AnyView = showDeveloperSettings ? EmptyView().anyView() : versionInfo.anyView()
-      Section(footer: view) {
-        aboutRow
-        privacyRow
-        userAgreementRow
-        softwareLicenseRow
-      }
+    Section(footer: view) {
+      aboutRow
+      privacyRow
+      userAgreementRow
+      softwareLicenseRow
+    }
   }
 
   @ViewBuilder private var aboutRow: some View {
@@ -100,11 +100,11 @@ struct TPPSettingsView: View {
       title: Strings.Settings.aboutApp,
       failureMessage: Strings.Error.loadFailedError
     )
-    
+
     let wrapper = UIViewControllerWrapper(viewController, updater: { _ in })
       .navigationBarTitle(Text(DisplayStrings.aboutApp))
 
-    row(title: DisplayStrings.aboutApp, index: 2, selection: self.$selectedView, destination: wrapper.anyView())
+    row(title: DisplayStrings.aboutApp, index: 2, selection: $selectedView, destination: wrapper.anyView())
   }
 
   @ViewBuilder private var privacyRow: some View {
@@ -117,8 +117,7 @@ struct TPPSettingsView: View {
     let wrapper = UIViewControllerWrapper(viewController, updater: { _ in })
       .navigationBarTitle(Text(DisplayStrings.privacyPolicy))
 
-    row(title: DisplayStrings.privacyPolicy, index: 3, selection: self.$selectedView, destination: wrapper.anyView())
-
+    row(title: DisplayStrings.privacyPolicy, index: 3, selection: $selectedView, destination: wrapper.anyView())
   }
 
   @ViewBuilder private var userAgreementRow: some View {
@@ -127,11 +126,11 @@ struct TPPSettingsView: View {
       title: Strings.Settings.eula,
       failureMessage: Strings.Error.loadFailedError
     )
-    
+
     let wrapper = UIViewControllerWrapper(viewController, updater: { _ in })
       .navigationBarTitle(Text(DisplayStrings.eula))
 
-    row(title: DisplayStrings.eula, index: 4, selection: self.$selectedView, destination: wrapper.anyView())
+    row(title: DisplayStrings.eula, index: 4, selection: $selectedView, destination: wrapper.anyView())
   }
 
   @ViewBuilder private var softwareLicenseRow: some View {
@@ -140,22 +139,22 @@ struct TPPSettingsView: View {
       title: Strings.Settings.softwareLicenses,
       failureMessage: Strings.Error.loadFailedError
     )
-    
+
     let wrapper = UIViewControllerWrapper(viewController, updater: { _ in })
       .navigationBarTitle(Text(DisplayStrings.softwareLicenses))
 
-    row(title: DisplayStrings.softwareLicenses, index: 5, selection: self.$selectedView, destination: wrapper.anyView())
+    row(title: DisplayStrings.softwareLicenses, index: 5, selection: $selectedView, destination: wrapper.anyView())
   }
 
   @ViewBuilder private var developerSettingsSection: some View {
-    if (TPPSettings.shared.customMainFeedURL == nil && showDeveloperSettings) {
+    if TPPSettings.shared.customMainFeedURL == nil && showDeveloperSettings {
       Section(footer: versionInfo) {
         let viewController = TPPDeveloperSettingsTableViewController()
-          
+
         let wrapper = UIViewControllerWrapper(viewController, updater: { _ in })
           .navigationBarTitle(Text(DisplayStrings.developerSettings))
-        
-        row(title: DisplayStrings.developerSettings, index: 6, selection: self.$selectedView, destination: wrapper.anyView())
+
+        row(title: DisplayStrings.developerSettings, index: 6, selection: $selectedView, destination: wrapper.anyView())
       }
     }
   }
@@ -163,20 +162,20 @@ struct TPPSettingsView: View {
   @ViewBuilder private var versionInfo: some View {
     let productName = Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as! String
     let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as! String
-    let build = Bundle.main.object(forInfoDictionaryKey: (kCFBundleVersionKey as String)) as! String
-    
+    let build = Bundle.main.object(forInfoDictionaryKey: kCFBundleVersionKey as String) as! String
+
     Text("\(productName) version \(version) (\(build))")
       .palaceFont(size: 12)
       .gesture(
         LongPressGesture(minimumDuration: 5.0)
           .onEnded { _ in
-            self.showDeveloperSettings.toggle()
+            showDeveloperSettings.toggle()
           }
       )
       .frame(height: 40)
       .horizontallyCentered()
   }
-  
+
   private func row(title: String, index: Int, selection: Binding<Int?>, destination: AnyView) -> some View {
     NavigationLink(
       destination: destination,

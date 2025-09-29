@@ -6,22 +6,19 @@
 //  Copyright © 2022 The Palace Project. All rights reserved.
 //
 
-import SwiftUI
 import PalaceUIKit
+import SwiftUI
 
 struct TPPPDFReaderView: View {
-  
   typealias DisplayStrings = Strings.TPPLastReadPositionSynchronizer
-  
+
   @EnvironmentObject var metadata: TPPPDFDocumentMetadata
   @State private var readerMode: TPPPDFReaderMode = .reader
   @State private var shouldRequestPageSync = false
-  private var isShowingSearch: Bool {
-    get { readerMode == .search }
-  }
+  private var isShowingSearch: Bool { readerMode == .search }
 
   let document: TPPPDFDocument
-  
+
   var body: some View {
     TPPPDFNavigation(readerMode: $readerMode) { _ in
       ZStack {
@@ -29,13 +26,13 @@ struct TPPPDFReaderView: View {
           .onReceive(metadata.$remotePage, perform: showRemotePositionAlert)
           .visible(when: readerMode == .reader || readerMode == .search)
           .alert(isPresented: $shouldRequestPageSync) {
-            Alert(title: Text(DisplayStrings.syncReadingPositionAlertTitle),
-                  message: Text(DisplayStrings.syncReadingPositionAlertBody),
-                  primaryButton: .default(Text(DisplayStrings.move), action: metadata.syncReadingPosition),
-                  secondaryButton: .cancel(Text(DisplayStrings.stay))
+            Alert(
+              title: Text(DisplayStrings.syncReadingPositionAlertTitle),
+              message: Text(DisplayStrings.syncReadingPositionAlertBody),
+              primaryButton: .default(Text(DisplayStrings.move), action: metadata.syncReadingPosition),
+              secondaryButton: .cancel(Text(DisplayStrings.stay))
             )
           }
-
 
         TPPPDFPreviewGrid(document: document, pageIndices: nil, isVisible: readerMode == .previews, done: done)
           .visible(when: readerMode == .previews)
@@ -46,11 +43,11 @@ struct TPPPDFReaderView: View {
       }
       .sheet(isPresented: .constant(isShowingSearch)) {
         TPPPDFSearchView(document: document, done: done)
-        .environmentObject(metadata)
+          .environmentObject(metadata)
       }
     }
   }
-  
+
   @ViewBuilder
   /// Document renderer
   var documentView: some View {
@@ -72,25 +69,30 @@ struct TPPPDFReaderView: View {
   @ViewBuilder
   var bookmarkView: some View {
     if !metadata.bookmarks.isEmpty {
-      TPPPDFPreviewGrid(document: document, pageIndices: metadata.bookmarks, isVisible: readerMode == .bookmarks, done: done)
-        .visible(when: readerMode == .bookmarks)
+      TPPPDFPreviewGrid(
+        document: document,
+        pageIndices: metadata.bookmarks,
+        isVisible: readerMode == .bookmarks,
+        done: done
+      )
+      .visible(when: readerMode == .bookmarks)
     } else {
       Text(NSLocalizedString("There are no bookmarks for this book.", comment: ""))
         .palaceFont(.body)
     }
   }
-  
+
   @ViewBuilder
   var unableToLoadView: some View {
     Text("Unable to load PDF file")
       .palaceFont(.body)
   }
-  
+
   /// Done picking a page
   func done() {
     readerMode = .reader
   }
-  
+
   /// Present navigation alert
   func showRemotePositionAlert(_ value: Published<Int?>.Publisher.Output) {
     if let value = value, metadata.currentPage != value {

@@ -2,13 +2,12 @@ import Foundation
 import PalaceAudiobookToolkit
 
 @objcMembers final class TPPKeychainManager: NSObject {
-
   private static let secClassItems: [String] = [
     kSecClassGenericPassword as String,
     kSecClassInternetPassword as String,
     kSecClassCertificate as String,
     kSecClassKey as String,
-    kSecClassIdentity as String
+    kSecClassIdentity as String,
   ]
 
   class func validateKeychain() {
@@ -16,7 +15,7 @@ import PalaceAudiobookToolkit
       Log.info(#file, "Fresh install detected. Cleaning up all keychain items...")
       cleanupAllKeychainItems()
     }
-    
+
     if TPPSettings.shared.appVersion != nil {
       updateKeychainForBackgroundFetch()
       manageFeedbooksData()
@@ -27,7 +26,7 @@ import PalaceAudiobookToolkit
   // Clean up all keychain items
   private class func cleanupAllKeychainItems() {
     Log.info(#file, "Starting keychain cleanup...")
-    
+
     // First, try to get all items to log what we're cleaning up
     for secClass in secClassItems {
       let query: [String: AnyObject] = [
@@ -35,7 +34,7 @@ import PalaceAudiobookToolkit
         kSecReturnData as String: kCFBooleanTrue,
         kSecReturnAttributes as String: kCFBooleanTrue,
         kSecReturnRef as String: kCFBooleanTrue,
-        kSecMatchLimit as String: kSecMatchLimitAll
+        kSecMatchLimit as String: kSecMatchLimitAll,
       ]
 
       var result: AnyObject?
@@ -44,10 +43,11 @@ import PalaceAudiobookToolkit
       }
 
       if status == errSecSuccess {
-        if let array = result as? Array<Dictionary<String, Any>> {
+        if let array = result as? [[String: Any]] {
           for item in array {
             if let keyData = item[kSecAttrAccount as String] as? Data,
-               let keyString = NSKeyedUnarchiver.unarchiveObject(with: keyData) as? String {
+               let keyString = NSKeyedUnarchiver.unarchiveObject(with: keyData) as? String
+            {
               Log.info(#file, "Found keychain item to clean up: \(keyString)")
             }
           }
@@ -58,7 +58,7 @@ import PalaceAudiobookToolkit
     // Now perform the actual cleanup
     for secClass in secClassItems {
       let query: [String: Any] = [
-        kSecClass as String: secClass
+        kSecClass as String: secClass,
       ]
       let status = SecItemDelete(query as CFDictionary)
       if status != errSecSuccess && status != errSecItemNotFound {
@@ -95,7 +95,7 @@ import PalaceAudiobookToolkit
       "TPPAccountDeviceIDKey",
       "TPPAccountCredentialsKey",
       "TPPAccountAuthDefinitionKey",
-      "TPPAccountAuthCookiesKey"
+      "TPPAccountAuthCookiesKey",
     ]
 
     for key in knownKeys {
@@ -119,12 +119,12 @@ import PalaceAudiobookToolkit
   /// the first unlock per phone reboot.
   class func updateKeychainForBackgroundFetch() {
     let query: [String: AnyObject] = [
-      kSecClass as String : kSecClassGenericPassword,
-      kSecAttrAccessible as String : kSecAttrAccessibleWhenUnlocked,  //old default
-      kSecReturnData as String  : kCFBooleanTrue,
-      kSecReturnAttributes as String : kCFBooleanTrue,
-      kSecReturnRef as String : kCFBooleanTrue,
-      kSecMatchLimit as String : kSecMatchLimitAll
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlocked, // old default
+      kSecReturnData as String: kCFBooleanTrue,
+      kSecReturnAttributes as String: kCFBooleanTrue,
+      kSecReturnRef as String: kCFBooleanTrue,
+      kSecMatchLimit as String: kSecMatchLimitAll,
     ]
 
     var result: AnyObject?
@@ -132,13 +132,16 @@ import PalaceAudiobookToolkit
       SecItemCopyMatching(query as CFDictionary, UnsafeMutablePointer($0))
     }
 
-    var values = [String:AnyObject]()
+    var values = [String: AnyObject]()
     if lastResultCode == noErr {
-      guard let array = result as? Array<Dictionary<String, Any>> else { return }
+      guard let array = result as? [[String: Any]] else {
+        return
+      }
       for item in array {
         if let keyData = item[kSecAttrAccount as String] as? Data,
-          let valueData = item[kSecValueData as String] as? Data,
-          let keyString = NSKeyedUnarchiver.unarchiveObject(with: keyData) as? String {
+           let valueData = item[kSecValueData as String] as? Data,
+           let keyString = NSKeyedUnarchiver.unarchiveObject(with: keyData) as? String
+        {
           let value = NSKeyedUnarchiver.unarchiveObject(with: valueData) as AnyObject
           values[keyString] = value
         }
@@ -151,23 +154,24 @@ import PalaceAudiobookToolkit
       Log.debug(#file, "Keychain item \"\(key)\" updated with new accessible security level...")
     }
   }
-  
+
   // Load feedbooks profile secrets
   private class func manageFeedbooksData() {
     // Go through each vendor and add their data to keychain so audiobook component can access securely
     for vendor in AudioBookVendors.allCases {
       guard let keyData = TPPSecrets.feedbookKeys(forVendor: vendor)?.data(using: .utf8),
-        let profile = TPPSecrets.feedbookInfo(forVendor: vendor)["profile"],
-        let tag = "feedbook_drm_profile_\(profile)".data(using: .utf8) else {
-          Log.error(#file, "Could not load secrets for Feedbook vendor: \(vendor.rawValue)")
-          continue
+            let profile = TPPSecrets.feedbookInfo(forVendor: vendor)["profile"],
+            let tag = "feedbook_drm_profile_\(profile)".data(using: .utf8)
+      else {
+        Log.error(#file, "Could not load secrets for Feedbook vendor: \(vendor.rawValue)")
+        continue
       }
-        
+
       let addQuery: [String: Any] = [
         kSecClass as String: kSecClassKey,
         kSecAttrApplicationTag as String: tag,
         kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
-        kSecValueData as String: keyData
+        kSecValueData as String: keyData,
       ]
       let status = SecItemAdd(addQuery as CFDictionary, nil)
       if status != errSecSuccess && status != errSecDuplicateItem {
@@ -175,14 +179,14 @@ import PalaceAudiobookToolkit
       }
     }
   }
-    
+
   private class func manageFeedbookDrmPrivateKey() {
     // Request DRM certificates for all vendors
     for vendor in AudioBookVendors.allCases {
       vendor.updateDrmCertificate()
     }
   }
-    
+
   class func logKeychainError(forVendor vendor: String, status: OSStatus, message: String) {
     // This is unexpected
     var errMsg = ""
@@ -213,7 +217,7 @@ import PalaceAudiobookToolkit
         errMsg = "Unknown OSStatus: \(status)"
       }
     }
-    
+
     TPPErrorLogger.logError(
       withCode: .keychainItemAddFail,
       summary: "Keychain error for vendor \(vendor)",
@@ -221,6 +225,7 @@ import PalaceAudiobookToolkit
         "OSStatus": status,
         "SecCopyErrorMessage from OSStatus": errMsg,
         "message": message,
-    ])
+      ]
+    )
   }
 }

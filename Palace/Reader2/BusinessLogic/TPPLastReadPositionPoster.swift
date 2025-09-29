@@ -24,21 +24,28 @@ class TPPLastReadPositionPoster {
   // Internal state management
   private var lastReadPositionUploadDate: Date
   private var queuedReadPosition: Locator?
-  private let serialQueue = DispatchQueue(label: "\(Bundle.main.bundleIdentifier!).lastReadPositionPoster", qos: .utility)
+  private let serialQueue = DispatchQueue(
+    label: "\(Bundle.main.bundleIdentifier!).lastReadPositionPoster",
+    qos: .utility
+  )
 
-  init(book: TPPBook,
-       publication: Publication,
-       bookRegistryProvider: TPPBookRegistryProvider) {
+  init(
+    book: TPPBook,
+    publication: Publication,
+    bookRegistryProvider: TPPBookRegistryProvider
+  ) {
     self.book = book
     self.publication = publication
     self.bookRegistryProvider = bookRegistryProvider
-    self.lastReadPositionUploadDate = Date()
+    lastReadPositionUploadDate = Date()
       .addingTimeInterval(-TPPLastReadPositionPoster.throttlingInterval)
 
-    NotificationCenter.default.addObserver(self,
-                                           selector: #selector(postQueuedReadPositionInSerialQueue),
-                                           name: UIApplication.willResignActiveNotification,
-                                           object: nil)
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(postQueuedReadPositionInSerialQueue),
+      name: UIApplication.willResignActiveNotification,
+      object: nil
+    )
   }
 
   // MARK: - Storing
@@ -46,7 +53,9 @@ class TPPLastReadPositionPoster {
   /// Stores a new reading progress location on the server.
   /// - Parameter locator: The new local progress to be stored.
   func storeReadPosition(locator: Locator) {
-    guard shouldStore(locator: locator) else { return }
+    guard shouldStore(locator: locator) else {
+      return
+    }
 
     // Save location locally
     let location = TPPBookLocation(locator: locator, type: "LocatorHrefProgression", publication: publication)
@@ -67,25 +76,31 @@ class TPPLastReadPositionPoster {
   /// Requests are throttled to avoid excessive updates.
   private func postReadPosition(locator: Locator) {
     serialQueue.async { [weak self] in
-      guard let self = self else { return }
+      guard let self = self else {
+        return
+      }
 
-      self.queuedReadPosition = locator
+      queuedReadPosition = locator
 
-      if Date() > self.lastReadPositionUploadDate.addingTimeInterval(TPPLastReadPositionPoster.throttlingInterval) {
-        self.postQueuedReadPosition()
+      if Date() > lastReadPositionUploadDate.addingTimeInterval(TPPLastReadPositionPoster.throttlingInterval) {
+        postQueuedReadPosition()
       }
     }
   }
 
   private func postQueuedReadPosition() {
-    guard let locator = self.queuedReadPosition, let selectorValue = locator.jsonString else { return }
+    guard let locator = queuedReadPosition, let selectorValue = locator.jsonString else {
+      return
+    }
 
-    TPPAnnotations.postReadingPosition(forBook: book.identifier,
-                                       selectorValue: selectorValue,
-                                       motivation: .readingProgress)
+    TPPAnnotations.postReadingPosition(
+      forBook: book.identifier,
+      selectorValue: selectorValue,
+      motivation: .readingProgress
+    )
 
-    self.queuedReadPosition = nil
-    self.lastReadPositionUploadDate = Date()
+    queuedReadPosition = nil
+    lastReadPositionUploadDate = Date()
   }
 
   @objc private func postQueuedReadPositionInSerialQueue() {

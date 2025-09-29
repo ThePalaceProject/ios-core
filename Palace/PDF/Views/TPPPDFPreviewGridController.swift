@@ -8,24 +8,25 @@
 
 import UIKit
 
+// MARK: - TPPPDFPreviewGridController
+
 /// PDF preview grid.
 ///
 /// Shows page previews and bookmarks in `.pdf` files.
 class TPPPDFPreviewGridController: UICollectionViewController {
-  
   private let preferredPreviewWidth: CGFloat = 200
   private let minimumItemsPerRow: Int = 3
-  
+
   /// Indices of pages to show in previews.
   var indices: [Int]? {
     didSet {
       collectionView.reloadData()
     }
   }
-  
+
   /// Current page, collection view scrolls to that page in previews
   var currentPage: Int = 0
-  
+
   /// Defines if this view is currently visible in SwiftUI view
   ///
   /// Added to optimize data updates and generate page previews only when the view is visible to the user.
@@ -34,24 +35,25 @@ class TPPPDFPreviewGridController: UICollectionViewController {
       scrollToCurrentItem()
     }
   }
-  
+
   var delegate: TPPPDFPreviewGridDelegate?
-  
+
   private var document: TPPPDFDocument?
   private let cellId = "cell"
   private let previewCache = NSCache<NSNumber, UIImage>()
-  
+
   private func configurePreviewCache() {
     previewCache.totalCostLimit = 20 * 1024 * 1024
     previewCache.countLimit = 50
   }
+
   private let itemSpacing = 10.0
 
   @available(*, unavailable)
-  required init?(coder: NSCoder) {
+  required init?(coder _: NSCoder) {
     fatalError("init(coder:) has not been implemented")
   }
-  
+
   /// Initializes PDF preview grid.
   /// - Parameters:
   ///   - document: PDF document
@@ -69,12 +71,12 @@ class TPPPDFPreviewGridController: UICollectionViewController {
     }
     return item
   }
-  
+
   override func didReceiveMemoryWarning() {
     super.didReceiveMemoryWarning()
     previewCache.removeAllObjects()
   }
-  
+
   override func viewDidLoad() {
     super.viewDidLoad()
     configurePreviewCache()
@@ -85,34 +87,46 @@ class TPPPDFPreviewGridController: UICollectionViewController {
     collectionView.delegate = self
     collectionView.register(TPPPDFPreviewGridCell.self, forCellWithReuseIdentifier: cellId)
     collectionView.backgroundColor = .secondarySystemBackground
-    collectionView.contentInset = UIEdgeInsets(top: itemSpacing, left: itemSpacing, bottom: itemSpacing, right: itemSpacing)
+    collectionView.contentInset = UIEdgeInsets(
+      top: itemSpacing,
+      left: itemSpacing,
+      bottom: itemSpacing,
+      right: itemSpacing
+    )
     view.addSubview(collectionView)
   }
-  
+
   override func viewWillAppear(_ animated: Bool) {
     super.viewWillAppear(animated)
     if indices == nil && currentPage < (document?.pageCount ?? 0) {
-      collectionView.scrollToItem(at: IndexPath(item: currentPage, section: 0), at: .centeredVertically, animated: false)
+      collectionView.scrollToItem(
+        at: IndexPath(item: currentPage, section: 0),
+        at: .centeredVertically,
+        animated: false
+      )
     }
   }
-  
-  override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
+
+  override func viewWillTransition(to _: CGSize, with _: UIViewControllerTransitionCoordinator) {
     DispatchQueue.main.async {
       self.collectionView.collectionViewLayout.invalidateLayout()
       self.scrollToCurrentItem()
     }
   }
 
-  override func numberOfSections(in collectionView: UICollectionView) -> Int {
-    return 1
+  override func numberOfSections(in _: UICollectionView) -> Int {
+    1
   }
-  
-  override func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
-    return indices?.count ?? document?.pageCount ?? 0
+
+  override func collectionView(_: UICollectionView, numberOfItemsInSection _: Int) -> Int {
+    indices?.count ?? document?.pageCount ?? 0
   }
-  
-  override func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
-    let page = self.pageNumber(for: indexPath.item)
+
+  override func collectionView(
+    _ collectionView: UICollectionView,
+    cellForItemAt indexPath: IndexPath
+  ) -> UICollectionViewCell {
+    let page = pageNumber(for: indexPath.item)
     let key = NSNumber(value: page)
     let cell = collectionView.dequeueReusableCell(withReuseIdentifier: cellId, for: indexPath) as! TPPPDFPreviewGridCell
     cell.pageNumber = page
@@ -139,14 +153,16 @@ class TPPPDFPreviewGridController: UICollectionViewController {
     }
     return cell
   }
-  
-  override func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
+
+  override func collectionView(_: UICollectionView, didSelectItemAt indexPath: IndexPath) {
     let page = pageNumber(for: indexPath.item)
     delegate?.didSelectPage(page)
   }
-  
+
   private func scrollToCurrentItem() {
-    guard isVisible else { return }
+    guard isVisible else {
+      return
+    }
 
     let totalItems = indices?.count ?? document?.pageCount ?? 0
     guard currentPage >= 0, currentPage < totalItems else {
@@ -158,12 +174,19 @@ class TPPPDFPreviewGridController: UICollectionViewController {
   }
 }
 
+// MARK: UICollectionViewDelegateFlowLayout
+
 extension TPPPDFPreviewGridController: UICollectionViewDelegateFlowLayout {
-  func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> CGSize {
+  func collectionView(
+    _ collectionView: UICollectionView,
+    layout collectionViewLayout: UICollectionViewLayout,
+    sizeForItemAt indexPath: IndexPath
+  ) -> CGSize {
     var itemsPerRow = minimumItemsPerRow
     let device = UIDevice.current
     if device.userInterfaceIdiom == .pad &&
-        (device.orientation == .landscapeLeft || device.orientation == .landscapeRight) {
+      (device.orientation == .landscapeLeft || device.orientation == .landscapeRight)
+    {
       itemsPerRow = max(minimumItemsPerRow, Int(collectionView.bounds.width / preferredPreviewWidth))
     }
     let contentWidth = collectionView.bounds.width
@@ -176,13 +199,18 @@ extension TPPPDFPreviewGridController: UICollectionViewDelegateFlowLayout {
     }
     let width = (contentWidth - interitemSpace - itemSpacing) / CGFloat(itemsPerRow)
     var height = width * 1.5
-    let pageNumber = self.pageNumber(for: indexPath.item)
+    let pageNumber = pageNumber(for: indexPath.item)
     if let pageSize = document?.size(page: pageNumber) {
       height = pageSize.height * (width / pageSize.width)
     }
     return CGSize(width: width, height: height)
   }
-  func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, minimumLineSpacingForSectionAt section: Int) -> CGFloat {
+
+  func collectionView(
+    _: UICollectionView,
+    layout _: UICollectionViewLayout,
+    minimumLineSpacingForSectionAt _: Int
+  ) -> CGFloat {
     UIFont.smallSystemFontSize * 2
   }
 }

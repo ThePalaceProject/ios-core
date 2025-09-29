@@ -8,11 +8,13 @@
 
 import Foundation
 
+// MARK: - TokenResponse
+
 @objc class TokenResponse: NSObject, Codable {
   @objc let accessToken: String
   let tokenType: String
   @objc let expiresIn: Int
-  
+
   @objc init(accessToken: String, tokenType: String, expiresIn: Int) {
     self.accessToken = accessToken
     self.tokenType = tokenType
@@ -21,36 +23,38 @@ import Foundation
 }
 
 @objc extension TokenResponse {
-  @objc var expirationDate: Date {
+  var expirationDate: Date {
     Date(timeIntervalSinceNow: Double(expiresIn))
   }
 }
+
+// MARK: - TokenRequest
 
 @objc class TokenRequest: NSObject {
   let url: URL
   let username: String
   let password: String
-  
+
   @objc init(url: URL, username: String, password: String) {
     self.url = url
     self.username = username
     self.password = password
   }
-  
+
   func execute() async -> Result<TokenResponse, Error> {
     var request = URLRequest(url: url, applyingCustomUserAgent: true)
     request.httpMethod = HTTPMethodType.POST.rawValue
-    
+
     let loginString = "\(username):\(password)"
     guard let loginData = loginString.data(using: .utf8) else {
       return .failure(URLError(.badURL))
     }
     let base64LoginString = loginData.base64EncodedString()
     request.addValue("Basic \(base64LoginString)", forHTTPHeaderField: "Authorization")
-    
+
     do {
       let (data, _) = try await URLSession.shared.data(for: request)
-      
+
       let decoder = JSONDecoder()
       decoder.keyDecodingStrategy = .convertFromSnakeCase
       let tokenResponse = try decoder.decode(TokenResponse.self, from: data)
@@ -66,9 +70,9 @@ extension TokenRequest {
     Task {
       let result = await execute()
       switch result {
-      case .success(let tokenResponse):
+      case let .success(tokenResponse):
         completion(tokenResponse, nil)
-      case .failure(let error):
+      case let .failure(error):
         completion(nil, error)
       }
     }

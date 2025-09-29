@@ -9,10 +9,9 @@
 import UIKit
 
 @objc class TPPReaderTOCCell: UITableViewCell {
-  @objc @IBOutlet weak var titleLabel: UILabel!
-  @objc @IBOutlet weak var leadingEdgeConstraint: NSLayoutConstraint!
-  @objc @IBOutlet weak var background: UIView!
-
+  @IBOutlet var titleLabel: UILabel!
+  @IBOutlet var leadingEdgeConstraint: NSLayoutConstraint!
+  @IBOutlet var background: UIView!
 
   /// Configure the cell's visual appearance.
   /// - Parameters:
@@ -20,9 +19,11 @@ import UIKit
   ///   - nestingLevel: How nested this chapter should look.
   ///   - isForCurrentChapter: `true` if the cell represents the current
   /// chapter the user is on.
-  @objc func config(withTitle title: String,
-                    nestingLevel: Int,
-                    isForCurrentChapter: Bool) {
+  @objc func config(
+    withTitle title: String,
+    nestingLevel: Int,
+    isForCurrentChapter: Bool
+  ) {
     leadingEdgeConstraint?.constant = 0
     leadingEdgeConstraint?.constant = CGFloat(nestingLevel * 20 + 10)
 

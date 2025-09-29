@@ -1,6 +1,8 @@
 import XCTest
 @testable import Palace
 
+// MARK: - FacetFilteringTests
+
 final class FacetFilteringTests: XCTestCase {
   struct MockNetworkClient: NetworkClient {
     let dataForURL: [String: Data]
@@ -23,7 +25,7 @@ final class FacetFilteringTests: XCTestCase {
 
     let mock = MockNetworkClient(dataForURL: [
       topURL.absoluteString: topXML.data(using: .utf8)!,
-      filteredURL.absoluteString: filteredXML.data(using: .utf8)!
+      filteredURL.absoluteString: filteredXML.data(using: .utf8)!,
     ])
 
     let api = DefaultCatalogAPI(client: mock, parser: OPDSParser())
@@ -31,7 +33,9 @@ final class FacetFilteringTests: XCTestCase {
     // When fetch top-level
     let top = try await api.fetchFeed(at: topURL)
     XCTAssertNotNil(top)
-    guard let objcFeed = top?.opdsFeed else { return XCTFail("missing opds feed") }
+    guard let objcFeed = top?.opdsFeed else {
+      return XCTFail("missing opds feed")
+    }
     let ungrouped = TPPCatalogUngroupedFeed(opdsFeed: objcFeed)!
     let groups = (ungrouped.facetGroups as? [TPPCatalogFacetGroup]) ?? []
     XCTAssertFalse(groups.isEmpty)
@@ -50,6 +54,8 @@ final class FacetFilteringTests: XCTestCase {
     }
   }
 }
+
+// MARK: - TestResources
 
 private enum TestResources {
   static func topLevelWithFacetXML(activeFacetHref: String) -> String {
@@ -77,5 +83,3 @@ private enum TestResources {
     """
   }
 }
-
-

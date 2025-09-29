@@ -11,6 +11,8 @@ import ReadiumShared
 
 typealias TPPReaderTOCLink = (level: Int, link: Link)
 
+// MARK: - TPPReaderTOCBusinessLogic
+
 /// This class captures the business logic related to the Table Of Contents
 /// for a given Readium 2 Publication.
 class TPPReaderTOCBusinessLogic {
@@ -19,13 +21,13 @@ class TPPReaderTOCBusinessLogic {
   private let currentLocation: Locator? // for current chapter
 
   init(r2Publication: Publication, currentLocation: Locator?) {
-    self.publication = r2Publication
+    publication = r2Publication
     self.currentLocation = currentLocation
 
     Task {
       let tocResult = await publication.tableOfContents()
       switch tocResult {
-      case .success(let toc):
+      case let .success(toc):
         self.tocElements = flatten(toc)
       case .failure:
         return
@@ -34,7 +36,7 @@ class TPPReaderTOCBusinessLogic {
   }
 
   private func flatten(_ links: [Link], level: Int = 0) -> [(level: Int, link: Link)] {
-    return links.flatMap { [(level, $0)] + flatten($0.children, level: level + 1) }
+    links.flatMap { [(level, $0)] + flatten($0.children, level: level + 1) }
   }
 
   var tocDisplayTitle: String {
@@ -59,7 +61,7 @@ class TPPReaderTOCBusinessLogic {
 
   func titleAndLevel(forItemAt index: Int) -> (title: String, level: Int) {
     let item = tocElements[index]
-    return (title: (item.link.title ?? item.link.href), level: item.level)
+    return (title: item.link.title ?? item.link.href, level: item.level)
   }
 
   func title(for href: String) -> String? {

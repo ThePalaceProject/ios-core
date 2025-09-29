@@ -6,8 +6,8 @@
 //  Copyright © 2021 The Palace Project. All rights reserved.
 //
 
-import UIKit
 import SwiftUI
+import UIKit
 
 class TPPOnboardingViewController: NSObject {
   @objc static func makeSwiftUIView(dismissHandler: @escaping (() -> Void)) -> UIViewController {
@@ -16,4 +16,3 @@ class TPPOnboardingViewController: NSObject {
     return controller
   }
 }
-

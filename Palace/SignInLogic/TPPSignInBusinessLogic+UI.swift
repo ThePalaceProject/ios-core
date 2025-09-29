@@ -9,7 +9,6 @@
 import UIKit
 
 extension TPPSignInBusinessLogic {
-
   /// Finalizes the sign in process by updating the user account for the
   /// library we are signing in to and calling the completion handler in
   /// case that was set, as well as dismissing the presented view controller
@@ -21,30 +20,35 @@ extension TPPSignInBusinessLogic {
   ///   - error: The error encountered during sign-in, if any.
   ///   - errorMessage: Error message to display, taking priority over `error`.
   ///   This can be a localization key.
-  func finalizeSignIn(forDRMAuthorization drmSuccess: Bool,
-                      error: Error? = nil,
-                      errorMessage: String? = nil) {
+  func finalizeSignIn(
+    forDRMAuthorization drmSuccess: Bool,
+    error: Error? = nil,
+    errorMessage: String? = nil
+  ) {
     TPPMainThreadRun.asyncIfNeeded {
       defer {
         self.uiDelegate?.businessLogicDidCompleteSignIn(self)
       }
 
-      self.updateUserAccount(forDRMAuthorization: drmSuccess,
-                             withBarcode: self.uiDelegate?.username,
-                             pin: self.uiDelegate?.pin,
-                             authToken: self.authToken,
-                             expirationDate: self.authTokenExpiration,
-                             patron: self.patron,
-                             cookies: self.cookies
+      self.updateUserAccount(
+        forDRMAuthorization: drmSuccess,
+        withBarcode: self.uiDelegate?.username,
+        pin: self.uiDelegate?.pin,
+        authToken: self.authToken,
+        expirationDate: self.authTokenExpiration,
+        patron: self.patron,
+        cookies: self.cookies
       )
 
       #if FEATURE_DRM_CONNECTOR
       guard drmSuccess else {
         NotificationCenter.default.post(name: .TPPSyncEnded, object: nil)
 
-        let alert = TPPAlertUtils.alert(title: Strings.Error.loginErrorTitle,
-                                         message: errorMessage,
-                                         error: error as NSError?)
+        let alert = TPPAlertUtils.alert(
+          title: Strings.Error.loginErrorTitle,
+          message: errorMessage,
+          error: error as NSError?
+        )
         TPPPresentationUtils.safelyPresent(alert, animated: true)
         return
       }
@@ -73,7 +77,6 @@ extension TPPSignInBusinessLogic {
   /// - Returns: An alert the caller needs to present in case there's syncing
   /// or book downloading/returning currently happening.
   @objc func logOutOrWarn() -> UIAlertController? {
-
     let title = Strings.TPPSigninBusinessLogic.signout
     let msg: String
     if bookRegistry.isSyncing {
@@ -85,19 +88,27 @@ extension TPPSignInBusinessLogic {
       return nil
     }
 
-    let alert = UIAlertController(title: title,
-                                  message: msg,
-                                  preferredStyle: .alert)
+    let alert = UIAlertController(
+      title: title,
+      message: msg,
+      preferredStyle: .alert
+    )
     alert.addAction(
-      UIAlertAction(title: title,
-                    style: .destructive,
-                    handler: { _ in
-                      self.performLogOut()
-      }))
+      UIAlertAction(
+        title: title,
+        style: .destructive,
+        handler: { _ in
+          self.performLogOut()
+        }
+      )
+    )
     alert.addAction(
-      UIAlertAction(title: Strings.Generic.wait,
-                    style: .cancel,
-                    handler: nil))
+      UIAlertAction(
+        title: Strings.Generic.wait,
+        style: .cancel,
+        handler: nil
+      )
+    )
 
     return alert
   }

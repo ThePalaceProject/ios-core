@@ -8,14 +8,14 @@
 
 import SwiftUI
 
-struct ImageProviders {
-  struct AudiobookSampleToolbar {
+enum ImageProviders {
+  enum AudiobookSampleToolbar {
     static let pause = Image(systemName: "pause.circle")
     static let play = Image(systemName: "play.circle")
     static let stepBack = Image(systemName: "gobackward.30")
   }
-  
-  struct MyBooksView {
+
+  enum MyBooksView {
     static let bookPlaceholder = UIImage(systemName: "book.closed.fill")
     static let audiobookBadge = Image("AudiobookBadge")
     static let unreadBadge = Image("Unread")

@@ -17,6 +17,3 @@ var latestAudiobookLocation: (book: String, location: String)? {
     }
   }
 }
-
-
-

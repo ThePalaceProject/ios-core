@@ -8,6 +8,8 @@
 
 import Foundation
 
+// MARK: - SampleType
+
 enum SampleType: String {
   case contentTypeEpubZip = "application/epub+zip"
   case overdriveWeb = "text/html"
@@ -18,12 +20,14 @@ enum SampleType: String {
   var needsDownload: Bool {
     switch self {
     case .contentTypeEpubZip, .overdriveAudiobookMpeg, .overdriveAudiobookWaveFile:
-      return true
+      true
     default:
-      return false
+      false
     }
   }
 }
+
+// MARK: - Sample
 
 protocol Sample {
   var url: URL { get }
@@ -35,8 +39,8 @@ extension Sample {
   var needsDownload: Bool { type.needsDownload }
 
   func fetchSample(completion: @escaping (NYPLResult<Data>) -> Void) {
-    let _ = TPPNetworkExecutor.shared.GET(url, useTokenIfAvailable: false) { result in
-        completion(result)
+    _ = TPPNetworkExecutor.shared.GET(url, useTokenIfAvailable: false) { result in
+      completion(result)
     }
   }
 }

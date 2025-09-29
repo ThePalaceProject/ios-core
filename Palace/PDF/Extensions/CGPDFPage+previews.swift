@@ -20,34 +20,34 @@ extension CGPDFPage {
       pageRect.origin = .zero
       pageRect.size = CGSize(width: pageRect.size.width * pdfScale, height: pageRect.size.height * pdfScale)
     }
-    
-    UIGraphicsBeginImageContext(pageRect.size);
-    
+
+    UIGraphicsBeginImageContext(pageRect.size)
+
     guard let context = UIGraphicsGetCurrentContext() else {
       return nil
     }
-    
+
     context.setFillColor(UIColor.white.cgColor)
     context.fill(pageRect)
     context.saveGState()
-    
+
     context.translateBy(x: 0, y: pageRect.size.height)
     context.scaleBy(x: 1, y: -1)
     context.scaleBy(x: pdfScale, y: pdfScale)
     context.drawPDFPage(self)
     context.restoreGState()
-    
+
     let image = UIGraphicsGetImageFromCurrentImageContext()
-    
+
     UIGraphicsEndImageContext()
     return image
   }
-  
+
   /// Thumbnail image of the page
   var thumbnail: UIImage? {
     image(of: .pdfThumbnailSize, for: .mediaBox)
   }
-  
+
   /// Preview image of the page
   var preview: UIImage? {
     image(of: .pdfPreviewSize, for: .mediaBox)

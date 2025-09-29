@@ -1,7 +1,9 @@
 import SwiftUI
 
+// MARK: - BookRowSkeletonView
+
 struct BookRowSkeletonView: View {
-  var imageSize: CGSize = CGSize(width: 100, height: 150)
+  var imageSize: CGSize = .init(width: 100, height: 150)
   @State private var pulse: Bool = false
   var body: some View {
     HStack(alignment: .top, spacing: 12) {
@@ -39,9 +41,11 @@ struct BookRowSkeletonView: View {
   }
 }
 
+// MARK: - BookListSkeletonView
+
 struct BookListSkeletonView: View {
   var rows: Int = 8
-  var imageSize: CGSize = CGSize(width: 100, height: 150)
+  var imageSize: CGSize = .init(width: 100, height: 150)
 
   var body: some View {
     ScrollView {
@@ -54,5 +58,3 @@ struct BookListSkeletonView: View {
     }
   }
 }
-
-

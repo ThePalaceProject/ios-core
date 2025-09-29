@@ -6,23 +6,22 @@
 //  Copyright © 2022 The Palace Project. All rights reserved.
 //
 
-import SwiftUI
 import PDFKit
+import SwiftUI
 
 /// Wraps PDFKit PDFThumbnails control
 struct TPPPDFThumbnailView: UIViewRepresentable {
-
   var pdfView: PDFView
-  
-  func makeUIView(context: Context) -> some UIView {
+
+  func makeUIView(context _: Context) -> some UIView {
     let view = PDFThumbnailView()
     view.pdfView = pdfView
     view.layoutMode = .horizontal
     view.backgroundColor = .systemBackground
     return view
   }
-  
-  func updateUIView(_ uiView: UIViewType, context: Context) {
+
+  func updateUIView(_: UIViewType, context _: Context) {
     //
   }
 }

@@ -10,11 +10,10 @@ import UIKit
 
 @objcMembers
 class TPPSamlIDPCell: UITableViewCell {
-
   let idpName: UILabel = {
     let label = UILabel()
     label.textAlignment = .right
-    label.font =  UIFont.customFont(forTextStyle: .subheadline)
+    label.font = UIFont.customFont(forTextStyle: .subheadline)
     label.textColor = UIColor.systemBlue
     return label
   }()
@@ -31,7 +30,8 @@ class TPPSamlIDPCell: UITableViewCell {
     idpName.heightAnchor.constraint(equalTo: contentView.heightAnchor, constant: -16).isActive = true
   }
 
-  required init?(coder aDecoder: NSCoder) {
+  @available(*, unavailable)
+  required init?(coder _: NSCoder) {
     fatalError("init(coder:) has not been implemented")
   }
 }

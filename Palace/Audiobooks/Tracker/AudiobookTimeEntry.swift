@@ -12,10 +12,10 @@ import Foundation
 ///
 /// Implements `DataManager` `TimeEntry` protocol
 struct AudiobookTimeEntry: TimeEntry, Codable, Hashable {
-    let id: String
-    let bookId: String
-    let libraryId: String
-    let timeTrackingUrl: URL
-    let duringMinute: String
-    let duration: Int
+  let id: String
+  let bookId: String
+  let libraryId: String
+  let timeTrackingUrl: URL
+  let duringMinute: String
+  let duration: Int
 }

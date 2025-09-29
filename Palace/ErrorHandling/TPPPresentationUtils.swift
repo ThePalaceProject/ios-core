@@ -21,9 +21,11 @@ class TPPPresentationUtils: NSObject {
   ///   - vc: The view controller to be presented.
   ///   - animated: Whether to animate the presentation of not.
   ///   - completion: Completion handler to be called when the presentation ends.
-  @objc class func safelyPresent(_ vc: UIViewController,
-                                 animated: Bool = true,
-                                 completion: (() -> Void)? = nil) {
+  @objc class func safelyPresent(
+    _ vc: UIViewController,
+    animated: Bool = true,
+    completion: (() -> Void)? = nil
+  ) {
     // Ensure this block is always executed on the main thread
     if !Thread.isMainThread {
       DispatchQueue.main.async {
@@ -31,36 +33,38 @@ class TPPPresentationUtils: NSObject {
       }
       return
     }
-    
+
     let delegate = UIApplication.shared.delegate
     guard var base = delegate?.window??.rootViewController else {
-      TPPErrorLogger.logError(withCode: .missingExpectedObject,
-                              summary: "Unable to find rootViewController",
-                              metadata: [
-                                "DelegateIsNil": (delegate == nil),
-                                "WindowIsNil": (delegate?.window == nil)
-                              ])
+      TPPErrorLogger.logError(
+        withCode: .missingExpectedObject,
+        summary: "Unable to find rootViewController",
+        metadata: [
+          "DelegateIsNil": delegate == nil,
+          "WindowIsNil": (delegate?.window == nil),
+        ]
+      )
       return
     }
-    
+
     while true {
       guard let topBase = base.presentedViewController else {
         break
       }
       base = topBase
     }
-    
+
     if let baseNavController = base as? UINavigationController,
        let inputNavController = vc as? UINavigationController,
        baseNavController.viewControllers.count == inputNavController.viewControllers.count,
        let baseVC = baseNavController.viewControllers.first,
-       let inputVC = inputNavController.viewControllers.first {
-      
+       let inputVC = inputNavController.viewControllers.first
+    {
       if type(of: baseVC) == type(of: inputVC) {
         return
       }
     }
-    
+
     base.present(vc, animated: animated, completion: completion)
   }
 }

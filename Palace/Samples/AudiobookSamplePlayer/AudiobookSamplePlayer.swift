@@ -9,6 +9,8 @@
 import AVFoundation
 import Combine
 
+// MARK: - AudiobookSamplePlayerState
+
 enum AudiobookSamplePlayerState {
   case initialized
   case loading
@@ -16,8 +18,9 @@ enum AudiobookSamplePlayerState {
   case playing
 }
 
-class AudiobookSamplePlayer: NSObject, ObservableObject {
+// MARK: - AudiobookSamplePlayer
 
+class AudiobookSamplePlayer: NSObject, ObservableObject {
   @Published var remainingTime = 0.0
   @Published var isLoading = false
   @Published var state: AudiobookSamplePlayerState = .initialized {
@@ -39,10 +42,14 @@ class AudiobookSamplePlayer: NSObject, ObservableObject {
     configureAudioSession()
     downloadFile()
   }
-  
+
   private func configureAudioSession() {
     do {
-      try AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio, options: [.allowBluetooth, .allowAirPlay])
+      try AVAudioSession.sharedInstance().setCategory(
+        .playback,
+        mode: .spokenAudio,
+        options: [.allowBluetooth, .allowAirPlay]
+      )
       try AVAudioSession.sharedInstance().setActive(true)
     } catch {
       TPPErrorLogger.logError(error, summary: "Failed to set audio session category")
@@ -77,7 +84,9 @@ class AudiobookSamplePlayer: NSObject, ObservableObject {
   }
 
   func goBack() {
-    guard let player = player, player.currentTime > 0 else { return }
+    guard let player = player, player.currentTime > 0 else {
+      return
+    }
     timer?.invalidate()
 
     self.player?.pause()
@@ -91,7 +100,9 @@ class AudiobookSamplePlayer: NSObject, ObservableObject {
   @objc private func setDuration() {
     guard let player = player,
           player.currentTime < player.duration
-    else { return }
+    else {
+      return
+    }
 
     DispatchQueue.main.async {
       self.remainingTime = player.duration - player.currentTime
@@ -114,8 +125,10 @@ class AudiobookSamplePlayer: NSObject, ObservableObject {
   private func downloadFile() {
     state = .loading
 
-    let _ = sample.fetchSample { [weak self]  result in
-      guard let self = self else { return }
+    _ = sample.fetchSample { [weak self] result in
+      guard let self = self else {
+        return
+      }
 
       switch result {
       case let .failure(error, _):
@@ -130,8 +143,10 @@ class AudiobookSamplePlayer: NSObject, ObservableObject {
   }
 }
 
+// MARK: AVAudioPlayerDelegate
+
 extension AudiobookSamplePlayer: AVAudioPlayerDelegate {
-  func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+  func audioPlayerDidFinishPlaying(_: AVAudioPlayer, successfully _: Bool) {
     state = .paused
   }
 }

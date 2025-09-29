@@ -10,6 +10,5 @@ import Foundation
 @testable import Palace
 
 class TPPMyBooksDownloadsCenterMock: TPPBookDownloadsDeleting {
-  func reset(_ libraryID: String!) {
-  }
+  func reset(_: String!) {}
 }

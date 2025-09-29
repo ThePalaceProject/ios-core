@@ -14,20 +14,18 @@ import Foundation
 import ReadiumShared
 
 enum LibraryServiceError: LocalizedError {
-  
   case invalidBook
   case cancelled
   case openFailed(Error)
-  
+
   var errorDescription: String? {
     switch self {
     case .invalidBook:
       Strings.Error.invalidBookError
-    case .openFailed(let error):
-       String(format: Strings.Error.openFailedError, error.localizedDescription)
+    case let .openFailed(error):
+      String(format: Strings.Error.openFailedError, error.localizedDescription)
     case .cancelled:
       nil
     }
   }
-  
 }

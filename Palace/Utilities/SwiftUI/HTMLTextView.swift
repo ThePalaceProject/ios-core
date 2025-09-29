@@ -15,16 +15,22 @@ struct HTMLTextView: View {
   }
 
   private func htmlToAttributedString(_ html: String) -> AttributedString? {
-    guard let data = html.data(using: .utf8) else { return nil }
+    guard let data = html.data(using: .utf8) else {
+      return nil
+    }
 
     let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [
       .documentType: NSAttributedString.DocumentType.html,
-      .characterEncoding: String.Encoding.utf8.rawValue
+      .characterEncoding: String.Encoding.utf8.rawValue,
     ]
 
     if let nsAttributedString = try? NSAttributedString(data: data, options: options, documentAttributes: nil) {
       let mutableAttributedString = NSMutableAttributedString(attributedString: nsAttributedString)
-      mutableAttributedString.addAttribute(.font, value: UIFont.palaceFont(ofSize: 15), range: NSRange(location: 0, length: mutableAttributedString.length))
+      mutableAttributedString.addAttribute(
+        .font,
+        value: UIFont.palaceFont(ofSize: 15),
+        range: NSRange(location: 0, length: mutableAttributedString.length)
+      )
       return AttributedString(mutableAttributedString)
     }
 

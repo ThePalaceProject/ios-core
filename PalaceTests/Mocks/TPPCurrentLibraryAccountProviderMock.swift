@@ -11,21 +11,25 @@ import Foundation
 
 class TPPCurrentLibraryAccountProviderMock: NSObject, TPPCurrentLibraryAccountProvider {
   var currentAccount: Account?
-  
+
   override init() {
     let feedURL = Bundle(for: TPPLibraryAccountMock.self)
       .url(forResource: "OPDS2CatalogsFeed", withExtension: "json")!
 
     let simplyeAuthDocURL = Bundle(for: TPPLibraryAccountMock.self)
-    .url(forResource: "simplye_authentication_document", withExtension: "json")!
-    
+      .url(forResource: "simplye_authentication_document", withExtension: "json")!
+
     let feedData = try! Data(contentsOf: feedURL)
     let feed = try! OPDS2CatalogsFeed.fromData(feedData)
 
-    currentAccount = Account(publication: feed.catalogs.first(where: { $0.metadata.title == "The SimplyE Collection" })!, imageCache: MockImageCache())
-    
+    currentAccount = Account(
+      publication: feed.catalogs.first(where: { $0.metadata.title == "The SimplyE Collection" })!,
+      imageCache: MockImageCache()
+    )
+
     super.init()
-    
-    currentAccount?.authenticationDocument = try! OPDS2AuthenticationDocument.fromData(try Data(contentsOf: simplyeAuthDocURL))
+
+    currentAccount?.authenticationDocument = try! OPDS2AuthenticationDocument
+      .fromData(try Data(contentsOf: simplyeAuthDocURL))
   }
 }

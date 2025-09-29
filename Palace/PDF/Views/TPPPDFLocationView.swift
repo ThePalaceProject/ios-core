@@ -6,23 +6,25 @@
 //  Copyright © 2022 The Palace Project. All rights reserved.
 //
 
-import SwiftUI
 import PalaceUIKit
+import SwiftUI
+
+// MARK: - TPPPDFLocationView
 
 /// PDF page location view
 struct TPPPDFLocationView: View {
   let location: TPPPDFLocation
   var emphasizeLevel: Int = -1
-  
+
   init(location: TPPPDFLocation) {
     self.location = location
   }
-  
+
   init(location: TPPPDFLocation, emphasizeLevel: Int) {
     self.location = location
     self.emphasizeLevel = emphasizeLevel
   }
-  
+
   var body: some View {
     HStack(alignment: .center) {
       VStack(alignment: .leading, spacing: 4) {
@@ -42,11 +44,16 @@ struct TPPPDFLocationView: View {
   }
 }
 
+// MARK: - TPPPDFLocationView_Previews
+
 struct TPPPDFLocationView_Previews: PreviewProvider {
-    static var previews: some View {
-      List {
-        TPPPDFLocationView(location: .init(title: "Chapter 1", subtitle: "Subtitle", pageLabel: "xi", pageNumber: 11), emphasizeLevel: 1)
-        TPPPDFLocationView(location: .init(title: "Chapter 1", subtitle: "Subtitle", pageLabel: "xi", pageNumber: 11))
-      }
+  static var previews: some View {
+    List {
+      TPPPDFLocationView(
+        location: .init(title: "Chapter 1", subtitle: "Subtitle", pageLabel: "xi", pageNumber: 11),
+        emphasizeLevel: 1
+      )
+      TPPPDFLocationView(location: .init(title: "Chapter 1", subtitle: "Subtitle", pageLabel: "xi", pageNumber: 11))
     }
+  }
 }

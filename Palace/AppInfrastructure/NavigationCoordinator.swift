@@ -1,6 +1,8 @@
+import PalaceAudiobookToolkit
 import SwiftUI
 import UIKit
-import PalaceAudiobookToolkit
+
+// MARK: - AppRoute
 
 /// High-level app routes for SwiftUI NavigationStack.
 /// Extend incrementally as new flows migrate to SwiftUI.
@@ -13,15 +15,21 @@ enum AppRoute: Hashable {
   case epub(BookRoute)
 }
 
+// MARK: - BookRoute
+
 /// Lightweight, hashable identifier for a book navigation route.
 /// Holds only stable identity for navigation path hashing.
 struct BookRoute: Hashable {
   let id: String
 }
 
+// MARK: - SearchRoute
+
 struct SearchRoute: Hashable {
   let id: UUID
 }
+
+// MARK: - NavigationCoordinator
 
 /// Centralized coordinator for NavigationStack-based routing.
 /// Owns a NavigationPath and transient payload storage to resolve non-hashable models.
@@ -39,7 +47,7 @@ final class NavigationCoordinator: ObservableObject {
   private var audioModelById: [String: AudiobookPlaybackModel] = [:]
   private var pdfContentById: [String: (TPPPDFDocument, TPPPDFDocumentMetadata)] = [:]
   private var catalogFilterStatesByURL: [String: CatalogLaneFilterState] = [:]
-  
+
   private let maxStoredItems = 100
   private var cleanupTimer: Timer?
 
@@ -52,14 +60,18 @@ final class NavigationCoordinator: ObservableObject {
   }
 
   func pop() {
-    guard !path.isEmpty else { return }
+    guard !path.isEmpty else {
+      return
+    }
     withAnimation(.easeInOut) {
       path.removeLast()
     }
   }
 
   func popToRoot() {
-    guard !path.isEmpty else { return }
+    guard !path.isEmpty else {
+      return
+    }
     withAnimation(.easeInOut) {
       path.removeLast(path.count)
     }
@@ -69,12 +81,12 @@ final class NavigationCoordinator: ObservableObject {
     bookById[book.identifier] = book
     scheduleCleanupIfNeeded()
   }
-  
+
   private func scheduleCleanupIfNeeded() {
-    let totalItems = bookById.count + searchBooksById.count + pdfControllerById.count + 
-                    audioControllerById.count + epubControllerById.count + audioModelById.count + 
-                    pdfContentById.count + catalogFilterStatesByURL.count
-    
+    let totalItems = bookById.count + searchBooksById.count + pdfControllerById.count +
+      audioControllerById.count + epubControllerById.count + audioModelById.count +
+      pdfContentById.count + catalogFilterStatesByURL.count
+
     if totalItems > maxStoredItems {
       cleanupTimer?.invalidate()
       cleanupTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { [weak self] _ in
@@ -82,28 +94,28 @@ final class NavigationCoordinator: ObservableObject {
       }
     }
   }
-  
+
   private func performCleanup() {
     let keepCount = maxStoredItems / 2
-    
+
     if bookById.count > keepCount {
       let keysToRemove = Array(bookById.keys.prefix(bookById.count - keepCount))
       keysToRemove.forEach { bookById.removeValue(forKey: $0) }
     }
-    
+
     if searchBooksById.count > keepCount {
       let keysToRemove = Array(searchBooksById.keys.prefix(searchBooksById.count - keepCount))
       keysToRemove.forEach { searchBooksById.removeValue(forKey: $0) }
     }
-    
+
     // Clear old controllers and models
     pdfControllerById.removeAll()
-    audioControllerById.removeAll() 
+    audioControllerById.removeAll()
     epubControllerById.removeAll()
     audioModelById.removeAll()
     pdfContentById.removeAll()
     catalogFilterStatesByURL.removeAll()
-    
+
     Log.info(#file, "🧹 NavigationCoordinator: Cleaned up cached items")
   }
 
@@ -122,6 +134,7 @@ final class NavigationCoordinator: ObservableObject {
   }
 
   // MARK: - Controllers
+
   func storePDFController(_ controller: UIViewController, forBookId id: String) {
     pdfControllerById[id] = controller
   }
@@ -147,6 +160,7 @@ final class NavigationCoordinator: ObservableObject {
   }
 
   // MARK: - SwiftUI payloads
+
   func storeAudioModel(_ model: AudiobookPlaybackModel, forBookId id: String) {
     audioModelById[id] = model
     scheduleCleanupIfNeeded()
@@ -163,39 +177,37 @@ final class NavigationCoordinator: ObservableObject {
   func resolvePDF(for route: BookRoute) -> (TPPPDFDocument, TPPPDFDocumentMetadata)? {
     pdfContentById[route.id]
   }
-  
+
   // MARK: - Catalog Filter State Management
-  
+
   func storeCatalogFilterState(_ state: CatalogLaneFilterState, for url: URL) {
     let key = makeURLKey(url)
     catalogFilterStatesByURL[key] = state
   }
-  
+
   func resolveCatalogFilterState(for url: URL) -> CatalogLaneFilterState? {
     let key = makeURLKey(url)
     return catalogFilterStatesByURL[key]
   }
-  
+
   func clearCatalogFilterState(for url: URL) {
     let key = makeURLKey(url)
     catalogFilterStatesByURL.removeValue(forKey: key)
   }
-  
+
   func clearAllCatalogFilterStates() {
     catalogFilterStatesByURL.removeAll()
   }
-  
+
   private func makeURLKey(_ url: URL) -> String {
-    return "\(url.path)?\(url.query ?? "")"
+    "\(url.path)?\(url.query ?? "")"
   }
 }
 
-// MARK: - Catalog Filter State
+// MARK: - CatalogLaneFilterState
 
 struct CatalogLaneFilterState {
   let appliedSelections: Set<String>
-  let currentSort: String  // Store as string to avoid enum duplication
+  let currentSort: String // Store as string to avoid enum duplication
   let facetGroups: [CatalogFilterGroup]
 }
-
-

@@ -8,90 +8,93 @@
 
 import UIKit
 
+// MARK: - TPPAgeCheckViewController
+
 class TPPAgeCheckViewController: UIViewController {
   typealias DisplayStrings = Strings.AgeCheck
   // Constants
   let textFieldHeight: CGFloat = 40.0
-  
+
   fileprivate var birthYearSelected = 0
-  
+
   weak var ageCheckDelegate: TPPAgeCheckValidationDelegate?
-  
+
   init(ageCheckDelegate: TPPAgeCheckValidationDelegate) {
     self.ageCheckDelegate = ageCheckDelegate
-    
+
     super.init(nibName: nil, bundle: nil)
   }
-  
-  required init?(coder: NSCoder) {
+
+  @available(*, unavailable)
+  required init?(coder _: NSCoder) {
     fatalError("init(coder:) has not been implemented")
   }
-  
+
   override func viewDidLoad() {
     super.viewDidLoad()
-    
-    self.setupView()
+
+    setupView()
   }
-  
+
   // We need to fail the age check because user can swipe down to dismiss the view controller in iOS 13+
   deinit {
     if !(ageCheckDelegate?.ageCheckCompleted ?? false) {
       ageCheckDelegate?.didFailAgeCheck()
     }
   }
-  
+
   @objc func completeAgeCheck() {
     guard ageCheckDelegate?.isValid(birthYear: birthYearSelected) ?? false else {
       return
     }
-    
+
     ageCheckDelegate?.didCompleteAgeCheck(birthYearSelected)
     ageCheckDelegate?.ageCheckCompleted = true
     dismiss(animated: true, completion: nil)
   }
-  
+
   // MARK: - UI
-  
+
   func updateBarButton() {
     rightBarButtonItem.isEnabled = ageCheckDelegate?.isValid(birthYear: birthYearSelected) ?? false
   }
-  
+
   @objc func hidePickerView() {
-    self.view.endEditing(true)
+    view.endEditing(true)
   }
-  
+
   func setupView() {
-    self.title = DisplayStrings.title
-    
+    title = DisplayStrings.title
+
     if #available(iOS 13.0, *) {
       view.backgroundColor = UIColor.systemGray6
     } else {
       view.backgroundColor = .white
     }
-    
+
     navigationItem.setRightBarButton(rightBarButtonItem, animated: true)
-    
+
     inputTextField.translatesAutoresizingMaskIntoConstraints = false
     titleLabel.translatesAutoresizingMaskIntoConstraints = false
-    
+
     view.addSubview(inputTextField)
     view.addSubview(titleLabel)
-    
+
     inputTextField.centerYAnchor.constraint(equalTo: view.centerYAnchor).isActive = true
     inputTextField.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 50).isActive = true
     inputTextField.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -50).isActive = true
     inputTextField.heightAnchor.constraint(equalToConstant: textFieldHeight).isActive = true
     view.bringSubviewToFront(inputTextField)
-    
+
     titleLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor).isActive = true
     titleLabel.bottomAnchor.constraint(equalTo: view.centerYAnchor, constant: -30).isActive = true
     titleLabel.widthAnchor.constraint(equalTo: inputTextField.widthAnchor).isActive = true
     titleLabel.heightAnchor.constraint(equalToConstant: textFieldHeight).isActive = true
     view.bringSubviewToFront(titleLabel)
   }
-  
+
   // MARK: - UI Components
-  
+
   let titleLabel: UILabel = {
     let label = UILabel()
     label.text = DisplayStrings.titleLabel
@@ -99,66 +102,86 @@ class TPPAgeCheckViewController: UIViewController {
     label.font = UIFont.customFont(forTextStyle: .headline)
     return label
   }()
-  
+
   lazy var pickerView: UIPickerView = {
     let view = UIPickerView()
     view.dataSource = self
     view.delegate = self
     return view
   }()
-  
+
   lazy var inputTextField: UITextField = {
     let textfield = UITextField()
     textfield.text = ""
-    
+
     textfield.delegate = self
 
     // Input View
     // UIToolbar gives an autolayout warning on iOS 13 if initialized by UIToolbar()
     // Initialize the toolbar with a frame like below fixes this issue
     // @seealso https://stackoverflow.com/questions/54284029/uitoolbar-with-uibarbuttonitem-layoutconstraint-issue
-    
+
     let toolbar = UIToolbar(frame: CGRect(x: 0, y: 0, width: UIScreen.main.bounds.size.width, height: 30))
     toolbar.sizeToFit()
-    let doneButton = UIBarButtonItem(title:DisplayStrings.done, style: .plain, target: self, action: #selector(hidePickerView))
-    let spaceButton = UIBarButtonItem(barButtonSystemItem: UIBarButtonItem.SystemItem.flexibleSpace, target: nil, action: nil)
+    let doneButton = UIBarButtonItem(
+      title: DisplayStrings.done,
+      style: .plain,
+      target: self,
+      action: #selector(hidePickerView)
+    )
+    let spaceButton = UIBarButtonItem(
+      barButtonSystemItem: UIBarButtonItem.SystemItem.flexibleSpace,
+      target: nil,
+      action: nil
+    )
 
     toolbar.setItems([spaceButton, doneButton], animated: false)
 
     textfield.inputAccessoryView = toolbar
     textfield.inputView = pickerView
-    
+
     // Styling
     let placeHolderString = DisplayStrings.placeholderString
     if #available(iOS 13.0, *) {
-      textfield.attributedPlaceholder = NSAttributedString(string: placeHolderString, attributes: [NSAttributedString.Key.foregroundColor: UIColor.label])
+      textfield.attributedPlaceholder = NSAttributedString(
+        string: placeHolderString,
+        attributes: [NSAttributedString.Key.foregroundColor: UIColor.label]
+      )
       textfield.backgroundColor = .systemBackground
       textfield.layer.borderColor = UIColor.separator.cgColor
     } else {
       textfield.backgroundColor = .white
-      textfield.attributedPlaceholder = NSAttributedString(string: placeHolderString, attributes: [NSAttributedString.Key.foregroundColor: UIColor.darkText])
+      textfield.attributedPlaceholder = NSAttributedString(
+        string: placeHolderString,
+        attributes: [NSAttributedString.Key.foregroundColor: UIColor.darkText]
+      )
       textfield.layer.borderColor = UIColor.darkGray.cgColor
     }
-    
+
     textfield.layer.borderWidth = 0.5
-    
+
     textfield.leftView = UIView(frame: CGRect(x: 0, y: 0, width: 15, height: textFieldHeight))
     textfield.rightView = UIImageView(image: UIImage(named: "ArrowDown"))
     textfield.leftViewMode = .always
     textfield.rightViewMode = .always
-    
+
     return textfield
   }()
-  
+
   lazy var rightBarButtonItem: UIBarButtonItem = {
-    let item = UIBarButtonItem(title: DisplayStrings.rightBarButtonItem, style: .plain, target: self, action: #selector(completeAgeCheck))
+    let item = UIBarButtonItem(
+      title: DisplayStrings.rightBarButtonItem,
+      style: .plain,
+      target: self,
+      action: #selector(completeAgeCheck)
+    )
     item.tintColor = .systemBlue
     item.isEnabled = false
     return item
   }()
 }
 
-// MARK: - UITextFieldDelegate
+// MARK: UITextFieldDelegate
 
 extension TPPAgeCheckViewController: UITextFieldDelegate {
   // Handle user's input by physical keyboard
@@ -168,25 +191,25 @@ extension TPPAgeCheckViewController: UITextFieldDelegate {
   }
 }
 
-// MARK: - UIPickerViewDelegate/Datasource
+// MARK: UIPickerViewDelegate, UIPickerViewDataSource
 
 extension TPPAgeCheckViewController: UIPickerViewDelegate, UIPickerViewDataSource {
-  func numberOfComponents(in pickerView: UIPickerView) -> Int {
-    return 1
+  func numberOfComponents(in _: UIPickerView) -> Int {
+    1
   }
-  
-  func pickerView(_ pickerView: UIPickerView, numberOfRowsInComponent component: Int) -> Int {
-    return ageCheckDelegate?.birthYearList.count ?? 0
+
+  func pickerView(_: UIPickerView, numberOfRowsInComponent _: Int) -> Int {
+    ageCheckDelegate?.birthYearList.count ?? 0
   }
-  
-  func pickerView(_ pickerView: UIPickerView, titleForRow row: Int, forComponent component: Int) -> String? {
+
+  func pickerView(_: UIPickerView, titleForRow row: Int, forComponent _: Int) -> String? {
     guard let delegate = ageCheckDelegate else {
       return ""
     }
     return "\(delegate.birthYearList[row])"
   }
-  
-  func pickerView(_ pickerView: UIPickerView, didSelectRow row: Int, inComponent component: Int) {
+
+  func pickerView(_: UIPickerView, didSelectRow row: Int, inComponent _: Int) {
     guard let delegate = ageCheckDelegate else {
       return
     }

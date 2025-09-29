@@ -6,7 +6,6 @@
 //  Copyright © 2025 The Palace Project. All rights reserved.
 //
 
-
 @MainActor
 class DeviceOrientation: ObservableObject {
   @Published var isLandscape: Bool = {
@@ -33,7 +32,7 @@ class DeviceOrientation: ObservableObject {
       let screenWidth = UIScreen.main.bounds.width
       let screenHeight = UIScreen.main.bounds.height
       let newIsLandscape = screenWidth > screenHeight
-      
+
       if self.isLandscape != newIsLandscape {
         self.isLandscape = newIsLandscape
       }

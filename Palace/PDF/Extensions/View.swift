@@ -8,9 +8,11 @@
 
 import SwiftUI
 
+// MARK: - SizePreferenceKey
+
 struct SizePreferenceKey: PreferenceKey {
   static var defaultValue: CGSize = .zero
-  static func reduce(value: inout CGSize, nextValue: () -> CGSize) {}
+  static func reduce(value _: inout CGSize, nextValue _: () -> CGSize) {}
 }
 
 extension View {
@@ -37,7 +39,7 @@ extension View {
   func visible(when: Bool) -> some View {
     opacity(when ? 1 : 0)
   }
-  
+
   /// Minimal size for toolbar buttons
   func toolbarButtonSize() -> some View {
     frame(minWidth: 24, minHeight: 24)
@@ -47,17 +49,19 @@ extension View {
 extension View {
   /// A convenience method for applying `TouchDownUpEventModifier.`
   func onTouchDownUp(pressed: @escaping ((Bool, DragGesture.Value) -> Void)) -> some View {
-    self.modifier(TouchDownUpEventModifier(pressed: pressed))
+    modifier(TouchDownUpEventModifier(pressed: pressed))
   }
 }
+
+// MARK: - TouchDownUpEventModifier
 
 struct TouchDownUpEventModifier: ViewModifier {
   /// Keep track of the current dragging state. To avoid using `onChange`, we won't use `GestureState`
   @State var dragged = false
-  
+
   /// A closure to call when the dragging state changes.
   var pressed: (Bool, DragGesture.Value) -> Void
-  
+
   func body(content: Content) -> some View {
     content
       .gesture(

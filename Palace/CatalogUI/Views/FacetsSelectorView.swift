@@ -1,5 +1,7 @@
 import SwiftUI
 
+// MARK: - FacetsSelectorView
+
 struct FacetsSelectorView: View {
   let facetGroups: [CatalogFilterGroup]
   let onSelect: (CatalogFilter) -> Void
@@ -28,7 +30,7 @@ struct FacetsSelectorView: View {
   }
 }
 
-// MARK: - Entry Points (Grouped feed filtering)
+// MARK: - EntryPointsSelectorView
 
 struct EntryPointsSelectorView: View {
   let entryPoints: [CatalogFilter]
@@ -60,7 +62,9 @@ struct EntryPointsSelectorView: View {
       }
     }
     .onChange(of: selectionIndex) { idx in
-      guard entryPoints.indices.contains(idx) else { return }
+      guard entryPoints.indices.contains(idx) else {
+        return
+      }
       pendingIndex = idx
       // Debounce slight delay to avoid double reloads when tabs change
       DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
@@ -84,5 +88,3 @@ struct EntryPointsSelectorView: View {
 private extension NSObject {
   @objc var _uuid: String { String(ObjectIdentifier(self).hashValue) }
 }
-
-

@@ -10,7 +10,6 @@ import UIKit
 
 @objcMembers
 class TPPLibraryDescriptionCell: UITableViewCell {
-
   let descriptionLabel: UILabel = {
     let label = UILabel()
     label.numberOfLines = 0
@@ -30,7 +29,8 @@ class TPPLibraryDescriptionCell: UITableViewCell {
     descriptionLabel.heightAnchor.constraint(equalTo: contentView.heightAnchor, constant: -16).isActive = true
   }
 
-  required init?(coder aDecoder: NSCoder) {
+  @available(*, unavailable)
+  required init?(coder _: NSCoder) {
     fatalError("init(coder:) has not been implemented")
   }
 }

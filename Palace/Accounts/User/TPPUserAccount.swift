@@ -1,5 +1,7 @@
 import Foundation
 
+// MARK: - StorageKey
+
 private enum StorageKey: String {
   // .barcode, .PIN, .authToken became legacy, as storage for those types was moved into .credentials enum
 
@@ -23,29 +25,36 @@ private enum StorageKey: String {
       // historically user data for NYPL has not used keys that contain the
       // library UUID.
       let libraryUUID = libraryUUID,
-      libraryUUID != AccountsManager.shared.tppAccountUUID else {
-        return self.rawValue
+      libraryUUID != AccountsManager.shared.tppAccountUUID
+    else {
+      return rawValue
     }
 
-    return "\(self.rawValue)_\(libraryUUID)"
+    return "\(rawValue)_\(libraryUUID)"
   }
 }
 
+// MARK: - TPPUserAccountProvider
+
 @objc protocol TPPUserAccountProvider: NSObjectProtocol {
-  var needsAuth:Bool { get }
-  
+  var needsAuth: Bool { get }
+
   static func sharedAccount(libraryUUID: String?) -> TPPUserAccount
 }
 
-@objcMembers class TPPUserAccount : NSObject, TPPUserAccountProvider {
-  static private let shared = TPPUserAccount()
+// MARK: - TPPUserAccount
+
+@objcMembers class TPPUserAccount: NSObject, TPPUserAccountProvider {
+  private static let shared = TPPUserAccount()
   private let accountInfoQueue = DispatchQueue(label: "TPPUserAccount.accountInfoQueue")
   private lazy var keychainTransaction = TPPKeychainVariableTransaction(accountInfoQueue: accountInfoQueue)
   private var notifyAccountChange: Bool = true
 
   var libraryUUID: String? {
     didSet {
-      guard libraryUUID != oldValue else { return }
+      guard libraryUUID != oldValue else {
+        return
+      }
       let variables: [StorageKey: Keyable] = [
         StorageKey.authorizationIdentifier: _authorizationIdentifier,
         StorageKey.adobeToken: _adobeToken,
@@ -74,16 +83,18 @@ private enum StorageKey: String {
   var authDefinition: AccountDetails.Authentication? {
     get {
       guard let read = _authDefinition.read() else {
-        if let libraryUUID = self.libraryUUID {
+        if let libraryUUID = libraryUUID {
           return AccountsManager.shared.account(libraryUUID)?.details?.auths.first
         }
-            
+
         return AccountsManager.shared.currentAccount?.details?.auths.first
       }
       return read
     }
     set {
-      guard let newValue = newValue else { return }
+      guard let newValue = newValue else {
+        return
+      }
       _authDefinition.write(newValue)
 
       DispatchQueue.main.async {
@@ -97,12 +108,14 @@ private enum StorageKey: String {
           }
 
           self.notifyAccountChange = true
-
         }
 
         if self.needsAgeCheck {
-          AccountsManager.shared.ageCheck.verifyCurrentAccountAgeRequirement(userAccountProvider: self,
-                                                                             currentLibraryAccountProvider: AccountsManager.shared) { [weak self] meetsAgeRequirement in
+          AccountsManager.shared.ageCheck.verifyCurrentAccountAgeRequirement(
+            userAccountProvider: self,
+            currentLibraryAccountProvider: AccountsManager
+              .shared
+          ) { [weak self] meetsAgeRequirement in
             DispatchQueue.main.async {
               mainFeed = self?.authDefinition?.coppaURL(isOfAge: meetsAgeRequirement)
               resolveFn()
@@ -171,9 +184,9 @@ private enum StorageKey: String {
     // (being saved into the UserDefaults) while the latter is only available
     // after the app startup sequence is complete (i.e. authentication
     // document has been loaded.
-    return sharedAccount(libraryUUID: AccountsManager.shared.currentAccountId)
+    sharedAccount(libraryUUID: AccountsManager.shared.currentAccountId)
   }
-    
+
   class func sharedAccount(libraryUUID: String?) -> TPPUserAccount {
     shared.accountInfoQueue.sync {
       shared.libraryUUID = libraryUUID
@@ -194,16 +207,17 @@ private enum StorageKey: String {
   }
 
   // MARK: - Storage
+
   private lazy var _authorizationIdentifier: TPPKeychainVariable<String> = StorageKey.authorizationIdentifier
     .keyForLibrary(uuid: libraryUUID)
     .asKeychainVariable(with: accountInfoQueue)
   private lazy var _adobeToken: TPPKeychainVariable<String> = StorageKey.adobeToken
     .keyForLibrary(uuid: libraryUUID)
     .asKeychainVariable(with: accountInfoQueue)
-  private lazy var _licensor: TPPKeychainVariable<[String:Any]> = StorageKey.licensor
+  private lazy var _licensor: TPPKeychainVariable<[String: Any]> = StorageKey.licensor
     .keyForLibrary(uuid: libraryUUID)
     .asKeychainVariable(with: accountInfoQueue)
-  private lazy var _patron: TPPKeychainVariable<[String:Any]> = StorageKey.patron
+  private lazy var _patron: TPPKeychainVariable<[String: Any]> = StorageKey.patron
     .keyForLibrary(uuid: libraryUUID)
     .asKeychainVariable(with: accountInfoQueue)
   private lazy var _adobeVendor: TPPKeychainVariable<String> = StorageKey.adobeVendor
@@ -221,7 +235,8 @@ private enum StorageKey: String {
   private lazy var _credentials: TPPKeychainCodableVariable<TPPCredentials> = StorageKey.credentials
     .keyForLibrary(uuid: libraryUUID)
     .asKeychainCodableVariable(with: accountInfoQueue)
-  private lazy var _authDefinition: TPPKeychainCodableVariable<AccountDetails.Authentication> = StorageKey.authDefinition
+  private lazy var _authDefinition: TPPKeychainCodableVariable<AccountDetails.Authentication> = StorageKey
+    .authDefinition
     .keyForLibrary(uuid: libraryUUID)
     .asKeychainCodableVariable(with: accountInfoQueue)
   private lazy var _cookies: TPPKeychainVariable<[HTTPCookie]> = StorageKey.cookies
@@ -240,50 +255,50 @@ private enum StorageKey: String {
     .asKeychainVariable(with: accountInfoQueue)
 
   // MARK: - Check
-    
+
   func hasBarcodeAndPIN() -> Bool {
     if let credentials = credentials, case TPPCredentials.barcodeAndPin = credentials {
       return true
     }
     return false
   }
-  
+
   func hasAuthToken() -> Bool {
     if let credentials = credentials, case TPPCredentials.token = credentials {
       return true
     }
     return false
   }
-  
+
   func isTokenRefreshRequired() -> Bool {
     let isTokenAuthAndMissing = (authDefinition?.isToken ?? false) &&
-    !hasAuthToken() &&
-    ((TPPUserAccount.sharedAccount().authDefinition?.tokenURL) != nil)
-    
+      !hasAuthToken() &&
+      ((TPPUserAccount.sharedAccount().authDefinition?.tokenURL) != nil)
+
     return (authTokenHasExpired || isTokenAuthAndMissing) && hasCredentials()
   }
-  
+
   func hasAdobeToken() -> Bool {
-    return adobeToken != nil
+    adobeToken != nil
   }
-  
+
   func hasLicensor() -> Bool {
-    return licensor != nil
+    licensor != nil
   }
-  
+
   func hasCredentials() -> Bool {
-    return hasAuthToken() || hasBarcodeAndPIN()
+    hasAuthToken() || hasBarcodeAndPIN()
   }
 
   // Oauth requires login to load catalog
   var catalogRequiresAuthentication: Bool {
-    return authDefinition?.catalogRequiresAuthentication ?? false
+    authDefinition?.catalogRequiresAuthentication ?? false
   }
 
   // MARK: - Legacy
-  
-  private var legacyBarcode: String? { return _barcode.read() }
-  private var legacyPin: String? { return _pin.read() }
+
+  private var legacyBarcode: String? { _barcode.read() }
+  private var legacyPin: String? { _pin.read() }
   var legacyAuthToken: String? { _authToken.read() }
 
   // MARK: - GET
@@ -298,7 +313,9 @@ private enum StorageKey: String {
   /// features of platform.nypl.org will work if you give them a 14-digit
   /// barcode but not a 7-letter username or a 16-digit NYC ID.
   var barcode: String? {
-    guard let credentials = credentials else { return nil }
+    guard let credentials = credentials else {
+      return nil
+    }
 
     switch credentials {
     case let TPPCredentials.barcodeAndPin(barcode: barcode, pin: _):
@@ -326,8 +343,10 @@ private enum StorageKey: String {
   var authorizationIdentifier: String? { _authorizationIdentifier.read() }
 
   var PIN: String? {
-    guard let credentials = credentials else { return nil }
-    
+    guard let credentials = credentials else {
+      return nil
+    }
+
     switch credentials {
     case let TPPCredentials.barcodeAndPin(barcode: _, pin: pin):
       return pin
@@ -338,13 +357,13 @@ private enum StorageKey: String {
     }
   }
 
-  var needsAuth:Bool {
+  var needsAuth: Bool {
     let authType = authDefinition?.authType ?? .none
     return authType == .basic || authType == .oauthIntermediary || authType == .saml || authType == .token
   }
 
-  var needsAgeCheck:Bool {
-    return authDefinition?.authType == .coppa
+  var needsAgeCheck: Bool {
+    authDefinition?.authType == .coppa
   }
 
   var deviceID: String? { _deviceID.read() }
@@ -352,14 +371,15 @@ private enum StorageKey: String {
   var userID: String? { _userID.read() }
   var adobeVendor: String? { _adobeVendor.read() }
   var provider: String? { _provider.read() }
-  var patron: [String:Any]? { _patron.read() }
+  var patron: [String: Any]? { _patron.read() }
   var adobeToken: String? { _adobeToken.read() }
-  var licensor: [String:Any]? { _licensor.read() }
+  var licensor: [String: Any]? { _licensor.read() }
   var cookies: [HTTPCookie]? { _cookies.read() }
 
   var authToken: String? {
     if let credentials = _credentials.read(),
-       case let TPPCredentials.token(authToken: token, barcode: _, pin: _, expirationDate: _) = credentials {
+       case let TPPCredentials.token(authToken: token, barcode: _, pin: _, expirationDate: _) = credentials
+    {
       return token
     }
     return nil
@@ -367,55 +387,54 @@ private enum StorageKey: String {
 
   var authTokenHasExpired: Bool {
     guard let credentials = credentials,
-            case let TPPCredentials.token(authToken: token) = credentials,
-            let expirationDate = token.expirationDate, expirationDate > Date()
+          case let TPPCredentials.token(authToken: token) = credentials,
+          let expirationDate = token.expirationDate, expirationDate > Date()
     else {
       return true
     }
-    
-   return false
+
+    return false
   }
 
   var patronFullName: String? {
     if let patron = patron,
-      let name = patron["name"] as? [String:String]
+       let name = patron["name"] as? [String: String]
     {
       var fullname = ""
-      
+
       if let first = name["first"] {
         fullname.append(first)
       }
-      
+
       if let middle = name["middle"] {
         if fullname.count > 0 {
           fullname.append(" ")
         }
         fullname.append(middle)
       }
-      
+
       if let last = name["last"] {
         if fullname.count > 0 {
           fullname.append(" ")
         }
         fullname.append(last)
       }
-      
+
       return fullname.count > 0 ? fullname : nil
     }
-    
+
     return nil
   }
 
-
-
   // MARK: - SET
+
   @objc(setBarcode:PIN:)
   func setBarcode(_ barcode: String, PIN: String) {
     credentials = .barcodeAndPin(barcode: barcode, pin: PIN)
   }
-    
+
   @objc(setAdobeToken:patron:)
-  func setAdobeToken(_ token: String, patron: [String : Any]) {
+  func setAdobeToken(_ token: String, patron: [String: Any]) {
     keychainTransaction.perform {
       _adobeToken.write(token)
       _patron.write(patron)
@@ -423,21 +442,21 @@ private enum StorageKey: String {
 
     notifyAccountDidChange()
   }
-  
+
   @objc(setAdobeVendor:)
   func setAdobeVendor(_ vendor: String) {
     _adobeVendor.write(vendor)
     notifyAccountDidChange()
   }
-  
+
   @objc(setAdobeToken:)
   func setAdobeToken(_ token: String) {
     _adobeToken.write(token)
     notifyAccountDidChange()
   }
-  
+
   @objc(setLicensor:)
-  func setLicensor(_ licensor: [String : Any]) {
+  func setLicensor(_ licensor: [String: Any]) {
     _licensor.write(licensor)
   }
 
@@ -451,13 +470,13 @@ private enum StorageKey: String {
   func setAuthorizationIdentifier(_ identifier: String) {
     _authorizationIdentifier.write(identifier)
   }
-  
+
   @objc(setPatron:)
-  func setPatron(_ patron: [String : Any]) {
+  func setPatron(_ patron: [String: Any]) {
     _patron.write(patron)
     notifyAccountDidChange()
   }
-  
+
   @objc(setAuthToken::::)
   func setAuthToken(_ token: String, barcode: String?, pin: String?, expirationDate: Date?) {
     keychainTransaction.perform {
@@ -483,13 +502,13 @@ private enum StorageKey: String {
     _userID.write(id)
     notifyAccountDidChange()
   }
-  
+
   @objc(setDeviceID:)
   func setDeviceID(_ id: String) {
     _deviceID.write(id)
     notifyAccountDidChange()
   }
-    
+
   // MARK: - Remove
 
   func removeAll() {
@@ -514,25 +533,31 @@ private enum StorageKey: String {
 
         notifyAccountDidChange()
 
-        NotificationCenter.default.post(name: Notification.Name.TPPDidSignOut,
-                                        object: nil)
+        NotificationCenter.default.post(
+          name: Notification.Name.TPPDidSignOut,
+          object: nil
+        )
       }
     }
   }
 }
 
+// MARK: TPPSignedInStateProvider
+
 extension TPPUserAccount: TPPSignedInStateProvider {
   func isSignedIn() -> Bool {
-    return hasCredentials()
+    hasCredentials()
   }
 }
 
+// MARK: NYPLBasicAuthCredentialsProvider
+
 extension TPPUserAccount: NYPLBasicAuthCredentialsProvider {
   var username: String? {
-    return barcode
+    barcode
   }
-  
+
   var pin: String? {
-    return PIN
+    PIN
   }
 }

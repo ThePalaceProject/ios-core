@@ -9,10 +9,9 @@
 import Foundation
 
 class TPPPDFPreviewGridCell: UICollectionViewCell {
-  
   /// Page number for the page preview image
   var pageNumber: Int?
-  
+
   var imageView: UIImageView = {
     let imageView = UIImageView()
     imageView.backgroundColor = .clear
@@ -22,7 +21,7 @@ class TPPPDFPreviewGridCell: UICollectionViewCell {
     imageView.layer.shadowOpacity = 0.2
     return imageView
   }()
-  
+
   var pageLabel: UILabel = {
     let label = UILabel()
     label.font = UIFont.systemFont(ofSize: UIFont.smallSystemFontSize)
@@ -32,7 +31,7 @@ class TPPPDFPreviewGridCell: UICollectionViewCell {
   }()
 
   @available(*, unavailable)
-  required init?(coder: NSCoder) {
+  required init?(coder _: NSCoder) {
     fatalError("init(coder:) has not been implemented")
   }
 
@@ -40,7 +39,7 @@ class TPPPDFPreviewGridCell: UICollectionViewCell {
     super.init(frame: frame)
     addSubviews()
   }
-  
+
   func addSubviews() {
     addSubview(imageView)
     addSubview(pageLabel)

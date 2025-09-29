@@ -11,16 +11,16 @@ import Foundation
 
 class TPPUserAccountProviderMock: NSObject, TPPUserAccountProvider {
   private static let userAccountMock = TPPUserAccountMock()
-  
+
   var needsAuth: Bool
-  
-  static func sharedAccount(libraryUUID: String?) -> TPPUserAccount {
-    return userAccountMock
+
+  static func sharedAccount(libraryUUID _: String?) -> TPPUserAccount {
+    userAccountMock
   }
-  
+
   override init() {
     needsAuth = false
-    
+
     super.init()
   }
 }

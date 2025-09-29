@@ -9,7 +9,6 @@
 import Foundation
 
 extension URLRequest {
-
   /// Since a request can include sensitive data such as access tokens, etc,
   /// this computed variable includes a "safe" set of data that we can log.
   var loggableString: String {
@@ -24,12 +23,12 @@ extension URLRequest {
 
 @objc extension NSURLRequest {
   var loggableString: String {
-    return (self as URLRequest).loggableString
+    (self as URLRequest).loggableString
   }
 }
 
 extension URLRequest {
   var isTokenAuthorized: Bool {
-    self.allHTTPHeaderFields?["Authorization"]?.hasPrefix("Bearer") ?? false
+    allHTTPHeaderFields?["Authorization"]?.hasPrefix("Bearer") ?? false
   }
 }

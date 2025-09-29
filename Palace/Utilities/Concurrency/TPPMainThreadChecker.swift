@@ -6,11 +6,10 @@
 //  Copyright © 2020 NYPL Labs. All rights reserved.
 //
 
-import Foundation
 import Dispatch
+import Foundation
 
 @objc class TPPMainThreadRun: NSObject {
-
   /// Makes sure to run the specified work item synchronously on the
   /// main __thread__.
   /// - Note: If the caller was already executing on the main thread,
@@ -48,4 +47,3 @@ import Dispatch
     }
   }
 }
-

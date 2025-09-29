@@ -11,14 +11,14 @@ extension TPPMigrationManager {
   static func runMigrations() {
     // Fetch and parse app version
     let appVersion = TPPSettings.shared.appVersion ?? ""
-    let appVersionTokens = appVersion.split(separator: ".").compactMap({ Int($0) })
+    let appVersionTokens = appVersion.split(separator: ".").compactMap { Int($0) }
 
     // Run through migration stages
     if version(appVersionTokens, isLessThan: [3, 2, 0]) { // v3.2.0
-      migrate1();
+      migrate1()
     }
     if version(appVersionTokens, isLessThan: [3, 3, 0]) { // v3.3.0
-      migrate2();
+      migrate2()
     }
 
     // Migrate Network Queue DB
@@ -27,7 +27,7 @@ extension TPPMigrationManager {
 
   // v3.2.0
   // Account IDs are changing, so we need to migrate resources accordingly
-  private static func migrate1() -> Void {
+  private static func migrate1() {
     Log.info(#file, "Running 3.2.0 migration")
 
     // Build account map where the key is the old account ID and the value is the new account ID
@@ -53,11 +53,12 @@ extension TPPMigrationManager {
 
     // Build old & new lists for reference in logic
     // Note: Can't use NYPLSettings because the swift version stops using optionals and performs coerscions
-    let oldAccountsList = UserDefaults.standard.array(forKey: "NYPLSettingsLibraryAccountsKey")?.compactMap({ $0 as? Int }) ?? [Int]()
-    let newAccountsList = UserDefaults.standard.array(forKey: "NYPLSettingsLibraryAccountsKey")?.compactMap({
+    let oldAccountsList = UserDefaults.standard.array(forKey: "NYPLSettingsLibraryAccountsKey")?
+      .compactMap { $0 as? Int } ?? [Int]()
+    let newAccountsList = UserDefaults.standard.array(forKey: "NYPLSettingsLibraryAccountsKey")?.compactMap {
       let idInt = $0 as? Int
       return $0 as? String ?? (idInt != nil ? accountMap[idInt!] : nil)
-    }) ?? [String]()
+    } ?? [String]()
 
     // Assign new uuid account list
     // The list of accounts would have been integers before; they will now be stored as a list of strings
@@ -94,7 +95,10 @@ extension TPPMigrationManager {
         do {
           try FileManager.default.moveItem(atPath: oldDirectoryPath.path, toPath: newDirectoryPath.path)
         } catch {
-          Log.error(#file, "Could not move directory from \(oldDirectoryPath.path) to \(newDirectoryPath.path) \(error)")
+          Log.error(
+            #file,
+            "Could not move directory from \(oldDirectoryPath.path) to \(newDirectoryPath.path) \(error)"
+          )
         }
       }
     }
@@ -102,11 +106,16 @@ extension TPPMigrationManager {
 
   // v3.3.0
   // Cached library registry results locations are changing
-  private static func migrate2() -> Void {
+  private static func migrate2() {
     Log.info(#file, "Running 3.3.0 migration")
 
     // Cache locations are changing for catalogs, so we'll simply remove anything at the old locations
-    let applicationSupportUrl = try! FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+    let applicationSupportUrl = try! FileManager.default.url(
+      for: .applicationSupportDirectory,
+      in: .userDomainMask,
+      appropriateFor: nil,
+      create: true
+    )
     let origBetaUrl = applicationSupportUrl.appendingPathComponent("library_list_beta.json")
     let origProdUrl = applicationSupportUrl.appendingPathComponent("library_list_prod.json")
     try? FileManager.default.removeItem(at: origBetaUrl)

@@ -22,7 +22,7 @@ class Date_NYPLAdditionsTests: XCTestCase {
     // the first call is several orders of magnitude more expensive
     _ = date.rfc1123String
 
-    self.measure {
+    measure {
       (1...4000).forEach { _ in
         _ = date.rfc1123String
       }
@@ -49,12 +49,12 @@ class Date_NYPLAdditionsTests: XCTestCase {
 
     let dateComponents = date?.utcComponents()
     XCTAssertNotNil(dateComponents)
-    XCTAssertEqual(dateComponents?.year, 1984);
-    XCTAssertEqual(dateComponents?.month, 9);
-    XCTAssertEqual(dateComponents?.day, 8);
-    XCTAssertEqual(dateComponents?.hour, 8);
-    XCTAssertEqual(dateComponents?.minute, 23);
-    XCTAssertEqual(dateComponents?.second, 45);
+    XCTAssertEqual(dateComponents?.year, 1984)
+    XCTAssertEqual(dateComponents?.month, 9)
+    XCTAssertEqual(dateComponents?.day, 8)
+    XCTAssertEqual(dateComponents?.hour, 8)
+    XCTAssertEqual(dateComponents?.minute, 23)
+    XCTAssertEqual(dateComponents?.second, 45)
   }
 
   func testParsesRFC3339DateWithFractionalSecondsCorrectly() {
@@ -63,12 +63,12 @@ class Date_NYPLAdditionsTests: XCTestCase {
 
     let dateComponents = date?.utcComponents()
     XCTAssertNotNil(dateComponents)
-    XCTAssertEqual(dateComponents?.year, 1984);
-    XCTAssertEqual(dateComponents?.month, 9);
-    XCTAssertEqual(dateComponents?.day, 8);
-    XCTAssertEqual(dateComponents?.hour, 8);
-    XCTAssertEqual(dateComponents?.minute, 23);
-    XCTAssertEqual(dateComponents?.second, 45);
+    XCTAssertEqual(dateComponents?.year, 1984)
+    XCTAssertEqual(dateComponents?.month, 9)
+    XCTAssertEqual(dateComponents?.day, 8)
+    XCTAssertEqual(dateComponents?.hour, 8)
+    XCTAssertEqual(dateComponents?.minute, 23)
+    XCTAssertEqual(dateComponents?.second, 45)
   }
 
   func testRFC3339RoundTrip() {
@@ -80,6 +80,4 @@ class Date_NYPLAdditionsTests: XCTestCase {
 
     XCTAssertEqual(dateString, "1984-09-08T08:23:45Z")
   }
-
-
 }

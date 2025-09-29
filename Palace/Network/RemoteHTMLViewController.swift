@@ -9,41 +9,41 @@ import WebKit
   let failureMessage: String
   var webView: WKWebView
   var activityView: UIActivityIndicatorView!
-  
+
   required init(URL: URL, title: String, failureMessage: String) {
-    self.fileURL = URL
+    fileURL = URL
     self.failureMessage = failureMessage
-    self.webView = WKWebView()
-    
+    webView = WKWebView()
+
     super.init(nibName: nil, bundle: nil)
-    
+
     self.title = title
   }
-  
+
   @available(*, unavailable)
-  required init?(coder aDecoder: NSCoder) {
+  required init?(coder _: NSCoder) {
     fatalError("init(coder:) has not been implemented")
   }
-  
+
   override func viewDidLoad() {
     super.viewDidLoad()
-    webView.frame = self.view.frame
+    webView.frame = view.frame
     webView.navigationDelegate = self
     webView.backgroundColor = UIColor.white
     webView.allowsBackForwardNavigationGestures = true
 
-    view.addSubview(self.webView)
+    view.addSubview(webView)
     webView.autoPinEdgesToSuperviewEdges()
 
-    let request = URLRequest.init(url: fileURL, cachePolicy: .useProtocolCachePolicy, timeoutInterval: 10.0)
+    let request = URLRequest(url: fileURL, cachePolicy: .useProtocolCachePolicy, timeoutInterval: 10.0)
     webView.load(request)
-    
+
     activityViewShouldShow(true)
   }
-  
-  func activityViewShouldShow(_ shouldShow: Bool) -> Void {
+
+  func activityViewShouldShow(_ shouldShow: Bool) {
     if shouldShow == true {
-      activityView = UIActivityIndicatorView.init(style: .medium)
+      activityView = UIActivityIndicatorView(style: .medium)
       view.addSubview(activityView)
       activityView.autoCenterInSuperview()
       activityView.startAnimating()
@@ -53,26 +53,31 @@ import WebKit
     }
   }
 
-  func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+  func webView(_ webView: WKWebView, didFailProvisionalNavigation _: WKNavigation!, withError error: Error) {
     activityViewShouldShow(false)
-    let alert = UIAlertController.init(title: Strings.Error.connectionFailed,
-                                       message: error.localizedDescription,
-                                       preferredStyle: .alert)
-    let action1 = UIAlertAction.init(title: Strings.Generic.cancel, style: .destructive) { (cancelAction) in
+    let alert = UIAlertController(
+      title: Strings.Error.connectionFailed,
+      message: error.localizedDescription,
+      preferredStyle: .alert
+    )
+    let action1 = UIAlertAction(title: Strings.Generic.cancel, style: .destructive) { _ in
       _ = self.navigationController?.popViewController(animated: true)
     }
-    let action2 = UIAlertAction.init(title: Strings.Generic.reload, style: .destructive) { (reloadAction) in
+    let action2 = UIAlertAction(title: Strings.Generic.reload, style: .destructive) { _ in
       var urlRequest = URLRequest(url: self.fileURL, cachePolicy: .useProtocolCachePolicy, timeoutInterval: 10.0)
       webView.load(urlRequest.applyCustomUserAgent())
     }
-    
+
     alert.addAction(action1)
     alert.addAction(action2)
-    self.present(alert, animated: true, completion: nil)
+    present(alert, animated: true, completion: nil)
   }
-  
-  func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
 
+  func webView(
+    _: WKWebView,
+    decidePolicyFor navigationAction: WKNavigationAction,
+    decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+  ) {
     guard navigationAction.navigationType == .linkActivated, let url = navigationAction.request.url else {
       decisionHandler(.allow)
       return
@@ -83,14 +88,16 @@ import WebKit
     }
     decisionHandler(.cancel)
   }
-  
-  func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+
+  func webView(_: WKWebView, didFinish _: WKNavigation!) {
     activityViewShouldShow(false)
   }
 
-  func webView(_ webView: WKWebView,
-               didFail navigation: WKNavigation!,
-               withError error: Error) {
+  func webView(
+    _: WKWebView,
+    didFail _: WKNavigation!,
+    withError _: Error
+  ) {
     activityViewShouldShow(false)
   }
 }

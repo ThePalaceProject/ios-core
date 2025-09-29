@@ -25,7 +25,10 @@ class TPPLibraryAccountMock: NSObject, TPPLibraryAccountsProvider {
     let feedData = try! Data(contentsOf: feedURL)
     feed = try! OPDS2CatalogsFeed.fromData(feedData)
 
-    tppAccount = Account(publication: feed.catalogs.first(where: { $0.metadata.title == "The New York Public Library" })!, imageCache: MockImageCache())
+    tppAccount = Account(
+      publication: feed.catalogs.first(where: { $0.metadata.title == "The New York Public Library" })!,
+      imageCache: MockImageCache()
+    )
 
     super.init()
 
@@ -33,47 +36,53 @@ class TPPLibraryAccountMock: NSObject, TPPLibraryAccountsProvider {
   }
 
   var barcodeAuthentication: AccountDetails.Authentication {
-    return tppAccount.details!.auths.first { $0.authType == .basic }!
+    tppAccount.details!.auths.first { $0.authType == .basic }!
   }
 
   var oauthAuthentication: AccountDetails.Authentication {
-    return tppAccount.details!.auths.first { $0.authType == .oauthIntermediary }!
+    tppAccount.details!.auths.first { $0.authType == .oauthIntermediary }!
   }
 
   var cleverAuthentication: AccountDetails.Authentication {
-    return oauthAuthentication
+    oauthAuthentication
   }
 
   var samlAuthentication: AccountDetails.Authentication {
-    return tppAccount.details!.auths.first { $0.authType == .saml }!
+    tppAccount.details!.auths.first { $0.authType == .saml }!
   }
 
   var tppAccountUUID: String {
-    return tppAccount.uuid
+    tppAccount.uuid
   }
 
   var currentAccountId: String? {
-    return tppAccount.uuid
+    tppAccount.uuid
   }
 
   var currentAccount: Account? {
-    return tppAccount
+    tppAccount
   }
 
   func createOPDS2Publication() -> OPDS2Publication {
-    let link = OPDS2Link(href: "href\(arc4random())",
+    let link = OPDS2Link(
+      href: "href\(arc4random())",
       type: "type\(arc4random())",
       rel: "rel\(arc4random())",
       templated: false,
       displayNames: nil,
-      descriptions: nil)
-    let metadata = OPDS2Publication.Metadata(updated: Date(),
-                                             description: "OPDS2 metadata",
-                                             id: "metadataID",
-                                             title: "metadataTitle")
-    let pub = OPDS2Publication(links: [link],
-                               metadata: metadata,
-                               images: nil)
+      descriptions: nil
+    )
+    let metadata = OPDS2Publication.Metadata(
+      updated: Date(),
+      description: "OPDS2 metadata",
+      id: "metadataID",
+      title: "metadataTitle"
+    )
+    let pub = OPDS2Publication(
+      links: [link],
+      metadata: metadata,
+      images: nil
+    )
     return pub
   }
 

@@ -1,11 +1,11 @@
 import Foundation
 
+// MARK: - TPPAccountList
 
 /// List of available Libraries/Accounts to select as patron's primary
 /// when going through Welcome Screen flow.
 @objc final class TPPAccountList: UIViewController {
-
-  private let completion: (Account) -> ()
+  private let completion: (Account) -> Void
   private var loadingView: UIActivityIndicatorView?
 
   var datasource = TPPAccountListDataSource()
@@ -18,13 +18,13 @@ import Foundation
 
   var requiresSelectionBeforeDismiss: Bool = false
 
-  @objc required init(completion: @escaping (Account) -> ()) {
+  @objc required init(completion: @escaping (Account) -> Void) {
     self.completion = completion
     super.init(nibName: nil, bundle: nil)
   }
 
   @available(*, unavailable)
-  required init?(coder aDecoder: NSCoder) {
+  required init?(coder _: NSCoder) {
     fatalError("init(coder:) has not been implemented")
   }
 
@@ -111,34 +111,38 @@ import Foundation
   }
 }
 
-// MARK: - UITableViewDelegate/DataSource
+// MARK: UITableViewDelegate, UITableViewDataSource
+
 extension TPPAccountList: UITableViewDelegate, UITableViewDataSource {
-  func numberOfSections(in tableView: UITableView) -> Int {
+  func numberOfSections(in _: UITableView) -> Int {
     numberOfSections
   }
 
-  func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
+  func tableView(_: UITableView, heightForRowAt _: IndexPath) -> CGFloat {
     UITableView.automaticDimension
   }
 
-  func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+  func tableView(_: UITableView, didSelectRowAt indexPath: IndexPath) {
     completion(datasource.account(at: indexPath))
   }
 
-  func tableView(_ tableView: UITableView, viewForHeaderInSection section: Int) -> UIView? {
+  func tableView(_: UITableView, viewForHeaderInSection _: Int) -> UIView? {
     UIView()
   }
 
-  func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
+  func tableView(_: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
     section == 0 ? 0 : sectionHeaderSize
   }
 
-  func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+  func tableView(_: UITableView, numberOfRowsInSection section: Int) -> Int {
     datasource.accounts(in: section)
   }
 
   func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-    guard let cell = tableView.dequeueReusableCell(withIdentifier: TPPAccountListCell.reuseIdentifier, for: indexPath) as? TPPAccountListCell else {
+    guard let cell = tableView.dequeueReusableCell(
+      withIdentifier: TPPAccountListCell.reuseIdentifier,
+      for: indexPath
+    ) as? TPPAccountListCell else {
       return UITableViewCell()
     }
     cell.configure(for: datasource.account(at: indexPath))
@@ -146,15 +150,18 @@ extension TPPAccountList: UITableViewDelegate, UITableViewDataSource {
   }
 }
 
-// MARK: - DataSourceDelegate
+// MARK: DataSourceDelegate
+
 extension TPPAccountList: DataSourceDelegate {
   func refresh() {
     tableView.reloadData()
   }
 }
 
+// MARK: AccountLogoDelegate
+
 extension TPPAccountList: AccountLogoDelegate {
-  func logoDidUpdate(in account: Account, to newLogo: UIImage) {
+  func logoDidUpdate(in account: Account, to _: UIImage) {
     if let indexPath = datasource.indexPath(for: account) {
       DispatchQueue.main.async {
         self.tableView.reloadRows(at: [indexPath], with: .automatic)

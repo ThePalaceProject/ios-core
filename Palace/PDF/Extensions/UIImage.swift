@@ -9,7 +9,6 @@
 import Foundation
 
 extension UIImage {
-  
   /// Create an image
   /// - Parameters:
   ///   - color: Color of the image
@@ -21,8 +20,9 @@ extension UIImage {
     UIRectFill(rect)
     let image = UIGraphicsGetImageFromCurrentImageContext()
     UIGraphicsEndImageContext()
-    guard let cgImage = image?.cgImage else { return nil }
+    guard let cgImage = image?.cgImage else {
+      return nil
+    }
     self.init(cgImage: cgImage)
   }
-  
 }

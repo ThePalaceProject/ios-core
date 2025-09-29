@@ -6,14 +6,13 @@
 //  Copyright © 2023 The Palace Project. All rights reserved.
 //
 
-import Foundation
 import Combine
-import ULID
+import Foundation
 import PalaceAudiobookToolkit
+import ULID
 
 @objc
 class AudiobookTimeTracker: NSObject, AudiobookPlaybackTrackerDelegate {
-
   private var subscriptions: Set<AnyCancellable> = []
   private let dataManager: DataManager
   private let libraryId: String
@@ -21,7 +20,7 @@ class AudiobookTimeTracker: NSObject, AudiobookPlaybackTrackerDelegate {
   private let timeTrackingUrl: URL
   private var currentMinute: String
   private var duration: TimeInterval = 0
-  private var timeEntryId: ULID = ULID(timestamp: Date())
+  private var timeEntryId: ULID = .init(timestamp: Date())
   private let syncQueue = DispatchQueue(label: "com.audiobook.timeTracker", attributes: .concurrent)
 
   private let minuteFormatter: DateFormatter
@@ -36,7 +35,7 @@ class AudiobookTimeTracker: NSObject, AudiobookPlaybackTrackerDelegate {
     self.bookId = bookId
     self.timeTrackingUrl = timeTrackingUrl
     self.dataManager = dataManager
-    self.minuteFormatter = DateFormatter()
+    minuteFormatter = DateFormatter()
     minuteFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm'Z'"
     minuteFormatter.timeZone = TimeZone(identifier: "UTC")
     currentMinute = minuteFormatter.string(from: Date())
@@ -74,14 +73,16 @@ class AudiobookTimeTracker: NSObject, AudiobookPlaybackTrackerDelegate {
 
   func receiveValue(_ value: Date) {
     syncQueue.async(flags: .barrier) { [weak self] in
-      guard let self = self else { return }
+      guard let self = self else {
+        return
+      }
 
-      self.duration += self.tick
-      let minute = self.minuteFormatter.string(from: value)
+      duration += tick
+      let minute = minuteFormatter.string(from: value)
 
-      if minute != self.currentMinute {
-        self.saveCurrentDuration(date: value)
-        self.currentMinute = minute
+      if minute != currentMinute {
+        saveCurrentDuration(date: value)
+        currentMinute = minute
       }
     }
   }
@@ -91,7 +92,10 @@ class AudiobookTimeTracker: NSObject, AudiobookPlaybackTrackerDelegate {
       timeEntryId = ULID(timestamp: date)
       dataManager.save(time: timeEntry)
 
-      audiobookLogger.logEvent(forBookId: bookId, event: "Time entry saved for minute \(currentMinute), \(min(60, Int(duration))) seconds played.")
+      audiobookLogger.logEvent(
+        forBookId: bookId,
+        event: "Time entry saved for minute \(currentMinute), \(min(60, Int(duration))) seconds played."
+      )
 
       duration = 0
     }

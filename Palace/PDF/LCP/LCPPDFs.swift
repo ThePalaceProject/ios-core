@@ -9,18 +9,18 @@
 #if LCP
 
 import Foundation
+import ReadiumLCP
 import ReadiumShared
 import ReadiumStreamer
-import ReadiumLCP
 import ReadiumZIPFoundation
 
 /// LCP PDF helper class
 @objc class LCPPDFs: NSObject {
-
   struct PDFManifest: Codable {
     struct ReadingOrderItem: Codable {
       let href: String
     }
+
     let readingOrder: [ReadingOrderItem]
   }
 
@@ -30,7 +30,9 @@ import ReadiumZIPFoundation
   /// - Parameter book: pdf
   /// - Returns: `true` if the book is an LCP DRM protected PDF, `false` otherwise
   @objc static func canOpenBook(_ book: TPPBook) -> Bool {
-    guard let defualtAcquisition = book.defaultAcquisition else { return false }
+    guard let defualtAcquisition = book.defaultAcquisition else {
+      return false
+    }
     return book.defaultBookContentType == .pdf && defualtAcquisition.type == expectedAcquisitionType
   }
 
@@ -44,11 +46,11 @@ import ReadiumZIPFoundation
       TPPErrorLogger.logError(nil, summary: "Uninitialized contentProtection in LCPPDFs")
       return nil
     }
-    self.pdfUrl = url
+    pdfUrl = url
 
     let httpClient = DefaultHTTPClient()
-    self.assetRetriever = AssetRetriever(httpClient: httpClient)
-    self.publicationOpener = PublicationOpener(
+    assetRetriever = AssetRetriever(httpClient: httpClient)
+    publicationOpener = PublicationOpener(
       parser: DefaultPublicationParser(
         httpClient: httpClient,
         assetRetriever: assetRetriever,
@@ -62,52 +64,68 @@ import ReadiumZIPFoundation
   private func getPdfHref() async throws -> String {
     let manifestPath = "manifest.json"
 
-    guard let fileUrl = FileURL(url: self.pdfUrl) else {
+    guard let fileUrl = FileURL(url: pdfUrl) else {
       throw NSError(domain: "Palace.LCPPDFs", code: 0, userInfo: [NSLocalizedDescriptionKey: "Invalid file URL"])
     }
 
     let assetResult = await assetRetriever.retrieve(url: fileUrl)
 
     switch assetResult {
-    case .success(let asset):
+    case let .success(asset):
       let result = await publicationOpener.open(asset: asset, allowUserInteraction: false, sender: nil)
 
       switch result {
-      case .success(let publication):
+      case let .success(publication):
         do {
           guard let resource = publication.getResource(at: manifestPath) else {
-            throw NSError(domain: "Palace.LCPPDFs", code: 0, userInfo: [NSLocalizedDescriptionKey: "Manifest resource not found"])
+            throw NSError(
+              domain: "Palace.LCPPDFs",
+              code: 0,
+              userInfo: [NSLocalizedDescriptionKey: "Manifest resource not found"]
+            )
           }
 
           let resourceResult = await resource.readAsJSONObject()
           switch resourceResult {
-          case .success(let jsonObject):
+          case let .success(jsonObject):
             let jsonData = try JSONSerialization.data(withJSONObject: jsonObject)
             let pdfManifest = try JSONDecoder().decode(PDFManifest.self, from: jsonData)
             guard let pdfHref = pdfManifest.readingOrder.first?.href else {
-              throw NSError(domain: "Palace.LCPPDFs", code: 0, userInfo: [NSLocalizedDescriptionKey: "Missing PDF href in manifest"])
+              throw NSError(
+                domain: "Palace.LCPPDFs",
+                code: 0,
+                userInfo: [NSLocalizedDescriptionKey: "Missing PDF href in manifest"]
+              )
             }
             return pdfHref
 
-          case .failure(let error):
+          case let .failure(error):
             throw error
           }
         } catch {
           TPPErrorLogger.logError(error, summary: "Error reading PDF path")
           throw NSError(domain: "Palace.LCPPDFs", code: 0, userInfo: [
             NSLocalizedDescriptionKey: error.localizedDescription,
-            "Error": error
+            "Error": error,
           ])
         }
 
-      case .failure(let error):
+      case let .failure(error):
         TPPErrorLogger.logError(error, summary: "Failed to open LCP PDF")
-        throw NSError(domain: "Palace.LCPPDFs", code: -1, userInfo: [NSLocalizedDescriptionKey: error.localizedDescription])
+        throw NSError(
+          domain: "Palace.LCPPDFs",
+          code: -1,
+          userInfo: [NSLocalizedDescriptionKey: error.localizedDescription]
+        )
       }
 
-    case .failure(let error):
+    case let .failure(error):
       TPPErrorLogger.logError(error, summary: "Failed to retrieve LCP PDF asset")
-      throw NSError(domain: "Palace.LCPPDFs", code: -1, userInfo: [NSLocalizedDescriptionKey: error.localizedDescription])
+      throw NSError(
+        domain: "Palace.LCPPDFs",
+        code: -1,
+        userInfo: [NSLocalizedDescriptionKey: error.localizedDescription]
+      )
     }
   }
 
@@ -179,15 +197,15 @@ import ReadiumZIPFoundation
   private func decryptRawData(data encryptedData: Data, start: Int, end: Int) -> Data? {
     autoreleasepool {
       let aesBlockSize = 4096 // should be a multiple of 16; smaller and larger block sizes slow reading down
-      let paddingSize = 16    // AES padding size; lcpService cuts it off
-      let paddingData = Data(Array<UInt8>(repeating: 0, count: paddingSize))
-      let blockStart = (start / aesBlockSize) * aesBlockSize  // align to aesBlockSize
-      let blockEnd = (end / aesBlockSize + ( end % aesBlockSize == 0 ? 0 : 1 )) * aesBlockSize
+      let paddingSize = 16 // AES padding size; lcpService cuts it off
+      let paddingData = Data([UInt8](repeating: 0, count: paddingSize))
+      let blockStart = (start / aesBlockSize) * aesBlockSize // align to aesBlockSize
+      let blockEnd = (end / aesBlockSize + (end % aesBlockSize == 0 ? 0 : 1)) * aesBlockSize
       let range = blockStart..<min(blockEnd, encryptedData.count)
       let encryptedBlock = encryptedData.subdata(in: range) + paddingData // lcpService.decrypt cuts off padding
       let decryptedBlock = self.lcpService.decrypt(data: encryptedBlock)
-      let resultStart = start - blockStart  // cut off aligned block of data to start ...
-      let resultEnd = end - blockStart      // ...and end positions
+      let resultStart = start - blockStart // cut off aligned block of data to start ...
+      let resultEnd = end - blockStart // ...and end positions
       let resultRange = resultStart..<resultEnd
       return decryptedBlock?.subdata(in: resultRange)
     }

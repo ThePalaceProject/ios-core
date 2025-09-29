@@ -9,8 +9,8 @@
 import Foundation
 
 extension Dictionary {
-  func mapKeys<T>(_ transform: (Key) throws -> T) rethrows -> Dictionary<T, Value> {
-    var dictionary = Dictionary<T, Value>()
+  func mapKeys<T>(_ transform: (Key) throws -> T) rethrows -> [T: Value] {
+    var dictionary = [T: Value]()
     for (key, value) in self {
       dictionary[try transform(key)] = value
     }
@@ -19,7 +19,6 @@ extension Dictionary {
 }
 
 extension Dictionary where Key == String, Value: Any {
-  
   /// Pretty prints the JSON dictionary
   func prettyPrintJSON() {
     do {

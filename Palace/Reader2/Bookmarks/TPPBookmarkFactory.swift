@@ -10,7 +10,6 @@ import Foundation
 import ReadiumShared
 
 class TPPBookmarkFactory {
-
   private let book: TPPBook
   private let publication: Publication
   private let drmDeviceID: String?
@@ -21,13 +20,15 @@ class TPPBookmarkFactory {
     self.drmDeviceID = drmDeviceID
   }
 
-  func make(fromR3Location bookmarkLoc: TPPBookmarkR3Location,
-            usingBookRegistry bookRegistry: TPPBookRegistryProvider,
-            for book: TPPBook,
-            publication: Publication) async -> TPPReadiumBookmark? {
-
+  func make(
+    fromR3Location bookmarkLoc: TPPBookmarkR3Location,
+    usingBookRegistry bookRegistry: TPPBookRegistryProvider,
+    for book: TPPBook,
+    publication: Publication
+  ) async -> TPPReadiumBookmark? {
     guard let chapterProgress = bookmarkLoc.locator.locations.progression.map(Float.init),
-          let totalProgress = bookmarkLoc.locator.locations.totalProgression.map(Float.init) else {
+          let totalProgress = bookmarkLoc.locator.locations.totalProgression.map(Float.init)
+    else {
       return nil
     }
 
@@ -38,7 +39,7 @@ class TPPBookmarkFactory {
     var chapter: String? = nil
     let tocResult = await publication.tableOfContents()
     switch tocResult {
-    case .success(let toc):
+    case let .success(toc):
       chapter = toc.firstWithHREF(bookmarkLoc.locator.href)?.title
     case .failure:
       chapter = nil
@@ -61,32 +62,37 @@ class TPPBookmarkFactory {
     )
   }
 
-  class func make(fromServerAnnotation annotation: [String: Any],
-                  annotationType: TPPBookmarkSpec.Motivation,
-                  book: TPPBook) -> Bookmark? {
-
+  class func make(
+    fromServerAnnotation annotation: [String: Any],
+    annotationType: TPPBookmarkSpec.Motivation,
+    book: TPPBook
+  ) -> Bookmark? {
     let bookID = book.identifier
-    
+
     guard let annotationID = annotation[TPPBookmarkSpec.Id.key] as? String else {
       Log.error(#file, "Missing AnnotationID:\(annotation)")
       return nil
     }
 
     guard let target = annotation[TPPBookmarkSpec.Target.key] as? [String: AnyObject],
-      let source = target[TPPBookmarkSpec.Target.Source.key] as? String,
-      let motivation = annotation[TPPBookmarkSpec.Motivation.key] as? String else {
-        Log.error(#file, "Error parsing required key/values for target.")
-        return nil
+          let source = target[TPPBookmarkSpec.Target.Source.key] as? String,
+          let motivation = annotation[TPPBookmarkSpec.Motivation.key] as? String
+    else {
+      Log.error(#file, "Error parsing required key/values for target.")
+      return nil
     }
 
-     guard source == bookID else {
-       TPPErrorLogger.logError(withCode: .bookmarkReadError,
-                                summary: "Got bookmark for a different book",
-                                metadata: [
-                                 "requestedBookID": bookID,
-                                 "serverAnnotation": annotation])
-       return nil
-     }
+    guard source == bookID else {
+      TPPErrorLogger.logError(
+        withCode: .bookmarkReadError,
+        summary: "Got bookmark for a different book",
+        metadata: [
+          "requestedBookID": bookID,
+          "serverAnnotation": annotation,
+        ]
+      )
+      return nil
+    }
 
     guard motivation == annotationType.rawValue else {
       return nil
@@ -96,65 +102,75 @@ class TPPBookmarkFactory {
       let body = annotation[TPPBookmarkSpec.Body.key] as? [String: AnyObject],
       let device = body[TPPBookmarkSpec.Body.Device.key] as? String,
       let time = body[TPPBookmarkSpec.Body.Time.key] as? String
-      else {
-        Log.error(#file, "Error reading required bookmark key/values from body")
-        return nil
+    else {
+      Log.error(#file, "Error reading required bookmark key/values from body")
+      return nil
     }
 
     guard
       let selector = target[TPPBookmarkSpec.Target.Selector.key] as? [String: AnyObject],
       let selectorValueEscJSON = selector[TPPBookmarkSpec.Target.Selector.Value.key] as? String
-      else {
-        Log.error(#file, "Error reading required Selector Value from Target.")
-        return nil
+    else {
+      Log.error(#file, "Error reading required Selector Value from Target.")
+      return nil
     }
 
     guard let selectorValueData = selectorValueEscJSON.data(using: String.Encoding.utf8),
-    let selectorValueDict = try? JSONSerialization.jsonObject(with: selectorValueData, options: []) as? [String: Any]
+          let selectorValueDict = try? JSONSerialization
+          .jsonObject(with: selectorValueData, options: []) as? [String: Any]
     else {
-      Log.error(#file, "Error serializing serverCFI into JSON. Selector.Value=\(selectorValueEscJSON)")
-        return nil
-    }
-    
-    if book.isAudiobook,
-       let audioBookmark = AudioBookmark.create(
-        locatorData: selectorValueDict,
-        timeStamp: time,
-        annotationId: annotationID
-       ) {
-      return audioBookmark
-    }
-    
-    if let pdfPageBookmark = try? JSONDecoder().decode(TPPPDFPageBookmark.self, from: selectorValueData),
-        pdfPageBookmark.type == TPPPDFPageBookmark.Types.locatorPage.rawValue {
-      pdfPageBookmark.annotationID = annotationID
-      return pdfPageBookmark
-    }
-  
-    guard let selectorValueJSON = (try? JSONSerialization.jsonObject(with: selectorValueData, options: [])) as? [String: Any] else {
       Log.error(#file, "Error serializing serverCFI into JSON. Selector.Value=\(selectorValueEscJSON)")
       return nil
     }
-  
-      let href = selectorValueJSON["href"] as? String ?? ""
-      let chapter = body[TPPBookmarkSpec.Body.ChapterTitle.key] as? String ?? selectorValueJSON["title"] as? String
-      let progressWithinChapter = selectorValueJSON["progressWithinChapter"] as? Float ?? Float((selectorValueJSON["progressWithinChapter"] as? Double) ?? 0.0)
-      let progressWithinBook = Float(selectorValueJSON["progressWithinBook"] as? Double ?? body[TPPBookmarkSpec.Body.ProgressWithinBook.key] as? Double ?? 0.0)
-      let readingOrderItem = selectorValueJSON["readingOrderItem"] as? String
-      let readingOrderItemOffsetMilliseconds = selectorValueJSON["readingOrderItemOffsetMilliseconds"] as? Float
 
-      return TPPReadiumBookmark(
-        annotationId: annotationID,
-        href: href,
-        chapter: chapter,
-        page: nil,
-        location: selectorValueEscJSON,
-        progressWithinChapter: progressWithinChapter,
-        progressWithinBook: progressWithinBook,
-        readingOrderItem: readingOrderItem,
-        readingOrderItemOffsetMilliseconds: readingOrderItemOffsetMilliseconds,
-        time:time,
-        device:device
+    if book.isAudiobook,
+       let audioBookmark = AudioBookmark.create(
+         locatorData: selectorValueDict,
+         timeStamp: time,
+         annotationId: annotationID
+       )
+    {
+      return audioBookmark
+    }
+
+    if let pdfPageBookmark = try? JSONDecoder().decode(TPPPDFPageBookmark.self, from: selectorValueData),
+       pdfPageBookmark.type == TPPPDFPageBookmark.Types.locatorPage.rawValue
+    {
+      pdfPageBookmark.annotationID = annotationID
+      return pdfPageBookmark
+    }
+
+    guard let selectorValueJSON = (try? JSONSerialization.jsonObject(
+      with: selectorValueData,
+      options: []
+    )) as? [String: Any] else {
+      Log.error(#file, "Error serializing serverCFI into JSON. Selector.Value=\(selectorValueEscJSON)")
+      return nil
+    }
+
+    let href = selectorValueJSON["href"] as? String ?? ""
+    let chapter = body[TPPBookmarkSpec.Body.ChapterTitle.key] as? String ?? selectorValueJSON["title"] as? String
+    let progressWithinChapter = selectorValueJSON["progressWithinChapter"] as? Float ??
+      Float((selectorValueJSON["progressWithinChapter"] as? Double) ?? 0.0)
+    let progressWithinBook =
+      Float(selectorValueJSON["progressWithinBook"] as? Double ??
+        body[TPPBookmarkSpec.Body.ProgressWithinBook.key] as? Double ?? 0.0
       )
+    let readingOrderItem = selectorValueJSON["readingOrderItem"] as? String
+    let readingOrderItemOffsetMilliseconds = selectorValueJSON["readingOrderItemOffsetMilliseconds"] as? Float
+
+    return TPPReadiumBookmark(
+      annotationId: annotationID,
+      href: href,
+      chapter: chapter,
+      page: nil,
+      location: selectorValueEscJSON,
+      progressWithinChapter: progressWithinChapter,
+      progressWithinBook: progressWithinBook,
+      readingOrderItem: readingOrderItem,
+      readingOrderItemOffsetMilliseconds: readingOrderItemOffsetMilliseconds,
+      time: time,
+      device: device
+    )
   }
 }

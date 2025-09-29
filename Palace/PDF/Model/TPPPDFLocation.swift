@@ -8,6 +8,8 @@
 
 import SwiftUI
 
+// MARK: - TPPPDFLocation
+
 /// TOC and search location
 struct TPPPDFLocation {
   let title: String?
@@ -15,7 +17,7 @@ struct TPPPDFLocation {
   let pageLabel: String?
   let pageNumber: Int
   let level: Int
-  
+
   init(title: String?, subtitle: String?, pageLabel: String?, pageNumber: Int, level: Int = 0) {
     self.title = title
     self.subtitle = subtitle
@@ -24,6 +26,8 @@ struct TPPPDFLocation {
     self.level = level
   }
 }
+
+// MARK: Identifiable
 
 extension TPPPDFLocation: Identifiable {
   var id: String {

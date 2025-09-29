@@ -6,18 +6,19 @@
 //  Copyright © 2022 The Palace Project. All rights reserved.
 //
 
-import SwiftUI
-import ReadiumShared
-import ReadiumNavigator
 import CryptoKit
+import ReadiumNavigator
+import ReadiumShared
+import SwiftUI
 
 /// Height of settings view controls
-fileprivate let buttonHeight = 50.0
+private let buttonHeight = 50.0
+
+// MARK: - TPPReaderSettingsView
 
 struct TPPReaderSettingsView: View {
-    
   @ObservedObject var settings: TPPReaderSettings
-  
+
   var body: some View {
     VStack(spacing: 0) {
       fontButtons
@@ -36,7 +37,7 @@ struct TPPReaderSettingsView: View {
         .foregroundColor(Color(settings.backgroundColor))
     )
   }
-  
+
   /// Set of font family buttons
   @ViewBuilder
   var fontButtons: some View {
@@ -51,14 +52,14 @@ struct TPPReaderSettingsView: View {
         .buttonStyle(SettingsButtonStyle(settings: settings))
         .font(readerFont.font)
 
-        if (readerFont.propertyIndex != TPPReaderFont.allCases.last?.propertyIndex) {
+        if readerFont.propertyIndex != TPPReaderFont.allCases.last?.propertyIndex {
           Divider()
             .frame(height: buttonHeight)
         }
       }
     }
   }
-  
+
   /// Set of reader appearance buttons
   @ViewBuilder
   var appearanceButtons: some View {
@@ -77,14 +78,14 @@ struct TPPReaderSettingsView: View {
             .foregroundColor(Color(readerAppearance.associatedColors.backgroundColor))
         )
 
-        if (readerAppearance.propertyIndex != TPPReaderAppearance.allCases.last?.propertyIndex) {
+        if readerAppearance.propertyIndex != TPPReaderAppearance.allCases.last?.propertyIndex {
           Divider()
             .frame(height: buttonHeight)
         }
       }
     }
   }
-  
+
   /// Buttons to decrease and increase the size of text font
   var fontSizeButtons: some View {
     HStack(alignment: .center, spacing: 0) {
@@ -116,7 +117,7 @@ struct TPPReaderSettingsView: View {
       .accessibility(label: Text("IncreaseFontSize"))
     }
   }
-  
+
   /// "A" text element for font size buttons
   ///
   /// Font size is number rather than style to avoid scaling.
@@ -128,20 +129,20 @@ struct TPPReaderSettingsView: View {
     Text("A")
       .font(.system(size: size, weight: .medium, design: .rounded))
   }
-  
+
   /// Screen brightness control
   var brightnessControl: some View {
     HStack(spacing: 0) {
       Image(systemName: "sun.min")
         .foregroundColor(Color(settings.textColor))
-      
+
       Slider(
         value: $settings.screenBrightness,
         in: 0...1.0,
         step: 0.01
       )
-        .accentColor(Color(settings.textColor))
-        .accessibility(label: Text("BrightnessSlider"))
+      .accentColor(Color(settings.textColor))
+      .accessibility(label: Text("BrightnessSlider"))
 
       Image(systemName: "sun.max")
         .imageScale(.large)
@@ -154,7 +155,7 @@ struct TPPReaderSettingsView: View {
       }
     }
   }
-  
+
   /// Opacity for images depending on the model variable state
   /// - Parameter state: Boolean variable, enabled or disabled
   /// - Returns: opacity for the state
@@ -163,12 +164,13 @@ struct TPPReaderSettingsView: View {
   }
 }
 
+// MARK: - SettingsButtonStyle
+
 struct SettingsButtonStyle: ButtonStyle {
-  
   @ObservedObject var settings: TPPReaderSettings
-  
+
   var textColor: UIColor?
-  
+
   func makeBody(configuration: Configuration) -> some View {
     configuration.label
       .foregroundColor(Color(textColor ?? settings.textColor))
@@ -176,6 +178,8 @@ struct SettingsButtonStyle: ButtonStyle {
       .contentShape(Rectangle())
   }
 }
+
+// MARK: - TPPReaderSettingsView_Previews
 
 struct TPPReaderSettingsView_Previews: PreviewProvider {
   static var previews: some View {

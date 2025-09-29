@@ -14,12 +14,11 @@ import Foundation
 ///
 /// Includes only fields Palace checks to verify the certificate is not expired.
 @objc class AdobeCertificate: NSObject, Codable {
-  
   /// Certificate expiration date, seconds since UNIX epoch.
   ///
   /// This field is not present in production certificates.
   let expireson: UInt?
-  
+
   /// Initializes certificate data
   init(expireson: UInt?) {
     self.expireson = expireson
@@ -27,7 +26,6 @@ import Foundation
 }
 
 extension AdobeCertificate {
-  
   /// Certificate expiration date.
   @objc var expirationDate: Date? {
     guard let expireson = expireson else {
@@ -35,7 +33,7 @@ extension AdobeCertificate {
     }
     return Date(timeIntervalSince1970: Double(expireson))
   }
-  
+
   /// Returns `true` if certificate has already expired.
   ///
   /// If expiration date is not present in certificate data, returns `false`
@@ -45,13 +43,15 @@ extension AdobeCertificate {
     }
     return expirationDate.timeIntervalSinceNow <= 0
   }
-    
+
   /// Default certificate for Palace app.
   @objc static var defaultCertificate: AdobeCertificate? = {
-    let bundle: Bundle = (ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil) ? Bundle(for: TPPAppDelegate.self) : Bundle.main
+    let bundle: Bundle = (ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil) ?
+      Bundle(for: TPPAppDelegate.self) : Bundle.main
     guard let adobeCertUrl = bundle.url(forResource: "ReaderClientCert", withExtension: "sig"),
           let adobeCertData = try? Data(contentsOf: adobeCertUrl),
-          !adobeCertData.isEmpty else {
+          !adobeCertData.isEmpty
+    else {
       return nil
     }
     return AdobeCertificate(data: adobeCertData)
@@ -66,10 +66,10 @@ extension AdobeCertificate {
       return nil
     }
   }
-  
+
   /// Period of notification for expired Adobe DRM certificate
   fileprivate static let notificationPeriod: TimeInterval = 60 * 60
-  
+
   /// Last expired DRM certificate notification date
   fileprivate static var notificationDate: Date?
 
@@ -84,7 +84,6 @@ extension AdobeCertificate {
       return true
     }
   }
-  
 }
 
 #endif

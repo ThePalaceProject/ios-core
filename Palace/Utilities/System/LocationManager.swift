@@ -12,26 +12,28 @@ extension Notification.Name {
   static let locationAuthorizationDidChange = Notification.Name("LocationAuthorizationDidChange")
 }
 
+// MARK: - LocationManager
+
 class LocationManager: NSObject, CLLocationManagerDelegate {
   static let shared = LocationManager()
   private let locationManager = CLLocationManager()
 
-  private override init() {
+  override private init() {
     super.init()
     locationManager.delegate = self
   }
-  
+
   var locationAccessAuthorized: Bool {
     let status = locationManager.authorizationStatus
     return status == .authorizedAlways || status == .authorizedWhenInUse
   }
-  
+
   var locationAccessDenied: Bool {
     let status = locationManager.authorizationStatus
     return status == .denied
   }
 
-  func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+  func locationManagerDidChangeAuthorization(_: CLLocationManager) {
     NotificationCenter.default.post(name: .locationAuthorizationDidChange, object: nil)
   }
 }

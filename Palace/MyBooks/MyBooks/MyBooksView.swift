@@ -1,6 +1,8 @@
-import SwiftUI
 import Combine
 import PalaceUIKit
+import SwiftUI
+
+// MARK: - MyBooksView
 
 struct MyBooksView: View {
   @EnvironmentObject private var coordinator: NavigationCoordinator
@@ -12,75 +14,85 @@ struct MyBooksView: View {
   // Centralized sample preview manager overlay
 
   var body: some View {
-      ZStack {
-        if model.isLoading {
-          BookListSkeletonView(rows: 10)
-        } else {
-          mainContent
-        }
+    ZStack {
+      if model.isLoading {
+        BookListSkeletonView(rows: 10)
+      } else {
+        mainContent
       }
-      .background(Color(TPPConfiguration.backgroundColor()))
-      .overlay(alignment: .bottom) { SamplePreviewBarView() }
-      .navigationBarTitleDisplayMode(.inline)
-      .toolbar {
-        ToolbarItem(placement: .principal) {
-          LibraryNavTitleView(onTap: {
-            if let urlString = AccountsManager.shared.currentAccount?.homePageUrl, let url = URL(string: urlString) {
-              UIApplication.shared.open(url, options: [:], completionHandler: nil)
-            }
-          })
-          .id(logoObserver.token.uuidString + currentAccountUUID)
-        }
-        ToolbarItem(placement: .navigationBarLeading) { leadingBarButton }
-        ToolbarItem(placement: .navigationBarTrailing) {
-          if model.showSearchSheet {
-            Button(action: { withAnimation { model.showSearchSheet = false; model.searchQuery = "" } }) {
-              Text(Strings.Generic.cancel)
-            }
-          } else {
-            trailingBarButton
+    }
+    .background(Color(TPPConfiguration.backgroundColor()))
+    .overlay(alignment: .bottom) { SamplePreviewBarView() }
+    .navigationBarTitleDisplayMode(.inline)
+    .toolbar {
+      ToolbarItem(placement: .principal) {
+        LibraryNavTitleView(onTap: {
+          if let urlString = AccountsManager.shared.currentAccount?.homePageUrl, let url = URL(string: urlString) {
+            UIApplication.shared.open(url, options: [:], completionHandler: nil)
           }
+        })
+        .id(logoObserver.token.uuidString + currentAccountUUID)
+      }
+      ToolbarItem(placement: .navigationBarLeading) { leadingBarButton }
+      ToolbarItem(placement: .navigationBarTrailing) {
+        if model.showSearchSheet {
+          Button(action: { withAnimation { model.showSearchSheet = false; model.searchQuery = "" } }) {
+            Text(Strings.Generic.cancel)
+          }
+        } else {
+          trailingBarButton
         }
       }
-      .onAppear {
-        model.showSearchSheet = false
-        let account = AccountsManager.shared.currentAccount
-        account?.logoDelegate = logoObserver
-        account?.loadLogo()
-        currentAccountUUID = account?.uuid ?? ""
+    }
+    .onAppear {
+      model.showSearchSheet = false
+      let account = AccountsManager.shared.currentAccount
+      account?.logoDelegate = logoObserver
+      account?.loadLogo()
+      currentAccountUUID = account?.uuid ?? ""
+    }
+    .onReceive(NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)) { _ in
+      let account = AccountsManager.shared.currentAccount
+      account?.logoDelegate = logoObserver
+      account?.loadLogo()
+      currentAccountUUID = account?.uuid ?? ""
+    }
+    .sheet(isPresented: $model.showLibraryAccountView) {
+      UIViewControllerWrapper(
+        TPPAccountList { account in
+          model.authenticateAndLoad(account: account)
+          model.showLibraryAccountView = false
+        },
+        updater: { _ in }
+      )
+    }
+    .actionSheet(isPresented: $showSortSheet) { sortActionSheet }
+    .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ToggleSampleNotification"))
+      .receive(on: RunLoop.main)
+    ) { note in
+      guard let info = note.userInfo as? [String: Any],
+            let identifier = info["bookIdentifier"] as? String
+      else {
+        return
       }
-      .onReceive(NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)) { _ in
-        let account = AccountsManager.shared.currentAccount
-        account?.logoDelegate = logoObserver
-        account?.loadLogo()
-        currentAccountUUID = account?.uuid ?? ""
+      let action = (info["action"] as? String) ?? "toggle"
+      if action == "close" {
+        SamplePreviewManager.shared.close()
+        return
       }
-      .sheet(isPresented: $model.showLibraryAccountView) {
-        UIViewControllerWrapper(
-          TPPAccountList { account in
-            model.authenticateAndLoad(account: account)
-            model.showLibraryAccountView = false
-          },
-          updater: { _ in }
-        )
+      if let book = TPPBookRegistry.shared.book(forIdentifier: identifier) ?? model.books
+        .first(where: { $0.identifier == identifier })
+      {
+        SamplePreviewManager.shared.toggle(for: book)
       }
-      .actionSheet(isPresented: $showSortSheet) { sortActionSheet }
-      .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ToggleSampleNotification")).receive(on: RunLoop.main)) { note in
-        guard let info = note.userInfo as? [String: Any], let identifier = info["bookIdentifier"] as? String else { return }
-        let action = (info["action"] as? String) ?? "toggle"
-        if action == "close" {
-          SamplePreviewManager.shared.close()
-          return
-        }
-        if let book = TPPBookRegistry.shared.book(forIdentifier: identifier) ?? model.books.first(where: { $0.identifier == identifier }) {
-          SamplePreviewManager.shared.toggle(for: book)
-        }
-      }
+    }
   }
 
   private var mainContent: some View {
     VStack(alignment: .leading, spacing: 0) {
-      if model.showSearchSheet { searchBar }
+      if model.showSearchSheet {
+        searchBar
+      }
       FacetToolbarView(
         title: nil,
         showFilter: false,
@@ -113,7 +125,7 @@ struct MyBooksView: View {
         .refreshable { model.reloadData() }
         .scrollDismissesKeyboard(.interactively)
         .simultaneousGesture(DragGesture().onChanged { _ in
-          if model.showSearchSheet { 
+          if model.showSearchSheet {
             model.searchQuery = ""
           }
         })
@@ -189,11 +201,11 @@ struct MyBooksView: View {
 
   private func existingLibraryButtons() -> [ActionSheet.Button] {
     TPPSettings.shared.settingsAccountsList.map { account in
-        .default(Text(account.name)) {
-          model.loadAccount(account)
-          model.showLibraryAccountView = false
-          model.selectNewLibrary = false
-        }
+      .default(Text(account.name)) {
+        model.loadAccount(account)
+        model.showLibraryAccountView = false
+        model.selectNewLibrary = false
+      }
     }
   }
 
@@ -210,17 +222,17 @@ struct MyBooksView: View {
   }
 
   private func setupTabBarForiPad() {
-#if os(iOS)
+    #if os(iOS)
     if UIDevice.current.userInterfaceIdiom == .pad {
       UITabBar.appearance().isHidden = false
     }
-#endif
+    #endif
   }
 }
 
 extension View {
   func searchBarStyle() -> some View {
-    self.padding(8)
+    padding(8)
       .textFieldStyle(.automatic)
       .background(Color.gray.opacity(0.2))
       .cornerRadius(10)
@@ -228,6 +240,6 @@ extension View {
   }
 
   func centered() -> some View {
-    self.horizontallyCentered().verticallyCentered()
+    horizontallyCentered().verticallyCentered()
   }
 }

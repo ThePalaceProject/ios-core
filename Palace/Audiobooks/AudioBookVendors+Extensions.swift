@@ -10,40 +10,39 @@ import Foundation
 import PalaceAudiobookToolkit
 
 extension AudioBookVendors {
-  
   /// Vendor tag
   private var tag: String {
-    "\(FeedbookDRMPublicKeyTag)\(self.rawValue)"
+    "\(FeedbookDRMPublicKeyTag)\(rawValue)"
   }
-  
+
   /// UserDefaults key to store certificate date
   private var validThroughDateKey: String {
     "\(tag)_validThroughDate"
   }
-  
+
   /// Update vendor's DRM key
   /// - Parameter completion: Completion
-  func updateDrmCertificate(completion: ((_ error: Error?) -> ())? = nil) {
+  func updateDrmCertificate(completion: ((_ error: Error?) -> Void)? = nil) {
     switch self {
     case .cantook: updateCantookDRMCertificate(completion: completion)
     default: return
     }
   }
-  
+
   /// Update Cantook DRM public key
   ///
   /// If the key is saved and its saved expiration date is later than today, the function doesn't request a new public key.
   /// - Parameter completion: Completion
-  private func updateCantookDRMCertificate(completion: ((_ error: Error?) -> ())? = nil) {
+  private func updateCantookDRMCertificate(completion: ((_ error: Error?) -> Void)? = nil) {
     // Check if we have a valid key
     if let date = UserDefaults.standard.value(forKey: validThroughDateKey) as? Date, Date() < date {
       // we have a certificate with a valid date
       completion?(nil)
       return
     }
-    
+
     // Fetch a new drmKey
-    DPLAAudiobooks.drmKey { (data, date, error) in
+    DPLAAudiobooks.drmKey { data, date, error in
       if let error = error {
         if error is DPLAAudiobooks.DPLAError {
           Log.error(#file, "DPLA key-fetch error: \(error)")
@@ -56,7 +55,9 @@ extension AudioBookVendors {
       // drmKey completion handler returns either non-empty data value or an error
       guard let keyData = data else {
         Log.error(#file, "Public key data is empty, URL: \(DPLAAudiobooks.certificateUrl)")
-        completion?(DPLAAudiobooks.DPLAError.drmKeyError("Public key data is empty, URL: \(DPLAAudiobooks.certificateUrl)"))
+        completion?(DPLAAudiobooks.DPLAError
+          .drmKeyError("Public key data is empty, URL: \(DPLAAudiobooks.certificateUrl)")
+        )
         return
       }
       // Check if we have a valid date
@@ -64,7 +65,7 @@ extension AudioBookVendors {
         // Save this date to avoid fetching this certificate untill it becomes invalid
         UserDefaults.standard.set(date, forKey: self.validThroughDateKey)
       }
-      
+
       // Save SecKey
       let addQuery: [String: Any] = [
         kSecClass as String: kSecClassKey,
@@ -72,18 +73,21 @@ extension AudioBookVendors {
         kSecAttrApplicationTag as String: self.tag.data(using: .utf8) as Any,
         kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
         kSecValueData as String: keyData,
-        kSecAttrKeyClass as String: kSecAttrKeyClassPublic
+        kSecAttrKeyClass as String: kSecAttrKeyClassPublic,
       ]
 
       // Clean up before adding a new key value
       SecItemDelete(addQuery as CFDictionary)
       let status = SecItemAdd(addQuery as CFDictionary, nil)
       if status != errSecSuccess && status != errSecDuplicateItem {
-        TPPKeychainManager.logKeychainError(forVendor: self.rawValue, status: status, message: "FeedbookDrmPrivateKeyManagement Error:")
+        TPPKeychainManager.logKeychainError(
+          forVendor: self.rawValue,
+          status: status,
+          message: "FeedbookDrmPrivateKeyManagement Error:"
+        )
       }
-      
+
       completion?(nil)
     }
   }
-
 }

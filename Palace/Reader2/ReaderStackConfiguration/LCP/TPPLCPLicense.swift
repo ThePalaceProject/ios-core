@@ -31,30 +31,31 @@ enum TPPLCPLicenseRel: String {
 @objc class TPPLCPLicense: NSObject, Codable {
   /// License ID
   private var id: String
-  
+
   let links: [TPPLCPLicenseLink]
-  
+
   /// Objective-C visible identifier
   @objc var identifier: String {
     id
   }
-  
+
   /// Initializes with license URL
   @objc init?(url: URL) {
     if let data = try? Data(contentsOf: url),
-       let license = try? JSONDecoder().decode(TPPLCPLicense.self, from: data) {
-      self.id = license.id
-      self.links = license.links
+       let license = try? JSONDecoder().decode(TPPLCPLicense.self, from: data)
+    {
+      id = license.id
+      links = license.links
     } else {
       return nil
     }
   }
-  
+
   /// Returns first link with the specified `rel`.
   /// - Parameter rel: `rel` value.
   /// - Returns: First link, if available, `nil` if no link with the provided `rel` found.
   func firstLink(withRel rel: TPPLCPLicenseRel) -> TPPLCPLicenseLink? {
-    links.filter({ $0.rel == rel.rawValue }).first
+    links.filter { $0.rel == rel.rawValue }.first
   }
 }
 

@@ -6,8 +6,10 @@
 //  Copyright © 2020 NYPL Labs. All rights reserved.
 //
 
-import UIKit
 import Dispatch
+import UIKit
+
+// MARK: - NYPLBackgroundWorkOwner
 
 /**
  Protocol that should be implemented by a class that wants to schedule work
@@ -54,6 +56,8 @@ import Dispatch
   func performBackgroundWork()
 }
 
+// MARK: - TPPBackgroundExecutor
+
 /**
  This class wraps the logic of initiating and ending a background task on behalf
  of a `owner` in a thread-safe manner.
@@ -68,8 +72,8 @@ import Dispatch
   private let queue = DispatchQueue.global(qos: .background)
   private let endLock = NSLock()
   private var isEndingTask = false
-  
-  //----------------------------------------------------------------------------
+
+  // ----------------------------------------------------------------------------
 
   /// - Parameters:
   ///   - owner: The object wanting to run an expensive task in the background.
@@ -79,8 +83,8 @@ import Dispatch
     self.owner = owner
     super.init()
   }
-  
-  //----------------------------------------------------------------------------
+
+  // ----------------------------------------------------------------------------
 
   /// The owner needs to call this function to perform in the background the
   ///  work specified in `NYPLBackgroundWorkOwner::performBackgroundWork`.
@@ -93,32 +97,34 @@ import Dispatch
 
     func endTaskIfNeeded(context: String) {
       endQueue.async { [weak self] in
-        guard let self = self else { return }
-        
-        self.endLock.lock()
-        defer { self.endLock.unlock() }
-        
-        // Prevent multiple end task calls
-        if self.isEndingTask {
+        guard let self = self else {
           return
         }
-        self.isEndingTask = true
-        
+
+        endLock.lock()
+        defer { self.endLock.unlock() }
+
+        // Prevent multiple end task calls
+        if isEndingTask {
+          return
+        }
+        isEndingTask = true
+
         let timeRemaining: TimeInterval = DispatchQueue.main.sync {
           UIApplication.shared.backgroundTimeRemaining
         }
 
         Log.info(#file, """
-          \(context) \(self.taskName) background task \(bgTask.rawValue). \
-          Time remaining: \(timeRemaining)
-          """)
+        \(context) \(taskName) background task \(bgTask.rawValue). \
+        Time remaining: \(timeRemaining)
+        """)
 
         if bgTask != .invalid {
           UIApplication.shared.endBackgroundTask(bgTask)
           bgTask = .invalid
         }
-        
-        self.isEndingTask = false
+
+        isEndingTask = false
       }
     }
 
@@ -138,8 +144,10 @@ import Dispatch
 
         endTaskIfNeeded(context: "Finishing up")
       }) else {
-        Log.warn(#file,
-                 "No work item for \(self.taskName) background task \(bgTask.rawValue)!")
+        Log.warn(
+          #file,
+          "No work item for \(self.taskName) background task \(bgTask.rawValue)!"
+        )
         endTaskIfNeeded(context: "No work item")
         return
       }

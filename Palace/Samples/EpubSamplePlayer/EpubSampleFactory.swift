@@ -8,15 +8,21 @@
 
 import Foundation
 
+// MARK: - EpubLocationSampleURL
+
 @objc class EpubLocationSampleURL: NSObject {
   @objc var url: URL
-  
+
   init(url: URL) {
     self.url = url
   }
 }
 
+// MARK: - EpubSampleWebURL
+
 @objc class EpubSampleWebURL: EpubLocationSampleURL {}
+
+// MARK: - EpubSampleFactory
 
 @objc class EpubSampleFactory: NSObject {
   private static let samplePath = "TestApp.epub"
@@ -27,14 +33,13 @@ import Foundation
       completion(nil, SamplePlayerError.noSampleAvailable)
       return
     }
-    
+
     if epubSample.type.needsDownload {
       epubSample.fetchSample { result in
         switch result {
-        case .failure(let error, _):
+        case let .failure(error, _):
           completion(nil, error)
-        case .success(let data, _):
-  
+        case let .success(data, _):
           do {
             guard let location = try save(data: data) else {
               completion(nil, SamplePlayerError.fileSaveFailed(nil))
@@ -62,7 +67,7 @@ import Foundation
       // Create parent directory if it doesn't exist
       let parentDirectory = url.deletingLastPathComponent()
       try FileManager.default.createDirectory(at: parentDirectory, withIntermediateDirectories: true, attributes: nil)
-      
+
       try data.write(to: url)
       Log.info(#file, "Successfully saved sample EPUB to: \(url.path)")
     } catch {
@@ -77,11 +82,11 @@ import Foundation
       for: .documentDirectory,
       in: .userDomainMask
     )[0]
-    
+
     // Create samples subdirectory to avoid root directory access issues
     let samplesDirectory = documentDirectory.appendingPathComponent("Samples")
     try? FileManager.default.createDirectory(at: samplesDirectory, withIntermediateDirectories: true, attributes: nil)
-    
+
     return samplesDirectory.appendingPathComponent(samplePath)
   }
 }

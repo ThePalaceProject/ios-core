@@ -1,11 +1,12 @@
 import SwiftUI
 
 // MARK: - CatalogLaneMoreContentView
+
 struct CatalogLaneMoreContentView: View {
   @ObservedObject var viewModel: CatalogLaneMoreViewModel
   let onBookSelected: (TPPBook) -> Void
   let onLaneMoreTapped: (String, URL) -> Void
-  
+
   var body: some View {
     if viewModel.isLoading {
       loadingView
@@ -20,6 +21,7 @@ struct CatalogLaneMoreContentView: View {
 }
 
 // MARK: - Private Views
+
 private extension CatalogLaneMoreContentView {
   var loadingView: some View {
     ScrollView {
@@ -27,12 +29,12 @@ private extension CatalogLaneMoreContentView {
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
   }
-  
+
   func errorView(_ error: String) -> some View {
     Text(error)
       .padding()
   }
-  
+
   var lanesView: some View {
     ScrollView {
       LazyVStack(alignment: .leading, spacing: 24) {
@@ -52,7 +54,7 @@ private extension CatalogLaneMoreContentView {
     }
     .refreshable { await viewModel.refresh() }
   }
-  
+
   var booksListView: some View {
     ScrollView {
       BookListView(
@@ -64,4 +66,3 @@ private extension CatalogLaneMoreContentView {
     .refreshable { await viewModel.refresh() }
   }
 }
-

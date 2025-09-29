@@ -13,21 +13,21 @@ enum TPPReaderFont: String, CaseIterable, Identifiable {
   case sansSerif = "Helvetica"
   case serif = "Georgia"
   case dyslexic = "OpenDyslexic"
-  
+
   typealias DisplayStrings = Strings.TPPReaderFont
 
   var id: String {
     rawValue
   }
-  
+
   /// Font size for preview
   var previewSize: CGFloat {
     switch self {
-    case .dyslexic: return 20.0
-    default: return 24.0
+    case .dyslexic: 20.0
+    default: 24.0
     }
   }
-  
+
   /// Property index returns non-optional element index
   var propertyIndex: Int {
     guard let index = TPPReaderFont.allCases.firstIndex(of: self) else {
@@ -35,15 +35,15 @@ enum TPPReaderFont: String, CaseIterable, Identifiable {
     }
     return index
   }
-  
+
   /// UIFont object for TPPReaderFont element
   private var uiFont: UIFont? {
     switch self {
-    case .dyslexic: return UIFont(name: "OpenDyslexic3", size: previewSize) // "OpenDyslexic" in Readium2
-    default: return UIFont(name: rawValue, size: previewSize)
+    case .dyslexic: UIFont(name: "OpenDyslexic3", size: previewSize) // "OpenDyslexic" in Readium2
+    default: UIFont(name: rawValue, size: previewSize)
     }
   }
-  
+
   /// SwiftUI Font structure for TPPReaderFont element
   var font: Font? {
     if let uiFont = uiFont {
@@ -51,14 +51,14 @@ enum TPPReaderFont: String, CaseIterable, Identifiable {
     }
     return nil
   }
-  
+
   /// Accessibility text for accessibility labels
   var accessibilityText: String {
     switch self {
-    case .original: return DisplayStrings.original
-    case .sansSerif: return DisplayStrings.sans
-    case .serif: return DisplayStrings.serif
-    case .dyslexic: return DisplayStrings.dyslexic
+    case .original: DisplayStrings.original
+    case .sansSerif: DisplayStrings.sans
+    case .serif: DisplayStrings.serif
+    case .dyslexic: DisplayStrings.dyslexic
     }
   }
 }

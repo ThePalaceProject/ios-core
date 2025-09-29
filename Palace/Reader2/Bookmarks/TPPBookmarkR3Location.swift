@@ -9,6 +9,8 @@
 import Foundation
 import ReadiumShared
 
+// MARK: - TPPBookmarkR3Location
+
 class TPPBookmarkR3Location {
   var resourceIndex: Int
   var locator: Locator
@@ -28,7 +30,11 @@ extension TPPBookmarkR3Location {
   ///   - locator: The `Locator` representing the reading position.
   ///   - publication: The `Publication` containing the reading material.
   /// - Returns: An optional `TPPBookmarkR3Location` if the `Locator` resolves successfully.
-  static func from(locator: Locator, in publication: Publication, creationDate: Date = Date()) -> TPPBookmarkR3Location? {
+  static func from(
+    locator: Locator,
+    in publication: Publication,
+    creationDate: Date = Date()
+  ) -> TPPBookmarkR3Location? {
     let href = locator.href
 
     guard let resourceIndex = publication.readingOrder.firstIndex(where: { $0.href == href.string }) else {

@@ -1,40 +1,40 @@
 import SwiftUI
 
-// MARK: - SearchView
+// MARK: - CatalogSearchView
+
 struct CatalogSearchView: View {
   @StateObject private var viewModel: CatalogSearchViewModel
   let books: [TPPBook]
   let onBookSelected: (TPPBook) -> Void
-  
+
   init(
     repository: CatalogRepositoryProtocol,
     baseURL: @escaping () -> URL?,
     books: [TPPBook],
     onBookSelected: @escaping (TPPBook) -> Void
   ) {
-    self._viewModel = StateObject(wrappedValue: CatalogSearchViewModel(repository: repository, baseURL: baseURL))
+    _viewModel = StateObject(wrappedValue: CatalogSearchViewModel(repository: repository, baseURL: baseURL))
     self.books = books
     self.onBookSelected = onBookSelected
   }
-  
+
   init(
     books: [TPPBook],
     onBookSelected: @escaping (TPPBook) -> Void
   ) {
-
     let client = URLSessionNetworkClient()
     let parser = OPDSParser()
     let api = DefaultCatalogAPI(client: client, parser: parser)
     let dummyRepository = CatalogRepository(api: api)
-    self._viewModel = StateObject(wrappedValue: CatalogSearchViewModel(repository: dummyRepository, baseURL: { nil }))
+    _viewModel = StateObject(wrappedValue: CatalogSearchViewModel(repository: dummyRepository, baseURL: { nil }))
     self.books = books
     self.onBookSelected = onBookSelected
   }
-  
+
   var body: some View {
     VStack(spacing: 0) {
       searchBar
-      
+
       ScrollView {
         BookListView(
           books: viewModel.filteredBooks,
@@ -53,6 +53,7 @@ struct CatalogSearchView: View {
 }
 
 // MARK: - Private Views
+
 private extension CatalogSearchView {
   var searchBar: some View {
     ZStack {
@@ -67,7 +68,7 @@ private extension CatalogSearchView {
       .background(Color.gray.opacity(0.2))
       .cornerRadius(10)
       .padding(.horizontal)
-      
+
       if !viewModel.searchQuery.isEmpty {
         HStack {
           Spacer()

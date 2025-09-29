@@ -4,8 +4,9 @@ let HoldNotificationCategoryIdentifier = "NYPLHoldToReserveNotificationCategory"
 let CheckOutActionIdentifier = "NYPLCheckOutNotificationAction"
 let DefaultActionIdentifier = "UNNotificationDefaultActionIdentifier"
 
-@objcMembers class TPPUserNotifications: NSObject
-{
+// MARK: - TPPUserNotifications
+
+@objcMembers class TPPUserNotifications: NSObject {
   typealias DisplayStrings = Strings.UserNotifications
   private let unCenter = UNUserNotificationCenter.current()
 
@@ -13,10 +14,9 @@ let DefaultActionIdentifier = "UNNotificationDefaultActionIdentifier"
   /// defer the presentation for later to maximize acceptance rate. Otherwise,
   /// Apple documents authorization to be preformed at app-launch to correctly
   /// enable the delegate.
-  func authorizeIfNeeded()
-  {
+  func authorizeIfNeeded() {
     unCenter.delegate = self
-    unCenter.getNotificationSettings { (settings) in
+    unCenter.getNotificationSettings { settings in
       if settings.authorizationStatus == .notDetermined {
       } else {
         self.registerNotificationCategories()
@@ -25,48 +25,54 @@ let DefaultActionIdentifier = "UNNotificationDefaultActionIdentifier"
     }
   }
 
-  class func requestAuthorization()
-  {
+  class func requestAuthorization() {
     let unCenter = UNUserNotificationCenter.current()
-    unCenter.requestAuthorization(options: [.badge,.sound,.alert]) { (granted, error) in
-      Log.info(#file, "Notification Authorization Results: 'Granted': \(granted)." +
-        " 'Error': \(error?.localizedDescription ?? "nil")")
+    unCenter.requestAuthorization(options: [.badge, .sound, .alert]) { granted, error in
+      Log.info(
+        #file,
+        "Notification Authorization Results: 'Granted': \(granted)." +
+          " 'Error': \(error?.localizedDescription ?? "nil")"
+      )
     }
   }
 
   /// Create a local notification if a book has moved from the "holds queue" to
   /// the "reserved queue", and is available for the patron to checkout.
-  class func compareAvailability(cachedRecord:TPPBookRegistryRecord, andNewBook newBook:TPPBook)
-  {
+  class func compareAvailability(cachedRecord: TPPBookRegistryRecord, andNewBook newBook: TPPBook) {
     var wasOnHold = false
     var isNowReady = false
     let oldAvail = cachedRecord.book.defaultAcquisition?.availability
-    oldAvail?.matchUnavailable(nil,
-                               limited: nil,
-                               unlimited: nil,
-                               reserved: { _ in wasOnHold = true },
-                               ready: nil)
+    oldAvail?.matchUnavailable(
+      nil,
+      limited: nil,
+      unlimited: nil,
+      reserved: { _ in wasOnHold = true },
+      ready: nil
+    )
     let newAvail = newBook.defaultAcquisition?.availability
-    newAvail?.matchUnavailable(nil,
-                               limited: nil,
-                               unlimited: nil,
-                               reserved: nil,
-                               ready: { _ in isNowReady = true })
+    newAvail?.matchUnavailable(
+      nil,
+      limited: nil,
+      unlimited: nil,
+      reserved: nil,
+      ready: { _ in isNowReady = true }
+    )
 
-    if (wasOnHold && isNowReady) {
+    if wasOnHold && isNowReady {
       createNotificationForReadyCheckout(book: newBook)
     }
   }
 
-  class func updateAppIconBadge(heldBooks: [TPPBook])
-  {
+  class func updateAppIconBadge(heldBooks: [TPPBook]) {
     var readyBooks = 0
     for book in heldBooks {
-      book.defaultAcquisition?.availability.matchUnavailable(nil,
-                                                               limited: nil,
-                                                               unlimited: nil,
-                                                               reserved: nil,
-                                                               ready: { _ in readyBooks += 1 })
+      book.defaultAcquisition?.availability.matchUnavailable(
+        nil,
+        limited: nil,
+        unlimited: nil,
+        reserved: nil,
+        ready: { _ in readyBooks += 1 }
+      )
     }
     if UIApplication.shared.applicationIconBadgeNumber != readyBooks {
       UIApplication.shared.applicationIconBadgeNumber = readyBooks
@@ -80,11 +86,12 @@ let DefaultActionIdentifier = "UNNotificationDefaultActionIdentifier"
     return TPPBookRegistry.shared.heldBooks.count > 0
   }
 
-  private class func createNotificationForReadyCheckout(book: TPPBook)
-  {
+  private class func createNotificationForReadyCheckout(book: TPPBook) {
     let unCenter = UNUserNotificationCenter.current()
-    unCenter.getNotificationSettings { (settings) in
-      guard settings.authorizationStatus == .authorized else { return }
+    unCenter.getNotificationSettings { settings in
+      guard settings.authorizationStatus == .authorized else {
+        return
+      }
 
       let title = DisplayStrings.downloadReady
       let content = UNMutableNotificationContent()
@@ -92,48 +99,59 @@ let DefaultActionIdentifier = "UNNotificationDefaultActionIdentifier"
       content.title = title
       content.sound = UNNotificationSound.default
       content.categoryIdentifier = HoldNotificationCategoryIdentifier
-      content.userInfo = ["bookID" : book.identifier]
+      content.userInfo = ["bookID": book.identifier]
 
-      let request = UNNotificationRequest.init(identifier: book.identifier,
-                                               content: content,
-                                               trigger: nil)
+      let request = UNNotificationRequest(
+        identifier: book.identifier,
+        content: content,
+        trigger: nil
+      )
       unCenter.add(request) { error in
         if let error = error {
-          TPPErrorLogger.logError(error as NSError,
-                                   summary: "Error creating notification for ready checkout",
-                                   metadata: ["book": book.loggableDictionary()])
+          TPPErrorLogger.logError(
+            error as NSError,
+            summary: "Error creating notification for ready checkout",
+            metadata: ["book": book.loggableDictionary()]
+          )
         }
       }
     }
   }
 
-  private func registerNotificationCategories()
-  {
-    let checkOutNotificationAction = UNNotificationAction(identifier: CheckOutActionIdentifier,
-                                                          title: DisplayStrings.checkoutTitle,
-                                                          options: [])
-    let holdToReserveCategory = UNNotificationCategory(identifier: HoldNotificationCategoryIdentifier,
-                                                       actions: [checkOutNotificationAction],
-                                                       intentIdentifiers: [],
-                                                       options: [])
+  private func registerNotificationCategories() {
+    let checkOutNotificationAction = UNNotificationAction(
+      identifier: CheckOutActionIdentifier,
+      title: DisplayStrings.checkoutTitle,
+      options: []
+    )
+    let holdToReserveCategory = UNNotificationCategory(
+      identifier: HoldNotificationCategoryIdentifier,
+      actions: [checkOutNotificationAction],
+      intentIdentifiers: [],
+      options: []
+    )
     UNUserNotificationCenter.current().setNotificationCategories([holdToReserveCategory])
   }
 }
 
-@available (iOS 10.0, *)
-extension TPPUserNotifications: UNUserNotificationCenterDelegate
-{
-  func userNotificationCenter(_ center: UNUserNotificationCenter,
-                              willPresent notification: UNNotification,
-                              withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void)
-  {
+// MARK: UNUserNotificationCenterDelegate
+
+@available(iOS 10.0, *)
+extension TPPUserNotifications: UNUserNotificationCenterDelegate {
+  func userNotificationCenter(
+    _: UNUserNotificationCenter,
+    willPresent _: UNNotification,
+    withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions)
+      -> Void
+  ) {
     completionHandler([.alert])
   }
 
-  func userNotificationCenter(_ center: UNUserNotificationCenter,
-                              didReceive response: UNNotificationResponse,
-                              withCompletionHandler completionHandler: @escaping () -> Void)
-  {
+  func userNotificationCenter(
+    _: UNUserNotificationCenter,
+    didReceive response: UNNotificationResponse,
+    withCompletionHandler completionHandler: @escaping () -> Void
+  ) {
     if response.actionIdentifier == DefaultActionIdentifier {
       guard let currentAccount = AccountsManager.shared.currentAccount else {
         Log.error(#file, "Error moving to Holds tab from notification; there was no current account.")
@@ -147,8 +165,7 @@ extension TPPUserNotifications: UNUserNotificationCenterDelegate
         }
       }
       completionHandler()
-    }
-    else if response.actionIdentifier == CheckOutActionIdentifier {
+    } else if response.actionIdentifier == CheckOutActionIdentifier {
       let userInfo = response.notification.request.content.userInfo
       let downloadCenter = MyBooksDownloadCenter.shared
 
@@ -157,20 +174,21 @@ extension TPPUserNotifications: UNUserNotificationCenterDelegate
         return
       }
       guard let book = TPPBookRegistry.shared.book(forIdentifier: bookID) else {
-          completionHandler()
-          return
+        completionHandler()
+        return
       }
 
       borrow(book, inBackgroundFrom: downloadCenter, completion: completionHandler)
-    }
-    else {
+    } else {
       completionHandler()
     }
   }
 
-  private func borrow(_ book: TPPBook,
-                      inBackgroundFrom downloadCenter: MyBooksDownloadCenter,
-                      completion: @escaping () -> Void) {
+  private func borrow(
+    _ book: TPPBook,
+    inBackgroundFrom downloadCenter: MyBooksDownloadCenter,
+    completion: @escaping () -> Void
+  ) {
     var bgTask: UIBackgroundTaskIdentifier = .invalid
     bgTask = UIApplication.shared.beginBackgroundTask {
       if bgTask != .invalid {
@@ -180,7 +198,6 @@ extension TPPUserNotifications: UNUserNotificationCenterDelegate
         bgTask = .invalid
       }
     }
-
 
     downloadCenter.startBorrow(for: book, attemptDownload: false) {
       completion()

@@ -1,5 +1,7 @@
 import SwiftUI
 
+// MARK: - SamplePreviewManager
+
 @MainActor
 final class SamplePreviewManager: ObservableObject {
   static let shared = SamplePreviewManager()
@@ -38,6 +40,8 @@ final class SamplePreviewManager: ObservableObject {
   }
 }
 
+// MARK: - SamplePreviewBarView
+
 struct SamplePreviewBarView: View {
   @ObservedObject private var manager = SamplePreviewManager.shared
 
@@ -54,5 +58,3 @@ struct SamplePreviewBarView: View {
     }
   }
 }
-
-

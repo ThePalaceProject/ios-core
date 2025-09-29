@@ -1,11 +1,11 @@
 import UIKit
 
-extension UIColor {
-  @objc class public func defaultLabelColor() -> UIColor {
+public extension UIColor {
+  @objc class func defaultLabelColor() -> UIColor {
     if #available(iOS 13, *) {
-      return UIColor.label;
+      UIColor.label
     } else {
-      return UIColor.black;
+      UIColor.black
     }
   }
 }

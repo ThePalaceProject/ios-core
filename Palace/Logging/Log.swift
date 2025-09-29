@@ -1,6 +1,6 @@
-import os
-import Foundation
 import FirebaseCrashlytics
+import Foundation
+import os
 
 final class Log: NSObject {
   static var dateFormatter: DateFormatter = {
@@ -12,18 +12,18 @@ final class Log: NSObject {
   private class func levelToString(_ level: OSLogType) -> String {
     switch level {
     case .debug:
-      return "DEBUG"
+      "DEBUG"
     case .info:
-      return "INFO"
+      "INFO"
     case .error:
-      return "ERROR"
+      "ERROR"
     case .fault:
-      return "FAULT"
+      "FAULT"
     default:
-      return "WARNING"
+      "WARNING"
     }
   }
-  
+
   private class func log(_ level: OSLogType, _ tag: String, _ message: String) {
     let tag = trimTag(tag)
 
@@ -52,11 +52,11 @@ final class Log: NSObject {
   class func debug(_ tag: String, _ message: String) {
     log(.debug, tag, message)
   }
-  
+
   class func info(_ tag: String, _ message: String) {
     log(.info, tag, message)
   }
-  
+
   class func warn(_ tag: String, _ message: String) {
     log(.default, tag, message)
   }
@@ -74,35 +74,40 @@ final class Log: NSObject {
   }
 
   // MARK: - Performance Optimizations
-  
+
   private static var lastPalaceLogMessages: [String: Date] = [:]
   private static let palaceLogThrottleInterval: TimeInterval = 0.3
-  private static let throttleQueue = DispatchQueue(label: "org.thepalaceproject.palace.logging.throttle", attributes: .concurrent)
-  
+  private static let throttleQueue = DispatchQueue(
+    label: "org.thepalaceproject.palace.logging.throttle",
+    attributes: .concurrent
+  )
+
   private class func shouldThrottlePalaceLogging(level: OSLogType, tag: String, message: String) -> Bool {
-    guard level != .error && level != .fault else { return false }
-    
+    guard level != .error && level != .fault else {
+      return false
+    }
+
     let now = Date()
     let messageKey = "\(tag):\(message.prefix(30))"
-    
+
     return throttleQueue.sync {
       if let lastTime = lastPalaceLogMessages[messageKey] {
         if now.timeIntervalSince(lastTime) < palaceLogThrottleInterval {
           return true // Throttle this message
         }
       }
-      
+
       // Use barrier to ensure exclusive write access
       throttleQueue.async(flags: .barrier) {
         lastPalaceLogMessages[messageKey] = now
-        
+
         // Clean up old entries periodically to prevent memory growth
         if lastPalaceLogMessages.count > 50 {
           let cutoffTime = now.addingTimeInterval(-palaceLogThrottleInterval * 20)
           lastPalaceLogMessages = lastPalaceLogMessages.filter { $0.value > cutoffTime }
         }
       }
-      
+
       return false
     }
   }

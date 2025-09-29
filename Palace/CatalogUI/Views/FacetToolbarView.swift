@@ -43,5 +43,3 @@ struct FacetToolbarView: View {
     .padding(.vertical, 8)
   }
 }
-
-

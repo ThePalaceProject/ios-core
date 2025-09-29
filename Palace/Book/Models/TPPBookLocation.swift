@@ -12,18 +12,21 @@ typealias TPPBookLocationData = [String: Any]
 
 extension TPPBookLocationData {
   func string(for key: TPPBookLocationKey) -> String? {
-    return self[key.rawValue] as? String
+    self[key.rawValue] as? String
   }
 }
 
+// MARK: - TPPBookLocationKey
+
 public enum TPPBookLocationKey: String {
-  case locationString = "locationString"
-  case renderer = "renderer"
+  case locationString
+  case renderer
 }
+
+// MARK: - TPPBookLocation
 
 @objcMembers
 public class TPPBookLocation: NSObject {
-  
   /// Due to differences in how different renderers (e.g. Readium, RMSDK, et cetera) want to handle
   /// location information, it is necessary to store location information in an unstructured manner.
   /// When creating an instance of this class, |locationString| is the renderer-specific data and
@@ -34,11 +37,12 @@ public class TPPBookLocation: NSObject {
 
   // Renderer
   var renderer: String
-  
+
   init?(locationString: String, renderer: String) {
     self.locationString = locationString
     self.renderer = renderer
   }
+
   init?(dictionary: [String: Any]) {
     let locationData = dictionary as TPPBookLocationData
     guard let locationString = locationData.string(for: .locationString),
@@ -49,10 +53,11 @@ public class TPPBookLocation: NSObject {
     self.locationString = locationString
     self.renderer = renderer
   }
+
   var dictionaryRepresentation: [String: Any] {
-    return [
-      TPPBookLocationKey.locationString.rawValue: self.locationString,
-      TPPBookLocationKey.renderer.rawValue: self.renderer
+    [
+      TPPBookLocationKey.locationString.rawValue: locationString,
+      TPPBookLocationKey.renderer.rawValue: renderer,
     ]
   }
 }

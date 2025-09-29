@@ -1,16 +1,19 @@
 import SwiftUI
 import UIKit
 
+// MARK: - HoldsView
+
 struct HoldsView: View {
   @EnvironmentObject private var coordinator: NavigationCoordinator
   typealias DisplayStrings = Strings.HoldsView
-  
+
   @StateObject private var model = HoldsViewModel()
   @StateObject private var logoObserver = CatalogLogoObserver()
   @State private var currentAccountUUID: String = AccountsManager.shared.currentAccount?.uuid ?? ""
   private var allBooks: [TPPBook] {
-    model.reservedBookVMs.map { $0.book } + model.heldBookVMs.map { $0.book }
+    model.reservedBookVMs.map(\.book) + model.heldBookVMs.map(\.book)
   }
+
   var body: some View {
     ZStack {
       mainContent
@@ -55,15 +58,15 @@ struct HoldsView: View {
           account?.loadLogo()
           currentAccountUUID = account?.uuid ?? ""
         }
-      .sheet(isPresented: $model.showLibraryAccountView) {
-        UIViewControllerWrapper(
-          TPPAccountList { account in
-            model.loadAccount(account)
-          },
-          updater: { _ in }
-        )
-      }
-      
+        .sheet(isPresented: $model.showLibraryAccountView) {
+          UIViewControllerWrapper(
+            TPPAccountList { account in
+              model.loadAccount(account)
+            },
+            updater: { _ in }
+          )
+        }
+
       if model.isLoading {
         loadingOverlay
       }
@@ -72,7 +75,7 @@ struct HoldsView: View {
 
   private var mainContent: some View {
     VStack(alignment: .leading, spacing: 0) {
-      if model.showSearchSheet { 
+      if model.showSearchSheet {
         searchBar
           .transition(.move(edge: .top).combined(with: .opacity))
       }
@@ -107,18 +110,18 @@ struct HoldsView: View {
       }
     }
   }
-  
+
   /// Placeholder text when there are no holds at all
   private var emptyView: some View {
     Text(DisplayStrings.emptyMessage)
-    .multilineTextAlignment(.center)
-    .foregroundColor(Color(white: 0.667))
-    .background(Color(TPPConfiguration.backgroundColor()))
-    .font(.system(size: 18))
-    .padding(.horizontal, 24)
-    .padding(.top, 100)
+      .multilineTextAlignment(.center)
+      .foregroundColor(Color(white: 0.667))
+      .background(Color(TPPConfiguration.backgroundColor()))
+      .font(.system(size: 18))
+      .padding(.horizontal, 24)
+      .padding(.top, 100)
   }
-  
+
   /// Semi‐transparent loading overlay
   private var loadingOverlay: some View {
     ProgressView()
@@ -126,7 +129,7 @@ struct HoldsView: View {
       .frame(maxWidth: .infinity, maxHeight: .infinity)
       .background(Color.black.opacity(0.5).ignoresSafeArea())
   }
-  
+
   /// Leading bar button: "Pick a new library"
   private var leadingBarButton: some View {
     Button {
@@ -136,9 +139,9 @@ struct HoldsView: View {
     }
     .actionSheet(isPresented: $model.selectNewLibrary) {
       var buttons: [ActionSheet.Button] = TPPSettings.shared.settingsAccountsList.map { account in
-          .default(Text(account.name)) {
-            model.loadAccount(account)
-          }
+        .default(Text(account.name)) {
+          model.loadAccount(account)
+        }
       }
       buttons.append(.default(Text(Strings.MyBooksView.addLibrary)) {
         model.showLibraryAccountView = true
@@ -150,7 +153,7 @@ struct HoldsView: View {
       )
     }
   }
-  
+
   private var trailingBarButton: some View {
     Button {
       withAnimation { model.showSearchSheet.toggle() }
@@ -159,7 +162,7 @@ struct HoldsView: View {
     }
     .accessibilityLabel(NSLocalizedString("Search Reservations", comment: ""))
   }
-  
+
   private func presentBookDetail(_ book: TPPBook) {
     coordinator.store(book: book)
     coordinator.push(.bookDetail(BookRoute(id: book.identifier)))
@@ -188,19 +191,20 @@ struct HoldsView: View {
   }
 }
 
+// MARK: - TPPHoldsViewController
+
 @objc final class TPPHoldsViewController: NSObject {
-  
   /// Returns a `UINavigationController` containing our SwiftUI `HoldsView`.
   /// • The SwiftUI view uses `HoldsViewModel()` under the hood.
   /// • We set the navigation title and the tab-bar image here.
   @MainActor
   @objc static func makeSwiftUIView() -> UIViewController {
     let holdsRoot = HoldsView()
-    
+
     let hosting = UIHostingController(rootView: holdsRoot)
     hosting.title = NSLocalizedString("Reservations", comment: "Nav title for Holds")
     hosting.tabBarItem.image = UIImage(named: "Holds")
-    
+
     return hosting
   }
 }

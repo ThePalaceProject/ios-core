@@ -10,7 +10,6 @@ import Foundation
 import ReadiumShared
 
 extension Publication {
-
   /// Obtains a R2 Link object from a given ID reference.
   ///
   /// This for example can be used to get the link object related to a R1
@@ -27,7 +26,7 @@ extension Publication {
     // The Publication stores all bookmarks (and TOC; positions in general) in
     // the `readingOrder` list. Each `Link` stores its metadata in a
     // `properties` dictionary.
-    return readingOrder.first { $0.properties["id"] as? String == idref }
+    readingOrder.first { $0.properties["id"] as? String == idref }
   }
 
   /// Derives the `idref` (often used in Readium 1) from a Readium 2 `href`.
@@ -50,7 +49,7 @@ extension Publication {
 
   /// Shortcut helper to get the publication ID.
   var id: String? {
-    return metadata.identifier
+    metadata.identifier
   }
 
   /// Shortcut to get the resource index (stored within internal R2 data

@@ -11,14 +11,14 @@ import XCTest
 @testable import Palace
 
 final class ButtonStateTests: XCTestCase {
-
   private var testAudiobook: TPPBook {
     TPPBook(dictionary: [
       "acquisitions": [TPPFake.genericAudiobookAcquisition.dictionaryRepresentation()],
       "title": "Tractatus",
       "categories": ["some cat"],
       "id": "123",
-      "updated": "2020-10-06T17:13:51Z"]
+      "updated": "2020-10-06T17:13:51Z",
+    ]
     )!
   }
 
@@ -28,7 +28,8 @@ final class ButtonStateTests: XCTestCase {
       "title": "Tractatus",
       "categories": ["some cat"],
       "id": "123",
-      "updated": "2020-10-06T17:13:51Z"]
+      "updated": "2020-10-06T17:13:51Z",
+    ]
     )!
   }
 
@@ -194,4 +195,3 @@ final class ButtonStateTests: XCTestCase {
     XCTAssertEqual(Set(expectedButtons), Set(resultButtons))
   }
 }
-

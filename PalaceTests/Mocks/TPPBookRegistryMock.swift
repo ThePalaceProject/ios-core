@@ -1,11 +1,13 @@
-import Foundation
 import Combine
+import Foundation
 import UIKit
 @testable import Palace
 
-class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider {
+// MARK: - TPPBookRegistryMock
 
+class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider {
   // MARK: - Publishers
+
   private let registrySubject = CurrentValueSubject<[String: TPPBookRegistryRecord], Never>([:])
   private let bookStateSubject = CurrentValueSubject<(String, TPPBookState), Never>(("", .unregistered))
   var isSyncing: Bool = false
@@ -19,12 +21,13 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider {
   }
 
   // MARK: - Mock Data Storage
+
   var registry = [String: TPPBookRegistryRecord]()
   private var processingBooks = Set<String>()
 
   // MARK: - TPPBookRegistryProvider Methods
 
-  func coverImage(for book: TPPBook, handler: @escaping (UIImage?) -> Void) {
+  func coverImage(for _: TPPBook, handler: @escaping (UIImage?) -> Void) {
     // Simulate fetching a cover image
     let mockImage = UIImage(systemName: "book.fill")
     handler(mockImage)
@@ -39,12 +42,14 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider {
   }
 
   func state(for bookIdentifier: String?) -> TPPBookState {
-    guard let bookIdentifier = bookIdentifier else { return .unregistered }
+    guard let bookIdentifier = bookIdentifier else {
+      return .unregistered
+    }
     return registry[bookIdentifier]?.state ?? .unregistered
   }
 
   func readiumBookmarks(forIdentifier identifier: String) -> [TPPReadiumBookmark] {
-    return registry[identifier]?.readiumBookmarks ?? []
+    registry[identifier]?.readiumBookmarks ?? []
   }
 
   func setLocation(_ location: TPPBookLocation?, forIdentifier identifier: String) {
@@ -52,7 +57,7 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider {
   }
 
   func location(forIdentifier identifier: String) -> TPPBookLocation? {
-    return registry[identifier]?.location
+    registry[identifier]?.location
   }
 
   func add(_ bookmark: TPPReadiumBookmark, forIdentifier identifier: String) {
@@ -63,14 +68,18 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider {
     registry[identifier]?.readiumBookmarks?.removeAll { $0 == bookmark }
   }
 
-  func replace(_ oldBookmark: TPPReadiumBookmark, with newBookmark: TPPReadiumBookmark, forIdentifier identifier: String) {
+  func replace(
+    _ oldBookmark: TPPReadiumBookmark,
+    with newBookmark: TPPReadiumBookmark,
+    forIdentifier identifier: String
+  ) {
     if let index = registry[identifier]?.readiumBookmarks?.firstIndex(of: oldBookmark) {
       registry[identifier]?.readiumBookmarks?[index] = newBookmark
     }
   }
 
   func genericBookmarksForIdentifier(_ bookIdentifier: String) -> [TPPBookLocation] {
-    return registry[bookIdentifier]?.genericBookmarks ?? []
+    registry[bookIdentifier]?.genericBookmarks ?? []
   }
 
   func addOrReplaceGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String) {
@@ -94,13 +103,24 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider {
     registry[bookIdentifier]?.genericBookmarks?.removeAll { $0.isSimilarTo(location) }
   }
 
-  func replaceGenericBookmark(_ oldLocation: TPPBookLocation, with newLocation: TPPBookLocation, forIdentifier bookIdentifier: String) {
+  func replaceGenericBookmark(
+    _ oldLocation: TPPBookLocation,
+    with newLocation: TPPBookLocation,
+    forIdentifier bookIdentifier: String
+  ) {
     if let index = registry[bookIdentifier]?.genericBookmarks?.firstIndex(where: { $0.isSimilarTo(oldLocation) }) {
       registry[bookIdentifier]?.genericBookmarks?[index] = newLocation
     }
   }
 
-  func addBook(_ book: TPPBook, location: TPPBookLocation? = nil, state: TPPBookState, fulfillmentId: String? = nil, readiumBookmarks: [TPPReadiumBookmark]? = nil, genericBookmarks: [TPPBookLocation]? = nil) {
+  func addBook(
+    _ book: TPPBook,
+    location: TPPBookLocation? = nil,
+    state: TPPBookState,
+    fulfillmentId: String? = nil,
+    readiumBookmarks: [TPPReadiumBookmark]? = nil,
+    genericBookmarks: [TPPBookLocation]? = nil
+  ) {
     let record = TPPBookRegistryRecord(
       book: book,
       location: location,
@@ -134,12 +154,16 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider {
   }
 
   func book(forIdentifier bookIdentifier: String?) -> TPPBook? {
-    guard let bookIdentifier = bookIdentifier else { return nil }
+    guard let bookIdentifier = bookIdentifier else {
+      return nil
+    }
     return registry[bookIdentifier]?.book
   }
 
   func fulfillmentId(forIdentifier bookIdentifier: String?) -> String? {
-    guard let bookIdentifier = bookIdentifier else { return nil }
+    guard let bookIdentifier = bookIdentifier else {
+      return nil
+    }
     return registry[bookIdentifier]?.fulfillmentId
   }
 
@@ -147,14 +171,17 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider {
     registry[bookIdentifier]?.fulfillmentId = fulfillmentId
   }
 
-  func with(account: String, perform block: (_ registry: TPPBookRegistry) -> Void) {
+  func with(account _: String, perform _: (_ registry: TPPBookRegistry) -> Void) {
     // Mock implementation does not support account-specific operations
   }
 }
 
+// MARK: TPPBookRegistrySyncing
+
 extension TPPBookRegistryMock: TPPBookRegistrySyncing {
   // MARK: - Syncing
-  func reset(_ libraryAccountUUID: String) {
+
+  func reset(_: String) {
     isSyncing = false
     registry.removeAll()
   }

@@ -14,12 +14,13 @@ extension Binding {
   /// - Returns: Binding with the provided handler
   ///
   /// This is a workaround for iOS versions prior to 14, where SwiftUI doesn't have `.onChange` modifier
-    func onChange(_ handler: @escaping (Value) -> Void) -> Binding<Value> {
-        return Binding(
-            get: { self.wrappedValue },
-            set: { newValue in
-                self.wrappedValue = newValue
-                handler(newValue)
-        })
-    }
+  func onChange(_ handler: @escaping (Value) -> Void) -> Binding<Value> {
+    Binding(
+      get: { self.wrappedValue },
+      set: { newValue in
+        self.wrappedValue = newValue
+        handler(newValue)
+      }
+    )
+  }
 }

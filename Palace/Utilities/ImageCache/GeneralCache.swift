@@ -1,5 +1,7 @@
-import Foundation
 import CryptoKit
+import Foundation
+
+// MARK: - CachingMode
 
 public enum CachingMode {
   case memoryOnly
@@ -7,6 +9,8 @@ public enum CachingMode {
   case memoryAndDisk
   case none
 }
+
+// MARK: - CachePolicy
 
 public enum CachePolicy {
   case cacheFirst
@@ -16,13 +20,15 @@ public enum CachePolicy {
   case noCache
 }
 
+// MARK: - GeneralCache
+
 public final class GeneralCache<Key: Hashable & Codable, Value: Codable> {
   private let memoryCache = NSCache<WrappedKey, Entry>()
   private let fileManager = FileManager.default
   private let cacheDirectory: URL
   private let queue = DispatchQueue(label: "com.Palace.GeneralCache", attributes: .concurrent)
   private let mode: CachingMode
-  
+
   private final class Entry: Codable {
     let value: Value
     let expiration: Date?
@@ -30,29 +36,34 @@ public final class GeneralCache<Key: Hashable & Codable, Value: Codable> {
       self.value = value
       self.expiration = expiration
     }
+
     var isExpired: Bool {
-      if let exp = expiration { return exp < Date() }
+      if let exp = expiration {
+        return exp < Date()
+      }
       return false
     }
   }
-  
+
   private final class WrappedKey: NSObject {
     let key: Key
     init(_ key: Key) { self.key = key }
     override var hash: Int { key.hashValue }
     override func isEqual(_ object: Any?) -> Bool {
-      guard let other = object as? WrappedKey else { return false }
+      guard let other = object as? WrappedKey else {
+        return false
+      }
       return other.key == key
     }
   }
-  
+
   public init(cacheName: String = "GeneralCache", mode: CachingMode = .memoryAndDisk) {
     self.mode = mode
     let cachesDir = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first!
     cacheDirectory = cachesDir.appendingPathComponent(cacheName, isDirectory: true)
     try? fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
   }
-  
+
   public func set(_ value: Value, for key: Key, expiresIn interval: TimeInterval? = nil) {
     let expirationDate = interval.map { Date().addingTimeInterval($0) }
     let entry = Entry(value: value, expiration: expirationDate)
@@ -66,15 +77,18 @@ public final class GeneralCache<Key: Hashable & Codable, Value: Codable> {
       }
     }
   }
-  
+
   public func get(for key: Key) -> Value? {
-    return queue.sync {
+    queue.sync {
       let wrappedKey = WrappedKey(key)
-      if (mode == .memoryOnly || mode == .memoryAndDisk),
-         let entry = memoryCache.object(forKey: wrappedKey), !entry.isExpired {
+      if mode == .memoryOnly || mode == .memoryAndDisk,
+         let entry = memoryCache.object(forKey: wrappedKey), !entry.isExpired
+      {
         return entry.value
       }
-      if mode == .memoryOnly { return nil }
+      if mode == .memoryOnly {
+        return nil
+      }
       let url = fileURL(for: key)
       do {
         let attrs = try fileManager.attributesOfItem(atPath: url.path)
@@ -108,14 +122,18 @@ public final class GeneralCache<Key: Hashable & Codable, Value: Codable> {
       }
     }
   }
-  
+
   @discardableResult
-  public func get(_ key: Key,
-                  policy: CachePolicy,
-                  fetcher: @escaping () async throws -> Value) async throws -> Value {
+  public func get(
+    _ key: Key,
+    policy: CachePolicy,
+    fetcher: @escaping () async throws -> Value
+  ) async throws -> Value {
     switch policy {
     case .cacheFirst:
-      if let cached = get(for: key) { return cached }
+      if let cached = get(for: key) {
+        return cached
+      }
       fallthrough
     case .networkFirst:
       do {
@@ -123,7 +141,9 @@ public final class GeneralCache<Key: Hashable & Codable, Value: Codable> {
         set(fresh, for: key)
         return fresh
       } catch {
-        if let cached = get(for: key) { return cached }
+        if let cached = get(for: key) {
+          return cached
+        }
         throw error
       }
     case .cacheThenNetwork:
@@ -139,7 +159,7 @@ public final class GeneralCache<Key: Hashable & Codable, Value: Codable> {
         set(fresh, for: key)
         return fresh
       }
-    case .timedCache(let interval):
+    case let .timedCache(interval):
       if let cached = get(for: key) {
         return cached
       }
@@ -150,7 +170,7 @@ public final class GeneralCache<Key: Hashable & Codable, Value: Codable> {
       return try await fetcher()
     }
   }
-  
+
   public func remove(for key: Key) {
     let wrappedKey = WrappedKey(key)
     queue.sync(flags: .barrier) {
@@ -162,50 +182,56 @@ public final class GeneralCache<Key: Hashable & Codable, Value: Codable> {
       }
     }
   }
-  
+
   public func clear() {
     queue.sync(flags: .barrier) {
       if mode == .memoryOnly || mode == .memoryAndDisk {
         memoryCache.removeAllObjects()
       }
       if mode == .diskOnly || mode == .memoryAndDisk {
-        (try? fileManager.contentsOfDirectory(at: cacheDirectory,
-                                              includingPropertiesForKeys: nil))?
+        (try? fileManager.contentsOfDirectory(
+          at: cacheDirectory,
+          includingPropertiesForKeys: nil
+        ))?
           .forEach { try? fileManager.removeItem(at: $0) }
       }
     }
   }
-  
+
   public func clearMemory() {
     queue.sync(flags: .barrier) {
       memoryCache.removeAllObjects()
     }
   }
-  
+
   private func saveToDisk(_ entry: Entry, for key: Key) {
     let url = fileURL(for: key)
     do {
-      let raw: Data
-      if Value.self == Data.self, let d = entry.value as? Data {
-        raw = d
+      let raw: Data = if Value.self == Data.self, let d = entry.value as? Data {
+        d
       } else {
-        raw = try JSONEncoder().encode(entry)
+        try JSONEncoder().encode(entry)
       }
       try raw.write(to: url, options: .atomic)
       if let exp = entry.expiration {
-        try fileManager.setAttributes([.modificationDate: exp],
-                                      ofItemAtPath: url.path)
+        try fileManager.setAttributes(
+          [.modificationDate: exp],
+          ofItemAtPath: url.path
+        )
       }
     } catch {
       print("Cache disk write failed: \(error)")
     }
   }
-  
+
   public func fileURL(for key: Key) -> URL {
     let name: String
     if let str = key as? String {
-      name = str.replacingOccurrences(of: "[^a-zA-Z0-9_-]", with: "",
-                                      options: .regularExpression)
+      name = str.replacingOccurrences(
+        of: "[^a-zA-Z0-9_-]",
+        with: "",
+        options: .regularExpression
+      )
     } else {
       let data = try? JSONEncoder().encode(key)
       let hash = data.map { SHA256.hash(data: $0).compactMap {
@@ -215,7 +241,7 @@ public final class GeneralCache<Key: Hashable & Codable, Value: Codable> {
     }
     return cacheDirectory.appendingPathComponent(name)
   }
-  
+
   public static func clearAllCaches() {
     let fileManager = FileManager.default
     let cachesDir = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first!
@@ -225,39 +251,39 @@ public final class GeneralCache<Key: Hashable & Codable, Value: Codable> {
         // Preserve Adobe DRM directories and critical system data
         let filename = url.lastPathComponent.lowercased()
         let fullPath = url.path.lowercased()
-        let shouldPreserve = filename.contains("adobe") || 
-                            filename.contains("adept") || 
-                            filename.contains("drm") ||
-                            filename.contains("activation") ||
-                            filename.contains("device") ||
-                            filename.hasPrefix("com.adobe") ||
-                            filename.hasPrefix("acsm") ||
-                            filename.contains("rights") ||
-                            filename.contains("license") ||
-                            fullPath.contains("adobe") ||
-                            fullPath.contains("adept") ||
-                            fullPath.contains("/drm/") ||
-                            fullPath.contains("deviceprovider") ||
-                            fullPath.contains("authorization")
-        
+        let shouldPreserve = filename.contains("adobe") ||
+          filename.contains("adept") ||
+          filename.contains("drm") ||
+          filename.contains("activation") ||
+          filename.contains("device") ||
+          filename.hasPrefix("com.adobe") ||
+          filename.hasPrefix("acsm") ||
+          filename.contains("rights") ||
+          filename.contains("license") ||
+          fullPath.contains("adobe") ||
+          fullPath.contains("adept") ||
+          fullPath.contains("/drm/") ||
+          fullPath.contains("deviceprovider") ||
+          fullPath.contains("authorization")
+
         if shouldPreserve {
           NSLog("[GeneralCache] Preserving Adobe DRM directory: \(filename)")
           continue
         }
-        
+
         try? fileManager.removeItem(at: url)
       }
     } catch {
       NSLog("[GeneralCache] Failed to clear caches: \(error)")
     }
   }
-  
+
   public static func clearCacheOnUpdate() {
     let cacheVersionKey = "AppCacheVersionBuild"
 
     let info = Bundle.main.infoDictionary
     let version = info?["CFBundleShortVersionString"] as? String ?? "0"
-    let build   = info?["CFBundleVersion"] as? String ?? "0"
+    let build = info?["CFBundleVersion"] as? String ?? "0"
 
     let versionBuild = "\(version) (\(build))"
 
@@ -268,4 +294,5 @@ public final class GeneralCache<Key: Hashable & Codable, Value: Codable> {
       Self.clearAllCaches()
       defaults.set(versionBuild, forKey: cacheVersionKey)
     }
-  }}
+  }
+}

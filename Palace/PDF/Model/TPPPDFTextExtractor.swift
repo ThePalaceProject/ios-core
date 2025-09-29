@@ -22,29 +22,33 @@ class TPPPDFTextExtractor {
     // https://opensource.adobe.com/dc-acrobat-sdk-docs/pdfstandards/pdfreference1.3.pdf
     // "TJ" operator: an array of blocks (strings, numbers, etc)
     CGPDFOperatorTableSetCallback(operatorTable!, "TJ") { scanner, context in
-      guard let context = context else { return }
+      guard let context = context else {
+        return
+      }
       let extractor = Unmanaged<TPPPDFTextExtractor>.fromOpaque(context).takeUnretainedValue()
       extractor.handleArray(scanner: scanner)
     }
     // String operators
     for op in ["Tj", "\"", "'"] {
       CGPDFOperatorTableSetCallback(operatorTable!, op) { scanner, context in
-        guard let context = context else { return }
+        guard let context = context else {
+          return
+        }
         let extractor = Unmanaged<TPPPDFTextExtractor>.fromOpaque(context).takeUnretainedValue()
         extractor.handleString(scanner: scanner)
       }
     }
     let scanner = CGPDFScannerCreate(stream, operatorTable, Unmanaged.passUnretained(self).toOpaque())
     CGPDFScannerScan(scanner)
-    
+
     // Release resources
     CGPDFScannerRelease(scanner)
     CGPDFOperatorTableRelease(operatorTable!)
     CGPDFContentStreamRelease(stream)
-    
+
     return textBlocks
   }
-  
+
   /// String operator handler
   /// - Parameter scanner: `CGPDFScannerRef`
   private func handleString(scanner: CGPDFScannerRef) {
@@ -57,26 +61,32 @@ class TPPPDFTextExtractor {
       }
     }
   }
-  
+
   /// Array operator handler
   /// - Parameter scanner: `CGPDFScannerRef`
   private func handleArray(scanner: CGPDFScannerRef) {
     var array: CGPDFArrayRef?
-    guard CGPDFScannerPopArray(scanner, &array), let array else { return }
-    
+    guard CGPDFScannerPopArray(scanner, &array), let array else {
+      return
+    }
+
     var blockValue = ""
     // Iterate through the array elements
     let count = CGPDFArrayGetCount(array)
     for index in 0..<count {
       var obj: CGPDFObjectRef?
-      guard CGPDFArrayGetObject(array, index, &obj), let obj else { continue }
-      
+      guard CGPDFArrayGetObject(array, index, &obj), let obj else {
+        continue
+      }
+
       let type = CGPDFObjectGetType(obj)
       switch type {
       case .string:
         // Extract and append the string to the text
         var pdfString: CGPDFStringRef?
-        if CGPDFObjectGetValue(obj, .string, &pdfString), let pdfString, let cfString = CGPDFStringCopyTextString(pdfString) {
+        if CGPDFObjectGetValue(obj, .string, &pdfString), let pdfString,
+           let cfString = CGPDFStringCopyTextString(pdfString)
+        {
           let string = cfString as String
           // Skip control sequences
           if !string[string.startIndex].isWhitespace {

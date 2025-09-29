@@ -8,48 +8,49 @@
 
 import SwiftUI
 
+// MARK: - PalaceFontModifier
+
 public struct PalaceFontModifier: ViewModifier {
-  
   var style: Font.TextStyle
-  var size: CGFloat? = nil
-  var weight: Font.Weight? = nil
-  
+  var size: CGFloat?
+  var weight: Font.Weight?
+
   public func body(content: Content) -> some View {
     content.font(
       .custom(palaceFontName, size: size ?? fontSize(for: style), relativeTo: style)
-      .weight(weight ?? fontWeight(for: style))
+        .weight(weight ?? fontWeight(for: style))
     )
   }
-  
+
   private let palaceFontName = "OpenSans-Regular"
-  
+
   // Font sizes are described in pixels: https://www.figma.com/file/BxLs5QNmU5tCIKhO9ccAyh/TPP-UI---Style-Guidelines?type=design&node-id=1-12&mode=design&t=sGPJYuRIuFdWCIg3-0
   private func fontSize(for textStyle: Font.TextStyle) -> CGFloat {
     switch textStyle {
-    case .largeTitle: return 34
-    case .title: return 28
-    case .title2: return 22
-    case .title3: return 20
-    case .headline: return 17
-    case .subheadline: return 15
-    case .body: return 17
-    default: return UIFont.preferredFont(forTextStyle: translateTextStyle(textStyle)).pointSize
+    case .largeTitle: 34
+    case .title: 28
+    case .title2: 22
+    case .title3: 20
+    case .headline: 17
+    case .subheadline: 15
+    case .body: 17
+    default: UIFont.preferredFont(forTextStyle: translateTextStyle(textStyle)).pointSize
     }
   }
-  
+
   private func fontWeight(for textStyle: Font.TextStyle) -> Font.Weight {
     switch textStyle {
-    case .largeTitle: return .bold
-    case .title: return .bold
-    case .title2: return .bold
-    case .title3: return .bold
-    case .headline: return .bold
-    case .subheadline: return .bold
-    case .body: return .regular
-    default: return .regular
+    case .largeTitle: .bold
+    case .title: .bold
+    case .title2: .bold
+    case .title3: .bold
+    case .headline: .bold
+    case .subheadline: .bold
+    case .body: .regular
+    default: .regular
     }
   }
-    
+
   private func translateTextStyle(_ textStyle: Font.TextStyle) -> UIFont.TextStyle {
     switch textStyle {
     case .largeTitle: return .largeTitle
@@ -70,9 +71,10 @@ public struct PalaceFontModifier: ViewModifier {
 
 public extension View {
   func palaceFont(_ style: Font.TextStyle, weight: Font.Weight? = nil) -> some View {
-    self.modifier(PalaceFontModifier(style: style, weight: weight))
+    modifier(PalaceFontModifier(style: style, weight: weight))
   }
+
   func palaceFont(size: CGFloat, weight: Font.Weight? = nil) -> some View {
-    self.modifier(PalaceFontModifier(style: .body, size: size, weight: weight))
+    modifier(PalaceFontModifier(style: .body, size: size, weight: weight))
   }
 }

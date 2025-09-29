@@ -1,8 +1,11 @@
 import SwiftUI
 import UIKit
 
+// MARK: - CatalogView
+
 struct CatalogView: View {
   // MARK: - Properties
+
   @EnvironmentObject private var coordinator: NavigationCoordinator
   @StateObject private var viewModel: CatalogViewModel
   @StateObject private var logoObserver = CatalogLogoObserver()
@@ -12,17 +15,19 @@ struct CatalogView: View {
   @State private var showSearch: Bool = false
 
   // MARK: - Initialization
+
   init(viewModel: CatalogViewModel) {
     _viewModel = StateObject(wrappedValue: viewModel)
   }
 
   // MARK: - Body
+
   var body: some View {
     content
       .padding(.top)
       .navigationBarTitleDisplayMode(.inline)
       .toolbar { toolbarContent }
-      .onAppear { 
+      .onAppear {
         setupCurrentAccount()
         coordinator.clearAllCatalogFilterStates()
       }
@@ -39,6 +44,7 @@ struct CatalogView: View {
 
 private extension CatalogView {
   // MARK: - Toolbar and UI Components
+
   @ToolbarContentBuilder
   var toolbarContent: some ToolbarContent {
     ToolbarItem(placement: .principal) {
@@ -51,7 +57,7 @@ private extension CatalogView {
       }
       .actionSheet(isPresented: $showAccountDialog) { libraryPicker }
     }
-    
+
     ToolbarItem(placement: .navigationBarTrailing) {
       if showSearch {
         Button(action: { dismissSearch() }) {
@@ -64,12 +70,12 @@ private extension CatalogView {
       }
     }
   }
-  
+
   private var libraryPicker: ActionSheet {
     var buttons: [ActionSheet.Button] = TPPSettings.shared.settingsAccountsList.map { account in
-        .default(Text(account.name)) {
-          switchToAccount(account)
-        }
+      .default(Text(account.name)) {
+        switchToAccount(account)
+      }
     }
     buttons.append(.default(Text(Strings.MyBooksView.addLibrary)) {
       showAddLibrarySheet = true
@@ -80,7 +86,7 @@ private extension CatalogView {
       buttons: buttons
     )
   }
-  
+
   @ViewBuilder
   var addLibrarySheet: some View {
     UIViewControllerWrapper(
@@ -101,7 +107,6 @@ private extension CatalogView {
       mainCatalogSection
     }
   }
-
 
   @ViewBuilder
   private var searchSection: some View {
@@ -149,7 +154,7 @@ private extension CatalogView {
       EmptyView()
     }
   }
-  
+
   func presentBookDetail(_ book: TPPBook) {
     coordinator.store(book: book)
     coordinator.push(.bookDetail(BookRoute(id: book.identifier)))
@@ -164,38 +169,39 @@ private extension CatalogView {
   func presentSearch() {
     withAnimation { showSearch = true }
   }
-  
+
   func dismissSearch() {
-    withAnimation { 
+    withAnimation {
       showSearch = false
     }
   }
-  
+
   func handleTabChange() {
     if showSearch {
       dismissSearch()
     }
   }
-  
+
   // MARK: - Account Management
+
   func setupCurrentAccount() {
     let account = AccountsManager.shared.currentAccount
     account?.logoDelegate = logoObserver
     account?.loadLogo()
     currentAccountUUID = account?.uuid ?? ""
   }
-  
+
   func handleAccountChange() {
     let account = AccountsManager.shared.currentAccount
     account?.logoDelegate = logoObserver
     account?.loadLogo()
     currentAccountUUID = account?.uuid ?? ""
-    
+
     coordinator.clearAllCatalogFilterStates()
-    
+
     Task { await viewModel.handleAccountChange() }
   }
-  
+
   func switchToAccount(_ account: Account) {
     AccountsManager.shared.currentAccount = account
     if let urlString = account.catalogUrl, let url = URL(string: urlString) {
@@ -204,22 +210,22 @@ private extension CatalogView {
     NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
     Task { await viewModel.refresh() }
   }
-  
+
   func addAndSwitchToAccount(_ account: Account) {
     if !TPPSettings.shared.settingsAccountIdsList.contains(account.uuid) {
       TPPSettings.shared.settingsAccountIdsList.append(account.uuid)
     }
     switchToAccount(account)
   }
-  
+
   // MARK: - Computed Properties
+
   var allBooks: [TPPBook] {
     if !viewModel.lanes.isEmpty {
-      return viewModel.lanes.flatMap { $0.books }
+      return viewModel.lanes.flatMap(\.books)
     }
     return viewModel.ungroupedBooks
   }
-
 
   // MARK: - Subviews
 

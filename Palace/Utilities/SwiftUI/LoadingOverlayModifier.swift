@@ -1,5 +1,7 @@
 import SwiftUI
 
+// MARK: - LoadingOverlayModifier
+
 struct LoadingOverlayModifier: ViewModifier {
   var isLoading: Bool
 
@@ -15,7 +17,7 @@ struct LoadingOverlayModifier: ViewModifier {
               gradient: Gradient(colors: [
                 Color.gray.opacity(0.3),
                 Color.gray.opacity(0.1),
-                Color.gray.opacity(0.3)
+                Color.gray.opacity(0.3),
               ]),
               startPoint: .leading,
               endPoint: .trailing
@@ -31,9 +33,11 @@ struct LoadingOverlayModifier: ViewModifier {
 
 extension View {
   func loadingOverlay(isLoading: Bool) -> some View {
-    self.modifier(LoadingOverlayModifier(isLoading: isLoading))
+    modifier(LoadingOverlayModifier(isLoading: isLoading))
   }
 }
+
+// MARK: - ShimmerEffect
 
 struct ShimmerEffect: ViewModifier {
   @State private var isAnimating = false
@@ -45,7 +49,7 @@ struct ShimmerEffect: ViewModifier {
           gradient: Gradient(colors: [
             Color.gray.opacity(0.3),
             Color.gray.opacity(0.1),
-            Color.gray.opacity(0.3)
+            Color.gray.opacity(0.3),
           ]),
           startPoint: .leading,
           endPoint: .trailing
@@ -62,9 +66,11 @@ struct ShimmerEffect: ViewModifier {
 
 extension View {
   func shimmerEffect() -> some View {
-    self.modifier(ShimmerEffect())
+    modifier(ShimmerEffect())
   }
 }
+
+// MARK: - ShimmerView
 
 struct ShimmerView: View {
   var width: CGFloat

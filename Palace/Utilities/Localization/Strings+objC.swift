@@ -11,12 +11,14 @@ import Foundation
 /// Makes `Strings` string properties available in Objective-C
 @objcMembers
 class LocalizedStrings: NSObject {
-  
   // MARK: - TPPLastListenedPositionSynchronizer
-  static let syncListeningPositionAlertTitle = Strings.TPPLastListenedPositionSynchronizer.syncListeningPositionAlertTitle
+
+  static let syncListeningPositionAlertTitle = Strings.TPPLastListenedPositionSynchronizer
+    .syncListeningPositionAlertTitle
   static let syncListeningPositionAlertBody = Strings.TPPLastListenedPositionSynchronizer.syncListeningPositionAlertBody
-  
+
   // MARK: - TPPLastReadPositionSynchronizer
+
   static let stay = Strings.TPPLastReadPositionSynchronizer.stay
   static let move = Strings.TPPLastReadPositionSynchronizer.move
 }

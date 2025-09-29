@@ -15,14 +15,14 @@ class TPPBookCreationTests: XCTestCase {
 
   override func setUpWithError() throws {
     try super.setUpWithError()
-    self.opdsEntry = TPPFake.opdsEntry
-    self.opdsEntryMinimal = TPPFake.opdsEntryMinimal
+    opdsEntry = TPPFake.opdsEntry
+    opdsEntryMinimal = TPPFake.opdsEntryMinimal
   }
 
   override func tearDownWithError() throws {
     try super.tearDownWithError()
-    self.opdsEntry = nil
-    self.opdsEntryMinimal = nil
+    opdsEntry = nil
+    opdsEntryMinimal = nil
   }
 
   func testBookCreationViaDictionary() throws {
@@ -30,10 +30,10 @@ class TPPBookCreationTests: XCTestCase {
 
     let book = TPPBook(dictionary: [
       "acquisitions": acquisitions,
-      "categories" : ["Fantasy"],
+      "categories": ["Fantasy"],
       "id": "666",
       "title": "The Lord of the Rings",
-      "updated": "2020-09-08T09:22:45Z"
+      "updated": "2020-09-08T09:22:45Z",
     ])
     XCTAssertNotNil(book)
     XCTAssertNotNil(book?.acquisitions)
@@ -46,7 +46,7 @@ class TPPBookCreationTests: XCTestCase {
 
     let bookNoUpdatedDate = TPPBook(dictionary: [
       "acquisitions": acquisitions,
-      "categories" : ["Fantasy"],
+      "categories": ["Fantasy"],
       "id": "666",
       "title": "The Lord of the Rings",
     ])
@@ -54,17 +54,17 @@ class TPPBookCreationTests: XCTestCase {
 
     let bookNoTitle = TPPBook(dictionary: [
       "acquisitions": acquisitions,
-      "categories" : ["Fantasy"],
+      "categories": ["Fantasy"],
       "id": "666",
-      "updated": "2020-09-08T09:22:45Z"
+      "updated": "2020-09-08T09:22:45Z",
     ])
     XCTAssertNil(bookNoTitle)
 
     let bookNoId = TPPBook(dictionary: [
       "acquisitions": acquisitions,
-      "categories" : ["Fantasy"],
+      "categories": ["Fantasy"],
       "title": "The Lord of the Rings",
-      "updated": "2020-09-08T09:22:45Z"
+      "updated": "2020-09-08T09:22:45Z",
     ])
     XCTAssertNil(bookNoId)
 
@@ -72,7 +72,7 @@ class TPPBookCreationTests: XCTestCase {
       "acquisitions": acquisitions,
       "id": "666",
       "title": "The Lord of the Rings",
-      "updated": "2020-09-08T09:22:45Z"
+      "updated": "2020-09-08T09:22:45Z",
     ])
     XCTAssertNil(bookNoCategories)
 
@@ -100,33 +100,34 @@ class TPPBookCreationTests: XCTestCase {
   // for completeness only. This test is not strictly necessary because the
   // member-wise initializer is not public
   func testBookCreationViaMemberWiseInitializer() {
-    let book = TPPBook(acquisitions: opdsEntry.acquisitions,
-                        authors: nil,
-                        categoryStrings: ["Test String 1", "Test String 2"],
-                        distributor: nil,
-                        identifier: "666",
-                        imageURL: nil,
-                        imageThumbnailURL: nil,
-                        published: nil,
-                        publisher: nil,
-                        subtitle: nil,
-                        summary: nil,
-                        title: "The Lord of the Rings",
-                        updated: Date(),
-                        annotationsURL: nil,
-                        analyticsURL: nil,
-                        alternateURL: nil,
-                        relatedWorksURL: nil,
-                        previewLink: nil,
-                        seriesURL: nil,
-                        revokeURL: nil,
-                        reportURL: nil,
-                        timeTrackingURL: nil,
-                        contributors: nil,
-                        bookDuration: nil,
-                        imageCache: MockImageCache()
+    let book = TPPBook(
+      acquisitions: opdsEntry.acquisitions,
+      authors: nil,
+      categoryStrings: ["Test String 1", "Test String 2"],
+      distributor: nil,
+      identifier: "666",
+      imageURL: nil,
+      imageThumbnailURL: nil,
+      published: nil,
+      publisher: nil,
+      subtitle: nil,
+      summary: nil,
+      title: "The Lord of the Rings",
+      updated: Date(),
+      annotationsURL: nil,
+      analyticsURL: nil,
+      alternateURL: nil,
+      relatedWorksURL: nil,
+      previewLink: nil,
+      seriesURL: nil,
+      revokeURL: nil,
+      reportURL: nil,
+      timeTrackingURL: nil,
+      contributors: nil,
+      bookDuration: nil,
+      imageCache: MockImageCache()
     )
-    
+
     XCTAssertNotNil(book)
     XCTAssertNotNil(book.acquisitions)
     XCTAssertNotNil(book.categoryStrings)

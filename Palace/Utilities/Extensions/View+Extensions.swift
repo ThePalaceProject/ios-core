@@ -13,7 +13,7 @@ extension View {
   func anyView() -> AnyView {
     AnyView(self)
   }
-  
+
   func verticallyCentered() -> some View {
     VStack {
       Spacer()
@@ -21,7 +21,7 @@ extension View {
       Spacer()
     }
   }
-  
+
   func horizontallyCentered() -> some View {
     HStack {
       Spacer()
@@ -29,7 +29,7 @@ extension View {
       Spacer()
     }
   }
-  
+
   func bottomrRightJustified() -> some View {
     VStack {
       Spacer()
@@ -41,7 +41,7 @@ extension View {
   }
 
   func square(length: CGFloat) -> some View {
-    self.frame(width: length, height: length)
+    frame(width: length, height: length)
   }
 
   func refreshable(_ refreshAction: @escaping Action) -> some View {

@@ -17,5 +17,3 @@ final class CatalogLoadingViewController: UIViewController, TPPLoadingViewContro
     stopLoading()
   }
 }
-
-

@@ -2,21 +2,20 @@ import Foundation
 
 extension Array {
   subscript(safe index: Index) -> Element? {
-    return indices.contains(index) ? self[index] : nil
+    indices.contains(index) ? self[index] : nil
   }
-  
+
   func safePrefix(_ maxLength: Int) -> ArraySlice<Element> {
-    return prefix(Swift.min(maxLength, count))
+    prefix(Swift.min(maxLength, count))
   }
-  
+
   func first(default defaultValue: Element) -> Element {
-    return first ?? defaultValue
+    first ?? defaultValue
   }
 }
 
 extension Collection {
   subscript(safe index: Index) -> Element? {
-    return indices.contains(index) ? self[index] : nil
+    indices.contains(index) ? self[index] : nil
   }
 }
-

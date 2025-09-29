@@ -6,16 +6,18 @@
 //  Copyright © 2020 NYPL Labs. All rights reserved.
 //
 
+// MARK: - TPPSettings + NYPLUniversalLinksSettings
+
 extension TPPSettings: NYPLUniversalLinksSettings {
   /// Used to handle Clever and SAML sign-ins in SimplyE.
   @objc var universalLinksURL: URL {
-    return URL(string: "https://librarysimplified.org/callbacks/SimplyE")!
+    URL(string: "https://librarysimplified.org/callbacks/SimplyE")!
   }
 }
 
 extension TPPSettings {
   static let userHasSeenWelcomeScreenKey = "NYPLUserHasSeenWelcomeScreenKey"
-  
+
   var settingsAccountIdsList: [String] {
     get {
       if let libraryAccounts = UserDefaults.standard.array(forKey: TPPSettings.settingsLibraryAccountsKey) {
@@ -36,7 +38,7 @@ extension TPPSettings {
       UserDefaults.standard.synchronize()
     }
   }
-  
+
   var settingsAccountsList: [Account] {
     settingsAccountIdsList
       .compactMap { AccountsManager.shared.account($0) }

@@ -22,7 +22,9 @@ extension UINavigationBar {
   /// Calling this function will trigger the view to redraw itself, forcing an appearance update
   @objc func forceUpdateAppearance(style: UIUserInterfaceStyle) {
     DispatchQueue.main.async {
-      guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene else { return }
+      guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene else {
+        return
+      }
       for window in windowScene.windows {
         window.overrideUserInterfaceStyle = style
       }

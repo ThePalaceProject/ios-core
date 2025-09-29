@@ -13,44 +13,52 @@ import Foundation
 
   var bearerToken: String? {
     get {
-      let _bearerToken: TPPKeychainVariable<String> = self.identifier.asKeychainVariable(with: bookTokenQueue)
+      let _bearerToken: TPPKeychainVariable<String> = identifier.asKeychainVariable(with: bookTokenQueue)
       return _bearerToken.read()
     }
 
     set {
       let keychainTransaction = TPPKeychainVariableTransaction(accountInfoQueue: bookTokenQueue)
-      let _bearerToken: TPPKeychainVariable<String> = self.identifier.asKeychainVariable(with: bookTokenQueue)
+      let _bearerToken: TPPKeychainVariable<String> = identifier.asKeychainVariable(with: bookTokenQueue)
       keychainTransaction.perform {
         _bearerToken.write(newValue)
       }
     }
   }
-  
+
   /// Readable book format based on its content type
   var format: String {
     switch defaultBookContentType {
-    case .epub: return DisplayStrings.epubContentType
-    case .pdf: return DisplayStrings.pdfContentType
-    case .audiobook: return DisplayStrings.audiobookContentType
-    case .unsupported: return DisplayStrings.unsupportedContentType
+    case .epub: DisplayStrings.epubContentType
+    case .pdf: DisplayStrings.pdfContentType
+    case .audiobook: DisplayStrings.audiobookContentType
+    case .unsupported: DisplayStrings.unsupportedContentType
     }
   }
 
   var hasSample: Bool { sample != nil }
   var hasAudiobookSample: Bool { hasSample && defaultBookContentType == .audiobook }
-  var showAudiobookToolbar: Bool { hasAudiobookSample && SampleType(rawValue: sampleAcquisition?.type ?? "")?.needsDownload ?? false }
+  var showAudiobookToolbar: Bool {
+    hasAudiobookSample && SampleType(rawValue: sampleAcquisition?.type ?? "")?.needsDownload ?? false
+  }
 }
 
 extension TPPBook {
   var sample: Sample? {
-    guard let acquisition = self.sampleAcquisition else { return nil }
-    switch self.defaultBookContentType {
+    guard let acquisition = sampleAcquisition else {
+      return nil
+    }
+    switch defaultBookContentType {
     case .epub, .pdf:
-        guard let sampleType = SampleType(rawValue: acquisition.type) else { return nil }
-        return EpubSample(url: acquisition.hrefURL, type: sampleType)
+      guard let sampleType = SampleType(rawValue: acquisition.type) else {
+        return nil
+      }
+      return EpubSample(url: acquisition.hrefURL, type: sampleType)
     case .audiobook:
-        guard let sampleType = SampleType(rawValue: acquisition.type) else { return nil }
-        return AudiobookSample(url: acquisition.hrefURL, type: sampleType)
+      guard let sampleType = SampleType(rawValue: acquisition.type) else {
+        return nil
+      }
+      return AudiobookSample(url: acquisition.hrefURL, type: sampleType)
     default:
       return nil
     }

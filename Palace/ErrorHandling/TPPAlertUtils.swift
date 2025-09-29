@@ -1,7 +1,7 @@
 import Foundation
 import UIKit
 
-@objcMembers class TPPAlertUtils : NSObject {
+@objcMembers class TPPAlertUtils: NSObject {
   /**
    Generates an alert view controller. If the `message` is non-nil, it will be
    used instead of deriving the error message from the `error`.
@@ -10,13 +10,15 @@ import UIKit
    - Parameter error: An error. If the error contains a localizedDescription, that will be used for the alert message.
    - Returns: The alert controller to be presented.
    */
-  class func alert(title: String?,
-                   message: String?,
-                   error: NSError?) -> UIAlertController {
+  class func alert(
+    title: String?,
+    message: String?,
+    error: NSError?
+  ) -> UIAlertController {
     if let message = message {
-      return alert(title: title, message: message)
+      alert(title: title, message: message)
     } else {
-      return alert(title: title, error: error)
+      alert(title: title, error: error)
     }
   }
 
@@ -71,15 +73,17 @@ import UIKit
           metadata["error"] = error
           metadata["message"] = "Error object contained no usable error message for the user, so we defaulted to a generic one."
         }
-        TPPErrorLogger.logError(withCode: .genericErrorMsgDisplayed,
-                                 summary: "Displayed error alert with generic message",
-                                 metadata: metadata)
+        TPPErrorLogger.logError(
+          withCode: .genericErrorMsgDisplayed,
+          summary: "Displayed error alert with generic message",
+          metadata: metadata
+        )
       }
     }
 
     return alert(title: title, message: message)
   }
-  
+
   /**
     Generates an alert view with localized strings and default style
     @param title the alert title; can be localization key
@@ -87,9 +91,9 @@ import UIKit
     @return the alert
    */
   class func alert(title: String?, message: String?) -> UIAlertController {
-    return alert(title: title, message: message, style: .default)
+    alert(title: title, message: message, style: .default)
   }
-  
+
   /**
     Generates an alert view with localized strings
     @param title the alert title; can be localization key
@@ -100,15 +104,15 @@ import UIKit
   class func alert(title: String?, message: String?, style: UIAlertAction.Style) -> UIAlertController {
     let alertTitle = (title?.count ?? 0) > 0 ? NSLocalizedString(title!, comment: "") : "Alert"
     let alertMessage = (message?.count ?? 0) > 0 ? NSLocalizedString(message!, comment: "") : ""
-    let alertController = UIAlertController.init(
+    let alertController = UIAlertController(
       title: alertTitle,
       message: alertMessage,
       preferredStyle: .alert
-      )
-    alertController.addAction(UIAlertAction.init(title: NSLocalizedString("OK", comment: ""), style: style, handler: nil))
+    )
+    alertController.addAction(UIAlertAction(title: NSLocalizedString("OK", comment: ""), style: style, handler: nil))
     return alertController
   }
-  
+
   /**
     Adds a problem document's contents to the alert
     @param controller the alert to modify
@@ -167,7 +171,7 @@ import UIKit
       alert.message = "\(existingMsg)\(docDetail)"
     }
   }
-  
+
   /**
    Presents an alert view from another given view, assuming the current
    window's root view controller is `NYPLRootTabBarController::shared`.
@@ -178,10 +182,12 @@ import UIKit
      - animated: Whether to animate the presentation of the alert or not.
      - completion: Callback passed on to UIViewcontroller::present().
    */
-  class func presentFromViewControllerOrNil(alertController: UIAlertController?,
-                                            viewController: UIViewController?,
-                                            animated: Bool,
-                                            completion: (() -> Void)?) {
+  class func presentFromViewControllerOrNil(
+    alertController: UIAlertController?,
+    viewController: UIViewController?,
+    animated: Bool,
+    completion: (() -> Void)?
+  ) {
     guard let alertController = alertController else {
       return
     }
@@ -190,21 +196,28 @@ import UIKit
     if let vc = viewController {
       DispatchQueue.main.async {
         vc.present(alertController, animated: animated, completion: completion)
-        if let msg = alertController.message { Log.info(#file, msg) }
+        if let msg = alertController.message {
+          Log.info(#file, msg)
+        }
       }
       return
     }
 
     // SwiftUI-first: present from the app's top-most UIKit controller
-    guard let root = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController() else { return }
+    guard let root = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController() else {
+      return
+    }
     let top = topMostViewController(from: root)
     DispatchQueue.main.async {
       top.present(alertController, animated: animated, completion: completion)
-      if let msg = alertController.message { Log.info(#file, msg) }
+      if let msg = alertController.message {
+        Log.info(#file, msg)
+      }
     }
   }
 
   // MARK: - Helpers
+
   private class func topMostViewController(from base: UIViewController) -> UIViewController {
     if let nav = base as? UINavigationController, let visible = nav.visibleViewController {
       return topMostViewController(from: visible)

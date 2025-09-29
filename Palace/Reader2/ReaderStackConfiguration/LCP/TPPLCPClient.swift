@@ -1,9 +1,9 @@
 #if LCP
 
+import PalaceAudiobookToolkit
 import R2LCPClient
 import ReadiumLCP
 import ReadiumShared
-import PalaceAudiobookToolkit
 
 enum LCPContextError: Error {
   case creationReturnedNil
@@ -13,7 +13,6 @@ let lcpService = LCPLibraryService()
 
 /// Facade to the private R2LCPClient.framework.
 class TPPLCPClient: ReadiumLCP.LCPClient {
-
   private var _context: LCPClientContext?
   public var context: LCPClientContext? {
     contextQueue.sync { _context }
@@ -23,7 +22,7 @@ class TPPLCPClient: ReadiumLCP.LCPClient {
     label: "com.yourapp.tpplcpclient.contextQueue",
     qos: .userInitiated
   )
-  
+
   deinit {
     contextQueue.sync {
       _context = nil
@@ -31,51 +30,51 @@ class TPPLCPClient: ReadiumLCP.LCPClient {
   }
 
   func createContext(
-     jsonLicense: String,
-     hashedPassphrase: String,
-     pemCrl: String
-   ) throws -> LCPClientContext {
-     var rawResult: LCPClientContext?
-     var caughtError: Error?
+    jsonLicense: String,
+    hashedPassphrase: String,
+    pemCrl: String
+  ) throws -> LCPClientContext {
+    var rawResult: LCPClientContext?
+    var caughtError: Error?
 
-     contextQueue.sync {
-       do {
-         rawResult = try R2LCPClient.createContext(
-           jsonLicense: jsonLicense,
-           hashedPassphrase: hashedPassphrase,
-           pemCrl: pemCrl
-         )
-       } catch {
-         caughtError = error
-       }
-     }
+    contextQueue.sync {
+      do {
+        rawResult = try R2LCPClient.createContext(
+          jsonLicense: jsonLicense,
+          hashedPassphrase: hashedPassphrase,
+          pemCrl: pemCrl
+        )
+      } catch {
+        caughtError = error
+      }
+    }
 
-     if let error = caughtError {
-       throw error
-     }
+    if let error = caughtError {
+      throw error
+    }
 
-     guard let newCtx = rawResult else {
-       throw LCPContextError.creationReturnedNil
-     }
+    guard let newCtx = rawResult else {
+      throw LCPContextError.creationReturnedNil
+    }
 
-     contextQueue.sync {
-       self._context = newCtx
-     }
+    contextQueue.sync {
+      self._context = newCtx
+    }
 
-     return newCtx
-   }
+    return newCtx
+  }
 
   func decrypt(data: Data, using context: LCPClientContext) -> Data? {
-    guard let drmContext = context as? DRMContext else { 
+    guard let drmContext = context as? DRMContext else {
       ATLog(.error, "Invalid DRM context for decryption")
-      return nil 
+      return nil
     }
-    
+
     guard !data.isEmpty else {
       ATLog(.error, "Cannot decrypt empty data")
       return nil
     }
-    
+
     do {
       let decrypted = R2LCPClient.decrypt(data: data, using: drmContext)
       if decrypted == nil {
@@ -91,22 +90,22 @@ class TPPLCPClient: ReadiumLCP.LCPClient {
   }
 
   func findOneValidPassphrase(jsonLicense: String, hashedPassphrases: [String]) -> String? {
-    return R2LCPClient.findOneValidPassphrase(jsonLicense: jsonLicense, hashedPassphrases: hashedPassphrases)
+    R2LCPClient.findOneValidPassphrase(jsonLicense: jsonLicense, hashedPassphrases: hashedPassphrases)
   }
 }
 
 extension TPPLCPClient {
   func decrypt(data: Data) -> Data? {
-    guard let drmContext = context as? DRMContext else { 
+    guard let drmContext = context as? DRMContext else {
       ATLog(.error, "No valid DRM context available for decryption")
-      return nil 
+      return nil
     }
-    
+
     guard !data.isEmpty else {
       ATLog(.error, "Cannot decrypt empty data")
       return nil
     }
-    
+
     do {
       let result = R2LCPClient.decrypt(data: data, using: drmContext)
       if result == nil {

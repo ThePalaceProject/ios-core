@@ -11,9 +11,10 @@
 //
 
 import Foundation
-import UIKit
 import ReadiumShared
+import UIKit
 
+// MARK: - ModuleDelegate
 
 /// Base module delegate, that sub-modules' delegate can extend.
 /// Provides basic shared functionalities.
@@ -22,33 +23,37 @@ protocol ModuleDelegate: AnyObject {
   func presentError(_ error: Error?, from viewController: UIViewController)
 }
 
-// MARK:-
+// MARK: - ReaderModuleAPI
+
+// MARK: -
 
 /// The ReaderModuleAPI declares what is needed to handle the presentation
 /// of a publication.
 protocol ReaderModuleAPI {
-  
   var delegate: ModuleDelegate? { get }
-  
+
   /// Presents the given publication to the user, inside the given navigation controller.
   /// - Parameter publication: The R2 publication to display.
   /// - Parameter book: Our internal book model related to the `publication`.
   /// - Parameter navigationController: The navigation stack the book will be presented in.
   /// - Parameter completion: Called once the publication is presented, or if an error occured.
-  func presentPublication(_ publication: Publication,
-                          book: TPPBook,
-                          in navigationController: UINavigationController,
-                          forSample: Bool)
+  func presentPublication(
+    _ publication: Publication,
+    book: TPPBook,
+    in navigationController: UINavigationController,
+    forSample: Bool
+  )
 }
 
-// MARK:-
+// MARK: - ReaderModule
+
+// MARK: -
 
 /// The ReaderModule handles the presentation of a publication.
 ///
 /// It contains sub-modules implementing `ReaderFormatModule` to handle each
 /// publication format (e.g. EPUB, PDF, etc).
 final class ReaderModule: ReaderModuleAPI {
-
   weak var delegate: ModuleDelegate?
   private let bookRegistry: TPPBookRegistryProvider
   private let progressSynchronizer: TPPLastReadPositionSynchronizer
@@ -56,54 +61,65 @@ final class ReaderModule: ReaderModuleAPI {
   /// Sub-modules to handle different publication formats (eg. EPUB, CBZ)
   var formatModules: [ReaderFormatModule] = []
 
-  init(delegate: ModuleDelegate?,
-       resourcesServer: HTTPServer,
-       bookRegistry: TPPBookRegistryProvider) {
+  init(
+    delegate: ModuleDelegate?,
+    resourcesServer: HTTPServer,
+    bookRegistry: TPPBookRegistryProvider
+  ) {
     self.delegate = delegate
     self.bookRegistry = bookRegistry
-    self.progressSynchronizer = TPPLastReadPositionSynchronizer(bookRegistry: bookRegistry)
+    progressSynchronizer = TPPLastReadPositionSynchronizer(bookRegistry: bookRegistry)
 
     formatModules = [
-      EPUBModule(delegate: self.delegate, resourcesServer: resourcesServer)
+      EPUBModule(delegate: self.delegate, resourcesServer: resourcesServer),
     ]
   }
 
-  func presentPublication(_ publication: Publication,
-                          book: TPPBook,
-                          in navigationController: UINavigationController,
-                          forSample: Bool = false) {
+  func presentPublication(
+    _ publication: Publication,
+    book: TPPBook,
+    in navigationController: UINavigationController,
+    forSample: Bool = false
+  ) {
     if delegate == nil {
       TPPErrorLogger.logError(nil, summary: "ReaderModule delegate is not set")
     }
 
-    guard let formatModule = self.formatModules.first(where:{ $0.supports(publication) }) else {
+    guard let formatModule = formatModules.first(where: { $0.supports(publication) }) else {
       delegate?.presentError(ReaderError.formatNotSupported, from: navigationController)
       return
     }
 
     let drmDeviceID = TPPUserAccount.sharedAccount().deviceID
-    progressSynchronizer.sync(for: publication,
-                              book: book,
-                              drmDeviceID: drmDeviceID) { [weak self] in
-
-      self?.finalizePresentation(for: publication,
-                                 book: book,
-                                 formatModule: formatModule,
-                                 in: navigationController,
-                                 forSample: forSample)
+    progressSynchronizer.sync(
+      for: publication,
+      book: book,
+      drmDeviceID: drmDeviceID
+    ) { [weak self] in
+      self?.finalizePresentation(
+        for: publication,
+        book: book,
+        formatModule: formatModule,
+        in: navigationController,
+        forSample: forSample
+      )
     }
   }
 
-  func finalizePresentation(for publication: Publication,
-                            book: TPPBook,
-                            formatModule: ReaderFormatModule,
-                            in navigationController: UINavigationController,
-                            forSample: Bool = false) {
+  func finalizePresentation(
+    for publication: Publication,
+    book: TPPBook,
+    formatModule: ReaderFormatModule,
+    in navigationController: UINavigationController,
+    forSample: Bool = false
+  ) {
     Task.detached { [weak self] in
-      guard let self else { return }
+      guard let self else {
+        return
+      }
 
       do {
-        let lastSavedLocation = self.bookRegistry.location(forIdentifier: book.identifier)
+        let lastSavedLocation = bookRegistry.location(forIdentifier: book.identifier)
         let initialLocator = await lastSavedLocation?.convertToLocator(publication: publication)
 
         let readerVC = try await formatModule.makeReaderViewController(

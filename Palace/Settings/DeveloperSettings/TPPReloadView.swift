@@ -5,6 +5,7 @@ final class TPPReloadView: UIView {
   var handler: (() -> Void)?
 
   // MARK: - UI
+
   private let titleLabel: UILabel = {
     let label = UILabel()
     label.font = UIFont.boldPalaceFont(ofSize: 17)
@@ -29,7 +30,8 @@ final class TPPReloadView: UIView {
   }()
 
   // MARK: - Init
-  override init(frame: CGRect) {
+
+  override init(frame _: CGRect) {
     super.init(frame: CGRect(x: 0, y: 0, width: 280, height: 0))
     commonInit()
   }
@@ -51,6 +53,7 @@ final class TPPReloadView: UIView {
   }
 
   // MARK: - Layout
+
   override func layoutSubviews() {
     super.layoutSubviews()
 
@@ -77,12 +80,14 @@ final class TPPReloadView: UIView {
   }
 
   // MARK: - Actions
+
   @objc private func didTapReload() {
     handler?()
     setDefaultMessage()
   }
 
   // MARK: - Public (ObjC)
+
   func setDefaultMessage() {
     messageLabel.text = NSLocalizedString("Check Connection", comment: "")
     setNeedsLayout()
@@ -93,5 +98,3 @@ final class TPPReloadView: UIView {
     setNeedsLayout()
   }
 }
-
-

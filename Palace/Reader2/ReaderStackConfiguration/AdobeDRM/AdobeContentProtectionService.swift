@@ -9,9 +9,9 @@
 #if FEATURE_DRM_CONNECTOR
 
 import Foundation
+import ReadiumNavigator
 import ReadiumShared
 import ReadiumStreamer
-import ReadiumNavigator
 
 /// Provides information about a publication's content protection and manages user rights.
 final class AdobeContentProtectionService: ContentProtectionService {
@@ -20,12 +20,12 @@ final class AdobeContentProtectionService: ContentProtectionService {
 
   init(context: PublicationServiceContext) {
     self.context = context
-    self.error = nil
+    error = nil
 
     // Remove epubDecodingError reference and check if the container is an AdobeDRMContainer.
     if let adobeContainer = context.container as? AdobeDRMContainer {
       if let drmError = adobeContainer.epubDecodingError {
-        self.error = NSError(
+        error = NSError(
           domain: "Adobe DRM decoding error",
           code: TPPErrorCode.adobeDRMFulfillmentFail.rawValue,
           userInfo: ["AdobeDRMContainer error msg": drmError]
@@ -51,7 +51,6 @@ final class AdobeContentProtectionService: ContentProtectionService {
   var scheme: ContentProtectionScheme {
     .adept
   }
-
 }
 
 #endif

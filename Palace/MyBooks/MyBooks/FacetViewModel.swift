@@ -6,22 +6,26 @@
 //  Copyright © 2023 The Palace Project. All rights reserved.
 //
 
-import Foundation
 import Combine
+import Foundation
+
+// MARK: - Facet
 
 enum Facet: String {
   case author
   case title
-  
+
   var localizedString: String {
     switch self {
     case .author:
-      return Strings.FacetView.author
+      Strings.FacetView.author
     case .title:
-      return Strings.FacetView.title
+      Strings.FacetView.title
     }
   }
 }
+
+// MARK: - FacetViewModel
 
 class FacetViewModel: ObservableObject {
   @Published var groupName: String
@@ -43,24 +47,28 @@ class FacetViewModel: ObservableObject {
     registerForNotifications()
     updateAccount()
   }
-  
+
   private func registerForNotifications() {
-    NotificationCenter.default.addObserver(self, selector: #selector(updateAccount),
-                                           name: .TPPCurrentAccountDidChange,
-                                           object: nil)
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(updateAccount),
+      name: .TPPCurrentAccountDidChange,
+      object: nil
+    )
   }
-  
+
   @objc private func updateAccount() {
     currentAccount = AccountsManager.shared.currentAccount
     currentAccount?.logoDelegate = self
     accountScreenURL = currentAccountURL
-    logo = currentAccount?.logo 
+    logo = currentAccount?.logo
   }
 }
+
+// MARK: AccountLogoDelegate
 
 extension FacetViewModel: AccountLogoDelegate {
-  func logoDidUpdate(in account: Account, to newLogo: UIImage) {
-    self.logo = newLogo
+  func logoDidUpdate(in _: Account, to newLogo: UIImage) {
+    logo = newLogo
   }
 }
-

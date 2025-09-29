@@ -1,33 +1,38 @@
 import SwiftUI
 
-// MARK: - Keys & Utilities
+// MARK: - FacetKey
 
-private struct FacetKey {
+private enum FacetKey {
   static func isAllTitle(_ title: String?) -> Bool {
     let t = (title ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     return t == "all" || t == "all formats" || t == "all collections" || t == "all distributors"
   }
+
   static func make(group: String, title: String, href: String) -> String {
     "\(group)|\(title)|\(href)"
   }
 }
 
+// MARK: - FacetGroupModel
+
 private struct FacetGroupModel: Identifiable {
   let id: String
   let name: String
   let items: [CatalogFilter]
-  
+
   var orderedItems: [CatalogFilter] {
     items.sorted { lhs, rhs in
       let la = FacetKey.isAllTitle(lhs.title)
       let ra = FacetKey.isAllTitle(rhs.title)
-      if la == ra { return lhs.title < rhs.title }
+      if la == ra {
+        return lhs.title < rhs.title
+      }
       return la && !ra
     }
   }
 }
 
-// MARK: - Public Sheet
+// MARK: - CatalogFiltersSheetView
 
 struct CatalogFiltersSheetView: View {
   let facetGroups: [CatalogFilterGroup]
@@ -35,10 +40,10 @@ struct CatalogFiltersSheetView: View {
   let onApply: () -> Void
   let onCancel: () -> Void
   let isApplying: Bool
-  
+
   @State private var expanded: Set<String> = []
   @State private var tempSelection: Set<String> = []
-  
+
   private var groups: [FacetGroupModel] {
     facetGroups
       .filter { !$0.name.lowercased().contains("sort") }
@@ -50,7 +55,7 @@ struct CatalogFiltersSheetView: View {
         )
       }
   }
-  
+
   var body: some View {
     NavigationView {
       ScrollView {
@@ -66,7 +71,7 @@ struct CatalogFiltersSheetView: View {
               .padding(.horizontal)
               .padding(.vertical, 12)
               .background(Color(UIColor.systemBackground))
-              
+
               if expanded.contains(group.id) {
                 ForEach(group.orderedItems, id: \.id) { facet in
                   FacetRowButton(
@@ -82,7 +87,7 @@ struct CatalogFiltersSheetView: View {
           }
         }
         .padding(.top)
-        
+
         ResultsButton(isApplying: isApplying, onApply: {
           selection = tempSelection
           onApply()
@@ -108,38 +113,42 @@ private extension CatalogFiltersSheetView {
       href: facet.href?.absoluteString ?? ""
     )
   }
-  
+
   func toggle(_ groupID: String) {
-    if expanded.contains(groupID) { expanded.remove(groupID) } else { expanded.insert(groupID) }
+    if expanded.contains(groupID) {
+      expanded.remove(groupID)
+    } else {
+      expanded.insert(groupID)
+    }
   }
-  
+
   func clearGroup(_ group: FacetGroupModel) {
     let groupKeys = Set(group.items.map { key(for: group, facet: $0) })
     tempSelection.subtract(groupKeys)
-    
+
     if let all = group.items.first(where: { FacetKey.isAllTitle($0.title) }) {
       tempSelection.insert(key(for: group, facet: all))
     } else if let firstItem = group.items.first {
       tempSelection.insert(key(for: group, facet: firstItem))
     }
   }
-  
+
   func toggleTempSelection(in group: FacetGroupModel, facet: CatalogFilter) {
     let k = key(for: group, facet: facet)
     let groupKeys = Set(group.items.map { key(for: group, facet: $0) })
-    
+
     tempSelection.subtract(groupKeys)
     tempSelection.insert(k)
   }
-  
+
   func configureInitialSelection() {
     expanded = []
     tempSelection = selection
-    
+
     for group in groups {
       let groupKeys = Set(group.items.map { key(for: group, facet: $0) })
       let currentSelections = tempSelection.intersection(groupKeys)
-      
+
       if currentSelections.isEmpty {
         if let all = group.items.first(where: { FacetKey.isAllTitle($0.title) }) {
           tempSelection.insert(key(for: group, facet: all))
@@ -156,14 +165,14 @@ private extension CatalogFiltersSheetView {
   }
 }
 
-// MARK: - Subviews
+// MARK: - FacetSectionHeader
 
 private struct FacetSectionHeader: View {
   let title: String
   let onClear: () -> Void
   let isExpanded: Bool
   let toggleExpanded: () -> Void
-  
+
   var body: some View {
     HStack(spacing: 10) {
       Text(title).font(.headline).foregroundColor(.primary)
@@ -177,7 +186,7 @@ private struct FacetSectionHeader: View {
         // no separator
       }
       .frame(width: 50)
-      
+
       Button(action: toggleExpanded) {
         Image(systemName: "chevron.right")
           .rotationEffect(.degrees(isExpanded ? 90 : 0))
@@ -190,11 +199,13 @@ private struct FacetSectionHeader: View {
   }
 }
 
+// MARK: - FacetRowButton
+
 private struct FacetRowButton: View {
   let isSelected: Bool
   let title: String
   let onTap: () -> Void
-  
+
   var body: some View {
     Button(action: onTap) {
       HStack {
@@ -212,11 +223,13 @@ private struct FacetRowButton: View {
   }
 }
 
+// MARK: - ResultsButton
+
 private struct ResultsButton: View {
   let isApplying: Bool
   let onApply: () -> Void
   let onCancel: () -> Void
-  
+
   var body: some View {
     HStack(spacing: 12) {
       Button(action: onCancel) {
@@ -232,7 +245,7 @@ private struct ResultsButton: View {
           )
       }
       .disabled(isApplying)
-      
+
       Button(action: onApply) {
         HStack(spacing: 8) {
           if isApplying {
@@ -240,7 +253,7 @@ private struct ResultsButton: View {
               .progressViewStyle(CircularProgressViewStyle(tint: buttonForeground))
               .scaleEffect(0.8)
           }
-          
+
           Text(isApplying ? "APPLYING..." : "APPLY FILTERS")
             .bold()
         }
@@ -251,16 +264,16 @@ private struct ResultsButton: View {
         .clipShape(RoundedRectangle(cornerRadius: 8))
       }
       .disabled(isApplying)
-      
+
       Spacer()
     }
   }
-  
+
   private var buttonBackground: Color {
     Color(UIColor { trait in trait.userInterfaceStyle == .dark ? .white : .black })
   }
+
   private var buttonForeground: Color {
     Color(UIColor { trait in trait.userInterfaceStyle == .dark ? .black : .white })
   }
 }
-

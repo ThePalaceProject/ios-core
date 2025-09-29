@@ -8,7 +8,7 @@
 
 import Foundation
 
-//------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------
 extension HTTPURLResponse {
   /**
    It appears that a `Cache-Control` header alone is not sufficient for having
@@ -34,12 +34,12 @@ extension HTTPURLResponse {
     }
 
     if expiresHeader != nil {
-      if  lastModifiedHeader != nil || eTagHeader != nil {
+      if lastModifiedHeader != nil || eTagHeader != nil {
         return true
       }
     }
 
-    return (lastModifiedHeader != nil && eTagHeader != nil)
+    return lastModifiedHeader != nil && eTagHeader != nil
   }
 
   /**
@@ -83,26 +83,26 @@ extension HTTPURLResponse {
   }
 
   var cacheControlHeader: String? {
-    return header(named: "Cache-Control")
+    header(named: "Cache-Control")
   }
 
   var expiresHeader: String? {
-    return header(named: "Expires")
+    header(named: "Expires")
   }
 
   var lastModifiedHeader: String? {
-    return header(named: "Last-Modified")
+    header(named: "Last-Modified")
   }
 
   var eTagHeader: String? {
-    return header(named: "ETag")
+    header(named: "ETag")
   }
 
   /// Checks capitalization of given header key, including capitalized,
   /// lowercase and uppercase variations.
   /// - Parameter header: The name of a header to check.
   private func header(named header: String) -> String? {
-    let responseHeaders = self.allHeaderFields
+    let responseHeaders = allHeaderFields
 
     if let value = responseHeaders[header] as? String {
       return value
@@ -126,14 +126,14 @@ extension HTTPURLResponse {
   /// that directive is present in `Cache-Control`, otherwise it's 3 hours.
   func modifyingCacheHeaders() -> HTTPURLResponse {
     // don't mess with failed responses
-    
+
     guard (200...299).contains(statusCode) else {
       return self
     }
-    
+
     // convert existing headers into a [String: String] dictionary we can use
     // later
-    let headerPairs: [(String, String)] = self.allHeaderFields.compactMap {
+    let headerPairs: [(String, String)] = allHeaderFields.compactMap {
       if let key = $0.key as? String, let val = $0.value as? String {
         return (key, val)
       }
@@ -143,35 +143,39 @@ extension HTTPURLResponse {
 
     // use `max-age` value if present, otherwise use 3 hours for both
     // `max-age` and `Expires`.
-    if self.expiresHeader == nil {
-      let maxAge: TimeInterval = self.cacheControlMaxAge ?? 60 * 60 * 3
+    if expiresHeader == nil {
+      let maxAge: TimeInterval = cacheControlMaxAge ?? 60 * 60 * 3
       let in3HoursDate = Date().addingTimeInterval(maxAge)
       headers["Expires"] = in3HoursDate.rfc1123String
     }
-    if self.cacheControlHeader == nil {
+    if cacheControlHeader == nil {
       headers["Cache-Control"] = "public, max-age=10800"
     }
 
     // new response with added caching
     guard
-      let url = self.url,
+      let url = url,
       let newResponse = HTTPURLResponse(
         url: url,
         statusCode: statusCode,
         httpVersion: nil,
-        headerFields: headers) else {
-          Log.error(#file, """
-            Unable to create new HTTPURLResponse with added cache-control \
-            headers from original response: \(self)
-            """)
-          return self
+        headerFields: headers
+      )
+    else {
+      Log.error(#file, """
+      Unable to create new HTTPURLResponse with added cache-control \
+      headers from original response: \(self)
+      """)
+      return self
     }
 
     return newResponse
   }
 }
 
-//------------------------------------------------------------------------------
+// MARK: - NYPLCachingStrategy
+
+// ------------------------------------------------------------------------------
 /// The possible strategies for caching for TPPNetworkExecutor / Responder.
 ///
 /// `ephemeral` caching corresponds to `NYPLSessionConfiguration::ephmeral`.
@@ -187,9 +191,10 @@ extension HTTPURLResponse {
   case fallback
 }
 
-//------------------------------------------------------------------------------
-class TPPCaching {
+// MARK: - TPPCaching
 
+// ------------------------------------------------------------------------------
+class TPPCaching {
   /// Makes a URLSessionConfiguration for standard HTTP requests with in-memory
   /// and disk caching enabled.
   /// - Parameter caching: The caching strategy to proces responses with.
@@ -197,8 +202,10 @@ class TPPCaching {
   /// policy will always follow the one defined in the request protocol
   /// implementation.
   /// - Returns: A configuration with 8 max connections per host.
-  class func makeURLSessionConfiguration(caching: NYPLCachingStrategy,
-                                         requestTimeout: TimeInterval) -> URLSessionConfiguration {
+  class func makeURLSessionConfiguration(
+    caching: NYPLCachingStrategy,
+    requestTimeout: TimeInterval
+  ) -> URLSessionConfiguration {
     guard caching != .ephemeral else {
       return .ephemeral
     }
@@ -240,14 +247,18 @@ class TPPCaching {
 
   private class func makeCache() -> URLCache {
     if #available(iOS 13.0, *) {
-      let cache = URLCache(memoryCapacity: maxMemoryCapacity,
-                           diskCapacity: maxDiskCapacity,
-                           directory: nil)
+      let cache = URLCache(
+        memoryCapacity: maxMemoryCapacity,
+        diskCapacity: maxDiskCapacity,
+        directory: nil
+      )
       return cache
-    } 
-    let cache = URLCache(memoryCapacity: maxMemoryCapacity,
-                         diskCapacity: maxDiskCapacity,
-                         diskPath: nil)
-    return cache
     }
+    let cache = URLCache(
+      memoryCapacity: maxMemoryCapacity,
+      diskCapacity: maxDiskCapacity,
+      diskPath: nil
+    )
+    return cache
+  }
 }

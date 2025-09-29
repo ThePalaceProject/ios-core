@@ -7,28 +7,35 @@
 //
 
 import Foundation
-import ReadiumShared
 import ReadiumLCP
+import ReadiumShared
 import ReadiumZIPFoundation
+
+// MARK: - TPPLicensesServiceError
 
 enum TPPLicensesServiceError: Error {
   case licenseError(message: String)
-  
+
   public var description: String {
     switch self {
-    case .licenseError(let message): return message
+    case let .licenseError(message): message
     }
-  }  
+  }
 }
 
+// MARK: - TPPLicensesService
+
 class TPPLicensesService: NSObject {
-  
   var progressHandler: ((_ progress: Double) -> Void)?
   var completionHandler: ((_ localUrl: URL?, _ error: Error?) -> Void)?
   var lcpl: URL?
   var link: TPPLCPLicenseLink?
-  
-  func acquirePublication(from lcpl: URL, progress: @escaping (_ progress: Double) -> Void, completion: @escaping (_ localUrl: URL?, _ error: Error?) -> Void) -> URLSessionDownloadTask? {
+
+  func acquirePublication(
+    from lcpl: URL,
+    progress: @escaping (_ progress: Double) -> Void,
+    completion: @escaping (_ localUrl: URL?, _ error: Error?) -> Void
+  ) -> URLSessionDownloadTask? {
     // Parse LCP license file
     guard let license = TPPLCPLicense(url: lcpl) else {
       completion(nil, TPPLicensesServiceError.licenseError(message: "Reading license file failed"))
@@ -36,12 +43,15 @@ class TPPLicensesService: NSObject {
     }
     // Get publication download link
     guard let link = license.firstLink(withRel: .publication), let href = link.href, let url = URL(string: href) else {
-      completion(nil, TPPLicensesServiceError.licenseError(message: "Error parsing license file, publication href was not found"))
+      completion(
+        nil,
+        TPPLicensesServiceError.licenseError(message: "Error parsing license file, publication href was not found")
+      )
       return nil
     }
 
-    self.progressHandler = progress
-    self.completionHandler = completion
+    progressHandler = progress
+    completionHandler = completion
     self.lcpl = lcpl
     self.link = link
 
@@ -51,14 +61,15 @@ class TPPLicensesService: NSObject {
     // Otherwise, single download session calls one delegate class methods,
     // and only one book's status is updated.
     let request = URLRequest(url: url, applyingCustomUserAgent: true)
-    let backgroundIdentifier = (Bundle.main.bundleIdentifier ?? "").appending(".lcpBackgroundIdentifier.\(lcpl.hashValue)")
+    let backgroundIdentifier = (Bundle.main.bundleIdentifier ?? "")
+      .appending(".lcpBackgroundIdentifier.\(lcpl.hashValue)")
     let sessionConfiguration = URLSessionConfiguration.background(withIdentifier: backgroundIdentifier)
     let session = URLSession(configuration: sessionConfiguration, delegate: self, delegateQueue: .main)
     let task = session.downloadTask(with: request)
     task.resume()
     return task
   }
-  
+
   /// Injects licens file into LCP-protected file
   /// - Parameters:
   ///   - lcpl: license URL
@@ -79,7 +90,7 @@ class TPPLicensesService: NSObject {
         type: .file,
         uncompressedSize: Int64(data.count),
         provider: {
-          (position, size) -> Data in
+          position, size -> Data in
           let start = Int(position)
           let end = min(start + Int(size), data.count)
           return data[start..<end]
@@ -105,11 +116,11 @@ class TPPLicensesService: NSObject {
   }
 }
 
-// MARK: - URLSessionDownloadDelegate
+// MARK: URLSessionDownloadDelegate
 
 extension TPPLicensesService: URLSessionDownloadDelegate {
-  func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
-    guard let lcpl = self.lcpl, let link = self.link else {
+  func urlSession(_: URLSession, downloadTask _: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
+    guard let lcpl = lcpl, let link = link else {
       completionHandler?(nil, TPPLicensesServiceError.licenseError(message: "Missing license or link"))
       return
     }
@@ -119,8 +130,7 @@ extension TPPLicensesService: URLSessionDownloadDelegate {
     do {
       try FileManager.default.copyItem(at: location, to: safeCopy)
 
-      if let licensePathInZip = self.pathInZip(for: link) {
-
+      if let licensePathInZip = pathInZip(for: link) {
         Task {
           do {
             if let _ = try? await Archive(url: safeCopy, accessMode: .read) {
@@ -142,14 +152,20 @@ extension TPPLicensesService: URLSessionDownloadDelegate {
     }
   }
 
-  func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+  func urlSession(_: URLSession, task _: URLSessionTask, didCompleteWithError error: Error?) {
     // Check the task wasn't cancelled
     if let nsError = error as? NSError, nsError.code != NSURLErrorCancelled {
       completionHandler?(nil, error)
     }
   }
-  
-  func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
+
+  func urlSession(
+    _: URLSession,
+    downloadTask _: URLSessionDownloadTask,
+    didWriteData _: Int64,
+    totalBytesWritten: Int64,
+    totalBytesExpectedToWrite: Int64
+  ) {
     progressHandler?(Double(totalBytesWritten) / Double(totalBytesExpectedToWrite))
   }
 }

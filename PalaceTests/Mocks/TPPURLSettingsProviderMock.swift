@@ -13,7 +13,6 @@ class TPPURLSettingsProviderMock: NSObject, NYPLUniversalLinksSettings, NYPLFeed
   var accountMainFeedURL: URL?
 
   var universalLinksURL: URL {
-    return URL(string: "https://example.com/univeral-link-redirect")!
+    URL(string: "https://example.com/univeral-link-redirect")!
   }
 }
-

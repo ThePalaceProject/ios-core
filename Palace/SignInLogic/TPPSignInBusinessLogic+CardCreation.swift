@@ -6,8 +6,8 @@
 //  Copyright © 2022 The Palace Project. All rights reserved.
 //
 
-import Foundation
 import CoreLocation
+import Foundation
 import SafariServices
 
 extension TPPSignInBusinessLogic: CLLocationManagerDelegate {
@@ -73,7 +73,9 @@ extension TPPSignInBusinessLogic: CLLocationManagerDelegate {
 
   // Adds latitude and longitude parameters to the URL.
   private func addLocationInformation(baseURL: String, locationManager: CLLocationManager) -> URL? {
-    guard let userLocation = locationManager.location else { return nil }
+    guard let userLocation = locationManager.location else {
+      return nil
+    }
 
     let latitude = userLocation.coordinate.latitude
     let longitude = userLocation.coordinate.longitude
@@ -82,7 +84,7 @@ extension TPPSignInBusinessLogic: CLLocationManagerDelegate {
   }
 
   // This delegate method is called when the authorization status changes.
-  func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+  func locationManagerDidChangeAuthorization(_: CLLocationManager) {
     let status = CLLocationManager.authorizationStatus()
     if status == .authorizedWhenInUse || status == .authorizedAlways {
       startRegularCardCreation(completion: onLocationAuthorizationCompletion)

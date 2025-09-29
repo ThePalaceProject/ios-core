@@ -1,5 +1,4 @@
 @objcMembers final class TPPAppTheme: NSObject {
-
   private enum NYPLAppThemeColor: String {
     case red
     case pink
@@ -30,51 +29,53 @@
   }
 
   private class func colorFromHex(_ hex: Int) -> UIColor {
-    return UIColor(red: CGFloat((hex & 0xFF0000) >> 16)/255,
-                   green: CGFloat((hex & 0xFF00) >> 8)/255,
-                   blue: CGFloat(hex & 0xFF)/255,
-                   alpha: 1.0)
+    UIColor(
+      red: CGFloat((hex & 0xFF0000) >> 16) / 255,
+      green: CGFloat((hex & 0xFF00) >> 8) / 255,
+      blue: CGFloat(hex & 0xFF) / 255,
+      alpha: 1.0
+    )
   }
 
   // Currently using 'primary-dark' variant of
   // Android Color Palette 500 series. https://material.io/tools/color/
   // An updated palette should update hex, but leave the enum values.
   private class func hex(_ theme: NYPLAppThemeColor) -> Int {
-    switch(theme) {
+    switch theme {
     case .red:
-      return 0xb9000d
+      0xB9000D
     case .pink:
-      return 0xb0003a
+      0xB0003A
     case .purple:
-      return 0x6a0080
+      0x6A0080
     case .deepPurple:
-      return 0x320b86
+      0x320B86
     case .indigo:
-      return 0x002984
+      0x002984
     case .blue:
-      return 0x0069c0
+      0x0069C0
     case .lightBlue:
-      return 0x007ac1
+      0x007AC1
     case .cyan:
-      return 0x008ba3
+      0x008BA3
     case .teal:
-      return 0x087f23
+      0x087F23
     case .green:
-      return 0x087f23
+      0x087F23
     case .amber:
-      return 0xc79100
+      0xC79100
     case .orange:
-      return 0xc66900
+      0xC66900
     case .deepOrange:
-      return 0xc41c00
+      0xC41C00
     case .brown:
-      return 0x4b2c20
+      0x4B2C20
     case .grey:
-      return 0x707070
+      0x707070
     case .blueGrey:
-      return 0x34515e
+      0x34515E
     case .black:
-      return 0x000000
+      0x000000
     }
   }
 }

@@ -1,130 +1,144 @@
 import UIKit
 
+// MARK: - ImageCacheType
+
 public protocol ImageCacheType {
-    func set(_ image: UIImage, for key: String, expiresIn: TimeInterval?)
-    func get(for key: String) -> UIImage?
-    func remove(for key: String)
-    func clear()
+  func set(_ image: UIImage, for key: String, expiresIn: TimeInterval?)
+  func get(for key: String) -> UIImage?
+  func remove(for key: String)
+  func clear()
 }
 
 public extension ImageCacheType {
-    func set(_ image: UIImage, for key: String) {
-        let sevenDays: TimeInterval = 7 * 24 * 60 * 60
-        set(image, for: key, expiresIn: sevenDays)
-    }
+  func set(_ image: UIImage, for key: String) {
+    let sevenDays: TimeInterval = 7 * 24 * 60 * 60
+    set(image, for: key, expiresIn: sevenDays)
+  }
 }
 
+// MARK: - ImageCache
+
 public final class ImageCache: ImageCacheType {
-    public static let shared = ImageCache()
+  public static let shared = ImageCache()
 
-    private let dataCache = GeneralCache<String, Data>(cacheName: "ImageCache", mode: .memoryAndDisk)
-    private let memoryImages = NSCache<NSString, UIImage>()
-    private let defaultTTL: TimeInterval = 14 * 24 * 60 * 60
-    private let maxDimension: CGFloat = 1024
-    private let compressionQuality: CGFloat = 0.7
+  private let dataCache = GeneralCache<String, Data>(cacheName: "ImageCache", mode: .memoryAndDisk)
+  private let memoryImages = NSCache<NSString, UIImage>()
+  private let defaultTTL: TimeInterval = 14 * 24 * 60 * 60
+  private let maxDimension: CGFloat = 1024
+  private let compressionQuality: CGFloat = 0.7
 
-    private init() {
-        let deviceMemoryMB = ProcessInfo.processInfo.physicalMemory / (1024 * 1024)
-        let cacheMemoryMB: Int
-        
-        if deviceMemoryMB < 2048 {
-            cacheMemoryMB = 25
-            memoryImages.countLimit = 100
-        } else if deviceMemoryMB < 4096 {
-            cacheMemoryMB = 40
-            memoryImages.countLimit = 150
-        } else {
-            cacheMemoryMB = 60
-            memoryImages.countLimit = 200
-        }
-        
-        memoryImages.totalCostLimit = cacheMemoryMB * 1024 * 1024
-        
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleMemoryWarning),
-            name: UIApplication.didReceiveMemoryWarningNotification,
-            object: nil
-        )
-        
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleMemoryPressure),
-            name: UIApplication.didReceiveMemoryWarningNotification,
-            object: nil
-        )
-    }
-    
-    @objc private func handleMemoryPressure() {
-        let currentCount = memoryImages.countLimit
-        memoryImages.countLimit = max(50, currentCount / 2)
-        memoryImages.totalCostLimit = memoryImages.totalCostLimit / 2
-        
-        DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
-            self?.memoryImages.countLimit = currentCount
-        }
+  private init() {
+    let deviceMemoryMB = ProcessInfo.processInfo.physicalMemory / (1024 * 1024)
+    let cacheMemoryMB: Int
+
+    if deviceMemoryMB < 2048 {
+      cacheMemoryMB = 25
+      memoryImages.countLimit = 100
+    } else if deviceMemoryMB < 4096 {
+      cacheMemoryMB = 40
+      memoryImages.countLimit = 150
+    } else {
+      cacheMemoryMB = 60
+      memoryImages.countLimit = 200
     }
 
-    @objc private func handleMemoryWarning() {
-        memoryImages.removeAllObjects()
-        dataCache.clearMemory()
+    memoryImages.totalCostLimit = cacheMemoryMB * 1024 * 1024
+
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(handleMemoryWarning),
+      name: UIApplication.didReceiveMemoryWarningNotification,
+      object: nil
+    )
+
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(handleMemoryPressure),
+      name: UIApplication.didReceiveMemoryWarningNotification,
+      object: nil
+    )
+  }
+
+  @objc private func handleMemoryPressure() {
+    let currentCount = memoryImages.countLimit
+    memoryImages.countLimit = max(50, currentCount / 2)
+    memoryImages.totalCostLimit = memoryImages.totalCostLimit / 2
+
+    DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
+      self?.memoryImages.countLimit = currentCount
+    }
+  }
+
+  @objc private func handleMemoryWarning() {
+    memoryImages.removeAllObjects()
+    dataCache.clearMemory()
+  }
+
+  public func set(_ image: UIImage, for key: String, expiresIn: TimeInterval? = nil) {
+    let ttl = expiresIn ?? defaultTTL
+    let processed = resize(image, maxDimension: maxDimension)
+    let cost = imageCost(processed)
+    memoryImages.setObject(processed, forKey: key as NSString, cost: cost)
+    DispatchQueue.global(qos: .utility).async {
+      guard let data = processed.jpegData(compressionQuality: self.compressionQuality) else {
+        return
+      }
+      self.dataCache.set(data, for: key, expiresIn: ttl)
+    }
+  }
+
+  public func get(for key: String) -> UIImage? {
+    if let img = memoryImages.object(forKey: key as NSString) {
+      return img
     }
 
-    public func set(_ image: UIImage, for key: String, expiresIn: TimeInterval? = nil) {
-        let ttl = expiresIn ?? defaultTTL
-        let processed = resize(image, maxDimension: maxDimension)
-        let cost = imageCost(processed)
-        memoryImages.setObject(processed, forKey: key as NSString, cost: cost)
-        DispatchQueue.global(qos: .utility).async {
-            guard let data = processed.jpegData(compressionQuality: self.compressionQuality) else { return }
-            self.dataCache.set(data, for: key, expiresIn: ttl)
-        }
+    guard let data = dataCache.get(for: key) else {
+      return nil
     }
 
-    public func get(for key: String) -> UIImage? {
-        if let img = memoryImages.object(forKey: key as NSString) {
-            return img
-        }
-      
-        guard let data = dataCache.get(for: key) else { return nil }
-      
-        guard let img = UIImage(data: data) else {
-            remove(for: key)
-            return nil
-        }
-        let cost = imageCost(img)
-        memoryImages.setObject(img, forKey: key as NSString, cost: cost)
-        return img
+    guard let img = UIImage(data: data) else {
+      remove(for: key)
+      return nil
     }
+    let cost = imageCost(img)
+    memoryImages.setObject(img, forKey: key as NSString, cost: cost)
+    return img
+  }
 
-    public func remove(for key: String) {
-        memoryImages.removeObject(forKey: key as NSString)
-        dataCache.remove(for: key)
-    }
+  public func remove(for key: String) {
+    memoryImages.removeObject(forKey: key as NSString)
+    dataCache.remove(for: key)
+  }
 
-    public func clear() {
-        memoryImages.removeAllObjects()
-        dataCache.clear()
-    }
+  public func clear() {
+    memoryImages.removeAllObjects()
+    dataCache.clear()
+  }
 
-    private func resize(_ image: UIImage, maxDimension: CGFloat) -> UIImage {
-        let size = image.size
-        guard size.width > 0 && size.height > 0 else { return image }
-        let maxSide = max(size.width, size.height)
-        if maxSide <= maxDimension { return image }
-        let scale = maxDimension / maxSide
-        let newSize = CGSize(width: size.width * scale, height: size.height * scale)
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = 1
-        format.opaque = false
-        let renderer = UIGraphicsImageRenderer(size: newSize, format: format)
-        return renderer.image { _ in
-            image.draw(in: CGRect(origin: .zero, size: newSize))
-        }
+  private func resize(_ image: UIImage, maxDimension: CGFloat) -> UIImage {
+    let size = image.size
+    guard size.width > 0 && size.height > 0 else {
+      return image
     }
+    let maxSide = max(size.width, size.height)
+    if maxSide <= maxDimension {
+      return image
+    }
+    let scale = maxDimension / maxSide
+    let newSize = CGSize(width: size.width * scale, height: size.height * scale)
+    let format = UIGraphicsImageRendererFormat()
+    format.scale = 1
+    format.opaque = false
+    let renderer = UIGraphicsImageRenderer(size: newSize, format: format)
+    return renderer.image { _ in
+      image.draw(in: CGRect(origin: .zero, size: newSize))
+    }
+  }
 
-    private func imageCost(_ image: UIImage) -> Int {
-        guard let cg = image.cgImage else { return 1 }
-        return cg.bytesPerRow * cg.height
+  private func imageCost(_ image: UIImage) -> Int {
+    guard let cg = image.cgImage else {
+      return 1
     }
+    return cg.bytesPerRow * cg.height
+  }
 }

@@ -29,7 +29,8 @@ class TPPSignInBusinessLogicTests: XCTestCase {
       userAccountProvider: TPPUserAccountMock.self,
       networkExecutor: TPPRequestExecutorMock(),
       uiDelegate: uiDelegate,
-      drmAuthorizer: drmAuthorizer)
+      drmAuthorizer: drmAuthorizer
+    )
   }
 
   override func tearDownWithError() throws {
@@ -49,13 +50,15 @@ class TPPSignInBusinessLogicTests: XCTestCase {
     XCTAssertNotEqual(user.PIN, "newPIN")
 
     // test
-    businessLogic.updateUserAccount(forDRMAuthorization: true,
-                                    withBarcode: "newBarcode",
-                                    pin: "newPIN",
-                                    authToken: nil,
-                                    expirationDate: nil,
-                                    patron: nil,
-                                    cookies: nil)
+    businessLogic.updateUserAccount(
+      forDRMAuthorization: true,
+      withBarcode: "newBarcode",
+      pin: "newPIN",
+      authToken: nil,
+      expirationDate: nil,
+      patron: nil,
+      cookies: nil
+    )
 
     // verification
     XCTAssertEqual(user.barcode, "newBarcode")
@@ -70,13 +73,15 @@ class TPPSignInBusinessLogicTests: XCTestCase {
     businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
 
     // test
-    businessLogic.updateUserAccount(forDRMAuthorization: true,
-                                    withBarcode: "newBarcode",
-                                    pin: "newPIN",
-                                    authToken: nil,
-                                    expirationDate: nil,
-                                    patron: nil,
-                                    cookies: nil)
+    businessLogic.updateUserAccount(
+      forDRMAuthorization: true,
+      withBarcode: "newBarcode",
+      pin: "newPIN",
+      authToken: nil,
+      expirationDate: nil,
+      patron: nil,
+      cookies: nil
+    )
 
     // verification
     XCTAssertEqual(user.barcode, "newBarcode")
@@ -93,13 +98,15 @@ class TPPSignInBusinessLogicTests: XCTestCase {
     let patron = ["name": "ciccio"]
 
     // test
-    businessLogic.updateUserAccount(forDRMAuthorization: true,
-                                    withBarcode: nil,
-                                    pin: nil,
-                                    authToken: "some-great-token",
-                                    expirationDate: nil,
-                                    patron: patron,
-                                    cookies: nil)
+    businessLogic.updateUserAccount(
+      forDRMAuthorization: true,
+      withBarcode: nil,
+      pin: nil,
+      authToken: "some-great-token",
+      expirationDate: nil,
+      patron: patron,
+      cookies: nil
+    )
 
     // verification
     XCTAssertEqual(user.authToken, "some-great-token")
@@ -119,17 +126,19 @@ class TPPSignInBusinessLogicTests: XCTestCase {
       .domain: "www.example.com",
       .path: "test",
       .name: "biscottino",
-      .value: "chocolate"
+      .value: "chocolate",
     ])!]
 
     // test
-    businessLogic.updateUserAccount(forDRMAuthorization: true,
-                                    withBarcode: nil,
-                                    pin: nil,
-                                    authToken: "some-great-token",
-                                    expirationDate: nil,
-                                    patron: patron,
-                                    cookies: cookies)
+    businessLogic.updateUserAccount(
+      forDRMAuthorization: true,
+      withBarcode: nil,
+      pin: nil,
+      authToken: "some-great-token",
+      expirationDate: nil,
+      patron: patron,
+      cookies: cookies
+    )
 
     // verification
     XCTAssertEqual(user.authToken, "some-great-token")

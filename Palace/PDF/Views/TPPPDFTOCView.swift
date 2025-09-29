@@ -10,7 +10,6 @@ import SwiftUI
 
 /// TOC View
 struct TPPPDFTOCView: View {
-
   @EnvironmentObject var metadata: TPPPDFDocumentMetadata
   let document: TPPPDFDocument
   let done: () -> Void

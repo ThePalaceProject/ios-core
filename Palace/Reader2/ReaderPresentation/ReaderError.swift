@@ -15,14 +15,13 @@ import Foundation
 enum ReaderError: LocalizedError {
   case formatNotSupported
   case epubNotValid
-  
+
   var errorDescription: String? {
     switch self {
     case .formatNotSupported:
-      return Strings.Error.formatNotSupportedError
+      Strings.Error.formatNotSupportedError
     case .epubNotValid:
-      return Strings.Error.epubNotValidError
+      Strings.Error.epubNotValidError
     }
   }
-  
 }

@@ -20,8 +20,9 @@ class TPPCachingTests: XCTestCase {
       statusCode: 200,
       httpVersion: "HTTP/1.1",
       headerFields: [
-        "Cache-Control" : "public, no-transform, max-age: 43200, s-maxage: 21600"
-    ])!
+        "Cache-Control": "public, no-transform, max-age: 43200, s-maxage: 21600",
+      ]
+    )!
 
     let expiresDate = Date().addingTimeInterval(43200)
     sufficientHeadersResponse = HTTPURLResponse(
@@ -29,17 +30,19 @@ class TPPCachingTests: XCTestCase {
       statusCode: 200,
       httpVersion: "HTTP/1.1",
       headerFields: [
-        "cache-control" : "public, no-transform, max-age: 43200, s-maxage: 21600",
-        "Expires": expiresDate.rfc1123String
-    ])!
+        "cache-control": "public, no-transform, max-age: 43200, s-maxage: 21600",
+        "Expires": expiresDate.rfc1123String,
+      ]
+    )!
 
     missingMaxAgeResponse = HTTPURLResponse(
       url: URL(string: "https://example.com/test")!,
       statusCode: 200,
       httpVersion: "HTTP/1.1",
       headerFields: [
-        "CACHE-CONTROL" : "public; s-max-age=666",
-    ])
+        "CACHE-CONTROL": "public; s-max-age=666",
+      ]
+    )
   }
 
   override func tearDown() {
@@ -58,9 +61,10 @@ class TPPCachingTests: XCTestCase {
       statusCode: 200,
       httpVersion: "HTTP/1.1",
       headerFields: [
-        "EXPIRES" : Date().rfc1123String,
-        "etag": "23bad3"
-    ])!
+        "EXPIRES": Date().rfc1123String,
+        "etag": "23bad3",
+      ]
+    )!
     XCTAssertTrue(sufficientHeadersResponse2.hasSufficientCachingHeaders)
 
     let sufficientHeadersResponse3 = HTTPURLResponse(
@@ -68,9 +72,10 @@ class TPPCachingTests: XCTestCase {
       statusCode: 200,
       httpVersion: "HTTP/1.1",
       headerFields: [
-        "Last-Modified" : Date().rfc1123String,
-        "etag": "23bad3"
-    ])!
+        "Last-Modified": Date().rfc1123String,
+        "etag": "23bad3",
+      ]
+    )!
     XCTAssertTrue(sufficientHeadersResponse3.hasSufficientCachingHeaders)
 
     let insufficientHeadersResponse = HTTPURLResponse(
@@ -78,8 +83,9 @@ class TPPCachingTests: XCTestCase {
       statusCode: 200,
       httpVersion: "HTTP/1.1",
       headerFields: [
-        "Expires" : Date().rfc1123String,
-    ])!
+        "Expires": Date().rfc1123String,
+      ]
+    )!
     XCTAssertFalse(insufficientHeadersResponse.hasSufficientCachingHeaders)
   }
 
@@ -92,8 +98,9 @@ class TPPCachingTests: XCTestCase {
       statusCode: 200,
       httpVersion: "HTTP/1.1",
       headerFields: [
-        "CACHE-CONTROL" : " mAx-Age=666",
-    ])
+        "CACHE-CONTROL": " mAx-Age=666",
+      ]
+    )
     XCTAssertEqual(differentCapitalizationResponse?.cacheControlMaxAge, 666)
 
     let malformedResponse = HTTPURLResponse(
@@ -101,8 +108,9 @@ class TPPCachingTests: XCTestCase {
       statusCode: 200,
       httpVersion: "HTTP/1.1",
       headerFields: [
-        "cache-control" : " max-age=",
-    ])
+        "cache-control": " max-age=",
+      ]
+    )
     XCTAssertNil(malformedResponse?.cacheControlMaxAge)
 
     let malformedNumberResponse = HTTPURLResponse(
@@ -110,8 +118,9 @@ class TPPCachingTests: XCTestCase {
       statusCode: 200,
       httpVersion: "HTTP/1.1",
       headerFields: [
-        "Cache-Control" : " max-age=x1,2",
-    ])
+        "Cache-Control": " max-age=x1,2",
+      ]
+    )
     XCTAssertNil(malformedNumberResponse?.cacheControlMaxAge)
   }
 
@@ -126,7 +135,8 @@ class TPPCachingTests: XCTestCase {
       url: URL(string: "https://example.com/test")!,
       statusCode: 200,
       httpVersion: "HTTP/1.1",
-      headerFields: nil)!
+      headerFields: nil
+    )!
     XCTAssertFalse(noCachingResp.hasSufficientCachingHeaders)
     XCTAssertTrue(noCachingResp.modifyingCacheHeaders().hasSufficientCachingHeaders)
 
@@ -134,7 +144,8 @@ class TPPCachingTests: XCTestCase {
       url: URL(string: "https://example.com/test")!,
       statusCode: 400,
       httpVersion: "HTTP/1.1",
-      headerFields: nil)!
+      headerFields: nil
+    )!
     XCTAssertFalse(failedResp.hasSufficientCachingHeaders)
     XCTAssertFalse(failedResp.modifyingCacheHeaders().hasSufficientCachingHeaders)
   }

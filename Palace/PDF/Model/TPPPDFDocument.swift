@@ -9,37 +9,41 @@
 import Foundation
 import PDFKit
 
+// MARK: - TPPPDFDocumentDelegate
+
 /// Search delegate
 protocol TPPPDFDocumentDelegate {
   func didMatchString(_ instance: TPPPDFLocation)
 }
+
+// MARK: - TPPPDFDocument
 
 /// Wrapper class for PDF docuument in general
 @objcMembers class TPPPDFDocument: NSObject {
   let data: Data
   let decryptor: ((_ data: Data, _ start: UInt, _ end: UInt) -> Data)?
   let isEncrypted: Bool
-  
+
   var delegate: TPPPDFDocumentDelegate?
-  
+
   /// Initialize with a non-encrypted document
   /// - Parameter data: PDF document data
   init(data: Data) {
     self.data = data
-    self.decryptor = nil
-    self.isEncrypted = false
+    decryptor = nil
+    isEncrypted = false
   }
-  
+
   /// Initialize with an encrypted PDF document data
   /// - Parameters:
   ///   - encryptedData: Encrypted PDF document data
   ///   - decryptor: Decryptor function
   init(encryptedData: Data, decryptor: @escaping (_ data: Data, _ start: UInt, _ end: UInt) -> Data) {
-    self.data = encryptedData
+    data = encryptedData
     self.decryptor = decryptor
-    self.isEncrypted = true
+    isEncrypted = true
   }
-  
+
   /// Encrypted PDF document
   lazy var encryptedDocument: TPPEncryptedPDFDocument? = {
     guard let decryptor = decryptor, isEncrypted else {
@@ -47,7 +51,7 @@ protocol TPPPDFDocumentDelegate {
     }
     return TPPEncryptedPDFDocument(encryptedData: data, decryptor: decryptor)
   }()
-  
+
   /// PDFKit PDF document
   lazy var document: PDFDocument? = {
     guard !isEncrypted else {
@@ -60,14 +64,13 @@ protocol TPPPDFDocumentDelegate {
 // MARK: - Common properties of encrypted and non-encrypted PDF files
 
 extension TPPPDFDocument {
-  
   /// PDF title
   var title: String? {
     get async {
       if isEncrypted {
-        return encryptedDocument?.title
+        encryptedDocument?.title
       } else {
-        return (try? await document?.title()) ?? nil
+        (try? await document?.title()) ?? nil
       }
     }
   }
@@ -81,12 +84,12 @@ extension TPPPDFDocument {
   func decrypt(data: Data, start: UInt, end: UInt) -> Data {
     decryptor?(data, start, end) ?? data
   }
-  
+
   /// Number of pages in the PDF document
   var pageCount: Int {
     (isEncrypted ? encryptedDocument?.pageCount : document?.pageCount) ?? 0
   }
-  
+
   /// Preview image for a page
   /// - Parameter page: Page number
   /// - Returns: Rendered page image
@@ -103,10 +106,10 @@ extension TPPPDFDocument {
   /// `thumbnail` returns a smaller image than `preview`
   func thumbnail(for page: Int) -> UIImage? {
     isEncrypted ?
-    encryptedDocument?.thumbnail(for: page) :
-    image(page: page, size: .pdfThumbnailSize)
+      encryptedDocument?.thumbnail(for: page) :
+      image(page: page, size: .pdfThumbnailSize)
   }
-  
+
   /// Image for a page
   /// - Parameters:
   ///   - page: Page number
@@ -114,28 +117,28 @@ extension TPPPDFDocument {
   /// - Returns: Rendered page image
   func image(page: Int, size: CGSize) -> UIImage? {
     isEncrypted ?
-    encryptedDocument?.page(at: page)?.image(of: size, for: .mediaBox) :
-    document?.page(at: page)?.thumbnail(of: size, for: .mediaBox)
+      encryptedDocument?.page(at: page)?.image(of: size, for: .mediaBox) :
+      document?.page(at: page)?.thumbnail(of: size, for: .mediaBox)
   }
-  
+
   /// Page size
   /// - Parameter page: Page number
   /// - Returns: Size of the page
   func size(page: Int) -> CGSize? {
     isEncrypted ?
-    encryptedDocument?.page(at: page)?.getBoxRect(.mediaBox).size :
-    document?.page(at: page)?.bounds(for: .mediaBox).size
+      encryptedDocument?.page(at: page)?.getBoxRect(.mediaBox).size :
+      document?.page(at: page)?.bounds(for: .mediaBox).size
   }
-  
+
   /// Page label
   /// - Parameter page: Page number
   /// - Returns: Page label
   func label(page: Int) -> String? {
     isEncrypted ?
-    encryptedDocument?.page(at: page)?.pageNumber.description :
-    document?.page(at: page)?.label
+      encryptedDocument?.page(at: page)?.pageNumber.description :
+      document?.page(at: page)?.label
   }
-  
+
   /// Search the document
   /// - Parameter text: Text string to look for
   /// - Returns: Array of PDF locations
@@ -184,17 +187,21 @@ extension TPPPDFDocument {
         )
       }
   }
-  
+
   /// Unfolds all outline levels into a flat array with `level` parameter for depth level information
   /// - Parameters:
   ///   - element: `PDFOutline` element
   ///   - level: depth level
   /// - Returns: `(Int, PDFOutline)` for (depth level, outline element)
   private func outlineItems(in element: PDFOutline, level: Int = 0) -> [(Int, PDFOutline)] {
-    [(level, element)] + (0..<element.numberOfChildren).compactMap { element.child(at: $0) }.flatMap { outlineItems(in: $0, level: level + 1) }
+    [(level, element)] + (0..<element.numberOfChildren).compactMap { element.child(at: $0) }.flatMap { outlineItems(
+      in: $0,
+      level: level + 1
+    ) }
   }
-
 }
+
+// MARK: PDFDocumentDelegate
 
 extension TPPPDFDocument: PDFDocumentDelegate {
   /// Search delegate for `PDFDocument`
@@ -206,7 +213,12 @@ extension TPPPDFDocument: PDFDocumentDelegate {
     guard let pageNumber = document?.index(for: page) else {
       return
     }
-    let location = TPPPDFLocation(title: extendedSelection.string, subtitle: nil, pageLabel: page.label, pageNumber: pageNumber)
+    let location = TPPPDFLocation(
+      title: extendedSelection.string,
+      subtitle: nil,
+      pageLabel: page.label,
+      pageNumber: pageNumber
+    )
     delegate?.didMatchString(location)
   }
 }

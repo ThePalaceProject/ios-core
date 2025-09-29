@@ -2,8 +2,10 @@ import Foundation
 import SwiftUI
 import UIKit
 
+// MARK: - LibraryNavTitleView
+
 struct LibraryNavTitleView: View {
-  var onTap: (() -> Void)? = nil
+  var onTap: (() -> Void)?
 
   @ViewBuilder
   var body: some View {
@@ -33,6 +35,8 @@ struct LibraryNavTitleView: View {
   }
 }
 
+// MARK: - LibraryNavTitleFactory
+
 @objc final class LibraryNavTitleFactory: NSObject {
   @objc static func makeTitleView() -> UIView {
     let container = UIStackView()
@@ -60,5 +64,3 @@ struct LibraryNavTitleView: View {
     return container
   }
 }
-
-

@@ -11,33 +11,32 @@ import SwiftUI
 /// Bottom bar with page thumbnails
 /// Performs similar to PDFKit's `PDFThumbnails` view.
 struct TPPPDFPreviewBar: View {
-  
   private let barPreviewsHeight = 24.0
   private let barPreviewsSpacing = 3.0
   private let selectedPreviewHeight = 30.0
 
   private var previewSize: CGSize {
-    let h = self.barPreviewsHeight
+    let h = barPreviewsHeight
     let w = h * 3 / 4
     return CGSize(width: w, height: h)
   }
-  
+
   private var selectedPreviewSize: CGSize {
-    let h = self.selectedPreviewHeight
+    let h = selectedPreviewHeight
     let w = h * 3 / 4
     return CGSize(width: w, height: h)
   }
-  
+
   let document: TPPEncryptedPDFDocument
   @Binding var currentPage: Int
-  
+
   @State private var previewsAreaSize: CGSize = .zero
   @State private var previewsBarSize: CGSize = .zero
   @State private var touchLocation: CGPoint = .zero
-  
+
   @State private var indices: [Int] = []
   @State private var timer: Timer?
-  
+
   var body: some View {
     VStack(alignment: .center) {
       Divider()
@@ -87,18 +86,18 @@ struct TPPPDFPreviewBar: View {
     }
     .padding(.bottom, 6)
   }
-  
+
   /// Debounce size updates
   /// - Parameters:
   ///   - timeInterval: Delay before action
   ///   - action: Action to perform
-  private func debounce(_ timeInterval: TimeInterval, action: @escaping () -> Void) {
+  private func debounce(_: TimeInterval, action: @escaping () -> Void) {
     timer?.invalidate()
     timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: false) { _ in
       action()
     }
   }
-  
+
   /// Array of visible page indices
   /// - Parameter size: Bar size
   /// - Returns: Array of indices
@@ -111,7 +110,7 @@ struct TPPPDFPreviewBar: View {
     }
     return result
   }
-  
+
   /// Page index for location point on the bar
   /// - Parameters:
   ///   - location: Location point on the bar
@@ -122,7 +121,7 @@ struct TPPPDFPreviewBar: View {
     let loc = max(0, min(rect.width, location.x))
     return max(0, min(document.pageCount - 1, Int(numberOfPages * (loc / rect.width))))
   }
-  
+
   /// Offset for current page thumbnail
   /// - Parameter rect: Bar size
   /// - Returns: offset `CGSize` value for `.offset` view modifier
@@ -133,5 +132,4 @@ struct TPPPDFPreviewBar: View {
     let h = rect.height / 2 - barPreviewsHeight / 2
     return CGSize(width: w, height: h)
   }
-  
 }

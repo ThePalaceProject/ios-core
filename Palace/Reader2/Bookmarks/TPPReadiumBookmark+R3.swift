@@ -7,11 +7,10 @@
 //
 
 import Foundation
-import ReadiumShared
 import ReadiumNavigator
+import ReadiumShared
 
 extension TPPReadiumBookmark {
-
   /// Converts the bookmark model into a location object that can be used
   /// with Readium 3.
   ///
@@ -21,8 +20,9 @@ extension TPPReadiumBookmark {
   /// - Parameter publication: The Readium 3 `Publication` object where the bookmark is located.
   /// - Returns: A `Locator` object for Readium 3, or `nil` if conversion fails.
   func convertToR3(from publication: Publication) -> TPPBookmarkR3Location? {
-    guard let href = AnyURL(string: self.href),
-          let link = publication.linkWithHREF(href) else {
+    guard let href = AnyURL(string: href),
+          let link = publication.linkWithHREF(href)
+    else {
       return nil
     }
 
@@ -37,7 +37,7 @@ extension TPPReadiumBookmark {
     let locator = Locator(
       href: href,
       mediaType: mediaType,
-      title: self.chapter,
+      title: chapter,
       locations: locations,
       text: Locator.Text(highlight: nil)
     )
@@ -46,26 +46,24 @@ extension TPPReadiumBookmark {
       return nil
     }
 
-    let creationDate = NSDate(rfc3339String: self.time) as Date? ?? Date()
+    let creationDate = NSDate(rfc3339String: time) as Date? ?? Date()
 
     return TPPBookmarkR3Location(resourceIndex: resourceIndex, locator: locator, creationDate: creationDate)
   }
 
   func locationMatches(_ locator: Locator) -> Bool {
-    let locatorTotalProgress: Float?
-    if let totalProgress = locator.locations.totalProgression {
-      locatorTotalProgress = Float(totalProgress)
+    let locatorTotalProgress: Float? = if let totalProgress = locator.locations.totalProgression {
+      Float(totalProgress)
     } else {
-      locatorTotalProgress = nil
+      nil
     }
 
-    let locatorChapterProgress: Float?
-    if let chapterProgress = locator.locations.progression {
-      locatorChapterProgress = Float(chapterProgress)
+    let locatorChapterProgress: Float? = if let chapterProgress = locator.locations.progression {
+      Float(chapterProgress)
     } else {
-      locatorChapterProgress = nil
+      nil
     }
 
-    return self.progressWithinChapter =~= locatorChapterProgress && self.progressWithinBook =~= locatorTotalProgress
+    return progressWithinChapter =~= locatorChapterProgress && progressWithinBook =~= locatorTotalProgress
   }
 }

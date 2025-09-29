@@ -2,7 +2,6 @@ import UIKit
 import WebKit
 
 class TPPSAMLHelper {
-
   var businessLogic: TPPSignInBusinessLogic!
 
   func logIn(loginCancelHandler: @escaping () -> Void) {
@@ -11,7 +10,10 @@ class TPPSAMLHelper {
     }
 
     var urlComponents = URLComponents(url: idpURL, resolvingAgainstBaseURL: true)
-    let redirectURI = URLQueryItem(name: "redirect_uri", value: businessLogic.urlSettingsProvider.universalLinksURL.absoluteString)
+    let redirectURI = URLQueryItem(
+      name: "redirect_uri",
+      value: businessLogic.urlSettingsProvider.universalLinksURL.absoluteString
+    )
     urlComponents?.queryItems?.append(redirectURI)
     guard let url = urlComponents?.url else {
       // Handle error if URL creation failed
@@ -21,12 +23,21 @@ class TPPSAMLHelper {
     let loginCompletionHandler: (URL, [HTTPCookie]) -> Void = { url, cookies in
       self.businessLogic.cookies = cookies
 
-      let redirectNotification = Notification(name: .TPPAppDelegateDidReceiveCleverRedirectURL, object: url, userInfo: nil)
+      let redirectNotification = Notification(
+        name: .TPPAppDelegateDidReceiveCleverRedirectURL,
+        object: url,
+        userInfo: nil
+      )
       self.businessLogic.handleRedirectURL(redirectNotification) { error, errorTitle, errorMessage in
         DispatchQueue.main.async {
           self.businessLogic.uiDelegate?.dismiss(animated: true) {
             if let error = error, let errorTitle = errorTitle, let errorMessage = errorMessage {
-              self.businessLogic.uiDelegate?.businessLogic(self.businessLogic, didEncounterValidationError: error, userFriendlyErrorTitle: errorTitle, andMessage: errorMessage)
+              self.businessLogic.uiDelegate?.businessLogic(
+                self.businessLogic,
+                didEncounterValidationError: error,
+                userFriendlyErrorTitle: errorTitle,
+                andMessage: errorMessage
+              )
             }
           }
         }

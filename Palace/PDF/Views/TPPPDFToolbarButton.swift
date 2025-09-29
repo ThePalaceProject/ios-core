@@ -6,28 +6,29 @@
 //  Copyright © 2022 The Palace Project. All rights reserved.
 //
 
-import SwiftUI
 import PalaceUIKit
+import SwiftUI
+
+// MARK: - TPPPDFToolbarButton
 
 /// Preconfigured toolbar button view
 struct TPPPDFToolbarButton: View {
-
   let action: () -> Void
   let image: Image?
   let text: String?
-  
+
   init(icon: String, action: @escaping () -> Void) {
     self.action = action
-    self.image = Image(systemName: icon)
-    self.text = nil
+    image = Image(systemName: icon)
+    text = nil
   }
-  
+
   init(text: String, action: @escaping () -> Void) {
     self.action = action
-    self.image = nil
+    image = nil
     self.text = text
   }
-  
+
   var body: some View {
     Button(action: action) {
       if let image = image {
@@ -41,6 +42,8 @@ struct TPPPDFToolbarButton: View {
     .toolbarButtonSize()
   }
 }
+
+// MARK: - ToolbarButton_Previews
 
 struct ToolbarButton_Previews: PreviewProvider {
   static var previews: some View {

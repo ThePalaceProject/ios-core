@@ -10,41 +10,40 @@ import Foundation
 @testable import Palace
 
 class TPPSignInOutBusinessLogicUIDelegateMock: NSObject, TPPSignInOutBusinessLogicUIDelegate {
-  func businessLogicWillSignOut(_ businessLogic: TPPSignInBusinessLogic) {
-  }
+  func businessLogicWillSignOut(_: TPPSignInBusinessLogic) {}
 
-  func businessLogic(_ logic: TPPSignInBusinessLogic,
-                     didEncounterSignOutError error: Error?,
-                     withHTTPStatusCode httpStatusCode: Int) {
-  }
+  func businessLogic(
+    _: TPPSignInBusinessLogic,
+    didEncounterSignOutError _: Error?,
+    withHTTPStatusCode _: Int
+  ) {}
 
-  func businessLogicDidFinishDeauthorizing(_ logic: TPPSignInBusinessLogic) {
-  }
+  func businessLogicDidFinishDeauthorizing(_: TPPSignInBusinessLogic) {}
 
-  func businessLogicDidCancelSignIn(_ businessLogic: TPPSignInBusinessLogic) {
-  }
+  func businessLogicDidCancelSignIn(_: TPPSignInBusinessLogic) {}
 
   var context = "Unit Tests Context"
 
-  func businessLogicWillSignIn(_ businessLogic: TPPSignInBusinessLogic) {
-  }
+  func businessLogicWillSignIn(_: TPPSignInBusinessLogic) {}
 
-  func businessLogicDidCompleteSignIn(_ businessLogic: TPPSignInBusinessLogic) {
-  }
+  func businessLogicDidCompleteSignIn(_: TPPSignInBusinessLogic) {}
 
-  func businessLogic(_ logic: TPPSignInBusinessLogic,
-                     didEncounterValidationError error: Error?,
-                     userFriendlyErrorTitle title: String?,
-                     andMessage message: String?) {
-  }
+  func businessLogic(
+    _: TPPSignInBusinessLogic,
+    didEncounterValidationError _: Error?,
+    userFriendlyErrorTitle _: String?,
+    andMessage _: String?
+  ) {}
 
-  func dismiss(animated flag: Bool, completion: (() -> Void)?) {
+  func dismiss(animated _: Bool, completion: (() -> Void)?) {
     completion?()
   }
 
-  func present(_ viewControllerToPresent: UIViewController,
-               animated flag: Bool,
-               completion: (() -> Void)?) {
+  func present(
+    _: UIViewController,
+    animated _: Bool,
+    completion: (() -> Void)?
+  ) {
     completion?()
   }
 
@@ -52,9 +51,9 @@ class TPPSignInOutBusinessLogicUIDelegateMock: NSObject, TPPSignInOutBusinessLog
 
   var pin: String? = "pin"
 
-  var usernameTextField: UITextField? = nil
+  var usernameTextField: UITextField?
 
-  var PINTextField: UITextField? = nil
+  var PINTextField: UITextField?
 
   var forceEditability: Bool = false
 }

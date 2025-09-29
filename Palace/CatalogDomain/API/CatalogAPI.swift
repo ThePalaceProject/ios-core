@@ -1,9 +1,13 @@
 import Foundation
 
+// MARK: - CatalogAPI
+
 public protocol CatalogAPI {
   func fetchFeed(at url: URL) async throws -> CatalogFeed?
   func search(query: String, baseURL: URL) async throws -> CatalogFeed?
 }
+
+// MARK: - DefaultCatalogAPI
 
 public final class DefaultCatalogAPI: CatalogAPI {
   public let client: NetworkClient
@@ -22,12 +26,16 @@ public final class DefaultCatalogAPI: CatalogAPI {
 
   public func search(query: String, baseURL: URL) async throws -> CatalogFeed? {
     guard let catalogFeed = try await fetchFeed(at: baseURL) else {
-      throw NSError(domain: NSURLErrorDomain, code: NSURLErrorBadURL, userInfo: [NSLocalizedDescriptionKey: "Could not load catalog feed"])
+      throw NSError(
+        domain: NSURLErrorDomain,
+        code: NSURLErrorBadURL,
+        userInfo: [NSLocalizedDescriptionKey: "Could not load catalog feed"]
+      )
     }
-    
+
     let opdsFeed = catalogFeed.opdsFeed
     var searchURL: URL?
-    
+
     if let links = opdsFeed.links as? [TPPOPDSLink] {
       for link in links {
         if link.rel == "search" && link.href != nil {
@@ -36,20 +44,28 @@ public final class DefaultCatalogAPI: CatalogAPI {
         }
       }
     }
-    
+
     if let searchURL = searchURL {
       return try await withCheckedThrowingContinuation { continuation in
         TPPOpenSearchDescription.withURL(searchURL, shouldResetCache: false) { description in
           guard let description = description else {
-            continuation.resume(throwing: NSError(domain: NSURLErrorDomain, code: NSURLErrorBadURL, userInfo: [NSLocalizedDescriptionKey: "Could not load OpenSearch description"]))
+            continuation.resume(throwing: NSError(
+              domain: NSURLErrorDomain,
+              code: NSURLErrorBadURL,
+              userInfo: [NSLocalizedDescriptionKey: "Could not load OpenSearch description"]
+            ))
             return
           }
-          
+
           guard let searchResultURL = description.opdsurl(forSearching: query) else {
-            continuation.resume(throwing: NSError(domain: NSURLErrorDomain, code: NSURLErrorBadURL, userInfo: [NSLocalizedDescriptionKey: "Could not create search URL"]))
+            continuation.resume(throwing: NSError(
+              domain: NSURLErrorDomain,
+              code: NSURLErrorBadURL,
+              userInfo: [NSLocalizedDescriptionKey: "Could not create search URL"]
+            ))
             return
           }
-          
+
           Task {
             do {
               let searchResults = try await self.fetchFeed(at: searchResultURL)
@@ -65,12 +81,14 @@ public final class DefaultCatalogAPI: CatalogAPI {
       var items = comps?.queryItems ?? []
       items.append(URLQueryItem(name: "q", value: query))
       comps?.queryItems = items
-      guard let url = comps?.url else { 
-        throw NSError(domain: NSURLErrorDomain, code: NSURLErrorBadURL, userInfo: [NSLocalizedDescriptionKey: "Could not create search URL"]) 
+      guard let url = comps?.url else {
+        throw NSError(
+          domain: NSURLErrorDomain,
+          code: NSURLErrorBadURL,
+          userInfo: [NSLocalizedDescriptionKey: "Could not create search URL"]
+        )
       }
       return try await fetchFeed(at: url)
     }
   }
 }
-
-

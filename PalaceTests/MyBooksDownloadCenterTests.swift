@@ -4,8 +4,9 @@ import XCTest
 let testFeedUrl = Bundle(for: OPDS2CatalogsFeedTests.self)
   .url(forResource: "OPDS2CatalogsFeed", withExtension: "json")!
 
-class MyBooksDownloadCenterTests: XCTestCase {
+// MARK: - MyBooksDownloadCenterTests
 
+class MyBooksDownloadCenterTests: XCTestCase {
   var myBooksDownloadCenter: MyBooksDownloadCenter!
   var mockUserAccount: TPPUserAccount!
   var mockReauthenticator: TPPReauthenticatorMock!
@@ -30,7 +31,7 @@ class MyBooksDownloadCenterTests: XCTestCase {
   }
 
   func testBorrowBook() {
-    let expectation = self.expectation(description: "Book is sent to downloading state")
+    let expectation = expectation(description: "Book is sent to downloading state")
 
     var fulfilled = false
     NotificationCenter.default.removeObserver(self, name: .TPPMyBooksDownloadCenterDidChange, object: nil)
@@ -41,9 +42,11 @@ class MyBooksDownloadCenterTests: XCTestCase {
       forName: .TPPMyBooksDownloadCenterDidChange,
       object: nil,
       queue: nil
-    ) { notification in
+    ) { _ in
       // Ensure fulfill() is only called once
-      guard !fulfilled else { return }
+      guard !fulfilled else {
+        return
+      }
       fulfilled = true
       expectation.fulfill()
 
@@ -52,7 +55,9 @@ class MyBooksDownloadCenterTests: XCTestCase {
       }
     }
 
-    swizzle(selector: #selector(TPPOPDSFeed.swizzledURL_Success(_:shouldResetCache:useTokenIfAvailable:completionHandler:)))
+    swizzle(selector: #selector(TPPOPDSFeed
+        .swizzledURL_Success(_:shouldResetCache:useTokenIfAvailable:completionHandler:)
+    ))
 
     let book = TPPBookMocker.mockBook(distributorType: .AdobeAdept)
     myBooksDownloadCenter.startBorrow(for: book, attemptDownload: true)
@@ -61,16 +66,19 @@ class MyBooksDownloadCenterTests: XCTestCase {
   }
 
   func testBorrowBook_withReauthentication() {
-    let expectation = self.expectation(description: "Books is sent to downloading state")
+    let expectation = expectation(description: "Books is sent to downloading state")
 
     let notificationObserver = NotificationCenter.default.addObserver(
       forName: .TPPMyBooksDownloadCenterDidChange,
       object: nil,
-      queue: nil) { notification in
-        expectation.fulfill()
-      }
+      queue: nil
+    ) { _ in
+      expectation.fulfill()
+    }
 
-    swizzle(selector: #selector(TPPOPDSFeed.swizzledURL_Error(_:shouldResetCache:useTokenIfAvailable:completionHandler:)))
+    swizzle(selector: #selector(TPPOPDSFeed
+        .swizzledURL_Error(_:shouldResetCache:useTokenIfAvailable:completionHandler:)
+    ))
 
     let book = TPPBookMocker.mockBook(distributorType: .AdobeAdept)
     myBooksDownloadCenter.startBorrow(for: book, attemptDownload: true)
@@ -84,8 +92,10 @@ class MyBooksDownloadCenterTests: XCTestCase {
     // Give CI/CD some buffer time before assertion
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
       let bookState = self.mockBookRegistry.state(for: book.identifier)
-      XCTAssertTrue([.downloading, .downloadSuccessful].contains(bookState),
-                    "The book should be in the 'Downloading' or 'Download Successful' state.")
+      XCTAssertTrue(
+        [.downloading, .downloadSuccessful].contains(bookState),
+        "The book should be in the 'Downloading' or 'Download Successful' state."
+      )
     }
   }
 
@@ -93,10 +103,10 @@ class MyBooksDownloadCenterTests: XCTestCase {
     let aClass: AnyClass? = object_getClass(TPPOPDSFeed.self)
     let originalSelector = #selector(TPPOPDSFeed.withURL(_:shouldResetCache:useTokenIfAvailable:completionHandler:))
     let swizzledSelector = selector
-    
+
     let originalMethod = class_getInstanceMethod(aClass, originalSelector)
     let swizzledMethod = class_getInstanceMethod(TPPOPDSFeed.self, swizzledSelector)
-    
+
     method_exchangeImplementations(originalMethod!, swizzledMethod!)
   }
 }
@@ -110,18 +120,20 @@ let mockFeed: TPPOPDSFeed = {
 
 extension TPPOPDSFeed {
   @objc func swizzledURL_Success(
-    _ url: URL,
-    shouldResetCache: Bool,
-    useTokenIfAvailable: Bool,
-    completionHandler: @escaping (TPPOPDSFeed?, [String: Any]?) -> Void) {
+    _: URL,
+    shouldResetCache _: Bool,
+    useTokenIfAvailable _: Bool,
+    completionHandler: @escaping (TPPOPDSFeed?, [String: Any]?) -> Void
+  ) {
     completionHandler(mockFeed, nil)
   }
 
   @objc func swizzledURL_Error(
-    _ url: URL,
-    shouldResetCache: Bool,
-    useTokenIfAvailable: Bool,
-    completionHandler: @escaping (TPPOPDSFeed?, [String: Any]?) -> Void) {
-      completionHandler(nil, ["type": TPPProblemDocument.TypeInvalidCredentials])
-    }
+    _: URL,
+    shouldResetCache _: Bool,
+    useTokenIfAvailable _: Bool,
+    completionHandler: @escaping (TPPOPDSFeed?, [String: Any]?) -> Void
+  ) {
+    completionHandler(nil, ["type": TPPProblemDocument.TypeInvalidCredentials])
+  }
 }

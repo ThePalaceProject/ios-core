@@ -12,15 +12,15 @@ class TPPBookContentTypeConverter: NSObject {
   @objc class func stringValue(of bookContentType: TPPBookContentType) -> String {
     switch bookContentType {
     case .epub:
-      return "Epub"
+      "Epub"
     case .audiobook:
-      return "AudioBook"
+      "AudioBook"
     case .pdf:
-      return "PDF"
+      "PDF"
     case .unsupported:
-      return "Unsupported"
+      "Unsupported"
     default:
-      return "Unexpected enum value: \(bookContentType.rawValue)"
+      "Unexpected enum value: \(bookContentType.rawValue)"
     }
   }
 }

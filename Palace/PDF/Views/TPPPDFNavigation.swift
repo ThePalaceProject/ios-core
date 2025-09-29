@@ -10,54 +10,56 @@ import SwiftUI
 
 /// Navigation between previews, TOC and bookmarks
 struct TPPPDFNavigation<Content>: View where Content: View {
-  
   private enum TPPPDFReaderModeValues: Int, Identifiable {
-    case previews, toc, bookmarks
-    
+    case previews
+    case toc
+    case bookmarks
+
     var id: Int {
       rawValue
     }
-    
+
     var image: Image {
       switch self {
-      case .previews: return Image(systemName: "rectangle.grid.3x2")
-      case .toc: return Image(systemName: "list.bullet")
-      case .bookmarks: return Image(systemName: "bookmark")
+      case .previews: Image(systemName: "rectangle.grid.3x2")
+      case .toc: Image(systemName: "list.bullet")
+      case .bookmarks: Image(systemName: "bookmark")
       }
     }
-    
+
     static var allValues: [TPPPDFReaderModeValues] {
-      return [.previews, .toc, .bookmarks]
+      [.previews, .toc, .bookmarks]
     }
-    
+
     var readerMode: TPPPDFReaderMode {
       switch self {
-      case .previews: return .previews
-      case .toc: return .toc
-      case .bookmarks: return .bookmarks
+      case .previews: .previews
+      case .toc: .toc
+      case .bookmarks: .bookmarks
       }
     }
   }
-  
+
   @EnvironmentObject var metadata: TPPPDFDocumentMetadata
-  
+
   @Environment(\.presentationMode) var presentationMode: Binding<PresentationMode>
-  
+
   @Binding var readerMode: TPPPDFReaderMode
 
   private var isShowingPdfContorls: Bool {
     readerMode == .previews || readerMode == .bookmarks || readerMode == .toc
   }
+
   @State private var pickerSelection = 0
   let content: (TPPPDFReaderMode) -> Content
-  
+
   var body: some View {
     content(readerMode)
       .navigationBarItems(leading: leadingItems, trailing: trailingItems)
   }
-  
+
   private let minButtonSize = CGSize(width: 24, height: 24)
-  
+
   @ViewBuilder
   var leadingItems: some View {
     HStack {
@@ -100,7 +102,9 @@ struct TPPPDFNavigation<Content>: View where Content: View {
             metadata.addBookmark()
           }
         }
-        .accessibilityIdentifier(metadata.isBookmarked() ? Strings.TPPBaseReaderViewController.removeBookmark : Strings.TPPBaseReaderViewController.addBookmark)
+        .accessibilityIdentifier(metadata.isBookmarked() ? Strings.TPPBaseReaderViewController.removeBookmark : Strings
+          .TPPBaseReaderViewController.addBookmark
+        )
       }
       .visible(when: !isShowingPdfContorls)
     }

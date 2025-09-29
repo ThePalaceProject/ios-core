@@ -8,6 +8,8 @@
 
 import Foundation
 
+// MARK: - TPPUserFriendlyError
+
 /// A protocol describing an error that MAY offer user friendly
 /// messaging to the user.
 protocol TPPUserFriendlyError: Error {
@@ -24,26 +26,28 @@ protocol TPPUserFriendlyError: Error {
 // is also ok because user friendly strings are in general never guaranteed
 // to be there, even when we obtain a problem document.
 extension TPPUserFriendlyError {
-  var userFriendlyTitle: String? { return nil }
-  var userFriendlyMessage: String? { return nil  }
+  var userFriendlyTitle: String? { nil }
+  var userFriendlyMessage: String? { nil }
 }
+
+// MARK: - NSError + TPPUserFriendlyError
 
 extension NSError: TPPUserFriendlyError {
   private static let problemDocumentKey = "problemDocument"
 
   @objc var problemDocument: TPPProblemDocument? {
-    return userInfo[NSError.problemDocumentKey] as? TPPProblemDocument
+    userInfo[NSError.problemDocumentKey] as? TPPProblemDocument
   }
 
   /// Feeds off of the `problemDocument` computed property
   @objc var userFriendlyTitle: String? {
-    return problemDocument?.title
+    problemDocument?.title
   }
 
   /// Feeds off of the `problemDocument` computed property or the localized
   /// error description.
   @objc var userFriendlyMessage: String? {
-    return (problemDocument?.detail ?? userInfo[NSLocalizedDescriptionKey]) as? String
+    (problemDocument?.detail ?? userInfo[NSLocalizedDescriptionKey]) as? String
   }
 
   /// Builds an NSError using the given problem document for its user-friendly
@@ -55,10 +59,12 @@ extension NSError: TPPUserFriendlyError {
   ///   - userInfo: The user friendly messaging will be appended to this
   ///   dictionary.
   /// - Returns: A new NSError with the ProblemDocument `title` and `detail`.
-  static func makeFromProblemDocument(_ problemDoc: TPPProblemDocument,
-                                      domain: String,
-                                      code: Int,
-                                      userInfo: [String: Any]?) -> NSError {
+  static func makeFromProblemDocument(
+    _ problemDoc: TPPProblemDocument,
+    domain: String,
+    code: Int,
+    userInfo: [String: Any]?
+  ) -> NSError {
     var userInfo = userInfo ?? [String: Any]()
     userInfo[NSError.problemDocumentKey] = problemDoc
     return NSError(domain: domain, code: code, userInfo: userInfo)

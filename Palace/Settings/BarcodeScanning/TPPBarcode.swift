@@ -1,8 +1,10 @@
-import Foundation
 import AVFoundation
+import Foundation
 
-fileprivate let barcodeHeight: CGFloat = 100
-fileprivate let maxBarcodeWidth: CGFloat = 414
+private let barcodeHeight: CGFloat = 100
+private let maxBarcodeWidth: CGFloat = 414
+
+// MARK: - TPPBarcode
 
 /// Manage creation and scanning of barcodes on library cards.
 /// Keep any third party dependency abstracted out of the main app.
@@ -11,17 +13,16 @@ fileprivate let maxBarcodeWidth: CGFloat = 414
 
   var libraryName: String?
 
-  init (library: String) {
-    self.libraryName = library
+  init(library: String) {
+    libraryName = library
   }
 
-  func image(fromString stringToEncode: String) -> UIImage?
-  {
+  func image(fromString stringToEncode: String) -> UIImage? {
     let data = stringToEncode.data(using: String.Encoding.ascii)
     if let filter = CIFilter(name: "CICode128BarcodeGenerator") {
       filter.setValue(data, forKey: "inputMessage")
       let transform = CGAffineTransform(scaleX: 3, y: 3)
-      
+
       if let output = filter.outputImage?.transformed(by: transform) {
         return UIImage(ciImage: output)
       }
@@ -29,13 +30,12 @@ fileprivate let maxBarcodeWidth: CGFloat = 414
     return nil
   }
 
-  class func presentScanner(withCompletion completion: @escaping (String?) -> ())
-  {
+  class func presentScanner(withCompletion completion: @escaping (String?) -> Void) {
     AVCaptureDevice.requestAccess(for: .video) { granted in
       DispatchQueue.main.async {
         if granted {
           let scannerVC = BarcodeScanner(completion: completion)
-          let navController = UINavigationController.init(rootViewController: scannerVC)
+          let navController = UINavigationController(rootViewController: scannerVC)
           TPPPresentationUtils.safelyPresent(navController, animated: true, completion: nil)
         } else {
           presentCameraPrivacyAlert()
@@ -44,33 +44,39 @@ fileprivate let maxBarcodeWidth: CGFloat = 414
     }
   }
 
-  private class func presentCameraPrivacyAlert()
-  {
+  private class func presentCameraPrivacyAlert() {
     let alertController = UIAlertController(
       title: DisplayStrings.cameraAccessDisabledTitle,
       message: DisplayStrings.cameraAccessDisabledBody,
-      preferredStyle: .alert)
+      preferredStyle: .alert
+    )
 
     alertController.addAction(UIAlertAction(
       title: DisplayStrings.openSettings,
       style: .default,
-      handler: {_ in
-        UIApplication.shared.open(URL(string:UIApplication.openSettingsURLString)!)
-    }))
+      handler: { _ in
+        UIApplication.shared.open(URL(string: UIApplication.openSettingsURLString)!)
+      }
+    ))
     alertController.addAction(UIAlertAction(
       title: Strings.Generic.cancel,
       style: .cancel,
-      handler: nil))
+      handler: nil
+    ))
 
-    TPPAlertUtils.presentFromViewControllerOrNil(alertController: alertController, viewController: nil, animated: true, completion: nil)
+    TPPAlertUtils.presentFromViewControllerOrNil(
+      alertController: alertController,
+      viewController: nil,
+      animated: true,
+      completion: nil
+    )
   }
 
-  private func imageWidthFor(_ superviewWidth: CGFloat) -> CGFloat
-  {
+  private func imageWidthFor(_ superviewWidth: CGFloat) -> CGFloat {
     if superviewWidth > maxBarcodeWidth {
-      return maxBarcodeWidth
+      maxBarcodeWidth
     } else {
-      return superviewWidth
+      superviewWidth
     }
   }
 }

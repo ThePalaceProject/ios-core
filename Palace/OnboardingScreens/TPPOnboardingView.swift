@@ -9,15 +9,14 @@
 import SwiftUI
 
 struct TPPOnboardingView: View {
-  
   // 2 x pan distance to switch between slides
   // (relative to screen width)
   private var activationDistance: CGFloat = 0.8
-  
+
   private var onboardingImageNames =
     ["Onboarding-1", "Onboarding-2", "Onboarding-3"]
   @GestureState private var translation: CGFloat = 0
-  
+
   @State private var currentIndex = 0 {
     didSet {
       // Dismiss the view after the user swipes past the last slide.
@@ -26,14 +25,14 @@ struct TPPOnboardingView: View {
       }
     }
   }
-  
+
   // dismiss handler
-  var dismissView: (() -> Void)
-  
+  var dismissView: () -> Void
+
   init(dismissHandler: @escaping (() -> Void)) {
-    self.dismissView = dismissHandler
+    dismissView = dismissHandler
   }
-  
+
   var body: some View {
     ZStack(alignment: .top) {
       onboardingSlides()
@@ -43,7 +42,7 @@ struct TPPOnboardingView: View {
     .edgesIgnoringSafeArea(.all)
     .statusBar(hidden: true)
   }
-  
+
   @ViewBuilder
   private func onboardingSlides() -> some View {
     GeometryReader { geometry in
@@ -62,7 +61,7 @@ struct TPPOnboardingView: View {
       .animation(.interactiveSpring(), value: currentIndex)
       .gesture(
         DragGesture()
-          .updating($translation) { value, state, _translation in
+          .updating($translation) { value, state, _ in
             state = value.translation.width
           }
           .onEnded { value in
@@ -78,7 +77,7 @@ struct TPPOnboardingView: View {
       Color(UIColor(named: "OnboardingBackground") ?? .systemBackground)
     )
   }
-  
+
   @ViewBuilder
   private func pagerDots() -> some View {
     VStack {
@@ -87,7 +86,7 @@ struct TPPOnboardingView: View {
         .padding()
     }
   }
-  
+
   @ViewBuilder
   private func closeButton() -> some View {
     HStack {

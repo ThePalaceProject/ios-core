@@ -1,15 +1,19 @@
-import UIKit
 import SwiftUI
+import UIKit
 
 final class OnboardingCoordinator {
   static let shared = OnboardingCoordinator()
   private init() {}
 
   func startIfNeeded(from appDelegate: TPPAppDelegate) {
-    guard shouldRunOnboarding else { return }
+    guard shouldRunOnboarding else {
+      return
+    }
     presentOnboarding(from: appDelegate) { [weak self, weak appDelegate] in
-      guard let self, let appDelegate else { return }
-      self.presentAccountList(from: appDelegate)
+      guard let self, let appDelegate else {
+        return
+      }
+      presentAccountList(from: appDelegate)
       TPPSettings.shared.userHasSeenWelcomeScreen = true
     }
   }
@@ -22,13 +26,17 @@ final class OnboardingCoordinator {
 
   private func presentOnboarding(from appDelegate: TPPAppDelegate, completion: @escaping () -> Void) {
     let vc = TPPOnboardingViewController.makeSwiftUIView(dismissHandler: completion)
-    guard let top = appDelegate.topViewController() else { return }
+    guard let top = appDelegate.topViewController() else {
+      return
+    }
     top.present(vc, animated: true)
   }
 
   private func presentAccountList(from appDelegate: TPPAppDelegate) {
     let presentList: () -> Void = { [weak appDelegate] in
-      guard let top = appDelegate?.topViewController() else { return }
+      guard let top = appDelegate?.topViewController() else {
+        return
+      }
       let accountList = TPPAccountList { account in
         MyBooksViewModel().authenticateAndLoad(account: account)
       }
@@ -46,5 +54,3 @@ final class OnboardingCoordinator {
     }
   }
 }
-
-

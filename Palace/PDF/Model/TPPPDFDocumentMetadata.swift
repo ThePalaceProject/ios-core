@@ -6,8 +6,8 @@
 //  Copyright © 2022 The Palace Project. All rights reserved.
 //
 
-import Foundation
 import Combine
+import Foundation
 
 /// PDF Document metadata
 ///
@@ -19,40 +19,40 @@ import Combine
 
   /// Page numbers for boomarks.
   @Published var bookmarks = Set<Int>()
-  
+
   /// Current page number.
   @Published var currentPage: Int
-  
+
   @Published var remotePage: Int?
-  
+
   private var currentPageCancellable: AnyCancellable?
-  
+
   private var pdfBookmarks: [TPPPDFPageBookmark]? {
     didSet {
       bookmarks = localBookmarks.union(remoteBookmarks)
     }
   }
-  
+
   /// Bookmark page numbers on the remote server
   private var remoteBookmarks: Set<Int> {
     Set(
-      (pdfBookmarks ?? []).map { $0.page }
+      (pdfBookmarks ?? []).map(\.page)
     )
   }
-  
+
   /// Bookmark page numbers of bookmarks stored in the book registry
   private var localBookmarks: Set<Int> {
     Set(
       TPPBookRegistry.shared.genericBookmarksForIdentifier(book.identifier)
-        .compactMap { $0.pageNumber }
+        .compactMap(\.pageNumber)
     )
   }
-  
+
   /// Returns `true` if current account allows synchronisation
   private var canSync: Bool {
     TPPAnnotations.syncIsPossibleAndPermitted()
   }
-  
+
   /// Initializes metadata.
   /// - Parameter bookIdentifier: PDF book identifier string.
   ///
@@ -73,7 +73,7 @@ import Combine
         self.setCurrentPage(value)
       }
   }
-  
+
   /// Set current page in the book registry.
   /// - Parameter pageNumber: PDF page number.
   ///
@@ -87,12 +87,16 @@ import Combine
       Log.error(#file, "Error creating and saving PDF Page Location")
       return
     }
-    TPPBookRegistry.shared.setLocation(location, forIdentifier: self.bookIdentifier)
+    TPPBookRegistry.shared.setLocation(location, forIdentifier: bookIdentifier)
     if canSync {
-      TPPAnnotations.postReadingPosition(forBook: bookIdentifier, selectorValue: bookmarkSelector, motivation: .readingProgress)
+      TPPAnnotations.postReadingPosition(
+        forBook: bookIdentifier,
+        selectorValue: bookmarkSelector,
+        motivation: .readingProgress
+      )
     }
   }
-  
+
   /// Fetch reading position stored on the server.
   func fetchReadingPosition() {
     guard canSync, let url = TPPAnnotations.annotationsURL else {
@@ -116,7 +120,7 @@ import Combine
     }
     currentPage = remotePage
   }
-    
+
   /// Fetch bookmarks from the server.
   func fetchBookmarks() {
     guard canSync, let url = book.annotationsURL ?? TPPAnnotations.annotationsURL else {
@@ -130,25 +134,31 @@ import Combine
       }
     }
   }
-  
+
   /// Add bookmark for the book to the book registry.
   /// - Parameter pageNumber: PDF page number, `nil` adds current page.
   func addBookmark(at pageNumber: Int? = nil) {
     let page = TPPPDFPage(pageNumber: pageNumber ?? currentPage)
     bookmarks.insert(page.pageNumber)
-    if let locationString = page.locationString, let location = TPPBookLocation(locationString: locationString, renderer: rendererString) {
+    if let locationString = page.locationString, let location = TPPBookLocation(
+      locationString: locationString,
+      renderer: rendererString
+    ) {
       TPPBookRegistry.shared.addGenericBookmark(location, forIdentifier: bookIdentifier)
     }
     if canSync {
-      TPPAnnotations.postBookmark(page, annotationsURL: book.annotationsURL ?? TPPAnnotations.annotationsURL, forBookID: bookIdentifier)
-      { response in
+      TPPAnnotations.postBookmark(
+        page,
+        annotationsURL: book.annotationsURL ?? TPPAnnotations.annotationsURL,
+        forBookID: bookIdentifier
+      ) { response in
         DispatchQueue.main.async {
           self.pdfBookmarks?.append(TPPPDFPageBookmark(page: page.pageNumber, annotationID: response?.serverId))
         }
       }
     }
   }
-  
+
   /// Remove bookmark from the book registry.
   /// - Parameter pageNumber: PDF page number, `nil` removes current page.
   func removeBookmark(at pageNumber: Int? = nil) {
@@ -161,16 +171,17 @@ import Combine
       }
     if canSync,
        let bookmark = pdfBookmarks?.first(where: { page.pageNumber == $0.page }),
-       let annotationId = bookmark.annotationID {
+       let annotationId = bookmark.annotationID
+    {
       // Remove on the server
-      TPPAnnotations.deleteBookmark(annotationId: annotationId) { success in
+      TPPAnnotations.deleteBookmark(annotationId: annotationId) { _ in
         DispatchQueue.main.async {
           self.pdfBookmarks?.removeAll(where: { page.pageNumber == $0.page })
         }
       }
     }
   }
-  
+
   /// Checks if page is bookmarked.
   /// - Parameter page: PDF page number, `nil` check if current page is in bookmarks.
   /// - Returns: `true` of the page is bookmarked, `false` otherwise.

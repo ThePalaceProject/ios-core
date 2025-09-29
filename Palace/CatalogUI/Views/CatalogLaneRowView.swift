@@ -1,5 +1,7 @@
 import SwiftUI
 
+// MARK: - CatalogLaneRowView
+
 struct CatalogLaneRowView: View {
   let title: String
   let books: [TPPBook]
@@ -15,7 +17,7 @@ struct CatalogLaneRowView: View {
         Self.header(title: title, moreURL: moreURL, onMoreTapped: onMoreTapped)
           .padding(.horizontal, 12)
       }
-      
+
       if isLoading || books.isEmpty {
         laneSkeletonScroller
       } else {
@@ -38,7 +40,7 @@ struct CatalogLaneRowView: View {
               height: 150,
               usePulseSkeleton: true
             )
-              .padding(.vertical)
+            .padding(.vertical)
           }
           .buttonStyle(.plain)
         }
@@ -46,7 +48,7 @@ struct CatalogLaneRowView: View {
       .padding(.horizontal, 12)
     }
   }
-  
+
   @ViewBuilder
   private var laneSkeletonScroller: some View {
     LaneSkeletonView()
@@ -71,10 +73,11 @@ struct CatalogLaneRowView: View {
   }
 }
 
-// MARK: - Lane Skeleton View
+// MARK: - LaneSkeletonView
+
 private struct LaneSkeletonView: View {
   @State private var pulse: Bool = false
-  
+
   var body: some View {
     ScrollView(.horizontal, showsIndicators: false) {
       LazyHStack(spacing: 12) {
@@ -95,5 +98,3 @@ private struct LaneSkeletonView: View {
     }
   }
 }
-
-

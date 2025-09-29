@@ -8,6 +8,8 @@
 
 import SwiftUI
 
+// MARK: - TPPPagerDotsView
+
 struct TPPPagerDotsView: View {
   /// Number of dots to show
   var count: Int
@@ -24,8 +26,10 @@ struct TPPPagerDotsView: View {
   }
 }
 
+// MARK: - TPPPagerDotsView_Previews
+
 struct TPPPagerDotsView_Previews: PreviewProvider {
-    static var previews: some View {
-      TPPPagerDotsView(count: 5, currentIndex: .constant(2))
-    }
+  static var previews: some View {
+    TPPPagerDotsView(count: 5, currentIndex: .constant(2))
+  }
 }

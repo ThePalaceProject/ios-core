@@ -10,13 +10,13 @@ import SwiftUI
 import UIKit
 
 /// Previews and bookmarks.
-/// Wraps `TPPPDFPreviewGridController` — `UICollectionViewController` 
+/// Wraps `TPPPDFPreviewGridController` — `UICollectionViewController`
 struct TPPPDFPreviewGrid: UIViewControllerRepresentable {
   let document: TPPPDFDocument
   var pageIndices: Set<Int>?
   var isVisible = false
   let done: () -> Void
-  
+
   @EnvironmentObject var metadata: TPPPDFDocumentMetadata
 
   func makeUIViewController(context: Context) -> some UIViewController {
@@ -27,7 +27,7 @@ struct TPPPDFPreviewGrid: UIViewControllerRepresentable {
     return vc
   }
 
-  func updateUIViewController(_ uiViewController: UIViewControllerType, context: Context) {
+  func updateUIViewController(_ uiViewController: UIViewControllerType, context _: Context) {
     guard let vc = uiViewController as? TPPPDFPreviewGridController else {
       return
     }
@@ -49,9 +49,9 @@ struct TPPPDFPreviewGrid: UIViewControllerRepresentable {
     func didSelectPage(_ n: Int) {
       action(n)
     }
-    
+
     init(changePageAction: @escaping (Int) -> Void) {
-      self.action = changePageAction
+      action = changePageAction
     }
   }
 }

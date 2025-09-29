@@ -11,17 +11,20 @@ import SwiftUI
 /// This view shows encrypted PDF documents.
 /// The analog for non-encrypted documents - `TPPPDFView`
 struct TPPEncryptedPDFView: View {
-  
   let encryptedPDF: TPPEncryptedPDFDocument
-  
+
   @EnvironmentObject var metadata: TPPPDFDocumentMetadata
 
   @State private var showingDocumentInfo = true
-  
+
   var body: some View {
     ZStack {
-      TPPEncryptedPDFViewer(encryptedPDF: encryptedPDF, currentPage: $metadata.currentPage, showingDocumentInfo: $showingDocumentInfo)
-        .edgesIgnoringSafeArea([.all])
+      TPPEncryptedPDFViewer(
+        encryptedPDF: encryptedPDF,
+        currentPage: $metadata.currentPage,
+        showingDocumentInfo: $showingDocumentInfo
+      )
+      .edgesIgnoringSafeArea([.all])
       VStack {
         TPPPDFLabel(encryptedPDF.title ?? metadata.book.title)
           .padding(.top)

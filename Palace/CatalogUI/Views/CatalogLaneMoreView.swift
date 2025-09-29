@@ -1,35 +1,37 @@
-import SwiftUI
 import Combine
+import SwiftUI
 
-// MARK: - Filter State Management
+// MARK: - FilterState
 
 struct FilterState {
-  let appliedFilter: String  // The filter that was applied to get to this state
+  let appliedFilter: String // The filter that was applied to get to this state
   let books: [TPPBook]
   let facetGroups: [CatalogFilterGroup]
   let feedURL: URL
-  let selectedFilters: Set<String>  // All filters applied up to this point
+  let selectedFilters: Set<String> // All filters applied up to this point
 }
+
+// MARK: - CatalogLaneMoreView
 
 struct CatalogLaneMoreView: View {
   // MARK: - Properties
-  
+
   let title: String
   let url: URL
-  
+
   // MARK: - Content State
 
   @State private var lanes: [CatalogLaneModel] = []
   @State private var ungroupedBooks: [TPPBook] = []
   @State private var isLoading = true
   @State private var error: String?
-  
+
   // MARK: - UI State
 
   @State private var showingSortSheet: Bool = false
   @State private var showingFiltersSheet: Bool = false
   @State private var showSearch: Bool = false
-  
+
   // MARK: - Filter State
 
   @State private var facetGroups: [CatalogFilterGroup] = []
@@ -37,14 +39,14 @@ struct CatalogLaneMoreView: View {
   @State private var appliedSelections: Set<String> = []
   @State private var isApplyingFilters: Bool = false
   @State private var currentSort: CatalogSort = .titleAZ
-  
+
   // MARK: - Account & Logo State
-  
+
   @StateObject private var logoObserver = CatalogLogoObserver()
   @State private var currentAccountUUID: String = AccountsManager.shared.currentAccount?.uuid ?? ""
-  
+
   // MARK: - Initialization
-  
+
   init(title: String = "", url: URL) {
     self.title = title
     self.url = url
@@ -99,14 +101,22 @@ struct CatalogLaneMoreView: View {
       pendingSelections.removeAll()
       Task { await load() }
     }
-    .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ToggleSampleNotification")).receive(on: RunLoop.main)) { note in
-      guard let info = note.userInfo as? [String: Any], let identifier = info["bookIdentifier"] as? String else { return }
+    .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ToggleSampleNotification"))
+      .receive(on: RunLoop.main)
+    ) { note in
+      guard let info = note.userInfo as? [String: Any],
+            let identifier = info["bookIdentifier"] as? String
+      else {
+        return
+      }
       let action = (info["action"] as? String) ?? "toggle"
       if action == "close" {
         SamplePreviewManager.shared.close()
         return
       }
-      if let book = TPPBookRegistry.shared.book(forIdentifier: identifier) ?? (lanes.flatMap { $0.books } + ungroupedBooks).first(where: { $0.identifier == identifier }) {
+      if let book = TPPBookRegistry.shared.book(forIdentifier: identifier) ?? (lanes.flatMap(\.books) + ungroupedBooks)
+        .first(where: { $0.identifier == identifier })
+      {
         SamplePreviewManager.shared.toggle(for: book)
       }
     }
@@ -123,12 +133,15 @@ struct CatalogLaneMoreView: View {
     // Prefer targeted updates using the download progress publisher to avoid rebuilding all lanes per tick
     .onReceive(MyBooksDownloadCenter.shared.downloadProgressPublisher
       .throttle(for: .milliseconds(350), scheduler: RunLoop.main, latest: true)
-      .map { $0.0 }
-      .removeDuplicates()) { changedId in
-        applyRegistryUpdates(changedIdentifier: changedId)
-      }
+      .map(\.0)
+      .removeDuplicates()
+    ) { changedId in
+      applyRegistryUpdates(changedIdentifier: changedId)
+    }
     .onChange(of: showingFiltersSheet) { presented in
-      guard presented else { return }
+      guard presented else {
+        return
+      }
       // Set up pending selections based on current applied state
       // Don't reset until user actually applies - preserve existing filtering if they cancel
       if !appliedSelections.isEmpty {
@@ -160,7 +173,7 @@ struct CatalogLaneMoreView: View {
     isLoading = true
     error = nil
     defer { isLoading = false }
-    
+
     if let savedState = coordinator.resolveCatalogFilterState(for: url) {
       restoreFilterState(savedState)
       if !appliedSelections.isEmpty {
@@ -193,12 +206,18 @@ struct CatalogLaneMoreView: View {
             var titleToBooks: [String: [TPPBook]] = [:]
             var titleToMoreURL: [String: URL?] = [:]
             for entry in entries {
-              guard let group = entry.groupAttributes else { continue }
+              guard let group = entry.groupAttributes else {
+                continue
+              }
               let groupTitle = group.title ?? ""
               if let book = CatalogViewModel.makeBook(from: entry) {
-                if titleToBooks[groupTitle] == nil { orderedTitles.append(groupTitle) }
+                if titleToBooks[groupTitle] == nil {
+                  orderedTitles.append(groupTitle)
+                }
                 titleToBooks[groupTitle, default: []].append(book)
-                if titleToMoreURL[groupTitle] == nil { titleToMoreURL[groupTitle] = group.href }
+                if titleToMoreURL[groupTitle] == nil {
+                  titleToMoreURL[groupTitle] = group.href
+                }
               }
             }
             lanes = orderedTitles.map { title in
@@ -238,14 +257,22 @@ struct CatalogLaneMoreView: View {
         var changed = false
         for bIdx in books.indices {
           let book = books[bIdx]
-          if let changedIdentifier, book.identifier != changedIdentifier { continue }
+          if let changedIdentifier, book.identifier != changedIdentifier {
+            continue
+          }
           let updated = TPPBookRegistry.shared.updatedBookMetadata(book) ?? book
           if updated != book {
             books[bIdx] = updated
             changed = true
           }
         }
-        if changed { newLanes[idx] = CatalogLaneModel(title: newLanes[idx].title, books: books, moreURL: newLanes[idx].moreURL) }
+        if changed {
+          newLanes[idx] = CatalogLaneModel(
+            title: newLanes[idx].title,
+            books: books,
+            moreURL: newLanes[idx].moreURL
+          )
+        }
       }
       lanes = newLanes
     }
@@ -255,11 +282,17 @@ struct CatalogLaneMoreView: View {
       var anyChanged = false
       for idx in books.indices {
         let book = books[idx]
-        if let changedIdentifier, book.identifier != changedIdentifier { continue }
+        if let changedIdentifier, book.identifier != changedIdentifier {
+          continue
+        }
         let updated = TPPBookRegistry.shared.updatedBookMetadata(book) ?? book
-        if updated != book { books[idx] = updated; anyChanged = true }
+        if updated != book {
+          books[idx] = updated; anyChanged = true
+        }
       }
-      if anyChanged { ungroupedBooks = books }
+      if anyChanged {
+        ungroupedBooks = books
+      }
     }
   }
 
@@ -302,7 +335,7 @@ struct CatalogLaneMoreView: View {
   private func clearActiveFacets() async {
     for group in facetGroups {
       let facets = group.filters
-      if facets.contains(where: { $0.active }), let first = facets.first, let href = first.href {
+      if facets.contains(where: \.active), let first = facets.first, let href = first.href {
         await applyFacetHref(href)
       }
     }
@@ -326,7 +359,9 @@ struct CatalogLaneMoreView: View {
   private func applySingleFilters() async {
     let specificFilters: [ParsedKey] = pendingSelections
       .compactMap { selection in
-        guard let parsed = parseKey(selection) else { return nil }
+        guard let parsed = parseKey(selection) else {
+          return nil
+        }
         return parsed.isDefaultTitle ? nil : parsed
       }
 
@@ -350,29 +385,29 @@ struct CatalogLaneMoreView: View {
       let api = DefaultCatalogAPI(client: client, parser: parser)
 
       // FRESH START: Reset to original feed and rebuild filter sequence completely
-      await fetchAndApplyFeed(at: url)  // This gives us clean facet groups
+      await fetchAndApplyFeed(at: url) // This gives us clean facet groups
       var currentFacetGroups = facetGroups
-      
+
       // Sort filters by priority for consistent application order
       let sortedFilters = specificFilters.sorted { filter1, filter2 in
         let priority1 = getGroupPriority(filter1.group)
         let priority2 = getGroupPriority(filter2.group)
         return priority1 < priority2
       }
-      
+
       // Apply each filter sequentially, starting fresh each time
       for filter in sortedFilters {
         // Find the filter in the current facet groups
         if let filterURL = findFilterInCurrentFacets(filter, in: currentFacetGroups) {
           if let feed = try await api.fetchFeed(at: filterURL) {
             // Update books and facets with this filter's results
-          if let entries = feed.opdsFeed.entries as? [TPPOPDSEntry] {
-            ungroupedBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0) }
-            sortBooksInPlace()
-          }
-            
+            if let entries = feed.opdsFeed.entries as? [TPPOPDSEntry] {
+              ungroupedBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0) }
+              sortBooksInPlace()
+            }
+
             // Update facet groups for next filter (preserves current filter state)
-          if feed.opdsFeed.type == TPPOPDSFeedType.acquisitionUngrouped {
+            if feed.opdsFeed.type == TPPOPDSFeedType.acquisitionUngrouped {
               currentFacetGroups = CatalogViewModel.extractFacets(from: feed.opdsFeed).0
             }
           }
@@ -383,26 +418,27 @@ struct CatalogLaneMoreView: View {
       appliedSelections = Set(
         specificFilters.map { makeGroupTitleKey(group: $0.group, title: $0.title) }
       )
-      
+
       saveFilterState()
 
     } catch {
       self.error = error.localizedDescription
     }
   }
-  
-  
+
   /// Reconstruct pending selections from applied selections using current facets
   private func reconstructSelectionsFromCurrentFacets() -> Set<String> {
     var reconstructed: Set<String> = []
-    
+
     for appliedSelection in appliedSelections {
       let parts = appliedSelection.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
-      guard parts.count >= 2 else { continue }
-      
+      guard parts.count >= 2 else {
+        continue
+      }
+
       let groupName = parts[0]
       let title = parts[1]
-      
+
       // Find this filter in the fresh facet groups
       for group in facetGroups where group.name == groupName {
         for filter in group.filters where filter.title == title {
@@ -412,10 +448,10 @@ struct CatalogLaneMoreView: View {
         }
       }
     }
-    
+
     return reconstructed
   }
-  
+
   /// Find a specific filter in the current facet groups (simplified approach)
   private func findFilterInCurrentFacets(_ filter: ParsedKey, in currentFacetGroups: [CatalogFilterGroup]) -> URL? {
     for group in currentFacetGroups {
@@ -435,16 +471,21 @@ struct CatalogLaneMoreView: View {
   // MARK: - Sort
 
   private enum CatalogSort: CaseIterable {
-    case authorAZ, authorZA, recentlyAddedAZ, recentlyAddedZA, titleAZ, titleZA
+    case authorAZ
+    case authorZA
+    case recentlyAddedAZ
+    case recentlyAddedZA
+    case titleAZ
+    case titleZA
 
     var localizedString: String {
       switch self {
-      case .authorAZ: return "Author (A-Z)"
-      case .authorZA: return "Author (Z-A)"
-      case .recentlyAddedAZ: return "Recently Added (A-Z)"
-      case .recentlyAddedZA: return "Recently Added (Z-A)"
-      case .titleAZ: return "Title (A-Z)"
-      case .titleZA: return "Title (Z-A)"
+      case .authorAZ: "Author (A-Z)"
+      case .authorZA: "Author (Z-A)"
+      case .recentlyAddedAZ: "Recently Added (A-Z)"
+      case .recentlyAddedZA: "Recently Added (Z-A)"
+      case .titleAZ: "Title (A-Z)"
+      case .titleZA: "Title (Z-A)"
       }
     }
   }
@@ -482,6 +523,7 @@ struct CatalogLaneMoreView: View {
   private func makeKey(group: String, title: String, hrefString: String) -> String {
     "\(group)|\(title)|\(hrefString)"
   }
+
   /// Group-title-only key
   private func makeGroupTitleKey(group: String, title: String) -> String {
     "\(group)|\(title)"
@@ -489,7 +531,9 @@ struct CatalogLaneMoreView: View {
 
   internal func parseKey(_ key: String) -> ParsedKey? {
     let parts = key.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
-    guard parts.count >= 3 else { return nil }
+    guard parts.count >= 3 else {
+      return nil
+    }
     return ParsedKey(group: parts[0], title: parts[1], hrefString: parts[2])
   }
 
@@ -498,7 +542,9 @@ struct CatalogLaneMoreView: View {
     var out: Set<String> = []
     let wanted: [String: Set<String>] = Dictionary(grouping: keys.compactMap { key -> (String, String)? in
       let parts = key.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
-      guard parts.count >= 2 else { return nil }
+      guard parts.count >= 2 else {
+        return nil
+      }
       return (parts[0], parts[1])
     }) { $0.0 }.mapValues { Set($0.map { normalizeTitle($0.1) }) }
     for group in facetGroups where !group.name.lowercased().contains("sort") {
@@ -527,8 +573,10 @@ struct CatalogLaneMoreView: View {
   private func selectionKeysFromActiveFacets(includeDefaults: Bool) -> Set<String> {
     var out: [String] = []
     for group in facetGroups {
-      if group.name.lowercased().contains("sort") { continue }
-      let facets = group.filters.filter { $0.active }
+      if group.name.lowercased().contains("sort") {
+        continue
+      }
+      let facets = group.filters.filter(\.active)
       for facet in facets {
         let rawTitle = facet.title
         let parsed = ParsedKey(group: group.name, title: rawTitle, hrefString: facet.href?.absoluteString ?? "")
@@ -546,35 +594,42 @@ struct CatalogLaneMoreView: View {
       .filter { !$0.name.lowercased().contains("sort") }
       .flatMap { group in
         group.filters
-          .filter { $0.active }
+          .filter(\.active)
           .compactMap { facet -> (String, URL)? in
             let title = facet.title
             let url = facet.href
-            guard let url else { return nil }
+            guard let url else {
+              return nil
+            }
             let parsed = ParsedKey(group: group.name, title: title, hrefString: url.absoluteString)
             return (includeDefaults || !parsed.isDefaultTitle) ? (title, url) : nil
           }
       }
-      .map { $0.1 }
+      .map(\.1)
   }
 
   private var activeFiltersCount: Int {
     appliedSelections.filter { groupTitleKey in
       // appliedSelections contains group|title keys, need to check if title is default
       let parts = groupTitleKey.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
-      guard parts.count >= 2 else { return false }
+      guard parts.count >= 2 else {
+        return false
+      }
       let title = parts[1]
       let t = title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
       let isDefaultTitle = t == "all" || t == "all formats" || t == "all collections" || t == "all distributors"
-      return !isDefaultTitle  // Exclude "All" filters from count
+      return !isDefaultTitle // Exclude "All" filters from count
     }.count
   }
-  
+
   /// Groups selected filters by their facet groups in priority order for proper chaining
   /// Returns [(groupName, [URL])] sorted by group priority
-  private func groupSelectedFiltersByFacetGroup(_ facetURLs: [URL], currentFacetGroups: [CatalogFilterGroup]) -> [(String, [URL])] {
+  private func groupSelectedFiltersByFacetGroup(_ facetURLs: [URL], currentFacetGroups: [CatalogFilterGroup]) -> [(
+    String,
+    [URL]
+  )] {
     var filtersByGroup: [String: [URL]] = [:]
-    
+
     for url in facetURLs {
       if let groupName = findFacetGroupName(for: url, in: currentFacetGroups) {
         filtersByGroup[groupName, default: []].append(url)
@@ -584,21 +639,21 @@ struct CatalogLaneMoreView: View {
         filtersByGroup[category, default: []].append(url)
       }
     }
-    
+
     // Sort groups by priority (Collection first, then others)
-    return filtersByGroup.sorted { (group1, group2) in
+    return filtersByGroup.sorted { group1, group2 in
       let priority1 = getGroupPriority(group1.key)
       let priority2 = getGroupPriority(group2.key)
       return priority1 < priority2
     }
   }
-  
+
   /// Prioritizes selected filters for sequential application (additive OPDS 1.2 style)
   /// Returns filters in order they should be applied, with each building on the previous
   internal func prioritizeSelectedFilters(_ facetURLs: [URL], currentFacetGroups: [CatalogFilterGroup]) -> [URL] {
     // Group filters by their facet group, then prioritize groups
     var filtersByGroup: [String: [URL]] = [:]
-    
+
     for url in facetURLs {
       if let groupName = findFacetGroupName(for: url, in: currentFacetGroups) {
         filtersByGroup[groupName, default: []].append(url)
@@ -608,23 +663,23 @@ struct CatalogLaneMoreView: View {
         filtersByGroup[category, default: []].append(url)
       }
     }
-    
+
     // Sort groups by priority, then return one filter per group in priority order
-    let sortedGroups = filtersByGroup.sorted { (group1, group2) in
+    let sortedGroups = filtersByGroup.sorted { group1, group2 in
       let priority1 = getGroupPriority(group1.key)
       let priority2 = getGroupPriority(group2.key)
       return priority1 < priority2
     }
-    
+
     // Take the first (or only) filter from each group
     // In OPDS 1.2, you can only have one active filter per group anyway
-    return sortedGroups.compactMap { $0.value.first }
+    return sortedGroups.compactMap(\.value.first)
   }
-  
+
   /// Groups facet URLs by their type/group for sequential application
   private func groupFacetsByType(_ facetURLs: [URL], currentFacetGroups: [CatalogFilterGroup]) -> [(String, [URL])] {
     var groupedFacets: [String: [URL]] = [:]
-    
+
     for url in facetURLs {
       if let groupName = findFacetGroupName(for: url, in: currentFacetGroups) {
         groupedFacets[groupName, default: []].append(url)
@@ -634,15 +689,15 @@ struct CatalogLaneMoreView: View {
         groupedFacets[category, default: []].append(url)
       }
     }
-    
+
     // Sort groups by priority
-    return groupedFacets.sorted { (group1, group2) in
+    return groupedFacets.sorted { group1, group2 in
       let priority1 = getGroupPriority(group1.key)
       let priority2 = getGroupPriority(group2.key)
       return priority1 < priority2
     }
   }
-  
+
   /// Finds the group name for a facet URL by matching it against current facet groups
   internal func findFacetGroupName(for url: URL, in facetGroups: [CatalogFilterGroup]) -> String? {
     for group in facetGroups {
@@ -654,12 +709,12 @@ struct CatalogLaneMoreView: View {
     }
     return nil
   }
-  
+
   /// Categorizes a facet URL when no group is found
   internal func categorizeFacetURL(_ url: URL) -> String {
     let urlString = url.absoluteString.lowercased()
     let queryString = url.query?.lowercased() ?? ""
-    
+
     if urlString.contains("collection") || urlString.contains("library") {
       return "Collection"
     } else if urlString.contains("format") || urlString.contains("media") {
@@ -674,41 +729,53 @@ struct CatalogLaneMoreView: View {
       return "Other"
     }
   }
-  
+
   /// Gets priority for group ordering
   internal func getGroupPriority(_ groupName: String) -> Int {
     let name = groupName.lowercased()
     // Collection Name should be applied first (most restrictive)
-    if name.contains("collection") || name.contains("library") { return 1 }
+    if name.contains("collection") || name.contains("library") {
+      return 1
+    }
     // Distributor comes next
-    if name.contains("distributor") { return 2 }
+    if name.contains("distributor") {
+      return 2
+    }
     // Format filters
-    if name.contains("format") || name.contains("media") { return 3 }
+    if name.contains("format") || name.contains("media") {
+      return 3
+    }
     // Availability filters
-    if name.contains("availability") || name.contains("available") { return 4 }
+    if name.contains("availability") || name.contains("available") {
+      return 4
+    }
     // Language filters
-    if name.contains("language") || name.contains("lang") { return 5 }
+    if name.contains("language") || name.contains("lang") {
+      return 5
+    }
     // Subject/Genre filters
-    if name.contains("subject") || name.contains("genre") { return 6 }
+    if name.contains("subject") || name.contains("genre") {
+      return 6
+    }
     return 10
   }
-  
+
   /// Finds the equivalent facet URL in the current (updated) facet groups
   /// This ensures we use the server's updated links that preserve previous filter state
   private func findEquivalentFacetURL(originalURL: URL, in currentFacetGroups: [CatalogFilterGroup]) -> URL? {
     // Extract the filter title from the original URL to find the equivalent facet
     let originalKey = makeKeyFromURL(originalURL)
-    guard let originalParsed = parseKey(originalKey) else { 
-      return originalURL 
+    guard let originalParsed = parseKey(originalKey) else {
+      return originalURL
     }
-    
+
     // Find the facet group that matches
     for group in currentFacetGroups {
       // Match by group name (case insensitive)
       let groupMatches = group.name.lowercased().contains(originalParsed.group.lowercased()) ||
-                        originalParsed.group.lowercased().contains(group.name.lowercased()) ||
-                        group.id.lowercased() == originalParsed.group.lowercased()
-      
+        originalParsed.group.lowercased().contains(group.name.lowercased()) ||
+        group.id.lowercased() == originalParsed.group.lowercased()
+
       if groupMatches {
         for filter in group.filters {
           // Match by filter title (case insensitive)
@@ -720,7 +787,7 @@ struct CatalogLaneMoreView: View {
     }
     return originalURL
   }
-  
+
   /// Finds the best facet URL to apply from the current facet groups
   /// This is key: it looks for the equivalent facet in the updated facet groups
   private func findBestFacetURL(for originalURLs: [URL], in currentFacetGroups: [CatalogFilterGroup]) -> URL? {
@@ -734,7 +801,7 @@ struct CatalogLaneMoreView: View {
           }
         }
       }
-      
+
       // If no exact match, try to find a similar facet by title/content
       if let parsedOriginal = parseKey(makeKeyFromURL(originalURL)) {
         for group in currentFacetGroups {
@@ -746,36 +813,37 @@ struct CatalogLaneMoreView: View {
         }
       }
     }
-    
+
     // Fallback: return the first original URL if no match found in current facets
     return originalURLs.first
   }
-  
+
   /// Helper to create a key from URL for parsing
   private func makeKeyFromURL(_ url: URL) -> String {
     // Extract meaningful parts from URL query parameters to create a parseable key
     guard let components = URLComponents(url: url, resolvingAgainstBaseURL: true),
-          let queryItems = components.queryItems else {
+          let queryItems = components.queryItems
+    else {
       return "unknown|unknown|\(url.absoluteString)"
     }
-    
+
     // Look for known facet parameters to determine group and title
     var group = "unknown"
     var title = "unknown"
-    
+
     for item in queryItems {
       switch item.name.lowercased() {
       case "collectionname":
         group = "Collection Name"
         title = item.value?.replacingOccurrences(of: "+", with: " ") ?? "unknown"
       case "distributor":
-        group = "Distributor"  
+        group = "Distributor"
         title = item.value?.replacingOccurrences(of: "+", with: " ") ?? "unknown"
       case "available":
         group = "Availability"
-        title = item.value == "now" ? "Available now" : 
-                item.value == "always" ? "Yours to keep" : 
-                item.value ?? "unknown"
+        title = item.value == "now" ? "Available now" :
+          item.value == "always" ? "Yours to keep" :
+          item.value ?? "unknown"
       case "format":
         group = "Format"
         title = item.value?.uppercased() ?? "unknown"
@@ -786,67 +854,72 @@ struct CatalogLaneMoreView: View {
         continue
       }
     }
-    
+
     return "\(group)|\(title)|\(url.absoluteString)"
   }
-  
+
   /// Prioritizes facet URLs to ensure consistent application order
   /// Priority order: Collection/Library -> Format -> Availability -> Language -> Other
   private func prioritizeFacetURLs(_ facetURLs: [URL]) -> [URL] {
-    return facetURLs.sorted { url1, url2 in
+    facetURLs.sorted { url1, url2 in
       let priority1 = getFacetPriority(url1)
       let priority2 = getFacetPriority(url2)
-      
+
       if priority1 != priority2 {
-        return priority1 < priority2  // Lower number = higher priority
+        return priority1 < priority2 // Lower number = higher priority
       }
-      
+
       // If same priority, sort alphabetically for consistency
       return url1.absoluteString < url2.absoluteString
     }
   }
-  
+
   /// Determines the priority of a facet based on its URL or content
   /// Lower numbers = higher priority (applied first)
   private func getFacetPriority(_ url: URL) -> Int {
     let urlString = url.absoluteString.lowercased()
     let queryString = url.query?.lowercased() ?? ""
-    
+
     // Collection/Library filters should be applied first (broadest filter)
-    if urlString.contains("collection") || urlString.contains("library") || 
-       queryString.contains("collection") || queryString.contains("library") {
+    if urlString.contains("collection") || urlString.contains("library") ||
+      queryString.contains("collection") || queryString.contains("library")
+    {
       return 1
     }
-    
+
     // Format filters (epub, pdf, audiobook, etc.)
     if urlString.contains("format") || urlString.contains("media") ||
-       queryString.contains("format") || queryString.contains("media") ||
-       urlString.contains("epub") || urlString.contains("pdf") || urlString.contains("audiobook") {
+      queryString.contains("format") || queryString.contains("media") ||
+      urlString.contains("epub") || urlString.contains("pdf") || urlString.contains("audiobook")
+    {
       return 2
     }
-    
+
     // Availability filters (available, checked out, etc.)
     if urlString.contains("availability") || urlString.contains("available") ||
-       queryString.contains("availability") || queryString.contains("available") {
+      queryString.contains("availability") || queryString.contains("available")
+    {
       return 3
     }
-    
+
     // Language filters
     if urlString.contains("language") || urlString.contains("lang") ||
-       queryString.contains("language") || queryString.contains("lang") {
+      queryString.contains("language") || queryString.contains("lang")
+    {
       return 4
     }
-    
+
     // Subject/Genre filters
     if urlString.contains("subject") || urlString.contains("genre") ||
-       queryString.contains("subject") || queryString.contains("genre") {
+      queryString.contains("subject") || queryString.contains("genre")
+    {
       return 5
     }
-    
+
     // All other filters get lowest priority (applied last for fine-tuning)
     return 10
   }
-  
+
   private var SortOptionsSheet: some View {
     VStack(alignment: .leading, spacing: 0) {
       Text(Strings.Catalog.sortBy)
@@ -874,9 +947,9 @@ struct CatalogLaneMoreView: View {
       .background(Color(UIColor.systemBackground))
     }
   }
-  
+
   // MARK: - Search Functionality
-  
+
   @ViewBuilder
   private var searchSection: some View {
     CatalogSearchView(
@@ -886,18 +959,18 @@ struct CatalogLaneMoreView: View {
       onBookSelected: presentBookDetail
     )
   }
-  
+
   private var allBooks: [TPPBook] {
     if !lanes.isEmpty {
-      return lanes.flatMap { $0.books }
+      return lanes.flatMap(\.books)
     }
     return ungroupedBooks
   }
-  
+
   private func presentSearch() {
     withAnimation { showSearch = true }
   }
-  
+
   private func dismissSearch() {
     withAnimation { showSearch = false }
   }
@@ -906,7 +979,6 @@ struct CatalogLaneMoreView: View {
 // MARK: - View Sections
 
 private extension CatalogLaneMoreView {
-  
   @ViewBuilder
   var toolbarSection: some View {
     if showSearch {
@@ -915,13 +987,13 @@ private extension CatalogLaneMoreView {
       filterToolbar
     }
   }
-  
+
   @ViewBuilder
   var searchToolbar: some View {
     // Search toolbar would go here
     EmptyView()
   }
-  
+
   @ViewBuilder
   var filterToolbar: some View {
     FacetToolbarView(
@@ -938,10 +1010,10 @@ private extension CatalogLaneMoreView {
         loadingIndicator
       }
     }
-    
+
     Divider()
   }
-  
+
   @ViewBuilder
   var loadingIndicator: some View {
     HStack(spacing: 6) {
@@ -956,7 +1028,7 @@ private extension CatalogLaneMoreView {
     }
     .padding(.trailing, 12)
   }
-  
+
   @ViewBuilder
   var contentSection: some View {
     if showSearch {
@@ -971,7 +1043,7 @@ private extension CatalogLaneMoreView {
       booksView
     }
   }
-  
+
   @ViewBuilder
   var loadingView: some View {
     ScrollView {
@@ -979,12 +1051,12 @@ private extension CatalogLaneMoreView {
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
   }
-  
+
   func errorView(_ errorMessage: String) -> some View {
     Text(errorMessage)
       .padding()
   }
-  
+
   @ViewBuilder
   var lanesView: some View {
     ScrollView {
@@ -1006,7 +1078,7 @@ private extension CatalogLaneMoreView {
     }
     .refreshable { await fetchAndApplyFeed(at: url) }
   }
-  
+
   @ViewBuilder
   var booksView: some View {
     ScrollView {
@@ -1016,9 +1088,9 @@ private extension CatalogLaneMoreView {
     }
     .refreshable { await fetchAndApplyFeed(at: url) }
   }
-  
+
   // MARK: - Filter State Persistence
-  
+
   private func saveFilterState() {
     let sortString = currentSort.localizedString
     let state = CatalogLaneFilterState(
@@ -1028,11 +1100,11 @@ private extension CatalogLaneMoreView {
     )
     coordinator.storeCatalogFilterState(state, for: url)
   }
-  
+
   private func restoreFilterState(_ state: CatalogLaneFilterState) {
     appliedSelections = state.appliedSelections
     facetGroups = state.facetGroups
-    
+
     // Convert string back to enum
     if let restoredSort = CatalogSort.allCases.first(where: { $0.localizedString == state.currentSort }) {
       currentSort = restoredSort

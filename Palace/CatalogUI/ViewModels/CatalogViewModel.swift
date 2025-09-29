@@ -1,5 +1,7 @@
-import Foundation
 import Combine
+import Foundation
+
+// MARK: - CatalogViewModel
 
 @MainActor
 final class CatalogViewModel: ObservableObject {
@@ -17,17 +19,18 @@ final class CatalogViewModel: ObservableObject {
 
   private let repository: CatalogRepositoryProtocol
   private let topLevelURLProvider: () -> URL?
-  
+
   private var previousLanes: [CatalogLaneModel] = []
   private var previousUngroupedBooks: [TPPBook] = []
   private var previousFacetGroups: [CatalogFilterGroup] = []
   private var previousEntryPoints: [CatalogFilter] = []
-  
+
   // MARK: - Public accessors for search
+
   var searchRepository: CatalogRepositoryProtocol { repository }
   var searchBaseURL: () -> URL? { topLevelURLProvider }
   private var lastLoadedURL: URL?
-  private var currentLoadTask: Task<Void, Never>? = nil
+  private var currentLoadTask: Task<Void, Never>?
 
   init(repository: CatalogRepositoryProtocol, topLevelURLProvider: @escaping () -> URL?) {
     self.repository = repository
@@ -37,28 +40,32 @@ final class CatalogViewModel: ObservableObject {
   // MARK: - Public API
 
   func load() async {
-    if (!lanes.isEmpty || !ungroupedBooks.isEmpty), let url = topLevelURLProvider(), url == lastLoadedURL { 
-      return 
+    if !lanes.isEmpty || !ungroupedBooks.isEmpty, let url = topLevelURLProvider(), url == lastLoadedURL {
+      return
     }
-    guard let url = topLevelURLProvider() else { 
+    guard let url = topLevelURLProvider() else {
       await MainActor.run { self.isLoading = false }
-      return 
+      return
     }
-    
+
     await MainActor.run {
       self.isLoading = true
       self.errorMessage = nil
     }
 
     currentLoadTask?.cancel()
-    
+
     currentLoadTask = Task { [weak self] in
-      guard let self, !Task.isCancelled else { return }
-      
+      guard let self, !Task.isCancelled else {
+        return
+      }
+
       do {
-        guard let feed = try await self.repository.loadTopLevelCatalog(at: url) else {
-          guard !Task.isCancelled else { return }
-          await MainActor.run { 
+        guard let feed = try await repository.loadTopLevelCatalog(at: url) else {
+          guard !Task.isCancelled else {
+            return
+          }
+          await MainActor.run {
             if !Task.isCancelled {
               self.errorMessage = "Failed to load catalog"
               self.isLoading = false
@@ -67,16 +74,22 @@ final class CatalogViewModel: ObservableObject {
           return
         }
 
-        guard !Task.isCancelled else { return }
-        
+        guard !Task.isCancelled else {
+          return
+        }
+
         let mapped = await Task.detached(priority: .userInitiated) { () -> MappedCatalog in
           return await Self.mapFeed(feed)
         }.value
 
-        guard !Task.isCancelled else { return }
-        
+        guard !Task.isCancelled else {
+          return
+        }
+
         await MainActor.run {
-          guard !Task.isCancelled else { return }
+          guard !Task.isCancelled else {
+            return
+          }
           self.title = mapped.title
           self.entries = mapped.entries
           self.lanes = mapped.lanes
@@ -87,15 +100,19 @@ final class CatalogViewModel: ObservableObject {
           self.isLoading = false
         }
 
-        guard !Task.isCancelled else { return }
+        guard !Task.isCancelled else {
+          return
+        }
         if !mapped.lanes.isEmpty {
-          let visibleBooks = mapped.lanes.prefix(3).flatMap { $0.books }
-          await self.prefetchThumbnails(for: Array(visibleBooks.prefix(30)))
+          let visibleBooks = mapped.lanes.prefix(3).flatMap(\.books)
+          await prefetchThumbnails(for: Array(visibleBooks.prefix(30)))
         } else if !mapped.ungroupedBooks.isEmpty {
-          await self.prefetchThumbnails(for: Array(mapped.ungroupedBooks.prefix(20)))
+          await prefetchThumbnails(for: Array(mapped.ungroupedBooks.prefix(20)))
         }
       } catch {
-        guard !Task.isCancelled else { return }
+        guard !Task.isCancelled else {
+          return
+        }
         await MainActor.run {
           if !Task.isCancelled {
             self.errorMessage = error.localizedDescription
@@ -107,7 +124,9 @@ final class CatalogViewModel: ObservableObject {
   }
 
   func refresh() async {
-    guard let url = topLevelURLProvider() else { return }
+    guard let url = topLevelURLProvider() else {
+      return
+    }
     (repository as? CatalogRepository)?.invalidateCache(for: url)
     lanes.removeAll()
     ungroupedBooks.removeAll()
@@ -118,15 +137,17 @@ final class CatalogViewModel: ObservableObject {
 
   @MainActor
   func applyFacet(_ facet: CatalogFilter) async {
-    guard let href = facet.href else { return }
-    
+    guard let href = facet.href else {
+      return
+    }
+
     storePreviousState()
-    
+
     isOptimisticLoading = true
     errorMessage = nil
-    
+
     updateFacetGroupsOptimistically(selectedFacet: facet)
-    
+
     do {
       if let feed = try await repository.loadTopLevelCatalog(at: href) {
         let feedObjc = feed.opdsFeed
@@ -134,38 +155,44 @@ final class CatalogViewModel: ObservableObject {
         case .acquisitionUngrouped:
           if let opdsEntries = feedObjc.entries as? [TPPOPDSEntry] {
             let newUngrouped = opdsEntries.compactMap { Self.makeBook(from: $0) }
-            self.lanes = []
-            self.ungroupedBooks = newUngrouped
+            lanes = []
+            ungroupedBooks = newUngrouped
           }
           let (groups, entries) = Self.extractFacets(from: feedObjc)
-          self.facetGroups = groups
-          self.entryPoints = entries
+          facetGroups = groups
+          entryPoints = entries
         case .acquisitionGrouped:
           var groupTitleToBooks: [String: [TPPBook]] = [:]
           var groupTitleToMoreURL: [String: URL?] = [:]
           var orderedTitles: [String] = []
           if let opdsEntries = feedObjc.entries as? [TPPOPDSEntry] {
             for entry in opdsEntries {
-              guard let group = entry.groupAttributes else { continue }
+              guard let group = entry.groupAttributes else {
+                continue
+              }
               let groupTitle = group.title ?? ""
               if let book = Self.makeBook(from: entry) {
-                if groupTitleToBooks[groupTitle] == nil { orderedTitles.append(groupTitle) }
+                if groupTitleToBooks[groupTitle] == nil {
+                  orderedTitles.append(groupTitle)
+                }
                 groupTitleToBooks[groupTitle, default: []].append(book)
-                if groupTitleToMoreURL[groupTitle] == nil { groupTitleToMoreURL[groupTitle] = group.href }
+                if groupTitleToMoreURL[groupTitle] == nil {
+                  groupTitleToMoreURL[groupTitle] = group.href
+                }
               }
             }
           }
-          self.ungroupedBooks = []
+          ungroupedBooks = []
           let (_, entries) = Self.extractFacets(from: feedObjc)
-          self.facetGroups = []
-          self.entryPoints = entries
-          self.lanes = orderedTitles.map { title in
+          facetGroups = []
+          entryPoints = entries
+          lanes = orderedTitles.map { title in
             let books = groupTitleToBooks[title] ?? []
             let isLoading = books.count < 3
             return CatalogLaneModel(
-              title: title, 
-              books: books, 
-              moreURL: groupTitleToMoreURL[title] ?? nil, 
+              title: title,
+              books: books,
+              moreURL: groupTitleToMoreURL[title] ?? nil,
               isLoading: isLoading
             )
           }
@@ -176,7 +203,7 @@ final class CatalogViewModel: ObservableObject {
         }
       }
       isOptimisticLoading = false
-      
+
       triggerScrollToTop()
     } catch {
       restorePreviousState()
@@ -188,56 +215,64 @@ final class CatalogViewModel: ObservableObject {
   /// Applies an entry point (e.g., Ebooks/Audiobooks) with optimistic loading.
   @MainActor
   func applyEntryPoint(_ facet: CatalogFilter) async {
-    guard let href = facet.href else { return }
-    
+    guard let href = facet.href else {
+      return
+    }
+
     storePreviousState()
-    
+
     isContentReloading = true
     isOptimisticLoading = true
     errorMessage = nil
-    
+
     updateEntryPointsOptimistically(selectedEntryPoint: facet)
-    
+
     lanes.removeAll()
     ungroupedBooks.removeAll()
     currentLoadTask?.cancel()
-    
+
     do {
       if let feed = try await repository.loadTopLevelCatalog(at: href) {
         let feedObjc = feed.opdsFeed
         switch feedObjc.type {
         case .acquisitionUngrouped:
           if let opdsEntries = feedObjc.entries as? [TPPOPDSEntry] {
-            self.ungroupedBooks = opdsEntries.compactMap { Self.makeBook(from: $0) }
+            ungroupedBooks = opdsEntries.compactMap { Self.makeBook(from: $0) }
           }
           let (groups, entries) = Self.extractFacets(from: feedObjc)
-          self.facetGroups = groups
-          self.entryPoints = entries
+          facetGroups = groups
+          entryPoints = entries
         case .acquisitionGrouped:
           var groupTitleToBooks: [String: [TPPBook]] = [:]
           var groupTitleToMoreURL: [String: URL?] = [:]
           var orderedTitles: [String] = []
           if let opdsEntries = feedObjc.entries as? [TPPOPDSEntry] {
             for entry in opdsEntries {
-              guard let group = entry.groupAttributes else { continue }
+              guard let group = entry.groupAttributes else {
+                continue
+              }
               let groupTitle = group.title ?? ""
               if let book = Self.makeBook(from: entry) {
-                if groupTitleToBooks[groupTitle] == nil { orderedTitles.append(groupTitle) }
+                if groupTitleToBooks[groupTitle] == nil {
+                  orderedTitles.append(groupTitle)
+                }
                 groupTitleToBooks[groupTitle, default: []].append(book)
-                if groupTitleToMoreURL[groupTitle] == nil { groupTitleToMoreURL[groupTitle] = group.href }
+                if groupTitleToMoreURL[groupTitle] == nil {
+                  groupTitleToMoreURL[groupTitle] = group.href
+                }
               }
             }
           }
-          self.ungroupedBooks = []
+          ungroupedBooks = []
           let (_, entries) = Self.extractFacets(from: feedObjc)
-          self.entryPoints = entries
-          self.lanes = orderedTitles.map { title in
+          entryPoints = entries
+          lanes = orderedTitles.map { title in
             let books = groupTitleToBooks[title] ?? []
             let isLoading = books.count < 3
             return CatalogLaneModel(
-              title: title, 
-              books: books, 
-              moreURL: groupTitleToMoreURL[title] ?? nil, 
+              title: title,
+              books: books,
+              moreURL: groupTitleToMoreURL[title] ?? nil,
               isLoading: isLoading
             )
           }
@@ -248,7 +283,7 @@ final class CatalogViewModel: ObservableObject {
         }
       }
       isOptimisticLoading = false
-      
+
       triggerScrollToTop()
     } catch {
       restorePreviousState()
@@ -259,7 +294,9 @@ final class CatalogViewModel: ObservableObject {
   }
 
   func handleAccountChange() async {
-    guard let url = topLevelURLProvider() else { return }
+    guard let url = topLevelURLProvider() else {
+      return
+    }
 
     if lastLoadedURL == nil || url != lastLoadedURL {
       await MainActor.run {
@@ -274,7 +311,7 @@ final class CatalogViewModel: ObservableObject {
   }
 }
 
-// MARK: - Models
+// MARK: - CatalogLaneModel
 
 struct CatalogLaneModel: Identifiable {
   let id = UUID()
@@ -282,7 +319,7 @@ struct CatalogLaneModel: Identifiable {
   let books: [TPPBook]
   let moreURL: URL?
   let isLoading: Bool
-  
+
   init(title: String, books: [TPPBook], moreURL: URL?, isLoading: Bool = false) {
     self.title = title
     self.books = books
@@ -361,11 +398,16 @@ extension CatalogViewModel {
     if let entries = feed.entries as? [TPPOPDSEntry] {
       for entry in entries {
         if let group = entry.groupAttributes,
-           let book = makeBook(from: entry) {
+           let book = makeBook(from: entry)
+        {
           let title = group.title ?? ""
-          if titleToBooks[title] == nil { orderedTitles.append(title) }
+          if titleToBooks[title] == nil {
+            orderedTitles.append(title)
+          }
           titleToBooks[title, default: []].append(book)
-          if titleToMoreURL[title] == nil { titleToMoreURL[title] = group.href }
+          if titleToMoreURL[title] == nil {
+            titleToMoreURL[title] = group.href
+          }
         }
       }
     }
@@ -373,9 +415,9 @@ extension CatalogViewModel {
       let books = titleToBooks[title] ?? []
       let isLoading = books.count < 3
       return CatalogLaneModel(
-        title: title, 
-        books: books, 
-        moreURL: titleToMoreURL[title] ?? nil, 
+        title: title,
+        books: books,
+        moreURL: titleToMoreURL[title] ?? nil,
         isLoading: isLoading
       )
     }
@@ -389,7 +431,9 @@ extension CatalogViewModel {
     var entryPoints: [CatalogFilter] = []
 
     for case let link as TPPOPDSLink in feed.links {
-      guard link.rel == TPPOPDSRelationFacet else { continue }
+      guard link.rel == TPPOPDSRelationFacet else {
+        continue
+      }
 
       var isEntryPoint = false
       var groupName: String?
@@ -402,9 +446,13 @@ extension CatalogViewModel {
       }
 
       // Determine active flag from attributes
-      let isActive: Bool = link.attributes.contains { (k, v) in
-        guard let keyStr = k as? String, TPPOPDSAttributeKeyStringIsActiveFacet(keyStr) else { return false }
-        if let s = v as? String { return s.localizedCaseInsensitiveContains("true") }
+      let isActive: Bool = link.attributes.contains { k, v in
+        guard let keyStr = k as? String, TPPOPDSAttributeKeyStringIsActiveFacet(keyStr) else {
+          return false
+        }
+        if let s = v as? String {
+          return s.localizedCaseInsensitiveContains("true")
+        }
         return false
       }
 
@@ -418,7 +466,9 @@ extension CatalogViewModel {
       if isEntryPoint {
         entryPoints.append(facet)
       } else if let groupName = groupName {
-        if !groupNames.contains(groupName) { groupNames.append(groupName) }
+        if !groupNames.contains(groupName) {
+          groupNames.append(groupName)
+        }
         groupToFacets[groupName, default: []].append(facet)
       }
     }
@@ -436,52 +486,58 @@ extension CatalogViewModel {
   }
 
   static func makeBook(from entry: TPPOPDSEntry) -> TPPBook? {
-    guard var book = TPPBook(entry: entry) else { return nil }
+    guard var book = TPPBook(entry: entry) else {
+      return nil
+    }
 
     if let updated = TPPBookRegistry.shared.updatedBookMetadata(book) {
       book = updated
     }
 
-    if book.defaultBookContentType == .unsupported { return nil }
-    if book.defaultAcquisition == nil { return nil }
+    if book.defaultBookContentType == .unsupported {
+      return nil
+    }
+    if book.defaultAcquisition == nil {
+      return nil
+    }
     return book
   }
-  
+
   // MARK: - Scroll Management
-  
+
   func triggerScrollToTop() {
     shouldScrollToTop = false
     DispatchQueue.main.async {
       self.shouldScrollToTop = true
     }
   }
-  
+
   func resetScrollTrigger() {
     shouldScrollToTop = false
   }
-  
+
   // MARK: - Optimistic Loading Helpers
-  
+
   private func storePreviousState() {
     previousLanes = lanes
     previousUngroupedBooks = ungroupedBooks
     previousFacetGroups = facetGroups
     previousEntryPoints = entryPoints
   }
-  
+
   private func restorePreviousState() {
     lanes = previousLanes
     ungroupedBooks = previousUngroupedBooks
     facetGroups = previousFacetGroups
     entryPoints = previousEntryPoints
   }
-  
+
   private func updateFacetGroupsOptimistically(selectedFacet: CatalogFilter) {
     var updatedGroups: [CatalogFilterGroup] = []
-    
+
     for group in facetGroups {
       var updatedFilters: [CatalogFilter] = []
-      
+
       for filter in group.filters {
         if filter.id == selectedFacet.id {
           let updatedFilter = CatalogFilter(
@@ -501,7 +557,7 @@ extension CatalogViewModel {
           updatedFilters.append(updatedFilter)
         }
       }
-      
+
       let updatedGroup = CatalogFilterGroup(
         id: group.id,
         name: group.name,
@@ -509,13 +565,13 @@ extension CatalogViewModel {
       )
       updatedGroups.append(updatedGroup)
     }
-    
+
     facetGroups = updatedGroups
   }
-  
+
   private func updateEntryPointsOptimistically(selectedEntryPoint: CatalogFilter) {
     var updatedEntryPoints: [CatalogFilter] = []
-    
+
     for entryPoint in entryPoints {
       if entryPoint.id == selectedEntryPoint.id {
         let updated = CatalogFilter(
@@ -535,10 +591,7 @@ extension CatalogViewModel {
         updatedEntryPoints.append(updated)
       }
     }
-    
+
     entryPoints = updatedEntryPoints
   }
-
 }
-
-

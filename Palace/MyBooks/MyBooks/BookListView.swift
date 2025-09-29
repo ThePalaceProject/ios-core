@@ -1,5 +1,7 @@
 import SwiftUI
 
+// MARK: - BookListView
+
 struct BookListView: View {
   let books: [TPPBook]
   @Binding var isLoading: Bool
@@ -37,7 +39,7 @@ struct BookListView: View {
       let screenWidth = UIScreen.main.bounds.width
       let screenHeight = UIScreen.main.bounds.height
       let actualIsLandscape = screenWidth > screenHeight
-      
+
       let columnCount = actualIsLandscape ? 3 : 2
       return Array(repeating: GridItem(.flexible(), spacing: 0), count: columnCount)
     } else {
@@ -51,4 +53,3 @@ extension View {
     modifier(BorderStyleModifier())
   }
 }
-

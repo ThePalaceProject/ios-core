@@ -6,15 +6,14 @@
 //  Copyright © 2023 The Palace Project. All rights reserved.
 //
 
-import Foundation
 import FirebaseDynamicLinks
+import Foundation
 
 class DLNavigator {
-  
   typealias Destination = (screen: String, params: [String: String])
-  
+
   static let shared = DLNavigator()
-  
+
   /// Checks if DLNavigator can parse the link
   /// - Parameter dynamicLink: Firebase dynamic link
   /// - Returns: `true` if DLNavigator supports parameters provided with the link
@@ -24,7 +23,7 @@ class DLNavigator {
     }
     return false
   }
-  
+
   /// Navigates to the screen in the link
   /// - Parameter dynamicLink: Firebase dynamic link
   func navigate(to dynamicLink: DynamicLink) {
@@ -33,7 +32,7 @@ class DLNavigator {
     }
     navigate(to: destination.screen, params: destination.params)
   }
-  
+
   /// Navigates to the screen with the provided parameters
   /// - Parameters:
   ///   - screen: `screen` parameter
@@ -47,19 +46,20 @@ class DLNavigator {
     default: break
     }
   }
-  
+
   private func parseLink(_ dynamicLink: DynamicLink) -> Destination? {
     guard let url = dynamicLink.url,
           let components = URLComponents(url: url, resolvingAgainstBaseURL: true),
-          let screen = components.queryItems?.first(where: { $0.name.lowercased() == "screen" })?.value?.lowercased() as? String
+          let screen = components.queryItems?.first(where: { $0.name.lowercased() == "screen" })?.value?
+          .lowercased() as? String
     else {
       return nil
     }
     var params = [String: String]()
     components.queryItems?.forEach { params[$0.name.lowercased()] = $0.value }
-    return Destination(screen: screen, params: params )
+    return Destination(screen: screen, params: params)
   }
-  
+
   private func login(libraryId: String, barcode: String) {
     let accountsManager = AccountsManager.shared
     guard let topViewController = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController(),
@@ -94,7 +94,7 @@ class DLNavigator {
       }
     }
   }
-  
+
   /// Runs `block` when receives a notification with `name` once.
   /// - Parameters:
   ///   - name: Notification name

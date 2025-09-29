@@ -11,11 +11,10 @@
 //
 
 import Foundation
-import UIKit
 import ReadiumShared
+import UIKit
 
 final class EPUBModule: ReaderFormatModule {
-  
   weak var delegate: ModuleDelegate?
   let resourcesServer: HTTPServer
 
@@ -23,28 +22,31 @@ final class EPUBModule: ReaderFormatModule {
     self.delegate = delegate
     self.resourcesServer = resourcesServer
   }
-    
+
   func supports(_ publication: Publication) -> Bool {
     // .allAreHTML matches .wepub format
-    return publication.conforms(to: .epub) || publication.readingOrder.allAreHTML
+    publication.conforms(to: .epub) || publication.readingOrder.allAreHTML
   }
 
   @MainActor
-  func makeReaderViewController(for publication: Publication,
-                                book: TPPBook,
-                                initialLocation: Locator?,
-                                forSample: Bool = false) throws -> UIViewController {
-
+  func makeReaderViewController(
+    for publication: Publication,
+    book: TPPBook,
+    initialLocation: Locator?,
+    forSample: Bool = false
+  ) throws -> UIViewController {
     guard publication.metadata.identifier != nil else {
       throw ReaderError.epubNotValid
     }
 
-      let epubVC = try TPPEPUBViewController(publication: publication,
-                                             book: book,
-                                             initialLocation: initialLocation,
-                                             resourcesServer: resourcesServer,
-                                             forSample: forSample)
-      epubVC.moduleDelegate = delegate
-      return epubVC
-    }
+    let epubVC = try TPPEPUBViewController(
+      publication: publication,
+      book: book,
+      initialLocation: initialLocation,
+      resourcesServer: resourcesServer,
+      forSample: forSample
+    )
+    epubVC.moduleDelegate = delegate
+    return epubVC
+  }
 }

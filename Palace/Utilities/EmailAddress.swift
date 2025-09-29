@@ -17,11 +17,11 @@ import Foundation
     let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
     let range = NSRange(sanitizedString.startIndex..<sanitizedString.endIndex, in: sanitizedString)
     let matches = detector?.matches(in: sanitizedString, range: range)
-    
+
     guard let match = matches?.first, matches?.count == 1 else {
       return nil
     }
-  
+
     guard match.url?.scheme == "mailto", match.range == range else {
       return nil
     }

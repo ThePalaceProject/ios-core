@@ -5,6 +5,8 @@ public func dismissKeyboard() {
   UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
 }
 
+// MARK: - DismissKeyboardOnTap
+
 public struct DismissKeyboardOnTap: ViewModifier {
   public let onDismiss: (() -> Void)?
 
@@ -23,5 +25,3 @@ public extension View {
     modifier(DismissKeyboardOnTap(onDismiss: onDismiss))
   }
 }
-
-

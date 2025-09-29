@@ -12,8 +12,8 @@ struct AlertModel: Identifiable {
   let id = UUID()
   var title: String
   var message: String
-  var buttonTitle: String? = nil
+  var buttonTitle: String?
   var primaryAction: () -> Void = {}
-  var secondaryButtonTitle: String? = nil
+  var secondaryButtonTitle: String?
   var secondaryAction: () -> Void = {}
 }

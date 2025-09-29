@@ -10,6 +10,8 @@ import Foundation
 
 let TPPDefaultRequestTimeout: TimeInterval = 30.0
 
+// MARK: - TPPRequestExecuting
+
 protocol TPPRequestExecuting {
   /// Execute a given request.
   /// - Parameters:
@@ -18,29 +20,32 @@ protocol TPPRequestExecuting {
   /// the network or from the cache.
   /// - Returns: The task issueing the given request.
   @discardableResult
-  func executeRequest(_ req: URLRequest,
-                      enableTokenRefresh: Bool,
-                      completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask?
+  func executeRequest(
+    _ req: URLRequest,
+    enableTokenRefresh: Bool,
+    completion: @escaping (_: NYPLResult<Data>) -> Void
+  ) -> URLSessionDataTask?
 
-  var requestTimeout: TimeInterval {get}
+  var requestTimeout: TimeInterval { get }
 
-  static var defaultRequestTimeout: TimeInterval {get}
+  static var defaultRequestTimeout: TimeInterval { get }
 }
 
 extension TPPRequestExecuting {
   var requestTimeout: TimeInterval {
-    return Self.defaultRequestTimeout
+    Self.defaultRequestTimeout
   }
 
   static var defaultRequestTimeout: TimeInterval {
-    return TPPDefaultRequestTimeout
+    TPPDefaultRequestTimeout
   }
 
   @discardableResult
-  func executeRequest(_ req: URLRequest,
-                      useTokenIfAvailable: Bool = true,
-                      completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask {
+  func executeRequest(
+    _: URLRequest,
+    useTokenIfAvailable _: Bool = true,
+    completion _: @escaping (_: NYPLResult<Data>) -> Void
+  ) -> URLSessionDataTask {
     URLSessionDataTask()
   }
 }
-

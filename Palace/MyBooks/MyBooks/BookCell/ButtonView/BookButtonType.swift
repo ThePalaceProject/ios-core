@@ -8,6 +8,8 @@
 
 import SwiftUI
 
+// MARK: - BookButtonType
+
 enum BookButtonType: String {
   case get
   case reserve
@@ -26,9 +28,9 @@ enum BookButtonType: String {
   case returning
 
   var localizedTitle: String {
-    NSLocalizedString(self.rawValue, comment: "Book Action Button title")
+    NSLocalizedString(rawValue, comment: "Book Action Button title")
   }
-  
+
   var displaysIndicator: Bool {
     switch self {
     case .read, .remove, .get, .download, .listen:
@@ -37,7 +39,7 @@ enum BookButtonType: String {
       false
     }
   }
-  
+
   var isDisabled: Bool {
     switch self {
     case .read, .listen, .remove:
@@ -48,7 +50,7 @@ enum BookButtonType: String {
   }
 }
 
-fileprivate typealias DisplayStrings = Strings.BookButton
+private typealias DisplayStrings = Strings.BookButton
 
 extension BookButtonType {
   var title: String {
@@ -108,22 +110,23 @@ extension BookButtonType {
     case .secondary, .tertiary:
       isDarkBackground ? .white : .black
     case .destructive:
-        .palaceErrorBase
-
+      .palaceErrorBase
     }
   }
 
   func borderColor(_ isDarkBackground: Bool) -> Color {
     switch buttonStyle {
     case .secondary:
-      (isDarkBackground ? .white : .black)
+      isDarkBackground ? .white : .black
     case .destructive:
-        .palaceErrorBase
+      .palaceErrorBase
     default:
-        .clear
+      .clear
     }
   }
 }
+
+// MARK: - ButtonStyleType
 
 enum ButtonStyleType {
   case primary

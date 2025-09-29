@@ -1,5 +1,5 @@
-import SwiftUI
 import PalaceAudiobookToolkit
+import SwiftUI
 
 /// Generic host that provides a NavigationStack and a NavigationCoordinator environment object.
 struct NavigationHostView<Content: View>: View {
@@ -15,19 +15,18 @@ struct NavigationHostView<Content: View>: View {
       rootView
         .onAppear { NavigationCoordinatorHub.shared.coordinator = coordinator }
         .navigationDestination(for: AppRoute.self) { route in
-          
           switch route {
-          case .bookDetail(let bookRoute):
+          case let .bookDetail(bookRoute):
             if let book = coordinator.resolveBook(for: bookRoute) {
               BookDetailView(book: book)
                 .environmentObject(coordinator)
             } else {
               Text("Missing book")
             }
-          case .catalogLaneMore(let title, let url):
+          case let .catalogLaneMore(title, url):
             CatalogLaneMoreView(title: title, url: url)
               .environmentObject(coordinator)
-          case .search(let searchRoute):
+          case let .search(searchRoute):
             CatalogSearchView(
               books: coordinator.resolveSearchBooks(for: searchRoute),
               onBookSelected: { book in
@@ -35,14 +34,14 @@ struct NavigationHostView<Content: View>: View {
                 coordinator.push(.bookDetail(BookRoute(id: book.identifier)))
               }
             )
-          case .pdf(let bookRoute):
+          case let .pdf(bookRoute):
             if let (document, metadata) = coordinator.resolvePDF(for: bookRoute) {
               TPPPDFReaderView(document: document)
                 .environmentObject(metadata)
             } else {
               EmptyView()
             }
-          case .epub(let bookRoute):
+          case let .epub(bookRoute):
             if let vc = coordinator.resolveEPUBController(for: bookRoute) {
               UIViewControllerWrapper(vc, updater: { _ in })
                 .navigationBarBackButtonHidden(true)
@@ -50,7 +49,7 @@ struct NavigationHostView<Content: View>: View {
             } else {
               EmptyView()
             }
-          case .audio(let bookRoute):
+          case let .audio(bookRoute):
             if let model = coordinator.resolveAudioModel(for: bookRoute) {
               AudiobookPlayerView(model: model)
             } else if let vc = coordinator.resolveAudioController(for: bookRoute) {
@@ -66,5 +65,3 @@ struct NavigationHostView<Content: View>: View {
     .environmentObject(coordinator)
   }
 }
-
-

@@ -27,14 +27,14 @@
 /// See the [full spec](https://github.com/ThePalaceProject/mobile-bookmark-spec)
 /// for more details.
 struct TPPBookmarkSpec {
-  struct Context {
+  enum Context {
     /// The key identifying the `Context` section.
     static let key = "@context"
     /// The only possible value for the `Context` section key.
     static let value = "http://www.w3.org/ns/anno.jsonld"
   }
 
-  struct type {
+  enum type {
     /// The key identifying the `Type` section.
     static let key = "type"
     /// The only possible value for the `Type` section key.
@@ -60,6 +60,7 @@ struct TPPBookmarkSpec {
       /// The timestamp value itself must be in UTC time zone.
       let value: String
     }
+
     let time: Time
 
     struct Device {
@@ -71,18 +72,21 @@ struct TPPBookmarkSpec {
       /// provided by `NYPLUserAccount::deviceID`.
       let value: String
     }
+
     let device: Device
-    
+
     struct ChapterTitle {
       static let key = "http://librarysimplified.org/terms/chapter"
       let value: String
     }
+
     let chapterTitle: ChapterTitle
 
     struct ProgressWithinBook {
       static let key = "http://librarysimplified.org/terms/progressWithinBook"
       let value: Double
     }
+
     let progressWithinBook: ProgressWithinBook
 
     init(time: String, device: String, chapterTitle: String, progressWithinBook: Double) {
@@ -114,7 +118,7 @@ struct TPPBookmarkSpec {
       static let key = "selector"
 
       /// The Selector `type` has always a fixed value.
-      struct type {
+      enum type {
         /// The key identifying the Selector type.
         static let key = "type"
         /// The only possible value for the Selector's `Type` key.
@@ -156,8 +160,9 @@ struct TPPBookmarkSpec {
         ///   \"progressWithinChapter\": 0.5}"
         let selectorValue: String
       }
+
       let value: Value
-    } //Selector
+    } // Selector
     let selector: Selector
 
     struct Source {
@@ -165,11 +170,12 @@ struct TPPBookmarkSpec {
       /// Typically the book ID from the OPDS feed.
       let value: String
     }
+
     let source: Source
 
     init(bookID: String, selectorValue: String) {
-      self.source = Source(value: bookID)
-      self.selector = Selector(value: Selector.Value(selectorValue: selectorValue))
+      source = Source(value: bookID)
+      selector = Selector(value: Selector.Value(selectorValue: selectorValue))
     }
   }
 
@@ -178,47 +184,50 @@ struct TPPBookmarkSpec {
   let motivation: Motivation
   let target: Target
 
-  init(id: String? = nil,
-       time: NSDate,
-       device: String,
-       motivation: Motivation,
-       bookID: String,
-       selectorValue: String) {
+  init(
+    id: String? = nil,
+    time: NSDate,
+    device: String,
+    motivation: Motivation,
+    bookID: String,
+    selectorValue: String
+  ) {
     self.id = Id(value: id)
 
     var title = ""
     var progressWithinBook = 0.0
 
     if let value = selectorValue.data(using: .utf8),
-       let dict = try? JSONSerialization.jsonObject(with: value, options: []) as? [String: Any] {
+       let dict = try? JSONSerialization.jsonObject(with: value, options: []) as? [String: Any]
+    {
       title = dict["title"] as? String ?? ""
       progressWithinBook = dict["progressWithinBook"] as? Double ?? 0.0
     }
-  
-    self.body = Body(time: time.rfc3339String(), device: device, chapterTitle: title, progressWithinBook: progressWithinBook)
+
+    body = Body(time: time.rfc3339String(), device: device, chapterTitle: title, progressWithinBook: progressWithinBook)
     self.motivation = motivation
-    self.target = Target(bookID: bookID, selectorValue: selectorValue)
+    target = Target(bookID: bookID, selectorValue: selectorValue)
   }
 
   /// - returns: A dictionary that can be given to `JSONSerialization` as a
   /// JSON object to be serialized into a binary Data blob.
   func dictionaryForJSONSerialization() -> [String: Any] {
-    return [
+    [
       TPPBookmarkSpec.Context.key: TPPBookmarkSpec.Context.value,
       TPPBookmarkSpec.type.key: TPPBookmarkSpec.type.value,
       TPPBookmarkSpec.Body.key: [
-        TPPBookmarkSpec.Body.Time.key : body.time.value,
-        TPPBookmarkSpec.Body.Device.key : body.device.value,
-        TPPBookmarkSpec.Body.ChapterTitle.key: body.chapterTitle.value
+        TPPBookmarkSpec.Body.Time.key: body.time.value,
+        TPPBookmarkSpec.Body.Device.key: body.device.value,
+        TPPBookmarkSpec.Body.ChapterTitle.key: body.chapterTitle.value,
       ],
       TPPBookmarkSpec.Motivation.key: motivation.rawValue,
       TPPBookmarkSpec.Target.key: [
         TPPBookmarkSpec.Target.Source.key: target.source.value,
         TPPBookmarkSpec.Target.Selector.key: [
           TPPBookmarkSpec.Target.Selector.type.key: TPPBookmarkSpec.Target.Selector.type.value,
-          TPPBookmarkSpec.Target.Selector.Value.key: target.selector.value.selectorValue
-        ]
-      ]
-      ] as [String: Any]
+          TPPBookmarkSpec.Target.Selector.Value.key: target.selector.value.selectorValue,
+        ],
+      ],
+    ] as [String: Any]
   }
 }

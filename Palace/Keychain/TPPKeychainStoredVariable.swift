@@ -8,14 +8,20 @@
 
 import Foundation
 
+// MARK: - Keyable
+
 protocol Keyable {
   var key: String { get set }
 }
 
+// MARK: - TPPKeychainVariable
+
 class TPPKeychainVariable<VariableType>: Keyable {
   var key: String {
     didSet {
-      guard key != oldValue else { return }
+      guard key != oldValue else {
+        return
+      }
 
       alreadyInited = false
     }
@@ -29,13 +35,15 @@ class TPPKeychainVariable<VariableType>: Keyable {
 
   init(key: String, accountInfoQueue: DispatchQueue) {
     self.key = key
-    self.transaction = TPPKeychainVariableTransaction(accountInfoQueue: accountInfoQueue)
+    transaction = TPPKeychainVariableTransaction(accountInfoQueue: accountInfoQueue)
   }
 
   func read() -> VariableType? {
     transaction.perform {
       // If currently cached value is valid, return from cache
-      guard !alreadyInited else { return }
+      guard !alreadyInited else {
+        return
+      }
 
       // Otherwise, obtain the latest value from keychain
       cachedValue = TPPKeychain.shared()?.object(forKey: key) as? VariableType
@@ -65,13 +73,17 @@ class TPPKeychainVariable<VariableType>: Keyable {
   }
 }
 
+// MARK: - TPPKeychainCodableVariable
+
 class TPPKeychainCodableVariable<VariableType: Codable>: TPPKeychainVariable<VariableType> {
   override func read() -> VariableType? {
     transaction.perform {
-      guard !alreadyInited else { return }
+      guard !alreadyInited else {
+        return
+      }
       guard let data = TPPKeychain.shared()?.object(forKey: key) as? Data else {
-        cachedValue = nil;
-        alreadyInited = true;
+        cachedValue = nil
+        alreadyInited = true
         return
       }
       cachedValue = try? JSONDecoder().decode(VariableType.self, from: data)
@@ -95,6 +107,8 @@ class TPPKeychainCodableVariable<VariableType: Codable>: TPPKeychainVariable<Var
     }
   }
 }
+
+// MARK: - TPPKeychainVariableTransaction
 
 class TPPKeychainVariableTransaction {
   fileprivate let accountInfoQueue: DispatchQueue

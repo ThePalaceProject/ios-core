@@ -10,7 +10,6 @@ import XCTest
 @testable import Palace
 
 class TPPJWKConversionTest: XCTestCase {
-  
   var jwkResponseData: Data!
   var expectedPublicKeyData: Data!
 
@@ -41,5 +40,4 @@ class TPPJWKConversionTest: XCTestCase {
     XCTAssertNotNil(publicKeyData)
     XCTAssertEqual(publicKeyData!, expectedPublicKeyData)
   }
-
 }

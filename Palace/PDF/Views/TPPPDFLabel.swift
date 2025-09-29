@@ -6,20 +6,19 @@
 //  Copyright © 2022 The Palace Project. All rights reserved.
 //
 
-import SwiftUI
 import PalaceUIKit
+import SwiftUI
 
 /// Floating label
 ///
 /// PDF name, page number
 struct TPPPDFLabel: View {
-  
   let text: String
-  
+
   init(_ text: String) {
     self.text = text
   }
-  
+
   var body: some View {
     Text(text)
       .palaceFont(.subheadline, weight: .semibold)

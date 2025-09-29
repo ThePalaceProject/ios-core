@@ -9,21 +9,20 @@
 #if LCP
 
 import Foundation
+import PalaceAudiobookToolkit
+import ReadiumLCP
 import ReadiumShared
 import ReadiumStreamer
-import ReadiumLCP
-import PalaceAudiobookToolkit
 
 @objc class LCPAudiobooks: NSObject {
-  
   private static let expectedAcquisitionType = "application/vnd.readium.lcp.license.v1.0+json"
-  
+
   private let audiobookUrl: AbsoluteURL
   private let licenseUrl: URL?
   private let assetRetriever: AssetRetriever
   private let publicationOpener: PublicationOpener
   private let httpClient: DefaultHTTPClient
-  
+
   private var cachedPublication: Publication?
   private let publicationCacheLock = NSLock()
   private var currentPrefetchTask: Task<Void, Never>?
@@ -32,7 +31,6 @@ import PalaceAudiobookToolkit
   /// - Parameter audiobookUrl: can be a local `.lcpa` package URL OR an `.lcpl` license URL for streaming
   /// - Parameter licenseUrl: optional license URL for streaming authentication (deprecated, use audiobookUrl)
   @objc init?(for audiobookUrl: URL, licenseUrl: URL? = nil) {
-
     if let fileUrl = FileURL(url: audiobookUrl) {
       self.audiobookUrl = fileUrl
     } else if let httpUrl = HTTPURL(url: audiobookUrl) {
@@ -45,7 +43,7 @@ import PalaceAudiobookToolkit
 
     let httpClient = DefaultHTTPClient()
     self.httpClient = httpClient
-    self.assetRetriever = AssetRetriever(httpClient: httpClient)
+    assetRetriever = AssetRetriever(httpClient: httpClient)
 
     guard let contentProtection = lcpService.contentProtection else {
       return nil
@@ -57,13 +55,13 @@ import PalaceAudiobookToolkit
       pdfFactory: DefaultPDFDocumentFactory()
     )
 
-    self.publicationOpener = PublicationOpener(
+    publicationOpener = PublicationOpener(
       parser: parser,
       contentProtections: [contentProtection]
     )
   }
 
-  @objc func contentDictionary(completion: @escaping (_ json: NSDictionary?, _ error: NSError?) -> ()) {
+  @objc func contentDictionary(completion: @escaping (_ json: NSDictionary?, _ error: NSError?) -> Void) {
     DispatchQueue.global(qos: .userInitiated).async {
       self.loadContentDictionary { json, error in
         DispatchQueue.main.async {
@@ -72,15 +70,19 @@ import PalaceAudiobookToolkit
       }
     }
   }
-  
-  private func loadContentDictionary(completion: @escaping (_ json: NSDictionary?, _ error: NSError?) -> ()) {
+
+  private func loadContentDictionary(completion: @escaping (_ json: NSDictionary?, _ error: NSError?) -> Void) {
     publicationCacheLock.lock()
     currentPrefetchTask?.cancel()
     publicationCacheLock.unlock()
 
     let task = Task { [weak self] in
-      guard let self else { return }
-      if Task.isCancelled { return }
+      guard let self else {
+        return
+      }
+      if Task.isCancelled {
+        return
+      }
 
       var urlToOpen: AbsoluteURL = audiobookUrl
       if let licenseUrl {
@@ -89,34 +91,46 @@ import PalaceAudiobookToolkit
         } else if let httpUrl = HTTPURL(url: licenseUrl) {
           urlToOpen = httpUrl
         } else {
-          completion(nil, NSError(domain: "LCPAudiobooks", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid license URL"]))
+          completion(
+            nil,
+            NSError(domain: "LCPAudiobooks", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid license URL"])
+          )
           return
         }
       }
-      
+
       let result = await assetRetriever.retrieve(url: urlToOpen)
-      
+
       switch result {
-      case .success(let asset):
-        if Task.isCancelled { return }
-                
+      case let .success(asset):
+        if Task.isCancelled {
+          return
+        }
+
         var credentials: String? = nil
         if let licenseUrl = licenseUrl, licenseUrl.isFileURL {
           credentials = try? String(contentsOf: licenseUrl)
         }
-        
-        let result = await publicationOpener.open(asset: asset, allowUserInteraction: true, credentials: credentials, sender: nil)
+
+        let result = await publicationOpener.open(
+          asset: asset,
+          allowUserInteraction: true,
+          credentials: credentials,
+          sender: nil
+        )
 
         switch result {
-        case .success(let publication):
-          
-          if Task.isCancelled { return }
+        case let .success(publication):
+          if Task.isCancelled {
+            return
+          }
           publicationCacheLock.lock()
           cachedPublication = publication
           publicationCacheLock.unlock()
-          
+
           if let jsonManifestString = publication.jsonManifest, let jsonData = jsonManifestString.data(using: .utf8),
-             let jsonObject = try? JSONSerialization.jsonObject(with: jsonData, options: []) as? NSDictionary {
+             let jsonObject = try? JSONSerialization.jsonObject(with: jsonData, options: []) as? NSDictionary
+          {
             completion(jsonObject, nil)
           } else {
             let links = publication.readingOrder.map { link in
@@ -124,29 +138,31 @@ import PalaceAudiobookToolkit
               let typeString = link.mediaType.map { String(describing: $0) } ?? "audio/mpeg"
               return [
                 "href": hrefString,
-                "type": typeString
+                "type": typeString,
               ]
             }
             let minimal: [String: Any] = [
               "metadata": [
                 "identifier": UUID().uuidString,
-                "title": String(describing: publication.metadata.title)
+                "title": String(describing: publication.metadata.title),
               ],
-              "readingOrder": links
+              "readingOrder": links,
             ]
             completion(minimal as NSDictionary, nil)
           }
-        case .failure(let error):
+        case let .failure(error):
           completion(nil, LCPAudiobooks.nsError(for: error))
         }
 
-      case .failure(let error):
+      case let .failure(error):
         completion(nil, LCPAudiobooks.nsError(for: error))
       }
 
-      self.publicationCacheLock.lock()
-      if self.currentPrefetchTask?.isCancelled == true { self.currentPrefetchTask = nil }
-      self.publicationCacheLock.unlock()
+      publicationCacheLock.lock()
+      if currentPrefetchTask?.isCancelled == true {
+        currentPrefetchTask = nil
+      }
+      publicationCacheLock.unlock()
     }
 
     publicationCacheLock.lock()
@@ -158,23 +174,24 @@ import PalaceAudiobookToolkit
   /// - Parameter book: audiobook
   /// - Returns: `true` if the book is an LCP DRM protected audiobook, `false` otherwise
   @objc static func canOpenBook(_ book: TPPBook) -> Bool {
-    guard let defaultAcquisition = book.defaultAcquisition else { return false }
+    guard let defaultAcquisition = book.defaultAcquisition else {
+      return false
+    }
     return book.defaultBookContentType == .audiobook && defaultAcquisition.type == expectedAcquisitionType
   }
-  
+
   /// Creates an NSError for Objective-C code
   /// - Parameter error: Error object
   /// - Returns: NSError object
   private static func nsError(for error: Error) -> NSError {
-    return NSError(domain: "Palace.LCPAudiobooks", code: 0, userInfo: [
+    NSError(domain: "Palace.LCPAudiobooks", code: 0, userInfo: [
       NSLocalizedDescriptionKey: error.localizedDescription,
-      "Error": error
+      "Error": error,
     ])
   }
 }
 
 extension LCPAudiobooks: LCPStreamingProvider {
-  
   public func getPublication() -> Publication? {
     publicationCacheLock.lock()
     defer { publicationCacheLock.unlock() }
@@ -184,53 +201,54 @@ extension LCPAudiobooks: LCPStreamingProvider {
       return nil
     }
   }
-  
+
   public func supportsStreaming() -> Bool {
-    return true
+    true
   }
-  
+
   public func setupStreamingFor(_ player: Any) -> Bool {
     guard let streamingPlayer = player as? StreamingCapablePlayer else {
       return false
     }
     streamingPlayer.setStreamingProvider(self)
-    
+
     publicationCacheLock.lock()
     let hasPublication = cachedPublication != nil
     publicationCacheLock.unlock()
-    
+
     if !hasPublication {
       DispatchQueue.global(qos: .userInteractive).async { [weak self] in
-        self?.loadContentDictionary { _, error in 
+        self?.loadContentDictionary { _, error in
           if let error = error {
             Log.error(#file, "Failed to load LCP publication for streaming: \(error)")
           } else {
             Log.info(#file, "Successfully loaded LCP publication for streaming")
 
-              DispatchQueue.main.async {
-                streamingPlayer.publicationDidLoad()
+            DispatchQueue.main.async {
+              streamingPlayer.publicationDidLoad()
             }
           }
         }
       }
     }
-    
+
     return true
   }
-
 }
 
 // MARK: - Cached manifest access
+
 extension LCPAudiobooks {
   /// Returns the cached content dictionary if the publication has already been opened.
   /// This avoids re-opening the asset and enables immediate UI presentation.
-  public func cachedContentDictionary() -> NSDictionary? {
+  func cachedContentDictionary() -> NSDictionary? {
     publicationCacheLock.lock()
     let publication = cachedPublication
     publicationCacheLock.unlock()
 
     guard let publication, let jsonManifestString = publication.jsonManifest,
-          let jsonData = jsonManifestString.data(using: .utf8) else {
+          let jsonData = jsonManifestString.data(using: .utf8)
+    else {
       return nil
     }
 
@@ -240,13 +258,13 @@ extension LCPAudiobooks {
     return nil
   }
 
-  public func startPrefetch() {
+  func startPrefetch() {
     DispatchQueue.global(qos: .userInteractive).async { [weak self] in
       self?.loadContentDictionary { _, _ in
       }
     }
   }
-  
+
   func decrypt(url: URL, to resultUrl: URL, completion: @escaping (Error?) -> Void) {
     if let publication = getPublication() {
       decryptWithPublication(publication, url: url, to: resultUrl, completion: completion)
@@ -254,27 +272,32 @@ extension LCPAudiobooks {
       Task {
         let result = await self.assetRetriever.retrieve(url: audiobookUrl)
         switch result {
-        case .success(let asset):
+        case let .success(asset):
           let publicationResult = await publicationOpener.open(asset: asset, allowUserInteraction: false, sender: nil)
           switch publicationResult {
-          case .success(let publication):
+          case let .success(publication):
             publicationCacheLock.lock()
             cachedPublication = publication
             publicationCacheLock.unlock()
-            
+
             self.decryptWithPublication(publication, url: url, to: resultUrl, completion: completion)
-            
-          case .failure(let error):
+
+          case let .failure(error):
             completion(error)
           }
-        case .failure(let error):
+        case let .failure(error):
           completion(error)
         }
       }
     }
   }
-  
-  private func decryptWithPublication(_ publication: Publication, url: URL, to resultUrl: URL, completion: @escaping (Error?) -> Void) {
+
+  private func decryptWithPublication(
+    _ publication: Publication,
+    url: URL,
+    to resultUrl: URL,
+    completion: @escaping (Error?) -> Void
+  ) {
     if let resource = publication.getResource(at: url.path) {
       Task {
         do {
@@ -290,11 +313,15 @@ extension LCPAudiobooks {
         }
       }
     } else {
-      completion(NSError(domain: "AudiobookResourceError", code: 404, userInfo: [NSLocalizedDescriptionKey: "Resource not found at path: \(url.path)"]))
+      completion(NSError(
+        domain: "AudiobookResourceError",
+        code: 404,
+        userInfo: [NSLocalizedDescriptionKey: "Resource not found at path: \(url.path)"]
+      ))
     }
   }
 
-  public func cancelPrefetch() {
+  func cancelPrefetch() {
     publicationCacheLock.lock()
     currentPrefetchTask?.cancel()
     currentPrefetchTask = nil
@@ -302,7 +329,7 @@ extension LCPAudiobooks {
   }
 
   /// Release all held resources for the current publication and cancel any background work
-  public func releaseResources() {
+  func releaseResources() {
     cancelPrefetch()
     publicationCacheLock.lock()
     cachedPublication = nil
@@ -322,4 +349,3 @@ private extension Publication {
 }
 
 #endif
-

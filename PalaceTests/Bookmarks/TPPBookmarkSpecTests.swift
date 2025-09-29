@@ -11,12 +11,9 @@ import XCTest
 
 // TODO: SIMPLY-3645
 class TPPBookmarkSpecTests: XCTestCase {
+  override func setUpWithError() throws {}
 
-  override func setUpWithError() throws {
-  }
-
-  override func tearDownWithError() throws {
-  }
+  override func tearDownWithError() throws {}
 
   func testBookmarkMotivationKeyword() throws {
     XCTAssert(

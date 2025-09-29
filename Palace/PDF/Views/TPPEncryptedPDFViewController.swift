@@ -8,30 +8,31 @@
 
 import UIKit
 
+// MARK: - TPPEncryptedPDFViewController
+
 /// Encrypted PDF view controller
 class TPPEncryptedPDFViewController: UIPageViewController {
-  
   var document: TPPEncryptedPDFDocument
   var pageCount: Int = 0
   var currentPage: Int = 0
-  
+
   func navigate(to page: Int) {
-    let direction: NavigationDirection  = page < currentPage ? .reverse : .forward
+    let direction: NavigationDirection = page < currentPage ? .reverse : .forward
     currentPage = min(pageCount - 1, max(0, page))
     setViewControllers([pageViewController(page: currentPage)], direction: direction, animated: false, completion: nil)
   }
-  
+
   @available(*, unavailable)
-  required init?(coder: NSCoder) {
+  required init?(coder _: NSCoder) {
     fatalError("init(coder:) has not been implemented")
   }
 
   init(encryptedPDF: TPPEncryptedPDFDocument) {
-    self.document = encryptedPDF
-    self.pageCount = encryptedPDF.pageCount
+    document = encryptedPDF
+    pageCount = encryptedPDF.pageCount
     super.init(transitionStyle: .scroll, navigationOrientation: .horizontal, options: [.interPageSpacing: 20])
   }
-  
+
   override func viewDidLoad() {
     view.backgroundColor = .secondarySystemBackground
     dataSource = self
@@ -39,24 +40,32 @@ class TPPEncryptedPDFViewController: UIPageViewController {
     setViewControllers([pageViewController(page: currentPage)], direction: .forward, animated: false)
     super.viewDidLoad()
   }
-  
-  func pageViewController(page: Int = 0) -> UIViewController {
-    return TPPEncryptedPDFPageViewController(encryptedPdf: document, pageNumber: page)
-  }
 
+  func pageViewController(page: Int = 0) -> UIViewController {
+    TPPEncryptedPDFPageViewController(encryptedPdf: document, pageNumber: page)
+  }
 }
 
+// MARK: UIPageViewControllerDataSource
+
 extension TPPEncryptedPDFViewController: UIPageViewControllerDataSource {
-  func pageViewController(_ pageViewController: UIPageViewController, viewControllerBefore viewController: UIViewController) -> UIViewController? {
+  func pageViewController(
+    _: UIPageViewController,
+    viewControllerBefore viewController: UIViewController
+  ) -> UIViewController? {
     guard let pageVC = viewController as? TPPEncryptedPDFPageViewController, pageVC.pageNumber > 0 else {
       return nil
     }
-    return self.pageViewController(page: pageVC.pageNumber - 1)
+    return pageViewController(page: pageVC.pageNumber - 1)
   }
-  func pageViewController(_ pageViewController: UIPageViewController, viewControllerAfter viewController: UIViewController) -> UIViewController? {
+
+  func pageViewController(
+    _: UIPageViewController,
+    viewControllerAfter viewController: UIViewController
+  ) -> UIViewController? {
     guard let pageVC = viewController as? TPPEncryptedPDFPageViewController, pageVC.pageNumber < (pageCount - 1) else {
       return nil
     }
-    return self.pageViewController(page: pageVC.pageNumber + 1)
+    return pageViewController(page: pageVC.pageNumber + 1)
   }
 }

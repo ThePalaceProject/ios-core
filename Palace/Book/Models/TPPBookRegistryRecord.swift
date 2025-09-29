@@ -8,7 +8,6 @@
 
 import Foundation
 
-
 /// An element of `TPPBookRegistry`
 @objcMembers
 class TPPBookRegistryRecord: NSObject {
@@ -18,8 +17,15 @@ class TPPBookRegistryRecord: NSObject {
   var fulfillmentId: String?
   var readiumBookmarks: [TPPReadiumBookmark]?
   var genericBookmarks: [TPPBookLocation]?
-  
-  init(book: TPPBook, location: TPPBookLocation? = nil, state: TPPBookState, fulfillmentId: String? = nil, readiumBookmarks: [TPPReadiumBookmark]? = [], genericBookmarks: [TPPBookLocation]? = []) {
+
+  init(
+    book: TPPBook,
+    location: TPPBookLocation? = nil,
+    state: TPPBookState,
+    fulfillmentId: String? = nil,
+    readiumBookmarks: [TPPReadiumBookmark]? = [],
+    genericBookmarks: [TPPBookLocation]? = []
+  ) {
     self.book = book
     self.location = location
     self.state = state
@@ -31,11 +37,8 @@ class TPPBookRegistryRecord: NSObject {
 
     if let defaultAcquisition = book.defaultAcquisition {
       defaultAcquisition.availability.matchUnavailable { _ in
-        
       } limited: { _ in
-        
       } unlimited: { _ in
-        
       } reserved: { [weak self] _ in
         self?.state = .holding
       } ready: { [weak self] _ in
@@ -53,38 +56,41 @@ class TPPBookRegistryRecord: NSObject {
       self.state = .unsupported
     }
   }
-  
+
   init?(record: TPPBookRegistryData) {
     guard let bookObject = record.object(for: .book),
           let book = TPPBook(dictionary: bookObject),
           let stateString = record.value(for: .state) as? String,
           let state = TPPBookState(stateString)
-            
+
     else {
       return nil
     }
     self.book = book
     self.state = state
-    self.fulfillmentId = record.value(for: .fulfillmentId) as? String
+    fulfillmentId = record.value(for: .fulfillmentId) as? String
     if let location = record.object(for: .location) {
-        self.location = TPPBookLocation(dictionary: location)
+      self.location = TPPBookLocation(dictionary: location)
     }
     if let recordReadiumBookmarks = record.array(for: .readiumBookmarks) {
-      self.readiumBookmarks = recordReadiumBookmarks.compactMap { TPPReadiumBookmark(dictionary: $0 as NSDictionary) }
+      readiumBookmarks = recordReadiumBookmarks.compactMap { TPPReadiumBookmark(dictionary: $0 as NSDictionary) }
     }
     if let recordGenericBookmarks = record.array(for: .genericBookmarks) {
-      self.genericBookmarks = recordGenericBookmarks.compactMap { TPPBookLocation(dictionary: $0) }
+      genericBookmarks = recordGenericBookmarks.compactMap { TPPBookLocation(dictionary: $0) }
     }
   }
-  
+
   var dictionaryRepresentation: [String: Any] {
     var dictionary = TPPBookRegistryData()
     dictionary.setValue(book.dictionaryRepresentation(), for: .book)
     dictionary.setValue(state.stringValue(), for: .state)
     dictionary.setValue(fulfillmentId, for: .fulfillmentId)
-    dictionary.setValue(self.location?.dictionaryRepresentation, for: .location)
-    dictionary.setValue(readiumBookmarks?.compactMap { $0.dictionaryRepresentation as? [String: Any] }, for: .readiumBookmarks)
-    dictionary.setValue(genericBookmarks?.map { $0.dictionaryRepresentation }, for: .genericBookmarks)
+    dictionary.setValue(location?.dictionaryRepresentation, for: .location)
+    dictionary.setValue(
+      readiumBookmarks?.compactMap { $0.dictionaryRepresentation as? [String: Any] },
+      for: .readiumBookmarks
+    )
+    dictionary.setValue(genericBookmarks?.map(\.dictionaryRepresentation), for: .genericBookmarks)
     return dictionary
   }
 }

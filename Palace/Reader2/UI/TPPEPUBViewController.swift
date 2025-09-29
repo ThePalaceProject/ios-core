@@ -1,9 +1,11 @@
-import UIKit
-import SwiftUI
-import ReadiumShared
 import ReadiumNavigator
-import WebKit
+import ReadiumShared
 import SwiftSoup
+import SwiftUI
+import UIKit
+import WebKit
+
+// MARK: - TPPEPUBViewController
 
 class TPPEPUBViewController: TPPBaseReaderViewController {
   var popoverUserconfigurationAnchor: UIBarButtonItem?
@@ -16,35 +18,38 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
   private var safeAreaInsets: UIEdgeInsets = {
     guard let window = UIApplication.shared.connectedScenes
       .compactMap({ $0 as? UIWindowScene })
-      .flatMap({ $0.windows })
-      .first(where: { $0.isKeyWindow }) else {
+      .flatMap(\.windows)
+      .first(where: { $0.isKeyWindow })
+    else {
       return UIEdgeInsets()
     }
     return window.safeAreaInsets
   }()
 
-  init(publication: Publication,
-       book: TPPBook,
-       initialLocation: Locator?,
-       resourcesServer: HTTPServer,
-       preferences: EPUBPreferences = TPPReaderPreferencesLoad(),
-       forSample: Bool = false) throws {
-
-    self.systemUserInterfaceStyle = UITraitCollection.current.userInterfaceStyle
+  init(
+    publication: Publication,
+    book: TPPBook,
+    initialLocation: Locator?,
+    resourcesServer: HTTPServer,
+    preferences: EPUBPreferences = TPPReaderPreferencesLoad(),
+    forSample: Bool = false
+  ) throws {
+    systemUserInterfaceStyle = UITraitCollection.current.userInterfaceStyle
     self.preferences = preferences
 
-    self.searchButton = UIBarButtonItem(barButtonSystemItem: .search, target: nil, action: #selector(presentEPUBSearch))
+    searchButton = UIBarButtonItem(barButtonSystemItem: .search, target: nil, action: #selector(presentEPUBSearch))
     let overlayLabelInset = 80.0
     let contentInset: [UIUserInterfaceSizeClass: EPUBContentInsets] = [
       .compact: (top: safeAreaInsets.top + overlayLabelInset, bottom: safeAreaInsets.bottom + overlayLabelInset),
-      .regular: (top: safeAreaInsets.top + overlayLabelInset, bottom: safeAreaInsets.bottom + overlayLabelInset)
+      .regular: (top: safeAreaInsets.top + overlayLabelInset, bottom: safeAreaInsets.bottom + overlayLabelInset),
     ]
 
     let config = EPUBNavigatorViewController.Configuration(
       preferences: preferences,
       editingActions: EditingAction.defaultActions.appending(EditingAction(
         title: "Highlight",
-        action: #selector(highlightSelection))),
+        action: #selector(highlightSelection)
+      )),
       contentInset: contentInset,
       decorationTemplates: HTMLDecorationTemplate.defaultTemplates(),
       debugState: false
@@ -57,16 +62,22 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
       httpServer: resourcesServer
     )
 
-    super.init(navigator: navigator, publication: publication, book: book, forSample: forSample, initialLocation: initialLocation)
+    super.init(
+      navigator: navigator,
+      publication: publication,
+      book: book,
+      forSample: forSample,
+      initialLocation: initialLocation
+    )
 
     navigator.delegate = self
-    self.searchButton.target = self
+    searchButton.target = self
     setUIColor(for: preferences)
     log(.info, "TPPEPUBViewController initialized with publication: \(publication.metadata.title ?? "Unknown Title").")
   }
 
   var epubNavigator: EPUBNavigatorViewController {
-    self.navigator as! EPUBNavigatorViewController
+    navigator as! EPUBNavigatorViewController
   }
 
   override func willMove(toParent parent: UIViewController?) {
@@ -82,7 +93,12 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     epubNavigator.submitPreferences(preferences)
 
     if navigationItem.leftBarButtonItem == nil {
-      let backItem = UIBarButtonItem(image: UIImage(systemName: "chevron.left"), style: .plain, target: self, action: #selector(closeEPUB))
+      let backItem = UIBarButtonItem(
+        image: UIImage(systemName: "chevron.left"),
+        style: .plain,
+        target: self,
+        action: #selector(closeEPUB)
+      )
       navigationItem.leftBarButtonItem = backItem
     }
   }
@@ -108,10 +124,12 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
 
   override func makeNavigationBarButtons() -> [UIBarButtonItem] {
     var buttons = super.makeNavigationBarButtons()
-    let userSettingsButton = UIBarButtonItem(image: UIImage(named: "Format"),
-                                             style: .plain,
-                                             target: self,
-                                             action: #selector(presentUserSettings))
+    let userSettingsButton = UIBarButtonItem(
+      image: UIImage(named: "Format"),
+      style: .plain,
+      target: self,
+      action: #selector(presentUserSettings)
+    )
     userSettingsButton.accessibilityLabel = Strings.TPPEPUBViewController.readerSettings
     buttons.insert(userSettingsButton, at: 1)
     popoverUserconfigurationAnchor = userSettingsButton
@@ -140,11 +158,14 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
   }
 }
 
+// MARK: EPUBSearchDelegate
+
 extension TPPEPUBViewController: EPUBSearchDelegate {
   func didSelect(location: ReadiumShared.Locator) {
-
     presentedViewController?.dismiss(animated: true) { [weak self] in
-      guard let self = self else { return }
+      guard let self = self else {
+        return
+      }
 
       Task {
         await self.navigator.go(to: location)
@@ -154,7 +175,8 @@ extension TPPEPUBViewController: EPUBSearchDelegate {
           decorations.append(Decoration(
             id: "search",
             locator: location,
-            style: .highlight(tint: .red)))
+            style: .highlight(tint: .red)
+          ))
           await decorableNavigator.applyDecorationsAsync(decorations, in: "search")
         }
       }
@@ -162,14 +184,15 @@ extension TPPEPUBViewController: EPUBSearchDelegate {
   }
 }
 
-// MARK: - TPPReaderSettingsDelegate
+// MARK: TPPReaderSettingsDelegate
+
 extension TPPEPUBViewController: TPPReaderSettingsDelegate {
   func getUserPreferences() -> EPUBPreferences {
-    return preferences
+    preferences
   }
 
   func updateUserPreferencesStyle(for appearance: EPUBPreferences) {
-    self.preferences = appearance
+    preferences = appearance
     DispatchQueue.main.async {
       self.epubNavigator.submitPreferences(appearance)
       self.setUIColor(for: appearance)
@@ -185,31 +208,43 @@ extension TPPEPUBViewController: TPPReaderSettingsDelegate {
   }
 }
 
+// MARK: EPUBNavigatorDelegate
+
 extension TPPEPUBViewController: EPUBNavigatorDelegate {
-  func navigator(_ navigator: Navigator, didFailWithError error: NavigatorError) {
+  func navigator(_: Navigator, didFailWithError error: NavigatorError) {
     log(.error, "Navigator error: \(error.localizedDescription)")
   }
 }
 
+// MARK: UIPopoverPresentationControllerDelegate
+
 extension TPPEPUBViewController: UIPopoverPresentationControllerDelegate {
-  func adaptivePresentationStyle(for controller: UIPresentationController) -> UIModalPresentationStyle {
-    return .none
+  func adaptivePresentationStyle(for _: UIPresentationController) -> UIModalPresentationStyle {
+    .none
   }
 }
 
+// MARK: DecorableNavigator
+
 extension TPPEPUBViewController: DecorableNavigator {
   func apply(decorations: [Decoration], in group: String) {
-    guard let navigator = navigator as? DecorableNavigator else { return }
+    guard let navigator = navigator as? DecorableNavigator else {
+      return
+    }
     navigator.apply(decorations: decorations, in: group)
   }
 
   func supports(decorationStyle style: Decoration.Style.Id) -> Bool {
-    guard let navigator = navigator as? DecorableNavigator else { return false }
+    guard let navigator = navigator as? DecorableNavigator else {
+      return false
+    }
     return navigator.supports(decorationStyle: style)
   }
 
   func observeDecorationInteractions(inGroup group: String, onActivated: @escaping OnActivatedCallback) {
-    guard let navigator = navigator as? DecorableNavigator else { return }
+    guard let navigator = navigator as? DecorableNavigator else {
+      return
+    }
     navigator.observeDecorationInteractions(inGroup: group, onActivated: onActivated)
   }
 
@@ -230,7 +265,9 @@ extension TPPEPUBViewController: DecorableNavigator {
   }
 
   @objc private func highlightSelection() {
-    guard let selection = epubNavigator.currentSelection else { return }
+    guard let selection = epubNavigator.currentSelection else {
+      return
+    }
     addHighlight(for: selection.locator, color: .yellow)
     epubNavigator.clearSelection()
   }
@@ -243,7 +280,7 @@ extension TPPEPUBViewController: DecorableNavigator {
     }
   }
 
-  private func handleHighlightInteraction(_ event: OnDecorationActivatedEvent) {}
+  private func handleHighlightInteraction(_: OnDecorationActivatedEvent) {}
 }
 
 public extension DecorableNavigator {
@@ -253,4 +290,3 @@ public extension DecorableNavigator {
     }
   }
 }
-

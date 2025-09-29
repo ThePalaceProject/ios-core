@@ -8,21 +8,27 @@
 
 import Foundation
 
+// MARK: - OPDS2LinkRel
+
 enum OPDS2LinkRel: String {
   case passwordReset = "http://librarysimplified.org/terms/rel/patron-password-reset"
 }
+
+// MARK: - Announcement
 
 struct Announcement: Codable {
   let id: String
   let content: String
 }
 
+// MARK: - OPDS2AuthenticationDocument
+
 struct OPDS2AuthenticationDocument: Codable {
   struct Features: Codable {
     let disabled: [String]?
     let enabled: [String]?
   }
-  
+
   struct Authentication: Codable {
     struct Inputs: Codable {
       struct Input: Codable {
@@ -30,23 +36,23 @@ struct OPDS2AuthenticationDocument: Codable {
         let maximumLength: UInt?
         let keyboard: String // TODO: Use enum instead (or not; it could break if new values are added)
       }
-      
+
       let login: Input
       let password: Input
     }
-    
+
     struct Labels: Codable {
       let login: String
       let password: String
     }
-    
+
     let inputs: Inputs?
     let labels: Labels?
     let type: String
     let description: String?
     let links: [OPDS2Link]?
   }
-  
+
   let features: Features?
   let links: [OPDS2Link]?
   let title: String

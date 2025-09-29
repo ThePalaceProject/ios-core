@@ -8,11 +8,17 @@
 
 import Foundation
 
+// MARK: - Reauthenticator
+
 protocol Reauthenticator: NSObject {
-  func authenticateIfNeeded(_ user: TPPUserAccount,
-                                  usingExistingCredentials: Bool,
-                                  authenticationCompletion: (()-> Void)?)
+  func authenticateIfNeeded(
+    _ user: TPPUserAccount,
+    usingExistingCredentials: Bool,
+    authenticationCompletion: (() -> Void)?
+  )
 }
+
+// MARK: - TPPReauthenticator
 
 /// This class is a front-end for taking care of situations where an
 /// already authenticated user somehow sees its requests fail with a 401
@@ -26,7 +32,6 @@ protocol Reauthenticator: NSObject {
 /// opening up the VC when needed, and performing the log-in request under
 /// the hood when no user input is needed.
 @objc class TPPReauthenticator: NSObject, Reauthenticator {
-
   private var signInModalVC: TPPAccountSignInViewController?
 
   /// Re-authenticates the user. This may involve presenting the sign-in
@@ -39,16 +44,18 @@ protocol Reauthenticator: NSObject {
   ///   flow completes.
   /// - Returns: `true` if an authentication flow was started to refresh the
   /// credentials, `false` otherwise.
-  @objc func authenticateIfNeeded(_ user: TPPUserAccount,
-                                  usingExistingCredentials: Bool,
-                                  authenticationCompletion: (()-> Void)?) {
+  @objc func authenticateIfNeeded(
+    _: TPPUserAccount,
+    usingExistingCredentials: Bool,
+    authenticationCompletion: (() -> Void)?
+  ) {
     TPPMainThreadRun.asyncIfNeeded {
       let vc = TPPAccountSignInViewController()
       self.signInModalVC = vc
       vc.forceEditability = true
       vc.presentIfNeeded(usingExistingCredentials: usingExistingCredentials) {
         authenticationCompletion?()
-        self.signInModalVC = nil //break desired retain cycle
+        self.signInModalVC = nil // break desired retain cycle
       }
     }
   }

@@ -1,10 +1,12 @@
 import SwiftUI
 import UIKit
 
+// MARK: - AppTabHostView
+
 struct AppTabHostView: View {
   @StateObject private var router = AppTabRouter()
   @State private var holdsBadgeCount: Int = 0
-  
+
   var body: some View {
     TabView(selection: $router.selected) {
       NavigationHostView(rootView: catalogView)
@@ -47,7 +49,8 @@ struct AppTabHostView: View {
         NavigationCoordinatorHub.shared.coordinator?.popToRoot()
       }
       if let appDelegate = UIApplication.shared.delegate as? TPPAppDelegate,
-         let top = appDelegate.topViewController() {
+         let top = appDelegate.topViewController()
+      {
         top.dismiss(animated: true)
       }
       NotificationCenter.default.post(name: .AppTabSelectionDidChange, object: nil)
@@ -77,11 +80,13 @@ private extension AppTabHostView {
     let held = TPPBookRegistry.shared.heldBooks
     var readyCount = 0
     for book in held {
-      book.defaultAcquisition?.availability.matchUnavailable(nil,
-                                                            limited: nil,
-                                                            unlimited: nil,
-                                                            reserved: nil,
-                                                            ready: { _ in readyCount += 1 })
+      book.defaultAcquisition?.availability.matchUnavailable(
+        nil,
+        limited: nil,
+        unlimited: nil,
+        reserved: nil,
+        ready: { _ in readyCount += 1 }
+      )
     }
     holdsBadgeCount = readyCount
   }
@@ -90,4 +95,3 @@ private extension AppTabHostView {
 extension Notification.Name {
   static let AppTabSelectionDidChange = Notification.Name("AppTabSelectionDidChange")
 }
-

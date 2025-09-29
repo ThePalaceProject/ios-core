@@ -15,5 +15,4 @@ class UIColor_NYPLAdditionsTests: XCTestCase {
 
     XCTAssertEqual(color.javascriptHexString(), "#A63BCC")
   }
-
 }

@@ -1,15 +1,16 @@
 import SwiftUI
 
 // MARK: - CatalogContentView
+
 struct CatalogContentView: View {
   @ObservedObject var viewModel: CatalogViewModel
   let onBookSelected: (TPPBook) -> Void
   let onLaneMoreTapped: (String, URL) -> Void
-  
+
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       selectorsView
-      
+
       ScrollViewReader { proxy in
         ScrollView {
           LazyVStack(alignment: .leading, spacing: 24) {
@@ -39,6 +40,7 @@ struct CatalogContentView: View {
 }
 
 // MARK: - Private Views
+
 private extension CatalogContentView {
   @ViewBuilder
   var selectorsView: some View {
@@ -90,6 +92,7 @@ private extension CatalogContentView {
 }
 
 // MARK: - CatalogLoadingView
+
 struct CatalogLoadingView: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 24) {
@@ -100,4 +103,3 @@ struct CatalogLoadingView: View {
     .padding(.vertical, 0)
   }
 }
-

@@ -1,6 +1,8 @@
 import SwiftUI
 
-fileprivate typealias DisplayStrings = Strings.BookButton
+private typealias DisplayStrings = Strings.BookButton
+
+// MARK: - BookButtonProvider
 
 @MainActor
 protocol BookButtonProvider: ObservableObject {
@@ -11,6 +13,7 @@ protocol BookButtonProvider: ObservableObject {
 }
 
 // MARK: - BookButtonsView
+
 struct BookButtonsView<T: BookButtonProvider>: View {
   @ObservedObject var provider: T
   var previewEnabled: Bool = true
@@ -45,6 +48,7 @@ struct BookButtonsView<T: BookButtonProvider>: View {
 }
 
 // MARK: - ActionButton
+
 struct ActionButton<T: BookButtonProvider>: View {
   let type: BookButtonType
   @ObservedObject var provider: T
@@ -53,7 +57,7 @@ struct ActionButton<T: BookButtonProvider>: View {
   var onButtonTapped: ((BookButtonType) -> Void)?
 
   private var accessibilityString: String {
-    return type.title
+    type.title
   }
 
   var body: some View {
@@ -95,7 +99,8 @@ struct ActionButton<T: BookButtonProvider>: View {
   }
 }
 
-// MARK: - Button Size Enum
+// MARK: - ButtonSize
+
 enum ButtonSize {
   case large
   case medium
@@ -103,30 +108,32 @@ enum ButtonSize {
 
   var height: CGFloat {
     switch self {
-    case .large: return 44
-    case .medium: return 40
-    case .small: return 34
+    case .large: 44
+    case .medium: 40
+    case .small: 34
     }
   }
 
   var font: Font {
     switch self {
-    case .large: return .semiBoldPalaceFont(size: 14)
-    case .medium: return .semiBoldPalaceFont(size: 13)
-    case .small: return .semiBoldPalaceFont(size: 12)
+    case .large: .semiBoldPalaceFont(size: 14)
+    case .medium: .semiBoldPalaceFont(size: 13)
+    case .small: .semiBoldPalaceFont(size: 12)
     }
   }
 
   var padding: EdgeInsets {
     switch self {
-    case .large: return EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16)
-    case .medium: return EdgeInsets(top: 8, leading: 14, bottom: 8, trailing: 14)
-    case .small: return EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12)
+    case .large: EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16)
+    case .medium: EdgeInsets(top: 8, leading: 14, bottom: 8, trailing: 14)
+    case .small: EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12)
     }
   }
 }
 
-struct HapticFeedback {
+// MARK: - HapticFeedback
+
+enum HapticFeedback {
   static func medium() {
     let generator = UIImpactFeedbackGenerator(style: .medium)
     generator.prepare()

@@ -7,18 +7,20 @@ public final class OPDSParser {
 
     public var errorDescription: String? {
       switch self {
-      case .invalidXML: return "Unable to parse OPDS XML."
-      case .invalidFeed: return "Invalid or unsupported OPDS feed format."
+      case .invalidXML: "Unable to parse OPDS XML."
+      case .invalidFeed: "Invalid or unsupported OPDS feed format."
       }
     }
   }
 
   func parseFeed(from data: Data) throws -> CatalogFeed {
-    guard let xml = TPPXML(data: data) else { throw ParserError.invalidXML }
+    guard let xml = TPPXML(data: data) else {
+      throw ParserError.invalidXML
+    }
     let feed = TPPOPDSFeed(xml: xml)
-    guard let catalogFeed = CatalogFeed(feed: feed) else { throw ParserError.invalidFeed }
+    guard let catalogFeed = CatalogFeed(feed: feed) else {
+      throw ParserError.invalidFeed
+    }
     return catalogFeed
   }
 }
-
-

@@ -8,6 +8,8 @@
 
 import Foundation
 
+// MARK: - BookButtonState
+
 enum BookButtonState: Equatable {
   case canBorrow
   case canHold
@@ -26,7 +28,7 @@ enum BookButtonState: Equatable {
 extension BookButtonState {
   func buttonTypes(book: TPPBook, previewEnabled: Bool = true) -> [BookButtonType] {
     var buttons = [BookButtonType]()
-  
+
     switch self {
     case .canBorrow:
       buttons.append(.get)
@@ -51,7 +53,8 @@ extension BookButtonState {
       }
     case .downloadNeeded:
       if let authDef = TPPUserAccount.sharedAccount().authDefinition,
-         authDef.needsAuth || book.defaultAcquisitionIfOpenAccess != nil {
+         authDef.needsAuth || book.defaultAcquisitionIfOpenAccess != nil
+      {
         buttons = [.download, .return]
       } else {
         buttons = [.download, .remove]
@@ -68,7 +71,8 @@ extension BookButtonState {
 
       if let authDef = TPPUserAccount.sharedAccount().authDefinition,
          authDef.needsAuth ||
-          book.defaultAcquisitionIfOpenAccess != nil {
+         book.defaultAcquisitionIfOpenAccess != nil
+      {
         buttons.append(.return)
       } else {
         buttons.append(.remove)
@@ -91,23 +95,25 @@ extension BookButtonState {
 
     return buttons
   }
-  
+
   private func isHoldReady(book: TPPBook) -> Bool {
-    guard let availability = book.defaultAcquisition?.availability else { return false }
-    
+    guard let availability = book.defaultAcquisition?.availability else {
+      return false
+    }
+
     var isReady = false
     availability.matchUnavailable { _ in
       isReady = false
-    } limited: { _ in  
+    } limited: { _ in
       isReady = false
     } unlimited: { _ in
-      isReady = false  
+      isReady = false
     } reserved: { _ in
-      isReady = false  // Still waiting in queue
+      isReady = false // Still waiting in queue
     } ready: { _ in
-      isReady = true   // Hold is ready to borrow!
+      isReady = true // Hold is ready to borrow!
     }
-    
+
     return isReady
   }
 }
@@ -118,10 +124,13 @@ extension BookButtonState {
     switch bookState {
     case .unregistered, .holding:
       guard let buttonState = Self.stateForAvailability(book.defaultAcquisition?.availability) else {
-        TPPErrorLogger.logError(withCode: .noURL, summary: "Unable to determine BookButtonsViewState because no Availability was provided")
+        TPPErrorLogger.logError(
+          withCode: .noURL,
+          summary: "Unable to determine BookButtonsViewState because no Availability was provided"
+        )
         return nil
       }
-      
+
       self = buttonState
     case .downloadNeeded:
       #if LCP
@@ -167,7 +176,7 @@ extension BookButtonState {
     } reserved: { _ in
       state = .holdingFrontOfQueue
     } ready: { _ in
-      state = .canBorrow  // Hold is ready, user can borrow
+      state = .canBorrow // Hold is ready, user can borrow
     }
 
     return state
@@ -178,13 +187,14 @@ extension TPPBook {
   func supportsDeletion(for state: BookButtonState) -> Bool {
     var fullfillmentRequired = false
     #if FEATURE_DRM_CONNECTOR
-      fullfillmentRequired = state == .holding && self.revokeURL != nil
+    fullfillmentRequired = state == .holding && revokeURL != nil
     #endif
-    
-    let hasFullfillmentId = TPPBookRegistry.shared.fulfillmentId(forIdentifier: self.identifier) != nil
-    let isFullfiliable = !(hasFullfillmentId && fullfillmentRequired) && self.revokeURL != nil
-    let needsAuthentication = self.defaultAcquisitionIfOpenAccess == nil && TPPUserAccount.sharedAccount().authDefinition?.needsAuth ?? false
-    
+
+    let hasFullfillmentId = TPPBookRegistry.shared.fulfillmentId(forIdentifier: identifier) != nil
+    let isFullfiliable = !(hasFullfillmentId && fullfillmentRequired) && revokeURL != nil
+    let needsAuthentication = defaultAcquisitionIfOpenAccess == nil && TPPUserAccount.sharedAccount().authDefinition?
+      .needsAuth ?? false
+
     return isFullfiliable && !needsAuthentication
   }
 }

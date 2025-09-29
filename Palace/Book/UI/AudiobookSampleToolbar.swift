@@ -6,8 +6,10 @@
 //  Copyright © 2022 The Palace Project. All rights reserved.
 //
 
-import SwiftUI
 import PalaceUIKit
+import SwiftUI
+
+// MARK: - AudiobookSampleToolbar
 
 struct AudiobookSampleToolbar: View {
   typealias Images = ImageProviders.AudiobookSampleToolbar
@@ -23,7 +25,9 @@ struct AudiobookSampleToolbar: View {
 
   init?(book: TPPBook) {
     self.book = book
-    guard let sample = book.sample as? AudiobookSample else { return nil }
+    guard let sample = book.sample as? AudiobookSample else {
+      return nil
+    }
     player = AudiobookSamplePlayer(sample: sample)
     if let imageURL = book.imageThumbnailURL ?? book.imageURL {
       imageLoader.loadImage(url: imageURL)
@@ -39,7 +43,7 @@ struct AudiobookSampleToolbar: View {
     }
     .frame(height: toolbarHeight)
     .padding(toolbarPadding)
-    .background(Color.init(.lightGray))
+    .background(Color(.lightGray))
     .onDisappear {
       player.pauseAudiobook()
     }
@@ -127,8 +131,9 @@ struct AudiobookSampleToolbar: View {
   }
 }
 
-@objc class AudiobookSampleToolbarWrapper: NSObject {
+// MARK: - AudiobookSampleToolbarWrapper
 
+@objc class AudiobookSampleToolbarWrapper: NSObject {
   @objc static func create(book: TPPBook) -> UIViewController {
     let toolbar = AudiobookSampleToolbar(book: book)
     let hostingController = UIHostingController(rootView: toolbar)
@@ -141,7 +146,7 @@ private extension TimeInterval {
     let ti = NSInteger(self)
     let seconds = ti % 60
     let minutes = (ti / 60) % 60
-  
+
     return "\(minutes)m \(seconds)s left"
   }
 }

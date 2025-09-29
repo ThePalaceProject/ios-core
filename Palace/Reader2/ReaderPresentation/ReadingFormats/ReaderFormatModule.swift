@@ -11,25 +11,23 @@
 //
 
 import Foundation
-import UIKit
 import ReadiumShared
-
+import UIKit
 
 /// A ReaderFormatModule handles presentation of publications in a
 /// given format (eg. EPUB, CBZ).
 protocol ReaderFormatModule {
-  
   var delegate: ModuleDelegate? { get }
-  
+
   /// Returns whether the given publication is supported by this module.
   func supports(_ publication: Publication) -> Bool
 
   /// Creates the view controller to present the publication.
   @MainActor
-  func makeReaderViewController(for publication: Publication,
-                                book: TPPBook,
-                                initialLocation: Locator?,
-                                forSample: Bool) throws -> UIViewController
-  
+  func makeReaderViewController(
+    for publication: Publication,
+    book: TPPBook,
+    initialLocation: Locator?,
+    forSample: Bool
+  ) throws -> UIViewController
 }
-

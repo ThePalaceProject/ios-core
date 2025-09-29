@@ -6,10 +6,9 @@
 //  Copyright © 2023 The Palace Project. All rights reserved.
 //
 
-
-import SwiftUI
 import Combine
 import PalaceUIKit
+import SwiftUI
 
 struct NormalBookCell: View {
   @Environment(\.colorScheme) var colorScheme
@@ -35,9 +34,9 @@ struct NormalBookCell: View {
         .padding(.bottom, 5)
       }
       .frame(maxWidth: .infinity, alignment: .leading)
-      .sheet(isPresented: $showHalfSheet, onDismiss: { 
+      .sheet(isPresented: $showHalfSheet, onDismiss: {
         model.showHalfSheet = false
-        model.isManagingHold = false  // Reset managing hold state when sheet is dismissed
+        model.isManagingHold = false // Reset managing hold state when sheet is dismissed
       }) {
         HalfSheetView(
           viewModel: model,
@@ -66,15 +65,15 @@ struct NormalBookCell: View {
       .frame(width: cellHeight * 2.0 / 3.0)
   }
 
-  
-
   @ViewBuilder private var infoView: some View {
     VStack(alignment: .leading) {
       Text(model.title)
         .lineLimit(2)
         .palaceFont(size: 17)
         .fixedSize(horizontal: false, vertical: true)
-        .accessibilityLabel(model.book.defaultBookContentType == .audiobook ? "\(model.book.title). Audiobook." : model.book.title)
+        .accessibilityLabel(model.book.defaultBookContentType == .audiobook ? "\(model.book.title). Audiobook." : model
+          .book.title
+        )
       Text(model.authors)
         .palaceFont(size: 12)
     }
@@ -85,15 +84,15 @@ struct NormalBookCell: View {
   }
 
   @ViewBuilder private var buttons: some View {
-      BookButtonsView(provider: model, size: buttonSize) { type in
-        switch type {
-        case .close:
-          withAnimation(.spring()) { self.showHalfSheet = false }
-        default:
-          model.callDelegate(for: type)
-          withAnimation(.spring()) { self.showHalfSheet = model.showHalfSheet }
-        }
+    BookButtonsView(provider: model, size: buttonSize) { type in
+      switch type {
+      case .close:
+        withAnimation(.spring()) { showHalfSheet = false }
+      default:
+        model.callDelegate(for: type)
+        withAnimation(.spring()) { showHalfSheet = model.showHalfSheet }
       }
+    }
   }
 
   @ViewBuilder private var unreadImageView: some View {
@@ -106,7 +105,7 @@ struct NormalBookCell: View {
     }
     .opacity(model.showUnreadIndicator ? 1.0 : 0.0)
   }
-  
+
   @ViewBuilder var borrowedInfoView: some View {
     if model.registryState == .holding {
       holdingInfoView
@@ -114,7 +113,7 @@ struct NormalBookCell: View {
       loanTermsInfoView
     }
   }
-  
+
   @ViewBuilder var holdingInfoView: some View {
     let details = model.book.getReservationDetails()
     if details.holdPosition > 0 {

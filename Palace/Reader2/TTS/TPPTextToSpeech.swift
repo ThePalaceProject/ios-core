@@ -3,8 +3,9 @@ import Foundation
 import ReadiumNavigator
 import ReadiumShared
 
-class TPPTextToSpeech: ObservableObject {
+// MARK: - TPPTextToSpeech
 
+class TPPTextToSpeech: ObservableObject {
   private let publication: Publication
   private let navigator: Navigator
   private let synthesizer: TPPPublicationSpeechSynthesizer
@@ -101,23 +102,27 @@ class TPPTextToSpeech: ObservableObject {
   }
 }
 
-extension TPPTextToSpeech: TPPPublicationSpeechSynthesizerDelegate {
+// MARK: TPPPublicationSpeechSynthesizerDelegate
 
-  public func publicationSpeechSynthesizer(_ synthesizer: TPPPublicationSpeechSynthesizer, stateDidChange synthesizerState: TPPPublicationSpeechSynthesizer.State) {
+extension TPPTextToSpeech: TPPPublicationSpeechSynthesizerDelegate {
+  public func publicationSpeechSynthesizer(
+    _: TPPPublicationSpeechSynthesizer,
+    stateDidChange synthesizerState: TPPPublicationSpeechSynthesizer.State
+  ) {
     switch synthesizerState {
     case .stopped:
-      self.isPlaying = false
+      isPlaying = false
       playingUtterance = nil
 
     case let .playing(utterance, range: wordRange):
-      self.isPlaying = true
+      isPlaying = true
       playingUtterance = utterance.locator
       if let wordRange = wordRange {
         playingWordRangeSubject.send(wordRange)
       }
 
     case let .paused(utterance):
-      self.isPlaying = false
+      isPlaying = false
       playingUtterance = utterance.locator
     }
   }

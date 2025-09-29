@@ -10,25 +10,28 @@
 //
 
 import Foundation
-import UIKit
 import ReadiumShared
 import ReadiumStreamer
+import UIKit
+
+// MARK: - TPPR3Owner
 
 /// This class is the main root of R3 objects. It:
 /// - owns the sub-modules (library, reader, etc.)
 /// - orchestrates the communication between its sub-modules, through the
 /// modules' delegates.
 @objc public final class TPPR3Owner: NSObject {
-
-  var libraryService: LibraryService! = nil
-  var readerModule: ReaderModuleAPI! = nil
+  var libraryService: LibraryService!
+  var readerModule: ReaderModuleAPI!
 
   override init() {
     super.init()
     libraryService = LibraryService()
-    readerModule = ReaderModule(delegate: self,
-                                resourcesServer: libraryService.httpServer,
-                                bookRegistry: TPPBookRegistry.shared)
+    readerModule = ReaderModule(
+      delegate: self,
+      resourcesServer: libraryService.httpServer,
+      bookRegistry: TPPBookRegistry.shared
+    )
 
     ReadiumEnableLog(withMinimumSeverityLevel: .debug)
   }
@@ -38,10 +41,14 @@ import ReadiumStreamer
   }
 }
 
+// MARK: ModuleDelegate
+
 extension TPPR3Owner: ModuleDelegate {
-  func presentAlert(_ title: String,
-                    message: String,
-                    from viewController: UIViewController) {
+  func presentAlert(
+    _ title: String,
+    message: String,
+    from viewController: UIViewController
+  ) {
     let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
     let dismissButton = UIAlertAction(title: Strings.Generic.ok, style: .cancel)
     alert.addAction(dismissButton)
@@ -49,7 +56,9 @@ extension TPPR3Owner: ModuleDelegate {
   }
 
   func presentError(_ error: Error?, from viewController: UIViewController) {
-    guard let error = error else { return }
+    guard let error = error else {
+      return
+    }
     presentAlert(
       Strings.Generic.error,
       message: error.localizedDescription,

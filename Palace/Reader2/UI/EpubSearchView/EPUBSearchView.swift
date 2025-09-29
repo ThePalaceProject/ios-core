@@ -6,11 +6,11 @@
 //  Copyright © 2023 The Palace Project. All rights reserved.
 //
 
-import SwiftUI
 import Combine
-import ReadiumShared
-import ReadiumNavigator
 import PalaceUIKit
+import ReadiumNavigator
+import ReadiumShared
+import SwiftUI
 
 struct EPUBSearchView: View {
   @ObservedObject var viewModel: EPUBSearchViewModel
@@ -113,7 +113,8 @@ struct EPUBSearchView: View {
 
   private func shouldFetchMoreResults(for locator: Locator) -> Bool {
     if let lastSection = viewModel.sections.last,
-       let lastLocator = lastSection.locators.last {
+       let lastLocator = lastSection.locators.last
+    {
       return locator.href.isEquivalentTo(lastLocator.href)
     }
     return false
@@ -129,7 +130,7 @@ struct EPUBSearchView: View {
 
   @ViewBuilder private var footer: some View {
     switch viewModel.state {
-    case .failure(let error):
+    case let .failure(error):
       Text("\(Strings.Generic.error.capitalized) \(error.localizedDescription)")
     default:
       EmptyView()
@@ -158,8 +159,8 @@ struct EPUBSearchView: View {
     } else {
       return VStack {
         Text(text.before ?? "") +
-        Text(text.highlight ?? "").foregroundColor(Color.red).fontWeight(.medium) +
-        Text(text.after ?? "")
+          Text(text.highlight ?? "").foregroundColor(Color.red).fontWeight(.medium) +
+          Text(text.after ?? "")
       }
       .palaceFont(.body)
       .onTapGesture {

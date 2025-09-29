@@ -1,5 +1,7 @@
 import SwiftUI
 
+// MARK: - AdaptiveShadowModifier
+
 struct AdaptiveShadowModifier: ViewModifier {
   @Environment(\.colorScheme) var colorScheme
   var radius: CGFloat
@@ -13,9 +15,11 @@ struct AdaptiveShadowModifier: ViewModifier {
 
 extension View {
   func adaptiveShadow(radius: CGFloat = 10) -> some View {
-    self.modifier(AdaptiveShadowModifier(radius: radius))
+    modifier(AdaptiveShadowModifier(radius: radius))
   }
 }
+
+// MARK: - AdaptiveShadowLightModifier
 
 struct AdaptiveShadowLightModifier: ViewModifier {
   @Environment(\.colorScheme) var colorScheme
@@ -29,6 +33,6 @@ struct AdaptiveShadowLightModifier: ViewModifier {
 
 extension View {
   func adaptiveShadowLight(radius: CGFloat = 1.0) -> some View {
-    self.modifier(AdaptiveShadowLightModifier(radius: radius))
+    modifier(AdaptiveShadowLightModifier(radius: radius))
   }
 }

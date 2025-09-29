@@ -1,7 +1,6 @@
 import UIKit
 
 final class TPPContentBadgeImageView: UIImageView {
-
   @objc enum TPPBadgeImage: Int {
     case audiobook
     case ebook
@@ -9,7 +8,7 @@ final class TPPContentBadgeImageView: UIImageView {
     func assetName() -> String {
       switch self {
       case .audiobook:
-        return "AudiobookBadge"
+        "AudiobookBadge"
       case .ebook:
         fatalError("No asset yet")
       }
@@ -21,7 +20,8 @@ final class TPPContentBadgeImageView: UIImageView {
     setupView()
   }
 
-  required init?(coder aDecoder: NSCoder) {
+  @available(*, unavailable)
+  required init?(coder _: NSCoder) {
     fatalError("init(coder:) has not been implemented")
   }
 

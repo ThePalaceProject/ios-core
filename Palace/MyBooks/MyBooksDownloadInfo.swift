@@ -10,7 +10,6 @@ import Foundation
 import UIKit
 
 @objc class MyBooksDownloadInfo: NSObject {
-  
   @objc enum MyBooksDownloadRightsManagement: Int {
     case unknown
     case none
@@ -19,41 +18,56 @@ import UIKit
     case overdriveManifestJSON
     case lcp
   }
-  
+
   var downloadProgress: CGFloat
   var downloadTask: URLSessionDownloadTask
   @objc var rightsManagement: MyBooksDownloadRightsManagement
   var bearerToken: MyBooksSimplifiedBearerToken?
-  
-  init(downloadProgress: CGFloat, downloadTask: URLSessionDownloadTask, rightsManagement: MyBooksDownloadRightsManagement, bearerToken: MyBooksSimplifiedBearerToken? = nil) {
+
+  init(
+    downloadProgress: CGFloat,
+    downloadTask: URLSessionDownloadTask,
+    rightsManagement: MyBooksDownloadRightsManagement,
+    bearerToken: MyBooksSimplifiedBearerToken? = nil
+  ) {
     self.downloadProgress = downloadProgress
     self.downloadTask = downloadTask
     self.rightsManagement = rightsManagement
     self.bearerToken = bearerToken
   }
-  
+
   func withDownloadProgress(_ downloadProgress: CGFloat) -> MyBooksDownloadInfo {
-    return MyBooksDownloadInfo(downloadProgress: downloadProgress, downloadTask: self.downloadTask, rightsManagement: self.rightsManagement, bearerToken: self.bearerToken)
+    MyBooksDownloadInfo(
+      downloadProgress: downloadProgress,
+      downloadTask: downloadTask,
+      rightsManagement: rightsManagement,
+      bearerToken: bearerToken
+    )
   }
-  
+
   func withRightsManagement(_ rightsManagement: MyBooksDownloadRightsManagement) -> MyBooksDownloadInfo {
-    return MyBooksDownloadInfo(downloadProgress: self.downloadProgress, downloadTask: self.downloadTask, rightsManagement: rightsManagement, bearerToken: self.bearerToken)
+    MyBooksDownloadInfo(
+      downloadProgress: downloadProgress,
+      downloadTask: downloadTask,
+      rightsManagement: rightsManagement,
+      bearerToken: bearerToken
+    )
   }
-  
+
   var rightsManagementString: String {
     switch rightsManagement {
     case .unknown:
-      return "Unknown"
+      "Unknown"
     case .none:
-      return "None"
+      "None"
     case .adobe:
-      return "Adobe"
+      "Adobe"
     case .simplifiedBearerTokenJSON:
-      return "SimplifiedBearerTokenJSON"
+      "SimplifiedBearerTokenJSON"
     case .overdriveManifestJSON:
-      return "OverdriveManifestJSON"
+      "OverdriveManifestJSON"
     case .lcp:
-      return "TPPMyBooksDownloadRightsManagementLCP"
+      "TPPMyBooksDownloadRightsManagementLCP"
     }
   }
 }

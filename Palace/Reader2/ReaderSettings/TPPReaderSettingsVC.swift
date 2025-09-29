@@ -6,16 +6,20 @@
 //  Copyright © 2022 The Palace Project. All rights reserved.
 //
 
-import UIKit
-import SwiftUI
 import ReadiumNavigator
 import ReadiumShared
+import SwiftUI
+import UIKit
+
+// MARK: - TPPReaderSettingsDelegate
 
 protocol TPPReaderSettingsDelegate: AnyObject {
   func getUserPreferences() -> EPUBPreferences
   func updateUserPreferencesStyle(for appearance: EPUBPreferences)
   func setUIColor(for appearance: EPUBPreferences)
 }
+
+// MARK: - TPPReaderSettingsVC
 
 class TPPReaderSettingsVC: UIViewController {
   static func makeSwiftUIView(preferences: EPUBPreferences, delegate: TPPReaderSettingsDelegate) -> UIViewController {

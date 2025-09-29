@@ -13,19 +13,17 @@ import ReadiumShared
 import ReadiumZIPFoundation
 
 final class AdobeDRMContentProtection: ContentProtection, Loggable {
-
   func open(
     asset: Asset,
-    credentials: String?,
-    allowUserInteraction: Bool,
-    sender: Any?
+    credentials _: String?,
+    allowUserInteraction _: Bool,
+    sender _: Any?
   ) async -> Result<ContentProtectionAsset, ContentProtectionOpenError> {
-
     guard asset.format.conformsTo(.adept) else {
       return .failure(.assetNotSupported(DebugError("The asset is not protected by Adobe DRM")))
     }
 
-    guard case .container(let container) = asset else {
+    guard case let .container(container) = asset else {
       return .failure(.assetNotSupported(DebugError("Only local file assets are supported with Adobe DRM")))
     }
 
@@ -64,15 +62,14 @@ extension Container {
   }
 }
 
-
 private extension AdobeDRMContentProtection {
-
   private func parseEncryptionData(in container: Container) async -> Result<Data, Error> {
     let pathsToTry = ["META-INF/encryption.xml"]
 
     for path in pathsToTry {
       guard let resourceURL = container.url(forEntryPath: path),
-            let resource = container[resourceURL] else {
+            let resource = container[resourceURL]
+      else {
         log(.debug, "Failed to resolve resource at path: \(path)")
         continue
       }
@@ -86,11 +83,11 @@ private extension AdobeDRMContentProtection {
   }
 }
 
-
 extension AdobeDRMContainer: Container {
-
   public var sourceURL: AbsoluteURL? {
-    guard let fileURL else { return nil }
+    guard let fileURL else {
+      return nil
+    }
     return FileURL(url: fileURL)
   }
 
@@ -152,6 +149,7 @@ extension AdobeDRMContainer: Container {
   }
 
   // MARK: - Helpers
+
   /// Retrieves encrypted data for the resource at a given path.
   private func retrieveData(for path: String) async throws -> Data {
     guard let rawData = try await readDataFromArchive(at: path) else {
@@ -161,11 +159,13 @@ extension AdobeDRMContainer: Container {
   }
 
   private func listPathsFromArchive() -> [String]? {
-    return ["META-INF/container.xml", "OEBPS/content.opf"]
+    ["META-INF/container.xml", "OEBPS/content.opf"]
   }
 
   private func readDataFromArchive(at path: String) async throws -> Data? {
-    guard let fileURL else { return nil }
+    guard let fileURL else {
+      return nil
+    }
     let archive = try await Archive(url: fileURL, accessMode: .read)
 
     guard let entry = try await archive.get(path) else {
@@ -181,7 +181,6 @@ extension AdobeDRMContainer: Container {
     }
   }
 }
-
 
 /// A DRM-enabled Resource that decrypts (decodes) its data once and then serves
 /// range requests (to support pagination) using the cached decrypted data.
@@ -251,8 +250,8 @@ public actor DRMDataResource: Resource {
   }
 }
 
-extension ResourceProperties {
-  public var length: UInt64? {
+public extension ResourceProperties {
+  var length: UInt64? {
     get { self["length"] }
     set { self["length"] = newValue }
   }

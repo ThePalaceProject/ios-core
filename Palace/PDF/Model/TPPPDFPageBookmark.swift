@@ -13,18 +13,18 @@ import Foundation
   let type: String
   let page: Int
   var annotationID: String?
-  
+
   enum CodingKeys: String, CodingKey {
     case type = "@type"
     case page
   }
-  
+
   init(page: Int, annotationID: String? = nil) {
-    self.type = Types.locatorPage.rawValue
+    type = Types.locatorPage.rawValue
     self.page = page
     self.annotationID = annotationID
   }
-  
+
   enum Types: String {
     case locatorPage = "LocatorPage"
   }

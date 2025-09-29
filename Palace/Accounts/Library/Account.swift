@@ -1,5 +1,7 @@
-private let userAboveAgeKey              = "TPPSettingsUserAboveAgeKey"
-private let accountSyncEnabledKey        = "TPPAccountSyncEnabledKey"
+private let userAboveAgeKey = "TPPSettingsUserAboveAgeKey"
+private let accountSyncEnabledKey = "TPPAccountSyncEnabledKey"
+
+// MARK: - OPDS2SamlIDP
 
 /// This class is used for mapping details of SAML Identity Provider received in authentication document
 @objcMembers
@@ -14,27 +16,34 @@ class OPDS2SamlIDP: NSObject, Codable {
   var idpDescription: String? { descriptions?["en"] }
 
   init?(opdsLink: OPDS2Link) {
-    guard let url = URL(string: opdsLink.href) else { return nil }
+    guard let url = URL(string: opdsLink.href) else {
+      return nil
+    }
     self.url = url
-    self.displayNames = opdsLink.displayNames?.reduce(into: [String: String]()) { $0[$1.language] = $1.value }
-    self.descriptions = opdsLink.descriptions?.reduce(into: [String: String]()) { $0[$1.language] = $1.value }
+    displayNames = opdsLink.displayNames?.reduce(into: [String: String]()) { $0[$1.language] = $1.value }
+    descriptions = opdsLink.descriptions?.reduce(into: [String: String]()) { $0[$1.language] = $1.value }
   }
 }
+
+// MARK: - TPPSignedInStateProvider
 
 @objc protocol TPPSignedInStateProvider {
   func isSignedIn() -> Bool
 }
 
+// MARK: - AccountLogoDelegate
+
 protocol AccountLogoDelegate: AnyObject {
   func logoDidUpdate(in account: Account, to newLogo: UIImage)
 }
 
-// MARK: AccountDetails
+// MARK: - AccountDetails
+
 // Extra data that gets loaded from an OPDS2AuthenticationDocument,
 @objcMembers final class AccountDetails: NSObject {
   enum AuthType: String, Codable {
     case basic = "http://opds-spec.org/auth/basic"
-    case coppa = "http://librarysimplified.org/terms/authentication/gate/coppa" //used for Simplified collection
+    case coppa = "http://librarysimplified.org/terms/authentication/gate/coppa" // used for Simplified collection
     case anonymous = "http://librarysimplified.org/rel/auth/anonymous"
     case oauthIntermediary = "http://librarysimplified.org/authtype/OAuth-with-intermediary"
     case saml = "http://librarysimplified.org/authtype/SAML-2.0"
@@ -45,17 +54,17 @@ protocol AccountLogoDelegate: AnyObject {
   @objc(AccountDetailsAuthentication)
   @objcMembers
   class Authentication: NSObject, Codable, NSCoding {
-    let authType:AuthType
-    let authPasscodeLength:UInt
-    let patronIDKeyboard:LoginKeyboard
-    let pinKeyboard:LoginKeyboard
-    let patronIDLabel:String?
-    let pinLabel:String?
-    let supportsBarcodeScanner:Bool
-    let supportsBarcodeDisplay:Bool
-    let coppaUnderUrl:URL?
-    let coppaOverUrl:URL?
-    let oauthIntermediaryUrl:URL?
+    let authType: AuthType
+    let authPasscodeLength: UInt
+    let patronIDKeyboard: LoginKeyboard
+    let pinKeyboard: LoginKeyboard
+    let patronIDLabel: String?
+    let pinLabel: String?
+    let supportsBarcodeScanner: Bool
+    let supportsBarcodeDisplay: Bool
+    let coppaUnderUrl: URL?
+    let coppaOverUrl: URL?
+    let oauthIntermediaryUrl: URL?
     let tokenURL: URL?
     let methodDescription: String?
 
@@ -65,8 +74,8 @@ protocol AccountLogoDelegate: AnyObject {
       let authType = AuthType(rawValue: auth.type) ?? .none
       self.authType = authType
       authPasscodeLength = auth.inputs?.password.maximumLength ?? 99
-      patronIDKeyboard = LoginKeyboard.init(auth.inputs?.login.keyboard) ?? .standard
-      pinKeyboard = LoginKeyboard.init(auth.inputs?.password.keyboard) ?? .standard
+      patronIDKeyboard = LoginKeyboard(auth.inputs?.login.keyboard) ?? .standard
+      pinKeyboard = LoginKeyboard(auth.inputs?.password.keyboard) ?? .standard
       patronIDLabel = auth.labels?.login
       pinLabel = auth.labels?.password
       methodDescription = auth.description
@@ -75,14 +84,20 @@ protocol AccountLogoDelegate: AnyObject {
 
       switch authType {
       case .coppa:
-        coppaUnderUrl = URL.init(string: auth.links?.first(where: { $0.rel == "http://librarysimplified.org/terms/rel/authentication/restriction-not-met" })?.href ?? "")
-        coppaOverUrl = URL.init(string: auth.links?.first(where: { $0.rel == "http://librarysimplified.org/terms/rel/authentication/restriction-met" })?.href ?? "")
+        coppaUnderUrl = URL(string: auth.links?
+          .first(where: { $0.rel == "http://librarysimplified.org/terms/rel/authentication/restriction-not-met" })?
+          .href ?? ""
+        )
+        coppaOverUrl = URL(string: auth.links?
+          .first(where: { $0.rel == "http://librarysimplified.org/terms/rel/authentication/restriction-met" })?
+          .href ?? ""
+        )
         oauthIntermediaryUrl = nil
         samlIdps = nil
         tokenURL = nil
 
       case .oauthIntermediary:
-        oauthIntermediaryUrl = URL.init(string: auth.links?.first(where: { $0.rel == "authenticate" })?.href ?? "")
+        oauthIntermediaryUrl = URL(string: auth.links?.first(where: { $0.rel == "authenticate" })?.href ?? "")
         coppaUnderUrl = nil
         coppaOverUrl = nil
         samlIdps = nil
@@ -102,12 +117,11 @@ protocol AccountLogoDelegate: AnyObject {
         samlIdps = nil
         tokenURL = nil
       case .token:
-        tokenURL = URL.init(string: auth.links?.first(where: { $0.rel == "authenticate" })?.href ?? "")
+        tokenURL = URL(string: auth.links?.first(where: { $0.rel == "authenticate" })?.href ?? "")
         oauthIntermediaryUrl = nil
         coppaUnderUrl = nil
         coppaOverUrl = nil
         samlIdps = nil
-
       }
     }
 
@@ -146,14 +160,20 @@ protocol AccountLogoDelegate: AnyObject {
 
     func encode(with coder: NSCoder) {
       let jsonEncoder = JSONEncoder()
-      guard let data = try? jsonEncoder.encode(self) else { return }
+      guard let data = try? jsonEncoder.encode(self) else {
+        return
+      }
       coder.encode(data as NSData)
     }
 
     required init?(coder: NSCoder) {
-      guard let data = coder.decodeData() else { return nil }
+      guard let data = coder.decodeData() else {
+        return nil
+      }
       let jsonDecoder = JSONDecoder()
-      guard let authentication = try? jsonDecoder.decode(Authentication.self, from: data) else { return nil }
+      guard let authentication = try? jsonDecoder.decode(Authentication.self, from: data) else {
+        return nil
+      }
 
       authType = authentication.authType
       authPasscodeLength = authentication.authPasscodeLength
@@ -172,54 +192,59 @@ protocol AccountLogoDelegate: AnyObject {
     }
   }
 
-  let defaults:UserDefaults
-  let uuid:String
-  let supportsSimplyESync:Bool
-  let supportsCardCreator:Bool
-  let supportsReservations:Bool
+  let defaults: UserDefaults
+  let uuid: String
+  let supportsSimplyESync: Bool
+  let supportsCardCreator: Bool
+  let supportsReservations: Bool
   let auths: [Authentication]
 
-  let mainColor:String?
-  let userProfileUrl:String?
-  let signUpUrl:URL?
-  let loansUrl:URL?
+  let mainColor: String?
+  let userProfileUrl: String?
+  let signUpUrl: URL?
+  let loansUrl: URL?
   var defaultAuth: Authentication? {
-    guard auths.count > 1 else { return auths.first }
+    guard auths.count > 1 else {
+      return auths.first
+    }
     return auths.first(where: { !$0.catalogRequiresAuthentication }) ?? auths.first
   }
+
   var needsAgeCheck: Bool {
     // this will tell if any authentication method requires age check
-    return auths.contains(where: { $0.needsAgeCheck })
+    auths.contains(where: \.needsAgeCheck)
   }
 
-  fileprivate var urlAnnotations:URL?
-  fileprivate var urlAcknowledgements:URL?
-  fileprivate var urlContentLicenses:URL?
-  fileprivate var urlEULA:URL?
-  fileprivate var urlPrivacyPolicy:URL?
+  fileprivate var urlAnnotations: URL?
+  fileprivate var urlAcknowledgements: URL?
+  fileprivate var urlContentLicenses: URL?
+  fileprivate var urlEULA: URL?
+  fileprivate var urlPrivacyPolicy: URL?
 
-  var eulaIsAccepted:Bool {
+  var eulaIsAccepted: Bool {
     get {
-      return getAccountDictionaryKey(TPPSettings.userHasAcceptedEULAKey) as? Bool ?? false
-
+      getAccountDictionaryKey(TPPSettings.userHasAcceptedEULAKey) as? Bool ?? false
     }
     set {
-      setAccountDictionaryKey(TPPSettings.userHasAcceptedEULAKey,
-                              toValue: newValue as AnyObject)
+      setAccountDictionaryKey(
+        TPPSettings.userHasAcceptedEULAKey,
+        toValue: newValue as AnyObject
+      )
     }
   }
-  var syncPermissionGranted:Bool {
+
+  var syncPermissionGranted: Bool {
     get {
-      return getAccountDictionaryKey(accountSyncEnabledKey) as? Bool ?? true
+      getAccountDictionaryKey(accountSyncEnabledKey) as? Bool ?? true
     }
     set {
       setAccountDictionaryKey(accountSyncEnabledKey, toValue: newValue as AnyObject)
     }
   }
-  var userAboveAgeLimit:Bool {
-    get {
-      return getAccountDictionaryKey(userAboveAgeKey) as? Bool ?? false
 
+  var userAboveAgeLimit: Bool {
+    get {
+      getAccountDictionaryKey(userAboveAgeKey) as? Bool ?? false
     }
     set {
       setAccountDictionaryKey(userAboveAgeKey, toValue: newValue as AnyObject)
@@ -230,9 +255,9 @@ protocol AccountLogoDelegate: AnyObject {
     defaults = .standard
     self.uuid = uuid
 
-    auths = authenticationDocument.authentication?.map({ (opdsAuth) -> Authentication in
-      return Authentication.init(auth: opdsAuth)
-    }) ?? []
+    auths = authenticationDocument.authentication?.map { opdsAuth -> Authentication in
+      return Authentication(auth: opdsAuth)
+    } ?? []
 
     //    // TODO: Code below will remove all oauth only auth methods, this behaviour wasn't tested though
     //    // and may produce undefined results in viewcontrollers that do present auth methods if none are available
@@ -240,9 +265,13 @@ protocol AccountLogoDelegate: AnyObject {
     //      return Authentication.init(auth: opdsAuth)
     //    }).filter { $0.authType != .oauthIntermediary } ?? []
 
-    supportsReservations = authenticationDocument.features?.disabled?.contains("https://librarysimplified.org/rel/policy/reservations") != true
-    userProfileUrl = authenticationDocument.links?.first(where: { $0.rel == "http://librarysimplified.org/terms/rel/user-profile" })?.href
-    loansUrl = URL.init(string: authenticationDocument.links?.first(where: { $0.rel == "http://opds-spec.org/shelf" })?.href ?? "")
+    supportsReservations = authenticationDocument.features?.disabled?
+      .contains("https://librarysimplified.org/rel/policy/reservations") != true
+    userProfileUrl = authenticationDocument.links?
+      .first(where: { $0.rel == "http://librarysimplified.org/terms/rel/user-profile" })?.href
+    loansUrl = URL(string: authenticationDocument.links?.first(where: { $0.rel == "http://opds-spec.org/shelf" })?
+      .href ?? ""
+    )
     supportsSimplyESync = userProfileUrl != nil
 
     mainColor = authenticationDocument.colorScheme
@@ -268,27 +297,31 @@ protocol AccountLogoDelegate: AnyObject {
     super.init()
 
     if let urlString = authenticationDocument.links?.first(where: { $0.rel == "privacy-policy" })?.href,
-       let url = URL(string: urlString) {
+       let url = URL(string: urlString)
+    {
       setURL(url, forLicense: .privacyPolicy)
     }
 
     if let urlString = authenticationDocument.links?.first(where: { $0.rel == "terms-of-service" })?.href,
-       let url = URL(string: urlString) {
+       let url = URL(string: urlString)
+    {
       setURL(url, forLicense: .eula)
     }
 
     if let urlString = authenticationDocument.links?.first(where: { $0.rel == "license" })?.href,
-       let url = URL(string: urlString) {
+       let url = URL(string: urlString)
+    {
       setURL(url, forLicense: .contentLicenses)
     }
 
     if let urlString = authenticationDocument.links?.first(where: { $0.rel == "copyright" })?.href,
-       let url = URL(string: urlString) {
+       let url = URL(string: urlString)
+    {
       setURL(url, forLicense: .acknowledgements)
     }
   }
 
-  func setURL(_ URL: URL, forLicense urlType: URLType) -> Void {
+  func setURL(_ URL: URL, forLicense urlType: URLType) {
     switch urlType {
     case .acknowledgements:
       urlAcknowledgements = URL
@@ -314,81 +347,103 @@ protocol AccountLogoDelegate: AnyObject {
       if let url = urlAcknowledgements {
         return url
       } else {
-        guard let urlString = getAccountDictionaryKey("urlAcknowledgements") as? String else { return nil }
-        guard let result = URL(string: urlString) else { return nil }
+        guard let urlString = getAccountDictionaryKey("urlAcknowledgements") as? String else {
+          return nil
+        }
+        guard let result = URL(string: urlString) else {
+          return nil
+        }
         return result
       }
     case .contentLicenses:
       if let url = urlContentLicenses {
         return url
       } else {
-        guard let urlString = getAccountDictionaryKey("urlContentLicenses") as? String else { return nil }
-        guard let result = URL(string: urlString) else { return nil }
+        guard let urlString = getAccountDictionaryKey("urlContentLicenses") as? String else {
+          return nil
+        }
+        guard let result = URL(string: urlString) else {
+          return nil
+        }
         return result
       }
     case .eula:
       if let url = urlEULA {
         return url
       } else {
-        guard let urlString = getAccountDictionaryKey("urlEULA") as? String else { return nil }
-        guard let result = URL(string: urlString) else { return nil }
+        guard let urlString = getAccountDictionaryKey("urlEULA") as? String else {
+          return nil
+        }
+        guard let result = URL(string: urlString) else {
+          return nil
+        }
         return result
       }
     case .privacyPolicy:
       if let url = urlPrivacyPolicy {
         return url
       } else {
-        guard let urlString = getAccountDictionaryKey("urlPrivacyPolicy") as? String else { return nil }
-        guard let result = URL(string: urlString) else { return nil }
+        guard let urlString = getAccountDictionaryKey("urlPrivacyPolicy") as? String else {
+          return nil
+        }
+        guard let result = URL(string: urlString) else {
+          return nil
+        }
         return result
       }
     case .annotations:
       if let url = urlAnnotations {
         return url
       } else {
-        guard let urlString = getAccountDictionaryKey("urlAnnotations") as? String else { return nil }
-        guard let result = URL(string: urlString) else { return nil }
+        guard let urlString = getAccountDictionaryKey("urlAnnotations") as? String else {
+          return nil
+        }
+        guard let result = URL(string: urlString) else {
+          return nil
+        }
         return result
       }
     }
   }
 
   fileprivate func setAccountDictionaryKey(_ key: String, toValue value: AnyObject) {
-    if var savedDict = defaults.value(forKey: self.uuid) as? [String: AnyObject] {
+    if var savedDict = defaults.value(forKey: uuid) as? [String: AnyObject] {
       savedDict[key] = value
-      defaults.set(savedDict, forKey: self.uuid)
+      defaults.set(savedDict, forKey: uuid)
     } else {
-      defaults.set([key:value], forKey: self.uuid)
+      defaults.set([key: value], forKey: uuid)
     }
   }
 
   fileprivate func getAccountDictionaryKey(_ key: String) -> AnyObject? {
-    let savedDict = defaults.value(forKey: self.uuid) as? [String: AnyObject]
-    guard let result = savedDict?[key] else { return nil }
+    let savedDict = defaults.value(forKey: uuid) as? [String: AnyObject]
+    guard let result = savedDict?[key] else {
+      return nil
+    }
     return result
   }
 }
 
-// MARK: Account
+// MARK: - Account
+
 /// Object representing one library account in the app. Patrons may
 /// choose to sign up for multiple Accounts.
-@objcMembers final class Account: NSObject
-{
-  var logo:UIImage
-  let uuid:String
-  let name:String
-  let subtitle:String?
-  var supportEmail: EmailAddress? = nil
-  var supportURL:URL? = nil
-  let catalogUrl:String?
+@objcMembers final class Account: NSObject {
+  var logo: UIImage
+  let uuid: String
+  let name: String
+  let subtitle: String?
+  var supportEmail: EmailAddress?
+  var supportURL: URL?
+  let catalogUrl: String?
   var details: AccountDetails?
   var homePageUrl: String?
   lazy var hasSupportOption = { supportEmail != nil || supportURL != nil }()
   weak var logoDelegate: AccountLogoDelegate?
   var hasUpdatedToken: Bool = false
 
-  let authenticationDocumentUrl:String?
-  var authenticationDocument:OPDS2AuthenticationDocument? {
+  let authenticationDocumentUrl: String?
+  var authenticationDocument: OPDS2AuthenticationDocument? {
     didSet {
       guard let authenticationDocument = authenticationDocument else {
         return
@@ -396,12 +451,13 @@ protocol AccountLogoDelegate: AnyObject {
       details = AccountDetails(authenticationDocument: authenticationDocument, uuid: uuid)
     }
   }
-  var logoUrl: URL? = nil
+
+  var logoUrl: URL?
 
   let imageCache: ImageCacheType
 
   var loansUrl: URL? {
-    return details?.loansUrl
+    details?.loansUrl
   }
 
   init(publication: OPDS2Publication, imageCache: ImageCacheType) {
@@ -416,7 +472,8 @@ protocol AccountLogoDelegate: AnyObject {
         supportURL = URL(string: link)
       }
     }
-    authenticationDocumentUrl = publication.links.first(where: { $0.type == "application/vnd.opds.authentication.v1.0+json" })?.href
+    authenticationDocumentUrl = publication.links
+      .first(where: { $0.type == "application/vnd.opds.authentication.v1.0+json" })?.href
     logo = UIImage(named: "LibraryLogoMagic")!
     homePageUrl = publication.links.first(where: { $0.rel == "alternate" })?.href
     logoUrl = publication.thumbnailURL
@@ -431,20 +488,22 @@ protocol AccountLogoDelegate: AnyObject {
   /// No guarantees are being made about whether this is called on the main
   /// thread or not. This closure is not retained by `self`.
   @objc(loadAuthenticationDocumentUsingSignedInStateProvider:completion:)
-  func loadAuthenticationDocument(using signedInStateProvider: TPPSignedInStateProvider? = nil, completion: @escaping (Bool) -> ()) {
+  func loadAuthenticationDocument(using _: TPPSignedInStateProvider? = nil, completion: @escaping (Bool) -> Void) {
     Log.debug(#function, "Entering...")
     guard let urlString = authenticationDocumentUrl else {
       TPPErrorLogger.logError(
         withCode: .noURL,
         summary: "Failed to load authentication document because its URL is invalid",
-        metadata: ["self.uuid": uuid,
-                   "urlString": authenticationDocumentUrl ?? "N/A"]
+        metadata: [
+          "self.uuid": uuid,
+          "urlString": authenticationDocumentUrl ?? "N/A",
+        ]
       )
       completion(false)
       return
     }
 
-    fetchAuthenticationDocument(urlString) { (document) in
+    fetchAuthenticationDocument(urlString) { document in
       guard let authenticationDocument = document else {
         completion(false)
         return
@@ -464,15 +523,20 @@ protocol AccountLogoDelegate: AnyObject {
     }
   }
 
-  private func fetchAuthenticationDocument(_ urlString: String, completion: @escaping (OPDS2AuthenticationDocument?) -> Void) {
+  private func fetchAuthenticationDocument(
+    _ urlString: String,
+    completion: @escaping (OPDS2AuthenticationDocument?) -> Void
+  ) {
     var document: OPDS2AuthenticationDocument?
 
     guard let url = URL(string: urlString) else {
       TPPErrorLogger.logError(
         withCode: .noURL,
         summary: "Failed to load authentication document because its URL is invalid",
-        metadata: ["self.uuid": uuid,
-                   "urlString": urlString]
+        metadata: [
+          "self.uuid": uuid,
+          "urlString": urlString,
+        ]
       )
       completion(document)
       return
@@ -480,11 +544,11 @@ protocol AccountLogoDelegate: AnyObject {
 
     TPPNetworkExecutor.shared.GET(url, useTokenIfAvailable: false) { result in
       switch result {
-      case .success(let serverData, _):
+      case let .success(serverData, _):
         do {
           document = try OPDS2AuthenticationDocument.fromData(serverData)
           completion(document)
-        } catch (let error) {
+        } catch {
           let responseBody = String(data: serverData, encoding: .utf8)
           TPPErrorLogger.logError(
             withCode: .authDocParseFail,
@@ -492,12 +556,12 @@ protocol AccountLogoDelegate: AnyObject {
             metadata: [
               "underlyingError": error,
               "responseBody": responseBody ?? "N/A",
-              "url": url
+              "url": url,
             ]
           )
           completion(document)
         }
-      case .failure(let error, _):
+      case let .failure(error, _):
         TPPErrorLogger.logError(
           withCode: .authDocLoadFail,
           summary: "Authentication Document request failed to load",
@@ -509,31 +573,35 @@ protocol AccountLogoDelegate: AnyObject {
   }
 
   func loadLogo() {
-    guard let url = self.logoUrl else { return }
+    guard let url = logoUrl else {
+      return
+    }
 
-    self.fetchImage(from: url, completion: {
-      guard let image = $0 else { return }
+    fetchImage(from: url, completion: {
+      guard let image = $0 else {
+        return
+      }
       self.logo = image
       self.logoDelegate?.logoDidUpdate(in: self, to: image)
     })
   }
 
-  private func fetchImage(from url: URL, completion: @escaping (UIImage?) -> ()) {
-    if let cachedImage = imageCache.get(for: self.uuid) {
+  private func fetchImage(from url: URL, completion: @escaping (UIImage?) -> Void) {
+    if let cachedImage = imageCache.get(for: uuid) {
       completion(cachedImage)
       return
     }
     TPPNetworkExecutor.shared.GET(url, useTokenIfAvailable: false) { result in
       DispatchQueue.main.async {
         switch result {
-        case .success(let serverData, _):
+        case let .success(serverData, _):
           guard let image = UIImage(data: serverData) else {
             completion(nil)
             return
           }
           self.imageCache.set(image, for: self.uuid)
           completion(image)
-        case .failure(let error, _):
+        case let .failure(error, _):
           TPPErrorLogger.logError(
             withCode: .authDocLoadFail,
             summary: "Logo image failed to load",
@@ -548,7 +616,7 @@ protocol AccountLogoDelegate: AnyObject {
 
 extension AccountDetails {
   override var debugDescription: String {
-    return """
+    """
     supportsSimplyESync=\(supportsSimplyESync)
     supportsCardCreator=\(supportsCardCreator)
     supportsReservations=\(supportsReservations)
@@ -558,7 +626,7 @@ extension AccountDetails {
 
 extension Account {
   override var debugDescription: String {
-    return """
+    """
     name=\(name)
     uuid=\(uuid)
     catalogURL=\(String(describing: catalogUrl))
@@ -568,7 +636,8 @@ extension Account {
   }
 }
 
-// MARK: URLType
+// MARK: - URLType
+
 @objc enum URLType: Int {
   case acknowledgements
   case contentLicenses
@@ -577,7 +646,8 @@ extension Account {
   case annotations
 }
 
-// MARK: LoginKeyboard
+// MARK: - LoginKeyboard
+
 @objc enum LoginKeyboard: Int, Codable {
   case standard
   case email

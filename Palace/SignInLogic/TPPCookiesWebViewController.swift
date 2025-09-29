@@ -9,6 +9,8 @@
 import UIKit
 import WebKit
 
+// MARK: - TPPCookiesWebViewModel
+
 // WARNING: This does not work  well for iOS versions lower than 11
 @objcMembers
 class TPPCookiesWebViewModel: NSObject {
@@ -17,20 +19,30 @@ class TPPCookiesWebViewModel: NSObject {
   let loginCompletionHandler: ((URL, [HTTPCookie]) -> Void)?
   let loginCancelHandler: (() -> Void)?
   let bookFoundHandler: ((URLRequest?, [HTTPCookie]) -> Void)?
-  let problemFound: (((TPPProblemDocument?)) -> Void)?
+  let problemFound: ((TPPProblemDocument?) -> Void)?
   let autoPresentIfNeeded: Bool
 
-  init(cookies: [HTTPCookie], request: URLRequest, loginCompletionHandler: ((URL, [HTTPCookie]) -> Void)?, loginCancelHandler: (() -> Void)?, bookFoundHandler: ((URLRequest?, [HTTPCookie]) -> Void)?, problemFoundHandler: ((TPPProblemDocument?) -> Void)?, autoPresentIfNeeded: Bool = false) {
+  init(
+    cookies: [HTTPCookie],
+    request: URLRequest,
+    loginCompletionHandler: ((URL, [HTTPCookie]) -> Void)?,
+    loginCancelHandler: (() -> Void)?,
+    bookFoundHandler: ((URLRequest?, [HTTPCookie]) -> Void)?,
+    problemFoundHandler: ((TPPProblemDocument?) -> Void)?,
+    autoPresentIfNeeded: Bool = false
+  ) {
     self.cookies = cookies
     self.request = request
     self.loginCompletionHandler = loginCompletionHandler
     self.loginCancelHandler = loginCancelHandler
     self.bookFoundHandler = bookFoundHandler
-    self.problemFound = problemFoundHandler
+    problemFound = problemFoundHandler
     self.autoPresentIfNeeded = autoPresentIfNeeded
     super.init()
   }
 }
+
+// MARK: - TPPCookiesWebViewController
 
 @objcMembers
 class TPPCookiesWebViewController: UIViewController, WKNavigationDelegate {
@@ -40,8 +52,9 @@ class TPPCookiesWebViewController: UIViewController, WKNavigationDelegate {
   private var domainCookies: [String: HTTPCookie] = [:] // (<domain><cookiename>) is a key, use for ios < 11 only
   private var rawCookies: [HTTPCookie] {
     // use for ios < 11 only
-    domainCookies.map { $0.value }
+    domainCookies.map(\.value)
   }
+
   private let webView = WKWebView()
   private var previousRequest: URLRequest?
   private var wasBookFound = false
@@ -59,7 +72,8 @@ class TPPCookiesWebViewController: UIViewController, WKNavigationDelegate {
     webView.configuration.websiteDataStore = WKWebsiteDataStore.nonPersistent()
   }
 
-  required init?(coder: NSCoder) {
+  @available(*, unavailable)
+  required init?(coder _: NSCoder) {
     fatalError("init(coder:) has not been implemented")
   }
 
@@ -75,10 +89,17 @@ class TPPCookiesWebViewController: UIViewController, WKNavigationDelegate {
       TPPCookiesWebViewController.automaticBrowserStorage[uuid] = self
     }
 
-    navigationItem.leftBarButtonItem = UIBarButtonItem(title: Strings.Generic.cancel, style: .plain, target: self, action: #selector(didSelectCancel))
+    navigationItem.leftBarButtonItem = UIBarButtonItem(
+      title: Strings.Generic.cancel,
+      style: .plain,
+      target: self,
+      action: #selector(didSelectCancel)
+    )
 
     webView.navigationDelegate = self
-    guard let model = model else { return }
+    guard let model = model else {
+      return
+    }
     if !model.cookies.isEmpty {
       // if there are cookies to inject
       var cookiesLeft = model.cookies.count
@@ -94,7 +115,7 @@ class TPPCookiesWebViewController: UIViewController, WKNavigationDelegate {
         } else {
           // Fallback on earlier versions
           // add them to a local cookies dictionary stored with domain + cookie name keys
-          self.domainCookies[cookie.domain + cookie.name] = cookie
+          domainCookies[cookie.domain + cookie.name] = cookie
 
           cookiesLeft -= 1
           if cookiesLeft == 0 {
@@ -113,25 +134,32 @@ class TPPCookiesWebViewController: UIViewController, WKNavigationDelegate {
   }
 
   @objc private func didSelectCancel() {
-    (navigationController?.presentingViewController ?? presentingViewController)?.dismiss(animated: true, completion: { [model] in model?.loginCancelHandler?() })
+    (navigationController?.presentingViewController ?? presentingViewController)?.dismiss(
+      animated: true,
+      completion: { [model] in model?.loginCancelHandler?() }
+    )
   }
 
-  func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-
+  func webView(
+    _ webView: WKWebView,
+    decidePolicyFor navigationAction: WKNavigationAction,
+    decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+  ) {
     // save this request, in case a response will contain a book
     previousRequest = navigationAction.request
 
     // if model has some way of procesing login completion
     if let loginHandler = model?.loginCompletionHandler {
       // and login process just did complete
-      if let destination = navigationAction.request.url, destination.absoluteString.hasPrefix(TPPSettings.shared.universalLinksURL.absoluteString) {
-
+      if let destination = navigationAction.request.url,
+         destination.absoluteString.hasPrefix(TPPSettings.shared.universalLinksURL.absoluteString)
+      {
         // cancel further webview redirections and loading
         decisionHandler(.cancel)
 
         if #available(iOS 11.0, *) {
           // dump all the cookies from the webview
-          webView.configuration.websiteDataStore.httpCookieStore.getAllCookies { [uuid] (cookies) in
+          webView.configuration.websiteDataStore.httpCookieStore.getAllCookies { [uuid] cookies in
             loginHandler(destination, cookies)
             TPPCookiesWebViewController.automaticBrowserStorage[uuid] = nil
           }
@@ -173,7 +201,7 @@ class TPPCookiesWebViewController: UIViewController, WKNavigationDelegate {
 
   /// Injects cookies into the given request.
   /// - Important: Use only on iOS < 11.
-  private func loadWebPage(request: URLRequest)  {
+  private func loadWebPage(request: URLRequest) {
     var mutableRequest = request
 
     // add a marker that we already customized this request, so that we don't fall into infinite redirections loop
@@ -188,9 +216,12 @@ class TPPCookiesWebViewController: UIViewController, WKNavigationDelegate {
     // load customized request
     webView.load(mutableRequest)
   }
-  
-  func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse, decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
 
+  func webView(
+    _ webView: WKWebView,
+    decidePolicyFor navigationResponse: WKNavigationResponse,
+    decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void
+  ) {
     if #available(iOS 11.0, *) { } else {
       // this block saves new cookies if any are available
       // first thing it does, is to try to obtain the header fields
@@ -229,7 +260,10 @@ class TPPCookiesWebViewController: UIViewController, WKNavigationDelegate {
 
             // if we chose to let this webview controller present on its own, it should dismiss itself as well
             if self?.model?.autoPresentIfNeeded == true {
-              (self?.navigationController?.presentingViewController ?? self?.presentingViewController)?.dismiss(animated: true, completion: nil)
+              (self?.navigationController?.presentingViewController ?? self?.presentingViewController)?.dismiss(
+                animated: true,
+                completion: nil
+              )
             }
           }
         } else {
@@ -237,9 +271,11 @@ class TPPCookiesWebViewController: UIViewController, WKNavigationDelegate {
           bookHandler(previousRequest, rawCookies)
           TPPCookiesWebViewController.automaticBrowserStorage[uuid] = nil
           if model?.autoPresentIfNeeded == true {
-            (navigationController?.presentingViewController ?? presentingViewController)?.dismiss(animated: true, completion: nil)
+            (navigationController?.presentingViewController ?? presentingViewController)?.dismiss(
+              animated: true,
+              completion: nil
+            )
           }
-
         }
 
         return
@@ -249,8 +285,9 @@ class TPPCookiesWebViewController: UIViewController, WKNavigationDelegate {
     // if model can handle a problem document
     if let problemHandler = model?.problemFound {
       // and problem document just happend
-      if let responseType = navigationResponse.response.mimeType, responseType == "application/problem+json" || responseType == "application/api-problem+json" {
-
+      if let responseType = navigationResponse.response.mimeType,
+         responseType == "application/problem+json" || responseType == "application/api-problem+json"
+      {
         // discard further loading
         decisionHandler(.cancel)
         let presenter = navigationController?.presentingViewController ?? presentingViewController
@@ -273,36 +310,48 @@ class TPPCookiesWebViewController: UIViewController, WKNavigationDelegate {
   }
 
   private var loginScreenHandlerOnceOnly = true
-  func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-
+  func webView(_: WKWebView, didFinish _: WKNavigation!) {
     // when loading just finished
     // and this controller is asked to autopresent itself if needed
     if model?.autoPresentIfNeeded == true {
       // delay is needed in case IDP will want to do a redirect after initial load (from within the page)
       OperationQueue.current?.underlyingQueue?.asyncAfter(deadline: .now() + 0.5) { [weak self] in
         // once the time comes, we check if the controller still exists
-        guard let self = self else { return }
+        guard let self = self else {
+          return
+        }
         // we want to present only if webview really finished loading
-        guard !self.webView.isLoading else { return }
+        guard !webView.isLoading else {
+          return
+        }
         // and no book was found
-        guard !self.wasBookFound else { return }
+        guard !wasBookFound else {
+          return
+        }
         // and we didn't already handled this case
-        guard self.loginScreenHandlerOnceOnly else { return }
-        self.loginScreenHandlerOnceOnly = false
+        guard loginScreenHandlerOnceOnly else {
+          return
+        }
+        loginScreenHandlerOnceOnly = false
 
         // we can present
         let navigationWrapper = UINavigationController(rootViewController: self)
-        (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController()?.present(navigationWrapper, animated: true)
+        (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController()?.present(
+          navigationWrapper,
+          animated: true
+        )
 
         // and actually remove reference to self, as this controller already is added to the UI stack
-        TPPCookiesWebViewController.automaticBrowserStorage[self.uuid] = nil
+        TPPCookiesWebViewController.automaticBrowserStorage[uuid] = nil
       }
     }
   }
 }
 
+// MARK: UIAdaptivePresentationControllerDelegate
+
 extension TPPCookiesWebViewController: UIAdaptivePresentationControllerDelegate {
-  func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+  func presentationControllerDidDismiss(_: UIPresentationController) {
     model?.loginCancelHandler?()
   }
 }

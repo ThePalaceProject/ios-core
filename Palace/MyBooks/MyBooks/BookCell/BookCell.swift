@@ -6,16 +6,16 @@
 //  Copyright © 2023 The Palace Project. All rights reserved.
 //
 
-import SwiftUI
 import Combine
+import SwiftUI
 
 struct BookCell: View {
   @ObservedObject var model: BookCellModel
-  
+
   var body: some View {
     bookCell
   }
-  
+
   @ViewBuilder private var bookCell: some View {
     switch model.state {
     case .downloading, .downloadFailed:

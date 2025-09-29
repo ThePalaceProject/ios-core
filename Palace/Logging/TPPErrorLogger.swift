@@ -4,23 +4,29 @@
 //
 
 import CFNetwork
-import Foundation
 import FirebaseCore
 import FirebaseCrashlytics
+import Foundation
 
-fileprivate let nullString = "null"
+private let nullString = "null"
+
+// MARK: - TPPSeverity
 
 @objc enum TPPSeverity: NSInteger {
-  case error, warning, info
+  case error
+  case warning
+  case info
 
   func stringValue() -> String {
     switch self {
-    case .error: return "error"
-    case .warning: return "warning"
-    case .info: return "info"
+    case .error: "error"
+    case .warning: "warning"
+    case .info: "info"
     }
   }
 }
+
+// MARK: - TPPErrorCode
 
 /// Detailed error codes that span across different error reports.
 /// E.g. you could have a `invalidURLSession` for a number of different api
@@ -122,12 +128,14 @@ fileprivate let nullString = "null"
 
   // keychain
   case keychainItemAddFail = 1300
-  
+
   // localization
   case locationAccessDenied = 1400
   case failedToGetLocation = 1401
   case unknownLocationError = 1402
 }
+
+// MARK: - TPPErrorLogger
 
 /// Facility to report error situations to a remote logging system such as
 /// Crashlytics.
@@ -135,17 +143,18 @@ fileprivate let nullString = "null"
 /// Please refer to the following page for guidelines on how to file an
 /// effective error report:
 /// https://github.com/NYPL-Simplified/Simplified/wiki/Error-reporting-on-iOS
-@objcMembers class TPPErrorLogger : NSObject {
+@objcMembers class TPPErrorLogger: NSObject {
+  static let clientDomain = "org.thepalaceproject.palace"
 
-  @objc static let clientDomain = "org.thepalaceproject.palace"
-
-  //----------------------------------------------------------------------------
-  // MARK:- Configuration
+  // ----------------------------------------------------------------------------
+  // MARK: - Configuration
 
   class func configureCrashAnalytics() {
     // Only enable Crashlytics on Production builds
-    guard Bundle.main.applicationEnvironment == .production else { return }
-    
+    guard Bundle.main.applicationEnvironment == .production else {
+      return
+    }
+
     #if FEATURE_CRASH_REPORTING
     if let deviceID = UIDevice.current.identifierForVendor?.uuidString {
       Crashlytics.crashlytics().setCustomValue(deviceID, forKey: "PalaceDeviceID")
@@ -155,7 +164,9 @@ fileprivate let nullString = "null"
 
   class func setUserID(_ userID: String?) {
     // Only enable Crashlytics on Production builds
-    guard Bundle.main.applicationEnvironment == .production else { return }
+    guard Bundle.main.applicationEnvironment == .production else {
+      return
+    }
 
     #if FEATURE_CRASH_REPORTING
     if let userIDmd5 = userID?.md5hex() {
@@ -166,23 +177,26 @@ fileprivate let nullString = "null"
     #endif
   }
 
-  //----------------------------------------------------------------------------
-  // MARK:- Generic methods for error logging
+  // ----------------------------------------------------------------------------
+  // MARK: - Generic methods for error logging
 
   /// Reports an error.
   /// - Parameters:
   ///   - error: Any originating error that occurred.
   ///   - summary: This will be the top line (searchable) in Crashlytics UI.
   ///   - metadata: Any additional metadata to be logged.
-  class func logError(_ error: Error?,
-                      summary: String,
-                      metadata: [String: Any]? = nil) {
-    logError(error,
-             code: .ignore,
-             summary: summary,
-             metadata: metadata)
+  class func logError(
+    _ error: Error?,
+    summary: String,
+    metadata: [String: Any]? = nil
+  ) {
+    logError(
+      error,
+      code: .ignore,
+      summary: summary,
+      metadata: metadata
+    )
   }
-
 
   /// Reports an error situation.
   /// - Parameters:
@@ -190,13 +204,17 @@ fileprivate let nullString = "null"
   ///   Crashlytics UI.
   ///   - summary: This will be the top line (searchable) in Crashlytics UI.
   ///   - metadata: Any additional metadata to be logged.
-  class func logError(withCode code: TPPErrorCode,
-                      summary: String,
-                      metadata: [String: Any]? = nil) {
-    logError(nil,
-             code: code,
-             summary: summary,
-             metadata: metadata)
+  class func logError(
+    withCode code: TPPErrorCode,
+    summary: String,
+    metadata: [String: Any]? = nil
+  ) {
+    logError(
+      nil,
+      code: code,
+      summary: summary,
+      metadata: metadata
+    )
   }
 
   /// Use this function for logging low-level errors occurring in api execution
@@ -213,22 +231,26 @@ fileprivate let nullString = "null"
   ///   report, to ensure privacy.
   ///   - response: Useful to understand if the error originated on the server.
   ///   - metadata: Free-form dictionary for additional metadata to be logged.
-  class func logNetworkError(_ originalError: Error? = nil,
-                             code: TPPErrorCode = .ignore,
-                             summary: String?,
-                             request: URLRequest?,
-                             response: URLResponse? = nil,
-                             metadata: [String: Any]? = nil) {
-    logError(originalError,
-             code: (code != .ignore ? code : TPPErrorCode.apiCall),
-             summary: summary ?? "Network error",
-             request: request,
-             response: response,
-             metadata: metadata)
+  class func logNetworkError(
+    _ originalError: Error? = nil,
+    code: TPPErrorCode = .ignore,
+    summary: String?,
+    request: URLRequest?,
+    response: URLResponse? = nil,
+    metadata: [String: Any]? = nil
+  ) {
+    logError(
+      originalError,
+      code: code != .ignore ? code : TPPErrorCode.apiCall,
+      summary: summary ?? "Network error",
+      request: request,
+      response: response,
+      metadata: metadata
+    )
   }
 
-  //----------------------------------------------------------------------------
-  // MARK:- Sign up/in/out errors
+  // ----------------------------------------------------------------------------
+  // MARK: - Sign up/in/out errors
 
   /// Report when there's an error logging in to an account.
   /// - Parameters:
@@ -237,12 +259,14 @@ fileprivate let nullString = "null"
   ///   - response: The response that returned the error.
   ///   - problemDocument: A structured error description returned by the server.
   ///   - metadata: Free-form dictionary for additional metadata to be logged.
-  class func logLoginError(_ error: NSError?,
-                           library: Account?,
-                           response: URLResponse?,
-                           problemDocument: TPPProblemDocument?,
-                           metadata: [String: Any]?) {
-    var metadata = metadata ?? [String : Any]()
+  class func logLoginError(
+    _ error: NSError?,
+    library: Account?,
+    response: URLResponse?,
+    problemDocument: TPPProblemDocument?,
+    metadata: [String: Any]?
+  ) {
+    var metadata = metadata ?? [String: Any]()
     if let error = error {
       metadata[NSUnderlyingErrorKey] = error
     }
@@ -265,9 +289,11 @@ fileprivate let nullString = "null"
     addAccountInfoToMetadata(&metadata)
 
     let userInfo = additionalInfo(severity: .error, metadata: metadata)
-    let err = NSError(domain: "SignIn error: problem document available",
-                      code: errorCode,
-                      userInfo: userInfo)
+    let err = NSError(
+      domain: "SignIn error: problem document available",
+      code: errorCode,
+      userInfo: userInfo
+    )
 
     record(error: err)
   }
@@ -278,10 +304,12 @@ fileprivate let nullString = "null"
     @param libraryName name of the library
     @return
    */
-  class func logLocalAuthFailed(error: NSError?,
-                                library: Account?,
-                                metadata: [String: Any]?) {
-    var metadata = metadata ?? [String : Any]()
+  class func logLocalAuthFailed(
+    error: NSError?,
+    library: Account?,
+    metadata: [String: Any]?
+  ) {
+    var metadata = metadata ?? [String: Any]()
     if let library = library {
       metadata["libraryUUID"] = library.uuid
       metadata["libraryName"] = library.name
@@ -291,13 +319,17 @@ fileprivate let nullString = "null"
       metadata[NSUnderlyingErrorKey] = error
     }
     addAccountInfoToMetadata(&metadata)
-    
-    let userInfo = additionalInfo(severity: .info,
-                                  message: "Local Login Failed With Error",
-                                  metadata: metadata)
-    let err = NSError(domain: "SignIn error: Adobe activation",
-                      code: TPPErrorCode.adeptAuthFail.rawValue,
-                      userInfo: userInfo)
+
+    let userInfo = additionalInfo(
+      severity: .info,
+      message: "Local Login Failed With Error",
+      metadata: metadata
+    )
+    let err = NSError(
+      domain: "SignIn error: Adobe activation",
+      code: TPPErrorCode.adeptAuthFail.rawValue,
+      userInfo: userInfo
+    )
 
     record(error: err)
   }
@@ -307,17 +339,20 @@ fileprivate let nullString = "null"
     - Parameter accountId: id of the library account.
    */
   class func logInvalidLicensor(withAccountID accountId: String?) {
-    var metadata = [String : Any]()
+    var metadata = [String: Any]()
     metadata["accountTypeID"] = accountId ?? nullString
     addAccountInfoToMetadata(&metadata)
-    
+
     let userInfo = additionalInfo(
       severity: .warning,
       message: "No Valid Licensor available to deauthorize device. Signing out TPPAccount credentials anyway with no message to the user.",
-      metadata: metadata)
-    let err = NSError(domain: "SignOut deauthorization error: no licensor",
-                      code: TPPErrorCode.invalidLicensor.rawValue,
-                      userInfo: userInfo)
+      metadata: metadata
+    )
+    let err = NSError(
+      domain: "SignOut deauthorization error: no licensor",
+      code: TPPErrorCode.invalidLicensor.rawValue,
+      userInfo: userInfo
+    )
 
     record(error: err)
   }
@@ -329,11 +364,13 @@ fileprivate let nullString = "null"
   ///   - summary: This will be the top line (searchable) in Crashlytics UI.
   ///   - barcode: The clear-text barcode used to authenticate. This will be
   ///   hashed.
-  class func logUserProfileDocumentAuthError(_ error: NSError?,
-                                             summary: String,
-                                             barcode: String?,
-                                             metadata: [String: Any]? = nil) {
-    var userInfo = metadata ?? [String : Any]()
+  class func logUserProfileDocumentAuthError(
+    _ error: NSError?,
+    summary: String,
+    barcode: String?,
+    metadata: [String: Any]? = nil
+  ) {
+    var userInfo = metadata ?? [String: Any]()
     addAccountInfoToMetadata(&userInfo)
     userInfo = additionalInfo(severity: .error, metadata: userInfo)
     if let barcode = barcode {
@@ -343,27 +380,31 @@ fileprivate let nullString = "null"
       userInfo[NSUnderlyingErrorKey] = originalError
     }
 
-    let err = NSError(domain: summary,
-                      code: TPPErrorCode.userProfileDocFail.rawValue,
-                      userInfo: userInfo)
+    let err = NSError(
+      domain: summary,
+      code: TPPErrorCode.userProfileDocFail.rawValue,
+      userInfo: userInfo
+    )
 
     record(error: err)
   }
 
-  //----------------------------------------------------------------------------
-  // MARK:- Misc
+  // ----------------------------------------------------------------------------
+  // MARK: - Misc
 
   /**
     Report when user launches the app.
    */
   class func logNewAppLaunch() {
-    var metadata = [String : Any]()
+    var metadata = [String: Any]()
     addAccountInfoToMetadata(&metadata)
-    
+
     let userInfo = additionalInfo(severity: .info, metadata: metadata)
-    let err = NSError(domain: clientDomain,
-                      code: TPPErrorCode.appLaunch.rawValue,
-                      userInfo: userInfo)
+    let err = NSError(
+      domain: clientDomain,
+      code: TPPErrorCode.appLaunch.rawValue,
+      userInfo: userInfo
+    )
 
     record(error: err)
   }
@@ -375,7 +416,7 @@ fileprivate let nullString = "null"
     @return
    */
   class func logBarcodeException(_ exception: NSException?, library: String?) {
-    var metadata: [String : Any] = [
+    var metadata: [String: Any] = [
       "Library": library ?? nullString,
       "ExceptionName": exception?.name ?? nullString,
       "ExceptionReason": exception?.reason ?? nullString,
@@ -384,23 +425,29 @@ fileprivate let nullString = "null"
     addAccountInfoToMetadata(&metadata)
     let userInfo = additionalInfo(severity: .info, metadata: metadata)
 
-    let err = NSError(domain: "SignIn error: BarcodeScanner exception",
-                      code: TPPErrorCode.barcodeException.rawValue,
-                      userInfo: userInfo)
+    let err = NSError(
+      domain: "SignIn error: BarcodeScanner exception",
+      code: TPPErrorCode.barcodeException.rawValue,
+      userInfo: userInfo
+    )
 
     record(error: err)
   }
 
-  class func logCatalogInitError(withCode code: TPPErrorCode,
-                                 response: URLResponse?,
-                                 metadata: [String: Any]?) {
+  class func logCatalogInitError(
+    withCode code: TPPErrorCode,
+    response: URLResponse?,
+    metadata: [String: Any]?
+  ) {
     var metadata = metadata ?? [String: Any]()
     if let response = response {
       metadata["response"] = response
     }
-    logError(withCode: code,
-             summary: "Catalog VC Initialization",
-             metadata: metadata)
+    logError(
+      withCode: code,
+      summary: "Catalog VC Initialization",
+      metadata: metadata
+    )
   }
 
   /**
@@ -410,11 +457,13 @@ fileprivate let nullString = "null"
    - parameter summary: This will be the top line (searchable) in Crashlytics UI.
    - parameter metadata: Any additional metadata to be logged for more context.
    */
-  class func logProblemDocumentParseError(_ originalError: NSError,
-                                          problemDocumentData: Data?,
-                                          url: URL?,
-                                          summary: String,
-                                          metadata: [String: Any]? = nil) {
+  class func logProblemDocumentParseError(
+    _ originalError: NSError,
+    problemDocumentData: Data?,
+    url: URL?,
+    summary: String,
+    metadata: [String: Any]? = nil
+  ) {
     var metadata = metadata ?? [String: Any]()
     addAccountInfoToMetadata(&metadata)
     metadata["url"] = url ?? nullString
@@ -428,21 +477,26 @@ fileprivate let nullString = "null"
 
     let userInfo = additionalInfo(
       severity: .error,
-      metadata: metadata)
+      metadata: metadata
+    )
 
-    let err = NSError(domain: summary,
-                      code: TPPErrorCode.parseProblemDocFail.rawValue,
-                      userInfo: userInfo)
+    let err = NSError(
+      domain: summary,
+      code: TPPErrorCode.parseProblemDocFail.rawValue,
+      userInfo: userInfo
+    )
 
     record(error: err)
   }
-  
-  //----------------------------------------------------------------------------
-  // MARK:- Private helpers
+
+  // ----------------------------------------------------------------------------
+  // MARK: - Private helpers
 
   private class func record(error: NSError) {
     // Only enable Crashlytics on Production builds
-    guard Bundle.main.applicationEnvironment == .production else { return }
+    guard Bundle.main.applicationEnvironment == .production else {
+      return
+    }
 
     #if FEATURE_CRASH_REPORTING
     Crashlytics.crashlytics().record(error: error)
@@ -459,14 +513,16 @@ fileprivate let nullString = "null"
   ///   - request: The request that returned the error.
   ///   - response: The response that returned the error.
   ///   - metadata: Any additional metadata to be logged.
-  private class func logError(_ originalError: Error?,
-                              code: TPPErrorCode = .ignore,
-                              summary: String,
-                              request: URLRequest? = nil,
-                              response: URLResponse? = nil,
-                              metadata: [String: Any]? = nil) {
+  private class func logError(
+    _ originalError: Error?,
+    code: TPPErrorCode = .ignore,
+    summary: String,
+    request: URLRequest? = nil,
+    response: URLResponse? = nil,
+    metadata: [String: Any]? = nil
+  ) {
     // compute metadata
-    var metadata = metadata ?? [String : Any]()
+    var metadata = metadata ?? [String: Any]()
     addAccountInfoToMetadata(&metadata)
     if let request = request {
       Log.error(#file, "Request \(request.loggableString) failed.")
@@ -481,16 +537,22 @@ fileprivate let nullString = "null"
     }
 
     // compute final summary and code, plus severity
-    let (finalSummary, finalCode, severity) = fixUpSummary(summary,
-                                                           code: code,
-                                                           with: originalError)
+    let (finalSummary, finalCode, severity) = fixUpSummary(
+      summary,
+      code: code,
+      with: originalError
+    )
 
     // build error report
-    let userInfo = additionalInfo(severity: severity,
-                                  metadata: metadata)
-    let err = NSError(domain: finalSummary,
-                      code: finalCode,
-                      userInfo: userInfo)
+    let userInfo = additionalInfo(
+      severity: severity,
+      metadata: metadata
+    )
+    let err = NSError(
+      domain: finalSummary,
+      code: finalCode,
+      userInfo: userInfo
+    )
     record(error: err)
   }
 
@@ -503,22 +565,23 @@ fileprivate let nullString = "null"
   ///   - err: The error to inspect.
   /// - Returns: A tuple with the final suggested summary and code to use
   /// to file a report on Crashlytics.
-  private class func fixUpSummary(_ summary: String,
-                                  code: TPPErrorCode,
-                                  with err: Error?) -> (summary: String, code: Int, severity: TPPSeverity) {
+  private class func fixUpSummary(
+    _ summary: String,
+    code: TPPErrorCode,
+    with err: Error?
+  ) -> (summary: String, code: Int, severity: TPPSeverity) {
     if let nserr = err as NSError? {
       if let (finalSummary, finalCode) = customSummaryAndCode(from: nserr) {
         return (summary: finalSummary, code: finalCode.rawValue, severity: .warning)
       }
     }
 
-    let finalCode: Int
-    if code != .ignore {
-      finalCode = code.rawValue
+    let finalCode: Int = if code != .ignore {
+      code.rawValue
     } else if let nserr = err as NSError? {
-      finalCode = nserr.code
+      nserr.code
     } else {
-      finalCode = TPPErrorCode.ignore.rawValue
+      TPPErrorCode.ignore.rawValue
     }
 
     return (summary: summary, code: finalCode, severity: .error)
@@ -535,7 +598,6 @@ fileprivate let nullString = "null"
     let cfErrorDomainNetwork = (kCFErrorDomainCFNetwork as String)
 
     switch err.domain {
-
     case NSURLErrorDomain:
       switch err.code {
       case NSURLErrorUserCancelledAuthentication:
@@ -562,30 +624,44 @@ fileprivate let nullString = "null"
       let code = err.code
 
       if code == CFNetworkErrors.cfurlErrorUserCancelledAuthentication.rawValue {
-        return (summary: "User Cancelled Authentication",
-                code: .clientSideUserInterruption)
+        return (
+          summary: "User Cancelled Authentication",
+          code: .clientSideUserInterruption
+        )
 
       } else if code == CFNetworkErrors.cfurlErrorCancelled.rawValue
-        || code == CFNetworkErrors.cfNetServiceErrorCancel.rawValue {
-        return (summary: "Request Cancelled",
-                code: .clientSideUserInterruption)
+        || code == CFNetworkErrors.cfNetServiceErrorCancel.rawValue
+      {
+        return (
+          summary: "Request Cancelled",
+          code: .clientSideUserInterruption
+        )
 
       } else if code == CFNetworkErrors.cfurlErrorTimedOut.rawValue
-        || code == CFNetworkErrors.cfNetServiceErrorTimeout.rawValue {
-        return (summary: "Request Timeout",
-                code: .clientSideTransientError)
+        || code == CFNetworkErrors.cfNetServiceErrorTimeout.rawValue
+      {
+        return (
+          summary: "Request Timeout",
+          code: .clientSideTransientError
+        )
 
       } else if code == CFNetworkErrors.cfurlErrorNetworkConnectionLost.rawValue {
-        return (summary: "Connection Lost/Severed",
-                code: .clientSideTransientError)
+        return (
+          summary: "Connection Lost/Severed",
+          code: .clientSideTransientError
+        )
 
       } else if code == CFNetworkErrors.cfurlErrorNotConnectedToInternet.rawValue
-        || code == CFNetworkErrors.cfurlErrorInternationalRoamingOff.rawValue {
-        return (summary: "No Internet Connection",
-                code: .clientSideTransientError)
+        || code == CFNetworkErrors.cfurlErrorInternationalRoamingOff.rawValue
+      {
+        return (
+          summary: "No Internet Connection",
+          code: .clientSideTransientError
+        )
 
       } else if code == CFNetworkErrors.cfurlErrorCallIsActive.rawValue
-        || code == CFNetworkErrors.cfurlErrorDataNotAllowed.rawValue {
+        || code == CFNetworkErrors.cfurlErrorDataNotAllowed.rawValue
+      {
         return (summary: "User Device Cannot Connect", code: .clientSideTransientError)
       }
 
@@ -618,9 +694,11 @@ fileprivate let nullString = "null"
   ///   - severity: How severe the event is.
   ///   - message: An optional message.
   ///   - metadata: Any additional metadata.
-  private class func additionalInfo(severity: TPPSeverity,
-                                    message: String? = nil,
-                                    metadata: [String: Any]? = nil) -> [String: Any] {
+  private class func additionalInfo(
+    severity: TPPSeverity,
+    message: String? = nil,
+    metadata: [String: Any]? = nil
+  ) -> [String: Any] {
     var dict = metadata ?? [:]
 
     dict["severity"] = severity.stringValue()

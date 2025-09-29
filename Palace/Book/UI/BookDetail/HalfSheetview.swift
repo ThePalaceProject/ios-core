@@ -1,5 +1,7 @@
 import SwiftUI
 
+// MARK: - HalfSheetProvider
+
 @MainActor
 protocol HalfSheetProvider: ObservableObject, BookButtonProvider {
   var isFullSize: Bool { get }
@@ -15,7 +17,7 @@ extension HalfSheetProvider {
   var isReturning: Bool {
     bookState == .returning
   }
-  
+
   var isManagingHold: Bool {
     switch buttonState {
     case .managingHold, .holding, .holdingFrontOfQueue:
@@ -25,6 +27,8 @@ extension HalfSheetProvider {
     }
   }
 }
+
+// MARK: - HalfSheetView
 
 struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
   typealias DisplayStrings = Strings.BookDetailView
@@ -39,7 +43,6 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: viewModel.isFullSize ? 20 : 10) {
-
       headerView
 
       Text(AccountsManager.shared.currentAccount?.name ?? "")
@@ -75,7 +78,7 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
             viewModel.handleAction(for: type)
           }
         })
-          .horizontallyCentered()
+        .horizontallyCentered()
       } else {
         BookButtonsView(provider: viewModel, previewEnabled: false, onButtonTapped: { type in
           switch type {
@@ -112,14 +115,18 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
         cellModel.isManagingHold = false
       }
     }
-    .onReceive(NotificationCenter.default.publisher(for: .TPPBookRegistryStateDidChange).receive(on: RunLoop.main)) { note in
+    .onReceive(NotificationCenter.default.publisher(for: .TPPBookRegistryStateDidChange)
+      .receive(on: RunLoop.main)
+    ) { note in
       guard
         let info = note.userInfo as? [String: Any],
         let identifier = info["bookIdentifier"] as? String,
         identifier == viewModel.book.identifier,
         let raw = info["state"] as? Int,
         let newState = TPPBookState(rawValue: raw)
-      else { return }
+      else {
+        return
+      }
 
       // Dismiss only when a return/remove fully completed to unregistered
       if viewModel.isReturning && newState == .unregistered {
@@ -151,6 +158,7 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
 }
 
 // MARK: - Subviews
+
 private extension HalfSheetView {
   @ViewBuilder
   var bookInfoView: some View {

@@ -9,8 +9,7 @@
 
 import Foundation
 
-struct BookButtonMapper {
-
+enum BookButtonMapper {
   /// First look at registryState. If that alone dictates a clear UI state,
   /// return it. Otherwise fall back to OPDS availability via `stateForAvailability(_)`.
   static func map(

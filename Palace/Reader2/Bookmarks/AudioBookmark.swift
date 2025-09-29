@@ -8,10 +8,14 @@
 
 import Foundation
 
+// MARK: - BookmarkType
+
 enum BookmarkType: String, Codable {
   case locatorAudioBookTime = "LocatorAudioBookTime"
   case locatorHrefProgression = "LocatorHrefProgression"
 }
+
+// MARK: - AudioBookmark
 
 @objc public class AudioBookmark: NSObject, Bookmark, Codable, NSCopying {
   let type: BookmarkType
@@ -25,11 +29,11 @@ enum BookmarkType: String, Codable {
   var title: String?
   var part: Int?
   var time: Int?
-  
+
   var isUnsynced: Bool {
     annotationId.isEmpty
   }
-  
+
   enum CodingKeys: String, CodingKey {
     case type = "@type"
     case timeStamp
@@ -42,7 +46,7 @@ enum BookmarkType: String, Codable {
     case part
     case time
   }
-  
+
   init(
     type: BookmarkType,
     version: Int = 2,
@@ -56,7 +60,7 @@ enum BookmarkType: String, Codable {
     time: Int? = nil
   ) {
     self.type = type
-    self.lastSavedTimeStamp = timeStamp
+    lastSavedTimeStamp = timeStamp
     self.annotationId = annotationId
     self.version = version
     self.readingOrderItem = readingOrderItem
@@ -66,22 +70,25 @@ enum BookmarkType: String, Codable {
     self.part = part
     self.time = time
   }
-  
-  required public init(from decoder: Decoder) throws {
+
+  public required init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     type = try container.decode(BookmarkType.self, forKey: .type)
     lastSavedTimeStamp = try container.decodeIfPresent(String.self, forKey: .timeStamp)
     annotationId = try container.decodeIfPresent(String.self, forKey: .annotationId) ?? ""
     version = try container.decodeIfPresent(Int.self, forKey: .version) ?? 1
-    
+
     readingOrderItem = try container.decodeIfPresent(String.self, forKey: .readingOrderItem)
-    readingOrderItemOffsetMilliseconds = try container.decodeIfPresent(Int.self, forKey: .readingOrderItemOffsetMilliseconds)
+    readingOrderItemOffsetMilliseconds = try container.decodeIfPresent(
+      Int.self,
+      forKey: .readingOrderItemOffsetMilliseconds
+    )
     chapter = try container.decodeIfPresent(String.self, forKey: .chapter)
     title = try container.decodeIfPresent(String.self, forKey: .title)
     part = try container.decodeIfPresent(Int.self, forKey: .part)
     time = try container.decodeIfPresent(Int.self, forKey: .time)
   }
-  
+
   public func encode(to encoder: Encoder) throws {
     var container = encoder.container(keyedBy: CodingKeys.self)
     try container.encode(type.rawValue, forKey: .type)
@@ -95,17 +102,26 @@ enum BookmarkType: String, Codable {
     try container.encodeIfPresent(part, forKey: .part)
     try container.encodeIfPresent(time, forKey: .time)
   }
-  
-  static func create(locatorData: [String: Any], timeStamp: String? = Date().iso8601, annotationId: String = "") -> AudioBookmark? {
+
+  static func create(
+    locatorData: [String: Any],
+    timeStamp: String? = Date().iso8601,
+    annotationId: String = ""
+  ) -> AudioBookmark? {
     guard let typeString = locatorData["@type"] as? String,
-          let type = BookmarkType(rawValue: typeString) else { return nil }
+          let type = BookmarkType(rawValue: typeString)
+    else {
+      return nil
+    }
 
     let version = locatorData["@version"] as? Int ?? 1
-    let lastSavedTimeStamp = (locatorData["timeStamp"] as? String)?.isEmpty == false ? locatorData["timeStamp"] as? String : timeStamp
+    let lastSavedTimeStamp = (locatorData["timeStamp"] as? String)?
+      .isEmpty == false ? locatorData["timeStamp"] as? String : timeStamp
     let id = locatorData["annotationId"] as? String ?? annotationId
 
     let readingOrderItem = locatorData["readingOrderItem"] as? String
-    let readingOrderItemOffsetMilliseconds = locatorData["readingOrderItemOffsetMilliseconds"] as? Int ?? locatorData["time"] as? Int
+    let readingOrderItemOffsetMilliseconds = locatorData["readingOrderItemOffsetMilliseconds"] as? Int ??
+      locatorData["time"] as? Int
     let chapter = locatorData["chapter"] as? String ?? String(locatorData["chapter"] as? Int ?? 0)
     let title = locatorData["title"] as? String
     let part = locatorData["part"] as? Int
@@ -126,29 +142,30 @@ enum BookmarkType: String, Codable {
   }
 
   public func toData() -> Data? {
-    return try? JSONEncoder().encode(self)
+    try? JSONEncoder().encode(self)
   }
-  
+
   public func isSimilar(to other: AudioBookmark) -> Bool {
-    return self.type == other.type &&
-    self.readingOrderItem == other.readingOrderItem &&
-    self.readingOrderItemOffsetMilliseconds == other.readingOrderItemOffsetMilliseconds &&
-    self.chapter == other.chapter &&
-    self.title == other.title &&
-    self.part == other.part &&
-    self.time == other.time
+    type == other.type &&
+      readingOrderItem == other.readingOrderItem &&
+      readingOrderItemOffsetMilliseconds == other.readingOrderItemOffsetMilliseconds &&
+      chapter == other.chapter &&
+      title == other.title &&
+      part == other.part &&
+      time == other.time
   }
-  
+
   public func toTPPBookLocation() -> TPPBookLocation? {
     guard let data = toData(),
-          let locationString = String(data: data, encoding: .utf8) else {
+          let locationString = String(data: data, encoding: .utf8)
+    else {
       return nil
     }
     return TPPBookLocation(locationString: locationString, renderer: "PalaceAudiobookToolkit")
   }
-  
-  public func copy(with zone: NSZone? = nil) -> Any {
-    return AudioBookmark(
+
+  public func copy(with _: NSZone? = nil) -> Any {
+    AudioBookmark(
       type: type,
       version: version,
       timeStamp: lastSavedTimeStamp,
@@ -163,13 +180,15 @@ enum BookmarkType: String, Codable {
   }
 }
 
+// MARK: - AnyCodable
+
 struct AnyCodable: Codable {
   var value: Any
-  
+
   init(_ value: Any) {
     self.value = value
   }
-  
+
   init(from decoder: Decoder) throws {
     let container = try decoder.singleValueContainer()
     if let intVal = try? container.decode(Int.self) {
@@ -183,12 +202,12 @@ struct AnyCodable: Codable {
     } else if let nestedVal = try? container.decode([String: AnyCodable].self) {
       value = Dictionary(uniqueKeysWithValues: nestedVal.map { key, value in (key, value.value) })
     } else if let arrayVal = try? container.decode([AnyCodable].self) {
-      value = arrayVal.map { $0.value }
+      value = arrayVal.map(\.value)
     } else {
       throw DecodingError.dataCorruptedError(in: container, debugDescription: "Unsupported type")
     }
   }
-  
+
   func encode(to encoder: Encoder) throws {
     var container = encoder.singleValueContainer()
     if let intVal = value as? UInt {
@@ -208,14 +227,17 @@ struct AnyCodable: Codable {
     } else if let arrayVal = value as? [Any] {
       try container.encode(arrayVal.map { AnyCodable($0) })
     } else {
-      throw EncodingError.invalidValue(value, EncodingError.Context(codingPath: encoder.codingPath, debugDescription: "Unsupported type"))
+      throw EncodingError.invalidValue(
+        value,
+        EncodingError.Context(codingPath: encoder.codingPath, debugDescription: "Unsupported type")
+      )
     }
   }
 }
 
 extension Date {
   var iso8601: String {
-    return ISO8601DateFormatter().string(from: self)
+    ISO8601DateFormatter().string(from: self)
   }
 }
 
@@ -229,5 +251,3 @@ extension AudioBookmark {
     return ""
   }
 }
-
-

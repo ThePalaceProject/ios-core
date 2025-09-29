@@ -1,0 +1,112 @@
+# SwiftFormat Configuration for Palace Project
+# https://github.com/nicklockwood/SwiftFormat
+
+# Include/exclude paths
+--exclude Carthage,readium-sdk,readium-shared-js,adept-ios,adobe-content-filter,adobe-rmsdk,ios-tenprintcover,mobile-bookmark-spec,build,DerivedData,fastlane,scripts
+--exclude "*.generated.swift"
+
+# Formatting rules
+--rules blankLinesAroundMark
+--rules blankLinesAtEndOfScope
+--rules blankLinesAtStartOfScope
+--rules blankLinesBetweenScopes
+--rules braces
+--rules conditionalAssignment
+--rules consecutiveBlankLines
+--rules consecutiveSpaces
+--rules duplicateImports
+--rules elseOnSameLine
+--rules emptyBraces
+--rules enumNamespaces
+--rules extensionAccessControl
+--rules hoistPatternLet
+--rules indent
+--rules initCoderUnavailable
+--rules leadingDelimiters
+--rules linebreakAtEndOfFile
+--rules markTypes
+--rules modifierOrder
+--rules numberFormatting
+--rules preferKeyPath
+--rules redundantBackticks
+--rules redundantBreak
+--rules redundantExtensionACL
+--rules redundantFileprivate
+--rules redundantGet
+--rules redundantInit
+--rules redundantLet
+--rules redundantLetError
+--rules redundantNilInit
+--rules redundantObjc
+--rules redundantParens
+--rules redundantPattern
+--rules redundantRawValues
+--rules redundantReturn
+--rules redundantSelf
+--rules redundantType
+--rules redundantVoidReturnType
+--rules semicolons
+--rules sortImports
+--rules spaceAroundBraces
+--rules spaceAroundBrackets
+--rules spaceAroundComments
+--rules spaceAroundGenerics
+--rules spaceAroundOperators
+--rules spaceAroundParens
+--rules spaceInsideBraces
+--rules spaceInsideBrackets
+--rules spaceInsideComments
+--rules spaceInsideGenerics
+--rules spaceInsideParens
+--rules strongOutlets
+--rules strongifiedSelf
+--rules todos
+--rules trailingClosures
+--rules trailingCommas
+--rules trailingSpace
+--rules typeSugar
+--rules unusedArguments
+--rules void
+--rules wrap
+--rules wrapArguments
+--rules wrapAttributes
+--rules wrapConditionalBodies
+--rules wrapEnumCases
+--rules wrapMultilineStatementBraces
+
+# Configuration options
+--indent 2
+--tabwidth 2
+--maxwidth 120
+--wraparguments before-first
+--wrapcollections before-first
+--wrapparameters before-first
+--closingparen balanced
+--commas always
+--trimwhitespace always
+--insertlines true
+--removelines true
+--allman false
+--fractiongrouping disabled
+--exponentgrouping disabled
+--decimalgrouping 3,6
+--binarygrouping 4,8
+--octalgrouping 4,8
+--hexgrouping 4,8
+--ifdef no-indent
+--xcodeindentation disabled
+--importgrouping testable-bottom
+--self remove
+--selfrequired 
+--stripunusedargs always
+--shortoptionals always
+--ranges spaced
+--operatorfunc spaced
+--nospaceoperators ...,..<
+--nowrapoperators 
+--assetliterals visual-width
+--yodaswap always
+
+# Swift version and SwiftUI specific
+--swiftversion 5.9
+--enable wrapMultilineStatementBraces

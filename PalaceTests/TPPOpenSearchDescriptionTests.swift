@@ -7,7 +7,7 @@
 //
 
 import XCTest
-//@testable import Palace
+// @testable import Palace
 
 class TPPOpenSearchDescriptionTests: XCTestCase {
   var searchDescr: TPPOpenSearchDescription!
@@ -25,6 +25,11 @@ class TPPOpenSearchDescriptionTests: XCTestCase {
   func testOPDSURLSearch() {
     let searchURL = searchDescr.opdsurl(forSearching: "Arnold Schönberg & +etc")
     XCTAssertNotNil(searchURL)
-    XCTAssertEqual(searchURL, URL(string:  "https://circulation.librarysimplified.org/NYNYPL/search/?entrypoint=All&q=Arnold%20Sch%C3%B6nberg%20%26%20%2Betc")!)
+    XCTAssertEqual(
+      searchURL,
+      URL(
+        string: "https://circulation.librarysimplified.org/NYNYPL/search/?entrypoint=All&q=Arnold%20Sch%C3%B6nberg%20%26%20%2Betc"
+      )!
+    )
   }
 }

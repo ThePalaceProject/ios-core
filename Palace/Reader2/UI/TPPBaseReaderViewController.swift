@@ -8,11 +8,13 @@
 //  LICENSE file present in the project repository where this source code is maintained.
 //
 
-import SafariServices
-import UIKit
+import Combine
 import ReadiumNavigator
 import ReadiumShared
-import Combine
+import SafariServices
+import UIKit
+
+// MARK: - TPPBaseReaderViewController
 
 /// This class is meant to be subclassed by each publication format view controller. It contains the shared behavior, eg. navigation bar toggling.
 class TPPBaseReaderViewController: UIViewController, Loggable {
@@ -54,39 +56,46 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   ///   - publication: The R2 model for a publication.
   ///   - book: The SimplyE model for a book.
   ///   - drm: Information about the DRM associated with the publication.
-  init(navigator: UIViewController & Navigator,
-       publication: Publication,
-       book: TPPBook,
-       forSample: Bool = false,
-       initialLocation: Locator? = nil) {
-
+  init(
+    navigator: UIViewController & Navigator,
+    publication: Publication,
+    book: TPPBook,
+    forSample: Bool = false,
+    initialLocation: Locator? = nil
+  ) {
     self.navigator = navigator
     self.publication = publication
-    self.isShowingSample = forSample
+    isShowingSample = forSample
     self.initialLocation = initialLocation
 
     lastReadPositionPoster = TPPLastReadPositionPoster(
       book: book,
       publication: publication,
-      bookRegistryProvider: TPPBookRegistry.shared)
+      bookRegistryProvider: TPPBookRegistry.shared
+    )
 
     bookmarksBusinessLogic = TPPReaderBookmarksBusinessLogic(
       book: book,
       r2Publication: publication,
       drmDeviceID: TPPUserAccount.sharedAccount().deviceID,
       bookRegistryProvider: TPPBookRegistry.shared,
-      currentLibraryAccountProvider: AccountsManager.shared)
+      currentLibraryAccountProvider: AccountsManager.shared
+    )
 
-    bookmarksBusinessLogic.syncBookmarks { (_, _) in }
+    bookmarksBusinessLogic.syncBookmarks { _, _ in }
 
     super.init(nibName: nil, bundle: nil)
 
-    NotificationCenter.default.addObserver(self, selector: #selector(voiceOverStatusDidChange), name: Notification.Name(UIAccessibility.voiceOverStatusDidChangeNotification.rawValue), object: nil)
-
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(voiceOverStatusDidChange),
+      name: Notification.Name(UIAccessibility.voiceOverStatusDidChangeNotification.rawValue),
+      object: nil
+    )
   }
 
   @available(*, unavailable)
-  required init?(coder aDecoder: NSCoder) {
+  required init?(coder _: NSCoder) {
     fatalError("init(coder:) has not been implemented")
   }
 
@@ -119,9 +128,18 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     positionLabel.textColor = .darkGray
     view.addSubview(positionLabel)
     NSLayoutConstraint.activate([
-      positionLabel.bottomAnchor.constraint(equalTo: navigator.view.bottomAnchor, constant: -TPPBaseReaderViewController.overlayLabelMargin),
-      positionLabel.leftAnchor.constraint(equalTo: navigator.view.leftAnchor, constant: TPPBaseReaderViewController.overlayLabelMargin),
-      positionLabel.rightAnchor.constraint(equalTo: navigator.view.rightAnchor, constant: -TPPBaseReaderViewController.overlayLabelMargin)
+      positionLabel.bottomAnchor.constraint(
+        equalTo: navigator.view.bottomAnchor,
+        constant: -TPPBaseReaderViewController.overlayLabelMargin
+      ),
+      positionLabel.leftAnchor.constraint(
+        equalTo: navigator.view.leftAnchor,
+        constant: TPPBaseReaderViewController.overlayLabelMargin
+      ),
+      positionLabel.rightAnchor.constraint(
+        equalTo: navigator.view.rightAnchor,
+        constant: -TPPBaseReaderViewController.overlayLabelMargin
+      ),
     ])
 
     bookTitleLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -131,13 +149,25 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     bookTitleLabel.textColor = .darkGray
     view.addSubview(bookTitleLabel)
     var layoutConstraints: [NSLayoutConstraint] = [
-      bookTitleLabel.leftAnchor.constraint(equalTo: navigator.view.leftAnchor, constant: TPPBaseReaderViewController.overlayLabelMargin),
-      bookTitleLabel.rightAnchor.constraint(equalTo: navigator.view.rightAnchor, constant: -TPPBaseReaderViewController.overlayLabelMargin)
+      bookTitleLabel.leftAnchor.constraint(
+        equalTo: navigator.view.leftAnchor,
+        constant: TPPBaseReaderViewController.overlayLabelMargin
+      ),
+      bookTitleLabel.rightAnchor.constraint(
+        equalTo: navigator.view.rightAnchor,
+        constant: -TPPBaseReaderViewController.overlayLabelMargin
+      ),
     ]
     if #available(iOS 11.0, *) {
-      layoutConstraints.append(bookTitleLabel.topAnchor.constraint(equalTo: navigator.view.safeAreaLayoutGuide.topAnchor, constant: TPPBaseReaderViewController.overlayLabelMargin / 2))
+      layoutConstraints.append(bookTitleLabel.topAnchor.constraint(
+        equalTo: navigator.view.safeAreaLayoutGuide.topAnchor,
+        constant: TPPBaseReaderViewController.overlayLabelMargin / 2
+      ))
     } else {
-      layoutConstraints.append(bookTitleLabel.topAnchor.constraint(equalTo: navigator.view.topAnchor, constant: TPPBaseReaderViewController.overlayLabelMargin))
+      layoutConstraints.append(bookTitleLabel.topAnchor.constraint(
+        equalTo: navigator.view.topAnchor,
+        constant: TPPBaseReaderViewController.overlayLabelMargin
+      ))
     }
     NSLayoutConstraint.activate(layoutConstraints)
 
@@ -183,7 +213,6 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     }
   }
 
-
   // MARK: - Navigation bar
 
   private var navigationBarHidden: Bool = true {
@@ -196,15 +225,20 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     var buttons: [UIBarButtonItem] = []
 
     let img = UIImage(named: TPPBaseReaderViewController.bookmarkOffImageName)
-    let bookmarkBtn = UIBarButtonItem(image: img,
-                                      style: .plain,
-                                      target: self,
-                                      action: #selector(toggleBookmark))
-    bookmarkBtn.accessibilityLabel = currentLocationIsBookmarked ? Strings.TPPBaseReaderViewController.removeBookmark :  Strings.TPPBaseReaderViewController.addBookmark
-    let tocButton = UIBarButtonItem(image: UIImage(named: "TOC"),
-                                    style: .plain,
-                                    target: self,
-                                    action: #selector(presentPositionsVC))
+    let bookmarkBtn = UIBarButtonItem(
+      image: img,
+      style: .plain,
+      target: self,
+      action: #selector(toggleBookmark)
+    )
+    bookmarkBtn.accessibilityLabel = currentLocationIsBookmarked ? Strings.TPPBaseReaderViewController
+      .removeBookmark : Strings.TPPBaseReaderViewController.addBookmark
+    let tocButton = UIBarButtonItem(
+      image: UIImage(named: "TOC"),
+      style: .plain,
+      target: self,
+      action: #selector(presentPositionsVC)
+    )
     tocButton.accessibilityLabel = Strings.Accessibility.viewBookmarksAndTocButton
 
     if !isShowingSample {
@@ -244,26 +278,28 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   }
 
   override var preferredStatusBarUpdateAnimation: UIStatusBarAnimation {
-    return .slide
+    .slide
   }
 
   override var prefersStatusBarHidden: Bool {
-    return navigationBarHidden
+    navigationBarHidden
   }
 
-  //----------------------------------------------------------------------------
+  // ----------------------------------------------------------------------------
   // MARK: - TOC / Bookmarks
 
   private func shouldPresentAsPopover() -> Bool {
-    return UIDevice.current.userInterfaceIdiom == .pad
+    UIDevice.current.userInterfaceIdiom == .pad
   }
 
   @objc func presentPositionsVC() {
     let currentLocation = navigator.currentLocation
     let positionsVC = TPPReaderPositionsVC.newInstance()
 
-    positionsVC.tocBusinessLogic = TPPReaderTOCBusinessLogic(r2Publication: publication,
-                                                             currentLocation: currentLocation)
+    positionsVC.tocBusinessLogic = TPPReaderTOCBusinessLogic(
+      r2Publication: publication,
+      currentLocation: currentLocation
+    )
     positionsVC.bookmarksBusinessLogic = bookmarksBusinessLogic
     positionsVC.delegate = self
 
@@ -296,12 +332,16 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   private func addBookmark(at location: TPPBookmarkR3Location) {
     Task {
       guard let bookmark = await bookmarksBusinessLogic.addBookmark(location) else {
-        let alert = TPPAlertUtils.alert(title: "Bookmarking Error",
-                                        message: "A bookmark could not be created on the current page.")
-        TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert,
-                                                     viewController: self,
-                                                     animated: true,
-                                                     completion: nil)
+        let alert = TPPAlertUtils.alert(
+          title: "Bookmarking Error",
+          message: "A bookmark could not be created on the current page."
+        )
+        TPPAlertUtils.presentFromViewControllerOrNil(
+          alertController: alert,
+          viewController: self,
+          animated: true,
+          completion: nil
+        )
         return
       }
 
@@ -316,23 +356,27 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     didDeleteBookmark(bookmark)
   }
 
-  private func didDeleteBookmark(_ bookmark: TPPReadiumBookmark) {
+  private func didDeleteBookmark(_: TPPReadiumBookmark) {
     // at this point the bookmark has already been removed, so we just need
     // to verify that the user is not at the same location of another bookmark,
     // in which case the bookmark icon will be lit up and should stay lit up.
     if
       let loc = bookmarksBusinessLogic.currentLocation(in: navigator),
-      bookmarksBusinessLogic.isBookmarkExisting(at: loc) == nil {
-
+      bookmarksBusinessLogic.isBookmarkExisting(at: loc) == nil
+    {
       updateBookmarkButton(withState: false)
     }
   }
 
-  //----------------------------------------------------------------------------
+  // ----------------------------------------------------------------------------
   // MARK: - Accessibility
 
   private lazy var accessibilityToolbar: UIToolbar = {
-    func makeItem(_ item: UIBarButtonItem.SystemItem, label: String? = nil, action: UIKit.Selector? = nil) -> UIBarButtonItem {
+    func makeItem(
+      _ item: UIBarButtonItem.SystemItem,
+      label: String? = nil,
+      action: UIKit.Selector? = nil
+    ) -> UIBarButtonItem {
       let button = UIBarButtonItem(barButtonSystemItem: item, target: (action != nil) ? self : nil, action: action)
       button.accessibilityLabel = label
       return button
@@ -371,7 +415,9 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     bookTitleLabel.isHidden = isRunning
 
     // Adjust bottom inset for accessibility toolbar
-    if let scrollView = (navigator.view as? UIScrollView) ?? navigator.view.subviews.compactMap({ $0 as? UIScrollView }).first {
+    if let scrollView = (navigator.view as? UIScrollView) ?? navigator.view.subviews.compactMap({ $0 as? UIScrollView })
+      .first
+    {
       if isRunning {
         // Ensure layout is up to date to get correct toolbar height
         view.layoutIfNeeded()
@@ -408,11 +454,11 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   }
 }
 
-//------------------------------------------------------------------------------
-// MARK: - NavigatorDelegate
+// MARK: NavigatorDelegate
 
+// ------------------------------------------------------------------------------
 extension TPPBaseReaderViewController: NavigatorDelegate {
-  func navigator(_ navigator: Navigator, locationDidChange locator: Locator) {
+  func navigator(_: Navigator, locationDidChange locator: Locator) {
     Task {
       Log.info(#function, "R3 locator changed to: \(locator)")
 
@@ -431,14 +477,15 @@ extension TPPBaseReaderViewController: NavigatorDelegate {
 
         let result = await publication.positions()
         switch result {
-        case .success(let locators):
+        case let .success(locators):
           positions = locators
-        case .failure(let error):
+        case let .failure(error):
           moduleDelegate?.presentError(error, from: self)
         }
 
         if let position = locator.locations.position {
-          return String(format: Strings.TPPBaseReaderViewController.pageOf, position) + "\(positions.count)" + chapterTitle
+          return String(format: Strings.TPPBaseReaderViewController.pageOf, position) + "\(positions.count)" +
+            chapterTitle
         } else if let progression = locator.locations.totalProgression {
           return "\(progression)%" + chapterTitle
         } else {
@@ -449,7 +496,11 @@ extension TPPBaseReaderViewController: NavigatorDelegate {
       bookTitleLabel.text = publication.metadata.title
 
       if let resourceIndex = publication.resourceIndex(forLocator: locator),
-         let _ = bookmarksBusinessLogic.isBookmarkExisting(at: TPPBookmarkR3Location(resourceIndex: resourceIndex, locator: locator)) {
+         let _ = bookmarksBusinessLogic.isBookmarkExisting(at: TPPBookmarkR3Location(
+           resourceIndex: resourceIndex,
+           locator: locator
+         ))
+      {
         updateBookmarkButton(withState: true)
       } else {
         updateBookmarkButton(withState: false)
@@ -457,7 +508,7 @@ extension TPPBaseReaderViewController: NavigatorDelegate {
     }
   }
 
-  func navigator(_ navigator: Navigator, presentExternalURL url: URL) {
+  func navigator(_: Navigator, presentExternalURL url: URL) {
     // SFSafariViewController crashes when given an URL without an HTTP scheme.
     guard ["http", "https"].contains(url.scheme?.lowercased() ?? "") else {
       return
@@ -465,20 +516,23 @@ extension TPPBaseReaderViewController: NavigatorDelegate {
     present(SFSafariViewController(url: url), animated: true)
   }
 
-  func navigator(_ navigator: Navigator, presentError error: NavigatorError) {
+  func navigator(_: Navigator, presentError error: NavigatorError) {
     moduleDelegate?.presentError(error, from: self)
   }
 
-  func navigator(_ navigator: any ReadiumNavigator.Navigator, didFailToLoadResourceAt href: ReadiumShared.RelativeURL, withError error: ReadiumShared.ReadError) {
+  func navigator(
+    _: any ReadiumNavigator.Navigator,
+    didFailToLoadResourceAt _: ReadiumShared.RelativeURL,
+    withError error: ReadiumShared.ReadError
+  ) {
     moduleDelegate?.presentError(error, from: self)
   }
 }
 
-//------------------------------------------------------------------------------
-// MARK: - VisualNavigatorDelegate
+// MARK: VisualNavigatorDelegate
 
+// ------------------------------------------------------------------------------
 extension TPPBaseReaderViewController: VisualNavigatorDelegate {
-
   func navigator(_ navigator: VisualNavigator, didTapAt point: CGPoint) {
     let viewport = navigator.view.bounds
     let thresholdRange = 0...(0.2 * viewport.width)
@@ -498,9 +552,9 @@ extension TPPBaseReaderViewController: VisualNavigatorDelegate {
   }
 }
 
-//------------------------------------------------------------------------------
-// MARK: - TPPReaderPositionsDelegate
+// MARK: TPPReaderPositionsDelegate
 
+// ------------------------------------------------------------------------------
 extension TPPBaseReaderViewController: TPPReaderPositionsDelegate {
   func positionsVC(_ positionsVC: TPPReaderPositionsVC, didSelectTOCLocation loc: Any) {
     if shouldPresentAsPopover() {
@@ -516,9 +570,10 @@ extension TPPBaseReaderViewController: TPPReaderPositionsDelegate {
     }
   }
 
-  func positionsVC(_ positionsVC: TPPReaderPositionsVC,
-                   didSelectBookmark bookmark: TPPReadiumBookmark) {
-
+  func positionsVC(
+    _: TPPReaderPositionsVC,
+    didSelectBookmark bookmark: TPPReadiumBookmark
+  ) {
     if shouldPresentAsPopover() {
       dismiss(animated: true)
     } else {
@@ -533,13 +588,20 @@ extension TPPBaseReaderViewController: TPPReaderPositionsDelegate {
     }
   }
 
-  func positionsVC(_ positionsVC: TPPReaderPositionsVC,
-                   didDeleteBookmark bookmark: TPPReadiumBookmark) {
+  func positionsVC(
+    _: TPPReaderPositionsVC,
+    didDeleteBookmark bookmark: TPPReadiumBookmark
+  ) {
     didDeleteBookmark(bookmark)
   }
 
-  func positionsVC(_ positionsVC: TPPReaderPositionsVC,
-                   didRequestSyncBookmarksWithCompletion completion: @escaping (_ success: Bool, _ bookmarks: [TPPReadiumBookmark]) -> Void) {
+  func positionsVC(
+    _: TPPReaderPositionsVC,
+    didRequestSyncBookmarksWithCompletion completion: @escaping (
+      _ success: Bool,
+      _ bookmarks: [TPPReadiumBookmark]
+    ) -> Void
+  ) {
     bookmarksBusinessLogic.syncBookmarks(completion: completion)
   }
 }

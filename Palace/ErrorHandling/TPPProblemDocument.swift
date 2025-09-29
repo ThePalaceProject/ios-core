@@ -5,11 +5,11 @@ import Foundation
  */
 @objcMembers class TPPProblemDocument: NSObject, Codable {
   static let TypeNoActiveLoan =
-    "http://librarysimplified.org/terms/problem/no-active-loan";
+    "http://librarysimplified.org/terms/problem/no-active-loan"
   static let TypeLoanAlreadyExists =
-    "http://librarysimplified.org/terms/problem/loan-already-exists";
+    "http://librarysimplified.org/terms/problem/loan-already-exists"
   static let TypeInvalidCredentials =
-    "http://librarysimplified.org/terms/problem/credentials-invalid";
+    "http://librarysimplified.org/terms/problem/credentials-invalid"
 
   private static let noStatus: Int = -1
 
@@ -35,13 +35,13 @@ import Foundation
   /// Per RFC7807, a URI reference that identifies the specific occurrence of
   /// the problem.
   let instance: String?
-  
-  private init(_ dict: [String : Any]) {
-    self.type = dict[TPPProblemDocument.typeKey] as? String
-    self.title = dict[TPPProblemDocument.titleKey] as? String
-    self.status = dict[TPPProblemDocument.statusKey] as? Int
-    self.detail = dict[TPPProblemDocument.detailKey] as? String
-    self.instance = dict[TPPProblemDocument.instanceKey] as? String
+
+  private init(_ dict: [String: Any]) {
+    type = dict[TPPProblemDocument.typeKey] as? String
+    title = dict[TPPProblemDocument.titleKey] as? String
+    status = dict[TPPProblemDocument.statusKey] as? Int
+    detail = dict[TPPProblemDocument.detailKey] as? String
+    instance = dict[TPPProblemDocument.instanceKey] as? String
     super.init()
   }
 
@@ -60,18 +60,20 @@ import Foundation
   @objc(forExpiredOrMissingCredentials:)
   static func forExpiredOrMissingCredentials(hasCredentials: Bool) -> TPPProblemDocument {
     if hasCredentials {
-      return TPPProblemDocument([
+      TPPProblemDocument([
         TPPProblemDocument.typeKey: TPPProblemDocument.TypeInvalidCredentials,
         TPPProblemDocument.titleKey:
           Strings.TPPProblemDocument.authenticationExpiredTitle,
         TPPProblemDocument.detailKey:
-          Strings.TPPProblemDocument.authenticationExpiredBody])
+          Strings.TPPProblemDocument.authenticationExpiredBody,
+      ])
     } else {
-      return TPPProblemDocument([
+      TPPProblemDocument([
         TPPProblemDocument.typeKey: TPPProblemDocument.TypeInvalidCredentials,
         TPPProblemDocument.titleKey: Strings.TPPProblemDocument.authenticationRequiredTitle,
         TPPProblemDocument.detailKey:
-          Strings.TPPProblemDocument.authenticationRequireBody])
+          Strings.TPPProblemDocument.authenticationRequireBody,
+      ])
     }
   }
 
@@ -80,13 +82,13 @@ import Foundation
     @param data data with which to populate the ProblemDocument
     @return a ProblemDocument built from the given data
    */
-  @objc static func fromData(_ data: Data) throws -> TPPProblemDocument {
+  static func fromData(_ data: Data) throws -> TPPProblemDocument {
     let jsonDecoder = JSONDecoder()
     jsonDecoder.keyDecodingStrategy = .convertFromSnakeCase
-    
+
     return try jsonDecoder.decode(TPPProblemDocument.self, from: data)
   }
-  
+
   /// Factory method to create a problem document after an api call.
   ///
   /// - Parameters:
@@ -94,14 +96,16 @@ import Foundation
   ///   - responseError: Error possibly containing a problem document.
   /// - Returns: A problem document instance if a problem document was found,
   /// or `nil` otherwise.
-  @objc class func fromResponseError(_ responseError: NSError?,
-                                     responseData: Data?) -> TPPProblemDocument? {
+  @objc class func fromResponseError(
+    _ responseError: NSError?,
+    responseData: Data?
+  ) -> TPPProblemDocument? {
     if let problemDocFromError = responseError?.problemDocument {
       return problemDocFromError
     } else if let responseData = responseData {
       return try? TPPProblemDocument.fromData(responseData)
     }
-      return nil
+    return nil
   }
 
   /**
@@ -109,12 +113,12 @@ import Foundation
     @param dict data with which to populate the ProblemDocument
     @return a ProblemDocument built from the given dicationary
    */
-  @objc static func fromDictionary(_ dict: [String : Any]) -> TPPProblemDocument {
-    return TPPProblemDocument(dict)
+  static func fromDictionary(_ dict: [String: Any]) -> TPPProblemDocument {
+    TPPProblemDocument(dict)
   }
 
-  @objc var dictionaryValue: [String: Any] {
-    return [
+  var dictionaryValue: [String: Any] {
+    [
       TPPProblemDocument.typeKey: type ?? "",
       TPPProblemDocument.titleKey: title ?? "",
       TPPProblemDocument.statusKey: status ?? TPPProblemDocument.noStatus,
@@ -123,7 +127,7 @@ import Foundation
     ]
   }
 
-  @objc var stringValue: String {
-    return "\(title == nil ? "" : title! + ": ")\(detail ?? "")"
+  var stringValue: String {
+    "\(title == nil ? "" : title! + ": ")\(detail ?? "")"
   }
 }

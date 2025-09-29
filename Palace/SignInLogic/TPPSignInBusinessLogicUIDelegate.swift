@@ -8,13 +8,15 @@
 
 import Foundation
 
+// MARK: - TPPSignInBusinessLogicUIDelegate
+
 /// The functionalities on the UI that the sign-in business logic requires.
 @objc protocol TPPSignInBusinessLogicUIDelegate: NYPLBasicAuthCredentialsProvider, NYPLUserAccountInputProvider {
   /// The context in which the UI delegate is operating in, such as in a modal
   /// sheet or a tab.
   /// - Note: This should not be derived from a computation involving views,
   /// because it may be called outside of the main thread.
-  var context: String {get}
+  var context: String { get }
 
   /// Notifies the delegate that the process of signing in is about to begin.
   /// - Note: This is always called on the main thread.
@@ -42,19 +44,25 @@ import Foundation
   ///   if possible.
   ///   - message: A user friendly message derived from the problem document
   ///   if possible.
-  func businessLogic(_ logic: TPPSignInBusinessLogic,
-                     didEncounterValidationError error: Error?,
-                     userFriendlyErrorTitle title: String?,
-                     andMessage message: String?)
+  func businessLogic(
+    _ logic: TPPSignInBusinessLogic,
+    didEncounterValidationError error: Error?,
+    userFriendlyErrorTitle title: String?,
+    andMessage message: String?
+  )
 
   @objc(dismissViewControllerAnimated:completion:)
   func dismiss(animated flag: Bool, completion: (() -> Void)?)
 
   @objc(presentViewController:animated:completion:)
-  func present(_ viewControllerToPresent: UIViewController,
-               animated flag: Bool,
-               completion: (() -> Void)?)
+  func present(
+    _ viewControllerToPresent: UIViewController,
+    animated flag: Bool,
+    completion: (() -> Void)?
+  )
 }
+
+// MARK: - TPPSignInOutBusinessLogicUIDelegate
 
 @objc protocol TPPSignInOutBusinessLogicUIDelegate: TPPSignInBusinessLogicUIDelegate {
   /// Notifies the delegate that the process of signing out is about to begin.
@@ -67,9 +75,11 @@ import Foundation
   ///   - logic: A reference to the business logic that handled the sign-out process.
   ///   - error: The instance of the error if available.
   ///   - httpStatusCode: The HTTP status code for the sign-out request.
-  func businessLogic(_ logic: TPPSignInBusinessLogic,
-                     didEncounterSignOutError error: Error?,
-                     withHTTPStatusCode httpStatusCode: Int)
+  func businessLogic(
+    _ logic: TPPSignInBusinessLogic,
+    didEncounterSignOutError error: Error?,
+    withHTTPStatusCode httpStatusCode: Int
+  )
 
   /// Notifies the delegate that deauthorization has completed.
   /// - Parameter logic: The business logic in charge of signing out.

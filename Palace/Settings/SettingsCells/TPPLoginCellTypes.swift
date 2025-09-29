@@ -8,6 +8,8 @@
 
 import Foundation
 
+// MARK: - TPPAuthMethodCellType
+
 @objcMembers
 class TPPAuthMethodCellType: NSObject {
   let authenticationMethod: AccountDetails.Authentication
@@ -17,6 +19,8 @@ class TPPAuthMethodCellType: NSObject {
   }
 }
 
+// MARK: - TPPInfoHeaderCellType
+
 @objcMembers
 class TPPInfoHeaderCellType: NSObject {
   let information: String
@@ -25,6 +29,8 @@ class TPPInfoHeaderCellType: NSObject {
     self.information = information
   }
 }
+
+// MARK: - TPPSamlIdpCellType
 
 @objcMembers
 class TPPSamlIdpCellType: NSObject {

@@ -11,12 +11,12 @@
   case audiobook
   case pdf
   case unsupported
-  
+
   static func from(mimeType: String?) -> TPPBookContentType {
     guard let mimeType = mimeType else {
       return .unsupported
     }
-    
+
     if TPPOPDSAcquisitionPath.audiobookTypes().contains(mimeType) {
       return .audiobook
     } else if mimeType == ContentTypeEpubZip || mimeType == ContentTypeOctetStream {

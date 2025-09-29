@@ -14,15 +14,26 @@ class TPPDRMAuthorizingMock: NSObject, TPPDRMAuthorizing {
   let deviceID = "drmDeviceID"
   let userID = "drmUserID"
 
-  func isUserAuthorized(_ userID: String!, withDevice device: String!) -> Bool {
-    return true
+  func isUserAuthorized(_: String!, withDevice _: String!) -> Bool {
+    true
   }
 
-  func authorize(withVendorID vendorID: String!, username: String!, password: String!, completion: ((Bool, Error?, String?, String?) -> Void)!) {
+  func authorize(
+    withVendorID _: String!,
+    username _: String!,
+    password _: String!,
+    completion: ((Bool, Error?, String?, String?) -> Void)!
+  ) {
     completion(true, nil, deviceID, userID)
   }
 
-  func deauthorize(withUsername username: String!, password: String!, userID: String!, deviceID: String!, completion: ((Bool, Error?) -> Void)!) {
+  func deauthorize(
+    withUsername _: String!,
+    password _: String!,
+    userID _: String!,
+    deviceID _: String!,
+    completion: ((Bool, Error?) -> Void)!
+  ) {
     completion(true, nil)
   }
 }

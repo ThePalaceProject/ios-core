@@ -9,7 +9,6 @@
 import Foundation
 
 extension TPPPDFPage {
-  
   /// Location string for `TPPBookLocation` object
   var locationString: String? {
     guard let jsonData = try? JSONEncoder().encode(self),
@@ -19,11 +18,13 @@ extension TPPPDFPage {
     }
     return jsonString
   }
-  
+
   /// Bookmark selector for reading position synchronization
   var bookmarkSelector: String? {
     let bookmark = TPPPDFPageBookmark(page: pageNumber)
-    guard let jsonData = try? JSONEncoder().encode(bookmark), let jsonString = String(data: jsonData, encoding: .utf8) else {
+    guard let jsonData = try? JSONEncoder().encode(bookmark),
+          let jsonString = String(data: jsonData, encoding: .utf8)
+    else {
       return nil
     }
     return jsonString

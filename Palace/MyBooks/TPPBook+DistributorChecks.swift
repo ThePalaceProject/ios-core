@@ -12,7 +12,6 @@ import OverdriveProcessor
 #endif
 
 extension TPPBook {
-
   /// Determines if the download of this book should complete successfully
   /// given the received content type.
   ///
@@ -44,7 +43,7 @@ extension TPPBook {
       }
     }
     #endif
-    
+
     return false
   }
 }

@@ -1,7 +1,9 @@
 import Foundation
-import ReadiumShared
 import ReadiumNavigator
+import ReadiumShared
 import UIKit
+
+// MARK: - TPPAppearanceColors
 
 struct TPPAppearanceColors {
   let backgroundColor: UIColor
@@ -51,6 +53,8 @@ struct TPPAppearanceColors {
   }
 }
 
+// MARK: - TPPAssociatedColors
+
 class TPPAssociatedColors {
   static let shared = TPPAssociatedColors()
 
@@ -71,11 +75,11 @@ class TPPAssociatedColors {
   static func colors(for theme: Theme) -> TPPAppearanceColors {
     switch theme {
     case .sepia:
-      return .blackOnSepiaColors
+      .blackOnSepiaColors
     case .dark:
-      return .whiteOnBlackColors
+      .whiteOnBlackColors
     default:
-      return .blackOnWhiteColors
+      .blackOnWhiteColors
     }
   }
 }

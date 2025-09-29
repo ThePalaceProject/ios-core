@@ -8,6 +8,8 @@
 
 import Foundation
 
+// MARK: - OPDS2Publication
+
 struct OPDS2Publication: Codable {
   struct Metadata: Codable {
     let updated: Date
@@ -15,7 +17,7 @@ struct OPDS2Publication: Codable {
     let id: String
     let title: String
   }
-  
+
   let links: [OPDS2Link]
   let metadata: Metadata
   let images: [OPDS2Link]?
@@ -30,7 +32,7 @@ extension OPDS2Publication {
     }
     return URL(string: image.href)
   }
-  
+
   var thumbnailURL: URL? {
     guard let thumbnail = images?.first(where: { $0.type == imageType && ($0.rel ?? "").contains("thumbnail") }) else {
       return nil
@@ -45,4 +47,3 @@ extension OPDS2Publication {
     return URL(string: cover.href)
   }
 }
-

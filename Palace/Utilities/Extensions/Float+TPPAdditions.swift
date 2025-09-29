@@ -8,10 +8,9 @@
 
 import Foundation
 
-infix operator =~= : ComparisonPrecedence
+infix operator =~=: ComparisonPrecedence
 
 extension Float {
-
   /// Performs equality check minus an epsilon
   /// - Returns: `true` if the numbers differ by less than the epsilon,
   /// `false` otherwise.
@@ -24,7 +23,6 @@ extension Float {
   }
 
   func roundTo(decimalPlaces: Int) -> String {
-    return String(format: "%.\(decimalPlaces)f%%", self) as String
+    String(format: "%.\(decimalPlaces)f%%", self) as String
   }
 }
-

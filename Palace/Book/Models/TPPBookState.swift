@@ -11,7 +11,9 @@ let UnsupportedKey = "unsupported"
 let ReturningKey = "returning"
 let SAMLStartedKey = "saml-started"
 
-@objc public enum TPPBookState : Int, CaseIterable {
+// MARK: - TPPBookState
+
+@objc public enum TPPBookState: Int, CaseIterable {
   case unregistered = 0
   case downloadNeeded = 1
   case downloading
@@ -26,63 +28,65 @@ let SAMLStartedKey = "saml-started"
 
   init?(_ stringValue: String) {
     switch stringValue {
-      case DownloadingKey:
-        self = .downloading
-      case DownloadFailedKey:
-        self = .downloadFailed
-      case DownloadNeededKey:
-        self = .downloadNeeded
-      case DownloadSuccessfulKey:
-        self = .downloadSuccessful
-      case UnregisteredKey:
-        self = .unregistered
-      case HoldingKey:
-        self = .holding
-      case UsedKey:
-        self = .used
-      case UnsupportedKey:
-        self = .unsupported
-      case SAMLStartedKey:
-        self = .SAMLStarted
-      default:
-        return nil
+    case DownloadingKey:
+      self = .downloading
+    case DownloadFailedKey:
+      self = .downloadFailed
+    case DownloadNeededKey:
+      self = .downloadNeeded
+    case DownloadSuccessfulKey:
+      self = .downloadSuccessful
+    case UnregisteredKey:
+      self = .unregistered
+    case HoldingKey:
+      self = .holding
+    case UsedKey:
+      self = .used
+    case UnsupportedKey:
+      self = .unsupported
+    case SAMLStartedKey:
+      self = .SAMLStarted
+    default:
+      return nil
     }
   }
-    
+
   func stringValue() -> String {
     switch self {
-      case .downloading:
-        return DownloadingKey;
-      case .downloadFailed:
-        return DownloadFailedKey;
-      case .downloadNeeded:
-        return DownloadNeededKey;
-      case .downloadSuccessful:
-        return DownloadSuccessfulKey;
-      case .unregistered:
-        return UnregisteredKey;
-      case .holding:
-        return HoldingKey;
-      case .used:
-        return UsedKey;
-      case .unsupported:
-        return UnsupportedKey;
-      case .returning:
-        return ReturningKey
+    case .downloading:
+      DownloadingKey
+    case .downloadFailed:
+      DownloadFailedKey
+    case .downloadNeeded:
+      DownloadNeededKey
+    case .downloadSuccessful:
+      DownloadSuccessfulKey
+    case .unregistered:
+      UnregisteredKey
+    case .holding:
+      HoldingKey
+    case .used:
+      UsedKey
+    case .unsupported:
+      UnsupportedKey
+    case .returning:
+      ReturningKey
     case .SAMLStarted:
-      return SAMLStartedKey;
+      SAMLStartedKey
     }
   }
 }
 
+// MARK: - TPPBookStateHelper
+
 // For Objective-C, since Obj-C enum is not allowed to have methods
 // TODO: Remove when migration to Swift completed
-class TPPBookStateHelper : NSObject {
+class TPPBookStateHelper: NSObject {
   @objc(stringValueFromBookState:)
   static func stringValue(from state: TPPBookState) -> String {
-    return state.stringValue()
+    state.stringValue()
   }
-    
+
   @objc(bookStateFromString:)
   static func bookState(fromString string: String) -> NSNumber? {
     guard let state = TPPBookState(string) else {
@@ -91,9 +95,8 @@ class TPPBookStateHelper : NSObject {
 
     return NSNumber(integerLiteral: state.rawValue)
   }
-    
+
   @objc static func allBookStates() -> [TPPBookState.RawValue] {
-    return TPPBookState.allCases.map{ $0.rawValue }
+    TPPBookState.allCases.map(\.rawValue)
   }
 }
-

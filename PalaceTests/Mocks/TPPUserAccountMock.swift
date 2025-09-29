@@ -12,7 +12,7 @@ import Foundation
 class TPPUserAccountMock: TPPUserAccount {
   override init() {
     super.init()
-    print("#### init'ing userAccount \(self.hash)")
+    print("#### init'ing userAccount \(hash)")
   }
 
   deinit {
@@ -20,16 +20,16 @@ class TPPUserAccountMock: TPPUserAccount {
   }
 
   private static var shared = TPPUserAccountMock()
-  override class func sharedAccount(libraryUUID: String?) -> TPPUserAccount {
-    return shared
+  override class func sharedAccount(libraryUUID _: String?) -> TPPUserAccount {
+    shared
   }
 
-  // MARK:- Variable redefinitions to avoid keychain
+  // MARK: - Variable redefinitions to avoid keychain
 
   var _authDefinition: AccountDetails.Authentication?
   override var authDefinition: AccountDetails.Authentication? {
     get {
-      return _authDefinition
+      _authDefinition
     }
     set {
       _authDefinition = newValue
@@ -39,7 +39,7 @@ class TPPUserAccountMock: TPPUserAccount {
   var _credentials: TPPCredentials?
   override var credentials: TPPCredentials? {
     get {
-      return _credentials
+      _credentials
     }
     set {
       _credentials = newValue
@@ -48,95 +48,105 @@ class TPPUserAccountMock: TPPUserAccount {
 
   private var _authorizationIdentifier: String?
   override var authorizationIdentifier: String? {
-    return _authorizationIdentifier
+    _authorizationIdentifier
   }
+
   override func setAuthorizationIdentifier(_ identifier: String) {
     _authorizationIdentifier = identifier
   }
 
   private var _deviceID: String?
   override var deviceID: String? {
-    return _deviceID
+    _deviceID
   }
+
   override func setDeviceID(_ newValue: String) {
     _deviceID = newValue
   }
 
   private var _userID: String?
   override var userID: String? {
-    return _userID
+    _userID
   }
+
   override func setUserID(_ newValue: String) {
     _userID = newValue
   }
 
   private var _adobeVendor: String?
   override var adobeVendor: String? {
-    return _adobeVendor
+    _adobeVendor
   }
+
   override func setAdobeVendor(_ newValue: String) {
     _adobeVendor = newValue
   }
 
   private var _provider: String?
   override var provider: String? {
-    return _provider
+    _provider
   }
+
   override func setProvider(_ newValue: String) {
     _provider = newValue
   }
 
   private var _patron: [String: Any]?
   override var patron: [String: Any]? {
-    return _patron
+    _patron
   }
+
   override func setPatron(_ newValue: [String: Any]) {
     _patron = newValue
   }
 
   private var _adobeToken: String?
   override var adobeToken: String? {
-    return _adobeToken
+    _adobeToken
   }
+
   override func setAdobeToken(_ newValue: String) {
     _adobeToken = newValue
   }
-  override func setAdobeToken(_ token: String, patron: [String : Any]) {
+
+  override func setAdobeToken(_ token: String, patron: [String: Any]) {
     _adobeToken = token
     _patron = patron
   }
 
   private var _licensor: [String: Any]?
   override var licensor: [String: Any]? {
-    return _licensor
+    _licensor
   }
+
   override func setLicensor(_ newValue: [String: Any]) {
     _licensor = newValue
   }
 
   private var _cookies: [HTTPCookie]?
   override var cookies: [HTTPCookie]? {
-    return _cookies
+    _cookies
   }
+
   override func setCookies(_ newValue: [HTTPCookie]) {
     _cookies = newValue
   }
 
   override var legacyAuthToken: String? {
-    return nil
+    nil
   }
 
   private var _authToken: String?
   override var authToken: String? {
-    return _authToken
+    _authToken
   }
 
-  override func setAuthToken(_ token: String, barcode: String?, pin: String?, expirationDate: Date?) {
+  override func setAuthToken(_ token: String, barcode _: String?, pin _: String?, expirationDate _: Date?) {
     _authToken = token
   }
 
-  // MARK:- Clean everything up
-  
+  // MARK: - Clean everything up
+
   override func removeAll() {
     _adobeToken = nil
     _patron = nil

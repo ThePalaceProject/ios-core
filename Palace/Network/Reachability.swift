@@ -76,7 +76,7 @@ class Reachability: NSObject {
     if connectionMonitor.currentPath.status == .satisfied {
       return true
     }
-    
+
     var zeroAddress = sockaddr_in()
     zeroAddress.sin_len = UInt8(MemoryLayout.size(ofValue: zeroAddress))
     zeroAddress.sin_family = sa_family_t(AF_INET)
@@ -99,20 +99,23 @@ class Reachability: NSObject {
     let reachable = flags.contains(.reachable)
     let needsConnection = flags.contains(.connectionRequired)
     let isConnected = (reachable && !needsConnection)
-    
-    Log.debug(#file, "Reachability check: reachable=\(reachable), needsConnection=\(needsConnection), result=\(isConnected)")
-    
+
+    Log.debug(
+      #file,
+      "Reachability check: reachable=\(reachable), needsConnection=\(needsConnection), result=\(isConnected)"
+    )
+
     return isConnected
   }
-  
+
   func getDetailedConnectivityStatus() -> (isConnected: Bool, connectionType: String, details: String) {
     let currentPath = connectionMonitor.currentPath
-    
+
     switch currentPath.status {
     case .satisfied:
       var connectionType = "Unknown"
       var details = "Connected"
-      
+
       if currentPath.usesInterfaceType(.wifi) {
         connectionType = "WiFi"
         details += " via WiFi"
@@ -123,23 +126,23 @@ class Reachability: NSObject {
         connectionType = "Ethernet"
         details += " via Ethernet"
       }
-      
+
       if currentPath.isExpensive {
         details += " (Expensive)"
       }
-      
+
       if currentPath.isConstrained {
         details += " (Constrained)"
       }
-      
+
       return (true, connectionType, details)
-      
+
     case .unsatisfied:
       return (false, "None", "No network connection")
-      
+
     case .requiresConnection:
       return (false, "Pending", "Connection required but not established")
-      
+
     @unknown default:
       return (false, "Unknown", "Unknown network status")
     }

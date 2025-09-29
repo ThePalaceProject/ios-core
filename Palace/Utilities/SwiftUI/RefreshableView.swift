@@ -11,13 +11,15 @@ import SwiftUI
 
 typealias Action = () -> Void
 
+// MARK: - RefreshableScrollView
+
 struct RefreshableScrollView: ViewModifier {
   var onRefresh: Action
 
   private var topPadding = 50.0
   @State private var needRefresh: Bool = false
   private let coordinatorSpaceName = "RefreshingView"
-  
+
   init(_ refreshAction: @escaping Action) {
     onRefresh = refreshAction
   }
@@ -29,15 +31,15 @@ struct RefreshableScrollView: ViewModifier {
     }
     .coordinateSpace(name: coordinatorSpaceName)
   }
-  
+
   private var refreshView: some View {
     GeometryReader { geometry in
-      if (geometry.frame(in: .named(coordinatorSpaceName)).midY > topPadding) {
+      if geometry.frame(in: .named(coordinatorSpaceName)).midY > topPadding {
         Spacer()
           .onAppear {
             needRefresh = true
           }
-      } else if (geometry.frame(in: .named(coordinatorSpaceName)).midY < 10) {
+      } else if geometry.frame(in: .named(coordinatorSpaceName)).midY < 10 {
         Spacer()
           .onAppear {
             if needRefresh {

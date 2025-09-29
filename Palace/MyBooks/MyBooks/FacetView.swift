@@ -6,9 +6,9 @@
 //  Copyright © 2023 The Palace Project. All rights reserved.
 //
 
-import SwiftUI
 import Combine
 import PalaceUIKit
+import SwiftUI
 
 struct FacetView: View {
   @ObservedObject var model: FacetViewModel
@@ -42,7 +42,7 @@ struct FacetView: View {
     .border(Color(TPPConfiguration.mainColor()), width: 1)
     .cornerRadius(2)
   }
-  
+
   private var dividerView: some View {
     Rectangle()
       .fill(Color(UIColor.lightGray.withAlphaComponent(0.9)))
@@ -55,16 +55,16 @@ struct FacetView: View {
 
     if let secondaryFacet = model.facets.first(where: { $0 != model.activeSort }) {
       buttons.append(ActionSheet.Button.default(Text(secondaryFacet.localizedString)) {
-        self.model.activeSort = secondaryFacet
+        model.activeSort = secondaryFacet
       })
 
       buttons.append(Alert.Button.default(Text(model.activeSort.localizedString)) {
-        self.model.activeSort = model.activeSort
+        model.activeSort = model.activeSort
       })
     } else {
       buttons.append(ActionSheet.Button.cancel(Text(Strings.Generic.cancel)))
     }
 
-    return ActionSheet(title: Text(""), message: Text(""), buttons:buttons)
+    return ActionSheet(title: Text(""), message: Text(""), buttons: buttons)
   }
 }

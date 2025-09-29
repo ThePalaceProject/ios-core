@@ -1,13 +1,14 @@
-import Foundation
+import BackgroundTasks
 import FirebaseCore
 import FirebaseDynamicLinks
-import BackgroundTasks
-import SwiftUI
+import Foundation
 import PalaceAudiobookToolkit
+import SwiftUI
+
+// MARK: - TPPAppDelegate
 
 @main
 class TPPAppDelegate: UIResponder, UIApplicationDelegate {
-
   var window: UIWindow?
   let audiobookLifecycleManager = AudiobookLifecycleManager()
   var notificationsManager: TPPUserNotifications!
@@ -15,14 +16,14 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
   // MARK: - Application Lifecycle
 
-  func applicationDidFinishLaunching(_ application: UIApplication) {
+  func applicationDidFinishLaunching(_: UIApplication) {
     let startupQueue = DispatchQueue.global(qos: .userInitiated)
 
     FirebaseApp.configure()
 
     TPPErrorLogger.configureCrashAnalytics()
     TPPErrorLogger.logNewAppLaunch()
-    
+
     GeneralCache<String, Data>.clearCacheOnUpdate()
 
     setupWindow()
@@ -39,10 +40,12 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     registerBackgroundTasks()
 
     MemoryPressureMonitor.shared.start()
-    
+
     DispatchQueue.main.async { [weak self] in
-      guard let self else { return }
-      self.presentFirstRunFlowIfNeeded()
+      guard let self else {
+        return
+      }
+      presentFirstRunFlowIfNeeded()
     }
   }
 
@@ -58,9 +61,10 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
     TransifexManager.setup()
 
-    NotificationCenter.default.addObserver(forName: .TPPIsSigningIn, object: nil, queue: nil) { [weak self] notification in
-      self?.signingIn(notification)
-    }
+    NotificationCenter.default
+      .addObserver(forName: .TPPIsSigningIn, object: nil, queue: nil) { [weak self] notification in
+        self?.signingIn(notification)
+      }
   }
 
   private func setupBookRegistryAndNotifications() {
@@ -88,7 +92,10 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         Log.log("[Background Refresh] Failed. Error Document Present. Elapsed Time: \(-startDate.timeIntervalSinceNow)")
         task.setTaskCompleted(success: false)
       } else {
-        Log.log("[Background Refresh] \(newBooks ? "New books available" : "No new books fetched"). Elapsed Time: \(-startDate.timeIntervalSinceNow)")
+        Log
+          .log(
+            "[Background Refresh] \(newBooks ? "New books available" : "No new books fetched"). Elapsed Time: \(-startDate.timeIntervalSinceNow)"
+          )
         task.setTaskCompleted(success: true)
       }
     }
@@ -112,7 +119,11 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
   // MARK: - URL Handling (Dynamic Links)
 
-  func application(_ application: UIApplication, continue userActivity: NSUserActivity, restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void) -> Bool {
+  func application(
+    _: UIApplication,
+    continue userActivity: NSUserActivity,
+    restorationHandler _: @escaping ([UIUserActivityRestoring]?) -> Void
+  ) -> Bool {
     if let url = userActivity.webpageURL {
       return DynamicLinks.dynamicLinks().handleUniversalLink(url) { dynamicLink, error in
         if let error = error {
@@ -126,14 +137,15 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     if userActivity.activityType == NSUserActivityTypeBrowsingWeb &&
-        userActivity.webpageURL?.host == TPPSettings.shared.universalLinksURL.host {
+      userActivity.webpageURL?.host == TPPSettings.shared.universalLinksURL.host
+    {
       NotificationCenter.default.post(name: .TPPAppDelegateDidReceiveCleverRedirectURL, object: userActivity.webpageURL)
       return true
     }
     return false
   }
 
-  func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
+  func application(_: UIApplication, open url: URL, options _: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
     if let dynamicLink = DynamicLinks.dynamicLinks().dynamicLink(fromCustomSchemeURL: url) {
       if DLNavigator.shared.isValidLink(dynamicLink) {
         DLNavigator.shared.navigate(to: dynamicLink)
@@ -143,18 +155,22 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     return false
   }
 
-  func applicationDidBecomeActive(_ application: UIApplication) {
+  func applicationDidBecomeActive(_: UIApplication) {
     TPPErrorLogger.setUserID(TPPUserAccount.sharedAccount().barcode)
   }
 
-  func applicationWillTerminate(_ application: UIApplication) {
+  func applicationWillTerminate(_: UIApplication) {
     audiobookLifecycleManager.willTerminate()
     NotificationCenter.default.removeObserver(self)
     Reachability.shared.stopMonitoring()
     MyBooksDownloadCenter.shared.purgeAllAudiobookCaches(force: false)
   }
 
-  internal func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String, completionHandler: @escaping () -> Void) {
+  internal func application(
+    _: UIApplication,
+    handleEventsForBackgroundURLSession identifier: String,
+    completionHandler: @escaping () -> Void
+  ) {
     audiobookLifecycleManager.handleEventsForBackgroundURLSession(for: identifier, completionHandler: completionHandler)
   }
 
@@ -194,6 +210,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 }
 
 // MARK: - First Run Flow
+
 extension TPPAppDelegate {
   private func presentFirstRunFlowIfNeeded() {
     // Defer until accounts have loaded to avoid false negatives on currentAccount
@@ -208,9 +225,13 @@ extension TPPAppDelegate {
     let showOnboarding = !TPPSettings.shared.userHasSeenWelcomeScreen
     // Use persisted currentAccountId rather than computed currentAccount to avoid timing issues
     let needsAccount = (AccountsManager.shared.currentAccountId == nil)
-    guard showOnboarding || needsAccount else { return }
+    guard showOnboarding || needsAccount else {
+      return
+    }
 
-    guard let top = topViewController() else { return }
+    guard let top = topViewController() else {
+      return
+    }
 
     func presentOnboarding(over presenter: UIViewController) {
       let onboardingVC = TPPOnboardingViewController.makeSwiftUIView(dismissHandler: {
@@ -259,7 +280,10 @@ extension TPPAppDelegate {
 }
 
 // MARK: - Memory and Disk Pressure Handling
+
 import UIKit
+
+// MARK: - MemoryPressureMonitor
 
 /// Centralized observer for memory pressure, thermal state, and disk space cleanup.
 /// Performs cache purges, download throttling, and space reclamation when needed.
@@ -312,7 +336,6 @@ final class MemoryPressureMonitor {
       MyBooksDownloadCenter.shared.pauseAllDownloads()
 
       self.reclaimDiskSpaceIfNeeded(minimumFreeMegabytes: 256)
-
     }
   }
 
@@ -328,7 +351,7 @@ final class MemoryPressureMonitor {
     monitorQueue.async {
       let processInfo = ProcessInfo.processInfo
       var maxActive = 10
-      
+
       if #available(iOS 11.0, *) {
         switch processInfo.thermalState {
         case .critical:
@@ -353,7 +376,9 @@ final class MemoryPressureMonitor {
   func reclaimDiskSpaceIfNeeded(minimumFreeMegabytes: Int) {
     let minimumFreeBytes = Int64(minimumFreeMegabytes) * 1024 * 1024
     let freeBytes = FileSystem.freeDiskSpaceInBytes()
-    guard freeBytes < minimumFreeBytes else { return }
+    guard freeBytes < minimumFreeBytes else {
+      return
+    }
 
     // Clear caches first
     URLCache.shared.removeAllCachedResponses()
@@ -369,13 +394,25 @@ final class MemoryPressureMonitor {
 
   private func pruneOldFilesFromCachesDirectory(olderThanDays days: Int) {
     let fm = FileManager.default
-    guard let cachesDir = fm.urls(for: .cachesDirectory, in: .userDomainMask).first else { return }
+    guard let cachesDir = fm.urls(for: .cachesDirectory, in: .userDomainMask).first else {
+      return
+    }
     let cutoff = Date().addingTimeInterval(TimeInterval(-days * 24 * 60 * 60))
-    if let contents = try? fm.contentsOfDirectory(at: cachesDir, includingPropertiesForKeys: [.contentAccessDateKey, .contentModificationDateKey, .isDirectoryKey], options: [.skipsHiddenFiles]) {
+    if let contents = try? fm.contentsOfDirectory(
+      at: cachesDir,
+      includingPropertiesForKeys: [.contentAccessDateKey, .contentModificationDateKey, .isDirectoryKey],
+      options: [.skipsHiddenFiles]
+    ) {
       for url in contents {
         do {
-          let rvalues = try url.resourceValues(forKeys: [.isDirectoryKey, .contentAccessDateKey, .contentModificationDateKey])
-          if rvalues.isDirectory == true { continue }
+          let rvalues = try url.resourceValues(forKeys: [
+            .isDirectoryKey,
+            .contentAccessDateKey,
+            .contentModificationDateKey,
+          ])
+          if rvalues.isDirectory == true {
+            continue
+          }
           let last = rvalues.contentAccessDate ?? rvalues.contentModificationDate ?? Date.distantPast
           if last < cutoff {
             try? fm.removeItem(at: url)
@@ -388,13 +425,16 @@ final class MemoryPressureMonitor {
   }
 }
 
+// MARK: - FileSystem
+
 private enum FileSystem {
   static func freeDiskSpaceInBytes() -> Int64 {
     do {
       let attrs = try FileManager.default.attributesOfFileSystem(forPath: NSHomeDirectory())
-      if let free = attrs[.systemFreeSize] as? NSNumber { return free.int64Value }
-    } catch { }
+      if let free = attrs[.systemFreeSize] as? NSNumber {
+        return free.int64Value
+      }
+    } catch {}
     return 0
   }
 }
-

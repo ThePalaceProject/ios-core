@@ -10,19 +10,18 @@ import SwiftUI
 
 /// Single page thumbnail view
 struct TPPPDFPreviewThumbnail: View {
-  
   @ObservedObject var thumbnailGenerator: ThumbnailFetcher
   let document: TPPEncryptedPDFDocument
   let index: Int
   let size: CGSize
-  
+
   init(document: TPPEncryptedPDFDocument, index: Int, size: CGSize) {
     self.document = document
     self.index = index
     self.size = size
-    self._thumbnailGenerator = ObservedObject(wrappedValue: ThumbnailFetcher(document: document, index: index))
+    _thumbnailGenerator = ObservedObject(wrappedValue: ThumbnailFetcher(document: document, index: index))
   }
-  
+
   var body: some View {
     Image(uiImage: thumbnailGenerator.image)
       .resizable()
@@ -31,7 +30,7 @@ struct TPPPDFPreviewThumbnail: View {
       .background(Color(UIColor.secondarySystemBackground))
       .border(.gray)
   }
-  
+
   /// Ths view needs an observable object to correctly update selected page thumbnail
   /// Without it the thimbnail will always contain the first assigned image
   /// It seems SwiftUI optimizes that
@@ -43,13 +42,13 @@ struct TPPPDFPreviewThumbnail: View {
       self.document = document
       self.index = index
       if let cachedThumbnail = document.cachedThumbnail(for: index) {
-        self.image = cachedThumbnail
+        image = cachedThumbnail
       } else {
-        self.image = UIImage()
+        image = UIImage()
         fetchThumbnail()
       }
     }
-    
+
     private func fetchThumbnail() {
       DispatchQueue.pdfThumbnailRenderingQueue.async {
         let thumbnail = self.document.thumbnail(for: self.index)
@@ -61,5 +60,4 @@ struct TPPPDFPreviewThumbnail: View {
       }
     }
   }
-
 }

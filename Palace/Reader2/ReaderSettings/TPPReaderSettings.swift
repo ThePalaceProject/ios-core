@@ -1,6 +1,8 @@
-import SwiftUI
-import ReadiumShared
 import ReadiumNavigator
+import ReadiumShared
+import SwiftUI
+
+// MARK: - TPPReaderSettings
 
 @MainActor
 class TPPReaderSettings: ObservableObject {
@@ -33,12 +35,12 @@ class TPPReaderSettings: ObservableObject {
     self.delegate = delegate
 
     // Initialize font size
-    self.fontSize = Float(preferences.fontSize ?? 0.5)
+    fontSize = Float(preferences.fontSize ?? 0.5)
     screenBrightness = UIScreen.main.brightness
 
     // Set font and appearance based on initial preferences
-    self.fontFamilyIndex = TPPReaderSettings.mapFontFamilyToIndex(preferences.fontFamily)
-    self.appearanceIndex = TPPReaderSettings.mapAppearanceToIndex(preferences.theme)
+    fontFamilyIndex = TPPReaderSettings.mapFontFamilyToIndex(preferences.fontFamily)
+    appearanceIndex = TPPReaderSettings.mapAppearanceToIndex(preferences.theme)
 
     updateColors(for: TPPReaderAppearance(rawValue: appearanceIndex) ?? .blackOnWhite)
   }
@@ -51,7 +53,9 @@ class TPPReaderSettings: ObservableObject {
 
   // Font size increase method
   func increaseFontSize() {
-    guard canIncreaseFontSize else { return }
+    guard canIncreaseFontSize else {
+      return
+    }
     fontSize = min(fontSize + fontSizeStep, maxFontSize)
     preferences.fontSize = Double(fontSize)
     delegate?.updateUserPreferencesStyle(for: preferences)
@@ -60,7 +64,9 @@ class TPPReaderSettings: ObservableObject {
 
   // Font size decrease method
   func decreaseFontSize() {
-    guard canDecreaseFontSize else { return }
+    guard canDecreaseFontSize else {
+      return
+    }
     fontSize = max(fontSize - fontSizeStep, minFontSize)
     preferences.fontSize = Double(fontSize)
     delegate?.updateUserPreferencesStyle(for: preferences)
@@ -107,7 +113,8 @@ class TPPReaderSettings: ObservableObject {
 
   static func loadPreferences() -> EPUBPreferences {
     if let data = UserDefaults.standard.data(forKey: TPPReaderSettings.preferencesKey),
-       let preferences = try? JSONDecoder().decode(EPUBPreferences.self, from: data) {
+       let preferences = try? JSONDecoder().decode(EPUBPreferences.self, from: data)
+    {
       return preferences
     }
     return EPUBPreferences()
@@ -116,36 +123,36 @@ class TPPReaderSettings: ObservableObject {
   // Mapping helper for font families
   static func mapFontFamilyToIndex(_ fontFamily: FontFamily?) -> Int {
     switch fontFamily {
-    case .some(.sansSerif): return TPPReaderFont.sansSerif.propertyIndex
-    case .some(.serif): return TPPReaderFont.serif.propertyIndex
-    case .some(.openDyslexic): return TPPReaderFont.dyslexic.propertyIndex
-    default: return TPPReaderFont.original.propertyIndex
+    case .some(.sansSerif): TPPReaderFont.sansSerif.propertyIndex
+    case .some(.serif): TPPReaderFont.serif.propertyIndex
+    case .some(.openDyslexic): TPPReaderFont.dyslexic.propertyIndex
+    default: TPPReaderFont.original.propertyIndex
     }
   }
 
   // Mapping helper for appearance themes
   static func mapAppearanceToIndex(_ theme: Theme?) -> Int {
     switch theme {
-    case .dark: return TPPReaderAppearance.whiteOnBlack.propertyIndex
-    case .sepia: return TPPReaderAppearance.blackOnSepia.propertyIndex
-    default: return TPPReaderAppearance.blackOnWhite.propertyIndex
+    case .dark: TPPReaderAppearance.whiteOnBlack.propertyIndex
+    case .sepia: TPPReaderAppearance.blackOnSepia.propertyIndex
+    default: TPPReaderAppearance.blackOnWhite.propertyIndex
     }
   }
 
   static func mapIndexToAppearance(_ index: Int) -> Theme {
     switch index {
-    case TPPReaderAppearance.whiteOnBlack.propertyIndex: return .dark
-    case TPPReaderAppearance.blackOnSepia.propertyIndex: return .sepia
-    default: return .light
+    case TPPReaderAppearance.whiteOnBlack.propertyIndex: .dark
+    case TPPReaderAppearance.blackOnSepia.propertyIndex: .sepia
+    default: .light
     }
   }
 
   static func mapIndexToFontFamily(_ index: Int) -> FontFamily? {
     switch index {
-    case TPPReaderFont.sansSerif.propertyIndex: return .sansSerif
-    case TPPReaderFont.serif.propertyIndex: return .serif
-    case TPPReaderFont.dyslexic.propertyIndex: return .openDyslexic
-    default: return nil
+    case TPPReaderFont.sansSerif.propertyIndex: .sansSerif
+    case TPPReaderFont.serif.propertyIndex: .serif
+    case TPPReaderFont.dyslexic.propertyIndex: .openDyslexic
+    default: nil
     }
   }
 }
@@ -154,7 +161,8 @@ class TPPReaderSettings: ObservableObject {
 func TPPReaderPreferencesLoad() -> EPUBPreferences {
   let key = "TPPReaderSettings"
   if let data = UserDefaults.standard.data(forKey: key),
-     let preferences = try? JSONDecoder().decode(EPUBPreferences.self, from: data) {
+     let preferences = try? JSONDecoder().decode(EPUBPreferences.self, from: data)
+  {
     return preferences
   }
   return EPUBPreferences()

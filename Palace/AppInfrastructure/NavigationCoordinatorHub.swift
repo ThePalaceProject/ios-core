@@ -5,5 +5,3 @@ final class NavigationCoordinatorHub {
   private init() {}
   weak var coordinator: NavigationCoordinator?
 }
-
-

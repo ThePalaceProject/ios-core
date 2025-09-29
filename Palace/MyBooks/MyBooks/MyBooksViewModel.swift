@@ -6,18 +6,23 @@
 //  Copyright © 2022 The Palace Project. All rights reserved.
 //
 
-import Foundation
 import Combine
+import Foundation
+
+// MARK: - Group
 
 enum Group: Int {
   case groupSortBy
 }
+
+// MARK: - MyBooksViewModel
 
 @MainActor
 @objc class MyBooksViewModel: NSObject, ObservableObject {
   typealias DisplayStrings = Strings.MyBooksView
 
   // MARK: - Public Properties
+
   @Published private(set) var books: [TPPBook] = []
   @Published var isLoading = false
   @Published var alert: AlertModel?
@@ -31,15 +36,17 @@ enum Group: Int {
   var isPad: Bool { UIDevice.current.isIpad }
 
   // MARK: - Private Properties
+
   var activeFacetSort: Facet
   let facetViewModel: FacetViewModel
   private var observers = Set<AnyCancellable>()
   private var bookRegistry: TPPBookRegistry { TPPBookRegistry.shared }
 
   // MARK: - Initialization
+
   override init() {
-    self.activeFacetSort = .author
-    self.facetViewModel = FacetViewModel(
+    activeFacetSort = .author
+    facetViewModel = FacetViewModel(
       groupName: DisplayStrings.sortBy,
       facets: [.title, .author]
     )
@@ -47,7 +54,7 @@ enum Group: Int {
 
     registerPublishers()
     registerNotifications()
-    
+
     loadData()
   }
 
@@ -56,26 +63,31 @@ enum Group: Int {
   }
 
   // MARK: - Public Methods
+
   func loadData() {
-    guard !isLoading else { return }
+    guard !isLoading else {
+      return
+    }
     isLoading = true
 
     let registryBooks = bookRegistry.myBooks
     let isConnected = Reachability.shared.isConnectedToNetwork()
 
     let newBooks = isConnected
-    ? registryBooks
-    : registryBooks.filter { !$0.isExpired }
+      ? registryBooks
+      : registryBooks.filter { !$0.isExpired }
 
     // Update published properties
-    self.books = newBooks
-    self.showInstructionsLabel = newBooks.isEmpty || bookRegistry.state == .unloaded
-    self.sortData()
-    self.isLoading = false
+    books = newBooks
+    showInstructionsLabel = newBooks.isEmpty || bookRegistry.state == .unloaded
+    sortData()
+    isLoading = false
   }
 
   func reloadData() {
-    guard !isLoading else { return }
+    guard !isLoading else {
+      return
+    }
 
     if TPPUserAccount.sharedAccount().needsAuth, !TPPUserAccount.sharedAccount().hasCredentials() {
       TPPAccountSignInViewController.requestCredentials(completion: nil)
@@ -91,21 +103,23 @@ enum Group: Int {
     if query.isEmpty {
       loadData()
     } else {
-      let currentBooks = self.books
+      let currentBooks = books
       let filteredBooks = await Task.detached(priority: .userInitiated) {
         currentBooks.filter {
           $0.title.localizedCaseInsensitiveContains(query) ||
-          ($0.authors?.localizedCaseInsensitiveContains(query) ?? false)
+            ($0.authors?.localizedCaseInsensitiveContains(query) ?? false)
         }
       }.value
 
-      self.books = filteredBooks
+      books = filteredBooks
     }
   }
 
   @objc func authenticateAndLoad(account: Account) {
     account.loadAuthenticationDocument { [weak self] success in
-      guard let self = self, success else { return }
+      guard let self = self, success else {
+        return
+      }
 
       DispatchQueue.main.async {
         if !TPPSettings.shared.settingsAccountIdsList.contains(account.uuid) {
@@ -128,13 +142,14 @@ enum Group: Int {
   }
 
   // MARK: - Private Methods
+
   private func sortData() {
     books.sort { first, second in
       switch activeFacetSort {
       case .author:
-        return "\(first.authors ?? "") \(first.title)" < "\(second.authors ?? "") \(second.title)"
+        "\(first.authors ?? "") \(first.title)" < "\(second.authors ?? "") \(second.title)"
       case .title:
-        return "\(first.title) \(first.authors ?? "")" < "\(second.title) \(second.authors ?? "")"
+        "\(first.title) \(first.authors ?? "")" < "\(second.title) \(second.authors ?? "")"
       }
     }
   }
@@ -146,8 +161,14 @@ enum Group: Int {
   }
 
   // MARK: - Notification Handling
+
   private func registerNotifications() {
-    NotificationCenter.default.addObserver(self, selector: #selector(handleBookRegistryStateChange(_:)), name: .TPPBookRegistryStateDidChange, object: nil)
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(handleBookRegistryStateChange(_:)),
+      name: .TPPBookRegistryStateDidChange,
+      object: nil
+    )
 
     // Debounce high-frequency updates from registry changes and sync end
     let registryChange = NotificationCenter.default.publisher(for: .TPPBookRegistryDidChange)
@@ -186,12 +207,14 @@ enum Group: Int {
     }
 
     DispatchQueue.main.async { [weak self] in
-      guard let self else { return }
+      guard let self else {
+        return
+      }
       if newState == .unregistered {
         // Remove locally so it doesn't flash back in until next sync
-        self.books.removeAll { $0.identifier == identifier }
+        books.removeAll { $0.identifier == identifier }
       } else {
-        self.loadData()
+        loadData()
       }
     }
   }
@@ -199,9 +222,11 @@ enum Group: Int {
   private func registerPublishers() {
     facetViewModel.$activeSort
       .sink { [weak self] sort in
-        guard let self = self else { return }
-        self.activeFacetSort = sort
-        self.sortData()
+        guard let self = self else {
+          return
+        }
+        activeFacetSort = sort
+        sortData()
       }
       .store(in: &observers)
   }

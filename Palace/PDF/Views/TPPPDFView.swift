@@ -6,15 +6,14 @@
 //  Copyright © 2022 The Palace Project. All rights reserved.
 //
 
-import SwiftUI
 import PDFKit
+import SwiftUI
 
 /// This view shows PDFKit views when PDF is not encrypted
 /// PDFKit reading controls (PDFView and PDFThumbnails) are generally faster because of direct data reading,
 /// instead of reading blocks of data with data provider.
 /// The analog for encrypted documents - `TPPEncryptedPDFView`
 struct TPPPDFView: View {
-
   let document: PDFDocument
   let pdfView = PDFView()
   private let pageChangePublisher = NotificationCenter.default.publisher(for: .PDFViewPageChanged)
@@ -27,14 +26,21 @@ struct TPPPDFView: View {
 
   var body: some View {
     ZStack {
-      TPPPDFDocumentView(document: document, pdfView: pdfView, showingDocumentInfo: $showingDocumentInfo, isTracking: $isTracking)
-        .edgesIgnoringSafeArea([.all])
+      TPPPDFDocumentView(
+        document: document,
+        pdfView: pdfView,
+        showingDocumentInfo: $showingDocumentInfo,
+        isTracking: $isTracking
+      )
+      .edgesIgnoringSafeArea([.all])
 
       VStack {
         TPPPDFLabel(documentTitle)
           .padding(.top)
         Spacer()
-        if let pageLabel = document.page(at: metadata.currentPage)?.label, Int(pageLabel) != (metadata.currentPage + 1) {
+        if let pageLabel = document.page(at: metadata.currentPage)?.label,
+           Int(pageLabel) != (metadata.currentPage + 1)
+        {
           TPPPDFLabel("\(pageLabel) (\(metadata.currentPage + 1)/\(document.pageCount))")
         } else {
           TPPPDFLabel("\(metadata.currentPage + 1)/\(document.pageCount)")
@@ -60,7 +66,9 @@ struct TPPPDFView: View {
       }
     }
     .onReceive(pageChangePublisher) { value in
-      if let pdfView = (value.object as? PDFView), let page = pdfView.currentPage, let pageIndex = pdfView.document?.index(for: page) {
+      if let pdfView = (value.object as? PDFView), let page = pdfView.currentPage,
+         let pageIndex = pdfView.document?.index(for: page)
+      {
         metadata.currentPage = pageIndex
         if isTracking {
           showingDocumentInfo = false

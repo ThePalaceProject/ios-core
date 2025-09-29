@@ -8,6 +8,8 @@
 
 import Foundation
 
+// MARK: - TimeEntry
+
 /// Tracked time entry for DataManager internal storage
 public protocol TimeEntry {
   /// Unique entry identifier
@@ -24,10 +26,11 @@ public protocol TimeEntry {
   var duration: Int { get }
 }
 
+// MARK: - DataManager
+
 /// Data Manager.
 public protocol DataManager {
   /// Save tracked time
   /// - Parameter time: Time entry.
   func save(time: TimeEntry)
 }
-

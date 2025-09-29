@@ -2,7 +2,7 @@ import SwiftUI
 
 struct BookImageView: View {
   @ObservedObject var book: TPPBook
-  var width: CGFloat? = nil
+  var width: CGFloat?
   var height: CGFloat = 280
   var usePulseSkeleton: Bool = false
 
