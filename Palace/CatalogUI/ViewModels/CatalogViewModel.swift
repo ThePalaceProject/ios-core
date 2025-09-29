@@ -192,7 +192,7 @@ final class CatalogViewModel: ObservableObject {
             return CatalogLaneModel(
               title: title,
               books: books,
-              moreURL: groupTitleToMoreURL[title] ?? nil,
+              moreURL: groupTitleToMoreURL[title],
               isLoading: isLoading
             )
           }
@@ -272,7 +272,7 @@ final class CatalogViewModel: ObservableObject {
             return CatalogLaneModel(
               title: title,
               books: books,
-              moreURL: groupTitleToMoreURL[title] ?? nil,
+              moreURL: groupTitleToMoreURL[title],
               isLoading: isLoading
             )
           }
@@ -417,7 +417,7 @@ extension CatalogViewModel {
       return CatalogLaneModel(
         title: title,
         books: books,
-        moreURL: titleToMoreURL[title] ?? nil,
+        moreURL: titleToMoreURL[title],
         isLoading: isLoading
       )
     }

@@ -106,7 +106,7 @@ import ReadiumZIPFoundation
           TPPErrorLogger.logError(error, summary: "Error reading PDF path")
           throw NSError(domain: "Palace.LCPPDFs", code: 0, userInfo: [
             NSLocalizedDescriptionKey: error.localizedDescription,
-            "Error": error,
+            "Error": error
           ])
         }
 

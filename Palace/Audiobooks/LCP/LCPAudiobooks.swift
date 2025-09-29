@@ -107,7 +107,7 @@ import ReadiumStreamer
           return
         }
 
-        var credentials: String? = nil
+        var credentials: String?
         if let licenseUrl = licenseUrl, licenseUrl.isFileURL {
           credentials = try? String(contentsOf: licenseUrl)
         }
@@ -138,15 +138,15 @@ import ReadiumStreamer
               let typeString = link.mediaType.map { String(describing: $0) } ?? "audio/mpeg"
               return [
                 "href": hrefString,
-                "type": typeString,
+                "type": typeString
               ]
             }
             let minimal: [String: Any] = [
               "metadata": [
                 "identifier": UUID().uuidString,
-                "title": String(describing: publication.metadata.title),
+                "title": String(describing: publication.metadata.title)
               ],
-              "readingOrder": links,
+              "readingOrder": links
             ]
             completion(minimal as NSDictionary, nil)
           }
@@ -186,7 +186,7 @@ import ReadiumStreamer
   private static func nsError(for error: Error) -> NSError {
     NSError(domain: "Palace.LCPAudiobooks", code: 0, userInfo: [
       NSLocalizedDescriptionKey: error.localizedDescription,
-      "Error": error,
+      "Error": error
     ])
   }
 }

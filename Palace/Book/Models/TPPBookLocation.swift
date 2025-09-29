@@ -57,7 +57,7 @@ public class TPPBookLocation: NSObject {
   var dictionaryRepresentation: [String: Any] {
     [
       TPPBookLocationKey.locationString.rawValue: locationString,
-      TPPBookLocationKey.renderer.rawValue: renderer,
+      TPPBookLocationKey.renderer.rawValue: renderer
     ]
   }
 }

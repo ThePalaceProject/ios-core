@@ -194,7 +194,7 @@ class AudiobookDataManager {
                   "libraryId": libraryBook.libraryId,
                   "bookId": libraryBook.bookId,
                   "requestUrl": requestUrl,
-                  "requestBody": String(data: requestBody, encoding: .utf8) ?? "",
+                  "requestBody": String(data: requestBody, encoding: .utf8) ?? ""
                 ])
 
                 audiobookLogger.logEvent(forBookId: libraryBook.bookId, event: """
@@ -214,7 +214,7 @@ class AudiobookDataManager {
                   "requestUrl": requestUrl,
                   "requestBody": String(data: requestBody, encoding: .utf8) ?? "",
                   "responseCode": response.statusCode,
-                  "responseBody": String(data: result ?? Data(), encoding: .utf8) ?? "",
+                  "responseBody": String(data: result ?? Data(), encoding: .utf8) ?? ""
                 ])
 
                 audiobookLogger.logEvent(forBookId: libraryBook.bookId, event: """
@@ -236,7 +236,7 @@ class AudiobookDataManager {
                     "requestBody": String(data: requestBody, encoding: .utf8) ?? "",
                     "entryId": responseEntry.id,
                     "entryStatus": responseEntry.status,
-                    "entryMessage": responseEntry.message,
+                    "entryMessage": responseEntry.message
                   ])
                 } else {
                   audiobookLogger.logEvent(forBookId: libraryBook.bookId, event: """

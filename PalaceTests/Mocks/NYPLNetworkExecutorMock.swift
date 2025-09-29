@@ -43,7 +43,7 @@ class TPPRequestExecutorMock: TPPRequestExecuting {
           httpVersion: "1.1",
           headerFields: [
             "Date": "Thu, 04 Feb 2021 02:24:08 GMT",
-            "Content-Length": "232",
+            "Content-Length": "232"
           ]
         )
 
@@ -66,7 +66,7 @@ class TPPRequestExecutorMock: TPPRequestExecuting {
         headerFields: [
           "Content-Type": "vnd.librarysimplified/user-profile+json",
           "Date": "Thu, 04 Feb 2021 02:24:56 GMT",
-          "Content-Length": "754",
+          "Content-Length": "754"
         ]
       )
       completion(.success(responseData, httpResponse))

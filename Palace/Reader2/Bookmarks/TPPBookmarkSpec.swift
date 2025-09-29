@@ -218,16 +218,16 @@ struct TPPBookmarkSpec {
       TPPBookmarkSpec.Body.key: [
         TPPBookmarkSpec.Body.Time.key: body.time.value,
         TPPBookmarkSpec.Body.Device.key: body.device.value,
-        TPPBookmarkSpec.Body.ChapterTitle.key: body.chapterTitle.value,
+        TPPBookmarkSpec.Body.ChapterTitle.key: body.chapterTitle.value
       ],
       TPPBookmarkSpec.Motivation.key: motivation.rawValue,
       TPPBookmarkSpec.Target.key: [
         TPPBookmarkSpec.Target.Source.key: target.source.value,
         TPPBookmarkSpec.Target.Selector.key: [
           TPPBookmarkSpec.Target.Selector.type.key: TPPBookmarkSpec.Target.Selector.type.value,
-          TPPBookmarkSpec.Target.Selector.Value.key: target.selector.value.selectorValue,
-        ],
-      ],
+          TPPBookmarkSpec.Target.Selector.Value.key: target.selector.value.selectorValue
+        ]
+      ]
     ] as [String: Any]
   }
 }

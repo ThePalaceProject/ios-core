@@ -221,7 +221,7 @@ struct CatalogLaneMoreView: View {
               }
             }
             lanes = orderedTitles.map { title in
-              CatalogLaneModel(title: title, books: titleToBooks[title] ?? [], moreURL: titleToMoreURL[title] ?? nil)
+              CatalogLaneModel(title: title, books: titleToBooks[title] ?? [], moreURL: titleToMoreURL[title])
             }
           case .acquisitionUngrouped:
             ungroupedBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0) }

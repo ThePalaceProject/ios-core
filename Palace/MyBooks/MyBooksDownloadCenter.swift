@@ -380,7 +380,7 @@ import OverdriveProcessor
         responseHeadersKey: responseHeaders ?? nA,
         acquisitionURLKey: url?.absoluteString ?? nA,
         bookKey: book.loggableDictionary,
-        bookRegistryStateKey: TPPBookStateHelper.stringValue(from: state),
+        bookRegistryStateKey: TPPBookStateHelper.stringValue(from: state)
       ])
       failDownloadWithAlert(for: book)
       return
@@ -404,7 +404,7 @@ import OverdriveProcessor
         responseHeadersKey: responseHeaders ?? nA,
         acquisitionURLKey: url?.absoluteString ?? nA,
         bookKey: book.loggableDictionary,
-        bookRegistryStateKey: TPPBookStateHelper.stringValue(from: state),
+        bookRegistryStateKey: TPPBookStateHelper.stringValue(from: state)
       ])
       failDownloadWithAlert(for: book)
       return
@@ -1316,7 +1316,7 @@ extension MyBooksDownloadCenter {
       TPPErrorLogger.logError(error, summary: "Error renaming LCP license file", metadata: [
         "fileUrl": fileUrl.absoluteString,
         "licenseUrl": licenseUrl.absoluteString,
-        "book": book.loggableDictionary,
+        "book": book.loggableDictionary
       ])
       failDownloadWithAlert(for: book, withMessage: error.localizedDescription)
       return
@@ -1340,7 +1340,7 @@ extension MyBooksDownloadCenter {
         TPPErrorLogger.logError(error, summary: summary, metadata: [
           "book": book.loggableDictionary,
           "licenseURL": licenseUrl.absoluteString,
-          "localURL": localUrl?.absoluteString ?? "N/A",
+          "localURL": localUrl?.absoluteString ?? "N/A"
         ])
         let errorMessage = "Fulfilment Error: \(error.localizedDescription)"
         failDownloadWithAlert(for: book, withMessage: errorMessage)
@@ -1374,7 +1374,7 @@ extension MyBooksDownloadCenter {
            let bookURL = self.fileUrl(for: book.identifier)
         {
           self.bookRegistry.setState(.downloading, for: book.identifier)
-          let _ = try? await LCPPDFs(url: bookURL)?.extract(url: bookURL)
+          _ = try? await LCPPDFs(url: bookURL)?.extract(url: bookURL)
           self.bookRegistry.setState(.downloadSuccessful, for: book.identifier)
         }
       }
@@ -1426,7 +1426,7 @@ extension MyBooksDownloadCenter {
       TPPErrorLogger.logError(error, summary: "Failed to copy LCP license for streaming", metadata: [
         "book": book.loggableDictionary,
         "sourceLicenseUrl": sourceLicenseUrl.absoluteString,
-        "targetLicenseUrl": streamingLicenseUrl.absoluteString,
+        "targetLicenseUrl": streamingLicenseUrl.absoluteString
       ])
     }
     #endif
@@ -1528,7 +1528,7 @@ extension MyBooksDownloadCenter {
           "moveError": moveError,
           "removeError": removeError?.localizedDescription ?? "N/A",
           "sourceLocation": sourceLocation.absoluteString,
-          "finalFileURL": finalFileURL.absoluteString,
+          "finalFileURL": finalFileURL.absoluteString
         ]
       )
     }
@@ -1545,7 +1545,7 @@ extension MyBooksDownloadCenter {
       return false
     }
     do {
-      let _ = try FileManager.default.replaceItemAt(destURL, withItemAt: sourceLocation, options: .usingNewMetadataOnly)
+      _ = try FileManager.default.replaceItemAt(destURL, withItemAt: sourceLocation, options: .usingNewMetadataOnly)
       // Note: For LCP audiobooks, state is set in fulfillLCPLicense after license is ready
       // For non-LCP audiobooks and other content types, set state here after content is successfully stored
       #if LCP
@@ -1565,7 +1565,7 @@ extension MyBooksDownloadCenter {
         metadata: [
           "replaceError": error,
           "destinationFileURL": destURL as Any,
-          "sourceFileURL": sourceLocation as Any,
+          "sourceFileURL": sourceLocation as Any
         ]
       )
     }
@@ -1773,7 +1773,7 @@ extension MyBooksDownloadCenter: NYPLADEPTDelegate {
             "book": book.loggableDictionary,
             "AdobeFulfilmmentID": fulfillmentID ?? "N/A",
             "AdobeRights": rights,
-            "AdobeTag": tag,
+            "AdobeTag": tag
           ]
         )
         failDownloadWithAlert(for: book)
@@ -1795,7 +1795,7 @@ extension MyBooksDownloadCenter: NYPLADEPTDelegate {
             "book": book.loggableDictionary,
             "AdobeFulfilmmentID": fulfillmentID ?? "N/A",
             "AdobeRights": rights,
-            "AdobeTag": tag,
+            "AdobeTag": tag
           ]
         )
       }
@@ -1809,7 +1809,7 @@ extension MyBooksDownloadCenter: NYPLADEPTDelegate {
           "book": book.loggableDictionary,
           "AdobeFulfilmmentID": fulfillmentID ?? "N/A",
           "AdobeRights": rights,
-          "AdobeTag": tag,
+          "AdobeTag": tag
         ]
       )
     }

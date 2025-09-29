@@ -39,7 +39,7 @@ final class LibraryService: Loggable {
         httpClient: httpClient,
         assetRetriever: assetRetriever,
         pdfFactory: DefaultPDFDocumentFactory()
-      ),
+      )
     ])
 
     publicationOpener = PublicationOpener(parser: parser, contentProtections: contentProtections)
@@ -169,7 +169,7 @@ final class LibraryService: Loggable {
   private func stopOpeningIndicator(identifier: String) {
     let userInfo: [String: Any] = [
       TPPNotificationKeys.bookProcessingBookIDKey: identifier,
-      TPPNotificationKeys.bookProcessingValueKey: false,
+      TPPNotificationKeys.bookProcessingValueKey: false
     ]
     NotificationCenter.default.post(name: NSNotification.TPPBookProcessingDidChange, object: nil, userInfo: userInfo)
   }

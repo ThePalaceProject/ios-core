@@ -346,7 +346,7 @@ public class TPPBook: NSObject, ObservableObject {
       SummaryKey: summary as Any,
       TitleKey: title as Any,
       UpdatedKey: updated.rfc339String as Any,
-      TimeTrackingURLURLKey: timeTrackingURL?.absoluteString as Any,
+      TimeTrackingURLURLKey: timeTrackingURL?.absoluteString as Any
     ]
   }
 

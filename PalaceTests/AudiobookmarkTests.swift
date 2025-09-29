@@ -86,7 +86,7 @@ final class AudiobookmarkTests: XCTestCase {
       "readingOrderItem": "urn:uuid:ddf56790-60a7-413c-9771-7f7dcef2f565-0",
       "readingOrderItemOffsetMilliseconds": 15823,
       "@type": "LocatorAudioBookTime",
-      "@version": 2,
+      "@version": 2
     ]
     let bookmark = AudioBookmark.create(
       locatorData: locator,

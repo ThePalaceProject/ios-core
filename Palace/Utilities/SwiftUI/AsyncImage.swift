@@ -26,7 +26,7 @@ class ImageLoader {
         guard let image = UIImage(data: data), image.size.width > 0, image.size.height > 0 else {
           throw URLError(.badServerResponse, userInfo: [
             NSURLErrorFailingURLErrorKey: url,
-            NSLocalizedDescriptionKey: "Invalid image data",
+            NSLocalizedDescriptionKey: "Invalid image data"
           ])
         }
         return image

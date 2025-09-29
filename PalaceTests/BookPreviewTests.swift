@@ -20,7 +20,7 @@ class BookPreviewTests: XCTestCase {
       "categories": ["Fantasy"],
       "id": "123",
       "title": "The Lord of the Rings",
-      "updated": "2020-09-08T09:22:45Z",
+      "updated": "2020-09-08T09:22:45Z"
     ])
 
     XCTAssertNotNil(book?.acquisitions)
@@ -38,7 +38,7 @@ class BookPreviewTests: XCTestCase {
       "categories": ["Fantasy"],
       "id": "123",
       "title": "The Lord of the Rings",
-      "updated": "2020-09-08T09:22:45Z",
+      "updated": "2020-09-08T09:22:45Z"
     ])
 
     XCTAssertNotNil(book?.acquisitions)
@@ -56,7 +56,7 @@ class BookPreviewTests: XCTestCase {
       "categories": ["Fantasy"],
       "id": "123",
       "title": "The Lord of the Rings",
-      "updated": "2020-09-08T09:22:45Z",
+      "updated": "2020-09-08T09:22:45Z"
     ])
 
     XCTAssertNotNil(book?.acquisitions)
@@ -74,7 +74,7 @@ class BookPreviewTests: XCTestCase {
       "categories": ["Fantasy"],
       "id": "123",
       "title": "The Lord of the Rings",
-      "updated": "2020-09-08T09:22:45Z",
+      "updated": "2020-09-08T09:22:45Z"
     ])
 
     XCTAssertNotNil(book?.acquisitions)

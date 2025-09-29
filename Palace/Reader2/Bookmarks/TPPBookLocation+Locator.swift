@@ -17,7 +17,7 @@ extension TPPBookLocation {
       TPPBookLocation.bookProgressKey: locator.locations.totalProgression ?? 0.0,
       TPPBookLocation.titleKey: locator.title ?? "",
       TPPBookLocation.positionKey: locator.locations.position ?? 0,
-      TPPBookLocation.cssSelector: locator.locations.otherLocations[TPPBookLocation.cssSelector] ?? "",
+      TPPBookLocation.cssSelector: locator.locations.otherLocations[TPPBookLocation.cssSelector] ?? ""
     ]
 
     guard let jsonString = serializeJSONString(dict) else {
@@ -58,7 +58,7 @@ extension TPPBookLocation {
       TPPBookLocation.bookProgressKey: totalProgression ?? 0.0,
       TPPBookLocation.titleKey: title ?? "",
       TPPBookLocation.positionKey: position ?? 0,
-      TPPBookLocation.cssSelector: cssSelector ?? "",
+      TPPBookLocation.cssSelector: cssSelector ?? ""
     ]
 
     guard let jsonString = serializeJSONString(dict) else {

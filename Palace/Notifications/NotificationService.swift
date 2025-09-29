@@ -126,7 +126,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
           metadata: [
             "requestURL": endpointUrl,
             "tokenData": String(data: requestBody, encoding: .utf8) ?? "",
-            "statusCode": (response as? HTTPURLResponse)?.statusCode ?? 0,
+            "statusCode": (response as? HTTPURLResponse)?.statusCode ?? 0
           ]
         )
       }
@@ -175,7 +175,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
           metadata: [
             "requestURL": endpointUrl,
             "tokenData": String(data: requestBody, encoding: .utf8) ?? "",
-            "statusCode": (response as? HTTPURLResponse)?.statusCode ?? 0,
+            "statusCode": (response as? HTTPURLResponse)?.statusCode ?? 0
           ]
         )
       }

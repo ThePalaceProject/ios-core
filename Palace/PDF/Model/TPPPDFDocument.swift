@@ -70,7 +70,7 @@ extension TPPPDFDocument {
       if isEncrypted {
         encryptedDocument?.title
       } else {
-        (try? await document?.title()) ?? nil
+        (try? await document?.title())
       }
     }
   }

@@ -71,7 +71,7 @@ private enum StorageKey: String {
         // legacy
         StorageKey.barcode: _barcode,
         StorageKey.PIN: _pin,
-        StorageKey.authToken: _authToken,
+        StorageKey.authToken: _authToken
       ]
 
       for (key, var value) in variables {
@@ -178,7 +178,7 @@ private enum StorageKey: String {
     }
   }
 
-  @objc class func sharedAccount() -> TPPUserAccount {
+  class func sharedAccount() -> TPPUserAccount {
     // Note: it's important to use `currentAccountId` instead of
     // `currentAccount.uuid` because the former is immediately available
     // (being saved into the UserDefaults) while the latter is only available

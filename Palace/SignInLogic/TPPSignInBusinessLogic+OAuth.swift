@@ -19,7 +19,7 @@ extension TPPSignInBusinessLogic {
         summary: "Nil OAuth intermediary URL",
         metadata: [
           "authMethod": selectedAuthentication?.methodDescription ?? "N/A",
-          "context": uiDelegate?.context ?? "N/A",
+          "context": uiDelegate?.context ?? "N/A"
         ]
       )
       return
@@ -32,7 +32,7 @@ extension TPPSignInBusinessLogic {
         metadata: [
           "authMethod": selectedAuthentication?.methodDescription ?? "N/A",
           "OAUth Intermediary URL": oauthURL.absoluteString,
-          "context": uiDelegate?.context ?? "N/A",
+          "context": uiDelegate?.context ?? "N/A"
         ]
       )
       return
@@ -52,7 +52,7 @@ extension TPPSignInBusinessLogic {
           "authMethod": selectedAuthentication?.methodDescription ?? "N/A",
           "OAUth Intermediary URL": oauthURL.absoluteString,
           "redirectParam": redirectParam,
-          "context": uiDelegate?.context ?? "N/A",
+          "context": uiDelegate?.context ?? "N/A"
         ]
       )
       return
@@ -101,7 +101,7 @@ extension TPPSignInBusinessLogic {
         summary: "Sign-in redirection error",
         metadata: [
           "authMethod": selectedAuthentication?.methodDescription ?? "N/A",
-          "context": uiDelegate?.context ?? "N/A",
+          "context": uiDelegate?.context ?? "N/A"
         ]
       )
       completion?(nil, nil, nil)
@@ -117,7 +117,7 @@ extension TPPSignInBusinessLogic {
         summary: "Sign-in redirection error: missing payload",
         metadata: [
           "loginURL": urlStr,
-          "context": uiDelegate?.context ?? "N/A",
+          "context": uiDelegate?.context ?? "N/A"
         ]
       )
       completion?(
@@ -137,7 +137,7 @@ extension TPPSignInBusinessLogic {
         summary: "Sign-in redirection error: payload not in fragment nor query params",
         metadata: [
           "loginURL": urlStr,
-          "context": uiDelegate?.context ?? "N/A",
+          "context": uiDelegate?.context ?? "N/A"
         ]
       )
       completion?(nil, nil, nil)
@@ -177,7 +177,7 @@ extension TPPSignInBusinessLogic {
         metadata: [
           "payloadDictionary": kvpairs,
           "redirectURL": url,
-          "context": uiDelegate?.context ?? "N/A",
+          "context": uiDelegate?.context ?? "N/A"
         ]
       )
       completion?(nil, nil, nil)

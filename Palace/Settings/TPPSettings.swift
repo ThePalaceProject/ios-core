@@ -21,7 +21,7 @@ import Foundation
 @objcMembers class TPPSettings: NSObject, NYPLFeedURLProvider, TPPAgeCheckChoiceStorage {
   static let shared = TPPSettings()
 
-  @objc class func sharedSettings() -> TPPSettings {
+  class func sharedSettings() -> TPPSettings {
     TPPSettings.shared
   }
 

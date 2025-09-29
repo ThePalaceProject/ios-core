@@ -72,7 +72,7 @@ class RegistrationCell: UITableViewCell {
       containerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
       containerView.topAnchor.constraint(equalTo: contentView.topAnchor),
       containerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-      containerView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+      containerView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor)
     ])
 
     selectionStyle = .none

@@ -32,7 +32,7 @@ class FacetViewModel: ObservableObject {
   @Published var facets: [Facet]
   @Published var activeSort: Facet
   @Published var currentAccount: Account?
-  @Published var accountScreenURL: URL? = nil
+  @Published var accountScreenURL: URL?
   @Published var showAccountScreen = false
   @Published var logo: UIImage?
 

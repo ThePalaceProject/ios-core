@@ -340,7 +340,7 @@ public class TPPPublicationSpeechSynthesizer: NSObject, Loggable {
 
   private func didFinishUtterance() {
     switch state {
-    case .playing(_, range: _): playNextUtterance(.forward)
+    case .playing: playNextUtterance(.forward)
     default: break
     }
   }

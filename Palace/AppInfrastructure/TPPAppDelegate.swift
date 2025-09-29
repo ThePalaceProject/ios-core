@@ -408,7 +408,7 @@ final class MemoryPressureMonitor {
           let rvalues = try url.resourceValues(forKeys: [
             .isDirectoryKey,
             .contentAccessDateKey,
-            .contentModificationDateKey,
+            .contentModificationDateKey
           ])
           if rvalues.isDirectory == true {
             continue

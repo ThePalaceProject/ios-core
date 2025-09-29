@@ -41,7 +41,7 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     let overlayLabelInset = 80.0
     let contentInset: [UIUserInterfaceSizeClass: EPUBContentInsets] = [
       .compact: (top: safeAreaInsets.top + overlayLabelInset, bottom: safeAreaInsets.bottom + overlayLabelInset),
-      .regular: (top: safeAreaInsets.top + overlayLabelInset, bottom: safeAreaInsets.bottom + overlayLabelInset),
+      .regular: (top: safeAreaInsets.top + overlayLabelInset, bottom: safeAreaInsets.bottom + overlayLabelInset)
     ]
 
     let config = EPUBNavigatorViewController.Configuration(

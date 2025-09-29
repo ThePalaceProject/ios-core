@@ -43,7 +43,7 @@ final class BookDetailViewModel: ObservableObject {
   @Published var relatedBooksByLane: [String: BookLane] = [:]
   @Published var isLoadingRelatedBooks = false
   @Published var isLoadingDescription = false
-  @Published var selectedBookURL: URL? = nil
+  @Published var selectedBookURL: URL?
   @Published var isManagingHold: Bool = false
   @Published var showHalfSheet = false
   @Published private(set) var stableButtonState: BookButtonState = .unsupported
@@ -293,7 +293,7 @@ final class BookDetailViewModel: ObservableObject {
   private func createRelatedBooksCells(groupedBooks: [String: [TPPBook]], moreURLs: [String: URL?]) {
     var lanesMap = [String: BookLane]()
     for (title, books) in groupedBooks {
-      let lane = BookLane(title: title, books: books, subsectionURL: moreURLs[title] ?? nil)
+      let lane = BookLane(title: title, books: books, subsectionURL: moreURLs[title])
       lanesMap[title] = lane
     }
 

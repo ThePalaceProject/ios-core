@@ -126,7 +126,7 @@ class TPPSignInBusinessLogicTests: XCTestCase {
       .domain: "www.example.com",
       .path: "test",
       .name: "biscottino",
-      .value: "chocolate",
+      .value: "chocolate"
     ])!]
 
     // test

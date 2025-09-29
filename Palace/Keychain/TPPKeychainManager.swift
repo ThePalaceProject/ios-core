@@ -7,7 +7,7 @@ import PalaceAudiobookToolkit
     kSecClassInternetPassword as String,
     kSecClassCertificate as String,
     kSecClassKey as String,
-    kSecClassIdentity as String,
+    kSecClassIdentity as String
   ]
 
   class func validateKeychain() {
@@ -34,7 +34,7 @@ import PalaceAudiobookToolkit
         kSecReturnData as String: kCFBooleanTrue,
         kSecReturnAttributes as String: kCFBooleanTrue,
         kSecReturnRef as String: kCFBooleanTrue,
-        kSecMatchLimit as String: kSecMatchLimitAll,
+        kSecMatchLimit as String: kSecMatchLimitAll
       ]
 
       var result: AnyObject?
@@ -58,7 +58,7 @@ import PalaceAudiobookToolkit
     // Now perform the actual cleanup
     for secClass in secClassItems {
       let query: [String: Any] = [
-        kSecClass as String: secClass,
+        kSecClass as String: secClass
       ]
       let status = SecItemDelete(query as CFDictionary)
       if status != errSecSuccess && status != errSecItemNotFound {
@@ -95,7 +95,7 @@ import PalaceAudiobookToolkit
       "TPPAccountDeviceIDKey",
       "TPPAccountCredentialsKey",
       "TPPAccountAuthDefinitionKey",
-      "TPPAccountAuthCookiesKey",
+      "TPPAccountAuthCookiesKey"
     ]
 
     for key in knownKeys {
@@ -124,7 +124,7 @@ import PalaceAudiobookToolkit
       kSecReturnData as String: kCFBooleanTrue,
       kSecReturnAttributes as String: kCFBooleanTrue,
       kSecReturnRef as String: kCFBooleanTrue,
-      kSecMatchLimit as String: kSecMatchLimitAll,
+      kSecMatchLimit as String: kSecMatchLimitAll
     ]
 
     var result: AnyObject?
@@ -171,7 +171,7 @@ import PalaceAudiobookToolkit
         kSecClass as String: kSecClassKey,
         kSecAttrApplicationTag as String: tag,
         kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
-        kSecValueData as String: keyData,
+        kSecValueData as String: keyData
       ]
       let status = SecItemAdd(addQuery as CFDictionary, nil)
       if status != errSecSuccess && status != errSecDuplicateItem {
@@ -224,7 +224,7 @@ import PalaceAudiobookToolkit
       metadata: [
         "OSStatus": status,
         "SecCopyErrorMessage from OSStatus": errMsg,
-        "message": message,
+        "message": message
       ]
     )
   }

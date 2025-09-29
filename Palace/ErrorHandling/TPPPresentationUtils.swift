@@ -41,7 +41,7 @@ class TPPPresentationUtils: NSObject {
         summary: "Unable to find rootViewController",
         metadata: [
           "DelegateIsNil": delegate == nil,
-          "WindowIsNil": (delegate?.window == nil),
+          "WindowIsNil": (delegate?.window == nil)
         ]
       )
       return

@@ -16,7 +16,7 @@ extension URLResponse {
   @objc func isProblemDocument() -> Bool {
     [
       "application/problem+json",
-      "application/api-problem+json",
+      "application/api-problem+json"
     ].contains(mimeType)
   }
 }

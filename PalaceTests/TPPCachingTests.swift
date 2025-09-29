@@ -20,7 +20,7 @@ class TPPCachingTests: XCTestCase {
       statusCode: 200,
       httpVersion: "HTTP/1.1",
       headerFields: [
-        "Cache-Control": "public, no-transform, max-age: 43200, s-maxage: 21600",
+        "Cache-Control": "public, no-transform, max-age: 43200, s-maxage: 21600"
       ]
     )!
 
@@ -31,7 +31,7 @@ class TPPCachingTests: XCTestCase {
       httpVersion: "HTTP/1.1",
       headerFields: [
         "cache-control": "public, no-transform, max-age: 43200, s-maxage: 21600",
-        "Expires": expiresDate.rfc1123String,
+        "Expires": expiresDate.rfc1123String
       ]
     )!
 
@@ -40,7 +40,7 @@ class TPPCachingTests: XCTestCase {
       statusCode: 200,
       httpVersion: "HTTP/1.1",
       headerFields: [
-        "CACHE-CONTROL": "public; s-max-age=666",
+        "CACHE-CONTROL": "public; s-max-age=666"
       ]
     )
   }
@@ -62,7 +62,7 @@ class TPPCachingTests: XCTestCase {
       httpVersion: "HTTP/1.1",
       headerFields: [
         "EXPIRES": Date().rfc1123String,
-        "etag": "23bad3",
+        "etag": "23bad3"
       ]
     )!
     XCTAssertTrue(sufficientHeadersResponse2.hasSufficientCachingHeaders)
@@ -73,7 +73,7 @@ class TPPCachingTests: XCTestCase {
       httpVersion: "HTTP/1.1",
       headerFields: [
         "Last-Modified": Date().rfc1123String,
-        "etag": "23bad3",
+        "etag": "23bad3"
       ]
     )!
     XCTAssertTrue(sufficientHeadersResponse3.hasSufficientCachingHeaders)
@@ -83,7 +83,7 @@ class TPPCachingTests: XCTestCase {
       statusCode: 200,
       httpVersion: "HTTP/1.1",
       headerFields: [
-        "Expires": Date().rfc1123String,
+        "Expires": Date().rfc1123String
       ]
     )!
     XCTAssertFalse(insufficientHeadersResponse.hasSufficientCachingHeaders)
@@ -98,7 +98,7 @@ class TPPCachingTests: XCTestCase {
       statusCode: 200,
       httpVersion: "HTTP/1.1",
       headerFields: [
-        "CACHE-CONTROL": " mAx-Age=666",
+        "CACHE-CONTROL": " mAx-Age=666"
       ]
     )
     XCTAssertEqual(differentCapitalizationResponse?.cacheControlMaxAge, 666)
@@ -108,7 +108,7 @@ class TPPCachingTests: XCTestCase {
       statusCode: 200,
       httpVersion: "HTTP/1.1",
       headerFields: [
-        "cache-control": " max-age=",
+        "cache-control": " max-age="
       ]
     )
     XCTAssertNil(malformedResponse?.cacheControlMaxAge)
@@ -118,7 +118,7 @@ class TPPCachingTests: XCTestCase {
       statusCode: 200,
       httpVersion: "HTTP/1.1",
       headerFields: [
-        "Cache-Control": " max-age=x1,2",
+        "Cache-Control": " max-age=x1,2"
       ]
     )
     XCTAssertNil(malformedNumberResponse?.cacheControlMaxAge)

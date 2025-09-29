@@ -6,8 +6,8 @@ import SwiftUI
 final class SamplePreviewManager: ObservableObject {
   static let shared = SamplePreviewManager()
 
-  @Published private(set) var currentBookID: String? = nil
-  @Published private(set) var toolbar: AudiobookSampleToolbar? = nil
+  @Published private(set) var currentBookID: String?
+  @Published private(set) var toolbar: AudiobookSampleToolbar?
 
   private init() {}
 

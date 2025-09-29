@@ -26,7 +26,7 @@ struct BookDetailView: View {
   @State private var dragOffset: CGFloat = 0
   @State private var imageBottomPosition: CGFloat = 400
   @State private var pulseSkeleton: Bool = false
-  @State private var lastBookIdentifier: String? = nil
+  @State private var lastBookIdentifier: String?
 
   private let scaleAnimation = Animation.linear(duration: 0.35)
 
@@ -303,7 +303,7 @@ struct BookDetailView: View {
       LinearGradient(
         gradient: Gradient(colors: [
           headerColor.opacity(1.0),
-          headerColor.opacity(0.5),
+          headerColor.opacity(0.5)
         ]),
         startPoint: .bottom,
         endPoint: .top
@@ -365,7 +365,7 @@ struct BookDetailView: View {
             gradient: Gradient(stops: [
               .init(color: Color.colorInverseLabel.opacity(0.0), location: 0.0),
               .init(color: Color.colorInverseLabel.opacity(0.5), location: 0.7),
-              .init(color: Color.colorInverseLabel, location: 1.0),
+              .init(color: Color.colorInverseLabel, location: 1.0)
             ]),
             startPoint: .top,
             endPoint: .bottom
@@ -458,7 +458,7 @@ struct BookDetailView: View {
     }
   }
 
-  @State private var currentBookID: String? = nil
+  @State private var currentBookID: String?
 
   @ViewBuilder private var audiobookIndicator: some View {
     ImageProviders.MyBooksView.audiobookBadge

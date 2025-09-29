@@ -395,7 +395,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
 
   var myBooks: [TPPBook] {
     let matchingStates: [TPPBookState] = [
-      .downloadNeeded, .downloading, .SAMLStarted, .downloadFailed, .downloadSuccessful, .used,
+      .downloadNeeded, .downloading, .SAMLStarted, .downloadFailed, .downloadSuccessful, .used
     ]
     return performSync {
       registry
@@ -548,7 +548,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
         object: nil,
         userInfo: [
           "bookIdentifier": bookIdentifier,
-          "state": state.rawValue,
+          "state": state.rawValue
         ]
       )
     }
@@ -600,7 +600,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
       DispatchQueue.main.async {
         NotificationCenter.default.post(name: .TPPBookProcessingDidChange, object: nil, userInfo: [
           TPPNotificationKeys.bookProcessingBookIDKey: bookIdentifier,
-          TPPNotificationKeys.bookProcessingValueKey: processing,
+          TPPNotificationKeys.bookProcessingValueKey: processing
         ])
       }
     }

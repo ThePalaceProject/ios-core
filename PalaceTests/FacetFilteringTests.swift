@@ -25,7 +25,7 @@ final class FacetFilteringTests: XCTestCase {
 
     let mock = MockNetworkClient(dataForURL: [
       topURL.absoluteString: topXML.data(using: .utf8)!,
-      filteredURL.absoluteString: filteredXML.data(using: .utf8)!,
+      filteredURL.absoluteString: filteredXML.data(using: .utf8)!
     ])
 
     let api = DefaultCatalogAPI(client: mock, parser: OPDSParser())

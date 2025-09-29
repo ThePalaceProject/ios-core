@@ -14,7 +14,7 @@ import Foundation
     var licensor: [String: String] {
       [
         "vendor": vendor ?? "",
-        "clientToken": clientToken ?? "",
+        "clientToken": clientToken ?? ""
       ]
     }
 
@@ -86,7 +86,7 @@ import Foundation
         userInfo: [
           parseErrorKey: TPPErrorCode.parseProfileDataCorrupted.rawValue,
           parseErrorDescription: context.debugDescription,
-          parseErrorCodingPath: context.codingPath,
+          parseErrorCodingPath: context.codingPath
         ]
       )
     } catch let DecodingError.typeMismatch(_, context) {
@@ -96,7 +96,7 @@ import Foundation
         userInfo: [
           parseErrorKey: TPPErrorCode.parseProfileTypeMismatch.rawValue,
           parseErrorDescription: context.debugDescription,
-          parseErrorCodingPath: context.codingPath,
+          parseErrorCodingPath: context.codingPath
         ]
       )
     } catch let DecodingError.valueNotFound(_, context) {
@@ -106,7 +106,7 @@ import Foundation
         userInfo: [
           parseErrorKey: TPPErrorCode.parseProfileValueNotFound.rawValue,
           parseErrorDescription: context.debugDescription,
-          parseErrorCodingPath: context.codingPath,
+          parseErrorCodingPath: context.codingPath
         ]
       )
     } catch let DecodingError.keyNotFound(_, context) {
@@ -116,7 +116,7 @@ import Foundation
         userInfo: [
           parseErrorKey: TPPErrorCode.parseProfileKeyNotFound.rawValue,
           parseErrorDescription: context.debugDescription,
-          parseErrorCodingPath: context.codingPath,
+          parseErrorCodingPath: context.codingPath
         ]
       )
     }

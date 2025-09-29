@@ -166,7 +166,7 @@ class LCPPassphraseAuthenticationService: LCPAuthenticating {
         summary: summary,
         metadata: [
           urlKey: urlValue,
-          errorKey: errorValue,
+          errorKey: errorValue
         ]
       )
     }

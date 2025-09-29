@@ -28,13 +28,13 @@ class TPPOPDSAcquisitionPathTests: XCTestCase {
     XCTAssert(acquisitionPaths[0].types == [
       "application/atom+xml;type=entry;profile=opds-catalog",
       "application/vnd.adobe.adept+xml",
-      "application/epub+zip",
+      "application/epub+zip"
     ])
 
     XCTAssert(acquisitionPaths[1].relation == TPPOPDSAcquisitionRelation.borrow)
     XCTAssert(acquisitionPaths[1].types == [
       "application/atom+xml;type=entry;profile=opds-catalog",
-      "application/pdf",
+      "application/pdf"
     ])
   }
 

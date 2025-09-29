@@ -54,7 +54,7 @@ final class NetworkQueue: NSObject {
     NSURLErrorInternationalRoamingOff,
     NSURLErrorCallIsActive,
     NSURLErrorDataNotAllowed,
-    NSURLErrorSecureConnectionFailed,
+    NSURLErrorSecureConnectionFailed
   ]
   let MaxRetriesInQueue = 5
 

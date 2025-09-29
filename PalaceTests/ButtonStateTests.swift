@@ -1,4 +1,3 @@
-
 //
 //  ButtonStateTests.swift
 //  PalaceTests
@@ -17,7 +16,7 @@ final class ButtonStateTests: XCTestCase {
       "title": "Tractatus",
       "categories": ["some cat"],
       "id": "123",
-      "updated": "2020-10-06T17:13:51Z",
+      "updated": "2020-10-06T17:13:51Z"
     ]
     )!
   }
@@ -28,7 +27,7 @@ final class ButtonStateTests: XCTestCase {
       "title": "Tractatus",
       "categories": ["some cat"],
       "id": "123",
-      "updated": "2020-10-06T17:13:51Z",
+      "updated": "2020-10-06T17:13:51Z"
     ]
     )!
   }

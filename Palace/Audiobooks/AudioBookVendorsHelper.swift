@@ -54,7 +54,7 @@ import Foundation
       description = dplaError.readableError
     }
     return NSError(domain: domain, code: code, userInfo: [
-      NSLocalizedDescriptionKey: description,
+      NSLocalizedDescriptionKey: description
     ])
   }
 }

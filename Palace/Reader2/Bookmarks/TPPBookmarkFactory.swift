@@ -36,7 +36,7 @@ class TPPBookmarkFactory {
 
     let href = bookmarkLoc.locator.href.string
 
-    var chapter: String? = nil
+    var chapter: String?
     let tocResult = await publication.tableOfContents()
     switch tocResult {
     case let .success(toc):
@@ -88,7 +88,7 @@ class TPPBookmarkFactory {
         summary: "Got bookmark for a different book",
         metadata: [
           "requestedBookID": bookID,
-          "serverAnnotation": annotation,
+          "serverAnnotation": annotation
         ]
       )
       return nil

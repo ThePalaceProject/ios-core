@@ -152,7 +152,7 @@ final class ChapterParsingOptimizerTests: XCTestCase {
         findawayPart: nil,
         findawaySequence: nil,
         properties: nil
-      ),
+      )
     ]
 
     return Manifest(
@@ -203,7 +203,7 @@ final class ChapterParsingOptimizerTests: XCTestCase {
         findawayPart: nil,
         findawaySequence: nil,
         properties: nil
-      ),
+      )
     ]
 
     return Manifest(
@@ -237,7 +237,7 @@ final class ChapterParsingOptimizerTests: XCTestCase {
         findawayPart: 1,
         findawaySequence: 1,
         properties: nil
-      ),
+      )
     ]
 
     return Manifest(

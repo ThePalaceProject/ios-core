@@ -152,7 +152,7 @@ protocol Bookmark: NSObject {}
       TPPBookmarkDictionaryRepresentation.chapterProgressKey: progressWithinChapter,
       TPPBookmarkDictionaryRepresentation.bookProgressKey: progressWithinBook,
       TPPBookmarkDictionaryRepresentation.readingOrderItem: readingOrderItem ?? "",
-      TPPBookmarkDictionaryRepresentation.readingOrderItemOffsetMilliseconds: readingOrderItemOffsetMilliseconds,
+      TPPBookmarkDictionaryRepresentation.readingOrderItemOffsetMilliseconds: readingOrderItemOffsetMilliseconds
     ]
   }
 

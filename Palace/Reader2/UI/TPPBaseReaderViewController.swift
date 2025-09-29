@@ -139,7 +139,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
       positionLabel.rightAnchor.constraint(
         equalTo: navigator.view.rightAnchor,
         constant: -TPPBaseReaderViewController.overlayLabelMargin
-      ),
+      )
     ])
 
     bookTitleLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -156,7 +156,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
       bookTitleLabel.rightAnchor.constraint(
         equalTo: navigator.view.rightAnchor,
         constant: -TPPBaseReaderViewController.overlayLabelMargin
-      ),
+      )
     ]
     if #available(iOS 11.0, *) {
       layoutConstraints.append(bookTitleLabel.topAnchor.constraint(
@@ -192,13 +192,9 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
         stackView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
         stackView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
         stackView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-        stackView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+        stackView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
       ])
     }
-  }
-
-  override func willMove(toParent parent: UIViewController?) {
-    super.willMove(toParent: parent)
   }
 
   override func viewDidAppear(_ animated: Bool) {
@@ -389,7 +385,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     toolbar.items = [
       backButton,
       makeItem(.flexibleSpace),
-      forwardButton,
+      forwardButton
     ]
     toolbar.isHidden = !isVoiceOverRunning
     toolbar.tintColor = UIColor.black

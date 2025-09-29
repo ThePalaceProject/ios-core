@@ -169,14 +169,14 @@ final class ComprehensiveFileCleanupTests: XCTestCase {
     // Create test files in various locations that might be used by audiobooks
     let testLocations = [
       FileManager.default.temporaryDirectory,
-      fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first,
+      fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first
     ].compactMap { $0 }
 
     for location in testLocations {
       let testFiles = [
         location.appendingPathComponent("\(bookId).test"),
         location.appendingPathComponent("test_\(bookId).tmp"),
-        location.appendingPathComponent("\(bookId)_cache.data"),
+        location.appendingPathComponent("\(bookId)_cache.data")
       ]
 
       for testFile in testFiles {
@@ -191,7 +191,7 @@ final class ComprehensiveFileCleanupTests: XCTestCase {
     // Create test directories
     let testDirectories = [
       FileManager.default.temporaryDirectory.appendingPathComponent("AudiobookCache").appendingPathComponent(bookId),
-      fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first?.appendingPathComponent(bookId),
+      fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first?.appendingPathComponent(bookId)
     ].compactMap { $0 }
 
     for testDirectory in testDirectories {
@@ -216,7 +216,7 @@ final class ComprehensiveFileCleanupTests: XCTestCase {
     let searchLocations = [
       FileManager.default.temporaryDirectory,
       fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first,
-      fileManager.urls(for: .documentDirectory, in: .userDomainMask).first,
+      fileManager.urls(for: .documentDirectory, in: .userDomainMask).first
     ].compactMap { $0 }
 
     for location in searchLocations {

@@ -52,7 +52,7 @@ import UIKit
         } catch {
           TPPErrorLogger.logError(error, summary: "Failed to initialize LCPService", metadata: [
             "error": error.localizedDescription,
-            "errorType": String(describing: type(of: error)),
+            "errorType": String(describing: type(of: error))
           ])
           return nil
         }
@@ -78,13 +78,13 @@ import UIKit
   func fulfill(_ file: URL) async throws -> DRMFulfilledPublication {
     guard let lcpService = lcpService else {
       throw LCPError.unknown(NSError(domain: "LCPLibraryService", code: -1, userInfo: [
-        NSLocalizedDescriptionKey: "LCPService not initialized",
+        NSLocalizedDescriptionKey: "LCPService not initialized"
       ]))
     }
 
     guard let fileURL = file.fileURL else {
       throw LCPError.unknown(NSError(domain: "LCPLibraryService", code: -2, userInfo: [
-        NSLocalizedDescriptionKey: "Invalid file URL",
+        NSLocalizedDescriptionKey: "Invalid file URL"
       ]))
     }
 
@@ -116,7 +116,7 @@ import UIKit
   ) -> URLSessionDownloadTask? {
     guard let lcpService = lcpService else {
       let error = NSError(domain: "LCPLibraryService", code: -1, userInfo: [
-        NSLocalizedDescriptionKey: "LCPService not initialized",
+        NSLocalizedDescriptionKey: "LCPService not initialized"
       ])
       completion(nil, error)
       return nil
@@ -130,7 +130,7 @@ import UIKit
         let errorDescription = (error as? LCPError)?.localizedDescription ?? (error as? TPPLicensesServiceError)?
           .description ?? error?.localizedDescription
         let nsError = NSError(domain: domain, code: code, userInfo: [
-          NSLocalizedDescriptionKey: errorDescription as Any,
+          NSLocalizedDescriptionKey: errorDescription as Any
         ])
         completion(nil, nsError)
         return

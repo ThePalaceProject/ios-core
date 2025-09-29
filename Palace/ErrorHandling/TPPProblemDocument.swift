@@ -65,14 +65,14 @@ import Foundation
         TPPProblemDocument.titleKey:
           Strings.TPPProblemDocument.authenticationExpiredTitle,
         TPPProblemDocument.detailKey:
-          Strings.TPPProblemDocument.authenticationExpiredBody,
+          Strings.TPPProblemDocument.authenticationExpiredBody
       ])
     } else {
       TPPProblemDocument([
         TPPProblemDocument.typeKey: TPPProblemDocument.TypeInvalidCredentials,
         TPPProblemDocument.titleKey: Strings.TPPProblemDocument.authenticationRequiredTitle,
         TPPProblemDocument.detailKey:
-          Strings.TPPProblemDocument.authenticationRequireBody,
+          Strings.TPPProblemDocument.authenticationRequireBody
       ])
     }
   }
@@ -96,7 +96,7 @@ import Foundation
   ///   - responseError: Error possibly containing a problem document.
   /// - Returns: A problem document instance if a problem document was found,
   /// or `nil` otherwise.
-  @objc class func fromResponseError(
+  class func fromResponseError(
     _ responseError: NSError?,
     responseData: Data?
   ) -> TPPProblemDocument? {
@@ -123,7 +123,7 @@ import Foundation
       TPPProblemDocument.titleKey: title ?? "",
       TPPProblemDocument.statusKey: status ?? TPPProblemDocument.noStatus,
       TPPProblemDocument.detailKey: detail ?? "",
-      TPPProblemDocument.instanceKey: instance ?? "",
+      TPPProblemDocument.instanceKey: instance ?? ""
     ]
   }
 

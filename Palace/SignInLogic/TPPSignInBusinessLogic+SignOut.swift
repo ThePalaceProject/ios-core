@@ -81,7 +81,7 @@ extension TPPSignInBusinessLogic {
         metadata: [
           "Request": request.loggableString,
           "Response": response ?? "N/A",
-          "HTTP status code": statusCode,
+          "HTTP status code": statusCode
         ]
       )
       uiDelegate?.businessLogic(
@@ -126,7 +126,7 @@ extension TPPSignInBusinessLogic {
       metadata: [
         "AuthMethod": selectedAuthentication?.methodDescription ?? "N/A",
         "Hashed barcode": barcode?.md5hex() ?? "N/A",
-        "HTTP status code": statusCode,
+        "HTTP status code": statusCode
       ]
     )
 
@@ -193,7 +193,7 @@ extension TPPSignInBusinessLogic {
               "DeviceID": adobeDeviceID ?? "N/A",
               "Licensor": licensor,
               "AdobeTokenUsername": tokenUsername ?? "N/A",
-              "AdobeTokenPassword": tokenPassword ?? "N/A",
+              "AdobeTokenPassword": tokenPassword ?? "N/A"
             ]
           )
         }

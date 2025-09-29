@@ -419,7 +419,7 @@ private let nullString = "null"
     var metadata: [String: Any] = [
       "Library": library ?? nullString,
       "ExceptionName": exception?.name ?? nullString,
-      "ExceptionReason": exception?.reason ?? nullString,
+      "ExceptionReason": exception?.reason ?? nullString
     ]
 
     addAccountInfoToMetadata(&metadata)

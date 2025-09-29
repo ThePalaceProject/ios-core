@@ -92,7 +92,7 @@ class BarcodeScanner: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
       scannerView.heightAnchor.constraint(equalTo: view.widthAnchor, multiplier: 0.5, constant: -20),
       scannerView.widthAnchor.constraint(equalTo: view.widthAnchor, multiplier: 1, constant: -20),
       scannerView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-      scannerView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+      scannerView.centerYAnchor.constraint(equalTo: view.centerYAnchor)
     ]
     NSLayoutConstraint.activate(scannerViewContraints)
     previewView.layer.borderColor = UIColor.green.cgColor

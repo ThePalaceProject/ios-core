@@ -23,7 +23,7 @@ extension TPPBook {
       "bookDistributor": distributor ?? "",
       "defaultAcquisitionType": defaultAcquisition?.type ?? "N/A",
       "alternateURL": alternateURL ?? "N/A",
-      "contentType": TPPBookContentTypeConverter.stringValue(of: defaultBookContentType),
+      "contentType": TPPBookContentTypeConverter.stringValue(of: defaultBookContentType)
     ]
   }
 }

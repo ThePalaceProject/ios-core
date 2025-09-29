@@ -21,7 +21,7 @@ struct HTMLTextView: View {
 
     let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [
       .documentType: NSAttributedString.DocumentType.html,
-      .characterEncoding: String.Encoding.utf8.rawValue,
+      .characterEncoding: String.Encoding.utf8.rawValue
     ]
 
     if let nsAttributedString = try? NSAttributedString(data: data, options: options, documentAttributes: nil) {

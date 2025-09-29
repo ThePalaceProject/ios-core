@@ -83,7 +83,7 @@ class TPPAnnouncementBusinessLogic {
         summary: "Fail to write Presented Announcements file to local storage",
         metadata: [
           "filePathURL": filePathURL,
-          "presentedAnnouncements": presentedAnnouncements,
+          "presentedAnnouncements": presentedAnnouncements
         ]
       )
     }
@@ -98,7 +98,7 @@ class TPPAnnouncementBusinessLogic {
    */
   private func alert(announcements: [Announcement]) -> UIAlertController? {
     let title = DisplayStrings.alertTitle
-    var currentAlert: UIAlertController? = nil
+    var currentAlert: UIAlertController?
 
     let alerts = announcements.map {
       UIAlertController(title: title, message: $0.content, preferredStyle: .alert)

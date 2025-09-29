@@ -33,7 +33,7 @@ class TPPBookCreationTests: XCTestCase {
       "categories": ["Fantasy"],
       "id": "666",
       "title": "The Lord of the Rings",
-      "updated": "2020-09-08T09:22:45Z",
+      "updated": "2020-09-08T09:22:45Z"
     ])
     XCTAssertNotNil(book)
     XCTAssertNotNil(book?.acquisitions)
@@ -48,7 +48,7 @@ class TPPBookCreationTests: XCTestCase {
       "acquisitions": acquisitions,
       "categories": ["Fantasy"],
       "id": "666",
-      "title": "The Lord of the Rings",
+      "title": "The Lord of the Rings"
     ])
     XCTAssertNil(bookNoUpdatedDate)
 
@@ -56,7 +56,7 @@ class TPPBookCreationTests: XCTestCase {
       "acquisitions": acquisitions,
       "categories": ["Fantasy"],
       "id": "666",
-      "updated": "2020-09-08T09:22:45Z",
+      "updated": "2020-09-08T09:22:45Z"
     ])
     XCTAssertNil(bookNoTitle)
 
@@ -64,7 +64,7 @@ class TPPBookCreationTests: XCTestCase {
       "acquisitions": acquisitions,
       "categories": ["Fantasy"],
       "title": "The Lord of the Rings",
-      "updated": "2020-09-08T09:22:45Z",
+      "updated": "2020-09-08T09:22:45Z"
     ])
     XCTAssertNil(bookNoId)
 
@@ -72,7 +72,7 @@ class TPPBookCreationTests: XCTestCase {
       "acquisitions": acquisitions,
       "id": "666",
       "title": "The Lord of the Rings",
-      "updated": "2020-09-08T09:22:45Z",
+      "updated": "2020-09-08T09:22:45Z"
     ])
     XCTAssertNil(bookNoCategories)
 

@@ -17,7 +17,7 @@ struct LoadingOverlayModifier: ViewModifier {
               gradient: Gradient(colors: [
                 Color.gray.opacity(0.3),
                 Color.gray.opacity(0.1),
-                Color.gray.opacity(0.3),
+                Color.gray.opacity(0.3)
               ]),
               startPoint: .leading,
               endPoint: .trailing
@@ -49,7 +49,7 @@ struct ShimmerEffect: ViewModifier {
           gradient: Gradient(colors: [
             Color.gray.opacity(0.3),
             Color.gray.opacity(0.1),
-            Color.gray.opacity(0.3),
+            Color.gray.opacity(0.3)
           ]),
           startPoint: .leading,
           endPoint: .trailing

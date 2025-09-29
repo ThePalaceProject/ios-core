@@ -26,10 +26,6 @@ class MyBooksDownloadCenterTests: XCTestCase {
     )
   }
 
-  override func tearDown() {
-    super.tearDown()
-  }
-
   func testBorrowBook() {
     let expectation = expectation(description: "Book is sent to downloading state")
 

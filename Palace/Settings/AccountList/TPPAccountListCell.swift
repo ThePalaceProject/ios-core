@@ -15,10 +15,6 @@ class TPPAccountListCell: UITableViewCell {
     super.init(coder: coder)
   }
 
-  override func awakeFromNib() {
-    super.awakeFromNib()
-  }
-
   func setup() {
     let container = UIView()
     let textContainer = UIView()

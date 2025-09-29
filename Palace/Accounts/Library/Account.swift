@@ -496,7 +496,7 @@ protocol AccountLogoDelegate: AnyObject {
         summary: "Failed to load authentication document because its URL is invalid",
         metadata: [
           "self.uuid": uuid,
-          "urlString": authenticationDocumentUrl ?? "N/A",
+          "urlString": authenticationDocumentUrl ?? "N/A"
         ]
       )
       completion(false)
@@ -535,7 +535,7 @@ protocol AccountLogoDelegate: AnyObject {
         summary: "Failed to load authentication document because its URL is invalid",
         metadata: [
           "self.uuid": uuid,
-          "urlString": urlString,
+          "urlString": urlString
         ]
       )
       completion(document)
@@ -556,7 +556,7 @@ protocol AccountLogoDelegate: AnyObject {
             metadata: [
               "underlyingError": error,
               "responseBody": responseBody ?? "N/A",
-              "url": url,
+              "url": url
             ]
           )
           completion(document)

@@ -305,7 +305,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
             "isSAML": selectedAuth.isSaml,
             "isOAuth": selectedAuth.isOauth,
             "context": context,
-            "uiDelegate nil?": uiDelegate == nil ? "y" : "n",
+            "uiDelegate nil?": uiDelegate == nil ? "y" : "n"
           ]
         )
       }
@@ -329,7 +329,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
           NSLocalizedDescriptionKey:
             Strings.Error.serverConnectionErrorDescription,
           NSLocalizedRecoverySuggestionErrorKey:
-            Strings.Error.serverConnectionErrorSuggestion,
+            Strings.Error.serverConnectionErrorSuggestion
         ]
       )
       handleNetworkError(error, loggingContext: ["Context": uiContext])
@@ -346,7 +346,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
       let loggingContext: [String: Any] = [
         "Request": req.loggableString,
         "Attempted Barcode": uiDelegate?.username?.md5hex() ?? "N/A",
-        "Context": uiContext,
+        "Context": uiContext
       ]
 
       switch result {
@@ -545,7 +545,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
             summary: "uiDelegate missing while refreshing basic auth",
             metadata: [
               "usingExistingCredentials": usingExistingCredentials,
-              "hashedBarcode": userAccount.barcode?.md5hex() ?? "N/A",
+              "hashedBarcode": userAccount.barcode?.md5hex() ?? "N/A"
             ]
           )
           #endif

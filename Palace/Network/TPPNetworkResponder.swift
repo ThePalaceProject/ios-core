@@ -153,7 +153,7 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
     let taskID = task.taskIdentifier
     var logMetadata: [String: Any] = [
       "currentRequest": task.currentRequest?.loggableString ?? "N/A",
-      "taskID": taskID,
+      "taskID": taskID
     ]
 
     var maybeInfo: TPPNetworkTaskInfo?
@@ -211,9 +211,7 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
         }
 
         result = .failure(err, task.response)
-      }
-
-      else if let netErr = networkError {
+      } else if let netErr = networkError {
         let ue = netErr as TPPUserFriendlyError
         result = .failure(ue, task.response)
         TPPErrorLogger.logNetworkError(

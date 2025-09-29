@@ -73,7 +73,7 @@ extension AudioBookVendors {
         kSecAttrApplicationTag as String: self.tag.data(using: .utf8) as Any,
         kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
         kSecValueData as String: keyData,
-        kSecAttrKeyClass as String: kSecAttrKeyClassPublic,
+        kSecAttrKeyClass as String: kSecAttrKeyClassPublic
       ]
 
       // Clean up before adding a new key value

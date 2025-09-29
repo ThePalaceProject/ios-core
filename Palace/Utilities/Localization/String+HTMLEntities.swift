@@ -266,7 +266,7 @@ private let characterEntities: [Substring: Character] = [
   "&spades;": "\u{2660}",
   "&clubs;": "\u{2663}",
   "&hearts;": "\u{2665}",
-  "&diams;": "\u{2666}",
+  "&diams;": "\u{2666}"
 ]
 
 // Discussion: https://stackoverflow.com/questions/25607247/how-do-i-decode-html-entities-in-swift

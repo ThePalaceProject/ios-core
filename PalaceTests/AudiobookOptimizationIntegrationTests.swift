@@ -174,7 +174,7 @@ final class AudiobookOptimizationIntegrationTests: XCTestCase {
         findawayPart: nil,
         findawaySequence: nil,
         properties: nil
-      ),
+      )
     ]
 
     return Manifest(

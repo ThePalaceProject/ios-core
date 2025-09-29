@@ -170,7 +170,7 @@ protocol AnnotationsManager {
           metadata: [
             "bookID": bookID,
             "annotationID": id ?? "N/A",
-            "annotationURL": annotationsURL,
+            "annotationURL": annotationsURL
           ]
         )
         completion?(nil)

@@ -189,7 +189,7 @@ extension TPPNetworkExecutor {
     if let authToken = TPPUserAccount.sharedAccount().authToken, useTokenIfAvailable {
       let headers = [
         "Authorization": "Bearer \(authToken)",
-        "Content-Type": "application/json",
+        "Content-Type": "application/json"
       ]
       headers.forEach { urlRequest.setValue($0.value, forHTTPHeaderField: $0.key) }
     }
@@ -207,12 +207,12 @@ extension TPPNetworkExecutor {
     let headers: [String: String] = if let authToken = TPPUserAccount.sharedAccount().authToken, !authToken.isEmpty {
       [
         "Authorization": "Bearer \(authToken)",
-        "Content-Type": "application/json",
+        "Content-Type": "application/json"
       ]
     } else {
       [
         "Authorization": "",
-        "Content-Type": "application/json",
+        "Content-Type": "application/json"
       ]
     }
 
