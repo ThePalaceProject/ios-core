@@ -13,7 +13,6 @@ struct HoldsView: View {
   }
   var body: some View {
     ZStack {
-      ScrollView {
       mainContent
         .background(Color(TPPConfiguration.backgroundColor()))
         .navigationBarTitleDisplayMode(.inline)
@@ -56,10 +55,6 @@ struct HoldsView: View {
           account?.loadLogo()
           currentAccountUUID = account?.uuid ?? ""
         }
-    }
-      .refreshable {
-        model.refresh()
-      }
       .sheet(isPresented: $model.showLibraryAccountView) {
         UIViewControllerWrapper(
           TPPAccountList { account in
@@ -87,25 +82,29 @@ struct HoldsView: View {
 
   @ViewBuilder
   private var content: some View {
-    if model.isLoading {
-      BookListSkeletonView(rows: 10)
-    } else if model.visibleBooks.isEmpty {
-      GeometryReader { geometry in
-          VStack {
-            Spacer()
-            emptyView
-            Spacer()
-          }
-          .frame(minHeight: geometry.size.height)
-      }
-    } else {
-        BookListView(
-          books: model.visibleBooks,
-          isLoading: $model.isLoading,
-          onSelect: { book in presentBookDetail(book) }
-        )
-        .padding(.horizontal, 8)
+    GeometryReader { geometry in
+      if model.isLoading {
+        BookListSkeletonView(rows: 10)
+      } else if model.visibleBooks.isEmpty {
+        ScrollView {
+          emptyView
+            .frame(minHeight: geometry.size.height)
+            .centered()
+        }
+        .refreshable { model.refresh() }
+      } else {
+        ScrollView {
+          BookListView(
+            books: model.visibleBooks,
+            isLoading: $model.isLoading,
+            onSelect: { book in presentBookDetail(book) }
+          )
+          .padding(.horizontal, 8)
+        }
+        .scrollIndicators(.visible)
+        .refreshable { model.refresh() }
         .dismissKeyboardOnTap()
+      }
     }
   }
   
