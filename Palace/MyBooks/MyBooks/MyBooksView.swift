@@ -108,7 +108,6 @@ struct MyBooksView: View {
             isLoading: $model.isLoading,
             onSelect: { book in presentBookDetail(for: book) }
           )
-          .frame(minHeight: geometry.size.height)
         }
         .scrollIndicators(.visible)
         .refreshable { model.reloadData() }
