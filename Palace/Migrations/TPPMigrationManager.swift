@@ -13,7 +13,10 @@ import Foundation
 class TPPMigrationManager: NSObject {
   @objc static func migrate() {
     // Fetch target version
-    let targetVersion = Bundle.main.infoDictionary!["CFBundleShortVersionString"] as! String
+    guard let targetVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String else {
+      Log.error(#file, "Failed to get CFBundleShortVersionString from bundle info")
+      return
+    }
 
     runMigrations()
 

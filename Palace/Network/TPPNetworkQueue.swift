@@ -7,8 +7,27 @@ import SQLite
  */
 public extension Connection {
   var userVersion: Int {
-    get { Int(try! scalar("PRAGMA user_version") as! Int64) }
-    set { try! run("PRAGMA user_version = \(newValue)") }
+    get { 
+      do {
+        let result = try scalar("PRAGMA user_version")
+        if let version = result as? Int64 {
+          return Int(version)
+        } else {
+          Log.error(#file, "Failed to cast user_version to Int64, got: \(type(of: result))")
+          return 0
+        }
+      } catch {
+        Log.error(#file, "Failed to get user_version: \(error)")
+        return 0
+      }
+    }
+    set { 
+      do {
+        try run("PRAGMA user_version = \(newValue)")
+      } catch {
+        Log.error(#file, "Failed to set user_version to \(newValue): \(error)")
+      }
+    }
   }
 }
 
@@ -152,10 +171,20 @@ final class NetworkQueue: NSObject {
         return
       }
 
-      let tableCount = Int(try! db
-        .scalar("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = '\(NetworkQueue.TableName)'"
-        ) as! Int64
-      )
+      let tableCount: Int
+      do {
+        let result = try db
+          .scalar("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = '\(NetworkQueue.TableName)'")
+        if let count = result as? Int64 {
+          tableCount = Int(count)
+        } else {
+          Log.error(#file, "Failed to cast table count to Int64, got: \(type(of: result))")
+          tableCount = 0
+        }
+      } catch {
+        Log.error(#file, "Failed to check table existence: \(error)")
+        tableCount = 0
+      }
       if tableCount < 1 {
         self.createTable(db: db)
         db.userVersion = NetworkQueue.DBVersion
