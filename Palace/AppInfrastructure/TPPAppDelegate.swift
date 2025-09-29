@@ -79,7 +79,12 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
   private func registerBackgroundTasks() {
     BGTaskScheduler.shared.register(forTaskWithIdentifier: "org.thepalaceproject.palace.refresh", using: nil) { task in
-      self.handleAppRefresh(task: task as! BGAppRefreshTask)
+      guard let refreshTask = task as? BGAppRefreshTask else {
+        Log.error(#file, "Expected BGAppRefreshTask but got \(type(of: task))")
+        task.setTaskCompleted(success: false)
+        return
+      }
+      self.handleAppRefresh(task: refreshTask)
     }
   }
 

@@ -207,7 +207,10 @@ extension TPPPDFDocument: PDFDocumentDelegate {
   /// Search delegate for `PDFDocument`
   /// - Parameter instance: `PDFSelection` found
   func didMatchString(_ instance: PDFSelection) {
-    let extendedSelection = instance.copy() as! PDFSelection
+    guard let extendedSelection = instance.copy() as? PDFSelection else {
+      Log.error(#file, "Failed to copy PDFSelection")
+      return
+    }
     extendedSelection.extendForLineBoundaries()
     let page = instance.pages[0]
     guard let pageNumber = document?.index(for: page) else {

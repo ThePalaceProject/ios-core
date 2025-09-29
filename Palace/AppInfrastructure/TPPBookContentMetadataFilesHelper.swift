@@ -22,7 +22,10 @@ import Foundation
       return nil
     }
 
-    let bundleID = Bundle.main.object(forInfoDictionaryKey: "CFBundleIdentifier") as! String
+    guard let bundleID = Bundle.main.object(forInfoDictionaryKey: "CFBundleIdentifier") as? String else {
+      Log.error(#file, "Failed to get CFBundleIdentifier from bundle info")
+      return nil
+    }
     var dirURL = URL(fileURLWithPath: paths[0]).appendingPathComponent(bundleID)
 
     if account != AccountsManager.TPPAccountUUIDs[0] {
