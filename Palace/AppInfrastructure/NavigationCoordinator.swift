@@ -73,7 +73,7 @@ final class NavigationCoordinator: ObservableObject {
   private func scheduleCleanupIfNeeded() {
     let totalItems = bookById.count + searchBooksById.count + pdfControllerById.count + 
                     audioControllerById.count + epubControllerById.count + audioModelById.count + 
-                    pdfContentById.count
+                    pdfContentById.count + catalogFilterStatesByURL.count
     
     if totalItems > maxStoredItems {
       cleanupTimer?.invalidate()
@@ -102,7 +102,7 @@ final class NavigationCoordinator: ObservableObject {
     epubControllerById.removeAll()
     audioModelById.removeAll()
     pdfContentById.removeAll()
-    
+    catalogFilterStatesByURL.removeAll()
     
     Log.info(#file, "🧹 NavigationCoordinator: Cleaned up cached items (preserved filter states)")
   }

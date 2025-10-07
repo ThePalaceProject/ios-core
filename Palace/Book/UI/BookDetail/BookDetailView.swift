@@ -153,7 +153,7 @@ struct BookDetailView: View {
           HStack(spacing: 6) {
             Image(systemName: "chevron.left")
               .font(.system(size: 17, weight: .semibold))
-            Text("Back")
+            Text(Strings.Generic.back)
               .font(.system(size: 17))
           }
           .foregroundColor(headerColor.isDark ? .white : .black)
