@@ -62,7 +62,7 @@ struct BookDetailView: View {
               })
           }
         }
-        .edgesIgnoringSafeArea(.all)
+        .ignoresSafeArea(.container, edges: [.top, .bottom])
         .onChange(of: viewModel.book.identifier) { newIdentifier in
           if lastBookIdentifier != newIdentifier {
             lastBookIdentifier = newIdentifier
@@ -121,7 +121,6 @@ struct BookDetailView: View {
           }
       }
       .presentationDetents([.height(0), .height(300)])
-      .navigationBarHidden(true)
       
       if !viewModel.isFullSize {
         backgroundView
@@ -137,12 +136,31 @@ struct BookDetailView: View {
         .animation(scaleAnimation, value: -headerHeight)
 
       SamplePreviewBarView()
-      
-      customBackButton
     }
     .offset(x: dragOffset)
     .animation(.interactiveSpring(), value: dragOffset)
-    
+    .navigationBarTitleDisplayMode(.inline)
+    .navigationBarBackButtonHidden(true)
+    .toolbar {
+      ToolbarItem(placement: .navigationBarLeading) {
+        Button(action: {
+          if let coordinator = coordinator {
+            coordinator.pop()
+          } else {
+            presentationMode.wrappedValue.dismiss()
+          }
+        }) {
+          HStack(spacing: 6) {
+            Image(systemName: "chevron.left")
+              .font(.system(size: 17, weight: .semibold))
+            Text("Back")
+              .font(.system(size: 17))
+          }
+          .foregroundColor(headerColor.isDark ? .white : .black)
+        }
+      }
+    }
+    .toolbarBackground(.hidden, for: .navigationBar)
     .modifier(BookStateModifier(viewModel: viewModel, showHalfSheet: $viewModel.showHalfSheet))
     .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ToggleSampleNotification")).receive(on: RunLoop.main)) { note in
       guard let info = note.userInfo as? [String: Any], let identifier = info["bookIdentifier"] as? String else { return }
@@ -614,15 +632,16 @@ struct BookDetailView: View {
             presentationMode.wrappedValue.dismiss()
           }
         }) {
-          HStack(spacing: 4) {
+          HStack(spacing: 6) {
             Image(systemName: "chevron.left")
-              .font(.system(size: 16, weight: .medium))
-            Text(Strings.Generic.back)
-              .font(.system(size: 16, weight: .medium))
+              .font(.system(size: 17, weight: .semibold))
+            Text("Back")
+              .font(.system(size: 17))
           }
           .foregroundColor(headerColor.isDark ? .white : .black)
         }
-        .padding(.leading, 16)
+        .padding(.leading, 8)
+        .padding(.top, UIDevice.current.isIpad ? 8 : 0)
         
         Spacer()
       }
