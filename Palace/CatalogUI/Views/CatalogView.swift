@@ -21,6 +21,7 @@ struct CatalogView: View {
     content
       .padding(.top)
       .navigationBarTitleDisplayMode(.inline)
+      .toolbar(.visible, for: .navigationBar)
       .toolbar { toolbarContent }
       .onAppear { 
         setupCurrentAccount()

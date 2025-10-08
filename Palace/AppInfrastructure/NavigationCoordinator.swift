@@ -104,7 +104,7 @@ final class NavigationCoordinator: ObservableObject {
     pdfContentById.removeAll()
     catalogFilterStatesByURL.removeAll()
     
-    Log.info(#file, "🧹 NavigationCoordinator: Cleaned up cached items")
+    Log.info(#file, "🧹 NavigationCoordinator: Cleaned up cached items (preserved filter states)")
   }
 
   func resolveBook(for route: BookRoute) -> TPPBook? {
