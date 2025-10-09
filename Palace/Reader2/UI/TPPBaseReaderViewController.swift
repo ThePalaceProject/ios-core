@@ -37,8 +37,9 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   private var tocBarButton: UIBarButtonItem?
   private var bookmarkBarButton: UIBarButtonItem?
   private(set) var stackView: UIStackView!
-  private lazy var positionLabel = UILabel()
-  private lazy var bookTitleLabel = UILabel()
+  private(set) var navigatorContainer: UIView!
+  private(set) lazy var positionLabel = UILabel()
+  private(set) lazy var bookTitleLabel = UILabel()
   private var isShowingSample: Bool = false
   private var initialLocation: Locator?
   private var subscriptions: Set<AnyCancellable> = []
@@ -100,46 +101,80 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     super.viewDidLoad()
 
     view.backgroundColor = TPPConfiguration.backgroundColor()
+    
+    edgesForExtendedLayout = [.top, .bottom]
+    extendedLayoutIncludesOpaqueBars = true
+    automaticallyAdjustsScrollViewInsets = false
 
     navigationItem.rightBarButtonItems = makeNavigationBarButtons()
     updateNavigationBar(animated: false)
     setupStackView()
 
     addChild(navigator)
-    stackView.addArrangedSubview(navigator.view)
+    
+    navigatorContainer = UIView()
+    navigatorContainer.backgroundColor = TPPConfiguration.backgroundColor()
+    stackView.addArrangedSubview(navigatorContainer)
+    
+    navigatorContainer.addSubview(navigator.view)
+    navigator.view.translatesAutoresizingMaskIntoConstraints = false
+    
+    let fixedTopInset: CGFloat = 100.0  // Space for navbar + status bar
+    let fixedBottomInset: CGFloat = 50.0  // Space for home indicator
+    
+    NSLayoutConstraint.activate([
+      navigator.view.topAnchor.constraint(equalTo: navigatorContainer.topAnchor, constant: fixedTopInset),
+      navigator.view.bottomAnchor.constraint(equalTo: navigatorContainer.bottomAnchor, constant: -fixedBottomInset),
+      navigator.view.leadingAnchor.constraint(equalTo: navigatorContainer.leadingAnchor),
+      navigator.view.trailingAnchor.constraint(equalTo: navigatorContainer.trailingAnchor)
+    ])
+    
     navigator.didMove(toParent: self)
+    
+    // Prevent navigator from using safe area insets
+    navigator.view.insetsLayoutMarginsFromSafeArea = false
+    navigator.additionalSafeAreaInsets = .zero
+    
+    // Prevent scroll view content inset adjustment
+    if let scrollView = navigator.view as? UIScrollView {
+      scrollView.contentInsetAdjustmentBehavior = .never
+    } else {
+      // Check subviews for scroll views
+      navigator.view.subviews.compactMap { $0 as? UIScrollView }.forEach { scrollView in
+        scrollView.contentInsetAdjustmentBehavior = .never
+      }
+    }
 
     stackView.addArrangedSubview(accessibilityToolbar)
     accessibilityToolbar.accessibilityElementsHidden = true
 
+    // Position label in the bottom letterbox area
     positionLabel.translatesAutoresizingMaskIntoConstraints = false
     positionLabel.font = .systemFont(ofSize: 12)
     positionLabel.textAlignment = .center
     positionLabel.lineBreakMode = .byTruncatingTail
-    positionLabel.textColor = .darkGray
-    view.addSubview(positionLabel)
+    positionLabel.textColor = .lightGray
+    navigatorContainer.addSubview(positionLabel)
     NSLayoutConstraint.activate([
-      positionLabel.bottomAnchor.constraint(equalTo: navigator.view.bottomAnchor, constant: -TPPBaseReaderViewController.overlayLabelMargin),
-      positionLabel.leftAnchor.constraint(equalTo: navigator.view.leftAnchor, constant: TPPBaseReaderViewController.overlayLabelMargin),
-      positionLabel.rightAnchor.constraint(equalTo: navigator.view.rightAnchor, constant: -TPPBaseReaderViewController.overlayLabelMargin)
+      positionLabel.bottomAnchor.constraint(equalTo: navigatorContainer.bottomAnchor, constant: -TPPBaseReaderViewController.overlayLabelMargin),
+      positionLabel.leftAnchor.constraint(equalTo: navigatorContainer.leftAnchor, constant: TPPBaseReaderViewController.overlayLabelMargin),
+      positionLabel.rightAnchor.constraint(equalTo: navigatorContainer.rightAnchor, constant: -TPPBaseReaderViewController.overlayLabelMargin),
+      positionLabel.topAnchor.constraint(greaterThanOrEqualTo: navigator.view.bottomAnchor, constant: TPPBaseReaderViewController.overlayLabelMargin / 2)
     ])
 
+    // Book title label in the top letterbox area
     bookTitleLabel.translatesAutoresizingMaskIntoConstraints = false
     bookTitleLabel.font = .systemFont(ofSize: 12)
     bookTitleLabel.textAlignment = .center
     bookTitleLabel.lineBreakMode = .byTruncatingTail
-    bookTitleLabel.textColor = .darkGray
-    view.addSubview(bookTitleLabel)
-    var layoutConstraints: [NSLayoutConstraint] = [
-      bookTitleLabel.leftAnchor.constraint(equalTo: navigator.view.leftAnchor, constant: TPPBaseReaderViewController.overlayLabelMargin),
-      bookTitleLabel.rightAnchor.constraint(equalTo: navigator.view.rightAnchor, constant: -TPPBaseReaderViewController.overlayLabelMargin)
-    ]
-    if #available(iOS 11.0, *) {
-      layoutConstraints.append(bookTitleLabel.topAnchor.constraint(equalTo: navigator.view.safeAreaLayoutGuide.topAnchor, constant: TPPBaseReaderViewController.overlayLabelMargin / 2))
-    } else {
-      layoutConstraints.append(bookTitleLabel.topAnchor.constraint(equalTo: navigator.view.topAnchor, constant: TPPBaseReaderViewController.overlayLabelMargin))
-    }
-    NSLayoutConstraint.activate(layoutConstraints)
+    bookTitleLabel.textColor = .lightGray
+    navigatorContainer.addSubview(bookTitleLabel)
+    NSLayoutConstraint.activate([
+      bookTitleLabel.topAnchor.constraint(equalTo: navigatorContainer.topAnchor, constant: TPPBaseReaderViewController.overlayLabelMargin),
+      bookTitleLabel.leftAnchor.constraint(equalTo: navigatorContainer.leftAnchor, constant: TPPBaseReaderViewController.overlayLabelMargin),
+      bookTitleLabel.rightAnchor.constraint(equalTo: navigatorContainer.rightAnchor, constant: -TPPBaseReaderViewController.overlayLabelMargin),
+      bookTitleLabel.bottomAnchor.constraint(lessThanOrEqualTo: navigator.view.topAnchor, constant: -TPPBaseReaderViewController.overlayLabelMargin / 2)
+    ])
 
     // Accessibility
     updateViewsForVoiceOver(isRunning: UIAccessibility.isVoiceOverRunning)
@@ -158,13 +193,55 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
       stackView.translatesAutoresizingMaskIntoConstraints = false
       view.addSubview(stackView)
 
+      let topConstraint = stackView.topAnchor.constraint(equalTo: view.topAnchor)
+      // Use .defaultHigh priority to prevent iOS from forcefully resizing the view
+      // when navigation bar appears/disappears
+      topConstraint.priority = .defaultHigh
+      
       NSLayoutConstraint.activate([
-        stackView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-        stackView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
+        topConstraint,
+        stackView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         stackView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
         stackView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
       ])
     }
+  }
+
+  override func viewSafeAreaInsetsDidChange() {
+    super.viewSafeAreaInsetsDidChange()
+    
+    navigator.additionalSafeAreaInsets = UIEdgeInsets(
+      top: -view.safeAreaInsets.top,
+      left: 0,
+      bottom: -view.safeAreaInsets.bottom,
+      right: 0
+    )
+  }
+  
+  override func viewDidLayoutSubviews() {
+    super.viewDidLayoutSubviews()
+    
+    configureScrollViewInsets()
+  }
+  
+  private func configureScrollViewInsets() {
+    if let scrollView = navigator.view as? UIScrollView {
+      scrollView.contentInsetAdjustmentBehavior = .never
+    } else {
+      navigator.view.subviews.forEach { subview in
+        configureScrollViewRecursively(subview)
+      }
+    }
+  }
+  
+  private func configureScrollViewRecursively(_ view: UIView) {
+    view.insetsLayoutMarginsFromSafeArea = false
+    
+    if let scrollView = view as? UIScrollView {
+      scrollView.contentInsetAdjustmentBehavior = .never
+    }
+    
+    view.subviews.forEach { configureScrollViewRecursively($0) }
   }
 
   override func willMove(toParent parent: UIViewController?) {
