@@ -63,7 +63,6 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
             dismiss()
           case .read, .listen:
             didChangeState = true
-            dismiss()
             DispatchQueue.main.async {
               viewModel.handleAction(for: type)
             }
@@ -84,7 +83,6 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
             dismiss()
           case .read, .listen:
             didChangeState = true
-            dismiss()
             DispatchQueue.main.async {
               viewModel.handleAction(for: type)
             }
