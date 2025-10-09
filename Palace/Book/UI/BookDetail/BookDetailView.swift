@@ -663,9 +663,8 @@ private struct BookStateModifier: ViewModifier {
   func body(content: Content) -> some View {
     content
       .onChange(of: viewModel.bookState) { newState in
-        if newState == .downloadSuccessful {
-          showHalfSheet = false
-        }
+        // Don't auto-dismiss halfsheet when download completes
+        // Keep it open so user can see updated buttons
       }
   }
 }
