@@ -211,15 +211,17 @@ private extension HalfSheetView {
   @ViewBuilder
   var holdingInfoView: some View {
     let details = viewModel.book.getReservationDetails()
-    Text(
-      String(
-        format: DisplayStrings.holdStatus,
-        details.holdPosition.ordinal(),
-        details.copiesAvailable,
-        details.copiesAvailable == 1 ? DisplayStrings.copy : DisplayStrings.copies
+    if details.holdPosition > 0 && details.copiesAvailable > 0 {
+      Text(
+        String(
+          format: DisplayStrings.holdStatus,
+          details.holdPosition.ordinal(),
+          details.copiesAvailable,
+          details.copiesAvailable == 1 ? DisplayStrings.copy : DisplayStrings.copies
+        )
       )
-    )
-    .font(.footnote)
+      .font(.footnote)
+    }
   }
 
   @ViewBuilder

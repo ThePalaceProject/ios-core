@@ -193,62 +193,37 @@ enum BookService {
           coordinator.storeAudioModel(playbackModel, forBookId: route.id)
           coordinator.push(.audio(route))
           
-          var hasStartedPlayback = false
-          
+          // Get local position first
           let shouldRestorePosition = shouldRestoreBookmarkPosition(for: book)
-          if shouldRestorePosition, let localPosition = getValidLocalPosition(book: book, audiobook: audiobook) {
-            ATLog(.info, "Starting with immediate local position restore")
-            playbackModel.jumpToInitialLocation(localPosition)
-            playbackModel.beginSaveSuppression(for: 3.0)
-            manager.audiobook.player.play(at: localPosition, completion: nil)
-            hasStartedPlayback = true
-          }
-
+          let localPosition = shouldRestorePosition ? getValidLocalPosition(book: book, audiobook: audiobook) : nil
+          
+          // Fetch remote position, then start playback ONCE with best available position
           TPPBookRegistry.shared.syncLocation(for: book) { (remoteBookmark: AudioBookmark?) in
-            guard
-              let remoteBookmark,
-              let remotePosition = TrackPosition(
+            let finalPosition: TrackPosition
+            
+            // Use remote if available, otherwise fall back to local or first track
+            if let remoteBookmark,
+               let remote = TrackPosition(
                 audioBookmark: remoteBookmark,
                 toc: audiobook.tableOfContents.toc,
                 tracks: audiobook.tableOfContents.tracks
-              )
-            else { return }
-
-            let localDict = TPPBookRegistry.shared.location(forIdentifier: book.identifier)?.locationStringDictionary()
-
-            var shouldMove = true
-            if
-              let localDict,
-              let local = AudioBookmark.create(locatorData: localDict),
-              let localPos = TrackPosition(
-                audioBookmark: local,
-                toc: audiobook.tableOfContents.toc,
-                tracks: audiobook.tableOfContents.tracks
-              )
-            {
-              shouldMove = remotePosition.timestamp > localPos.timestamp
-                && remotePosition.description != localPos.description
+               ) {
+              ATLog(.info, "Using remote position: track=\(remote.track.key), timestamp=\(remote.timestamp)")
+              finalPosition = remote
+            } else if let local = localPosition {
+              ATLog(.info, "Using local position (no remote): track=\(local.track.key), timestamp=\(local.timestamp)")
+              finalPosition = local
+            } else if let firstTrack = audiobook.tableOfContents.allTracks.first {
+              ATLog(.info, "Starting \(book.title) from beginning - no saved position")
+              finalPosition = TrackPosition(track: firstTrack, timestamp: 0.0, tracks: audiobook.tableOfContents.tracks)
+            } else {
+              return
             }
-
-            if shouldMove && hasStartedPlayback {
-              // Only update position if we've already started - don't restart
-              DispatchQueue.main.async {
-                manager.audiobook.player.play(at: remotePosition, completion: nil)
-                playbackModel.beginSaveSuppression(for: 2.0)
-              }
-            }
-          }
-          
-          // Fallback: Start from beginning if no valid position was found
-          if !hasStartedPlayback {
+            
             DispatchQueue.main.async {
-              if let firstTrack = audiobook.tableOfContents.allTracks.first {
-                let startPosition = TrackPosition(track: firstTrack, timestamp: 0.0, tracks: audiobook.tableOfContents.tracks)
-                ATLog(.info, "Starting \(book.title) from beginning - no saved position")
-                playbackModel.jumpToInitialLocation(startPosition)
-                playbackModel.beginSaveSuppression(for: 2.0)
-                manager.audiobook.player.play(at: startPosition, completion: nil)
-              }
+              playbackModel.currentLocation = finalPosition
+              playbackModel.beginSaveSuppression(for: 3.0)
+              manager.audiobook.player.play(at: finalPosition, completion: nil)
             }
           }
 

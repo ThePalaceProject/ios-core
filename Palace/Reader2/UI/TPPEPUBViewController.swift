@@ -13,16 +13,6 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
   private var highlights: [Decoration] = []
   private var highlightGroup = "highlights"
 
-  private var safeAreaInsets: UIEdgeInsets = {
-    guard let window = UIApplication.shared.connectedScenes
-      .compactMap({ $0 as? UIWindowScene })
-      .flatMap({ $0.windows })
-      .first(where: { $0.isKeyWindow }) else {
-      return UIEdgeInsets()
-    }
-    return window.safeAreaInsets
-  }()
-
   init(publication: Publication,
        book: TPPBook,
        initialLocation: Locator?,
@@ -34,10 +24,10 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     self.preferences = preferences
 
     self.searchButton = UIBarButtonItem(barButtonSystemItem: .search, target: nil, action: #selector(presentEPUBSearch))
-    let overlayLabelInset = 80.0
+    
     let contentInset: [UIUserInterfaceSizeClass: EPUBContentInsets] = [
-      .compact: (top: safeAreaInsets.top + overlayLabelInset, bottom: safeAreaInsets.bottom + overlayLabelInset),
-      .regular: (top: safeAreaInsets.top + overlayLabelInset, bottom: safeAreaInsets.bottom + overlayLabelInset)
+      .compact: (top: 0, bottom: 0),
+      .regular: (top: 0, bottom: 0)
     ]
 
     let config = EPUBNavigatorViewController.Configuration(
@@ -68,6 +58,9 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
   var epubNavigator: EPUBNavigatorViewController {
     self.navigator as! EPUBNavigatorViewController
   }
+  
+  override func viewSafeAreaInsetsDidChange() {
+  }
 
   override func willMove(toParent parent: UIViewController?) {
     super.willMove(toParent: parent)
@@ -75,11 +68,31 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     navigationController?.navigationBar.barTintColor = nil
   }
 
+  override func viewDidLoad() {
+    super.viewDidLoad()
+    
+    observeDecorationInteractions(inGroup: highlightGroup) { event in
+      self.handleHighlightInteraction(event)
+    }
+    
+    epubNavigator.view.insetsLayoutMarginsFromSafeArea = false
+    epubNavigator.additionalSafeAreaInsets = UIEdgeInsets(
+      top: -1000,
+      left: 0,
+      bottom: -1000,
+      right: 0
+    )
+    
+    setUIColor(for: preferences)
+  }
+  
   override func viewWillAppear(_ animated: Bool) {
     super.viewWillAppear(animated)
     setUIColor(for: preferences)
     log(.info, "TPPEPUBViewController will appear. UI color set based on preferences.")
     epubNavigator.submitPreferences(preferences)
+    
+    navigationController?.navigationBar.isTranslucent = true
 
     if navigationItem.leftBarButtonItem == nil {
       let backItem = UIBarButtonItem(image: UIImage(systemName: "chevron.left"), style: .plain, target: self, action: #selector(closeEPUB))
@@ -178,9 +191,17 @@ extension TPPEPUBViewController: TPPReaderSettingsDelegate {
 
   func setUIColor(for appearance: EPUBPreferences) {
     DispatchQueue.main.async {
-      self.navigator.view.backgroundColor = appearance.backgroundColor?.uiColor
-      self.view.backgroundColor = appearance.backgroundColor?.uiColor
-      self.view.tintColor = appearance.textColor?.uiColor
+      let backgroundColor = appearance.backgroundColor?.uiColor ?? .black
+      let textColor = appearance.textColor?.uiColor ?? .lightGray
+      
+      self.navigator.view.backgroundColor = backgroundColor
+      self.view.backgroundColor = backgroundColor
+      self.navigatorContainer?.backgroundColor = backgroundColor
+      self.view.tintColor = textColor
+      
+      // Update label colors to match theme
+      self.positionLabel.textColor = textColor.withAlphaComponent(0.7)
+      self.bookTitleLabel.textColor = textColor.withAlphaComponent(0.7)
     }
   }
 }
@@ -233,14 +254,6 @@ extension TPPEPUBViewController: DecorableNavigator {
     guard let selection = epubNavigator.currentSelection else { return }
     addHighlight(for: selection.locator, color: .yellow)
     epubNavigator.clearSelection()
-  }
-
-  override func viewDidLoad() {
-    super.viewDidLoad()
-
-    observeDecorationInteractions(inGroup: highlightGroup) { event in
-      self.handleHighlightInteraction(event)
-    }
   }
 
   private func handleHighlightInteraction(_ event: OnDecorationActivatedEvent) {}
