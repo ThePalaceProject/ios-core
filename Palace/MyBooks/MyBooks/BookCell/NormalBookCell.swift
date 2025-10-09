@@ -117,7 +117,7 @@ struct NormalBookCell: View {
   
   @ViewBuilder var holdingInfoView: some View {
     let details = model.book.getReservationDetails()
-    if details.holdPosition > 0 {
+    if details.holdPosition > 0 && details.copiesAvailable > 0 {
       Text(
         String(
           format: Strings.BookDetailView.holdStatus,
