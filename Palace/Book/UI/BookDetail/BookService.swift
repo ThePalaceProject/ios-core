@@ -193,61 +193,64 @@ enum BookService {
           coordinator.storeAudioModel(playbackModel, forBookId: route.id)
           coordinator.push(.audio(route))
           
-          var hasStartedPlayback = false
-          
+          // Get local position first
           let shouldRestorePosition = shouldRestoreBookmarkPosition(for: book)
-          if shouldRestorePosition, let localPosition = getValidLocalPosition(book: book, audiobook: audiobook) {
-            ATLog(.info, "Starting with immediate local position restore")
-            playbackModel.jumpToInitialLocation(localPosition)
+          let localPosition = shouldRestorePosition ? getValidLocalPosition(book: book, audiobook: audiobook) : nil
+          
+          // Start immediately with local position if we have one
+          if let local = localPosition {
+            ATLog(.info, "Starting with local position immediately")
+            playbackModel.jumpToInitialLocation(local)
             playbackModel.beginSaveSuppression(for: 3.0)
-            manager.audiobook.player.play(at: localPosition, completion: nil)
-            hasStartedPlayback = true
-          }
-
-          TPPBookRegistry.shared.syncLocation(for: book) { (remoteBookmark: AudioBookmark?) in
-            guard
-              let remoteBookmark,
-              let remotePosition = TrackPosition(
-                audioBookmark: remoteBookmark,
-                toc: audiobook.tableOfContents.toc,
-                tracks: audiobook.tableOfContents.tracks
-              )
-            else { return }
-
-            let localDict = TPPBookRegistry.shared.location(forIdentifier: book.identifier)?.locationStringDictionary()
-
-            var shouldMove = true
-            if
-              let localDict,
-              let local = AudioBookmark.create(locatorData: localDict),
-              let localPos = TrackPosition(
-                audioBookmark: local,
-                toc: audiobook.tableOfContents.toc,
-                tracks: audiobook.tableOfContents.tracks
-              )
-            {
-              shouldMove = remotePosition.timestamp > localPos.timestamp
-                && remotePosition.description != localPos.description
-            }
-
-            if shouldMove && hasStartedPlayback {
-              // Only update position if we've already started - don't restart
-              DispatchQueue.main.async {
-                manager.audiobook.player.play(at: remotePosition, completion: nil)
-                playbackModel.beginSaveSuppression(for: 2.0)
+            manager.audiobook.player.play(at: local, completion: nil)
+            
+            // Check for remote updates in background
+            TPPBookRegistry.shared.syncLocation(for: book) { (remoteBookmark: AudioBookmark?) in
+              guard let remoteBookmark,
+                    let remote = TrackPosition(
+                      audioBookmark: remoteBookmark,
+                      toc: audiobook.tableOfContents.toc,
+                      tracks: audiobook.tableOfContents.tracks
+                    )
+              else { return }
+              
+              // Only update if remote is significantly different
+              let timeDiff = abs(remote.timestamp - local.timestamp)
+              let tracksDiffer = remote.track.key != local.track.key
+              
+              if tracksDiffer || timeDiff > 5.0 {
+                ATLog(.info, "Remote position differs significantly, updating")
+                DispatchQueue.main.async {
+                  manager.audiobook.player.play(at: remote, completion: nil)
+                  playbackModel.beginSaveSuppression(for: 2.0)
+                }
               }
             }
-          }
-          
-          // Fallback: Start from beginning if no valid position was found
-          if !hasStartedPlayback {
-            DispatchQueue.main.async {
-              if let firstTrack = audiobook.tableOfContents.allTracks.first {
-                let startPosition = TrackPosition(track: firstTrack, timestamp: 0.0, tracks: audiobook.tableOfContents.tracks)
+          } else {
+            // No local position - wait for remote sync then start
+            TPPBookRegistry.shared.syncLocation(for: book) { (remoteBookmark: AudioBookmark?) in
+              let finalPosition: TrackPosition
+              
+              if let remoteBookmark,
+                 let remote = TrackPosition(
+                  audioBookmark: remoteBookmark,
+                  toc: audiobook.tableOfContents.toc,
+                  tracks: audiobook.tableOfContents.tracks
+                 ) {
+                ATLog(.info, "Using remote position (no local)")
+                finalPosition = remote
+              } else if let firstTrack = audiobook.tableOfContents.allTracks.first {
                 ATLog(.info, "Starting \(book.title) from beginning - no saved position")
-                playbackModel.jumpToInitialLocation(startPosition)
-                playbackModel.beginSaveSuppression(for: 2.0)
-                manager.audiobook.player.play(at: startPosition, completion: nil)
+                finalPosition = TrackPosition(track: firstTrack, timestamp: 0.0, tracks: audiobook.tableOfContents.tracks)
+              } else {
+                return
+              }
+              
+              // Start playback once with final position
+              DispatchQueue.main.async {
+                playbackModel.jumpToInitialLocation(finalPosition)
+                playbackModel.beginSaveSuppression(for: 3.0)
+                manager.audiobook.player.play(at: finalPosition, completion: nil)
               }
             }
           }
