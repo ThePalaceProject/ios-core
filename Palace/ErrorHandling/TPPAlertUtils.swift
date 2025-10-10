@@ -189,6 +189,11 @@ import UIKit
     // If a presenter is provided, present from it on main thread
     if let vc = viewController {
       DispatchQueue.main.async {
+        guard vc.presentedViewController == nil else {
+          Log.warn(#file, "Cannot present alert: view controller already presenting")
+          completion?()
+          return
+        }
         vc.present(alertController, animated: animated, completion: completion)
         if let msg = alertController.message { Log.info(#file, msg) }
       }
@@ -199,6 +204,11 @@ import UIKit
     guard let root = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController() else { return }
     let top = topMostViewController(from: root)
     DispatchQueue.main.async {
+      guard top.presentedViewController == nil else {
+        Log.warn(#file, "Cannot present alert: top view controller already presenting")
+        completion?()
+        return
+      }
       top.present(alertController, animated: animated, completion: completion)
       if let msg = alertController.message { Log.info(#file, msg) }
     }

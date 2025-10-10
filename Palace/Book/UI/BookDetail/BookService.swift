@@ -175,6 +175,23 @@ enum BookService {
 
         let bookmarkLogic = AudiobookBookmarkBusinessLogic(book: book)
         manager.bookmarkDelegate = bookmarkLogic
+        
+        manager.playbackCompletionHandler = { [weak book, weak manager] in
+          guard let book = book, let manager = manager else { return }
+          
+          // Save beginning position immediately (book just finished)
+          if let firstTrack = manager.audiobook.tableOfContents.allTracks.first {
+            let beginningPosition = TrackPosition(
+              track: firstTrack,
+              timestamp: 0.0,
+              tracks: manager.audiobook.tableOfContents.tracks
+            )
+            manager.saveLocation(beginningPosition)
+          }
+          
+          // Show the keep or return dialog
+          BookDetailViewModel.presentEndOfBookAlert(for: book)
+        }
 
         let playbackModel = AudiobookPlaybackModel(audiobookManager: manager)
         if let cover = book.coverImage {
@@ -197,18 +214,31 @@ enum BookService {
           let shouldRestorePosition = shouldRestoreBookmarkPosition(for: book)
           let localPosition = shouldRestorePosition ? getValidLocalPosition(book: book, audiobook: audiobook) : nil
           
-          // Fetch remote position, then start playback ONCE with best available position
+          // Fetch remote position, then start playback ONCE with most recent position
           TPPBookRegistry.shared.syncLocation(for: book) { (remoteBookmark: AudioBookmark?) in
             let finalPosition: TrackPosition
             
-            // Use remote if available, otherwise fall back to local or first track
-            if let remoteBookmark,
-               let remote = TrackPosition(
-                audioBookmark: remoteBookmark,
-                toc: audiobook.tableOfContents.toc,
-                tracks: audiobook.tableOfContents.tracks
-               ) {
-              ATLog(.info, "Using remote position: track=\(remote.track.key), timestamp=\(remote.timestamp)")
+            // Compare local and remote, use the most recent one
+            let remote = remoteBookmark.flatMap { TrackPosition(
+              audioBookmark: $0,
+              toc: audiobook.tableOfContents.toc,
+              tracks: audiobook.tableOfContents.tracks
+            )}
+            
+            if let local = localPosition, let remote = remote {
+              // Both exist - compare save timestamps to find most recently saved
+              let localSaveDate = ISO8601DateFormatter().date(from: local.lastSavedTimeStamp) ?? Date.distantPast
+              let remoteSaveDate = ISO8601DateFormatter().date(from: remote.lastSavedTimeStamp) ?? Date.distantPast
+              
+              if remoteSaveDate > localSaveDate {
+                ATLog(.info, "Using remote position (more recently saved): track=\(remote.track.key), timestamp=\(remote.timestamp), saved=\(remote.lastSavedTimeStamp)")
+                finalPosition = remote
+              } else {
+                ATLog(.info, "Using local position (more recently saved): track=\(local.track.key), timestamp=\(local.timestamp), saved=\(local.lastSavedTimeStamp)")
+                finalPosition = local
+              }
+            } else if let remote = remote {
+              ATLog(.info, "Using remote position (no local): track=\(remote.track.key), timestamp=\(remote.timestamp)")
               finalPosition = remote
             } else if let local = localPosition {
               ATLog(.info, "Using local position (no remote): track=\(local.track.key), timestamp=\(local.timestamp)")
@@ -223,7 +253,14 @@ enum BookService {
             DispatchQueue.main.async {
               playbackModel.currentLocation = finalPosition
               playbackModel.beginSaveSuppression(for: 3.0)
-              manager.audiobook.player.play(at: finalPosition, completion: nil)
+              manager.audiobook.player.play(at: finalPosition) { error in
+                if error == nil {
+                  // Save initial position after suppression period ends
+                  DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) {
+                    playbackModel.persistLocation()
+                  }
+                }
+              }
             }
           }
 
