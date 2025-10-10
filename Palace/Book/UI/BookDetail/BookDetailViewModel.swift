@@ -140,6 +140,8 @@ final class BookDetailViewModel: ObservableObject {
           self.showHalfSheet = false
           self.processingButtons.remove(.returning)
           self.processingButtons.remove(.cancelHold)
+        } else if registryState == .downloadFailed {
+          self.showHalfSheet = false
         }
       }
       .store(in: &cancellables)
@@ -679,7 +681,7 @@ extension BookDetailViewModel {
     }
   }
   
-  private func presentEndOfBookAlert() {
+  static func presentEndOfBookAlert(for book: TPPBook) {
     let paths = TPPOPDSAcquisitionPath.supportedAcquisitionPaths(
       forAllowedTypes: TPPOPDSAcquisitionPath.supportedTypes(),
       allowedRelations: [.borrow, .generic],
@@ -687,12 +689,10 @@ extension BookDetailViewModel {
     )
     
     if paths.count > 0 {
-      let alert = TPPReturnPromptHelper.audiobookPrompt { [weak self] returnWasChosen in
-        guard let self else { return }
-        
+      let alert = TPPReturnPromptHelper.audiobookPrompt { returnWasChosen in
         if returnWasChosen {
           NavigationCoordinatorHub.shared.coordinator?.pop()
-          self.didSelectReturn(for: self.book, completion: nil)
+          MyBooksDownloadCenter.shared.returnBook(withIdentifier: book.identifier)
         }
         TPPAppStoreReviewPrompt.presentIfAvailable()
       }
@@ -700,6 +700,10 @@ extension BookDetailViewModel {
     } else {
       TPPAppStoreReviewPrompt.presentIfAvailable()
     }
+  }
+  
+  private func presentEndOfBookAlert() {
+    BookDetailViewModel.presentEndOfBookAlert(for: book)
   }
 }
 
