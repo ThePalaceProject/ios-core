@@ -25,6 +25,7 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
 
     self.searchButton = UIBarButtonItem(barButtonSystemItem: .search, target: nil, action: #selector(presentEPUBSearch))
     
+    // Use zero insets - letterbox container in base class handles spacing
     let contentInset: [UIUserInterfaceSizeClass: EPUBContentInsets] = [
       .compact: (top: 0, bottom: 0),
       .regular: (top: 0, bottom: 0)
@@ -58,9 +59,6 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
   var epubNavigator: EPUBNavigatorViewController {
     self.navigator as! EPUBNavigatorViewController
   }
-  
-  override func viewSafeAreaInsetsDidChange() {
-  }
 
   override func willMove(toParent parent: UIViewController?) {
     super.willMove(toParent: parent)
@@ -75,14 +73,6 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
       self.handleHighlightInteraction(event)
     }
     
-    epubNavigator.view.insetsLayoutMarginsFromSafeArea = false
-    epubNavigator.additionalSafeAreaInsets = UIEdgeInsets(
-      top: -1000,
-      left: 0,
-      bottom: -1000,
-      right: 0
-    )
-    
     setUIColor(for: preferences)
   }
   
@@ -92,21 +82,18 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     log(.info, "TPPEPUBViewController will appear. UI color set based on preferences.")
     epubNavigator.submitPreferences(preferences)
     
+    // Ensure navigation bar is translucent to overlay content without shifting
     navigationController?.navigationBar.isTranslucent = true
-
-    if navigationItem.leftBarButtonItem == nil {
-      let backItem = UIBarButtonItem(image: UIImage(systemName: "chevron.left"), style: .plain, target: self, action: #selector(closeEPUB))
-      navigationItem.leftBarButtonItem = backItem
-    }
+  }
+  
+  override func viewSafeAreaInsetsDidChange() {
+    // DO NOT call super - prevents Readium from responding to safe area changes
+    // This stops the content from shifting when the navigation bar appears/disappears
   }
 
   override func viewWillDisappear(_ animated: Bool) {
     super.viewWillDisappear(animated)
     resetNavigationAppearance()
-  }
-
-  @objc private func closeEPUB() {
-    NavigationCoordinatorHub.shared.coordinator?.pop()
   }
 
   private func resetNavigationAppearance() {
