@@ -10,6 +10,7 @@
 
 import SafariServices
 import UIKit
+import WebKit
 import ReadiumNavigator
 import ReadiumShared
 import Combine
@@ -102,9 +103,9 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
 
     view.backgroundColor = TPPConfiguration.backgroundColor()
     
+    // Ensure content extends under navigation bar without shifting when bar appears/disappears
     edgesForExtendedLayout = [.top, .bottom]
     extendedLayoutIncludesOpaqueBars = true
-    automaticallyAdjustsScrollViewInsets = false
 
     navigationItem.rightBarButtonItems = makeNavigationBarButtons()
     updateNavigationBar(animated: false)
@@ -112,15 +113,17 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
 
     addChild(navigator)
     
+    // Create letterbox container
     navigatorContainer = UIView()
     navigatorContainer.backgroundColor = TPPConfiguration.backgroundColor()
     stackView.addArrangedSubview(navigatorContainer)
     
+    // Inset navigator within container to create letterbox areas
     navigatorContainer.addSubview(navigator.view)
     navigator.view.translatesAutoresizingMaskIntoConstraints = false
     
-    let fixedTopInset: CGFloat = 100.0  // Space for navbar + status bar
-    let fixedBottomInset: CGFloat = 50.0  // Space for home indicator
+    let fixedTopInset: CGFloat = 100.0  // Letterbox space for navbar + status bar
+    let fixedBottomInset: CGFloat = 50.0  // Letterbox space for home indicator
     
     NSLayoutConstraint.activate([
       navigator.view.topAnchor.constraint(equalTo: navigatorContainer.topAnchor, constant: fixedTopInset),
@@ -131,17 +134,23 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     
     navigator.didMove(toParent: self)
     
-    // Prevent navigator from using safe area insets
+    // Prevent navigator from using safe area insets - critical for Readium 3.3.0
     navigator.view.insetsLayoutMarginsFromSafeArea = false
     navigator.additionalSafeAreaInsets = .zero
     
-    // Prevent scroll view content inset adjustment
+    // Prevent scroll view and WKWebView content inset adjustment
     if let scrollView = navigator.view as? UIScrollView {
       scrollView.contentInsetAdjustmentBehavior = .never
     } else {
-      // Check subviews for scroll views
-      navigator.view.subviews.compactMap { $0 as? UIScrollView }.forEach { scrollView in
-        scrollView.contentInsetAdjustmentBehavior = .never
+      // Check subviews for scroll views and web views (Readium uses WKWebView for EPUBs)
+      navigator.view.subviews.forEach { subview in
+        if let webView = subview as? WKWebView {
+          webView.scrollView.contentInsetAdjustmentBehavior = .never
+          webView.scrollView.contentInset = .zero
+          webView.scrollView.scrollIndicatorInsets = .zero
+        } else if let scrollView = subview as? UIScrollView {
+          scrollView.contentInsetAdjustmentBehavior = .never
+        }
       }
     }
 
@@ -187,29 +196,24 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   }
 
   private func setupStackView() {
-    if stackView == nil {
-      stackView = UIStackView()
-      stackView.axis = .vertical
-      stackView.translatesAutoresizingMaskIntoConstraints = false
-      view.addSubview(stackView)
+    stackView = UIStackView(frame: .zero)
+    stackView.translatesAutoresizingMaskIntoConstraints = false
+    stackView.distribution = .fill
+    stackView.axis = .vertical
+    view.addSubview(stackView)
 
-      let topConstraint = stackView.topAnchor.constraint(equalTo: view.topAnchor)
-      // Use .defaultHigh priority to prevent iOS from forcefully resizing the view
-      // when navigation bar appears/disappears
-      topConstraint.priority = .defaultHigh
-      
-      NSLayoutConstraint.activate([
-        topConstraint,
-        stackView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-        stackView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-        stackView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-      ])
-    }
+    NSLayoutConstraint.activate([
+      stackView.topAnchor.constraint(equalTo: view.topAnchor),
+      stackView.rightAnchor.constraint(equalTo: view.rightAnchor),
+      stackView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
+      stackView.leftAnchor.constraint(equalTo: view.leftAnchor)
+    ])
   }
 
   override func viewSafeAreaInsetsDidChange() {
     super.viewSafeAreaInsetsDidChange()
     
+    // Continuously negate safe area insets to prevent Readium from responding
     navigator.additionalSafeAreaInsets = UIEdgeInsets(
       top: -view.safeAreaInsets.top,
       left: 0,
@@ -221,6 +225,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   override func viewDidLayoutSubviews() {
     super.viewDidLayoutSubviews()
     
+    // Ensure scroll views never adjust for content insets
     configureScrollViewInsets()
   }
   
@@ -237,6 +242,13 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   private func configureScrollViewRecursively(_ view: UIView) {
     view.insetsLayoutMarginsFromSafeArea = false
     
+    // Handle WKWebView specifically - this is what Readium uses for EPUB content
+    if let webView = view as? WKWebView {
+      webView.scrollView.contentInsetAdjustmentBehavior = .never
+      webView.scrollView.contentInset = .zero
+      webView.scrollView.scrollIndicatorInsets = .zero
+    }
+    
     if let scrollView = view as? UIScrollView {
       scrollView.contentInsetAdjustmentBehavior = .never
     }
@@ -251,6 +263,11 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   override func viewDidAppear(_ animated: Bool) {
     super.viewDidAppear(animated)
     accessibilityToolbar.accessibilityElementsHidden = false
+    
+    // Readium may create WKWebViews asynchronously, so reconfigure after appearing
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+      self?.configureScrollViewInsets()
+    }
   }
 
   override func viewWillDisappear(_ animated: Bool) {
@@ -312,11 +329,12 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
 
   func toggleNavigationBar() {
     navigationBarHidden = !navigationBarHidden
-    bookTitleLabel.isHidden = isVoiceOverRunning || !navigationBarHidden
+    bookTitleLabel.isHidden = UIAccessibility.isVoiceOverRunning || !navigationBarHidden
   }
 
   func updateNavigationBar(animated: Bool = true) {
-    navigationController?.setNavigationBarHidden(isVoiceOverRunning ? false : navigationBarHidden, animated: animated)
+    let hidden = navigationBarHidden && !UIAccessibility.isVoiceOverRunning
+    navigationController?.setNavigationBarHidden(hidden, animated: animated)
     setNeedsStatusBarAppearanceUpdate()
   }
 
@@ -325,6 +343,10 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   }
 
   override var prefersStatusBarHidden: Bool {
+    // Keep status bar visible on iPad to avoid safe area changes when navbar toggles
+    if UIDevice.current.userInterfaceIdiom == .pad {
+      return false
+    }
     return navigationBarHidden
   }
 

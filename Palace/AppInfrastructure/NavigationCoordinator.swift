@@ -34,7 +34,6 @@ final class NavigationCoordinator: ObservableObject {
   private var bookById: [String: TPPBook] = [:]
   private var searchBooksById: [UUID: [TPPBook]] = [:]
   private var pdfControllerById: [String: UIViewController] = [:]
-  private var audioControllerById: [String: UIViewController] = [:]
   private var epubControllerById: [String: UIViewController] = [:]
   private var audioModelById: [String: AudiobookPlaybackModel] = [:]
   private var pdfContentById: [String: (TPPPDFDocument, TPPPDFDocumentMetadata)] = [:]
@@ -72,7 +71,7 @@ final class NavigationCoordinator: ObservableObject {
   
   private func scheduleCleanupIfNeeded() {
     let totalItems = bookById.count + searchBooksById.count + pdfControllerById.count + 
-                    audioControllerById.count + epubControllerById.count + audioModelById.count + 
+                    epubControllerById.count + audioModelById.count + 
                     pdfContentById.count + catalogFilterStatesByURL.count
     
     if totalItems > maxStoredItems {
@@ -98,7 +97,7 @@ final class NavigationCoordinator: ObservableObject {
     
     // Clear old controllers and models
     pdfControllerById.removeAll()
-    audioControllerById.removeAll() 
+    // audioControllerById removed - now using SwiftUI AudiobookPlayerView only
     epubControllerById.removeAll()
     audioModelById.removeAll()
     pdfContentById.removeAll()
@@ -130,13 +129,6 @@ final class NavigationCoordinator: ObservableObject {
     pdfControllerById[route.id]
   }
 
-  func storeAudioController(_ controller: UIViewController, forBookId id: String) {
-    audioControllerById[id] = controller
-  }
-
-  func resolveAudioController(for route: BookRoute) -> UIViewController? {
-    audioControllerById[route.id]
-  }
 
   func storeEPUBController(_ controller: UIViewController, forBookId id: String) {
     epubControllerById[id] = controller
@@ -154,6 +146,10 @@ final class NavigationCoordinator: ObservableObject {
 
   func resolveAudioModel(for route: BookRoute) -> AudiobookPlaybackModel? {
     audioModelById[route.id]
+  }
+  
+  func removeAudioModel(forBookId id: String) {
+    audioModelById.removeValue(forKey: id)
   }
 
   func storePDF(document: TPPPDFDocument, metadata: TPPPDFDocumentMetadata, forBookId id: String) {
