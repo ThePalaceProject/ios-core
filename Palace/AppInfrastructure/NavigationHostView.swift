@@ -53,8 +53,6 @@ struct NavigationHostView<Content: View>: View {
           case .audio(let bookRoute):
             if let model = coordinator.resolveAudioModel(for: bookRoute) {
               AudiobookPlayerView(model: model)
-            } else if let vc = coordinator.resolveAudioController(for: bookRoute) {
-              UIViewControllerWrapper(vc, updater: { _ in })
             } else {
               EmptyView()
             }
