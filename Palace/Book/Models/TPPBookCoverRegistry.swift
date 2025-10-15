@@ -153,7 +153,12 @@ public class TPPBookCoverRegistryBridge: NSObject {
   @objc public func coverImageForBook(_ book: TPPBook, completion: @escaping (UIImage?) -> Void) {
     Task {
       let img = await TPPBookCoverRegistry.shared.coverImage(for: book)
-      DispatchQueue.main.async { completion(img) }
+      DispatchQueue.main.async { 
+        if let img = img {
+          book.imageCache.set(img, for: book.identifier)
+        }
+        completion(img) 
+      }
     }
   }
   
@@ -161,7 +166,12 @@ public class TPPBookCoverRegistryBridge: NSObject {
   @objc public func thumbnailImageForBook(_ book: TPPBook, completion: @escaping (UIImage?) -> Void) {
     Task {
       let img = await TPPBookCoverRegistry.shared.thumbnailImage(for: book)
-      DispatchQueue.main.async { completion(img) }
+      DispatchQueue.main.async { 
+        if let img = img {
+          book.imageCache.set(img, for: book.identifier)
+        }
+        completion(img) 
+      }
     }
   }
 }

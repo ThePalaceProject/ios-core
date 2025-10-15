@@ -16,3 +16,19 @@ extension View {
     self.modifier(AdaptiveShadowModifier(radius: radius))
   }
 }
+
+struct AdaptiveShadowLightModifier: ViewModifier {
+  @Environment(\.colorScheme) var colorScheme
+  var radius: CGFloat
+  func body(content: Content) -> some View {
+    let opacity: Double = (colorScheme == .dark) ? 0.12 : 0.08
+    return content
+      .shadow(color: Color.black.opacity(opacity), radius: radius, x: 0, y: 0.5)
+  }
+}
+
+extension View {
+  func adaptiveShadowLight(radius: CGFloat = 1.0) -> some View {
+    self.modifier(AdaptiveShadowLightModifier(radius: radius))
+  }
+}

@@ -8,6 +8,8 @@
 
 import Foundation
 import Combine
+import CoreImage
+import CoreImage.CIFilterBuiltins
 
 let DeprecatedAcquisitionKey = "acquisition"
 let DeprecatedAvailableCopiesKey = "available-copies"
@@ -64,14 +66,14 @@ public class TPPBook: NSObject, ObservableObject {
   @objc var reportURL: URL?
   @objc var timeTrackingURL: URL?
   @objc var contributors: [String: Any]?
-  @objc var bookTokenLock = NSRecursiveLock()
+  @objc var bookTokenQueue: DispatchQueue
   @objc var bookDuration: String?
   
   @Published var coverImage: UIImage?
   @Published var thumbnailImage: UIImage?
   @Published var isCoverLoading: Bool = false
   @Published var isThumbnailLoading: Bool = false
-  var dominantUIColor: UIColor { coverImage?.mainColor() ?? .gray }
+  @Published var dominantUIColor: UIColor = .gray
   
   static let SimplifiedScheme = "http://librarysimplified.org/terms/genres/Simplified/"
 
@@ -86,6 +88,8 @@ public class TPPBook: NSObject, ObservableObject {
   @objc var hasDuration: Bool {
     !(bookDuration?.isEmpty ?? true)
   }
+
+  let imageCache: ImageCacheType
 
   init(
     acquisitions: [TPPOPDSAcquisition],
@@ -111,7 +115,8 @@ public class TPPBook: NSObject, ObservableObject {
     reportURL: URL?,
     timeTrackingURL: URL?,
     contributors: [String: Any]?,
-    bookDuration: String?
+    bookDuration: String?,
+    imageCache: ImageCacheType
   ) {
     self.acquisitions = acquisitions
     self.bookAuthors = authors
@@ -136,8 +141,9 @@ public class TPPBook: NSObject, ObservableObject {
     self.reportURL = reportURL
     self.timeTrackingURL = timeTrackingURL
     self.contributors = contributors
-    self.bookTokenLock = NSRecursiveLock()
+    self.bookTokenQueue = DispatchQueue(label: "TPPBook.bookTokenQueue.\(identifier)")
     self.bookDuration = bookDuration
+    self.imageCache = imageCache
     
     super.init()
     self.fetchThumbnailImage()
@@ -201,7 +207,8 @@ public class TPPBook: NSObject, ObservableObject {
       reportURL: report,
       timeTrackingURL: entry.timeTrackingLink?.href,
       contributors: entry.contributors,
-      bookDuration: entry.duration
+      bookDuration: entry.duration,
+      imageCache: ImageCache.shared
     )
   }
 
@@ -266,13 +273,14 @@ public class TPPBook: NSObject, ObservableObject {
       analyticsURL: URL(string: dictionary[AnalyticsURLKey] as? String ?? ""),
       alternateURL: URL(string: dictionary[AlternateURLKey] as? String ?? ""),
       relatedWorksURL: URL(string: dictionary[RelatedURLKey] as? String ?? ""),
-      previewLink: dictionary[PreviewURLKey].flatMap { TPPOPDSAcquisition(dictionary: $0 as? [AnyHashable: Any] ?? [:]) },
+      previewLink: (dictionary[PreviewURLKey] as? [AnyHashable: Any]).flatMap { TPPOPDSAcquisition(dictionary: $0) },
       seriesURL: URL(string: dictionary[SeriesLinkKey] as? String ?? ""),
       revokeURL: revokeURL,
       reportURL: reportURL,
       timeTrackingURL: URL(string: dictionary[TimeTrackingURLURLKey] as? String ?? ""),
       contributors: nil,
-      bookDuration: nil
+      bookDuration: nil,
+      imageCache: ImageCache.shared
     )
   }
   
@@ -301,7 +309,8 @@ public class TPPBook: NSObject, ObservableObject {
       reportURL: self.reportURL,
       timeTrackingURL: self.timeTrackingURL,
       contributors: book.contributors,
-      bookDuration: book.bookDuration
+      bookDuration: book.bookDuration,
+      imageCache: self.imageCache
     )
   }
   
@@ -505,13 +514,15 @@ extension TPPBook {
 }
 
 extension TPPBook {
-  static let coverCache = NSCache<NSString, UIImage>()
-  private static let thumbnailCache = NSCache<NSString, UIImage>()
   private static let coverRegistry = TPPBookCoverRegistry.shared
   
   func fetchCoverImage() {
-      if let img = TPPBook.coverCache.object(forKey: identifier as NSString) {
+      let simpleKey = identifier
+      let coverKey = "\(identifier)_cover"
+      
+      if let img = imageCache.get(for: simpleKey) ?? imageCache.get(for: coverKey) {
         coverImage = img
+        updateDominantColor(using: img)
         return
       }
 
@@ -524,14 +535,19 @@ extension TPPBook {
 
         self.coverImage = final
         if let img = final {
-          TPPBook.coverCache.setObject(img, forKey: self.identifier as NSString)
+          self.imageCache.set(img, for: self.identifier)
+          self.imageCache.set(img, for: coverKey)
+          self.updateDominantColor(using: img)
         }
         self.isCoverLoading = false
       }
     }
 
     func fetchThumbnailImage() {
-      if let img = TPPBook.thumbnailCache.object(forKey: identifier as NSString) {
+      let simpleKey = identifier
+      let thumbnailKey = "\(identifier)_thumbnail"
+      
+      if let img = imageCache.get(for: simpleKey) ?? imageCache.get(for: thumbnailKey) {
         thumbnailImage = img
         return
       }
@@ -545,18 +561,24 @@ extension TPPBook {
 
         self.thumbnailImage = final
         if let img = final {
-          TPPBook.thumbnailCache.setObject(img, forKey: self.identifier as NSString)
+          self.imageCache.set(img, for: self.identifier)
+          self.imageCache.set(img, for: thumbnailKey)
+          if self.coverImage == nil {
+            self.updateDominantColor(using: img)
+          }
         }
         self.isThumbnailLoading = false
       }
     }
   
   func clearCachedImages() {
-    TPPBook.coverCache.removeObject(forKey: identifier as NSString)
-    TPPBook.thumbnailCache.removeObject(forKey: identifier as NSString)
+    imageCache.remove(for: identifier)
+    imageCache.remove(for: "\(identifier)_cover")
+    imageCache.remove(for: "\(identifier)_thumbnail")
     DispatchQueue.main.async {
       self.coverImage = nil
       self.thumbnailImage = nil
+      self.dominantUIColor = .gray
     }
   }
 }
@@ -568,6 +590,45 @@ extension TPPBook {
   
   @objc public class func ordinalString(for n: Int) -> String {
     return n.ordinal()
+  }
+}
+
+// MARK: - Dominant Color (async, off main thread)
+private extension TPPBook {
+  func updateDominantColor(using image: UIImage) {
+    let inputImage = image
+    DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+      guard let self = self else { return }
+
+      let ciImage = CIImage(image: inputImage)
+      let filter = CIFilter.areaAverage()
+      filter.inputImage = ciImage
+      filter.extent = ciImage?.extent ?? .zero
+
+      guard let outputImage = filter.outputImage else { return }
+
+      var bitmap = [UInt8](repeating: 0, count: 4)
+      let context = CIContext(options: [CIContextOption.useSoftwareRenderer: false])
+      context.render(
+        outputImage,
+        toBitmap: &bitmap,
+        rowBytes: 4,
+        bounds: CGRect(x: 0, y: 0, width: 1, height: 1),
+        format: .RGBA8,
+        colorSpace: nil
+      )
+
+      let color = UIColor(
+        red: CGFloat(bitmap[0]) / 255.0,
+        green: CGFloat(bitmap[1]) / 255.0,
+        blue: CGFloat(bitmap[2]) / 255.0,
+        alpha: CGFloat(bitmap[3]) / 255.0
+      )
+
+      DispatchQueue.main.async {
+        self.dominantUIColor = color
+      }
+    }
   }
 }
 

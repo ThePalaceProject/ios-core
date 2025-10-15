@@ -34,6 +34,7 @@ class ImageLoader {
   }
 }
 
+@MainActor
 class AsyncImage: ObservableObject {
   @Published var image: UIImage
   private var cancellable: AnyCancellable?

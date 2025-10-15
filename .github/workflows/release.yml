@@ -6,6 +6,9 @@ jobs:
     steps:
       - name: Use the latest Xcode
         run: sudo xcode-select -switch /Applications/Xcode.app
+
+      - name: Verify Xcode Version
+        run: xcodebuild -version
       - name: Checkout main repo and submodules
         uses: actions/checkout@v3
         with:
@@ -32,7 +35,7 @@ jobs:
         env:
           RELEASE_NOTES_PATH: ${{ env.RELEASE_NOTES_PATH }}
           CHANGELOG_PATH: ${{ env.CHANGELOG_PATH }}
-          VERSION_NUM: ${{ env.VERSION_NUM }}          
+          VERSION_NUM: ${{ env.VERSION_NUM }}
       - name: Create Release
         id: create_release
         uses: actions/create-release@v1

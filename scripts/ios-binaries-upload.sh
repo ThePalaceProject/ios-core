@@ -48,6 +48,13 @@ zip -r "$ZIP_FULLPATH" .
 
 # upload to iOS-binaries repo
 cd "$IOS_BINARIES_DIR_PATH"
+
+# Ensure git identity in CI
+if [ "$BUILD_CONTEXT" = "ci" ]; then
+  git config user.email "ci@thepalaceproject.org" || true
+  git config user.name "Palace CI" || true
+fi
+
 git add "$ZIP_FULLPATH"
 git status
 

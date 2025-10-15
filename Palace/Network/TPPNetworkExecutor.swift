@@ -38,6 +38,19 @@ enum NYPLResult<SuccessInfo> {
                                  delegateQueue: delegateQueue)
     super.init()
   }
+
+  /// Test-friendly initializer allowing a custom URLSessionConfiguration (e.g., with custom URLProtocol classes)
+  @objc init(credentialsProvider: NYPLBasicAuthCredentialsProvider? = nil,
+             cachingStrategy: NYPLCachingStrategy,
+             sessionConfiguration: URLSessionConfiguration,
+             delegateQueue: OperationQueue? = nil) {
+    self.responder = TPPNetworkResponder(credentialsProvider: credentialsProvider,
+                                         useFallbackCaching: cachingStrategy == .fallback)
+    self.urlSession = URLSession(configuration: sessionConfiguration,
+                                 delegate: self.responder,
+                                 delegateQueue: delegateQueue)
+    super.init()
+  }
   
   deinit {
     urlSession.finishTasksAndInvalidate()
@@ -72,7 +85,19 @@ enum NYPLResult<SuccessInfo> {
   
   @objc func pauseAllTasks() {
     activeTasksLock.lock()
-    activeTasks.forEach { $0.suspend() }
+    activeTasks.forEach { task in
+      if let url = task.originalRequest?.url,
+         url.absoluteString.contains("audiobook") ||
+         url.absoluteString.contains(".mp3") ||
+         url.absoluteString.contains(".m4a") ||
+         url.absoluteString.contains("audio") ||
+         url.absoluteString.contains("readium") ||
+         url.absoluteString.contains("lcp") {
+        Log.info(#file, "Preserving audiobook network task: \(url.absoluteString)")
+        return
+      }
+      task.suspend()
+    }
     activeTasksLock.unlock()
   }
   
@@ -90,18 +115,6 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
 
     if let authDefinition = userAccount.authDefinition, authDefinition.isSaml {
       return performDataTask(with: req, completion: completion)
-    }
-
-    if userAccount.isTokenRefreshRequired() {
-      if enableTokenRefresh {
-        let task = urlSession.dataTask(with: req)
-        refreshTokenAndResume(task: task, completion: completion)
-        return task
-      } else if req.hasRetried {
-        let error = createErrorForRetryFailure()
-        completion(NYPLResult.failure(error, nil))
-        return nil
-      }
     }
 
     return performDataTask(with: req, completion: completion)
@@ -294,19 +307,25 @@ extension TPPNetworkExecutor {
   func refreshTokenAndResume(task: URLSessionTask?, completion: ((_ result: NYPLResult<Data>) -> Void)? = nil) {
     refreshQueue.async { [weak self] in
       guard let self = self else { return }
-      guard !self.isRefreshing else { return }
+      guard !self.isRefreshing else { 
+        Log.debug(#file, "Token refresh already in progress, skipping duplicate request")
+        return 
+      }
       
       self.isRefreshing = true
       
       guard let username = TPPUserAccount.sharedAccount().username,
             let password = TPPUserAccount.sharedAccount().pin,
             let tokenURL = TPPUserAccount.sharedAccount().authDefinition?.tokenURL else {
-        Log.info(#file, "Failed to refresh token due to missing credentials!")
+        Log.error(#file, "Cannot refresh token: missing credentials or tokenURL")
         self.isRefreshing = false
         let error = NSError(domain: TPPErrorLogger.clientDomain, code: TPPErrorCode.invalidCredentials.rawValue, userInfo: [NSLocalizedDescriptionKey: "Unauthorized HTTP"])
         completion?(NYPLResult.failure(error, nil))
         return
       }
+      
+      let authType = TPPUserAccount.sharedAccount().authDefinition?.authType.rawValue ?? "unknown"
+      Log.info(#file, "Refreshing token for auth type: \(authType)")
       
       if let task {
         self.retryQueueLock.lock()
@@ -321,10 +340,13 @@ extension TPPNetworkExecutor {
         defer { self.isRefreshing = false }
         
         switch result {
-        case .success:
+        case .success(let tokenResponse):
+          Log.info(#file, "Token refresh successful, expires in \(tokenResponse.expiresIn)s")
+          
           var newTasks = [URLSessionTask]()
           
           self.retryQueueLock.lock()
+          let retryCount = self.retryQueue.count
           self.retryQueue.forEach { oldTask in
             guard let originalRequest = oldTask.originalRequest,
                   let originalURL = originalRequest.url else {
@@ -343,12 +365,30 @@ extension TPPNetworkExecutor {
           self.retryQueue.removeAll()
           self.retryQueueLock.unlock()
           
+          Log.info(#file, "Retrying \(retryCount) failed request(s) with new token")
           newTasks.forEach { $0.resume() }
           
         case .failure(let error):
-          Log.info(#file, "Failed to refresh token with error: \(error)")
-          let error = NSError(domain: TPPErrorLogger.clientDomain, code: TPPErrorCode.invalidCredentials.rawValue, userInfo: [NSLocalizedDescriptionKey: "\(error.localizedDescription)"])
-          completion?(NYPLResult.failure(error, nil))
+          Log.error(#file, "Failed to refresh token with error: \(error.localizedDescription)")
+          
+          self.retryQueueLock.lock()
+          let failedTasks = self.retryQueue
+          self.retryQueue.removeAll()
+          self.retryQueueLock.unlock()
+          
+          failedTasks.forEach { $0.cancel() }
+          
+          if let nsError = error as? NSError, nsError.code == 401 {
+            Log.info(#file, "Token refresh failed due to invalid credentials - signing out user")
+            DispatchQueue.main.async {
+              TPPUserAccount.sharedAccount().removeAll()
+            }
+          }
+          
+          let nsError = NSError(domain: TPPErrorLogger.clientDomain, 
+                                code: TPPErrorCode.invalidCredentials.rawValue, 
+                                userInfo: [NSLocalizedDescriptionKey: "Token refresh failed: \(error.localizedDescription)"])
+          completion?(NYPLResult.failure(nsError, nil))
         }
       }
     }

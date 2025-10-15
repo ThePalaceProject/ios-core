@@ -16,6 +16,8 @@ import Foundation
   private var estimatedRowHeight: CGFloat = 100
   private var sectionHeaderSize: CGFloat = 20
 
+  var requiresSelectionBeforeDismiss: Bool = false
+
   @objc required init(completion: @escaping (Account) -> ()) {
     self.completion = completion
     super.init(nibName: nil, bundle: nil)
@@ -30,6 +32,10 @@ import Foundation
     super.viewDidLoad()
     view.backgroundColor = TPPConfiguration.backgroundColor()
     title = datasource.title
+
+    if #available(iOS 13.0, *) {
+      isModalInPresentation = requiresSelectionBeforeDismiss
+    }
 
     setupUI()
 
@@ -74,6 +80,10 @@ import Foundation
 
   private func finishConfiguration() {
     datasource.delegate = self
+    AccountsManager.shared.accounts().forEach { account in
+      account.logoDelegate = self
+      account.loadLogo()
+    }
     tableView.reloadData()
   }
 

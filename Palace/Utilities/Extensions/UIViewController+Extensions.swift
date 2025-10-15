@@ -1,3 +1,15 @@
+import UIKit
+
+extension UIViewController {
+  @objc func dismissSelf() {
+    if let navigationController = self.navigationController, navigationController.presentingViewController != nil {
+      navigationController.dismiss(animated: true)
+    } else {
+      self.dismiss(animated: true)
+    }
+  }
+}
+
 import SwiftUI
 
 extension UIViewController {

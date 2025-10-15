@@ -36,7 +36,7 @@ fileprivate let maxBarcodeWidth: CGFloat = 414
         if granted {
           let scannerVC = BarcodeScanner(completion: completion)
           let navController = UINavigationController.init(rootViewController: scannerVC)
-          TPPRootTabBarController.shared().safelyPresentViewController(navController, animated: true, completion: nil)
+          TPPPresentationUtils.safelyPresent(navController, animated: true, completion: nil)
         } else {
           presentCameraPrivacyAlert()
         }

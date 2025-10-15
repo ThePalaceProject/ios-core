@@ -260,11 +260,26 @@ private enum StorageKey: String {
   }
   
   func isTokenRefreshRequired() -> Bool {
-    let isTokenAuthAndMissing = (authDefinition?.isToken ?? false) &&
-    !hasAuthToken() &&
-    ((TPPUserAccount.sharedAccount().authDefinition?.tokenURL) != nil)
+    guard let authDefinition = authDefinition else { return false }
     
-    return (authTokenHasExpired || isTokenAuthAndMissing) && hasCredentials()
+    // Basic-token auth: only refresh if token EXPIRED (not just missing)
+    if authDefinition.isToken {
+      guard authDefinition.tokenURL != nil,
+            username != nil,
+            pin != nil else {
+        return false
+      }
+      // Only refresh if we have a token that expired
+      // Don't refresh if token is simply missing (user needs to login first)
+      return authTokenHasExpired
+    }
+    
+    // OAuth: can refresh if token is missing or expired
+    let isOAuthAndNeedsRefresh = authDefinition.isOauth &&
+    !hasAuthToken() &&
+    (authDefinition.tokenURL != nil)
+    
+    return (authTokenHasExpired || isOAuthAndNeedsRefresh) && hasCredentials()
   }
   
   func hasAdobeToken() -> Bool {
@@ -370,14 +385,19 @@ private enum StorageKey: String {
   }
 
   var authTokenHasExpired: Bool {
+    // Only return true if we HAVE a token and it's expired
+    // If we don't have a token at all, that's not "expired", it's just missing
     guard let credentials = credentials,
-            case let TPPCredentials.token(authToken: token) = credentials,
-            let expirationDate = token.expirationDate, expirationDate > Date()
-    else {
-      return true
+          case let TPPCredentials.token(authToken: _, barcode: _, pin: _, expirationDate: expirationDate) = credentials else {
+      return false  // No token = not expired
     }
     
-   return false
+    // Check if expiration date exists and is in the past
+    guard let expirationDate = expirationDate else {
+      return false  // No expiration = doesn't expire
+    }
+    
+    return expirationDate <= Date()  // Expired if date is in the past
   }
 
   var patronFullName: String? {

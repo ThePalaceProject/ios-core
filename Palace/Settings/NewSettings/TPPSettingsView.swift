@@ -15,6 +15,13 @@ struct TPPSettingsView: View {
   @AppStorage(TPPSettings.showDeveloperSettingsKey) private var showDeveloperSettings: Bool = false
   @State private var selectedView: Int? = 0
   @State private var orientation: UIDeviceOrientation = UIDevice.current.orientation
+  @State private var showAddLibrarySheet: Bool = false
+  @State private var librariesRefreshToken: UUID = UUID()
+  @State private var currentAccounts: [Account] = []
+  
+  init() {
+    _currentAccounts = State(initialValue: TPPSettings.shared.settingsAccountsList)
+  }
 
   private var sideBarEnabled: Bool {
     UIDevice.current.userInterfaceIdiom == .pad
@@ -26,16 +33,24 @@ struct TPPSettingsView: View {
     if sideBarEnabled {
       NavigationView {
         listView
-          .onAppear {
-            selectedView = 1
-          }
+        detailView
       }
+      .navigationViewStyle(.columns)
     } else {
       listView
-        .onAppear {
-          selectedView = 0
-        }
     }
+  }
+  
+  @ViewBuilder private var detailView: some View {
+    let viewController = TPPSettingsAccountsTableViewController(accounts: currentAccounts)
+    let navButton = Button(DisplayStrings.addLibrary) {
+      showAddLibrarySheet = true
+    }
+
+    UIViewControllerWrapper(viewController) { _ in }
+      .navigationBarTitle(Text(DisplayStrings.libraries))
+      .navigationBarItems(trailing: navButton)
+      .id(librariesRefreshToken)
   }
 
   @ViewBuilder private var listView: some View {
@@ -46,20 +61,41 @@ struct TPPSettingsView: View {
     }
     .navigationBarTitle(DisplayStrings.settings)
     .listStyle(GroupedListStyle())
+    .onAppear {
+      updateAccountsList()
+    }
     .onReceive(NotificationCenter.default.publisher(for: UIDevice.orientationDidChangeNotification)) { _ in
       self.orientation = UIDevice.current.orientation
+    }
+    .onReceive(NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)) { _ in
+      updateAccountsList()
+      librariesRefreshToken = UUID()
+    }
+    .onReceive(NotificationCenter.default.publisher(for: .TPPBookRegistryDidChange)) { _ in
+      updateAccountsList()
+      librariesRefreshToken = UUID()
+    }
+    .sheet(isPresented: $showAddLibrarySheet) {
+      UIViewControllerWrapper(
+        TPPAccountList { account in
+          MyBooksViewModel().loadAccount(account)
+          showAddLibrarySheet = false
+        },
+        updater: { _ in }
+      )
     }
   }
 
   @ViewBuilder private var librariesSection: some View {
-    let viewController = TPPSettingsAccountsTableViewController(accounts: TPPSettings.shared.settingsAccountsList)
+    let viewController = TPPSettingsAccountsTableViewController(accounts: currentAccounts)
     let navButton = Button(DisplayStrings.addLibrary) {
-      viewController.addAccount()
+      showAddLibrarySheet = true
     }
 
     let wrapper = UIViewControllerWrapper(viewController) { _ in }
       .navigationBarTitle(Text(DisplayStrings.libraries))
       .navigationBarItems(trailing: navButton)
+      .id(librariesRefreshToken)
 
     Section {
       row(title: DisplayStrings.libraries, index: 1, selection: self.$selectedView, destination: wrapper.anyView())
@@ -169,5 +205,9 @@ struct TPPSettingsView: View {
           .palaceFont(.body)
       }
     )
+  }
+  
+  private func updateAccountsList() {
+    currentAccounts = TPPSettings.shared.settingsAccountsList
   }
 }

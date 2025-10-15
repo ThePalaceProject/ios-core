@@ -1,5 +1,4 @@
 #!/bin/bash
-
 # SUMMARY
 #   Configures common environment variables for building Palace app.
 #
@@ -14,7 +13,6 @@
 #     xcode-archive.sh
 #
 # ENVIRONMENT VARIABLES
-
 #   XCODE_VERSION - Optional. The version of Xcode to use (e.g. "16.2")
 #                   If not set, uses the system default Xcode
 
@@ -26,26 +24,30 @@ fatal()
   exit 1
 }
 
-# Set Xcode version if specified
-if [ -n "$XCODE_VERSION" ]; then
+# Set build environment variables
+export FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT=300
+export FASTLANE_XCODEBUILD_SETTINGS_RETRIES=4
+
+# Always try to use Xcode 16.2 first
+if [ -d "/Applications/Xcode_16.2.app/Contents/Developer" ]; then
+  export DEVELOPER_DIR="/Applications/Xcode_16.2.app/Contents/Developer"
+elif [ -n "$XCODE_VERSION" ]; then
+  # If specific version requested, try to use it
   export DEVELOPER_DIR="/Applications/Xcode_${XCODE_VERSION}.app/Contents/Developer"
   if [ ! -d "$DEVELOPER_DIR" ]; then
-    fatal "Xcode ${XCODE_VERSION} not found at ${DEVELOPER_DIR}"
-  fi
-else
-  # Default to Xcode 16.2 if not specified
-  export DEVELOPER_DIR="/Applications/Xcode_16.2.app/Contents/Developer"
-
-  if [ ! -d "$DEVELOPER_DIR" ]; then
-    echo "Warning: Xcode 16.0 not found at ${DEVELOPER_DIR}, falling back to system default"
+    echo "Warning: Xcode ${XCODE_VERSION} not found, falling back to system default"
     unset DEVELOPER_DIR
   fi
 fi
 
+# Set additional build settings
+export IPHONEOS_DEPLOYMENT_TARGET=16.0
+export ONLY_ACTIVE_ARCH=NO
+export ARCHS=arm64
+
 # determine which app we're going to work on
 TARGET_NAME=Palace
 SCHEME=Palace
-
 # app-agnostic settings
 APP_NAME="Palace"
 PROV_PROFILES_DIR_PATH="$HOME/Library/MobileDevice/Provisioning Profiles"

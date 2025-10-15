@@ -22,6 +22,7 @@ source "$(dirname $0)/xcode-settings.sh"
 
 echo "Exporting $ARCHIVE_NAME for Ad-Hoc distribution..."
 
+# Use fastlane from runner environment
 fastlane ios beta output_name:$ARCHIVE_NAME.ipa export_path:$ARCHIVE_DIR
 
 echo "Uploading archive:"

@@ -2,46 +2,59 @@ import SwiftUI
 import UIKit
 
 struct HoldsView: View {
+  @EnvironmentObject private var coordinator: NavigationCoordinator
   typealias DisplayStrings = Strings.HoldsView
   
   @StateObject private var model = HoldsViewModel()
+  @StateObject private var logoObserver = CatalogLogoObserver()
+  @State private var currentAccountUUID: String = AccountsManager.shared.currentAccount?.uuid ?? ""
   private var allBooks: [TPPBook] {
     model.reservedBookVMs.map { $0.book } + model.heldBookVMs.map { $0.book }
   }
   var body: some View {
     ZStack {
-      VStack(spacing: 0) {
-        
-        if allBooks.isEmpty {
-          Spacer()
-          emptyView
-          Spacer()
-        } else {
-          ScrollView {
-            BookListView(
-              books: allBooks,
-              isLoading: $model.isLoading,
-              onSelect: { book in presentBookDetail(book) }
-            )
-            .padding(.horizontal, 8)
+      mainContent
+        .background(Color(TPPConfiguration.backgroundColor()))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+          ToolbarItem(placement: .principal) {
+            LibraryNavTitleView(onTap: {
+              if let urlString = AccountsManager.shared.currentAccount?.homePageUrl, let url = URL(string: urlString) {
+                UIApplication.shared.open(url, options: [:], completionHandler: nil)
+              }
+            })
+            .id(logoObserver.token.uuidString + currentAccountUUID)
+          }
+          ToolbarItem(placement: .navigationBarLeading) { leadingBarButton }
+          ToolbarItem(placement: .navigationBarTrailing) {
+            if model.showSearchSheet {
+              Button(action: {
+                withAnimation {
+                  model.showSearchSheet = false
+                  model.searchQuery = ""
+                }
+              }) {
+                Text(Strings.Generic.cancel)
+              }
+            } else {
+              trailingBarButton
+            }
           }
         }
-      }
-      .padding(.top, 100)
-      .background(Color(TPPConfiguration.backgroundColor()))
-      .navigationTitle(Strings.HoldsView.reservations)
-      .navigationBarTitleDisplayMode(.inline)
-      .toolbar {
-        ToolbarItem(placement: .navigationBarLeading) { leadingBarButton }
-        ToolbarItem(placement: .navigationBarTrailing) { trailingBarButton }
-      }
-      .onAppear {
-        model.showSearchView = false
-        model.showLibraryAccountView = false
-      }
-      .refreshable {
-        model.refresh()
-      }
+        .onAppear {
+          model.showSearchSheet = false
+          model.showLibraryAccountView = false
+          let account = AccountsManager.shared.currentAccount
+          account?.logoDelegate = logoObserver
+          account?.loadLogo()
+          currentAccountUUID = account?.uuid ?? ""
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)) { _ in
+          let account = AccountsManager.shared.currentAccount
+          account?.logoDelegate = logoObserver
+          account?.loadLogo()
+          currentAccountUUID = account?.uuid ?? ""
+        }
       .sheet(isPresented: $model.showLibraryAccountView) {
         UIViewControllerWrapper(
           TPPAccountList { account in
@@ -54,44 +67,44 @@ struct HoldsView: View {
       if model.isLoading {
         loadingOverlay
       }
-      
-      VStack {
-        logoImageView
-        Spacer()
-      }
-    }
-    .sheet(isPresented: $model.showSearchView) {
-      UIViewControllerWrapper(
-        TPPCatalogSearchViewController(openSearchDescription: model.openSearchDescription),
-        updater: { _ in }
-      )
     }
   }
-  
-  @ViewBuilder private var logoImageView: some View {
-    if let account = AccountsManager.shared.currentAccount {
-      Button {
-        if let urlString = account.homePageUrl, let url = URL(string: urlString) {
-          UIApplication.shared.open(url, options: [:], completionHandler: nil)
-        }
-      } label: {
-        HStack {
-          Image(uiImage: account.logo)
-            .resizable()
-            .aspectRatio(contentMode: .fit)
-            .square(length: 50)
-          Text(account.name)
-            .fixedSize(horizontal: false, vertical: true)
-            .font(Font(uiFont: UIFont.boldSystemFont(ofSize: 18.0)))
-            .foregroundColor(.gray)
-            .multilineTextAlignment(.center)
-        }
-        .padding()
-        .background(Color(TPPConfiguration.readerBackgroundColor()))
-        .frame(height: 70.0)
-        .cornerRadius(35)
+
+  private var mainContent: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      if model.showSearchSheet { 
+        searchBar
+          .transition(.move(edge: .top).combined(with: .opacity))
       }
-      .padding(.vertical, 20)
+      content
+    }
+  }
+
+  @ViewBuilder
+  private var content: some View {
+    GeometryReader { geometry in
+      if model.isLoading {
+        BookListSkeletonView(rows: 10)
+      } else if model.visibleBooks.isEmpty {
+        ScrollView {
+          emptyView
+            .frame(minHeight: geometry.size.height)
+            .centered()
+        }
+        .refreshable { model.refresh() }
+      } else {
+        ScrollView {
+          BookListView(
+            books: model.visibleBooks,
+            isLoading: $model.isLoading,
+            onSelect: { book in presentBookDetail(book) }
+          )
+          .padding(.horizontal, 8)
+        }
+        .scrollIndicators(.visible)
+        .refreshable { model.refresh() }
+        .dismissKeyboardOnTap()
+      }
     }
   }
   
@@ -100,8 +113,10 @@ struct HoldsView: View {
     Text(DisplayStrings.emptyMessage)
     .multilineTextAlignment(.center)
     .foregroundColor(Color(white: 0.667))
+    .background(Color(TPPConfiguration.backgroundColor()))
     .font(.system(size: 18))
     .padding(.horizontal, 24)
+    .padding(.top, 100)
   }
   
   /// Semi‐transparent loading overlay
@@ -112,7 +127,7 @@ struct HoldsView: View {
       .background(Color.black.opacity(0.5).ignoresSafeArea())
   }
   
-  /// Leading bar button: “Pick a new library”
+  /// Leading bar button: "Pick a new library"
   private var leadingBarButton: some View {
     Button {
       model.selectNewLibrary = true
@@ -125,6 +140,9 @@ struct HoldsView: View {
             model.loadAccount(account)
           }
       }
+      buttons.append(.default(Text(Strings.MyBooksView.addLibrary)) {
+        model.showLibraryAccountView = true
+      })
       buttons.append(.cancel())
       return ActionSheet(
         title: Text(NSLocalizedString(DisplayStrings.findYourLibrary, comment: "")),
@@ -135,7 +153,7 @@ struct HoldsView: View {
   
   private var trailingBarButton: some View {
     Button {
-      model.showSearchView = true
+      withAnimation { model.showSearchSheet.toggle() }
     } label: {
       ImageProviders.MyBooksView.search
     }
@@ -143,8 +161,30 @@ struct HoldsView: View {
   }
   
   private func presentBookDetail(_ book: TPPBook) {
-    let detailVC = BookDetailHostingController(book: book)
-    TPPRootTabBarController.shared().pushViewController(detailVC, animated: true)
+    coordinator.store(book: book)
+    coordinator.push(.bookDetail(BookRoute(id: book.identifier)))
+  }
+
+  private var searchBar: some View {
+    HStack {
+      TextField(NSLocalizedString("Search Reservations", comment: ""), text: $model.searchQuery)
+        .searchBarStyle()
+        .onChange(of: model.searchQuery) { query in
+          Task { await model.filterBooks(query: query) }
+        }
+      Button(action: clearSearch, label: {
+        Image(systemName: "xmark.circle.fill")
+          .foregroundColor(.gray)
+      })
+    }
+    .padding(.horizontal)
+  }
+
+  private func clearSearch() {
+    Task {
+      model.searchQuery = ""
+      await model.filterBooks(query: "")
+    }
   }
 }
 
