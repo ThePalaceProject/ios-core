@@ -13,13 +13,14 @@ import Foundation
 
   var bearerToken: String? {
     get {
-      let _bearerToken: TPPKeychainVariable<String> = self.identifier.asKeychainVariable(with: bookTokenQueue)
+      let _bearerToken: TPPKeychainVariable<String> = self.identifier.asKeychainVariable(with: bookTokenLock)
       return _bearerToken.read()
     }
 
     set {
-      let keychainTransaction = TPPKeychainVariableTransaction(accountInfoQueue: bookTokenQueue)
-      let _bearerToken: TPPKeychainVariable<String> = self.identifier.asKeychainVariable(with: bookTokenQueue)
+      let keychainTransaction = TPPKeychainVariableTransaction(accountInfoLock: bookTokenLock)
+
+      let _bearerToken: TPPKeychainVariable<String> = self.identifier.asKeychainVariable(with: bookTokenLock)
       keychainTransaction.perform {
         _bearerToken.write(newValue)
       }

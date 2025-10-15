@@ -38,17 +38,18 @@ extension BookButtonState {
       if book.hasSample && previewEnabled {
         buttons.append(book.isAudiobook ? .audiobookSample : .sample)
       }
-    case .holding, .holdingFrontOfQueue:
+    case .holding:
       buttons.append(.manageHold)
       if book.hasSample && previewEnabled {
         buttons.append(book.isAudiobook ? .audiobookSample : .sample)
       }
-    case .managingHold:
-      if isHoldReady(book: book) {
-        buttons = [.get, .cancelHold]
-      } else {
-        buttons = [.cancelHold]
+    case .holdingFrontOfQueue:
+      buttons.append(.get)
+      if book.hasSample && previewEnabled {
+        buttons.append(book.isAudiobook ? .audiobookSample : .sample)
       }
+    case .managingHold:
+      buttons = [.cancelHold, .close]
     case .downloadNeeded:
       if let authDef = TPPUserAccount.sharedAccount().authDefinition,
          authDef.needsAuth || book.defaultAcquisitionIfOpenAccess != nil {

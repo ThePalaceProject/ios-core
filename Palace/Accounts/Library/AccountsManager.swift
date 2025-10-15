@@ -234,12 +234,14 @@ let currentAccountIdentifierKey = "TPPCurrentAccountIdentifier"
     do {
       let feed = try OPDS2CatalogsFeed.fromData(data)
       let hadAccount = self.currentAccount != nil
-      let newAccounts = feed.catalogs.map { Account(publication: $0, imageCache: ImageCache.shared) }
+      let newAccounts = feed.catalogs.map { Account(publication: $0) }
 
+      // write under-barrier
       self.performWrite {
         self.accountSets[hash] = newAccounts
       }
 
+      // then do your logo+auth dispatchgroup dance…
       let group = DispatchGroup()
 
       if hadAccount != (self.currentAccount != nil), let current = self.currentAccount {

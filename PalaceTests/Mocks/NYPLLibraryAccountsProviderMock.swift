@@ -25,7 +25,7 @@ class TPPLibraryAccountMock: NSObject, TPPLibraryAccountsProvider {
     let feedData = try! Data(contentsOf: feedURL)
     feed = try! OPDS2CatalogsFeed.fromData(feedData)
 
-    tppAccount = Account(publication: feed.catalogs.first(where: { $0.metadata.title == "The New York Public Library" })!, imageCache: MockImageCache())
+    tppAccount = Account(publication: feed.catalogs.first(where: { $0.metadata.title == "The New York Public Library" })!)
 
     super.init()
 
@@ -85,7 +85,7 @@ class TPPLibraryAccountMock: NSObject, TPPLibraryAccountsProvider {
       return tppAccount
     } else {
       let pub = createOPDS2Publication()
-      return Account(publication: pub, imageCache: MockImageCache())
+      return Account(publication: pub)
     }
   }
 }

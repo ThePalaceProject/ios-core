@@ -110,7 +110,7 @@ struct NormalBookCell: View {
   @ViewBuilder var borrowedInfoView: some View {
     if model.registryState == .holding {
       holdingInfoView
-    } else {
+    } else if model.isBorrowed {
       loanTermsInfoView
     }
   }

@@ -39,6 +39,20 @@ struct BookButtonMapper {
     }
 
     if registryState == .holding {
+      if let availability = availability {
+        var isReady = false
+        availability.matchUnavailable { _ in
+        } limited: { _ in
+        } unlimited: { _ in
+        } reserved: { _ in
+        } ready: { _ in
+          isReady = true
+        }
+        
+        if isReady {
+          return .holdingFrontOfQueue
+        }
+      }
       return .holding
     }
 

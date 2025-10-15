@@ -3,14 +3,30 @@ import UIKit
 
 // MARK: - Swift Concurrency Actor
 actor TPPBookCoverRegistry {
-  let imageCache: ImageCacheType
+  static let shared = TPPBookCoverRegistry()
   
-  static let shared = TPPBookCoverRegistry(imageCache: ImageCache.shared)
-  
+  private let isCachingEnabled: Bool = ProcessInfo.processInfo.physicalMemory >= 2 * 1024 * 1024 * 1024
+  private let memoryCache: NSCache<NSString, UIImage> = {
+    let cache = NSCache<NSString, UIImage>()
+    cache.countLimit = 100
+    cache.totalCostLimit = 10 * 1024 * 1024
+    return cache
+  }()
+  private let diskCacheURL: URL? = {
+    let fm = FileManager.default
+    guard let caches = fm.urls(for: .cachesDirectory, in: .userDomainMask).first else { return nil }
+    let dir = caches.appendingPathComponent("TPPBookCovers", isDirectory: true)
+    
+    do {
+      try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+      return dir
+    } catch {
+      Log.error(#file, "Failed to create book cover cache directory: \(error.localizedDescription)")
+      return nil
+    }
+  }()
+  private let diskQueue = DispatchQueue(label: "com.thepalaceproject.TPPBookCoverRegistry.diskQueue")
   private var inProgressTasks: [URL: Task<UIImage?, Never>] = [:]
-  init(imageCache: ImageCacheType) {
-    self.imageCache = imageCache
-  }
   
   func coverImage(for book: TPPBook) async -> UIImage? {
     guard let url = book.imageURL else { return await thumbnailImage(for: book) }
@@ -27,7 +43,16 @@ actor TPPBookCoverRegistry {
   
   private func fetchImage(from url: URL, for book: TPPBook, isCover: Bool) async -> UIImage? {
     let key = cacheKey(for: book, isCover: isCover)
-    if let img = imageCache.get(for: key as String) {
+    
+    if isCachingEnabled, let img = memoryCache.object(forKey: key) { 
+      return img 
+    }
+    
+    if isCachingEnabled,
+       let fileURL = diskCacheURL?.appendingPathComponent(key as String),
+       let data = try? Data(contentsOf: fileURL),
+       let img = UIImage(data: data) {
+      memoryCache.setObject(img, forKey: key, cost: cost(for: img))
       return img
     }
     
@@ -36,13 +61,13 @@ actor TPPBookCoverRegistry {
     }
     
     let task = Task<UIImage?, Never> { [weak self] in
-      guard let self else { return UIImage() }
+      guard let self = self else { return nil }
       
       do {
         let (data, _) = try await URLSession.shared.data(from: url)
         guard let image = UIImage(data: data) else { return nil }
         
-        self.imageCache.set(image, for: key as String, expiresIn: nil)
+        await self.store(image: image, forKey: key)
         return image
       } catch {
         Log.error(#file, "Failed to fetch image: \(error.localizedDescription)")
@@ -56,6 +81,35 @@ actor TPPBookCoverRegistry {
     inProgressTasks[url] = nil
     
     return image
+  }
+  
+  private func store(image: UIImage, forKey key: NSString) async {
+    guard isCachingEnabled else { return }
+
+    memoryCache.setObject(image, forKey: key, cost: cost(for: image))
+
+    if let dir = diskCacheURL,
+       let data = image.jpegData(compressionQuality: 0.8) {
+      let destination = dir.appendingPathComponent(key as String)
+      
+      await withCheckedContinuation { continuation in
+        diskQueue.async {
+          do {
+            // Ensure parent directory still exists
+            let parentDir = destination.deletingLastPathComponent()
+            if !FileManager.default.fileExists(atPath: parentDir.path) {
+              try FileManager.default.createDirectory(at: parentDir, withIntermediateDirectories: true)
+            }
+            
+            try data.write(to: destination)
+            continuation.resume()
+          } catch {
+            Log.error(#file, "Failed to write image cache file '\(destination.lastPathComponent)' to disk: \(error.localizedDescription). Directory: \(destination.deletingLastPathComponent().path)")
+            continuation.resume()
+          }
+        }
+      }
+    }
   }
   
   private func placeholder(for book: TPPBook) async -> UIImage? {
