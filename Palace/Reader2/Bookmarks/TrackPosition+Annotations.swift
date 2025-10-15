@@ -6,6 +6,8 @@
 //  Copyright © 2024 The Palace Project. All rights reserved.
 //
 
+import PalaceAudiobookToolkit
+
 public extension TrackPosition {
   func toAudioBookmark() -> AudioBookmark {
     let offsetMilliseconds: Int

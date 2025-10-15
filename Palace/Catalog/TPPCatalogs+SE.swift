@@ -8,13 +8,7 @@
 
 import Foundation
 
-extension TPPCatalogNavigationController {
-  @objc func didSignOut() {
-  }
-}
-
-extension TPPCatalogFeedViewController {
-  @objc func shouldLoad() -> Bool {
-    return TPPSettings.shared.userHasSeenWelcomeScreen
+@objc extension NSObject {
+  func didSignOut() {
   }
 }

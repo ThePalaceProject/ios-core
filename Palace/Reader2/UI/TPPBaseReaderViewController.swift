@@ -10,6 +10,7 @@
 
 import SafariServices
 import UIKit
+import WebKit
 import ReadiumNavigator
 import ReadiumShared
 import Combine
@@ -37,8 +38,9 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   private var tocBarButton: UIBarButtonItem?
   private var bookmarkBarButton: UIBarButtonItem?
   private(set) var stackView: UIStackView!
-  private lazy var positionLabel = UILabel()
-  private lazy var bookTitleLabel = UILabel()
+  private(set) var navigatorContainer: UIView!
+  private(set) lazy var positionLabel = UILabel()
+  private(set) lazy var bookTitleLabel = UILabel()
   private var isShowingSample: Bool = false
   private var initialLocation: Locator?
   private var subscriptions: Set<AnyCancellable> = []
@@ -100,46 +102,88 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     super.viewDidLoad()
 
     view.backgroundColor = TPPConfiguration.backgroundColor()
+    
+    // Ensure content extends under navigation bar without shifting when bar appears/disappears
+    edgesForExtendedLayout = [.top, .bottom]
+    extendedLayoutIncludesOpaqueBars = true
 
     navigationItem.rightBarButtonItems = makeNavigationBarButtons()
     updateNavigationBar(animated: false)
     setupStackView()
 
     addChild(navigator)
-    stackView.addArrangedSubview(navigator.view)
+    
+    // Create letterbox container
+    navigatorContainer = UIView()
+    navigatorContainer.backgroundColor = TPPConfiguration.backgroundColor()
+    stackView.addArrangedSubview(navigatorContainer)
+    
+    // Inset navigator within container to create letterbox areas
+    navigatorContainer.addSubview(navigator.view)
+    navigator.view.translatesAutoresizingMaskIntoConstraints = false
+    
+    let fixedTopInset: CGFloat = 100.0  // Letterbox space for navbar + status bar
+    let fixedBottomInset: CGFloat = 50.0  // Letterbox space for home indicator
+    
+    NSLayoutConstraint.activate([
+      navigator.view.topAnchor.constraint(equalTo: navigatorContainer.topAnchor, constant: fixedTopInset),
+      navigator.view.bottomAnchor.constraint(equalTo: navigatorContainer.bottomAnchor, constant: -fixedBottomInset),
+      navigator.view.leadingAnchor.constraint(equalTo: navigatorContainer.leadingAnchor),
+      navigator.view.trailingAnchor.constraint(equalTo: navigatorContainer.trailingAnchor)
+    ])
+    
     navigator.didMove(toParent: self)
+    
+    // Prevent navigator from using safe area insets - critical for Readium 3.3.0
+    navigator.view.insetsLayoutMarginsFromSafeArea = false
+    navigator.additionalSafeAreaInsets = .zero
+    
+    // Prevent scroll view and WKWebView content inset adjustment
+    if let scrollView = navigator.view as? UIScrollView {
+      scrollView.contentInsetAdjustmentBehavior = .never
+    } else {
+      // Check subviews for scroll views and web views (Readium uses WKWebView for EPUBs)
+      navigator.view.subviews.forEach { subview in
+        if let webView = subview as? WKWebView {
+          webView.scrollView.contentInsetAdjustmentBehavior = .never
+          webView.scrollView.contentInset = .zero
+          webView.scrollView.scrollIndicatorInsets = .zero
+        } else if let scrollView = subview as? UIScrollView {
+          scrollView.contentInsetAdjustmentBehavior = .never
+        }
+      }
+    }
 
     stackView.addArrangedSubview(accessibilityToolbar)
     accessibilityToolbar.accessibilityElementsHidden = true
 
+    // Position label in the bottom letterbox area
     positionLabel.translatesAutoresizingMaskIntoConstraints = false
     positionLabel.font = .systemFont(ofSize: 12)
     positionLabel.textAlignment = .center
     positionLabel.lineBreakMode = .byTruncatingTail
-    positionLabel.textColor = .darkGray
-    view.addSubview(positionLabel)
+    positionLabel.textColor = .lightGray
+    navigatorContainer.addSubview(positionLabel)
     NSLayoutConstraint.activate([
-      positionLabel.bottomAnchor.constraint(equalTo: navigator.view.bottomAnchor, constant: -TPPBaseReaderViewController.overlayLabelMargin),
-      positionLabel.leftAnchor.constraint(equalTo: navigator.view.leftAnchor, constant: TPPBaseReaderViewController.overlayLabelMargin),
-      positionLabel.rightAnchor.constraint(equalTo: navigator.view.rightAnchor, constant: -TPPBaseReaderViewController.overlayLabelMargin)
+      positionLabel.bottomAnchor.constraint(equalTo: navigatorContainer.bottomAnchor, constant: -TPPBaseReaderViewController.overlayLabelMargin),
+      positionLabel.leftAnchor.constraint(equalTo: navigatorContainer.leftAnchor, constant: TPPBaseReaderViewController.overlayLabelMargin),
+      positionLabel.rightAnchor.constraint(equalTo: navigatorContainer.rightAnchor, constant: -TPPBaseReaderViewController.overlayLabelMargin),
+      positionLabel.topAnchor.constraint(greaterThanOrEqualTo: navigator.view.bottomAnchor, constant: TPPBaseReaderViewController.overlayLabelMargin / 2)
     ])
 
+    // Book title label in the top letterbox area
     bookTitleLabel.translatesAutoresizingMaskIntoConstraints = false
     bookTitleLabel.font = .systemFont(ofSize: 12)
     bookTitleLabel.textAlignment = .center
     bookTitleLabel.lineBreakMode = .byTruncatingTail
-    bookTitleLabel.textColor = .darkGray
-    view.addSubview(bookTitleLabel)
-    var layoutConstraints: [NSLayoutConstraint] = [
-      bookTitleLabel.leftAnchor.constraint(equalTo: navigator.view.leftAnchor, constant: TPPBaseReaderViewController.overlayLabelMargin),
-      bookTitleLabel.rightAnchor.constraint(equalTo: navigator.view.rightAnchor, constant: -TPPBaseReaderViewController.overlayLabelMargin)
-    ]
-    if #available(iOS 11.0, *) {
-      layoutConstraints.append(bookTitleLabel.topAnchor.constraint(equalTo: navigator.view.safeAreaLayoutGuide.topAnchor, constant: TPPBaseReaderViewController.overlayLabelMargin / 2))
-    } else {
-      layoutConstraints.append(bookTitleLabel.topAnchor.constraint(equalTo: navigator.view.topAnchor, constant: TPPBaseReaderViewController.overlayLabelMargin))
-    }
-    NSLayoutConstraint.activate(layoutConstraints)
+    bookTitleLabel.textColor = .lightGray
+    navigatorContainer.addSubview(bookTitleLabel)
+    NSLayoutConstraint.activate([
+      bookTitleLabel.topAnchor.constraint(equalTo: navigatorContainer.topAnchor, constant: TPPBaseReaderViewController.overlayLabelMargin),
+      bookTitleLabel.leftAnchor.constraint(equalTo: navigatorContainer.leftAnchor, constant: TPPBaseReaderViewController.overlayLabelMargin),
+      bookTitleLabel.rightAnchor.constraint(equalTo: navigatorContainer.rightAnchor, constant: -TPPBaseReaderViewController.overlayLabelMargin),
+      bookTitleLabel.bottomAnchor.constraint(lessThanOrEqualTo: navigator.view.topAnchor, constant: -TPPBaseReaderViewController.overlayLabelMargin / 2)
+    ])
 
     // Accessibility
     updateViewsForVoiceOver(isRunning: UIAccessibility.isVoiceOverRunning)
@@ -166,6 +210,52 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     ])
   }
 
+  override func viewSafeAreaInsetsDidChange() {
+    super.viewSafeAreaInsetsDidChange()
+    
+    // Continuously negate safe area insets to prevent Readium from responding
+    navigator.additionalSafeAreaInsets = UIEdgeInsets(
+      top: -view.safeAreaInsets.top,
+      left: 0,
+      bottom: -view.safeAreaInsets.bottom,
+      right: 0
+    )
+  }
+  
+  override func viewDidLayoutSubviews() {
+    super.viewDidLayoutSubviews()
+    
+    // Ensure scroll views never adjust for content insets
+    configureScrollViewInsets()
+  }
+  
+  private func configureScrollViewInsets() {
+    if let scrollView = navigator.view as? UIScrollView {
+      scrollView.contentInsetAdjustmentBehavior = .never
+    } else {
+      navigator.view.subviews.forEach { subview in
+        configureScrollViewRecursively(subview)
+      }
+    }
+  }
+  
+  private func configureScrollViewRecursively(_ view: UIView) {
+    view.insetsLayoutMarginsFromSafeArea = false
+    
+    // Handle WKWebView specifically - this is what Readium uses for EPUB content
+    if let webView = view as? WKWebView {
+      webView.scrollView.contentInsetAdjustmentBehavior = .never
+      webView.scrollView.contentInset = .zero
+      webView.scrollView.scrollIndicatorInsets = .zero
+    }
+    
+    if let scrollView = view as? UIScrollView {
+      scrollView.contentInsetAdjustmentBehavior = .never
+    }
+    
+    view.subviews.forEach { configureScrollViewRecursively($0) }
+  }
+
   override func willMove(toParent parent: UIViewController?) {
     super.willMove(toParent: parent)
   }
@@ -173,6 +263,11 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   override func viewDidAppear(_ animated: Bool) {
     super.viewDidAppear(animated)
     accessibilityToolbar.accessibilityElementsHidden = false
+    
+    // Readium may create WKWebViews asynchronously, so reconfigure after appearing
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+      self?.configureScrollViewInsets()
+    }
   }
 
   override func viewWillDisappear(_ animated: Bool) {
@@ -248,7 +343,11 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   }
 
   override var prefersStatusBarHidden: Bool {
-    return navigationBarHidden && !UIAccessibility.isVoiceOverRunning
+    // Keep status bar visible on iPad to avoid safe area changes when navbar toggles
+    if UIDevice.current.userInterfaceIdiom == .pad {
+      return false
+    }
+    return navigationBarHidden
   }
 
   //----------------------------------------------------------------------------
@@ -331,18 +430,6 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   //----------------------------------------------------------------------------
   // MARK: - Accessibility
 
-  /// Constraint used to shift the content under the navigation bar, since it is always visible when VoiceOver is running.
-  private lazy var accessibilityTopMargin: NSLayoutConstraint = {
-    let topAnchor: NSLayoutYAxisAnchor = {
-      if #available(iOS 11.0, *) {
-        return self.view.safeAreaLayoutGuide.topAnchor
-      } else {
-        return self.topLayoutGuide.bottomAnchor
-      }
-    }()
-    return self.stackView.topAnchor.constraint(equalTo: topAnchor)
-  }()
-
   private lazy var accessibilityToolbar: UIToolbar = {
     func makeItem(_ item: UIBarButtonItem.SystemItem, label: String? = nil, action: UIKit.Selector? = nil) -> UIBarButtonItem {
       let button = UIBarButtonItem(barButtonSystemItem: item, target: (action != nil) ? self : nil, action: action)
@@ -359,7 +446,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
       makeItem(.flexibleSpace),
       forwardButton,
     ]
-    toolbar.isHidden = !UIAccessibility.isVoiceOverRunning
+    toolbar.isHidden = !isVoiceOverRunning
     toolbar.tintColor = UIColor.black
     return toolbar
   }()
@@ -376,12 +463,26 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   }
 
   func updateViewsForVoiceOver(isRunning: Bool) {
-    updateNavigationBar()
     isVoiceOverRunning = isRunning
-    accessibilityTopMargin.isActive = isRunning
+    updateNavigationBar()
     accessibilityToolbar.isHidden = !isRunning
     positionLabel.isHidden = isRunning
     bookTitleLabel.isHidden = isRunning
+
+    // Adjust bottom inset for accessibility toolbar
+    if let scrollView = (navigator.view as? UIScrollView) ?? navigator.view.subviews.compactMap({ $0 as? UIScrollView }).first {
+      if isRunning {
+        // Ensure layout is up to date to get correct toolbar height
+        view.layoutIfNeeded()
+        let toolbarHeight = accessibilityToolbar.frame.height
+        scrollView.contentInset.bottom = toolbarHeight
+        scrollView.scrollIndicatorInsets.bottom = toolbarHeight
+      } else {
+        scrollView.contentInset.bottom = 0
+        scrollView.scrollIndicatorInsets.bottom = 0
+      }
+    }
+
     if isRunning {
       UIAccessibility.post(notification: .layoutChanged, argument: navigationController?.navigationBar)
     }

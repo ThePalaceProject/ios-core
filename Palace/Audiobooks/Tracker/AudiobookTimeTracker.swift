@@ -9,6 +9,7 @@
 import Foundation
 import Combine
 import ULID
+import PalaceAudiobookToolkit
 
 @objc
 class AudiobookTimeTracker: NSObject, AudiobookPlaybackTrackerDelegate {

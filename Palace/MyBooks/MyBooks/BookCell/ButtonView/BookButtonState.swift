@@ -8,7 +8,7 @@
 
 import Foundation
 
-enum BookButtonState {
+enum BookButtonState: Equatable {
   case canBorrow
   case canHold
   case holding
@@ -38,18 +38,17 @@ extension BookButtonState {
       if book.hasSample && previewEnabled {
         buttons.append(book.isAudiobook ? .audiobookSample : .sample)
       }
-    case .holding:
+    case .holding, .holdingFrontOfQueue:
       buttons.append(.manageHold)
       if book.hasSample && previewEnabled {
         buttons.append(book.isAudiobook ? .audiobookSample : .sample)
       }
-    case .holdingFrontOfQueue:
-      buttons.append(.get)
-      if book.hasSample && previewEnabled {
-        buttons.append(book.isAudiobook ? .audiobookSample : .sample)
-      }
     case .managingHold:
-      buttons = [.cancelHold, .close]
+      if isHoldReady(book: book) {
+        buttons = [.get, .cancelHold]
+      } else {
+        buttons = [.cancelHold]
+      }
     case .downloadNeeded:
       if let authDef = TPPUserAccount.sharedAccount().authDefinition,
          authDef.needsAuth || book.defaultAcquisitionIfOpenAccess != nil {
@@ -91,6 +90,87 @@ extension BookButtonState {
     }
 
     return buttons
+  }
+  
+  private func isHoldReady(book: TPPBook) -> Bool {
+    guard let availability = book.defaultAcquisition?.availability else { return false }
+    
+    var isReady = false
+    availability.matchUnavailable { _ in
+      isReady = false
+    } limited: { _ in  
+      isReady = false
+    } unlimited: { _ in
+      isReady = false  
+    } reserved: { _ in
+      isReady = false  // Still waiting in queue
+    } ready: { _ in
+      isReady = true   // Hold is ready to borrow!
+    }
+    
+    return isReady
+  }
+}
+
+extension BookButtonState {
+  init?(_ book: TPPBook) {
+    let bookState = TPPBookRegistry.shared.state(for: book.identifier)
+    switch bookState {
+    case .unregistered, .holding:
+      guard let buttonState = Self.stateForAvailability(book.defaultAcquisition?.availability) else {
+        TPPErrorLogger.logError(withCode: .noURL, summary: "Unable to determine BookButtonsViewState because no Availability was provided")
+        return nil
+      }
+      
+      self = buttonState
+    case .downloadNeeded:
+      #if LCP
+      if LCPAudiobooks.canOpenBook(book) {
+        self = .downloadSuccessful
+      } else {
+        self = .downloadNeeded
+      }
+      #else
+      self = .downloadNeeded
+      #endif
+    case .downloadSuccessful:
+      self = .downloadSuccessful
+    case .SAMLStarted, .downloading:
+      // SAML started is part of download process, in this step app does authenticate user but didn't begin file downloading yet
+      // The cell should present progress bar and "Requesting" description on its side
+      self = .downloadInProgress
+    case .downloadFailed:
+      self = .downloadFailed
+    case .used:
+      self = .used
+    case .unsupported:
+      self = .unsupported
+    case .returning:
+      self = .returning
+    }
+  }
+}
+
+extension BookButtonState {
+  static func stateForAvailability(_ availability: TPPOPDSAcquisitionAvailability?) -> BookButtonState? {
+    guard let availability else {
+      return nil
+    }
+
+    var state: BookButtonState = .unsupported
+    availability.matchUnavailable { _ in
+      state = .canHold
+    } limited: { _ in
+      state = .canBorrow
+    } unlimited: { _ in
+      state = .canBorrow
+    } reserved: { _ in
+      state = .holdingFrontOfQueue
+    } ready: { _ in
+      state = .canBorrow  // Hold is ready, user can borrow
+    }
+
+    return state
   }
 }
 

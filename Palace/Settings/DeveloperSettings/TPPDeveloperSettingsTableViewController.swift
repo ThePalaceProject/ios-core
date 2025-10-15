@@ -146,6 +146,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     
     if Section(rawValue: indexPath.section) == .dataManagement {
       AccountsManager.shared.clearCache()
+      ImageCache.shared.clear()
       let alert = TPPAlertUtils.alert(title: "Data Management", message: "Cache Cleared")
       self.present(alert, animated: true, completion: nil)
     } else if Section(rawValue: indexPath.section) == .developerTools {
@@ -163,7 +164,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     let mailComposer = MFMailComposeViewController()
     mailComposer.mailComposeDelegate = self
     mailComposer.setSubject("Audiobook Logs")
-    mailComposer.setToRecipients(["maurice.carrier@outlook.com"])
+    mailComposer.setToRecipients(["logs@thepalaceproject.org"])
     mailComposer.setPreferredSendingEmailAddress("LyrasisDebugging@email.com")
     
     let logger = AudiobookFileLogger()

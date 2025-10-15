@@ -7,10 +7,10 @@ platform :ios do
 
     run_tests(
       project: "Palace.xcodeproj",
-      devices: ["iPhone SE (3rd generation)"],
+      devices: ["iPhone 14"],
       scheme: "Palace",
-      destination: "platform=iOS Simulator,name=iPhone SE (3rd generation),OS=latest,arch=x86_64",
-      xcargs: "ARCHS=x86_64 ONLY_ACTIVE_ARCH=NO"
+      destination: "platform=iOS Simulator,name=iPhone 14,OS=16.1",
+      xcargs: "ARCHS=x86_64 ONLY_ACTIVE_ARCH=NO IPHONEOS_DEPLOYMENT_TARGET=16.0"
     )
   end
 
@@ -24,11 +24,20 @@ platform :ios do
       skip_package_ipa: true,
       skip_archive: true,
       skip_codesigning: true,
+      sdk: "iphonesimulator",
+      destination: "platform=iOS Simulator,OS=16.1",
+      xcargs: "ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO IPHONEOS_DEPLOYMENT_TARGET=16.0",
+      skip_profile_detection: true,
       silent: true
     )
   end
 
   lane :beta do |options|
+    ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "300"
+    ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"] = "4"
+    
+    # Best-effort DerivedData clean (ignore failures)
+    sh("rm -rf ~/Library/Developer/Xcode/DerivedData/* || true")
 
     build_app(
       project: "Palace.xcodeproj",
@@ -36,6 +45,8 @@ platform :ios do
       include_symbols: true,
       include_bitcode: false,
       silent: true,
+      sdk: "iphoneos",
+      xcargs: "ONLY_ACTIVE_ARCH=NO ARCHS=arm64 IPHONEOS_DEPLOYMENT_TARGET=16.0",
       output_name: options[:output_name],
       output_directory: options[:export_path],
       export_options: {
@@ -51,13 +62,16 @@ platform :ios do
     ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "300"
     ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"] = "4"
 
-    sh("rm -rf ~/Library/Developer/Xcode/DerivedData/*")
+    # Best-effort DerivedData clean (ignore failures)
+    sh("rm -rf ~/Library/Developer/Xcode/DerivedData/* || true")
 
     build_app(
       project: "Palace.xcodeproj",
       scheme: "Palace",
       include_symbols: true,
       include_bitcode: false,
+      sdk: "iphoneos",
+      xcargs: "ONLY_ACTIVE_ARCH=NO ARCHS=arm64 IPHONEOS_DEPLOYMENT_TARGET=16.0",
       export_options: {
         method: "app-store",
         provisioningProfiles: { 

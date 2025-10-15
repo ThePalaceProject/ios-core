@@ -2,38 +2,67 @@ name: Unit Tests
 on: [ pull_request, workflow_dispatch ]
 jobs:
   build-and-test:
-    runs-on: macOS-latest
+    runs-on: macos-14
     steps:
-      - name: Use the latest Xcode
-        run: sudo xcode-select -switch /Applications/Xcode.app
+      - name: Set up Xcode 16.2
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16.2'
+
+      - name: Verify Xcode Version
+        run: xcodebuild -version
+        
       - name: Checkout main repo and submodules
         uses: actions/checkout@v3
         with:
           submodules: true
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
+          
+      - name: Cache Swift packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            .build
+            SourcePackages
+            ~/Library/Developer/Xcode/DerivedData/**/SourcePackages
+          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
+            
+      - name: Cache Xcode DerivedData
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Developer/Xcode/DerivedData
+          key: ${{ runner.os }}-deriveddata-${{ hashFiles('**/*.xcodeproj/project.pbxproj') }}
+          restore-keys: |
+            ${{ runner.os }}-deriveddata-
+            
       - name: Checkout Certificates
         uses: actions/checkout@v3
         with:
           repository: ThePalaceProject/mobile-certificates
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
           path: ./mobile-certificates
+          
       - name: Checkout Adobe RMSDK
         uses: ./.github/actions/checkout-adobe
         with:
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
+          
       - name: Setup repo with DRM
         run: ./scripts/setup-repo-drm.sh
         env:
           BUILD_CONTEXT: ci
+          
       - name: Build non-Carthage 3rd party dependencies
         run: ./scripts/build-3rd-party-dependencies.sh
         env:
           BUILD_CONTEXT: ci
-      - name: Build Palace without DRM support
-        run: ./scripts/xcode-build-nodrm.sh
-        env:
-          BUILD_CONTEXT: ci
-      - name: Run Palace unit tests
-        run: ./scripts/xcode-test.sh
+          
+      - name: List available simulators for debugging
+        run: xcrun simctl list devices available | grep iPhone | head -10
+        
+      - name: Run Palace unit tests (builds automatically)
+        run: ./scripts/xcode-test-optimized.sh
         env:
           BUILD_CONTEXT: ci

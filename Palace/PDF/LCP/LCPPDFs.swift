@@ -244,7 +244,13 @@ import ReadiumZIPFoundation
   @objc static func deletePdfContent(url: URL) throws {
     let contentUrl = temporaryUrlForPDF(url: url)
     if FileManager.default.fileExists(atPath: contentUrl.path) {
-      try FileManager.default.removeItem(at: contentUrl)
+      do {
+        try FileManager.default.removeItem(at: contentUrl)
+      } catch CocoaError.fileNoSuchFile {
+        NSLog("PDF content was already removed during deletion: \(contentUrl.lastPathComponent)")
+      } catch {
+        throw error
+      }
     }
   }
 }

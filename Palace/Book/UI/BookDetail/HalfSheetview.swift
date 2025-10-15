@@ -1,5 +1,6 @@
 import SwiftUI
 
+@MainActor
 protocol HalfSheetProvider: ObservableObject, BookButtonProvider {
   var isFullSize: Bool { get }
   var bookState: TPPBookState { get set }
@@ -33,6 +34,8 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
   @ObservedObject var viewModel: ViewModel
   var backgroundColor: Color
   @Binding var coverImage: UIImage?
+  @State private var originalState: TPPBookState = .unregistered
+  @State private var didChangeState: Bool = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: viewModel.isFullSize ? 20 : 10) {
@@ -56,8 +59,18 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
         BookButtonsView(provider: viewModel, previewEnabled: false, onButtonTapped: { type in
           switch type {
           case .close:
+            viewModel.bookState = originalState
             dismiss()
+          case .read, .listen:
+            didChangeState = true
+            DispatchQueue.main.async {
+              viewModel.handleAction(for: type)
+            }
+          case .return, .remove:
+            didChangeState = true
+            viewModel.handleAction(for: type)
           default:
+            didChangeState = true
             viewModel.handleAction(for: type)
           }
         })
@@ -66,8 +79,18 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
         BookButtonsView(provider: viewModel, previewEnabled: false, onButtonTapped: { type in
           switch type {
           case .close:
+            viewModel.bookState = originalState
             dismiss()
+          case .read, .listen:
+            didChangeState = true
+            DispatchQueue.main.async {
+              viewModel.handleAction(for: type)
+            }
+          case .return, .remove:
+            didChangeState = true
+            viewModel.handleAction(for: type)
           default:
+            didChangeState = true
             viewModel.handleAction(for: type)
           }
         })
@@ -76,11 +99,33 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
     .padding()
     .presentationDetents([UIDevice.current.isIpad ? .height(540) : .medium])
     .presentationDragIndicator(.visible)
+    .interactiveDismissDisabled(viewModel.isProcessing(for: .returning))
+    .onAppear {
+      originalState = TPPBookRegistry.shared.state(for: viewModel.book.identifier)
+    }
     .onDisappear {
-      if viewModel.bookState == .returning {
-        viewModel.bookState = .downloadSuccessful
-      } else if viewModel.isManagingHold {
-        viewModel.bookState = .holding
+      // Always sync to latest registry state to avoid reverting the UI after a successful download
+      viewModel.bookState = TPPBookRegistry.shared.state(for: viewModel.book.identifier)
+      if let cellModel = viewModel as? BookCellModel {
+        cellModel.isManagingHold = false
+      }
+    }
+    .onReceive(NotificationCenter.default.publisher(for: .TPPBookRegistryStateDidChange).receive(on: RunLoop.main)) { note in
+      guard
+        let info = note.userInfo as? [String: Any],
+        let identifier = info["bookIdentifier"] as? String,
+        identifier == viewModel.book.identifier,
+        let raw = info["state"] as? Int,
+        let newState = TPPBookState(rawValue: raw)
+      else { return }
+
+      // Dismiss only when a return/remove fully completed to unregistered
+      if viewModel.isReturning && newState == .unregistered {
+        // Reset state and dismiss sheet - parent BookDetailView will handle navigation dismissal
+        if let cellModel = viewModel as? BookCellModel {
+          cellModel.isManagingHold = false
+        }
+        dismiss()
       }
     }
   }
@@ -119,7 +164,10 @@ private extension HalfSheetView {
             .frame(width: 60, height: 90)
             .cornerRadius(4)
         } else {
-          ShimmerView(width: 60, height: 90)
+          RoundedRectangle(cornerRadius: 8)
+            .fill(Color.gray.opacity(0.25))
+            .frame(width: 60, height: 90)
+            .opacity(0.8)
         }
 
         VStack(alignment: .leading, spacing: 4) {
@@ -163,15 +211,17 @@ private extension HalfSheetView {
   @ViewBuilder
   var holdingInfoView: some View {
     let details = viewModel.book.getReservationDetails()
-    Text(
-      String(
-        format: DisplayStrings.holdStatus,
-        details.holdPosition.ordinal(),
-        details.copiesAvailable,
-        details.copiesAvailable == 1 ? DisplayStrings.copy : DisplayStrings.copies
+    if details.holdPosition > 0 && details.copiesAvailable > 0 {
+      Text(
+        String(
+          format: DisplayStrings.holdStatus,
+          details.holdPosition.ordinal(),
+          details.copiesAvailable,
+          details.copiesAvailable == 1 ? DisplayStrings.copy : DisplayStrings.copies
+        )
       )
-    )
-    .font(.footnote)
+      .font(.footnote)
+    }
   }
 
   @ViewBuilder

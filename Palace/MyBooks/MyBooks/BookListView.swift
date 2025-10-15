@@ -4,37 +4,45 @@ struct BookListView: View {
   let books: [TPPBook]
   @Binding var isLoading: Bool
   let onSelect: (TPPBook) -> Void
-  @StateObject private var orientation = DeviceOrientation()
+  @State private var containerWidth: CGFloat = UIScreen.main.bounds.width
 
   var body: some View {
-    ScrollView {
-      LazyVGrid(columns: gridLayout, spacing: 0) {
-        ForEach(books, id: \.identifier) { book in
-          Button(action: { onSelect(book) }) {
-            BookCell(model: BookCellModel(book: book))
-              .frame(maxWidth: .infinity, minHeight: 180, maxHeight: 180)
-          }
-          .buttonStyle(.plain)
-          .padding(5)
-          .applyBorderStyle()
+    LazyVGrid(columns: gridLayout, spacing: 0) {
+      ForEach(books, id: \.identifier) { book in
+        Button(action: { onSelect(book) }) {
+          BookCell(model: BookCellModel(book: book, imageCache: ImageCache.shared))
         }
-      }
-      .padding()
-      .onAppear {
-        orientation.startTracking()
-      }
-      .onDisappear {
-        orientation.stopTracking()
+        .buttonStyle(.plain)
+        .applyBorderStyle()
       }
     }
+    .padding(.horizontal, 12)
+    .padding(.vertical, 12)
+    .background(
+      GeometryReader { geometry in
+        Color.clear
+          .onAppear {
+            containerWidth = geometry.size.width
+          }
+          .onChange(of: geometry.size.width) { newWidth in
+            containerWidth = newWidth
+          }
+      }
+    )
   }
 
   private var gridLayout: [GridItem] {
-    [GridItem(.adaptive(minimum: minColumnWidth), spacing: 0)]
-  }
-
-  private var minColumnWidth: CGFloat {
-    UIDevice.current.userInterfaceIdiom == .pad ? 320 : 300
+    if UIDevice.current.userInterfaceIdiom == .pad {
+      let isLandscape = containerWidth > containerWidth * 0.8 // Simple heuristic
+      let screenWidth = UIScreen.main.bounds.width
+      let screenHeight = UIScreen.main.bounds.height
+      let actualIsLandscape = screenWidth > screenHeight
+      
+      let columnCount = actualIsLandscape ? 3 : 2
+      return Array(repeating: GridItem(.flexible(), spacing: 0), count: columnCount)
+    } else {
+      return [GridItem(.adaptive(minimum: 220), spacing: 0)]
+    }
   }
 }
 

@@ -97,11 +97,11 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
   func urlSession(_ session: URLSession,
                   dataTask: URLSessionDataTask,
                   didReceive data: Data) {
-    taskInfoQueue.async {
-       var info = self.taskInfo[dataTask.taskIdentifier]
+    taskInfoQueue.async { [ weak self] in
+       var info = self?.taskInfo[dataTask.taskIdentifier]
        info?.progressData.append(data)
        if let updated = info {
-         self.taskInfo[dataTask.taskIdentifier] = updated
+         self?.taskInfo[dataTask.taskIdentifier] = updated
        }
      }
   }
@@ -287,7 +287,15 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
 
 
 private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse, with task: URLSessionTask) -> Bool {
-  if response.statusCode == 401 && TPPUserAccount.sharedAccount().hasCredentials() {
+  if task.originalRequest?.httpMethod == "DELETE" {
+    return false
+  }
+  
+  guard TPPUserAccount.sharedAccount().hasCredentials() else {
+    return false
+  }
+  
+  if response.statusCode == 401 && TPPUserAccount.sharedAccount().isTokenRefreshRequired() {
     TPPNetworkExecutor.shared.refreshTokenAndResume(task: task)
     return true
   }

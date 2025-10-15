@@ -186,14 +186,45 @@ import UIKit
       return
     }
 
-    guard let vc = viewController else {
-      TPPRootTabBarController.shared()?.safelyPresentViewController(alertController, animated: animated, completion: completion)
+    // If a presenter is provided, present from it on main thread
+    if let vc = viewController {
+      DispatchQueue.main.async {
+        guard vc.presentedViewController == nil else {
+          Log.warn(#file, "Cannot present alert: view controller already presenting")
+          completion?()
+          return
+        }
+        vc.present(alertController, animated: animated, completion: completion)
+        if let msg = alertController.message { Log.info(#file, msg) }
+      }
       return
     }
 
-    vc.present(alertController, animated: animated, completion: completion)
-    if let msg = alertController.message {
-      Log.info(#file, msg)
+    // SwiftUI-first: present from the app's top-most UIKit controller
+    guard let root = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController() else { return }
+    let top = topMostViewController(from: root)
+    DispatchQueue.main.async {
+      guard top.presentedViewController == nil else {
+        Log.warn(#file, "Cannot present alert: top view controller already presenting")
+        completion?()
+        return
+      }
+      top.present(alertController, animated: animated, completion: completion)
+      if let msg = alertController.message { Log.info(#file, msg) }
     }
+  }
+
+  // MARK: - Helpers
+  private class func topMostViewController(from base: UIViewController) -> UIViewController {
+    if let nav = base as? UINavigationController, let visible = nav.visibleViewController {
+      return topMostViewController(from: visible)
+    }
+    if let tab = base as? UITabBarController, let selected = tab.selectedViewController {
+      return topMostViewController(from: selected)
+    }
+    if let presented = base.presentedViewController {
+      return topMostViewController(from: presented)
+    }
+    return base
   }
 }

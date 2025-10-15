@@ -35,6 +35,12 @@ final class Log: NSObject {
     }
     #endif
 
+    #if DEBUG
+    if shouldThrottlePalaceLogging(level: level, tag: tag, message: message) {
+      return
+    }
+    #endif
+
     os_log("%{public}@: %{public}@", type: level, tag, message)
   }
 
@@ -67,16 +73,46 @@ final class Log: NSObject {
     log(.fault, tag, message)
   }
 
-  // Avoid including source paths related to the build machine/user such as
-  // "/Users/<username>/<local-path>/.../Palace"
+  // MARK: - Performance Optimizations
+  
+  private static var lastPalaceLogMessages: [String: Date] = [:]
+  private static let palaceLogThrottleInterval: TimeInterval = 0.3
+  private static let throttleQueue = DispatchQueue(label: "org.thepalaceproject.palace.logging.throttle", attributes: .concurrent)
+  
+  private class func shouldThrottlePalaceLogging(level: OSLogType, tag: String, message: String) -> Bool {
+    guard level != .error && level != .fault else { return false }
+    
+    let now = Date()
+    let messageKey = "\(tag):\(message.prefix(30))"
+    
+    return throttleQueue.sync {
+      if let lastTime = lastPalaceLogMessages[messageKey] {
+        if now.timeIntervalSince(lastTime) < palaceLogThrottleInterval {
+          return true // Throttle this message
+        }
+      }
+      
+      // Use barrier to ensure exclusive write access
+      throttleQueue.async(flags: .barrier) {
+        lastPalaceLogMessages[messageKey] = now
+        
+        // Clean up old entries periodically to prevent memory growth
+        if lastPalaceLogMessages.count > 50 {
+          let cutoffTime = now.addingTimeInterval(-palaceLogThrottleInterval * 20)
+          lastPalaceLogMessages = lastPalaceLogMessages.filter { $0.value > cutoffTime }
+        }
+      }
+      
+      return false
+    }
+  }
+
   private class func trimTag(_ tag: String) -> String {
     guard tag.starts(with: "/") else {
       return tag
     }
 
     var components = tag.components(separatedBy: "/")
-
-    // remove any local path components before the source root in repo
     let sourcesRootIndex = (components.index(of: "Palace") ?? 0) + 1
 
     if sourcesRootIndex < components.count {

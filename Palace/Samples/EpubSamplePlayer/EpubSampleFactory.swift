@@ -57,12 +57,19 @@ import Foundation
   }
 
   private static func save(data: Data) throws -> URL? {
+    let url = documentDirectory()
     do {
-      try data.write(to: documentDirectory())
+      // Create parent directory if it doesn't exist
+      let parentDirectory = url.deletingLastPathComponent()
+      try FileManager.default.createDirectory(at: parentDirectory, withIntermediateDirectories: true, attributes: nil)
+      
+      try data.write(to: url)
+      Log.info(#file, "Successfully saved sample EPUB to: \(url.path)")
     } catch {
+      Log.error(#file, "Failed to save sample EPUB: \(error.localizedDescription)")
       throw error
     }
-    return documentDirectory().absoluteURL
+    return url.absoluteURL
   }
 
   private static func documentDirectory() -> URL {
@@ -70,6 +77,11 @@ import Foundation
       for: .documentDirectory,
       in: .userDomainMask
     )[0]
-    return documentDirectory.appendingPathComponent(samplePath)
+    
+    // Create samples subdirectory to avoid root directory access issues
+    let samplesDirectory = documentDirectory.appendingPathComponent("Samples")
+    try? FileManager.default.createDirectory(at: samplesDirectory, withIntermediateDirectories: true, attributes: nil)
+    
+    return samplesDirectory.appendingPathComponent(samplePath)
   }
 }

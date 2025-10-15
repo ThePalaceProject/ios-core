@@ -3,11 +3,9 @@
 @import MessageUI;
 @import PureLayout;
 
-#import "TPPCatalogNavigationController.h"
 #import "TPPConfiguration.h"
 #import "TPPLinearView.h"
 #import "TPPOPDS.h"
-#import "TPPRootTabBarController.h"
 #import "TPPSettingsAccountDetailViewController.h"
 #import "TPPSettingsEULAViewController.h"
 #import "TPPXML.h"
@@ -583,9 +581,9 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
               [[MyBooksDownloadCenter shared] reset:weakSelf.selectedAccountId];
               [[TPPBookRegistry shared] reset:weakSelf.selectedAccountId];
             }
-            TPPCatalogNavigationController *catalog = (TPPCatalogNavigationController*)[TPPRootTabBarController sharedController].viewControllers[0];
-            [catalog popToRootViewControllerAnimated:NO];
-            [catalog updateFeedAndRegistryOnAccountChange];
+            // Notify and let SwiftUI Catalog handle refresh
+            [[NSNotificationCenter defaultCenter] postNotificationName:NSNotification.TPPCurrentAccountDidChange object:nil];
+            // SwiftUI Catalog listens to TPPCurrentAccountDidChange and updates
           }];
         }];
       }
@@ -649,7 +647,6 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
     }
     case CellKindBarcodeImage: {
       [self.tableView beginUpdates];
-      // Collapse barcode by adjusting certain constraints
       if (self.barcodeImageView.bounds.size.height > sConstantZero) {
         self.barcodeHeightConstraint.constant = sConstantZero;
         self.barcodeTextHeightConstraint.constant = sConstantZero;
@@ -846,6 +843,9 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
         if (self.businessLogic.selectedAuthentication.supportsBarcodeScanner) {
           [cell.contentView addSubview:self.barcodeScanButton];
           CGFloat rightMargin = cell.layoutMargins.right;
+          if (@available(iOS 15.0, *)) {
+            // contentEdgeInsets is ignored with UIButtonConfiguration, but keep for older OS
+          }
           self.barcodeScanButton.contentEdgeInsets = UIEdgeInsetsMake(0, rightMargin * 2, 0, rightMargin);
           [self.barcodeScanButton autoPinEdgesToSuperviewEdgesWithInsets:UIEdgeInsetsZero excludingEdge:ALEdgeLeading];
           if (!self.usernameTextField.enabled) {
@@ -1480,9 +1480,7 @@ didEncounterValidationError:(NSError *)error
                                      error:error];
   }
 
-  [[TPPRootTabBarController sharedController] safelyPresentViewController:alert
-                                                                  animated:YES
-                                                                completion:nil];
+  [TPPPresentationUtils safelyPresent:alert animated:YES completion:nil];
 }
 
 - (void)businessLogicDidCompleteSignIn:(TPPSignInBusinessLogic *)businessLogic
