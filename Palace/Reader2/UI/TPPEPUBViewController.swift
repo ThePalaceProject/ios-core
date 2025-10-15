@@ -82,13 +82,19 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     log(.info, "TPPEPUBViewController will appear. UI color set based on preferences.")
     epubNavigator.submitPreferences(preferences)
     
-    // Ensure navigation bar is translucent to overlay content without shifting
+    if navigationItem.leftBarButtonItem == nil {
+       let backItem = UIBarButtonItem(image: UIImage(systemName: "chevron.left"), style: .plain, target: self, action: #selector(closeEPUB))
+       navigationItem.leftBarButtonItem = backItem
+     }
+
     navigationController?.navigationBar.isTranslucent = true
   }
   
+  @objc private func closeEPUB() {
+    NavigationCoordinatorHub.shared.coordinator?.pop()
+  }
+  
   override func viewSafeAreaInsetsDidChange() {
-    // DO NOT call super - prevents Readium from responding to safe area changes
-    // This stops the content from shifting when the navigation bar appears/disappears
   }
 
   override func viewWillDisappear(_ animated: Bool) {
