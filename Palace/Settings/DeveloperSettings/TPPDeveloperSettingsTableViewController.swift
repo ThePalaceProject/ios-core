@@ -164,7 +164,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     let mailComposer = MFMailComposeViewController()
     mailComposer.mailComposeDelegate = self
     mailComposer.setSubject("Audiobook Logs")
-    mailComposer.setToRecipients(["maurice.carrier@outlook.com"])
+    mailComposer.setToRecipients(["logs@thepalaceproject.org"])
     mailComposer.setPreferredSendingEmailAddress("LyrasisDebugging@email.com")
     
     let logger = AudiobookFileLogger()
