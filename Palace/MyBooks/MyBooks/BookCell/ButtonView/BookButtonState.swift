@@ -39,10 +39,16 @@ extension BookButtonState {
         buttons.append(book.isAudiobook ? .audiobookSample : .sample)
       }
     case .holding, .holdingFrontOfQueue:
-      buttons.append(.manageHold)
-      if book.hasSample && previewEnabled {
-        buttons.append(book.isAudiobook ? .audiobookSample : .sample)
+      if isHoldReady(book: book) {
+        buttons = [.get, .cancelHold]
+      } else {
+        buttons.append(.manageHold)
+        
+        if book.hasSample && previewEnabled {
+          buttons.append(book.isAudiobook ? .audiobookSample : .sample)
+        }
       }
+      
     case .managingHold:
       if isHoldReady(book: book) {
         buttons = [.get, .cancelHold]
