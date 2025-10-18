@@ -600,22 +600,44 @@ private extension TPPBook {
     DispatchQueue.global(qos: .userInitiated).async { [weak self] in
       guard let self = self else { return }
 
-      let ciImage = CIImage(image: inputImage)
+      guard let ciImage = CIImage(image: inputImage) else {
+        Log.debug(#file, "Failed to create CIImage from UIImage for book: \(self.identifier)")
+        return
+      }
+
+      guard !ciImage.extent.isEmpty else {
+        Log.debug(#file, "CIImage has empty extent for book: \(self.identifier)")
+        return
+      }
+
       let filter = CIFilter.areaAverage()
       filter.inputImage = ciImage
-      filter.extent = ciImage?.extent ?? .zero
+      filter.extent = ciImage.extent
 
-      guard let outputImage = filter.outputImage else { return }
+      guard let outputImage = filter.outputImage else {
+        Log.debug(#file, "Failed to generate output image from filter for book: \(self.identifier)")
+        return
+      }
+
+      guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else {
+        Log.debug(#file, "Failed to create sRGB color space for book: \(self.identifier)")
+        return
+      }
 
       var bitmap = [UInt8](repeating: 0, count: 4)
-      let context = CIContext(options: [CIContextOption.useSoftwareRenderer: false])
+      let context = CIContext(options: [
+        .workingColorSpace: colorSpace,
+        .outputColorSpace: colorSpace,
+        .useSoftwareRenderer: false
+      ])
+      
       context.render(
         outputImage,
         toBitmap: &bitmap,
         rowBytes: 4,
         bounds: CGRect(x: 0, y: 0, width: 1, height: 1),
         format: .RGBA8,
-        colorSpace: nil
+        colorSpace: colorSpace
       )
 
       let color = UIColor(
