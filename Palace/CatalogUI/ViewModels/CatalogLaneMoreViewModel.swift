@@ -66,14 +66,6 @@ class CatalogLaneMoreViewModel: ObservableObject {
   }
   
   private func setupObservers() {
-    // Observe sort changes
-    $currentSort
-      .dropFirst() // Skip initial value
-      .sink { [weak self] _ in
-        self?.sortBooksInPlace()
-      }
-      .store(in: &cancellables)
-    
     // Setup pending selections when filter sheet opens
     $showingFiltersSheet
       .filter { $0 } // Only when opening
@@ -351,7 +343,7 @@ class CatalogLaneMoreViewModel: ObservableObject {
   // MARK: - Sorting
   
   func sortBooksInPlace() {
-    CatalogSortService.sort(books: &ungroupedBooks, by: currentSort)
+    ungroupedBooks = CatalogSortService.sorted(books: ungroupedBooks, by: currentSort)
   }
   
   // MARK: - State Persistence

@@ -207,7 +207,11 @@ struct CatalogLaneMoreView: View {
       ScrollView {
         LazyVStack(alignment: .leading, spacing: 0) {
           ForEach(CatalogSortService.SortOption.allCases, id: \.self) { sort in
-            Button(action: { viewModel.currentSort = sort }) {
+            Button(action: { 
+              viewModel.currentSort = sort
+              viewModel.sortBooksInPlace()
+              viewModel.showingSortSheet = false
+            }) {
               HStack {
                 Image(systemName: viewModel.currentSort == sort ? "largecircle.fill.circle" : "circle")
                   .foregroundColor(.primary)
