@@ -17,6 +17,8 @@ import Foundation
   private var sectionHeaderSize: CGFloat = 20
 
   var requiresSelectionBeforeDismiss: Bool = false
+  
+  private var accountsLoadingLogos = Set<String>()
 
   @objc required init(completion: @escaping (Account) -> ()) {
     self.completion = completion
@@ -80,10 +82,6 @@ import Foundation
 
   private func finishConfiguration() {
     datasource.delegate = self
-    AccountsManager.shared.accounts().forEach { account in
-      account.logoDelegate = self
-      account.loadLogo()
-    }
     tableView.reloadData()
   }
 
@@ -145,8 +143,29 @@ extension TPPAccountList: UITableViewDelegate, UITableViewDataSource {
     guard let cell = tableView.dequeueReusableCell(withIdentifier: TPPAccountListCell.reuseIdentifier, for: indexPath) as? TPPAccountListCell else {
       return UITableViewCell()
     }
-    cell.configure(for: datasource.account(at: indexPath))
+    let account = datasource.account(at: indexPath)
+    cell.configure(for: account)
+    
+    loadLogoIfNeeded(for: account, at: indexPath)
+    
     return cell
+  }
+  
+  private func loadLogoIfNeeded(for account: Account, at indexPath: IndexPath) {
+    guard !accountsLoadingLogos.contains(account.uuid) else { return }
+    guard account.logoUrl != nil else { return }
+    
+    if let cachedImage = account.imageCache.get(for: account.uuid) {
+      if account.logo.size != cachedImage.size {
+        account.logo = cachedImage
+        tableView.reloadRows(at: [indexPath], with: .none)
+      }
+      return
+    }
+    
+    accountsLoadingLogos.insert(account.uuid)
+    account.logoDelegate = self
+    account.loadLogo()
   }
 }
 
@@ -159,9 +178,10 @@ extension TPPAccountList: DataSourceDelegate {
 
 extension TPPAccountList: AccountLogoDelegate {
   func logoDidUpdate(in account: Account, to newLogo: UIImage) {
+    accountsLoadingLogos.remove(account.uuid)
     if let indexPath = datasource.indexPath(for: account) {
       DispatchQueue.main.async {
-        self.tableView.reloadRows(at: [indexPath], with: .automatic)
+        self.tableView.reloadRows(at: [indexPath], with: .none)
       }
     }
   }

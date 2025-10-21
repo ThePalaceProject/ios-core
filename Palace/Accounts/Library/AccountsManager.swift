@@ -257,14 +257,6 @@ let currentAccountIdentifierKey = "TPPCurrentAccountIdentifier"
         }
       }
 
-      for acct in newAccounts {
-        group.enter()
-        DispatchQueue.global(qos: .background).async {
-          acct.loadLogo()
-          group.leave()
-        }
-      }
-
       group.notify(queue: .main) {
         var mainFeed = URL(string: self.currentAccount?.catalogUrl ?? "")
         if let cur = self.currentAccount, cur.details?.needsAgeCheck ?? false {
