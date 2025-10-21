@@ -637,11 +637,20 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
       if (completion) {
         completion();
       }
-      sRetainedSignInVC = nil; // Release after auth completes
+      sRetainedSignInVC = nil;
     };
     
-    [sRetainedSignInVC presentIfNeededUsingExistingCredentials:NO
-                                           completionHandler:wrappedCompletion];
+    // Ensure authentication document is loaded before presenting sign-in
+    [sRetainedSignInVC.businessLogic ensureAuthenticationDocumentIsLoaded:^(BOOL success) {
+      [TPPMainThreadRun asyncIfNeeded:^{
+        if (!success) {
+          NSLog(@"Failed to load authentication document for sign-in");
+        }
+        
+        [sRetainedSignInVC presentIfNeededUsingExistingCredentials:NO
+                                               completionHandler:wrappedCompletion];
+      }];
+    }];
   }];
 }
 
@@ -654,30 +663,22 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
 - (void)presentIfNeededUsingExistingCredentials:(BOOL const)useExistingCredentials
                               completionHandler:(void (^)(void))completionHandler
 {
-  // Load the view so text fields are created for businessLogic to use
-  // The VC is now retained via sRetainedSignInVC, so it won't be deallocated
   [self view];
 
-  // Check if user needs to sign in (no credentials)
   BOOL needsInitialSignIn = !self.businessLogic.userAccount.hasCredentials;
   
-  // If user has no credentials, we need to handle completion ourselves
-  // because refreshAuthIfNeeded will return false and call completion immediately
   void (^wrappedCompletion)(void) = completionHandler;
   if (needsInitialSignIn) {
-    // Store completion to be called after successful sign-in
     self.businessLogic.refreshAuthCompletion = completionHandler;
-    wrappedCompletion = nil; // Don't pass to refreshAuthIfNeeded
+    wrappedCompletion = nil;
   }
   
   BOOL shouldPresentVC = [self.businessLogic
                           refreshAuthIfNeededUsingExistingCredentials:useExistingCredentials
                           completion:wrappedCompletion];
 
-  // Present the VC if:
-  // 1. refreshAuthIfNeeded says we should (expired credentials, etc.)
-  // 2. OR user has no credentials at all (initial sign-in)
-  if (shouldPresentVC || needsInitialSignIn) {
+  BOOL hasAuthDoc = self.businessLogic.libraryAccount.details != nil;
+  if (shouldPresentVC || needsInitialSignIn || (hasAuthDoc && !self.businessLogic.userAccount.hasCredentials)) {
     [self presentAsModal];
   }
 }
