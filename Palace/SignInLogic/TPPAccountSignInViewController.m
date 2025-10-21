@@ -56,6 +56,9 @@ typedef NS_ENUM(NSInteger, Section) {
 
 @end
 
+// Retain the sign-in VC to prevent premature deallocation during auth flows
+static TPPAccountSignInViewController *sRetainedSignInVC = nil;
+
 @implementation TPPAccountSignInViewController
 
 @synthesize usernameTextField;
@@ -617,10 +620,28 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
 + (void)requestCredentialsForUsername:(NSString *)username withCompletion:(void (^)(void))completion
 {
   [TPPMainThreadRun asyncIfNeeded:^{
-    TPPAccountSignInViewController *signInVC = [[self alloc] init];
-    signInVC.defaultUsername = username;
-    [signInVC presentIfNeededUsingExistingCredentials:NO
-                                    completionHandler:completion];
+    // Retain the VC to prevent deallocation during auth flow
+    sRetainedSignInVC = [[self alloc] init];
+    sRetainedSignInVC.defaultUsername = username;
+    
+    // Failsafe: Release retained VC after 5 minutes if completion never called
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(300.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+      if (sRetainedSignInVC != nil) {
+        NSLog(@"Warning: Sign-in VC retained longer than expected, releasing");
+        sRetainedSignInVC = nil;
+      }
+    });
+    
+    // Wrap completion to release the retained VC
+    void (^wrappedCompletion)(void) = ^{
+      if (completion) {
+        completion();
+      }
+      sRetainedSignInVC = nil; // Release after auth completes
+    };
+    
+    [sRetainedSignInVC presentIfNeededUsingExistingCredentials:NO
+                                           completionHandler:wrappedCompletion];
   }];
 }
 
@@ -633,14 +654,30 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
 - (void)presentIfNeededUsingExistingCredentials:(BOOL const)useExistingCredentials
                               completionHandler:(void (^)(void))completionHandler
 {
-  // Tell the VC to create its text fields so we can set their properties.
+  // Load the view so text fields are created for businessLogic to use
+  // The VC is now retained via sRetainedSignInVC, so it won't be deallocated
   [self view];
 
+  // Check if user needs to sign in (no credentials)
+  BOOL needsInitialSignIn = !self.businessLogic.userAccount.hasCredentials;
+  
+  // If user has no credentials, we need to handle completion ourselves
+  // because refreshAuthIfNeeded will return false and call completion immediately
+  void (^wrappedCompletion)(void) = completionHandler;
+  if (needsInitialSignIn) {
+    // Store completion to be called after successful sign-in
+    self.businessLogic.refreshAuthCompletion = completionHandler;
+    wrappedCompletion = nil; // Don't pass to refreshAuthIfNeeded
+  }
+  
   BOOL shouldPresentVC = [self.businessLogic
                           refreshAuthIfNeededUsingExistingCredentials:useExistingCredentials
-                          completion:completionHandler];
+                          completion:wrappedCompletion];
 
-  if (shouldPresentVC) {
+  // Present the VC if:
+  // 1. refreshAuthIfNeeded says we should (expired credentials, etc.)
+  // 2. OR user has no credentials at all (initial sign-in)
+  if (shouldPresentVC || needsInitialSignIn) {
     [self presentAsModal];
   }
 }
@@ -809,9 +846,15 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
 
 - (void)didSelectCancel
 {
+  // Clear any stored completion since user cancelled
+  self.businessLogic.refreshAuthCompletion = nil;
+  
   [self.navigationController.presentingViewController
    dismissViewControllerAnimated:YES
-   completion:nil];
+   completion:^{
+     // Release the retained VC when user cancels
+     sRetainedSignInVC = nil;
+   }];
 }
 
 - (void)didSelectBackForSignUp
@@ -1034,6 +1077,13 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
   [[NSOperationQueue mainQueue] addOperationWithBlock:^{
     [self removeActivityTitle];
     [self removeSAMLActivityView];
+    
+    // Call the stored completion if this was an initial sign-in request
+    // (refreshAuthCompletion is set when user has no credentials)
+    if (businessLogic.refreshAuthCompletion) {
+      businessLogic.refreshAuthCompletion();
+      businessLogic.refreshAuthCompletion = nil;
+    }
   }];
 }
 

@@ -133,6 +133,7 @@ import OverdriveProcessor
   }
   
   private var hasAttemptedAuthentication = false
+  private var isRequestingCredentials = false
   
   private func process(error: [String: Any]?, for book: TPPBook) {
     guard let errorType = error?["type"] as? String else {
@@ -156,7 +157,19 @@ import OverdriveProcessor
         return
       }
       
+      guard !isRequestingCredentials else {
+        NSLog("Already requesting credentials, skipping re-authentication for: \(book.title)")
+        return
+      }
+      
       hasAttemptedAuthentication = true
+      isRequestingCredentials = true
+      
+      // Reset flag after a delay to handle cancellation cases where completion isn't called
+      DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+        self?.isRequestingCredentials = false
+      }
+      
       NSLog("Invalid credentials problem when borrowing a book, present sign in VC")
       
       reauthenticator.authenticateIfNeeded(userAccount, usingExistingCredentials: false) { [weak self] in
@@ -165,8 +178,15 @@ import OverdriveProcessor
           return
         }
         
-        DispatchQueue.main.async {
-          self.startDownload(for: book)
+        self.isRequestingCredentials = false
+        
+        // Only retry if user now has credentials to prevent infinite recursion
+        if self.userAccount.hasCredentials() {
+          DispatchQueue.main.async {
+            self.startDownload(for: book)
+          }
+        } else {
+          NSLog("Authentication completed but no credentials present, user may have cancelled")
         }
       }
       
@@ -239,18 +259,49 @@ import OverdriveProcessor
   }
   
   private func requestCredentialsAndStartDownload(for book: TPPBook) {
+    guard !isRequestingCredentials else {
+      NSLog("Already requesting credentials for authentication, skipping duplicate request for: \(book.title)")
+      return
+    }
+    
+    isRequestingCredentials = true
+    
+    // Reset flag after a delay to handle cancellation cases where completion isn't called
+    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+      self?.isRequestingCredentials = false
+    }
+    
 #if FEATURE_DRM_CONNECTOR
     if AdobeCertificate.defaultCertificate?.hasExpired ?? false {
+      isRequestingCredentials = false
       // ADEPT crashes the app with expired certificate.
       TPPAlertUtils.presentFromViewControllerOrNil(alertController: TPPAlertUtils.expiredAdobeDRMAlert(), viewController: nil, animated: true, completion: nil)
     } else {
       TPPAccountSignInViewController.requestCredentials { [weak self] in
-        self?.startDownload(for: book)
+        guard let self = self else { return }
+        self.isRequestingCredentials = false
+        
+        // Only retry download if user now has credentials
+        // This prevents infinite recursion when refreshAuthIfNeeded returns false immediately
+        if self.userAccount.hasCredentials() {
+          self.startDownload(for: book)
+        } else {
+          NSLog("Sign-in completed but no credentials present, user may have cancelled")
+        }
       }
     }
 #else
     TPPAccountSignInViewController.requestCredentials { [weak self] in
-      self?.startDownload(for: book)
+      guard let self = self else { return }
+      self.isRequestingCredentials = false
+      
+      // Only retry download if user now has credentials
+      // This prevents infinite recursion when refreshAuthIfNeeded returns false immediately
+      if self.userAccount.hasCredentials() {
+        self.startDownload(for: book)
+      } else {
+        NSLog("Sign-in completed but no credentials present, user may have cancelled")
+      }
     }
 #endif
   }
@@ -392,8 +443,28 @@ import OverdriveProcessor
         guard let self = self else { return }
         self.bookRegistry.setState(.downloadNeeded, for: book.identifier)
         
+        guard !self.isRequestingCredentials else {
+          NSLog("Already requesting credentials, skipping re-authentication in problemFoundHandler for: \(book.title)")
+          return
+        }
+        
+        self.isRequestingCredentials = true
+        
+        // Reset flag after a delay to handle cancellation cases where completion isn't called
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+          self?.isRequestingCredentials = false
+        }
+        
         self.reauthenticator.authenticateIfNeeded(self.userAccount, usingExistingCredentials: false) { [weak self] in
-          self?.startDownload(for: book)
+          guard let self = self else { return }
+          self.isRequestingCredentials = false
+          
+          // Only retry if user now has credentials to prevent infinite recursion
+          if self.userAccount.hasCredentials() {
+            self.startDownload(for: book)
+          } else {
+            NSLog("Authentication completed but no credentials present, user may have cancelled")
+          }
         }
       }
       
@@ -445,8 +516,29 @@ import OverdriveProcessor
   
   private func handleProblem(for book: TPPBook, problemDocument: TPPProblemDocument?) {
     bookRegistry.setState(.downloadNeeded, for: book.identifier)
+    
+    guard !isRequestingCredentials else {
+      NSLog("Already requesting credentials, skipping re-authentication in handleProblem for: \(book.title)")
+      return
+    }
+    
+    isRequestingCredentials = true
+    
+    // Reset flag after a delay to handle cancellation cases where completion isn't called
+    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+      self?.isRequestingCredentials = false
+    }
+    
     reauthenticator.authenticateIfNeeded(userAccount, usingExistingCredentials: false) { [weak self] in
-      self?.startDownload(for: book)
+      guard let self = self else { return }
+      self.isRequestingCredentials = false
+      
+      // Only retry if user now has credentials to prevent infinite recursion
+      if self.userAccount.hasCredentials() {
+        self.startDownload(for: book)
+      } else {
+        NSLog("Authentication completed but no credentials present, user may have cancelled")
+      }
     }
   }
   
