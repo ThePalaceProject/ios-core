@@ -187,6 +187,10 @@ private extension CatalogView {
   }
   
   func handleAccountChange() {
+    if showSearch {
+      dismissSearch()
+    }
+    
     let account = AccountsManager.shared.currentAccount
     account?.logoDelegate = logoObserver
     account?.loadLogo()

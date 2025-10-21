@@ -129,6 +129,10 @@ struct CatalogLaneMoreView: View {
   }
   
   private func handleAccountChange() {
+    if viewModel.showSearch {
+      dismissSearch()
+    }
+    
     setupAccount()
     viewModel.appliedSelections.removeAll()
     viewModel.pendingSelections.removeAll()

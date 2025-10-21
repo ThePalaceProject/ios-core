@@ -557,10 +557,9 @@ extension TPPBook {
 
       TPPBookCoverRegistryBridge.shared.thumbnailImageForBook(self) { [weak self] image in
         guard let self = self else { return }
-        let final = image ?? UIImage(systemName: "book")
 
-        self.thumbnailImage = final
-        if let img = final {
+        self.thumbnailImage = image
+        if let img = image {
           self.imageCache.set(img, for: self.identifier)
           self.imageCache.set(img, for: thumbnailKey)
           if self.coverImage == nil {
