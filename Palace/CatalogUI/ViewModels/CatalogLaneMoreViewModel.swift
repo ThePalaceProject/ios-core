@@ -14,6 +14,9 @@ class CatalogLaneMoreViewModel: ObservableObject {
   @Published var isLoading = true
   @Published var error: String?
   
+  @Published var nextPageURL: URL?
+  @Published var isLoadingMore = false
+  
   // UI State
   @Published var showingSortSheet = false
   @Published var showingFiltersSheet = false
@@ -132,8 +135,11 @@ class CatalogLaneMoreViewModel: ObservableObject {
         lanes.removeAll()
         ungroupedBooks.removeAll()
         facetGroups.removeAll()
+        nextPageURL = nil
         
         let feedObjc = feed.opdsFeed
+        extractNextPageURL(from: feedObjc)
+        
         if let entries = feedObjc.entries as? [TPPOPDSEntry] {
           switch feedObjc.type {
           case .acquisitionGrouped:
@@ -181,6 +187,40 @@ class CatalogLaneMoreViewModel: ObservableObject {
         .map { CatalogFilterService.makeGroupTitleKey(group: $0.group, title: $0.title) }
     )
     sortBooksInPlace()
+  }
+  
+  // MARK: - Pagination
+  
+  private func extractNextPageURL(from feed: TPPOPDSFeed) {
+    guard let links = feed.links as? [TPPOPDSLink] else { return }
+    for link in links {
+      if link.rel == "next" {
+        nextPageURL = link.href
+        break
+      }
+    }
+  }
+  
+  func loadNextPage() async {
+    guard let nextURL = nextPageURL, !isLoadingMore else { return }
+    
+    isLoadingMore = true
+    defer { isLoadingMore = false }
+    
+    do {
+      if let feed = try await api.fetchFeed(at: nextURL) {
+        let feedObjc = feed.opdsFeed
+        extractNextPageURL(from: feedObjc)
+        
+        if let entries = feedObjc.entries as? [TPPOPDSEntry] {
+          let newBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0) }
+          ungroupedBooks.append(contentsOf: newBooks)
+          sortBooksInPlace()
+        }
+      }
+    } catch {
+      Log.error(#file, "Failed to load next page: \(error.localizedDescription)")
+    }
   }
   
   // MARK: - Registry Sync

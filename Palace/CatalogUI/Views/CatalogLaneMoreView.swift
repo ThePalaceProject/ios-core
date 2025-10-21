@@ -350,9 +350,13 @@ private extension CatalogLaneMoreView {
   @ViewBuilder
   var booksView: some View {
     ScrollView {
-      BookListView(books: viewModel.ungroupedBooks, isLoading: $viewModel.isLoading) { book in
-        presentBookDetail(book)
-      }
+      BookListView(
+        books: viewModel.ungroupedBooks,
+        isLoading: $viewModel.isLoading,
+        onSelect: { book in presentBookDetail(book) },
+        onLoadMore: { await viewModel.loadNextPage() },
+        isLoadingMore: viewModel.isLoadingMore
+      )
     }
     .refreshable { await viewModel.fetchAndApplyFeed(at: viewModel.url) }
   }
