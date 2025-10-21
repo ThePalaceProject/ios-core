@@ -14,7 +14,7 @@ struct AudiobookSampleToolbar: View {
   @ObservedObject var player: AudiobookSamplePlayer
 
   private var book: TPPBook
-  private let imageLoader = AsyncImage(image: UIImage(systemName: "book.closed.fill") ?? UIImage())
+  private let imageLoader: AsyncImage
   private let toolbarHeight: CGFloat = 70
   private let toolbarPadding: CGFloat = 5
   private let imageViewHeight: CGFloat = 70
@@ -25,9 +25,30 @@ struct AudiobookSampleToolbar: View {
     self.book = book
     guard let sample = book.sample as? AudiobookSample else { return nil }
     player = AudiobookSamplePlayer(sample: sample)
+    
+    let placeholderImage = Self.generatePlaceholder(for: book)
+    imageLoader = AsyncImage(image: placeholderImage)
+    
     if let imageURL = book.imageThumbnailURL ?? book.imageURL {
       imageLoader.loadImage(url: imageURL)
     }
+  }
+  
+  private static func generatePlaceholder(for book: TPPBook) -> UIImage {
+    let size = CGSize(width: 80, height: 120)
+    let format = UIGraphicsImageRendererFormat()
+    format.scale = UIScreen.main.scale
+    return UIGraphicsImageRenderer(size: size, format: format)
+      .image { ctx in
+        if let view = NYPLTenPrintCoverView(
+          frame: CGRect(origin: .zero, size: size),
+          withTitle: book.title,
+          withAuthor: book.authors ?? "Unknown Author",
+          withScale: 0.4
+        ) {
+          view.layer.render(in: ctx.cgContext)
+        }
+      }
   }
 
   var body: some View {

@@ -58,7 +58,9 @@ struct HoldsView: View {
       .sheet(isPresented: $model.showLibraryAccountView) {
         UIViewControllerWrapper(
           TPPAccountList { account in
-            model.loadAccount(account)
+            DispatchQueue.main.async {
+              model.loadAccount(account)
+            }
           },
           updater: { _ in }
         )

@@ -164,12 +164,17 @@
     }
   
     updateSettingsAccountList()
-    // Return from search screen to the list of libraries
     navigationController?.popViewController(animated: false)
-    // Switch to the selected library
+    
+    if let urlString = account.catalogUrl, let url = URL(string: urlString) {
+      TPPSettings.shared.accountMainFeedURL = url
+    }
+    
     AccountsManager.shared.currentAccount = account
+    
+    account.loadAuthenticationDocument { _ in }
+    
     self.tableView.reloadData()
-  
     NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
     self.tabBarController?.selectedIndex = 0
     (navigationController?.parent as? UINavigationController)?.popToRootViewController(animated: false)

@@ -17,6 +17,8 @@ import Foundation
   private var sectionHeaderSize: CGFloat = 20
 
   var requiresSelectionBeforeDismiss: Bool = false
+  
+  private var accountsLoadingLogos = Set<String>()
 
   @objc required init(completion: @escaping (Account) -> ()) {
     self.completion = completion
@@ -80,10 +82,6 @@ import Foundation
 
   private func finishConfiguration() {
     datasource.delegate = self
-    AccountsManager.shared.accounts().forEach { account in
-      account.logoDelegate = self
-      account.loadLogo()
-    }
     tableView.reloadData()
   }
 
@@ -122,7 +120,11 @@ extension TPPAccountList: UITableViewDelegate, UITableViewDataSource {
   }
 
   func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-    completion(datasource.account(at: indexPath))
+    let selectedAccount = datasource.account(at: indexPath)
+    DispatchQueue.main.async { [weak self] in
+      guard let self = self else { return }
+      self.completion(selectedAccount)
+    }
   }
 
   func tableView(_ tableView: UITableView, viewForHeaderInSection section: Int) -> UIView? {
@@ -141,8 +143,35 @@ extension TPPAccountList: UITableViewDelegate, UITableViewDataSource {
     guard let cell = tableView.dequeueReusableCell(withIdentifier: TPPAccountListCell.reuseIdentifier, for: indexPath) as? TPPAccountListCell else {
       return UITableViewCell()
     }
-    cell.configure(for: datasource.account(at: indexPath))
+    let account = datasource.account(at: indexPath)
+    
+    // Check cache synchronously and set image directly on cell to prevent gaps
+    if let cachedImage = account.imageCache.get(for: account.uuid) {
+      // Update account's logo if needed for consistency
+      if account.logo.size != cachedImage.size {
+        account.logo = cachedImage
+      }
+      cell.customImageView.image = cachedImage
+    } else {
+      // Set default logo while loading
+      cell.customImageView.image = account.logo
+      // Trigger async loading if not already in progress
+      loadLogoIfNeeded(for: account, at: indexPath)
+    }
+    
+    cell.customTextlabel.text = account.name
+    cell.customDetailLabel.text = account.subtitle
+    
     return cell
+  }
+  
+  private func loadLogoIfNeeded(for account: Account, at indexPath: IndexPath) {
+    guard !accountsLoadingLogos.contains(account.uuid) else { return }
+    guard account.logoUrl != nil else { return }
+    
+    accountsLoadingLogos.insert(account.uuid)
+    account.logoDelegate = self
+    account.loadLogo()
   }
 }
 
@@ -155,9 +184,15 @@ extension TPPAccountList: DataSourceDelegate {
 
 extension TPPAccountList: AccountLogoDelegate {
   func logoDidUpdate(in account: Account, to newLogo: UIImage) {
-    if let indexPath = datasource.indexPath(for: account) {
-      DispatchQueue.main.async {
-        self.tableView.reloadRows(at: [indexPath], with: .automatic)
+    accountsLoadingLogos.remove(account.uuid)
+    if let indexPath = datasource.indexPath(for: account),
+       tableView.indexPathsForVisibleRows?.contains(indexPath) == true {
+      DispatchQueue.main.async { [weak self] in
+        guard let self = self else { return }
+        // Only update if cell is still visible
+        if let cell = self.tableView.cellForRow(at: indexPath) as? TPPAccountListCell {
+          cell.customImageView.image = newLogo
+        }
       }
     }
   }

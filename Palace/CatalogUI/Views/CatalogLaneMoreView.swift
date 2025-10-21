@@ -129,6 +129,10 @@ struct CatalogLaneMoreView: View {
   }
   
   private func handleAccountChange() {
+    if viewModel.showSearch {
+      dismissSearch()
+    }
+    
     setupAccount()
     viewModel.appliedSelections.removeAll()
     viewModel.pendingSelections.removeAll()
@@ -203,7 +207,11 @@ struct CatalogLaneMoreView: View {
       ScrollView {
         LazyVStack(alignment: .leading, spacing: 0) {
           ForEach(CatalogSortService.SortOption.allCases, id: \.self) { sort in
-            Button(action: { viewModel.currentSort = sort }) {
+            Button(action: { 
+              viewModel.currentSort = sort
+              viewModel.sortBooksInPlace()
+              viewModel.showingSortSheet = false
+            }) {
               HStack {
                 Image(systemName: viewModel.currentSort == sort ? "largecircle.fill.circle" : "circle")
                   .foregroundColor(.primary)
@@ -346,9 +354,13 @@ private extension CatalogLaneMoreView {
   @ViewBuilder
   var booksView: some View {
     ScrollView {
-      BookListView(books: viewModel.ungroupedBooks, isLoading: $viewModel.isLoading) { book in
-        presentBookDetail(book)
-      }
+      BookListView(
+        books: viewModel.ungroupedBooks,
+        isLoading: $viewModel.isLoading,
+        onSelect: { book in presentBookDetail(book) },
+        onLoadMore: { await viewModel.loadNextPage() },
+        isLoadingMore: viewModel.isLoadingMore
+      )
     }
     .refreshable { await viewModel.fetchAndApplyFeed(at: viewModel.url) }
   }

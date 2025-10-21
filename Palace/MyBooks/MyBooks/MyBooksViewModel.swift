@@ -140,8 +140,18 @@ enum Group: Int {
   }
 
   private func updateFeed(_ account: Account) {
+    if !TPPSettings.shared.settingsAccountIdsList.contains(account.uuid) {
+      TPPSettings.shared.settingsAccountIdsList.append(account.uuid)
+    }
+    
+    if let urlString = account.catalogUrl, let url = URL(string: urlString) {
+      TPPSettings.shared.accountMainFeedURL = url
+    }
+    
     AccountsManager.shared.currentAccount = account
-    // Notify the app that the account changed so Catalog and UI refresh appropriately
+    
+    account.loadAuthenticationDocument { _ in }
+    
     NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
   }
 

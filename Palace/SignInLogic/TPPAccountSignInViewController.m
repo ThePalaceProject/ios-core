@@ -56,6 +56,9 @@ typedef NS_ENUM(NSInteger, Section) {
 
 @end
 
+// Retain the sign-in VC to prevent premature deallocation during auth flows
+static TPPAccountSignInViewController *sRetainedSignInVC = nil;
+
 @implementation TPPAccountSignInViewController
 
 @synthesize usernameTextField;
@@ -617,10 +620,37 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
 + (void)requestCredentialsForUsername:(NSString *)username withCompletion:(void (^)(void))completion
 {
   [TPPMainThreadRun asyncIfNeeded:^{
-    TPPAccountSignInViewController *signInVC = [[self alloc] init];
-    signInVC.defaultUsername = username;
-    [signInVC presentIfNeededUsingExistingCredentials:NO
-                                    completionHandler:completion];
+    // Retain the VC to prevent deallocation during auth flow
+    sRetainedSignInVC = [[self alloc] init];
+    sRetainedSignInVC.defaultUsername = username;
+    
+    // Failsafe: Release retained VC after 5 minutes if completion never called
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(300.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+      if (sRetainedSignInVC != nil) {
+        NSLog(@"Warning: Sign-in VC retained longer than expected, releasing");
+        sRetainedSignInVC = nil;
+      }
+    });
+    
+    // Wrap completion to release the retained VC
+    void (^wrappedCompletion)(void) = ^{
+      if (completion) {
+        completion();
+      }
+      sRetainedSignInVC = nil;
+    };
+    
+    // Ensure authentication document is loaded before presenting sign-in
+    [sRetainedSignInVC.businessLogic ensureAuthenticationDocumentIsLoaded:^(BOOL success) {
+      [TPPMainThreadRun asyncIfNeeded:^{
+        if (!success) {
+          NSLog(@"Failed to load authentication document for sign-in");
+        }
+        
+        [sRetainedSignInVC presentIfNeededUsingExistingCredentials:NO
+                                               completionHandler:wrappedCompletion];
+      }];
+    }];
   }];
 }
 
@@ -633,14 +663,22 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
 - (void)presentIfNeededUsingExistingCredentials:(BOOL const)useExistingCredentials
                               completionHandler:(void (^)(void))completionHandler
 {
-  // Tell the VC to create its text fields so we can set their properties.
   [self view];
 
+  BOOL needsInitialSignIn = !self.businessLogic.userAccount.hasCredentials;
+  
+  void (^wrappedCompletion)(void) = completionHandler;
+  if (needsInitialSignIn) {
+    self.businessLogic.refreshAuthCompletion = completionHandler;
+    wrappedCompletion = nil;
+  }
+  
   BOOL shouldPresentVC = [self.businessLogic
                           refreshAuthIfNeededUsingExistingCredentials:useExistingCredentials
-                          completion:completionHandler];
+                          completion:wrappedCompletion];
 
-  if (shouldPresentVC) {
+  BOOL hasAuthDoc = self.businessLogic.libraryAccount.details != nil;
+  if (shouldPresentVC || needsInitialSignIn || (hasAuthDoc && !self.businessLogic.userAccount.hasCredentials)) {
     [self presentAsModal];
   }
 }
@@ -809,9 +847,15 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
 
 - (void)didSelectCancel
 {
+  // Clear any stored completion since user cancelled
+  self.businessLogic.refreshAuthCompletion = nil;
+  
   [self.navigationController.presentingViewController
    dismissViewControllerAnimated:YES
-   completion:nil];
+   completion:^{
+     // Release the retained VC when user cancels
+     sRetainedSignInVC = nil;
+   }];
 }
 
 - (void)didSelectBackForSignUp
@@ -1034,6 +1078,13 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
   [[NSOperationQueue mainQueue] addOperationWithBlock:^{
     [self removeActivityTitle];
     [self removeSAMLActivityView];
+    
+    // Call the stored completion if this was an initial sign-in request
+    // (refreshAuthCompletion is set when user has no credentials)
+    if (businessLogic.refreshAuthCompletion) {
+      businessLogic.refreshAuthCompletion();
+      businessLogic.refreshAuthCompletion = nil;
+    }
   }];
 }
 
