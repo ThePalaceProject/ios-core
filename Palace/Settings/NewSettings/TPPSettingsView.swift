@@ -78,8 +78,10 @@ struct TPPSettingsView: View {
     .sheet(isPresented: $showAddLibrarySheet) {
       UIViewControllerWrapper(
         TPPAccountList { account in
-          MyBooksViewModel().loadAccount(account)
-          showAddLibrarySheet = false
+          DispatchQueue.main.async {
+            MyBooksViewModel().loadAccount(account)
+            showAddLibrarySheet = false
+          }
         },
         updater: { _ in }
       )

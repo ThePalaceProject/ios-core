@@ -122,7 +122,11 @@ extension TPPAccountList: UITableViewDelegate, UITableViewDataSource {
   }
 
   func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-    completion(datasource.account(at: indexPath))
+    let selectedAccount = datasource.account(at: indexPath)
+    DispatchQueue.main.async { [weak self] in
+      guard let self = self else { return }
+      self.completion(selectedAccount)
+    }
   }
 
   func tableView(_ tableView: UITableView, viewForHeaderInSection section: Int) -> UIView? {

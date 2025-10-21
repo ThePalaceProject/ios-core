@@ -202,10 +202,13 @@ private extension CatalogView {
   }
   
   func switchToAccount(_ account: Account) {
-    AccountsManager.shared.currentAccount = account
     if let urlString = account.catalogUrl, let url = URL(string: urlString) {
       TPPSettings.shared.accountMainFeedURL = url
     }
+    AccountsManager.shared.currentAccount = account
+    
+    account.loadAuthenticationDocument { _ in }
+    
     NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
     Task { await viewModel.refresh() }
   }

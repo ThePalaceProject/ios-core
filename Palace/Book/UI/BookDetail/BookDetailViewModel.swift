@@ -361,18 +361,20 @@ final class BookDetailViewModel: ObservableObject {
     )
     
     businessLogic.ensureAuthenticationDocumentIsLoaded { [weak self] (success: Bool) in
-      guard let self = self else { return }
-      
-      let account = TPPUserAccount.sharedAccount()
-      if account.needsAuth && !account.hasCredentials() {
-        self.showHalfSheet = false
-        TPPAccountSignInViewController.requestCredentials { [weak self] in
-          guard let self else { return }
-          action()
+      DispatchQueue.main.async {
+        guard let self = self else { return }
+        
+        let account = TPPUserAccount.sharedAccount()
+        if account.needsAuth && !account.hasCredentials() {
+          self.showHalfSheet = false
+          TPPAccountSignInViewController.requestCredentials { [weak self] in
+            guard let self else { return }
+            action()
+          }
+          return
         }
-        return
+        action()
       }
-      action()
     }
   }
   

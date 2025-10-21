@@ -223,14 +223,16 @@ extension TPPAppDelegate {
     if needsAccount {
       var nav: UINavigationController!
       let accountList = TPPAccountList { account in
-        // Match CatalogView's Add Library flow: persist, switch account, update feed URL, notify, dismiss
         if !TPPSettings.shared.settingsAccountIdsList.contains(account.uuid) {
           TPPSettings.shared.settingsAccountIdsList.append(account.uuid)
         }
-        AccountsManager.shared.currentAccount = account
         if let urlString = account.catalogUrl, let url = URL(string: urlString) {
           TPPSettings.shared.accountMainFeedURL = url
         }
+        AccountsManager.shared.currentAccount = account
+        
+        account.loadAuthenticationDocument { _ in }
+        
         NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
         nav?.dismiss(animated: true)
       }

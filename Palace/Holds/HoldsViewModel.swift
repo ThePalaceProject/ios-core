@@ -119,7 +119,13 @@ final class HoldsViewModel: ObservableObject {
     }
     
     private func updateFeed(_ account: Account) {
+        if let urlString = account.catalogUrl, let url = URL(string: urlString) {
+            TPPSettings.shared.accountMainFeedURL = url
+        }
         AccountsManager.shared.currentAccount = account
+        
+        account.loadAuthenticationDocument { _ in }
+        
         NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
     }
 
