@@ -13,16 +13,19 @@ actor TPPBookCoverRegistry {
   }
   
   func coverImage(for book: TPPBook) async -> UIImage? {
-    guard let url = book.imageURL else { return await thumbnailImage(for: book) }
-    return await fetchImage(from: url, for: book, isCover: true)
+    if let url = book.imageURL, let image = await fetchImage(from: url, for: book, isCover: true) {
+      return image
+    }
+    
+    return await thumbnailImage(for: book)
   }
   
   func thumbnailImage(for book: TPPBook) async -> UIImage? {
-    guard let url = book.imageThumbnailURL else {
-      return await placeholder(for: book)
+    if let url = book.imageThumbnailURL, let image = await fetchImage(from: url, for: book, isCover: false) {
+      return image
     }
     
-    return await fetchImage(from: url, for: book, isCover: false)
+    return await placeholder(for: book)
   }
   
   private func fetchImage(from url: URL, for book: TPPBook, isCover: Bool) async -> UIImage? {
@@ -36,16 +39,19 @@ actor TPPBookCoverRegistry {
     }
     
     let task = Task<UIImage?, Never> { [weak self] in
-      guard let self else { return UIImage() }
+      guard let self else { return nil }
       
       do {
         let (data, _) = try await URLSession.shared.data(from: url)
-        guard let image = UIImage(data: data) else { return nil }
+        guard let image = UIImage(data: data) else {
+          Log.error(#file, "Failed to decode image data from URL: \(url)")
+          return nil
+        }
         
         self.imageCache.set(image, for: key as String, expiresIn: nil)
         return image
       } catch {
-        Log.error(#file, "Failed to fetch image: \(error.localizedDescription)")
+        Log.error(#file, "Failed to fetch image from \(url): \(error.localizedDescription)")
         return nil
       }
     }
