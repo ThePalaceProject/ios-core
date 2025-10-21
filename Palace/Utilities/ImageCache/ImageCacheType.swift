@@ -20,7 +20,7 @@ public final class ImageCache: ImageCacheType {
     private let dataCache = GeneralCache<String, Data>(cacheName: "ImageCache", mode: .memoryAndDisk)
     private let memoryImages = NSCache<NSString, UIImage>()
     private let defaultTTL: TimeInterval = 14 * 24 * 60 * 60
-    private let maxDimension: CGFloat = 1024
+    private let maxDimension: CGFloat
     private let compressionQuality: CGFloat = 0.7
 
     private init() {
@@ -30,12 +30,15 @@ public final class ImageCache: ImageCacheType {
         if deviceMemoryMB < 2048 {
             cacheMemoryMB = 25
             memoryImages.countLimit = 100
+            maxDimension = 512
         } else if deviceMemoryMB < 4096 {
             cacheMemoryMB = 40
             memoryImages.countLimit = 150
+            maxDimension = 768
         } else {
             cacheMemoryMB = 60
             memoryImages.countLimit = 200
+            maxDimension = 1024
         }
         
         memoryImages.totalCostLimit = cacheMemoryMB * 1024 * 1024
@@ -72,9 +75,15 @@ public final class ImageCache: ImageCacheType {
 
     public func set(_ image: UIImage, for key: String, expiresIn: TimeInterval? = nil) {
         let ttl = expiresIn ?? defaultTTL
-        let processed = resize(image, maxDimension: maxDimension)
+        
+        guard let processed = resize(image, maxDimension: maxDimension) else {
+            Log.error(#file, "Failed to resize image for key: \(key). Skipping cache.")
+            return
+        }
+        
         let cost = imageCost(processed)
         memoryImages.setObject(processed, forKey: key as NSString, cost: cost)
+        
         DispatchQueue.global(qos: .utility).async {
             guard let data = processed.jpegData(compressionQuality: self.compressionQuality) else { return }
             self.dataCache.set(data, for: key, expiresIn: ttl)
@@ -107,19 +116,55 @@ public final class ImageCache: ImageCacheType {
         dataCache.clear()
     }
 
-    private func resize(_ image: UIImage, maxDimension: CGFloat) -> UIImage {
+    private func resize(_ image: UIImage, maxDimension: CGFloat) -> UIImage? {
         let size = image.size
         guard size.width > 0 && size.height > 0 else { return image }
         let maxSide = max(size.width, size.height)
         if maxSide <= maxDimension { return image }
+        
         let scale = maxDimension / maxSide
         let newSize = CGSize(width: size.width * scale, height: size.height * scale)
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = 1
-        format.opaque = false
-        let renderer = UIGraphicsImageRenderer(size: newSize, format: format)
-        return renderer.image { _ in
-            image.draw(in: CGRect(origin: .zero, size: newSize))
+        
+        guard newSize.width > 0 && newSize.height > 0 else {
+            Log.error(#file, "Invalid resize dimensions: \(newSize)")
+            return image
+        }
+        
+        return autoreleasepool {
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = 1
+            format.opaque = false
+            
+            guard let cgImage = image.cgImage else {
+                Log.error(#file, "Failed to get CGImage from UIImage")
+                return image
+            }
+            
+            let colorSpace = cgImage.colorSpace ?? CGColorSpaceCreateDeviceRGB()
+            let bitmapInfo = cgImage.bitmapInfo
+            
+            guard let context = CGContext(
+                data: nil,
+                width: Int(newSize.width),
+                height: Int(newSize.height),
+                bitsPerComponent: 8,
+                bytesPerRow: 0,
+                space: colorSpace,
+                bitmapInfo: bitmapInfo.rawValue
+            ) else {
+                Log.error(#file, "Failed to create CGContext for resize. Returning original image.")
+                return image
+            }
+            
+            context.interpolationQuality = .medium
+            context.draw(cgImage, in: CGRect(origin: .zero, size: newSize))
+            
+            guard let resizedCGImage = context.makeImage() else {
+                Log.error(#file, "Failed to create resized CGImage")
+                return image
+            }
+            
+            return UIImage(cgImage: resizedCGImage, scale: 1.0, orientation: image.imageOrientation)
         }
     }
 
