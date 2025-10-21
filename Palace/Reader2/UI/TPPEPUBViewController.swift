@@ -110,6 +110,10 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
      }
 
     navigationController?.navigationBar.isTranslucent = true
+    
+    navigationController?.setNavigationBarHidden(true, animated: false)
+    navigationController?.setToolbarHidden(true, animated: false)
+    tabBarController?.tabBar.isHidden = true
   }
   
   @objc private func closeEPUB() {
