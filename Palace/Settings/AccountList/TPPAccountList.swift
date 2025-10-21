@@ -144,9 +144,23 @@ extension TPPAccountList: UITableViewDelegate, UITableViewDataSource {
       return UITableViewCell()
     }
     let account = datasource.account(at: indexPath)
-    cell.configure(for: account)
     
-    loadLogoIfNeeded(for: account, at: indexPath)
+    // Check cache synchronously and set image directly on cell to prevent gaps
+    if let cachedImage = account.imageCache.get(for: account.uuid) {
+      // Update account's logo if needed for consistency
+      if account.logo.size != cachedImage.size {
+        account.logo = cachedImage
+      }
+      cell.customImageView.image = cachedImage
+    } else {
+      // Set default logo while loading
+      cell.customImageView.image = account.logo
+      // Trigger async loading if not already in progress
+      loadLogoIfNeeded(for: account, at: indexPath)
+    }
+    
+    cell.customTextlabel.text = account.name
+    cell.customDetailLabel.text = account.subtitle
     
     return cell
   }
@@ -154,14 +168,6 @@ extension TPPAccountList: UITableViewDelegate, UITableViewDataSource {
   private func loadLogoIfNeeded(for account: Account, at indexPath: IndexPath) {
     guard !accountsLoadingLogos.contains(account.uuid) else { return }
     guard account.logoUrl != nil else { return }
-    
-    if let cachedImage = account.imageCache.get(for: account.uuid) {
-      if account.logo.size != cachedImage.size {
-        account.logo = cachedImage
-        tableView.reloadRows(at: [indexPath], with: .none)
-      }
-      return
-    }
     
     accountsLoadingLogos.insert(account.uuid)
     account.logoDelegate = self
@@ -179,9 +185,14 @@ extension TPPAccountList: DataSourceDelegate {
 extension TPPAccountList: AccountLogoDelegate {
   func logoDidUpdate(in account: Account, to newLogo: UIImage) {
     accountsLoadingLogos.remove(account.uuid)
-    if let indexPath = datasource.indexPath(for: account) {
-      DispatchQueue.main.async {
-        self.tableView.reloadRows(at: [indexPath], with: .none)
+    if let indexPath = datasource.indexPath(for: account),
+       tableView.indexPathsForVisibleRows?.contains(indexPath) == true {
+      DispatchQueue.main.async { [weak self] in
+        guard let self = self else { return }
+        // Only update if cell is still visible
+        if let cell = self.tableView.cellForRow(at: indexPath) as? TPPAccountListCell {
+          cell.customImageView.image = newLogo
+        }
       }
     }
   }
