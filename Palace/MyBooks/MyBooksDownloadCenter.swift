@@ -1270,6 +1270,13 @@ extension MyBooksDownloadCenter {
     
     if book.defaultBookContentType == .audiobook {
       Log.info(#file, "LCP audiobook license fulfilled, ready for streaming: \(book.identifier)")
+      
+      if let license = TPPLCPLicense(url: licenseUrl) {
+        self.bookRegistry.setFulfillmentId(license.identifier, for: book.identifier)
+      } else {
+        Log.error(#file, "🔑 ❌ Failed to read license for fulfillment ID")
+      }
+      
       self.copyLicenseForStreaming(book: book, sourceLicenseUrl: licenseUrl)
       self.bookRegistry.setState(.downloadSuccessful, for: book.identifier)
       
