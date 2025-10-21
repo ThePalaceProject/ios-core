@@ -594,60 +594,69 @@ extension TPPBook {
 
 // MARK: - Dominant Color (async, off main thread)
 private extension TPPBook {
+  private static let colorProcessingQueue = DispatchQueue(label: "org.thepalaceproject.dominantcolor", qos: .utility)
+  private static let sharedCIContext: CIContext = {
+    guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else {
+      return CIContext()
+    }
+    return CIContext(options: [
+      .workingColorSpace: colorSpace,
+      .outputColorSpace: colorSpace,
+      .useSoftwareRenderer: false
+    ])
+  }()
+  
   func updateDominantColor(using image: UIImage) {
     let inputImage = image
-    DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+    Self.colorProcessingQueue.async { [weak self] in
       guard let self = self else { return }
 
-      guard let ciImage = CIImage(image: inputImage) else {
-        Log.debug(#file, "Failed to create CIImage from UIImage for book: \(self.identifier)")
-        return
-      }
+      autoreleasepool {
+        guard let ciImage = CIImage(image: inputImage) else {
+          Log.debug(#file, "Failed to create CIImage from UIImage for book: \(self.identifier)")
+          return
+        }
 
-      guard !ciImage.extent.isEmpty else {
-        Log.debug(#file, "CIImage has empty extent for book: \(self.identifier)")
-        return
-      }
+        guard !ciImage.extent.isEmpty else {
+          Log.debug(#file, "CIImage has empty extent for book: \(self.identifier)")
+          return
+        }
 
-      let filter = CIFilter.areaAverage()
-      filter.inputImage = ciImage
-      filter.extent = ciImage.extent
+        let filter = CIFilter.areaAverage()
+        filter.inputImage = ciImage
+        filter.extent = ciImage.extent
 
-      guard let outputImage = filter.outputImage else {
-        Log.debug(#file, "Failed to generate output image from filter for book: \(self.identifier)")
-        return
-      }
+        guard let outputImage = filter.outputImage else {
+          Log.debug(#file, "Failed to generate output image from filter for book: \(self.identifier)")
+          return
+        }
 
-      guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else {
-        Log.debug(#file, "Failed to create sRGB color space for book: \(self.identifier)")
-        return
-      }
+        guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else {
+          Log.debug(#file, "Failed to create sRGB color space for book: \(self.identifier)")
+          return
+        }
 
-      var bitmap = [UInt8](repeating: 0, count: 4)
-      let context = CIContext(options: [
-        .workingColorSpace: colorSpace,
-        .outputColorSpace: colorSpace,
-        .useSoftwareRenderer: false
-      ])
-      
-      context.render(
-        outputImage,
-        toBitmap: &bitmap,
-        rowBytes: 4,
-        bounds: CGRect(x: 0, y: 0, width: 1, height: 1),
-        format: .RGBA8,
-        colorSpace: colorSpace
-      )
+        var bitmap = [UInt8](repeating: 0, count: 4)
+        
+        Self.sharedCIContext.render(
+          outputImage,
+          toBitmap: &bitmap,
+          rowBytes: 4,
+          bounds: CGRect(x: 0, y: 0, width: 1, height: 1),
+          format: .RGBA8,
+          colorSpace: colorSpace
+        )
 
-      let color = UIColor(
-        red: CGFloat(bitmap[0]) / 255.0,
-        green: CGFloat(bitmap[1]) / 255.0,
-        blue: CGFloat(bitmap[2]) / 255.0,
-        alpha: CGFloat(bitmap[3]) / 255.0
-      )
+        let color = UIColor(
+          red: CGFloat(bitmap[0]) / 255.0,
+          green: CGFloat(bitmap[1]) / 255.0,
+          blue: CGFloat(bitmap[2]) / 255.0,
+          alpha: CGFloat(bitmap[3]) / 255.0
+        )
 
-      DispatchQueue.main.async {
-        self.dominantUIColor = color
+        DispatchQueue.main.async {
+          self.dominantUIColor = color
+        }
       }
     }
   }
