@@ -13,6 +13,7 @@ import UIKit
 @objcMembers class TPPEncryptedPDFDocument: NSObject {
 
   private var thumbnailsCache = NSCache<NSNumber, NSData>()
+  private var memoryWarningObserver: NSObjectProtocol?
 
   /// PDF document data.
   let data: Data
@@ -34,9 +35,50 @@ import UIKit
     self.document = CGPDFDocument(dataProvider)
     super.init()
 
+    configureCacheLimits()
+    setupMemoryWarningHandler()
+    
     setPageCount()
     setTitle()
     setCover()
+  }
+  
+  deinit {
+    if let observer = memoryWarningObserver {
+      NotificationCenter.default.removeObserver(observer)
+    }
+  }
+  
+  private func configureCacheLimits() {
+    let deviceMemoryMB = ProcessInfo.processInfo.physicalMemory / (1024 * 1024)
+    let cacheMemoryMB: Int
+    let countLimit: Int
+    
+    if deviceMemoryMB < 2048 {
+      cacheMemoryMB = 30
+      countLimit = 50
+    } else if deviceMemoryMB < 4096 {
+      cacheMemoryMB = 50
+      countLimit = 100
+    } else {
+      cacheMemoryMB = 80
+      countLimit = 150
+    }
+    
+    thumbnailsCache.totalCostLimit = cacheMemoryMB * 1024 * 1024
+    thumbnailsCache.countLimit = countLimit
+  }
+  
+  private func setupMemoryWarningHandler() {
+    memoryWarningObserver = NotificationCenter.default.addObserver(
+      forName: UIApplication.didReceiveMemoryWarningNotification,
+      object: nil,
+      queue: .main
+    ) { [weak self] _ in
+      DispatchQueue.global(qos: .utility).async {
+        self?.thumbnailsCache.removeAllObjects()
+      }
+    }
   }
 
   func setPageCount() {
@@ -74,7 +116,7 @@ import UIKit
           }
           if let thumbnail = self.thumbnail(for: page), let thumbnailData = thumbnail.jpegData(compressionQuality: 0.5) {
             DispatchQueue.main.async {
-              self.thumbnailsCache.setObject(thumbnailData as NSData, forKey: pageNumber)
+              self.thumbnailsCache.setObject(thumbnailData as NSData, forKey: pageNumber, cost: thumbnailData.count)
             }
           }
         }
@@ -143,7 +185,7 @@ extension TPPEncryptedPDFDocument {
       return cachedImage
     } else {
       if let image = self.page(at: page)?.thumbnail, let data = image.jpegData(compressionQuality: 0.5) {
-        thumbnailsCache.setObject(data as NSData, forKey: pageNumber)
+        thumbnailsCache.setObject(data as NSData, forKey: pageNumber, cost: data.count)
         return image
       } else {
         return nil

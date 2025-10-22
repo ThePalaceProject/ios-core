@@ -308,9 +308,6 @@ final class MemoryPressureMonitor {
       URLCache.shared.removeAllCachedResponses()
       TPPNetworkExecutor.shared.clearCache()
 
-      ImageCache.shared.clear()
-      GeneralCache<String, Data>.clearAllCaches()
-
       MyBooksDownloadCenter.shared.pauseAllDownloads()
 
       self.reclaimDiskSpaceIfNeeded(minimumFreeMegabytes: 256)
