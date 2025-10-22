@@ -190,7 +190,6 @@ final class NavigationCoordinator: ObservableObject {
 
 struct CatalogLaneFilterState {
   let appliedSelections: Set<String>
-  let currentSort: String  // Store as string to avoid enum duplication
   let facetGroups: [CatalogFilterGroup]
 }
 
