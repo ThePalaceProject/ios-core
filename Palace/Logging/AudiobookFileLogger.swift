@@ -29,14 +29,20 @@ class AudiobookFileLogger: TPPErrorLogger {
     print("New event logged: \(event.description)")
     let logFileUrl = logsDirectoryUrl.appendingPathComponent("\(bookId).log")
     let logMessage = "\(Date()): \(event)\n"
+    let maxLogFileSize: Int64 = 2_000_000
     
     if FileManager.default.fileExists(atPath: logFileUrl.path) {
-      if let fileHandle = try? FileHandle(forWritingTo: logFileUrl) {
-        fileHandle.seekToEndOfFile()
+      let fileSize = (try? FileManager.default.attributesOfItem(atPath: logFileUrl.path)[.size] as? Int64) ?? 0
+      
+      if fileSize > maxLogFileSize {
+        try? FileManager.default.removeItem(at: logFileUrl)
+        try? "...[previous log truncated due to size]...\n\(logMessage)".write(to: logFileUrl, atomically: true, encoding: .utf8)
+      } else if let fileHandle = try? FileHandle(forWritingTo: logFileUrl) {
+        defer { try? fileHandle.close() }
+        try? fileHandle.seekToEnd()
         if let logData = logMessage.data(using: .utf8) {
           fileHandle.write(logData)
         }
-        fileHandle.closeFile()
       }
     } else {
       try? logMessage.write(to: logFileUrl, atomically: true, encoding: .utf8)
@@ -46,6 +52,25 @@ class AudiobookFileLogger: TPPErrorLogger {
   func retrieveLog(forBookId bookId: String) -> String? {
     guard let logsDirectoryUrl = logsDirectoryUrl else { return nil }
     let logFileUrl = logsDirectoryUrl.appendingPathComponent("\(bookId).log")
+    
+    guard let fileSize = try? FileManager.default.attributesOfItem(atPath: logFileUrl.path)[.size] as? Int64 else {
+      return try? String(contentsOf: logFileUrl)
+    }
+    
+    let maxLogSize: Int64 = 1_000_000
+    if fileSize > maxLogSize {
+      Log.warn(#file, "Log file for \(bookId) is \(fileSize) bytes, truncating to last \(maxLogSize) bytes")
+      guard let fileHandle = try? FileHandle(forReadingFrom: logFileUrl) else { return nil }
+      defer { try? fileHandle.close() }
+      
+      let offset = max(0, fileSize - maxLogSize)
+      try? fileHandle.seek(toOffset: UInt64(offset))
+      
+      if let data = try? fileHandle.readToEnd(), let truncatedLog = String(data: data, encoding: .utf8) {
+        return "...[truncated \(offset) bytes]...\n" + truncatedLog
+      }
+    }
+    
     return try? String(contentsOf: logFileUrl)
   }
   
