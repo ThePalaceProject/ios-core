@@ -78,7 +78,6 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
   
   override func updateNavigationBar(animated: Bool = true) {
     super.updateNavigationBar(animated: animated)
-    tabBarController?.tabBar.isHidden = navigationController?.isNavigationBarHidden ?? false
   }
   
   override func viewWillAppear(_ animated: Bool) {
@@ -100,6 +99,8 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
   }
   
   @objc private func closeEPUB() {
+    tabBarController?.tabBar.isHidden = false
+
     NavigationCoordinatorHub.shared.coordinator?.pop()
   }
   
