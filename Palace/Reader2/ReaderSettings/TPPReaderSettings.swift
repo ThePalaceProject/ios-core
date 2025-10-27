@@ -157,5 +157,18 @@ func TPPReaderPreferencesLoad() -> EPUBPreferences {
      let preferences = try? JSONDecoder().decode(EPUBPreferences.self, from: data) {
     return preferences
   }
-  return EPUBPreferences()
+  
+  var defaultPreferences = EPUBPreferences()
+  
+  if defaultPreferences.theme == nil {
+    defaultPreferences.theme = .light
+  }
+  
+  if defaultPreferences.backgroundColor == nil || defaultPreferences.textColor == nil {
+    let defaultColors = TPPAppearanceColors.blackOnWhiteColors
+    defaultPreferences.backgroundColor = ReadiumNavigator.Color(color: Color(defaultColors.backgroundColor))
+    defaultPreferences.textColor = ReadiumNavigator.Color(color: Color(defaultColors.textColor))
+  }
+  
+  return defaultPreferences
 }
