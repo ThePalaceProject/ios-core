@@ -926,6 +926,7 @@
 		E7FD4E54286CD0E000D26A3B /* TPPPDFLocationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7FD4E53286CD0E000D26A3B /* TPPPDFLocationView.swift */; };
 		E7FFEAA62A745F600006030A /* ULID in Frameworks */ = {isa = PBXBuildFile; productRef = E7FFEAA52A745F600006030A /* ULID */; };
 		F2F72851978018C6AB09C877 /* OPDSFeedService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C96F45323283AFF13A1E6F0 /* OPDSFeedService.swift */; };
+		FF6FCE47789D0661E9FB0BC3 /* MainActorHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49E12B7A1E489BAFA00A529C /* MainActorHelpers.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -1250,6 +1251,7 @@
 		2DF321821DC3B83500E1858F /* TPPAnnotations.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPAnnotations.swift; sourceTree = "<group>"; };
 		2DFAC8EB1CD8DDD1003D9EC0 /* TPPOPDSCategory.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPOPDSCategory.h; sourceTree = "<group>"; };
 		2DFAC8EC1CD8DDD1003D9EC0 /* TPPOPDSCategory.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPOPDSCategory.m; sourceTree = "<group>"; };
+		49E12B7A1E489BAFA00A529C /* MainActorHelpers.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = MainActorHelpers.swift; path = Palace/Utilities/Concurrency/MainActorHelpers.swift; sourceTree = "<group>"; };
 		52545184217A76FF00BBC1B4 /* TPPUserNotifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPUserNotifications.swift; sourceTree = "<group>"; };
 		52592BB721220A1100587288 /* TPPLocalization.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = TPPLocalization.m; sourceTree = "<group>"; };
 		52592BBB21220A4F00587288 /* TPPLocalization.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TPPLocalization.h; sourceTree = "<group>"; };
@@ -2335,6 +2337,7 @@
 				1183F35A194F847100DC322F /* TPPAsync.m */,
 				732F929223ECB51F0099244C /* TPPBackgroundExecutor.swift */,
 				7327A89223EE017300954748 /* TPPMainThreadChecker.swift */,
+				49E12B7A1E489BAFA00A529C /* MainActorHelpers.swift */,
 			);
 			path = Concurrency;
 			sourceTree = "<group>";
@@ -4513,6 +4516,7 @@
 				9E8CC9A05A6B5C9C7CC1008D /* ErrorLogExporter.swift in Sources */,
 				D782CBE37A933A50E2123D0F /* TPPNetworkExecutor+Async.swift in Sources */,
 				F2F72851978018C6AB09C877 /* OPDSFeedService.swift in Sources */,
+				FF6FCE47789D0661E9FB0BC3 /* MainActorHelpers.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
