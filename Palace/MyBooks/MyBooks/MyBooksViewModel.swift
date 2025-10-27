@@ -106,6 +106,11 @@ enum Group: Int {
     }
   }
 
+  func resetFilter() {
+    self.books = allBooks
+    self.sortData()
+  }
+
   @objc func authenticateAndLoad(account: Account) {
     account.loadAuthenticationDocument { [weak self] success in
       guard let self = self, success else { return }
