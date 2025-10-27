@@ -472,6 +472,7 @@
 		A4276F481B00046300CA7194 /* TPPMyBooksDownloadInfo.m in Sources */ = {isa = PBXBuildFile; fileRef = A4276F471B00046300CA7194 /* TPPMyBooksDownloadInfo.m */; };
 		A46226271B39D4980063F549 /* TPPOPDSGroup.m in Sources */ = {isa = PBXBuildFile; fileRef = A46226251B39D4980063F549 /* TPPOPDSGroup.m */; };
 		A499BF261B39EFC7002F8B8B /* TPPOPDSEntryGroupAttributes.m in Sources */ = {isa = PBXBuildFile; fileRef = A499BF251B39EFC7002F8B8B /* TPPOPDSEntryGroupAttributes.m */; };
+		A758C2B45DE80F91FEEBDAD9 /* AsyncBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2ED8A855CC1713CC6288194E /* AsyncBridge.swift */; };
 		A823D811192BABA400B55DE2 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A823D810192BABA400B55DE2 /* Foundation.framework */; };
 		A823D813192BABA400B55DE2 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A823D812192BABA400B55DE2 /* CoreGraphics.framework */; };
 		A823D815192BABA400B55DE2 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A823D814192BABA400B55DE2 /* UIKit.framework */; };
@@ -1255,6 +1256,7 @@
 		2DF321821DC3B83500E1858F /* TPPAnnotations.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPAnnotations.swift; sourceTree = "<group>"; };
 		2DFAC8EB1CD8DDD1003D9EC0 /* TPPOPDSCategory.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPOPDSCategory.h; sourceTree = "<group>"; };
 		2DFAC8EC1CD8DDD1003D9EC0 /* TPPOPDSCategory.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPOPDSCategory.m; sourceTree = "<group>"; };
+		2ED8A855CC1713CC6288194E /* AsyncBridge.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AsyncBridge.swift; path = Palace/Utilities/Concurrency/AsyncBridge.swift; sourceTree = "<group>"; };
 		3BF85D5C0D0898C0030BFC76 /* PersistentLogger.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PersistentLogger.swift; path = Palace/Logging/PersistentLogger.swift; sourceTree = "<group>"; };
 		49E12B7A1E489BAFA00A529C /* MainActorHelpers.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = MainActorHelpers.swift; path = Palace/Utilities/Concurrency/MainActorHelpers.swift; sourceTree = "<group>"; };
 		52545184217A76FF00BBC1B4 /* TPPUserNotifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPUserNotifications.swift; sourceTree = "<group>"; };
@@ -2348,6 +2350,7 @@
 				732F929223ECB51F0099244C /* TPPBackgroundExecutor.swift */,
 				7327A89223EE017300954748 /* TPPMainThreadChecker.swift */,
 				49E12B7A1E489BAFA00A529C /* MainActorHelpers.swift */,
+				2ED8A855CC1713CC6288194E /* AsyncBridge.swift */,
 			);
 			path = Concurrency;
 			sourceTree = "<group>";
@@ -4533,6 +4536,7 @@
 				510C5E1E00D85609C448388F /* CrashRecoveryService.swift in Sources */,
 				210C9FA6490FE629C8932EE2 /* PersistentLogger.swift in Sources */,
 				9B71EB5F2731C4131107AF26 /* DownloadErrorRecovery.swift in Sources */,
+				A758C2B45DE80F91FEEBDAD9 /* AsyncBridge.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
