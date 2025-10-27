@@ -85,6 +85,7 @@
 		21045C562761092C00D2D407 /* TPPOnboardingViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21045C542761092C00D2D407 /* TPPOnboardingViewController.swift */; };
 		21045C582761095B00D2D407 /* TPPOnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21045C572761095B00D2D407 /* TPPOnboardingView.swift */; };
 		21045C592761095B00D2D407 /* TPPOnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21045C572761095B00D2D407 /* TPPOnboardingView.swift */; };
+		210C9FA6490FE629C8932EE2 /* PersistentLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BF85D5C0D0898C0030BFC76 /* PersistentLogger.swift */; };
 		2126FE2E25C059250095C45C /* ReaderError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2126FE2D25C059240095C45C /* ReaderError.swift */; };
 		2126FE3525C059700095C45C /* ReaderModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21DF7F9225AF5E1E0090402A /* ReaderModule.swift */; };
 		2126FE3A25C0597E0095C45C /* LibraryServiceError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21C7B87D25AE1DB9000E8BF3 /* LibraryServiceError.swift */; };
@@ -1253,6 +1254,7 @@
 		2DF321821DC3B83500E1858F /* TPPAnnotations.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPAnnotations.swift; sourceTree = "<group>"; };
 		2DFAC8EB1CD8DDD1003D9EC0 /* TPPOPDSCategory.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPOPDSCategory.h; sourceTree = "<group>"; };
 		2DFAC8EC1CD8DDD1003D9EC0 /* TPPOPDSCategory.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPOPDSCategory.m; sourceTree = "<group>"; };
+		3BF85D5C0D0898C0030BFC76 /* PersistentLogger.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PersistentLogger.swift; path = Palace/Logging/PersistentLogger.swift; sourceTree = "<group>"; };
 		49E12B7A1E489BAFA00A529C /* MainActorHelpers.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = MainActorHelpers.swift; path = Palace/Utilities/Concurrency/MainActorHelpers.swift; sourceTree = "<group>"; };
 		52545184217A76FF00BBC1B4 /* TPPUserNotifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPUserNotifications.swift; sourceTree = "<group>"; };
 		52592BB721220A1100587288 /* TPPLocalization.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = TPPLocalization.m; sourceTree = "<group>"; };
@@ -2372,6 +2374,7 @@
 				73CDA120243EDAD8009CC6A6 /* URLRequest+Logging.swift */,
 				E56575FF2C933527005953BD /* AudiobookFileLogger.swift */,
 				726AB1E5594A4012BF73797D /* ErrorLogExporter.swift */,
+				3BF85D5C0D0898C0030BFC76 /* PersistentLogger.swift */,
 			);
 			path = Logging;
 			sourceTree = "<group>";
@@ -4525,6 +4528,7 @@
 				FF6FCE47789D0661E9FB0BC3 /* MainActorHelpers.swift in Sources */,
 				5DC1E7B4372E599E905047B4 /* TPPBookRegistryAsync.swift in Sources */,
 				510C5E1E00D85609C448388F /* CrashRecoveryService.swift in Sources */,
+				210C9FA6490FE629C8932EE2 /* PersistentLogger.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

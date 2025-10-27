@@ -173,6 +173,12 @@ actor ErrorLogExporter {
     logs += "App Version: \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown")\n"
     logs += "Build Number: \(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "Unknown")\n"
     
+    // Crash recovery info
+    let crashCount = UserDefaults.standard.integer(forKey: "PalaceCrashCount")
+    let isInSafeMode = await CrashRecoveryService.shared.isInSafeMode()
+    logs += "Crash Count: \(crashCount)\n"
+    logs += "Safe Mode: \(isInSafeMode ? "YES" : "NO")\n"
+    
     // Memory information
     let memoryUsage = reportMemoryUsage()
     logs += "\nCurrent Memory Usage: \(memoryUsage)\n"
@@ -183,6 +189,11 @@ actor ErrorLogExporter {
     }
     
     logs += "\n"
+    
+    // Add persistent log file contents
+    logs += await PersistentLogger.shared.retrieveAllLogs()
+    logs += "\n"
+    
     return logs
   }
   
