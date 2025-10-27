@@ -156,14 +156,11 @@ class BookCellModel: ObservableObject {
     isFetchingImage = true
     isLoading = true
     
-    DispatchQueue.main.async { [weak self] in
-      guard let self = self else { return }
-      TPPBookRegistry.shared.thumbnailImage(for: self.book) { [weak self] fetchedImage in
-        guard let self = self, let fetchedImage else { return }
-        self.setImageAndCache(fetchedImage)
-        self.isLoading = false
-        self.isFetchingImage = false
-      }
+    TPPBookRegistry.shared.thumbnailImage(for: self.book) { [weak self] fetchedImage in
+      guard let self = self, let fetchedImage else { return }
+      self.setImageAndCache(fetchedImage)
+      self.isLoading = false
+      self.isFetchingImage = false
     }
   }
   
@@ -186,7 +183,6 @@ class BookCellModel: ObservableObject {
     TPPBookRegistry.shared.bookStatePublisher
       .filter { [weak self] in $0.0 == self?.book.identifier }
       .map { $0.1 }
-      .receive(on: DispatchQueue.main)
       .sink { [weak self] newState in
         self?.registryState = newState
       }
@@ -212,7 +208,6 @@ class BookCellModel: ObservableObject {
       }
       .removeDuplicates()
       .debounce(for: .milliseconds(180), scheduler: DispatchQueue.main)
-      .receive(on: DispatchQueue.main)
       .assign(to: &$stableButtonState)
   }
   
@@ -276,7 +271,7 @@ extension BookCellModel {
 
   private func openAudiobookFromCell() {
     BookService.open(book) { [weak self] in
-      DispatchQueue.main.async { self?.isLoading = false }
+      self?.isLoading = false
     }
   }
 
@@ -312,11 +307,9 @@ extension BookCellModel {
     self.isLoading = true
     let identifier = self.book.identifier
     MyBooksDownloadCenter.shared.returnBook(withIdentifier: identifier) { [weak self] in
-      DispatchQueue.main.async {
-        self?.isLoading = false
-        self?.isManagingHold = false
-        self?.showHalfSheet = false
-      }
+      self?.isLoading = false
+      self?.isManagingHold = false
+      self?.showHalfSheet = false
     }
   }
   
@@ -347,14 +340,14 @@ extension BookCellModel {
         guard let self else { return }
         TPPUserNotifications.requestAuthorization()
         MyBooksDownloadCenter.shared.startBorrow(for: self.book, attemptDownload: false) { [weak self] in
-          DispatchQueue.main.async { self?.isLoading = false }
+          self?.isLoading = false
         }
       }
       return
     }
     TPPUserNotifications.requestAuthorization()
     MyBooksDownloadCenter.shared.startBorrow(for: book, attemptDownload: false) { [weak self] in
-      DispatchQueue.main.async { self?.isLoading = false }
+      self?.isLoading = false
     }
   }
   
@@ -366,10 +359,9 @@ extension BookCellModel {
       return
     }
     EpubSampleFactory.createSample(book: book) { sampleURL, error in
-      DispatchQueue.main.async {
-        self.isLoading = false
-        if let error = error {
-          Log.debug("Sample generation error for \(self.book.title): \(error.localizedDescription)", "")
+      self.isLoading = false
+      if let error = error {
+        Log.debug("Sample generation error for \(self.book.title): \(error.localizedDescription)", "")
           return
         }
         if let sampleWebURL = sampleURL as? EpubSampleWebURL {
