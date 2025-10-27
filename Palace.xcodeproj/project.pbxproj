@@ -464,6 +464,7 @@
 		8C40D6A72375FF8B006EA63B /* TPPProblemDocumentCacheManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C40D6A62375FF8B006EA63B /* TPPProblemDocumentCacheManager.swift */; };
 		8CC26F832370C1DF0000D8E1 /* Account.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CC26F822370C1DF0000D8E1 /* Account.swift */; };
 		8CE9C471237F84820072E964 /* TPPBookDetailsProblemDocumentViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CE9C470237F84820072E964 /* TPPBookDetailsProblemDocumentViewController.swift */; };
+		9E8CC9A05A6B5C9C7CC1008D /* ErrorLogExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 726AB1E5594A4012BF73797D /* ErrorLogExporter.swift */; };
 		A4276F481B00046300CA7194 /* TPPMyBooksDownloadInfo.m in Sources */ = {isa = PBXBuildFile; fileRef = A4276F471B00046300CA7194 /* TPPMyBooksDownloadInfo.m */; };
 		A46226271B39D4980063F549 /* TPPOPDSGroup.m in Sources */ = {isa = PBXBuildFile; fileRef = A46226251B39D4980063F549 /* TPPOPDSGroup.m */; };
 		A499BF261B39EFC7002F8B8B /* TPPOPDSEntryGroupAttributes.m in Sources */ = {isa = PBXBuildFile; fileRef = A499BF251B39EFC7002F8B8B /* TPPOPDSEntryGroupAttributes.m */; };
@@ -489,6 +490,7 @@
 		B51C1E19229456E2003B49A5 /* nypl_authentication_document.json in Resources */ = {isa = PBXBuildFile; fileRef = B51C1E15229456E2003B49A5 /* nypl_authentication_document.json */; };
 		B51C1E1A229456E2003B49A5 /* dpl_authentication_document.json in Resources */ = {isa = PBXBuildFile; fileRef = B51C1E16229456E2003B49A5 /* dpl_authentication_document.json */; };
 		D19CE930C954410A845200318 /* RDServicesStubs.m in Sources */ = {isa = PBXBuildFile; fileRef = 75305888F6A941DDA9EEE592 /* RDServicesStubs.m */; };
+		D782CBE37A933A50E2123D0F /* TPPNetworkExecutor+Async.swift in Sources */ = {isa = PBXBuildFile; fileRef = D04BCBA308A23519CB8B544B /* TPPNetworkExecutor+Async.swift */; };
 		D787E8441FB6B0290016D9D5 /* TPPSettingsAdvancedViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D787E8431FB6B0290016D9D5 /* TPPSettingsAdvancedViewController.swift */; };
 		E501710F27A3948C004B3392 /* TPPBookmarkFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 730EF265260967FF008E1DC3 /* TPPBookmarkFactory.swift */; };
 		E501711127A3948C004B3392 /* TPPBookmarkFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 730EF265260967FF008E1DC3 /* TPPBookmarkFactory.swift */; };
@@ -813,6 +815,7 @@
 		E7376EC0287DE9C00095AADF /* CGSize.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7376EBF287DE9C00095AADF /* CGSize.swift */; };
 		E7376ECC287DF1C30095AADF /* DispatchQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7376ECB287DF1C30095AADF /* DispatchQueue.swift */; };
 		E7376ED0287E05F50095AADF /* TPPPDFPreviewThumbnail.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7376ECF287E05F50095AADF /* TPPPDFPreviewThumbnail.swift */; };
+		E7426D4566A35CA243FE1840 /* PalaceError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 792EAAC792A1F96E02BBDA35 /* PalaceError.swift */; };
 		E74752F727FF044400F5E7FA /* TPPSignInBusinessLogic+CardCreation.swift in Sources */ = {isa = PBXBuildFile; fileRef = E74752F627FF044400F5E7FA /* TPPSignInBusinessLogic+CardCreation.swift */; };
 		E7498A7C2A0E349A0037DD93 /* TPPAppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7498A7A2A0E349A0037DD93 /* TPPAppDelegate.swift */; };
 		E7498A7E2A0E4F6A0037DD93 /* URL+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7498A7D2A0E4F6A0037DD93 /* URL+Extensions.swift */; };
@@ -922,6 +925,7 @@
 		E7FD4E52286CCF2C00D26A3B /* TPPPDFLocation.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7FD4E51286CCF2C00D26A3B /* TPPPDFLocation.swift */; };
 		E7FD4E54286CD0E000D26A3B /* TPPPDFLocationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7FD4E53286CD0E000D26A3B /* TPPPDFLocationView.swift */; };
 		E7FFEAA62A745F600006030A /* ULID in Frameworks */ = {isa = PBXBuildFile; productRef = E7FFEAA52A745F600006030A /* ULID */; };
+		F2F72851978018C6AB09C877 /* OPDSFeedService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C96F45323283AFF13A1E6F0 /* OPDSFeedService.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -1264,6 +1268,7 @@
 		5DD567AE22B95A30001F0C83 /* String+MD5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "String+MD5.swift"; sourceTree = "<group>"; };
 		5DD567B422B97344001F0C83 /* Data+Base64.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Data+Base64.swift"; sourceTree = "<group>"; };
 		7096661E3AAF4B878E1F49DC /* RDServicesStubs.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RDServicesStubs.h; sourceTree = "<group>"; };
+		726AB1E5594A4012BF73797D /* ErrorLogExporter.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ErrorLogExporter.swift; path = Palace/Logging/ErrorLogExporter.swift; sourceTree = "<group>"; };
 		7300D469258829E1002256A3 /* unit-testing.yml */ = {isa = PBXFileReference; lastKnownFileType = text.yaml; path = "unit-testing.yml"; sourceTree = "<group>"; };
 		7307A5EC23FF1A8500DE53DE /* TPPOpenSearchDescriptionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPOpenSearchDescriptionTests.swift; sourceTree = "<group>"; };
 		73085E192502DE88008F6244 /* TPPPresentationUtils.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPPresentationUtils.swift; sourceTree = "<group>"; };
@@ -1393,6 +1398,7 @@
 		73F713672417240100C63B81 /* UIViewController+TPP.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = "UIViewController+TPP.swift"; path = "Palace/Reader2/UI/UIViewController+TPP.swift"; sourceTree = SOURCE_ROOT; };
 		73FB0AC824EB403D0072E430 /* TPPBookContentTypeConverter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBookContentTypeConverter.swift; sourceTree = "<group>"; };
 		75305888F6A941DDA9EEE592 /* RDServicesStubs.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = RDServicesStubs.m; sourceTree = "<group>"; };
+		792EAAC792A1F96E02BBDA35 /* PalaceError.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PalaceError.swift; path = Palace/ErrorHandling/PalaceError.swift; sourceTree = "<group>"; };
 		841B55411B740F2700FAC1AF /* TPPSettingsEULAViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPSettingsEULAViewController.h; sourceTree = "<group>"; };
 		841B55421B740F2700FAC1AF /* TPPSettingsEULAViewController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPSettingsEULAViewController.m; sourceTree = "<group>"; };
 		84B7A3431B84E8FE00584FB2 /* OFL.txt */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = OFL.txt; sourceTree = "<group>"; };
@@ -1402,6 +1408,7 @@
 		8C40D6A62375FF8B006EA63B /* TPPProblemDocumentCacheManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPProblemDocumentCacheManager.swift; sourceTree = "<group>"; };
 		8CC26F822370C1DF0000D8E1 /* Account.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Account.swift; sourceTree = "<group>"; };
 		8CE9C470237F84820072E964 /* TPPBookDetailsProblemDocumentViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBookDetailsProblemDocumentViewController.swift; sourceTree = "<group>"; };
+		9C96F45323283AFF13A1E6F0 /* OPDSFeedService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = OPDSFeedService.swift; path = Palace/OPDS2/OPDSFeedService.swift; sourceTree = "<group>"; };
 		A4276F461B00046300CA7194 /* TPPMyBooksDownloadInfo.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPMyBooksDownloadInfo.h; sourceTree = "<group>"; };
 		A4276F471B00046300CA7194 /* TPPMyBooksDownloadInfo.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPMyBooksDownloadInfo.m; sourceTree = "<group>"; };
 		A46226251B39D4980063F549 /* TPPOPDSGroup.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPOPDSGroup.m; sourceTree = "<group>"; };
@@ -1440,6 +1447,7 @@
 		B51C1E15229456E2003B49A5 /* nypl_authentication_document.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = nypl_authentication_document.json; sourceTree = "<group>"; };
 		B51C1E16229456E2003B49A5 /* dpl_authentication_document.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = dpl_authentication_document.json; sourceTree = "<group>"; };
 		CAE35BBA1B86289500BF9BC5 /* Palace.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Palace.xcconfig; path = ../Palace.xcconfig; sourceTree = "<group>"; };
+		D04BCBA308A23519CB8B544B /* TPPNetworkExecutor+Async.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = "TPPNetworkExecutor+Async.swift"; path = "Palace/Network/TPPNetworkExecutor+Async.swift"; sourceTree = "<group>"; };
 		D787E8431FB6B0290016D9D5 /* TPPSettingsAdvancedViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPSettingsAdvancedViewController.swift; sourceTree = "<group>"; };
 		E50221B629881BC900A8A80B /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = es.lproj/Localizable.strings; sourceTree = "<group>"; };
 		E50221BE29881CAC00A8A80B /* de */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = de; path = de.lproj/Localizable.strings; sourceTree = "<group>"; };
@@ -2118,6 +2126,7 @@
 				7360D0D424BFCB9700C8AD16 /* TPPUserFriendlyError.swift */,
 				2D62568A1D412BCB0080A81F /* BundledHTMLViewController.swift */,
 				E6BA02B71DE4B6F600F76404 /* RemoteHTMLViewController.swift */,
+				D04BCBA308A23519CB8B544B /* TPPNetworkExecutor+Async.swift */,
 			);
 			path = Network;
 			sourceTree = "<group>";
@@ -2354,6 +2363,7 @@
 				1114A6AC1958B215007507A2 /* TPPLOG.h */,
 				73CDA120243EDAD8009CC6A6 /* URLRequest+Logging.swift */,
 				E56575FF2C933527005953BD /* AudiobookFileLogger.swift */,
+				726AB1E5594A4012BF73797D /* ErrorLogExporter.swift */,
 			);
 			path = Logging;
 			sourceTree = "<group>";
@@ -2439,6 +2449,7 @@
 				B51C1DFF22861BAD003B49A5 /* OPDS2Link.swift */,
 				E7F403202899A70A004934A3 /* OPDS2LinkArray.swift */,
 				B51C1E0122861BBF003B49A5 /* OPDS2Publication.swift */,
+				9C96F45323283AFF13A1E6F0 /* OPDSFeedService.swift */,
 			);
 			path = OPDS2;
 			sourceTree = "<group>";
@@ -2542,6 +2553,7 @@
 				5D1B141422CBE3570006C964 /* TPPProblemDocument.swift */,
 				8C40D6A62375FF8B006EA63B /* TPPProblemDocumentCacheManager.swift */,
 				145798F5215BE9E300F68AFD /* ProblemReportEmail.swift */,
+				792EAAC792A1F96E02BBDA35 /* PalaceError.swift */,
 			);
 			path = ErrorHandling;
 			sourceTree = "<group>";
@@ -4497,6 +4509,10 @@
 				E5EE38102D5DB1A100252001 /* Color+Extension.swift in Sources */,
 				E51919D82B508EE400C08E86 /* URLRequest+Extensions.swift in Sources */,
 				E501710F27A3948C004B3392 /* TPPBookmarkFactory.swift in Sources */,
+				E7426D4566A35CA243FE1840 /* PalaceError.swift in Sources */,
+				9E8CC9A05A6B5C9C7CC1008D /* ErrorLogExporter.swift in Sources */,
+				D782CBE37A933A50E2123D0F /* TPPNetworkExecutor+Async.swift in Sources */,
+				F2F72851978018C6AB09C877 /* OPDSFeedService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

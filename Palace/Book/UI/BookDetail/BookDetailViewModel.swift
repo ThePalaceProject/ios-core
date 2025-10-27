@@ -122,7 +122,6 @@ final class BookDetailViewModel: ObservableObject {
       .bookStatePublisher
       .filter { $0.0 == self.book.identifier }
       .map { $0.1 }
-      .receive(on: DispatchQueue.main)
       .sink { [weak self] newState in
         guard let self else { return }
         let updatedBook = registry.book(forIdentifier: book.identifier) ?? book
@@ -160,7 +159,6 @@ final class BookDetailViewModel: ObservableObject {
     downloadCenter.downloadProgressPublisher
       .filter { $0.0 == self.book.identifier }
       .map { $0.1 }
-      .receive(on: DispatchQueue.main)
       .assign(to: &$downloadProgress)
   }
 
@@ -182,16 +180,12 @@ final class BookDetailViewModel: ObservableObject {
       }
       .removeDuplicates()
       .debounce(for: .milliseconds(180), scheduler: DispatchQueue.main)
-      .receive(on: DispatchQueue.main)
       .assign(to: &self.$stableButtonState)
   }
   
   @objc func handleBookRegistryChange(_ notification: Notification) {
-    DispatchQueue.main.async { [weak self] in
-      guard let self else { return }
-      let updatedBook = registry.book(forIdentifier: book.identifier) ?? book
-      self.book = updatedBook
-    }
+    let updatedBook = registry.book(forIdentifier: book.identifier) ?? book
+    self.book = updatedBook
   }
   
   func selectRelatedBook(_ newBook: TPPBook) {
@@ -204,18 +198,15 @@ final class BookDetailViewModel: ObservableObject {
   // MARK: - Notifications
   
   @objc func handleDownloadStateDidChange(_ notification: Notification) {
-    DispatchQueue.main.async { [weak self] in
-      guard let self else { return }
-      self.downloadProgress = downloadCenter.downloadProgress(for: book.identifier)
-      let info = downloadCenter.downloadInfo(forBookIdentifier: book.identifier)
-      if let rights = info?.rightsManagement, rights != .unknown {
-        if bookState != .downloading && bookState != .downloadSuccessful {
-          self.bookState = registry.state(for: book.identifier)
-        }
-        #if LCP
-        self.prefetchLCPStreamingIfPossible()
-        #endif
+    self.downloadProgress = downloadCenter.downloadProgress(for: book.identifier)
+    let info = downloadCenter.downloadInfo(forBookIdentifier: book.identifier)
+    if let rights = info?.rightsManagement, rights != .unknown {
+      if bookState != .downloading && bookState != .downloadSuccessful {
+        self.bookState = registry.state(for: book.identifier)
       }
+      #if LCP
+      self.prefetchLCPStreamingIfPossible()
+      #endif
     }
   }
   
