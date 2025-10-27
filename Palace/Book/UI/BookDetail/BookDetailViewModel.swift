@@ -345,20 +345,46 @@ final class BookDetailViewModel: ObservableObject {
     processingButtons.contains(button)
   }
   
+  // MARK: - Authentication Helper
+  
+  /// Ensures authentication document is loaded and handles sign-in if needed.
+  private func ensureAuthAndExecute(_ action: @escaping () -> Void) {
+    let businessLogic = TPPSignInBusinessLogic(
+      libraryAccountID: AccountsManager.shared.currentAccount?.uuid ?? "",
+      libraryAccountsProvider: AccountsManager.shared,
+      urlSettingsProvider: TPPSettings.shared,
+      bookRegistry: TPPBookRegistry.shared,
+      bookDownloadsCenter: MyBooksDownloadCenter.shared,
+      userAccountProvider: TPPUserAccount.self,
+      uiDelegate: nil,
+      drmAuthorizer: nil
+    )
+    
+    businessLogic.ensureAuthenticationDocumentIsLoaded { [weak self] (success: Bool) in
+      DispatchQueue.main.async {
+        guard let self = self else { return }
+        
+        let account = TPPUserAccount.sharedAccount()
+        if account.needsAuth && !account.hasCredentials() {
+          self.showHalfSheet = false
+          TPPAccountSignInViewController.requestCredentials { [weak self] in
+            guard let self else { return }
+            action()
+          }
+          return
+        }
+        action()
+      }
+    }
+  }
+  
   // MARK: - Download/Return/Cancel
   
   func didSelectDownload(for book: TPPBook) {
     self.downloadProgress = 0
-    let account = TPPUserAccount.sharedAccount()
-    if account.needsAuth && !account.hasCredentials() {
-      showHalfSheet = false
-      TPPAccountSignInViewController.requestCredentials { [weak self] in
-        guard let self else { return }
-        self.startDownloadAfterAuth(book: book)
-      }
-      return
+    ensureAuthAndExecute { [weak self] in
+      self?.startDownloadAfterAuth(book: book)
     }
-    startDownloadAfterAuth(book: book)
   }
 
   private func startDownloadAfterAuth(book: TPPBook) {
@@ -368,16 +394,9 @@ final class BookDetailViewModel: ObservableObject {
   }
 
   func didSelectReserve(for book: TPPBook) {
-    let account = TPPUserAccount.sharedAccount()
-    if account.needsAuth && !account.hasCredentials() {
-      showHalfSheet = false
-      TPPAccountSignInViewController.requestCredentials { [weak self] in
-        guard let self else { return }
-        self.downloadCenter.startBorrow(for: book, attemptDownload: false)
-      }
-      return
+    ensureAuthAndExecute { [weak self] in
+      self?.downloadCenter.startBorrow(for: book, attemptDownload: false)
     }
-    downloadCenter.startBorrow(for: book, attemptDownload: false)
   }
   
   func didSelectCancel() {
@@ -386,7 +405,6 @@ final class BookDetailViewModel: ObservableObject {
   }
   
   func didSelectReturn(for book: TPPBook, completion: (() -> Void)?) {
-    // Prevent multiple return requests and UI loops
     processingButtons.insert(.returning)
     downloadCenter.returnBook(withIdentifier: book.identifier) { [weak self] in
       guard let self else { return }
@@ -400,35 +418,31 @@ final class BookDetailViewModel: ObservableObject {
   
   @MainActor
   func didSelectRead(for book: TPPBook, completion: (() -> Void)?) {
-    let account = TPPUserAccount.sharedAccount()
-    if account.needsAuth && !account.hasCredentials() {
-      TPPAccountSignInViewController.requestCredentials { [weak self] in
-        Task { @MainActor in
-          self?.openBook(book, completion: completion)
-        }
-      }
-      return
-    }
+    ensureAuthAndExecute { [weak self] in
+      Task { @MainActor in
+        guard let self = self else { return }
 #if FEATURE_DRM_CONNECTOR
-    let user = TPPUserAccount.sharedAccount()
-    
-    if user.hasCredentials() {
-      if user.hasAuthToken() {
-        openBook(book, completion: completion)
-        return
-      } else if !(AdobeCertificate.defaultCertificate?.hasExpired ?? false) &&
-                  !NYPLADEPT.sharedInstance().isUserAuthorized(user.userID, withDevice: user.deviceID) {
-        let reauthenticator = TPPReauthenticator()
-        reauthenticator.authenticateIfNeeded(user, usingExistingCredentials: true) {
-          Task { @MainActor in
+        let user = TPPUserAccount.sharedAccount()
+        
+        if user.hasCredentials() {
+          if user.hasAuthToken() {
             self.openBook(book, completion: completion)
+            return
+          } else if !(AdobeCertificate.defaultCertificate?.hasExpired ?? false) &&
+                      !NYPLADEPT.sharedInstance().isUserAuthorized(user.userID, withDevice: user.deviceID) {
+            let reauthenticator = TPPReauthenticator()
+            reauthenticator.authenticateIfNeeded(user, usingExistingCredentials: true) {
+              Task { @MainActor in
+                self.openBook(book, completion: completion)
+              }
+            }
+            return
           }
         }
-        return
+#endif
+        self.openBook(book, completion: completion)
       }
     }
-#endif
-    openBook(book, completion: completion)
   }
   
   @MainActor

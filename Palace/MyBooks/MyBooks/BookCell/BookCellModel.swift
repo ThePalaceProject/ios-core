@@ -43,7 +43,7 @@ extension BookCellState {
 class BookCellModel: ObservableObject {
   typealias DisplayStrings = Strings.BookCell
   
-  @Published var image = ImageProviders.MyBooksView.bookPlaceholder ?? UIImage()
+  @Published var image = UIImage()
   @Published var showAlert: AlertModel?
   @Published var isLoading: Bool = false {
     didSet {
@@ -105,6 +105,7 @@ class BookCellModel: ObservableObject {
     self.imageCache = imageCache
     self.registryState = TPPBookRegistry.shared.state(for: book.identifier)
     self.stableButtonState = self.computeButtonState(book: book, registryState: self.registryState, isManagingHold: self.isManagingHold)
+    self.image = generatePlaceholder(for: book)
     registerForNotifications()
     loadBookCoverImage()
     bindRegistryState()
@@ -119,6 +120,23 @@ class BookCellModel: ObservableObject {
   }
   
   // MARK: - Image Loading
+  
+  private func generatePlaceholder(for book: TPPBook) -> UIImage {
+    let size = CGSize(width: 80, height: 120)
+    let format = UIGraphicsImageRendererFormat()
+    format.scale = UIScreen.main.scale
+    return UIGraphicsImageRenderer(size: size, format: format)
+      .image { ctx in
+        if let view = NYPLTenPrintCoverView(
+          frame: CGRect(origin: .zero, size: size),
+          withTitle: book.title,
+          withAuthor: book.authors ?? "Unknown Author",
+          withScale: 0.4
+        ) {
+          view.layer.render(in: ctx.cgContext)
+        }
+      }
+  }
   
   func loadBookCoverImage() {
     let simpleKey = book.identifier

@@ -108,7 +108,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
 
   /// A closure that will be invoked at the end of the sign-in process when
   /// refreshing authentication.
-  var refreshAuthCompletion: (() -> Void)? = nil
+  @objc var refreshAuthCompletion: (() -> Void)? = nil
 
   // MARK:- OAuth / SAML / Clever Info
 

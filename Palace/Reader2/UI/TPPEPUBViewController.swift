@@ -76,21 +76,31 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     setUIColor(for: preferences)
   }
   
+  override func updateNavigationBar(animated: Bool = true) {
+    super.updateNavigationBar(animated: animated)
+  }
+  
   override func viewWillAppear(_ animated: Bool) {
     super.viewWillAppear(animated)
     setUIColor(for: preferences)
     log(.info, "TPPEPUBViewController will appear. UI color set based on preferences.")
     epubNavigator.submitPreferences(preferences)
-    
+    tabBarController?.tabBar.isHidden = true
+
     if navigationItem.leftBarButtonItem == nil {
        let backItem = UIBarButtonItem(image: UIImage(systemName: "chevron.left"), style: .plain, target: self, action: #selector(closeEPUB))
        navigationItem.leftBarButtonItem = backItem
      }
 
     navigationController?.navigationBar.isTranslucent = true
+    
+    navigationController?.setNavigationBarHidden(true, animated: false)
+    navigationController?.setToolbarHidden(true, animated: false)
   }
   
   @objc private func closeEPUB() {
+    tabBarController?.tabBar.isHidden = false
+
     NavigationCoordinatorHub.shared.coordinator?.pop()
   }
   

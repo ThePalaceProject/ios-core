@@ -20,7 +20,6 @@ struct CatalogContentView: View {
             }
           }
           .padding(.vertical, 17)
-          .padding(.bottom, 100)
         }
         .refreshable { await viewModel.refresh() }
         .onReceive(viewModel.$shouldScrollToTop) { shouldScroll in

@@ -68,9 +68,6 @@ struct CatalogLaneMoreView: View {
     .onReceive(downloadProgressPublisher) { changedId in
       viewModel.applyRegistryUpdates(changedIdentifier: changedId)
     }
-    .onChange(of: viewModel.currentSort) { _ in
-      viewModel.saveFilterState(coordinator: coordinator)
-    }
     .sheet(isPresented: $viewModel.showingSortSheet) {
       SortOptionsSheet
         .presentationDetents([.medium, .large])
@@ -129,6 +126,10 @@ struct CatalogLaneMoreView: View {
   }
   
   private func handleAccountChange() {
+    if viewModel.showSearch {
+      dismissSearch()
+    }
+    
     setupAccount()
     viewModel.appliedSelections.removeAll()
     viewModel.pendingSelections.removeAll()
@@ -202,12 +203,17 @@ struct CatalogLaneMoreView: View {
         .padding(.top, 12)
       ScrollView {
         LazyVStack(alignment: .leading, spacing: 0) {
-          ForEach(CatalogSortService.SortOption.allCases, id: \.self) { sort in
-            Button(action: { viewModel.currentSort = sort }) {
+          ForEach(viewModel.sortFacets, id: \.id) { facet in
+            Button(action: { 
+              Task {
+                await viewModel.applyOPDSFacet(facet, coordinator: coordinator)
+                viewModel.showingSortSheet = false
+              }
+            }) {
               HStack {
-                Image(systemName: viewModel.currentSort == sort ? "largecircle.fill.circle" : "circle")
+                Image(systemName: facet.active ? "largecircle.fill.circle" : "circle")
                   .foregroundColor(.primary)
-                Text(sort.localizedString)
+                Text(facet.title)
                   .foregroundColor(.primary)
                 Spacer()
               }
@@ -263,9 +269,9 @@ private extension CatalogLaneMoreView {
     FacetToolbarView(
       title: viewModel.title,
       showFilter: true,
-      onSort: { viewModel.showingSortSheet = true },
+      onSort: viewModel.sortFacets.isEmpty ? nil : { viewModel.showingSortSheet = true },
       onFilter: { viewModel.showingFiltersSheet = true },
-      currentSortTitle: viewModel.currentSort.localizedString,
+      currentSortTitle: viewModel.activeSortTitle,
       appliedFiltersCount: viewModel.activeFiltersCount
     )
     .padding(.bottom, 5)
@@ -346,9 +352,13 @@ private extension CatalogLaneMoreView {
   @ViewBuilder
   var booksView: some View {
     ScrollView {
-      BookListView(books: viewModel.ungroupedBooks, isLoading: $viewModel.isLoading) { book in
-        presentBookDetail(book)
-      }
+      BookListView(
+        books: viewModel.ungroupedBooks,
+        isLoading: $viewModel.isLoading,
+        onSelect: { book in presentBookDetail(book) },
+        onLoadMore: viewModel.shouldShowPagination ? { @MainActor in await viewModel.loadNextPage() } : nil,
+        isLoadingMore: viewModel.isLoadingMore
+      )
     }
     .refreshable { await viewModel.fetchAndApplyFeed(at: viewModel.url) }
   }

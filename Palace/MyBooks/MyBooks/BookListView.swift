@@ -4,6 +4,8 @@ struct BookListView: View {
   let books: [TPPBook]
   @Binding var isLoading: Bool
   let onSelect: (TPPBook) -> Void
+  var onLoadMore: (() async -> Void)? = nil
+  var isLoadingMore: Bool = false
   @State private var containerWidth: CGFloat = UIScreen.main.bounds.width
 
   var body: some View {
@@ -14,6 +16,15 @@ struct BookListView: View {
         }
         .buttonStyle(.plain)
         .applyBorderStyle()
+        .onAppear {
+          if let onLoadMore = onLoadMore, book.identifier == books.last?.identifier {
+            Task { await onLoadMore() }
+          }
+        }
+      }
+      
+      if isLoadingMore {
+        paginationLoadingIndicator
       }
     }
     .padding(.horizontal, 12)
@@ -29,6 +40,13 @@ struct BookListView: View {
           }
       }
     )
+  }
+  
+  private var paginationLoadingIndicator: some View {
+    PulsatingDotsLoader()
+      .frame(maxWidth: .infinity)
+      .padding(.vertical, 24)
+      .gridCellColumns(gridLayout.count)
   }
 
   private var gridLayout: [GridItem] {
@@ -49,6 +67,43 @@ struct BookListView: View {
 extension View {
   func applyBorderStyle() -> some View {
     modifier(BorderStyleModifier())
+  }
+}
+
+// MARK: - Pulsating Dots Loader
+struct PulsatingDotsLoader: View {
+  @State private var pulse1: Bool = false
+  @State private var pulse2: Bool = false
+  @State private var pulse3: Bool = false
+  
+  var body: some View {
+    HStack(spacing: 12) {
+      Circle()
+        .fill(Color.gray.opacity(0.25))
+        .frame(width: 12, height: 12)
+        .opacity(pulse1 ? 0.6 : 1.0)
+      
+      Circle()
+        .fill(Color.gray.opacity(0.25))
+        .frame(width: 12, height: 12)
+        .opacity(pulse2 ? 0.6 : 1.0)
+      
+      Circle()
+        .fill(Color.gray.opacity(0.25))
+        .frame(width: 12, height: 12)
+        .opacity(pulse3 ? 0.6 : 1.0)
+    }
+    .onAppear {
+      withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+        pulse1 = true
+      }
+      withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true).delay(0.3)) {
+        pulse2 = true
+      }
+      withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true).delay(0.6)) {
+        pulse3 = true
+      }
+    }
   }
 }
 
