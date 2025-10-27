@@ -28,6 +28,15 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     setupWindow()
     configureUIAppearance()
 
+    // Check for crashes and perform recovery
+    Task {
+      await CrashRecoveryService.shared.checkForCrashOnLaunch()
+      
+      // Schedule stable session check after 10 minutes of stable running
+      try? await Task.sleep(nanoseconds: 600_000_000_000) // 10 minutes
+      await CrashRecoveryService.shared.recordStableSession()
+    }
+
     startupQueue.async {
       self.setupBookRegistryAndNotifications()
     }
@@ -148,6 +157,11 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
   }
 
   func applicationWillTerminate(_ application: UIApplication) {
+    // Record clean exit for crash detection
+    Task {
+      await CrashRecoveryService.shared.recordCleanExit()
+    }
+    
     audiobookLifecycleManager.willTerminate()
     NotificationCenter.default.removeObserver(self)
     Reachability.shared.stopMonitoring()
