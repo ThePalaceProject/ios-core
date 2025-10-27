@@ -73,6 +73,7 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
       self.handleHighlightInteraction(event)
     }
     
+    epubNavigator.submitPreferences(preferences)
     setUIColor(for: preferences)
   }
   
