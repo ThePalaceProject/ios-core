@@ -33,12 +33,24 @@ import PalaceAudiobookToolkit
   // MARK: - Bookmark Management
   
   public func saveListeningPosition(at position: TrackPosition, completion: ((String?) -> Void)?) {
+    // CRITICAL FIX: Save locally IMMEDIATELY to prevent position loss
+    // This ensures position is persisted even if app closes before debounce fires
+    let audioBookmark = position.toAudioBookmark()
+    audioBookmark.lastSavedTimeStamp = Date().iso8601
+    
+    // Save to local registry immediately - this is the user's safety net
+    if let tppLocation = audioBookmark.toTPPBookLocation() {
+      registry.setLocation(tppLocation, forIdentifier: self.book.identifier)
+      ATLog(.debug, "💾 Immediately saved position locally: track=\(position.track.key), time=\(position.timestamp)")
+    }
+    
+    // Debounce only the network sync, not the local save
     debounce {
-      self.saveListeningPositionImmediate(at: position, completion: completion)
+      self.syncListeningPositionToServer(at: position, completion: completion)
     }
   }
   
-  private func saveListeningPositionImmediate(at position: TrackPosition, completion: ((String?) -> Void)?) {
+  private func syncListeningPositionToServer(at position: TrackPosition, completion: ((String?) -> Void)?) {
     let audioBookmark = position.toAudioBookmark()
     audioBookmark.lastSavedTimeStamp = Date().iso8601
     guard let tppLocation = audioBookmark.toTPPBookLocation() else {
@@ -46,13 +58,20 @@ import PalaceAudiobookToolkit
       return
     }
     
-    annotationsManager.postListeningPosition(forBook: self.book.identifier, selectorValue: tppLocation.locationString) { response in
+    // Sync to server (this can fail/be slow, but local data is already safe)
+    annotationsManager.postListeningPosition(forBook: self.book.identifier, selectorValue: tppLocation.locationString) { [weak self] response in
+      guard let self else { return }
       if let response {
+        // Update with server timestamp and annotation ID
         audioBookmark.lastSavedTimeStamp = response.timeStamp ?? ""
         audioBookmark.annotationId = response.serverId ?? ""
+        
+        // Update local copy with server metadata
         self.registry.setLocation(audioBookmark.toTPPBookLocation(), forIdentifier: self.book.identifier)
+        ATLog(.debug, "☁️ Synced position to server: annotationId=\(audioBookmark.annotationId)")
         completion?(response.timeStamp)
       } else {
+        ATLog(.warn, "⚠️ Server sync failed, but local position was already saved")
         completion?(nil)
       }
     }
@@ -251,6 +270,18 @@ import PalaceAudiobookToolkit
   }
   
   // MARK: - Helpers
+  
+  /// Immediately flushes any pending debounced operations
+  /// Call this on app lifecycle events (willTerminate, didEnterBackground) to ensure no data loss
+  public func flushPendingOperations() {
+    if let workItem = debounceWorkItem {
+      ATLog(.debug, "🚨 Flushing pending operations immediately")
+      workItem.cancel()
+      // Execute the work item immediately on current thread
+      workItem.perform()
+      debounceWorkItem = nil
+    }
+  }
   
   private func debounce(action: @escaping () -> Void) {
     debounceWorkItem?.cancel()
