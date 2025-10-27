@@ -115,12 +115,10 @@ enum Group: Int {
     account.loadAuthenticationDocument { [weak self] success in
       guard let self = self, success else { return }
 
-      DispatchQueue.main.async {
-        if !TPPSettings.shared.settingsAccountIdsList.contains(account.uuid) {
-          TPPSettings.shared.settingsAccountIdsList.append(account.uuid)
-        }
-        self.loadAccount(account)
+      if !TPPSettings.shared.settingsAccountIdsList.contains(account.uuid) {
+        TPPSettings.shared.settingsAccountIdsList.append(account.uuid)
       }
+      self.loadAccount(account)
     }
   }
 
@@ -183,15 +181,11 @@ enum Group: Int {
   }
 
   @objc private func handleBookRegistryChange() {
-    DispatchQueue.main.async { [weak self] in
-      self?.loadData()
-    }
+    loadData()
   }
 
   @objc private func handleSyncEnd() {
-    DispatchQueue.main.async { [weak self] in
-      self?.loadData()
-    }
+    loadData()
   }
 
   @objc private func handleBookRegistryStateChange(_ notification: Notification) {
@@ -201,18 +195,15 @@ enum Group: Int {
       let raw = info["state"] as? Int,
       let newState = TPPBookState(rawValue: raw)
     else {
-      DispatchQueue.main.async { [weak self] in self?.loadData() }
+      loadData()
       return
     }
 
-    DispatchQueue.main.async { [weak self] in
-      guard let self else { return }
-      if newState == .unregistered {
-        // Remove locally so it doesn't flash back in until next sync
-        self.books.removeAll { $0.identifier == identifier }
-      } else {
-        self.loadData()
-      }
+    if newState == .unregistered {
+      // Remove locally so it doesn't flash back in until next sync
+      self.books.removeAll { $0.identifier == identifier }
+    } else {
+      self.loadData()
     }
   }
 
