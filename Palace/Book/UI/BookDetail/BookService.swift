@@ -103,7 +103,7 @@ enum BookService {
       return
     }
     lcpAudiobooks.contentDictionary { dict, error in
-      DispatchQueue.main.async {
+      Task { @MainActor in
         guard error == nil, let json = dict as? [String: Any] else {
           showAudiobookTryAgainError()
           openingBooks.remove(book.identifier)
@@ -250,13 +250,14 @@ enum BookService {
               return
             }
             
-            DispatchQueue.main.async {
+            Task { @MainActor in
               playbackModel.currentLocation = finalPosition
               playbackModel.beginSaveSuppression(for: 3.0)
               manager.audiobook.player.play(at: finalPosition) { error in
                 if error == nil {
                   // Save initial position after suppression period ends
-                  DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) {
+                  Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 3_500_000_000) // 3.5 seconds
                     playbackModel.persistLocation()
                   }
                 }
@@ -275,7 +276,7 @@ enum BookService {
     }
 
     AudioBookVendorsHelper.updateVendorKey(book: jsonDict) { error in
-      DispatchQueue.main.async {
+      Task { @MainActor in
         vendorCompletion(error)
       }
     }
