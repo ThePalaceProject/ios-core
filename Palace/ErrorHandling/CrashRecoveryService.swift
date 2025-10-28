@@ -245,15 +245,16 @@ actor CrashRecoveryService {
     
     // Sign out of all accounts
     for account in AccountsManager.shared.accounts() {
-      TPPUserAccount.sharedAccount(for: account.uuid).setAuthToken(nil)
+      let userAccount = TPPUserAccount.sharedAccount(libraryUUID: account.uuid)
+      userAccount.setAuthToken(nil, barcode: nil, pin: nil, expirationDate: nil)
     }
     
     // Clear all caches
     ImageCache.shared.clear()
     URLCache.shared.removeAllCachedResponses()
     
-    // Clear all downloads
-    MyBooksDownloadCenter.shared.cancelAllDownloads()
+    // Pause all downloads (cancellation would lose progress)
+    MyBooksDownloadCenter.shared.pauseAllDownloads()
     
     // Reset registry for current account
     if let currentAccount = AccountsManager.shared.currentAccount {
@@ -261,7 +262,7 @@ actor CrashRecoveryService {
     }
     
     // Exit safe mode
-    exitSafeMode()
+    await exitSafeMode()
     
     // Restart app
     Log.info(#file, "App state reset complete. Restarting...")
