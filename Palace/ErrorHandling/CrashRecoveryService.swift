@@ -243,10 +243,10 @@ actor CrashRecoveryService {
   func resetAppState() async {
     Log.warn(#file, "⚠️ Performing full app state reset...")
     
-    // Sign out of all accounts
+    // Clear authentication tokens for all accounts
     for account in AccountsManager.shared.accounts() {
       let userAccount = TPPUserAccount.sharedAccount(libraryUUID: account.uuid)
-      userAccount.setAuthToken(nil, barcode: nil, pin: nil, expirationDate: nil)
+      userAccount.setAuthToken("", barcode: "", pin: "", expirationDate: nil)
     }
     
     // Clear all caches

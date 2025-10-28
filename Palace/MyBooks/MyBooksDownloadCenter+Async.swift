@@ -30,19 +30,20 @@ extension MyBooksDownloadCenter {
     
     // Set processing state
     await MainActor.run {
-      bookRegistry.setProcessing(true, for: book.identifier)
+      TPPBookRegistry.shared.setProcessing(true, for: book.identifier)
     }
     
     defer {
       Task { @MainActor in
-        bookRegistry.setProcessing(false, for: book.identifier)
+        TPPBookRegistry.shared.setProcessing(false, for: book.identifier)
       }
     }
     
     do {
       // Fetch the borrowed book using modern async API with automatic retries
-      let borrowedBook = try await DownloadErrorRecovery.shared.executeWithRetry(
-        policy: .default
+      let recovery = DownloadErrorRecovery()
+      let borrowedBook = try await recovery.executeWithRetry(
+        policy: DownloadErrorRecovery.RetryPolicy.default
       ) {
         try await OPDSFeedService.shared.fetchBook(
           from: acquisitionURL,
@@ -52,7 +53,7 @@ extension MyBooksDownloadCenter {
       }
       
       // Preserve existing location
-      let location = bookRegistry.location(forIdentifier: borrowedBook.identifier)
+      let location = TPPBookRegistry.shared.location(forIdentifier: borrowedBook.identifier)
       
       // Determine correct registry state based on availability
       var newState: TPPBookState = .downloadNeeded
@@ -65,17 +66,17 @@ extension MyBooksDownloadCenter {
       )
       
       // Add to registry
-      bookRegistry.addBook(
+      TPPBookRegistry.shared.addBook(
         borrowedBook,
         location: location,
         state: newState,
-        fulfillmentId: nil,
-        readiumBookmarks: nil,
-        genericBookmarks: nil
+        fulfillmentId: nil as String?,
+        readiumBookmarks: nil as [TPPReadiumBookmark]?,
+        genericBookmarks: nil as [TPPBookLocation]?
       )
       
       // Emit explicit state update so SwiftUI lists refresh immediately
-      bookRegistry.setState(newState, for: borrowedBook.identifier)
+      TPPBookRegistry.shared.setState(newState, for: borrowedBook.identifier)
       
       // Optionally start download
       if attemptDownload && newState == .downloadNeeded {
