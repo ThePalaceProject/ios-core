@@ -362,20 +362,19 @@ extension BookCellModel {
       self.isLoading = false
       if let error = error {
         Log.debug("Sample generation error for \(self.book.title): \(error.localizedDescription)", "")
-          return
+        return
+      }
+      if let sampleWebURL = sampleURL as? EpubSampleWebURL {
+        let web = BundledHTMLViewController(fileURL: sampleWebURL.url, title: self.book.title)
+        if let appDelegate = UIApplication.shared.delegate as? TPPAppDelegate, let top = appDelegate.topViewController() {
+          top.present(web, animated: true)
         }
-        if let sampleWebURL = sampleURL as? EpubSampleWebURL {
-          let web = BundledHTMLViewController(fileURL: sampleWebURL.url, title: self.book.title)
-          if let appDelegate = UIApplication.shared.delegate as? TPPAppDelegate, let top = appDelegate.topViewController() {
-            top.present(web, animated: true)
-          }
-          return
-        }
-        if let url = sampleURL?.url {
-          let web = BundledHTMLViewController(fileURL: url, title: self.book.title)
-          if let appDelegate = UIApplication.shared.delegate as? TPPAppDelegate, let top = appDelegate.topViewController() {
-            top.present(web, animated: true)
-          }
+        return
+      }
+      if let url = sampleURL?.url {
+        let web = BundledHTMLViewController(fileURL: url, title: self.book.title)
+        if let appDelegate = UIApplication.shared.delegate as? TPPAppDelegate, let top = appDelegate.topViewController() {
+          top.present(web, animated: true)
         }
       }
     }
