@@ -93,11 +93,10 @@ extension TPPBookRegistry {
           changesMade = true
         }
         
-        // Books to remove (in registry but not in new feed)
         let removedIds = currentIds.subtracting(newIds)
         for identifier in removedIds {
-          if let state = self.state(for: identifier),
-             state == .downloadSuccessful || state == .used {
+          let state = self.state(for: identifier)
+            if state == .downloadSuccessful || state == .used {
             MyBooksDownloadCenter.shared.deleteLocalContent(for: identifier)
           }
           self.setState(.unregistered, for: identifier)

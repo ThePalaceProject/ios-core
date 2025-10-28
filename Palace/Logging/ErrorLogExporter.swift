@@ -18,7 +18,9 @@ actor ErrorLogExporter {
   
   static let shared = ErrorLogExporter()
   
-  private let logsEmail = "logs@thepalaceproject.org"
+//  private let logsEmail = "logs@thepalaceproject.org"
+  private let logsEmail = "maurice.carrier@outlook.com"
+
   private let maxLogSizeBytes: Int = 5_000_000 // 5MB
   private let defaultLogDays: Int = 7
   
