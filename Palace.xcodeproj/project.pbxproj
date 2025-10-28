@@ -772,6 +772,10 @@
 		E5F4A3182E6FE6C7009B32AA /* CatalogContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5F4A3172E6FE6C7009B32AA /* CatalogContentView.swift */; };
 		E5F4A3192E6FE6C7009B32AA /* CatalogContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5F4A3172E6FE6C7009B32AA /* CatalogContentView.swift */; };
 		E5F8A57D28A48B8300A229AE /* BookPreviewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5F8A57C28A48B8300A229AE /* BookPreviewTests.swift */; };
+		E5FA17E42EB04FA2001C7624 /* CircuitBreaker.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5FA17E32EB04FA2001C7624 /* CircuitBreaker.swift */; };
+		E5FA17E52EB04FA2001C7624 /* CircuitBreaker.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5FA17E32EB04FA2001C7624 /* CircuitBreaker.swift */; };
+		E5FA17EF2EB05009001C7624 /* OPDSFeedService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5FA17EE2EB05009001C7624 /* OPDSFeedService.swift */; };
+		E5FA17F02EB05009001C7624 /* OPDSFeedService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5FA17EE2EB05009001C7624 /* OPDSFeedService.swift */; };
 		E5FD62132BFD30E400DD4B94 /* AudiobookBookmarkBusinessLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5FD62122BFD30E400DD4B94 /* AudiobookBookmarkBusinessLogic.swift */; };
 		E5FD62142BFD30F500DD4B94 /* LoadingViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E523124C28641505007D1DB5 /* LoadingViewController.swift */; };
 		E5FD62162BFD30F600DD4B94 /* LoadingViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E523124C28641505007D1DB5 /* LoadingViewController.swift */; };
@@ -1625,6 +1629,8 @@
 		E5F4A2E02E6F65A5009B32AA /* KeyboardModifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardModifier.swift; sourceTree = "<group>"; };
 		E5F4A3172E6FE6C7009B32AA /* CatalogContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogContentView.swift; sourceTree = "<group>"; };
 		E5F8A57C28A48B8300A229AE /* BookPreviewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookPreviewTests.swift; sourceTree = "<group>"; };
+		E5FA17E32EB04FA2001C7624 /* CircuitBreaker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CircuitBreaker.swift; sourceTree = "<group>"; };
+		E5FA17EE2EB05009001C7624 /* OPDSFeedService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OPDSFeedService.swift; sourceTree = "<group>"; };
 		E5FD62122BFD30E400DD4B94 /* AudiobookBookmarkBusinessLogic.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AudiobookBookmarkBusinessLogic.swift; sourceTree = "<group>"; };
 		E5FFB96328AED4850042907F /* ImageProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageProvider.swift; sourceTree = "<group>"; };
 		E5FFB9CA28AFE8AF0042907F /* AsyncImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AsyncImage.swift; sourceTree = "<group>"; };
@@ -2381,6 +2387,7 @@
 		73B5DFF826055DE300225C12 /* Networking */ = {
 			isa = PBXGroup;
 			children = (
+				E5FA17E32EB04FA2001C7624 /* CircuitBreaker.swift */,
 				085640CC1BB99FC30088BDBF /* NSURL+NYPLURLAdditions.h */,
 				085640CD1BB99FC30088BDBF /* NSURL+NYPLURLAdditions.m */,
 				085D31DD1BE3CD3C007F7672 /* NSURLRequest+NYPLURLRequestAdditions.h */,
@@ -2388,6 +2395,7 @@
 				7340DA6124B7E45C00361387 /* URLResponse+NYPL.swift */,
 				E7498A7D2A0E4F6A0037DD93 /* URL+Extensions.swift */,
 				E51919D72B508EE400C08E86 /* URLRequest+Extensions.swift */,
+				E5FA17EE2EB05009001C7624 /* OPDSFeedService.swift */,
 			);
 			path = Networking;
 			sourceTree = "<group>";
@@ -3978,6 +3986,7 @@
 				21E4177A292810E000A78606 /* TPPPDFPage.swift in Sources */,
 				E795A7682A74074300314EC8 /* AudiobookTimeEntry.swift in Sources */,
 				73EB0AB025821DF4006BC997 /* JWKResponse.swift in Sources */,
+				E5FA17E52EB04FA2001C7624 /* CircuitBreaker.swift in Sources */,
 				E544C4ED2A395DDE00B2DC9D /* MyBooksDownloadInfo.swift in Sources */,
 				73EB0AB125821DF4006BC997 /* UIFont+TPPSystemFontOverride.m in Sources */,
 				73EB0AB225821DF4006BC997 /* TPPReadiumBookmark.swift in Sources */,
@@ -4146,6 +4155,7 @@
 				73D8D28225A68D5600DF5F69 /* Publication+NYPLAdditions.swift in Sources */,
 				21C184DD27B12347008CC4F8 /* UINavigationBar+appearance.swift in Sources */,
 				73EB0B1225821DF4006BC997 /* TPPProblemDocumentCacheManager.swift in Sources */,
+				E5FA17EF2EB05009001C7624 /* OPDSFeedService.swift in Sources */,
 				73EB0B1425821DF4006BC997 /* TPPMyBooksSimplifiedBearerToken.m in Sources */,
 				E50544872E60F6FE007CCFAB /* CatalogLaneRowView.swift in Sources */,
 				73EB0B1525821DF4006BC997 /* TPPAnnotations.swift in Sources */,
@@ -4246,6 +4256,7 @@
 				E706F60F286388B3000B7431 /* TPPPDFDocumentMetadata.swift in Sources */,
 				E7861C4B28468AB200B3A38A /* TPPPDFDocumentView.swift in Sources */,
 				E505438F2E5FAEF1007CCFAB /* CatalogFiltersSheetView.swift in Sources */,
+				E5FA17E42EB04FA2001C7624 /* CircuitBreaker.swift in Sources */,
 				E78ED2312B18026A00773278 /* TPPPDFTextExtractor.swift in Sources */,
 				739062D225358CF900D0743D /* TPPSignInBusinessLogicUIDelegate.swift in Sources */,
 				E57E798429D4D407006D0F87 /* String+Extensions.swift in Sources */,
@@ -4340,6 +4351,7 @@
 				E7B20B39285B3AC400C49FE1 /* TPPPDFPreviewGrid.swift in Sources */,
 				11A14DF41A1BF94F00D6C510 /* UIColor+TPPColorAdditions.m in Sources */,
 				E562DD9C2D35ABC4003A1A40 /* BookDetailView.swift in Sources */,
+				E5FA17F02EB05009001C7624 /* OPDSFeedService.swift in Sources */,
 				E5DF75322E6B4AF700971F19 /* SamplePreviewManager.swift in Sources */,
 				737F4A6B254A137900A3C34B /* TPPSignInBusinessLogic+DRM.swift in Sources */,
 				73CDA121243EDAD8009CC6A6 /* URLRequest+Logging.swift in Sources */,
