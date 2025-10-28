@@ -201,6 +201,7 @@
 		2DEF10BA201ECCEA0082843A /* TPPMyBooksSimplifiedBearerToken.m in Sources */ = {isa = PBXBuildFile; fileRef = 2DEF10B9201ECCEA0082843A /* TPPMyBooksSimplifiedBearerToken.m */; };
 		2DF321831DC3B83500E1858F /* TPPAnnotations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DF321821DC3B83500E1858F /* TPPAnnotations.swift */; };
 		2DFAC8ED1CD8DDD1003D9EC0 /* TPPOPDSCategory.m in Sources */ = {isa = PBXBuildFile; fileRef = 2DFAC8EC1CD8DDD1003D9EC0 /* TPPOPDSCategory.m */; };
+		44157EA63F504D8E28151C3B /* DownloadRecoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E48E63FE97E2CF87022CEF36 /* DownloadRecoveryTests.swift */; };
 		510C5E1E00D85609C448388F /* CrashRecoveryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6F6D06D805B038B9EB2B930 /* CrashRecoveryService.swift */; };
 		52545185217A76FF00BBC1B4 /* TPPUserNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52545184217A76FF00BBC1B4 /* TPPUserNotifications.swift */; };
 		52592BB821220A1100587288 /* TPPLocalization.m in Sources */ = {isa = PBXBuildFile; fileRef = 52592BB721220A1100587288 /* TPPLocalization.m */; };
@@ -1469,6 +1470,7 @@
 		D04BCBA308A23519CB8B544B /* TPPNetworkExecutor+Async.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = "TPPNetworkExecutor+Async.swift"; path = "Palace/Network/TPPNetworkExecutor+Async.swift"; sourceTree = "<group>"; };
 		D787E8431FB6B0290016D9D5 /* TPPSettingsAdvancedViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPSettingsAdvancedViewController.swift; sourceTree = "<group>"; };
 		D8DE0A66573634A58BBE7FF4 /* ActorIsolationTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ActorIsolationTests.swift; path = PalaceTests/ConcurrencyTests/ActorIsolationTests.swift; sourceTree = "<group>"; };
+		E48E63FE97E2CF87022CEF36 /* DownloadRecoveryTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DownloadRecoveryTests.swift; path = PalaceTests/ConcurrencyTests/DownloadRecoveryTests.swift; sourceTree = "<group>"; };
 		E50221B629881BC900A8A80B /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = es.lproj/Localizable.strings; sourceTree = "<group>"; };
 		E50221BE29881CAC00A8A80B /* de */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = de; path = de.lproj/Localizable.strings; sourceTree = "<group>"; };
 		E50221C529881CDD00A8A80B /* it */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = it; path = it.lproj/Localizable.strings; sourceTree = "<group>"; };
@@ -1856,6 +1858,7 @@
 			children = (
 				D8DE0A66573634A58BBE7FF4 /* ActorIsolationTests.swift */,
 				7D0876B053597003F3667FC1 /* ErrorHandlingTests.swift */,
+				E48E63FE97E2CF87022CEF36 /* DownloadRecoveryTests.swift */,
 			);
 			name = ConcurrencyTests;
 			path = PalaceTests/ConcurrencyTests;
@@ -3819,6 +3822,7 @@
 				E5A0CEA62AA9856000C304EC /* TPPReauthenticatorMock.swift in Sources */,
 				094151E849B70AE214C8B3B0 /* ActorIsolationTests.swift in Sources */,
 				CC95E29A817905210AB558FC /* ErrorHandlingTests.swift in Sources */,
+				44157EA63F504D8E28151C3B /* DownloadRecoveryTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
