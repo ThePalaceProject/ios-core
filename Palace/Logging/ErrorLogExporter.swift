@@ -207,7 +207,7 @@ actor ErrorLogExporter {
     }
     
     // Network reachability
-    logs += "Network Status: \(Reachability.shared.isReachable ? "Connected" : "Disconnected")\n"
+    logs += "Network Status: \(Reachability.shared.isConnectedToNetwork() ? "Connected" : "Disconnected")\n"
     
     return logs
   }
