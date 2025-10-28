@@ -32,8 +32,8 @@ enum PalaceError: LocalizedError {
   // MARK: - Storage Errors
   case storage(StorageError)
   
-  // MARK: - Reader Errors
-  case reader(ReaderError)
+  // MARK: - Book Reader Errors
+  case bookReader(BookReaderError)
   
   // MARK: - Audiobook Errors
   case audiobook(AudiobookError)
@@ -48,7 +48,7 @@ enum PalaceError: LocalizedError {
     case .drm(let error): return error.errorDescription
     case .authentication(let error): return error.errorDescription
     case .storage(let error): return error.errorDescription
-    case .reader(let error): return error.errorDescription
+    case .bookReader(let error): return error.errorDescription
     case .audiobook(let error): return error.errorDescription
     }
   }
@@ -62,7 +62,7 @@ enum PalaceError: LocalizedError {
     case .drm(let error): return error.recoverySuggestion
     case .authentication(let error): return error.recoverySuggestion
     case .storage(let error): return error.recoverySuggestion
-    case .reader(let error): return error.recoverySuggestion
+    case .bookReader(let error): return error.recoverySuggestion
     case .audiobook(let error): return error.recoverySuggestion
     }
   }
@@ -76,7 +76,7 @@ enum PalaceError: LocalizedError {
     case .drm(let error): return 5000 + error.rawValue
     case .authentication(let error): return 6000 + error.rawValue
     case .storage(let error): return 7000 + error.rawValue
-    case .reader(let error): return 8000 + error.rawValue
+    case .bookReader(let error): return 8000 + error.rawValue
     case .audiobook(let error): return 9000 + error.rawValue
     }
   }
@@ -421,9 +421,9 @@ enum StorageError: Int, LocalizedError {
   }
 }
 
-// MARK: - Reader Errors
+// MARK: - Book Reader Errors
 
-enum ReaderError: Int, LocalizedError {
+enum BookReaderError: Int, LocalizedError {
   case bookNotAvailable = 0
   case corruptedBook = 1
   case unsupportedFormat = 2
