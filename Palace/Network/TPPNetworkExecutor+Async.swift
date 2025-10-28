@@ -62,20 +62,19 @@ extension TPPNetworkExecutor {
   // MARK: - Async POST Methods
   
   /// Performs an async POST request
-  /// - Parameters:
-  ///   - url: The URL to post to
-  ///   - parameters: Optional JSON parameters
+  /// - Parameter request: The URLRequest to post
   /// - Returns: The response data
   /// - Throws: PalaceError on failure
-  func post(_ url: URL, parameters: [String: Any]? = nil) async throws -> Data {
+  func post(_ request: URLRequest) async throws -> Data {
     return try await withCheckedThrowingContinuation { continuation in
-      POST(url, parameters: parameters) { result in
-        switch result {
-        case .success(let data, _):
-          continuation.resume(returning: data)
-        case .failure(let error, _):
+      POST(request, useTokenIfAvailable: true) { data, response, error in
+        if let error = error {
           let palaceError = PalaceError.from(error)
           continuation.resume(throwing: palaceError)
+        } else if let data = data {
+          continuation.resume(returning: data)
+        } else {
+          continuation.resume(throwing: PalaceError.network(.invalidResponse))
         }
       }
     }
@@ -84,20 +83,38 @@ extension TPPNetworkExecutor {
   // MARK: - Async PUT Methods
   
   /// Performs an async PUT request
-  /// - Parameters:
-  ///   - url: The URL to put to
-  ///   - parameters: Optional JSON parameters
+  /// - Parameter request: The URLRequest to put
   /// - Returns: The response data
   /// - Throws: PalaceError on failure
-  func put(_ url: URL, parameters: [String: Any]? = nil) async throws -> Data {
+  func put(_ request: URLRequest) async throws -> Data {
     return try await withCheckedThrowingContinuation { continuation in
-      PUT(url, parameters: parameters) { result in
-        switch result {
-        case .success(let data, _):
-          continuation.resume(returning: data)
-        case .failure(let error, _):
+      PUT(request: request, useTokenIfAvailable: true) { data, response, error in
+        if let error = error {
           let palaceError = PalaceError.from(error)
           continuation.resume(throwing: palaceError)
+        } else if let data = data {
+          continuation.resume(returning: data)
+        } else {
+          continuation.resume(throwing: PalaceError.network(.invalidResponse))
+        }
+      }
+    }
+  }
+  
+  /// Performs an async PUT request to a URL
+  /// - Parameter url: The URL to put to
+  /// - Returns: The response data
+  /// - Throws: PalaceError on failure
+  func put(_ url: URL) async throws -> Data {
+    return try await withCheckedThrowingContinuation { continuation in
+      PUT(url, useTokenIfAvailable: true) { data, response, error in
+        if let error = error {
+          let palaceError = PalaceError.from(error)
+          continuation.resume(throwing: palaceError)
+        } else if let data = data {
+          continuation.resume(returning: data)
+        } else {
+          continuation.resume(throwing: PalaceError.network(.invalidResponse))
         }
       }
     }
@@ -106,18 +123,19 @@ extension TPPNetworkExecutor {
   // MARK: - Async DELETE Methods
   
   /// Performs an async DELETE request
-  /// - Parameter url: The URL to delete
+  /// - Parameter request: The URLRequest to delete
   /// - Returns: The response data
   /// - Throws: PalaceError on failure
-  func delete(_ url: URL) async throws -> Data {
+  func delete(_ request: URLRequest) async throws -> Data {
     return try await withCheckedThrowingContinuation { continuation in
-      DELETE(url) { result in
-        switch result {
-        case .success(let data, _):
-          continuation.resume(returning: data)
-        case .failure(let error, _):
+      DELETE(request, useTokenIfAvailable: true) { data, response, error in
+        if let error = error {
           let palaceError = PalaceError.from(error)
           continuation.resume(throwing: palaceError)
+        } else if let data = data {
+          continuation.resume(returning: data)
+        } else {
+          continuation.resume(throwing: PalaceError.network(.invalidResponse))
         }
       }
     }

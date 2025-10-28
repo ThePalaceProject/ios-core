@@ -226,7 +226,8 @@ extension OPDSFeedService {
   
   /// Fetches the catalog root
   func fetchCatalogRoot() async throws -> TPPOPDSFeed {
-    guard let catalogURL = AccountsManager.shared.currentAccount?.catalogUrl else {
+    guard let catalogURLString = AccountsManager.shared.currentAccount?.catalogUrl,
+          let catalogURL = URL(string: catalogURLString) else {
       throw PalaceError.authentication(.accountNotFound)
     }
     

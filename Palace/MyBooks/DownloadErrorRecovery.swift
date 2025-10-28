@@ -138,12 +138,14 @@ actor NetworkConditionMonitor {
   
   /// Checks if network conditions are suitable for downloading
   func isNetworkSuitableForDownload() -> Bool {
-    guard Reachability.shared.isReachable else {
+    guard Reachability.shared.isConnectedToNetwork() else {
       return false
     }
     
     // Check if on WiFi (preferred for large downloads)
-    let isWiFi = Reachability.shared.isWiFiConnection
+    let (isConnected, connectionType, _) = Reachability.shared.getDetailedConnectivityStatus()
+    guard isConnected else { return false }
+    let isWiFi = (connectionType == "WiFi")
     
     // Check if on low power mode
     let isLowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
@@ -226,12 +228,8 @@ actor DiskSpaceChecker {
   
   /// Estimates download size from book metadata
   func estimateDownloadSize(for book: TPPBook) -> Int64 {
-    // Try to get size from acquisition metadata
-    if let acquisition = book.defaultAcquisition,
-       let sizeString = acquisition.type, // This might contain size info
-       let size = Int64(sizeString) {
-      return size / (1024 * 1024) // Convert to MB
-    }
+    // Try to get size from acquisition metadata if available
+    // Most OPDS feeds don't include size, so we use defaults
     
     // Default estimates by book type
     switch book.defaultBookContentType {
