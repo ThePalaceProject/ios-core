@@ -139,7 +139,7 @@ actor OPDSFeedService {
   
   private func parseError(from errorDict: [AnyHashable: Any], url: URL) -> PalaceError {
     // Check for problem document
-    if let problemDoc = TPPProblemDocument.fromDictionary(errorDict) {
+    if let problemDoc = Self.problemDocumentFromDictionary(errorDict) {
       return parseProblemDocument(problemDoc)
     }
     
@@ -235,10 +235,11 @@ extension OPDSFeedService {
   }
 }
 
-// MARK: - TPPProblemDocument Extension
+// MARK: - Problem Document Parsing Helper
 
-extension TPPProblemDocument {
-  static func fromDictionary(_ dict: [AnyHashable: Any]) -> TPPProblemDocument? {
+extension OPDSFeedService {
+  /// Parses a problem document from a dictionary (avoids Objective-C selector conflict)
+  private static func problemDocumentFromDictionary(_ dict: [AnyHashable: Any]) -> TPPProblemDocument? {
     // Convert to [String: Any]
     var stringDict: [String: Any] = [:]
     for (key, value) in dict {
