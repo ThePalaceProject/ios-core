@@ -62,44 +62,49 @@ extension TPPBookRegistry {
   private func processLoansSync(feed: TPPOPDSFeed) async -> (errorDocument: [AnyHashable: Any]?, hasNewBooks: Bool) {
     return await withCheckedContinuation { continuation in
       DispatchQueue.main.async {
-        self.state = .syncing
+        // State is managed internally by sync() method
         
         var changesMade = false
-        self.syncQueue.sync {
-          var recordsToDelete = Set<String>(self.registry.keys)
-          
-          for entry in feed.entries {
-            guard let opdsEntry = entry as? TPPOPDSEntry,
-                  let book = TPPBook(entry: opdsEntry) else {
-              continue
-            }
-            
-            recordsToDelete.remove(book.identifier)
-            
-            if self.registry[book.identifier] != nil {
-              self.updateBook(book)
-              changesMade = true
-            } else {
-              self.addBook(book)
-              changesMade = true
-            }
+        
+        // Process entries - use public API
+        var newBooks: [TPPBook] = []
+        for entry in feed.entries {
+          guard let opdsEntry = entry as? TPPOPDSEntry,
+                let book = TPPBook(entry: opdsEntry) else {
+            continue
           }
-          
-          // Remove books no longer in loans
-          recordsToDelete.forEach { identifier in
-            if let recordState = self.registry[identifier]?.state,
-               recordState == .downloadSuccessful || recordState == .used {
-              MyBooksDownloadCenter.shared.deleteLocalContent(for: identifier)
-            }
-            self.registry[identifier]?.state = .unregistered
-            self.removeBook(forIdentifier: identifier)
-            changesMade = true
-          }
-          
-          self.save()
+          newBooks.append(book)
         }
         
-        self.state = .synced
+        // Check what changed - compare with current books
+        let currentBooks = self.allBooks
+        let currentIds = Set(currentBooks.map { $0.identifier })
+        let newIds = Set(newBooks.map { $0.identifier })
+        
+        // Books to add/update
+        for book in newBooks {
+          if currentIds.contains(book.identifier) {
+            // Update existing
+            let _ = self.updatedBookMetadata(book)
+          } else {
+            // Add new
+            self.addBook(book)
+          }
+          changesMade = true
+        }
+        
+        // Books to remove (in registry but not in new feed)
+        let removedIds = currentIds.subtracting(newIds)
+        for identifier in removedIds {
+          if let state = self.state(for: identifier),
+             state == .downloadSuccessful || state == .used {
+            MyBooksDownloadCenter.shared.deleteLocalContent(for: identifier)
+          }
+          self.setState(.unregistered, for: identifier)
+          self.removeBook(forIdentifier: identifier)
+          changesMade = true
+        }
+        
         continuation.resume(returning: (nil, changesMade))
       }
     }
@@ -158,10 +163,12 @@ extension TPPBookRegistry {
   }
   
   /// Asynchronously saves the registry
+  /// Note: Registry saves automatically when modifications are made
+  /// This method is provided for explicit save requests if needed
   func saveAsync() async {
+    // The registry saves automatically on modifications
+    // Just wait a moment to ensure any pending saves complete
     await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-      save()
-      // save() already handles async dispatch, wait a bit for it to complete
       DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.1) {
         continuation.resume()
       }
