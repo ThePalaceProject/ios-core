@@ -496,6 +496,7 @@
 		B51C1E18229456E2003B49A5 /* gpl_authentication_document.json in Resources */ = {isa = PBXBuildFile; fileRef = B51C1E14229456E2003B49A5 /* gpl_authentication_document.json */; };
 		B51C1E19229456E2003B49A5 /* nypl_authentication_document.json in Resources */ = {isa = PBXBuildFile; fileRef = B51C1E15229456E2003B49A5 /* nypl_authentication_document.json */; };
 		B51C1E1A229456E2003B49A5 /* dpl_authentication_document.json in Resources */ = {isa = PBXBuildFile; fileRef = B51C1E16229456E2003B49A5 /* dpl_authentication_document.json */; };
+		CC95E29A817905210AB558FC /* ErrorHandlingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D0876B053597003F3667FC1 /* ErrorHandlingTests.swift */; };
 		D19CE930C954410A845200318 /* RDServicesStubs.m in Sources */ = {isa = PBXBuildFile; fileRef = 75305888F6A941DDA9EEE592 /* RDServicesStubs.m */; };
 		D782CBE37A933A50E2123D0F /* TPPNetworkExecutor+Async.swift in Sources */ = {isa = PBXBuildFile; fileRef = D04BCBA308A23519CB8B544B /* TPPNetworkExecutor+Async.swift */; };
 		D787E8441FB6B0290016D9D5 /* TPPSettingsAdvancedViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D787E8431FB6B0290016D9D5 /* TPPSettingsAdvancedViewController.swift */; };
@@ -1412,6 +1413,7 @@
 		73FB0AC824EB403D0072E430 /* TPPBookContentTypeConverter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBookContentTypeConverter.swift; sourceTree = "<group>"; };
 		75305888F6A941DDA9EEE592 /* RDServicesStubs.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = RDServicesStubs.m; sourceTree = "<group>"; };
 		792EAAC792A1F96E02BBDA35 /* PalaceError.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PalaceError.swift; path = Palace/ErrorHandling/PalaceError.swift; sourceTree = "<group>"; };
+		7D0876B053597003F3667FC1 /* ErrorHandlingTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ErrorHandlingTests.swift; path = PalaceTests/ConcurrencyTests/ErrorHandlingTests.swift; sourceTree = "<group>"; };
 		841B55411B740F2700FAC1AF /* TPPSettingsEULAViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPSettingsEULAViewController.h; sourceTree = "<group>"; };
 		841B55421B740F2700FAC1AF /* TPPSettingsEULAViewController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPSettingsEULAViewController.m; sourceTree = "<group>"; };
 		84B7A3431B84E8FE00584FB2 /* OFL.txt */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = OFL.txt; sourceTree = "<group>"; };
@@ -1853,6 +1855,7 @@
 			isa = PBXGroup;
 			children = (
 				D8DE0A66573634A58BBE7FF4 /* ActorIsolationTests.swift */,
+				7D0876B053597003F3667FC1 /* ErrorHandlingTests.swift */,
 			);
 			name = ConcurrencyTests;
 			path = PalaceTests/ConcurrencyTests;
@@ -3815,6 +3818,7 @@
 				E56724C12A132C1300972828 /* TPPAnnotationMock.swift in Sources */,
 				E5A0CEA62AA9856000C304EC /* TPPReauthenticatorMock.swift in Sources */,
 				094151E849B70AE214C8B3B0 /* ActorIsolationTests.swift in Sources */,
+				CC95E29A817905210AB558FC /* ErrorHandlingTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
