@@ -192,7 +192,18 @@ extension Log {
   /// Logs to both system log and persistent file
   class func persistentLog(_ level: OSLogType, _ tag: String, _ message: String) {
     // Log to system (existing behavior)
-    log(level, tag, message)
+    switch level {
+    case .error:
+      Log.error(tag, message)
+    case .fault:
+      Log.fault(tag, message)
+    case .info:
+      Log.info(tag, message)
+    case .debug:
+      Log.debug(tag, message)
+    default:
+      Log.warn(tag, message)
+    }
     
     // Log to file for diagnostics
     Task {
