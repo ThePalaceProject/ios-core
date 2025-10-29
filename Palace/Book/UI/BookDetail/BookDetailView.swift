@@ -25,6 +25,7 @@ struct BookDetailView: View {
   @State private var imageBottomPosition: CGFloat = 400
   @State private var pulseSkeleton: Bool = false
   @State private var lastBookIdentifier: String? = nil
+  @State private var initialLayoutComplete: Bool = false
   
   private let scaleAnimation = Animation.linear(duration: 0.35)
 
@@ -80,7 +81,13 @@ struct BookDetailView: View {
         headerColor = Color(viewModel.book.dominantUIColor)
         lastBookIdentifier = viewModel.book.identifier
 
+        showCompactHeader = false
         headerHeight = viewModel.isFullSize ? 300 : 225
+        imageScale = 1.0
+        imageOpacity = 1.0
+        titleOpacity = 1.0
+        lastOffset = 0
+        
         viewModel.fetchRelatedBooks()
         self.descriptionText = viewModel.book.summary ?? ""
         withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
