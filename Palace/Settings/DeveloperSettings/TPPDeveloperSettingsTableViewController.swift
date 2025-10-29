@@ -11,6 +11,9 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     case libraryRegistryDebugging
     case dataManagement
     case developerTools
+    #if DEBUG
+    case debugTesting
+    #endif
   }
   
   private let betaLibraryCellIdentifier = "betaLibraryCell"
@@ -62,6 +65,9 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     switch Section(rawValue: section)! {
     case .librarySettings: return 2
     case .developerTools: return 2
+    #if DEBUG
+    case .debugTesting: return 1
+    #endif
     default: return 1
     }
   }
@@ -84,6 +90,9 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
       case 0: return cellForSendErrorLogs()
       default: return cellForEmailAudiobookLogs()
       }
+    #if DEBUG
+    case .debugTesting: return cellForDebugErrorTriggers()
+    #endif
     }
   }
   
@@ -97,6 +106,10 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
       return "Data Management"
     case .developerTools:
       return "Developer Tools"
+    #if DEBUG
+    case .debugTesting:
+      return "🧪 Debug Testing"
+    #endif
     }
   }
   
@@ -166,6 +179,16 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     return cell
   }
   
+  #if DEBUG
+  private func cellForDebugErrorTriggers() -> UITableViewCell {
+    let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+    cell.selectionStyle = .default
+    cell.textLabel?.text = "🧪 Trigger Test Errors"
+    cell.accessoryType = .disclosureIndicator
+    return cell
+  }
+  #endif
+  
   // MARK:- UITableViewDelegate
   
   func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
@@ -184,6 +207,11 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         emailAudiobookLogs()
       }
     }
+    #if DEBUG
+    if Section(rawValue: indexPath.section) == .debugTesting {
+      showDebugErrorTriggers()
+    }
+    #endif
   }
   
   private func sendErrorLogs() {
@@ -252,6 +280,56 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     
     self.present(mailComposer, animated: true, completion: nil)
   }
+  
+  #if DEBUG
+  private func showDebugErrorTriggers() {
+    let alert = UIAlertController(
+      title: "🧪 Debug Error Triggers",
+      message: "Trigger test errors to verify enhanced logging is working.",
+      preferredStyle: .actionSheet
+    )
+    
+    alert.addAction(UIAlertAction(title: "Download Error", style: .default) { _ in
+      DebugErrorTriggers.triggerDownloadError()
+      let confirmAlert = TPPAlertUtils.alert(
+        title: "✅ Triggered",
+        message: "Download error triggered! Check console and Firebase."
+      )
+      self.present(confirmAlert, animated: true)
+    })
+    
+    alert.addAction(UIAlertAction(title: "Network Error", style: .default) { _ in
+      DebugErrorTriggers.triggerNetworkError()
+      let confirmAlert = TPPAlertUtils.alert(
+        title: "✅ Triggered",
+        message: "Network error triggered! Check console and Firebase."
+      )
+      self.present(confirmAlert, animated: true)
+    })
+    
+    alert.addAction(UIAlertAction(title: "Generic Error", style: .default) { _ in
+      DebugErrorTriggers.triggerGenericError()
+      let confirmAlert = TPPAlertUtils.alert(
+        title: "✅ Triggered",
+        message: "Generic error triggered! Check console and Firebase."
+      )
+      self.present(confirmAlert, animated: true)
+    })
+    
+    alert.addAction(UIAlertAction(title: "Multiple Errors", style: .default) { _ in
+      DebugErrorTriggers.triggerMultipleErrors()
+      let confirmAlert = TPPAlertUtils.alert(
+        title: "✅ Triggered",
+        message: "Multiple errors triggered! Check console and Firebase."
+      )
+      self.present(confirmAlert, animated: true)
+    })
+    
+    alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+    
+    present(alert, animated: true)
+  }
+  #endif
   
   func mailComposeController(_ controller: MFMailComposeViewController, didFinishWith result: MFMailComposeResult, error: Error?) {
     controller.dismiss(animated: true, completion: nil)
