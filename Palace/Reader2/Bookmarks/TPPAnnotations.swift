@@ -206,6 +206,7 @@ protocol AnnotationsManager {
     var request = TPPNetworkExecutor.shared.request(for: url)
     request.httpMethod = "POST"
     request.httpBody = jsonData
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     request.timeoutInterval = timeout
 
     let task = TPPNetworkExecutor.shared.POST(request, useTokenIfAvailable: true) { (data, response, error) in
