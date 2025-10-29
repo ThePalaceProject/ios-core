@@ -18,10 +18,9 @@ actor ErrorLogExporter {
   
   static let shared = ErrorLogExporter()
   
-//  private let logsEmail = "logs@thepalaceproject.org"
-  private let logsEmail = "maurice.carrier@outlook.com"
+  private let logsEmail = "logs@thepalaceproject.org"
 
-  private let maxLogSizeBytes: Int = 5_000_000 // 5MB
+  private let maxLogSizeBytes: Int = 5_000_000
   private let defaultLogDays: Int = 7
   
   private init() {}
@@ -47,8 +46,15 @@ actor ErrorLogExporter {
     // Collect logs in background
     let logData = await collectAllLogs()
     
-    // Dismiss loading alert
-    loadingAlert.dismiss(animated: true)
+    // Dismiss loading alert and wait for completion
+    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+      loadingAlert.dismiss(animated: true) {
+        continuation.resume()
+      }
+    }
+    
+    // Small delay to ensure dismiss is fully complete
+    try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
     
     // Present mail composer
     await presentMailComposer(with: logData, from: presentingViewController)

@@ -441,6 +441,23 @@ fileprivate let nullString = "null"
   // MARK:- Private helpers
 
   private class func record(error: NSError) {
+    // Check if enhanced logging is enabled for this device
+    Task {
+      let isEnhanced = await DeviceSpecificErrorMonitor.shared.isEnhancedLoggingEnabled()
+      
+      if isEnhanced {
+        // Enhanced logging: add stack trace and send to Analytics
+        Log.info(#file, "📊 ENHANCED error logging active")
+        
+        await DeviceSpecificErrorMonitor.shared.logError(
+          error,
+          context: error.domain,
+          metadata: error.userInfo
+        )
+      }
+    }
+    
+    // Always do normal Crashlytics recording
     // Only enable Crashlytics on Production builds
     guard Bundle.main.applicationEnvironment == .production else { return }
 

@@ -68,13 +68,15 @@ actor DeviceSpecificErrorMonitor {
   // MARK: - Device ID
   
   nonisolated func getDeviceID() -> String {
-    let key = "PalaceDeviceMonitoringID"
+    // Use same key as RemoteFeatureFlags to ensure consistency
+    let key = "TPPDeviceIdentifier"
     if let existingID = UserDefaults.standard.string(forKey: key) {
       return existingID
     }
     
     let newID = UUID().uuidString
     UserDefaults.standard.set(newID, forKey: key)
+    Log.info(#file, "Generated new device ID: \(newID)")
     return newID
   }
   
@@ -83,57 +85,75 @@ actor DeviceSpecificErrorMonitor {
   func isEnhancedLoggingEnabled() -> Bool {
     // Check device-specific flag first (highest priority)
     let deviceID = getDeviceID()
-    let deviceKey = "enhanced_error_logging_device_\(deviceID)"
+    // CRITICAL: Sanitize UUID by removing hyphens for Firebase parameter compatibility
+    let sanitizedDeviceID = deviceID.replacingOccurrences(of: "-", with: "")
+    let deviceKey = "enhanced_error_logging_device_\(sanitizedDeviceID)"
+    
+    Log.debug(#file, "Checking enhanced logging: device_id=\(deviceID), key=\(deviceKey)")
     
     let deviceConfigValue = remoteConfig.configValue(forKey: deviceKey)
     if deviceConfigValue.source == .remote {
+      Log.info(#file, "✅ Enhanced logging enabled via device-specific flag: \(deviceConfigValue.boolValue)")
       return deviceConfigValue.boolValue
     }
     
     // Check global flag
     let globalValue = remoteConfig.configValue(forKey: "enhanced_error_logging_enabled")
     if globalValue.source == .remote {
+      Log.info(#file, "Enhanced logging from global flag: \(globalValue.boolValue)")
       return globalValue.boolValue
     }
     
     // Default: disabled
+    Log.debug(#file, "Enhanced logging disabled (no remote config)")
     return false
   }
   
   // MARK: - Enhanced Error Logging
   
   /// Log error with full stack trace and context when enabled
+  /// NOTE: This should NOT call TPPErrorLogger to avoid infinite recursion
   func logError(
     _ error: Error,
     context: String,
     metadata: [String: Any] = [:]
   ) {
-    guard isEnhancedLoggingEnabled() else {
-      // Normal logging only
-      TPPErrorLogger.logError(error, summary: context, metadata: metadata)
+    let isEnabled = isEnhancedLoggingEnabled()
+    Log.info(#file, "🔍 logError called - Enhanced: \(isEnabled), context: \(context)")
+    
+    guard isEnabled else {
+      // Enhanced not enabled, nothing to do (TPPErrorLogger already handles normal logging)
       return
     }
     
-    // Enhanced logging with stack trace
-    var enhancedMetadata = metadata
-    enhancedMetadata["device_id"] = getDeviceID()
-    enhancedMetadata["stack_trace"] = Thread.callStackSymbols
-    enhancedMetadata["enhanced_monitoring"] = true
+    Log.info(#file, "📊 ENHANCED logging active - capturing full stack trace")
     
-    // Log to Crashlytics
-    TPPErrorLogger.logError(error, summary: "[ENHANCED] \(context)", metadata: enhancedMetadata)
-    
-    // Also send to Firebase Analytics
-    Analytics.logEvent("enhanced_error_logged", parameters: [
+    // Enhanced logging: Send to Firebase Analytics with stack trace
+    var analyticsParams: [String: Any] = [
       "error_domain": (error as NSError).domain,
       "error_code": (error as NSError).code,
       "context": context,
       "device_id": getDeviceID()
-    ])
+    ]
     
-    // Log to Crashlytics with custom key
+    Analytics.logEvent("enhanced_error_logged", parameters: analyticsParams)
+    
+    // Log to Crashlytics with enhanced metadata (directly, not via TPPErrorLogger)
     Crashlytics.crashlytics().setCustomValue(true, forKey: "enhanced_logging_enabled")
-    Crashlytics.crashlytics().log("Enhanced Error: \(context) - \(error.localizedDescription)")
+    Crashlytics.crashlytics().setCustomValue(getDeviceID(), forKey: "device_id")
+    
+    // Log stack trace to Crashlytics
+    let stackTrace = Thread.callStackSymbols.joined(separator: "\n")
+    Crashlytics.crashlytics().log("Enhanced Error: \(context)")
+    Crashlytics.crashlytics().log("Error: \(error.localizedDescription)")
+    Crashlytics.crashlytics().log("Stack Trace:\n\(stackTrace)")
+    
+    // Log metadata
+    for (key, value) in metadata {
+      Crashlytics.crashlytics().log("\(key): \(value)")
+    }
+    
+    Log.info(#file, "✅ Enhanced error data sent to Firebase Analytics & Crashlytics")
   }
   
   /// Log download failure with full context

@@ -28,6 +28,16 @@ import UIKit
     - Returns: The alert controller to be presented.
    */
   class func alert(title: String?, error: NSError?) -> UIAlertController {
+    // IMPORTANT: Log all errors that result in user-facing alerts
+    // This ensures enhanced logging captures them
+    if let error = error {
+      TPPErrorLogger.logError(
+        error,
+        summary: "Error alert shown to user: \(title ?? "Unknown")",
+        metadata: ["alert_title": title ?? "N/A"]
+      )
+    }
+    
     var message = ""
     let domain = error?.domain ?? ""
     let code = error?.code ?? 0

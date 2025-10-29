@@ -396,6 +396,24 @@ enum BookService {
 
 
   private static func showAudiobookTryAgainError() {
+    // Log the error so it can be captured by enhanced logging
+    let error = NSError(
+      domain: "AudiobookOpenError",
+      code: TPPErrorCode.audiobookCorrupted.rawValue,
+      userInfo: [
+        NSLocalizedDescriptionKey: "Failed to open audiobook",
+        "error_type": "audiobook_open_failure"
+      ]
+    )
+    
+    TPPErrorLogger.logError(
+      error,
+      summary: "Audiobook failed to open - showing try again error",
+      metadata: [
+        "user_message": Strings.Error.tryAgain
+      ]
+    )
+    
     let alert = TPPAlertUtils.alert(title: Strings.Error.openFailedError, message: Strings.Error.tryAgain)
     TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
   }

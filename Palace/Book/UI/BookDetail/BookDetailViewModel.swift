@@ -588,6 +588,17 @@ final class BookDetailViewModel: ObservableObject {
   // MARK: - Error Alerts
   
   private func presentCorruptedItemError() {
+    // Log the error before presenting
+    TPPErrorLogger.logError(
+      withCode: .epubDecodingError,
+      summary: "Corrupted EPUB item - cannot open book",
+      metadata: [
+        "book_id": book.identifier,
+        "book_title": book.title,
+        "distributor": book.distributor ?? "unknown"
+      ]
+    )
+    
     let alert = UIAlertController(
       title: Strings.Error.epubNotValidError,
       message: Strings.Error.epubNotValidError,
@@ -598,6 +609,18 @@ final class BookDetailViewModel: ObservableObject {
   }
   
   private func presentUnsupportedItemError() {
+    // Log the error before presenting
+    TPPErrorLogger.logError(
+      withCode: .unexpectedFormat,
+      summary: "Unsupported book format",
+      metadata: [
+        "book_id": book.identifier,
+        "book_title": book.title,
+        "distributor": book.distributor ?? "unknown",
+        "content_type": TPPBookContentTypeConverter.stringValue(of: book.defaultBookContentType)
+      ]
+    )
+    
     let alert = UIAlertController(
       title: Strings.Error.formatNotSupportedError,
       message: Strings.Error.formatNotSupportedError,
@@ -608,6 +631,17 @@ final class BookDetailViewModel: ObservableObject {
   }
   
   private func presentDRMKeyError(_ error: Error) {
+    // Log DRM errors
+    TPPErrorLogger.logError(
+      error,
+      summary: "DRM key error - cannot decrypt content",
+      metadata: [
+        "book_id": book.identifier,
+        "book_title": book.title,
+        "error_description": error.localizedDescription
+      ]
+    )
+    
     let alert = UIAlertController(title: "DRM Error", message: error.localizedDescription, preferredStyle: .alert)
     alert.addAction(UIAlertAction(title: "OK", style: .default))
     TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
