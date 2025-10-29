@@ -9,6 +9,7 @@ struct MyBooksView: View {
   @State private var showSortSheet: Bool = false
   @StateObject private var logoObserver = CatalogLogoObserver()
   @State private var currentAccountUUID: String = AccountsManager.shared.currentAccount?.uuid ?? ""
+  @FocusState private var isSearchFocused: Bool
   // Centralized sample preview manager overlay
 
   var body: some View {
@@ -34,7 +35,12 @@ struct MyBooksView: View {
         ToolbarItem(placement: .navigationBarLeading) { leadingBarButton }
         ToolbarItem(placement: .navigationBarTrailing) {
           if model.showSearchSheet {
-            Button(action: { withAnimation { model.showSearchSheet = false; model.searchQuery = "" } }) {
+            Button(action: {
+              isSearchFocused = false
+              model.showSearchSheet = false
+              model.resetFilter()
+              model.searchQuery = ""
+            }) {
               Text(Strings.Generic.cancel)
             }
           } else {
@@ -113,7 +119,8 @@ struct MyBooksView: View {
         .refreshable { model.reloadData() }
         .scrollDismissesKeyboard(.interactively)
         .simultaneousGesture(DragGesture().onChanged { _ in
-          if model.showSearchSheet { 
+          if model.showSearchSheet {
+            model.resetFilter()
             model.searchQuery = ""
           }
         })
@@ -130,7 +137,9 @@ struct MyBooksView: View {
     HStack {
       TextField(DisplayStrings.searchBooks, text: $model.searchQuery)
         .searchBarStyle()
+        .focused($isSearchFocused)
         .onChange(of: model.searchQuery) { query in
+          guard model.showSearchSheet else { return }
           Task {
             await model.filterBooks(query: query)
           }
@@ -141,13 +150,18 @@ struct MyBooksView: View {
       })
     }
     .padding(.horizontal)
+    .onChange(of: model.showSearchSheet) { isShown in
+      if isShown {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+          isSearchFocused = true
+        }
+      }
+    }
   }
 
   private func clearSearch() {
-    Task {
-      model.searchQuery = ""
-      await model.filterBooks(query: "")
-    }
+    model.resetFilter()
+    model.searchQuery = ""
   }
 
   private var loadingOverlay: some View {
