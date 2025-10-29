@@ -770,6 +770,8 @@
 		E5E4AAD72EB292B600CC1D67 /* FirebaseRemoteConfigSwift in Frameworks */ = {isa = PBXBuildFile; productRef = E5E4AAD62EB292B600CC1D67 /* FirebaseRemoteConfigSwift */; };
 		E5E4AADC2EB29DE700CC1D67 /* DeviceSpecificErrorMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E4AADB2EB29DE700CC1D67 /* DeviceSpecificErrorMonitor.swift */; };
 		E5E4AADD2EB29DE700CC1D67 /* DeviceSpecificErrorMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E4AADB2EB29DE700CC1D67 /* DeviceSpecificErrorMonitor.swift */; };
+		E5E4AADF2EB2A28A00CC1D67 /* DebugErrorTriggers.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E4AADE2EB2A28A00CC1D67 /* DebugErrorTriggers.swift */; };
+		E5E4AAE02EB2A28A00CC1D67 /* DebugErrorTriggers.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E4AADE2EB2A28A00CC1D67 /* DebugErrorTriggers.swift */; };
 		E5E9AFF02CC0357500366A2E /* ReadiumNavigator in Frameworks */ = {isa = PBXBuildFile; productRef = E5E9AFEF2CC0357500366A2E /* ReadiumNavigator */; };
 		E5E9AFF22CC0357500366A2E /* ReadiumShared in Frameworks */ = {isa = PBXBuildFile; productRef = E5E9AFF12CC0357500366A2E /* ReadiumShared */; };
 		E5E9AFF42CC0357500366A2E /* ReadiumStreamer in Frameworks */ = {isa = PBXBuildFile; productRef = E5E9AFF32CC0357500366A2E /* ReadiumStreamer */; };
@@ -1634,6 +1636,7 @@
 		E5E4A9E32EB0568F00CC1D67 /* MainActorHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainActorHelpers.swift; sourceTree = "<group>"; };
 		E5E4AACD2EB2914B00CC1D67 /* RemoteFeatureFlags.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFeatureFlags.swift; sourceTree = "<group>"; };
 		E5E4AADB2EB29DE700CC1D67 /* DeviceSpecificErrorMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceSpecificErrorMonitor.swift; sourceTree = "<group>"; };
+		E5E4AADE2EB2A28A00CC1D67 /* DebugErrorTriggers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugErrorTriggers.swift; sourceTree = "<group>"; };
 		E5EE38092D5DA74C00252001 /* Int+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Int+Extensions.swift"; sourceTree = "<group>"; };
 		E5EE380D2D5DB19D00252001 /* Color+Extension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Color+Extension.swift"; sourceTree = "<group>"; };
 		E5EFDE77298C43D300258CA3 /* BookButtonState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookButtonState.swift; sourceTree = "<group>"; };
@@ -3193,6 +3196,7 @@
 		E5C2C41B268BA4E00046F415 /* DeveloperSettings */ = {
 			isa = PBXGroup;
 			children = (
+				E5E4AADE2EB2A28A00CC1D67 /* DebugErrorTriggers.swift */,
 				E56D859F2E68E58E00DFF16C /* TPPReloadView.swift */,
 				5DD5674422B303DF001F0C83 /* TPPDeveloperSettingsTableViewController.swift */,
 				E5C2C421268BA5140046F415 /* TPPRegistryDebuggingCell.swift */,
@@ -4176,6 +4180,7 @@
 				73EB0B0F25821DF4006BC997 /* NSString+JSONParse.swift in Sources */,
 				73EB0B1025821DF4006BC997 /* TPPOPDSEntryGroupAttributes.m in Sources */,
 				73D8D28225A68D5600DF5F69 /* Publication+NYPLAdditions.swift in Sources */,
+				E5E4AAE02EB2A28A00CC1D67 /* DebugErrorTriggers.swift in Sources */,
 				21C184DD27B12347008CC4F8 /* UINavigationBar+appearance.swift in Sources */,
 				73EB0B1225821DF4006BC997 /* TPPProblemDocumentCacheManager.swift in Sources */,
 				73EB0B1425821DF4006BC997 /* TPPMyBooksSimplifiedBearerToken.m in Sources */,
@@ -4464,6 +4469,7 @@
 				E7861C4D2846937400B3A38A /* TPPEncryptedPDFView.swift in Sources */,
 				E78AE800291BFCC600884446 /* TPPBookLocation.swift in Sources */,
 				E795A76B2A74074300314EC8 /* AudiobookDataManager.swift in Sources */,
+				E5E4AADF2EB2A28A00CC1D67 /* DebugErrorTriggers.swift in Sources */,
 				730FC05125128224004D7C2D /* TPPSettings.swift in Sources */,
 				E6B1F4FB1DD20EA900D73CA1 /* TPPSettingsAccountsList.swift in Sources */,
 				5DD567B522B97344001F0C83 /* Data+Base64.swift in Sources */,

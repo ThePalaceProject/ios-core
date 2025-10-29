@@ -15,7 +15,7 @@ enum DebugErrorTriggers {
   /// Trigger a simulated download error
   static func triggerDownloadError() {
     Task {
-      let testBook = createTestBook()
+      let testBook = await createTestBook()
       let error = NSError(
         domain: "TestErrorDomain",
         code: 9999,
@@ -111,61 +111,27 @@ enum DebugErrorTriggers {
   
   // MARK: - Helper
   
-  private static func createTestBook() -> TPPBook {
-    // Create a minimal test book for error logging
-    let entry = TPPOPDSEntry()
-    entry.identifier = "urn:test:debug-error-book"
-    entry.title = "DEBUG Test Book"
-    entry.distributor = "TestDistributor"
+  private static func createTestBook() async -> TPPBook {
+    // Use any book from the registry as a test book
+    let allBooks = TPPBookRegistry.shared.allBooks
     
-    return TPPBook(entry: entry) ?? TPPBook()
-  }
-}
-
-// MARK: - UIViewController Extension for Easy Testing
-
-extension UIViewController {
-  /// Show debug error trigger menu (DEBUG builds only)
-  @objc func showDebugErrorTriggers() {
-    let alert = UIAlertController(
-      title: "🧪 Debug Error Triggers",
-      message: "Trigger test errors to verify enhanced logging is working.",
-      preferredStyle: .actionSheet
-    )
+    if let book = allBooks.first {
+      return book
+    }
     
-    alert.addAction(UIAlertAction(title: "Download Error", style: .default) { _ in
-      DebugErrorTriggers.triggerDownloadError()
-      self.showConfirmation("Download error triggered! Check console and Firebase.")
-    })
+    // If no books in registry, create a minimal mock
+    let mockDict: [String: Any] = [
+      "id": "urn:test:debug-book",
+      "title": "Test Book for Error Logging",
+      "updated": "2025-10-29T00:00:00Z",
+      "@type": "http://schema.org/Book"
+    ]
     
-    alert.addAction(UIAlertAction(title: "Network Error", style: .default) { _ in
-      DebugErrorTriggers.triggerNetworkError()
-      self.showConfirmation("Network error triggered! Check console and Firebase.")
-    })
-    
-    alert.addAction(UIAlertAction(title: "Generic Error", style: .default) { _ in
-      DebugErrorTriggers.triggerGenericError()
-      self.showConfirmation("Generic error triggered! Check console and Firebase.")
-    })
-    
-    alert.addAction(UIAlertAction(title: "Multiple Errors", style: .default) { _ in
-      DebugErrorTriggers.triggerMultipleErrors()
-      self.showConfirmation("Multiple errors triggered! Check console and Firebase.")
-    })
-    
-    alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-    
-    present(alert, animated: true)
-  }
-  
-  private func showConfirmation(_ message: String) {
-    let alert = UIAlertController(
-      title: "✅ Triggered",
-      message: message,
-      preferredStyle: .alert
-    )
-    alert.addAction(UIAlertAction(title: "OK", style: .default))
-    present(alert, animated: true)
+    return TPPBook(dictionary: mockDict) ?? {
+      // Absolute fallback - shouldn't reach here in normal usage
+      Log.warn(#file, "Using fallback test book - add some books to your library for better testing")
+      return TPPBook(dictionary: [:])!
+    }()
   }
 }
 #endif
