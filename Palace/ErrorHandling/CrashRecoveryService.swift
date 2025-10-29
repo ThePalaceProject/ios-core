@@ -16,10 +16,8 @@ actor CrashRecoveryService {
   private let crashCountKey = "PalaceCrashCount"
   private let lastCleanExitKey = "PalaceLastCleanExit"
   private let lastLaunchTimeKey = "PalaceLastLaunchTime"
-  private let safeModeKey = "PalaceSafeMode"
   private let crashTimestampsKey = "PalaceCrashTimestamps"
   
-  private let maxCrashesBeforeSafeMode = 3
   private let crashWindowSeconds: TimeInterval = 300 // 5 minutes
   
   private init() {}
@@ -61,7 +59,7 @@ actor CrashRecoveryService {
     return false
   }
   
-  /// Records a crash and determines if safe mode should be activated
+  /// Records a crash and performs automatic recovery
   private func handleCrashDetection() async {
     var crashCount = UserDefaults.standard.integer(forKey: crashCountKey)
     crashCount += 1
@@ -76,7 +74,7 @@ actor CrashRecoveryService {
     crashTimestamps = crashTimestamps.filter { $0 > oneHourAgo }
     UserDefaults.standard.set(crashTimestamps, forKey: crashTimestampsKey)
     
-    Log.error(#file, "🔴 Crash detected on previous launch. Total crashes: \(crashCount)")
+    Log.error(#file, "🔴 Crash detected on previous launch. Total crashes: \(crashCount), Recent: \(crashTimestamps.count)")
     TPPErrorLogger.logError(
       withCode: .appCrashDetected,
       summary: "App crash detected on launch",
@@ -87,55 +85,11 @@ actor CrashRecoveryService {
       ]
     )
     
-    // Check if we should enter safe mode
-    if crashTimestamps.count >= maxCrashesBeforeSafeMode {
-      await enterSafeMode()
-    } else {
-      await performCrashRecovery()
-    }
+    // Always perform recovery, no safe mode
+    await performCrashRecovery()
   }
   
-  // MARK: - Safe Mode
-  
-  /// Enters safe mode after multiple crashes
-  @MainActor
-  private func enterSafeMode() async {
-    UserDefaults.standard.set(true, forKey: safeModeKey)
-    
-    Log.error(#file, "⚠️ Entering safe mode after \(maxCrashesBeforeSafeMode) crashes")
-    
-    // Show safe mode alert to user
-    let alert = UIAlertController(
-      title: "Safe Mode",
-      message: "The app has crashed multiple times. Running in safe mode with limited features. Please try restarting the app or contact support if the problem persists.",
-      preferredStyle: .alert
-    )
-    
-    alert.addAction(UIAlertAction(title: "OK", style: .default))
-    alert.addAction(UIAlertAction(title: "Reset App", style: .destructive) { _ in
-      Task {
-        await self.resetAppState()
-      }
-    })
-    
-    if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-       let rootVC = windowScene.windows.first?.rootViewController {
-      rootVC.present(alert, animated: true)
-    }
-  }
-  
-  /// Checks if the app is currently in safe mode
-  func isInSafeMode() -> Bool {
-    return UserDefaults.standard.bool(forKey: safeModeKey)
-  }
-  
-  /// Exits safe mode (called after successful app run or user reset)
-  func exitSafeMode() {
-    UserDefaults.standard.set(false, forKey: safeModeKey)
-    UserDefaults.standard.set(0, forKey: crashCountKey)
-    UserDefaults.standard.removeObject(forKey: crashTimestampsKey)
-    Log.info(#file, "✅ Exited safe mode")
-  }
+  // MARK: - Recovery Only (Safe Mode Removed)
   
   // MARK: - Crash Recovery
   
@@ -229,56 +183,10 @@ actor CrashRecoveryService {
       UserDefaults.standard.set(max(0, crashCount - 1), forKey: crashCountKey)
       Log.info(#file, "Decremented crash count to \(max(0, crashCount - 1)) after stable session")
     }
-    
-    // If we've been stable, exit safe mode
-    if isInSafeMode() && crashCount <= 1 {
-      exitSafeMode()
-    }
   }
   
   // MARK: - Full Reset
   
-  /// Performs a full app state reset (destructive)
-  @MainActor
-  func resetAppState() async {
-    Log.warn(#file, "⚠️ Performing full app state reset...")
-    
-    // Clear authentication tokens for all accounts
-    for account in AccountsManager.shared.accounts() {
-      let userAccount = TPPUserAccount.sharedAccount(libraryUUID: account.uuid)
-      userAccount.setAuthToken("", barcode: "", pin: "", expirationDate: nil)
-    }
-    
-    // Clear all caches
-    ImageCache.shared.clear()
-    URLCache.shared.removeAllCachedResponses()
-    
-    // Pause all downloads (cancellation would lose progress)
-    MyBooksDownloadCenter.shared.pauseAllDownloads()
-    
-    // Reset registry for current account
-    if let currentAccount = AccountsManager.shared.currentAccount {
-      TPPBookRegistry.shared.reset(currentAccount.uuid)
-    }
-    
-    // Exit safe mode
-    await exitSafeMode()
-    
-    // Restart app
-    Log.info(#file, "App state reset complete. Restarting...")
-    
-    let alert = UIAlertController(
-      title: "Reset Complete",
-      message: "The app has been reset. Please restart the app.",
-      preferredStyle: .alert
-    )
-    alert.addAction(UIAlertAction(title: "OK", style: .default))
-    
-    if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-       let rootVC = windowScene.windows.first?.rootViewController {
-      rootVC.present(alert, animated: true)
-    }
-  }
 }
 
 // MARK: - Error Code Extension

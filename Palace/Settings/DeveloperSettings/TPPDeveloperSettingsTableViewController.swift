@@ -10,7 +10,6 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     case librarySettings = 0
     case libraryRegistryDebugging
     case dataManagement
-    case performanceMonitoring
     case developerTools
   }
   
@@ -19,8 +18,6 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
   private let clearCacheCellIdentifier = "clearCacheCell"
   private let emailLogsCellIdentifier = "emailLogsCell"
   private let sendErrorLogsCellIdentifier = "sendErrorLogsCell"
-  private let actorMonitoringCellIdentifier = "actorMonitoringCell"
-  private let actorHealthReportCellIdentifier = "actorHealthReportCell"
   
   private var pushNotificationsStatus = false
   
@@ -41,21 +38,6 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     TPPSettings.shared.enterLCPPassphraseManually = sender.isOn
   }
   
-  @objc func actorMonitoringSwitchDidChange(sender: UISwitch) {
-    Task {
-      await ActorHealthMonitor.shared.setEnabled(sender.isOn)
-      
-      let message = sender.isOn
-        ? "Actor health monitoring enabled. Slow operations will be logged."
-        : "Actor health monitoring disabled. No performance overhead."
-      
-      await MainActor.run {
-        let alert = TPPAlertUtils.alert(title: "Actor Monitoring", message: message)
-        self.present(alert, animated: true)
-      }
-    }
-  }
-  
   // MARK:- UIViewController
   
   override func loadView() {
@@ -72,8 +54,6 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: clearCacheCellIdentifier)
     self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: emailLogsCellIdentifier)
     self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: sendErrorLogsCellIdentifier)
-    self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: actorMonitoringCellIdentifier)
-    self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: actorHealthReportCellIdentifier)
   }
   
   // MARK:- UITableViewDataSource
@@ -81,7 +61,6 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
   func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
     switch Section(rawValue: section)! {
     case .librarySettings: return 2
-    case .performanceMonitoring: return 2
     case .developerTools: return 2
     default: return 1
     }
@@ -100,11 +79,6 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
       }
     case .libraryRegistryDebugging: return cellForCustomRegsitry()
     case .dataManagement: return cellForClearCache()
-    case .performanceMonitoring:
-      switch indexPath.row {
-      case 0: return cellForActorMonitoring()
-      default: return cellForActorHealthReport()
-      }
     case .developerTools:
       switch indexPath.row {
       case 0: return cellForSendErrorLogs()
@@ -121,23 +95,8 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
       return "Library Registry Debugging"
     case .dataManagement:
       return "Data Management"
-    case .performanceMonitoring:
-      return "Performance Monitoring"
     case .developerTools:
       return "Developer Tools"
-    }
-  }
-  
-  func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
-    switch Section(rawValue: section)! {
-    case .performanceMonitoring:
-      #if DEBUG
-      return "Actor monitoring enabled in DEBUG builds. Tracks slow operations (>5s) and critical delays (>10s)."
-      #else
-      return "Actor monitoring disabled in RELEASE builds by default for performance."
-      #endif
-    default:
-      return nil
     }
   }
   
@@ -183,6 +142,18 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     let cell = tableView.dequeueReusableCell(withIdentifier: sendErrorLogsCellIdentifier)!
     cell.selectionStyle = .default
     cell.textLabel?.text = "Send Error Logs"
+    
+    // Show indicator if enhanced monitoring is enabled
+    Task {
+      let isEnhanced = await DeviceSpecificErrorMonitor.shared.isEnhancedLoggingEnabled()
+      if isEnhanced {
+        await MainActor.run {
+          cell.detailTextLabel?.text = "🔍 Enhanced"
+          cell.detailTextLabel?.textColor = .systemGreen
+        }
+      }
+    }
+    
     cell.accessoryType = .disclosureIndicator
     return cell
   }
@@ -191,36 +162,6 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     let cell = tableView.dequeueReusableCell(withIdentifier: emailLogsCellIdentifier)!
     cell.selectionStyle = .default
     cell.textLabel?.text = "Email Audiobook Logs"
-    cell.accessoryType = .disclosureIndicator
-    return cell
-  }
-  
-  private func cellForActorMonitoring() -> UITableViewCell {
-    let cell = tableView.dequeueReusableCell(withIdentifier: actorMonitoringCellIdentifier)!
-    cell.selectionStyle = .none
-    cell.textLabel?.text = "Enable Actor Health Monitoring"
-    cell.textLabel?.adjustsFontSizeToFitWidth = true
-    cell.textLabel?.minimumScaleFactor = 0.7
-    
-    // Get current state asynchronously
-    let switchControl = UISwitch()
-    switchControl.addTarget(self, action: #selector(actorMonitoringSwitchDidChange), for: .valueChanged)
-    
-    Task {
-      let isEnabled = await ActorHealthMonitor.shared.getEnabled()
-      await MainActor.run {
-        switchControl.isOn = isEnabled
-      }
-    }
-    
-    cell.accessoryView = switchControl
-    return cell
-  }
-  
-  private func cellForActorHealthReport() -> UITableViewCell {
-    let cell = tableView.dequeueReusableCell(withIdentifier: actorHealthReportCellIdentifier)!
-    cell.selectionStyle = .default
-    cell.textLabel?.text = "View Actor Health Report"
     cell.accessoryType = .disclosureIndicator
     return cell
   }
@@ -235,13 +176,6 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
       ImageCache.shared.clear()
       let alert = TPPAlertUtils.alert(title: "Data Management", message: "Cache Cleared")
       self.present(alert, animated: true, completion: nil)
-    } else if Section(rawValue: indexPath.section) == .performanceMonitoring {
-      switch indexPath.row {
-      case 1:
-        showActorHealthReport()
-      default:
-        break
-      }
     } else if Section(rawValue: indexPath.section) == .developerTools {
       switch indexPath.row {
       case 0:
@@ -254,7 +188,40 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
   
   private func sendErrorLogs() {
     Task {
-      await ErrorLogExporter.shared.sendErrorLogs(from: self)
+      // Show device ID for support
+      let deviceID = DeviceSpecificErrorMonitor.shared.getDeviceID()
+      let sanitizedID = deviceID.replacingOccurrences(of: "-", with: "")
+      let isEnhanced = await DeviceSpecificErrorMonitor.shared.isEnhancedLoggingEnabled()
+      
+      let infoMessage = """
+      Device ID: \(deviceID)
+      Firebase Key: enhanced_error_logging_device_\(sanitizedID)
+      Enhanced Logging: \(isEnhanced ? "✅ Enabled" : "❌ Disabled")
+      
+      Share the Firebase Key with support to enable enhanced error logging remotely.
+      """
+      
+      await MainActor.run {
+        let alert = UIAlertController(
+          title: "Device Info",
+          message: infoMessage,
+          preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "Copy Device ID", style: .default) { _ in
+          UIPasteboard.general.string = deviceID
+        })
+        alert.addAction(UIAlertAction(title: "Copy Firebase Key", style: .default) { _ in
+          UIPasteboard.general.string = "enhanced_error_logging_device_\(sanitizedID)"
+        })
+        alert.addAction(UIAlertAction(title: "Send Logs", style: .default) { _ in
+          Task {
+            await ErrorLogExporter.shared.sendErrorLogs(from: self)
+          }
+        })
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        
+        self.present(alert, animated: true)
+      }
     }
   }
   
@@ -284,58 +251,6 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     }
     
     self.present(mailComposer, animated: true, completion: nil)
-  }
-  
-  private func showActorHealthReport() {
-    Task {
-      let report = await ActorHealthMonitor.shared.getHealthReport()
-      let isEnabled = await ActorHealthMonitor.shared.getEnabled()
-      
-      let activeCount = report["activeOperationCount"] as? Int ?? 0
-      let slowCount = report["slowOperationCount"] as? Int ?? 0
-      let criticalCount = report["criticalOperationCount"] as? Int ?? 0
-      
-      var message = """
-      Monitoring: \(isEnabled ? "✅ Enabled" : "⚠️ Disabled")
-      
-      Active Operations: \(activeCount)
-      Slow Operations (>5s): \(slowCount)
-      Critical Operations (>10s): \(criticalCount)
-      """
-      
-      if let slowOps = report["slowOperations"] as? [[String: Any]], !slowOps.isEmpty {
-        message += "\n\n--- Slow Operations ---"
-        for op in slowOps {
-          let name = op["name"] as? String ?? "unknown"
-          let actorType = op["actorType"] as? String ?? "unknown"
-          let duration = op["duration"] as? TimeInterval ?? 0
-          message += "\n• \(name)"
-          message += "\n  Actor: \(actorType)"
-          message += "\n  Duration: \(String(format: "%.2f", duration))s"
-        }
-      } else if isEnabled {
-        message += "\n\n✅ All operations running smoothly!"
-      } else {
-        message += "\n\nℹ️ Enable monitoring to track actor performance."
-      }
-      
-      await MainActor.run {
-        let alert = UIAlertController(
-          title: "Actor Health Report",
-          message: message,
-          preferredStyle: .alert
-        )
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
-        
-        // Add "Copy Report" action for debugging
-        alert.addAction(UIAlertAction(title: "Copy Report", style: .default) { _ in
-          UIPasteboard.general.string = message
-          Log.info(#file, "Actor health report copied to clipboard")
-        })
-        
-        self.present(alert, animated: true)
-      }
-    }
   }
   
   func mailComposeController(_ controller: MFMailComposeViewController, didFinishWith result: MFMailComposeResult, error: Error?) {

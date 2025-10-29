@@ -19,6 +19,11 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     let startupQueue = DispatchQueue.global(qos: .userInitiated)
 
     FirebaseApp.configure()
+    
+    // Initialize device-specific error monitoring
+    Task {
+      await DeviceSpecificErrorMonitor.shared.initialize()
+    }
 
     TPPErrorLogger.configureCrashAnalytics()
     TPPErrorLogger.logNewAppLaunch()

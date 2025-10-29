@@ -177,9 +177,7 @@ actor ErrorLogExporter {
     
     // Crash recovery info
     let crashCount = UserDefaults.standard.integer(forKey: "PalaceCrashCount")
-    let isInSafeMode = await CrashRecoveryService.shared.isInSafeMode()
     logs += "Crash Count: \(crashCount)\n"
-    logs += "Safe Mode: \(isInSafeMode ? "YES" : "NO")\n"
     
     // Memory information
     let memoryUsage = reportMemoryUsage()

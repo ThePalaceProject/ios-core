@@ -834,16 +834,32 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
           await bookIdentifierToDownloadInfo.set(book.identifier, value: info)
         }
         // Fire both notification and publisher so SwiftUI cells and BookDetail can update
-        downloadProgressPublisher.send((book.identifier, progress))
+        await MainActor.run {
+          downloadProgressPublisher.send((book.identifier, progress))
+        }
         broadcastUpdate()
       }
     }
   }
   
   func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
-    // Bridge to async for actor access
+    // CRITICAL: Must move file synchronously before delegate returns
+    // URLSession will delete the temp file as soon as this method completes
+    
+    // Move file to a safe location first
+    let tempDir = FileManager.default.temporaryDirectory
+    let safeLocation = tempDir.appendingPathComponent(UUID().uuidString + "_" + location.lastPathComponent)
+    
+    do {
+      try FileManager.default.moveItem(at: location, to: safeLocation)
+    } catch {
+      Log.error(#file, "Failed to preserve download file: \(error.localizedDescription)")
+      return
+    }
+    
+    // Now process async with preserved file
     Task {
-      await handleDownloadCompletion(session: session, task: downloadTask, location: location)
+      await handleDownloadCompletion(session: session, task: downloadTask, location: safeLocation)
     }
   }
   
@@ -959,18 +975,6 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
   
   /// Async-first download info accessor
   func downloadInfoAsync(forBookIdentifier bookIdentifier: String) async -> MyBooksDownloadInfo? {
-    // Optional: Monitor this operation (auto-disabled in production)
-    let monitoringEnabled = await ActorHealthMonitor.shared.getEnabled()
-    if monitoringEnabled {
-      return await withActorMonitoring("downloadInfoAsync", actorType: "SafeDictionary") {
-        await _downloadInfoAsyncCore(forBookIdentifier: bookIdentifier)
-      }
-    } else {
-      return await _downloadInfoAsyncCore(forBookIdentifier: bookIdentifier)
-    }
-  }
-  
-  private func _downloadInfoAsyncCore(forBookIdentifier bookIdentifier: String) async -> MyBooksDownloadInfo? {
     guard let downloadInfo = await bookIdentifierToDownloadInfo.get(bookIdentifier) else {
       return nil
     }
@@ -985,30 +989,25 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
   }
   
   /// Synchronous wrapper for legacy compatibility (delegates, @objc methods)
+  /// WARNING: This can cause priority inversion - prefer async APIs where possible
   @objc func downloadInfo(forBookIdentifier bookIdentifier: String) -> MyBooksDownloadInfo? {
-    // Use a detached task to bridge sync→async for actor access
-    // This is safe because downloadInfo is read-only and doesn't block
-    let semaphore = DispatchSemaphore(value: 0)
+    // Use RunLoop spinning instead of semaphore to avoid priority inversion
     var result: MyBooksDownloadInfo?
+    var isComplete = false
     
-    Task.detached {
+    Task {
       result = await self.downloadInfoAsync(forBookIdentifier: bookIdentifier)
-      semaphore.signal()
+      isComplete = true
     }
     
-    // CRITICAL: Add timeout to prevent deadlock
-    let timeout = DispatchTime.now() + .seconds(10)
-    if semaphore.wait(timeout: timeout) == .timedOut {
-      Log.error(#file, "⚠️ TIMEOUT: Actor access timed out for downloadInfo(bookId: \(bookIdentifier))")
-      TPPErrorLogger.logError(
-        withCode: .downloadFail,
-        summary: "Actor timeout in downloadInfo - possible deadlock",
-        metadata: [
-          "bookIdentifier": bookIdentifier,
-          "timeout": "10s",
-          "function": "downloadInfo(forBookIdentifier:)"
-        ]
-      )
+    // Spin run loop instead of blocking with semaphore (avoids priority inversion)
+    let timeoutDate = Date().addingTimeInterval(2.0) // Shorter timeout for UI responsiveness
+    while !isComplete && Date() < timeoutDate {
+      RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 0.01))
+    }
+    
+    if !isComplete {
+      Log.warn(#file, "⚠️ Actor access slow for downloadInfo - returning nil for UI responsiveness")
       return nil
     }
     
@@ -1031,7 +1030,9 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
       let allKeys = await bookIdentifierToDownloadInfo.keys()
       for bookID in allKeys {
         if let info = await bookIdentifierToDownloadInfo.get(bookID) {
-          downloadProgressPublisher.send((bookID, Double(info.downloadProgress)))
+          await MainActor.run {
+            downloadProgressPublisher.send((bookID, Double(info.downloadProgress)))
+          }
         }
       }
     }
@@ -1165,9 +1166,9 @@ extension MyBooksDownloadCenter: URLSessionTaskDelegate {
 // MARK: - Download Throttling and Disk Budget
 extension MyBooksDownloadCenter {
   private func activeDownloadCount() -> Int {
-    // Bridge to async for actor access
-    let semaphore = DispatchSemaphore(value: 0)
+    // Use RunLoop spinning to avoid priority inversion
     var count = 0
+    var isComplete = false
     
     Task {
       let allInfo = await bookIdentifierToDownloadInfo.values()
@@ -1175,22 +1176,18 @@ extension MyBooksDownloadCenter {
         return info.downloadTask
       }.filter { $0.state == .running }
       count = runningTasks.count
-      semaphore.signal()
+      isComplete = true
     }
     
-    // CRITICAL: Add timeout to prevent deadlock
-    let timeout = DispatchTime.now() + .seconds(10)
-    if semaphore.wait(timeout: timeout) == .timedOut {
-      Log.error(#file, "⚠️ TIMEOUT: Actor access timed out for activeDownloadCount()")
-      TPPErrorLogger.logError(
-        withCode: .downloadFail,
-        summary: "Actor timeout in activeDownloadCount - possible deadlock",
-        metadata: [
-          "timeout": "10s",
-          "function": "activeDownloadCount()"
-        ]
-      )
-      return 0 // Safe fallback - assume no active downloads
+    // Spin run loop for short time
+    let timeoutDate = Date().addingTimeInterval(0.5)
+    while !isComplete && Date() < timeoutDate {
+      RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 0.01))
+    }
+    
+    if !isComplete {
+      Log.warn(#file, "⚠️ Actor access slow for activeDownloadCount - returning 0")
+      return 0
     }
     
     return count
@@ -1353,7 +1350,15 @@ extension MyBooksDownloadCenter {
     dict["response"] = downloadTask.response ?? "N/A"
     dict["downloadError"] = downloadTask.error ?? "N/A"
     
-    TPPErrorLogger.logError(withCode: .downloadFail, summary: context, metadata: dict)
+    // Use enhanced logging if enabled
+    Task {
+      await DeviceSpecificErrorMonitor.shared.logDownloadFailure(
+        book: book,
+        reason: reason,
+        error: downloadTask.error,
+        metadata: dict
+      )
+    }
   }
   
   func fulfillLCPLicense(fileUrl: URL, forBook book: TPPBook, downloadTask: URLSessionDownloadTask) {

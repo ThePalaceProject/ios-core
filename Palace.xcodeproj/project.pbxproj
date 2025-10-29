@@ -762,8 +762,14 @@
 		E5E4A9E52EB0568F00CC1D67 /* MainActorHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E4A9E32EB0568F00CC1D67 /* MainActorHelpers.swift */; };
 		E5E4A9E62EB0568F00CC1D67 /* AsyncBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E4A9E22EB0568F00CC1D67 /* AsyncBridge.swift */; };
 		E5E4A9E72EB0568F00CC1D67 /* MainActorHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E4A9E32EB0568F00CC1D67 /* MainActorHelpers.swift */; };
-		E5E4AABE2EB28DE100CC1D67 /* ActorHealthMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E4AABD2EB28DE100CC1D67 /* ActorHealthMonitor.swift */; };
-		E5E4AABF2EB28DE100CC1D67 /* ActorHealthMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E4AABD2EB28DE100CC1D67 /* ActorHealthMonitor.swift */; };
+		E5E4AACE2EB2914B00CC1D67 /* RemoteFeatureFlags.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E4AACD2EB2914B00CC1D67 /* RemoteFeatureFlags.swift */; };
+		E5E4AACF2EB2914B00CC1D67 /* RemoteFeatureFlags.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E4AACD2EB2914B00CC1D67 /* RemoteFeatureFlags.swift */; };
+		E5E4AAD12EB2929600CC1D67 /* FirebaseRemoteConfig in Frameworks */ = {isa = PBXBuildFile; productRef = E5E4AAD02EB2929600CC1D67 /* FirebaseRemoteConfig */; };
+		E5E4AAD32EB2929600CC1D67 /* FirebaseRemoteConfigSwift in Frameworks */ = {isa = PBXBuildFile; productRef = E5E4AAD22EB2929600CC1D67 /* FirebaseRemoteConfigSwift */; };
+		E5E4AAD52EB292B600CC1D67 /* FirebaseRemoteConfig in Frameworks */ = {isa = PBXBuildFile; productRef = E5E4AAD42EB292B600CC1D67 /* FirebaseRemoteConfig */; };
+		E5E4AAD72EB292B600CC1D67 /* FirebaseRemoteConfigSwift in Frameworks */ = {isa = PBXBuildFile; productRef = E5E4AAD62EB292B600CC1D67 /* FirebaseRemoteConfigSwift */; };
+		E5E4AADC2EB29DE700CC1D67 /* DeviceSpecificErrorMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E4AADB2EB29DE700CC1D67 /* DeviceSpecificErrorMonitor.swift */; };
+		E5E4AADD2EB29DE700CC1D67 /* DeviceSpecificErrorMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E4AADB2EB29DE700CC1D67 /* DeviceSpecificErrorMonitor.swift */; };
 		E5E9AFF02CC0357500366A2E /* ReadiumNavigator in Frameworks */ = {isa = PBXBuildFile; productRef = E5E9AFEF2CC0357500366A2E /* ReadiumNavigator */; };
 		E5E9AFF22CC0357500366A2E /* ReadiumShared in Frameworks */ = {isa = PBXBuildFile; productRef = E5E9AFF12CC0357500366A2E /* ReadiumShared */; };
 		E5E9AFF42CC0357500366A2E /* ReadiumStreamer in Frameworks */ = {isa = PBXBuildFile; productRef = E5E9AFF32CC0357500366A2E /* ReadiumStreamer */; };
@@ -1626,7 +1632,8 @@
 		E5E4A9DF2EB0565800CC1D67 /* TPPBookRegistryAsync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBookRegistryAsync.swift; sourceTree = "<group>"; };
 		E5E4A9E22EB0568F00CC1D67 /* AsyncBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AsyncBridge.swift; sourceTree = "<group>"; };
 		E5E4A9E32EB0568F00CC1D67 /* MainActorHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainActorHelpers.swift; sourceTree = "<group>"; };
-		E5E4AABD2EB28DE100CC1D67 /* ActorHealthMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActorHealthMonitor.swift; sourceTree = "<group>"; };
+		E5E4AACD2EB2914B00CC1D67 /* RemoteFeatureFlags.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFeatureFlags.swift; sourceTree = "<group>"; };
+		E5E4AADB2EB29DE700CC1D67 /* DeviceSpecificErrorMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceSpecificErrorMonitor.swift; sourceTree = "<group>"; };
 		E5EE38092D5DA74C00252001 /* Int+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Int+Extensions.swift"; sourceTree = "<group>"; };
 		E5EE380D2D5DB19D00252001 /* Color+Extension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Color+Extension.swift"; sourceTree = "<group>"; };
 		E5EFDE77298C43D300258CA3 /* BookButtonState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookButtonState.swift; sourceTree = "<group>"; };
@@ -1755,6 +1762,7 @@
 				73EB0B3325821DF4006BC997 /* libiconv.tbd in Frameworks */,
 				73EB0B3425821DF4006BC997 /* CoreGraphics.framework in Frameworks */,
 				73EB0B3525821DF4006BC997 /* QuartzCore.framework in Frameworks */,
+				E5E4AAD72EB292B600CC1D67 /* FirebaseRemoteConfigSwift in Frameworks */,
 				E5E9AFFE2CC035AC00366A2E /* ReadiumShared in Frameworks */,
 				73EB0B3925821DF4006BC997 /* libicucore.tbd in Frameworks */,
 				E7498A8E2A0E7F840037DD93 /* FirebaseAnalytics in Frameworks */,
@@ -1769,6 +1777,7 @@
 				73EB0B3D25821DF4006BC997 /* Security.framework in Frameworks */,
 				E77D022D2931361700544180 /* SwiftSoup in Frameworks */,
 				73EB0B3E25821DF4006BC997 /* CFNetwork.framework in Frameworks */,
+				E5E4AAD52EB292B600CC1D67 /* FirebaseRemoteConfig in Frameworks */,
 				E5E9B0002CC035AC00366A2E /* ReadiumStreamer in Frameworks */,
 				73EB0B3F25821DF4006BC997 /* CoreLocation.framework in Frameworks */,
 				73EB0B4025821DF4006BC997 /* UIKit.framework in Frameworks */,
@@ -1791,6 +1800,7 @@
 				E7E96BB32B0E82220036B23A /* PalaceUIKit.framework in Frameworks */,
 				E5E9B21E2CC1A7BB00366A2E /* ReadiumAdapterGCDWebServer in Frameworks */,
 				03B092281E78859E00AD338D /* CoreMedia.framework in Frameworks */,
+				E5E4AAD32EB2929600CC1D67 /* FirebaseRemoteConfigSwift in Frameworks */,
 				03B0922E1E7886ED00AD338D /* CoreVideo.framework in Frameworks */,
 				03B0922C1E7886C900AD338D /* AVFoundation.framework in Frameworks */,
 				03B0922A1E7885A600AD338D /* AudioToolbox.framework in Frameworks */,
@@ -1823,6 +1833,7 @@
 				E77D02202931337000544180 /* ReadiumLCP in Frameworks */,
 				E72429632AC3276500D8AF75 /* PalaceAudiobookToolkit.framework in Frameworks */,
 				E7498A882A0E7F460037DD93 /* FirebaseCrashlytics in Frameworks */,
+				E5E4AAD12EB2929600CC1D67 /* FirebaseRemoteConfig in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -2069,6 +2080,7 @@
 		7327A88D23EE00FE00954748 /* Utilities */ = {
 			isa = PBXGroup;
 			children = (
+				E5E4AADB2EB29DE700CC1D67 /* DeviceSpecificErrorMonitor.swift */,
 				E5B8E9842E0F0495002E0F3D /* ImageCache */,
 				E57706242D3A13C700ED56F8 /* Extensions */,
 				E53CDA862A2FBCCA00C6008A /* System */,
@@ -2366,7 +2378,6 @@
 		73B5DFF726055D2900225C12 /* Concurrency */ = {
 			isa = PBXGroup;
 			children = (
-				E5E4AABD2EB28DE100CC1D67 /* ActorHealthMonitor.swift */,
 				1183F359194F847100DC322F /* TPPAsync.h */,
 				1183F35A194F847100DC322F /* TPPAsync.m */,
 				732F929223ECB51F0099244C /* TPPBackgroundExecutor.swift */,
@@ -2794,6 +2805,7 @@
 				E5AD72D62E5520FB005A8070 /* CatalogDomain */,
 				E5AD72DC2E5520FB005A8070 /* CatalogUI */,
 				73DE53322525A588003E2C56 /* ErrorHandling */,
+				E5E4AAC42EB2913700CC1D67 /* FeatureFlags */,
 				73B5DFFD2605648F00225C12 /* Holds */,
 				732940BD251D04970065E362 /* Keychain */,
 				73B5DFF926055E2A00225C12 /* Logging */,
@@ -3198,6 +3210,14 @@
 			path = Transifex;
 			sourceTree = "<group>";
 		};
+		E5E4AAC42EB2913700CC1D67 /* FeatureFlags */ = {
+			isa = PBXGroup;
+			children = (
+				E5E4AACD2EB2914B00CC1D67 /* RemoteFeatureFlags.swift */,
+			);
+			path = FeatureFlags;
+			sourceTree = "<group>";
+		};
 		E5EFDE7A298C4F7100258CA3 /* BookCell */ = {
 			isa = PBXGroup;
 			children = (
@@ -3416,6 +3436,8 @@
 				E5E9B2172CC1A5C100366A2E /* ReadiumAdapterLCPSQLite */,
 				E5E9B2192CC1A7AC00366A2E /* ReadiumAdapterGCDWebServer */,
 				E5F2E9B62CEE8550007EA6C9 /* PureLayout */,
+				E5E4AAD42EB292B600CC1D67 /* FirebaseRemoteConfig */,
+				E5E4AAD62EB292B600CC1D67 /* FirebaseRemoteConfigSwift */,
 			);
 			productName = Simplified;
 			productReference = 73EB0B7525821DF4006BC997 /* Palace-noDRM.app */;
@@ -3452,6 +3474,8 @@
 				E5E9AFF32CC0357500366A2E /* ReadiumStreamer */,
 				E5E9B2132CC1A5AE00366A2E /* ReadiumAdapterLCPSQLite */,
 				E5E9B21D2CC1A7BB00366A2E /* ReadiumAdapterGCDWebServer */,
+				E5E4AAD02EB2929600CC1D67 /* FirebaseRemoteConfig */,
+				E5E4AAD22EB2929600CC1D67 /* FirebaseRemoteConfigSwift */,
 			);
 			productName = Simplified;
 			productReference = A823D80D192BABA400B55DE2 /* Palace.app */;
@@ -3911,6 +3935,7 @@
 				E7E8939A284A1EB800C7A4F3 /* TPPPDFPreviewBar.swift in Sources */,
 				216D2E3A274286D200472538 /* TPPLCPLicense.swift in Sources */,
 				E5158C202935345F0007ABDB /* TransifexManager.swift in Sources */,
+				E5E4AACE2EB2914B00CC1D67 /* RemoteFeatureFlags.swift in Sources */,
 				E51818442927FD8E00C03AD5 /* Strings.swift in Sources */,
 				73EB0A8E25821DF4006BC997 /* TPPSignInBusinessLogic+UI.swift in Sources */,
 				73EB0A9025821DF4006BC997 /* OPDS2CatalogsFeed.swift in Sources */,
@@ -3979,9 +4004,9 @@
 				73EB0AB025821DF4006BC997 /* JWKResponse.swift in Sources */,
 				E544C4ED2A395DDE00B2DC9D /* MyBooksDownloadInfo.swift in Sources */,
 				73EB0AB125821DF4006BC997 /* UIFont+TPPSystemFontOverride.m in Sources */,
-				E5E4AABE2EB28DE100CC1D67 /* ActorHealthMonitor.swift in Sources */,
 				73EB0AB225821DF4006BC997 /* TPPReadiumBookmark.swift in Sources */,
 				E7C0F2F2299586E8003A10C5 /* Strings+objC.swift in Sources */,
+				E5E4AADC2EB29DE700CC1D67 /* DeviceSpecificErrorMonitor.swift in Sources */,
 				73EB0AB425821DF4006BC997 /* TPPAppTheme.swift in Sources */,
 				E596C14F2E9450AA00214F78 /* CatalogLaneMoreViewModel.swift in Sources */,
 				73EB0AB525821DF4006BC997 /* UIColor+TPPColorAdditions.m in Sources */,
@@ -4486,6 +4511,7 @@
 				73A229A2240F3BEB006B9EAD /* LibraryService.swift in Sources */,
 				E57F92B82D6918CC003D9180 /* DeviceOrientation.swift in Sources */,
 				730B7868249AB9D7008F28B3 /* Float+TPPAdditions.swift in Sources */,
+				E5E4AACF2EB2914B00CC1D67 /* RemoteFeatureFlags.swift in Sources */,
 				AE77E9B832371587493FF281 /* TPPOPDSEntry.m in Sources */,
 				E53573D929653095008BDCA4 /* FacetViewModel.swift in Sources */,
 				E5B8E95F2E0EF93B002E0F3D /* GeneralCache.swift in Sources */,
@@ -4560,7 +4586,6 @@
 				1111973F1988226F0014462F /* TPPBookDetailDownloadFailedView.m in Sources */,
 				AE77EE7AACC975280BAB9A4C /* TPPOPDSFeed.m in Sources */,
 				73DE897A260BEA13003D9135 /* TPPRequestExecuting.swift in Sources */,
-				E5E4AABF2EB28DE100CC1D67 /* ActorHealthMonitor.swift in Sources */,
 				E50546C12E62194F007CCFAB /* AppTabHostView.swift in Sources */,
 				E567C72C296743990079C28C /* BookCell.swift in Sources */,
 				AE77EB0CB5B94AEC591E2D91 /* TPPOPDSLink.m in Sources */,
@@ -4568,6 +4593,7 @@
 				AE77E7E37D89FB3EED630624 /* TPPOPDSType.m in Sources */,
 				7340DA6824B7F27900361387 /* TPPBook+Logging.swift in Sources */,
 				E7048072285A72A600019B31 /* TPPPDFNavigation.swift in Sources */,
+				E5E4AADD2EB29DE700CC1D67 /* DeviceSpecificErrorMonitor.swift in Sources */,
 				E7C4BD6129BA70710079F729 /* TPPTextToSpeech.swift in Sources */,
 				E73549DE28A53982001B0D0A /* TPPPDFPageBookmark.swift in Sources */,
 				73B501C524F48D4C00FBAD7D /* TPPUserAccountFrontEndValidation.swift in Sources */,
@@ -5052,11 +5078,8 @@
 				CODE_SIGN_ENTITLEMENTS = Palace/PalaceDebug.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 399;
-				DEVELOPMENT_TEAM = 88CBA74T8K;
-				CODE_SIGN_STYLE = Manual;
 				CURRENT_PROJECT_VERSION = 400;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -5393,6 +5416,26 @@
 			isa = XCSwiftPackageProductDependency;
 			package = E50BC9DB2CBF6FE900660937 /* XCRemoteSwiftPackageReference "PureLayout" */;
 			productName = PureLayout;
+		};
+		E5E4AAD02EB2929600CC1D67 /* FirebaseRemoteConfig */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E7498A842A0E7F460037DD93 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseRemoteConfig;
+		};
+		E5E4AAD22EB2929600CC1D67 /* FirebaseRemoteConfigSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E7498A842A0E7F460037DD93 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseRemoteConfigSwift;
+		};
+		E5E4AAD42EB292B600CC1D67 /* FirebaseRemoteConfig */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E7498A842A0E7F460037DD93 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseRemoteConfig;
+		};
+		E5E4AAD62EB292B600CC1D67 /* FirebaseRemoteConfigSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E7498A842A0E7F460037DD93 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseRemoteConfigSwift;
 		};
 		E5E9AFEF2CC0357500366A2E /* ReadiumNavigator */ = {
 			isa = XCSwiftPackageProductDependency;
