@@ -397,6 +397,20 @@ import OverdriveProcessor
 #endif
   
   private func processRegularDownload(for book: TPPBook, withState state: TPPBookState, andRequest initedRequest: URLRequest?) {
+    if book.isExpired && book.defaultAcquisitionIfBorrow != nil {
+      Log.warn(#file, "Book \(book.identifier) is expired. Attempting to re-borrow before download.")
+      bookRegistry.setState(.unregistered, for: book.identifier)
+      startBorrow(for: book, attemptDownload: true, borrowCompletion: nil)
+      return
+    }
+    
+    if state == .downloadNeeded && book.defaultAcquisitionIfBorrow != nil {
+      Log.info(#file, "Book \(book.identifier) has borrow acquisition but is in downloadNeeded state. Refreshing loan status.")
+      bookRegistry.setState(.unregistered, for: book.identifier)
+      startBorrow(for: book, attemptDownload: true, borrowCompletion: nil)
+      return
+    }
+    
     let request: URLRequest
     if let initedRequest = initedRequest {
       request = initedRequest
@@ -963,7 +977,27 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
             authenticationCompletion: nil
           )
         }
-        self.alertForProblemDocument(problemDoc, error: failureError, book: book)
+        
+        // Check if the error is "No active loan" - attempt to re-borrow
+        if let problemDoc = problemDoc, problemDoc.type == TPPProblemDocument.TypeNoActiveLoan {
+          Log.info(#file, "Download failed due to no active loan. Attempting to borrow book: \(book.identifier)")
+          
+          // Update state to unregistered so borrow logic will work
+          self.bookRegistry.setState(.unregistered, for: book.identifier)
+          
+          // Try to borrow the book (which will auto-download if successful)
+          self.startBorrow(for: book, attemptDownload: true) { [weak self] in
+            // If borrow completed, check if download started
+            let newState = self?.bookRegistry.state(for: book.identifier)
+            if newState != .downloading && newState != .downloadSuccessful {
+              // Borrow didn't result in download, show the error
+              self?.alertForProblemDocument(problemDoc, error: failureError, book: book)
+            }
+          }
+        } else {
+          // For other errors, show alert immediately
+          self.alertForProblemDocument(problemDoc, error: failureError, book: book)
+        }
       }
       bookRegistry.setState(.downloadFailed, for: book.identifier)
     }

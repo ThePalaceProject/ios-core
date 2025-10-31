@@ -211,16 +211,47 @@ import UIKit
     }
 
     // SwiftUI-first: present from the app's top-most UIKit controller
-    guard let root = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController() else { return }
-    let top = topMostViewController(from: root)
     DispatchQueue.main.async {
-      guard top.presentedViewController == nil else {
-        Log.warn(#file, "Cannot present alert: top view controller already presenting")
+      guard let root = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController() else {
+        Log.error(#file, "Cannot present alert: no root view controller available")
+        // Log the alert message so it's not lost
+        if let msg = alertController.message {
+          Log.error(#file, "Failed to present alert with message: \(msg)")
+        }
         completion?()
         return
       }
-      top.present(alertController, animated: animated, completion: completion)
-      if let msg = alertController.message { Log.info(#file, msg) }
+      
+      let top = topMostViewController(from: root)
+      
+      // Additional safety check: ensure view controller can present
+      guard top.view.window != nil else {
+        Log.error(#file, "Cannot present alert: view controller not in window hierarchy")
+        if let msg = alertController.message {
+          Log.error(#file, "Failed to present alert with message: \(msg)")
+        }
+        completion?()
+        return
+      }
+      
+      // If already presenting, try to present on top of the presented controller
+      if let presented = top.presentedViewController {
+        // Check if the presented controller is another alert - don't stack alerts
+        if presented is UIAlertController {
+          Log.warn(#file, "Cannot present alert: another alert is already visible")
+          if let msg = alertController.message {
+            Log.warn(#file, "Skipped alert with message: \(msg)")
+          }
+          completion?()
+          return
+        }
+        // Present on top of the presented view controller
+        presented.present(alertController, animated: animated, completion: completion)
+        if let msg = alertController.message { Log.info(#file, msg) }
+      } else {
+        top.present(alertController, animated: animated, completion: completion)
+        if let msg = alertController.message { Log.info(#file, msg) }
+      }
     }
   }
 
