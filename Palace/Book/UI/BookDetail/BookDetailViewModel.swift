@@ -386,7 +386,14 @@ final class BookDetailViewModel: ObservableObject {
 
   func didSelectReserve(for book: TPPBook) {
     ensureAuthAndExecute { [weak self] in
-      self?.downloadCenter.startBorrow(for: book, attemptDownload: false)
+      guard let self = self else { return }
+      Task {
+        do {
+          _ = try await self.downloadCenter.borrowAsync(book, attemptDownload: false)
+        } catch {
+          Log.error(#file, "Failed to borrow book: \(error.localizedDescription)")
+        }
+      }
     }
   }
   

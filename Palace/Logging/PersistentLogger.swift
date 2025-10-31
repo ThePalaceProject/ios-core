@@ -2,7 +2,6 @@
 //  PersistentLogger.swift
 //  Palace
 //
-//  Created for Swift Concurrency Modernization
 //  Copyright © 2025 The Palace Project. All rights reserved.
 //
 

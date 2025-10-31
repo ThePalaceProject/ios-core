@@ -85,7 +85,6 @@ actor DeviceSpecificErrorMonitor {
   func isEnhancedLoggingEnabled() -> Bool {
     // Check device-specific flag first (highest priority)
     let deviceID = getDeviceID()
-    // CRITICAL: Sanitize UUID by removing hyphens for Firebase parameter compatibility
     let sanitizedDeviceID = deviceID.replacingOccurrences(of: "-", with: "")
     let deviceKey = "enhanced_error_logging_device_\(sanitizedDeviceID)"
     

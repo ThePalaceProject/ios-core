@@ -2,7 +2,6 @@
 //  MyBooksDownloadCenter+Async.swift
 //  Palace
 //
-//  Created for Swift Concurrency Modernization
 //  Copyright © 2025 The Palace Project. All rights reserved.
 //
 
@@ -107,13 +106,18 @@ extension MyBooksDownloadCenter {
   @MainActor
   private func showBorrowError(_ error: PalaceError, for book: TPPBook) {
     let title = "Borrow Failed"
-    let message = error.localizedDescription
-    let recovery = error.recoverySuggestion
     
-    let alert = TPPAlertUtils.alert(title: title, message: message)
+    // Try to extract problem document from error for better messaging
+    let nsError = error as NSError
+    let problemDoc = nsError.userInfo["problemDocument"] as? TPPProblemDocument
     
-    if let recovery = recovery {
-      alert.message = "\(message)\n\n\(recovery)"
+    let alert = TPPAlertUtils.alert(title: title, message: error.localizedDescription)
+    
+    // If we have a problem document, use its title/detail instead
+    if let problemDoc = problemDoc {
+      TPPAlertUtils.setProblemDocument(controller: alert, document: problemDoc, append: false)
+    } else if let recovery = error.recoverySuggestion {
+      alert.message = "\(error.localizedDescription)\n\n\(recovery)"
     }
     
     TPPAlertUtils.presentFromViewControllerOrNil(

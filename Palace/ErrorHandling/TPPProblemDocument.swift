@@ -10,6 +10,12 @@ import Foundation
     "http://librarysimplified.org/terms/problem/loan-already-exists";
   static let TypeInvalidCredentials =
     "http://librarysimplified.org/terms/problem/credentials-invalid";
+  static let TypeCannotFulfillLoan =
+    "http://librarysimplified.org/terms/problem/cannot-fulfill-loan";
+  static let TypeCannotIssueLoan =
+    "http://librarysimplified.org/terms/problem/cannot-issue-loan";
+  static let TypeCannotRender =
+    "http://librarysimplified.org/terms/problem/cannot-render";
 
   private static let noStatus: Int = -1
 

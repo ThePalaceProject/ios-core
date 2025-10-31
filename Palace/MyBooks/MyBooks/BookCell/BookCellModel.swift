@@ -339,15 +339,25 @@ extension BookCellModel {
       TPPAccountSignInViewController.requestCredentials { [weak self] in
         guard let self else { return }
         TPPUserNotifications.requestAuthorization()
-        MyBooksDownloadCenter.shared.startBorrow(for: self.book, attemptDownload: false) { [weak self] in
-          self?.isLoading = false
+        Task {
+          do {
+            _ = try await MyBooksDownloadCenter.shared.borrowAsync(self.book, attemptDownload: false)
+          } catch {
+            Log.error(#file, "Failed to borrow book: \(error.localizedDescription)")
+          }
+          self.isLoading = false
         }
       }
       return
     }
     TPPUserNotifications.requestAuthorization()
-    MyBooksDownloadCenter.shared.startBorrow(for: book, attemptDownload: false) { [weak self] in
-      self?.isLoading = false
+    Task {
+      do {
+        _ = try await MyBooksDownloadCenter.shared.borrowAsync(book, attemptDownload: false)
+      } catch {
+        Log.error(#file, "Failed to borrow book: \(error.localizedDescription)")
+      }
+      self.isLoading = false
     }
   }
   

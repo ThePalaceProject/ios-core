@@ -33,8 +33,6 @@ import PalaceAudiobookToolkit
   // MARK: - Bookmark Management
   
   public func saveListeningPosition(at position: TrackPosition, completion: ((String?) -> Void)?) {
-    // CRITICAL FIX: Save locally IMMEDIATELY to prevent position loss
-    // This ensures position is persisted even if app closes before debounce fires
     let audioBookmark = position.toAudioBookmark()
     audioBookmark.lastSavedTimeStamp = Date().iso8601
     

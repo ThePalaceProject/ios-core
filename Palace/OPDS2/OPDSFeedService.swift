@@ -2,7 +2,6 @@
 //  OPDSFeedService.swift
 //  Palace
 //
-//  Created for Swift Concurrency Modernization
 //  Copyright © 2025 The Palace Project. All rights reserved.
 //
 
@@ -48,8 +47,26 @@ actor OPDSFeedService {
           if let feed = feed {
             continuation.resume(returning: feed)
           } else if let errorDict = errorDict {
+            // Try to extract problem document for user-friendly error messages
+            let problemDoc = Self.problemDocumentFromDictionary(errorDict)
             let error = self.parseError(from: errorDict, url: url)
-            continuation.resume(throwing: error)
+            
+            // Attach problem document to error for better messaging
+            if let problemDoc = problemDoc {
+              let nsError = error as NSError
+              let errorWithProblemDoc = NSError(
+                domain: nsError.domain,
+                code: nsError.code,
+                userInfo: (nsError.userInfo ?? [:]).merging([
+                  "problemDocument": problemDoc,
+                  "problemDocumentTitle": problemDoc.title ?? "",
+                  "problemDocumentDetail": problemDoc.detail ?? ""
+                ]) { $1 }
+              )
+              continuation.resume(throwing: errorWithProblemDoc)
+            } else {
+              continuation.resume(throwing: error)
+            }
           } else {
             continuation.resume(throwing: PalaceError.parsing(.opdsFeedInvalid))
           }
@@ -149,9 +166,15 @@ actor OPDSFeedService {
       case TPPProblemDocument.TypeNoActiveLoan:
         return .bookRegistry(.bookNotFound)
       case TPPProblemDocument.TypeLoanAlreadyExists:
-        return .bookRegistry(.invalidState)
+        return .bookRegistry(.alreadyBorrowed)
       case TPPProblemDocument.TypeInvalidCredentials:
         return .authentication(.invalidCredentials)
+      case TPPProblemDocument.TypeCannotFulfillLoan:
+        return .download(.cannotFulfill)
+      case TPPProblemDocument.TypeCannotIssueLoan:
+        return .bookRegistry(.invalidState)
+      case TPPProblemDocument.TypeCannotRender:
+        return .parsing(.contentNotSupported)
       default:
         break
       }
@@ -182,18 +205,48 @@ actor OPDSFeedService {
   
   private func parseProblemDocument(_ problemDoc: TPPProblemDocument) -> PalaceError {
     guard let type = problemDoc.type else {
-      return .parsing(.opdsFeedInvalid)
+      // Unknown problem document - use title/detail if available
+      let message = problemDoc.title ?? problemDoc.detail ?? "Unknown server error"
+      Log.warn(#file, "Problem document with no type: \(message)")
+      return .network(.serverError)
     }
     
     switch type {
     case TPPProblemDocument.TypeNoActiveLoan:
       return .bookRegistry(.bookNotFound)
     case TPPProblemDocument.TypeLoanAlreadyExists:
-      return .bookRegistry(.invalidState)
+      return .bookRegistry(.alreadyBorrowed)
     case TPPProblemDocument.TypeInvalidCredentials:
       return .authentication(.invalidCredentials)
+    case TPPProblemDocument.TypeCannotFulfillLoan:
+      return .download(.cannotFulfill)
+    case TPPProblemDocument.TypeCannotIssueLoan:
+      return .bookRegistry(.invalidState)
+    case TPPProblemDocument.TypeCannotRender:
+      return .parsing(.contentNotSupported)
     default:
-      return .parsing(.opdsFeedInvalid)
+      // Unknown problem document type - log it for future support
+      let message = problemDoc.title ?? problemDoc.detail ?? "Unknown error"
+      Log.warn(#file, "⚠️ Unknown problem document type '\(type)': \(message)")
+      
+      // Determine appropriate error category based on HTTP status if available
+      if let status = problemDoc.status {
+        switch status {
+        case 401, 403:
+          return .authentication(.invalidCredentials)
+        case 404:
+          return .network(.notFound)
+        case 429:
+          return .network(.rateLimited)
+        case 500...599:
+          return .network(.serverError)
+        default:
+          break
+        }
+      }
+      
+      // Default to server error (non-retryable) rather than parsing error
+      return .network(.serverError)
     }
   }
   

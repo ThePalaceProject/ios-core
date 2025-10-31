@@ -2,7 +2,6 @@
 //  DownloadErrorRecovery.swift
 //  Palace
 //
-//  Created for Swift Concurrency Modernization
 //  Copyright © 2025 The Palace Project. All rights reserved.
 //
 
@@ -24,21 +23,57 @@ actor DownloadErrorRecovery {
       baseDelay: 2.0,
       maxDelay: 30.0,
       shouldRetry: { error in
-        let nsError = error as NSError
+        // Check for PalaceError types first (structured errors)
+        if let palaceError = error as? PalaceError {
+          switch palaceError {
+          // Don't retry authentication/authorization errors
+          case .authentication:
+            return false
+          // Don't retry parsing errors (server sent invalid data)
+          case .parsing:
+            return false
+          // Don't retry book registry policy errors
+          case .bookRegistry(.invalidState), .bookRegistry(.alreadyBorrowed):
+            return false
+          // Retry network errors
+          case .network(.serverError), .network(.timeout), .network(.noConnection):
+            return true
+          // Don't retry other network errors (404, 403, etc.)
+          case .network:
+            return false
+          // Don't retry download errors that are client-side or policy-based
+          case .download(.insufficientSpace), 
+               .download(.fileSystemError),
+               .download(.cannotFulfill),
+               .download(.invalidLicense),
+               .download(.cancelled):
+            return false
+          // Retry download network failures
+          case .download(.networkFailure):
+            return true
+          default:
+            return false
+          }
+        }
         
-        // Don't retry on certain errors
+        // Fallback to NSError domain checks
+        let nsError = error as NSError
         switch nsError.domain {
         case NSURLErrorDomain:
           switch nsError.code {
           case NSURLErrorCancelled,
                NSURLErrorBadURL,
-               NSURLErrorUnsupportedURL:
+               NSURLErrorUnsupportedURL,
+               NSURLErrorUserAuthenticationRequired,
+               NSURLErrorNoPermissionsToReadFile,
+               NSURLErrorFileDoesNotExist:
             return false
           default:
             return true
           }
         default:
-          return true
+          // Unknown errors - don't retry to avoid infinite loops
+          return false
         }
       }
     )

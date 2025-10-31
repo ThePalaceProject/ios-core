@@ -2,7 +2,6 @@
 //  PalaceError.swift
 //  Palace
 //
-//  Created for Swift Concurrency Modernization
 //  Copyright © 2025 The Palace Project. All rights reserved.
 //
 
@@ -162,6 +161,7 @@ enum BookRegistryError: Int, LocalizedError {
   case loadFailed = 4
   case invalidState = 5
   case concurrencyViolation = 6
+  case alreadyBorrowed = 7
   
   var errorDescription: String? {
     switch self {
@@ -179,6 +179,8 @@ enum BookRegistryError: Int, LocalizedError {
       return "Book is in an invalid state"
     case .concurrencyViolation:
       return "A concurrency error occurred"
+    case .alreadyBorrowed:
+      return "This book is already borrowed"
     }
   }
   
@@ -196,6 +198,8 @@ enum BookRegistryError: Int, LocalizedError {
       return "Please try removing and re-adding this book."
     case .concurrencyViolation:
       return "Please restart the app and try again."
+    case .alreadyBorrowed:
+      return "The book is already in your library. Please check My Books."
     }
   }
 }
@@ -211,6 +215,7 @@ enum DownloadError: Int, LocalizedError {
   case maxRetriesExceeded = 5
   case invalidLicense = 6
   case downloadNotFound = 7
+  case cannotFulfill = 8
   
   var errorDescription: String? {
     switch self {
@@ -230,6 +235,8 @@ enum DownloadError: Int, LocalizedError {
       return "Invalid or expired license"
     case .downloadNotFound:
       return "Download task not found"
+    case .cannotFulfill:
+      return "Unable to fulfill this loan"
     }
   }
   
@@ -251,6 +258,8 @@ enum DownloadError: Int, LocalizedError {
       return "Please return this book and borrow it again."
     case .downloadNotFound:
       return "Please try starting the download again."
+    case .cannotFulfill:
+      return "The library is unable to provide this book right now. Please try again later or contact your library."
     }
   }
 }
@@ -264,6 +273,7 @@ enum ParsingError: Int, LocalizedError {
   case invalidFormat = 3
   case encodingError = 4
   case opdsFeedInvalid = 5
+  case contentNotSupported = 6
   
   var errorDescription: String? {
     switch self {
@@ -279,11 +289,18 @@ enum ParsingError: Int, LocalizedError {
       return "Text encoding error"
     case .opdsFeedInvalid:
       return "Invalid OPDS feed"
+    case .contentNotSupported:
+      return "This content format is not supported"
     }
   }
   
   var recoverySuggestion: String? {
-    return "The server returned data in an unexpected format. Please try again later or contact support."
+    switch self {
+    case .contentNotSupported:
+      return "This book may require a newer version of the app or may not be compatible with your device."
+    default:
+      return "The server returned data in an unexpected format. Please try again later or contact support."
+    }
   }
 }
 

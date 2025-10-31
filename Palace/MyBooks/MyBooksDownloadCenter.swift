@@ -75,49 +75,14 @@ import OverdriveProcessor
     setupNetworkMonitoring()
   }
   
+  /// Legacy callback-based borrow method - wraps the modern async implementation
   func startBorrow(for book: TPPBook, attemptDownload shouldAttemptDownload: Bool, borrowCompletion: (() -> Void)? = nil) {
-    bookRegistry.setProcessing(true, for: book.identifier)
-    
-    TPPOPDSFeed.withURL((book.defaultAcquisition)?.hrefURL, shouldResetCache: true, useTokenIfAvailable: true) { [weak self] feed, error in
-      self?.bookRegistry.setProcessing(false, for: book.identifier)
-      
-      if let feed = feed,
-         let borrowedEntry = feed.entries.first as? TPPOPDSEntry,
-         let borrowedBook = TPPBook(entry: borrowedEntry) {
-
-        let location = self?.bookRegistry.location(forIdentifier: borrowedBook.identifier)
-
-        // Determine correct registry state based on availability
-        var newState: TPPBookState = .downloadNeeded
-        borrowedBook.defaultAcquisition?.availability.matchUnavailable(
-          { _ in newState = .holding },
-          limited: { _ in newState = .downloadNeeded },
-          unlimited: { _ in newState = .downloadNeeded },
-          reserved: { _ in newState = .holding },
-          ready: { _ in newState = .downloadNeeded }
-        )
-
-        self?.bookRegistry.addBook(
-          borrowedBook,
-          location: location,
-          state: newState,
-          fulfillmentId: nil,
-          readiumBookmarks: nil,
-          genericBookmarks: nil
-        )
-
-        // Emit explicit state update so SwiftUI lists refresh immediately
-        self?.bookRegistry.setState(newState, for: borrowedBook.identifier)
-
-        if shouldAttemptDownload && newState == .downloadNeeded {
-          self?.startDownloadIfAvailable(book: borrowedBook)
-        }
-
-      } else {
-        self?.process(error: error as? [String: Any], for: book)
-      }
-      
-      runOnMainAsync {
+    Task {
+      do {
+        _ = try await borrowAsync(book, attemptDownload: shouldAttemptDownload)
+        borrowCompletion?()
+      } catch {
+        Log.error(#file, "Borrow failed: \(error.localizedDescription)")
         borrowCompletion?()
       }
     }
@@ -857,9 +822,6 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
   }
   
   func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
-    // CRITICAL: Must move file synchronously before delegate returns
-    // URLSession will delete the temp file as soon as this method completes
-    
     // Move file to a safe location first
     let tempDir = FileManager.default.temporaryDirectory
     let safeLocation = tempDir.appendingPathComponent(UUID().uuidString + "_" + location.lastPathComponent)
@@ -1170,8 +1132,6 @@ extension MyBooksDownloadCenter: URLSessionTaskDelegate {
       rightsManagement: .unknown
     )
     
-    // CRITICAL: Store task info BEFORE resuming to prevent race condition
-    // URLSession delegate callbacks can fire immediately after resume()
     Task {
       await self.bookIdentifierToDownloadInfo.set(book.identifier, value: downloadInfo)
       await self.taskIdentifierToBook.set(task.taskIdentifier, value: book)
