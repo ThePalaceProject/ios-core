@@ -185,7 +185,9 @@ final class BookDetailViewModel: ObservableObject {
   
   @objc func handleBookRegistryChange(_ notification: Notification) {
     let updatedBook = registry.book(forIdentifier: book.identifier) ?? book
-    self.book = updatedBook
+    Task { @MainActor in
+      self.book = updatedBook
+    }
   }
   
   func selectRelatedBook(_ newBook: TPPBook) {
