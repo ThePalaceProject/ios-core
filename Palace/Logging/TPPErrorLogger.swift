@@ -5,8 +5,12 @@
 
 import CFNetwork
 import Foundation
+#if canImport(FirebaseCore)
 import FirebaseCore
+#endif
+#if canImport(FirebaseCrashlytics)
 import FirebaseCrashlytics
+#endif
 
 fileprivate let nullString = "null"
 
@@ -360,12 +364,18 @@ fileprivate let nullString = "null"
     var metadata = [String : Any]()
     addAccountInfoToMetadata(&metadata)
     
-    let userInfo = additionalInfo(severity: .info, metadata: metadata)
-    let err = NSError(domain: clientDomain,
-                      code: TPPErrorCode.appLaunch.rawValue,
-                      userInfo: userInfo)
-
-    record(error: err)
+    #if DEBUG
+    Log.debug(#file, "App launched - iOS \(UIDevice.current.systemVersion), build \(Bundle.main.versionNumber ?? "unknown")")
+    #endif
+    
+    // Optionally log to Crashlytics as breadcrumb (not as error)
+    // This provides context if crashes occur during/after launch
+    #if !targetEnvironment(simulator) && !DEBUG
+    #if canImport(FirebaseCrashlytics)
+    let launchInfo = "App Launch - iOS \(UIDevice.current.systemVersion), account: \(metadata["account_uuid"] ?? "nil")"
+    Crashlytics.crashlytics().log(launchInfo)
+    #endif
+    #endif
   }
 
   /**

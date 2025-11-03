@@ -80,11 +80,25 @@ extension TPPNetworkResponder: URLSessionDelegate {
         info.completion(.failure(cancelError, nil))
       }
       
+      // Only log if there's an actual error during invalidation
+      // Normal invalidation (e.g., deinit) without error is expected and shouldn't be reported
       if let err = error {
-        TPPErrorLogger.logError(err, summary: "URLSession invalidated with error")
+        Log.error(#file, "URLSession invalidated with error: \(err.localizedDescription), pending tasks: \(pending.count)")
+        TPPErrorLogger.logError(
+          err,
+          summary: "URLSession invalidated with error",
+          metadata: [
+            "pending_tasks": pending.count,
+            "error_domain": (err as NSError).domain,
+            "error_code": (err as NSError).code
+          ]
+        )
+      } else if !pending.isEmpty {
+        // Only log if there were pending tasks when invalidated (potential issue)
+        Log.warn(#file, "URLSession invalidated with \(pending.count) pending tasks (no error)")
       } else {
-        TPPErrorLogger.logError(withCode: .invalidURLSession,
-                                summary: "URLSession invalidated without error")
+        // Normal shutdown - don't log
+        Log.debug(#file, "URLSession invalidated normally (no error, no pending tasks)")
       }
     }
   }
