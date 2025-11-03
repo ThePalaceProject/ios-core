@@ -234,6 +234,12 @@ import UIKit
         return
       }
       
+      guard top.isViewLoaded else {
+        Log.warn(#file, "Cannot present alert: view not loaded")
+        completion?()
+        return
+      }
+      
       // If already presenting, try to present on top of the presented controller
       if let presented = top.presentedViewController {
         // Check if the presented controller is another alert - don't stack alerts
@@ -243,6 +249,11 @@ import UIKit
             Log.warn(#file, "Skipped alert with message: \(msg)")
           }
           completion?()
+          return
+        }
+        guard presented.isViewLoaded, presented.view.window != nil else {
+          top.present(alertController, animated: animated, completion: completion)
+          if let msg = alertController.message { Log.info(#file, msg) }
           return
         }
         // Present on top of the presented view controller
