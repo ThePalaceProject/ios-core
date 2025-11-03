@@ -447,18 +447,26 @@ final class BookDetailViewModel: ObservableObject {
   
   @MainActor
   func openBook(_ book: TPPBook, completion: (() -> Void)?) {
+    Log.debug(#file, "🎬 [OPEN BOOK] User requested to open book: \(book.title) (ID: \(book.identifier))")
     TPPCirculationAnalytics.postEvent("open_book", withBook: book)
     
     let resolvedBook = registry.book(forIdentifier: book.identifier) ?? book
+    let contentType = resolvedBook.defaultBookContentType
+    
+    Log.debug(#file, "  Content type determined: \(TPPBookContentTypeConverter.stringValue(of: contentType))")
+    Log.debug(#file, "  Distributor: \(resolvedBook.distributor ?? "nil")")
 
-    switch resolvedBook.defaultBookContentType {
+    switch contentType {
     case .epub:
+      Log.debug(#file, "  → Opening as EPUB")
       processingButtons.removeAll()
       presentEPUB(resolvedBook)
     case .pdf:
+      Log.debug(#file, "  → Opening as PDF")
       processingButtons.removeAll()
       presentPDF(resolvedBook)
     case .audiobook:
+      Log.debug(#file, "  → Opening as AUDIOBOOK")
       openAudiobook(resolvedBook) { [weak self] in
         DispatchQueue.main.async {
           self?.processingButtons.removeAll()
@@ -466,6 +474,7 @@ final class BookDetailViewModel: ObservableObject {
         }
       }
     default:
+      Log.error(#file, "  ❌ UNSUPPORTED CONTENT TYPE - showing error to user")
       processingButtons.removeAll()
       presentUnsupportedItemError()
     }
@@ -618,6 +627,15 @@ final class BookDetailViewModel: ObservableObject {
   }
   
   private func presentUnsupportedItemError() {
+    Log.error(#file, "⚠️ [UNSUPPORTED ITEM] Presenting unsupported item error")
+    Log.error(#file, "  Book: \(book.title) (ID: \(book.identifier))")
+    Log.error(#file, "  Distributor: \(book.distributor ?? "nil")")
+    Log.error(#file, "  Content type: \(TPPBookContentTypeConverter.stringValue(of: book.defaultBookContentType))")
+    Log.error(#file, "  All acquisitions:")
+    for (index, acquisition) in book.acquisitions.enumerated() {
+      Log.error(#file, "    \(index + 1). type=\(acquisition.type), relation=\(acquisition.relation)")
+    }
+    
     // Log the error before presenting
     TPPErrorLogger.logError(
       withCode: .unexpectedFormat,
@@ -626,7 +644,8 @@ final class BookDetailViewModel: ObservableObject {
         "book_id": book.identifier,
         "book_title": book.title,
         "distributor": book.distributor ?? "unknown",
-        "content_type": TPPBookContentTypeConverter.stringValue(of: book.defaultBookContentType)
+        "content_type": TPPBookContentTypeConverter.stringValue(of: book.defaultBookContentType),
+        "all_acquisitions": book.acquisitions.map { "type=\($0.type), relation=\($0.relation)" }.joined(separator: "; ")
       ]
     )
     

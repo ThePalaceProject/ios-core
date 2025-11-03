@@ -39,7 +39,7 @@ import PalaceAudiobookToolkit
     // Save to local registry immediately - this is the user's safety net
     if let tppLocation = audioBookmark.toTPPBookLocation() {
       registry.setLocation(tppLocation, forIdentifier: self.book.identifier)
-      ATLog(.debug, "💾 Immediately saved position locally: track=\(position.track.key), time=\(position.timestamp)")
+      Log.debug(#file, "💾 Immediately saved position locally: track=\(position.track.key), time=\(position.timestamp)")
     }
     
     // Debounce only the network sync, not the local save
@@ -66,10 +66,10 @@ import PalaceAudiobookToolkit
         
         // Update local copy with server metadata
         self.registry.setLocation(audioBookmark.toTPPBookLocation(), forIdentifier: self.book.identifier)
-        ATLog(.debug, "☁️ Synced position to server: annotationId=\(audioBookmark.annotationId)")
+        Log.debug(#file, "☁️ Synced position to server: annotationId=\(audioBookmark.annotationId)")
         completion?(response.timeStamp)
       } else {
-        ATLog(.warn, "⚠️ Server sync failed, but local position was already saved")
+        Log.warn(#file, "⚠️ Server sync failed, but local position was already saved")
         completion?(nil)
       }
     }
@@ -189,7 +189,7 @@ import PalaceAudiobookToolkit
       do {
         try await uploadBookmark(bookmark)
       } catch {
-        ATLog(.debug, "Failed to save annotation with error: \(error.localizedDescription)")
+        Log.debug(#file, "Failed to save annotation with error: \(error.localizedDescription)")
       }
     }
   }
@@ -273,7 +273,7 @@ import PalaceAudiobookToolkit
   /// Call this on app lifecycle events (willTerminate, didEnterBackground) to ensure no data loss
   public func flushPendingOperations() {
     if let workItem = debounceWorkItem {
-      ATLog(.debug, "🚨 Flushing pending operations immediately")
+      Log.debug(#file, "🚨 Flushing pending operations immediately")
       workItem.cancel()
       // Execute the work item immediately on current thread
       workItem.perform()
