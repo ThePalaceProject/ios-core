@@ -31,30 +31,7 @@ final class Log: NSObject {
 
     #if !targetEnvironment(simulator) && !DEBUG
     #if canImport(FirebaseCrashlytics)
-    // Send errors and warnings to Crashlytics (standard practice)
-    // Only gate verbose info/debug logs behind enhanced logging
-    let shouldLogToCrashlytics: Bool
-    switch level {
-    case .error, .fault:
-      shouldLogToCrashlytics = true // Always log errors
-    case .default:
-      shouldLogToCrashlytics = true // Always log warnings
-    case .info:
-      // Info logs only when enhanced logging enabled (verbose diagnostic data)
-      Task {
-        let isEnhanced = await DeviceSpecificErrorMonitor.shared.isEnhancedLoggingEnabled()
-        if isEnhanced {
-          let timestamp = dateFormatter.string(from: Date())
-          let formattedMsg = "[\(levelToString(level))] \(timestamp) \(tag): \(message)"
-          Crashlytics.crashlytics().log("\(formattedMsg)")
-        }
-      }
-      shouldLogToCrashlytics = false
-    default:
-      shouldLogToCrashlytics = false // Never log debug
-    }
-    
-    if shouldLogToCrashlytics {
+    if level != .debug {
       let timestamp = dateFormatter.string(from: Date())
       let formattedMsg = "[\(levelToString(level))] \(timestamp) \(tag): \(message)"
       Crashlytics.crashlytics().log("\(formattedMsg)")
