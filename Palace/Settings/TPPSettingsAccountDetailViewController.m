@@ -683,27 +683,44 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
     }
     
     case CellKindAbout: {
-      RemoteHTMLViewController *vc = [[RemoteHTMLViewController alloc]
-                                      initWithURL:[self.selectedAccount.details getLicenseURL:URLTypeAcknowledgements]
-                                      title:NSLocalizedString(@"About", nil)
-                                      failureMessage:NSLocalizedString(@"The page could not load due to a connection error.", nil)];
-      [self.navigationController pushViewController:vc animated:YES];
+      NSURL *url = [self.selectedAccount.details getLicenseURL:URLTypeAcknowledgements];
+      if (url) {
+        RemoteHTMLViewController *vc = [[RemoteHTMLViewController alloc]
+                                        initWithURL:url
+                                        title:NSLocalizedString(@"About", nil)
+                                        failureMessage:NSLocalizedString(@"The page could not load due to a connection error.", nil)];
+        [self.navigationController pushViewController:vc animated:YES];
+      } else {
+        NSLog(@"Cannot open About page: URL is nil");
+      }
       break;
     }
     case CellKindPrivacyPolicy: {
-      RemoteHTMLViewController *vc = [[RemoteHTMLViewController alloc]
-                                      initWithURL:[self.selectedAccount.details getLicenseURL:URLTypePrivacyPolicy]
-                                      title:NSLocalizedString(@"Privacy Policy", nil)
-                                      failureMessage:NSLocalizedString(@"The page could not load due to a connection error.", nil)];
-      [self.navigationController pushViewController:vc animated:YES];
+      NSURL *url = [self.selectedAccount.details getLicenseURL:URLTypePrivacyPolicy];
+      // BUG FIX: Check for nil URL before creating view controller
+      if (url) {
+        RemoteHTMLViewController *vc = [[RemoteHTMLViewController alloc]
+                                        initWithURL:url
+                                        title:NSLocalizedString(@"Privacy Policy", nil)
+                                        failureMessage:NSLocalizedString(@"The page could not load due to a connection error.", nil)];
+        [self.navigationController pushViewController:vc animated:YES];
+      } else {
+        NSLog(@"Cannot open Privacy Policy: URL is nil");
+      }
       break;
     }
     case CellKindContentLicense: {
-      RemoteHTMLViewController *vc = [[RemoteHTMLViewController alloc]
-                                      initWithURL:[self.selectedAccount.details getLicenseURL:URLTypeContentLicenses]
-                                      title:NSLocalizedString(@"Content Licenses", nil)
-                                      failureMessage:NSLocalizedString(@"The page could not load due to a connection error.", nil)];
-      [self.navigationController pushViewController:vc animated:YES];
+      NSURL *url = [self.selectedAccount.details getLicenseURL:URLTypeContentLicenses];
+      // BUG FIX: Check for nil URL before creating view controller
+      if (url) {
+        RemoteHTMLViewController *vc = [[RemoteHTMLViewController alloc]
+                                        initWithURL:url
+                                        title:NSLocalizedString(@"Content Licenses", nil)
+                                        failureMessage:NSLocalizedString(@"The page could not load due to a connection error.", nil)];
+        [self.navigationController pushViewController:vc animated:YES];
+      } else {
+        NSLog(@"Cannot open Content Licenses: URL is nil");
+      }
       break;
     }
     case CellKindPasswordReset:
