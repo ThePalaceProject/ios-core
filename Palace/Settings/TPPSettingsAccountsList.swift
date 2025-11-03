@@ -21,6 +21,7 @@
   fileprivate var libraryAccounts: [Account]
   fileprivate var userAddedSecondaryAccounts: [Account]!
   fileprivate let manager: AccountsManager
+  fileprivate var accountsLoadingLogos: Set<String> = []
   
   required init(accounts: [Account]) {
     self.accounts = accounts
@@ -241,21 +242,49 @@
   }
   
   func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-    guard let account = self.manager.currentAccount,  let cell = tableView.dequeueReusableCell(withIdentifier: TPPAccountListCell.reuseIdentifier, for: indexPath) as? TPPAccountListCell else {
-      // Should never happen, but better than crashing
+    guard let cell = tableView.dequeueReusableCell(withIdentifier: TPPAccountListCell.reuseIdentifier, for: indexPath) as? TPPAccountListCell else {
       return UITableViewCell()
     }
     
-    if (indexPath.section == 0) {
-      cell.configure(for: account)
+    let account: Account?
+    if indexPath.section == 0 {
+      account = self.manager.currentAccount
     } else {
-      // The app crashes here when we switch registry accounts
       if indexPath.row < userAddedSecondaryAccounts.count {
-        cell.configure(for: userAddedSecondaryAccounts[indexPath.row])
+        account = userAddedSecondaryAccounts[indexPath.row]
+      } else {
+        return cell
       }
     }
     
+    guard let account = account else {
+      return cell
+    }
+    
+    // Check cache synchronously and set image directly on cell to prevent gaps
+    if let cachedImage = account.imageCache.get(for: account.uuid) {
+      if account.logo.size != cachedImage.size {
+        account.logo = cachedImage
+      }
+      cell.customImageView.image = cachedImage
+    } else {
+      cell.customImageView.image = account.logo
+      loadLogoIfNeeded(for: account, at: indexPath)
+    }
+    
+    cell.customTextlabel.text = account.name
+    cell.customDetailLabel.text = account.subtitle
+    
     return cell
+  }
+  
+  private func loadLogoIfNeeded(for account: Account, at indexPath: IndexPath) {
+    guard !accountsLoadingLogos.contains(account.uuid) else { return }
+    guard account.logoUrl != nil else { return }
+    
+    accountsLoadingLogos.insert(account.uuid)
+    account.logoDelegate = self
+    account.loadLogo()
   }
 
   // MARK: UITableViewDelegate
@@ -296,6 +325,33 @@
       updateSettingsAccountList()
       updateNavBar()
       self.tableView.reloadData()
+    }
+  }
+}
+
+// MARK: - AccountLogoDelegate
+extension TPPSettingsAccountsTableViewController: AccountLogoDelegate {
+  func logoDidUpdate(in account: Account, to newLogo: UIImage) {
+    accountsLoadingLogos.remove(account.uuid)
+    
+    DispatchQueue.main.async { [weak self] in
+      guard let self = self else { return }
+      
+      // Find the indexPath for this account
+      var indexPath: IndexPath?
+      if account.uuid == self.manager.currentAccount?.uuid {
+        indexPath = IndexPath(row: 0, section: 0)
+      } else if let row = self.userAddedSecondaryAccounts.firstIndex(where: { $0.uuid == account.uuid }) {
+        indexPath = IndexPath(row: row, section: 1)
+      }
+      
+      guard let indexPath = indexPath,
+            self.tableView.indexPathsForVisibleRows?.contains(indexPath) == true,
+            let cell = self.tableView.cellForRow(at: indexPath) as? TPPAccountListCell else {
+        return
+      }
+      
+      cell.customImageView.image = newLogo
     }
   }
 }
