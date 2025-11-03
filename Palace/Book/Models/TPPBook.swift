@@ -654,7 +654,7 @@ private extension TPPBook {
           alpha: CGFloat(bitmap[3]) / 255.0
         )
 
-        DispatchQueue.main.async {
+        Task { @MainActor in
           self.dominantUIColor = color
         }
       }

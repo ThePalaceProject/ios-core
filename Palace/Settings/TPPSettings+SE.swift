@@ -18,8 +18,8 @@ extension TPPSettings {
   
   var settingsAccountIdsList: [String] {
     get {
-      if let libraryAccounts = UserDefaults.standard.array(forKey: TPPSettings.settingsLibraryAccountsKey) {
-        return libraryAccounts as! [String]
+      if let libraryAccounts = UserDefaults.standard.array(forKey: TPPSettings.settingsLibraryAccountsKey) as? [String] {
+        return libraryAccounts
       }
 
       // Avoid crash in case currentLibrary isn't set yet

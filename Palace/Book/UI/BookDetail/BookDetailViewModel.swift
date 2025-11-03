@@ -122,7 +122,6 @@ final class BookDetailViewModel: ObservableObject {
       .bookStatePublisher
       .filter { $0.0 == self.book.identifier }
       .map { $0.1 }
-      .receive(on: DispatchQueue.main)
       .sink { [weak self] newState in
         guard let self else { return }
         let updatedBook = registry.book(forIdentifier: book.identifier) ?? book
@@ -160,7 +159,6 @@ final class BookDetailViewModel: ObservableObject {
     downloadCenter.downloadProgressPublisher
       .filter { $0.0 == self.book.identifier }
       .map { $0.1 }
-      .receive(on: DispatchQueue.main)
       .assign(to: &$downloadProgress)
   }
 
@@ -182,14 +180,12 @@ final class BookDetailViewModel: ObservableObject {
       }
       .removeDuplicates()
       .debounce(for: .milliseconds(180), scheduler: DispatchQueue.main)
-      .receive(on: DispatchQueue.main)
       .assign(to: &self.$stableButtonState)
   }
   
   @objc func handleBookRegistryChange(_ notification: Notification) {
-    DispatchQueue.main.async { [weak self] in
-      guard let self else { return }
-      let updatedBook = registry.book(forIdentifier: book.identifier) ?? book
+    let updatedBook = registry.book(forIdentifier: book.identifier) ?? book
+    Task { @MainActor in
       self.book = updatedBook
     }
   }
@@ -204,18 +200,15 @@ final class BookDetailViewModel: ObservableObject {
   // MARK: - Notifications
   
   @objc func handleDownloadStateDidChange(_ notification: Notification) {
-    DispatchQueue.main.async { [weak self] in
-      guard let self else { return }
-      self.downloadProgress = downloadCenter.downloadProgress(for: book.identifier)
-      let info = downloadCenter.downloadInfo(forBookIdentifier: book.identifier)
-      if let rights = info?.rightsManagement, rights != .unknown {
-        if bookState != .downloading && bookState != .downloadSuccessful {
-          self.bookState = registry.state(for: book.identifier)
-        }
-        #if LCP
-        self.prefetchLCPStreamingIfPossible()
-        #endif
+    self.downloadProgress = downloadCenter.downloadProgress(for: book.identifier)
+    let info = downloadCenter.downloadInfo(forBookIdentifier: book.identifier)
+    if let rights = info?.rightsManagement, rights != .unknown {
+      if bookState != .downloading && bookState != .downloadSuccessful {
+        self.bookState = registry.state(for: book.identifier)
       }
+      #if LCP
+      self.prefetchLCPStreamingIfPossible()
+      #endif
     }
   }
   
@@ -395,7 +388,14 @@ final class BookDetailViewModel: ObservableObject {
 
   func didSelectReserve(for book: TPPBook) {
     ensureAuthAndExecute { [weak self] in
-      self?.downloadCenter.startBorrow(for: book, attemptDownload: false)
+      guard let self = self else { return }
+      Task {
+        do {
+          _ = try await self.downloadCenter.borrowAsync(book, attemptDownload: false)
+        } catch {
+          Log.error(#file, "Failed to borrow book: \(error.localizedDescription)")
+        }
+      }
     }
   }
   
@@ -597,6 +597,17 @@ final class BookDetailViewModel: ObservableObject {
   // MARK: - Error Alerts
   
   private func presentCorruptedItemError() {
+    // Log the error before presenting
+    TPPErrorLogger.logError(
+      withCode: .epubDecodingError,
+      summary: "Corrupted EPUB item - cannot open book",
+      metadata: [
+        "book_id": book.identifier,
+        "book_title": book.title,
+        "distributor": book.distributor ?? "unknown"
+      ]
+    )
+    
     let alert = UIAlertController(
       title: Strings.Error.epubNotValidError,
       message: Strings.Error.epubNotValidError,
@@ -607,6 +618,18 @@ final class BookDetailViewModel: ObservableObject {
   }
   
   private func presentUnsupportedItemError() {
+    // Log the error before presenting
+    TPPErrorLogger.logError(
+      withCode: .unexpectedFormat,
+      summary: "Unsupported book format",
+      metadata: [
+        "book_id": book.identifier,
+        "book_title": book.title,
+        "distributor": book.distributor ?? "unknown",
+        "content_type": TPPBookContentTypeConverter.stringValue(of: book.defaultBookContentType)
+      ]
+    )
+    
     let alert = UIAlertController(
       title: Strings.Error.formatNotSupportedError,
       message: Strings.Error.formatNotSupportedError,
@@ -617,6 +640,17 @@ final class BookDetailViewModel: ObservableObject {
   }
   
   private func presentDRMKeyError(_ error: Error) {
+    // Log DRM errors
+    TPPErrorLogger.logError(
+      error,
+      summary: "DRM key error - cannot decrypt content",
+      metadata: [
+        "book_id": book.identifier,
+        "book_title": book.title,
+        "error_description": error.localizedDescription
+      ]
+    )
+    
     let alert = UIAlertController(title: "DRM Error", message: error.localizedDescription, preferredStyle: .alert)
     alert.addAction(UIAlertAction(title: "OK", style: .default))
     TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)

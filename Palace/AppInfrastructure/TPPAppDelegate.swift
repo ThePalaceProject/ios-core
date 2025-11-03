@@ -19,6 +19,11 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     let startupQueue = DispatchQueue.global(qos: .userInitiated)
 
     FirebaseApp.configure()
+    
+    // Initialize device-specific error monitoring
+    Task {
+      await DeviceSpecificErrorMonitor.shared.initialize()
+    }
 
     TPPErrorLogger.configureCrashAnalytics()
     TPPErrorLogger.logNewAppLaunch()
@@ -27,6 +32,15 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
     setupWindow()
     configureUIAppearance()
+
+    // Check for crashes and perform recovery
+    Task {
+      await CrashRecoveryService.shared.checkForCrashOnLaunch()
+      
+      // Schedule stable session check after 10 minutes of stable running
+      try? await Task.sleep(nanoseconds: 600_000_000_000) // 10 minutes
+      await CrashRecoveryService.shared.recordStableSession()
+    }
 
     startupQueue.async {
       self.setupBookRegistryAndNotifications()
@@ -148,6 +162,11 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
   }
 
   func applicationWillTerminate(_ application: UIApplication) {
+    // Record clean exit for crash detection
+    Task {
+      await CrashRecoveryService.shared.recordCleanExit()
+    }
+    
     audiobookLifecycleManager.willTerminate()
     NotificationCenter.default.removeObserver(self)
     Reachability.shared.stopMonitoring()
@@ -263,12 +282,19 @@ extension TPPAppDelegate {
 // MARK: - Memory and Disk Pressure Handling
 import UIKit
 
+/// Severity levels for cache cleanup operations
+private enum CleanupSeverity {
+  case medium
+  case high
+}
+
 /// Centralized observer for memory pressure, thermal state, and disk space cleanup.
 /// Performs cache purges, download throttling, and space reclamation when needed.
 final class MemoryPressureMonitor {
   static let shared = MemoryPressureMonitor()
 
   private let monitorQueue = DispatchQueue(label: "org.thepalaceproject.memory-pressure", qos: .utility)
+  private var proactiveMonitoringTask: Task<Void, Never>?
 
   private init() {}
 
@@ -301,6 +327,71 @@ final class MemoryPressureMonitor {
       // Relax startup reclamation threshold to avoid aggressive evictions on older devices
       self?.reclaimDiskSpaceIfNeeded(minimumFreeMegabytes: 256)
     }
+    
+    // Start proactive memory monitoring
+    startProactiveMonitoring()
+  }
+  
+  /// Proactively monitors memory usage and cleans up before hitting critical levels
+  private func startProactiveMonitoring() {
+    proactiveMonitoringTask = Task {
+      while !Task.isCancelled {
+        // Check every 30 seconds
+        try? await Task.sleep(nanoseconds: 30_000_000_000)
+        
+        await checkMemoryPressure()
+      }
+    }
+  }
+  
+  /// Checks current memory usage and takes action if needed
+  private func checkMemoryPressure() async {
+    var info = mach_task_basic_info()
+    var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size) / 4
+    
+    let kerr: kern_return_t = withUnsafeMutablePointer(to: &info) {
+      $0.withMemoryRebound(to: integer_t.self, capacity: 1) {
+        task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &count)
+      }
+    }
+    
+    guard kerr == KERN_SUCCESS else { return }
+    
+    let usedMemoryMB = Int64(info.resident_size) / (1024 * 1024)
+    let totalMemoryMB = Int64(ProcessInfo.processInfo.physicalMemory) / (1024 * 1024)
+    let memoryPercentage = Double(usedMemoryMB) / Double(totalMemoryMB)
+    
+    // Take proactive action if memory usage is high
+    if memoryPercentage > 0.75 {
+      Log.warn(#file, "High memory usage detected: \(usedMemoryMB)MB / \(totalMemoryMB)MB (\(Int(memoryPercentage * 100))%)")
+      await proactiveCacheCleanup(severity: .high)
+    } else if memoryPercentage > 0.60 {
+      await proactiveCacheCleanup(severity: .medium)
+    }
+  }
+  
+  /// Proactively cleans up caches based on severity
+  private func proactiveCacheCleanup(severity: CleanupSeverity) async {
+    monitorQueue.async {
+      switch severity {
+      case .high:
+        // Aggressive cleanup
+        URLCache.shared.removeAllCachedResponses()
+        TPPNetworkExecutor.shared.clearCache()
+        MyBooksDownloadCenter.shared.pauseAllDownloads()
+        Log.info(#file, "Performed aggressive cache cleanup due to high memory pressure")
+        
+      case .medium:
+        // Moderate cleanup - just network caches
+        URLCache.shared.removeAllCachedResponses()
+        Log.info(#file, "Performed moderate cache cleanup due to medium memory pressure")
+      }
+    }
+  }
+  
+  func stop() {
+    proactiveMonitoringTask?.cancel()
+    proactiveMonitoringTask = nil
   }
 
   @objc private func handleMemoryWarning() {

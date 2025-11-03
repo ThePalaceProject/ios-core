@@ -203,26 +203,22 @@ extension TPPEPUBViewController: TPPReaderSettingsDelegate {
 
   func updateUserPreferencesStyle(for appearance: EPUBPreferences) {
     self.preferences = appearance
-    DispatchQueue.main.async {
-      self.epubNavigator.submitPreferences(appearance)
-      self.setUIColor(for: appearance)
-    }
+    epubNavigator.submitPreferences(appearance)
+    setUIColor(for: appearance)
   }
 
   func setUIColor(for appearance: EPUBPreferences) {
-    DispatchQueue.main.async {
-      let backgroundColor = appearance.backgroundColor?.uiColor ?? .black
-      let textColor = appearance.textColor?.uiColor ?? .lightGray
-      
-      self.navigator.view.backgroundColor = backgroundColor
-      self.view.backgroundColor = backgroundColor
-      self.navigatorContainer?.backgroundColor = backgroundColor
-      self.view.tintColor = textColor
-      
-      // Update label colors to match theme
-      self.positionLabel.textColor = textColor.withAlphaComponent(0.7)
-      self.bookTitleLabel.textColor = textColor.withAlphaComponent(0.7)
-    }
+    let backgroundColor = appearance.backgroundColor?.uiColor ?? .black
+    let textColor = appearance.textColor?.uiColor ?? .lightGray
+    
+    navigator.view.backgroundColor = backgroundColor
+    view.backgroundColor = backgroundColor
+    navigatorContainer?.backgroundColor = backgroundColor
+    view.tintColor = textColor
+    
+    // Update label colors to match theme
+    positionLabel.textColor = textColor.withAlphaComponent(0.7)
+    bookTitleLabel.textColor = textColor.withAlphaComponent(0.7)
   }
 }
 
