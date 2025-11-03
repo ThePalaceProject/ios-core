@@ -111,12 +111,9 @@ protocol AnnotationsManager {
 
     postAnnotation(forBook: bookID, withAnnotationURL: annotationsURL, withParameters: parameters, queueOffline: true) { (success, id, timeStamp) in
       guard success else {
-        TPPErrorLogger.logError(withCode: .apiCall,
-                                 summary: "Error posting annotation",
-                                 metadata: [
-                                  "bookID": bookID,
-                                  "annotationID": id ?? "N/A",
-                                  "annotationURL": annotationsURL])
+        // Annotation POST failed - but offline queue may have handled it
+        // No need to report to Crashlytics if queued for retry (expected recovery)
+        Log.debug(#file, "Annotation POST failed for \(bookID), offline queue will retry")
         completion?(nil)
         return
       }
@@ -211,9 +208,15 @@ protocol AnnotationsManager {
 
     let task = TPPNetworkExecutor.shared.POST(request, useTokenIfAvailable: true) { (data, response, error) in
       if let error = error as NSError? {
-        Log.error(#file, "Annotation POST error (nsCode: \(error.code) Description: \(error.localizedDescription))")
-        if (NetworkQueue.StatusCodes.contains(error.code)) && (queueOffline == true) {
+        let willQueueOffline = (NetworkQueue.StatusCodes.contains(error.code)) && (queueOffline == true)
+        
+        if willQueueOffline {
+          // Transient network error - will retry later (expected recovery)
+          Log.debug(#file, "Annotation POST failed (code: \(error.code)), queued for offline retry")
           self.addToOfflineQueue(bookID, url, parameters)
+        } else {
+          // Real error - can't recover via offline queue
+          Log.error(#file, "Annotation POST error (nsCode: \(error.code) Description: \(error.localizedDescription))")
         }
         completionHandler(false, nil, nil)
         return

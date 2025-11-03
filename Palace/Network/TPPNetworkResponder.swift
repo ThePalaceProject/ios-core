@@ -183,17 +183,23 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
     if let http = task.response as? HTTPURLResponse {
       if http.statusCode == 401,
          handleExpiredTokenIfNeeded(for: http, with: task) {
+        Log.debug(#file, "Task \(taskID) got 401, triggering token refresh and retry")
         return
       }
+      
       if !http.isSuccess() {
         let err: TPPUserFriendlyError
         let data = info.progressData
+        
+        // Check if this is a retry that failed (second 401 after token refresh)
+        let isFailedRetry = task.originalRequest?.hasRetried == true
         
         if !data.isEmpty {
           err = task.parseAndLogError(
             fromProblemDocumentData: data,
             networkError: networkError,
-            logMetadata: logMetadata
+            logMetadata: logMetadata,
+            isFailedRetry: isFailedRetry
           )
         } else {
           err = NSError(
@@ -201,6 +207,11 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
             code: TPPErrorCode.responseFail.rawValue,
             userInfo: logMetadata
           )
+          
+          // Only log non-retry failures or failed retries
+          if !isFailedRetry || http.statusCode == 401 {
+            Log.warn(#file, "Request failed with status \(http.statusCode), isRetry: \(isFailedRetry)")
+          }
         }
         
         result = .failure(err, task.response)
@@ -323,11 +334,13 @@ extension URLSessionTask {
   //----------------------------------------------------------------------------
   fileprivate func parseAndLogError(fromProblemDocumentData responseData: Data,
                                     networkError: Error?,
-                                    logMetadata: [String: Any]) -> TPPUserFriendlyError {
+                                    logMetadata: [String: Any],
+                                    isFailedRetry: Bool = false) -> TPPUserFriendlyError {
     let parseError: Error?
     let code: TPPErrorCode
     let returnedError: TPPUserFriendlyError
     var logMetadata = logMetadata
+    logMetadata["isFailedRetry"] = isFailedRetry
 
     do {
       let problemDoc = try TPPProblemDocument.fromData(responseData)
@@ -335,6 +348,29 @@ extension URLSessionTask {
       parseError = nil
       code = TPPErrorCode.problemDocAvailable
       logMetadata["problemDocument"] = problemDoc.dictionaryValue
+      logMetadata["problemDocType"] = problemDoc.type ?? "unknown"
+      
+      // Check if this is an expected problem document that shouldn't be reported
+      let isExpectedProblemDoc = shouldSuppressLogging(for: problemDoc, request: originalRequest)
+      
+      if isExpectedProblemDoc {
+        // Don't log expected problem documents (e.g., "no active loan" after book return)
+        Log.debug(#file, "Expected problem document: \(problemDoc.type ?? "unknown") for \(originalRequest?.url?.path ?? "unknown")")
+        return returnedError
+      }
+      
+      // Only log if this is a failed retry (second attempt after token refresh)
+      // Don't log first-attempt 401s since they'll be retried automatically
+      let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+      if !isFailedRetry && statusCode == 401 {
+        Log.debug(#file, "Problem document with 401 - will retry with token refresh (not logging to Crashlytics)")
+        return returnedError
+      }
+      
+      // For failed retries with 401, this is a real auth issue (log it)
+      if isFailedRetry && statusCode == 401 {
+        Log.error(#file, "Failed retry with 401 - auth credentials invalid after refresh")
+      }
     } catch (let caughtParseError) {
       parseError = caughtParseError
       code = TPPErrorCode.parseProblemDocFail
@@ -381,6 +417,25 @@ extension URLSessionTask {
       userInfo: userInfo)
 
     return err
+  }
+  
+  /// Determines if a problem document should not be logged to Crashlytics
+  /// because it represents an expected/recoverable state
+  fileprivate func shouldSuppressLogging(for problemDoc: TPPProblemDocument, request: URLRequest?) -> Bool {
+    guard let problemType = problemDoc.type else { return false }
+    guard let url = request?.url else { return false }
+    
+    // "No active loan" after book return is expected - annotation will be queued offline
+    if problemType == TPPProblemDocument.TypeNoActiveLoan && url.path.contains("annotations") {
+      return true
+    }
+    
+    // "Loan already exists" during re-borrow attempts is expected - user already has the book
+    if problemType == TPPProblemDocument.TypeLoanAlreadyExists && url.path.contains("borrow") {
+      return true
+    }
+    
+    return false
   }
 }
 
