@@ -370,9 +370,18 @@ import OverdriveProcessor
     }
     
     if state == .downloadNeeded && book.defaultAcquisitionIfBorrow != nil {
-      Log.info(#file, "Book \(book.identifier) has borrow acquisition but is in downloadNeeded state. Refreshing loan status.")
+      Log.info(#file, "Book \(book.identifier) is downloadNeeded with borrow acquisition - auto-borrowing before download")
       bookRegistry.setState(.unregistered, for: book.identifier)
-      startBorrow(for: book, attemptDownload: true, borrowCompletion: nil)
+      startBorrow(for: book, attemptDownload: true) { [weak self] in
+        guard let self else { return }
+        let newState = self.bookRegistry.state(for: book.identifier)
+        Log.debug(#file, "Auto-borrow completed for \(book.identifier), new state: \(newState)")
+        
+        // If still not in a downloadable state, something went wrong
+        if newState != .downloading && newState != .downloadSuccessful && newState != .downloadNeeded {
+          Log.warn(#file, "Auto-borrow completed but book is not downloadable, state: \(newState)")
+        }
+      }
       return
     }
     
@@ -942,24 +951,33 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
         
         // Check if the error is "No active loan" - attempt to re-borrow
         if let problemDoc = problemDoc, problemDoc.type == TPPProblemDocument.TypeNoActiveLoan {
-          Log.info(#file, "Download failed due to no active loan. Attempting to borrow book: \(book.identifier)")
+          Log.info(#file, "Download failed: No active loan for \(book.identifier). Auto-borrowing...")
           
           // Update state to unregistered so borrow logic will work
           self.bookRegistry.setState(.unregistered, for: book.identifier)
           
           // Try to borrow the book (which will auto-download if successful)
           self.startBorrow(for: book, attemptDownload: true) { [weak self] in
+            guard let self else { return }
+            
             // If borrow completed, check if download started
-            let newState = self?.bookRegistry.state(for: book.identifier)
+            let newState = self.bookRegistry.state(for: book.identifier)
+            Log.debug(#file, "Auto-borrow after 'no active loan' completed, new state: \(newState)")
+            
             if newState != .downloading && newState != .downloadSuccessful {
-              // Borrow didn't result in download, show the error
-              self?.alertForProblemDocument(problemDoc, error: failureError, book: book)
+              // Borrow failed or didn't result in download
+              Log.warn(#file, "Auto-borrow failed for \(book.identifier), showing error to user")
+              self.alertForProblemDocument(problemDoc, error: failureError, book: book)
+            } else {
+              Log.info(#file, "Auto-borrow successful for \(book.identifier), download started")
             }
           }
-        } else {
-          // For other errors, show alert immediately
-          self.alertForProblemDocument(problemDoc, error: failureError, book: book)
+          // Don't call alertForProblemDocument here - wait for borrow completion
+          return
         }
+        
+        // For other errors, show alert immediately
+        self.alertForProblemDocument(problemDoc, error: failureError, book: book)
       }
       bookRegistry.setState(.downloadFailed, for: book.identifier)
     }
@@ -1842,3 +1860,4 @@ extension MyBooksDownloadCenter: NYPLADEPTDelegate {
   }
 }
 #endif
+
