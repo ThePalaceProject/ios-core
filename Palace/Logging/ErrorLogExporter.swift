@@ -75,7 +75,7 @@ actor ErrorLogExporter {
       errorLogs: allErrorLogs,
       audiobookLogs: allAudiobookLogs,
       crashlyticsBreadcrumbs: breadcrumbs,
-      deviceInfo: collectDeviceInfo()
+      deviceInfo: await collectDeviceInfo()
     )
   }
   
@@ -236,24 +236,29 @@ actor ErrorLogExporter {
   // MARK: - Device Information
   
   /// Collects device information matching ProblemReportEmail format
-  private func collectDeviceInfo() -> String {
-    let nativeHeight = UIScreen.main.nativeBounds.height
-    let systemVersion = UIDevice.current.systemVersion
-    let idiom: String
-    
-    switch UIDevice.current.userInterfaceIdiom {
-    case .carPlay:
-      idiom = "carPlay"
-    case .pad:
-      idiom = "pad"
-    case .phone:
-      idiom = "phone"
-    case .tv:
-      idiom = "tv"
-    case .mac:
-      idiom = "mac"
-    default:
-      idiom = "unspecified"
+  private func collectDeviceInfo() async -> String {
+    let (nativeHeight, systemVersion, idiom, deviceID) = await MainActor.run {
+      let height = UIScreen.main.nativeBounds.height
+      let version = UIDevice.current.systemVersion
+      let deviceIdiom: String
+      
+      switch UIDevice.current.userInterfaceIdiom {
+      case .carPlay:
+        deviceIdiom = "carPlay"
+      case .pad:
+        deviceIdiom = "pad"
+      case .phone:
+        deviceIdiom = "phone"
+      case .tv:
+        deviceIdiom = "tv"
+      case .mac:
+        deviceIdiom = "mac"
+      default:
+        deviceIdiom = "unspecified"
+      }
+      
+      let id = UIDevice.current.identifierForVendor?.uuidString ?? "Unknown"
+      return (height, version, deviceIdiom, id)
     }
     
     let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
@@ -268,7 +273,7 @@ actor ErrorLogExporter {
     Height: \(nativeHeight)
     Palace Version: \(appVersion) (\(buildNumber))
     Library: \(libraryName)
-    Device ID: \(UIDevice.current.identifierForVendor?.uuidString ?? "Unknown")
+    Device ID: \(deviceID)
     """
     
     // Add memory and storage info
@@ -318,15 +323,15 @@ actor ErrorLogExporter {
     if totalSize > maxLogSizeBytes {
       // Compress logs as zip
       if let zipData = await createZipArchive(logData: logData) {
-        mailComposer.addAttachmentData(zipData, mimeType: "application/zip", fileName: "palace_logs_\(timestamp).zip")
+        await mailComposer.addAttachmentData(zipData, mimeType: "application/zip", fileName: "palace_logs_\(timestamp).zip")
       }
     } else {
       // Attach individual files
-      mailComposer.addAttachmentData(logData.errorLogs, mimeType: "text/plain", fileName: "error_logs_\(timestamp).txt")
-      mailComposer.addAttachmentData(logData.audiobookLogs, mimeType: "text/plain", fileName: "audiobook_logs_\(timestamp).txt")
+      await mailComposer.addAttachmentData(logData.errorLogs, mimeType: "text/plain", fileName: "error_logs_\(timestamp).txt")
+      await mailComposer.addAttachmentData(logData.audiobookLogs, mimeType: "text/plain", fileName: "audiobook_logs_\(timestamp).txt")
       
       if !logData.crashlyticsBreadcrumbs.isEmpty {
-        mailComposer.addAttachmentData(logData.crashlyticsBreadcrumbs, mimeType: "text/plain", fileName: "crashlytics_\(timestamp).txt")
+        await mailComposer.addAttachmentData(logData.crashlyticsBreadcrumbs, mimeType: "text/plain", fileName: "crashlytics_\(timestamp).txt")
       }
     }
   }

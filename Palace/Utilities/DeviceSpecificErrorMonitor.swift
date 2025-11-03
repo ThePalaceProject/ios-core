@@ -128,7 +128,7 @@ actor DeviceSpecificErrorMonitor {
     Log.info(#file, "📊 ENHANCED logging active - capturing full stack trace")
     
     // Enhanced logging: Send to Firebase Analytics with stack trace
-    var analyticsParams: [String: Any] = [
+    let analyticsParams: [String: Any] = [
       "error_domain": (error as NSError).domain,
       "error_code": (error as NSError).code,
       "context": context,
@@ -234,12 +234,17 @@ actor DeviceSpecificErrorMonitor {
   
   // MARK: - Device Info for Support
   
-  nonisolated func getDeviceInfo() -> [String: String] {
+  func getDeviceInfo() async -> [String: String] {
     var info: [String: String] = [:]
     
     info["device_id"] = getDeviceID()
-    info["device_model"] = UIDevice.current.model
-    info["ios_version"] = UIDevice.current.systemVersion
+    
+    // Access UIDevice on MainActor
+    await MainActor.run {
+      info["device_model"] = UIDevice.current.model
+      info["ios_version"] = UIDevice.current.systemVersion
+    }
+    
     info["app_version"] = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
     info["build_number"] = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"
     
