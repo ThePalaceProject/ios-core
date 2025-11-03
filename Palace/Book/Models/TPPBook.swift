@@ -640,7 +640,25 @@ private extension TPPBook {
       guard let self = self else { return }
 
       autoreleasepool {
-        guard let ciImage = CIImage(image: inputImage) else {
+        let maxDimension: CGFloat = 500
+        let scaledImage: UIImage
+        
+        let imageSize = inputImage.size
+        let maxSide = max(imageSize.width, imageSize.height)
+        
+        if maxSide > maxDimension {
+          let scale = maxDimension / maxSide
+          let newSize = CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
+          
+          UIGraphicsBeginImageContextWithOptions(newSize, false, 1.0)
+          inputImage.draw(in: CGRect(origin: .zero, size: newSize))
+          scaledImage = UIGraphicsGetImageFromCurrentImageContext() ?? inputImage
+          UIGraphicsEndImageContext()
+        } else {
+          scaledImage = inputImage
+        }
+        
+        guard let ciImage = CIImage(image: scaledImage) else {
           Log.debug(#file, "Failed to create CIImage from UIImage for book: \(self.identifier)")
           return
         }
@@ -666,24 +684,31 @@ private extension TPPBook {
 
         var bitmap = [UInt8](repeating: 0, count: 4)
         
-        Self.sharedCIContext.render(
-          outputImage,
-          toBitmap: &bitmap,
-          rowBytes: 4,
-          bounds: CGRect(x: 0, y: 0, width: 1, height: 1),
-          format: .RGBA8,
-          colorSpace: colorSpace
-        )
+        do {
+          Self.sharedCIContext.render(
+            outputImage,
+            toBitmap: &bitmap,
+            rowBytes: 4,
+            bounds: CGRect(x: 0, y: 0, width: 1, height: 1),
+            format: .RGBA8,
+            colorSpace: colorSpace
+          )
+          
+          let color = UIColor(
+            red: CGFloat(bitmap[0]) / 255.0,
+            green: CGFloat(bitmap[1]) / 255.0,
+            blue: CGFloat(bitmap[2]) / 255.0,
+            alpha: CGFloat(bitmap[3]) / 255.0
+          )
 
-        let color = UIColor(
-          red: CGFloat(bitmap[0]) / 255.0,
-          green: CGFloat(bitmap[1]) / 255.0,
-          blue: CGFloat(bitmap[2]) / 255.0,
-          alpha: CGFloat(bitmap[3]) / 255.0
-        )
-
-        Task { @MainActor in
-          self.dominantUIColor = color
+          Task { @MainActor in
+            self.dominantUIColor = color
+          }
+        } catch {
+          Log.warn(#file, "Failed to extract dominant color (likely memory issue): \(error.localizedDescription)")
+          Task { @MainActor in
+            self.dominantUIColor = .gray
+          }
         }
       }
     }
