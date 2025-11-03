@@ -127,4 +127,4 @@ extension MyBooksDownloadCenter {
       completion: nil
     )
   }
-
+}
