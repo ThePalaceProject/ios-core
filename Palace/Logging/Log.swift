@@ -1,6 +1,8 @@
 import os
 import Foundation
+#if canImport(FirebaseCrashlytics)
 import FirebaseCrashlytics
+#endif
 
 final class Log: NSObject {
   static var dateFormatter: DateFormatter = {
@@ -28,11 +30,36 @@ final class Log: NSObject {
     let tag = trimTag(tag)
 
     #if !targetEnvironment(simulator) && !DEBUG
-    let timestamp = dateFormatter.string(from: Date())
-    if level != .debug {
+    #if canImport(FirebaseCrashlytics)
+    // Send errors and warnings to Crashlytics (standard practice)
+    // Only gate verbose info/debug logs behind enhanced logging
+    let shouldLogToCrashlytics: Bool
+    switch level {
+    case .error, .fault:
+      shouldLogToCrashlytics = true // Always log errors
+    case .default:
+      shouldLogToCrashlytics = true // Always log warnings
+    case .info:
+      // Info logs only when enhanced logging enabled (verbose diagnostic data)
+      Task {
+        let isEnhanced = await DeviceSpecificErrorMonitor.shared.isEnhancedLoggingEnabled()
+        if isEnhanced {
+          let timestamp = dateFormatter.string(from: Date())
+          let formattedMsg = "[\(levelToString(level))] \(timestamp) \(tag): \(message)"
+          Crashlytics.crashlytics().log("\(formattedMsg)")
+        }
+      }
+      shouldLogToCrashlytics = false
+    default:
+      shouldLogToCrashlytics = false // Never log debug
+    }
+    
+    if shouldLogToCrashlytics {
+      let timestamp = dateFormatter.string(from: Date())
       let formattedMsg = "[\(levelToString(level))] \(timestamp) \(tag): \(message)"
       Crashlytics.crashlytics().log("\(formattedMsg)")
     }
+    #endif
     #endif
 
     #if DEBUG
@@ -113,7 +140,7 @@ final class Log: NSObject {
     }
 
     var components = tag.components(separatedBy: "/")
-    let sourcesRootIndex = (components.index(of: "Palace") ?? 0) + 1
+    let sourcesRootIndex = (components.firstIndex(of: "Palace") ?? 0) + 1
 
     if sourcesRootIndex < components.count {
       components.removeFirst(sourcesRootIndex)

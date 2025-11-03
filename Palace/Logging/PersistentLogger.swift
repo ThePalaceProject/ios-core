@@ -6,7 +6,7 @@
 //
 
 import Foundation
-import os
+import os.log
 
 /// Actor-based persistent file logger for error diagnostics
 /// Complements Crashlytics by providing local log history
@@ -59,7 +59,7 @@ actor PersistentLogger {
         }
         
         logFileHandle = try? FileHandle(forWritingTo: currentFile)
-        try? logFileHandle?.seekToEnd()
+        _ = try? logFileHandle?.seekToEnd()
       }
     } catch {
       os_log("Failed to setup log file: %{public}@", type: .error, error.localizedDescription)
@@ -151,7 +151,7 @@ actor PersistentLogger {
       let fileURL = logsDirectory.appendingPathComponent(fileName)
       
       if FileManager.default.fileExists(atPath: fileURL.path),
-         let logContent = try? String(contentsOf: fileURL) {
+         let logContent = try? String(contentsOf: fileURL, encoding: .utf8) {
         allLogs += "=== Log File: \(fileName) ===\n"
         allLogs += logContent
         allLogs += "\n\n"
@@ -184,40 +184,3 @@ actor PersistentLogger {
     return documentsDirectory.appendingPathComponent("Logs")
   }
 }
-
-// MARK: - Log Extension
-
-extension Log {
-  /// Logs to both system log and persistent file
-  class func persistentLog(_ level: OSLogType, _ tag: String, _ message: String) {
-    // Log to system (existing behavior)
-    switch level {
-    case .error:
-      Log.error(tag, message)
-    case .fault:
-      Log.fault(tag, message)
-    case .info:
-      Log.info(tag, message)
-    case .debug:
-      Log.debug(tag, message)
-    default:
-      Log.warn(tag, message)
-    }
-    
-    // Log to file for diagnostics
-    Task {
-      await PersistentLogger.shared.log(level: level, tag: tag, message: message)
-    }
-  }
-  
-  /// Persistent error logging
-  class func persistentError(_ tag: String, _ message: String) {
-    persistentLog(.error, tag, message)
-  }
-  
-  /// Persistent fault logging
-  class func persistentFault(_ tag: String, _ message: String) {
-    persistentLog(.fault, tag, message)
-  }
-}
-
