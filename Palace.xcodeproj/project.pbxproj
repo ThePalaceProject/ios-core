@@ -768,10 +768,8 @@
 		E5E4AC572EB4FF7500CC1D67 /* SafeDictionary.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E4AC562EB4FF7500CC1D67 /* SafeDictionary.swift */; };
 		E5E4AC582EB4FF7500CC1D67 /* SafeDictionary.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E4AC562EB4FF7500CC1D67 /* SafeDictionary.swift */; };
 		E5E9AFF02CC0357500366A2E /* ReadiumNavigator in Frameworks */ = {isa = PBXBuildFile; productRef = E5E9AFEF2CC0357500366A2E /* ReadiumNavigator */; };
-		E5E9AFF22CC0357500366A2E /* ReadiumShared in Frameworks */ = {isa = PBXBuildFile; productRef = E5E9AFF12CC0357500366A2E /* ReadiumShared */; };
 		E5E9AFF42CC0357500366A2E /* ReadiumStreamer in Frameworks */ = {isa = PBXBuildFile; productRef = E5E9AFF32CC0357500366A2E /* ReadiumStreamer */; };
 		E5E9AFFC2CC035AC00366A2E /* ReadiumNavigator in Frameworks */ = {isa = PBXBuildFile; productRef = E5E9AFFB2CC035AC00366A2E /* ReadiumNavigator */; };
-		E5E9AFFE2CC035AC00366A2E /* ReadiumShared in Frameworks */ = {isa = PBXBuildFile; productRef = E5E9AFFD2CC035AC00366A2E /* ReadiumShared */; };
 		E5E9B0002CC035AC00366A2E /* ReadiumStreamer in Frameworks */ = {isa = PBXBuildFile; productRef = E5E9AFFF2CC035AC00366A2E /* ReadiumStreamer */; };
 		E5E9B2142CC1A5AE00366A2E /* ReadiumAdapterLCPSQLite in Frameworks */ = {isa = PBXBuildFile; productRef = E5E9B2132CC1A5AE00366A2E /* ReadiumAdapterLCPSQLite */; };
 		E5E9B21E2CC1A7BB00366A2E /* ReadiumAdapterGCDWebServer in Frameworks */ = {isa = PBXBuildFile; productRef = E5E9B21D2CC1A7BB00366A2E /* ReadiumAdapterGCDWebServer */; };
@@ -1759,7 +1757,6 @@
 				73EB0B3425821DF4006BC997 /* CoreGraphics.framework in Frameworks */,
 				73EB0B3525821DF4006BC997 /* QuartzCore.framework in Frameworks */,
 				E5E4AAD72EB292B600CC1D67 /* FirebaseRemoteConfigSwift in Frameworks */,
-				E5E9AFFE2CC035AC00366A2E /* ReadiumShared in Frameworks */,
 				73EB0B3925821DF4006BC997 /* libicucore.tbd in Frameworks */,
 				E7498A8E2A0E7F840037DD93 /* FirebaseAnalytics in Frameworks */,
 				E7E96BBB2B0E82540036B23A /* PalaceUIKit.framework in Frameworks */,
@@ -1804,7 +1801,6 @@
 				A823D813192BABA400B55DE2 /* CoreGraphics.framework in Frameworks */,
 				03B092241E78839D00AD338D /* QuartzCore.framework in Frameworks */,
 				08C469C11BDAAEB1009D8AFD /* libADEPT.a in Frameworks */,
-				E5E9AFF22CC0357500366A2E /* ReadiumShared in Frameworks */,
 				08A352221BDE8E560040BF1D /* libicucore.tbd in Frameworks */,
 				5AEA9E011B947419009F71DB /* libc++.dylib in Frameworks */,
 				2DA4F2331C68363B008853D7 /* LocalAuthentication.framework in Frameworks */,
@@ -3426,7 +3422,6 @@
 				E7498A932A0E7F840037DD93 /* FirebaseMessaging */,
 				E7FFEAA52A745F600006030A /* ULID */,
 				E5E9AFFB2CC035AC00366A2E /* ReadiumNavigator */,
-				E5E9AFFD2CC035AC00366A2E /* ReadiumShared */,
 				E5E9AFFF2CC035AC00366A2E /* ReadiumStreamer */,
 				E5E9B2172CC1A5C100366A2E /* ReadiumAdapterLCPSQLite */,
 				E5E9B2192CC1A7AC00366A2E /* ReadiumAdapterGCDWebServer */,
@@ -3465,7 +3460,6 @@
 				E795A7812A744F0A00314EC8 /* ULID */,
 				E50BC9DC2CBF6FE900660937 /* PureLayout */,
 				E5E9AFEF2CC0357500366A2E /* ReadiumNavigator */,
-				E5E9AFF12CC0357500366A2E /* ReadiumShared */,
 				E5E9AFF32CC0357500366A2E /* ReadiumStreamer */,
 				E5E9B2132CC1A5AE00366A2E /* ReadiumAdapterLCPSQLite */,
 				E5E9B21D2CC1A7BB00366A2E /* ReadiumAdapterGCDWebServer */,
@@ -4703,7 +4697,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Manual;
-				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -5436,11 +5430,6 @@
 			package = E77D02182931337000544180 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
 			productName = ReadiumNavigator;
 		};
-		E5E9AFF12CC0357500366A2E /* ReadiumShared */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E77D02182931337000544180 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
-			productName = ReadiumShared;
-		};
 		E5E9AFF32CC0357500366A2E /* ReadiumStreamer */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = E77D02182931337000544180 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
@@ -5450,11 +5439,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = E77D02182931337000544180 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
 			productName = ReadiumNavigator;
-		};
-		E5E9AFFD2CC035AC00366A2E /* ReadiumShared */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E77D02182931337000544180 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
-			productName = ReadiumShared;
 		};
 		E5E9AFFF2CC035AC00366A2E /* ReadiumStreamer */ = {
 			isa = XCSwiftPackageProductDependency;
