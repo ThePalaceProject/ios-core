@@ -1351,7 +1351,6 @@ extension MyBooksDownloadCenter {
   
   private func logBookDownloadFailure(_ book: TPPBook, reason: String, downloadTask: URLSessionTask, metadata: [String: Any]?) {
     let rights = downloadInfo(forBookIdentifier: book.identifier)?.rightsManagementString ?? ""
-    let bookType = TPPBookContentTypeConverter.stringValue(of: book.defaultBookContentType)
     
     var dict: [String: Any] = metadata ?? [:]
     dict["book"] = book.loggableDictionary

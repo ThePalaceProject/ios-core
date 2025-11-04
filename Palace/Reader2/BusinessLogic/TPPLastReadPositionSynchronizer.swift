@@ -7,7 +7,7 @@
 //
 
 import Foundation
-import ReadiumShared
+@preconcurrency import ReadiumShared
 
 /// A front-end to the Annotations api to sync the reading progress for
 /// a given book with the progress on the server.

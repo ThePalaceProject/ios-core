@@ -9,10 +9,10 @@
 #if LCP
 
 import Foundation
-import ReadiumShared
-import ReadiumStreamer
-import ReadiumLCP
-import PalaceAudiobookToolkit
+@preconcurrency import ReadiumShared
+@preconcurrency import ReadiumStreamer
+@preconcurrency import ReadiumLCP
+@preconcurrency import PalaceAudiobookToolkit
 
 @objc class LCPAudiobooks: NSObject {
   
