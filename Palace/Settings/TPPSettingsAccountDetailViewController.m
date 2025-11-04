@@ -697,7 +697,6 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
     }
     case CellKindPrivacyPolicy: {
       NSURL *url = [self.selectedAccount.details getLicenseURL:URLTypePrivacyPolicy];
-      // BUG FIX: Check for nil URL before creating view controller
       if (url) {
         RemoteHTMLViewController *vc = [[RemoteHTMLViewController alloc]
                                         initWithURL:url
@@ -711,7 +710,6 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
     }
     case CellKindContentLicense: {
       NSURL *url = [self.selectedAccount.details getLicenseURL:URLTypeContentLicenses];
-      // BUG FIX: Check for nil URL before creating view controller
       if (url) {
         RemoteHTMLViewController *vc = [[RemoteHTMLViewController alloc]
                                         initWithURL:url

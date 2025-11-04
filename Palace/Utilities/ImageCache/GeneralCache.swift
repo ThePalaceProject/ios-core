@@ -263,7 +263,6 @@ public final class GeneralCache<Key: Hashable & Codable, Value: Codable> {
     if let str = key as? String {
       let sanitized = str.replacingOccurrences(of: "[^a-zA-Z0-9_-]", with: "",
                                                options: .regularExpression)
-      // BUG FIX: Ensure name is not empty after sanitization
       name = sanitized.isEmpty ? "empty_\(abs(str.hashValue))" : sanitized
     } else {
       let data = try? JSONEncoder().encode(key)
@@ -273,7 +272,6 @@ public final class GeneralCache<Key: Hashable & Codable, Value: Codable> {
       name = hash.isEmpty ? "hash_\(abs(key.hashValue))" : hash
     }
     
-    // BUG FIX: Validate name before creating URL to prevent crashes
     guard !name.isEmpty else {
       Log.error(#file, "GeneralCache: Empty cache filename for key, using fallback")
       return cacheDirectory.appendingPathComponent("fallback_\(abs(key.hashValue))")
