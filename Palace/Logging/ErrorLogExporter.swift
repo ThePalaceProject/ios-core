@@ -368,9 +368,6 @@ actor ErrorLogExporter {
         try logData.crashlyticsBreadcrumbs.write(to: crashlyticsFile)
       }
       
-      // Create zip archive
-      let zipFile = tempDir.appendingPathComponent("logs.zip")
-      
       // Use built-in compression (simplified approach)
       // For production, consider using a proper zip library like ZIPFoundation
       let combinedData = logData.errorLogs + logData.audiobookLogs + logData.crashlyticsBreadcrumbs

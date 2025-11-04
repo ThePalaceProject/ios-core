@@ -40,7 +40,8 @@ struct CatalogSearchView: View {
         BookListView(
           books: viewModel.filteredBooks,
           isLoading: .constant(false),
-          onSelect: onBookSelected
+          onSelect: onBookSelected,
+          previewEnabled: false
         )
       }
       .scrollDismissesKeyboard(.interactively)
@@ -69,6 +70,7 @@ private extension CatalogSearchView {
         )
       )
       .focused($isSearchFieldFocused)
+      .submitLabel(.search)
       .padding(8)
       .background(Color.gray.opacity(0.2))
       .cornerRadius(10)

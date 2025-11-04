@@ -1352,7 +1352,6 @@ extension MyBooksDownloadCenter {
   private func logBookDownloadFailure(_ book: TPPBook, reason: String, downloadTask: URLSessionTask, metadata: [String: Any]?) {
     let rights = downloadInfo(forBookIdentifier: book.identifier)?.rightsManagementString ?? ""
     let bookType = TPPBookContentTypeConverter.stringValue(of: book.defaultBookContentType)
-    let context = "\(String(describing: book.distributor)) \(bookType) download fail: \(reason)"
     
     var dict: [String: Any] = metadata ?? [:]
     dict["book"] = book.loggableDictionary
@@ -1492,8 +1491,6 @@ extension MyBooksDownloadCenter {
     do {
       try? FileManager.default.removeItem(at: streamingLicenseUrl)
       try FileManager.default.copyItem(at: sourceLicenseUrl, to: streamingLicenseUrl)
-      
-      let fileExists = FileManager.default.fileExists(atPath: streamingLicenseUrl.path)
     } catch {
       TPPErrorLogger.logError(error, summary: "Failed to copy LCP license for streaming", metadata: [
         "book": book.loggableDictionary,

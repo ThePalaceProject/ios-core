@@ -4828,7 +4828,6 @@
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(PROJECT_DIR)",
-					"$(PROJECT_DIR)/Carthage/Build",
 				);
 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
 				GCC_PREFIX_HEADER = "Palace/AppInfrastructure/Palace-Prefix.pch";
@@ -4887,7 +4886,6 @@
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(PROJECT_DIR)",
-					"$(PROJECT_DIR)/Carthage/Build",
 				);
 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
 				GCC_PREFIX_HEADER = "Palace/AppInfrastructure/Palace-Prefix.pch";

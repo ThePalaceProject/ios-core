@@ -373,7 +373,7 @@ final class BookDetailViewModel: ObservableObject {
         if account.needsAuth && !account.hasCredentials() {
           self.showHalfSheet = false
           TPPAccountSignInViewController.requestCredentials { [weak self] in
-            guard let self else { return }
+            guard self != nil else { return }
             action()
           }
           return

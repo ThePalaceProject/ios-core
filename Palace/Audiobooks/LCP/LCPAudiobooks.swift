@@ -74,8 +74,8 @@ import PalaceAudiobookToolkit
   }
   
   private func loadContentDictionary(completion: @escaping (_ json: NSDictionary?, _ error: NSError?) -> ()) {
-    publicationCacheQueue.sync {
-      currentPrefetchTask?.cancel()
+    publicationCacheQueue.async {
+      self.currentPrefetchTask?.cancel()
     }
 
     let task = Task { [weak self] in
@@ -111,7 +111,7 @@ import PalaceAudiobookToolkit
         case .success(let publication):
           
           if Task.isCancelled { return }
-          self.publicationCacheQueue.sync {
+          self.publicationCacheQueue.async {
             self.cachedPublication = publication
           }
           
@@ -144,13 +144,13 @@ import PalaceAudiobookToolkit
         completion(nil, LCPAudiobooks.nsError(for: error))
       }
 
-      self.publicationCacheQueue.sync {
+      self.publicationCacheQueue.async {
         if self.currentPrefetchTask?.isCancelled == true { self.currentPrefetchTask = nil }
       }
     }
 
-    publicationCacheQueue.sync {
-      currentPrefetchTask = task
+    publicationCacheQueue.async {
+      self.currentPrefetchTask = task
     }
   }
 
@@ -254,7 +254,7 @@ extension LCPAudiobooks {
           let publicationResult = await publicationOpener.open(asset: asset, allowUserInteraction: false, sender: nil)
           switch publicationResult {
           case .success(let publication):
-            self.publicationCacheQueue.sync {
+            self.publicationCacheQueue.async {
               self.cachedPublication = publication
             }
             
