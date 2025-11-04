@@ -549,25 +549,32 @@ extension TPPBook {
       let coverKey = "\(identifier)_cover"
       
       if let img = imageCache.get(for: simpleKey) ?? imageCache.get(for: coverKey) {
-        coverImage = img
-        updateDominantColor(using: img)
+        DispatchQueue.main.async {
+          self.coverImage = img
+          self.updateDominantColor(using: img)
+        }
         return
       }
 
       guard !isCoverLoading else { return }
-      isCoverLoading = true
+      
+      DispatchQueue.main.async {
+        self.isCoverLoading = true
+      }
 
       TPPBookCoverRegistryBridge.shared.coverImageForBook(self) { [weak self] image in
         guard let self = self else { return }
         let final = image ?? self.thumbnailImage
 
-        self.coverImage = final
-        if let img = final {
-          self.imageCache.set(img, for: self.identifier)
-          self.imageCache.set(img, for: coverKey)
-          self.updateDominantColor(using: img)
+        DispatchQueue.main.async {
+          self.coverImage = final
+          if let img = final {
+            self.imageCache.set(img, for: self.identifier)
+            self.imageCache.set(img, for: coverKey)
+            self.updateDominantColor(using: img)
+          }
+          self.isCoverLoading = false
         }
-        self.isCoverLoading = false
       }
     }
 
@@ -576,25 +583,32 @@ extension TPPBook {
       let thumbnailKey = "\(identifier)_thumbnail"
       
       if let img = imageCache.get(for: simpleKey) ?? imageCache.get(for: thumbnailKey) {
-        thumbnailImage = img
+        DispatchQueue.main.async {
+          self.thumbnailImage = img
+        }
         return
       }
 
       guard !isThumbnailLoading else { return }
-      isThumbnailLoading = true
+      
+      DispatchQueue.main.async {
+        self.isThumbnailLoading = true
+      }
 
       TPPBookCoverRegistryBridge.shared.thumbnailImageForBook(self) { [weak self] image in
         guard let self = self else { return }
 
-        self.thumbnailImage = image
-        if let img = image {
-          self.imageCache.set(img, for: self.identifier)
-          self.imageCache.set(img, for: thumbnailKey)
-          if self.coverImage == nil {
-            self.updateDominantColor(using: img)
+        DispatchQueue.main.async {
+          self.thumbnailImage = image
+          if let img = image {
+            self.imageCache.set(img, for: self.identifier)
+            self.imageCache.set(img, for: thumbnailKey)
+            if self.coverImage == nil {
+              self.updateDominantColor(using: img)
+            }
           }
+          self.isThumbnailLoading = false
         }
-        self.isThumbnailLoading = false
       }
     }
   
@@ -701,12 +715,12 @@ private extension TPPBook {
             alpha: CGFloat(bitmap[3]) / 255.0
           )
 
-          Task { @MainActor in
+          DispatchQueue.main.async {
             self.dominantUIColor = color
           }
         } catch {
           Log.warn(#file, "Failed to extract dominant color (likely memory issue): \(error.localizedDescription)")
-          Task { @MainActor in
+          DispatchQueue.main.async {
             self.dominantUIColor = .gray
           }
         }

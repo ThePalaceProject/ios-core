@@ -365,7 +365,8 @@ fileprivate let nullString = "null"
     addAccountInfoToMetadata(&metadata)
     
     #if DEBUG
-    Log.debug(#file, "App launched - iOS \(UIDevice.current.systemVersion), build \(Bundle.main.versionNumber ?? "unknown")")
+    let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
+    Log.debug(#file, "App launched - iOS \(UIDevice.current.systemVersion), build \(version)")
     #endif
     
     // Optionally log to Crashlytics as breadcrumb (not as error)

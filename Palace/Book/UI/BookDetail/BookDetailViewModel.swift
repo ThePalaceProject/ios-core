@@ -91,7 +91,12 @@ final class BookDetailViewModel: ObservableObject {
     bindRegistryState()
     setupStableButtonState()
     setupObservers()
-    self.downloadProgress = downloadCenter.downloadProgress(for: book.identifier)
+    
+    // Defer download progress check to avoid triggering cover fetch during init
+    Task { @MainActor in
+      self.downloadProgress = downloadCenter.downloadProgress(for: book.identifier)
+    }
+    
 #if LCP
     self.prefetchLCPStreamingIfPossible()
 #endif
@@ -122,25 +127,28 @@ final class BookDetailViewModel: ObservableObject {
       .bookStatePublisher
       .filter { $0.0 == self.book.identifier }
       .map { $0.1 }
+      .receive(on: DispatchQueue.main)
       .sink { [weak self] newState in
         guard let self else { return }
         let updatedBook = registry.book(forIdentifier: book.identifier) ?? book
         let registryState = registry.state(for: book.identifier)
 
-        self.book = updatedBook
-        // If we are in a local returning override, hold it until unregistered
-        if let override = self.localBookStateOverride, override == .returning, registryState != .unregistered {
-          return
-        }
-        self.bookState = registryState
-        if registryState == .unregistered {
-          // Ensure UI is not left in a managing/processing state after returning
-          self.isManagingHold = false
-          self.showHalfSheet = false
-          self.processingButtons.remove(.returning)
-          self.processingButtons.remove(.cancelHold)
-        } else if registryState == .downloadFailed {
-          self.showHalfSheet = false
+        Task { @MainActor in
+          self.book = updatedBook
+          // If we are in a local returning override, hold it until unregistered
+          if let override = self.localBookStateOverride, override == .returning, registryState != .unregistered {
+            return
+          }
+          self.bookState = registryState
+          if registryState == .unregistered {
+            // Ensure UI is not left in a managing/processing state after returning
+            self.isManagingHold = false
+            self.showHalfSheet = false
+            self.processingButtons.remove(.returning)
+            self.processingButtons.remove(.cancelHold)
+          } else if registryState == .downloadFailed {
+            self.showHalfSheet = false
+          }
         }
       }
       .store(in: &cancellables)
@@ -185,30 +193,34 @@ final class BookDetailViewModel: ObservableObject {
   
   @objc func handleBookRegistryChange(_ notification: Notification) {
     let updatedBook = registry.book(forIdentifier: book.identifier) ?? book
-    Task { @MainActor in
+    DispatchQueue.main.async {
       self.book = updatedBook
     }
   }
   
   func selectRelatedBook(_ newBook: TPPBook) {
     guard newBook.identifier != book.identifier else { return }
-    book = newBook
-    bookState = registry.state(for: newBook.identifier)
-    fetchRelatedBooks()
+    Task { @MainActor in
+      self.book = newBook
+      self.bookState = registry.state(for: newBook.identifier)
+      self.fetchRelatedBooks()
+    }
   }
   
   // MARK: - Notifications
   
   @objc func handleDownloadStateDidChange(_ notification: Notification) {
-    self.downloadProgress = downloadCenter.downloadProgress(for: book.identifier)
-    let info = downloadCenter.downloadInfo(forBookIdentifier: book.identifier)
-    if let rights = info?.rightsManagement, rights != .unknown {
-      if bookState != .downloading && bookState != .downloadSuccessful {
-        self.bookState = registry.state(for: book.identifier)
+    Task { @MainActor in
+      self.downloadProgress = downloadCenter.downloadProgress(for: book.identifier)
+      let info = downloadCenter.downloadInfo(forBookIdentifier: book.identifier)
+      if let rights = info?.rightsManagement, rights != .unknown {
+        if bookState != .downloading && bookState != .downloadSuccessful {
+          self.bookState = registry.state(for: book.identifier)
+        }
+        #if LCP
+        self.prefetchLCPStreamingIfPossible()
+        #endif
       }
-      #if LCP
-      self.prefetchLCPStreamingIfPossible()
-      #endif
     }
   }
   
@@ -408,9 +420,11 @@ final class BookDetailViewModel: ObservableObject {
     processingButtons.insert(.returning)
     downloadCenter.returnBook(withIdentifier: book.identifier) { [weak self] in
       guard let self else { return }
-      self.bookState = .unregistered
-      self.processingButtons.remove(.returning)
-      completion?()
+      Task { @MainActor in
+        self.bookState = .unregistered
+        self.processingButtons.remove(.returning)
+        completion?()
+      }
     }
   }
   
