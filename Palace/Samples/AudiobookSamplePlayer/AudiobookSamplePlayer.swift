@@ -42,7 +42,7 @@ class AudiobookSamplePlayer: NSObject, ObservableObject {
   
   private func configureAudioSession() {
     do {
-      try AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio, options: [.allowBluetooth, .allowAirPlay])
+      try AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio, options: [.allowBluetoothA2DP, .allowAirPlay])
       try AVAudioSession.sharedInstance().setActive(true)
     } catch {
       TPPErrorLogger.logError(error, summary: "Failed to set audio session category")

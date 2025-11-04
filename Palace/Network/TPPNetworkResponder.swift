@@ -53,13 +53,13 @@ class TPPNetworkResponder: NSObject {
   //----------------------------------------------------------------------------
   func addCompletion(_ completion: @escaping (NYPLResult<Data>) -> Void,
                      taskID: TaskID) {
-    taskInfoQueue.async {
+    taskInfoQueue.sync {
         self.taskInfo[taskID] = TPPNetworkTaskInfo(completion: completion)
       }
   }
   
   func updateCompletionId(_ oldId: TaskID, newId: TaskID) {
-    taskInfoQueue.async {
+    taskInfoQueue.sync {
       self.taskInfo[newId] = self.taskInfo[oldId]
     }
   }
