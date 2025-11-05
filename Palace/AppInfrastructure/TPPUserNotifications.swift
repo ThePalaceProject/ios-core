@@ -120,7 +120,7 @@ let DefaultActionIdentifier = "UNNotificationDefaultActionIdentifier"
   }
 }
 
-@available (iOS 10.0, *)
+@available(iOS 10.0, *)
 extension TPPUserNotifications: UNUserNotificationCenterDelegate
 {
   func userNotificationCenter(_ center: UNUserNotificationCenter,

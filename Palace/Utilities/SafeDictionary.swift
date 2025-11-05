@@ -152,7 +152,7 @@ actor SafeDictionary<Key: Hashable, Value> {
 // MARK: - Dictionary-like Initialization
 
 extension SafeDictionary: ExpressibleByDictionaryLiteral {
-  convenience init(dictionaryLiteral elements: (Key, Value)...) {
+  init(dictionaryLiteral elements: (Key, Value)...) {
     var dict: [Key: Value] = [:]
     for (key, value) in elements {
       dict[key] = value

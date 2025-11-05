@@ -9,10 +9,10 @@
 #if LCP
 
 import Foundation
-import ReadiumShared
-import ReadiumStreamer
-import ReadiumLCP
-import PalaceAudiobookToolkit
+@preconcurrency import ReadiumShared
+@preconcurrency import ReadiumStreamer
+@preconcurrency import ReadiumLCP
+@preconcurrency import PalaceAudiobookToolkit
 
 @objc class LCPAudiobooks: NSObject {
   
@@ -25,7 +25,7 @@ import PalaceAudiobookToolkit
   private let httpClient: DefaultHTTPClient
   
   private var cachedPublication: Publication?
-  private let publicationCacheLock = NSLock()
+  private let publicationCacheQueue = DispatchQueue(label: "org.thepalaceproject.lcpaudiobooks.publicationcache")
   private var currentPrefetchTask: Task<Void, Never>?
 
   /// Initialize for an LCP audiobook
@@ -74,9 +74,9 @@ import PalaceAudiobookToolkit
   }
   
   private func loadContentDictionary(completion: @escaping (_ json: NSDictionary?, _ error: NSError?) -> ()) {
-    publicationCacheLock.lock()
-    currentPrefetchTask?.cancel()
-    publicationCacheLock.unlock()
+    publicationCacheQueue.async {
+      self.currentPrefetchTask?.cancel()
+    }
 
     let task = Task { [weak self] in
       guard let self else { return }
@@ -111,9 +111,9 @@ import PalaceAudiobookToolkit
         case .success(let publication):
           
           if Task.isCancelled { return }
-          publicationCacheLock.lock()
-          cachedPublication = publication
-          publicationCacheLock.unlock()
+          self.publicationCacheQueue.async {
+            self.cachedPublication = publication
+          }
           
           if let jsonManifestString = publication.jsonManifest, let jsonData = jsonManifestString.data(using: .utf8),
              let jsonObject = try? JSONSerialization.jsonObject(with: jsonData, options: []) as? NSDictionary {
@@ -144,14 +144,14 @@ import PalaceAudiobookToolkit
         completion(nil, LCPAudiobooks.nsError(for: error))
       }
 
-      self.publicationCacheLock.lock()
-      if self.currentPrefetchTask?.isCancelled == true { self.currentPrefetchTask = nil }
-      self.publicationCacheLock.unlock()
+      self.publicationCacheQueue.async {
+        if self.currentPrefetchTask?.isCancelled == true { self.currentPrefetchTask = nil }
+      }
     }
 
-    publicationCacheLock.lock()
-    currentPrefetchTask = task
-    publicationCacheLock.unlock()
+    publicationCacheQueue.async {
+      self.currentPrefetchTask = task
+    }
   }
 
   /// Check if the book is LCP audiobook
@@ -176,12 +176,8 @@ import PalaceAudiobookToolkit
 extension LCPAudiobooks: LCPStreamingProvider {
   
   public func getPublication() -> Publication? {
-    publicationCacheLock.lock()
-    defer { publicationCacheLock.unlock() }
-    if let publication = cachedPublication {
-      return publication
-    } else {
-      return nil
+    return publicationCacheQueue.sync {
+      return cachedPublication
     }
   }
   
@@ -195,9 +191,9 @@ extension LCPAudiobooks: LCPStreamingProvider {
     }
     streamingPlayer.setStreamingProvider(self)
     
-    publicationCacheLock.lock()
-    let hasPublication = cachedPublication != nil
-    publicationCacheLock.unlock()
+    let hasPublication = publicationCacheQueue.sync {
+      return cachedPublication != nil
+    }
     
     if !hasPublication {
       DispatchQueue.global(qos: .userInteractive).async { [weak self] in
@@ -225,9 +221,9 @@ extension LCPAudiobooks {
   /// Returns the cached content dictionary if the publication has already been opened.
   /// This avoids re-opening the asset and enables immediate UI presentation.
   public func cachedContentDictionary() -> NSDictionary? {
-    publicationCacheLock.lock()
-    let publication = cachedPublication
-    publicationCacheLock.unlock()
+    let publication = publicationCacheQueue.sync {
+      return cachedPublication
+    }
 
     guard let publication, let jsonManifestString = publication.jsonManifest,
           let jsonData = jsonManifestString.data(using: .utf8) else {
@@ -258,9 +254,9 @@ extension LCPAudiobooks {
           let publicationResult = await publicationOpener.open(asset: asset, allowUserInteraction: false, sender: nil)
           switch publicationResult {
           case .success(let publication):
-            publicationCacheLock.lock()
-            cachedPublication = publication
-            publicationCacheLock.unlock()
+            self.publicationCacheQueue.async {
+              self.cachedPublication = publication
+            }
             
             self.decryptWithPublication(publication, url: url, to: resultUrl, completion: completion)
             
@@ -295,18 +291,18 @@ extension LCPAudiobooks {
   }
 
   public func cancelPrefetch() {
-    publicationCacheLock.lock()
-    currentPrefetchTask?.cancel()
-    currentPrefetchTask = nil
-    publicationCacheLock.unlock()
+    publicationCacheQueue.sync {
+      currentPrefetchTask?.cancel()
+      currentPrefetchTask = nil
+    }
   }
 
   /// Release all held resources for the current publication and cancel any background work
   public func releaseResources() {
     cancelPrefetch()
-    publicationCacheLock.lock()
-    cachedPublication = nil
-    publicationCacheLock.unlock()
+    publicationCacheQueue.sync {
+      cachedPublication = nil
+    }
   }
 }
 

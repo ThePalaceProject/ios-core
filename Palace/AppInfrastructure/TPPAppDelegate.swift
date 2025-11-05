@@ -20,7 +20,6 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
     FirebaseApp.configure()
     
-    // Initialize device-specific error monitoring
     Task {
       await DeviceSpecificErrorMonitor.shared.initialize()
     }
@@ -170,7 +169,6 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     audiobookLifecycleManager.willTerminate()
     NotificationCenter.default.removeObserver(self)
     Reachability.shared.stopMonitoring()
-    MyBooksDownloadCenter.shared.purgeAllAudiobookCaches(force: false)
   }
 
   internal func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String, completionHandler: @escaping () -> Void) {

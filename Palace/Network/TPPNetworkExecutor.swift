@@ -418,8 +418,8 @@ extension TPPNetworkExecutor {
   }
 }
 
-private extension URLRequest {
-  struct AssociatedKeys {
+extension URLRequest {
+  private struct AssociatedKeys {
     static var hasRetriedKey = "hasRetriedKey"
   }
   
@@ -428,7 +428,7 @@ private extension URLRequest {
       return objc_getAssociatedObject(self, &AssociatedKeys.hasRetriedKey) as? Bool ?? false
     }
     set {
-      objc_setAssociatedObject(self, &AssociatedKeys.hasRetriedKey, newValue, .OBJC_ASSOCIATION_RETAIN)
+      objc_setAssociatedObject(self, &AssociatedKeys.hasRetriedKey, newValue as NSNumber, .OBJC_ASSOCIATION_RETAIN)
     }
   }
 }

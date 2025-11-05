@@ -261,15 +261,22 @@ public final class GeneralCache<Key: Hashable & Codable, Value: Codable> {
   public func fileURL(for key: Key) -> URL {
     let name: String
     if let str = key as? String {
-      name = str.replacingOccurrences(of: "[^a-zA-Z0-9_-]", with: "",
-                                      options: .regularExpression)
+      let sanitized = str.replacingOccurrences(of: "[^a-zA-Z0-9_-]", with: "",
+                                               options: .regularExpression)
+      name = sanitized.isEmpty ? "empty_\(abs(str.hashValue))" : sanitized
     } else {
       let data = try? JSONEncoder().encode(key)
       let hash = data.map { SHA256.hash(data: $0).compactMap {
         String(format: "%02x", $0)
       }.joined() } ?? String(describing: key)
-      name = hash
+      name = hash.isEmpty ? "hash_\(abs(key.hashValue))" : hash
     }
+    
+    guard !name.isEmpty else {
+      Log.error(#file, "GeneralCache: Empty cache filename for key, using fallback")
+      return cacheDirectory.appendingPathComponent("fallback_\(abs(key.hashValue))")
+    }
+    
     return cacheDirectory.appendingPathComponent(name)
   }
   

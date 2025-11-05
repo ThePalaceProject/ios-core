@@ -484,16 +484,44 @@ public class TPPBook: NSObject, ObservableObject {
   }
 
   @objc var defaultBookContentType: TPPBookContentType {
-    guard let acquisition = defaultAcquisition else {
-      return .unsupported
-    }
-    return TPPOPDSAcquisitionPath.supportedAcquisitionPaths(
-      forAllowedTypes: TPPOPDSAcquisitionPath.supportedTypes(),
-      allowedRelations: NYPLOPDSAcquisitionRelationSetAll,
-      acquisitions: [acquisition]
-    ).compactMap {
-      TPPBookContentType.from(mimeType: $0.types.last)
-    }.first(where: { $0 != .unsupported }) ?? .unsupported
+      guard let acquisition = defaultAcquisition else {
+        Log.error(#file, "❌ [CONTENT TYPE] No default acquisition for book: \(title) (ID: \(identifier))")
+        Log.error(#file, "  All acquisitions: \(acquisitions.map { "type=\($0.type), relation=\($0.relation)" }.joined(separator: ", "))")
+        return .unsupported
+      }
+    
+      Log.debug(#file, "📖 [CONTENT TYPE] Determining content type for book: \(title) (ID: \(identifier))")
+      Log.debug(#file, "  Distributor: \(distributor ?? "nil")")
+      Log.debug(#file, "  Default acquisition type: \(acquisition.type)")
+      Log.debug(#file, "  Default acquisition relation: \(acquisition.relation)")
+      
+      let paths = TPPOPDSAcquisitionPath.supportedAcquisitionPaths(
+        forAllowedTypes: TPPOPDSAcquisitionPath.supportedTypes(),
+        allowedRelations: NYPLOPDSAcquisitionRelationSetAll,
+        acquisitions: [acquisition]
+      )
+      
+      Log.debug(#file, "  Found \(paths.count) supported acquisition paths")
+      for (index, path) in paths.enumerated() {
+        Log.debug(#file, "    Path \(index + 1): types=[\(path.types.joined(separator: " → "))]")
+      }
+      
+      let contentTypes = paths.compactMap { path -> TPPBookContentType? in
+        let lastType = path.types.last
+        let contentType = TPPBookContentType.from(mimeType: lastType)
+        Log.debug(#file, "    MIME '\(lastType ?? "nil")' → \(TPPBookContentTypeConverter.stringValue(of: contentType))")
+        return contentType
+      }
+      
+      let finalType = contentTypes.first(where: { $0 != .unsupported }) ?? .unsupported
+      Log.debug(#file, "  ✅ Final content type: \(TPPBookContentTypeConverter.stringValue(of: finalType))")
+    
+      if finalType == .unsupported {
+        Log.error(#file, "  ❌ Book is UNSUPPORTED - no valid content type found!")
+        Log.error(#file, "  All acquisition types: \(acquisitions.map { $0.type }.joined(separator: ", "))")
+      }
+    
+    return finalType
   }
 }
 
@@ -521,25 +549,32 @@ extension TPPBook {
       let coverKey = "\(identifier)_cover"
       
       if let img = imageCache.get(for: simpleKey) ?? imageCache.get(for: coverKey) {
-        coverImage = img
-        updateDominantColor(using: img)
+        DispatchQueue.main.async {
+          self.coverImage = img
+          self.updateDominantColor(using: img)
+        }
         return
       }
 
       guard !isCoverLoading else { return }
-      isCoverLoading = true
+      
+      DispatchQueue.main.async {
+        self.isCoverLoading = true
+      }
 
       TPPBookCoverRegistryBridge.shared.coverImageForBook(self) { [weak self] image in
         guard let self = self else { return }
         let final = image ?? self.thumbnailImage
 
-        self.coverImage = final
-        if let img = final {
-          self.imageCache.set(img, for: self.identifier)
-          self.imageCache.set(img, for: coverKey)
-          self.updateDominantColor(using: img)
+        DispatchQueue.main.async {
+          self.coverImage = final
+          if let img = final {
+            self.imageCache.set(img, for: self.identifier)
+            self.imageCache.set(img, for: coverKey)
+            self.updateDominantColor(using: img)
+          }
+          self.isCoverLoading = false
         }
-        self.isCoverLoading = false
       }
     }
 
@@ -548,25 +583,32 @@ extension TPPBook {
       let thumbnailKey = "\(identifier)_thumbnail"
       
       if let img = imageCache.get(for: simpleKey) ?? imageCache.get(for: thumbnailKey) {
-        thumbnailImage = img
+        DispatchQueue.main.async {
+          self.thumbnailImage = img
+        }
         return
       }
 
       guard !isThumbnailLoading else { return }
-      isThumbnailLoading = true
+      
+      DispatchQueue.main.async {
+        self.isThumbnailLoading = true
+      }
 
       TPPBookCoverRegistryBridge.shared.thumbnailImageForBook(self) { [weak self] image in
         guard let self = self else { return }
 
-        self.thumbnailImage = image
-        if let img = image {
-          self.imageCache.set(img, for: self.identifier)
-          self.imageCache.set(img, for: thumbnailKey)
-          if self.coverImage == nil {
-            self.updateDominantColor(using: img)
+        DispatchQueue.main.async {
+          self.thumbnailImage = image
+          if let img = image {
+            self.imageCache.set(img, for: self.identifier)
+            self.imageCache.set(img, for: thumbnailKey)
+            if self.coverImage == nil {
+              self.updateDominantColor(using: img)
+            }
           }
+          self.isThumbnailLoading = false
         }
-        self.isThumbnailLoading = false
       }
     }
   
@@ -612,7 +654,25 @@ private extension TPPBook {
       guard let self = self else { return }
 
       autoreleasepool {
-        guard let ciImage = CIImage(image: inputImage) else {
+        let maxDimension: CGFloat = 500
+        let scaledImage: UIImage
+        
+        let imageSize = inputImage.size
+        let maxSide = max(imageSize.width, imageSize.height)
+        
+        if maxSide > maxDimension {
+          let scale = maxDimension / maxSide
+          let newSize = CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
+          
+          UIGraphicsBeginImageContextWithOptions(newSize, false, 1.0)
+          inputImage.draw(in: CGRect(origin: .zero, size: newSize))
+          scaledImage = UIGraphicsGetImageFromCurrentImageContext() ?? inputImage
+          UIGraphicsEndImageContext()
+        } else {
+          scaledImage = inputImage
+        }
+        
+        guard let ciImage = CIImage(image: scaledImage) else {
           Log.debug(#file, "Failed to create CIImage from UIImage for book: \(self.identifier)")
           return
         }
@@ -638,24 +698,31 @@ private extension TPPBook {
 
         var bitmap = [UInt8](repeating: 0, count: 4)
         
-        Self.sharedCIContext.render(
-          outputImage,
-          toBitmap: &bitmap,
-          rowBytes: 4,
-          bounds: CGRect(x: 0, y: 0, width: 1, height: 1),
-          format: .RGBA8,
-          colorSpace: colorSpace
-        )
+        do {
+          Self.sharedCIContext.render(
+            outputImage,
+            toBitmap: &bitmap,
+            rowBytes: 4,
+            bounds: CGRect(x: 0, y: 0, width: 1, height: 1),
+            format: .RGBA8,
+            colorSpace: colorSpace
+          )
+          
+          let color = UIColor(
+            red: CGFloat(bitmap[0]) / 255.0,
+            green: CGFloat(bitmap[1]) / 255.0,
+            blue: CGFloat(bitmap[2]) / 255.0,
+            alpha: CGFloat(bitmap[3]) / 255.0
+          )
 
-        let color = UIColor(
-          red: CGFloat(bitmap[0]) / 255.0,
-          green: CGFloat(bitmap[1]) / 255.0,
-          blue: CGFloat(bitmap[2]) / 255.0,
-          alpha: CGFloat(bitmap[3]) / 255.0
-        )
-
-        Task { @MainActor in
-          self.dominantUIColor = color
+          DispatchQueue.main.async {
+            self.dominantUIColor = color
+          }
+        } catch {
+          Log.warn(#file, "Failed to extract dominant color (likely memory issue): \(error.localizedDescription)")
+          DispatchQueue.main.async {
+            self.dominantUIColor = .gray
+          }
         }
       }
     }

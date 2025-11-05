@@ -9,7 +9,7 @@ enum BookService {
   static func open(_ book: TPPBook, onFinish: (() -> Void)? = nil) {
     // Prevent multiple simultaneous opens of the same book
     guard !openingBooks.contains(book.identifier) else {
-      ATLog(.warn, "Book \(book.title) is already being opened, ignoring duplicate request")
+      Log.warn(#file, "Book \(book.title) is already being opened, ignoring duplicate request")
       onFinish?()
       return
     }
@@ -59,57 +59,121 @@ enum BookService {
   }
 
   private static func presentAudiobook(_ book: TPPBook, onFinish: (() -> Void)? = nil) {
+    Log.debug(#file, "🎵 [AUDIOBOOK] Attempting to present audiobook: \(book.title) (ID: \(book.identifier))")
+    Log.debug(#file, "  Distributor: \(book.distributor ?? "nil")")
+    
 #if LCP
+    Log.debug(#file, "  Checking LCP audiobook support...")
     if LCPAudiobooks.canOpenBook(book) {
+      Log.debug(#file, "  ✅ LCP audiobook detected")
+      
       if let localURL = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier), FileManager.default.fileExists(atPath: localURL.path) {
+        Log.debug(#file, "  → Using LOCAL LCP file: \(localURL.path)")
         buildAndPresentAudiobook(book: book, lcpSourceURL: localURL, onFinish: onFinish)
         return
+      } else {
+        Log.debug(#file, "  No local LCP file found")
       }
+      
       if let license = licenseURL(forBookIdentifier: book.identifier) {
+        Log.debug(#file, "  → Using LCP LICENSE file: \(license.path)")
         buildAndPresentAudiobook(book: book, lcpSourceURL: license, onFinish: onFinish)
         return
+      } else {
+        Log.debug(#file, "  No LCP license file found")
       }
+    } else {
+      Log.debug(#file, "  Not an LCP audiobook")
     }
+#else
+    Log.debug(#file, "  LCP not compiled in this build")
 #endif
-    if let url = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier),
-       FileManager.default.fileExists(atPath: url.path),
-       let data = try? Data(contentsOf: url),
-       let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
-      presentAudiobookFrom(book: book, json: json, decryptor: nil, onFinish: onFinish)
-      return
-    }
 
-    fetchOpenAccessManifest(for: book) { json in
-      guard let json else {
+    Log.debug(#file, "  Checking for local audiobook manifest...")
+    if let url = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier),
+       FileManager.default.fileExists(atPath: url.path) {
+      Log.debug(#file, "  Local file exists at: \(url.path)")
+      
+      guard let data = try? Data(contentsOf: url) else {
+        Log.error(#file, "  ❌ Failed to read local file data")
         showAudiobookTryAgainError()
         openingBooks.remove(book.identifier)
         onFinish?()
         return
       }
+      
+      guard let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] else {
+        Log.error(#file, "  ❌ Failed to parse local file as JSON")
+        showAudiobookTryAgainError()
+        openingBooks.remove(book.identifier)
+        onFinish?()
+        return
+      }
+      
+      Log.debug(#file, "  ✅ Successfully parsed local manifest JSON")
+      presentAudiobookFrom(book: book, json: json, decryptor: nil, onFinish: onFinish)
+      return
+    } else {
+      Log.debug(#file, "  No local audiobook file found")
+    }
+
+    Log.debug(#file, "  → Fetching open access manifest from network...")
+    fetchOpenAccessManifest(for: book) { json in
+      guard let json else {
+        Log.error(#file, "  ❌ Failed to fetch or parse open access manifest")
+        showAudiobookTryAgainError()
+        openingBooks.remove(book.identifier)
+        onFinish?()
+        return
+      }
+      Log.debug(#file, "  ✅ Successfully fetched and parsed open access manifest")
       presentAudiobookFrom(book: book, json: json, decryptor: nil, onFinish: onFinish)
     }
   }
 
 #if LCP
   private static func buildAndPresentAudiobook(book: TPPBook, lcpSourceURL: URL, onFinish: (() -> Void)?) {
+    Log.debug(#file, "🔐 [LCP AUDIOBOOK] Building LCP-protected audiobook")
+    Log.debug(#file, "  LCP source: \(lcpSourceURL.path)")
+    
     guard let lcpAudiobooks = LCPAudiobooks(for: lcpSourceURL) else {
+      Log.error(#file, "  ❌ Failed to create LCPAudiobooks instance from URL")
+      Log.error(#file, "    This could indicate license parsing failure or invalid LCP file")
       showAudiobookTryAgainError()
       openingBooks.remove(book.identifier)
       onFinish?()
       return
     }
+    
+    Log.debug(#file, "  ✅ LCPAudiobooks instance created")
+    
     if let cached = lcpAudiobooks.cachedContentDictionary() as? [String: Any] {
+      Log.debug(#file, "  → Using CACHED content dictionary from LCP")
       presentAudiobookFrom(book: book, json: cached, decryptor: lcpAudiobooks, onFinish: onFinish)
       return
     }
+    
+    Log.debug(#file, "  → Fetching content dictionary from LCP...")
     lcpAudiobooks.contentDictionary { dict, error in
       Task { @MainActor in
-        guard error == nil, let json = dict as? [String: Any] else {
+        if let error = error {
+          Log.error(#file, "  ❌ Error fetching LCP content dictionary: \(error.localizedDescription)")
           showAudiobookTryAgainError()
           openingBooks.remove(book.identifier)
           onFinish?()
           return
         }
+        
+        guard let json = dict as? [String: Any] else {
+          Log.error(#file, "  ❌ LCP content dictionary is not a valid JSON dictionary")
+          showAudiobookTryAgainError()
+          openingBooks.remove(book.identifier)
+          onFinish?()
+          return
+        }
+        
+        Log.debug(#file, "  ✅ Successfully retrieved LCP content dictionary")
+        Log.debug(#file, "    Dictionary keys: \(json.keys.joined(separator: ", "))")
         presentAudiobookFrom(book: book, json: json, decryptor: lcpAudiobooks, onFinish: onFinish)
       }
     }
@@ -122,35 +186,90 @@ enum BookService {
     decryptor: DRMDecryptor?,
     onFinish: (() -> Void)? = nil
   ) {
+    Log.debug(#file, "🏗️ [AUDIOBOOK FACTORY] Building audiobook from manifest")
+    Log.debug(#file, "  Book: \(book.title) (ID: \(book.identifier))")
+    Log.debug(#file, "  Has decryptor: \(decryptor != nil)")
+    Log.debug(#file, "  Has bearer token: \(book.bearerToken != nil)")
+    
     var jsonDict = json
     jsonDict["id"] = book.identifier
 
     let vendorCompletion: (Foundation.NSError?) -> Void = { (error: Foundation.NSError?) in
       Task { @MainActor in
-        guard error == nil else {
+        if let error = error {
+          Log.error(#file, "  ❌ Vendor completion failed with error: \(error.localizedDescription)")
+          Log.error(#file, "    Domain: \(error.domain), Code: \(error.code)")
           showAudiobookTryAgainError()
           openingBooks.remove(book.identifier)
           onFinish?()
           return
         }
 
-        ATLog(.info, "Creating audiobook with bearerToken: '\(book.bearerToken ?? "nil")' for \(book.title)")
+        Log.debug(#file, "  Creating audiobook with bearerToken: '\(book.bearerToken ?? "nil")'")
         
-        guard
-          let jsonData = try? JSONSerialization.data(withJSONObject: jsonDict, options: []),
-          let manifest = try? Manifest.customDecoder().decode(Manifest.self, from: jsonData),
-          let audiobook = AudiobookFactory.audiobook(
-            for: manifest,
-            bookIdentifier: book.identifier,
-            decryptor: decryptor,
-            token: book.bearerToken
-          )
-        else {
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: jsonDict, options: []) else {
+          Log.error(#file, "  ❌ Failed to serialize JSON dictionary to Data")
+          Log.error(#file, "    JSON keys: \(jsonDict.keys.joined(separator: ", "))")
           showAudiobookTryAgainError()
           openingBooks.remove(book.identifier)
           onFinish?()
           return
         }
+        
+        Log.debug(#file, "  JSON data size: \(jsonData.count) bytes")
+        
+        let manifest: Manifest
+        do {
+          manifest = try Manifest.customDecoder().decode(Manifest.self, from: jsonData)
+        } catch {
+          Log.error(#file, "  ❌ Failed to decode Manifest from JSON")
+          Log.error(#file, "    Decoding error: \(error)")
+          
+          if let decodingError = error as? DecodingError {
+            switch decodingError {
+            case .keyNotFound(let key, let context):
+              Log.error(#file, "    Missing key: '\(key.stringValue)' at path: \(context.codingPath.map { $0.stringValue }.joined(separator: " → "))")
+            case .typeMismatch(let type, let context):
+              Log.error(#file, "    Type mismatch: expected \(type) at path: \(context.codingPath.map { $0.stringValue }.joined(separator: " → "))")
+              Log.error(#file, "    Debug description: \(context.debugDescription)")
+            case .valueNotFound(let type, let context):
+              Log.error(#file, "    Value not found: \(type) at path: \(context.codingPath.map { $0.stringValue }.joined(separator: " → "))")
+            case .dataCorrupted(let context):
+              Log.error(#file, "    Data corrupted at path: \(context.codingPath.map { $0.stringValue }.joined(separator: " → "))")
+              Log.error(#file, "    Description: \(context.debugDescription)")
+            @unknown default:
+              Log.error(#file, "    Unknown decoding error")
+            }
+          }
+          
+          if let jsonString = String(data: jsonData, encoding: .utf8) {
+            Log.error(#file, "    Full manifest JSON: \(jsonString)")
+          }
+          showAudiobookTryAgainError()
+          openingBooks.remove(book.identifier)
+          onFinish?()
+          return
+        }
+        
+        Log.debug(#file, "  ✅ Manifest decoded successfully")
+        Log.debug(#file, "    Manifest metadata: \(manifest.metadata?.title ?? "no title")")
+        
+        guard let audiobook = AudiobookFactory.audiobook(
+          for: manifest,
+          bookIdentifier: book.identifier,
+          decryptor: decryptor,
+          token: book.bearerToken
+        ) else {
+          Log.error(#file, "  ❌ AudiobookFactory failed to create audiobook")
+          Log.error(#file, "    This likely means no suitable player could be created for this manifest")
+          Log.error(#file, "    Manifest type: \(manifest.metadata?.type ?? "unknown")")
+          showAudiobookTryAgainError()
+          openingBooks.remove(book.identifier)
+          onFinish?()
+          return
+        }
+        
+        Log.debug(#file, "  ✅ Audiobook created successfully by factory")
 
         let metadata = AudiobookMetadata(title: book.title, authors: [book.authors ?? ""]) 
         var timeTracker: AudiobookTimeTracker?
@@ -206,6 +325,7 @@ enum BookService {
 
         // Present the AudiobookPlayerView first, then start playback
         if let coordinator = NavigationCoordinatorHub.shared.coordinator {
+          Log.debug(#file, "  🎉 Successfully presenting audiobook player to user")
           let route = BookRoute(id: book.identifier)
           coordinator.storeAudioModel(playbackModel, forBookId: route.id)
           coordinator.push(.audio(route))
@@ -231,20 +351,20 @@ enum BookService {
               let remoteSaveDate = ISO8601DateFormatter().date(from: remote.lastSavedTimeStamp) ?? Date.distantPast
               
               if remoteSaveDate > localSaveDate {
-                ATLog(.info, "Using remote position (more recently saved): track=\(remote.track.key), timestamp=\(remote.timestamp), saved=\(remote.lastSavedTimeStamp)")
+                Log.debug(#file, "Using remote position (more recently saved): track=\(remote.track.key), timestamp=\(remote.timestamp), saved=\(remote.lastSavedTimeStamp)")
                 finalPosition = remote
               } else {
-                ATLog(.info, "Using local position (more recently saved): track=\(local.track.key), timestamp=\(local.timestamp), saved=\(local.lastSavedTimeStamp)")
+                Log.debug(#file, "Using local position (more recently saved): track=\(local.track.key), timestamp=\(local.timestamp), saved=\(local.lastSavedTimeStamp)")
                 finalPosition = local
               }
             } else if let remote = remote {
-              ATLog(.info, "Using remote position (no local): track=\(remote.track.key), timestamp=\(remote.timestamp)")
+              Log.debug(#file, "Using remote position (no local): track=\(remote.track.key), timestamp=\(remote.timestamp)")
               finalPosition = remote
             } else if let local = localPosition {
-              ATLog(.info, "Using local position (no remote): track=\(local.track.key), timestamp=\(local.timestamp)")
+              Log.debug(#file, "Using local position (no remote): track=\(local.track.key), timestamp=\(local.timestamp)")
               finalPosition = local
             } else if let firstTrack = audiobook.tableOfContents.allTracks.first {
-              ATLog(.info, "Starting \(book.title) from beginning - no saved position")
+              Log.debug(#file, "Starting \(book.title) from beginning - no saved position")
               finalPosition = TrackPosition(track: firstTrack, timestamp: 0.0, tracks: audiobook.tableOfContents.tracks)
             } else {
               return
@@ -268,6 +388,7 @@ enum BookService {
           openingBooks.remove(book.identifier)
           onFinish?()
         } else {
+          Log.error(#file, "  ❌ No navigation coordinator available to present audiobook")
           showAudiobookTryAgainError()
           openingBooks.remove(book.identifier)
           onFinish?()
@@ -283,14 +404,47 @@ enum BookService {
   }
 
   private static func fetchOpenAccessManifest(for book: TPPBook, completion: @escaping ([String: Any]?) -> Void) {
-    guard let url = book.defaultAcquisition?.hrefURL else { completion(nil); return }
+    guard let url = book.defaultAcquisition?.hrefURL else {
+      Log.error(#file, "  ❌ No default acquisition URL for fetching manifest")
+      Log.error(#file, "    Book: \(book.title) (ID: \(book.identifier))")
+      Log.error(#file, "    Default acquisition: \(book.defaultAcquisition?.type ?? "nil")")
+      completion(nil)
+      return
+    }
+    
+    Log.debug(#file, "  📡 Fetching manifest from URL: \(url.absoluteString)")
+    
     let task = TPPNetworkExecutor.shared.download(url) { data, response, error in
-      guard error == nil,
-            let data = data,
-            let json = (try? JSONSerialization.jsonObject(with: data, options: [])) as? [String: Any] else {
+      if let error = error {
+        Log.error(#file, "  ❌ Network error fetching manifest: \(error.localizedDescription)")
         completion(nil)
         return
       }
+      
+      guard let data = data else {
+        Log.error(#file, "  ❌ No data received from manifest fetch")
+        completion(nil)
+        return
+      }
+      
+      Log.debug(#file, "  ✅ Received \(data.count) bytes of manifest data")
+      
+      if let httpResponse = response as? HTTPURLResponse {
+        Log.debug(#file, "    HTTP status: \(httpResponse.statusCode)")
+        Log.debug(#file, "    Content-Type: \(httpResponse.allHeaderFields["Content-Type"] ?? "unknown")")
+      }
+      
+      guard let json = (try? JSONSerialization.jsonObject(with: data, options: [])) as? [String: Any] else {
+        Log.error(#file, "  ❌ Failed to parse manifest data as JSON dictionary")
+        if let dataString = String(data: data, encoding: .utf8) {
+          Log.error(#file, "    Data preview: \(String(dataString.prefix(200)))...")
+        }
+        completion(nil)
+        return
+      }
+      
+      Log.debug(#file, "  ✅ Successfully parsed manifest JSON")
+      Log.debug(#file, "    JSON keys: \(json.keys.joined(separator: ", "))")
       completion(json)
     }
     task.resume()
@@ -311,11 +465,11 @@ enum BookService {
     let bookState = TPPBookRegistry.shared.state(for: book.identifier)
     let hasLocation = TPPBookRegistry.shared.location(forIdentifier: book.identifier) != nil
     
-    ATLog(.info, "Position check for \(book.title): state=\(bookState), hasLocation=\(hasLocation)")
+    Log.debug(#file, "Position check for \(book.title): state=\(bookState), hasLocation=\(hasLocation)")
     
     // If there's no saved location, always start from beginning
     guard hasLocation else {
-      ATLog(.info, "No saved location found - starting from beginning")
+      Log.debug(#file, "No saved location found - starting from beginning")
       return false
     }
     
@@ -323,11 +477,11 @@ enum BookService {
     if bookState == .downloadSuccessful {
       // Even for newly downloaded books, restore position if one exists
       // This handles cases where user previously started reading
-      ATLog(.info, "Book is downloadSuccessful but has saved location - restoring position")
+      Log.debug(#file, "Book is downloadSuccessful but has saved location - restoring position")
       return true
     }
     
-    ATLog(.info, "Restoring saved position for book")
+    Log.debug(#file, "Restoring saved position for book")
     return true
   }
   
@@ -348,17 +502,17 @@ enum BookService {
   
   /// Validates that a position is reasonable and not corrupted
   private static func isValidPosition(_ position: TrackPosition, in tableOfContents: AudiobookTableOfContents) -> Bool {
-    ATLog(.info, "Validating position: track=\(position.track.index), timestamp=\(position.timestamp)")
+    Log.debug(#file, "Validating position: track=\(position.track.index), timestamp=\(position.timestamp)")
     
     // Check if position is within reasonable bounds
     guard position.timestamp >= 0 && position.timestamp.isFinite else {
-      ATLog(.warn, "Invalid position timestamp: \(position.timestamp)")
+      Log.warn(#file, "Invalid position timestamp: \(position.timestamp)")
       return false
     }
     
     // Check if track exists in table of contents
     guard tableOfContents.tracks.track(forKey: position.track.key) != nil else {
-      ATLog(.warn, "Position references non-existent track: \(position.track.key)")
+      Log.warn(#file, "Position references non-existent track: \(position.track.key)")
       return false
     }
     
@@ -368,21 +522,21 @@ enum BookService {
     
     // FIXED: If durations aren't available yet (common for Overdrive), skip validation
     if totalDuration <= 0 {
-      ATLog(.info, "Position validation: Total duration not available yet, accepting position")
+      Log.debug(#file, "Position validation: Total duration not available yet, accepting position")
       return true
     }
     
     let percentageThrough = positionDuration / totalDuration
     
-    ATLog(.info, "Position validation: \(Int(percentageThrough * 100))% through book")
+    Log.debug(#file, "Position validation: \(Int(percentageThrough * 100))% through book")
     
     // More lenient validation - only reject if position is clearly invalid
     if positionDuration > totalDuration * 1.1 { // Allow 10% overflow for timing variations
-      ATLog(.warn, "Position is beyond book duration (\(Int(percentageThrough * 100))%), starting from beginning")
+      Log.warn(#file, "Position is beyond book duration (\(Int(percentageThrough * 100))%), starting from beginning")
       return false
     }
     
-    ATLog(.info, "Position validation passed")
+    Log.debug(#file, "Position validation passed")
     return true
   }
   
@@ -396,6 +550,8 @@ enum BookService {
 
 
   private static func showAudiobookTryAgainError() {
+    Log.warn(#file, "⚠️ [ERROR ALERT] Showing 'An error was encountered while trying to open this book' alert to user")
+    
     // Log the error so it can be captured by enhanced logging
     let error = NSError(
       domain: "AudiobookOpenError",

@@ -11,6 +11,7 @@ import Combine
 
 struct BookCell: View {
   @ObservedObject var model: BookCellModel
+  var previewEnabled: Bool = true
   
   var body: some View {
     bookCell
@@ -21,7 +22,7 @@ struct BookCell: View {
     case .downloading, .downloadFailed:
       DownloadingBookCell(model: model)
     default:
-      NormalBookCell(model: model)
+      NormalBookCell(model: model, previewEnabled: previewEnabled)
     }
   }
 }
