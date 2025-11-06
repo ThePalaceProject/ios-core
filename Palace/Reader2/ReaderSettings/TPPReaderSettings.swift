@@ -40,6 +40,9 @@ class TPPReaderSettings: ObservableObject {
     self.fontFamilyIndex = TPPReaderSettings.mapFontFamilyToIndex(preferences.fontFamily)
     self.appearanceIndex = TPPReaderSettings.mapAppearanceToIndex(preferences.theme)
 
+    // Ensure publisherStyles is disabled to prevent line-height conflicts
+    self.preferences.publisherStyles = false
+    
     updateColors(for: TPPReaderAppearance(rawValue: appearanceIndex) ?? .blackOnWhite)
   }
 
@@ -54,6 +57,8 @@ class TPPReaderSettings: ObservableObject {
     guard canIncreaseFontSize else { return }
     fontSize = min(fontSize + fontSizeStep, maxFontSize)
     preferences.fontSize = Double(fontSize)
+    // Ensure publisherStyles stays disabled to prevent line-height conflicts
+    preferences.publisherStyles = false
     delegate?.updateUserPreferencesStyle(for: preferences)
     savePreferences()
   }
@@ -63,6 +68,8 @@ class TPPReaderSettings: ObservableObject {
     guard canDecreaseFontSize else { return }
     fontSize = max(fontSize - fontSizeStep, minFontSize)
     preferences.fontSize = Double(fontSize)
+    // Ensure publisherStyles stays disabled to prevent line-height conflicts
+    preferences.publisherStyles = false
     delegate?.updateUserPreferencesStyle(for: preferences)
     savePreferences()
   }
@@ -153,12 +160,14 @@ class TPPReaderSettings: ObservableObject {
 // Non-isolated helper for loading reader preferences outside of MainActor contexts
 func TPPReaderPreferencesLoad() -> EPUBPreferences {
   let key = "TPPReaderSettings"
+  var defaultPreferences: EPUBPreferences
+  
   if let data = UserDefaults.standard.data(forKey: key),
      let preferences = try? JSONDecoder().decode(EPUBPreferences.self, from: data) {
-    return preferences
+    defaultPreferences = preferences
+  } else {
+    defaultPreferences = EPUBPreferences()
   }
-  
-  var defaultPreferences = EPUBPreferences()
   
   if defaultPreferences.theme == nil {
     defaultPreferences.theme = .light
@@ -169,6 +178,8 @@ func TPPReaderPreferencesLoad() -> EPUBPreferences {
     defaultPreferences.backgroundColor = ReadiumNavigator.Color(color: Color(defaultColors.backgroundColor))
     defaultPreferences.textColor = ReadiumNavigator.Color(color: Color(defaultColors.textColor))
   }
+  
+  defaultPreferences.publisherStyles = false
   
   return defaultPreferences
 }
