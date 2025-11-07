@@ -1,3 +1,6 @@
+import UIKit
+import SwiftUI
+
 /// UITableView to display or add library accounts that the user
 /// can then log in and adjust settings after selecting Accounts.
 @objcMembers class TPPSettingsAccountsTableViewController: UIViewController, UITableViewDelegate, UITableViewDataSource, TPPLoadingViewController {
@@ -297,7 +300,12 @@
       account = userAddedSecondaryAccounts[indexPath.row]
     }
     
-    let vc = TPPSettingsAccountDetailViewController(libraryAccountID: account?.uuid ?? "")
+    let view = AccountDetailView(libraryAccountID: account?.uuid ?? "")
+    let vc = UIHostingController(rootView: view)
+    
+    // Pre-configure navigation bar to prevent snap
+    vc.navigationItem.largeTitleDisplayMode = .never
+    
     self.tableView.deselectRow(at: indexPath, animated: true)
     self.navigationController?.pushViewController(vc, animated: true)
   }

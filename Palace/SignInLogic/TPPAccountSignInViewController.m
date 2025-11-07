@@ -8,7 +8,6 @@
 #import "TPPConfiguration.h"
 #import "TPPLinearView.h"
 #import "TPPOPDSFeed.h"
-#import "TPPSettingsEULAViewController.h"
 #import "TPPXML.h"
 #import "UIView+TPPViewAdditions.h"
 #import "UIFont+TPPSystemFontOverride.h"
@@ -865,7 +864,9 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
 
 - (void)showEULA
 {
-  UIViewController *eulaViewController = [[TPPSettingsEULAViewController alloc] initWithAccount:self.businessLogic.libraryAccount];
+  // Create SwiftUI EULAView and wrap in UIHostingController
+  Account *account = self.businessLogic.libraryAccount;
+  UIViewController *eulaViewController = [EULAViewHosting makeEULAViewWithAccount:account];
   UINavigationController *navVC = [[UINavigationController alloc] initWithRootViewController:eulaViewController];
   [self.navigationController presentViewController:navVC animated:YES completion:nil];
 }
