@@ -9,6 +9,8 @@ import SwiftUI
 import LocalAuthentication
 
 struct AccountDetailView: View {
+  typealias DisplayStrings = Strings.Settings
+  
   @StateObject var viewModel: AccountDetailViewModel
   @Environment(\.dismiss) private var dismiss
   
@@ -25,7 +27,7 @@ struct AccountDetailView: View {
         mainContent
       }
     }
-    .navigationTitle(NSLocalizedString("Account", comment: ""))
+    .navigationTitle(DisplayStrings.account)
     .navigationBarTitleDisplayMode(.inline)
     .alert(viewModel.alertTitle, isPresented: $viewModel.showingAlert) {
       Button(Strings.Generic.ok, role: .cancel) {}
@@ -44,179 +46,118 @@ struct AccountDetailView: View {
   }
   
   private var shouldShowSignInPrompt: Bool {
-    // Show the clean sign-in prompt for OAuth and SAML when not signed in
     !viewModel.isSignedIn && 
     (viewModel.businessLogic.selectedAuthentication?.isOauth == true ||
      viewModel.businessLogic.selectedAuthentication?.isSaml == true)
   }
   
-  // MARK: - Sign In Prompt View (For Screenshot Design)
+  // MARK: - Sign In Prompt View
+  
   private var signInPromptView: some View {
     VStack(spacing: 0) {
-      HStack(spacing: 16) {
-        if let logo = viewModel.libraryLogo {
-          Image(uiImage: logo)
-            .resizable()
-            .scaledToFit()
-            .frame(width: 44, height: 44)
-        }
-                
-        Text(viewModel.libraryName)
-          .font(.boldPalaceFont(size: 19))
-          .foregroundColor(.secondary)
-          .horizontallyCentered()
-      }
-      .padding(.horizontal, 25)
-      .padding(.vertical, 40)
-      
-      Rectangle()
-        .fill(Color(UIColor.separator))
-        .frame(height: 0.5)
-      
-      // Sign in message
-      Text(viewModel.signInMessage)
-        .font(.palaceFont(size: 14))
-        .foregroundColor(.primary)
-        .padding(.horizontal, 25)
-        .padding(.vertical, 40)
-        .frame(maxWidth: .infinity, alignment: .leading)
-      
-      Rectangle()
-        .fill(Color(UIColor.separator))
-        .frame(height: 0.5)
-      
-      // Sign in button or SAML IDP list
-      if viewModel.businessLogic.selectedAuthentication?.isSaml == true,
-         let samlIdps = viewModel.businessLogic.selectedAuthentication?.samlIdps,
-         !samlIdps.isEmpty {
-
-        VStack(spacing: 12) {
-          ForEach(samlIdps, id: \.displayName) { idp in
-            HStack {
-              samlIDPButton(idp: idp)
-                .frame(width: 100)
-              Spacer()
-            }
-          }
-        }
-        .padding(.horizontal, 25)
-        .padding(.top, 40)
-      } else {
-        HStack {
-          signInButton
-            .frame(width: 100)
-          Spacer()
-        }
-        .padding(.horizontal, 25)
-        .padding(.top, 40)
-      }
-      
-      // Report an Issue link
-      if let _ = viewModel.selectedAccount?.supportEmail ?? viewModel.selectedAccount?.supportURL {
-        HStack {
-          reportIssueLink
-          Spacer()
-        }
-        .padding(.horizontal, 25)
-        .padding(.vertical, 40)
-      }
-      
+      libraryHeaderSection
+      SectionSeparator()
+      signInMessageSection
+      SectionSeparator()
+      signInButtonSection
+      reportIssueLinkIfAvailable
       Spacer()
     }
   }
   
-  private var reportIssueLink: some View {
-    Button(action: {
-      if let email = viewModel.selectedAccount?.supportEmail, let topVC = topViewController() {
-        ProblemReportEmail.sharedInstance.beginComposing(
-          to: email.rawValue,
-          presentingViewController: topVC,
-          book: nil as TPPBook?
-        )
-      } else if let url = viewModel.selectedAccount?.supportURL, let topVC = topViewController() {
-        let vc = BundledHTMLViewController(
-          fileURL: url,
-          title: viewModel.selectedAccount?.name ?? ""
-        )
-        vc.hidesBottomBarWhenPushed = true
-        topVC.navigationController?.pushViewController(vc, animated: true)
+  private var libraryHeaderSection: some View {
+    HStack(spacing: Layout.logoSpacing) {
+      if let logo = viewModel.libraryLogo {
+        Image(uiImage: logo)
+          .resizable()
+          .scaledToFit()
+          .frame(width: Layout.logoSize, height: Layout.logoSize)
       }
-    }) {
-      Text(NSLocalizedString("Report an Issue", comment: ""))
-        .font(.palaceFont(size: 14))
+      
+      Text(viewModel.libraryName)
+        .font(.boldPalaceFont(size: Typography.libraryNameSize))
+        .foregroundColor(.secondary)
+        .horizontallyCentered()
+    }
+    .padding(.horizontal, Layout.horizontalPadding)
+    .padding(.vertical, Layout.verticalPaddingLarge)
+  }
+  
+  private var signInMessageSection: some View {
+    Text(Strings.AccountDetail.signInMessage(libraryName: viewModel.libraryName))
+      .font(.palaceFont(size: Typography.messageSize))
+      .foregroundColor(.primary)
+      .padding(.horizontal, Layout.horizontalPadding)
+      .padding(.vertical, Layout.verticalPaddingLarge)
+      .frame(maxWidth: .infinity, alignment: .leading)
+  }
+  
+  @ViewBuilder
+  private var signInButtonSection: some View {
+    if let samlIdps = viewModel.businessLogic.selectedAuthentication?.samlIdps,
+       viewModel.businessLogic.selectedAuthentication?.isSaml == true,
+       !samlIdps.isEmpty {
+      samlIDPList(idps: samlIdps)
+    } else {
+      singleSignInButton
+    }
+  }
+  
+  private func samlIDPList(idps: [OPDS2SamlIDP]) -> some View {
+    VStack(spacing: Layout.buttonIDPSpacing) {
+      ForEach(idps, id: \.displayName) { idp in
+        HStack {
+          ActionButtonView(
+            title: Strings.Generic.signin,
+            isLoading: viewModel.isLoading,
+            action: { viewModel.selectSAMLIDP(idp) }
+          )
+          .frame(width: Layout.buttonWidth)
+          Spacer()
+        }
+      }
+    }
+    .padding(.horizontal, Layout.horizontalPadding)
+    .padding(.top, Layout.verticalPaddingLarge)
+  }
+  
+  private var singleSignInButton: some View {
+    HStack {
+      ActionButtonView(
+        title: Strings.Generic.signin,
+        isLoading: viewModel.isLoading,
+        action: { viewModel.signIn() }
+      )
+      .frame(width: Layout.buttonWidth)
+      Spacer()
+    }
+    .padding(.horizontal, Layout.horizontalPadding)
+    .padding(.top, Layout.verticalPaddingLarge)
+  }
+  
+  @ViewBuilder
+  private var reportIssueLinkIfAvailable: some View {
+    if viewModel.selectedAccount?.supportEmail != nil || viewModel.selectedAccount?.supportURL != nil {
+      HStack {
+        reportIssueLink
+        Spacer()
+      }
+      .padding(.horizontal, Layout.horizontalPadding)
+      .padding(.vertical, Layout.verticalPaddingLarge)
+    }
+  }
+  
+  private var reportIssueLink: some View {
+    Button(action: handleReportIssue) {
+      Text(DisplayStrings.reportIssue)
+        .font(.palaceFont(size: Typography.messageSize))
         .foregroundColor(Color(TPPConfiguration.mainColor()))
         .underline()
     }
   }
   
-  private func samlIDPButton(idp: OPDS2SamlIDP) -> some View {
-    Button(action: {
-      Log.info(#file, "SAML IDP button tapped: \(idp.displayName ?? "unknown")")
-      viewModel.selectSAMLIDP(idp)
-    }) {
-      ZStack {
-        if viewModel.isLoading {
-          ProgressView()
-            .progressViewStyle(CircularProgressViewStyle())
-            .tint(buttonTextColor)
-        }
-        Text(viewModel.isLoading ? NSLocalizedString("Signing In", comment: "") : ("Sign In"))
-          .font(.system(size: 17, weight: .semibold))
-          .opacity(viewModel.isLoading ? 0.5 : 1)
-      }
-      .frame(maxWidth: .infinity)
-      .frame(height: 50)
-      .background(buttonBackgroundColor)
-      .foregroundColor(buttonTextColor)
-      .cornerRadius(8)
-    }
-    .disabled(viewModel.isLoading)
-    .buttonStyle(.plain)
-  }
-  
-  @ViewBuilder
-  private var signInButton: some View {
-    Button(action: {
-      Log.info(#file, "Sign In button tapped in view")
-      viewModel.signIn()
-    }) {
-      ZStack {
-        if viewModel.isLoading {
-          ProgressView()
-            .progressViewStyle(CircularProgressViewStyle())
-            .tint(buttonTextColor)
-        }
-        Text(viewModel.isLoading ? NSLocalizedString("Signing In", comment: "") : NSLocalizedString("Sign In", comment: ""))
-          .font(.system(size: 17, weight: .semibold))
-      }
-      .frame(maxWidth: .infinity)
-      .frame(height: 50)
-      .background(buttonBackgroundColor)
-      .foregroundColor(buttonTextColor)
-      .cornerRadius(8)
-    }
-    .disabled(viewModel.isLoading)
-    .buttonStyle(.plain)
-    .onTapGesture {
-      Log.info(#file, "Sign In button tap gesture detected")
-    }
-  }
-  
-  @Environment(\.colorScheme) private var colorScheme
-  
-  private var isDarkBackground: Bool {
-    colorScheme == .dark
-  }
-  
-  private var buttonBackgroundColor: Color {
-    isDarkBackground ? .white : .black
-  }
-  
-  private var buttonTextColor: Color {
-    isDarkBackground ? .black : .white
-  }
-  
   // MARK: - Account Detail List
+  
   private var accountDetailList: some View {
     List {
       accountHeaderSection
@@ -227,11 +168,7 @@ struct AccountDetailView: View {
             cellView(for: cellType)
           }
         } footer: {
-          if sectionIndex == 0 && viewModel.businessLogic.shouldShowEULALink() {
-            eulaFooter
-          } else if sectionIndex == 1 && viewModel.businessLogic.shouldShowSyncButton() {
-            syncFooter
-          }
+          sectionFooter(for: sectionIndex)
         }
       }
     }
@@ -239,22 +176,31 @@ struct AccountDetailView: View {
   }
   
   @ViewBuilder
+  private func sectionFooter(for index: Int) -> some View {
+    if index == 0 && viewModel.businessLogic.shouldShowEULALink() {
+      eulaFooter
+    } else if index == 1 && viewModel.businessLogic.shouldShowSyncButton() {
+      syncFooter
+    }
+  }
+  
+  @ViewBuilder
   private var accountHeaderSection: some View {
-    HStack(spacing: 12) {
+    HStack(spacing: Layout.logoSpacingList) {
       if let logo = viewModel.libraryLogo {
         Image(uiImage: logo)
           .resizable()
           .scaledToFit()
-          .frame(width: 50, height: 50)
+          .frame(width: Layout.logoSizeList, height: Layout.logoSizeList)
       }
       
       Text(viewModel.libraryName)
-        .font(.system(size: 18, weight: .bold))
+        .font(.system(size: Typography.headerSize, weight: .bold))
         .foregroundColor(.secondary)
       
       Spacer()
     }
-    .padding(.vertical, 8)
+    .padding(.vertical, Layout.verticalPaddingSmall)
     .listRowBackground(Color.clear)
     .listRowInsets(EdgeInsets())
   }
@@ -298,33 +244,34 @@ struct AccountDetailView: View {
   }
   
   // MARK: - Cell Views
+  
   private var barcodeImageCell: some View {
-    VStack(spacing: 12) {
+    VStack(spacing: Layout.verticalPaddingMedium) {
       if let barcodeImage = viewModel.barcodeImage {
         if viewModel.showBarcode {
           Image(uiImage: barcodeImage)
             .resizable()
             .scaledToFit()
-            .frame(height: 100)
+            .frame(height: Layout.barcodeHeight)
           
           Text(viewModel.selectedUserAccount.authorizationIdentifier ?? "")
             .font(.system(.body))
-            .padding(.bottom, 8)
+            .padding(.bottom, Layout.barcodeBottomPadding)
         }
         
         Button(action: { withAnimation { viewModel.showBarcode.toggle() } }) {
-          Text(viewModel.showBarcode ? NSLocalizedString("Hide Barcode", comment: "") : NSLocalizedString("Show Barcode", comment: ""))
+          Text(viewModel.showBarcode ? DisplayStrings.hideBarcode : DisplayStrings.showBarcode)
             .foregroundColor(Color(TPPConfiguration.mainColor()))
         }
       }
     }
-    .padding(.vertical, 8)
+    .padding(.vertical, Layout.verticalPaddingSmall)
   }
   
   private var barcodeInputCell: some View {
     HStack {
       TextField(
-        viewModel.businessLogic.selectedAuthentication?.patronIDLabel ?? NSLocalizedString("Barcode or Username", comment: ""),
+        viewModel.businessLogic.selectedAuthentication?.patronIDLabel ?? DisplayStrings.barcodeOrUsername,
         text: $viewModel.usernameText
       )
       .textContentType(.username)
@@ -341,14 +288,14 @@ struct AccountDetailView: View {
         }
       }
     }
-    .padding(.vertical, 2)
+    .padding(.vertical, Layout.verticalPaddingInput)
   }
   
   private var pinInputCell: some View {
     HStack {
       if viewModel.isPINHidden {
         SecureField(
-          viewModel.businessLogic.selectedAuthentication?.pinLabel ?? NSLocalizedString("PIN", comment: ""),
+          viewModel.businessLogic.selectedAuthentication?.pinLabel ?? DisplayStrings.pin,
           text: $viewModel.pinText
         )
         .textContentType(.password)
@@ -357,7 +304,7 @@ struct AccountDetailView: View {
         .foregroundColor(viewModel.isSignedIn ? .secondary : .primary)
       } else {
         TextField(
-          viewModel.businessLogic.selectedAuthentication?.pinLabel ?? NSLocalizedString("PIN", comment: ""),
+          viewModel.businessLogic.selectedAuthentication?.pinLabel ?? DisplayStrings.pin,
           text: $viewModel.pinText
         )
         .textContentType(.password)
@@ -368,12 +315,12 @@ struct AccountDetailView: View {
       
       if LAContext().canEvaluatePolicy(.deviceOwnerAuthentication, error: nil) {
         Button(action: { viewModel.togglePINVisibility() }) {
-          Text(viewModel.isPINHidden ? NSLocalizedString("Show", comment: "") : NSLocalizedString("Hide", comment: ""))
+          Text(viewModel.isPINHidden ? DisplayStrings.show : DisplayStrings.hide)
             .foregroundColor(Color(TPPConfiguration.mainColor()))
         }
       }
     }
-    .padding(.vertical, 2)
+    .padding(.vertical, Layout.verticalPaddingInput)
   }
   
   private var logInSignOutCell: some View {
@@ -383,13 +330,13 @@ struct AccountDetailView: View {
           ZStack {
             ProgressView()
               .progressViewStyle(CircularProgressViewStyle())
-            Text(viewModel.isSignedIn ? NSLocalizedString("Signing out", comment: "") : NSLocalizedString("Verifying", comment: ""))
+            Text(viewModel.isSignedIn ? DisplayStrings.signingOut : DisplayStrings.verifying)
               .foregroundColor(.primary)
           }
           .horizontallyCentered()
         } else {
           if viewModel.isSignedIn {
-            Text(NSLocalizedString("Sign out", comment: ""))
+            Text(DisplayStrings.signOut)
               .foregroundColor(Color(TPPConfiguration.mainColor()))
               .horizontallyCentered()
           } else {
@@ -404,7 +351,7 @@ struct AccountDetailView: View {
   
   private var ageCheckCell: some View {
     HStack {
-      Text(NSLocalizedString("Age Verification", comment: ""))
+      Text(DisplayStrings.ageVerification)
         .font(.system(.body))
       
       Spacer()
@@ -424,7 +371,7 @@ struct AccountDetailView: View {
   
   private var syncToggleCell: some View {
     HStack {
-      Text(NSLocalizedString("Sync Bookmarks", comment: ""))
+      Text(DisplayStrings.syncBookmarks)
         .font(.system(.body))
       
       Spacer()
@@ -439,61 +386,43 @@ struct AccountDetailView: View {
   
   private var registrationCell: some View {
     Button(action: { viewModel.openRegistration() }) {
-      HStack {
-        Spacer()
-        Text(NSLocalizedString("Sign up for a library card", comment: ""))
-          .foregroundColor(Color(TPPConfiguration.mainColor()))
-        Spacer()
-      }
+      Text(DisplayStrings.signUpForCard)
+        .foregroundColor(Color(TPPConfiguration.mainColor()))
+        .horizontallyCentered()
     }
   }
   
   private var advancedSettingsCell: some View {
     NavigationLink(destination: AdvancedSettingsView(accountID: viewModel.businessLogic.libraryAccountID)) {
-      Text(NSLocalizedString("Advanced", comment: ""))
+      Text(DisplayStrings.advanced)
         .font(.system(.body))
     }
   }
   
   private var privacyPolicyCell: some View {
     NavigationLink(destination: privacyPolicyView) {
-      Text(NSLocalizedString("Privacy Policy", comment: ""))
+      Text(DisplayStrings.privacyPolicy)
         .font(.system(.body))
     }
   }
   
   private var contentLicenseCell: some View {
     NavigationLink(destination: contentLicenseView) {
-      Text(NSLocalizedString("Content Licenses", comment: ""))
+      Text(DisplayStrings.contentLicenses)
         .font(.system(.body))
     }
   }
   
   private var reportIssueCell: some View {
-    Button(action: {
-      if let email = viewModel.selectedAccount?.supportEmail, let topVC = topViewController() {
-        ProblemReportEmail.sharedInstance.beginComposing(
-          to: email.rawValue,
-          presentingViewController: topVC,
-          book: nil as TPPBook?
-        )
-      } else if let url = viewModel.selectedAccount?.supportURL, let topVC = topViewController() {
-        let vc = BundledHTMLViewController(
-          fileURL: url,
-          title: viewModel.selectedAccount?.name ?? ""
-        )
-        vc.hidesBottomBarWhenPushed = true
-        topVC.navigationController?.pushViewController(vc, animated: true)
-      }
-    }) {
-      Text(NSLocalizedString("Report an Issue", comment: ""))
+    Button(action: handleReportIssue) {
+      Text(DisplayStrings.reportIssue)
         .font(.system(.body))
     }
   }
   
   private var passwordResetCell: some View {
     Button(action: { viewModel.resetPassword() }) {
-      Text(NSLocalizedString("Forgot your password?", comment: ""))
+      Text(DisplayStrings.forgotPassword)
         .font(.system(.body))
     }
   }
@@ -512,7 +441,7 @@ struct AccountDetailView: View {
         if viewModel.isLoading {
           ProgressView()
             .progressViewStyle(CircularProgressViewStyle())
-          Text(NSLocalizedString("Signing In", comment: ""))
+          Text(DisplayStrings.signingIn)
         } else {
           Text(idp.displayName ?? "")
         }
@@ -530,40 +459,40 @@ struct AccountDetailView: View {
   }
   
   // MARK: - Footer Views
+  
   private var eulaFooter: some View {
     NavigationLink(destination: eulaView) {
-      Text(NSLocalizedString("By signing in, you agree to the End User License Agreement.", comment: ""))
+      Text(DisplayStrings.eulaAgreement)
         .font(.system(.caption))
         .foregroundColor(.blue)
         .underline()
     }
-    .padding(.top, 8)
+    .padding(.top, Layout.verticalPaddingSmall)
   }
   
   @ViewBuilder
   private var eulaView: some View {
     if let account = viewModel.selectedAccount {
       EULAView(account: account)
-    } else {
-      EmptyView()
     }
   }
   
   private var syncFooter: some View {
-    Text(NSLocalizedString("Save your reading position and bookmarks to all your other devices.", comment: ""))
+    Text(DisplayStrings.syncDescription)
       .font(.system(.caption))
       .foregroundColor(.secondary)
-      .padding(.top, 8)
+      .padding(.top, Layout.verticalPaddingSmall)
   }
   
   // MARK: - Helper Views
+  
   @ViewBuilder
   private var privacyPolicyView: some View {
     if let url = viewModel.selectedAccount?.details?.getLicenseURL(.privacyPolicy) {
       UIViewControllerWrapper(
         RemoteHTMLViewController(
           URL: url,
-          title: NSLocalizedString("Privacy Policy", comment: ""),
+          title: DisplayStrings.privacyPolicy,
           failureMessage: Strings.Error.pageLoadFailedError
         ),
         updater: { _ in }
@@ -577,7 +506,7 @@ struct AccountDetailView: View {
       UIViewControllerWrapper(
         RemoteHTMLViewController(
           URL: url,
-          title: NSLocalizedString("Content Licenses", comment: ""),
+          title: DisplayStrings.contentLicenses,
           failureMessage: Strings.Error.pageLoadFailedError
         ),
         updater: { _ in }
@@ -585,15 +514,37 @@ struct AccountDetailView: View {
     }
   }
   
+  // MARK: - Actions
+  
+  private func handleReportIssue() {
+    guard let topVC = topViewController() else { return }
+    
+    if let email = viewModel.selectedAccount?.supportEmail {
+      ProblemReportEmail.sharedInstance.beginComposing(
+        to: email.rawValue,
+        presentingViewController: topVC,
+        book: nil as TPPBook?
+      )
+    } else if let url = viewModel.selectedAccount?.supportURL {
+      let vc = BundledHTMLViewController(
+        fileURL: url,
+        title: viewModel.selectedAccount?.name ?? ""
+      )
+      vc.hidesBottomBarWhenPushed = true
+      topVC.navigationController?.pushViewController(vc, animated: true)
+    }
+  }
+  
   // MARK: - Helper Methods
+  
   private func keyboardType(for loginKeyboard: LoginKeyboard?) -> UIKeyboardType {
     switch loginKeyboard {
     case .email:
-      return .emailAddress
+      .emailAddress
     case .numeric:
-      return .numberPad
+      .numberPad
     default:
-      return .asciiCapable
+      .asciiCapable
     }
   }
   
@@ -611,4 +562,3 @@ struct AccountDetailView: View {
     return current
   }
 }
-

@@ -11,31 +11,42 @@ import LocalAuthentication
 
 @MainActor
 class AccountDetailViewModel: NSObject, ObservableObject {
+  typealias DisplayStrings = Strings.Settings
+  
+  // MARK: - Constants
+  
+  private enum Constants {
+    static let signInTimeoutSeconds: UInt64 = 30_000_000_000
+    static let maxUsernameLength = 25
+  }
   
   // MARK: - Published Properties
-  @Published var usernameText: String = ""
-  @Published var pinText: String = ""
-  @Published var isLoading: Bool = false
-  @Published var isLoadingAuth: Bool = false
-  @Published var isPINHidden: Bool = true
-  @Published var isSyncEnabled: Bool = false
-  @Published var showAgeVerification: Bool = false
+  
+  @Published var usernameText = ""
+  @Published var pinText = ""
+  @Published var isLoading = false
+  @Published var isLoadingAuth = false
+  @Published var isPINHidden = true
+  @Published var isSyncEnabled = false
+  @Published var showAgeVerification = false
   @Published var errorMessage: String?
-  @Published var showingAlert: Bool = false
-  @Published var alertTitle: String = ""
-  @Published var alertMessage: String = ""
+  @Published var showingAlert = false
+  @Published var alertTitle = ""
+  @Published var alertMessage = ""
   @Published var tableData: [[CellType]] = []
   @Published var barcodeImage: UIImage?
-  @Published var showBarcode: Bool = false
+  @Published var showBarcode = false
   
   // MARK: - Properties
+  
   var businessLogic: TPPSignInBusinessLogic
   var frontEndValidator: TPPUserAccountFrontEndValidation?
   private let libraryAccountID: String
   private var cancellables = Set<AnyCancellable>()
-  var forceEditability: Bool = false
+  var forceEditability = false
   
   // MARK: - Computed Properties
+  
   var selectedAccount: Account? {
     businessLogic.libraryAccount
   }
@@ -49,15 +60,11 @@ class AccountDetailViewModel: NSObject, ObservableObject {
   }
   
   var canSignIn: Bool {
-    let oauthLogin = businessLogic.selectedAuthentication?.isOauth ?? false
-    let samlLogin = businessLogic.selectedAuthentication?.isSaml ?? false
-    
-    // OAuth and SAML don't require local credentials
-    if oauthLogin || samlLogin {
+    if businessLogic.selectedAuthentication?.isOauth == true ||
+       businessLogic.selectedAuthentication?.isSaml == true {
       return true
     }
     
-    // For basic auth, check if credentials are filled
     let barcodeHasText = !usernameText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     let pinHasText = !pinText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     let pinIsNotRequired = businessLogic.selectedAuthentication?.pinKeyboard == .none
@@ -73,15 +80,10 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     selectedAccount?.logo
   }
   
-  var signInMessage: String {
-    String(format: NSLocalizedString("To download books, please sign in to %@.", comment: "Sign in prompt"), libraryName)
-  }
-  
   // MARK: - Initialization
+  
   init(libraryAccountID: String) {
     self.libraryAccountID = libraryAccountID
-    
-    // Temporary placeholder - will be set after super.init()
     self.businessLogic = TPPSignInBusinessLogic(
       libraryAccountID: libraryAccountID,
       libraryAccountsProvider: AccountsManager.shared,
@@ -95,22 +97,19 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     
     super.init()
     
-    // Now properly initialize with self as delegate
     var drmAuthorizer: TPPDRMAuthorizing?
-#if FEATURE_DRM_CONNECTOR
+    #if FEATURE_DRM_CONNECTOR
     if AdobeCertificate.defaultCertificate?.hasExpired == false {
       drmAuthorizer = NYPLADEPT.sharedInstance()
     }
-#endif
+    #endif
     
-    // Create proper network executor with credentials provider
     let networkExecutor = TPPNetworkExecutor(
       credentialsProvider: self,
       cachingStrategy: .ephemeral,
       delegateQueue: OperationQueue.main
     )
     
-    // Recreate business logic with proper configuration
     self.businessLogic = TPPSignInBusinessLogic(
       libraryAccountID: libraryAccountID,
       libraryAccountsProvider: AccountsManager.shared,
@@ -123,7 +122,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
       drmAuthorizer: drmAuthorizer
     )
     
-    self.frontEndValidator = TPPUserAccountFrontEndValidation(
+    frontEndValidator = TPPUserAccountFrontEndValidation(
       account: selectedAccount!,
       businessLogic: businessLogic,
       inputProvider: self
@@ -134,6 +133,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
   }
   
   // MARK: - Setup
+  
   private func setupObservers() {
     NotificationCenter.default.publisher(for: .TPPUserAccountDidChange)
       .sink { [weak self] _ in
@@ -145,35 +145,27 @@ class AccountDetailViewModel: NSObject, ObservableObject {
   }
   
   private func loadInitialData() {
-    Log.info(#file, "Loading initial data...")
     isLoadingAuth = true
     
     if businessLogic.libraryAccount?.details != nil {
-      Log.info(#file, "Library account details already loaded")
       Task { @MainActor in
         setupViews()
         accountDidChange()
         isLoadingAuth = false
-        Log.info(#file, "Initial setup complete")
       }
     } else {
-      Log.info(#file, "Loading authentication document...")
       businessLogic.ensureAuthenticationDocumentIsLoaded { [weak self] success in
         Task { @MainActor in
-          guard let self = self else { return }
-          
-          Log.info(#file, "Authentication document loaded: \(success)")
+          guard let self else { return }
           self.isLoadingAuth = false
           
           if success {
             self.setupViews()
             self.accountDidChange()
-            Log.info(#file, "Initial setup complete after auth doc load")
           } else {
-            Log.error(#file, "Failed to load authentication document")
             self.showError(
               title: Strings.Error.connectionFailed,
-              message: NSLocalizedString("Please check your connection and try again.", comment: "Connection error")
+              message: NSLocalizedString("Please check your connection and try again.", comment: "")
             )
           }
         }
@@ -201,8 +193,8 @@ class AccountDetailViewModel: NSObject, ObservableObject {
   }
   
   // MARK: - Table Data Setup
+  
   private func setupTableData() {
-    Log.debug(#file, "Setting up table data...")
     let section0 = accountInfoSection()
     var sections: [[CellType]] = [section0]
     
@@ -234,24 +226,24 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     }
     
     tableData = sections.filter { !$0.isEmpty }
-    Log.debug(#file, "Table data setup complete: \(sections.count) sections")
   }
   
   private func accountInfoSection() -> [CellType] {
     var workingSection: [CellType] = []
     
-    Log.debug(#file, "Building account info section - needsAgeCheck: \(businessLogic.selectedAuthentication?.needsAgeCheck ?? false), needsAuth: \(businessLogic.selectedAuthentication?.needsAuth ?? false), isSignedIn: \(isSignedIn)")
-    
     if businessLogic.selectedAuthentication?.needsAgeCheck == true {
-      workingSection = [.ageCheck]
-    } else if businessLogic.selectedAuthentication?.needsAuth == false {
-      // No authentication needed
-    } else if businessLogic.selectedAuthentication != nil && isSignedIn {
+      return [.ageCheck]
+    }
+    
+    guard businessLogic.selectedAuthentication?.needsAuth != false else {
+      return []
+    }
+    
+    if businessLogic.selectedAuthentication != nil && isSignedIn {
       workingSection = cellsForAuthMethod(businessLogic.selectedAuthentication!)
     } else if !isSignedIn && selectedUserAccount.needsAuth {
       if businessLogic.isSamlPossible() {
-        let info = String(format: NSLocalizedString("Log in to %@ required to download books.", comment: ""), libraryName)
-        workingSection.append(.infoHeader(info))
+        workingSection.append(.infoHeader(Strings.AccountDetail.signInMessage(libraryName: libraryName)))
       }
       
       if let details = businessLogic.libraryAccount?.details,
@@ -286,78 +278,64 @@ class AccountDetailViewModel: NSObject, ObservableObject {
   private func cellsForAuthMethod(_ auth: AccountDetails.Authentication) -> [CellType] {
     if auth.isOauth {
       return [.logInSignOut]
-    } else if auth.isSaml && isSignedIn {
-      return [.logInSignOut]
-    } else if auth.isSaml {
-      return (auth.samlIdps ?? []).map { idp in CellType.samlIDP(idp) }
-    } else if auth.pinKeyboard != .none {
-      return [.barcode, .pin, .logInSignOut]
-    } else {
-      pinText = ""
-      return [.barcode, .logInSignOut]
     }
+    
+    if auth.isSaml && isSignedIn {
+      return [.logInSignOut]
+    }
+    
+    if auth.isSaml {
+      return (auth.samlIdps ?? []).map { CellType.samlIDP($0) }
+    }
+    
+    if auth.pinKeyboard != .none {
+      return [.barcode, .pin, .logInSignOut]
+    }
+    
+    pinText = ""
+    return [.barcode, .logInSignOut]
   }
   
   // MARK: - Actions
+  
   func signIn() {
-    Log.info(#file, "Sign in button tapped")
-    
-    if isSignedIn {
-      Log.debug(#file, "User is signed in, showing sign out alert")
+    guard !isSignedIn else {
       presentSignOutAlert()
       return
     }
     
-    // For OAuth, we can proceed directly
     if businessLogic.selectedAuthentication?.isOauth == true {
-      Log.info(#file, "Starting OAuth sign-in")
       businessLogic.logIn()
       return
     }
     
-    // For basic auth, check if fields are filled
-    guard canSignIn else {
-      Log.debug(#file, "Cannot sign in: credentials not filled")
-      return
-    }
+    guard canSignIn else { return }
     
-    // Sign in with token or basic auth
     if let tokenURL = selectedUserAccount.authDefinition?.tokenURL {
-      Log.info(#file, "Starting token-based sign-in")
       businessLogic.logIn(with: tokenURL)
     } else {
-      Log.info(#file, "Starting basic auth sign-in")
       businessLogic.logIn()
     }
   }
   
   func signOut() {
-    if let alert = businessLogic.logOutOrWarn() {
-      // Present alert through UIKit bridge
-      TPPPresentationUtils.safelyPresent(alert, animated: true)
-    }
+    guard let alert = businessLogic.logOutOrWarn() else { return }
+    TPPPresentationUtils.safelyPresent(alert, animated: true)
   }
   
   private func presentSignOutAlert() {
-    let logoutString: String
-    if businessLogic.shouldShowSyncButton() && !isSyncEnabled {
-      logoutString = NSLocalizedString("If you sign out without enabling Sync, your books and any saved bookmarks will be removed.", comment: "")
-    } else {
-      logoutString = NSLocalizedString("If you sign out, your books and any saved bookmarks will be removed.", comment: "")
-    }
+    let message = Strings.AccountDetail.signOutWarningWithSync(syncEnabled: isSyncEnabled)
     
     let alert = UIAlertController(
-      title: NSLocalizedString("Sign out", comment: ""),
-      message: logoutString,
+      title: DisplayStrings.signOut,
+      message: message,
       preferredStyle: .alert
     )
     
     alert.addAction(UIAlertAction(
-      title: NSLocalizedString("Sign out", comment: ""),
+      title: DisplayStrings.signOut,
       style: .destructive,
-      handler: { [weak self] _ in
-        self?.signOut()
-      }
+      handler: { [weak self] _ in self?.signOut() }
     ))
     
     alert.addAction(UIAlertAction(
@@ -369,26 +347,28 @@ class AccountDetailViewModel: NSObject, ObservableObject {
   }
   
   func togglePINVisibility() {
-    if !pinText.isEmpty && isPINHidden {
-      let context = LAContext()
-      if context.canEvaluatePolicy(.deviceOwnerAuthentication, error: nil) {
-        context.evaluatePolicy(
-          .deviceOwnerAuthentication,
-          localizedReason: NSLocalizedString("Authenticate to reveal your PIN.", comment: "")
-        ) { [weak self] success, error in
-          Task { @MainActor in
-            if success {
-              self?.isPINHidden.toggle()
-            } else if let error = error {
-              TPPErrorLogger.logError(error, summary: "Error while trying to show/hide the PIN", metadata: nil)
-            }
-          }
-        }
-      } else {
-        isPINHidden.toggle()
-      }
-    } else {
+    guard !pinText.isEmpty && isPINHidden else {
       isPINHidden.toggle()
+      return
+    }
+    
+    let context = LAContext()
+    guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: nil) else {
+      isPINHidden.toggle()
+      return
+    }
+    
+    context.evaluatePolicy(
+      .deviceOwnerAuthentication,
+      localizedReason: DisplayStrings.authenticateToRevealPIN
+    ) { [weak self] success, error in
+      Task { @MainActor in
+        if success {
+          self?.isPINHidden.toggle()
+        } else if let error {
+          TPPErrorLogger.logError(error, summary: "Error while trying to show/hide the PIN", metadata: nil)
+        }
+      }
     }
   }
   
@@ -401,9 +381,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     #if !OPENEBOOKS
     TPPBarcode.presentScanner { [weak self] resultString in
       Task { @MainActor in
-        if let resultString = resultString {
-          self?.usernameText = resultString
-        }
+        self?.usernameText = resultString ?? ""
       }
     }
     #endif
@@ -439,7 +417,6 @@ class AccountDetailViewModel: NSObject, ObservableObject {
   }
   
   func selectSAMLIDP(_ idp: OPDS2SamlIDP) {
-    Log.info(#file, "SAML IDP selected: \(idp.displayName ?? "unknown")")
     businessLogic.selectedIDP = idp
     businessLogic.logIn()
   }
@@ -447,7 +424,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
   func openRegistration() {
     businessLogic.startRegularCardCreation { [weak self] navVC, error in
       Task { @MainActor in
-        if let error = error {
+        if let error {
           self?.showError(
             title: Strings.Generic.error,
             message: error.localizedDescription
@@ -455,24 +432,25 @@ class AccountDetailViewModel: NSObject, ObservableObject {
           return
         }
         
-        if let navVC = navVC {
-          navVC.navigationBar.topItem?.leftBarButtonItem = UIBarButtonItem(
-            title: Strings.Generic.back,
-            style: .plain,
-            target: self,
-            action: #selector(self?.dismissRegistration)
-          )
-          navVC.modalPresentationStyle = .formSheet
-          TPPPresentationUtils.safelyPresent(navVC, animated: true)
-        }
+        guard let navVC else { return }
+        
+        navVC.navigationBar.topItem?.leftBarButtonItem = UIBarButtonItem(
+          title: Strings.Generic.back,
+          style: .plain,
+          target: self,
+          action: #selector(self?.dismissRegistration)
+        )
+        navVC.modalPresentationStyle = .formSheet
+        TPPPresentationUtils.safelyPresent(navVC, animated: true)
       }
     }
   }
   
   @objc private func dismissRegistration() {
-    if let presented = UIApplication.shared.windows.first?.rootViewController?.presentedViewController {
-      presented.dismiss(animated: true)
+    guard let presented = UIApplication.shared.windows.first?.rootViewController?.presentedViewController else {
+      return
     }
+    presented.dismiss(animated: true)
   }
   
   private func accountDidChange() {
@@ -496,6 +474,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
 }
 
 // MARK: - CellType Enum
+
 enum CellType: Hashable {
   case advancedSettings
   case ageCheck
@@ -552,34 +531,12 @@ enum CellType: Hashable {
   }
   
   static func == (lhs: CellType, rhs: CellType) -> Bool {
-    switch (lhs, rhs) {
-    case (.advancedSettings, .advancedSettings),
-         (.ageCheck, .ageCheck),
-         (.barcodeImage, .barcodeImage),
-         (.barcode, .barcode),
-         (.pin, .pin),
-         (.logInSignOut, .logInSignOut),
-         (.registration, .registration),
-         (.syncButton, .syncButton),
-         (.about, .about),
-         (.privacyPolicy, .privacyPolicy),
-         (.contentLicense, .contentLicense),
-         (.reportIssue, .reportIssue),
-         (.passwordReset, .passwordReset):
-      return true
-    case (.authMethod(let auth1), .authMethod(let auth2)):
-      return auth1.methodDescription == auth2.methodDescription
-    case (.samlIDP(let idp1), .samlIDP(let idp2)):
-      return idp1.displayName == idp2.displayName
-    case (.infoHeader(let text1), .infoHeader(let text2)):
-      return text1 == text2
-    default:
-      return false
-    }
+    lhs.hashValue == rhs.hashValue
   }
 }
 
 // MARK: - NYPLUserAccountInputProvider
+
 extension AccountDetailViewModel: NYPLUserAccountInputProvider {
   var usernameTextField: UITextField? {
     get { nil }
@@ -593,40 +550,35 @@ extension AccountDetailViewModel: NYPLUserAccountInputProvider {
 }
 
 // MARK: - TPPSignInOutBusinessLogicUIDelegate
+
 extension AccountDetailViewModel: TPPSignInOutBusinessLogicUIDelegate {
   var context: String {
     "Settings Tab"
   }
   
   func businessLogicWillSignIn(_ businessLogic: TPPSignInBusinessLogic) {
-    Log.info(#file, "Business logic will sign in")
     isLoading = true
     
-    // Safety timeout: clear loading state after 30 seconds if no response
     Task {
-      try? await Task.sleep(nanoseconds: 30_000_000_000)
-      if self.isLoading {
-        Log.warn(#file, "Sign-in timeout reached, clearing loading state")
+      try? await Task.sleep(nanoseconds: Constants.signInTimeoutSeconds)
+      if isLoading {
         await MainActor.run {
-          self.isLoading = false
+          isLoading = false
         }
       }
     }
   }
   
   func businessLogicDidCancelSignIn(_ businessLogic: TPPSignInBusinessLogic) {
-    Log.info(#file, "Business logic cancelled sign in")
     isLoading = false
   }
   
   func businessLogicDidCompleteSignIn(_ businessLogic: TPPSignInBusinessLogic) {
-    Log.info(#file, "Business logic completed sign in")
     isLoading = false
     accountDidChange()
   }
   
   func businessLogic(_ logic: TPPSignInBusinessLogic, didEncounterValidationError error: Error?, userFriendlyErrorTitle title: String?, andMessage message: String?) {
-    Log.error(#file, "Validation error encountered: \(error?.localizedDescription ?? "unknown")")
     isLoading = false
     
     if let error = error as? NSError, error.code == NSURLErrorCancelled {
@@ -639,12 +591,10 @@ extension AccountDetailViewModel: TPPSignInOutBusinessLogicUIDelegate {
   }
   
   func businessLogicWillSignOut(_ businessLogic: TPPSignInBusinessLogic) {
-    Log.info(#file, "Business logic will sign out")
     isLoading = true
   }
   
   func businessLogic(_ logic: TPPSignInBusinessLogic, didEncounterSignOutError error: Error?, withHTTPStatusCode httpStatusCode: Int) {
-    Log.error(#file, "Sign out error: \(error?.localizedDescription ?? "unknown"), status: \(httpStatusCode)")
     isLoading = false
     
     let title: String
@@ -653,7 +603,7 @@ extension AccountDetailViewModel: TPPSignInOutBusinessLogicUIDelegate {
     if httpStatusCode == 401 {
       title = "Unexpected Credentials"
       message = "Your username or password may have changed since the last time you logged in.\n\nIf you believe this is an error, please contact your library."
-    } else if let error = error {
+    } else if let error {
       title = "SettingsAccountViewControllerLogoutFailed"
       message = error.localizedDescription
     } else {
@@ -665,16 +615,16 @@ extension AccountDetailViewModel: TPPSignInOutBusinessLogicUIDelegate {
   }
   
   func businessLogicDidFinishDeauthorizing(_ logic: TPPSignInBusinessLogic) {
-    Log.info(#file, "Business logic finished deauthorizing")
     isLoading = false
     setupTableData()
     accountDidChange()
   }
   
   func dismiss(animated flag: Bool, completion: (() -> Void)?) {
-    if let presented = UIApplication.shared.windows.first?.rootViewController?.presentedViewController {
-      presented.dismiss(animated: flag, completion: completion)
+    guard let presented = UIApplication.shared.windows.first?.rootViewController?.presentedViewController else {
+      return
     }
+    presented.dismiss(animated: flag, completion: completion)
   }
   
   func present(_ viewControllerToPresent: UIViewController, animated flag: Bool, completion: (() -> Void)?) {
@@ -683,13 +633,13 @@ extension AccountDetailViewModel: TPPSignInOutBusinessLogicUIDelegate {
 }
 
 // MARK: - NYPLBasicAuthCredentialsProvider
+
 extension AccountDetailViewModel: NYPLBasicAuthCredentialsProvider {
   var username: String? {
-    self.usernameText.isEmpty ? nil : self.usernameText
+    usernameText.isEmpty ? nil : usernameText
   }
   
   var pin: String? {
-    self.pinText.isEmpty ? nil : self.pinText
+    pinText.isEmpty ? nil : pinText
   }
 }
-

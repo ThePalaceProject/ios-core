@@ -9,6 +9,12 @@ import SwiftUI
 import WebKit
 
 struct EULAView: View {
+  typealias DisplayStrings = Strings.Settings
+  
+  private enum Constants {
+    static let requestTimeout: TimeInterval = 15.0
+  }
+  
   let eulaURL: URL
   let title: String
   
@@ -18,13 +24,13 @@ struct EULAView: View {
   @Environment(\.dismiss) private var dismiss
   
   init(account: Account) {
-    self.eulaURL = account.details?.getLicenseURL(.eula) ?? URL(string: TPPSettings.TPPUserAgreementURLString)!
-    self.title = NSLocalizedString("User Agreement", comment: "")
+    eulaURL = account.details?.getLicenseURL(.eula) ?? URL(string: TPPSettings.TPPUserAgreementURLString)!
+    title = Strings.Settings.eula
   }
   
   init(nyplURL: Bool = true) {
-    self.eulaURL = URL(string: TPPSettings.TPPUserAgreementURLString)!
-    self.title = NSLocalizedString("User Agreement", comment: "")
+    eulaURL = URL(string: TPPSettings.TPPUserAgreementURLString)!
+    title = Strings.Settings.eula
   }
   
   var body: some View {
@@ -43,7 +49,7 @@ struct EULAView: View {
     }
     .navigationTitle(title)
     .navigationBarTitleDisplayMode(.inline)
-    .alert(NSLocalizedString("Connection Failed", comment: ""), isPresented: $showError) {
+    .alert(Strings.Error.connectionFailed, isPresented: $showError) {
       Button(Strings.Generic.cancel, role: .cancel) {
         dismiss()
       }
@@ -52,13 +58,17 @@ struct EULAView: View {
         isLoading = true
       }
     } message: {
-      Text(errorMessage ?? NSLocalizedString("Unable to load the web page at this time.", comment: ""))
+      Text(errorMessage ?? Strings.Error.pageLoadFailedError)
     }
   }
 }
 
 // MARK: - WebView Wrapper
 private struct WebView: UIViewRepresentable {
+  private enum Constants {
+    static let requestTimeout: TimeInterval = 15.0
+  }
+  
   let url: URL
   @Binding var isLoading: Bool
   @Binding var showError: Bool
@@ -76,7 +86,7 @@ private struct WebView: UIViewRepresentable {
     let request = URLRequest(
       url: url,
       cachePolicy: .useProtocolCachePolicy,
-      timeoutInterval: 15.0
+      timeoutInterval: Constants.requestTimeout
     )
     webView.load(request)
     
@@ -84,14 +94,14 @@ private struct WebView: UIViewRepresentable {
   }
   
   func updateUIView(_ webView: WKWebView, context: Context) {
-    if showError {
-      let request = URLRequest(
-        url: url,
-        cachePolicy: .useProtocolCachePolicy,
-        timeoutInterval: 15.0
-      )
-      webView.load(request)
-    }
+    guard showError else { return }
+    
+    let request = URLRequest(
+      url: url,
+      cachePolicy: .useProtocolCachePolicy,
+      timeoutInterval: Constants.requestTimeout
+    )
+    webView.load(request)
   }
   
   class Coordinator: NSObject, WKNavigationDelegate {

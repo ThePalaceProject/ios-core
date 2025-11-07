@@ -8,14 +8,17 @@
 import SwiftUI
 
 struct AdvancedSettingsView: View {
-  typealias DisplayStrings = Strings.TPPSettingsAdvancedViewController
+  typealias DisplayStrings = Strings.Settings
   
   let account: Account
   @State private var showDeleteAlert = false
   @Environment(\.dismiss) private var dismiss
   
   init(accountID: String) {
-    self.account = AccountsManager.shared.account(accountID)!
+    guard let account = AccountsManager.shared.account(accountID) else {
+      fatalError("Account not found for ID: \(accountID)")
+    }
+    self.account = account
   }
   
   var body: some View {
@@ -31,25 +34,12 @@ struct AdvancedSettingsView: View {
     .listStyle(GroupedListStyle())
     .navigationTitle(DisplayStrings.advanced)
     .navigationBarTitleDisplayMode(.inline)
-    .alert(deleteAlertTitle, isPresented: $showDeleteAlert) {
-      Button(Strings.Generic.delete, role: .destructive) {
-        disableSync()
-      }
+    .alert(DisplayStrings.deleteServerData, isPresented: $showDeleteAlert) {
+      Button(Strings.Generic.delete, role: .destructive, action: disableSync)
       Button(Strings.Generic.cancel, role: .cancel) {}
     } message: {
-      Text(deleteMessage)
+      Text(Strings.AccountDetail.deleteServerDataMessage(libraryName: account.name))
     }
-  }
-  
-  private var deleteAlertTitle: String {
-    NSLocalizedString("Delete Server Data", comment: "")
-  }
-  
-  private var deleteMessage: String {
-    String.localizedStringWithFormat(
-      NSLocalizedString("Selecting \"Delete\" will remove all bookmarks from the server for %@.", comment: ""),
-      account.name
-    )
   }
   
   private func disableSync() {
