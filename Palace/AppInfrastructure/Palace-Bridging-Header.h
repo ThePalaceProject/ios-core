@@ -17,7 +17,6 @@
 #import "TPPKeychain.h"
 #import "TPPLocalization.h"
 #import "TPPOPDS.h"
-#import "TPPSettingsAccountDetailViewController.h"
 #import "TPPXML.h"
 #import "UIFont+TPPSystemFontOverride.h"
 #import "UIView+TPPViewAdditions.h"
