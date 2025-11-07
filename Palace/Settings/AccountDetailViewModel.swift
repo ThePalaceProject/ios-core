@@ -372,9 +372,8 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     }
   }
   
-  func toggleSync() {
-    isSyncEnabled.toggle()
-    selectedAccount?.details?.syncPermissionGranted = isSyncEnabled
+  func updateSync(enabled: Bool) {
+    selectedAccount?.details?.syncPermissionGranted = enabled
   }
   
   func scanBarcode() {

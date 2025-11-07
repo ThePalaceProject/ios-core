@@ -1,3 +1,4 @@
+import UIKit
 import SwiftUI
 
 /// UITableView to display or add library accounts that the user
@@ -301,7 +302,10 @@ import SwiftUI
     
     let view = AccountDetailView(libraryAccountID: account?.uuid ?? "")
     let vc = UIHostingController(rootView: view)
-    vc.title = NSLocalizedString("Account", comment: "")
+    
+    // Pre-configure navigation bar to prevent snap
+    vc.navigationItem.largeTitleDisplayMode = .never
+    
     self.tableView.deselectRow(at: indexPath, animated: true)
     self.navigationController?.pushViewController(vc, animated: true)
   }

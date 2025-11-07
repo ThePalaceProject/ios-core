@@ -19,20 +19,25 @@ struct AccountDetailView: View {
   }
   
   var body: some View {
-    ZStack {
-      if viewModel.isLoadingAuth {
-        ProgressView()
-          .progressViewStyle(CircularProgressViewStyle())
-      } else {
-        mainContent
+    contentView
+      .navigationBarTitleDisplayMode(.inline)
+      .toolbarBackground(.visible, for: .tabBar)
+      .toolbarBackground(Color(UIColor.systemBackground), for: .tabBar)
+      .alert(viewModel.alertTitle, isPresented: $viewModel.showingAlert) {
+        Button(Strings.Generic.ok, role: .cancel) {}
+      } message: {
+        Text(viewModel.alertMessage)
       }
-    }
-    .navigationTitle(DisplayStrings.account)
-    .navigationBarTitleDisplayMode(.inline)
-    .alert(viewModel.alertTitle, isPresented: $viewModel.showingAlert) {
-      Button(Strings.Generic.ok, role: .cancel) {}
-    } message: {
-      Text(viewModel.alertMessage)
+  }
+  
+  @ViewBuilder
+  private var contentView: some View {
+    if viewModel.isLoadingAuth {
+      ProgressView()
+        .progressViewStyle(CircularProgressViewStyle())
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    } else {
+      mainContent
     }
   }
   
@@ -147,12 +152,22 @@ struct AccountDetailView: View {
     }
   }
   
+  @ViewBuilder
   private var reportIssueLink: some View {
-    Button(action: handleReportIssue) {
-      Text(DisplayStrings.reportIssue)
-        .font(.palaceFont(size: Typography.messageSize))
-        .foregroundColor(Color(TPPConfiguration.mainColor()))
-        .underline()
+    if viewModel.selectedAccount?.supportEmail != nil {
+      Button(action: handleReportIssue) {
+        Text(DisplayStrings.reportIssue)
+          .font(.palaceFont(size: Typography.messageSize))
+          .foregroundColor(Color(TPPConfiguration.mainColor()))
+          .underline()
+      }
+    } else if viewModel.selectedAccount?.supportURL != nil {
+      NavigationLink(destination: reportIssueWebView) {
+        Text(DisplayStrings.reportIssue)
+          .font(.palaceFont(size: Typography.messageSize))
+          .foregroundColor(Color(TPPConfiguration.mainColor()))
+          .underline()
+      }
     }
   }
   
@@ -378,8 +393,8 @@ struct AccountDetailView: View {
       
       Toggle("", isOn: $viewModel.isSyncEnabled)
         .labelsHidden()
-        .onChange(of: viewModel.isSyncEnabled) { _ in
-          viewModel.toggleSync()
+        .onChange(of: viewModel.isSyncEnabled) { newValue in
+          viewModel.updateSync(enabled: newValue)
         }
     }
   }
@@ -413,10 +428,62 @@ struct AccountDetailView: View {
     }
   }
   
+  @ViewBuilder
+  private var privacyPolicyView: some View {
+    if let url = viewModel.selectedAccount?.details?.getLicenseURL(.privacyPolicy) {
+      UIViewControllerWrapper(
+        RemoteHTMLViewController(
+          URL: url,
+          title: DisplayStrings.privacyPolicy,
+          failureMessage: Strings.Error.pageLoadFailedError
+        ),
+        updater: { _ in }
+      )
+      .navigationBarTitle(Text(DisplayStrings.privacyPolicy))
+    }
+  }
+  
+  @ViewBuilder
+  private var contentLicenseView: some View {
+    if let url = viewModel.selectedAccount?.details?.getLicenseURL(.contentLicenses) {
+      UIViewControllerWrapper(
+        RemoteHTMLViewController(
+          URL: url,
+          title: DisplayStrings.contentLicenses,
+          failureMessage: Strings.Error.pageLoadFailedError
+        ),
+        updater: { _ in }
+      )
+      .navigationBarTitle(Text(DisplayStrings.contentLicenses))
+    }
+  }
+  
+  @ViewBuilder
   private var reportIssueCell: some View {
-    Button(action: handleReportIssue) {
-      Text(DisplayStrings.reportIssue)
-        .font(.system(.body))
+    if viewModel.selectedAccount?.supportEmail != nil {
+      Button(action: handleReportIssue) {
+        Text(DisplayStrings.reportIssue)
+          .font(.system(.body))
+      }
+    } else if viewModel.selectedAccount?.supportURL != nil {
+      NavigationLink(destination: reportIssueWebView) {
+        Text(DisplayStrings.reportIssue)
+          .font(.system(.body))
+      }
+    }
+  }
+  
+  @ViewBuilder
+  private var reportIssueWebView: some View {
+    if let url = viewModel.selectedAccount?.supportURL {
+      UIViewControllerWrapper(
+        BundledHTMLViewController(
+          fileURL: url,
+          title: viewModel.selectedAccount?.name ?? ""
+        ),
+        updater: { _ in }
+      )
+      .navigationBarTitle(Text(DisplayStrings.reportIssue))
     }
   }
   
@@ -484,55 +551,19 @@ struct AccountDetailView: View {
       .padding(.top, Layout.verticalPaddingSmall)
   }
   
-  // MARK: - Helper Views
-  
-  @ViewBuilder
-  private var privacyPolicyView: some View {
-    if let url = viewModel.selectedAccount?.details?.getLicenseURL(.privacyPolicy) {
-      UIViewControllerWrapper(
-        RemoteHTMLViewController(
-          URL: url,
-          title: DisplayStrings.privacyPolicy,
-          failureMessage: Strings.Error.pageLoadFailedError
-        ),
-        updater: { _ in }
-      )
-    }
-  }
-  
-  @ViewBuilder
-  private var contentLicenseView: some View {
-    if let url = viewModel.selectedAccount?.details?.getLicenseURL(.contentLicenses) {
-      UIViewControllerWrapper(
-        RemoteHTMLViewController(
-          URL: url,
-          title: DisplayStrings.contentLicenses,
-          failureMessage: Strings.Error.pageLoadFailedError
-        ),
-        updater: { _ in }
-      )
-    }
-  }
-  
   // MARK: - Actions
   
   private func handleReportIssue() {
-    guard let topVC = topViewController() else { return }
-    
-    if let email = viewModel.selectedAccount?.supportEmail {
-      ProblemReportEmail.sharedInstance.beginComposing(
-        to: email.rawValue,
-        presentingViewController: topVC,
-        book: nil as TPPBook?
-      )
-    } else if let url = viewModel.selectedAccount?.supportURL {
-      let vc = BundledHTMLViewController(
-        fileURL: url,
-        title: viewModel.selectedAccount?.name ?? ""
-      )
-      vc.hidesBottomBarWhenPushed = true
-      topVC.navigationController?.pushViewController(vc, animated: true)
+    guard let email = viewModel.selectedAccount?.supportEmail,
+          let topVC = topViewController() else {
+      return
     }
+    
+    ProblemReportEmail.sharedInstance.beginComposing(
+      to: email.rawValue,
+      presentingViewController: topVC,
+      book: nil as TPPBook?
+    )
   }
   
   // MARK: - Helper Methods
