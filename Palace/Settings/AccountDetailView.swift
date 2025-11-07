@@ -33,9 +33,7 @@ struct AccountDetailView: View {
   @ViewBuilder
   private var contentView: some View {
     if viewModel.isLoadingAuth {
-      ProgressView()
-        .progressViewStyle(CircularProgressViewStyle())
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+      AccountDetailSkeletonView()
     } else {
       mainContent
     }
