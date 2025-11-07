@@ -1657,8 +1657,6 @@
 		E66AE32F1DC0FCFC00124AE2 /* TPPCirculationAnalytics.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPCirculationAnalytics.swift; sourceTree = "<group>"; };
 		E671FF7C1E3A7068002AB13F /* TPPNetworkQueue.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPNetworkQueue.swift; sourceTree = "<group>"; };
 		E68CCFC41F9F80CF003DDA6C /* TPPBarcode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBarcode.swift; sourceTree = "<group>"; };
-		E69404081E4A789800E566ED /* TPPReachabilityManager.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPReachabilityManager.h; sourceTree = "<group>"; };
-		E69404091E4A789800E566ED /* TPPReachabilityManager.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPReachabilityManager.m; sourceTree = "<group>"; };
 		E6B1F4FA1DD20EA900D73CA1 /* TPPSettingsAccountsList.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPSettingsAccountsList.swift; sourceTree = "<group>"; };
 		E6B6E76E1F6859A4007EE361 /* TPPKeychainManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPKeychainManager.swift; sourceTree = "<group>"; };
 		E6BA02B71DE4B6F600F76404 /* RemoteHTMLViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = RemoteHTMLViewController.swift; sourceTree = "<group>"; };
@@ -2165,8 +2163,6 @@
 				733875642423E1B0000FEB67 /* TPPNetworkExecutor.swift */,
 				735FED252427494900144C97 /* TPPNetworkResponder.swift */,
 				E7E9A22C298C6A82006C5D9E /* Reachability.swift */,
-				E69404081E4A789800E566ED /* TPPReachabilityManager.h */,
-				E69404091E4A789800E566ED /* TPPReachabilityManager.m */,
 				73DE8979260BEA13003D9135 /* TPPRequestExecuting.swift */,
 				118B7ABD195CBF72005CE3E7 /* TPPSession.h */,
 				118B7ABE195CBF72005CE3E7 /* TPPSession.m */,
@@ -4840,7 +4836,7 @@
 				CODE_SIGN_IDENTITY = "Apple Distribution";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 403;
+				CURRENT_PROJECT_VERSION = 404;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -4897,7 +4893,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 403;
+				CURRENT_PROJECT_VERSION = 404;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -5083,7 +5079,7 @@
 				CODE_SIGN_ENTITLEMENTS = Palace/PalaceDebug.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 403;
+				CURRENT_PROJECT_VERSION = 404;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
@@ -5143,7 +5139,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 403;
+				CURRENT_PROJECT_VERSION = 404;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
