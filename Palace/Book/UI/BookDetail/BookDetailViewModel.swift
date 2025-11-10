@@ -372,7 +372,7 @@ final class BookDetailViewModel: ObservableObject {
         let account = TPPUserAccount.sharedAccount()
         if account.needsAuth && !account.hasCredentials() {
           self.showHalfSheet = false
-          TPPAccountSignInViewController.requestCredentials { [weak self] in
+          SignInModalPresenter.presentSignInModalForCurrentAccount { [weak self] in
             guard self != nil else { return }
             action()
           }

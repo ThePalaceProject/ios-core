@@ -93,7 +93,7 @@ final class HoldsViewModel: ObservableObject {
             if TPPUserAccount.sharedAccount().hasCredentials() {
                 TPPBookRegistry.shared.sync()
             } else {
-                TPPAccountSignInViewController.requestCredentials {
+                SignInModalPresenter.presentSignInModalForCurrentAccount {
                     self.reloadData()
                 }
             }

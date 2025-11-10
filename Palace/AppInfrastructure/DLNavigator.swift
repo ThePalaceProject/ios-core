@@ -82,7 +82,7 @@ class DLNavigator {
     if TPPUserAccount.sharedAccount(libraryUUID: libraryId).isSignedIn() {
       return
     }
-    TPPAccountSignInViewController.requestCredentials(forUsername: barcode) {
+    SignInModalPresenter.presentSignInModalForCurrentAccount {
       let accountList = TPPAccountList { account in
         MyBooksViewModel().authenticateAndLoad(account: account)
       }
