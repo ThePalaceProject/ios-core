@@ -316,7 +316,7 @@ extension BookCellModel {
   func didSelectDownload() {
     let account = TPPUserAccount.sharedAccount()
     if account.needsAuth && !account.hasCredentials() {
-      TPPAccountSignInViewController.requestCredentials { [weak self] in
+      SignInModalPresenter.presentSignInModalForCurrentAccount { [weak self] in
         guard let self else { return }
         self.startDownloadNow()
       }
@@ -336,7 +336,7 @@ extension BookCellModel {
     isLoading = true
     let account = TPPUserAccount.sharedAccount()
     if account.needsAuth && !account.hasCredentials() {
-      TPPAccountSignInViewController.requestCredentials { [weak self] in
+      SignInModalPresenter.presentSignInModalForCurrentAccount { [weak self] in
         guard let self else { return }
         TPPUserNotifications.requestAuthorization()
         Task {

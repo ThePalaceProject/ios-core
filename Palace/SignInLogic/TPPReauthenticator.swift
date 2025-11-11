@@ -27,8 +27,6 @@ protocol Reauthenticator: NSObject {
 /// the hood when no user input is needed.
 @objc class TPPReauthenticator: NSObject, Reauthenticator {
 
-  private var signInModalVC: TPPAccountSignInViewController?
-
   /// Re-authenticates the user. This may involve presenting the sign-in
   /// modal UI or not, depending on the sign-in business logic.
   ///
@@ -37,18 +35,16 @@ protocol Reauthenticator: NSObject {
   ///   - usingExistingCredentials: Use the existing credentials for `user`.
   ///   - authenticationCompletion: Code to run after the authentication
   ///   flow completes.
-  /// - Returns: `true` if an authentication flow was started to refresh the
-  /// credentials, `false` otherwise.
   @objc func authenticateIfNeeded(_ user: TPPUserAccount,
                                   usingExistingCredentials: Bool,
                                   authenticationCompletion: (()-> Void)?) {
     TPPMainThreadRun.asyncIfNeeded {
-      let vc = TPPAccountSignInViewController()
-      self.signInModalVC = vc
-      vc.forceEditability = true
-      vc.presentIfNeeded(usingExistingCredentials: usingExistingCredentials) {
+      Log.info(#file, "TPPReauthenticator: Re-authentication requested, using existing credentials: \(usingExistingCredentials)")
+      
+      // Use new SwiftUI sign-in modal
+      SignInModalPresenter.presentSignInModalForCurrentAccount {
+        Log.info(#file, "TPPReauthenticator: Re-authentication completed")
         authenticationCompletion?()
-        self.signInModalVC = nil //break desired retain cycle
       }
     }
   }

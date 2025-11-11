@@ -80,7 +80,7 @@ enum Group: Int {
     guard !isLoading else { return }
 
     if TPPUserAccount.sharedAccount().needsAuth, !TPPUserAccount.sharedAccount().hasCredentials() {
-      TPPAccountSignInViewController.requestCredentials(completion: nil)
+      SignInModalPresenter.presentSignInModalForCurrentAccount(completion: nil)
     } else {
       bookRegistry.sync { [weak self] _, _ in
         self?.loadData()
