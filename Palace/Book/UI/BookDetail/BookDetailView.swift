@@ -26,6 +26,7 @@ struct BookDetailView: View {
   @State private var pulseSkeleton: Bool = false
   @State private var lastBookIdentifier: String? = nil
   @State private var initialLayoutComplete: Bool = false
+  @State private var currentOrientation: UIDeviceOrientation = UIDevice.current.orientation
   
   private let scaleAnimation = Animation.linear(duration: 0.35)
 
@@ -96,6 +97,9 @@ struct BookDetailView: View {
       }
       .onDisappear {
         viewModel.showHalfSheet = false
+      }
+      .onReceive(NotificationCenter.default.publisher(for: UIDevice.orientationDidChangeNotification)) { _ in
+        handleOrientationChange()
       }
       .onReceive(viewModel.book.$dominantUIColor) { newColor in
         // Don't update while half sheet is showing to prevent unnecessary re-renders
@@ -311,7 +315,7 @@ struct BookDetailView: View {
   private var backgroundView: some View {
     ZStack(alignment: .top) {
       Color.primary
-        .edgesIgnoringSafeArea(.all)
+        .ignoresSafeArea()
       
       LinearGradient(
         gradient: Gradient(colors: [
@@ -321,8 +325,8 @@ struct BookDetailView: View {
         startPoint: .bottom,
         endPoint: .top
       )
+      .ignoresSafeArea()
     }
-    .edgesIgnoringSafeArea(.top)
   }
   
   private var compactHeaderContent: some View {
@@ -562,6 +566,24 @@ struct BookDetailView: View {
   private func updateImageBottomPosition() {
     let imageHeight = max(280 * imageScale, 80)
     imageBottomPosition = imageTopPadding + imageHeight + 70
+  }
+  
+  private func handleOrientationChange() {
+    let newOrientation = UIDevice.current.orientation
+    guard newOrientation.isValidInterfaceOrientation,
+          newOrientation != currentOrientation else { return }
+    
+    currentOrientation = newOrientation
+    viewModel.orientationChanged.toggle()
+    
+    withAnimation(.easeInOut(duration: 0.3)) {
+      headerHeight = viewModel.isFullSize ? 300 : 225
+      imageScale = viewModel.isFullSize ? 1.0 : imageScale
+      imageOpacity = viewModel.isFullSize ? 1.0 : imageOpacity
+      titleOpacity = viewModel.isFullSize ? 1.0 : titleOpacity
+      showCompactHeader = false
+      lastOffset = 0
+    }
   }
  
   private func resetSampleToolbar() {
