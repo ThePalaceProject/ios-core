@@ -6,13 +6,14 @@ struct BookListView: View {
   let onSelect: (TPPBook) -> Void
   var onLoadMore: (() async -> Void)? = nil
   var isLoadingMore: Bool = false
+  var previewEnabled: Bool = true
   @State private var containerWidth: CGFloat = UIScreen.main.bounds.width
 
   var body: some View {
     LazyVGrid(columns: gridLayout, spacing: 0) {
       ForEach(books, id: \.identifier) { book in
         Button(action: { onSelect(book) }) {
-          BookCell(model: BookCellModel(book: book, imageCache: ImageCache.shared))
+          BookCell(model: BookCellModel(book: book, imageCache: ImageCache.shared), previewEnabled: previewEnabled)
         }
         .buttonStyle(.plain)
         .applyBorderStyle()
@@ -51,7 +52,6 @@ struct BookListView: View {
 
   private var gridLayout: [GridItem] {
     if UIDevice.current.userInterfaceIdiom == .pad {
-      let isLandscape = containerWidth > containerWidth * 0.8 // Simple heuristic
       let screenWidth = UIScreen.main.bounds.width
       let screenHeight = UIScreen.main.bounds.height
       let actualIsLandscape = screenWidth > screenHeight

@@ -8,7 +8,6 @@
 #import "TPPConfiguration.h"
 #import "TPPLinearView.h"
 #import "TPPOPDSFeed.h"
-#import "TPPSettingsEULAViewController.h"
 #import "TPPXML.h"
 #import "UIView+TPPViewAdditions.h"
 #import "UIFont+TPPSystemFontOverride.h"
@@ -614,43 +613,17 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
 
 + (void)requestCredentialsWithCompletion:(void (^)(void))completion
 {
-  [TPPAccountSignInViewController requestCredentialsForUsername:nil withCompletion:completion];
+  [TPPMainThreadRun asyncIfNeeded:^{
+    // Use new SwiftUI sign-in modal
+    [SignInModalPresenter presentSignInModalForCurrentAccountWithCompletion:completion];
+  }];
 }
 
 + (void)requestCredentialsForUsername:(NSString *)username withCompletion:(void (^)(void))completion
 {
   [TPPMainThreadRun asyncIfNeeded:^{
-    // Retain the VC to prevent deallocation during auth flow
-    sRetainedSignInVC = [[self alloc] init];
-    sRetainedSignInVC.defaultUsername = username;
-    
-    // Failsafe: Release retained VC after 5 minutes if completion never called
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(300.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-      if (sRetainedSignInVC != nil) {
-        NSLog(@"Warning: Sign-in VC retained longer than expected, releasing");
-        sRetainedSignInVC = nil;
-      }
-    });
-    
-    // Wrap completion to release the retained VC
-    void (^wrappedCompletion)(void) = ^{
-      if (completion) {
-        completion();
-      }
-      sRetainedSignInVC = nil;
-    };
-    
-    // Ensure authentication document is loaded before presenting sign-in
-    [sRetainedSignInVC.businessLogic ensureAuthenticationDocumentIsLoaded:^(BOOL success) {
-      [TPPMainThreadRun asyncIfNeeded:^{
-        if (!success) {
-          NSLog(@"Failed to load authentication document for sign-in");
-        }
-        
-        [sRetainedSignInVC presentIfNeededUsingExistingCredentials:NO
-                                               completionHandler:wrappedCompletion];
-      }];
-    }];
+    // Use new SwiftUI sign-in modal (username pre-fill not yet supported)
+    [SignInModalPresenter presentSignInModalForCurrentAccountWithCompletion:completion];
   }];
 }
 
@@ -865,7 +838,16 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
 
 - (void)showEULA
 {
-  UIViewController *eulaViewController = [[TPPSettingsEULAViewController alloc] initWithAccount:self.businessLogic.libraryAccount];
+  Account *account = self.businessLogic.libraryAccount;
+  NSURL *eulaURL = [account.details getLicenseURL:URLTypeEula];
+  if (!eulaURL) {
+    eulaURL = [NSURL URLWithString:TPPSettings.TPPUserAgreementURLString];
+  }
+  
+  RemoteHTMLViewController *eulaViewController = [[RemoteHTMLViewController alloc] 
+                                                   initWithURL:eulaURL
+                                                   title:NSLocalizedString(@"User Agreement", nil)
+                                                   failureMessage:NSLocalizedString(@"The page could not load due to a connection error.", nil)];
   UINavigationController *navVC = [[UINavigationController alloc] initWithRootViewController:eulaViewController];
   [self.navigationController presentViewController:navVC animated:YES completion:nil];
 }

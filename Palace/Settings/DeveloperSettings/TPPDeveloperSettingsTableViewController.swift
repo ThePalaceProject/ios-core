@@ -17,6 +17,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
   private let lcpPassphraseCellIdentifier = "lcpPassphraseCell"
   private let clearCacheCellIdentifier = "clearCacheCell"
   private let emailLogsCellIdentifier = "emailLogsCell"
+  private let sendErrorLogsCellIdentifier = "sendErrorLogsCell"
   
   private var pushNotificationsStatus = false
   
@@ -52,6 +53,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: lcpPassphraseCellIdentifier)
     self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: clearCacheCellIdentifier)
     self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: emailLogsCellIdentifier)
+    self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: sendErrorLogsCellIdentifier)
   }
   
   // MARK:- UITableViewDataSource
@@ -59,7 +61,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
   func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
     switch Section(rawValue: section)! {
     case .librarySettings: return 2
-    case .developerTools: return 1
+    case .developerTools: return 2
     default: return 1
     }
   }
@@ -77,7 +79,11 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
       }
     case .libraryRegistryDebugging: return cellForCustomRegsitry()
     case .dataManagement: return cellForClearCache()
-    case .developerTools: return cellForEmailLogs()
+    case .developerTools:
+      switch indexPath.row {
+      case 0: return cellForSendErrorLogs()
+      default: return cellForEmailAudiobookLogs()
+      }
     }
   }
   
@@ -132,10 +138,31 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     return cell
   }
   
-  private func cellForEmailLogs() -> UITableViewCell {
+  private func cellForSendErrorLogs() -> UITableViewCell {
+    let cell = tableView.dequeueReusableCell(withIdentifier: sendErrorLogsCellIdentifier)!
+    cell.selectionStyle = .default
+    cell.textLabel?.text = "Send Error Logs"
+    
+    // Show indicator if enhanced monitoring is enabled
+    Task {
+      let isEnhanced = await DeviceSpecificErrorMonitor.shared.isEnhancedLoggingEnabled()
+      if isEnhanced {
+        await MainActor.run {
+          cell.detailTextLabel?.text = "🔍 Enhanced"
+          cell.detailTextLabel?.textColor = .systemGreen
+        }
+      }
+    }
+    
+    cell.accessoryType = .disclosureIndicator
+    return cell
+  }
+  
+  private func cellForEmailAudiobookLogs() -> UITableViewCell {
     let cell = tableView.dequeueReusableCell(withIdentifier: emailLogsCellIdentifier)!
-    cell.selectionStyle = .none
-    cell.textLabel?.text = "Email Logs"
+    cell.selectionStyle = .default
+    cell.textLabel?.text = "Email Audiobook Logs"
+    cell.accessoryType = .disclosureIndicator
     return cell
   }
   
@@ -150,11 +177,55 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
       let alert = TPPAlertUtils.alert(title: "Data Management", message: "Cache Cleared")
       self.present(alert, animated: true, completion: nil)
     } else if Section(rawValue: indexPath.section) == .developerTools {
-      emailLogs()
+      switch indexPath.row {
+      case 0:
+        sendErrorLogs()
+      default:
+        emailAudiobookLogs()
+      }
     }
   }
   
-  private func emailLogs() {
+  private func sendErrorLogs() {
+    Task {
+      // Show device ID for support
+      let deviceID = DeviceSpecificErrorMonitor.shared.getDeviceID()
+      let sanitizedID = deviceID.replacingOccurrences(of: "-", with: "")
+      let isEnhanced = await DeviceSpecificErrorMonitor.shared.isEnhancedLoggingEnabled()
+      
+      let infoMessage = """
+      Device ID: \(deviceID)
+      Firebase Key: enhanced_error_logging_device_\(sanitizedID)
+      Enhanced Logging: \(isEnhanced ? "✅ Enabled" : "❌ Disabled")
+      
+      Share the Firebase Key with support to enable enhanced error logging remotely.
+      """
+      
+      await MainActor.run {
+        let alert = UIAlertController(
+          title: "Device Info",
+          message: infoMessage,
+          preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "Copy Device ID", style: .default) { _ in
+          UIPasteboard.general.string = deviceID
+        })
+        alert.addAction(UIAlertAction(title: "Copy Firebase Key", style: .default) { _ in
+          UIPasteboard.general.string = "enhanced_error_logging_device_\(sanitizedID)"
+        })
+        alert.addAction(UIAlertAction(title: "Send Logs", style: .default) { _ in
+          Task {
+            await ErrorLogExporter.shared.sendErrorLogs(from: self)
+          }
+        })
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        
+        self.present(alert, animated: true)
+      }
+    }
+  }
+  
+  private func emailAudiobookLogs() {
     guard MFMailComposeViewController.canSendMail() else {
       let alert = TPPAlertUtils.alert(title: "Mail Unavailable", message: "Cannot send email. Please configure an email account.")
       self.present(alert, animated: true, completion: nil)
@@ -181,7 +252,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     
     self.present(mailComposer, animated: true, completion: nil)
   }
-    
+  
   func mailComposeController(_ controller: MFMailComposeViewController, didFinishWith result: MFMailComposeResult, error: Error?) {
     controller.dismiss(animated: true, completion: nil)
   }

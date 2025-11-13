@@ -121,6 +121,49 @@ struct Strings {
     static let privacyPolicy = NSLocalizedString("Privacy Policy", comment: "")
     static let eula = NSLocalizedString("User Agreement", comment: "")
     static let developerSettings = NSLocalizedString("Testing", comment: "Developer Settings")
+    static let account = NSLocalizedString("Account", comment: "")
+    static let advanced = NSLocalizedString("Advanced", comment: "")
+    static let contentLicenses = NSLocalizedString("Content Licenses", comment: "")
+    static let reportIssue = NSLocalizedString("Report an Issue", comment: "")
+    static let ageVerification = NSLocalizedString("Age Verification", comment: "")
+    static let syncBookmarks = NSLocalizedString("Sync Bookmarks", comment: "")
+    static let showBarcode = NSLocalizedString("Show Barcode", comment: "")
+    static let hideBarcode = NSLocalizedString("Hide Barcode", comment: "")
+    static let show = NSLocalizedString("Show", comment: "")
+    static let hide = NSLocalizedString("Hide", comment: "")
+    static let signOut = NSLocalizedString("Sign out", comment: "")
+    static let signingOut = NSLocalizedString("Signing out", comment: "")
+    static let signingIn = NSLocalizedString("Signing In", comment: "")
+    static let verifying = NSLocalizedString("Verifying", comment: "")
+    static let barcodeOrUsername = NSLocalizedString("Barcode or Username", comment: "")
+    static let pin = NSLocalizedString("PIN", comment: "")
+    static let forgotPassword = NSLocalizedString("Forgot your password?", comment: "")
+    static let signUpForCard = NSLocalizedString("Sign up for a library card", comment: "")
+    static let eulaAgreement = NSLocalizedString("By signing in, you agree to the End User License Agreement.", comment: "")
+    static let syncDescription = NSLocalizedString("Save your reading position and bookmarks to all your other devices.", comment: "")
+    static let authenticateToRevealPIN = NSLocalizedString("Authenticate to reveal your PIN.", comment: "")
+    static let deleteServerData = NSLocalizedString("Delete Server Data", comment: "")
+  }
+  
+  struct AccountDetail {
+    static func signInMessage(libraryName: String) -> String {
+      String(format: NSLocalizedString("To download books, please sign in to %@.", comment: "Sign in prompt"), libraryName)
+    }
+    
+    static func signOutWarningWithSync(syncEnabled: Bool) -> String {
+      if syncEnabled {
+        return NSLocalizedString("If you sign out, your books and any saved bookmarks will be removed.", comment: "")
+      } else {
+        return NSLocalizedString("If you sign out without enabling Sync, your books and any saved bookmarks will be removed.", comment: "")
+      }
+    }
+    
+    static func deleteServerDataMessage(libraryName: String) -> String {
+      String.localizedStringWithFormat(
+        NSLocalizedString("Selecting \"Delete\" will remove all bookmarks from the server for %@.", comment: ""),
+        libraryName
+      )
+    }
   }
   
   struct TPPAccountListDataSource {

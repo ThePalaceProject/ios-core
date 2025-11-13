@@ -9,6 +9,7 @@
 		<string>org.thepalaceproject.palace.lcpBackgroundIdentifier</string>
 		<string>org.thepalaceproject.palace.overdriveBackgroundIdentifier</string>
 		<string>org.thepalaceproject.palace.downloadCenterBackgroundIdentifier</string>
+		<string>org.thepalaceproject.palace.refresh</string>
 	</array>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>

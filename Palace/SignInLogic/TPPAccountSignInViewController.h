@@ -4,7 +4,7 @@
 
 /// This class handles all instances of signing into current account dynamically in many
 /// places in the app when necessary. Managing account sign in with settings is
-/// TPPSettingsAccountDetailViewController.
+/// AccountDetailViewController (SwiftUI).
 @interface TPPAccountSignInViewController : UITableViewController
 
 - (id)initWithCoder:(NSCoder *)aDecoder NS_UNAVAILABLE;

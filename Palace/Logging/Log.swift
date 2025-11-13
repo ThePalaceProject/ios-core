@@ -1,6 +1,8 @@
 import os
 import Foundation
+#if canImport(FirebaseCrashlytics)
 import FirebaseCrashlytics
+#endif
 
 final class Log: NSObject {
   static var dateFormatter: DateFormatter = {
@@ -28,11 +30,13 @@ final class Log: NSObject {
     let tag = trimTag(tag)
 
     #if !targetEnvironment(simulator) && !DEBUG
-    let timestamp = dateFormatter.string(from: Date())
+    #if canImport(FirebaseCrashlytics)
     if level != .debug {
+      let timestamp = dateFormatter.string(from: Date())
       let formattedMsg = "[\(levelToString(level))] \(timestamp) \(tag): \(message)"
       Crashlytics.crashlytics().log("\(formattedMsg)")
     }
+    #endif
     #endif
 
     #if DEBUG
@@ -113,7 +117,7 @@ final class Log: NSObject {
     }
 
     var components = tag.components(separatedBy: "/")
-    let sourcesRootIndex = (components.index(of: "Palace") ?? 0) + 1
+    let sourcesRootIndex = (components.firstIndex(of: "Palace") ?? 0) + 1
 
     if sourcesRootIndex < components.count {
       components.removeFirst(sourcesRootIndex)

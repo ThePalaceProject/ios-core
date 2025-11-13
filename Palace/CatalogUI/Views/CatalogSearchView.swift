@@ -3,6 +3,7 @@ import SwiftUI
 // MARK: - SearchView
 struct CatalogSearchView: View {
   @StateObject private var viewModel: CatalogSearchViewModel
+  @FocusState private var isSearchFieldFocused: Bool
   let books: [TPPBook]
   let onBookSelected: (TPPBook) -> Void
   
@@ -38,9 +39,16 @@ struct CatalogSearchView: View {
       ScrollView {
         BookListView(
           books: viewModel.filteredBooks,
-          isLoading: .constant(false),
-          onSelect: onBookSelected
+          isLoading: $viewModel.isLoading,
+          onSelect: onBookSelected,
+          onLoadMore: { @MainActor in await viewModel.loadNextPage() },
+          isLoadingMore: viewModel.isLoadingMore,
+          previewEnabled: false
         )
+      }
+      .scrollDismissesKeyboard(.immediately)
+      .onTapGesture {
+        isSearchFieldFocused = false
       }
     }
     .onAppear {
@@ -63,21 +71,29 @@ private extension CatalogSearchView {
           set: { viewModel.updateSearchQuery($0) }
         )
       )
+      .focused($isSearchFieldFocused)
+      .submitLabel(.search)
       .padding(8)
+      .padding(.trailing, 40)
       .background(Color.gray.opacity(0.2))
       .cornerRadius(10)
       .padding(.horizontal)
       
-      if !viewModel.searchQuery.isEmpty {
-        HStack {
-          Spacer()
+      HStack {
+        Spacer()
+        
+        if viewModel.isLoading {
+          ProgressView()
+            .padding(.trailing, 8)
+        } else if !viewModel.searchQuery.isEmpty {
           Button(action: { viewModel.clearSearch() }) {
             Image(systemName: "xmark.circle.fill")
               .foregroundColor(.gray)
           }
-          .padding(.trailing, 20)
+          .padding(.trailing, 8)
         }
       }
+      .padding(.horizontal)
     }
     .padding(.vertical, 8)
   }

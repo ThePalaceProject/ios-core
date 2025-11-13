@@ -35,6 +35,7 @@ enum Group: Int {
   let facetViewModel: FacetViewModel
   private var observers = Set<AnyCancellable>()
   private var bookRegistry: TPPBookRegistry { TPPBookRegistry.shared }
+  private var allBooks: [TPPBook] = []
 
   // MARK: - Initialization
   override init() {
@@ -68,6 +69,7 @@ enum Group: Int {
     : registryBooks.filter { !$0.isExpired }
 
     // Update published properties
+    self.allBooks = newBooks
     self.books = newBooks
     self.showInstructionsLabel = newBooks.isEmpty || bookRegistry.state == .unloaded
     self.sortData()
@@ -89,11 +91,12 @@ enum Group: Int {
   @MainActor
   func filterBooks(query: String) async {
     if query.isEmpty {
-      loadData()
+      self.books = allBooks
+      self.sortData()
     } else {
-      let currentBooks = self.books
+      let allBooksCopy = self.allBooks
       let filteredBooks = await Task.detached(priority: .userInitiated) {
-        currentBooks.filter {
+        allBooksCopy.filter {
           $0.title.localizedCaseInsensitiveContains(query) ||
           ($0.authors?.localizedCaseInsensitiveContains(query) ?? false)
         }
@@ -103,16 +106,19 @@ enum Group: Int {
     }
   }
 
+  func resetFilter() {
+    self.books = allBooks
+    self.sortData()
+  }
+
   @objc func authenticateAndLoad(account: Account) {
     account.loadAuthenticationDocument { [weak self] success in
       guard let self = self, success else { return }
 
-      DispatchQueue.main.async {
-        if !TPPSettings.shared.settingsAccountIdsList.contains(account.uuid) {
-          TPPSettings.shared.settingsAccountIdsList.append(account.uuid)
-        }
-        self.loadAccount(account)
+      if !TPPSettings.shared.settingsAccountIdsList.contains(account.uuid) {
+        TPPSettings.shared.settingsAccountIdsList.append(account.uuid)
       }
+      self.loadAccount(account)
     }
   }
 
@@ -129,14 +135,16 @@ enum Group: Int {
 
   // MARK: - Private Methods
   private func sortData() {
-    books.sort { first, second in
-      switch activeFacetSort {
+    let sortComparator: (TPPBook, TPPBook) -> Bool = { first, second in
+      switch self.activeFacetSort {
       case .author:
         return "\(first.authors ?? "") \(first.title)" < "\(second.authors ?? "") \(second.title)"
       case .title:
         return "\(first.title) \(first.authors ?? "")" < "\(second.title) \(second.authors ?? "")"
       }
     }
+    books.sort(by: sortComparator)
+    allBooks.sort(by: sortComparator)
   }
 
   private func updateFeed(_ account: Account) {
@@ -173,15 +181,11 @@ enum Group: Int {
   }
 
   @objc private func handleBookRegistryChange() {
-    DispatchQueue.main.async { [weak self] in
-      self?.loadData()
-    }
+    loadData()
   }
 
   @objc private func handleSyncEnd() {
-    DispatchQueue.main.async { [weak self] in
-      self?.loadData()
-    }
+    loadData()
   }
 
   @objc private func handleBookRegistryStateChange(_ notification: Notification) {
@@ -191,18 +195,15 @@ enum Group: Int {
       let raw = info["state"] as? Int,
       let newState = TPPBookState(rawValue: raw)
     else {
-      DispatchQueue.main.async { [weak self] in self?.loadData() }
+      loadData()
       return
     }
 
-    DispatchQueue.main.async { [weak self] in
-      guard let self else { return }
-      if newState == .unregistered {
-        // Remove locally so it doesn't flash back in until next sync
-        self.books.removeAll { $0.identifier == identifier }
-      } else {
-        self.loadData()
-      }
+    if newState == .unregistered {
+      // Remove locally so it doesn't flash back in until next sync
+      self.books.removeAll { $0.identifier == identifier }
+    } else {
+      self.loadData()
     }
   }
 

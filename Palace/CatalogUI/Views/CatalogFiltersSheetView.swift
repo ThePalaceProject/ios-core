@@ -59,9 +59,11 @@ struct CatalogFiltersSheetView: View {
             VStack(spacing: 0) {
               FacetSectionHeader(
                 title: group.name.capitalized,
+                subtitle: selectedFilterSubtitle(for: group),
                 onClear: { clearGroup(group) },
                 isExpanded: expanded.contains(group.id),
-                toggleExpanded: { toggle(group.id) }
+                toggleExpanded: { toggle(group.id) },
+                shouldShowClear: shouldShowClearButton(for: group)
               )
               .padding(.horizontal)
               .padding(.vertical, 12)
@@ -154,29 +156,85 @@ private extension CatalogFiltersSheetView {
       }
     }
   }
+  
+  func shouldShowClearButton(for group: FacetGroupModel) -> Bool {
+    let groupKeys = Set(group.items.map { key(for: group, facet: $0) })
+    let currentSelections = tempSelection.intersection(groupKeys)
+    
+    // If nothing selected or multiple selected, show clear
+    if currentSelections.isEmpty || currentSelections.count > 1 {
+      return true
+    }
+    
+    // If single selection, check if it's "All"
+    guard let selectedKey = currentSelections.first else {
+      return true
+    }
+    
+    // Find the selected facet
+    let selectedFacet = group.items.first { facet in
+      key(for: group, facet: facet) == selectedKey
+    }
+    
+    // Hide clear button if "All" is selected
+    return !FacetKey.isAllTitle(selectedFacet?.title)
+  }
+  
+  func selectedFilterSubtitle(for group: FacetGroupModel) -> String? {
+    let groupKeys = Set(group.items.map { key(for: group, facet: $0) })
+    let currentSelections = tempSelection.intersection(groupKeys)
+    
+    // Only show subtitle for single selection that's not "All"
+    guard currentSelections.count == 1,
+          let selectedKey = currentSelections.first else {
+      return nil
+    }
+    
+    // Find the selected facet
+    let selectedFacet = group.items.first { facet in
+      key(for: group, facet: facet) == selectedKey
+    }
+    
+    // Return title if it's not "All"
+    guard let facet = selectedFacet, !FacetKey.isAllTitle(facet.title) else {
+      return nil
+    }
+    
+    return facet.title
+  }
 }
 
 // MARK: - Subviews
 
 private struct FacetSectionHeader: View {
   let title: String
+  let subtitle: String?
   let onClear: () -> Void
   let isExpanded: Bool
   let toggleExpanded: () -> Void
+  let shouldShowClear: Bool
   
   var body: some View {
     HStack(spacing: 10) {
-      Text(title).font(.headline).foregroundColor(.primary)
-      Spacer()
-      VStack {
-        Button("Clear", action: onClear)
-          .buttonStyle(.plain)
-          .font(.subheadline)
-          .foregroundColor(.primary)
-          .padding(.bottom, -5)
-        // no separator
+      VStack(alignment: .leading, spacing: 4) {
+        Text(title).font(.headline).foregroundColor(.primary)
+        if let subtitle = subtitle {
+          Text(subtitle)
+            .font(.subheadline)
+            .foregroundColor(.secondary)
+        }
       }
-      .frame(width: 50)
+      Spacer()
+      if shouldShowClear {
+        VStack {
+          Button("Clear", action: onClear)
+            .buttonStyle(.plain)
+            .font(.subheadline)
+            .foregroundColor(.primary)
+            .padding(.bottom, -5)
+        }
+        .frame(width: 50)
+      }
       
       Button(action: toggleExpanded) {
         Image(systemName: "chevron.right")

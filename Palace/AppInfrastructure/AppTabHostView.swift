@@ -5,9 +5,19 @@ struct AppTabHostView: View {
   @StateObject private var router = AppTabRouter()
   @State private var holdsBadgeCount: Int = 0
   
+  @StateObject private var catalogViewModel: CatalogViewModel = {
+    let client = URLSessionNetworkClient()
+    let parser = OPDSParser()
+    let api = DefaultCatalogAPI(client: client, parser: parser)
+    let repository = CatalogRepository(api: api)
+    return CatalogViewModel(repository: repository) {
+      TPPSettings.shared.accountMainFeedURL
+    }
+  }()
+  
   var body: some View {
     TabView(selection: $router.selected) {
-      NavigationHostView(rootView: catalogView)
+      NavigationHostView(rootView: CatalogView(viewModel: catalogViewModel))
         .environmentObject(router)
         .tabItem {
           VStack {
@@ -58,17 +68,6 @@ struct AppTabHostView: View {
     .onReceive(NotificationCenter.default.publisher(for: .TPPBookRegistryStateDidChange)) { _ in
       updateHoldsBadge()
     }
-  }
-
-  var catalogView: some View {
-    let client = URLSessionNetworkClient()
-    let parser = OPDSParser()
-    let api = DefaultCatalogAPI(client: client, parser: parser)
-    let repository = CatalogRepository(api: api)
-    let viewModel = CatalogViewModel(repository: repository) {
-      TPPSettings.shared.accountMainFeedURL
-    }
-    return CatalogView(viewModel: viewModel)
   }
 }
 

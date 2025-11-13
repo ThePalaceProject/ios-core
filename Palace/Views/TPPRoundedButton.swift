@@ -153,7 +153,7 @@ private let TPPRoundedButtonPadding: CGFloat = 6.0
 }
 
 extension TPPRoundedButton {
-  @objc (initWithType:isFromDetailView:)
+  @objc(initWithType:isFromDetailView:)
   convenience init(type: TPPRoundedButtonType, isFromDetailView: Bool) {
     self.init(type: type, endDate: nil, isFromDetailView: isFromDetailView)
   }

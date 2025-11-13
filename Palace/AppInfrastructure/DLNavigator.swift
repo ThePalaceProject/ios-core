@@ -82,16 +82,12 @@ class DLNavigator {
     if TPPUserAccount.sharedAccount(libraryUUID: libraryId).isSignedIn() {
       return
     }
-    if let accountDetailVC = topViewController as? TPPSettingsAccountDetailViewController {
-      accountDetailVC.setUserName(barcode)
-    } else {
-      TPPAccountSignInViewController.requestCredentials(forUsername: barcode) {
-        let accountList = TPPAccountList { account in
-          MyBooksViewModel().authenticateAndLoad(account: account)
-        }
-        let nav = UINavigationController(rootViewController: accountList)
-        topViewController.present(nav, animated: true)
+    TPPAccountSignInViewController.requestCredentials(forUsername: barcode) {
+      let accountList = TPPAccountList { account in
+        MyBooksViewModel().authenticateAndLoad(account: account)
       }
+      let nav = UINavigationController(rootViewController: accountList)
+      topViewController.present(nav, animated: true)
     }
   }
   

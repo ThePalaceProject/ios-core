@@ -120,7 +120,7 @@ let DefaultActionIdentifier = "UNNotificationDefaultActionIdentifier"
   }
 }
 
-@available (iOS 10.0, *)
+@available(iOS 10.0, *)
 extension TPPUserNotifications: UNUserNotificationCenterDelegate
 {
   func userNotificationCenter(_ center: UNUserNotificationCenter,
@@ -181,8 +181,13 @@ extension TPPUserNotifications: UNUserNotificationCenterDelegate
       }
     }
 
-
-    downloadCenter.startBorrow(for: book, attemptDownload: false) {
+    Task {
+      do {
+        _ = try await downloadCenter.borrowAsync(book, attemptDownload: false)
+      } catch {
+        Log.error(#file, "Background borrow failed: \(error.localizedDescription)")
+      }
+      
       completion()
       guard bgTask != .invalid else {
         return

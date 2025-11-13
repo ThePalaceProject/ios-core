@@ -14,7 +14,7 @@ public extension TrackPosition {
     if timestamp >= 0 {
       offsetMilliseconds = Int(timestamp * 1000)
     } else {
-      ATLog(.debug, "Warning: Negative timestamp encountered. Defaulting to 0.")
+      Log.debug(#file, "Warning: Negative timestamp encountered. Defaulting to 0.")
       offsetMilliseconds = 0
     }
     
@@ -30,7 +30,7 @@ public extension TrackPosition {
   
   init?(audioBookmark: AudioBookmark, toc: [Chapter], tracks: Tracks) {
     guard audioBookmark.type == .locatorAudioBookTime else {
-      ATLog(.debug, "Unsupported bookmark type: \(audioBookmark.type)")
+      Log.debug(#file, "Unsupported bookmark type: \(audioBookmark.type)")
       return nil
     }
     
@@ -38,7 +38,7 @@ public extension TrackPosition {
       guard let readingOrderItem = audioBookmark.readingOrderItem,
             let readingOrderItemOffsetMilliseconds = audioBookmark.readingOrderItemOffsetMilliseconds,
             let track = tracks.track(forKey: readingOrderItem) else {
-        ATLog(.debug, "Unable to find a valid track for the provided locator.")
+        Log.debug(#file, "Unable to find a valid track for the provided locator.")
         return nil
       }
       let timestamp = Double(readingOrderItemOffsetMilliseconds) / 1000.0
@@ -53,7 +53,7 @@ public extension TrackPosition {
       } else if let initializedFromChapterIndex = TrackPosition.initializeFromChapterIndex(audioBookmark: audioBookmark, toc: toc) {
         self = initializedFromChapterIndex
       } else {
-        ATLog(.debug, "Unable to find a valid track for the provided locator.")
+        Log.debug(#file, "Unable to find a valid track for the provided locator.")
         return nil
       }
     }

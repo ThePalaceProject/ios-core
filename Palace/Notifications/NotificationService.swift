@@ -114,6 +114,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
     var request = URLRequest(url: endpointUrl, applyingCustomUserAgent: true)
     request.httpMethod = "PUT"
     request.httpBody = requestBody
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     _ = TPPNetworkExecutor.shared.addBearerAndExecute(request) { result, response, error in
       if let error = error {
         TPPErrorLogger.logError(error,
@@ -162,6 +163,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
     var request = URLRequest(url: endpointUrl, applyingCustomUserAgent: true)
     request.httpMethod = "DELETE"
     request.httpBody = requestBody
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     _ = TPPNetworkExecutor.shared.addBearerAndExecute(request) { result, response, error in
       if let error = error {
         TPPErrorLogger.logError(error,

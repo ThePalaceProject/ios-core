@@ -118,6 +118,8 @@ extension ProblemReportEmail: MFMailComposeViewControllerDelegate {
     case .cancelled: fallthrough
     case .saved:
       break
+    @unknown default:
+      break
     }
   }
 }
