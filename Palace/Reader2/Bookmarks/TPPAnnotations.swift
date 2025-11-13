@@ -111,12 +111,14 @@ protocol AnnotationsManager {
 
     postAnnotation(forBook: bookID, withAnnotationURL: annotationsURL, withParameters: parameters, queueOffline: true) { (success, id, timeStamp) in
       guard success else {
+        Log.warn(#file, "Annotation POST failed for \(bookID)")
         TPPErrorLogger.logError(withCode: .apiCall,
                                  summary: "Error posting annotation",
                                  metadata: [
                                   "bookID": bookID,
                                   "annotationID": id ?? "N/A",
-                                  "annotationURL": annotationsURL])
+                                  "annotationURL": annotationsURL,
+                                  "motivation": motivation.rawValue])
         completion?(nil)
         return
       }
@@ -206,14 +208,21 @@ protocol AnnotationsManager {
     var request = TPPNetworkExecutor.shared.request(for: url)
     request.httpMethod = "POST"
     request.httpBody = jsonData
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     request.timeoutInterval = timeout
 
     let task = TPPNetworkExecutor.shared.POST(request, useTokenIfAvailable: true) { (data, response, error) in
       if let error = error as NSError? {
-        Log.error(#file, "Annotation POST error (nsCode: \(error.code) Description: \(error.localizedDescription))")
-        if (NetworkQueue.StatusCodes.contains(error.code)) && (queueOffline == true) {
+        let willQueueOffline = (NetworkQueue.StatusCodes.contains(error.code)) && (queueOffline == true)
+        
+        // Always log error details for investigation
+        Log.error(#file, "Annotation POST error (code: \(error.code)): \(error.localizedDescription)")
+        
+        if willQueueOffline {
+          Log.debug(#file, "Queued for offline retry")
           self.addToOfflineQueue(bookID, url, parameters)
         }
+        
         completionHandler(false, nil, nil)
         return
       }

@@ -64,9 +64,14 @@ class TPPPDFTextExtractor {
     var array: CGPDFArrayRef?
     guard CGPDFScannerPopArray(scanner, &array), let array else { return }
     
-    var blockValue = ""
+    var blockComponents: [String] = []
+    blockComponents.reserveCapacity(Int(CGPDFArrayGetCount(array)))
+    
     // Iterate through the array elements
     let count = CGPDFArrayGetCount(array)
+    let maxBlockSize = 50_000
+    var currentSize = 0
+    
     for index in 0..<count {
       var obj: CGPDFObjectRef?
       guard CGPDFArrayGetObject(array, index, &obj), let obj else { continue }
@@ -80,7 +85,12 @@ class TPPPDFTextExtractor {
           let string = cfString as String
           // Skip control sequences
           if !string[string.startIndex].isWhitespace {
-            blockValue += string
+            currentSize += string.utf16.count
+            guard currentSize < maxBlockSize else {
+              Log.warn(#file, "PDF text block exceeds safe size limit, truncating")
+              break
+            }
+            blockComponents.append(string)
           }
         }
       case .real:
@@ -91,7 +101,9 @@ class TPPPDFTextExtractor {
           // Text in PDFs can appear as a single line of characters without whitespace characters;
           // these values adjust the visual spacing between characters.
           if abs(realValue) > 100 {
-            blockValue += " "
+            currentSize += 1
+            guard currentSize < maxBlockSize else { break }
+            blockComponents.append(" ")
           }
         }
       case .integer:
@@ -99,13 +111,18 @@ class TPPPDFTextExtractor {
         if CGPDFObjectGetValue(obj, .integer, &intValue) {
           // The same as realValue above
           if abs(intValue) > 100 {
-            blockValue += " "
+            currentSize += 1
+            guard currentSize < maxBlockSize else { break }
+            blockComponents.append(" ")
           }
         }
       default:
         break
       }
     }
-    textBlocks.append(blockValue)
+    
+    if !blockComponents.isEmpty {
+      textBlocks.append(blockComponents.joined())
+    }
   }
 }

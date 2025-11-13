@@ -78,8 +78,10 @@ struct TPPSettingsView: View {
     .sheet(isPresented: $showAddLibrarySheet) {
       UIViewControllerWrapper(
         TPPAccountList { account in
-          MyBooksViewModel().loadAccount(account)
-          showAddLibrarySheet = false
+          DispatchQueue.main.async {
+            MyBooksViewModel().loadAccount(account)
+            showAddLibrarySheet = false
+          }
         },
         updater: { _ in }
       )
@@ -179,9 +181,9 @@ struct TPPSettingsView: View {
   }
 
   @ViewBuilder private var versionInfo: some View {
-    let productName = Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as! String
-    let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as! String
-    let build = Bundle.main.object(forInfoDictionaryKey: (kCFBundleVersionKey as String)) as! String
+    let productName = Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ?? "Palace"
+    let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Unknown"
+    let build = Bundle.main.object(forInfoDictionaryKey: (kCFBundleVersionKey as String)) as? String ?? "Unknown"
     
     Text("\(productName) version \(version) (\(build))")
       .palaceFont(size: 12)

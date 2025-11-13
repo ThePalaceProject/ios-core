@@ -55,7 +55,9 @@ fileprivate let maxBarcodeWidth: CGFloat = 414
       title: DisplayStrings.openSettings,
       style: .default,
       handler: {_ in
-        UIApplication.shared.open(URL(string:UIApplication.openSettingsURLString)!)
+        if let settingsURL = URL(string: UIApplication.openSettingsURLString) {
+          UIApplication.shared.open(settingsURL)
+        }
     }))
     alertController.addAction(UIAlertAction(
       title: Strings.Generic.cancel,

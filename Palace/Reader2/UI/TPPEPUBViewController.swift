@@ -38,7 +38,7 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
         action: #selector(highlightSelection))),
       contentInset: contentInset,
       decorationTemplates: HTMLDecorationTemplate.defaultTemplates(),
-      debugState: false
+      debugState: true
     )
 
     let navigator = try EPUBNavigatorViewController(
@@ -73,7 +73,12 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
       self.handleHighlightInteraction(event)
     }
     
+    epubNavigator.submitPreferences(preferences)
     setUIColor(for: preferences)
+  }
+  
+  override func updateNavigationBar(animated: Bool = true) {
+    super.updateNavigationBar(animated: animated)
   }
   
   override func viewWillAppear(_ animated: Bool) {
@@ -82,15 +87,37 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     log(.info, "TPPEPUBViewController will appear. UI color set based on preferences.")
     epubNavigator.submitPreferences(preferences)
     
+    // Ensure tab bar is properly hidden on both iPhone and iPad
+    if let tabBarController = tabBarController {
+      tabBarController.tabBar.isHidden = true
+      // On iPad, also ensure the tab bar is not translucent to prevent rendering issues
+      if UIDevice.current.userInterfaceIdiom == .pad {
+        tabBarController.tabBar.isTranslucent = false
+      }
+    }
+
     if navigationItem.leftBarButtonItem == nil {
        let backItem = UIBarButtonItem(image: UIImage(systemName: "chevron.left"), style: .plain, target: self, action: #selector(closeEPUB))
        navigationItem.leftBarButtonItem = backItem
      }
 
     navigationController?.navigationBar.isTranslucent = true
+    
+    navigationController?.setNavigationBarHidden(true, animated: false)
+    navigationController?.setToolbarHidden(true, animated: false)
+  }
+  
+  override func viewDidAppear(_ animated: Bool) {
+    super.viewDidAppear(animated)
+    tabBarController?.tabBar.isHidden = true
   }
   
   @objc private func closeEPUB() {
+    if let tabBarController = tabBarController {
+      tabBarController.tabBar.isHidden = false
+      tabBarController.tabBar.isTranslucent = true
+    }
+    
     NavigationCoordinatorHub.shared.coordinator?.pop()
   }
   
@@ -176,26 +203,22 @@ extension TPPEPUBViewController: TPPReaderSettingsDelegate {
 
   func updateUserPreferencesStyle(for appearance: EPUBPreferences) {
     self.preferences = appearance
-    DispatchQueue.main.async {
-      self.epubNavigator.submitPreferences(appearance)
-      self.setUIColor(for: appearance)
-    }
+    epubNavigator.submitPreferences(appearance)
+    setUIColor(for: appearance)
   }
 
   func setUIColor(for appearance: EPUBPreferences) {
-    DispatchQueue.main.async {
-      let backgroundColor = appearance.backgroundColor?.uiColor ?? .black
-      let textColor = appearance.textColor?.uiColor ?? .lightGray
-      
-      self.navigator.view.backgroundColor = backgroundColor
-      self.view.backgroundColor = backgroundColor
-      self.navigatorContainer?.backgroundColor = backgroundColor
-      self.view.tintColor = textColor
-      
-      // Update label colors to match theme
-      self.positionLabel.textColor = textColor.withAlphaComponent(0.7)
-      self.bookTitleLabel.textColor = textColor.withAlphaComponent(0.7)
-    }
+    let backgroundColor = appearance.backgroundColor?.uiColor ?? .black
+    let textColor = appearance.textColor?.uiColor ?? .lightGray
+    
+    navigator.view.backgroundColor = backgroundColor
+    view.backgroundColor = backgroundColor
+    navigatorContainer?.backgroundColor = backgroundColor
+    view.tintColor = textColor
+    
+    // Update label colors to match theme
+    positionLabel.textColor = textColor.withAlphaComponent(0.7)
+    bookTitleLabel.textColor = textColor.withAlphaComponent(0.7)
   }
 }
 

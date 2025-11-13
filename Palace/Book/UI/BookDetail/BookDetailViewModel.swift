@@ -91,7 +91,12 @@ final class BookDetailViewModel: ObservableObject {
     bindRegistryState()
     setupStableButtonState()
     setupObservers()
-    self.downloadProgress = downloadCenter.downloadProgress(for: book.identifier)
+    
+    // Defer download progress check to avoid triggering cover fetch during init
+    Task { @MainActor in
+      self.downloadProgress = downloadCenter.downloadProgress(for: book.identifier)
+    }
+    
 #if LCP
     self.prefetchLCPStreamingIfPossible()
 #endif
@@ -128,20 +133,22 @@ final class BookDetailViewModel: ObservableObject {
         let updatedBook = registry.book(forIdentifier: book.identifier) ?? book
         let registryState = registry.state(for: book.identifier)
 
-        self.book = updatedBook
-        // If we are in a local returning override, hold it until unregistered
-        if let override = self.localBookStateOverride, override == .returning, registryState != .unregistered {
-          return
-        }
-        self.bookState = registryState
-        if registryState == .unregistered {
-          // Ensure UI is not left in a managing/processing state after returning
-          self.isManagingHold = false
-          self.showHalfSheet = false
-          self.processingButtons.remove(.returning)
-          self.processingButtons.remove(.cancelHold)
-        } else if registryState == .downloadFailed {
-          self.showHalfSheet = false
+        Task { @MainActor in
+          self.book = updatedBook
+          // If we are in a local returning override, hold it until unregistered
+          if let override = self.localBookStateOverride, override == .returning, registryState != .unregistered {
+            return
+          }
+          self.bookState = registryState
+          if registryState == .unregistered {
+            // Ensure UI is not left in a managing/processing state after returning
+            self.isManagingHold = false
+            self.showHalfSheet = false
+            self.processingButtons.remove(.returning)
+            self.processingButtons.remove(.cancelHold)
+          } else if registryState == .downloadFailed {
+            self.showHalfSheet = false
+          }
         }
       }
       .store(in: &cancellables)
@@ -160,7 +167,6 @@ final class BookDetailViewModel: ObservableObject {
     downloadCenter.downloadProgressPublisher
       .filter { $0.0 == self.book.identifier }
       .map { $0.1 }
-      .receive(on: DispatchQueue.main)
       .assign(to: &$downloadProgress)
   }
 
@@ -182,30 +188,29 @@ final class BookDetailViewModel: ObservableObject {
       }
       .removeDuplicates()
       .debounce(for: .milliseconds(180), scheduler: DispatchQueue.main)
-      .receive(on: DispatchQueue.main)
       .assign(to: &self.$stableButtonState)
   }
   
   @objc func handleBookRegistryChange(_ notification: Notification) {
-    DispatchQueue.main.async { [weak self] in
-      guard let self else { return }
-      let updatedBook = registry.book(forIdentifier: book.identifier) ?? book
+    let updatedBook = registry.book(forIdentifier: book.identifier) ?? book
+    DispatchQueue.main.async {
       self.book = updatedBook
     }
   }
   
   func selectRelatedBook(_ newBook: TPPBook) {
     guard newBook.identifier != book.identifier else { return }
-    book = newBook
-    bookState = registry.state(for: newBook.identifier)
-    fetchRelatedBooks()
+    Task { @MainActor in
+      self.book = newBook
+      self.bookState = registry.state(for: newBook.identifier)
+      self.fetchRelatedBooks()
+    }
   }
   
   // MARK: - Notifications
   
   @objc func handleDownloadStateDidChange(_ notification: Notification) {
-    DispatchQueue.main.async { [weak self] in
-      guard let self else { return }
+    Task { @MainActor in
       self.downloadProgress = downloadCenter.downloadProgress(for: book.identifier)
       let info = downloadCenter.downloadInfo(forBookIdentifier: book.identifier)
       if let rights = info?.rightsManagement, rights != .unknown {
@@ -345,20 +350,46 @@ final class BookDetailViewModel: ObservableObject {
     processingButtons.contains(button)
   }
   
+  // MARK: - Authentication Helper
+  
+  /// Ensures authentication document is loaded and handles sign-in if needed.
+  private func ensureAuthAndExecute(_ action: @escaping () -> Void) {
+    let businessLogic = TPPSignInBusinessLogic(
+      libraryAccountID: AccountsManager.shared.currentAccount?.uuid ?? "",
+      libraryAccountsProvider: AccountsManager.shared,
+      urlSettingsProvider: TPPSettings.shared,
+      bookRegistry: TPPBookRegistry.shared,
+      bookDownloadsCenter: MyBooksDownloadCenter.shared,
+      userAccountProvider: TPPUserAccount.self,
+      uiDelegate: nil,
+      drmAuthorizer: nil
+    )
+    
+    businessLogic.ensureAuthenticationDocumentIsLoaded { [weak self] (success: Bool) in
+      DispatchQueue.main.async {
+        guard let self = self else { return }
+        
+        let account = TPPUserAccount.sharedAccount()
+        if account.needsAuth && !account.hasCredentials() {
+          self.showHalfSheet = false
+          TPPAccountSignInViewController.requestCredentials { [weak self] in
+            guard self != nil else { return }
+            action()
+          }
+          return
+        }
+        action()
+      }
+    }
+  }
+  
   // MARK: - Download/Return/Cancel
   
   func didSelectDownload(for book: TPPBook) {
     self.downloadProgress = 0
-    let account = TPPUserAccount.sharedAccount()
-    if account.needsAuth && !account.hasCredentials() {
-      showHalfSheet = false
-      TPPAccountSignInViewController.requestCredentials { [weak self] in
-        guard let self else { return }
-        self.startDownloadAfterAuth(book: book)
-      }
-      return
+    ensureAuthAndExecute { [weak self] in
+      self?.startDownloadAfterAuth(book: book)
     }
-    startDownloadAfterAuth(book: book)
   }
 
   private func startDownloadAfterAuth(book: TPPBook) {
@@ -368,16 +399,16 @@ final class BookDetailViewModel: ObservableObject {
   }
 
   func didSelectReserve(for book: TPPBook) {
-    let account = TPPUserAccount.sharedAccount()
-    if account.needsAuth && !account.hasCredentials() {
-      showHalfSheet = false
-      TPPAccountSignInViewController.requestCredentials { [weak self] in
-        guard let self else { return }
-        self.downloadCenter.startBorrow(for: book, attemptDownload: false)
+    ensureAuthAndExecute { [weak self] in
+      guard let self = self else { return }
+      Task {
+        do {
+          _ = try await self.downloadCenter.borrowAsync(book, attemptDownload: false)
+        } catch {
+          Log.error(#file, "Failed to borrow book: \(error.localizedDescription)")
+        }
       }
-      return
     }
-    downloadCenter.startBorrow(for: book, attemptDownload: false)
   }
   
   func didSelectCancel() {
@@ -386,13 +417,14 @@ final class BookDetailViewModel: ObservableObject {
   }
   
   func didSelectReturn(for book: TPPBook, completion: (() -> Void)?) {
-    // Prevent multiple return requests and UI loops
     processingButtons.insert(.returning)
     downloadCenter.returnBook(withIdentifier: book.identifier) { [weak self] in
       guard let self else { return }
-      self.bookState = .unregistered
-      self.processingButtons.remove(.returning)
-      completion?()
+      Task { @MainActor in
+        self.bookState = .unregistered
+        self.processingButtons.remove(.returning)
+        completion?()
+      }
     }
   }
   
@@ -400,51 +432,55 @@ final class BookDetailViewModel: ObservableObject {
   
   @MainActor
   func didSelectRead(for book: TPPBook, completion: (() -> Void)?) {
-    let account = TPPUserAccount.sharedAccount()
-    if account.needsAuth && !account.hasCredentials() {
-      TPPAccountSignInViewController.requestCredentials { [weak self] in
-        Task { @MainActor in
-          self?.openBook(book, completion: completion)
-        }
-      }
-      return
-    }
+    ensureAuthAndExecute { [weak self] in
+      Task { @MainActor in
+        guard let self = self else { return }
 #if FEATURE_DRM_CONNECTOR
-    let user = TPPUserAccount.sharedAccount()
-    
-    if user.hasCredentials() {
-      if user.hasAuthToken() {
-        openBook(book, completion: completion)
-        return
-      } else if !(AdobeCertificate.defaultCertificate?.hasExpired ?? false) &&
-                  !NYPLADEPT.sharedInstance().isUserAuthorized(user.userID, withDevice: user.deviceID) {
-        let reauthenticator = TPPReauthenticator()
-        reauthenticator.authenticateIfNeeded(user, usingExistingCredentials: true) {
-          Task { @MainActor in
+        let user = TPPUserAccount.sharedAccount()
+        
+        if user.hasCredentials() {
+          if user.hasAuthToken() {
             self.openBook(book, completion: completion)
+            return
+          } else if !(AdobeCertificate.defaultCertificate?.hasExpired ?? false) &&
+                      !NYPLADEPT.sharedInstance().isUserAuthorized(user.userID, withDevice: user.deviceID) {
+            let reauthenticator = TPPReauthenticator()
+            reauthenticator.authenticateIfNeeded(user, usingExistingCredentials: true) {
+              Task { @MainActor in
+                self.openBook(book, completion: completion)
+              }
+            }
+            return
           }
         }
-        return
+#endif
+        self.openBook(book, completion: completion)
       }
     }
-#endif
-    openBook(book, completion: completion)
   }
   
   @MainActor
   func openBook(_ book: TPPBook, completion: (() -> Void)?) {
+    Log.debug(#file, "🎬 [OPEN BOOK] User requested to open book: \(book.title) (ID: \(book.identifier))")
     TPPCirculationAnalytics.postEvent("open_book", withBook: book)
     
     let resolvedBook = registry.book(forIdentifier: book.identifier) ?? book
+    let contentType = resolvedBook.defaultBookContentType
+    
+    Log.debug(#file, "  Content type determined: \(TPPBookContentTypeConverter.stringValue(of: contentType))")
+    Log.debug(#file, "  Distributor: \(resolvedBook.distributor ?? "nil")")
 
-    switch resolvedBook.defaultBookContentType {
+    switch contentType {
     case .epub:
+      Log.debug(#file, "  → Opening as EPUB")
       processingButtons.removeAll()
       presentEPUB(resolvedBook)
     case .pdf:
+      Log.debug(#file, "  → Opening as PDF")
       processingButtons.removeAll()
       presentPDF(resolvedBook)
     case .audiobook:
+      Log.debug(#file, "  → Opening as AUDIOBOOK")
       openAudiobook(resolvedBook) { [weak self] in
         DispatchQueue.main.async {
           self?.processingButtons.removeAll()
@@ -452,6 +488,7 @@ final class BookDetailViewModel: ObservableObject {
         }
       }
     default:
+      Log.error(#file, "  ❌ UNSUPPORTED CONTENT TYPE - showing error to user")
       processingButtons.removeAll()
       presentUnsupportedItemError()
     }
@@ -583,6 +620,17 @@ final class BookDetailViewModel: ObservableObject {
   // MARK: - Error Alerts
   
   private func presentCorruptedItemError() {
+    // Log the error before presenting
+    TPPErrorLogger.logError(
+      withCode: .epubDecodingError,
+      summary: "Corrupted EPUB item - cannot open book",
+      metadata: [
+        "book_id": book.identifier,
+        "book_title": book.title,
+        "distributor": book.distributor ?? "unknown"
+      ]
+    )
+    
     let alert = UIAlertController(
       title: Strings.Error.epubNotValidError,
       message: Strings.Error.epubNotValidError,
@@ -593,6 +641,28 @@ final class BookDetailViewModel: ObservableObject {
   }
   
   private func presentUnsupportedItemError() {
+    Log.error(#file, "⚠️ [UNSUPPORTED ITEM] Presenting unsupported item error")
+    Log.error(#file, "  Book: \(book.title) (ID: \(book.identifier))")
+    Log.error(#file, "  Distributor: \(book.distributor ?? "nil")")
+    Log.error(#file, "  Content type: \(TPPBookContentTypeConverter.stringValue(of: book.defaultBookContentType))")
+    Log.error(#file, "  All acquisitions:")
+    for (index, acquisition) in book.acquisitions.enumerated() {
+      Log.error(#file, "    \(index + 1). type=\(acquisition.type), relation=\(acquisition.relation)")
+    }
+    
+    // Log the error before presenting
+    TPPErrorLogger.logError(
+      withCode: .unexpectedFormat,
+      summary: "Unsupported book format",
+      metadata: [
+        "book_id": book.identifier,
+        "book_title": book.title,
+        "distributor": book.distributor ?? "unknown",
+        "content_type": TPPBookContentTypeConverter.stringValue(of: book.defaultBookContentType),
+        "all_acquisitions": book.acquisitions.map { "type=\($0.type), relation=\($0.relation)" }.joined(separator: "; ")
+      ]
+    )
+    
     let alert = UIAlertController(
       title: Strings.Error.formatNotSupportedError,
       message: Strings.Error.formatNotSupportedError,
@@ -603,6 +673,17 @@ final class BookDetailViewModel: ObservableObject {
   }
   
   private func presentDRMKeyError(_ error: Error) {
+    // Log DRM errors
+    TPPErrorLogger.logError(
+      error,
+      summary: "DRM key error - cannot decrypt content",
+      metadata: [
+        "book_id": book.identifier,
+        "book_title": book.title,
+        "error_description": error.localizedDescription
+      ]
+    )
+    
     let alert = UIAlertController(title: "DRM Error", message: error.localizedDescription, preferredStyle: .alert)
     alert.addAction(UIAlertAction(title: "OK", style: .default))
     TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)

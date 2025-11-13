@@ -22,10 +22,15 @@ struct BookButtonsView<T: BookButtonProvider>: View {
   private var isDarkBackground: Bool {
     backgroundColor?.isDark ?? (colorScheme == .dark)
   }
+  
+  private var filteredButtonTypes: [BookButtonType] {
+    guard !previewEnabled else { return provider.buttonTypes }
+    return provider.buttonTypes.filter { $0 != .sample && $0 != .audiobookSample }
+  }
 
   var body: some View {
     HStack(spacing: 10) {
-      ForEach(provider.buttonTypes, id: \.self) { buttonType in
+      ForEach(filteredButtonTypes, id: \.self) { buttonType in
         ActionButton(
           type: buttonType,
           provider: provider,
@@ -40,7 +45,7 @@ struct BookButtonsView<T: BookButtonProvider>: View {
       }
     }
     .padding(.vertical)
-    .animation(.spring(response: 0.4, dampingFraction: 0.7), value: provider.buttonTypes)
+    .animation(.spring(response: 0.4, dampingFraction: 0.7), value: filteredButtonTypes)
   }
 }
 

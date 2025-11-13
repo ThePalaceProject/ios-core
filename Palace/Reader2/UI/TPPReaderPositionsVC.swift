@@ -12,7 +12,7 @@ import PureLayout
 /// A protocol describing callbacks for the possible user actions related
 /// to TOC items and bookmarks (aka positions).
 /// - See: `TPPReaderPositionsVC`
-protocol TPPReaderPositionsDelegate: class {
+protocol TPPReaderPositionsDelegate: AnyObject {
   func positionsVC(_ positionsVC: TPPReaderPositionsVC, didSelectTOCLocation loc: Any)
   func positionsVC(_ positionsVC: TPPReaderPositionsVC, didSelectBookmark bookmark: TPPReadiumBookmark)
   func positionsVC(_ positionsVC: TPPReaderPositionsVC, didDeleteBookmark bookmark: TPPReadiumBookmark)

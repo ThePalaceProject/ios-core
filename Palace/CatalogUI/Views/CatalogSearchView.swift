@@ -3,6 +3,7 @@ import SwiftUI
 // MARK: - SearchView
 struct CatalogSearchView: View {
   @StateObject private var viewModel: CatalogSearchViewModel
+  @FocusState private var isSearchFieldFocused: Bool
   let books: [TPPBook]
   let onBookSelected: (TPPBook) -> Void
   
@@ -39,8 +40,13 @@ struct CatalogSearchView: View {
         BookListView(
           books: viewModel.filteredBooks,
           isLoading: .constant(false),
-          onSelect: onBookSelected
+          onSelect: onBookSelected,
+          previewEnabled: false
         )
+      }
+      .scrollDismissesKeyboard(.interactively)
+      .onTapGesture {
+        isSearchFieldFocused = false
       }
     }
     .onAppear {
@@ -63,6 +69,8 @@ private extension CatalogSearchView {
           set: { viewModel.updateSearchQuery($0) }
         )
       )
+      .focused($isSearchFieldFocused)
+      .submitLabel(.search)
       .padding(8)
       .background(Color.gray.opacity(0.2))
       .cornerRadius(10)

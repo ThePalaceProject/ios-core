@@ -25,10 +25,11 @@ struct BookDetailView: View {
   @State private var imageBottomPosition: CGFloat = 400
   @State private var pulseSkeleton: Bool = false
   @State private var lastBookIdentifier: String? = nil
+  @State private var initialLayoutComplete: Bool = false
   
   private let scaleAnimation = Animation.linear(duration: 0.35)
 
-  @State private var headerColor: Color = .white
+  @State private var headerColor: Color = Color(UIColor.systemBackground)
 
   private let maxHeaderHeight: CGFloat = 225
   private let minHeaderHeight: CGFloat = 80
@@ -80,7 +81,13 @@ struct BookDetailView: View {
         headerColor = Color(viewModel.book.dominantUIColor)
         lastBookIdentifier = viewModel.book.identifier
 
+        showCompactHeader = false
         headerHeight = viewModel.isFullSize ? 300 : 225
+        imageScale = 1.0
+        imageOpacity = 1.0
+        titleOpacity = 1.0
+        lastOffset = 0
+        
         viewModel.fetchRelatedBooks()
         self.descriptionText = viewModel.book.summary ?? ""
         withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
@@ -91,7 +98,12 @@ struct BookDetailView: View {
         viewModel.showHalfSheet = false
       }
       .onReceive(viewModel.book.$dominantUIColor) { newColor in
-        headerColor = Color(newColor)
+        // Don't update while half sheet is showing to prevent unnecessary re-renders
+        guard !viewModel.showHalfSheet else { return }
+        
+        withAnimation(.easeInOut(duration: 0.2)) {
+          headerColor = Color(newColor)
+        }
       }
       .onReceive(NotificationCenter.default.publisher(for: .TPPBookRegistryStateDidChange).receive(on: RunLoop.main)) { note in
         guard
@@ -102,6 +114,7 @@ struct BookDetailView: View {
           let newState = TPPBookState(rawValue: raw)
         else { return }
 
+        // Only handle critical state changes that require navigation
         if newState == .unregistered {
           if let coordinator = coordinator {
             coordinator.pop()
@@ -109,6 +122,7 @@ struct BookDetailView: View {
             presentationMode.wrappedValue.dismiss()
           }
         }
+        // Ignore other state changes - they're handled by the ViewModel's publishers
       }
       .fullScreenCover(item: $selectedBook) { book in
         BookDetailView(book: book)

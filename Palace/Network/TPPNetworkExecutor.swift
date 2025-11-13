@@ -145,11 +145,7 @@ extension TPPNetworkExecutor {
                                 cachePolicy: urlSession.configuration.requestCachePolicy)
     urlRequest.applyCustomUserAgent()
     if let authToken = TPPUserAccount.sharedAccount().authToken, useTokenIfAvailable {
-      let headers = [
-        "Authorization": "Bearer \(authToken)",
-        "Content-Type": "application/json"
-      ]
-      headers.forEach { urlRequest.setValue($0.value, forHTTPHeaderField: $0.key) }
+      urlRequest.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
     }
     urlRequest.setValue("", forHTTPHeaderField: "Accept-Language")
     return urlRequest
@@ -162,22 +158,11 @@ extension TPPNetworkExecutor {
 
 extension TPPNetworkExecutor {
   @objc class func bearerAuthorized(request: URLRequest) -> URLRequest {
-    let headers: [String: String]
-    if let authToken = TPPUserAccount.sharedAccount().authToken, !authToken.isEmpty {
-      headers = [
-        "Authorization": "Bearer \(authToken)",
-        "Content-Type": "application/json"
-      ]
-    } else {
-      headers = [
-        "Authorization": "",
-        "Content-Type": "application/json"
-      ]
-    }
-
     var request = request
-    for (headerKey, headerValue) in headers {
-      request.setValue(headerValue, forHTTPHeaderField: headerKey)
+    if let authToken = TPPUserAccount.sharedAccount().authToken, !authToken.isEmpty {
+      request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
+    } else {
+      request.setValue("", forHTTPHeaderField: "Authorization")
     }
     return request
   }
@@ -433,8 +418,8 @@ extension TPPNetworkExecutor {
   }
 }
 
-private extension URLRequest {
-  struct AssociatedKeys {
+extension URLRequest {
+  private struct AssociatedKeys {
     static var hasRetriedKey = "hasRetriedKey"
   }
   
@@ -443,7 +428,7 @@ private extension URLRequest {
       return objc_getAssociatedObject(self, &AssociatedKeys.hasRetriedKey) as? Bool ?? false
     }
     set {
-      objc_setAssociatedObject(self, &AssociatedKeys.hasRetriedKey, newValue, .OBJC_ASSOCIATION_RETAIN)
+      objc_setAssociatedObject(self, &AssociatedKeys.hasRetriedKey, newValue as NSNumber, .OBJC_ASSOCIATION_RETAIN)
     }
   }
 }

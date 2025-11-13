@@ -8,7 +8,6 @@
 #import "TPPConfiguration.h"
 #import "TPPLinearView.h"
 #import "TPPOPDSFeed.h"
-#import "TPPSettingsEULAViewController.h"
 #import "TPPXML.h"
 #import "UIView+TPPViewAdditions.h"
 #import "UIFont+TPPSystemFontOverride.h"
@@ -614,34 +613,17 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
 
 + (void)requestCredentialsWithCompletion:(void (^)(void))completion
 {
-  [TPPAccountSignInViewController requestCredentialsForUsername:nil withCompletion:completion];
+  [TPPMainThreadRun asyncIfNeeded:^{
+    // Use new SwiftUI sign-in modal
+    [SignInModalPresenter presentSignInModalForCurrentAccountWithCompletion:completion];
+  }];
 }
 
 + (void)requestCredentialsForUsername:(NSString *)username withCompletion:(void (^)(void))completion
 {
   [TPPMainThreadRun asyncIfNeeded:^{
-    // Retain the VC to prevent deallocation during auth flow
-    sRetainedSignInVC = [[self alloc] init];
-    sRetainedSignInVC.defaultUsername = username;
-    
-    // Failsafe: Release retained VC after 5 minutes if completion never called
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(300.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-      if (sRetainedSignInVC != nil) {
-        NSLog(@"Warning: Sign-in VC retained longer than expected, releasing");
-        sRetainedSignInVC = nil;
-      }
-    });
-    
-    // Wrap completion to release the retained VC
-    void (^wrappedCompletion)(void) = ^{
-      if (completion) {
-        completion();
-      }
-      sRetainedSignInVC = nil; // Release after auth completes
-    };
-    
-    [sRetainedSignInVC presentIfNeededUsingExistingCredentials:NO
-                                           completionHandler:wrappedCompletion];
+    // Use new SwiftUI sign-in modal (username pre-fill not yet supported)
+    [SignInModalPresenter presentSignInModalForCurrentAccountWithCompletion:completion];
   }];
 }
 
@@ -654,30 +636,22 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
 - (void)presentIfNeededUsingExistingCredentials:(BOOL const)useExistingCredentials
                               completionHandler:(void (^)(void))completionHandler
 {
-  // Load the view so text fields are created for businessLogic to use
-  // The VC is now retained via sRetainedSignInVC, so it won't be deallocated
   [self view];
 
-  // Check if user needs to sign in (no credentials)
   BOOL needsInitialSignIn = !self.businessLogic.userAccount.hasCredentials;
   
-  // If user has no credentials, we need to handle completion ourselves
-  // because refreshAuthIfNeeded will return false and call completion immediately
   void (^wrappedCompletion)(void) = completionHandler;
   if (needsInitialSignIn) {
-    // Store completion to be called after successful sign-in
     self.businessLogic.refreshAuthCompletion = completionHandler;
-    wrappedCompletion = nil; // Don't pass to refreshAuthIfNeeded
+    wrappedCompletion = nil;
   }
   
   BOOL shouldPresentVC = [self.businessLogic
                           refreshAuthIfNeededUsingExistingCredentials:useExistingCredentials
                           completion:wrappedCompletion];
 
-  // Present the VC if:
-  // 1. refreshAuthIfNeeded says we should (expired credentials, etc.)
-  // 2. OR user has no credentials at all (initial sign-in)
-  if (shouldPresentVC || needsInitialSignIn) {
+  BOOL hasAuthDoc = self.businessLogic.libraryAccount.details != nil;
+  if (shouldPresentVC || needsInitialSignIn || (hasAuthDoc && !self.businessLogic.userAccount.hasCredentials)) {
     [self presentAsModal];
   }
 }
@@ -864,7 +838,16 @@ didSelectRowAtIndexPath:(NSIndexPath *const)indexPath
 
 - (void)showEULA
 {
-  UIViewController *eulaViewController = [[TPPSettingsEULAViewController alloc] initWithAccount:self.businessLogic.libraryAccount];
+  Account *account = self.businessLogic.libraryAccount;
+  NSURL *eulaURL = [account.details getLicenseURL:URLTypeEula];
+  if (!eulaURL) {
+    eulaURL = [NSURL URLWithString:TPPSettings.TPPUserAgreementURLString];
+  }
+  
+  RemoteHTMLViewController *eulaViewController = [[RemoteHTMLViewController alloc] 
+                                                   initWithURL:eulaURL
+                                                   title:NSLocalizedString(@"User Agreement", nil)
+                                                   failureMessage:NSLocalizedString(@"The page could not load due to a connection error.", nil)];
   UINavigationController *navVC = [[UINavigationController alloc] initWithRootViewController:eulaViewController];
   [self.navigationController presentViewController:navVC animated:YES completion:nil];
 }

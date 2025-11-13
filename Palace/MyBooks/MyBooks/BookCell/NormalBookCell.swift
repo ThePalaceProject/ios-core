@@ -16,6 +16,7 @@ struct NormalBookCell: View {
   @State var showHalfSheet: Bool = false
 
   @ObservedObject var model: BookCellModel
+  var previewEnabled: Bool = true
   private let cellHeight: CGFloat = 180
 
   var body: some View {
@@ -85,7 +86,7 @@ struct NormalBookCell: View {
   }
 
   @ViewBuilder private var buttons: some View {
-      BookButtonsView(provider: model, size: buttonSize) { type in
+      BookButtonsView(provider: model, previewEnabled: previewEnabled, size: buttonSize) { type in
         switch type {
         case .close:
           withAnimation(.spring()) { self.showHalfSheet = false }

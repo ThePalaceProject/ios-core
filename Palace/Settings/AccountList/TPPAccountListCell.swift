@@ -63,6 +63,11 @@ class TPPAccountListCell: UITableViewCell {
     
   }
 
+  override func prepareForReuse() {
+    super.prepareForReuse()
+    customImageView.image = nil
+  }
+  
   func configure(for account: Account) {
     customImageView.image = account.logo
     customTextlabel.text = account.name

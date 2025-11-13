@@ -39,6 +39,7 @@ struct NavigationHostView<Content: View>: View {
             if let (document, metadata) = coordinator.resolvePDF(for: bookRoute) {
               TPPPDFReaderView(document: document)
                 .environmentObject(metadata)
+                .toolbar(.hidden, for: .tabBar)
             } else {
               EmptyView()
             }
@@ -47,12 +48,14 @@ struct NavigationHostView<Content: View>: View {
               UIViewControllerWrapper(vc, updater: { _ in })
                 .navigationBarBackButtonHidden(true)
                 .toolbar(.hidden, for: .navigationBar)
+                .toolbar(.hidden, for: .tabBar)
             } else {
               EmptyView()
             }
           case .audio(let bookRoute):
             if let model = coordinator.resolveAudioModel(for: bookRoute) {
               AudiobookPlayerView(model: model)
+                .toolbar(.hidden, for: .tabBar)
             } else {
               EmptyView()
             }

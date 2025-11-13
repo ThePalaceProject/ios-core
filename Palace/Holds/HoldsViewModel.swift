@@ -80,14 +80,11 @@ final class HoldsViewModel: ObservableObject {
             }
         }
 
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            withAnimation {
-                self.reservedBookVMs = reservedVMs
-                self.heldBookVMs = heldVMs
-                self.visibleBooks = self.allBooks
-                self.updateBadgeCount()
-            }
+        withAnimation {
+            self.reservedBookVMs = reservedVMs
+            self.heldBookVMs = heldVMs
+            self.visibleBooks = self.allBooks
+            self.updateBadgeCount()
         }
     }
 
@@ -96,10 +93,8 @@ final class HoldsViewModel: ObservableObject {
             if TPPUserAccount.sharedAccount().hasCredentials() {
                 TPPBookRegistry.shared.sync()
             } else {
-                DispatchQueue.main.async {
-                    TPPAccountSignInViewController.requestCredentials {
-                        self.reloadData()
-                    }
+                TPPAccountSignInViewController.requestCredentials {
+                    self.reloadData()
                 }
             }
         } else {
@@ -119,7 +114,13 @@ final class HoldsViewModel: ObservableObject {
     }
     
     private func updateFeed(_ account: Account) {
+        if let urlString = account.catalogUrl, let url = URL(string: urlString) {
+            TPPSettings.shared.accountMainFeedURL = url
+        }
         AccountsManager.shared.currentAccount = account
+        
+        account.loadAuthenticationDocument { _ in }
+        
         NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
     }
 

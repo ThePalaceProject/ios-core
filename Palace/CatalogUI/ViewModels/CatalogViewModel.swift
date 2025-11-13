@@ -451,7 +451,8 @@ extension CatalogViewModel {
   
   func triggerScrollToTop() {
     shouldScrollToTop = false
-    DispatchQueue.main.async {
+    // Use Task to defer the property change to next runloop iteration
+    Task { @MainActor in
       self.shouldScrollToTop = true
     }
   }

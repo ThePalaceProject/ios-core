@@ -3,9 +3,9 @@ import SwiftUI
 struct FacetToolbarView: View {
   let title: String?
   let showFilter: Bool
-  let onSort: () -> Void
+  let onSort: (() -> Void)?
   let onFilter: () -> Void
-  let currentSortTitle: String
+  let currentSortTitle: String?
   var appliedFiltersCount: Int = 0
 
   var body: some View {
@@ -16,14 +16,16 @@ struct FacetToolbarView: View {
           .bold()
       }
       Spacer()
-      Button(action: onSort) {
-        HStack(spacing: 2) {
-          ImageProviders.MyBooksView.sort
-          Text(currentSortTitle)
+      if let onSort = onSort, let currentSortTitle = currentSortTitle {
+        Button(action: onSort) {
+          HStack(spacing: 2) {
+            ImageProviders.MyBooksView.sort
+            Text(currentSortTitle)
+          }
+          .palaceFont(size: 14)
         }
-        .palaceFont(size: 14)
+        .buttonStyle(.plain)
       }
-      .buttonStyle(.plain)
       if showFilter {
         Button(action: onFilter) {
           HStack(spacing: 3) {

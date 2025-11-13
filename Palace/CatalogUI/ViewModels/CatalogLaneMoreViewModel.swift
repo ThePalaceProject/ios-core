@@ -27,14 +27,12 @@ class CatalogLaneMoreViewModel: ObservableObject {
   @Published var pendingSelections: Set<String> = []
   @Published var appliedSelections: Set<String> = []
   @Published var isApplyingFilters = false
-  @Published var currentSort: CatalogSortService.SortOption = .titleAZ
   
   // MARK: - Properties
   
   let title: String
   let url: URL
   private let filterService = CatalogFilterService.self
-  private let sortService = CatalogSortService.self
   private let api: DefaultCatalogAPI
   
   private var cancellables = Set<AnyCancellable>()
@@ -50,6 +48,10 @@ class CatalogLaneMoreViewModel: ObservableObject {
       return lanes.flatMap { $0.books }
     }
     return ungroupedBooks
+  }
+  
+  var shouldShowPagination: Bool {
+    return nextPageURL != nil
   }
   
   // MARK: - Initialization
@@ -94,8 +96,7 @@ class CatalogLaneMoreViewModel: ObservableObject {
       // Just restore the filter state if it exists, but don't refetch
       if let savedState = coordinator.resolveCatalogFilterState(for: url) {
         // Only restore if current state doesn't match saved state
-        if appliedSelections != savedState.appliedSelections || 
-           currentSort.localizedString != savedState.currentSort {
+        if appliedSelections != savedState.appliedSelections {
           restoreFilterState(savedState)
         }
       }
@@ -178,7 +179,6 @@ class CatalogLaneMoreViewModel: ObservableObject {
         .compactMap(CatalogFilterService.parseKey)
         .map { CatalogFilterService.makeGroupTitleKey(group: $0.group, title: $0.title) }
     )
-    sortBooksInPlace()
   }
   
   // MARK: - Pagination
@@ -207,7 +207,6 @@ class CatalogLaneMoreViewModel: ObservableObject {
         if let entries = feedObjc.entries as? [TPPOPDSEntry] {
           let newBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0) }
           ungroupedBooks.append(contentsOf: newBooks)
-          sortBooksInPlace()
         }
       }
     } catch {
@@ -302,7 +301,6 @@ class CatalogLaneMoreViewModel: ObservableObject {
           if let feed = try await api.fetchFeed(at: filterURL) {
             if let entries = feed.opdsFeed.entries as? [TPPOPDSEntry] {
               ungroupedBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0) }
-              sortBooksInPlace()
             }
             
             if feed.opdsFeed.type == TPPOPDSFeedType.acquisitionUngrouped {
@@ -340,19 +338,24 @@ class CatalogLaneMoreViewModel: ObservableObject {
     }
   }
   
-  // MARK: - Sorting
+  // MARK: - OPDS Facet Selection
   
-  func sortBooksInPlace() {
-    ungroupedBooks = CatalogSortService.sorted(books: ungroupedBooks, by: currentSort)
+  func applyOPDSFacet(_ facet: CatalogFilter, coordinator: NavigationCoordinator) async {
+    guard let href = facet.href else { return }
+    
+    isLoading = true
+    error = nil
+    defer { isLoading = false }
+    
+    await fetchAndApplyFeed(at: href)
+    saveFilterState(coordinator: coordinator)
   }
   
   // MARK: - State Persistence
   
   func saveFilterState(coordinator: NavigationCoordinator) {
-    let sortString = currentSort.localizedString
     let state = CatalogLaneFilterState(
       appliedSelections: appliedSelections,
-      currentSort: sortString,
       facetGroups: facetGroups
     )
     coordinator.storeCatalogFilterState(state, for: url)
@@ -361,9 +364,16 @@ class CatalogLaneMoreViewModel: ObservableObject {
   func restoreFilterState(_ state: CatalogLaneFilterState) {
     appliedSelections = state.appliedSelections
     facetGroups = state.facetGroups
-    
-    if let restoredSort = CatalogSortService.SortOption.from(localizedString: state.currentSort) {
-      currentSort = restoredSort
-    }
+  }
+  
+  var sortFacets: [CatalogFilter] {
+    return facetGroups
+      .first { $0.name.lowercased().contains("sort") }?
+      .filters ?? []
+  }
+  
+  /// Get the currently active sort facet title (for display)
+  var activeSortTitle: String? {
+    return sortFacets.first { $0.active }?.title
   }
 }

@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import CryptoKit
 
 public enum CachingMode {
@@ -22,6 +23,7 @@ public final class GeneralCache<Key: Hashable & Codable, Value: Codable> {
   private let cacheDirectory: URL
   private let queue = DispatchQueue(label: "com.Palace.GeneralCache", attributes: .concurrent)
   private let mode: CachingMode
+  private var memoryWarningObserver: NSObjectProtocol?
   
   private final class Entry: Codable {
     let value: Value
@@ -51,6 +53,52 @@ public final class GeneralCache<Key: Hashable & Codable, Value: Codable> {
     let cachesDir = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first!
     cacheDirectory = cachesDir.appendingPathComponent(cacheName, isDirectory: true)
     try? fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
+    
+    configureCacheLimits()
+    setupMemoryWarningHandler()
+  }
+  
+  deinit {
+    if let observer = memoryWarningObserver {
+      NotificationCenter.default.removeObserver(observer)
+    }
+  }
+  
+  private func configureCacheLimits() {
+    let deviceMemoryMB = ProcessInfo.processInfo.physicalMemory / (1024 * 1024)
+    let cacheMemoryMB: Int
+    let itemCountLimit: Int
+    
+    if deviceMemoryMB < 2048 {
+      cacheMemoryMB = 50
+      itemCountLimit = 200
+    } else if deviceMemoryMB < 4096 {
+      cacheMemoryMB = 100
+      itemCountLimit = 400
+    } else {
+      cacheMemoryMB = 150
+      itemCountLimit = 600
+    }
+    
+    memoryCache.totalCostLimit = cacheMemoryMB * 1024 * 1024
+    memoryCache.countLimit = itemCountLimit
+  }
+  
+  private func setupMemoryWarningHandler() {
+    memoryWarningObserver = NotificationCenter.default.addObserver(
+      forName: UIApplication.didReceiveMemoryWarningNotification,
+      object: nil,
+      queue: .main
+    ) { [weak self] _ in
+      self?.handleMemoryWarning()
+    }
+  }
+  
+  private func handleMemoryWarning() {
+    queue.async(flags: .barrier) { [weak self] in
+      guard let self = self else { return }
+      self.memoryCache.removeAllObjects()
+    }
   }
   
   public func set(_ value: Value, for key: Key, expiresIn interval: TimeInterval? = nil) {
@@ -59,12 +107,20 @@ public final class GeneralCache<Key: Hashable & Codable, Value: Codable> {
     let wrappedKey = WrappedKey(key)
     queue.sync(flags: .barrier) {
       if mode == .memoryOnly || mode == .memoryAndDisk {
-        memoryCache.setObject(entry, forKey: wrappedKey)
+        let cost = estimatedCost(for: value)
+        memoryCache.setObject(entry, forKey: wrappedKey, cost: cost)
       }
       if mode == .diskOnly || mode == .memoryAndDisk {
         saveToDisk(entry, for: key)
       }
     }
+  }
+  
+  private func estimatedCost(for value: Value) -> Int {
+    if Value.self == Data.self, let data = value as? Data {
+      return data.count
+    }
+    return 4096
   }
   
   public func get(for key: Key) -> Value? {
@@ -97,7 +153,8 @@ public final class GeneralCache<Key: Hashable & Codable, Value: Codable> {
         if mode == .memoryAndDisk {
           let exp = attrs[.modificationDate] as? Date
           let reentry = Entry(value: value, expiration: exp)
-          memoryCache.setObject(reentry, forKey: wrappedKey)
+          let cost = estimatedCost(for: value)
+          memoryCache.setObject(reentry, forKey: wrappedKey, cost: cost)
         }
         return value
       } catch {
@@ -204,15 +261,22 @@ public final class GeneralCache<Key: Hashable & Codable, Value: Codable> {
   public func fileURL(for key: Key) -> URL {
     let name: String
     if let str = key as? String {
-      name = str.replacingOccurrences(of: "[^a-zA-Z0-9_-]", with: "",
-                                      options: .regularExpression)
+      let sanitized = str.replacingOccurrences(of: "[^a-zA-Z0-9_-]", with: "",
+                                               options: .regularExpression)
+      name = sanitized.isEmpty ? "empty_\(abs(str.hashValue))" : sanitized
     } else {
       let data = try? JSONEncoder().encode(key)
       let hash = data.map { SHA256.hash(data: $0).compactMap {
         String(format: "%02x", $0)
       }.joined() } ?? String(describing: key)
-      name = hash
+      name = hash.isEmpty ? "hash_\(abs(key.hashValue))" : hash
     }
+    
+    guard !name.isEmpty else {
+      Log.error(#file, "GeneralCache: Empty cache filename for key, using fallback")
+      return cacheDirectory.appendingPathComponent("fallback_\(abs(key.hashValue))")
+    }
+    
     return cacheDirectory.appendingPathComponent(name)
   }
   

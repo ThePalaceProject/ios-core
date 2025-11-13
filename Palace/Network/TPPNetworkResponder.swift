@@ -53,13 +53,13 @@ class TPPNetworkResponder: NSObject {
   //----------------------------------------------------------------------------
   func addCompletion(_ completion: @escaping (NYPLResult<Data>) -> Void,
                      taskID: TaskID) {
-    taskInfoQueue.async {
+    taskInfoQueue.sync {
         self.taskInfo[taskID] = TPPNetworkTaskInfo(completion: completion)
       }
   }
   
   func updateCompletionId(_ oldId: TaskID, newId: TaskID) {
-    taskInfoQueue.async {
+    taskInfoQueue.sync {
       self.taskInfo[newId] = self.taskInfo[oldId]
     }
   }
@@ -80,11 +80,25 @@ extension TPPNetworkResponder: URLSessionDelegate {
         info.completion(.failure(cancelError, nil))
       }
       
+      // Only log if there's an actual error during invalidation
+      // Normal invalidation (e.g., deinit) without error is expected and shouldn't be reported
       if let err = error {
-        TPPErrorLogger.logError(err, summary: "URLSession invalidated with error")
+        Log.error(#file, "URLSession invalidated with error: \(err.localizedDescription), pending tasks: \(pending.count)")
+        TPPErrorLogger.logError(
+          err,
+          summary: "URLSession invalidated with error",
+          metadata: [
+            "pending_tasks": pending.count,
+            "error_domain": (err as NSError).domain,
+            "error_code": (err as NSError).code
+          ]
+        )
+      } else if !pending.isEmpty {
+        // Only log if there were pending tasks when invalidated (potential issue)
+        Log.warn(#file, "URLSession invalidated with \(pending.count) pending tasks (no error)")
       } else {
-        TPPErrorLogger.logError(withCode: .invalidURLSession,
-                                summary: "URLSession invalidated without error")
+        // Normal shutdown - don't log
+        Log.debug(#file, "URLSession invalidated normally (no error, no pending tasks)")
       }
     }
   }
@@ -167,10 +181,15 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
 
     let result: NYPLResult<Data>
     if let http = task.response as? HTTPURLResponse {
+      let isFailedRetry = task.originalRequest?.hasRetried == true
+      
       if http.statusCode == 401,
+         !isFailedRetry,
          handleExpiredTokenIfNeeded(for: http, with: task) {
+        Log.debug(#file, "Task \(taskID) got 401, triggering token refresh and retry")
         return
       }
+      
       if !http.isSuccess() {
         let err: TPPUserFriendlyError
         let data = info.progressData
@@ -179,7 +198,8 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
           err = task.parseAndLogError(
             fromProblemDocumentData: data,
             networkError: networkError,
-            logMetadata: logMetadata
+            logMetadata: logMetadata,
+            isFailedRetry: isFailedRetry
           )
         } else {
           err = NSError(
@@ -187,6 +207,11 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
             code: TPPErrorCode.responseFail.rawValue,
             userInfo: logMetadata
           )
+          
+          // Only log non-retry failures or failed retries
+          if !isFailedRetry || http.statusCode == 401 {
+            Log.warn(#file, "Request failed with status \(http.statusCode), isRetry: \(isFailedRetry)")
+          }
         }
         
         result = .failure(err, task.response)
@@ -287,6 +312,8 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
 
 
 private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse, with task: URLSessionTask) -> Bool {
+  // Skip DELETE requests - intentionally don't refresh tokens for deletes
+  // This prevents refresh loops when revoking/returning items
   if task.originalRequest?.httpMethod == "DELETE" {
     return false
   }
@@ -309,11 +336,13 @@ extension URLSessionTask {
   //----------------------------------------------------------------------------
   fileprivate func parseAndLogError(fromProblemDocumentData responseData: Data,
                                     networkError: Error?,
-                                    logMetadata: [String: Any]) -> TPPUserFriendlyError {
+                                    logMetadata: [String: Any],
+                                    isFailedRetry: Bool = false) -> TPPUserFriendlyError {
     let parseError: Error?
     let code: TPPErrorCode
     let returnedError: TPPUserFriendlyError
     var logMetadata = logMetadata
+    logMetadata["isFailedRetry"] = isFailedRetry
 
     do {
       let problemDoc = try TPPProblemDocument.fromData(responseData)
@@ -321,6 +350,22 @@ extension URLSessionTask {
       parseError = nil
       code = TPPErrorCode.problemDocAvailable
       logMetadata["problemDocument"] = problemDoc.dictionaryValue
+      logMetadata["problemDocType"] = problemDoc.type ?? "unknown"
+      
+      // Check response status code (could be in HTTPURLResponse or problem document)
+      let httpStatusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+      let problemDocStatus = problemDoc.status ?? httpStatusCode
+      
+      // Don't log first-attempt 401s - they'll be retried with token refresh
+      if !isFailedRetry && (httpStatusCode == 401 || problemDocStatus == 401) {
+        Log.debug(#file, "Problem document with 401 - will retry with token refresh (not logging to Crashlytics)")
+        return returnedError
+      }
+      
+      // For failed retries with 401, this is a real auth issue (log it)
+      if isFailedRetry && (httpStatusCode == 401 || problemDocStatus == 401) {
+        Log.error(#file, "Failed retry with 401 - auth credentials invalid after refresh")
+      }
     } catch (let caughtParseError) {
       parseError = caughtParseError
       code = TPPErrorCode.parseProblemDocFail

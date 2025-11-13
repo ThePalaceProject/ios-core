@@ -23,6 +23,15 @@ struct SearchRoute: Hashable {
   let id: UUID
 }
 
+/// Weak wrapper for UIViewController to prevent retain cycles
+private class WeakViewController {
+  weak var viewController: UIViewController?
+  
+  init(_ viewController: UIViewController) {
+    self.viewController = viewController
+  }
+}
+
 /// Centralized coordinator for NavigationStack-based routing.
 /// Owns a NavigationPath and transient payload storage to resolve non-hashable models.
 @MainActor
@@ -33,14 +42,17 @@ final class NavigationCoordinator: ObservableObject {
   /// This lets us resolve non-hashable models like Objective-C `TPPBook` at destination time.
   private var bookById: [String: TPPBook] = [:]
   private var searchBooksById: [UUID: [TPPBook]] = [:]
-  private var pdfControllerById: [String: UIViewController] = [:]
-  private var epubControllerById: [String: UIViewController] = [:]
+  
+  /// Weak references to prevent retain cycles
+  private var pdfControllerById: [String: WeakViewController] = [:]
+  private var epubControllerById: [String: WeakViewController] = [:]
+  
   private var audioModelById: [String: AudiobookPlaybackModel] = [:]
   private var pdfContentById: [String: (TPPPDFDocument, TPPPDFDocumentMetadata)] = [:]
   private var catalogFilterStatesByURL: [String: CatalogLaneFilterState] = [:]
   
   private let maxStoredItems = 100
-  private var cleanupTimer: Timer?
+  private var cleanupTask: Task<Void, Never>?
 
   // MARK: - Public API
 
@@ -75,9 +87,12 @@ final class NavigationCoordinator: ObservableObject {
                     pdfContentById.count + catalogFilterStatesByURL.count
     
     if totalItems > maxStoredItems {
-      cleanupTimer?.invalidate()
-      cleanupTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { [weak self] _ in
-        self?.performCleanup()
+      cleanupTask?.cancel()
+      cleanupTask = Task { [weak self] in
+        try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+        await MainActor.run {
+          self?.performCleanup()
+        }
       }
     }
   }
@@ -95,15 +110,16 @@ final class NavigationCoordinator: ObservableObject {
       keysToRemove.forEach { searchBooksById.removeValue(forKey: $0) }
     }
     
-    // Clear old controllers and models
-    pdfControllerById.removeAll()
-    // audioControllerById removed - now using SwiftUI AudiobookPlayerView only
-    epubControllerById.removeAll()
+    // Clear old controllers and models (weak references auto-cleanup deallocated controllers)
+    // Remove nil weak references
+    pdfControllerById = pdfControllerById.filter { $0.value.viewController != nil }
+    epubControllerById = epubControllerById.filter { $0.value.viewController != nil }
+    
     audioModelById.removeAll()
     pdfContentById.removeAll()
     catalogFilterStatesByURL.removeAll()
     
-    Log.info(#file, "🧹 NavigationCoordinator: Cleaned up cached items (preserved filter states)")
+    Log.info(#file, "🧹 NavigationCoordinator: Cleaned up cached items (weak controllers preserved if still alive)")
   }
 
   func resolveBook(for route: BookRoute) -> TPPBook? {
@@ -122,20 +138,22 @@ final class NavigationCoordinator: ObservableObject {
 
   // MARK: - Controllers
   func storePDFController(_ controller: UIViewController, forBookId id: String) {
-    pdfControllerById[id] = controller
+    pdfControllerById[id] = WeakViewController(controller)
+    scheduleCleanupIfNeeded()
   }
 
   func resolvePDFController(for route: BookRoute) -> UIViewController? {
-    pdfControllerById[route.id]
+    pdfControllerById[route.id]?.viewController
   }
 
 
   func storeEPUBController(_ controller: UIViewController, forBookId id: String) {
-    epubControllerById[id] = controller
+    epubControllerById[id] = WeakViewController(controller)
+    scheduleCleanupIfNeeded()
   }
 
   func resolveEPUBController(for route: BookRoute) -> UIViewController? {
-    epubControllerById[route.id]
+    epubControllerById[route.id]?.viewController
   }
 
   // MARK: - SwiftUI payloads
@@ -190,7 +208,6 @@ final class NavigationCoordinator: ObservableObject {
 
 struct CatalogLaneFilterState {
   let appliedSelections: Set<String>
-  let currentSort: String  // Store as string to avoid enum duplication
   let facetGroups: [CatalogFilterGroup]
 }
 
