@@ -45,11 +45,13 @@ private extension CatalogView {
     ToolbarItem(placement: .principal) {
       LibraryNavTitleView(onTap: { openLibraryHome() })
         .id(logoObserver.token.uuidString + currentAccountUUID)
+        .accessibilityIdentifier(AccessibilityID.Catalog.libraryLogo)
     }
     ToolbarItem(placement: .navigationBarLeading) {
       Button(action: { showAccountDialog = true }) {
         ImageProviders.MyBooksView.myLibraryIcon
       }
+      .accessibilityIdentifier(AccessibilityID.Catalog.accountButton)
       .actionSheet(isPresented: $showAccountDialog) { libraryPicker }
     }
     
@@ -58,10 +60,12 @@ private extension CatalogView {
         Button(action: { dismissSearch() }) {
           Text(Strings.Generic.cancel)
         }
+        .accessibilityIdentifier(AccessibilityID.Search.cancelButton)
       } else {
         Button(action: { presentSearch() }) {
           ImageProviders.MyBooksView.search
         }
+        .accessibilityIdentifier(AccessibilityID.Catalog.searchButton)
       }
     }
   }
@@ -122,6 +126,7 @@ private extension CatalogView {
   private var loadingSection: some View {
     if !showSearch && viewModel.isLoading {
       skeletonList
+        .accessibilityIdentifier(AccessibilityID.Catalog.loadingIndicator)
     } else {
       EmptyView()
     }
@@ -131,6 +136,7 @@ private extension CatalogView {
   private var errorSection: some View {
     if !showSearch, let error = viewModel.errorMessage {
       Text(error)
+        .accessibilityIdentifier(AccessibilityID.Catalog.errorView)
     } else {
       EmptyView()
     }
@@ -146,6 +152,7 @@ private extension CatalogView {
           coordinator.push(.catalogLaneMore(title: title, url: url))
         }
       )
+      .accessibilityIdentifier(AccessibilityID.Catalog.scrollView)
     } else {
       EmptyView()
     }

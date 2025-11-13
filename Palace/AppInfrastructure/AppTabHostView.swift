@@ -26,6 +26,7 @@ struct AppTabHostView: View {
           }
         }
         .tag(AppTab.catalog)
+        .accessibilityIdentifier(AccessibilityID.TabBar.catalogTab)
 
       NavigationHostView(rootView: MyBooksView(model: MyBooksViewModel()))
         .tabItem {
@@ -35,6 +36,7 @@ struct AppTabHostView: View {
           }
         }
         .tag(AppTab.myBooks)
+        .accessibilityIdentifier(AccessibilityID.TabBar.myBooksTab)
 
       NavigationHostView(rootView: HoldsView())
         .tabItem {
@@ -45,10 +47,12 @@ struct AppTabHostView: View {
         }
         .badge(holdsBadgeCount)
         .tag(AppTab.holds)
+        .accessibilityIdentifier(AccessibilityID.TabBar.holdsTab)
 
       NavigationHostView(rootView: TPPSettingsView())
         .tabItem { Label(Strings.Settings.settings, systemImage: "gearshape") }
         .tag(AppTab.settings)
+        .accessibilityIdentifier(AccessibilityID.TabBar.settingsTab)
     }
     .tint(Color.accentColor)
     .onAppear { AppTabRouterHub.shared.router = router }

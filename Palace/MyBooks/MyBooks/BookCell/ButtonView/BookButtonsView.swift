@@ -60,6 +60,39 @@ struct ActionButton<T: BookButtonProvider>: View {
   private var accessibilityString: String {
     return type.title
   }
+  
+  private var accessibilityID: String {
+    switch type {
+    case .get:
+      return AccessibilityID.BookDetail.getButton
+    case .download:
+      return AccessibilityID.BookDetail.downloadButton
+    case .read:
+      return AccessibilityID.BookDetail.readButton
+    case .listen:
+      return AccessibilityID.BookDetail.listenButton
+    case .remove:
+      return AccessibilityID.BookDetail.deleteButton
+    case .return:
+      return AccessibilityID.BookDetail.returnButton
+    case .reserve:
+      return AccessibilityID.BookDetail.reserveButton
+    case .cancel:
+      return AccessibilityID.BookDetail.cancelButton
+    case .retry:
+      return AccessibilityID.BookDetail.retryButton
+    case .manageHold:
+      return AccessibilityID.BookDetail.manageHoldButton
+    case .sample:
+      return AccessibilityID.BookDetail.sampleButton
+    case .audiobookSample:
+      return AccessibilityID.BookDetail.audiobookSampleButton
+    case .returning, .cancelHold:
+      return AccessibilityID.BookDetail.returnButton
+    case .close:
+      return AccessibilityID.Common.closeButton
+    }
+  }
 
   var body: some View {
     Button(action: {
@@ -97,6 +130,7 @@ struct ActionButton<T: BookButtonProvider>: View {
     .disabled(provider.isProcessing(for: type))
     .buttonStyle(.plain)
     .accessibilityLabel(accessibilityString)
+    .accessibilityIdentifier(accessibilityID)
   }
 }
 
