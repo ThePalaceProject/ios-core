@@ -42,8 +42,15 @@ final class BookDetailViewModel: ObservableObject {
   @Published var isManagingHold: Bool = false
   @Published var showHalfSheet = false
   @Published private(set) var stableButtonState: BookButtonState = .unsupported
+  @Published var orientationChanged: Bool = false
   
-  var isFullSize: Bool { UIDevice.current.isIpad }
+  var isFullSize: Bool {
+    guard UIDevice.current.isIpad else { return false }
+    let screenWidth = UIScreen.main.bounds.width
+    let screenHeight = UIScreen.main.bounds.height
+    _ = orientationChanged
+    return screenHeight > screenWidth
+  }
   
   @Published var processingButtons: Set<BookButtonType> = [] {
     didSet {
@@ -372,7 +379,7 @@ final class BookDetailViewModel: ObservableObject {
         let account = TPPUserAccount.sharedAccount()
         if account.needsAuth && !account.hasCredentials() {
           self.showHalfSheet = false
-          TPPAccountSignInViewController.requestCredentials { [weak self] in
+          SignInModalPresenter.presentSignInModalForCurrentAccount { [weak self] in
             guard self != nil else { return }
             action()
           }

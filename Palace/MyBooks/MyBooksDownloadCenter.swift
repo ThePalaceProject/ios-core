@@ -246,7 +246,7 @@ import OverdriveProcessor
       // ADEPT crashes the app with expired certificate.
       TPPAlertUtils.presentFromViewControllerOrNil(alertController: TPPAlertUtils.expiredAdobeDRMAlert(), viewController: nil, animated: true, completion: nil)
     } else {
-      TPPAccountSignInViewController.requestCredentials { [weak self] in
+      SignInModalPresenter.presentSignInModalForCurrentAccount { [weak self] in
         guard let self = self else { return }
         self.isRequestingCredentials = false
         
@@ -260,7 +260,7 @@ import OverdriveProcessor
       }
     }
 #else
-    TPPAccountSignInViewController.requestCredentials { [weak self] in
+    SignInModalPresenter.presentSignInModalForCurrentAccount { [weak self] in
       guard let self = self else { return }
       self.isRequestingCredentials = false
       
