@@ -187,6 +187,12 @@ private enum StorageKey: String {
   }
 
   private func notifyAccountDidChange() {
+    // Update modern Combine publisher
+    Task { @MainActor in
+      UserAccountPublisher.shared.updateState(from: self)
+    }
+    
+    // Maintain backward compatibility with legacy notification system
     NotificationCenter.default.post(
       name: Notification.Name.TPPUserAccountDidChange,
       object: self
@@ -258,19 +264,16 @@ private enum StorageKey: String {
   func isTokenRefreshRequired() -> Bool {
     guard let authDefinition = authDefinition else { return false }
     
-    // Basic-token auth: only refresh if token EXPIRED (not just missing)
     if authDefinition.isToken {
       guard authDefinition.tokenURL != nil,
             username != nil,
             pin != nil else {
         return false
       }
-      // Only refresh if we have a token that expired
-      // Don't refresh if token is simply missing (user needs to login first)
+
       return authTokenHasExpired
     }
     
-    // OAuth: can refresh if token is missing or expired
     let isOAuthAndNeedsRefresh = authDefinition.isOauth &&
     !hasAuthToken() &&
     (authDefinition.tokenURL != nil)
@@ -531,13 +534,18 @@ private enum StorageKey: String {
         _barcode.write(nil)
         _pin.write(nil)
         _authToken.write(nil)
-
-        notifyAccountDidChange()
-
-        NotificationCenter.default.post(name: Notification.Name.TPPDidSignOut,
-                                        object: nil)
       }
     }
+    
+    // Post events after releasing the queue lock to prevent deadlock
+    // Update modern Combine publisher
+    Task { @MainActor in
+      UserAccountPublisher.shared.signOut()
+    }
+    
+    // Maintain backward compatibility with legacy notification system
+    notifyAccountDidChange()
+    NotificationCenter.default.post(name: Notification.Name.TPPDidSignOut, object: nil)
   }
 }
 
