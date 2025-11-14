@@ -177,7 +177,7 @@ let currentAccountIdentifierKey = "TPPCurrentAccountIdentifier"
     if addLoadingHandler(for: hash, completion) { return }
 
     Log.debug(#file, "Loading catalogs for hash \(hash)…")
-    TPPNetworkExecutor(cachingStrategy: .fallback).GET(targetUrl, useTokenIfAvailable: false) { [weak self] result in
+    TPPNetworkExecutor.shared.GET(targetUrl, useTokenIfAvailable: false) { [weak self] result in
       guard let self = self else { return }
       switch result {
       case .success(let data, _):
@@ -187,14 +187,17 @@ let currentAccountIdentifierKey = "TPPCurrentAccountIdentifier"
           self.callAndClearLoadingHandlers(for: hash, success)
         }
 
-      case .failure:
+      case .failure(let error, _):
+        Log.error(#file, "Failed to load catalogs from network: \(error.localizedDescription)")
         // fallback to disk
         if let data = self.readCachedAccountsCatalogData(hash: hash) {
+          Log.info(#file, "Using cached catalog data as fallback")
           self.loadAccountSetsAndAuthDoc(fromCatalogData: data, key: hash) { success in
             NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
             self.callAndClearLoadingHandlers(for: hash, success)
           }
         } else {
+          Log.error(#file, "No cached catalog data available, catalog load failed completely")
           // truly failed
           self.callAndClearLoadingHandlers(for: hash, false)
         }

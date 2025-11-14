@@ -130,7 +130,32 @@ private extension CatalogView {
   @ViewBuilder
   private var errorSection: some View {
     if !showSearch, let error = viewModel.errorMessage {
-      Text(error)
+      VStack(spacing: 16) {
+        Text(Strings.Generic.error)
+          .font(.headline)
+          .foregroundColor(.red)
+        
+        Text(error)
+          .font(.body)
+          .multilineTextAlignment(.center)
+          .padding(.horizontal)
+        
+        Button(action: {
+          Task { await viewModel.forceRefresh() }
+        }) {
+          HStack {
+            Image(systemName: "arrow.clockwise")
+            Text(Strings.Generic.reload)
+          }
+          .padding(.horizontal, 24)
+          .padding(.vertical, 12)
+          .background(Color.blue)
+          .foregroundColor(.white)
+          .cornerRadius(8)
+        }
+      }
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
+      .padding()
     } else {
       EmptyView()
     }
