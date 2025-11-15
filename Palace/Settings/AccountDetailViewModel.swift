@@ -67,9 +67,12 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     
     let barcodeHasText = !usernameText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     let pinHasText = !pinText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    let pinIsNotRequired = businessLogic.selectedAuthentication?.pinKeyboard == .none
     
-    return (barcodeHasText && pinHasText) || (barcodeHasText && pinIsNotRequired)
+    let pinIsNotRequired = businessLogic.selectedAuthentication.map { $0.pinKeyboard == .none } ?? true
+    
+    let result = (barcodeHasText && pinHasText) || (barcodeHasText && pinIsNotRequired)
+    
+    return result
   }
   
   var libraryName: String {
@@ -292,7 +295,6 @@ class AccountDetailViewModel: NSObject, ObservableObject {
       return [.barcode, .pin, .logInSignOut]
     }
     
-    pinText = ""
     return [.barcode, .logInSignOut]
   }
   
@@ -635,10 +637,14 @@ extension AccountDetailViewModel: TPPSignInOutBusinessLogicUIDelegate {
 
 extension AccountDetailViewModel: NYPLBasicAuthCredentialsProvider {
   var username: String? {
-    usernameText.isEmpty ? nil : usernameText
+    let value = usernameText.isEmpty ? nil : usernameText
+    Log.debug(#file, "Credentials provider - username: \(value ?? "nil")")
+    return value
   }
   
   var pin: String? {
-    pinText.isEmpty ? nil : pinText
+    let value = pinText.isEmpty ? "" : pinText
+    Log.debug(#file, "Credentials provider - pin: '\(value)'")
+    return value
   }
 }
