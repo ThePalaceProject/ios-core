@@ -62,15 +62,11 @@ class SignInModalPresenter: NSObject {
   /// Convenience method for current account
   /// - Parameter completion: Called when sign-in completes successfully
   static func presentSignInModalForCurrentAccount(completion: (() -> Void)?) {
-    Log.info(#file, "presentSignInModalForCurrentAccount called")
-    
     guard let libraryID = AccountsManager.shared.currentAccountId else {
-      Log.error(#file, "No current account ID found")
       completion?()
       return
     }
     
-    Log.info(#file, "Presenting sign-in modal for library: \(libraryID)")
     presentSignInModal(libraryAccountID: libraryID, completion: completion)
   }
 }
