@@ -1,0 +1,19 @@
+# GherkinSwift Converter - Dependencies
+
+# Core dependencies
+gherkin-official>=24.0.0   # Official Gherkin parser
+pyyaml>=6.0.1              # Configuration files
+jinja2>=3.1.2              # Template engine
+
+# AI providers (choose one or both)
+openai>=1.3.0              # OpenAI API (GPT-4)
+anthropic>=0.8.0           # Anthropic API (Claude)
+
+# CLI & Output
+rich>=13.7.0               # Beautiful terminal output
+click>=8.1.7               # Better CLI argument parsing
+
+# Testing
+pytest>=7.4.0              # For tool tests
+pytest-mock>=3.12.0        # Mocking in tests
+
