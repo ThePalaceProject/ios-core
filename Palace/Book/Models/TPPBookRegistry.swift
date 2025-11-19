@@ -319,6 +319,29 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
       }
     }
   }
+  
+  func saveSync() {
+    guard let account = AccountsManager.shared.currentAccount?.uuid,
+          let registryUrl = registryUrl(for: account)
+    else { return }
+
+    let snapshot: [[String: Any]] = performSync {
+      self.registry.values.map { $0.dictionaryRepresentation }
+    }
+    let registryObject = [TPPBookRegistryKey.records.rawValue: snapshot]
+
+    do {
+      let directoryURL = registryUrl.deletingLastPathComponent()
+      if !FileManager.default.fileExists(atPath: directoryURL.path) {
+        try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+      }
+      let registryData = try JSONSerialization.data(withJSONObject: registryObject, options: .fragmentsAllowed)
+      try registryData.write(to: registryUrl, options: .atomic)
+      Log.debug(#file, "🔒 Synchronously saved registry to disk")
+    } catch {
+      Log.error(#file, "Error saving book registry synchronously: \(error.localizedDescription)")
+    }
+  }
 
   func load() { load(account: nil) }
   func sync() { sync(completion: nil) }
@@ -603,6 +626,17 @@ extension TPPBookRegistry: TPPBookRegistryProvider {
       self.registry[bookIdentifier]?.location = location
       self.save()
     }
+  }
+  
+  func setLocationSync(_ location: TPPBookLocation?, forIdentifier bookIdentifier: String) {
+    guard !bookIdentifier.isEmpty else { return }
+    syncQueue.sync(flags: .barrier) { [weak self] in
+      guard let self else { return }
+
+      self.registry[bookIdentifier]?.location = location
+      Log.debug(#file, "🔒 Synchronously set location for \(bookIdentifier)")
+    }
+    saveSync()
   }
 
   func location(forIdentifier bookIdentifier: String) -> TPPBookLocation? {

@@ -347,14 +347,30 @@ enum BookService {
             
             if let local = localPosition, let remote = remote {
               // Both exist - compare save timestamps to find most recently saved
-              let localSaveDate = ISO8601DateFormatter().date(from: local.lastSavedTimeStamp) ?? Date.distantPast
-              let remoteSaveDate = ISO8601DateFormatter().date(from: remote.lastSavedTimeStamp) ?? Date.distantPast
+              let formatter = ISO8601DateFormatter()
+              let localSaveDate = formatter.date(from: local.lastSavedTimeStamp)
+              let remoteSaveDate = formatter.date(from: remote.lastSavedTimeStamp)
               
-              if remoteSaveDate > localSaveDate {
-                Log.debug(#file, "Using remote position (more recently saved): track=\(remote.track.key), timestamp=\(remote.timestamp), saved=\(remote.lastSavedTimeStamp)")
+              if let localDate = localSaveDate, let remoteDate = remoteSaveDate {
+                // Both timestamps valid - normal comparison
+                if remoteDate > localDate {
+                  Log.debug(#file, "Using remote position (more recently saved): track=\(remote.track.key), timestamp=\(remote.timestamp), saved=\(remote.lastSavedTimeStamp)")
+                  finalPosition = remote
+                } else {
+                  Log.debug(#file, "Using local position (more recently saved): track=\(local.track.key), timestamp=\(local.timestamp), saved=\(local.lastSavedTimeStamp)")
+                  finalPosition = local
+                }
+              } else if localSaveDate != nil && remoteSaveDate == nil {
+                // Only local timestamp is valid
+                Log.debug(#file, "Using local position (remote timestamp invalid): track=\(local.track.key)")
+                finalPosition = local
+              } else if remoteSaveDate != nil && localSaveDate == nil {
+                // Only remote timestamp is valid
+                Log.debug(#file, "Using remote position (local timestamp invalid): track=\(remote.track.key)")
                 finalPosition = remote
               } else {
-                Log.debug(#file, "Using local position (more recently saved): track=\(local.track.key), timestamp=\(local.timestamp), saved=\(local.lastSavedTimeStamp)")
+                // Both timestamps invalid - prefer local as safer default
+                Log.warn(#file, "⚠️ Both timestamps invalid! Preferring local position as safer default: track=\(local.track.key)")
                 finalPosition = local
               }
             } else if let remote = remote {
