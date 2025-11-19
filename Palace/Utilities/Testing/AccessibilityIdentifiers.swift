@@ -24,11 +24,24 @@ public enum AccessibilityID {
   // MARK: - Tab Bar
   
   /// Main app tab bar identifiers
+  ///
+  /// **NOTE:** SwiftUI tab items are identified by their TEXT LABELS, not custom IDs.
+  /// In tests, use the actual tab labels:
+  /// - app.tabBars.buttons["Catalog"]
+  /// - app.tabBars.buttons["My Books"]
+  /// - app.tabBars.buttons["Reservations"]
+  /// - app.tabBars.buttons["Settings"]
+  ///
+  /// The constants below are kept for reference but are NOT used by SwiftUI TabView.
   public enum TabBar {
-    public static let catalogTab = "tabBar.catalog"
-    public static let myBooksTab = "tabBar.myBooks"
-    public static let holdsTab = "tabBar.holds"
-    public static let settingsTab = "tabBar.settings"
+    /// ⚠️ Not used - tabs identified by label "Catalog"
+    public static let catalogTab = "Catalog"
+    /// ⚠️ Not used - tabs identified by label "My Books"
+    public static let myBooksTab = "My Books"
+    /// ⚠️ Not used - tabs identified by label "Reservations"
+    public static let holdsTab = "Reservations"
+    /// ⚠️ Not used - tabs identified by label "Settings"
+    public static let settingsTab = "Settings"
   }
   
   // MARK: - Catalog Screen
@@ -104,7 +117,7 @@ public enum AccessibilityID {
     // Progress
     public static let downloadProgress = "bookDetail.downloadProgress"
     
-    // Half sheet (download/return confirmation)
+    // Half sheet
     public static let halfSheet = "bookDetail.halfSheet"
     public static let halfSheetTitle = "bookDetail.halfSheet.title"
     public static let halfSheetMessage = "bookDetail.halfSheet.message"
@@ -185,56 +198,7 @@ public enum AccessibilityID {
     public static let deleteServerDataButton = "settings.deleteServerDataButton"
   }
   
-  // MARK: - Library Management
-  
-  /// Add/Manage libraries screen identifiers
-  public enum LibraryManagement {
-    public static let navigationBar = "libraryManagement.navigationBar"
-    public static let searchField = "libraryManagement.searchField"
-    public static let libraryList = "libraryManagement.libraryList"
-    
-    public static func libraryCell(_ libraryID: String) -> String { "libraryManagement.library.\(libraryID)" }
-    public static func addButton(_ libraryID: String) -> String { "libraryManagement.add.\(libraryID)" }
-    public static func removeButton(_ libraryID: String) -> String { "libraryManagement.remove.\(libraryID)" }
-  }
-  
-  // MARK: - Reader Screens
-  
-  /// EPUB Reader identifiers
-  public enum EPUBReader {
-    public static let readerView = "epubReader.view"
-    public static let navigationBar = "epubReader.navigationBar"
-    public static let closeButton = "epubReader.closeButton"
-    public static let tocButton = "epubReader.tocButton"
-    public static let bookmarkButton = "epubReader.bookmarkButton"
-    public static let settingsButton = "epubReader.settingsButton"
-    
-    // Table of contents
-    public static let tocView = "epubReader.toc"
-    public static func tocChapter(_ index: Int) -> String { "epubReader.toc.chapter.\(index)" }
-    
-    // Settings
-    public static let fontSizeSlider = "epubReader.fontSizeSlider"
-    public static let brightnessSlider = "epubReader.brightnessSlider"
-  }
-  
-  /// PDF Reader identifiers
-  public enum PDFReader {
-    public static let readerView = "pdfReader.view"
-    public static let navigationBar = "pdfReader.navigationBar"
-    public static let closeButton = "pdfReader.closeButton"
-    public static let thumbnailButton = "pdfReader.thumbnailButton"
-    public static let searchButton = "pdfReader.searchButton"
-    public static let bookmarkButton = "pdfReader.bookmarkButton"
-    
-    // Page navigation
-    public static let pageLabel = "pdfReader.pageLabel"
-    public static let pageSlider = "pdfReader.pageSlider"
-    
-    // Search
-    public static let searchField = "pdfReader.searchField"
-    public static let searchResults = "pdfReader.searchResults"
-  }
+  // MARK: - Audiobook Player
   
   /// Audiobook Player identifiers
   public enum AudiobookPlayer {
@@ -252,6 +216,7 @@ public enum AccessibilityID {
     public static let progressSlider = "audiobookPlayer.progressSlider"
     public static let currentTimeLabel = "audiobookPlayer.currentTimeLabel"
     public static let remainingTimeLabel = "audiobookPlayer.remainingTimeLabel"
+    public static let chapterTitle = "audiobookPlayer.chapterTitle"
     
     // Settings
     public static let playbackSpeedButton = "audiobookPlayer.playbackSpeedButton"
@@ -269,19 +234,6 @@ public enum AccessibilityID {
     public static let sleepTimerMenu = "audiobookPlayer.sleepTimerMenu"
     public static let sleepTimerEndOfChapter = "audiobookPlayer.sleepTimer.endOfChapter"
     public static func sleepTimerMinutes(_ minutes: Int) -> String { "audiobookPlayer.sleepTimer.\(minutes)min" }
-  }
-  
-  // MARK: - Alerts & Dialogs
-  
-  /// Common alert and dialog identifiers
-  public enum Alert {
-    public static let alert = "alert.view"
-    public static let title = "alert.title"
-    public static let message = "alert.message"
-    public static let okButton = "alert.okButton"
-    public static let cancelButton = "alert.cancelButton"
-    public static let deleteButton = "alert.deleteButton"
-    public static let confirmButton = "alert.confirmButton"
   }
   
   // MARK: - Sign In
@@ -308,32 +260,3 @@ public enum AccessibilityID {
     public static let doneButton = "common.doneButton"
   }
 }
-
-// MARK: - Testing Helper Extensions
-
-#if DEBUG
-extension AccessibilityID {
-  /// Returns all accessibility identifiers as a flat list for validation
-  /// Useful for debugging and ensuring no duplicates exist
-  public static func allIdentifiers() -> [String] {
-    // This can be expanded to use reflection to collect all static strings
-    // For now, manually maintain critical identifiers
-    return [
-      // Tab Bar
-      TabBar.catalogTab,
-      TabBar.myBooksTab,
-      TabBar.holdsTab,
-      TabBar.settingsTab,
-      
-      // Book Detail critical buttons
-      BookDetail.getButton,
-      BookDetail.readButton,
-      BookDetail.listenButton,
-      BookDetail.deleteButton,
-      BookDetail.returnButton,
-      BookDetail.reserveButton,
-    ]
-  }
-}
-#endif
-

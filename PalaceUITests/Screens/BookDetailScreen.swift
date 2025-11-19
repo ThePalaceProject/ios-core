@@ -150,7 +150,7 @@ final class BookDetailScreen: ScreenObject {
     // Handle half sheet if it appears
     if halfSheet.waitForExistence(timeout: shortTimeout) {
       // Download started, half sheet may show progress
-      wait(0.5)
+      Thread.sleep(forTimeInterval: 0.5)
     }
   }
   
@@ -218,7 +218,7 @@ final class BookDetailScreen: ScreenObject {
         return false
       }
       
-      wait(0.5)
+      Thread.sleep(forTimeInterval: 0.5)
     }
     
     XCTFail("Download did not complete within \(timeout) seconds")
@@ -236,7 +236,7 @@ final class BookDetailScreen: ScreenObject {
       if hasGetButton() {
         return true
       }
-      wait(0.5)
+      Thread.sleep(forTimeInterval: 0.5)
     }
     
     XCTFail("GET button did not appear within \(timeout) seconds")

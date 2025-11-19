@@ -81,7 +81,7 @@ final class SearchScreen: ScreenObject {
     }
     
     // Give results time to appear
-    wait(1.0)
+    Thread.sleep(forTimeInterval: 1.0)
   }
   
   /// Clears the search field

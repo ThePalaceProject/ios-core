@@ -1,5 +1,4 @@
 import XCTest
-
 /// Critical smoke tests that verify core app functionality.
 ///
 /// **AI-DEV GUIDE:**
@@ -37,7 +36,7 @@ final class SmokeTests: BaseTestCase {
     takeScreenshot(named: "app-launch")
     
     // Verify Catalog tab is default
-    let catalogTab = app.tabBars.buttons[AccessibilityID.TabBar.catalogTab]
+    let catalogTab = app.tabBars.buttons["Catalog"]
     XCTAssertTrue(catalogTab.exists, "Catalog tab should exist")
     XCTAssertTrue(catalogTab.isSelected, "Catalog tab should be selected by default")
     
@@ -50,7 +49,7 @@ final class SmokeTests: BaseTestCase {
     // Navigate to Holds
     navigateToTab(.holds)
     takeScreenshot(named: "holds-tab")
-    let holdsTab = app.tabBars.buttons[AccessibilityID.TabBar.holdsTab]
+    let holdsTab = app.tabBars.buttons["Reservations"]
     XCTAssertTrue(holdsTab.isSelected, "Holds tab should be selected")
     
     // Navigate to Settings
@@ -193,7 +192,7 @@ final class SmokeTests: BaseTestCase {
     takeScreenshot(named: "book-acquiring")
     
     // Verify download started (GET button disappears or progress shows)
-    wait(1.0)
+    Thread.sleep(forTimeInterval: 1.0)
     let downloadInProgress = bookDetail.isDownloading() || 
                             bookDetail.hasReadButton() || 
                             bookDetail.hasListenButton()

@@ -164,7 +164,7 @@ final class CatalogScreen: ScreenObject {
     scrollView.swipeDown()
     
     // Wait for refresh to complete
-    wait(2.0)
+    Thread.sleep(forTimeInterval: 2.0)
     
     if loadingIndicator.exists {
       _ = waitForElementToDisappear(loadingIndicator, timeout: longTimeout)

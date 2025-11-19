@@ -88,28 +88,29 @@ class BaseTestCase: XCTestCase {
     }
     
     // Navigate back to catalog
-    app.tabBars.buttons[AccessibilityID.TabBar.catalogTab].tap()
+    app.tabBars.buttons["Catalog"].tap()
   }
   
   /// Navigates to a specific tab
   /// - Parameter tab: The tab to navigate to
   func navigateToTab(_ tab: AppTab) {
-    let tabIdentifier: String
+    // SwiftUI tabs are identified by their text labels
+    let tabLabel: String
     
     switch tab {
     case .catalog:
-      tabIdentifier = AccessibilityID.TabBar.catalogTab
+      tabLabel = "Catalog"
     case .myBooks:
-      tabIdentifier = AccessibilityID.TabBar.myBooksTab
+      tabLabel = "My Books"
     case .holds:
-      tabIdentifier = AccessibilityID.TabBar.holdsTab
+      tabLabel = "Reservations"
     case .settings:
-      tabIdentifier = AccessibilityID.TabBar.settingsTab
+      tabLabel = "Settings"
     }
     
-    let tabButton = app.tabBars.buttons[tabIdentifier]
+    let tabButton = app.tabBars.buttons[tabLabel]
     XCTAssertTrue(tabButton.waitForExistence(timeout: TestConfiguration.uiTimeout),
-                  "Tab button '\(tab)' not found")
+                  "Tab button '\(tabLabel)' not found")
     tabButton.tap()
   }
   
@@ -179,14 +180,14 @@ class BaseTestCase: XCTestCase {
   @discardableResult
   func findAndSelectBook(_ searchTerm: String) -> Bool {
     let search = searchForBook(searchTerm)
-    return search.tapFirstResult()
+    return search.tapFirstResult() != nil
   }
   
   // MARK: - Wait Helpers
   
   /// Waits for a specific amount of time
   /// - Parameter seconds: Time to wait
-  func wait(_ seconds: TimeInterval) {
+  func waitFor(_ seconds: TimeInterval) {
     RunLoop.current.run(until: Date(timeIntervalSinceNow: seconds))
   }
   
@@ -245,7 +246,7 @@ class BaseTestCase: XCTestCase {
                       timeout: TimeInterval = TestConfiguration.shortTimeout,
                       message: String? = nil) {
     // Wait a moment to ensure element doesn't appear
-    wait(timeout)
+    Thread.sleep(forTimeInterval: timeout)
     XCTAssertFalse(
       element.exists,
       message ?? "Expected element to not exist: \(element)"

@@ -103,6 +103,7 @@ extension BaseScreen {
         return true
       }
       container.swipeUp()
+      Thread.sleep(forTimeInterval: 0.3)
     }
     
     XCTFail("Could not find element \(element) after scrolling")

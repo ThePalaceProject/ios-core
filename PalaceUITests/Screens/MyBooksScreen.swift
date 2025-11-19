@@ -82,7 +82,7 @@ final class MyBooksScreen: ScreenObject {
       scrollView.swipeDown()
       
       // Wait for refresh to complete
-      wait(2.0)
+      Thread.sleep(forTimeInterval: 2.0)
       
       if loadingIndicator.exists {
         _ = waitForElementToDisappear(loadingIndicator, timeout: longTimeout)
@@ -115,7 +115,7 @@ final class MyBooksScreen: ScreenObject {
     sortOption.tap()
     
     // Wait for re-sort animation
-    wait(0.5)
+    Thread.sleep(forTimeInterval: 0.5)
   }
   
   /// Selects the first book in the library
