@@ -61,7 +61,7 @@ class BookCellModel: ObservableObject {
   #endif
   
   var statePublisher = PassthroughSubject<Bool, Never>()
-  var state: BookCellState
+  @Published var state: BookCellState
   
   @Published var book: TPPBook {
     didSet {

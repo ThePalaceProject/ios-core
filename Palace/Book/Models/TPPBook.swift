@@ -485,8 +485,10 @@ public class TPPBook: NSObject, ObservableObject {
 
   @objc var defaultBookContentType: TPPBookContentType {
       guard let acquisition = defaultAcquisition else {
-        Log.error(#file, "❌ [CONTENT TYPE] No default acquisition for book: \(title) (ID: \(identifier))")
-        Log.error(#file, "  All acquisitions: \(acquisitions.map { "type=\($0.type), relation=\($0.relation)" }.joined(separator: ", "))")
+        // Books with only indirect acquisitions (catalog navigation entries) are expected
+        // They're not meant to be borrowed directly, just navigation to more detailed entries
+        Log.debug(#file, "📖 [CONTENT TYPE] No default acquisition for book: \(title) - likely a catalog navigation entry")
+        Log.debug(#file, "  All acquisitions: \(acquisitions.map { "type=\($0.type), relation=\($0.relation)" }.joined(separator: ", "))")
         return .unsupported
       }
     
