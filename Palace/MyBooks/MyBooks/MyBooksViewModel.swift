@@ -172,7 +172,7 @@ enum Group: Int {
     stateChange
       .merge(with: registryChange)
       .merge(with: syncEnd)
-      .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
+      .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
       .sink { [weak self] _ in
         self?.loadData()
       }

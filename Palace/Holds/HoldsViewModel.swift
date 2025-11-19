@@ -38,7 +38,7 @@ final class HoldsViewModel: ObservableObject {
 
     init() {
         NotificationCenter.default.publisher(for: .TPPSyncBegan)
-            .receive(on: RunLoop.main)
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.isLoading = true
             }
@@ -49,7 +49,7 @@ final class HoldsViewModel: ObservableObject {
         
         syncEnd
             .merge(with: registryChange)
-            .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
+            .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.isLoading = false
                 self?.reloadData()

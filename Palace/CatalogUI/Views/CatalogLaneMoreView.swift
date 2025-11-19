@@ -98,13 +98,13 @@ struct CatalogLaneMoreView: View {
   private var registryChangePublisher: AnyPublisher<Notification, Never> {
     NotificationCenter.default
       .publisher(for: .TPPBookRegistryStateDidChange)
-      .throttle(for: .milliseconds(350), scheduler: RunLoop.main, latest: true)
+      .throttle(for: .milliseconds(350), scheduler: DispatchQueue.main, latest: true)
       .eraseToAnyPublisher()
   }
   
   private var downloadProgressPublisher: AnyPublisher<String, Never> {
     MyBooksDownloadCenter.shared.downloadProgressPublisher
-      .throttle(for: .milliseconds(350), scheduler: RunLoop.main, latest: true)
+      .throttle(for: .milliseconds(350), scheduler: DispatchQueue.main, latest: true)
       .map { $0.0 }
       .removeDuplicates()
       .eraseToAnyPublisher()
