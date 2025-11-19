@@ -159,9 +159,14 @@ extension TPPNetworkExecutor {
 extension TPPNetworkExecutor {
   @objc class func bearerAuthorized(request: URLRequest) -> URLRequest {
     var request = request
-    if let authToken = TPPUserAccount.sharedAccount().authToken, !authToken.isEmpty {
+    let userAccount = TPPUserAccount.sharedAccount()
+    
+    if let authToken = userAccount.authToken, !authToken.isEmpty {
+      let tokenPrefix = String(authToken.prefix(8))
+      Log.debug(#file, "Adding Bearer token (prefix: \(tokenPrefix)...) to request for \(request.url?.host ?? "unknown")")
       request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
     } else {
+      Log.warn(#file, "No auth token available for request to \(request.url?.host ?? "unknown") - hasCredentials: \(userAccount.hasCredentials())")
       request.setValue("", forHTTPHeaderField: "Authorization")
     }
     return request

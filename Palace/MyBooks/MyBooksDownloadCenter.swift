@@ -191,6 +191,8 @@ import OverdriveProcessor
     // If this account requires auth and there are no stored credentials, prompt for sign-in now.
     let loginRequired = (userAccount.authDefinition?.needsAuth ?? false) && !userAccount.hasCredentials()
     
+    Log.info(#file, "📥 Starting download for '\(book.title)' - state: \(state), hasCredentials: \(userAccount.hasCredentials()), loginRequired: \(loginRequired)")
+    
     switch state {
     case .unregistered:
       state = processUnregisteredState(
@@ -199,6 +201,7 @@ import OverdriveProcessor
         loginRequired: loginRequired
       )
     case .downloading:
+      Log.debug(#file, "Book '\(book.title)' is already downloading, skipping")
       return
     case .downloadFailed, .downloadNeeded, .holding, .SAMLStarted:
       break
@@ -208,13 +211,16 @@ import OverdriveProcessor
     }
     
     if activeDownloadCount() >= maxConcurrentDownloads {
+      Log.debug(#file, "Max concurrent downloads reached, enqueueing '\(book.title)'")
       enqueuePending(book)
       return
     }
 
     if loginRequired {
+      Log.info(#file, "Login required for '\(book.title)', requesting credentials")
       requestCredentialsAndStartDownload(for: book)
     } else {
+      Log.info(#file, "Credentials available, processing download for '\(book.title)'")
       processDownloadWithCredentials(for: book, withState: state, andRequest: initedRequest)
     }
   }

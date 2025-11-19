@@ -486,6 +486,7 @@ private enum StorageKey: String {
     keychainTransaction.perform {
       _credentials.write(.token(authToken: token, barcode: barcode, pin: pin, expirationDate: expirationDate))
     }
+    notifyAccountDidChange()
   }
 
   @objc(setCookies:)
