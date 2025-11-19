@@ -346,7 +346,9 @@ private extension CatalogLaneMoreView {
       }
       .padding(.vertical, 12)
     }
-    .refreshable { await viewModel.fetchAndApplyFeed(at: viewModel.url) }
+    .refreshable {
+      await viewModel.fetchAndApplyFeed(at: viewModel.url, clearFilters: false)
+    }
   }
   
   @ViewBuilder
@@ -360,6 +362,8 @@ private extension CatalogLaneMoreView {
         isLoadingMore: viewModel.isLoadingMore
       )
     }
-    .refreshable { await viewModel.fetchAndApplyFeed(at: viewModel.url) }
+    .refreshable {
+      await viewModel.fetchAndApplyFeed(at: viewModel.url, clearFilters: false)
+    }
   }
 }

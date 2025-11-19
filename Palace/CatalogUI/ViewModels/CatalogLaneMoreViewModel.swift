@@ -90,12 +90,8 @@ class CatalogLaneMoreViewModel: ObservableObject {
   private var hasLoadedOnce = false
   
   func load(coordinator: NavigationCoordinator) async {
-    // If we already have data and filter state, don't reload
-    // This prevents the toolbar from disappearing when navigating back
     if hasLoadedOnce, !facetGroups.isEmpty || !lanes.isEmpty || !ungroupedBooks.isEmpty {
-      // Just restore the filter state if it exists, but don't refetch
       if let savedState = coordinator.resolveCatalogFilterState(for: url) {
-        // Only restore if current state doesn't match saved state
         if appliedSelections != savedState.appliedSelections {
           restoreFilterState(savedState)
         }
@@ -122,7 +118,7 @@ class CatalogLaneMoreViewModel: ObservableObject {
     }
   }
   
-  func fetchAndApplyFeed(at url: URL) async {
+  func fetchAndApplyFeed(at url: URL, clearFilters: Bool = false) async {
     do {
       if let feed = try await api.fetchFeed(at: url) {
         lanes.removeAll()
@@ -145,6 +141,12 @@ class CatalogLaneMoreViewModel: ObservableObject {
             break
           }
         }
+        
+        // Only clear applied selections if explicitly requested (e.g., user cleared filters)
+        if clearFilters {
+          appliedSelections.removeAll()
+          pendingSelections.removeAll()
+        }
       }
     } catch {
       self.error = error.localizedDescription
@@ -160,8 +162,10 @@ class CatalogLaneMoreViewModel: ObservableObject {
       guard let group = entry.groupAttributes else { continue }
       let groupTitle = group.title ?? ""
       if let book = CatalogViewModel.makeBook(from: entry) {
+        // Map through registry on initial load to get correct button states
+        let updatedBook = TPPBookRegistry.shared.updatedBookMetadata(book) ?? book
         if titleToBooks[groupTitle] == nil { orderedTitles.append(groupTitle) }
-        titleToBooks[groupTitle, default: []].append(book)
+        titleToBooks[groupTitle, default: []].append(updatedBook)
         if titleToMoreURL[groupTitle] == nil { titleToMoreURL[groupTitle] = group.href }
       }
     }
@@ -172,7 +176,11 @@ class CatalogLaneMoreViewModel: ObservableObject {
   }
   
   private func processUngroupedFeed(entries: [TPPOPDSEntry], feedObjc: TPPOPDSFeed) {
-    ungroupedBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0) }
+    // Map books through registry on initial load to get correct button states
+    ungroupedBooks = entries.compactMap { entry in
+      guard let book = CatalogViewModel.makeBook(from: entry) else { return nil }
+      return TPPBookRegistry.shared.updatedBookMetadata(book) ?? book
+    }
     facetGroups = CatalogViewModel.extractFacets(from: feedObjc).0
     appliedSelections = Set(
       CatalogFilterService.selectionKeysFromActiveFacets(facetGroups: facetGroups, includeDefaults: false)
@@ -205,7 +213,10 @@ class CatalogLaneMoreViewModel: ObservableObject {
         extractNextPageURL(from: feedObjc)
         
         if let entries = feedObjc.entries as? [TPPOPDSEntry] {
-          let newBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0) }
+          let newBooks: [TPPBook] = entries.compactMap { entry in
+            guard let book = CatalogViewModel.makeBook(from: entry) else { return nil }
+            return TPPBookRegistry.shared.updatedBookMetadata(book) ?? book
+          }
           ungroupedBooks.append(contentsOf: newBooks)
         }
       }
@@ -269,7 +280,8 @@ class CatalogLaneMoreViewModel: ObservableObject {
       }
     
     if specificFilters.isEmpty {
-      await fetchAndApplyFeed(at: url)
+      // User explicitly cleared all filters - reload base feed and clear state
+      await fetchAndApplyFeed(at: url, clearFilters: true)
       appliedSelections = []
       showingFiltersSheet = false
       saveFilterState(coordinator: coordinator)
@@ -284,8 +296,8 @@ class CatalogLaneMoreViewModel: ObservableObject {
     }
     
     do {
-      // FRESH START: Reset to original feed
-      await fetchAndApplyFeed(at: url)
+      // FRESH START: Reset to original feed (don't clear since we're applying new filters)
+      await fetchAndApplyFeed(at: url, clearFilters: false)
       var currentFacetGroups = facetGroups
       
       // Sort filters by priority

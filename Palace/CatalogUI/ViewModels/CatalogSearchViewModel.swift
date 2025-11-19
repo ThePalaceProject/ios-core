@@ -100,12 +100,15 @@ class CatalogSearchViewModel: ObservableObject {
           guard !Task.isCancelled else { return }
           
           if let feed = feed {
-            // Extract books from search results
+            // Extract books from search results and map through registry for correct button states
             let feedObjc = feed.opdsFeed
             var searchResults: [TPPBook] = []
             
             if let opdsEntries = feedObjc.entries as? [TPPOPDSEntry] {
-              searchResults = opdsEntries.compactMap { CatalogViewModel.makeBook(from: $0) }
+              searchResults = opdsEntries.compactMap { entry in
+                guard let book = CatalogViewModel.makeBook(from: entry) else { return nil }
+                return TPPBookRegistry.shared.updatedBookMetadata(book) ?? book
+              }
             }
             
             self.filteredBooks = searchResults
@@ -159,7 +162,10 @@ class CatalogSearchViewModel: ObservableObject {
       extractNextPageURL(from: feedObjc)
       
       if let entries = feedObjc.entries as? [TPPOPDSEntry] {
-        let newBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0) }
+        let newBooks: [TPPBook] = entries.compactMap { entry in
+          guard let book = CatalogViewModel.makeBook(from: entry) else { return nil }
+          return TPPBookRegistry.shared.updatedBookMetadata(book) ?? book
+        }
         filteredBooks.append(contentsOf: newBooks)
       }
     } catch {
