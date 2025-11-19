@@ -61,7 +61,7 @@ class BookCellModel: ObservableObject {
   #endif
   
   var statePublisher = PassthroughSubject<Bool, Never>()
-  @Published var state: BookCellState
+  @Published private(set) var state: BookCellState
   
   @Published var book: TPPBook {
     didSet {
@@ -74,7 +74,14 @@ class BookCellModel: ObservableObject {
   
   @Published var isManagingHold: Bool = false
 
-  @Published private(set) var stableButtonState: BookButtonState = .unsupported
+  @Published private(set) var stableButtonState: BookButtonState = .unsupported {
+    didSet {
+      let newState = BookCellState(stableButtonState)
+      if newState.buttonState != state.buttonState {
+        state = newState
+      }
+    }
+  }
   @Published private(set) var registryState: TPPBookState
   @Published private var localBookStateOverride: TPPBookState? = nil
   @Published var showHalfSheet: Bool = false
@@ -99,7 +106,8 @@ class BookCellModel: ObservableObject {
   
   init(book: TPPBook, imageCache: ImageCacheType) {
     self.book = book
-    self.state = BookCellState(BookButtonState(book) ?? .unsupported)
+    let initialButtonState = Self.computeInitialButtonState(book: book)
+    self.state = BookCellState(initialButtonState)
     self.isLoading = TPPBookRegistry.shared.processing(forIdentifier: book.identifier)
     self.currentBookIdentifier = book.identifier
     self.imageCache = imageCache
@@ -113,6 +121,10 @@ class BookCellModel: ObservableObject {
     #if LCP
     prefetchLCPStreamingIfPossible()
     #endif
+  }
+  
+  private static func computeInitialButtonState(book: TPPBook) -> BookButtonState {
+    BookButtonState(book) ?? .unsupported
   }
   
   deinit {

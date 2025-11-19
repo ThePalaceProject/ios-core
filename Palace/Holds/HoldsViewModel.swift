@@ -44,17 +44,14 @@ final class HoldsViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
-        NotificationCenter.default.publisher(for: .TPPSyncEnded)
-            .receive(on: RunLoop.main)
+        let syncEnd = NotificationCenter.default.publisher(for: .TPPSyncEnded)
+        let registryChange = NotificationCenter.default.publisher(for: .TPPBookRegistryDidChange)
+        
+        syncEnd
+            .merge(with: registryChange)
+            .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
             .sink { [weak self] _ in
                 self?.isLoading = false
-                self?.reloadData()
-            }
-            .store(in: &cancellables)
-
-        NotificationCenter.default.publisher(for: .TPPBookRegistryDidChange)
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in
                 self?.reloadData()
             }
             .store(in: &cancellables)

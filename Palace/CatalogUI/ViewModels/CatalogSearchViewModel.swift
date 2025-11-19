@@ -105,10 +105,7 @@ class CatalogSearchViewModel: ObservableObject {
             var searchResults: [TPPBook] = []
             
             if let opdsEntries = feedObjc.entries as? [TPPOPDSEntry] {
-              searchResults = opdsEntries.compactMap { entry in
-                guard let book = CatalogViewModel.makeBook(from: entry) else { return nil }
-                return TPPBookRegistry.shared.updatedBookMetadata(book) ?? book
-              }
+              searchResults = opdsEntries.compactMap { CatalogViewModel.makeBook(from: $0) }
             }
             
             self.filteredBooks = searchResults
@@ -162,15 +159,33 @@ class CatalogSearchViewModel: ObservableObject {
       extractNextPageURL(from: feedObjc)
       
       if let entries = feedObjc.entries as? [TPPOPDSEntry] {
-        let newBooks: [TPPBook] = entries.compactMap { entry in
-          guard let book = CatalogViewModel.makeBook(from: entry) else { return nil }
-          return TPPBookRegistry.shared.updatedBookMetadata(book) ?? book
-        }
+        let newBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0) }
         filteredBooks.append(contentsOf: newBooks)
       }
     } catch {
       Log.error(#file, "Failed to load next page of search results: \(error.localizedDescription)")
     }
+  }
+  
+  // MARK: - Registry Sync
+  
+  /// Refresh visible books with registry state (for downloaded/borrowed books)
+  func applyRegistryUpdates(changedIdentifier: String?) {
+    guard !filteredBooks.isEmpty else { return }
+    
+    var books = filteredBooks
+    var anyChanged = false
+    for idx in books.indices {
+      let book = books[idx]
+      if let changedIdentifier, book.identifier != changedIdentifier { continue }
+      // For books in registry, use registry version to get current state
+      if let registryBook = TPPBookRegistry.shared.book(forIdentifier: book.identifier) {
+        // Always update to trigger cell recreation with new registry state
+        books[idx] = registryBook
+        anyChanged = true
+      }
+    }
+    if anyChanged { filteredBooks = books }
   }
 }
 

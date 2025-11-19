@@ -162,10 +162,8 @@ class CatalogLaneMoreViewModel: ObservableObject {
       guard let group = entry.groupAttributes else { continue }
       let groupTitle = group.title ?? ""
       if let book = CatalogViewModel.makeBook(from: entry) {
-        // Map through registry on initial load to get correct button states
-        let updatedBook = TPPBookRegistry.shared.updatedBookMetadata(book) ?? book
         if titleToBooks[groupTitle] == nil { orderedTitles.append(groupTitle) }
-        titleToBooks[groupTitle, default: []].append(updatedBook)
+        titleToBooks[groupTitle, default: []].append(book)
         if titleToMoreURL[groupTitle] == nil { titleToMoreURL[groupTitle] = group.href }
       }
     }
@@ -176,11 +174,7 @@ class CatalogLaneMoreViewModel: ObservableObject {
   }
   
   private func processUngroupedFeed(entries: [TPPOPDSEntry], feedObjc: TPPOPDSFeed) {
-    // Map books through registry on initial load to get correct button states
-    ungroupedBooks = entries.compactMap { entry in
-      guard let book = CatalogViewModel.makeBook(from: entry) else { return nil }
-      return TPPBookRegistry.shared.updatedBookMetadata(book) ?? book
-    }
+    ungroupedBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0) }
     facetGroups = CatalogViewModel.extractFacets(from: feedObjc).0
     appliedSelections = Set(
       CatalogFilterService.selectionKeysFromActiveFacets(facetGroups: facetGroups, includeDefaults: false)
@@ -213,10 +207,7 @@ class CatalogLaneMoreViewModel: ObservableObject {
         extractNextPageURL(from: feedObjc)
         
         if let entries = feedObjc.entries as? [TPPOPDSEntry] {
-          let newBooks: [TPPBook] = entries.compactMap { entry in
-            guard let book = CatalogViewModel.makeBook(from: entry) else { return nil }
-            return TPPBookRegistry.shared.updatedBookMetadata(book) ?? book
-          }
+          let newBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0) }
           ungroupedBooks.append(contentsOf: newBooks)
         }
       }
@@ -227,7 +218,7 @@ class CatalogLaneMoreViewModel: ObservableObject {
   
   // MARK: - Registry Sync
   
-  /// Refresh visible books with updated metadata
+  /// Refresh visible books with registry state (for downloaded/borrowed books)
   func applyRegistryUpdates(changedIdentifier: String?) {
     if !lanes.isEmpty {
       var newLanes = lanes
@@ -237,9 +228,10 @@ class CatalogLaneMoreViewModel: ObservableObject {
         for bIdx in books.indices {
           let book = books[bIdx]
           if let changedIdentifier, book.identifier != changedIdentifier { continue }
-          let updated = TPPBookRegistry.shared.updatedBookMetadata(book) ?? book
-          if updated != book {
-            books[bIdx] = updated
+          // For books in registry, use registry version to get current state
+          if let registryBook = TPPBookRegistry.shared.book(forIdentifier: book.identifier) {
+            // Always update to trigger cell recreation with new registry state
+            books[bIdx] = registryBook
             changed = true
           }
         }
@@ -260,9 +252,10 @@ class CatalogLaneMoreViewModel: ObservableObject {
       for idx in books.indices {
         let book = books[idx]
         if let changedIdentifier, book.identifier != changedIdentifier { continue }
-        let updated = TPPBookRegistry.shared.updatedBookMetadata(book) ?? book
-        if updated != book {
-          books[idx] = updated
+        // For books in registry, use registry version to get current state
+        if let registryBook = TPPBookRegistry.shared.book(forIdentifier: book.identifier) {
+          // Always update to trigger cell recreation with new registry state
+          books[idx] = registryBook
           anyChanged = true
         }
       }
