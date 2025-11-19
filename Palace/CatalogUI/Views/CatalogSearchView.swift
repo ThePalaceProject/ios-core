@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 // MARK: - SearchView
 struct CatalogSearchView: View {
@@ -57,6 +58,30 @@ struct CatalogSearchView: View {
     .onChange(of: books) { newBooks in
       viewModel.updateBooks(newBooks)
     }
+    .onReceive(registryChangePublisher) { note in
+      let changedId = (note.userInfo as? [String: Any])?["bookIdentifier"] as? String
+      viewModel.applyRegistryUpdates(changedIdentifier: changedId)
+    }
+    .onReceive(downloadProgressPublisher) { changedId in
+      viewModel.applyRegistryUpdates(changedIdentifier: changedId)
+    }
+  }
+  
+  // MARK: - Publishers
+  
+  private var registryChangePublisher: AnyPublisher<Notification, Never> {
+    NotificationCenter.default
+      .publisher(for: .TPPBookRegistryStateDidChange)
+      .throttle(for: .milliseconds(350), scheduler: DispatchQueue.main, latest: true)
+      .eraseToAnyPublisher()
+  }
+  
+  private var downloadProgressPublisher: AnyPublisher<String, Never> {
+    MyBooksDownloadCenter.shared.downloadProgressPublisher
+      .throttle(for: .milliseconds(350), scheduler: DispatchQueue.main, latest: true)
+      .map { $0.0 }
+      .removeDuplicates()
+      .eraseToAnyPublisher()
   }
 }
 

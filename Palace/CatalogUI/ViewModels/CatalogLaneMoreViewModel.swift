@@ -90,12 +90,8 @@ class CatalogLaneMoreViewModel: ObservableObject {
   private var hasLoadedOnce = false
   
   func load(coordinator: NavigationCoordinator) async {
-    // If we already have data and filter state, don't reload
-    // This prevents the toolbar from disappearing when navigating back
     if hasLoadedOnce, !facetGroups.isEmpty || !lanes.isEmpty || !ungroupedBooks.isEmpty {
-      // Just restore the filter state if it exists, but don't refetch
       if let savedState = coordinator.resolveCatalogFilterState(for: url) {
-        // Only restore if current state doesn't match saved state
         if appliedSelections != savedState.appliedSelections {
           restoreFilterState(savedState)
         }
@@ -122,7 +118,7 @@ class CatalogLaneMoreViewModel: ObservableObject {
     }
   }
   
-  func fetchAndApplyFeed(at url: URL) async {
+  func fetchAndApplyFeed(at url: URL, clearFilters: Bool = false) async {
     do {
       if let feed = try await api.fetchFeed(at: url) {
         lanes.removeAll()
@@ -144,6 +140,12 @@ class CatalogLaneMoreViewModel: ObservableObject {
           @unknown default:
             break
           }
+        }
+        
+        // Only clear applied selections if explicitly requested (e.g., user cleared filters)
+        if clearFilters {
+          appliedSelections.removeAll()
+          pendingSelections.removeAll()
         }
       }
     } catch {
@@ -216,7 +218,7 @@ class CatalogLaneMoreViewModel: ObservableObject {
   
   // MARK: - Registry Sync
   
-  /// Refresh visible books with updated metadata
+  /// Refresh visible books with registry state (for downloaded/borrowed books)
   func applyRegistryUpdates(changedIdentifier: String?) {
     if !lanes.isEmpty {
       var newLanes = lanes
@@ -226,9 +228,10 @@ class CatalogLaneMoreViewModel: ObservableObject {
         for bIdx in books.indices {
           let book = books[bIdx]
           if let changedIdentifier, book.identifier != changedIdentifier { continue }
-          let updated = TPPBookRegistry.shared.updatedBookMetadata(book) ?? book
-          if updated != book {
-            books[bIdx] = updated
+          // For books in registry, use registry version to get current state
+          if let registryBook = TPPBookRegistry.shared.book(forIdentifier: book.identifier) {
+            // Always update to trigger cell recreation with new registry state
+            books[bIdx] = registryBook
             changed = true
           }
         }
@@ -249,9 +252,10 @@ class CatalogLaneMoreViewModel: ObservableObject {
       for idx in books.indices {
         let book = books[idx]
         if let changedIdentifier, book.identifier != changedIdentifier { continue }
-        let updated = TPPBookRegistry.shared.updatedBookMetadata(book) ?? book
-        if updated != book {
-          books[idx] = updated
+        // For books in registry, use registry version to get current state
+        if let registryBook = TPPBookRegistry.shared.book(forIdentifier: book.identifier) {
+          // Always update to trigger cell recreation with new registry state
+          books[idx] = registryBook
           anyChanged = true
         }
       }
@@ -269,7 +273,8 @@ class CatalogLaneMoreViewModel: ObservableObject {
       }
     
     if specificFilters.isEmpty {
-      await fetchAndApplyFeed(at: url)
+      // User explicitly cleared all filters - reload base feed and clear state
+      await fetchAndApplyFeed(at: url, clearFilters: true)
       appliedSelections = []
       showingFiltersSheet = false
       saveFilterState(coordinator: coordinator)
@@ -284,8 +289,8 @@ class CatalogLaneMoreViewModel: ObservableObject {
     }
     
     do {
-      // FRESH START: Reset to original feed
-      await fetchAndApplyFeed(at: url)
+      // FRESH START: Reset to original feed (don't clear since we're applying new filters)
+      await fetchAndApplyFeed(at: url, clearFilters: false)
       var currentFacetGroups = facetGroups
       
       // Sort filters by priority

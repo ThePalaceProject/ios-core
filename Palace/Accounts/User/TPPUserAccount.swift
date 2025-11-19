@@ -175,7 +175,7 @@ private enum StorageKey: String {
   }
     
   class func sharedAccount(libraryUUID: String?) -> TPPUserAccount {
-    shared.accountInfoQueue.sync {
+    shared.accountInfoQueue.async(flags: .barrier) {
       shared.libraryUUID = libraryUUID
     }
     return shared
@@ -486,6 +486,7 @@ private enum StorageKey: String {
     keychainTransaction.perform {
       _credentials.write(.token(authToken: token, barcode: barcode, pin: pin, expirationDate: expirationDate))
     }
+    notifyAccountDidChange()
   }
 
   @objc(setCookies:)

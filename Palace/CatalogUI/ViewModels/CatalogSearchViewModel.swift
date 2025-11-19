@@ -100,7 +100,7 @@ class CatalogSearchViewModel: ObservableObject {
           guard !Task.isCancelled else { return }
           
           if let feed = feed {
-            // Extract books from search results
+            // Extract books from search results and map through registry for correct button states
             let feedObjc = feed.opdsFeed
             var searchResults: [TPPBook] = []
             
@@ -165,6 +165,27 @@ class CatalogSearchViewModel: ObservableObject {
     } catch {
       Log.error(#file, "Failed to load next page of search results: \(error.localizedDescription)")
     }
+  }
+  
+  // MARK: - Registry Sync
+  
+  /// Refresh visible books with registry state (for downloaded/borrowed books)
+  func applyRegistryUpdates(changedIdentifier: String?) {
+    guard !filteredBooks.isEmpty else { return }
+    
+    var books = filteredBooks
+    var anyChanged = false
+    for idx in books.indices {
+      let book = books[idx]
+      if let changedIdentifier, book.identifier != changedIdentifier { continue }
+      // For books in registry, use registry version to get current state
+      if let registryBook = TPPBookRegistry.shared.book(forIdentifier: book.identifier) {
+        // Always update to trigger cell recreation with new registry state
+        books[idx] = registryBook
+        anyChanged = true
+      }
+    }
+    if anyChanged { filteredBooks = books }
   }
 }
 
