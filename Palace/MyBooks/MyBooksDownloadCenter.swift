@@ -368,17 +368,23 @@ import OverdriveProcessor
 #endif
   
   private func processRegularDownload(for book: TPPBook, withState state: TPPBookState, andRequest initedRequest: URLRequest?) {
-    if book.isExpired && book.defaultAcquisitionIfBorrow != nil {
+    // CRITICAL FIX: Get the CURRENT book from registry to check acquisition state
+    // The book parameter might be stale (from before borrowing completed)
+    let currentBook = bookRegistry.book(forIdentifier: book.identifier) ?? book
+    
+    if currentBook.isExpired && currentBook.defaultAcquisitionIfBorrow != nil {
       Log.warn(#file, "Book \(book.identifier) is expired. Attempting to re-borrow before download.")
       bookRegistry.setState(.unregistered, for: book.identifier)
-      startBorrow(for: book, attemptDownload: true, borrowCompletion: nil)
+      startBorrow(for: currentBook, attemptDownload: true, borrowCompletion: nil)
       return
     }
     
-    if state == .downloadNeeded && book.defaultAcquisitionIfBorrow != nil {
+    // Check if book needs to be borrowed before download
+    // Using currentBook ensures we have the latest acquisition links
+    if state == .downloadNeeded && currentBook.defaultAcquisitionIfBorrow != nil {
       Log.info(#file, "Book \(book.identifier) is downloadNeeded with borrow acquisition - auto-borrowing before download")
       bookRegistry.setState(.unregistered, for: book.identifier)
-      startBorrow(for: book, attemptDownload: true) { [weak self] in
+      startBorrow(for: currentBook, attemptDownload: true) { [weak self] in
         guard let self else { return }
         let newState = self.bookRegistry.state(for: book.identifier)
         Log.debug(#file, "Auto-borrow completed for \(book.identifier), new state: \(newState)")
@@ -391,18 +397,19 @@ import OverdriveProcessor
       return
     }
     
+    // Use currentBook for download URL to ensure we have the latest fulfillment link
     let request: URLRequest
     if let initedRequest = initedRequest {
       request = initedRequest
-    } else if let url = book.defaultAcquisition?.hrefURL {
+    } else if let url = currentBook.defaultAcquisition?.hrefURL {
       request = TPPNetworkExecutor.bearerAuthorized(request: URLRequest(url: url, applyingCustomUserAgent: true))
     } else {
-      logInvalidURLRequest(for: book, withState: state, url: nil, request: nil)
+      logInvalidURLRequest(for: currentBook, withState: state, url: nil, request: nil)
       return
     }
     
     guard let _ = request.url else {
-      logInvalidURLRequest(for: book, withState: state, url: book.defaultAcquisition?.hrefURL, request: request)
+      logInvalidURLRequest(for: currentBook, withState: state, url: currentBook.defaultAcquisition?.hrefURL, request: request)
       return
     }
     
@@ -411,10 +418,12 @@ import OverdriveProcessor
     enforceContentDiskBudgetIfNeeded(adding: 0)
 
     if let cookies = userAccount.cookies, state != .SAMLStarted {
-      handleSAMLStartedState(for: book, withRequest: request, cookies: cookies)
+      // Use currentBook to ensure we have the latest book object
+      handleSAMLStartedState(for: currentBook, withRequest: request, cookies: cookies)
     } else {
       clearAndSetCookies()
-      addDownloadTask(with: request, book: book)
+      // Use currentBook to ensure registry has correct book object
+      addDownloadTask(with: request, book: currentBook)
     }
   }
   

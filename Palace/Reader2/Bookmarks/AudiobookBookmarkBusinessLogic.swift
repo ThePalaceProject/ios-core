@@ -56,17 +56,49 @@ import Foundation
       return
     }
     
+    let sentTimestamp = audioBookmark.lastSavedTimeStamp ?? ""
+    let sentTrackKey = position.track.key
+    let sentTrackIndex = position.track.index
+    let sentPlaybackTime = position.timestamp
+    
     // Sync to server (this can fail/be slow, but local data is already safe)
     annotationsManager.postListeningPosition(forBook: self.book.identifier, selectorValue: tppLocation.locationString) { [weak self] response in
       guard let self else { return }
       if let response {
-        // Update with server timestamp and annotation ID
+        if let currentLocal = self.registry.location(forIdentifier: self.book.identifier),
+           let currentDict = currentLocal.locationStringDictionary(),
+           let currentBookmark = AudioBookmark.create(locatorData: currentDict) {
+          
+          let currentLocalTimestamp = currentBookmark.lastSavedTimeStamp ?? ""
+          
+          if !currentLocalTimestamp.isEmpty && !sentTimestamp.isEmpty,
+             String.isDate(currentLocalTimestamp, moreRecentThan: sentTimestamp, with: 1.0) {
+            Log.warn(#file, "⚠️ Race condition detected: Local position is newer. Keeping local.")
+            Log.warn(#file, "  Sent: track=\(sentTrackKey), time=\(sentPlaybackTime), timestamp=\(sentTimestamp)")
+            Log.warn(#file, "  Current local: track=\(currentBookmark.chapter ?? "?"), timestamp=\(currentLocalTimestamp)")
+            completion?(response.timeStamp)
+            return
+          }
+          
+          let isAtBeginning = (sentTrackIndex == 0 && sentPlaybackTime < 30.0)
+          if isAtBeginning {
+            if let currentChapter = currentBookmark.chapter,
+               let currentTrackIndex = Int(currentChapter.split(separator: "-").last ?? ""),
+               currentTrackIndex > 0 {
+              Log.warn(#file, "⚠️ Prevented 'beginning' position from overwriting progress!")
+              Log.warn(#file, "  Attempting to save: track 0, time \(sentPlaybackTime)")
+              Log.warn(#file, "  Current position: track \(currentTrackIndex)")
+              completion?(response.timeStamp)
+              return
+            }
+          }
+        }
+        
         audioBookmark.lastSavedTimeStamp = response.timeStamp ?? ""
         audioBookmark.annotationId = response.serverId ?? ""
         
-        // Update local copy with server metadata
         self.registry.setLocation(audioBookmark.toTPPBookLocation(), forIdentifier: self.book.identifier)
-        Log.debug(#file, "☁️ Synced position to server: annotationId=\(audioBookmark.annotationId)")
+        Log.debug(#file, "☁️ Synced position to server: track=\(sentTrackKey), annotationId=\(audioBookmark.annotationId)")
         completion?(response.timeStamp)
       } else {
         Log.warn(#file, "⚠️ Server sync failed, but local position was already saved")
@@ -278,6 +310,21 @@ import Foundation
       // Execute the work item immediately on current thread
       workItem.perform()
       debounceWorkItem = nil
+    }
+  }
+  
+  public func saveListeningPositionSync(at position: TrackPosition) {
+    let audioBookmark = position.toAudioBookmark()
+    audioBookmark.lastSavedTimeStamp = Date().iso8601
+    
+    guard let tppLocation = audioBookmark.toTPPBookLocation() else { return }
+    
+    if let registryWithSync = registry as? TPPBookRegistry {
+      registryWithSync.setLocationSync(tppLocation, forIdentifier: self.book.identifier)
+      Log.debug(#file, "🔒 SYNC: Saved position for termination: track=\(position.track.key), time=\(position.timestamp)")
+    } else {
+      registry.setLocation(tppLocation, forIdentifier: self.book.identifier)
+      Log.warn(#file, "⚠️ Registry doesn't support sync save, using async fallback")
     }
   }
   
