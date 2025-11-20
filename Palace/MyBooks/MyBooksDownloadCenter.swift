@@ -524,10 +524,19 @@ actor DownloadCoordinator {
     MemoryPressureMonitor.shared.reclaimDiskSpaceIfNeeded(minimumFreeMegabytes: 512)
     enforceContentDiskBudgetIfNeeded(adding: 0)
 
-    if let cookies = userAccount.cookies, state != .SAMLStarted {
-      // Use currentBook to ensure we have the latest book object
+    // Check if we need SAML authentication:
+    // - We have cookies (SAML library)
+    // - State is not already SAMLStarted (avoid re-entering SAML flow)
+    // - We DON'T have a valid auth token yet (if we have token, we're already authenticated)
+    let needsSAMLAuth = userAccount.cookies != nil && state != .SAMLStarted && userAccount.authToken == nil
+    
+    if needsSAMLAuth, let cookies = userAccount.cookies {
+      Log.info(#file, "SAML authentication needed for '\(currentBook.title)' - cookies present but no auth token")
       handleSAMLStartedState(for: currentBook, withRequest: request, cookies: cookies)
     } else {
+      if userAccount.authToken != nil {
+        Log.debug(#file, "Auth token present for '\(currentBook.title)', proceeding with download")
+      }
       clearAndSetCookies()
       // Use currentBook to ensure registry has correct book object
       addDownloadTask(with: request, book: currentBook)

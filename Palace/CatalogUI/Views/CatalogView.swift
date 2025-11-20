@@ -230,8 +230,8 @@ private extension CatalogView {
     if let urlString = account.catalogUrl, let url = URL(string: urlString) {
       TPPSettings.shared.accountMainFeedURL = url
     }
-    AccountsManager.shared.currentAccount = account
     
+    AccountsManager.shared.currentAccount = account
     account.loadAuthenticationDocument { _ in }
     
     NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)

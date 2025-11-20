@@ -99,7 +99,10 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     .receive(on: RunLoop.main)
     .sink { _ in
       TPPBookRegistry.shared.load()
-      TPPBookRegistry.shared.sync()
+      
+      DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+        TPPBookRegistry.shared.sync()
+      }
     }
 
   private var registry = [String: TPPBookRegistryRecord]() {
@@ -186,6 +189,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
           let url     = registryUrl(for: account)
     else { return }
 
+    Log.info(#file, "📖 Loading registry for account: \(account)")
     DispatchQueue.main.async { self.state = .loading }
 
     syncQueue.async(flags: .barrier) {
@@ -194,13 +198,52 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
          let data     = try? Data(contentsOf: url),
          let json     = try? JSONSerialization.jsonObject(with: data) as? TPPBookRegistryData,
          let records  = json.array(for: .records) {
+        
+        Log.debug(#file, "  Found \(records.count) books in registry")
+        
         for obj in records {
           guard var record = TPPBookRegistryRecord(record: obj) else { continue }
-          if record.state == .downloading || record.state == .SAMLStarted {
-            record.state = .downloadFailed
+          let originalState = record.state
+          
+          // Validate file existence for download states
+          if record.state == .downloading || record.state == .SAMLStarted || record.state == .downloadSuccessful {
+            let fileExists = self.checkIfBookFileExists(for: record.book.identifier, account: account)
+            
+            if record.state == .downloading {
+              if fileExists {
+                Log.info(#file, "  ✅ '\(record.book.title)' was downloading but file exists - marking as successful")
+                record.state = .downloadSuccessful
+              } else {
+                Log.warn(#file, "  ⚠️ '\(record.book.title)' was downloading but file missing - marking as failed")
+                record.state = .downloadFailed
+              }
+            } else if record.state == .SAMLStarted {
+              if fileExists {
+                Log.info(#file, "  ✅ '\(record.book.title)' was in SAML flow but file exists - marking as download needed")
+                record.state = .downloadNeeded
+              } else {
+                Log.warn(#file, "  ⚠️ '\(record.book.title)' was in SAML flow but file missing - marking as failed")
+                record.state = .downloadFailed
+              }
+            } else if record.state == .downloadSuccessful {
+              if !fileExists {
+                Log.error(#file, "  ❌ '\(record.book.title)' marked as downloaded but FILE MISSING - marking as download needed")
+                Log.error(#file, "     This suggests the file was deleted or the path is wrong")
+                record.state = .downloadNeeded
+              } else {
+                Log.debug(#file, "  ✓ '\(record.book.title)' downloaded and file verified")
+              }
+            }
+            
+            if originalState != record.state {
+              Log.info(#file, "  🔄 State changed for '\(record.book.title)': \(originalState) → \(record.state)")
+            }
           }
+          
           newRegistry[record.book.identifier] = record
         }
+      } else {
+        Log.info(#file, "  No existing registry file found or failed to parse")
       }
 
       self.registry = newRegistry
@@ -209,8 +252,32 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
         self.state = .loaded
         self.registrySubject.send(self.registry)
         NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
+        Log.info(#file, "  📖 Registry loaded with \(self.registry.count) books")
       }
     }
+  }
+  
+  /// Helper to check if a book file exists in the file system
+  private func checkIfBookFileExists(for identifier: String, account: String) -> Bool {
+    guard let book = registry[identifier]?.book else { return false }
+    
+    // Get the file URL for this book and account
+    guard let bookURL = MyBooksDownloadCenter.shared.fileUrl(for: identifier, account: account) else {
+      return false
+    }
+    
+    let fileExists = FileManager.default.fileExists(atPath: bookURL.path)
+    
+#if LCP
+    // For LCP audiobooks, also check for license file
+    if fileExists && LCPAudiobooks.canOpenBook(book) {
+      let licenseURL = bookURL.deletingPathExtension().appendingPathExtension("lcpl")
+      let licenseExists = FileManager.default.fileExists(atPath: licenseURL.path)
+      return fileExists && licenseExists
+    }
+#endif
+    
+    return fileExists
   }
 
   func reset(_ account: String) {
@@ -274,11 +341,18 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
               changesMade = true
             }
           }
+          
+          // Remove books that aren't in the server's current response (loan expired/returned)
           recordsToDelete.forEach { identifier in
-            if let recordState = self.registry[identifier]?.state,
-               recordState == .downloadSuccessful || recordState == .used {
+            guard let record = self.registry[identifier] else { return }
+            
+            let wasDownloaded = record.state == .downloadSuccessful || record.state == .used
+            
+            if wasDownloaded {
+              Log.info(#file, "📚 Removing expired/returned book '\(record.book.title)' (not in server feed)")
               MyBooksDownloadCenter.shared.deleteLocalContent(for: identifier)
             }
+            
             self.registry[identifier]?.state = .unregistered
             self.removeBook(forIdentifier: identifier)
             changesMade = true

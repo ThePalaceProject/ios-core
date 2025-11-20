@@ -28,6 +28,9 @@ struct AccountDetailView: View {
       } message: {
         Text(viewModel.alertMessage)
       }
+      .onAppear {
+        viewModel.refreshSignInState()
+      }
   }
   
   @ViewBuilder
