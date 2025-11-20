@@ -105,13 +105,13 @@ public final class GeneralCache<Key: Hashable & Codable, Value: Codable> {
     let expirationDate = interval.map { Date().addingTimeInterval($0) }
     let entry = Entry(value: value, expiration: expirationDate)
     let wrappedKey = WrappedKey(key)
-    queue.sync(flags: .barrier) {
-      if mode == .memoryOnly || mode == .memoryAndDisk {
-        let cost = estimatedCost(for: value)
-        memoryCache.setObject(entry, forKey: wrappedKey, cost: cost)
+    queue.async(flags: .barrier) {
+      if self.mode == .memoryOnly || self.mode == .memoryAndDisk {
+        let cost = self.estimatedCost(for: value)
+        self.memoryCache.setObject(entry, forKey: wrappedKey, cost: cost)
       }
-      if mode == .diskOnly || mode == .memoryAndDisk {
-        saveToDisk(entry, for: key)
+      if self.mode == .diskOnly || self.mode == .memoryAndDisk {
+        self.saveToDisk(entry, for: key)
       }
     }
   }
@@ -210,32 +210,32 @@ public final class GeneralCache<Key: Hashable & Codable, Value: Codable> {
   
   public func remove(for key: Key) {
     let wrappedKey = WrappedKey(key)
-    queue.sync(flags: .barrier) {
-      if mode == .memoryOnly || mode == .memoryAndDisk {
-        memoryCache.removeObject(forKey: wrappedKey)
+    queue.async(flags: .barrier) {
+      if self.mode == .memoryOnly || self.mode == .memoryAndDisk {
+        self.memoryCache.removeObject(forKey: wrappedKey)
       }
-      if mode == .diskOnly || mode == .memoryAndDisk {
-        try? fileManager.removeItem(at: fileURL(for: key))
+      if self.mode == .diskOnly || self.mode == .memoryAndDisk {
+        try? self.fileManager.removeItem(at: self.fileURL(for: key))
       }
     }
   }
   
   public func clear() {
-    queue.sync(flags: .barrier) {
-      if mode == .memoryOnly || mode == .memoryAndDisk {
-        memoryCache.removeAllObjects()
+    queue.async(flags: .barrier) {
+      if self.mode == .memoryOnly || self.mode == .memoryAndDisk {
+        self.memoryCache.removeAllObjects()
       }
-      if mode == .diskOnly || mode == .memoryAndDisk {
-        (try? fileManager.contentsOfDirectory(at: cacheDirectory,
+      if self.mode == .diskOnly || self.mode == .memoryAndDisk {
+        (try? self.fileManager.contentsOfDirectory(at: self.cacheDirectory,
                                               includingPropertiesForKeys: nil))?
-          .forEach { try? fileManager.removeItem(at: $0) }
+          .forEach { try? self.fileManager.removeItem(at: $0) }
       }
     }
   }
   
   public func clearMemory() {
-    queue.sync(flags: .barrier) {
-      memoryCache.removeAllObjects()
+    queue.async(flags: .barrier) {
+      self.memoryCache.removeAllObjects()
     }
   }
   

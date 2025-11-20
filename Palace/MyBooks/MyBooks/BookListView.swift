@@ -8,6 +8,7 @@ struct BookListView: View {
   var isLoadingMore: Bool = false
   var previewEnabled: Bool = true
   @State private var containerWidth: CGFloat = UIScreen.main.bounds.width
+  @State private var screenSize: CGSize = UIScreen.main.bounds.size
 
   var body: some View {
     LazyVGrid(columns: gridLayout, spacing: 0) {
@@ -35,12 +36,16 @@ struct BookListView: View {
         Color.clear
           .onAppear {
             containerWidth = geometry.size.width
+            screenSize = UIScreen.main.bounds.size
           }
           .onChange(of: geometry.size.width) { newWidth in
             containerWidth = newWidth
           }
       }
     )
+    .onReceive(NotificationCenter.default.publisher(for: UIDevice.orientationDidChangeNotification)) { _ in
+      screenSize = UIScreen.main.bounds.size
+    }
   }
   
   private var paginationLoadingIndicator: some View {
@@ -51,15 +56,14 @@ struct BookListView: View {
   }
 
   private var gridLayout: [GridItem] {
-    if UIDevice.current.userInterfaceIdiom == .pad {
-      let screenWidth = UIScreen.main.bounds.width
-      let screenHeight = UIScreen.main.bounds.height
-      let actualIsLandscape = screenWidth > screenHeight
-      
-      let columnCount = actualIsLandscape ? 3 : 2
+    let isLandscape = screenSize.width > screenSize.height
+    let isIPad = UIDevice.current.userInterfaceIdiom == .pad
+    
+    if isIPad {
+      let columnCount = isLandscape ? 3 : 2
       return Array(repeating: GridItem(.flexible(), spacing: 0), count: columnCount)
     } else {
-      return [GridItem(.adaptive(minimum: 220), spacing: 0)]
+      return [GridItem(.flexible(), spacing: 0)]
     }
   }
 }

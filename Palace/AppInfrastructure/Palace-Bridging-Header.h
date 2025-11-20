@@ -11,7 +11,6 @@
 #endif
 
 #import "NSDate+NYPLDateAdditions.h"
-#import "TPPAccountSignInViewController.h"
 #import "TPPOPDSAcquisition.h"
 #import "TPPConfiguration.h"
 #import "TPPKeychain.h"

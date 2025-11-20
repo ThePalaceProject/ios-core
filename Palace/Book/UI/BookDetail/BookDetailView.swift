@@ -26,6 +26,7 @@ struct BookDetailView: View {
   @State private var pulseSkeleton: Bool = false
   @State private var lastBookIdentifier: String? = nil
   @State private var initialLayoutComplete: Bool = false
+  @State private var currentOrientation: UIDeviceOrientation = UIDevice.current.orientation
   
   private let scaleAnimation = Animation.linear(duration: 0.35)
 
@@ -96,6 +97,9 @@ struct BookDetailView: View {
       }
       .onDisappear {
         viewModel.showHalfSheet = false
+      }
+      .onReceive(NotificationCenter.default.publisher(for: UIDevice.orientationDidChangeNotification)) { _ in
+        handleOrientationChange()
       }
       .onReceive(viewModel.book.$dominantUIColor) { newColor in
         // Don't update while half sheet is showing to prevent unnecessary re-renders
@@ -311,7 +315,7 @@ struct BookDetailView: View {
   private var backgroundView: some View {
     ZStack(alignment: .top) {
       Color.primary
-        .edgesIgnoringSafeArea(.all)
+        .ignoresSafeArea()
       
       LinearGradient(
         gradient: Gradient(colors: [
@@ -321,8 +325,8 @@ struct BookDetailView: View {
         startPoint: .bottom,
         endPoint: .top
       )
+      .ignoresSafeArea()
     }
-    .edgesIgnoringSafeArea(.top)
   }
   
   private var compactHeaderContent: some View {
@@ -563,6 +567,24 @@ struct BookDetailView: View {
     let imageHeight = max(280 * imageScale, 80)
     imageBottomPosition = imageTopPadding + imageHeight + 70
   }
+  
+  private func handleOrientationChange() {
+    let newOrientation = UIDevice.current.orientation
+    guard newOrientation.isValidInterfaceOrientation,
+          newOrientation != currentOrientation else { return }
+    
+    currentOrientation = newOrientation
+    viewModel.orientationChanged.toggle()
+    
+    withAnimation(.easeInOut(duration: 0.3)) {
+      headerHeight = viewModel.isFullSize ? 300 : 225
+      imageScale = viewModel.isFullSize ? 1.0 : imageScale
+      imageOpacity = viewModel.isFullSize ? 1.0 : imageOpacity
+      titleOpacity = viewModel.isFullSize ? 1.0 : titleOpacity
+      showCompactHeader = false
+      lastOffset = 0
+    }
+  }
  
   private func resetSampleToolbar() {
     viewModel.showSampleToolbar = false
@@ -578,28 +600,53 @@ struct BookDetailView: View {
   }
   
   private func handleButtonAction(_ buttonType: BookButtonType) {
+    let account = TPPUserAccount.sharedAccount()
+    let needsAuth = account.needsAuth && !account.hasCredentials()
+    
     switch buttonType {
     case .sample, .audiobookSample:
       viewModel.handleAction(for: buttonType)
+      
     case .download, .get:
-      let account = TPPUserAccount.sharedAccount()
-      if account.needsAuth && !account.hasCredentials() {
+      if needsAuth {
         // Present sign-in directly; don't show half sheet first
         viewModel.handleAction(for: buttonType)
       } else {
         viewModel.showHalfSheet = true
         viewModel.handleAction(for: buttonType)
       }
+      
+    case .reserve:
+      if needsAuth {
+        // Present sign-in directly for placing holds
+        viewModel.handleAction(for: buttonType)
+      } else {
+        viewModel.showHalfSheet = true
+        viewModel.handleAction(for: buttonType)
+      }
+      
     case .manageHold:
       viewModel.isManagingHold = true
       withAnimation(.spring()) {
         viewModel.showHalfSheet.toggle()
       }
-    case .return:
-      viewModel.bookState = .returning
-      withAnimation(.spring()) {
-        viewModel.showHalfSheet = true
+      
+    case .return, .remove, .cancelHold:
+      if needsAuth {
+        // Present sign-in for return/cancel actions
+        viewModel.handleAction(for: buttonType)
+      } else {
+        if buttonType == .return {
+          viewModel.bookState = .returning
+        }
+        withAnimation(.spring()) {
+          viewModel.showHalfSheet = true
+        }
+        if buttonType != .return {
+          viewModel.handleAction(for: buttonType)
+        }
       }
+      
     default:
       withAnimation(.spring()) {
         viewModel.showHalfSheet.toggle()

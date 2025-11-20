@@ -12,6 +12,7 @@ struct SignInModalView: View {
   let libraryAccountID: String
   let completion: (() -> Void)?
   @Environment(\.dismiss) private var dismiss
+  @StateObject private var accountPublisher = UserAccountPublisher.shared
   
   var body: some View {
     NavigationView {
@@ -21,9 +22,9 @@ struct SignInModalView: View {
         .navigationBarItems(leading: cancelButton)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarBackground(Color(UIColor.systemGroupedBackground), for: .navigationBar)
-        .onReceive(NotificationCenter.default.publisher(for: .TPPUserAccountDidChange)) { _ in
+        .onChange(of: accountPublisher.hasCredentials) { hasCredentials in
           // Auto-dismiss when user successfully signs in
-          if TPPUserAccount.sharedAccount(libraryUUID: libraryAccountID).hasCredentials() {
+          if hasCredentials {
             dismiss()
             completion?()
           }

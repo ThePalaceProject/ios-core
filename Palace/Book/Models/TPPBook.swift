@@ -485,8 +485,10 @@ public class TPPBook: NSObject, ObservableObject {
 
   @objc var defaultBookContentType: TPPBookContentType {
       guard let acquisition = defaultAcquisition else {
-        Log.error(#file, "❌ [CONTENT TYPE] No default acquisition for book: \(title) (ID: \(identifier))")
-        Log.error(#file, "  All acquisitions: \(acquisitions.map { "type=\($0.type), relation=\($0.relation)" }.joined(separator: ", "))")
+        // Books with only indirect acquisitions (catalog navigation entries) are expected
+        // They're not meant to be borrowed directly, just navigation to more detailed entries
+        Log.debug(#file, "📖 [CONTENT TYPE] No default acquisition for book: \(title) - likely a catalog navigation entry")
+        Log.debug(#file, "  All acquisitions: \(acquisitions.map { "type=\($0.type), relation=\($0.relation)" }.joined(separator: ", "))")
         return .unsupported
       }
     
@@ -654,6 +656,34 @@ private extension TPPBook {
       guard let self = self else { return }
 
       autoreleasepool {
+        // Skip on low-memory devices to prevent crashes
+        let deviceMemoryMB = ProcessInfo.processInfo.physicalMemory / (1024 * 1024)
+        guard deviceMemoryMB >= 1024 else {
+          Log.debug(#file, "Skipping dominant color extraction on low-memory device (\(deviceMemoryMB)MB)")
+          DispatchQueue.main.async { self.dominantUIColor = .gray }
+          return
+        }
+        
+        // Validate input image
+        guard inputImage.size.width > 0, inputImage.size.height > 0 else {
+          Log.warn(#file, "Invalid image size for dominant color extraction: \(inputImage.size)")
+          DispatchQueue.main.async { self.dominantUIColor = .gray }
+          return
+        }
+        
+        guard let cgImage = inputImage.cgImage else {
+          Log.warn(#file, "No CGImage available for dominant color extraction")
+          DispatchQueue.main.async { self.dominantUIColor = .gray }
+          return
+        }
+        
+        // Check for corrupted or invalid images
+        guard cgImage.width > 0, cgImage.height > 0, cgImage.bitsPerPixel > 0 else {
+          Log.warn(#file, "Invalid CGImage properties: width=\(cgImage.width), height=\(cgImage.height), bpp=\(cgImage.bitsPerPixel)")
+          DispatchQueue.main.async { self.dominantUIColor = .gray }
+          return
+        }
+        
         let maxDimension: CGFloat = 500
         let scaledImage: UIImage
         
@@ -663,6 +693,12 @@ private extension TPPBook {
         if maxSide > maxDimension {
           let scale = maxDimension / maxSide
           let newSize = CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
+          
+          guard newSize.width > 0, newSize.height > 0 else {
+            Log.warn(#file, "Invalid scaled size for dominant color: \(newSize)")
+            DispatchQueue.main.async { self.dominantUIColor = .gray }
+            return
+          }
           
           UIGraphicsBeginImageContextWithOptions(newSize, false, 1.0)
           inputImage.draw(in: CGRect(origin: .zero, size: newSize))
@@ -674,36 +710,55 @@ private extension TPPBook {
         
         guard let ciImage = CIImage(image: scaledImage) else {
           Log.debug(#file, "Failed to create CIImage from UIImage for book: \(self.identifier)")
+          DispatchQueue.main.async { self.dominantUIColor = .gray }
           return
         }
 
-        guard !ciImage.extent.isEmpty else {
-          Log.debug(#file, "CIImage has empty extent for book: \(self.identifier)")
+        let extent = ciImage.extent
+        guard !extent.isEmpty, extent.width > 0, extent.height > 0, extent.width.isFinite, extent.height.isFinite else {
+          Log.debug(#file, "CIImage has invalid extent for book: \(self.identifier) - \(extent)")
+          DispatchQueue.main.async { self.dominantUIColor = .gray }
           return
         }
 
         let filter = CIFilter.areaAverage()
         filter.inputImage = ciImage
-        filter.extent = ciImage.extent
+        filter.extent = extent
 
         guard let outputImage = filter.outputImage else {
           Log.debug(#file, "Failed to generate output image from filter for book: \(self.identifier)")
+          DispatchQueue.main.async { self.dominantUIColor = .gray }
+          return
+        }
+        
+        guard !outputImage.extent.isEmpty else {
+          Log.debug(#file, "Filter output image has empty extent for book: \(self.identifier)")
+          DispatchQueue.main.async { self.dominantUIColor = .gray }
           return
         }
 
         guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else {
           Log.debug(#file, "Failed to create sRGB color space for book: \(self.identifier)")
+          DispatchQueue.main.async { self.dominantUIColor = .gray }
           return
         }
 
         var bitmap = [UInt8](repeating: 0, count: 4)
+        
+        // Wrap render in Objective-C exception handler since CoreImage can crash
+        let renderBounds = CGRect(x: 0, y: 0, width: 1, height: 1)
+        guard renderBounds.width > 0, renderBounds.height > 0 else {
+          Log.warn(#file, "Invalid render bounds")
+          DispatchQueue.main.async { self.dominantUIColor = .gray }
+          return
+        }
         
         do {
           Self.sharedCIContext.render(
             outputImage,
             toBitmap: &bitmap,
             rowBytes: 4,
-            bounds: CGRect(x: 0, y: 0, width: 1, height: 1),
+            bounds: renderBounds,
             format: .RGBA8,
             colorSpace: colorSpace
           )
@@ -719,7 +774,7 @@ private extension TPPBook {
             self.dominantUIColor = color
           }
         } catch {
-          Log.warn(#file, "Failed to extract dominant color (likely memory issue): \(error.localizedDescription)")
+          Log.warn(#file, "Failed to extract dominant color for \(self.identifier): \(error.localizedDescription)")
           DispatchQueue.main.async {
             self.dominantUIColor = .gray
           }

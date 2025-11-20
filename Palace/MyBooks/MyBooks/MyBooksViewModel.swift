@@ -80,7 +80,7 @@ enum Group: Int {
     guard !isLoading else { return }
 
     if TPPUserAccount.sharedAccount().needsAuth, !TPPUserAccount.sharedAccount().hasCredentials() {
-      TPPAccountSignInViewController.requestCredentials(completion: nil)
+      SignInModalPresenter.presentSignInModalForCurrentAccount(completion: nil)
     } else {
       bookRegistry.sync { [weak self] _, _ in
         self?.loadData()
@@ -165,46 +165,18 @@ enum Group: Int {
 
   // MARK: - Notification Handling
   private func registerNotifications() {
-    NotificationCenter.default.addObserver(self, selector: #selector(handleBookRegistryStateChange(_:)), name: .TPPBookRegistryStateDidChange, object: nil)
-
-    // Debounce high-frequency updates from registry changes and sync end
+    let stateChange = NotificationCenter.default.publisher(for: .TPPBookRegistryStateDidChange)
     let registryChange = NotificationCenter.default.publisher(for: .TPPBookRegistryDidChange)
     let syncEnd = NotificationCenter.default.publisher(for: .TPPSyncEnded)
 
-    registryChange
+    stateChange
+      .merge(with: registryChange)
       .merge(with: syncEnd)
-      .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
+      .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
       .sink { [weak self] _ in
         self?.loadData()
       }
       .store(in: &observers)
-  }
-
-  @objc private func handleBookRegistryChange() {
-    loadData()
-  }
-
-  @objc private func handleSyncEnd() {
-    loadData()
-  }
-
-  @objc private func handleBookRegistryStateChange(_ notification: Notification) {
-    guard
-      let info = notification.userInfo as? [String: Any],
-      let identifier = info["bookIdentifier"] as? String,
-      let raw = info["state"] as? Int,
-      let newState = TPPBookState(rawValue: raw)
-    else {
-      loadData()
-      return
-    }
-
-    if newState == .unregistered {
-      // Remove locally so it doesn't flash back in until next sync
-      self.books.removeAll { $0.identifier == identifier }
-    } else {
-      self.loadData()
-    }
   }
 
   private func registerPublishers() {
