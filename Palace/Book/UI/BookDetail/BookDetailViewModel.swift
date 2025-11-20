@@ -572,6 +572,7 @@ final class BookDetailViewModel: ObservableObject {
     
     if book.defaultBookContentType == .audiobook {
       if book.sampleAcquisition?.type == "text/html" {
+        SamplePreviewManager.shared.close()
         presentWebView(book.sampleAcquisition?.hrefURL)
         isProcessingSample = false
         completion?()
@@ -582,6 +583,7 @@ final class BookDetailViewModel: ObservableObject {
         completion?()
       }
     } else {
+      SamplePreviewManager.shared.close()
       EpubSampleFactory.createSample(book: book) { sampleURL, error in
         DispatchQueue.main.async {
           if let error = error {

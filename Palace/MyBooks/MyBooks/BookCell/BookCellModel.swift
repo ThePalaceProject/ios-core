@@ -380,6 +380,7 @@ extension BookCellModel {
       self.isLoading = false
       return
     }
+    SamplePreviewManager.shared.close()
     EpubSampleFactory.createSample(book: book) { sampleURL, error in
       self.isLoading = false
       if let error = error {
