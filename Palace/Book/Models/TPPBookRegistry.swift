@@ -269,11 +269,19 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     let fileExists = FileManager.default.fileExists(atPath: bookURL.path)
     
 #if LCP
-    // For LCP audiobooks, also check for license file
-    if fileExists && LCPAudiobooks.canOpenBook(book) {
+    // For LCP audiobooks: Check license file (content file optional for streaming)
+    if LCPAudiobooks.canOpenBook(book) {
       let licenseURL = bookURL.deletingPathExtension().appendingPathExtension("lcpl")
       let licenseExists = FileManager.default.fileExists(atPath: licenseURL.path)
-      return fileExists && licenseExists
+      
+      if licenseExists {
+        // Streaming LCP audiobooks only need license file
+        Log.debug(#file, "  ✓ LCP audiobook license file exists (content file: \(fileExists ? "yes" : "streaming-only"))")
+        return true
+      }
+      
+      // No license file - check for content file
+      return fileExists
     }
 #endif
     
@@ -467,6 +475,9 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
                genericBookmarks: [TPPBookLocation]? = nil) {
       TPPBookCoverRegistryBridge.shared.thumbnailImageForBook(book) { _ in }
       
+    Log.info(#file, "📚 ADDING BOOK to registry: \(book.identifier), state: \(state.stringValue())")
+    Log.info(#file, "📚 Initial bookmarks - readium: \(readiumBookmarks?.count ?? 0), generic: \(genericBookmarks?.count ?? 0)")
+    
     syncQueue.async(flags: .barrier) { [weak self] in
       guard let self else { return }
         self.registry[book.identifier] = TPPBookRegistryRecord(
@@ -503,6 +514,12 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
       
       syncQueue.async(flags: .barrier) {
         let removedBook = self.registry[bookIdentifier]?.book
+        let bookmarksCount = self.registry[bookIdentifier]?.genericBookmarks?.count ?? 0
+        let readiumBookmarksCount = self.registry[bookIdentifier]?.readiumBookmarks?.count ?? 0
+        
+        Log.info(#file, "📚 REMOVING BOOK from registry: \(bookIdentifier)")
+        Log.info(#file, "📚 Book had \(bookmarksCount) generic bookmarks and \(readiumBookmarksCount) readium bookmarks that will be deleted")
+        
         self.registry.removeValue(forKey: bookIdentifier)
         self.save()
         DispatchQueue.main.async {
@@ -760,7 +777,9 @@ extension TPPBookRegistry: TPPBookRegistryProvider {
 
   func genericBookmarksForIdentifier(_ bookIdentifier: String) -> [TPPBookLocation] {
     return performSync {
-      self.registry[bookIdentifier]?.genericBookmarks ?? []
+      let bookmarks = self.registry[bookIdentifier]?.genericBookmarks ?? []
+      Log.info(#file, "💾 REGISTRY: Fetching \(bookmarks.count) generic bookmarks for book: \(bookIdentifier)")
+      return bookmarks
     }
   }
 
@@ -782,19 +801,55 @@ extension TPPBookRegistry: TPPBookRegistryProvider {
     syncQueue.async(flags: .barrier) { [weak self] in
       guard let self else { return }
 
-      guard self.registry[bookIdentifier] != nil else { return }
+      guard self.registry[bookIdentifier] != nil else {
+        Log.warn(#file, "💾 REGISTRY: Cannot add bookmark, book not in registry: \(bookIdentifier)")
+        return
+      }
       if self.registry[bookIdentifier]?.genericBookmarks == nil {
         self.registry[bookIdentifier]?.genericBookmarks = [TPPBookLocation]()
       }
       
       self.registry[bookIdentifier]?.genericBookmarks?.append(location)
+      let count = self.registry[bookIdentifier]?.genericBookmarks?.count ?? 0
+      Log.info(#file, "💾 REGISTRY: Added generic bookmark for \(bookIdentifier), total count now: \(count)")
       self.save()
     }
   }
 
   func deleteGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String) {
     syncQueue.async(flags: .barrier) {
+      let beforeCount = self.registry[bookIdentifier]?.genericBookmarks?.count ?? 0
+      
+      // First try matching by annotation ID if available
+      if let locationDict = location.locationStringDictionary(),
+         let annotationId = locationDict["annotationId"] as? String,
+         !annotationId.isEmpty {
+        
+        self.registry[bookIdentifier]?.genericBookmarks?.removeAll { existingLocation in
+          guard let existingDict = existingLocation.locationStringDictionary(),
+                let existingId = existingDict["annotationId"] as? String else {
+            return false
+          }
+          return existingId == annotationId
+        }
+        
+        let afterCount = self.registry[bookIdentifier]?.genericBookmarks?.count ?? 0
+        let deleted = beforeCount - afterCount
+        
+        if deleted > 0 {
+          Log.info(#file, "💾 REGISTRY: Deleted \(deleted) bookmark(s) by annotationId for \(bookIdentifier), remaining: \(afterCount)")
+          self.save()
+          return
+        } else {
+          Log.warn(#file, "💾 REGISTRY: No match by annotationId '\(annotationId)', trying content match")
+        }
+      }
+      
+      // Fallback to content-based matching
       self.registry[bookIdentifier]?.genericBookmarks?.removeAll { $0.isSimilarTo(location) }
+      let afterCount = self.registry[bookIdentifier]?.genericBookmarks?.count ?? 0
+      let deleted = beforeCount - afterCount
+      Log.info(#file, "💾 REGISTRY: Deleted \(deleted) bookmark(s) by content for \(bookIdentifier), remaining: \(afterCount)")
       self.save()
     }
   }

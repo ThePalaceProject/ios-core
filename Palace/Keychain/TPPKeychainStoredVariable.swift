@@ -54,7 +54,6 @@ class TPPKeychainVariable<VariableType>: Keyable {
       alreadyInited = true
       
       // Write to keychain synchronously to ensure persistence
-      // Critical for credentials, auth tokens, cookies that must survive app termination
       if let newValue = newValue {
         TPPKeychain.shared()?.setObject(newValue, forKey: key)
       } else {

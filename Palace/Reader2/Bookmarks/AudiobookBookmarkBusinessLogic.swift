@@ -19,6 +19,7 @@ import Foundation
   private let debounceInterval: TimeInterval = 1.0
   private var completionHandlersQueue: [([AudioBookmark]) -> Void] = []
   private var debounceWorkItem: DispatchWorkItem?
+  private var deletedBookmarkIds = Set<String>()
 
   @objc convenience init(book: TPPBook) {
     self.init(book: book, registry: TPPBookRegistry.shared, annotationsManager: TPPAnnotationsWrapper())
@@ -140,10 +141,33 @@ import Foundation
   public func fetchBookmarks(for tracks: Tracks, toc: [Chapter], completion: @escaping ([TrackPosition]) -> Void) {
     queue.async { [weak self] in
       guard let self else { return }
+      
+      Log.info(#file, "📚 BOOKMARK FETCH START for book: \(self.book.identifier)")
+      
       let localBookmarks: [AudioBookmark] = self.fetchLocalBookmarks()
+      Log.info(#file, "📱 LOCAL BOOKMARKS COUNT: \(localBookmarks.count)")
+      
+      for (index, bookmark) in localBookmarks.enumerated() {
+        Log.info(#file, "📱 Local Bookmark #\(index): version=\(bookmark.version), timestamp=\(bookmark.lastSavedTimeStamp ?? "nil"), annotationId=\(bookmark.annotationId.isEmpty ? "UNSYNCED" : bookmark.annotationId), chapter=\(bookmark.chapter ?? "nil"), readingOrderItem=\(bookmark.readingOrderItem ?? "nil")")
+      }
       
       self.syncBookmarks(localBookmarks: localBookmarks) { syncedBookmarks in
-        let trackPositions = syncedBookmarks.combineAndRemoveDuplicates(with: localBookmarks).compactMap { TrackPosition(audioBookmark: $0, toc: toc, tracks: tracks) }
+        Log.info(#file, "☁️ SYNCED BOOKMARKS COUNT: \(syncedBookmarks.count)")
+        
+        for (index, bookmark) in syncedBookmarks.enumerated() {
+          Log.info(#file, "☁️ Synced Bookmark #\(index): version=\(bookmark.version), timestamp=\(bookmark.lastSavedTimeStamp ?? "nil"), annotationId=\(bookmark.annotationId.isEmpty ? "UNSYNCED" : bookmark.annotationId), chapter=\(bookmark.chapter ?? "nil"), readingOrderItem=\(bookmark.readingOrderItem ?? "nil")")
+        }
+        
+        let combinedBookmarks = syncedBookmarks.combineAndRemoveDuplicates(with: localBookmarks)
+        Log.info(#file, "🔀 COMBINED BOOKMARKS COUNT (after dedup): \(combinedBookmarks.count)")
+        
+        let trackPositions = combinedBookmarks.compactMap { TrackPosition(audioBookmark: $0, toc: toc, tracks: tracks) }
+        Log.info(#file, "✅ FINAL TRACK POSITIONS COUNT: \(trackPositions.count)")
+        
+        if trackPositions.count != combinedBookmarks.count {
+          Log.warn(#file, "⚠️ BOOKMARK CONVERSION ISSUE: \(combinedBookmarks.count - trackPositions.count) bookmarks failed to convert to TrackPosition")
+        }
+        
         DispatchQueue.main.async {
           completion(trackPositions)
         }
@@ -157,17 +181,94 @@ import Foundation
   }
   
   public func deleteBookmark(at bookmark: AudioBookmark, completion: ((Bool) -> Void)? = nil) {
+    Log.info(#file, "🗑️ DELETE BOOKMARK REQUEST for book: \(self.book.identifier)")
+    Log.info(#file, "🗑️ Bookmark Details: version=\(bookmark.version), timestamp=\(bookmark.lastSavedTimeStamp ?? "nil"), annotationId=\(bookmark.annotationId.isEmpty ? "UNSYNCED" : bookmark.annotationId), chapter=\(bookmark.chapter ?? "nil"), readingOrderItem=\(bookmark.readingOrderItem ?? "nil")")
+    
+    // Track this bookmark as deleted (prevents it from coming back from server)
+    if !bookmark.annotationId.isEmpty {
+      deletedBookmarkIds.insert(bookmark.annotationId)
+      Log.info(#file, "🗑️ Tracking deleted annotationId: \(bookmark.annotationId)")
+    }
+    
+    // Also track by content hash for bookmarks that might have different annotation IDs
+    let contentHash = bookmark.uniqueIdentifier
+    if !contentHash.isEmpty {
+      deletedBookmarkIds.insert("content:\(contentHash)")
+      Log.info(#file, "🗑️ Tracking deleted by content hash: \(contentHash)")
+    }
+    
+    var localDeletionSucceeded = false
     if let genericLocation = bookmark.toTPPBookLocation() {
       self.registry.deleteGenericBookmark(genericLocation, forIdentifier: self.book.identifier)
+      Log.info(#file, "🗑️ ✅ Local bookmark deleted from registry")
+      localDeletionSucceeded = true
+    } else {
+      Log.error(#file, "🗑️ ❌ Failed to convert bookmark to TPPBookLocation for local deletion")
     }
     
     guard !bookmark.isUnsynced else {
-      DispatchQueue.main.async { completion?(true) }
+      Log.info(#file, "🗑️ Bookmark was unsynced (local only), deletion complete")
+      DispatchQueue.main.async { completion?(localDeletionSucceeded) }
       return
     }
     
-    annotationsManager.deleteBookmark(annotationId: bookmark.annotationId) { success in
-      DispatchQueue.main.async { completion?(success) }
+    Log.info(#file, "🗑️ Attempting server deletion with annotationId: \(bookmark.annotationId)")
+    
+    annotationsManager.deleteBookmark(annotationId: bookmark.annotationId) { [weak self] serverSuccess in
+      if serverSuccess {
+        Log.info(#file, "🗑️ ✅ Server deletion successful for annotationId: \(bookmark.annotationId)")
+        DispatchQueue.main.async { completion?(localDeletionSucceeded) }
+      } else {
+        Log.warn(#file, "🗑️ ⚠️ Direct server deletion failed - attempting content-based match")
+        self?.deleteBookmarkByContentMatch(bookmark, localDeletionSucceeded: localDeletionSucceeded, completion: completion)
+      }
+    }
+  }
+  
+  private func deleteBookmarkByContentMatch(_ bookmark: AudioBookmark, localDeletionSucceeded: Bool, completion: ((Bool) -> Void)?) {
+    Log.info(#file, "🔍 CONTENT-BASED DELETE: Fetching server bookmarks to find match")
+    
+    // Temporarily remove from deleted tracking to allow fetching
+    let tempAnnotationId = bookmark.annotationId
+    let tempContentHash = bookmark.uniqueIdentifier
+    deletedBookmarkIds.remove(tempAnnotationId)
+    if !tempContentHash.isEmpty {
+      deletedBookmarkIds.remove("content:\(tempContentHash)")
+    }
+    
+    fetchServerBookmarks { [weak self] serverBookmarks in
+      guard let self = self else {
+        DispatchQueue.main.async { completion?(localDeletionSucceeded) }
+        return
+      }
+      
+      // Find matching bookmark by content (same position/time)
+      if let matchingServerBookmark = serverBookmarks.first(where: { $0.isSimilar(to: bookmark) }) {
+        Log.info(#file, "🔍 ✅ Found matching server bookmark by content!")
+        Log.info(#file, "🔍 Original annotationId: \(tempAnnotationId)")
+        Log.info(#file, "🔍 Server annotationId: \(matchingServerBookmark.annotationId)")
+        
+        // Update tracking with correct server annotation ID
+        self.deletedBookmarkIds.insert(matchingServerBookmark.annotationId)
+        
+        // Delete using the correct server annotation ID
+        self.annotationsManager.deleteBookmark(annotationId: matchingServerBookmark.annotationId) { success in
+          if success {
+            Log.info(#file, "🔍 ✅ Content-matched bookmark deleted from server!")
+          } else {
+            Log.error(#file, "🔍 ❌ Content-matched deletion also failed - blocking bookmark from reappearing anyway")
+          }
+          DispatchQueue.main.async { completion?(localDeletionSucceeded) }
+        }
+      } else {
+        Log.warn(#file, "🔍 ⚠️ No matching bookmark found on server - may have already been deleted")
+        // Re-add to tracking
+        self.deletedBookmarkIds.insert(tempAnnotationId)
+        if !tempContentHash.isEmpty {
+          self.deletedBookmarkIds.insert("content:\(tempContentHash)")
+        }
+        DispatchQueue.main.async { completion?(localDeletionSucceeded) }
+      }
     }
   }
   
@@ -197,21 +298,57 @@ import Foundation
   }
   
   private func fetchLocalBookmarks() -> [AudioBookmark] {
-    return registry.genericBookmarksForIdentifier(book.identifier).compactMap { bookmark in
+    let allBookmarks: [AudioBookmark] = registry.genericBookmarksForIdentifier(book.identifier).compactMap { bookmark -> AudioBookmark? in
       guard let dictionary = bookmark.locationStringDictionary(),
             let localBookmark = AudioBookmark.create(locatorData: dictionary) else {
         return nil
       }
       return localBookmark
     }
+    
+    // Filter out bookmarks that user has deleted (belt and suspenders approach)
+    let filteredBookmarks = allBookmarks.filter { bookmark in
+      let isDeletedById = deletedBookmarkIds.contains(bookmark.annotationId)
+      let contentHash = bookmark.uniqueIdentifier
+      let isDeletedByContent = !contentHash.isEmpty && deletedBookmarkIds.contains("content:\(contentHash)")
+      
+      if isDeletedById || isDeletedByContent {
+        Log.info(#file, "🗑️ Filtering out deleted bookmark from local fetch: \(bookmark.annotationId)")
+        return false
+      }
+      return true
+    }
+    
+    if filteredBookmarks.count < allBookmarks.count {
+      Log.info(#file, "🗑️ Filtered \(allBookmarks.count - filteredBookmarks.count) deleted bookmark(s) from local storage")
+    }
+    
+    return filteredBookmarks
   }
   
   private func fetchServerBookmarks(completion: @escaping ([AudioBookmark]) -> Void) {
+    Log.info(#file, "☁️ FETCHING SERVER BOOKMARKS for book: \(self.book.identifier)")
+    Log.info(#file, "☁️ Annotations URL: \(self.book.annotationsURL?.absoluteString ?? "nil")")
+    
     annotationsManager.getServerBookmarks(forBook: book, atURL: self.book.annotationsURL, motivation: .bookmark) { serverBookmarks in
+      Log.info(#file, "☁️ SERVER RESPONSE: Received \(serverBookmarks?.count ?? 0) bookmarks")
+      
       guard let audioBookmarks = serverBookmarks as? [AudioBookmark] else {
+        if let bookmarks = serverBookmarks {
+          Log.warn(#file, "☁️ SERVER BOOKMARKS TYPE MISMATCH: Expected [AudioBookmark] but got \(type(of: bookmarks))")
+          Log.warn(#file, "☁️ Bookmark types: \(bookmarks.map { type(of: $0) })")
+        } else {
+          Log.info(#file, "☁️ No server bookmarks found (nil response)")
+        }
         completion([])
         return
       }
+      
+      Log.info(#file, "☁️ Successfully parsed \(audioBookmarks.count) audio bookmarks from server")
+      for (index, bookmark) in audioBookmarks.enumerated() {
+        Log.info(#file, "☁️ Server Bookmark #\(index): version=\(bookmark.version), timestamp=\(bookmark.lastSavedTimeStamp ?? "nil"), annotationId=\(bookmark.annotationId), chapter=\(bookmark.chapter ?? "nil"), readingOrderItem=\(bookmark.readingOrderItem ?? "nil")")
+      }
+      
       completion(audioBookmarks)
     }
   }
@@ -246,30 +383,61 @@ import Foundation
   }
   
   private func updateLocalBookmarks(with remoteBookmarks: [AudioBookmark], completion: @escaping ([AudioBookmark]) -> Void) {
+    Log.info(#file, "🔄 UPDATE LOCAL BOOKMARKS: Merging remote bookmarks with local")
+    
     let localBookmarks = fetchLocalBookmarks()
+    Log.info(#file, "🔄 Current local bookmarks: \(localBookmarks.count)")
     
     guard annotationsManager.syncIsPossibleAndPermitted else {
+      Log.info(#file, "🔄 Sync not possible or not permitted, returning local bookmarks only")
       completion(localBookmarks)
       return
     }
     
+    // Filter out bookmarks that user has deleted (even if server still returns them)
+    let filteredRemoteBookmarks = remoteBookmarks.filter { remoteBookmark in
+      let isDeletedById = deletedBookmarkIds.contains(remoteBookmark.annotationId)
+      let contentHash = remoteBookmark.uniqueIdentifier
+      let isDeletedByContent = !contentHash.isEmpty && deletedBookmarkIds.contains("content:\(contentHash)")
+      
+      if isDeletedById || isDeletedByContent {
+        Log.info(#file, "🗑️ BLOCKING deleted bookmark from re-appearing: annotationId=\(remoteBookmark.annotationId), timestamp=\(remoteBookmark.lastSavedTimeStamp ?? "nil")")
+        return false
+      }
+      return true
+    }
+    
+    if filteredRemoteBookmarks.count < remoteBookmarks.count {
+      Log.info(#file, "🗑️ Blocked \(remoteBookmarks.count - filteredRemoteBookmarks.count) previously-deleted bookmark(s) from server")
+    }
+    
     var updatedLocalBookmarks = localBookmarks
     
-    let newRemoteBookmarks = remoteBookmarks.filter { remoteBookmark in
+    let newRemoteBookmarks = filteredRemoteBookmarks.filter { remoteBookmark in
       let isSimilar = localBookmarks.contains { $0.isSimilar(to: remoteBookmark) }
+      if isSimilar {
+        Log.debug(#file, "🔄 Remote bookmark already exists locally: chapter=\(remoteBookmark.chapter ?? "nil"), timestamp=\(remoteBookmark.lastSavedTimeStamp ?? "nil")")
+      }
       return !isSimilar
+    }
+    
+    Log.info(#file, "🔄 NEW REMOTE BOOKMARKS to add locally: \(newRemoteBookmarks.count)")
+    for (index, bookmark) in newRemoteBookmarks.enumerated() {
+      Log.info(#file, "🔄 New Remote #\(index): version=\(bookmark.version), timestamp=\(bookmark.lastSavedTimeStamp ?? "nil"), annotationId=\(bookmark.annotationId), chapter=\(bookmark.chapter ?? "nil"), readingOrderItem=\(bookmark.readingOrderItem ?? "nil")")
     }
     
     addNewBookmarksToLocalStore(newRemoteBookmarks)
     
     updatedLocalBookmarks = fetchLocalBookmarks()
+    Log.info(#file, "🔄 FINAL LOCAL BOOKMARKS after merge: \(updatedLocalBookmarks.count)")
     
     completion(updatedLocalBookmarks)
   }
   
   private func addNewBookmarksToLocalStore(_ bookmarks: [AudioBookmark]) {
+    Log.info(#file, "💾 Adding \(bookmarks.count) server bookmarks to local store")
     bookmarks.forEach { bookmark in
-      bookmark.annotationId = UUID().uuidString
+      Log.info(#file, "💾 Storing server bookmark: version=\(bookmark.version), timestamp=\(bookmark.lastSavedTimeStamp ?? "nil"), serverAnnotationId=\(bookmark.annotationId)")
       if let location = bookmark.toTPPBookLocation() {
         registry.addOrReplaceGenericBookmark(location, forIdentifier: book.identifier)
       }

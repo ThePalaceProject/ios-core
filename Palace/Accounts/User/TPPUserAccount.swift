@@ -174,8 +174,6 @@ private enum StorageKey: String {
   }
     
   class func sharedAccount(libraryUUID: String?) -> TPPUserAccount {
-    // CRITICAL: Use sync, not async, to ensure libraryUUID is set before returning
-    // Otherwise credentials are checked with wrong UUID (race condition)
     shared.accountInfoQueue.sync(flags: .barrier) {
       shared.libraryUUID = libraryUUID
     }

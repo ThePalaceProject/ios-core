@@ -289,44 +289,74 @@ protocol AnnotationsManager {
                                 completion: @escaping (_ bookmarks: [Bookmark]?) -> ()) {
 
     guard syncIsPossibleAndPermitted() else {
-      Log.debug(#file, "Account does not support sync or sync is disabled.")
+      Log.debug(#file, "📡 getServerBookmarks: Account does not support sync or sync is disabled.")
       completion(nil)
       return
     }
 
     guard let book, let annotationURL else {
-      Log.error(#file, "Required parameter was nil.")
+      Log.error(#file, "📡 getServerBookmarks: Required parameter was nil.")
       completion(nil)
       return
     }
     
+    Log.info(#file, "📡 GET SERVER BOOKMARKS for book: \(book.identifier), URL: \(annotationURL.absoluteString), motivation: \(motivation.rawValue)")
+    
     let dataTask = TPPNetworkExecutor.shared.GET(annotationURL, useTokenIfAvailable: true) { (data, response, error) in
       
       if let error = error as NSError? {
-        Log.error(#file, "Request Error Code: \(error.code). Description: \(error.localizedDescription)")
+        Log.error(#file, "📡 Request Error Code: \(error.code). Description: \(error.localizedDescription)")
         completion(nil)
         return
+      }
+      
+      if let httpResponse = response as? HTTPURLResponse {
+        Log.info(#file, "📡 Server Response Status Code: \(httpResponse.statusCode)")
       }
 
       guard let data,
         let jsonObject = try? JSONSerialization.jsonObject(with: data, options: []),
         let json = jsonObject as? [String: Any] else {
-          Log.error(#file, "Response from annotation server could not be serialized.")
+          Log.error(#file, "📡 Response from annotation server could not be serialized.")
+          if let data = data, let responseString = String(data: data, encoding: .utf8) {
+            Log.error(#file, "📡 Raw response: \(responseString.prefix(500))")
+          }
           completion(nil)
           return
       }
 
       guard let first = json["first"] as? [String: Any],
         let items = first["items"] as? [[String: Any]] else {
-          Log.error(#file, "Missing required key from Annotations response, or no items exist.")
+          Log.error(#file, "📡 Missing required key from Annotations response, or no items exist.")
+          Log.info(#file, "📡 JSON keys: \(json.keys)")
           completion(nil)
           return
+      }
+      
+      Log.info(#file, "📡 RAW SERVER ITEMS COUNT: \(items.count)")
+      
+      for (index, item) in items.enumerated() {
+        if let annotationId = item[TPPBookmarkSpec.Id.key] as? String,
+           let body = item[TPPBookmarkSpec.Body.key] as? [String: Any],
+           let time = body[TPPBookmarkSpec.Body.Time.key] as? String,
+           let target = item[TPPBookmarkSpec.Target.key] as? [String: Any],
+           let source = target[TPPBookmarkSpec.Target.Source.key] as? String {
+          Log.info(#file, "📡 Raw Item #\(index): id=\(annotationId), timestamp=\(time), bookId=\(source)")
+        } else {
+          Log.warn(#file, "📡 Raw Item #\(index): Could not extract basic info from annotation")
+        }
       }
 
       let bookmarks = items.compactMap {
         TPPBookmarkFactory.make(fromServerAnnotation: $0,
                                  annotationType: motivation,
                                  book: book)
+      }
+      
+      Log.info(#file, "📡 PARSED BOOKMARKS COUNT: \(bookmarks.count) (from \(items.count) raw items)")
+      
+      if bookmarks.count < items.count {
+        Log.warn(#file, "📡 ⚠️ Some items failed to parse: \(items.count - bookmarks.count) items were not converted to bookmarks")
       }
 
       completion(bookmarks)
@@ -354,16 +384,20 @@ protocol AnnotationsManager {
                             completionHandler: @escaping (_ success: Bool) -> ()) {
 
     if !syncIsPossibleAndPermitted() {
-      Log.debug(#file, "Account does not support sync or sync is disabled.")
+      Log.debug(#file, "🗑️ DELETE: Account does not support sync or sync is disabled.")
       completionHandler(true)
       return
     }
 
     guard let url = URL(string: annotationId) else {
-      Log.error(#file, "Invalid URL from Annotation ID")
+      Log.error(#file, "🗑️ DELETE FAILED: Invalid URL from Annotation ID: '\(annotationId)'")
+      Log.error(#file, "🗑️ This is likely a legacy bookmark with UUID instead of server URL - cannot delete from server")
+      Log.error(#file, "🗑️ Possible fix: Re-sync bookmarks or manually delete old annotations on server")
       completionHandler(false)
       return
     }
+    
+    Log.info(#file, "🗑️ DELETE: Sending DELETE request to: \(url.absoluteString)")
 
     var request = TPPNetworkExecutor.shared.request(for: url)
     request.timeoutInterval = TPPDefaultRequestTimeout
