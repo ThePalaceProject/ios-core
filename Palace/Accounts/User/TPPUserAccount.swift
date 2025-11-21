@@ -46,28 +46,27 @@ private enum StorageKey: String {
   var libraryUUID: String? {
     didSet {
       guard libraryUUID != oldValue else { return }
-      let variables: [StorageKey: Keyable] = [
-        StorageKey.authorizationIdentifier: _authorizationIdentifier,
-        StorageKey.adobeToken: _adobeToken,
-        StorageKey.licensor: _licensor,
-        StorageKey.patron: _patron,
-        StorageKey.adobeVendor: _adobeVendor,
-        StorageKey.provider: _provider,
-        StorageKey.userID: _userID,
-        StorageKey.deviceID: _deviceID,
-        StorageKey.credentials: _credentials,
-        StorageKey.authDefinition: _authDefinition,
-        StorageKey.cookies: _cookies,
-
-        // legacy
-        StorageKey.barcode: _barcode,
-        StorageKey.PIN: _pin,
-        StorageKey.authToken: _authToken,
-      ]
-
-      for (key, var value) in variables {
-        value.key = key.keyForLibrary(uuid: libraryUUID)
-      }
+      
+      Log.info(#file, "🔐 TPPUserAccount libraryUUID changed: \(oldValue ?? "nil") → \(libraryUUID ?? "nil")")
+      
+      // Update keychain variable keys directly to access account-specific storage
+      // Setting the key property triggers didSet which resets alreadyInited (forces re-read from keychain)
+      _authorizationIdentifier.key = StorageKey.authorizationIdentifier.keyForLibrary(uuid: libraryUUID)
+      _adobeToken.key = StorageKey.adobeToken.keyForLibrary(uuid: libraryUUID)
+      _licensor.key = StorageKey.licensor.keyForLibrary(uuid: libraryUUID)
+      _patron.key = StorageKey.patron.keyForLibrary(uuid: libraryUUID)
+      _adobeVendor.key = StorageKey.adobeVendor.keyForLibrary(uuid: libraryUUID)
+      _provider.key = StorageKey.provider.keyForLibrary(uuid: libraryUUID)
+      _userID.key = StorageKey.userID.keyForLibrary(uuid: libraryUUID)
+      _deviceID.key = StorageKey.deviceID.keyForLibrary(uuid: libraryUUID)
+      _credentials.key = StorageKey.credentials.keyForLibrary(uuid: libraryUUID)
+      _authDefinition.key = StorageKey.authDefinition.keyForLibrary(uuid: libraryUUID)
+      _cookies.key = StorageKey.cookies.keyForLibrary(uuid: libraryUUID)
+      
+      // Legacy
+      _barcode.key = StorageKey.barcode.keyForLibrary(uuid: libraryUUID)
+      _pin.key = StorageKey.PIN.keyForLibrary(uuid: libraryUUID)
+      _authToken.key = StorageKey.authToken.keyForLibrary(uuid: libraryUUID)
     }
   }
 
@@ -175,8 +174,10 @@ private enum StorageKey: String {
   }
     
   class func sharedAccount(libraryUUID: String?) -> TPPUserAccount {
-    shared.accountInfoQueue.async(flags: .barrier) {
-      shared.libraryUUID = libraryUUID
+    shared.accountInfoQueue.sync(flags: .barrier) {
+      if shared.libraryUUID != libraryUUID {
+        shared.libraryUUID = libraryUUID
+      }
     }
     return shared
   }

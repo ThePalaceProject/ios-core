@@ -15,6 +15,96 @@ import Combine
 import OverdriveProcessor
 #endif
 
+/// Modern Swift actor for coordinating downloads - NO LOCKS!
+actor DownloadCoordinator {
+  private var activeDownloadIdentifiers: Set<String> = []
+  private var startTimes: [String: Date] = [:]
+  private let minimumStartDelay: TimeInterval = 0.3
+  private var pendingQueue: [TPPBook] = []
+  private var downloadInfoCache: [String: MyBooksDownloadInfo] = [:]
+  private var redirectAttempts: [Int: Int] = [:]
+  
+  var activeCount: Int {
+    activeDownloadIdentifiers.count
+  }
+  
+  var queueCount: Int {
+    pendingQueue.count
+  }
+  
+  func canStartDownload(maxConcurrent: Int) -> Bool {
+    activeDownloadIdentifiers.count < maxConcurrent
+  }
+  
+  func shouldThrottleStart() async -> TimeInterval {
+    guard let lastStartTime = startTimes.values.max() else {
+      return 0
+    }
+    
+    let timeSinceLastStart = Date().timeIntervalSince(lastStartTime)
+    if timeSinceLastStart < minimumStartDelay {
+      return minimumStartDelay - timeSinceLastStart
+    }
+    return 0
+  }
+  
+  func registerStart(identifier: String) {
+    activeDownloadIdentifiers.insert(identifier)
+    startTimes[identifier] = Date()
+  }
+  
+  func registerCompletion(identifier: String) {
+    activeDownloadIdentifiers.remove(identifier)
+    startTimes.removeValue(forKey: identifier)
+  }
+  
+  func enqueuePending(_ book: TPPBook) {
+    if !pendingQueue.contains(where: { $0.identifier == book.identifier }) {
+      pendingQueue.append(book)
+    }
+  }
+  
+  func dequeuePending(capacity: Int) -> [TPPBook] {
+    guard capacity > 0, !pendingQueue.isEmpty else { return [] }
+    
+    let toStart = Array(pendingQueue.prefix(capacity))
+    pendingQueue.removeFirst(min(capacity, pendingQueue.count))
+    return toStart
+  }
+  
+  func cacheDownloadInfo(_ info: MyBooksDownloadInfo, for identifier: String) {
+    downloadInfoCache[identifier] = info
+  }
+  
+  func getCachedDownloadInfo(for identifier: String) -> MyBooksDownloadInfo? {
+    downloadInfoCache[identifier]
+  }
+  
+  func removeCachedDownloadInfo(for identifier: String) {
+    downloadInfoCache.removeValue(forKey: identifier)
+  }
+  
+  func getRedirectAttempts(for taskID: Int) -> Int {
+    redirectAttempts[taskID] ?? 0
+  }
+  
+  func incrementRedirectAttempts(for taskID: Int) {
+    redirectAttempts[taskID] = (redirectAttempts[taskID] ?? 0) + 1
+  }
+  
+  func clearRedirectAttempts(for taskID: Int) {
+    redirectAttempts.removeValue(forKey: taskID)
+  }
+  
+  func reset() {
+    activeDownloadIdentifiers.removeAll()
+    startTimes.removeAll()
+    pendingQueue.removeAll()
+    downloadInfoCache.removeAll()
+    redirectAttempts.removeAll()
+  }
+}
+
 @objc class MyBooksDownloadCenter: NSObject, URLSessionDelegate {
   typealias DisplayStrings = Strings.MyDownloadCenter
   
@@ -25,22 +115,22 @@ import OverdriveProcessor
   private var bookRegistry: TPPBookRegistryProvider
   
   private var bookIdentifierOfBookToRemove: String?
-  private var broadcastScheduled = false
   private var session: URLSession!
   
   // Thread-safe actor-based dictionaries
   private let bookIdentifierToDownloadInfo = SafeDictionary<String, MyBooksDownloadInfo>()
-  private var bookIdentifierToDownloadProgress: [String: Progress] = [:]
   private let bookIdentifierToDownloadTask = SafeDictionary<String, URLSessionDownloadTask>()
   private let taskIdentifierToBook = SafeDictionary<Int, TPPBook>()
-  private var taskIdentifierToRedirectAttempts: [Int: Int] = [:]
   
   // Serial execution for download operations (replaces downloadQueue)
   private let downloadExecutor = SerialExecutor()
   
   let downloadProgressPublisher = PassthroughSubject<(String, Double), Never>()
-  private var maxConcurrentDownloads: Int = 5 
-  private var pendingStartQueue: [TPPBook] = []
+  private var maxConcurrentDownloads: Int = 4  // Increased from 2 for better UX
+  private let downloadCoordinator = DownloadCoordinator()
+  
+  @MainActor private var lastBroadcastTime: Date = Date.distantPast
+  @MainActor private var pendingBroadcast: DispatchWorkItem?
   
   init(
     userAccount: TPPUserAccount = TPPUserAccount.sharedAccount(),
@@ -101,8 +191,8 @@ import OverdriveProcessor
       ready: { _ in downloadAction() })
   }
   
-  private var hasAttemptedAuthentication = false
-  private var isRequestingCredentials = false
+  @MainActor private var hasAttemptedAuthentication = false
+  @MainActor private var isRequestingCredentials = false
   
   private func process(error: [String: Any]?, for book: TPPBook) {
     guard let errorType = error?["type"] as? String else {
@@ -121,46 +211,49 @@ import OverdriveProcessor
       }
       
     case TPPProblemDocument.TypeInvalidCredentials:
-      guard !hasAttemptedAuthentication else {
-        showAlert(for: book, with: error, alertTitle: alertTitle)
-        return
-      }
-      
-      guard !isRequestingCredentials else {
-        NSLog("Already requesting credentials, skipping re-authentication for: \(book.title)")
-        return
-      }
-      
-      hasAttemptedAuthentication = true
-      isRequestingCredentials = true
-      
-      // Reset flag after a delay to handle cancellation cases where completion isn't called
-      runOnMainAfter(seconds: 2.0) { [weak self] in
-        self?.isRequestingCredentials = false
-      }
-      
-      NSLog("Invalid credentials problem when borrowing a book, present sign in VC")
-      
-      reauthenticator.authenticateIfNeeded(userAccount, usingExistingCredentials: false) { [weak self] in
-        guard let self = self else {
-          NSLog("❌ Self is nil after authentication, skipping startDownload")
+      Task { @MainActor [weak self] in
+        guard let self else { return }
+        
+        guard !self.hasAttemptedAuthentication else {
+          self.showAlert(for: book, with: error, alertTitle: alertTitle)
           return
         }
         
-        self.isRequestingCredentials = false
+        guard !self.isRequestingCredentials else {
+          NSLog("Already requesting credentials, skipping re-authentication for: \(book.title)")
+          return
+        }
         
-        // Only retry if user now has credentials to prevent infinite recursion
-        if self.userAccount.hasCredentials() {
-          runOnMainAsync {
-            self.startDownload(for: book)
-          }
+        self.hasAttemptedAuthentication = true
+        self.isRequestingCredentials = true
+        
+        Task { @MainActor [weak self] in
+          try? await Task.sleep(nanoseconds: 2_000_000_000)
+          self?.isRequestingCredentials = false
+        }
+        
+        await self.handleInvalidCredentials(for: book)
+      }
+      return
+      
+    default:
+      showAlert(for: book, with: error, alertTitle: alertTitle)
+    }
+  }
+  
+  @MainActor private func handleInvalidCredentials(for book: TPPBook) {
+    reauthenticator.authenticateIfNeeded(userAccount, usingExistingCredentials: false) { [weak self] in
+      guard let self = self else { return }
+      
+      Task { @MainActor [weak self] in
+        self?.isRequestingCredentials = false
+        
+        if self?.userAccount.hasCredentials() == true {
+          self?.startDownload(for: book)
         } else {
           NSLog("Authentication completed but no credentials present, user may have cancelled")
         }
       }
-      
-    default:
-      showAlert(for: book, with: error, alertTitle: alertTitle)
     }
   }
   
@@ -186,9 +279,20 @@ import OverdriveProcessor
   }
   
   @objc func startDownload(for book: TPPBook, withRequest initedRequest: URLRequest? = nil) {
+    Task {
+      await startDownloadAsync(for: book, withRequest: initedRequest)
+    }
+  }
+  
+  private func startDownloadAsync(for book: TPPBook, withRequest initedRequest: URLRequest? = nil) async {
+    let existingInfo = await downloadInfoAsync(forBookIdentifier: book.identifier)
+    if existingInfo != nil {
+      Log.debug(#file, "Download already in progress for '\(book.title)', skipping duplicate start")
+      return
+    }
+    
     var state = bookRegistry.state(for: book.identifier)
     let location = bookRegistry.location(forIdentifier: book.identifier)
-    // If this account requires auth and there are no stored credentials, prompt for sign-in now.
     let loginRequired = (userAccount.authDefinition?.needsAuth ?? false) && !userAccount.hasCredentials()
     
     Log.info(#file, "📥 Starting download for '\(book.title)' - state: \(state), hasCredentials: \(userAccount.hasCredentials()), loginRequired: \(loginRequired)")
@@ -201,7 +305,7 @@ import OverdriveProcessor
         loginRequired: loginRequired
       )
     case .downloading:
-      Log.debug(#file, "Book '\(book.title)' is already downloading, skipping")
+      Log.debug(#file, "Book '\(book.title)' is already downloading (state check), skipping")
       return
     case .downloadFailed, .downloadNeeded, .holding, .SAMLStarted:
       break
@@ -210,11 +314,22 @@ import OverdriveProcessor
       return
     }
     
-    if activeDownloadCount() >= maxConcurrentDownloads {
-      Log.debug(#file, "Max concurrent downloads reached, enqueueing '\(book.title)'")
+    let canStart = await downloadCoordinator.canStartDownload(maxConcurrent: maxConcurrentDownloads)
+    let activeCount = await downloadCoordinator.activeCount
+    
+    if !canStart {
+      Log.debug(#file, "Max concurrent downloads reached (\(activeCount)/\(maxConcurrentDownloads)), enqueueing '\(book.title)'")
       enqueuePending(book)
       return
     }
+    
+    let throttleDelay = await downloadCoordinator.shouldThrottleStart()
+    if throttleDelay > 0 {
+      Log.info(#file, "⏱️ Throttling download start for '\(book.title)' by \(String(format: "%.1f", throttleDelay))s")
+      try? await Task.sleep(nanoseconds: UInt64(throttleDelay * 1_000_000_000))
+    }
+    
+    await downloadCoordinator.registerStart(identifier: book.identifier)
 
     if loginRequired {
       Log.info(#file, "Login required for '\(book.title)', requesting credentials")
@@ -234,51 +349,43 @@ import OverdriveProcessor
   }
   
   private func requestCredentialsAndStartDownload(for book: TPPBook) {
-    guard !isRequestingCredentials else {
-      NSLog("Already requesting credentials for authentication, skipping duplicate request for: \(book.title)")
-      return
-    }
-    
-    isRequestingCredentials = true
-    
-    // Reset flag after a delay to handle cancellation cases where completion isn't called
-    runOnMainAfter(seconds: 2.0) { [weak self] in
-      self?.isRequestingCredentials = false
-    }
-    
+    Task { @MainActor [weak self] in
+      guard let self else { return }
+      
+      guard !self.isRequestingCredentials else {
+        NSLog("Already requesting credentials for authentication, skipping duplicate request for: \(book.title)")
+        return
+      }
+      
+      self.isRequestingCredentials = true
+      
+      Task { @MainActor [weak self] in
+        try? await Task.sleep(nanoseconds: 2_000_000_000)
+        self?.isRequestingCredentials = false
+      }
+      
 #if FEATURE_DRM_CONNECTOR
-    if AdobeCertificate.defaultCertificate?.hasExpired ?? false {
-      isRequestingCredentials = false
-      // ADEPT crashes the app with expired certificate.
-      TPPAlertUtils.presentFromViewControllerOrNil(alertController: TPPAlertUtils.expiredAdobeDRMAlert(), viewController: nil, animated: true, completion: nil)
-    } else {
+      if AdobeCertificate.defaultCertificate?.hasExpired ?? false {
+        self.isRequestingCredentials = false
+        TPPAlertUtils.presentFromViewControllerOrNil(alertController: TPPAlertUtils.expiredAdobeDRMAlert(), viewController: nil, animated: true, completion: nil)
+        return
+      }
+#endif
+      
       SignInModalPresenter.presentSignInModalForCurrentAccount { [weak self] in
         guard let self = self else { return }
-        self.isRequestingCredentials = false
         
-        // Only retry download if user now has credentials
-        // This prevents infinite recursion when refreshAuthIfNeeded returns false immediately
-        if self.userAccount.hasCredentials() {
-          self.startDownload(for: book)
-        } else {
-          NSLog("Sign-in completed but no credentials present, user may have cancelled")
+        Task { @MainActor [weak self] in
+          self?.isRequestingCredentials = false
+          
+          if self?.userAccount.hasCredentials() == true {
+            self?.startDownload(for: book)
+          } else {
+            NSLog("Sign-in completed but no credentials present, user may have cancelled")
+          }
         }
       }
     }
-#else
-    SignInModalPresenter.presentSignInModalForCurrentAccount { [weak self] in
-      guard let self = self else { return }
-      self.isRequestingCredentials = false
-      
-      // Only retry download if user now has credentials
-      // This prevents infinite recursion when refreshAuthIfNeeded returns false immediately
-      if self.userAccount.hasCredentials() {
-        self.startDownload(for: book)
-      } else {
-        NSLog("Sign-in completed but no credentials present, user may have cancelled")
-      }
-    }
-#endif
   }
   
   private func processDownloadWithCredentials(
@@ -368,7 +475,6 @@ import OverdriveProcessor
 #endif
   
   private func processRegularDownload(for book: TPPBook, withState state: TPPBookState, andRequest initedRequest: URLRequest?) {
-    // CRITICAL FIX: Get the CURRENT book from registry to check acquisition state
     // The book parameter might be stale (from before borrowing completed)
     let currentBook = bookRegistry.book(forIdentifier: book.identifier) ?? book
     
@@ -417,10 +523,17 @@ import OverdriveProcessor
     MemoryPressureMonitor.shared.reclaimDiskSpaceIfNeeded(minimumFreeMegabytes: 512)
     enforceContentDiskBudgetIfNeeded(adding: 0)
 
-    if let cookies = userAccount.cookies, state != .SAMLStarted {
-      // Use currentBook to ensure we have the latest book object
+    if state == .SAMLStarted, let cookies = userAccount.cookies {
+      Log.info(#file, "SAML authentication flow for '\(currentBook.title)'")
       handleSAMLStartedState(for: currentBook, withRequest: request, cookies: cookies)
     } else {
+      // Apply saved cookies (if any) and proceed with download
+      // Server will return 401 if cookies are expired, triggering re-auth
+      if userAccount.authToken != nil {
+        Log.debug(#file, "Auth token present for '\(currentBook.title)', proceeding with download")
+      } else if userAccount.cookies != nil {
+        Log.debug(#file, "Using saved SAML cookies for '\(currentBook.title)', proceeding with download")
+      }
       clearAndSetCookies()
       // Use currentBook to ensure registry has correct book object
       addDownloadTask(with: request, book: currentBook)
@@ -448,31 +561,9 @@ import OverdriveProcessor
       
       let problemFoundHandler: (_ problemDocument: TPPProblemDocument?) -> Void = { [weak self] problemDocument in
         guard let self = self else { return }
-        self.bookRegistry.setState(.downloadNeeded, for: book.identifier)
         
-        guard !self.isRequestingCredentials else {
-          NSLog("Already requesting credentials, skipping re-authentication in problemFoundHandler for: \(book.title)")
-          return
-        }
-        
-        self.isRequestingCredentials = true
-        
-        // Reset flag after a delay to handle cancellation cases where completion isn't called
-        runOnMainAfter(seconds: 2.0) { [weak self] in
-          self?.isRequestingCredentials = false
-        }
-        
-        self.reauthenticator.authenticateIfNeeded(self.userAccount, usingExistingCredentials: false) { [weak self] in
-          guard let self = self else { return }
-          self.isRequestingCredentials = false
-          
-          // Only retry if user now has credentials to prevent infinite recursion
-          if self.userAccount.hasCredentials() {
-            self.startDownload(for: book)
-          } else {
-            NSLog("Authentication completed but no credentials present, user may have cancelled")
-          }
-        }
+        // Use the shared handleProblem method for consistent behavior
+        self.handleProblem(for: book, problemDocument: problemDocument)
       }
       
       let model = TPPCookiesWebViewModel(
@@ -496,16 +587,52 @@ import OverdriveProcessor
       var mutableRequest = request
       mutableRequest.cachePolicy = .reloadIgnoringCacheData
       
-      let model = TPPCookiesWebViewModel(cookies: cookies, request: mutableRequest, loginCompletionHandler: nil, loginCancelHandler: {
-        self?.handleLoginCancellation(for: book)
-      }, bookFoundHandler: { request, cookies in
-        self?.handleBookFound(for: book, withRequest: request, cookies: cookies)
-      }, problemFoundHandler: { problemDocument in
-        self?.handleProblem(for: book, problemDocument: problemDocument)
-      }, autoPresentIfNeeded: true)
+      let loginCompletionHandler: (URL, [HTTPCookie]) -> Void = { url, newCookies in
+        guard let self = self else { return }
+        
+        self.userAccount.setCookies(newCookies)
+        Log.info(#file, "SAML login completed successfully, got \(newCookies.count) cookies")
+        
+        self.bookRegistry.setState(.downloadNeeded, for: book.identifier)
+        
+        Task { @MainActor in
+          if let topVC = UIApplication.shared.windows.first?.rootViewController {
+            var current = topVC
+            while let presented = current.presentedViewController {
+              current = presented
+            }
+            if current is UINavigationController || current is TPPCookiesWebViewController {
+              current.presentingViewController?.dismiss(animated: true) {
+                // After dismissal, retry download with new cookies
+                self.startDownload(for: book)
+              }
+            }
+          }
+        }
+      }
+      
+      let model = TPPCookiesWebViewModel(
+        cookies: cookies, 
+        request: mutableRequest, 
+        loginCompletionHandler: loginCompletionHandler,
+        loginCancelHandler: {
+          self?.handleLoginCancellation(for: book)
+        }, 
+        bookFoundHandler: { [weak self] request, newCookies in
+          guard let self = self else { return }
+          Log.info(#file, "SAML book found with \(newCookies.count) fresh cookies")
+          self.handleBookFound(for: book, withRequest: request, cookies: newCookies)
+        }, 
+        problemFoundHandler: { [weak self] problemDocument in
+          Log.warn(#file, "SAML web view encountered problem: \(problemDocument?.type ?? "unknown")")
+          self?.handleProblem(for: book, problemDocument: problemDocument)
+        }, 
+        autoPresentIfNeeded: true  // Auto-present and auto-dismiss
+      )
       
       let cookiesVC = TPPCookiesWebViewController(model: model)
       cookiesVC.loadViewIfNeeded()
+      Log.info(#file, "SAML web view initialized for '\(book.title)'")
     }
   }
   
@@ -522,30 +649,99 @@ import OverdriveProcessor
   }
   
   private func handleProblem(for book: TPPBook, problemDocument: TPPProblemDocument?) {
-    bookRegistry.setState(.downloadNeeded, for: book.identifier)
+    let authDef = userAccount.authDefinition
+    let hasCredentials = userAccount.hasCredentials()
+    let currentState = bookRegistry.state(for: book.identifier)
     
-    guard !isRequestingCredentials else {
-      NSLog("Already requesting credentials, skipping re-authentication in handleProblem for: \(book.title)")
+    // CIRCUIT BREAKER: If already in .SAMLStarted, SAML web view failed - sign out and show sign-in
+    if currentState == .SAMLStarted {
+      Log.warn(#file, "SAML re-auth already attempted for '\(book.title)' - signing out and showing sign-in modal")
+      
+      Task { @MainActor in
+        await self.bookIdentifierToDownloadInfo.remove(book.identifier)
+        await self.downloadCoordinator.registerCompletion(identifier: book.identifier)
+        
+        bookRegistry.setState(.downloadFailed, for: book.identifier)
+        
+        guard !self.isRequestingCredentials else { return }
+        
+        self.isRequestingCredentials = true
+        Task { @MainActor in
+          try? await Task.sleep(nanoseconds: 2_000_000_000)
+          self.isRequestingCredentials = false
+        }
+        
+        // Sign out expired credentials so sign-in modal shows proper UI
+        Log.info(#file, "Signing out expired SAML session")
+        self.userAccount.removeAll()
+        
+        // Now show sign-in modal
+        Log.info(#file, "Showing sign-in modal after expired SAML session")
+        self.reauthenticator.authenticateIfNeeded(self.userAccount, usingExistingCredentials: false) { [weak self] in
+          Task { @MainActor in
+            self?.isRequestingCredentials = false
+            if self?.userAccount.hasCredentials() == true {
+              Log.info(#file, "Sign-in completed, retrying download")
+              self?.startDownload(for: book)
+            }
+          }
+        }
+      }
       return
     }
     
-    isRequestingCredentials = true
-    
-    // Reset flag after a delay to handle cancellation cases where completion isn't called
-    runOnMainAfter(seconds: 2.0) { [weak self] in
-      self?.isRequestingCredentials = false
+    // For SAML with expired cookies, try SAML flow once
+    if authDef?.isSaml == true && hasCredentials {
+      Log.info(#file, "SAML cookies expired - triggering SAML re-auth flow")
+      
+      Task {
+        await self.bookIdentifierToDownloadInfo.remove(book.identifier)
+        await self.downloadCoordinator.registerCompletion(identifier: book.identifier)
+        
+        await MainActor.run {
+          self.bookRegistry.setState(.SAMLStarted, for: book.identifier)
+          Log.info(#file, "Cleared download state, retrying with SAML re-auth")
+          self.startDownload(for: book)
+        }
+      }
+      return
     }
     
-    reauthenticator.authenticateIfNeeded(userAccount, usingExistingCredentials: false) { [weak self] in
-      guard let self = self else { return }
-      self.isRequestingCredentials = false
-      
-      // Only retry if user now has credentials to prevent infinite recursion
-      if self.userAccount.hasCredentials() {
-        self.startDownload(for: book)
-      } else {
-        NSLog("Authentication completed but no credentials present, user may have cancelled")
+    // For non-SAML or no credentials, set to downloadNeeded and show sign-in if needed
+    bookRegistry.setState(.downloadNeeded, for: book.identifier)
+    
+    // Only show sign-in if truly no credentials
+    if !hasCredentials {
+      Task { @MainActor [weak self] in
+        guard let self else { return }
+        
+        guard !self.isRequestingCredentials else {
+          NSLog("Already requesting credentials, skipping re-authentication in handleProblem for: \(book.title)")
+          return
+        }
+        
+        self.isRequestingCredentials = true
+        
+        Task { @MainActor [weak self] in
+          try? await Task.sleep(nanoseconds: 2_000_000_000)
+          self?.isRequestingCredentials = false
+        }
+        
+        self.reauthenticator.authenticateIfNeeded(self.userAccount, usingExistingCredentials: false) { [weak self] in
+          Task { @MainActor [weak self] in
+            self?.isRequestingCredentials = false
+            
+            if self?.userAccount.hasCredentials() == true {
+              self?.startDownload(for: book)
+            } else {
+              NSLog("Authentication completed but no credentials present, user may have cancelled")
+            }
+          }
+        }
       }
+    } else {
+      // Has credentials but download failed - log for debugging
+      Log.warn(#file, "Download failed for authenticated user: \(book.identifier)")
     }
   }
   
@@ -579,8 +775,16 @@ import OverdriveProcessor
 #endif
     
     info.downloadTask.cancel { [weak self] resumeData in
-      self?.bookRegistry.setState(.downloadNeeded, for: identifier)
-      self?.broadcastUpdate()
+      guard let self else { return }
+      self.bookRegistry.setState(.downloadNeeded, for: identifier)
+      self.broadcastUpdate()
+      
+      Task {
+        await self.downloadCoordinator.registerCompletion(identifier: identifier)
+        let remainingCount = await self.downloadCoordinator.activeCount
+        Log.info(#file, "📊 Download cancelled for '\(identifier)', remaining active: \(remainingCount)")
+        self.schedulePendingStartsIfPossible()
+      }
     }
   }
 }
@@ -776,6 +980,29 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
     }
   }
   
+  private func detectRightsManagement(from mimeType: String) -> MyBooksDownloadInfo.MyBooksDownloadRightsManagement {
+    switch mimeType {
+    case ContentTypeAdobeAdept:
+      return .adobe
+    case ContentTypeReadiumLCP:
+      return .lcp
+    case ContentTypeEpubZip:
+      return .none
+    case ContentTypeBearerToken:
+      return .simplifiedBearerTokenJSON
+#if FEATURE_OVERDRIVE
+    case "application/json":
+      return .overdriveManifestJSON
+#endif
+    default:
+      if TPPOPDSAcquisitionPath.supportedTypes().contains(mimeType) {
+        NSLog("Presuming no DRM for unrecognized MIME type \"\(mimeType)\".")
+        return .none
+      }
+      return .unknown
+    }
+  }
+  
   private func handleDownloadProgress(
     for book: TPPBook,
     task: URLSessionDownloadTask,
@@ -792,40 +1019,16 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
       
       Log.info(#file, "Download MIME type detected for \(book.identifier): \(mimeType)")
       
-      switch mimeType {
-      case ContentTypeAdobeAdept:
-        if let info = await downloadInfoAsync(forBookIdentifier: book.identifier)?.withRightsManagement(.adobe) {
+      let detectedRights = detectRightsManagement(from: mimeType)
+      
+      if detectedRights != .unknown {
+        if let info = await downloadInfoAsync(forBookIdentifier: book.identifier)?.withRightsManagement(detectedRights) {
           await bookIdentifierToDownloadInfo.set(book.identifier, value: info)
         }
-      case ContentTypeReadiumLCP:
-        if let info = await downloadInfoAsync(forBookIdentifier: book.identifier)?.withRightsManagement(.lcp) {
-          await bookIdentifierToDownloadInfo.set(book.identifier, value: info)
-        }
-      case ContentTypeEpubZip:
-        if let info = await downloadInfoAsync(forBookIdentifier: book.identifier)?.withRightsManagement(.none) {
-          await bookIdentifierToDownloadInfo.set(book.identifier, value: info)
-        }
-      case ContentTypeBearerToken:
-        if let info = await downloadInfoAsync(forBookIdentifier: book.identifier)?.withRightsManagement(.simplifiedBearerTokenJSON) {
-          await bookIdentifierToDownloadInfo.set(book.identifier, value: info)
-        }
-#if FEATURE_OVERDRIVE
-      case "application/json":
-        if let info = await downloadInfoAsync(forBookIdentifier: book.identifier)?.withRightsManagement(.overdriveManifestJSON) {
-          await bookIdentifierToDownloadInfo.set(book.identifier, value: info)
-        }
-#endif
-      default:
-        if TPPOPDSAcquisitionPath.supportedTypes().contains(mimeType) {
-          NSLog("Presuming no DRM for unrecognized MIME type \"\(mimeType)\".")
-          if let info = await downloadInfoAsync(forBookIdentifier: book.identifier)?.withRightsManagement(.none) {
-            await bookIdentifierToDownloadInfo.set(book.identifier, value: info)
-          }
-        } else if TPPUserAccount.sharedAccount().isTokenRefreshRequired() {
-          NSLog("Authentication might be needed after all")
-          TPPNetworkExecutor.shared.refreshTokenAndResume(task: task)
-          return
-        }
+      } else if TPPUserAccount.sharedAccount().isTokenRefreshRequired() {
+        NSLog("Authentication might be needed after all")
+        TPPNetworkExecutor.shared.refreshTokenAndResume(task: task)
+        return
       }
     }
     
@@ -836,11 +1039,14 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
         if let info = await downloadInfoAsync(forBookIdentifier: book.identifier)?.withDownloadProgress(progress) {
           await bookIdentifierToDownloadInfo.set(book.identifier, value: info)
         }
-        // Fire both notification and publisher so SwiftUI cells and BookDetail can update
+        
         await MainActor.run {
           downloadProgressPublisher.send((book.identifier, progress))
         }
-        broadcastUpdate()
+        
+        if progress > 0.95 || Int(progress * 100) % 20 == 0 {
+          broadcastUpdate()
+        }
       }
     }
   }
@@ -868,12 +1074,20 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
       return
     }
     
-    taskIdentifierToRedirectAttempts.removeValue(forKey: task.taskIdentifier)
+    await downloadCoordinator.clearRedirectAttempts(for: task.taskIdentifier)
     
     var failureRequiringAlert = false
     var failureError = task.error
     var problemDoc: TPPProblemDocument?
-    let rights = await downloadInfoAsync(forBookIdentifier: book.identifier)?.rightsManagement ?? .unknown
+    var rights = await downloadInfoAsync(forBookIdentifier: book.identifier)?.rightsManagement ?? .unknown
+    
+    if rights == .unknown, let mimeType = task.response?.mimeType {
+      Log.info(#file, "⚠️ Rights unknown, detecting from completion MIME type: \(mimeType)")
+      rights = detectRightsManagement(from: mimeType)
+      if let info = await downloadInfoAsync(forBookIdentifier: book.identifier)?.withRightsManagement(rights) {
+        await bookIdentifierToDownloadInfo.set(book.identifier, value: info)
+      }
+    }
     
     Log.info(#file, "Download completed for \(book.identifier) with rights: \(rights)")
     
@@ -956,12 +1170,65 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
       runOnMainAsync {
         let hasCredentials = self.userAccount.hasCredentials()
         let loginRequired = self.userAccount.authDefinition?.needsAuth ?? false
-        if task.response?.indicatesAuthenticationNeedsRefresh(with: problemDoc) == true || (!hasCredentials && loginRequired) {
+        
+        if task.response?.indicatesAuthenticationNeedsRefresh(with: problemDoc) == true {
+          let authDef = self.userAccount.authDefinition
+          
+          // If user has credentials but got 401, this is a session/token expiry issue
+          if hasCredentials {
+            if authDef?.isSaml == true {
+              // SAML cookies expired - need to re-auth via IDP
+              Log.info(#file, "SAML session expired - triggering SAML re-auth flow")
+              
+              Task {
+                // Clear download tracking completely
+                await self.bookIdentifierToDownloadInfo.remove(book.identifier)
+                await self.taskIdentifierToBook.remove(task.taskIdentifier)
+                await self.downloadCoordinator.registerCompletion(identifier: book.identifier)
+                
+                // Then set state and retry on main thread
+                await MainActor.run {
+                  self.bookRegistry.setState(.SAMLStarted, for: book.identifier)
+                  Log.info(#file, "Cleared failed download, now retrying with SAML re-auth")
+                  self.startDownload(for: book)
+                }
+              }
+              return
+            } else {
+              // OAuth/Token - refresh was already attempted by TPPNetworkResponder
+              // If we got here, refresh failed - show error
+              Log.warn(#file, "Token refresh failed for \(book.identifier) - showing error")
+            }
+          } else if loginRequired {
+            // No credentials - show sign-in
+            Log.info(#file, "No credentials - showing sign-in modal")
+            self.reauthenticator.authenticateIfNeeded(
+              self.userAccount,
+              usingExistingCredentials: false,
+              authenticationCompletion: { [weak self] in
+                Task { @MainActor [weak self] in
+                  guard let self else { return }
+                  Log.info(#file, "Authentication completed, retrying download for \(book.identifier)")
+                  self.startDownload(for: book)
+                }
+              }
+            )
+            return  // DON'T show error alert - sign-in is handling it
+          }
+        } else if !hasCredentials && loginRequired {
+          // No auth error, but no credentials - show sign-in
+          Log.info(#file, "No credentials - showing sign-in modal")
           self.reauthenticator.authenticateIfNeeded(
             self.userAccount,
-            usingExistingCredentials: hasCredentials,
-            authenticationCompletion: nil
+            usingExistingCredentials: false,
+            authenticationCompletion: { [weak self] in
+              Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.startDownload(for: book)
+              }
+            }
           )
+          return
         }
         
         // Check if the error is "No active loan" - attempt to re-borrow
@@ -998,73 +1265,86 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
     }
     
     broadcastUpdate()
-    // Attempt to start next pending downloads
+    
+    await downloadCoordinator.registerCompletion(identifier: book.identifier)
+    let remainingCount = await downloadCoordinator.activeCount
+    Log.info(#file, "📊 Download flow completed for '\(book.identifier)', remaining active: \(remainingCount)")
+    
     schedulePendingStartsIfPossible()
   }
   
-  /// Async-first download info accessor
+  /// Async-first download info accessor with cache update
   func downloadInfoAsync(forBookIdentifier bookIdentifier: String) async -> MyBooksDownloadInfo? {
     guard let downloadInfo = await bookIdentifierToDownloadInfo.get(bookIdentifier) else {
+      await downloadCoordinator.removeCachedDownloadInfo(for: bookIdentifier)
       return nil
     }
     
     if downloadInfo is MyBooksDownloadInfo {
+      await downloadCoordinator.cacheDownloadInfo(downloadInfo, for: bookIdentifier)
       return downloadInfo
     } else {
       Log.error(#file, "Corrupted download info detected for book \(bookIdentifier), removing entry")
       await bookIdentifierToDownloadInfo.remove(bookIdentifier)
+      await downloadCoordinator.removeCachedDownloadInfo(for: bookIdentifier)
       return nil
     }
   }
   
-  /// Synchronous wrapper for legacy compatibility (delegates, @objc methods)
-  /// WARNING: This can cause priority inversion - prefer async APIs where possible
+  /// Synchronous wrapper for legacy compatibility (@objc, UIKit delegates)
+  /// Uses semaphore but with short timeout to avoid UI blocking
   @objc func downloadInfo(forBookIdentifier bookIdentifier: String) -> MyBooksDownloadInfo? {
-    // Use RunLoop spinning instead of semaphore to avoid priority inversion
+    let semaphore = DispatchSemaphore(value: 0)
     var result: MyBooksDownloadInfo?
-    var isComplete = false
     
-    Task {
-      result = await self.downloadInfoAsync(forBookIdentifier: bookIdentifier)
-      isComplete = true
+    Task.detached(priority: .userInitiated) {
+      result = await self.downloadCoordinator.getCachedDownloadInfo(for: bookIdentifier)
+      
+      if result == nil {
+        result = await self.downloadInfoAsync(forBookIdentifier: bookIdentifier)
+      }
+      
+      semaphore.signal()
     }
     
-    // Spin run loop instead of blocking with semaphore (avoids priority inversion)
-    let timeoutDate = Date().addingTimeInterval(2.0) // Shorter timeout for UI responsiveness
-    while !isComplete && Date() < timeoutDate {
-      RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 0.01))
-    }
-    
-    if !isComplete {
-      Log.warn(#file, "⚠️ Actor access slow for downloadInfo - returning nil for UI responsiveness")
-      return nil
-    }
-    
+    _ = semaphore.wait(timeout: .now() + 0.05)
     return result
   }
   
   func broadcastUpdate() {
-    runOnMainAfter(seconds: 0.2) {
-      self.broadcastUpdateNow()
+    Task { @MainActor [weak self] in
+      self?.broadcastUpdateOnMain()
     }
   }
   
-  private func broadcastUpdateNow() {
+  @MainActor private func broadcastUpdateOnMain() {
+    pendingBroadcast?.cancel()
+    
+    let timeSinceLastBroadcast = Date().timeIntervalSince(lastBroadcastTime)
+    let minimumBroadcastInterval: TimeInterval = 0.5
+    
+    if timeSinceLastBroadcast >= minimumBroadcastInterval {
+      broadcastUpdateNow()
+    } else {
+      let delay = minimumBroadcastInterval - timeSinceLastBroadcast
+      let workItem = DispatchWorkItem { [weak self] in
+        Task { @MainActor in
+          self?.broadcastUpdateNow()
+        }
+      }
+      pendingBroadcast = workItem
+      DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+    }
+  }
+  
+  @MainActor private func broadcastUpdateNow() {
+    lastBroadcastTime = Date()
+    pendingBroadcast = nil
+    
     NotificationCenter.default.post(
       name: Notification.Name.TPPMyBooksDownloadCenterDidChange,
       object: self
     )
-    // Emit explicit progress updates for all active downloads using our stored info
-    Task {
-      let allKeys = await bookIdentifierToDownloadInfo.keys()
-      for bookID in allKeys {
-        if let info = await bookIdentifierToDownloadInfo.get(bookID) {
-          await MainActor.run {
-            downloadProgressPublisher.send((bookID, Double(info.downloadProgress)))
-          }
-        }
-      }
-    }
   }
 }
 
@@ -1087,45 +1367,46 @@ extension MyBooksDownloadCenter: URLSessionTaskDelegate {
   ) {
     let maxRedirectAttempts: UInt = 10
     
-    var redirectAttempts = self.taskIdentifierToRedirectAttempts[task.taskIdentifier] ?? 0
-    
-    if redirectAttempts >= maxRedirectAttempts {
-      completionHandler(nil)
-      return
-    }
-    
-    redirectAttempts += 1
-    self.taskIdentifierToRedirectAttempts[task.taskIdentifier] = redirectAttempts
-    
-    let authorizationKey = "Authorization"
-    
-    // Since any "Authorization" header will be dropped on redirection for security
-    // reasons, we need to again manually set the header for the redirected request
-    // if we originally manually set the header to a bearer token. There's no way
-    // to use URLSession's standard challenge handling approach for bearer tokens.
-    if let originalAuthorization = task.originalRequest?.allHTTPHeaderFields?[authorizationKey],
-       originalAuthorization.hasPrefix("Bearer") {
-      // Do not pass on the bearer token to other domains.
-      if task.originalRequest?.url?.host != request.url?.host {
-        completionHandler(request)
-        return
-      }
+    Task {
+      let redirectAttempts = await downloadCoordinator.getRedirectAttempts(for: task.taskIdentifier)
       
-      // Prevent redirection from HTTPS to a non-HTTPS URL.
-      if task.originalRequest?.url?.scheme == "https" && request.url?.scheme != "https" {
+      if redirectAttempts >= maxRedirectAttempts {
         completionHandler(nil)
         return
       }
       
-      var mutableAllHTTPHeaderFields = request.allHTTPHeaderFields ?? [:]
-      mutableAllHTTPHeaderFields[authorizationKey] = originalAuthorization
+      await downloadCoordinator.incrementRedirectAttempts(for: task.taskIdentifier)
       
-      var mutableRequest = URLRequest(url: request.url!, applyingCustomUserAgent: true)
-      mutableRequest.allHTTPHeaderFields = mutableAllHTTPHeaderFields
+      let authorizationKey = "Authorization"
       
-      completionHandler(mutableRequest)
-    } else {
-      completionHandler(request)
+      // Since any "Authorization" header will be dropped on redirection for security
+      // reasons, we need to again manually set the header for the redirected request
+      // if we originally manually set the header to a bearer token. There's no way
+      // to use URLSession's standard challenge handling approach for bearer tokens.
+      if let originalAuthorization = task.originalRequest?.allHTTPHeaderFields?[authorizationKey],
+         originalAuthorization.hasPrefix("Bearer") {
+        // Do not pass on the bearer token to other domains.
+        if task.originalRequest?.url?.host != request.url?.host {
+          completionHandler(request)
+          return
+        }
+        
+        // Prevent redirection from HTTPS to a non-HTTPS URL.
+        if task.originalRequest?.url?.scheme == "https" && request.url?.scheme != "https" {
+          completionHandler(nil)
+          return
+        }
+        
+        var mutableAllHTTPHeaderFields = request.allHTTPHeaderFields ?? [:]
+        mutableAllHTTPHeaderFields[authorizationKey] = originalAuthorization
+        
+        var mutableRequest = URLRequest(url: request.url!, applyingCustomUserAgent: true)
+        mutableRequest.allHTTPHeaderFields = mutableAllHTTPHeaderFields
+        
+        completionHandler(mutableRequest)
+      } else {
+        completionHandler(request)
+      }
     }
   }
   
@@ -1144,14 +1425,17 @@ extension MyBooksDownloadCenter: URLSessionTaskDelegate {
       return
     }
     
-    self.taskIdentifierToRedirectAttempts.removeValue(forKey: task.taskIdentifier)
+    await downloadCoordinator.clearRedirectAttempts(for: task.taskIdentifier)
+    await downloadCoordinator.registerCompletion(identifier: book.identifier)
+    let remainingCount = await downloadCoordinator.activeCount
+    Log.info(#file, "📊 Download completed for '\(book.title)', remaining active: \(remainingCount)")
     
     if let error = error as NSError?, error.code != NSURLErrorCancelled {
       logBookDownloadFailure(book, reason: "networking error", downloadTask: task, metadata: ["urlSessionError": error])
       failDownloadWithAlert(for: book)
       return
     }
-    // Attempt to start next pending downloads
+    
     schedulePendingStartsIfPossible()
   }
   
@@ -1168,6 +1452,9 @@ extension MyBooksDownloadCenter: URLSessionTaskDelegate {
     Task {
       await self.bookIdentifierToDownloadInfo.set(book.identifier, value: downloadInfo)
       await self.taskIdentifierToBook.set(task.taskIdentifier, value: book)
+      
+      let currentCount = await downloadCoordinator.activeCount
+      Log.info(#file, "📊 Active downloads: \(currentCount)/\(maxConcurrentDownloads) (started '\(book.title)')")
       
       // Resume task AFTER storage to ensure delegate callbacks can find it
       task.resume()
@@ -1192,47 +1479,43 @@ extension MyBooksDownloadCenter: URLSessionTaskDelegate {
 
 // MARK: - Download Throttling and Disk Budget
 extension MyBooksDownloadCenter {
-  private func activeDownloadCount() -> Int {
-    // Use RunLoop spinning to avoid priority inversion
-    var count = 0
-    var isComplete = false
+  private func enqueuePending(_ book: TPPBook) {
+    // CRITICAL UI FIX: Update book state so button shows "Downloading" feedback
+    // Otherwise button appears unresponsive when hitting queue limit
+    bookRegistry.setState(.downloading, for: book.identifier)
     
     Task {
-      let allInfo = await bookIdentifierToDownloadInfo.values()
-      let runningTasks = allInfo.compactMap { info -> URLSessionTask? in
-        return info.downloadTask
-      }.filter { $0.state == .running }
-      count = runningTasks.count
-      isComplete = true
-    }
-    
-    // Spin run loop for short time
-    let timeoutDate = Date().addingTimeInterval(0.5)
-    while !isComplete && Date() < timeoutDate {
-      RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 0.01))
-    }
-    
-    if !isComplete {
-      Log.warn(#file, "⚠️ Actor access slow for activeDownloadCount - returning 0")
-      return 0
-    }
-    
-    return count
-  }
-
-  private func enqueuePending(_ book: TPPBook) {
-    if !pendingStartQueue.contains(where: { $0.identifier == book.identifier }) {
-      pendingStartQueue.append(book)
+      await downloadCoordinator.enqueuePending(book)
+      let queueSize = await downloadCoordinator.queueCount
+      Log.debug(#file, "📋 Enqueued '\(book.title)' for download, queue size: \(queueSize)")
+      
+      // Notify UI to refresh
+      runOnMainAsync {
+        NotificationCenter.default.post(name: .TPPMyBooksDownloadCenterDidChange, object: self)
+      }
     }
   }
 
   private func schedulePendingStartsIfPossible() {
-    let capacity = maxConcurrentDownloads - activeDownloadCount()
+    Task {
+      await schedulePendingStartsAsync()
+    }
+  }
+  
+  private func schedulePendingStartsAsync() async {
+    let activeCount = await downloadCoordinator.activeCount
+    let capacity = maxConcurrentDownloads - activeCount
+    
     guard capacity > 0 else { return }
-    let toStart = Array(pendingStartQueue.prefix(capacity))
-    if !toStart.isEmpty {
-      pendingStartQueue.removeFirst(min(capacity, pendingStartQueue.count))
-      toStart.forEach { startDownload(for: $0) }
+    
+    let toStart = await downloadCoordinator.dequeuePending(capacity: capacity)
+    guard !toStart.isEmpty else { return }
+    
+    let queueRemaining = await downloadCoordinator.queueCount
+    Log.info(#file, "📋 Starting \(toStart.count) pending downloads (capacity: \(capacity), queue remaining: \(queueRemaining))")
+    
+    for book in toStart {
+      await startDownloadAsync(for: book, withRequest: nil)
     }
   }
 
@@ -1324,7 +1607,7 @@ extension MyBooksDownloadCenter {
         for task in suspended.prefix(toResume) { task.resume() }
       }
     }
-    schedulePendingStartsIfPossible()
+    await schedulePendingStartsAsync()
   }
 
   @objc func pauseAllDownloads() {
@@ -1525,6 +1808,13 @@ extension MyBooksDownloadCenter {
                          readiumBookmarks: nil,
                          genericBookmarks: nil)
     
+    Task {
+      await downloadCoordinator.registerCompletion(identifier: book.identifier)
+      let remainingCount = await downloadCoordinator.activeCount
+      Log.info(#file, "📊 Download failed for '\(book.title)', remaining active: \(remainingCount)")
+      self.schedulePendingStartsIfPossible()
+    }
+    
     runOnMainAsync {
       let errorMessage = message ?? "No error message"
       let formattedMessage = String.localizedStringWithFormat(NSLocalizedString("The download for %@ could not be completed.", comment: ""), book.title)
@@ -1709,6 +1999,7 @@ extension MyBooksDownloadCenter: TPPBookDownloadsDeleting {
       
       await bookIdentifierToDownloadInfo.removeAll()
       await taskIdentifierToBook.removeAll()
+      await downloadCoordinator.reset()
     }
     
     bookIdentifierOfBookToRemove = nil

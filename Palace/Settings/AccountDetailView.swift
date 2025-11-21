@@ -28,6 +28,9 @@ struct AccountDetailView: View {
       } message: {
         Text(viewModel.alertMessage)
       }
+      .onAppear {
+        viewModel.refreshSignInState()
+      }
   }
   
   @ViewBuilder
@@ -343,7 +346,7 @@ struct AccountDetailView: View {
           ZStack {
             ProgressView()
               .progressViewStyle(CircularProgressViewStyle())
-            Text(viewModel.isSignedIn ? DisplayStrings.signingOut : DisplayStrings.verifying)
+            Text(viewModel.isSigningOut ? DisplayStrings.signingOut : DisplayStrings.signingIn)
               .foregroundColor(.primary)
           }
           .horizontallyCentered()

@@ -67,19 +67,26 @@ class TPPBookmarkFactory {
 
     let bookID = book.identifier
     
+    Log.info(#file, "🏭 BOOKMARK FACTORY: Creating bookmark from server annotation for book: \(bookID)")
+    
     guard let annotationID = annotation[TPPBookmarkSpec.Id.key] as? String else {
-      Log.error(#file, "Missing AnnotationID:\(annotation)")
+      Log.error(#file, "🏭 Missing AnnotationID:\(annotation)")
       return nil
     }
+    
+    Log.info(#file, "🏭 Server Annotation ID: \(annotationID)")
 
     guard let target = annotation[TPPBookmarkSpec.Target.key] as? [String: AnyObject],
       let source = target[TPPBookmarkSpec.Target.Source.key] as? String,
       let motivation = annotation[TPPBookmarkSpec.Motivation.key] as? String else {
-        Log.error(#file, "Error parsing required key/values for target.")
+        Log.error(#file, "🏭 Error parsing required key/values for target.")
         return nil
     }
+    
+    Log.info(#file, "🏭 Annotation motivation: \(motivation), requested type: \(annotationType.rawValue)")
 
      guard source == bookID else {
+       Log.error(#file, "🏭 BOOKMARK FOR DIFFERENT BOOK! Requested: \(bookID), Got: \(source)")
        TPPErrorLogger.logError(withCode: .bookmarkReadError,
                                 summary: "Got bookmark for a different book",
                                 metadata: [
@@ -89,6 +96,7 @@ class TPPBookmarkFactory {
      }
 
     guard motivation == annotationType.rawValue else {
+      Log.debug(#file, "🏭 Skipping bookmark with different motivation: \(motivation)")
       return nil
     }
 
@@ -97,24 +105,28 @@ class TPPBookmarkFactory {
       let device = body[TPPBookmarkSpec.Body.Device.key] as? String,
       let time = body[TPPBookmarkSpec.Body.Time.key] as? String
       else {
-        Log.error(#file, "Error reading required bookmark key/values from body")
+        Log.error(#file, "🏭 Error reading required bookmark key/values from body")
         return nil
     }
+    
+    Log.info(#file, "🏭 Bookmark timestamp from server: \(time), device: \(device)")
 
     guard
       let selector = target[TPPBookmarkSpec.Target.Selector.key] as? [String: AnyObject],
       let selectorValueEscJSON = selector[TPPBookmarkSpec.Target.Selector.Value.key] as? String
       else {
-        Log.error(#file, "Error reading required Selector Value from Target.")
+        Log.error(#file, "🏭 Error reading required Selector Value from Target.")
         return nil
     }
 
     guard let selectorValueData = selectorValueEscJSON.data(using: String.Encoding.utf8),
     let selectorValueDict = try? JSONSerialization.jsonObject(with: selectorValueData, options: []) as? [String: Any]
     else {
-      Log.error(#file, "Error serializing serverCFI into JSON. Selector.Value=\(selectorValueEscJSON)")
+      Log.error(#file, "🏭 Error serializing serverCFI into JSON. Selector.Value=\(selectorValueEscJSON)")
         return nil
     }
+    
+    Log.info(#file, "🏭 Selector data: \(selectorValueDict)")
     
     if book.isAudiobook,
        let audioBookmark = AudioBookmark.create(
@@ -122,6 +134,7 @@ class TPPBookmarkFactory {
         timeStamp: time,
         annotationId: annotationID
        ) {
+      Log.info(#file, "🏭 ✅ Created AudioBookmark: version=\(audioBookmark.version), chapter=\(audioBookmark.chapter ?? "nil"), readingOrderItem=\(audioBookmark.readingOrderItem ?? "nil")")
       return audioBookmark
     }
     

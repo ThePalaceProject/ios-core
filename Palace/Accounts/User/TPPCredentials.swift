@@ -60,11 +60,13 @@ extension TPPCredentials: Codable {
     case .token:
       let additionalInfo = try values.nestedContainer(keyedBy: TokenKeys.self, forKey: .associatedTokenData)
       let token = try additionalInfo.decode(String.self, forKey: .authToken)
-      let expirationDate = try additionalInfo.decode(Date.self, forKey: .expirationDate)
+      // Use decodeIfPresent for optional Date - handles nil gracefully
+      let expirationDate = try additionalInfo.decodeIfPresent(Date.self, forKey: .expirationDate)
 
       let barcodePinInfo = try values.nestedContainer(keyedBy: BarcodeAndPinKeys.self, forKey: .associatedBarcodeAndPinData)
-      let barcode = try barcodePinInfo.decode(String.self, forKey: .barcode)
-      let pin = try barcodePinInfo.decode(String.self, forKey: .pin)
+      // Use decodeIfPresent for optional barcode/pin - handles nil gracefully
+      let barcode = try barcodePinInfo.decodeIfPresent(String.self, forKey: .barcode)
+      let pin = try barcodePinInfo.decodeIfPresent(String.self, forKey: .pin)
       self = .token(authToken: token, barcode: barcode, pin: pin, expirationDate: expirationDate)
 
     case .barcodeAndPin:

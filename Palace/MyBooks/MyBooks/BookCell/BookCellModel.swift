@@ -380,6 +380,7 @@ extension BookCellModel {
       self.isLoading = false
       return
     }
+    SamplePreviewManager.shared.close()
     EpubSampleFactory.createSample(book: book) { sampleURL, error in
       self.isLoading = false
       if let error = error {
@@ -394,9 +395,18 @@ extension BookCellModel {
         return
       }
       if let url = sampleURL?.url {
-        let web = BundledHTMLViewController(fileURL: url, title: self.book.title)
-        if let appDelegate = UIApplication.shared.delegate as? TPPAppDelegate, let top = appDelegate.topViewController() {
-          top.present(web, animated: true)
+        // Check if this is an EPUB sample
+        let isEpubSample = self.book.sample?.type == .contentTypeEpubZip
+        
+        if isEpubSample {
+          // Use Readium EPUB reader for EPUB samples
+          ReaderService.shared.openSample(self.book, url: url)
+        } else {
+          // Use WebKit for HTML/web samples
+          let web = BundledHTMLViewController(fileURL: url, title: self.book.title)
+          if let appDelegate = UIApplication.shared.delegate as? TPPAppDelegate, let top = appDelegate.topViewController() {
+            top.present(web, animated: true)
+          }
         }
       }
     }
