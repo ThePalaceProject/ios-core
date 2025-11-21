@@ -175,7 +175,9 @@ private enum StorageKey: String {
     
   class func sharedAccount(libraryUUID: String?) -> TPPUserAccount {
     shared.accountInfoQueue.sync(flags: .barrier) {
-      shared.libraryUUID = libraryUUID
+      if shared.libraryUUID != libraryUUID {
+        shared.libraryUUID = libraryUUID
+      }
     }
     return shared
   }
