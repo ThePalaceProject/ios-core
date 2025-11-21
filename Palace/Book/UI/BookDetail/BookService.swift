@@ -21,6 +21,50 @@ enum BookService {
   }
   
   private static func openAfterTokenRefresh(_ book: TPPBook, onFinish: (() -> Void)?) {
+    let userAccount = TPPUserAccount.sharedAccount()
+    
+    if book.defaultBookContentType == .audiobook && userAccount.authTokenHasExpired {
+      Log.info(#file, "🔄 Auth token expired for audiobook - refreshing before opening")
+      
+      guard let username = userAccount.username,
+            let password = userAccount.PIN,
+            let tokenURL = userAccount.authDefinition?.tokenURL else {
+        Log.error(#file, "Cannot refresh token: missing credentials or tokenURL")
+        openingBooks.remove(book.identifier)
+        showAudiobookTryAgainError()
+        onFinish?()
+        return
+      }
+      
+      TPPNetworkExecutor.shared.executeTokenRefresh(username: username, password: password, tokenURL: tokenURL) { result in
+        switch result {
+        case .success:
+          Log.info(#file, "✅ Token refresh successful - re-fetching manifest with fresh token")
+          
+          fetchOpenAccessManifest(for: book) { json in
+            guard let json else {
+              Log.error(#file, "❌ Failed to re-fetch manifest after token refresh")
+              openingBooks.remove(book.identifier)
+              showAudiobookTryAgainError()
+              onFinish?()
+              return
+            }
+            
+            Log.info(#file, "✅ Manifest re-fetched with fresh bearer token - opening audiobook")
+            presentAudiobookFrom(book: book, json: json, decryptor: nil, onFinish: onFinish)
+          }
+          
+        case .failure(let error):
+          Log.error(#file, "❌ Token refresh failed: \(error.localizedDescription) - cannot open audiobook")
+          openingBooks.remove(book.identifier)
+          showAudiobookTryAgainError()
+          onFinish?()
+        }
+      }
+      return
+    }
+    
+    // For non-audiobooks or valid tokens, proceed normally
     switch book.defaultBookContentType {
     case .epub:
       Task { @MainActor in
