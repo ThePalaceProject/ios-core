@@ -28,14 +28,14 @@ class PalaceNavigationSteps {
     Then("I should be on the (Catalog|My Books|Settings|Holds) screen") { args, _ in
       let screenName = args![0] as! String
       
-      // SwiftUI tabs use their text labels  
+      // Use localized strings (single source of truth)
       let tabLabel: String
       
       switch screenName.lowercased() {
-      case "catalog": tabLabel = "Catalog"
-      case "my books": tabLabel = "My Books"
-      case "settings": tabLabel = "Settings"
-      case "holds": tabLabel = "Reservations"
+      case "catalog": tabLabel = AppStrings.TabBar.catalog
+      case "my books": tabLabel = AppStrings.TabBar.myBooks
+      case "settings": tabLabel = AppStrings.TabBar.settings
+      case "holds": tabLabel = AppStrings.TabBar.reservations
       default: XCTFail("Unknown screen: \(screenName)"); return
       }
       

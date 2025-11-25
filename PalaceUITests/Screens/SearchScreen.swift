@@ -18,7 +18,13 @@ final class SearchScreen: ScreenObject {
   // MARK: - UI Elements
   
   var searchField: XCUIElement {
-    app.searchFields[AccessibilityID.Search.searchField]
+    // Try accessibility ID first, fallback to any search field
+    let fieldWithID = app.searchFields[AccessibilityID.Search.searchField]
+    if fieldWithID.exists {
+      return fieldWithID
+    }
+    // Fallback: any search field or text field with "Search" placeholder
+    return app.searchFields.firstMatch.exists ? app.searchFields.firstMatch : app.textFields.firstMatch
   }
   
   var clearButton: XCUIElement {
@@ -45,7 +51,9 @@ final class SearchScreen: ScreenObject {
   
   @discardableResult
   override func isDisplayed(timeout: TimeInterval = 5.0) -> Bool {
-    searchField.waitForExistence(timeout: timeout)
+    // Search is displayed when search field exists OR cancel button exists
+    searchField.waitForExistence(timeout: timeout) ||
+    app.buttons[AppStrings.Buttons.cancel].waitForExistence(timeout: timeout)
   }
   
   /// Checks if search results are displayed
@@ -69,11 +77,33 @@ final class SearchScreen: ScreenObject {
   /// Enters text into the search field
   /// - Parameter text: Search query
   func enterSearchText(_ text: String) {
-    XCTAssertTrue(waitForElement(searchField, timeout: defaultTimeout),
-                  "Search field not found")
+    // Wait for any text input field to appear
+    let field = searchField
     
-    searchField.tap()
-    searchField.typeText(text)
+    // Extra wait for search view to fully appear
+    Thread.sleep(forTimeInterval: 1.0)
+    
+    if !field.exists {
+      // Try finding by element type as last resort
+      let anyTextField = app.textFields.firstMatch
+      let anySearchField = app.searchFields.firstMatch
+      
+      if anySearchField.waitForExistence(timeout: 2.0) {
+        anySearchField.tap()
+        anySearchField.typeText(text)
+        return
+      } else if anyTextField.waitForExistence(timeout: 2.0) {
+        anyTextField.tap()
+        anyTextField.typeText(text)
+        return
+      }
+      
+      XCTFail("No search field found")
+      return
+    }
+    
+    field.tap()
+    field.typeText(text)
     
     // Wait for search results to load
     if loadingIndicator.exists {

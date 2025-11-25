@@ -14,24 +14,24 @@ class TestHelpers {
   static func navigateToTab(_ tabName: String) {
     let app = XCUIApplication()
     
-    // SwiftUI tabs are identified by their text labels
+    // Use localized strings from app (single source of truth)
     let tabLabel: String
     
     switch tabName.lowercased() {
     case "catalog", "browse":
-      tabLabel = "Catalog"
+      tabLabel = AppStrings.TabBar.catalog
     case "my books", "mybooks", "library":
-      tabLabel = "My Books"
+      tabLabel = AppStrings.TabBar.myBooks
     case "holds", "reservations":
-      tabLabel = "Reservations"
+      tabLabel = AppStrings.TabBar.reservations
     case "settings":
-      tabLabel = "Settings"
+      tabLabel = AppStrings.TabBar.settings
     default:
       XCTFail("Unknown tab: \(tabName)")
       return
     }
     
-    // Find tab button by label
+    // Find tab button by localized label
     let tabButton = app.tabBars.buttons[tabLabel]
     if tabButton.waitForExistence(timeout: 5.0) {
       tabButton.tap()

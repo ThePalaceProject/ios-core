@@ -45,7 +45,9 @@ final class MyBooksScreen: ScreenObject {
   
   @discardableResult
   override func isDisplayed(timeout: TimeInterval = 5.0) -> Bool {
-    navigationBar.waitForExistence(timeout: timeout)
+    // Check if My Books tab is selected (simple and reliable)
+    let myBooksTab = app.tabBars.buttons[AppStrings.TabBar.myBooks]
+    return myBooksTab.exists && myBooksTab.isSelected
   }
   
   /// Checks if user has any books

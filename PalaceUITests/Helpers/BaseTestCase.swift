@@ -88,24 +88,24 @@ class BaseTestCase: XCTestCase {
     }
     
     // Navigate back to catalog
-    app.tabBars.buttons["Catalog"].tap()
+    app.tabBars.buttons[AppStrings.TabBar.catalog].tap()
   }
   
   /// Navigates to a specific tab
   /// - Parameter tab: The tab to navigate to
   func navigateToTab(_ tab: AppTab) {
-    // SwiftUI tabs are identified by their text labels
+    // Use localized strings from app (single source of truth)
     let tabLabel: String
     
     switch tab {
     case .catalog:
-      tabLabel = "Catalog"
+      tabLabel = AppStrings.TabBar.catalog
     case .myBooks:
-      tabLabel = "My Books"
+      tabLabel = AppStrings.TabBar.myBooks
     case .holds:
-      tabLabel = "Reservations"
+      tabLabel = AppStrings.TabBar.reservations
     case .settings:
-      tabLabel = "Settings"
+      tabLabel = AppStrings.TabBar.settings
     }
     
     let tabButton = app.tabBars.buttons[tabLabel]

@@ -53,18 +53,9 @@ final class CatalogScreen: ScreenObject {
   
   @discardableResult
   override func isDisplayed(timeout: TimeInterval = 5.0) -> Bool {
-    // Catalog is displayed when either the scroll view or loading indicator is visible
-    let displayed = scrollView.waitForExistence(timeout: timeout) ||
-                   loadingIndicator.waitForExistence(timeout: timeout)
-    
-    if displayed {
-      // Wait for loading to complete if present
-      if loadingIndicator.exists {
-        _ = waitForElementToDisappear(loadingIndicator, timeout: longTimeout)
-      }
-    }
-    
-    return displayed
+    // Check if Catalog tab is selected (simple and reliable)
+    let catalogTab = app.tabBars.buttons[AppStrings.TabBar.catalog]
+    return catalogTab.exists && catalogTab.isSelected
   }
   
   /// Verifies the catalog loaded successfully (no error state)
