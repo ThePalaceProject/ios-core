@@ -27,12 +27,21 @@ class CucumberishTestRunner: NSObject {
     app.launchArguments = ["-testMode", "1"]
     app.launchEnvironment = ["DISABLE_ANIMATIONS": "1"]
     
-    // Set up all Palace step definitions
+    // Set up basic Palace step definitions (Batch 1 - 65 steps)
     PalaceNavigationSteps.setup()
     PalaceSearchSteps.setup()
     PalaceBookActionSteps.setup()
     PalaceAudiobookSteps.setup()
     PalaceAssertionSteps.setup()
+    
+    // Set up migrated step definitions (Batch 2 - 115 steps)
+    TutorialAndLibrarySteps.setup()
+    ComplexSearchSteps.setup()
+    ComplexBookActionSteps.setup()
+    AuthenticationSteps.setup()
+    CatalogAndVerificationSteps.setup()
+    EpubAndPdfReaderSteps.setup()
+    AdvancedAudiobookSteps.setup()
     
     // Configure Cucumberish to find .feature files
     let bundle = Bundle(for: CucumberishTestRunner.self)
