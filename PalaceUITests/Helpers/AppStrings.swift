@@ -35,6 +35,7 @@ enum AppStrings {
   /// Book action buttons (from Strings.BookButton)
   enum BookActions {
     static let get = NSLocalizedString("Get", comment: "")
+    static let borrow = NSLocalizedString("Borrow", comment: "")
     static let read = NSLocalizedString("Read", comment: "")
     static let listen = NSLocalizedString("Listen", comment: "")
     static let delete = NSLocalizedString("Delete", comment: "")
