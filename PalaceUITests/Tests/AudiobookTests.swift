@@ -49,8 +49,8 @@ final class AudiobookTests: XCTestCase {
       Thread.sleep(forTimeInterval: 1.0)
     }
     
-    // Get book
-    let getButton = app.buttons[AccessibilityID.BookDetail.getButton]
+    // Get book (use firstMatch - search results have multiple GET buttons)
+    let getButton = app.buttons[AccessibilityID.BookDetail.getButton].firstMatch
     if getButton.waitForExistence(timeout: 5.0) {
       getButton.tap()
     }
