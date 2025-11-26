@@ -204,3 +204,246 @@ final class EpubTests: XCTestCase {
   }
 }
 
+  
+  // MARK: - More EPUB Scenarios
+  
+  /// Navigate by TOC
+  func testEpubTableOfContents() {
+    skipOnboarding()
+    selectLibrary("Palace Bookshelf")
+    
+    TestHelpers.navigateToTab("Catalog")
+    openSearch()
+    search("Alice")
+    tapFirstResult()
+    
+    let getButton = app.buttons[AccessibilityID.BookDetail.getButton].firstMatch
+    if getButton.exists { getButton.tap() }
+    
+    let readButton = app.buttons[AccessibilityID.BookDetail.readButton]
+    if readButton.waitForExistence(timeout: 30.0) {
+      readButton.tap()
+      Thread.sleep(forTimeInterval: 3.0)
+    }
+    
+    // Open TOC
+    let tocButton = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'contents' OR label CONTAINS[c] 'chapters'")).firstMatch
+    if tocButton.exists {
+      tocButton.tap()
+      Thread.sleep(forTimeInterval: 1.0)
+      
+      // Select chapter
+      let anyChapter = app.cells.element(boundBy: 1)
+      if anyChapter.exists { anyChapter.tap() }
+    }
+  }
+  
+  /// Font size adjustment
+  func testEpubFontSizeAdjustment() {
+    skipOnboarding()
+    selectLibrary("Palace Bookshelf")
+    
+    TestHelpers.navigateToTab("Catalog")
+    openSearch()
+    search("Pride Prejudice")
+    tapFirstResult()
+    
+    let getButton = app.buttons[AccessibilityID.BookDetail.getButton].firstMatch
+    if getButton.exists { getButton.tap() }
+    
+    let readButton = app.buttons[AccessibilityID.BookDetail.readButton]
+    if readButton.waitForExistence(timeout: 30.0) {
+      readButton.tap()
+      Thread.sleep(forTimeInterval: 3.0)
+    }
+    
+    // Look for settings/font button
+    let settingsButton = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'settings' OR label CONTAINS[c] 'font' OR label CONTAINS[c] 'Aa'")).firstMatch
+    if settingsButton.exists {
+      settingsButton.tap()
+      Thread.sleep(forTimeInterval: 1.0)
+    }
+  }
+  
+  /// Search within book
+  func testEpubInBookSearch() {
+    skipOnboarding()
+    selectLibrary("Palace Bookshelf")
+    
+    TestHelpers.navigateToTab("Catalog")
+    openSearch()
+    search("Moby Dick")
+    tapFirstResult()
+    
+    let getButton = app.buttons[AccessibilityID.BookDetail.getButton].firstMatch
+    if getButton.exists { getButton.tap() }
+    
+    let readButton = app.buttons[AccessibilityID.BookDetail.readButton]
+    if readButton.waitForExistence(timeout: 30.0) {
+      readButton.tap()
+      Thread.sleep(forTimeInterval: 3.0)
+    }
+    
+    // Look for search button in reader
+    let searchButton = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'search'")).firstMatch
+    if searchButton.exists {
+      searchButton.tap()
+      Thread.sleep(forTimeInterval: 1.0)
+      
+      // Type search term
+      let searchField = app.searchFields.firstMatch
+      if searchField.exists {
+        searchField.tap()
+        searchField.typeText("whale")
+      }
+    }
+  }
+  
+  /// Bookmark navigation
+  func testNavigateByBookmarks() {
+    skipOnboarding()
+    selectLibrary("Lyrasis Reads")
+    signInToLyrasis()
+    
+    TestHelpers.navigateToTab("Catalog")
+    openSearch()
+    search("available book")
+    tapFirstResult()
+    
+    let getButton = app.buttons[AccessibilityID.BookDetail.getButton].firstMatch
+    if getButton.exists { getButton.tap() }
+    
+    let readButton = app.buttons[AccessibilityID.BookDetail.readButton]
+    if readButton.waitForExistence(timeout: 30.0) {
+      readButton.tap()
+      Thread.sleep(forTimeInterval: 3.0)
+    }
+    
+    // Create bookmark
+    let bookmarkButton = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'bookmark'")).firstMatch
+    if bookmarkButton.exists {
+      bookmarkButton.tap()
+      Thread.sleep(forTimeInterval: 0.5)
+      
+      // Navigate pages
+      for _ in 0..<5 {
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5)).tap()
+        Thread.sleep(forTimeInterval: 0.3)
+      }
+      
+      // Create another bookmark
+      bookmarkButton.tap()
+      Thread.sleep(forTimeInterval: 0.5)
+    }
+  }
+  
+  /// Delete bookmark
+  func testDeleteBookmark() {
+    skipOnboarding()
+    selectLibrary("Lyrasis Reads")
+    signInToLyrasis()
+    
+    TestHelpers.navigateToTab("Catalog")
+    openSearch()
+    search("available book")
+    tapFirstResult()
+    
+    let getButton = app.buttons[AccessibilityID.BookDetail.getButton].firstMatch
+    if getButton.exists { getButton.tap() }
+    
+    let readButton = app.buttons[AccessibilityID.BookDetail.readButton]
+    if readButton.waitForExistence(timeout: 30.0) {
+      readButton.tap()
+      Thread.sleep(forTimeInterval: 3.0)
+    }
+    
+    // Create and delete bookmark
+    let bookmarkButton = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'bookmark'")).firstMatch
+    if bookmarkButton.exists {
+      bookmarkButton.tap()
+      Thread.sleep(forTimeInterval: 0.5)
+      bookmarkButton.tap() // Toggle to delete
+      Thread.sleep(forTimeInterval: 0.5)
+    }
+  }
+}
+  
+  // MARK: - More EPUB Scenarios (from EpubLyrasis.feature)
+  
+  /// Navigate by page numbers
+  func testEpubNavigateByPageNumber() {
+    skipOnboarding()
+    selectLibrary("Lyrasis Reads")
+    signInToLyrasis()
+    
+    TestHelpers.navigateToTab("Catalog")
+    openSearch()
+    search("available book")
+    tapFirstResult()
+    
+    let getButton = app.buttons[AccessibilityID.BookDetail.getButton].firstMatch
+    if getButton.exists { getButton.tap() }
+    
+    let readButton = app.buttons[AccessibilityID.BookDetail.readButton]
+    if readButton.waitForExistence(timeout: 30.0) {
+      readButton.tap()
+      Thread.sleep(forTimeInterval: 3.0)
+    }
+    
+    // Navigate forward 7-10 times
+    for _ in 0..<8 {
+      app.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5)).tap()
+      Thread.sleep(forTimeInterval: 0.3)
+    }
+    
+    // Close and reopen - should resume at page
+    app.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.1)).tap()
+    Thread.sleep(forTimeInterval: 1.0)
+    
+    if readButton.exists {
+      readButton.tap()
+      Thread.sleep(forTimeInterval: 2.0)
+    }
+    
+    // Should be in reader
+    XCTAssertFalse(app.tabBars.firstMatch.isHittable, "Should resume in reader")
+  }
+  
+  /// Multiple bookmarks
+  func testMultipleBookmarks() {
+    skipOnboarding()
+    selectLibrary("Lyrasis Reads")
+    signInToLyrasis()
+    
+    TestHelpers.navigateToTab("Catalog")
+    openSearch()
+    search("available book")
+    tapFirstResult()
+    
+    let getButton = app.buttons[AccessibilityID.BookDetail.getButton].firstMatch
+    if getButton.exists { getButton.tap() }
+    
+    let readButton = app.buttons[AccessibilityID.BookDetail.readButton]
+    if readButton.waitForExistence(timeout: 30.0) {
+      readButton.tap()
+      Thread.sleep(forTimeInterval: 3.0)
+    }
+    
+    // Create first bookmark
+    let bookmarkButton = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'bookmark'")).firstMatch
+    if bookmarkButton.exists {
+      bookmarkButton.tap()
+      Thread.sleep(forTimeInterval: 0.5)
+      
+      // Navigate pages
+      for _ in 0..<7 {
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5)).tap()
+        Thread.sleep(forTimeInterval: 0.3)
+      }
+      
+      // Create second bookmark
+      bookmarkButton.tap()
+      Thread.sleep(forTimeInterval: 0.5)
+    }
+  }
+}

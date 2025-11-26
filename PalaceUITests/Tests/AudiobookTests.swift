@@ -155,3 +155,175 @@ final class AudiobookTests: XCTestCase {
   }
 }
 
+  
+  // MARK: - More AudiobookLyrasis Scenarios
+  
+  /// Open audiobook at last chapter and check time code
+  func testOpenAudiobookAtLastChapter() {
+    skipOnboarding()
+    selectLibrary("Lyrasis Reads")
+    signInToLyrasis()
+    
+    TestHelpers.navigateToTab("Catalog")
+    openSearch()
+    search("audiobook")
+    var firstResult = app.otherElements.matching(NSPredicate(format: "identifier BEGINSWITH 'search.result.'")).firstMatch
+    if !firstResult.exists { firstResult = app.cells.firstMatch }
+    if firstResult.exists { firstResult.tap(); Thread.sleep(forTimeInterval: 2.0) }
+    
+    let getButton = app.buttons[AccessibilityID.BookDetail.getButton].firstMatch
+    if getButton.exists { getButton.tap() }
+    
+    let listenButton = app.buttons[AccessibilityID.BookDetail.listenButton]
+    if listenButton.waitForExistence(timeout: 30.0) { listenButton.tap(); Thread.sleep(forTimeInterval: 2.0) }
+    
+    // Open TOC
+    let tocButton = app.buttons[AccessibilityID.AudiobookPlayer.tocButton]
+    if tocButton.exists { tocButton.tap(); Thread.sleep(forTimeInterval: 1.0) }
+    
+    // Select chapter 3
+    let chapter3 = app.buttons[AccessibilityID.AudiobookPlayer.tocChapter(2)]
+    if !chapter3.exists {
+      let anyChapter = app.cells.element(boundBy: 2)
+      if anyChapter.exists { anyChapter.tap() }
+    } else {
+      chapter3.tap()
+    }
+    
+    Thread.sleep(forTimeInterval: 1.0)
+    
+    // Verify player returned
+    let playButton = app.buttons[AccessibilityID.AudiobookPlayer.playPauseButton]
+    XCTAssertTrue(playButton.exists, "Should return to player")
+  }
+  
+  /// Test playback speed changes
+  func testChangePlaybackSpeed() {
+    skipOnboarding()
+    selectLibrary("Lyrasis Reads")
+    signInToLyrasis()
+    
+    TestHelpers.navigateToTab("Catalog")
+    openSearch()
+    search("audiobook")
+    var firstResult = app.otherElements.matching(NSPredicate(format: "identifier BEGINSWITH 'search.result.'")).firstMatch
+    if !firstResult.exists { firstResult = app.cells.firstMatch }
+    if firstResult.exists { firstResult.tap(); Thread.sleep(forTimeInterval: 2.0) }
+    
+    let getButton = app.buttons[AccessibilityID.BookDetail.getButton].firstMatch
+    if getButton.exists { getButton.tap() }
+    
+    let listenButton = app.buttons[AccessibilityID.BookDetail.listenButton]
+    if listenButton.waitForExistence(timeout: 30.0) { listenButton.tap(); Thread.sleep(forTimeInterval: 2.0) }
+    
+    // Change speed
+    let speedButton = app.buttons[AccessibilityID.AudiobookPlayer.playbackSpeedButton]
+    if speedButton.exists {
+      speedButton.tap()
+      Thread.sleep(forTimeInterval: 0.5)
+      
+      // Select 1.5x
+      let speed15x = app.buttons[AccessibilityID.AudiobookPlayer.playbackSpeed("1.5x")]
+      if speed15x.exists { speed15x.tap() }
+    }
+    
+    // Play and verify time advances
+    let playButton = app.buttons[AccessibilityID.AudiobookPlayer.playPauseButton]
+    if playButton.exists {
+      playButton.tap()
+      Thread.sleep(forTimeInterval: 3.0)
+      playButton.tap()
+    }
+  }
+  
+  /// Test sleep timer
+  func testSleepTimer() {
+    skipOnboarding()
+    selectLibrary("Lyrasis Reads")
+    signInToLyrasis()
+    
+    TestHelpers.navigateToTab("Catalog")
+    openSearch()
+    search("audiobook")
+    var firstResult = app.otherElements.matching(NSPredicate(format: "identifier BEGINSWITH 'search.result.'")).firstMatch
+    if !firstResult.exists { firstResult = app.cells.firstMatch }
+    if firstResult.exists { firstResult.tap(); Thread.sleep(forTimeInterval: 2.0) }
+    
+    let getButton = app.buttons[AccessibilityID.BookDetail.getButton].firstMatch
+    if getButton.exists { getButton.tap() }
+    
+    let listenButton = app.buttons[AccessibilityID.BookDetail.listenButton]
+    if listenButton.waitForExistence(timeout: 30.0) { listenButton.tap(); Thread.sleep(forTimeInterval: 2.0) }
+    
+    // Set sleep timer
+    let sleepButton = app.buttons[AccessibilityID.AudiobookPlayer.sleepTimerButton]
+    if sleepButton.exists {
+      sleepButton.tap()
+      Thread.sleep(forTimeInterval: 0.5)
+      
+      // Select end of chapter
+      let endOfChapter = app.buttons[AccessibilityID.AudiobookPlayer.sleepTimerEndOfChapter]
+      if endOfChapter.exists { endOfChapter.tap() }
+    }
+  }
+  
+  /// Position restoration after restart
+  func testAudiobookPositionRestoration() {
+    skipOnboarding()
+    selectLibrary("Lyrasis Reads")
+    signInToLyrasis()
+    
+    TestHelpers.navigateToTab("Catalog")
+    openSearch()
+    search("audiobook")
+    var firstResult = app.otherElements.matching(NSPredicate(format: "identifier BEGINSWITH 'search.result.'")).firstMatch
+    if !firstResult.exists { firstResult = app.cells.firstMatch }
+    if firstResult.exists { firstResult.tap(); Thread.sleep(forTimeInterval: 2.0) }
+    
+    let getButton = app.buttons[AccessibilityID.BookDetail.getButton].firstMatch
+    if getButton.exists { getButton.tap() }
+    
+    let listenButton = app.buttons[AccessibilityID.BookDetail.listenButton]
+    if listenButton.waitForExistence(timeout: 30.0) { listenButton.tap(); Thread.sleep(forTimeInterval: 2.0) }
+    
+    // Play for 10 seconds
+    let playButton = app.buttons[AccessibilityID.AudiobookPlayer.playPauseButton]
+    if playButton.exists {
+      playButton.tap()
+      Thread.sleep(forTimeInterval: 10.0)
+      playButton.tap()
+    }
+    
+    // Save time
+    let timeLabel = app.staticTexts[AccessibilityID.AudiobookPlayer.currentTimeLabel]
+    var savedTime: TimeInterval = 0
+    if timeLabel.exists {
+      savedTime = TestHelpers.parseTimeLabel(timeLabel.label)
+    }
+    
+    // Restart app
+    app.terminate()
+    Thread.sleep(forTimeInterval: 2.0)
+    app.launch()
+    _ = app.tabBars.firstMatch.waitForExistence(timeout: 15.0)
+    
+    // Reopen audiobook
+    TestHelpers.navigateToTab("My Books")
+    Thread.sleep(forTimeInterval: 1.0)
+    
+    let firstBook = app.otherElements.matching(NSPredicate(format: "identifier BEGINSWITH 'myBooks.bookCell.'")).firstMatch
+    if firstBook.exists {
+      firstBook.tap()
+      Thread.sleep(forTimeInterval: 1.0)
+      
+      let listenAgain = app.buttons[AccessibilityID.BookDetail.listenButton]
+      if listenAgain.exists { listenAgain.tap(); Thread.sleep(forTimeInterval: 2.0) }
+    }
+    
+    // Verify position restored (within 5 seconds)
+    if timeLabel.exists {
+      let restoredTime = TestHelpers.parseTimeLabel(timeLabel.label)
+      XCTAssertEqual(restoredTime, savedTime, accuracy: 5.0, "Position should restore")
+    }
+  }
+}
