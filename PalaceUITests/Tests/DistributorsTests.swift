@@ -22,7 +22,7 @@ final class DistributorsTests: XCTestCase {
     try super.tearDownWithError()
   }
   
-  func testGetBookFromBibliothe ca() {
+  func testGetBookFromBibliotheca() {
     skipOnboarding()
     selectLibrary("Lyrasis Reads")
     signInToLyrasis()

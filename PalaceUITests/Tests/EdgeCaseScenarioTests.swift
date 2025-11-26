@@ -194,13 +194,52 @@ final class EdgeCaseScenarioTests: XCTestCase {
     }
   }
   
+  // MARK: - Helpers
+  
+  private func skipOnboarding() {
+    Thread.sleep(forTimeInterval: 1.0)
+    if app.buttons["Skip"].exists { app.buttons["Skip"].tap() }
+    if app.buttons["Close"].exists { app.buttons["Close"].tap() }
+  }
+  
+  private func selectLibrary(_ name: String) {
+    Thread.sleep(forTimeInterval: 1.0)
+  }
+  
+  private func signInToLyrasis() {
+    let credentials = TestHelpers.TestCredentials.lyrasis
+    Thread.sleep(forTimeInterval: 1.0)
+    
+    let barcodeField = app.textFields.firstMatch
+    if barcodeField.waitForExistence(timeout: 5.0) {
+      barcodeField.tap()
+      barcodeField.typeText(credentials.barcode)
+    }
+    
+    let pinField = app.secureTextFields.firstMatch
+    if pinField.waitForExistence(timeout: 3.0) {
+      pinField.tap()
+      pinField.typeText(credentials.pin)
+    }
+    
+    let signInButton = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'sign'")).firstMatch
+    if signInButton.exists {
+      signInButton.tap()
+      Thread.sleep(forTimeInterval: 3.0)
+    }
+  }
+  
   private func openSearch() {
     let searchButton = app.buttons[AccessibilityID.Catalog.searchButton]
-    if searchButton.exists { searchButton.tap(); Thread.sleep(forTimeInterval: 0.5) }
+    if searchButton.exists {
+      searchButton.tap()
+      Thread.sleep(forTimeInterval: 0.5)
+    }
   }
   
   private func search(_ term: String) {
     let searchField = app.searchFields.firstMatch.exists ? app.searchFields.firstMatch : app.textFields.firstMatch
+    
     if searchField.waitForExistence(timeout: 5.0) {
       searchField.tap()
       searchField.typeText(term)
@@ -210,7 +249,10 @@ final class EdgeCaseScenarioTests: XCTestCase {
   
   private func tapFirstResult() {
     var firstResult = app.otherElements.matching(NSPredicate(format: "identifier BEGINSWITH 'search.result.'")).firstMatch
-    if !firstResult.exists { firstResult = app.cells.firstMatch }
+    if !firstResult.exists {
+      firstResult = app.cells.firstMatch
+    }
+    
     if firstResult.waitForExistence(timeout: 5.0) {
       firstResult.tap()
       Thread.sleep(forTimeInterval: 1.0)

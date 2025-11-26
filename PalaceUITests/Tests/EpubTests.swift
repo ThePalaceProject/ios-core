@@ -161,51 +161,86 @@ final class EpubTests: XCTestCase {
     XCTAssertTrue(tabBar.exists, "Should return from reader")
   }
   
-  // MARK: - Helpers
+  // MARK: - More EPUB Scenarios (from EpubLyrasis.feature)
   
-  private func skipOnboarding() {
+  /// Navigate by page numbers
+  func testEpubNavigateByPageNumber() {
+    skipOnboarding()
+    selectLibrary("Lyrasis Reads")
+    signInToLyrasis()
+    
+    TestHelpers.navigateToTab("Catalog")
+    openSearch()
+    search("available book")
+    tapFirstResult()
+    
+    let getButton = app.buttons[AccessibilityID.BookDetail.getButton].firstMatch
+    if getButton.exists { getButton.tap() }
+    
+    let readButton = app.buttons[AccessibilityID.BookDetail.readButton]
+    if readButton.waitForExistence(timeout: 30.0) {
+      readButton.tap()
+      Thread.sleep(forTimeInterval: 3.0)
+    }
+    
+    // Navigate forward 7-10 times
+    for _ in 0..<8 {
+      app.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5)).tap()
+      Thread.sleep(forTimeInterval: 0.3)
+    }
+    
+    // Close and reopen - should resume at page
+    app.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.1)).tap()
     Thread.sleep(forTimeInterval: 1.0)
-    if app.buttons["Skip"].exists { app.buttons["Skip"].tap() }
-    if app.buttons["Close"].exists { app.buttons["Close"].tap() }
+    
+    if readButton.exists {
+      readButton.tap()
+      Thread.sleep(forTimeInterval: 2.0)
+    }
+    
+    // Should be in reader
+    XCTAssertFalse(app.tabBars.firstMatch.isHittable, "Should resume in reader")
   }
   
-  private func selectLibrary(_ name: String) {
-    Thread.sleep(forTimeInterval: 1.0)
-  }
-  
-  private func openSearch() {
-    let searchButton = app.buttons[AccessibilityID.Catalog.searchButton]
-    if searchButton.exists {
-      searchButton.tap()
+  /// Multiple bookmarks
+  func testMultipleBookmarks() {
+    skipOnboarding()
+    selectLibrary("Lyrasis Reads")
+    signInToLyrasis()
+    
+    TestHelpers.navigateToTab("Catalog")
+    openSearch()
+    search("available book")
+    tapFirstResult()
+    
+    let getButton = app.buttons[AccessibilityID.BookDetail.getButton].firstMatch
+    if getButton.exists { getButton.tap() }
+    
+    let readButton = app.buttons[AccessibilityID.BookDetail.readButton]
+    if readButton.waitForExistence(timeout: 30.0) {
+      readButton.tap()
+      Thread.sleep(forTimeInterval: 3.0)
+    }
+    
+    // Create first bookmark
+    let bookmarkButton = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'bookmark'")).firstMatch
+    if bookmarkButton.exists {
+      bookmarkButton.tap()
+      Thread.sleep(forTimeInterval: 0.5)
+      
+      // Navigate pages
+      for _ in 0..<7 {
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5)).tap()
+        Thread.sleep(forTimeInterval: 0.3)
+      }
+      
+      // Create second bookmark
+      bookmarkButton.tap()
       Thread.sleep(forTimeInterval: 0.5)
     }
   }
   
-  private func search(_ term: String) {
-    let searchField = app.searchFields.firstMatch.exists ? app.searchFields.firstMatch : app.textFields.firstMatch
-    
-    if searchField.waitForExistence(timeout: 5.0) {
-      searchField.tap()
-      searchField.typeText(term)
-      Thread.sleep(forTimeInterval: 2.0)
-    }
-  }
-  
-  private func tapFirstResult() {
-    let firstResult = app.otherElements.matching(NSPredicate(format: "identifier BEGINSWITH 'search.result.'")).firstMatch
-    if !firstResult.exists {
-      firstResult = app.cells.firstMatch
-    }
-    
-    if firstResult.waitForExistence(timeout: 5.0) {
-      firstResult.tap()
-      Thread.sleep(forTimeInterval: 1.0)
-    }
-  }
-}
-
-  
-  // MARK: - More EPUB Scenarios
+  // MARK: - More EPUB Scenarios (from EpubLyrasis.feature)
   
   /// Navigate by TOC
   func testEpubTableOfContents() {
@@ -366,84 +401,69 @@ final class EpubTests: XCTestCase {
       Thread.sleep(forTimeInterval: 0.5)
     }
   }
-}
   
-  // MARK: - More EPUB Scenarios (from EpubLyrasis.feature)
+  // MARK: - Helpers
   
-  /// Navigate by page numbers
-  func testEpubNavigateByPageNumber() {
-    skipOnboarding()
-    selectLibrary("Lyrasis Reads")
-    signInToLyrasis()
-    
-    TestHelpers.navigateToTab("Catalog")
-    openSearch()
-    search("available book")
-    tapFirstResult()
-    
-    let getButton = app.buttons[AccessibilityID.BookDetail.getButton].firstMatch
-    if getButton.exists { getButton.tap() }
-    
-    let readButton = app.buttons[AccessibilityID.BookDetail.readButton]
-    if readButton.waitForExistence(timeout: 30.0) {
-      readButton.tap()
-      Thread.sleep(forTimeInterval: 3.0)
-    }
-    
-    // Navigate forward 7-10 times
-    for _ in 0..<8 {
-      app.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5)).tap()
-      Thread.sleep(forTimeInterval: 0.3)
-    }
-    
-    // Close and reopen - should resume at page
-    app.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.1)).tap()
+  private func skipOnboarding() {
     Thread.sleep(forTimeInterval: 1.0)
-    
-    if readButton.exists {
-      readButton.tap()
-      Thread.sleep(forTimeInterval: 2.0)
-    }
-    
-    // Should be in reader
-    XCTAssertFalse(app.tabBars.firstMatch.isHittable, "Should resume in reader")
+    if app.buttons["Skip"].exists { app.buttons["Skip"].tap() }
+    if app.buttons["Close"].exists { app.buttons["Close"].tap() }
   }
   
-  /// Multiple bookmarks
-  func testMultipleBookmarks() {
-    skipOnboarding()
-    selectLibrary("Lyrasis Reads")
-    signInToLyrasis()
+  private func selectLibrary(_ name: String) {
+    Thread.sleep(forTimeInterval: 1.0)
+  }
+  
+  private func signInToLyrasis() {
+    let credentials = TestHelpers.TestCredentials.lyrasis
+    Thread.sleep(forTimeInterval: 1.0)
     
-    TestHelpers.navigateToTab("Catalog")
-    openSearch()
-    search("available book")
-    tapFirstResult()
-    
-    let getButton = app.buttons[AccessibilityID.BookDetail.getButton].firstMatch
-    if getButton.exists { getButton.tap() }
-    
-    let readButton = app.buttons[AccessibilityID.BookDetail.readButton]
-    if readButton.waitForExistence(timeout: 30.0) {
-      readButton.tap()
-      Thread.sleep(forTimeInterval: 3.0)
+    let barcodeField = app.textFields.firstMatch
+    if barcodeField.waitForExistence(timeout: 5.0) {
+      barcodeField.tap()
+      barcodeField.typeText(credentials.barcode)
     }
     
-    // Create first bookmark
-    let bookmarkButton = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'bookmark'")).firstMatch
-    if bookmarkButton.exists {
-      bookmarkButton.tap()
+    let pinField = app.secureTextFields.firstMatch
+    if pinField.waitForExistence(timeout: 3.0) {
+      pinField.tap()
+      pinField.typeText(credentials.pin)
+    }
+    
+    let signInButton = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'sign'")).firstMatch
+    if signInButton.exists {
+      signInButton.tap()
+      Thread.sleep(forTimeInterval: 3.0)
+    }
+  }
+  
+  private func openSearch() {
+    let searchButton = app.buttons[AccessibilityID.Catalog.searchButton]
+    if searchButton.exists {
+      searchButton.tap()
       Thread.sleep(forTimeInterval: 0.5)
-      
-      // Navigate pages
-      for _ in 0..<7 {
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5)).tap()
-        Thread.sleep(forTimeInterval: 0.3)
-      }
-      
-      // Create second bookmark
-      bookmarkButton.tap()
-      Thread.sleep(forTimeInterval: 0.5)
+    }
+  }
+  
+  private func search(_ term: String) {
+    let searchField = app.searchFields.firstMatch.exists ? app.searchFields.firstMatch : app.textFields.firstMatch
+    
+    if searchField.waitForExistence(timeout: 5.0) {
+      searchField.tap()
+      searchField.typeText(term)
+      Thread.sleep(forTimeInterval: 2.0)
+    }
+  }
+  
+  private func tapFirstResult() {
+    var firstResult = app.otherElements.matching(NSPredicate(format: "identifier BEGINSWITH 'search.result.'")).firstMatch
+    if !firstResult.exists {
+      firstResult = app.cells.firstMatch
+    }
+    
+    if firstResult.waitForExistence(timeout: 5.0) {
+      firstResult.tap()
+      Thread.sleep(forTimeInterval: 1.0)
     }
   }
 }

@@ -257,5 +257,4 @@ final class ComprehensiveScenarioTests: XCTestCase {
     }
   }
 }
-EOF
-echo "✅ Created ComprehensiveScenarioTests (+6 data-driven scenarios = ~30 scenario outlines covered)"
+

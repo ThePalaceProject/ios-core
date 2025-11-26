@@ -111,67 +111,16 @@ final class AudiobookTests: XCTestCase {
     }
   }
   
-  // MARK: - Helpers
-  
-  private func skipOnboarding() {
-    Thread.sleep(forTimeInterval: 1.0)
-    if app.buttons["Skip"].exists { app.buttons["Skip"].tap() }
-    if app.buttons["Close"].exists { app.buttons["Close"].tap() }
-  }
-  
-  private func selectLibrary(_ name: String) {
-    Thread.sleep(forTimeInterval: 1.0)
-  }
-  
-  private func signInToLyrasis() {
-    let credentials = TestHelpers.TestCredentials.lyrasis
-    Thread.sleep(forTimeInterval: 1.0)
-    
-    let barcodeField = app.textFields.firstMatch
-    if barcodeField.waitForExistence(timeout: 5.0) {
-      barcodeField.tap()
-      barcodeField.typeText(credentials.barcode)
-    }
-    
-    let pinField = app.secureTextFields.firstMatch
-    if pinField.waitForExistence(timeout: 3.0) {
-      pinField.tap()
-      pinField.typeText(credentials.pin)
-    }
-    
-    let signInButton = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'sign'")).firstMatch
-    if signInButton.exists {
-      signInButton.tap()
-      Thread.sleep(forTimeInterval: 3.0)
-    }
-  }
-  
-  private func openSearch() {
-    let searchButton = app.buttons[AccessibilityID.Catalog.searchButton]
-    if searchButton.exists {
-      searchButton.tap()
-      Thread.sleep(forTimeInterval: 0.5)
-    }
-  }
-}
-
-  
   // MARK: - More AudiobookLyrasis Scenarios
   
   /// Open audiobook at last chapter and check time code
   func testOpenAudiobookAtLastChapter() {
-    skipOnboarding()
-    selectLibrary("Lyrasis Reads")
-    signInToLyrasis()
-    
     TestHelpers.navigateToTab("Catalog")
     openSearch()
     search("audiobook")
-    var firstResult = app.otherElements.matching(NSPredicate(format: "identifier BEGINSWITH 'search.result.'")).firstMatch
-    if !firstResult.exists { firstResult = app.cells.firstMatch }
-    if firstResult.exists { firstResult.tap(); Thread.sleep(forTimeInterval: 2.0) }
+    tapFirstResult()
     
-    let getButton = app.buttons[AccessibilityID.BookDetail.getButton].firstMatch
+    let getButton = app.buttons[AccessibilityID.BookDetail.getButton]
     if getButton.exists { getButton.tap() }
     
     let listenButton = app.buttons[AccessibilityID.BookDetail.listenButton]
@@ -199,18 +148,12 @@ final class AudiobookTests: XCTestCase {
   
   /// Test playback speed changes
   func testChangePlaybackSpeed() {
-    skipOnboarding()
-    selectLibrary("Lyrasis Reads")
-    signInToLyrasis()
-    
     TestHelpers.navigateToTab("Catalog")
     openSearch()
     search("audiobook")
-    var firstResult = app.otherElements.matching(NSPredicate(format: "identifier BEGINSWITH 'search.result.'")).firstMatch
-    if !firstResult.exists { firstResult = app.cells.firstMatch }
-    if firstResult.exists { firstResult.tap(); Thread.sleep(forTimeInterval: 2.0) }
+    tapFirstResult()
     
-    let getButton = app.buttons[AccessibilityID.BookDetail.getButton].firstMatch
+    let getButton = app.buttons[AccessibilityID.BookDetail.getButton]
     if getButton.exists { getButton.tap() }
     
     let listenButton = app.buttons[AccessibilityID.BookDetail.listenButton]
@@ -238,18 +181,12 @@ final class AudiobookTests: XCTestCase {
   
   /// Test sleep timer
   func testSleepTimer() {
-    skipOnboarding()
-    selectLibrary("Lyrasis Reads")
-    signInToLyrasis()
-    
     TestHelpers.navigateToTab("Catalog")
     openSearch()
     search("audiobook")
-    var firstResult = app.otherElements.matching(NSPredicate(format: "identifier BEGINSWITH 'search.result.'")).firstMatch
-    if !firstResult.exists { firstResult = app.cells.firstMatch }
-    if firstResult.exists { firstResult.tap(); Thread.sleep(forTimeInterval: 2.0) }
+    tapFirstResult()
     
-    let getButton = app.buttons[AccessibilityID.BookDetail.getButton].firstMatch
+    let getButton = app.buttons[AccessibilityID.BookDetail.getButton]
     if getButton.exists { getButton.tap() }
     
     let listenButton = app.buttons[AccessibilityID.BookDetail.listenButton]
@@ -269,18 +206,12 @@ final class AudiobookTests: XCTestCase {
   
   /// Position restoration after restart
   func testAudiobookPositionRestoration() {
-    skipOnboarding()
-    selectLibrary("Lyrasis Reads")
-    signInToLyrasis()
-    
     TestHelpers.navigateToTab("Catalog")
     openSearch()
     search("audiobook")
-    var firstResult = app.otherElements.matching(NSPredicate(format: "identifier BEGINSWITH 'search.result.'")).firstMatch
-    if !firstResult.exists { firstResult = app.cells.firstMatch }
-    if firstResult.exists { firstResult.tap(); Thread.sleep(forTimeInterval: 2.0) }
+    tapFirstResult()
     
-    let getButton = app.buttons[AccessibilityID.BookDetail.getButton].firstMatch
+    let getButton = app.buttons[AccessibilityID.BookDetail.getButton]
     if getButton.exists { getButton.tap() }
     
     let listenButton = app.buttons[AccessibilityID.BookDetail.listenButton]
@@ -324,6 +255,71 @@ final class AudiobookTests: XCTestCase {
     if timeLabel.exists {
       let restoredTime = TestHelpers.parseTimeLabel(timeLabel.label)
       XCTAssertEqual(restoredTime, savedTime, accuracy: 5.0, "Position should restore")
+    }
+  }
+  
+  // MARK: - Helpers
+  
+  private func skipOnboarding() {
+    Thread.sleep(forTimeInterval: 1.0)
+    if app.buttons["Skip"].exists { app.buttons["Skip"].tap() }
+    if app.buttons["Close"].exists { app.buttons["Close"].tap() }
+  }
+  
+  private func selectLibrary(_ name: String) {
+    Thread.sleep(forTimeInterval: 1.0)
+  }
+  
+  private func signInToLyrasis() {
+    let credentials = TestHelpers.TestCredentials.lyrasis
+    Thread.sleep(forTimeInterval: 1.0)
+    
+    let barcodeField = app.textFields.firstMatch
+    if barcodeField.waitForExistence(timeout: 5.0) {
+      barcodeField.tap()
+      barcodeField.typeText(credentials.barcode)
+    }
+    
+    let pinField = app.secureTextFields.firstMatch
+    if pinField.waitForExistence(timeout: 3.0) {
+      pinField.tap()
+      pinField.typeText(credentials.pin)
+    }
+    
+    let signInButton = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'sign'")).firstMatch
+    if signInButton.exists {
+      signInButton.tap()
+      Thread.sleep(forTimeInterval: 3.0)
+    }
+  }
+  
+  private func openSearch() {
+    let searchButton = app.buttons[AccessibilityID.Catalog.searchButton]
+    if searchButton.exists {
+      searchButton.tap()
+      Thread.sleep(forTimeInterval: 0.5)
+    }
+  }
+  
+  private func search(_ term: String) {
+    let searchField = app.searchFields.firstMatch.exists ? app.searchFields.firstMatch : app.textFields.firstMatch
+    
+    if searchField.waitForExistence(timeout: 5.0) {
+      searchField.tap()
+      searchField.typeText(term)
+      Thread.sleep(forTimeInterval: 2.0)
+    }
+  }
+  
+  private func tapFirstResult() {
+    var firstResult = app.otherElements.matching(NSPredicate(format: "identifier BEGINSWITH 'search.result.'")).firstMatch
+    if !firstResult.exists {
+      firstResult = app.cells.firstMatch
+    }
+    
+    if firstResult.waitForExistence(timeout: 5.0) {
+      firstResult.tap()
+      Thread.sleep(forTimeInterval: 1.0)
     }
   }
 }
