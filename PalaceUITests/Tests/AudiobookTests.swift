@@ -43,7 +43,7 @@ final class AudiobookTests: XCTestCase {
     }
     
     // Tap first search result to open book detail
-    let firstResult = app.otherElements.matching(NSPredicate(format: "identifier BEGINSWITH 'search.result.'")).firstMatch
+    var firstResult = app.otherElements.matching(NSPredicate(format: "identifier BEGINSWITH 'search.result.'")).firstMatch
     if !firstResult.exists {
       firstResult = app.cells.firstMatch
     }
