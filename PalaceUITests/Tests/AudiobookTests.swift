@@ -42,15 +42,19 @@ final class AudiobookTests: XCTestCase {
       Thread.sleep(forTimeInterval: 2.0)
     }
     
-    // Open first audiobook
-    let firstBook = app.otherElements.firstMatch
-    if firstBook.waitForExistence(timeout: 5.0) {
-      firstBook.tap()
-      Thread.sleep(forTimeInterval: 1.0)
+    // Tap first search result to open book detail
+    let firstResult = app.otherElements.matching(NSPredicate(format: "identifier BEGINSWITH 'search.result.'")).firstMatch
+    if !firstResult.exists {
+      firstResult = app.cells.firstMatch
     }
     
-    // Get book (use firstMatch - search results have multiple GET buttons)
-    let getButton = app.buttons[AccessibilityID.BookDetail.getButton].firstMatch
+    if firstResult.waitForExistence(timeout: 5.0) {
+      firstResult.tap()
+      Thread.sleep(forTimeInterval: 2.0)
+    }
+    
+    // Now on book detail - tap GET (should be single button now)
+    let getButton = app.buttons[AccessibilityID.BookDetail.getButton]
     if getButton.waitForExistence(timeout: 5.0) {
       getButton.tap()
     }
