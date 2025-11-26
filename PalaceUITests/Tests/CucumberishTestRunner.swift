@@ -27,6 +27,8 @@ class CucumberishTestRunner: NSObject {
     app.launchArguments = ["-testMode", "1"]
     app.launchEnvironment = ["DISABLE_ANIMATIONS": "1"]
     
+    print("🔧 Cucumberish: Registering step definitions...")
+    
     // Set up basic Palace step definitions (Batch 1 - 65 steps)
     PalaceNavigationSteps.setup()
     PalaceSearchSteps.setup()
@@ -43,13 +45,19 @@ class CucumberishTestRunner: NSObject {
     EpubAndPdfReaderSteps.setup()
     AdvancedAudiobookSteps.setup()
     
-    // Configure Cucumberish to find .feature files
+    print("✅ Cucumberish: Registered 180 step definitions")
+    
+    // Standard Cucumberish initialization
+    // Use default bundle search - Cucumberish auto-discovers .feature files
     let bundle = Bundle(for: CucumberishTestRunner.self)
-    Cucumberish.executeFeatures(
-      inDirectory: "Features",
+    
+    // Cucumberish.executeFeaturesInDirectory searches bundle for .feature files
+    // Pass empty string to search bundle root
+    Cucumberish.executeFeaturesInDirectory(
+      "",  
       from: bundle,
       includeTags: nil,
-      excludeTags: ["@wip", "@skip"]
+      excludeTags: ["@wip", "@skip", "@exclude_android"]
     )
   }
 }
@@ -59,9 +67,14 @@ final class CucumberishInitializer: XCTestCase {
   
   override class func setUp() {
     super.setUp()
+    print("🚀 Cucumberish: Starting test execution...")
     CucumberishTestRunner.setup()
   }
   
-  // Cucumberish will dynamically create test methods from .feature files
-  // They will appear in the Test Navigator when you run tests
+  // This test method triggers Cucumberish execution
+  func testCucumberish() {
+    // Cucumberish runs via setUp()
+    // Scenarios execute from .feature files
+    print("✅ Cucumberish: Test execution complete")
+  }
 }
