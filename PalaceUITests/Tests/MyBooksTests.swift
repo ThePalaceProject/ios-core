@@ -91,9 +91,12 @@ final class MyBooksTests: XCTestCase {
       Thread.sleep(forTimeInterval: 0.5)
     }
     
-    // Select Title
-    let titleOption = app.buttons["Title"]
-    if titleOption.exists {
+    // Select Title (use element in sheet/alert, not background)
+    let titleOption = app.sheets.buttons["Title"]
+    if !titleOption.exists {
+      let anyTitleButton = app.buttons["Title"].firstMatch
+      if anyTitleButton.exists { anyTitleButton.tap() }
+    } else {
       titleOption.tap()
     }
     
@@ -122,8 +125,8 @@ final class MyBooksTests: XCTestCase {
       Thread.sleep(forTimeInterval: 1.0)
     }
     
-    // Tap GET
-    let getButton = app.buttons[AccessibilityID.BookDetail.getButton]
+    // Tap GET (use firstMatch to handle multiple results)
+    let getButton = app.buttons[AccessibilityID.BookDetail.getButton].firstMatch
     if getButton.waitForExistence(timeout: 5.0) {
       getButton.tap()
     }
