@@ -337,8 +337,28 @@ final class AudiobookTests: XCTestCase {
     }
     
     if firstResult.waitForExistence(timeout: 5.0) {
+      // Ensure element is hittable before tapping
+      if !firstResult.isHittable {
+        // Scroll to make it visible
+        firstResult.swipeUp()
+        Thread.sleep(forTimeInterval: 0.3)
+      }
+      
       firstResult.tap()
       Thread.sleep(forTimeInterval: 1.0)
+      
+      // Verify we're on book detail (cover or title should exist)
+      let onDetailPage = app.images[AccessibilityID.BookDetail.coverImage].waitForExistence(timeout: 3.0) ||
+                        app.staticTexts[AccessibilityID.BookDetail.title].waitForExistence(timeout: 3.0) ||
+                        app.buttons[AccessibilityID.BookDetail.getButton].exists ||
+                        app.buttons["Borrow"].exists
+      
+      if !onDetailPage {
+        // Tap didn't work - try tapping center of element
+        let centerCoordinate = firstResult.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        centerCoordinate.tap()
+        Thread.sleep(forTimeInterval: 1.0)
+      }
     }
   }
   
