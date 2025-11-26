@@ -213,7 +213,7 @@ class ComplexBookActionSteps {
       
       // Check for books
       let hasBooksemptyState = app.otherElements[AccessibilityID.MyBooks.emptyStateView]
-      XCTAssertFalse(emptyState.exists, "Should have books")
+      XCTAssertFalse(hasBooksemptyState.exists, "Should have books")
     }
     
     Then("(EBOOK|AUDIOBOOK|PDF) book with (GET|READ|LISTEN) action button and '(.*)' bookInfo is not present on books screen") { args, _ in

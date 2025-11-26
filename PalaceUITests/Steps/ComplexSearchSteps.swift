@@ -33,13 +33,12 @@ class ComplexSearchSteps {
       // For now, search generically and filter results
       let searchField = app.searchFields.firstMatch.exists ? app.searchFields.firstMatch : app.textFields.firstMatch
       
+      // Search term based on book type
+      let searchTerm = bookType == "AUDIOBOOK" ? "audiobook" :
+                      bookType == "PDF" ? "pdf" : "book"
+      
       if searchField.waitForExistence(timeout: 5.0) {
         searchField.tap()
-        
-        // Search term based on book type
-        let searchTerm = bookType == "AUDIOBOOK" ? "audiobook" :
-                        bookType == "PDF" ? "pdf" : "book"
-        
         searchField.typeText(searchTerm)
         TestHelpers.waitFor(2.0)
       }
