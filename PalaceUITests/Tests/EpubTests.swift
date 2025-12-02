@@ -79,40 +79,8 @@ final class EpubTests: XCTestCase {
         if borrowButton.exists { borrowButton.firstMatch.tap() }
         else if getButton.exists { getButton.firstMatch.tap() }
         
-        Thread.sleep(forTimeInterval: 2.0)
-        
-        // Check if sign-in screen appeared
-        let signInField = app.textFields.firstMatch
-        let pinField = app.secureTextFields.firstMatch
-        
-        if (signInField.exists && signInField.placeholderValue?.contains("Barcode") == true) ||
-           (signInField.exists && pinField.exists && signInField.identifier != "search.searchField") {
-          print("🔐 Sign-in screen appeared, logging in...")
-          
-          let credentials = TestHelpers.TestCredentials.lyrasis
-          
-          // Make sure we're not typing into search field!
-          let barcodeField = app.textFields.matching(NSPredicate(format: "identifier != 'search.searchField'")).firstMatch
-          
-          if barcodeField.exists {
-            barcodeField.tap()
-            barcodeField.typeText(credentials.barcode)
-          }
-          
-          if pinField.waitForExistence(timeout: 2.0) {
-            pinField.tap()
-            pinField.typeText(credentials.pin)
-          }
-          
-          let signInButton = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'sign'")).firstMatch
-          if signInButton.exists {
-            signInButton.tap()
-            Thread.sleep(forTimeInterval: 5.0)
-            print("✅ Signed in!")
-          }
-        } else {
-          print("ℹ️ No sign-in needed, already authenticated")
-        }
+        // Handle any modals that appear (sign-in, library selector, etc.)
+        AuthenticationHelper.handleBorrowModals(app: app)
         
         // Wait for READ button (confirms it's an EPUB and download complete)
         print("⏳ Waiting for READ button (download in progress)...")
