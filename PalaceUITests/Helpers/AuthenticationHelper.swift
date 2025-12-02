@@ -88,22 +88,38 @@ class AuthenticationHelper {
   static func handleBorrowModals(app: XCUIApplication) {
     Thread.sleep(forTimeInterval: 2.0)
     
-    // Check for library selector modal
-    if app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'library'")).count > 3 {
+    // Check for library selector modal (DISMISS this)
+    if app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'select a library' OR label CONTAINS[c] 'choose library'")).count > 0 {
       print("ℹ️ Library selector appeared, dismissing...")
       let cancelButton = app.buttons["Cancel"]
-      if cancelButton.exists { cancelButton.tap() }
+      if cancelButton.exists { cancelButton.tap(); Thread.sleep(forTimeInterval: 1.0) }
     }
     
-    // Check for sign-in
-    _ = signInIfNeeded(app: app)
+    // Check for sign-in (HANDLE this)
+    let signedIn = signInIfNeeded(app: app)
     
-    // Check for any other modal with Close/Done
-    let closeButton = app.buttons["Close"]
-    if closeButton.exists && !app.tabBars.firstMatch.isHittable {
-      print("ℹ️ Modal detected, closing...")
-      closeButton.tap()
-      Thread.sleep(forTimeInterval: 1.0)
+    if signedIn {
+      print("✅ Authentication handled, continuing with borrow flow...")
+      // DON'T dismiss anything - let the borrow/download continue!
+      // The app will show book detail or download progress
+      return
+    }
+    
+    // Only dismiss unexpected modals if NOT signed in and not on book detail
+    // Check if we're on book detail (has cover or title)
+    let onBookDetail = app.images[AccessibilityID.BookDetail.coverImage].exists ||
+                      app.staticTexts[AccessibilityID.BookDetail.title].exists
+    
+    if !onBookDetail {
+      // Not on book detail - might be stuck on an error modal
+      let closeButton = app.buttons["Close"]
+      if closeButton.exists && !app.tabBars.firstMatch.isHittable {
+        print("⚠️ Unexpected modal detected, closing...")
+        closeButton.tap()
+        Thread.sleep(forTimeInterval: 1.0)
+      }
+    } else {
+      print("✅ On book detail page, ready to download")
     }
   }
 }
