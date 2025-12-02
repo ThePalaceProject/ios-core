@@ -76,13 +76,32 @@ final class FinalScenariosTests: XCTestCase {
     print("My Books elements - empty: \(emptyState), bookCells: \(bookCellsWithID), cells: \(cells)")
     print("  buttons: \(buttons), images: \(images), others: \(otherElements)")
     
-    // Books might be buttons, images, or other elements (not necessarily with our ID)
-    let hasVisibleContent = buttons > 5 || images > 3 || otherElements > 5
+    // Check grid view (where books actually are)
+    let gridView = app.otherElements[AccessibilityID.MyBooks.gridView]
+    print("  Grid view exists: \(gridView.exists)")
     
-    print("  Has visible content: \(hasVisibleContent)")
-    
-    // Any state is valid - just that screen loaded
-    XCTAssertTrue(true, "My Books screen loaded successfully")
+    if gridView.exists {
+      let gridButtons = gridView.buttons.count
+      let gridImages = gridView.images.count  
+      print("  Grid contents - buttons: \(gridButtons), images: \(gridImages)")
+      
+      // ACTUAL STATE VERIFICATION
+      if emptyState {
+        print("✅ My Books is empty")
+        XCTAssertTrue(true, "Empty state correctly shown")
+      } else if gridButtons > 0 || gridImages > 0 {
+        print("✅ My Books has \(gridButtons) book buttons, \(gridImages) book images")
+        XCTAssertTrue(true, "Books are displayed in grid")
+      } else {
+        print("⚠️ Grid exists but is empty")
+        XCTAssertTrue(buttons > 8 || images > 3, "Should have some visible content")
+      }
+    } else {
+      // No grid view found - check general content
+      let hasContent = buttons > 8 || images > 3
+      print("  No grid view - general content check: \(hasContent)")
+      XCTAssertTrue(emptyState || hasContent, "Should show empty state or content")
+    }
     
     // Reservations empty state
     TestHelpers.navigateToTab("Reservations")
