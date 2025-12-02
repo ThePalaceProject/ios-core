@@ -56,13 +56,12 @@ final class EpubTests: XCTestCase {
   /// Navigate pages in EPUB
   func testEpubPageNavigation() {
     skipOnboarding()
-    selectLibrary("Lyrasis Reads")
-    signInToLyrasis()  // ← Sign in before borrowing!
+    // DON'T sign in proactively - let it happen when we borrow
     
     TestHelpers.navigateToTab("Catalog")
     openSearch()
     
-    // Search for "epub" to increase chance of getting an actual EPUB
+    // Search for "epub"
     search("epub")
     
     // Find and open an available EPUB (scroll if needed)
