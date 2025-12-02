@@ -65,13 +65,21 @@ final class FinalScenariosTests: XCTestCase {
     let myBooksTab = app.tabBars.buttons[AppStrings.TabBar.myBooks]
     XCTAssertTrue(myBooksTab.isSelected, "Should be on My Books")
     
-    // Check various possible states (don't strictly assert content)
+    // Check various possible element types
     let emptyState = app.otherElements[AccessibilityID.MyBooks.emptyStateView].exists
-    let hasBooks = app.otherElements.matching(NSPredicate(format: "identifier BEGINSWITH 'myBooks.bookCell.'")).count > 0
-    let hasCells = app.cells.count > 0
-    let hasText = app.staticTexts.count > 2 // More than just tab labels
+    let bookCellsWithID = app.otherElements.matching(NSPredicate(format: "identifier BEGINSWITH 'myBooks.bookCell.'")).count
+    let cells = app.cells.count
+    let buttons = app.buttons.count
+    let images = app.images.count
+    let otherElements = app.otherElements.count
     
-    print("My Books state - empty: \(emptyState), books: \(hasBooks), cells: \(hasCells), text: \(hasText)")
+    print("My Books elements - empty: \(emptyState), bookCells: \(bookCellsWithID), cells: \(cells)")
+    print("  buttons: \(buttons), images: \(images), others: \(otherElements)")
+    
+    // Books might be buttons, images, or other elements (not necessarily with our ID)
+    let hasVisibleContent = buttons > 5 || images > 3 || otherElements > 5
+    
+    print("  Has visible content: \(hasVisibleContent)")
     
     // Any state is valid - just that screen loaded
     XCTAssertTrue(true, "My Books screen loaded successfully")
