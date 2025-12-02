@@ -88,11 +88,25 @@ class AuthenticationHelper {
   static func handleBorrowModals(app: XCUIApplication) {
     Thread.sleep(forTimeInterval: 2.0)
     
-    // Check for library selector modal (DISMISS this)
-    if app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'select a library' OR label CONTAINS[c] 'choose library'")).count > 0 {
-      print("ℹ️ Library selector appeared, dismissing...")
-      let cancelButton = app.buttons["Cancel"]
-      if cancelButton.exists { cancelButton.tap(); Thread.sleep(forTimeInterval: 1.0) }
+    // Check for library selector modal (select Lyrasis Reads if present)
+    let lyrasisButton = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Lyrasis'")).firstMatch
+    let a1qaButton = app.buttons.matching(NSPredicate(format: "label CONTAINS 'A1QA'")).firstMatch
+    
+    if lyrasisButton.exists || a1qaButton.exists {
+      print("ℹ️ Library picker appeared, selecting library...")
+      
+      // Prefer Lyrasis Reads (our test credentials work there)
+      if lyrasisButton.exists {
+        lyrasisButton.tap()
+        print("   Selected: Lyrasis Reads")
+        Thread.sleep(forTimeInterval: 2.0)
+      } else {
+        // Cancel if only A1QA available (we don't have those credentials)
+        print("   Only A1QA available, but we need Lyrasis - cancelling...")
+        let cancelButton = app.buttons["Cancel"]
+        if cancelButton.exists { cancelButton.tap(); Thread.sleep(forTimeInterval: 1.0) }
+        return
+      }
     }
     
     // Check for sign-in (HANDLE this)
