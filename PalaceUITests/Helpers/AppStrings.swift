@@ -41,5 +41,12 @@ enum AppStrings {
     static let delete = NSLocalizedString("Delete", comment: "")
     static let reserve = NSLocalizedString("Reserve", comment: "")
   }
+  
+  enum HoldsView {
+    static let emptyMessage = NSLocalizedString("""
+              When you reserve a book from the catalog, it will show up here. \
+              Look here from time to time to see if your book is available to download.
+              """, comment: "")
+    }
 }
 

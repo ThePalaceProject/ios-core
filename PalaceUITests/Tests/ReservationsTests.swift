@@ -71,7 +71,7 @@ final class ReservationsTests: XCTestCase {
     Thread.sleep(forTimeInterval: 2.0)
     
     // Either has holds or shows empty state
-    let emptyState = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'no holds' OR label CONTAINS[c] 'no reservations'")).firstMatch
+    let emptyState = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] '\(Strings.HoldsView.emptyMessage)'")).firstMatch
     let hasHolds = app.cells.count > 0
     
     // Both states are valid
