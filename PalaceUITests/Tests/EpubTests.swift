@@ -114,8 +114,17 @@ final class EpubTests: XCTestCase {
           print("ℹ️ No sign-in needed, already authenticated")
         }
         
-        // Wait for READ button (confirms it's an EPUB)
+        // Wait for READ button (confirms it's an EPUB and download complete)
+        print("⏳ Waiting for READ button (download in progress)...")
+        
+        // Check what buttons exist
+        Thread.sleep(forTimeInterval: 3.0)
+        let allButtons = app.buttons.allElementsBoundByIndex.prefix(10).map { $0.label }
+        print("   Buttons on screen: \(allButtons)")
+        
         let readButton = app.buttons[AccessibilityID.BookDetail.readButton]
+        let listenButton = app.buttons[AccessibilityID.BookDetail.listenButton]
+        
         if readButton.waitForExistence(timeout: 30.0) {
           print("✅ Found EPUB book, opening reader...")
           readButton.tap()
