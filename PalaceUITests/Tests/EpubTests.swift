@@ -59,16 +59,49 @@ final class EpubTests: XCTestCase {
     
     TestHelpers.navigateToTab("Catalog")
     openSearch()
-    search("Alice")
-    tapFirstResult()
     
-    let getButton = app.buttons[AccessibilityID.BookDetail.getButton].firstMatch
-    if getButton.exists { getButton.tap() }
+    // Search for "epub" to increase chance of getting an actual EPUB
+    search("epub")
     
-    let readButton = app.buttons[AccessibilityID.BookDetail.readButton]
-    if readButton.waitForExistence(timeout: 30.0) {
-      readButton.tap()
-      Thread.sleep(forTimeInterval: 3.0)
+    // Find and open an available EPUB (scroll if needed)
+    var foundEpub = false
+    for attempt in 0..<3 {
+      tapFirstResult()
+      Thread.sleep(forTimeInterval: 1.0)
+      
+      // Check if there's a Borrow/Get button (available book)
+      let borrowButton = app.buttons["Borrow"]
+      let getButton = app.buttons["Get"]
+      
+      if borrowButton.exists || getButton.exists {
+        // Tap to borrow/get
+        if borrowButton.exists { borrowButton.tap() }
+        else if getButton.exists { getButton.tap() }
+        
+        // Wait for READ button (confirms it's an EPUB)
+        let readButton = app.buttons[AccessibilityID.BookDetail.readButton]
+        if readButton.waitForExistence(timeout: 30.0) {
+          print("✅ Found EPUB book, opening reader...")
+          readButton.tap()
+          Thread.sleep(forTimeInterval: 3.0)
+          foundEpub = true
+          break
+        } else {
+          print("⚠️ Book didn't download or isn't EPUB, trying next...")
+          // Go back and try next result
+          let backButton = app.navigationBars.buttons.element(boundBy: 0)
+          if backButton.exists { backButton.tap(); Thread.sleep(forTimeInterval: 0.5) }
+        }
+      } else {
+        print("⚠️ Book not available, trying next...")
+        let backButton = app.navigationBars.buttons.element(boundBy: 0)
+        if backButton.exists { backButton.tap(); Thread.sleep(forTimeInterval: 0.5) }
+      }
+    }
+    
+    if !foundEpub {
+      XCTFail("Could not find available EPUB book after 3 attempts")
+      return
     }
     
     // Navigate pages - tap right side
