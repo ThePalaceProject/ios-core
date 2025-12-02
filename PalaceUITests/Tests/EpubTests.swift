@@ -453,24 +453,66 @@ final class EpubTests: XCTestCase {
   
   private func signInToLyrasis() {
     let credentials = TestHelpers.TestCredentials.lyrasis
-    Thread.sleep(forTimeInterval: 1.0)
     
+    print("🔐 Attempting to sign in to Lyrasis Reads...")
+    
+    // Sign-in screen might auto-present after selecting library
+    // Wait a bit for it to appear
+    Thread.sleep(forTimeInterval: 2.0)
+    
+    // Check if sign-in fields are present
     let barcodeField = app.textFields.firstMatch
+    let pinField = app.secureTextFields.firstMatch
+    
+    if !barcodeField.exists && !pinField.exists {
+      print("   No sign-in fields found - checking if already signed in...")
+      
+      // Check if we're already signed in (catalog is accessible)
+      let catalogTab = app.tabBars.buttons[AppStrings.TabBar.catalog]
+      if catalogTab.exists {
+        print("✅ Already signed in (or library doesn't require auth)")
+        return
+      }
+      
+      // Try navigating to trigger sign-in
+      TestHelpers.navigateToTab("Settings")
+      Thread.sleep(forTimeInterval: 1.0)
+      
+      // Look for sign-in option
+      let signInButton = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'sign in'")).firstMatch
+      if signInButton.exists {
+        signInButton.tap()
+        Thread.sleep(forTimeInterval: 1.0)
+      }
+    }
+    
+    // Now try to fill in credentials
     if barcodeField.waitForExistence(timeout: 5.0) {
+      print("   Found barcode field, entering credentials...")
       barcodeField.tap()
       barcodeField.typeText(credentials.barcode)
-    }
-    
-    let pinField = app.secureTextFields.firstMatch
-    if pinField.waitForExistence(timeout: 3.0) {
-      pinField.tap()
-      pinField.typeText(credentials.pin)
-    }
-    
-    let signInButton = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'sign'")).firstMatch
-    if signInButton.exists {
-      signInButton.tap()
-      Thread.sleep(forTimeInterval: 3.0)
+      
+      if pinField.waitForExistence(timeout: 3.0) {
+        pinField.tap()
+        pinField.typeText(credentials.pin)
+      }
+      
+      // Tap sign-in button
+      let signInSubmitButton = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'sign'")).firstMatch
+      if signInSubmitButton.exists {
+        signInSubmitButton.tap()
+        Thread.sleep(forTimeInterval: 5.0)  // Wait longer for sign-in to complete
+      }
+      
+      // Verify sign-in succeeded
+      let catalogTab = app.tabBars.buttons[AppStrings.TabBar.catalog]
+      if catalogTab.exists {
+        print("✅ Sign-in successful!")
+      } else {
+        print("⚠️ Warning: Sign-in may have failed - catalog not accessible")
+      }
+    } else {
+      print("⚠️ No sign-in form appeared - proceeding anyway")
     }
   }
   
