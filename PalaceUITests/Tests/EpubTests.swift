@@ -55,10 +55,8 @@ final class EpubTests: XCTestCase {
   
   /// Navigate pages in EPUB
   func testEpubPageNavigation() {
-    skipOnboarding()
-    
-    // Switch to Lyrasis Reads (we have test credentials for this library)
-    switchToLyrasisReads()
+    // Go through onboarding and add Lyrasis Reads
+    setupLyrasisReadsFromOnboarding()
     
     TestHelpers.navigateToTab("Catalog")
     openSearch()
@@ -453,6 +451,60 @@ final class EpubTests: XCTestCase {
   }
   
   // MARK: - Helpers
+  
+  /// Goes through onboarding and adds Lyrasis Reads library
+  private func setupLyrasisReadsFromOnboarding() {
+    print("🚀 Setting up Lyrasis Reads from onboarding...")
+    
+    Thread.sleep(forTimeInterval: 2.0)
+    
+    // Handle tutorial screens
+    if app.buttons["Skip"].exists {
+      app.buttons["Skip"].tap()
+      Thread.sleep(forTimeInterval: 0.5)
+    }
+    
+    // Handle welcome screen
+    if app.buttons["Close"].exists {
+      app.buttons["Close"].tap()
+      Thread.sleep(forTimeInterval: 0.5)
+    }
+    
+    // Should be on "Add library" or library list screen
+    Thread.sleep(forTimeInterval: 1.0)
+    
+    // Look for search/add library functionality
+    let searchField = app.searchFields.firstMatch
+    if !searchField.exists {
+      // Try text fields
+      let anySearchField = app.textFields.matching(NSPredicate(format: "placeholderValue CONTAINS[c] 'search' OR placeholderValue CONTAINS[c] 'library'")).firstMatch
+      
+      if anySearchField.exists {
+        anySearchField.tap()
+        anySearchField.typeText("Lyrasis")
+        Thread.sleep(forTimeInterval: 1.0)
+      }
+    } else {
+      searchField.tap()
+      searchField.typeText("Lyrasis")
+      Thread.sleep(forTimeInterval: 1.0)
+    }
+    
+    // Select Lyrasis Reads from results
+    let lyrasisCell = app.cells.staticTexts.matching(NSPredicate(format: "label CONTAINS 'Lyrasis Reads'")).firstMatch
+    if !lyrasisCell.exists {
+      let lyrasisButton = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Lyrasis Reads'")).firstMatch
+      if lyrasisButton.exists {
+        lyrasisButton.tap()
+        Thread.sleep(forTimeInterval: 2.0)
+        print("✅ Added Lyrasis Reads")
+      }
+    } else {
+      lyrasisCell.tap()
+      Thread.sleep(forTimeInterval: 2.0)
+      print("✅ Added Lyrasis Reads")
+    }
+  }
   
   private func skipOnboarding() {
     Thread.sleep(forTimeInterval: 1.0)
