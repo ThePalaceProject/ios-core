@@ -56,7 +56,9 @@ final class EpubTests: XCTestCase {
   /// Navigate pages in EPUB
   func testEpubPageNavigation() {
     skipOnboarding()
-    // DON'T sign in proactively - let it happen when we borrow
+    
+    // Switch to Lyrasis Reads (we have test credentials for this library)
+    switchToLyrasisReads()
     
     TestHelpers.navigateToTab("Catalog")
     openSearch()
@@ -458,37 +460,46 @@ final class EpubTests: XCTestCase {
     if app.buttons["Close"].exists { app.buttons["Close"].tap() }
   }
   
-  private func selectLibrary(_ name: String) {
-    print("📚 Selecting library: \(name)...")
+  private func switchToLyrasisReads() {
+    print("📚 Switching to Lyrasis Reads...")
     
     // Navigate to Settings
     TestHelpers.navigateToTab("Settings")
     Thread.sleep(forTimeInterval: 1.0)
     
-    // Look for library/account button
-    let libraryButton = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'library' OR label CONTAINS[c] 'libraries'")).firstMatch
-    
-    if libraryButton.exists {
-      libraryButton.tap()
-      Thread.sleep(forTimeInterval: 1.0)
-      
-      // Look for the library in the list
-      let libraryCell = app.cells.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", name)).firstMatch
-      
-      if libraryCell.exists {
-        libraryCell.tap()
-        Thread.sleep(forTimeInterval: 2.0)
-        print("✅ Selected library: \(name)")
-      } else {
-        print("⚠️ Library '\(name)' not found in list, using current library")
+    // Look for library selector button (icon or text)
+    let libraryButton = app.buttons["MyLibraryIcon"]
+    if !libraryButton.exists {
+      let anyLibraryButton = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'library'")).firstMatch
+      if anyLibraryButton.exists {
+        anyLibraryButton.tap()
+        Thread.sleep(forTimeInterval: 1.0)
       }
     } else {
-      print("ℹ️ No library selector found - using current library")
+      libraryButton.tap()
+      Thread.sleep(forTimeInterval: 1.0)
+    }
+    
+    // Select Lyrasis Reads from action sheet/list
+    let lyrasisButton = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Lyrasis'")).firstMatch
+    if lyrasisButton.exists {
+      lyrasisButton.tap()
+      Thread.sleep(forTimeInterval: 2.0)
+      print("✅ Switched to Lyrasis Reads")
+    } else {
+      print("⚠️ Lyrasis Reads not found in library list")
     }
     
     // Return to Catalog
     TestHelpers.navigateToTab("Catalog")
     Thread.sleep(forTimeInterval: 1.0)
+  }
+  
+  private func selectLibrary(_ name: String) {
+    // Alias for switchToLyrasisReads
+    if name.contains("Lyrasis") {
+      switchToLyrasisReads()
+    }
   }
   
   private func signInToLyrasis() {
