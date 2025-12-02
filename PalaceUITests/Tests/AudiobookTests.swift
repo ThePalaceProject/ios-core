@@ -362,79 +362,46 @@ final class AudiobookTests: XCTestCase {
     }
   }
   
-  /// Find and open an available (borrowable) audiobook
+  /// Find and open an available audiobook (same pattern as EPUB test)
   private func findAndOpenAvailableAudiobook() {
     print("🔍 Looking for available audiobook...")
     
-    // Wait for search results to load
-    Thread.sleep(forTimeInterval: 2.0)
-    
-    // Try to find and tap a book CARD (not a button)
-    let results = app.otherElements.matching(NSPredicate(format: "identifier BEGINSWITH 'search.result.'"))
-    let cells = app.cells
-    
-    print("   Found \(results.count) search results, \(cells.count) cells")
-    
-    var attemptCount = 0
-    let maxAttempts = 3
-    
-    while attemptCount < maxAttempts {
-      print("   Attempt \(attemptCount + 1) of \(maxAttempts)...")
+    // Try up to 3 search results
+    for attempt in 0..<3 {
+      print("   Attempt \(attempt + 1) of 3...")
+      tapFirstResult()
+      Thread.sleep(forTimeInterval: 1.0)
       
-      // Tap a BOOK CARD (the whole card, not the button)
-      let bookToTap: XCUIElement
+      // Check if available
+      let borrowButton = app.buttons["Borrow"]
+      let getButton = app.buttons["Get"]
       
-      if results.count > 0 {
-        // Prefer search result elements
-        bookToTap = results.element(boundBy: min(attemptCount, results.count - 1))
-        print("   Tapping search result element \(attemptCount)")
-      } else if cells.count > 0 {
-        // Fallback to cells
-        bookToTap = cells.element(boundBy: min(attemptCount, cells.count - 1))
-        print("   Tapping cell element \(attemptCount)")
-      } else {
-        print("   ❌ No results or cells found!")
-        break
-      }
+      print("   Borrow: \(borrowButton.exists), Get: \(getButton.exists)")
       
-      // Tap the book card
-      bookToTap.tap()
-      Thread.sleep(forTimeInterval: 1.5)
-      
-      // Check if we're NOW on book detail page (not search results!)
-      let onDetailPage = app.images[AccessibilityID.BookDetail.coverImage].exists ||
-                        app.staticTexts[AccessibilityID.BookDetail.title].exists
-      
-      print("   On detail page: \(onDetailPage)")
-      
-      if onDetailPage {
-        // Now check if book is available to borrow
-        let borrowButton = app.buttons["Borrow"]
-        let getButton = app.buttons["Get"]
+      if borrowButton.exists || getButton.exists {
+        // Tap to borrow
+        if borrowButton.exists { borrowButton.tap() }
+        else if getButton.exists { getButton.tap() }
         
-        print("   Borrow button exists: \(borrowButton.exists), Get button exists: \(getButton.exists)")
-        
-        if (borrowButton.exists && borrowButton.isHittable) || (getButton.exists && getButton.isHittable) {
-          print("✅ Found available audiobook on attempt \(attemptCount + 1)!")
+        // Wait for LISTEN button (confirms audiobook)
+        let listenButton = app.buttons[AccessibilityID.BookDetail.listenButton]
+        if listenButton.waitForExistence(timeout: 30.0) {
+          print("✅ Found available audiobook with LISTEN button!")
           return
         } else {
-          print("   Book not available (Reserve only), going back...")
-          // Not available - go back and try next
+          print("⚠️ No LISTEN button - might be EPUB/PDF, trying next...")
           let backButton = app.navigationBars.buttons.element(boundBy: 0)
-          if backButton.exists {
-            backButton.tap()
-            Thread.sleep(forTimeInterval: 0.5)
-          }
+          if backButton.exists { backButton.tap(); Thread.sleep(forTimeInterval: 0.5) }
         }
       } else {
-        print("   ⚠️ Tap didn't open detail page, still on search results")
+        print("⚠️ Book not available, trying next...")
+        let backButton = app.navigationBars.buttons.element(boundBy: 0)
+        if backButton.exists { backButton.tap(); Thread.sleep(forTimeInterval: 0.5) }
       }
-      
-      attemptCount += 1
     }
     
-    // Couldn't find available book
-    print("⚠️ Warning: Could not find available audiobook in search results after \(maxAttempts) attempts")
+    print("❌ Could not find available audiobook after 3 attempts")
+    XCTFail("No available audiobook found in search results")
   }
   
   /// Tap Borrow button and wait for download
