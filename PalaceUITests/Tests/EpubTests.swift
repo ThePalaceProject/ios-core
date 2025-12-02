@@ -74,9 +74,9 @@ final class EpubTests: XCTestCase {
       let getButton = app.buttons["Get"]
       
       if borrowButton.exists || getButton.exists {
-        // Tap to borrow/get
-        if borrowButton.exists { borrowButton.tap() }
-        else if getButton.exists { getButton.tap() }
+        // Tap to borrow/get (use firstMatch to handle multiples)
+        if borrowButton.exists { borrowButton.firstMatch.tap() }
+        else if getButton.exists { getButton.firstMatch.tap() }
         
         // Wait for READ button (confirms it's an EPUB)
         let readButton = app.buttons[AccessibilityID.BookDetail.readButton]
