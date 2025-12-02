@@ -480,6 +480,35 @@ final class EpubTests: XCTestCase {
   }
   
   private func selectLibrary(_ name: String) {
+    print("📚 Selecting library: \(name)...")
+    
+    // Navigate to Settings
+    TestHelpers.navigateToTab("Settings")
+    Thread.sleep(forTimeInterval: 1.0)
+    
+    // Look for library/account button
+    let libraryButton = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'library' OR label CONTAINS[c] 'libraries'")).firstMatch
+    
+    if libraryButton.exists {
+      libraryButton.tap()
+      Thread.sleep(forTimeInterval: 1.0)
+      
+      // Look for the library in the list
+      let libraryCell = app.cells.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", name)).firstMatch
+      
+      if libraryCell.exists {
+        libraryCell.tap()
+        Thread.sleep(forTimeInterval: 2.0)
+        print("✅ Selected library: \(name)")
+      } else {
+        print("⚠️ Library '\(name)' not found in list, using current library")
+      }
+    } else {
+      print("ℹ️ No library selector found - using current library")
+    }
+    
+    // Return to Catalog
+    TestHelpers.navigateToTab("Catalog")
     Thread.sleep(forTimeInterval: 1.0)
   }
   
