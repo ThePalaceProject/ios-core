@@ -87,14 +87,17 @@ final class EpubTests: XCTestCase {
         let pinField = app.secureTextFields.firstMatch
         
         if (signInField.exists && signInField.placeholderValue?.contains("Barcode") == true) ||
-           (signInField.exists && pinField.exists) {
+           (signInField.exists && pinField.exists && signInField.identifier != "search.searchField") {
           print("🔐 Sign-in screen appeared, logging in...")
           
           let credentials = TestHelpers.TestCredentials.lyrasis
           
-          if signInField.exists {
-            signInField.tap()
-            signInField.typeText(credentials.barcode)
+          // Make sure we're not typing into search field!
+          let barcodeField = app.textFields.matching(NSPredicate(format: "identifier != 'search.searchField'")).firstMatch
+          
+          if barcodeField.exists {
+            barcodeField.tap()
+            barcodeField.typeText(credentials.barcode)
           }
           
           if pinField.waitForExistence(timeout: 2.0) {
