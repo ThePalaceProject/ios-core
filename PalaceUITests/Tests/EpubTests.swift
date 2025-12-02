@@ -25,7 +25,8 @@ final class EpubTests: XCTestCase {
   /// Open EPUB and verify reader displays
   func testOpenEpubBook() {
     skipOnboarding()
-    selectLibrary("Palace Bookshelf")
+    selectLibrary("Lyrasis Reads")
+    signInToLyrasis()  // ← Sign in before borrowing!
     
     TestHelpers.navigateToTab("Catalog")
     openSearch()
@@ -55,7 +56,8 @@ final class EpubTests: XCTestCase {
   /// Navigate pages in EPUB
   func testEpubPageNavigation() {
     skipOnboarding()
-    selectLibrary("Palace Bookshelf")
+    selectLibrary("Lyrasis Reads")
+    signInToLyrasis()  // ← Sign in before borrowing!
     
     TestHelpers.navigateToTab("Catalog")
     openSearch()
@@ -126,7 +128,8 @@ final class EpubTests: XCTestCase {
   /// Create bookmark in EPUB
   func testEpubBookmark() {
     skipOnboarding()
-    selectLibrary("Palace Bookshelf")
+    selectLibrary("Lyrasis Reads")
+    signInToLyrasis()  // ← Sign in before borrowing!
     
     TestHelpers.navigateToTab("Catalog")
     openSearch()
@@ -157,7 +160,8 @@ final class EpubTests: XCTestCase {
   /// Resume reading at last page
   func testEpubResumeReading() {
     skipOnboarding()
-    selectLibrary("Palace Bookshelf")
+    selectLibrary("Lyrasis Reads")
+    signInToLyrasis()  // ← Sign in before borrowing!
     
     TestHelpers.navigateToTab("Catalog")
     openSearch()
