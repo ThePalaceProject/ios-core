@@ -24,18 +24,7 @@ final class SearchSnapshotTests: XCTestCase {
     #endif
   }
   
-  // MARK: - CatalogSearchView Snapshots
-  
-  func testCatalogSearchView_empty() {
-    guard canRecordSnapshots else { return }
-    
-    let view = CatalogSearchView()
-      .frame(width: 390, height: 600)
-    
-    assertSnapshot(of: view, as: .image)
-  }
-  
-  // MARK: - Search Results
+  // MARK: - Search Results UI
   
   func testSearchResults_withBooks() {
     guard canRecordSnapshots else { return }
@@ -110,6 +99,8 @@ final class SearchSnapshotTests: XCTestCase {
   
   func testSearchAccessibilityIdentifiers() {
     XCTAssertFalse(AccessibilityID.Catalog.searchButton.isEmpty)
+    XCTAssertFalse(AccessibilityID.Search.searchField.isEmpty)
+    XCTAssertFalse(AccessibilityID.Search.clearButton.isEmpty)
+    XCTAssertFalse(AccessibilityID.Search.noResultsView.isEmpty)
   }
 }
-

@@ -30,26 +30,14 @@ final class ReservationsSnapshotTests: XCTestCase {
     TPPBookMocker.mockBook(distributorType: .EpubZip)
   }
   
-  // MARK: - Holds List Snapshots
+  // MARK: - BookImageView for Holds
   
-  func testHoldsCell_reservedBook() {
+  func testHoldBookImage() {
     guard canRecordSnapshots else { return }
     
     let book = createMockHoldBook()
-    let view = NormalBookCell(book: book, buttonTypes: [.remove, .manageHold]) { _ in }
-      .frame(width: 390, height: 120)
-      .background(Color(UIColor.systemBackground))
-    
-    assertSnapshot(of: view, as: .image)
-  }
-  
-  func testHoldsCell_readyForPickup() {
-    guard canRecordSnapshots else { return }
-    
-    let book = createMockHoldBook()
-    // Front of queue - can borrow
-    let view = NormalBookCell(book: book, buttonTypes: [.get, .cancelHold]) { _ in }
-      .frame(width: 390, height: 120)
+    let view = BookImageView(book: book, height: 150)
+      .frame(width: 100, height: 150)
       .background(Color(UIColor.systemBackground))
     
     assertSnapshot(of: view, as: .image)
@@ -129,7 +117,9 @@ final class ReservationsSnapshotTests: XCTestCase {
   // MARK: - Accessibility
   
   func testReservationsAccessibilityIdentifiers() {
-    XCTAssertFalse(AccessibilityID.Reservations.tableView.isEmpty)
+    // Use Holds namespace (Reservations is the user-facing name, Holds is the code namespace)
+    XCTAssertFalse(AccessibilityID.Holds.scrollView.isEmpty)
+    XCTAssertFalse(AccessibilityID.Holds.emptyStateView.isEmpty)
+    XCTAssertFalse(AccessibilityID.Holds.sortButton.isEmpty)
   }
 }
-

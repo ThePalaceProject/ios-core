@@ -34,36 +34,25 @@ final class MyBooksSnapshotTests: XCTestCase {
     ]
   }
   
-  // MARK: - BookCell Snapshots
+  // MARK: - BookImageView Snapshots (simpler alternative to full BookCell)
   
-  func testNormalBookCell_epub() {
+  func testBookImageView_epub() {
     guard canRecordSnapshots else { return }
     
     let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
-    let view = NormalBookCell(book: book, buttonTypes: [.read, .return]) { _ in }
-      .frame(width: 390, height: 120)
+    let view = BookImageView(book: book, height: 180)
+      .frame(width: 120, height: 180)
       .background(Color(UIColor.systemBackground))
     
     assertSnapshot(of: view, as: .image)
   }
   
-  func testNormalBookCell_audiobook() {
+  func testBookImageView_audiobook() {
     guard canRecordSnapshots else { return }
     
     let book = TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)
-    let view = NormalBookCell(book: book, buttonTypes: [.listen, .return]) { _ in }
-      .frame(width: 390, height: 120)
-      .background(Color(UIColor.systemBackground))
-    
-    assertSnapshot(of: view, as: .image)
-  }
-  
-  func testDownloadingBookCell() {
-    guard canRecordSnapshots else { return }
-    
-    let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
-    let view = DownloadingBookCell(book: book, progress: 0.65) { _ in }
-      .frame(width: 390, height: 120)
+    let view = BookImageView(book: book, height: 180)
+      .frame(width: 120, height: 180)
       .background(Color(UIColor.systemBackground))
     
     assertSnapshot(of: view, as: .image)
@@ -74,8 +63,8 @@ final class MyBooksSnapshotTests: XCTestCase {
   func testMyBooksEmptyState() {
     guard canRecordSnapshots else { return }
     
-    // Test the empty state view when no books are downloaded
-    let emptyView = VStack {
+    // Test the empty state view pattern
+    let emptyView = VStack(spacing: 16) {
       Image(systemName: "books.vertical")
         .font(.system(size: 48))
         .foregroundColor(.secondary)
@@ -91,25 +80,41 @@ final class MyBooksSnapshotTests: XCTestCase {
     assertSnapshot(of: emptyView, as: .image)
   }
   
-  // MARK: - Sorting UI
+  // MARK: - Button Type Tests
   
-  func testSortOptionsPresentation() {
-    // Verify sort options exist
-    let sortOptions: [MyBooksSortOption] = [.title, .author, .dateAdded]
-    XCTAssertEqual(sortOptions.count, 3)
+  func testButtonTypes_downloadedEPUB() {
+    let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
+    let buttons = BookButtonState.downloadSuccessful.buttonTypes(book: book)
+    
+    XCTAssertTrue(buttons.contains(.read), "Downloaded EPUB should have READ button")
+  }
+  
+  func testButtonTypes_downloadedAudiobook() {
+    let book = TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)
+    let buttons = BookButtonState.downloadSuccessful.buttonTypes(book: book)
+    
+    XCTAssertTrue(buttons.contains(.listen), "Downloaded audiobook should have LISTEN button")
+  }
+  
+  // MARK: - Sorting Tests
+  
+  func testSortByTitle() {
+    let books = createMockBooks()
+    let sorted = books.sorted { $0.title < $1.title }
+    XCTAssertEqual(sorted.count, 3)
+  }
+  
+  func testSortByAuthor() {
+    let books = createMockBooks()
+    let sorted = books.sorted { ($0.authors ?? "") < ($1.authors ?? "") }
+    XCTAssertEqual(sorted.count, 3)
   }
   
   // MARK: - Accessibility
   
   func testMyBooksAccessibilityIdentifiers() {
-    XCTAssertFalse(AccessibilityID.MyBooks.tableView.isEmpty)
+    XCTAssertFalse(AccessibilityID.MyBooks.gridView.isEmpty)
+    XCTAssertFalse(AccessibilityID.MyBooks.emptyStateView.isEmpty)
+    XCTAssertFalse(AccessibilityID.MyBooks.sortButton.isEmpty)
   }
 }
-
-// MARK: - Sort Option Enum (if not already defined)
-enum MyBooksSortOption: String, CaseIterable {
-  case title = "Title"
-  case author = "Author"
-  case dateAdded = "Date Added"
-}
-

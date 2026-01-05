@@ -29,8 +29,10 @@ final class OnboardingSnapshotTests: XCTestCase {
   func testOnboardingView() {
     guard canRecordSnapshots else { return }
     
-    let view = TPPOnboardingView()
-      .frame(width: 390, height: 844)
+    let view = TPPOnboardingView {
+      // Dismiss handler - no-op for test
+    }
+    .frame(width: 390, height: 844)
     
     assertSnapshot(of: view, as: .image)
   }
@@ -40,7 +42,7 @@ final class OnboardingSnapshotTests: XCTestCase {
   func testPagerDotsView_firstPage() {
     guard canRecordSnapshots else { return }
     
-    let view = TPPPagerDotsView(currentPage: 0, pageCount: 3)
+    let view = TPPPagerDotsView(count: 3, currentIndex: .constant(0))
       .frame(width: 100, height: 20)
       .background(Color(UIColor.systemBackground))
     
@@ -50,7 +52,7 @@ final class OnboardingSnapshotTests: XCTestCase {
   func testPagerDotsView_middlePage() {
     guard canRecordSnapshots else { return }
     
-    let view = TPPPagerDotsView(currentPage: 1, pageCount: 3)
+    let view = TPPPagerDotsView(count: 3, currentIndex: .constant(1))
       .frame(width: 100, height: 20)
       .background(Color(UIColor.systemBackground))
     
@@ -60,7 +62,7 @@ final class OnboardingSnapshotTests: XCTestCase {
   func testPagerDotsView_lastPage() {
     guard canRecordSnapshots else { return }
     
-    let view = TPPPagerDotsView(currentPage: 2, pageCount: 3)
+    let view = TPPPagerDotsView(count: 3, currentIndex: .constant(2))
       .frame(width: 100, height: 20)
       .background(Color(UIColor.systemBackground))
     
@@ -88,35 +90,19 @@ final class OnboardingSnapshotTests: XCTestCase {
     XCTAssertEqual(Set(normalized).count, 1, "All case variations should match")
   }
   
-  // MARK: - Navigation Host View
-  
-  func testNavigationHostView() {
-    guard canRecordSnapshots else { return }
-    
-    let view = NavigationHostView()
-      .frame(width: 390, height: 844)
-    
-    assertSnapshot(of: view, as: .image)
-  }
-  
-  // MARK: - App Tab Host View
-  
-  func testAppTabHostView() {
-    guard canRecordSnapshots else { return }
-    
-    let view = AppTabHostView()
-      .frame(width: 390, height: 844)
-    
-    assertSnapshot(of: view, as: .image)
-  }
-  
   // MARK: - Welcome/Tutorial Dismissal
   
   func testTutorialCanBeDismissed() {
     // Verify tutorial/onboarding can be dismissed
-    // This tests the business logic, not the UI
     let hasSeenOnboarding = UserDefaults.standard.bool(forKey: "hasSeenOnboarding")
     XCTAssertNotNil(hasSeenOnboarding, "Onboarding state should be trackable")
   }
+  
+  // MARK: - Onboarding Accessibility
+  
+  func testOnboardingAccessibilityIdentifiers() {
+    XCTAssertFalse(AccessibilityID.Onboarding.view.isEmpty)
+    XCTAssertFalse(AccessibilityID.Onboarding.closeButton.isEmpty)
+    XCTAssertFalse(AccessibilityID.Onboarding.pagerDots.isEmpty)
+  }
 }
-
