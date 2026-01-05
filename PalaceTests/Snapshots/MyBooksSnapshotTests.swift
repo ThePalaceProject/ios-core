@@ -123,23 +123,19 @@ final class MyBooksSnapshotTests: XCTestCase {
     assertSnapshot(of: view, as: .image)
   }
   
-  // MARK: - Empty State
+  // MARK: - Empty State (Real App View)
   
   func testMyBooksEmptyState() {
     guard canRecordSnapshots else { return }
     
-    let emptyView = VStack(spacing: 16) {
-      Image(systemName: "books.vertical")
-        .font(.system(size: 48))
-        .foregroundColor(.secondary)
-      Text("No books yet")
-        .font(.headline)
-      Text("Books you borrow will appear here")
-        .font(.subheadline)
-        .foregroundColor(.secondary)
-    }
-    .frame(width: 390, height: 300)
-    .background(Color(UIColor.systemBackground))
+    // Uses the REAL empty state message from Strings.MyBooksView
+    let emptyView = Text(Strings.MyBooksView.emptyViewMessage)
+      .multilineTextAlignment(.center)
+      .foregroundColor(.gray)
+      .palaceFont(.body)
+      .accessibilityIdentifier(AccessibilityID.MyBooks.emptyStateView)
+      .frame(width: 390, height: 300)
+      .background(Color(UIColor.systemBackground))
     
     assertSnapshot(of: emptyView, as: .image)
   }

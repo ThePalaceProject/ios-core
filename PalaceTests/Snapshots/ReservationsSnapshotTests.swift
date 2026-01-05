@@ -90,23 +90,21 @@ final class ReservationsSnapshotTests: XCTestCase {
     assertSnapshot(of: view, as: .image)
   }
   
-  // MARK: - Empty State
+  // MARK: - Empty State (Real App View)
   
   func testReservationsEmptyState() {
     guard canRecordSnapshots else { return }
     
-    let emptyView = VStack(spacing: 16) {
-      Image(systemName: "clock")
-        .font(.system(size: 48))
-        .foregroundColor(.secondary)
-      Text("No reservations")
-        .font(.headline)
-      Text("Reserved books will appear here")
-        .font(.subheadline)
-        .foregroundColor(.secondary)
-    }
-    .frame(width: 390, height: 300)
-    .background(Color(UIColor.systemBackground))
+    // Uses the REAL empty state message from Strings.HoldsView
+    let emptyView = Text(Strings.HoldsView.emptyMessage)
+      .multilineTextAlignment(.center)
+      .foregroundColor(Color(white: 0.667))
+      .font(.system(size: 18))
+      .padding(.horizontal, 24)
+      .padding(.top, 100)
+      .accessibilityIdentifier(AccessibilityID.Holds.emptyStateView)
+      .frame(width: 390, height: 400)
+      .background(Color(TPPConfiguration.backgroundColor()))
     
     assertSnapshot(of: emptyView, as: .image)
   }
