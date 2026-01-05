@@ -10,11 +10,21 @@
 
 import XCTest
 import SwiftUI
+import SnapshotTesting
 @testable import Palace
 
 /// Tests for Catalog views to ensure visual and data consistency.
 @MainActor
 final class CatalogSnapshotTests: XCTestCase {
+  
+  // Set to true to record new snapshots, false to compare
+  private let recordMode = false
+  
+  override func setUp() {
+    super.setUp()
+    // Configure snapshot testing
+    // isRecording = recordMode  // Uncomment to enable recording mode
+  }
   
   // MARK: - Helper Methods
   
@@ -260,5 +270,50 @@ final class CatalogSnapshotTests: XCTestCase {
     XCTAssertTrue(mapped.ungroupedBooks.isEmpty)
     XCTAssertTrue(mapped.facetGroups.isEmpty)
     XCTAssertTrue(mapped.entryPoints.isEmpty)
+  }
+  
+  // MARK: - Visual Snapshot Tests
+  
+  func testCatalogLaneModel_snapshot() {
+    let lane = createMockLane(title: "Featured Books", bookCount: 5)
+    
+    // Snapshot the model state as a string dump
+    assertSnapshot(of: lane, as: .dump)
+  }
+  
+  func testCatalogFilters_snapshot() {
+    let filters = createMockFilters()
+    
+    // Snapshot the filter configuration
+    assertSnapshot(of: filters, as: .dump)
+  }
+  
+  func testCatalogFilterGroup_snapshot() {
+    let filters = createMockFilters()
+    let group = CatalogFilterGroup(
+      id: "availability",
+      name: "Availability",
+      filters: filters
+    )
+    
+    assertSnapshot(of: group, as: .dump)
+  }
+  
+  func testMappedCatalog_withContent_snapshot() {
+    let lane1 = createMockLane(title: "New Releases", bookCount: 3)
+    let lane2 = createMockLane(title: "Popular", bookCount: 5)
+    let filters = createMockFilters()
+    let filterGroup = CatalogFilterGroup(id: "format", name: "Format", filters: filters)
+    
+    let mapped = CatalogViewModel.MappedCatalog(
+      title: "Library Catalog",
+      entries: [],
+      lanes: [lane1, lane2],
+      ungroupedBooks: [],
+      facetGroups: [filterGroup],
+      entryPoints: filters
+    )
+    
+    assertSnapshot(of: mapped, as: .dump)
   }
 }

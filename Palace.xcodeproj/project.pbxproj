@@ -696,6 +696,7 @@
 		E58EAE212ECCC53200CDA626 /* InlineSnapshotTesting in Frameworks */ = {isa = PBXBuildFile; productRef = E58EAE202ECCC53200CDA626 /* InlineSnapshotTesting */; };
 		E58EAE232ECCC53200CDA626 /* SnapshotTesting in Frameworks */ = {isa = PBXBuildFile; productRef = E58EAE222ECCC53200CDA626 /* SnapshotTesting */; };
 		E58EAE252ECCC53200CDA626 /* SnapshotTestingCustomDump in Frameworks */ = {isa = PBXBuildFile; productRef = E58EAE242ECCC53200CDA626 /* SnapshotTestingCustomDump */; };
+		AAAA00032ECCC53200CDA626 /* SnapshotTesting in Frameworks */ = {isa = PBXBuildFile; productRef = AAAA00012ECCC53200CDA626 /* SnapshotTesting */; };
 		E58EAE282ECCC5BB00CDA626 /* Cucumberish in Frameworks */ = {isa = PBXBuildFile; productRef = E58EAE272ECCC5BB00CDA626 /* Cucumberish */; };
 		E58EAE852ECCCCED00CDA626 /* AccessibilityIdentifiers.swift in Sources */ = {isa = PBXBuildFile; fileRef = E58EAE832ECCCCED00CDA626 /* AccessibilityIdentifiers.swift */; };
 		E58EAE862ECCCCED00CDA626 /* AccessibilityIdentifiers.swift in Sources */ = {isa = PBXBuildFile; fileRef = E58EAE832ECCCCED00CDA626 /* AccessibilityIdentifiers.swift */; };
@@ -1853,6 +1854,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				73F36BD825CC76C60057954C /* XCTest.framework in Frameworks */,
+				AAAA00032ECCC53200CDA626 /* SnapshotTesting in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -3734,6 +3736,9 @@
 				2D2B47781D08F808007F7764 /* PBXTargetDependency */,
 			);
 			name = PalaceTests;
+			packageProductDependencies = (
+				AAAA00012ECCC53200CDA626 /* SnapshotTesting */,
+			);
 			productName = SimplyETests;
 			productReference = 2D2B47721D08F807007F7764 /* PalaceTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
@@ -5967,6 +5972,11 @@
 			productName = InlineSnapshotTesting;
 		};
 		E58EAE222ECCC53200CDA626 /* SnapshotTesting */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E58EAE1F2ECCC53200CDA626 /* XCRemoteSwiftPackageReference "swift-snapshot-testing" */;
+			productName = SnapshotTesting;
+		};
+		AAAA00012ECCC53200CDA626 /* SnapshotTesting */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = E58EAE1F2ECCC53200CDA626 /* XCRemoteSwiftPackageReference "swift-snapshot-testing" */;
 			productName = SnapshotTesting;

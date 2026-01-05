@@ -10,11 +10,21 @@
 
 import XCTest
 import SwiftUI
+import SnapshotTesting
 @testable import Palace
 
 /// Tests for BookDetailView to ensure visual and data consistency.
 @MainActor
 final class BookDetailSnapshotTests: XCTestCase {
+  
+  // Set to true to record new snapshots, false to compare
+  private let recordMode = false
+  
+  override func setUp() {
+    super.setUp()
+    // Configure snapshot testing
+    // isRecording = recordMode  // Uncomment to enable recording mode
+  }
   
   // MARK: - Helper Methods
   
@@ -312,5 +322,47 @@ final class BookDetailSnapshotTests: XCTestCase {
     ]
     
     XCTAssertEqual(allStates.count, 12)
+  }
+  
+  // MARK: - Visual Snapshot Tests
+  
+  func testEPUBBook_snapshot() {
+    let book = createMockEPUBBook()
+    
+    // Snapshot the book model state
+    assertSnapshot(of: book, as: .dump)
+  }
+  
+  func testAudiobook_snapshot() {
+    let book = createMockAudiobook()
+    
+    assertSnapshot(of: book, as: .dump)
+  }
+  
+  func testPDFBook_snapshot() {
+    let book = createMockPDFBook()
+    
+    assertSnapshot(of: book, as: .dump)
+  }
+  
+  func testBookButtonState_canBorrow_snapshot() {
+    let book = createMockEPUBBook()
+    let buttonTypes = BookButtonState.canBorrow.buttonTypes(book: book)
+    
+    assertSnapshot(of: buttonTypes, as: .dump)
+  }
+  
+  func testBookButtonState_downloadSuccessful_snapshot() {
+    let book = createMockEPUBBook()
+    let buttonTypes = BookButtonState.downloadSuccessful.buttonTypes(book: book)
+    
+    assertSnapshot(of: buttonTypes, as: .dump)
+  }
+  
+  func testBookButtonState_audiobook_snapshot() {
+    let book = createMockAudiobook()
+    let buttonTypes = BookButtonState.downloadSuccessful.buttonTypes(book: book)
+    
+    assertSnapshot(of: buttonTypes, as: .dump)
   }
 }

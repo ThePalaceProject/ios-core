@@ -93,14 +93,6 @@
                BlueprintName = "PalaceTests"
                ReferencedContainer = "container:Palace.xcodeproj">
             </BuildableReference>
-            <SkippedTests>
-               <Test
-                  Identifier = "AudiobookBookmarkBusinessLogicTests">
-               </Test>
-               <Test
-                  Identifier = "AudiobookTimeTrackerTests">
-               </Test>
-            </SkippedTests>
          </TestableReference>
          <TestableReference
             skipped = "NO"
