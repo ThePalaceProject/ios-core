@@ -503,6 +503,7 @@
 		A823D823192BABA400B55DE2 /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A823D822192BABA400B55DE2 /* Images.xcassets */; };
 		A92FB0F921CDCE3D004740F4 /* TPPReturnPromptHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A92FB0F821CDCE3D004740F4 /* TPPReturnPromptHelper.swift */; };
 		A93F9F9721CDACF700BD3B0C /* TPPAppReviewPrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = A93F9F9621CDACF700BD3B0C /* TPPAppReviewPrompt.swift */; };
+		AAAA00032ECCC53200CDA626 /* SnapshotTesting in Frameworks */ = {isa = PBXBuildFile; productRef = AAAA00012ECCC53200CDA626 /* SnapshotTesting */; };
 		AAB502EE6AB7156C9D7D5C19 /* NetworkRetryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F31B83CAB15F0245AEEE83C /* NetworkRetryTests.swift */; };
 		AE77E7E37D89FB3EED630624 /* TPPOPDSType.m in Sources */ = {isa = PBXBuildFile; fileRef = AE77EFD5622206475B6715A9 /* TPPOPDSType.m */; };
 		AE77E9B832371587493FF281 /* TPPOPDSEntry.m in Sources */ = {isa = PBXBuildFile; fileRef = AE77E4AF64208439F78B3D73 /* TPPOPDSEntry.m */; };
@@ -696,7 +697,6 @@
 		E58EAE212ECCC53200CDA626 /* InlineSnapshotTesting in Frameworks */ = {isa = PBXBuildFile; productRef = E58EAE202ECCC53200CDA626 /* InlineSnapshotTesting */; };
 		E58EAE232ECCC53200CDA626 /* SnapshotTesting in Frameworks */ = {isa = PBXBuildFile; productRef = E58EAE222ECCC53200CDA626 /* SnapshotTesting */; };
 		E58EAE252ECCC53200CDA626 /* SnapshotTestingCustomDump in Frameworks */ = {isa = PBXBuildFile; productRef = E58EAE242ECCC53200CDA626 /* SnapshotTestingCustomDump */; };
-		AAAA00032ECCC53200CDA626 /* SnapshotTesting in Frameworks */ = {isa = PBXBuildFile; productRef = AAAA00012ECCC53200CDA626 /* SnapshotTesting */; };
 		E58EAE282ECCC5BB00CDA626 /* Cucumberish in Frameworks */ = {isa = PBXBuildFile; productRef = E58EAE272ECCC5BB00CDA626 /* Cucumberish */; };
 		E58EAE852ECCCCED00CDA626 /* AccessibilityIdentifiers.swift in Sources */ = {isa = PBXBuildFile; fileRef = E58EAE832ECCCCED00CDA626 /* AccessibilityIdentifiers.swift */; };
 		E58EAE862ECCCCED00CDA626 /* AccessibilityIdentifiers.swift in Sources */ = {isa = PBXBuildFile; fileRef = E58EAE832ECCCCED00CDA626 /* AccessibilityIdentifiers.swift */; };
@@ -839,6 +839,11 @@
 		E5EFDE7C298C4F8000258CA3 /* BookCellModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5EFDE7B298C4F8000258CA3 /* BookCellModel.swift */; };
 		E5EFDE7D298C510500258CA3 /* BookCellModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5EFDE7B298C4F8000258CA3 /* BookCellModel.swift */; };
 		E5F2E9B72CEE8550007EA6C9 /* PureLayout in Frameworks */ = {isa = PBXBuildFile; productRef = E5F2E9B62CEE8550007EA6C9 /* PureLayout */; };
+		E5F44E642F0C637D00184B0C /* SettingsSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5F44E632F0C637D00184B0C /* SettingsSnapshotTests.swift */; };
+		E5F44E652F0C637D00184B0C /* OnboardingSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5F44E602F0C637D00184B0C /* OnboardingSnapshotTests.swift */; };
+		E5F44E662F0C637D00184B0C /* ReservationsSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5F44E612F0C637D00184B0C /* ReservationsSnapshotTests.swift */; };
+		E5F44E672F0C637D00184B0C /* SearchSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5F44E622F0C637D00184B0C /* SearchSnapshotTests.swift */; };
+		E5F44E682F0C637D00184B0C /* MyBooksSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5F44E5F2F0C637D00184B0C /* MyBooksSnapshotTests.swift */; };
 		E5F4A2E12E6F65A5009B32AA /* KeyboardModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5F4A2E02E6F65A5009B32AA /* KeyboardModifier.swift */; };
 		E5F4A2E22E6F65A5009B32AA /* KeyboardModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5F4A2E02E6F65A5009B32AA /* KeyboardModifier.swift */; };
 		E5F4A3182E6FE6C7009B32AA /* CatalogContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5F4A3172E6FE6C7009B32AA /* CatalogContentView.swift */; };
@@ -1738,6 +1743,11 @@
 		E5EE380D2D5DB19D00252001 /* Color+Extension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Color+Extension.swift"; sourceTree = "<group>"; };
 		E5EFDE77298C43D300258CA3 /* BookButtonState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookButtonState.swift; sourceTree = "<group>"; };
 		E5EFDE7B298C4F8000258CA3 /* BookCellModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookCellModel.swift; sourceTree = "<group>"; };
+		E5F44E5F2F0C637D00184B0C /* MyBooksSnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyBooksSnapshotTests.swift; sourceTree = "<group>"; };
+		E5F44E602F0C637D00184B0C /* OnboardingSnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingSnapshotTests.swift; sourceTree = "<group>"; };
+		E5F44E612F0C637D00184B0C /* ReservationsSnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReservationsSnapshotTests.swift; sourceTree = "<group>"; };
+		E5F44E622F0C637D00184B0C /* SearchSnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchSnapshotTests.swift; sourceTree = "<group>"; };
+		E5F44E632F0C637D00184B0C /* SettingsSnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsSnapshotTests.swift; sourceTree = "<group>"; };
 		E5F4A2E02E6F65A5009B32AA /* KeyboardModifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardModifier.swift; sourceTree = "<group>"; };
 		E5F4A3172E6FE6C7009B32AA /* CatalogContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogContentView.swift; sourceTree = "<group>"; };
 		E5F8A57C28A48B8300A229AE /* BookPreviewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookPreviewTests.swift; sourceTree = "<group>"; };
@@ -3219,6 +3229,11 @@
 		C14BBADBC3C41A234E486466 /* Snapshots */ = {
 			isa = PBXGroup;
 			children = (
+				E5F44E5F2F0C637D00184B0C /* MyBooksSnapshotTests.swift */,
+				E5F44E602F0C637D00184B0C /* OnboardingSnapshotTests.swift */,
+				E5F44E612F0C637D00184B0C /* ReservationsSnapshotTests.swift */,
+				E5F44E622F0C637D00184B0C /* SearchSnapshotTests.swift */,
+				E5F44E632F0C637D00184B0C /* SettingsSnapshotTests.swift */,
 				9DDB7EFFCB479426AC9DB8B8 /* BookDetailSnapshotTests.swift */,
 				E14AD4ABD07DEBF7ED255792 /* CatalogSnapshotTests.swift */,
 			);
@@ -4252,6 +4267,11 @@
 				F8027019D604EEB6191B37E1 /* LCPPDFsTests.swift in Sources */,
 				FA346754BE76A48C92CF0754 /* OPDS2FeedParsingTests.swift in Sources */,
 				E33196F7DAE1612BD57E3CC9 /* OPDS2AuthenticationDocumentTests.swift in Sources */,
+				E5F44E642F0C637D00184B0C /* SettingsSnapshotTests.swift in Sources */,
+				E5F44E652F0C637D00184B0C /* OnboardingSnapshotTests.swift in Sources */,
+				E5F44E662F0C637D00184B0C /* ReservationsSnapshotTests.swift in Sources */,
+				E5F44E672F0C637D00184B0C /* SearchSnapshotTests.swift in Sources */,
+				E5F44E682F0C637D00184B0C /* MyBooksSnapshotTests.swift in Sources */,
 				8F33160CFC0FC38329D8A903 /* OPDSFeedServiceTests.swift in Sources */,
 				AAB502EE6AB7156C9D7D5C19 /* NetworkRetryTests.swift in Sources */,
 				08C091914901968B5F392918 /* BookmarkBusinessLogicTests.swift in Sources */,
@@ -5961,6 +5981,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		AAAA00012ECCC53200CDA626 /* SnapshotTesting */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E58EAE1F2ECCC53200CDA626 /* XCRemoteSwiftPackageReference "swift-snapshot-testing" */;
+			productName = SnapshotTesting;
+		};
 		E50BC9DC2CBF6FE900660937 /* PureLayout */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = E50BC9DB2CBF6FE900660937 /* XCRemoteSwiftPackageReference "PureLayout" */;
@@ -5972,11 +5997,6 @@
 			productName = InlineSnapshotTesting;
 		};
 		E58EAE222ECCC53200CDA626 /* SnapshotTesting */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E58EAE1F2ECCC53200CDA626 /* XCRemoteSwiftPackageReference "swift-snapshot-testing" */;
-			productName = SnapshotTesting;
-		};
-		AAAA00012ECCC53200CDA626 /* SnapshotTesting */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = E58EAE1F2ECCC53200CDA626 /* XCRemoteSwiftPackageReference "swift-snapshot-testing" */;
 			productName = SnapshotTesting;
