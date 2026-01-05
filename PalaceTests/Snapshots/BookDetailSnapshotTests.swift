@@ -292,21 +292,26 @@ private extension BookButtonType {
     case .listen: return "Listen"
     case .reserve: return "Reserve"
     case .cancel: return "Cancel"
+    case .close: return "Close"
     case .return: return "Return"
     case .remove: return "Remove"
     case .retry: return "Retry"
     case .sample: return "Sample"
     case .audiobookSample: return "Sample"
+    case .cancelHold: return "Cancel Hold"
+    case .manageHold: return "Manage Hold"
+    case .returning: return "Returning..."
     }
   }
   
   var tintColor: Color {
     switch self {
     case .read, .listen, .get, .download: return .blue
-    case .cancel, .return, .remove: return .red
-    case .reserve: return .orange
+    case .cancel, .close, .return, .remove, .cancelHold: return .red
+    case .reserve, .manageHold: return .orange
     case .retry: return .blue
     case .sample, .audiobookSample: return .secondary
+    case .returning: return .gray
     }
   }
 }
