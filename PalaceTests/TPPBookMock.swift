@@ -32,6 +32,8 @@ enum DistributorType: String {
 }
 
 struct TPPBookMocker {
+  
+  /// Creates a mock book with RANDOM data - suitable for unit tests
   static func mockBook(distributorType: DistributorType) -> TPPBook {
     let configType = distributorType.rawValue
     
@@ -76,5 +78,131 @@ struct TPPBookMocker {
     )
     
     return fakeBook
+  }
+  
+  // MARK: - Deterministic Books for Snapshot Testing
+  
+  /// Fixed reference date for consistent snapshots
+  private static let snapshotDate = Date(timeIntervalSince1970: 1704067200) // Jan 1, 2024
+  private static let snapshotURL = URL(string: "https://example.com/snapshot")!
+  
+  /// Creates a mock EPUB book with FIXED data - suitable for snapshot tests
+  static func snapshotEPUB() -> TPPBook {
+    createSnapshotBook(
+      identifier: "snapshot-epub-001",
+      title: "The Great Gatsby",
+      author: "F. Scott Fitzgerald",
+      distributorType: .EpubZip
+    )
+  }
+  
+  /// Creates a mock Audiobook with FIXED data - suitable for snapshot tests
+  static func snapshotAudiobook() -> TPPBook {
+    createSnapshotBook(
+      identifier: "snapshot-audiobook-001",
+      title: "Pride and Prejudice",
+      author: "Jane Austen",
+      distributorType: .OpenAccessAudiobook,
+      duration: 43200 // 12 hours
+    )
+  }
+  
+  /// Creates a mock PDF book with FIXED data - suitable for snapshot tests
+  static func snapshotPDF() -> TPPBook {
+    createSnapshotBook(
+      identifier: "snapshot-pdf-001",
+      title: "1984",
+      author: "George Orwell",
+      distributorType: .OpenAccessPDF
+    )
+  }
+  
+  /// Creates a mock book on hold with FIXED data - suitable for snapshot tests
+  static func snapshotHoldBook() -> TPPBook {
+    let acquisition = TPPOPDSAcquisition(
+      relation: .generic,
+      type: DistributorType.EpubZip.rawValue,
+      hrefURL: snapshotURL,
+      indirectAcquisitions: [],
+      availability: TPPOPDSAcquisitionAvailabilityReserved(
+        copiesTotal: 5,
+        copiesAvailable: 0,
+        holdPosition: 3,
+        until: snapshotDate.addingTimeInterval(86400 * 14)
+      )
+    )
+    
+    return TPPBook(
+      acquisitions: [acquisition],
+      authors: [TPPBookAuthor(authorName: "Harper Lee", relatedBooksURL: nil)],
+      categoryStrings: ["Fiction", "Classic"],
+      distributor: "Library",
+      identifier: "snapshot-hold-001",
+      imageURL: snapshotURL,
+      imageThumbnailURL: snapshotURL,
+      published: snapshotDate,
+      publisher: "HarperCollins",
+      subtitle: "A Novel",
+      summary: "A classic novel about justice and racial inequality.",
+      title: "To Kill a Mockingbird",
+      updated: snapshotDate,
+      annotationsURL: nil,
+      analyticsURL: nil,
+      alternateURL: nil,
+      relatedWorksURL: nil,
+      previewLink: nil,
+      seriesURL: nil,
+      revokeURL: snapshotURL,
+      reportURL: nil,
+      timeTrackingURL: nil,
+      contributors: [:],
+      bookDuration: nil,
+      imageCache: MockImageCache()
+    )
+  }
+  
+  /// Creates a snapshot book with customizable properties
+  private static func createSnapshotBook(
+    identifier: String,
+    title: String,
+    author: String,
+    distributorType: DistributorType,
+    duration: Double? = nil
+  ) -> TPPBook {
+    let acquisition = TPPOPDSAcquisition(
+      relation: .generic,
+      type: distributorType.rawValue,
+      hrefURL: snapshotURL,
+      indirectAcquisitions: [],
+      availability: TPPOPDSAcquisitionAvailabilityUnlimited()
+    )
+    
+    return TPPBook(
+      acquisitions: [acquisition],
+      authors: [TPPBookAuthor(authorName: author, relatedBooksURL: nil)],
+      categoryStrings: ["Fiction"],
+      distributor: "Open Library",
+      identifier: identifier,
+      imageURL: snapshotURL,
+      imageThumbnailURL: snapshotURL,
+      published: snapshotDate,
+      publisher: "Penguin Classics",
+      subtitle: nil,
+      summary: "A timeless classic.",
+      title: title,
+      updated: snapshotDate,
+      annotationsURL: nil,
+      analyticsURL: nil,
+      alternateURL: nil,
+      relatedWorksURL: nil,
+      previewLink: nil,
+      seriesURL: nil,
+      revokeURL: snapshotURL,
+      reportURL: nil,
+      timeTrackingURL: nil,
+      contributors: [:],
+      bookDuration: duration,
+      imageCache: MockImageCache()
+    )
   }
 }

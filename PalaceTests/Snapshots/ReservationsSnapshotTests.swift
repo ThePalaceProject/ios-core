@@ -35,17 +35,18 @@ final class ReservationsSnapshotTests: XCTestCase {
     mockImageCache = MockImageCache()
   }
   
-  // MARK: - Helper Methods
+  // MARK: - Helper Methods (Deterministic for Snapshots)
   
-  private func createMockBook() -> TPPBook {
-    TPPBookMocker.mockBook(distributorType: .EpubZip)
+  /// Deterministic book on hold for consistent snapshots
+  private func snapshotHoldBook() -> TPPBook {
+    TPPBookMocker.snapshotHoldBook() // "To Kill a Mockingbird" by Harper Lee
   }
   
   private func createBookCellModel(book: TPPBook, state: TPPBookState) -> BookCellModel {
     // Add book to registry with desired state
     mockRegistry.addBook(book, state: state)
     
-    // Set a test cover image
+    // Set a deterministic test cover image
     let testImage = UIImage(systemName: "book.closed.fill")!
     mockRegistry.setMockImage(testImage, for: book.identifier)
     mockImageCache.set(testImage, for: book.identifier)
@@ -58,12 +59,12 @@ final class ReservationsSnapshotTests: XCTestCase {
     )
   }
   
-  // MARK: - NormalBookCell Visual Tests
+  // MARK: - NormalBookCell Visual Tests (Deterministic Data)
   
   func testNormalBookCell_holding() {
     guard canRecordSnapshots else { return }
     
-    let book = createMockBook()
+    let book = snapshotHoldBook() // "To Kill a Mockingbird" by Harper Lee
     let model = createBookCellModel(book: book, state: .holding)
     
     let view = NormalBookCell(model: model)
@@ -76,7 +77,7 @@ final class ReservationsSnapshotTests: XCTestCase {
   func testNormalBookCell_downloadSuccessful() {
     guard canRecordSnapshots else { return }
     
-    let book = createMockBook()
+    let book = TPPBookMocker.snapshotEPUB() // "The Great Gatsby" by F. Scott Fitzgerald
     let model = createBookCellModel(book: book, state: .downloadSuccessful)
     
     let view = NormalBookCell(model: model)
@@ -110,14 +111,14 @@ final class ReservationsSnapshotTests: XCTestCase {
   // MARK: - Button State Tests (Business Logic)
   
   func testReserveButton_showsForUnavailableBook() {
-    let book = createMockBook()
+    let book = snapshotHoldBook()
     let buttons = BookButtonState.canHold.buttonTypes(book: book)
     
     XCTAssertTrue(buttons.contains(.reserve), "Unavailable book should show RESERVE button")
   }
   
   func testRemoveButton_showsAfterReservation() {
-    let book = createMockBook()
+    let book = snapshotHoldBook()
     let buttons = BookButtonState.holding.buttonTypes(book: book)
     
     XCTAssertTrue(buttons.contains(.manageHold) || buttons.contains(.cancelHold),
@@ -125,7 +126,7 @@ final class ReservationsSnapshotTests: XCTestCase {
   }
   
   func testHoldingFrontOfQueue_buttonBehavior() {
-    let book = createMockBook()
+    let book = snapshotHoldBook()
     let buttons = BookButtonState.holdingFrontOfQueue.buttonTypes(book: book)
     
     XCTAssertFalse(buttons.isEmpty, "Should have at least one button")
@@ -133,18 +134,30 @@ final class ReservationsSnapshotTests: XCTestCase {
                   "Should show manageHold or get depending on availability")
   }
   
-  // MARK: - Sorting Tests
+  // MARK: - Sorting Tests (Deterministic)
   
   func testHoldsSorting_byTitle() {
-    let books = [createMockBook(), createMockBook(), createMockBook()]
+    let books = [
+      TPPBookMocker.snapshotEPUB(),      // "The Great Gatsby"
+      TPPBookMocker.snapshotAudiobook(), // "Pride and Prejudice"
+      TPPBookMocker.snapshotPDF()        // "1984"
+    ]
     let sorted = books.sorted { $0.title < $1.title }
     XCTAssertEqual(sorted.count, 3)
+    XCTAssertEqual(sorted[0].title, "1984")
+    XCTAssertEqual(sorted[1].title, "Pride and Prejudice")
+    XCTAssertEqual(sorted[2].title, "The Great Gatsby")
   }
   
   func testHoldsSorting_byAuthor() {
-    let books = [createMockBook(), createMockBook()]
+    let books = [
+      TPPBookMocker.snapshotEPUB(),      // F. Scott Fitzgerald
+      TPPBookMocker.snapshotAudiobook()  // Jane Austen
+    ]
     let sorted = books.sorted { ($0.authors ?? "") < ($1.authors ?? "") }
     XCTAssertEqual(sorted.count, 2)
+    XCTAssertEqual(sorted[0].authors, "F. Scott Fitzgerald")
+    XCTAssertEqual(sorted[1].authors, "Jane Austen")
   }
   
   // MARK: - Accessibility

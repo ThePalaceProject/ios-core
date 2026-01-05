@@ -35,21 +35,23 @@ final class MyBooksSnapshotTests: XCTestCase {
     mockImageCache = MockImageCache()
   }
   
-  // MARK: - Helper Methods
+  // MARK: - Helper Methods (Deterministic for Snapshots)
   
-  private func createMockEPUB() -> TPPBook {
-    TPPBookMocker.mockBook(distributorType: .EpubZip)
+  /// Deterministic EPUB for consistent snapshots
+  private func snapshotEPUB() -> TPPBook {
+    TPPBookMocker.snapshotEPUB()
   }
   
-  private func createMockAudiobook() -> TPPBook {
-    TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)
+  /// Deterministic Audiobook for consistent snapshots
+  private func snapshotAudiobook() -> TPPBook {
+    TPPBookMocker.snapshotAudiobook()
   }
   
   private func createBookCellModel(book: TPPBook, state: TPPBookState) -> BookCellModel {
     // Add book to registry with desired state
     mockRegistry.addBook(book, state: state)
     
-    // Set a test cover image
+    // Set a deterministic test cover image
     let testImage = UIImage(systemName: "book.closed.fill")!
     mockRegistry.setMockImage(testImage, for: book.identifier)
     mockImageCache.set(testImage, for: book.identifier)
@@ -62,12 +64,12 @@ final class MyBooksSnapshotTests: XCTestCase {
     )
   }
   
-  // MARK: - NormalBookCell Snapshots
+  // MARK: - NormalBookCell Snapshots (Deterministic Data)
   
   func testNormalBookCell_downloadedEPUB() {
     guard canRecordSnapshots else { return }
     
-    let book = createMockEPUB()
+    let book = snapshotEPUB() // "The Great Gatsby" by F. Scott Fitzgerald
     let model = createBookCellModel(book: book, state: .downloadSuccessful)
     
     let view = NormalBookCell(model: model)
@@ -80,7 +82,7 @@ final class MyBooksSnapshotTests: XCTestCase {
   func testNormalBookCell_downloadedAudiobook() {
     guard canRecordSnapshots else { return }
     
-    let book = createMockAudiobook()
+    let book = snapshotAudiobook() // "Pride and Prejudice" by Jane Austen
     let model = createBookCellModel(book: book, state: .downloadSuccessful)
     
     let view = NormalBookCell(model: model)
@@ -93,7 +95,7 @@ final class MyBooksSnapshotTests: XCTestCase {
   func testNormalBookCell_downloadNeeded() {
     guard canRecordSnapshots else { return }
     
-    let book = createMockEPUB()
+    let book = snapshotEPUB() // "The Great Gatsby" by F. Scott Fitzgerald
     let model = createBookCellModel(book: book, state: .downloadNeeded)
     
     let view = NormalBookCell(model: model)
@@ -108,7 +110,7 @@ final class MyBooksSnapshotTests: XCTestCase {
   func testDownloadingBookCell() {
     guard canRecordSnapshots else { return }
     
-    let book = createMockEPUB()
+    let book = snapshotEPUB() // "The Great Gatsby" by F. Scott Fitzgerald
     let model = createBookCellModel(book: book, state: .downloading)
     
     let view = DownloadingBookCell(model: model)
@@ -142,14 +144,14 @@ final class MyBooksSnapshotTests: XCTestCase {
   // MARK: - Button Type Tests
   
   func testButtonTypes_downloadedEPUB() {
-    let book = createMockEPUB()
+    let book = snapshotEPUB()
     let buttons = BookButtonState.downloadSuccessful.buttonTypes(book: book)
     
     XCTAssertTrue(buttons.contains(.read), "Downloaded EPUB should have READ button")
   }
   
   func testButtonTypes_downloadedAudiobook() {
-    let book = createMockAudiobook()
+    let book = snapshotAudiobook()
     let buttons = BookButtonState.downloadSuccessful.buttonTypes(book: book)
     
     XCTAssertTrue(buttons.contains(.listen), "Downloaded audiobook should have LISTEN button")
@@ -158,15 +160,19 @@ final class MyBooksSnapshotTests: XCTestCase {
   // MARK: - Sorting Tests
   
   func testSortByTitle() {
-    let books = [createMockEPUB(), createMockAudiobook(), createMockEPUB()]
+    let books = [snapshotEPUB(), snapshotAudiobook(), TPPBookMocker.snapshotPDF()]
     let sorted = books.sorted { $0.title < $1.title }
     XCTAssertEqual(sorted.count, 3)
+    // Deterministic order: "1984", "Pride and Prejudice", "The Great Gatsby"
+    XCTAssertEqual(sorted[0].title, "1984")
   }
   
   func testSortByAuthor() {
-    let books = [createMockEPUB(), createMockAudiobook()]
+    let books = [snapshotEPUB(), snapshotAudiobook()]
     let sorted = books.sorted { ($0.authors ?? "") < ($1.authors ?? "") }
     XCTAssertEqual(sorted.count, 2)
+    // Deterministic order: "F. Scott Fitzgerald", "Jane Austen"
+    XCTAssertEqual(sorted[0].authors, "F. Scott Fitzgerald")
   }
   
   // MARK: - Accessibility
