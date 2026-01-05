@@ -7,6 +7,8 @@ import XCTest
 /// - Provides common setup and teardown
 /// - Manages app lifecycle and state
 /// - Handles screenshots and error reporting
+/// - Automatically handles system alerts (notifications, tracking, etc.)
+/// - Handles first-launch flow (onboarding, library selection)
 ///
 /// **EXAMPLE:**
 /// ```swift
@@ -23,6 +25,9 @@ class BaseTestCase: XCTestCase {
   /// The main application instance
   var app: XCUIApplication!
   
+  /// System alert handler for automatic dismissal of permission dialogs
+  private var alertHandler: SystemAlertHandler!
+  
   // MARK: - Setup & Teardown
   
   override func setUpWithError() throws {
@@ -30,6 +35,10 @@ class BaseTestCase: XCTestCase {
     
     // Stop immediately when a failure occurs
     continueAfterFailure = false
+    
+    // Setup system alert handlers BEFORE launching app
+    // This automatically handles notification permissions, tracking dialogs, etc.
+    alertHandler = setupSystemAlertHandling()
     
     // Initialize app
     app = XCUIApplication()
@@ -41,7 +50,9 @@ class BaseTestCase: XCTestCase {
     // Launch app
     app.launch()
     
-    // Wait for app to be ready
+    print("🚀 App launched, waiting for UI...")
+    
+    // Wait for app to be ready (handles first-launch flow)
     waitForAppToBeReady()
   }
   
@@ -50,6 +61,9 @@ class BaseTestCase: XCTestCase {
     if let testRun = testRun, testRun.hasSucceeded == false {
       takeScreenshot(named: "FAILURE-\(name)")
     }
+    
+    // Clean up alert handlers
+    alertHandler?.removeAllHandlers()
     
     // Terminate app
     app.terminate()
@@ -61,10 +75,250 @@ class BaseTestCase: XCTestCase {
   // MARK: - App State Management
   
   /// Waits for the app to complete initial launch and be ready for interaction
+  /// Handles first-launch flow including onboarding and library selection
   private func waitForAppToBeReady() {
-    // Wait for tab bar to appear (indicates app is ready)
+    // Give app time to initialize
+    Thread.sleep(forTimeInterval: 3.0)
+    
+    // IMPORTANT: Directly dismiss any system alerts (notifications, tracking, etc.)
+    // This is more reliable than interrupt monitors which require interaction first
+    print("🔔 Checking for system alerts...")
+    SystemAlertHandler.dismissAllSystemAlerts()
+    
+    // Also trigger any interrupt handlers we've set up
+    triggerAlertHandlers()
+    
+    // ALWAYS check for onboarding FIRST - it may overlay the tab bar
+    // The tab bar can exist in the view hierarchy but be covered by onboarding
+    print("📱 Checking for onboarding overlay...")
+    handleOnboarding()
+    
+    // Now check if we need library selection
+    handleLibrarySelection()
+    
+    // Wait for app to settle
+    Thread.sleep(forTimeInterval: 2.0)
+    
     let tabBar = app.tabBars.firstMatch
-    _ = tabBar.waitForExistence(timeout: TestConfiguration.networkTimeout)
+    
+    // Verify tab bar is actually usable (not just existing but covered)
+    if tabBar.waitForExistence(timeout: 10.0) {
+      // Check if a tab button is actually hittable
+      let catalogTab = app.tabBars.buttons["Catalog"]
+      if catalogTab.exists && catalogTab.isHittable {
+        print("✅ Tab bar found and hittable - app is ready")
+        return
+      } else {
+        print("⚠️ Tab bar exists but not hittable - onboarding may still be showing")
+        // Try onboarding again
+        handleOnboarding()
+        Thread.sleep(forTimeInterval: 2.0)
+      }
+    }
+    
+    // Final check
+    if !tabBar.waitForExistence(timeout: 30.0) {
+      print("⚠️ Warning: Tab bar still not visible after setup")
+      debugPrintCurrentScreen()
+    } else {
+      print("✅ App ready after first-launch setup")
+    }
+  }
+  
+  /// Triggers any pending system alert handlers by interacting with the app
+  private func triggerAlertHandlers() {
+    let safePoint = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+    safePoint.tap()
+    Thread.sleep(forTimeInterval: 0.5)
+  }
+  
+  /// Handles onboarding/tutorial screens
+  /// The Palace onboarding shows image slides with an X button in top-right corner
+  /// IMPORTANT: Always tries to dismiss onboarding even if not explicitly detected,
+  /// because the tab bar can exist behind the onboarding overlay
+  private func handleOnboarding() {
+    print("   Checking for onboarding screens...")
+    
+    // Give onboarding time to appear
+    Thread.sleep(forTimeInterval: 2.0)
+    
+    // Check if we're on the onboarding screen
+    let onboardingTitle = app.staticTexts["Getting Started with Palace"]
+    let step1Text = app.staticTexts["Step 1"]
+    let findLibraryText = app.staticTexts["Find Your Library"]
+    let palaceProjectText = app.staticTexts["The Palace Project"]
+    
+    let isOnOnboarding = onboardingTitle.exists || step1Text.exists || findLibraryText.exists || palaceProjectText.exists
+    
+    // Debug: print visible static texts
+    let allTexts = app.staticTexts.allElementsBoundByIndex.prefix(10).map { $0.label }
+    print("   Visible texts: \(allTexts)")
+    
+    // Debug: print visible buttons
+    let allButtons = app.buttons.allElementsBoundByIndex.prefix(15).map { 
+      "[\($0.identifier)|\($0.label)|\($0.isHittable)]" 
+    }
+    print("   Visible buttons: \(allButtons)")
+    
+    if isOnOnboarding {
+      print("   ✅ Detected onboarding screen")
+    } else {
+      // Even if not detected, still try coordinate tap in case accessibility isn't working
+      print("   ⚠️ Onboarding text not detected, but will try coordinate tap anyway")
+    }
+    
+    // The onboarding X button - try multiple approaches
+    
+    // Method 1: By accessibility identifier (most reliable after app update)
+    let onboardingCloseButton = app.buttons[AccessibilityID.Onboarding.closeButton]
+    
+    // Method 2: By SF Symbol name
+    let xCircleFillButton = app.buttons["xmark.circle.fill"]
+    
+    // Method 3: By accessibility label "Close"
+    let closeButton = app.buttons["Close"]
+    
+    // Method 4: Any close-related button
+    let closeByLabel = app.buttons.matching(NSPredicate(format: "label ==[c] 'Close'")).firstMatch
+    
+    var dismissed = false
+    
+    // Try each dismiss option (in order of likelihood)
+    if onboardingCloseButton.waitForExistence(timeout: 2.0) {
+      print("   ✅ Found onboarding close button by identifier")
+      if onboardingCloseButton.isHittable {
+        onboardingCloseButton.tap()
+      } else {
+        onboardingCloseButton.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+      }
+      dismissed = true
+      Thread.sleep(forTimeInterval: 1.0)
+    } else if xCircleFillButton.waitForExistence(timeout: 2.0) {
+      print("   ✅ Found xmark.circle.fill button, tapping...")
+      if xCircleFillButton.isHittable {
+        xCircleFillButton.tap()
+      } else {
+        xCircleFillButton.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+      }
+      dismissed = true
+      Thread.sleep(forTimeInterval: 1.0)
+    } else if closeButton.exists {
+      print("   ✅ Found Close button, tapping...")
+      if closeButton.isHittable {
+        closeButton.tap()
+      } else {
+        closeButton.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+      }
+      dismissed = true
+      Thread.sleep(forTimeInterval: 1.0)
+    } else if closeByLabel.exists {
+      print("   ✅ Found button with Close label, tapping...")
+      closeByLabel.tap()
+      dismissed = true
+      Thread.sleep(forTimeInterval: 1.0)
+    }
+    
+    // ALWAYS try coordinate taps for the X button location
+    // The X button is in the top-right corner on the blue onboarding screen
+    if !dismissed || isOnOnboarding {
+      print("   🎯 Trying coordinate taps for X button in top-right corner...")
+      
+      // Try multiple positions where the X might be based on different screen sizes
+      // The X is a gray circle in the top-right on blue background
+      let positions = [
+        CGVector(dx: 0.94, dy: 0.04),   // Top right for notch devices
+        CGVector(dx: 0.95, dy: 0.05),   // Slightly different position
+        CGVector(dx: 0.92, dy: 0.06),   // For devices with different safe areas
+        CGVector(dx: 0.90, dy: 0.07),   // More conservative
+        CGVector(dx: 0.94, dy: 0.08),   // Lower position
+        CGVector(dx: 0.93, dy: 0.03),   // Very top
+      ]
+      
+      for (index, pos) in positions.enumerated() {
+        let coord = app.coordinate(withNormalizedOffset: pos)
+        print("   Tapping position \(index + 1): (\(pos.dx), \(pos.dy))")
+        coord.tap()
+        Thread.sleep(forTimeInterval: 0.8)
+        
+        // Check if onboarding dismissed (catalog tab becomes hittable)
+        let catalogTab = app.tabBars.buttons["Catalog"]
+        if catalogTab.exists && catalogTab.isHittable {
+          print("   ✅ Onboarding dismissed - Catalog tab now hittable!")
+          break
+        }
+        
+        // Also check if onboarding text disappeared
+        if !onboardingTitle.exists && !step1Text.exists && !palaceProjectText.exists {
+          print("   ✅ Onboarding text no longer visible!")
+          break
+        }
+      }
+      
+      Thread.sleep(forTimeInterval: 1.0)
+    }
+    
+    // Skip tutorial if present (after dismissing initial onboarding)
+    if app.buttons["Skip"].waitForExistence(timeout: 2.0) {
+      print("   Skipping tutorial...")
+      app.buttons["Skip"].tap()
+      Thread.sleep(forTimeInterval: 1.0)
+    }
+    
+    // Get Started / Continue
+    let continueButton = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'Get Started' OR label CONTAINS[c] 'Continue'")).firstMatch
+    if continueButton.exists {
+      print("   Tapping Continue...")
+      continueButton.tap()
+      Thread.sleep(forTimeInterval: 1.0)
+    }
+    
+    // Trigger any alerts that appeared
+    triggerAlertHandlers()
+  }
+  
+  /// Handles library selection screen (shown on first launch)
+  private func handleLibrarySelection() {
+    print("   Checking for library selection...")
+    
+    let tableView = app.tables.firstMatch
+    let searchBar = app.searchFields.firstMatch
+    
+    // If we see a table with search, we're on library selection
+    if tableView.waitForExistence(timeout: 3.0) {
+      print("   Library selection screen found...")
+      
+      // Search for Lyrasis Reads
+      if searchBar.exists {
+        searchBar.tap()
+        searchBar.typeText("Lyrasis")
+        Thread.sleep(forTimeInterval: 2.0)
+      }
+      
+      // Select Lyrasis Reads
+      let lyrasisCell = app.cells.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'Lyrasis Reads'")).firstMatch
+      if lyrasisCell.waitForExistence(timeout: 5.0) {
+        print("   Selecting Lyrasis Reads...")
+        lyrasisCell.tap()
+        Thread.sleep(forTimeInterval: 3.0)
+      } else {
+        // Try any Lyrasis cell
+        let anyLyrasis = app.cells.matching(NSPredicate(format: "label CONTAINS[c] 'Lyrasis'")).firstMatch
+        if anyLyrasis.exists {
+          anyLyrasis.tap()
+          Thread.sleep(forTimeInterval: 3.0)
+        } else {
+          print("   ⚠️ Could not find Lyrasis library")
+        }
+      }
+    }
+  }
+  
+  /// Prints debug info about current screen state
+  private func debugPrintCurrentScreen() {
+    let buttons = app.buttons.allElementsBoundByIndex.prefix(10).map { $0.label }
+    let texts = app.staticTexts.allElementsBoundByIndex.prefix(10).map { $0.label }
+    print("   DEBUG - Buttons: \(buttons)")
+    print("   DEBUG - Texts: \(texts)")
   }
   
   /// Resets app to a known state

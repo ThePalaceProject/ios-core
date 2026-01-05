@@ -248,6 +248,16 @@ public enum AccessibilityID {
     public static let errorLabel = "signIn.errorLabel"
   }
   
+  // MARK: - Onboarding
+  
+  /// Onboarding/Tutorial screen identifiers
+  public enum Onboarding {
+    public static let view = "onboarding.view"
+    public static let closeButton = "onboarding.closeButton"
+    public static let pagerDots = "onboarding.pagerDots"
+    public static func slide(_ index: Int) -> String { "onboarding.slide.\(index)" }
+  }
+  
   // MARK: - Common Elements
   
   /// Common UI elements used across screens

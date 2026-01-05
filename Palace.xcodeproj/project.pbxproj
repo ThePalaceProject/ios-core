@@ -1767,9 +1767,7 @@
 		E5D9B69C2ED6B5AE0035C9DF /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				CUCUMBERISH_APPROACH.md,
 				README.md,
-				Steps/STEP_LIBRARY.md,
 			);
 			target = E58EAE132ECCC4F700CDA626 /* PalaceUITests */;
 		};

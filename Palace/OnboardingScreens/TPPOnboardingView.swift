@@ -100,7 +100,8 @@ struct TPPOnboardingView: View {
           .foregroundColor(.gray)
           .padding()
       }
-      .accessibility(label: Text(Strings.Generic.close))
+      .accessibilityIdentifier(AccessibilityID.Onboarding.closeButton)
+      .accessibilityLabel(Strings.Generic.close)
     }
   }
 }
