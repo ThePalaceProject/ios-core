@@ -69,36 +69,7 @@ final class OnboardingSnapshotTests: XCTestCase {
     assertSnapshot(of: view, as: .image)
   }
   
-  // MARK: - Library Selection Tests
-  // These test the logic from ManageLibraries.feature
-  
-  func testLibrarySearch_validQuery() {
-    let query = "Brookfield Library"
-    XCTAssertFalse(query.isEmpty)
-    XCTAssertTrue(query.count > 2, "Search query should be meaningful")
-  }
-  
-  func testLibrarySearch_emptyQuery() {
-    let query = ""
-    XCTAssertTrue(query.isEmpty, "Empty query should be detected")
-  }
-  
-  func testLibrarySearch_caseInsensitive() {
-    let queries = ["lyrasis", "LYRASIS", "Lyrasis"]
-    let normalized = queries.map { $0.lowercased() }
-    
-    XCTAssertEqual(Set(normalized).count, 1, "All case variations should match")
-  }
-  
-  // MARK: - Welcome/Tutorial Dismissal
-  
-  func testTutorialCanBeDismissed() {
-    // Verify tutorial/onboarding can be dismissed
-    let hasSeenOnboarding = UserDefaults.standard.bool(forKey: "hasSeenOnboarding")
-    XCTAssertNotNil(hasSeenOnboarding, "Onboarding state should be trackable")
-  }
-  
-  // MARK: - Onboarding Accessibility
+  // MARK: - Accessibility
   
   func testOnboardingAccessibilityIdentifiers() {
     XCTAssertFalse(AccessibilityID.Onboarding.view.isEmpty)

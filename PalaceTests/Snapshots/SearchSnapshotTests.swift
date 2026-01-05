@@ -70,33 +70,6 @@ final class SearchSnapshotTests: XCTestCase {
     assertSnapshot(of: view, as: .image)
   }
   
-  // MARK: - Search Validation Tests
-  // These test the business logic from Search.feature
-  
-  func testSearchQuery_latinCharacters() {
-    let validQueries = ["book", "F", "lyrasis", "LYRASIS", "lYrAsIs"]
-    for query in validQueries {
-      XCTAssertFalse(query.isEmpty, "Query should not be empty: \(query)")
-      XCTAssertTrue(query.rangeOfCharacter(from: .letters) != nil, "Query should contain letters: \(query)")
-    }
-  }
-  
-  func testSearchQuery_caseInsensitive() {
-    let queries = ["el gato negro", "EL GATO NEGRO", "eL gAto NeGrO"]
-    let normalized = queries.map { $0.lowercased() }
-    
-    // All should normalize to the same string
-    XCTAssertEqual(Set(normalized).count, 1, "Case variations should match")
-  }
-  
-  func testSearchQuery_invalidCharacters() {
-    let invalidQueries = ["книга", "<script>alert('hello')</script>", "@", "$!"]
-    for query in invalidQueries {
-      // These queries should return no results (tested in ViewModel)
-      XCTAssertNotNil(query, "Invalid query acknowledged: \(query)")
-    }
-  }
-  
   // MARK: - Accessibility
   
   func testSearchAccessibilityIdentifiers() {
