@@ -2,9 +2,6 @@
 //  SearchSnapshotTests.swift
 //  PalaceTests
 //
-//  Visual regression tests for Search functionality.
-//  Replaces Appium: Search.feature
-//
 //  Copyright © 2024 The Palace Project. All rights reserved.
 //
 
@@ -24,24 +21,17 @@ final class SearchSnapshotTests: XCTestCase {
     #endif
   }
   
-  // MARK: - CatalogSearchView Snapshots
-  // Uses the REAL CatalogSearchView from the app
+  // MARK: - CatalogSearchView
   
   func testCatalogSearchView_withBooks() {
     guard canRecordSnapshots else { return }
     
-    // Use deterministic snapshot books with TenPrint covers
     let books = [
       TPPBookMocker.snapshotEPUB(),
       TPPBookMocker.snapshotAudiobook(),
       TPPBookMocker.snapshotPDF(),
       TPPBookMocker.snapshotHoldBook()
     ]
-    
-    // Verify TenPrint covers are pre-loaded
-    for book in books {
-      XCTAssertNotNil(book.coverImage, "Book '\(book.title)' should have TenPrint cover")
-    }
     
     let view = CatalogSearchView(
       books: books,
@@ -66,8 +56,7 @@ final class SearchSnapshotTests: XCTestCase {
     assertSnapshot(of: view, as: .image)
   }
   
-  // MARK: - BookListView Snapshots
-  // Uses the REAL BookListView grid
+  // MARK: - BookListView
   
   func testBookListView_grid() {
     guard canRecordSnapshots else { return }

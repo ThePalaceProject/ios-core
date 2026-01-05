@@ -2,9 +2,6 @@
 //  ReservationsSnapshotTests.swift
 //  PalaceTests
 //
-//  Visual regression tests for Reservations/Holds screen.
-//  Replaces Appium: Reservations.feature
-//
 //  Copyright © 2024 The Palace Project. All rights reserved.
 //
 
@@ -24,8 +21,6 @@ final class ReservationsSnapshotTests: XCTestCase {
     #endif
   }
   
-  // MARK: - Test Dependencies
-  
   private var mockRegistry: TPPBookRegistryMock!
   private var mockImageCache: MockImageCache!
   
@@ -35,18 +30,15 @@ final class ReservationsSnapshotTests: XCTestCase {
     mockImageCache = MockImageCache()
   }
   
-  // MARK: - Helper Methods (Deterministic for Snapshots)
+  // MARK: - Helpers
   
-  /// Deterministic book on hold for consistent snapshots
   private func snapshotHoldBook() -> TPPBook {
-    TPPBookMocker.snapshotHoldBook() // "To Kill a Mockingbird" by Harper Lee
+    TPPBookMocker.snapshotHoldBook()
   }
   
   private func createBookCellModel(book: TPPBook, state: TPPBookState) -> BookCellModel {
-    // Add book to registry with desired state
     mockRegistry.addBook(book, state: state)
     
-    // Generate TenPrint cover for deterministic, visually meaningful snapshots
     let tenPrintCover = MockImageCache.generateTenPrintCover(
       title: book.title,
       author: book.authors ?? "Unknown Author"
@@ -54,7 +46,6 @@ final class ReservationsSnapshotTests: XCTestCase {
     mockRegistry.setMockImage(tenPrintCover, for: book.identifier)
     mockImageCache.set(tenPrintCover, for: book.identifier, expiresIn: nil)
     
-    // Create model with injected dependencies
     return BookCellModel(
       book: book,
       imageCache: mockImageCache,
@@ -62,12 +53,12 @@ final class ReservationsSnapshotTests: XCTestCase {
     )
   }
   
-  // MARK: - NormalBookCell Visual Tests (Deterministic Data)
+  // MARK: - NormalBookCell
   
   func testNormalBookCell_holding() {
     guard canRecordSnapshots else { return }
     
-    let book = snapshotHoldBook() // "To Kill a Mockingbird" by Harper Lee
+    let book = snapshotHoldBook()
     let model = createBookCellModel(book: book, state: .holding)
     
     let view = NormalBookCell(model: model)
@@ -80,7 +71,7 @@ final class ReservationsSnapshotTests: XCTestCase {
   func testNormalBookCell_downloadSuccessful() {
     guard canRecordSnapshots else { return }
     
-    let book = TPPBookMocker.snapshotEPUB() // "The Great Gatsby" by F. Scott Fitzgerald
+    let book = TPPBookMocker.snapshotEPUB()
     let model = createBookCellModel(book: book, state: .downloadSuccessful)
     
     let view = NormalBookCell(model: model)
@@ -90,12 +81,11 @@ final class ReservationsSnapshotTests: XCTestCase {
     assertSnapshot(of: view, as: .image)
   }
   
-  // MARK: - Empty State (Real App View)
+  // MARK: - Empty State
   
   func testReservationsEmptyState() {
     guard canRecordSnapshots else { return }
     
-    // Uses the REAL empty state message from Strings.HoldsView
     let emptyView = Text(Strings.HoldsView.emptyMessage)
       .multilineTextAlignment(.center)
       .foregroundColor(Color(white: 0.667))
@@ -109,39 +99,34 @@ final class ReservationsSnapshotTests: XCTestCase {
     assertSnapshot(of: emptyView, as: .image)
   }
   
-  // MARK: - Button State Tests (Business Logic)
+  // MARK: - Button States
   
   func testReserveButton_showsForUnavailableBook() {
     let book = snapshotHoldBook()
     let buttons = BookButtonState.canHold.buttonTypes(book: book)
-    
-    XCTAssertTrue(buttons.contains(.reserve), "Unavailable book should show RESERVE button")
+    XCTAssertTrue(buttons.contains(.reserve))
   }
   
   func testRemoveButton_showsAfterReservation() {
     let book = snapshotHoldBook()
     let buttons = BookButtonState.holding.buttonTypes(book: book)
-    
-    XCTAssertTrue(buttons.contains(.manageHold) || buttons.contains(.cancelHold),
-                  "Reserved book should show manage/cancel hold option")
+    XCTAssertTrue(buttons.contains(.manageHold) || buttons.contains(.cancelHold))
   }
   
   func testHoldingFrontOfQueue_buttonBehavior() {
     let book = snapshotHoldBook()
     let buttons = BookButtonState.holdingFrontOfQueue.buttonTypes(book: book)
-    
-    XCTAssertFalse(buttons.isEmpty, "Should have at least one button")
-    XCTAssertTrue(buttons.contains(.manageHold) || buttons.contains(.get),
-                  "Should show manageHold or get depending on availability")
+    XCTAssertFalse(buttons.isEmpty)
+    XCTAssertTrue(buttons.contains(.manageHold) || buttons.contains(.get))
   }
   
-  // MARK: - Sorting Tests (Deterministic)
+  // MARK: - Sorting
   
   func testHoldsSorting_byTitle() {
     let books = [
-      TPPBookMocker.snapshotEPUB(),      // "The Great Gatsby"
-      TPPBookMocker.snapshotAudiobook(), // "Pride and Prejudice"
-      TPPBookMocker.snapshotPDF()        // "1984"
+      TPPBookMocker.snapshotEPUB(),
+      TPPBookMocker.snapshotAudiobook(),
+      TPPBookMocker.snapshotPDF()
     ]
     let sorted = books.sorted { $0.title < $1.title }
     XCTAssertEqual(sorted.count, 3)
@@ -152,8 +137,8 @@ final class ReservationsSnapshotTests: XCTestCase {
   
   func testHoldsSorting_byAuthor() {
     let books = [
-      TPPBookMocker.snapshotEPUB(),      // F. Scott Fitzgerald
-      TPPBookMocker.snapshotAudiobook()  // Jane Austen
+      TPPBookMocker.snapshotEPUB(),
+      TPPBookMocker.snapshotAudiobook()
     ]
     let sorted = books.sorted { ($0.authors ?? "") < ($1.authors ?? "") }
     XCTAssertEqual(sorted.count, 2)

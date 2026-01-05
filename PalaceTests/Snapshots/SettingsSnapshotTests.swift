@@ -2,9 +2,6 @@
 //  SettingsSnapshotTests.swift
 //  PalaceTests
 //
-//  Visual regression tests for Settings screens.
-//  Replaces Appium: Settings.feature
-//
 //  Copyright © 2024 The Palace Project. All rights reserved.
 //
 
@@ -24,8 +21,7 @@ final class SettingsSnapshotTests: XCTestCase {
     #endif
   }
   
-  // MARK: - TPPSettingsView Snapshots (Full Settings Screen)
-  // This captures the entire settings screen including all rows and version info
+  // MARK: - TPPSettingsView
   
   func testSettingsView_mainScreen() {
     guard canRecordSnapshots else { return }
@@ -36,8 +32,7 @@ final class SettingsSnapshotTests: XCTestCase {
     assertSnapshot(of: view, as: .image)
   }
   
-  // MARK: - AccountDetailSkeletonView Snapshots
-  // Tests the loading state skeleton (real app view)
+  // MARK: - AccountDetailSkeletonView
   
   func testAccountDetailSkeletonView() {
     guard canRecordSnapshots else { return }
@@ -49,8 +44,7 @@ final class SettingsSnapshotTests: XCTestCase {
     assertSnapshot(of: view, as: .image)
   }
   
-  // MARK: - ActionButtonView Snapshots (Real App Component)
-  // Tests the reusable action button in different states
+  // MARK: - ActionButtonView
   
   func testActionButtonView_normal() {
     guard canRecordSnapshots else { return }
@@ -98,12 +92,11 @@ final class SettingsSnapshotTests: XCTestCase {
     assertSnapshot(of: view, as: .image)
   }
   
-  // MARK: - SectionSeparator Snapshot (Real App Component)
+  // MARK: - SectionSeparator
   
   func testSectionSeparator() {
     guard canRecordSnapshots else { return }
     
-    // Test the real SectionSeparator component in isolation
     let view = SectionSeparator()
       .frame(width: 350)
       .padding(.vertical, 20)
@@ -112,12 +105,11 @@ final class SettingsSnapshotTests: XCTestCase {
     assertSnapshot(of: view, as: .image)
   }
   
-  // MARK: - AccountDetailView Snapshots (requires account)
+  // MARK: - AccountDetailView
   
   func testAccountDetailView_signedOut() {
     guard canRecordSnapshots else { return }
     
-    // Use current account ID if available
     guard let accountID = AccountsManager.shared.currentAccountId else {
       XCTAssertTrue(true, "Skipped - no account configured")
       return
@@ -129,12 +121,11 @@ final class SettingsSnapshotTests: XCTestCase {
     assertSnapshot(of: view, as: .image)
   }
   
-  // MARK: - AdvancedSettingsView Snapshots (requires account)
+  // MARK: - AdvancedSettingsView
   
   func testAdvancedSettingsView() {
     guard canRecordSnapshots else { return }
     
-    // Use current account ID if available
     guard let accountID = AccountsManager.shared.currentAccountId else {
       XCTAssertTrue(true, "Skipped - no account configured")
       return
@@ -146,8 +137,7 @@ final class SettingsSnapshotTests: XCTestCase {
     assertSnapshot(of: view, as: .image)
   }
   
-  // MARK: - EULAView Snapshots
-  // Note: Shows loading state since it loads from URL
+  // MARK: - EULAView
   
   func testEULAView_loading() {
     guard canRecordSnapshots else { return }
@@ -158,10 +148,9 @@ final class SettingsSnapshotTests: XCTestCase {
     assertSnapshot(of: view, as: .image)
   }
   
-  // MARK: - Settings Accessibility
+  // MARK: - Accessibility
   
   func testSettingsAccessibilityIdentifiers() {
-    // Verify settings-related accessibility identifiers exist
     XCTAssertFalse(AccessibilityID.Settings.aboutPalaceButton.isEmpty)
     XCTAssertFalse(AccessibilityID.Settings.manageLibrariesButton.isEmpty)
     XCTAssertFalse(AccessibilityID.Settings.signInButton.isEmpty)

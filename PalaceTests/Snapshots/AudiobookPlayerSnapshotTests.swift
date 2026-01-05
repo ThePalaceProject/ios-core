@@ -2,16 +2,6 @@
 //  AudiobookPlayerSnapshotTests.swift
 //  PalaceTests
 //
-//  Snapshot tests for Audiobook Player UI components.
-//
-//  NOTE: The full AudiobookPlayerView requires AudiobookPlaybackModel with a real
-//  audiobook loaded, which is complex to mock. Visual regression testing of the
-//  full player UI should be done via E2E tests or manual QA.
-//
-//  These tests cover:
-//  - AudiobookSampleToolbar snapshot (when sample is available)
-//  - Accessibility identifiers verification
-//
 //  Copyright © 2024 The Palace Project. All rights reserved.
 //
 
@@ -31,20 +21,14 @@ final class AudiobookPlayerSnapshotTests: XCTestCase {
     #endif
   }
   
-  // MARK: - AudiobookSampleToolbar Snapshots
-  // Note: Requires a book with a valid audiobook sample
+  // MARK: - AudiobookSampleToolbar
   
   func testAudiobookSampleToolbar_withSample() {
     guard canRecordSnapshots else { return }
     
-    // AudiobookSampleToolbar requires a book with an AudiobookSample
-    // which is only available for certain books from the catalog
-    // This test will be skipped if no sample is available
     let book = TPPBookMocker.snapshotAudiobook()
     
-    // AudiobookSampleToolbar returns nil if no sample
     guard let toolbar = AudiobookSampleToolbar(book: book) else {
-      // Skip - book doesn't have a sample (expected for mock books)
       return
     }
     
@@ -55,10 +39,9 @@ final class AudiobookPlayerSnapshotTests: XCTestCase {
     assertSnapshot(of: view, as: .image)
   }
   
-  // MARK: - Accessibility Identifiers
+  // MARK: - Accessibility
   
   func testAudiobookPlayerAccessibilityIdentifiers() {
-    // Verify all required accessibility identifiers are defined
     XCTAssertFalse(AccessibilityID.AudiobookPlayer.playerView.isEmpty)
     XCTAssertFalse(AccessibilityID.AudiobookPlayer.playPauseButton.isEmpty)
     XCTAssertFalse(AccessibilityID.AudiobookPlayer.skipBackButton.isEmpty)

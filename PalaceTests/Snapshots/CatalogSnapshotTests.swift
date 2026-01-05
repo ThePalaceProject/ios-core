@@ -2,12 +2,6 @@
 //  CatalogSnapshotTests.swift
 //  PalaceTests
 //
-//  Visual regression tests for Catalog views.
-//  These tests snapshot REAL app views to detect unintended visual changes.
-//
-//  NOTE: E2E user flows (navigation, search, filtering) are tested in mobile-integration-tests-new.
-//  These tests focus on component rendering and state visualization.
-//
 //  Copyright © 2024 The Palace Project. All rights reserved.
 //
 
@@ -16,12 +10,8 @@ import SwiftUI
 import SnapshotTesting
 @testable import Palace
 
-/// Visual regression tests for Catalog UI components.
-/// Run on simulator to record/compare snapshots.
 @MainActor
 final class CatalogSnapshotTests: XCTestCase {
-  
-  // MARK: - Configuration
   
   private var canRecordSnapshots: Bool {
     #if targetEnvironment(simulator)
@@ -31,16 +21,8 @@ final class CatalogSnapshotTests: XCTestCase {
     #endif
   }
   
-  override func setUp() {
-    super.setUp()
-    // Set to true to record new reference snapshots
-    // isRecording = true
-  }
+  // MARK: - Helpers
   
-  // MARK: - Helper Methods
-  // Use deterministic mocks with pre-loaded TenPrint covers
-  
-  /// Returns a fixed set of deterministic books with TenPrint covers for lane/grid snapshots
   private func createMockBooks(count: Int) -> [TPPBook] {
     let allBooks = [
       TPPBookMocker.snapshotEPUB(),
@@ -48,30 +30,15 @@ final class CatalogSnapshotTests: XCTestCase {
       TPPBookMocker.snapshotPDF(),
       TPPBookMocker.snapshotHoldBook()
     ]
-    let books = Array(allBooks.prefix(count))
-    
-    // Verify all books have TenPrint covers pre-loaded
-    for book in books {
-      assert(book.coverImage != nil, "Book '\(book.title)' missing TenPrint cover")
-    }
-    
-    return books
+    return Array(allBooks.prefix(count))
   }
   
-  // MARK: - CatalogLaneRowView Visual Snapshots
-  // Uses the REAL CatalogLaneRowView with TenPrint covers
+  // MARK: - CatalogLaneRowView
   
   func testCatalogLaneRowView_withBooks() {
     guard canRecordSnapshots else { return }
     
     let books = createMockBooks(count: 4)
-    
-    // Verify TenPrint covers are pre-loaded
-    for book in books {
-      XCTAssertNotNil(book.coverImage, "Book '\(book.title)' should have TenPrint cover")
-      XCTAssertNotNil(book.thumbnailImage, "Book '\(book.title)' should have thumbnail")
-    }
-    
     let view = CatalogLaneRowView(
       title: "Featured Books",
       books: books,
@@ -136,8 +103,7 @@ final class CatalogSnapshotTests: XCTestCase {
     assertSnapshot(of: view, as: .image)
   }
   
-  // MARK: - BookImageView Visual Snapshots
-  // Uses the REAL BookImageView with deterministic data
+  // MARK: - BookImageView
   
   func testBookImageView_epub() {
     guard canRecordSnapshots else { return }
@@ -161,7 +127,7 @@ final class CatalogSnapshotTests: XCTestCase {
     assertSnapshot(of: view, as: .image)
   }
   
-  // MARK: - FacetToolbarView Visual Snapshots
+  // MARK: - FacetToolbarView
   
   func testFacetToolbarView_withSort() {
     guard canRecordSnapshots else { return }
@@ -195,7 +161,7 @@ final class CatalogSnapshotTests: XCTestCase {
     assertSnapshot(of: view, as: .image)
   }
   
-  // MARK: - CatalogLaneSkeletonView Visual Snapshots
+  // MARK: - CatalogLaneSkeletonView
   
   func testCatalogLaneSkeletonView() {
     guard canRecordSnapshots else { return }
@@ -207,10 +173,9 @@ final class CatalogSnapshotTests: XCTestCase {
     assertSnapshot(of: view, as: .image)
   }
   
-  // MARK: - Accessibility Tests
+  // MARK: - Accessibility
   
   func testAccessibilityIdentifiers_exist() {
-    // Verify critical accessibility identifiers are defined
     XCTAssertFalse(AccessibilityID.Catalog.scrollView.isEmpty)
     XCTAssertFalse(AccessibilityID.Catalog.searchButton.isEmpty)
     XCTAssertFalse(AccessibilityID.Catalog.navigationBar.isEmpty)

@@ -2,9 +2,6 @@
 //  OnboardingSnapshotTests.swift
 //  PalaceTests
 //
-//  Visual regression tests for Onboarding and Library Selection.
-//  Replaces Appium: ManageLibraries.feature, Tutorial screens
-//
 //  Copyright © 2024 The Palace Project. All rights reserved.
 //
 
@@ -24,20 +21,18 @@ final class OnboardingSnapshotTests: XCTestCase {
     #endif
   }
   
-  // MARK: - TPPOnboardingView Snapshots
+  // MARK: - TPPOnboardingView
   
   func testOnboardingView() {
     guard canRecordSnapshots else { return }
     
-    let view = TPPOnboardingView {
-      // Dismiss handler - no-op for test
-    }
-    .frame(width: 390, height: 844)
+    let view = TPPOnboardingView { }
+      .frame(width: 390, height: 844)
     
     assertSnapshot(of: view, as: .image)
   }
   
-  // MARK: - Pager Dots
+  // MARK: - TPPPagerDotsView
   
   func testPagerDotsView_firstPage() {
     guard canRecordSnapshots else { return }
