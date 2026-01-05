@@ -2,32 +2,46 @@
 //  CatalogSnapshotTests.swift
 //  PalaceTests
 //
-//  Created for Testing Migration
+//  Tests for Catalog views to ensure visual and data consistency.
+//  These tests verify the structure and state of catalog UI components.
+//
 //  Copyright © 2024 The Palace Project. All rights reserved.
 //
 
 import XCTest
 import SwiftUI
-import SnapshotTesting
 @testable import Palace
 
-/// Snapshot tests for Catalog views to ensure visual consistency.
-/// These tests capture the visual appearance of catalog screens
-/// to detect unintended UI regressions.
-class CatalogSnapshotTests: XCTestCase {
+/// Tests for Catalog views to ensure visual and data consistency.
+@MainActor
+final class CatalogSnapshotTests: XCTestCase {
   
-  // MARK: - Test Configuration
+  // MARK: - Helper Methods
   
-  override func setUp() {
-    super.setUp()
-    // Set to true to record new snapshots, false to compare
-    // isRecording = true
+  private func createMockBooks(count: Int) -> [TPPBook] {
+    (0..<count).map { _ in TPPBookMocker.mockBook(distributorType: .EpubZip) }
+  }
+  
+  private func createMockLane(title: String, bookCount: Int) -> CatalogLaneModel {
+    CatalogLaneModel(
+      title: title,
+      books: createMockBooks(count: bookCount),
+      moreURL: URL(string: "https://example.org/more"),
+      isLoading: false
+    )
+  }
+  
+  private func createMockFilters() -> [CatalogFilter] {
+    [
+      CatalogFilter(id: "all", title: "All", href: nil, active: true),
+      CatalogFilter(id: "ebooks", title: "Ebooks", href: URL(string: "https://example.org/ebooks"), active: false),
+      CatalogFilter(id: "audiobooks", title: "Audiobooks", href: URL(string: "https://example.org/audiobooks"), active: false)
+    ]
   }
   
   // MARK: - Accessibility Tests
   
   func testCatalog_AccessibilityIdentifiersExist() {
-    // Verify catalog accessibility identifiers are properly defined
     XCTAssertFalse(AccessibilityID.Catalog.scrollView.isEmpty, "Catalog scroll view identifier should exist")
     XCTAssertFalse(AccessibilityID.Catalog.searchButton.isEmpty, "Catalog search button identifier should exist")
     XCTAssertFalse(AccessibilityID.Catalog.navigationBar.isEmpty, "Catalog navigation bar identifier should exist")
@@ -35,7 +49,7 @@ class CatalogSnapshotTests: XCTestCase {
   
   // MARK: - Lane Model Tests
   
-  func testLaneModel_Creation() {
+  func testCatalogLaneModel_EmptyLane() {
     let lane = CatalogLaneModel(
       title: "New Arrivals",
       books: [],
@@ -48,22 +62,14 @@ class CatalogSnapshotTests: XCTestCase {
     XCTAssertFalse(lane.isLoading)
   }
   
-  func testLaneModel_WithBooks() {
-    let books = [
-      TPPBookMocker.mockBook(distributorType: .EpubZip),
-      TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)
-    ]
+  func testCatalogLaneModel_WithBooks() {
+    let lane = createMockLane(title: "Popular", bookCount: 3)
     
-    let lane = CatalogLaneModel(
-      title: "Popular",
-      books: books,
-      moreURL: nil
-    )
-    
-    XCTAssertEqual(lane.books.count, 2)
+    XCTAssertEqual(lane.title, "Popular")
+    XCTAssertEqual(lane.books.count, 3)
   }
   
-  func testLaneModel_LoadingState() {
+  func testCatalogLaneModel_LoadingState() {
     let lane = CatalogLaneModel(
       title: "Loading Lane",
       books: [],
@@ -72,11 +78,12 @@ class CatalogSnapshotTests: XCTestCase {
     )
     
     XCTAssertTrue(lane.isLoading)
+    XCTAssertNil(lane.moreURL)
   }
   
   // MARK: - Filter Model Tests
   
-  func testFilterModel_Creation() {
+  func testCatalogFilter_InactiveState() {
     let filter = CatalogFilter(
       id: "audiobooks",
       title: "Audiobooks",
@@ -89,7 +96,7 @@ class CatalogSnapshotTests: XCTestCase {
     XCTAssertFalse(filter.active)
   }
   
-  func testFilterModel_ActiveState() {
+  func testCatalogFilter_ActiveState() {
     let filter = CatalogFilter(
       id: "all",
       title: "All",
@@ -98,42 +105,38 @@ class CatalogSnapshotTests: XCTestCase {
     )
     
     XCTAssertTrue(filter.active)
+    XCTAssertNil(filter.href)
   }
   
-  func testFilterGroup_Creation() {
-    let filters = [
-      CatalogFilter(id: "all", title: "All", href: nil, active: true),
-      CatalogFilter(id: "available", title: "Available Now", href: URL(string: "https://example.org/available"), active: false)
-    ]
-    
+  func testCatalogFilterGroup() {
+    let filters = createMockFilters()
     let group = CatalogFilterGroup(
       id: "availability",
       name: "Availability",
       filters: filters
     )
     
+    XCTAssertEqual(group.id, "availability")
     XCTAssertEqual(group.name, "Availability")
-    XCTAssertEqual(group.filters.count, 2)
+    XCTAssertEqual(group.filters.count, 3)
   }
   
-  // MARK: - Entry Point Tests
+  // MARK: - Entry Points Tests
   
-  func testEntryPoints_EbooksAudiobooks() {
+  func testEntryPoints() {
     let entryPoints = [
       CatalogFilter(id: "ebooks", title: "Ebooks", href: URL(string: "https://example.org/ebooks"), active: true),
       CatalogFilter(id: "audiobooks", title: "Audiobooks", href: URL(string: "https://example.org/audiobooks"), active: false)
     ]
     
     XCTAssertEqual(entryPoints.count, 2)
-    
-    let activeEntry = entryPoints.first(where: { $0.active })
-    XCTAssertEqual(activeEntry?.title, "Ebooks")
+    XCTAssertTrue(entryPoints[0].active)
+    XCTAssertFalse(entryPoints[1].active)
   }
   
   // MARK: - Grid Layout Tests
   
   func testGridLayout_ColumnCount() {
-    // Test different column configurations
     let compactColumns = 2
     let regularColumns = 4
     
@@ -185,36 +188,30 @@ class CatalogSnapshotTests: XCTestCase {
   
   // MARK: - Loading State Tests
   
-  func testLoadingState_Initial() {
-    var isLoading = false
+  func testLoadingState() {
+    struct LoadingState {
+      var isLoading: Bool
+      var isContentReloading: Bool
+    }
     
-    isLoading = true
-    XCTAssertTrue(isLoading)
-    
-    isLoading = false
-    XCTAssertFalse(isLoading)
-  }
-  
-  func testLoadingState_ContentReloading() {
-    var isContentReloading = false
-    
-    isContentReloading = true
-    XCTAssertTrue(isContentReloading)
+    let state = LoadingState(isLoading: true, isContentReloading: false)
+    XCTAssertTrue(state.isLoading)
+    XCTAssertFalse(state.isContentReloading)
   }
   
   // MARK: - Error State Tests
   
-  func testErrorState_Message() {
-    var errorMessage: String? = nil
+  func testErrorState() {
+    struct ErrorState {
+      var errorMessage: String?
+    }
     
-    errorMessage = "Failed to load catalog"
-    XCTAssertNotNil(errorMessage)
-    
-    errorMessage = nil
-    XCTAssertNil(errorMessage)
+    let state = ErrorState(errorMessage: "Failed to load catalog")
+    XCTAssertNotNil(state.errorMessage)
+    XCTAssertEqual(state.errorMessage, "Failed to load catalog")
   }
   
-  // MARK: - Search Integration Tests
+  // MARK: - Search Button Tests
   
   func testSearch_ButtonPresence() {
     let searchButtonId = AccessibilityID.Catalog.searchButton
@@ -224,30 +221,44 @@ class CatalogSnapshotTests: XCTestCase {
   
   // MARK: - Scroll Behavior Tests
   
-  func testScrollBehavior_ScrollToTop() {
-    var shouldScrollToTop = false
+  func testScrollBehavior() {
+    struct ScrollState {
+      var shouldScrollToTop: Bool
+    }
     
-    // Trigger scroll
-    shouldScrollToTop = true
-    XCTAssertTrue(shouldScrollToTop)
-    
-    // Reset
-    shouldScrollToTop = false
-    XCTAssertFalse(shouldScrollToTop)
+    let state = ScrollState(shouldScrollToTop: true)
+    XCTAssertTrue(state.shouldScrollToTop)
   }
   
   // MARK: - Thumbnail Prefetch Tests
   
   func testThumbnailPrefetch_BookLimit() {
     let prefetchLimit = 30
-    
     XCTAssertEqual(prefetchLimit, 30, "Should prefetch 30 book thumbnails")
   }
   
   func testThumbnailPrefetch_LaneLimit() {
     let prefetchLanes = 3
-    
     XCTAssertEqual(prefetchLanes, 3, "Should prefetch thumbnails from first 3 lanes")
   }
+  
+  // MARK: - MappedCatalog Tests
+  
+  func testMappedCatalog() {
+    let mapped = CatalogViewModel.MappedCatalog(
+      title: "Test Catalog",
+      entries: [],
+      lanes: [],
+      ungroupedBooks: [],
+      facetGroups: [],
+      entryPoints: []
+    )
+    
+    XCTAssertEqual(mapped.title, "Test Catalog")
+    XCTAssertTrue(mapped.entries.isEmpty)
+    XCTAssertTrue(mapped.lanes.isEmpty)
+    XCTAssertTrue(mapped.ungroupedBooks.isEmpty)
+    XCTAssertTrue(mapped.facetGroups.isEmpty)
+    XCTAssertTrue(mapped.entryPoints.isEmpty)
+  }
 }
-

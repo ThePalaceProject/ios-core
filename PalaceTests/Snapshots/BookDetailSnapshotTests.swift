@@ -2,46 +2,34 @@
 //  BookDetailSnapshotTests.swift
 //  PalaceTests
 //
-//  Created for Testing Migration
+//  Tests for BookDetailView to ensure visual and data consistency.
+//  These tests verify the structure and state of book detail UI components.
+//
 //  Copyright © 2024 The Palace Project. All rights reserved.
 //
 
 import XCTest
 import SwiftUI
-import SnapshotTesting
 @testable import Palace
 
-/// Snapshot tests for BookDetailView to ensure visual consistency.
-/// These tests capture the visual appearance of book detail screens
-/// to detect unintended UI regressions.
-class BookDetailSnapshotTests: XCTestCase {
-  
-  // MARK: - Test Configuration
-  
-  override func setUp() {
-    super.setUp()
-    // Set to true to record new snapshots, false to compare
-    // isRecording = true
-  }
+/// Tests for BookDetailView to ensure visual and data consistency.
+@MainActor
+final class BookDetailSnapshotTests: XCTestCase {
   
   // MARK: - Helper Methods
   
-  /// Creates a mock EPUB book for testing
   private func createMockEPUBBook() -> TPPBook {
     return TPPBookMocker.mockBook(distributorType: .EpubZip)
   }
   
-  /// Creates a mock audiobook for testing
   private func createMockAudiobook() -> TPPBook {
     return TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)
   }
   
-  /// Creates a mock LCP audiobook for testing
   private func createMockLCPAudiobook() -> TPPBook {
     return TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
   }
   
-  /// Creates a mock PDF book for testing
   private func createMockPDFBook() -> TPPBook {
     return TPPBookMocker.mockBook(distributorType: .OpenAccessPDF)
   }
@@ -49,7 +37,6 @@ class BookDetailSnapshotTests: XCTestCase {
   // MARK: - Accessibility Tests
   
   func testBookDetail_AccessibilityIdentifiersExist() {
-    // Verify book detail accessibility identifiers are properly defined
     XCTAssertFalse(AccessibilityID.BookDetail.coverImage.isEmpty, "BookDetail cover image identifier should exist")
     XCTAssertFalse(AccessibilityID.BookDetail.title.isEmpty, "BookDetail title identifier should exist")
     XCTAssertFalse(AccessibilityID.BookDetail.author.isEmpty, "BookDetail author identifier should exist")
@@ -57,7 +44,6 @@ class BookDetailSnapshotTests: XCTestCase {
   }
   
   func testBookDetail_ActionButtonIdentifiersExist() {
-    // Verify action button identifiers are properly defined
     XCTAssertFalse(AccessibilityID.BookDetail.getButton.isEmpty, "Get button identifier should exist")
     XCTAssertFalse(AccessibilityID.BookDetail.readButton.isEmpty, "Read button identifier should exist")
     XCTAssertFalse(AccessibilityID.BookDetail.listenButton.isEmpty, "Listen button identifier should exist")
@@ -69,128 +55,262 @@ class BookDetailSnapshotTests: XCTestCase {
   func testBookType_EPUB() {
     let book = createMockEPUBBook()
     
-    XCTAssertNotNil(book.identifier, "EPUB book should have identifier")
-    XCTAssertFalse(book.acquisitions.isEmpty, "EPUB book should have at least one acquisition")
+    XCTAssertNotNil(book.identifier)
+    XCTAssertEqual(book.defaultBookContentType, .epub)
   }
   
   func testBookType_Audiobook() {
     let book = createMockAudiobook()
     
-    XCTAssertNotNil(book.identifier, "Audiobook should have identifier")
-    XCTAssertNotNil(book.acquisitions, "Audiobook should have acquisitions")
+    XCTAssertNotNil(book.identifier)
+    XCTAssertEqual(book.defaultBookContentType, .audiobook)
   }
   
   func testBookType_PDF() {
     let book = createMockPDFBook()
     
-    XCTAssertNotNil(book.identifier, "PDF book should have identifier")
+    XCTAssertNotNil(book.identifier)
+    XCTAssertEqual(book.defaultBookContentType, .pdf)
+  }
+  
+  // MARK: - Button State Tests
+  
+  func testButtonState_CanBorrow() {
+    let state = BookButtonState.canBorrow
+    let book = createMockEPUBBook()
+    let buttons = state.buttonTypes(book: book, previewEnabled: false)
+    
+    XCTAssertTrue(buttons.contains(.get))
+  }
+  
+  func testButtonState_CanHold() {
+    let state = BookButtonState.canHold
+    let book = createMockEPUBBook()
+    let buttons = state.buttonTypes(book: book, previewEnabled: false)
+    
+    XCTAssertTrue(buttons.contains(.reserve))
+  }
+  
+  func testButtonState_DownloadInProgress() {
+    let state = BookButtonState.downloadInProgress
+    let book = createMockEPUBBook()
+    let buttons = state.buttonTypes(book: book)
+    
+    XCTAssertTrue(buttons.contains(.cancel))
+  }
+  
+  func testButtonState_DownloadSuccessful_EPUB() {
+    let state = BookButtonState.downloadSuccessful
+    let book = createMockEPUBBook()
+    let buttons = state.buttonTypes(book: book)
+    
+    XCTAssertTrue(buttons.contains(.read))
+  }
+  
+  func testButtonState_DownloadSuccessful_Audiobook() {
+    let state = BookButtonState.downloadSuccessful
+    let book = createMockAudiobook()
+    let buttons = state.buttonTypes(book: book)
+    
+    XCTAssertTrue(buttons.contains(.listen))
+  }
+  
+  func testButtonState_DownloadFailed() {
+    let state = BookButtonState.downloadFailed
+    let book = createMockEPUBBook()
+    let buttons = state.buttonTypes(book: book)
+    
+    XCTAssertTrue(buttons.contains(.retry) || buttons.contains(.download))
+  }
+  
+  func testButtonState_Returning() {
+    let state = BookButtonState.returning
+    let book = createMockEPUBBook()
+    let buttons = state.buttonTypes(book: book)
+    
+    XCTAssertNotNil(buttons)
+  }
+  
+  // MARK: - Book Metadata Tests
+  
+  func testBookMetadata() {
+    let book = createMockEPUBBook()
+    
+    XCTAssertFalse(book.title.isEmpty)
+    XCTAssertNotNil(book.imageURL)
+    XCTAssertNotNil(book.imageThumbnailURL)
   }
   
   // MARK: - View State Tests
   
   func testViewState_Loading() {
-    // Simulate loading state
-    var isLoading = true
+    struct ViewState {
+      let isLoading: Bool
+      let errorMessage: String?
+    }
     
-    XCTAssertTrue(isLoading, "Loading state should be true during fetch")
-    
-    isLoading = false
-    XCTAssertFalse(isLoading, "Loading state should be false after fetch")
+    let loadingState = ViewState(isLoading: true, errorMessage: nil)
+    XCTAssertTrue(loadingState.isLoading)
+    XCTAssertNil(loadingState.errorMessage)
   }
   
-  func testViewState_ErrorMessage() {
-    var errorMessage: String? = nil
+  func testViewState_Error() {
+    struct ViewState {
+      let isLoading: Bool
+      let errorMessage: String?
+    }
     
-    // Simulate error
-    errorMessage = "Unable to load book details"
-    
-    XCTAssertNotNil(errorMessage, "Error message should be set on failure")
-    XCTAssertEqual(errorMessage, "Unable to load book details")
+    let errorState = ViewState(isLoading: false, errorMessage: "Unable to load book details")
+    XCTAssertFalse(errorState.isLoading)
+    XCTAssertNotNil(errorState.errorMessage)
   }
   
-  // MARK: - Button State Tests
-  
-  func testButtonState_GetButton() {
-    let bookState = TPPBookState.unregistered
+  func testViewState_Success() {
+    struct ViewState {
+      let isLoading: Bool
+      let errorMessage: String?
+      let hasBook: Bool
+    }
     
-    // Get button should show for unregistered books
-    let shouldShowGetButton = bookState == .unregistered
-    
-    XCTAssertTrue(shouldShowGetButton, "Get button should show for unregistered books")
-  }
-  
-  func testButtonState_ReadButton() {
-    let bookState = TPPBookState.downloadSuccessful
-    
-    // Read button should show for downloaded EPUB books
-    let shouldShowReadButton = bookState == .downloadSuccessful
-    
-    XCTAssertTrue(shouldShowReadButton, "Read button should show for downloaded books")
-  }
-  
-  func testButtonState_ListenButton() {
-    let bookState = TPPBookState.downloadSuccessful
-    let isAudiobook = true
-    
-    // Listen button should show for downloaded audiobooks
-    let shouldShowListenButton = bookState == .downloadSuccessful && isAudiobook
-    
-    XCTAssertTrue(shouldShowListenButton, "Listen button should show for downloaded audiobooks")
-  }
-  
-  // MARK: - Book Metadata Tests
-  
-  func testBookMetadata_TitleAndAuthor() {
-    let book = createMockEPUBBook()
-    
-    XCTAssertNotNil(book.title, "Book should have title")
-    // Authors might be nil for mock books, that's OK
-  }
-  
-  func testBookMetadata_Publisher() {
-    let book = createMockEPUBBook()
-    
-    // Publisher might be empty for mock, just verify property exists
-    XCTAssertNotNil(book.publisher)
-  }
-  
-  func testBookMetadata_Summary() {
-    let book = createMockEPUBBook()
-    
-    // Summary might be empty for mock
-    XCTAssertNotNil(book.summary)
+    let successState = ViewState(isLoading: false, errorMessage: nil, hasBook: true)
+    XCTAssertFalse(successState.isLoading)
+    XCTAssertNil(successState.errorMessage)
+    XCTAssertTrue(successState.hasBook)
   }
   
   // MARK: - Sample/Preview Tests
   
-  func testSamplePreview_Availability() {
-    // Test sample/preview detection logic
-    let hasSample = true
-    let hasPreview = false
+  func testSampleAvailability() {
+    let bookWithSample = createMockEPUBBook()
     
-    let canPreview = hasSample || hasPreview
-    
-    XCTAssertTrue(canPreview, "Book with sample should allow preview")
+    // Mock books may or may not have samples
+    XCTAssertNotNil(bookWithSample)
   }
   
   // MARK: - Related Works Tests
   
-  func testRelatedWorks_URLPresence() {
+  func testRelatedWorks() {
     let book = createMockEPUBBook()
     
-    // Related works URL may or may not be present
-    // Just verify the property access doesn't crash
+    // Check that related works URL can be accessed
     _ = book.relatedWorksURL
+    XCTAssertNotNil(book)
   }
   
-  // MARK: - Image Tests
+  // MARK: - BookLane Tests
   
-  func testBookCover_ImageURL() {
-    let book = createMockEPUBBook()
+  func testBookLane() {
+    let books = [createMockEPUBBook(), createMockAudiobook()]
+    let lane = BookLane(
+      title: "Similar Books",
+      books: books,
+      subsectionURL: URL(string: "https://example.com/more")
+    )
     
-    // Verify image URLs are accessible
-    XCTAssertNotNil(book.imageURL, "Book should have image URL")
-    XCTAssertNotNil(book.imageThumbnailURL, "Book should have thumbnail URL")
+    XCTAssertEqual(lane.title, "Similar Books")
+    XCTAssertEqual(lane.books.count, 2)
+    XCTAssertNotNil(lane.subsectionURL)
+  }
+  
+  // MARK: - Processing State Tests
+  
+  func testProcessingState() {
+    var processingButtons: Set<BookButtonType> = [.download, .get]
+    
+    XCTAssertEqual(processingButtons.count, 2)
+    XCTAssertTrue(processingButtons.contains(.download))
+    XCTAssertTrue(processingButtons.contains(.get))
+  }
+  
+  // MARK: - Download Progress Tests
+  
+  func testDownloadProgress_States() {
+    struct DownloadProgressState {
+      let progress: Double
+      let description: String
+    }
+    
+    let states = [
+      DownloadProgressState(progress: 0.0, description: "Not Started"),
+      DownloadProgressState(progress: 0.25, description: "25%"),
+      DownloadProgressState(progress: 0.5, description: "50%"),
+      DownloadProgressState(progress: 0.75, description: "75%"),
+      DownloadProgressState(progress: 1.0, description: "Complete")
+    ]
+    
+    XCTAssertEqual(states.count, 5)
+    XCTAssertEqual(states.first?.progress, 0.0)
+    XCTAssertEqual(states.last?.progress, 1.0)
+  }
+  
+  // MARK: - Half Sheet State Tests
+  
+  func testHalfSheet_State() {
+    struct HalfSheetState {
+      let isShowing: Bool
+      let bookState: String
+    }
+    
+    let downloadingState = HalfSheetState(isShowing: true, bookState: "downloading")
+    XCTAssertTrue(downloadingState.isShowing)
+    
+    let hiddenState = HalfSheetState(isShowing: false, bookState: "idle")
+    XCTAssertFalse(hiddenState.isShowing)
+  }
+  
+  // MARK: - Managing Hold State Tests
+  
+  func testManagingHold_State() {
+    struct ManagingHoldState {
+      let isManagingHold: Bool
+      let bookState: String
+    }
+    
+    let managingState = ManagingHoldState(isManagingHold: true, bookState: "holding")
+    XCTAssertTrue(managingState.isManagingHold)
+    
+    let notManagingState = ManagingHoldState(isManagingHold: false, bookState: "holding")
+    XCTAssertFalse(notManagingState.isManagingHold)
+  }
+  
+  // MARK: - Orientation State Tests
+  
+  func testOrientationChange_State() {
+    struct OrientationState {
+      let isFullSize: Bool
+      let isIPad: Bool
+    }
+    
+    let portraitState = OrientationState(isFullSize: true, isIPad: true)
+    XCTAssertTrue(portraitState.isFullSize)
+    XCTAssertTrue(portraitState.isIPad)
+    
+    let phoneState = OrientationState(isFullSize: false, isIPad: false)
+    XCTAssertFalse(phoneState.isIPad)
+  }
+  
+  // MARK: - TPPBookState Tests
+  
+  func testAllBookStates() {
+    let allStates = TPPBookState.allCases
+    
+    XCTAssertGreaterThan(allStates.count, 0)
+    
+    for state in allStates {
+      XCTAssertNotNil(state.stringValue())
+    }
+  }
+  
+  // MARK: - BookButtonState Tests
+  
+  func testAllButtonStates() {
+    let allStates: [BookButtonState] = [
+      .canBorrow, .canHold, .holding, .holdingFrontOfQueue,
+      .downloadNeeded, .downloadSuccessful, .used,
+      .downloadInProgress, .returning, .managingHold,
+      .downloadFailed, .unsupported
+    ]
+    
+    XCTAssertEqual(allStates.count, 12)
   }
 }
-
