@@ -24,7 +24,8 @@ final class SettingsSnapshotTests: XCTestCase {
     #endif
   }
   
-  // MARK: - TPPSettingsView Snapshots
+  // MARK: - TPPSettingsView Snapshots (Full Settings Screen)
+  // This captures the entire settings screen including all rows and version info
   
   func testSettingsView_mainScreen() {
     guard canRecordSnapshots else { return }
@@ -36,7 +37,7 @@ final class SettingsSnapshotTests: XCTestCase {
   }
   
   // MARK: - AccountDetailSkeletonView Snapshots
-  // Tests the loading state skeleton
+  // Tests the loading state skeleton (real app view)
   
   func testAccountDetailSkeletonView() {
     guard canRecordSnapshots else { return }
@@ -48,14 +49,14 @@ final class SettingsSnapshotTests: XCTestCase {
     assertSnapshot(of: view, as: .image)
   }
   
-  // MARK: - ActionButtonView Snapshots
+  // MARK: - ActionButtonView Snapshots (Real App Component)
   // Tests the reusable action button in different states
   
   func testActionButtonView_normal() {
     guard canRecordSnapshots else { return }
     
     let view = ActionButtonView(
-      title: "Sign In",
+      title: Strings.Settings.signIn,
       isLoading: false,
       action: {}
     )
@@ -70,7 +71,7 @@ final class SettingsSnapshotTests: XCTestCase {
     guard canRecordSnapshots else { return }
     
     let view = ActionButtonView(
-      title: "Sign In",
+      title: Strings.Settings.signIn,
       isLoading: true,
       action: {}
     )
@@ -85,7 +86,7 @@ final class SettingsSnapshotTests: XCTestCase {
     guard canRecordSnapshots else { return }
     
     let view = ActionButtonView(
-      title: "Sign Out",
+      title: Strings.Settings.signOut,
       isLoading: false,
       action: {}
     )
@@ -97,19 +98,16 @@ final class SettingsSnapshotTests: XCTestCase {
     assertSnapshot(of: view, as: .image)
   }
   
-  // MARK: - SectionSeparator Snapshots
+  // MARK: - SectionSeparator Snapshot (Real App Component)
   
   func testSectionSeparator() {
     guard canRecordSnapshots else { return }
     
-    let view = VStack(spacing: 20) {
-      Text("Section 1")
-      SectionSeparator()
-      Text("Section 2")
-    }
-    .frame(width: 350)
-    .padding()
-    .background(Color(UIColor.systemBackground))
+    // Test the real SectionSeparator component in isolation
+    let view = SectionSeparator()
+      .frame(width: 350)
+      .padding(.vertical, 20)
+      .background(Color(UIColor.systemBackground))
     
     assertSnapshot(of: view, as: .image)
   }
@@ -121,7 +119,6 @@ final class SettingsSnapshotTests: XCTestCase {
     
     // Use current account ID if available
     guard let accountID = AccountsManager.shared.currentAccountId else {
-      // Create a minimal test without account
       XCTAssertTrue(true, "Skipped - no account configured")
       return
     }
@@ -139,7 +136,6 @@ final class SettingsSnapshotTests: XCTestCase {
     
     // Use current account ID if available
     guard let accountID = AccountsManager.shared.currentAccountId else {
-      // Skip test if no account is set up
       XCTAssertTrue(true, "Skipped - no account configured")
       return
     }
@@ -158,71 +154,6 @@ final class SettingsSnapshotTests: XCTestCase {
     
     let view = EULAView()
       .frame(width: 390, height: 600)
-    
-    assertSnapshot(of: view, as: .image)
-  }
-  
-  // MARK: - Settings Menu Items
-  // Tests the visual consistency of settings row items
-  
-  func testSettingsRowItem_libraries() {
-    guard canRecordSnapshots else { return }
-    
-    let view = List {
-      NavigationLink(destination: EmptyView()) {
-        Text(Strings.Settings.libraries)
-          .palaceFont(.body)
-      }
-    }
-    .listStyle(GroupedListStyle())
-    .frame(width: 390, height: 100)
-    
-    assertSnapshot(of: view, as: .image)
-  }
-  
-  func testSettingsRowItem_infoSection() {
-    guard canRecordSnapshots else { return }
-    
-    let view = List {
-      Section {
-        NavigationLink(destination: EmptyView()) {
-          Text(Strings.Settings.aboutApp)
-            .palaceFont(.body)
-        }
-        NavigationLink(destination: EmptyView()) {
-          Text(Strings.Settings.privacyPolicy)
-            .palaceFont(.body)
-        }
-        NavigationLink(destination: EmptyView()) {
-          Text(Strings.Settings.eula)
-            .palaceFont(.body)
-        }
-        NavigationLink(destination: EmptyView()) {
-          Text(Strings.Settings.softwareLicenses)
-            .palaceFont(.body)
-        }
-      }
-    }
-    .listStyle(GroupedListStyle())
-    .frame(width: 390, height: 250)
-    
-    assertSnapshot(of: view, as: .image)
-  }
-  
-  // MARK: - Version Info Footer
-  
-  func testVersionInfoFooter() {
-    guard canRecordSnapshots else { return }
-    
-    let productName = Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ?? "Palace"
-    let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Unknown"
-    let build = Bundle.main.object(forInfoDictionaryKey: (kCFBundleVersionKey as String)) as? String ?? "Unknown"
-    
-    let view = Text("\(productName) version \(version) (\(build))")
-      .palaceFont(size: 12)
-      .frame(height: 40)
-      .frame(width: 390)
-      .background(Color(UIColor.systemBackground))
     
     assertSnapshot(of: view, as: .image)
   }
