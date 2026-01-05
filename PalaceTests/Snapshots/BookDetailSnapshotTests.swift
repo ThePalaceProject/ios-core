@@ -3,7 +3,7 @@
 //  PalaceTests
 //
 //  Visual regression tests for BookDetailView.
-//  These tests ensure the book detail UI renders correctly across different states.
+//  These tests snapshot REAL app views to detect unintended visual changes.
 //
 //  NOTE: E2E user flows (get book, read, return) are tested in mobile-integration-tests-new.
 //  These tests focus on visual rendering and button state correctness.
@@ -110,89 +110,131 @@ final class BookDetailSnapshotTests: XCTestCase {
     XCTAssertFalse(buttons.contains(.read), "Downloaded audiobook should NOT show READ button")
   }
   
-  func testButtonState_holding_showsRemoveHoldButton() {
+  func testButtonState_holding_showsManageHoldButton() {
     let book = createMockEPUBBook()
     let buttons = BookButtonState.holding.buttonTypes(book: book)
     
-    // Should show option to remove hold
-    XCTAssertNotNil(buttons, "Holding state should have button options")
+    XCTAssertTrue(buttons.contains(.manageHold) || buttons.contains(.cancelHold),
+                  "Holding state should show manage or cancel hold button")
   }
   
   func testButtonState_holdingFrontOfQueue_showsBorrowButton() {
     let book = createMockEPUBBook()
     let buttons = BookButtonState.holdingFrontOfQueue.buttonTypes(book: book)
     
-    // Should be able to borrow when at front of queue
     XCTAssertTrue(buttons.contains(.get) || buttons.contains(.download),
                   "Front of queue should show GET or DOWNLOAD button")
   }
   
-  // MARK: - Visual Snapshots - Button Bars
+  // MARK: - BookImageView Visual Snapshots
+  // Uses the REAL BookImageView from the app
   
-  func testBookDetailButtonBar_canBorrow() {
+  func testBookImageView_epub_snapshot() {
     guard canRecordSnapshots else { return }
     
     let book = createMockEPUBBook()
-    let buttons = BookButtonState.canBorrow.buttonTypes(book: book, previewEnabled: false)
-    let view = BookDetailButtonBar(buttons: buttons, onButtonTap: { _ in })
-      .frame(width: 390)
+    let view = BookImageView(book: book, height: 200)
+      .frame(width: 140, height: 200)
+      .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+    assertSnapshot(of: view, as: .image)
   }
   
-  func testBookDetailButtonBar_downloadSuccessful_epub() {
-    guard canRecordSnapshots else { return }
-    
-    let book = createMockEPUBBook()
-    let buttons = BookButtonState.downloadSuccessful.buttonTypes(book: book)
-    let view = BookDetailButtonBar(buttons: buttons, onButtonTap: { _ in })
-      .frame(width: 390)
-    
-    assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
-  }
-  
-  func testBookDetailButtonBar_downloadSuccessful_audiobook() {
+  func testBookImageView_audiobook_snapshot() {
     guard canRecordSnapshots else { return }
     
     let book = createMockAudiobook()
-    let buttons = BookButtonState.downloadSuccessful.buttonTypes(book: book)
-    let view = BookDetailButtonBar(buttons: buttons, onButtonTap: { _ in })
-      .frame(width: 390)
+    let view = BookImageView(book: book, height: 200)
+      .frame(width: 140, height: 200)
+      .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+    assertSnapshot(of: view, as: .image)
   }
   
-  func testBookDetailButtonBar_downloading() {
+  // MARK: - BookButtonsView Visual Snapshots
+  // Tests the REAL button rendering
+  
+  func testBookButtonsView_canBorrow() {
     guard canRecordSnapshots else { return }
     
     let book = createMockEPUBBook()
-    let buttons = BookButtonState.downloadInProgress.buttonTypes(book: book)
-    let view = BookDetailButtonBar(buttons: buttons, onButtonTap: { _ in })
-      .frame(width: 390)
+    let mockRegistry = TPPBookRegistryMock()
+    mockRegistry.addBook(book, state: .unregistered)
     
-    assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+    let viewModel = BookDetailViewModel(
+      book: book,
+      bookRegistry: mockRegistry,
+      bookDownloadsCenter: TPPMyBooksDownloadsCenterMock(),
+      networkExecutor: TPPRequestExecutorMock(),
+      drmAuthorizer: TPPDRMAuthorizingMock()
+    )
+    
+    let view = BookButtonsView(provider: viewModel, backgroundColor: .white) { _ in }
+      .frame(width: 300)
+      .padding()
+      .background(Color(UIColor.systemBackground))
+    
+    assertSnapshot(of: view, as: .image)
   }
   
-  // MARK: - Visual Snapshots - Book Header
-  
-  func testBookDetailHeader_epub() {
+  func testBookButtonsView_downloadSuccessful_epub() {
     guard canRecordSnapshots else { return }
     
     let book = createMockEPUBBook()
-    let view = BookDetailHeader(book: book)
-      .frame(width: 390)
+    let mockRegistry = TPPBookRegistryMock()
+    mockRegistry.addBook(book, state: .downloadSuccessful)
     
-    assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+    let viewModel = BookDetailViewModel(
+      book: book,
+      bookRegistry: mockRegistry,
+      bookDownloadsCenter: TPPMyBooksDownloadsCenterMock(),
+      networkExecutor: TPPRequestExecutorMock(),
+      drmAuthorizer: TPPDRMAuthorizingMock()
+    )
+    
+    let view = BookButtonsView(provider: viewModel, backgroundColor: .white) { _ in }
+      .frame(width: 300)
+      .padding()
+      .background(Color(UIColor.systemBackground))
+    
+    assertSnapshot(of: view, as: .image)
   }
   
-  func testBookDetailHeader_audiobook() {
+  func testBookButtonsView_downloadSuccessful_audiobook() {
     guard canRecordSnapshots else { return }
     
     let book = createMockAudiobook()
-    let view = BookDetailHeader(book: book)
-      .frame(width: 390)
+    let mockRegistry = TPPBookRegistryMock()
+    mockRegistry.addBook(book, state: .downloadSuccessful)
     
-    assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+    let viewModel = BookDetailViewModel(
+      book: book,
+      bookRegistry: mockRegistry,
+      bookDownloadsCenter: TPPMyBooksDownloadsCenterMock(),
+      networkExecutor: TPPRequestExecutorMock(),
+      drmAuthorizer: TPPDRMAuthorizingMock()
+    )
+    
+    let view = BookButtonsView(provider: viewModel, backgroundColor: .white) { _ in }
+      .frame(width: 300)
+      .padding()
+      .background(Color(UIColor.systemBackground))
+    
+    assertSnapshot(of: view, as: .image)
+  }
+  
+  // MARK: - Full BookDetailView Snapshots (if feasible)
+  // Note: Full view may require more setup due to navigation/environment
+  
+  func testBookDetailView_epub_initialState() {
+    guard canRecordSnapshots else { return }
+    
+    let book = createMockEPUBBook()
+    let view = BookDetailView(book: book)
+      .frame(width: 390, height: 844)
+    
+    // This may need NavigationStack wrapper depending on view requirements
+    assertSnapshot(of: view, as: .image)
   }
   
   // MARK: - Accessibility Tests
@@ -215,116 +257,3 @@ final class BookDetailSnapshotTests: XCTestCase {
     }
   }
 }
-
-// MARK: - Placeholder Views for Compilation
-// These are stubs if the actual views don't exist yet
-
-#if !canImport(BookDetailViews)
-
-struct BookDetailButtonBar: View {
-  let buttons: [BookButtonType]
-  let onButtonTap: (BookButtonType) -> Void
-  
-  var body: some View {
-    HStack(spacing: 12) {
-      ForEach(buttons, id: \.self) { button in
-        Button(action: { onButtonTap(button) }) {
-          Text(button.localizedTitle)
-            .font(.headline)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 12)
-        }
-        .buttonStyle(.borderedProminent)
-        .tint(button.tintColor)
-      }
-    }
-    .padding()
-  }
-}
-
-struct BookDetailHeader: View {
-  let book: TPPBook
-  
-  var body: some View {
-    HStack(alignment: .top, spacing: 16) {
-      // Cover image placeholder
-      RoundedRectangle(cornerRadius: 8)
-        .fill(Color.gray.opacity(0.3))
-        .frame(width: 120, height: 180)
-        .overlay(
-          Image(systemName: book.defaultBookContentType == .audiobook ? "headphones" : "book")
-            .font(.largeTitle)
-            .foregroundColor(.gray)
-        )
-      
-      VStack(alignment: .leading, spacing: 8) {
-        Text(book.title)
-          .font(.title2)
-          .fontWeight(.bold)
-        
-        if let authors = book.authors {
-          Text(authors)
-            .font(.subheadline)
-            .foregroundColor(.secondary)
-        }
-        
-        // Format badge
-        Text(book.defaultBookContentType.displayName)
-          .font(.caption)
-          .padding(.horizontal, 8)
-          .padding(.vertical, 4)
-          .background(Color.blue.opacity(0.1))
-          .cornerRadius(4)
-      }
-      
-      Spacer()
-    }
-    .padding()
-  }
-}
-
-private extension BookButtonType {
-  var localizedTitle: String {
-    switch self {
-    case .get: return "Get"
-    case .download: return "Download"
-    case .read: return "Read"
-    case .listen: return "Listen"
-    case .reserve: return "Reserve"
-    case .cancel: return "Cancel"
-    case .close: return "Close"
-    case .return: return "Return"
-    case .remove: return "Remove"
-    case .retry: return "Retry"
-    case .sample: return "Sample"
-    case .audiobookSample: return "Sample"
-    case .cancelHold: return "Cancel Hold"
-    case .manageHold: return "Manage Hold"
-    case .returning: return "Returning..."
-    }
-  }
-  
-  var tintColor: Color {
-    switch self {
-    case .read, .listen, .get, .download: return .blue
-    case .cancel, .close, .return, .remove, .cancelHold: return .red
-    case .reserve, .manageHold: return .orange
-    case .retry: return .blue
-    case .sample, .audiobookSample: return .secondary
-    case .returning: return .gray
-    }
-  }
-}
-
-private extension TPPBookContentType {
-  var displayName: String {
-    switch self {
-    case .epub: return "eBook"
-    case .audiobook: return "Audiobook"
-    case .pdf: return "PDF"
-    case .unsupported: return "Unsupported"
-    }
-  }
-}
-
-#endif
