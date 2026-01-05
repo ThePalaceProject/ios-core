@@ -35,11 +35,11 @@ final class GeneralCacheTests: XCTestCase {
         XCTAssertEqual(result, value)
     }
 
-    func testExpiration() {
+    func testExpiration() async throws {
         let value = TestValue(text: "expire", number: 1)
-        cache.set(value, for: "key3", expiresIn: 1)
+        cache.set(value, for: "key3", expiresIn: 0.5)
         XCTAssertEqual(cache.get(for: "key3"), value)
-        sleep(2)
+        try await Task.sleep(nanoseconds: 600_000_000) // 0.6 seconds
         XCTAssertNil(cache.get(for: "key3"))
     }
 
@@ -134,11 +134,8 @@ final class GeneralCacheTests: XCTestCase {
         XCTAssertEqual(v1, TestValue(text: "ctn", number: 1))
         let v2 = try await cache.get("k", policy: .cacheThenNetwork, fetcher: fetcher)
         XCTAssertEqual(v2, v1)
-        let exp = expectation(description: "Background update")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-            exp.fulfill()
-        }
-        await fulfillment(of: [exp], timeout: 2)
+        // Wait for background update to complete
+        try await Task.sleep(nanoseconds: 300_000_000) // 0.3 seconds
         let v3 = cache.get(for: "k")
         XCTAssertEqual(v3, TestValue(text: "ctn", number: 2))
     }
@@ -150,12 +147,12 @@ final class GeneralCacheTests: XCTestCase {
             fetchCount += 1
             return TestValue(text: "timed", number: fetchCount)
         }
-        let v1 = try await cache.get("k", policy: .timedCache(1), fetcher: fetcher)
+        let v1 = try await cache.get("k", policy: .timedCache(0.5), fetcher: fetcher)
         XCTAssertEqual(v1, TestValue(text: "timed", number: 1))
-        let v2 = try await cache.get("k", policy: .timedCache(1), fetcher: fetcher)
+        let v2 = try await cache.get("k", policy: .timedCache(0.5), fetcher: fetcher)
         XCTAssertEqual(v2, v1)
-        sleep(2)
-        let v3 = try await cache.get("k", policy: .timedCache(1), fetcher: fetcher)
+        try await Task.sleep(nanoseconds: 600_000_000) // 0.6 seconds
+        let v3 = try await cache.get("k", policy: .timedCache(0.5), fetcher: fetcher)
         XCTAssertEqual(v3, TestValue(text: "timed", number: 2))
     }
 
