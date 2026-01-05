@@ -24,46 +24,79 @@ final class SearchSnapshotTests: XCTestCase {
     #endif
   }
   
-  // MARK: - Search Results UI
-  // Uses deterministic mocks for consistent snapshot comparisons
+  // MARK: - CatalogSearchView Snapshots
+  // Uses the REAL CatalogSearchView from the app
   
-  func testSearchResults_withBooks() {
+  func testCatalogSearchView_withBooks() {
     guard canRecordSnapshots else { return }
     
-    // Use deterministic snapshot books for consistent comparisons
+    // Use deterministic snapshot books with TenPrint covers
     let books = [
       TPPBookMocker.snapshotEPUB(),
-      TPPBookMocker.snapshotAudiobook()
+      TPPBookMocker.snapshotAudiobook(),
+      TPPBookMocker.snapshotPDF(),
+      TPPBookMocker.snapshotHoldBook()
     ]
     
-    // Create a search results view
-    let view = ScrollView {
-      LazyVStack(spacing: 12) {
-        ForEach(books, id: \.identifier) { book in
-          BookImageView(book: book, height: 100)
-        }
-      }
-      .padding()
+    // Verify TenPrint covers are pre-loaded
+    for book in books {
+      XCTAssertNotNil(book.coverImage, "Book '\(book.title)' should have TenPrint cover")
     }
+    
+    let view = CatalogSearchView(
+      books: books,
+      onBookSelected: { _ in }
+    )
+    .frame(width: 390, height: 700)
+    .background(Color(UIColor.systemBackground))
+    
+    assertSnapshot(of: view, as: .image)
+  }
+  
+  func testCatalogSearchView_empty() {
+    guard canRecordSnapshots else { return }
+    
+    let view = CatalogSearchView(
+      books: [],
+      onBookSelected: { _ in }
+    )
     .frame(width: 390, height: 400)
     .background(Color(UIColor.systemBackground))
     
     assertSnapshot(of: view, as: .image)
   }
   
-  func testSearchResults_noResults() {
+  // MARK: - BookListView Snapshots
+  // Uses the REAL BookListView grid
+  
+  func testBookListView_grid() {
     guard canRecordSnapshots else { return }
     
-    let view = VStack(spacing: 16) {
-      Image(systemName: "magnifyingglass")
-        .font(.system(size: 48))
-        .foregroundColor(.secondary)
-      Text("No results found")
-        .font(.headline)
-      Text("Try a different search term")
-        .font(.subheadline)
-        .foregroundColor(.secondary)
-    }
+    let books = [
+      TPPBookMocker.snapshotEPUB(),
+      TPPBookMocker.snapshotAudiobook()
+    ]
+    
+    let view = BookListView(
+      books: books,
+      isLoading: .constant(false),
+      onSelect: { _ in },
+      previewEnabled: false
+    )
+    .frame(width: 390, height: 500)
+    .background(Color(UIColor.systemBackground))
+    
+    assertSnapshot(of: view, as: .image)
+  }
+  
+  func testBookListView_loading() {
+    guard canRecordSnapshots else { return }
+    
+    let view = BookListView(
+      books: [],
+      isLoading: .constant(true),
+      onSelect: { _ in }
+    )
     .frame(width: 390, height: 300)
     .background(Color(UIColor.systemBackground))
     
