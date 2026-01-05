@@ -421,8 +421,24 @@ class BaseTestCase: XCTestCase {
   /// Searches for a book in the catalog
   /// - Parameter searchTerm: The search query
   func searchForBook(_ searchTerm: String) {
-    openSearch()
-    search(searchTerm)
+    // Tap search button
+    let searchButton = app.buttons[AccessibilityID.Catalog.searchButton]
+    if searchButton.waitForExistence(timeout: 5.0) {
+      searchButton.tap()
+    }
+    
+    // Enter search term
+    let searchField = app.searchFields.firstMatch
+    if searchField.waitForExistence(timeout: 5.0) {
+      searchField.tap()
+      searchField.typeText(searchTerm)
+      
+      // Submit search
+      let searchKey = app.keyboards.buttons["Search"]
+      if searchKey.waitForExistence(timeout: 2.0) {
+        searchKey.tap()
+      }
+    }
   }
   
   /// Finds and taps the first book in search results
@@ -431,7 +447,14 @@ class BaseTestCase: XCTestCase {
   @discardableResult
   func findAndSelectBook(_ searchTerm: String) -> Bool {
     searchForBook(searchTerm)
-    return tapFirstResult()
+    
+    // Wait for results and tap first one
+    let firstCell = app.cells.firstMatch
+    if firstCell.waitForExistence(timeout: 10.0) {
+      firstCell.tap()
+      return true
+    }
+    return false
   }
   
   // MARK: - Wait Helpers
