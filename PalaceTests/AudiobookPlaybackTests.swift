@@ -60,7 +60,7 @@ class AudiobookPlaybackTests: XCTestCase {
       reportURL: emptyUrl,
       timeTrackingURL: emptyUrl,
       contributors: [:],
-      bookDuration: 3600,
+      bookDuration: "3600",
       imageCache: MockImageCache()
     )
     
