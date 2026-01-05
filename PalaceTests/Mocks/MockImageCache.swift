@@ -47,4 +47,34 @@ public final class MockImageCache: ImageCacheType {
         removedKeys.removeAll()
         cleared = false
     }
+    
+    // MARK: - TenPrint Cover Generation for Snapshot Tests
+    
+    /// Generates a TenPrint-style book cover for deterministic snapshot testing
+    public static func generateTenPrintCover(title: String, author: String, size: CGSize = CGSize(width: 80, height: 120)) -> UIImage {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = UIScreen.main.scale
+        return UIGraphicsImageRenderer(size: size, format: format)
+            .image { ctx in
+                if let view = NYPLTenPrintCoverView(
+                    frame: CGRect(origin: .zero, size: size),
+                    withTitle: title,
+                    withAuthor: author,
+                    withScale: 0.4
+                ) {
+                    view.layer.render(in: ctx.cgContext)
+                }
+            }
+    }
+    
+    /// Pre-populates the cache with TenPrint covers for the given books
+    public func preloadTenPrintCovers(for books: [TPPBook]) {
+        for book in books {
+            let cover = MockImageCache.generateTenPrintCover(
+                title: book.title,
+                author: book.authors ?? "Unknown Author"
+            )
+            set(cover, for: book.identifier, expiresIn: nil)
+        }
+    }
 }

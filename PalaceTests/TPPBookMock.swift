@@ -49,9 +49,17 @@ struct TPPBookMocker {
       availability: TPPOPDSAcquisitionAvailabilityUnlimited.init()
     )
     
+    let title = "Title \(identifier.prefix(8))"
+    let author = "Author \(identifier.prefix(8))"
+    
+    // Create image cache with pre-generated TenPrint cover
+    let imageCache = MockImageCache()
+    let cover = MockImageCache.generateTenPrintCover(title: title, author: author)
+    imageCache.set(cover, for: identifier, expiresIn: nil)
+    
     let fakeBook = TPPBook(
       acquisitions: [fakeAcquisition],
-      authors: [TPPBookAuthor(authorName: "Author \(identifier)", relatedBooksURL: nil)],
+      authors: [TPPBookAuthor(authorName: author, relatedBooksURL: nil)],
       categoryStrings: ["Category \(identifier)"],
       distributor: "Distributor \(identifier)",
       identifier: identifier,
@@ -61,7 +69,7 @@ struct TPPBookMocker {
       publisher: "Publisher \(identifier)",
       subtitle: "Subtitle \(identifier)",
       summary: "Summary \(identifier)",
-      title: "Title \(identifier)",
+      title: title,
       updated: Date.init(),
       annotationsURL: emptyUrl,
       analyticsURL: emptyUrl,
@@ -74,7 +82,7 @@ struct TPPBookMocker {
       timeTrackingURL: emptyUrl,
       contributors: [:],
       bookDuration: nil,
-      imageCache: MockImageCache()
+      imageCache: imageCache
     )
     
     return fakeBook
@@ -119,6 +127,10 @@ struct TPPBookMocker {
   
   /// Creates a mock book on hold with FIXED data - suitable for snapshot tests
   static func snapshotHoldBook() -> TPPBook {
+    let title = "To Kill a Mockingbird"
+    let author = "Harper Lee"
+    let identifier = "snapshot-hold-001"
+    
     let acquisition = TPPOPDSAcquisition(
       relation: .generic,
       type: DistributorType.EpubZip.rawValue,
@@ -132,19 +144,24 @@ struct TPPBookMocker {
       )
     )
     
+    // Create image cache with pre-generated TenPrint cover
+    let imageCache = MockImageCache()
+    let cover = MockImageCache.generateTenPrintCover(title: title, author: author)
+    imageCache.set(cover, for: identifier, expiresIn: nil)
+    
     return TPPBook(
       acquisitions: [acquisition],
-      authors: [TPPBookAuthor(authorName: "Harper Lee", relatedBooksURL: nil)],
+      authors: [TPPBookAuthor(authorName: author, relatedBooksURL: nil)],
       categoryStrings: ["Fiction", "Classic"],
       distributor: "Library",
-      identifier: "snapshot-hold-001",
+      identifier: identifier,
       imageURL: snapshotURL,
       imageThumbnailURL: snapshotURL,
       published: snapshotDate,
       publisher: "HarperCollins",
       subtitle: "A Novel",
       summary: "A classic novel about justice and racial inequality.",
-      title: "To Kill a Mockingbird",
+      title: title,
       updated: snapshotDate,
       annotationsURL: nil,
       analyticsURL: nil,
@@ -157,7 +174,7 @@ struct TPPBookMocker {
       timeTrackingURL: nil,
       contributors: [:],
       bookDuration: nil,
-      imageCache: MockImageCache()
+      imageCache: imageCache
     )
   }
   
@@ -176,6 +193,11 @@ struct TPPBookMocker {
       indirectAcquisitions: [],
       availability: TPPOPDSAcquisitionAvailabilityUnlimited()
     )
+    
+    // Create image cache with pre-generated TenPrint cover
+    let imageCache = MockImageCache()
+    let cover = MockImageCache.generateTenPrintCover(title: title, author: author)
+    imageCache.set(cover, for: identifier, expiresIn: nil)
     
     return TPPBook(
       acquisitions: [acquisition],
@@ -202,7 +224,7 @@ struct TPPBookMocker {
       timeTrackingURL: nil,
       contributors: [:],
       bookDuration: duration,
-      imageCache: MockImageCache()
+      imageCache: imageCache
     )
   }
 }
