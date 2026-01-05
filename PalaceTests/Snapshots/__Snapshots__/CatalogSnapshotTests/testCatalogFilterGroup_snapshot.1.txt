@@ -1,0 +1,21 @@
+▿ CatalogFilterGroup
+  ▿ filters: 3 elements
+    ▿ CatalogFilter
+      - active: true
+      - href: Optional<URL>.none
+      - id: "all"
+      - title: "All"
+    ▿ CatalogFilter
+      - active: false
+      ▿ href: Optional<URL>
+        - some: https://example.org/ebooks
+      - id: "ebooks"
+      - title: "Ebooks"
+    ▿ CatalogFilter
+      - active: false
+      ▿ href: Optional<URL>
+        - some: https://example.org/audiobooks
+      - id: "audiobooks"
+      - title: "Audiobooks"
+  - id: "availability"
+  - name: "Availability"
