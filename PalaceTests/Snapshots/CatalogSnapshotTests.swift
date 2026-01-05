@@ -28,8 +28,9 @@ class CatalogSnapshotTests: XCTestCase {
   
   func testCatalog_AccessibilityIdentifiersExist() {
     // Verify catalog accessibility identifiers are properly defined
-    XCTAssertFalse(AccessibilityID.Catalog.view.isEmpty, "Catalog view identifier should exist")
+    XCTAssertFalse(AccessibilityID.Catalog.scrollView.isEmpty, "Catalog scroll view identifier should exist")
     XCTAssertFalse(AccessibilityID.Catalog.searchButton.isEmpty, "Catalog search button identifier should exist")
+    XCTAssertFalse(AccessibilityID.Catalog.navigationBar.isEmpty, "Catalog navigation bar identifier should exist")
   }
   
   // MARK: - Lane Model Tests

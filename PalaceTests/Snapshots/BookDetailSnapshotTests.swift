@@ -50,10 +50,10 @@ class BookDetailSnapshotTests: XCTestCase {
   
   func testBookDetail_AccessibilityIdentifiersExist() {
     // Verify book detail accessibility identifiers are properly defined
-    XCTAssertFalse(AccessibilityID.BookDetail.view.isEmpty, "BookDetail view identifier should exist")
     XCTAssertFalse(AccessibilityID.BookDetail.coverImage.isEmpty, "BookDetail cover image identifier should exist")
-    XCTAssertFalse(AccessibilityID.BookDetail.titleLabel.isEmpty, "BookDetail title label identifier should exist")
-    XCTAssertFalse(AccessibilityID.BookDetail.authorLabel.isEmpty, "BookDetail author label identifier should exist")
+    XCTAssertFalse(AccessibilityID.BookDetail.title.isEmpty, "BookDetail title identifier should exist")
+    XCTAssertFalse(AccessibilityID.BookDetail.author.isEmpty, "BookDetail author identifier should exist")
+    XCTAssertFalse(AccessibilityID.BookDetail.description.isEmpty, "BookDetail description identifier should exist")
   }
   
   func testBookDetail_ActionButtonIdentifiersExist() {
@@ -61,7 +61,7 @@ class BookDetailSnapshotTests: XCTestCase {
     XCTAssertFalse(AccessibilityID.BookDetail.getButton.isEmpty, "Get button identifier should exist")
     XCTAssertFalse(AccessibilityID.BookDetail.readButton.isEmpty, "Read button identifier should exist")
     XCTAssertFalse(AccessibilityID.BookDetail.listenButton.isEmpty, "Listen button identifier should exist")
-    XCTAssertFalse(AccessibilityID.BookDetail.borrowButton.isEmpty, "Borrow button identifier should exist")
+    XCTAssertFalse(AccessibilityID.BookDetail.reserveButton.isEmpty, "Reserve button identifier should exist")
   }
   
   // MARK: - Book Type Tests
@@ -70,8 +70,7 @@ class BookDetailSnapshotTests: XCTestCase {
     let book = createMockEPUBBook()
     
     XCTAssertNotNil(book.identifier, "EPUB book should have identifier")
-    XCTAssertNotNil(book.acquisitions, "EPUB book should have acquisitions")
-    XCTAssertFalse(book.acquisitions?.isEmpty ?? true, "EPUB book should have at least one acquisition")
+    XCTAssertFalse(book.acquisitions.isEmpty, "EPUB book should have at least one acquisition")
   }
   
   func testBookType_Audiobook() {
