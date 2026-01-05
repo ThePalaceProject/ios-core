@@ -14,8 +14,9 @@ import XCTest
 /// ```swift
 /// final class CatalogTests: BaseTestCase {
 ///     func testSearchForBook() {
-///         let catalog = CatalogScreen(app: app)
-///         catalog.tapSearchButton()
+///         navigateToTab("Catalog")
+///         openSearch()
+///         search("Alice")
 ///         // ... test continues
 ///     }
 /// }
@@ -419,13 +420,9 @@ class BaseTestCase: XCTestCase {
   
   /// Searches for a book in the catalog
   /// - Parameter searchTerm: The search query
-  /// - Returns: Search screen instance
-  @discardableResult
-  func searchForBook(_ searchTerm: String) -> SearchScreen {
-    let catalog = CatalogScreen(app: app)
-    let search = catalog.tapSearchButton()
-    search.enterSearchText(searchTerm)
-    return search
+  func searchForBook(_ searchTerm: String) {
+    openSearch()
+    search(searchTerm)
   }
   
   /// Finds and taps the first book in search results
@@ -433,8 +430,8 @@ class BaseTestCase: XCTestCase {
   /// - Returns: true if book was found and tapped
   @discardableResult
   func findAndSelectBook(_ searchTerm: String) -> Bool {
-    let search = searchForBook(searchTerm)
-    return search.tapFirstResult() != nil
+    searchForBook(searchTerm)
+    return tapFirstResult()
   }
   
   // MARK: - Wait Helpers
@@ -517,10 +514,3 @@ enum AppTab {
   case holds
   case settings
 }
-
-// Screen objects are imported from their respective files:
-// - CatalogScreen.swift
-// - SearchScreen.swift
-// - BookDetailScreen.swift
-// - MyBooksScreen.swift
-
