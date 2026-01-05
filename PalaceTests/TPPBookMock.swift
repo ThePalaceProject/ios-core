@@ -103,7 +103,7 @@ struct TPPBookMocker {
       title: "Pride and Prejudice",
       author: "Jane Austen",
       distributorType: .OpenAccessAudiobook,
-      duration: 43200 // 12 hours
+      duration: "12:00:00" // 12 hours
     )
   }
   
@@ -125,9 +125,9 @@ struct TPPBookMocker {
       hrefURL: snapshotURL,
       indirectAcquisitions: [],
       availability: TPPOPDSAcquisitionAvailabilityReserved(
-        copiesTotal: 5,
-        copiesAvailable: 0,
         holdPosition: 3,
+        copiesTotal: 5,
+        since: snapshotDate,
         until: snapshotDate.addingTimeInterval(86400 * 14)
       )
     )
@@ -167,7 +167,7 @@ struct TPPBookMocker {
     title: String,
     author: String,
     distributorType: DistributorType,
-    duration: Double? = nil
+    duration: String? = nil
   ) -> TPPBook {
     let acquisition = TPPOPDSAcquisition(
       relation: .generic,
