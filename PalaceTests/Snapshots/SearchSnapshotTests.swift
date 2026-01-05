@@ -25,13 +25,15 @@ final class SearchSnapshotTests: XCTestCase {
   }
   
   // MARK: - Search Results UI
+  // Uses deterministic mocks for consistent snapshot comparisons
   
   func testSearchResults_withBooks() {
     guard canRecordSnapshots else { return }
     
+    // Use deterministic snapshot books for consistent comparisons
     let books = [
-      TPPBookMocker.mockBook(distributorType: .EpubZip),
-      TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)
+      TPPBookMocker.snapshotEPUB(),
+      TPPBookMocker.snapshotAudiobook()
     ]
     
     // Create a search results view

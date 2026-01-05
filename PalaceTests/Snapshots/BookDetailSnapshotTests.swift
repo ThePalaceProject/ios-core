@@ -38,17 +38,18 @@ final class BookDetailSnapshotTests: XCTestCase {
   }
   
   // MARK: - Helper Methods
+  // Use deterministic mocks for consistent snapshot comparisons
   
   private func createMockEPUBBook() -> TPPBook {
-    TPPBookMocker.mockBook(distributorType: .EpubZip)
+    TPPBookMocker.snapshotEPUB()
   }
   
   private func createMockAudiobook() -> TPPBook {
-    TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)
+    TPPBookMocker.snapshotAudiobook()
   }
   
   private func createMockPDFBook() -> TPPBook {
-    TPPBookMocker.mockBook(distributorType: .OpenAccessPDF)
+    TPPBookMocker.snapshotPDF()
   }
   
   // MARK: - Book Content Type Detection

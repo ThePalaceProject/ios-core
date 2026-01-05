@@ -38,9 +38,17 @@ final class CatalogSnapshotTests: XCTestCase {
   }
   
   // MARK: - Helper Methods
+  // Use deterministic mocks for consistent snapshot comparisons
   
+  /// Returns a fixed set of deterministic books for lane/grid snapshots
   private func createMockBooks(count: Int) -> [TPPBook] {
-    (0..<count).map { _ in TPPBookMocker.mockBook(distributorType: .EpubZip) }
+    let allBooks = [
+      TPPBookMocker.snapshotEPUB(),
+      TPPBookMocker.snapshotAudiobook(),
+      TPPBookMocker.snapshotPDF(),
+      TPPBookMocker.snapshotHoldBook()
+    ]
+    return Array(allBooks.prefix(count))
   }
   
   // MARK: - CatalogLaneRowView Visual Snapshots
@@ -115,12 +123,12 @@ final class CatalogSnapshotTests: XCTestCase {
   }
   
   // MARK: - BookImageView Visual Snapshots
-  // Uses the REAL BookImageView
+  // Uses the REAL BookImageView with deterministic data
   
   func testBookImageView_epub() {
     guard canRecordSnapshots else { return }
     
-    let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
+    let book = TPPBookMocker.snapshotEPUB()
     let view = BookImageView(book: book, height: 150)
       .frame(width: 100, height: 150)
       .background(Color(UIColor.systemBackground))
@@ -131,7 +139,7 @@ final class CatalogSnapshotTests: XCTestCase {
   func testBookImageView_audiobook() {
     guard canRecordSnapshots else { return }
     
-    let book = TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)
+    let book = TPPBookMocker.snapshotAudiobook()
     let view = BookImageView(book: book, height: 150)
       .frame(width: 100, height: 150)
       .background(Color(UIColor.systemBackground))
