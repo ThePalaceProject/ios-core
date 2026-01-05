@@ -156,7 +156,7 @@ class BookTransactionTests: XCTestCase {
     mockRegistry.addBook(fakeEpub, state: .downloadSuccessful)
     
     let state = mockRegistry.state(for: fakeEpub.identifier)
-    let isEpub = fakeEpub.defaultAcquisition?.type?.contains("epub") ?? false
+    let isEpub = fakeEpub.defaultAcquisition?.type.contains("epub") ?? false
     let shouldShowReadButton = (state == .downloadSuccessful) && isEpub
     
     XCTAssertTrue(shouldShowReadButton, "READ button should show for downloaded EPUB")
@@ -166,7 +166,7 @@ class BookTransactionTests: XCTestCase {
     mockRegistry.addBook(fakeAudiobook, state: .downloadSuccessful)
     
     let state = mockRegistry.state(for: fakeAudiobook.identifier)
-    let isAudiobook = fakeAudiobook.defaultAcquisition?.type?.contains("audiobook") ?? false
+    let isAudiobook = fakeAudiobook.defaultAcquisition?.type.contains("audiobook") ?? false
     let shouldShowListenButton = (state == .downloadSuccessful) && isAudiobook
     
     XCTAssertTrue(shouldShowListenButton, "LISTEN button should show for downloaded audiobook")
@@ -187,7 +187,7 @@ class BookTransactionTests: XCTestCase {
     mockRegistry.addBook(fakeEpub, state: .downloadSuccessful)
     
     // Simulate return
-    mockRegistry.removeBook(fakeEpub.identifier)
+    mockRegistry.removeBook(forIdentifier: fakeEpub.identifier)
     
     let isInRegistry = mockRegistry.book(forIdentifier: fakeEpub.identifier) != nil
     XCTAssertFalse(isInRegistry, "Book should be removed after RETURN")
@@ -199,7 +199,7 @@ class BookTransactionTests: XCTestCase {
     mockRegistry.addBook(fakeEpub, state: .downloadSuccessful)
     mockRegistry.addBook(fakeAudiobook, state: .downloadSuccessful)
     
-    let myBooks = mockRegistry.myBooks
+    let myBooks = mockRegistry.registry.values.compactMap { $0.book }
     
     XCTAssertEqual(myBooks.count, 2, "My Books should show 2 downloaded books")
   }
@@ -208,9 +208,9 @@ class BookTransactionTests: XCTestCase {
     mockRegistry.addBook(fakeEpub, state: .downloadSuccessful)
     
     // Return all books
-    mockRegistry.removeBook(fakeEpub.identifier)
+    mockRegistry.removeBook(forIdentifier: fakeEpub.identifier)
     
-    let myBooks = mockRegistry.myBooks
+    let myBooks = mockRegistry.registry.values.compactMap { $0.book }
     XCTAssertTrue(myBooks.isEmpty, "My Books should be empty after returning all books")
   }
   
@@ -218,9 +218,10 @@ class BookTransactionTests: XCTestCase {
     mockRegistry.addBook(fakeEpub, state: .downloadSuccessful)
     
     // Return the book
-    mockRegistry.removeBook(fakeEpub.identifier)
+    mockRegistry.removeBook(forIdentifier: fakeEpub.identifier)
     
-    let isBookPresent = mockRegistry.myBooks.contains { $0.identifier == fakeEpub.identifier }
+    let myBooks = mockRegistry.registry.values.compactMap { $0.book }
+    let isBookPresent = myBooks.contains { $0.identifier == fakeEpub.identifier }
     XCTAssertFalse(isBookPresent, "Book should not be present in My Books after return")
   }
   
@@ -255,7 +256,7 @@ class BookTransactionTests: XCTestCase {
     mockRegistry.addBook(fakeEpub, state: .holding)
     
     // Simulate remove reservation
-    mockRegistry.removeBook(fakeEpub.identifier)
+    mockRegistry.removeBook(forIdentifier: fakeEpub.identifier)
     
     let isStillReserved = mockRegistry.book(forIdentifier: fakeEpub.identifier) != nil
     XCTAssertFalse(isStillReserved, "Book should not be reserved after REMOVE")
@@ -265,7 +266,8 @@ class BookTransactionTests: XCTestCase {
     mockRegistry.addBook(fakeEpub, state: .holding)
     
     // Get reserved books
-    let reservedBooks = mockRegistry.myBooks.filter { 
+    let allBooks = mockRegistry.registry.values.compactMap { $0.book }
+    let reservedBooks = allBooks.filter { 
       mockRegistry.state(for: $0.identifier) == .holding 
     }
     
@@ -289,7 +291,7 @@ class BookTransactionTests: XCTestCase {
     mockRegistry.addBook(fakeEpub, state: .downloadSuccessful)
     
     // Simulate: Click RETURN, confirm on alert
-    mockRegistry.removeBook(fakeEpub.identifier)
+    mockRegistry.removeBook(forIdentifier: fakeEpub.identifier)
     
     let isRemoved = mockRegistry.book(forIdentifier: fakeEpub.identifier) == nil
     XCTAssertTrue(isRemoved, "Book should be removed after confirming return alert")
