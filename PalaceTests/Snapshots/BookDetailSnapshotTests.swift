@@ -152,24 +152,18 @@ final class BookDetailSnapshotTests: XCTestCase {
   }
   
   // MARK: - BookButtonsView Visual Snapshots
-  // Tests the REAL button rendering
+  // Tests the REAL button rendering using a mock provider
   
   func testBookButtonsView_canBorrow() {
     guard canRecordSnapshots else { return }
     
     let book = createMockEPUBBook()
-    let mockRegistry = TPPBookRegistryMock()
-    mockRegistry.addBook(book, state: .unregistered)
-    
-    let viewModel = BookDetailViewModel(
+    let provider = MockBookButtonProvider(
       book: book,
-      bookRegistry: mockRegistry,
-      bookDownloadsCenter: TPPMyBooksDownloadsCenterMock(),
-      networkExecutor: TPPRequestExecutorMock(),
-      drmAuthorizer: TPPDRMAuthorizingMock()
+      buttonTypes: [.get]
     )
     
-    let view = BookButtonsView(provider: viewModel, backgroundColor: .white) { _ in }
+    let view = BookButtonsView(provider: provider, backgroundColor: .white) { _ in }
       .frame(width: 300)
       .padding()
       .background(Color(UIColor.systemBackground))
@@ -181,18 +175,12 @@ final class BookDetailSnapshotTests: XCTestCase {
     guard canRecordSnapshots else { return }
     
     let book = createMockEPUBBook()
-    let mockRegistry = TPPBookRegistryMock()
-    mockRegistry.addBook(book, state: .downloadSuccessful)
-    
-    let viewModel = BookDetailViewModel(
+    let provider = MockBookButtonProvider(
       book: book,
-      bookRegistry: mockRegistry,
-      bookDownloadsCenter: TPPMyBooksDownloadsCenterMock(),
-      networkExecutor: TPPRequestExecutorMock(),
-      drmAuthorizer: TPPDRMAuthorizingMock()
+      buttonTypes: [.read, .return]
     )
     
-    let view = BookButtonsView(provider: viewModel, backgroundColor: .white) { _ in }
+    let view = BookButtonsView(provider: provider, backgroundColor: .white) { _ in }
       .frame(width: 300)
       .padding()
       .background(Color(UIColor.systemBackground))
@@ -204,18 +192,12 @@ final class BookDetailSnapshotTests: XCTestCase {
     guard canRecordSnapshots else { return }
     
     let book = createMockAudiobook()
-    let mockRegistry = TPPBookRegistryMock()
-    mockRegistry.addBook(book, state: .downloadSuccessful)
-    
-    let viewModel = BookDetailViewModel(
+    let provider = MockBookButtonProvider(
       book: book,
-      bookRegistry: mockRegistry,
-      bookDownloadsCenter: TPPMyBooksDownloadsCenterMock(),
-      networkExecutor: TPPRequestExecutorMock(),
-      drmAuthorizer: TPPDRMAuthorizingMock()
+      buttonTypes: [.listen, .return]
     )
     
-    let view = BookButtonsView(provider: viewModel, backgroundColor: .white) { _ in }
+    let view = BookButtonsView(provider: provider, backgroundColor: .white) { _ in }
       .frame(width: 300)
       .padding()
       .background(Color(UIColor.systemBackground))
@@ -255,5 +237,27 @@ final class BookDetailSnapshotTests: XCTestCase {
     for state in TPPBookState.allCases {
       XCTAssertFalse(state.stringValue().isEmpty, "State \(state) should have a string value")
     }
+  }
+}
+
+// MARK: - Mock Book Button Provider
+
+/// Mock provider for testing BookButtonsView without full ViewModel dependencies
+@MainActor
+final class MockBookButtonProvider: BookButtonProvider, ObservableObject {
+  let book: TPPBook
+  @Published var buttonTypes: [BookButtonType]
+  
+  init(book: TPPBook, buttonTypes: [BookButtonType]) {
+    self.book = book
+    self.buttonTypes = buttonTypes
+  }
+  
+  func handleAction(for type: BookButtonType) {
+    // No-op for tests
+  }
+  
+  func isProcessing(for type: BookButtonType) -> Bool {
+    false
   }
 }
