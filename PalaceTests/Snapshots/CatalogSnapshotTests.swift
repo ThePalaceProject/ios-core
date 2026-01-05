@@ -139,22 +139,33 @@ final class CatalogSnapshotTests: XCTestCase {
     assertSnapshot(of: view, as: .image)
   }
   
-  // MARK: - FacetToolbarView Visual Snapshots (if accessible)
+  // MARK: - FacetToolbarView Visual Snapshots
   
-  func testFacetToolbarView_withFilters() {
+  func testFacetToolbarView_withSort() {
     guard canRecordSnapshots else { return }
     
-    // Create facet groups similar to what the app uses
-    let facets = [
-      OPDSFacet(title: "All", href: URL(string: "https://example.org/all")!, isActive: true),
-      OPDSFacet(title: "eBooks", href: URL(string: "https://example.org/ebooks")!, isActive: false),
-      OPDSFacet(title: "Audiobooks", href: URL(string: "https://example.org/audiobooks")!, isActive: false)
-    ]
-    let group = OPDSFacetGroup(name: "Format", facets: facets)
+    let view = FacetToolbarView(
+      title: "Fiction",
+      showFilter: true,
+      onSort: { },
+      onFilter: { },
+      currentSortTitle: "Author"
+    )
+    .frame(width: 390, height: 50)
+    .background(Color(UIColor.systemBackground))
+    
+    assertSnapshot(of: view, as: .image)
+  }
+  
+  func testFacetToolbarView_noSort() {
+    guard canRecordSnapshots else { return }
     
     let view = FacetToolbarView(
-      facetGroups: [group],
-      onFacetSelected: { _ in }
+      title: "All Books",
+      showFilter: false,
+      onSort: nil,
+      onFilter: { },
+      currentSortTitle: nil
     )
     .frame(width: 390, height: 50)
     .background(Color(UIColor.systemBackground))
