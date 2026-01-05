@@ -119,12 +119,14 @@ final class BookDetailSnapshotTests: XCTestCase {
                   "Holding state should show manage or cancel hold button")
   }
   
-  func testButtonState_holdingFrontOfQueue_showsBorrowButton() {
+  func testButtonState_holdingFrontOfQueue_showsManageHold() {
+    // Note: holdingFrontOfQueue only shows .get if the book's availability is "ready"
+    // Our mock book has standard availability, so it shows .manageHold
     let book = createMockEPUBBook()
     let buttons = BookButtonState.holdingFrontOfQueue.buttonTypes(book: book)
     
-    XCTAssertTrue(buttons.contains(.get) || buttons.contains(.download),
-                  "Front of queue should show GET or DOWNLOAD button")
+    XCTAssertTrue(buttons.contains(.manageHold),
+                  "Front of queue with standard availability should show MANAGE HOLD button")
   }
   
   // MARK: - BookImageView Visual Snapshots
