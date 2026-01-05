@@ -51,10 +51,13 @@ final class MyBooksSnapshotTests: XCTestCase {
     // Add book to registry with desired state
     mockRegistry.addBook(book, state: state)
     
-    // Set a deterministic test cover image
-    let testImage = UIImage(systemName: "book.closed.fill")!
-    mockRegistry.setMockImage(testImage, for: book.identifier)
-    mockImageCache.set(testImage, for: book.identifier)
+    // Generate TenPrint cover for deterministic, visually meaningful snapshots
+    let tenPrintCover = MockImageCache.generateTenPrintCover(
+      title: book.title,
+      author: book.authors ?? "Unknown Author"
+    )
+    mockRegistry.setMockImage(tenPrintCover, for: book.identifier)
+    mockImageCache.set(tenPrintCover, for: book.identifier, expiresIn: nil)
     
     // Create model with injected dependencies
     return BookCellModel(

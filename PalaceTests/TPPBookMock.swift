@@ -85,6 +85,10 @@ struct TPPBookMocker {
       imageCache: imageCache
     )
     
+    // Pre-set cover image directly for synchronous snapshot testing
+    fakeBook.coverImage = cover
+    fakeBook.thumbnailImage = cover
+    
     return fakeBook
   }
   
@@ -149,7 +153,7 @@ struct TPPBookMocker {
     let cover = MockImageCache.generateTenPrintCover(title: title, author: author)
     imageCache.set(cover, for: identifier, expiresIn: nil)
     
-    return TPPBook(
+    let book = TPPBook(
       acquisitions: [acquisition],
       authors: [TPPBookAuthor(authorName: author, relatedBooksURL: nil)],
       categoryStrings: ["Fiction", "Classic"],
@@ -176,6 +180,12 @@ struct TPPBookMocker {
       bookDuration: nil,
       imageCache: imageCache
     )
+    
+    // Pre-set cover image directly for synchronous snapshot testing
+    book.coverImage = cover
+    book.thumbnailImage = cover
+    
+    return book
   }
   
   /// Creates a snapshot book with customizable properties
@@ -199,7 +209,7 @@ struct TPPBookMocker {
     let cover = MockImageCache.generateTenPrintCover(title: title, author: author)
     imageCache.set(cover, for: identifier, expiresIn: nil)
     
-    return TPPBook(
+    let book = TPPBook(
       acquisitions: [acquisition],
       authors: [TPPBookAuthor(authorName: author, relatedBooksURL: nil)],
       categoryStrings: ["Fiction"],
@@ -226,5 +236,11 @@ struct TPPBookMocker {
       bookDuration: duration,
       imageCache: imageCache
     )
+    
+    // Pre-set cover image directly for synchronous snapshot testing
+    book.coverImage = cover
+    book.thumbnailImage = cover
+    
+    return book
   }
 }
