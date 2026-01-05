@@ -24,13 +24,69 @@ final class ReservationsSnapshotTests: XCTestCase {
     #endif
   }
   
+  // MARK: - Test Dependencies
+  
+  private var mockRegistry: TPPBookRegistryMock!
+  private var mockImageCache: MockImageCache!
+  
+  override func setUp() {
+    super.setUp()
+    mockRegistry = TPPBookRegistryMock()
+    mockImageCache = MockImageCache()
+  }
+  
   // MARK: - Helper Methods
   
-  private func createMockHoldBook() -> TPPBook {
+  private func createMockBook() -> TPPBook {
     TPPBookMocker.mockBook(distributorType: .EpubZip)
   }
   
-  // MARK: - Empty State (using system images that render synchronously)
+  private func createBookCellModel(book: TPPBook, state: TPPBookState) -> BookCellModel {
+    // Add book to registry with desired state
+    mockRegistry.addBook(book, state: state)
+    
+    // Set a test cover image
+    let testImage = UIImage(systemName: "book.closed.fill")!
+    mockRegistry.setMockImage(testImage, for: book.identifier)
+    mockImageCache.set(testImage, for: book.identifier)
+    
+    // Create model with injected dependencies
+    return BookCellModel(
+      book: book,
+      imageCache: mockImageCache,
+      bookRegistry: mockRegistry
+    )
+  }
+  
+  // MARK: - NormalBookCell Visual Tests
+  
+  func testNormalBookCell_holding() {
+    guard canRecordSnapshots else { return }
+    
+    let book = createMockBook()
+    let model = createBookCellModel(book: book, state: .holding)
+    
+    let view = NormalBookCell(model: model)
+      .frame(width: 390)
+      .background(Color(UIColor.systemBackground))
+    
+    assertSnapshot(of: view, as: .image)
+  }
+  
+  func testNormalBookCell_downloadSuccessful() {
+    guard canRecordSnapshots else { return }
+    
+    let book = createMockBook()
+    let model = createBookCellModel(book: book, state: .downloadSuccessful)
+    
+    let view = NormalBookCell(model: model)
+      .frame(width: 390)
+      .background(Color(UIColor.systemBackground))
+    
+    assertSnapshot(of: view, as: .image)
+  }
+  
+  // MARK: - Empty State
   
   func testReservationsEmptyState() {
     guard canRecordSnapshots else { return }
@@ -51,32 +107,27 @@ final class ReservationsSnapshotTests: XCTestCase {
     assertSnapshot(of: emptyView, as: .image)
   }
   
-  // MARK: - Button State Tests
-  // These test the business logic from Reservations.feature
+  // MARK: - Button State Tests (Business Logic)
   
   func testReserveButton_showsForUnavailableBook() {
-    let book = createMockHoldBook()
+    let book = createMockBook()
     let buttons = BookButtonState.canHold.buttonTypes(book: book)
     
     XCTAssertTrue(buttons.contains(.reserve), "Unavailable book should show RESERVE button")
   }
   
   func testRemoveButton_showsAfterReservation() {
-    let book = createMockHoldBook()
+    let book = createMockBook()
     let buttons = BookButtonState.holding.buttonTypes(book: book)
     
-    // Should have option to remove/cancel hold
     XCTAssertTrue(buttons.contains(.manageHold) || buttons.contains(.cancelHold),
                   "Reserved book should show manage/cancel hold option")
   }
   
   func testHoldingFrontOfQueue_buttonBehavior() {
-    // Note: holdingFrontOfQueue only shows .get when the book's availability is "ready".
-    // Without ready availability set on mock book, it shows manageHold instead.
-    let book = createMockHoldBook()
+    let book = createMockBook()
     let buttons = BookButtonState.holdingFrontOfQueue.buttonTypes(book: book)
     
-    // The button shown depends on isHoldReady(book:) which checks availability
     XCTAssertFalse(buttons.isEmpty, "Should have at least one button")
     XCTAssertTrue(buttons.contains(.manageHold) || buttons.contains(.get),
                   "Should show manageHold or get depending on availability")
@@ -85,30 +136,20 @@ final class ReservationsSnapshotTests: XCTestCase {
   // MARK: - Sorting Tests
   
   func testHoldsSorting_byTitle() {
-    let books = [
-      createMockHoldBook(),
-      createMockHoldBook(),
-      createMockHoldBook()
-    ]
-    
+    let books = [createMockBook(), createMockBook(), createMockBook()]
     let sorted = books.sorted { $0.title < $1.title }
-    XCTAssertEqual(sorted.count, 3, "Should have 3 sorted books")
+    XCTAssertEqual(sorted.count, 3)
   }
   
   func testHoldsSorting_byAuthor() {
-    let books = [
-      createMockHoldBook(),
-      createMockHoldBook()
-    ]
-    
+    let books = [createMockBook(), createMockBook()]
     let sorted = books.sorted { ($0.authors ?? "") < ($1.authors ?? "") }
-    XCTAssertEqual(sorted.count, 2, "Should have 2 sorted books")
+    XCTAssertEqual(sorted.count, 2)
   }
   
   // MARK: - Accessibility
   
   func testReservationsAccessibilityIdentifiers() {
-    // Use Holds namespace (Reservations is the user-facing name, Holds is the code namespace)
     XCTAssertFalse(AccessibilityID.Holds.scrollView.isEmpty)
     XCTAssertFalse(AccessibilityID.Holds.emptyStateView.isEmpty)
     XCTAssertFalse(AccessibilityID.Holds.sortButton.isEmpty)

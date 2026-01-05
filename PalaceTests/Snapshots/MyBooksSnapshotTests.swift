@@ -24,35 +24,95 @@ final class MyBooksSnapshotTests: XCTestCase {
     #endif
   }
   
-  // MARK: - Helper Methods
+  // MARK: - Test Dependencies
   
-  private func createMockBooks() -> [TPPBook] {
-    [
-      TPPBookMocker.mockBook(distributorType: .EpubZip),
-      TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook),
-      TPPBookMocker.mockBook(distributorType: .OpenAccessPDF)
-    ]
+  private var mockRegistry: TPPBookRegistryMock!
+  private var mockImageCache: MockImageCache!
+  
+  override func setUp() {
+    super.setUp()
+    mockRegistry = TPPBookRegistryMock()
+    mockImageCache = MockImageCache()
   }
   
-  // MARK: - BookImageView Snapshots (simpler alternative to full BookCell)
+  // MARK: - Helper Methods
   
-  func testBookImageView_epub() {
+  private func createMockEPUB() -> TPPBook {
+    TPPBookMocker.mockBook(distributorType: .EpubZip)
+  }
+  
+  private func createMockAudiobook() -> TPPBook {
+    TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)
+  }
+  
+  private func createBookCellModel(book: TPPBook, state: TPPBookState) -> BookCellModel {
+    // Add book to registry with desired state
+    mockRegistry.addBook(book, state: state)
+    
+    // Set a test cover image
+    let testImage = UIImage(systemName: "book.closed.fill")!
+    mockRegistry.setMockImage(testImage, for: book.identifier)
+    mockImageCache.set(testImage, for: book.identifier)
+    
+    // Create model with injected dependencies
+    return BookCellModel(
+      book: book,
+      imageCache: mockImageCache,
+      bookRegistry: mockRegistry
+    )
+  }
+  
+  // MARK: - NormalBookCell Snapshots
+  
+  func testNormalBookCell_downloadedEPUB() {
     guard canRecordSnapshots else { return }
     
-    let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
-    let view = BookImageView(book: book, height: 180)
-      .frame(width: 120, height: 180)
+    let book = createMockEPUB()
+    let model = createBookCellModel(book: book, state: .downloadSuccessful)
+    
+    let view = NormalBookCell(model: model)
+      .frame(width: 390)
       .background(Color(UIColor.systemBackground))
     
     assertSnapshot(of: view, as: .image)
   }
   
-  func testBookImageView_audiobook() {
+  func testNormalBookCell_downloadedAudiobook() {
     guard canRecordSnapshots else { return }
     
-    let book = TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)
-    let view = BookImageView(book: book, height: 180)
-      .frame(width: 120, height: 180)
+    let book = createMockAudiobook()
+    let model = createBookCellModel(book: book, state: .downloadSuccessful)
+    
+    let view = NormalBookCell(model: model)
+      .frame(width: 390)
+      .background(Color(UIColor.systemBackground))
+    
+    assertSnapshot(of: view, as: .image)
+  }
+  
+  func testNormalBookCell_downloadNeeded() {
+    guard canRecordSnapshots else { return }
+    
+    let book = createMockEPUB()
+    let model = createBookCellModel(book: book, state: .downloadNeeded)
+    
+    let view = NormalBookCell(model: model)
+      .frame(width: 390)
+      .background(Color(UIColor.systemBackground))
+    
+    assertSnapshot(of: view, as: .image)
+  }
+  
+  // MARK: - DownloadingBookCell Snapshots
+  
+  func testDownloadingBookCell() {
+    guard canRecordSnapshots else { return }
+    
+    let book = createMockEPUB()
+    let model = createBookCellModel(book: book, state: .downloading)
+    
+    let view = DownloadingBookCell(model: model)
+      .frame(width: 390)
       .background(Color(UIColor.systemBackground))
     
     assertSnapshot(of: view, as: .image)
@@ -63,7 +123,6 @@ final class MyBooksSnapshotTests: XCTestCase {
   func testMyBooksEmptyState() {
     guard canRecordSnapshots else { return }
     
-    // Test the empty state view pattern
     let emptyView = VStack(spacing: 16) {
       Image(systemName: "books.vertical")
         .font(.system(size: 48))
@@ -83,14 +142,14 @@ final class MyBooksSnapshotTests: XCTestCase {
   // MARK: - Button Type Tests
   
   func testButtonTypes_downloadedEPUB() {
-    let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
+    let book = createMockEPUB()
     let buttons = BookButtonState.downloadSuccessful.buttonTypes(book: book)
     
     XCTAssertTrue(buttons.contains(.read), "Downloaded EPUB should have READ button")
   }
   
   func testButtonTypes_downloadedAudiobook() {
-    let book = TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)
+    let book = createMockAudiobook()
     let buttons = BookButtonState.downloadSuccessful.buttonTypes(book: book)
     
     XCTAssertTrue(buttons.contains(.listen), "Downloaded audiobook should have LISTEN button")
@@ -99,15 +158,15 @@ final class MyBooksSnapshotTests: XCTestCase {
   // MARK: - Sorting Tests
   
   func testSortByTitle() {
-    let books = createMockBooks()
+    let books = [createMockEPUB(), createMockAudiobook(), createMockEPUB()]
     let sorted = books.sorted { $0.title < $1.title }
     XCTAssertEqual(sorted.count, 3)
   }
   
   func testSortByAuthor() {
-    let books = createMockBooks()
+    let books = [createMockEPUB(), createMockAudiobook()]
     let sorted = books.sorted { ($0.authors ?? "") < ($1.authors ?? "") }
-    XCTAssertEqual(sorted.count, 3)
+    XCTAssertEqual(sorted.count, 2)
   }
   
   // MARK: - Accessibility

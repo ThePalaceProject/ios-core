@@ -8,6 +8,7 @@ protocol TPPBookRegistryProvider {
 
   func coverImage(for book: TPPBook, handler: @escaping (_ image: UIImage?) -> Void)
   func setProcessing(_ processing: Bool, for bookIdentifier: String)
+  func processing(forIdentifier bookIdentifier: String) -> Bool
   func state(for bookIdentifier: String?) -> TPPBookState
   func readiumBookmarks(forIdentifier identifier: String) -> [TPPReadiumBookmark]
   func setLocation(_ location: TPPBookLocation?, forIdentifier identifier: String)
@@ -28,6 +29,10 @@ protocol TPPBookRegistryProvider {
   func fulfillmentId(forIdentifier bookIdentifier: String?) -> String?
   func setFulfillmentId(_ fulfillmentId: String, for bookIdentifier: String)
   func with(account: String, perform block: (_ registry: TPPBookRegistry) -> Void)
+  
+  // Image loading methods
+  func cachedThumbnailImage(for book: TPPBook) -> UIImage?
+  func thumbnailImage(for book: TPPBook?, handler: @escaping (_ image: UIImage?) -> Void)
 }
 
 typealias TPPBookRegistryData = [String: Any]

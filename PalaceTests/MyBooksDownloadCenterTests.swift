@@ -42,13 +42,13 @@ class MyBooksDownloadCenterTests: XCTestCase {
 
   func testDownloadCenter_hasBookRegistry() {
     XCTAssertNotNil(mockBookRegistry)
-  }
+        }
   
   func testDownloadCenter_hasReauthenticator() {
     XCTAssertNotNil(mockReauthenticator)
   }
-  
+
   func testDownloadCenter_initialization() {
     XCTAssertNotNil(myBooksDownloadCenter)
-  }
+    }
 }
