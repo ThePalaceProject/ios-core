@@ -130,12 +130,15 @@ final class BookDetailSnapshotTests: XCTestCase {
   }
   
   // MARK: - BookImageView Visual Snapshots
-  // Uses the REAL BookImageView from the app
+  // Uses the REAL BookImageView with TenPrint covers
   
   func testBookImageView_epub_snapshot() {
     guard canRecordSnapshots else { return }
     
     let book = createMockEPUBBook()
+    // Verify TenPrint cover is pre-loaded
+    XCTAssertNotNil(book.coverImage, "Book should have pre-loaded TenPrint cover")
+    
     let view = BookImageView(book: book, height: 200)
       .frame(width: 140, height: 200)
       .background(Color(UIColor.systemBackground))
@@ -147,9 +150,69 @@ final class BookDetailSnapshotTests: XCTestCase {
     guard canRecordSnapshots else { return }
     
     let book = createMockAudiobook()
+    // Verify TenPrint cover is pre-loaded
+    XCTAssertNotNil(book.coverImage, "Audiobook should have pre-loaded TenPrint cover")
+    
     let view = BookImageView(book: book, height: 200)
       .frame(width: 140, height: 200)
       .background(Color(UIColor.systemBackground))
+    
+    assertSnapshot(of: view, as: .image)
+  }
+  
+  func testBookImageView_pdf_snapshot() {
+    guard canRecordSnapshots else { return }
+    
+    let book = createMockPDFBook()
+    // Verify TenPrint cover is pre-loaded
+    XCTAssertNotNil(book.coverImage, "PDF should have pre-loaded TenPrint cover")
+    
+    let view = BookImageView(book: book, height: 200)
+      .frame(width: 140, height: 200)
+      .background(Color(UIColor.systemBackground))
+    
+    assertSnapshot(of: view, as: .image)
+  }
+  
+  func testBookImageView_holdBook_snapshot() {
+    guard canRecordSnapshots else { return }
+    
+    let book = TPPBookMocker.snapshotHoldBook()
+    // Verify TenPrint cover is pre-loaded
+    XCTAssertNotNil(book.coverImage, "Hold book should have pre-loaded TenPrint cover")
+    
+    let view = BookImageView(book: book, height: 200)
+      .frame(width: 140, height: 200)
+      .background(Color(UIColor.systemBackground))
+    
+    assertSnapshot(of: view, as: .image)
+  }
+  
+  func testBookImageView_allTypes_grid() {
+    guard canRecordSnapshots else { return }
+    
+    let books = [
+      createMockEPUBBook(),
+      createMockAudiobook(),
+      createMockPDFBook(),
+      TPPBookMocker.snapshotHoldBook()
+    ]
+    
+    let view = HStack(spacing: 12) {
+      ForEach(books, id: \.identifier) { book in
+        VStack {
+          BookImageView(book: book, height: 150)
+            .frame(width: 100, height: 150)
+          Text(book.title)
+            .font(.caption)
+            .lineLimit(2)
+            .multilineTextAlignment(.center)
+            .frame(width: 100)
+        }
+      }
+    }
+    .padding()
+    .background(Color(UIColor.systemBackground))
     
     assertSnapshot(of: view, as: .image)
   }
@@ -208,17 +271,54 @@ final class BookDetailSnapshotTests: XCTestCase {
     assertSnapshot(of: view, as: .image)
   }
   
-  // MARK: - Full BookDetailView Snapshots (if feasible)
-  // Note: Full view may require more setup due to navigation/environment
+  // MARK: - Full BookDetailView Snapshots
+  // Tests the complete BookDetailView with TenPrint covers
   
-  func testBookDetailView_epub_initialState() {
+  func testBookDetailView_epub() {
     guard canRecordSnapshots else { return }
     
     let book = createMockEPUBBook()
+    XCTAssertNotNil(book.coverImage, "EPUB should have TenPrint cover for snapshot")
+    
     let view = BookDetailView(book: book)
       .frame(width: 390, height: 844)
     
-    // This may need NavigationStack wrapper depending on view requirements
+    assertSnapshot(of: view, as: .image)
+  }
+  
+  func testBookDetailView_audiobook() {
+    guard canRecordSnapshots else { return }
+    
+    let book = createMockAudiobook()
+    XCTAssertNotNil(book.coverImage, "Audiobook should have TenPrint cover for snapshot")
+    
+    let view = BookDetailView(book: book)
+      .frame(width: 390, height: 844)
+    
+    assertSnapshot(of: view, as: .image)
+  }
+  
+  func testBookDetailView_pdf() {
+    guard canRecordSnapshots else { return }
+    
+    let book = createMockPDFBook()
+    XCTAssertNotNil(book.coverImage, "PDF should have TenPrint cover for snapshot")
+    
+    let view = BookDetailView(book: book)
+      .frame(width: 390, height: 844)
+    
+    assertSnapshot(of: view, as: .image)
+  }
+  
+  func testBookDetailView_holdBook() {
+    guard canRecordSnapshots else { return }
+    
+    let book = TPPBookMocker.snapshotHoldBook()
+    XCTAssertNotNil(book.coverImage, "Hold book should have TenPrint cover for snapshot")
+    
+    let view = BookDetailView(book: book)
+      .frame(width: 390, height: 844)
+    
     assertSnapshot(of: view, as: .image)
   }
   
