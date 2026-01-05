@@ -38,9 +38,9 @@ final class CatalogSnapshotTests: XCTestCase {
   }
   
   // MARK: - Helper Methods
-  // Use deterministic mocks for consistent snapshot comparisons
+  // Use deterministic mocks with pre-loaded TenPrint covers
   
-  /// Returns a fixed set of deterministic books for lane/grid snapshots
+  /// Returns a fixed set of deterministic books with TenPrint covers for lane/grid snapshots
   private func createMockBooks(count: Int) -> [TPPBook] {
     let allBooks = [
       TPPBookMocker.snapshotEPUB(),
@@ -48,16 +48,30 @@ final class CatalogSnapshotTests: XCTestCase {
       TPPBookMocker.snapshotPDF(),
       TPPBookMocker.snapshotHoldBook()
     ]
-    return Array(allBooks.prefix(count))
+    let books = Array(allBooks.prefix(count))
+    
+    // Verify all books have TenPrint covers pre-loaded
+    for book in books {
+      assert(book.coverImage != nil, "Book '\(book.title)' missing TenPrint cover")
+    }
+    
+    return books
   }
   
   // MARK: - CatalogLaneRowView Visual Snapshots
-  // Uses the REAL CatalogLaneRowView from Palace/CatalogUI/Views/
+  // Uses the REAL CatalogLaneRowView with TenPrint covers
   
   func testCatalogLaneRowView_withBooks() {
     guard canRecordSnapshots else { return }
     
-    let books = createMockBooks(count: 5)
+    let books = createMockBooks(count: 4)
+    
+    // Verify TenPrint covers are pre-loaded
+    for book in books {
+      XCTAssertNotNil(book.coverImage, "Book '\(book.title)' should have TenPrint cover")
+      XCTAssertNotNil(book.thumbnailImage, "Book '\(book.title)' should have thumbnail")
+    }
+    
     let view = CatalogLaneRowView(
       title: "Featured Books",
       books: books,
