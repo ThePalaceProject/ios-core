@@ -61,32 +61,35 @@ class MyBooksDownloadCenterTests: XCTestCase {
   }
 
   func testBorrowBook_withReauthentication() {
-    let expectation = self.expectation(description: "Books is sent to downloading state")
+    let notificationExpectation = self.expectation(description: "Books is sent to downloading state")
+    let stateExpectation = self.expectation(description: "Book reaches correct state")
+    
+    let book = TPPBookMocker.mockBook(distributorType: .AdobeAdept)
+    var notificationFulfilled = false
 
     let notificationObserver = NotificationCenter.default.addObserver(
       forName: .TPPMyBooksDownloadCenterDidChange,
       object: nil,
-      queue: nil) { notification in
-        expectation.fulfill()
+      queue: nil) { [weak self] notification in
+        guard let self = self, !notificationFulfilled else { return }
+        notificationFulfilled = true
+        notificationExpectation.fulfill()
+        
+        // Check state immediately when notification fires
+        let bookState = self.mockBookRegistry.state(for: book.identifier)
+        if [.downloading, .downloadSuccessful].contains(bookState) {
+          stateExpectation.fulfill()
+        }
       }
 
     swizzle(selector: #selector(TPPOPDSFeed.swizzledURL_Error(_:shouldResetCache:useTokenIfAvailable:completionHandler:)))
-
-    let book = TPPBookMocker.mockBook(distributorType: .AdobeAdept)
     myBooksDownloadCenter.startBorrow(for: book, attemptDownload: true)
 
     // Ensure Reauthentication is Triggered
     XCTAssertTrue(mockReauthenticator.reauthenticationPerformed, "Reauthentication should have been performed.")
 
-    waitForExpectations(timeout: 5, handler: nil)
+    wait(for: [notificationExpectation, stateExpectation], timeout: 5, enforceOrder: false)
     NotificationCenter.default.removeObserver(notificationObserver)
-
-    // Give CI/CD some buffer time before assertion
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-      let bookState = self.mockBookRegistry.state(for: book.identifier)
-      XCTAssertTrue([.downloading, .downloadSuccessful].contains(bookState),
-                    "The book should be in the 'Downloading' or 'Download Successful' state.")
-    }
   }
 
   private func swizzle(selector: Selector) {

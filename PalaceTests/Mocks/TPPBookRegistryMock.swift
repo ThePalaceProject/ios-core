@@ -161,7 +161,7 @@ extension TPPBookRegistryMock: TPPBookRegistrySyncing {
 
   func sync() {
     isSyncing = true
-    sleep(1) // Simulate syncing delay
+    // Mock completes synchronously - no delay needed for tests
     isSyncing = false
   }
 
