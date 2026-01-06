@@ -120,7 +120,7 @@ final class PDFViewsSnapshotTests: XCTestCase {
   func testPDFNavigation_readerMode_notBookmarked() {
     guard canRecordSnapshots else { return }
     
-    let metadata = MockPDFDocumentMetadata(currentPage: 5, bookmarks: [], isBookmarked: false)
+    let metadata: TPPPDFDocumentMetadata = MockPDFDocumentMetadata(currentPage: 5, bookmarks: [], isBookmarked: false)
     
     let view = TPPPDFNavigation(readerMode: .constant(.reader)) { mode in
       Text("Content for \(String(describing: mode))")
@@ -136,7 +136,7 @@ final class PDFViewsSnapshotTests: XCTestCase {
   func testPDFNavigation_readerMode_bookmarked() {
     guard canRecordSnapshots else { return }
     
-    let metadata = MockPDFDocumentMetadata(currentPage: 5, bookmarks: [5], isBookmarked: true)
+    let metadata: TPPPDFDocumentMetadata = MockPDFDocumentMetadata(currentPage: 5, bookmarks: [5], isBookmarked: true)
     
     let view = TPPPDFNavigation(readerMode: .constant(.reader)) { mode in
       Text("Content for \(String(describing: mode))")
@@ -152,7 +152,7 @@ final class PDFViewsSnapshotTests: XCTestCase {
   func testPDFNavigation_previewsMode() {
     guard canRecordSnapshots else { return }
     
-    let metadata = MockPDFDocumentMetadata(currentPage: 0, bookmarks: [], isBookmarked: false)
+    let metadata: TPPPDFDocumentMetadata = MockPDFDocumentMetadata(currentPage: 0, bookmarks: [], isBookmarked: false)
     
     let view = TPPPDFNavigation(readerMode: .constant(.previews)) { mode in
       Text("Previews Content")
@@ -168,7 +168,7 @@ final class PDFViewsSnapshotTests: XCTestCase {
   func testPDFNavigation_tocMode() {
     guard canRecordSnapshots else { return }
     
-    let metadata = MockPDFDocumentMetadata(currentPage: 0, bookmarks: [], isBookmarked: false)
+    let metadata: TPPPDFDocumentMetadata = MockPDFDocumentMetadata(currentPage: 0, bookmarks: [], isBookmarked: false)
     
     let view = TPPPDFNavigation(readerMode: .constant(.toc)) { mode in
       Text("Table of Contents")
@@ -184,7 +184,7 @@ final class PDFViewsSnapshotTests: XCTestCase {
   func testPDFNavigation_bookmarksMode() {
     guard canRecordSnapshots else { return }
     
-    let metadata = MockPDFDocumentMetadata(currentPage: 0, bookmarks: [1, 5, 10], isBookmarked: false)
+    let metadata: TPPPDFDocumentMetadata = MockPDFDocumentMetadata(currentPage: 0, bookmarks: [1, 5, 10], isBookmarked: false)
     
     let view = TPPPDFNavigation(readerMode: .constant(.bookmarks)) { mode in
       Text("Bookmarks List")
@@ -200,7 +200,7 @@ final class PDFViewsSnapshotTests: XCTestCase {
   func testPDFNavigation_searchMode() {
     guard canRecordSnapshots else { return }
     
-    let metadata = MockPDFDocumentMetadata(currentPage: 0, bookmarks: [], isBookmarked: false)
+    let metadata: TPPPDFDocumentMetadata = MockPDFDocumentMetadata(currentPage: 0, bookmarks: [], isBookmarked: false)
     
     let view = TPPPDFNavigation(readerMode: .constant(.search)) { mode in
       Text("Search Results")
