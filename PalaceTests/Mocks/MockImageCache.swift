@@ -66,7 +66,7 @@ public final class MockImageCache: ImageCacheType {
     
     private static func generateTenPrintCoverOnMainThread(title: String, author: String, size: CGSize) -> UIImage {
         let format = UIGraphicsImageRendererFormat()
-        format.scale = UIScreen.main.scale
+        format.scale = 2.0  // Fixed scale for consistent snapshot testing across devices
         return UIGraphicsImageRenderer(size: size, format: format)
             .image { ctx in
                 if let view = NYPLTenPrintCoverView(

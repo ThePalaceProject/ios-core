@@ -62,10 +62,9 @@ final class ReservationsSnapshotTests: XCTestCase {
     let model = createBookCellModel(book: book, state: .holding)
     
     let view = NormalBookCell(model: model)
-      .frame(width: 390)
       .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertCellSnapshot(of: view)
   }
   
   func testNormalBookCell_downloadSuccessful() {
@@ -75,10 +74,9 @@ final class ReservationsSnapshotTests: XCTestCase {
     let model = createBookCellModel(book: book, state: .downloadSuccessful)
     
     let view = NormalBookCell(model: model)
-      .frame(width: 390)
       .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertCellSnapshot(of: view)
   }
   
   // MARK: - Empty State
@@ -93,10 +91,9 @@ final class ReservationsSnapshotTests: XCTestCase {
       .padding(.horizontal, 24)
       .padding(.top, 100)
       .accessibilityIdentifier(AccessibilityID.Holds.emptyStateView)
-      .frame(width: 390, height: 400)
       .background(Color(TPPConfiguration.backgroundColor()))
     
-    assertSnapshot(of: emptyView, as: .image)
+    assertFixedSnapshot(of: emptyView, height: 400)
   }
   
   // MARK: - Button States

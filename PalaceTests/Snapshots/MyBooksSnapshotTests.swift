@@ -66,10 +66,9 @@ final class MyBooksSnapshotTests: XCTestCase {
     let model = createBookCellModel(book: book, state: .downloadSuccessful)
     
     let view = NormalBookCell(model: model)
-      .frame(width: 390)
       .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertCellSnapshot(of: view)
   }
   
   func testNormalBookCell_downloadedAudiobook() {
@@ -79,10 +78,9 @@ final class MyBooksSnapshotTests: XCTestCase {
     let model = createBookCellModel(book: book, state: .downloadSuccessful)
     
     let view = NormalBookCell(model: model)
-      .frame(width: 390)
       .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertCellSnapshot(of: view)
   }
   
   func testNormalBookCell_downloadNeeded() {
@@ -92,10 +90,9 @@ final class MyBooksSnapshotTests: XCTestCase {
     let model = createBookCellModel(book: book, state: .downloadNeeded)
     
     let view = NormalBookCell(model: model)
-      .frame(width: 390)
       .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertCellSnapshot(of: view)
   }
   
   // MARK: - DownloadingBookCell
@@ -107,10 +104,9 @@ final class MyBooksSnapshotTests: XCTestCase {
     let model = createBookCellModel(book: book, state: .downloading)
     
     let view = DownloadingBookCell(model: model)
-      .frame(width: 390)
       .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertCellSnapshot(of: view)
   }
   
   // MARK: - Empty State
@@ -123,10 +119,9 @@ final class MyBooksSnapshotTests: XCTestCase {
       .foregroundColor(.gray)
       .palaceFont(.body)
       .accessibilityIdentifier(AccessibilityID.MyBooks.emptyStateView)
-      .frame(width: 390, height: 300)
       .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: emptyView, as: .image)
+    assertFixedSnapshot(of: emptyView, height: 300)
   }
   
   // MARK: - Button Types
