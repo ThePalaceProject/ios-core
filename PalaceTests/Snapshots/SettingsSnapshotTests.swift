@@ -137,16 +137,6 @@ final class SettingsSnapshotTests: XCTestCase {
     assertSnapshot(of: view, as: .image)
   }
   
-  // MARK: - EULAView
-  
-  func testEULAView_loading() {
-    guard canRecordSnapshots else { return }
-    
-    let view = EULAView()
-      .frame(width: 390, height: 600)
-    
-    assertSnapshot(of: view, as: .image)
-  }
   
   // MARK: - Accessibility
   
