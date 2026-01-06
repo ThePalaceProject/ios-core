@@ -33,7 +33,6 @@ class TPPSignInBusinessLogicTests: XCTestCase {
   }
 
   override func tearDownWithError() throws {
-    print("tearDownWithError")
     try super.tearDownWithError()
     businessLogic.userAccount.removeAll()
     businessLogic = nil
