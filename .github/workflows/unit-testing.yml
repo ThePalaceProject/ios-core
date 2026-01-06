@@ -67,6 +67,32 @@ jobs:
         env:
           BUILD_CONTEXT: ci
           
+      - name: Generate Test Report
+        if: always()
+        run: |
+          if [ -d "TestResults.xcresult" ]; then
+            echo "## 🧪 Test Results" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            
+            # Extract metrics using xcresulttool
+            xcrun xcresulttool get --path TestResults.xcresult --format json 2>/dev/null | \
+              python3 -c "
+          import json, sys
+          try:
+              data = json.load(sys.stdin)
+              metrics = data.get('metrics', {})
+              tests = metrics.get('testsCount', {}).get('_value', '0')
+              failures = metrics.get('testsFailedCount', {}).get('_value', '0')
+              passed = int(tests) - int(failures) if tests != 'N/A' else 0
+              status = '✅' if int(failures) == 0 else '❌'
+              print(f'{status} **{passed} passed**, **{failures} failed** out of **{tests} tests**')
+          except Exception as e:
+              print(f'⚠️ Could not parse results: {e}')
+          " >> $GITHUB_STEP_SUMMARY || echo "⚠️ Could not parse test results" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## ⚠️ No Test Results Found" >> $GITHUB_STEP_SUMMARY
+          fi
+          
       - name: Upload Test Results
         uses: actions/upload-artifact@v4
         if: always()
