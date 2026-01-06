@@ -36,50 +36,41 @@ actor OPDSFeedService {
       return try await existingTask.value
     }
     
-    // Create new task with proper cancellation handling
+    // Create new task
     let task = Task<TPPOPDSFeed, Error> {
-      // Check for cancellation before starting
-      try Task.checkCancellation()
-      
-      return try await withTaskCancellationHandler {
-        try await withCheckedThrowingContinuation { continuation in
-          TPPOPDSFeed.withURL(
-            url,
-            shouldResetCache: resetCache,
-            useTokenIfAvailable: useToken
-          ) { feed, errorDict in
-            if let feed = feed {
-              continuation.resume(returning: feed)
-            } else if let errorDict = errorDict {
-              // Try to extract problem document for user-friendly error messages
-              let problemDoc = Self.problemDocumentFromDictionary(errorDict)
-              let error = self.parseError(from: errorDict, url: url)
-              
-              // Attach problem document to error for better messaging
-              if let problemDoc = problemDoc {
-                let nsError = error as NSError
-                let errorWithProblemDoc = NSError(
-                  domain: nsError.domain,
-                  code: nsError.code,
-                  userInfo: (nsError.userInfo ?? [:]).merging([
-                    "problemDocument": problemDoc,
-                    "problemDocumentTitle": problemDoc.title ?? "",
-                    "problemDocumentDetail": problemDoc.detail ?? ""
-                  ]) { $1 }
-                )
-                continuation.resume(throwing: errorWithProblemDoc)
-              } else {
-                continuation.resume(throwing: error)
-              }
+      return try await withCheckedThrowingContinuation { continuation in
+        TPPOPDSFeed.withURL(
+          url,
+          shouldResetCache: resetCache,
+          useTokenIfAvailable: useToken
+        ) { feed, errorDict in
+          if let feed = feed {
+            continuation.resume(returning: feed)
+          } else if let errorDict = errorDict {
+            // Try to extract problem document for user-friendly error messages
+            let problemDoc = Self.problemDocumentFromDictionary(errorDict)
+            let error = self.parseError(from: errorDict, url: url)
+            
+            // Attach problem document to error for better messaging
+            if let problemDoc = problemDoc {
+              let nsError = error as NSError
+              let errorWithProblemDoc = NSError(
+                domain: nsError.domain,
+                code: nsError.code,
+                userInfo: (nsError.userInfo ?? [:]).merging([
+                  "problemDocument": problemDoc,
+                  "problemDocumentTitle": problemDoc.title ?? "",
+                  "problemDocumentDetail": problemDoc.detail ?? ""
+                ]) { $1 }
+              )
+              continuation.resume(throwing: errorWithProblemDoc)
             } else {
-              continuation.resume(throwing: PalaceError.parsing(.opdsFeedInvalid))
+              continuation.resume(throwing: error)
             }
+          } else {
+            continuation.resume(throwing: PalaceError.parsing(.opdsFeedInvalid))
           }
         }
-      } onCancel: {
-        // Cancellation is handled by the network layer
-        // The continuation will be resumed when withURL calls back with an error
-        Log.info(#file, "Feed fetch cancelled for \(url)")
       }
     }
     

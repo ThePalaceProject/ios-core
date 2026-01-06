@@ -98,14 +98,25 @@ class AudiobookTimeTrackerTests: XCTestCase {
   }
 
   func testTimeEntries_areInUTC() {
-    // Simulate 60 seconds of playback
+    // Simulate playback crossing a minute boundary to trigger save
+    // Start at second 30 and go to second 90 (crosses minute boundary at :60)
+    let baseDate = Calendar.current.date(byAdding: .second, value: 30, to: currentDate)!
     for i in 0..<60 {
-      let simulatedDate = Calendar.current.date(byAdding: .second, value: i, to: currentDate)!
+      let simulatedDate = Calendar.current.date(byAdding: .second, value: i, to: baseDate)!
       sut.receiveValue(simulatedDate)
     }
     
-    sut = nil
-    mockDataManager.flush()
+    // Wait for the async syncQueue operations to complete before deallocating
+    // The tracker uses a barrier queue, so this ensures all receiveValue calls finish
+    let expectation = self.expectation(description: "Wait for tracker queue")
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+      // Now deallocate to trigger final save
+      self.sut = nil
+      self.mockDataManager.flush()
+      expectation.fulfill()
+    }
+    
+    wait(for: [expectation], timeout: 1.0)
     
     let firstEntry = mockDataManager.savedTimeEntries.first
     XCTAssertNotNil(firstEntry, "Time entry should exist")
