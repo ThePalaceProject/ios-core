@@ -138,12 +138,12 @@ final class HoldsViewModelTests: XCTestCase {
   
   // MARK: - OpenSearchDescription Tests
   
-  func testOpenSearchDescriptionTitle() async {
+  func testOpenSearchDescriptionHumanReadableDescription() async {
     let viewModel = HoldsViewModel()
     
     let searchDescription = viewModel.openSearchDescription
     
-    XCTAssertEqual(searchDescription.title, "Search Reservations")
+    XCTAssertEqual(searchDescription.humanReadableDescription, "Search Reservations")
   }
 }
 
