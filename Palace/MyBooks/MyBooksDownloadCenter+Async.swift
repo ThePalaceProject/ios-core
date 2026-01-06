@@ -22,6 +22,17 @@ extension MyBooksDownloadCenter {
     _ book: TPPBook,
     attemptDownload: Bool = false
   ) async throws -> TPPBook {
+    
+    #if DEBUG
+    // Check if error simulation is enabled via Developer Settings
+    if let simulated = DebugSettings.shared.createSimulatedBorrowError() {
+      await MainActor.run {
+        showBorrowError(.network(.forbidden), originalError: simulated.error, for: book, problemDocument: simulated.problemDocument)
+      }
+      throw simulated.error
+    }
+    #endif
+    
     // Use modern OPDSFeedService instead of legacy callback-based TPPOPDSFeed
     guard let acquisitionURL = book.defaultAcquisition?.hrefURL else {
       throw PalaceError.bookRegistry(.invalidState)
