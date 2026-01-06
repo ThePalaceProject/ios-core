@@ -81,11 +81,42 @@ let currentAccountIdentifierKey = "TPPCurrentAccountIdentifier"
       return account(uuid)
     }
     set {
+      let previousAccountId = currentAccountId
+      let newAccountId = newValue?.uuid
+      
       Log.debug(#file, "Setting currentAccount to <\(newValue?.name ?? "[N/A]")>")
+      Log.debug(#file, "Previous account: \(previousAccountId ?? "nil") → New account: \(newAccountId ?? "nil")")
+      
+      if previousAccountId != newAccountId, previousAccountId != nil {
+        Log.info(#file, "🔄 Account switch detected - cleaning up active content")
+        cleanupActiveContentBeforeAccountSwitch(from: previousAccountId, to: newAccountId)
+      }
+      
       self.currentAccount?.hasUpdatedToken = false
       currentAccountId = newValue?.uuid
       TPPErrorLogger.setUserID(TPPUserAccount.sharedAccount().barcode)
       NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
+    }
+  }
+  
+  /// Cleans up active audiobook playback and other content before switching accounts
+  private func cleanupActiveContentBeforeAccountSwitch(from previousId: String?, to newId: String?) {
+    Task { @MainActor in
+      // Clear any active audiobook playback
+      if let coordinator = NavigationCoordinatorHub.shared.coordinator {
+        let pathCount = coordinator.path.count
+        Log.debug(#file, "  Navigation path has \(pathCount) items")
+        
+        // If there's anything in the navigation stack, pop to root to clean up any active content
+        // This prevents audiobooks or other content from continuing to play with the wrong account context
+        if pathCount > 0 {
+          Log.info(#file, "  🔄 Popping to root to clean up active content before account switch")
+          coordinator.popToRoot()
+          
+          // Give the UI a moment to clean up
+          try? await Task.sleep(nanoseconds: 100_000_000) // 0.1s
+        }
+      }
     }
   }
 
@@ -177,7 +208,7 @@ let currentAccountIdentifierKey = "TPPCurrentAccountIdentifier"
     if addLoadingHandler(for: hash, completion) { return }
 
     Log.debug(#file, "Loading catalogs for hash \(hash)…")
-    TPPNetworkExecutor(cachingStrategy: .fallback).GET(targetUrl, useTokenIfAvailable: false) { [weak self] result in
+    TPPNetworkExecutor.shared.GET(targetUrl, useTokenIfAvailable: false) { [weak self] result in
       guard let self = self else { return }
       switch result {
       case .success(let data, _):
@@ -187,14 +218,17 @@ let currentAccountIdentifierKey = "TPPCurrentAccountIdentifier"
           self.callAndClearLoadingHandlers(for: hash, success)
         }
 
-      case .failure:
+      case .failure(let error, _):
+        Log.error(#file, "Failed to load catalogs from network: \(error.localizedDescription)")
         // fallback to disk
         if let data = self.readCachedAccountsCatalogData(hash: hash) {
+          Log.info(#file, "Using cached catalog data as fallback")
           self.loadAccountSetsAndAuthDoc(fromCatalogData: data, key: hash) { success in
             NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
             self.callAndClearLoadingHandlers(for: hash, success)
           }
         } else {
+          Log.error(#file, "No cached catalog data available, catalog load failed completely")
           // truly failed
           self.callAndClearLoadingHandlers(for: hash, false)
         }

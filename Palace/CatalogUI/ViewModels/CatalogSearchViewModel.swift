@@ -8,6 +8,8 @@ class CatalogSearchViewModel: ObservableObject {
   @Published var filteredBooks: [TPPBook] = []
   @Published var isLoading: Bool = false
   @Published var errorMessage: String?
+  @Published var nextPageURL: URL?
+  @Published var isLoadingMore: Bool = false
   
   private var allBooks: [TPPBook] = []
   private let repository: CatalogRepositoryProtocol
@@ -50,6 +52,8 @@ class CatalogSearchViewModel: ObservableObject {
     isLoading = false
     errorMessage = nil
     filteredBooks = allBooks
+    nextPageURL = nil
+    isLoadingMore = false
   }
   
   private func performSearch() {
@@ -61,15 +65,30 @@ class CatalogSearchViewModel: ObservableObject {
     guard !query.isEmpty else {
       // Show preloaded books when no search query
       filteredBooks = allBooks
+      nextPageURL = nil
+      isLoading = false
       return
     }
     
     guard let url = baseURL() else {
       filteredBooks = []
+      nextPageURL = nil
+      isLoading = false
       return
     }
     
+    // Clear pagination for new search
+    nextPageURL = nil
+    isLoadingMore = false
+    isLoading = true
+    
     searchTask = Task { [weak self] in
+      defer {
+        Task { @MainActor in
+          self?.isLoading = false
+        }
+      }
+      
       do {
         guard let self, !Task.isCancelled else { return }
         
@@ -81,7 +100,7 @@ class CatalogSearchViewModel: ObservableObject {
           guard !Task.isCancelled else { return }
           
           if let feed = feed {
-            // Extract books from search results
+            // Extract books from search results and map through registry for correct button states
             let feedObjc = feed.opdsFeed
             var searchResults: [TPPBook] = []
             
@@ -90,8 +109,10 @@ class CatalogSearchViewModel: ObservableObject {
             }
             
             self.filteredBooks = searchResults
+            self.extractNextPageURL(from: feedObjc)
           } else {
             self.filteredBooks = []
+            self.nextPageURL = nil
           }
         }
       } catch {
@@ -99,9 +120,72 @@ class CatalogSearchViewModel: ObservableObject {
         await MainActor.run {
           guard !Task.isCancelled else { return }
           self?.filteredBooks = []
+          self?.nextPageURL = nil
         }
       }
     }
   }
   
+  // MARK: - Pagination
+  
+  private func extractNextPageURL(from feed: TPPOPDSFeed) {
+    guard let links = feed.links as? [TPPOPDSLink] else {
+      nextPageURL = nil
+      return
+    }
+    
+    for link in links {
+      if link.rel == "next" {
+        nextPageURL = link.href
+        return
+      }
+    }
+    
+    nextPageURL = nil
+  }
+  
+  func loadNextPage() async {
+    guard let nextURL = nextPageURL, !isLoadingMore else { return }
+    
+    isLoadingMore = true
+    defer { isLoadingMore = false }
+    
+    do {
+      guard let feed = try await repository.fetchFeed(at: nextURL) else {
+        return
+      }
+      
+      let feedObjc = feed.opdsFeed
+      extractNextPageURL(from: feedObjc)
+      
+      if let entries = feedObjc.entries as? [TPPOPDSEntry] {
+        let newBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0) }
+        filteredBooks.append(contentsOf: newBooks)
+      }
+    } catch {
+      Log.error(#file, "Failed to load next page of search results: \(error.localizedDescription)")
+    }
+  }
+  
+  // MARK: - Registry Sync
+  
+  /// Refresh visible books with registry state (for downloaded/borrowed books)
+  func applyRegistryUpdates(changedIdentifier: String?) {
+    guard !filteredBooks.isEmpty else { return }
+    
+    var books = filteredBooks
+    var anyChanged = false
+    for idx in books.indices {
+      let book = books[idx]
+      if let changedIdentifier, book.identifier != changedIdentifier { continue }
+      // For books in registry, use registry version to get current state
+      if let registryBook = TPPBookRegistry.shared.book(forIdentifier: book.identifier) {
+        // Always update to trigger cell recreation with new registry state
+        books[idx] = registryBook
+        anyChanged = true
+      }
+    }
+    if anyChanged { filteredBooks = books }
+  }
 }
+

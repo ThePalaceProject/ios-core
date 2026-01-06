@@ -21,6 +21,50 @@ enum BookService {
   }
   
   private static func openAfterTokenRefresh(_ book: TPPBook, onFinish: (() -> Void)?) {
+    let userAccount = TPPUserAccount.sharedAccount()
+    
+    if book.defaultBookContentType == .audiobook && userAccount.authTokenHasExpired {
+      Log.info(#file, "🔄 Auth token expired for audiobook - refreshing before opening")
+      
+      guard let username = userAccount.username,
+            let password = userAccount.PIN,
+            let tokenURL = userAccount.authDefinition?.tokenURL else {
+        Log.error(#file, "Cannot refresh token: missing credentials or tokenURL")
+        openingBooks.remove(book.identifier)
+        showAudiobookTryAgainError()
+        onFinish?()
+        return
+      }
+      
+      TPPNetworkExecutor.shared.executeTokenRefresh(username: username, password: password, tokenURL: tokenURL) { result in
+        switch result {
+        case .success:
+          Log.info(#file, "✅ Token refresh successful - re-fetching manifest with fresh token")
+          
+          fetchOpenAccessManifest(for: book) { json in
+            guard let json else {
+              Log.error(#file, "❌ Failed to re-fetch manifest after token refresh")
+              openingBooks.remove(book.identifier)
+              showAudiobookTryAgainError()
+              onFinish?()
+              return
+            }
+            
+            Log.info(#file, "✅ Manifest re-fetched with fresh bearer token - opening audiobook")
+            presentAudiobookFrom(book: book, json: json, decryptor: nil, onFinish: onFinish)
+          }
+          
+        case .failure(let error):
+          Log.error(#file, "❌ Token refresh failed: \(error.localizedDescription) - cannot open audiobook")
+          openingBooks.remove(book.identifier)
+          showAudiobookTryAgainError()
+          onFinish?()
+        }
+      }
+      return
+    }
+    
+    // For non-audiobooks or valid tokens, proceed normally
     switch book.defaultBookContentType {
     case .epub:
       Task { @MainActor in
@@ -347,14 +391,30 @@ enum BookService {
             
             if let local = localPosition, let remote = remote {
               // Both exist - compare save timestamps to find most recently saved
-              let localSaveDate = ISO8601DateFormatter().date(from: local.lastSavedTimeStamp) ?? Date.distantPast
-              let remoteSaveDate = ISO8601DateFormatter().date(from: remote.lastSavedTimeStamp) ?? Date.distantPast
+              let formatter = ISO8601DateFormatter()
+              let localSaveDate = formatter.date(from: local.lastSavedTimeStamp)
+              let remoteSaveDate = formatter.date(from: remote.lastSavedTimeStamp)
               
-              if remoteSaveDate > localSaveDate {
-                Log.debug(#file, "Using remote position (more recently saved): track=\(remote.track.key), timestamp=\(remote.timestamp), saved=\(remote.lastSavedTimeStamp)")
+              if let localDate = localSaveDate, let remoteDate = remoteSaveDate {
+                // Both timestamps valid - normal comparison
+                if remoteDate > localDate {
+                  Log.debug(#file, "Using remote position (more recently saved): track=\(remote.track.key), timestamp=\(remote.timestamp), saved=\(remote.lastSavedTimeStamp)")
+                  finalPosition = remote
+                } else {
+                  Log.debug(#file, "Using local position (more recently saved): track=\(local.track.key), timestamp=\(local.timestamp), saved=\(local.lastSavedTimeStamp)")
+                  finalPosition = local
+                }
+              } else if localSaveDate != nil && remoteSaveDate == nil {
+                // Only local timestamp is valid
+                Log.debug(#file, "Using local position (remote timestamp invalid): track=\(local.track.key)")
+                finalPosition = local
+              } else if remoteSaveDate != nil && localSaveDate == nil {
+                // Only remote timestamp is valid
+                Log.debug(#file, "Using remote position (local timestamp invalid): track=\(remote.track.key)")
                 finalPosition = remote
               } else {
-                Log.debug(#file, "Using local position (more recently saved): track=\(local.track.key), timestamp=\(local.timestamp), saved=\(local.lastSavedTimeStamp)")
+                // Both timestamps invalid - prefer local as safer default
+                Log.warn(#file, "⚠️ Both timestamps invalid! Preferring local position as safer default: track=\(local.track.key)")
                 finalPosition = local
               }
             } else if let remote = remote {

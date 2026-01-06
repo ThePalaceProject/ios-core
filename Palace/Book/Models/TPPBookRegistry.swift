@@ -104,7 +104,10 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     .receive(on: RunLoop.main)
     .sink { _ in
       TPPBookRegistry.shared.load()
-      TPPBookRegistry.shared.sync()
+      
+      DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+        TPPBookRegistry.shared.sync()
+      }
     }
 
   private var registry = [String: TPPBookRegistryRecord]() {
@@ -191,6 +194,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
           let url     = registryUrl(for: account)
     else { return }
 
+    Log.info(#file, "📖 Loading registry for account: \(account)")
     DispatchQueue.main.async { self.state = .loading }
 
     syncQueue.async(flags: .barrier) {
@@ -199,13 +203,52 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
          let data     = try? Data(contentsOf: url),
          let json     = try? JSONSerialization.jsonObject(with: data) as? TPPBookRegistryData,
          let records  = json.array(for: .records) {
+        
+        Log.debug(#file, "  Found \(records.count) books in registry")
+        
         for obj in records {
           guard var record = TPPBookRegistryRecord(record: obj) else { continue }
-          if record.state == .downloading || record.state == .SAMLStarted {
-            record.state = .downloadFailed
+          let originalState = record.state
+          
+          // Validate file existence for download states
+          if record.state == .downloading || record.state == .SAMLStarted || record.state == .downloadSuccessful {
+            let fileExists = self.checkIfBookFileExists(for: record.book.identifier, account: account)
+            
+            if record.state == .downloading {
+              if fileExists {
+                Log.info(#file, "  ✅ '\(record.book.title)' was downloading but file exists - marking as successful")
+                record.state = .downloadSuccessful
+              } else {
+                Log.warn(#file, "  ⚠️ '\(record.book.title)' was downloading but file missing - marking as failed")
+                record.state = .downloadFailed
+              }
+            } else if record.state == .SAMLStarted {
+              if fileExists {
+                Log.info(#file, "  ✅ '\(record.book.title)' was in SAML flow but file exists - marking as download needed")
+                record.state = .downloadNeeded
+              } else {
+                Log.warn(#file, "  ⚠️ '\(record.book.title)' was in SAML flow but file missing - marking as failed")
+                record.state = .downloadFailed
+              }
+            } else if record.state == .downloadSuccessful {
+              if !fileExists {
+                Log.error(#file, "  ❌ '\(record.book.title)' marked as downloaded but FILE MISSING - marking as download needed")
+                Log.error(#file, "     This suggests the file was deleted or the path is wrong")
+                record.state = .downloadNeeded
+              } else {
+                Log.debug(#file, "  ✓ '\(record.book.title)' downloaded and file verified")
+              }
+            }
+            
+            if originalState != record.state {
+              Log.info(#file, "  🔄 State changed for '\(record.book.title)': \(originalState) → \(record.state)")
+            }
           }
+          
           newRegistry[record.book.identifier] = record
         }
+      } else {
+        Log.info(#file, "  No existing registry file found or failed to parse")
       }
 
       self.registry = newRegistry
@@ -214,8 +257,40 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
         self.state = .loaded
         self.registrySubject.send(self.registry)
         NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
+        Log.info(#file, "  📖 Registry loaded with \(self.registry.count) books")
       }
     }
+  }
+  
+  /// Helper to check if a book file exists in the file system
+  private func checkIfBookFileExists(for identifier: String, account: String) -> Bool {
+    guard let book = registry[identifier]?.book else { return false }
+    
+    // Get the file URL for this book and account
+    guard let bookURL = MyBooksDownloadCenter.shared.fileUrl(for: identifier, account: account) else {
+      return false
+    }
+    
+    let fileExists = FileManager.default.fileExists(atPath: bookURL.path)
+    
+#if LCP
+    // For LCP audiobooks: Check license file (content file optional for streaming)
+    if LCPAudiobooks.canOpenBook(book) {
+      let licenseURL = bookURL.deletingPathExtension().appendingPathExtension("lcpl")
+      let licenseExists = FileManager.default.fileExists(atPath: licenseURL.path)
+      
+      if licenseExists {
+        // Streaming LCP audiobooks only need license file
+        Log.debug(#file, "  ✓ LCP audiobook license file exists (content file: \(fileExists ? "yes" : "streaming-only"))")
+        return true
+      }
+      
+      // No license file - check for content file
+      return fileExists
+    }
+#endif
+    
+    return fileExists
   }
 
   func reset(_ account: String) {
@@ -279,11 +354,18 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
               changesMade = true
             }
           }
+          
+          // Remove books that aren't in the server's current response (loan expired/returned)
           recordsToDelete.forEach { identifier in
-            if let recordState = self.registry[identifier]?.state,
-               recordState == .downloadSuccessful || recordState == .used {
+            guard let record = self.registry[identifier] else { return }
+            
+            let wasDownloaded = record.state == .downloadSuccessful || record.state == .used
+            
+            if wasDownloaded {
+              Log.info(#file, "📚 Removing expired/returned book '\(record.book.title)' (not in server feed)")
               MyBooksDownloadCenter.shared.deleteLocalContent(for: identifier)
             }
+            
             self.registry[identifier]?.state = .unregistered
             self.removeBook(forIdentifier: identifier)
             changesMade = true
@@ -322,6 +404,29 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
       } catch {
         Log.error(#file, "Error saving book registry: \(error.localizedDescription)")
       }
+    }
+  }
+  
+  func saveSync() {
+    guard let account = AccountsManager.shared.currentAccount?.uuid,
+          let registryUrl = registryUrl(for: account)
+    else { return }
+
+    let snapshot: [[String: Any]] = performSync {
+      self.registry.values.map { $0.dictionaryRepresentation }
+    }
+    let registryObject = [TPPBookRegistryKey.records.rawValue: snapshot]
+
+    do {
+      let directoryURL = registryUrl.deletingLastPathComponent()
+      if !FileManager.default.fileExists(atPath: directoryURL.path) {
+        try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+      }
+      let registryData = try JSONSerialization.data(withJSONObject: registryObject, options: .fragmentsAllowed)
+      try registryData.write(to: registryUrl, options: .atomic)
+      Log.debug(#file, "🔒 Synchronously saved registry to disk")
+    } catch {
+      Log.error(#file, "Error saving book registry synchronously: \(error.localizedDescription)")
     }
   }
 
@@ -375,6 +480,9 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
                genericBookmarks: [TPPBookLocation]? = nil) {
       TPPBookCoverRegistryBridge.shared.thumbnailImageForBook(book) { _ in }
       
+    Log.info(#file, "📚 ADDING BOOK to registry: \(book.identifier), state: \(state.stringValue())")
+    Log.info(#file, "📚 Initial bookmarks - readium: \(readiumBookmarks?.count ?? 0), generic: \(genericBookmarks?.count ?? 0)")
+    
     syncQueue.async(flags: .barrier) { [weak self] in
       guard let self else { return }
         self.registry[book.identifier] = TPPBookRegistryRecord(
@@ -411,6 +519,12 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
       
       syncQueue.async(flags: .barrier) {
         let removedBook = self.registry[bookIdentifier]?.book
+        let bookmarksCount = self.registry[bookIdentifier]?.genericBookmarks?.count ?? 0
+        let readiumBookmarksCount = self.registry[bookIdentifier]?.readiumBookmarks?.count ?? 0
+        
+        Log.info(#file, "📚 REMOVING BOOK from registry: \(bookIdentifier)")
+        Log.info(#file, "📚 Book had \(bookmarksCount) generic bookmarks and \(readiumBookmarksCount) readium bookmarks that will be deleted")
+        
         self.registry.removeValue(forKey: bookIdentifier)
         self.save()
         DispatchQueue.main.async {
@@ -609,6 +723,17 @@ extension TPPBookRegistry: TPPBookRegistryProvider {
       self.save()
     }
   }
+  
+  func setLocationSync(_ location: TPPBookLocation?, forIdentifier bookIdentifier: String) {
+    guard !bookIdentifier.isEmpty else { return }
+    syncQueue.sync(flags: .barrier) { [weak self] in
+      guard let self else { return }
+
+      self.registry[bookIdentifier]?.location = location
+      Log.debug(#file, "🔒 Synchronously set location for \(bookIdentifier)")
+    }
+    saveSync()
+  }
 
   func location(forIdentifier bookIdentifier: String) -> TPPBookLocation? {
     return performSync {
@@ -657,7 +782,9 @@ extension TPPBookRegistry: TPPBookRegistryProvider {
 
   func genericBookmarksForIdentifier(_ bookIdentifier: String) -> [TPPBookLocation] {
     return performSync {
-      self.registry[bookIdentifier]?.genericBookmarks ?? []
+      let bookmarks = self.registry[bookIdentifier]?.genericBookmarks ?? []
+      Log.info(#file, "💾 REGISTRY: Fetching \(bookmarks.count) generic bookmarks for book: \(bookIdentifier)")
+      return bookmarks
     }
   }
 
@@ -679,19 +806,55 @@ extension TPPBookRegistry: TPPBookRegistryProvider {
     syncQueue.async(flags: .barrier) { [weak self] in
       guard let self else { return }
 
-      guard self.registry[bookIdentifier] != nil else { return }
+      guard self.registry[bookIdentifier] != nil else {
+        Log.warn(#file, "💾 REGISTRY: Cannot add bookmark, book not in registry: \(bookIdentifier)")
+        return
+      }
       if self.registry[bookIdentifier]?.genericBookmarks == nil {
         self.registry[bookIdentifier]?.genericBookmarks = [TPPBookLocation]()
       }
       
       self.registry[bookIdentifier]?.genericBookmarks?.append(location)
+      let count = self.registry[bookIdentifier]?.genericBookmarks?.count ?? 0
+      Log.info(#file, "💾 REGISTRY: Added generic bookmark for \(bookIdentifier), total count now: \(count)")
       self.save()
     }
   }
 
   func deleteGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String) {
     syncQueue.async(flags: .barrier) {
+      let beforeCount = self.registry[bookIdentifier]?.genericBookmarks?.count ?? 0
+      
+      // First try matching by annotation ID if available
+      if let locationDict = location.locationStringDictionary(),
+         let annotationId = locationDict["annotationId"] as? String,
+         !annotationId.isEmpty {
+        
+        self.registry[bookIdentifier]?.genericBookmarks?.removeAll { existingLocation in
+          guard let existingDict = existingLocation.locationStringDictionary(),
+                let existingId = existingDict["annotationId"] as? String else {
+            return false
+          }
+          return existingId == annotationId
+        }
+        
+        let afterCount = self.registry[bookIdentifier]?.genericBookmarks?.count ?? 0
+        let deleted = beforeCount - afterCount
+        
+        if deleted > 0 {
+          Log.info(#file, "💾 REGISTRY: Deleted \(deleted) bookmark(s) by annotationId for \(bookIdentifier), remaining: \(afterCount)")
+          self.save()
+          return
+        } else {
+          Log.warn(#file, "💾 REGISTRY: No match by annotationId '\(annotationId)', trying content match")
+        }
+      }
+      
+      // Fallback to content-based matching
       self.registry[bookIdentifier]?.genericBookmarks?.removeAll { $0.isSimilarTo(location) }
+      let afterCount = self.registry[bookIdentifier]?.genericBookmarks?.count ?? 0
+      let deleted = beforeCount - afterCount
+      Log.info(#file, "💾 REGISTRY: Deleted \(deleted) bookmark(s) by content for \(bookIdentifier), remaining: \(afterCount)")
       self.save()
     }
   }

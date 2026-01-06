@@ -36,6 +36,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
   @Published var tableData: [[CellType]] = []
   @Published var barcodeImage: UIImage?
   @Published var showBarcode = false
+  @Published var isSigningOut = false
   
   // MARK: - Properties
   
@@ -55,9 +56,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     businessLogic.userAccount
   }
   
-  var isSignedIn: Bool {
-    selectedUserAccount.hasCredentials()
-  }
+  @Published var isSignedIn: Bool = false
   
   var canSignIn: Bool {
     if businessLogic.selectedAuthentication?.isOauth == true ||
@@ -67,9 +66,12 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     
     let barcodeHasText = !usernameText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     let pinHasText = !pinText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    let pinIsNotRequired = businessLogic.selectedAuthentication?.pinKeyboard == .none
     
-    return (barcodeHasText && pinHasText) || (barcodeHasText && pinIsNotRequired)
+    let pinIsNotRequired = businessLogic.selectedAuthentication.map { $0.pinKeyboard == .none } ?? true
+    
+    let result = (barcodeHasText && pinHasText) || (barcodeHasText && pinIsNotRequired)
+    
+    return result
   }
   
   var libraryName: String {
@@ -94,6 +96,9 @@ class AccountDetailViewModel: NSObject, ObservableObject {
       uiDelegate: nil,
       drmAuthorizer: nil
     )
+    
+    // Initialize isSignedIn based on current credentials
+    self.isSignedIn = TPPUserAccount.sharedAccount(libraryUUID: libraryAccountID).hasCredentials()
     
     super.init()
     
@@ -138,6 +143,15 @@ class AccountDetailViewModel: NSObject, ObservableObject {
   
   private func setupObservers() {
     NotificationCenter.default.publisher(for: .TPPUserAccountDidChange)
+      .sink { [weak self] _ in
+        Task { @MainActor in
+          self?.accountDidChange()
+        }
+      }
+      .store(in: &cancellables)
+    
+    // Listen for account switches to refresh sign-in state
+    NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)
       .sink { [weak self] _ in
         Task { @MainActor in
           self?.accountDidChange()
@@ -294,7 +308,6 @@ class AccountDetailViewModel: NSObject, ObservableObject {
       return [.barcode, .pin, .logInSignOut]
     }
     
-    pinText = ""
     return [.barcode, .logInSignOut]
   }
   
@@ -302,9 +315,12 @@ class AccountDetailViewModel: NSObject, ObservableObject {
   
   func signIn() {
     guard !isSignedIn else {
+      isSigningOut = true
       presentSignOutAlert()
       return
     }
+    
+    isSigningOut = false
     
     if businessLogic.selectedAuthentication?.isOauth == true {
       businessLogic.logIn()
@@ -321,6 +337,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
   }
   
   func signOut() {
+    isSigningOut = true
     guard let alert = businessLogic.logOutOrWarn() else { return }
     TPPPresentationUtils.safelyPresent(alert, animated: true)
   }
@@ -455,6 +472,8 @@ class AccountDetailViewModel: NSObject, ObservableObject {
   }
   
   private func accountDidChange() {
+    isSignedIn = selectedUserAccount.hasCredentials()
+    
     if isSignedIn {
       usernameText = selectedUserAccount.barcode ?? ""
       pinText = selectedUserAccount.pin ?? ""
@@ -471,6 +490,15 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     alertTitle = title
     alertMessage = message
     showingAlert = true
+  }
+  
+  func refreshSignInState() {
+    let wasSignedIn = isSignedIn
+    isSignedIn = selectedUserAccount.hasCredentials()
+    
+    if wasSignedIn != isSignedIn {
+      setupTableData()
+    }
   }
 }
 
@@ -559,6 +587,7 @@ extension AccountDetailViewModel: TPPSignInOutBusinessLogicUIDelegate {
   
   func businessLogicWillSignIn(_ businessLogic: TPPSignInBusinessLogic) {
     isLoading = true
+    isSigningOut = false
     
     Task {
       try? await Task.sleep(nanoseconds: Constants.signInTimeoutSeconds)
@@ -572,15 +601,18 @@ extension AccountDetailViewModel: TPPSignInOutBusinessLogicUIDelegate {
   
   func businessLogicDidCancelSignIn(_ businessLogic: TPPSignInBusinessLogic) {
     isLoading = false
+    isSigningOut = false
   }
   
   func businessLogicDidCompleteSignIn(_ businessLogic: TPPSignInBusinessLogic) {
     isLoading = false
+    isSigningOut = false
     accountDidChange()
   }
   
   func businessLogic(_ logic: TPPSignInBusinessLogic, didEncounterValidationError error: Error?, userFriendlyErrorTitle title: String?, andMessage message: String?) {
     isLoading = false
+    isSigningOut = false
     
     if let error = error as? NSError, error.code == NSURLErrorCancelled {
       pinText = ""
@@ -593,10 +625,12 @@ extension AccountDetailViewModel: TPPSignInOutBusinessLogicUIDelegate {
   
   func businessLogicWillSignOut(_ businessLogic: TPPSignInBusinessLogic) {
     isLoading = true
+    isSigningOut = true
   }
   
   func businessLogic(_ logic: TPPSignInBusinessLogic, didEncounterSignOutError error: Error?, withHTTPStatusCode httpStatusCode: Int) {
     isLoading = false
+    isSigningOut = false
     
     let title: String
     let message: String
@@ -617,6 +651,7 @@ extension AccountDetailViewModel: TPPSignInOutBusinessLogicUIDelegate {
   
   func businessLogicDidFinishDeauthorizing(_ logic: TPPSignInBusinessLogic) {
     isLoading = false
+    isSigningOut = false
     setupTableData()
     accountDidChange()
   }
@@ -637,10 +672,14 @@ extension AccountDetailViewModel: TPPSignInOutBusinessLogicUIDelegate {
 
 extension AccountDetailViewModel: NYPLBasicAuthCredentialsProvider {
   var username: String? {
-    usernameText.isEmpty ? nil : usernameText
+    let value = usernameText.isEmpty ? nil : usernameText
+    Log.debug(#file, "Credentials provider - username: \(value ?? "nil")")
+    return value
   }
   
   var pin: String? {
-    pinText.isEmpty ? nil : pinText
+    let value = pinText.isEmpty ? "" : pinText
+    Log.debug(#file, "Credentials provider - pin: '\(value)'")
+    return value
   }
 }

@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 // MARK: - SearchView
 struct CatalogSearchView: View {
@@ -39,12 +40,14 @@ struct CatalogSearchView: View {
       ScrollView {
         BookListView(
           books: viewModel.filteredBooks,
-          isLoading: .constant(false),
+          isLoading: $viewModel.isLoading,
           onSelect: onBookSelected,
+          onLoadMore: { @MainActor in await viewModel.loadNextPage() },
+          isLoadingMore: viewModel.isLoadingMore,
           previewEnabled: false
         )
       }
-      .scrollDismissesKeyboard(.interactively)
+      .scrollDismissesKeyboard(.immediately)
       .onTapGesture {
         isSearchFieldFocused = false
       }
@@ -55,6 +58,30 @@ struct CatalogSearchView: View {
     .onChange(of: books) { newBooks in
       viewModel.updateBooks(newBooks)
     }
+    .onReceive(registryChangePublisher) { note in
+      let changedId = (note.userInfo as? [String: Any])?["bookIdentifier"] as? String
+      viewModel.applyRegistryUpdates(changedIdentifier: changedId)
+    }
+    .onReceive(downloadProgressPublisher) { changedId in
+      viewModel.applyRegistryUpdates(changedIdentifier: changedId)
+    }
+  }
+  
+  // MARK: - Publishers
+  
+  private var registryChangePublisher: AnyPublisher<Notification, Never> {
+    NotificationCenter.default
+      .publisher(for: .TPPBookRegistryStateDidChange)
+      .throttle(for: .milliseconds(350), scheduler: DispatchQueue.main, latest: true)
+      .eraseToAnyPublisher()
+  }
+  
+  private var downloadProgressPublisher: AnyPublisher<String, Never> {
+    MyBooksDownloadCenter.shared.downloadProgressPublisher
+      .throttle(for: .milliseconds(350), scheduler: DispatchQueue.main, latest: true)
+      .map { $0.0 }
+      .removeDuplicates()
+      .eraseToAnyPublisher()
   }
 }
 
@@ -73,20 +100,26 @@ private extension CatalogSearchView {
       .focused($isSearchFieldFocused)
       .submitLabel(.search)
       .padding(8)
+      .padding(.trailing, 40)
       .background(Color.gray.opacity(0.2))
       .cornerRadius(10)
       .padding(.horizontal)
       
-      if !viewModel.searchQuery.isEmpty {
-        HStack {
-          Spacer()
+      HStack {
+        Spacer()
+        
+        if viewModel.isLoading {
+          ProgressView()
+            .padding(.trailing, 8)
+        } else if !viewModel.searchQuery.isEmpty {
           Button(action: { viewModel.clearSearch() }) {
             Image(systemName: "xmark.circle.fill")
               .foregroundColor(.gray)
           }
-          .padding(.trailing, 20)
+          .padding(.trailing, 8)
         }
       }
+      .padding(.horizontal)
     }
     .padding(.vertical, 8)
   }

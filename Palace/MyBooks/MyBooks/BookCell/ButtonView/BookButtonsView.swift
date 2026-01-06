@@ -56,9 +56,15 @@ struct ActionButton<T: BookButtonProvider>: View {
   var isDarkBackground: Bool = true
   var size: ButtonSize = .large
   var onButtonTapped: ((BookButtonType) -> Void)?
+  
+  @ObservedObject private var previewManager = SamplePreviewManager.shared
 
+  private var buttonTitle: String {
+    type.title(for: provider.book)
+  }
+  
   private var accessibilityString: String {
-    return type.title
+    return buttonTitle
   }
   
   private var accessibilityID: String {
@@ -108,7 +114,7 @@ struct ActionButton<T: BookButtonProvider>: View {
             .tint(type.buttonTextColor(isDarkBackground))
             .transition(.opacity)
         }
-        Text(type.title)
+        Text(buttonTitle)
           .fixedSize(horizontal: true, vertical: true)
           .lineLimit(1)
           .minimumScaleFactor(0.8)

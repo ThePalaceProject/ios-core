@@ -62,7 +62,7 @@ class BookCellModel: ObservableObject {
   #endif
   
   var statePublisher = PassthroughSubject<Bool, Never>()
-  var state: BookCellState
+  @Published private(set) var state: BookCellState
   
   @Published var book: TPPBook {
     didSet {
@@ -75,7 +75,14 @@ class BookCellModel: ObservableObject {
   
   @Published var isManagingHold: Bool = false
 
-  @Published private(set) var stableButtonState: BookButtonState = .unsupported
+  @Published private(set) var stableButtonState: BookButtonState = .unsupported {
+    didSet {
+      let newState = BookCellState(stableButtonState)
+      if newState.buttonState != state.buttonState {
+        state = newState
+      }
+    }
+  }
   @Published private(set) var registryState: TPPBookState
   @Published private var localBookStateOverride: TPPBookState? = nil
   @Published var showHalfSheet: Bool = false
@@ -120,6 +127,10 @@ class BookCellModel: ObservableObject {
     #if LCP
     prefetchLCPStreamingIfPossible()
     #endif
+  }
+  
+  private static func computeInitialButtonState(book: TPPBook) -> BookButtonState {
+    BookButtonState(book) ?? .unsupported
   }
   
   deinit {
@@ -375,6 +386,7 @@ extension BookCellModel {
       self.isLoading = false
       return
     }
+    SamplePreviewManager.shared.close()
     EpubSampleFactory.createSample(book: book) { sampleURL, error in
       self.isLoading = false
       if let error = error {
@@ -389,9 +401,18 @@ extension BookCellModel {
         return
       }
       if let url = sampleURL?.url {
-        let web = BundledHTMLViewController(fileURL: url, title: self.book.title)
-        if let appDelegate = UIApplication.shared.delegate as? TPPAppDelegate, let top = appDelegate.topViewController() {
-          top.present(web, animated: true)
+        // Check if this is an EPUB sample
+        let isEpubSample = self.book.sample?.type == .contentTypeEpubZip
+        
+        if isEpubSample {
+          // Use Readium EPUB reader for EPUB samples
+          ReaderService.shared.openSample(self.book, url: url)
+        } else {
+          // Use WebKit for HTML/web samples
+          let web = BundledHTMLViewController(fileURL: url, title: self.book.title)
+          if let appDelegate = UIApplication.shared.delegate as? TPPAppDelegate, let top = appDelegate.topViewController() {
+            top.present(web, animated: true)
+          }
         }
       }
     }

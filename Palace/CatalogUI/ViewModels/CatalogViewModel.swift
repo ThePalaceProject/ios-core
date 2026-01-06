@@ -37,10 +37,12 @@ final class CatalogViewModel: ObservableObject {
   // MARK: - Public API
 
   func load() async {
-    if (!lanes.isEmpty || !ungroupedBooks.isEmpty), let url = topLevelURLProvider(), url == lastLoadedURL { 
+    guard let url = topLevelURLProvider() else { 
+      await MainActor.run { self.isLoading = false }
       return 
     }
-    guard let url = topLevelURLProvider() else { 
+    
+    if (!lanes.isEmpty || !ungroupedBooks.isEmpty), url == lastLoadedURL { 
       await MainActor.run { self.isLoading = false }
       return 
     }
@@ -96,7 +98,8 @@ final class CatalogViewModel: ObservableObject {
         }
       } catch {
         guard !Task.isCancelled else { return }
-        await MainActor.run {
+        Log.error(#file, "Failed to load catalog: \(error.localizedDescription)")
+        await MainActor.run { 
           if !Task.isCancelled {
             self.errorMessage = error.localizedDescription
             self.isLoading = false
@@ -104,6 +107,21 @@ final class CatalogViewModel: ObservableObject {
         }
       }
     }
+  }
+  
+  @MainActor
+  func forceRefresh() async {
+    Log.info(#file, "Force refreshing catalog...")
+    
+    repository.invalidateCache(for: topLevelURLProvider() ?? URL(string: "about:blank")!)
+    URLCache.shared.removeAllCachedResponses()
+    
+    lastLoadedURL = nil
+    lanes.removeAll()
+    ungroupedBooks.removeAll()
+    errorMessage = nil
+    
+    await load()
   }
 
   func refresh() async {

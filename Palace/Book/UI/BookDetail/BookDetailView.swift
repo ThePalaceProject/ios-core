@@ -603,28 +603,53 @@ struct BookDetailView: View {
   }
   
   private func handleButtonAction(_ buttonType: BookButtonType) {
+    let account = TPPUserAccount.sharedAccount()
+    let needsAuth = account.needsAuth && !account.hasCredentials()
+    
     switch buttonType {
     case .sample, .audiobookSample:
       viewModel.handleAction(for: buttonType)
+      
     case .download, .get:
-      let account = TPPUserAccount.sharedAccount()
-      if account.needsAuth && !account.hasCredentials() {
+      if needsAuth {
         // Present sign-in directly; don't show half sheet first
         viewModel.handleAction(for: buttonType)
       } else {
         viewModel.showHalfSheet = true
         viewModel.handleAction(for: buttonType)
       }
+      
+    case .reserve:
+      if needsAuth {
+        // Present sign-in directly for placing holds
+        viewModel.handleAction(for: buttonType)
+      } else {
+        viewModel.showHalfSheet = true
+        viewModel.handleAction(for: buttonType)
+      }
+      
     case .manageHold:
       viewModel.isManagingHold = true
       withAnimation(.spring()) {
         viewModel.showHalfSheet.toggle()
       }
-    case .return:
-      viewModel.bookState = .returning
-      withAnimation(.spring()) {
-        viewModel.showHalfSheet = true
+      
+    case .return, .remove, .cancelHold:
+      if needsAuth {
+        // Present sign-in for return/cancel actions
+        viewModel.handleAction(for: buttonType)
+      } else {
+        if buttonType == .return {
+          viewModel.bookState = .returning
+        }
+        withAnimation(.spring()) {
+          viewModel.showHalfSheet = true
+        }
+        if buttonType != .return {
+          viewModel.handleAction(for: buttonType)
+        }
       }
+      
     default:
       withAnimation(.spring()) {
         viewModel.showHalfSheet.toggle()

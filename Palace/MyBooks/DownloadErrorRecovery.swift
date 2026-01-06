@@ -26,7 +26,10 @@ actor DownloadErrorRecovery {
         // Check for PalaceError types first (structured errors)
         if let palaceError = error as? PalaceError {
           switch palaceError {
-          // Don't retry authentication/authorization errors
+          // RETRY token expiry - token refresh mechanism will handle it
+          case .authentication(.tokenExpired):
+            return true
+          // Don't retry other authentication errors (invalid credentials, etc.)
           case .authentication:
             return false
           // Don't retry parsing errors (server sent invalid data)

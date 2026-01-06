@@ -49,6 +49,7 @@ struct CatalogLaneMoreView: View {
     }
     .task { await viewModel.load(coordinator: coordinator) }
     .onAppear {
+      Log.debug(#file, "🟢 CatalogLaneMoreView.onAppear() - Appearing")
       setupCoordinator()
       setupAccount()
     }
@@ -59,6 +60,7 @@ struct CatalogLaneMoreView: View {
       handleSampleToggle(note)
     }
     .onDisappear {
+      Log.debug(#file, "🔴 CatalogLaneMoreView.onDisappear() - Being dismissed")
       SamplePreviewManager.shared.close()
     }
     .onReceive(registryChangePublisher) { note in
@@ -98,13 +100,13 @@ struct CatalogLaneMoreView: View {
   private var registryChangePublisher: AnyPublisher<Notification, Never> {
     NotificationCenter.default
       .publisher(for: .TPPBookRegistryStateDidChange)
-      .throttle(for: .milliseconds(350), scheduler: RunLoop.main, latest: true)
+      .throttle(for: .milliseconds(350), scheduler: DispatchQueue.main, latest: true)
       .eraseToAnyPublisher()
   }
   
   private var downloadProgressPublisher: AnyPublisher<String, Never> {
     MyBooksDownloadCenter.shared.downloadProgressPublisher
-      .throttle(for: .milliseconds(350), scheduler: RunLoop.main, latest: true)
+      .throttle(for: .milliseconds(350), scheduler: DispatchQueue.main, latest: true)
       .map { $0.0 }
       .removeDuplicates()
       .eraseToAnyPublisher()
@@ -346,7 +348,9 @@ private extension CatalogLaneMoreView {
       }
       .padding(.vertical, 12)
     }
-    .refreshable { await viewModel.fetchAndApplyFeed(at: viewModel.url) }
+    .refreshable {
+      await viewModel.fetchAndApplyFeed(at: viewModel.url, clearFilters: false)
+    }
   }
   
   @ViewBuilder
@@ -360,6 +364,8 @@ private extension CatalogLaneMoreView {
         isLoadingMore: viewModel.isLoadingMore
       )
     }
-    .refreshable { await viewModel.fetchAndApplyFeed(at: viewModel.url) }
+    .refreshable {
+      await viewModel.fetchAndApplyFeed(at: viewModel.url, clearFilters: false)
+    }
   }
 }

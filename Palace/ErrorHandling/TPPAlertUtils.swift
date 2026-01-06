@@ -251,11 +251,17 @@ import UIKit
           completion?()
           return
         }
+        
+        // Ensure presented view controller is in valid state
         guard presented.isViewLoaded, presented.view.window != nil else {
-          top.present(alertController, animated: animated, completion: completion)
-          if let msg = alertController.message { Log.info(#file, msg) }
+          Log.warn(#file, "Cannot present alert: presented view controller not ready")
+          if let msg = alertController.message {
+            Log.error(#file, "Skipped alert with message: \(msg)")
+          }
+          completion?()
           return
         }
+        
         // Present on top of the presented view controller
         presented.present(alertController, animated: animated, completion: completion)
         if let msg = alertController.message { Log.info(#file, msg) }

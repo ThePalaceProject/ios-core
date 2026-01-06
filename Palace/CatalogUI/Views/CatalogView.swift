@@ -135,8 +135,33 @@ private extension CatalogView {
   @ViewBuilder
   private var errorSection: some View {
     if !showSearch, let error = viewModel.errorMessage {
-      Text(error)
-        .accessibilityIdentifier(AccessibilityID.Catalog.errorView)
+      VStack(spacing: 16) {
+        Text(Strings.Generic.error)
+          .font(.headline)
+          .foregroundColor(.red)
+        
+        Text(error)
+          .font(.body)
+          .multilineTextAlignment(.center)
+          .padding(.horizontal)
+          .accessibilityIdentifier(AccessibilityID.Catalog.errorView)
+
+        Button(action: {
+          Task { await viewModel.forceRefresh() }
+        }) {
+          HStack {
+            Image(systemName: "arrow.clockwise")
+            Text(Strings.Generic.reload)
+          }
+          .padding(.horizontal, 24)
+          .padding(.vertical, 12)
+          .background(Color.blue)
+          .foregroundColor(.white)
+          .cornerRadius(8)
+        }
+      }
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
+      .padding()
     } else {
       EmptyView()
     }
@@ -212,8 +237,8 @@ private extension CatalogView {
     if let urlString = account.catalogUrl, let url = URL(string: urlString) {
       TPPSettings.shared.accountMainFeedURL = url
     }
-    AccountsManager.shared.currentAccount = account
     
+    AccountsManager.shared.currentAccount = account
     account.loadAuthenticationDocument { _ in }
     
     NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)

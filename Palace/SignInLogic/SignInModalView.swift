@@ -12,6 +12,7 @@ struct SignInModalView: View {
   let libraryAccountID: String
   let completion: (() -> Void)?
   @Environment(\.dismiss) private var dismiss
+  @StateObject private var accountPublisher = UserAccountPublisher.shared
   
   var body: some View {
     NavigationView {
@@ -21,9 +22,9 @@ struct SignInModalView: View {
         .navigationBarItems(leading: cancelButton)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarBackground(Color(UIColor.systemGroupedBackground), for: .navigationBar)
-        .onReceive(NotificationCenter.default.publisher(for: .TPPUserAccountDidChange)) { _ in
+        .onChange(of: accountPublisher.hasCredentials) { hasCredentials in
           // Auto-dismiss when user successfully signs in
-          if TPPUserAccount.sharedAccount(libraryUUID: libraryAccountID).hasCredentials() {
+          if hasCredentials {
             dismiss()
             completion?()
           }
@@ -62,15 +63,11 @@ class SignInModalPresenter: NSObject {
   /// Convenience method for current account
   /// - Parameter completion: Called when sign-in completes successfully
   static func presentSignInModalForCurrentAccount(completion: (() -> Void)?) {
-    Log.info(#file, "presentSignInModalForCurrentAccount called")
-    
     guard let libraryID = AccountsManager.shared.currentAccountId else {
-      Log.error(#file, "No current account ID found")
       completion?()
       return
     }
     
-    Log.info(#file, "Presenting sign-in modal for library: \(libraryID)")
     presentSignInModal(libraryAccountID: libraryID, completion: completion)
   }
 }

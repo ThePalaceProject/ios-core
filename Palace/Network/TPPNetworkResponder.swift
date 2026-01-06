@@ -324,9 +324,24 @@ private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse, with task
     return false
   }
   
-  if response.statusCode == 401 && TPPUserAccount.sharedAccount().isTokenRefreshRequired() {
-    TPPNetworkExecutor.shared.refreshTokenAndResume(task: task)
-    return true
+  let authDef = TPPUserAccount.sharedAccount().authDefinition
+  
+  if response.statusCode == 401 {
+    if authDef?.isSaml == true {
+      Log.info(#file, "Server returned 401 for SAML - cannot refresh tokens, will trigger re-auth flow")
+      return false
+    }
+    
+    let canRefreshToken = (authDef?.isToken == true || authDef?.isOauth == true) && 
+                          authDef?.tokenURL != nil &&
+                          TPPUserAccount.sharedAccount().username != nil &&
+                          TPPUserAccount.sharedAccount().pin != nil
+    
+    if canRefreshToken {
+      Log.info(#file, "Server returned 401 - triggering token refresh (server authority)")
+      TPPNetworkExecutor.shared.refreshTokenAndResume(task: task)
+      return true
+    }
   }
   return false
 }
