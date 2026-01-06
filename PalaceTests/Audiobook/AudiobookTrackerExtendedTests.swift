@@ -233,21 +233,29 @@ final class AudiobookBackgroundAudioTests: XCTestCase {
     
     let date = Date()
     
-    // First segment
+    // First segment - simulate crossing minute boundary by adding 60 seconds offset
     for i in 0..<25 {
       let time = Calendar.current.date(byAdding: .second, value: i, to: date)!
       tracker?.receiveValue(time)
     }
     tracker?.playbackStopped()
     
-    // Simulate gap then resume
+    // Simulate gap then resume - use a time that crosses into next minute
     tracker?.playbackStarted()
-    for i in 30..<45 {
+    for i in 60..<75 {
       let time = Calendar.current.date(byAdding: .second, value: i, to: date)!
       tracker?.receiveValue(time)
     }
     
     tracker = nil
+    
+    // Wait for async operations on tracker's syncQueue to complete
+    let expectation = XCTestExpectation(description: "Wait for tracker deinit")
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+      expectation.fulfill()
+    }
+    wait(for: [expectation], timeout: 1.0)
+    
     mockDataManager.flush()
     
     let total = mockDataManager.savedTimeEntries.reduce(0) { $0 + $1.duration }
