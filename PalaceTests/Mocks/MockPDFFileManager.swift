@@ -1,5 +1,5 @@
 import XCTest
-@testable import Admission_Form_Automation
+@testable import Palace
 
 class MockPDFFileManager: PDFFileManagerProtocol {
   var files: [Directory: [String: Data]] = [:]
