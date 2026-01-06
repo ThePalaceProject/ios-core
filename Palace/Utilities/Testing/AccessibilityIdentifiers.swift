@@ -163,6 +163,9 @@ public enum AccessibilityID {
     public static let scrollView = "holds.scrollView"
     public static let emptyStateView = "holds.emptyStateView"
     public static let loadingIndicator = "holds.loadingIndicator"
+    public static let searchButton = "holds.searchButton"
+    public static let searchField = "holds.searchField"
+    public static let libraryButton = "holds.libraryButton"
     
     // Hold cells
     public static func holdCell(_ bookID: String) -> String { "holds.holdCell.\(bookID)" }
