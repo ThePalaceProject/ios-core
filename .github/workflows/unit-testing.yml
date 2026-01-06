@@ -69,56 +69,13 @@ jobs:
           BUILD_CONTEXT: ci
         continue-on-error: true
           
-      - name: Convert test results to JUnit XML
+      - name: Generate JUnit XML from xcresult
         if: always()
         run: |
           if [ -d "TestResults.xcresult" ]; then
-            echo "Converting xcresult to JUnit XML..."
-            xcrun xcresulttool get --path TestResults.xcresult --format json > test-results.json 2>/dev/null || true
-            
-            # Use xcresultparser if available, otherwise use built-in conversion
-            if command -v xcresultparser &> /dev/null; then
-              xcresultparser -o junit TestResults.xcresult > test-results.xml
-            else
-              # Install xcresultparser
-              brew install chargepoint/xcparse/xcparse 2>/dev/null || true
-              
-              # Fallback: Generate a simple summary from xcresulttool
-              xcrun xcresulttool get --path TestResults.xcresult --format json 2>/dev/null | \
-                python3 -c "
-import json
-import sys
-import xml.etree.ElementTree as ET
-from xml.dom import minidom
-
-try:
-    data = json.load(sys.stdin)
-    
-    # Create JUnit XML structure
-    testsuites = ET.Element('testsuites')
-    testsuite = ET.SubElement(testsuites, 'testsuite', name='PalaceTests')
-    
-    tests = 0
-    failures = 0
-    
-    # Extract test results from xcresult JSON
-    if 'actions' in data:
-        for action in data.get('actions', {}).get('_values', []):
-            action_result = action.get('actionResult', {})
-            tests_ref = action_result.get('testsRef', {})
-            
-    testsuite.set('tests', str(tests))
-    testsuite.set('failures', str(failures))
-    
-    # Pretty print
-    xml_str = ET.tostring(testsuites, encoding='unicode')
-    print(minidom.parseString(xml_str).toprettyxml(indent='  '))
-except Exception as e:
-    # Create minimal valid JUnit XML
-    print('<?xml version=\"1.0\" encoding=\"UTF-8\"?>')
-    print('<testsuites><testsuite name=\"PalaceTests\" tests=\"0\" failures=\"0\"/></testsuites>')
-" > test-results.xml 2>/dev/null || echo '<?xml version="1.0"?><testsuites><testsuite name="PalaceTests" tests="0"/></testsuites>' > test-results.xml
-            fi
+            echo "Generating JUnit XML from xcresult..."
+            # Use xcresulttool to extract test data and create JUnit XML
+            ./scripts/xcresult-to-junit.sh TestResults.xcresult > test-results.xml
           else
             echo "No xcresult found, creating empty report"
             echo '<?xml version="1.0"?><testsuites><testsuite name="PalaceTests" tests="0"/></testsuites>' > test-results.xml
@@ -128,9 +85,9 @@ except Exception as e:
         uses: dorny/test-reporter@v1
         if: always()
         with:
-          name: 'Unit Test Results'
-          path: 'test-results.xml'
-          reporter: 'java-junit'
+          name: Unit Test Results
+          path: test-results.xml
+          reporter: java-junit
           fail-on-error: false
           
       - name: Upload Test Results Artifact
@@ -157,33 +114,7 @@ except Exception as e:
           
       - name: Test Results Summary
         if: always()
-        run: |
-          echo "## 🧪 Test Results Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          
-          if [ -d "TestResults.xcresult" ]; then
-            # Extract summary from xcresult
-            SUMMARY=$(xcrun xcresulttool get --path TestResults.xcresult --format json 2>/dev/null | \
-              python3 -c "
-import json
-import sys
-try:
-    data = json.load(sys.stdin)
-    metrics = data.get('metrics', {})
-    tests = metrics.get('testsCount', {}).get('_value', 'N/A')
-    failures = metrics.get('testsFailedCount', {}).get('_value', '0')
-    print(f'| Metric | Count |')
-    print(f'|--------|-------|')
-    print(f'| Total Tests | {tests} |')
-    print(f'| Failed | {failures} |')
-    print(f'| Passed | {int(tests) - int(failures) if tests != \"N/A\" else \"N/A\"} |')
-except:
-    print('| Unable to parse test results |')
-" 2>/dev/null || echo "| Unable to parse test results |")
-            echo "$SUMMARY" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "❌ No test results found" >> $GITHUB_STEP_SUMMARY
-          fi
+        run: ./scripts/test-summary.sh
           
       - name: Fail if tests failed
         if: steps.run_tests.outcome == 'failure'
