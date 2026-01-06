@@ -101,6 +101,11 @@ final class CatalogRepositoryTestMock: CatalogRepositoryProtocol {
     return searchResult
   }
   
+  func fetchFeed(at url: URL) async throws -> CatalogFeed? {
+    // Reuse loadTopLevelCatalog logic for fetchFeed
+    return try await loadTopLevelCatalog(at: url)
+  }
+  
   func invalidateCache(for url: URL) {
     invalidateCacheCallCount += 1
     lastInvalidatedURL = url

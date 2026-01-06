@@ -50,6 +50,10 @@ final class CatalogRepositoryMock: CatalogRepositoryProtocol {
     return searchResult
   }
   
+  func fetchFeed(at url: URL) async throws -> CatalogFeed? {
+    return try await loadTopLevelCatalog(at: url)
+  }
+  
   func invalidateCache(for url: URL) {
     // No-op for mock
   }
