@@ -21,13 +21,31 @@ final class SettingsSnapshotTests: XCTestCase {
     #endif
   }
   
+  // Fixed layout traits for consistent snapshots across devices
+  private var fixedTraits: UITraitCollection {
+    UITraitCollection(traitsFrom: [
+      UITraitCollection(displayScale: 2.0),
+      UITraitCollection(userInterfaceStyle: .light)
+    ])
+  }
+  
+  private var darkModeTraits: UITraitCollection {
+    UITraitCollection(traitsFrom: [
+      UITraitCollection(displayScale: 2.0),
+      UITraitCollection(userInterfaceStyle: .dark)
+    ])
+  }
+  
   // MARK: - TPPSettingsView
   
   func testSettingsView_mainScreen() {
     guard canRecordSnapshots else { return }
     
     let view = TPPSettingsView()
-    assertScreenSnapshot(of: view)
+    assertSnapshot(
+      of: view,
+      as: .image(layout: .fixed(width: 390, height: 844), traits: fixedTraits)
+    )
   }
   
   // MARK: - AccountDetailSkeletonView
@@ -38,7 +56,10 @@ final class SettingsSnapshotTests: XCTestCase {
     let view = AccountDetailSkeletonView()
       .background(Color(UIColor.systemBackground))
     
-    assertFixedSnapshot(of: view, height: 500)
+    assertSnapshot(
+      of: view,
+      as: .image(layout: .fixed(width: 390, height: 500), traits: fixedTraits)
+    )
   }
   
   // MARK: - ActionButtonView
@@ -54,7 +75,10 @@ final class SettingsSnapshotTests: XCTestCase {
     .padding()
     .background(Color(UIColor.systemBackground))
     
-    assertFixedSnapshot(of: view, width: 350, height: 80)
+    assertSnapshot(
+      of: view,
+      as: .image(layout: .fixed(width: 350, height: 80), traits: fixedTraits)
+    )
   }
   
   func testActionButtonView_loading() {
@@ -68,7 +92,10 @@ final class SettingsSnapshotTests: XCTestCase {
     .padding()
     .background(Color(UIColor.systemBackground))
     
-    assertFixedSnapshot(of: view, width: 350, height: 80)
+    assertSnapshot(
+      of: view,
+      as: .image(layout: .fixed(width: 350, height: 80), traits: fixedTraits)
+    )
   }
   
   func testActionButtonView_darkMode() {
@@ -82,7 +109,10 @@ final class SettingsSnapshotTests: XCTestCase {
     .padding()
     .background(Color.black)
     
-    assertFixedSnapshot(of: view, width: 350, height: 80, darkMode: true)
+    assertSnapshot(
+      of: view,
+      as: .image(layout: .fixed(width: 350, height: 80), traits: darkModeTraits)
+    )
   }
   
   // MARK: - SectionSeparator
@@ -94,7 +124,10 @@ final class SettingsSnapshotTests: XCTestCase {
       .padding(.vertical, 20)
       .background(Color(UIColor.systemBackground))
     
-    assertFixedSnapshot(of: view, width: 350, height: 60)
+    assertSnapshot(
+      of: view,
+      as: .image(layout: .fixed(width: 350, height: 60), traits: fixedTraits)
+    )
   }
   
   // MARK: - AccountDetailView
@@ -108,7 +141,10 @@ final class SettingsSnapshotTests: XCTestCase {
     }
     
     let view = AccountDetailView(libraryAccountID: accountID)
-    assertFixedSnapshot(of: view, height: 700)
+    assertSnapshot(
+      of: view,
+      as: .image(layout: .fixed(width: 390, height: 700), traits: fixedTraits)
+    )
   }
   
   // MARK: - AdvancedSettingsView
@@ -122,7 +158,10 @@ final class SettingsSnapshotTests: XCTestCase {
     }
     
     let view = AdvancedSettingsView(accountID: accountID)
-    assertFixedSnapshot(of: view, height: 500)
+    assertSnapshot(
+      of: view,
+      as: .image(layout: .fixed(width: 390, height: 500), traits: fixedTraits)
+    )
   }
   
   

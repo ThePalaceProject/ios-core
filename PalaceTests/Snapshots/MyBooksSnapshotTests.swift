@@ -21,6 +21,14 @@ final class MyBooksSnapshotTests: XCTestCase {
     #endif
   }
   
+  // Fixed layout traits for consistent snapshots across devices
+  private var fixedTraits: UITraitCollection {
+    UITraitCollection(traitsFrom: [
+      UITraitCollection(displayScale: 2.0),
+      UITraitCollection(userInterfaceStyle: .light)
+    ])
+  }
+  
   private var mockRegistry: TPPBookRegistryMock!
   private var mockImageCache: MockImageCache!
   
@@ -68,7 +76,10 @@ final class MyBooksSnapshotTests: XCTestCase {
     let view = NormalBookCell(model: model)
       .background(Color(UIColor.systemBackground))
     
-    assertCellSnapshot(of: view)
+    assertSnapshot(
+      of: view,
+      as: .image(layout: .fixed(width: 390, height: 120), traits: fixedTraits)
+    )
   }
   
   func testNormalBookCell_downloadedAudiobook() {
@@ -80,7 +91,10 @@ final class MyBooksSnapshotTests: XCTestCase {
     let view = NormalBookCell(model: model)
       .background(Color(UIColor.systemBackground))
     
-    assertCellSnapshot(of: view)
+    assertSnapshot(
+      of: view,
+      as: .image(layout: .fixed(width: 390, height: 120), traits: fixedTraits)
+    )
   }
   
   func testNormalBookCell_downloadNeeded() {
@@ -92,7 +106,10 @@ final class MyBooksSnapshotTests: XCTestCase {
     let view = NormalBookCell(model: model)
       .background(Color(UIColor.systemBackground))
     
-    assertCellSnapshot(of: view)
+    assertSnapshot(
+      of: view,
+      as: .image(layout: .fixed(width: 390, height: 120), traits: fixedTraits)
+    )
   }
   
   // MARK: - DownloadingBookCell
@@ -106,7 +123,10 @@ final class MyBooksSnapshotTests: XCTestCase {
     let view = DownloadingBookCell(model: model)
       .background(Color(UIColor.systemBackground))
     
-    assertCellSnapshot(of: view)
+    assertSnapshot(
+      of: view,
+      as: .image(layout: .fixed(width: 390, height: 120), traits: fixedTraits)
+    )
   }
   
   // MARK: - Empty State
@@ -121,7 +141,10 @@ final class MyBooksSnapshotTests: XCTestCase {
       .accessibilityIdentifier(AccessibilityID.MyBooks.emptyStateView)
       .background(Color(UIColor.systemBackground))
     
-    assertFixedSnapshot(of: emptyView, height: 300)
+    assertSnapshot(
+      of: emptyView,
+      as: .image(layout: .fixed(width: 390, height: 300), traits: fixedTraits)
+    )
   }
   
   // MARK: - Button Types

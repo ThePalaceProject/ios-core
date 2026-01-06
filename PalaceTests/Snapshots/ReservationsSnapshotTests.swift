@@ -21,6 +21,14 @@ final class ReservationsSnapshotTests: XCTestCase {
     #endif
   }
   
+  // Fixed layout traits for consistent snapshots across devices
+  private var fixedTraits: UITraitCollection {
+    UITraitCollection(traitsFrom: [
+      UITraitCollection(displayScale: 2.0),
+      UITraitCollection(userInterfaceStyle: .light)
+    ])
+  }
+  
   private var mockRegistry: TPPBookRegistryMock!
   private var mockImageCache: MockImageCache!
   
@@ -64,7 +72,10 @@ final class ReservationsSnapshotTests: XCTestCase {
     let view = NormalBookCell(model: model)
       .background(Color(UIColor.systemBackground))
     
-    assertCellSnapshot(of: view)
+    assertSnapshot(
+      of: view,
+      as: .image(layout: .fixed(width: 390, height: 120), traits: fixedTraits)
+    )
   }
   
   func testNormalBookCell_downloadSuccessful() {
@@ -76,7 +87,10 @@ final class ReservationsSnapshotTests: XCTestCase {
     let view = NormalBookCell(model: model)
       .background(Color(UIColor.systemBackground))
     
-    assertCellSnapshot(of: view)
+    assertSnapshot(
+      of: view,
+      as: .image(layout: .fixed(width: 390, height: 120), traits: fixedTraits)
+    )
   }
   
   // MARK: - Empty State
@@ -93,7 +107,10 @@ final class ReservationsSnapshotTests: XCTestCase {
       .accessibilityIdentifier(AccessibilityID.Holds.emptyStateView)
       .background(Color(TPPConfiguration.backgroundColor()))
     
-    assertFixedSnapshot(of: emptyView, height: 400)
+    assertSnapshot(
+      of: emptyView,
+      as: .image(layout: .fixed(width: 390, height: 400), traits: fixedTraits)
+    )
   }
   
   // MARK: - Button States
