@@ -113,9 +113,7 @@ final class BookDetailSnapshotTests: XCTestCase {
     guard canRecordSnapshots else { return }
     
     let book = createMockEPUBBook()
-    let viewModel = BookDetailViewModel(book: book)
-    
-    let view = BookDetailView(viewModel: viewModel)
+    let view = BookDetailView(book: book)
       .frame(width: 390, height: 700)
     
     assertSnapshot(of: view, as: .image)
@@ -125,9 +123,7 @@ final class BookDetailSnapshotTests: XCTestCase {
     guard canRecordSnapshots else { return }
     
     let book = createMockAudiobook()
-    let viewModel = BookDetailViewModel(book: book)
-    
-    let view = BookDetailView(viewModel: viewModel)
+    let view = BookDetailView(book: book)
       .frame(width: 390, height: 700)
     
     assertSnapshot(of: view, as: .image)
@@ -137,9 +133,7 @@ final class BookDetailSnapshotTests: XCTestCase {
     guard canRecordSnapshots else { return }
     
     let book = createMockPDFBook()
-    let viewModel = BookDetailViewModel(book: book)
-    
-    let view = BookDetailView(viewModel: viewModel)
+    let view = BookDetailView(book: book)
       .frame(width: 390, height: 700)
     
     assertSnapshot(of: view, as: .image)
@@ -149,9 +143,7 @@ final class BookDetailSnapshotTests: XCTestCase {
     guard canRecordSnapshots else { return }
     
     let book = createMockHoldBook()
-    let viewModel = BookDetailViewModel(book: book)
-    
-    let view = BookDetailView(viewModel: viewModel)
+    let view = BookDetailView(book: book)
       .frame(width: 390, height: 700)
     
     assertSnapshot(of: view, as: .image)
@@ -163,9 +155,9 @@ final class BookDetailSnapshotTests: XCTestCase {
     guard canRecordSnapshots else { return }
     
     let book = createMockEPUBBook()
-    let provider = MockBookButtonProvider(state: .canBorrow)
+    let provider = MockBookButtonProvider(book: book, state: .canBorrow)
     
-    let view = BookButtonsView(book: book, buttonProvider: provider)
+    let view = BookButtonsView(provider: provider)
       .frame(width: 390)
       .padding()
       .background(Color(UIColor.systemBackground))
@@ -177,9 +169,9 @@ final class BookDetailSnapshotTests: XCTestCase {
     guard canRecordSnapshots else { return }
     
     let book = createMockEPUBBook()
-    let provider = MockBookButtonProvider(state: .downloadSuccessful)
+    let provider = MockBookButtonProvider(book: book, state: .downloadSuccessful)
     
-    let view = BookButtonsView(book: book, buttonProvider: provider)
+    let view = BookButtonsView(provider: provider)
       .frame(width: 390)
       .padding()
       .background(Color(UIColor.systemBackground))
@@ -191,9 +183,9 @@ final class BookDetailSnapshotTests: XCTestCase {
     guard canRecordSnapshots else { return }
     
     let book = createMockAudiobook()
-    let provider = MockBookButtonProvider(state: .downloadSuccessful)
+    let provider = MockBookButtonProvider(book: book, state: .downloadSuccessful)
     
-    let view = BookButtonsView(book: book, buttonProvider: provider)
+    let view = BookButtonsView(provider: provider)
       .frame(width: 390)
       .padding()
       .background(Color(UIColor.systemBackground))
@@ -230,28 +222,29 @@ final class BookDetailSnapshotTests: XCTestCase {
   // MARK: - Accessibility
   
   func testBookDetailAccessibilityIdentifiers() {
-    XCTAssertFalse(AccessibilityID.BookDetail.scrollView.isEmpty)
     XCTAssertFalse(AccessibilityID.BookDetail.coverImage.isEmpty)
-    XCTAssertFalse(AccessibilityID.BookDetail.titleLabel.isEmpty)
-    XCTAssertFalse(AccessibilityID.BookDetail.authorLabel.isEmpty)
+    XCTAssertFalse(AccessibilityID.BookDetail.title.isEmpty)
+    XCTAssertFalse(AccessibilityID.BookDetail.author.isEmpty)
+    XCTAssertFalse(AccessibilityID.BookDetail.getButton.isEmpty)
   }
 }
 
 // MARK: - MockBookButtonProvider
 
 private class MockBookButtonProvider: BookButtonProvider {
+  let book: TPPBook
   let state: BookButtonState
   
-  init(state: BookButtonState) {
+  init(book: TPPBook, state: BookButtonState) {
+    self.book = book
     self.state = state
   }
   
-  var buttonState: BookButtonState { state }
-  var isLoading: Bool { false }
+  var buttonTypes: [BookButtonType] {
+    state.buttonTypes(book: book)
+  }
   
-  func borrowBook() async {}
-  func downloadBook() async {}
-  func returnBook() async {}
-  func deleteBook() async {}
-  func cancelHold() async {}
+  func handleAction(for type: BookButtonType) {}
+  
+  func isProcessing(for type: BookButtonType) -> Bool { false }
 }

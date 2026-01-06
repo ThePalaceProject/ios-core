@@ -50,7 +50,7 @@ final class SettingsSnapshotTests: XCTestCase {
     guard canRecordSnapshots else { return }
     
     let view = ActionButtonView(
-      title: Strings.Settings.signin,
+      title: Strings.Generic.signin,
       isLoading: false,
       action: {}
     )
@@ -65,7 +65,7 @@ final class SettingsSnapshotTests: XCTestCase {
     guard canRecordSnapshots else { return }
     
     let view = ActionButtonView(
-      title: Strings.Settings.signin,
+      title: Strings.Generic.signin,
       isLoading: true,
       action: {}
     )
