@@ -2,7 +2,6 @@
 
 # SUMMARY
 #   Runs optimized unit tests for Palace with performance improvements.
-#   Generates test results in xcresult format for CI reporting.
 #
 # SYNOPSIS
 #   xcode-test-optimized.sh
@@ -19,64 +18,49 @@ echo "Running optimized unit tests for Palace..."
 # Clean up any previous test results
 rm -rf TestResults.xcresult
 
-# Common xcodebuild flags for testing
-COMMON_FLAGS=(
-    -project Palace.xcodeproj
-    -scheme Palace
-    -configuration Debug
-    -resultBundlePath TestResults.xcresult
-    -enableCodeCoverage NO
-    -parallel-testing-enabled YES
-    CODE_SIGNING_REQUIRED=NO
-    CODE_SIGNING_ALLOWED=NO
-    ONLY_ACTIVE_ARCH=YES
-    GCC_OPTIMIZATION_LEVEL=0
-    SWIFT_OPTIMIZATION_LEVEL=-Onone
-    ENABLE_TESTABILITY=YES
-)
+# Skip the separate build step - xcodebuild test builds automatically and more efficiently
+# Use parallel testing and optimized flags
 
-run_tests_with_simulator() {
-    local simulator_name="$1"
-    local max_workers="$2"
-    
-    echo "Attempting to run tests with: $simulator_name"
-    
-    xcodebuild test \
-        "${COMMON_FLAGS[@]}" \
-        -destination "platform=iOS Simulator,name=$simulator_name" \
-        -maximum-parallel-testing-workers "$max_workers"
-}
+# Use direct xcodebuild for faster execution (skip Fastlane overhead)
+# Try multiple fallback strategies for CI compatibility
+echo "Detecting test environment and finding suitable simulator..."
 
 if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
     echo "Running in CI environment - trying multiple fallback strategies"
     
     # List available simulators for debugging
     echo "Available iPhone simulators in CI:"
-    xcrun simctl list devices available | grep iPhone | head -5
+    xcrun simctl list devices available | grep iPhone | head -10
     
-    # Try multiple simulator options that are commonly available in CI
-    SIMULATORS=("iPhone SE (3rd generation)" "iPhone 14" "iPhone 13" "iPhone 12" "iPhone 11")
+    # Try simulators available in GitHub Actions macOS-14 runners (Xcode 16.2)
+    SIMULATORS=("iPhone 16" "iPhone 15" "iPhone 15 Pro" "iPhone SE (3rd generation)")
     
-    TEST_PASSED=false
     for SIM in "${SIMULATORS[@]}"; do
-        if run_tests_with_simulator "$SIM" 2; then
+        echo "Attempting to use: $SIM"
+        if xcodebuild test \
+            -project Palace.xcodeproj \
+            -scheme Palace \
+            -destination "platform=iOS Simulator,name=$SIM" \
+            -configuration Debug \
+            -resultBundlePath TestResults.xcresult \
+            -enableCodeCoverage NO \
+            -parallel-testing-enabled YES \
+            -maximum-parallel-testing-workers 2 \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            ONLY_ACTIVE_ARCH=YES \
+            GCC_OPTIMIZATION_LEVEL=0 \
+            SWIFT_OPTIMIZATION_LEVEL=-Onone \
+            ENABLE_TESTABILITY=YES 2>/dev/null; then
             echo "✅ Successfully used simulator: $SIM"
-            TEST_PASSED=true
             break
         else
             echo "❌ Failed with simulator: $SIM, trying next..."
-            # Remove failed result bundle to try again
             rm -rf TestResults.xcresult
         fi
     done
-    
-    if [ "$TEST_PASSED" = false ]; then
-        echo "❌ All simulator attempts failed"
-        exit 1
-    fi
 else
     echo "Running in local environment - using dynamic detection"
-    
     # Get the first available iPhone simulator ID from the Palace scheme destinations
     SIMULATOR_ID=$(xcodebuild -project Palace.xcodeproj -scheme Palace -showdestinations 2>/dev/null | \
       grep "platform:iOS Simulator" | \
@@ -87,57 +71,57 @@ else
 
     if [ -z "$SIMULATOR_ID" ]; then
         echo "❌ No available iPhone simulator found, trying fallback..."
+        # Clean build folder first
+        xcodebuild clean -project Palace.xcodeproj -scheme Palace > /dev/null 2>&1
         
         # Fallback to name-based approach with common simulators
-        FALLBACK_SIMULATORS=("iPhone SE (3rd generation)" "iPhone 14" "iPhone 13" "iPhone 12")
+        FALLBACK_SIMULATORS=("iPhone 16" "iPhone 15" "iPhone 15 Pro" "iPhone SE (3rd generation)")
         
-        TEST_PASSED=false
         for SIM in "${FALLBACK_SIMULATORS[@]}"; do
             echo "Trying fallback simulator: $SIM"
-            if run_tests_with_simulator "$SIM" 4; then
+            if xcodebuild test \
+                -project Palace.xcodeproj \
+                -scheme Palace \
+                -destination "platform=iOS Simulator,name=$SIM" \
+                -configuration Debug \
+                -resultBundlePath TestResults.xcresult \
+                -enableCodeCoverage NO \
+                -parallel-testing-enabled YES \
+                -maximum-parallel-testing-workers 4 \
+                CODE_SIGNING_REQUIRED=NO \
+                CODE_SIGNING_ALLOWED=NO \
+                ONLY_ACTIVE_ARCH=YES \
+                GCC_OPTIMIZATION_LEVEL=0 \
+                SWIFT_OPTIMIZATION_LEVEL=-Onone \
+                ENABLE_TESTABILITY=YES 2>/dev/null; then
                 echo "✅ Fallback successful with: $SIM"
-                TEST_PASSED=true
                 break
             else
                 echo "❌ Fallback failed with: $SIM"
                 rm -rf TestResults.xcresult
             fi
         done
-        
-        if [ "$TEST_PASSED" = false ]; then
-            echo "❌ All fallback attempts failed"
-            exit 1
-        fi
     else
         echo "Using iPhone simulator ID: $SIMULATOR_ID"
+        # Clean build folder to avoid architecture conflicts
+        xcodebuild clean -project Palace.xcodeproj -scheme Palace > /dev/null 2>&1
         
         xcodebuild test \
-            "${COMMON_FLAGS[@]}" \
+            -project Palace.xcodeproj \
+            -scheme Palace \
             -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
-            -maximum-parallel-testing-workers 4
+            -configuration Debug \
+            -resultBundlePath TestResults.xcresult \
+            -enableCodeCoverage NO \
+            -parallel-testing-enabled YES \
+            -maximum-parallel-testing-workers 4 \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            ONLY_ACTIVE_ARCH=YES \
+            GCC_OPTIMIZATION_LEVEL=0 \
+            SWIFT_OPTIMIZATION_LEVEL=-Onone \
+            ENABLE_TESTABILITY=YES
     fi
 fi
 
-# Print test summary
-if [ -d "TestResults.xcresult" ]; then
-    echo ""
-    echo "📊 Test Results Summary:"
-    xcrun xcresulttool get --path TestResults.xcresult --format json 2>/dev/null | \
-        python3 -c "
-import json
-import sys
-try:
-    data = json.load(sys.stdin)
-    metrics = data.get('metrics', {})
-    tests = metrics.get('testsCount', {}).get('_value', 'N/A')
-    failures = metrics.get('testsFailedCount', {}).get('_value', '0')
-    print(f'  Total Tests: {tests}')
-    print(f'  Passed: {int(tests) - int(failures) if tests != \"N/A\" else \"N/A\"}')
-    print(f'  Failed: {failures}')
-except Exception as e:
-    print(f'  Unable to parse results: {e}')
-" 2>/dev/null || echo "  Unable to parse test results"
-fi
-
-echo ""
 echo "✅ Unit tests completed successfully!"

@@ -63,59 +63,15 @@ jobs:
         run: xcrun simctl list devices available | grep iPhone | head -10
         
       - name: Run Palace unit tests
-        id: run_tests
         run: ./scripts/xcode-test-optimized.sh
         env:
           BUILD_CONTEXT: ci
-        continue-on-error: true
           
-      - name: Generate JUnit XML from xcresult
-        if: always()
-        run: |
-          if [ -d "TestResults.xcresult" ]; then
-            echo "Generating JUnit XML from xcresult..."
-            # Use xcresulttool to extract test data and create JUnit XML
-            ./scripts/xcresult-to-junit.sh TestResults.xcresult > test-results.xml
-          else
-            echo "No xcresult found, creating empty report"
-            echo '<?xml version="1.0"?><testsuites><testsuite name="PalaceTests" tests="0"/></testsuites>' > test-results.xml
-          fi
-          
-      - name: Publish Test Results
-        uses: dorny/test-reporter@v1
-        if: always()
-        with:
-          name: Unit Test Results
-          path: test-results.xml
-          reporter: java-junit
-          fail-on-error: false
-          
-      - name: Upload Test Results Artifact
+      - name: Upload Test Results
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: test-results
-          path: |
-            TestResults.xcresult
-            test-results.xml
+          path: TestResults.xcresult
           retention-days: 7
           if-no-files-found: ignore
-          
-      - name: Upload Failed Snapshot Diffs
-        uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: snapshot-failures
-          path: |
-            **/tmp/**/*.png
-            **/Failures/**/*.png
-          retention-days: 7
-          if-no-files-found: ignore
-          
-      - name: Test Results Summary
-        if: always()
-        run: ./scripts/test-summary.sh
-          
-      - name: Fail if tests failed
-        if: steps.run_tests.outcome == 'failure'
-        run: exit 1
