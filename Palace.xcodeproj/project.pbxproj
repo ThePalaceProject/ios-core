@@ -725,14 +725,12 @@
 		E59A998A2BFC4D3700BE3BF4 /* TrackPosition+Annotations.swift in Sources */ = {isa = PBXBuildFile; fileRef = E59A99892BFC4D3700BE3BF4 /* TrackPosition+Annotations.swift */; };
 		E5A09A3F2F0D6EC600CC23EA /* MockPDFDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A09A3D2F0D6EC600CC23EA /* MockPDFDocument.swift */; };
 		E5A09A402F0D6EC600CC23EA /* MockPDFDocumentMetadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A09A3E2F0D6EC600CC23EA /* MockPDFDocumentMetadata.swift */; };
-		E5A09A4A2F0D6ED400CC23EA /* MockPDFFileManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A09A492F0D6ED400CC23EA /* MockPDFFileManager.swift */; };
 		E5A09A4C2F0D6EF100CC23EA /* PDFViewsSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A09A4B2F0D6EF100CC23EA /* PDFViewsSnapshotTests.swift */; };
 		E5A09A4E2F0D6F0200CC23EA /* CatalogSortServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A09A4D2F0D6F0200CC23EA /* CatalogSortServiceTests.swift */; };
 		E5A09A502F0D6F0C00CC23EA /* EPUBModuleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A09A4F2F0D6F0C00CC23EA /* EPUBModuleTests.swift */; };
 		E5A09A522F0D6F1A00CC23EA /* EpubSampleFactoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A09A512F0D6F1A00CC23EA /* EpubSampleFactoryTests.swift */; };
 		E5A09A542F0D6F2A00CC23EA /* ProblemReportEmailTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A09A532F0D6F2A00CC23EA /* ProblemReportEmailTests.swift */; };
 		E5A09A562F0D6F3600CC23EA /* TPPUserNotificationsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A09A552F0D6F3600CC23EA /* TPPUserNotificationsTests.swift */; };
-		E5A09A7D2F0D727F00CC23EA /* TPPSessionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A09A7C2F0D727900CC23EA /* TPPSessionTests.swift */; };
 		E5A09A7F2F0D72B500CC23EA /* DeviceOrientationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A09A7E2F0D72B500CC23EA /* DeviceOrientationTests.swift */; };
 		E5A09A812F0D72D000CC23EA /* URLResponseAuthenticationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A09A802F0D72D000CC23EA /* URLResponseAuthenticationTests.swift */; };
 		E5A09AA52F0D739D00CC23EA /* PDFDocumentProviding.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A09A572F0D6F9300CC23EA /* PDFDocumentProviding.swift */; };
@@ -1712,7 +1710,6 @@
 		E59A99892BFC4D3700BE3BF4 /* TrackPosition+Annotations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TrackPosition+Annotations.swift"; sourceTree = "<group>"; };
 		E5A09A3D2F0D6EC600CC23EA /* MockPDFDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockPDFDocument.swift; sourceTree = "<group>"; };
 		E5A09A3E2F0D6EC600CC23EA /* MockPDFDocumentMetadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockPDFDocumentMetadata.swift; sourceTree = "<group>"; };
-		E5A09A492F0D6ED400CC23EA /* MockPDFFileManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockPDFFileManager.swift; sourceTree = "<group>"; };
 		E5A09A4B2F0D6EF100CC23EA /* PDFViewsSnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFViewsSnapshotTests.swift; sourceTree = "<group>"; };
 		E5A09A4D2F0D6F0200CC23EA /* CatalogSortServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogSortServiceTests.swift; sourceTree = "<group>"; };
 		E5A09A4F2F0D6F0C00CC23EA /* EPUBModuleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EPUBModuleTests.swift; sourceTree = "<group>"; };
@@ -1720,7 +1717,6 @@
 		E5A09A532F0D6F2A00CC23EA /* ProblemReportEmailTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProblemReportEmailTests.swift; sourceTree = "<group>"; };
 		E5A09A552F0D6F3600CC23EA /* TPPUserNotificationsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPUserNotificationsTests.swift; sourceTree = "<group>"; };
 		E5A09A572F0D6F9300CC23EA /* PDFDocumentProviding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFDocumentProviding.swift; sourceTree = "<group>"; };
-		E5A09A7C2F0D727900CC23EA /* TPPSessionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPSessionTests.swift; sourceTree = "<group>"; };
 		E5A09A7E2F0D72B500CC23EA /* DeviceOrientationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceOrientationTests.swift; sourceTree = "<group>"; };
 		E5A09A802F0D72D000CC23EA /* URLResponseAuthenticationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = URLResponseAuthenticationTests.swift; sourceTree = "<group>"; };
 		E5A0CEA32AA9855200C304EC /* TPPBookMock.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPBookMock.swift; sourceTree = "<group>"; };
@@ -2030,7 +2026,6 @@
 			isa = PBXGroup;
 			children = (
 				C61A8F5FC897F582128D45B7 /* NetworkClientTests.swift */,
-				E5A09A7C2F0D727900CC23EA /* TPPSessionTests.swift */,
 			);
 			path = Network;
 			sourceTree = "<group>";
@@ -2466,7 +2461,6 @@
 			isa = PBXGroup;
 			children = (
 				E5A09A3D2F0D6EC600CC23EA /* MockPDFDocument.swift */,
-				E5A09A492F0D6ED400CC23EA /* MockPDFFileManager.swift */,
 				E5A09A3E2F0D6EC600CC23EA /* MockPDFDocumentMetadata.swift */,
 				735771A7253763E800067CEA /* TPPBookRegistryMock.swift */,
 				735771B02537691800067CEA /* TPPDRMAuthorizingMock.swift */,
@@ -4285,9 +4279,7 @@
 				730D17C02552124B004CAC83 /* TPPMyBooksDownloadsCenterMock.swift in Sources */,
 				735F41A3243E381D00046182 /* String+NYPLAdditionsTests.swift in Sources */,
 				17BE24E725FABCDE00AE707F /* TPPUserAccountProviderMock.swift in Sources */,
-				E5A09A7D2F0D727F00CC23EA /* TPPSessionTests.swift in Sources */,
 				E544E7142C8A14D400802EB9 /* AudiobookTrackerTests.swift in Sources */,
-				E5A09A4A2F0D6ED400CC23EA /* MockPDFFileManager.swift in Sources */,
 				E5037FE729A3FF84002DA132 /* ButtonStateTests.swift in Sources */,
 				E5A09A4C2F0D6EF100CC23EA /* PDFViewsSnapshotTests.swift in Sources */,
 				7311FD2B25CBD086004447CB /* TPPSignInOutBusinessLogicUIDelegateMock.swift in Sources */,

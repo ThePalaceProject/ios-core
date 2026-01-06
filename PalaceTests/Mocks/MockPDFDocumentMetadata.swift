@@ -50,7 +50,7 @@ class MockPDFDocumentMetadata: TPPPDFDocumentMetadata {
   }
   
   /// Sets the current page for testing.
-  func setCurrentPage(_ page: Int) {
+  override func setCurrentPage(_ page: Int) {
     mockCurrentPage = page
     self.currentPage = page
   }

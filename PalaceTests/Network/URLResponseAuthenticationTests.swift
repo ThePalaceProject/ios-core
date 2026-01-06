@@ -22,7 +22,7 @@ final class URLResponseAuthenticationTests: XCTestCase {
       textEncodingName: nil
     )
     
-    let problemDoc = TPPProblemDocument.forExpiredCredentials()
+    let problemDoc = TPPProblemDocument.forExpiredOrMissingCredentials(hasCredentials: true)
     
     XCTAssertTrue(response.indicatesAuthenticationNeedsRefresh(with: problemDoc))
   }
@@ -46,7 +46,7 @@ final class URLResponseAuthenticationTests: XCTestCase {
       textEncodingName: nil
     )
     
-    let problemDoc = TPPProblemDocument.forExpiredCredentials()
+    let problemDoc = TPPProblemDocument.forExpiredOrMissingCredentials(hasCredentials: true)
     
     XCTAssertFalse(response.indicatesAuthenticationNeedsRefresh(with: problemDoc))
   }
@@ -116,7 +116,7 @@ final class URLResponseAuthenticationTests: XCTestCase {
       headerFields: ["Content-Type": "application/problem+json"]
     )!
     
-    let problemDoc = TPPProblemDocument.forExpiredCredentials()
+    let problemDoc = TPPProblemDocument.forExpiredOrMissingCredentials(hasCredentials: true)
     
     XCTAssertTrue(response.indicatesAuthenticationNeedsRefresh(with: problemDoc))
   }
@@ -129,7 +129,7 @@ final class URLResponseAuthenticationTests: XCTestCase {
       headerFields: ["Content-Type": "application/api-problem+json"]
     )!
     
-    let problemDoc = TPPProblemDocument.forExpiredCredentials()
+    let problemDoc = TPPProblemDocument.forExpiredOrMissingCredentials(hasCredentials: true)
     
     XCTAssertTrue(response.indicatesAuthenticationNeedsRefresh(with: problemDoc))
   }
