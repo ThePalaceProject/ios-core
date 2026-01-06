@@ -92,6 +92,61 @@ struct TPPBookMocker {
     return fakeBook
   }
   
+  // MARK: - Simple Mock Book for Unit Tests
+  
+  /// Creates a simple mock book with configurable title, authors, and updated date
+  static func mockBook(
+    title: String,
+    authors: String? = nil,
+    updated: Date = Date()
+  ) -> TPPBook {
+    let identifier = UUID().uuidString
+    let url = URL(string: "http://example.com/\(identifier)")!
+    
+    let acquisition = TPPOPDSAcquisition(
+      relation: .generic,
+      type: DistributorType.EpubZip.rawValue,
+      hrefURL: url,
+      indirectAcquisitions: [],
+      availability: TPPOPDSAcquisitionAvailabilityUnlimited()
+    )
+    
+    let authorsList: [TPPBookAuthor]
+    if let authors = authors {
+      authorsList = [TPPBookAuthor(authorName: authors, relatedBooksURL: nil)]
+    } else {
+      authorsList = []
+    }
+    
+    return TPPBook(
+      acquisitions: [acquisition],
+      authors: authorsList,
+      categoryStrings: ["Fiction"],
+      distributor: "Test",
+      identifier: identifier,
+      imageURL: url,
+      imageThumbnailURL: url,
+      published: Date(),
+      publisher: "Test Publisher",
+      subtitle: nil,
+      summary: "Test summary",
+      title: title,
+      updated: updated,
+      annotationsURL: nil,
+      analyticsURL: nil,
+      alternateURL: nil,
+      relatedWorksURL: nil,
+      previewLink: nil,
+      seriesURL: nil,
+      revokeURL: nil,
+      reportURL: nil,
+      timeTrackingURL: nil,
+      contributors: [:],
+      bookDuration: nil,
+      imageCache: nil
+    )
+  }
+  
   // MARK: - Deterministic Books for Snapshot Testing
   
   /// Fixed reference date for consistent snapshots

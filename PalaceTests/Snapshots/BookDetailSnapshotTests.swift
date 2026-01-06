@@ -255,7 +255,7 @@ private class MockBookButtonProvider: BookButtonProvider {
   private func deterministicButtonTypes(for state: BookButtonState, book: TPPBook) -> [BookButtonType] {
     switch state {
     case .canBorrow, .canHold:
-      return [.borrow]
+      return [.get]
     case .holding:
       return [.manageHold]
     case .holdingFrontOfQueue:
