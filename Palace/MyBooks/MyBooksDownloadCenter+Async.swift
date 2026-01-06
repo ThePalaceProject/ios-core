@@ -87,33 +87,64 @@ extension MyBooksDownloadCenter {
       return borrowedBook
       
     } catch let error as PalaceError {
-      // Handle structured errors
+      // Handle structured errors - but PalaceError doesn't carry problem document
       await MainActor.run {
-        showBorrowError(error, for: book)
+        showBorrowError(error, originalError: nil, for: book)
       }
       throw error
     } catch {
-      // Convert unknown errors to PalaceError
+      // Extract problem document from original NSError before converting
+      // The server's problem document contains the user-friendly error message
+      let nsError = error as NSError
+      let problemDoc = nsError.problemDocument
+      
       let palaceError = PalaceError.from(error)
       await MainActor.run {
-        showBorrowError(palaceError, for: book)
+        showBorrowError(palaceError, originalError: error, for: book, problemDocument: problemDoc)
       }
       throw palaceError
     }
   }
   
-  /// Displays borrow error to user
+  /// Displays borrow error to user with optional problem document from server
+  /// - Parameters:
+  ///   - error: The structured PalaceError
+  ///   - originalError: The original error that may contain problem document
+  ///   - book: The book that failed to borrow
+  ///   - problemDocument: Optional pre-extracted problem document
   @MainActor
-  private func showBorrowError(_ error: PalaceError, for book: TPPBook) {
-    let title = "Borrow Failed"
+  private func showBorrowError(
+    _ error: PalaceError,
+    originalError: Error?,
+    for book: TPPBook,
+    problemDocument: TPPProblemDocument? = nil
+  ) {
+    let title = Strings.MyDownloadCenter.borrowFailed
     
-    // Try to extract problem document from error for better messaging
-    let nsError = error as NSError
-    let problemDoc = nsError.userInfo["problemDocument"] as? TPPProblemDocument
+    // Try to extract problem document from the original error
+    // This is where the server's specific error message lives (e.g., "loan limit reached", "credentials suspended")
+    let problemDoc: TPPProblemDocument? = {
+      // Use pre-extracted problem document if available
+      if let doc = problemDocument {
+        return doc
+      }
+      // Try to extract from original error
+      if let nsError = originalError as NSError? {
+        return nsError.problemDocument
+      }
+      return nil
+    }()
     
+    // Log the problem document details for debugging
+    if let doc = problemDoc {
+      Log.info(#file, "Borrow error with problem document - type: \(doc.type ?? "unknown"), title: \(doc.title ?? "none"), detail: \(doc.detail ?? "none")")
+    }
+    
+    // Start with the generic error message
     let alert = TPPAlertUtils.alert(title: title, message: error.localizedDescription)
     
-    // If we have a problem document, use its title/detail instead
+    // If we have a problem document from the server, use its title/detail instead
+    // This provides specific messages like "loan limit reached" or "credentials suspended"
     if let problemDoc = problemDoc {
       TPPAlertUtils.setProblemDocument(controller: alert, document: problemDoc, append: false)
     } else if let recovery = error.recoverySuggestion {
