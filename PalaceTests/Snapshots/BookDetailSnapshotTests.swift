@@ -234,14 +234,54 @@ final class BookDetailSnapshotTests: XCTestCase {
 private class MockBookButtonProvider: BookButtonProvider {
   let book: TPPBook
   let state: BookButtonState
+  private let fixedButtonTypes: [BookButtonType]?
   
-  init(book: TPPBook, state: BookButtonState) {
+  init(book: TPPBook, state: BookButtonState, buttonTypes: [BookButtonType]? = nil) {
     self.book = book
     self.state = state
+    self.fixedButtonTypes = buttonTypes
   }
   
   var buttonTypes: [BookButtonType] {
-    state.buttonTypes(book: book)
+    // Use fixed button types if provided, otherwise derive from state
+    // This makes snapshot tests deterministic regardless of account state
+    if let fixed = fixedButtonTypes {
+      return fixed
+    }
+    return deterministicButtonTypes(for: state, book: book)
+  }
+  
+  /// Returns deterministic button types that don't depend on global account state
+  private func deterministicButtonTypes(for state: BookButtonState, book: TPPBook) -> [BookButtonType] {
+    switch state {
+    case .canBorrow, .canHold:
+      return [.borrow]
+    case .holding:
+      return [.manageHold]
+    case .holdingFrontOfQueue:
+      return [.get]
+    case .downloadNeeded:
+      return [.download, .return]
+    case .downloadSuccessful, .used:
+      switch book.defaultBookContentType {
+      case .audiobook:
+        return [.listen, .return]
+      case .pdf, .epub:
+        return [.read, .return]
+      case .unsupported:
+        return [.return]
+      }
+    case .downloadInProgress:
+      return [.cancel]
+    case .downloadFailed:
+      return [.cancel, .retry]
+    case .returning:
+      return [.returning]
+    case .managingHold:
+      return [.manageHold]
+    case .unsupported:
+      return []
+    }
   }
   
   func handleAction(for type: BookButtonType) {}

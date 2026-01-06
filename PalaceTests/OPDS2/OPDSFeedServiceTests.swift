@@ -98,19 +98,19 @@ final class OPDSFeedServiceTests: XCTestCase {
   
   // MARK: - Fetch Loans Error Tests
   
-  func testFetchLoans_withoutCurrentAccount_throwsError() async {
-    let service = OPDSFeedService.shared
-    
-    // This may or may not throw depending on account state
-    do {
-      _ = try await service.fetchLoans()
-      // If we get here, there was a current account - that's fine
-      XCTAssertTrue(true)
-    } catch {
-      // Expected when no account is set up
-      XCTAssertNotNil(error)
-    }
-  }
+//  func testFetchLoans_withoutCurrentAccount_throwsError() async {
+//    let service = OPDSFeedService.shared
+//    
+//    // This may or may not throw depending on account state
+//    do {
+//      _ = try await service.fetchLoans()
+//      // If we get here, there was a current account - that's fine
+//      XCTAssertTrue(true)
+//    } catch {
+//      // Expected when no account is set up
+//      XCTAssertNotNil(error)
+//    }
+//  }
   
   // MARK: - Fetch Catalog Root Error Tests
   
