@@ -210,5 +210,27 @@ final class ButtonStateTests: XCTestCase {
     let resultButtons = testState.buttonTypes(book: testEpub)
     XCTAssertEqual(Set(expectedButtons), Set(resultButtons))
   }
+
+  // MARK: - Additional content-type coverage (audiobook & PDF)
+
+  func testDownloadSuccessfulAudiobook() {
+    let testState = BookButtonState.downloadSuccessful
+    let audiobook = TPPBookMocker.snapshotAudiobook()
+
+    let resultButtons = testState.buttonTypes(book: audiobook)
+
+    XCTAssertTrue(resultButtons.contains(.listen), "Listen button should be present for audiobook")
+    XCTAssertEqual(resultButtons.count, 2, "Should have listen + return/remove")
+  }
+
+  func testDownloadSuccessfulPDF() {
+    let testState = BookButtonState.downloadSuccessful
+    let pdfBook = TPPBookMocker.snapshotPDF()
+
+    let resultButtons = testState.buttonTypes(book: pdfBook)
+
+    XCTAssertTrue(resultButtons.contains(.read), "Read button should be present for PDF")
+    XCTAssertEqual(resultButtons.count, 2, "Should have read + return/remove")
+  }
 }
 
