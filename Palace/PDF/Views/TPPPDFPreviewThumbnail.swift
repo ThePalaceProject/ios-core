@@ -12,11 +12,11 @@ import SwiftUI
 struct TPPPDFPreviewThumbnail: View {
   
   @ObservedObject var thumbnailGenerator: ThumbnailFetcher
-  let document: TPPEncryptedPDFDocument
+  let document: any PDFDocumentProviding
   let index: Int
   let size: CGSize
   
-  init(document: TPPEncryptedPDFDocument, index: Int, size: CGSize) {
+  init(document: any PDFDocumentProviding, index: Int, size: CGSize) {
     self.document = document
     self.index = index
     self.size = size
@@ -36,10 +36,10 @@ struct TPPPDFPreviewThumbnail: View {
   /// Without it the thimbnail will always contain the first assigned image
   /// It seems SwiftUI optimizes that
   class ThumbnailFetcher: ObservableObject {
-    let document: TPPEncryptedPDFDocument
+    let document: any PDFDocumentProviding
     let index: Int
     @Published var image: UIImage
-    init(document: TPPEncryptedPDFDocument, index: Int) {
+    init(document: any PDFDocumentProviding, index: Int) {
       self.document = document
       self.index = index
       if let cachedThumbnail = document.cachedThumbnail(for: index) {

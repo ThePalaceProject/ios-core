@@ -143,7 +143,7 @@ struct TPPBookMocker {
       timeTrackingURL: nil,
       contributors: [:],
       bookDuration: nil,
-      imageCache: nil
+      imageCache: MockImageCache()
     )
   }
   
