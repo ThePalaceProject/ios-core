@@ -188,7 +188,7 @@ class AudiobookTimeTrackerTests: XCTestCase {
   
   // MARK: - Additional Tests
   
-  func testMultipleMinuteBoundaries_createsMultipleEntries() {
+  func testMultipleMinuteBoundaries_createsMultipleEntries() async {
     // Simulate 3 minutes of playback crossing minute boundaries
     let calendar = Calendar.current
     var date = currentDate!
@@ -198,7 +198,14 @@ class AudiobookTimeTrackerTests: XCTestCase {
       date = calendar.date(byAdding: .second, value: 1, to: date)!
     }
     
+    // Capture the accumulated duration before deinit
+    let accumulatedDuration = sut.timeEntry.duration
+    XCTAssertGreaterThan(accumulatedDuration, 0, "Should have accumulated time during playback")
+    
     sut = nil
+    
+    // Give async operations time to complete
+    try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
     mockDataManager.flush()
     
     let entries = mockDataManager.savedTimeEntries
