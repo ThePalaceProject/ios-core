@@ -63,17 +63,19 @@ jobs:
         run: xcrun simctl list devices available | grep iPhone | head -10
         
       - name: Run Palace unit tests
+        id: tests
         run: ./scripts/xcode-test-optimized.sh
         env:
           BUILD_CONTEXT: ci
+        continue-on-error: true
           
       - name: Generate Test Report
         if: always()
         run: |
+          echo "## 🧪 Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
           if [ -d "TestResults.xcresult" ]; then
-            echo "## 🧪 Test Results" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            
             # Extract metrics using xcresulttool
             xcrun xcresulttool get --path TestResults.xcresult --format json 2>/dev/null | \
               python3 -c "
@@ -90,8 +92,47 @@ jobs:
               print(f'⚠️ Could not parse results: {e}')
           " >> $GITHUB_STEP_SUMMARY || echo "⚠️ Could not parse test results" >> $GITHUB_STEP_SUMMARY
           else
-            echo "## ⚠️ No Test Results Found" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ No test results found" >> $GITHUB_STEP_SUMMARY
           fi
+          
+      - name: Check for Snapshot Failures
+        if: failure() || steps.tests.outcome == 'failure'
+        id: snapshots
+        run: |
+          # Find snapshot failure images in temp directories
+          FAILURES=$(find /Users/runner/Library/Developer/CoreSimulator -name "*.png" -path "*tmp*" 2>/dev/null | head -20)
+          
+          if [ -n "$FAILURES" ]; then
+            echo "found=true" >> $GITHUB_OUTPUT
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### 📸 Snapshot Failures" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Download the **snapshot-failures** artifact to see the diff images." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Failed Snapshot |" >> $GITHUB_STEP_SUMMARY
+            echo "|-----------------|" >> $GITHUB_STEP_SUMMARY
+            echo "$FAILURES" | while read -r file; do
+              name=$(basename "$file" .png)
+              echo "| $name |" >> $GITHUB_STEP_SUMMARY
+            done
+            
+            # Copy failures to a known location for upload
+            mkdir -p snapshot-failures
+            echo "$FAILURES" | while read -r file; do
+              cp "$file" snapshot-failures/ 2>/dev/null || true
+            done
+          else
+            echo "found=false" >> $GITHUB_OUTPUT
+          fi
+          
+      - name: Upload Snapshot Failures
+        if: steps.snapshots.outputs.found == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: snapshot-failures
+          path: snapshot-failures/
+          retention-days: 3
+          if-no-files-found: ignore
           
       - name: Upload Test Results
         uses: actions/upload-artifact@v4
@@ -99,5 +140,9 @@ jobs:
         with:
           name: test-results
           path: TestResults.xcresult
-          retention-days: 7
+          retention-days: 3
           if-no-files-found: ignore
+          
+      - name: Fail if tests failed
+        if: steps.tests.outcome == 'failure'
+        run: exit 1
