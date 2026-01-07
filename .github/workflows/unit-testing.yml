@@ -141,34 +141,96 @@ jobs:
             if [ "${{ steps.tests.outcome }}" = "success" ]; then
               echo "✅ All tests passed" >> $GITHUB_STEP_SUMMARY
             else
-              echo "❌ Tests failed" >> $GITHUB_STEP_SUMMARY
+              echo "❌ Tests failed - check logs for details" >> $GITHUB_STEP_SUMMARY
             fi
           fi
           
-      - name: Check for Snapshot Failures
-        if: failure() || steps.tests.outcome == 'failure'
+          # Show failed tests if any
+          if [ -f "test-report/summary.txt" ]; then
+            FAILED_TESTS=$(grep "^❌" test-report/summary.txt 2>/dev/null | head -10)
+            if [ -n "$FAILED_TESTS" ]; then
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "### Failed Tests" >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+              echo "$FAILED_TESTS" >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
+          
+      - name: Collect Snapshot Failures
+        if: always()
         id: snapshots
         run: |
           mkdir -p snapshot-failures
           
-          # Find snapshot failures in simulator temp directories
-          find /Users/runner/Library/Developer/CoreSimulator -name "*.png" -path "*tmp*" 2>/dev/null | while read -r file; do
-            cp "$file" snapshot-failures/ 2>/dev/null || true
+          echo "Searching for snapshot failures..."
+          
+          # Search in multiple locations where SnapshotTesting puts failure images
+          
+          # 1. Simulator temp directories (where SnapshotTesting writes new snapshots)
+          echo "Checking simulator temp directories..."
+          find /Users/runner/Library/Developer/CoreSimulator -name "*.png" -path "*tmp*" -type f 2>/dev/null | while read -r file; do
+            echo "Found: $file"
+            cp "$file" test-report/snapshots/ 2>/dev/null || true
           done
           
-          COUNT=$(ls -1 snapshot-failures/*.png 2>/dev/null | wc -l | tr -d ' ')
+          # 2. App container tmp directories
+          echo "Checking app containers..."
+          find /Users/runner/Library/Developer/CoreSimulator/Devices -path "*/tmp/*.png" -type f 2>/dev/null | while read -r file; do
+            echo "Found: $file"
+            cp "$file" test-report/snapshots/ 2>/dev/null || true
+          done
+          
+          # 3. Any Failures directories in DerivedData
+          echo "Checking DerivedData..."
+          find ~/Library/Developer/Xcode/DerivedData -name "*.png" -path "*Failures*" -type f 2>/dev/null | while read -r file; do
+            echo "Found: $file"
+            cp "$file" test-report/snapshots/ 2>/dev/null || true
+          done
+          
+          # 4. Check workspace for any snapshot test output
+          echo "Checking workspace..."
+          find . -name "*.png" -path "*tmp*" -type f 2>/dev/null | while read -r file; do
+            echo "Found: $file"
+            cp "$file" test-report/snapshots/ 2>/dev/null || true
+          done
+          
+          # 5. Check for __Snapshots__ directories with recent modifications
+          echo "Checking for recent snapshot changes..."
+          if [ -d "TestResults.xcresult" ]; then
+            find . -path "*__Snapshots__*" -name "*.png" -newer TestResults.xcresult -type f 2>/dev/null | while read -r file; do
+              echo "Found recently modified: $file"
+              cp "$file" test-report/snapshots/ 2>/dev/null || true
+            done
+          fi
+          
+          # Count what we found
+          COUNT=$(ls -1 test-report/snapshots/*.png 2>/dev/null | wc -l | tr -d ' ')
+          echo "Total snapshot files found: $COUNT"
           
           if [ "$COUNT" -gt "0" ]; then
             echo "found=true" >> $GITHUB_OUTPUT
+            echo "count=$COUNT" >> $GITHUB_OUTPUT
             
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "### 📸 Snapshot Failures ($COUNT)" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            ls -1 snapshot-failures/*.png 2>/dev/null | head -15 | while read -r f; do
+            echo "Download **test-report** artifact → snapshots folder" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            ls -1 test-report/snapshots/*.png 2>/dev/null | head -15 | while read -r f; do
               echo "- \`$(basename "$f")\`" >> $GITHUB_STEP_SUMMARY
             done
           else
             echo "found=false" >> $GITHUB_OUTPUT
+            echo "count=0" >> $GITHUB_OUTPUT
+            
+            # List what directories exist for debugging
+            echo "" >> test-report/summary.txt
+            echo "## Snapshot Search Locations" >> test-report/summary.txt
+            echo "No snapshot failures found in:" >> test-report/summary.txt
+            echo "- /Users/runner/Library/Developer/CoreSimulator/**/tmp/" >> test-report/summary.txt
+            echo "- ~/Library/Developer/Xcode/DerivedData/**/Failures/" >> test-report/summary.txt
+            echo "- ./**/tmp/*.png" >> test-report/summary.txt
           fi
           
       - name: Upload Snapshot Failures
@@ -194,7 +256,7 @@ jobs:
         run: |
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "---" >> $GITHUB_STEP_SUMMARY
-          echo "📦 **Artifacts** available at the bottom of this page" >> $GITHUB_STEP_SUMMARY
+          echo "📦 Download **test-report** artifact for details" >> $GITHUB_STEP_SUMMARY
           
       - name: Fail if tests failed
         if: steps.tests.outcome == 'failure'
