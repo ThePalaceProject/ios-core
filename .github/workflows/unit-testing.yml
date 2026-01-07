@@ -145,18 +145,6 @@ jobs:
             fi
           fi
           
-          # Show failed tests if any
-          if [ -f "test-report/summary.txt" ]; then
-            FAILED_TESTS=$(grep "^❌" test-report/summary.txt 2>/dev/null | head -10)
-            if [ -n "$FAILED_TESTS" ]; then
-              echo "" >> $GITHUB_STEP_SUMMARY
-              echo "### Failed Tests" >> $GITHUB_STEP_SUMMARY
-              echo '```' >> $GITHUB_STEP_SUMMARY
-              echo "$FAILED_TESTS" >> $GITHUB_STEP_SUMMARY
-              echo '```' >> $GITHUB_STEP_SUMMARY
-            fi
-          fi
-          
       - name: Collect Snapshot Failures
         if: always()
         id: snapshots
