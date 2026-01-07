@@ -184,19 +184,25 @@ struct TPPBookMocker {
     )
   }
   
-  /// Creates a mock book on hold with FIXED data - suitable for snapshot tests
+  /// Creates a mock book on hold (reserved, waiting in queue) with FIXED data
   static func snapshotHoldBook() -> TPPBook {
-    let title = "To Kill a Mockingbird"
-    let author = "Harper Lee"
-    let identifier = "snapshot-hold-001"
-    
+    snapshotReservedBook()
+  }
+  
+  /// Creates a mock book with "reserved" availability (waiting in hold queue)
+  static func snapshotReservedBook(
+    identifier: String = "snapshot-reserved-001",
+    title: String = "To Kill a Mockingbird",
+    author: String = "Harper Lee",
+    holdPosition: UInt = 3
+  ) -> TPPBook {
     let acquisition = TPPOPDSAcquisition(
       relation: .generic,
       type: DistributorType.EpubZip.rawValue,
       hrefURL: snapshotURL,
       indirectAcquisitions: [],
       availability: TPPOPDSAcquisitionAvailabilityReserved(
-        holdPosition: 3,
+        holdPosition: holdPosition,
         copiesTotal: 5,
         since: snapshotDate,
         until: snapshotDate.addingTimeInterval(86400 * 14)
@@ -220,6 +226,63 @@ struct TPPBookMocker {
       publisher: "HarperCollins",
       subtitle: "A Novel",
       summary: "A classic novel about justice and racial inequality.",
+      title: title,
+      updated: snapshotDate,
+      annotationsURL: nil,
+      analyticsURL: nil,
+      alternateURL: nil,
+      relatedWorksURL: nil,
+      previewLink: nil,
+      seriesURL: nil,
+      revokeURL: snapshotURL,
+      reportURL: nil,
+      timeTrackingURL: nil,
+      contributors: [:],
+      bookDuration: nil,
+      imageCache: imageCache
+    )
+    
+    // Pre-set cover image directly for synchronous snapshot testing
+    book.coverImage = cover
+    book.thumbnailImage = cover
+    
+    return book
+  }
+  
+  /// Creates a mock book with "ready" availability (hold is ready to borrow)
+  static func snapshotReadyBook(
+    identifier: String = "snapshot-ready-001",
+    title: String = "The Catcher in the Rye",
+    author: String = "J.D. Salinger"
+  ) -> TPPBook {
+    let acquisition = TPPOPDSAcquisition(
+      relation: .generic,
+      type: DistributorType.EpubZip.rawValue,
+      hrefURL: snapshotURL,
+      indirectAcquisitions: [],
+      availability: TPPOPDSAcquisitionAvailabilityReady(
+        since: snapshotDate,
+        until: snapshotDate.addingTimeInterval(86400 * 3) // 3 days to borrow
+      )
+    )
+    
+    // Create image cache with pre-generated TenPrint cover
+    let imageCache = MockImageCache()
+    let cover = MockImageCache.generateTenPrintCover(title: title, author: author)
+    imageCache.set(cover, for: identifier, expiresIn: nil)
+    
+    let book = TPPBook(
+      acquisitions: [acquisition],
+      authors: [TPPBookAuthor(authorName: author, relatedBooksURL: nil)],
+      categoryStrings: ["Fiction", "Classic"],
+      distributor: "Library",
+      identifier: identifier,
+      imageURL: snapshotURL,
+      imageThumbnailURL: snapshotURL,
+      published: snapshotDate,
+      publisher: "Little, Brown",
+      subtitle: nil,
+      summary: "A story of teenage angst and alienation.",
       title: title,
       updated: snapshotDate,
       annotationsURL: nil,
