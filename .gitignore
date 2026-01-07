@@ -16,3 +16,4 @@ fastlane/report.xml
 fastlane/*_output
 Palace.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
 Palace.xcodeproj/xcshareddata/xcschemes/Palace.xcscheme
+*.xcresult

@@ -28,7 +28,7 @@ struct TPPPDFPreviewBar: View {
     return CGSize(width: w, height: h)
   }
   
-  let document: TPPEncryptedPDFDocument
+  let document: any PDFDocumentProviding
   @Binding var currentPage: Int
   
   @State private var previewsAreaSize: CGSize = .zero

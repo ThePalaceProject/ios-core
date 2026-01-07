@@ -127,11 +127,13 @@ class AccountDetailViewModel: NSObject, ObservableObject {
       drmAuthorizer: drmAuthorizer
     )
     
-    frontEndValidator = TPPUserAccountFrontEndValidation(
-      account: selectedAccount!,
-      businessLogic: businessLogic,
-      inputProvider: self
-    )
+    if let account = selectedAccount {
+      frontEndValidator = TPPUserAccountFrontEndValidation(
+        account: account,
+        businessLogic: businessLogic,
+        inputProvider: self
+      )
+    }
     
     setupObservers()
     loadInitialData()
@@ -253,8 +255,8 @@ class AccountDetailViewModel: NSObject, ObservableObject {
       return []
     }
     
-    if businessLogic.selectedAuthentication != nil && isSignedIn {
-      workingSection = cellsForAuthMethod(businessLogic.selectedAuthentication!)
+    if let selectedAuth = businessLogic.selectedAuthentication, isSignedIn {
+      workingSection = cellsForAuthMethod(selectedAuth)
     } else if !isSignedIn && selectedUserAccount.needsAuth {
       if businessLogic.isSamlPossible() {
         workingSection.append(.infoHeader(Strings.AccountDetail.signInMessage(libraryName: libraryName)))

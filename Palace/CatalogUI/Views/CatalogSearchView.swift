@@ -96,6 +96,7 @@ private extension CatalogSearchView {
           set: { viewModel.updateSearchQuery($0) }
         )
       )
+      .accessibilityIdentifier(AccessibilityID.Search.searchField)
       .focused($isSearchFieldFocused)
       .submitLabel(.search)
       .padding(8)

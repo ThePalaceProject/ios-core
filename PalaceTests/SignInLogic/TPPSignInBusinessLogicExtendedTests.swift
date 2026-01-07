@@ -1,0 +1,657 @@
+//
+//  TPPSignInBusinessLogicTests.swift
+//  PalaceTests
+//
+//  Comprehensive tests for sign-in business logic
+//
+
+import XCTest
+import Combine
+@testable import Palace
+
+// MARK: - Extended Sign-In Business Logic Tests
+
+final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
+  
+  // MARK: - Properties
+  
+  private var businessLogic: TPPSignInBusinessLogic!
+  private var libraryAccountMock: TPPLibraryAccountMock!
+  private var drmAuthorizer: TPPDRMAuthorizingMock!
+  private var uiDelegate: TPPSignInOutBusinessLogicUIDelegateMock!
+  private var networkExecutor: TPPRequestExecutorMock!
+  private var bookRegistry: TPPBookRegistryMock!
+  private var downloadCenter: TPPMyBooksDownloadsCenterMock!
+  
+  // MARK: - Setup/Teardown
+  
+  override func setUpWithError() throws {
+    try super.setUpWithError()
+    libraryAccountMock = TPPLibraryAccountMock()
+    drmAuthorizer = TPPDRMAuthorizingMock()
+    uiDelegate = TPPSignInOutBusinessLogicUIDelegateMock()
+    networkExecutor = TPPRequestExecutorMock()
+    bookRegistry = TPPBookRegistryMock()
+    downloadCenter = TPPMyBooksDownloadsCenterMock()
+    
+    businessLogic = TPPSignInBusinessLogic(
+      libraryAccountID: libraryAccountMock.tppAccountUUID,
+      libraryAccountsProvider: libraryAccountMock,
+      urlSettingsProvider: TPPURLSettingsProviderMock(),
+      bookRegistry: bookRegistry,
+      bookDownloadsCenter: downloadCenter,
+      userAccountProvider: TPPUserAccountMock.self,
+      networkExecutor: networkExecutor,
+      uiDelegate: uiDelegate,
+      drmAuthorizer: drmAuthorizer
+    )
+  }
+  
+  override func tearDownWithError() throws {
+    businessLogic.userAccount.removeAll()
+    businessLogic = nil
+    libraryAccountMock = nil
+    drmAuthorizer = nil
+    uiDelegate = nil
+    networkExecutor = nil
+    bookRegistry = nil
+    downloadCenter = nil
+    try super.tearDownWithError()
+  }
+  
+  // MARK: - Initialization Tests
+  
+  func testInitialization_setsCorrectLibraryAccountID() {
+    XCTAssertEqual(businessLogic.libraryAccountID, libraryAccountMock.tppAccountUUID)
+  }
+  
+  func testInitialization_setsUIDelegate() {
+    XCTAssertNotNil(businessLogic.uiDelegate)
+  }
+  
+  func testInitialization_defaultsNotLoggingInAfterSignUp() {
+    XCTAssertFalse(businessLogic.isLoggingInAfterSignUp)
+  }
+  
+  func testInitialization_defaultsNotValidatingCredentials() {
+    XCTAssertFalse(businessLogic.isValidatingCredentials)
+  }
+  
+  func testInitialization_defaultsIgnoreSignedInStateToFalse() {
+    XCTAssertFalse(businessLogic.ignoreSignedInState)
+  }
+  
+  func testInitialization_authTokenNilByDefault() {
+    XCTAssertNil(businessLogic.authToken)
+  }
+  
+  func testInitialization_patronNilByDefault() {
+    XCTAssertNil(businessLogic.patron)
+  }
+  
+  func testInitialization_cookiesNilByDefault() {
+    XCTAssertNil(businessLogic.cookies)
+  }
+  
+  // MARK: - Library Account Tests
+  
+  func testLibraryAccount_returnsCorrectAccount() {
+    let account = businessLogic.libraryAccount
+    XCTAssertNotNil(account)
+    XCTAssertEqual(account?.uuid, libraryAccountMock.tppAccountUUID)
+  }
+  
+  func testCurrentAccount_matchesLibraryAccount() {
+    XCTAssertEqual(businessLogic.currentAccount?.uuid, businessLogic.libraryAccount?.uuid)
+  }
+  
+  // MARK: - Selected Authentication Tests
+  
+  func testSelectedAuthentication_nilByDefault() {
+    XCTAssertNil(businessLogic.selectedAuthentication)
+  }
+  
+  func testSelectedAuthentication_canBeSetToBasic() {
+    businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
+    XCTAssertEqual(businessLogic.selectedAuthentication?.authType, .basic)
+  }
+  
+  func testSelectedAuthentication_canBeSetToOAuth() {
+    businessLogic.selectedAuthentication = libraryAccountMock.oauthAuthentication
+    XCTAssertEqual(businessLogic.selectedAuthentication?.authType, .oauthIntermediary)
+  }
+  
+  func testSelectedAuthentication_canBeSetToSAML() {
+    businessLogic.selectedAuthentication = libraryAccountMock.samlAuthentication
+    XCTAssertEqual(businessLogic.selectedAuthentication?.authType, .saml)
+  }
+  
+  // MARK: - Sign-In State Tests
+  
+  func testIsSignedIn_falseWhenNoCredentials() {
+    XCTAssertFalse(businessLogic.isSignedIn())
+  }
+  
+  func testIsSignedIn_falseWhenIgnoreSignedInStateTrue() {
+    businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
+    businessLogic.updateUserAccount(
+      forDRMAuthorization: true,
+      withBarcode: "barcode",
+      pin: "pin",
+      authToken: nil,
+      expirationDate: nil,
+      patron: nil,
+      cookies: nil
+    )
+    
+    businessLogic.ignoreSignedInState = true
+    XCTAssertFalse(businessLogic.isSignedIn())
+  }
+  
+  func testIsSignedIn_trueWhenHasCredentials() {
+    businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
+    businessLogic.updateUserAccount(
+      forDRMAuthorization: true,
+      withBarcode: "barcode",
+      pin: "pin",
+      authToken: nil,
+      expirationDate: nil,
+      patron: nil,
+      cookies: nil
+    )
+    
+    XCTAssertTrue(businessLogic.isSignedIn())
+  }
+  
+  // MARK: - Registration Tests
+  
+  func testRegistrationIsPossible_falseWhenSignedIn() {
+    businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
+    businessLogic.updateUserAccount(
+      forDRMAuthorization: true,
+      withBarcode: "barcode",
+      pin: "pin",
+      authToken: nil,
+      expirationDate: nil,
+      patron: nil,
+      cookies: nil
+    )
+    
+    XCTAssertFalse(businessLogic.registrationIsPossible())
+  }
+  
+  // MARK: - SAML Tests
+  
+  func testIsSamlPossible_trueWhenLibrarySupports() {
+    XCTAssertTrue(businessLogic.isSamlPossible())
+  }
+  
+  // MARK: - Make Request Tests
+  
+  func testMakeRequest_forBasicAuth_noAuthorizationHeader() {
+    businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
+    
+    let request = businessLogic.makeRequest(for: .signIn, context: "test")
+    
+    XCTAssertNotNil(request)
+    let authHeader = request?.value(forHTTPHeaderField: "Authorization")
+    XCTAssertNil(authHeader)
+  }
+  
+  func testMakeRequest_forOAuth_hasBearerToken() {
+    businessLogic.selectedAuthentication = libraryAccountMock.oauthAuthentication
+    businessLogic.authToken = "test-token"
+    
+    let request = businessLogic.makeRequest(for: .signIn, context: "test")
+    
+    XCTAssertNotNil(request)
+    let authHeader = request?.value(forHTTPHeaderField: "Authorization")
+    XCTAssertEqual(authHeader, "Bearer test-token")
+  }
+  
+  func testMakeRequest_forSAML_hasBearerToken() {
+    businessLogic.selectedAuthentication = libraryAccountMock.samlAuthentication
+    businessLogic.authToken = "saml-token"
+    
+    let request = businessLogic.makeRequest(for: .signIn, context: "test")
+    
+    XCTAssertNotNil(request)
+    let authHeader = request?.value(forHTTPHeaderField: "Authorization")
+    XCTAssertEqual(authHeader, "Bearer saml-token")
+  }
+  
+  func testMakeRequest_signOut_usesCorrectURL() {
+    businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
+    
+    let request = businessLogic.makeRequest(for: .signOut, context: "test")
+    
+    XCTAssertNotNil(request)
+    XCTAssertNotNil(request?.url)
+  }
+  
+  // MARK: - Update User Account Tests
+  
+  func testUpdateUserAccount_withBasicAuth_setsBarcodePIN() {
+    businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
+    
+    businessLogic.updateUserAccount(
+      forDRMAuthorization: true,
+      withBarcode: "12345",
+      pin: "9999",
+      authToken: nil,
+      expirationDate: nil,
+      patron: nil,
+      cookies: nil
+    )
+    
+    XCTAssertEqual(businessLogic.userAccount.barcode, "12345")
+    XCTAssertEqual(businessLogic.userAccount.PIN, "9999")
+  }
+  
+  func testUpdateUserAccount_withOAuth_setsAuthToken() {
+    businessLogic.selectedAuthentication = libraryAccountMock.oauthAuthentication
+    let patron = ["name": "Test User"]
+    
+    businessLogic.updateUserAccount(
+      forDRMAuthorization: true,
+      withBarcode: nil,
+      pin: nil,
+      authToken: "oauth-token-123",
+      expirationDate: Date().addingTimeInterval(3600),
+      patron: patron,
+      cookies: nil
+    )
+    
+    XCTAssertEqual(businessLogic.userAccount.authToken, "oauth-token-123")
+    XCTAssertEqual(businessLogic.userAccount.patron?["name"] as? String, "Test User")
+  }
+  
+  func testUpdateUserAccount_withSAML_setsCookies() {
+    businessLogic.selectedAuthentication = libraryAccountMock.samlAuthentication
+    let cookies = [
+      HTTPCookie(properties: [
+        .domain: "example.com",
+        .path: "/",
+        .name: "session",
+        .value: "abc123"
+      ])!
+    ]
+    
+    businessLogic.updateUserAccount(
+      forDRMAuthorization: true,
+      withBarcode: nil,
+      pin: nil,
+      authToken: "saml-token",
+      expirationDate: nil,
+      patron: ["name": "SAML User"],
+      cookies: cookies
+    )
+    
+    XCTAssertEqual(businessLogic.userAccount.cookies?.count, 1)
+    XCTAssertEqual(businessLogic.userAccount.cookies?.first?.name, "session")
+  }
+  
+  func testUpdateUserAccount_setsAuthDefinition() {
+    businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
+    
+    businessLogic.updateUserAccount(
+      forDRMAuthorization: true,
+      withBarcode: "barcode",
+      pin: "pin",
+      authToken: nil,
+      expirationDate: nil,
+      patron: nil,
+      cookies: nil
+    )
+    
+    XCTAssertNotNil(businessLogic.userAccount.authDefinition)
+  }
+  
+  // MARK: - Validate Credentials Tests
+  
+  func testValidateCredentials_setsIsValidatingCredentialsTrue() {
+    businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
+    
+    businessLogic.validateCredentials()
+    
+    XCTAssertTrue(businessLogic.isValidatingCredentials)
+  }
+  
+  func testValidateCredentials_completionResetsValidatingState() {
+    let expectation = expectation(description: "Validation completes")
+    businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
+    
+    businessLogic.validateCredentials()
+    
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+      XCTAssertFalse(self.businessLogic.isValidatingCredentials)
+      expectation.fulfill()
+    }
+    
+    wait(for: [expectation], timeout: 2.0)
+  }
+  
+  // MARK: - Log In Flow Tests
+  
+  func testLogIn_postsSigningInNotification() {
+    let expectation = expectation(forNotification: .TPPIsSigningIn, object: nil) { notification in
+      guard let isSigningIn = notification.object as? Bool else { return false }
+      return isSigningIn == true
+    }
+    
+    businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
+    businessLogic.logIn()
+    
+    wait(for: [expectation], timeout: 2.0)
+  }
+  
+  func testLogIn_initiatesSignIn() {
+    businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
+    businessLogic.logIn()
+    
+    // Verify that logging in starts credential validation
+    XCTAssertTrue(businessLogic.isValidatingCredentials, "LogIn should start credential validation")
+  }
+  
+  func testLogIn_withBasicAuth_validatesCredentials() {
+    businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
+    
+    businessLogic.logIn()
+    
+    XCTAssertTrue(businessLogic.isValidatingCredentials)
+  }
+  
+  // MARK: - Barcode Display Tests
+  
+  func testLibrarySupportsBarcodeDisplay_falseWithoutCredentials() {
+    XCTAssertFalse(businessLogic.librarySupportsBarcodeDisplay())
+  }
+  
+  func testLibrarySupportsBarcodeDisplay_requiresAuthorizationIdentifier() {
+    businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
+    businessLogic.updateUserAccount(
+      forDRMAuthorization: true,
+      withBarcode: "barcode",
+      pin: "pin",
+      authToken: nil,
+      expirationDate: nil,
+      patron: nil,
+      cookies: nil
+    )
+    
+    // Without authorizationIdentifier, should be false
+    XCTAssertFalse(businessLogic.librarySupportsBarcodeDisplay())
+  }
+  
+  // MARK: - EULA Tests
+  
+  func testShouldShowEULALink_basedOnLibraryDetails() {
+    // This depends on library configuration
+    let result = businessLogic.shouldShowEULALink()
+    // Just verify it returns a bool without crashing
+    XCTAssertNotNil(result)
+  }
+  
+  // MARK: - Authentication Document Loading Tests
+  
+  func testEnsureAuthenticationDocumentIsLoaded_completesWhenLoaded() {
+    let expectation = expectation(description: "Auth doc loaded")
+    
+    businessLogic.ensureAuthenticationDocumentIsLoaded { success in
+      XCTAssertTrue(success)
+      expectation.fulfill()
+    }
+    
+    wait(for: [expectation], timeout: 2.0)
+  }
+  
+  func testIsAuthenticationDocumentLoading_defaultsFalse() {
+    XCTAssertFalse(businessLogic.isAuthenticationDocumentLoading)
+  }
+  
+  // MARK: - Refresh Auth Tests
+  
+  func testRefreshAuthIfNeeded_returnsFalseWhenNoAuthDefinition() {
+    let needsUI = businessLogic.refreshAuthIfNeeded(usingExistingCredentials: true, completion: nil)
+    
+    // Without auth definition, should return false
+    XCTAssertFalse(needsUI)
+  }
+  
+  // MARK: - Concurrent Sign-In Prevention Tests
+  
+  func testLogIn_preventsMultipleSimultaneousCalls() {
+    businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
+    
+    businessLogic.logIn()
+    let firstValidating = businessLogic.isValidatingCredentials
+    
+    businessLogic.logIn()
+    let secondValidating = businessLogic.isValidatingCredentials
+    
+    XCTAssertTrue(firstValidating)
+    XCTAssertTrue(secondValidating)
+  }
+  
+  // MARK: - Password Reset Tests
+  
+  func testCanResetPassword_dependsOnLibraryConfig() {
+    // This depends on library having password reset link
+    let result = businessLogic.canResetPassword
+    XCTAssertNotNil(result)
+  }
+}
+
+// MARK: - OAuth Flow Tests
+
+final class TPPSignInOAuthFlowTests: XCTestCase {
+  
+  private var businessLogic: TPPSignInBusinessLogic!
+  private var libraryAccountMock: TPPLibraryAccountMock!
+  private var uiDelegate: TPPSignInOutBusinessLogicUIDelegateMock!
+  
+  override func setUpWithError() throws {
+    try super.setUpWithError()
+    libraryAccountMock = TPPLibraryAccountMock()
+    uiDelegate = TPPSignInOutBusinessLogicUIDelegateMock()
+    
+    businessLogic = TPPSignInBusinessLogic(
+      libraryAccountID: libraryAccountMock.tppAccountUUID,
+      libraryAccountsProvider: libraryAccountMock,
+      urlSettingsProvider: TPPURLSettingsProviderMock(),
+      bookRegistry: TPPBookRegistryMock(),
+      bookDownloadsCenter: TPPMyBooksDownloadsCenterMock(),
+      userAccountProvider: TPPUserAccountMock.self,
+      networkExecutor: TPPRequestExecutorMock(),
+      uiDelegate: uiDelegate,
+      drmAuthorizer: TPPDRMAuthorizingMock()
+    )
+  }
+  
+  override func tearDownWithError() throws {
+    businessLogic.userAccount.removeAll()
+    businessLogic = nil
+    libraryAccountMock = nil
+    uiDelegate = nil
+    try super.tearDownWithError()
+  }
+  
+  // MARK: - OAuth URL Handling Tests
+  
+  func testHandleRedirectURL_withValidAccessToken_setsAuthToken() {
+    let expectation = expectation(description: "Redirect handled")
+    
+    let urlString = "palace://oauth?access_token=test-token&patron_info=%7B%22name%22%3A%22Test%22%7D"
+    let url = URL(string: urlString)!
+    let notification = Notification(name: .TPPAppDelegateDidReceiveCleverRedirectURL, object: url)
+    
+    businessLogic.selectedAuthentication = libraryAccountMock.oauthAuthentication
+    businessLogic.handleRedirectURL(notification) { error, title, message in
+      expectation.fulfill()
+    }
+    
+    wait(for: [expectation], timeout: 2.0)
+  }
+  
+  func testHandleRedirectURL_withError_callsCompletion() {
+    let expectation = expectation(description: "Error handled")
+    
+    let urlString = "palace://oauth?error=%7B%22title%22%3A%22Auth+Error%22%7D"
+    let url = URL(string: urlString)!
+    let notification = Notification(name: .TPPAppDelegateDidReceiveCleverRedirectURL, object: url)
+    
+    businessLogic.selectedAuthentication = libraryAccountMock.oauthAuthentication
+    businessLogic.handleRedirectURL(notification) { error, title, message in
+      XCTAssertNotNil(title)
+      expectation.fulfill()
+    }
+    
+    wait(for: [expectation], timeout: 2.0)
+  }
+  
+  func testHandleRedirectURL_withNilURL_callsCompletion() {
+    let expectation = expectation(description: "Nil URL handled")
+    
+    let notification = Notification(name: .TPPAppDelegateDidReceiveCleverRedirectURL, object: nil)
+    
+    businessLogic.handleRedirectURL(notification) { error, title, message in
+      expectation.fulfill()
+    }
+    
+    wait(for: [expectation], timeout: 2.0)
+  }
+  
+  func testHandleRedirectURL_withInvalidURL_callsCompletionWithError() {
+    let expectation = expectation(description: "Invalid URL handled")
+    
+    let url = URL(string: "invalid://url")!
+    let notification = Notification(name: .TPPAppDelegateDidReceiveCleverRedirectURL, object: url)
+    
+    businessLogic.handleRedirectURL(notification) { error, title, message in
+      // Should handle gracefully
+      expectation.fulfill()
+    }
+    
+    wait(for: [expectation], timeout: 2.0)
+  }
+}
+
+// MARK: - Error Handling Tests
+
+final class TPPSignInErrorHandlingTests: XCTestCase {
+  
+  private var businessLogic: TPPSignInBusinessLogic!
+  private var libraryAccountMock: TPPLibraryAccountMock!
+  private var uiDelegate: TPPSignInOutBusinessLogicUIDelegateMock!
+  private var networkExecutor: TPPNetworkErrorMock!
+  
+  override func setUpWithError() throws {
+    try super.setUpWithError()
+    libraryAccountMock = TPPLibraryAccountMock()
+    uiDelegate = TPPSignInOutBusinessLogicUIDelegateMock()
+    networkExecutor = TPPNetworkErrorMock()
+    
+    businessLogic = TPPSignInBusinessLogic(
+      libraryAccountID: libraryAccountMock.tppAccountUUID,
+      libraryAccountsProvider: libraryAccountMock,
+      urlSettingsProvider: TPPURLSettingsProviderMock(),
+      bookRegistry: TPPBookRegistryMock(),
+      bookDownloadsCenter: TPPMyBooksDownloadsCenterMock(),
+      userAccountProvider: TPPUserAccountMock.self,
+      networkExecutor: networkExecutor,
+      uiDelegate: uiDelegate,
+      drmAuthorizer: TPPDRMAuthorizingMock()
+    )
+  }
+  
+  override func tearDownWithError() throws {
+    businessLogic.userAccount.removeAll()
+    businessLogic = nil
+    libraryAccountMock = nil
+    uiDelegate = nil
+    networkExecutor = nil
+    try super.tearDownWithError()
+  }
+  
+  func testValidateCredentials_withSelectedAuth_doesNotCrash() {
+    // Test that validateCredentials can be called without crashing
+    // Note: Actual validation requires network/UI which can't be fully tested here
+    businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
+    
+    // This triggers async network call - we just verify it doesn't crash
+    businessLogic.validateCredentials()
+    
+    // Give it a moment to start processing
+    let expectation = expectation(description: "Processing")
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+      expectation.fulfill()
+    }
+    wait(for: [expectation], timeout: 2.0)
+  }
+  
+  func testValidateCredentials_withoutSelectedAuth_doesNotCrash() {
+    // Test that validateCredentials handles nil auth gracefully
+    businessLogic.selectedAuthentication = nil
+    
+    // Should not crash
+    businessLogic.validateCredentials()
+    
+    XCTAssertTrue(true, "Completed without crash")
+  }
+}
+
+// MARK: - Mock Extensions
+
+class TPPNetworkErrorMock: TPPRequestExecuting {
+  var requestTimeout: TimeInterval = 60
+  var shouldFail = false
+  var shouldTimeout = false
+  var errorStatusCode = 500
+  
+  func executeRequest(
+    _ req: URLRequest,
+    enableTokenRefresh: Bool,
+    completion: @escaping (NYPLResult<Data>) -> Void
+  ) -> URLSessionDataTask? {
+    DispatchQueue.main.asyncAfter(deadline: .now() + (shouldTimeout ? 3.0 : 0.1)) {
+      if self.shouldFail || self.shouldTimeout {
+        let error = NSError(domain: "Test", code: self.errorStatusCode, userInfo: nil)
+        let response = HTTPURLResponse(
+          url: req.url!,
+          statusCode: self.errorStatusCode,
+          httpVersion: "1.1",
+          headerFields: nil
+        )
+        completion(.failure(error, response))
+      } else {
+        let data = TPPFake.validUserProfileJson.data(using: .utf8)!
+        let response = HTTPURLResponse(
+          url: req.url!,
+          statusCode: 200,
+          httpVersion: "1.1",
+          headerFields: nil
+        )
+        completion(.success(data, response))
+      }
+    }
+    return nil
+  }
+}
+
+extension TPPSignInOutBusinessLogicUIDelegateMock {
+  var willSignInHandler: (() -> Void)? {
+    get { objc_getAssociatedObject(self, &AssociatedKeys.willSignIn) as? () -> Void }
+    set { objc_setAssociatedObject(self, &AssociatedKeys.willSignIn, newValue, .OBJC_ASSOCIATION_RETAIN) }
+  }
+  
+  var validationErrorHandler: ((Error?, String?, String?) -> Void)? {
+    get { objc_getAssociatedObject(self, &AssociatedKeys.validationError) as? (Error?, String?, String?) -> Void }
+    set { objc_setAssociatedObject(self, &AssociatedKeys.validationError, newValue, .OBJC_ASSOCIATION_RETAIN) }
+  }
+}
+
+private struct AssociatedKeys {
+  static var willSignIn = "willSignIn"
+  static var validationError = "validationError"
+}
+

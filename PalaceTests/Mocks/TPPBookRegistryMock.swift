@@ -38,6 +38,10 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider {
     }
   }
 
+  func processing(forIdentifier bookIdentifier: String) -> Bool {
+    processingBooks.contains(bookIdentifier)
+  }
+
   func state(for bookIdentifier: String?) -> TPPBookState {
     guard let bookIdentifier = bookIdentifier else { return .unregistered }
     return registry[bookIdentifier]?.state ?? .unregistered
@@ -150,6 +154,34 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider {
   func with(account: String, perform block: (_ registry: TPPBookRegistry) -> Void) {
     // Mock implementation does not support account-specific operations
   }
+
+  // MARK: - Image Loading (for snapshot testing)
+  
+  /// Mock image storage for testing
+  var mockImages: [String: UIImage] = [:]
+  
+  func cachedThumbnailImage(for book: TPPBook) -> UIImage? {
+    mockImages[book.identifier]
+  }
+  
+  func thumbnailImage(for book: TPPBook?, handler: @escaping (UIImage?) -> Void) {
+    guard let book = book else {
+      handler(nil)
+      return
+    }
+    // Return mock image or generate a placeholder
+    if let cached = mockImages[book.identifier] {
+      handler(cached)
+    } else {
+      // Return a system image as placeholder
+      handler(UIImage(systemName: "book.fill"))
+    }
+  }
+  
+  /// Helper to set a mock image for testing
+  func setMockImage(_ image: UIImage, for bookIdentifier: String) {
+    mockImages[bookIdentifier] = image
+  }
 }
 
 extension TPPBookRegistryMock: TPPBookRegistrySyncing {
@@ -161,7 +193,7 @@ extension TPPBookRegistryMock: TPPBookRegistrySyncing {
 
   func sync() {
     isSyncing = true
-    sleep(1) // Simulate syncing delay
+    // Mock completes synchronously - no delay needed for tests
     isSyncing = false
   }
 

@@ -172,6 +172,8 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
        nsErr.domain == NSURLErrorDomain,
        nsErr.code == NSURLErrorCancelled {
       Log.info(#file, "Task \(taskID) cancelled: \(nsErr.localizedDescription)")
+      // Must still call completion to avoid leaving continuations unresumed
+      info.completion(.failure(nsErr, task.response))
       return
     }
 

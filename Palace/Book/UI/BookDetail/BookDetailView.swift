@@ -272,6 +272,7 @@ struct BookDetailView: View {
   
   private var imageView: some View {
     BookImageView(book: viewModel.book, height: 280 * imageScale)
+      .accessibilityIdentifier(AccessibilityID.BookDetail.coverImage)
       .opacity(imageOpacity)
       .adaptiveShadow()
       .animation(scaleAnimation, value: imageScale)
@@ -290,10 +291,12 @@ struct BookDetailView: View {
         .lineLimit(nil)
         .multilineTextAlignment(.center)
         .frame(maxWidth: .infinity, alignment: viewModel.isFullSize ? .leading : .center)
+        .accessibilityIdentifier(AccessibilityID.BookDetail.title)
       
       if let authors = viewModel.book.authors, !authors.isEmpty {
         Text(authors)
           .font(.footnote)
+          .accessibilityIdentifier(AccessibilityID.BookDetail.author)
       }
       
       BookButtonsView(

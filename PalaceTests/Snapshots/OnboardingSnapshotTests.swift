@@ -1,0 +1,74 @@
+//
+//  OnboardingSnapshotTests.swift
+//  PalaceTests
+//
+//  Copyright © 2024 The Palace Project. All rights reserved.
+//
+
+import XCTest
+import SwiftUI
+import SnapshotTesting
+@testable import Palace
+
+@MainActor
+final class OnboardingSnapshotTests: XCTestCase {
+  
+  private var canRecordSnapshots: Bool {
+    #if targetEnvironment(simulator)
+    return true
+    #else
+    return false
+    #endif
+  }
+  
+  // MARK: - TPPOnboardingView
+  
+  func testOnboardingView() {
+    guard canRecordSnapshots else { return }
+    
+    let view = TPPOnboardingView { }
+      .frame(width: 390, height: 844)
+    
+    assertSnapshot(of: view, as: .image)
+  }
+  
+  // MARK: - TPPPagerDotsView
+  
+  func testPagerDotsView_firstPage() {
+    guard canRecordSnapshots else { return }
+    
+    let view = TPPPagerDotsView(count: 3, currentIndex: .constant(0))
+      .frame(width: 100, height: 20)
+      .background(Color(UIColor.systemBackground))
+    
+    assertSnapshot(of: view, as: .image)
+  }
+  
+  func testPagerDotsView_middlePage() {
+    guard canRecordSnapshots else { return }
+    
+    let view = TPPPagerDotsView(count: 3, currentIndex: .constant(1))
+      .frame(width: 100, height: 20)
+      .background(Color(UIColor.systemBackground))
+    
+    assertSnapshot(of: view, as: .image)
+  }
+  
+  func testPagerDotsView_lastPage() {
+    guard canRecordSnapshots else { return }
+    
+    let view = TPPPagerDotsView(count: 3, currentIndex: .constant(2))
+      .frame(width: 100, height: 20)
+      .background(Color(UIColor.systemBackground))
+    
+    assertSnapshot(of: view, as: .image)
+  }
+  
+  // MARK: - Accessibility
+  
+  func testOnboardingAccessibilityIdentifiers() {
+    XCTAssertFalse(AccessibilityID.Onboarding.view.isEmpty)
+    XCTAssertFalse(AccessibilityID.Onboarding.closeButton.isEmpty)
+    XCTAssertFalse(AccessibilityID.Onboarding.pagerDots.isEmpty)
+  }
+}

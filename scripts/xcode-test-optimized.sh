@@ -15,6 +15,9 @@ set -euo pipefail
 
 echo "Running optimized unit tests for Palace..."
 
+# Clean up any previous test results
+rm -rf TestResults.xcresult
+
 # Skip the separate build step - xcodebuild test builds automatically and more efficiently
 # Use parallel testing and optimized flags
 
@@ -27,10 +30,10 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
     
     # List available simulators for debugging
     echo "Available iPhone simulators in CI:"
-    xcrun simctl list devices available | grep iPhone | head -5
+    xcrun simctl list devices available | grep iPhone | head -10
     
-    # Try multiple simulator options that are commonly available in CI
-    SIMULATORS=("iPhone SE (3rd generation)" "iPhone 14" "iPhone 13" "iPhone 12" "iPhone 11")
+    # Try simulators available in GitHub Actions macOS-14 runners (Xcode 16.2)
+    SIMULATORS=("iPhone 16" "iPhone 15" "iPhone 15 Pro" "iPhone SE (3rd generation)")
     
     for SIM in "${SIMULATORS[@]}"; do
         echo "Attempting to use: $SIM"
@@ -39,6 +42,7 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
             -scheme Palace \
             -destination "platform=iOS Simulator,name=$SIM" \
             -configuration Debug \
+            -resultBundlePath TestResults.xcresult \
             -enableCodeCoverage NO \
             -parallel-testing-enabled YES \
             -maximum-parallel-testing-workers 2 \
@@ -52,6 +56,7 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
             break
         else
             echo "❌ Failed with simulator: $SIM, trying next..."
+            rm -rf TestResults.xcresult
         fi
     done
 else
@@ -70,7 +75,7 @@ else
         xcodebuild clean -project Palace.xcodeproj -scheme Palace > /dev/null 2>&1
         
         # Fallback to name-based approach with common simulators
-        FALLBACK_SIMULATORS=("iPhone SE (3rd generation)" "iPhone 14" "iPhone 13" "iPhone 12")
+        FALLBACK_SIMULATORS=("iPhone 16" "iPhone 15" "iPhone 15 Pro" "iPhone SE (3rd generation)")
         
         for SIM in "${FALLBACK_SIMULATORS[@]}"; do
             echo "Trying fallback simulator: $SIM"
@@ -79,6 +84,7 @@ else
                 -scheme Palace \
                 -destination "platform=iOS Simulator,name=$SIM" \
                 -configuration Debug \
+                -resultBundlePath TestResults.xcresult \
                 -enableCodeCoverage NO \
                 -parallel-testing-enabled YES \
                 -maximum-parallel-testing-workers 4 \
@@ -92,6 +98,7 @@ else
                 break
             else
                 echo "❌ Fallback failed with: $SIM"
+                rm -rf TestResults.xcresult
             fi
         done
     else
@@ -104,6 +111,7 @@ else
             -scheme Palace \
             -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
             -configuration Debug \
+            -resultBundlePath TestResults.xcresult \
             -enableCodeCoverage NO \
             -parallel-testing-enabled YES \
             -maximum-parallel-testing-workers 4 \

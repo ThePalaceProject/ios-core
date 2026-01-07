@@ -142,9 +142,8 @@ final class DownloadRecoveryTests: XCTestCase {
   func testDownloadSizeEstimation() async {
     let checker = DiskSpaceChecker.shared
     
-    // Create mock books
-    let mockBook = TPPBookMock()
-    mockBook.distributor = "test"
+    // Create mock book
+    let mockBook = TPPBookMocker.mockBook(distributorType: .EpubZip)
     
     let estimatedSize = await checker.estimateDownloadSize(for: mockBook)
     XCTAssertGreaterThan(estimatedSize, 0)
