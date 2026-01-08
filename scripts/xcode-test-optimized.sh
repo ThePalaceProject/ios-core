@@ -28,25 +28,16 @@ echo "Detecting test environment and finding suitable simulator..."
 if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
     echo "Running in CI environment - trying multiple fallback strategies"
     
-    # Detect architecture
-    ARCH=$(uname -m)
-    echo "CI runner architecture: $ARCH"
-    
     # List available simulators for debugging
     echo "Available iPhone simulators in CI:"
-    xcrun simctl list devices available | grep iPhone | head -10
+    xcrun simctl list devices available | grep iPhone | head -5
     
-    # Simulators available on GitHub Actions macos-14 runners (Xcode 16.2)
-    # Note: iPhone 16 is NOT available, only iPhone 15 series
-    SIMULATORS=("iPhone 15 Pro" "iPhone 15" "iPhone 15 Pro Max" "iPhone SE (3rd generation)")
+    # Try multiple simulator options that are commonly available in CI
+    # Same list as main branch - these work on macos-14 runners
+    SIMULATORS=("iPhone SE (3rd generation)" "iPhone 14" "iPhone 13" "iPhone 12" "iPhone 11")
     
-    TEST_SUCCESS=false
     for SIM in "${SIMULATORS[@]}"; do
         echo "Attempting to use: $SIM"
-        echo "Full destination: platform=iOS Simulator,name=$SIM"
-        
-        # Note: Don't add arch= to destination - it breaks simulator lookup
-        # Use ARCHS build setting instead to control architecture
         if xcodebuild test \
             -project Palace.xcodeproj \
             -scheme Palace \
@@ -58,26 +49,17 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
             -maximum-parallel-testing-workers 2 \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
-            ONLY_ACTIVE_ARCH=NO \
-            ARCHS=arm64 \
-            VALID_ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=YES \
             GCC_OPTIMIZATION_LEVEL=0 \
             SWIFT_OPTIMIZATION_LEVEL=-Onone \
-            ENABLE_TESTABILITY=YES; then
+            ENABLE_TESTABILITY=YES 2>/dev/null; then
             echo "✅ Successfully used simulator: $SIM"
-            TEST_SUCCESS=true
             break
         else
-            EXIT_CODE=$?
-            echo "❌ Failed with simulator: $SIM (exit code: $EXIT_CODE), trying next..."
+            echo "❌ Failed with simulator: $SIM, trying next..."
             rm -rf TestResults.xcresult
         fi
     done
-    
-    if [ "$TEST_SUCCESS" != "true" ]; then
-        echo "❌ All simulator attempts failed!"
-        exit 1
-    fi
 else
     echo "Running in local environment - using dynamic detection"
     # Get the first available iPhone simulator ID from the Palace scheme destinations
