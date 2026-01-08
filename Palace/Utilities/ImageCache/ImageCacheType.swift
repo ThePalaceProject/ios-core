@@ -89,21 +89,77 @@ public final class ImageCache: ImageCacheType {
             guard let self = self else { return }
             
             autoreleasepool {
+                // Memory pressure check: Skip caching if system memory is critically low
+                // to prevent NSMallocException crashes
+                let availableMemory = self.estimateAvailableMemory()
+                let minimumRequiredMemory: UInt64 = 50 * 1024 * 1024 // 50 MB minimum
+                
+                guard availableMemory > minimumRequiredMemory else {
+                    Log.warn(#file, "Skipping image cache due to low memory (\(availableMemory / 1024 / 1024) MB available)")
+                    return
+                }
+                
                 guard let processed = self.resize(image, maxDimension: self.maxDimension) else {
                     Log.error(#file, "Failed to resize image for key: \(key). Skipping cache.")
                     return
                 }
                 
                 let cost = self.imageCost(processed)
+                
+                // Check cost against available memory before proceeding
+                guard UInt64(cost) < availableMemory / 2 else {
+                    Log.warn(#file, "Image too large for available memory: \(cost) bytes")
+                    return
+                }
+                
                 self.memoryImages.setObject(processed, forKey: key as NSString, cost: cost)
                 
-                guard let data = processed.jpegData(compressionQuality: self.compressionQuality) else { 
-                    Log.error(#file, "Failed to compress image for key: \(key)")
-                    return 
+                // Wrap JPEG data creation in exception handling to catch NSMallocException
+                var data: Data?
+                do {
+                    data = try autoreleasepool { () -> Data? in
+                        processed.jpegData(compressionQuality: self.compressionQuality)
+                    }
+                } catch {
+                    Log.error(#file, "Exception creating JPEG data for key: \(key) - \(error)")
+                    return
                 }
-                self.dataCache.set(data, for: key, expiresIn: ttl)
+                
+                guard let jpegData = data else {
+                    Log.error(#file, "Failed to compress image for key: \(key)")
+                    return
+                }
+                
+                self.dataCache.set(jpegData, for: key, expiresIn: ttl)
             }
         }
+    }
+    
+    /// Estimates available memory based on system resources
+    /// This is an approximation - iOS doesn't expose exact available memory
+    private func estimateAvailableMemory() -> UInt64 {
+        var info = mach_task_basic_info()
+        var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size) / 4
+        
+        let result = withUnsafeMutablePointer(to: &info) { infoPtr in
+            infoPtr.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { intPtr in
+                task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), intPtr, &count)
+            }
+        }
+        
+        guard result == KERN_SUCCESS else {
+            // Fall back to a conservative estimate based on total memory
+            return ProcessInfo.processInfo.physicalMemory / 10
+        }
+        
+        let usedMemory = info.resident_size
+        let totalMemory = ProcessInfo.processInfo.physicalMemory
+        
+        // iOS apps typically can use about 25-50% of physical memory depending on device
+        let maxAllowedMemory = totalMemory / 4
+        let availableEstimate = maxAllowedMemory > usedMemory ? maxAllowedMemory - usedMemory : 0
+        
+        return availableEstimate
     }
 
     public func get(for key: String) -> UIImage? {

@@ -41,11 +41,36 @@ class AudiobookSamplePlayer: NSObject, ObservableObject {
   }
   
   private func configureAudioSession() {
-    do {
-      try AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio, options: [.allowBluetoothA2DP, .allowAirPlay])
-      try AVAudioSession.sharedInstance().setActive(true)
-    } catch {
-      TPPErrorLogger.logError(error, summary: "Failed to set audio session category")
+    // AVAudioSession configuration MUST be done on the main thread to avoid -50 errors
+    let configure: () -> Void = {
+      do {
+        let session = AVAudioSession.sharedInstance()
+        // Only set category if it's different to avoid unnecessary operations
+        if session.category != .playback || session.mode != .spokenAudio {
+          try session.setCategory(.playback, mode: .spokenAudio, options: [.allowBluetoothA2DP, .allowAirPlay])
+        }
+        // Only activate if not already playing audio elsewhere
+        if !session.isOtherAudioPlaying {
+          try session.setActive(true)
+        }
+      } catch let error as NSError {
+        // Error -50 (kAudio_ParamError) is a known issue that can occur during
+        // audio session configuration in certain app states. Don't spam Crashlytics
+        // with these recoverable errors - log at debug level instead.
+        // -50 = kAudio_ParamError, 560557684 = kAudioServicesNoHardwareError
+        let knownRecoverableErrors: Set<Int> = [-50, 560557684]
+        if knownRecoverableErrors.contains(error.code) {
+          Log.debug(#file, "Audio session configuration deferred: \(error.localizedDescription)")
+        } else {
+          TPPErrorLogger.logError(error, summary: "Failed to set audio session category")
+        }
+      }
+    }
+    
+    if Thread.isMainThread {
+      configure()
+    } else {
+      DispatchQueue.main.async { configure() }
     }
   }
 
