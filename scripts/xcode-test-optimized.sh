@@ -36,28 +36,21 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
     echo "Available iPhone simulators in CI:"
     xcrun simctl list devices available | grep iPhone | head -10
     
-    # Try simulators available in GitHub Actions macOS-14 runners (Xcode 16.2)
-    SIMULATORS=("iPhone 16" "iPhone 15" "iPhone 15 Pro" "iPhone SE (3rd generation)")
-    
-    # On Apple Silicon (arm64), explicitly specify arch to avoid Rosetta/x86_64 issues
-    if [ "$ARCH" == "arm64" ]; then
-        ARCH_SPEC=",arch=arm64"
-        echo "Using native arm64 architecture for simulator"
-    else
-        ARCH_SPEC=""
-        echo "Using default architecture for simulator"
-    fi
+    # Simulators available on GitHub Actions macos-14 runners (Xcode 16.2)
+    # Note: iPhone 16 is NOT available, only iPhone 15 series
+    SIMULATORS=("iPhone 15 Pro" "iPhone 15" "iPhone 15 Pro Max" "iPhone SE (3rd generation)")
     
     TEST_SUCCESS=false
     for SIM in "${SIMULATORS[@]}"; do
         echo "Attempting to use: $SIM"
-        echo "Full destination: platform=iOS Simulator,name=$SIM$ARCH_SPEC"
+        echo "Full destination: platform=iOS Simulator,name=$SIM"
         
-        # Don't hide stderr - we need to see errors for debugging
+        # Note: Don't add arch= to destination - it breaks simulator lookup
+        # Use ARCHS build setting instead to control architecture
         if xcodebuild test \
             -project Palace.xcodeproj \
             -scheme Palace \
-            -destination "platform=iOS Simulator,name=$SIM$ARCH_SPEC" \
+            -destination "platform=iOS Simulator,name=$SIM" \
             -configuration Debug \
             -resultBundlePath TestResults.xcresult \
             -enableCodeCoverage YES \
@@ -65,8 +58,9 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
             -maximum-parallel-testing-workers 2 \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
-            ONLY_ACTIVE_ARCH=YES \
+            ONLY_ACTIVE_ARCH=NO \
             ARCHS=arm64 \
+            VALID_ARCHS=arm64 \
             GCC_OPTIMIZATION_LEVEL=0 \
             SWIFT_OPTIMIZATION_LEVEL=-Onone \
             ENABLE_TESTABILITY=YES; then
@@ -74,7 +68,8 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
             TEST_SUCCESS=true
             break
         else
-            echo "❌ Failed with simulator: $SIM (exit code: $?), trying next..."
+            EXIT_CODE=$?
+            echo "❌ Failed with simulator: $SIM (exit code: $EXIT_CODE), trying next..."
             rm -rf TestResults.xcresult
         fi
     done
