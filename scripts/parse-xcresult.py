@@ -141,14 +141,26 @@ def parse_test_node_new_api(node: Dict, parent_name: str = "", class_name: str =
         test_class = current_class or parent_name or 'Unknown'
         identifier = node.get('nodeIdentifier', node.get('identifier', f"{test_class}/{test_method}"))
         
+        # Parse duration - handle formats like "0.93s", "1.234", or numeric
+        parsed_duration = 0.0
+        if duration:
+            duration_str = str(duration).strip()
+            # Remove trailing 's' if present (e.g., "0.93s" -> "0.93")
+            if duration_str.endswith('s'):
+                duration_str = duration_str[:-1]
+            try:
+                parsed_duration = float(duration_str)
+            except (ValueError, TypeError):
+                parsed_duration = 0.0
+        
         tests.append({
             'name': test_method,
             'method': test_method,
             'class': test_class,
             'identifier': identifier,
             'status': normalized_result,
-            'duration': float(duration) if duration else 0.0,
-            'duration_formatted': format_duration(float(duration) if duration else 0.0),
+            'duration': parsed_duration,
+            'duration_formatted': format_duration(parsed_duration),
             'failures': []
         })
     
