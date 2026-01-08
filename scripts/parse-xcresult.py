@@ -12,48 +12,53 @@ import json
 import subprocess
 import sys
 import os
-import re
 from collections import defaultdict
 from typing import Dict, List, Any, Optional
 
-def run_xcresulttool(xcresult_path: str, *args) -> Optional[Dict]:
-    """Run xcresulttool and return JSON output."""
-    cmd = ['xcrun', 'xcresulttool', 'get', '--path', xcresult_path, '--format', 'json'] + list(args)
+def run_xcresulttool(xcresult_path: str, ref_id: str = None) -> Optional[Dict]:
+    """Run xcresulttool and return parsed JSON."""
+    # Build command - use legacy flag for newer Xcode
+    cmd = ['xcrun', 'xcresulttool', 'get', '--legacy', '--path', xcresult_path, '--format', 'json']
+    if ref_id:
+        cmd.extend(['--id', ref_id])
+    
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
         if result.returncode == 0 and result.stdout.strip():
             return json.loads(result.stdout)
+        
+        # If legacy failed with deprecation, try without
+        if 'deprecated' in result.stderr.lower() or 'legacy' in result.stderr.lower():
+            cmd = ['xcrun', 'xcresulttool', 'get', '--path', xcresult_path, '--format', 'json']
+            if ref_id:
+                cmd.extend(['--id', ref_id])
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+            if result.returncode == 0 and result.stdout.strip():
+                return json.loads(result.stdout)
+        
+        print(f"xcresulttool stderr: {result.stderr[:200]}", file=sys.stderr)
     except json.JSONDecodeError as e:
-        print(f"JSON decode error: {e}", file=sys.stderr)
+        print(f"JSON parse error: {e}", file=sys.stderr)
     except subprocess.TimeoutExpired:
         print("xcresulttool timed out", file=sys.stderr)
     except Exception as e:
-        print(f"Error running xcresulttool: {e}", file=sys.stderr)
+        print(f"Error: {e}", file=sys.stderr)
     return None
 
-def extract_value(obj: Any, *keys) -> Any:
-    """Safely extract nested value from xcresult JSON structure."""
-    for key in keys:
-        if isinstance(obj, dict):
-            obj = obj.get(key, {})
-        else:
-            return None
-    if isinstance(obj, dict) and '_value' in obj:
-        return obj['_value']
-    return obj if obj else None
+def extract_value(obj: Any) -> Any:
+    """Extract _value from xcresult typed object."""
+    if isinstance(obj, dict):
+        if '_value' in obj:
+            return obj['_value']
+        if '_values' in obj:
+            return obj['_values']
+    return obj
 
-def parse_duration(duration_str: str) -> float:
-    """Parse duration string to seconds."""
-    if not duration_str:
-        return 0.0
+def parse_duration(duration_obj: Any) -> float:
+    """Parse duration to seconds."""
+    val = extract_value(duration_obj)
     try:
-        # Duration might be in format "0.123s" or just a number
-        if isinstance(duration_str, (int, float)):
-            return float(duration_str)
-        duration_str = str(duration_str).strip()
-        if duration_str.endswith('s'):
-            return float(duration_str[:-1])
-        return float(duration_str)
+        return float(val) if val else 0.0
     except (ValueError, TypeError):
         return 0.0
 
@@ -64,181 +69,180 @@ def format_duration(seconds: float) -> str:
     elif seconds < 1:
         return f"{seconds*1000:.0f}ms"
     elif seconds < 60:
-        return f"{seconds:.1f}s"
+        return f"{seconds:.2f}s"
     else:
         mins = int(seconds // 60)
         secs = seconds % 60
         return f"{mins}m {secs:.0f}s"
 
-def extract_test_details(obj: Dict) -> Optional[Dict]:
-    """Extract detailed information from a test node."""
-    test_status = extract_value(obj, 'testStatus')
-    test_name = extract_value(obj, 'name')
-    
-    if not test_status or not test_name:
-        return None
-    
-    # Extract identifier (full path like "TargetTests/ClassTests/testMethod()")
-    identifier = extract_value(obj, 'identifier') or test_name
-    
-    # Extract duration
-    duration = parse_duration(extract_value(obj, 'duration'))
-    
-    # Extract failure information
-    failure_summaries = []
-    failure_obj = obj.get('failureSummaries', {})
-    if isinstance(failure_obj, dict):
-        values = failure_obj.get('_values', [])
-        if isinstance(values, list):
-            for fs in values:
-                message = extract_value(fs, 'message')
-                file_name = extract_value(fs, 'fileName')
-                line_number = extract_value(fs, 'lineNumber')
-                if message:
-                    failure_summaries.append({
-                        'message': message,
-                        'file': file_name,
-                        'line': line_number
-                    })
-    
-    # Parse class and method from identifier
-    # Format: "TargetTests/ClassTests/testMethod()" or "ClassTests/testMethod()"
-    parts = identifier.replace('()', '').split('/')
-    test_method = parts[-1] if parts else test_name
-    test_class = parts[-2] if len(parts) >= 2 else "Unknown"
-    test_target = parts[-3] if len(parts) >= 3 else None
-    
-    return {
-        'name': test_name,
-        'method': test_method,
-        'class': test_class,
-        'target': test_target,
-        'identifier': identifier,
-        'status': test_status,
-        'duration': duration,
-        'duration_formatted': format_duration(duration),
-        'failures': failure_summaries
-    }
-
-def find_all_tests(obj: Any, tests_list: List[Dict], depth: int = 0):
-    """Recursively find all test results in the xcresult JSON."""
-    if depth > 50:  # Prevent infinite recursion
+def find_tests_in_subtests(obj: Any, tests: List[Dict], parent_class: str = ""):
+    """Recursively find individual tests in subtests hierarchy."""
+    if not isinstance(obj, dict):
         return
+    
+    obj_type = obj.get('_type', {})
+    type_name = obj_type.get('_name', '') if isinstance(obj_type, dict) else ''
+    
+    # ActionTestMetadata is an individual test
+    if type_name == 'ActionTestMetadata':
+        test_name = extract_value(obj.get('name', {}))
+        test_status = extract_value(obj.get('testStatus', {}))
+        identifier = extract_value(obj.get('identifier', {}))
+        duration = parse_duration(obj.get('duration', {}))
         
-    if isinstance(obj, dict):
-        # Check if this is a test result node
-        test_details = extract_test_details(obj)
-        if test_details:
-            tests_list.append(test_details)
+        if test_name and test_status:
+            # Parse identifier: "ClassName/testMethod()"
+            test_id = identifier or test_name
+            parts = test_id.replace('()', '').split('/')
+            
+            test_method = parts[-1] if parts else test_name.replace('()', '')
+            test_class = parts[-2] if len(parts) >= 2 else parent_class or "UnknownClass"
+            
+            tests.append({
+                'name': test_name.replace('()', ''),
+                'method': test_method,
+                'class': test_class,
+                'identifier': test_id,
+                'status': test_status,
+                'duration': duration,
+                'duration_formatted': format_duration(duration),
+                'failures': []  # Would need to query summaryRef for details
+            })
+        return
+    
+    # ActionTestSummaryGroup is a container (class or test bundle)
+    if type_name == 'ActionTestSummaryGroup':
+        group_name = extract_value(obj.get('name', {})) or extract_value(obj.get('identifier', {}))
+        # Recurse into subtests
+        subtests = obj.get('subtests', {})
+        subtest_values = extract_value(subtests)
+        if isinstance(subtest_values, list):
+            for subtest in subtest_values:
+                find_tests_in_subtests(subtest, tests, group_name)
+        return
+    
+    # Recurse into any subtests
+    subtests = obj.get('subtests', {})
+    subtest_values = extract_value(subtests)
+    if isinstance(subtest_values, list):
+        for subtest in subtest_values:
+            find_tests_in_subtests(subtest, tests, parent_class)
+
+def get_tests_from_xcresult(xcresult_path: str) -> List[Dict]:
+    """Extract all tests from xcresult bundle."""
+    tests = []
+    
+    # Get main xcresult data
+    print("Loading xcresult main data...", file=sys.stderr)
+    main_data = run_xcresulttool(xcresult_path)
+    if not main_data:
+        print("Failed to load xcresult", file=sys.stderr)
+        return tests
+    
+    # Get testsRef from actions
+    actions = main_data.get('actions', {}).get('_values', [])
+    if not actions:
+        print("No actions found", file=sys.stderr)
+        return tests
+    
+    for action in actions:
+        action_result = action.get('actionResult', {})
+        tests_ref = action_result.get('testsRef', {})
+        tests_ref_id = extract_value(tests_ref.get('id', {}))
         
-        # Recurse into nested structures
-        for key, value in obj.items():
-            find_all_tests(value, tests_list, depth + 1)
-    elif isinstance(obj, list):
-        for item in obj:
-            find_all_tests(item, tests_list, depth + 1)
+        if not tests_ref_id:
+            print("No testsRef found in action", file=sys.stderr)
+            continue
+        
+        print(f"Querying testsRef: {tests_ref_id[:50]}...", file=sys.stderr)
+        
+        # Get detailed test results
+        tests_data = run_xcresulttool(xcresult_path, tests_ref_id)
+        if not tests_data:
+            print("Failed to load tests data", file=sys.stderr)
+            continue
+        
+        # Parse test plan run summaries
+        summaries = tests_data.get('summaries', {}).get('_values', [])
+        for summary in summaries:
+            testable_summaries = summary.get('testableSummaries', {}).get('_values', [])
+            for testable in testable_summaries:
+                test_values = testable.get('tests', {}).get('_values', [])
+                for test_group in test_values:
+                    find_tests_in_subtests(test_group, tests)
+    
+    return tests
 
-def get_root_metrics(data: Dict) -> Dict:
-    """Extract metrics from root level of xcresult JSON."""
-    metrics = data.get('metrics', {})
-    return {
-        'tests': int(extract_value(metrics, 'testsCount') or 0),
-        'failed': int(extract_value(metrics, 'testsFailedCount') or 0),
-        'skipped': int(extract_value(metrics, 'testsSkippedCount') or 0),
-    }
-
-def group_tests_by_class(tests: List[Dict]) -> Dict[str, List[Dict]]:
-    """Group tests by their class name."""
-    grouped = defaultdict(list)
+def deduplicate_tests(tests: List[Dict]) -> List[Dict]:
+    """Remove duplicate tests."""
+    seen = set()
+    unique = []
     for test in tests:
-        grouped[test['class']].append(test)
-    return dict(grouped)
+        key = (test.get('identifier', ''), test.get('status', ''))
+        if key not in seen and test.get('name'):
+            seen.add(key)
+            unique.append(test)
+    return unique
 
-def calculate_class_stats(tests: List[Dict]) -> Dict:
-    """Calculate statistics for a group of tests."""
+def group_tests_by_class(tests: List[Dict]) -> Dict[str, Dict]:
+    """Group tests by class with statistics."""
+    grouped = defaultdict(lambda: {'tests': [], 'stats': {}})
+    
+    for test in tests:
+        class_name = test.get('class', 'Unknown')
+        grouped[class_name]['tests'].append(test)
+    
+    for class_name, class_data in grouped.items():
+        class_tests = class_data['tests']
+        total = len(class_tests)
+        passed = sum(1 for t in class_tests if t['status'] == 'Success')
+        failed = sum(1 for t in class_tests if t['status'] == 'Failure')
+        skipped = sum(1 for t in class_tests if t['status'] == 'Skipped')
+        total_duration = sum(t['duration'] for t in class_tests)
+        
+        class_data['stats'] = {
+            'total': total,
+            'passed': passed,
+            'failed': failed,
+            'skipped': skipped,
+            'duration': total_duration,
+            'duration_formatted': format_duration(total_duration)
+        }
+    
+    return dict(sorted(grouped.items()))
+
+def generate_report(xcresult_path: str) -> Dict:
+    """Generate comprehensive test report."""
+    print(f"Parsing: {xcresult_path}", file=sys.stderr)
+    
+    tests = get_tests_from_xcresult(xcresult_path)
+    tests = deduplicate_tests(tests)
+    
+    print(f"Found {len(tests)} tests", file=sys.stderr)
+    
     total = len(tests)
     passed = sum(1 for t in tests if t['status'] == 'Success')
     failed = sum(1 for t in tests if t['status'] == 'Failure')
     skipped = sum(1 for t in tests if t['status'] == 'Skipped')
     total_duration = sum(t['duration'] for t in tests)
     
-    return {
-        'total': total,
-        'passed': passed,
-        'failed': failed,
-        'skipped': skipped,
-        'duration': total_duration,
-        'duration_formatted': format_duration(total_duration)
-    }
-
-def generate_test_report(xcresult_path: str) -> Dict:
-    """Generate comprehensive test report from xcresult bundle."""
-    
-    # Get main xcresult data
-    data = run_xcresulttool(xcresult_path)
-    
-    if not data:
-        return {
-            'success': False,
-            'error': 'Could not parse xcresult bundle',
-            'summary': {'tests': 0, 'passed': 0, 'failed': 0, 'skipped': 0},
-            'tests': [],
-            'classes': {}
-        }
-    
-    # Get root-level metrics
-    root_metrics = get_root_metrics(data)
-    
-    # Find all individual tests
-    tests_list = []
-    find_all_tests(data, tests_list)
-    
-    # Remove duplicates (same identifier)
-    seen = set()
-    unique_tests = []
-    for test in tests_list:
-        key = (test['identifier'], test['status'])
-        if key not in seen:
-            seen.add(key)
-            unique_tests.append(test)
-    tests_list = unique_tests
-    
-    # Calculate statistics
-    total_tests = len(tests_list) if tests_list else root_metrics['tests']
-    failed_count = sum(1 for t in tests_list if t['status'] == 'Failure') if tests_list else root_metrics['failed']
-    skipped_count = sum(1 for t in tests_list if t['status'] == 'Skipped') if tests_list else root_metrics['skipped']
-    passed_count = total_tests - failed_count - skipped_count
-    total_duration = sum(t['duration'] for t in tests_list)
-    
-    # Group by class
-    classes = group_tests_by_class(tests_list)
-    class_stats = {}
-    for class_name, class_tests in classes.items():
-        class_stats[class_name] = {
-            'stats': calculate_class_stats(class_tests),
-            'tests': sorted(class_tests, key=lambda t: t['name'])
-        }
-    
-    # Sort classes by name
-    class_stats = dict(sorted(class_stats.items()))
-    
-    # Get failed tests with details
-    failed_tests = [t for t in tests_list if t['status'] == 'Failure']
+    classes = group_tests_by_class(tests)
+    failed_tests = [t for t in tests if t['status'] == 'Failure']
     
     return {
         'success': True,
         'xcresult_path': xcresult_path,
         'summary': {
-            'tests': total_tests,
-            'passed': passed_count,
-            'failed': failed_count,
-            'skipped': skipped_count,
+            'tests': total,
+            'passed': passed,
+            'failed': failed,
+            'skipped': skipped,
             'duration': total_duration,
             'duration_formatted': format_duration(total_duration),
-            'pass_rate': f"{(passed_count/total_tests*100):.1f}%" if total_tests > 0 else "N/A"
+            'pass_rate': f"{(passed/total*100):.1f}%" if total > 0 else "N/A"
         },
-        'tests': sorted(tests_list, key=lambda t: (t['class'], t['name'])),
-        'classes': class_stats,
+        'tests': sorted(tests, key=lambda t: (t.get('class', ''), t.get('name', ''))),
+        'classes': classes,
         'failed_tests': failed_tests
     }
 
@@ -249,7 +253,6 @@ def output_github_actions(report: Dict, output_file: str):
     classes = report.get('classes', {})
     
     with open(output_file, 'a') as f:
-        # Basic metrics
         f.write(f"tests={summary['tests']}\n")
         f.write(f"passed={summary['passed']}\n")
         f.write(f"failed={summary['failed']}\n")
@@ -257,61 +260,46 @@ def output_github_actions(report: Dict, output_file: str):
         f.write(f"duration={summary.get('duration_formatted', 'unknown')}\n")
         f.write(f"pass_rate={summary.get('pass_rate', 'N/A')}\n")
         
-        # Failed test names
         if failed_tests:
-            f.write("failed_tests<<EOF\n")
-            for test in failed_tests[:30]:  # Limit to 30
+            f.write("failed_tests<<ENDOFFAILEDTESTS\n")
+            for test in failed_tests[:30]:
                 f.write(f"{test['class']}.{test['method']}\n")
-            f.write("EOF\n")
+            f.write("ENDOFFAILEDTESTS\n")
         
-        # Class summary for PR comment table
         if classes:
-            f.write("class_summary<<EOF\n")
+            f.write("class_summary<<ENDOFCLASSSUMMARY\n")
             for class_name, class_data in sorted(classes.items()):
                 stats = class_data['stats']
                 f.write(f"{class_name}|{stats['total']}|{stats['passed']}|{stats['failed']}|{stats['duration_formatted']}\n")
-            f.write("EOF\n")
-
-def output_json(report: Dict, json_path: str):
-    """Write detailed report as JSON file."""
-    with open(json_path, 'w') as f:
-        json.dump(report, f, indent=2)
-    print(f"Wrote detailed report to: {json_path}", file=sys.stderr)
+            f.write("ENDOFCLASSSUMMARY\n")
 
 def print_summary(report: Dict):
-    """Print human-readable summary to stderr."""
+    """Print human-readable summary."""
     summary = report['summary']
     
-    print("\n" + "="*60, file=sys.stderr)
+    print("\n" + "=" * 60, file=sys.stderr)
     print("TEST RESULTS SUMMARY", file=sys.stderr)
-    print("="*60, file=sys.stderr)
+    print("=" * 60, file=sys.stderr)
     print(f"Total Tests:  {summary['tests']}", file=sys.stderr)
     print(f"Passed:       {summary['passed']} ✓", file=sys.stderr)
     print(f"Failed:       {summary['failed']} ✗", file=sys.stderr)
     print(f"Skipped:      {summary['skipped']} ⊘", file=sys.stderr)
     print(f"Duration:     {summary.get('duration_formatted', 'unknown')}", file=sys.stderr)
     print(f"Pass Rate:    {summary.get('pass_rate', 'N/A')}", file=sys.stderr)
-    print("="*60, file=sys.stderr)
+    print("=" * 60, file=sys.stderr)
     
-    # Show failed tests
     if report.get('failed_tests'):
         print("\nFAILED TESTS:", file=sys.stderr)
         for test in report['failed_tests'][:10]:
             print(f"  ✗ {test['class']}.{test['method']}", file=sys.stderr)
-            for failure in test.get('failures', [])[:2]:
-                msg = failure.get('message', '')[:100]
-                print(f"    → {msg}", file=sys.stderr)
-        if len(report['failed_tests']) > 10:
-            print(f"  ... and {len(report['failed_tests']) - 10} more", file=sys.stderr)
     
-    # Show class breakdown
     classes = report.get('classes', {})
     if classes:
         print("\nTESTS BY CLASS:", file=sys.stderr)
         for class_name, class_data in sorted(classes.items()):
             stats = class_data['stats']
-            status = "✓" if stats['failed'] == 0 else "✗"
-            print(f"  {status} {class_name}: {stats['passed']}/{stats['total']} passed ({stats['duration_formatted']})", file=sys.stderr)
+            icon = "✓" if stats['failed'] == 0 else "✗"
+            print(f"  {icon} {class_name}: {stats['passed']}/{stats['total']} ({stats['duration_formatted']})", file=sys.stderr)
     
     print("", file=sys.stderr)
 
@@ -321,46 +309,28 @@ def main():
         sys.exit(1)
     
     xcresult_path = sys.argv[1]
-    json_output_path = None
+    json_output_path = 'test-data.json'
     
-    # Parse arguments
     if '--json' in sys.argv:
-        json_idx = sys.argv.index('--json')
-        if json_idx + 1 < len(sys.argv):
-            json_output_path = sys.argv[json_idx + 1]
-    
-    # Default JSON output path
-    if not json_output_path:
-        json_output_path = 'test-data.json'
+        idx = sys.argv.index('--json')
+        if idx + 1 < len(sys.argv):
+            json_output_path = sys.argv[idx + 1]
     
     if not os.path.exists(xcresult_path):
         print(f"Error: {xcresult_path} not found", file=sys.stderr)
         sys.exit(1)
     
-    # Generate report
-    print(f"Parsing: {xcresult_path}", file=sys.stderr)
-    report = generate_test_report(xcresult_path)
-    
-    if not report['success']:
-        print(f"Error: {report.get('error', 'Unknown error')}", file=sys.stderr)
-        sys.exit(1)
-    
-    # Print summary
+    report = generate_report(xcresult_path)
     print_summary(report)
     
-    # Output to GitHub Actions if available
     github_output = os.environ.get('GITHUB_OUTPUT', '')
     if github_output:
         output_github_actions(report, github_output)
-        print(f"Wrote GitHub Actions output to: {github_output}", file=sys.stderr)
+        print(f"Wrote GitHub Actions output", file=sys.stderr)
     
-    # Write JSON report
-    output_json(report, json_output_path)
-    
-    # Exit with appropriate code
-    if report['summary']['failed'] > 0:
-        sys.exit(0)  # Don't fail - let workflow handle it
-    sys.exit(0)
+    with open(json_output_path, 'w') as f:
+        json.dump(report, f, indent=2)
+    print(f"Wrote JSON: {json_output_path}", file=sys.stderr)
 
 if __name__ == '__main__':
     main()
