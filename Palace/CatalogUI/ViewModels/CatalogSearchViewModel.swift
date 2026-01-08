@@ -83,11 +83,8 @@ class CatalogSearchViewModel: ObservableObject {
     isLoading = true
     
     searchTask = Task { [weak self] in
-      defer {
-        Task { @MainActor in
-          self?.isLoading = false
-        }
-      }
+      // Ensure isLoading is cleared on all exit paths
+      defer { self?.isLoading = false }
       
       do {
         guard let self, !Task.isCancelled else { return }
@@ -96,32 +93,25 @@ class CatalogSearchViewModel: ObservableObject {
         
         guard !Task.isCancelled else { return }
         
-        await MainActor.run {
-          guard !Task.isCancelled else { return }
+        if let feed = feed {
+          // Extract books from search results and map through registry for correct button states
+          let feedObjc = feed.opdsFeed
+          var searchResults: [TPPBook] = []
           
-          if let feed = feed {
-            // Extract books from search results and map through registry for correct button states
-            let feedObjc = feed.opdsFeed
-            var searchResults: [TPPBook] = []
-            
-            if let opdsEntries = feedObjc.entries as? [TPPOPDSEntry] {
-              searchResults = opdsEntries.compactMap { CatalogViewModel.makeBook(from: $0) }
-            }
-            
-            self.filteredBooks = searchResults
-            self.extractNextPageURL(from: feedObjc)
-          } else {
-            self.filteredBooks = []
-            self.nextPageURL = nil
+          if let opdsEntries = feedObjc.entries as? [TPPOPDSEntry] {
+            searchResults = opdsEntries.compactMap { CatalogViewModel.makeBook(from: $0) }
           }
+          
+          self.filteredBooks = searchResults
+          self.extractNextPageURL(from: feedObjc)
+        } else {
+          self.filteredBooks = []
+          self.nextPageURL = nil
         }
       } catch {
         guard !Task.isCancelled else { return }
-        await MainActor.run {
-          guard !Task.isCancelled else { return }
-          self?.filteredBooks = []
-          self?.nextPageURL = nil
-        }
+        self?.filteredBooks = []
+        self?.nextPageURL = nil
       }
     }
   }

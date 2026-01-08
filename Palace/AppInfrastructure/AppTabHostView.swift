@@ -77,8 +77,16 @@ struct AppTabHostView: View {
 
 private extension AppTabHostView {
   func updateHoldsBadge() {
+    // Use test books if debug configuration is enabled, otherwise use real registry data
+    #if DEBUG
+    let held: [TPPBook] = DebugSettings.shared.createTestHoldBooks() ?? TPPBookRegistry.shared.heldBooks
+    let usingTestBooks = DebugSettings.shared.isTestHoldsEnabled
+    #else
     let held = TPPBookRegistry.shared.heldBooks
+    #endif
+    
     var readyCount = 0
+    
     for book in held {
       book.defaultAcquisition?.availability.matchUnavailable(nil,
                                                             limited: nil,
@@ -86,7 +94,37 @@ private extension AppTabHostView {
                                                             reserved: nil,
                                                             ready: { _ in readyCount += 1 })
     }
+    
+    // Update in-app tab badge
     holdsBadgeCount = readyCount
+    
+    // Update home screen app icon badge (only shows books ready to borrow)
+    #if DEBUG
+    if DebugSettings.shared.isBadgeLoggingEnabled {
+      var reservedCount = 0
+      for book in held {
+        book.defaultAcquisition?.availability.matchUnavailable(nil, limited: nil, unlimited: nil,
+                                                              reserved: { _ in reservedCount += 1 }, ready: nil)
+      }
+      Log.info(#file, "[DEBUG-BADGE] updateHoldsBadge: source=\(usingTestBooks ? "TEST BOOKS" : "registry"), totalHeld=\(held.count), reserved=\(reservedCount), ready=\(readyCount)")
+      for (index, book) in held.enumerated() {
+        var status = "unknown"
+        book.defaultAcquisition?.availability.matchUnavailable(
+          { _ in status = "unavailable" },
+          limited: { _ in status = "limited" },
+          unlimited: { _ in status = "unlimited" },
+          reserved: { r in status = "reserved (pos: \(r.holdPosition))" },
+          ready: { _ in status = "READY" }
+        )
+        Log.info(#file, "[DEBUG-BADGE]   Book[\(index)]: '\(book.title)' - status: \(status)")
+      }
+    }
+    #endif
+    
+    // Update app icon badge on main thread
+    DispatchQueue.main.async {
+      UIApplication.shared.applicationIconBadgeNumber = readyCount
+    }
   }
 }
 

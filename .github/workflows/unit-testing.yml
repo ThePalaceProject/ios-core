@@ -3,6 +3,11 @@ on: [ pull_request, workflow_dispatch ]
 jobs:
   build-and-test:
     runs-on: macos-14
+    permissions:
+      contents: write
+      pull-requests: write
+      pages: write
+      id-token: write
     steps:
       - name: Set up Xcode 16.2
         uses: maxim-lobanov/setup-xcode@v1
@@ -36,6 +41,16 @@ jobs:
           key: ${{ runner.os }}-deriveddata-${{ hashFiles('**/*.xcodeproj/project.pbxproj') }}
           restore-keys: |
             ${{ runner.os }}-deriveddata-
+            
+      - name: Cache Test History
+        uses: actions/cache@v4
+        with:
+          path: .test-history
+          key: test-history-${{ github.head_ref || github.ref_name }}-${{ github.run_number }}
+          restore-keys: |
+            test-history-${{ github.head_ref || github.ref_name }}-
+            test-history-develop-
+            test-history-
             
       - name: Checkout Certificates
         uses: actions/checkout@v3
@@ -105,45 +120,70 @@ jobs:
           echo "No xcresult found"
           echo "found=false" >> $GITHUB_OUTPUT
           
-      - name: Generate Test Summary
+      - name: Parse Test Results
         if: always()
+        id: parse_results
         run: |
-          echo "## 🧪 Test Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          
           RESULT_PATH="${{ steps.find_results.outputs.path }}"
           
-          if [ "${{ steps.find_results.outputs.found }}" = "true" ] && [ -d "$RESULT_PATH" ]; then
-            # Get test counts
-            RESULT_JSON=$(xcrun xcresulttool get --path "$RESULT_PATH" --format json 2>/dev/null || echo "{}")
-            
-            TESTS=$(echo "$RESULT_JSON" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('metrics',{}).get('testsCount',{}).get('_value','0'))" 2>/dev/null || echo "0")
-            FAILURES=$(echo "$RESULT_JSON" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('metrics',{}).get('testsFailedCount',{}).get('_value','0'))" 2>/dev/null || echo "0")
-            
-            if [ "$TESTS" != "0" ] && [ "$TESTS" != "" ]; then
-              PASSED=$((TESTS - FAILURES))
-              if [ "$FAILURES" = "0" ]; then
-                echo "✅ **$PASSED passed** out of **$TESTS tests**" >> $GITHUB_STEP_SUMMARY
-              else
-                echo "❌ **$PASSED passed**, **$FAILURES failed** out of **$TESTS tests**" >> $GITHUB_STEP_SUMMARY
-              fi
-            else
-              # Fallback: show that tests ran
-              SIZE=$(du -sh "$RESULT_PATH" 2>/dev/null | cut -f1 || echo "unknown")
-              if [ "${{ steps.tests.outcome }}" = "success" ]; then
-                echo "✅ All tests passed (result bundle: $SIZE)" >> $GITHUB_STEP_SUMMARY
-              else
-                echo "❌ Some tests failed (result bundle: $SIZE)" >> $GITHUB_STEP_SUMMARY
-              fi
-            fi
-          else
-            # No xcresult - use test step outcome
-            if [ "${{ steps.tests.outcome }}" = "success" ]; then
-              echo "✅ All tests passed" >> $GITHUB_STEP_SUMMARY
-            else
-              echo "❌ Tests failed - check logs for details" >> $GITHUB_STEP_SUMMARY
-            fi
+          # Initialize defaults
+          echo "tests=0" >> $GITHUB_OUTPUT
+          echo "passed=0" >> $GITHUB_OUTPUT
+          echo "failed=0" >> $GITHUB_OUTPUT
+          echo "skipped=0" >> $GITHUB_OUTPUT
+          echo "duration=unknown" >> $GITHUB_OUTPUT
+          echo "pass_rate=N/A" >> $GITHUB_OUTPUT
+          
+          if [ "${{ steps.find_results.outputs.found }}" != "true" ] || [ ! -d "$RESULT_PATH" ]; then
+            echo "No results to parse"
+            exit 0
           fi
+          
+          echo "Parsing test results from: $RESULT_PATH"
+          
+          # Use the enhanced Python parser - outputs to GITHUB_OUTPUT and test-data.json
+          python3 scripts/parse-xcresult.py "$RESULT_PATH" --json test-data.json || true
+          
+          # Debug: Show parsed values
+          echo "=== Parsed Test Results ==="
+          cat test-data.json | python3 -c "import json,sys; d=json.load(sys.stdin); s=d.get('summary',{}); print(f\"Tests: {s.get('tests',0)}, Passed: {s.get('passed',0)}, Failed: {s.get('failed',0)}\")" 2>/dev/null || echo "Could not read test-data.json"
+          
+      - name: Compare with History
+        if: always()
+        id: history
+        run: |
+          if [ -f "test-data.json" ] && [ -d ".test-history" ]; then
+            echo "Comparing with test history..."
+            python3 scripts/test-history.py compare test-data.json .test-history || true
+          else
+            echo "No history available for comparison"
+            echo "has_history=false" >> $GITHUB_OUTPUT
+          fi
+          
+      - name: Save to History
+        if: always()
+        run: |
+          if [ -f "test-data.json" ]; then
+            python3 scripts/test-history.py save test-data.json .test-history || true
+          fi
+          
+      - name: Parse Code Coverage
+        if: always()
+        id: coverage
+        run: |
+          RESULT_PATH="${{ steps.find_results.outputs.path }}"
+          
+          # Initialize defaults
+          echo "coverage=0" >> $GITHUB_OUTPUT
+          echo "coverage_formatted=N/A" >> $GITHUB_OUTPUT
+          
+          if [ "${{ steps.find_results.outputs.found }}" != "true" ] || [ ! -d "$RESULT_PATH" ]; then
+            echo "No results for coverage"
+            exit 0
+          fi
+          
+          echo "Extracting code coverage..."
+          python3 scripts/coverage-report.py "$RESULT_PATH" --json coverage-data.json || true
           
       - name: Collect Snapshot Failures
         if: always()
@@ -153,44 +193,14 @@ jobs:
           
           echo "Searching for snapshot failures..."
           
-          # Search in multiple locations where SnapshotTesting puts failure images
-          
-          # 1. Simulator temp directories (where SnapshotTesting writes new snapshots)
-          echo "Checking simulator temp directories..."
-          find /Users/runner/Library/Developer/CoreSimulator -name "*.png" -path "*tmp*" -type f 2>/dev/null | while read -r file; do
-            echo "Found: $file"
+          # Search multiple locations
+          find /Users/runner/Library/Developer/CoreSimulator -name "*.png" -path "*tmp*" -type f 2>/dev/null | head -50 | while read -r file; do
             cp "$file" snapshot-failures/ 2>/dev/null || true
           done
           
-          # 2. App container tmp directories
-          echo "Checking app containers..."
-          find /Users/runner/Library/Developer/CoreSimulator/Devices -path "*/tmp/*.png" -type f 2>/dev/null | while read -r file; do
-            echo "Found: $file"
+          find ~/Library/Developer/Xcode/DerivedData -name "*.png" -path "*Failures*" -type f 2>/dev/null | head -50 | while read -r file; do
             cp "$file" snapshot-failures/ 2>/dev/null || true
           done
-          
-          # 3. Any Failures directories in DerivedData
-          echo "Checking DerivedData..."
-          find ~/Library/Developer/Xcode/DerivedData -name "*.png" -path "*Failures*" -type f 2>/dev/null | while read -r file; do
-            echo "Found: $file"
-            cp "$file" snapshot-failures/ 2>/dev/null || true
-          done
-          
-          # 4. Check workspace for any snapshot test output
-          echo "Checking workspace..."
-          find . -name "*.png" -path "*tmp*" -type f 2>/dev/null | while read -r file; do
-            echo "Found: $file"
-            cp "$file" snapshot-failures/ 2>/dev/null || true
-          done
-          
-          # 5. Check for __Snapshots__ directories with recent modifications
-          echo "Checking for recent snapshot changes..."
-          if [ -d "TestResults.xcresult" ]; then
-            find . -path "*__Snapshots__*" -name "*.png" -newer TestResults.xcresult -type f 2>/dev/null | while read -r file; do
-              echo "Found recently modified: $file"
-              cp "$file" snapshot-failures/ 2>/dev/null || true
-            done
-          fi
           
           # Count what we found
           COUNT=$(ls -1 snapshot-failures/*.png 2>/dev/null | wc -l | tr -d ' ')
@@ -200,18 +210,255 @@ jobs:
             echo "found=true" >> $GITHUB_OUTPUT
             echo "count=$COUNT" >> $GITHUB_OUTPUT
             
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### 📸 Snapshot Failures ($COUNT)" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "Download **snapshot-failures** artifact to view diff images" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            ls -1 snapshot-failures/*.png 2>/dev/null | head -15 | while read -r f; do
-              echo "- \`$(basename "$f")\`" >> $GITHUB_STEP_SUMMARY
-            done
+            # Process snapshots to generate viewer and comparisons
+            python3 scripts/process-snapshots.py snapshot-failures || true
           else
             echo "found=false" >> $GITHUB_OUTPUT
             echo "count=0" >> $GITHUB_OUTPUT
           fi
+          
+      - name: Generate Test Reports
+        if: always()
+        run: |
+          mkdir -p test-report
+          
+          # Generate Markdown report
+          python3 scripts/generate-test-report.py test-data.json test-report/TEST_RESULTS.md \
+            --commit "${{ github.sha }}" \
+            --branch "${{ github.head_ref || github.ref_name }}" \
+            --snapshot-count "${{ steps.snapshots.outputs.count }}" || true
+          
+          # Generate HTML report
+          python3 scripts/generate-html-report.py test-data.json test-report/test-report.html \
+            --coverage coverage-data.json \
+            --commit "${{ github.sha }}" \
+            --branch "${{ github.head_ref || github.ref_name }}" || true
+          
+          # Fallback if scripts fail
+          if [ ! -f "test-report/TEST_RESULTS.md" ]; then
+            echo "# Test Results" > test-report/TEST_RESULTS.md
+            echo "" >> test-report/TEST_RESULTS.md
+            echo "Tests: ${{ steps.parse_results.outputs.tests }}" >> test-report/TEST_RESULTS.md
+            echo "Passed: ${{ steps.parse_results.outputs.passed }}" >> test-report/TEST_RESULTS.md
+            echo "Failed: ${{ steps.parse_results.outputs.failed }}" >> test-report/TEST_RESULTS.md
+          fi
+          
+          echo "Generated reports:"
+          ls -la test-report/
+          
+      - name: Generate GitHub Step Summary
+        if: always()
+        run: |
+          TESTS="${{ steps.parse_results.outputs.tests }}"
+          PASSED="${{ steps.parse_results.outputs.passed }}"
+          FAILED="${{ steps.parse_results.outputs.failed }}"
+          SKIPPED="${{ steps.parse_results.outputs.skipped }}"
+          DURATION="${{ steps.parse_results.outputs.duration }}"
+          PASS_RATE="${{ steps.parse_results.outputs.pass_rate }}"
+          CLASS_SUMMARY="${{ steps.parse_results.outputs.class_summary }}"
+          COVERAGE="${{ steps.coverage.outputs.coverage_formatted }}"
+          COVERAGE_TARGETS="${{ steps.coverage.outputs.coverage_targets }}"
+          NEW_FAILURES="${{ steps.history.outputs.new_failures }}"
+          FIXED_TESTS="${{ steps.history.outputs.fixed_tests }}"
+          FLAKY_TESTS="${{ steps.history.outputs.flaky_tests }}"
+          TEST_COUNT_CHANGE="${{ steps.history.outputs.test_count_change }}"
+          BUILD_STATUS="${{ steps.parse_results.outputs.build_status }}"
+          BUILD_ERRORS="${{ steps.parse_results.outputs.build_errors }}"
+          
+          echo "## 🧪 Palace Unit Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Check for build failure first
+          if [ "$BUILD_STATUS" = "failed" ]; then
+            echo "### 🔴 BUILD FAILED" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "The build failed before tests could run." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            
+            if [ -n "$BUILD_ERRORS" ]; then
+              echo "<details>" >> $GITHUB_STEP_SUMMARY
+              echo "<summary><strong>Build Errors</strong></summary>" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+              echo "$BUILD_ERRORS" >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+              echo "</details>" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+            fi
+          elif [ "$TESTS" != "0" ] && [ "$TESTS" != "" ]; then
+            # Header with counts
+            if [ "$FAILED" = "0" ]; then
+              echo "### ✅ ALL TESTS PASSED" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "### ❌ $FAILED TEST(S) FAILED" >> $GITHUB_STEP_SUMMARY
+            fi
+            echo "" >> $GITHUB_STEP_SUMMARY
+            
+            # Quick stats line
+            COVERAGE_DISPLAY=""
+            if [ "$COVERAGE" != "N/A" ] && [ -n "$COVERAGE" ]; then
+              COVERAGE_DISPLAY=" | 📈 $COVERAGE coverage"
+            fi
+            echo "**$TESTS tests** | **$PASSED passed** | **$FAILED failed** | **$SKIPPED skipped** | ⏱️ $DURATION | 📊 $PASS_RATE$COVERAGE_DISPLAY" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            
+            # Class breakdown table
+            if [ -n "$CLASS_SUMMARY" ]; then
+              echo "### Tests by Class" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "| Class | Tests | Passed | Failed | Duration |" >> $GITHUB_STEP_SUMMARY
+              echo "|-------|-------|--------|--------|----------|" >> $GITHUB_STEP_SUMMARY
+              echo "$CLASS_SUMMARY" | while IFS='|' read -r class total passed failed duration; do
+                if [ "$failed" = "0" ]; then
+                  echo "| ✅ $class | $total | $passed | $failed | $duration |" >> $GITHUB_STEP_SUMMARY
+                else
+                  echo "| ❌ $class | $total | $passed | **$failed** | $duration |" >> $GITHUB_STEP_SUMMARY
+                fi
+              done
+              echo "" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            # 0 tests - check why
+            if [ "${{ steps.tests.outcome }}" = "success" ]; then
+              echo "### ✅ ALL TESTS PASSED" >> $GITHUB_STEP_SUMMARY
+            elif [ "$BUILD_STATUS" = "failed" ] || [ -n "$BUILD_ERRORS" ]; then
+              echo "### 🔴 BUILD FAILED - No tests ran" >> $GITHUB_STEP_SUMMARY
+              if [ -n "$BUILD_ERRORS" ]; then
+                echo "" >> $GITHUB_STEP_SUMMARY
+                echo "<details>" >> $GITHUB_STEP_SUMMARY
+                echo "<summary><strong>Build Errors</strong></summary>" >> $GITHUB_STEP_SUMMARY
+                echo "" >> $GITHUB_STEP_SUMMARY
+                echo '```' >> $GITHUB_STEP_SUMMARY
+                echo "$BUILD_ERRORS" >> $GITHUB_STEP_SUMMARY
+                echo '```' >> $GITHUB_STEP_SUMMARY
+                echo "</details>" >> $GITHUB_STEP_SUMMARY
+              fi
+            else
+              echo "### ❌ TESTS FAILED" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
+          
+          # Failed tests
+          FAILED_TESTS="${{ steps.parse_results.outputs.failed_tests }}"
+          if [ -n "$FAILED_TESTS" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "<details>" >> $GITHUB_STEP_SUMMARY
+            echo "<summary><strong>Failed Tests</strong></summary>" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "$FAILED_TESTS" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "</details>" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Code Coverage
+          if [ "$COVERAGE" != "N/A" ] && [ -n "$COVERAGE" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### 📈 Code Coverage: $COVERAGE" >> $GITHUB_STEP_SUMMARY
+            if [ -n "$COVERAGE_TARGETS" ]; then
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "| Target | Coverage |" >> $GITHUB_STEP_SUMMARY
+              echo "|--------|----------|" >> $GITHUB_STEP_SUMMARY
+              echo "$COVERAGE_TARGETS" | while IFS='|' read -r name cov covered total; do
+                if [ -n "$name" ]; then
+                  echo "| $name | $cov |" >> $GITHUB_STEP_SUMMARY
+                fi
+              done
+            fi
+          fi
+          
+          # History/Trends
+          if [ -n "$NEW_FAILURES" ] || [ -n "$FIXED_TESTS" ] || [ -n "$FLAKY_TESTS" ] || [ -n "$TEST_COUNT_CHANGE" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### 📈 Trends" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            
+            if [ -n "$TEST_COUNT_CHANGE" ]; then
+              echo "Test count change: **$TEST_COUNT_CHANGE**" >> $GITHUB_STEP_SUMMARY
+            fi
+            
+            if [ -n "$NEW_FAILURES" ]; then
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "<details>" >> $GITHUB_STEP_SUMMARY
+              echo "<summary>⚠️ <strong>New Failures</strong></summary>" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+              echo "$NEW_FAILURES" >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+              echo "</details>" >> $GITHUB_STEP_SUMMARY
+            fi
+            
+            if [ -n "$FIXED_TESTS" ]; then
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "<details>" >> $GITHUB_STEP_SUMMARY
+              echo "<summary>✅ <strong>Fixed Tests</strong></summary>" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+              echo "$FIXED_TESTS" >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+              echo "</details>" >> $GITHUB_STEP_SUMMARY
+            fi
+            
+            if [ -n "$FLAKY_TESTS" ]; then
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "<details>" >> $GITHUB_STEP_SUMMARY
+              echo "<summary>⚡ <strong>Flaky Tests Detected</strong></summary>" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+              echo "$FLAKY_TESTS" >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+              echo "</details>" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
+          
+          # Snapshots
+          SNAPSHOT_COUNT="${{ steps.snapshots.outputs.count }}"
+          if [ "$SNAPSHOT_COUNT" != "0" ] && [ -n "$SNAPSHOT_COUNT" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### 📸 Snapshot Failures: $SNAPSHOT_COUNT" >> $GITHUB_STEP_SUMMARY
+            echo "Download **snapshot-failures** artifact to view diff images" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Report Link and Artifacts
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          
+          REPORT_URL="${{ steps.deploy_report.outputs.report_url }}"
+          if [ -n "$REPORT_URL" ]; then
+            echo "### 🔗 [View Interactive Report]($REPORT_URL)" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "### 📦 Artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Artifact | Description |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **test-report** | 📄 Markdown + HTML report |" >> $GITHUB_STEP_SUMMARY
+          echo "| **test-data** | 📊 JSON data files |" >> $GITHUB_STEP_SUMMARY
+          echo "| **test-results** | 🔍 Full xcresult (open in Xcode) |" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.snapshots.outputs.found }}" = "true" ]; then
+            echo "| **snapshot-failures** | 🖼️ Visual diff images |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+      - name: Upload Test Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: test-report/
+          retention-days: 14
+          if-no-files-found: ignore
+          
+      - name: Upload Test Data JSON
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-data
+          path: |
+            test-data.json
+            coverage-data.json
+          retention-days: 14
+          if-no-files-found: ignore
           
       - name: Upload Snapshot Failures
         if: steps.snapshots.outputs.found == 'true'
@@ -219,7 +466,7 @@ jobs:
         with:
           name: snapshot-failures
           path: snapshot-failures/
-          retention-days: 3
+          retention-days: 14
           if-no-files-found: ignore
           
       - name: Upload Test Results
@@ -228,19 +475,276 @@ jobs:
         with:
           name: test-results
           path: ${{ steps.find_results.outputs.path }}
-          retention-days: 3
+          retention-days: 14
           if-no-files-found: ignore
           
-      - name: Add Artifact Links
+      - name: Deploy Report to GitHub Pages
         if: always()
+        id: deploy_report
         run: |
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "---" >> $GITHUB_STEP_SUMMARY
-          echo "### 📦 Artifacts" >> $GITHUB_STEP_SUMMARY
-          echo "- **test-results** - Full xcresult bundle (open in Xcode)" >> $GITHUB_STEP_SUMMARY
-          if [ "${{ steps.snapshots.outputs.found }}" = "true" ]; then
-            echo "- **snapshot-failures** - PNG diff images from failed snapshot tests" >> $GITHUB_STEP_SUMMARY
+          # Create report directory structure
+          REPORT_DIR="test-reports/${{ github.run_number }}"
+          mkdir -p "$REPORT_DIR"
+          
+          # Copy reports
+          cp test-report/test-report.html "$REPORT_DIR/" 2>/dev/null || true
+          cp test-report/TEST_RESULTS.md "$REPORT_DIR/" 2>/dev/null || true
+          cp test-data.json "$REPORT_DIR/" 2>/dev/null || true
+          cp coverage-data.json "$REPORT_DIR/" 2>/dev/null || true
+          
+          # Copy snapshot viewer if exists
+          if [ -f "snapshot-failures/snapshot-viewer.html" ]; then
+            cp snapshot-failures/snapshot-viewer.html "$REPORT_DIR/"
+            cp snapshot-failures/*.png "$REPORT_DIR/" 2>/dev/null || true
           fi
+          
+          # Create index.html that redirects to the report
+          cat > "$REPORT_DIR/index.html" << 'INDEXEOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta http-equiv="refresh" content="0; url=test-report.html">
+            <title>Redirecting to Test Report</title>
+          </head>
+          <body>
+            <p>Redirecting to <a href="test-report.html">Test Report</a>...</p>
+          </body>
+          </html>
+          INDEXEOF
+          
+          # Create root index listing recent reports
+          mkdir -p test-reports
+          cat > test-reports/index.html << 'ROOTINDEXEOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>Palace iOS Test Reports</title>
+            <style>
+              body { font-family: -apple-system, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; background: #0d1117; color: #f0f6fc; }
+              h1 { color: #58a6ff; }
+              a { color: #58a6ff; }
+              .report-link { display: block; padding: 10px; margin: 5px 0; background: #161b22; border-radius: 6px; text-decoration: none; }
+              .report-link:hover { background: #21262d; }
+            </style>
+          </head>
+          <body>
+            <h1>🧪 Palace iOS Test Reports</h1>
+            <p>Recent test reports from CI runs:</p>
+            <div id="reports"></div>
+            <script>
+              // This will be populated by the actual report links
+              document.getElementById('reports').innerHTML = '<p>Browse to a specific run number: <code>/test-reports/{run-number}/</code></p>';
+            </script>
+          </body>
+          </html>
+          ROOTINDEXEOF
+          
+          # Output the report URL
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
+          REPO_OWNER="${GITHUB_REPOSITORY%/*}"
+          REPORT_URL="https://${REPO_OWNER}.github.io/${REPO_NAME}/test-reports/${{ github.run_number }}/"
+          echo "report_url=$REPORT_URL" >> $GITHUB_OUTPUT
+          echo "Report will be available at: $REPORT_URL"
+          
+      - name: Publish to GitHub Pages
+        if: always()
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./test-reports
+          destination_dir: test-reports
+          keep_files: true
+          
+      - name: Post PR Comment with Results
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            
+            const tests = '${{ steps.parse_results.outputs.tests }}';
+            const passed = '${{ steps.parse_results.outputs.passed }}';
+            const failed = '${{ steps.parse_results.outputs.failed }}';
+            const skipped = '${{ steps.parse_results.outputs.skipped }}';
+            const duration = '${{ steps.parse_results.outputs.duration }}';
+            const passRate = '${{ steps.parse_results.outputs.pass_rate }}';
+            const testOutcome = '${{ steps.tests.outcome }}';
+            const failedTests = `${{ steps.parse_results.outputs.failed_tests }}`;
+            const classSummary = `${{ steps.parse_results.outputs.class_summary }}`;
+            const snapshotCount = '${{ steps.snapshots.outputs.count }}';
+            const coverage = '${{ steps.coverage.outputs.coverage_formatted }}';
+            const coverageTargets = `${{ steps.coverage.outputs.coverage_targets }}`;
+            const newFailures = `${{ steps.history.outputs.new_failures }}`;
+            const fixedTests = `${{ steps.history.outputs.fixed_tests }}`;
+            const flakyTests = `${{ steps.history.outputs.flaky_tests }}`;
+            const testCountChange = '${{ steps.history.outputs.test_count_change }}';
+            const buildStatus = '${{ steps.parse_results.outputs.build_status }}';
+            const buildErrors = `${{ steps.parse_results.outputs.build_errors }}`;
+            const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
+            const reportUrl = '${{ steps.deploy_report.outputs.report_url }}';
+            
+            let body = '## 🧪 Unit Test Results\n\n';
+            
+            // Add clickable report link at the top
+            if (reportUrl) {
+              body += `📊 **[View Full Interactive Report](${reportUrl})**\n\n`;
+            }
+            
+            // Check for build failure first
+            if (buildStatus === 'failed') {
+              body += `### 🔴 BUILD FAILED\n\n`;
+              body += `The build failed before tests could run.\n\n`;
+              
+              if (buildErrors && buildErrors.trim()) {
+                body += `<details>\n<summary><strong>Build Errors</strong></summary>\n\n`;
+                body += '```\n' + buildErrors.trim() + '\n```\n';
+                body += `</details>\n\n`;
+              }
+            } else if (tests !== '0' && tests !== '') {
+              // Status header
+              if (failed === '0') {
+                body += `### ✅ ALL TESTS PASSED\n\n`;
+              } else {
+                body += `### ❌ ${failed} TEST${failed === '1' ? '' : 'S'} FAILED\n\n`;
+              }
+              
+              // Quick stats
+              let coverageDisplay = '';
+              if (coverage && coverage !== 'N/A' && coverage !== '') {
+                coverageDisplay = ` | 📈 ${coverage} coverage`;
+              }
+              body += `**${tests} tests** | **${passed} passed** | **${failed} failed** | **${skipped} skipped** | ⏱️ ${duration} | 📊 ${passRate}${coverageDisplay}\n\n`;
+              
+              // Class breakdown table
+              if (classSummary && classSummary.trim()) {
+                body += `### Tests by Class\n\n`;
+                body += `| Class | Tests | Passed | Failed | Duration |\n`;
+                body += `|-------|-------|--------|--------|----------|\n`;
+                classSummary.trim().split('\n').forEach(line => {
+                  const [cls, total, pass, fail, dur] = line.split('|');
+                  if (cls) {
+                    const icon = fail === '0' ? '✅' : '❌';
+                    const failCell = fail === '0' ? fail : `**${fail}**`;
+                    body += `| ${icon} ${cls} | ${total} | ${pass} | ${failCell} | ${dur} |\n`;
+                  }
+                });
+                body += '\n';
+              }
+            } else {
+              if (testOutcome === 'success') {
+                body += `### ✅ ALL TESTS PASSED\n\n`;
+              } else if (buildErrors && buildErrors.trim()) {
+                body += `### 🔴 BUILD FAILED - No tests ran\n\n`;
+                body += `<details>\n<summary><strong>Build Errors</strong></summary>\n\n`;
+                body += '```\n' + buildErrors.trim() + '\n```\n';
+                body += `</details>\n\n`;
+              } else {
+                body += `### ❌ TESTS FAILED\n\n`;
+              }
+            }
+            
+            // Failed tests details
+            if (failedTests && failedTests.trim()) {
+              body += `<details>\n<summary><strong>Failed Tests (click to expand)</strong></summary>\n\n`;
+              body += '```\n' + failedTests.trim() + '\n```\n';
+              body += `</details>\n\n`;
+            }
+            
+            // Code Coverage
+            if (coverage && coverage !== 'N/A' && coverage !== '') {
+              body += `### 📈 Code Coverage: ${coverage}\n\n`;
+              if (coverageTargets && coverageTargets.trim()) {
+                body += `| Target | Coverage |\n`;
+                body += `|--------|----------|\n`;
+                coverageTargets.trim().split('\n').forEach(line => {
+                  const [name, cov] = line.split('|');
+                  if (name) {
+                    body += `| ${name} | ${cov} |\n`;
+                  }
+                });
+                body += '\n';
+              }
+            }
+            
+            // Trends
+            if (newFailures || fixedTests || flakyTests || testCountChange) {
+              body += `### 📈 Trends\n\n`;
+              
+              if (testCountChange) {
+                body += `Test count change: **${testCountChange}**\n\n`;
+              }
+              
+              if (newFailures && newFailures.trim()) {
+                body += `<details>\n<summary>⚠️ <strong>New Failures</strong></summary>\n\n`;
+                body += '```\n' + newFailures.trim() + '\n```\n';
+                body += `</details>\n\n`;
+              }
+              
+              if (fixedTests && fixedTests.trim()) {
+                body += `<details>\n<summary>✅ <strong>Fixed Tests</strong></summary>\n\n`;
+                body += '```\n' + fixedTests.trim() + '\n```\n';
+                body += `</details>\n\n`;
+              }
+              
+              if (flakyTests && flakyTests.trim()) {
+                body += `<details>\n<summary>⚡ <strong>Flaky Tests Detected</strong></summary>\n\n`;
+                body += '```\n' + flakyTests.trim() + '\n```\n';
+                body += `</details>\n\n`;
+              }
+            }
+            
+            // Snapshot failures
+            if (snapshotCount && snapshotCount !== '0') {
+              body += `### 📸 Snapshot Failures: ${snapshotCount}\n`;
+              body += `Download the **snapshot-failures** artifact to view visual differences.\n\n`;
+            }
+            
+            // Links section
+            body += `---\n`;
+            if (reportUrl) {
+              body += `🔗 **[Interactive HTML Report](${reportUrl})** | `;
+            }
+            body += `**[CI Run Details](${runUrl})**\n\n`;
+            
+            // Artifacts table
+            body += `<details>\n<summary>📦 <strong>Downloadable Artifacts</strong></summary>\n\n`;
+            body += `| Artifact | Description |\n`;
+            body += `|----------|-------------|\n`;
+            body += `| test-report | 📄 Markdown + HTML reports |\n`;
+            body += `| test-data | 📊 JSON data for tooling |\n`;
+            body += `| test-results | 🔍 Full xcresult (open in Xcode) |\n`;
+            if (snapshotCount && snapshotCount !== '0') {
+              body += `| snapshot-failures | 🖼️ Visual diff images |\n`;
+            }
+            body += `\n</details>`;
+            
+            // Find and update or create comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            });
+            
+            const botComment = comments.find(c => 
+              c.user.type === 'Bot' && 
+              c.body.includes('🧪 Unit Test Results')
+            );
+            
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body
+              });
+            }
           
       - name: Fail if tests failed
         if: steps.tests.outcome == 'failure'

@@ -180,4 +180,128 @@ final class HoldsBookViewModelTests: XCTestCase {
     
     XCTAssertTrue(viewModel.isReserved)
   }
+  
+  func testIsReservedForReadyBook() {
+    let book = TPPBookMocker.snapshotReadyBook()
+    let viewModel = HoldsBookViewModel(book: book)
+    
+    // Ready books should also return true for isReserved (they're still in holds)
+    XCTAssertTrue(viewModel.isReserved)
+  }
+}
+
+// MARK: - Badge Count Calculation Tests
+
+/// Tests for PP-3411: Badge should show only "ready" books, not all held books
+@MainActor
+final class HoldsBadgeCountTests: XCTestCase {
+  
+  /// Helper function that mirrors the badge counting logic in AppTabHostView
+  private func calculateReadyCount(for books: [TPPBook]) -> Int {
+    var readyCount = 0
+    for book in books {
+      book.defaultAcquisition?.availability.matchUnavailable(nil,
+                                                              limited: nil,
+                                                              unlimited: nil,
+                                                              reserved: nil,
+                                                              ready: { _ in readyCount += 1 })
+    }
+    return readyCount
+  }
+  
+  // MARK: - Badge Count Tests
+  
+  func testBadgeCount_noBooks_returnsZero() {
+    let books: [TPPBook] = []
+    let readyCount = calculateReadyCount(for: books)
+    
+    XCTAssertEqual(readyCount, 0, "Empty book list should have badge count of 0")
+  }
+  
+  func testBadgeCount_oneReservedBook_returnsZero() {
+    // PP-3411: A book waiting in queue should NOT be counted in badge
+    let books = [TPPBookMocker.snapshotReservedBook()]
+    let readyCount = calculateReadyCount(for: books)
+    
+    XCTAssertEqual(readyCount, 0, "One reserved book should have badge count of 0")
+  }
+  
+  func testBadgeCount_oneReadyBook_returnsOne() {
+    // PP-3411: A book ready to borrow SHOULD be counted in badge
+    let books = [TPPBookMocker.snapshotReadyBook()]
+    let readyCount = calculateReadyCount(for: books)
+    
+    XCTAssertEqual(readyCount, 1, "One ready book should have badge count of 1")
+  }
+  
+  func testBadgeCount_mixedHolds_countsOnlyReady() {
+    // PP-3411: With 4 holds and 1 ready, badge should show 1 (not 4)
+    let books = [
+      TPPBookMocker.snapshotReservedBook(identifier: "reserved-1", title: "Book 1", author: "Author 1"),
+      TPPBookMocker.snapshotReservedBook(identifier: "reserved-2", title: "Book 2", author: "Author 2"),
+      TPPBookMocker.snapshotReservedBook(identifier: "reserved-3", title: "Book 3", author: "Author 3"),
+      TPPBookMocker.snapshotReadyBook(identifier: "ready-1", title: "Ready Book", author: "Ready Author")
+    ]
+    let readyCount = calculateReadyCount(for: books)
+    
+    XCTAssertEqual(readyCount, 1, "4 holds with 1 ready should have badge count of 1")
+  }
+  
+  func testBadgeCount_multipleReady_countsAll() {
+    let books = [
+      TPPBookMocker.snapshotReadyBook(identifier: "ready-1", title: "Ready 1", author: "Author 1"),
+      TPPBookMocker.snapshotReadyBook(identifier: "ready-2", title: "Ready 2", author: "Author 2"),
+      TPPBookMocker.snapshotReadyBook(identifier: "ready-3", title: "Ready 3", author: "Author 3")
+    ]
+    let readyCount = calculateReadyCount(for: books)
+    
+    XCTAssertEqual(readyCount, 3, "3 ready books should have badge count of 3")
+  }
+  
+  func testBadgeCount_allReserved_returnsZero() {
+    let books = [
+      TPPBookMocker.snapshotReservedBook(identifier: "reserved-1", title: "Book 1", author: "Author 1"),
+      TPPBookMocker.snapshotReservedBook(identifier: "reserved-2", title: "Book 2", author: "Author 2"),
+      TPPBookMocker.snapshotReservedBook(identifier: "reserved-3", title: "Book 3", author: "Author 3")
+    ]
+    let readyCount = calculateReadyCount(for: books)
+    
+    XCTAssertEqual(readyCount, 0, "All reserved books should have badge count of 0")
+  }
+  
+  func testBadgeCount_regularBook_notCounted() {
+    // Regular available books (not on hold) should not affect badge
+    let books = [TPPBookMocker.snapshotEPUB()]
+    let readyCount = calculateReadyCount(for: books)
+    
+    XCTAssertEqual(readyCount, 0, "Regular available book should not be counted in badge")
+  }
+  
+  // MARK: - Availability State Tests
+  
+  func testReservedBookHasReservedAvailability() {
+    let book = TPPBookMocker.snapshotReservedBook()
+    var isReserved = false
+    
+    book.defaultAcquisition?.availability.matchUnavailable(nil,
+                                                            limited: nil,
+                                                            unlimited: nil,
+                                                            reserved: { _ in isReserved = true },
+                                                            ready: nil)
+    
+    XCTAssertTrue(isReserved, "Reserved book should have 'reserved' availability")
+  }
+  
+  func testReadyBookHasReadyAvailability() {
+    let book = TPPBookMocker.snapshotReadyBook()
+    var isReady = false
+    
+    book.defaultAcquisition?.availability.matchUnavailable(nil,
+                                                            limited: nil,
+                                                            unlimited: nil,
+                                                            reserved: nil,
+                                                            ready: { _ in isReady = true })
+    
+    XCTAssertTrue(isReady, "Ready book should have 'ready' availability")
+  }
 }

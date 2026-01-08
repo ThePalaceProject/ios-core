@@ -64,7 +64,13 @@ final class HoldsViewModel: ObservableObject {
     }
 
     func reloadData() {
+        // Use test books if debug configuration is enabled, otherwise use real registry data
+        #if DEBUG
+        let allHeld: [TPPBook] = DebugSettings.shared.createTestHoldBooks() ?? TPPBookRegistry.shared.heldBooks
+        #else
         let allHeld = TPPBookRegistry.shared.heldBooks
+        #endif
+        
         var reservedVMs: [HoldsBookViewModel] = []
         var heldVMs: [HoldsBookViewModel] = []
 
@@ -81,8 +87,10 @@ final class HoldsViewModel: ObservableObject {
             self.reservedBookVMs = reservedVMs
             self.heldBookVMs = heldVMs
             self.visibleBooks = self.allBooks
-            self.updateBadgeCount()
         }
+        
+        // Trigger badge update via notification (badge is now centrally managed by AppTabHostView)
+        NotificationCenter.default.post(name: .TPPBookRegistryStateDidChange, object: nil)
     }
 
     func refresh() {
@@ -97,10 +105,6 @@ final class HoldsViewModel: ObservableObject {
         } else {
             TPPBookRegistry.shared.load()
         }
-    }
-
-    private func updateBadgeCount() {
-        UIApplication.shared.applicationIconBadgeNumber = reservedBookVMs.count
     }
 
     func loadAccount(_ account: Account) {

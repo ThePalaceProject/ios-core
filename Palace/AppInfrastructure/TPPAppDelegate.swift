@@ -102,6 +102,9 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         task.setTaskCompleted(success: false)
       } else {
         Log.log("[Background Refresh] \(newBooks ? "New books available" : "No new books fetched"). Elapsed Time: \(-startDate.timeIntervalSinceNow)")
+        
+        TPPUserNotifications.updateAppIconBadge(heldBooks: TPPBookRegistry.shared.heldBooks)
+        
         task.setTaskCompleted(success: true)
       }
     }

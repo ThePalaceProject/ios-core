@@ -58,8 +58,9 @@ let DefaultActionIdentifier = "UNNotificationDefaultActionIdentifier"
     }
   }
 
-  class func updateAppIconBadge(heldBooks: [TPPBook])
-  {
+  /// Updates the app icon badge to show the count of holds ready to borrow.
+  /// Called after background refresh to update badge even when app is not in foreground.
+  class func updateAppIconBadge(heldBooks: [TPPBook]) {
     var readyBooks = 0
     for book in heldBooks {
       book.defaultAcquisition?.availability.matchUnavailable(nil,
@@ -72,7 +73,7 @@ let DefaultActionIdentifier = "UNNotificationDefaultActionIdentifier"
       UIApplication.shared.applicationIconBadgeNumber = readyBooks
     }
   }
-
+  
   /// Depending on which Notificaitons are supported, only perform an expensive
   /// network operation if it's needed.
   class func backgroundFetchIsNeeded() -> Bool {
