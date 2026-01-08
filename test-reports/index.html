@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Palace iOS Test Reports</title>
+  <style>
+    body { font-family: -apple-system, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; background: #0d1117; color: #f0f6fc; }
+    h1 { color: #58a6ff; }
+    a { color: #58a6ff; }
+    .report-link { display: block; padding: 10px; margin: 5px 0; background: #161b22; border-radius: 6px; text-decoration: none; }
+    .report-link:hover { background: #21262d; }
+  </style>
+</head>
+<body>
+  <h1>🧪 Palace iOS Test Reports</h1>
+  <p>Recent test reports from CI runs:</p>
+  <div id="reports"></div>
+  <script>
+    // This will be populated by the actual report links
+    document.getElementById('reports').innerHTML = '<p>Browse to a specific run number: <code>/test-reports/{run-number}/</code></p>';
+  </script>
+</body>
+</html>
