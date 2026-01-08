@@ -48,8 +48,12 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
         echo "Using default architecture for simulator"
     fi
     
+    TEST_SUCCESS=false
     for SIM in "${SIMULATORS[@]}"; do
         echo "Attempting to use: $SIM"
+        echo "Full destination: platform=iOS Simulator,name=$SIM$ARCH_SPEC"
+        
+        # Don't hide stderr - we need to see errors for debugging
         if xcodebuild test \
             -project Palace.xcodeproj \
             -scheme Palace \
@@ -62,16 +66,23 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
             ONLY_ACTIVE_ARCH=YES \
+            ARCHS=arm64 \
             GCC_OPTIMIZATION_LEVEL=0 \
             SWIFT_OPTIMIZATION_LEVEL=-Onone \
-            ENABLE_TESTABILITY=YES 2>/dev/null; then
+            ENABLE_TESTABILITY=YES; then
             echo "✅ Successfully used simulator: $SIM"
+            TEST_SUCCESS=true
             break
         else
-            echo "❌ Failed with simulator: $SIM, trying next..."
+            echo "❌ Failed with simulator: $SIM (exit code: $?), trying next..."
             rm -rf TestResults.xcresult
         fi
     done
+    
+    if [ "$TEST_SUCCESS" != "true" ]; then
+        echo "❌ All simulator attempts failed!"
+        exit 1
+    fi
 else
     echo "Running in local environment - using dynamic detection"
     # Get the first available iPhone simulator ID from the Palace scheme destinations
