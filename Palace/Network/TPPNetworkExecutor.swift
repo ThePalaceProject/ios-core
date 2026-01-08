@@ -113,8 +113,23 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
   func executeRequest(_ req: URLRequest, enableTokenRefresh: Bool, completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask? {
     let userAccount = TPPUserAccount.sharedAccount()
 
+    // SAML auth uses cookies, not tokens - proceed directly
     if let authDefinition = userAccount.authDefinition, authDefinition.isSaml {
       return performDataTask(with: req, completion: completion)
+    }
+    
+    // Proactive token refresh: if token will expire soon, refresh before the request
+    if enableTokenRefresh,
+       userAccount.authTokenNearExpiry,
+       let authDef = userAccount.authDefinition,
+       (authDef.isToken || authDef.isOauth),
+       authDef.tokenURL != nil {
+      Log.info(#file, "Token near expiry - proactively refreshing before request")
+      refreshTokenAndResume(task: nil) { [weak self] _ in
+        // After refresh attempt, proceed with the original request
+        _ = self?.performDataTask(with: req, completion: completion)
+      }
+      return nil
     }
 
     return performDataTask(with: req, completion: completion)

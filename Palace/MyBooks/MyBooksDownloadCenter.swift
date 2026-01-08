@@ -653,15 +653,24 @@ actor DownloadCoordinator {
     let hasCredentials = userAccount.hasCredentials()
     let currentState = bookRegistry.state(for: book.identifier)
     
-    // CIRCUIT BREAKER: If already in .SAMLStarted, SAML web view failed - sign out and show sign-in
+    // CIRCUIT BREAKER: If already in .SAMLStarted, SAML web view failed - show sign-in without signing out
     if currentState == .SAMLStarted {
-      Log.warn(#file, "SAML re-auth already attempted for '\(book.title)' - signing out and showing sign-in modal")
+      Log.warn(#file, "SAML re-auth already attempted for '\(book.title)' - showing sign-in modal")
       
       Task { @MainActor in
         await self.bookIdentifierToDownloadInfo.remove(book.identifier)
         await self.downloadCoordinator.registerCompletion(identifier: book.identifier)
         
         bookRegistry.setState(.downloadFailed, for: book.identifier)
+        
+        // Show the problem document message if available (session expired, etc.)
+        if let problemDoc = problemDocument {
+          let alert = TPPAlertUtils.alert(
+            title: problemDoc.title ?? Strings.Error.sessionExpiredTitle,
+            message: problemDoc.detail ?? Strings.Error.sessionExpiredMessage
+          )
+          TPPPresentationUtils.safelyPresent(alert)
+        }
         
         guard !self.isRequestingCredentials else { return }
         
@@ -671,12 +680,8 @@ actor DownloadCoordinator {
           self.isRequestingCredentials = false
         }
         
-        // Sign out expired credentials so sign-in modal shows proper UI
-        Log.info(#file, "Signing out expired SAML session")
-        self.userAccount.removeAll()
-        
-        // Now show sign-in modal
-        Log.info(#file, "Showing sign-in modal after expired SAML session")
+        // Show sign-in modal WITHOUT signing out - let user re-authenticate gracefully
+        Log.info(#file, "Showing sign-in modal for session refresh")
         self.reauthenticator.authenticateIfNeeded(self.userAccount, usingExistingCredentials: false) { [weak self] in
           Task { @MainActor in
             self?.isRequestingCredentials = false
