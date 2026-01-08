@@ -450,7 +450,6 @@ struct BookDetailView: View {
                           .transition(.opacity.combined(with: .scale))
                       }
                       .accessibilityLabel(bookAccessibilityLabel(for: book))
-                      .accessibilityHint(Strings.Generic.doubleTapToOpen)
                     } else {
                       RoundedRectangle(cornerRadius: 8)
                         .fill(Color.gray.opacity(0.25))
@@ -569,14 +568,14 @@ struct BookDetailView: View {
   }
   
   private func bookAccessibilityLabel(for book: TPPBook) -> String {
-    var label = book.title
+    var components = [book.title]
     if book.isAudiobook {
-      label += ". \(Strings.Generic.audiobook)."
+      components.append(Strings.Generic.audiobook)
     }
     if let authors = book.authors, !authors.isEmpty {
-      label += " \(Strings.Generic.by) \(authors)"
+      components.append(authors)
     }
-    return label
+    return components.joined(separator: ", ")
   }
   
   private func updateImageBottomPosition() {

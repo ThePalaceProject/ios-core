@@ -42,7 +42,6 @@ struct CatalogLaneRowView: View {
           }
           .buttonStyle(.plain)
           .accessibilityLabel(accessibilityLabel(for: book))
-          .accessibilityHint(Strings.Generic.doubleTapToOpen)
         }
       }
       .padding(.horizontal, 12)
@@ -50,14 +49,14 @@ struct CatalogLaneRowView: View {
   }
   
   private func accessibilityLabel(for book: TPPBook) -> String {
-    var label = book.title
+    var components = [book.title]
     if book.isAudiobook {
-      label += ". \(Strings.Generic.audiobook)."
+      components.append(Strings.Generic.audiobook)
     }
     if let authors = book.authors, !authors.isEmpty {
-      label += " \(Strings.Generic.by) \(authors)"
+      components.append(authors)
     }
-    return label
+    return components.joined(separator: ", ")
   }
   
   @ViewBuilder

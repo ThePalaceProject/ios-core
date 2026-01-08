@@ -26,9 +26,7 @@ final class CatalogLaneRowViewAccessibilityTests: XCTestCase {
     let label = makeAccessibilityLabel(for: book)
     
     // Then
-    XCTAssertTrue(label.contains("The Great Gatsby"), "Accessibility label should contain the book title")
-    XCTAssertTrue(label.contains("F. Scott Fitzgerald"), "Accessibility label should contain the author name")
-    XCTAssertTrue(label.contains(Strings.Generic.by), "Accessibility label should use proper 'by' attribution")
+    XCTAssertEqual(label, "The Great Gatsby, F. Scott Fitzgerald")
   }
   
   /// PP-3346: Verifies that a book without authors still has a valid accessibility label
@@ -40,7 +38,7 @@ final class CatalogLaneRowViewAccessibilityTests: XCTestCase {
     let label = makeAccessibilityLabel(for: book)
     
     // Then
-    XCTAssertEqual(label, "Untitled Work", "Book without author should only include the title")
+    XCTAssertEqual(label, "Untitled Work")
   }
   
   /// PP-3346: Verifies that audiobooks have proper accessibility designation
@@ -53,8 +51,8 @@ final class CatalogLaneRowViewAccessibilityTests: XCTestCase {
     
     // Then
     XCTAssertTrue(audiobook.isAudiobook, "Test prerequisite: book should be an audiobook")
-    XCTAssertTrue(label.contains(Strings.Generic.audiobook), "Audiobook accessibility label should include 'Audiobook' designation")
-    XCTAssertTrue(label.contains(audiobook.title), "Audiobook accessibility label should contain the title")
+    XCTAssertTrue(label.contains(Strings.Generic.audiobook))
+    XCTAssertTrue(label.contains(audiobook.title))
   }
   
   /// PP-3346: Verifies that regular eBooks do NOT have audiobook designation
@@ -67,51 +65,48 @@ final class CatalogLaneRowViewAccessibilityTests: XCTestCase {
     
     // Then
     XCTAssertFalse(ebook.isAudiobook, "Test prerequisite: book should NOT be an audiobook")
-    XCTAssertFalse(label.contains(Strings.Generic.audiobook), "Regular eBook should NOT have audiobook designation")
-    XCTAssertTrue(label.contains(ebook.title), "eBook accessibility label should contain the title")
+    XCTAssertFalse(label.contains(Strings.Generic.audiobook))
   }
   
-  /// PP-3346: Verifies accessibility label format is VoiceOver-friendly
-  func testAccessibilityLabel_formatIsVoiceOverFriendly() {
+  /// PP-3346: Verifies accessibility label uses comma-separated format
+  func testAccessibilityLabel_usesCommaSeparatedFormat() {
     // Given
     let book = TPPBookMocker.mockBook(title: "Pride and Prejudice", authors: "Jane Austen")
     
     // When
     let label = makeAccessibilityLabel(for: book)
     
-    // Then - Format should be "Title by Author" for natural VoiceOver reading
-    let expectedFormat = "Pride and Prejudice \(Strings.Generic.by) Jane Austen"
-    XCTAssertEqual(label, expectedFormat, "Accessibility label format should be 'Title by Author'")
+    // Then - Format: "Title, Author"
+    XCTAssertEqual(label, "Pride and Prejudice, Jane Austen")
   }
   
-  /// PP-3346: Verifies audiobook label format is VoiceOver-friendly
-  func testAccessibilityLabel_audiobookFormatIsVoiceOverFriendly() {
+  /// PP-3346: Verifies audiobook label format includes audiobook designation
+  func testAccessibilityLabel_audiobookFormat() {
     // Given
     let audiobook = TPPBookMocker.snapshotAudiobook() // "Pride and Prejudice" by "Jane Austen"
     
     // When
     let label = makeAccessibilityLabel(for: audiobook)
     
-    // Then - Format should be "Title. Audiobook. by Author" for clear VoiceOver reading
-    XCTAssertTrue(label.hasPrefix(audiobook.title), "Label should start with book title")
-    XCTAssertTrue(label.contains(". \(Strings.Generic.audiobook)."), "Audiobook designation should have periods for VoiceOver pauses")
+    // Then - Format: "Title, Audiobook, Author"
+    XCTAssertTrue(label.hasPrefix(audiobook.title))
     if let authors = audiobook.authors {
-      XCTAssertTrue(label.contains("\(Strings.Generic.by) \(authors)"), "Label should end with author attribution")
+      let expected = "\(audiobook.title), \(Strings.Generic.audiobook), \(authors)"
+      XCTAssertEqual(label, expected)
     }
   }
   
   // MARK: - Helper Methods
   
   /// Replicates the accessibility label generation logic from CatalogLaneRowView
-  /// This ensures the test matches the production implementation
   private func makeAccessibilityLabel(for book: TPPBook) -> String {
-    var label = book.title
+    var components = [book.title]
     if book.isAudiobook {
-      label += ". \(Strings.Generic.audiobook)."
+      components.append(Strings.Generic.audiobook)
     }
     if let authors = book.authors, !authors.isEmpty {
-      label += " \(Strings.Generic.by) \(authors)"
+      components.append(authors)
     }
-    return label
+    return components.joined(separator: ", ")
   }
 }
