@@ -146,36 +146,8 @@ jobs:
           # Extract failed test names using xcresulttool
           if [ "$FAILURES" != "0" ] && [ "$FAILURES" != "" ]; then
             echo "Extracting failed test names..."
+            FAILED_TESTS=$(xcrun xcresulttool get --path "$RESULT_PATH" --format json 2>/dev/null | python3 scripts/parse-test-results.py 2>/dev/null || echo "")
             
-            # Get test plan run summaries
-            FAILED_TESTS=$(xcrun xcresulttool get --path "$RESULT_PATH" --format json 2>/dev/null | \
-              python3 -c "
-import json, sys
-try:
-    data = json.load(sys.stdin)
-    failed = []
-    
-    def find_failures(obj, path=''):
-        if isinstance(obj, dict):
-            # Check if this is a test with failure status
-            if obj.get('testStatus', {}).get('_value') == 'Failure':
-                name = obj.get('name', {}).get('_value', '')
-                if name:
-                    failed.append(name)
-            # Recurse
-            for k, v in obj.items():
-                find_failures(v, f'{path}.{k}')
-        elif isinstance(obj, list):
-            for item in obj:
-                find_failures(item, path)
-    
-    find_failures(data)
-    print('\n'.join(failed[:20]))  # Limit to 20 failures
-except:
-    pass
-" 2>/dev/null || echo "")
-            
-            # URL-encode for multiline output
             if [ -n "$FAILED_TESTS" ]; then
               echo "failed_tests<<EOF" >> $GITHUB_OUTPUT
               echo "$FAILED_TESTS" >> $GITHUB_OUTPUT
