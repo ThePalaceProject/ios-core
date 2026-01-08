@@ -36,8 +36,14 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
     # Same list as main branch - these work on macos-14 runners
     SIMULATORS=("iPhone SE (3rd generation)" "iPhone 14" "iPhone 13" "iPhone 12" "iPhone 11")
     
+    TEST_RAN=false
     for SIM in "${SIMULATORS[@]}"; do
         echo "Attempting to use: $SIM"
+        # Clean previous result bundle
+        rm -rf TestResults.xcresult
+        
+        # Run tests - allow failure so we can check if xcresult was created
+        set +e
         xcodebuild test \
             -project Palace.xcodeproj \
             -scheme Palace \
@@ -54,15 +60,22 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
             SWIFT_OPTIMIZATION_LEVEL=-Onone \
             ENABLE_TESTABILITY=YES
         TEST_EXIT_CODE=$?
+        set -e
         
         # If xcresult was created, tests ran (even if some failed) - stop trying simulators
         if [ -d "TestResults.xcresult" ]; then
             echo "✅ Tests executed on simulator: $SIM (exit code: $TEST_EXIT_CODE)"
+            TEST_RAN=true
             break
         else
             echo "❌ Simulator $SIM unavailable or build failed, trying next..."
         fi
     done
+    
+    if [ "$TEST_RAN" = "false" ]; then
+        echo "🔴 ERROR: No simulator could run tests!"
+        exit 1
+    fi
 else
     echo "Running in local environment - using dynamic detection"
     # Get the first available iPhone simulator ID from the Palace scheme destinations

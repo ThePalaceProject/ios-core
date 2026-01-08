@@ -79,6 +79,7 @@ jobs:
         
       - name: Run Palace unit tests
         id: tests
+        timeout-minutes: 20
         run: ./scripts/xcode-test-optimized.sh
         env:
           BUILD_CONTEXT: ci
