@@ -79,6 +79,11 @@ struct Strings {
     static let search = NSLocalizedString("Search", comment: "Placeholder for Search Field")
     static let done =  NSLocalizedString("Done", comment: "Title for Done button")
     static let clear = NSLocalizedString("Clear", comment: "Button to clear selection")
+    
+    // Accessibility
+    static let audiobook = NSLocalizedString("Audiobook", comment: "VoiceOver: Indicates the book is an audiobook")
+    static let by = NSLocalizedString("by", comment: "VoiceOver: Author attribution, e.g. 'Book Title by Author Name'")
+    static let doubleTapToOpen = NSLocalizedString("Double tap to open", comment: "VoiceOver hint for book buttons")
   }
   
   struct OETutorialChoiceViewController {
