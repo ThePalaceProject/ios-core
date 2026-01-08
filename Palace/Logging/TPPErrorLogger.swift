@@ -147,27 +147,14 @@ fileprivate let nullString = "null"
   // MARK:- Configuration
 
   class func configureCrashAnalytics() {
-    // Only enable Crashlytics on Production builds
-    guard Bundle.main.applicationEnvironment == .production else { return }
-    
-    #if FEATURE_CRASH_REPORTING
-    if let deviceID = UIDevice.current.identifierForVendor?.uuidString {
-      Crashlytics.crashlytics().setCustomValue(deviceID, forKey: "PalaceDeviceID")
-    }
-    #endif
+    // Delegate to FirebaseManager for thread-safe Firebase access
+    // This prevents the "recursive_mutex lock failed" crash
+    FirebaseManager.shared.configureCrashlytics()
   }
 
   class func setUserID(_ userID: String?) {
-    // Only enable Crashlytics on Production builds
-    guard Bundle.main.applicationEnvironment == .production else { return }
-
-    #if FEATURE_CRASH_REPORTING
-    if let userIDmd5 = userID?.md5hex() {
-      Crashlytics.crashlytics().setUserID(userIDmd5)
-    } else {
-      Crashlytics.crashlytics().setUserID("SIGNED_OUT_USER")
-    }
-    #endif
+    // Delegate to FirebaseManager for thread-safe Firebase access
+    FirebaseManager.shared.setCrashlyticsUserID(userID)
   }
 
   //----------------------------------------------------------------------------
@@ -369,14 +356,9 @@ fileprivate let nullString = "null"
     Log.debug(#file, "App launched - iOS \(UIDevice.current.systemVersion), build \(version)")
     #endif
     
-    // Optionally log to Crashlytics as breadcrumb (not as error)
-    // This provides context if crashes occur during/after launch
-    #if !targetEnvironment(simulator) && !DEBUG
-    #if canImport(FirebaseCrashlytics)
-    let launchInfo = "App Launch - iOS \(UIDevice.current.systemVersion), account: \(metadata["account_uuid"] ?? "nil")"
-    Crashlytics.crashlytics().log(launchInfo)
-    #endif
-    #endif
+    // Log to Crashlytics as breadcrumb via FirebaseManager (thread-safe)
+    let launchInfo = "App Launch - iOS \(UIDevice.current.systemVersion), account: \(metadata["currentAccountUUID"] ?? "nil")"
+    FirebaseManager.shared.logBreadcrumb(launchInfo)
   }
 
   /**
@@ -452,31 +434,21 @@ fileprivate let nullString = "null"
   // MARK:- Private helpers
 
   private class func record(error: NSError) {
-    // Check if enhanced logging is enabled for this device
-    Task {
-      let isEnhanced = await DeviceSpecificErrorMonitor.shared.isEnhancedLoggingEnabled()
-      
-      if isEnhanced {
-        // Enhanced logging: add stack trace and send to Analytics
-        Log.info(#file, "📊 ENHANCED error logging active")
-        
-        await DeviceSpecificErrorMonitor.shared.logError(
-          error,
-          context: error.domain,
-          metadata: error.userInfo
-        )
-      }
+    // Check if enhanced logging is enabled (synchronous, thread-safe via FirebaseManager)
+    let isEnhanced = FirebaseManager.shared.isEnhancedLoggingEnabled()
+    
+    if isEnhanced {
+      Log.info(#file, "📊 ENHANCED error logging active")
+      FirebaseManager.shared.logEnhancedErrorEvent(
+        error: error,
+        context: error.domain,
+        metadata: error.userInfo
+      )
     }
     
-    // Always do normal Crashlytics recording
-    // Only enable Crashlytics on Production builds
-    guard Bundle.main.applicationEnvironment == .production else { return }
-
-    #if FEATURE_CRASH_REPORTING
-    Crashlytics.crashlytics().record(error: error)
-    #else
-    Log.error("LOG_ERROR", "\(error)")
-    #endif
+    // Always do normal Crashlytics recording via FirebaseManager
+    // This is thread-safe and prevents recursive_mutex issues
+    FirebaseManager.shared.logError(error)
   }
 
   /// Helper to log a generic error to Crashlytics.

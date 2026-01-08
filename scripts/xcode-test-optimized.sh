@@ -53,6 +53,7 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
             -enableCodeCoverage YES \
             -parallel-testing-enabled YES \
             -maximum-parallel-testing-workers 2 \
+            -testEnvironmentVariables BUILD_CONTEXT=ci \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
             ONLY_ACTIVE_ARCH=YES \

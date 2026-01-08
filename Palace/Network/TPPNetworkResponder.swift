@@ -157,14 +157,15 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
     }
 
     guard let info = maybeInfo else {
-      TPPErrorLogger.logNetworkError(
-        nil,
-        code: .noTaskInfoAvailable,
-        summary: "No taskInfo for task \(taskID)",
-        request: task.originalRequest,
-        response: task.response,
-        metadata: logMetadata
-      )
+      // This can happen legitimately in several scenarios:
+      // 1. URLSession internal tasks (preconnect, preflight, etc.) that we never registered
+      // 2. Cancelled tasks where session became invalid and cleared all taskInfo
+      // 3. Tasks created by the system for HTTP/2 multiplexing
+      // 4. Rapid task creation/completion race conditions (very rare)
+      //
+      // Only log at debug level to avoid noise in crash reporting.
+      // If this becomes a real issue, the user will see failed network requests.
+      Log.debug(#file, "Task \(taskID) completed but no taskInfo found - likely an internal URLSession task")
       return
     }
 

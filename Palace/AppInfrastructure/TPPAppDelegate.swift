@@ -18,10 +18,13 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
   func applicationDidFinishLaunching(_ application: UIApplication) {
     let startupQueue = DispatchQueue.global(qos: .userInitiated)
 
+    // Configure Firebase once at startup
     FirebaseApp.configure()
     
+    // Initialize FirebaseManager (consolidated Firebase access to prevent mutex crashes)
+    // This replaces separate DeviceSpecificErrorMonitor and RemoteFeatureFlags initialization
     Task {
-      await DeviceSpecificErrorMonitor.shared.initialize()
+      await FirebaseManager.shared.fetchAndActivateRemoteConfig()
     }
 
     TPPErrorLogger.configureCrashAnalytics()
@@ -161,6 +164,15 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
   func applicationDidBecomeActive(_ application: UIApplication) {
     TPPErrorLogger.setUserID(TPPUserAccount.sharedAccount().barcode)
+    
+    // Resume Firebase operations when app becomes active
+    FirebaseManager.shared.applicationDidBecomeActive()
+  }
+  
+  func applicationDidEnterBackground(_ application: UIApplication) {
+    // Pause Firebase operations when app goes to background
+    // This helps prevent the "recursive_mutex lock failed" crash
+    FirebaseManager.shared.applicationDidEnterBackground()
   }
 
   func applicationWillTerminate(_ application: UIApplication) {

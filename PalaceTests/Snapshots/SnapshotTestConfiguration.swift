@@ -29,9 +29,13 @@ enum SnapshotDevice: String, CaseIterable {
   }
 }
 
-/// Check if running in CI environment (GitHub Actions sets CI=true)
+/// Check if running in CI environment
+/// GitHub Actions automatically sets GITHUB_ACTIONS=true
+/// Also check CI (common) and BUILD_CONTEXT (our custom var)
 private var isRunningInCI: Bool {
-  ProcessInfo.processInfo.environment["CI"] != nil
+  ProcessInfo.processInfo.environment["GITHUB_ACTIONS"] == "true" ||
+  ProcessInfo.processInfo.environment["CI"] == "true" ||
+  ProcessInfo.processInfo.environment["BUILD_CONTEXT"] == "ci"
 }
 
 /// Extension to run snapshot tests across multiple devices

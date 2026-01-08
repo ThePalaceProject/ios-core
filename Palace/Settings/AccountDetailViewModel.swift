@@ -104,8 +104,9 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     
     var drmAuthorizer: TPPDRMAuthorizing?
     #if FEATURE_DRM_CONNECTOR
-    if AdobeCertificate.defaultCertificate?.hasExpired == false {
-      drmAuthorizer = NYPLADEPT.sharedInstance()
+    // Use safe DRM container to prevent EXC_BREAKPOINT crashes during initialization
+    if AdobeCertificate.isDRMAvailable {
+      drmAuthorizer = AdobeDRMContainer.shared.adeptInstance
     }
     #endif
     

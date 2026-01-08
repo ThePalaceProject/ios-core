@@ -86,12 +86,11 @@ class TPPBookmarkFactory {
     Log.info(#file, "🏭 Annotation motivation: \(motivation), requested type: \(annotationType.rawValue)")
 
      guard source == bookID else {
-       Log.error(#file, "🏭 BOOKMARK FOR DIFFERENT BOOK! Requested: \(bookID), Got: \(source)")
-       TPPErrorLogger.logError(withCode: .bookmarkReadError,
-                                summary: "Got bookmark for a different book",
-                                metadata: [
-                                 "requestedBookID": bookID,
-                                 "serverAnnotation": annotation])
+       // This is a server-side data issue, not a client bug.
+       // The server returned a bookmark for a different book than requested.
+       // Log at warn level since this is expected to happen occasionally
+       // due to server-side data sync issues.
+       Log.warn(#file, "🏭 Server returned bookmark for different book. Requested: \(bookID), Got: \(source)")
        return nil
      }
 

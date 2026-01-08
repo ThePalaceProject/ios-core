@@ -144,9 +144,9 @@ actor DownloadCoordinator {
     super.init()
     
 #if FEATURE_DRM_CONNECTOR
-    if !(AdobeCertificate.defaultCertificate?.hasExpired ?? true)
-    {
-      NYPLADEPT.sharedInstance().delegate = self
+    // Use safe DRM container to prevent EXC_BREAKPOINT crashes during initialization
+    if AdobeCertificate.isDRMAvailable {
+      AdobeDRMContainer.shared.setDelegate(self)
     }
 #else
     NSLog("Cannot import ADEPT")
@@ -774,7 +774,7 @@ actor DownloadCoordinator {
     
 #if FEATURE_DRM_CONNECTOR
     if info.rightsManagement == .adobe {
-      NYPLADEPT.sharedInstance().cancelFulfillment(withTag: identifier)
+      AdobeDRMContainer.shared.cancelFulfillment(withTag: identifier)
       return
     }
 #endif
@@ -865,9 +865,9 @@ extension MyBooksDownloadCenter {
     if let fulfillmentId = bookRegistry.fulfillmentId(forIdentifier: identifier),
        userAccount.authDefinition?.needsAuth == true {
       NSLog("Return attempt for book. userID: %@", userAccount.userID ?? "")
-      NYPLADEPT.sharedInstance().returnLoan(fulfillmentId,
-                                            userID: userAccount.userID,
-                                            deviceID: userAccount.deviceID) { success, error in
+      AdobeDRMContainer.shared.returnLoan(fulfillmentId,
+                                          userID: userAccount.userID,
+                                          deviceID: userAccount.deviceID) { success, error in
         if !success {
           NSLog("Failed to return loan via NYPLAdept.")
         }
@@ -1134,7 +1134,7 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
           failureRequiringAlert = true
         } else if let acsmData = try? Data(contentsOf: location) {
           NSLog("Download finished. Fulfilling with userID: \(userAccount.userID ?? "")")
-          NYPLADEPT.sharedInstance().fulfill(withACSMData: acsmData, tag: book.identifier, userID: userAccount.userID, deviceID: userAccount.deviceID)
+          AdobeDRMContainer.shared.fulfill(withACSMData: acsmData, tag: book.identifier, userID: userAccount.userID, deviceID: userAccount.deviceID)
         }
 #endif
       case .lcp:
