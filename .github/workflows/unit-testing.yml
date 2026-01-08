@@ -69,100 +69,75 @@ jobs:
           BUILD_CONTEXT: ci
         continue-on-error: true
           
-      - name: Find and Process Test Results
+      - name: Find Test Results
         if: always()
-        id: results
+        id: find_results
         run: |
-          # Find xcresult
-          RESULT_PATH=""
+          echo "Looking for xcresult bundles..."
+          
+          # Check current directory
           if [ -d "TestResults.xcresult" ]; then
-            RESULT_PATH="TestResults.xcresult"
-          else
-            RESULT_PATH=$(find . -name "*.xcresult" -type d 2>/dev/null | head -1)
-          fi
-          
-          if [ -z "$RESULT_PATH" ]; then
-            RESULT_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "*.xcresult" -type d -mmin -30 2>/dev/null | head -1)
-            if [ -n "$RESULT_PATH" ]; then
-              cp -r "$RESULT_PATH" ./TestResults.xcresult
-              RESULT_PATH="TestResults.xcresult"
-            fi
-          fi
-          
-          mkdir -p test-report
-          
-          if [ -n "$RESULT_PATH" ] && [ -d "$RESULT_PATH" ]; then
+            echo "Found: ./TestResults.xcresult"
+            echo "path=TestResults.xcresult" >> $GITHUB_OUTPUT
             echo "found=true" >> $GITHUB_OUTPUT
-            echo "path=$RESULT_PATH" >> $GITHUB_OUTPUT
-            
-            # Extract human-readable summary
-            echo "# Test Results Summary" > test-report/summary.txt
-            echo "Generated: $(date)" >> test-report/summary.txt
-            echo "" >> test-report/summary.txt
-            
-            # Get metrics
-            RESULT_JSON=$(xcrun xcresulttool get --path "$RESULT_PATH" --format json 2>/dev/null || echo "{}")
-            TESTS=$(echo "$RESULT_JSON" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('metrics',{}).get('testsCount',{}).get('_value','0'))" 2>/dev/null || echo "0")
-            FAILURES=$(echo "$RESULT_JSON" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('metrics',{}).get('testsFailedCount',{}).get('_value','0'))" 2>/dev/null || echo "0")
-            
-            echo "tests=$TESTS" >> $GITHUB_OUTPUT
-            echo "failures=$FAILURES" >> $GITHUB_OUTPUT
-            
-            if [ "$TESTS" != "0" ] && [ "$TESTS" != "" ]; then
-              PASSED=$((TESTS - FAILURES))
-              echo "Total Tests: $TESTS" >> test-report/summary.txt
-              echo "Passed: $PASSED" >> test-report/summary.txt
-              echo "Failed: $FAILURES" >> test-report/summary.txt
-            fi
-            
-            echo "" >> test-report/summary.txt
-            echo "## Failed Tests" >> test-report/summary.txt
-            
-            # Extract failed test names
-            xcrun xcresulttool get --path "$RESULT_PATH" --format json 2>/dev/null | \
-              python3 -c "
-          import json, sys
-          try:
-              data = json.load(sys.stdin)
-              actions = data.get('actions', {}).get('_values', [])
-              for action in actions:
-                  result = action.get('actionResult', {})
-                  issues = result.get('issues', {})
-                  test_failures = issues.get('testFailureSummaries', {}).get('_values', [])
-                  for failure in test_failures:
-                      name = failure.get('testCaseName', {}).get('_value', 'Unknown')
-                      msg = failure.get('message', {}).get('_value', '')
-                      print(f'❌ {name}')
-                      if msg:
-                          print(f'   {msg[:100]}')
-          except:
-              pass
-          " >> test-report/summary.txt 2>/dev/null || echo "Could not extract failure details" >> test-report/summary.txt
-            
-          else
-            echo "found=false" >> $GITHUB_OUTPUT
-            echo "tests=0" >> $GITHUB_OUTPUT
-            echo "failures=0" >> $GITHUB_OUTPUT
-            echo "No xcresult bundle found" > test-report/summary.txt
+            exit 0
           fi
           
-      - name: Generate GitHub Summary
+          # Search in common locations
+          FOUND=$(find . -name "*.xcresult" -type d 2>/dev/null | head -1)
+          if [ -n "$FOUND" ]; then
+            echo "Found: $FOUND"
+            echo "path=$FOUND" >> $GITHUB_OUTPUT
+            echo "found=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Search in DerivedData
+          FOUND=$(find ~/Library/Developer/Xcode/DerivedData -name "*.xcresult" -type d 2>/dev/null | head -1)
+          if [ -n "$FOUND" ]; then
+            echo "Found in DerivedData: $FOUND"
+            cp -r "$FOUND" ./TestResults.xcresult
+            echo "path=TestResults.xcresult" >> $GITHUB_OUTPUT
+            echo "found=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          echo "No xcresult found"
+          echo "found=false" >> $GITHUB_OUTPUT
+          
+      - name: Generate Test Summary
         if: always()
         run: |
           echo "## 🧪 Test Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
-          TESTS="${{ steps.results.outputs.tests }}"
-          FAILURES="${{ steps.results.outputs.failures }}"
+          RESULT_PATH="${{ steps.find_results.outputs.path }}"
           
-          if [ "$TESTS" != "0" ] && [ "$TESTS" != "" ]; then
-            PASSED=$((TESTS - FAILURES))
-            if [ "$FAILURES" = "0" ]; then
-              echo "✅ **$PASSED passed** out of **$TESTS tests**" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.find_results.outputs.found }}" = "true" ] && [ -d "$RESULT_PATH" ]; then
+            # Get test counts
+            RESULT_JSON=$(xcrun xcresulttool get --path "$RESULT_PATH" --format json 2>/dev/null || echo "{}")
+            
+            TESTS=$(echo "$RESULT_JSON" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('metrics',{}).get('testsCount',{}).get('_value','0'))" 2>/dev/null || echo "0")
+            FAILURES=$(echo "$RESULT_JSON" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('metrics',{}).get('testsFailedCount',{}).get('_value','0'))" 2>/dev/null || echo "0")
+            
+            if [ "$TESTS" != "0" ] && [ "$TESTS" != "" ]; then
+              PASSED=$((TESTS - FAILURES))
+              if [ "$FAILURES" = "0" ]; then
+                echo "✅ **$PASSED passed** out of **$TESTS tests**" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "❌ **$PASSED passed**, **$FAILURES failed** out of **$TESTS tests**" >> $GITHUB_STEP_SUMMARY
+              fi
             else
-              echo "❌ **$PASSED passed**, **$FAILURES failed** out of **$TESTS tests**" >> $GITHUB_STEP_SUMMARY
+              # Fallback: show that tests ran
+              SIZE=$(du -sh "$RESULT_PATH" 2>/dev/null | cut -f1 || echo "unknown")
+              if [ "${{ steps.tests.outcome }}" = "success" ]; then
+                echo "✅ All tests passed (result bundle: $SIZE)" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "❌ Some tests failed (result bundle: $SIZE)" >> $GITHUB_STEP_SUMMARY
+              fi
             fi
           else
+            # No xcresult - use test step outcome
             if [ "${{ steps.tests.outcome }}" = "success" ]; then
               echo "✅ All tests passed" >> $GITHUB_STEP_SUMMARY
             else
@@ -170,23 +145,11 @@ jobs:
             fi
           fi
           
-          # Show failed tests if any
-          if [ -f "test-report/summary.txt" ]; then
-            FAILED_TESTS=$(grep "^❌" test-report/summary.txt 2>/dev/null | head -10)
-            if [ -n "$FAILED_TESTS" ]; then
-              echo "" >> $GITHUB_STEP_SUMMARY
-              echo "### Failed Tests" >> $GITHUB_STEP_SUMMARY
-              echo '```' >> $GITHUB_STEP_SUMMARY
-              echo "$FAILED_TESTS" >> $GITHUB_STEP_SUMMARY
-              echo '```' >> $GITHUB_STEP_SUMMARY
-            fi
-          fi
-          
       - name: Collect Snapshot Failures
         if: always()
         id: snapshots
         run: |
-          mkdir -p test-report/snapshots
+          mkdir -p snapshot-failures
           
           echo "Searching for snapshot failures..."
           
@@ -196,28 +159,28 @@ jobs:
           echo "Checking simulator temp directories..."
           find /Users/runner/Library/Developer/CoreSimulator -name "*.png" -path "*tmp*" -type f 2>/dev/null | while read -r file; do
             echo "Found: $file"
-            cp "$file" test-report/snapshots/ 2>/dev/null || true
+            cp "$file" snapshot-failures/ 2>/dev/null || true
           done
           
           # 2. App container tmp directories
           echo "Checking app containers..."
           find /Users/runner/Library/Developer/CoreSimulator/Devices -path "*/tmp/*.png" -type f 2>/dev/null | while read -r file; do
             echo "Found: $file"
-            cp "$file" test-report/snapshots/ 2>/dev/null || true
+            cp "$file" snapshot-failures/ 2>/dev/null || true
           done
           
           # 3. Any Failures directories in DerivedData
           echo "Checking DerivedData..."
           find ~/Library/Developer/Xcode/DerivedData -name "*.png" -path "*Failures*" -type f 2>/dev/null | while read -r file; do
             echo "Found: $file"
-            cp "$file" test-report/snapshots/ 2>/dev/null || true
+            cp "$file" snapshot-failures/ 2>/dev/null || true
           done
           
           # 4. Check workspace for any snapshot test output
           echo "Checking workspace..."
           find . -name "*.png" -path "*tmp*" -type f 2>/dev/null | while read -r file; do
             echo "Found: $file"
-            cp "$file" test-report/snapshots/ 2>/dev/null || true
+            cp "$file" snapshot-failures/ 2>/dev/null || true
           done
           
           # 5. Check for __Snapshots__ directories with recent modifications
@@ -225,12 +188,12 @@ jobs:
           if [ -d "TestResults.xcresult" ]; then
             find . -path "*__Snapshots__*" -name "*.png" -newer TestResults.xcresult -type f 2>/dev/null | while read -r file; do
               echo "Found recently modified: $file"
-              cp "$file" test-report/snapshots/ 2>/dev/null || true
+              cp "$file" snapshot-failures/ 2>/dev/null || true
             done
           fi
           
           # Count what we found
-          COUNT=$(ls -1 test-report/snapshots/*.png 2>/dev/null | wc -l | tr -d ' ')
+          COUNT=$(ls -1 snapshot-failures/*.png 2>/dev/null | wc -l | tr -d ' ')
           echo "Total snapshot files found: $COUNT"
           
           if [ "$COUNT" -gt "0" ]; then
@@ -240,39 +203,44 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "### 📸 Snapshot Failures ($COUNT)" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "Download **test-report** artifact → snapshots folder" >> $GITHUB_STEP_SUMMARY
+            echo "Download **snapshot-failures** artifact to view diff images" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            ls -1 test-report/snapshots/*.png 2>/dev/null | head -15 | while read -r f; do
+            ls -1 snapshot-failures/*.png 2>/dev/null | head -15 | while read -r f; do
               echo "- \`$(basename "$f")\`" >> $GITHUB_STEP_SUMMARY
             done
           else
             echo "found=false" >> $GITHUB_OUTPUT
             echo "count=0" >> $GITHUB_OUTPUT
-            
-            # List what directories exist for debugging
-            echo "" >> test-report/summary.txt
-            echo "## Snapshot Search Locations" >> test-report/summary.txt
-            echo "No snapshot failures found in:" >> test-report/summary.txt
-            echo "- /Users/runner/Library/Developer/CoreSimulator/**/tmp/" >> test-report/summary.txt
-            echo "- ~/Library/Developer/Xcode/DerivedData/**/Failures/" >> test-report/summary.txt
-            echo "- ./**/tmp/*.png" >> test-report/summary.txt
           fi
           
-      - name: Upload Test Report
-        if: always()
+      - name: Upload Snapshot Failures
+        if: steps.snapshots.outputs.found == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: test-report
-          path: test-report/
+          name: snapshot-failures
+          path: snapshot-failures/
           retention-days: 3
           if-no-files-found: ignore
           
-      - name: Finish Summary
+      - name: Upload Test Results
+        if: steps.find_results.outputs.found == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: ${{ steps.find_results.outputs.path }}
+          retention-days: 3
+          if-no-files-found: ignore
+          
+      - name: Add Artifact Links
         if: always()
         run: |
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "---" >> $GITHUB_STEP_SUMMARY
-          echo "📦 Download **test-report** artifact for details" >> $GITHUB_STEP_SUMMARY
+          echo "### 📦 Artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "- **test-results** - Full xcresult bundle (open in Xcode)" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.snapshots.outputs.found }}" = "true" ]; then
+            echo "- **snapshot-failures** - PNG diff images from failed snapshot tests" >> $GITHUB_STEP_SUMMARY
+          fi
           
       - name: Fail if tests failed
         if: steps.tests.outcome == 'failure'
