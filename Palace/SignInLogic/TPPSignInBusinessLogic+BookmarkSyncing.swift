@@ -17,6 +17,6 @@ extension TPPSignInBusinessLogic {
     return libraryDetails.supportsSimplyESync &&
       libraryDetails.getLicenseURL(.annotations) != nil &&
       userAccount.hasCredentials() &&
-      libraryAccountID == libraryAccountsProvider.currentAccount?.uuid
+      libraryAccountID == libraryAccountsProvider.currentAccountId
   }
 }

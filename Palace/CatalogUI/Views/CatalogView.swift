@@ -52,6 +52,7 @@ private extension CatalogView {
         ImageProviders.MyBooksView.myLibraryIcon
       }
       .accessibilityIdentifier(AccessibilityID.Catalog.accountButton)
+      .accessibilityLabel(Strings.Generic.switchLibrary)
       .actionSheet(isPresented: $showAccountDialog) { libraryPicker }
     }
     
@@ -66,6 +67,7 @@ private extension CatalogView {
           ImageProviders.MyBooksView.search
         }
         .accessibilityIdentifier(AccessibilityID.Catalog.searchButton)
+        .accessibilityLabel(Strings.Generic.searchCatalog)
       }
     }
   }

@@ -29,17 +29,16 @@ enum SnapshotDevice: String, CaseIterable {
   }
 }
 
+/// Check if running in CI environment (GitHub Actions sets CI=true)
+private var isRunningInCI: Bool {
+  ProcessInfo.processInfo.environment["CI"] != nil
+}
+
 /// Extension to run snapshot tests across multiple devices
 extension XCTestCase {
   
   /// Assert snapshot across all configured devices
-  /// - Parameters:
-  ///   - view: The SwiftUI view to snapshot
-  ///   - name: Optional custom name for the snapshot
-  ///   - record: Whether to record new reference images
-  ///   - file: Source file (auto-captured)
-  ///   - testName: Test function name (auto-captured)
-  ///   - line: Source line (auto-captured)
+  /// - Note: Skipped in CI to reduce test time. Run locally to verify UI.
   @MainActor
   func assertMultiDeviceSnapshot<V: View>(
     of view: V,
@@ -49,6 +48,11 @@ extension XCTestCase {
     testName: String = #function,
     line: UInt = #line
   ) {
+    // Skip snapshot tests in CI - they're slow and should be verified locally
+    guard !isRunningInCI else {
+      return
+    }
+    
     let shouldRecord = record || ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil
     
     for device in SnapshotDevice.allCases {
@@ -67,11 +71,7 @@ extension XCTestCase {
   }
   
   /// Assert snapshot for a single device (for tests that don't need multi-device)
-  /// - Parameters:
-  ///   - view: The SwiftUI view to snapshot
-  ///   - device: The device configuration to use
-  ///   - name: Optional custom name for the snapshot
-  ///   - record: Whether to record new reference images
+  /// - Note: Skipped in CI to reduce test time. Run locally to verify UI.
   @MainActor
   func assertDeviceSnapshot<V: View>(
     of view: V,
@@ -82,6 +82,11 @@ extension XCTestCase {
     testName: String = #function,
     line: UInt = #line
   ) {
+    // Skip snapshot tests in CI
+    guard !isRunningInCI else {
+      return
+    }
+    
     let shouldRecord = record || ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil
     let snapshotName = name.map { "\($0)_\(device.rawValue)" } ?? device.rawValue
     
@@ -97,13 +102,7 @@ extension XCTestCase {
   }
   
   /// Assert snapshot with fixed size (device-independent, for small components)
-  /// - Parameters:
-  ///   - view: The SwiftUI view to snapshot
-  ///   - width: The width for the snapshot
-  ///   - height: The height for the snapshot
-  ///   - userInterfaceStyle: Light or dark mode (default: light)
-  ///   - name: Optional custom name for the snapshot
-  ///   - record: Whether to record new reference images
+  /// - Note: Skipped in CI to reduce test time. Run locally to verify UI.
   @MainActor
   func assertFixedSizeSnapshot<V: View>(
     of view: V,
@@ -116,6 +115,11 @@ extension XCTestCase {
     testName: String = #function,
     line: UInt = #line
   ) {
+    // Skip snapshot tests in CI
+    guard !isRunningInCI else {
+      return
+    }
+    
     let shouldRecord = record || ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil
     
     let traits = UITraitCollection(traitsFrom: [

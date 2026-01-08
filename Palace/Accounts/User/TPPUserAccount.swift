@@ -399,6 +399,23 @@ private enum StorageKey: String {
     
     return expirationDate <= Date()  // Expired if date is in the past
   }
+  
+  private enum TokenExpiry {
+    static let refreshThresholdSeconds: TimeInterval = 300  // 5 minutes
+  }
+  
+  /// Returns true if the auth token exists and will expire within 5 minutes.
+  /// Use this for proactive token refresh before making requests.
+  var authTokenNearExpiry: Bool {
+    guard let credentials = credentials,
+          case let TPPCredentials.token(authToken: _, barcode: _, pin: _, expirationDate: expirationDate) = credentials,
+          let expirationDate = expirationDate else {
+      return false
+    }
+    
+    let expiryThreshold = Date().addingTimeInterval(TokenExpiry.refreshThresholdSeconds)
+    return expirationDate <= expiryThreshold
+  }
 
   var patronFullName: String? {
     if let patron = patron,
