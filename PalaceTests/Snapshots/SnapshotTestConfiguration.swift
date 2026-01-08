@@ -99,13 +99,17 @@ extension XCTestCase {
   /// Assert snapshot with fixed size (device-independent, for small components)
   /// - Parameters:
   ///   - view: The SwiftUI view to snapshot
-  ///   - size: The fixed size for the snapshot
+  ///   - width: The width for the snapshot
+  ///   - height: The height for the snapshot
+  ///   - userInterfaceStyle: Light or dark mode (default: light)
   ///   - name: Optional custom name for the snapshot
   ///   - record: Whether to record new reference images
   @MainActor
   func assertFixedSizeSnapshot<V: View>(
     of view: V,
-    size: CGSize,
+    width: CGFloat,
+    height: CGFloat,
+    userInterfaceStyle: UIUserInterfaceStyle = .light,
     named name: String? = nil,
     record: Bool = false,
     file: StaticString = #file,
@@ -114,9 +118,14 @@ extension XCTestCase {
   ) {
     let shouldRecord = record || ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil
     
+    let traits = UITraitCollection(traitsFrom: [
+      UITraitCollection(displayScale: 2.0),
+      UITraitCollection(userInterfaceStyle: userInterfaceStyle)
+    ])
+    
     assertSnapshot(
       of: view,
-      as: .image(layout: .fixed(width: size.width, height: size.height)),
+      as: .image(layout: .fixed(width: width, height: height), traits: traits),
       named: name,
       record: shouldRecord,
       file: file,

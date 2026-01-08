@@ -13,14 +13,6 @@ import SnapshotTesting
 @MainActor
 final class CatalogSnapshotTests: XCTestCase {
   
-  private var canRecordSnapshots: Bool {
-    #if targetEnvironment(simulator)
-    return true
-    #else
-    return false
-    #endif
-  }
-  
   // MARK: - Helpers
   
   private func createMockBooks(count: Int) -> [TPPBook] {
@@ -36,8 +28,6 @@ final class CatalogSnapshotTests: XCTestCase {
   // MARK: - CatalogLaneRowView
   
   func testCatalogLaneRowView_withBooks() {
-    guard canRecordSnapshots else { return }
-    
     let books = createMockBooks(count: 4)
     let view = CatalogLaneRowView(
       title: "Featured Books",
@@ -49,12 +39,10 @@ final class CatalogSnapshotTests: XCTestCase {
     .frame(width: 390, height: 220)
     .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertMultiDeviceSnapshot(of: view)
   }
   
   func testCatalogLaneRowView_empty() {
-    guard canRecordSnapshots else { return }
-    
     let view = CatalogLaneRowView(
       title: "Empty Lane",
       books: [],
@@ -65,12 +53,10 @@ final class CatalogSnapshotTests: XCTestCase {
     .frame(width: 390, height: 220)
     .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertMultiDeviceSnapshot(of: view)
   }
   
   func testCatalogLaneRowView_loading() {
-    guard canRecordSnapshots else { return }
-    
     let view = CatalogLaneRowView(
       title: "Loading Lane",
       books: [],
@@ -82,12 +68,10 @@ final class CatalogSnapshotTests: XCTestCase {
     .frame(width: 390, height: 220)
     .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertMultiDeviceSnapshot(of: view)
   }
   
   func testCatalogLaneRowView_noHeader() {
-    guard canRecordSnapshots else { return }
-    
     let books = createMockBooks(count: 3)
     let view = CatalogLaneRowView(
       title: "Hidden Header",
@@ -100,38 +84,32 @@ final class CatalogSnapshotTests: XCTestCase {
     .frame(width: 390, height: 180)
     .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertMultiDeviceSnapshot(of: view)
   }
   
   // MARK: - BookImageView
   
   func testBookImageView_epub() {
-    guard canRecordSnapshots else { return }
-    
     let book = TPPBookMocker.snapshotEPUB()
     let view = BookImageView(book: book, height: 150)
       .frame(width: 100, height: 150)
       .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertFixedSizeSnapshot(of: view, width: 100, height: 150)
   }
   
   func testBookImageView_audiobook() {
-    guard canRecordSnapshots else { return }
-    
     let book = TPPBookMocker.snapshotAudiobook()
     let view = BookImageView(book: book, height: 150)
       .frame(width: 100, height: 150)
       .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertFixedSizeSnapshot(of: view, width: 100, height: 150)
   }
   
   // MARK: - FacetToolbarView
   
   func testFacetToolbarView_withSort() {
-    guard canRecordSnapshots else { return }
-    
     let view = FacetToolbarView(
       title: "Fiction",
       showFilter: true,
@@ -142,12 +120,10 @@ final class CatalogSnapshotTests: XCTestCase {
     .frame(width: 390, height: 50)
     .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertMultiDeviceSnapshot(of: view)
   }
   
   func testFacetToolbarView_noSort() {
-    guard canRecordSnapshots else { return }
-    
     let view = FacetToolbarView(
       title: "All Books",
       showFilter: false,
@@ -158,19 +134,17 @@ final class CatalogSnapshotTests: XCTestCase {
     .frame(width: 390, height: 50)
     .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertMultiDeviceSnapshot(of: view)
   }
   
   // MARK: - CatalogLaneSkeletonView
   
   func testCatalogLaneSkeletonView() {
-    guard canRecordSnapshots else { return }
-    
     let view = CatalogLaneSkeletonView()
       .frame(width: 390, height: 200)
       .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertMultiDeviceSnapshot(of: view)
   }
   
   // MARK: - Accessibility

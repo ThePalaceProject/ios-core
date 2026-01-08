@@ -13,22 +13,6 @@ import SnapshotTesting
 @MainActor
 final class MyBooksSnapshotTests: XCTestCase {
   
-  private var canRecordSnapshots: Bool {
-    #if targetEnvironment(simulator)
-    return true
-    #else
-    return false
-    #endif
-  }
-  
-  // Fixed layout traits for consistent snapshots across devices
-  private var fixedTraits: UITraitCollection {
-    UITraitCollection(traitsFrom: [
-      UITraitCollection(displayScale: 2.0),
-      UITraitCollection(userInterfaceStyle: .light)
-    ])
-  }
-  
   private var mockRegistry: TPPBookRegistryMock!
   private var mockImageCache: MockImageCache!
   
@@ -68,72 +52,50 @@ final class MyBooksSnapshotTests: XCTestCase {
   // MARK: - NormalBookCell
   
   func testNormalBookCell_downloadedEPUB() {
-    guard canRecordSnapshots else { return }
-    
     let book = snapshotEPUB()
     let model = createBookCellModel(book: book, state: .downloadSuccessful)
     
     let view = NormalBookCell(model: model)
       .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(
-      of: view,
-      as: .image(layout: .fixed(width: 390, height: 120), traits: fixedTraits)
-    )
+    assertFixedSizeSnapshot(of: view, width: 390, height: 120)
   }
   
   func testNormalBookCell_downloadedAudiobook() {
-    guard canRecordSnapshots else { return }
-    
     let book = snapshotAudiobook()
     let model = createBookCellModel(book: book, state: .downloadSuccessful)
     
     let view = NormalBookCell(model: model)
       .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(
-      of: view,
-      as: .image(layout: .fixed(width: 390, height: 120), traits: fixedTraits)
-    )
+    assertFixedSizeSnapshot(of: view, width: 390, height: 120)
   }
   
   func testNormalBookCell_downloadNeeded() {
-    guard canRecordSnapshots else { return }
-    
     let book = snapshotEPUB()
     let model = createBookCellModel(book: book, state: .downloadNeeded)
     
     let view = NormalBookCell(model: model)
       .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(
-      of: view,
-      as: .image(layout: .fixed(width: 390, height: 120), traits: fixedTraits)
-    )
+    assertFixedSizeSnapshot(of: view, width: 390, height: 120)
   }
   
   // MARK: - DownloadingBookCell
   
   func testDownloadingBookCell() {
-    guard canRecordSnapshots else { return }
-    
     let book = snapshotEPUB()
     let model = createBookCellModel(book: book, state: .downloading)
     
     let view = DownloadingBookCell(model: model)
       .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(
-      of: view,
-      as: .image(layout: .fixed(width: 390, height: 120), traits: fixedTraits)
-    )
+    assertFixedSizeSnapshot(of: view, width: 390, height: 120)
   }
   
   // MARK: - Empty State
   
   func testMyBooksEmptyState() {
-    guard canRecordSnapshots else { return }
-    
     let emptyView = Text(Strings.MyBooksView.emptyViewMessage)
       .multilineTextAlignment(.center)
       .foregroundColor(.gray)
@@ -141,10 +103,7 @@ final class MyBooksSnapshotTests: XCTestCase {
       .accessibilityIdentifier(AccessibilityID.MyBooks.emptyStateView)
       .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(
-      of: emptyView,
-      as: .image(layout: .fixed(width: 390, height: 300), traits: fixedTraits)
-    )
+    assertFixedSizeSnapshot(of: emptyView, width: 390, height: 300)
   }
   
   // MARK: - Button Types

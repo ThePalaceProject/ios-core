@@ -13,14 +13,6 @@ import SnapshotTesting
 @MainActor
 final class BookDetailSnapshotTests: XCTestCase {
   
-  private var canRecordSnapshots: Bool {
-    #if targetEnvironment(simulator)
-    return true
-    #else
-    return false
-    #endif
-  }
-  
   // MARK: - Helpers
   
   private func createMockEPUBBook() -> TPPBook {
@@ -42,52 +34,42 @@ final class BookDetailSnapshotTests: XCTestCase {
   // MARK: - BookImageView
   
   func testBookImageView_epub_snapshot() {
-    guard canRecordSnapshots else { return }
-    
     let book = createMockEPUBBook()
     let view = BookImageView(book: book, height: 280)
       .frame(width: 200, height: 280)
       .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertFixedSizeSnapshot(of: view, width: 200, height: 280)
   }
   
   func testBookImageView_audiobook_snapshot() {
-    guard canRecordSnapshots else { return }
-    
     let book = createMockAudiobook()
     let view = BookImageView(book: book, height: 280)
       .frame(width: 200, height: 280)
       .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertFixedSizeSnapshot(of: view, width: 200, height: 280)
   }
   
   func testBookImageView_pdf_snapshot() {
-    guard canRecordSnapshots else { return }
-    
     let book = createMockPDFBook()
     let view = BookImageView(book: book, height: 280)
       .frame(width: 200, height: 280)
       .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertFixedSizeSnapshot(of: view, width: 200, height: 280)
   }
   
   func testBookImageView_holdBook_snapshot() {
-    guard canRecordSnapshots else { return }
-    
     let book = createMockHoldBook()
     let view = BookImageView(book: book, height: 280)
       .frame(width: 200, height: 280)
       .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertFixedSizeSnapshot(of: view, width: 200, height: 280)
   }
   
   func testBookImageView_allTypes_grid() {
-    guard canRecordSnapshots else { return }
-    
     let books = [
       createMockEPUBBook(),
       createMockAudiobook(),
@@ -104,56 +86,46 @@ final class BookDetailSnapshotTests: XCTestCase {
     .padding()
     .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertMultiDeviceSnapshot(of: view)
   }
   
   // MARK: - BookDetailView
   
   func testBookDetailView_epub() {
-    guard canRecordSnapshots else { return }
-    
     let book = createMockEPUBBook()
     let view = BookDetailView(book: book)
       .frame(width: 390, height: 700)
     
-    assertSnapshot(of: view, as: .image)
+    assertMultiDeviceSnapshot(of: view)
   }
   
   func testBookDetailView_audiobook() {
-    guard canRecordSnapshots else { return }
-    
     let book = createMockAudiobook()
     let view = BookDetailView(book: book)
       .frame(width: 390, height: 700)
     
-    assertSnapshot(of: view, as: .image)
+    assertMultiDeviceSnapshot(of: view)
   }
   
   func testBookDetailView_pdf() {
-    guard canRecordSnapshots else { return }
-    
     let book = createMockPDFBook()
     let view = BookDetailView(book: book)
       .frame(width: 390, height: 700)
     
-    assertSnapshot(of: view, as: .image)
+    assertMultiDeviceSnapshot(of: view)
   }
   
   func testBookDetailView_holdBook() {
-    guard canRecordSnapshots else { return }
-    
     let book = createMockHoldBook()
     let view = BookDetailView(book: book)
       .frame(width: 390, height: 700)
     
-    assertSnapshot(of: view, as: .image)
+    assertMultiDeviceSnapshot(of: view)
   }
   
   // MARK: - BookButtonsView
   
   func testBookButtonsView_canBorrow() {
-    guard canRecordSnapshots else { return }
-    
     let book = createMockEPUBBook()
     let provider = MockBookButtonProvider(book: book, state: .canBorrow)
     
@@ -162,12 +134,10 @@ final class BookDetailSnapshotTests: XCTestCase {
       .padding()
       .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertMultiDeviceSnapshot(of: view)
   }
   
   func testBookButtonsView_downloadSuccessful_epub() {
-    guard canRecordSnapshots else { return }
-    
     let book = createMockEPUBBook()
     let provider = MockBookButtonProvider(book: book, state: .downloadSuccessful)
     
@@ -176,12 +146,10 @@ final class BookDetailSnapshotTests: XCTestCase {
       .padding()
       .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertMultiDeviceSnapshot(of: view)
   }
   
   func testBookButtonsView_downloadSuccessful_audiobook() {
-    guard canRecordSnapshots else { return }
-    
     let book = createMockAudiobook()
     let provider = MockBookButtonProvider(book: book, state: .downloadSuccessful)
     
@@ -190,7 +158,7 @@ final class BookDetailSnapshotTests: XCTestCase {
       .padding()
       .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertMultiDeviceSnapshot(of: view)
   }
   
   // MARK: - Button State Logic

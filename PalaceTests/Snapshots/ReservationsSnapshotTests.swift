@@ -13,22 +13,6 @@ import SnapshotTesting
 @MainActor
 final class ReservationsSnapshotTests: XCTestCase {
   
-  private var canRecordSnapshots: Bool {
-    #if targetEnvironment(simulator)
-    return true
-    #else
-    return false
-    #endif
-  }
-  
-  // Fixed layout traits for consistent snapshots across devices
-  private var fixedTraits: UITraitCollection {
-    UITraitCollection(traitsFrom: [
-      UITraitCollection(displayScale: 2.0),
-      UITraitCollection(userInterfaceStyle: .light)
-    ])
-  }
-  
   private var mockRegistry: TPPBookRegistryMock!
   private var mockImageCache: MockImageCache!
   
@@ -64,40 +48,28 @@ final class ReservationsSnapshotTests: XCTestCase {
   // MARK: - NormalBookCell
   
   func testNormalBookCell_holding() {
-    guard canRecordSnapshots else { return }
-    
     let book = snapshotHoldBook()
     let model = createBookCellModel(book: book, state: .holding)
     
     let view = NormalBookCell(model: model)
       .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(
-      of: view,
-      as: .image(layout: .fixed(width: 390, height: 120), traits: fixedTraits)
-    )
+    assertFixedSizeSnapshot(of: view, width: 390, height: 120)
   }
   
   func testNormalBookCell_downloadSuccessful() {
-    guard canRecordSnapshots else { return }
-    
     let book = TPPBookMocker.snapshotEPUB()
     let model = createBookCellModel(book: book, state: .downloadSuccessful)
     
     let view = NormalBookCell(model: model)
       .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(
-      of: view,
-      as: .image(layout: .fixed(width: 390, height: 120), traits: fixedTraits)
-    )
+    assertFixedSizeSnapshot(of: view, width: 390, height: 120)
   }
   
   // MARK: - Empty State
   
   func testReservationsEmptyState() {
-    guard canRecordSnapshots else { return }
-    
     let emptyView = Text(Strings.HoldsView.emptyMessage)
       .multilineTextAlignment(.center)
       .foregroundColor(Color(white: 0.667))
@@ -107,10 +79,7 @@ final class ReservationsSnapshotTests: XCTestCase {
       .accessibilityIdentifier(AccessibilityID.Holds.emptyStateView)
       .background(Color(TPPConfiguration.backgroundColor()))
     
-    assertSnapshot(
-      of: emptyView,
-      as: .image(layout: .fixed(width: 390, height: 400), traits: fixedTraits)
-    )
+    assertFixedSizeSnapshot(of: emptyView, width: 390, height: 400)
   }
   
   // MARK: - Button States

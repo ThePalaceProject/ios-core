@@ -13,19 +13,9 @@ import SnapshotTesting
 @MainActor
 final class SearchSnapshotTests: XCTestCase {
   
-  private var canRecordSnapshots: Bool {
-    #if targetEnvironment(simulator)
-    return true
-    #else
-    return false
-    #endif
-  }
-  
   // MARK: - CatalogSearchView
   
   func testCatalogSearchView_withBooks() {
-    guard canRecordSnapshots else { return }
-    
     let books = [
       TPPBookMocker.snapshotEPUB(),
       TPPBookMocker.snapshotAudiobook(),
@@ -40,12 +30,10 @@ final class SearchSnapshotTests: XCTestCase {
     .frame(width: 390, height: 700)
     .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertMultiDeviceSnapshot(of: view)
   }
   
   func testCatalogSearchView_empty() {
-    guard canRecordSnapshots else { return }
-    
     let view = CatalogSearchView(
       books: [],
       onBookSelected: { _ in }
@@ -53,14 +41,12 @@ final class SearchSnapshotTests: XCTestCase {
     .frame(width: 390, height: 400)
     .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertMultiDeviceSnapshot(of: view)
   }
   
   // MARK: - BookListView
   
   func testBookListView_grid() {
-    guard canRecordSnapshots else { return }
-    
     let books = [
       TPPBookMocker.snapshotEPUB(),
       TPPBookMocker.snapshotAudiobook()
@@ -75,12 +61,10 @@ final class SearchSnapshotTests: XCTestCase {
     .frame(width: 390, height: 500)
     .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertMultiDeviceSnapshot(of: view)
   }
   
   func testBookListView_loading() {
-    guard canRecordSnapshots else { return }
-    
     let view = BookListView(
       books: [],
       isLoading: .constant(true),
@@ -89,7 +73,7 @@ final class SearchSnapshotTests: XCTestCase {
     .frame(width: 390, height: 300)
     .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertMultiDeviceSnapshot(of: view)
   }
   
   // MARK: - Accessibility

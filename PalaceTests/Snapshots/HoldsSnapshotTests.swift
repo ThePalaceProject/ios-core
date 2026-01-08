@@ -13,15 +13,6 @@ import SnapshotTesting
 @MainActor
 final class HoldsSnapshotTests: XCTestCase {
   
-  private var canRecordSnapshots: Bool {
-    ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil || isRecording
-  }
-  
-  override func setUp() {
-    super.setUp()
-    isRecording = false
-  }
-  
   // MARK: - Empty State Tests
   
   func testHoldsEmptyState() {
@@ -35,7 +26,7 @@ final class HoldsSnapshotTests: XCTestCase {
     .frame(width: 390, height: 400)
     .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: emptyView, as: .image)
+    assertMultiDeviceSnapshot(of: emptyView)
   }
   
   func testHoldsEmptyState_darkMode() {
@@ -50,7 +41,7 @@ final class HoldsSnapshotTests: XCTestCase {
     .background(Color(UIColor.systemBackground))
     .colorScheme(.dark)
     
-    assertSnapshot(of: emptyView, as: .image)
+    assertFixedSizeSnapshot(of: emptyView, width: 390, height: 400, userInterfaceStyle: .dark)
   }
   
   // MARK: - Loading State Tests
@@ -60,7 +51,7 @@ final class HoldsSnapshotTests: XCTestCase {
       .frame(width: 390, height: 600)
       .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: loadingView, as: .image)
+    assertMultiDeviceSnapshot(of: loadingView)
   }
   
   // MARK: - Book List Tests
@@ -85,7 +76,7 @@ final class HoldsSnapshotTests: XCTestCase {
     .padding(.horizontal, 8)
     .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: bookListView, as: .image)
+    assertMultiDeviceSnapshot(of: bookListView)
   }
   
   func testHoldsBookList_darkMode() {
@@ -104,7 +95,7 @@ final class HoldsSnapshotTests: XCTestCase {
     .background(Color(UIColor.systemBackground))
     .colorScheme(.dark)
     
-    assertSnapshot(of: bookListView, as: .image)
+    assertFixedSizeSnapshot(of: bookListView, width: 390, height: 400, userInterfaceStyle: .dark)
   }
   
   // MARK: - Search Bar Tests
@@ -122,7 +113,7 @@ final class HoldsSnapshotTests: XCTestCase {
     .frame(width: 390, height: 60)
     .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: searchBar, as: .image)
+    assertMultiDeviceSnapshot(of: searchBar)
   }
   
   func testHoldsSearchBar_withText() {
@@ -138,7 +129,6 @@ final class HoldsSnapshotTests: XCTestCase {
     .frame(width: 390, height: 60)
     .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: searchBar, as: .image)
+    assertMultiDeviceSnapshot(of: searchBar)
   }
 }
-
