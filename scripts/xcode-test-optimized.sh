@@ -38,7 +38,7 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
     
     for SIM in "${SIMULATORS[@]}"; do
         echo "Attempting to use: $SIM"
-        if xcodebuild test \
+        xcodebuild test \
             -project Palace.xcodeproj \
             -scheme Palace \
             -destination "platform=iOS Simulator,name=$SIM" \
@@ -52,12 +52,15 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
             ONLY_ACTIVE_ARCH=YES \
             GCC_OPTIMIZATION_LEVEL=0 \
             SWIFT_OPTIMIZATION_LEVEL=-Onone \
-            ENABLE_TESTABILITY=YES 2>/dev/null; then
-            echo "✅ Successfully used simulator: $SIM"
+            ENABLE_TESTABILITY=YES
+        TEST_EXIT_CODE=$?
+        
+        # If xcresult was created, tests ran (even if some failed) - stop trying simulators
+        if [ -d "TestResults.xcresult" ]; then
+            echo "✅ Tests executed on simulator: $SIM (exit code: $TEST_EXIT_CODE)"
             break
         else
-            echo "❌ Failed with simulator: $SIM, trying next..."
-            rm -rf TestResults.xcresult
+            echo "❌ Simulator $SIM unavailable or build failed, trying next..."
         fi
     done
 else
@@ -80,7 +83,7 @@ else
         
         for SIM in "${FALLBACK_SIMULATORS[@]}"; do
             echo "Trying fallback simulator: $SIM"
-            if xcodebuild test \
+            xcodebuild test \
                 -project Palace.xcodeproj \
                 -scheme Palace \
                 -destination "platform=iOS Simulator,name=$SIM" \
@@ -94,12 +97,14 @@ else
                 ONLY_ACTIVE_ARCH=YES \
                 GCC_OPTIMIZATION_LEVEL=0 \
                 SWIFT_OPTIMIZATION_LEVEL=-Onone \
-                ENABLE_TESTABILITY=YES 2>/dev/null; then
-                echo "✅ Fallback successful with: $SIM"
+                ENABLE_TESTABILITY=YES
+            TEST_EXIT_CODE=$?
+            
+            if [ -d "TestResults.xcresult" ]; then
+                echo "✅ Tests executed with: $SIM (exit code: $TEST_EXIT_CODE)"
                 break
             else
-                echo "❌ Fallback failed with: $SIM"
-                rm -rf TestResults.xcresult
+                echo "❌ Simulator $SIM unavailable, trying next..."
             fi
         done
     else
