@@ -28,6 +28,10 @@ echo "Detecting test environment and finding suitable simulator..."
 if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
     echo "Running in CI environment - trying multiple fallback strategies"
     
+    # Detect architecture
+    ARCH=$(uname -m)
+    echo "CI runner architecture: $ARCH"
+    
     # List available simulators for debugging
     echo "Available iPhone simulators in CI:"
     xcrun simctl list devices available | grep iPhone | head -10
@@ -35,12 +39,21 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
     # Try simulators available in GitHub Actions macOS-14 runners (Xcode 16.2)
     SIMULATORS=("iPhone 16" "iPhone 15" "iPhone 15 Pro" "iPhone SE (3rd generation)")
     
+    # On Apple Silicon (arm64), explicitly specify arch to avoid Rosetta/x86_64 issues
+    if [ "$ARCH" == "arm64" ]; then
+        ARCH_SPEC=",arch=arm64"
+        echo "Using native arm64 architecture for simulator"
+    else
+        ARCH_SPEC=""
+        echo "Using default architecture for simulator"
+    fi
+    
     for SIM in "${SIMULATORS[@]}"; do
         echo "Attempting to use: $SIM"
         if xcodebuild test \
             -project Palace.xcodeproj \
             -scheme Palace \
-            -destination "platform=iOS Simulator,name=$SIM" \
+            -destination "platform=iOS Simulator,name=$SIM$ARCH_SPEC" \
             -configuration Debug \
             -resultBundlePath TestResults.xcresult \
             -enableCodeCoverage YES \
