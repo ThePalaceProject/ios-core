@@ -119,7 +119,6 @@ jobs:
           echo "passed=0" >> $GITHUB_OUTPUT
           echo "failed=0" >> $GITHUB_OUTPUT
           echo "skipped=0" >> $GITHUB_OUTPUT
-          echo "duration=unknown" >> $GITHUB_OUTPUT
           echo "failed_tests=" >> $GITHUB_OUTPUT
           
           if [ "${{ steps.find_results.outputs.found }}" != "true" ] || [ ! -d "$RESULT_PATH" ]; then
@@ -127,33 +126,14 @@ jobs:
             exit 0
           fi
           
-          # Get JSON from xcresult
-          RESULT_JSON=$(xcrun xcresulttool get --path "$RESULT_PATH" --format json 2>/dev/null || echo "{}")
+          echo "Parsing test results from: $RESULT_PATH"
           
-          # Parse metrics
-          TESTS=$(echo "$RESULT_JSON" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('metrics',{}).get('testsCount',{}).get('_value','0'))" 2>/dev/null || echo "0")
-          FAILURES=$(echo "$RESULT_JSON" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('metrics',{}).get('testsFailedCount',{}).get('_value','0'))" 2>/dev/null || echo "0")
-          SKIPPED=$(echo "$RESULT_JSON" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('metrics',{}).get('testsSkippedCount',{}).get('_value','0'))" 2>/dev/null || echo "0")
+          # Use the robust Python parser
+          python3 scripts/parse-xcresult.py "$RESULT_PATH" || true
           
-          if [ "$TESTS" != "0" ] && [ "$TESTS" != "" ]; then
-            PASSED=$((TESTS - FAILURES - SKIPPED))
-            echo "tests=$TESTS" >> $GITHUB_OUTPUT
-            echo "passed=$PASSED" >> $GITHUB_OUTPUT
-            echo "failed=$FAILURES" >> $GITHUB_OUTPUT
-            echo "skipped=$SKIPPED" >> $GITHUB_OUTPUT
-          fi
-          
-          # Extract failed test names using xcresulttool
-          if [ "$FAILURES" != "0" ] && [ "$FAILURES" != "" ]; then
-            echo "Extracting failed test names..."
-            FAILED_TESTS=$(xcrun xcresulttool get --path "$RESULT_PATH" --format json 2>/dev/null | python3 scripts/parse-test-results.py 2>/dev/null || echo "")
-            
-            if [ -n "$FAILED_TESTS" ]; then
-              echo "failed_tests<<EOF" >> $GITHUB_OUTPUT
-              echo "$FAILED_TESTS" >> $GITHUB_OUTPUT
-              echo "EOF" >> $GITHUB_OUTPUT
-            fi
-          fi
+          # Debug: Show what was parsed
+          echo "Parsed outputs:"
+          grep -E "^(tests|passed|failed|skipped)=" $GITHUB_OUTPUT | tail -4 || true
           
       - name: Generate Test Report
         if: always()
