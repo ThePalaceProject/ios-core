@@ -262,11 +262,30 @@ jobs:
           FIXED_TESTS="${{ steps.history.outputs.fixed_tests }}"
           FLAKY_TESTS="${{ steps.history.outputs.flaky_tests }}"
           TEST_COUNT_CHANGE="${{ steps.history.outputs.test_count_change }}"
+          BUILD_STATUS="${{ steps.parse_results.outputs.build_status }}"
+          BUILD_ERRORS="${{ steps.parse_results.outputs.build_errors }}"
           
           echo "## 🧪 Palace Unit Test Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
-          if [ "$TESTS" != "0" ] && [ "$TESTS" != "" ]; then
+          # Check for build failure first
+          if [ "$BUILD_STATUS" = "failed" ]; then
+            echo "### 🔴 BUILD FAILED" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "The build failed before tests could run." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            
+            if [ -n "$BUILD_ERRORS" ]; then
+              echo "<details>" >> $GITHUB_STEP_SUMMARY
+              echo "<summary><strong>Build Errors</strong></summary>" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+              echo "$BUILD_ERRORS" >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+              echo "</details>" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+            fi
+          elif [ "$TESTS" != "0" ] && [ "$TESTS" != "" ]; then
             # Header with counts
             if [ "$FAILED" = "0" ]; then
               echo "### ✅ ALL TESTS PASSED" >> $GITHUB_STEP_SUMMARY
@@ -299,8 +318,21 @@ jobs:
               echo "" >> $GITHUB_STEP_SUMMARY
             fi
           else
+            # 0 tests - check why
             if [ "${{ steps.tests.outcome }}" = "success" ]; then
               echo "### ✅ ALL TESTS PASSED" >> $GITHUB_STEP_SUMMARY
+            elif [ "$BUILD_STATUS" = "failed" ] || [ -n "$BUILD_ERRORS" ]; then
+              echo "### 🔴 BUILD FAILED - No tests ran" >> $GITHUB_STEP_SUMMARY
+              if [ -n "$BUILD_ERRORS" ]; then
+                echo "" >> $GITHUB_STEP_SUMMARY
+                echo "<details>" >> $GITHUB_STEP_SUMMARY
+                echo "<summary><strong>Build Errors</strong></summary>" >> $GITHUB_STEP_SUMMARY
+                echo "" >> $GITHUB_STEP_SUMMARY
+                echo '```' >> $GITHUB_STEP_SUMMARY
+                echo "$BUILD_ERRORS" >> $GITHUB_STEP_SUMMARY
+                echo '```' >> $GITHUB_STEP_SUMMARY
+                echo "</details>" >> $GITHUB_STEP_SUMMARY
+              fi
             else
               echo "### ❌ TESTS FAILED" >> $GITHUB_STEP_SUMMARY
             fi
@@ -546,6 +578,8 @@ jobs:
             const fixedTests = `${{ steps.history.outputs.fixed_tests }}`;
             const flakyTests = `${{ steps.history.outputs.flaky_tests }}`;
             const testCountChange = '${{ steps.history.outputs.test_count_change }}';
+            const buildStatus = '${{ steps.parse_results.outputs.build_status }}';
+            const buildErrors = `${{ steps.parse_results.outputs.build_errors }}`;
             const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
             const reportUrl = '${{ steps.deploy_report.outputs.report_url }}';
             
@@ -556,7 +590,17 @@ jobs:
               body += `📊 **[View Full Interactive Report](${reportUrl})**\n\n`;
             }
             
-            if (tests !== '0' && tests !== '') {
+            // Check for build failure first
+            if (buildStatus === 'failed') {
+              body += `### 🔴 BUILD FAILED\n\n`;
+              body += `The build failed before tests could run.\n\n`;
+              
+              if (buildErrors && buildErrors.trim()) {
+                body += `<details>\n<summary><strong>Build Errors</strong></summary>\n\n`;
+                body += '```\n' + buildErrors.trim() + '\n```\n';
+                body += `</details>\n\n`;
+              }
+            } else if (tests !== '0' && tests !== '') {
               // Status header
               if (failed === '0') {
                 body += `### ✅ ALL TESTS PASSED\n\n`;
@@ -589,6 +633,11 @@ jobs:
             } else {
               if (testOutcome === 'success') {
                 body += `### ✅ ALL TESTS PASSED\n\n`;
+              } else if (buildErrors && buildErrors.trim()) {
+                body += `### 🔴 BUILD FAILED - No tests ran\n\n`;
+                body += `<details>\n<summary><strong>Build Errors</strong></summary>\n\n`;
+                body += '```\n' + buildErrors.trim() + '\n```\n';
+                body += `</details>\n\n`;
               } else {
                 body += `### ❌ TESTS FAILED\n\n`;
               }

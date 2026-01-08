@@ -11,7 +11,7 @@ Options:
 import json
 import sys
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any
 
 def load_test_data(json_path: str) -> Dict[str, Any]:
@@ -30,7 +30,7 @@ def generate_report(data: Dict[str, Any], commit: str = "", branch: str = "", sn
     # Header
     lines.append("# 🧪 Palace iOS Unit Test Results")
     lines.append("")
-    lines.append(f"**Generated:** {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}")
+    lines.append(f"**Generated:** {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
     if commit:
         lines.append(f"**Commit:** `{commit[:12]}`")
     if branch:
@@ -45,11 +45,34 @@ def generate_report(data: Dict[str, Any], commit: str = "", branch: str = "", sn
     duration = summary.get('duration_formatted', 'unknown')
     pass_rate = summary.get('pass_rate', 'N/A')
     
+    # Get build info
+    build_info = data.get('build', {})
+    build_status = build_info.get('status', 'unknown')
+    build_errors = build_info.get('errors', [])
+    
     # Summary Section
     lines.append("## Summary")
     lines.append("")
     
-    if tests > 0:
+    if build_status == 'failed':
+        lines.append("### 🔴 BUILD FAILED")
+        lines.append("")
+        lines.append("The build failed before tests could run.")
+        lines.append("")
+        
+        if build_errors:
+            lines.append("### Build Errors")
+            lines.append("")
+            lines.append("```")
+            for error in build_errors[:10]:
+                # Truncate long errors
+                error_text = error[:300] + "..." if len(error) > 300 else error
+                lines.append(error_text)
+            if len(build_errors) > 10:
+                lines.append(f"... and {len(build_errors) - 10} more errors")
+            lines.append("```")
+            lines.append("")
+    elif tests > 0:
         if failed == 0:
             lines.append("### ✅ ALL TESTS PASSED")
         else:
@@ -69,6 +92,15 @@ def generate_report(data: Dict[str, Any], commit: str = "", branch: str = "", sn
         lines.append("")
     else:
         lines.append("_No test results available_")
+        if build_errors:
+            lines.append("")
+            lines.append("### Build Errors")
+            lines.append("")
+            lines.append("```")
+            for error in build_errors[:10]:
+                error_text = error[:300] + "..." if len(error) > 300 else error
+                lines.append(error_text)
+            lines.append("```")
         lines.append("")
     
     # Tests by Class

@@ -11,7 +11,7 @@ Options:
 import json
 import sys
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 import html
 
@@ -28,6 +28,36 @@ def escape(text: str) -> str:
     """HTML escape text."""
     return html.escape(str(text)) if text else ""
 
+
+def generate_build_errors_section(build_errors: list) -> str:
+    """Generate HTML section for build errors."""
+    if not build_errors:
+        return ""
+    
+    error_items = []
+    for error in build_errors[:15]:
+        escaped_error = escape(error[:500])
+        error_items.append(f'<div class="build-error-item">{escaped_error}</div>')
+    
+    more_errors = f'<p class="more-errors">... and {len(build_errors) - 15} more errors</p>' if len(build_errors) > 15 else ''
+    
+    return f'''
+        <div class="section" style="border-color: var(--warning);">
+            <div class="section-header" style="background: rgba(210, 153, 34, 0.2);">
+                <h3>🔴 Build Errors</h3>
+            </div>
+            <div class="section-content">
+                <p style="margin-bottom: 15px; color: var(--text-secondary);">
+                    The build failed before tests could run. Here are the errors:
+                </p>
+                <div class="build-errors-list" style="font-family: 'SF Mono', Monaco, monospace; font-size: 0.85rem; background: var(--bg-tertiary); padding: 15px; border-radius: 8px; max-height: 400px; overflow-y: auto;">
+                    {''.join(error_items)}
+                    {more_errors}
+                </div>
+            </div>
+        </div>
+    '''
+
 def generate_html_report(
     test_data: Dict,
     coverage_data: Optional[Dict] = None,
@@ -40,6 +70,7 @@ def generate_html_report(
     classes = test_data.get('classes', {})
     all_tests = test_data.get('tests', [])
     failed_tests = test_data.get('failed_tests', [])
+    build_info = test_data.get('build', {})
     
     tests_count = summary.get('tests', 0)
     passed_count = summary.get('passed', 0)
@@ -48,6 +79,10 @@ def generate_html_report(
     duration = summary.get('duration_formatted', 'N/A')
     pass_rate = summary.get('pass_rate', 'N/A')
     
+    # Build info
+    build_status = build_info.get('status', 'unknown')
+    build_errors = build_info.get('errors', [])
+    
     # Coverage info
     coverage_percent = "N/A"
     coverage_targets = []
@@ -55,9 +90,23 @@ def generate_html_report(
         coverage_percent = f"{coverage_data.get('total_coverage', 0):.1f}%"
         coverage_targets = coverage_data.get('targets', [])
     
-    status_class = "success" if failed_count == 0 else "failure"
-    status_icon = "✅" if failed_count == 0 else "❌"
-    status_text = "ALL TESTS PASSED" if failed_count == 0 else f"{failed_count} TEST(S) FAILED"
+    # Determine status - check build failure first
+    if build_status == 'failed':
+        status_class = "build-failure"
+        status_icon = "🔴"
+        status_text = "BUILD FAILED"
+    elif tests_count == 0 and build_errors:
+        status_class = "build-failure"
+        status_icon = "🔴"
+        status_text = "BUILD FAILED - NO TESTS RAN"
+    elif failed_count == 0:
+        status_class = "success"
+        status_icon = "✅"
+        status_text = "ALL TESTS PASSED"
+    else:
+        status_class = "failure"
+        status_icon = "❌"
+        status_text = f"{failed_count} TEST(S) FAILED"
     
     # Generate test rows HTML
     test_rows = []
@@ -222,6 +271,11 @@ def generate_html_report(
         
         .status-banner.success h2 {{ color: var(--success); }}
         .status-banner.failure h2 {{ color: var(--failure); }}
+        .status-banner.build-failure {{
+            background: linear-gradient(135deg, rgba(210, 153, 34, 0.15) 0%, rgba(210, 153, 34, 0.05) 100%);
+            border: 1px solid var(--warning);
+        }}
+        .status-banner.build-failure h2 {{ color: var(--warning); }}
         
         /* Stats Grid */
         .stats-grid {{
@@ -392,6 +446,23 @@ def generate_html_report(
             color: var(--info);
         }}
         
+        /* Build Errors */
+        .build-error-item {{
+            padding: 8px 12px;
+            margin-bottom: 8px;
+            background: var(--bg-primary);
+            border-left: 3px solid var(--warning);
+            border-radius: 4px;
+            word-break: break-word;
+            white-space: pre-wrap;
+        }}
+        
+        .more-errors {{
+            color: var(--text-secondary);
+            font-style: italic;
+            margin-top: 10px;
+        }}
+        
         /* Coverage */
         .coverage-bar-container {{
             position: relative;
@@ -440,7 +511,7 @@ def generate_html_report(
     <div class="header">
         <h1>🧪 Palace iOS Test Report</h1>
         <p class="meta">
-            Generated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}
+            Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}
             {f' | Commit: <code>{commit[:12]}</code>' if commit else ''}
             {f' | Branch: <code>{branch}</code>' if branch else ''}
         </p>
@@ -478,6 +549,8 @@ def generate_html_report(
                 <div class="label">Coverage</div>
             </div>
         </div>
+        
+        {generate_build_errors_section(build_errors) if build_errors else ''}
         
         {'<div class="section"><div class="section-header"><h3>❌ Failed Tests</h3></div><div class="section-content">' + ''.join(failed_details) + '</div></div>' if failed_details else ''}
         
