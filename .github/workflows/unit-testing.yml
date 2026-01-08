@@ -4,8 +4,10 @@ jobs:
   build-and-test:
     runs-on: macos-14
     permissions:
-      contents: read
+      contents: write
       pull-requests: write
+      pages: write
+      id-token: write
     steps:
       - name: Set up Xcode 16.2
         uses: maxim-lobanov/setup-xcode@v1
@@ -385,15 +387,22 @@ jobs:
             echo "Download **snapshot-failures** artifact to view diff images" >> $GITHUB_STEP_SUMMARY
           fi
           
-          # Artifacts
+          # Report Link and Artifacts
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "---" >> $GITHUB_STEP_SUMMARY
+          
+          REPORT_URL="${{ steps.deploy_report.outputs.report_url }}"
+          if [ -n "$REPORT_URL" ]; then
+            echo "### 🔗 [View Interactive Report]($REPORT_URL)" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+          
           echo "### 📦 Artifacts" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Artifact | Description |" >> $GITHUB_STEP_SUMMARY
           echo "|----------|-------------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **test-report** | 📄 Markdown + HTML report (open test-report.html in browser) |" >> $GITHUB_STEP_SUMMARY
-          echo "| **test-data** | 📊 JSON data (test-data.json + coverage-data.json) |" >> $GITHUB_STEP_SUMMARY
+          echo "| **test-report** | 📄 Markdown + HTML report |" >> $GITHUB_STEP_SUMMARY
+          echo "| **test-data** | 📊 JSON data files |" >> $GITHUB_STEP_SUMMARY
           echo "| **test-results** | 🔍 Full xcresult (open in Xcode) |" >> $GITHUB_STEP_SUMMARY
           if [ "${{ steps.snapshots.outputs.found }}" = "true" ]; then
             echo "| **snapshot-failures** | 🖼️ Visual diff images |" >> $GITHUB_STEP_SUMMARY
@@ -437,6 +446,83 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
           
+      - name: Deploy Report to GitHub Pages
+        if: always()
+        id: deploy_report
+        run: |
+          # Create report directory structure
+          REPORT_DIR="test-reports/${{ github.run_number }}"
+          mkdir -p "$REPORT_DIR"
+          
+          # Copy reports
+          cp test-report/test-report.html "$REPORT_DIR/" 2>/dev/null || true
+          cp test-report/TEST_RESULTS.md "$REPORT_DIR/" 2>/dev/null || true
+          cp test-data.json "$REPORT_DIR/" 2>/dev/null || true
+          cp coverage-data.json "$REPORT_DIR/" 2>/dev/null || true
+          
+          # Copy snapshot viewer if exists
+          if [ -f "snapshot-failures/snapshot-viewer.html" ]; then
+            cp snapshot-failures/snapshot-viewer.html "$REPORT_DIR/"
+            cp snapshot-failures/*.png "$REPORT_DIR/" 2>/dev/null || true
+          fi
+          
+          # Create index.html that redirects to the report
+          cat > "$REPORT_DIR/index.html" << 'INDEXEOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta http-equiv="refresh" content="0; url=test-report.html">
+            <title>Redirecting to Test Report</title>
+          </head>
+          <body>
+            <p>Redirecting to <a href="test-report.html">Test Report</a>...</p>
+          </body>
+          </html>
+          INDEXEOF
+          
+          # Create root index listing recent reports
+          mkdir -p test-reports
+          cat > test-reports/index.html << 'ROOTINDEXEOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>Palace iOS Test Reports</title>
+            <style>
+              body { font-family: -apple-system, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; background: #0d1117; color: #f0f6fc; }
+              h1 { color: #58a6ff; }
+              a { color: #58a6ff; }
+              .report-link { display: block; padding: 10px; margin: 5px 0; background: #161b22; border-radius: 6px; text-decoration: none; }
+              .report-link:hover { background: #21262d; }
+            </style>
+          </head>
+          <body>
+            <h1>🧪 Palace iOS Test Reports</h1>
+            <p>Recent test reports from CI runs:</p>
+            <div id="reports"></div>
+            <script>
+              // This will be populated by the actual report links
+              document.getElementById('reports').innerHTML = '<p>Browse to a specific run number: <code>/test-reports/{run-number}/</code></p>';
+            </script>
+          </body>
+          </html>
+          ROOTINDEXEOF
+          
+          # Output the report URL
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
+          REPO_OWNER="${GITHUB_REPOSITORY%/*}"
+          REPORT_URL="https://${REPO_OWNER}.github.io/${REPO_NAME}/test-reports/${{ github.run_number }}/"
+          echo "report_url=$REPORT_URL" >> $GITHUB_OUTPUT
+          echo "Report will be available at: $REPORT_URL"
+          
+      - name: Publish to GitHub Pages
+        if: always()
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./test-reports
+          destination_dir: test-reports
+          keep_files: true
+          
       - name: Post PR Comment with Results
         if: always() && github.event_name == 'pull_request'
         uses: actions/github-script@v7
@@ -461,8 +547,14 @@ jobs:
             const flakyTests = `${{ steps.history.outputs.flaky_tests }}`;
             const testCountChange = '${{ steps.history.outputs.test_count_change }}';
             const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
+            const reportUrl = '${{ steps.deploy_report.outputs.report_url }}';
             
             let body = '## 🧪 Unit Test Results\n\n';
+            
+            // Add clickable report link at the top
+            if (reportUrl) {
+              body += `📊 **[View Full Interactive Report](${reportUrl})**\n\n`;
+            }
             
             if (tests !== '0' && tests !== '') {
               // Status header
@@ -558,17 +650,24 @@ jobs:
               body += `Download the **snapshot-failures** artifact to view visual differences.\n\n`;
             }
             
-            // Artifacts
+            // Links section
             body += `---\n`;
-            body += `📦 **[View Full Results & Download Artifacts](${runUrl})**\n\n`;
+            if (reportUrl) {
+              body += `🔗 **[Interactive HTML Report](${reportUrl})** | `;
+            }
+            body += `**[CI Run Details](${runUrl})**\n\n`;
+            
+            // Artifacts table
+            body += `<details>\n<summary>📦 <strong>Downloadable Artifacts</strong></summary>\n\n`;
             body += `| Artifact | Description |\n`;
             body += `|----------|-------------|\n`;
-            body += `| test-report | 📄 Detailed Markdown report |\n`;
+            body += `| test-report | 📄 Markdown + HTML reports |\n`;
             body += `| test-data | 📊 JSON data for tooling |\n`;
             body += `| test-results | 🔍 Full xcresult (open in Xcode) |\n`;
             if (snapshotCount && snapshotCount !== '0') {
               body += `| snapshot-failures | 🖼️ Visual diff images |\n`;
             }
+            body += `\n</details>`;
             
             // Find and update or create comment
             const { data: comments } = await github.rest.issues.listComments({
