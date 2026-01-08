@@ -44,6 +44,7 @@ struct CatalogLaneMoreView: View {
           Button(action: { presentSearch() }) {
             ImageProviders.MyBooksView.search
           }
+          .accessibilityLabel(Strings.Generic.searchCatalog)
         }
       }
     }

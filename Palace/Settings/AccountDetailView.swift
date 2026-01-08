@@ -303,6 +303,7 @@ struct AccountDetailView: View {
           Image(systemName: "camera")
             .foregroundColor(Color(TPPConfiguration.mainColor()))
         }
+        .accessibilityLabel(Strings.Generic.scanBarcode)
       }
     }
     .padding(.vertical, Layout.verticalPaddingInput)

@@ -84,6 +84,10 @@ struct Strings {
     static let audiobook = NSLocalizedString("Audiobook", comment: "VoiceOver: Indicates the book is an audiobook")
     static let by = NSLocalizedString("by", comment: "VoiceOver: Author attribution, e.g. 'Book Title by Author Name'")
     static let doubleTapToOpen = NSLocalizedString("Double tap to open", comment: "VoiceOver hint for book buttons")
+    static let switchLibrary = NSLocalizedString("Switch Library", comment: "VoiceOver: Button to switch between libraries")
+    static let searchBooks = NSLocalizedString("Search Books", comment: "VoiceOver: Button to search for books")
+    static let searchCatalog = NSLocalizedString("Search Catalog", comment: "VoiceOver: Button to search the catalog")
+    static let scanBarcode = NSLocalizedString("Scan Barcode", comment: "VoiceOver: Button to scan library card barcode")
   }
   
   struct OETutorialChoiceViewController {
