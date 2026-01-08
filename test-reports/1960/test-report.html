@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Palace iOS Test Report</title>
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-tertiary: #21262d;
+            --text-primary: #f0f6fc;
+            --text-secondary: #8b949e;
+            --border: #30363d;
+            --success: #3fb950;
+            --failure: #f85149;
+            --warning: #d29922;
+            --info: #58a6ff;
+            --accent: #7c3aed;
+        }
+        
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        /* Header */
+        .header {
+            text-align: center;
+            padding: 40px 20px;
+            background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 30px;
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, var(--info) 0%, var(--accent) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .meta {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+        
+        .meta code {
+            background: var(--bg-tertiary);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-family: 'SF Mono', Monaco, monospace;
+        }
+        
+        /* Status Banner */
+        .status-banner {
+            padding: 30px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        
+        .status-banner.success {
+            background: linear-gradient(135deg, rgba(63, 185, 80, 0.15) 0%, rgba(63, 185, 80, 0.05) 100%);
+            border: 1px solid var(--success);
+        }
+        
+        .status-banner.failure {
+            background: linear-gradient(135deg, rgba(248, 81, 73, 0.15) 0%, rgba(248, 81, 73, 0.05) 100%);
+            border: 1px solid var(--failure);
+        }
+        
+        .status-banner h2 {
+            font-size: 1.8rem;
+            margin-bottom: 15px;
+        }
+        
+        .status-banner.success h2 { color: var(--success); }
+        .status-banner.failure h2 { color: var(--failure); }
+        .status-banner.build-failure {
+            background: linear-gradient(135deg, rgba(210, 153, 34, 0.15) 0%, rgba(210, 153, 34, 0.05) 100%);
+            border: 1px solid var(--warning);
+        }
+        .status-banner.build-failure h2 { color: var(--warning); }
+        
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+        }
+        
+        .stat-card .value {
+            font-size: 2rem;
+            font-weight: 700;
+        }
+        
+        .stat-card .label {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .stat-card.passed .value { color: var(--success); }
+        .stat-card.failed .value { color: var(--failure); }
+        .stat-card.coverage .value { color: var(--info); }
+        
+        /* Sections */
+        .section {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            margin-bottom: 30px;
+            overflow: hidden;
+        }
+        
+        .section-header {
+            padding: 15px 20px;
+            background: var(--bg-tertiary);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .section-header h3 {
+            font-size: 1.1rem;
+        }
+        
+        .section-content {
+            padding: 20px;
+        }
+        
+        /* Tables */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        th, td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        th {
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 1px;
+        }
+        
+        tr:hover {
+            background: var(--bg-tertiary);
+        }
+        
+        .status-cell {
+            width: 40px;
+            text-align: center;
+        }
+        
+        .passed-cell { color: var(--success); }
+        .failed-cell { color: var(--failure); }
+        
+        tr.failed { background: rgba(248, 81, 73, 0.1); }
+        tr.passed { }
+        
+        /* Filter/Search */
+        .filters {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .filter-input {
+            flex: 1;
+            min-width: 200px;
+            padding: 10px 15px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-size: 0.95rem;
+        }
+        
+        .filter-input:focus {
+            outline: none;
+            border-color: var(--info);
+        }
+        
+        .filter-btn {
+            padding: 10px 20px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-primary);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .filter-btn:hover, .filter-btn.active {
+            background: var(--info);
+            border-color: var(--info);
+        }
+        
+        /* Failed Tests */
+        .failed-test-card {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--failure);
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+        
+        .failed-test-card h4 {
+            color: var(--failure);
+            margin-bottom: 10px;
+        }
+        
+        .failed-test-card .duration {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            margin-bottom: 10px;
+        }
+        
+        .failure-message {
+            background: var(--bg-primary);
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 0.85rem;
+            overflow-x: auto;
+        }
+        
+        .failure-message code {
+            display: block;
+            margin-top: 5px;
+            color: var(--info);
+        }
+        
+        /* Build Errors */
+        .build-error-item {
+            padding: 8px 12px;
+            margin-bottom: 8px;
+            background: var(--bg-primary);
+            border-left: 3px solid var(--warning);
+            border-radius: 4px;
+            word-break: break-word;
+            white-space: pre-wrap;
+        }
+        
+        .more-errors {
+            color: var(--text-secondary);
+            font-style: italic;
+            margin-top: 10px;
+        }
+        
+        /* Coverage */
+        .coverage-bar-container {
+            position: relative;
+            height: 24px;
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .coverage-bar {
+            height: 100%;
+            transition: width 0.3s;
+        }
+        
+        .coverage-text {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-weight: 600;
+            font-size: 0.85rem;
+        }
+        
+        /* Dark mode toggle */
+        .theme-toggle {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px;
+            cursor: pointer;
+            font-size: 1.2rem;
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            .header h1 { font-size: 1.8rem; }
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            th, td { padding: 8px 10px; font-size: 0.85rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🧪 Palace iOS Test Report</h1>
+        <p class="meta">
+            Generated: 2026-01-08 15:57:10 UTC
+             | Commit: <code>67db0c88c267</code>
+             | Branch: <code>task/PP-3413-add-better-holds-error-reporting</code>
+        </p>
+    </div>
+    
+    <div class="container">
+        <div class="status-banner success">
+            <h2>✅ ALL TESTS PASSED</h2>
+            <p>0 tests completed in N/A</p>
+        </div>
+        
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="value">0</div>
+                <div class="label">Total Tests</div>
+            </div>
+            <div class="stat-card passed">
+                <div class="value">0</div>
+                <div class="label">Passed</div>
+            </div>
+            <div class="stat-card failed">
+                <div class="value">0</div>
+                <div class="label">Failed</div>
+            </div>
+            <div class="stat-card">
+                <div class="value">0</div>
+                <div class="label">Skipped</div>
+            </div>
+            <div class="stat-card">
+                <div class="value">N/A</div>
+                <div class="label">Duration</div>
+            </div>
+            <div class="stat-card coverage">
+                <div class="value">N/A</div>
+                <div class="label">Coverage</div>
+            </div>
+        </div>
+        
+        
+        
+        
+        
+        <div class="section">
+            <div class="section-header">
+                <h3>📊 Tests by Class</h3>
+            </div>
+            <div class="section-content">
+                <table>
+                    <thead>
+                        <tr>
+                            <th></th>
+                            <th>Class</th>
+                            <th>Total</th>
+                            <th>Passed</th>
+                            <th>Failed</th>
+                            <th>Duration</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        
+        
+        <div class="section">
+            <div class="section-header">
+                <h3>📋 All Tests</h3>
+            </div>
+            <div class="section-content">
+                <div class="filters">
+                    <input type="text" class="filter-input" id="searchInput" placeholder="Search tests...">
+                    <button class="filter-btn active" onclick="filterTests('all')">All</button>
+                    <button class="filter-btn" onclick="filterTests('passed')">Passed</button>
+                    <button class="filter-btn" onclick="filterTests('failed')">Failed</button>
+                    <button class="filter-btn" onclick="filterTests('skipped')">Skipped</button>
+                </div>
+                <table id="testsTable">
+                    <thead>
+                        <tr>
+                            <th></th>
+                            <th>Class</th>
+                            <th>Test</th>
+                            <th>Duration</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let currentFilter = 'all';
+        
+        function filterTests(status) {
+            currentFilter = status;
+            document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            applyFilters();
+        }
+        
+        document.getElementById('searchInput').addEventListener('input', applyFilters);
+        
+        function applyFilters() {
+            const search = document.getElementById('searchInput').value.toLowerCase();
+            document.querySelectorAll('.test-row').forEach(row => {
+                const matchesStatus = currentFilter === 'all' || row.dataset.status === currentFilter;
+                const matchesSearch = row.textContent.toLowerCase().includes(search);
+                row.style.display = matchesStatus && matchesSearch ? '' : 'none';
+            });
+        }
+    </script>
+</body>
+</html>
