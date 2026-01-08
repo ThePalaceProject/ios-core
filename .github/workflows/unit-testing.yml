@@ -141,6 +141,20 @@ jobs:
           
           echo "Parsing test results from: $RESULT_PATH"
           
+          # Debug: Show raw xcresulttool output structure
+          echo "=== xcresulttool version ==="
+          xcrun xcresulttool version 2>/dev/null || echo "version command not available"
+          
+          echo "=== Raw test-results summary (first 2000 chars) ==="
+          xcrun xcresulttool get test-results summary --path "$RESULT_PATH" 2>/dev/null | head -c 2000 || echo "summary command failed"
+          
+          echo ""
+          echo "=== Raw test-results tests structure (first 3000 chars) ==="
+          xcrun xcresulttool get test-results tests --path "$RESULT_PATH" 2>/dev/null | head -c 3000 || echo "tests command failed"
+          
+          echo ""
+          echo "=== Parsing with Python script ==="
+          
           # Use the enhanced Python parser - outputs to GITHUB_OUTPUT and test-data.json
           python3 scripts/parse-xcresult.py "$RESULT_PATH" --json test-data.json || true
           
