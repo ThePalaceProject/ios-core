@@ -609,6 +609,29 @@ def print_summary(report: Dict):
     print("", file=sys.stderr)
 
 
+def create_empty_report() -> Dict:
+    """Create an empty/fallback report structure."""
+    return {
+        'api_used': 'none',
+        'summary': {
+            'tests': 0,
+            'passed': 0,
+            'failed': 0,
+            'skipped': 0,
+            'duration': 0,
+            'duration_formatted': 'unknown',
+            'pass_rate': 'N/A'
+        },
+        'build': {
+            'status': 'unknown',
+            'errors': []
+        },
+        'tests': [],
+        'failed_tests': [],
+        'classes': {}
+    }
+
+
 def main():
     if len(sys.argv) < 2:
         print("Usage: parse-xcresult.py <path-to-xcresult> [--json <output.json>]", file=sys.stderr)
@@ -622,11 +645,21 @@ def main():
         if idx + 1 < len(sys.argv):
             json_output_path = sys.argv[idx + 1]
     
+    # Always create a report, even if xcresult doesn't exist
     if not os.path.exists(xcresult_path):
-        print(f"Error: {xcresult_path} not found", file=sys.stderr)
-        sys.exit(1)
+        print(f"Warning: {xcresult_path} not found, creating empty report", file=sys.stderr)
+        report = create_empty_report()
+        report['build']['status'] = 'not_found'
+        report['build']['errors'] = [f'xcresult bundle not found: {xcresult_path}']
+    else:
+        try:
+            report = generate_report(xcresult_path)
+        except Exception as e:
+            print(f"Error generating report: {e}", file=sys.stderr)
+            report = create_empty_report()
+            report['build']['status'] = 'parse_error'
+            report['build']['errors'] = [str(e)]
     
-    report = generate_report(xcresult_path)
     print_summary(report)
     
     github_output = os.environ.get('GITHUB_OUTPUT', '')
@@ -634,6 +667,7 @@ def main():
         output_github_actions(report, github_output)
         print(f"Wrote GitHub Actions output", file=sys.stderr)
     
+    # Always write the JSON file
     with open(json_output_path, 'w') as f:
         json.dump(report, f, indent=2)
     print(f"Wrote JSON: {json_output_path}", file=sys.stderr)
