@@ -399,6 +399,7 @@ struct AccountDetailView: View {
       
       Toggle("", isOn: $viewModel.isSyncEnabled)
         .labelsHidden()
+        .tint(.green)
         .accessibilityIdentifier("signIn.syncBookmarksToggle")
         .onChange(of: viewModel.isSyncEnabled) { newValue in
           viewModel.updateSync(enabled: newValue)

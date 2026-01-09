@@ -173,6 +173,12 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     // Pause Firebase operations when app goes to background
     // This helps prevent the "recursive_mutex lock failed" crash
     FirebaseManager.shared.applicationDidEnterBackground()
+    
+    // Record clean exit when backgrounding - this is the normal way users "close" an app
+    // This prevents false positive crash detection from normal app usage
+    Task {
+      await CrashRecoveryService.shared.recordCleanExit()
+    }
   }
 
   func applicationWillTerminate(_ application: UIApplication) {

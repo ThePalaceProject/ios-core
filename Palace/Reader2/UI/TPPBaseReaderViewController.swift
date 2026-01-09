@@ -122,6 +122,8 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     navigatorContainer.addSubview(navigator.view)
     navigator.view.translatesAutoresizingMaskIntoConstraints = false
     
+    // IMPORTANT: Use FIXED offsets from container edges (not safe area) to prevent
+    // content shifting when navigation bar appears/disappears.
     let fixedTopInset: CGFloat = 100.0  // Letterbox space for navbar + status bar
     let fixedBottomInset: CGFloat = 50.0  // Letterbox space for home indicator
     
