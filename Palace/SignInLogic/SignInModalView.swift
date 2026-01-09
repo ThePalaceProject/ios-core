@@ -71,4 +71,3 @@ class SignInModalPresenter: NSObject {
     presentSignInModal(libraryAccountID: libraryID, completion: completion)
   }
 }
-

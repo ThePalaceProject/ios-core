@@ -410,9 +410,12 @@ extension TPPNetworkExecutor {
           failedTasks.forEach { $0.cancel() }
           
           if let nsError = error as? NSError, nsError.code == 401 {
-            Log.info(#file, "Token refresh failed due to invalid credentials - signing out user")
+            Log.info(#file, "Token refresh failed due to invalid credentials - triggering re-auth")
             DispatchQueue.main.async {
+              // Clear invalid credentials but preserve downloaded content
               TPPUserAccount.sharedAccount().removeAll()
+              // Present sign-in modal so user can re-authenticate
+              SignInModalPresenter.presentSignInModalForCurrentAccount(completion: nil)
             }
           }
           
