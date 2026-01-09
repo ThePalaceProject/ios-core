@@ -701,9 +701,10 @@ private extension TPPBook {
           }
           
           // Use CGContext for thread-safe image resizing (UIGraphicsBeginImageContextWithOptions is NOT thread-safe)
-          let colorSpace = cgImage.colorSpace ?? CGColorSpaceCreateDeviceRGB()
+          // Always use sRGB - source images may be CMYK, grayscale, or other formats that don't support alpha
+          let colorSpace = CGColorSpaceCreateDeviceRGB()
           
-          // Use a safe bitmap configuration
+          // Use premultiplied alpha which is universally supported by CGContext with RGB color space
           let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue)
           
           guard let context = CGContext(

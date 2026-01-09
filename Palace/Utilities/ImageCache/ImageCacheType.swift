@@ -203,17 +203,18 @@ public final class ImageCache: ImageCacheType {
         }
         
         return autoreleasepool {
-            let format = UIGraphicsImageRendererFormat()
-            format.scale = 1
-            format.opaque = false
-            
             guard let cgImage = image.cgImage else {
                 Log.error(#file, "Failed to get CGImage from UIImage")
                 return image
             }
             
-            let colorSpace = cgImage.colorSpace ?? CGColorSpaceCreateDeviceRGB()
-            let bitmapInfo = cgImage.bitmapInfo
+            // Always use sRGB color space to ensure compatibility with all image types
+            // Source images may be CMYK, grayscale, or other unsupported formats
+            let colorSpace = CGColorSpaceCreateDeviceRGB()
+            
+            // Use premultiplied alpha which is universally supported by CGContext
+            // This handles RGB without alpha, CMYK, and other unusual formats
+            let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue)
             
             guard let context = CGContext(
                 data: nil,
