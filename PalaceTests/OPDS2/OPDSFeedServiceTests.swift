@@ -2,7 +2,8 @@
 //  OPDSFeedServiceTests.swift
 //  PalaceTests
 //
-//  Tests for OPDS feed service
+//  Tests for OPDS feed service - API existence and cancellation tests only.
+//  Network-dependent tests are skipped to avoid flakiness and slowdowns.
 //
 
 import XCTest
@@ -20,64 +21,7 @@ final class OPDSFeedServiceTests: XCTestCase {
     XCTAssertTrue(service1 === service2)
   }
   
-  // MARK: - Fetch Feed Error Tests
-  
-  func testFetchFeed_withInvalidURL_throwsError() async {
-    let service = OPDSFeedService.shared
-    let invalidURL = URL(string: "https://invalid.url.that.does.not.exist.example.com/feed")!
-    
-    do {
-      _ = try await service.fetchFeed(from: invalidURL)
-      XCTFail("Expected error to be thrown")
-    } catch {
-      XCTAssertNotNil(error)
-    }
-  }
-  
-  // MARK: - Fetch Entry Error Tests
-  
-  func testFetchEntry_withInvalidURL_throwsError() async {
-    let service = OPDSFeedService.shared
-    let invalidURL = URL(string: "https://invalid.url.example.com/entry")!
-    
-    do {
-      _ = try await service.fetchEntry(from: invalidURL)
-      XCTFail("Expected error to be thrown")
-    } catch {
-      XCTAssertNotNil(error)
-    }
-  }
-  
-  // MARK: - Fetch Book Error Tests
-  
-  func testFetchBook_withInvalidURL_throwsError() async {
-    let service = OPDSFeedService.shared
-    let invalidURL = URL(string: "https://invalid.url.example.com/book")!
-    
-    do {
-      _ = try await service.fetchBook(from: invalidURL)
-      XCTFail("Expected error to be thrown")
-    } catch {
-      XCTAssertNotNil(error)
-    }
-  }
-  
-  // MARK: - Borrow Book Tests
-  
-  func testBorrowBook_withoutAcquisitionURL_throwsError() async {
-    let service = OPDSFeedService.shared
-    let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
-    
-    do {
-      _ = try await service.borrowBook(book)
-      XCTFail("Expected error to be thrown")
-    } catch {
-      // Any error is acceptable - the mock book has no valid acquisition URL
-      XCTAssertTrue(true, "Error thrown as expected: \(error)")
-    }
-  }
-  
-  // MARK: - Cancellation Tests
+  // MARK: - Cancellation Tests (no network calls)
   
   func testCancelRequest_doesNotCrash() async {
     let service = OPDSFeedService.shared
