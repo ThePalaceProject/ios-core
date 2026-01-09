@@ -252,8 +252,37 @@ func performLogOut() {
                                       "AdobeTokenPassword": tokenPassword ?? "N/A"])
           }
 
+          // Check if self was deallocated during the DRM callback
+          Log.info(#file, "🚪 [LOGOUT] DRM callback complete, self is \(self == nil ? "NIL ⚠️" : "valid ✅")")
+          
+          guard let strongSelf = self else {
+            Log.error(#file, "🚪 [LOGOUT] ERROR: self deallocated during DRM callback! Completing logout directly...")
+            // Even if self is nil, we need to complete the logout process
+            // Call static/global cleanup methods directly
+            DispatchQueue.main.async {
+              Log.info(#file, "🚪 [LOGOUT] Performing direct cleanup since self was deallocated")
+              // Clear WebView data directly
+              let dataStore = WKWebsiteDataStore.default()
+              let dataTypes = WKWebsiteDataStore.allWebsiteDataTypes()
+              dataStore.fetchDataRecords(ofTypes: dataTypes) { records in
+                Log.info(#file, "🚪 [LOGOUT] Clearing \(records.count) WebView data records (direct)")
+                dataStore.removeData(ofTypes: dataTypes, for: records) {
+                  Log.info(#file, "🚪 [LOGOUT] ✅ WebView data cleared (direct)")
+                }
+              }
+              // Clear cookies directly
+              if let cookies = HTTPCookieStorage.shared.cookies {
+                Log.info(#file, "🚪 [LOGOUT] Clearing \(cookies.count) HTTP cookies (direct)")
+                for cookie in cookies {
+                  HTTPCookieStorage.shared.deleteCookie(cookie)
+                }
+              }
+            }
+            return
+          }
+          
           Log.info(#file, "🚪 [LOGOUT] Calling completeLogOutProcess() from DRM callback...")
-          self?.completeLogOutProcess()
+          strongSelf.completeLogOutProcess()
           Log.info(#file, "🚪 [LOGOUT] completeLogOutProcess() returned from DRM callback")
       }
     } else {
