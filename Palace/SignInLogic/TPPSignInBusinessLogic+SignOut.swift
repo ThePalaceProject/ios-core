@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import WebKit
 
 extension TPPSignInBusinessLogic {
 
@@ -125,7 +126,34 @@ func performLogOut() {
     bookRegistry.reset(libraryAccountID)
     userAccount.removeAll()
     selectedIDP = nil
+    
+    // Clear WebView data to fully sign out of SAML/OAuth IdPs (e.g., Google)
+    // Without this, the IdP session remains cached and auto-signs in on next attempt
+    clearWebViewData()
+    
     uiDelegate?.businessLogicDidFinishDeauthorizing(self)
+  }
+  
+  /// Clears all WebView data including cookies, cache, local storage, and session data.
+  /// This ensures SAML/OAuth identity providers are fully signed out.
+  private func clearWebViewData() {
+    let dataStore = WKWebsiteDataStore.default()
+    let dataTypes = WKWebsiteDataStore.allWebsiteDataTypes()
+    
+    dataStore.fetchDataRecords(ofTypes: dataTypes) { records in
+      Log.info(#file, "Clearing \(records.count) WebView data records for sign-out")
+      dataStore.removeData(ofTypes: dataTypes, for: records) {
+        Log.info(#file, "WebView data cleared successfully")
+      }
+    }
+    
+    // Also clear shared cookie storage
+    if let cookies = HTTPCookieStorage.shared.cookies {
+      Log.info(#file, "Clearing \(cookies.count) HTTP cookies for sign-out")
+      for cookie in cookies {
+        HTTPCookieStorage.shared.deleteCookie(cookie)
+      }
+    }
   }
 
   #if FEATURE_DRM_CONNECTOR

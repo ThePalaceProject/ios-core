@@ -35,15 +35,6 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     setupWindow()
     configureUIAppearance()
 
-    // Check for crashes and perform recovery
-    Task {
-      await CrashRecoveryService.shared.checkForCrashOnLaunch()
-      
-      // Schedule stable session check after 10 minutes of stable running
-      try? await Task.sleep(nanoseconds: 600_000_000_000) // 10 minutes
-      await CrashRecoveryService.shared.recordStableSession()
-    }
-
     startupQueue.async {
       self.setupBookRegistryAndNotifications()
     }
@@ -173,20 +164,9 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     // Pause Firebase operations when app goes to background
     // This helps prevent the "recursive_mutex lock failed" crash
     FirebaseManager.shared.applicationDidEnterBackground()
-    
-    // Record clean exit when backgrounding - this is the normal way users "close" an app
-    // This prevents false positive crash detection from normal app usage
-    Task {
-      await CrashRecoveryService.shared.recordCleanExit()
-    }
   }
 
   func applicationWillTerminate(_ application: UIApplication) {
-    // Record clean exit for crash detection
-    Task {
-      await CrashRecoveryService.shared.recordCleanExit()
-    }
-    
     audiobookLifecycleManager.willTerminate()
     NotificationCenter.default.removeObserver(self)
     Reachability.shared.stopMonitoring()
