@@ -34,6 +34,8 @@ struct Strings {
     static let loadFailedError = NSLocalizedString("The page could not load due to a conection error.", comment: "")
     static let invalidCredentialsErrorTitle = NSLocalizedString("Invalid Credentials", comment: "")
     static let invalidCredentialsErrorMessage = NSLocalizedString("Please check your username and password and try again.", comment: "")
+    static let sessionExpiredTitle = NSLocalizedString("Session Expired", comment: "Title for session expired alert")
+    static let sessionExpiredMessage = NSLocalizedString("Your session has expired. Please sign in again to continue.", comment: "Message explaining that the user's session has expired")
     static let unknownRequestError = NSLocalizedString("An unknown error occurred. Please check your connection or try again later.", comment: "A generic error message for when a network request fails")
     static let connectionFailed = NSLocalizedString(
       "Connection Failed",
@@ -79,6 +81,13 @@ struct Strings {
     static let search = NSLocalizedString("Search", comment: "Placeholder for Search Field")
     static let done =  NSLocalizedString("Done", comment: "Title for Done button")
     static let clear = NSLocalizedString("Clear", comment: "Button to clear selection")
+    
+    // Accessibility
+    static let audiobook = NSLocalizedString("Audiobook", comment: "VoiceOver: Indicates the book is an audiobook")
+    static let switchLibrary = NSLocalizedString("Switch Library", comment: "VoiceOver: Button to switch between libraries")
+    static let searchBooks = NSLocalizedString("Search Books", comment: "VoiceOver: Button to search for books")
+    static let searchCatalog = NSLocalizedString("Search Catalog", comment: "VoiceOver: Button to search the catalog")
+    static let scanBarcode = NSLocalizedString("Scan Barcode", comment: "VoiceOver: Button to scan library card barcode")
   }
   
   struct OETutorialChoiceViewController {

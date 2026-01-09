@@ -449,8 +449,8 @@ final class BookDetailViewModel: ObservableObject {
           if user.hasAuthToken() {
             self.openBook(book, completion: completion)
             return
-          } else if !(AdobeCertificate.defaultCertificate?.hasExpired ?? false) &&
-                      !NYPLADEPT.sharedInstance().isUserAuthorized(user.userID, withDevice: user.deviceID) {
+          } else if AdobeCertificate.isDRMAvailable &&
+                      !AdobeDRMService.shared.isUserAuthorized(user.userID, deviceID: user.deviceID) {
             let reauthenticator = TPPReauthenticator()
             reauthenticator.authenticateIfNeeded(user, usingExistingCredentials: true) {
               Task { @MainActor in
@@ -572,6 +572,7 @@ final class BookDetailViewModel: ObservableObject {
     
     if book.defaultBookContentType == .audiobook {
       if book.sampleAcquisition?.type == "text/html" {
+        SamplePreviewManager.shared.close()
         presentWebView(book.sampleAcquisition?.hrefURL)
         isProcessingSample = false
         completion?()
@@ -582,6 +583,7 @@ final class BookDetailViewModel: ObservableObject {
         completion?()
       }
     } else {
+      SamplePreviewManager.shared.close()
       EpubSampleFactory.createSample(book: book) { sampleURL, error in
         DispatchQueue.main.async {
           if let error = error {
@@ -589,15 +591,14 @@ final class BookDetailViewModel: ObservableObject {
           } else if let sampleWebURL = sampleURL as? EpubSampleWebURL {
             self.presentWebView(sampleWebURL.url)
           } else if let sampleURL = sampleURL?.url {
-            // Check if this is a Palace Marketplace EPUB sample
-            let isPalaceMarketplace = book.distributor == "Palace Marketplace"
+            // Check if this is an EPUB sample
             let isEpubSample = book.sample?.type == .contentTypeEpubZip
             
-            if isPalaceMarketplace && isEpubSample {
-              // Use Readium EPUB reader for Palace Marketplace EPUB samples
+            if isEpubSample {
+              // Use Readium EPUB reader for EPUB samples
               ReaderService.shared.openSample(book, url: sampleURL)
             } else {
-              // Use WebKit for other samples (maintains backward compatibility)
+              // Use WebKit for HTML/web samples
               let web = BundledHTMLViewController(fileURL: sampleURL, title: book.title)
               if let top = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController() {
                 top.present(web, animated: true)

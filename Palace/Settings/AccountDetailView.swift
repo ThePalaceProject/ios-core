@@ -28,6 +28,9 @@ struct AccountDetailView: View {
       } message: {
         Text(viewModel.alertMessage)
       }
+      .onAppear {
+        viewModel.refreshSignInState()
+      }
   }
   
   @ViewBuilder
@@ -293,12 +296,14 @@ struct AccountDetailView: View {
       .keyboardType(keyboardType(for: viewModel.businessLogic.selectedAuthentication?.patronIDKeyboard))
       .disabled(viewModel.isSignedIn)
       .foregroundColor(viewModel.isSignedIn ? .secondary : .primary)
+      .accessibilityIdentifier(AccessibilityID.SignIn.barcodeField)
       
       if !viewModel.isSignedIn && viewModel.businessLogic.selectedAuthentication?.supportsBarcodeScanner == true {
         Button(action: { viewModel.scanBarcode() }) {
           Image(systemName: "camera")
             .foregroundColor(Color(TPPConfiguration.mainColor()))
         }
+        .accessibilityLabel(Strings.Generic.scanBarcode)
       }
     }
     .padding(.vertical, Layout.verticalPaddingInput)
@@ -315,6 +320,7 @@ struct AccountDetailView: View {
         .keyboardType(keyboardType(for: viewModel.businessLogic.selectedAuthentication?.pinKeyboard))
         .disabled(viewModel.isSignedIn)
         .foregroundColor(viewModel.isSignedIn ? .secondary : .primary)
+        .accessibilityIdentifier(AccessibilityID.SignIn.pinField)
       } else {
         TextField(
           viewModel.businessLogic.selectedAuthentication?.pinLabel ?? DisplayStrings.pin,
@@ -324,6 +330,7 @@ struct AccountDetailView: View {
         .keyboardType(keyboardType(for: viewModel.businessLogic.selectedAuthentication?.pinKeyboard))
         .disabled(viewModel.isSignedIn)
         .foregroundColor(viewModel.isSignedIn ? .secondary : .primary)
+        .accessibilityIdentifier(AccessibilityID.SignIn.pinField)
       }
       
       if LAContext().canEvaluatePolicy(.deviceOwnerAuthentication, error: nil) {
@@ -360,6 +367,7 @@ struct AccountDetailView: View {
       }
     }
     .disabled(!viewModel.canSignIn && !viewModel.isSignedIn)
+    .accessibilityIdentifier(AccessibilityID.SignIn.signInButton)
   }
   
   private var ageCheckCell: some View {
@@ -391,6 +399,8 @@ struct AccountDetailView: View {
       
       Toggle("", isOn: $viewModel.isSyncEnabled)
         .labelsHidden()
+        .tint(.green)
+        .accessibilityIdentifier("signIn.syncBookmarksToggle")
         .onChange(of: viewModel.isSyncEnabled) { newValue in
           viewModel.updateSync(enabled: newValue)
         }

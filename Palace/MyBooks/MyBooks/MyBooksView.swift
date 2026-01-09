@@ -94,6 +94,7 @@ struct MyBooksView: View {
         onFilter: {},
         currentSortTitle: model.facetViewModel.activeSort.localizedString
       )
+      .accessibilityIdentifier(AccessibilityID.MyBooks.sortButton)
       content
     }
   }
@@ -115,6 +116,7 @@ struct MyBooksView: View {
             onSelect: { book in presentBookDetail(for: book) }
           )
         }
+        .accessibilityIdentifier(AccessibilityID.MyBooks.gridView)
         .scrollIndicators(.visible)
         .refreshable { model.reloadData() }
         .scrollDismissesKeyboard(.interactively)
@@ -175,6 +177,8 @@ struct MyBooksView: View {
     Button(action: { model.selectNewLibrary.toggle() }) {
       ImageProviders.MyBooksView.myLibraryIcon
     }
+    .accessibilityIdentifier(AccessibilityID.Settings.manageLibrariesButton)
+    .accessibilityLabel(Strings.Generic.switchLibrary)
     .actionSheet(isPresented: $model.selectNewLibrary) { libraryPicker }
   }
 
@@ -182,6 +186,8 @@ struct MyBooksView: View {
     Button(action: { withAnimation { model.showSearchSheet.toggle() } }) {
       ImageProviders.MyBooksView.search
     }
+    .accessibilityIdentifier(AccessibilityID.MyBooks.searchButton)
+    .accessibilityLabel(Strings.Generic.searchBooks)
   }
 
   private var sortActionSheet: ActionSheet {
@@ -221,6 +227,7 @@ struct MyBooksView: View {
       .foregroundColor(.gray)
       .centered()
       .palaceFont(.body)
+      .accessibilityIdentifier(AccessibilityID.MyBooks.emptyStateView)
   }
 
   private func setupTabBarForiPad() {

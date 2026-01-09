@@ -126,7 +126,7 @@ actor DownloadCoordinator {
   private let downloadExecutor = SerialExecutor()
   
   let downloadProgressPublisher = PassthroughSubject<(String, Double), Never>()
-  private var maxConcurrentDownloads: Int = 2
+  private var maxConcurrentDownloads: Int = 4  // Increased from 2 for better UX
   private let downloadCoordinator = DownloadCoordinator()
   
   @MainActor private var lastBroadcastTime: Date = Date.distantPast
@@ -144,9 +144,9 @@ actor DownloadCoordinator {
     super.init()
     
 #if FEATURE_DRM_CONNECTOR
-    if !(AdobeCertificate.defaultCertificate?.hasExpired ?? true)
-    {
-      NYPLADEPT.sharedInstance().delegate = self
+    // Use safe DRM container to prevent EXC_BREAKPOINT crashes during initialization
+    if AdobeCertificate.isDRMAvailable {
+      AdobeDRMService.shared.setDelegate(self)
     }
 #else
     NSLog("Cannot import ADEPT")
@@ -475,7 +475,6 @@ actor DownloadCoordinator {
 #endif
   
   private func processRegularDownload(for book: TPPBook, withState state: TPPBookState, andRequest initedRequest: URLRequest?) {
-    // CRITICAL FIX: Get the CURRENT book from registry to check acquisition state
     // The book parameter might be stale (from before borrowing completed)
     let currentBook = bookRegistry.book(forIdentifier: book.identifier) ?? book
     
@@ -524,10 +523,17 @@ actor DownloadCoordinator {
     MemoryPressureMonitor.shared.reclaimDiskSpaceIfNeeded(minimumFreeMegabytes: 512)
     enforceContentDiskBudgetIfNeeded(adding: 0)
 
-    if let cookies = userAccount.cookies, state != .SAMLStarted {
-      // Use currentBook to ensure we have the latest book object
+    if state == .SAMLStarted, let cookies = userAccount.cookies {
+      Log.info(#file, "SAML authentication flow for '\(currentBook.title)'")
       handleSAMLStartedState(for: currentBook, withRequest: request, cookies: cookies)
     } else {
+      // Apply saved cookies (if any) and proceed with download
+      // Server will return 401 if cookies are expired, triggering re-auth
+      if userAccount.authToken != nil {
+        Log.debug(#file, "Auth token present for '\(currentBook.title)', proceeding with download")
+      } else if userAccount.cookies != nil {
+        Log.debug(#file, "Using saved SAML cookies for '\(currentBook.title)', proceeding with download")
+      }
       clearAndSetCookies()
       // Use currentBook to ensure registry has correct book object
       addDownloadTask(with: request, book: currentBook)
@@ -555,35 +561,9 @@ actor DownloadCoordinator {
       
       let problemFoundHandler: (_ problemDocument: TPPProblemDocument?) -> Void = { [weak self] problemDocument in
         guard let self = self else { return }
-        self.bookRegistry.setState(.downloadNeeded, for: book.identifier)
         
-        Task { @MainActor [weak self] in
-          guard let self else { return }
-          
-          guard !self.isRequestingCredentials else {
-            NSLog("Already requesting credentials, skipping re-authentication in problemFoundHandler for: \(book.title)")
-            return
-          }
-          
-          self.isRequestingCredentials = true
-          
-          Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
-            self?.isRequestingCredentials = false
-          }
-          
-          self.reauthenticator.authenticateIfNeeded(self.userAccount, usingExistingCredentials: false) { [weak self] in
-            Task { @MainActor [weak self] in
-              self?.isRequestingCredentials = false
-              
-              if self?.userAccount.hasCredentials() == true {
-                self?.startDownload(for: book)
-              } else {
-                NSLog("Authentication completed but no credentials present, user may have cancelled")
-              }
-            }
-          }
-        }
+        // Use the shared handleProblem method for consistent behavior
+        self.handleProblem(for: book, problemDocument: problemDocument)
       }
       
       let model = TPPCookiesWebViewModel(
@@ -607,16 +587,52 @@ actor DownloadCoordinator {
       var mutableRequest = request
       mutableRequest.cachePolicy = .reloadIgnoringCacheData
       
-      let model = TPPCookiesWebViewModel(cookies: cookies, request: mutableRequest, loginCompletionHandler: nil, loginCancelHandler: {
-        self?.handleLoginCancellation(for: book)
-      }, bookFoundHandler: { request, cookies in
-        self?.handleBookFound(for: book, withRequest: request, cookies: cookies)
-      }, problemFoundHandler: { problemDocument in
-        self?.handleProblem(for: book, problemDocument: problemDocument)
-      }, autoPresentIfNeeded: true)
+      let loginCompletionHandler: (URL, [HTTPCookie]) -> Void = { url, newCookies in
+        guard let self = self else { return }
+        
+        self.userAccount.setCookies(newCookies)
+        Log.info(#file, "SAML login completed successfully, got \(newCookies.count) cookies")
+        
+        self.bookRegistry.setState(.downloadNeeded, for: book.identifier)
+        
+        Task { @MainActor in
+          if let topVC = UIApplication.shared.windows.first?.rootViewController {
+            var current = topVC
+            while let presented = current.presentedViewController {
+              current = presented
+            }
+            if current is UINavigationController || current is TPPCookiesWebViewController {
+              current.presentingViewController?.dismiss(animated: true) {
+                // After dismissal, retry download with new cookies
+                self.startDownload(for: book)
+              }
+            }
+          }
+        }
+      }
+      
+      let model = TPPCookiesWebViewModel(
+        cookies: cookies, 
+        request: mutableRequest, 
+        loginCompletionHandler: loginCompletionHandler,
+        loginCancelHandler: {
+          self?.handleLoginCancellation(for: book)
+        }, 
+        bookFoundHandler: { [weak self] request, newCookies in
+          guard let self = self else { return }
+          Log.info(#file, "SAML book found with \(newCookies.count) fresh cookies")
+          self.handleBookFound(for: book, withRequest: request, cookies: newCookies)
+        }, 
+        problemFoundHandler: { [weak self] problemDocument in
+          Log.warn(#file, "SAML web view encountered problem: \(problemDocument?.type ?? "unknown")")
+          self?.handleProblem(for: book, problemDocument: problemDocument)
+        }, 
+        autoPresentIfNeeded: true  // Auto-present and auto-dismiss
+      )
       
       let cookiesVC = TPPCookiesWebViewController(model: model)
       cookiesVC.loadViewIfNeeded()
+      Log.info(#file, "SAML web view initialized for '\(book.title)'")
     }
   }
   
@@ -633,34 +649,104 @@ actor DownloadCoordinator {
   }
   
   private func handleProblem(for book: TPPBook, problemDocument: TPPProblemDocument?) {
-    bookRegistry.setState(.downloadNeeded, for: book.identifier)
+    let authDef = userAccount.authDefinition
+    let hasCredentials = userAccount.hasCredentials()
+    let currentState = bookRegistry.state(for: book.identifier)
     
-    Task { @MainActor [weak self] in
-      guard let self else { return }
+    // CIRCUIT BREAKER: If already in .SAMLStarted, SAML web view failed - show sign-in without signing out
+    if currentState == .SAMLStarted {
+      Log.warn(#file, "SAML re-auth already attempted for '\(book.title)' - showing sign-in modal")
       
-      guard !self.isRequestingCredentials else {
-        NSLog("Already requesting credentials, skipping re-authentication in handleProblem for: \(book.title)")
-        return
-      }
-      
-      self.isRequestingCredentials = true
-      
-      Task { @MainActor [weak self] in
-        try? await Task.sleep(nanoseconds: 2_000_000_000)
-        self?.isRequestingCredentials = false
-      }
-      
-      self.reauthenticator.authenticateIfNeeded(self.userAccount, usingExistingCredentials: false) { [weak self] in
-        Task { @MainActor [weak self] in
-          self?.isRequestingCredentials = false
-          
-          if self?.userAccount.hasCredentials() == true {
-            self?.startDownload(for: book)
-          } else {
-            NSLog("Authentication completed but no credentials present, user may have cancelled")
+      Task { @MainActor in
+        await self.bookIdentifierToDownloadInfo.remove(book.identifier)
+        await self.downloadCoordinator.registerCompletion(identifier: book.identifier)
+        
+        bookRegistry.setState(.downloadFailed, for: book.identifier)
+        
+        // Show the problem document message if available (session expired, etc.)
+        if let problemDoc = problemDocument {
+          let alert = TPPAlertUtils.alert(
+            title: problemDoc.title ?? Strings.Error.sessionExpiredTitle,
+            message: problemDoc.detail ?? Strings.Error.sessionExpiredMessage
+          )
+          TPPPresentationUtils.safelyPresent(alert)
+        }
+        
+        guard !self.isRequestingCredentials else { return }
+        
+        self.isRequestingCredentials = true
+        Task { @MainActor in
+          try? await Task.sleep(nanoseconds: 2_000_000_000)
+          self.isRequestingCredentials = false
+        }
+        
+        // Show sign-in modal WITHOUT signing out - let user re-authenticate gracefully
+        Log.info(#file, "Showing sign-in modal for session refresh")
+        self.reauthenticator.authenticateIfNeeded(self.userAccount, usingExistingCredentials: false) { [weak self] in
+          Task { @MainActor in
+            self?.isRequestingCredentials = false
+            if self?.userAccount.hasCredentials() == true {
+              Log.info(#file, "Sign-in completed, retrying download")
+              self?.startDownload(for: book)
+            }
           }
         }
       }
+      return
+    }
+    
+    // For SAML with expired cookies, try SAML flow once
+    if authDef?.isSaml == true && hasCredentials {
+      Log.info(#file, "SAML cookies expired - triggering SAML re-auth flow")
+      
+      Task {
+        await self.bookIdentifierToDownloadInfo.remove(book.identifier)
+        await self.downloadCoordinator.registerCompletion(identifier: book.identifier)
+        
+        await MainActor.run {
+          self.bookRegistry.setState(.SAMLStarted, for: book.identifier)
+          Log.info(#file, "Cleared download state, retrying with SAML re-auth")
+          self.startDownload(for: book)
+        }
+      }
+      return
+    }
+    
+    // For non-SAML or no credentials, set to downloadNeeded and show sign-in if needed
+    bookRegistry.setState(.downloadNeeded, for: book.identifier)
+    
+    // Only show sign-in if truly no credentials
+    if !hasCredentials {
+      Task { @MainActor [weak self] in
+        guard let self else { return }
+        
+        guard !self.isRequestingCredentials else {
+          NSLog("Already requesting credentials, skipping re-authentication in handleProblem for: \(book.title)")
+          return
+        }
+        
+        self.isRequestingCredentials = true
+        
+        Task { @MainActor [weak self] in
+          try? await Task.sleep(nanoseconds: 2_000_000_000)
+          self?.isRequestingCredentials = false
+        }
+        
+        self.reauthenticator.authenticateIfNeeded(self.userAccount, usingExistingCredentials: false) { [weak self] in
+          Task { @MainActor [weak self] in
+            self?.isRequestingCredentials = false
+            
+            if self?.userAccount.hasCredentials() == true {
+              self?.startDownload(for: book)
+            } else {
+              NSLog("Authentication completed but no credentials present, user may have cancelled")
+            }
+          }
+        }
+      }
+    } else {
+      // Has credentials but download failed - log for debugging
+      Log.warn(#file, "Download failed for authenticated user: \(book.identifier)")
     }
   }
   
@@ -688,7 +774,7 @@ actor DownloadCoordinator {
     
 #if FEATURE_DRM_CONNECTOR
     if info.rightsManagement == .adobe {
-      NYPLADEPT.sharedInstance().cancelFulfillment(withTag: identifier)
+      AdobeDRMService.shared.cancelFulfillment(withTag: identifier)
       return
     }
 #endif
@@ -779,7 +865,7 @@ extension MyBooksDownloadCenter {
     if let fulfillmentId = bookRegistry.fulfillmentId(forIdentifier: identifier),
        userAccount.authDefinition?.needsAuth == true {
       NSLog("Return attempt for book. userID: %@", userAccount.userID ?? "")
-      NYPLADEPT.sharedInstance().returnLoan(fulfillmentId,
+      AdobeDRMService.shared.returnLoan(fulfillmentId,
                                             userID: userAccount.userID,
                                             deviceID: userAccount.deviceID) { success, error in
         if !success {
@@ -1048,7 +1134,7 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
           failureRequiringAlert = true
         } else if let acsmData = try? Data(contentsOf: location) {
           NSLog("Download finished. Fulfilling with userID: \(userAccount.userID ?? "")")
-          NYPLADEPT.sharedInstance().fulfill(withACSMData: acsmData, tag: book.identifier, userID: userAccount.userID, deviceID: userAccount.deviceID)
+          AdobeDRMService.shared.fulfill(withACSMData: acsmData, tag: book.identifier, userID: userAccount.userID, deviceID: userAccount.deviceID)
         }
 #endif
       case .lcp:
@@ -1089,12 +1175,65 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
       runOnMainAsync {
         let hasCredentials = self.userAccount.hasCredentials()
         let loginRequired = self.userAccount.authDefinition?.needsAuth ?? false
-        if task.response?.indicatesAuthenticationNeedsRefresh(with: problemDoc) == true || (!hasCredentials && loginRequired) {
+        
+        if task.response?.indicatesAuthenticationNeedsRefresh(with: problemDoc) == true {
+          let authDef = self.userAccount.authDefinition
+          
+          // If user has credentials but got 401, this is a session/token expiry issue
+          if hasCredentials {
+            if authDef?.isSaml == true {
+              // SAML cookies expired - need to re-auth via IDP
+              Log.info(#file, "SAML session expired - triggering SAML re-auth flow")
+              
+              Task {
+                // Clear download tracking completely
+                await self.bookIdentifierToDownloadInfo.remove(book.identifier)
+                await self.taskIdentifierToBook.remove(task.taskIdentifier)
+                await self.downloadCoordinator.registerCompletion(identifier: book.identifier)
+                
+                // Then set state and retry on main thread
+                await MainActor.run {
+                  self.bookRegistry.setState(.SAMLStarted, for: book.identifier)
+                  Log.info(#file, "Cleared failed download, now retrying with SAML re-auth")
+                  self.startDownload(for: book)
+                }
+              }
+              return
+            } else {
+              // OAuth/Token - refresh was already attempted by TPPNetworkResponder
+              // If we got here, refresh failed - show error
+              Log.warn(#file, "Token refresh failed for \(book.identifier) - showing error")
+            }
+          } else if loginRequired {
+            // No credentials - show sign-in
+            Log.info(#file, "No credentials - showing sign-in modal")
+            self.reauthenticator.authenticateIfNeeded(
+              self.userAccount,
+              usingExistingCredentials: false,
+              authenticationCompletion: { [weak self] in
+                Task { @MainActor [weak self] in
+                  guard let self else { return }
+                  Log.info(#file, "Authentication completed, retrying download for \(book.identifier)")
+                  self.startDownload(for: book)
+                }
+              }
+            )
+            return  // DON'T show error alert - sign-in is handling it
+          }
+        } else if !hasCredentials && loginRequired {
+          // No auth error, but no credentials - show sign-in
+          Log.info(#file, "No credentials - showing sign-in modal")
           self.reauthenticator.authenticateIfNeeded(
             self.userAccount,
-            usingExistingCredentials: hasCredentials,
-            authenticationCompletion: nil
+            usingExistingCredentials: false,
+            authenticationCompletion: { [weak self] in
+              Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.startDownload(for: book)
+              }
+            }
           )
+          return
         }
         
         // Check if the error is "No active loan" - attempt to re-borrow
@@ -1346,10 +1485,19 @@ extension MyBooksDownloadCenter: URLSessionTaskDelegate {
 // MARK: - Download Throttling and Disk Budget
 extension MyBooksDownloadCenter {
   private func enqueuePending(_ book: TPPBook) {
+    // CRITICAL UI FIX: Update book state so button shows "Downloading" feedback
+    // Otherwise button appears unresponsive when hitting queue limit
+    bookRegistry.setState(.downloading, for: book.identifier)
+    
     Task {
       await downloadCoordinator.enqueuePending(book)
       let queueSize = await downloadCoordinator.queueCount
       Log.debug(#file, "📋 Enqueued '\(book.title)' for download, queue size: \(queueSize)")
+      
+      // Notify UI to refresh
+      runOnMainAsync {
+        NotificationCenter.default.post(name: .TPPMyBooksDownloadCenterDidChange, object: self)
+      }
     }
   }
 
@@ -1781,6 +1929,16 @@ extension MyBooksDownloadCenter {
     let pathExtension = pathExtension(for: book)
     let contentDirectoryURL = self.contentDirectoryURL(account)
     let hashedIdentifier = identifier.sha256()
+    
+    return contentDirectoryURL?.appendingPathComponent(hashedIdentifier).appendingPathExtension(pathExtension)
+  }
+  
+  /// Returns the file URL for a book, accepting the book directly instead of looking it up in the registry.
+  /// This is useful during registry loading when the registry hasn't been populated yet.
+  func fileUrl(for book: TPPBook, account: String?) -> URL? {
+    let pathExtension = pathExtension(for: book)
+    let contentDirectoryURL = self.contentDirectoryURL(account)
+    let hashedIdentifier = book.identifier.sha256()
     
     return contentDirectoryURL?.appendingPathComponent(hashedIdentifier).appendingPathExtension(pathExtension)
   }

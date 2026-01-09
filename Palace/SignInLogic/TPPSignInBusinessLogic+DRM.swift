@@ -131,8 +131,13 @@ extension TPPSignInBusinessLogic {
                                       error: error as NSError?)
     }
 
-    TPPMainThreadRun.asyncIfNeeded { [weak self] in
-      self?.perform(#selector(self?.dismissAfterUnexpectedDRMDelay), with: self, afterDelay: 25)
+    // Skip the 25-second timeout timer in test environments to prevent
+    // the timer from keeping the test process alive after tests complete
+    let isRunningTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+    if !isRunningTests {
+      TPPMainThreadRun.asyncIfNeeded { [weak self] in
+        self?.perform(#selector(self?.dismissAfterUnexpectedDRMDelay), with: self, afterDelay: 25)
+      }
     }
   }
 

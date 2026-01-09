@@ -14,6 +14,12 @@ struct NavigationHostView<Content: View>: View {
     NavigationStack(path: $coordinator.path) {
       rootView
         .onAppear { NavigationCoordinatorHub.shared.coordinator = coordinator }
+        .fullScreenCover(item: $coordinator.presentedEPUBSample) { epubData in
+          if let book = coordinator.resolveBook(for: BookRoute(id: epubData.bookId)) {
+            EPUBReaderView(book: book, publication: epubData.publication, forSample: true)
+              .environmentObject(coordinator)
+          }
+        }
         .navigationDestination(for: AppRoute.self) { route in
           
           switch route {
@@ -44,7 +50,12 @@ struct NavigationHostView<Content: View>: View {
               EmptyView()
             }
           case .epub(let bookRoute):
-            if let vc = coordinator.resolveEPUBController(for: bookRoute) {
+            if let pubData = coordinator.resolveEPUBPublication(for: bookRoute),
+               let book = coordinator.resolveBook(for: bookRoute) {
+              EPUBReaderView(book: book, publication: pubData.0, forSample: pubData.1)
+                .environmentObject(coordinator)
+            }
+            else if let vc = coordinator.resolveEPUBController(for: bookRoute) {
               UIViewControllerWrapper(vc, updater: { _ in })
                 .navigationBarBackButtonHidden(true)
                 .toolbar(.hidden, for: .navigationBar)

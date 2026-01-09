@@ -16,6 +16,20 @@ import Foundation
     "http://librarysimplified.org/terms/problem/cannot-issue-loan";
   static let TypeCannotRender =
     "http://librarysimplified.org/terms/problem/cannot-render";
+  
+  // MARK: - Account/Patron Status Types
+  
+  /// Patron's credentials have been suspended by the library
+  static let TypeCredentialsSuspended =
+    "http://librarysimplified.org/terms/problem/credentials-suspended";
+  
+  /// Patron has reached their loan limit
+  static let TypePatronLoanLimit =
+    "http://librarysimplified.org/terms/problem/loan-limit-reached";
+  
+  /// Patron has reached their hold limit
+  static let TypePatronHoldLimit =
+    "http://librarysimplified.org/terms/problem/hold-limit-reached";
 
   private static let noStatus: Int = -1
 

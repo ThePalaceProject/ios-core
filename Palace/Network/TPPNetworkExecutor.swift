@@ -113,8 +113,23 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
   func executeRequest(_ req: URLRequest, enableTokenRefresh: Bool, completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask? {
     let userAccount = TPPUserAccount.sharedAccount()
 
+    // SAML auth uses cookies, not tokens - proceed directly
     if let authDefinition = userAccount.authDefinition, authDefinition.isSaml {
       return performDataTask(with: req, completion: completion)
+    }
+    
+    // Proactive token refresh: if token will expire soon, refresh before the request
+    if enableTokenRefresh,
+       userAccount.authTokenNearExpiry,
+       let authDef = userAccount.authDefinition,
+       (authDef.isToken || authDef.isOauth),
+       authDef.tokenURL != nil {
+      Log.info(#file, "Token near expiry - proactively refreshing before request")
+      refreshTokenAndResume(task: nil) { [weak self] _ in
+        // After refresh attempt, proceed with the original request
+        _ = self?.performDataTask(with: req, completion: completion)
+      }
+      return nil
     }
 
     return performDataTask(with: req, completion: completion)
@@ -296,9 +311,29 @@ extension TPPNetworkExecutor {
   
   func refreshTokenAndResume(task: URLSessionTask?, completion: ((_ result: NYPLResult<Data>) -> Void)? = nil) {
     refreshQueue.async { [weak self] in
-      guard let self = self else { return }
-      guard !self.isRefreshing else { 
-        Log.debug(#file, "Token refresh already in progress, skipping duplicate request")
+      guard let self = self else {
+        // Self deallocated - call completion to avoid leaking continuation
+        let error = NSError(domain: TPPErrorLogger.clientDomain, code: TPPErrorCode.invalidCredentials.rawValue, userInfo: [NSLocalizedDescriptionKey: "Network executor deallocated"])
+        completion?(NYPLResult.failure(error, nil))
+        return
+      }
+      
+      // If refresh is already in progress, still add task to retry queue
+      // so it will be retried when the current refresh completes
+      if self.isRefreshing {
+        Log.debug(#file, "Token refresh already in progress, queueing task for retry")
+        if let task {
+          self.retryQueueLock.lock()
+          self.retryQueue.append(task)
+          if let completion {
+            self.responder.addCompletion(completion, taskID: task.taskIdentifier)
+          }
+          self.retryQueueLock.unlock()
+        } else {
+          // No task to queue - must call completion to avoid leaking continuation
+          let error = NSError(domain: TPPErrorLogger.clientDomain, code: TPPErrorCode.invalidCredentials.rawValue, userInfo: [NSLocalizedDescriptionKey: "Token refresh in progress"])
+          completion?(NYPLResult.failure(error, nil))
+        }
         return 
       }
       
@@ -321,7 +356,7 @@ extension TPPNetworkExecutor {
         self.retryQueueLock.lock()
         self.retryQueue.append(task)
         if let completion {
-          responder.addCompletion(completion, taskID: task.taskIdentifier)
+          self.responder.addCompletion(completion, taskID: task.taskIdentifier)
         }
         self.retryQueueLock.unlock()
       }
@@ -358,6 +393,12 @@ extension TPPNetworkExecutor {
           Log.info(#file, "Retrying \(retryCount) failed request(s) with new token")
           newTasks.forEach { $0.resume() }
           
+          // For proactive refresh (task was nil), call completion to let caller proceed
+          // The completion handler will trigger the original request with the new token
+          if task == nil {
+            completion?(NYPLResult.success(Data(), nil))
+          }
+          
         case .failure(let error):
           Log.error(#file, "Failed to refresh token with error: \(error.localizedDescription)")
           
@@ -369,9 +410,12 @@ extension TPPNetworkExecutor {
           failedTasks.forEach { $0.cancel() }
           
           if let nsError = error as? NSError, nsError.code == 401 {
-            Log.info(#file, "Token refresh failed due to invalid credentials - signing out user")
+            Log.info(#file, "Token refresh failed due to invalid credentials - triggering re-auth")
             DispatchQueue.main.async {
+              // Clear invalid credentials but preserve downloaded content
               TPPUserAccount.sharedAccount().removeAll()
+              // Present sign-in modal so user can re-authenticate
+              SignInModalPresenter.presentSignInModalForCurrentAccount(completion: nil)
             }
           }
           

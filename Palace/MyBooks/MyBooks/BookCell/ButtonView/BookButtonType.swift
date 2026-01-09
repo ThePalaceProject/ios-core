@@ -70,6 +70,16 @@ extension BookButtonType {
     case .close: DisplayStrings.close
     }
   }
+  
+  @MainActor
+  func title(for book: TPPBook) -> String {
+    switch self {
+    case .sample, .audiobookSample:
+      return SamplePreviewManager.shared.isShowingPreview(for: book) ? DisplayStrings.close : DisplayStrings.preview
+    default:
+      return title
+    }
+  }
 
   var buttonStyle: ButtonStyleType {
     switch self {

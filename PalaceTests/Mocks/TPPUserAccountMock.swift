@@ -10,15 +10,6 @@ import Foundation
 @testable import Palace
 
 class TPPUserAccountMock: TPPUserAccount {
-  override init() {
-    super.init()
-    print("#### init'ing userAccount \(self.hash)")
-  }
-
-  deinit {
-    print("#### deinit'ing userAccount \(self.hash)")
-  }
-
   private static var shared = TPPUserAccountMock()
   override class func sharedAccount(libraryUUID: String?) -> TPPUserAccount {
     return shared

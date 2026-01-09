@@ -8,10 +8,16 @@ struct BookImageView: View {
 
   @State private var isShimmering: Bool = true
   @State private var pulse: Bool = false
+  
+  /// Check if cover is already loaded (skip shimmer animation)
+  private var hasPreloadedCover: Bool {
+    book.coverImage != nil || book.thumbnailImage != nil
+  }
 
   var body: some View {
     ZStack(alignment: .bottomTrailing) {
-      if isShimmering {
+      // Only show shimmer if no image is pre-loaded
+      if isShimmering && !hasPreloadedCover {
         Rectangle()
           .fill(Color.gray.opacity(0.25))
           .frame(width: width ?? (height * 2.0 / 3.0), height: height)
@@ -23,7 +29,8 @@ struct BookImageView: View {
         Image(uiImage: coverImage)
           .resizable()
           .aspectRatio(contentMode: .fit)
-          .opacity(isShimmering ? 0 : 1)
+          // Show immediately if pre-loaded, otherwise wait for animation
+          .opacity((isShimmering && !hasPreloadedCover) ? 0 : 1)
           .transition(.opacity)
           .onAppear { withAnimation(.easeInOut(duration: 0.25)) { isShimmering = false } }
       }

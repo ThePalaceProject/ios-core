@@ -44,11 +44,13 @@ struct CatalogLaneMoreView: View {
           Button(action: { presentSearch() }) {
             ImageProviders.MyBooksView.search
           }
+          .accessibilityLabel(Strings.Generic.searchCatalog)
         }
       }
     }
     .task { await viewModel.load(coordinator: coordinator) }
     .onAppear {
+      Log.debug(#file, "🟢 CatalogLaneMoreView.onAppear() - Appearing")
       setupCoordinator()
       setupAccount()
     }
@@ -59,6 +61,7 @@ struct CatalogLaneMoreView: View {
       handleSampleToggle(note)
     }
     .onDisappear {
+      Log.debug(#file, "🔴 CatalogLaneMoreView.onDisappear() - Being dismissed")
       SamplePreviewManager.shared.close()
     }
     .onReceive(registryChangePublisher) { note in

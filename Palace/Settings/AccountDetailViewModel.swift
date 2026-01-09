@@ -56,9 +56,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     businessLogic.userAccount
   }
   
-  var isSignedIn: Bool {
-    selectedUserAccount.hasCredentials()
-  }
+  @Published var isSignedIn: Bool = false
   
   var canSignIn: Bool {
     if businessLogic.selectedAuthentication?.isOauth == true ||
@@ -99,12 +97,16 @@ class AccountDetailViewModel: NSObject, ObservableObject {
       drmAuthorizer: nil
     )
     
+    // Initialize isSignedIn based on current credentials
+    self.isSignedIn = TPPUserAccount.sharedAccount(libraryUUID: libraryAccountID).hasCredentials()
+    
     super.init()
     
     var drmAuthorizer: TPPDRMAuthorizing?
     #if FEATURE_DRM_CONNECTOR
-    if AdobeCertificate.defaultCertificate?.hasExpired == false {
-      drmAuthorizer = NYPLADEPT.sharedInstance()
+    // Use safe DRM container to prevent EXC_BREAKPOINT crashes during initialization
+    if AdobeCertificate.isDRMAvailable {
+      drmAuthorizer = AdobeDRMService.shared.adeptInstance
     }
     #endif
     
@@ -126,11 +128,13 @@ class AccountDetailViewModel: NSObject, ObservableObject {
       drmAuthorizer: drmAuthorizer
     )
     
-    frontEndValidator = TPPUserAccountFrontEndValidation(
-      account: selectedAccount!,
-      businessLogic: businessLogic,
-      inputProvider: self
-    )
+    if let account = selectedAccount {
+      frontEndValidator = TPPUserAccountFrontEndValidation(
+        account: account,
+        businessLogic: businessLogic,
+        inputProvider: self
+      )
+    }
     
     setupObservers()
     loadInitialData()
@@ -140,6 +144,15 @@ class AccountDetailViewModel: NSObject, ObservableObject {
   
   private func setupObservers() {
     NotificationCenter.default.publisher(for: .TPPUserAccountDidChange)
+      .sink { [weak self] _ in
+        Task { @MainActor in
+          self?.accountDidChange()
+        }
+      }
+      .store(in: &cancellables)
+    
+    // Listen for account switches to refresh sign-in state
+    NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)
       .sink { [weak self] _ in
         Task { @MainActor in
           self?.accountDidChange()
@@ -243,8 +256,8 @@ class AccountDetailViewModel: NSObject, ObservableObject {
       return []
     }
     
-    if businessLogic.selectedAuthentication != nil && isSignedIn {
-      workingSection = cellsForAuthMethod(businessLogic.selectedAuthentication!)
+    if let selectedAuth = businessLogic.selectedAuthentication, isSignedIn {
+      workingSection = cellsForAuthMethod(selectedAuth)
     } else if !isSignedIn && selectedUserAccount.needsAuth {
       if businessLogic.isSamlPossible() {
         workingSection.append(.infoHeader(Strings.AccountDetail.signInMessage(libraryName: libraryName)))
@@ -460,6 +473,8 @@ class AccountDetailViewModel: NSObject, ObservableObject {
   }
   
   private func accountDidChange() {
+    isSignedIn = selectedUserAccount.hasCredentials()
+    
     if isSignedIn {
       usernameText = selectedUserAccount.barcode ?? ""
       pinText = selectedUserAccount.pin ?? ""
@@ -476,6 +491,15 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     alertTitle = title
     alertMessage = message
     showingAlert = true
+  }
+  
+  func refreshSignInState() {
+    let wasSignedIn = isSignedIn
+    isSignedIn = selectedUserAccount.hasCredentials()
+    
+    if wasSignedIn != isSignedIn {
+      setupTableData()
+    }
   }
 }
 

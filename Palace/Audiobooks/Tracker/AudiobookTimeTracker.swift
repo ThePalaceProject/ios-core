@@ -66,10 +66,17 @@ class AudiobookTimeTracker: NSObject, AudiobookPlaybackTrackerDelegate {
   }
 
   deinit {
+    stopAndSave()
+  }
+  
+  /// Stops playback and saves any accumulated time.
+  /// Call this method explicitly when done tracking to ensure all data is saved.
+  /// Note: Relying on deinit for saving is unreliable as ARC doesn't guarantee immediate deallocation.
+  func stopAndSave() {
     playbackTimer?.cancel()
     subscriptions.removeAll()
     saveCurrentDuration()
-    audiobookLogger.logEvent(forBookId: bookId, event: "TimeTracker deinitialized for bookId: \(bookId)")
+    audiobookLogger.logEvent(forBookId: bookId, event: "TimeTracker stopped and saved for bookId: \(bookId)")
   }
 
   func receiveValue(_ value: Date) {

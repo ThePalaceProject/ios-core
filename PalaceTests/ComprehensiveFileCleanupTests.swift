@@ -80,12 +80,15 @@ final class ComprehensiveFileCleanupTests: XCTestCase {
         // When: Perform cleanup
         downloadCenter.completelyRemoveAudiobook(testBook)
         
-        // Give cleanup time to complete
+        // Wait for cleanup to complete by polling for condition
         let expectation = XCTestExpectation(description: "Cleanup completion")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            expectation.fulfill()
+        expectation.expectedFulfillmentCount = 1
+        
+        // Poll until files are reduced or timeout
+        waitForCondition(timeout: 2.0) {
+            let filesAfterCleanup = self.downloadCenter.findRemainingFiles(for: self.testBookId)
+            return filesAfterCleanup.count <= filesBeforeCleanup.count
         }
-        wait(for: [expectation], timeout: 2.0)
         
         // Then: Files should be reduced or removed
         let filesAfterCleanup = downloadCenter.findRemainingFiles(for: testBookId)
@@ -131,12 +134,11 @@ final class ComprehensiveFileCleanupTests: XCTestCase {
         // When: Clean up only test book
         downloadCenter.completelyRemoveAudiobook(testBook)
         
-        // Give cleanup time to complete
-        let expectation = XCTestExpectation(description: "Cleanup completion")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            expectation.fulfill()
+        // Wait for cleanup to complete by polling
+        waitForCondition(timeout: 2.0) {
+            let testBookFiles = self.downloadCenter.findRemainingFiles(for: self.testBookId)
+            return testBookFiles.count < testBookFilesBefore.count
         }
-        wait(for: [expectation], timeout: 2.0)
         
         // Then: Other book's files should remain
         let otherBookFilesAfter = downloadCenter.findRemainingFiles(for: otherBookId)
@@ -228,6 +230,20 @@ final class ComprehensiveFileCleanupTests: XCTestCase {
                     try? fileManager.removeItem(at: fileURL)
                 }
             }
+        }
+    }
+    
+    /// Polls for a condition to become true, without using sleep
+    /// - Parameters:
+    ///   - timeout: Maximum time to wait
+    ///   - condition: Closure that returns true when condition is met
+    private func waitForCondition(timeout: TimeInterval, condition: @escaping () -> Bool) {
+        let start = Date()
+        while Date().timeIntervalSince(start) < timeout {
+            if condition() {
+                return
+            }
+            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))
         }
     }
 }

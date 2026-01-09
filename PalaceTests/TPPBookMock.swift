@@ -32,49 +32,349 @@ enum DistributorType: String {
 }
 
 struct TPPBookMocker {
-  static func mockBook(distributorType: DistributorType) -> TPPBook {
+  
+  /// Creates a mock book with RANDOM data - suitable for unit tests
+  /// - Parameters:
+  ///   - distributorType: The content type for the book's acquisition
+  ///   - hasSample: Whether to include a preview/sample link (default: false to avoid network calls in tests)
+  static func mockBook(distributorType: DistributorType, hasSample: Bool = false) -> TPPBook {
     let configType = distributorType.rawValue
     
     // Randomly generated values for other fields
     let identifier = DistributorType.randomIdentifier()
-    let emptyUrl = URL(string: "http://example.com/\(identifier)")!
+    // Use a placeholder URL for acquisition (needed for book structure)
+    // but use nil for image URLs to prevent network requests in tests
+    let acquisitionUrl = URL(string: "http://example.com/\(identifier)")!
     
     let fakeAcquisition = TPPOPDSAcquisition(
       relation: .generic,
       type: configType,
-      hrefURL: emptyUrl,
+      hrefURL: acquisitionUrl,
       indirectAcquisitions: [TPPOPDSIndirectAcquisition](),
       availability: TPPOPDSAcquisitionAvailabilityUnlimited.init()
     )
     
+    let title = "Title \(identifier.prefix(8))"
+    let author = "Author \(identifier.prefix(8))"
+    
+    // Create image cache with pre-generated TenPrint cover
+    let imageCache = MockImageCache()
+    let cover = MockImageCache.generateTenPrintCover(title: title, author: author)
+    imageCache.set(cover, for: identifier, expiresIn: nil)
+    
     let fakeBook = TPPBook(
       acquisitions: [fakeAcquisition],
-      authors: [TPPBookAuthor(authorName: "Author \(identifier)", relatedBooksURL: nil)],
+      authors: [TPPBookAuthor(authorName: author, relatedBooksURL: nil)],
       categoryStrings: ["Category \(identifier)"],
       distributor: "Distributor \(identifier)",
       identifier: identifier,
-      imageURL: emptyUrl,
-      imageThumbnailURL: emptyUrl,
+      imageURL: nil,  // Use nil to prevent network image fetches in tests
+      imageThumbnailURL: nil,  // Use nil to prevent network image fetches in tests
       published: Date.init(),
       publisher: "Publisher \(identifier)",
       subtitle: "Subtitle \(identifier)",
       summary: "Summary \(identifier)",
-      title: "Title \(identifier)",
+      title: title,
       updated: Date.init(),
-      annotationsURL: emptyUrl,
-      analyticsURL: emptyUrl,
-      alternateURL: emptyUrl,
-      relatedWorksURL: emptyUrl,
-      previewLink: fakeAcquisition,
-      seriesURL: emptyUrl,
-      revokeURL: emptyUrl,
-      reportURL: emptyUrl,
-      timeTrackingURL: emptyUrl,
+      annotationsURL: nil,
+      analyticsURL: nil,
+      alternateURL: nil,
+      relatedWorksURL: nil,
+      previewLink: hasSample ? fakeAcquisition : nil,
+      seriesURL: nil,
+      revokeURL: nil,
+      reportURL: nil,
+      timeTrackingURL: nil,
       contributors: [:],
       bookDuration: nil,
-      imageCache: MockImageCache()
+      imageCache: imageCache
     )
     
+    // Pre-set cover image directly for synchronous snapshot testing
+    fakeBook.coverImage = cover
+    fakeBook.thumbnailImage = cover
+    
     return fakeBook
+  }
+  
+  // MARK: - Simple Mock Book for Unit Tests
+  
+  /// Creates a simple mock book with configurable title, authors, and updated date
+  static func mockBook(
+    title: String,
+    authors: String? = nil,
+    updated: Date = Date()
+  ) -> TPPBook {
+    let identifier = UUID().uuidString
+    let acquisitionUrl = URL(string: "http://example.com/\(identifier)")!
+    
+    let acquisition = TPPOPDSAcquisition(
+      relation: .generic,
+      type: DistributorType.EpubZip.rawValue,
+      hrefURL: acquisitionUrl,
+      indirectAcquisitions: [],
+      availability: TPPOPDSAcquisitionAvailabilityUnlimited()
+    )
+    
+    let authorsList: [TPPBookAuthor]
+    if let authors = authors {
+      authorsList = [TPPBookAuthor(authorName: authors, relatedBooksURL: nil)]
+    } else {
+      authorsList = []
+    }
+    
+    // Create image cache with pre-generated cover
+    let imageCache = MockImageCache()
+    let cover = MockImageCache.generateTenPrintCover(title: title, author: authors ?? "Unknown")
+    imageCache.set(cover, for: identifier, expiresIn: nil)
+    
+    let book = TPPBook(
+      acquisitions: [acquisition],
+      authors: authorsList,
+      categoryStrings: ["Fiction"],
+      distributor: "Test",
+      identifier: identifier,
+      imageURL: nil,  // Use nil to prevent network image fetches in tests
+      imageThumbnailURL: nil,  // Use nil to prevent network image fetches in tests
+      published: Date(),
+      publisher: "Test Publisher",
+      subtitle: nil,
+      summary: "Test summary",
+      title: title,
+      updated: updated,
+      annotationsURL: nil,
+      analyticsURL: nil,
+      alternateURL: nil,
+      relatedWorksURL: nil,
+      previewLink: nil,
+      seriesURL: nil,
+      revokeURL: nil,
+      reportURL: nil,
+      timeTrackingURL: nil,
+      contributors: [:],
+      bookDuration: nil,
+      imageCache: imageCache
+    )
+    
+    // Pre-set cover image directly for tests
+    book.coverImage = cover
+    book.thumbnailImage = cover
+    
+    return book
+  }
+  
+  // MARK: - Deterministic Books for Snapshot Testing
+  
+  /// Fixed reference date for consistent snapshots
+  private static let snapshotDate = Date(timeIntervalSince1970: 1704067200) // Jan 1, 2024
+  private static let snapshotURL = URL(string: "https://example.com/snapshot")!
+  
+  /// Creates a mock EPUB book with FIXED data - suitable for snapshot tests
+  static func snapshotEPUB() -> TPPBook {
+    createSnapshotBook(
+      identifier: "snapshot-epub-001",
+      title: "The Great Gatsby",
+      author: "F. Scott Fitzgerald",
+      distributorType: .EpubZip
+    )
+  }
+  
+  /// Creates a mock Audiobook with FIXED data - suitable for snapshot tests
+  static func snapshotAudiobook() -> TPPBook {
+    createSnapshotBook(
+      identifier: "snapshot-audiobook-001",
+      title: "Pride and Prejudice",
+      author: "Jane Austen",
+      distributorType: .OpenAccessAudiobook,
+      duration: "12:00:00" // 12 hours
+    )
+  }
+  
+  /// Creates a mock PDF book with FIXED data - suitable for snapshot tests
+  static func snapshotPDF() -> TPPBook {
+    createSnapshotBook(
+      identifier: "snapshot-pdf-001",
+      title: "1984",
+      author: "George Orwell",
+      distributorType: .OpenAccessPDF
+    )
+  }
+  
+  /// Creates a mock book on hold (reserved, waiting in queue) with FIXED data
+  static func snapshotHoldBook() -> TPPBook {
+    snapshotReservedBook()
+  }
+  
+  /// Creates a mock book with "reserved" availability (waiting in hold queue)
+  static func snapshotReservedBook(
+    identifier: String = "snapshot-reserved-001",
+    title: String = "To Kill a Mockingbird",
+    author: String = "Harper Lee",
+    holdPosition: UInt = 3
+  ) -> TPPBook {
+    let acquisition = TPPOPDSAcquisition(
+      relation: .generic,
+      type: DistributorType.EpubZip.rawValue,
+      hrefURL: snapshotURL,
+      indirectAcquisitions: [],
+      availability: TPPOPDSAcquisitionAvailabilityReserved(
+        holdPosition: holdPosition,
+        copiesTotal: 5,
+        since: snapshotDate,
+        until: snapshotDate.addingTimeInterval(86400 * 14)
+      )
+    )
+    
+    // Create image cache with pre-generated TenPrint cover
+    let imageCache = MockImageCache()
+    let cover = MockImageCache.generateTenPrintCover(title: title, author: author)
+    imageCache.set(cover, for: identifier, expiresIn: nil)
+    
+    let book = TPPBook(
+      acquisitions: [acquisition],
+      authors: [TPPBookAuthor(authorName: author, relatedBooksURL: nil)],
+      categoryStrings: ["Fiction", "Classic"],
+      distributor: "Library",
+      identifier: identifier,
+      imageURL: nil,  // Use nil to prevent network image fetches
+      imageThumbnailURL: nil,  // Use nil to prevent network image fetches
+      published: snapshotDate,
+      publisher: "HarperCollins",
+      subtitle: "A Novel",
+      summary: "A classic novel about justice and racial inequality.",
+      title: title,
+      updated: snapshotDate,
+      annotationsURL: nil,
+      analyticsURL: nil,
+      alternateURL: nil,
+      relatedWorksURL: nil,
+      previewLink: nil,
+      seriesURL: nil,
+      revokeURL: nil,  // Use nil to prevent network requests
+      reportURL: nil,
+      timeTrackingURL: nil,
+      contributors: [:],
+      bookDuration: nil,
+      imageCache: imageCache
+    )
+    
+    // Pre-set cover image directly for synchronous snapshot testing
+    book.coverImage = cover
+    book.thumbnailImage = cover
+    
+    return book
+  }
+  
+  /// Creates a mock book with "ready" availability (hold is ready to borrow)
+  static func snapshotReadyBook(
+    identifier: String = "snapshot-ready-001",
+    title: String = "The Catcher in the Rye",
+    author: String = "J.D. Salinger"
+  ) -> TPPBook {
+    let acquisition = TPPOPDSAcquisition(
+      relation: .generic,
+      type: DistributorType.EpubZip.rawValue,
+      hrefURL: snapshotURL,
+      indirectAcquisitions: [],
+      availability: TPPOPDSAcquisitionAvailabilityReady(
+        since: snapshotDate,
+        until: snapshotDate.addingTimeInterval(86400 * 3) // 3 days to borrow
+      )
+    )
+    
+    // Create image cache with pre-generated TenPrint cover
+    let imageCache = MockImageCache()
+    let cover = MockImageCache.generateTenPrintCover(title: title, author: author)
+    imageCache.set(cover, for: identifier, expiresIn: nil)
+    
+    let book = TPPBook(
+      acquisitions: [acquisition],
+      authors: [TPPBookAuthor(authorName: author, relatedBooksURL: nil)],
+      categoryStrings: ["Fiction", "Classic"],
+      distributor: "Library",
+      identifier: identifier,
+      imageURL: nil,  // Use nil to prevent network image fetches
+      imageThumbnailURL: nil,  // Use nil to prevent network image fetches
+      published: snapshotDate,
+      publisher: "Little, Brown",
+      subtitle: nil,
+      summary: "A story of teenage angst and alienation.",
+      title: title,
+      updated: snapshotDate,
+      annotationsURL: nil,
+      analyticsURL: nil,
+      alternateURL: nil,
+      relatedWorksURL: nil,
+      previewLink: nil,
+      seriesURL: nil,
+      revokeURL: nil,  // Use nil to prevent network requests
+      reportURL: nil,
+      timeTrackingURL: nil,
+      contributors: [:],
+      bookDuration: nil,
+      imageCache: imageCache
+    )
+    
+    // Pre-set cover image directly for synchronous snapshot testing
+    book.coverImage = cover
+    book.thumbnailImage = cover
+    
+    return book
+  }
+  
+  /// Creates a snapshot book with customizable properties
+  private static func createSnapshotBook(
+    identifier: String,
+    title: String,
+    author: String,
+    distributorType: DistributorType,
+    duration: String? = nil
+  ) -> TPPBook {
+    let acquisition = TPPOPDSAcquisition(
+      relation: .generic,
+      type: distributorType.rawValue,
+      hrefURL: snapshotURL,
+      indirectAcquisitions: [],
+      availability: TPPOPDSAcquisitionAvailabilityUnlimited()
+    )
+    
+    // Create image cache with pre-generated TenPrint cover
+    let imageCache = MockImageCache()
+    let cover = MockImageCache.generateTenPrintCover(title: title, author: author)
+    imageCache.set(cover, for: identifier, expiresIn: nil)
+    
+    let book = TPPBook(
+      acquisitions: [acquisition],
+      authors: [TPPBookAuthor(authorName: author, relatedBooksURL: nil)],
+      categoryStrings: ["Fiction"],
+      distributor: "Open Library",
+      identifier: identifier,
+      imageURL: nil,  // Use nil to prevent network image fetches
+      imageThumbnailURL: nil,  // Use nil to prevent network image fetches
+      published: snapshotDate,
+      publisher: "Penguin Classics",
+      subtitle: nil,
+      summary: "A timeless classic.",
+      title: title,
+      updated: snapshotDate,
+      annotationsURL: nil,
+      analyticsURL: nil,
+      alternateURL: nil,
+      relatedWorksURL: nil,
+      previewLink: nil,
+      seriesURL: nil,
+      revokeURL: nil,  // Use nil to prevent network requests
+      reportURL: nil,
+      timeTrackingURL: nil,
+      contributors: [:],
+      bookDuration: duration,
+      imageCache: imageCache
+    )
+    
+    // Pre-set cover image directly for synchronous snapshot testing
+    book.coverImage = cover
+    book.thumbnailImage = cover
+    
+    return book
   }
 }

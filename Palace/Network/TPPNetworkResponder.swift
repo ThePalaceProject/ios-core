@@ -157,14 +157,15 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
     }
 
     guard let info = maybeInfo else {
-      TPPErrorLogger.logNetworkError(
-        nil,
-        code: .noTaskInfoAvailable,
-        summary: "No taskInfo for task \(taskID)",
-        request: task.originalRequest,
-        response: task.response,
-        metadata: logMetadata
-      )
+      // This can happen legitimately in several scenarios:
+      // 1. URLSession internal tasks (preconnect, preflight, etc.) that we never registered
+      // 2. Cancelled tasks where session became invalid and cleared all taskInfo
+      // 3. Tasks created by the system for HTTP/2 multiplexing
+      // 4. Rapid task creation/completion race conditions (very rare)
+      //
+      // Only log at debug level to avoid noise in crash reporting.
+      // If this becomes a real issue, the user will see failed network requests.
+      Log.debug(#file, "Task \(taskID) completed but no taskInfo found - likely an internal URLSession task")
       return
     }
 
@@ -172,6 +173,8 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
        nsErr.domain == NSURLErrorDomain,
        nsErr.code == NSURLErrorCancelled {
       Log.info(#file, "Task \(taskID) cancelled: \(nsErr.localizedDescription)")
+      // Must still call completion to avoid leaving continuations unresumed
+      info.completion(.failure(nsErr, task.response))
       return
     }
 
@@ -322,9 +325,24 @@ private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse, with task
     return false
   }
   
-  if response.statusCode == 401 && TPPUserAccount.sharedAccount().isTokenRefreshRequired() {
-    TPPNetworkExecutor.shared.refreshTokenAndResume(task: task)
-    return true
+  let authDef = TPPUserAccount.sharedAccount().authDefinition
+  
+  if response.statusCode == 401 {
+    if authDef?.isSaml == true {
+      Log.info(#file, "Server returned 401 for SAML - cannot refresh tokens, will trigger re-auth flow")
+      return false
+    }
+    
+    let canRefreshToken = (authDef?.isToken == true || authDef?.isOauth == true) && 
+                          authDef?.tokenURL != nil &&
+                          TPPUserAccount.sharedAccount().username != nil &&
+                          TPPUserAccount.sharedAccount().pin != nil
+    
+    if canRefreshToken {
+      Log.info(#file, "Server returned 401 - triggering token refresh (server authority)")
+      TPPNetworkExecutor.shared.refreshTokenAndResume(task: task)
+      return true
+    }
   }
   return false
 }
@@ -356,9 +374,10 @@ extension URLSessionTask {
       let httpStatusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
       let problemDocStatus = problemDoc.status ?? httpStatusCode
       
-      // Don't log first-attempt 401s - they'll be retried with token refresh
+      // Don't log first-attempt 401s to Crashlytics - they may be retried with token refresh
+      // or trigger re-auth flow (for SAML). Either way, not a crashworthy error yet.
       if !isFailedRetry && (httpStatusCode == 401 || problemDocStatus == 401) {
-        Log.debug(#file, "Problem document with 401 - will retry with token refresh (not logging to Crashlytics)")
+        Log.debug(#file, "Problem document with 401 - will be handled by auth flow (not logging to Crashlytics)")
         return returnedError
       }
       
