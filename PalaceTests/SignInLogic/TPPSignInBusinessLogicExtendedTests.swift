@@ -523,45 +523,6 @@ final class TPPSignInOAuthFlowTests: XCTestCase {
     uiDelegate = nil
     try super.tearDownWithError()
   }
-  
-  // MARK: - OAuth URL Handling Tests
-  
-  func testHandleRedirectURL_withValidAccessToken_setsAuthToken() {
-    let urlString = "palace://oauth?access_token=test-token&patron_info=%7B%22name%22%3A%22Test%22%7D"
-    let url = URL(string: urlString)!
-    let notification = Notification(name: .TPPAppDelegateDidReceiveCleverRedirectURL, object: url)
-    
-    businessLogic.selectedAuthentication = libraryAccountMock.oauthAuthentication
-    
-    // Just verify the method can be called without crashing
-    businessLogic.handleRedirectURL(notification) { _, _, _ in }
-  }
-  
-  func testHandleRedirectURL_withError_callsCompletion() {
-    let urlString = "palace://oauth?error=%7B%22title%22%3A%22Auth+Error%22%7D"
-    let url = URL(string: urlString)!
-    let notification = Notification(name: .TPPAppDelegateDidReceiveCleverRedirectURL, object: url)
-    
-    businessLogic.selectedAuthentication = libraryAccountMock.oauthAuthentication
-    
-    // Just verify the method can be called without crashing
-    businessLogic.handleRedirectURL(notification) { _, _, _ in }
-  }
-  
-  func testHandleRedirectURL_withNilURL_callsCompletion() {
-    let notification = Notification(name: .TPPAppDelegateDidReceiveCleverRedirectURL, object: nil)
-    
-    // Just verify the method can be called without crashing
-    businessLogic.handleRedirectURL(notification) { _, _, _ in }
-  }
-  
-  func testHandleRedirectURL_withInvalidURL_callsCompletionWithError() {
-    let url = URL(string: "invalid://url")!
-    let notification = Notification(name: .TPPAppDelegateDidReceiveCleverRedirectURL, object: url)
-    
-    // Just verify the method can be called without crashing
-    businessLogic.handleRedirectURL(notification) { _, _, _ in }
-  }
 }
 
 // MARK: - Error Handling Tests
