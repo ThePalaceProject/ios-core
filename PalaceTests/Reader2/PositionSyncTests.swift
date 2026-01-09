@@ -88,12 +88,12 @@ final class PositionPersistenceTests: XCTestCase {
       renderer: "readium2"
     )
     
-    // Create a minimal book
-    let emptyUrl = URL(fileURLWithPath: "")
+    // Create a minimal book with placeholder URLs
+    let placeholderUrl = URL(string: "https://test.example.com/book")!
     let acquisition = TPPOPDSAcquisition(
       relation: .generic,
       type: "application/epub+zip",
-      hrefURL: emptyUrl,
+      hrefURL: placeholderUrl,
       indirectAcquisitions: [],
       availability: TPPOPDSAcquisitionAvailabilityUnlimited()
     )
@@ -104,23 +104,23 @@ final class PositionPersistenceTests: XCTestCase {
       categoryStrings: [],
       distributor: "",
       identifier: testBookId,
-      imageURL: emptyUrl,
-      imageThumbnailURL: emptyUrl,
+      imageURL: nil,  // Use nil to prevent network image fetches
+      imageThumbnailURL: nil,  // Use nil to prevent network image fetches
       published: Date(),
       publisher: "",
       subtitle: "",
       summary: "",
       title: "Test Book",
       updated: Date(),
-      annotationsURL: emptyUrl,
-      analyticsURL: emptyUrl,
-      alternateURL: emptyUrl,
-      relatedWorksURL: emptyUrl,
-      previewLink: acquisition,
-      seriesURL: emptyUrl,
-      revokeURL: emptyUrl,
-      reportURL: emptyUrl,
-      timeTrackingURL: emptyUrl,
+      annotationsURL: nil,
+      analyticsURL: nil,
+      alternateURL: nil,
+      relatedWorksURL: nil,
+      previewLink: nil,  // No preview to prevent network requests
+      seriesURL: nil,
+      revokeURL: nil,
+      reportURL: nil,
+      timeTrackingURL: nil,
       contributors: [:],
       bookDuration: nil,
       imageCache: MockImageCache()
@@ -140,11 +140,12 @@ final class PositionPersistenceTests: XCTestCase {
   }
   
   func testBookRegistry_setLocation_updatesPosition() {
-    let emptyUrl = URL(fileURLWithPath: "")
+    // Use placeholder URL for acquisition (not fetched in tests)
+    let placeholderUrl = URL(string: "https://test.example.com/book")!
     let acquisition = TPPOPDSAcquisition(
       relation: .generic,
       type: "application/epub+zip",
-      hrefURL: emptyUrl,
+      hrefURL: placeholderUrl,
       indirectAcquisitions: [],
       availability: TPPOPDSAcquisitionAvailabilityUnlimited()
     )
@@ -155,23 +156,23 @@ final class PositionPersistenceTests: XCTestCase {
       categoryStrings: [],
       distributor: "",
       identifier: testBookId,
-      imageURL: emptyUrl,
-      imageThumbnailURL: emptyUrl,
+      imageURL: nil,  // Use nil to prevent network image fetches
+      imageThumbnailURL: nil,  // Use nil to prevent network image fetches
       published: Date(),
       publisher: "",
       subtitle: "",
       summary: "",
       title: "Test Book",
       updated: Date(),
-      annotationsURL: emptyUrl,
-      analyticsURL: emptyUrl,
-      alternateURL: emptyUrl,
-      relatedWorksURL: emptyUrl,
-      previewLink: acquisition,
-      seriesURL: emptyUrl,
-      revokeURL: emptyUrl,
-      reportURL: emptyUrl,
-      timeTrackingURL: emptyUrl,
+      annotationsURL: nil,
+      analyticsURL: nil,
+      alternateURL: nil,
+      relatedWorksURL: nil,
+      previewLink: nil,  // No preview to prevent network requests
+      seriesURL: nil,
+      revokeURL: nil,
+      reportURL: nil,
+      timeTrackingURL: nil,
       contributors: [:],
       bookDuration: nil,
       imageCache: MockImageCache()

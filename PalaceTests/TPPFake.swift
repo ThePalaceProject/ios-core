@@ -10,11 +10,14 @@ import Foundation
 @testable import Palace
 
 class TPPFake {
+  /// Placeholder URL for tests that won't trigger network requests
+  private static let placeholderURL = URL(string: "https://test.example.com/placeholder")!
+  
   class var genericAcquisition: TPPOPDSAcquisition {
     TPPOPDSAcquisition(
       relation: .generic,
       type: "application/epub+zip",
-      hrefURL: URL(fileURLWithPath: ""),
+      hrefURL: placeholderURL,
       indirectAcquisitions: [TPPOPDSIndirectAcquisition](),
       availability: TPPOPDSAcquisitionAvailabilityUnlimited()
     )

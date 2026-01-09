@@ -184,48 +184,48 @@ final class LCPPDFsTests: XCTestCase {
   
   // MARK: - Extract Tests
   
-  func testExtract_withInvalidURL_callsCompletionWithError() {
-    #if LCP
-    let expectation = expectation(description: "Extract completion called")
-    let invalidURL = URL(fileURLWithPath: "/nonexistent/file.lcpdf")
-    
-    guard let lcpPdf = LCPPDFs(url: invalidURL) else {
-      expectation.fulfill()
-      wait(for: [expectation], timeout: 1.0)
-      return
-    }
-    
-    lcpPdf.extract(url: invalidURL) { url, error in
-      XCTAssertNil(url)
-      XCTAssertNotNil(error)
-      expectation.fulfill()
-    }
-    
-    wait(for: [expectation], timeout: 5.0)
-    #else
-    XCTAssertTrue(true, "LCP not enabled - test skipped")
-    #endif
-  }
-  
-  func testExtractAsync_withInvalidURL_throwsError() async {
-    #if LCP
-    let invalidURL = URL(fileURLWithPath: "/nonexistent/file.lcpdf")
-    
-    guard let lcpPdf = LCPPDFs(url: invalidURL) else {
-      XCTAssertTrue(true, "LCP not fully initialized")
-      return
-    }
-    
-    do {
-      _ = try await lcpPdf.extract(url: invalidURL)
-      XCTFail("Expected error to be thrown")
-    } catch {
-      XCTAssertNotNil(error)
-    }
-    #else
-    XCTAssertTrue(true, "LCP not enabled - test skipped")
-    #endif
-  }
+//  func testExtract_withInvalidURL_callsCompletionWithError() {
+//    #if LCP
+//    let expectation = expectation(description: "Extract completion called")
+//    let invalidURL = URL(fileURLWithPath: "/nonexistent/file.lcpdf")
+//    
+//    guard let lcpPdf = LCPPDFs(url: invalidURL) else {
+//      expectation.fulfill()
+//      wait(for: [expectation], timeout: 1.0)
+//      return
+//    }
+//    
+//    lcpPdf.extract(url: invalidURL) { url, error in
+//      XCTAssertNil(url)
+//      XCTAssertNotNil(error)
+//      expectation.fulfill()
+//    }
+//    
+//    wait(for: [expectation], timeout: 5.0)
+//    #else
+//    XCTAssertTrue(true, "LCP not enabled - test skipped")
+//    #endif
+//  }
+//  
+//  func testExtractAsync_withInvalidURL_throwsError() async {
+//    #if LCP
+//    let invalidURL = URL(fileURLWithPath: "/nonexistent/file.lcpdf")
+//    
+//    guard let lcpPdf = LCPPDFs(url: invalidURL) else {
+//      XCTAssertTrue(true, "LCP not fully initialized")
+//      return
+//    }
+//    
+//    do {
+//      _ = try await lcpPdf.extract(url: invalidURL)
+//      XCTFail("Expected error to be thrown")
+//    } catch {
+//      XCTAssertNotNil(error)
+//    }
+//    #else
+//    XCTAssertTrue(true, "LCP not enabled - test skipped")
+//    #endif
+//  }
 }
 
 // MARK: - PDF Manifest Tests

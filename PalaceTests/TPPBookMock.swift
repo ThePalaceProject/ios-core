@@ -236,8 +236,8 @@ struct TPPBookMocker {
       categoryStrings: ["Fiction", "Classic"],
       distributor: "Library",
       identifier: identifier,
-      imageURL: snapshotURL,
-      imageThumbnailURL: snapshotURL,
+      imageURL: nil,  // Use nil to prevent network image fetches
+      imageThumbnailURL: nil,  // Use nil to prevent network image fetches
       published: snapshotDate,
       publisher: "HarperCollins",
       subtitle: "A Novel",
@@ -250,7 +250,7 @@ struct TPPBookMocker {
       relatedWorksURL: nil,
       previewLink: nil,
       seriesURL: nil,
-      revokeURL: snapshotURL,
+      revokeURL: nil,  // Use nil to prevent network requests
       reportURL: nil,
       timeTrackingURL: nil,
       contributors: [:],
@@ -293,8 +293,8 @@ struct TPPBookMocker {
       categoryStrings: ["Fiction", "Classic"],
       distributor: "Library",
       identifier: identifier,
-      imageURL: snapshotURL,
-      imageThumbnailURL: snapshotURL,
+      imageURL: nil,  // Use nil to prevent network image fetches
+      imageThumbnailURL: nil,  // Use nil to prevent network image fetches
       published: snapshotDate,
       publisher: "Little, Brown",
       subtitle: nil,
@@ -307,7 +307,7 @@ struct TPPBookMocker {
       relatedWorksURL: nil,
       previewLink: nil,
       seriesURL: nil,
-      revokeURL: snapshotURL,
+      revokeURL: nil,  // Use nil to prevent network requests
       reportURL: nil,
       timeTrackingURL: nil,
       contributors: [:],
@@ -349,8 +349,8 @@ struct TPPBookMocker {
       categoryStrings: ["Fiction"],
       distributor: "Open Library",
       identifier: identifier,
-      imageURL: snapshotURL,
-      imageThumbnailURL: snapshotURL,
+      imageURL: nil,  // Use nil to prevent network image fetches
+      imageThumbnailURL: nil,  // Use nil to prevent network image fetches
       published: snapshotDate,
       publisher: "Penguin Classics",
       subtitle: nil,
@@ -363,7 +363,7 @@ struct TPPBookMocker {
       relatedWorksURL: nil,
       previewLink: nil,
       seriesURL: nil,
-      revokeURL: snapshotURL,
+      revokeURL: nil,  // Use nil to prevent network requests
       reportURL: nil,
       timeTrackingURL: nil,
       contributors: [:],

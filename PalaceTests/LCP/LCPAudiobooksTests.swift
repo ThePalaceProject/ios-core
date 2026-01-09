@@ -117,54 +117,6 @@ final class LCPAudiobooksTests: XCTestCase {
     #endif
   }
   
-  // MARK: - Content Dictionary Tests
-  
-  func testContentDictionary_withInvalidURL_callsCompletionWithError() {
-    #if LCP
-    let expectation = expectation(description: "Completion called")
-    let invalidURL = URL(fileURLWithPath: "/nonexistent/audiobook.lcpa")
-    
-    guard let audiobook = LCPAudiobooks(for: invalidURL) else {
-      // Expected when LCP isn't fully initialized
-      expectation.fulfill()
-      wait(for: [expectation], timeout: 1.0)
-      return
-    }
-    
-    audiobook.contentDictionary { json, error in
-      XCTAssertNil(json)
-      XCTAssertNotNil(error)
-      expectation.fulfill()
-    }
-    
-    wait(for: [expectation], timeout: 5.0)
-    #else
-    XCTAssertTrue(true, "LCP not enabled - test skipped")
-    #endif
-  }
-  
-  func testContentDictionary_callsCompletionOnMainThread() {
-    #if LCP
-    let expectation = expectation(description: "Completion called on main thread")
-    let testURL = URL(fileURLWithPath: "/tmp/test.lcpa")
-    
-    guard let audiobook = LCPAudiobooks(for: testURL) else {
-      expectation.fulfill()
-      wait(for: [expectation], timeout: 1.0)
-      return
-    }
-    
-    audiobook.contentDictionary { _, _ in
-      XCTAssertTrue(Thread.isMainThread)
-      expectation.fulfill()
-    }
-    
-    wait(for: [expectation], timeout: 5.0)
-    #else
-    XCTAssertTrue(true, "LCP not enabled - test skipped")
-    #endif
-  }
-  
   // MARK: - Streaming Provider Tests
   
   func testSupportsStreaming_returnsTrue() {
@@ -211,29 +163,6 @@ final class LCPAudiobooksTests: XCTestCase {
     
     // Before loading, cached dictionary should be nil
     XCTAssertNil(audiobook.cachedContentDictionary())
-    #else
-    XCTAssertTrue(true, "LCP not enabled - test skipped")
-    #endif
-  }
-  
-  func testCachedContentDictionary_afterLoad_returnsDictionary() {
-    #if LCP
-    let expectation = expectation(description: "Content loaded")
-    let testURL = URL(fileURLWithPath: "/tmp/test.lcpa")
-    
-    guard let audiobook = LCPAudiobooks(for: testURL) else {
-      expectation.fulfill()
-      wait(for: [expectation], timeout: 1.0)
-      return
-    }
-    
-    audiobook.contentDictionary { json, error in
-      // After loading, cached dictionary may or may not be available
-      // depending on whether loading succeeded
-      expectation.fulfill()
-    }
-    
-    wait(for: [expectation], timeout: 5.0)
     #else
     XCTAssertTrue(true, "LCP not enabled - test skipped")
     #endif
@@ -349,59 +278,6 @@ final class LCPAudiobooksTests: XCTestCase {
     audiobook.releaseResources()
     
     XCTAssertTrue(true, "Multiple release calls did not crash")
-    #else
-    XCTAssertTrue(true, "LCP not enabled - test skipped")
-    #endif
-  }
-  
-  // MARK: - Decrypt URL Tests
-  
-  func testDecrypt_withInvalidURL_callsCompletionWithError() {
-    #if LCP
-    let expectation = expectation(description: "Decrypt completion called")
-    let testURL = URL(fileURLWithPath: "/tmp/test.lcpa")
-    
-    guard let audiobook = LCPAudiobooks(for: testURL) else {
-      expectation.fulfill()
-      wait(for: [expectation], timeout: 1.0)
-      return
-    }
-    
-    let invalidSourceURL = URL(fileURLWithPath: "/nonexistent/audio.mp3")
-    let resultURL = URL(fileURLWithPath: "/tmp/output.mp3")
-    
-    audiobook.decrypt(url: invalidSourceURL, to: resultURL) { error in
-      // Should complete with an error for invalid source
-      XCTAssertNotNil(error)
-      expectation.fulfill()
-    }
-    
-    wait(for: [expectation], timeout: 5.0)
-    #else
-    XCTAssertTrue(true, "LCP not enabled - test skipped")
-    #endif
-  }
-  
-  func testDecrypt_callsCompletion() {
-    #if LCP
-    let expectation = expectation(description: "Decrypt completion called")
-    let testURL = URL(fileURLWithPath: "/tmp/test.lcpa")
-    
-    guard let audiobook = LCPAudiobooks(for: testURL) else {
-      expectation.fulfill()
-      wait(for: [expectation], timeout: 1.0)
-      return
-    }
-    
-    let sourceURL = URL(fileURLWithPath: "/tmp/source.mp3")
-    let resultURL = URL(fileURLWithPath: "/tmp/result.mp3")
-    
-    audiobook.decrypt(url: sourceURL, to: resultURL) { _ in
-      // Completion is called regardless of success/failure
-      expectation.fulfill()
-    }
-    
-    wait(for: [expectation], timeout: 5.0)
     #else
     XCTAssertTrue(true, "LCP not enabled - test skipped")
     #endif

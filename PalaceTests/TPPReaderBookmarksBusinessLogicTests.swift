@@ -20,38 +20,39 @@ class TPPReaderBookmarksBusinessLogicTests: XCTestCase {
     override func setUpWithError() throws {
       try super.setUpWithError()
       
-      let emptyUrl = URL.init(fileURLWithPath: "")
-      let fakeAcquisition = TPPOPDSAcquisition.init(
+      // Use placeholder URL for acquisition (not fetched in tests)
+      let placeholderUrl = URL(string: "https://test.example.com/book")!
+      let fakeAcquisition = TPPOPDSAcquisition(
         relation: .generic,
         type: "application/epub+zip",
-        hrefURL: emptyUrl,
+        hrefURL: placeholderUrl,
         indirectAcquisitions: [TPPOPDSIndirectAcquisition](),
-        availability: TPPOPDSAcquisitionAvailabilityUnlimited.init()
+        availability: TPPOPDSAcquisitionAvailabilityUnlimited()
       )
       
-      let fakeBook = TPPBook.init(
+      let fakeBook = TPPBook(
         acquisitions: [fakeAcquisition],
         authors: [TPPBookAuthor](),
         categoryStrings: [String](),
         distributor: "",
         identifier: bookIdentifier,
-        imageURL: emptyUrl,
-        imageThumbnailURL: emptyUrl,
-        published: Date.init(),
+        imageURL: nil,  // Use nil to prevent network image fetches
+        imageThumbnailURL: nil,  // Use nil to prevent network image fetches
+        published: Date(),
         publisher: "",
         subtitle: "",
         summary: "",
         title: "",
-        updated: Date.init(),
-        annotationsURL: emptyUrl,
-        analyticsURL: emptyUrl,
-        alternateURL: emptyUrl,
-        relatedWorksURL: emptyUrl,
-        previewLink: fakeAcquisition,
-        seriesURL: emptyUrl,
-        revokeURL: emptyUrl,
-        reportURL: emptyUrl,
-        timeTrackingURL: emptyUrl,
+        updated: Date(),
+        annotationsURL: nil,
+        analyticsURL: nil,
+        alternateURL: nil,
+        relatedWorksURL: nil,
+        previewLink: nil,  // No preview to prevent network requests
+        seriesURL: nil,
+        revokeURL: nil,
+        reportURL: nil,
+        timeTrackingURL: nil,
         contributors: [:],
         bookDuration: nil,
         imageCache: MockImageCache()
