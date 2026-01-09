@@ -131,27 +131,35 @@ func performLogOut() {
     // Without this, the IdP session remains cached and auto-signs in on next attempt
     clearWebViewData()
     
-    uiDelegate?.businessLogicDidFinishDeauthorizing(self)
+    // UI delegate callback MUST be on main thread
+    // (This method can be called from Adobe DRM callback on background thread)
+    DispatchQueue.main.async { [weak self] in
+      guard let self = self else { return }
+      self.uiDelegate?.businessLogicDidFinishDeauthorizing(self)
+    }
   }
   
   /// Clears all WebView data including cookies, cache, local storage, and session data.
   /// This ensures SAML/OAuth identity providers are fully signed out.
   private func clearWebViewData() {
-    let dataStore = WKWebsiteDataStore.default()
-    let dataTypes = WKWebsiteDataStore.allWebsiteDataTypes()
-    
-    dataStore.fetchDataRecords(ofTypes: dataTypes) { records in
-      Log.info(#file, "Clearing \(records.count) WebView data records for sign-out")
-      dataStore.removeData(ofTypes: dataTypes, for: records) {
-        Log.info(#file, "WebView data cleared successfully")
+    // WebKit operations MUST run on the main thread
+    DispatchQueue.main.async {
+      let dataStore = WKWebsiteDataStore.default()
+      let dataTypes = WKWebsiteDataStore.allWebsiteDataTypes()
+      
+      dataStore.fetchDataRecords(ofTypes: dataTypes) { records in
+        Log.info(#file, "Clearing \(records.count) WebView data records for sign-out")
+        dataStore.removeData(ofTypes: dataTypes, for: records) {
+          Log.info(#file, "WebView data cleared successfully")
+        }
       }
-    }
-    
-    // Also clear shared cookie storage
-    if let cookies = HTTPCookieStorage.shared.cookies {
-      Log.info(#file, "Clearing \(cookies.count) HTTP cookies for sign-out")
-      for cookie in cookies {
-        HTTPCookieStorage.shared.deleteCookie(cookie)
+      
+      // Also clear shared cookie storage
+      if let cookies = HTTPCookieStorage.shared.cookies {
+        Log.info(#file, "Clearing \(cookies.count) HTTP cookies for sign-out")
+        for cookie in cookies {
+          HTTPCookieStorage.shared.deleteCookie(cookie)
+        }
       }
     }
   }
