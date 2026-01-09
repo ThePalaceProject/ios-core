@@ -1,61 +1,136 @@
 name: Palace Manual Build
 on: workflow_dispatch
+
 jobs:
   check-version:
-    runs-on: macOS-latest
+    # Pin to macos-14 to avoid issues with macos-latest runner updates
+    # See: https://github.com/actions/runner-images/issues/12520
+    runs-on: macos-14
     steps:
-      - name: Use the latest Xcode
-        run: sudo xcode-select -switch /Applications/Xcode.app
+      - name: Log Environment Info
+        run: |
+          echo "## Runner Environment" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Runner OS | $RUNNER_OS |" >> $GITHUB_STEP_SUMMARY
+          echo "| Runner Arch | $RUNNER_ARCH |" >> $GITHUB_STEP_SUMMARY
+          echo "| macOS Version | $(sw_vers -productVersion) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Date/Time | $(date) |" >> $GITHUB_STEP_SUMMARY
+
+      - name: Setup Xcode 16.2
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16.2'
+
+      - name: Log Xcode Info
+        run: |
+          echo "## Xcode Environment" >> $GITHUB_STEP_SUMMARY
+          echo "```" >> $GITHUB_STEP_SUMMARY
+          xcodebuild -version >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          swift --version >> $GITHUB_STEP_SUMMARY
+          echo "```" >> $GITHUB_STEP_SUMMARY
+
       - name: Checkout main repo and submodules
         uses: actions/checkout@v3
         with:
           submodules: true
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
+
       - id: checkVersion
         name: Check Build Version
         run: ./scripts/ios-check-version.sh
         env:
           BUILD_CONTEXT: ci
+
     outputs:
       should_upload: ${{ steps.checkVersion.outputs.version_changed }}
+
   upload-build:
-    runs-on: macOS-latest
+    runs-on: macos-14
     needs: check-version
     if: needs.check-version.outputs.should_upload == '1'
     steps:
-      - name: Force Xcode 16
-        run: sudo xcode-select -switch /Applications/Xcode_16.app
+      - name: Log Environment Info
+        run: |
+          echo "## Upload Build Environment" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Runner OS | $RUNNER_OS |" >> $GITHUB_STEP_SUMMARY
+          echo "| Runner Arch | $RUNNER_ARCH |" >> $GITHUB_STEP_SUMMARY
+          echo "| macOS Version | $(sw_vers -productVersion) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build Number | $(sw_vers -buildVersion) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Date/Time | $(date) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Disk Space | $(df -h / | tail -1 | awk '{print $4}') available |" >> $GITHUB_STEP_SUMMARY
+
+      - name: Setup Xcode 16.2
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16.2'
+
+      - name: Log Xcode and Swift Info
+        run: |
+          echo "## Toolchain Versions" >> $GITHUB_STEP_SUMMARY
+          echo "```" >> $GITHUB_STEP_SUMMARY
+          echo "Xcode:" >> $GITHUB_STEP_SUMMARY
+          xcodebuild -version >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Swift:" >> $GITHUB_STEP_SUMMARY
+          swift --version >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "SDK:" >> $GITHUB_STEP_SUMMARY
+          xcrun --show-sdk-version >> $GITHUB_STEP_SUMMARY
+          echo "```" >> $GITHUB_STEP_SUMMARY
+
       - name: Checkout main repo and submodules
         uses: actions/checkout@v3
         with:
           submodules: true
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
+
       - name: Checkout Binaries
         uses: actions/checkout@v3
         with:
           repository: ThePalaceProject/ios-binaries
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
           path: ./ios-binaries
+
       - name: Checkout Certificates
         uses: actions/checkout@v3
         with:
           repository: ThePalaceProject/mobile-certificates
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
           path: ./mobile-certificates
+
       - name: Checkout Adobe RMSDK
         uses: ./.github/actions/checkout-adobe
         with:
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
+
       - name: Setup repo with DRM
-        run: ./scripts/setup-repo-drm.sh
+        id: setup-drm
+        run: |
+          echo "## DRM Setup" >> $GITHUB_STEP_SUMMARY
+          ./scripts/setup-repo-drm.sh 2>&1 | tee drm-setup.log
+          echo "DRM setup complete" >> $GITHUB_STEP_SUMMARY
         env:
           BUILD_CONTEXT: ci
+
       - name: Build non-Carthage 3rd party dependencies
-        run: ./scripts/build-3rd-party-dependencies.sh
+        id: build-deps
+        run: |
+          echo "## Building Dependencies" >> $GITHUB_STEP_SUMMARY
+          ./scripts/build-3rd-party-dependencies.sh 2>&1 | tee build-deps.log
+          echo "Dependencies built" >> $GITHUB_STEP_SUMMARY
         env:
           BUILD_CONTEXT: ci
+
       - name: Install provisioning profile
-        run: ./scripts/install-profile.sh
+        id: install-profile
+        run: |
+          echo "## Code Signing Setup" >> $GITHUB_STEP_SUMMARY
+          ./scripts/install-profile.sh 2>&1 | tee install-profile.log
+          echo "Provisioning profile installed" >> $GITHUB_STEP_SUMMARY
         env:
           BUILD_CONTEXT: ci
           CI_APPSTORE_MP_BASE64: ${{ secrets.CI_APPSTORE_MP_BASE64 }}
@@ -64,28 +139,91 @@ jobs:
           CI_DISTRIBUTION_CERT_PW: ${{ secrets.CI_DISTRIBUTION_CERT_PW }}
           CI_KEYCHAIN_PW: ${{ secrets.CI_KEYCHAIN_PW }}
           CI_APPLE_FASTLANE_JSON: ${{ secrets.CI_APPLE_FASTLANE_JSON }}
-      - name: Export to binaries
-        run: ./scripts/xcode-export-adhoc.sh
+
+      - name: Export to binaries (Ad Hoc)
+        id: export-adhoc
+        run: |
+          echo "## Ad Hoc Export" >> $GITHUB_STEP_SUMMARY
+          ./scripts/xcode-export-adhoc.sh 2>&1 | tee adhoc-export.log
+          echo "Ad Hoc export complete" >> $GITHUB_STEP_SUMMARY
         env:
           BUILD_CONTEXT: ci
+          XCODE_VERSION: "16.2"
+          IPHONEOS_DEPLOYMENT_TARGET: "16.0"
+          ONLY_ACTIVE_ARCH: "NO"
+          ARCHS: "arm64"
+
       - name: Create release notes
-        run: ./scripts/create-release-notes.sh
+        id: release-notes
+        run: |
+          echo "## Release Notes" >> $GITHUB_STEP_SUMMARY
+          ./scripts/create-release-notes.sh 2>&1 | tee release-notes.log
+          echo "Release notes created" >> $GITHUB_STEP_SUMMARY
         env:
           BUILD_CONTEXT: ci
           GITHUB_TOKEN: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
+
       - name: Verify path and version
         run: |
-          echo "Release notes path: " $RELEASE_NOTES_PATH
-          cat $RELEASE_NOTES_PATH
-          echo "Changelog path:     " $CHANGELOG_PATH
-          cat $CHANGELOG_PATH
-          echo "Version:            " $VERSION_NUM
+          echo "## Build Info" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Version | $VERSION_NUM |" >> $GITHUB_STEP_SUMMARY
+          echo "| Release Notes | $RELEASE_NOTES_PATH |" >> $GITHUB_STEP_SUMMARY
+          echo "| Changelog | $CHANGELOG_PATH |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Release Notes Content" >> $GITHUB_STEP_SUMMARY
+          echo "```" >> $GITHUB_STEP_SUMMARY
+          cat $RELEASE_NOTES_PATH >> $GITHUB_STEP_SUMMARY
+          echo "```" >> $GITHUB_STEP_SUMMARY
         env:
           RELEASE_NOTES_PATH: ${{ env.RELEASE_NOTES_PATH }}
           CHANGELOG_PATH: ${{ env.CHANGELOG_PATH }}
           VERSION_NUM: ${{ env.VERSION_NUM }}
+
       - name: Export for App Store
-        run: ./scripts/xcode-export-appstore.sh
+        id: export-appstore
+        run: |
+          echo "## App Store Export" >> $GITHUB_STEP_SUMMARY
+          ./scripts/xcode-export-appstore.sh 2>&1 | tee appstore-export.log
+          echo "App Store export complete" >> $GITHUB_STEP_SUMMARY
         env:
           BUILD_CONTEXT: ci
+          XCODE_VERSION: "16.2"
+          IPHONEOS_DEPLOYMENT_TARGET: "16.0"
+          ONLY_ACTIVE_ARCH: "NO"
+          ARCHS: "arm64"
           CHANGELOG_PATH: ${{ env.CHANGELOG_PATH }}
+        timeout-minutes: 30
+
+      - name: Final Summary
+        if: always()
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "| Step | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| DRM Setup | ${{ steps.setup-drm.outcome }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build Deps | ${{ steps.build-deps.outcome }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Code Signing | ${{ steps.install-profile.outcome }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Ad Hoc Export | ${{ steps.export-adhoc.outcome }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Release Notes | ${{ steps.release-notes.outcome }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| App Store Export | ${{ steps.export-appstore.outcome }} |" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload Build Logs on Failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-${{ github.run_number }}
+          path: |
+            *.log
+          retention-days: 14
+
+      - name: Upload Xcode Logs on Failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcode-logs-${{ github.run_number }}
+          path: |
+            ~/Library/Developer/Xcode/DerivedData/**/Logs/**
+          retention-days: 14
