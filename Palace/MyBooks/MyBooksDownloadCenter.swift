@@ -1933,6 +1933,16 @@ extension MyBooksDownloadCenter {
     return contentDirectoryURL?.appendingPathComponent(hashedIdentifier).appendingPathExtension(pathExtension)
   }
   
+  /// Returns the file URL for a book, accepting the book directly instead of looking it up in the registry.
+  /// This is useful during registry loading when the registry hasn't been populated yet.
+  func fileUrl(for book: TPPBook, account: String?) -> URL? {
+    let pathExtension = pathExtension(for: book)
+    let contentDirectoryURL = self.contentDirectoryURL(account)
+    let hashedIdentifier = book.identifier.sha256()
+    
+    return contentDirectoryURL?.appendingPathComponent(hashedIdentifier).appendingPathExtension(pathExtension)
+  }
+  
   func contentDirectoryURL(_ account: String?) -> URL? {
     guard let directoryURL = TPPBookContentMetadataFilesHelper.directory(for: account ?? "")?.appendingPathComponent("content") else {
       NSLog("[contentDirectoryURL] nil directory.")
