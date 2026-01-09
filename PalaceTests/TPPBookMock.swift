@@ -42,12 +42,14 @@ struct TPPBookMocker {
     
     // Randomly generated values for other fields
     let identifier = DistributorType.randomIdentifier()
-    let emptyUrl = URL(string: "http://example.com/\(identifier)")!
+    // Use a placeholder URL for acquisition (needed for book structure)
+    // but use nil for image URLs to prevent network requests in tests
+    let acquisitionUrl = URL(string: "http://example.com/\(identifier)")!
     
     let fakeAcquisition = TPPOPDSAcquisition(
       relation: .generic,
       type: configType,
-      hrefURL: emptyUrl,
+      hrefURL: acquisitionUrl,
       indirectAcquisitions: [TPPOPDSIndirectAcquisition](),
       availability: TPPOPDSAcquisitionAvailabilityUnlimited.init()
     )
@@ -66,23 +68,23 @@ struct TPPBookMocker {
       categoryStrings: ["Category \(identifier)"],
       distributor: "Distributor \(identifier)",
       identifier: identifier,
-      imageURL: emptyUrl,
-      imageThumbnailURL: emptyUrl,
+      imageURL: nil,  // Use nil to prevent network image fetches in tests
+      imageThumbnailURL: nil,  // Use nil to prevent network image fetches in tests
       published: Date.init(),
       publisher: "Publisher \(identifier)",
       subtitle: "Subtitle \(identifier)",
       summary: "Summary \(identifier)",
       title: title,
       updated: Date.init(),
-      annotationsURL: emptyUrl,
-      analyticsURL: emptyUrl,
-      alternateURL: emptyUrl,
-      relatedWorksURL: emptyUrl,
+      annotationsURL: nil,
+      analyticsURL: nil,
+      alternateURL: nil,
+      relatedWorksURL: nil,
       previewLink: hasSample ? fakeAcquisition : nil,
-      seriesURL: emptyUrl,
-      revokeURL: emptyUrl,
-      reportURL: emptyUrl,
-      timeTrackingURL: emptyUrl,
+      seriesURL: nil,
+      revokeURL: nil,
+      reportURL: nil,
+      timeTrackingURL: nil,
       contributors: [:],
       bookDuration: nil,
       imageCache: imageCache
@@ -104,12 +106,12 @@ struct TPPBookMocker {
     updated: Date = Date()
   ) -> TPPBook {
     let identifier = UUID().uuidString
-    let url = URL(string: "http://example.com/\(identifier)")!
+    let acquisitionUrl = URL(string: "http://example.com/\(identifier)")!
     
     let acquisition = TPPOPDSAcquisition(
       relation: .generic,
       type: DistributorType.EpubZip.rawValue,
-      hrefURL: url,
+      hrefURL: acquisitionUrl,
       indirectAcquisitions: [],
       availability: TPPOPDSAcquisitionAvailabilityUnlimited()
     )
@@ -121,14 +123,19 @@ struct TPPBookMocker {
       authorsList = []
     }
     
-    return TPPBook(
+    // Create image cache with pre-generated cover
+    let imageCache = MockImageCache()
+    let cover = MockImageCache.generateTenPrintCover(title: title, author: authors ?? "Unknown")
+    imageCache.set(cover, for: identifier, expiresIn: nil)
+    
+    let book = TPPBook(
       acquisitions: [acquisition],
       authors: authorsList,
       categoryStrings: ["Fiction"],
       distributor: "Test",
       identifier: identifier,
-      imageURL: url,
-      imageThumbnailURL: url,
+      imageURL: nil,  // Use nil to prevent network image fetches in tests
+      imageThumbnailURL: nil,  // Use nil to prevent network image fetches in tests
       published: Date(),
       publisher: "Test Publisher",
       subtitle: nil,
@@ -146,8 +153,14 @@ struct TPPBookMocker {
       timeTrackingURL: nil,
       contributors: [:],
       bookDuration: nil,
-      imageCache: MockImageCache()
+      imageCache: imageCache
     )
+    
+    // Pre-set cover image directly for tests
+    book.coverImage = cover
+    book.thumbnailImage = cover
+    
+    return book
   }
   
   // MARK: - Deterministic Books for Snapshot Testing
