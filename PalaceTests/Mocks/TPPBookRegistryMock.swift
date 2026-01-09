@@ -21,6 +21,12 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider {
   // MARK: - Mock Data Storage
   var registry = [String: TPPBookRegistryRecord]()
   private var processingBooks = Set<String>()
+  
+  var heldBooks: [TPPBook] {
+    registry.values
+      .filter { $0.state == .holding }
+      .map { $0.book }
+  }
 
   // MARK: - TPPBookRegistryProvider Methods
 

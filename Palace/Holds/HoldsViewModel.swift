@@ -35,8 +35,15 @@ final class HoldsViewModel: ObservableObject {
     @Published var searchQuery: String = ""
     @Published var visibleBooks: [TPPBook] = []
     private var cancellables = Set<AnyCancellable>()
+    private let bookRegistry: TPPBookRegistryProvider
 
-    init() {
+    convenience init() {
+        self.init(bookRegistry: TPPBookRegistry.shared)
+    }
+    
+    init(bookRegistry: TPPBookRegistryProvider) {
+        self.bookRegistry = bookRegistry
+        
         NotificationCenter.default.publisher(for: .TPPSyncBegan)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
@@ -64,11 +71,11 @@ final class HoldsViewModel: ObservableObject {
     }
 
     func reloadData() {
-        // Use test books if debug configuration is enabled, otherwise use real registry data
+        // Use test books if debug configuration is enabled, otherwise use injected registry data
         #if DEBUG
-        let allHeld: [TPPBook] = DebugSettings.shared.createTestHoldBooks() ?? TPPBookRegistry.shared.heldBooks
+        let allHeld: [TPPBook] = DebugSettings.shared.createTestHoldBooks() ?? bookRegistry.heldBooks
         #else
-        let allHeld = TPPBookRegistry.shared.heldBooks
+        let allHeld = bookRegistry.heldBooks
         #endif
         
         var reservedVMs: [HoldsBookViewModel] = []

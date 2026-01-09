@@ -5,6 +5,7 @@ import UIKit
 protocol TPPBookRegistryProvider {
   var registryPublisher: AnyPublisher<[String: TPPBookRegistryRecord], Never> { get }
   var bookStatePublisher: AnyPublisher<(String, TPPBookState), Never> { get }
+  var heldBooks: [TPPBook] { get }
 
   func coverImage(for book: TPPBook, handler: @escaping (_ image: UIImage?) -> Void)
   func setProcessing(_ processing: Bool, for bookIdentifier: String)
