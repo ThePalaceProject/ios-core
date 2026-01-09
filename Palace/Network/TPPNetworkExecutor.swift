@@ -393,6 +393,12 @@ extension TPPNetworkExecutor {
           Log.info(#file, "Retrying \(retryCount) failed request(s) with new token")
           newTasks.forEach { $0.resume() }
           
+          // For proactive refresh (task was nil), call completion to let caller proceed
+          // The completion handler will trigger the original request with the new token
+          if task == nil {
+            completion?(NYPLResult.success(Data(), nil))
+          }
+          
         case .failure(let error):
           Log.error(#file, "Failed to refresh token with error: \(error.localizedDescription)")
           
