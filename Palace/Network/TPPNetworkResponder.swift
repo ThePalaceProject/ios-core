@@ -374,9 +374,10 @@ extension URLSessionTask {
       let httpStatusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
       let problemDocStatus = problemDoc.status ?? httpStatusCode
       
-      // Don't log first-attempt 401s - they'll be retried with token refresh
+      // Don't log first-attempt 401s to Crashlytics - they may be retried with token refresh
+      // or trigger re-auth flow (for SAML). Either way, not a crashworthy error yet.
       if !isFailedRetry && (httpStatusCode == 401 || problemDocStatus == 401) {
-        Log.debug(#file, "Problem document with 401 - will retry with token refresh (not logging to Crashlytics)")
+        Log.debug(#file, "Problem document with 401 - will be handled by auth flow (not logging to Crashlytics)")
         return returnedError
       }
       
