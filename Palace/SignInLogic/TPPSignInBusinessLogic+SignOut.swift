@@ -239,22 +239,14 @@ func performLogOut() {
           if success {
             Log.info(#file, "🚪 [LOGOUT] *** Successful DRM Deactivation ***")
           } else {
-            Log.warn(#file, "🚪 [LOGOUT] DRM deauthorization failed, but continuing with logout")
-            // Even though we failed, let the user continue to log out.
-            // The most likely reason is a user changing their PIN.
-            Log.info(#file, "🚪 [LOGOUT] About to call TPPErrorLogger.logError...")
-            TPPErrorLogger.logError(error,
-                                     summary: "User lost an activation on signout: ADEPT error",
-                                     metadata: [
-                                      "AdobeUserID": adobeUserID ?? "N/A",
-                                      "DeviceID": adobeDeviceID ?? "N/A",
-                                      "Licensor": licensor,
-                                      "AdobeTokenUsername": tokenUsername ?? "N/A",
-                                      "AdobeTokenPassword": tokenPassword ?? "N/A"])
-            Log.info(#file, "🚪 [LOGOUT] TPPErrorLogger.logError returned")
+            // DRM deauthorization failures are expected (e.g., E_DEACT_USER_MISMATCH when user changes PIN)
+            // Don't call TPPErrorLogger.logError here as it can hang due to Firebase lock contention
+            // Just log locally and continue - the user should still be able to log out
+            Log.warn(#file, "🚪 [LOGOUT] DRM deauthorization failed (expected): \(error?.localizedDescription ?? "unknown")")
+            Log.warn(#file, "🚪 [LOGOUT] DRM error details - AdobeUserID: \(adobeUserID ?? "N/A"), DeviceID: \(adobeDeviceID ?? "N/A")")
           }
           
-          Log.info(#file, "🚪 [LOGOUT] Exited if/else block, about to check self...")
+          Log.info(#file, "🚪 [LOGOUT] DRM callback complete, proceeding to logout cleanup...")
 
           // Check if self was deallocated during the DRM callback
           let selfIsNil = (self == nil)
