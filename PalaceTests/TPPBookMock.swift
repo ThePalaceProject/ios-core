@@ -34,7 +34,10 @@ enum DistributorType: String {
 struct TPPBookMocker {
   
   /// Creates a mock book with RANDOM data - suitable for unit tests
-  static func mockBook(distributorType: DistributorType) -> TPPBook {
+  /// - Parameters:
+  ///   - distributorType: The content type for the book's acquisition
+  ///   - hasSample: Whether to include a preview/sample link (default: false to avoid network calls in tests)
+  static func mockBook(distributorType: DistributorType, hasSample: Bool = false) -> TPPBook {
     let configType = distributorType.rawValue
     
     // Randomly generated values for other fields
@@ -75,7 +78,7 @@ struct TPPBookMocker {
       analyticsURL: emptyUrl,
       alternateURL: emptyUrl,
       relatedWorksURL: emptyUrl,
-      previewLink: fakeAcquisition,
+      previewLink: hasSample ? fakeAcquisition : nil,
       seriesURL: emptyUrl,
       revokeURL: emptyUrl,
       reportURL: emptyUrl,
