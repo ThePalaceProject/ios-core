@@ -106,7 +106,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     #if FEATURE_DRM_CONNECTOR
     // Use safe DRM container to prevent EXC_BREAKPOINT crashes during initialization
     if AdobeCertificate.isDRMAvailable {
-      drmAuthorizer = AdobeDRMContainer.shared.adeptInstance
+      drmAuthorizer = AdobeDRMService.shared.adeptInstance
     }
     #endif
     

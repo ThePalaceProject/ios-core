@@ -566,8 +566,6 @@
 		E50546792E62020D007CCFAB /* URLSession+Stubbing.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50546782E62020D007CCFAB /* URLSession+Stubbing.swift */; };
 		E50546C12E62194F007CCFAB /* AppTabHostView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50546C02E62194F007CCFAB /* AppTabHostView.swift */; };
 		E50546C22E62194F007CCFAB /* AppTabHostView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50546C02E62194F007CCFAB /* AppTabHostView.swift */; };
-		E5FBMGR12E8901A100000001 /* FirebaseManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5FBMGR12E8901A000000000 /* FirebaseManager.swift */; };
-		E5FBMGR12E8901A100000002 /* FirebaseManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5FBMGR12E8901A000000000 /* FirebaseManager.swift */; };
 		E50546C42E621981007CCFAB /* NavigationHostView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50546C32E621981007CCFAB /* NavigationHostView.swift */; };
 		E50546C52E621981007CCFAB /* NavigationHostView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50546C32E621981007CCFAB /* NavigationHostView.swift */; };
 		E50546C72E621A8E007CCFAB /* NavigationCoordinatorHub.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50546C62E621A8E007CCFAB /* NavigationCoordinatorHub.swift */; };
@@ -868,6 +866,8 @@
 		E5F4A3182E6FE6C7009B32AA /* CatalogContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5F4A3172E6FE6C7009B32AA /* CatalogContentView.swift */; };
 		E5F4A3192E6FE6C7009B32AA /* CatalogContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5F4A3172E6FE6C7009B32AA /* CatalogContentView.swift */; };
 		E5F8A57D28A48B8300A229AE /* BookPreviewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5F8A57C28A48B8300A229AE /* BookPreviewTests.swift */; };
+		E5FBMGR12E8901A100000001 /* FirebaseManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5FBMGR12E8901A000000000 /* FirebaseManager.swift */; };
+		E5FBMGR12E8901A100000002 /* FirebaseManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5FBMGR12E8901A000000000 /* FirebaseManager.swift */; };
 		E5FD62132BFD30E400DD4B94 /* AudiobookBookmarkBusinessLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5FD62122BFD30E400DD4B94 /* AudiobookBookmarkBusinessLogic.swift */; };
 		E5FD62142BFD30F500DD4B94 /* LoadingViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E523124C28641505007D1DB5 /* LoadingViewController.swift */; };
 		E5FD62162BFD30F600DD4B94 /* LoadingViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E523124C28641505007D1DB5 /* LoadingViewController.swift */; };
@@ -1619,7 +1619,6 @@
 		E50546762E6201E6007CCFAB /* HTTPStubURLProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPStubURLProtocol.swift; sourceTree = "<group>"; };
 		E50546782E62020D007CCFAB /* URLSession+Stubbing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "URLSession+Stubbing.swift"; sourceTree = "<group>"; };
 		E50546C02E62194F007CCFAB /* AppTabHostView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTabHostView.swift; sourceTree = "<group>"; };
-		E5FBMGR12E8901A000000000 /* FirebaseManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirebaseManager.swift; sourceTree = "<group>"; };
 		E50546C32E621981007CCFAB /* NavigationHostView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationHostView.swift; sourceTree = "<group>"; };
 		E50546C62E621A8E007CCFAB /* NavigationCoordinatorHub.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationCoordinatorHub.swift; sourceTree = "<group>"; };
 		E50546C92E621B75007CCFAB /* NavigationCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationCoordinator.swift; sourceTree = "<group>"; };
@@ -1787,6 +1786,7 @@
 		E5F4A2E02E6F65A5009B32AA /* KeyboardModifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardModifier.swift; sourceTree = "<group>"; };
 		E5F4A3172E6FE6C7009B32AA /* CatalogContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogContentView.swift; sourceTree = "<group>"; };
 		E5F8A57C28A48B8300A229AE /* BookPreviewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookPreviewTests.swift; sourceTree = "<group>"; };
+		E5FBMGR12E8901A000000000 /* FirebaseManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirebaseManager.swift; sourceTree = "<group>"; };
 		E5FD62122BFD30E400DD4B94 /* AudiobookBookmarkBusinessLogic.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AudiobookBookmarkBusinessLogic.swift; sourceTree = "<group>"; };
 		E5FFB96328AED4850042907F /* ImageProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageProvider.swift; sourceTree = "<group>"; };
 		E5FFB9CA28AFE8AF0042907F /* AsyncImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AsyncImage.swift; sourceTree = "<group>"; };
@@ -5576,9 +5576,9 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/PalaceDebug.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 413;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -5697,6 +5697,7 @@
 				CLANG_ENABLE_OBJC_WEAK = YES;
 				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEBUG_INFORMATION_FORMAT = dwarf;
@@ -5711,6 +5712,7 @@
 				MTL_FAST_MATH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = com.synctek.PalaceUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -5733,6 +5735,7 @@
 				CLANG_ENABLE_OBJC_WEAK = YES;
 				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 1;
@@ -5748,6 +5751,7 @@
 				MTL_FAST_MATH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = com.synctek.PalaceUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = NO;

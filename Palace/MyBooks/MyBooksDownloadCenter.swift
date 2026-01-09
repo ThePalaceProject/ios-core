@@ -146,7 +146,7 @@ actor DownloadCoordinator {
 #if FEATURE_DRM_CONNECTOR
     // Use safe DRM container to prevent EXC_BREAKPOINT crashes during initialization
     if AdobeCertificate.isDRMAvailable {
-      AdobeDRMContainer.shared.setDelegate(self)
+      AdobeDRMService.shared.setDelegate(self)
     }
 #else
     NSLog("Cannot import ADEPT")
@@ -774,7 +774,7 @@ actor DownloadCoordinator {
     
 #if FEATURE_DRM_CONNECTOR
     if info.rightsManagement == .adobe {
-      AdobeDRMContainer.shared.cancelFulfillment(withTag: identifier)
+      AdobeDRMService.shared.cancelFulfillment(withTag: identifier)
       return
     }
 #endif
@@ -865,7 +865,7 @@ extension MyBooksDownloadCenter {
     if let fulfillmentId = bookRegistry.fulfillmentId(forIdentifier: identifier),
        userAccount.authDefinition?.needsAuth == true {
       NSLog("Return attempt for book. userID: %@", userAccount.userID ?? "")
-      AdobeDRMContainer.shared.returnLoan(fulfillmentId,
+      AdobeDRMService.shared.returnLoan(fulfillmentId,
                                           userID: userAccount.userID,
                                           deviceID: userAccount.deviceID) { success, error in
         if !success {
@@ -1134,7 +1134,7 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
           failureRequiringAlert = true
         } else if let acsmData = try? Data(contentsOf: location) {
           NSLog("Download finished. Fulfilling with userID: \(userAccount.userID ?? "")")
-          AdobeDRMContainer.shared.fulfill(withACSMData: acsmData, tag: book.identifier, userID: userAccount.userID, deviceID: userAccount.deviceID)
+          AdobeDRMService.shared.fulfill(withACSMData: acsmData, tag: book.identifier, userID: userAccount.userID, deviceID: userAccount.deviceID)
         }
 #endif
       case .lcp:

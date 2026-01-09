@@ -450,7 +450,7 @@ final class BookDetailViewModel: ObservableObject {
             self.openBook(book, completion: completion)
             return
           } else if AdobeCertificate.isDRMAvailable &&
-                      !AdobeDRMContainer.shared.isUserAuthorized(user.userID, deviceID: user.deviceID) {
+                      !AdobeDRMService.shared.isUserAuthorized(user.userID, deviceID: user.deviceID) {
             let reauthenticator = TPPReauthenticator()
             reauthenticator.authenticateIfNeeded(user, usingExistingCredentials: true) {
               Task { @MainActor in
