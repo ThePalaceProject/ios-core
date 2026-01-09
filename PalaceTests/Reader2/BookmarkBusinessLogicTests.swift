@@ -300,8 +300,6 @@ final class BookmarkSyncTests: XCTestCase {
   }
   
   func testUpdateLocalBookmarks_addsServerBookmarks() {
-    let expectation = expectation(description: "Update completes")
-    
     let serverBookmark = TPPReadiumBookmark(
       annotationId: "server-bookmark-1",
       href: "/chapter1",
