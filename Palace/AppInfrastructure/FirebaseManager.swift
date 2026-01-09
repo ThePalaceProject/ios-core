@@ -2,20 +2,23 @@
 //  FirebaseManager.swift
 //  Palace
 //
-//  Centralized Firebase management to prevent race conditions.
+//  Centralized Firebase management.
 //  Copyright © 2025 The Palace Project. All rights reserved.
 //
 
 import Foundation
+import os
 import FirebaseCore
 import FirebaseRemoteConfig
 import FirebaseAnalytics
 import FirebaseCrashlytics
 
 /// Centralized manager for all Firebase services.
-/// This singleton ensures thread-safe access to Firebase resources and prevents
-/// the "recursive_mutex lock failed" crash caused by multiple actors racing
-/// to configure the shared RemoteConfig instance.
+/// 
+/// Thread Safety:
+/// - Device IDs are immutable `let` properties computed once at init
+/// - RemoteConfig is thread-safe internally (no external locking needed)
+/// - lastFetchTime is advisory only; RemoteConfig handles its own rate limiting
 final class FirebaseManager {
   static let shared = FirebaseManager()
   
@@ -27,13 +30,20 @@ final class FirebaseManager {
     static let deviceIdentifierKey = "TPPDeviceIdentifier"
   }
   
-  // MARK: - State
+  // MARK: - Immutable State (thread-safe by design)
+  
+  /// Unique device identifier, persisted across app launches
+  let deviceID: String
+  
+  /// Device ID without hyphens for Firebase parameter compatibility
+  let sanitizedDeviceID: String
+  
+  // MARK: - Firebase Services
   
   private let remoteConfig: RemoteConfig
-  private let lock = NSLock()
-  private var isConfigured = false
-  private var lastFetchTime: Date?
-  private var cachedDeviceID: String?
+  
+  /// Atomic flag to prevent concurrent fetch operations
+  private let isFetching = OSAllocatedUnfairLock(initialState: false)
   
   // MARK: - Remote Config Keys
   
@@ -47,10 +57,21 @@ final class FirebaseManager {
   // MARK: - Initialization
   
   private init() {
-    // Get the shared RemoteConfig instance once
+    // Compute device ID once - it never changes after creation
+    if let existing = UserDefaults.standard.string(forKey: Configuration.deviceIdentifierKey) {
+      self.deviceID = existing
+    } else {
+      let newID = UUID().uuidString
+      UserDefaults.standard.set(newID, forKey: Configuration.deviceIdentifierKey)
+      self.deviceID = newID
+      Log.info(#file, "Generated new device ID: \(newID)")
+    }
+    self.sanitizedDeviceID = deviceID.replacingOccurrences(of: "-", with: "")
+    
+    // Get the shared RemoteConfig instance
     self.remoteConfig = RemoteConfig.remoteConfig()
     
-    // Configure settings immediately in init to prevent races
+    // Configure settings
     configureRemoteConfigSettings()
     setDefaultValues()
   }
@@ -75,47 +96,30 @@ final class FirebaseManager {
     ])
   }
   
-  // MARK: - Device Identifier
-  
-  /// Returns a consistent device identifier for targeting.
-  /// Thread-safe and cached for performance.
-  var deviceID: String {
-    lock.lock()
-    defer { lock.unlock() }
-    
-    if let cached = cachedDeviceID {
-      return cached
-    }
-    
-    if let existing = UserDefaults.standard.string(forKey: Configuration.deviceIdentifierKey) {
-      cachedDeviceID = existing
-      return existing
-    }
-    
-    let newID = UUID().uuidString
-    UserDefaults.standard.set(newID, forKey: Configuration.deviceIdentifierKey)
-    cachedDeviceID = newID
-    Log.info(#file, "Generated new device ID: \(newID)")
-    return newID
-  }
-  
-  /// Sanitized device ID for Firebase parameter compatibility (no hyphens).
-  var sanitizedDeviceID: String {
-    deviceID.replacingOccurrences(of: "-", with: "")
-  }
-  
   // MARK: - Remote Config Access
   
-  /// Fetches and activates remote config. Thread-safe.
-  /// - Returns: True if fetch/activate succeeded.
+  /// Fetches and activates remote config.
+  /// Uses atomic flag to prevent concurrent fetches (which could trigger Firebase mutex issues).
   @discardableResult
   func fetchAndActivateRemoteConfig() async -> Bool {
-    lock.lock()
-    defer { lock.unlock() }
+    // Atomically check and set fetching flag - if already fetching, skip
+    let alreadyFetching = isFetching.withLock { fetching -> Bool in
+      if fetching { return true }
+      fetching = true
+      return false
+    }
+    
+    guard !alreadyFetching else {
+      Log.info(#file, "Remote config fetch already in progress, skipping")
+      return false
+    }
+    
+    defer {
+      isFetching.withLock { $0 = false }
+    }
     
     do {
       let status = try await remoteConfig.fetchAndActivate()
-      lastFetchTime = Date()
       
       switch status {
       case .successFetchedFromRemote:
@@ -136,42 +140,14 @@ final class FirebaseManager {
     }
   }
   
-  /// Fetches remote config if the minimum interval has passed.
-  func fetchIfNeeded() async {
-    let shouldFetch: Bool = {
-      lock.lock()
-      defer { lock.unlock() }
-      
-      guard let lastFetch = lastFetchTime else { return true }
-      
-      #if DEBUG
-      let interval = Configuration.minimumFetchIntervalDebug
-      #else
-      let interval = Configuration.minimumFetchIntervalRelease
-      #endif
-      
-      return Date().timeIntervalSince(lastFetch) > interval
-    }()
-    
-    if shouldFetch {
-      await fetchAndActivateRemoteConfig()
-    }
-  }
-  
-  /// Gets a boolean value from remote config. Thread-safe.
+  /// Gets a boolean value from remote config.
   func getBoolValue(forKey key: RemoteConfigKey) -> Bool {
-    lock.lock()
-    defer { lock.unlock() }
-    return remoteConfig.configValue(forKey: key.rawValue).boolValue
+    remoteConfig.configValue(forKey: key.rawValue).boolValue
   }
   
-  /// Gets a boolean value from remote config with device-specific override. Thread-safe.
+  /// Gets a boolean value with device-specific override check.
   func getBoolValue(forKey key: RemoteConfigKey, checkingDeviceSpecific: Bool) -> Bool {
-    lock.lock()
-    defer { lock.unlock() }
-    
     if checkingDeviceSpecific {
-      // Check device-specific flag first
       let deviceKey = key.rawValue + "_device_" + sanitizedDeviceID
       let deviceValue = remoteConfig.configValue(forKey: deviceKey)
       
@@ -180,24 +156,18 @@ final class FirebaseManager {
       }
     }
     
-    // Fall back to global value
     return remoteConfig.configValue(forKey: key.rawValue).boolValue
   }
   
   /// Checks if a config value came from the remote server.
   func isRemoteValue(forKey key: RemoteConfigKey) -> Bool {
-    lock.lock()
-    defer { lock.unlock() }
-    return remoteConfig.configValue(forKey: key.rawValue).source == .remote
+    remoteConfig.configValue(forKey: key.rawValue).source == .remote
   }
   
   // MARK: - Enhanced Logging
   
   /// Checks if enhanced error logging is enabled for this device.
   func isEnhancedLoggingEnabled() -> Bool {
-    lock.lock()
-    defer { lock.unlock() }
-    
     // Check device-specific flag first
     let deviceKey = RemoteConfigKey.enhancedErrorLoggingDevicePrefix.rawValue + sanitizedDeviceID
     let deviceValue = remoteConfig.configValue(forKey: deviceKey)
@@ -212,7 +182,6 @@ final class FirebaseManager {
       return globalValue.boolValue
     }
     
-    // Default: disabled
     return false
   }
   
@@ -289,7 +258,6 @@ final class FirebaseManager {
     }
     
     #if FEATURE_CRASH_REPORTING
-    // Add enhanced logging metadata if enabled
     if isEnhancedLoggingEnabled() {
       Crashlytics.crashlytics().setCustomValue(true, forKey: "enhanced_logging_enabled")
       Crashlytics.crashlytics().setCustomValue(deviceID, forKey: "device_id")
@@ -330,7 +298,6 @@ final class FirebaseManager {
     
     Analytics.logEvent("enhanced_error_logged", parameters: params)
     
-    // Log to Crashlytics as well
     #if FEATURE_CRASH_REPORTING
     let stackTrace = Thread.callStackSymbols.joined(separator: "\n")
     Crashlytics.crashlytics().log("Enhanced Error: \(context)")
@@ -347,18 +314,18 @@ final class FirebaseManager {
   
   // MARK: - Lifecycle
   
-  /// Call this when the app enters the background to pause Firebase operations.
+  /// Called when the app enters background.
   func applicationDidEnterBackground() {
-    Log.info(#file, "Firebase: App entering background, pausing operations")
+    Log.info(#file, "Firebase: App entering background")
   }
   
-  /// Call this when the app becomes active to resume Firebase operations.
+  /// Called when the app becomes active.
   func applicationDidBecomeActive() {
     Log.info(#file, "Firebase: App became active")
     
-    // Refresh remote config in background
+    // RemoteConfig handles its own rate limiting via minimumFetchInterval
     Task {
-      await fetchIfNeeded()
+      await fetchAndActivateRemoteConfig()
     }
   }
 }
