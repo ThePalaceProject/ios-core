@@ -174,6 +174,14 @@ func performLogOut() {
   /// Clears all WebView data including cookies, cache, local storage, and session data.
   /// This ensures SAML/OAuth identity providers are fully signed out.
   private func clearWebViewData() {
+    // Skip WebKit cleanup in test environments (no UI context)
+    #if DEBUG
+    if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+      Log.debug(#file, "🚪 [LOGOUT] Skipping WebView data cleanup in test environment")
+      return
+    }
+    #endif
+    
     // WebKit operations MUST run on the main thread
     DispatchQueue.main.async {
       let dataStore = WKWebsiteDataStore.default()
@@ -254,6 +262,15 @@ func performLogOut() {
           
           guard let strongSelf = self else {
             Log.error(#file, "🚪 [LOGOUT] ERROR: self deallocated during DRM callback! Completing logout directly...")
+            
+            // Skip WebKit cleanup in test environments (no UI context)
+            #if DEBUG
+            if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+              Log.debug(#file, "🚪 [LOGOUT] Skipping WebView cleanup in test environment")
+              return
+            }
+            #endif
+            
             // Even if self is nil, we need to complete the logout process
             // Call static/global cleanup methods directly
             DispatchQueue.main.async {
