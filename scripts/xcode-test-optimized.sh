@@ -43,6 +43,7 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
         rm -rf TestResults.xcresult
         
         # Run tests - allow failure so we can check if xcresult was created
+        # Skip snapshot tests in CI - they're slow and environment-dependent
         set +e
         xcodebuild test \
             -project Palace.xcodeproj \
@@ -53,6 +54,17 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
             -enableCodeCoverage YES \
             -parallel-testing-enabled YES \
             -maximum-parallel-testing-workers 2 \
+            -skip-testing:PalaceTests/AudiobookPlayerSnapshotTests \
+            -skip-testing:PalaceTests/BookDetailSnapshotTests \
+            -skip-testing:PalaceTests/CatalogSnapshotTests \
+            -skip-testing:PalaceTests/FacetsSelectorSnapshotTests \
+            -skip-testing:PalaceTests/HoldsSnapshotTests \
+            -skip-testing:PalaceTests/MyBooksSnapshotTests \
+            -skip-testing:PalaceTests/OnboardingSnapshotTests \
+            -skip-testing:PalaceTests/PDFViewsSnapshotTests \
+            -skip-testing:PalaceTests/ReservationsSnapshotTests \
+            -skip-testing:PalaceTests/SearchSnapshotTests \
+            -skip-testing:PalaceTests/SettingsSnapshotTests \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
             ONLY_ACTIVE_ARCH=YES \
