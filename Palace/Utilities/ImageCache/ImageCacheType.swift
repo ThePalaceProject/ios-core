@@ -127,7 +127,7 @@ public final class ImageCache: ImageCacheType {
                 
                 guard let jpegData = data else {
                     Log.error(#file, "Failed to compress image for key: \(key)")
-                    return
+                    return 
                 }
                 
                 self.dataCache.set(jpegData, for: key, expiresIn: ttl)

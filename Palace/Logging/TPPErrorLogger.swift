@@ -436,15 +436,15 @@ fileprivate let nullString = "null"
   private class func record(error: NSError) {
     // Check if enhanced logging is enabled (synchronous, thread-safe via FirebaseManager)
     let isEnhanced = FirebaseManager.shared.isEnhancedLoggingEnabled()
-    
-    if isEnhanced {
-      Log.info(#file, "📊 ENHANCED error logging active")
+      
+      if isEnhanced {
+        Log.info(#file, "📊 ENHANCED error logging active")
       FirebaseManager.shared.logEnhancedErrorEvent(
         error: error,
-        context: error.domain,
-        metadata: error.userInfo
-      )
-    }
+          context: error.domain,
+          metadata: error.userInfo
+        )
+      }
     
     // Always do normal Crashlytics recording via FirebaseManager
     // This is thread-safe and prevents recursive_mutex issues

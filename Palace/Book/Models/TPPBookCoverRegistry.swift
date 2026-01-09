@@ -203,7 +203,7 @@ public class TPPBookCoverRegistryBridge: NSObject {
           // Only update book's cache if book is still alive
           book?.imageCache.set(img, for: bookIdentifier)
         }
-        completion(img)
+        completion(img) 
       }
     }
   }
@@ -238,7 +238,7 @@ public class TPPBookCoverRegistryBridge: NSObject {
           // Only update book's cache if book is still alive
           book?.imageCache.set(img, for: bookIdentifier)
         }
-        completion(img)
+        completion(img) 
       }
     }
   }

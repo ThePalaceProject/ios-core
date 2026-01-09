@@ -248,14 +248,6 @@ final class AudiobookBackgroundAudioTests: XCTestCase {
     }
     
     tracker = nil
-    
-    // Wait for async operations on tracker's syncQueue to complete
-    let expectation = XCTestExpectation(description: "Wait for tracker deinit")
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-      expectation.fulfill()
-    }
-    wait(for: [expectation], timeout: 1.0)
-    
     mockDataManager.flush()
     
     let total = mockDataManager.savedTimeEntries.reduce(0) { $0 + $1.duration }

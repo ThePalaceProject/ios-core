@@ -106,17 +106,9 @@ class AudiobookTimeTrackerTests: XCTestCase {
       sut.receiveValue(simulatedDate)
     }
     
-    // Wait for the async syncQueue operations to complete before deallocating
-    // The tracker uses a barrier queue, so this ensures all receiveValue calls finish
-    let expectation = self.expectation(description: "Wait for tracker queue")
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-      // Now deallocate to trigger final save
-      self.sut = nil
-      self.mockDataManager.flush()
-      expectation.fulfill()
-    }
-    
-    wait(for: [expectation], timeout: 1.0)
+    // Deallocate to trigger final save
+    sut = nil
+    mockDataManager.flush()
     
     let firstEntry = mockDataManager.savedTimeEntries.first
     XCTAssertNotNil(firstEntry, "Time entry should exist")

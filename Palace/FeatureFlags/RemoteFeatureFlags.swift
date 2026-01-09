@@ -35,7 +35,7 @@ final class RemoteFeatureFlags {
       case .downloadRetryEnabled, .circuitBreakerEnabled:
         return true
       default:
-        return false
+      return false
       }
     }
     
@@ -73,7 +73,7 @@ final class RemoteFeatureFlags {
     let success = await FirebaseManager.shared.fetchAndActivateRemoteConfig()
     
     lock.lock()
-    lastFetchTime = Date()
+      lastFetchTime = Date()
     lock.unlock()
     
     return success

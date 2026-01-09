@@ -62,7 +62,7 @@ class AudiobookSamplePlayer: NSObject, ObservableObject {
         if knownRecoverableErrors.contains(error.code) {
           Log.debug(#file, "Audio session configuration deferred: \(error.localizedDescription)")
         } else {
-          TPPErrorLogger.logError(error, summary: "Failed to set audio session category")
+      TPPErrorLogger.logError(error, summary: "Failed to set audio session category")
         }
       }
     }

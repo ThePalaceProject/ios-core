@@ -289,7 +289,7 @@ func performLogOut() {
                 Log.info(#file, "🚪 [LOGOUT] Clearing \(cookies.count) HTTP cookies (direct)")
                 for cookie in cookies {
                   HTTPCookieStorage.shared.deleteCookie(cookie)
-                }
+          }
               }
             }
             return

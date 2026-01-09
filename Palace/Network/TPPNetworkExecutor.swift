@@ -334,7 +334,7 @@ extension TPPNetworkExecutor {
           let error = NSError(domain: TPPErrorLogger.clientDomain, code: TPPErrorCode.invalidCredentials.rawValue, userInfo: [NSLocalizedDescriptionKey: "Token refresh in progress"])
           completion?(NYPLResult.failure(error, nil))
         }
-        return
+        return 
       }
       
       self.isRefreshing = true

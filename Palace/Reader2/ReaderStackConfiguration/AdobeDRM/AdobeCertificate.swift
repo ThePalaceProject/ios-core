@@ -45,7 +45,7 @@ extension AdobeCertificate {
     }
     return expirationDate.timeIntervalSinceNow <= 0
   }
-  
+    
   /// Safely checks if DRM is available and certificate is valid.
   /// Use this before attempting any DRM operations.
   @objc static var isDRMAvailable: Bool {

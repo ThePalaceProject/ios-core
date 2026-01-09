@@ -244,7 +244,7 @@ protocol AccountLogoDelegate: AnyObject {
     userProfileUrl = authenticationDocument.links?.first(where: { $0.rel == "http://librarysimplified.org/terms/rel/user-profile" })?.href
     loansUrl = URL.init(string: authenticationDocument.links?.first(where: { $0.rel == "http://opds-spec.org/shelf" })?.href ?? "")
     supportsSimplyESync = userProfileUrl != nil
-    
+
     // Debug logging for sync support
     Log.debug(#file, """
       🔖 AccountDetails init for '\(authenticationDocument.title ?? "unknown")':

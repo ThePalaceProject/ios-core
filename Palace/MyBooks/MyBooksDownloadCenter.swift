@@ -866,8 +866,8 @@ extension MyBooksDownloadCenter {
        userAccount.authDefinition?.needsAuth == true {
       NSLog("Return attempt for book. userID: %@", userAccount.userID ?? "")
       AdobeDRMService.shared.returnLoan(fulfillmentId,
-                                          userID: userAccount.userID,
-                                          deviceID: userAccount.deviceID) { success, error in
+                                            userID: userAccount.userID,
+                                            deviceID: userAccount.deviceID) { success, error in
         if !success {
           NSLog("Failed to return loan via NYPLAdept.")
         }
