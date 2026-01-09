@@ -311,10 +311,30 @@ extension TPPNetworkExecutor {
   
   func refreshTokenAndResume(task: URLSessionTask?, completion: ((_ result: NYPLResult<Data>) -> Void)? = nil) {
     refreshQueue.async { [weak self] in
-      guard let self = self else { return }
-      guard !self.isRefreshing else { 
-        Log.debug(#file, "Token refresh already in progress, skipping duplicate request")
-        return 
+      guard let self = self else {
+        // Self deallocated - call completion to avoid leaking continuation
+        let error = NSError(domain: TPPErrorLogger.clientDomain, code: TPPErrorCode.invalidCredentials.rawValue, userInfo: [NSLocalizedDescriptionKey: "Network executor deallocated"])
+        completion?(NYPLResult.failure(error, nil))
+        return
+      }
+      
+      // If refresh is already in progress, still add task to retry queue
+      // so it will be retried when the current refresh completes
+      if self.isRefreshing {
+        Log.debug(#file, "Token refresh already in progress, queueing task for retry")
+        if let task {
+          self.retryQueueLock.lock()
+          self.retryQueue.append(task)
+          if let completion {
+            self.responder.addCompletion(completion, taskID: task.taskIdentifier)
+          }
+          self.retryQueueLock.unlock()
+        } else {
+          // No task to queue - must call completion to avoid leaking continuation
+          let error = NSError(domain: TPPErrorLogger.clientDomain, code: TPPErrorCode.invalidCredentials.rawValue, userInfo: [NSLocalizedDescriptionKey: "Token refresh in progress"])
+          completion?(NYPLResult.failure(error, nil))
+        }
+        return
       }
       
       self.isRefreshing = true
@@ -336,7 +356,7 @@ extension TPPNetworkExecutor {
         self.retryQueueLock.lock()
         self.retryQueue.append(task)
         if let completion {
-          responder.addCompletion(completion, taskID: task.taskIdentifier)
+          self.responder.addCompletion(completion, taskID: task.taskIdentifier)
         }
         self.retryQueueLock.unlock()
       }
