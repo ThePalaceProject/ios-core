@@ -242,6 +242,7 @@ func performLogOut() {
             Log.warn(#file, "🚪 [LOGOUT] DRM deauthorization failed, but continuing with logout")
             // Even though we failed, let the user continue to log out.
             // The most likely reason is a user changing their PIN.
+            Log.info(#file, "🚪 [LOGOUT] About to call TPPErrorLogger.logError...")
             TPPErrorLogger.logError(error,
                                      summary: "User lost an activation on signout: ADEPT error",
                                      metadata: [
@@ -250,10 +251,14 @@ func performLogOut() {
                                       "Licensor": licensor,
                                       "AdobeTokenUsername": tokenUsername ?? "N/A",
                                       "AdobeTokenPassword": tokenPassword ?? "N/A"])
+            Log.info(#file, "🚪 [LOGOUT] TPPErrorLogger.logError returned")
           }
+          
+          Log.info(#file, "🚪 [LOGOUT] Exited if/else block, about to check self...")
 
           // Check if self was deallocated during the DRM callback
-          Log.info(#file, "🚪 [LOGOUT] DRM callback complete, self is \(self == nil ? "NIL ⚠️" : "valid ✅")")
+          let selfIsNil = (self == nil)
+          Log.info(#file, "🚪 [LOGOUT] DRM callback complete, self is \(selfIsNil ? "NIL ⚠️" : "valid ✅") (selfIsNil=\(selfIsNil))")
           
           guard let strongSelf = self else {
             Log.error(#file, "🚪 [LOGOUT] ERROR: self deallocated during DRM callback! Completing logout directly...")
