@@ -92,18 +92,18 @@ final class CatalogSearchViewModelTests: XCTestCase {
   
   // MARK: - Setup/Teardown
   
-  override func setUp() async throws {
-    try await super.setUp()
+  override func setUp() {
+    super.setUp()
     mockRepository = CatalogRepositoryMock()
     cancellables = Set<AnyCancellable>()
     testBaseURL = URL(string: "https://example.com/catalog")!
   }
   
-  override func tearDown() async throws {
+  override func tearDown() {
     mockRepository = nil
     cancellables = nil
     testBaseURL = nil
-    try await super.tearDown()
+    super.tearDown()
   }
   
   // MARK: - Helper Methods
