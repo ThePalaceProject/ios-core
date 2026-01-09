@@ -68,16 +68,28 @@ def get_all_tests_new_api(xcresult_path: str) -> List[Dict]:
         data = json.loads(stdout)
         tests = []
         
-        # The new API returns a flat list of tests with detailed info
+        # Debug: Show top-level structure
         if isinstance(data, dict):
-            # Could be wrapped in a container
-            test_list = data.get('tests', data.get('testNodes', []))
+            top_keys = list(data.keys())[:10]
+            print(f"New API response keys: {top_keys}", file=sys.stderr)
+        
+        # The new API returns testNodes as root
+        if isinstance(data, dict):
+            # Try multiple possible container keys
+            test_list = (
+                data.get('testNodes') or
+                data.get('tests') or
+                data.get('children') or
+                [data]  # The data itself might be a single node
+            )
             if isinstance(test_list, list):
                 for test in test_list:
                     tests.extend(parse_test_node_new_api(test))
+            print(f"Parsed {len(tests)} tests from new API", file=sys.stderr)
         elif isinstance(data, list):
             for test in data:
                 tests.extend(parse_test_node_new_api(test))
+            print(f"Parsed {len(tests)} tests from new API (list format)", file=sys.stderr)
         
         return tests
     except json.JSONDecodeError as e:
@@ -85,43 +97,70 @@ def get_all_tests_new_api(xcresult_path: str) -> List[Dict]:
         return []
 
 
-def parse_test_node_new_api(node: Dict, parent_name: str = "") -> List[Dict]:
-    """Parse a test node from new API format."""
+def parse_test_node_new_api(node: Dict, parent_name: str = "", class_name: str = "") -> List[Dict]:
+    """Parse a test node from new API format (Xcode 16+).
+    
+    Node types hierarchy:
+    - Test Plan -> Target -> Unit Test Bundle -> Test Suite -> Test Case
+    """
     tests = []
     
     if not isinstance(node, dict):
         return tests
     
     node_type = node.get('nodeType', node.get('type', ''))
-    name = node.get('name', node.get('identifier', ''))
+    name = node.get('name', node.get('identifier', node.get('nodeIdentifier', '')))
+    result = node.get('result', node.get('status', ''))
+    duration = node.get('durationInSeconds', node.get('duration', 0))
     
-    # Check for different node types
-    if node_type in ['Test', 'test'] or node.get('result') in ['Passed', 'Failed', 'Skipped', 'passed', 'failed', 'skipped']:
-        # This is an actual test
-        result = node.get('result', node.get('status', 'Unknown'))
-        duration = node.get('duration', node.get('durationInSeconds', 0))
-        
+    # Track class name from Test Suite level
+    current_class = class_name
+    if node_type == 'Test Suite':
+        current_class = name
+    
+    # Check if this is an actual test case
+    is_test_case = (
+        node_type in ['Test Case', 'Test', 'test', 'testCase'] or
+        (result in ['Passed', 'Failed', 'Skipped', 'passed', 'failed', 'skipped'] and 
+         node_type not in ['Test Plan', 'Target', 'Unit Test Bundle', 'Test Suite'])
+    )
+    
+    if is_test_case:
         # Normalize result
         result_map = {
             'Passed': 'Success', 'passed': 'Success', 'success': 'Success',
             'Failed': 'Failure', 'failed': 'Failure', 'failure': 'Failure',
             'Skipped': 'Skipped', 'skipped': 'Skipped',
         }
-        normalized_result = result_map.get(result, result)
+        normalized_result = result_map.get(result, result if result else 'Unknown')
         
-        # Parse class and method from name
-        parts = name.replace('()', '').split('/')
-        method = parts[-1] if parts else name
-        class_name = parts[-2] if len(parts) >= 2 else parent_name or 'Unknown'
+        # Extract test method name - remove () if present
+        test_method = name.replace('()', '') if name else 'Unknown'
+        
+        # Use tracked class name or try to extract from identifier
+        test_class = current_class or parent_name or 'Unknown'
+        identifier = node.get('nodeIdentifier', node.get('identifier', f"{test_class}/{test_method}"))
+        
+        # Parse duration - handle formats like "0.93s", "1.234", or numeric
+        parsed_duration = 0.0
+        if duration:
+            duration_str = str(duration).strip()
+            # Remove trailing 's' if present (e.g., "0.93s" -> "0.93")
+            if duration_str.endswith('s'):
+                duration_str = duration_str[:-1]
+            try:
+                parsed_duration = float(duration_str)
+            except (ValueError, TypeError):
+                parsed_duration = 0.0
         
         tests.append({
-            'name': method,
-            'method': method,
-            'class': class_name,
-            'identifier': name,
+            'name': test_method,
+            'method': test_method,
+            'class': test_class,
+            'identifier': identifier,
             'status': normalized_result,
-            'duration': float(duration) if duration else 0.0,
-            'duration_formatted': format_duration(float(duration) if duration else 0.0),
+            'duration': parsed_duration,
+            'duration_formatted': format_duration(parsed_duration),
             'failures': []
         })
     
@@ -129,7 +168,7 @@ def parse_test_node_new_api(node: Dict, parent_name: str = "") -> List[Dict]:
     children = node.get('children', node.get('subtests', node.get('testNodes', [])))
     if isinstance(children, list):
         for child in children:
-            tests.extend(parse_test_node_new_api(child, name))
+            tests.extend(parse_test_node_new_api(child, name, current_class))
     
     return tests
 

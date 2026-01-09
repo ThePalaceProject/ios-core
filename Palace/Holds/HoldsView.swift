@@ -140,6 +140,7 @@ struct HoldsView: View {
       ImageProviders.MyBooksView.myLibraryIcon
     }
     .accessibilityIdentifier(AccessibilityID.Holds.libraryButton)
+    .accessibilityLabel(Strings.Generic.switchLibrary)
     .actionSheet(isPresented: $model.selectNewLibrary) {
       var buttons: [ActionSheet.Button] = TPPSettings.shared.settingsAccountsList.map { account in
           .default(Text(account.name)) {

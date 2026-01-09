@@ -178,6 +178,7 @@ struct MyBooksView: View {
       ImageProviders.MyBooksView.myLibraryIcon
     }
     .accessibilityIdentifier(AccessibilityID.Settings.manageLibrariesButton)
+    .accessibilityLabel(Strings.Generic.switchLibrary)
     .actionSheet(isPresented: $model.selectNewLibrary) { libraryPicker }
   }
 
@@ -186,6 +187,7 @@ struct MyBooksView: View {
       ImageProviders.MyBooksView.search
     }
     .accessibilityIdentifier(AccessibilityID.MyBooks.searchButton)
+    .accessibilityLabel(Strings.Generic.searchBooks)
   }
 
   private var sortActionSheet: ActionSheet {

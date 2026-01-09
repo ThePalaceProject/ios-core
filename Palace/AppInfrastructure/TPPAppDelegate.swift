@@ -18,10 +18,13 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
   func applicationDidFinishLaunching(_ application: UIApplication) {
     let startupQueue = DispatchQueue.global(qos: .userInitiated)
 
+    // Configure Firebase once at startup
     FirebaseApp.configure()
     
+    // Initialize FirebaseManager (consolidated Firebase access to prevent mutex crashes)
+    // This replaces separate DeviceSpecificErrorMonitor and RemoteFeatureFlags initialization
     Task {
-      await DeviceSpecificErrorMonitor.shared.initialize()
+      await FirebaseManager.shared.fetchAndActivateRemoteConfig()
     }
 
     TPPErrorLogger.configureCrashAnalytics()
@@ -31,15 +34,6 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
     setupWindow()
     configureUIAppearance()
-
-    // Check for crashes and perform recovery
-    Task {
-      await CrashRecoveryService.shared.checkForCrashOnLaunch()
-      
-      // Schedule stable session check after 10 minutes of stable running
-      try? await Task.sleep(nanoseconds: 600_000_000_000) // 10 minutes
-      await CrashRecoveryService.shared.recordStableSession()
-    }
 
     startupQueue.async {
       self.setupBookRegistryAndNotifications()
@@ -161,14 +155,18 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
   func applicationDidBecomeActive(_ application: UIApplication) {
     TPPErrorLogger.setUserID(TPPUserAccount.sharedAccount().barcode)
+    
+    // Resume Firebase operations when app becomes active
+    FirebaseManager.shared.applicationDidBecomeActive()
+  }
+  
+  func applicationDidEnterBackground(_ application: UIApplication) {
+    // Pause Firebase operations when app goes to background
+    // This helps prevent the "recursive_mutex lock failed" crash
+    FirebaseManager.shared.applicationDidEnterBackground()
   }
 
   func applicationWillTerminate(_ application: UIApplication) {
-    // Record clean exit for crash detection
-    Task {
-      await CrashRecoveryService.shared.recordCleanExit()
-    }
-    
     audiobookLifecycleManager.willTerminate()
     NotificationCenter.default.removeObserver(self)
     Reachability.shared.stopMonitoring()

@@ -694,16 +694,43 @@ private extension TPPBook {
           let scale = maxDimension / maxSide
           let newSize = CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
           
-          guard newSize.width > 0, newSize.height > 0 else {
+          guard newSize.width > 0, newSize.height > 0, Int(newSize.width) > 0, Int(newSize.height) > 0 else {
             Log.warn(#file, "Invalid scaled size for dominant color: \(newSize)")
             DispatchQueue.main.async { self.dominantUIColor = .gray }
             return
           }
           
-          UIGraphicsBeginImageContextWithOptions(newSize, false, 1.0)
-          inputImage.draw(in: CGRect(origin: .zero, size: newSize))
-          scaledImage = UIGraphicsGetImageFromCurrentImageContext() ?? inputImage
-          UIGraphicsEndImageContext()
+          // Use CGContext for thread-safe image resizing (UIGraphicsBeginImageContextWithOptions is NOT thread-safe)
+          // Always use sRGB - source images may be CMYK, grayscale, or other formats that don't support alpha
+          let colorSpace = CGColorSpaceCreateDeviceRGB()
+          
+          // Use premultiplied alpha which is universally supported by CGContext with RGB color space
+          let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue)
+          
+          guard let context = CGContext(
+            data: nil,
+            width: Int(newSize.width),
+            height: Int(newSize.height),
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: colorSpace,
+            bitmapInfo: bitmapInfo.rawValue
+          ) else {
+            Log.warn(#file, "Failed to create CGContext for dominant color resize")
+            DispatchQueue.main.async { self.dominantUIColor = .gray }
+            return
+          }
+          
+          context.interpolationQuality = .medium
+          context.draw(cgImage, in: CGRect(origin: .zero, size: newSize))
+          
+          guard let resizedCGImage = context.makeImage() else {
+            Log.warn(#file, "Failed to create resized CGImage for dominant color")
+            DispatchQueue.main.async { self.dominantUIColor = .gray }
+            return
+          }
+          
+          scaledImage = UIImage(cgImage: resizedCGImage, scale: 1.0, orientation: inputImage.imageOrientation)
         } else {
           scaledImage = inputImage
         }

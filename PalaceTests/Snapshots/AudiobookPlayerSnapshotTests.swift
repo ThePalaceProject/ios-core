@@ -13,19 +13,9 @@ import SnapshotTesting
 @MainActor
 final class AudiobookPlayerSnapshotTests: XCTestCase {
   
-  private var canRecordSnapshots: Bool {
-    #if targetEnvironment(simulator)
-    return true
-    #else
-    return false
-    #endif
-  }
-  
   // MARK: - AudiobookSampleToolbar
   
   func testAudiobookSampleToolbar_withSample() {
-    guard canRecordSnapshots else { return }
-    
     let book = TPPBookMocker.snapshotAudiobook()
     
     guard let toolbar = AudiobookSampleToolbar(book: book) else {
@@ -36,7 +26,7 @@ final class AudiobookPlayerSnapshotTests: XCTestCase {
       .frame(width: 390, height: 80)
       .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertMultiDeviceSnapshot(of: view)
   }
   
   // MARK: - Accessibility

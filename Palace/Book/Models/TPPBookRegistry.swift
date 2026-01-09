@@ -5,6 +5,7 @@ import UIKit
 protocol TPPBookRegistryProvider {
   var registryPublisher: AnyPublisher<[String: TPPBookRegistryRecord], Never> { get }
   var bookStatePublisher: AnyPublisher<(String, TPPBookState), Never> { get }
+  var heldBooks: [TPPBook] { get }
 
   func coverImage(for book: TPPBook, handler: @escaping (_ image: UIImage?) -> Void)
   func setProcessing(_ processing: Bool, for bookIdentifier: String)
@@ -212,7 +213,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
           
           // Validate file existence for download states
           if record.state == .downloading || record.state == .SAMLStarted || record.state == .downloadSuccessful {
-            let fileExists = self.checkIfBookFileExists(for: record.book.identifier, account: account)
+            let fileExists = self.checkIfBookFileExists(for: record.book, account: account)
             
             if record.state == .downloading {
               if fileExists {
@@ -263,11 +264,13 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
   }
   
   /// Helper to check if a book file exists in the file system
-  private func checkIfBookFileExists(for identifier: String, account: String) -> Bool {
-    guard let book = registry[identifier]?.book else { return false }
-    
+  /// - Parameters:
+  ///   - book: The book to check (passed directly since registry may not be populated yet during load)
+  ///   - account: The account ID to check against
+  /// - Returns: true if the book's file exists on disk
+  private func checkIfBookFileExists(for book: TPPBook, account: String) -> Bool {
     // Get the file URL for this book and account
-    guard let bookURL = MyBooksDownloadCenter.shared.fileUrl(for: identifier, account: account) else {
+    guard let bookURL = MyBooksDownloadCenter.shared.fileUrl(for: book, account: account) else {
       return false
     }
     

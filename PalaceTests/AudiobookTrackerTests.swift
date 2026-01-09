@@ -106,17 +106,9 @@ class AudiobookTimeTrackerTests: XCTestCase {
       sut.receiveValue(simulatedDate)
     }
     
-    // Wait for the async syncQueue operations to complete before deallocating
-    // The tracker uses a barrier queue, so this ensures all receiveValue calls finish
-    let expectation = self.expectation(description: "Wait for tracker queue")
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-      // Now deallocate to trigger final save
-      self.sut = nil
-      self.mockDataManager.flush()
-      expectation.fulfill()
-    }
-    
-    wait(for: [expectation], timeout: 1.0)
+    // Explicitly finalize to trigger save (don't rely on deinit)
+    sut.stopAndSave()
+    mockDataManager.flush()
     
     let firstEntry = mockDataManager.savedTimeEntries.first
     XCTAssertNotNil(firstEntry, "Time entry should exist")
@@ -167,7 +159,8 @@ class AudiobookTimeTrackerTests: XCTestCase {
     sut.playbackStarted()
     sut.playbackStopped()
     
-    sut = nil
+    // Explicitly finalize to trigger save (don't rely on deinit)
+    sut.stopAndSave()
     mockDataManager.flush()
 
     XCTAssertEqual(mockDataManager.savedTimeEntries.count, 0, "No time entries should be saved without playback")
@@ -188,7 +181,7 @@ class AudiobookTimeTrackerTests: XCTestCase {
   
   // MARK: - Additional Tests
   
-  func testMultipleMinuteBoundaries_createsMultipleEntries() async {
+  func testMultipleMinuteBoundaries_createsMultipleEntries() {
     // Simulate 3 minutes of playback crossing minute boundaries
     let calendar = Calendar.current
     var date = currentDate!
@@ -198,14 +191,12 @@ class AudiobookTimeTrackerTests: XCTestCase {
       date = calendar.date(byAdding: .second, value: 1, to: date)!
     }
     
-    // Capture the accumulated duration before deinit
+    // Capture the accumulated duration before finalize
     let accumulatedDuration = sut.timeEntry.duration
     XCTAssertGreaterThan(accumulatedDuration, 0, "Should have accumulated time during playback")
     
-    sut = nil
-    
-    // Give async operations time to complete
-    try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+    // Explicitly finalize to trigger save (don't rely on deinit)
+    sut.stopAndSave()
     mockDataManager.flush()
     
     let entries = mockDataManager.savedTimeEntries

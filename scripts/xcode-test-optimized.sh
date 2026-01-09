@@ -30,35 +30,53 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
     
     # List available simulators for debugging
     echo "Available iPhone simulators in CI:"
-    xcrun simctl list devices available | grep iPhone | head -10
+    xcrun simctl list devices available | grep iPhone | head -5
     
-    # Try simulators available in GitHub Actions macOS-14 runners (Xcode 16.2)
-    SIMULATORS=("iPhone 16" "iPhone 15" "iPhone 15 Pro" "iPhone SE (3rd generation)")
+    # Try multiple simulator options that are commonly available in CI
+    # Same list as main branch - these work on macos-14 runners
+    SIMULATORS=("iPhone SE (3rd generation)" "iPhone 14" "iPhone 13" "iPhone 12" "iPhone 11")
     
+    TEST_RAN=false
     for SIM in "${SIMULATORS[@]}"; do
         echo "Attempting to use: $SIM"
-        if xcodebuild test \
+        # Clean previous result bundle
+        rm -rf TestResults.xcresult
+        
+        # Run tests - allow failure so we can check if xcresult was created
+        # Snapshot tests removed from test target - no skip flags needed
+        echo "Starting xcodebuild test on $SIM..."
+        set +e
+        xcodebuild test \
             -project Palace.xcodeproj \
             -scheme Palace \
             -destination "platform=iOS Simulator,name=$SIM" \
             -configuration Debug \
             -resultBundlePath TestResults.xcresult \
             -enableCodeCoverage YES \
-            -parallel-testing-enabled YES \
-            -maximum-parallel-testing-workers 2 \
+            -parallel-testing-enabled NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
             ONLY_ACTIVE_ARCH=YES \
             GCC_OPTIMIZATION_LEVEL=0 \
             SWIFT_OPTIMIZATION_LEVEL=-Onone \
-            ENABLE_TESTABILITY=YES 2>/dev/null; then
-            echo "✅ Successfully used simulator: $SIM"
+            ENABLE_TESTABILITY=YES
+        TEST_EXIT_CODE=$?
+        set -e
+        
+        # If xcresult was created, tests ran (even if some failed) - stop trying simulators
+        if [ -d "TestResults.xcresult" ]; then
+            echo "✅ Tests executed on simulator: $SIM (exit code: $TEST_EXIT_CODE)"
+            TEST_RAN=true
             break
         else
-            echo "❌ Failed with simulator: $SIM, trying next..."
-            rm -rf TestResults.xcresult
+            echo "❌ Simulator $SIM unavailable or build failed, trying next..."
         fi
     done
+    
+    if [ "$TEST_RAN" = "false" ]; then
+        echo "🔴 ERROR: No simulator could run tests!"
+        exit 1
+    fi
 else
     echo "Running in local environment - using dynamic detection"
     # Get the first available iPhone simulator ID from the Palace scheme destinations
@@ -79,7 +97,7 @@ else
         
         for SIM in "${FALLBACK_SIMULATORS[@]}"; do
             echo "Trying fallback simulator: $SIM"
-            if xcodebuild test \
+            xcodebuild test \
                 -project Palace.xcodeproj \
                 -scheme Palace \
                 -destination "platform=iOS Simulator,name=$SIM" \
@@ -93,12 +111,14 @@ else
                 ONLY_ACTIVE_ARCH=YES \
                 GCC_OPTIMIZATION_LEVEL=0 \
                 SWIFT_OPTIMIZATION_LEVEL=-Onone \
-                ENABLE_TESTABILITY=YES 2>/dev/null; then
-                echo "✅ Fallback successful with: $SIM"
+                ENABLE_TESTABILITY=YES
+            TEST_EXIT_CODE=$?
+            
+            if [ -d "TestResults.xcresult" ]; then
+                echo "✅ Tests executed with: $SIM (exit code: $TEST_EXIT_CODE)"
                 break
             else
-                echo "❌ Fallback failed with: $SIM"
-                rm -rf TestResults.xcresult
+                echo "❌ Simulator $SIM unavailable, trying next..."
             fi
         done
     else

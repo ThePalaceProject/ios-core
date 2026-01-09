@@ -303,6 +303,7 @@ struct AccountDetailView: View {
           Image(systemName: "camera")
             .foregroundColor(Color(TPPConfiguration.mainColor()))
         }
+        .accessibilityLabel(Strings.Generic.scanBarcode)
       }
     }
     .padding(.vertical, Layout.verticalPaddingInput)
@@ -398,6 +399,7 @@ struct AccountDetailView: View {
       
       Toggle("", isOn: $viewModel.isSyncEnabled)
         .labelsHidden()
+        .tint(.green)
         .accessibilityIdentifier("signIn.syncBookmarksToggle")
         .onChange(of: viewModel.isSyncEnabled) { newValue in
           viewModel.updateSync(enabled: newValue)

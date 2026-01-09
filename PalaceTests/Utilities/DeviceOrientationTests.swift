@@ -8,24 +8,26 @@
 import XCTest
 @testable import Palace
 
-@MainActor
 final class DeviceOrientationTests: XCTestCase {
   
   var orientation: DeviceOrientation!
   
-  override func setUp() async throws {
-    try await super.setUp()
+  @MainActor
+  override func setUp() {
+    super.setUp()
     orientation = DeviceOrientation()
   }
   
-  override func tearDown() async throws {
+  @MainActor
+  override func tearDown() {
     orientation?.stopTracking()
     orientation = nil
-    try await super.tearDown()
+    super.tearDown()
   }
   
   // MARK: - Initial State Tests
   
+  @MainActor
   func testInitialIsLandscape_basedOnScreenDimensions() {
     let screenWidth = UIScreen.main.bounds.width
     let screenHeight = UIScreen.main.bounds.height
@@ -34,6 +36,7 @@ final class DeviceOrientationTests: XCTestCase {
     XCTAssertEqual(orientation.isLandscape, expectedIsLandscape)
   }
   
+  @MainActor
   func testIsLandscape_isPublished() {
     // Verify that isLandscape is a published property
     // by checking it's accessible and returns a Bool
@@ -44,17 +47,20 @@ final class DeviceOrientationTests: XCTestCase {
   
   // MARK: - Tracking Tests
   
+  @MainActor
   func testStartTracking_doesNotCrash() {
     orientation.startTracking()
     // If we get here without crashing, tracking started successfully
   }
   
+  @MainActor
   func testStopTracking_doesNotCrash() {
     orientation.startTracking()
     orientation.stopTracking()
     // If we get here without crashing, tracking stopped successfully
   }
   
+  @MainActor
   func testStartAndStopTracking_multipleTimesDoesNotCrash() {
     orientation.startTracking()
     orientation.stopTracking()
@@ -63,6 +69,7 @@ final class DeviceOrientationTests: XCTestCase {
     // Should handle multiple start/stop cycles gracefully
   }
   
+  @MainActor
   func testStopTracking_beforeStartTracking_doesNotCrash() {
     // Stop without starting should be safe
     orientation.stopTracking()
@@ -70,6 +77,7 @@ final class DeviceOrientationTests: XCTestCase {
   
   // MARK: - ObservableObject Conformance
   
+  @MainActor
   func testDeviceOrientation_isObservableObject() {
     // DeviceOrientation should conform to ObservableObject
     let observable: any ObservableObject = orientation

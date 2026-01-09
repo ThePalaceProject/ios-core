@@ -41,10 +41,22 @@ struct CatalogLaneRowView: View {
               .padding(.vertical)
           }
           .buttonStyle(.plain)
+          .accessibilityLabel(accessibilityLabel(for: book))
         }
       }
       .padding(.horizontal, 12)
     }
+  }
+  
+  private func accessibilityLabel(for book: TPPBook) -> String {
+    var components = [book.title]
+    if book.isAudiobook {
+      components.append(Strings.Generic.audiobook)
+    }
+    if let authors = book.authors, !authors.isEmpty {
+      components.append(authors)
+    }
+    return components.joined(separator: ", ")
   }
   
   @ViewBuilder

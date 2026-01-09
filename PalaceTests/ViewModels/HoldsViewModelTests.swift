@@ -13,21 +13,28 @@ import Combine
 final class HoldsViewModelTests: XCTestCase {
   
   private var cancellables: Set<AnyCancellable> = []
+  private var mockRegistry: TPPBookRegistryMock!
   
   override func setUp() {
     super.setUp()
     cancellables = []
+    mockRegistry = TPPBookRegistryMock()
   }
   
   override func tearDown() {
     cancellables.removeAll()
+    mockRegistry = nil
     super.tearDown()
+  }
+  
+  private func createViewModel() -> HoldsViewModel {
+    HoldsViewModel(bookRegistry: mockRegistry)
   }
   
   // MARK: - Initialization Tests
   
   func testInitialState() async {
-    let viewModel = HoldsViewModel()
+    let viewModel = createViewModel()
     
     XCTAssertFalse(viewModel.isLoading)
     XCTAssertFalse(viewModel.showLibraryAccountView)
@@ -39,7 +46,7 @@ final class HoldsViewModelTests: XCTestCase {
   // MARK: - Sync Notification Tests
   
   func testSyncBeganSetsLoadingTrue() async {
-    let viewModel = HoldsViewModel()
+    let viewModel = createViewModel()
     
     let expectation = XCTestExpectation(description: "Loading becomes true on sync began")
     
@@ -59,7 +66,7 @@ final class HoldsViewModelTests: XCTestCase {
   }
   
   func testSyncEndedSetsLoadingFalse() async {
-    let viewModel = HoldsViewModel()
+    let viewModel = createViewModel()
     
     NotificationCenter.default.post(name: .TPPSyncBegan, object: nil)
     
@@ -85,7 +92,7 @@ final class HoldsViewModelTests: XCTestCase {
   // MARK: - Filter Tests
   
   func testFilterBooksWithEmptyQueryReturnsAll() async {
-    let viewModel = HoldsViewModel()
+    let viewModel = createViewModel()
     
     await viewModel.filterBooks(query: "")
     
@@ -93,7 +100,7 @@ final class HoldsViewModelTests: XCTestCase {
   }
   
   func testFilterBooksWithQuery() async {
-    let viewModel = HoldsViewModel()
+    let viewModel = createViewModel()
     
     await viewModel.filterBooks(query: "Test Query That Matches Nothing")
     
@@ -103,7 +110,7 @@ final class HoldsViewModelTests: XCTestCase {
   // MARK: - State Toggle Tests
   
   func testShowSearchSheetToggle() async {
-    let viewModel = HoldsViewModel()
+    let viewModel = createViewModel()
     
     XCTAssertFalse(viewModel.showSearchSheet)
     viewModel.showSearchSheet = true
@@ -113,7 +120,7 @@ final class HoldsViewModelTests: XCTestCase {
   }
   
   func testSelectNewLibraryToggle() async {
-    let viewModel = HoldsViewModel()
+    let viewModel = createViewModel()
     
     XCTAssertFalse(viewModel.selectNewLibrary)
     viewModel.selectNewLibrary = true
@@ -121,7 +128,7 @@ final class HoldsViewModelTests: XCTestCase {
   }
   
   func testShowLibraryAccountViewToggle() async {
-    let viewModel = HoldsViewModel()
+    let viewModel = createViewModel()
     
     XCTAssertFalse(viewModel.showLibraryAccountView)
     viewModel.showLibraryAccountView = true
@@ -129,7 +136,7 @@ final class HoldsViewModelTests: XCTestCase {
   }
   
   func testSearchQueryUpdate() async {
-    let viewModel = HoldsViewModel()
+    let viewModel = createViewModel()
     
     XCTAssertEqual(viewModel.searchQuery, "")
     viewModel.searchQuery = "Harry Potter"
@@ -139,7 +146,7 @@ final class HoldsViewModelTests: XCTestCase {
   // MARK: - OpenSearchDescription Tests
   
   func testOpenSearchDescriptionHumanReadableDescription() async {
-    let viewModel = HoldsViewModel()
+    let viewModel = createViewModel()
     
     let searchDescription = viewModel.openSearchDescription
     

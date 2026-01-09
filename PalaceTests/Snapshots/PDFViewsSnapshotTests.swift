@@ -13,19 +13,9 @@ import SnapshotTesting
 @MainActor
 final class PDFViewsSnapshotTests: XCTestCase {
   
-  private var canRecordSnapshots: Bool {
-    #if targetEnvironment(simulator)
-    return true
-    #else
-    return false
-    #endif
-  }
-  
   // MARK: - TPPPDFPreviewThumbnail Tests
   
   func testPDFPreviewThumbnail_defaultSize() {
-    guard canRecordSnapshots else { return }
-    
     let mockDocument = MockPDFDocument(pageCount: 10)
     let size = CGSize(width: 60, height: 80)
     
@@ -34,12 +24,10 @@ final class PDFViewsSnapshotTests: XCTestCase {
       .padding()
       .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertFixedSizeSnapshot(of: view, width: 100, height: 120)
   }
   
   func testPDFPreviewThumbnail_largerSize() {
-    guard canRecordSnapshots else { return }
-    
     let mockDocument = MockPDFDocument(pageCount: 10)
     let size = CGSize(width: 90, height: 120)
     
@@ -48,12 +36,10 @@ final class PDFViewsSnapshotTests: XCTestCase {
       .padding()
       .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertFixedSizeSnapshot(of: view, width: 130, height: 160)
   }
   
   func testPDFPreviewThumbnail_smallSize() {
-    guard canRecordSnapshots else { return }
-    
     let mockDocument = MockPDFDocument(pageCount: 10)
     let size = CGSize(width: 18, height: 24)
     
@@ -62,64 +48,54 @@ final class PDFViewsSnapshotTests: XCTestCase {
       .padding()
       .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertFixedSizeSnapshot(of: view, width: 58, height: 64)
   }
   
   // MARK: - TPPPDFPreviewBar Tests
   
   func testPDFPreviewBar_atFirstPage() {
-    guard canRecordSnapshots else { return }
-    
     let mockDocument = MockPDFDocument(pageCount: 20)
     
     let view = TPPPDFPreviewBar(document: mockDocument, currentPage: .constant(0))
       .frame(width: 390, height: 60)
       .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertMultiDeviceSnapshot(of: view)
   }
   
   func testPDFPreviewBar_atMiddlePage() {
-    guard canRecordSnapshots else { return }
-    
     let mockDocument = MockPDFDocument(pageCount: 20)
     
     let view = TPPPDFPreviewBar(document: mockDocument, currentPage: .constant(10))
       .frame(width: 390, height: 60)
       .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertMultiDeviceSnapshot(of: view)
   }
   
   func testPDFPreviewBar_atLastPage() {
-    guard canRecordSnapshots else { return }
-    
     let mockDocument = MockPDFDocument(pageCount: 20)
     
     let view = TPPPDFPreviewBar(document: mockDocument, currentPage: .constant(19))
       .frame(width: 390, height: 60)
       .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertMultiDeviceSnapshot(of: view)
   }
   
   func testPDFPreviewBar_compactWidth() {
-    guard canRecordSnapshots else { return }
-    
     let mockDocument = MockPDFDocument(pageCount: 10)
     
     let view = TPPPDFPreviewBar(document: mockDocument, currentPage: .constant(5))
       .frame(width: 320, height: 60)
       .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertFixedSizeSnapshot(of: view, width: 320, height: 60)
   }
   
   // MARK: - TPPPDFNavigation Tests
   
   func testPDFNavigation_readerMode_notBookmarked() {
-    guard canRecordSnapshots else { return }
-    
     let metadata: TPPPDFDocumentMetadata = MockPDFDocumentMetadata(currentPage: 5, bookmarks: [], isBookmarked: false)
     
     let view = TPPPDFNavigation(readerMode: .constant(.reader)) { mode in
@@ -130,12 +106,10 @@ final class PDFViewsSnapshotTests: XCTestCase {
     .frame(width: 390, height: 100)
     .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertMultiDeviceSnapshot(of: view)
   }
   
   func testPDFNavigation_readerMode_bookmarked() {
-    guard canRecordSnapshots else { return }
-    
     let metadata: TPPPDFDocumentMetadata = MockPDFDocumentMetadata(currentPage: 5, bookmarks: [5], isBookmarked: true)
     
     let view = TPPPDFNavigation(readerMode: .constant(.reader)) { mode in
@@ -146,12 +120,10 @@ final class PDFViewsSnapshotTests: XCTestCase {
     .frame(width: 390, height: 100)
     .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertMultiDeviceSnapshot(of: view)
   }
   
   func testPDFNavigation_previewsMode() {
-    guard canRecordSnapshots else { return }
-    
     let metadata: TPPPDFDocumentMetadata = MockPDFDocumentMetadata(currentPage: 0, bookmarks: [], isBookmarked: false)
     
     let view = TPPPDFNavigation(readerMode: .constant(.previews)) { mode in
@@ -162,12 +134,10 @@ final class PDFViewsSnapshotTests: XCTestCase {
     .frame(width: 390, height: 100)
     .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertMultiDeviceSnapshot(of: view)
   }
   
   func testPDFNavigation_tocMode() {
-    guard canRecordSnapshots else { return }
-    
     let metadata: TPPPDFDocumentMetadata = MockPDFDocumentMetadata(currentPage: 0, bookmarks: [], isBookmarked: false)
     
     let view = TPPPDFNavigation(readerMode: .constant(.toc)) { mode in
@@ -178,12 +148,10 @@ final class PDFViewsSnapshotTests: XCTestCase {
     .frame(width: 390, height: 100)
     .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertMultiDeviceSnapshot(of: view)
   }
   
   func testPDFNavigation_bookmarksMode() {
-    guard canRecordSnapshots else { return }
-    
     let metadata: TPPPDFDocumentMetadata = MockPDFDocumentMetadata(currentPage: 0, bookmarks: [1, 5, 10], isBookmarked: false)
     
     let view = TPPPDFNavigation(readerMode: .constant(.bookmarks)) { mode in
@@ -194,12 +162,10 @@ final class PDFViewsSnapshotTests: XCTestCase {
     .frame(width: 390, height: 100)
     .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertMultiDeviceSnapshot(of: view)
   }
   
   func testPDFNavigation_searchMode() {
-    guard canRecordSnapshots else { return }
-    
     let metadata: TPPPDFDocumentMetadata = MockPDFDocumentMetadata(currentPage: 0, bookmarks: [], isBookmarked: false)
     
     let view = TPPPDFNavigation(readerMode: .constant(.search)) { mode in
@@ -210,14 +176,12 @@ final class PDFViewsSnapshotTests: XCTestCase {
     .frame(width: 390, height: 100)
     .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertMultiDeviceSnapshot(of: view)
   }
   
   // MARK: - Dark Mode Tests
   
   func testPDFPreviewThumbnail_darkMode() {
-    guard canRecordSnapshots else { return }
-    
     let mockDocument = MockPDFDocument(pageCount: 10)
     let size = CGSize(width: 60, height: 80)
     
@@ -227,12 +191,10 @@ final class PDFViewsSnapshotTests: XCTestCase {
       .background(Color(UIColor.systemBackground))
       .environment(\.colorScheme, .dark)
     
-    assertSnapshot(of: view, as: .image)
+    assertFixedSizeSnapshot(of: view, width: 100, height: 120, userInterfaceStyle: .dark)
   }
   
   func testPDFPreviewBar_darkMode() {
-    guard canRecordSnapshots else { return }
-    
     let mockDocument = MockPDFDocument(pageCount: 20)
     
     let view = TPPPDFPreviewBar(document: mockDocument, currentPage: .constant(10))
@@ -240,7 +202,6 @@ final class PDFViewsSnapshotTests: XCTestCase {
       .background(Color(UIColor.systemBackground))
       .environment(\.colorScheme, .dark)
     
-    assertSnapshot(of: view, as: .image)
+    assertFixedSizeSnapshot(of: view, width: 390, height: 60, userInterfaceStyle: .dark)
   }
 }
-

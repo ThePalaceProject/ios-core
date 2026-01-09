@@ -79,6 +79,7 @@ jobs:
         
       - name: Run Palace unit tests
         id: tests
+        timeout-minutes: 20
         run: ./scripts/xcode-test-optimized.sh
         env:
           BUILD_CONTEXT: ci
@@ -89,35 +90,45 @@ jobs:
         id: find_results
         run: |
           echo "Looking for xcresult bundles..."
+          echo "Current directory: $(pwd)"
+          echo "Directory contents:"
+          ls -la | head -20
           
           # Check current directory
           if [ -d "TestResults.xcresult" ]; then
-            echo "Found: ./TestResults.xcresult"
+            echo "✅ Found: ./TestResults.xcresult"
+            echo "xcresult size: $(du -sh TestResults.xcresult)"
             echo "path=TestResults.xcresult" >> $GITHUB_OUTPUT
             echo "found=true" >> $GITHUB_OUTPUT
+            
+            # Quick check of what's inside
+            echo "=== Quick xcresult summary ==="
+            xcrun xcresulttool get test-results summary --path TestResults.xcresult 2>&1 | head -30 || echo "Could not get summary"
             exit 0
           fi
           
           # Search in common locations
+          echo "Searching for xcresult in current directory tree..."
           FOUND=$(find . -name "*.xcresult" -type d 2>/dev/null | head -1)
           if [ -n "$FOUND" ]; then
-            echo "Found: $FOUND"
+            echo "✅ Found: $FOUND"
             echo "path=$FOUND" >> $GITHUB_OUTPUT
             echo "found=true" >> $GITHUB_OUTPUT
             exit 0
           fi
           
           # Search in DerivedData
+          echo "Searching in DerivedData..."
           FOUND=$(find ~/Library/Developer/Xcode/DerivedData -name "*.xcresult" -type d 2>/dev/null | head -1)
           if [ -n "$FOUND" ]; then
-            echo "Found in DerivedData: $FOUND"
+            echo "✅ Found in DerivedData: $FOUND"
             cp -r "$FOUND" ./TestResults.xcresult
             echo "path=TestResults.xcresult" >> $GITHUB_OUTPUT
             echo "found=true" >> $GITHUB_OUTPUT
             exit 0
           fi
           
-          echo "No xcresult found"
+          echo "❌ No xcresult found anywhere!"
           echo "found=false" >> $GITHUB_OUTPUT
           
       - name: Parse Test Results
@@ -140,6 +151,20 @@ jobs:
           fi
           
           echo "Parsing test results from: $RESULT_PATH"
+          
+          # Debug: Show raw xcresulttool output structure
+          echo "=== xcresulttool version ==="
+          xcrun xcresulttool version 2>/dev/null || echo "version command not available"
+          
+          echo "=== Raw test-results summary (first 2000 chars) ==="
+          xcrun xcresulttool get test-results summary --path "$RESULT_PATH" 2>/dev/null | head -c 2000 || echo "summary command failed"
+          
+          echo ""
+          echo "=== Raw test-results tests structure (first 3000 chars) ==="
+          xcrun xcresulttool get test-results tests --path "$RESULT_PATH" 2>/dev/null | head -c 3000 || echo "tests command failed"
+          
+          echo ""
+          echo "=== Parsing with Python script ==="
           
           # Use the enhanced Python parser - outputs to GITHUB_OUTPUT and test-data.json
           python3 scripts/parse-xcresult.py "$RESULT_PATH" --json test-data.json || true

@@ -27,11 +27,12 @@ class AudiobookPlaybackTests: XCTestCase {
     mockRegistry = TPPBookRegistryMock()
     mockAnnotations = TPPAnnotationMock()
     
-    let emptyUrl = URL(fileURLWithPath: "")
+    // Use placeholder URL for acquisitions (not fetched in tests)
+    let placeholderUrl = URL(string: "https://test.example.com/book")!
     let fakeAcquisition = TPPOPDSAcquisition(
       relation: .generic,
       type: "application/audiobook+json",
-      hrefURL: emptyUrl,
+      hrefURL: placeholderUrl,
       indirectAcquisitions: [TPPOPDSIndirectAcquisition](),
       availability: TPPOPDSAcquisitionAvailabilityUnlimited()
     )
@@ -42,23 +43,23 @@ class AudiobookPlaybackTests: XCTestCase {
       categoryStrings: [String](),
       distributor: "Test Distributor",
       identifier: "testAudiobook123",
-      imageURL: emptyUrl,
-      imageThumbnailURL: emptyUrl,
+      imageURL: nil,  // Use nil to prevent network image fetches
+      imageThumbnailURL: nil,  // Use nil to prevent network image fetches
       published: Date(),
       publisher: "Test Publisher",
       subtitle: "",
       summary: "",
       title: "Test Audiobook",
       updated: Date(),
-      annotationsURL: emptyUrl,
-      analyticsURL: emptyUrl,
-      alternateURL: emptyUrl,
-      relatedWorksURL: emptyUrl,
-      previewLink: fakeAcquisition,
-      seriesURL: emptyUrl,
-      revokeURL: emptyUrl,
-      reportURL: emptyUrl,
-      timeTrackingURL: emptyUrl,
+      annotationsURL: nil,
+      analyticsURL: nil,
+      alternateURL: nil,
+      relatedWorksURL: nil,
+      previewLink: nil,  // No preview to prevent network requests
+      seriesURL: nil,
+      revokeURL: nil,
+      reportURL: nil,
+      timeTrackingURL: nil,
       contributors: [:],
       bookDuration: "3600",
       imageCache: MockImageCache()

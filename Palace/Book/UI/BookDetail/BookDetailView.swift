@@ -449,6 +449,7 @@ struct BookDetailView: View {
                           .adaptiveShadow(radius: 5)
                           .transition(.opacity.combined(with: .scale))
                       }
+                      .accessibilityLabel(bookAccessibilityLabel(for: book))
                     } else {
                       RoundedRectangle(cornerRadius: 8)
                         .fill(Color.gray.opacity(0.25))
@@ -564,6 +565,17 @@ struct BookDetailView: View {
     let minutes = Int((totalSeconds - Double(hours * 3600)) / 60)
     
     return String(format: "%d hours, %d minutes", hours, minutes)
+  }
+  
+  private func bookAccessibilityLabel(for book: TPPBook) -> String {
+    var components = [book.title]
+    if book.isAudiobook {
+      components.append(Strings.Generic.audiobook)
+    }
+    if let authors = book.authors, !authors.isEmpty {
+      components.append(authors)
+    }
+    return components.joined(separator: ", ")
   }
   
   private func updateImageBottomPosition() {

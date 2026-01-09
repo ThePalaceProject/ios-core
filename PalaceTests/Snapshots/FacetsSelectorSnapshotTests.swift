@@ -3,6 +3,7 @@
 //  PalaceTests
 //
 //  Snapshot tests for FacetsSelectorView and EntryPointsSelectorView.
+//  Tests run across multiple device configurations for comprehensive coverage.
 //
 
 import XCTest
@@ -13,13 +14,10 @@ import SnapshotTesting
 @MainActor
 final class FacetsSelectorSnapshotTests: XCTestCase {
   
-  private var canRecordSnapshots: Bool {
-    ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil || isRecording
-  }
-  
   override func setUp() {
     super.setUp()
-    isRecording = false
+    // Snapshots are recorded via RECORD_SNAPSHOTS environment variable
+    // or by running ./scripts/record-snapshots.sh
   }
   
   // MARK: - Helper Methods
@@ -55,10 +53,9 @@ final class FacetsSelectorSnapshotTests: XCTestCase {
       facetGroups: [group],
       onSelect: { _ in }
     )
-    .frame(width: 390, height: 60)
     .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertMultiDeviceSnapshot(of: view)
   }
   
   func testFacetsSelectorView_multipleGroups() {
@@ -82,10 +79,9 @@ final class FacetsSelectorSnapshotTests: XCTestCase {
       facetGroups: groups,
       onSelect: { _ in }
     )
-    .frame(width: 390, height: 60)
     .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertMultiDeviceSnapshot(of: view)
   }
   
   func testFacetsSelectorView_manyFilters() {
@@ -102,10 +98,9 @@ final class FacetsSelectorSnapshotTests: XCTestCase {
       facetGroups: [group],
       onSelect: { _ in }
     )
-    .frame(width: 390, height: 60)
     .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertMultiDeviceSnapshot(of: view)
   }
   
   func testFacetsSelectorView_darkMode() {
@@ -120,11 +115,10 @@ final class FacetsSelectorSnapshotTests: XCTestCase {
       facetGroups: [group],
       onSelect: { _ in }
     )
-    .frame(width: 390, height: 60)
     .background(Color(UIColor.systemBackground))
     .colorScheme(.dark)
     
-    assertSnapshot(of: view, as: .image)
+    assertMultiDeviceSnapshot(of: view)
   }
   
   func testFacetsSelectorView_noActiveFilter() {
@@ -139,10 +133,9 @@ final class FacetsSelectorSnapshotTests: XCTestCase {
       facetGroups: [group],
       onSelect: { _ in }
     )
-    .frame(width: 390, height: 60)
     .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertMultiDeviceSnapshot(of: view)
   }
   
   // MARK: - EntryPointsSelectorView Tests
@@ -157,10 +150,9 @@ final class FacetsSelectorSnapshotTests: XCTestCase {
       entryPoints: entryPoints,
       onSelect: { _ in }
     )
-    .frame(width: 390, height: 60)
     .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertMultiDeviceSnapshot(of: view)
   }
   
   func testEntryPointsSelectorView_threeTabs() {
@@ -174,10 +166,9 @@ final class FacetsSelectorSnapshotTests: XCTestCase {
       entryPoints: entryPoints,
       onSelect: { _ in }
     )
-    .frame(width: 390, height: 60)
     .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertMultiDeviceSnapshot(of: view)
   }
   
   func testEntryPointsSelectorView_darkMode() {
@@ -190,11 +181,10 @@ final class FacetsSelectorSnapshotTests: XCTestCase {
       entryPoints: entryPoints,
       onSelect: { _ in }
     )
-    .frame(width: 390, height: 60)
     .background(Color(UIColor.systemBackground))
     .colorScheme(.dark)
     
-    assertSnapshot(of: view, as: .image)
+    assertMultiDeviceSnapshot(of: view)
   }
   
   // MARK: - Empty State Tests
@@ -204,10 +194,8 @@ final class FacetsSelectorSnapshotTests: XCTestCase {
       facetGroups: [],
       onSelect: { _ in }
     )
-    .frame(width: 390, height: 60)
     .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertMultiDeviceSnapshot(of: view)
   }
 }
-

@@ -10,7 +10,7 @@ import Foundation
 @preconcurrency import PalaceAudiobookToolkit
 
 @objc public class AudiobookBookmarkBusinessLogic: NSObject {
-  private var book: TPPBook
+  public var book: TPPBook
   private var registry: TPPBookRegistryProvider
   private var annotationsManager: AnnotationsManager
   private var isSyncing: Bool = false

@@ -245,6 +245,14 @@ protocol AccountLogoDelegate: AnyObject {
     loansUrl = URL.init(string: authenticationDocument.links?.first(where: { $0.rel == "http://opds-spec.org/shelf" })?.href ?? "")
     supportsSimplyESync = userProfileUrl != nil
 
+    // Debug logging for sync support
+    Log.debug(#file, """
+      🔖 AccountDetails init for '\(authenticationDocument.title ?? "unknown")':
+         userProfileUrl: \(userProfileUrl ?? "nil")
+         supportsSimplyESync: \(supportsSimplyESync)
+         Available links: \(authenticationDocument.links?.map { "[\($0.rel ?? "no-rel"): \($0.href ?? "no-href")]" }.joined(separator: ", ") ?? "none")
+      """)
+
     mainColor = authenticationDocument.colorScheme
 
     let registerUrlStr = authenticationDocument.links?.first(where: { $0.rel == "register" })?.href

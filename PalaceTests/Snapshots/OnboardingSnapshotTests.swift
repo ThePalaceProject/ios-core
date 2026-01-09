@@ -13,55 +13,39 @@ import SnapshotTesting
 @MainActor
 final class OnboardingSnapshotTests: XCTestCase {
   
-  private var canRecordSnapshots: Bool {
-    #if targetEnvironment(simulator)
-    return true
-    #else
-    return false
-    #endif
-  }
-  
   // MARK: - TPPOnboardingView
   
   func testOnboardingView() {
-    guard canRecordSnapshots else { return }
-    
     let view = TPPOnboardingView { }
       .frame(width: 390, height: 844)
     
-    assertSnapshot(of: view, as: .image)
+    assertMultiDeviceSnapshot(of: view)
   }
   
   // MARK: - TPPPagerDotsView
   
   func testPagerDotsView_firstPage() {
-    guard canRecordSnapshots else { return }
-    
     let view = TPPPagerDotsView(count: 3, currentIndex: .constant(0))
       .frame(width: 100, height: 20)
       .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertFixedSizeSnapshot(of: view, width: 100, height: 20)
   }
   
   func testPagerDotsView_middlePage() {
-    guard canRecordSnapshots else { return }
-    
     let view = TPPPagerDotsView(count: 3, currentIndex: .constant(1))
       .frame(width: 100, height: 20)
       .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertFixedSizeSnapshot(of: view, width: 100, height: 20)
   }
   
   func testPagerDotsView_lastPage() {
-    guard canRecordSnapshots else { return }
-    
     let view = TPPPagerDotsView(count: 3, currentIndex: .constant(2))
       .frame(width: 100, height: 20)
       .background(Color(UIColor.systemBackground))
     
-    assertSnapshot(of: view, as: .image)
+    assertFixedSizeSnapshot(of: view, width: 100, height: 20)
   }
   
   // MARK: - Accessibility

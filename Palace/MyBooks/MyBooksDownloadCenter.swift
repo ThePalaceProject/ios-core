@@ -144,9 +144,9 @@ actor DownloadCoordinator {
     super.init()
     
 #if FEATURE_DRM_CONNECTOR
-    if !(AdobeCertificate.defaultCertificate?.hasExpired ?? true)
-    {
-      NYPLADEPT.sharedInstance().delegate = self
+    // Use safe DRM container to prevent EXC_BREAKPOINT crashes during initialization
+    if AdobeCertificate.isDRMAvailable {
+      AdobeDRMService.shared.setDelegate(self)
     }
 #else
     NSLog("Cannot import ADEPT")
@@ -653,15 +653,24 @@ actor DownloadCoordinator {
     let hasCredentials = userAccount.hasCredentials()
     let currentState = bookRegistry.state(for: book.identifier)
     
-    // CIRCUIT BREAKER: If already in .SAMLStarted, SAML web view failed - sign out and show sign-in
+    // CIRCUIT BREAKER: If already in .SAMLStarted, SAML web view failed - show sign-in without signing out
     if currentState == .SAMLStarted {
-      Log.warn(#file, "SAML re-auth already attempted for '\(book.title)' - signing out and showing sign-in modal")
+      Log.warn(#file, "SAML re-auth already attempted for '\(book.title)' - showing sign-in modal")
       
       Task { @MainActor in
         await self.bookIdentifierToDownloadInfo.remove(book.identifier)
         await self.downloadCoordinator.registerCompletion(identifier: book.identifier)
         
         bookRegistry.setState(.downloadFailed, for: book.identifier)
+        
+        // Show the problem document message if available (session expired, etc.)
+        if let problemDoc = problemDocument {
+          let alert = TPPAlertUtils.alert(
+            title: problemDoc.title ?? Strings.Error.sessionExpiredTitle,
+            message: problemDoc.detail ?? Strings.Error.sessionExpiredMessage
+          )
+          TPPPresentationUtils.safelyPresent(alert)
+        }
         
         guard !self.isRequestingCredentials else { return }
         
@@ -671,12 +680,8 @@ actor DownloadCoordinator {
           self.isRequestingCredentials = false
         }
         
-        // Sign out expired credentials so sign-in modal shows proper UI
-        Log.info(#file, "Signing out expired SAML session")
-        self.userAccount.removeAll()
-        
-        // Now show sign-in modal
-        Log.info(#file, "Showing sign-in modal after expired SAML session")
+        // Show sign-in modal WITHOUT signing out - let user re-authenticate gracefully
+        Log.info(#file, "Showing sign-in modal for session refresh")
         self.reauthenticator.authenticateIfNeeded(self.userAccount, usingExistingCredentials: false) { [weak self] in
           Task { @MainActor in
             self?.isRequestingCredentials = false
@@ -769,7 +774,7 @@ actor DownloadCoordinator {
     
 #if FEATURE_DRM_CONNECTOR
     if info.rightsManagement == .adobe {
-      NYPLADEPT.sharedInstance().cancelFulfillment(withTag: identifier)
+      AdobeDRMService.shared.cancelFulfillment(withTag: identifier)
       return
     }
 #endif
@@ -860,7 +865,7 @@ extension MyBooksDownloadCenter {
     if let fulfillmentId = bookRegistry.fulfillmentId(forIdentifier: identifier),
        userAccount.authDefinition?.needsAuth == true {
       NSLog("Return attempt for book. userID: %@", userAccount.userID ?? "")
-      NYPLADEPT.sharedInstance().returnLoan(fulfillmentId,
+      AdobeDRMService.shared.returnLoan(fulfillmentId,
                                             userID: userAccount.userID,
                                             deviceID: userAccount.deviceID) { success, error in
         if !success {
@@ -1129,7 +1134,7 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
           failureRequiringAlert = true
         } else if let acsmData = try? Data(contentsOf: location) {
           NSLog("Download finished. Fulfilling with userID: \(userAccount.userID ?? "")")
-          NYPLADEPT.sharedInstance().fulfill(withACSMData: acsmData, tag: book.identifier, userID: userAccount.userID, deviceID: userAccount.deviceID)
+          AdobeDRMService.shared.fulfill(withACSMData: acsmData, tag: book.identifier, userID: userAccount.userID, deviceID: userAccount.deviceID)
         }
 #endif
       case .lcp:
@@ -1924,6 +1929,16 @@ extension MyBooksDownloadCenter {
     let pathExtension = pathExtension(for: book)
     let contentDirectoryURL = self.contentDirectoryURL(account)
     let hashedIdentifier = identifier.sha256()
+    
+    return contentDirectoryURL?.appendingPathComponent(hashedIdentifier).appendingPathExtension(pathExtension)
+  }
+  
+  /// Returns the file URL for a book, accepting the book directly instead of looking it up in the registry.
+  /// This is useful during registry loading when the registry hasn't been populated yet.
+  func fileUrl(for book: TPPBook, account: String?) -> URL? {
+    let pathExtension = pathExtension(for: book)
+    let contentDirectoryURL = self.contentDirectoryURL(account)
+    let hashedIdentifier = book.identifier.sha256()
     
     return contentDirectoryURL?.appendingPathComponent(hashedIdentifier).appendingPathExtension(pathExtension)
   }
