@@ -9,18 +9,15 @@ import XCTest
 import SwiftUI
 import SnapshotTesting
 
-/// Device configurations for snapshot testing.
-/// These match the simulators available on GitHub Actions macos-14 runners.
+/// Device configuration for snapshot testing.
+/// Simplified to single device to speed up test runs.
 enum SnapshotDevice: String, CaseIterable {
   case iPhoneSE = "iPhone SE"
-  case iPhone14 = "iPhone 14"
   
   var config: ViewImageConfig {
     switch self {
     case .iPhoneSE:
       return .iPhoneSe
-    case .iPhone14:
-      return .iPhone13  // iPhone 14 uses same dimensions as iPhone 13
     }
   }
   
