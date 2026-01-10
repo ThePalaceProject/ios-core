@@ -297,7 +297,9 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
       #endif
       
     case .errorSimulation:
+      #if DEBUG
       showErrorSimulationPicker()
+      #endif
       
     default:
       break
