@@ -229,47 +229,30 @@ extension TPPAppDelegate {
       return
     }
 
-    let showOnboarding = !TPPSettings.shared.userHasSeenWelcomeScreen
     // Use persisted currentAccountId rather than computed currentAccount to avoid timing issues
     let needsAccount = (AccountsManager.shared.currentAccountId == nil)
-    guard showOnboarding || needsAccount else { return }
+    guard needsAccount else { return }
 
     guard let top = topViewController() else { return }
 
-    func presentOnboarding(over presenter: UIViewController) {
-      let onboardingVC = TPPOnboardingViewController.makeSwiftUIView(dismissHandler: {
-        TPPSettings.shared.userHasSeenWelcomeScreen = true
-        presenter.presentedViewController?.dismiss(animated: true)
-      })
-      presenter.present(onboardingVC, animated: true)
-    }
-
-    if needsAccount {
-      var nav: UINavigationController!
-      let accountList = TPPAccountList { account in
-        if !TPPSettings.shared.settingsAccountIdsList.contains(account.uuid) {
-          TPPSettings.shared.settingsAccountIdsList.append(account.uuid)
-        }
-        if let urlString = account.catalogUrl, let url = URL(string: urlString) {
-          TPPSettings.shared.accountMainFeedURL = url
-        }
-        AccountsManager.shared.currentAccount = account
-        
-        account.loadAuthenticationDocument { _ in }
-        
-        NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
-        nav?.dismiss(animated: true)
+    var nav: UINavigationController!
+    let accountList = TPPAccountList { account in
+      if !TPPSettings.shared.settingsAccountIdsList.contains(account.uuid) {
+        TPPSettings.shared.settingsAccountIdsList.append(account.uuid)
       }
-      accountList.requiresSelectionBeforeDismiss = true
-      nav = UINavigationController(rootViewController: accountList)
-      top.present(nav, animated: true) {
-        if showOnboarding {
-          presentOnboarding(over: nav)
-        }
+      if let urlString = account.catalogUrl, let url = URL(string: urlString) {
+        TPPSettings.shared.accountMainFeedURL = url
       }
-    } else if showOnboarding {
-      presentOnboarding(over: top)
+      AccountsManager.shared.currentAccount = account
+      
+      account.loadAuthenticationDocument { _ in }
+      
+      NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
+      nav?.dismiss(animated: true)
     }
+    accountList.requiresSelectionBeforeDismiss = true
+    nav = UINavigationController(rootViewController: accountList)
+    top.present(nav, animated: true)
   }
 
   private func switchToCatalogTab() {
