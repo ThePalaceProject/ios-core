@@ -18,47 +18,86 @@ struct NormalBookCell: View {
   @ObservedObject var model: BookCellModel
   var previewEnabled: Bool = true
   private let cellHeight: CGFloat = 180
+  
+  // Download progress tracking
+  @State private var downloadProgress: Double = 0.0
+  
+  /// Check download state directly from stableButtonState (source of truth for SwiftUI)
+  private var isDownloading: Bool {
+    model.stableButtonState == .downloadInProgress
+  }
+  
+  private var isDownloadFailed: Bool {
+    model.stableButtonState == .downloadFailed
+  }
 
   var body: some View {
-    HStack(alignment: .center, spacing: 15) {
-      HStack(spacing: 5) {
-        unreadImageView
-        titleCoverImageView
-      }
-      .frame(alignment: .leading)
-
-      VStack(alignment: .leading, spacing: 10) {
-        infoView
-        VStack(alignment: .leading, spacing: 0) {
-          buttons
-          borrowedInfoView
+    ZStack {
+      HStack(alignment: .center, spacing: 15) {
+        HStack(spacing: 5) {
+          unreadImageView
+          titleCoverImageView
         }
-        .padding(.bottom, 5)
+        .frame(alignment: .leading)
+
+        VStack(alignment: .leading, spacing: 10) {
+          infoView
+          VStack(alignment: .leading, spacing: 4) {
+            downloadProgressView
+            buttons
+            borrowedInfoView
+          }
+          .padding(.bottom, 5)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .sheet(isPresented: $showHalfSheet, onDismiss: { 
+          model.showHalfSheet = false
+          model.isManagingHold = false  // Reset managing hold state when sheet is dismissed
+        }) {
+          HalfSheetView(
+            viewModel: model,
+            backgroundColor: Color(model.book.dominantUIColor),
+            coverImage: $model.book.coverImage
+          )
+        }
+        .alert(item: $model.showAlert) { alert in
+          Alert(
+            title: Text(alert.title),
+            message: Text(alert.message),
+            primaryButton: .default(Text(alert.buttonTitle ?? ""), action: alert.primaryAction),
+            secondaryButton: .cancel(alert.secondaryAction)
+          )
+        }
       }
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .sheet(isPresented: $showHalfSheet, onDismiss: { 
-        model.showHalfSheet = false
-        model.isManagingHold = false  // Reset managing hold state when sheet is dismissed
-      }) {
-        HalfSheetView(
-          viewModel: model,
-          backgroundColor: Color(model.book.dominantUIColor),
-          coverImage: $model.book.coverImage
-        )
-      }
-      .alert(item: $model.showAlert) { alert in
-        Alert(
-          title: Text(alert.title),
-          message: Text(alert.message),
-          primaryButton: .default(Text(alert.buttonTitle ?? ""), action: alert.primaryAction),
-          secondaryButton: .cancel(alert.secondaryAction)
-        )
-      }
+      
+      // Gentle download overlay
+      downloadOverlay
     }
     .multilineTextAlignment(.leading)
     .padding(5)
     .frame(minHeight: cellHeight)
     .onDisappear { model.isLoading = false }
+    .onReceive(downloadProgressPublisher) { progress in
+      withAnimation(.easeInOut(duration: 0.15)) {
+        downloadProgress = progress
+      }
+    }
+    .onAppear {
+      // Initialize with current progress if downloading
+      if isDownloading {
+        downloadProgress = MyBooksDownloadCenter.shared.downloadProgress(for: model.book.identifier)
+      }
+    }
+  }
+  
+  // MARK: - Download Progress Publisher
+  
+  private var downloadProgressPublisher: AnyPublisher<Double, Never> {
+    MyBooksDownloadCenter.shared.downloadProgressPublisher
+      .filter { [model] in $0.0 == model.book.identifier }
+      .map { $0.1 }
+      .receive(on: DispatchQueue.main)
+      .eraseToAnyPublisher()
   }
 
   @ViewBuilder private var titleCoverImageView: some View {
@@ -66,8 +105,88 @@ struct NormalBookCell: View {
       .adaptiveShadowLight(radius: 1.5)
       .frame(width: cellHeight * 2.0 / 3.0)
   }
-
   
+  // MARK: - Download Progress View
+  
+  /// Threshold below which we show "Requesting..." instead of progress bar
+  /// This handles the checkout→download transition where progress resets
+  private let progressThreshold: Double = 0.03
+  
+  /// Whether we have meaningful download progress (above threshold, below complete)
+  private var hasMeaningfulProgress: Bool {
+    downloadProgress >= progressThreshold && downloadProgress < 0.99
+  }
+  
+  @ViewBuilder private var downloadProgressView: some View {
+    if isDownloading {
+      VStack(alignment: .leading, spacing: 2) {
+        if hasMeaningfulProgress {
+          // Show actual progress bar when we have meaningful progress
+          HStack(spacing: 6) {
+            Text(Strings.BookCell.downloading)
+              .palaceFont(size: 11)
+              .foregroundColor(.secondary)
+            
+            Spacer()
+            
+            Text("\(Int(downloadProgress * 100))%")
+              .palaceFont(size: 11)
+              .foregroundColor(.secondary)
+              .monospacedDigit()
+          }
+          
+          GeometryReader { geometry in
+            ZStack(alignment: .leading) {
+              // Background track
+              RoundedRectangle(cornerRadius: 2)
+                .fill(Color.secondary.opacity(0.2))
+                .frame(height: 4)
+              
+              // Progress fill
+              RoundedRectangle(cornerRadius: 2)
+                .fill(Color(TPPConfiguration.mainColor()))
+                .frame(width: geometry.size.width * downloadProgress, height: 4)
+            }
+          }
+          .frame(height: 4)
+        } else {
+          // Show "Requesting..." for initial checkout phase or when progress resets
+          HStack(spacing: 6) {
+            Text(Strings.BookCell.downloading)
+              .palaceFont(size: 11)
+              .foregroundColor(.secondary)
+            
+            Spacer()
+            
+            ProgressView()
+              .scaleEffect(0.7)
+          }
+        }
+      }
+      .padding(.bottom, 4)
+      .transition(.opacity.combined(with: .move(edge: .top)))
+    } else if isDownloadFailed {
+      Text(Strings.BookCell.downloadFailedMessage)
+        .palaceFont(size: 11)
+        .foregroundColor(.red)
+        .padding(.bottom, 4)
+        .transition(.opacity)
+    }
+  }
+  
+  // MARK: - Download Overlay
+  
+  @ViewBuilder private var downloadOverlay: some View {
+    if isDownloading {
+      Color.black.opacity(0.08)
+        .allowsHitTesting(false)
+        .transition(.opacity)
+    } else if isDownloadFailed {
+      Color.black.opacity(0.15)
+        .allowsHitTesting(false)
+        .transition(.opacity)
+    }
+  }
 
   @ViewBuilder private var infoView: some View {
     VStack(alignment: .leading) {
