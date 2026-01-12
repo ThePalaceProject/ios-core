@@ -93,7 +93,7 @@ final class BookDetailViewModel: ObservableObject {
     self.registry = TPPBookRegistry.shared
     self.bookState = registry.state(for: book.identifier)
     self.bookIdentifier = book.identifier
-    self.stableButtonState = self.computeButtonState(book: book, state: self.bookState, isManagingHold: self.isManagingHold, isProcessing: self.isProcessing)
+    self.stableButtonState = self.computeButtonState(book: book, state: self.bookState, isManagingHold: self.isManagingHold)
     
     bindRegistryState()
     setupStableButtonState()
@@ -212,9 +212,11 @@ final class BookDetailViewModel: ObservableObject {
       .assign(to: &$downloadProgress)
   }
 
-  private func computeButtonState(book: TPPBook, state: TPPBookState, isManagingHold: Bool, isProcessing: Bool) -> BookButtonState {
+  private func computeButtonState(book: TPPBook, state: TPPBookState, isManagingHold: Bool) -> BookButtonState {
     let availability = book.defaultAcquisition?.availability
-    let isProcessingDownload = isProcessing || state == .downloading
+    // Only count download/borrow-related processing, not return processing
+    let downloadRelatedButtons: Set<BookButtonType> = [.download, .get, .retry, .reserve]
+    let isProcessingDownload = state == .downloading || processingButtons.intersection(downloadRelatedButtons).count > 0
     if case .holding = state, isManagingHold { return .managingHold }
     return BookButtonMapper.map(
       registryState: state,
@@ -224,9 +226,11 @@ final class BookDetailViewModel: ObservableObject {
   }
 
   private func setupStableButtonState() {
+    // Note: We still observe $isProcessing to trigger updates when processingButtons changes,
+    // even though the value itself isn't used in computeButtonState anymore
     Publishers.CombineLatest4($book, $bookState, $isManagingHold, $isProcessing)
-      .map { [weak self] book, state, isManaging, isProcessing in
-        self?.computeButtonState(book: book, state: state, isManagingHold: isManaging, isProcessing: isProcessing) ?? .unsupported
+      .map { [weak self] book, state, isManaging, _ in
+        self?.computeButtonState(book: book, state: state, isManagingHold: isManaging) ?? .unsupported
       }
       .removeDuplicates()
       // Use throttle instead of debounce - throttle emits immediately on first value,
