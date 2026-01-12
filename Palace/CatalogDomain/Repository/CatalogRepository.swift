@@ -42,15 +42,17 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
     self.checkStaleCacheStatus()
   }
   
-  /// Check if cache is stale but DON'T clear it - we'll use stale-while-revalidate pattern
+  /// Check if cache is stale - clear URLCache but keep memory cache for stale-while-revalidate
   private func checkStaleCacheStatus() {
     let now = Date()
     let lastLaunch = UserDefaults.standard.object(forKey: Self.lastAppLaunchKey) as? Date ?? .distantPast
     let daysSinceLastLaunch = Calendar.current.dateComponents([.day], from: lastLaunch, to: now).day ?? 0
     
     if daysSinceLastLaunch >= 1 {
-      Log.info(#file, "App hasn't been used in \(daysSinceLastLaunch) days - will use stale-while-revalidate for cached content")
-      // Don't clear cache! Just mark that we need background refresh
+      Log.info(#file, "App hasn't been used in \(daysSinceLastLaunch) days - clearing HTTP cache, keeping memory cache for stale-while-revalidate")
+      // Clear URLCache to prevent stale/corrupted HTTP responses from causing parsing crashes
+      // in legacy OPDS code. Our memory cache is preserved for stale-while-revalidate.
+      URLCache.shared.removeAllCachedResponses()
       needsBackgroundRefresh = true
     }
     
