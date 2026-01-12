@@ -235,23 +235,23 @@ extension TPPAppDelegate {
 
     guard let top = topViewController() else { return }
 
-    var nav: UINavigationController!
-    let accountList = TPPAccountList { account in
-      if !TPPSettings.shared.settingsAccountIdsList.contains(account.uuid) {
-        TPPSettings.shared.settingsAccountIdsList.append(account.uuid)
+      var nav: UINavigationController!
+      let accountList = TPPAccountList { account in
+        if !TPPSettings.shared.settingsAccountIdsList.contains(account.uuid) {
+          TPPSettings.shared.settingsAccountIdsList.append(account.uuid)
+        }
+        if let urlString = account.catalogUrl, let url = URL(string: urlString) {
+          TPPSettings.shared.accountMainFeedURL = url
+        }
+        AccountsManager.shared.currentAccount = account
+        
+        account.loadAuthenticationDocument { _ in }
+        
+        NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
+        nav?.dismiss(animated: true)
       }
-      if let urlString = account.catalogUrl, let url = URL(string: urlString) {
-        TPPSettings.shared.accountMainFeedURL = url
-      }
-      AccountsManager.shared.currentAccount = account
-      
-      account.loadAuthenticationDocument { _ in }
-      
-      NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
-      nav?.dismiss(animated: true)
-    }
-    accountList.requiresSelectionBeforeDismiss = true
-    nav = UINavigationController(rootViewController: accountList)
+      accountList.requiresSelectionBeforeDismiss = true
+      nav = UINavigationController(rootViewController: accountList)
     top.present(nav, animated: true)
   }
 
