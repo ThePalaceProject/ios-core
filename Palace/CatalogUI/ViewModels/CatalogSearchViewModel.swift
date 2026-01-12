@@ -15,15 +15,17 @@ class CatalogSearchViewModel: ObservableObject {
   private let repository: CatalogRepositoryProtocol
   private let baseURL: () -> URL?
   private var searchTask: Task<Void, Never>?
-  private var debounceTimer: Timer?
+  private var debounceTask: Task<Void, Never>?
+  private let debounceInterval: TimeInterval
   
-  init(repository: CatalogRepositoryProtocol, baseURL: @escaping () -> URL?) {
+  init(repository: CatalogRepositoryProtocol, baseURL: @escaping () -> URL?, debounceInterval: TimeInterval = 0.1) {
     self.repository = repository
     self.baseURL = baseURL
+    self.debounceInterval = debounceInterval
   }
   
   deinit {
-    debounceTimer?.invalidate()
+    debounceTask?.cancel()
     searchTask?.cancel()
   }
   
@@ -37,17 +39,18 @@ class CatalogSearchViewModel: ObservableObject {
   func updateSearchQuery(_ query: String) {
     searchQuery = query
     
-    debounceTimer?.invalidate()
-    debounceTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: false) { [weak self] _ in
-      Task { @MainActor in
-        self?.performSearch()
-      }
+    debounceTask?.cancel()
+    debounceTask = Task { [weak self] in
+      guard let self else { return }
+      try? await Task.sleep(nanoseconds: UInt64(self.debounceInterval * 1_000_000_000))
+      guard !Task.isCancelled else { return }
+      await self.performSearch()
     }
   }
   
   func clearSearch() {
     searchQuery = ""
-    debounceTimer?.invalidate()
+    debounceTask?.cancel()
     searchTask?.cancel()
     isLoading = false
     errorMessage = nil
