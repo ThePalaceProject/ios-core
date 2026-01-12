@@ -168,10 +168,16 @@ class CatalogSearchViewModel: ObservableObject {
     for idx in books.indices {
       let book = books[idx]
       if let changedIdentifier, book.identifier != changedIdentifier { continue }
-      // For books in registry, use registry version to get current state
+      
+      // Check if book is in registry
       if let registryBook = TPPBookRegistry.shared.book(forIdentifier: book.identifier) {
-        // Always update to trigger cell recreation with new registry state
+        // Book is in registry - use registry version
         books[idx] = registryBook
+        anyChanged = true
+      } else {
+        // Book is NOT in registry (e.g., returned) - invalidate cached model
+        // so it gets recreated with fresh state from availability data
+        BookCellModelCache.shared.invalidate(for: book.identifier)
         anyChanged = true
       }
     }
