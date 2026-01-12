@@ -9,5 +9,10 @@
 		<string>applinks:thepalaceproject.org</string>
 		<string>applinks:thepalaceproject.page.link</string>
 	</array>
+	<!-- CarPlay Audio entitlement - requires Apple Developer Portal configuration
+	     Add this entitlement after enabling CarPlay capability in the App ID:
+	     <key>com.apple.developer.carplay-audio</key>
+	     <true/>
+	-->
 </dict>
 </plist>

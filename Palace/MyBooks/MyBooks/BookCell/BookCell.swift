@@ -14,15 +14,6 @@ struct BookCell: View {
   var previewEnabled: Bool = true
   
   var body: some View {
-    bookCell
-  }
-  
-  @ViewBuilder private var bookCell: some View {
-    switch model.state {
-    case .downloading, .downloadFailed:
-      DownloadingBookCell(model: model)
-    default:
-      NormalBookCell(model: model, previewEnabled: previewEnabled)
-    }
+    NormalBookCell(model: model, previewEnabled: previewEnabled)
   }
 }
