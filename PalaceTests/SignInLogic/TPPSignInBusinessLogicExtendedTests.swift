@@ -474,19 +474,14 @@ final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
     // The fix uses currentAccountId which is always available from UserDefaults
     let result = businessLogic.shouldShowSyncButton()
     
-    // If the library supports sync (NYPL mock does), this should return true
-    // The key validation: this call succeeds and returns the expected value
-    // based on library configuration, not failing due to nil currentAccount?.uuid
-    if let details = libraryAccountMock.tppAccount.details,
-       details.supportsSimplyESync,
-       details.getLicenseURL(.annotations) != nil {
-      XCTAssertTrue(result,
-                    "PP-3252: shouldShowSyncButton() should return true when user is signed in and library supports sync")
-    } else {
-      // Library doesn't support sync - that's fine, the comparison still worked
-      XCTAssertFalse(result,
-                     "Library doesn't support sync, so shouldShowSyncButton() correctly returns false")
-    }
+    // The key validation: this call succeeds and uses currentAccountId (not currentAccount?.uuid)
+    // Production code checks: supportsSimplyESync && TPPAnnotations.annotationsURL != nil && hasCredentials && isCurrentAccount
+    let supportsSync = libraryAccountMock.tppAccount.details?.supportsSimplyESync == true
+    let hasAnnotationsURL = TPPAnnotations.annotationsURL != nil
+    let expectedResult = supportsSync && hasAnnotationsURL
+    
+    XCTAssertEqual(result, expectedResult,
+                   "PP-3252: shouldShowSyncButton() should return \(expectedResult) based on library configuration")
   }
 }
 
