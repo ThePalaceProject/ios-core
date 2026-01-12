@@ -467,9 +467,6 @@ extension TPPNetworkExecutor {
   }
 }
 
-// Note: hasRetried extension removed - retry tracking is now handled by URL-based
-// tracking in TPPNetworkResponder to avoid issues with associated objects on structs
-
 extension TPPNetworkExecutor {
   func GET(_ reqURL: URL, useTokenIfAvailable: Bool = true) async throws -> (Data, URLResponse?) {
     return try await withCheckedThrowingContinuation { continuation in

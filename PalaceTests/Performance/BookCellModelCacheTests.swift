@@ -207,54 +207,6 @@ final class BookCellModelCacheTests: XCTestCase {
   // MARK: - Helpers
   
   private func makeTestBook(identifier: String, title: String, updated: Date = Date(timeIntervalSince1970: 0)) -> TPPBook {
-    // Create minimal TPPBook for testing
-    let json: [String: Any] = [
-      "metadata": [
-        "id": identifier,
-        "title": title,
-        "@type": "http://schema.org/Book",
-        "updated": ISO8601DateFormatter().string(from: updated)
-      ],
-      "links": [
-        [
-          "href": "https://example.com/\(identifier)",
-          "rel": "http://opds-spec.org/acquisition/open-access",
-          "type": "application/epub+zip"
-        ]
-      ]
-    ]
-    
-    // TPPBook requires OPDS entry initialization
-    // For testing purposes, we'll create a mock
-    return TPPBookMock(identifier: identifier, title: title, updated: updated)
-  }
-}
-
-// MARK: - Test Mocks
-
-/// Minimal mock for TPPBook for testing purposes
-@objcMembers
-class TPPBookMock: TPPBook {
-  private let _identifier: String
-  private let _title: String
-  private let _updated: Date
-  
-  init(identifier: String, title: String, updated: Date) {
-    _identifier = identifier
-    _title = title
-    _updated = updated
-    
-    // Create minimal entry
-    let entryURL = URL(string: "https://example.com/entry")!
-    let acquisitionURL = URL(string: "https://example.com/acquisition")!
-    
-    // We need to call super.init but TPPBook doesn't have a simple initializer
-    // This is a limitation - in practice you'd use a factory method or dependency injection
-    // For now, this test file documents the expected behavior
-    fatalError("TPPBookMock cannot be instantiated directly - use makeRealTestBook helper")
-  }
-  
-  required init?(coder: NSCoder) {
-    fatalError("init(coder:) not implemented")
+    return TPPBookMocker.mockBook(identifier: identifier, title: title, authors: "Test Author", updated: updated)
   }
 }
