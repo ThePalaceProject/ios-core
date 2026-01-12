@@ -13,29 +13,45 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
   private let cacheQueue = DispatchQueue(label: "catalog.cache.queue", qos: .userInitiated)
   private static let lastAppLaunchKey = "CatalogRepository.lastAppLaunch"
   
+  /// Track if we need to refresh stale content in background
+  private var needsBackgroundRefresh = false
+  
   private struct CachedFeed {
     let feed: CatalogFeed
     let timestamp: Date
     
+    /// Fresh cache - use without question (10 minutes)
     var isExpired: Bool {
-      Date().timeIntervalSince(timestamp) > 600 // 10 minutes
+      Date().timeIntervalSince(timestamp) > 600
+    }
+    
+    /// Stale but usable - show immediately, refresh in background (24 hours)
+    var isStaleButUsable: Bool {
+      let age = Date().timeIntervalSince(timestamp)
+      return age > 600 && age <= 86400 // Between 10 min and 24 hours
+    }
+    
+    /// Too old - must refresh (> 24 hours)
+    var isTooOld: Bool {
+      Date().timeIntervalSince(timestamp) > 86400
     }
   }
   
   public init(api: CatalogAPI) {
     self.api = api
-    self.checkAndClearStaleCache()
+    self.checkStaleCacheStatus()
   }
   
-  private func checkAndClearStaleCache() {
+  /// Check if cache is stale but DON'T clear it - we'll use stale-while-revalidate pattern
+  private func checkStaleCacheStatus() {
     let now = Date()
     let lastLaunch = UserDefaults.standard.object(forKey: Self.lastAppLaunchKey) as? Date ?? .distantPast
     let daysSinceLastLaunch = Calendar.current.dateComponents([.day], from: lastLaunch, to: now).day ?? 0
     
     if daysSinceLastLaunch >= 1 {
-      Log.info(#file, "App hasn't been used in \(daysSinceLastLaunch) days, clearing stale catalog cache")
-      URLCache.shared.removeAllCachedResponses()
-      memoryCache.removeAll()
+      Log.info(#file, "App hasn't been used in \(daysSinceLastLaunch) days - will use stale-while-revalidate for cached content")
+      // Don't clear cache! Just mark that we need background refresh
+      needsBackgroundRefresh = true
     }
     
     UserDefaults.standard.set(now, forKey: Self.lastAppLaunchKey)
@@ -50,8 +66,25 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
       }
     }
     
+    // STALE-WHILE-REVALIDATE PATTERN:
+    // 1. Fresh cache (< 10 min) → return immediately
+    // 2. Stale but usable (10 min - 24 hr) → return immediately, refresh in background
+    // 3. Too old (> 24 hr) or no cache → fetch fresh
+    
     if let entry = cachedEntry, !entry.isExpired {
-      Log.debug(#file, "Returning cached catalog feed for \(url.absoluteString)")
+      Log.debug(#file, "Returning fresh cached catalog feed for \(url.absoluteString)")
+      return entry.feed
+    }
+    
+    // Stale-while-revalidate: return stale content immediately, refresh in background
+    if let entry = cachedEntry, entry.isStaleButUsable || needsBackgroundRefresh {
+      Log.info(#file, "Returning stale cached catalog feed, refreshing in background: \(url.absoluteString)")
+      
+      // Schedule background refresh
+      Task.detached(priority: .utility) { [weak self] in
+        await self?.refreshFeedInBackground(url: url, cacheKey: cacheKey)
+      }
+      
       return entry.feed
     }
     
@@ -64,12 +97,22 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
         try await self?.api.fetchFeed(at: url)
       }
     } catch {
+      // If network fails and we have ANY cached content (even too old), use it as fallback
+      if let entry = cachedEntry {
+        Log.warn(#file, "Network failed, using old cached feed as fallback: \(error.localizedDescription)")
+        return entry.feed
+      }
+      
       Log.error(#file, "Failed to fetch catalog feed: \(error.localizedDescription)")
       throw NSError(domain: "CatalogRepository", code: 0, 
                    userInfo: [NSLocalizedDescriptionKey: "Failed to fetch catalog feed: \(error.localizedDescription)"])
     }
     
     guard let feed = feed else {
+      // Fallback to cached content if fetch returns nil
+      if let entry = cachedEntry {
+        return entry.feed
+      }
       throw NSError(domain: "CatalogRepository", code: 0, 
                    userInfo: [NSLocalizedDescriptionKey: "Failed to fetch catalog feed"])
     }
@@ -87,6 +130,31 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
     }
     
     return feed
+  }
+  
+  /// Refresh a feed in the background without blocking UI
+  private func refreshFeedInBackground(url: URL, cacheKey: String) async {
+    do {
+      let feed = try await withTimeout(seconds: 30) { [weak self] in
+        try await self?.api.fetchFeed(at: url)
+      }
+      
+      guard let feed = feed else { return }
+      
+      await withCheckedContinuation { continuation in
+        cacheQueue.async {
+          self.memoryCache[cacheKey] = CachedFeed(feed: feed, timestamp: Date())
+          Log.info(#file, "Background refresh completed for: \(url.absoluteString)")
+          continuation.resume()
+        }
+      }
+      
+      // Preload related facets too
+      await preloadRelatedFacets(from: feed)
+      
+    } catch {
+      Log.warn(#file, "Background refresh failed (not critical): \(error.localizedDescription)")
+    }
   }
   
   private func withTimeout<T>(seconds: TimeInterval, operation: @escaping () async throws -> T) async throws -> T {
