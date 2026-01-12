@@ -101,11 +101,12 @@ struct TPPBookMocker {
   
   /// Creates a simple mock book with configurable title, authors, and updated date
   static func mockBook(
+    identifier: String? = nil,
     title: String,
     authors: String? = nil,
     updated: Date = Date()
   ) -> TPPBook {
-    let identifier = UUID().uuidString
+    let identifier = identifier ?? UUID().uuidString
     let acquisitionUrl = URL(string: "http://example.com/\(identifier)")!
     
     let acquisition = TPPOPDSAcquisition(

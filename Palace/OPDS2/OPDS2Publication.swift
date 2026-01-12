@@ -8,8 +8,8 @@
 
 import Foundation
 
-struct OPDS2Publication: Codable {
-  struct Metadata: Codable {
+struct OPDS2Publication: Codable, Equatable, Sendable {
+  struct Metadata: Codable, Equatable, Sendable {
     let updated: Date
     let description: String?
     let id: String

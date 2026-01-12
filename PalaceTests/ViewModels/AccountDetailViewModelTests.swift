@@ -171,8 +171,9 @@ final class AccountDetailViewModelTests: XCTestCase {
   }
   
   func testSelectedAccountMatchesInitialized() async {
-    guard let libraryID = AccountsManager.shared.currentAccountId else {
-      XCTSkip("No current account available for testing")
+    guard let libraryID = AccountsManager.shared.currentAccountId,
+          AccountsManager.shared.account(libraryID) != nil else {
+      XCTSkip("No current account available or account not loaded for testing")
       return
     }
     

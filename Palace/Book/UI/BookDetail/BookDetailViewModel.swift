@@ -93,7 +93,7 @@ final class BookDetailViewModel: ObservableObject {
     self.registry = TPPBookRegistry.shared
     self.bookState = registry.state(for: book.identifier)
     self.bookIdentifier = book.identifier
-    self.stableButtonState = self.computeButtonState(book: book, state: self.bookState, isManagingHold: self.isManagingHold, isProcessing: self.isProcessing)
+    self.stableButtonState = self.computeButtonState(book: book, state: self.bookState, isManagingHold: self.isManagingHold)
     
     bindRegistryState()
     setupStableButtonState()
@@ -134,28 +134,63 @@ final class BookDetailViewModel: ObservableObject {
       .bookStatePublisher
       .filter { $0.0 == self.book.identifier }
       .map { $0.1 }
-      .receive(on: DispatchQueue.main)
+      .receive(on: RunLoop.main) // Use RunLoop.main to avoid "Publishing changes during view updates"
       .sink { [weak self] newState in
         guard let self else { return }
         let updatedBook = registry.book(forIdentifier: book.identifier) ?? book
         let registryState = registry.state(for: book.identifier)
-
-        Task { @MainActor in
+        
+        // Only update book model if it's actually different (avoid triggering unnecessary publishes)
+        // This prevents the stableButtonState debounce from resetting on every state change
+        if updatedBook.identifier != self.book.identifier || updatedBook.title != self.book.title {
           self.book = updatedBook
-          // If we are in a local returning override, hold it until unregistered
-          if let override = self.localBookStateOverride, override == .returning, registryState != .unregistered {
-            return
-          }
-          self.bookState = registryState
-          if registryState == .unregistered {
-            // Ensure UI is not left in a managing/processing state after returning
-            self.isManagingHold = false
-            self.showHalfSheet = false
-            self.processingButtons.remove(.returning)
-            self.processingButtons.remove(.cancelHold)
-          } else if registryState == .downloadFailed {
-            self.showHalfSheet = false
-          }
+        }
+        
+        // If we are in a local returning override, hold it until unregistered
+        if let override = self.localBookStateOverride, override == .returning, registryState != .unregistered {
+          return
+        }
+        self.bookState = registryState
+        
+        // Clear processing buttons based on state transitions
+        switch registryState {
+        case .unregistered:
+          // Ensure UI is not left in a managing/processing state after returning
+          self.isManagingHold = false
+          self.showHalfSheet = false
+          self.processingButtons.remove(.returning)
+          self.processingButtons.remove(.cancelHold)
+          self.processingButtons.remove(.return)
+          self.processingButtons.remove(.remove)
+          
+        case .downloading:
+          // Download started - clear download-related processing buttons
+          self.processingButtons.remove(.download)
+          self.processingButtons.remove(.get)
+          self.processingButtons.remove(.retry)
+          
+        case .downloadFailed:
+          // Download failed - clear download-related processing buttons
+          self.processingButtons.remove(.download)
+          self.processingButtons.remove(.get)
+          self.processingButtons.remove(.retry)
+          // Don't auto-close the HalfSheet on downloadFailed - the HalfSheet will update
+          // to show retry/cancel buttons. Auto-closing causes a race condition with the
+          // error alert presentation, resulting in the alert being auto-dismissed.
+          
+        case .downloadSuccessful, .used:
+          // Download completed - clear all download-related processing and dismiss half sheet
+          self.processingButtons.remove(.download)
+          self.processingButtons.remove(.get)
+          self.processingButtons.remove(.retry)
+          self.showHalfSheet = false
+          
+        case .holding:
+          // Hold placed - clear reserve button
+          self.processingButtons.remove(.reserve)
+          
+        default:
+          break
         }
       }
       .store(in: &cancellables)
@@ -177,9 +212,11 @@ final class BookDetailViewModel: ObservableObject {
       .assign(to: &$downloadProgress)
   }
 
-  private func computeButtonState(book: TPPBook, state: TPPBookState, isManagingHold: Bool, isProcessing: Bool) -> BookButtonState {
+  private func computeButtonState(book: TPPBook, state: TPPBookState, isManagingHold: Bool) -> BookButtonState {
     let availability = book.defaultAcquisition?.availability
-    let isProcessingDownload = isProcessing || state == .downloading
+    // Only count download/borrow-related processing, not return processing
+    let downloadRelatedButtons: Set<BookButtonType> = [.download, .get, .retry, .reserve]
+    let isProcessingDownload = state == .downloading || processingButtons.intersection(downloadRelatedButtons).count > 0
     if case .holding = state, isManagingHold { return .managingHold }
     return BookButtonMapper.map(
       registryState: state,
@@ -189,19 +226,26 @@ final class BookDetailViewModel: ObservableObject {
   }
 
   private func setupStableButtonState() {
+    // Note: We still observe $isProcessing to trigger updates when processingButtons changes,
+    // even though the value itself isn't used in computeButtonState anymore
     Publishers.CombineLatest4($book, $bookState, $isManagingHold, $isProcessing)
-      .map { [weak self] book, state, isManaging, isProcessing in
-        self?.computeButtonState(book: book, state: state, isManagingHold: isManaging, isProcessing: isProcessing) ?? .unsupported
+      .map { [weak self] book, state, isManaging, _ in
+        self?.computeButtonState(book: book, state: state, isManagingHold: isManaging) ?? .unsupported
       }
       .removeDuplicates()
-      .debounce(for: .milliseconds(180), scheduler: DispatchQueue.main)
+      // Use throttle instead of debounce - throttle emits immediately on first value,
+      // then emits the latest value after the interval. Debounce waits for silence.
+      .throttle(for: .milliseconds(50), scheduler: RunLoop.main, latest: true)
       .assign(to: &self.$stableButtonState)
   }
   
   @objc func handleBookRegistryChange(_ notification: Notification) {
     let updatedBook = registry.book(forIdentifier: book.identifier) ?? book
-    DispatchQueue.main.async {
-      self.book = updatedBook
+    // Only update if the book actually changed to avoid triggering unnecessary publishes
+    if updatedBook.identifier != self.book.identifier || updatedBook.title != self.book.title {
+      DispatchQueue.main.async {
+        self.book = updatedBook
+      }
     }
   }
   
@@ -305,15 +349,15 @@ final class BookDetailViewModel: ObservableObject {
     
     switch button {
     case .reserve:
-      didSelectReserve(for: book)
-      removeProcessingButton(button)
-      showHalfSheet = false
-    case .return, .remove:
-      bookState = .returning
-      removeProcessingButton(button)
+      didSelectReserve(for: book) { [weak self] in
+        self?.removeProcessingButton(button)
+        self?.showHalfSheet = false
+      }
       
-    case .returning, .cancelHold:
-      // didSelectReturn will guard against duplicate requests using processingButtons
+    case .return, .remove, .returning, .cancelHold:
+      // Set state to returning for visual feedback
+      bookState = .returning
+      // Actually perform the return
       didSelectReturn(for: book) {
         self.removeProcessingButton(button)
         self.showHalfSheet = false
@@ -323,7 +367,7 @@ final class BookDetailViewModel: ObservableObject {
     case .download, .get, .retry:
       self.downloadProgress = 0
       didSelectDownload(for: book)
-      removeProcessingButton(button)
+      // Don't remove processing here - will be removed when state changes to .downloading or .downloadFailed
       
     case .read, .listen:
       didSelectRead(for: book) {
@@ -332,7 +376,10 @@ final class BookDetailViewModel: ObservableObject {
       
     case .cancel:
       didSelectCancel()
-      removeProcessingButton(button)
+      // Remove after a short delay to show feedback
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+        self?.removeProcessingButton(button)
+      }
       
     case .sample, .audiobookSample:
       didSelectPlaySample(for: book) {
@@ -405,14 +452,20 @@ final class BookDetailViewModel: ObservableObject {
     downloadCenter.startDownload(for: book)
   }
 
-  func didSelectReserve(for book: TPPBook) {
+  func didSelectReserve(for book: TPPBook, completion: (() -> Void)? = nil) {
     ensureAuthAndExecute { [weak self] in
-      guard let self = self else { return }
+      guard let self = self else { 
+        completion?()
+        return 
+      }
       Task {
         do {
           _ = try await self.downloadCenter.borrowAsync(book, attemptDownload: false)
         } catch {
           Log.error(#file, "Failed to borrow book: \(error.localizedDescription)")
+        }
+        await MainActor.run {
+          completion?()
         }
       }
     }

@@ -761,14 +761,30 @@ actor DownloadCoordinator {
   }
   
   @objc func cancelDownload(for identifier: String) {
+    let state = bookRegistry.state(for: identifier)
+    
+    // Handle case where there's no download task (e.g., during borrow request, waiting for retry, etc.)
     guard let info = downloadInfo(forBookIdentifier: identifier) else {
-      let state = bookRegistry.state(for: identifier)
-      if state != .downloadFailed {
-        NSLog("Ignoring nonsensical cancellation request.")
+      // Allow cancellation for states that indicate a download/borrow is in progress
+      let cancellableStates: [TPPBookState] = [.downloading, .downloadFailed, .SAMLStarted]
+      
+      if cancellableStates.contains(state) {
+        Log.info(#file, "📊 Cancelling download without task for '\(identifier)' (state: \(state.stringValue()))")
+        bookRegistry.setState(.downloadNeeded, for: identifier)
+        broadcastUpdate()
+        
+        Task {
+          // Clean up coordinator even without a download task
+          await self.downloadCoordinator.removeCachedDownloadInfo(for: identifier)
+          await self.downloadCoordinator.registerCompletion(identifier: identifier)
+          let remainingCount = await self.downloadCoordinator.activeCount
+          Log.info(#file, "📊 Download cancelled (no task) for '\(identifier)', remaining active: \(remainingCount)")
+          self.schedulePendingStartsIfPossible()
+        }
         return
       }
       
-      bookRegistry.setState(.downloadNeeded, for: identifier)
+      NSLog("Ignoring nonsensical cancellation request for state: \(state.stringValue())")
       return
     }
     
@@ -779,12 +795,21 @@ actor DownloadCoordinator {
     }
 #endif
     
+    let taskId = info.downloadTask.taskIdentifier
+    
+    // First, update UI immediately so user sees feedback
+    bookRegistry.setState(.downloadNeeded, for: identifier)
+    broadcastUpdate()
+    
+    // Then cancel the task
     info.downloadTask.cancel { [weak self] resumeData in
       guard let self else { return }
-      self.bookRegistry.setState(.downloadNeeded, for: identifier)
-      self.broadcastUpdate()
       
       Task {
+        // CRITICAL: Remove from tracking dictionaries so retry works
+        await self.bookIdentifierToDownloadInfo.remove(identifier)
+        await self.taskIdentifierToBook.remove(taskId)
+        await self.downloadCoordinator.removeCachedDownloadInfo(for: identifier)
         await self.downloadCoordinator.registerCompletion(identifier: identifier)
         let remainingCount = await self.downloadCoordinator.activeCount
         Log.info(#file, "📊 Download cancelled for '\(identifier)', remaining active: \(remainingCount)")
@@ -1008,6 +1033,92 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
     }
   }
   
+  /// Checks if the MIME type indicates an OPDS entry response
+  private func isOPDSEntryMimeType(_ mimeType: String) -> Bool {
+    let lowercased = mimeType.lowercased()
+    // OPDS entry types that need to be parsed to extract acquisition links
+    return lowercased == "application/xml" ||
+           lowercased == "text/xml" ||
+           lowercased.contains("atom+xml") ||
+           lowercased.contains("opds-catalog")
+  }
+  
+  /// Handles OPDS entry XML response by parsing it and following the actual acquisition link
+  /// - Returns: `true` if a follow-up download was successfully started
+  private func handleOPDSEntryResponse(
+    at location: URL,
+    for book: TPPBook,
+    originalTask: URLSessionDownloadTask,
+    session: URLSession
+  ) async -> Bool {
+    guard let xmlData = try? Data(contentsOf: location) else {
+      Log.error(#file, "Failed to read OPDS entry XML for \(book.identifier)")
+      return false
+    }
+    
+    // Try to parse as OPDS entry and extract acquisition link
+    guard let entry = TPPOPDSEntry(xml: TPPXML(data: xmlData)) else {
+      Log.warn(#file, "Failed to parse XML as OPDS entry for \(book.identifier)")
+      return false
+    }
+    
+    // Create a temporary book from the entry to get updated acquisition links
+    guard let updatedBook = TPPBook(entry: entry) else {
+      Log.warn(#file, "Failed to create book from OPDS entry for \(book.identifier)")
+      return false
+    }
+    
+    // Find the direct acquisition link (not another OPDS catalog entry)
+    guard let acquisition = updatedBook.defaultAcquisition,
+          !acquisition.type.lowercased().contains("opds-catalog") else {
+      Log.warn(#file, "No direct acquisition link in OPDS entry for \(book.identifier)")
+      return false
+    }
+    
+    let acquisitionURL = acquisition.hrefURL
+    Log.info(#file, "📖 Following acquisition link from OPDS entry: \(acquisitionURL)")
+    
+    // CRITICAL: Remove the original task's mapping before creating a new one
+    // This prevents the original task's completion handler from interfering
+    await taskIdentifierToBook.remove(originalTask.taskIdentifier)
+    
+    // Update the book in registry with new acquisition info
+    let registryLocation = bookRegistry.location(forIdentifier: book.identifier)
+    bookRegistry.addBook(
+      updatedBook,
+      location: registryLocation,
+      state: .downloading,
+      fulfillmentId: nil as String?,
+      readiumBookmarks: nil as [TPPReadiumBookmark]?,
+      genericBookmarks: nil as [TPPBookLocation]?
+    )
+    
+    // Detect rights from the new acquisition type
+    let newRights = detectRightsManagement(from: acquisition.type)
+    
+    // Create new download task for the actual content
+    var request = URLRequest(url: acquisitionURL, applyingCustomUserAgent: true)
+    
+    // Add authorization if needed
+    if let token = TPPUserAccount.sharedAccount().authToken {
+      request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+    }
+    
+    let newTask = session.downloadTask(with: request)
+    let downloadInfo = MyBooksDownloadInfo(
+      downloadProgress: 0.0,
+      downloadTask: newTask,
+      rightsManagement: newRights
+    )
+    
+    await bookIdentifierToDownloadInfo.set(updatedBook.identifier, value: downloadInfo)
+    await taskIdentifierToBook.set(newTask.taskIdentifier, value: updatedBook)
+    
+    newTask.resume()
+    Log.info(#file, "📖 Started follow-up download task \(newTask.taskIdentifier) for \(updatedBook.identifier)")
+    return true
+  }
+  
   private func handleDownloadProgress(
     for book: TPPBook,
     task: URLSessionDownloadTask,
@@ -1108,13 +1219,27 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
       failureRequiringAlert = true
     }
     
-    if !book.canCompleteDownload(withContentType: task.response?.mimeType ?? "") {
+    // Check for OPDS entry XML response - this may contain the actual acquisition link
+    let mimeType = task.response?.mimeType ?? ""
+    if !failureRequiringAlert && isOPDSEntryMimeType(mimeType) {
+      Log.info(#file, "📖 Received OPDS entry response for \(book.identifier), attempting to extract acquisition link")
+      
+      if await handleOPDSEntryResponse(at: location, for: book, originalTask: task, session: session) {
+        // Successfully started follow-up download, don't fail this one
+        try? FileManager.default.removeItem(at: location)
+        return
+      } else {
+        Log.warn(#file, "⚠️ Failed to extract acquisition link from OPDS entry for \(book.identifier)")
+        try? FileManager.default.removeItem(at: location)
+        failureRequiringAlert = true
+      }
+    } else if !book.canCompleteDownload(withContentType: mimeType) {
       try? FileManager.default.removeItem(at: location)
       failureRequiringAlert = true
     }
     
     if failureRequiringAlert {
-      logBookDownloadFailure(book, reason: "Download Error", downloadTask: task, metadata: ["problemDocument": problemDoc?.dictionaryValue ?? "N/A"])
+      logBookDownloadFailure(book, reason: "Download Error", downloadTask: task, metadata: ["problemDocument": problemDoc?.dictionaryValue ?? "N/A", "mimeType": mimeType])
     } else {
       TPPProblemDocumentCacheManager.sharedInstance().clearCachedDoc(book.identifier)
       
@@ -1265,12 +1390,22 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
         
         // For other errors, show alert immediately
         self.alertForProblemDocument(problemDoc, error: failureError, book: book)
+        
+        // Set state to downloadFailed INSIDE runOnMainAsync to ensure it happens
+        // AFTER the alert is dispatched, preventing view hierarchy race conditions
+        self.bookRegistry.setState(.downloadFailed, for: book.identifier)
       }
-      bookRegistry.setState(.downloadFailed, for: book.identifier)
     }
+    
+    // Cleanup must wait for the state change to be processed
+    // Use a small delay to ensure UI updates from setState complete first
+    try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
     
     broadcastUpdate()
     
+    // CRITICAL: Remove from bookIdentifierToDownloadInfo so retry works
+    await bookIdentifierToDownloadInfo.remove(book.identifier)
+    await downloadCoordinator.removeCachedDownloadInfo(for: book.identifier)
     await downloadCoordinator.registerCompletion(identifier: book.identifier)
     let remainingCount = await downloadCoordinator.activeCount
     Log.info(#file, "📊 Download flow completed for '\(book.identifier)', remaining active: \(remainingCount)")
@@ -1697,6 +1832,10 @@ extension MyBooksDownloadCenter {
         if let info = await self.downloadInfoAsync(forBookIdentifier: book.identifier)?.withDownloadProgress(progressValue) {
           await self.bookIdentifierToDownloadInfo.set(book.identifier, value: info)
         }
+        // Publish to progress publisher so UI updates (HalfSheet, BookCell, etc.)
+        await MainActor.run {
+          self.downloadProgressPublisher.send((book.identifier, progressValue))
+        }
         self.broadcastUpdate()
       }
     }
@@ -1814,6 +1953,9 @@ extension MyBooksDownloadCenter {
                          genericBookmarks: nil)
     
     Task {
+      // CRITICAL: Remove from bookIdentifierToDownloadInfo so retry works
+      await bookIdentifierToDownloadInfo.remove(book.identifier)
+      await downloadCoordinator.removeCachedDownloadInfo(for: book.identifier)
       await downloadCoordinator.registerCompletion(identifier: book.identifier)
       let remainingCount = await downloadCoordinator.activeCount
       Log.info(#file, "📊 Download failed for '\(book.title)', remaining active: \(remainingCount)")
@@ -1890,8 +2032,24 @@ extension MyBooksDownloadCenter {
   
   private func replaceBook(_ book: TPPBook, withFileAtURL sourceLocation: URL, forDownloadTask downloadTask: URLSessionDownloadTask) -> Bool {
     guard let destURL = fileUrl(for: book.identifier) else { return false }
+    
+    let fileManager = FileManager.default
+    
     do {
-      let _ = try FileManager.default.replaceItemAt(destURL, withItemAt: sourceLocation, options: .usingNewMetadataOnly)
+      // Ensure parent directory exists
+      let parentDir = destURL.deletingLastPathComponent()
+      if !fileManager.fileExists(atPath: parentDir.path) {
+        try fileManager.createDirectory(at: parentDir, withIntermediateDirectories: true)
+      }
+      
+      // If destination exists, use replaceItemAt for atomic replacement
+      // Otherwise, use moveItem (replaceItemAt fails if destination doesn't exist)
+      if fileManager.fileExists(atPath: destURL.path) {
+        let _ = try fileManager.replaceItemAt(destURL, withItemAt: sourceLocation, options: .usingNewMetadataOnly)
+      } else {
+        try fileManager.moveItem(at: sourceLocation, to: destURL)
+      }
+      
       // Note: For LCP audiobooks, state is set in fulfillLCPLicense after license is ready
       // For non-LCP audiobooks and other content types, set state here after content is successfully stored
 #if LCP
@@ -1905,12 +2063,13 @@ extension MyBooksDownloadCenter {
       return true
     } catch {
       logBookDownloadFailure(book,
-                             reason: "Couldn't replace downloaded book",
+                             reason: "Couldn't replace/move downloaded book",
                              downloadTask: downloadTask,
                              metadata: [
-                              "replaceError": error,
+                              "error": error,
                               "destinationFileURL": destURL as Any,
-                              "sourceFileURL": sourceLocation as Any
+                              "sourceFileURL": sourceLocation as Any,
+                              "destinationExists": fileManager.fileExists(atPath: destURL.path)
                              ])
     }
     
@@ -2162,6 +2321,10 @@ extension MyBooksDownloadCenter: NYPLADEPTDelegate {
     Task {
       if let info = await self.downloadInfoAsync(forBookIdentifier: tag)?.withDownloadProgress(progress) {
         await self.bookIdentifierToDownloadInfo.set(tag, value: info)
+      }
+      // Publish to progress publisher so UI updates (HalfSheet, BookCell, etc.)
+      await MainActor.run {
+        self.downloadProgressPublisher.send((tag, progress))
       }
       self.broadcastUpdate()
     }

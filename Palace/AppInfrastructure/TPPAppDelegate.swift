@@ -61,6 +61,12 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
     DispatchQueue.main.async {
       self.audiobookLifecycleManager.didFinishLaunching()
+      
+      // Migrate audiobook downloads from Caches to Application Support
+      // This prevents iOS from purging downloaded audiobook files
+      Task.detached(priority: .utility) {
+        AudiobookSessionManager.migrateDownloadsFromCaches()
+      }
     }
 
     TransifexManager.setup()
@@ -223,22 +229,12 @@ extension TPPAppDelegate {
       return
     }
 
-    let showOnboarding = !TPPSettings.shared.userHasSeenWelcomeScreen
     // Use persisted currentAccountId rather than computed currentAccount to avoid timing issues
     let needsAccount = (AccountsManager.shared.currentAccountId == nil)
-    guard showOnboarding || needsAccount else { return }
+    guard needsAccount else { return }
 
     guard let top = topViewController() else { return }
 
-    func presentOnboarding(over presenter: UIViewController) {
-      let onboardingVC = TPPOnboardingViewController.makeSwiftUIView(dismissHandler: {
-        TPPSettings.shared.userHasSeenWelcomeScreen = true
-        presenter.presentedViewController?.dismiss(animated: true)
-      })
-      presenter.present(onboardingVC, animated: true)
-    }
-
-    if needsAccount {
       var nav: UINavigationController!
       let accountList = TPPAccountList { account in
         if !TPPSettings.shared.settingsAccountIdsList.contains(account.uuid) {
@@ -256,14 +252,7 @@ extension TPPAppDelegate {
       }
       accountList.requiresSelectionBeforeDismiss = true
       nav = UINavigationController(rootViewController: accountList)
-      top.present(nav, animated: true) {
-        if showOnboarding {
-          presentOnboarding(over: nav)
-        }
-      }
-    } else if showOnboarding {
-      presentOnboarding(over: top)
-    }
+    top.present(nav, animated: true)
   }
 
   private func switchToCatalogTab() {

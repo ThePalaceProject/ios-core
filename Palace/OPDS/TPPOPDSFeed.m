@@ -98,7 +98,7 @@ completionHandler:(void (^)(TPPOPDSFeed *feed, NSDictionary *error))handler
       [TPPErrorLogger logErrorWithCode:TPPErrorCodeOpdsFeedNoData
                                 summary:@"NYPLOPDSFeed: no data from server"
                                metadata:@{
-                                 @"Request": [request loggableString],
+                                 @"Request": [request loggableString] ?: @"N/A",
                                  @"Response": response ?: @"N/A",
                                }];
       TPPAsyncDispatch(^{handler(nil, nil);});
@@ -144,7 +144,7 @@ completionHandler:(void (^)(TPPOPDSFeed *feed, NSDictionary *error))handler
       [TPPErrorLogger logErrorWithCode:TPPErrorCodeFeedParseFail
                                 summary:@"NYPLOPDSFeed: Failed to parse data as XML"
                                metadata:@{
-                                 @"request": request.loggableString,
+                                 @"request": request.loggableString ?: @"N/A",
                                  @"response": response ?: @"N/A",
                                }];
       // this error may be nil
@@ -159,7 +159,7 @@ completionHandler:(void (^)(TPPOPDSFeed *feed, NSDictionary *error))handler
       [TPPErrorLogger logErrorWithCode:TPPErrorCodeOpdsFeedParseFail
                                 summary:@"NYPLOPDSFeed: Failed to parse XML as OPDS"
                                metadata:@{
-                                 @"request": request.loggableString,
+                                 @"request": request.loggableString ?: @"N/A",
                                  @"response": response ?: @"N/A",
                                }];
       TPPAsyncDispatch(^{handler(nil, nil);});

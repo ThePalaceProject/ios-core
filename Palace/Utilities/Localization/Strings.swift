@@ -26,7 +26,7 @@ struct Strings {
   
   struct Announcments {
     static let alertTitle = NSLocalizedString("Announcement", comment: "")
-    static let ok = NSLocalizedString("Announcement", comment: "")
+    static let ok = NSLocalizedString("OK", comment: "Button to dismiss announcement alert")
   }
 
   struct Error {

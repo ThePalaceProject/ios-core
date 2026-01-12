@@ -77,10 +77,9 @@ class BookCellModel: ObservableObject {
 
   @Published private(set) var stableButtonState: BookButtonState = .unsupported {
     didSet {
+      // Always update state when stableButtonState changes - avoids comparison edge cases
       let newState = BookCellState(stableButtonState)
-      if newState.buttonState != state.buttonState {
-        state = newState
-      }
+      state = newState
     }
   }
   @Published private(set) var registryState: TPPBookState
@@ -113,12 +112,25 @@ class BookCellModel: ObservableObject {
   init(book: TPPBook, imageCache: ImageCacheType, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
     self.book = book
     self.bookRegistry = bookRegistry
-    self.state = BookCellState(BookButtonState(book) ?? .unsupported)
     self.isLoading = bookRegistry.processing(forIdentifier: book.identifier)
     self.currentBookIdentifier = book.identifier
     self.imageCache = imageCache
-    self.registryState = bookRegistry.state(for: book.identifier)
-    self.stableButtonState = self.computeButtonState(book: book, registryState: self.registryState, isManagingHold: self.isManagingHold)
+    
+    // Get registry state and compute initial button state from it
+    let currentRegistryState = bookRegistry.state(for: book.identifier)
+    self.registryState = currentRegistryState
+    
+    // Compute initial button state from registry state (not just book data)
+    let initialButtonState = Self.computeButtonState(
+      book: book,
+      registryState: currentRegistryState,
+      isManagingHold: false,
+      bookRegistry: bookRegistry
+    )
+    self.stableButtonState = initialButtonState
+    // Initialize state from computed button state (didSet doesn't fire during init)
+    self.state = BookCellState(initialButtonState)
+    
     self.image = generatePlaceholder(for: book)
     registerForNotifications()
     loadBookCoverImage()
@@ -127,10 +139,6 @@ class BookCellModel: ObservableObject {
     #if LCP
     prefetchLCPStreamingIfPossible()
     #endif
-  }
-  
-  private static func computeInitialButtonState(book: TPPBook) -> BookButtonState {
-    BookButtonState(book) ?? .unsupported
   }
   
   deinit {
@@ -201,13 +209,29 @@ class BookCellModel: ObservableObject {
     bookRegistry.bookStatePublisher
       .filter { [weak self] in $0.0 == self?.book.identifier }
       .map { $0.1 }
+      .receive(on: RunLoop.main) // Use RunLoop.main to avoid "Publishing changes during view updates"
       .sink { [weak self] newState in
-        self?.registryState = newState
+        guard let self else { return }
+        self.registryState = newState
+        
+        // Clear loading state based on state transitions
+        switch newState {
+        case .downloading, .downloadFailed, .downloadSuccessful, .holding, .unregistered:
+          // These states indicate the action completed - clear loading
+          self.isLoading = false
+        default:
+          break
+        }
       }
       .store(in: &cancellables)
   }
 
   private func computeButtonState(book: TPPBook, registryState: TPPBookState, isManagingHold: Bool) -> BookButtonState {
+    return Self.computeButtonState(book: book, registryState: registryState, isManagingHold: isManagingHold, bookRegistry: bookRegistry)
+  }
+  
+  /// Static version for use during initialization
+  private static func computeButtonState(book: TPPBook, registryState: TPPBookState, isManagingHold: Bool, bookRegistry: TPPBookRegistryProvider) -> BookButtonState {
     let availability = book.defaultAcquisition?.availability
     // Only reflect actual download state from registry; do not treat UI image loading as download-in-progress
     let isProcessingDownload = registryState == .downloading
@@ -225,7 +249,9 @@ class BookCellModel: ObservableObject {
         self?.computeButtonState(book: book, registryState: state, isManagingHold: isManaging) ?? .unsupported
       }
       .removeDuplicates()
-      .debounce(for: .milliseconds(180), scheduler: DispatchQueue.main)
+      // Use throttle instead of debounce - throttle emits immediately on first value,
+      // then emits the latest value after the interval. Debounce waits for silence.
+      .throttle(for: .milliseconds(50), scheduler: RunLoop.main, latest: true)
       .assign(to: &$stableButtonState)
   }
   
@@ -238,23 +264,34 @@ class BookCellModel: ObservableObject {
 
 extension BookCellModel {
   func callDelegate(for action: BookButtonType) {
+    // Set loading state for actions that need it
+    switch action {
+    case .download, .retry, .get, .reserve, .return, .remove, .returning, .cancelHold, .cancel:
+      isLoading = true
+    default:
+      break
+    }
+    
     switch action {
     case .download, .retry, .get:
       didSelectDownload()
     case .reserve:
       didSelectReserve()
-    case .return:
+    case .return, .remove, .returning, .cancelHold:
+      // Set state for visual feedback and perform return
       isManagingHold = false
       bookState = .returning
-      showHalfSheet = true
+      didSelectReturn()
     case .manageHold:
       isManagingHold = true
       bookState = .holding
       showHalfSheet = true
-    case .remove, .returning, .cancelHold:
-      didSelectReturn()
     case .cancel:
       didSelectCancel()
+      // Clear loading after a short delay for cancel
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+        self?.isLoading = false
+      }
     case .sample, .audiobookSample:
       didSelectSample()
     case .read, .listen:

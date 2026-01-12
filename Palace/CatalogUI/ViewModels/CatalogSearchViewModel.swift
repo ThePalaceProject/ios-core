@@ -15,15 +15,17 @@ class CatalogSearchViewModel: ObservableObject {
   private let repository: CatalogRepositoryProtocol
   private let baseURL: () -> URL?
   private var searchTask: Task<Void, Never>?
-  private var debounceTimer: Timer?
+  private var debounceTask: Task<Void, Never>?
+  private let debounceInterval: TimeInterval
   
-  init(repository: CatalogRepositoryProtocol, baseURL: @escaping () -> URL?) {
+  init(repository: CatalogRepositoryProtocol, baseURL: @escaping () -> URL?, debounceInterval: TimeInterval = 0.1) {
     self.repository = repository
     self.baseURL = baseURL
+    self.debounceInterval = debounceInterval
   }
   
   deinit {
-    debounceTimer?.invalidate()
+    debounceTask?.cancel()
     searchTask?.cancel()
   }
   
@@ -37,17 +39,18 @@ class CatalogSearchViewModel: ObservableObject {
   func updateSearchQuery(_ query: String) {
     searchQuery = query
     
-    debounceTimer?.invalidate()
-    debounceTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: false) { [weak self] _ in
-      Task { @MainActor in
-        self?.performSearch()
-      }
+    debounceTask?.cancel()
+    debounceTask = Task { [weak self] in
+      guard let self else { return }
+      try? await Task.sleep(nanoseconds: UInt64(self.debounceInterval * 1_000_000_000))
+      guard !Task.isCancelled else { return }
+      await self.performSearch()
     }
   }
   
   func clearSearch() {
     searchQuery = ""
-    debounceTimer?.invalidate()
+    debounceTask?.cancel()
     searchTask?.cancel()
     isLoading = false
     errorMessage = nil
@@ -168,10 +171,16 @@ class CatalogSearchViewModel: ObservableObject {
     for idx in books.indices {
       let book = books[idx]
       if let changedIdentifier, book.identifier != changedIdentifier { continue }
-      // For books in registry, use registry version to get current state
+      
+      // Check if book is in registry
       if let registryBook = TPPBookRegistry.shared.book(forIdentifier: book.identifier) {
-        // Always update to trigger cell recreation with new registry state
+        // Book is in registry - use registry version
         books[idx] = registryBook
+        anyChanged = true
+      } else {
+        // Book is NOT in registry (e.g., returned) - invalidate cached model
+        // so it gets recreated with fresh state from availability data
+        BookCellModelCache.shared.invalidate(for: book.identifier)
         anyChanged = true
       }
     }

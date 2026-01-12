@@ -228,10 +228,14 @@ class CatalogLaneMoreViewModel: ObservableObject {
         for bIdx in books.indices {
           let book = books[bIdx]
           if let changedIdentifier, book.identifier != changedIdentifier { continue }
-          // For books in registry, use registry version to get current state
+          
           if let registryBook = TPPBookRegistry.shared.book(forIdentifier: book.identifier) {
-            // Always update to trigger cell recreation with new registry state
+            // Book is in registry - use registry version
             books[bIdx] = registryBook
+            changed = true
+          } else {
+            // Book is NOT in registry (e.g., returned) - invalidate cached model
+            BookCellModelCache.shared.invalidate(for: book.identifier)
             changed = true
           }
         }
@@ -252,10 +256,14 @@ class CatalogLaneMoreViewModel: ObservableObject {
       for idx in books.indices {
         let book = books[idx]
         if let changedIdentifier, book.identifier != changedIdentifier { continue }
-        // For books in registry, use registry version to get current state
+        
         if let registryBook = TPPBookRegistry.shared.book(forIdentifier: book.identifier) {
-          // Always update to trigger cell recreation with new registry state
+          // Book is in registry - use registry version
           books[idx] = registryBook
+          anyChanged = true
+        } else {
+          // Book is NOT in registry (e.g., returned) - invalidate cached model
+          BookCellModelCache.shared.invalidate(for: book.identifier)
           anyChanged = true
         }
       }

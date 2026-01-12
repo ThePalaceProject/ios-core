@@ -35,12 +35,16 @@ final class NetworkRetryLogicTests: XCTestCase {
   // MARK: - Retry on 5xx Error Tests
   
   func testRetry_on500Error_eventualSuccess() async throws {
+    let lock = NSLock()
     var requestCount = 0
     
     HTTPStubURLProtocol.register { req in
       guard req.url?.path == "/retry-test" else { return nil }
+      lock.lock()
       requestCount += 1
-      if requestCount < 3 {
+      let count = requestCount
+      lock.unlock()
+      if count < 3 {
         return .init(statusCode: 500, headers: nil, body: nil)
       }
       return .init(statusCode: 200, headers: nil, body: Data("{\"ok\":true}".utf8))
@@ -114,11 +118,14 @@ final class NetworkRetryLogicTests: XCTestCase {
   // MARK: - No Retry on 4xx Tests
   
   func testNoRetry_on400BadRequest() async throws {
+    let lock = NSLock()
     var requestCount = 0
     
     HTTPStubURLProtocol.register { req in
       guard req.url?.path == "/bad-request" else { return nil }
+      lock.lock()
       requestCount += 1
+      lock.unlock()
       return .init(statusCode: 400, headers: nil, body: Data("Bad Request".utf8))
     }
     
@@ -130,15 +137,21 @@ final class NetworkRetryLogicTests: XCTestCase {
     _ = try await session.data(for: request)
     
     // 4xx errors should not be retried
-    XCTAssertEqual(requestCount, 1)
+    lock.lock()
+    let finalCount = requestCount
+    lock.unlock()
+    XCTAssertEqual(finalCount, 1)
   }
   
   func testNoRetry_on404NotFound() async throws {
+    let lock = NSLock()
     var requestCount = 0
     
     HTTPStubURLProtocol.register { req in
       guard req.url?.path == "/not-found" else { return nil }
+      lock.lock()
       requestCount += 1
+      lock.unlock()
       return .init(statusCode: 404, headers: nil, body: nil)
     }
     
@@ -149,7 +162,10 @@ final class NetworkRetryLogicTests: XCTestCase {
     let session = URLSession(configuration: config)
     _ = try await session.data(for: request)
     
-    XCTAssertEqual(requestCount, 1)
+    lock.lock()
+    let finalCount = requestCount
+    lock.unlock()
+    XCTAssertEqual(finalCount, 1)
   }
   
   // MARK: - Rate Limiting Tests

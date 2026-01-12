@@ -32,6 +32,12 @@ class TPPNetworkResponder: NSObject {
   private let useFallbackCaching: Bool
   private let credentialsProvider: NYPLBasicAuthCredentialsProvider?
   
+  /// Tracks URLs that have been retried after a 401 to prevent infinite retry loops.
+  /// Key is the URL absoluteString, value is the number of retry attempts.
+  private var retriedURLs: [String: Int] = [:]
+  private let retriedURLsLock = NSLock()
+  private let maxRetryAttempts = 1
+  
   private let taskInfoQueue = DispatchQueue(
     label: "com.thepalaceproject.networkResponder.taskInfo"
   )
@@ -48,6 +54,42 @@ class TPPNetworkResponder: NSObject {
     self.useFallbackCaching = useFallbackCaching
     self.credentialsProvider = credentialsProvider
     super.init()
+  }
+  
+  // MARK: - Retry Tracking
+  
+  /// Checks if a URL can be retried (hasn't exceeded max retry attempts)
+  func canRetry(url: URL?) -> Bool {
+    guard let urlString = url?.absoluteString else { return false }
+    retriedURLsLock.lock()
+    defer { retriedURLsLock.unlock() }
+    let attempts = retriedURLs[urlString] ?? 0
+    return attempts < maxRetryAttempts
+  }
+  
+  /// Marks a URL as having been retried
+  func markRetried(url: URL?) {
+    guard let urlString = url?.absoluteString else { return }
+    retriedURLsLock.lock()
+    defer { retriedURLsLock.unlock() }
+    retriedURLs[urlString] = (retriedURLs[urlString] ?? 0) + 1
+    Log.debug(#file, "Marked URL as retried (\(retriedURLs[urlString]!)/\(maxRetryAttempts)): \(urlString)")
+  }
+  
+  /// Clears retry tracking for a URL (called after successful completion)
+  func clearRetry(url: URL?) {
+    guard let urlString = url?.absoluteString else { return }
+    retriedURLsLock.lock()
+    defer { retriedURLsLock.unlock() }
+    retriedURLs.removeValue(forKey: urlString)
+  }
+  
+  /// Clears all retry tracking (useful for session reset)
+  func clearAllRetries() {
+    retriedURLsLock.lock()
+    defer { retriedURLsLock.unlock() }
+    retriedURLs.removeAll()
+    tokenRefreshAttempts = 0
   }
 
   //----------------------------------------------------------------------------
@@ -151,6 +193,25 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
       "taskID": taskID
     ]
 
+    // Check for 401 BEFORE removing taskInfo, so completion can be preserved for retry
+    // Use URL-based retry tracking instead of associated objects (which don't work on structs)
+    let requestURL = task.originalRequest?.url
+    if let http = task.response as? HTTPURLResponse,
+       http.statusCode == 401,
+       canRetry(url: requestURL),
+       handleExpiredTokenIfNeeded(for: http, with: task) {
+      // Mark this URL as retried to prevent infinite loops
+      markRetried(url: requestURL)
+      // Don't remove taskInfo - it will be transferred to the retry task via updateCompletionId
+      Log.debug(#file, "Task \(taskID) got 401, triggering token refresh and retry (completion preserved)")
+      return
+    } else if let http = task.response as? HTTPURLResponse,
+              http.statusCode == 401,
+              !canRetry(url: requestURL) {
+      // Already retried this URL - don't retry again
+      Log.warn(#file, "Task \(taskID) got 401 but max retries reached for URL - failing request")
+    }
+    
     var maybeInfo: TPPNetworkTaskInfo?
     taskInfoQueue.sync {
       maybeInfo = self.taskInfo.removeValue(forKey: task.taskIdentifier)
@@ -184,14 +245,8 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
 
     let result: NYPLResult<Data>
     if let http = task.response as? HTTPURLResponse {
-      let isFailedRetry = task.originalRequest?.hasRetried == true
-      
-      if http.statusCode == 401,
-         !isFailedRetry,
-         handleExpiredTokenIfNeeded(for: http, with: task) {
-        Log.debug(#file, "Task \(taskID) got 401, triggering token refresh and retry")
-        return
-      }
+      // Use URL-based retry tracking instead of broken hasRetried flag
+      let isFailedRetry = !canRetry(url: requestURL)
       
       if !http.isSuccess() {
         let err: TPPUserFriendlyError
@@ -218,6 +273,8 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
         }
         
         result = .failure(err, task.response)
+        // Request failed permanently - clear retry tracking so future requests can try again
+        clearRetry(url: requestURL)
       }
       
       else if let netErr = networkError {
@@ -230,6 +287,8 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
                                        metadata: logMetadata)
       }
       else {
+        // Success! Clear retry tracking for this URL
+        clearRetry(url: requestURL)
         result = .success(info.progressData, task.response)
       }
     } else {
