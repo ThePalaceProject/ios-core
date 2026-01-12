@@ -11,6 +11,8 @@ import Combine
 
 /// CarPlay scene delegate that manages the CarPlay interface lifecycle
 /// and coordinates audiobook playback from the vehicle's infotainment system.
+/// Note: This class is referenced by name in Info.plist as "CarPlaySceneDelegate"
+@objc(CarPlaySceneDelegate)
 final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
   
   // MARK: - Properties
@@ -25,7 +27,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
     _ templateApplicationScene: CPTemplateApplicationScene,
     didConnect interfaceController: CPInterfaceController
   ) {
-    Log.info(#file, "CarPlay connected")
+    Log.info(#file, "🚗 CarPlay scene connected - setting up templates")
     
     self.interfaceController = interfaceController
     self.templateManager = CarPlayTemplateManager(interfaceController: interfaceController)
@@ -35,13 +37,15 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
     
     // Subscribe to book registry changes to refresh the library
     subscribeToBookRegistryChanges()
+    
+    Log.info(#file, "🚗 CarPlay setup complete")
   }
   
   func templateApplicationScene(
     _ templateApplicationScene: CPTemplateApplicationScene,
     didDisconnect interfaceController: CPInterfaceController
   ) {
-    Log.info(#file, "CarPlay disconnected")
+    Log.info(#file, "🚗 CarPlay disconnected")
     
     cancellables.removeAll()
     templateManager = nil

@@ -91,6 +91,21 @@ final class CarPlayTemplateManager {
   private func createLibraryItems() -> [CPListItem] {
     let audiobooks = fetchDownloadedAudiobooks()
     
+    Log.info(#file, "🚗 CarPlay: Found \(audiobooks.count) downloaded audiobooks")
+    
+    if audiobooks.isEmpty {
+      // Show a placeholder item when no audiobooks are downloaded
+      let placeholderItem = CPListItem(
+        text: "No Audiobooks Downloaded",
+        detailText: "Download audiobooks in the Palace app first"
+      )
+      placeholderItem.handler = { _, completion in
+        Log.info(#file, "🚗 CarPlay: Placeholder item tapped")
+        completion()
+      }
+      return [placeholderItem]
+    }
+    
     return audiobooks.prefix(Layout.maxListItems).map { book in
       createListItem(for: book)
     }

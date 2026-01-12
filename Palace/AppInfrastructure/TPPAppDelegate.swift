@@ -62,11 +62,8 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     DispatchQueue.main.async {
       self.audiobookLifecycleManager.didFinishLaunching()
       
-      // Migrate audiobook downloads from Caches to Application Support
-      // This prevents iOS from purging downloaded audiobook files
-      Task.detached(priority: .utility) {
-        AudiobookSessionManager.migrateDownloadsFromCaches()
-      }
+      // TODO: Implement audiobook downloads migration from Caches to Application Support
+      // This would prevent iOS from purging downloaded audiobook files
     }
 
     TransifexManager.setup()
@@ -182,6 +179,33 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     audiobookLifecycleManager.handleEventsForBackgroundURLSession(for: identifier, completionHandler: completionHandler)
   }
 
+  // MARK: - Scene Configuration
+  
+  /// Dynamically provides scene configurations as fallback.
+  /// Primary configuration is in Info.plist for both main app and CarPlay scenes.
+  func application(
+    _ application: UIApplication,
+    configurationForConnecting connectingSceneSession: UISceneSession,
+    options: UIScene.ConnectionOptions
+  ) -> UISceneConfiguration {
+    // Log which scene is being configured
+    Log.info(#file, "📱 Configuring scene with role: \(connectingSceneSession.role.rawValue)")
+    
+    // Return configuration based on the scene's role
+    // Info.plist provides the delegate class names
+    return UISceneConfiguration(
+      name: connectingSceneSession.configuration.name ?? "Default Configuration",
+      sessionRole: connectingSceneSession.role
+    )
+  }
+  
+  func application(_ application: UIApplication, didDiscardSceneSessions sceneSessions: Set<UISceneSession>) {
+    // Called when the user discards a scene session
+    for session in sceneSessions {
+      Log.info(#file, "Scene session discarded: \(session.configuration.name ?? "unknown")")
+    }
+  }
+
   // MARK: - User Sign-in Tracking
 
   func signingIn(_ notification: Notification) {
@@ -193,12 +217,35 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
   // MARK: - UI Configuration
 
   private func setupWindow() {
+    // When using scenes (iOS 13+), window setup is handled by SceneDelegate
+    // Only create window here for non-scene based launches (shouldn't happen with our config)
+    guard window == nil else { return }
+    
+    // Check if we're using scenes - if so, SceneDelegate will handle window
+    if #available(iOS 13.0, *),
+       UIApplication.shared.supportsMultipleScenes || 
+       Bundle.main.object(forInfoDictionaryKey: "UIApplicationSceneManifest") != nil {
+      // Scene-based: SceneDelegate will create window
+      return
+    }
+    
+    // Legacy non-scene setup (fallback)
     window = UIWindow()
-    window?.tintColor = TPPConfiguration.mainColor()
-    window?.tintAdjustmentMode = .normal
-    window?.makeKeyAndVisible()
+    configureWindow(window!)
+  }
+  
+  /// Configures an existing window with the app's root view controller
+  func configureWindow(_ window: UIWindow) {
+    window.tintColor = TPPConfiguration.mainColor()
+    window.tintAdjustmentMode = .normal
+    window.rootViewController = createRootViewController()
+    window.makeKeyAndVisible()
+  }
+  
+  /// Creates and returns the app's root view controller
+  func createRootViewController() -> UIViewController {
     let root = AppTabHostView()
-    window?.rootViewController = UIHostingController(rootView: root)
+    return UIHostingController(rootView: root)
   }
 
   private func configureUIAppearance() {
