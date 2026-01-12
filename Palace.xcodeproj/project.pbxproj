@@ -1006,7 +1006,6 @@
 		F8724E8E85D04DC1941AFC2A /* AccountDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 480ADB3F1AA842DE805EC230 /* AccountDetailView.swift */; };
 		F8724E8F85D04DC1941AFC2B /* AccountDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 480ADB3F1AA842DE805EC230 /* AccountDetailView.swift */; };
 		FA346754BE76A48C92CF0754 /* OPDS2FeedParsingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CD86C00D774B74F80D5B713 /* OPDS2FeedParsingTests.swift */; };
-		FE0D4315ADBCC13FC2DDC6CD /* HoldsViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42B3E86B490EDE5446A14D5E /* HoldsViewModelTests.swift */; };
 		PP3346A11B0000000000001B /* CatalogLaneRowViewAccessibilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP3346A11A0000000000001A /* CatalogLaneRowViewAccessibilityTests.swift */; };
 /* End PBXBuildFile section */
 
@@ -1340,7 +1339,6 @@
 		3BB31382B3826FB20CD3BE34 /* URLExtensionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = URLExtensionTests.swift; sourceTree = "<group>"; };
 		3C0E625DA84AEEFF9840A601 /* LCPAudiobooksTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LCPAudiobooksTests.swift; sourceTree = "<group>"; };
 		3DDE892E38D34061A2DBE2F2 /* CatalogRepositoryMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogRepositoryMock.swift; sourceTree = "<group>"; };
-		42B3E86B490EDE5446A14D5E /* HoldsViewModelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = HoldsViewModelTests.swift; sourceTree = "<group>"; };
 		480ADB3F1AA842DE805EC230 /* AccountDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountDetailView.swift; sourceTree = "<group>"; };
 		48DF25F6BFF39ECDAF39E3E3 /* CatalogViewModelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CatalogViewModelTests.swift; sourceTree = "<group>"; };
 		4C73660492C45AC4EDF27B6E /* BookDetailViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookDetailViewModelTests.swift; sourceTree = "<group>"; };
@@ -2188,7 +2186,6 @@
 				4C73660492C45AC4EDF27B6E /* BookDetailViewModelTests.swift */,
 				8ADE8A45C4B4AAE67143A272 /* HoldsViewModelTests.swift */,
 				9BFF70FF762C60CE8CD8D811 /* CatalogSearchViewModelTests.swift */,
-				42B3E86B490EDE5446A14D5E /* HoldsViewModelTests.swift */,
 				F5CBFE0B23AFFE343E256AE1 /* AccountDetailViewModelTests.swift */,
 				44E59F675A3E4419BE1E24BB /* FacetViewModelTests.swift */,
 				E739F55510A748E5A09E3398 /* CatalogLaneMoreViewModelTests.swift */,
@@ -4265,7 +4262,6 @@
 				5D05015D55C6DE54BB6DB0DA /* TPPSignInBusinessLogicExtendedTests.swift in Sources */,
 				C3C7B0F9C4F9B13DD69CEA84 /* TPPReaderSettingsTests.swift in Sources */,
 				E5A09A4E2F0D6F0200CC23EA /* CatalogSortServiceTests.swift in Sources */,
-				FE0D4315ADBCC13FC2DDC6CD /* HoldsViewModelTests.swift in Sources */,
 				76F89204E85A440BD9E6C5AD /* AccountDetailViewModelTests.swift in Sources */,
 				B8E4151C0CD1AA0299C4913B /* OPDS2FeedTests.swift in Sources */,
 				06A3D1FBD9EAD882D6F86181 /* OPDSFeedCacheTests.swift in Sources */,
