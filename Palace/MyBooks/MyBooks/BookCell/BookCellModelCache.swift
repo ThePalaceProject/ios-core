@@ -30,14 +30,14 @@ final class BookCellModelCache: ObservableObject {
     let observeRegistryChanges: Bool
     
     public static let `default` = Configuration(
-      maxEntries: 200,
-      unusedTTL: 300, // 5 minutes
+      maxEntries: 50,  // Reduced from 200 - each model holds a UIImage
+      unusedTTL: 120,  // 2 minutes - be more aggressive about cleanup
       observeRegistryChanges: true
     )
     
     public static let aggressive = Configuration(
-      maxEntries: 500,
-      unusedTTL: 600, // 10 minutes
+      maxEntries: 100, // Reduced from 500
+      unusedTTL: 300,  // 5 minutes
       observeRegistryChanges: true
     )
   }
@@ -47,9 +47,10 @@ final class BookCellModelCache: ObservableObject {
   private struct CacheEntry {
     let model: BookCellModel
     var lastAccessed: Date
+    let ttl: TimeInterval
     
     var isStale: Bool {
-      Date().timeIntervalSince(lastAccessed) > 300
+      Date().timeIntervalSince(lastAccessed) > ttl
     }
   }
   
@@ -69,6 +70,8 @@ final class BookCellModelCache: ObservableObject {
   
   // MARK: - Initialization
   
+  private var memoryWarningObserver: NSObjectProtocol?
+  
   public init(
     configuration: Configuration = .default,
     imageCache: ImageCacheType = ImageCache.shared,
@@ -82,11 +85,25 @@ final class BookCellModelCache: ObservableObject {
       setupRegistryObserver()
     }
     
+    setupMemoryWarningObserver()
     startPeriodicCleanup()
   }
   
   deinit {
     cleanupTask?.cancel()
+    if let observer = memoryWarningObserver {
+      NotificationCenter.default.removeObserver(observer)
+    }
+  }
+  
+  private func setupMemoryWarningObserver() {
+    memoryWarningObserver = NotificationCenter.default.addObserver(
+      forName: UIApplication.didReceiveMemoryWarningNotification,
+      object: nil,
+      queue: .main
+    ) { [weak self] _ in
+      self?.handleMemoryWarning()
+    }
   }
   
   // MARK: - Public API
@@ -120,7 +137,7 @@ final class BookCellModelCache: ObservableObject {
     }
     
     // Cache it
-    cache[key] = CacheEntry(model: model, lastAccessed: Date())
+    cache[key] = CacheEntry(model: model, lastAccessed: Date(), ttl: configuration.unusedTTL)
     updateAccessOrder(key)
     
     return model
@@ -257,15 +274,15 @@ extension BookCellModelCache {
 
 extension BookCellModelCache {
   
-  /// Call this when receiving memory warning
+  /// Called automatically when receiving memory warning notification
   public func handleMemoryWarning() {
-    // Keep only the most recently accessed 25%
-    let keepCount = configuration.maxEntries / 4
+    let previousCount = cache.count
     
-    while cache.count > keepCount {
-      evictLRU()
-    }
+    // Be aggressive - clear ALL cached models on memory warning
+    // They will be recreated on demand when scrolling
+    cache.removeAll()
+    accessOrder.removeAll()
     
-    Log.info(#file, "BookCellModelCache: Reduced to \(cache.count) entries after memory warning")
+    Log.info(#file, "BookCellModelCache: Cleared \(previousCount) entries after memory warning")
   }
 }
