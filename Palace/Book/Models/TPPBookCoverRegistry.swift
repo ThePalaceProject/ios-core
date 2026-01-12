@@ -43,7 +43,9 @@ actor TPPBookCoverRegistry {
       
       do {
         let (data, _) = try await URLSession.shared.data(from: url)
-        guard let image = UIImage(data: data) else {
+        
+        // Decode image in background to prevent main thread blocking
+        guard let image = await self.decodeImageInBackground(data) else {
           Log.error(#file, "Failed to decode image data from URL: \(url)")
           return nil
         }
@@ -62,6 +64,55 @@ actor TPPBookCoverRegistry {
     inProgressTasks[url] = nil
     
     return image
+  }
+  
+  // MARK: - Background Image Decoding
+  
+  /// Decodes image data off the main thread using iOS 15+ optimized API
+  /// This prevents main thread hitching when displaying images
+  private func decodeImageInBackground(_ data: Data) async -> UIImage? {
+    await Task.detached(priority: .userInitiated) {
+      guard let image = UIImage(data: data) else { return nil }
+      
+      // byPreparingForDisplay() decodes the image and prepares it for rendering
+      // This is the iOS 15+ way to force decode off main thread
+      if #available(iOS 15.0, *) {
+        return await image.byPreparingForDisplay()
+      } else {
+        // Fallback for iOS 14: force decode by drawing into a context
+        return self.forceDecodeImage(image)
+      }
+    }.value
+  }
+  
+  /// Force decode image for iOS 14 compatibility
+  /// Drawing into a context forces the image to be decoded
+  private nonisolated func forceDecodeImage(_ image: UIImage) -> UIImage {
+    guard let cgImage = image.cgImage else { return image }
+    
+    let width = cgImage.width
+    let height = cgImage.height
+    let colorSpace = CGColorSpaceCreateDeviceRGB()
+    
+    guard let context = CGContext(
+      data: nil,
+      width: width,
+      height: height,
+      bitsPerComponent: 8,
+      bytesPerRow: 0,
+      space: colorSpace,
+      bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
+    ) else {
+      return image
+    }
+    
+    context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+    
+    guard let decodedCGImage = context.makeImage() else {
+      return image
+    }
+    
+    return UIImage(cgImage: decodedCGImage, scale: image.scale, orientation: image.imageOrientation)
   }
   
   private func placeholder(for book: TPPBook) async -> UIImage? {
@@ -113,7 +164,9 @@ actor TPPBookCoverRegistry {
       
       do {
         let (data, _) = try await URLSession.shared.data(from: url)
-        guard let image = UIImage(data: data) else {
+        
+        // Decode image in background to prevent main thread blocking
+        guard let image = await self.decodeImageInBackground(data) else {
           Log.error(#file, "Failed to decode image data from URL: \(url)")
           return nil
         }

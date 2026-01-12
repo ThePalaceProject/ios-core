@@ -10,6 +10,31 @@ import Foundation
 /// Modern async/await extensions for MyBooksDownloadCenter
 extension MyBooksDownloadCenter {
   
+  // MARK: - Borrow Re-auth State
+  
+  /// Tracks whether we've already attempted re-authentication for a borrow operation
+  /// Prevents infinite re-auth loops for persistent auth failures
+  private static var borrowReauthAttempted: Set<String> = []
+  private static let borrowReauthLock = NSLock()
+  
+  private static func hasBorrowReauthBeenAttempted(for bookId: String) -> Bool {
+    borrowReauthLock.lock()
+    defer { borrowReauthLock.unlock() }
+    return borrowReauthAttempted.contains(bookId)
+  }
+  
+  private static func markBorrowReauthAttempted(for bookId: String) {
+    borrowReauthLock.lock()
+    defer { borrowReauthLock.unlock() }
+    borrowReauthAttempted.insert(bookId)
+  }
+  
+  private static func clearBorrowReauthAttempted(for bookId: String) {
+    borrowReauthLock.lock()
+    defer { borrowReauthLock.unlock() }
+    borrowReauthAttempted.remove(bookId)
+  }
+  
   // MARK: - Async Borrow Operations
   
   /// Borrows a book asynchronously using modern async/await pattern
@@ -100,11 +125,20 @@ extension MyBooksDownloadCenter {
         }
       }
       
+      // Clear re-auth tracking on success
+      Self.clearBorrowReauthAttempted(for: bookIdentifier)
+      
       return borrowedBook
       
     } catch let error as PalaceError {
       // Clear processing state immediately on error
       await clearProcessingState()
+      
+      // Check if this is an authentication error that needs re-auth
+      if await handleBorrowAuthErrorIfNeeded(error, originalError: nil, for: book, attemptDownload: attemptDownload) {
+        // Re-auth was triggered, don't show error alert
+        throw error
+      }
       
       // Handle structured errors - but PalaceError doesn't carry problem document
       await MainActor.run {
@@ -121,11 +155,118 @@ extension MyBooksDownloadCenter {
       let problemDoc = nsError.problemDocument
       
       let palaceError = PalaceError.from(error)
+      
+      // Check if this is an authentication error that needs re-auth
+      if await handleBorrowAuthErrorIfNeeded(palaceError, originalError: error, for: book, attemptDownload: attemptDownload, problemDocument: problemDoc) {
+        // Re-auth was triggered, don't show error alert
+        throw palaceError
+      }
+      
       await MainActor.run {
         showBorrowError(palaceError, originalError: error, for: book, problemDocument: problemDoc)
       }
       throw palaceError
     }
+  }
+  
+  /// Checks if the error indicates an authentication failure and handles re-auth if needed
+  /// - Returns: `true` if re-auth was triggered (caller should not show error), `false` otherwise
+  private func handleBorrowAuthErrorIfNeeded(
+    _ error: PalaceError,
+    originalError: Error?,
+    for book: TPPBook,
+    attemptDownload: Bool,
+    problemDocument: TPPProblemDocument? = nil
+  ) async -> Bool {
+    let userAccount = TPPUserAccount.sharedAccount()
+    let authDef = userAccount.authDefinition
+    let hasCredentials = userAccount.hasCredentials()
+    
+    // Check if this is an auth-related error
+    let isAuthError: Bool = {
+      // Check PalaceError type
+      if case .authentication = error {
+        return true
+      }
+      
+      // Check problem document type
+      if let problemDoc = problemDocument, problemDoc.type == TPPProblemDocument.TypeInvalidCredentials {
+        return true
+      }
+      
+      // Check original error for 401 status
+      if let nsError = originalError as NSError?, nsError.code == TPPErrorCode.invalidCredentials.rawValue {
+        return true
+      }
+      
+      return false
+    }()
+    
+    guard isAuthError else {
+      return false
+    }
+    
+    // Circuit breaker: Don't re-auth if we already tried for this book
+    guard !Self.hasBorrowReauthBeenAttempted(for: book.identifier) else {
+      Log.warn(#file, "Borrow re-auth already attempted for '\(book.title)' - showing error instead")
+      return false
+    }
+    
+    Log.info(#file, "Borrow failed with auth error for '\(book.title)' - attempting re-authentication")
+    Self.markBorrowReauthAttempted(for: book.identifier)
+    
+    // Handle based on auth type
+    if authDef?.isSaml == true && hasCredentials {
+      // SAML: Session cookies expired - need to re-auth via IDP
+      Log.info(#file, "SAML session expired during borrow - triggering SAML re-auth flow")
+      
+      await MainActor.run { [weak self] in
+        SignInModalPresenter.presentSignInModalForCurrentAccount {
+          guard let self else { return }
+          Log.info(#file, "SAML re-auth completed, retrying borrow for '\(book.title)'")
+          
+          // Clear the re-auth flag after successful auth so future attempts can also re-auth
+          Self.clearBorrowReauthAttempted(for: book.identifier)
+          
+          // Retry the borrow
+          Task {
+            do {
+              _ = try await self.borrowAsync(book, attemptDownload: attemptDownload)
+            } catch {
+              Log.error(#file, "Retry borrow failed after SAML re-auth: \(error.localizedDescription)")
+            }
+          }
+        }
+      }
+      return true
+      
+    } else if !hasCredentials && (authDef?.needsAuth ?? false) {
+      // No credentials - show sign-in modal
+      Log.info(#file, "No credentials for borrow - showing sign-in modal")
+      
+      await MainActor.run { [weak self] in
+        SignInModalPresenter.presentSignInModalForCurrentAccount {
+          guard let self else { return }
+          Log.info(#file, "Sign-in completed, retrying borrow for '\(book.title)'")
+          
+          Self.clearBorrowReauthAttempted(for: book.identifier)
+          
+          Task {
+            do {
+              _ = try await self.borrowAsync(book, attemptDownload: attemptDownload)
+            } catch {
+              Log.error(#file, "Retry borrow failed after sign-in: \(error.localizedDescription)")
+            }
+          }
+        }
+      }
+      return true
+    }
+    
+    // For OAuth/Token auth, the network layer should have already tried token refresh
+    // If we got here, refresh failed - show the error
+    Log.warn(#file, "Auth error for non-SAML auth type - token refresh likely failed")
+    return false
   }
   
   /// Displays borrow error to user with optional problem document from server

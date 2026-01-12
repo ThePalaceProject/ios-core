@@ -61,6 +61,12 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
     DispatchQueue.main.async {
       self.audiobookLifecycleManager.didFinishLaunching()
+      
+      // Migrate audiobook downloads from Caches to Application Support
+      // This prevents iOS from purging downloaded audiobook files
+      Task.detached(priority: .utility) {
+        AudiobookSessionManager.migrateDownloadsFromCaches()
+      }
     }
 
     TransifexManager.setup()

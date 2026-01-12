@@ -378,8 +378,8 @@ extension TPPNetworkExecutor {
               return
             }
             
-            var mutableRequest = self.request(for: originalURL)
-            mutableRequest.hasRetried = true
+            let mutableRequest = self.request(for: originalURL)
+            // Note: Retry tracking is now handled by URL-based tracking in TPPNetworkResponder
             let newTask = self.urlSession.dataTask(with: mutableRequest)
             self.responder.updateCompletionId(oldTask.taskIdentifier, newId: newTask.taskIdentifier)
             newTasks.append(newTask)
@@ -467,20 +467,8 @@ extension TPPNetworkExecutor {
   }
 }
 
-extension URLRequest {
-  private struct AssociatedKeys {
-    static var hasRetriedKey = "hasRetriedKey"
-  }
-  
-  var hasRetried: Bool {
-    get {
-      return objc_getAssociatedObject(self, &AssociatedKeys.hasRetriedKey) as? Bool ?? false
-    }
-    set {
-      objc_setAssociatedObject(self, &AssociatedKeys.hasRetriedKey, newValue as NSNumber, .OBJC_ASSOCIATION_RETAIN)
-    }
-  }
-}
+// Note: hasRetried extension removed - retry tracking is now handled by URL-based
+// tracking in TPPNetworkResponder to avoid issues with associated objects on structs
 
 extension TPPNetworkExecutor {
   func GET(_ reqURL: URL, useTokenIfAvailable: Bool = true) async throws -> (Data, URLResponse?) {

@@ -499,6 +499,8 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
         self.save()
         DispatchQueue.main.async {
           self.registrySubject.send(self.registry)
+          // CRITICAL: Also publish state change so ViewModels receive it
+          self.bookStateSubject.send((book.identifier, state))
       }
     }
   }
@@ -511,6 +513,10 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
         record.book = book
         record.state = .unregistered
         self.save()
+        
+        DispatchQueue.main.async {
+          self.bookStateSubject.send((book.identifier, .unregistered))
+        }
       }
     }
 
@@ -532,6 +538,8 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
         self.save()
         DispatchQueue.main.async {
           self.registrySubject.send(self.registry)
+          // Publish state change for removed book
+          self.bookStateSubject.send((bookIdentifier, .unregistered))
           if let book = removedBook {
             TPPBookCoverRegistryBridge.shared.thumbnailImageForBook(book) { _ in }
           }
@@ -543,6 +551,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     syncQueue.async(flags: .barrier) { [weak self] in
       guard let self, let record = self.registry[book.identifier] else { return }
       
+      let previousState = record.state
       var nextState = record.state
       if record.state == .unregistered {
         book.defaultAcquisition?.availability.matchUnavailable(
@@ -563,10 +572,14 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
         readiumBookmarks: record.readiumBookmarks,
         genericBookmarks: record.genericBookmarks
       )
-    }
-
-    DispatchQueue.main.async {
-      self.registrySubject.send(self.registry)
+      
+      DispatchQueue.main.async {
+        self.registrySubject.send(self.registry)
+        // Publish state change if it changed
+        if nextState != previousState {
+          self.bookStateSubject.send((book.identifier, nextState))
+        }
+      }
     }
   }
 
