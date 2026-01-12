@@ -501,6 +501,8 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
           self.registrySubject.send(self.registry)
           // CRITICAL: Also publish state change so ViewModels receive it
           self.bookStateSubject.send((book.identifier, state))
+          // Also post notification for views using legacy observation
+          self.postStateNotification(bookIdentifier: book.identifier, state: state)
       }
     }
   }
@@ -515,7 +517,9 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
         self.save()
         
         DispatchQueue.main.async {
+          self.registrySubject.send(self.registry)
           self.bookStateSubject.send((book.identifier, .unregistered))
+          self.postStateNotification(bookIdentifier: book.identifier, state: .unregistered)
         }
       }
     }
@@ -540,6 +544,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
           self.registrySubject.send(self.registry)
           // Publish state change for removed book
           self.bookStateSubject.send((bookIdentifier, .unregistered))
+          self.postStateNotification(bookIdentifier: bookIdentifier, state: .unregistered)
           if let book = removedBook {
             TPPBookCoverRegistryBridge.shared.thumbnailImageForBook(book) { _ in }
           }
@@ -572,12 +577,14 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
         readiumBookmarks: record.readiumBookmarks,
         genericBookmarks: record.genericBookmarks
       )
+      self.save()
       
       DispatchQueue.main.async {
         self.registrySubject.send(self.registry)
         // Publish state change if it changed
         if nextState != previousState {
           self.bookStateSubject.send((book.identifier, nextState))
+          self.postStateNotification(bookIdentifier: book.identifier, state: nextState)
         }
       }
     }
