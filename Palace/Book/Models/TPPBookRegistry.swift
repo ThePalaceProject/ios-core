@@ -568,7 +568,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
         )
       }
 
-      TPPUserNotifications.compareAvailability(cachedRecord: record, andNewBook: book)
+      NotificationService.compareAvailability(cachedRecord: record, andNewBook: book)
       self.registry[book.identifier] = TPPBookRegistryRecord(
         book: book,
         location: record.location,

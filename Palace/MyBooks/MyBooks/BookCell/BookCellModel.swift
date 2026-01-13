@@ -382,7 +382,7 @@ extension BookCellModel {
 
   private func startDownloadNow() {
     if case .canHold = state.buttonState {
-      TPPUserNotifications.requestAuthorization()
+      NotificationService.requestAuthorization()
     }
     MyBooksDownloadCenter.shared.startDownload(for: book)
   }
@@ -393,7 +393,7 @@ extension BookCellModel {
     if account.needsAuth && !account.hasCredentials() {
       SignInModalPresenter.presentSignInModalForCurrentAccount { [weak self] in
         guard let self else { return }
-        TPPUserNotifications.requestAuthorization()
+        NotificationService.requestAuthorization()
         Task {
           do {
             _ = try await MyBooksDownloadCenter.shared.borrowAsync(self.book, attemptDownload: false)
@@ -405,7 +405,7 @@ extension BookCellModel {
       }
       return
     }
-    TPPUserNotifications.requestAuthorization()
+    NotificationService.requestAuthorization()
     Task {
       do {
         _ = try await MyBooksDownloadCenter.shared.borrowAsync(book, attemptDownload: false)
