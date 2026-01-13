@@ -139,6 +139,14 @@ func performLogOut() {
   private func completeLogOutProcess() {
     Log.info(#file, "🚪 [LOGOUT] completeLogOutProcess() called on thread: \(Thread.isMainThread ? "MAIN" : "BACKGROUND")")
     
+    // Deregister FCM token BEFORE removing credentials (DELETE request needs auth)
+    // Also reset the flag so token re-registers on next sign-in
+    if let account = AccountsManager.shared.account(libraryAccountID) {
+      Log.info(#file, "🚪 [LOGOUT] Deregistering FCM token from server...")
+      NotificationService.shared.deleteToken(for: account)
+      account.hasUpdatedToken = false
+    }
+    
     Log.info(#file, "🚪 [LOGOUT] Resetting bookDownloadsCenter...")
     bookDownloadsCenter.reset(libraryAccountID)
     
