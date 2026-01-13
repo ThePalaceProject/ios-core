@@ -2,14 +2,13 @@
 //  TPPUserNotificationsTests.swift
 //  PalaceTests
 //
-//  Tests for NotificationService availability and badge logic (consolidated from TPPUserNotifications).
-//  PP-3487: These tests verify correct behavior for hold notifications timing.
+//  Tests for NotificationService availability comparison and badge logic.
 //
 
 import XCTest
 @testable import Palace
 
-/// Tests for consolidated NotificationService (formerly split between TPPUserNotifications and NotificationService)
+/// Tests for NotificationService hold availability and badge functionality
 final class TPPUserNotificationsTests: XCTestCase {
   
   // MARK: - Singleton Tests
@@ -50,7 +49,7 @@ final class TPPUserNotificationsTests: XCTestCase {
   }
   
   func testUpdateAppIconBadge_countsOnlyReadyBooks() {
-    // PP-3487: Badge should only show count of books that are READY, not all holds
+    // Badge should only show count of books that are READY, not all holds
     
     // Create a mix of reserved (waiting) and ready books
     let reservedBook = TPPBookMocker.snapshotReservedBook(
@@ -103,7 +102,7 @@ final class TPPUserNotificationsTests: XCTestCase {
   }
   
   func testCompareAvailability_detectsTransitionFromReservedToReady() {
-    // PP-3487: Verify that compareAvailability correctly detects when a hold becomes ready
+    // Verify that compareAvailability correctly detects when a hold becomes ready
     
     // Create a "reserved" book (waiting in queue)
     let reservedBook = TPPBookMocker.snapshotReservedBook(
@@ -153,7 +152,7 @@ final class TPPUserNotificationsTests: XCTestCase {
   }
   
   func testCompareAvailability_doesNotNotifyWhenStillReserved() {
-    // PP-3487: If book is still "reserved" (not yet ready), no notification should be created
+    // If book is still "reserved" (not yet ready), no notification should be created
     
     // Create two reserved books - old one at position 3, new one at position 1
     let oldReservedBook = TPPBookMocker.snapshotReservedBook(
