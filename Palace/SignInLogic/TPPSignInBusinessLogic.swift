@@ -306,6 +306,10 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
         #if FEATURE_DRM_CONNECTOR
         if (AdobeCertificate.defaultCertificate?.hasExpired == true) {
           self.finalizeSignIn(forDRMAuthorization: true)
+        } else if self.shouldSkipAdobeActivation() {
+          // Refreshing stale credentials - Adobe DRM is still valid, skip activation
+          Log.info(#file, "Credentials refresh from stale state - skipping Adobe DRM activation")
+          self.finalizeSignIn(forDRMAuthorization: true)
         } else {
           self.drmAuthorizeUserData(responseData, loggingContext: loggingContext)
         }
@@ -555,7 +559,10 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     }
 
     userAccount.setAuthDefinitionWithoutUpdate(authDefinition: selectedAuthentication)
-
+    
+    // Mark the account as fully logged in
+    // This transitions from .credentialsStale -> .loggedIn or .loggedOut -> .loggedIn
+    userAccount.markLoggedIn()
     
     if libraryAccountID == libraryAccountsProvider.currentAccountId {
       bookRegistry.sync()
@@ -598,5 +605,44 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
 
   @objc func shouldShowEULALink() -> Bool {
     return libraryAccount?.details?.getLicenseURL(.eula) != nil
+  }
+  
+  // MARK: - Adobe DRM Activation Skip Logic
+  
+  /// Determines whether Adobe DRM activation should be skipped during sign-in.
+  ///
+  /// Adobe device activation should be skipped when:
+  /// 1. The account is in `.credentialsStale` state (session expired but Adobe still valid)
+  /// 2. The DRM authorizer confirms the device is already authorized
+  /// 3. We have existing Adobe credentials (userID and deviceID)
+  ///
+  /// This prevents burning through device activations when users simply need to
+  /// refresh their session (e.g., SAML cookie expiration).
+  ///
+  /// - Returns: `true` if Adobe activation should be skipped, `false` otherwise.
+  func shouldSkipAdobeActivation() -> Bool {
+    // Only skip if we're in the credentialsStale state
+    guard userAccount.authState == .credentialsStale else {
+      return false
+    }
+    
+    // Check if we have existing Adobe credentials
+    guard let userID = userAccount.userID,
+          let deviceID = userAccount.deviceID else {
+      Log.info(#file, "No existing Adobe credentials - cannot skip activation")
+      return false
+    }
+    
+    // Verify the device is actually still authorized with Adobe
+    #if FEATURE_DRM_CONNECTOR
+    guard let drmAuthorizer = drmAuthorizer,
+          drmAuthorizer.isUserAuthorized(userID, withDevice: deviceID) else {
+      Log.info(#file, "Device not currently authorized with Adobe - cannot skip activation")
+      return false
+    }
+    #endif
+    
+    Log.info(#file, "Stale credentials with valid Adobe authorization - will skip activation")
+    return true
   }
 }

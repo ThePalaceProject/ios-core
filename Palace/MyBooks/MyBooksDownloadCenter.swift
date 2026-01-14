@@ -1323,9 +1323,12 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
           
           // If user has credentials but got 401, this is a session/token expiry issue
           if hasCredentials {
+            // Mark credentials as stale - preserves Adobe DRM activation
+            self.userAccount.markCredentialsStale()
+            
             if authDef?.isSaml == true {
               // SAML cookies expired - need to re-auth via IDP
-              Log.info(#file, "SAML session expired - triggering SAML re-auth flow")
+              Log.info(#file, "SAML session expired - marking credentials stale and triggering re-auth flow")
               
               Task {
                 // Clear download tracking completely
