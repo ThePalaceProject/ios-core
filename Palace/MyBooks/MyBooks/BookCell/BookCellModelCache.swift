@@ -210,14 +210,20 @@ final class BookCellModelCache: ObservableObject {
   }
   
   private func setupRegistryObserver() {
-    // Observe book state changes and invalidate affected models.
-    // This ensures the next time the model is requested, it's created fresh with correct state.
-    // We can't rely on the model's internal publisher chain due to throttling and timing issues.
+    // Observe book state changes and invalidate models that are stuck showing "downloading"
+    // when the download has actually completed. This fixes the bug where navigating to
+    // My Books after a download shows the old downloading cell.
     bookRegistry.bookStatePublisher
-      .sink { [weak self] (identifier, _) in
-        // Always invalidate on state change - the model will be recreated with fresh state
-        // when next accessed. This is more reliable than trying to sync state in-place.
-        self?.invalidate(for: identifier)
+      .sink { [weak self] (identifier, newState) in
+        guard let self, let entry = self.cache[identifier] else { return }
+        
+        // Only invalidate if model shows "downloading" but registry says download is done
+        let modelShowsDownloading = entry.model.state.buttonState == .downloadInProgress
+        let downloadFinished = newState == .downloadSuccessful || newState == .downloadFailed || newState == .downloadNeeded
+        
+        if modelShowsDownloading && downloadFinished {
+          self.invalidate(for: identifier)
+        }
       }
       .store(in: &cancellables)
   }

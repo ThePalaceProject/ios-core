@@ -186,8 +186,10 @@ final class BookDetailViewModel: ObservableObject {
           self.showHalfSheet = false
           
         case .holding:
-          // Hold placed - clear reserve button
+          // Hold placed - clear reserve button and dismiss half sheet
           self.processingButtons.remove(.reserve)
+          self.processingButtons.remove(.get)
+          self.showHalfSheet = false
           
         default:
           break

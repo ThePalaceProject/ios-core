@@ -170,9 +170,26 @@ actor DownloadCoordinator {
     Task {
       do {
         _ = try await borrowAsync(book, attemptDownload: shouldAttemptDownload)
+        
+        // CRITICAL: If borrow succeeded but resulted in holding state (not downloadable),
+        // release the download slot. Otherwise downloads get stuck in queue.
+        let newState = bookRegistry.state(for: book.identifier)
+        if newState == .holding {
+          await downloadCoordinator.registerCompletion(identifier: book.identifier)
+          let remainingCount = await downloadCoordinator.activeCount
+          Log.info(#file, "📊 Borrow resulted in hold for '\(book.title)', released slot, remaining active: \(remainingCount)")
+          schedulePendingStartsIfPossible()
+        }
+        
         borrowCompletion?()
       } catch {
         Log.error(#file, "Borrow failed: \(error.localizedDescription)")
+        // CRITICAL: Release the download slot when borrow fails
+        // Otherwise the slot is never freed and downloads get stuck in queue
+        await downloadCoordinator.registerCompletion(identifier: book.identifier)
+        let remainingCount = await downloadCoordinator.activeCount
+        Log.info(#file, "📊 Borrow failed for '\(book.title)', released slot, remaining active: \(remainingCount)")
+        schedulePendingStartsIfPossible()
         borrowCompletion?()
       }
     }
