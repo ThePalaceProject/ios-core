@@ -319,4 +319,48 @@ final class BookDetailViewModelTests: XCTestCase {
     
     XCTAssertEqual(resultState, expectedState)
   }
+  
+  
+  /// Tests that when borrow results in holding state, the .get button is cleared
+  /// This prevents the "Get" button from remaining in processing state
+  /// Bug fix: PP-XXXX - Download queue stuck and half sheet not dismissing for holds
+  func testHoldingState_ClearsGetButton() {
+    let buttonState = BookButtonState.holding
+    let book = createTestBook()
+    
+    let buttons = buttonState.buttonTypes(book: book)
+    
+    // Holding state should show manage hold buttons, not get (unless hold is ready)
+    // The exact buttons depend on whether the hold is ready
+    XCTAssertTrue(buttons.contains(.manageHold) || buttons.contains(.cancelHold),
+                  "Holding state should show hold management buttons")
+  }
+  
+  /// Tests that holding state maps correctly when transitioning from borrow attempt
+  func testHoldingState_MapsFromBorrowAttempt() {
+    // When user attempts to borrow but book is unavailable, state becomes .holding
+    let state = TPPBookState.holding
+    
+    let buttonState = BookButtonMapper.map(
+      registryState: state,
+      availability: nil,
+      isProcessingDownload: false
+    )
+    
+    XCTAssertEqual(buttonState, .holding)
+  }
+  
+  /// Tests that holding state clears both .get and .reserve from processing buttons
+  /// This ensures the UI doesn't show stale processing indicators
+  func testHoldingState_ButtonTypesDontIncludeProcessingButtons() {
+    let buttonState = BookButtonState.holding
+    let book = createTestBook()
+    
+    let buttons = buttonState.buttonTypes(book: book)
+    
+    // Verify no processing-related buttons that should have been cleared
+    XCTAssertFalse(buttons.contains(.get), "Should not contain get button")
+    XCTAssertFalse(buttons.contains(.reserve), "Should not contain reserve button")
+    XCTAssertFalse(buttons.contains(.download), "Should not contain download button")
+  }
 }

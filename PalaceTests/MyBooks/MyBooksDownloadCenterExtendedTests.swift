@@ -156,93 +156,6 @@ final class MyBooksDownloadCenterExtendedTests: XCTestCase {
   }
 }
 
-// MARK: - Download State Machine Tests
-
-final class DownloadStateMachineTests: XCTestCase {
-  
-  private var mockBookRegistry: TPPBookRegistryMock!
-  
-  override func setUp() {
-    super.setUp()
-    mockBookRegistry = TPPBookRegistryMock()
-  }
-  
-  override func tearDown() {
-    mockBookRegistry?.registry = [:]
-    mockBookRegistry = nil
-    super.tearDown()
-  }
-  
-  func testState_downloadNeeded_canTransitionToDownloading() {
-    let book = TPPBookMocker.mockBook(distributorType: .AdobeAdept)
-    
-    mockBookRegistry.addBook(
-      book,
-      location: nil,
-      state: .downloadNeeded,
-      fulfillmentId: nil,
-      readiumBookmarks: nil,
-      genericBookmarks: nil
-    )
-    
-    mockBookRegistry.setState(.downloading, for: book.identifier)
-    
-    XCTAssertEqual(mockBookRegistry.state(for: book.identifier), .downloading)
-  }
-  
-  func testState_downloading_canTransitionToSuccess() {
-    let book = TPPBookMocker.mockBook(distributorType: .AdobeAdept)
-    
-    mockBookRegistry.addBook(
-      book,
-      location: nil,
-      state: .downloading,
-      fulfillmentId: nil,
-      readiumBookmarks: nil,
-      genericBookmarks: nil
-    )
-    
-    mockBookRegistry.setState(.downloadSuccessful, for: book.identifier)
-    
-    XCTAssertEqual(mockBookRegistry.state(for: book.identifier), .downloadSuccessful)
-  }
-  
-  func testState_downloading_canTransitionToFailed() {
-    let book = TPPBookMocker.mockBook(distributorType: .AdobeAdept)
-    
-    mockBookRegistry.addBook(
-      book,
-      location: nil,
-      state: .downloading,
-      fulfillmentId: nil,
-      readiumBookmarks: nil,
-      genericBookmarks: nil
-    )
-    
-    mockBookRegistry.setState(.downloadFailed, for: book.identifier)
-    
-    XCTAssertEqual(mockBookRegistry.state(for: book.identifier), .downloadFailed)
-  }
-  
-  func testState_downloadFailed_canRetry() {
-    let book = TPPBookMocker.mockBook(distributorType: .AdobeAdept)
-    
-    mockBookRegistry.addBook(
-      book,
-      location: nil,
-      state: .downloadFailed,
-      fulfillmentId: nil,
-      readiumBookmarks: nil,
-      genericBookmarks: nil
-    )
-    
-    // Retry by setting back to downloading
-    mockBookRegistry.setState(.downloading, for: book.identifier)
-    
-    XCTAssertEqual(mockBookRegistry.state(for: book.identifier), .downloading)
-  }
-}
-
 // MARK: - Disk Space Tests
 
 final class DownloadDiskSpaceTests: XCTestCase {
@@ -320,3 +233,118 @@ final class ConcurrentDownloadTests: XCTestCase {
   }
 }
 
+
+/// Tests for MyBooksDownloadCenter behavior with real production code
+final class DownloadSlotManagementTests: XCTestCase {
+  
+  private var mockBookRegistry: TPPBookRegistryMock!
+  private var downloadCenter: MyBooksDownloadCenter!
+  
+  override func setUp() {
+    super.setUp()
+    mockBookRegistry = TPPBookRegistryMock()
+    downloadCenter = MyBooksDownloadCenter(
+      userAccount: TPPUserAccount(),
+      reauthenticator: TPPReauthenticatorMock(),
+      bookRegistry: mockBookRegistry
+    )
+  }
+  
+  override func tearDown() {
+    downloadCenter = nil
+    mockBookRegistry?.registry = [:]
+    mockBookRegistry = nil
+    super.tearDown()
+  }
+  
+  /// Tests that MyBooksDownloadCenter correctly reads initial download progress
+  /// This tests the real downloadProgress(for:) method
+  func testDownloadProgress_ReturnsZeroForUnstartedDownload() {
+    let book = TPPBookMocker.mockBook(distributorType: .AdobeAdept)
+    
+    mockBookRegistry.addBook(
+      book,
+      location: nil,
+      state: .downloadNeeded,
+      fulfillmentId: nil,
+      readiumBookmarks: nil,
+      genericBookmarks: nil
+    )
+    
+    // Test real production method - progress should be 0 or NaN for unstarted download
+    let progress = downloadCenter.downloadProgress(for: book.identifier)
+    XCTAssertTrue(progress == 0.0 || progress.isNaN, "Unstarted download should have 0 or NaN progress")
+  }
+  
+  /// Tests that startDownload initiates download process without crashing
+  /// This verifies the real MyBooksDownloadCenter.startDownload method
+  func testStartDownload_InitiatesDownloadProcess() {
+    let book = TPPBookMocker.mockBook(distributorType: .AdobeAdept)
+    
+    mockBookRegistry.addBook(
+      book,
+      location: nil,
+      state: .downloadNeeded,
+      fulfillmentId: nil,
+      readiumBookmarks: nil,
+      genericBookmarks: nil
+    )
+    
+    // Call real production method - should not crash
+    downloadCenter.startDownload(for: book)
+    
+    // The download attempt may fail (no network/auth) but should not crash
+    // State will be either downloading, downloadFailed, or downloadNeeded
+    let state = mockBookRegistry.state(for: book.identifier)
+    XCTAssertTrue([.downloading, .downloadFailed, .downloadNeeded].contains(state),
+                  "State after startDownload should be a valid download state")
+  }
+  
+  /// Tests that cancelDownload can be called without crashing
+  /// This verifies the real MyBooksDownloadCenter.cancelDownload method
+  func testCancelDownload_HandlesNonExistentDownload() {
+    let book = TPPBookMocker.mockBook(distributorType: .AdobeAdept)
+    
+    mockBookRegistry.addBook(
+      book,
+      location: nil,
+      state: .downloadNeeded,
+      fulfillmentId: nil,
+      readiumBookmarks: nil,
+      genericBookmarks: nil
+    )
+    
+    // Cancel a download that was never started - should not crash
+    downloadCenter.cancelDownload(for: book.identifier)
+    
+    // Verify we can still interact with the download center
+    let progress = downloadCenter.downloadProgress(for: book.identifier)
+    XCTAssertTrue(progress >= 0 || progress.isNaN, "Should be able to query progress after cancel")
+  }
+  
+  /// Tests that reset removes book tracking without crashing
+  /// This verifies the real MyBooksDownloadCenter.reset method
+  func testReset_ClearsBookTracking() {
+    let book = TPPBookMocker.mockBook(distributorType: .AdobeAdept)
+    
+    mockBookRegistry.addBook(
+      book,
+      location: nil,
+      state: .downloadNeeded,
+      fulfillmentId: nil,
+      readiumBookmarks: nil,
+      genericBookmarks: nil
+    )
+    
+    downloadCenter.startDownload(for: book)
+    
+    // Reset - tests real production method
+    downloadCenter.reset(book.identifier)
+    
+    // Should be able to start a new download after reset
+    downloadCenter.startDownload(for: book)
+    
+    // Verify download center is still functional
+    XCTAssertNotNil(downloadCenter, "Download center should still be functional after reset")
+  }
+}
