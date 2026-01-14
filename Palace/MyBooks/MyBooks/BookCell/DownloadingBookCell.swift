@@ -56,17 +56,11 @@ struct DownloadingBookCell: View {
   }
 
   @ViewBuilder private var progressView: some View {
-    HStack {
-      Text(Strings.BookCell.downloading)
-      ProgressView(value: progress, total: 1)
-        .progressViewStyle(LinearProgressViewStyle(tint: Color(TPPConfiguration.backgroundColor())))
-      Text("\(Int(progress * 100))%")
-    }
-    .palaceFont(size: 12)
-    .foregroundColor(Color(TPPConfiguration.backgroundColor()))
-    .onReceive(downloadPublisher) { _ in
-      self.progress = MyBooksDownloadCenter.shared.downloadProgress(for: model.book.identifier)
-    }
+    ProgressView(value: progress, total: 1)
+      .progressViewStyle(LinearProgressViewStyle(tint: Color(TPPConfiguration.backgroundColor())))
+      .onReceive(downloadPublisher) { _ in
+        self.progress = MyBooksDownloadCenter.shared.downloadProgress(for: model.book.identifier)
+      }
   }
 
   @ViewBuilder private var buttons: some View {

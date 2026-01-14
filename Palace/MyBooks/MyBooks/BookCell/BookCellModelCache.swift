@@ -129,6 +129,10 @@ final class BookCellModelCache: ObservableObject {
     }
     
     // Create new model
+    return createAndCacheModel(for: book)
+  }
+  
+  private func createAndCacheModel(for book: TPPBook) -> BookCellModel {
     let model = BookCellModel(book: book, imageCache: imageCache, bookRegistry: bookRegistry)
     
     // Evict if at capacity
@@ -137,8 +141,8 @@ final class BookCellModelCache: ObservableObject {
     }
     
     // Cache it
-    cache[key] = CacheEntry(model: model, lastAccessed: Date(), ttl: configuration.unusedTTL)
-    updateAccessOrder(key)
+    cache[book.identifier] = CacheEntry(model: model, lastAccessed: Date(), ttl: configuration.unusedTTL)
+    updateAccessOrder(book.identifier)
     
     return model
   }
@@ -206,21 +210,16 @@ final class BookCellModelCache: ObservableObject {
   }
   
   private func setupRegistryObserver() {
-    // Observe book state changes to invalidate affected models
+    // Observe book state changes and invalidate affected models.
+    // This ensures the next time the model is requested, it's created fresh with correct state.
+    // We can't rely on the model's internal publisher chain due to throttling and timing issues.
     bookRegistry.bookStatePublisher
       .sink { [weak self] (identifier, _) in
-        // Don't invalidate, just let the model update its state
-        // The model already observes the registry
-        self?.touchModel(identifier: identifier)
+        // Always invalidate on state change - the model will be recreated with fresh state
+        // when next accessed. This is more reliable than trying to sync state in-place.
+        self?.invalidate(for: identifier)
       }
       .store(in: &cancellables)
-  }
-  
-  private func touchModel(identifier: String) {
-    if var entry = cache[identifier] {
-      entry.lastAccessed = Date()
-      cache[identifier] = entry
-    }
   }
   
   private func startPeriodicCleanup() {

@@ -121,20 +121,7 @@ struct NormalBookCell: View {
     if isDownloading {
       VStack(alignment: .leading, spacing: 2) {
         if hasMeaningfulProgress {
-          // Show actual progress bar when we have meaningful progress
-          HStack(spacing: 6) {
-            Text(Strings.BookCell.downloading)
-              .palaceFont(size: 11)
-              .foregroundColor(.secondary)
-            
-            Spacer()
-            
-            Text("\(Int(downloadProgress * 100))%")
-              .palaceFont(size: 11)
-              .foregroundColor(.secondary)
-              .monospacedDigit()
-          }
-          
+          // Show progress bar when we have meaningful progress
           GeometryReader { geometry in
             ZStack(alignment: .leading) {
               // Background track
@@ -150,17 +137,9 @@ struct NormalBookCell: View {
           }
           .frame(height: 4)
         } else {
-          // Show "Requesting..." for initial checkout phase or when progress resets
-          HStack(spacing: 6) {
-            Text(Strings.BookCell.downloading)
-              .palaceFont(size: 11)
-              .foregroundColor(.secondary)
-            
-            Spacer()
-            
-            ProgressView()
-              .scaleEffect(0.7)
-          }
+          // Show indeterminate spinner for initial checkout phase
+          ProgressView()
+            .scaleEffect(0.7)
         }
       }
       .padding(.bottom, 4)
