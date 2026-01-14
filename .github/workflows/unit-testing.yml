@@ -94,9 +94,9 @@ jobs:
           echo "Directory contents:"
           ls -la | head -20
           
-          # Check current directory
+          # Check for Palace tests result
           if [ -d "TestResults.xcresult" ]; then
-            echo "✅ Found: ./TestResults.xcresult"
+            echo "✅ Found Palace tests: ./TestResults.xcresult"
             echo "xcresult size: $(du -sh TestResults.xcresult)"
             echo "path=TestResults.xcresult" >> $GITHUB_OUTPUT
             echo "found=true" >> $GITHUB_OUTPUT
@@ -104,38 +104,42 @@ jobs:
             # Quick check of what's inside
             echo "=== Quick xcresult summary ==="
             xcrun xcresulttool get test-results summary --path TestResults.xcresult 2>&1 | head -30 || echo "Could not get summary"
-            exit 0
+          else
+            echo "path=" >> $GITHUB_OUTPUT
+            echo "found=false" >> $GITHUB_OUTPUT
           fi
           
-          # Search in common locations
-          echo "Searching for xcresult in current directory tree..."
-          FOUND=$(find . -name "*.xcresult" -type d 2>/dev/null | head -1)
-          if [ -n "$FOUND" ]; then
-            echo "✅ Found: $FOUND"
-            echo "path=$FOUND" >> $GITHUB_OUTPUT
-            echo "found=true" >> $GITHUB_OUTPUT
-            exit 0
+          # Check for AudiobookToolkit tests result
+          if [ -d "AudiobookToolkitTestResults.xcresult" ]; then
+            echo "✅ Found AudiobookToolkit tests: ./AudiobookToolkitTestResults.xcresult"
+            echo "audiobook_path=AudiobookToolkitTestResults.xcresult" >> $GITHUB_OUTPUT
+            echo "audiobook_found=true" >> $GITHUB_OUTPUT
+            
+            echo "=== AudiobookToolkit xcresult summary ==="
+            xcrun xcresulttool get test-results summary --path AudiobookToolkitTestResults.xcresult 2>&1 | head -30 || echo "Could not get summary"
+          else
+            echo "audiobook_path=" >> $GITHUB_OUTPUT
+            echo "audiobook_found=false" >> $GITHUB_OUTPUT
           fi
           
-          # Search in DerivedData
-          echo "Searching in DerivedData..."
-          FOUND=$(find ~/Library/Developer/Xcode/DerivedData -name "*.xcresult" -type d 2>/dev/null | head -1)
-          if [ -n "$FOUND" ]; then
-            echo "✅ Found in DerivedData: $FOUND"
-            cp -r "$FOUND" ./TestResults.xcresult
-            echo "path=TestResults.xcresult" >> $GITHUB_OUTPUT
-            echo "found=true" >> $GITHUB_OUTPUT
-            exit 0
+          # Search in DerivedData if not found
+          if [ "${{ steps.find_results.outputs.found }}" != "true" ]; then
+            echo "Searching in DerivedData..."
+            FOUND=$(find ~/Library/Developer/Xcode/DerivedData -name "*.xcresult" -type d 2>/dev/null | head -1)
+            if [ -n "$FOUND" ]; then
+              echo "✅ Found in DerivedData: $FOUND"
+              cp -r "$FOUND" ./TestResults.xcresult
+              echo "path=TestResults.xcresult" >> $GITHUB_OUTPUT
+              echo "found=true" >> $GITHUB_OUTPUT
+            fi
           fi
-          
-          echo "❌ No xcresult found anywhere!"
-          echo "found=false" >> $GITHUB_OUTPUT
           
       - name: Parse Test Results
         if: always()
         id: parse_results
         run: |
           RESULT_PATH="${{ steps.find_results.outputs.path }}"
+          AUDIOBOOK_PATH="${{ steps.find_results.outputs.audiobook_path }}"
           
           # Initialize defaults
           echo "tests=0" >> $GITHUB_OUTPUT
@@ -144,34 +148,53 @@ jobs:
           echo "skipped=0" >> $GITHUB_OUTPUT
           echo "duration=unknown" >> $GITHUB_OUTPUT
           echo "pass_rate=N/A" >> $GITHUB_OUTPUT
+          echo "audiobook_tests=0" >> $GITHUB_OUTPUT
+          echo "audiobook_passed=0" >> $GITHUB_OUTPUT
+          echo "audiobook_failed=0" >> $GITHUB_OUTPUT
           
-          if [ "${{ steps.find_results.outputs.found }}" != "true" ] || [ ! -d "$RESULT_PATH" ]; then
-            echo "No results to parse"
-            exit 0
+          # Parse Palace tests
+          if [ "${{ steps.find_results.outputs.found }}" == "true" ] && [ -d "$RESULT_PATH" ]; then
+            echo "Parsing Palace test results from: $RESULT_PATH"
+            
+            echo "=== xcresulttool version ==="
+            xcrun xcresulttool version 2>/dev/null || echo "version command not available"
+            
+            echo "=== Raw test-results summary (first 2000 chars) ==="
+            xcrun xcresulttool get test-results summary --path "$RESULT_PATH" 2>/dev/null | head -c 2000 || echo "summary command failed"
+            
+            echo ""
+            echo "=== Parsing with Python script ==="
+            python3 scripts/parse-xcresult.py "$RESULT_PATH" --json test-data.json || true
+            
+            echo "=== Parsed Palace Test Results ==="
+            cat test-data.json | python3 -c "import json,sys; d=json.load(sys.stdin); s=d.get('summary',{}); print(f\"Tests: {s.get('tests',0)}, Passed: {s.get('passed',0)}, Failed: {s.get('failed',0)}\")" 2>/dev/null || echo "Could not read test-data.json"
+          else
+            echo "No Palace results to parse"
           fi
           
-          echo "Parsing test results from: $RESULT_PATH"
-          
-          # Debug: Show raw xcresulttool output structure
-          echo "=== xcresulttool version ==="
-          xcrun xcresulttool version 2>/dev/null || echo "version command not available"
-          
-          echo "=== Raw test-results summary (first 2000 chars) ==="
-          xcrun xcresulttool get test-results summary --path "$RESULT_PATH" 2>/dev/null | head -c 2000 || echo "summary command failed"
-          
-          echo ""
-          echo "=== Raw test-results tests structure (first 3000 chars) ==="
-          xcrun xcresulttool get test-results tests --path "$RESULT_PATH" 2>/dev/null | head -c 3000 || echo "tests command failed"
-          
-          echo ""
-          echo "=== Parsing with Python script ==="
-          
-          # Use the enhanced Python parser - outputs to GITHUB_OUTPUT and test-data.json
-          python3 scripts/parse-xcresult.py "$RESULT_PATH" --json test-data.json || true
-          
-          # Debug: Show parsed values
-          echo "=== Parsed Test Results ==="
-          cat test-data.json | python3 -c "import json,sys; d=json.load(sys.stdin); s=d.get('summary',{}); print(f\"Tests: {s.get('tests',0)}, Passed: {s.get('passed',0)}, Failed: {s.get('failed',0)}\")" 2>/dev/null || echo "Could not read test-data.json"
+          # Parse AudiobookToolkit tests
+          if [ "${{ steps.find_results.outputs.audiobook_found }}" == "true" ] && [ -d "$AUDIOBOOK_PATH" ]; then
+            echo ""
+            echo "=== Parsing AudiobookToolkit test results from: $AUDIOBOOK_PATH ==="
+            
+            python3 scripts/parse-xcresult.py "$AUDIOBOOK_PATH" --json audiobook-test-data.json || true
+            
+            # Extract audiobook test counts and add to outputs
+            if [ -f "audiobook-test-data.json" ]; then
+              AUDIOBOOK_TESTS=$(cat audiobook-test-data.json | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('summary',{}).get('tests',0))" 2>/dev/null || echo "0")
+              AUDIOBOOK_PASSED=$(cat audiobook-test-data.json | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('summary',{}).get('passed',0))" 2>/dev/null || echo "0")
+              AUDIOBOOK_FAILED=$(cat audiobook-test-data.json | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('summary',{}).get('failed',0))" 2>/dev/null || echo "0")
+              
+              echo "audiobook_tests=$AUDIOBOOK_TESTS" >> $GITHUB_OUTPUT
+              echo "audiobook_passed=$AUDIOBOOK_PASSED" >> $GITHUB_OUTPUT
+              echo "audiobook_failed=$AUDIOBOOK_FAILED" >> $GITHUB_OUTPUT
+              
+              echo "=== Parsed AudiobookToolkit Test Results ==="
+              echo "Tests: $AUDIOBOOK_TESTS, Passed: $AUDIOBOOK_PASSED, Failed: $AUDIOBOOK_FAILED"
+            fi
+          else
+            echo "No AudiobookToolkit results to parse"
+          fi
           
       - name: Compare with History
         if: always()
@@ -290,6 +313,11 @@ jobs:
           BUILD_STATUS="${{ steps.parse_results.outputs.build_status }}"
           BUILD_ERRORS="${{ steps.parse_results.outputs.build_errors }}"
           
+          # AudiobookToolkit test results
+          AUDIOBOOK_TESTS="${{ steps.parse_results.outputs.audiobook_tests }}"
+          AUDIOBOOK_PASSED="${{ steps.parse_results.outputs.audiobook_passed }}"
+          AUDIOBOOK_FAILED="${{ steps.parse_results.outputs.audiobook_failed }}"
+          
           echo "## 🧪 Palace Unit Test Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
@@ -374,6 +402,18 @@ jobs:
             echo "$FAILED_TESTS" >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
             echo "</details>" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # AudiobookToolkit Tests Section
+          if [ "$AUDIOBOOK_TESTS" != "0" ] && [ -n "$AUDIOBOOK_TESTS" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### 🎧 AudiobookToolkit Tests" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            if [ "$AUDIOBOOK_FAILED" = "0" ]; then
+              echo "✅ **$AUDIOBOOK_TESTS tests** | **$AUDIOBOOK_PASSED passed** | **$AUDIOBOOK_FAILED failed**" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "❌ **$AUDIOBOOK_TESTS tests** | **$AUDIOBOOK_PASSED passed** | **$AUDIOBOOK_FAILED failed**" >> $GITHUB_STEP_SUMMARY
+            fi
           fi
           
           # Code Coverage
@@ -481,6 +521,7 @@ jobs:
           name: test-data
           path: |
             test-data.json
+            audiobook-test-data.json
             coverage-data.json
           retention-days: 14
           if-no-files-found: ignore
@@ -500,6 +541,15 @@ jobs:
         with:
           name: test-results
           path: ${{ steps.find_results.outputs.path }}
+          retention-days: 14
+          if-no-files-found: ignore
+          
+      - name: Upload AudiobookToolkit Test Results
+        if: steps.find_results.outputs.audiobook_found == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: audiobook-test-results
+          path: ${{ steps.find_results.outputs.audiobook_path }}
           retention-days: 14
           if-no-files-found: ignore
           
