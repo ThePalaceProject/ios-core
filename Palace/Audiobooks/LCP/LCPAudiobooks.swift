@@ -117,11 +117,6 @@ import Foundation
           
           if let jsonManifestString = publication.jsonManifest, let jsonData = jsonManifestString.data(using: .utf8),
              let jsonObject = try? JSONSerialization.jsonObject(with: jsonData, options: []) as? NSDictionary {
-            // DEBUG: Print manifest JSON for playback debugging
-            if let prettyData = try? JSONSerialization.data(withJSONObject: jsonObject, options: .prettyPrinted),
-               let prettyString = String(data: prettyData, encoding: .utf8) {
-              Log.debug(#file, "LCP Audiobook Manifest JSON:\n\(prettyString)")
-            }
             completion(jsonObject, nil)
           } else {
             let links = publication.readingOrder.map { link in
@@ -139,11 +134,6 @@ import Foundation
               ],
               "readingOrder": links
             ]
-            // DEBUG: Print fallback minimal manifest
-            if let prettyData = try? JSONSerialization.data(withJSONObject: minimal, options: .prettyPrinted),
-               let prettyString = String(data: prettyData, encoding: .utf8) {
-              Log.debug(#file, "LCP Audiobook Minimal Manifest (fallback):\n\(prettyString)")
-            }
             completion(minimal as NSDictionary, nil)
           }
         case .failure(let error):
