@@ -129,6 +129,10 @@ final class BookCellModelCache: ObservableObject {
     }
     
     // Create new model
+    return createAndCacheModel(for: book)
+  }
+  
+  private func createAndCacheModel(for book: TPPBook) -> BookCellModel {
     let model = BookCellModel(book: book, imageCache: imageCache, bookRegistry: bookRegistry)
     
     // Evict if at capacity
@@ -137,8 +141,8 @@ final class BookCellModelCache: ObservableObject {
     }
     
     // Cache it
-    cache[key] = CacheEntry(model: model, lastAccessed: Date(), ttl: configuration.unusedTTL)
-    updateAccessOrder(key)
+    cache[book.identifier] = CacheEntry(model: model, lastAccessed: Date(), ttl: configuration.unusedTTL)
+    updateAccessOrder(book.identifier)
     
     return model
   }
@@ -206,21 +210,22 @@ final class BookCellModelCache: ObservableObject {
   }
   
   private func setupRegistryObserver() {
-    // Observe book state changes to invalidate affected models
+    // Observe book state changes and invalidate models that are stuck showing "downloading"
+    // when the download has actually completed. This fixes the bug where navigating to
+    // My Books after a download shows the old downloading cell.
     bookRegistry.bookStatePublisher
-      .sink { [weak self] (identifier, _) in
-        // Don't invalidate, just let the model update its state
-        // The model already observes the registry
-        self?.touchModel(identifier: identifier)
+      .sink { [weak self] (identifier, newState) in
+        guard let self, let entry = self.cache[identifier] else { return }
+        
+        // Only invalidate if model shows "downloading" but registry says download is done
+        let modelShowsDownloading = entry.model.state.buttonState == .downloadInProgress
+        let downloadFinished = newState == .downloadSuccessful || newState == .downloadFailed || newState == .downloadNeeded
+        
+        if modelShowsDownloading && downloadFinished {
+          self.invalidate(for: identifier)
+        }
       }
       .store(in: &cancellables)
-  }
-  
-  private func touchModel(identifier: String) {
-    if var entry = cache[identifier] {
-      entry.lastAccessed = Date()
-      cache[identifier] = entry
-    }
   }
   
   private func startPeriodicCleanup() {

@@ -204,6 +204,129 @@ final class BookCellModelCacheTests: XCTestCase {
     XCTAssertEqual(updatedModel.book.title, "Updated Title")
   }
   
+  
+  /// Tests that cache invalidates models stuck in "downloading" state when download completes
+  /// Bug fix: PP-XXXX - Stale downloading cells showing after download completes
+  func testRegistryObserver_InvalidatesStaleDownloadingModels() async throws {
+    // Create cache WITH registry observation enabled
+    let observingCache = BookCellModelCache(
+      configuration: .init(
+        maxEntries: 10,
+        unusedTTL: 5,
+        observeRegistryChanges: true
+      ),
+      imageCache: mockImageCache,
+      bookRegistry: mockBookRegistry
+    )
+    
+    let book = makeTestBook(identifier: "downloadingBook", title: "Test Book")
+    
+    // Set book to downloading state in registry BEFORE getting model
+    mockBookRegistry.addBook(
+      book,
+      location: nil,
+      state: .downloading,
+      fulfillmentId: nil,
+      readiumBookmarks: nil,
+      genericBookmarks: nil
+    )
+    
+    // Get model - it should show downloading state
+    let model1 = observingCache.model(for: book)
+    XCTAssertEqual(model1.state.buttonState, .downloadInProgress, "Model should show downloading state")
+    
+    // Now simulate download completion - change registry state
+    mockBookRegistry.setState(.downloadSuccessful, for: book.identifier)
+    
+    // Give the Combine pipeline a moment to process
+    try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+    
+    // Get model again - should be a NEW model since old one was invalidated
+    let model2 = observingCache.model(for: book)
+    
+    // The new model should reflect the updated registry state
+    XCTAssertEqual(model2.state.buttonState, .downloadSuccessful, "New model should show download successful")
+  }
+  
+  /// Tests that cache does NOT invalidate models when download is still in progress
+  func testRegistryObserver_DoesNotInvalidateActiveDownloads() async throws {
+    let observingCache = BookCellModelCache(
+      configuration: .init(
+        maxEntries: 10,
+        unusedTTL: 5,
+        observeRegistryChanges: true
+      ),
+      imageCache: mockImageCache,
+      bookRegistry: mockBookRegistry
+    )
+    
+    let book = makeTestBook(identifier: "activeDownload", title: "Active Download")
+    
+    mockBookRegistry.addBook(
+      book,
+      location: nil,
+      state: .downloadNeeded,
+      fulfillmentId: nil,
+      readiumBookmarks: nil,
+      genericBookmarks: nil
+    )
+    
+    let model1 = observingCache.model(for: book)
+    
+    // Transition to downloading (not a terminal state)
+    mockBookRegistry.setState(.downloading, for: book.identifier)
+    
+    try await Task.sleep(nanoseconds: 100_000_000)
+    
+    let model2 = observingCache.model(for: book)
+    
+    // Should be same model instance (not invalidated)
+    XCTAssertTrue(model1 === model2, "Active download should not cause invalidation")
+  }
+  
+  /// Tests that cache invalidation is scoped to download completion states
+  /// The cache observer specifically targets: downloadSuccessful, downloadFailed, downloadNeeded
+  /// Holding state is handled by BookDetailViewModel (half sheet dismissal) and 
+  /// MyBooksDownloadCenter (slot release), not the cache observer
+  func testRegistryObserver_OnlyInvalidatesForDownloadCompletionStates() async throws {
+    let observingCache = BookCellModelCache(
+      configuration: .init(
+        maxEntries: 10,
+        unusedTTL: 5,
+        observeRegistryChanges: true
+      ),
+      imageCache: mockImageCache,
+      bookRegistry: mockBookRegistry
+    )
+    
+    let book = makeTestBook(identifier: "holdBook", title: "Hold Book")
+    
+    // Start with downloading state
+    mockBookRegistry.addBook(
+      book,
+      location: nil,
+      state: .downloading,
+      fulfillmentId: nil,
+      readiumBookmarks: nil,
+      genericBookmarks: nil
+    )
+    
+    let model1 = observingCache.model(for: book)
+    XCTAssertEqual(model1.state.buttonState, .downloadInProgress)
+    
+    // Transition to holding - cache observer does NOT invalidate for this
+    // (holding state is handled elsewhere: BookDetailViewModel dismisses half sheet,
+    // MyBooksDownloadCenter releases download slot)
+    mockBookRegistry.setState(.holding, for: book.identifier)
+    
+    try await Task.sleep(nanoseconds: 100_000_000)
+    
+    let model2 = observingCache.model(for: book)
+    
+    // Same model instance - not invalidated because .holding is not a download completion state
+    XCTAssertTrue(model1 === model2, "Cache should NOT invalidate for holding state transition")
+  }
+  
   // MARK: - Helpers
   
   private func makeTestBook(identifier: String, title: String, updated: Date = Date(timeIntervalSince1970: 0)) -> TPPBook {

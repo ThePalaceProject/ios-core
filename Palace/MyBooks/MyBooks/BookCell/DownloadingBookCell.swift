@@ -12,9 +12,15 @@ import PalaceUIKit
 struct DownloadingBookCell: View {
   @ObservedObject var model: BookCellModel
   private let cellHeight = 125.0
-  @State private var progress = 0.0
+  @State private var progress: Double
   var downloadPublisher = NotificationCenter.default.publisher(for: NSNotification.Name.TPPMyBooksDownloadCenterDidChange)
   @Environment(\.colorScheme) private var colorScheme
+
+  init(model: BookCellModel) {
+    self.model = model
+    // Initialize with current progress so UI shows immediately
+    _progress = State(initialValue: MyBooksDownloadCenter.shared.downloadProgress(for: model.book.identifier))
+  }
 
   var body: some View {
     ZStack {
@@ -56,14 +62,17 @@ struct DownloadingBookCell: View {
   }
 
   @ViewBuilder private var progressView: some View {
-    HStack {
-      Text(Strings.BookCell.downloading)
+    HStack(spacing: 8) {
+      if progress < 0.01 {
+        // Show spinner when progress hasn't started (checkout/request phase)
+        ProgressView()
+          .progressViewStyle(CircularProgressViewStyle(tint: Color(TPPConfiguration.backgroundColor())))
+          .scaleEffect(0.8)
+      }
+      
       ProgressView(value: progress, total: 1)
         .progressViewStyle(LinearProgressViewStyle(tint: Color(TPPConfiguration.backgroundColor())))
-      Text("\(Int(progress * 100))%")
     }
-    .palaceFont(size: 12)
-    .foregroundColor(Color(TPPConfiguration.backgroundColor()))
     .onReceive(downloadPublisher) { _ in
       self.progress = MyBooksDownloadCenter.shared.downloadProgress(for: model.book.identifier)
     }
