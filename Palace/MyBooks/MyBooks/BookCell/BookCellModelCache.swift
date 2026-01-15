@@ -142,6 +142,10 @@ final class BookCellModelCache: ObservableObject {
       cache[key] = entry
       updateAccessOrder(key)
       
+      if book.updated > entry.model.book.updated {
+        entry.model.book = book
+      }
+      
       return entry.model
     }
     
