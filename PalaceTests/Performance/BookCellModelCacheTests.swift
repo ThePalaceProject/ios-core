@@ -326,6 +326,115 @@ final class BookCellModelCacheTests: XCTestCase {
     XCTAssertEqual(model2.state.buttonState, .holding)
   }
   
+  // MARK: - Edge Case Tests
+  
+  func testCacheWithSameIdentifierDifferentUpdatedDate() throws {
+    let oldDate = Date(timeIntervalSince1970: 1000)
+    let newDate = Date(timeIntervalSince1970: 2000)
+    
+    let oldBook = makeTestBook(identifier: "same-id", title: "Old Title", updated: oldDate)
+    let newBook = makeTestBook(identifier: "same-id", title: "New Title", updated: newDate)
+    
+    _ = sut.model(for: oldBook)
+    let model = sut.model(for: newBook)
+    
+    // Model should have updated to new book data
+    XCTAssertEqual(model.book.title, "New Title")
+    XCTAssertEqual(sut.count, 1)
+  }
+  
+  func testEvictStale_RemovesOnlyStaleEntries() throws {
+    // Create cache with very short TTL
+    let shortTTLCache = BookCellModelCache(
+      configuration: .init(maxEntries: 10, unusedTTL: 0.01, observeRegistryChanges: false),
+      imageCache: mockImageCache,
+      bookRegistry: mockBookRegistry
+    )
+    
+    let book1 = makeTestBook(identifier: "fresh", title: "Fresh Book")
+    _ = shortTTLCache.model(for: book1)
+    
+    // Wait for TTL to expire
+    Thread.sleep(forTimeInterval: 0.05)
+    
+    let book2 = makeTestBook(identifier: "recent", title: "Recent Book")
+    _ = shortTTLCache.model(for: book2)
+    
+    shortTTLCache.evictStale()
+    
+    // Fresh book should be evicted, recent should remain
+    XCTAssertEqual(shortTTLCache.count, 1)
+  }
+  
+  func testConcurrentAccess_DoesNotCrash() async throws {
+    let books = (0..<20).map { makeTestBook(identifier: "concurrent-\($0)", title: "Book \($0)") }
+    
+    // Simulate concurrent access patterns
+    await withTaskGroup(of: Void.self) { group in
+      for book in books {
+        group.addTask { @MainActor in
+          _ = self.sut.model(for: book)
+        }
+      }
+    }
+    
+    XCTAssertGreaterThan(sut.count, 0)
+    XCTAssertLessThanOrEqual(sut.count, 20)
+  }
+  
+  func testInvalidateNonExistentKey_DoesNotCrash() throws {
+    // Invalidating a key that doesn't exist should not crash
+    sut.invalidate(for: "non-existent-key")
+    
+    XCTAssertEqual(sut.count, 0)
+  }
+  
+  func testClearEmptyCache_DoesNotCrash() throws {
+    // Clearing an empty cache should not crash
+    sut.clear()
+    
+    XCTAssertEqual(sut.count, 0)
+  }
+  
+  func testMemoryWarningOnEmptyCache_DoesNotCrash() throws {
+    sut.handleMemoryWarning()
+    
+    XCTAssertEqual(sut.count, 0)
+  }
+  
+  func testPreloadEmptyArray_DoesNotCrash() throws {
+    sut.preload(books: [])
+    
+    XCTAssertEqual(sut.count, 0)
+  }
+  
+  func testPrefetchWithEmptyRange_DoesNotCrash() throws {
+    let books = [makeTestBook(identifier: "book1", title: "Book")]
+    
+    sut.prefetch(books: books, visibleRange: 0..<0, buffer: 0)
+    
+    // Should not crash
+    XCTAssertTrue(true)
+  }
+  
+  // MARK: - Configuration Tests
+  
+  func testDefaultConfiguration_HasReasonableValues() {
+    let defaultConfig = BookCellModelCache.Configuration.default
+    
+    XCTAssertGreaterThan(defaultConfig.maxEntries, 0)
+    XCTAssertGreaterThan(defaultConfig.unusedTTL, 0)
+    XCTAssertTrue(defaultConfig.observeRegistryChanges)
+  }
+  
+  func testAggressiveConfiguration_HasLargerValues() {
+    let defaultConfig = BookCellModelCache.Configuration.default
+    let aggressiveConfig = BookCellModelCache.Configuration.aggressive
+    
+    XCTAssertGreaterThan(aggressiveConfig.maxEntries, defaultConfig.maxEntries)
+    XCTAssertGreaterThan(aggressiveConfig.unusedTTL, defaultConfig.unusedTTL)
+  }
+  
   // MARK: - Helpers
   
   private func makeTestBook(identifier: String, title: String, updated: Date = Date(timeIntervalSince1970: 0)) -> TPPBook {
