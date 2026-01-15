@@ -185,6 +185,7 @@ struct HoldsView: View {
         Image(systemName: "xmark.circle.fill")
           .foregroundColor(.gray)
       })
+      .accessibilityLabel(Strings.Generic.clearSearch)
     }
     .padding(.horizontal)
   }

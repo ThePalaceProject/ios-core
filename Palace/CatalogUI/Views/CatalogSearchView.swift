@@ -123,6 +123,7 @@ private extension CatalogSearchView {
             Image(systemName: "xmark.circle.fill")
               .foregroundColor(.gray)
           }
+          .accessibilityLabel(Strings.Generic.clearSearch)
           .padding(.trailing, 8)
         }
       }

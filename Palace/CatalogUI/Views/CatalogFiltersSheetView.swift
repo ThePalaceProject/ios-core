@@ -244,6 +244,7 @@ private struct FacetSectionHeader: View {
       }
       .frame(width: 24, alignment: .center)
       .buttonStyle(.plain)
+      .accessibilityLabel(isExpanded ? Strings.Generic.collapseSection : Strings.Generic.expandSection)
     }
   }
 }

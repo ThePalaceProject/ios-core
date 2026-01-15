@@ -36,6 +36,8 @@ struct SignInModalView: View {
   private var cancelButton: some View {
     Button(Strings.Generic.cancel) {
       dismiss()
+      // Call completion even on cancel so callers can clean up processing state
+      completion?()
     }
   }
 }

@@ -970,7 +970,13 @@ extension MyBooksDownloadCenter {
             } else if errorType == TPPProblemDocument.TypeInvalidCredentials {
               NSLog("Invalid credentials problem when returning a book, present sign in VC")
               self.reauthenticator.authenticateIfNeeded(self.userAccount, usingExistingCredentials: false) { [weak self] in
-                self?.returnBook(withIdentifier: identifier, completion: completion)
+                guard let self = self else { return }
+                // Only retry if user successfully authenticated; if they cancelled, just complete
+                if self.userAccount.hasCredentials() {
+                  self.returnBook(withIdentifier: identifier, completion: completion)
+                } else {
+                  runOnMainAsync { completion?() }
+                }
               }
             }
           } else {
@@ -1358,6 +1364,11 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
               authenticationCompletion: { [weak self] in
                 Task { @MainActor [weak self] in
                   guard let self else { return }
+                  // Only retry if user successfully authenticated; if they cancelled, bail out
+                  guard self.userAccount.hasCredentials() else {
+                    Log.info(#file, "Authentication cancelled, not retrying download for \(book.identifier)")
+                    return
+                  }
                   Log.info(#file, "Authentication completed, retrying download for \(book.identifier)")
                   self.startDownload(for: book)
                 }
@@ -1374,6 +1385,11 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
             authenticationCompletion: { [weak self] in
               Task { @MainActor [weak self] in
                 guard let self else { return }
+                // Only retry if user successfully authenticated; if they cancelled, bail out
+                guard self.userAccount.hasCredentials() else {
+                  Log.info(#file, "Authentication cancelled, not retrying download for \(book.identifier)")
+                  return
+                }
                 self.startDownload(for: book)
               }
             }
