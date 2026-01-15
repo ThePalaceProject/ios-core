@@ -19,39 +19,58 @@ class TPPBookRegistryRecord: NSObject {
   var readiumBookmarks: [TPPReadiumBookmark]?
   var genericBookmarks: [TPPBookLocation]?
   
+  /// Creates a registry record with the specified state.
+  /// 
+  /// **Important:** This initializer preserves the passed `state` value. If you need to derive
+  /// the initial state from book availability, use `TPPBookRegistryRecord.deriveInitialState(for:)` first.
+  ///
+  /// - Parameters:
+  ///   - book: The book metadata
+  ///   - location: Reading position (optional)
+  ///   - state: The book state - this value is preserved as-is
+  ///   - fulfillmentId: DRM fulfillment identifier (optional)
+  ///   - readiumBookmarks: Readium-format bookmarks
+  ///   - genericBookmarks: Generic location bookmarks
   init(book: TPPBook, location: TPPBookLocation? = nil, state: TPPBookState, fulfillmentId: String? = nil, readiumBookmarks: [TPPReadiumBookmark]? = [], genericBookmarks: [TPPBookLocation]? = []) {
     self.book = book
     self.location = location
-    self.state = state
     self.fulfillmentId = fulfillmentId
     self.readiumBookmarks = readiumBookmarks
     self.genericBookmarks = genericBookmarks
+    
+    // Preserve the passed state - do NOT override based on availability
+    // The caller is responsible for determining the correct state
+    self.state = state
 
     super.init()
-
-    if let defaultAcquisition = book.defaultAcquisition {
-      defaultAcquisition.availability.matchUnavailable { _ in
-        
-      } limited: { _ in
-        
-      } unlimited: { _ in
-        
-      } reserved: { [weak self] _ in
-        self?.state = .holding
-      } ready: { [weak self] _ in
-        self?.state = .holding
-      }
-
-    } else {
-      // Since the book has no default acqusition, there is no reliable way to
-      // determine if the book is on hold (although it may be), nor is there any
-      // way to download the book if it is available. As such, we give the book a
-      // special "unsupported" state which will allow other parts of the app to
-      // ignore it as appropriate. Unsupported books should generally only appear
-      // when a user has checked out or reserved a book in an unsupported format
-      // using another app.
-      self.state = .unsupported
+  }
+  
+  /// Derives the appropriate initial state for a newly borrowed/discovered book based on its availability.
+  /// Use this when adding a book to the registry for the first time without a known state.
+  ///
+  /// - Parameter book: The book to derive state for
+  /// - Returns: The appropriate initial state based on availability
+  static func deriveInitialState(for book: TPPBook) -> TPPBookState {
+    guard let defaultAcquisition = book.defaultAcquisition else {
+      // No acquisition means unsupported format
+      return .unsupported
     }
+    
+    var derivedState: TPPBookState = .downloadNeeded
+    
+    defaultAcquisition.availability.matchUnavailable { _ in
+      derivedState = .downloadNeeded
+    } limited: { _ in
+      derivedState = .downloadNeeded
+    } unlimited: { _ in
+      derivedState = .downloadNeeded
+    } reserved: { _ in
+      derivedState = .holding
+    } ready: { _ in
+      derivedState = .holding
+    }
+    
+    return derivedState
   }
   
   init?(record: TPPBookRegistryData) {

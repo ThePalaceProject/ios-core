@@ -246,21 +246,6 @@ final class BookDetailViewModelTests: XCTestCase {
     XCTAssertFalse(buttons.contains(.audiobookSample))
   }
   
-  // MARK: - BookLane Tests
-  
-  func testBookLane_Creation() {
-    let books = [createTestBook(), createTestBook()]
-    let lane = BookLane(
-      title: "Similar Books",
-      books: books,
-      subsectionURL: URL(string: "https://example.com/more")
-    )
-    
-    XCTAssertEqual(lane.title, "Similar Books")
-    XCTAssertEqual(lane.books.count, 2)
-    XCTAssertNotNil(lane.subsectionURL)
-  }
-  
   // MARK: - Book Content Type Tests
   
   func testBookContentType_EPUB() {
@@ -286,13 +271,13 @@ final class BookDetailViewModelTests: XCTestCase {
   func testAvailability_Unlimited_MapsToCanBorrow() {
     let availability = TPPOPDSAcquisitionAvailabilityUnlimited()
     
-    let state = BookButtonState.stateForAvailability(availability)
+    let state = BookButtonMapper.stateForAvailability(availability)
     
     XCTAssertEqual(state, .canBorrow)
   }
   
   func testAvailability_Nil_ReturnsNil() {
-    let state = BookButtonState.stateForAvailability(nil)
+    let state = BookButtonMapper.stateForAvailability(nil)
     
     XCTAssertNil(state)
   }

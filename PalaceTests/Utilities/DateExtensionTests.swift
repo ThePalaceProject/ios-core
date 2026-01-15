@@ -48,7 +48,11 @@ final class DateExtensionTests: XCTestCase {
   
   func testDateComparison_sameDay() {
     let calendar = Calendar.current
-    let date1 = Date()
+    // Use noon to avoid midnight boundary issues
+    var components = calendar.dateComponents([.year, .month, .day], from: Date())
+    components.hour = 12
+    components.minute = 0
+    let date1 = calendar.date(from: components)!
     let date2 = calendar.date(byAdding: .hour, value: 1, to: date1)!
     
     let isSameDay = calendar.isDate(date1, inSameDayAs: date2)

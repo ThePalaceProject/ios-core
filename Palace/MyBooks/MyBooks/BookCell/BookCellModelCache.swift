@@ -210,18 +210,18 @@ final class BookCellModelCache: ObservableObject {
   }
   
   private func setupRegistryObserver() {
-    // Observe book state changes and invalidate models that are stuck showing "downloading"
-    // when the download has actually completed. This fixes the bug where navigating to
-    // My Books after a download shows the old downloading cell.
+    // Observe book state changes and invalidate models when registry state doesn't match model state.
+    // This ensures UI always reflects the true state from the registry.
     bookRegistry.bookStatePublisher
       .sink { [weak self] (identifier, newState) in
         guard let self, let entry = self.cache[identifier] else { return }
         
-        // Only invalidate if model shows "downloading" but registry says download is done
-        let modelShowsDownloading = entry.model.state.buttonState == .downloadInProgress
-        let downloadFinished = newState == .downloadSuccessful || newState == .downloadFailed || newState == .downloadNeeded
+        let modelRegistryState = entry.model.registryState
         
-        if modelShowsDownloading && downloadFinished {
+        // Invalidate if model's registry state doesn't match the actual registry state
+        // This catches ALL state mismatches, not just downloading → finished transitions
+        if modelRegistryState != newState {
+          Log.debug(#file, "Cache invalidating '\(identifier)': model state=\(modelRegistryState.stringValue()) registry state=\(newState.stringValue())")
           self.invalidate(for: identifier)
         }
       }

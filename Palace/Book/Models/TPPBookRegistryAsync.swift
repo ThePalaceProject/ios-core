@@ -68,8 +68,9 @@ extension TPPBookRegistry {
             // Update existing
             let _ = self.updatedBookMetadata(book)
           } else {
-            // Add new
-            self.addBook(book)
+            // Add new - derive initial state from book availability
+            let initialState = TPPBookRegistryRecord.deriveInitialState(for: book)
+            self.addBook(book, state: initialState)
           }
           changesMade = true
         }

@@ -248,8 +248,9 @@ final class BookCellModelCacheTests: XCTestCase {
     XCTAssertEqual(model2.state.buttonState, .downloadSuccessful, "New model should show download successful")
   }
   
-  /// Tests that cache does NOT invalidate models when download is still in progress
-  func testRegistryObserver_DoesNotInvalidateActiveDownloads() async throws {
+  /// Tests that cache invalidates models when state changes to downloading
+  /// The cache invalidates on ANY state mismatch to ensure UI always reflects true registry state
+  func testRegistryObserver_InvalidatesOnDownloadStateChange() async throws {
     let observingCache = BookCellModelCache(
       configuration: .init(
         maxEntries: 10,
@@ -273,22 +274,21 @@ final class BookCellModelCacheTests: XCTestCase {
     
     let model1 = observingCache.model(for: book)
     
-    // Transition to downloading (not a terminal state)
+    // Transition to downloading - cache invalidates on ANY state change
     mockBookRegistry.setState(.downloading, for: book.identifier)
     
     try await Task.sleep(nanoseconds: 100_000_000)
     
     let model2 = observingCache.model(for: book)
     
-    // Should be same model instance (not invalidated)
-    XCTAssertTrue(model1 === model2, "Active download should not cause invalidation")
+    // Should be different model instance (invalidated due to state change)
+    XCTAssertFalse(model1 === model2, "State change should cause cache invalidation")
+    XCTAssertEqual(model2.state.buttonState, .downloadInProgress)
   }
   
-  /// Tests that cache invalidation is scoped to download completion states
-  /// The cache observer specifically targets: downloadSuccessful, downloadFailed, downloadNeeded
-  /// Holding state is handled by BookDetailViewModel (half sheet dismissal) and 
-  /// MyBooksDownloadCenter (slot release), not the cache observer
-  func testRegistryObserver_OnlyInvalidatesForDownloadCompletionStates() async throws {
+  /// Tests that cache invalidates on ANY state mismatch, including transitions to holding state
+  /// This ensures UI always reflects the true registry state
+  func testRegistryObserver_InvalidatesForHoldingStateTransition() async throws {
     let observingCache = BookCellModelCache(
       configuration: .init(
         maxEntries: 10,
@@ -314,17 +314,16 @@ final class BookCellModelCacheTests: XCTestCase {
     let model1 = observingCache.model(for: book)
     XCTAssertEqual(model1.state.buttonState, .downloadInProgress)
     
-    // Transition to holding - cache observer does NOT invalidate for this
-    // (holding state is handled elsewhere: BookDetailViewModel dismisses half sheet,
-    // MyBooksDownloadCenter releases download slot)
+    // Transition to holding - cache invalidates on ANY state change
     mockBookRegistry.setState(.holding, for: book.identifier)
     
     try await Task.sleep(nanoseconds: 100_000_000)
     
     let model2 = observingCache.model(for: book)
     
-    // Same model instance - not invalidated because .holding is not a download completion state
-    XCTAssertTrue(model1 === model2, "Cache should NOT invalidate for holding state transition")
+    // Different model instance - invalidated because state changed
+    XCTAssertFalse(model1 === model2, "Cache should invalidate for any state transition")
+    XCTAssertEqual(model2.state.buttonState, .holding)
   }
   
   // MARK: - Helpers
