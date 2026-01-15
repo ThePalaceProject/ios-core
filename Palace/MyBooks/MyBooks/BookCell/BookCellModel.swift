@@ -183,10 +183,14 @@ class BookCellModel: ObservableObject {
     isLoading = true
     
     bookRegistry.thumbnailImage(for: self.book) { [weak self] fetchedImage in
-      guard let self = self, let fetchedImage else { return }
-      self.setImageAndCache(fetchedImage)
+      guard let self else { return }
+      // Always clear loading state, even if image fetch failed
       self.isLoading = false
       self.isFetchingImage = false
+      
+      if let fetchedImage {
+        self.setImageAndCache(fetchedImage)
+      }
     }
   }
   

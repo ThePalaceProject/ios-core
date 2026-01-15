@@ -71,6 +71,7 @@ final class BookCellModelCache: ObservableObject {
   // MARK: - Initialization
   
   private var memoryWarningObserver: NSObjectProtocol?
+  private var accountChangeObserver: NSObjectProtocol?
   
   public init(
     configuration: Configuration = .default,
@@ -86,12 +87,16 @@ final class BookCellModelCache: ObservableObject {
     }
     
     setupMemoryWarningObserver()
+    setupAccountChangeObserver()
     startPeriodicCleanup()
   }
   
   deinit {
     cleanupTask?.cancel()
     if let observer = memoryWarningObserver {
+      NotificationCenter.default.removeObserver(observer)
+    }
+    if let observer = accountChangeObserver {
       NotificationCenter.default.removeObserver(observer)
     }
   }
@@ -106,6 +111,25 @@ final class BookCellModelCache: ObservableObject {
     }
   }
   
+  private func setupAccountChangeObserver() {
+    accountChangeObserver = NotificationCenter.default.addObserver(
+      forName: NSNotification.Name.TPPCurrentAccountDidChange,
+      object: nil,
+      queue: .main
+    ) { [weak self] _ in
+      self?.handleAccountChange()
+    }
+  }
+  
+  private func handleAccountChange() {
+    // Clear all cached models when switching libraries
+    // The new library has different books, so old models are useless
+    let previousCount = cache.count
+    cache.removeAll()
+    accessOrder.removeAll()
+    Log.info(#file, "BookCellModelCache: Cleared \(previousCount) entries after account change")
+  }
+  
   // MARK: - Public API
   
   /// Gets or creates a BookCellModel for the given book
@@ -113,14 +137,7 @@ final class BookCellModelCache: ObservableObject {
   public func model(for book: TPPBook) -> BookCellModel {
     let key = book.identifier
     
-    // Check cache
     if var entry = cache[key] {
-      // Update book data if changed
-      if entry.model.book.updated != book.updated {
-        entry.model.book = book
-      }
-      
-      // Update access time
       entry.lastAccessed = Date()
       cache[key] = entry
       updateAccessOrder(key)
