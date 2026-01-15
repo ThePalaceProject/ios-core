@@ -4,35 +4,27 @@ struct BookImageView: View {
   @ObservedObject var book: TPPBook
   var width: CGFloat? = nil
   var height: CGFloat = 280
-  var usePulseSkeleton: Bool = false
+  var usePulseSkeleton: Bool = true
 
-  @State private var isShimmering: Bool = true
-  @State private var pulse: Bool = false
+  @State private var showSkeleton: Bool = true
   
-  /// Check if cover is already loaded (skip shimmer animation)
+  /// Check if cover is already loaded (skip skeleton entirely)
   private var hasPreloadedCover: Bool {
     book.coverImage != nil || book.thumbnailImage != nil
   }
 
   var body: some View {
     ZStack(alignment: .bottomTrailing) {
-      // Only show shimmer if no image is pre-loaded
-      if isShimmering && !hasPreloadedCover {
-        Rectangle()
-          .fill(Color.gray.opacity(0.25))
-          .frame(width: width ?? (height * 2.0 / 3.0), height: height)
-          .opacity(usePulseSkeleton ? (pulse ? 0.6 : 1.0) : 1.0)
-          .transition(.opacity)
+      // Show pulsing skeleton until image is ready
+      if showSkeleton && !hasPreloadedCover {
+        PulsingSkeletonView(width: width ?? (height * 2.0 / 3.0), height: height)
       }
 
       if let coverImage = book.coverImage ?? book.thumbnailImage {
         Image(uiImage: coverImage)
           .resizable()
           .aspectRatio(contentMode: .fit)
-          // Show immediately if pre-loaded, otherwise wait for animation
-          .opacity((isShimmering && !hasPreloadedCover) ? 0 : 1)
           .transition(.opacity)
-          .onAppear { withAnimation(.easeInOut(duration: 0.25)) { isShimmering = false } }
       }
 
       if book.isAudiobook {
@@ -47,28 +39,48 @@ struct BookImageView: View {
     }
     .frame(width: width, height: height)
     .onAppear {
-      if book.coverImage == nil && book.thumbnailImage == nil {
+      // Skip skeleton if image already loaded
+      if hasPreloadedCover {
+        showSkeleton = false
+      } else {
         book.fetchCoverImage()
-      }
-      if usePulseSkeleton {
-        withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
-          pulse = true
-        }
       }
     }
     .onChange(of: book.coverImage) { newImage in
       if newImage != nil {
-        withAnimation(.easeInOut(duration: 0.3)) {
-          isShimmering = false
+        withAnimation(.easeOut(duration: 0.2)) {
+          showSkeleton = false
         }
       }
     }
     .onChange(of: book.thumbnailImage) { newImage in
       if newImage != nil && book.coverImage == nil {
-        withAnimation(.easeInOut(duration: 0.3)) {
-          isShimmering = false
+        withAnimation(.easeOut(duration: 0.2)) {
+          showSkeleton = false
         }
       }
     }
+  }
+}
+
+// MARK: - Pulsing Skeleton
+
+/// Self-contained pulsing skeleton that starts animating immediately on init
+private struct PulsingSkeletonView: View {
+  let width: CGFloat
+  let height: CGFloat
+  
+  @State private var pulse: Bool = false
+  
+  var body: some View {
+    Rectangle()
+      .fill(Color.gray.opacity(0.25))
+      .frame(width: width, height: height)
+      .opacity(pulse ? 0.6 : 1.0)
+      .onAppear {
+        withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+          pulse = true
+        }
+      }
   }
 }
