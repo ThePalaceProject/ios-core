@@ -835,10 +835,33 @@ jobs:
             exit 0
           fi
           
-          # If parsing failed (tests=0) but xcresult exists, check manually
+          # If parsing failed (tests=0) but xcresult exists, check xcodebuild output
           if [ "${{ steps.find_results.outputs.found }}" = "true" ] && [ "${{ steps.parse_results.outputs.tests }}" = "0" ]; then
-            echo "⚠️ Parsing failed but xcresult exists - checking raw results..."
-            # Try to get a basic summary
+            echo "⚠️ Parsing failed but xcresult exists - checking xcodebuild output..."
+            
+            # Check if xcodebuild reported test success
+            # Look for "** TEST SUCCEEDED **" or count "Executed X tests, with 0 failures"
+            LOG_FILE="xcodebuild-test.log"
+            if [ -f "$LOG_FILE" ]; then
+              if grep -q "TEST SUCCEEDED" "$LOG_FILE"; then
+                echo "✅ xcodebuild reported TEST SUCCEEDED"
+                exit 0
+              fi
+              
+              # Count executed tests with 0 failures
+              ZERO_FAILURES=$(grep -c "Executed .* tests, with 0 failures" "$LOG_FILE" 2>/dev/null || echo "0")
+              ANY_FAILURES=$(grep -c "Executed .* tests, with [1-9]" "$LOG_FILE" 2>/dev/null || echo "0")
+              
+              echo "Test suites with 0 failures: $ZERO_FAILURES"
+              echo "Test suites with failures: $ANY_FAILURES"
+              
+              if [ "$ZERO_FAILURES" -gt "0" ] && [ "$ANY_FAILURES" = "0" ]; then
+                echo "✅ All test suites passed (found $ZERO_FAILURES suites with 0 failures)"
+                exit 0
+              fi
+            fi
+            
+            # Try xcresulttool as last resort
             SUMMARY=$(xcrun xcresulttool get test-results summary --path "${{ steps.find_results.outputs.path }}" 2>/dev/null || echo "")
             if echo "$SUMMARY" | grep -q '"failedTests" : 0'; then
               echo "✅ Raw xcresult shows 0 failed tests"

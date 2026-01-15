@@ -64,8 +64,8 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
             ONLY_ACTIVE_ARCH=YES \
             GCC_OPTIMIZATION_LEVEL=0 \
             SWIFT_OPTIMIZATION_LEVEL=-Onone \
-            ENABLE_TESTABILITY=YES
-        TEST_EXIT_CODE=$?
+            ENABLE_TESTABILITY=YES 2>&1 | tee xcodebuild-test.log
+        TEST_EXIT_CODE=${PIPESTATUS[0]}
         set -e
         
         # If xcresult was created, tests ran (even if some failed) - stop trying simulators
