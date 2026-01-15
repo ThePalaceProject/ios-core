@@ -109,19 +109,6 @@ jobs:
             echo "found=false" >> $GITHUB_OUTPUT
           fi
           
-          # Check for AudiobookToolkit tests result
-          if [ -d "AudiobookToolkitTestResults.xcresult" ]; then
-            echo "✅ Found AudiobookToolkit tests: ./AudiobookToolkitTestResults.xcresult"
-            echo "audiobook_path=AudiobookToolkitTestResults.xcresult" >> $GITHUB_OUTPUT
-            echo "audiobook_found=true" >> $GITHUB_OUTPUT
-            
-            echo "=== AudiobookToolkit xcresult summary ==="
-            xcrun xcresulttool get test-results summary --path AudiobookToolkitTestResults.xcresult 2>&1 | head -30 || echo "Could not get summary"
-          else
-            echo "audiobook_path=" >> $GITHUB_OUTPUT
-            echo "audiobook_found=false" >> $GITHUB_OUTPUT
-          fi
-          
           # Search in DerivedData if not found
           if [ "${{ steps.find_results.outputs.found }}" != "true" ]; then
             echo "Searching in DerivedData..."
@@ -139,7 +126,6 @@ jobs:
         id: parse_results
         run: |
           RESULT_PATH="${{ steps.find_results.outputs.path }}"
-          AUDIOBOOK_PATH="${{ steps.find_results.outputs.audiobook_path }}"
           
           # Initialize defaults
           echo "tests=0" >> $GITHUB_OUTPUT
@@ -148,9 +134,6 @@ jobs:
           echo "skipped=0" >> $GITHUB_OUTPUT
           echo "duration=unknown" >> $GITHUB_OUTPUT
           echo "pass_rate=N/A" >> $GITHUB_OUTPUT
-          echo "audiobook_tests=0" >> $GITHUB_OUTPUT
-          echo "audiobook_passed=0" >> $GITHUB_OUTPUT
-          echo "audiobook_failed=0" >> $GITHUB_OUTPUT
           
           # Parse Palace tests
           if [ "${{ steps.find_results.outputs.found }}" == "true" ] && [ -d "$RESULT_PATH" ]; then
@@ -170,30 +153,6 @@ jobs:
             cat test-data.json | python3 -c "import json,sys; d=json.load(sys.stdin); s=d.get('summary',{}); print(f\"Tests: {s.get('tests',0)}, Passed: {s.get('passed',0)}, Failed: {s.get('failed',0)}\")" 2>/dev/null || echo "Could not read test-data.json"
           else
             echo "No Palace results to parse"
-          fi
-          
-          # Parse AudiobookToolkit tests
-          if [ "${{ steps.find_results.outputs.audiobook_found }}" == "true" ] && [ -d "$AUDIOBOOK_PATH" ]; then
-            echo ""
-            echo "=== Parsing AudiobookToolkit test results from: $AUDIOBOOK_PATH ==="
-            
-            python3 scripts/parse-xcresult.py "$AUDIOBOOK_PATH" --json audiobook-test-data.json || true
-            
-            # Extract audiobook test counts and add to outputs
-            if [ -f "audiobook-test-data.json" ]; then
-              AUDIOBOOK_TESTS=$(cat audiobook-test-data.json | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('summary',{}).get('tests',0))" 2>/dev/null || echo "0")
-              AUDIOBOOK_PASSED=$(cat audiobook-test-data.json | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('summary',{}).get('passed',0))" 2>/dev/null || echo "0")
-              AUDIOBOOK_FAILED=$(cat audiobook-test-data.json | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('summary',{}).get('failed',0))" 2>/dev/null || echo "0")
-              
-              echo "audiobook_tests=$AUDIOBOOK_TESTS" >> $GITHUB_OUTPUT
-              echo "audiobook_passed=$AUDIOBOOK_PASSED" >> $GITHUB_OUTPUT
-              echo "audiobook_failed=$AUDIOBOOK_FAILED" >> $GITHUB_OUTPUT
-              
-              echo "=== Parsed AudiobookToolkit Test Results ==="
-              echo "Tests: $AUDIOBOOK_TESTS, Passed: $AUDIOBOOK_PASSED, Failed: $AUDIOBOOK_FAILED"
-            fi
-          else
-            echo "No AudiobookToolkit results to parse"
           fi
           
       - name: Compare with History
@@ -313,11 +272,6 @@ jobs:
           BUILD_STATUS="${{ steps.parse_results.outputs.build_status }}"
           BUILD_ERRORS="${{ steps.parse_results.outputs.build_errors }}"
           
-          # AudiobookToolkit test results
-          AUDIOBOOK_TESTS="${{ steps.parse_results.outputs.audiobook_tests }}"
-          AUDIOBOOK_PASSED="${{ steps.parse_results.outputs.audiobook_passed }}"
-          AUDIOBOOK_FAILED="${{ steps.parse_results.outputs.audiobook_failed }}"
-          
           echo "## 🧪 Palace Unit Test Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
@@ -402,18 +356,6 @@ jobs:
             echo "$FAILED_TESTS" >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
             echo "</details>" >> $GITHUB_STEP_SUMMARY
-          fi
-          
-          # AudiobookToolkit Tests Section
-          if [ "$AUDIOBOOK_TESTS" != "0" ] && [ -n "$AUDIOBOOK_TESTS" ]; then
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### 🎧 AudiobookToolkit Tests" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            if [ "$AUDIOBOOK_FAILED" = "0" ]; then
-              echo "✅ **$AUDIOBOOK_TESTS tests** | **$AUDIOBOOK_PASSED passed** | **$AUDIOBOOK_FAILED failed**" >> $GITHUB_STEP_SUMMARY
-            else
-              echo "❌ **$AUDIOBOOK_TESTS tests** | **$AUDIOBOOK_PASSED passed** | **$AUDIOBOOK_FAILED failed**" >> $GITHUB_STEP_SUMMARY
-            fi
           fi
           
           # Code Coverage
@@ -521,7 +463,6 @@ jobs:
           name: test-data
           path: |
             test-data.json
-            audiobook-test-data.json
             coverage-data.json
           retention-days: 14
           if-no-files-found: ignore
@@ -541,15 +482,6 @@ jobs:
         with:
           name: test-results
           path: ${{ steps.find_results.outputs.path }}
-          retention-days: 14
-          if-no-files-found: ignore
-          
-      - name: Upload AudiobookToolkit Test Results
-        if: steps.find_results.outputs.audiobook_found == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: audiobook-test-results
-          path: ${{ steps.find_results.outputs.audiobook_path }}
           retention-days: 14
           if-no-files-found: ignore
           
@@ -823,51 +755,4 @@ jobs:
           
       - name: Fail if tests failed
         if: steps.tests.outcome == 'failure'
-        run: |
-          echo "Test step reported failure."
-          echo "Tests: ${{ steps.parse_results.outputs.tests }}"
-          echo "Failed: ${{ steps.parse_results.outputs.failed }}"
-          
-          # If parsing succeeded and shows 0 failures, don't fail the workflow
-          # This handles the case where xcodebuild returns non-zero for warnings
-          if [ "${{ steps.parse_results.outputs.tests }}" != "0" ] && [ "${{ steps.parse_results.outputs.failed }}" = "0" ]; then
-            echo "✅ All tests actually passed (parsing shows 0 failures)"
-            exit 0
-          fi
-          
-          # If parsing failed (tests=0) but xcresult exists, check xcodebuild output
-          if [ "${{ steps.find_results.outputs.found }}" = "true" ] && [ "${{ steps.parse_results.outputs.tests }}" = "0" ]; then
-            echo "⚠️ Parsing failed but xcresult exists - checking xcodebuild output..."
-            
-            # Check if xcodebuild reported test success
-            # Look for "** TEST SUCCEEDED **" or count "Executed X tests, with 0 failures"
-            LOG_FILE="xcodebuild-test.log"
-            if [ -f "$LOG_FILE" ]; then
-              if grep -q "TEST SUCCEEDED" "$LOG_FILE"; then
-                echo "✅ xcodebuild reported TEST SUCCEEDED"
-                exit 0
-              fi
-              
-              # Count executed tests with 0 failures
-              ZERO_FAILURES=$(grep -c "Executed .* tests, with 0 failures" "$LOG_FILE" 2>/dev/null || echo "0")
-              ANY_FAILURES=$(grep -c "Executed .* tests, with [1-9]" "$LOG_FILE" 2>/dev/null || echo "0")
-              
-              echo "Test suites with 0 failures: $ZERO_FAILURES"
-              echo "Test suites with failures: $ANY_FAILURES"
-              
-              if [ "$ZERO_FAILURES" -gt "0" ] && [ "$ANY_FAILURES" = "0" ]; then
-                echo "✅ All test suites passed (found $ZERO_FAILURES suites with 0 failures)"
-                exit 0
-              fi
-            fi
-            
-            # Try xcresulttool as last resort
-            SUMMARY=$(xcrun xcresulttool get test-results summary --path "${{ steps.find_results.outputs.path }}" 2>/dev/null || echo "")
-            if echo "$SUMMARY" | grep -q '"failedTests" : 0'; then
-              echo "✅ Raw xcresult shows 0 failed tests"
-              exit 0
-            fi
-          fi
-          
-          echo "❌ Tests failed"
-          exit 1
+        run: exit 1
