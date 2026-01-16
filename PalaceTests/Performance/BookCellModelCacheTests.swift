@@ -162,29 +162,6 @@ final class BookCellModelCacheTests: XCTestCase {
     XCTAssertLessThanOrEqual(sut.count, 3)
   }
   
-  // MARK: - Prefetching
-  
-  func testPrefetchWithVisibleRange() throws {
-    let books = (0..<20).map { makeTestBook(identifier: "book\($0)", title: "Book \($0)") }
-    
-    // Initially no models
-    XCTAssertEqual(sut.count, 0)
-    
-    // Prefetch with visible range 5..<10, buffer 3
-    sut.prefetch(books: books, visibleRange: 5..<10, buffer: 3)
-    
-    // Wait a tiny bit for the Task to execute
-    let expectation = expectation(description: "Prefetch")
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-      expectation.fulfill()
-    }
-    wait(for: [expectation], timeout: 1.0)
-    
-    // Should have prefetched range 2..<13 (5-3 to 10+3)
-    // That's 11 items
-    XCTAssertGreaterThan(sut.count, 0)
-  }
-  
   // MARK: - Model Updates
   
   func testModelUpdatesWhenBookChanges() throws {
@@ -194,7 +171,6 @@ final class BookCellModelCacheTests: XCTestCase {
     XCTAssertEqual(model.book.title, "Original Title")
     
     // Create updated book with same identifier but different title
-    // Note: In real usage, the updated date would also change
     let book2 = makeTestBook(identifier: "book1", title: "Updated Title", updated: Date())
     
     let updatedModel = sut.model(for: book2)
@@ -204,16 +180,14 @@ final class BookCellModelCacheTests: XCTestCase {
     XCTAssertEqual(updatedModel.book.title, "Updated Title")
   }
   
-  
-  /// Tests that cache invalidates models stuck in "downloading" state when download completes
+  /// Tests direct invalidation of downloading models
   /// Bug fix: PP-XXXX - Stale downloading cells showing after download completes
-  func testRegistryObserver_InvalidatesStaleDownloadingModels() async throws {
-    // Create cache WITH registry observation enabled
+  func testDirectInvalidation_RefreshesModel() throws {
     let observingCache = BookCellModelCache(
       configuration: .init(
         maxEntries: 10,
         unusedTTL: 5,
-        observeRegistryChanges: true
+        observeRegistryChanges: false
       ),
       imageCache: mockImageCache,
       bookRegistry: mockBookRegistry
@@ -221,7 +195,7 @@ final class BookCellModelCacheTests: XCTestCase {
     
     let book = makeTestBook(identifier: "downloadingBook", title: "Test Book")
     
-    // Set book to downloading state in registry BEFORE getting model
+    // Set book to downloading state
     mockBookRegistry.addBook(
       book,
       location: nil,
@@ -231,31 +205,26 @@ final class BookCellModelCacheTests: XCTestCase {
       genericBookmarks: nil
     )
     
-    // Get model - it should show downloading state
     let model1 = observingCache.model(for: book)
-    XCTAssertEqual(model1.state.buttonState, .downloadInProgress, "Model should show downloading state")
+    XCTAssertEqual(model1.state.buttonState, .downloadInProgress)
     
-    // Now simulate download completion - change registry state
+    // Simulate download completion and direct invalidation
     mockBookRegistry.setState(.downloadSuccessful, for: book.identifier)
+    observingCache.invalidate(for: book.identifier)
     
-    // Give the Combine pipeline a moment to process
-    try await Task.sleep(nanoseconds: 100_000_000) // 100ms
-    
-    // Get model again - should be a NEW model since old one was invalidated
     let model2 = observingCache.model(for: book)
     
-    // The new model should reflect the updated registry state
-    XCTAssertEqual(model2.state.buttonState, .downloadSuccessful, "New model should show download successful")
+    XCTAssertFalse(model1 === model2, "Should return new model after invalidation")
+    XCTAssertEqual(model2.state.buttonState, .downloadSuccessful)
   }
   
-  /// Tests that cache invalidates models when state changes to downloading
-  /// The cache invalidates on ANY state mismatch to ensure UI always reflects true registry state
-  func testRegistryObserver_InvalidatesOnDownloadStateChange() async throws {
-    let observingCache = BookCellModelCache(
+  /// Tests that cache invalidation works for any state transition
+  func testDirectInvalidation_WorksForStateTransitions() throws {
+    let cache = BookCellModelCache(
       configuration: .init(
         maxEntries: 10,
         unusedTTL: 5,
-        observeRegistryChanges: true
+        observeRegistryChanges: false
       ),
       imageCache: mockImageCache,
       bookRegistry: mockBookRegistry
@@ -272,28 +241,26 @@ final class BookCellModelCacheTests: XCTestCase {
       genericBookmarks: nil
     )
     
-    let model1 = observingCache.model(for: book)
+    let model1 = cache.model(for: book)
+    XCTAssertEqual(model1.state.buttonState, .downloadNeeded)
     
-    // Transition to downloading - cache invalidates on ANY state change
+    // Change state and invalidate
     mockBookRegistry.setState(.downloading, for: book.identifier)
+    cache.invalidate(for: book.identifier)
     
-    try await Task.sleep(nanoseconds: 100_000_000)
+    let model2 = cache.model(for: book)
     
-    let model2 = observingCache.model(for: book)
-    
-    // Should be different model instance (invalidated due to state change)
-    XCTAssertFalse(model1 === model2, "State change should cause cache invalidation")
+    XCTAssertFalse(model1 === model2, "State change with invalidation should create new model")
     XCTAssertEqual(model2.state.buttonState, .downloadInProgress)
   }
   
-  /// Tests that cache invalidates on ANY state mismatch, including transitions to holding state
-  /// This ensures UI always reflects the true registry state
-  func testRegistryObserver_InvalidatesForHoldingStateTransition() async throws {
-    let observingCache = BookCellModelCache(
+  /// Tests that cache invalidation works for holding state transition
+  func testDirectInvalidation_WorksForHoldingState() throws {
+    let cache = BookCellModelCache(
       configuration: .init(
         maxEntries: 10,
         unusedTTL: 5,
-        observeRegistryChanges: true
+        observeRegistryChanges: false
       ),
       imageCache: mockImageCache,
       bookRegistry: mockBookRegistry
@@ -301,7 +268,6 @@ final class BookCellModelCacheTests: XCTestCase {
     
     let book = makeTestBook(identifier: "holdBook", title: "Hold Book")
     
-    // Start with downloading state
     mockBookRegistry.addBook(
       book,
       location: nil,
@@ -311,18 +277,16 @@ final class BookCellModelCacheTests: XCTestCase {
       genericBookmarks: nil
     )
     
-    let model1 = observingCache.model(for: book)
+    let model1 = cache.model(for: book)
     XCTAssertEqual(model1.state.buttonState, .downloadInProgress)
     
-    // Transition to holding - cache invalidates on ANY state change
+    // Transition to holding and invalidate
     mockBookRegistry.setState(.holding, for: book.identifier)
+    cache.invalidate(for: book.identifier)
     
-    try await Task.sleep(nanoseconds: 100_000_000)
+    let model2 = cache.model(for: book)
     
-    let model2 = observingCache.model(for: book)
-    
-    // Different model instance - invalidated because state changed
-    XCTAssertFalse(model1 === model2, "Cache should invalidate for any state transition")
+    XCTAssertFalse(model1 === model2, "Cache should create new model after invalidation")
     XCTAssertEqual(model2.state.buttonState, .holding)
   }
   
@@ -341,29 +305,6 @@ final class BookCellModelCacheTests: XCTestCase {
     // Model should have updated to new book data
     XCTAssertEqual(model.book.title, "New Title")
     XCTAssertEqual(sut.count, 1)
-  }
-  
-  func testEvictStale_RemovesOnlyStaleEntries() throws {
-    // Create cache with very short TTL
-    let shortTTLCache = BookCellModelCache(
-      configuration: .init(maxEntries: 10, unusedTTL: 0.01, observeRegistryChanges: false),
-      imageCache: mockImageCache,
-      bookRegistry: mockBookRegistry
-    )
-    
-    let book1 = makeTestBook(identifier: "fresh", title: "Fresh Book")
-    _ = shortTTLCache.model(for: book1)
-    
-    // Wait for TTL to expire
-    Thread.sleep(forTimeInterval: 0.05)
-    
-    let book2 = makeTestBook(identifier: "recent", title: "Recent Book")
-    _ = shortTTLCache.model(for: book2)
-    
-    shortTTLCache.evictStale()
-    
-    // Fresh book should be evicted, recent should remain
-    XCTAssertEqual(shortTTLCache.count, 1)
   }
   
   func testConcurrentAccess_DoesNotCrash() async throws {

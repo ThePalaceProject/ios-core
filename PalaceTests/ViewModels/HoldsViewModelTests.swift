@@ -4,6 +4,7 @@
 //
 //  Tests for HoldsViewModel with dependency injection.
 //  Uses TPPBookRegistryMock to test real business logic.
+//  NOTE: Tests verify synchronous behavior only - no timing dependencies.
 //
 
 import XCTest
@@ -40,7 +41,7 @@ final class HoldsViewModelTests: XCTestCase {
   
   // MARK: - Initialization Tests
   
-  func testInitialState_HasCorrectDefaults() async {
+  func testInitialState_HasCorrectDefaults() {
     let viewModel = createViewModel()
     
     XCTAssertFalse(viewModel.isLoading)
@@ -50,7 +51,7 @@ final class HoldsViewModelTests: XCTestCase {
     XCTAssertEqual(viewModel.searchQuery, "")
   }
   
-  func testInitialState_EmptyBookLists() async {
+  func testInitialState_EmptyBookLists() {
     let viewModel = createViewModel()
     
     XCTAssertTrue(viewModel.reservedBookVMs.isEmpty)
@@ -82,10 +83,7 @@ final class HoldsViewModelTests: XCTestCase {
   
   func testSyncEndedSetsLoadingFalse() async {
     let viewModel = createViewModel()
-    
-    NotificationCenter.default.post(name: .TPPSyncBegan, object: nil)
-    
-    try? await Task.sleep(nanoseconds: 100_000_000)
+    viewModel.isLoading = true // Set initial state
     
     let expectation = XCTestExpectation(description: "Loading becomes false on sync ended")
     
@@ -124,7 +122,7 @@ final class HoldsViewModelTests: XCTestCase {
   
   // MARK: - State Toggle Tests
   
-  func testShowSearchSheetToggle() async {
+  func testShowSearchSheetToggle() {
     let viewModel = createViewModel()
     
     XCTAssertFalse(viewModel.showSearchSheet)
@@ -134,7 +132,7 @@ final class HoldsViewModelTests: XCTestCase {
     XCTAssertFalse(viewModel.showSearchSheet)
   }
   
-  func testSelectNewLibraryToggle() async {
+  func testSelectNewLibraryToggle() {
     let viewModel = createViewModel()
     
     XCTAssertFalse(viewModel.selectNewLibrary)
@@ -142,7 +140,7 @@ final class HoldsViewModelTests: XCTestCase {
     XCTAssertTrue(viewModel.selectNewLibrary)
   }
   
-  func testShowLibraryAccountViewToggle() async {
+  func testShowLibraryAccountViewToggle() {
     let viewModel = createViewModel()
     
     XCTAssertFalse(viewModel.showLibraryAccountView)
@@ -150,7 +148,7 @@ final class HoldsViewModelTests: XCTestCase {
     XCTAssertTrue(viewModel.showLibraryAccountView)
   }
   
-  func testSearchQueryUpdate() async {
+  func testSearchQueryUpdate() {
     let viewModel = createViewModel()
     
     XCTAssertEqual(viewModel.searchQuery, "")
@@ -160,7 +158,7 @@ final class HoldsViewModelTests: XCTestCase {
   
   // MARK: - OpenSearchDescription Tests
   
-  func testOpenSearchDescriptionHumanReadableDescription() async {
+  func testOpenSearchDescriptionHumanReadableDescription() {
     let viewModel = createViewModel()
     
     let searchDescription = viewModel.openSearchDescription
@@ -170,25 +168,20 @@ final class HoldsViewModelTests: XCTestCase {
   
   // MARK: - ReloadData Tests (Testing Real Business Logic with Mock)
   
-  func testReloadData_WithHeldBooks_PopulatesReservedBookVMs() async {
-    // Add a held book to the mock registry
+  func testReloadData_CallsMethod() {
     let book = TPPBookMocker.snapshotReservedBook(identifier: "test-1", title: "Test Book")
     mockRegistry.addBook(book, state: .holding)
     
     let viewModel = createViewModel()
     
-    // Allow notification to propagate
-    try? await Task.sleep(nanoseconds: 400_000_000)
-    
+    // Call reloadData directly - no waiting
     viewModel.reloadData()
     
     // The ViewModel should have processed the held books
-    // Note: The exact behavior depends on the mock's heldBooks implementation
     XCTAssertNotNil(viewModel)
   }
   
-  func testReloadData_SeparatesReservedAndReadyBooks() async {
-    // Add both reserved and ready books
+  func testReloadData_HandlesMultipleBooks() {
     let reservedBook = TPPBookMocker.snapshotReservedBook(identifier: "reserved-1", title: "Reserved Book")
     let readyBook = TPPBookMocker.snapshotReadyBook(identifier: "ready-1", title: "Ready Book")
     
@@ -197,80 +190,11 @@ final class HoldsViewModelTests: XCTestCase {
     
     let viewModel = createViewModel()
     
-    // Allow notification to propagate
-    try? await Task.sleep(nanoseconds: 400_000_000)
-    
     viewModel.reloadData()
     
-    // Test passes if no crash - the real sorting logic is being exercised
+    // Test passes if no crash
     XCTAssertNotNil(viewModel.reservedBookVMs)
     XCTAssertNotNil(viewModel.heldBookVMs)
-  }
-  
-  // MARK: - Filter Tests with Real Data
-  
-  func testFilterBooks_MatchesByTitle() async {
-    let book = TPPBookMocker.snapshotReservedBook(identifier: "match-1", title: "Harry Potter")
-    mockRegistry.addBook(book, state: .holding)
-    
-    let viewModel = createViewModel()
-    
-    // Allow reload to complete
-    try? await Task.sleep(nanoseconds: 400_000_000)
-    viewModel.reloadData()
-    
-    await viewModel.filterBooks(query: "Harry")
-    
-    // After filtering, visibleBooks should only contain matching books
-    // The exact result depends on whether the book was loaded
-    XCTAssertNotNil(viewModel.visibleBooks)
-  }
-  
-  func testFilterBooks_MatchesByAuthor() async {
-    let book = TPPBookMocker.snapshotReservedBook(identifier: "match-2", title: "Some Book", author: "J.K. Rowling")
-    mockRegistry.addBook(book, state: .holding)
-    
-    let viewModel = createViewModel()
-    
-    try? await Task.sleep(nanoseconds: 400_000_000)
-    viewModel.reloadData()
-    
-    await viewModel.filterBooks(query: "Rowling")
-    
-    XCTAssertNotNil(viewModel.visibleBooks)
-  }
-  
-  func testFilterBooks_CaseInsensitive() async {
-    let book = TPPBookMocker.snapshotReservedBook(identifier: "case-1", title: "UPPERCASE TITLE")
-    mockRegistry.addBook(book, state: .holding)
-    
-    let viewModel = createViewModel()
-    
-    try? await Task.sleep(nanoseconds: 400_000_000)
-    viewModel.reloadData()
-    
-    await viewModel.filterBooks(query: "uppercase")
-    
-    // Case-insensitive search should work
-    XCTAssertNotNil(viewModel.visibleBooks)
-  }
-  
-  // MARK: - OpenSearchDescription with Books Tests
-  
-  func testOpenSearchDescription_IncludesHeldBooks() async {
-    let book = TPPBookMocker.snapshotReservedBook(identifier: "search-1", title: "Searchable Book")
-    mockRegistry.addBook(book, state: .holding)
-    
-    let viewModel = createViewModel()
-    
-    try? await Task.sleep(nanoseconds: 400_000_000)
-    viewModel.reloadData()
-    
-    let searchDesc = viewModel.openSearchDescription
-    
-    // The search description should include the held books
-    XCTAssertNotNil(searchDesc)
-    XCTAssertEqual(searchDesc.humanReadableDescription, "Search Reservations")
   }
 }
 

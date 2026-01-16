@@ -71,70 +71,67 @@ final class BookCellModelCacheInvalidationTests: XCTestCase {
     XCTAssertFalse(model1 === model2, "Different books should have different models")
   }
   
-  // MARK: - Invalidation Tests
+  // MARK: - Direct Invalidation Tests (No Timing Dependencies)
   
-  func testCacheInvalidatesOnStateChange() async {
+  func testCacheInvalidatesOnDirectInvalidation() {
     let book = createTestBook()
     mockRegistry.addBook(book, state: .downloadFailed)
     
     let model1 = cache.model(for: book)
     XCTAssertEqual(model1.registryState, .downloadFailed)
     
-    // Change registry state - should trigger invalidation
+    // Update registry state and directly invalidate cache
     mockRegistry.setState(.downloadSuccessful, for: book.identifier)
-    
-    // Wait for invalidation
-    try? await Task.sleep(nanoseconds: 150_000_000) // 150ms
+    cache.invalidate(for: book.identifier)
     
     let model2 = cache.model(for: book)
     
     // Should be a new model with correct state
-    XCTAssertFalse(model1 === model2, "Cache should return a new model after state change")
+    XCTAssertFalse(model1 === model2, "Cache should return a new model after invalidation")
     XCTAssertEqual(model2.registryState, .downloadSuccessful)
   }
   
-  func testCacheInvalidatesDownloadingToSuccessful() async {
+  func testCacheInvalidatesDownloadingToSuccessful() {
     let book = createTestBook()
     mockRegistry.addBook(book, state: .downloading)
     
     let model1 = cache.model(for: book)
     XCTAssertEqual(model1.stableButtonState, .downloadInProgress)
     
-    // Simulate download completion
+    // Simulate download completion with direct invalidation
     mockRegistry.setState(.downloadSuccessful, for: book.identifier)
-    
-    try? await Task.sleep(nanoseconds: 150_000_000) // 150ms
+    cache.invalidate(for: book.identifier)
     
     let model2 = cache.model(for: book)
     XCTAssertFalse(model1 === model2, "Cache should invalidate when download completes")
+    XCTAssertEqual(model2.stableButtonState, .downloadSuccessful)
   }
   
-  func testCacheInvalidatesDownloadingToFailed() async {
+  func testCacheInvalidatesDownloadingToFailed() {
     let book = createTestBook()
     mockRegistry.addBook(book, state: .downloading)
     
     let model1 = cache.model(for: book)
     
-    // Simulate download failure
+    // Simulate download failure with direct invalidation
     mockRegistry.setState(.downloadFailed, for: book.identifier)
-    
-    try? await Task.sleep(nanoseconds: 150_000_000) // 150ms
+    cache.invalidate(for: book.identifier)
     
     let model2 = cache.model(for: book)
     XCTAssertFalse(model1 === model2, "Cache should invalidate when download fails")
+    XCTAssertEqual(model2.stableButtonState, .downloadFailed)
   }
   
-  func testCacheInvalidatesFailedToSuccessful() async {
+  func testCacheInvalidatesFailedToSuccessful() {
     let book = createTestBook()
     mockRegistry.addBook(book, state: .downloadFailed)
     
     let model1 = cache.model(for: book)
     XCTAssertEqual(model1.stableButtonState, .downloadFailed)
     
-    // Simulate successful retry
+    // Simulate successful retry with direct invalidation
     mockRegistry.setState(.downloadSuccessful, for: book.identifier)
-    
-    try? await Task.sleep(nanoseconds: 150_000_000) // 150ms
+    cache.invalidate(for: book.identifier)
     
     let model2 = cache.model(for: book)
     

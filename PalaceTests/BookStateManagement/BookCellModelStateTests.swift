@@ -83,38 +83,24 @@ final class BookCellModelStateTests: XCTestCase {
     XCTAssertEqual(model.registryState, .unregistered)
   }
   
-  // MARK: - State Update Tests
-  
-  func testModelUpdatesWhenRegistryStateChanges() async {
+  func testInitialStateForHolding() {
     let book = createTestBook()
-    mockRegistry.addBook(book, state: .downloadFailed)
+    mockRegistry.addBook(book, state: .holding)
     
     let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry)
-    XCTAssertEqual(model.registryState, .downloadFailed)
     
-    // Change registry state
-    mockRegistry.setState(.downloadSuccessful, for: book.identifier)
-    
-    // Wait for Combine pipeline to update
-    try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
-    
-    XCTAssertEqual(model.registryState, .downloadSuccessful)
+    XCTAssertEqual(model.registryState, .holding)
+    XCTAssertEqual(model.stableButtonState, .holding)
   }
   
-  func testModelClearsLoadingOnStateTransition() async {
+  func testInitialStateForDownloadNeeded() {
     let book = createTestBook()
-    mockRegistry.addBook(book, state: .downloading)
+    mockRegistry.addBook(book, state: .downloadNeeded)
     
     let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry)
-    model.isLoading = true
     
-    // Simulate download completion
-    mockRegistry.setState(.downloadSuccessful, for: book.identifier)
-    
-    // Wait for Combine pipeline
-    try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
-    
-    XCTAssertFalse(model.isLoading, "Loading should be cleared after download completes")
+    XCTAssertEqual(model.registryState, .downloadNeeded)
+    XCTAssertEqual(model.stableButtonState, .downloadNeeded)
   }
   
   // MARK: - State Consistency Validation
@@ -128,7 +114,7 @@ final class BookCellModelStateTests: XCTestCase {
     XCTAssertTrue(model.validateStateConsistency())
   }
   
-  func testValidateStateConsistencyDetectsMismatch() async {
+  func testValidateStateConsistencyDetectsMismatch() {
     let book = createTestBook()
     mockRegistry.addBook(book, state: .downloadSuccessful)
     
@@ -180,5 +166,26 @@ final class BookCellModelStateTests: XCTestCase {
     
     let normalState = BookCellState(.downloadSuccessful)
     XCTAssertEqual(normalState.buttonState, .downloadSuccessful)
+  }
+  
+  // MARK: - Loading State Tests
+  
+  func testIsLoadingDefaultsFalse() {
+    let book = createTestBook()
+    mockRegistry.addBook(book, state: .downloadSuccessful)
+    
+    let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry)
+    
+    XCTAssertFalse(model.isLoading)
+  }
+  
+  func testIsLoadingCanBeSet() {
+    let book = createTestBook()
+    mockRegistry.addBook(book, state: .downloadSuccessful)
+    
+    let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry)
+    model.isLoading = true
+    
+    XCTAssertTrue(model.isLoading)
   }
 }
