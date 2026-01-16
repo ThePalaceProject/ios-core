@@ -165,6 +165,10 @@ actor DownloadCoordinator {
     setupNetworkMonitoring()
   }
   
+  deinit {
+    session?.invalidateAndCancel()
+  }
+  
   /// Legacy callback-based borrow method - wraps the modern async implementation
   func startBorrow(for book: TPPBook, attemptDownload shouldAttemptDownload: Bool, borrowCompletion: (() -> Void)? = nil) {
     Task {
