@@ -30,6 +30,7 @@ struct EPUBSearchView: View {
             .foregroundColor(.primary)
             .padding(.trailing, 8)
         }
+        .accessibilityLabel(Strings.Generic.goBack)
         Text(Strings.Generic.search)
           .font(.headline)
         Spacer()
@@ -56,6 +57,7 @@ struct EPUBSearchView: View {
           .foregroundColor(Color.gray)
           .padding(.leading, 5)
       }
+      .accessibilityLabel(Strings.Generic.clearSearch)
     }
     .padding()
     .background(Color(.secondarySystemBackground))

@@ -285,4 +285,144 @@ final class CatalogLaneMoreViewModelTests: XCTestCase {
     
     XCTAssertFalse(viewModel.isApplyingFilters)
   }
+  
+  // MARK: - Active Filters Count Tests
+  
+  /// Tests activeFiltersCount with properly formatted selections
+  /// Format: "groupName|filterTitle" - filters out "all" default titles
+  func testActiveFiltersCount_WithAppliedSelections() {
+    let viewModel = createViewModel()
+    
+    // Use format expected by CatalogFilterService: "groupName|filterTitle"
+    // Note: "all" titles are filtered out, so use specific filter names
+    viewModel.appliedSelections = Set(["Format|eBook", "Availability|Available Now"])
+    
+    XCTAssertEqual(viewModel.activeFiltersCount, 2)
+  }
+  
+  func testActiveFiltersCount_AfterClearingSelections() {
+    let viewModel = createViewModel()
+    
+    // Use format expected by CatalogFilterService
+    viewModel.appliedSelections = Set(["Format|eBook"])
+    XCTAssertEqual(viewModel.activeFiltersCount, 1)
+    
+    viewModel.appliedSelections.removeAll()
+    XCTAssertEqual(viewModel.activeFiltersCount, 0)
+  }
+  
+  func testActiveFiltersCount_FiltersOutAllDefaults() {
+    let viewModel = createViewModel()
+    
+    // "all" titles are filtered out by the service
+    viewModel.appliedSelections = Set(["Format|All", "Availability|All Formats"])
+    
+    XCTAssertEqual(viewModel.activeFiltersCount, 0, "Default 'all' selections should not count")
+  }
+  
+  // MARK: - Pagination Tests
+  
+  func testPagination_NextPageURLCanBeSet() {
+    let viewModel = createViewModel()
+    let nextPageURL = URL(string: "https://example.com/feed?page=2")
+    
+    viewModel.nextPageURL = nextPageURL
+    
+    XCTAssertEqual(viewModel.nextPageURL, nextPageURL)
+    XCTAssertTrue(viewModel.shouldShowPagination)
+  }
+  
+  func testPagination_ClearedWhenNil() {
+    let viewModel = createViewModel()
+    viewModel.nextPageURL = URL(string: "https://example.com/feed?page=2")
+    
+    viewModel.nextPageURL = nil
+    
+    XCTAssertNil(viewModel.nextPageURL)
+    XCTAssertFalse(viewModel.shouldShowPagination)
+  }
+  
+  // MARK: - Books List Tests
+  
+  func testAllBooks_EmptyWhenNoData() {
+    let viewModel = createViewModel()
+    
+    XCTAssertTrue(viewModel.allBooks.isEmpty)
+  }
+  
+  func testAllBooks_CombinesMultipleLanes() {
+    let viewModel = createViewModel()
+    
+    let book1 = TPPBookMocker.mockBook(identifier: "book1", title: "Book 1")
+    let book2 = TPPBookMocker.mockBook(identifier: "book2", title: "Book 2")
+    let book3 = TPPBookMocker.mockBook(identifier: "book3", title: "Book 3")
+    
+    viewModel.lanes = [
+      CatalogLaneModel(title: "Lane 1", books: [book1, book2], moreURL: nil),
+      CatalogLaneModel(title: "Lane 2", books: [book3], moreURL: nil)
+    ]
+    
+    XCTAssertEqual(viewModel.allBooks.count, 3)
+  }
+  
+  // MARK: - Error Handling Tests
+  
+  func testError_CanBeSet() {
+    let viewModel = createViewModel()
+    
+    viewModel.error = "Connection failed"
+    
+    XCTAssertEqual(viewModel.error, "Connection failed")
+  }
+  
+  func testError_CanBeCleared() {
+    let viewModel = createViewModel()
+    viewModel.error = "Some error"
+    
+    viewModel.error = nil
+    
+    XCTAssertNil(viewModel.error)
+  }
+  
+  // MARK: - Filter Groups Tests
+  
+  func testFacetGroups_MultipleGroups() {
+    let viewModel = createViewModel()
+    
+    let formatGroup = CatalogFilterGroup(
+      id: "format",
+      name: "Format",
+      filters: [
+        CatalogFilter(id: "ebook", title: "eBook", href: nil, active: false),
+        CatalogFilter(id: "audiobook", title: "Audiobook", href: nil, active: false)
+      ]
+    )
+    
+    let availabilityGroup = CatalogFilterGroup(
+      id: "availability",
+      name: "Availability",
+      filters: [
+        CatalogFilter(id: "now", title: "Available Now", href: nil, active: true),
+        CatalogFilter(id: "all", title: "All", href: nil, active: false)
+      ]
+    )
+    
+    viewModel.facetGroups = [formatGroup, availabilityGroup]
+    
+    XCTAssertEqual(viewModel.facetGroups.count, 2)
+  }
+  
+  // MARK: - Title Tests
+  
+  func testTitle_WithSpecialCharacters() {
+    let viewModel = createViewModel(title: "New & Popular 📚")
+    
+    XCTAssertEqual(viewModel.title, "New & Popular 📚")
+  }
+  
+  func testTitle_Empty() {
+    let viewModel = createViewModel(title: "")
+    
+    XCTAssertEqual(viewModel.title, "")
+  }
 }

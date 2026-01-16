@@ -156,4 +156,84 @@ final class FacetViewModelTests: XCTestCase {
     // Just verify access doesn't crash
     _ = viewModel.logo
   }
+  
+  // MARK: - Edge Case Tests
+  
+  func testChangingSortMultipleTimes() {
+    let viewModel = FacetViewModel(groupName: "Test", facets: [.author, .title])
+    
+    // Rapidly change sort multiple times
+    viewModel.activeSort = .title
+    viewModel.activeSort = .author
+    viewModel.activeSort = .title
+    viewModel.activeSort = .author
+    
+    XCTAssertEqual(viewModel.activeSort, .author)
+  }
+  
+  func testSettingSameSortValue() {
+    let viewModel = FacetViewModel(groupName: "Test", facets: [.author, .title])
+    
+    let expectation = XCTestExpectation(description: "activeSort should publish")
+    expectation.expectedFulfillmentCount = 1
+    
+    viewModel.$activeSort
+      .dropFirst()
+      .sink { _ in
+        expectation.fulfill()
+      }
+      .store(in: &cancellables)
+    
+    // Setting same value should still publish
+    viewModel.activeSort = .title
+    
+    wait(for: [expectation], timeout: 1.0)
+  }
+  
+  func testEmptyGroupName() {
+    let viewModel = FacetViewModel(groupName: "", facets: [.author, .title])
+    
+    XCTAssertEqual(viewModel.groupName, "")
+    XCTAssertEqual(viewModel.facets.count, 2)
+  }
+  
+  func testGroupNameWithSpecialCharacters() {
+    let groupName = "My Books 📚 & More!"
+    let viewModel = FacetViewModel(groupName: groupName, facets: [.author, .title])
+    
+    XCTAssertEqual(viewModel.groupName, groupName)
+  }
+  
+  func testUpdatingFacetsDoesNotChangeActiveSort() {
+    let viewModel = FacetViewModel(groupName: "Test", facets: [.author, .title])
+    viewModel.activeSort = .title
+    
+    // Update facets but keep same values
+    viewModel.facets = [.author, .title]
+    
+    XCTAssertEqual(viewModel.activeSort, .title)
+  }
+  
+  // MARK: - Publisher Subscription Tests
+  
+  func testMultipleSubscribersToActiveSort() {
+    let viewModel = FacetViewModel(groupName: "Test", facets: [.author, .title])
+    
+    let exp1 = XCTestExpectation(description: "First subscriber")
+    let exp2 = XCTestExpectation(description: "Second subscriber")
+    
+    viewModel.$activeSort
+      .dropFirst()
+      .sink { _ in exp1.fulfill() }
+      .store(in: &cancellables)
+    
+    viewModel.$activeSort
+      .dropFirst()
+      .sink { _ in exp2.fulfill() }
+      .store(in: &cancellables)
+    
+    viewModel.activeSort = .title
+    
+    wait(for: [exp1, exp2], timeout: 1.0)
+  }
 }

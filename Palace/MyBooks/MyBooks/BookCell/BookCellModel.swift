@@ -183,10 +183,14 @@ class BookCellModel: ObservableObject {
     isLoading = true
     
     bookRegistry.thumbnailImage(for: self.book) { [weak self] fetchedImage in
-      guard let self = self, let fetchedImage else { return }
-      self.setImageAndCache(fetchedImage)
+      guard let self else { return }
+      // Always clear loading state, even if image fetch failed
       self.isLoading = false
       self.isFetchingImage = false
+      
+      if let fetchedImage {
+        self.setImageAndCache(fetchedImage)
+      }
     }
   }
   
@@ -253,6 +257,49 @@ class BookCellModel: ObservableObject {
       // then emits the latest value after the interval. Debounce waits for silence.
       .throttle(for: .milliseconds(50), scheduler: RunLoop.main, latest: true)
       .assign(to: &$stableButtonState)
+  }
+  
+  // MARK: - State Consistency Validation
+  
+  /// Validates that the model's state is consistent with the registry.
+  /// This is useful for debugging state inconsistency issues.
+  ///
+  /// - Returns: true if state is consistent, false if there's a mismatch
+  @discardableResult
+  func validateStateConsistency() -> Bool {
+    let currentRegistryState = bookRegistry.state(for: book.identifier)
+    let expectedButtonState = computeButtonState(book: book, registryState: currentRegistryState, isManagingHold: isManagingHold)
+    
+    let isConsistent = stableButtonState == expectedButtonState && registryState == currentRegistryState
+    
+    #if DEBUG
+    if !isConsistent {
+      Log.warn(#file, """
+        ⚠️ STATE INCONSISTENCY DETECTED for '\(book.title)'
+        Book ID: \(book.identifier)
+        Model registryState: \(registryState.stringValue())
+        Actual registryState: \(currentRegistryState.stringValue())
+        Model buttonState: \(stableButtonState)
+        Expected buttonState: \(expectedButtonState)
+        """)
+      
+      // Track for analytics
+      TPPErrorLogger.logError(
+        withCode: .bookStateInconsistency,
+        summary: "BookCellModel state mismatch",
+        metadata: [
+          "bookId": book.identifier,
+          "bookTitle": book.title,
+          "modelRegistryState": registryState.stringValue(),
+          "actualRegistryState": currentRegistryState.stringValue(),
+          "modelButtonState": String(describing: stableButtonState),
+          "expectedButtonState": String(describing: expectedButtonState)
+        ]
+      )
+    }
+    #endif
+    
+    return isConsistent
   }
   
   @objc private func updateButtons() {

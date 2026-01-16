@@ -77,6 +77,7 @@ struct EPUBReaderView: View {
         .padding(16)
     }
     .buttonStyle(.plain)
+    .accessibilityLabel(Strings.Generic.closeSample)
   }
   
   @MainActor

@@ -96,6 +96,10 @@ final class CatalogViewModel: ObservableObject {
         } else if !mapped.ungroupedBooks.isEmpty {
           await self.prefetchThumbnails(for: Array(mapped.ungroupedBooks.prefix(20)))
         }
+      } catch is CancellationError {
+        // Task was cancelled (e.g., view disappeared during rotation) - don't show error
+        Log.debug(#file, "Catalog load was cancelled")
+        return
       } catch {
         guard !Task.isCancelled else { return }
         Log.error(#file, "Failed to load catalog: \(error.localizedDescription)")

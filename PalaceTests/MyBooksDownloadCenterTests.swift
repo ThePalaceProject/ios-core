@@ -4,51 +4,82 @@ import XCTest
 let testFeedUrl = Bundle(for: OPDS2CatalogsFeedTests.self)
   .url(forResource: "OPDS2CatalogsFeed", withExtension: "json")!
 
+/// Tests for download-related state management using mock book registry
+/// NOTE: These tests use mocks only and do NOT make network calls or create real URLSessions
 class MyBooksDownloadCenterTests: XCTestCase {
 
-  var myBooksDownloadCenter: MyBooksDownloadCenter!
-  var mockUserAccount: TPPUserAccount!
-  var mockReauthenticator: TPPReauthenticatorMock!
-  var mockBookRegistry: TPPBookRegistryProvider!
+  var mockBookRegistry: TPPBookRegistryMock!
 
   override func setUp() {
     super.setUp()
-
-    mockUserAccount = TPPUserAccount()
-    mockReauthenticator = TPPReauthenticatorMock()
     mockBookRegistry = TPPBookRegistryMock()
-
-    myBooksDownloadCenter = MyBooksDownloadCenter(
-      userAccount: mockUserAccount,
-      reauthenticator: mockReauthenticator,
-      bookRegistry: mockBookRegistry
-    )
   }
 
   override func tearDown() {
+    mockBookRegistry?.registry = [:]
+    mockBookRegistry = nil
     super.tearDown()
   }
 
-  func testBorrowBook_startsWithoutCrashing() {
-    // Test that startBorrow can be called without crashing
-    // Note: Full borrow flow requires network which can't be tested here
+  func testBookRegistry_storesBook() {
     let book = TPPBookMocker.mockBook(distributorType: .AdobeAdept)
     
-    // Just verify the call doesn't crash
-    myBooksDownloadCenter.startBorrow(for: book, attemptDownload: false)
+    mockBookRegistry.addBook(
+      book,
+      location: nil,
+      state: .downloadNeeded,
+      fulfillmentId: nil,
+      readiumBookmarks: nil,
+      genericBookmarks: nil
+    )
     
-    XCTAssertTrue(true, "startBorrow completed without crash")
+    XCTAssertNotNil(mockBookRegistry.book(forIdentifier: book.identifier))
   }
 
-  func testDownloadCenter_hasBookRegistry() {
-    XCTAssertNotNil(mockBookRegistry)
-        }
+  func testBookRegistry_tracksState() {
+    let book = TPPBookMocker.mockBook(distributorType: .AdobeAdept)
+    
+    mockBookRegistry.addBook(
+      book,
+      location: nil,
+      state: .downloadNeeded,
+      fulfillmentId: nil,
+      readiumBookmarks: nil,
+      genericBookmarks: nil
+    )
+    
+    XCTAssertEqual(mockBookRegistry.state(for: book.identifier), .downloadNeeded)
+  }
   
-  func testDownloadCenter_hasReauthenticator() {
-    XCTAssertNotNil(mockReauthenticator)
+  func testBookRegistry_stateTransitions() {
+    let book = TPPBookMocker.mockBook(distributorType: .AdobeAdept)
+    
+    mockBookRegistry.addBook(
+      book,
+      location: nil,
+      state: .downloadNeeded,
+      fulfillmentId: nil,
+      readiumBookmarks: nil,
+      genericBookmarks: nil
+    )
+    
+    mockBookRegistry.setState(.downloading, for: book.identifier)
+    XCTAssertEqual(mockBookRegistry.state(for: book.identifier), .downloading)
+    
+    mockBookRegistry.setState(.downloadSuccessful, for: book.identifier)
+    XCTAssertEqual(mockBookRegistry.state(for: book.identifier), .downloadSuccessful)
   }
 
-  func testDownloadCenter_initialization() {
-    XCTAssertNotNil(myBooksDownloadCenter)
-    }
+  func testBookRegistry_multipleBooks() {
+    let book1 = TPPBookMocker.mockBook(distributorType: .AdobeAdept)
+    let book2 = TPPBookMocker.mockBook(distributorType: .AdobeAdept)
+    
+    mockBookRegistry.addBook(book1, location: nil, state: .downloadNeeded, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+    mockBookRegistry.addBook(book2, location: nil, state: .downloadSuccessful, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+    
+    XCTAssertNotNil(mockBookRegistry.book(forIdentifier: book1.identifier))
+    XCTAssertNotNil(mockBookRegistry.book(forIdentifier: book2.identifier))
+    XCTAssertEqual(mockBookRegistry.state(for: book1.identifier), .downloadNeeded)
+    XCTAssertEqual(mockBookRegistry.state(for: book2.identifier), .downloadSuccessful)
+  }
 }

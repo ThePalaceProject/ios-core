@@ -71,6 +71,7 @@ final class BookCellModelCache: ObservableObject {
   // MARK: - Initialization
   
   private var memoryWarningObserver: NSObjectProtocol?
+  private var accountChangeObserver: NSObjectProtocol?
   
   public init(
     configuration: Configuration = .default,
@@ -86,12 +87,16 @@ final class BookCellModelCache: ObservableObject {
     }
     
     setupMemoryWarningObserver()
+    setupAccountChangeObserver()
     startPeriodicCleanup()
   }
   
   deinit {
     cleanupTask?.cancel()
     if let observer = memoryWarningObserver {
+      NotificationCenter.default.removeObserver(observer)
+    }
+    if let observer = accountChangeObserver {
       NotificationCenter.default.removeObserver(observer)
     }
   }
@@ -106,6 +111,25 @@ final class BookCellModelCache: ObservableObject {
     }
   }
   
+  private func setupAccountChangeObserver() {
+    accountChangeObserver = NotificationCenter.default.addObserver(
+      forName: NSNotification.Name.TPPCurrentAccountDidChange,
+      object: nil,
+      queue: .main
+    ) { [weak self] _ in
+      self?.handleAccountChange()
+    }
+  }
+  
+  private func handleAccountChange() {
+    // Clear all cached models when switching libraries
+    // The new library has different books, so old models are useless
+    let previousCount = cache.count
+    cache.removeAll()
+    accessOrder.removeAll()
+    Log.info(#file, "BookCellModelCache: Cleared \(previousCount) entries after account change")
+  }
+  
   // MARK: - Public API
   
   /// Gets or creates a BookCellModel for the given book
@@ -113,17 +137,14 @@ final class BookCellModelCache: ObservableObject {
   public func model(for book: TPPBook) -> BookCellModel {
     let key = book.identifier
     
-    // Check cache
     if var entry = cache[key] {
-      // Update book data if changed
-      if entry.model.book.updated != book.updated {
-        entry.model.book = book
-      }
-      
-      // Update access time
       entry.lastAccessed = Date()
       cache[key] = entry
       updateAccessOrder(key)
+      
+      if book.updated > entry.model.book.updated {
+        entry.model.book = book
+      }
       
       return entry.model
     }
@@ -210,18 +231,18 @@ final class BookCellModelCache: ObservableObject {
   }
   
   private func setupRegistryObserver() {
-    // Observe book state changes and invalidate models that are stuck showing "downloading"
-    // when the download has actually completed. This fixes the bug where navigating to
-    // My Books after a download shows the old downloading cell.
+    // Observe book state changes and invalidate models when registry state doesn't match model state.
+    // This ensures UI always reflects the true state from the registry.
     bookRegistry.bookStatePublisher
       .sink { [weak self] (identifier, newState) in
         guard let self, let entry = self.cache[identifier] else { return }
         
-        // Only invalidate if model shows "downloading" but registry says download is done
-        let modelShowsDownloading = entry.model.state.buttonState == .downloadInProgress
-        let downloadFinished = newState == .downloadSuccessful || newState == .downloadFailed || newState == .downloadNeeded
+        let modelRegistryState = entry.model.registryState
         
-        if modelShowsDownloading && downloadFinished {
+        // Invalidate if model's registry state doesn't match the actual registry state
+        // This catches ALL state mismatches, not just downloading → finished transitions
+        if modelRegistryState != newState {
+          Log.debug(#file, "Cache invalidating '\(identifier)': model state=\(modelRegistryState.stringValue()) registry state=\(newState.stringValue())")
           self.invalidate(for: identifier)
         }
       }

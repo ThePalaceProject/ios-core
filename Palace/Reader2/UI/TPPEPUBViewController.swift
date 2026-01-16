@@ -24,6 +24,7 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     self.preferences = preferences
 
     self.searchButton = UIBarButtonItem(barButtonSystemItem: .search, target: nil, action: #selector(presentEPUBSearch))
+    self.searchButton.accessibilityLabel = Strings.Generic.searchInBook
     
     // Use zero insets - letterbox container in base class handles spacing
     let contentInset: [UIUserInterfaceSizeClass: EPUBContentInsets] = [
@@ -98,6 +99,7 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
 
     if navigationItem.leftBarButtonItem == nil {
        let backItem = UIBarButtonItem(image: UIImage(systemName: "chevron.left"), style: .plain, target: self, action: #selector(closeEPUB))
+       backItem.accessibilityLabel = Strings.Generic.goBack
        navigationItem.leftBarButtonItem = backItem
      }
 

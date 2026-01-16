@@ -165,6 +165,10 @@ actor DownloadCoordinator {
     setupNetworkMonitoring()
   }
   
+  deinit {
+    session?.invalidateAndCancel()
+  }
+  
   /// Legacy callback-based borrow method - wraps the modern async implementation
   func startBorrow(for book: TPPBook, attemptDownload shouldAttemptDownload: Bool, borrowCompletion: (() -> Void)? = nil) {
     Task {
@@ -970,7 +974,13 @@ extension MyBooksDownloadCenter {
             } else if errorType == TPPProblemDocument.TypeInvalidCredentials {
               NSLog("Invalid credentials problem when returning a book, present sign in VC")
               self.reauthenticator.authenticateIfNeeded(self.userAccount, usingExistingCredentials: false) { [weak self] in
-                self?.returnBook(withIdentifier: identifier, completion: completion)
+                guard let self = self else { return }
+                // Only retry if user successfully authenticated; if they cancelled, just complete
+                if self.userAccount.hasCredentials() {
+                  self.returnBook(withIdentifier: identifier, completion: completion)
+                } else {
+                  runOnMainAsync { completion?() }
+                }
               }
             }
           } else {
@@ -1323,9 +1333,12 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
           
           // If user has credentials but got 401, this is a session/token expiry issue
           if hasCredentials {
+            // Mark credentials as stale - preserves Adobe DRM activation
+            self.userAccount.markCredentialsStale()
+            
             if authDef?.isSaml == true {
               // SAML cookies expired - need to re-auth via IDP
-              Log.info(#file, "SAML session expired - triggering SAML re-auth flow")
+              Log.info(#file, "SAML session expired - marking credentials stale and triggering re-auth flow")
               
               Task {
                 // Clear download tracking completely
@@ -1355,6 +1368,11 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
               authenticationCompletion: { [weak self] in
                 Task { @MainActor [weak self] in
                   guard let self else { return }
+                  // Only retry if user successfully authenticated; if they cancelled, bail out
+                  guard self.userAccount.hasCredentials() else {
+                    Log.info(#file, "Authentication cancelled, not retrying download for \(book.identifier)")
+                    return
+                  }
                   Log.info(#file, "Authentication completed, retrying download for \(book.identifier)")
                   self.startDownload(for: book)
                 }
@@ -1371,6 +1389,11 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
             authenticationCompletion: { [weak self] in
               Task { @MainActor [weak self] in
                 guard let self else { return }
+                // Only retry if user successfully authenticated; if they cancelled, bail out
+                guard self.userAccount.hasCredentials() else {
+                  Log.info(#file, "Authentication cancelled, not retrying download for \(book.identifier)")
+                  return
+                }
                 self.startDownload(for: book)
               }
             }
@@ -2034,7 +2057,15 @@ extension MyBooksDownloadCenter {
     }
     
     if success {
-      bookRegistry.setState(.downloadSuccessful, for: book.identifier)
+      // Verify file exists and is not empty before marking as successful
+      if validateDownloadedFile(at: finalFileURL, for: book) {
+        bookRegistry.setState(.downloadSuccessful, for: book.identifier)
+      } else {
+        logBookDownloadFailure(book, reason: "File validation failed after move", downloadTask: downloadTask, metadata: [
+          "finalFileURL": finalFileURL.absoluteString
+        ])
+        success = false
+      }
     } else if let moveError = moveError {
       logBookDownloadFailure(book, reason: "Couldn't move book to final disk location", downloadTask: downloadTask, metadata: [
         "moveError": moveError,
@@ -2045,6 +2076,36 @@ extension MyBooksDownloadCenter {
     }
     
     return success
+  }
+  
+  /// Validates that a downloaded file exists and is not empty before marking download as successful.
+  /// This prevents false "downloadSuccessful" states when files are corrupted or missing.
+  ///
+  /// - Parameters:
+  ///   - fileURL: The URL where the file should exist
+  ///   - book: The book being downloaded (for logging)
+  /// - Returns: true if the file exists and is not empty
+  private func validateDownloadedFile(at fileURL: URL, for book: TPPBook) -> Bool {
+    let fileManager = FileManager.default
+    
+    guard fileManager.fileExists(atPath: fileURL.path) else {
+      Log.error(#file, "📚 ❌ Downloaded file missing at \(fileURL.path) for '\(book.title)'")
+      return false
+    }
+    
+    do {
+      let attributes = try fileManager.attributesOfItem(atPath: fileURL.path)
+      guard let fileSize = attributes[.size] as? Int, fileSize > 0 else {
+        Log.error(#file, "📚 ❌ Downloaded file is empty at \(fileURL.path) for '\(book.title)'")
+        return false
+      }
+      
+      Log.debug(#file, "📚 ✓ Downloaded file validated: \(fileURL.lastPathComponent) (\(fileSize) bytes)")
+      return true
+    } catch {
+      Log.error(#file, "📚 ❌ Failed to get file attributes at \(fileURL.path): \(error)")
+      return false
+    }
   }
   
   private func replaceBook(_ book: TPPBook, withFileAtURL sourceLocation: URL, forDownloadTask downloadTask: URLSessionDownloadTask) -> Bool {
@@ -2065,6 +2126,12 @@ extension MyBooksDownloadCenter {
         let _ = try fileManager.replaceItemAt(destURL, withItemAt: sourceLocation, options: .usingNewMetadataOnly)
       } else {
         try fileManager.moveItem(at: sourceLocation, to: destURL)
+      }
+      
+      // Validate file exists and is not empty before marking as successful
+      guard validateDownloadedFile(at: destURL, for: book) else {
+        Log.error(#file, "📚 ❌ File validation failed after replace/move for '\(book.title)'")
+        return false
       }
       
       // Note: For LCP audiobooks, state is set in fulfillLCPLicense after license is ready

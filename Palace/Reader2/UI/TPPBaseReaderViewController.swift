@@ -303,7 +303,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
                                     style: .plain,
                                     target: self,
                                     action: #selector(presentPositionsVC))
-    tocButton.accessibilityLabel = Strings.Accessibility.viewBookmarksAndTocButton
+    tocButton.accessibilityLabel = Strings.Generic.tableOfContents
 
     if !isShowingSample {
       buttons.append(bookmarkBtn)

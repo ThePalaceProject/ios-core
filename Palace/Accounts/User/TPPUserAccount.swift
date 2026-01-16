@@ -17,6 +17,7 @@ private enum StorageKey: String {
   case credentials = "TPPAccountCredentialsKey"
   case authDefinition = "TPPAccountAuthDefinitionKey"
   case cookies = "TPPAccountAuthCookiesKey"
+  case authState = "TPPAccountAuthStateKey"
 
   func keyForLibrary(uuid libraryUUID: String?) -> String {
     guard
@@ -62,6 +63,7 @@ private enum StorageKey: String {
       _credentials.key = StorageKey.credentials.keyForLibrary(uuid: libraryUUID)
       _authDefinition.key = StorageKey.authDefinition.keyForLibrary(uuid: libraryUUID)
       _cookies.key = StorageKey.cookies.keyForLibrary(uuid: libraryUUID)
+      _authState.key = StorageKey.authState.keyForLibrary(uuid: libraryUUID)
       
       // Legacy
       _barcode.key = StorageKey.barcode.keyForLibrary(uuid: libraryUUID)
@@ -234,6 +236,9 @@ private enum StorageKey: String {
   private lazy var _cookies: TPPKeychainVariable<[HTTPCookie]> = StorageKey.cookies
     .keyForLibrary(uuid: libraryUUID)
     .asKeychainVariable(with: accountInfoQueue)
+  private lazy var _authState: TPPKeychainCodableVariable<TPPAccountAuthState> = StorageKey.authState
+    .keyForLibrary(uuid: libraryUUID)
+    .asKeychainCodableVariable(with: accountInfoQueue)
 
   // Legacy
   private lazy var _barcode: TPPKeychainVariable<String> = StorageKey.barcode
@@ -375,6 +380,22 @@ private enum StorageKey: String {
   var adobeToken: String? { _adobeToken.read() }
   var licensor: [String:Any]? { _licensor.read() }
   var cookies: [HTTPCookie]? { _cookies.read() }
+  
+  /// The current authentication state of this account.
+  /// Computed based on stored auth state and credentials.
+  var authState: TPPAccountAuthState {
+    // If we have stored auth state, use it
+    if let storedState = _authState.read() {
+      // Validate: if state is loggedIn or credentialsStale but no credentials, reset to loggedOut
+      if storedState.hasStoredCredentials && !hasCredentials() {
+        return .loggedOut
+      }
+      return storedState
+    }
+    
+    // No stored state - derive from credentials
+    return hasCredentials() ? .loggedIn : .loggedOut
+  }
 
   var authToken: String? {
     if let credentials = _credentials.read(),
@@ -531,6 +552,35 @@ private enum StorageKey: String {
     _deviceID.write(id)
     notifyAccountDidChange()
   }
+  
+  /// Sets the authentication state of the account.
+  /// - Parameter state: The new authentication state.
+  func setAuthState(_ state: TPPAccountAuthState) {
+    Log.info(#file, "Setting auth state: \(authState) → \(state)")
+    _authState.write(state)
+    
+    // Update Combine publisher
+    Task { @MainActor in
+      UserAccountPublisher.shared.updateState(from: self)
+    }
+    
+    notifyAccountDidChange()
+  }
+  
+  /// Marks the account credentials as stale (e.g., after receiving a 401).
+  /// This preserves Adobe DRM activation while signaling that re-authentication is needed.
+  func markCredentialsStale() {
+    guard authState == .loggedIn else {
+      Log.debug(#file, "Cannot mark credentials stale - current state is \(authState)")
+      return
+    }
+    setAuthState(.credentialsStale)
+  }
+  
+  /// Marks the account as fully logged in (e.g., after successful re-authentication).
+  func markLoggedIn() {
+    setAuthState(.loggedIn)
+  }
     
   // MARK: - Remove
 
@@ -542,6 +592,7 @@ private enum StorageKey: String {
       _provider.write(nil)
       _userID.write(nil)
       _deviceID.write(nil)
+      _authState.write(nil)
 
       keychainTransaction.perform {
         _authDefinition.write(nil)

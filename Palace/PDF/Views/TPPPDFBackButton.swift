@@ -19,6 +19,7 @@ struct TPPPDFBackButton: View {
         .font(.system(size: 20, weight: .medium))
     }
     .toolbarButtonSize()
+    .accessibilityLabel(Strings.Generic.goBack)
   }
 }
 

@@ -150,6 +150,7 @@ struct MyBooksView: View {
         Image(systemName: "xmark.circle.fill")
           .foregroundColor(.gray)
       })
+      .accessibilityLabel(Strings.Generic.clearSearch)
     }
     .padding(.horizontal)
     .onChange(of: model.showSearchSheet) { isShown in

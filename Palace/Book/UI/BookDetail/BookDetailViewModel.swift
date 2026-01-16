@@ -509,6 +509,11 @@ final class BookDetailViewModel: ObservableObject {
             let reauthenticator = TPPReauthenticator()
             reauthenticator.authenticateIfNeeded(user, usingExistingCredentials: true) {
               Task { @MainActor in
+                // Only proceed if user successfully re-authenticated
+                guard user.hasCredentials() else {
+                  completion?()
+                  return
+                }
                 self.openBook(book, completion: completion)
               }
             }

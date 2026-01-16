@@ -215,10 +215,15 @@ extension MyBooksDownloadCenter {
     Log.info(#file, "Borrow failed with auth error for '\(book.title)' - attempting re-authentication")
     Self.markBorrowReauthAttempted(for: book.identifier)
     
+    // Mark credentials as stale - preserves Adobe DRM activation
+    if hasCredentials {
+      userAccount.markCredentialsStale()
+    }
+    
     // Handle based on auth type
     if authDef?.isSaml == true && hasCredentials {
       // SAML: Session cookies expired - need to re-auth via IDP
-      Log.info(#file, "SAML session expired during borrow - triggering SAML re-auth flow")
+      Log.info(#file, "SAML session expired during borrow - credentials marked stale, triggering re-auth flow")
       
       await MainActor.run { [weak self] in
         SignInModalPresenter.presentSignInModalForCurrentAccount {
