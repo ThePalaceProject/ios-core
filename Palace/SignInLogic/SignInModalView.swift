@@ -36,7 +36,8 @@ struct SignInModalView: View {
   private var cancelButton: some View {
     Button(Strings.Generic.cancel) {
       dismiss()
-      // Call completion even on cancel so callers can clean up processing state
+      // Call completion on cancel so callers can clean up UI state (e.g., remove processing spinners)
+      // IMPORTANT: Callers MUST check hasCredentials() before proceeding with their action
       completion?()
     }
   }

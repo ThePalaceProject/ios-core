@@ -432,7 +432,17 @@ final class BookDetailViewModel: ObservableObject {
         if account.needsAuth && !account.hasCredentials() {
           self.showHalfSheet = false
           SignInModalPresenter.presentSignInModalForCurrentAccount { [weak self] in
-            guard self != nil else { return }
+            guard let self else { return }
+            // Only proceed if user successfully logged in, not if they cancelled
+            guard TPPUserAccount.sharedAccount().hasCredentials() else {
+              Log.info(#file, "Sign-in cancelled or failed, not proceeding with action")
+              // Clear any processing state for download-related buttons
+              self.processingButtons.remove(.download)
+              self.processingButtons.remove(.get)
+              self.processingButtons.remove(.retry)
+              self.processingButtons.remove(.reserve)
+              return
+            }
             action()
           }
           return

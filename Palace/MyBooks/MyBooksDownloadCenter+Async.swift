@@ -228,6 +228,14 @@ extension MyBooksDownloadCenter {
       await MainActor.run { [weak self] in
         SignInModalPresenter.presentSignInModalForCurrentAccount {
           guard let self else { return }
+          
+          // Only proceed if user successfully logged in, not if they cancelled
+          guard self.userAccount.hasCredentials() else {
+            Log.info(#file, "SAML re-auth cancelled or failed, not retrying borrow for '\(book.title)'")
+            Self.clearBorrowReauthAttempted(for: book.identifier)
+            return
+          }
+          
           Log.info(#file, "SAML re-auth completed, retrying borrow for '\(book.title)'")
           
           // Clear the re-auth flag after successful auth so future attempts can also re-auth
@@ -252,6 +260,13 @@ extension MyBooksDownloadCenter {
       await MainActor.run { [weak self] in
         SignInModalPresenter.presentSignInModalForCurrentAccount {
           guard let self else { return }
+          
+          guard self.userAccount.hasCredentials() else {
+            Log.info(#file, "Sign-in cancelled or failed, not retrying borrow for '\(book.title)'")
+            Self.clearBorrowReauthAttempted(for: book.identifier)
+            return
+          }
+          
           Log.info(#file, "Sign-in completed, retrying borrow for '\(book.title)'")
           
           Self.clearBorrowReauthAttempted(for: book.identifier)
