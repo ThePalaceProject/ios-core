@@ -110,7 +110,7 @@ actor DownloadCoordinator {
   
   @objc static let shared = MyBooksDownloadCenter()
   
-  private var userAccount: TPPUserAccount
+  public var userAccount: TPPUserAccount
   private var reauthenticator: Reauthenticator
   private var bookRegistry: TPPBookRegistryProvider
   
@@ -397,12 +397,15 @@ actor DownloadCoordinator {
         guard let self = self else { return }
         
         Task { @MainActor [weak self] in
-          self?.isRequestingCredentials = false
+          guard let self else { return }
+          self.isRequestingCredentials = false
           
-          if self?.userAccount.hasCredentials() == true {
-            self?.startDownload(for: book)
+          if self.userAccount.hasCredentials() == true {
+            self.startDownload(for: book)
           } else {
-            NSLog("Sign-in completed but no credentials present, user may have cancelled")
+            Log.info(#file, "Sign-in cancelled or failed for '\(book.title)' - cleaning up download state")
+            // Clean up download coordinator since we registered a start but won't proceed
+            await self.downloadCoordinator.registerCompletion(identifier: book.identifier)
           }
         }
       }

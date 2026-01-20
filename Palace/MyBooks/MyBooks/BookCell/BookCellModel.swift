@@ -420,6 +420,11 @@ extension BookCellModel {
     if account.needsAuth && !account.hasCredentials() {
       SignInModalPresenter.presentSignInModalForCurrentAccount { [weak self] in
         guard let self else { return }
+        // Only proceed if user successfully logged in, not if they cancelled
+        guard TPPUserAccount.sharedAccount().hasCredentials() else {
+          Log.info(#file, "Sign-in cancelled or failed, not starting download")
+          return
+        }
         self.startDownloadNow()
       }
       return
@@ -440,6 +445,12 @@ extension BookCellModel {
     if account.needsAuth && !account.hasCredentials() {
       SignInModalPresenter.presentSignInModalForCurrentAccount { [weak self] in
         guard let self else { return }
+        // Only proceed if user successfully logged in, not if they cancelled
+        guard TPPUserAccount.sharedAccount().hasCredentials() else {
+          Log.info(#file, "Sign-in cancelled or failed, not proceeding with reservation")
+          self.isLoading = false
+          return
+        }
         NotificationService.requestAuthorization()
         Task {
           do {
