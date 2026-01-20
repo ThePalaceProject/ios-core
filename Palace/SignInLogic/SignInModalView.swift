@@ -22,9 +22,9 @@ struct SignInModalView: View {
         .navigationBarItems(leading: cancelButton)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarBackground(Color(UIColor.systemGroupedBackground), for: .navigationBar)
-        .onChange(of: accountPublisher.hasCredentials) { hasCredentials in
-          // Auto-dismiss when user successfully signs in
-          if hasCredentials {
+        .onChange(of: accountPublisher.authState) { authState in
+          // Auto-dismiss when user successfully signs in (including re-auth from stale state)
+          if authState == .loggedIn {
             dismiss()
             completion?()
           }
