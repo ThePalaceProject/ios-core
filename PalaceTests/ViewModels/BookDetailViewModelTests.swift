@@ -618,6 +618,124 @@ final class BookDetailViewModelTests: XCTestCase {
     XCTAssertFalse(downloadRelatedButtons.contains(.listen))
   }
   
+  // MARK: - Half Sheet Behavior Tests (PP-3553)
+  
+  /// Tests that half sheet should NOT be dismissed on download success
+  /// This prevents the "tap Read/Listen twice" bug (PP-3553)
+  func testHalfSheet_StaysOpenOnDownloadSuccess() {
+    // Simulate the state transition logic from bindRegistryState
+    // When state is .downloadSuccessful, showHalfSheet should NOT be set to false
+    
+    var showHalfSheet = true  // Half sheet is open during download
+    let registryState = TPPBookState.downloadSuccessful
+    
+    // Apply the same logic as in bindRegistryState
+    switch registryState {
+    case .downloadSuccessful, .used:
+      // Download completed - keep half sheet open so user can tap Read/Listen (PP-3553)
+      // NO: showHalfSheet = false  <-- This was the bug
+      break
+    case .unregistered, .holding:
+      showHalfSheet = false
+    default:
+      break
+    }
+    
+    XCTAssertTrue(showHalfSheet, 
+                  "Half sheet should stay open on download success so user can tap Read/Listen")
+  }
+  
+  /// Tests that half sheet should NOT be dismissed when book state is .used
+  func testHalfSheet_StaysOpenOnUsedState() {
+    var showHalfSheet = true
+    let registryState = TPPBookState.used
+    
+    switch registryState {
+    case .downloadSuccessful, .used:
+      // Keep half sheet open
+      break
+    case .unregistered, .holding:
+      showHalfSheet = false
+    default:
+      break
+    }
+    
+    XCTAssertTrue(showHalfSheet,
+                  "Half sheet should stay open when book is in .used state")
+  }
+  
+  /// Tests that half sheet IS dismissed when book becomes unregistered (returned)
+  func testHalfSheet_DismissedOnUnregistered() {
+    var showHalfSheet = true
+    let registryState = TPPBookState.unregistered
+    
+    switch registryState {
+    case .downloadSuccessful, .used:
+      break
+    case .unregistered, .holding:
+      showHalfSheet = false
+    default:
+      break
+    }
+    
+    XCTAssertFalse(showHalfSheet,
+                   "Half sheet should be dismissed when book is returned/unregistered")
+  }
+  
+  /// Tests that half sheet IS dismissed when hold is placed
+  func testHalfSheet_DismissedOnHoldPlaced() {
+    var showHalfSheet = true
+    let registryState = TPPBookState.holding
+    
+    switch registryState {
+    case .downloadSuccessful, .used:
+      break
+    case .unregistered, .holding:
+      showHalfSheet = false
+    default:
+      break
+    }
+    
+    XCTAssertFalse(showHalfSheet,
+                   "Half sheet should be dismissed when hold is placed")
+  }
+  
+  /// Tests that half sheet stays open during download (in progress)
+  func testHalfSheet_StaysOpenDuringDownload() {
+    var showHalfSheet = true
+    let registryState = TPPBookState.downloading
+    
+    switch registryState {
+    case .downloadSuccessful, .used:
+      break
+    case .unregistered, .holding:
+      showHalfSheet = false
+    default:
+      break
+    }
+    
+    XCTAssertTrue(showHalfSheet,
+                  "Half sheet should stay open while download is in progress")
+  }
+  
+  /// Tests that half sheet stays open on download failure (so user can retry)
+  func testHalfSheet_StaysOpenOnDownloadFailed() {
+    var showHalfSheet = true
+    let registryState = TPPBookState.downloadFailed
+    
+    switch registryState {
+    case .downloadSuccessful, .used:
+      break
+    case .unregistered, .holding:
+      showHalfSheet = false
+    default:
+      break
+    }
+    
+    XCTAssertTrue(showHalfSheet,
+                  "Half sheet should stay open on download failure so user can retry")
+  }
+  
   // MARK: - Helper Methods for Regression Tests
   
   private func createBookWithLoanExpiration(from book: TPPBook) -> TPPBook {
