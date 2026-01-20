@@ -64,7 +64,7 @@ final class BookDetailViewModel: ObservableObject {
   
   // MARK: - Dependencies
   
-  let registry: TPPBookRegistry
+  let registry: TPPBookRegistryProvider
   let downloadCenter = MyBooksDownloadCenter.shared
   private var cancellables = Set<AnyCancellable>()
   
@@ -88,9 +88,14 @@ final class BookDetailViewModel: ObservableObject {
   
   // MARK: - Initializer
   
-  @objc init(book: TPPBook) {
+  @objc convenience init(book: TPPBook) {
+    self.init(book: book, registry: TPPBookRegistry.shared)
+  }
+  
+  /// Initializer with dependency injection for testing
+  init(book: TPPBook, registry: TPPBookRegistryProvider) {
     self.book = book
-    self.registry = TPPBookRegistry.shared
+    self.registry = registry
     self.bookState = registry.state(for: book.identifier)
     self.bookIdentifier = book.identifier
     self.stableButtonState = self.computeButtonState(book: book, state: self.bookState, isManagingHold: self.isManagingHold)
@@ -140,11 +145,10 @@ final class BookDetailViewModel: ObservableObject {
         let updatedBook = registry.book(forIdentifier: book.identifier) ?? book
         let registryState = registry.state(for: book.identifier)
         
-        // Only update book model if it's actually different (avoid triggering unnecessary publishes)
-        // This prevents the stableButtonState debounce from resetting on every state change
-        if updatedBook.identifier != self.book.identifier || updatedBook.title != self.book.title {
-          self.book = updatedBook
-        }
+        // Always update book from registry - it has authoritative data including loan duration
+        // after borrowing completes. The old optimization (only update if identifier/title changed)
+        // was too aggressive and missed availability data changes needed for the HalfSheet.
+        self.book = updatedBook
         
         // If we are in a local returning override, hold it until unregistered
         if let override = self.localBookStateOverride, override == .returning, registryState != .unregistered {
@@ -243,11 +247,10 @@ final class BookDetailViewModel: ObservableObject {
   
   @objc func handleBookRegistryChange(_ notification: Notification) {
     let updatedBook = registry.book(forIdentifier: book.identifier) ?? book
-    // Only update if the book actually changed to avoid triggering unnecessary publishes
-    if updatedBook.identifier != self.book.identifier || updatedBook.title != self.book.title {
-      DispatchQueue.main.async {
-        self.book = updatedBook
-      }
+    // Always update book from registry - it has authoritative data including loan duration
+    // after borrowing completes
+    DispatchQueue.main.async {
+      self.book = updatedBook
     }
   }
   
