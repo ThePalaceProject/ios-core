@@ -183,11 +183,11 @@ final class BookDetailViewModel: ObservableObject {
           // error alert presentation, resulting in the alert being auto-dismissed.
           
         case .downloadSuccessful, .used:
-          // Download completed - clear all download-related processing and dismiss half sheet
+          // Download completed - clear all download-related processing
+          // Keep half sheet open so user can tap Read/Listen (PP-3553)
           self.processingButtons.remove(.download)
           self.processingButtons.remove(.get)
           self.processingButtons.remove(.retry)
-          self.showHalfSheet = false
           
         case .holding:
           // Hold placed - clear reserve button and dismiss half sheet
