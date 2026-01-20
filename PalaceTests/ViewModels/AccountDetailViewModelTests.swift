@@ -334,6 +334,183 @@ final class AccountDetailViewModelTests: XCTestCase {
   }
 }
 
+// MARK: - Credential State UI Tests
+// Regression tests: iOS should prompt for login (not sign out) after SAML session expires
+// When credentials are stale, isSignedIn should be false so UI shows "Sign In" instead of "Sign Out"
+
+@MainActor
+final class AccountDetailCredentialStateTests: XCTestCase {
+  
+  private var userAccount: TPPUserAccountMock!
+  
+  override func setUp() {
+    super.setUp()
+    userAccount = TPPUserAccountMock()
+  }
+  
+  override func tearDown() {
+    userAccount.removeAll()
+    userAccount = nil
+    super.tearDown()
+  }
+  
+  // MARK: - isSignedIn with Auth State Tests
+  
+  /// When credentials are stale (SAML session expired), isSignedIn should be FALSE
+  /// so the UI shows "Sign In" instead of "Sign Out"
+  func testIsSignedIn_falseWhenCredentialsStale() async {
+    guard let libraryID = AccountsManager.shared.currentAccountId else {
+      XCTSkip("No current account available for testing")
+      return
+    }
+    
+    let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
+    
+    // Given: User has credentials but they are stale (SAML session expired)
+    let account = TPPUserAccount.sharedAccount(libraryUUID: libraryID)
+    account.setBarcode("test_user", PIN: "1234")
+    account.setAuthState(.credentialsStale)
+    
+    // When: View model refreshes state
+    viewModel.refreshSignInState()
+    
+    // Then: isSignedIn should be FALSE (so UI shows "Sign In", not "Sign Out")
+    XCTAssertFalse(viewModel.isSignedIn, 
+                   "isSignedIn should be false when credentials are stale so UI shows Sign In button")
+    
+    // Cleanup
+    account.removeAll()
+  }
+  
+  /// When user is fully logged in (not stale), isSignedIn should be TRUE
+  func testIsSignedIn_trueWhenLoggedIn() async {
+    guard let libraryID = AccountsManager.shared.currentAccountId else {
+      XCTSkip("No current account available for testing")
+      return
+    }
+    
+    let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
+    
+    // Given: User has credentials and is fully logged in
+    let account = TPPUserAccount.sharedAccount(libraryUUID: libraryID)
+    account.setBarcode("test_user", PIN: "1234")
+    account.setAuthState(.loggedIn)
+    
+    // When: View model refreshes state
+    viewModel.refreshSignInState()
+    
+    // Then: isSignedIn should be TRUE
+    XCTAssertTrue(viewModel.isSignedIn,
+                  "isSignedIn should be true when user is fully logged in")
+    
+    // Cleanup
+    account.removeAll()
+  }
+  
+  /// When user is logged out, isSignedIn should be FALSE
+  func testIsSignedIn_falseWhenLoggedOut() async {
+    guard let libraryID = AccountsManager.shared.currentAccountId else {
+      XCTSkip("No current account available for testing")
+      return
+    }
+    
+    let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
+    
+    // Given: User is logged out (no credentials)
+    let account = TPPUserAccount.sharedAccount(libraryUUID: libraryID)
+    account.removeAll()
+    
+    // When: View model refreshes state
+    viewModel.refreshSignInState()
+    
+    // Then: isSignedIn should be FALSE
+    XCTAssertFalse(viewModel.isSignedIn,
+                   "isSignedIn should be false when user is logged out")
+  }
+  
+  /// Transition from loggedIn to credentialsStale should update isSignedIn
+  func testIsSignedIn_updatesWhenStateBecomesStale() async {
+    guard let libraryID = AccountsManager.shared.currentAccountId else {
+      XCTSkip("No current account available for testing")
+      return
+    }
+    
+    let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
+    
+    // Given: User starts logged in
+    let account = TPPUserAccount.sharedAccount(libraryUUID: libraryID)
+    account.setBarcode("test_user", PIN: "1234")
+    account.setAuthState(.loggedIn)
+    viewModel.refreshSignInState()
+    XCTAssertTrue(viewModel.isSignedIn, "Should start signed in")
+    
+    // When: Session expires (credentials become stale)
+    account.markCredentialsStale()
+    viewModel.refreshSignInState()
+    
+    // Then: isSignedIn should become FALSE
+    XCTAssertFalse(viewModel.isSignedIn,
+                   "isSignedIn should become false when credentials become stale")
+    
+    // Cleanup
+    account.removeAll()
+  }
+  
+  /// Re-authentication from stale should update isSignedIn back to true
+  func testIsSignedIn_updatesAfterReauthentication() async {
+    guard let libraryID = AccountsManager.shared.currentAccountId else {
+      XCTSkip("No current account available for testing")
+      return
+    }
+    
+    let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
+    
+    // Given: User has stale credentials
+    let account = TPPUserAccount.sharedAccount(libraryUUID: libraryID)
+    account.setBarcode("test_user", PIN: "1234")
+    account.setAuthState(.credentialsStale)
+    viewModel.refreshSignInState()
+    XCTAssertFalse(viewModel.isSignedIn, "Should start with stale credentials (not signed in)")
+    
+    // When: User re-authenticates successfully
+    account.markLoggedIn()
+    viewModel.refreshSignInState()
+    
+    // Then: isSignedIn should become TRUE
+    XCTAssertTrue(viewModel.isSignedIn,
+                  "isSignedIn should become true after successful re-authentication")
+    
+    // Cleanup
+    account.removeAll()
+  }
+  
+  // MARK: - needsReauthentication Tests
+  
+  /// Account should indicate it needs re-authentication when credentials are stale
+  func testNeedsReauthentication_trueWhenCredentialsStale() async {
+    guard let libraryID = AccountsManager.shared.currentAccountId else {
+      XCTSkip("No current account available for testing")
+      return
+    }
+    
+    // Given: User has stale credentials
+    let account = TPPUserAccount.sharedAccount(libraryUUID: libraryID)
+    account.setBarcode("test_user", PIN: "1234")
+    account.setAuthState(.credentialsStale)
+    
+    // Then: Account should indicate it needs re-authentication
+    XCTAssertTrue(account.authState.needsReauthentication,
+                  "Account should need re-authentication when credentials are stale")
+    
+    // And: hasCredentials should still be true (credentials exist, just expired)
+    XCTAssertTrue(account.hasCredentials(),
+                  "hasCredentials should be true even when credentials are stale")
+    
+    // Cleanup
+    account.removeAll()
+  }
+}
+
 // MARK: - PIN Visibility Business Logic Tests
 
 @MainActor

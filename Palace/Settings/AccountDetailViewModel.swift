@@ -97,8 +97,9 @@ class AccountDetailViewModel: NSObject, ObservableObject {
       drmAuthorizer: nil
     )
     
-    // Initialize isSignedIn based on current credentials
-    self.isSignedIn = TPPUserAccount.sharedAccount(libraryUUID: libraryAccountID).hasCredentials()
+    // Initialize isSignedIn based on current credentials AND auth state
+    let account = TPPUserAccount.sharedAccount(libraryUUID: libraryAccountID)
+    self.isSignedIn = account.hasCredentials() && account.authState == .loggedIn
     
     super.init()
     
@@ -473,7 +474,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
   }
   
   private func accountDidChange() {
-    isSignedIn = selectedUserAccount.hasCredentials()
+    isSignedIn = selectedUserAccount.hasCredentials() && selectedUserAccount.authState == .loggedIn
     
     if isSignedIn {
       usernameText = selectedUserAccount.barcode ?? ""
@@ -495,7 +496,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
   
   func refreshSignInState() {
     let wasSignedIn = isSignedIn
-    isSignedIn = selectedUserAccount.hasCredentials()
+    isSignedIn = selectedUserAccount.hasCredentials() && selectedUserAccount.authState == .loggedIn
     
     if wasSignedIn != isSignedIn {
       setupTableData()
