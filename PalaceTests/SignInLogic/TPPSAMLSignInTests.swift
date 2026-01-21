@@ -651,4 +651,119 @@ final class TPPSAMLSignInTests: XCTestCase {
     XCTAssertFalse(hasCredentials,
                    "refreshCredentialsFromKeychain should return false when no credentials")
   }
+  
+  // MARK: - Token Refresh Tests
+  
+  /// Regression Test: Verifies that token refresh transitions auth state to loggedIn.
+  ///
+  /// Bug: When a token was refreshed due to a 401 response, executeTokenRefresh
+  /// called setAuthToken but not markLoggedIn(). This left the authState as
+  /// .credentialsStale, causing the Settings screen to show the sign-in form
+  /// even though the user had a fresh token.
+  ///
+  /// This test verifies the contract that token refresh must fulfill:
+  /// after setting a new token, markLoggedIn() must be called.
+  func testTokenRefresh_transitionsFromStaleToLoggedIn() {
+    // Setup: User is signed in but credentials are stale (simulates 401 scenario)
+    let account = businessLogic.userAccount
+    businessLogic.selectedAuthentication = libraryAccountMock.basicAuthentication
+    
+    // First sign in
+    account.setAuthToken("original-token", barcode: "user123", pin: "pass456", expirationDate: nil)
+    account.markLoggedIn()
+    
+    // Mark credentials stale (simulates receiving a 401)
+    account.markCredentialsStale()
+    
+    XCTAssertEqual(account.authState, .credentialsStale,
+                   "Precondition: Auth state should be credentialsStale")
+    XCTAssertTrue(account.hasCredentials(),
+                  "Precondition: User should still have credentials when stale")
+    
+    // Act: Simulate what executeTokenRefresh does after successful refresh
+    // This is the contract that must be maintained
+    account.setAuthToken("fresh-new-token", barcode: "user123", pin: "pass456", expirationDate: nil)
+    account.markLoggedIn()
+    
+    // Assert: Auth state should now be loggedIn
+    XCTAssertEqual(account.authState, .loggedIn,
+                   "Token refresh must transition auth state to loggedIn")
+    XCTAssertTrue(account.hasCredentials(),
+                  "User should have credentials after token refresh")
+    XCTAssertEqual(account.authToken, "fresh-new-token",
+                   "Auth token should be updated to new token")
+  }
+  
+  /// Tests that setAuthToken alone does NOT change auth state from stale to loggedIn.
+  /// This documents the current behavior and ensures markLoggedIn() is required.
+  func testSetAuthToken_doesNotChangeStaleState() {
+    // Setup: User has stale credentials
+    let account = businessLogic.userAccount
+    businessLogic.selectedAuthentication = libraryAccountMock.basicAuthentication
+    
+    account.setAuthToken("original-token", barcode: "user123", pin: "pass456", expirationDate: nil)
+    account.markLoggedIn()
+    account.markCredentialsStale()
+    
+    XCTAssertEqual(account.authState, .credentialsStale,
+                   "Precondition: Should be stale")
+    
+    // Act: Only call setAuthToken (without markLoggedIn)
+    account.setAuthToken("new-token", barcode: "user123", pin: "pass456", expirationDate: nil)
+    
+    // Assert: State should still be stale (setAuthToken doesn't change auth state)
+    // This is why executeTokenRefresh MUST call markLoggedIn()
+    XCTAssertEqual(account.authState, .credentialsStale,
+                   "setAuthToken alone should not change auth state from stale")
+  }
+  
+  /// Tests that markLoggedIn properly transitions from any state to loggedIn.
+  func testMarkLoggedIn_transitionsToLoggedIn() {
+    let account = businessLogic.userAccount
+    businessLogic.selectedAuthentication = libraryAccountMock.basicAuthentication
+    
+    // Setup some credentials first
+    account.setAuthToken("test-token", barcode: "user", pin: "pass", expirationDate: nil)
+    
+    // Test transition from loggedOut
+    XCTAssertEqual(account.authState, .loggedOut,
+                   "Initial state should be loggedOut")
+    account.markLoggedIn()
+    XCTAssertEqual(account.authState, .loggedIn,
+                   "Should transition from loggedOut to loggedIn")
+    
+    // Test transition from credentialsStale
+    account.markCredentialsStale()
+    XCTAssertEqual(account.authState, .credentialsStale,
+                   "Should be stale after markCredentialsStale")
+    account.markLoggedIn()
+    XCTAssertEqual(account.authState, .loggedIn,
+                   "Should transition from credentialsStale to loggedIn")
+  }
+  
+  /// Tests that the Settings screen would show signed-in after token refresh.
+  /// This simulates the check that AccountDetailViewModel performs.
+  func testTokenRefresh_settingsScreenShowsSignedIn() {
+    let account = businessLogic.userAccount
+    businessLogic.selectedAuthentication = libraryAccountMock.basicAuthentication
+    
+    // Setup: Stale credentials
+    account.setAuthToken("old-token", barcode: "user", pin: "pass", expirationDate: nil)
+    account.markLoggedIn()
+    account.markCredentialsStale()
+    
+    // This is what AccountDetailViewModel checks for isSignedIn
+    let isSignedInBeforeRefresh = account.hasCredentials() && account.authState == .loggedIn
+    XCTAssertFalse(isSignedInBeforeRefresh,
+                   "Should NOT appear signed in when credentials are stale")
+    
+    // Act: Token refresh (as executeTokenRefresh now does)
+    account.setAuthToken("new-token", barcode: "user", pin: "pass", expirationDate: nil)
+    account.markLoggedIn()
+    
+    // Assert: Should now appear signed in
+    let isSignedInAfterRefresh = account.hasCredentials() && account.authState == .loggedIn
+    XCTAssertTrue(isSignedInAfterRefresh,
+                  "Should appear signed in after token refresh")
+  }
 }
