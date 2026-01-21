@@ -219,4 +219,102 @@ class TPPReaderBookmarksBusinessLogicTests: XCTestCase {
                                  device:device)
       
     }
+    
+    // MARK: - Regression Tests
+
+    /// Regression test for PP-3555: Old bookmarks should not reappear after return/re-borrow
+    /// When a user returns a book and later re-borrows it, old bookmarks from the server
+    /// should NOT reappear because they should have been deleted during the return process.
+    func testPP3555_OldBookmarksDoNotReappearAfterReborrow() throws {
+      // 1. Arrange: Create a book with server bookmarks
+      guard let serverBookmark1 = newBookmark(href: "Chapter1",
+                                              chapter: "1",
+                                              progressWithinChapter: 0.25,
+                                              progressWithinBook: 0.1),
+            let serverBookmark2 = newBookmark(href: "Chapter2",
+                                              chapter: "2",
+                                              progressWithinChapter: 0.5,
+                                              progressWithinBook: 0.3) else {
+        XCTFail("Failed to create test bookmarks")
+        return
+      }
+      
+      // Add bookmarks to the local registry (simulating initial borrow state)
+      bookRegistryMock.add(serverBookmark1, forIdentifier: bookIdentifier)
+      bookRegistryMock.add(serverBookmark2, forIdentifier: bookIdentifier)
+      XCTAssertEqual(bookRegistryMock.readiumBookmarks(forIdentifier: bookIdentifier).count, 2,
+                     "Should have 2 bookmarks before return")
+      
+      // Create annotation mock to simulate server with bookmarks
+      let annotationMock = TPPAnnotationMock()
+      
+      // Simulate server having these bookmarks (as if they were previously synced)
+      // Store them with their annotation IDs as server bookmarks
+      annotationMock.readiumBookmarks[bookIdentifier] = [serverBookmark1, serverBookmark2]
+      
+      // 2. Act: Simulate return - delete all bookmarks from server, then remove from registry
+      let deleteExpectation = expectation(description: "Delete all bookmarks")
+      annotationMock.deleteAllBookmarks(forBook: bookRegistryMock.book(forIdentifier: bookIdentifier)!) {
+        deleteExpectation.fulfill()
+      }
+      wait(for: [deleteExpectation], timeout: 1.0)
+      
+      // Remove book from registry (as happens during return)
+      bookRegistryMock.removeBook(forIdentifier: bookIdentifier)
+      
+      // 3. Act: Re-borrow (add book fresh to registry with no bookmarks)
+      let placeholderUrl = URL(string: "https://test.example.com/book")!
+      let fakeAcquisition = TPPOPDSAcquisition(
+        relation: .generic,
+        type: "application/epub+zip",
+        hrefURL: placeholderUrl,
+        indirectAcquisitions: [TPPOPDSIndirectAcquisition](),
+        availability: TPPOPDSAcquisitionAvailabilityUnlimited()
+      )
+      
+      let freshBook = TPPBook(
+        acquisitions: [fakeAcquisition],
+        authors: [TPPBookAuthor](),
+        categoryStrings: [String](),
+        distributor: "",
+        identifier: bookIdentifier,
+        imageURL: nil,
+        imageThumbnailURL: nil,
+        published: Date(),
+        publisher: "",
+        subtitle: "",
+        summary: "",
+        title: "Re-borrowed Book",
+        updated: Date(),
+        annotationsURL: URL(string: "https://test.example.com/annotations"),
+        analyticsURL: nil,
+        alternateURL: nil,
+        relatedWorksURL: nil,
+        previewLink: nil,
+        seriesURL: nil,
+        revokeURL: nil,
+        reportURL: nil,
+        timeTrackingURL: nil,
+        contributors: [:],
+        bookDuration: nil,
+        imageCache: MockImageCache()
+      )
+      
+      bookRegistryMock.addBook(freshBook, location: nil, state: .downloadSuccessful,
+                               fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+      
+      // 4. Assert: Server should have no bookmarks after return
+      let syncExpectation = expectation(description: "Get server bookmarks")
+      annotationMock.getServerBookmarks(forBook: freshBook, atURL: freshBook.annotationsURL, motivation: .bookmark) { bookmarks in
+        // After return, server should have NO bookmarks for this book
+        XCTAssertEqual(bookmarks?.count ?? 0, 0,
+                       "Server should have no bookmarks after return - old bookmarks should have been deleted")
+        syncExpectation.fulfill()
+      }
+      wait(for: [syncExpectation], timeout: 1.0)
+      
+      // 5. Assert: Local registry should have no bookmarks for the re-borrowed book
+      XCTAssertEqual(bookRegistryMock.readiumBookmarks(forIdentifier: bookIdentifier).count, 0,
+                     "Re-borrowed book should have no bookmarks locally")
+    }
 }

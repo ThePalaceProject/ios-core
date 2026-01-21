@@ -930,11 +930,21 @@ extension MyBooksDownloadCenter {
         purgeAllAudiobookCaches(force: true)
       }
 
-      bookRegistry.setState(.unregistered, for: identifier)
-      bookRegistry.removeBook(forIdentifier: identifier)
-      Task {
-        try? await TPPBookRegistry.shared.syncAsync()
-        runOnMainAsync { completion?() }
+      // PP-3555: Delete all server bookmarks before removing book to prevent
+      // old bookmarks from reappearing when the book is re-borrowed
+      TPPAnnotations.deleteAllBookmarks(forBook: book) { [weak self] in
+        guard let self = self else {
+          completion?()
+          return
+        }
+        // Clear the deletion log since we're returning the book
+        TPPBookmarkDeletionLog.shared.clearAllDeletions(forBook: identifier)
+        self.bookRegistry.setState(.unregistered, for: identifier)
+        self.bookRegistry.removeBook(forIdentifier: identifier)
+        Task {
+          try? await TPPBookRegistry.shared.syncAsync()
+          runOnMainAsync { completion?() }
+        }
       }
     } else {
       bookRegistry.setProcessing(true, for: book.identifier)
@@ -948,11 +958,16 @@ extension MyBooksDownloadCenter {
             self.purgeAllAudiobookCaches(force: true)
           }
           if let returnedBook = TPPBook(entry: entry) {
-            self.bookRegistry.updateAndRemoveBook(returnedBook)
-            self.bookRegistry.setState(.unregistered, for: identifier)
-            Task {
-              try? await TPPBookRegistry.shared.syncAsync()
-              runOnMainAsync { completion?() }
+            // PP-3555: Delete all server bookmarks before removing book
+            TPPAnnotations.deleteAllBookmarks(forBook: book) {
+              // Clear the deletion log since we're returning the book
+              TPPBookmarkDeletionLog.shared.clearAllDeletions(forBook: identifier)
+              self.bookRegistry.updateAndRemoveBook(returnedBook)
+              self.bookRegistry.setState(.unregistered, for: identifier)
+              Task {
+                try? await TPPBookRegistry.shared.syncAsync()
+                runOnMainAsync { completion?() }
+              }
             }
           } else {
             NSLog("Failed to create book from entry. Book not removed from registry.")
@@ -968,11 +983,16 @@ extension MyBooksDownloadCenter {
                 self.deleteLocalContent(for: identifier)
                 self.purgeAllAudiobookCaches(force: true)
               }
-              self.bookRegistry.setState(.unregistered, for: identifier)
-              self.bookRegistry.removeBook(forIdentifier: identifier)
-              Task {
-                try? await TPPBookRegistry.shared.syncAsync()
-                runOnMainAsync { completion?() }
+              // PP-3555: Delete all server bookmarks before removing book
+              TPPAnnotations.deleteAllBookmarks(forBook: book) {
+                // Clear the deletion log since we're returning the book
+                TPPBookmarkDeletionLog.shared.clearAllDeletions(forBook: identifier)
+                self.bookRegistry.setState(.unregistered, for: identifier)
+                self.bookRegistry.removeBook(forIdentifier: identifier)
+                Task {
+                  try? await TPPBookRegistry.shared.syncAsync()
+                  runOnMainAsync { completion?() }
+                }
               }
             } else if errorType == TPPProblemDocument.TypeInvalidCredentials {
               NSLog("Invalid credentials problem when returning a book, present sign in VC")

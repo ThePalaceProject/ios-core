@@ -161,31 +161,36 @@ func performLogOut() {
     
     // Clear WebView data to fully sign out of SAML/OAuth IdPs (e.g., Google)
     // Without this, the IdP session remains cached and auto-signs in on next attempt
+    // CRITICAL: Wait for WebView data to be cleared BEFORE notifying UI that sign-out is complete
+    // This prevents SAML IdP auto-sign-in when user tries to borrow after signing out
     Log.info(#file, "🚪 [LOGOUT] Calling clearWebViewData()...")
-    clearWebViewData()
-    
-    // UI delegate callback MUST be on main thread
-    // (This method can be called from Adobe DRM callback on background thread)
-    Log.info(#file, "🚪 [LOGOUT] Dispatching uiDelegate callback to main thread...")
-    DispatchQueue.main.async { [weak self] in
-      Log.info(#file, "🚪 [LOGOUT] Main thread callback executing - self is \(self == nil ? "NIL" : "valid")")
-      guard let self = self else {
-        Log.error(#file, "🚪 [LOGOUT] ERROR: self is nil in main thread callback!")
-        return
+    clearWebViewData { [weak self] in
+      // UI delegate callback MUST be on main thread
+      // (This method can be called from Adobe DRM callback on background thread)
+      Log.info(#file, "🚪 [LOGOUT] WebView data cleared, dispatching uiDelegate callback to main thread...")
+      DispatchQueue.main.async { [weak self] in
+        Log.info(#file, "🚪 [LOGOUT] Main thread callback executing - self is \(self == nil ? "NIL" : "valid")")
+        guard let self = self else {
+          Log.error(#file, "🚪 [LOGOUT] ERROR: self is nil in main thread callback!")
+          return
+        }
+        Log.info(#file, "🚪 [LOGOUT] Calling uiDelegate.businessLogicDidFinishDeauthorizing - delegate is \(self.uiDelegate == nil ? "NIL" : "valid")")
+        self.uiDelegate?.businessLogicDidFinishDeauthorizing(self)
+        Log.info(#file, "🚪 [LOGOUT] ✅ uiDelegate.businessLogicDidFinishDeauthorizing completed!")
       }
-      Log.info(#file, "🚪 [LOGOUT] Calling uiDelegate.businessLogicDidFinishDeauthorizing - delegate is \(self.uiDelegate == nil ? "NIL" : "valid")")
-      self.uiDelegate?.businessLogicDidFinishDeauthorizing(self)
-      Log.info(#file, "🚪 [LOGOUT] ✅ uiDelegate.businessLogicDidFinishDeauthorizing completed!")
     }
   }
   
   /// Clears all WebView data including cookies, cache, local storage, and session data.
   /// This ensures SAML/OAuth identity providers are fully signed out.
-  private func clearWebViewData() {
+  /// - Parameter completion: Called when all WebView data and cookies have been cleared.
+  ///   This is critical for SAML sign-out to prevent IdP auto-sign-in.
+  private func clearWebViewData(completion: @escaping () -> Void) {
     // Skip WebKit cleanup in test environments (no UI context)
     #if DEBUG
     if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
       Log.debug(#file, "🚪 [LOGOUT] Skipping WebView data cleanup in test environment")
+      completion()
       return
     }
     #endif
@@ -199,14 +204,19 @@ func performLogOut() {
         Log.info(#file, "Clearing \(records.count) WebView data records for sign-out")
         dataStore.removeData(ofTypes: dataTypes, for: records) {
           Log.info(#file, "WebView data cleared successfully")
-        }
-      }
-      
-      // Also clear shared cookie storage
-      if let cookies = HTTPCookieStorage.shared.cookies {
-        Log.info(#file, "Clearing \(cookies.count) HTTP cookies for sign-out")
-        for cookie in cookies {
-          HTTPCookieStorage.shared.deleteCookie(cookie)
+          
+          // Also clear shared cookie storage (synchronous)
+          if let cookies = HTTPCookieStorage.shared.cookies {
+            Log.info(#file, "Clearing \(cookies.count) HTTP cookies for sign-out")
+            for cookie in cookies {
+              HTTPCookieStorage.shared.deleteCookie(cookie)
+            }
+          }
+          
+          // CRITICAL: Only call completion AFTER both WebKit data AND cookies are cleared
+          // This ensures SAML IdP sessions are fully invalidated before sign-out completes
+          Log.info(#file, "🚪 [LOGOUT] All WebView data and cookies cleared, calling completion")
+          completion()
         }
       }
     }
@@ -290,14 +300,16 @@ func performLogOut() {
                 Log.info(#file, "🚪 [LOGOUT] Clearing \(records.count) WebView data records (direct)")
                 dataStore.removeData(ofTypes: dataTypes, for: records) {
                   Log.info(#file, "🚪 [LOGOUT] ✅ WebView data cleared (direct)")
+                  
+                  // Clear cookies AFTER WebView data to ensure complete cleanup
+                  if let cookies = HTTPCookieStorage.shared.cookies {
+                    Log.info(#file, "🚪 [LOGOUT] Clearing \(cookies.count) HTTP cookies (direct)")
+                    for cookie in cookies {
+                      HTTPCookieStorage.shared.deleteCookie(cookie)
+                    }
+                  }
+                  Log.info(#file, "🚪 [LOGOUT] ✅ All cleanup complete (direct path)")
                 }
-              }
-              // Clear cookies directly
-              if let cookies = HTTPCookieStorage.shared.cookies {
-                Log.info(#file, "🚪 [LOGOUT] Clearing \(cookies.count) HTTP cookies (direct)")
-                for cookie in cookies {
-                  HTTPCookieStorage.shared.deleteCookie(cookie)
-          }
               }
             }
             return

@@ -21,12 +21,17 @@ class TPPReaderBookmarksBusinessLogic: NSObject {
   private let bookRegistry: TPPBookRegistryProvider
   private let currentLibraryAccountProvider: TPPCurrentLibraryAccountProvider
   private let bookmarksFactory: TPPBookmarkFactory
+  private let reauthenticator: Reauthenticator
+  
+  /// Tracks if we've already attempted re-auth during current sync to prevent infinite loops
+  private var hasAttemptedReauthDuringSync = false
 
   init(book: TPPBook,
        r2Publication: Publication,
        drmDeviceID: String?,
        bookRegistryProvider: TPPBookRegistryProvider,
-       currentLibraryAccountProvider: TPPCurrentLibraryAccountProvider) {
+       currentLibraryAccountProvider: TPPCurrentLibraryAccountProvider,
+       reauthenticator: Reauthenticator = TPPReauthenticator()) {
     self.book = book
     self.publication = r2Publication
     self.drmDeviceID = drmDeviceID
@@ -36,6 +41,7 @@ class TPPReaderBookmarksBusinessLogic: NSObject {
     self.bookmarksFactory = TPPBookmarkFactory(book: book,
                                                 publication: publication,
                                                 drmDeviceID: drmDeviceID)
+    self.reauthenticator = reauthenticator
 
     super.init()
   }
@@ -156,11 +162,21 @@ class TPPReaderBookmarksBusinessLogic: NSObject {
       return
     }
     
+    // PP-3555 Fix: Log the deletion so sync can retry if immediate deletion fails.
+    // This ensures ghost bookmarks (from previous loans or other devices) can be deleted.
+    TPPBookmarkDeletionLog.shared.logDeletion(annotationId: annotationId, forBook: book.identifier)
+    
     if details.syncPermissionGranted && annotationId.count > 0 {
-      TPPAnnotations.deleteBookmark(annotationId: annotationId) { (success) in
-        Log.debug(#file, success ?
-          "Bookmark successfully deleted" :
-          "Failed to delete bookmark from server. Will attempt again on next Sync")
+      TPPAnnotations.deleteBookmark(annotationId: annotationId) { [weak self] (success) in
+        if success {
+          Log.debug(#file, "Bookmark successfully deleted from server")
+          // Clear from deletion log since it succeeded
+          if let bookId = self?.book.identifier {
+            TPPBookmarkDeletionLog.shared.clearDeletion(annotationId: annotationId, forBook: bookId)
+          }
+        } else {
+          Log.warn(#file, "Failed to delete bookmark from server. Will retry on next sync.")
+        }
       }
     }
   }
@@ -180,9 +196,16 @@ class TPPReaderBookmarksBusinessLogic: NSObject {
   }
     
   func syncBookmarks(completion: @escaping (Bool, [TPPReadiumBookmark]) -> ()) {
+      // Reset re-auth tracking at the start of a new sync
+      hasAttemptedReauthDuringSync = false
+      performSyncBookmarks(completion: completion)
+  }
+  
+  private func performSyncBookmarks(completion: @escaping (Bool, [TPPReadiumBookmark]) -> ()) {
       guard Reachability.shared.isConnectedToNetwork() else {
         self.handleBookmarksSyncFail(message: "Error: host was not reachable for bookmark sync attempt.",
-                                     completion: completion)
+                                     completion: completion,
+                                     shouldAttemptReauth: false)
         return
       }
                     
@@ -203,7 +226,8 @@ class TPPReaderBookmarksBusinessLogic: NSObject {
         
         guard let serverBookmarks = serverBookmarks as? [TPPReadiumBookmark] else {
           self.handleBookmarksSyncFail(message: "Ending sync without running completion. Returning original list of bookmarks.",
-                                       completion: completion)
+                                       completion: completion,
+                                       shouldAttemptReauth: true)
           return
         }
         
@@ -232,20 +256,33 @@ class TPPReaderBookmarksBusinessLogic: NSObject {
     var localBookmarksToKeep = [TPPReadiumBookmark]()
     var serverBookmarksToAdd = [TPPReadiumBookmark]() + bookmarksFailedToUpload
     var serverBookmarksToDelete = [TPPReadiumBookmark]()
+    
+    // Get the set of annotation IDs that the user explicitly deleted
+    let pendingDeletions = TPPBookmarkDeletionLog.shared.pendingDeletions(forBook: book.identifier)
 
     for serverBookmark in serverBookmarks {
       if let localBookmark = localBookmarks.first(where: { $0.annotationId == serverBookmark.annotationId }) {
         localBookmarksToKeep.append(localBookmark)
+      } else if let annotationId = serverBookmark.annotationId, pendingDeletions.contains(annotationId) {
+        // PP-3555 Fix: User explicitly deleted this bookmark - delete from server
+        // instead of re-adding locally (regardless of device ID)
+        Log.info(#file, "📚 Found explicitly deleted bookmark on server, queuing for deletion: \(annotationId)")
+        serverBookmarksToDelete.append(serverBookmark)
       } else {
-          serverBookmarksToAdd.append(serverBookmark)
+        // Bookmark exists on server but not locally, and wasn't explicitly deleted
+        // Add it to local (could be from another device)
+        serverBookmarksToAdd.append(serverBookmark)
       }
     }
 
-    // Handle local deletions: only delete server bookmarks if they were created on this device and no longer exist locally
+    // PP-3555 Fix: Also delete server bookmarks that match device ID (original behavior)
+    // This handles the case where deletion log wasn't used
     for serverBookmark in serverBookmarks {
       if let deviceID = serverBookmark.device, let drmDeviceID = drmDeviceID, deviceID == drmDeviceID {
         if !localBookmarks.contains(where: { $0.annotationId == serverBookmark.annotationId }) {
-          serverBookmarksToDelete.append(serverBookmark)
+          if !serverBookmarksToDelete.contains(where: { $0.annotationId == serverBookmark.annotationId }) {
+            serverBookmarksToDelete.append(serverBookmark)
+          }
         }
       }
     }
@@ -256,14 +293,57 @@ class TPPReaderBookmarksBusinessLogic: NSObject {
     }
 
     // Remove locally deleted bookmarks from the server
-    TPPAnnotations.deleteBookmarks(serverBookmarksToDelete)
+    if !serverBookmarksToDelete.isEmpty {
+      Log.info(#file, "📚 Deleting \(serverBookmarksToDelete.count) orphaned server bookmarks")
+      TPPAnnotations.deleteBookmarks(serverBookmarksToDelete)
+      
+      // Clear successful deletions from the log
+      for bookmark in serverBookmarksToDelete {
+        if let annotationId = bookmark.annotationId {
+          TPPBookmarkDeletionLog.shared.clearDeletion(annotationId: annotationId, forBook: book.identifier)
+        }
+      }
+    }
 
     completion()
   }
 
   private func handleBookmarksSyncFail(message: String,
-                                       completion: @escaping (Bool, [TPPReadiumBookmark]) -> ()) {
+                                       completion: @escaping (Bool, [TPPReadiumBookmark]) -> (),
+                                       shouldAttemptReauth: Bool = false) {
     Log.info(#file, message)
+    
+    // Check if we should attempt re-authentication
+    let userAccount = TPPUserAccount.sharedAccount()
+    let isCredentialsStale = userAccount.authState == .credentialsStale
+    
+    if shouldAttemptReauth && isCredentialsStale && !hasAttemptedReauthDuringSync {
+      Log.info(#file, "📚 Bookmark sync failed due to stale credentials. Attempting re-authentication...")
+      hasAttemptedReauthDuringSync = true
+      
+      // Try using existing credentials first (works for basic auth, OAuth refresh tokens)
+      // For SAML, this will still require user interaction through the IDP
+      let canUseExistingCredentials = userAccount.hasBarcodeAndPIN() || 
+                                       (userAccount.authDefinition?.isOauth == true)
+      
+      reauthenticator.authenticateIfNeeded(userAccount, usingExistingCredentials: canUseExistingCredentials) { [weak self] in
+        guard let self = self else {
+          completion(false, [])
+          return
+        }
+        
+        // Check if re-auth was successful
+        if userAccount.hasCredentials() && userAccount.authState == .loggedIn {
+          Log.info(#file, "📚 Re-authentication successful. Retrying bookmark sync...")
+          self.performSyncBookmarks(completion: completion)
+        } else {
+          Log.info(#file, "📚 Re-authentication cancelled or failed. Returning local bookmarks.")
+          self.bookmarks = self.bookRegistry.readiumBookmarks(forIdentifier: self.book.identifier)
+          completion(false, self.bookmarks)
+        }
+      }
+      return
+    }
     
     self.bookmarks = self.bookRegistry.readiumBookmarks(forIdentifier: self.book.identifier)
     completion(false, self.bookmarks)

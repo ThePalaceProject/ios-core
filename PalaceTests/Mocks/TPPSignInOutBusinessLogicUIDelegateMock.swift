@@ -10,7 +10,14 @@ import Foundation
 @testable import Palace
 
 class TPPSignInOutBusinessLogicUIDelegateMock: NSObject, TPPSignInOutBusinessLogicUIDelegate {
+  
+  // MARK: - Call Tracking for Tests
+  var didCallWillSignOut = false
+  var didCallDidFinishDeauthorizing = false
+  var didFinishDeauthorizingHandler: (() -> Void)?
+  
   func businessLogicWillSignOut(_ businessLogic: TPPSignInBusinessLogic) {
+    didCallWillSignOut = true
   }
 
   func businessLogic(_ logic: TPPSignInBusinessLogic,
@@ -19,6 +26,8 @@ class TPPSignInOutBusinessLogicUIDelegateMock: NSObject, TPPSignInOutBusinessLog
   }
 
   func businessLogicDidFinishDeauthorizing(_ logic: TPPSignInBusinessLogic) {
+    didCallDidFinishDeauthorizing = true
+    didFinishDeauthorizingHandler?()
   }
 
   func businessLogicDidCancelSignIn(_ businessLogic: TPPSignInBusinessLogic) {

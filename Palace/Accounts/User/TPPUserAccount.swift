@@ -516,21 +516,68 @@ private enum StorageKey: String {
   
   @objc(setPatron:)
   func setPatron(_ patron: [String : Any]) {
+    Log.info(#file, "🔑 [KEYCHAIN] setPatron() called")
+    Log.info(#file, "🔑 [KEYCHAIN]   libraryUUID: \(libraryUUID ?? "nil")")
+    Log.info(#file, "🔑 [KEYCHAIN]   patron keys: \(patron.keys.sorted().joined(separator: ", "))")
+    Log.info(#file, "🔑 [KEYCHAIN]   patron key: \(_patron.key)")
+    
     _patron.write(patron)
+    
+    // Verify the write succeeded
+    if let savedPatron = _patron.read() {
+      Log.info(#file, "🔑 [KEYCHAIN] ✅ Verification: Patron saved with \(savedPatron.count) keys")
+    } else {
+      Log.error(#file, "🔑 [KEYCHAIN] ❌ ERROR: Failed to verify patron was saved!")
+    }
+    
     notifyAccountDidChange()
   }
   
   @objc(setAuthToken::::)
   func setAuthToken(_ token: String, barcode: String?, pin: String?, expirationDate: Date?) {
+    Log.info(#file, "🔑 [KEYCHAIN] setAuthToken() called")
+    Log.info(#file, "🔑 [KEYCHAIN]   libraryUUID: \(libraryUUID ?? "nil")")
+    Log.info(#file, "🔑 [KEYCHAIN]   token length: \(token.count)")
+    Log.info(#file, "🔑 [KEYCHAIN]   barcode: \(barcode ?? "nil")")
+    Log.info(#file, "🔑 [KEYCHAIN]   pin: \(pin != nil ? "[REDACTED]" : "nil")")
+    Log.info(#file, "🔑 [KEYCHAIN]   expirationDate: \(expirationDate?.description ?? "nil")")
+    Log.info(#file, "🔑 [KEYCHAIN]   credentials key: \(_credentials.key)")
+    
     keychainTransaction.perform {
-      _credentials.write(.token(authToken: token, barcode: barcode, pin: pin, expirationDate: expirationDate))
+      let credential = TPPCredentials.token(authToken: token, barcode: barcode, pin: pin, expirationDate: expirationDate)
+      Log.info(#file, "🔑 [KEYCHAIN] Writing credentials to keychain...")
+      _credentials.write(credential)
     }
+    
+    // Verify the write succeeded by reading back
+    if let savedCreds = _credentials.read() {
+      Log.info(#file, "🔑 [KEYCHAIN] ✅ Verification: Credentials saved successfully")
+      if case let .token(savedToken, _, _, _) = savedCreds {
+        Log.info(#file, "🔑 [KEYCHAIN]   Saved token length: \(savedToken.count)")
+        Log.info(#file, "🔑 [KEYCHAIN]   Token matches: \(savedToken == token)")
+      }
+    } else {
+      Log.error(#file, "🔑 [KEYCHAIN] ❌ ERROR: Failed to verify credentials were saved!")
+    }
+    
     notifyAccountDidChange()
   }
 
   @objc(setCookies:)
   func setCookies(_ cookies: [HTTPCookie]) {
+    Log.info(#file, "🔑 [KEYCHAIN] setCookies() called with \(cookies.count) cookies")
+    Log.info(#file, "🔑 [KEYCHAIN]   libraryUUID: \(libraryUUID ?? "nil")")
+    Log.info(#file, "🔑 [KEYCHAIN]   cookies key: \(_cookies.key)")
+    
     _cookies.write(cookies)
+    
+    // Verify the write succeeded
+    if let savedCookies = _cookies.read() {
+      Log.info(#file, "🔑 [KEYCHAIN] ✅ Verification: \(savedCookies.count) cookies saved")
+    } else {
+      Log.error(#file, "🔑 [KEYCHAIN] ❌ ERROR: Failed to verify cookies were saved!")
+    }
+    
     notifyAccountDidChange()
   }
 
@@ -556,8 +603,20 @@ private enum StorageKey: String {
   /// Sets the authentication state of the account.
   /// - Parameter state: The new authentication state.
   func setAuthState(_ state: TPPAccountAuthState) {
-    Log.info(#file, "Setting auth state: \(authState) → \(state)")
+    Log.info(#file, "🔑 [KEYCHAIN] setAuthState() called")
+    Log.info(#file, "🔑 [KEYCHAIN]   libraryUUID: \(libraryUUID ?? "nil")")
+    Log.info(#file, "🔑 [KEYCHAIN]   current state: \(authState)")
+    Log.info(#file, "🔑 [KEYCHAIN]   new state: \(state)")
+    Log.info(#file, "🔑 [KEYCHAIN]   authState key: \(_authState.key)")
+    
     _authState.write(state)
+    
+    // Verify the write succeeded
+    if let savedState = _authState.read() {
+      Log.info(#file, "🔑 [KEYCHAIN] ✅ Verification: Auth state saved as \(savedState)")
+    } else {
+      Log.error(#file, "🔑 [KEYCHAIN] ❌ ERROR: Failed to verify auth state was saved!")
+    }
     
     // Update Combine publisher
     Task { @MainActor in
@@ -579,12 +638,62 @@ private enum StorageKey: String {
   
   /// Marks the account as fully logged in (e.g., after successful re-authentication).
   func markLoggedIn() {
+    Log.info(#file, "🔑 [KEYCHAIN] markLoggedIn() called")
+    Log.info(#file, "🔑 [KEYCHAIN]   libraryUUID: \(libraryUUID ?? "nil")")
+    Log.info(#file, "🔑 [KEYCHAIN]   hasCredentials before: \(hasCredentials())")
+    
     setAuthState(.loggedIn)
+    
+    Log.info(#file, "🔑 [KEYCHAIN] markLoggedIn() complete - final state check:")
+    Log.info(#file, "🔑 [KEYCHAIN]   hasCredentials: \(hasCredentials())")
+    Log.info(#file, "🔑 [KEYCHAIN]   authState: \(authState)")
+    Log.info(#file, "🔑 [KEYCHAIN]   hasAuthToken: \(hasAuthToken())")
   }
     
+  // MARK: - Cache Refresh
+  
+  /// Forces a refresh of all cached credentials from keychain storage.
+  /// This is useful when credentials may have been updated by another component
+  /// or to verify that credentials were successfully persisted.
+  ///
+  /// - Returns: `true` if credentials were found after refresh, `false` otherwise.
+  @discardableResult
+  func refreshCredentialsFromKeychain() -> Bool {
+    Log.info(#file, "🔑 [KEYCHAIN] refreshCredentialsFromKeychain() called")
+    Log.info(#file, "🔑 [KEYCHAIN]   libraryUUID: \(libraryUUID ?? "nil")")
+    
+    // Force all keychain variables to re-read from keychain on next access
+    // This is done by changing the key (which resets alreadyInited) and then
+    // changing it back
+    let currentUUID = libraryUUID
+    
+    // Temporarily invalidate cache by triggering key change
+    // We do this by re-setting the libraryUUID which updates all keys via didSet
+    if let uuid = currentUUID {
+      // Force the didSet to trigger by setting to a different value first
+      libraryUUID = nil
+      libraryUUID = uuid
+    }
+    
+    // Now read fresh values
+    let hasCreds = hasCredentials()
+    let state = authState
+    
+    Log.info(#file, "🔑 [KEYCHAIN] Refresh complete:")
+    Log.info(#file, "🔑 [KEYCHAIN]   hasCredentials: \(hasCreds)")
+    Log.info(#file, "🔑 [KEYCHAIN]   authState: \(state)")
+    Log.info(#file, "🔑 [KEYCHAIN]   hasAuthToken: \(hasAuthToken())")
+    Log.info(#file, "🔑 [KEYCHAIN]   hasBarcodeAndPIN: \(hasBarcodeAndPIN())")
+    
+    return hasCreds
+  }
+  
   // MARK: - Remove
 
   func removeAll() {
+    Log.info(#file, "🔑 [KEYCHAIN] removeAll() called")
+    Log.info(#file, "🔑 [KEYCHAIN]   libraryUUID: \(libraryUUID ?? "nil")")
+    
     keychainTransaction.perform {
       _adobeToken.write(nil)
       _patron.write(nil)
@@ -606,6 +715,10 @@ private enum StorageKey: String {
         _authToken.write(nil)
       }
     }
+    
+    Log.info(#file, "🔑 [KEYCHAIN] removeAll() complete - verifying:")
+    Log.info(#file, "🔑 [KEYCHAIN]   hasCredentials: \(hasCredentials())")
+    Log.info(#file, "🔑 [KEYCHAIN]   authState: \(authState)")
     
     // Post events after releasing the queue lock to prevent deadlock
     // Update modern Combine publisher

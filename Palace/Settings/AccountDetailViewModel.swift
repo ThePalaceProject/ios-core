@@ -98,8 +98,10 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     )
     
     // Initialize isSignedIn based on current credentials AND auth state
+    // Consider credentialsStale as signed in (user has credentials but may need to re-auth)
     let account = TPPUserAccount.sharedAccount(libraryUUID: libraryAccountID)
-    self.isSignedIn = account.hasCredentials() && account.authState == .loggedIn
+    let authState = account.authState
+    self.isSignedIn = account.hasCredentials() && (authState == .loggedIn || authState == .credentialsStale)
     
     super.init()
     
@@ -474,7 +476,18 @@ class AccountDetailViewModel: NSObject, ObservableObject {
   }
   
   private func accountDidChange() {
-    isSignedIn = selectedUserAccount.hasCredentials() && selectedUserAccount.authState == .loggedIn
+    Log.info(#file, "🔄 [STATE-SYNC] accountDidChange() notification received")
+    
+    // Force refresh from keychain to get latest credentials
+    // This ensures we see updates made by other components (e.g., borrow flow sign-in)
+    let hasCreds = selectedUserAccount.refreshCredentialsFromKeychain()
+    let authState = selectedUserAccount.authState
+    
+    // Consider user signed in if they have credentials and state is loggedIn or credentialsStale
+    isSignedIn = hasCreds && (authState == .loggedIn || authState == .credentialsStale)
+    
+    Log.info(#file, "🔄 [STATE-SYNC]   isSignedIn after refresh: \(isSignedIn)")
+    Log.info(#file, "🔄 [STATE-SYNC]   authState: \(authState)")
     
     if isSignedIn {
       usernameText = selectedUserAccount.barcode ?? ""
@@ -495,10 +508,32 @@ class AccountDetailViewModel: NSObject, ObservableObject {
   }
   
   func refreshSignInState() {
+    Log.info(#file, "🔄 [STATE-SYNC] refreshSignInState() called")
+    Log.info(#file, "🔄 [STATE-SYNC]   libraryAccountID: \(libraryAccountID)")
+    Log.info(#file, "🔄 [STATE-SYNC]   current isSignedIn: \(isSignedIn)")
+    
     let wasSignedIn = isSignedIn
-    isSignedIn = selectedUserAccount.hasCredentials() && selectedUserAccount.authState == .loggedIn
+    
+    // CRITICAL: Force refresh credentials from keychain to ensure we have latest state
+    // This is necessary because credentials might have been updated by another component
+    // (e.g., sign-in from borrow flow modal)
+    let hasCreds = selectedUserAccount.refreshCredentialsFromKeychain()
+    let authState = selectedUserAccount.authState
+    
+    // Consider user signed in if:
+    // - They have credentials AND
+    // - Auth state is either loggedIn OR credentialsStale
+    // credentialsStale means they have valid credentials but the server returned 401
+    // (e.g., SAML token expired). They should still appear signed in but may need to re-auth.
+    isSignedIn = hasCreds && (authState == .loggedIn || authState == .credentialsStale)
+    
+    Log.info(#file, "🔄 [STATE-SYNC]   wasSignedIn: \(wasSignedIn)")
+    Log.info(#file, "🔄 [STATE-SYNC]   isSignedIn after refresh: \(isSignedIn)")
+    Log.info(#file, "🔄 [STATE-SYNC]   hasCredentials: \(hasCreds)")
+    Log.info(#file, "🔄 [STATE-SYNC]   authState: \(authState)")
     
     if wasSignedIn != isSignedIn {
+      Log.info(#file, "🔄 [STATE-SYNC] State changed - rebuilding table data")
       setupTableData()
     }
   }

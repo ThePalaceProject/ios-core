@@ -15,6 +15,7 @@ protocol AnnotationsManager {
                                 motivation: TPPBookmarkSpec.Motivation,
                                 completion: @escaping (_ bookmarks: [Bookmark]?) -> ())
   func deleteBookmark(annotationId: String, completionHandler: @escaping (_ success: Bool) -> ())
+  func deleteAllBookmarks(forBook book: TPPBook, completion: @escaping () -> Void)
 }
 
 @objcMembers final class TPPAnnotationsWrapper: NSObject, AnnotationsManager {
@@ -34,6 +35,10 @@ protocol AnnotationsManager {
   
   func deleteBookmark(annotationId: String, completionHandler: @escaping (Bool) -> ()) {
     TPPAnnotations.deleteBookmark(annotationId: annotationId, completionHandler: completionHandler)
+  }
+  
+  func deleteAllBookmarks(forBook book: TPPBook, completion: @escaping () -> Void) {
+    TPPAnnotations.deleteAllBookmarks(forBook: book, completion: completion)
   }
 }
 
@@ -376,6 +381,53 @@ protocol AnnotationsManager {
             Log.error(#file, "Bookmark not deleted from server. Moving on: \(annotationID)")
           }
         }
+      }
+    }
+  }
+  
+  /// Deletes all bookmarks for a book from the server.
+  /// This should be called when a book is returned to prevent old bookmarks
+  /// from reappearing when the book is re-borrowed.
+  /// - Parameters:
+  ///   - book: The book whose bookmarks should be deleted
+  ///   - completion: Called when the deletion process completes (regardless of individual success/failure)
+  class func deleteAllBookmarks(forBook book: TPPBook, completion: @escaping () -> Void) {
+    guard syncIsPossibleAndPermitted() else {
+      Log.debug(#file, "Account does not support sync or sync is disabled. Skipping server bookmark deletion.")
+      completion()
+      return
+    }
+    
+    Log.info(#file, "🗑️ Deleting all server bookmarks for book: \(book.identifier)")
+    
+    getServerBookmarks(forBook: book, atURL: book.annotationsURL, motivation: .bookmark) { bookmarks in
+      guard let readiumBookmarks = bookmarks as? [TPPReadiumBookmark], !readiumBookmarks.isEmpty else {
+        Log.info(#file, "🗑️ No server bookmarks to delete for book: \(book.identifier)")
+        completion()
+        return
+      }
+      
+      Log.info(#file, "🗑️ Found \(readiumBookmarks.count) server bookmarks to delete for book: \(book.identifier)")
+      
+      let deleteGroup = DispatchGroup()
+      
+      for bookmark in readiumBookmarks {
+        guard let annotationId = bookmark.annotationId else { continue }
+        
+        deleteGroup.enter()
+        deleteBookmark(annotationId: annotationId) { success in
+          if success {
+            Log.debug(#file, "🗑️ Successfully deleted bookmark: \(annotationId)")
+          } else {
+            Log.error(#file, "🗑️ Failed to delete bookmark: \(annotationId)")
+          }
+          deleteGroup.leave()
+        }
+      }
+      
+      deleteGroup.notify(queue: .main) {
+        Log.info(#file, "🗑️ Finished deleting all bookmarks for book: \(book.identifier)")
+        completion()
       }
     }
   }
