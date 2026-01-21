@@ -16,6 +16,19 @@ class TPPSignInOutBusinessLogicUIDelegateMock: NSObject, TPPSignInOutBusinessLog
   var didCallDidFinishDeauthorizing = false
   var didFinishDeauthorizingHandler: (() -> Void)?
   
+  // MARK: - Sign-In Flow Tracking
+  var didCallWillSignIn = false
+  var didCallDidCompleteSignIn = false
+  var didCallDidCancelSignIn = false
+  var didCallDidReceiveCredentials = false
+  var willSignInCallCount = 0
+  var didCompleteSignInCallCount = 0
+  var didReceiveCredentialsCallCount = 0
+  
+  // Track isLoading state transitions
+  var isLoading = false
+  var loadingStateChanges: [Bool] = []
+  
   func businessLogicWillSignOut(_ businessLogic: TPPSignInBusinessLogic) {
     didCallWillSignOut = true
   }
@@ -31,14 +44,32 @@ class TPPSignInOutBusinessLogicUIDelegateMock: NSObject, TPPSignInOutBusinessLog
   }
 
   func businessLogicDidCancelSignIn(_ businessLogic: TPPSignInBusinessLogic) {
+    didCallDidCancelSignIn = true
+    isLoading = false
+    loadingStateChanges.append(false)
   }
 
   var context = "Unit Tests Context"
 
   func businessLogicWillSignIn(_ businessLogic: TPPSignInBusinessLogic) {
+    didCallWillSignIn = true
+    willSignInCallCount += 1
+    isLoading = true
+    loadingStateChanges.append(true)
   }
 
   func businessLogicDidCompleteSignIn(_ businessLogic: TPPSignInBusinessLogic) {
+    didCallDidCompleteSignIn = true
+    didCompleteSignInCallCount += 1
+    isLoading = false
+    loadingStateChanges.append(false)
+  }
+  
+  func businessLogicDidReceiveCredentials(_ businessLogic: TPPSignInBusinessLogic) {
+    didCallDidReceiveCredentials = true
+    didReceiveCredentialsCallCount += 1
+    // Simulate the real behavior: keep loading true as DRM processing starts
+    isLoading = true
   }
 
   func businessLogic(_ logic: TPPSignInBusinessLogic,

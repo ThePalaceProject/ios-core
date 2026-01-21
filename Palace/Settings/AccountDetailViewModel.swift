@@ -16,9 +16,13 @@ class AccountDetailViewModel: NSObject, ObservableObject {
   // MARK: - Constants
   
   private enum Constants {
-    static let signInTimeoutSeconds: UInt64 = 30_000_000_000
+    // Timeout for DRM processing AFTER WebView dismisses (not during WebView display)
+    static let drmProcessingTimeoutSeconds: UInt64 = 60_000_000_000 // 60 seconds
     static let maxUsernameLength = 25
   }
+  
+  /// Task for tracking sign-in timeout (can be cancelled when WebView is still displayed)
+  private var signInTimeoutTask: Task<Void, Never>?
   
   // MARK: - Published Properties
   
@@ -626,10 +630,29 @@ extension AccountDetailViewModel: TPPSignInOutBusinessLogicUIDelegate {
     isLoading = true
     isSigningOut = false
     
-    Task {
-      try? await Task.sleep(nanoseconds: Constants.signInTimeoutSeconds)
-      if isLoading {
+    // Cancel any existing timeout
+    signInTimeoutTask?.cancel()
+    signInTimeoutTask = nil
+    
+    // For SAML/OAuth, don't start a timeout here - the user will be in a WebView
+    // The timeout will start when the WebView dismisses (in startDRMProcessingTimeout)
+    let isSAMLOrOAuth = businessLogic.selectedAuthentication?.isSaml == true ||
+                        businessLogic.selectedAuthentication?.isOauth == true
+    
+    if !isSAMLOrOAuth {
+      startDRMProcessingTimeout()
+    }
+  }
+  
+  /// Starts a timeout for DRM processing. For SAML/OAuth, this is called after the
+  /// WebView dismisses. For username/password, it's called immediately.
+  func startDRMProcessingTimeout() {
+    signInTimeoutTask?.cancel()
+    signInTimeoutTask = Task {
+      try? await Task.sleep(nanoseconds: Constants.drmProcessingTimeoutSeconds)
+      if !Task.isCancelled && isLoading {
         await MainActor.run {
+          Log.warn(#file, "DRM processing timeout reached after 60 seconds")
           isLoading = false
         }
       }
@@ -637,17 +660,29 @@ extension AccountDetailViewModel: TPPSignInOutBusinessLogicUIDelegate {
   }
   
   func businessLogicDidCancelSignIn(_ businessLogic: TPPSignInBusinessLogic) {
+    signInTimeoutTask?.cancel()
+    signInTimeoutTask = nil
     isLoading = false
     isSigningOut = false
   }
   
+  func businessLogicDidReceiveCredentials(_ businessLogic: TPPSignInBusinessLogic) {
+    // Credentials received from OAuth/SAML - WebView has dismissed, DRM processing starting
+    isLoading = true
+    startDRMProcessingTimeout()
+  }
+  
   func businessLogicDidCompleteSignIn(_ businessLogic: TPPSignInBusinessLogic) {
+    signInTimeoutTask?.cancel()
+    signInTimeoutTask = nil
     isLoading = false
     isSigningOut = false
     accountDidChange()
   }
   
   func businessLogic(_ logic: TPPSignInBusinessLogic, didEncounterValidationError error: Error?, userFriendlyErrorTitle title: String?, andMessage message: String?) {
+    signInTimeoutTask?.cancel()
+    signInTimeoutTask = nil
     isLoading = false
     isSigningOut = false
     
@@ -694,10 +729,16 @@ extension AccountDetailViewModel: TPPSignInOutBusinessLogicUIDelegate {
   }
   
   func dismiss(animated flag: Bool, completion: (() -> Void)?) {
-    guard let presented = UIApplication.shared.windows.first?.rootViewController?.presentedViewController else {
+    guard var topVC = UIApplication.shared.windows.first?.rootViewController else {
       return
     }
-    presented.dismiss(animated: flag, completion: completion)
+    
+    // Walk up the presentation chain to find the topmost presented view controller
+    while let presented = topVC.presentedViewController {
+      topVC = presented
+    }
+    
+    topVC.dismiss(animated: flag, completion: completion)
   }
   
   func present(_ viewControllerToPresent: UIViewController, animated flag: Bool, completion: (() -> Void)?) {

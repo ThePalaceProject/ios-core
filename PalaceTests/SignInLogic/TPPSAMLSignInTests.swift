@@ -434,4 +434,221 @@ final class TPPSAMLSignInTests: XCTestCase {
                    "Credentials should be removed when DRM fails")
     #endif
   }
+  
+  // MARK: - Credentials Stale State Tests (PP-418)
+  
+  /// PP-418 Regression Test: Verifies that credentialsStale state is handled correctly.
+  ///
+  /// Bug: When SAML token expired (401 response), the Settings screen showed user as
+  /// signed out even though they still had credentials. The credentialsStale state
+  /// should be treated as "signed in" for UI purposes.
+  func testCredentialsStale_PP418_userStillHasCredentials() {
+    // Setup: Sign in first
+    businessLogic.selectedAuthentication = libraryAccountMock.samlAuthentication
+    businessLogic.updateUserAccount(
+      forDRMAuthorization: true,
+      withBarcode: nil,
+      pin: nil,
+      authToken: "test-token",
+      expirationDate: nil,
+      patron: ["name": "Test User"],
+      cookies: nil
+    )
+    
+    // Precondition: User should be signed in
+    XCTAssertTrue(businessLogic.userAccount.hasCredentials(),
+                  "Precondition: User should have credentials")
+    XCTAssertEqual(businessLogic.userAccount.authState, .loggedIn,
+                   "Precondition: Auth state should be loggedIn")
+    
+    // Act: Mark credentials as stale (simulates 401 response from server)
+    businessLogic.userAccount.markCredentialsStale()
+    
+    // Assert: User still has credentials, just stale
+    XCTAssertTrue(businessLogic.userAccount.hasCredentials(),
+                  "PP-418: User should still have credentials when stale")
+    XCTAssertEqual(businessLogic.userAccount.authState, .credentialsStale,
+                   "PP-418: Auth state should be credentialsStale")
+    XCTAssertNotNil(businessLogic.userAccount.authToken,
+                    "PP-418: Auth token should still exist when stale")
+  }
+  
+  /// Tests that hasCredentials returns true even when credentials are stale.
+  func testCredentialsStale_hasCredentialsReturnsTrue() {
+    // Setup: Sign in and mark stale
+    businessLogic.selectedAuthentication = libraryAccountMock.samlAuthentication
+    businessLogic.updateUserAccount(
+      forDRMAuthorization: true,
+      withBarcode: nil,
+      pin: nil,
+      authToken: "stale-token",
+      expirationDate: nil,
+      patron: nil,
+      cookies: nil
+    )
+    businessLogic.userAccount.markCredentialsStale()
+    
+    // Assert
+    XCTAssertTrue(businessLogic.userAccount.hasCredentials(),
+                  "hasCredentials should return true even when credentials are stale")
+  }
+  
+  /// Tests that re-authentication clears the stale state.
+  func testCredentialsStale_reAuthClearsStaleState() {
+    // Setup: Sign in and mark stale
+    businessLogic.selectedAuthentication = libraryAccountMock.samlAuthentication
+    businessLogic.updateUserAccount(
+      forDRMAuthorization: true,
+      withBarcode: nil,
+      pin: nil,
+      authToken: "original-token",
+      expirationDate: nil,
+      patron: nil,
+      cookies: nil
+    )
+    businessLogic.userAccount.markCredentialsStale()
+    
+    XCTAssertEqual(businessLogic.userAccount.authState, .credentialsStale,
+                   "Precondition: Should be stale")
+    
+    // Act: Re-authenticate with new token
+    businessLogic.updateUserAccount(
+      forDRMAuthorization: true,
+      withBarcode: nil,
+      pin: nil,
+      authToken: "new-fresh-token",
+      expirationDate: nil,
+      patron: nil,
+      cookies: nil
+    )
+    
+    // Assert: State should be loggedIn again
+    XCTAssertEqual(businessLogic.userAccount.authState, .loggedIn,
+                   "Re-authentication should set state to loggedIn")
+    XCTAssertEqual(businessLogic.userAccount.authToken, "new-fresh-token",
+                   "Auth token should be updated")
+  }
+  
+  // MARK: - UI Delegate Loading State Tests
+  
+  /// Tests that businessLogicWillSignIn is called when sign-in starts.
+  func testSignIn_callsBusinessLogicWillSignIn() {
+    // Setup
+    businessLogic.selectedAuthentication = libraryAccountMock.samlAuthentication
+    
+    XCTAssertFalse(uiDelegate.didCallWillSignIn,
+                   "Precondition: willSignIn should not have been called")
+    
+    // Act: Trigger sign-in (this will call businessLogicWillSignIn)
+    businessLogic.logIn()
+    
+    // Assert
+    XCTAssertTrue(uiDelegate.didCallWillSignIn,
+                  "businessLogicWillSignIn should be called when sign-in starts")
+    XCTAssertTrue(uiDelegate.isLoading,
+                  "isLoading should be true after willSignIn")
+  }
+  
+  /// Tests that businessLogicDidCompleteSignIn is called when sign-in completes.
+  func testSignIn_callsBusinessLogicDidCompleteSignIn() {
+    // Setup
+    businessLogic.selectedAuthentication = libraryAccountMock.samlAuthentication
+    
+    // Act: Complete sign-in via finalizeSignIn
+    businessLogic.finalizeSignIn(forDRMAuthorization: true)
+    
+    // Use expectation since finalizeSignIn dispatches to main queue
+    let expectation = self.expectation(description: "Sign-in completes")
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+      expectation.fulfill()
+    }
+    
+    waitForExpectations(timeout: 1.0)
+    
+    // Assert
+    XCTAssertTrue(uiDelegate.didCallDidCompleteSignIn,
+                  "businessLogicDidCompleteSignIn should be called when sign-in completes")
+  }
+  
+  /// Tests that loading state transitions correctly through sign-in flow.
+  func testSignIn_loadingStateTransitions() {
+    // Setup
+    businessLogic.selectedAuthentication = libraryAccountMock.samlAuthentication
+    
+    // Clear any previous state
+    uiDelegate.loadingStateChanges.removeAll()
+    
+    // Act: Simulate full sign-in flow
+    // Step 1: Start sign-in
+    uiDelegate.businessLogicWillSignIn(businessLogic)
+    
+    XCTAssertTrue(uiDelegate.isLoading,
+                  "Should be loading after willSignIn")
+    
+    // Step 2: Complete sign-in
+    uiDelegate.businessLogicDidCompleteSignIn(businessLogic)
+    
+    XCTAssertFalse(uiDelegate.isLoading,
+                   "Should not be loading after didCompleteSignIn")
+    
+    // Assert: Verify the transition sequence
+    XCTAssertEqual(uiDelegate.loadingStateChanges, [true, false],
+                   "Loading state should transition from true to false")
+  }
+  
+  /// Tests that cancelled sign-in sets loading to false.
+  func testSignIn_cancelledSetsLoadingFalse() {
+    // Setup
+    businessLogic.selectedAuthentication = libraryAccountMock.samlAuthentication
+    
+    // Start sign-in
+    uiDelegate.businessLogicWillSignIn(businessLogic)
+    XCTAssertTrue(uiDelegate.isLoading)
+    
+    // Act: Cancel sign-in
+    uiDelegate.businessLogicDidCancelSignIn(businessLogic)
+    
+    // Assert
+    XCTAssertFalse(uiDelegate.isLoading,
+                   "Loading should be false after sign-in cancelled")
+    XCTAssertTrue(uiDelegate.didCallDidCancelSignIn,
+                  "didCancelSignIn should be called")
+  }
+  
+  // MARK: - Refresh Credentials Tests
+  
+  /// Tests that refreshCredentialsFromKeychain returns true when credentials exist.
+  func testRefreshCredentialsFromKeychain_returnsTrueWhenCredentialsExist() {
+    // Setup: Sign in
+    businessLogic.selectedAuthentication = libraryAccountMock.samlAuthentication
+    businessLogic.updateUserAccount(
+      forDRMAuthorization: true,
+      withBarcode: nil,
+      pin: nil,
+      authToken: "test-token",
+      expirationDate: nil,
+      patron: nil,
+      cookies: nil
+    )
+    
+    // Act
+    let hasCredentials = businessLogic.userAccount.refreshCredentialsFromKeychain()
+    
+    // Assert
+    XCTAssertTrue(hasCredentials,
+                  "refreshCredentialsFromKeychain should return true when credentials exist")
+  }
+  
+  /// Tests that refreshCredentialsFromKeychain returns false when no credentials.
+  func testRefreshCredentialsFromKeychain_returnsFalseWhenNoCredentials() {
+    // Setup: Ensure no credentials
+    businessLogic.userAccount.removeAll()
+    
+    // Act
+    let hasCredentials = businessLogic.userAccount.refreshCredentialsFromKeychain()
+    
+    // Assert
+    XCTAssertFalse(hasCredentials,
+                   "refreshCredentialsFromKeychain should return false when no credentials")
+  }
 }

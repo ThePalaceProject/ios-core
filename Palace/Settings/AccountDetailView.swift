@@ -138,6 +138,8 @@ struct AccountDetailView: View {
     }
     .padding(.horizontal, Layout.horizontalPadding)
     .padding(.top, Layout.verticalPaddingLarge)
+    // Force view refresh when isLoading changes
+    .id("samlIDPList-\(viewModel.isLoading)")
   }
   
   private var singleSignInButton: some View {
@@ -152,6 +154,8 @@ struct AccountDetailView: View {
     }
     .padding(.horizontal, Layout.horizontalPadding)
     .padding(.top, Layout.verticalPaddingLarge)
+    // Force view refresh when isLoading changes
+    .id("signInButton-\(viewModel.isLoading)")
   }
   
   @ViewBuilder

@@ -320,6 +320,12 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
         Log.info(#file, "🔐 [VALIDATE] ✅ Network request SUCCESS - HTTP \(statusCode)")
         Log.info(#file, "🔐 [VALIDATE] Response data size: \(responseData.count) bytes")
         
+        // Notify delegate that credentials were received and DRM processing is about to begin
+        // This allows the UI to show a loading indicator after WebView dismisses
+        TPPMainThreadRun.asyncIfNeeded {
+          self.uiDelegate?.businessLogicDidReceiveCredentials?(self)
+        }
+        
         #if FEATURE_DRM_CONNECTOR
         if (AdobeCertificate.defaultCertificate?.hasExpired == true) {
           Log.info(#file, "🔐 [VALIDATE] DRM certificate expired - calling finalizeSignIn")
