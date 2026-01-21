@@ -66,49 +66,33 @@ class TPPKeychainVariable<VariableType>: Keyable {
 class TPPKeychainCodableVariable<VariableType: Codable>: TPPKeychainVariable<VariableType> {
   override func read() -> VariableType? {
     transaction.perform {
-      guard !alreadyInited else {
-        Log.debug(#file, "🔐 [KEYCHAIN-READ] Using cached value for key: \(key)")
-        return
-      }
-      
-      Log.info(#file, "🔐 [KEYCHAIN-READ] Reading codable value for key: \(key)")
-      Log.info(#file, "🔐 [KEYCHAIN-READ]   Value type: \(VariableType.self)")
+      guard !alreadyInited else { return }
       
       // Try new format first (direct JSON), then fall back to old format (NSKeyedArchiver-wrapped)
       if let jsonData = readJSONDataDirectly(forKey: key) {
-        Log.info(#file, "🔐 [KEYCHAIN-READ]   Found JSON data: \(jsonData.count) bytes")
         do {
           cachedValue = try JSONDecoder().decode(VariableType.self, from: jsonData)
           alreadyInited = true
-          Log.info(#file, "🔐 [KEYCHAIN-READ] ✅ Successfully decoded value for key: \(key)")
           return
         } catch {
-          Log.error(#file, "🔐 [KEYCHAIN-READ] ❌ Failed to decode JSON keychain data for key \(key): \(error)")
+          Log.error(#file, "Failed to decode JSON keychain data for key \(key): \(error)")
         }
-      } else {
-        Log.info(#file, "🔐 [KEYCHAIN-READ]   No JSON data found directly")
       }
       
       // Fallback: try reading via old NSKeyedArchiver method for backward compatibility
       if let legacyData = TPPKeychain.shared()?.object(forKey: key) as? Data {
-        Log.info(#file, "🔐 [KEYCHAIN-READ]   Found legacy data: \(legacyData.count) bytes")
         do {
-          Log.info(#file, "🔐 [KEYCHAIN-READ]   Attempting to decode legacy NSKeyedArchiver data")
           cachedValue = try JSONDecoder().decode(VariableType.self, from: legacyData)
           alreadyInited = true
           
           // Migrate to new format
-          Log.info(#file, "🔐 [KEYCHAIN-READ] ✅ Successfully decoded legacy data, migrating to new format")
           writeJSONDataDirectly(legacyData, forKey: key)
           return
         } catch {
-          Log.error(#file, "🔐 [KEYCHAIN-READ] ❌ Failed to decode legacy keychain data for key \(key): \(error)")
+          Log.error(#file, "Failed to decode legacy keychain data for key \(key): \(error)")
         }
-      } else {
-        Log.info(#file, "🔐 [KEYCHAIN-READ]   No legacy data found")
       }
       
-      Log.info(#file, "🔐 [KEYCHAIN-READ]   No value found for key: \(key)")
       cachedValue = nil
       alreadyInited = true
     }
@@ -122,21 +106,15 @@ class TPPKeychainCodableVariable<VariableType: Codable>: TPPKeychainVariable<Var
       
       // Write to keychain synchronously to ensure persistence before app termination
       // For Codable types, write JSON directly without NSKeyedArchiver wrapper
-      Log.info(#file, "🔐 [KEYCHAIN-WRITE] Writing codable value for key: \(key)")
-      Log.info(#file, "🔐 [KEYCHAIN-WRITE]   Value type: \(VariableType.self)")
-      Log.info(#file, "🔐 [KEYCHAIN-WRITE]   Value is nil: \(newValue == nil)")
-      
       if let newValue = newValue {
         do {
           let jsonData = try JSONEncoder().encode(newValue)
-          Log.info(#file, "🔐 [KEYCHAIN-WRITE]   Encoded JSON size: \(jsonData.count) bytes")
           writeJSONDataDirectly(jsonData, forKey: key)
         } catch {
-          Log.error(#file, "🔐 [KEYCHAIN-WRITE] ❌ Failed to encode value for key \(key): \(error)")
+          Log.error(#file, "Failed to encode value for keychain key \(key): \(error)")
           removeAllFormats(forKey: key)
         }
       } else {
-        Log.info(#file, "🔐 [KEYCHAIN-WRITE]   Removing key (value is nil)")
         removeAllFormats(forKey: key)
       }
     }
@@ -172,19 +150,15 @@ class TPPKeychainCodableVariable<VariableType: Codable>: TPPKeychainVariable<Var
       ]
       var legacyRef: CFTypeRef?
       if SecItemCopyMatching(legacyQuery as CFDictionary, &legacyRef) == errSecSuccess {
-        Log.info(#file, "🔐 [KEYCHAIN-WRITE] Migrating from legacy NSKeyedArchiver format for \(key)")
         SecItemDelete(legacyQuery as CFDictionary)
       }
       
       // Try legacy Data(utf8) format (previous fix attempt)
       legacyQuery[kSecAttrAccount as String] = Data(key.utf8)
       if SecItemCopyMatching(legacyQuery as CFDictionary, &legacyRef) == errSecSuccess {
-        Log.info(#file, "🔐 [KEYCHAIN-WRITE] Migrating from legacy Data(utf8) format for \(key)")
         SecItemDelete(legacyQuery as CFDictionary)
       }
     }
-    
-    Log.info(#file, "🔐 [KEYCHAIN-WRITE]   Item exists: \(itemExists) (status: \(existsStatus))")
     
     if itemExists {
       // Update existing
@@ -193,10 +167,8 @@ class TPPKeychainCodableVariable<VariableType: Codable>: TPPKeychainVariable<Var
         kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock
       ]
       let status = SecItemUpdate(query as CFDictionary, update as CFDictionary)
-      if status == errSecSuccess {
-        Log.info(#file, "🔐 [KEYCHAIN-WRITE] ✅ Updated existing keychain item for \(key)")
-      } else {
-        Log.error(#file, "🔐 [KEYCHAIN-WRITE] ❌ Failed to update keychain item for \(key): OSStatus \(status) (\(securityErrorMessage(status)))")
+      if status != errSecSuccess {
+        Log.error(#file, "Failed to update keychain item for \(key): OSStatus \(status) (\(securityErrorMessage(status)))")
       }
     } else {
       // Add new
@@ -204,10 +176,8 @@ class TPPKeychainCodableVariable<VariableType: Codable>: TPPKeychainVariable<Var
       newItem[kSecValueData as String] = data
       newItem[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
       let status = SecItemAdd(newItem as CFDictionary, nil)
-      if status == errSecSuccess {
-        Log.info(#file, "🔐 [KEYCHAIN-WRITE] ✅ Added new keychain item for \(key)")
-      } else {
-        Log.error(#file, "🔐 [KEYCHAIN-WRITE] ❌ Failed to add keychain item for \(key): OSStatus \(status) (\(securityErrorMessage(status)))")
+      if status != errSecSuccess {
+        Log.error(#file, "Failed to add keychain item for \(key): OSStatus \(status) (\(securityErrorMessage(status)))")
       }
     }
   }
@@ -256,8 +226,6 @@ class TPPKeychainCodableVariable<VariableType: Codable>: TPPKeychainVariable<Var
       kSecAttrAccount as String: Data(key.utf8)
     ]
     SecItemDelete(utf8Query as CFDictionary)
-    
-    Log.info(#file, "🔐 [KEYCHAIN-REMOVE] Removed all formats for key: \(key)")
   }
   
   /// Save data with the new stable string key format (used for migration)
@@ -277,10 +245,8 @@ class TPPKeychainCodableVariable<VariableType: Codable>: TPPKeychainVariable<Var
     newItem[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
     let status = SecItemAdd(newItem as CFDictionary, nil)
     
-    if status == errSecSuccess {
-      Log.info(#file, "🔐 [KEYCHAIN-MIGRATE] ✅ Migrated item to new format for \(key)")
-    } else {
-      Log.error(#file, "🔐 [KEYCHAIN-MIGRATE] ❌ Failed to migrate item for \(key): OSStatus \(status)")
+    if status != errSecSuccess {
+      Log.error(#file, "Failed to migrate keychain item for \(key): OSStatus \(status)")
     }
   }
   
@@ -300,8 +266,6 @@ class TPPKeychainCodableVariable<VariableType: Codable>: TPPKeychainVariable<Var
     
     // If not found with new format, try legacy formats and migrate
     if status == errSecItemNotFound {
-      Log.info(#file, "🔐 [KEYCHAIN-READ] Item not found with string key, trying legacy formats...")
-      
       // Try 1: Legacy NSKeyedArchiver format
       let legacyKeyData = NSKeyedArchiver.archivedData(withRootObject: key)
       var legacyQuery: [String: Any] = [
@@ -313,7 +277,6 @@ class TPPKeychainCodableVariable<VariableType: Codable>: TPPKeychainVariable<Var
       status = SecItemCopyMatching(legacyQuery as CFDictionary, &resultRef)
       
       if status == errSecSuccess, let data = resultRef as? Data {
-        Log.info(#file, "🔐 [KEYCHAIN-READ] Found legacy NSKeyedArchiver item, migrating...")
         saveWithNewFormat(data, forKey: key)
         SecItemDelete(legacyQuery as CFDictionary)
         return data
@@ -324,7 +287,6 @@ class TPPKeychainCodableVariable<VariableType: Codable>: TPPKeychainVariable<Var
       status = SecItemCopyMatching(legacyQuery as CFDictionary, &resultRef)
       
       if status == errSecSuccess, let data = resultRef as? Data {
-        Log.info(#file, "🔐 [KEYCHAIN-READ] Found legacy Data(utf8) item, migrating...")
         saveWithNewFormat(data, forKey: key)
         SecItemDelete(legacyQuery as CFDictionary)
         return data
@@ -336,13 +298,10 @@ class TPPKeychainCodableVariable<VariableType: Codable>: TPPKeychainVariable<Var
       status = SecItemCopyMatching(legacyQuery as CFDictionary, &resultRef)
       
       if status == errSecSuccess, let data = resultRef as? Data {
-        Log.info(#file, "🔐 [KEYCHAIN-READ] Found item with plain string key (no service), migrating...")
         saveWithNewFormat(data, forKey: key)
         SecItemDelete(legacyQuery as CFDictionary)
         return data
       }
-      
-      Log.info(#file, "🔐 [KEYCHAIN-READ] No legacy format found either")
     }
     
     guard status == errSecSuccess, let data = resultRef as? Data else {

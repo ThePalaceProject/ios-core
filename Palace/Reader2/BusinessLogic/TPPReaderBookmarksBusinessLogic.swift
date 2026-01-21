@@ -162,7 +162,7 @@ class TPPReaderBookmarksBusinessLogic: NSObject {
       return
     }
     
-    // PP-3555 Fix: Log the deletion so sync can retry if immediate deletion fails.
+    // Log the deletion so sync can retry if immediate deletion fails.
     // This ensures ghost bookmarks (from previous loans or other devices) can be deleted.
     TPPBookmarkDeletionLog.shared.logDeletion(annotationId: annotationId, forBook: book.identifier)
     
@@ -264,9 +264,9 @@ class TPPReaderBookmarksBusinessLogic: NSObject {
       if let localBookmark = localBookmarks.first(where: { $0.annotationId == serverBookmark.annotationId }) {
         localBookmarksToKeep.append(localBookmark)
       } else if let annotationId = serverBookmark.annotationId, pendingDeletions.contains(annotationId) {
-        // PP-3555 Fix: User explicitly deleted this bookmark - delete from server
+        // User explicitly deleted this bookmark - delete from server
         // instead of re-adding locally (regardless of device ID)
-        Log.info(#file, "📚 Found explicitly deleted bookmark on server, queuing for deletion: \(annotationId)")
+        Log.debug(#file, "Found explicitly deleted bookmark on server, queuing for deletion: \(annotationId)")
         serverBookmarksToDelete.append(serverBookmark)
       } else {
         // Bookmark exists on server but not locally, and wasn't explicitly deleted
@@ -275,7 +275,7 @@ class TPPReaderBookmarksBusinessLogic: NSObject {
       }
     }
 
-    // PP-3555 Fix: Also delete server bookmarks that match device ID (original behavior)
+    // Also delete server bookmarks that match device ID (original behavior)
     // This handles the case where deletion log wasn't used
     for serverBookmark in serverBookmarks {
       if let deviceID = serverBookmark.device, let drmDeviceID = drmDeviceID, deviceID == drmDeviceID {

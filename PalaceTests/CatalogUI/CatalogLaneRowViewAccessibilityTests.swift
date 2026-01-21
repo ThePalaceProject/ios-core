@@ -2,7 +2,7 @@
 //  CatalogLaneRowViewAccessibilityTests.swift
 //  PalaceTests
 //
-//  Regression test for PP-3346: VoiceOver no longer reading title and author of books
+//  Regression test for VoiceOver no longer reading title and author of books
 //  in main catalog screen. This test ensures that the book buttons in the horizontal
 //  lane scroller have proper accessibility labels for VoiceOver users.
 //
@@ -15,9 +15,9 @@ import SwiftUI
 
 final class CatalogLaneRowViewAccessibilityTests: XCTestCase {
   
-  // MARK: - PP-3346 Regression Tests
+  // MARK: - Regression Tests
   
-  /// PP-3346: Verifies that a book's accessibility label includes title and author
+  /// Verifies that a book's accessibility label includes title and author
   func testAccessibilityLabel_includesTitleAndAuthor() {
     // Given
     let book = TPPBookMocker.mockBook(title: "The Great Gatsby", authors: "F. Scott Fitzgerald")
@@ -29,7 +29,7 @@ final class CatalogLaneRowViewAccessibilityTests: XCTestCase {
     XCTAssertEqual(label, "The Great Gatsby, F. Scott Fitzgerald")
   }
   
-  /// PP-3346: Verifies that a book without authors still has a valid accessibility label
+  /// Verifies that a book without authors still has a valid accessibility label
   func testAccessibilityLabel_bookWithoutAuthor() {
     // Given
     let book = TPPBookMocker.mockBook(title: "Untitled Work", authors: nil)
@@ -41,7 +41,7 @@ final class CatalogLaneRowViewAccessibilityTests: XCTestCase {
     XCTAssertEqual(label, "Untitled Work")
   }
   
-  /// PP-3346: Verifies that audiobooks have proper accessibility designation
+  /// Verifies that audiobooks have proper accessibility designation
   func testAccessibilityLabel_audiobookIncludesAudiobookDesignation() {
     // Given
     let audiobook = TPPBookMocker.snapshotAudiobook()
@@ -55,7 +55,7 @@ final class CatalogLaneRowViewAccessibilityTests: XCTestCase {
     XCTAssertTrue(label.contains(audiobook.title))
   }
   
-  /// PP-3346: Verifies that regular eBooks do NOT have audiobook designation
+  /// Verifies that regular eBooks do NOT have audiobook designation
   func testAccessibilityLabel_ebookDoesNotIncludeAudiobookDesignation() {
     // Given
     let ebook = TPPBookMocker.snapshotEPUB()
@@ -68,7 +68,7 @@ final class CatalogLaneRowViewAccessibilityTests: XCTestCase {
     XCTAssertFalse(label.contains(Strings.Generic.audiobook))
   }
   
-  /// PP-3346: Verifies accessibility label uses comma-separated format
+  /// Verifies accessibility label uses comma-separated format
   func testAccessibilityLabel_usesCommaSeparatedFormat() {
     // Given
     let book = TPPBookMocker.mockBook(title: "Pride and Prejudice", authors: "Jane Austen")
@@ -80,7 +80,7 @@ final class CatalogLaneRowViewAccessibilityTests: XCTestCase {
     XCTAssertEqual(label, "Pride and Prejudice, Jane Austen")
   }
   
-  /// PP-3346: Verifies audiobook label format includes audiobook designation
+  /// Verifies audiobook label format includes audiobook designation
   func testAccessibilityLabel_audiobookFormat() {
     // Given
     let audiobook = TPPBookMocker.snapshotAudiobook() // "Pride and Prejudice" by "Jane Austen"

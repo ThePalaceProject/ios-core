@@ -4,7 +4,7 @@
 //
 //  Tests for VoiceOver accessibility in catalog-related UI elements.
 //  Verifies lane navigation and filter controls have proper labels.
-//  (PP-3292)
+//  ()
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //

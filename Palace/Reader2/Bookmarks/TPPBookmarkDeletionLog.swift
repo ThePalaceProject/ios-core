@@ -2,7 +2,7 @@
 //  TPPBookmarkDeletionLog.swift
 //  Palace
 //
-//  Created for PP-3555: Track explicitly deleted bookmarks to ensure
+//  Track explicitly deleted bookmarks to ensure
 //  they get deleted from the server during sync, regardless of device ID.
 //
 
@@ -47,7 +47,7 @@ final class TPPBookmarkDeletionLog: NSObject {
       bookDeletions.insert(annotationId)
       self.deletionLog[bookIdentifier] = bookDeletions
       
-      Log.info(#file, "📚 Logged bookmark deletion for sync: \(annotationId) (book: \(bookIdentifier))")
+      Log.debug(#file, "Logged bookmark deletion for sync: \(annotationId)")
       
       self.saveToDisk()
     }
@@ -93,7 +93,7 @@ final class TPPBookmarkDeletionLog: NSObject {
       self.deletionLog.removeValue(forKey: bookIdentifier)
       self.saveToDisk()
       
-      Log.info(#file, "📚 Cleared all pending bookmark deletions for book: \(bookIdentifier)")
+      Log.debug(#file, "Cleared all pending bookmark deletions for book: \(bookIdentifier)")
     }
   }
   

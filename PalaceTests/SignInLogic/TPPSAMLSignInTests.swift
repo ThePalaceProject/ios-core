@@ -63,7 +63,7 @@ final class TPPSAMLSignInTests: XCTestCase {
   
   // MARK: - SAML Credential Persistence Tests
   
-  /// PP-418 Regression Test: Verifies that SAML credentials are persisted after sign-in.
+  /// Regression Test: Verifies that SAML credentials are persisted after sign-in.
   /// 
   /// Bug: After SAML sign-in from the borrow flow, credentials were not persisted,
   /// causing the Settings screen to show the user as signed out.
@@ -103,17 +103,17 @@ final class TPPSAMLSignInTests: XCTestCase {
     
     // Assert: Credentials should be persisted
     XCTAssertTrue(businessLogic.userAccount.hasCredentials(),
-                  "PP-418: Credentials should be persisted after SAML sign-in")
+                  "Credentials should be persisted after SAML sign-in")
     XCTAssertTrue(businessLogic.userAccount.hasAuthToken(),
-                  "PP-418: Auth token should be persisted")
+                  "Auth token should be persisted")
     XCTAssertEqual(businessLogic.userAccount.authToken, testToken,
-                   "PP-418: Auth token should match what was set")
+                   "Auth token should match what was set")
     XCTAssertEqual(businessLogic.userAccount.authState, .loggedIn,
-                   "PP-418: Auth state should be loggedIn")
+                   "Auth state should be loggedIn")
     XCTAssertNotNil(businessLogic.userAccount.patron,
-                    "PP-418: Patron info should be persisted")
+                    "Patron info should be persisted")
     XCTAssertEqual(businessLogic.userAccount.cookies?.count, 1,
-                   "PP-418: SAML cookies should be persisted")
+                   "SAML cookies should be persisted")
   }
   
   /// Tests that auth state is correctly set to loggedIn after SAML sign-in.
@@ -435,9 +435,9 @@ final class TPPSAMLSignInTests: XCTestCase {
     #endif
   }
   
-  // MARK: - Credentials Stale State Tests (PP-418)
+  // MARK: - Credentials Stale State Tests ()
   
-  /// PP-418 Regression Test: Verifies that credentialsStale state is handled correctly.
+  /// Regression Test: Verifies that credentialsStale state is handled correctly.
   ///
   /// Bug: When SAML token expired (401 response), the Settings screen showed user as
   /// signed out even though they still had credentials. The credentialsStale state
@@ -466,11 +466,11 @@ final class TPPSAMLSignInTests: XCTestCase {
     
     // Assert: User still has credentials, just stale
     XCTAssertTrue(businessLogic.userAccount.hasCredentials(),
-                  "PP-418: User should still have credentials when stale")
+                  "User should still have credentials when stale")
     XCTAssertEqual(businessLogic.userAccount.authState, .credentialsStale,
-                   "PP-418: Auth state should be credentialsStale")
+                   "Auth state should be credentialsStale")
     XCTAssertNotNil(businessLogic.userAccount.authToken,
-                    "PP-418: Auth token should still exist when stale")
+                    "Auth token should still exist when stale")
   }
   
   /// Tests that hasCredentials returns true even when credentials are stale.

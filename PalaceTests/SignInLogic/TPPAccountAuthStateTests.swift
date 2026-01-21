@@ -5,7 +5,7 @@
 //  Tests for the auth state machine that prevents unnecessary Adobe device activations
 //  when users re-authenticate after session expiration (e.g., SAML cookie expiry).
 //
-//  Related Android ticket: PP-XXXX - Skip Adobe activation on session refresh
+//  Related Android ticket: XXXX - Skip Adobe activation on session refresh
 //
 
 import XCTest

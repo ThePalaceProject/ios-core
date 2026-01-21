@@ -4,7 +4,7 @@
 //
 //  Tests for VoiceOver accessibility in search-related UI elements.
 //  Verifies clear search buttons and navigation have proper labels.
-//  (PP-3292)
+//  ()
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //

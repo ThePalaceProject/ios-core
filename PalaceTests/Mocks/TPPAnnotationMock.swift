@@ -76,7 +76,7 @@ class TPPAnnotationMock: NSObject, AnnotationsManager {
   }
   
   /// Deletes all bookmarks for a book from the mock server storage.
-  /// This simulates PP-3555 fix: when a book is returned, all server bookmarks should be deleted.
+  /// This simulates fix: when a book is returned, all server bookmarks should be deleted.
   func deleteAllBookmarks(forBook book: TPPBook, completion: @escaping () -> Void) {
     let bookID = book.identifier
     

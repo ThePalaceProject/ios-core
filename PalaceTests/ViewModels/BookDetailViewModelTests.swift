@@ -528,7 +528,7 @@ final class BookDetailViewModelTests: XCTestCase {
     }
   }
   
-  // MARK: - Login Cancellation Regression Tests (PP-3552)
+  // MARK: - Login Cancellation Regression Tests ()
   // These tests ensure that downloads do NOT proceed when user cancels login.
   // Regression test for: Download continues after failed login
   
@@ -618,10 +618,10 @@ final class BookDetailViewModelTests: XCTestCase {
     XCTAssertFalse(downloadRelatedButtons.contains(.listen))
   }
   
-  // MARK: - Half Sheet Behavior Tests (PP-3553)
+  // MARK: - Half Sheet Behavior Tests ()
   
   /// Tests that half sheet should NOT be dismissed on download success
-  /// This prevents the "tap Read/Listen twice" bug (PP-3553)
+  /// This prevents the "tap Read/Listen twice" bug ()
   func testHalfSheet_StaysOpenOnDownloadSuccess() {
     // Simulate the state transition logic from bindRegistryState
     // When state is .downloadSuccessful, showHalfSheet should NOT be set to false
@@ -632,7 +632,7 @@ final class BookDetailViewModelTests: XCTestCase {
     // Apply the same logic as in bindRegistryState
     switch registryState {
     case .downloadSuccessful, .used:
-      // Download completed - keep half sheet open so user can tap Read/Listen (PP-3553)
+      // Download completed - keep half sheet open so user can tap Read/Listen ()
       // NO: showHalfSheet = false  <-- This was the bug
       break
     case .unregistered, .holding:

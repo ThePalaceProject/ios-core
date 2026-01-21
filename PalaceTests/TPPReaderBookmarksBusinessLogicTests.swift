@@ -222,7 +222,7 @@ class TPPReaderBookmarksBusinessLogicTests: XCTestCase {
     
     // MARK: - Regression Tests
 
-    /// Regression test for PP-3555: Old bookmarks should not reappear after return/re-borrow
+    /// Regression test for Old bookmarks should not reappear after return/re-borrow
     /// When a user returns a book and later re-borrows it, old bookmarks from the server
     /// should NOT reappear because they should have been deleted during the return process.
     func testPP3555_OldBookmarksDoNotReappearAfterReborrow() throws {

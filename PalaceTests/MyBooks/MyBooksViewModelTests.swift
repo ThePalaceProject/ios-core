@@ -233,14 +233,14 @@ final class MyBooksViewModelExtendedTests: XCTestCase {
   }
 }
 
-// MARK: - Login State Regression Tests (PP-3551)
+// MARK: - Login State Regression Tests ()
 // These tests ensure that books are NOT shown when user is not logged in,
 // even if the registry has cached data from a previous session.
 
 @MainActor
 final class MyBooksViewModelLoginStateTests: XCTestCase {
   
-  /// Regression test for PP-3551: Books appearing in My Books when not logged in
+  /// Regression test for Books appearing in My Books when not logged in
   /// When a library requires authentication and user is not logged in,
   /// My Books should show empty state - not cached books from previous session.
   func testLoadData_WhenNotLoggedIn_ShowsEmptyBooks() {

@@ -200,7 +200,7 @@ final class ProblemDocumentTests: XCTestCase {
   
   // MARK: - Real-World Scenario Tests
   
-  /// Tests the scenario from PP-3417: Sonoma County loan issue
+  /// Tests the scenario from Sonoma County loan issue
   /// Server returns 403 with credentials-suspended problem document
   func testBorrowError_credentialsSuspended_extractsDetails() throws {
     // Simulates the actual server response from the ticket

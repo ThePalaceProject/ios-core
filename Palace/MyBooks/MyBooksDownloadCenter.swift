@@ -930,7 +930,7 @@ extension MyBooksDownloadCenter {
         purgeAllAudiobookCaches(force: true)
       }
 
-      // PP-3555: Delete all server bookmarks before removing book to prevent
+      // Delete all server bookmarks before removing book to prevent
       // old bookmarks from reappearing when the book is re-borrowed
       TPPAnnotations.deleteAllBookmarks(forBook: book) { [weak self] in
         guard let self = self else {
@@ -958,7 +958,7 @@ extension MyBooksDownloadCenter {
             self.purgeAllAudiobookCaches(force: true)
           }
           if let returnedBook = TPPBook(entry: entry) {
-            // PP-3555: Delete all server bookmarks before removing book
+            // Delete all server bookmarks before removing book
             TPPAnnotations.deleteAllBookmarks(forBook: book) {
               // Clear the deletion log since we're returning the book
               TPPBookmarkDeletionLog.shared.clearAllDeletions(forBook: identifier)
@@ -983,7 +983,7 @@ extension MyBooksDownloadCenter {
                 self.deleteLocalContent(for: identifier)
                 self.purgeAllAudiobookCaches(force: true)
               }
-              // PP-3555: Delete all server bookmarks before removing book
+              // Delete all server bookmarks before removing book
               TPPAnnotations.deleteAllBookmarks(forBook: book) {
                 // Clear the deletion log since we're returning the book
                 TPPBookmarkDeletionLog.shared.clearAllDeletions(forBook: identifier)

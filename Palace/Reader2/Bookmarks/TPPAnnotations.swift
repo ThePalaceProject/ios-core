@@ -388,46 +388,28 @@ protocol AnnotationsManager {
   /// Deletes all bookmarks for a book from the server.
   /// This should be called when a book is returned to prevent old bookmarks
   /// from reappearing when the book is re-borrowed.
+  ///
+  /// **Important:** This is fire-and-forget. Completion is called immediately,
+  /// and deletions happen in the background. Book returns are never blocked.
+  ///
   /// - Parameters:
   ///   - book: The book whose bookmarks should be deleted
-  ///   - completion: Called when the deletion process completes (regardless of individual success/failure)
+  ///   - completion: Called immediately. Deletions continue in background.
   class func deleteAllBookmarks(forBook book: TPPBook, completion: @escaping () -> Void) {
-    guard syncIsPossibleAndPermitted() else {
-      Log.debug(#file, "Account does not support sync or sync is disabled. Skipping server bookmark deletion.")
-      completion()
-      return
-    }
+    // Call completion immediately - never block book returns
+    completion()
     
-    Log.info(#file, "🗑️ Deleting all server bookmarks for book: \(book.identifier)")
+    // Fire-and-forget: delete bookmarks in background
+    guard syncIsPossibleAndPermitted() else { return }
     
     getServerBookmarks(forBook: book, atURL: book.annotationsURL, motivation: .bookmark) { bookmarks in
       guard let readiumBookmarks = bookmarks as? [TPPReadiumBookmark], !readiumBookmarks.isEmpty else {
-        Log.info(#file, "🗑️ No server bookmarks to delete for book: \(book.identifier)")
-        completion()
         return
       }
       
-      Log.info(#file, "🗑️ Found \(readiumBookmarks.count) server bookmarks to delete for book: \(book.identifier)")
-      
-      let deleteGroup = DispatchGroup()
-      
       for bookmark in readiumBookmarks {
         guard let annotationId = bookmark.annotationId else { continue }
-        
-        deleteGroup.enter()
-        deleteBookmark(annotationId: annotationId) { success in
-          if success {
-            Log.debug(#file, "🗑️ Successfully deleted bookmark: \(annotationId)")
-          } else {
-            Log.error(#file, "🗑️ Failed to delete bookmark: \(annotationId)")
-          }
-          deleteGroup.leave()
-        }
-      }
-      
-      deleteGroup.notify(queue: .main) {
-        Log.info(#file, "🗑️ Finished deleting all bookmarks for book: \(book.identifier)")
-        completion()
+        deleteBookmark(annotationId: annotationId) { _ in }
       }
     }
   }
@@ -436,20 +418,15 @@ protocol AnnotationsManager {
                             completionHandler: @escaping (_ success: Bool) -> ()) {
 
     if !syncIsPossibleAndPermitted() {
-      Log.debug(#file, "🗑️ DELETE: Account does not support sync or sync is disabled.")
       completionHandler(true)
       return
     }
 
     guard let url = URL(string: annotationId) else {
-      Log.error(#file, "🗑️ DELETE FAILED: Invalid URL from Annotation ID: '\(annotationId)'")
-      Log.error(#file, "🗑️ This is likely a legacy bookmark with UUID instead of server URL - cannot delete from server")
-      Log.error(#file, "🗑️ Possible fix: Re-sync bookmarks or manually delete old annotations on server")
+      Log.error(#file, "Invalid annotation ID URL: \(annotationId)")
       completionHandler(false)
       return
     }
-    
-    Log.info(#file, "🗑️ DELETE: Sending DELETE request to: \(url.absoluteString)")
 
     var request = TPPNetworkExecutor.shared.request(for: url)
     request.timeoutInterval = TPPDefaultRequestTimeout

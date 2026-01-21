@@ -275,18 +275,9 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
   /// Clever and SAML), validate said credentials against the Circulation
   /// Manager servers and call back to the UI once that's concluded.
   func validateCredentials() {
-    Log.info(#file, "🔐 [VALIDATE] validateCredentials() called")
-    Log.info(#file, "🔐 [VALIDATE] Library account ID: \(libraryAccountID)")
-    Log.info(#file, "🔐 [VALIDATE] Auth method: \(selectedAuthentication?.methodDescription ?? "N/A")")
-    Log.info(#file, "🔐 [VALIDATE] Is SAML: \(selectedAuthentication?.isSaml == true)")
-    Log.info(#file, "🔐 [VALIDATE] Auth token set: \(authToken != nil)")
-    Log.info(#file, "🔐 [VALIDATE] Patron set: \(patron != nil)")
-    Log.info(#file, "🔐 [VALIDATE] Cookies set: \(cookies?.count ?? 0) cookies")
-    
     isValidatingCredentials = true
 
     guard let req = makeRequest(for: .signIn, context: uiContext) else {
-      Log.error(#file, "🔐 [VALIDATE] ❌ ERROR: Failed to create sign-in request")
       let error = NSError(domain: TPPErrorLogger.clientDomain,
                           code: TPPErrorCode.noURL.rawValue,
                           userInfo: [
@@ -297,15 +288,9 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
       self.handleNetworkError(error, loggingContext: ["Context": uiContext])
       return
     }
-    
-    Log.info(#file, "🔐 [VALIDATE] Making request to: \(req.url?.absoluteString ?? "nil")")
-    Log.info(#file, "🔐 [VALIDATE] Authorization header: \(req.value(forHTTPHeaderField: "Authorization")?.prefix(30) ?? "nil")...")
 
     networker.executeRequest(req, enableTokenRefresh: false) { [weak self] result in
-      guard let self = self else {
-        Log.error(#file, "🔐 [VALIDATE] ❌ ERROR: self was deallocated during network request")
-        return
-      }
+      guard let self = self else { return }
 
       self.isValidatingCredentials = false
 
@@ -315,11 +300,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
         "Context": self.uiContext]
 
       switch result {
-      case .success(let responseData, let response):
-        let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
-        Log.info(#file, "🔐 [VALIDATE] ✅ Network request SUCCESS - HTTP \(statusCode)")
-        Log.info(#file, "🔐 [VALIDATE] Response data size: \(responseData.count) bytes")
-        
+      case .success(let responseData, _):
         // Notify delegate that credentials were received and DRM processing is about to begin
         // This allows the UI to show a loading indicator after WebView dismisses
         TPPMainThreadRun.asyncIfNeeded {
@@ -328,25 +309,18 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
         
         #if FEATURE_DRM_CONNECTOR
         if (AdobeCertificate.defaultCertificate?.hasExpired == true) {
-          Log.info(#file, "🔐 [VALIDATE] DRM certificate expired - calling finalizeSignIn")
           self.finalizeSignIn(forDRMAuthorization: true)
         } else if self.shouldSkipAdobeActivation() {
           // Refreshing stale credentials - Adobe DRM is still valid, skip activation
-          Log.info(#file, "🔐 [VALIDATE] Credentials refresh from stale state - skipping Adobe DRM activation")
           self.finalizeSignIn(forDRMAuthorization: true)
         } else {
-          Log.info(#file, "🔐 [VALIDATE] Starting DRM authorization...")
           self.drmAuthorizeUserData(responseData, loggingContext: loggingContext)
         }
         #else
-        Log.info(#file, "🔐 [VALIDATE] No DRM connector - calling finalizeSignIn directly")
         self.finalizeSignIn(forDRMAuthorization: true)
         #endif
 
       case .failure(let errorWithProblemDoc, let response):
-        let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
-        Log.error(#file, "🔐 [VALIDATE] ❌ Network request FAILED - HTTP \(statusCode)")
-        Log.error(#file, "🔐 [VALIDATE] Error: \(errorWithProblemDoc.localizedDescription)")
         self.handleNetworkError(errorWithProblemDoc as NSError,
                                 response: response,
                                 loggingContext: loggingContext)
@@ -558,91 +532,47 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
                          expirationDate: Date?,
                          patron: [String:Any]?,
                          cookies: [HTTPCookie]?) {
-    Log.info(#file, "🔐 [UPDATE] updateUserAccount() called")
-    Log.info(#file, "🔐 [UPDATE] Library account ID: \(libraryAccountID)")
-    Log.info(#file, "🔐 [UPDATE] DRM success: \(drmSuccess)")
-    Log.info(#file, "🔐 [UPDATE] Auth method: \(selectedAuthentication?.methodDescription ?? "N/A")")
-    Log.info(#file, "🔐 [UPDATE] Is SAML: \(selectedAuthentication?.isSaml == true)")
-    Log.info(#file, "🔐 [UPDATE] Is OAuth: \(selectedAuthentication?.isOauth == true)")
-    Log.info(#file, "🔐 [UPDATE] Auth token provided: \(authToken != nil) (length: \(authToken?.count ?? 0))")
-    Log.info(#file, "🔐 [UPDATE] Patron provided: \(patron != nil)")
-    Log.info(#file, "🔐 [UPDATE] Cookies provided: \(cookies?.count ?? 0)")
-    Log.info(#file, "🔐 [UPDATE] Barcode provided: \(barcode != nil)")
-    Log.info(#file, "🔐 [UPDATE] PIN provided: \(pin != nil)")
-    Log.info(#file, "🔐 [UPDATE] UserAccount libraryUUID: \(userAccount.libraryUUID ?? "nil")")
-    
     #if FEATURE_DRM_CONNECTOR
     guard drmSuccess else {
-      Log.warn(#file, "🔐 [UPDATE] ⚠️ DRM authorization failed - removing all credentials")
       userAccount.removeAll()
       return
     }
     #endif
     
     guard let selectedAuthentication = selectedAuthentication else {
-      Log.warn(#file, "🔐 [UPDATE] ⚠️ No selectedAuthentication - falling back to barcode/PIN")
       setBarcode(barcode, pin: pin)
       return
     }
     
     if selectedAuthentication.isOauth || selectedAuthentication.isSaml || selectedAuthentication.isToken {
-      Log.info(#file, "🔐 [UPDATE] Processing OAuth/SAML/Token authentication")
-      
       if let patron {
-        Log.info(#file, "🔐 [UPDATE] Setting patron info with keys: \(patron.keys.sorted().joined(separator: ", "))")
         userAccount.setPatron(patron)
       }
       
       if let authToken {
-        Log.info(#file, "🔐 [UPDATE] Setting auth token (length: \(authToken.count))")
         userAccount.setAuthToken(authToken, barcode: barcode, pin: pin, expirationDate: expirationDate)
-        
-        // Verify the token was saved
-        let savedToken = userAccount.authToken
-        Log.info(#file, "🔐 [UPDATE] Verification - saved auth token: \(savedToken != nil ? "✅ present (length: \(savedToken?.count ?? 0))" : "❌ MISSING")")
       } else {
-        Log.info(#file, "🔐 [UPDATE] No auth token - setting barcode/PIN instead")
         setBarcode(barcode, pin: pin)
       }
     } else {
-      Log.info(#file, "🔐 [UPDATE] Processing basic authentication")
       setBarcode(barcode, pin: pin)
     }
     
     if selectedAuthentication.isSaml, let cookies {
-      Log.info(#file, "🔐 [UPDATE] Setting \(cookies.count) SAML cookies")
       userAccount.setCookies(cookies)
     }
 
-    Log.info(#file, "🔐 [UPDATE] Setting auth definition (without notification)")
     userAccount.setAuthDefinitionWithoutUpdate(authDefinition: selectedAuthentication)
     
     // Mark the account as fully logged in
     // This transitions from .credentialsStale -> .loggedIn or .loggedOut -> .loggedIn
-    Log.info(#file, "🔐 [UPDATE] Marking account as logged in...")
-    Log.info(#file, "🔐 [UPDATE] Auth state BEFORE markLoggedIn(): \(userAccount.authState)")
     userAccount.markLoggedIn()
-    Log.info(#file, "🔐 [UPDATE] Auth state AFTER markLoggedIn(): \(userAccount.authState)")
-    
-    // Final verification
-    Log.info(#file, "🔐 [UPDATE] ===== FINAL VERIFICATION =====")
-    Log.info(#file, "🔐 [UPDATE] hasCredentials(): \(userAccount.hasCredentials())")
-    Log.info(#file, "🔐 [UPDATE] hasAuthToken(): \(userAccount.hasAuthToken())")
-    Log.info(#file, "🔐 [UPDATE] authState: \(userAccount.authState)")
-    Log.info(#file, "🔐 [UPDATE] authToken present: \(userAccount.authToken != nil)")
-    Log.info(#file, "🔐 [UPDATE] patron present: \(userAccount.patron != nil)")
-    Log.info(#file, "🔐 [UPDATE] cookies count: \(userAccount.cookies?.count ?? 0)")
-    Log.info(#file, "🔐 [UPDATE] ===============================")
     
     if libraryAccountID == libraryAccountsProvider.currentAccountId {
-      Log.info(#file, "🔐 [UPDATE] Library matches current - syncing book registry")
       bookRegistry.sync()
-    } else {
-      Log.info(#file, "🔐 [UPDATE] Library doesn't match current (\(libraryAccountsProvider.currentAccountId ?? "nil")) - skipping sync")
     }
 
     NotificationCenter.default.post(name: .TPPIsSigningIn, object: false)
-    Log.info(#file, "🔐 [UPDATE] ✅ updateUserAccount() completed")
   }
 
   private func setBarcode(_ barcode: String?, pin: String?) {

@@ -406,7 +406,7 @@ final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
   
   // MARK: - Sign-Out Cookie Clearing Tests
   
-  /// PP-418 Regression Test: SAML sign-out must clear WebView cookies BEFORE completion
+  /// Regression Test: SAML sign-out must clear WebView cookies BEFORE completion
   ///
   /// Bug: After SAML sign-out, attempting to borrow would auto-sign in the user
   /// because the SAML IdP session cookies weren't cleared before sign-out completed.
@@ -459,9 +459,9 @@ final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
     
     // Verify: Sign-out completed and credentials were cleared
     XCTAssertTrue(uiDelegate.didCallDidFinishDeauthorizing,
-                  "PP-418: businessLogicDidFinishDeauthorizing should be called after sign-out")
+                  "businessLogicDidFinishDeauthorizing should be called after sign-out")
     XCTAssertFalse(businessLogic.userAccount.hasCredentials(),
-                   "PP-418: Credentials should be cleared after sign-out")
+                   "Credentials should be cleared after sign-out")
   }
   
   /// Tests that sign-out properly sequences cookie clearing with completion callback.
@@ -503,7 +503,7 @@ final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
                   "Sign-out completion should be called")
   }
   
-  // MARK: - Sync Button Tests (PP-3252)
+  // MARK: - Sync Button Tests ()
   
   /// Tests that shouldShowSyncButton() returns false when user has no credentials.
   /// This validates the production hasCredentials() check in shouldShowSyncButton().
@@ -543,7 +543,7 @@ final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
                    "shouldShowSyncButton() must return false when libraryAccountID doesn't match currentAccountId")
   }
   
-  /// PP-3252 Regression Test: Verifies sync button visibility uses currentAccountId
+  /// Regression Test: Verifies sync button visibility uses currentAccountId
   /// (which is immediately available) rather than currentAccount?.uuid (which may be nil
   /// on fresh installs before the authentication document loads).
   func testShouldShowSyncButton_PP3252_usesCurrentAccountIdNotCurrentAccountUuid() {
@@ -564,7 +564,7 @@ final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
                   "Test setup requires user to have credentials")
     
     // Precondition: verify libraryAccountID matches currentAccountId
-    // This is the key comparison that was broken in PP-3252
+    // This is the key comparison that was broken in 
     XCTAssertEqual(businessLogic.libraryAccountID, libraryAccountMock.currentAccountId,
                    "Test setup requires libraryAccountID to match currentAccountId")
     
@@ -580,7 +580,7 @@ final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
     let expectedResult = supportsSync && hasAnnotationsURL
     
     XCTAssertEqual(result, expectedResult,
-                   "PP-3252: shouldShowSyncButton() should return \(expectedResult) based on library configuration")
+                   "shouldShowSyncButton() should return \(expectedResult) based on library configuration")
   }
 }
 

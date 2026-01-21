@@ -4,7 +4,7 @@
 //
 //  Tests for VoiceOver accessibility labels throughout the app.
 //  Ensures all interactive UI elements have proper accessibility labels
-//  for users relying on VoiceOver. (PP-3292)
+//  for users relying on VoiceOver. ()
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
