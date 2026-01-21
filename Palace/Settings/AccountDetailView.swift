@@ -324,6 +324,7 @@ struct AccountDetailView: View {
       }
     }
     .padding(.vertical, Layout.verticalPaddingInput)
+    .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
   }
   
   private var pinInputCell: some View {
@@ -358,6 +359,7 @@ struct AccountDetailView: View {
       }
     }
     .padding(.vertical, Layout.verticalPaddingInput)
+    .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
   }
   
   private var logInSignOutCell: some View {
