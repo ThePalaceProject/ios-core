@@ -237,7 +237,6 @@
 		730D17C02552124B004CAC83 /* TPPMyBooksDownloadsCenterMock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 730D17BF2552124B004CAC83 /* TPPMyBooksDownloadsCenterMock.swift */; };
 		730D17CC25535954004CAC83 /* TPPSignInBusinessLogic+BookmarkSyncing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 730D17CB25535954004CAC83 /* TPPSignInBusinessLogic+BookmarkSyncing.swift */; };
 		730EF263260955EF008E1DC3 /* TPPBookmarkSpecTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 730EF262260955EF008E1DC3 /* TPPBookmarkSpecTests.swift */; };
-		C72E88998C74489891046AA3 /* TPPBookmarkDeletionLogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C72E88998C74489891046AA2 /* TPPBookmarkDeletionLogTests.swift */; };
 		730FC05125128224004D7C2D /* TPPSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DD5677122B7ECE3001F0C83 /* TPPSettings.swift */; };
 		7311FD2B25CBD086004447CB /* TPPSignInOutBusinessLogicUIDelegateMock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7311FD2A25CBD086004447CB /* TPPSignInOutBusinessLogicUIDelegateMock.swift */; };
 		7314D1402551E73C00723E26 /* TPPSignInBusinessLogic+SignOut.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7314D13F2551E73C00723E26 /* TPPSignInBusinessLogic+SignOut.swift */; };
@@ -528,6 +527,7 @@
 		C3C7B0F9C4F9B13DD69CEA84 /* TPPReaderSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2ADD2980F56FC974B6DEBAC /* TPPReaderSettingsTests.swift */; };
 		C64399E81697447CA4F20ABA /* EULAViewHosting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04CF94B049964380A3A35DA9 /* EULAViewHosting.swift */; };
 		C64399E91697447CA4F20ABB /* EULAViewHosting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04CF94B049964380A3A35DA9 /* EULAViewHosting.swift */; };
+		C72E88998C74489891046AA3 /* TPPBookmarkDeletionLogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C72E88998C74489891046AA2 /* TPPBookmarkDeletionLogTests.swift */; };
 		CCD4CE5B21BED732364D2899 /* LCPAudiobooksTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C0E625DA84AEEFF9840A601 /* LCPAudiobooksTests.swift */; };
 		CE6ADDAE5A5A4796C2017A19 /* PDFReaderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A586098465213BD58E11860 /* PDFReaderTests.swift */; };
 		CF5E7A7A440833526AD827AB /* MyBooksDownloadCenterExtendedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3572DBB51B1244AE18879435 /* MyBooksDownloadCenterExtendedTests.swift */; };
@@ -1393,7 +1393,6 @@
 		730D17BF2552124B004CAC83 /* TPPMyBooksDownloadsCenterMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPMyBooksDownloadsCenterMock.swift; sourceTree = "<group>"; };
 		730D17CB25535954004CAC83 /* TPPSignInBusinessLogic+BookmarkSyncing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPSignInBusinessLogic+BookmarkSyncing.swift"; sourceTree = "<group>"; };
 		730EF262260955EF008E1DC3 /* TPPBookmarkSpecTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TPPBookmarkSpecTests.swift; path = Bookmarks/TPPBookmarkSpecTests.swift; sourceTree = "<group>"; };
-		C72E88998C74489891046AA2 /* TPPBookmarkDeletionLogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TPPBookmarkDeletionLogTests.swift; path = Bookmarks/TPPBookmarkDeletionLogTests.swift; sourceTree = "<group>"; };
 		730EF265260967FF008E1DC3 /* TPPBookmarkFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBookmarkFactory.swift; sourceTree = "<group>"; };
 		7311FD2A25CBD086004447CB /* TPPSignInOutBusinessLogicUIDelegateMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPSignInOutBusinessLogicUIDelegateMock.swift; sourceTree = "<group>"; };
 		73127257259A99F50032D7B4 /* check-build-number.yml */ = {isa = PBXFileReference; lastKnownFileType = text.yaml; path = "check-build-number.yml"; sourceTree = "<group>"; };
@@ -1580,6 +1579,7 @@
 		BSMA00012F0F000000000004 /* TPPBookRegistryRecordTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBookRegistryRecordTests.swift; sourceTree = "<group>"; };
 		C36BFAE4E752CA9A1451CDCE /* EPUBPositionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = EPUBPositionTests.swift; sourceTree = "<group>"; };
 		C61A8F5FC897F582128D45B7 /* NetworkClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkClientTests.swift; sourceTree = "<group>"; };
+		C72E88998C74489891046AA2 /* TPPBookmarkDeletionLogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TPPBookmarkDeletionLogTests.swift; path = Bookmarks/TPPBookmarkDeletionLogTests.swift; sourceTree = "<group>"; };
 		CAE35BBA1B86289500BF9BC5 /* Palace.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Palace.xcconfig; path = ../Palace.xcconfig; sourceTree = "<group>"; };
 		CB6B83327C29366849662E76 /* OPDS2Feed.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = OPDS2Feed.swift; path = OPDS2/Models/OPDS2Feed.swift; sourceTree = "<group>"; };
 		CB84A55CE7F9823DCEFBAE90 /* TPPAccountAuthStateTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPAccountAuthStateTests.swift; sourceTree = "<group>"; };
@@ -5582,9 +5582,9 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/PalaceDebug.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 421;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -5705,12 +5705,12 @@
 				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEFINES_MODULE = YES;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 88CBA74T8K;
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
 				DYLIB_INSTALL_NAME_BASE = "@rpath";
@@ -5766,13 +5766,13 @@
 				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEFINES_MODULE = YES;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 88CBA74T8K;
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
 				DYLIB_INSTALL_NAME_BASE = "@rpath";
