@@ -102,16 +102,28 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     )
     
     // Initialize isSignedIn based on current credentials AND auth state
-    // Only consider user signed in when state is loggedIn (not stale)
+    // OAuth: Consider signed in even when stale (token refreshes in background)
+    // SAML/Basic: Only signed in when loggedIn (needs re-auth via IDP when stale)
     let account = TPPUserAccount.sharedAccount(libraryUUID: libraryAccountID)
     let authState = account.authState
-    self.isSignedIn = account.hasCredentials() && authState == .loggedIn
+    let hasCreds = account.hasCredentials()
+    
+    // OAuth users have token credentials; SAML/Basic users have barcode/PIN
+    let isOAuth = account.hasAuthToken()
+    let signedIn: Bool
+    if isOAuth {
+      signedIn = hasCreds && authState != .loggedOut
+    } else {
+      signedIn = hasCreds && authState == .loggedIn
+    }
+    self.isSignedIn = signedIn
     
     super.init()
     
+    Log.info(#file, "🔐 [INIT] AccountDetailViewModel: isOAuth=\(isOAuth), authState=\(authState), isSignedIn=\(signedIn)")
+    
     var drmAuthorizer: TPPDRMAuthorizing?
     #if FEATURE_DRM_CONNECTOR
-    // Use safe DRM container to prevent EXC_BREAKPOINT crashes during initialization
     if AdobeCertificate.isDRMAvailable {
       drmAuthorizer = AdobeDRMService.shared.adeptInstance
     }
@@ -485,9 +497,13 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     let hasCreds = selectedUserAccount.refreshCredentialsFromKeychain()
     let authState = selectedUserAccount.authState
     
-    // Only consider user signed in when state is loggedIn (not stale)
-    // When credentials are stale, show Sign In button to prompt re-authentication
-    isSignedIn = hasCreds && authState == .loggedIn
+    // OAuth users have token credentials; SAML/Basic users have barcode/PIN
+    let isOAuth = selectedUserAccount.hasAuthToken()
+    if isOAuth {
+      isSignedIn = hasCreds && authState != .loggedOut
+    } else {
+      isSignedIn = hasCreds && authState == .loggedIn
+    }
     
     if isSignedIn {
       usernameText = selectedUserAccount.barcode ?? ""
@@ -516,9 +532,15 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     let hasCreds = selectedUserAccount.refreshCredentialsFromKeychain()
     let authState = selectedUserAccount.authState
     
-    // Only consider user signed in when state is loggedIn (not stale)
-    // When credentials are stale, show Sign In button to prompt re-authentication
-    isSignedIn = hasCreds && authState == .loggedIn
+    // OAuth users have token credentials; SAML/Basic users have barcode/PIN
+    let isOAuth = selectedUserAccount.hasAuthToken()
+    if isOAuth {
+      isSignedIn = hasCreds && authState != .loggedOut
+    } else {
+      isSignedIn = hasCreds && authState == .loggedIn
+    }
+    
+    Log.info(#file, "🔐 [REFRESH] isOAuth=\(isOAuth), authState=\(authState), isSignedIn=\(isSignedIn)")
     
     if wasSignedIn != isSignedIn {
       setupTableData()

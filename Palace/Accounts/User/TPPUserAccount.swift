@@ -386,15 +386,19 @@ private enum StorageKey: String {
   var authState: TPPAccountAuthState {
     // If we have stored auth state, use it
     if let storedState = _authState.read() {
+      Log.debug(#file, "🔐 authState: storedState=\(storedState), hasCredentials=\(hasCredentials())")
       // Validate: if state is loggedIn or credentialsStale but no credentials, reset to loggedOut
       if storedState.hasStoredCredentials && !hasCredentials() {
+        Log.debug(#file, "🔐 authState: returning .loggedOut (no credentials but stored state has them)")
         return .loggedOut
       }
       return storedState
     }
     
     // No stored state - derive from credentials
-    return hasCredentials() ? .loggedIn : .loggedOut
+    let derivedState: TPPAccountAuthState = hasCredentials() ? .loggedIn : .loggedOut
+    Log.debug(#file, "🔐 authState: no stored state, derived=\(derivedState)")
+    return derivedState
   }
 
   var authToken: String? {

@@ -335,8 +335,9 @@ final class AccountDetailViewModelTests: XCTestCase {
 }
 
 // MARK: - Credential State UI Tests
-// Regression tests: iOS should prompt for login (not sign out) after SAML session expires
-// When credentials are stale, isSignedIn should be false so UI shows "Sign In" instead of "Sign Out"
+// Tests for isSignedIn behavior based on auth type and credential state:
+// - OAuth: User appears signed in even when credentials are stale (token refreshes in background)
+// - SAML: User appears logged out when credentials are stale (needs to re-auth via IDP)
 
 @MainActor
 final class AccountDetailCredentialStateTests: XCTestCase {
@@ -354,11 +355,12 @@ final class AccountDetailCredentialStateTests: XCTestCase {
     super.tearDown()
   }
   
-  // MARK: - isSignedIn with Auth State Tests
+  // MARK: - OAuth isSignedIn Tests
   
-  /// When credentials are stale (SAML session expired), isSignedIn should be FALSE
-  /// so the UI shows "Sign In" instead of "Sign Out"
-  func testIsSignedIn_falseWhenCredentialsStale() async {
+  /// Regression test for OAuth login appearing logged out in account settings
+  /// When OAuth credentials are stale, isSignedIn should be TRUE because the token
+  /// refreshes automatically in the background - user should still appear signed in.
+  func testIsSignedIn_trueWhenOAuthCredentialsStale() async {
     guard let libraryID = AccountsManager.shared.currentAccountId else {
       XCTSkip("No current account available for testing")
       return
@@ -366,23 +368,57 @@ final class AccountDetailCredentialStateTests: XCTestCase {
     
     let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
     
-    // Given: User has credentials but they are stale (SAML session expired)
+    // Given: User has OAuth credentials (token-based) that are stale
     let account = TPPUserAccount.sharedAccount(libraryUUID: libraryID)
+    
+    // OAuth uses token credentials - this is how we detect OAuth
+    account.setAuthToken("expired_token", barcode: nil, pin: nil, expirationDate: Date().addingTimeInterval(-3600))
+    account.setAuthState(.credentialsStale)
+    
+    // When: View model refreshes state
+    viewModel.refreshSignInState()
+    
+    // Then: isSignedIn should be TRUE for OAuth (token refreshes in background)
+    XCTAssertTrue(viewModel.isSignedIn,
+                  "OAuth: isSignedIn should be true when credentials are stale (token refreshes in background)")
+    
+    // Cleanup
+    account.removeAll()
+  }
+  
+  // MARK: - SAML/Basic isSignedIn Tests
+  
+  /// When SAML/Basic credentials are stale (session expired), isSignedIn should be FALSE
+  /// so the UI shows "Sign In" to prompt re-authentication via IDP.
+  func testIsSignedIn_falseWhenSAMLCredentialsStale() async {
+    guard let libraryID = AccountsManager.shared.currentAccountId else {
+      XCTSkip("No current account available for testing")
+      return
+    }
+    
+    let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
+    
+    // Given: User has SAML/Basic credentials (barcode/PIN) that are stale
+    let account = TPPUserAccount.sharedAccount(libraryUUID: libraryID)
+    
+    // SAML/Basic uses barcode/PIN credentials - NOT token credentials
     account.setBarcode("test_user", PIN: "1234")
     account.setAuthState(.credentialsStale)
     
     // When: View model refreshes state
     viewModel.refreshSignInState()
     
-    // Then: isSignedIn should be FALSE (so UI shows "Sign In", not "Sign Out")
+    // Then: isSignedIn should be FALSE for SAML/Basic (needs re-auth)
     XCTAssertFalse(viewModel.isSignedIn, 
-                   "isSignedIn should be false when credentials are stale so UI shows Sign In button")
+                   "SAML/Basic: isSignedIn should be false when credentials are stale (needs re-auth)")
     
     // Cleanup
     account.removeAll()
   }
   
-  /// When user is fully logged in (not stale), isSignedIn should be TRUE
+  // MARK: - General isSignedIn Tests (auth-type independent)
+  
+  /// When user is fully logged in (not stale), isSignedIn should be TRUE regardless of auth type
   func testIsSignedIn_trueWhenLoggedIn() async {
     guard let libraryID = AccountsManager.shared.currentAccountId else {
       XCTSkip("No current account available for testing")
@@ -407,7 +443,7 @@ final class AccountDetailCredentialStateTests: XCTestCase {
     account.removeAll()
   }
   
-  /// When user is logged out, isSignedIn should be FALSE
+  /// When user is logged out, isSignedIn should be FALSE regardless of auth type
   func testIsSignedIn_falseWhenLoggedOut() async {
     guard let libraryID = AccountsManager.shared.currentAccountId else {
       XCTSkip("No current account available for testing")
@@ -428,8 +464,8 @@ final class AccountDetailCredentialStateTests: XCTestCase {
                    "isSignedIn should be false when user is logged out")
   }
   
-  /// Transition from loggedIn to credentialsStale should update isSignedIn
-  func testIsSignedIn_updatesWhenStateBecomesStale() async {
+  /// For SAML/Basic: Transition from loggedIn to credentialsStale should update isSignedIn to false
+  func testIsSignedIn_SAMLUpdatesWhenStateBecomesStale() async {
     guard let libraryID = AccountsManager.shared.currentAccountId else {
       XCTSkip("No current account available for testing")
       return
@@ -437,7 +473,7 @@ final class AccountDetailCredentialStateTests: XCTestCase {
     
     let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
     
-    // Given: User starts logged in
+    // Given: User starts logged in with SAML/Basic (barcode/PIN credentials)
     let account = TPPUserAccount.sharedAccount(libraryUUID: libraryID)
     account.setBarcode("test_user", PIN: "1234")
     account.setAuthState(.loggedIn)
@@ -448,16 +484,16 @@ final class AccountDetailCredentialStateTests: XCTestCase {
     account.markCredentialsStale()
     viewModel.refreshSignInState()
     
-    // Then: isSignedIn should become FALSE
+    // Then: isSignedIn should become FALSE for SAML/Basic
     XCTAssertFalse(viewModel.isSignedIn,
-                   "isSignedIn should become false when credentials become stale")
+                   "SAML/Basic: isSignedIn should become false when credentials become stale")
     
     // Cleanup
     account.removeAll()
   }
   
-  /// Re-authentication from stale should update isSignedIn back to true
-  func testIsSignedIn_updatesAfterReauthentication() async {
+  /// For OAuth: Transition from loggedIn to credentialsStale should keep isSignedIn true
+  func testIsSignedIn_OAuthRemainsSignedInWhenStateBecomesStale() async {
     guard let libraryID = AccountsManager.shared.currentAccountId else {
       XCTSkip("No current account available for testing")
       return
@@ -465,12 +501,40 @@ final class AccountDetailCredentialStateTests: XCTestCase {
     
     let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
     
-    // Given: User has stale credentials
+    // Given: User starts logged in with OAuth (token credentials)
+    let account = TPPUserAccount.sharedAccount(libraryUUID: libraryID)
+    account.setAuthToken("valid_token", barcode: nil, pin: nil, expirationDate: Date().addingTimeInterval(3600))
+    account.setAuthState(.loggedIn)
+    viewModel.refreshSignInState()
+    XCTAssertTrue(viewModel.isSignedIn, "Should start signed in")
+    
+    // When: Token expires (credentials become stale)
+    account.markCredentialsStale()
+    viewModel.refreshSignInState()
+    
+    // Then: isSignedIn should remain TRUE for OAuth (token refreshes in background)
+    XCTAssertTrue(viewModel.isSignedIn,
+                  "OAuth: isSignedIn should remain true when credentials become stale (token refreshes)")
+    
+    // Cleanup
+    account.removeAll()
+  }
+  
+  /// Re-authentication from stale should update isSignedIn back to true (for SAML/Basic)
+  func testIsSignedIn_updatesAfterSAMLReauthentication() async {
+    guard let libraryID = AccountsManager.shared.currentAccountId else {
+      XCTSkip("No current account available for testing")
+      return
+    }
+    
+    let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
+    
+    // Given: User has stale SAML/Basic credentials (barcode/PIN)
     let account = TPPUserAccount.sharedAccount(libraryUUID: libraryID)
     account.setBarcode("test_user", PIN: "1234")
     account.setAuthState(.credentialsStale)
     viewModel.refreshSignInState()
-    XCTAssertFalse(viewModel.isSignedIn, "Should start with stale credentials (not signed in)")
+    XCTAssertFalse(viewModel.isSignedIn, "SAML/Basic: Should start with stale credentials (not signed in)")
     
     // When: User re-authenticates successfully
     account.markLoggedIn()
