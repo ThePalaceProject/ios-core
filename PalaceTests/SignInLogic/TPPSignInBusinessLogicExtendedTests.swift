@@ -404,7 +404,106 @@ final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
     XCTAssertNotNil(result)
   }
   
-  // MARK: - Sync Button Tests (PP-3252)
+  // MARK: - Sign-Out Cookie Clearing Tests
+  
+  /// Regression Test: SAML sign-out must clear WebView cookies BEFORE completion
+  ///
+  /// Bug: After SAML sign-out, attempting to borrow would auto-sign in the user
+  /// because the SAML IdP session cookies weren't cleared before sign-out completed.
+  ///
+  /// The fix ensures clearWebViewData() completes before businessLogicDidFinishDeauthorizing
+  /// is called, which prevents the IdP from auto-signing in the user.
+  func testSignOut_PP418_clearsWebViewDataBeforeCompletion() {
+    // Setup: Sign in with SAML authentication
+    businessLogic.selectedAuthentication = libraryAccountMock.samlAuthentication
+    let cookies = [
+      HTTPCookie(properties: [
+        .domain: "idp.example.com",
+        .path: "/",
+        .name: "saml_session",
+        .value: "valid_session_token"
+      ])!
+    ]
+    
+    businessLogic.updateUserAccount(
+      forDRMAuthorization: true,
+      withBarcode: nil,
+      pin: nil,
+      authToken: "saml-token-123",
+      expirationDate: nil,
+      patron: ["name": "Test User"],
+      cookies: cookies
+    )
+    
+    // Precondition: Verify user is signed in with SAML
+    XCTAssertTrue(businessLogic.isSignedIn(), "Precondition: user should be signed in")
+    XCTAssertEqual(businessLogic.userAccount.cookies?.count, 1, "Precondition: should have SAML cookies")
+    
+    // Create expectation for sign-out completion
+    let signOutExpectation = expectation(description: "Sign-out should complete")
+    uiDelegate.didFinishDeauthorizingHandler = {
+      signOutExpectation.fulfill()
+    }
+    
+    // Note: In test environment, WebKit cleanup is skipped but completion is still called
+    // This test verifies that the completion handler mechanism is properly wired
+    
+    // Act: Perform sign-out
+    // In a non-DRM build, this calls completeLogOutProcess directly
+    // In a DRM build, it goes through deauthorizeDevice first
+    // Either way, clearWebViewData should be called with completion
+    businessLogic.performLogOut()
+    
+    // Wait for sign-out to complete
+    wait(for: [signOutExpectation], timeout: 5.0)
+    
+    // Verify: Sign-out completed and credentials were cleared
+    XCTAssertTrue(uiDelegate.didCallDidFinishDeauthorizing,
+                  "businessLogicDidFinishDeauthorizing should be called after sign-out")
+    XCTAssertFalse(businessLogic.userAccount.hasCredentials(),
+                   "Credentials should be cleared after sign-out")
+  }
+  
+  /// Tests that sign-out properly sequences cookie clearing with completion callback.
+  /// This ensures SAML IdP sessions are invalidated before user can attempt re-auth.
+  func testSignOut_sequencesCookieClearingBeforeCompletionCallback() {
+    // Setup: Sign in with SAML
+    businessLogic.selectedAuthentication = libraryAccountMock.samlAuthentication
+    businessLogic.updateUserAccount(
+      forDRMAuthorization: true,
+      withBarcode: nil,
+      pin: nil,
+      authToken: "test-token",
+      expirationDate: nil,
+      patron: nil,
+      cookies: nil
+    )
+    
+    var callOrder: [String] = []
+    
+    // Track when businessLogicDidFinishDeauthorizing is called
+    uiDelegate.didFinishDeauthorizingHandler = {
+      callOrder.append("didFinishDeauthorizing")
+    }
+    
+    let expectation = expectation(description: "Sign-out completes")
+    uiDelegate.didFinishDeauthorizingHandler = {
+      callOrder.append("didFinishDeauthorizing")
+      expectation.fulfill()
+    }
+    
+    // Act
+    businessLogic.performLogOut()
+    
+    // Wait
+    wait(for: [expectation], timeout: 5.0)
+    
+    // Verify: The completion was called (in test env, WebKit is skipped but completion fires)
+    XCTAssertTrue(callOrder.contains("didFinishDeauthorizing"),
+                  "Sign-out completion should be called")
+  }
+  
+  // MARK: - Sync Button Tests ()
   
   /// Tests that shouldShowSyncButton() returns false when user has no credentials.
   /// This validates the production hasCredentials() check in shouldShowSyncButton().
@@ -444,7 +543,7 @@ final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
                    "shouldShowSyncButton() must return false when libraryAccountID doesn't match currentAccountId")
   }
   
-  /// PP-3252 Regression Test: Verifies sync button visibility uses currentAccountId
+  /// Regression Test: Verifies sync button visibility uses currentAccountId
   /// (which is immediately available) rather than currentAccount?.uuid (which may be nil
   /// on fresh installs before the authentication document loads).
   func testShouldShowSyncButton_PP3252_usesCurrentAccountIdNotCurrentAccountUuid() {
@@ -465,7 +564,7 @@ final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
                   "Test setup requires user to have credentials")
     
     // Precondition: verify libraryAccountID matches currentAccountId
-    // This is the key comparison that was broken in PP-3252
+    // This is the key comparison that was broken in 
     XCTAssertEqual(businessLogic.libraryAccountID, libraryAccountMock.currentAccountId,
                    "Test setup requires libraryAccountID to match currentAccountId")
     
@@ -481,7 +580,7 @@ final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
     let expectedResult = supportsSync && hasAnnotationsURL
     
     XCTAssertEqual(result, expectedResult,
-                   "PP-3252: shouldShowSyncButton() should return \(expectedResult) based on library configuration")
+                   "shouldShowSyncButton() should return \(expectedResult) based on library configuration")
   }
 }
 

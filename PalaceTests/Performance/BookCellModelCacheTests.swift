@@ -181,7 +181,7 @@ final class BookCellModelCacheTests: XCTestCase {
   }
   
   /// Tests direct invalidation of downloading models
-  /// Bug fix: PP-XXXX - Stale downloading cells showing after download completes
+  /// Bug fix: XXXX - Stale downloading cells showing after download completes
   func testDirectInvalidation_RefreshesModel() throws {
     let observingCache = BookCellModelCache(
       configuration: .init(

@@ -184,7 +184,7 @@ final class BookDetailViewModel: ObservableObject {
           
         case .downloadSuccessful, .used:
           // Download completed - clear all download-related processing
-          // Keep half sheet open so user can tap Read/Listen (PP-3553)
+          // Keep half sheet open so user can tap Read/Listen
           self.processingButtons.remove(.download)
           self.processingButtons.remove(.get)
           self.processingButtons.remove(.retry)

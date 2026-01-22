@@ -243,7 +243,7 @@ final class HoldsBookViewModelTests: XCTestCase {
 
 // MARK: - Badge Count Calculation Tests
 
-/// Tests for PP-3411: Badge should show only "ready" books, not all held books
+/// Tests for Badge should show only "ready" books, not all held books
 @MainActor
 final class HoldsBadgeCountTests: XCTestCase {
   
@@ -270,7 +270,7 @@ final class HoldsBadgeCountTests: XCTestCase {
   }
   
   func testBadgeCount_oneReservedBook_returnsZero() {
-    // PP-3411: A book waiting in queue should NOT be counted in badge
+    // A book waiting in queue should NOT be counted in badge
     let books = [TPPBookMocker.snapshotReservedBook()]
     let readyCount = calculateReadyCount(for: books)
     
@@ -278,7 +278,7 @@ final class HoldsBadgeCountTests: XCTestCase {
   }
   
   func testBadgeCount_oneReadyBook_returnsOne() {
-    // PP-3411: A book ready to borrow SHOULD be counted in badge
+    // A book ready to borrow SHOULD be counted in badge
     let books = [TPPBookMocker.snapshotReadyBook()]
     let readyCount = calculateReadyCount(for: books)
     
@@ -286,7 +286,7 @@ final class HoldsBadgeCountTests: XCTestCase {
   }
   
   func testBadgeCount_mixedHolds_countsOnlyReady() {
-    // PP-3411: With 4 holds and 1 ready, badge should show 1 (not 4)
+    // With 4 holds and 1 ready, badge should show 1 (not 4)
     let books = [
       TPPBookMocker.snapshotReservedBook(identifier: "reserved-1", title: "Book 1", author: "Author 1"),
       TPPBookMocker.snapshotReservedBook(identifier: "reserved-2", title: "Book 2", author: "Author 2"),

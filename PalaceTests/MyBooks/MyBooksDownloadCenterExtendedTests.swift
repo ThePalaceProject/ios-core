@@ -208,7 +208,7 @@ final class ConcurrentDownloadStateTests: XCTestCase {
 // MARK: - PR 735 Regression Tests: Download Slot Management
 
 /// Tests for download slot release when borrow results in hold or failure
-/// Bug fix: PP-XXXX - Download queue stuck when borrow results in hold
+/// Bug fix: XXXX - Download queue stuck when borrow results in hold
 /// NOTE: These tests verify state transitions without network calls
 final class DownloadSlotManagementTests: XCTestCase {
   

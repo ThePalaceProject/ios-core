@@ -4,7 +4,7 @@
 //
 //  Tests for VoiceOver accessibility in FacetToolbarView.
 //  Verifies sort and filter buttons have proper dynamic labels.
-//  (PP-3292)
+//  ()
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //

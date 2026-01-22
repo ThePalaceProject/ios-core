@@ -135,3 +135,149 @@ final class URLResponseAuthenticationTests: XCTestCase {
   }
 }
 
+// MARK: - Cross-Domain 401 Tests
+
+/// Tests for PP-418: Cross-domain redirect 401 handling
+/// When a request is redirected to a different domain and returns 401,
+/// we should NOT mark credentials as stale since the 401 is from a third-party.
+final class CrossDomain401Tests: XCTestCase {
+  
+  private let palaceURL = URL(string: "https://gorgon.palaceproject.io/library/book")!
+  private let thirdPartyURL = URL(string: "https://library.biblioboard.com/content/book.epub")!
+  private let palaceCDNURL = URL(string: "https://cdn.palaceproject.io/content/book.epub")!
+  
+  // MARK: - Same Domain Tests (should indicate auth refresh needed)
+  
+  func test401FromSameDomain_shouldIndicateAuthRefreshNeeded() {
+    // Response from same domain as original request
+    let response = HTTPURLResponse(
+      url: palaceURL,
+      statusCode: 401,
+      httpVersion: nil,
+      headerFields: nil
+    )!
+    
+    // When 401 is from the same domain, credentials ARE likely expired
+    XCTAssertTrue(
+      response.indicatesAuthenticationNeedsRefresh(with: nil, originalRequestURL: palaceURL),
+      "401 from same domain should indicate auth refresh needed"
+    )
+  }
+  
+  func test401FromSameSubdomain_shouldIndicateAuthRefreshNeeded() {
+    // Original request to gorgon.palaceproject.io, response from same
+    let originalURL = URL(string: "https://gorgon.palaceproject.io/library/loans")!
+    let response = HTTPURLResponse(
+      url: originalURL,
+      statusCode: 401,
+      httpVersion: nil,
+      headerFields: nil
+    )!
+    
+    XCTAssertTrue(
+      response.indicatesAuthenticationNeedsRefresh(with: nil, originalRequestURL: originalURL),
+      "401 from same subdomain should indicate auth refresh needed"
+    )
+  }
+  
+  // MARK: - Cross-Domain Tests (should NOT indicate auth refresh needed)
+  
+  func test401FromDifferentDomain_shouldNotIndicateAuthRefreshNeeded() {
+    // Original request to palaceproject.io, but response from biblioboard.com
+    let response = HTTPURLResponse(
+      url: thirdPartyURL,
+      statusCode: 401,
+      httpVersion: nil,
+      headerFields: nil
+    )!
+    
+    // When 401 is from a DIFFERENT domain, our credentials are NOT the issue
+    XCTAssertFalse(
+      response.indicatesAuthenticationNeedsRefresh(with: nil, originalRequestURL: palaceURL),
+      "401 from different domain should NOT indicate auth refresh needed"
+    )
+  }
+  
+  func test401FromDifferentSubdomain_shouldIndicateAuthRefreshNeeded() {
+    // Original request to gorgon.palaceproject.io, response from cdn.palaceproject.io
+    // Same base domain (palaceproject.io) - should still indicate refresh needed
+    let response = HTTPURLResponse(
+      url: palaceCDNURL,
+      statusCode: 401,
+      httpVersion: nil,
+      headerFields: nil
+    )!
+    
+    XCTAssertTrue(
+      response.indicatesAuthenticationNeedsRefresh(with: nil, originalRequestURL: palaceURL),
+      "401 from same base domain (different subdomain) should indicate auth refresh needed"
+    )
+  }
+  
+  func testProblemDocFromDifferentDomain_shouldNotIndicateAuthRefreshNeeded() {
+    // Problem document from third-party domain should not trigger re-auth
+    let response = HTTPURLResponse(
+      url: thirdPartyURL,
+      statusCode: 401,
+      httpVersion: nil,
+      headerFields: ["Content-Type": "application/problem+json"]
+    )!
+    
+    let problemDoc = TPPProblemDocument.forExpiredOrMissingCredentials(hasCredentials: true)
+    
+    XCTAssertFalse(
+      response.indicatesAuthenticationNeedsRefresh(with: problemDoc, originalRequestURL: palaceURL),
+      "Problem document from different domain should NOT indicate auth refresh needed"
+    )
+  }
+  
+  // MARK: - Nil Original URL Tests (backward compatibility)
+  
+  func test401WithNilOriginalURL_shouldIndicateAuthRefreshNeeded() {
+    // When original URL is nil (legacy code path), fall back to old behavior
+    let response = HTTPURLResponse(
+      url: palaceURL,
+      statusCode: 401,
+      httpVersion: nil,
+      headerFields: nil
+    )!
+    
+    XCTAssertTrue(
+      response.indicatesAuthenticationNeedsRefresh(with: nil, originalRequestURL: nil),
+      "401 with nil original URL should indicate auth refresh (backward compatible)"
+    )
+  }
+  
+  // MARK: - Non-401 Cross-Domain Tests
+  
+  func test403FromDifferentDomain_shouldNotIndicateAuthRefreshNeeded() {
+    // 403 from any domain should not indicate auth refresh
+    let response = HTTPURLResponse(
+      url: thirdPartyURL,
+      statusCode: 403,
+      httpVersion: nil,
+      headerFields: nil
+    )!
+    
+    XCTAssertFalse(
+      response.indicatesAuthenticationNeedsRefresh(with: nil, originalRequestURL: palaceURL),
+      "403 should not indicate auth refresh needed"
+    )
+  }
+  
+  func test200FromDifferentDomain_shouldNotIndicateAuthRefreshNeeded() {
+    // Success response should not indicate auth refresh
+    let response = HTTPURLResponse(
+      url: thirdPartyURL,
+      statusCode: 200,
+      httpVersion: nil,
+      headerFields: nil
+    )!
+    
+    XCTAssertFalse(
+      response.indicatesAuthenticationNeedsRefresh(with: nil, originalRequestURL: palaceURL),
+      "200 should not indicate auth refresh needed"
+    )
+  }
+}
+

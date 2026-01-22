@@ -48,7 +48,7 @@ private enum StorageKey: String {
     didSet {
       guard libraryUUID != oldValue else { return }
       
-      Log.info(#file, "🔐 TPPUserAccount libraryUUID changed: \(oldValue ?? "nil") → \(libraryUUID ?? "nil")")
+      Log.debug(#file, "libraryUUID changed from \(oldValue ?? "nil") to \(libraryUUID ?? "nil")")
       
       // Update keychain variable keys directly to access account-specific storage
       // Setting the key property triggers didSet which resets alreadyInited (forces re-read from keychain)
@@ -386,15 +386,19 @@ private enum StorageKey: String {
   var authState: TPPAccountAuthState {
     // If we have stored auth state, use it
     if let storedState = _authState.read() {
+      Log.debug(#file, "🔐 authState: storedState=\(storedState), hasCredentials=\(hasCredentials())")
       // Validate: if state is loggedIn or credentialsStale but no credentials, reset to loggedOut
       if storedState.hasStoredCredentials && !hasCredentials() {
+        Log.debug(#file, "🔐 authState: returning .loggedOut (no credentials but stored state has them)")
         return .loggedOut
       }
       return storedState
     }
     
     // No stored state - derive from credentials
-    return hasCredentials() ? .loggedIn : .loggedOut
+    let derivedState: TPPAccountAuthState = hasCredentials() ? .loggedIn : .loggedOut
+    Log.debug(#file, "🔐 authState: no stored state, derived=\(derivedState)")
+    return derivedState
   }
 
   var authToken: String? {
@@ -556,7 +560,7 @@ private enum StorageKey: String {
   /// Sets the authentication state of the account.
   /// - Parameter state: The new authentication state.
   func setAuthState(_ state: TPPAccountAuthState) {
-    Log.info(#file, "Setting auth state: \(authState) → \(state)")
+    Log.debug(#file, "Auth state changing from \(authState) to \(state)")
     _authState.write(state)
     
     // Update Combine publisher
@@ -582,6 +586,31 @@ private enum StorageKey: String {
     setAuthState(.loggedIn)
   }
     
+  // MARK: - Cache Refresh
+  
+  /// Forces a refresh of all cached credentials from keychain storage.
+  /// This is useful when credentials may have been updated by another component
+  /// or to verify that credentials were successfully persisted.
+  ///
+  /// - Returns: `true` if credentials were found after refresh, `false` otherwise.
+  @discardableResult
+  func refreshCredentialsFromKeychain() -> Bool {
+    // Force all keychain variables to re-read from keychain on next access
+    // This is done by changing the key (which resets alreadyInited) and then
+    // changing it back
+    let currentUUID = libraryUUID
+    
+    // Temporarily invalidate cache by triggering key change
+    // We do this by re-setting the libraryUUID which updates all keys via didSet
+    if let uuid = currentUUID {
+      // Force the didSet to trigger by setting to a different value first
+      libraryUUID = nil
+      libraryUUID = uuid
+    }
+    
+    return hasCredentials()
+  }
+  
   // MARK: - Remove
 
   func removeAll() {

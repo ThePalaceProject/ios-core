@@ -4,7 +4,7 @@
 //
 //  Tests for VoiceOver accessibility in EPUB and PDF readers.
 //  Verifies navigation controls and reader-specific UI have proper labels.
-//  (PP-3292)
+//  ()
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //

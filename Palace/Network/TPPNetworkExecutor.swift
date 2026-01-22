@@ -454,12 +454,16 @@ extension TPPNetworkExecutor {
       
       switch result {
       case .success(let tokenResponse):
-        TPPUserAccount.sharedAccount().setAuthToken(
+        let account = TPPUserAccount.sharedAccount()
+        account.setAuthToken(
           tokenResponse.accessToken,
           barcode: username,
           pin: password,
           expirationDate: tokenResponse.expirationDate
         )
+        // Mark account as fully logged in after successful token refresh
+        // This transitions from .credentialsStale -> .loggedIn
+        account.markLoggedIn()
         completion(.success(tokenResponse))
       case .failure(let error):
         completion(.failure(error))

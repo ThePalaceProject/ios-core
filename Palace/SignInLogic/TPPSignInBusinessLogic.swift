@@ -290,9 +290,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     }
 
     networker.executeRequest(req, enableTokenRefresh: false) { [weak self] result in
-      guard let self = self else {
-        return
-      }
+      guard let self = self else { return }
 
       self.isValidatingCredentials = false
 
@@ -303,12 +301,17 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
 
       switch result {
       case .success(let responseData, _):
+        // Notify delegate that credentials were received and DRM processing is about to begin
+        // This allows the UI to show a loading indicator after WebView dismisses
+        TPPMainThreadRun.asyncIfNeeded {
+          self.uiDelegate?.businessLogicDidReceiveCredentials?(self)
+        }
+        
         #if FEATURE_DRM_CONNECTOR
         if (AdobeCertificate.defaultCertificate?.hasExpired == true) {
           self.finalizeSignIn(forDRMAuthorization: true)
         } else if self.shouldSkipAdobeActivation() {
           // Refreshing stale credentials - Adobe DRM is still valid, skip activation
-          Log.info(#file, "Credentials refresh from stale state - skipping Adobe DRM activation")
           self.finalizeSignIn(forDRMAuthorization: true)
         } else {
           self.drmAuthorizeUserData(responseData, loggingContext: loggingContext)
@@ -545,6 +548,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
       if let patron {
         userAccount.setPatron(patron)
       }
+      
       if let authToken {
         userAccount.setAuthToken(authToken, barcode: barcode, pin: pin, expirationDate: expirationDate)
       } else {

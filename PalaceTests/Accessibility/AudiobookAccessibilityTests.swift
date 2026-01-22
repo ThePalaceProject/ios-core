@@ -4,7 +4,7 @@
 //
 //  Tests for VoiceOver accessibility in audiobook-related UI elements.
 //  Verifies playback controls have proper labels for blind users.
-//  (PP-3292)
+//  ()
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //

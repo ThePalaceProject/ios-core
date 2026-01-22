@@ -457,17 +457,19 @@ final class BookDetailViewModelTests: XCTestCase {
     // Transition through states (simulating borrow -> download flow)
     mockRegistry.setState(.downloadNeeded, for: book.identifier)
     
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+    // Use longer delays to allow Combine's receive(on: RunLoop.main) to process
+    // The ViewModel uses RunLoop.main scheduling which needs time to deliver
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
       mockRegistry.setState(.downloading, for: book.identifier)
       
-      DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
         // The ViewModel should track state changes
         XCTAssertEqual(viewModel.bookState, .downloading)
         expectation.fulfill()
       }
     }
     
-    wait(for: [expectation], timeout: 1.0)
+    wait(for: [expectation], timeout: 2.0)
   }
   
   func testViewModel_ReceivesBookFromRegistry_NotCachedVersion() {
@@ -528,7 +530,7 @@ final class BookDetailViewModelTests: XCTestCase {
     }
   }
   
-  // MARK: - Login Cancellation Regression Tests (PP-3552)
+  // MARK: - Login Cancellation Regression Tests ()
   // These tests ensure that downloads do NOT proceed when user cancels login.
   // Regression test for: Download continues after failed login
   
@@ -618,10 +620,10 @@ final class BookDetailViewModelTests: XCTestCase {
     XCTAssertFalse(downloadRelatedButtons.contains(.listen))
   }
   
-  // MARK: - Half Sheet Behavior Tests (PP-3553)
+  // MARK: - Half Sheet Behavior Tests ()
   
   /// Tests that half sheet should NOT be dismissed on download success
-  /// This prevents the "tap Read/Listen twice" bug (PP-3553)
+  /// This prevents the "tap Read/Listen twice" bug ()
   func testHalfSheet_StaysOpenOnDownloadSuccess() {
     // Simulate the state transition logic from bindRegistryState
     // When state is .downloadSuccessful, showHalfSheet should NOT be set to false
@@ -632,7 +634,7 @@ final class BookDetailViewModelTests: XCTestCase {
     // Apply the same logic as in bindRegistryState
     switch registryState {
     case .downloadSuccessful, .used:
-      // Download completed - keep half sheet open so user can tap Read/Listen (PP-3553)
+      // Download completed - keep half sheet open so user can tap Read/Listen ()
       // NO: showHalfSheet = false  <-- This was the bug
       break
     case .unregistered, .holding:

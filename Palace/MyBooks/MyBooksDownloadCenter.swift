@@ -930,11 +930,21 @@ extension MyBooksDownloadCenter {
         purgeAllAudiobookCaches(force: true)
       }
 
-      bookRegistry.setState(.unregistered, for: identifier)
-      bookRegistry.removeBook(forIdentifier: identifier)
-      Task {
-        try? await TPPBookRegistry.shared.syncAsync()
-        runOnMainAsync { completion?() }
+      // Delete all server bookmarks before removing book to prevent
+      // old bookmarks from reappearing when the book is re-borrowed
+      TPPAnnotations.deleteAllBookmarks(forBook: book) { [weak self] in
+        guard let self = self else {
+          completion?()
+          return
+        }
+        // Clear the deletion log since we're returning the book
+        TPPBookmarkDeletionLog.shared.clearAllDeletions(forBook: identifier)
+        self.bookRegistry.setState(.unregistered, for: identifier)
+        self.bookRegistry.removeBook(forIdentifier: identifier)
+        Task {
+          try? await TPPBookRegistry.shared.syncAsync()
+          runOnMainAsync { completion?() }
+        }
       }
     } else {
       bookRegistry.setProcessing(true, for: book.identifier)
@@ -948,11 +958,16 @@ extension MyBooksDownloadCenter {
             self.purgeAllAudiobookCaches(force: true)
           }
           if let returnedBook = TPPBook(entry: entry) {
-            self.bookRegistry.updateAndRemoveBook(returnedBook)
-            self.bookRegistry.setState(.unregistered, for: identifier)
-            Task {
-              try? await TPPBookRegistry.shared.syncAsync()
-              runOnMainAsync { completion?() }
+            // Delete all server bookmarks before removing book
+            TPPAnnotations.deleteAllBookmarks(forBook: book) {
+              // Clear the deletion log since we're returning the book
+              TPPBookmarkDeletionLog.shared.clearAllDeletions(forBook: identifier)
+              self.bookRegistry.updateAndRemoveBook(returnedBook)
+              self.bookRegistry.setState(.unregistered, for: identifier)
+              Task {
+                try? await TPPBookRegistry.shared.syncAsync()
+                runOnMainAsync { completion?() }
+              }
             }
           } else {
             NSLog("Failed to create book from entry. Book not removed from registry.")
@@ -968,11 +983,16 @@ extension MyBooksDownloadCenter {
                 self.deleteLocalContent(for: identifier)
                 self.purgeAllAudiobookCaches(force: true)
               }
-              self.bookRegistry.setState(.unregistered, for: identifier)
-              self.bookRegistry.removeBook(forIdentifier: identifier)
-              Task {
-                try? await TPPBookRegistry.shared.syncAsync()
-                runOnMainAsync { completion?() }
+              // Delete all server bookmarks before removing book
+              TPPAnnotations.deleteAllBookmarks(forBook: book) {
+                // Clear the deletion log since we're returning the book
+                TPPBookmarkDeletionLog.shared.clearAllDeletions(forBook: identifier)
+                self.bookRegistry.setState(.unregistered, for: identifier)
+                self.bookRegistry.removeBook(forIdentifier: identifier)
+                Task {
+                  try? await TPPBookRegistry.shared.syncAsync()
+                  runOnMainAsync { completion?() }
+                }
               }
             } else if errorType == TPPProblemDocument.TypeInvalidCredentials {
               NSLog("Invalid credentials problem when returning a book, present sign in VC")
@@ -1331,7 +1351,11 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
         let hasCredentials = self.userAccount.hasCredentials()
         let loginRequired = self.userAccount.authDefinition?.needsAuth ?? false
         
-        if task.response?.indicatesAuthenticationNeedsRefresh(with: problemDoc) == true {
+        // A 401 from a third-party domain (e.g., biblioboard.com) should NOT
+        // trigger re-authentication since our Palace credentials are not the issue
+        let originalURL = task.originalRequest?.url
+        let httpResponse = task.response as? HTTPURLResponse
+        if httpResponse?.indicatesAuthenticationNeedsRefresh(with: problemDoc, originalRequestURL: originalURL) == true {
           let authDef = self.userAccount.authDefinition
           
           // If user has credentials but got 401, this is a session/token expiry issue
@@ -1560,36 +1584,19 @@ extension MyBooksDownloadCenter: URLSessionTaskDelegate {
       
       await downloadCoordinator.incrementRedirectAttempts(for: task.taskIdentifier)
       
-      let authorizationKey = "Authorization"
-      
-      // Since any "Authorization" header will be dropped on redirection for security
-      // reasons, we need to again manually set the header for the redirected request
-      // if we originally manually set the header to a bearer token. There's no way
-      // to use URLSession's standard challenge handling approach for bearer tokens.
-      if let originalAuthorization = task.originalRequest?.allHTTPHeaderFields?[authorizationKey],
-         originalAuthorization.hasPrefix("Bearer") {
-        // Do not pass on the bearer token to other domains.
-        if task.originalRequest?.url?.host != request.url?.host {
-          completionHandler(request)
-          return
-        }
-        
-        // Prevent redirection from HTTPS to a non-HTTPS URL.
-        if task.originalRequest?.url?.scheme == "https" && request.url?.scheme != "https" {
-          completionHandler(nil)
-          return
-        }
-        
-        var mutableAllHTTPHeaderFields = request.allHTTPHeaderFields ?? [:]
-        mutableAllHTTPHeaderFields[authorizationKey] = originalAuthorization
-        
-        var mutableRequest = URLRequest(url: request.url!, applyingCustomUserAgent: true)
-        mutableRequest.allHTTPHeaderFields = mutableAllHTTPHeaderFields
-        
-        completionHandler(mutableRequest)
-      } else {
-        completionHandler(request)
+      // Prevent redirection from HTTPS to a non-HTTPS URL.
+      if task.originalRequest?.url?.scheme == "https" && request.url?.scheme != "https" {
+        completionHandler(nil)
+        return
       }
+      
+      // Do NOT forward any auth headers on redirects.
+      // For No DRM (open access): The redirect target doesn't need auth - content is open.
+      // For Bearer Token protected: We receive a JSON document (not a redirect) with
+      // the distributor's specific token, which we use in a NEW request.
+      // URLSession already strips Authorization headers on redirects for security;
+      // we simply allow that behavior and don't re-add them.
+      completionHandler(request)
     }
   }
   
