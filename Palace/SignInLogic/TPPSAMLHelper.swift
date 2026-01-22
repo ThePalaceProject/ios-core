@@ -34,8 +34,13 @@ class TPPSAMLHelper {
       }
     }
 
+    // Pass saved SAML cookies to the web view if available.
+    // This allows the IDP to recognize an existing session and auto-login
+    // without requiring the user to re-enter credentials.
+    let savedCookies = businessLogic.userAccount.cookies ?? []
+    
     let model = TPPCookiesWebViewModel(
-      cookies: [],
+      cookies: savedCookies,
       request: URLRequest(url: url),
       loginCompletionHandler: loginCompletionHandler,
       loginCancelHandler: loginCancelHandler,

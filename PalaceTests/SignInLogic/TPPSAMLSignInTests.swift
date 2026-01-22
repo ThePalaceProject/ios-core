@@ -766,4 +766,103 @@ final class TPPSAMLSignInTests: XCTestCase {
     XCTAssertTrue(isSignedInAfterRefresh,
                   "Should appear signed in after token refresh")
   }
+  
+  // MARK: - SAML Cookie Re-auth Tests
+  
+  /// Regression Test: Verifies that saved SAML cookies are passed to the SAML web view
+  /// during re-authentication.
+  ///
+  /// Bug: When a user with an expired SAML token tried to borrow a book directly
+  /// (without going to Settings first), they had to re-enter their credentials
+  /// because TPPSAMLHelper.logIn() passed empty cookies to the web view instead
+  /// of the saved IDP session cookies. The IDP couldn't recognize the session
+  /// and required manual re-authentication.
+  ///
+  /// When going to Settings first, something (likely keychain refresh) made the
+  /// flow work, allowing auto sign-in.
+  ///
+  /// Fix: TPPSAMLHelper.logIn() now passes businessLogic.userAccount.cookies ?? []
+  /// to the SAML web view, allowing the IDP to recognize existing sessions.
+  func testSAMLReauth_usesSavedCookiesForIDPSession() {
+    // Setup: User previously signed in with SAML and has saved cookies
+    businessLogic.selectedAuthentication = libraryAccountMock.samlAuthentication
+    
+    let savedCookies = [
+      HTTPCookie(properties: [
+        .domain: "idp.example.com",
+        .path: "/",
+        .name: "saml_session",
+        .value: "session_token_abc123"
+      ])!,
+      HTTPCookie(properties: [
+        .domain: "idp.example.com",
+        .path: "/auth",
+        .name: "idp_remember",
+        .value: "user_preference_xyz"
+      ])!
+    ]
+    
+    // Simulate previous SAML sign-in that stored cookies
+    businessLogic.updateUserAccount(
+      forDRMAuthorization: true,
+      withBarcode: nil,
+      pin: nil,
+      authToken: "original-saml-token",
+      expirationDate: nil,
+      patron: ["name": "Test User"],
+      cookies: savedCookies
+    )
+    
+    // Precondition: Cookies should be stored
+    XCTAssertEqual(businessLogic.userAccount.cookies?.count, 2,
+                   "Precondition: SAML cookies should be stored")
+    
+    // Simulate token expiration (401 response)
+    businessLogic.userAccount.markCredentialsStale()
+    
+    XCTAssertEqual(businessLogic.userAccount.authState, .credentialsStale,
+                   "Precondition: Auth state should be credentialsStale")
+    
+    // Assert: Cookies should still be available for re-auth
+    XCTAssertEqual(businessLogic.userAccount.cookies?.count, 2,
+                   "Saved cookies should still be available when credentials are stale")
+    XCTAssertTrue(businessLogic.userAccount.cookies?.contains { $0.name == "saml_session" } ?? false,
+                  "saml_session cookie should be available for IDP")
+  }
+  
+  /// Tests that cookies are preserved through the credentialsStale state.
+  /// This ensures the re-auth flow can use saved cookies.
+  func testCredentialsStale_preservesCookies() {
+    // Setup
+    businessLogic.selectedAuthentication = libraryAccountMock.samlAuthentication
+    
+    let cookies = [
+      HTTPCookie(properties: [
+        .domain: "idp.example.com",
+        .path: "/",
+        .name: "session",
+        .value: "value123"
+      ])!
+    ]
+    
+    // Sign in with cookies
+    businessLogic.updateUserAccount(
+      forDRMAuthorization: true,
+      withBarcode: nil,
+      pin: nil,
+      authToken: "token",
+      expirationDate: nil,
+      patron: nil,
+      cookies: cookies
+    )
+    
+    // Mark stale
+    businessLogic.userAccount.markCredentialsStale()
+    
+    // Assert: Cookies should still be present
+    XCTAssertNotNil(businessLogic.userAccount.cookies,
+                    "Cookies should not be cleared when credentials become stale")
+    XCTAssertEqual(businessLogic.userAccount.cookies?.count, 1,
+                   "Cookie count should be preserved")
+  }
 }

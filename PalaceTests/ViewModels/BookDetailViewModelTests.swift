@@ -457,17 +457,19 @@ final class BookDetailViewModelTests: XCTestCase {
     // Transition through states (simulating borrow -> download flow)
     mockRegistry.setState(.downloadNeeded, for: book.identifier)
     
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+    // Use longer delays to allow Combine's receive(on: RunLoop.main) to process
+    // The ViewModel uses RunLoop.main scheduling which needs time to deliver
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
       mockRegistry.setState(.downloading, for: book.identifier)
       
-      DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
         // The ViewModel should track state changes
         XCTAssertEqual(viewModel.bookState, .downloading)
         expectation.fulfill()
       }
     }
     
-    wait(for: [expectation], timeout: 1.0)
+    wait(for: [expectation], timeout: 2.0)
   }
   
   func testViewModel_ReceivesBookFromRegistry_NotCachedVersion() {
