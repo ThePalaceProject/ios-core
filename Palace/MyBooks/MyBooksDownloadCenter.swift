@@ -1584,36 +1584,19 @@ extension MyBooksDownloadCenter: URLSessionTaskDelegate {
       
       await downloadCoordinator.incrementRedirectAttempts(for: task.taskIdentifier)
       
-      let authorizationKey = "Authorization"
-      
-      // Since any "Authorization" header will be dropped on redirection for security
-      // reasons, we need to again manually set the header for the redirected request
-      // if we originally manually set the header to a bearer token. There's no way
-      // to use URLSession's standard challenge handling approach for bearer tokens.
-      if let originalAuthorization = task.originalRequest?.allHTTPHeaderFields?[authorizationKey],
-         originalAuthorization.hasPrefix("Bearer") {
-        // Do not pass on the bearer token to other domains.
-        if task.originalRequest?.url?.host != request.url?.host {
-          completionHandler(request)
-          return
-        }
-        
-        // Prevent redirection from HTTPS to a non-HTTPS URL.
-        if task.originalRequest?.url?.scheme == "https" && request.url?.scheme != "https" {
-          completionHandler(nil)
-          return
-        }
-        
-        var mutableAllHTTPHeaderFields = request.allHTTPHeaderFields ?? [:]
-        mutableAllHTTPHeaderFields[authorizationKey] = originalAuthorization
-        
-        var mutableRequest = URLRequest(url: request.url!, applyingCustomUserAgent: true)
-        mutableRequest.allHTTPHeaderFields = mutableAllHTTPHeaderFields
-        
-        completionHandler(mutableRequest)
-      } else {
-        completionHandler(request)
+      // Prevent redirection from HTTPS to a non-HTTPS URL.
+      if task.originalRequest?.url?.scheme == "https" && request.url?.scheme != "https" {
+        completionHandler(nil)
+        return
       }
+      
+      // Do NOT forward any auth headers on redirects.
+      // For No DRM (open access): The redirect target doesn't need auth - content is open.
+      // For Bearer Token protected: We receive a JSON document (not a redirect) with
+      // the distributor's specific token, which we use in a NEW request.
+      // URLSession already strips Authorization headers on redirects for security;
+      // we simply allow that behavior and don't re-add them.
+      completionHandler(request)
     }
   }
   
