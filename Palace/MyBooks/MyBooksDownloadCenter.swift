@@ -1351,7 +1351,11 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
         let hasCredentials = self.userAccount.hasCredentials()
         let loginRequired = self.userAccount.authDefinition?.needsAuth ?? false
         
-        if task.response?.indicatesAuthenticationNeedsRefresh(with: problemDoc) == true {
+        // A 401 from a third-party domain (e.g., biblioboard.com) should NOT
+        // trigger re-authentication since our Palace credentials are not the issue
+        let originalURL = task.originalRequest?.url
+        let httpResponse = task.response as? HTTPURLResponse
+        if httpResponse?.indicatesAuthenticationNeedsRefresh(with: problemDoc, originalRequestURL: originalURL) == true {
           let authDef = self.userAccount.authDefinition
           
           // If user has credentials but got 401, this is a session/token expiry issue
