@@ -140,7 +140,7 @@ final class CarPlayImageProvider {
       if let tenPrintView = NYPLTenPrintCoverView(
         frame: CGRect(origin: .zero, size: size),
         withTitle: book.title,
-        withAuthor: book.authors ?? Strings.Generic.unknownAuthor,
+        withAuthor: book.authors ?? "Unknown Author",
         withScale: 0.4
       ) {
         tenPrintView.layer.render(in: context.cgContext)

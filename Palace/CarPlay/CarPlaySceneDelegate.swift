@@ -62,7 +62,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
   // MARK: - Private Methods
   
   private func subscribeToBookRegistryChanges() {
-    NotificationCenter.default.publisher(for: .TPPBookRegistryStateChanged)
+    TPPBookRegistry.shared.bookStatePublisher
       .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
       .sink { [weak self] _ in
         self?.templateManager?.refreshLibrary()

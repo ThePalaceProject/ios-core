@@ -3,6 +3,7 @@ import FirebaseCore
 import FirebaseDynamicLinks
 import BackgroundTasks
 import SwiftUI
+import CarPlay
 import PalaceAudiobookToolkit
 
 @main
@@ -181,22 +182,28 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
   // MARK: - Scene Configuration
   
-  /// Dynamically provides scene configurations as fallback.
-  /// Primary configuration is in Info.plist for both main app and CarPlay scenes.
+  /// Provides scene configurations for main app and CarPlay scenes.
   func application(
     _ application: UIApplication,
     configurationForConnecting connectingSceneSession: UISceneSession,
     options: UIScene.ConnectionOptions
   ) -> UISceneConfiguration {
-    // Log which scene is being configured
     Log.info(#file, "📱 Configuring scene with role: \(connectingSceneSession.role.rawValue)")
     
-    // Return configuration based on the scene's role
-    // Info.plist provides the delegate class names
-    return UISceneConfiguration(
-      name: connectingSceneSession.configuration.name ?? "Default Configuration",
-      sessionRole: connectingSceneSession.role
-    )
+    switch connectingSceneSession.role {
+    case .carTemplateApplication:
+      // Handle CarPlay scene
+      Log.info(#file, "🚗 Creating CarPlay scene configuration")
+      let config = UISceneConfiguration(name: "CarPlay", sessionRole: connectingSceneSession.role)
+      config.delegateClass = CarPlaySceneDelegate.self
+      return config
+      
+    default:
+      // Handle main app scene
+      let config = UISceneConfiguration(name: "Default Configuration", sessionRole: connectingSceneSession.role)
+      config.delegateClass = SceneDelegate.self
+      return config
+    }
   }
   
   func application(_ application: UIApplication, didDiscardSceneSessions sceneSessions: Set<UISceneSession>) {

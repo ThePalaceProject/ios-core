@@ -23,6 +23,7 @@ final class CarPlayAudiobookBridge {
   private(set) var currentBook: TPPBook?
   private(set) var currentManager: AudiobookManager?
   private(set) var currentChapters: [Chapter]?
+  private(set) var currentChapter: Chapter?
   
   private var cancellables = Set<AnyCancellable>()
   
@@ -86,7 +87,7 @@ final class CarPlayAudiobookBridge {
     
     manager.audiobook.player.playbackRate = newRate
     
-    Log.debug(#file, "CarPlay: Playback rate changed to \(newRate.description)")
+    Log.debug(#file, "CarPlay: Playback rate changed to \(PlaybackRate.convert(rate: newRate))x")
     
     // Update MPNowPlayingInfoCenter with new rate
     updateNowPlayingRate(newRate)
@@ -115,33 +116,58 @@ final class CarPlayAudiobookBridge {
     currentManager?.pause()
   }
   
+  /// Stops current playback and cleans up for a new book
+  func stopCurrentPlayback() {
+    // Pause any current playback
+    currentManager?.pause()
+    
+    // Clear current state
+    currentManager = nil
+    currentChapters = nil
+    currentChapter = nil
+    
+    // Pop the phone app's audiobook view if open
+    Task { @MainActor in
+      if let coordinator = NavigationCoordinatorHub.shared.coordinator,
+         let bookId = currentBook?.identifier {
+        coordinator.removeAudioModel(forBookId: bookId)
+        coordinator.popToRoot()
+      }
+    }
+    
+    currentBook = nil
+    
+    Log.info(#file, "CarPlay: Stopped current playback and cleaned up")
+  }
+  
   // MARK: - Private Methods
   
   private func subscribeToGlobalPlayback() {
-    // Subscribe to playback started notifications to catch audiobooks
-    // opened from anywhere in the app
-    NotificationCenter.default.publisher(for: .TPPAudiobookManagerCreated)
-      .sink { [weak self] notification in
-        if let manager = notification.object as? AudiobookManager {
-          self?.bindToManager(manager)
-        }
+    // Subscribe to audiobook manager creation events
+    AudiobookEvents.managerCreated
+      .receive(on: DispatchQueue.main)
+      .sink { [weak self] manager in
+        self?.bindToManager(manager)
       }
       .store(in: &cancellables)
   }
   
   private func linkToActiveAudiobook() {
-    // Try to get the current audiobook manager from the playback model
-    // stored in the navigation coordinator
-    guard let coordinator = NavigationCoordinatorHub.shared.coordinator,
-          let bookId = currentBook?.identifier else {
-      Log.warn(#file, "CarPlay: Could not find active audiobook manager")
+    guard let bookId = currentBook?.identifier else {
+      Log.warn(#file, "CarPlay: No current book to link")
       return
     }
     
-    // The audiobook playback model contains the manager reference
-    // We access it through the coordinator's stored models
-    if let playbackModel = coordinator.getAudioModel(forBookId: bookId) {
-      bindToPlaybackModel(playbackModel)
+    // Access the coordinator on the main actor
+    Task { @MainActor in
+      guard let coordinator = NavigationCoordinatorHub.shared.coordinator else {
+        Log.warn(#file, "CarPlay: Could not find navigation coordinator")
+        return
+      }
+      
+      if let playbackModel = coordinator.getAudioModel(forBookId: bookId) {
+        self.bindToPlaybackModel(playbackModel)
+      }
     }
   }
   
@@ -155,9 +181,11 @@ final class CarPlayAudiobookBridge {
       }
       .store(in: &cancellables)
     
-    // Store chapter information
-    currentChapters = playbackModel.tableOfContents?.toc
-    chapterUpdatePublisher.send(currentChapters ?? [])
+    // Chapter info is set when we bind to the manager via AudiobookEvents.managerCreated
+    // Just notify that we're bound
+    if let chapters = currentChapters {
+      chapterUpdatePublisher.send(chapters)
+    }
     
     Log.info(#file, "CarPlay: Bound to playback model")
   }
@@ -202,16 +230,20 @@ final class CarPlayAudiobookBridge {
   
   private func handlePositionUpdate(_ position: TrackPosition) {
     // Update current chapter if changed
-    if let chapters = currentChapters,
-       let currentChapter = try? findChapter(for: position, in: chapters),
-       currentChapter.title != currentChapters?.first(where: { 
-         try? $0.position.track.key == position.track.key 
-       })?.title {
-      Log.debug(#file, "CarPlay: Chapter changed to '\(currentChapter.title ?? "Unknown")'")
+    guard let chapters = currentChapters else { return }
+    
+    if let newChapter = findChapter(for: position, in: chapters) {
+      if currentChapter?.position.track.key != newChapter.position.track.key {
+        currentChapter = newChapter
+        Log.debug(#file, "CarPlay: Chapter changed to '\(newChapter.title ?? "Unknown")'")
+        chapterUpdatePublisher.send(chapters)
+      }
     }
   }
   
-  private func findChapter(for position: TrackPosition, in chapters: [Chapter]) throws -> Chapter? {
+  private func findChapter(for position: TrackPosition, in chapters: [Chapter]) -> Chapter? {
+    // Find the chapter that contains this position
+    // We look for the chapter whose track matches the current position's track
     chapters.first { chapter in
       chapter.position.track.key == position.track.key
     }
@@ -223,13 +255,6 @@ final class CarPlayAudiobookBridge {
     nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = PlaybackRate.convert(rate: rate)
     MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
   }
-}
-
-// MARK: - Notification Names
-
-extension Notification.Name {
-  /// Posted when a new AudiobookManager is created and ready for playback
-  static let TPPAudiobookManagerCreated = Notification.Name("TPPAudiobookManagerCreated")
 }
 
 // MARK: - NavigationCoordinator Extension

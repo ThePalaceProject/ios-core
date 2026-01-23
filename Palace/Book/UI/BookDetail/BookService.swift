@@ -335,6 +335,9 @@ enum BookService {
           networkService: networkService,
           playbackTrackerDelegate: timeTracker
         )
+        
+        // Notify CarPlay and other observers that an audiobook manager was created
+        AudiobookEvents.managerCreated.send(manager)
 
         let bookmarkLogic = AudiobookBookmarkBusinessLogic(book: book)
         manager.bookmarkDelegate = bookmarkLogic

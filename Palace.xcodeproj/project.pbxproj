@@ -207,8 +207,8 @@
 		2DEF10BA201ECCEA0082843A /* TPPMyBooksSimplifiedBearerToken.m in Sources */ = {isa = PBXBuildFile; fileRef = 2DEF10B9201ECCEA0082843A /* TPPMyBooksSimplifiedBearerToken.m */; };
 		2DF321831DC3B83500E1858F /* TPPAnnotations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DF321821DC3B83500E1858F /* TPPAnnotations.swift */; };
 		2DFAC8ED1CD8DDD1003D9EC0 /* TPPOPDSCategory.m in Sources */ = {isa = PBXBuildFile; fileRef = 2DFAC8EC1CD8DDD1003D9EC0 /* TPPOPDSCategory.m */; };
-		2F9602AEA9104EA7960516E8 /* AccountDetailSkeletonView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D6A9F2703AA4DE2B0D5D35C /* AccountDetailSkeletonView.swift */; };
-		2F9602AFA9104EA7960516E9 /* AccountDetailSkeletonView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D6A9F2703AA4DE2B0D5D35C /* AccountDetailSkeletonView.swift */; };
+		2F9602AEA9104EA7960516E8 /* Components/AccountDetailSkeletonView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D6A9F2703AA4DE2B0D5D35C /* Components/AccountDetailSkeletonView.swift */; };
+		2F9602AFA9104EA7960516E9 /* Components/AccountDetailSkeletonView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D6A9F2703AA4DE2B0D5D35C /* Components/AccountDetailSkeletonView.swift */; };
 		31648629CEAC60ED194656BA /* TPPBasicAuthTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2E5C9EA3B9B15FEF2555CE3 /* TPPBasicAuthTests.swift */; };
 		366C7E46CBA55744BEE438CD /* DateExtensionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 153576DF8AE3801A58DE3F75 /* DateExtensionTests.swift */; };
 		3F950AC5136B638265B1AB87 /* BookDetailViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C73660492C45AC4EDF27B6E /* BookDetailViewModelTests.swift */; };
@@ -524,6 +524,15 @@
 		C64399E81697447CA4F20ABA /* EULAViewHosting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04CF94B049964380A3A35DA9 /* EULAViewHosting.swift */; };
 		C64399E91697447CA4F20ABB /* EULAViewHosting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04CF94B049964380A3A35DA9 /* EULAViewHosting.swift */; };
 		C9A9B85299EEDD6939D79149 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9678C3525710A1C64E8CBC6D /* SceneDelegate.swift */; };
+		CARPLAY0001SCENEDELEGATE /* CarPlaySceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F8D8A0D1A094920B67DC0E2 /* CarPlaySceneDelegate.swift */; };
+		CARPLAY0002TEMPLATEMGR01 /* CarPlayTemplateManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17B6CFD936164F32A7FD6A84 /* CarPlayTemplateManager.swift */; };
+		CARPLAY0003AUDIOBKBRIDGE /* CarPlayAudiobookBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06B2D269BFF440A381A893E3 /* CarPlayAudiobookBridge.swift */; };
+		CARPLAY0004IMAGEPROVIDER /* CarPlayImageProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 639A868F3BDA4A7F97660BEA /* CarPlayImageProvider.swift */; };
+		CARPLAY1001SCENEDELEGATE /* CarPlaySceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F8D8A0D1A094920B67DC0E2 /* CarPlaySceneDelegate.swift */; };
+		CARPLAY1002TEMPLATEMGR01 /* CarPlayTemplateManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17B6CFD936164F32A7FD6A84 /* CarPlayTemplateManager.swift */; };
+		CARPLAY1003AUDIOBKBRIDGE /* CarPlayAudiobookBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06B2D269BFF440A381A893E3 /* CarPlayAudiobookBridge.swift */; };
+		CARPLAY1004IMAGEPROVIDER /* CarPlayImageProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 639A868F3BDA4A7F97660BEA /* CarPlayImageProvider.swift */; };
+		CARPLAYTESTS00002SOURCES /* CarPlayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CARPLAYTESTS00001SWIFT01 /* CarPlayTests.swift */; };
 		CCD4CE5B21BED732364D2899 /* LCPAudiobooksTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C0E625DA84AEEFF9840A601 /* LCPAudiobooksTests.swift */; };
 		CE6ADDAE5A5A4796C2017A19 /* PDFReaderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A586098465213BD58E11860 /* PDFReaderTests.swift */; };
 		CF5E7A7A440833526AD827AB /* MyBooksDownloadCenterExtendedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3572DBB51B1244AE18879435 /* MyBooksDownloadCenterExtendedTests.swift */; };
@@ -674,6 +683,8 @@
 		E562DE492D38BB8C003A1A40 /* Image+Extension.swift in Sources */ = {isa = PBXBuildFile; fileRef = E562DE462D38BB8A003A1A40 /* Image+Extension.swift */; };
 		E56576002C933527005953BD /* AudiobookFileLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = E56575FF2C933527005953BD /* AudiobookFileLogger.swift */; };
 		E56724C12A132C1300972828 /* TPPAnnotationMock.swift in Sources */ = {isa = PBXBuildFile; fileRef = E56724C02A132C1300972828 /* TPPAnnotationMock.swift */; };
+		E5678BC52F24080900560F6A /* AudiobookEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5678BC42F24080900560F6A /* AudiobookEvents.swift */; };
+		E5678BC62F24080900560F6A /* AudiobookEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5678BC42F24080900560F6A /* AudiobookEvents.swift */; };
 		E567C72C296743990079C28C /* BookCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E567C72B296743990079C28C /* BookCell.swift */; };
 		E56D859D2E68DE9E00DFF16C /* CatalogFilterModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E56D859C2E68DE9E00DFF16C /* CatalogFilterModels.swift */; };
 		E56D859E2E68DE9E00DFF16C /* CatalogFilterModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E56D859C2E68DE9E00DFF16C /* CatalogFilterModels.swift */; };
@@ -1164,7 +1175,7 @@
 		08A352211BDE8E560040BF1D /* libicucore.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libicucore.tbd; path = usr/lib/libicucore.tbd; sourceTree = SDKROOT; };
 		08A352231BDE8E640040BF1D /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
 		08A352251BDE8E700040BF1D /* SystemConfiguration.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SystemConfiguration.framework; path = System/Library/Frameworks/SystemConfiguration.framework; sourceTree = SDKROOT; };
-		0D6A9F2703AA4DE2B0D5D35C /* AccountDetailSkeletonView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Components/AccountDetailSkeletonView.swift; sourceTree = "<group>"; };
+		0D6A9F2703AA4DE2B0D5D35C /* Components/AccountDetailSkeletonView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Components/AccountDetailSkeletonView.swift; sourceTree = "<group>"; };
 		11068C53196DD37900E8A94B /* TPPNull.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPNull.h; sourceTree = "<group>"; };
 		11068C54196DD37900E8A94B /* TPPNull.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPNull.m; sourceTree = "<group>"; };
 		1107835C19816E3D0071AB1E /* UIView+TPPViewAdditions.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "UIView+TPPViewAdditions.h"; sourceTree = "<group>"; };
@@ -1573,6 +1584,7 @@
 		C36BFAE4E752CA9A1451CDCE /* EPUBPositionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = EPUBPositionTests.swift; sourceTree = "<group>"; };
 		C61A8F5FC897F582128D45B7 /* NetworkClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkClientTests.swift; sourceTree = "<group>"; };
 		CAE35BBA1B86289500BF9BC5 /* Palace.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Palace.xcconfig; path = ../Palace.xcconfig; sourceTree = "<group>"; };
+		CARPLAYTESTS00001SWIFT01 /* CarPlayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarPlayTests.swift; sourceTree = "<group>"; };
 		CB6B83327C29366849662E76 /* OPDS2Feed.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = OPDS2Feed.swift; path = OPDS2/Models/OPDS2Feed.swift; sourceTree = "<group>"; };
 		CB9CA89B135C85E23F0D907B /* MyBooksViewModelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MyBooksViewModelTests.swift; sourceTree = "<group>"; };
 		D2ADD2980F56FC974B6DEBAC /* TPPReaderSettingsTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPReaderSettingsTests.swift; sourceTree = "<group>"; };
@@ -1659,6 +1671,7 @@
 		E562DE462D38BB8A003A1A40 /* Image+Extension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Image+Extension.swift"; sourceTree = "<group>"; };
 		E56575FF2C933527005953BD /* AudiobookFileLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudiobookFileLogger.swift; sourceTree = "<group>"; };
 		E56724C02A132C1300972828 /* TPPAnnotationMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAnnotationMock.swift; sourceTree = "<group>"; };
+		E5678BC42F24080900560F6A /* AudiobookEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudiobookEvents.swift; sourceTree = "<group>"; };
 		E567C72B296743990079C28C /* BookCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookCell.swift; sourceTree = "<group>"; };
 		E56D859C2E68DE9E00DFF16C /* CatalogFilterModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogFilterModels.swift; sourceTree = "<group>"; };
 		E56D859F2E68E58E00DFF16C /* TPPReloadView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPReloadView.swift; sourceTree = "<group>"; };
@@ -2124,6 +2137,7 @@
 				A92FB0F821CDCE3D004740F4 /* TPPReturnPromptHelper.swift */,
 				21EC1B8E2501538600A12384 /* AudioBookVendors+Extensions.swift */,
 				2198F90F250A90EE000D9DAB /* AudioBookVendorsHelper.swift */,
+				E5678BC42F24080900560F6A /* AudiobookEvents.swift */,
 			);
 			path = Audiobooks;
 			sourceTree = "<group>";
@@ -2278,7 +2292,7 @@
 				732940BF251D0B790065E362 /* BarcodeScanning */,
 				732940BE251D05E30065E362 /* SettingsCells */,
 				E5C2C41B268BA4E00046F415 /* DeveloperSettings */,
-				0D6A9F2703AA4DE2B0D5D35C /* AccountDetailSkeletonView.swift */,
+				0D6A9F2703AA4DE2B0D5D35C /* Components/AccountDetailSkeletonView.swift */,
 				5DD5677122B7ECE3001F0C83 /* TPPSettings.swift */,
 				E5CD87992EC2897A0043468C /* ActionButtonView.swift */,
 				7347312825142FE200BE3D2C /* TPPSettings+SE.swift */,
@@ -3244,6 +3258,7 @@
 				4850933FCAED50067CAF87EB /* Reader2 */,
 				15CAC43E06B8ABB96E54B7A3 /* MyBooks */,
 				47F8D721292E84F8386ED0F2 /* Audiobook */,
+				CARPLAYTESTGROUP000001 /* CarPlay */,
 				CA4865ECC354E69A4239478E /* Utilities */,
 				013986F9DDA5FDDCAF628DE6 /* OPDS2 */,
 				37506A1D063C7C946182D235 /* Performance */,
@@ -3312,6 +3327,14 @@
 				E5A09A7E2F0D72B500CC23EA /* DeviceOrientationTests.swift */,
 			);
 			path = Utilities;
+			sourceTree = "<group>";
+		};
+		CARPLAYTESTGROUP000001 /* CarPlay */ = {
+			isa = PBXGroup;
+			children = (
+				CARPLAYTESTS00001SWIFT01 /* CarPlayTests.swift */,
+			);
+			path = CarPlay;
 			sourceTree = "<group>";
 		};
 		D1950C4D48EB8C2AB9397903 /* PDF */ = {
@@ -4269,6 +4292,7 @@
 				E5A0CEA62AA9856000C304EC /* TPPReauthenticatorMock.swift in Sources */,
 				57D2A62CAE4BD36D9573E674 /* AudiobookPlaybackTests.swift in Sources */,
 				7B121B8D0C0E39FCB2FE0D9F /* AudiobookTOCTests.swift in Sources */,
+				CARPLAYTESTS00002SOURCES /* CarPlayTests.swift in Sources */,
 				681FBB4C5C3E2B2A10DAD273 /* CatalogViewModelTests.swift in Sources */,
 				PP3346A11B0000000000001B /* CatalogLaneRowViewAccessibilityTests.swift in Sources */,
 				9E482D5D89E03F23F7451DE6 /* MyBooksViewModelTests.swift in Sources */,
@@ -4618,6 +4642,11 @@
 				21562CC4276BB52700C03372 /* AdobeDRMAlerts.swift in Sources */,
 				E551B363267D42A20026FC1B /* TPPAccountList.swift in Sources */,
 				73EB0B0125821DF4006BC997 /* UIColor+Extensions.swift in Sources */,
+				E5678BC62F24080900560F6A /* AudiobookEvents.swift in Sources */,
+				CARPLAY1001SCENEDELEGATE /* CarPlaySceneDelegate.swift in Sources */,
+				CARPLAY1002TEMPLATEMGR01 /* CarPlayTemplateManager.swift in Sources */,
+				CARPLAY1003AUDIOBKBRIDGE /* CarPlayAudiobookBridge.swift in Sources */,
+				CARPLAY1004IMAGEPROVIDER /* CarPlayImageProvider.swift in Sources */,
 				73EB0B0225821DF4006BC997 /* TPPNetworkResponder.swift in Sources */,
 				73EB0B0425821DF4006BC997 /* TPPKeychain.m in Sources */,
 				73EB0B0525821DF4006BC997 /* TPPSignInBusinessLogic+SignOut.swift in Sources */,
@@ -4646,7 +4675,7 @@
 				73EB0B1525821DF4006BC997 /* TPPAnnotations.swift in Sources */,
 				E5B8E95E2E0EF93B002E0F3D /* GeneralCache.swift in Sources */,
 				E7048073285A72A600019B31 /* TPPPDFNavigation.swift in Sources */,
-				2F9602AEA9104EA7960516E8 /* AccountDetailSkeletonView.swift in Sources */,
+				2F9602AEA9104EA7960516E8 /* Components/AccountDetailSkeletonView.swift in Sources */,
 				E5AA6F4229A6BA4500601B02 /* RefreshableView.swift in Sources */,
 				73EB0B1625821DF4006BC997 /* AudioBookVendors+Extensions.swift in Sources */,
 				E78AE804291C1D8A00884446 /* TPPBookRegistry.swift in Sources */,
@@ -4722,6 +4751,7 @@
 				21DDE31F25D2CEAF002CBCE3 /* AdobeDRMContainer.mm in Sources */,
 				7096661E3AAF4B878E1F49DB /* RDServicesStubs.m in Sources */,
 				21045C582761095B00D2D407 /* TPPOnboardingView.swift in Sources */,
+				E5678BC52F24080900560F6A /* AudiobookEvents.swift in Sources */,
 				E5DE86FE2D6C39D7003D356E /* BookImageView.swift in Sources */,
 				2146872D2559A64B007B401A /* LCPLibraryService.swift in Sources */,
 				11369D48199527C200BB11F8 /* TPPJSON.m in Sources */,
@@ -4939,7 +4969,7 @@
 				E7861C4D2846937400B3A38A /* TPPEncryptedPDFView.swift in Sources */,
 				E78AE800291BFCC600884446 /* TPPBookLocation.swift in Sources */,
 				E795A76B2A74074300314EC8 /* AudiobookDataManager.swift in Sources */,
-				2F9602AFA9104EA7960516E9 /* AccountDetailSkeletonView.swift in Sources */,
+				2F9602AFA9104EA7960516E9 /* Components/AccountDetailSkeletonView.swift in Sources */,
 				730FC05125128224004D7C2D /* TPPSettings.swift in Sources */,
 				E6B1F4FB1DD20EA900D73CA1 /* TPPSettingsAccountsList.swift in Sources */,
 				5DD567B522B97344001F0C83 /* Data+Base64.swift in Sources */,
@@ -5082,6 +5112,10 @@
 				4C5C7E44FD15FA5A93AF5AAE /* UnifiedOPDSService.swift in Sources */,
 				24627E54AF34930D7ACEB030 /* BookCellModelCache.swift in Sources */,
 				C9A9B85299EEDD6939D79149 /* SceneDelegate.swift in Sources */,
+				CARPLAY0001SCENEDELEGATE /* CarPlaySceneDelegate.swift in Sources */,
+				CARPLAY0002TEMPLATEMGR01 /* CarPlayTemplateManager.swift in Sources */,
+				CARPLAY0003AUDIOBKBRIDGE /* CarPlayAudiobookBridge.swift in Sources */,
+				CARPLAY0004IMAGEPROVIDER /* CarPlayImageProvider.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -5213,7 +5247,7 @@
 					"\"$(SRCROOT)/adobe-rmsdk/xml/uft/public\"",
 				);
 				INFOPLIST_FILE = PalaceTests/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -5275,7 +5309,7 @@
 					"\"$(SRCROOT)/adobe-rmsdk/xml/uft/public\"",
 				);
 				INFOPLIST_FILE = PalaceTests/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -5316,7 +5350,7 @@
 				CODE_SIGN_IDENTITY = "Apple Distribution";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 413;
+				CURRENT_PROJECT_VERSION = 422;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -5332,7 +5366,7 @@
 					"$(inherited)",
 				);
 				INFOPLIST_FILE = "PalaceConfig/Palace-Info.plist";
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -5373,7 +5407,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 413;
+				CURRENT_PROJECT_VERSION = 422;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -5389,7 +5423,7 @@
 					"$(inherited)",
 				);
 				INFOPLIST_FILE = "PalaceConfig/Palace-Info.plist";
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -5471,7 +5505,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS = "c99 gnu++11";
 				ONLY_ACTIVE_ARCH = YES;
 				OTHER_LDFLAGS = (
@@ -5531,7 +5565,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS = "c99 gnu++11";
 				OTHER_LDFLAGS = (
 					"$(inherited)",
@@ -5559,7 +5593,7 @@
 				CODE_SIGN_ENTITLEMENTS = Palace/PalaceDebug.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 413;
+				CURRENT_PROJECT_VERSION = 422;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
@@ -5580,12 +5614,12 @@
 					"FEATURE_OVERDRIVE=1",
 				);
 				INFOPLIST_FILE = "PalaceConfig/Palace-Info.plist";
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.1.1;
+				MARKETING_VERSION = 2.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				RUN_CLANG_STATIC_ANALYZER = YES;
@@ -5619,7 +5653,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 413;
+				CURRENT_PROJECT_VERSION = 422;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -5641,12 +5675,12 @@
 					"FEATURE_OVERDRIVE=1",
 				);
 				INFOPLIST_FILE = "PalaceConfig/Palace-Info.plist";
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.1.1;
+				MARKETING_VERSION = 2.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "App Store";
@@ -5697,7 +5731,7 @@
 				INFOPLIST_FILE = PalaceUIKit/Info.plist;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2023 The Palace Project. All rights reserved.";
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
@@ -5759,7 +5793,7 @@
 				INFOPLIST_FILE = PalaceUIKit/Info.plist;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2023 The Palace Project. All rights reserved.";
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
