@@ -98,6 +98,10 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
       feed = try await withTimeout(seconds: 30) { [weak self] in
         try await self?.api.fetchFeed(at: url)
       }
+    } catch is CancellationError {
+      // Let cancellation errors propagate naturally for proper task cancellation handling
+      Log.debug(#file, "Catalog feed fetch was cancelled")
+      throw CancellationError()
     } catch {
       // If network fails and we have ANY cached content (even too old), use it as fallback
       if let entry = cachedEntry {

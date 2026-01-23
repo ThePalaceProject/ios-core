@@ -163,8 +163,15 @@ public final class ImageCache: ImageCacheType {
     }
 
     public func get(for key: String) -> UIImage? {
+        // Always check memory cache first (fast, safe on any thread)
         if let img = memoryImages.object(forKey: key as NSString) {
             return img
+        }
+        
+        // Skip disk I/O on main thread to prevent hangs
+        // Callers should use async fetch paths which will eventually populate memory cache
+        if Thread.isMainThread {
+            return nil
         }
       
         guard let data = dataCache.get(for: key) else { return nil }

@@ -89,6 +89,13 @@ import ReadiumAdapterLCPSQLite
       ]))
     }
 
+    // Verify file exists before attempting to acquire - Readium may hang on non-existent files
+    guard FileManager.default.fileExists(atPath: fileURL.path) else {
+      throw LCPError.unknown(NSError(domain: "LCPLibraryService", code: -3, userInfo: [
+        NSLocalizedDescriptionKey: "License file does not exist at path: \(fileURL.path)"
+      ]))
+    }
+
     let licenseSource = LicenseDocumentSource.file(fileURL)
     let result = await lcpService.acquirePublication(from: licenseSource)
     switch result {

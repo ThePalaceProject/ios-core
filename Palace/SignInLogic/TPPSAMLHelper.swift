@@ -13,8 +13,8 @@ class TPPSAMLHelper {
     var urlComponents = URLComponents(url: idpURL, resolvingAgainstBaseURL: true)
     let redirectURI = URLQueryItem(name: "redirect_uri", value: businessLogic.urlSettingsProvider.universalLinksURL.absoluteString)
     urlComponents?.queryItems?.append(redirectURI)
+    
     guard let url = urlComponents?.url else {
-      // Handle error if URL creation failed
       return
     }
 
@@ -22,6 +22,7 @@ class TPPSAMLHelper {
       self.businessLogic.cookies = cookies
 
       let redirectNotification = Notification(name: .TPPAppDelegateDidReceiveCleverRedirectURL, object: url, userInfo: nil)
+      
       self.businessLogic.handleRedirectURL(redirectNotification) { error, errorTitle, errorMessage in
         DispatchQueue.main.async {
           self.businessLogic.uiDelegate?.dismiss(animated: true) {
@@ -33,8 +34,13 @@ class TPPSAMLHelper {
       }
     }
 
+    // Pass saved SAML cookies to the web view if available.
+    // This allows the IDP to recognize an existing session and auto-login
+    // without requiring the user to re-enter credentials.
+    let savedCookies = businessLogic.userAccount.cookies ?? []
+    
     let model = TPPCookiesWebViewModel(
-      cookies: [],
+      cookies: savedCookies,
       request: URLRequest(url: url),
       loginCompletionHandler: loginCompletionHandler,
       loginCancelHandler: loginCancelHandler,

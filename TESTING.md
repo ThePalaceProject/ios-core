@@ -1,5 +1,7 @@
 # Palace iOS Testing Standards
 
+> **For the full testing migration plan and TDD requirements, see [UNIT_TESTING_PLAN.md](./UNIT_TESTING_PLAN.md)**
+
 ## Required Tests
 
 All code changes require corresponding tests:
@@ -117,6 +119,24 @@ func testBookReturn_UpdatesUIState() {
 }
 ```
 
+## TDD Requirements (Mandatory)
+
+### For Bug Fixes
+```
+1. FIRST: Write a failing test that reproduces the bug (include ticket #)
+2. THEN: Implement the fix
+3. FINALLY: Verify the test passes
+4. COMMIT: Test and fix together in same PR
+```
+
+### For New Features
+```
+1. FIRST: Write tests defining expected behavior
+2. THEN: Implement feature to make tests pass  
+3. FINALLY: Refactor while keeping tests green
+4. COMMIT: Tests and feature together
+```
+
 ## Quick Checklist
 
 Before submitting a PR:
@@ -127,4 +147,5 @@ Before submitting a PR:
 - [ ] Snapshot tests use real views with deterministic data
 - [ ] Bug fixes include regression tests with ticket reference
 - [ ] Tests are organized in appropriate subdirectories
+- [ ] TDD workflow was followed (test first, then code)
 

@@ -174,7 +174,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     ])
 
     // Book title label - positioned below status bar using safe area
-    // PP-3398: Previously at 20px from container top, which overlapped the status bar
+    // Previously at 20px from container top, which overlapped the status bar
     // Using view's safe area (not container) so label moves with status bar but doesn't affect navigator
     bookTitleLabel.translatesAutoresizingMaskIntoConstraints = false
     bookTitleLabel.font = .systemFont(ofSize: 12)
@@ -303,7 +303,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
                                     style: .plain,
                                     target: self,
                                     action: #selector(presentPositionsVC))
-    tocButton.accessibilityLabel = Strings.Accessibility.viewBookmarksAndTocButton
+    tocButton.accessibilityLabel = Strings.Generic.tableOfContents
 
     if !isShowingSample {
       buttons.append(bookmarkBtn)

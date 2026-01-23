@@ -71,6 +71,7 @@ final class BookCellModelCache: ObservableObject {
   // MARK: - Initialization
   
   private var memoryWarningObserver: NSObjectProtocol?
+  private var accountChangeObserver: NSObjectProtocol?
   
   public init(
     configuration: Configuration = .default,
@@ -86,12 +87,16 @@ final class BookCellModelCache: ObservableObject {
     }
     
     setupMemoryWarningObserver()
+    setupAccountChangeObserver()
     startPeriodicCleanup()
   }
   
   deinit {
     cleanupTask?.cancel()
     if let observer = memoryWarningObserver {
+      NotificationCenter.default.removeObserver(observer)
+    }
+    if let observer = accountChangeObserver {
       NotificationCenter.default.removeObserver(observer)
     }
   }
@@ -106,6 +111,25 @@ final class BookCellModelCache: ObservableObject {
     }
   }
   
+  private func setupAccountChangeObserver() {
+    accountChangeObserver = NotificationCenter.default.addObserver(
+      forName: NSNotification.Name.TPPCurrentAccountDidChange,
+      object: nil,
+      queue: .main
+    ) { [weak self] _ in
+      self?.handleAccountChange()
+    }
+  }
+  
+  private func handleAccountChange() {
+    // Clear all cached models when switching libraries
+    // The new library has different books, so old models are useless
+    let previousCount = cache.count
+    cache.removeAll()
+    accessOrder.removeAll()
+    Log.info(#file, "BookCellModelCache: Cleared \(previousCount) entries after account change")
+  }
+  
   // MARK: - Public API
   
   /// Gets or creates a BookCellModel for the given book
@@ -113,22 +137,23 @@ final class BookCellModelCache: ObservableObject {
   public func model(for book: TPPBook) -> BookCellModel {
     let key = book.identifier
     
-    // Check cache
     if var entry = cache[key] {
-      // Update book data if changed
-      if entry.model.book.updated != book.updated {
-        entry.model.book = book
-      }
-      
-      // Update access time
       entry.lastAccessed = Date()
       cache[key] = entry
       updateAccessOrder(key)
+      
+      if book.updated > entry.model.book.updated {
+        entry.model.book = book
+      }
       
       return entry.model
     }
     
     // Create new model
+    return createAndCacheModel(for: book)
+  }
+  
+  private func createAndCacheModel(for book: TPPBook) -> BookCellModel {
     let model = BookCellModel(book: book, imageCache: imageCache, bookRegistry: bookRegistry)
     
     // Evict if at capacity
@@ -137,8 +162,8 @@ final class BookCellModelCache: ObservableObject {
     }
     
     // Cache it
-    cache[key] = CacheEntry(model: model, lastAccessed: Date(), ttl: configuration.unusedTTL)
-    updateAccessOrder(key)
+    cache[book.identifier] = CacheEntry(model: model, lastAccessed: Date(), ttl: configuration.unusedTTL)
+    updateAccessOrder(book.identifier)
     
     return model
   }
@@ -206,21 +231,22 @@ final class BookCellModelCache: ObservableObject {
   }
   
   private func setupRegistryObserver() {
-    // Observe book state changes to invalidate affected models
+    // Observe book state changes and invalidate models when registry state doesn't match model state.
+    // This ensures UI always reflects the true state from the registry.
     bookRegistry.bookStatePublisher
-      .sink { [weak self] (identifier, _) in
-        // Don't invalidate, just let the model update its state
-        // The model already observes the registry
-        self?.touchModel(identifier: identifier)
+      .sink { [weak self] (identifier, newState) in
+        guard let self, let entry = self.cache[identifier] else { return }
+        
+        let modelRegistryState = entry.model.registryState
+        
+        // Invalidate if model's registry state doesn't match the actual registry state
+        // This catches ALL state mismatches, not just downloading → finished transitions
+        if modelRegistryState != newState {
+          Log.debug(#file, "Cache invalidating '\(identifier)': model state=\(modelRegistryState.stringValue()) registry state=\(newState.stringValue())")
+          self.invalidate(for: identifier)
+        }
       }
       .store(in: &cancellables)
-  }
-  
-  private func touchModel(identifier: String) {
-    if var entry = cache[identifier] {
-      entry.lastAccessed = Date()
-      cache[identifier] = entry
-    }
   }
   
   private func startPeriodicCleanup() {

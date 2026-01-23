@@ -380,22 +380,34 @@ private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse, with task
     return false
   }
   
-  guard TPPUserAccount.sharedAccount().hasCredentials() else {
+  let userAccount = TPPUserAccount.sharedAccount()
+  guard userAccount.hasCredentials() else {
     return false
   }
   
-  let authDef = TPPUserAccount.sharedAccount().authDefinition
+  let authDef = userAccount.authDefinition
   
   if response.statusCode == 401 {
+    // A 401 from a cross-domain redirect (e.g., to biblioboard.com) does NOT
+    // mean our Palace credentials are expired - it's a third-party auth issue
+    let originalURL = task.originalRequest?.url
+    guard response.indicatesAuthenticationNeedsRefresh(with: nil, originalRequestURL: originalURL) else {
+      Log.info(#file, "401 from cross-domain redirect - not marking credentials stale")
+      return false
+    }
+    
+    // Mark credentials as stale - preserves Adobe DRM activation
+    userAccount.markCredentialsStale()
+    
     if authDef?.isSaml == true {
-      Log.info(#file, "Server returned 401 for SAML - cannot refresh tokens, will trigger re-auth flow")
+      Log.info(#file, "Server returned 401 for SAML - credentials marked stale, will trigger re-auth flow")
       return false
     }
     
     let canRefreshToken = (authDef?.isToken == true || authDef?.isOauth == true) && 
                           authDef?.tokenURL != nil &&
-                          TPPUserAccount.sharedAccount().username != nil &&
-                          TPPUserAccount.sharedAccount().pin != nil
+                          userAccount.username != nil &&
+                          userAccount.pin != nil
     
     if canRefreshToken {
       Log.info(#file, "Server returned 401 - triggering token refresh (server authority)")

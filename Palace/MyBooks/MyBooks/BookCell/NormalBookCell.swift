@@ -22,7 +22,7 @@ struct NormalBookCell: View {
   // Download progress tracking
   @State private var downloadProgress: Double = 0.0
   
-  /// Check download state directly from stableButtonState (source of truth)
+  /// Check download state directly from stableButtonState (source of truth for SwiftUI)
   private var isDownloading: Bool {
     model.stableButtonState == .downloadInProgress
   }
@@ -108,36 +108,39 @@ struct NormalBookCell: View {
   
   // MARK: - Download Progress View
   
+  /// Threshold below which we show "Requesting..." instead of progress bar
+  /// This handles the checkout→download transition where progress resets
+  private let progressThreshold: Double = 0.03
+  
+  /// Whether we have meaningful download progress (above threshold, below complete)
+  private var hasMeaningfulProgress: Bool {
+    downloadProgress >= progressThreshold && downloadProgress < 0.99
+  }
+  
   @ViewBuilder private var downloadProgressView: some View {
     if isDownloading {
       VStack(alignment: .leading, spacing: 2) {
-        HStack(spacing: 6) {
-          Text(Strings.BookCell.downloading)
-            .palaceFont(size: 11)
-            .foregroundColor(.secondary)
-          
-          Spacer()
-          
-          Text("\(Int(downloadProgress * 100))%")
-            .palaceFont(size: 11)
-            .foregroundColor(.secondary)
-            .monospacedDigit()
-        }
-        
-        GeometryReader { geometry in
-          ZStack(alignment: .leading) {
-            // Background track
-            RoundedRectangle(cornerRadius: 2)
-              .fill(Color.secondary.opacity(0.2))
-              .frame(height: 4)
-            
-            // Progress fill
-            RoundedRectangle(cornerRadius: 2)
-              .fill(Color(TPPConfiguration.mainColor()))
-              .frame(width: geometry.size.width * downloadProgress, height: 4)
+        if hasMeaningfulProgress {
+          // Show progress bar when we have meaningful progress
+          GeometryReader { geometry in
+            ZStack(alignment: .leading) {
+              // Background track
+              RoundedRectangle(cornerRadius: 2)
+                .fill(Color.secondary.opacity(0.2))
+                .frame(height: 4)
+              
+              // Progress fill
+              RoundedRectangle(cornerRadius: 2)
+                .fill(Color(TPPConfiguration.mainColor()))
+                .frame(width: geometry.size.width * downloadProgress, height: 4)
+            }
           }
+          .frame(height: 4)
+        } else {
+          // Show indeterminate spinner for initial checkout phase
+          ProgressView()
+            .scaleEffect(0.7)
         }
-        .frame(height: 4)
       }
       .padding(.bottom, 4)
       .transition(.opacity.combined(with: .move(edge: .top)))

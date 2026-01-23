@@ -253,10 +253,20 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
       }
 
       self.registry = newRegistry
+      
+      // Capture states to emit on main thread
+      let bookStates = newRegistry.map { ($0.key, $0.value.state) }
 
       DispatchQueue.main.async {
         self.state = .loaded
         self.registrySubject.send(self.registry)
+        
+        // Emit state events for ALL loaded books so ViewModels update their state
+        // This ensures any cached models or views created before load get the correct state
+        for (identifier, state) in bookStates {
+          self.bookStateSubject.send((identifier, state))
+        }
+        
         NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
         Log.info(#file, "  📖 Registry loaded with \(self.registry.count) books")
       }
@@ -353,7 +363,9 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
               self.updateBook(book)
               changesMade = true
             } else {
-              self.addBook(book)
+              // Derive initial state from book availability (e.g., holding for reserved books)
+              let initialState = TPPBookRegistryRecord.deriveInitialState(for: book)
+              self.addBook(book, state: initialState)
               changesMade = true
             }
           }
@@ -568,7 +580,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
         )
       }
 
-      TPPUserNotifications.compareAvailability(cachedRecord: record, andNewBook: book)
+      NotificationService.compareAvailability(cachedRecord: record, andNewBook: book)
       self.registry[book.identifier] = TPPBookRegistryRecord(
         book: book,
         location: record.location,
@@ -610,10 +622,19 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
   func setState(_ state: TPPBookState, for bookIdentifier: String) {
     syncQueue.async(flags: .barrier) { [weak self] in
       guard let self else { return }
+      
+      let previousState = self.registry[bookIdentifier]?.state
+      
+      // Log state transitions for debugging
+      if let prev = previousState, prev != state {
+        Log.debug(#file, "📊 State transition for '\(bookIdentifier)': \(prev.stringValue()) → \(state.stringValue())")
+      } else if previousState == nil {
+        Log.debug(#file, "📊 Setting state for unregistered book '\(bookIdentifier)': \(state.stringValue())")
+      }
 
-    self.registry[bookIdentifier]?.state = state
-    self.postStateNotification(bookIdentifier: bookIdentifier, state: state)
-    self.save()
+      self.registry[bookIdentifier]?.state = state
+      self.postStateNotification(bookIdentifier: bookIdentifier, state: state)
+      self.save()
 
       DispatchQueue.main.async {
         self.bookStateSubject.send((bookIdentifier, state))
