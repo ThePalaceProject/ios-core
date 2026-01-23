@@ -2,6 +2,32 @@ import Foundation
 
 let currentAccountIdentifierKey = "TPPCurrentAccountIdentifier"
 
+// MARK: - Cache Metadata
+
+/// Metadata for tracking cache freshness in stale-while-revalidate pattern
+struct CatalogCacheMetadata: Codable {
+  let timestamp: Date
+  let hash: String
+  
+  /// Cache is stale after 5 minutes (should refresh in background)
+  private static let staleTTL: TimeInterval = 300
+  
+  /// Cache expires after 24 hours (must not be used)
+  private static let maxAge: TimeInterval = 86400
+  
+  /// Returns true if cache is stale (older than 5 minutes)
+  /// Stale data can still be used, but should trigger background refresh
+  var isStale: Bool {
+    Date().timeIntervalSince(timestamp) > Self.staleTTL
+  }
+  
+  /// Returns true if cache is expired (older than 24 hours)
+  /// Expired data should not be used at all
+  var isExpired: Bool {
+    Date().timeIntervalSince(timestamp) > Self.maxAge
+  }
+}
+
 @objc protocol TPPCurrentLibraryAccountProvider: NSObjectProtocol {
   var currentAccount: Account? { get }
 }
@@ -187,7 +213,10 @@ let currentAccountIdentifierKey = "TPPCurrentAccountIdentifier"
     handlers.forEach { $0(success) }
   }
 
-  /// Public entrypoint
+  /// Public entrypoint - implements stale-while-revalidate pattern
+  /// 1. If data is in memory, return immediately (refresh in background if stale)
+  /// 2. If data is on disk and not expired, load it immediately and refresh in background
+  /// 3. If no cache or expired, fetch from network
   func loadCatalogs(completion: ((Bool) -> ())?) {
     let targetUrl = TPPConfiguration.customUrl()
     ?? (TPPSettings.shared.useBetaLibraries
@@ -198,16 +227,45 @@ let currentAccountIdentifierKey = "TPPCurrentAccountIdentifier"
       .base64EncodedStringUrlSafe()
       .trimmingCharacters(in: ["="])
 
-    // if already loaded for this hash, immediately call back
+    // 1. If already loaded in memory, return immediately
     if performRead({ self.accountSets[hash]?.isEmpty == false }) {
       completion?(true)
+      // Still refresh in background if stale
+      if isCacheStale(hash: hash) {
+        refreshInBackground(targetUrl: targetUrl, hash: hash)
+      }
       return
     }
 
+    // 2. Try disk cache first (stale-while-revalidate)
+    if hasCachedCatalogData(hash: hash),
+       let cachedData = readCachedAccountsCatalogData(hash: hash) {
+      Log.info(#file, "Loading catalogs from cache (stale-while-revalidate)")
+      
+      // dedupe concurrent loads for initial cache load
+      if addLoadingHandler(for: hash, completion) { return }
+      
+      loadAccountSetsAndAuthDoc(fromCatalogData: cachedData, key: hash) { [weak self] success in
+        NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
+        self?.callAndClearLoadingHandlers(for: hash, success)
+      }
+      
+      // Always refresh in background when loading from cache
+      refreshInBackground(targetUrl: targetUrl, hash: hash)
+      return
+    }
+
+    // 3. No cache or expired - must fetch from network
+    Log.debug(#file, "Loading catalogs from network for hash \(hash)…")
+    
     // dedupe concurrent loads
     if addLoadingHandler(for: hash, completion) { return }
-
-    Log.debug(#file, "Loading catalogs for hash \(hash)…")
+    
+    fetchFromNetwork(targetUrl: targetUrl, hash: hash)
+  }
+  
+  /// Fetches catalog data from network (used for initial load when no cache)
+  private func fetchFromNetwork(targetUrl: URL, hash: String) {
     TPPNetworkExecutor.shared.GET(targetUrl, useTokenIfAvailable: false) { [weak self] result in
       guard let self = self else { return }
       switch result {
@@ -220,17 +278,41 @@ let currentAccountIdentifierKey = "TPPCurrentAccountIdentifier"
 
       case .failure(let error, _):
         Log.error(#file, "Failed to load catalogs from network: \(error.localizedDescription)")
-        // fallback to disk
+        // fallback to disk (even expired data is better than nothing for network failure)
         if let data = self.readCachedAccountsCatalogData(hash: hash) {
-          Log.info(#file, "Using cached catalog data as fallback")
+          Log.info(#file, "Using cached catalog data as fallback after network failure")
           self.loadAccountSetsAndAuthDoc(fromCatalogData: data, key: hash) { success in
             NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
             self.callAndClearLoadingHandlers(for: hash, success)
           }
         } else {
           Log.error(#file, "No cached catalog data available, catalog load failed completely")
-          // truly failed
           self.callAndClearLoadingHandlers(for: hash, false)
+        }
+      }
+    }
+  }
+  
+  /// Refreshes catalog data in background without blocking the UI
+  private func refreshInBackground(targetUrl: URL, hash: String) {
+    DispatchQueue.global(qos: .utility).async { [weak self] in
+      Log.debug(#file, "Starting background refresh for catalog hash \(hash)")
+      
+      TPPNetworkExecutor.shared.GET(targetUrl, useTokenIfAvailable: false) { [weak self] result in
+        guard let self = self else { return }
+        
+        switch result {
+        case .success(let data, _):
+          Log.info(#file, "Background refresh successful for hash \(hash)")
+          self.cacheAccountsCatalogData(data, hash: hash)
+          self.loadAccountSetsAndAuthDoc(fromCatalogData: data, key: hash) { _ in
+            // Notify UI that fresh data is available
+            NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
+          }
+          
+        case .failure(let error, _):
+          Log.debug(#file, "Background refresh failed for hash \(hash): \(error.localizedDescription). Using cached data.")
+          // Silent failure - we already have cached data displayed
         }
       }
     }
@@ -247,15 +329,59 @@ let currentAccountIdentifierKey = "TPPCurrentAccountIdentifier"
     else { return nil }
     return appSupport.appendingPathComponent("accounts_catalog_\(hash).json")
   }
+  
+  private func cacheMetadataUrl(hash: String) -> URL? {
+    guard let appSupport = try? FileManager.default.url(
+      for: .applicationSupportDirectory,
+      in: .userDomainMask,
+      appropriateFor: nil,
+      create: true)
+    else { return nil }
+    return appSupport.appendingPathComponent("accounts_catalog_metadata_\(hash).json")
+  }
 
   private func cacheAccountsCatalogData(_ data: Data, hash: String) {
+    // Save catalog data
     guard let url = accountsCatalogUrl(hash: hash) else { return }
     try? data.write(to: url)
+    
+    // Save metadata with current timestamp
+    let metadata = CatalogCacheMetadata(timestamp: Date(), hash: hash)
+    if let metadataUrl = cacheMetadataUrl(hash: hash),
+       let metadataData = try? JSONEncoder().encode(metadata) {
+      try? metadataData.write(to: metadataUrl)
+    }
   }
 
   private func readCachedAccountsCatalogData(hash: String) -> Data? {
     guard let url = accountsCatalogUrl(hash: hash) else { return nil }
     return try? Data(contentsOf: url)
+  }
+  
+  /// Reads cache metadata for the given hash
+  private func readCacheMetadata(hash: String) -> CatalogCacheMetadata? {
+    guard let url = cacheMetadataUrl(hash: hash),
+          let data = try? Data(contentsOf: url) else { return nil }
+    return try? JSONDecoder().decode(CatalogCacheMetadata.self, from: data)
+  }
+  
+  /// Returns true if cached data exists and is not expired (can be stale but usable)
+  private func hasCachedCatalogData(hash: String) -> Bool {
+    guard readCachedAccountsCatalogData(hash: hash) != nil else { return false }
+    guard let metadata = readCacheMetadata(hash: hash) else {
+      // Data exists but no metadata - treat as usable but stale
+      return true
+    }
+    return !metadata.isExpired
+  }
+  
+  /// Returns true if cache exists and is stale (needs background refresh)
+  private func isCacheStale(hash: String) -> Bool {
+    guard let metadata = readCacheMetadata(hash: hash) else {
+      // No metadata means we should refresh
+      return true
+    }
+    return metadata.isStale
   }
 
   // MARK: – Parsing & notifying
