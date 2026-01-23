@@ -14,8 +14,6 @@ extension TPPSettings: NYPLUniversalLinksSettings {
 }
 
 extension TPPSettings {
-  static let userHasSeenWelcomeScreenKey = "NYPLUserHasSeenWelcomeScreenKey"
-  
   var settingsAccountIdsList: [String] {
     get {
       if let libraryAccounts = UserDefaults.standard.array(forKey: TPPSettings.settingsLibraryAccountsKey) as? [String] {

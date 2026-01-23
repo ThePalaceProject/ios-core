@@ -185,6 +185,7 @@ extension BookButtonState {
   }
 }
 
+
 extension TPPBook {
   func supportsDeletion(for state: BookButtonState) -> Bool {
     var fullfillmentRequired = false

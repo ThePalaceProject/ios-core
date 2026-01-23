@@ -42,6 +42,7 @@ fileprivate let nullString = "null"
   // book registry / My books
   case unknownBookState = 203
   case registrySyncFailure = 204
+  case bookStateInconsistency = 205
 
   // sign in/out/up
   case invalidLicensor = 300

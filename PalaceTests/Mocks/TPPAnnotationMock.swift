@@ -11,6 +11,9 @@ class TPPAnnotationMock: NSObject, AnnotationsManager {
   var savedLocations: [String: [TestBookmark]] = [:]
   var bookmarks: [String: [TestBookmark]] = [:]
   
+  /// Storage for TPPReadiumBookmark objects (for EPUB bookmark testing)
+  var readiumBookmarks: [String: [TPPReadiumBookmark]] = [:]
+  
   var syncIsPossibleAndPermitted: Bool { true }
   
   func postListeningPosition(forBook bookID: String, selectorValue: String, completion: ((AnnotationResponse?) -> Void)?) {
@@ -35,6 +38,13 @@ class TPPAnnotationMock: NSObject, AnnotationsManager {
       return
     }
     
+    // Return readiumBookmarks if they exist (for EPUB bookmark testing)
+    if let storedReadiumBookmarks = readiumBookmarks[bookID], !storedReadiumBookmarks.isEmpty {
+      completion(storedReadiumBookmarks)
+      return
+    }
+    
+    // Otherwise, fall back to audiobook bookmarks
     let bookmarks = motivation == .bookmark ? bookmarks[bookID] : savedLocations[bookID]
     completion(bookmarks?.compactMap {
       guard let selectorValueData = $0.value.data(using: String.Encoding.utf8) else {
@@ -50,12 +60,36 @@ class TPPAnnotationMock: NSObject, AnnotationsManager {
   }
   
   func deleteBookmark(annotationId: String, completionHandler: @escaping (Bool) -> ()) {
+    // Delete from audiobook bookmarks
     for (bookId, bookmarksArray) in bookmarks {
       let filteredBookmarks = bookmarksArray.filter { $0.annotationId != annotationId }
       bookmarks[bookId] = filteredBookmarks
     }
     
+    // Delete from readium bookmarks
+    for (bookId, bookmarksArray) in readiumBookmarks {
+      let filteredBookmarks = bookmarksArray.filter { $0.annotationId != annotationId }
+      readiumBookmarks[bookId] = filteredBookmarks
+    }
+    
     completionHandler(true)
+  }
+  
+  /// Deletes all bookmarks for a book from the mock server storage.
+  /// This simulates fix: when a book is returned, all server bookmarks should be deleted.
+  func deleteAllBookmarks(forBook book: TPPBook, completion: @escaping () -> Void) {
+    let bookID = book.identifier
+    
+    // Delete all audiobook bookmarks for this book
+    bookmarks[bookID] = []
+    
+    // Delete all readium bookmarks for this book
+    readiumBookmarks[bookID] = []
+    
+    // Delete all saved locations for this book
+    savedLocations[bookID] = []
+    
+    completion()
   }
   
   func generateRandomString(length: Int) -> String {

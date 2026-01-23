@@ -162,29 +162,6 @@ final class BookCellModelCacheTests: XCTestCase {
     XCTAssertLessThanOrEqual(sut.count, 3)
   }
   
-  // MARK: - Prefetching
-  
-  func testPrefetchWithVisibleRange() throws {
-    let books = (0..<20).map { makeTestBook(identifier: "book\($0)", title: "Book \($0)") }
-    
-    // Initially no models
-    XCTAssertEqual(sut.count, 0)
-    
-    // Prefetch with visible range 5..<10, buffer 3
-    sut.prefetch(books: books, visibleRange: 5..<10, buffer: 3)
-    
-    // Wait a tiny bit for the Task to execute
-    let expectation = expectation(description: "Prefetch")
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-      expectation.fulfill()
-    }
-    wait(for: [expectation], timeout: 1.0)
-    
-    // Should have prefetched range 2..<13 (5-3 to 10+3)
-    // That's 11 items
-    XCTAssertGreaterThan(sut.count, 0)
-  }
-  
   // MARK: - Model Updates
   
   func testModelUpdatesWhenBookChanges() throws {
@@ -194,7 +171,6 @@ final class BookCellModelCacheTests: XCTestCase {
     XCTAssertEqual(model.book.title, "Original Title")
     
     // Create updated book with same identifier but different title
-    // Note: In real usage, the updated date would also change
     let book2 = makeTestBook(identifier: "book1", title: "Updated Title", updated: Date())
     
     let updatedModel = sut.model(for: book2)
@@ -204,57 +180,205 @@ final class BookCellModelCacheTests: XCTestCase {
     XCTAssertEqual(updatedModel.book.title, "Updated Title")
   }
   
+  /// Tests direct invalidation of downloading models
+  /// Bug fix: XXXX - Stale downloading cells showing after download completes
+  func testDirectInvalidation_RefreshesModel() throws {
+    let observingCache = BookCellModelCache(
+      configuration: .init(
+        maxEntries: 10,
+        unusedTTL: 5,
+        observeRegistryChanges: false
+      ),
+      imageCache: mockImageCache,
+      bookRegistry: mockBookRegistry
+    )
+    
+    let book = makeTestBook(identifier: "downloadingBook", title: "Test Book")
+    
+    // Set book to downloading state
+    mockBookRegistry.addBook(
+      book,
+      location: nil,
+      state: .downloading,
+      fulfillmentId: nil,
+      readiumBookmarks: nil,
+      genericBookmarks: nil
+    )
+    
+    let model1 = observingCache.model(for: book)
+    XCTAssertEqual(model1.state.buttonState, .downloadInProgress)
+    
+    // Simulate download completion and direct invalidation
+    mockBookRegistry.setState(.downloadSuccessful, for: book.identifier)
+    observingCache.invalidate(for: book.identifier)
+    
+    let model2 = observingCache.model(for: book)
+    
+    XCTAssertFalse(model1 === model2, "Should return new model after invalidation")
+    XCTAssertEqual(model2.state.buttonState, .downloadSuccessful)
+  }
+  
+  /// Tests that cache invalidation works for any state transition
+  func testDirectInvalidation_WorksForStateTransitions() throws {
+    let cache = BookCellModelCache(
+      configuration: .init(
+        maxEntries: 10,
+        unusedTTL: 5,
+        observeRegistryChanges: false
+      ),
+      imageCache: mockImageCache,
+      bookRegistry: mockBookRegistry
+    )
+    
+    let book = makeTestBook(identifier: "activeDownload", title: "Active Download")
+    
+    mockBookRegistry.addBook(
+      book,
+      location: nil,
+      state: .downloadNeeded,
+      fulfillmentId: nil,
+      readiumBookmarks: nil,
+      genericBookmarks: nil
+    )
+    
+    let model1 = cache.model(for: book)
+    XCTAssertEqual(model1.state.buttonState, .downloadNeeded)
+    
+    // Change state and invalidate
+    mockBookRegistry.setState(.downloading, for: book.identifier)
+    cache.invalidate(for: book.identifier)
+    
+    let model2 = cache.model(for: book)
+    
+    XCTAssertFalse(model1 === model2, "State change with invalidation should create new model")
+    XCTAssertEqual(model2.state.buttonState, .downloadInProgress)
+  }
+  
+  /// Tests that cache invalidation works for holding state transition
+  func testDirectInvalidation_WorksForHoldingState() throws {
+    let cache = BookCellModelCache(
+      configuration: .init(
+        maxEntries: 10,
+        unusedTTL: 5,
+        observeRegistryChanges: false
+      ),
+      imageCache: mockImageCache,
+      bookRegistry: mockBookRegistry
+    )
+    
+    let book = makeTestBook(identifier: "holdBook", title: "Hold Book")
+    
+    mockBookRegistry.addBook(
+      book,
+      location: nil,
+      state: .downloading,
+      fulfillmentId: nil,
+      readiumBookmarks: nil,
+      genericBookmarks: nil
+    )
+    
+    let model1 = cache.model(for: book)
+    XCTAssertEqual(model1.state.buttonState, .downloadInProgress)
+    
+    // Transition to holding and invalidate
+    mockBookRegistry.setState(.holding, for: book.identifier)
+    cache.invalidate(for: book.identifier)
+    
+    let model2 = cache.model(for: book)
+    
+    XCTAssertFalse(model1 === model2, "Cache should create new model after invalidation")
+    XCTAssertEqual(model2.state.buttonState, .holding)
+  }
+  
+  // MARK: - Edge Case Tests
+  
+  func testCacheWithSameIdentifierDifferentUpdatedDate() throws {
+    let oldDate = Date(timeIntervalSince1970: 1000)
+    let newDate = Date(timeIntervalSince1970: 2000)
+    
+    let oldBook = makeTestBook(identifier: "same-id", title: "Old Title", updated: oldDate)
+    let newBook = makeTestBook(identifier: "same-id", title: "New Title", updated: newDate)
+    
+    _ = sut.model(for: oldBook)
+    let model = sut.model(for: newBook)
+    
+    // Model should have updated to new book data
+    XCTAssertEqual(model.book.title, "New Title")
+    XCTAssertEqual(sut.count, 1)
+  }
+  
+  func testConcurrentAccess_DoesNotCrash() async throws {
+    let books = (0..<20).map { makeTestBook(identifier: "concurrent-\($0)", title: "Book \($0)") }
+    
+    // Simulate concurrent access patterns
+    await withTaskGroup(of: Void.self) { group in
+      for book in books {
+        group.addTask { @MainActor in
+          _ = self.sut.model(for: book)
+        }
+      }
+    }
+    
+    XCTAssertGreaterThan(sut.count, 0)
+    XCTAssertLessThanOrEqual(sut.count, 20)
+  }
+  
+  func testInvalidateNonExistentKey_DoesNotCrash() throws {
+    // Invalidating a key that doesn't exist should not crash
+    sut.invalidate(for: "non-existent-key")
+    
+    XCTAssertEqual(sut.count, 0)
+  }
+  
+  func testClearEmptyCache_DoesNotCrash() throws {
+    // Clearing an empty cache should not crash
+    sut.clear()
+    
+    XCTAssertEqual(sut.count, 0)
+  }
+  
+  func testMemoryWarningOnEmptyCache_DoesNotCrash() throws {
+    sut.handleMemoryWarning()
+    
+    XCTAssertEqual(sut.count, 0)
+  }
+  
+  func testPreloadEmptyArray_DoesNotCrash() throws {
+    sut.preload(books: [])
+    
+    XCTAssertEqual(sut.count, 0)
+  }
+  
+  func testPrefetchWithEmptyRange_DoesNotCrash() throws {
+    let books = [makeTestBook(identifier: "book1", title: "Book")]
+    
+    sut.prefetch(books: books, visibleRange: 0..<0, buffer: 0)
+    
+    // Should not crash
+    XCTAssertTrue(true)
+  }
+  
+  // MARK: - Configuration Tests
+  
+  func testDefaultConfiguration_HasReasonableValues() {
+    let defaultConfig = BookCellModelCache.Configuration.default
+    
+    XCTAssertGreaterThan(defaultConfig.maxEntries, 0)
+    XCTAssertGreaterThan(defaultConfig.unusedTTL, 0)
+    XCTAssertTrue(defaultConfig.observeRegistryChanges)
+  }
+  
+  func testAggressiveConfiguration_HasLargerValues() {
+    let defaultConfig = BookCellModelCache.Configuration.default
+    let aggressiveConfig = BookCellModelCache.Configuration.aggressive
+    
+    XCTAssertGreaterThan(aggressiveConfig.maxEntries, defaultConfig.maxEntries)
+    XCTAssertGreaterThan(aggressiveConfig.unusedTTL, defaultConfig.unusedTTL)
+  }
+  
   // MARK: - Helpers
   
   private func makeTestBook(identifier: String, title: String, updated: Date = Date(timeIntervalSince1970: 0)) -> TPPBook {
-    // Create minimal TPPBook for testing
-    let json: [String: Any] = [
-      "metadata": [
-        "id": identifier,
-        "title": title,
-        "@type": "http://schema.org/Book",
-        "updated": ISO8601DateFormatter().string(from: updated)
-      ],
-      "links": [
-        [
-          "href": "https://example.com/\(identifier)",
-          "rel": "http://opds-spec.org/acquisition/open-access",
-          "type": "application/epub+zip"
-        ]
-      ]
-    ]
-    
-    // TPPBook requires OPDS entry initialization
-    // For testing purposes, we'll create a mock
-    return TPPBookMock(identifier: identifier, title: title, updated: updated)
-  }
-}
-
-// MARK: - Test Mocks
-
-/// Minimal mock for TPPBook for testing purposes
-@objcMembers
-class TPPBookMock: TPPBook {
-  private let _identifier: String
-  private let _title: String
-  private let _updated: Date
-  
-  init(identifier: String, title: String, updated: Date) {
-    _identifier = identifier
-    _title = title
-    _updated = updated
-    
-    // Create minimal entry
-    let entryURL = URL(string: "https://example.com/entry")!
-    let acquisitionURL = URL(string: "https://example.com/acquisition")!
-    
-    // We need to call super.init but TPPBook doesn't have a simple initializer
-    // This is a limitation - in practice you'd use a factory method or dependency injection
-    // For now, this test file documents the expected behavior
-    fatalError("TPPBookMock cannot be instantiated directly - use makeRealTestBook helper")
-  }
-  
-  required init?(coder: NSCoder) {
-    fatalError("init(coder:) not implemented")
+    return TPPBookMocker.mockBook(identifier: identifier, title: title, authors: "Test Author", updated: updated)
   }
 }

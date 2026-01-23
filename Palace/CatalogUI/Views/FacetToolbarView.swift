@@ -25,6 +25,7 @@ struct FacetToolbarView: View {
           .palaceFont(size: 14)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(String(format: Strings.Generic.sortByFormat, currentSortTitle))
       }
       if showFilter {
         Button(action: onFilter) {
@@ -39,6 +40,7 @@ struct FacetToolbarView: View {
           .palaceFont(size: 14)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(appliedFiltersCount > 0 ? String(format: Strings.Generic.filterWithCount, appliedFiltersCount) : Strings.Generic.filter)
       }
     }
     .padding(.horizontal, 12)

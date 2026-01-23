@@ -63,16 +63,6 @@ import Foundation
     }
   }
 
-  /// Whether the user has seen the welcome screen or completed tutorial
-  var userHasSeenWelcomeScreen: Bool {
-    get {
-      UserDefaults.standard.bool(forKey: TPPSettings.userHasSeenWelcomeScreenKey)
-    }
-    set {
-      UserDefaults.standard.set(newValue, forKey: TPPSettings.userHasSeenWelcomeScreenKey)
-    }
-  }
-  
   var userPresentedAgeCheck: Bool {
     get {
       UserDefaults.standard.bool(forKey: TPPSettings.userPresentedAgeCheckKey)

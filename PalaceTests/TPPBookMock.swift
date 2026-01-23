@@ -101,11 +101,12 @@ struct TPPBookMocker {
   
   /// Creates a simple mock book with configurable title, authors, and updated date
   static func mockBook(
+    identifier: String? = nil,
     title: String,
     authors: String? = nil,
     updated: Date = Date()
   ) -> TPPBook {
-    let identifier = UUID().uuidString
+    let identifier = identifier ?? UUID().uuidString
     let acquisitionUrl = URL(string: "http://example.com/\(identifier)")!
     
     let acquisition = TPPOPDSAcquisition(
@@ -372,6 +373,122 @@ struct TPPBookMocker {
     )
     
     // Pre-set cover image directly for synchronous snapshot testing
+    book.coverImage = cover
+    book.thumbnailImage = cover
+    
+    return book
+  }
+  
+  // MARK: - Unit Test Helpers
+  
+  /// Creates a mock book with specific identifier and title (for regression tests)
+  static func mockBook(
+    identifier: String,
+    title: String,
+    distributorType: DistributorType
+  ) -> TPPBook {
+    let acquisitionUrl = URL(string: "http://example.com/\(identifier)")!
+    
+    let acquisition = TPPOPDSAcquisition(
+      relation: .generic,
+      type: distributorType.rawValue,
+      hrefURL: acquisitionUrl,
+      indirectAcquisitions: [],
+      availability: TPPOPDSAcquisitionAvailabilityUnlimited()
+    )
+    
+    let imageCache = MockImageCache()
+    let cover = MockImageCache.generateTenPrintCover(title: title, author: "Test Author")
+    imageCache.set(cover, for: identifier, expiresIn: nil)
+    
+    let book = TPPBook(
+      acquisitions: [acquisition],
+      authors: [TPPBookAuthor(authorName: "Test Author", relatedBooksURL: nil)],
+      categoryStrings: ["Fiction"],
+      distributor: "Test",
+      identifier: identifier,
+      imageURL: nil,
+      imageThumbnailURL: nil,
+      published: Date(),
+      publisher: "Test Publisher",
+      subtitle: nil,
+      summary: "Test summary",
+      title: title,
+      updated: Date(),
+      annotationsURL: nil,
+      analyticsURL: nil,
+      alternateURL: nil,
+      relatedWorksURL: nil,
+      previewLink: nil,
+      seriesURL: nil,
+      revokeURL: nil,
+      reportURL: nil,
+      timeTrackingURL: nil,
+      contributors: [:],
+      bookDuration: nil,
+      imageCache: imageCache
+    )
+    
+    book.coverImage = cover
+    book.thumbnailImage = cover
+    
+    return book
+  }
+  
+  /// Creates a mock book with LIMITED availability (simulating a borrowed book with loan expiration)
+  /// This is crucial for testing that the HalfSheet displays "Borrowing for X days"
+  static func mockBookWithLimitedAvailability(
+    identifier: String,
+    until expirationDate: Date,
+    title: String = "Borrowed Book"
+  ) -> TPPBook {
+    let acquisitionUrl = URL(string: "http://example.com/\(identifier)")!
+    
+    let acquisition = TPPOPDSAcquisition(
+      relation: .generic,
+      type: DistributorType.EpubZip.rawValue,
+      hrefURL: acquisitionUrl,
+      indirectAcquisitions: [],
+      availability: TPPOPDSAcquisitionAvailabilityLimited(
+        copiesAvailable: 1,
+        copiesTotal: 10,
+        since: Date(),
+        until: expirationDate
+      )
+    )
+    
+    let imageCache = MockImageCache()
+    let cover = MockImageCache.generateTenPrintCover(title: title, author: "Test Author")
+    imageCache.set(cover, for: identifier, expiresIn: nil)
+    
+    let book = TPPBook(
+      acquisitions: [acquisition],
+      authors: [TPPBookAuthor(authorName: "Test Author", relatedBooksURL: nil)],
+      categoryStrings: ["Fiction"],
+      distributor: "Library",
+      identifier: identifier,
+      imageURL: nil,
+      imageThumbnailURL: nil,
+      published: Date(),
+      publisher: "Test Publisher",
+      subtitle: nil,
+      summary: "A borrowed book with limited availability",
+      title: title,
+      updated: Date(),
+      annotationsURL: nil,
+      analyticsURL: nil,
+      alternateURL: nil,
+      relatedWorksURL: nil,
+      previewLink: nil,
+      seriesURL: nil,
+      revokeURL: URL(string: "http://example.com/revoke/\(identifier)"),
+      reportURL: nil,
+      timeTrackingURL: nil,
+      contributors: [:],
+      bookDuration: nil,
+      imageCache: imageCache
+    )
+    
     book.coverImage = cover
     book.thumbnailImage = cover
     

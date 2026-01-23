@@ -37,19 +37,26 @@ struct CatalogSearchView: View {
     VStack(spacing: 0) {
       searchBar
       
-      ScrollView {
-        BookListView(
-          books: viewModel.filteredBooks,
-          isLoading: $viewModel.isLoading,
-          onSelect: onBookSelected,
-          onLoadMore: { @MainActor in await viewModel.loadNextPage() },
-          isLoadingMore: viewModel.isLoadingMore,
-          previewEnabled: false
-        )
-      }
-      .scrollDismissesKeyboard(.immediately)
-      .onTapGesture {
-        isSearchFieldFocused = false
+      ScrollViewReader { proxy in
+        ScrollView {
+          BookListView(
+            books: viewModel.filteredBooks,
+            isLoading: $viewModel.isLoading,
+            onSelect: onBookSelected,
+            onLoadMore: { @MainActor in await viewModel.loadNextPage() },
+            isLoadingMore: viewModel.isLoadingMore,
+            previewEnabled: false
+          )
+          .id("search-results-top")
+        }
+        .scrollDismissesKeyboard(.immediately)
+        .onTapGesture {
+          isSearchFieldFocused = false
+        }
+        .onChange(of: viewModel.filteredBooks) { _ in
+          // Scroll to top when results change (new search or results loaded)
+          proxy.scrollTo("search-results-top", anchor: .top)
+        }
       }
     }
     .onAppear {
@@ -116,6 +123,7 @@ private extension CatalogSearchView {
             Image(systemName: "xmark.circle.fill")
               .foregroundColor(.gray)
           }
+          .accessibilityLabel(Strings.Generic.clearSearch)
           .padding(.trailing, 8)
         }
       }

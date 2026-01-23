@@ -484,46 +484,21 @@ public class TPPBook: NSObject, ObservableObject {
   }
 
   @objc var defaultBookContentType: TPPBookContentType {
-      guard let acquisition = defaultAcquisition else {
-        // Books with only indirect acquisitions (catalog navigation entries) are expected
-        // They're not meant to be borrowed directly, just navigation to more detailed entries
-        Log.debug(#file, "📖 [CONTENT TYPE] No default acquisition for book: \(title) - likely a catalog navigation entry")
-        Log.debug(#file, "  All acquisitions: \(acquisitions.map { "type=\($0.type), relation=\($0.relation)" }.joined(separator: ", "))")
-        return .unsupported
-      }
+    guard let acquisition = defaultAcquisition else {
+      return .unsupported
+    }
     
-      Log.debug(#file, "📖 [CONTENT TYPE] Determining content type for book: \(title) (ID: \(identifier))")
-      Log.debug(#file, "  Distributor: \(distributor ?? "nil")")
-      Log.debug(#file, "  Default acquisition type: \(acquisition.type)")
-      Log.debug(#file, "  Default acquisition relation: \(acquisition.relation)")
-      
-      let paths = TPPOPDSAcquisitionPath.supportedAcquisitionPaths(
-        forAllowedTypes: TPPOPDSAcquisitionPath.supportedTypes(),
-        allowedRelations: NYPLOPDSAcquisitionRelationSetAll,
-        acquisitions: [acquisition]
-      )
-      
-      Log.debug(#file, "  Found \(paths.count) supported acquisition paths")
-      for (index, path) in paths.enumerated() {
-        Log.debug(#file, "    Path \(index + 1): types=[\(path.types.joined(separator: " → "))]")
-      }
-      
-      let contentTypes = paths.compactMap { path -> TPPBookContentType? in
-        let lastType = path.types.last
-        let contentType = TPPBookContentType.from(mimeType: lastType)
-        Log.debug(#file, "    MIME '\(lastType ?? "nil")' → \(TPPBookContentTypeConverter.stringValue(of: contentType))")
-        return contentType
-      }
-      
-      let finalType = contentTypes.first(where: { $0 != .unsupported }) ?? .unsupported
-      Log.debug(#file, "  ✅ Final content type: \(TPPBookContentTypeConverter.stringValue(of: finalType))")
+    let paths = TPPOPDSAcquisitionPath.supportedAcquisitionPaths(
+      forAllowedTypes: TPPOPDSAcquisitionPath.supportedTypes(),
+      allowedRelations: NYPLOPDSAcquisitionRelationSetAll,
+      acquisitions: [acquisition]
+    )
     
-      if finalType == .unsupported {
-        Log.error(#file, "  ❌ Book is UNSUPPORTED - no valid content type found!")
-        Log.error(#file, "  All acquisition types: \(acquisitions.map { $0.type }.joined(separator: ", "))")
-      }
+    let contentTypes = paths.compactMap { path -> TPPBookContentType? in
+      TPPBookContentType.from(mimeType: path.types.last)
+    }
     
-    return finalType
+    return contentTypes.first(where: { $0 != .unsupported }) ?? .unsupported
   }
 }
 

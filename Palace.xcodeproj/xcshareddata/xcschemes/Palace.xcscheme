@@ -116,8 +116,8 @@
                ReferencedContainer = "container:Palace.xcodeproj">
             </BuildableReference>
          </TestableReference>
-        <TestableReference
-           skipped = "YES">
+         <TestableReference
+            skipped = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "E58EAE132ECCC4F700CDA626"

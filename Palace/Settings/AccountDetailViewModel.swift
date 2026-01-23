@@ -16,9 +16,13 @@ class AccountDetailViewModel: NSObject, ObservableObject {
   // MARK: - Constants
   
   private enum Constants {
-    static let signInTimeoutSeconds: UInt64 = 30_000_000_000
+    // Timeout for DRM processing AFTER WebView dismisses (not during WebView display)
+    static let drmProcessingTimeoutSeconds: UInt64 = 60_000_000_000 // 60 seconds
     static let maxUsernameLength = 25
   }
+  
+  /// Task for tracking sign-in timeout (can be cancelled when WebView is still displayed)
+  private var signInTimeoutTask: Task<Void, Never>?
   
   // MARK: - Published Properties
   
@@ -97,14 +101,29 @@ class AccountDetailViewModel: NSObject, ObservableObject {
       drmAuthorizer: nil
     )
     
-    // Initialize isSignedIn based on current credentials
-    self.isSignedIn = TPPUserAccount.sharedAccount(libraryUUID: libraryAccountID).hasCredentials()
+    // Initialize isSignedIn based on current credentials AND auth state
+    // OAuth: Consider signed in even when stale (token refreshes in background)
+    // SAML/Basic: Only signed in when loggedIn (needs re-auth via IDP when stale)
+    let account = TPPUserAccount.sharedAccount(libraryUUID: libraryAccountID)
+    let authState = account.authState
+    let hasCreds = account.hasCredentials()
+    
+    // OAuth users have token credentials; SAML/Basic users have barcode/PIN
+    let isOAuth = account.hasAuthToken()
+    let signedIn: Bool
+    if isOAuth {
+      signedIn = hasCreds && authState != .loggedOut
+    } else {
+      signedIn = hasCreds && authState == .loggedIn
+    }
+    self.isSignedIn = signedIn
     
     super.init()
     
+    Log.info(#file, "🔐 [INIT] AccountDetailViewModel: isOAuth=\(isOAuth), authState=\(authState), isSignedIn=\(signedIn)")
+    
     var drmAuthorizer: TPPDRMAuthorizing?
     #if FEATURE_DRM_CONNECTOR
-    // Use safe DRM container to prevent EXC_BREAKPOINT crashes during initialization
     if AdobeCertificate.isDRMAvailable {
       drmAuthorizer = AdobeDRMService.shared.adeptInstance
     }
@@ -473,7 +492,18 @@ class AccountDetailViewModel: NSObject, ObservableObject {
   }
   
   private func accountDidChange() {
-    isSignedIn = selectedUserAccount.hasCredentials()
+    // Force refresh from keychain to get latest credentials
+    // This ensures we see updates made by other components (e.g., borrow flow sign-in)
+    let hasCreds = selectedUserAccount.refreshCredentialsFromKeychain()
+    let authState = selectedUserAccount.authState
+    
+    // OAuth users have token credentials; SAML/Basic users have barcode/PIN
+    let isOAuth = selectedUserAccount.hasAuthToken()
+    if isOAuth {
+      isSignedIn = hasCreds && authState != .loggedOut
+    } else {
+      isSignedIn = hasCreds && authState == .loggedIn
+    }
     
     if isSignedIn {
       usernameText = selectedUserAccount.barcode ?? ""
@@ -495,7 +525,22 @@ class AccountDetailViewModel: NSObject, ObservableObject {
   
   func refreshSignInState() {
     let wasSignedIn = isSignedIn
-    isSignedIn = selectedUserAccount.hasCredentials()
+    
+    // Force refresh credentials from keychain to ensure we have latest state
+    // This is necessary because credentials might have been updated by another component
+    // (e.g., sign-in from borrow flow modal)
+    let hasCreds = selectedUserAccount.refreshCredentialsFromKeychain()
+    let authState = selectedUserAccount.authState
+    
+    // OAuth users have token credentials; SAML/Basic users have barcode/PIN
+    let isOAuth = selectedUserAccount.hasAuthToken()
+    if isOAuth {
+      isSignedIn = hasCreds && authState != .loggedOut
+    } else {
+      isSignedIn = hasCreds && authState == .loggedIn
+    }
+    
+    Log.info(#file, "🔐 [REFRESH] isOAuth=\(isOAuth), authState=\(authState), isSignedIn=\(isSignedIn)")
     
     if wasSignedIn != isSignedIn {
       setupTableData()
@@ -590,10 +635,29 @@ extension AccountDetailViewModel: TPPSignInOutBusinessLogicUIDelegate {
     isLoading = true
     isSigningOut = false
     
-    Task {
-      try? await Task.sleep(nanoseconds: Constants.signInTimeoutSeconds)
-      if isLoading {
+    // Cancel any existing timeout
+    signInTimeoutTask?.cancel()
+    signInTimeoutTask = nil
+    
+    // For SAML/OAuth, don't start a timeout here - the user will be in a WebView
+    // The timeout will start when the WebView dismisses (in startDRMProcessingTimeout)
+    let isSAMLOrOAuth = businessLogic.selectedAuthentication?.isSaml == true ||
+                        businessLogic.selectedAuthentication?.isOauth == true
+    
+    if !isSAMLOrOAuth {
+      startDRMProcessingTimeout()
+    }
+  }
+  
+  /// Starts a timeout for DRM processing. For SAML/OAuth, this is called after the
+  /// WebView dismisses. For username/password, it's called immediately.
+  func startDRMProcessingTimeout() {
+    signInTimeoutTask?.cancel()
+    signInTimeoutTask = Task {
+      try? await Task.sleep(nanoseconds: Constants.drmProcessingTimeoutSeconds)
+      if !Task.isCancelled && isLoading {
         await MainActor.run {
+          Log.warn(#file, "DRM processing timeout reached after 60 seconds")
           isLoading = false
         }
       }
@@ -601,17 +665,29 @@ extension AccountDetailViewModel: TPPSignInOutBusinessLogicUIDelegate {
   }
   
   func businessLogicDidCancelSignIn(_ businessLogic: TPPSignInBusinessLogic) {
+    signInTimeoutTask?.cancel()
+    signInTimeoutTask = nil
     isLoading = false
     isSigningOut = false
   }
   
+  func businessLogicDidReceiveCredentials(_ businessLogic: TPPSignInBusinessLogic) {
+    // Credentials received from OAuth/SAML - WebView has dismissed, DRM processing starting
+    isLoading = true
+    startDRMProcessingTimeout()
+  }
+  
   func businessLogicDidCompleteSignIn(_ businessLogic: TPPSignInBusinessLogic) {
+    signInTimeoutTask?.cancel()
+    signInTimeoutTask = nil
     isLoading = false
     isSigningOut = false
     accountDidChange()
   }
   
   func businessLogic(_ logic: TPPSignInBusinessLogic, didEncounterValidationError error: Error?, userFriendlyErrorTitle title: String?, andMessage message: String?) {
+    signInTimeoutTask?.cancel()
+    signInTimeoutTask = nil
     isLoading = false
     isSigningOut = false
     
@@ -658,10 +734,16 @@ extension AccountDetailViewModel: TPPSignInOutBusinessLogicUIDelegate {
   }
   
   func dismiss(animated flag: Bool, completion: (() -> Void)?) {
-    guard let presented = UIApplication.shared.windows.first?.rootViewController?.presentedViewController else {
+    guard var topVC = UIApplication.shared.windows.first?.rootViewController else {
       return
     }
-    presented.dismiss(animated: flag, completion: completion)
+    
+    // Walk up the presentation chain to find the topmost presented view controller
+    while let presented = topVC.presentedViewController {
+      topVC = presented
+    }
+    
+    topVC.dismiss(animated: flag, completion: completion)
   }
   
   func present(_ viewControllerToPresent: UIViewController, animated flag: Bool, completion: (() -> Void)?) {

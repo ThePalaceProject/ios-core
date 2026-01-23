@@ -11,7 +11,6 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
   var window: UIWindow?
   let audiobookLifecycleManager = AudiobookLifecycleManager()
-  var notificationsManager: TPPUserNotifications!
   var isSigningIn = false
 
   // MARK: - Application Lifecycle
@@ -101,7 +100,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
       } else {
         Log.log("[Background Refresh] \(newBooks ? "New books available" : "No new books fetched"). Elapsed Time: \(-startDate.timeIntervalSinceNow)")
         
-        TPPUserNotifications.updateAppIconBadge(heldBooks: TPPBookRegistry.shared.heldBooks)
+        NotificationService.updateAppIconBadge(heldBooks: TPPBookRegistry.shared.heldBooks)
         
         task.setTaskCompleted(success: true)
       }
@@ -162,6 +161,45 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     
     // Resume Firebase operations when app becomes active
     FirebaseManager.shared.applicationDidBecomeActive()
+    
+    // Sync held books when app becomes active to ensure UI reflects current availability
+    syncIfUserHasHolds()
+  }
+  
+  /// Syncs the book registry if the user has holds to ensure fresh availability data.
+  /// Throttled to prevent excessive network calls on frequent app activation.
+  private func syncIfUserHasHolds() {
+    guard TPPUserAccount.sharedAccount().hasCredentials() else {
+      return
+    }
+    
+    let heldBooks = TPPBookRegistry.shared.heldBooks
+    guard !heldBooks.isEmpty else {
+      return
+    }
+    
+    // Shared throttle key with NotificationService to coordinate syncs
+    let lastSyncKey = "lastForegroundSyncTimestamp"
+    let lastSync = UserDefaults.standard.double(forKey: lastSyncKey)
+    let now = Date().timeIntervalSince1970
+    
+    guard (now - lastSync) > 30 else {
+      Log.debug(#file, "[Foreground Sync] Skipped - synced recently")
+      return
+    }
+    
+    UserDefaults.standard.set(now, forKey: lastSyncKey)
+    
+    Log.info(#file, "[Foreground Sync] Starting - user has \(heldBooks.count) holds")
+    
+    TPPBookRegistry.shared.sync { errorDocument, newBooks in
+      if let errorDocument = errorDocument {
+        Log.error(#file, "[Foreground Sync] Failed: \(errorDocument)")
+      } else {
+        Log.info(#file, "[Foreground Sync] Completed. New books: \(newBooks)")
+        NotificationService.updateAppIconBadge(heldBooks: TPPBookRegistry.shared.heldBooks)
+      }
+    }
   }
   
   func applicationDidEnterBackground(_ application: UIApplication) {
@@ -283,22 +321,12 @@ extension TPPAppDelegate {
       return
     }
 
-    let showOnboarding = !TPPSettings.shared.userHasSeenWelcomeScreen
     // Use persisted currentAccountId rather than computed currentAccount to avoid timing issues
     let needsAccount = (AccountsManager.shared.currentAccountId == nil)
-    guard showOnboarding || needsAccount else { return }
+    guard needsAccount else { return }
 
     guard let top = topViewController() else { return }
 
-    func presentOnboarding(over presenter: UIViewController) {
-      let onboardingVC = TPPOnboardingViewController.makeSwiftUIView(dismissHandler: {
-        TPPSettings.shared.userHasSeenWelcomeScreen = true
-        presenter.presentedViewController?.dismiss(animated: true)
-      })
-      presenter.present(onboardingVC, animated: true)
-    }
-
-    if needsAccount {
       var nav: UINavigationController!
       let accountList = TPPAccountList { account in
         if !TPPSettings.shared.settingsAccountIdsList.contains(account.uuid) {
@@ -316,14 +344,7 @@ extension TPPAppDelegate {
       }
       accountList.requiresSelectionBeforeDismiss = true
       nav = UINavigationController(rootViewController: accountList)
-      top.present(nav, animated: true) {
-        if showOnboarding {
-          presentOnboarding(over: nav)
-        }
-      }
-    } else if showOnboarding {
-      presentOnboarding(over: top)
-    }
+    top.present(nav, animated: true)
   }
 
   private func switchToCatalogTab() {

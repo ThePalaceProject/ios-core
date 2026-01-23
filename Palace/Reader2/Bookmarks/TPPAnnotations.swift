@@ -15,6 +15,7 @@ protocol AnnotationsManager {
                                 motivation: TPPBookmarkSpec.Motivation,
                                 completion: @escaping (_ bookmarks: [Bookmark]?) -> ())
   func deleteBookmark(annotationId: String, completionHandler: @escaping (_ success: Bool) -> ())
+  func deleteAllBookmarks(forBook book: TPPBook, completion: @escaping () -> Void)
 }
 
 @objcMembers final class TPPAnnotationsWrapper: NSObject, AnnotationsManager {
@@ -34,6 +35,10 @@ protocol AnnotationsManager {
   
   func deleteBookmark(annotationId: String, completionHandler: @escaping (Bool) -> ()) {
     TPPAnnotations.deleteBookmark(annotationId: annotationId, completionHandler: completionHandler)
+  }
+  
+  func deleteAllBookmarks(forBook book: TPPBook, completion: @escaping () -> Void) {
+    TPPAnnotations.deleteAllBookmarks(forBook: book, completion: completion)
   }
 }
 
@@ -379,25 +384,49 @@ protocol AnnotationsManager {
       }
     }
   }
+  
+  /// Deletes all bookmarks for a book from the server.
+  /// This should be called when a book is returned to prevent old bookmarks
+  /// from reappearing when the book is re-borrowed.
+  ///
+  /// **Important:** This is fire-and-forget. Completion is called immediately,
+  /// and deletions happen in the background. Book returns are never blocked.
+  ///
+  /// - Parameters:
+  ///   - book: The book whose bookmarks should be deleted
+  ///   - completion: Called immediately. Deletions continue in background.
+  class func deleteAllBookmarks(forBook book: TPPBook, completion: @escaping () -> Void) {
+    // Call completion immediately - never block book returns
+    completion()
+    
+    // Fire-and-forget: delete bookmarks in background
+    guard syncIsPossibleAndPermitted() else { return }
+    
+    getServerBookmarks(forBook: book, atURL: book.annotationsURL, motivation: .bookmark) { bookmarks in
+      guard let readiumBookmarks = bookmarks as? [TPPReadiumBookmark], !readiumBookmarks.isEmpty else {
+        return
+      }
+      
+      for bookmark in readiumBookmarks {
+        guard let annotationId = bookmark.annotationId else { continue }
+        deleteBookmark(annotationId: annotationId) { _ in }
+      }
+    }
+  }
 
   class func deleteBookmark(annotationId: String,
                             completionHandler: @escaping (_ success: Bool) -> ()) {
 
     if !syncIsPossibleAndPermitted() {
-      Log.debug(#file, "🗑️ DELETE: Account does not support sync or sync is disabled.")
       completionHandler(true)
       return
     }
 
     guard let url = URL(string: annotationId) else {
-      Log.error(#file, "🗑️ DELETE FAILED: Invalid URL from Annotation ID: '\(annotationId)'")
-      Log.error(#file, "🗑️ This is likely a legacy bookmark with UUID instead of server URL - cannot delete from server")
-      Log.error(#file, "🗑️ Possible fix: Re-sync bookmarks or manually delete old annotations on server")
+      Log.error(#file, "Invalid annotation ID URL: \(annotationId)")
       completionHandler(false)
       return
     }
-    
-    Log.info(#file, "🗑️ DELETE: Sending DELETE request to: \(url.absoluteString)")
 
     var request = TPPNetworkExecutor.shared.request(for: url)
     request.timeoutInterval = TPPDefaultRequestTimeout

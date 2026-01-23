@@ -95,6 +95,7 @@ struct AudiobookSampleToolbar: View {
     } label: {
       playButtonImage
     }
+    .accessibilityLabel(player.state == .playing ? Strings.Generic.pauseAudiobook : Strings.Generic.playAudiobook)
   }
 
   @ViewBuilder private var playButtonImage: some View {
@@ -136,6 +137,7 @@ struct AudiobookSampleToolbar: View {
         .square(length: playbackButtonLength)
         .padding(.trailing)
     }
+    .accessibilityLabel(Strings.Generic.skipBack30)
   }
 
   @ViewBuilder private var loadingView: some View {

@@ -15,7 +15,14 @@ final class UserAccountPublisher: ObservableObject {
   
   // MARK: - Published State
   
+  /// The current authentication state of the account.
+  /// Use this to determine if the user is logged in, logged out, or has stale credentials.
+  @Published private(set) var authState: TPPAccountAuthState = .loggedOut
+  
+  /// Backwards-compatible property that returns true if the account has any stored credentials.
+  /// Note: This returns true for both `.loggedIn` and `.credentialsStale` states.
   @Published private(set) var hasCredentials: Bool = false
+  
   @Published private(set) var authToken: String?
   @Published private(set) var barcode: String?
   @Published private(set) var patronName: String?
@@ -38,6 +45,23 @@ final class UserAccountPublisher: ObservableObject {
       .eraseToAnyPublisher()
   }
   
+  /// Publishes when credentials become stale (e.g., after receiving a 401).
+  /// UI can observe this to prompt the user to re-authenticate.
+  var credentialsStalePublisher: AnyPublisher<Void, Never> {
+    $authState
+      .removeDuplicates()
+      .filter { $0 == .credentialsStale }
+      .map { _ in () }
+      .eraseToAnyPublisher()
+  }
+  
+  /// Publishes auth state changes
+  var authStateDidChangePublisher: AnyPublisher<TPPAccountAuthState, Never> {
+    $authState
+      .removeDuplicates()
+      .eraseToAnyPublisher()
+  }
+  
   /// Publishes any account state change
   var accountDidChangePublisher: AnyPublisher<Void, Never> {
     Publishers.Merge4(
@@ -56,10 +80,36 @@ final class UserAccountPublisher: ObservableObject {
     authToken = account.authToken
     barcode = account.barcode
     patronName = account.patronFullName
+    authState = account.authState
+  }
+  
+  /// Marks the current account's credentials as stale.
+  /// This should be called when a 401 is received for an authenticated request.
+  /// The account retains its Adobe DRM activation but needs re-authentication.
+  func markCredentialsStale() {
+    guard authState == .loggedIn else {
+      Log.debug(#file, "Cannot mark credentials stale - current state is \(authState)")
+      return
+    }
+    
+    Log.info(#file, "Marking credentials as stale (Adobe activation preserved)")
+    authState = .credentialsStale
+    
+    // Also update the persisted state in TPPUserAccount
+    TPPUserAccount.sharedAccount().setAuthState(.credentialsStale)
+  }
+  
+  /// Marks the account as fully logged in.
+  /// This should be called after successful authentication.
+  func markLoggedIn() {
+    Log.info(#file, "Marking account as logged in")
+    authState = .loggedIn
+    hasCredentials = true
   }
   
   func signOut() {
     isSigningOut = true
+    authState = .loggedOut
     hasCredentials = false
     authToken = nil
     barcode = nil

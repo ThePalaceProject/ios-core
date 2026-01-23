@@ -110,7 +110,7 @@ actor DownloadCoordinator {
   
   @objc static let shared = MyBooksDownloadCenter()
   
-  private var userAccount: TPPUserAccount
+  public var userAccount: TPPUserAccount
   private var reauthenticator: Reauthenticator
   private var bookRegistry: TPPBookRegistryProvider
   
@@ -165,14 +165,35 @@ actor DownloadCoordinator {
     setupNetworkMonitoring()
   }
   
+  deinit {
+    session?.invalidateAndCancel()
+  }
+  
   /// Legacy callback-based borrow method - wraps the modern async implementation
   func startBorrow(for book: TPPBook, attemptDownload shouldAttemptDownload: Bool, borrowCompletion: (() -> Void)? = nil) {
     Task {
       do {
         _ = try await borrowAsync(book, attemptDownload: shouldAttemptDownload)
+        
+        // CRITICAL: If borrow succeeded but resulted in holding state (not downloadable),
+        // release the download slot. Otherwise downloads get stuck in queue.
+        let newState = bookRegistry.state(for: book.identifier)
+        if newState == .holding {
+          await downloadCoordinator.registerCompletion(identifier: book.identifier)
+          let remainingCount = await downloadCoordinator.activeCount
+          Log.info(#file, "📊 Borrow resulted in hold for '\(book.title)', released slot, remaining active: \(remainingCount)")
+          schedulePendingStartsIfPossible()
+        }
+        
         borrowCompletion?()
       } catch {
         Log.error(#file, "Borrow failed: \(error.localizedDescription)")
+        // CRITICAL: Release the download slot when borrow fails
+        // Otherwise the slot is never freed and downloads get stuck in queue
+        await downloadCoordinator.registerCompletion(identifier: book.identifier)
+        let remainingCount = await downloadCoordinator.activeCount
+        Log.info(#file, "📊 Borrow failed for '\(book.title)', released slot, remaining active: \(remainingCount)")
+        schedulePendingStartsIfPossible()
         borrowCompletion?()
       }
     }
@@ -376,12 +397,15 @@ actor DownloadCoordinator {
         guard let self = self else { return }
         
         Task { @MainActor [weak self] in
-          self?.isRequestingCredentials = false
+          guard let self else { return }
+          self.isRequestingCredentials = false
           
-          if self?.userAccount.hasCredentials() == true {
-            self?.startDownload(for: book)
+          if self.userAccount.hasCredentials() == true {
+            self.startDownload(for: book)
           } else {
-            NSLog("Sign-in completed but no credentials present, user may have cancelled")
+            Log.info(#file, "Sign-in cancelled or failed for '\(book.title)' - cleaning up download state")
+            // Clean up download coordinator since we registered a start but won't proceed
+            await self.downloadCoordinator.registerCompletion(identifier: book.identifier)
           }
         }
       }
@@ -906,11 +930,21 @@ extension MyBooksDownloadCenter {
         purgeAllAudiobookCaches(force: true)
       }
 
-      bookRegistry.setState(.unregistered, for: identifier)
-      bookRegistry.removeBook(forIdentifier: identifier)
-      Task {
-        try? await TPPBookRegistry.shared.syncAsync()
-        runOnMainAsync { completion?() }
+      // Delete all server bookmarks before removing book to prevent
+      // old bookmarks from reappearing when the book is re-borrowed
+      TPPAnnotations.deleteAllBookmarks(forBook: book) { [weak self] in
+        guard let self = self else {
+          completion?()
+          return
+        }
+        // Clear the deletion log since we're returning the book
+        TPPBookmarkDeletionLog.shared.clearAllDeletions(forBook: identifier)
+        self.bookRegistry.setState(.unregistered, for: identifier)
+        self.bookRegistry.removeBook(forIdentifier: identifier)
+        Task {
+          try? await TPPBookRegistry.shared.syncAsync()
+          runOnMainAsync { completion?() }
+        }
       }
     } else {
       bookRegistry.setProcessing(true, for: book.identifier)
@@ -924,11 +958,16 @@ extension MyBooksDownloadCenter {
             self.purgeAllAudiobookCaches(force: true)
           }
           if let returnedBook = TPPBook(entry: entry) {
-            self.bookRegistry.updateAndRemoveBook(returnedBook)
-            self.bookRegistry.setState(.unregistered, for: identifier)
-            Task {
-              try? await TPPBookRegistry.shared.syncAsync()
-              runOnMainAsync { completion?() }
+            // Delete all server bookmarks before removing book
+            TPPAnnotations.deleteAllBookmarks(forBook: book) {
+              // Clear the deletion log since we're returning the book
+              TPPBookmarkDeletionLog.shared.clearAllDeletions(forBook: identifier)
+              self.bookRegistry.updateAndRemoveBook(returnedBook)
+              self.bookRegistry.setState(.unregistered, for: identifier)
+              Task {
+                try? await TPPBookRegistry.shared.syncAsync()
+                runOnMainAsync { completion?() }
+              }
             }
           } else {
             NSLog("Failed to create book from entry. Book not removed from registry.")
@@ -944,16 +983,27 @@ extension MyBooksDownloadCenter {
                 self.deleteLocalContent(for: identifier)
                 self.purgeAllAudiobookCaches(force: true)
               }
-              self.bookRegistry.setState(.unregistered, for: identifier)
-              self.bookRegistry.removeBook(forIdentifier: identifier)
-              Task {
-                try? await TPPBookRegistry.shared.syncAsync()
-                runOnMainAsync { completion?() }
+              // Delete all server bookmarks before removing book
+              TPPAnnotations.deleteAllBookmarks(forBook: book) {
+                // Clear the deletion log since we're returning the book
+                TPPBookmarkDeletionLog.shared.clearAllDeletions(forBook: identifier)
+                self.bookRegistry.setState(.unregistered, for: identifier)
+                self.bookRegistry.removeBook(forIdentifier: identifier)
+                Task {
+                  try? await TPPBookRegistry.shared.syncAsync()
+                  runOnMainAsync { completion?() }
+                }
               }
             } else if errorType == TPPProblemDocument.TypeInvalidCredentials {
               NSLog("Invalid credentials problem when returning a book, present sign in VC")
               self.reauthenticator.authenticateIfNeeded(self.userAccount, usingExistingCredentials: false) { [weak self] in
-                self?.returnBook(withIdentifier: identifier, completion: completion)
+                guard let self = self else { return }
+                // Only retry if user successfully authenticated; if they cancelled, just complete
+                if self.userAccount.hasCredentials() {
+                  self.returnBook(withIdentifier: identifier, completion: completion)
+                } else {
+                  runOnMainAsync { completion?() }
+                }
               }
             }
           } else {
@@ -1301,14 +1351,21 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
         let hasCredentials = self.userAccount.hasCredentials()
         let loginRequired = self.userAccount.authDefinition?.needsAuth ?? false
         
-        if task.response?.indicatesAuthenticationNeedsRefresh(with: problemDoc) == true {
+        // A 401 from a third-party domain (e.g., biblioboard.com) should NOT
+        // trigger re-authentication since our Palace credentials are not the issue
+        let originalURL = task.originalRequest?.url
+        let httpResponse = task.response as? HTTPURLResponse
+        if httpResponse?.indicatesAuthenticationNeedsRefresh(with: problemDoc, originalRequestURL: originalURL) == true {
           let authDef = self.userAccount.authDefinition
           
           // If user has credentials but got 401, this is a session/token expiry issue
           if hasCredentials {
+            // Mark credentials as stale - preserves Adobe DRM activation
+            self.userAccount.markCredentialsStale()
+            
             if authDef?.isSaml == true {
               // SAML cookies expired - need to re-auth via IDP
-              Log.info(#file, "SAML session expired - triggering SAML re-auth flow")
+              Log.info(#file, "SAML session expired - marking credentials stale and triggering re-auth flow")
               
               Task {
                 // Clear download tracking completely
@@ -1338,6 +1395,11 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
               authenticationCompletion: { [weak self] in
                 Task { @MainActor [weak self] in
                   guard let self else { return }
+                  // Only retry if user successfully authenticated; if they cancelled, bail out
+                  guard self.userAccount.hasCredentials() else {
+                    Log.info(#file, "Authentication cancelled, not retrying download for \(book.identifier)")
+                    return
+                  }
                   Log.info(#file, "Authentication completed, retrying download for \(book.identifier)")
                   self.startDownload(for: book)
                 }
@@ -1354,6 +1416,11 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
             authenticationCompletion: { [weak self] in
               Task { @MainActor [weak self] in
                 guard let self else { return }
+                // Only retry if user successfully authenticated; if they cancelled, bail out
+                guard self.userAccount.hasCredentials() else {
+                  Log.info(#file, "Authentication cancelled, not retrying download for \(book.identifier)")
+                  return
+                }
                 self.startDownload(for: book)
               }
             }
@@ -1517,36 +1584,19 @@ extension MyBooksDownloadCenter: URLSessionTaskDelegate {
       
       await downloadCoordinator.incrementRedirectAttempts(for: task.taskIdentifier)
       
-      let authorizationKey = "Authorization"
-      
-      // Since any "Authorization" header will be dropped on redirection for security
-      // reasons, we need to again manually set the header for the redirected request
-      // if we originally manually set the header to a bearer token. There's no way
-      // to use URLSession's standard challenge handling approach for bearer tokens.
-      if let originalAuthorization = task.originalRequest?.allHTTPHeaderFields?[authorizationKey],
-         originalAuthorization.hasPrefix("Bearer") {
-        // Do not pass on the bearer token to other domains.
-        if task.originalRequest?.url?.host != request.url?.host {
-          completionHandler(request)
-          return
-        }
-        
-        // Prevent redirection from HTTPS to a non-HTTPS URL.
-        if task.originalRequest?.url?.scheme == "https" && request.url?.scheme != "https" {
-          completionHandler(nil)
-          return
-        }
-        
-        var mutableAllHTTPHeaderFields = request.allHTTPHeaderFields ?? [:]
-        mutableAllHTTPHeaderFields[authorizationKey] = originalAuthorization
-        
-        var mutableRequest = URLRequest(url: request.url!, applyingCustomUserAgent: true)
-        mutableRequest.allHTTPHeaderFields = mutableAllHTTPHeaderFields
-        
-        completionHandler(mutableRequest)
-      } else {
-        completionHandler(request)
+      // Prevent redirection from HTTPS to a non-HTTPS URL.
+      if task.originalRequest?.url?.scheme == "https" && request.url?.scheme != "https" {
+        completionHandler(nil)
+        return
       }
+      
+      // Do NOT forward any auth headers on redirects.
+      // For No DRM (open access): The redirect target doesn't need auth - content is open.
+      // For Bearer Token protected: We receive a JSON document (not a redirect) with
+      // the distributor's specific token, which we use in a NEW request.
+      // URLSession already strips Authorization headers on redirects for security;
+      // we simply allow that behavior and don't re-add them.
+      completionHandler(request)
     }
   }
   
@@ -2017,7 +2067,15 @@ extension MyBooksDownloadCenter {
     }
     
     if success {
-      bookRegistry.setState(.downloadSuccessful, for: book.identifier)
+      // Verify file exists and is not empty before marking as successful
+      if validateDownloadedFile(at: finalFileURL, for: book) {
+        bookRegistry.setState(.downloadSuccessful, for: book.identifier)
+      } else {
+        logBookDownloadFailure(book, reason: "File validation failed after move", downloadTask: downloadTask, metadata: [
+          "finalFileURL": finalFileURL.absoluteString
+        ])
+        success = false
+      }
     } else if let moveError = moveError {
       logBookDownloadFailure(book, reason: "Couldn't move book to final disk location", downloadTask: downloadTask, metadata: [
         "moveError": moveError,
@@ -2028,6 +2086,36 @@ extension MyBooksDownloadCenter {
     }
     
     return success
+  }
+  
+  /// Validates that a downloaded file exists and is not empty before marking download as successful.
+  /// This prevents false "downloadSuccessful" states when files are corrupted or missing.
+  ///
+  /// - Parameters:
+  ///   - fileURL: The URL where the file should exist
+  ///   - book: The book being downloaded (for logging)
+  /// - Returns: true if the file exists and is not empty
+  private func validateDownloadedFile(at fileURL: URL, for book: TPPBook) -> Bool {
+    let fileManager = FileManager.default
+    
+    guard fileManager.fileExists(atPath: fileURL.path) else {
+      Log.error(#file, "📚 ❌ Downloaded file missing at \(fileURL.path) for '\(book.title)'")
+      return false
+    }
+    
+    do {
+      let attributes = try fileManager.attributesOfItem(atPath: fileURL.path)
+      guard let fileSize = attributes[.size] as? Int, fileSize > 0 else {
+        Log.error(#file, "📚 ❌ Downloaded file is empty at \(fileURL.path) for '\(book.title)'")
+        return false
+      }
+      
+      Log.debug(#file, "📚 ✓ Downloaded file validated: \(fileURL.lastPathComponent) (\(fileSize) bytes)")
+      return true
+    } catch {
+      Log.error(#file, "📚 ❌ Failed to get file attributes at \(fileURL.path): \(error)")
+      return false
+    }
   }
   
   private func replaceBook(_ book: TPPBook, withFileAtURL sourceLocation: URL, forDownloadTask downloadTask: URLSessionDownloadTask) -> Bool {
@@ -2048,6 +2136,12 @@ extension MyBooksDownloadCenter {
         let _ = try fileManager.replaceItemAt(destURL, withItemAt: sourceLocation, options: .usingNewMetadataOnly)
       } else {
         try fileManager.moveItem(at: sourceLocation, to: destURL)
+      }
+      
+      // Validate file exists and is not empty before marking as successful
+      guard validateDownloadedFile(at: destURL, for: book) else {
+        Log.error(#file, "📚 ❌ File validation failed after replace/move for '\(book.title)'")
+        return false
       }
       
       // Note: For LCP audiobooks, state is set in fulfillLCPLicense after license is ready
