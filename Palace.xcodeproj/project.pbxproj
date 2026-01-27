@@ -532,6 +532,7 @@
 		C64399E81697447CA4F20ABA /* EULAViewHosting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04CF94B049964380A3A35DA9 /* EULAViewHosting.swift */; };
 		C64399E91697447CA4F20ABB /* EULAViewHosting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04CF94B049964380A3A35DA9 /* EULAViewHosting.swift */; };
 		C72E88998C74489891046AA3 /* TPPBookmarkDeletionLogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C72E88998C74489891046AA2 /* TPPBookmarkDeletionLogTests.swift */; };
+		C9A9B85299EEDD6939D79149 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9678C3525710A1C64E8CBC6D /* SceneDelegate.swift */; };
 		CARPLAY0001SCENEDELEGATE /* CarPlaySceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F8D8A0D1A094920B67DC0E2 /* CarPlaySceneDelegate.swift */; };
 		CARPLAY0002TEMPLATEMGR01 /* CarPlayTemplateManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17B6CFD936164F32A7FD6A84 /* CarPlayTemplateManager.swift */; };
 		CARPLAY0003AUDIOBKBRIDGE /* CarPlayAudiobookBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06B2D269BFF440A381A893E3 /* CarPlayAudiobookBridge.swift */; };
@@ -541,6 +542,7 @@
 		CARPLAY1003AUDIOBKBRIDGE /* CarPlayAudiobookBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06B2D269BFF440A381A893E3 /* CarPlayAudiobookBridge.swift */; };
 		CARPLAY1004IMAGEPROVIDER /* CarPlayImageProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 639A868F3BDA4A7F97660BEA /* CarPlayImageProvider.swift */; };
 		CARPLAYTESTS00002SOURCES /* CarPlayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CARPLAYTESTS00001SWIFT01 /* CarPlayTests.swift */; };
+		C72E88998C74489891046AA3 /* TPPBookmarkDeletionLogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C72E88998C74489891046AA2 /* TPPBookmarkDeletionLogTests.swift */; };
 		CCD4CE5B21BED732364D2899 /* LCPAudiobooksTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C0E625DA84AEEFF9840A601 /* LCPAudiobooksTests.swift */; };
 		CE6ADDAE5A5A4796C2017A19 /* PDFReaderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A586098465213BD58E11860 /* PDFReaderTests.swift */; };
 		CF5E7A7A440833526AD827AB /* MyBooksDownloadCenterExtendedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3572DBB51B1244AE18879435 /* MyBooksDownloadCenterExtendedTests.swift */; };
@@ -5173,6 +5175,11 @@
 				E3E0FF885108055DF67D4110 /* OPDSFeedCache.swift in Sources */,
 				4C5C7E44FD15FA5A93AF5AAE /* UnifiedOPDSService.swift in Sources */,
 				24627E54AF34930D7ACEB030 /* BookCellModelCache.swift in Sources */,
+				C9A9B85299EEDD6939D79149 /* SceneDelegate.swift in Sources */,
+				CARPLAY0001SCENEDELEGATE /* CarPlaySceneDelegate.swift in Sources */,
+				CARPLAY0002TEMPLATEMGR01 /* CarPlayTemplateManager.swift in Sources */,
+				CARPLAY0003AUDIOBKBRIDGE /* CarPlayAudiobookBridge.swift in Sources */,
+				CARPLAY0004IMAGEPROVIDER /* CarPlayImageProvider.swift in Sources */,
 				9551D5385E148DD1FA10C632 /* TPPBookmarkDeletionLog.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -5409,6 +5416,7 @@
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
 				CURRENT_PROJECT_VERSION = 422;
+				CURRENT_PROJECT_VERSION = 421;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -5466,6 +5474,7 @@
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
 				CURRENT_PROJECT_VERSION = 422;
+				CURRENT_PROJECT_VERSION = 421;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -5653,6 +5662,9 @@
 				CODE_SIGN_STYLE = Manual;
 				CURRENT_PROJECT_VERSION = 422;
 				DEVELOPMENT_TEAM = "";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 421;
+				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -5712,6 +5724,7 @@
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
 				CURRENT_PROJECT_VERSION = 422;
+				CURRENT_PROJECT_VERSION = 421;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
