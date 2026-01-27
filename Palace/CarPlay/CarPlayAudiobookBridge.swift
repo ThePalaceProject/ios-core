@@ -20,6 +20,37 @@ enum CarPlayPlaybackError: Error {
   case unknown
 }
 
+// MARK: - Shared Authentication Helper
+
+/// Shared authentication helper for CarPlay components.
+/// Centralizes auth logic to avoid duplication between CarPlayTemplateManager and CarPlayAudiobookBridge.
+enum CarPlayAuthHelper {
+  /// Checks if the user is authenticated with the current library.
+  /// Note: If tokens need refresh, the app's auth layer handles this automatically.
+  /// CarPlay cannot show sign-in UI - users must sign in via the phone app.
+  static func isAuthenticated() -> Bool {
+    guard let account = AccountsManager.shared.currentAccount else {
+      return false
+    }
+    
+    // If library doesn't require authentication, allow access
+    guard let details = account.details,
+          let defaultAuth = details.defaultAuth else {
+      // No details or auth available - allow access (might be loading or anonymous)
+      return true
+    }
+    
+    // Check if the default auth method requires authentication
+    if !defaultAuth.needsAuth {
+      return true
+    }
+    
+    // Check if user has valid credentials
+    // Token refresh is handled automatically by the auth layer when making API calls
+    return TPPUserAccount.sharedAccount().hasCredentials()
+  }
+}
+
 /// Bridges CarPlay controls to the existing AudiobookManager infrastructure
 /// Handles playback initiation, state synchronization, and chapter navigation
 final class CarPlayAudiobookBridge {
@@ -100,11 +131,12 @@ final class CarPlayAudiobookBridge {
         playbackStartedCancellable?.cancel()
       }
     
+    // Thread-safe completion state tracking
+    let completionState = PlaybackCompletionState()
+    
     // Set up timeout for playback start
-    var didComplete = false
     let timeoutWorkItem = DispatchWorkItem { [weak self] in
-      guard !didComplete else { return }
-      didComplete = true
+      guard completionState.tryComplete() else { return }
       playbackStartedCancellable?.cancel()
       Log.error(#file, "CarPlay: Playback timed out for '\(book.title)'")
       self?.currentBook = nil
@@ -117,10 +149,10 @@ final class CarPlayAudiobookBridge {
     // Note: BookService.open calls completion BEFORE playback actually starts
     // (playback starts after async position sync completes)
     BookService.open(book) { [weak self] in
-      guard !didComplete else { return }
+      guard !completionState.isCompleted else { return }
       
       guard let self = self else {
-        didComplete = true
+        guard completionState.tryComplete() else { return }
         timeoutWorkItem.cancel()
         playbackStartedCancellable?.cancel()
         completion(.failure(.unknown))
@@ -131,14 +163,13 @@ final class CarPlayAudiobookBridge {
       // The manager is stored in the navigation coordinator
       // Give time for the view to be pushed and manager to be stored
       DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-        guard !didComplete else { return }
+        guard completionState.tryComplete() else { return }
         
         self.linkToActiveAudiobook()
         
         // Explicitly call play() to ensure CarPlay is properly synced
         // This triggers the remote command path which properly sets up CarPlay
         if let manager = self.currentManager {
-          didComplete = true
           timeoutWorkItem.cancel()
           
           Log.info(#file, "CarPlay: Linked to manager, explicitly starting playback...")
@@ -149,12 +180,32 @@ final class CarPlayAudiobookBridge {
           }
           completion(.success(()))
         } else {
-          didComplete = true
           timeoutWorkItem.cancel()
           Log.warn(#file, "CarPlay: Could not link to manager")
           completion(.failure(.unknown))
         }
       }
+    }
+  }
+  
+  /// Thread-safe state tracker for playback completion
+  private class PlaybackCompletionState {
+    private let lock = NSLock()
+    private var _isCompleted = false
+    
+    var isCompleted: Bool {
+      lock.lock()
+      defer { lock.unlock() }
+      return _isCompleted
+    }
+    
+    /// Attempts to mark as completed. Returns true if this call completed it, false if already completed.
+    func tryComplete() -> Bool {
+      lock.lock()
+      defer { lock.unlock() }
+      if _isCompleted { return false }
+      _isCompleted = true
+      return true
     }
   }
   
@@ -182,22 +233,7 @@ final class CarPlayAudiobookBridge {
   
   /// Checks if user is authenticated with the current library
   private func isAuthenticated() -> Bool {
-    guard let account = AccountsManager.shared.currentAccount else {
-      return false
-    }
-    
-    // If library doesn't require authentication, allow access
-    guard let details = account.details,
-          let defaultAuth = details.defaultAuth else {
-      // No details or auth available - allow access
-      return true
-    }
-    
-    if !defaultAuth.needsAuth {
-      return true
-    }
-    
-    return TPPUserAccount.sharedAccount().hasCredentials()
+    CarPlayAuthHelper.isAuthenticated()
   }
   
   /// Cycles through available playback rates

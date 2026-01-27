@@ -24,8 +24,6 @@ final class CarPlayImageProvider {
   // MARK: - Properties
   
   private let imageCache: ImageCacheType
-  private var inProgressTasks: [String: Task<UIImage?, Never>] = [:]
-  private let queue = DispatchQueue(label: "org.thepalaceproject.carplay.images", qos: .userInitiated)
   
   // MARK: - Initialization
   

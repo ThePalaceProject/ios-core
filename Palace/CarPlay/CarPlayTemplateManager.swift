@@ -60,7 +60,11 @@ final class CarPlayTemplateManager: NSObject {
     
     // Note: CPNowPlayingTemplate cannot be added to tab bar - it's shown automatically
     // by the system when audio is playing. We only set up the library as root.
-    interfaceController?.setRootTemplate(libraryTemplate!, animated: true, completion: nil)
+    guard let libraryTemplate = libraryTemplate else {
+      Log.error(#file, "CarPlay: Failed to create library template")
+      return
+    }
+    interfaceController?.setRootTemplate(libraryTemplate, animated: true, completion: nil)
     
     Log.info(#file, "CarPlay root template configured")
   }
@@ -203,26 +207,7 @@ final class CarPlayTemplateManager: NSObject {
   /// Note: If tokens need refresh, the app's auth layer handles this automatically.
   /// CarPlay cannot show sign-in UI - users must sign in via the phone app.
   private func isUserAuthenticated() -> Bool {
-    // Check if user has valid credentials for the current account
-    guard let account = AccountsManager.shared.currentAccount else {
-      return false
-    }
-    
-    // If library doesn't require authentication, allow access
-    guard let details = account.details,
-          let defaultAuth = details.defaultAuth else {
-      // No details or auth available - allow access (might be loading or anonymous)
-      return true
-    }
-    
-    // Check if the default auth method requires authentication
-    if !defaultAuth.needsAuth {
-      return true
-    }
-    
-    // Check if user has valid credentials
-    // Token refresh is handled automatically by the auth layer when making API calls
-    return TPPUserAccount.sharedAccount().hasCredentials()
+    CarPlayAuthHelper.isAuthenticated()
   }
   
   /// Handles specific playback errors with appropriate UI
@@ -369,12 +354,18 @@ final class CarPlayTemplateManager: NSObject {
       return ""
     }
     
-    let minutes = Int(duration) / 60
-    let seconds = Int(duration) % 60
+    // Log warning if we receive negative duration (should not happen)
+    if duration < 0 {
+      Log.warn(#file, "CarPlay: Received negative duration value: \(duration)")
+    }
+    
+    let totalSeconds = Int(abs(duration))
+    let minutes = totalSeconds / 60
+    let seconds = totalSeconds % 60
     
     if minutes >= 60 {
-      let hours = abs(minutes / 60)
-      let remainingMinutes = abs(minutes % 60)
+      let hours = minutes / 60
+      let remainingMinutes = minutes % 60
       return String(format: "%d:%02d:%02d", hours, remainingMinutes, seconds)
     } else {
       return String(format: "%d:%02d", minutes, seconds)
