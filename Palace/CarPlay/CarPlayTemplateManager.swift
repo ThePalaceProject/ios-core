@@ -85,11 +85,10 @@ final class CarPlayTemplateManager: NSObject {
     let items = createLibraryItems()
     let section = CPListSection(items: items)
     
-    // Use the library's actual name with beta indicator
+    // Use the library's actual name
     let libraryName = AccountsManager.shared.currentAccount?.name ?? Strings.CarPlay.library
-    let titleWithBeta = "\(libraryName) (beta)"
     
-    let template = CPListTemplate(title: titleWithBeta, sections: [section])
+    let template = CPListTemplate(title: libraryName, sections: [section])
     template.tabTitle = Strings.CarPlay.library
     template.tabImage = UIImage(systemName: "books.vertical")
     template.emptyViewTitleVariants = [Strings.CarPlay.noAudiobooks]

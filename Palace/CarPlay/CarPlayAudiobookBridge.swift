@@ -73,7 +73,8 @@ final class CarPlayAudiobookBridge {
   private(set) var currentChapters: [Chapter]?
   private(set) var currentChapter: Chapter?
   
-  private var cancellables = Set<AnyCancellable>()
+  private var globalCancellables = Set<AnyCancellable>()  // For app-wide subscriptions (AudiobookEvents)
+  private var bookCancellables = Set<AnyCancellable>()    // For per-book subscriptions (manager state, position)
   private var pendingStopWorkItem: DispatchWorkItem?
   
   /// Publisher that emits when chapter list updates
@@ -409,6 +410,9 @@ final class CarPlayAudiobookBridge {
   
   /// Stops current playback and cleans up for a new book
   func stopCurrentPlayback() {
+    // CRITICAL: Cancel all per-book subscriptions FIRST to stop receiving updates from old manager
+    bookCancellables.removeAll()
+    
     // Pause any current playback
     currentManager?.pause()
     
@@ -440,14 +444,14 @@ final class CarPlayAudiobookBridge {
   // MARK: - Private Methods
   
   private func subscribeToGlobalPlayback() {
-    // Subscribe to audiobook manager creation events
+    // Subscribe to audiobook manager creation events (global, not per-book)
     AudiobookEvents.managerCreated
       .receive(on: DispatchQueue.main)
       .sink { [weak self] manager in
         Log.info(#file, "CarPlay: Received manager creation event - binding to manager")
         self?.bindToManager(manager)
       }
-      .store(in: &cancellables)
+      .store(in: &globalCancellables)
   }
   
   private func linkToActiveAudiobook() {
@@ -477,7 +481,7 @@ final class CarPlayAudiobookBridge {
         guard let position = position else { return }
         self?.handlePositionUpdate(position)
       }
-      .store(in: &cancellables)
+      .store(in: &bookCancellables)
     
     // Chapter info is set when we bind to the manager via AudiobookEvents.managerCreated
     // Just notify that we're bound
@@ -489,16 +493,19 @@ final class CarPlayAudiobookBridge {
   }
   
   private func bindToManager(_ manager: AudiobookManager) {
+    // Cancel any existing per-book subscriptions before binding to new manager
+    bookCancellables.removeAll()
+    
     currentManager = manager
     currentChapters = manager.audiobook.tableOfContents.toc
     
-    // Subscribe to manager state changes
+    // Subscribe to manager state changes (per-book subscription)
     manager.statePublisher
       .receive(on: DispatchQueue.main)
       .sink { [weak self] state in
         self?.handleManagerState(state)
       }
-      .store(in: &cancellables)
+      .store(in: &bookCancellables)
     
     chapterUpdatePublisher.send(currentChapters ?? [])
     
