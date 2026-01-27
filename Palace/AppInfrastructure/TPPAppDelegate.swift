@@ -25,6 +25,9 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     // This replaces separate DeviceSpecificErrorMonitor and RemoteFeatureFlags initialization
     Task {
       await FirebaseManager.shared.fetchAndActivateRemoteConfig()
+      // Update feature flag cache after Remote Config is fetched
+      // This ensures isCarPlayEnabledCached has the latest value for next app launch
+      _ = RemoteFeatureFlags.shared.isCarPlayEnabled
     }
 
     TPPErrorLogger.configureCrashAnalytics()
@@ -162,6 +165,13 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     // Resume Firebase operations when app becomes active
     FirebaseManager.shared.applicationDidBecomeActive()
     
+    // Update feature flag cache after Remote Config is refreshed
+    Task {
+      // Small delay to let Remote Config fetch complete
+      try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+      _ = RemoteFeatureFlags.shared.isCarPlayEnabled
+    }
+    
     // Sync held books when app becomes active to ensure UI reflects current availability
     syncIfUserHasHolds()
   }
@@ -230,6 +240,14 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     
     switch connectingSceneSession.role {
     case .carTemplateApplication:
+      // Check if CarPlay is enabled via remote feature flag
+      // Use cached value since scene config happens before Remote Config is fetched
+      guard RemoteFeatureFlags.shared.isCarPlayEnabledCached else {
+        Log.info(#file, "🚗 CarPlay disabled via feature flag (cached) - returning default configuration")
+        let config = UISceneConfiguration(name: "Default Configuration", sessionRole: connectingSceneSession.role)
+        return config
+      }
+      
       // Handle CarPlay scene
       Log.info(#file, "🚗 Creating CarPlay scene configuration")
       let config = UISceneConfiguration(name: "CarPlay", sessionRole: connectingSceneSession.role)

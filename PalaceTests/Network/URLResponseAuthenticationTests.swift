@@ -137,7 +137,7 @@ final class URLResponseAuthenticationTests: XCTestCase {
 
 // MARK: - Cross-Domain 401 Tests
 
-/// Tests for PP-418: Cross-domain redirect 401 handling
+/// Tests for cross-domain redirect 401 handling
 /// When a request is redirected to a different domain and returns 401,
 /// we should NOT mark credentials as stale since the 401 is from a third-party.
 final class CrossDomain401Tests: XCTestCase {
@@ -463,4 +463,3 @@ final class AuthErrorCategoryTests: XCTestCase {
     )
   }
 }
-

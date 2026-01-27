@@ -29,10 +29,11 @@ final class RemoteFeatureFlags {
     case enhancedErrorLoggingDeviceSpecific = "enhanced_error_logging_device_"
     case downloadRetryEnabled = "download_retry_enabled"
     case circuitBreakerEnabled = "circuit_breaker_enabled"
+    case carPlayEnabled = "carplay_enabled"
     
     var defaultValue: Bool {
       switch self {
-      case .downloadRetryEnabled, .circuitBreakerEnabled:
+      case .downloadRetryEnabled, .circuitBreakerEnabled, .carPlayEnabled:
         return true
       default:
       return false
@@ -48,6 +49,8 @@ final class RemoteFeatureFlags {
         return .downloadRetryEnabled
       case .circuitBreakerEnabled:
         return .circuitBreakerEnabled
+      case .carPlayEnabled:
+        return .carPlayEnabled
       default:
         return nil
       }
@@ -112,6 +115,43 @@ final class RemoteFeatureFlags {
     
     // Fallback to default
     return feature.defaultValue
+  }
+  
+  // MARK: - Convenience Properties
+  
+  /// UserDefaults key for cached CarPlay feature flag.
+  private static let carPlayEnabledCacheKey = "RemoteFeatureFlags.carPlayEnabled"
+  
+  /// Whether CarPlay support is enabled via remote config.
+  /// Uses cached value for early access (before Remote Config is fetched).
+  /// Defaults to true, can be disabled remotely if issues arise.
+  var isCarPlayEnabled: Bool {
+    // First, get the current remote value and cache it for next launch
+    let remoteValue = isFeatureEnabled(.carPlayEnabled)
+    let previousCached: Bool? = UserDefaults.standard.object(forKey: Self.carPlayEnabledCacheKey) != nil
+      ? UserDefaults.standard.bool(forKey: Self.carPlayEnabledCacheKey)
+      : nil
+    UserDefaults.standard.set(remoteValue, forKey: Self.carPlayEnabledCacheKey)
+    
+    if let prev = previousCached, prev != remoteValue {
+      Log.info(#file, "🚗 CarPlay feature flag changed: \(prev) → \(remoteValue)")
+    }
+    
+    return remoteValue
+  }
+  
+  /// Cached CarPlay enabled value for use during early app lifecycle
+  /// (before Remote Config is fetched). Returns the last known value.
+  var isCarPlayEnabledCached: Bool {
+    // Check if we have a cached value
+    if UserDefaults.standard.object(forKey: Self.carPlayEnabledCacheKey) != nil {
+      let cached = UserDefaults.standard.bool(forKey: Self.carPlayEnabledCacheKey)
+      Log.debug(#file, "🚗 CarPlay feature flag (cached): \(cached)")
+      return cached
+    }
+    // No cached value - return default (true for CarPlay)
+    Log.debug(#file, "🚗 CarPlay feature flag (no cache, using default): \(FeatureFlag.carPlayEnabled.defaultValue)")
+    return FeatureFlag.carPlayEnabled.defaultValue
   }
   
   // MARK: - Device Info for Targeting

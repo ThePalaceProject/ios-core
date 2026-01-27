@@ -9,6 +9,16 @@
 import Combine
 import MediaPlayer
 import PalaceAudiobookToolkit
+import UIKit
+
+/// Error types for CarPlay playback failures
+enum CarPlayPlaybackError: Error {
+  case authenticationRequired
+  case networkError
+  case drmError
+  case notDownloaded
+  case unknown
+}
 
 /// Bridges CarPlay controls to the existing AudiobookManager infrastructure
 /// Handles playback initiation, state synchronization, and chapter navigation
@@ -16,7 +26,14 @@ final class CarPlayAudiobookBridge {
   
   // MARK: - Types
   
-  typealias PlaybackCompletion = (Bool) -> Void
+  typealias PlaybackResult = Result<Void, CarPlayPlaybackError>
+  typealias PlaybackCompletion = (PlaybackResult) -> Void
+  
+  enum PlaybackState {
+    case playing
+    case paused
+    case stopped
+  }
   
   // MARK: - Properties
   
@@ -26,12 +43,16 @@ final class CarPlayAudiobookBridge {
   private(set) var currentChapter: Chapter?
   
   private var cancellables = Set<AnyCancellable>()
+  private var pendingStopWorkItem: DispatchWorkItem?
   
   /// Publisher that emits when chapter list updates
   let chapterUpdatePublisher = PassthroughSubject<[Chapter], Never>()
   
   /// Publisher that emits current playback state
   let playbackStatePublisher = PassthroughSubject<PlaybackState, Never>()
+  
+  /// Publisher that emits playback errors
+  let errorPublisher = PassthroughSubject<CarPlayPlaybackError, Never>()
   
   // MARK: - Available Playback Rates
   
@@ -50,32 +71,133 @@ final class CarPlayAudiobookBridge {
     subscribeToGlobalPlayback()
   }
   
-  // MARK: - Public Methods
-  
   /// Initiates audiobook playback for CarPlay
   /// - Parameters:
   ///   - book: The audiobook to play
-  ///   - completion: Called with success/failure status
+  ///   - completion: Called with success/failure result
   func playAudiobook(_ book: TPPBook, completion: @escaping PlaybackCompletion) {
     Log.info(#file, "CarPlay: Starting playback for '\(book.title)'")
     
     currentBook = book
     
+    // Pre-flight checks
+    if let error = validatePlaybackRequirements(for: book) {
+      Log.error(#file, "CarPlay: Pre-flight check failed: \(error)")
+      completion(.failure(error))
+      return
+    }
+    
+    // Set up a one-time listener for playback to actually begin
+    // This will be triggered when the toolkit starts playing after position sync
+    var playbackStartedCancellable: AnyCancellable?
+    playbackStartedCancellable = playbackStatePublisher
+      .first { state in
+        if case .playing = state { return true }
+        return false
+      }
+      .sink { _ in
+        Log.info(#file, "CarPlay: Detected playback started - Now Playing should show playing state")
+        playbackStartedCancellable?.cancel()
+      }
+    
+    // Set up timeout for playback start
+    var didComplete = false
+    let timeoutWorkItem = DispatchWorkItem { [weak self] in
+      guard !didComplete else { return }
+      didComplete = true
+      playbackStartedCancellable?.cancel()
+      Log.error(#file, "CarPlay: Playback timed out for '\(book.title)'")
+      self?.currentBook = nil
+      completion(.failure(.unknown))
+    }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 15.0, execute: timeoutWorkItem)
+    
     // Use BookService to handle the complex audiobook opening logic
     // This handles DRM, manifest fetching, position restoration, etc.
+    // Note: BookService.open calls completion BEFORE playback actually starts
+    // (playback starts after async position sync completes)
     BookService.open(book) { [weak self] in
+      guard !didComplete else { return }
+      
       guard let self = self else {
-        completion(false)
+        didComplete = true
+        timeoutWorkItem.cancel()
+        playbackStartedCancellable?.cancel()
+        completion(.failure(.unknown))
         return
       }
       
       // After BookService opens the book, we need to get a reference to the manager
       // The manager is stored in the navigation coordinator
+      // Give time for the view to be pushed and manager to be stored
       DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+        guard !didComplete else { return }
+        
         self.linkToActiveAudiobook()
-        completion(self.currentManager != nil)
+        
+        // Explicitly call play() to ensure CarPlay is properly synced
+        // This triggers the remote command path which properly sets up CarPlay
+        if let manager = self.currentManager {
+          didComplete = true
+          timeoutWorkItem.cancel()
+          
+          Log.info(#file, "CarPlay: Linked to manager, explicitly starting playback...")
+          manager.play()
+          // Force the Now Playing state after a brief delay
+          DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            self.forcePlayingStateForCarPlay()
+          }
+          completion(.success(()))
+        } else {
+          didComplete = true
+          timeoutWorkItem.cancel()
+          Log.warn(#file, "CarPlay: Could not link to manager")
+          completion(.failure(.unknown))
+        }
       }
     }
+  }
+  
+  /// Validates that all requirements are met before attempting playback
+  private func validatePlaybackRequirements(for book: TPPBook) -> CarPlayPlaybackError? {
+    // Check authentication
+    if !isAuthenticated() {
+      return .authenticationRequired
+    }
+    
+    // Check book state
+    let state = TPPBookRegistry.shared.state(for: book.identifier)
+    if state == .unregistered || state == .downloadNeeded {
+      return .notDownloaded
+    }
+    
+    // Check network for partially downloaded content
+    let isFullyDownloaded = state == .downloadSuccessful || state == .used
+    if !isFullyDownloaded && !Reachability.shared.isConnectedToNetwork() {
+      return .networkError
+    }
+    
+    return nil
+  }
+  
+  /// Checks if user is authenticated with the current library
+  private func isAuthenticated() -> Bool {
+    guard let account = AccountsManager.shared.currentAccount else {
+      return false
+    }
+    
+    // If library doesn't require authentication, allow access
+    guard let details = account.details,
+          let defaultAuth = details.defaultAuth else {
+      // No details or auth available - allow access
+      return true
+    }
+    
+    if !defaultAuth.needsAuth {
+      return true
+    }
+    
+    return TPPUserAccount.sharedAccount().hasCredentials()
   }
   
   /// Cycles through available playback rates
@@ -88,9 +210,7 @@ final class CarPlayAudiobookBridge {
     manager.audiobook.player.playbackRate = newRate
     
     Log.debug(#file, "CarPlay: Playback rate changed to \(PlaybackRate.convert(rate: newRate))x")
-    
-    // Update MPNowPlayingInfoCenter with new rate
-    updateNowPlayingRate(newRate)
+    // Toolkit handles updating Now Playing info with new rate
   }
   
   /// Skips to a specific chapter
@@ -116,6 +236,141 @@ final class CarPlayAudiobookBridge {
     currentManager?.pause()
   }
   
+  /// Forces an update to MPNowPlayingInfoCenter playback state for CarPlay
+  /// - Parameter forcePlayingState: If true, forces the playback state to playing
+  func forceUpdateNowPlayingInfo(forcePlayingState: Bool = false) {
+    guard let manager = currentManager else {
+      Log.warn(#file, "CarPlay: Cannot force update - no manager")
+      return
+    }
+    
+    let isPlaying = forcePlayingState || manager.audiobook.player.isPlaying
+    Log.info(#file, "CarPlay: Setting playback state - isPlaying: \(isPlaying)")
+    
+    // Update the playback rate in the info dictionary (critical for real CarPlay)
+    if var nowPlayingInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo {
+      nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
+      nowPlayingInfo[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
+      // Ensure media type is set
+      if nowPlayingInfo[MPMediaItemPropertyMediaType] == nil {
+        nowPlayingInfo[MPMediaItemPropertyMediaType] = MPMediaType.audioBook.rawValue
+      }
+      MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+    }
+    
+    // Also set the playback state
+    MPNowPlayingInfoCenter.default().playbackState = isPlaying ? .playing : .paused
+  }
+  
+  /// Sets playback state for CarPlay
+  private func setupCompleteNowPlayingInfo() {
+    guard let manager = currentManager else {
+      Log.warn(#file, "CarPlay: Cannot setup Now Playing - missing manager")
+      return
+    }
+    
+    Log.info(#file, "CarPlay: Setting up Now Playing state for CarPlay")
+    
+    let isPlaying = manager.audiobook.player.isPlaying
+    
+    // Update the playback rate in the info dictionary (critical for real CarPlay)
+    if var nowPlayingInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo {
+      nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
+      nowPlayingInfo[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
+      // Ensure media type is set
+      if nowPlayingInfo[MPMediaItemPropertyMediaType] == nil {
+        nowPlayingInfo[MPMediaItemPropertyMediaType] = MPMediaType.audioBook.rawValue
+      }
+      MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+    }
+    
+    MPNowPlayingInfoCenter.default().playbackState = isPlaying ? .playing : .paused
+    
+    Log.info(#file, "CarPlay: Playback state set - isPlaying: \(isPlaying)")
+  }
+  
+  /// Validates and fixes Now Playing info to ensure time remaining is never negative
+  /// and all required fields are set for real CarPlay hardware.
+  private func validateAndFixNowPlayingInfo() {
+    guard var nowPlayingInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo else {
+      Log.warn(#file, "CarPlay: No Now Playing info to validate")
+      return
+    }
+    
+    let title = nowPlayingInfo[MPMediaItemPropertyTitle] as? String ?? "unknown"
+    var elapsed = nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] as? Double ?? 0
+    var duration = nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] as? Double ?? 0
+    let rate = nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] as? Double ?? 0
+    
+    Log.info(#file, "CarPlay: Validating Now Playing - title: '\(title)', elapsed: \(elapsed)s, duration: \(duration)s, rate: \(rate)")
+    
+    var needsUpdate = false
+    
+    // Ensure media type is set for CarPlay
+    if nowPlayingInfo[MPMediaItemPropertyMediaType] == nil {
+      nowPlayingInfo[MPMediaItemPropertyMediaType] = MPMediaType.audioBook.rawValue
+      needsUpdate = true
+      Log.info(#file, "CarPlay: Added missing media type (audioBook)")
+    }
+    
+    // Fix negative duration
+    if duration < 0 {
+      Log.error(#file, "CarPlay: FIXING negative duration: \(duration) -> \(abs(duration))")
+      duration = abs(duration)
+      nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = duration
+      needsUpdate = true
+    }
+    
+    // Ensure minimum duration
+    if duration < 1.0 {
+      Log.error(#file, "CarPlay: FIXING too-small duration: \(duration) -> 1.0")
+      duration = 1.0
+      nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = duration
+      needsUpdate = true
+    }
+    
+    // Fix negative elapsed
+    if elapsed < 0 {
+      Log.error(#file, "CarPlay: FIXING negative elapsed: \(elapsed) -> 0")
+      elapsed = 0
+      nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = elapsed
+      needsUpdate = true
+    }
+    
+    // Fix elapsed > duration (would cause negative time remaining)
+    if elapsed > duration {
+      Log.error(#file, "CarPlay: FIXING elapsed > duration: \(elapsed) > \(duration), setting to \(duration)")
+      elapsed = duration
+      nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = elapsed
+      needsUpdate = true
+    }
+    
+    let timeRemaining = duration - elapsed
+    Log.info(#file, "CarPlay: Now Playing validated - elapsed: \(elapsed)s, duration: \(duration)s, remaining: \(timeRemaining)s")
+    
+    if needsUpdate {
+      Log.warn(#file, "CarPlay: Applied corrections to Now Playing info")
+      MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+    }
+  }
+  
+  /// Forces CarPlay to show playing state with multiple update attempts
+  func forcePlayingStateForCarPlay() {
+    Log.info(#file, "CarPlay: Forcing playing state with multiple updates")
+    
+    // Immediate update
+    forceUpdateNowPlayingInfo(forcePlayingState: true)
+    
+    // Delayed updates to ensure CarPlay picks it up
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+      self?.forceUpdateNowPlayingInfo(forcePlayingState: true)
+    }
+    
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+      self?.forceUpdateNowPlayingInfo(forcePlayingState: true)
+    }
+  }
+  
   /// Stops current playback and cleans up for a new book
   func stopCurrentPlayback() {
     // Pause any current playback
@@ -127,17 +382,23 @@ final class CarPlayAudiobookBridge {
     currentChapter = nil
     
     // Pop the phone app's audiobook view if open
-    Task { @MainActor in
-      if let coordinator = NavigationCoordinatorHub.shared.coordinator,
-         let bookId = currentBook?.identifier {
-        coordinator.removeAudioModel(forBookId: bookId)
-        coordinator.popToRoot()
-      }
-    }
+    dismissBookOnPhone()
     
     currentBook = nil
     
     Log.info(#file, "CarPlay: Stopped current playback and cleaned up")
+  }
+  
+  /// Dismisses the audiobook view on the phone without stopping playback
+  func dismissBookOnPhone() {
+    Task { @MainActor in
+      if let coordinator = NavigationCoordinatorHub.shared.coordinator,
+         let bookId = currentBook?.identifier {
+        Log.info(#file, "CarPlay: Dismissing book view on phone for book: \(bookId)")
+        coordinator.removeAudioModel(forBookId: bookId)
+        coordinator.popToRoot()
+      }
+    }
   }
   
   // MARK: - Private Methods
@@ -147,6 +408,7 @@ final class CarPlayAudiobookBridge {
     AudiobookEvents.managerCreated
       .receive(on: DispatchQueue.main)
       .sink { [weak self] manager in
+        Log.info(#file, "CarPlay: Received manager creation event - binding to manager")
         self?.bindToManager(manager)
       }
       .store(in: &cancellables)
@@ -204,19 +466,66 @@ final class CarPlayAudiobookBridge {
     
     chapterUpdatePublisher.send(currentChapters ?? [])
     
+    // Tell toolkit to refresh its Now Playing info with current position
+    if let position = manager.audiobook.player.currentTrackPosition {
+      manager.updateNowPlayingInfo(position)
+      validateAndFixNowPlayingInfo()
+    }
+    
+    // Set up playback state for CarPlay
+    setupCompleteNowPlayingInfo()
+    
+    // Check if already playing and sync CarPlay state
+    if manager.audiobook.player.isPlaying {
+      Log.info(#file, "CarPlay: Manager is already playing - syncing state")
+      playbackStatePublisher.send(.playing)
+      forcePlayingStateForCarPlay()
+    }
+    
     Log.info(#file, "CarPlay: Bound to audiobook manager")
   }
   
   private func handleManagerState(_ state: AudiobookManagerState) {
     switch state {
     case .playbackBegan(let position):
-      Log.debug(#file, "CarPlay: Playback began at \(position.timestamp)")
+      Log.info(#file, "CarPlay: Playback began at \(position.timestamp) - sending .playing state")
+      // Cancel any pending stop handling - playback resumed
+      pendingStopWorkItem?.cancel()
+      pendingStopWorkItem = nil
+      playbackStatePublisher.send(.playing)
+      Log.info(#file, "CarPlay: Sent .playing to playbackStatePublisher")
+      // Tell toolkit to refresh its Now Playing info with current position
+      currentManager?.updateNowPlayingInfo(position)
+      // Validate and fix any issues with the Now Playing values
+      validateAndFixNowPlayingInfo()
+      // Force CarPlay to show playing state
+      forcePlayingStateForCarPlay()
       
     case .playbackStopped(let position):
       Log.debug(#file, "CarPlay: Playback stopped at \(position.timestamp)")
+      // Delay stop handling to allow for brief stop/start cycles during track changes
+      pendingStopWorkItem?.cancel()
+      let workItem = DispatchWorkItem { [weak self] in
+        self?.playbackStatePublisher.send(.paused)
+        // Update MPNowPlayingInfoCenter to show paused state
+        self?.forceUpdateNowPlayingInfo(forcePlayingState: false)
+      }
+      pendingStopWorkItem = workItem
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: workItem)
+      
+    case .playbackFailed(let position):
+      Log.error(#file, "CarPlay: Playback failed at position: \(String(describing: position))")
+      pendingStopWorkItem?.cancel()
+      pendingStopWorkItem = nil
+      playbackStatePublisher.send(.stopped)
+      // Notify of error - template manager can subscribe to this
+      errorPublisher.send(.unknown)
       
     case .playbackCompleted:
       Log.info(#file, "CarPlay: Playback completed")
+      pendingStopWorkItem?.cancel()
+      pendingStopWorkItem = nil
+      playbackStatePublisher.send(.stopped)
       
     case .positionUpdated(let position):
       if let pos = position {
@@ -247,13 +556,6 @@ final class CarPlayAudiobookBridge {
     chapters.first { chapter in
       chapter.position.track.key == position.track.key
     }
-  }
-  
-  private func updateNowPlayingRate(_ rate: PlaybackRate) {
-    var nowPlayingInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
-    nowPlayingInfo[MPNowPlayingInfoPropertyDefaultPlaybackRate] = PlaybackRate.convert(rate: rate)
-    nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = PlaybackRate.convert(rate: rate)
-    MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
   }
 }
 

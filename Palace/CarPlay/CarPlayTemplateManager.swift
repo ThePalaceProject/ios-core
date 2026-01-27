@@ -15,9 +15,13 @@ final class CarPlayTemplateManager: NSObject {
   
   // MARK: - Constants
   
+  // MARK: - Layout Constants
+  // Apple CarPlay Guidelines (CarPlay-Audio-App-Programming-Guide.pdf):
+  // - Max hierarchy depth: 5 levels (we use ~3-4)
+  // - Chapter lists are explicitly allowed for audiobook navigation
+  // Following Apple Books' approach: show all chapters, let user scroll
   private enum Layout {
     static let maxListItems = 20
-    static let maxChapterItems = 100
     static let artworkSize = CGSize(width: 90, height: 90)
   }
   
@@ -30,6 +34,8 @@ final class CarPlayTemplateManager: NSObject {
   
   private var libraryTemplate: CPListTemplate?
   private var nowPlayingTemplate: CPNowPlayingTemplate?
+  private var isPushingNowPlaying = false
+  private var isShowingNowPlaying = false
   
   // MARK: - Initialization
   
@@ -40,6 +46,7 @@ final class CarPlayTemplateManager: NSObject {
     
     super.init()
     
+    interfaceController.delegate = self
     setupPlayerBridgeBindings()
   }
   
@@ -74,7 +81,11 @@ final class CarPlayTemplateManager: NSObject {
     let items = createLibraryItems()
     let section = CPListSection(items: items)
     
-    let template = CPListTemplate(title: Strings.CarPlay.library, sections: [section])
+    // Use the library's actual name with beta indicator
+    let libraryName = AccountsManager.shared.currentAccount?.name ?? Strings.CarPlay.library
+    let titleWithBeta = "\(libraryName) (beta)"
+    
+    let template = CPListTemplate(title: titleWithBeta, sections: [section])
     template.tabTitle = Strings.CarPlay.library
     template.tabImage = UIImage(systemName: "books.vertical")
     template.emptyViewTitleVariants = [Strings.CarPlay.noAudiobooks]
@@ -132,6 +143,17 @@ final class CarPlayTemplateManager: NSObject {
   
   private func handleBookSelection(_ book: TPPBook, completion: @escaping () -> Void) {
     Log.info(#file, "CarPlay: User selected audiobook '\(book.title)'")
+    completion()
+    
+    // Check authentication status first
+    guard isUserAuthenticated() else {
+      Log.warn(#file, "CarPlay: User not authenticated")
+      showErrorAlert(
+        title: Strings.CarPlay.Error.authRequired,
+        message: Strings.CarPlay.Error.authMessage
+      )
+      return
+    }
     
     // Check if book is downloaded for offline play
     guard isDownloaded(book) else {
@@ -139,17 +161,19 @@ final class CarPlayTemplateManager: NSObject {
         title: Strings.CarPlay.Error.notDownloaded,
         message: Strings.CarPlay.Error.downloadRequired
       )
-      completion()
       return
     }
     
     // Check network connectivity for streaming content that requires it
-    if !Reachability.shared.isConnectedToNetwork() && !isFullyDownloaded(book) {
+    let isOffline = !Reachability.shared.isConnectedToNetwork()
+    let needsNetwork = !isFullyDownloaded(book)
+    
+    if isOffline && needsNetwork {
+      Log.warn(#file, "CarPlay: Offline and book not fully downloaded")
       showErrorAlert(
         title: Strings.CarPlay.Error.offline,
         message: Strings.CarPlay.Error.offlineMessage
       )
-      completion()
       return
     }
     
@@ -161,19 +185,74 @@ final class CarPlayTemplateManager: NSObject {
       controller.popToRootTemplate(animated: false, completion: nil)
     }
     
-    // Start playback through the bridge
-    playerBridge.playAudiobook(book) { [weak self] success in
-      if success {
-        // Switch to Now Playing view
-        self?.switchToNowPlaying()
-      } else {
-        Log.error(#file, "CarPlay: Failed to start playback for '\(book.title)'")
-        self?.showErrorAlert(
-          title: Strings.CarPlay.Error.playbackFailed,
-          message: Strings.CarPlay.Error.tryAgain
-        )
+    // Start playback through the bridge with enhanced error handling
+    // Note: switchToNowPlaying will be called automatically via playbackStatePublisher
+    // when playback actually begins (after BookService finishes position sync)
+    playerBridge.playAudiobook(book) { [weak self] result in
+      switch result {
+      case .success:
+        Log.info(#file, "CarPlay: Playback started successfully for '\(book.title)'")
+      case .failure(let error):
+        Log.error(#file, "CarPlay: Failed to start playback for '\(book.title)': \(error)")
+        self?.handlePlaybackError(error)
       }
-      completion()
+    }
+  }
+  
+  /// Checks if the user is authenticated with the current library
+  /// Note: If tokens need refresh, the app's auth layer handles this automatically.
+  /// CarPlay cannot show sign-in UI - users must sign in via the phone app.
+  private func isUserAuthenticated() -> Bool {
+    // Check if user has valid credentials for the current account
+    guard let account = AccountsManager.shared.currentAccount else {
+      return false
+    }
+    
+    // If library doesn't require authentication, allow access
+    guard let details = account.details,
+          let defaultAuth = details.defaultAuth else {
+      // No details or auth available - allow access (might be loading or anonymous)
+      return true
+    }
+    
+    // Check if the default auth method requires authentication
+    if !defaultAuth.needsAuth {
+      return true
+    }
+    
+    // Check if user has valid credentials
+    // Token refresh is handled automatically by the auth layer when making API calls
+    return TPPUserAccount.sharedAccount().hasCredentials()
+  }
+  
+  /// Handles specific playback errors with appropriate UI
+  private func handlePlaybackError(_ error: CarPlayPlaybackError) {
+    switch error {
+    case .authenticationRequired:
+      showErrorAlert(
+        title: Strings.CarPlay.Error.authRequired,
+        message: Strings.CarPlay.Error.authMessage
+      )
+    case .networkError:
+      showErrorAlert(
+        title: Strings.CarPlay.Error.offline,
+        message: Strings.CarPlay.Error.offlineMessage
+      )
+    case .drmError:
+      showErrorAlert(
+        title: Strings.CarPlay.Error.playbackFailed,
+        message: Strings.CarPlay.Error.drmMessage
+      )
+    case .notDownloaded:
+      showErrorAlert(
+        title: Strings.CarPlay.Error.notDownloaded,
+        message: Strings.CarPlay.Error.downloadRequired
+      )
+    case .unknown:
+      showErrorAlert(
+        title: Strings.CarPlay.Error.playbackFailed,
+        message: Strings.CarPlay.Error.tryAgain
+      )
     }
   }
   
@@ -212,25 +291,34 @@ final class CarPlayTemplateManager: NSObject {
     // Set ourselves as the observer to handle up next button taps
     nowPlayingTemplate.add(self)
     
-    // Configure playback buttons
+    // Configure playback buttons - use custom TOC button with list.bullet icon
     let rateButton = CPNowPlayingPlaybackRateButton { [weak self] button in
       self?.playerBridge.cyclePlaybackRate()
     }
     
-    nowPlayingTemplate.updateNowPlayingButtons([rateButton])
+    // Create custom table of contents button with list.bullet icon (same as app)
+    guard let tocImage = UIImage(systemName: "list.bullet") else {
+      Log.warn(#file, "CarPlay: Could not load list.bullet image")
+      nowPlayingTemplate.updateNowPlayingButtons([rateButton])
+      return
+    }
+    let tocButton = CPNowPlayingImageButton(image: tocImage) { [weak self] _ in
+      Log.info(#file, "CarPlay: TOC button tapped")
+      self?.showChapterList()
+    }
     
-    // Add chapter list if available
-    updateChapterList()
+    nowPlayingTemplate.updateNowPlayingButtons([tocButton, rateButton])
+    
+    // Disable the system Up Next button since we're using a custom TOC button
+    nowPlayingTemplate.isUpNextButtonEnabled = false
   }
   
   private func updateChapterList() {
+    // No longer needed since we use a custom button, but keep for potential future use
     guard let chapters = playerBridge.currentChapters, !chapters.isEmpty else {
-      nowPlayingTemplate?.isUpNextButtonEnabled = false
       return
     }
-    
-    nowPlayingTemplate?.isUpNextButtonEnabled = true
-    nowPlayingTemplate?.upNextTitle = Strings.CarPlay.chapters
+    // Chapters are available - the TOC button will show them
   }
   
   // MARK: - Chapter List
@@ -243,7 +331,8 @@ final class CarPlayTemplateManager: NSObject {
     
     Log.info(#file, "CarPlay: Showing chapter list with \(chapters.count) chapters")
     
-    let items = chapters.prefix(Layout.maxChapterItems).enumerated().map { index, chapter in
+    // Show all chapters like Apple Books does - users can scroll through the list
+    let items = chapters.enumerated().map { index, chapter in
       createChapterItem(chapter: chapter, index: index)
     }
     
@@ -254,7 +343,7 @@ final class CarPlayTemplateManager: NSObject {
   }
   
   private func createChapterItem(chapter: Chapter, index: Int) -> CPListItem {
-    let title = chapter.title ?? Strings.CarPlay.chapterNumber(index + 1)
+    let title = chapter.title
     let duration = formatDuration(chapter.duration)
     
     let item = CPListItem(text: title, detailText: duration)
@@ -284,8 +373,8 @@ final class CarPlayTemplateManager: NSObject {
     let seconds = Int(duration) % 60
     
     if minutes >= 60 {
-      let hours = minutes / 60
-      let remainingMinutes = minutes % 60
+      let hours = abs(minutes / 60)
+      let remainingMinutes = abs(minutes % 60)
       return String(format: "%d:%02d:%02d", hours, remainingMinutes, seconds)
     } else {
       return String(format: "%d:%02d", minutes, seconds)
@@ -296,9 +385,65 @@ final class CarPlayTemplateManager: NSObject {
     // CPNowPlayingTemplate is automatically shown by the system when playback starts.
     // We can push it onto the navigation stack if needed, but typically the system
     // handles showing it via the Now Playing button in CarPlay.
-    guard let nowPlayingTemplate = nowPlayingTemplate else { return }
+    guard let nowPlayingTemplate = nowPlayingTemplate else {
+      Log.warn(#file, "CarPlay: No Now Playing template available")
+      return
+    }
     
-    interfaceController?.pushTemplate(nowPlayingTemplate, animated: true, completion: nil)
+    Log.info(#file, "CarPlay: Pushing Now Playing template")
+    interfaceController?.pushTemplate(nowPlayingTemplate, animated: true) { [weak self] success, error in
+      if let error = error {
+        Log.error(#file, "CarPlay: Failed to push Now Playing: \(error)")
+      } else {
+        Log.info(#file, "CarPlay: Now Playing template pushed successfully")
+        self?.isShowingNowPlaying = true
+        // Force CarPlay to show playing state
+        self?.playerBridge.forcePlayingStateForCarPlay()
+      }
+    }
+  }
+  
+  private func switchToNowPlayingIfNeeded() {
+    Log.info(#file, "CarPlay: switchToNowPlayingIfNeeded called")
+    
+    // Only push if we're not already showing Now Playing
+    guard let controller = interfaceController else {
+      Log.warn(#file, "CarPlay: No interface controller")
+      return
+    }
+    
+    // Check if Now Playing is already the top template
+    if let topTemplate = controller.topTemplate,
+       topTemplate is CPNowPlayingTemplate {
+      Log.debug(#file, "CarPlay: Already showing Now Playing, skipping push")
+      return
+    }
+    
+    // Check if we're already in the process of pushing
+    guard !isPushingNowPlaying else {
+      Log.debug(#file, "CarPlay: Already pushing Now Playing, skipping")
+      return
+    }
+    
+    isPushingNowPlaying = true
+    Log.info(#file, "CarPlay: Will push Now Playing in 0.5s")
+    
+    // Delay to ensure MPNowPlayingInfoCenter has been fully updated by the toolkit
+    // Longer delay for reliability, especially on first play
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+      guard let self = self else { return }
+      
+      // Double-check we're not already showing Now Playing
+      if let topTemplate = self.interfaceController?.topTemplate,
+         topTemplate is CPNowPlayingTemplate {
+        Log.debug(#file, "CarPlay: Already showing Now Playing after delay, skipping")
+        self.isPushingNowPlaying = false
+        return
+      }
+      
+      self.switchToNowPlaying()
+      self.isPushingNowPlaying = false
+    }
   }
   
   // MARK: - Data Access
@@ -324,6 +469,70 @@ final class CarPlayTemplateManager: NSObject {
         self?.updateChapterList()
       }
       .store(in: &cancellables)
+    
+    // Listen for playback to begin and switch to Now Playing
+    // This ensures the Now Playing view shows after the toolkit updates MPNowPlayingInfoCenter
+    playerBridge.playbackStatePublisher
+      .receive(on: DispatchQueue.main)
+      .sink { [weak self] state in
+        Log.info(#file, "CarPlay: Received playback state: \(state)")
+        if case .playing = state {
+          Log.info(#file, "CarPlay: Playback started - will switch to Now Playing")
+          self?.switchToNowPlayingIfNeeded()
+        }
+      }
+      .store(in: &cancellables)
+    
+    // Listen for playback errors
+    playerBridge.errorPublisher
+      .receive(on: DispatchQueue.main)
+      .sink { [weak self] error in
+        Log.error(#file, "CarPlay: Received playback error: \(error)")
+        self?.handlePlaybackError(error)
+        // Pop back to library if we're showing Now Playing
+        if let controller = self?.interfaceController,
+           controller.topTemplate is CPNowPlayingTemplate {
+          controller.popTemplate(animated: true, completion: nil)
+        }
+      }
+      .store(in: &cancellables)
+  }
+}
+
+// MARK: - CPInterfaceControllerDelegate
+
+extension CarPlayTemplateManager: CPInterfaceControllerDelegate {
+  func templateWillAppear(_ aTemplate: CPTemplate, animated: Bool) {
+    // Track template appearance if needed
+  }
+  
+  func templateDidAppear(_ aTemplate: CPTemplate, animated: Bool) {
+    // Track template appearance if needed
+  }
+  
+  func templateWillDisappear(_ aTemplate: CPTemplate, animated: Bool) {
+    Log.debug(#file, "CarPlay: Template will disappear: \(type(of: aTemplate))")
+  }
+  
+  func templateDidDisappear(_ aTemplate: CPTemplate, animated: Bool) {
+    Log.debug(#file, "CarPlay: Template did disappear: \(type(of: aTemplate))")
+    
+    // Track when Now Playing disappears
+    if aTemplate is CPNowPlayingTemplate && isShowingNowPlaying {
+      // Check if we're back at the library (root) or if another template is on top
+      DispatchQueue.main.async { [weak self] in
+        guard let self = self else { return }
+        
+        // If templates count is 1 (only root/library), user backed out completely
+        if let templateCount = self.interfaceController?.templates.count, templateCount <= 1 {
+          Log.info(#file, "CarPlay: User returned to library - stopping playback")
+          self.isShowingNowPlaying = false
+          self.playerBridge.stopCurrentPlayback()
+        } else {
+          Log.debug(#file, "CarPlay: Now Playing covered by another template")
+        }
+      }
+    }
   }
 }
 
@@ -418,6 +627,11 @@ extension Strings {
         "CarPlay.Error.authMessage",
         value: "Please sign in to your library in the app",
         comment: "CarPlay error message when authentication is required"
+      )
+      static let drmMessage = NSLocalizedString(
+        "CarPlay.Error.drmMessage",
+        value: "There was a problem with the audiobook license. Please try again in the app",
+        comment: "CarPlay error message when DRM/license fails"
       )
     }
   }
