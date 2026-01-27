@@ -17,6 +17,13 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
   func applicationDidFinishLaunching(_ application: UIApplication) {
     let startupQueue = DispatchQueue.global(qos: .userInitiated)
+    
+    // CRITICAL: Initialize playback infrastructure FIRST for CarPlay cold starts
+    // This ensures MPRemoteCommandCenter handlers are registered before any UI loads
+    // Without this, CarPlay remote controls won't work when the app is launched
+    // directly from CarPlay without the phone UI ever being shown
+    Log.info(#file, "📱 App launch - initializing playback bootstrapper")
+    PlaybackBootstrapper.shared.ensureInitialized()
 
     // Configure Firebase once at startup
     FirebaseApp.configure()
