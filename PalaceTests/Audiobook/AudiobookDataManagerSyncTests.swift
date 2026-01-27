@@ -94,16 +94,32 @@ final class AudiobookDataManagerNetworkSyncTests: XCTestCase {
     // Use a short sync interval for tests, but we'll trigger sync manually
     dataManager = AudiobookDataManager(syncTimeInterval: 3600, networkService: mockNetworkExecutor)
     
+    // Clear any existing store data from previous tests
+    dataManager.store.queue.removeAll()
+    dataManager.store.urls.removeAll()
+    
     // Use a temp directory for store
     testStoreURL = FileManager.default.temporaryDirectory.appendingPathComponent("test_timetracker")
   }
   
   override func tearDown() {
+    // Clear store before releasing
+    dataManager?.store.queue.removeAll()
+    dataManager?.store.urls.removeAll()
     dataManager = nil
     mockNetworkExecutor = nil
     // Clean up temp files
     try? FileManager.default.removeItem(at: testStoreURL)
     super.tearDown()
+  }
+  
+  /// Helper to wait for async save operations to complete
+  private func waitForAsyncSave() {
+    let expectation = XCTestExpectation(description: "Async save completes")
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+      expectation.fulfill()
+    }
+    wait(for: [expectation], timeout: 1.0)
   }
   
   // MARK: - Successful Sync Tests
@@ -168,6 +184,7 @@ final class AudiobookDataManagerNetworkSyncTests: XCTestCase {
     )
     
     dataManager.save(time: entry)
+    waitForAsyncSave()  // Wait for async save to complete
     XCTAssertEqual(dataManager.store.queue.count, 1, "Should have one entry before sync")
     
     // Act
@@ -293,12 +310,28 @@ final class AudiobookDataManagerErrorHandlingTests: XCTestCase {
     super.setUp()
     mockNetworkExecutor = MockNetworkExecutorForSync()
     dataManager = AudiobookDataManager(syncTimeInterval: 3600, networkService: mockNetworkExecutor)
+    
+    // Clear any existing store data from previous tests
+    dataManager.store.queue.removeAll()
+    dataManager.store.urls.removeAll()
   }
   
   override func tearDown() {
+    // Clear store before releasing
+    dataManager?.store.queue.removeAll()
+    dataManager?.store.urls.removeAll()
     dataManager = nil
     mockNetworkExecutor = nil
     super.tearDown()
+  }
+  
+  /// Helper to wait for async save operations to complete
+  private func waitForAsyncSave() {
+    let expectation = XCTestExpectation(description: "Async save completes")
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+      expectation.fulfill()
+    }
+    wait(for: [expectation], timeout: 1.0)
   }
   
   /// Test: 404 response should remove entries
@@ -318,6 +351,7 @@ final class AudiobookDataManagerErrorHandlingTests: XCTestCase {
     mockNetworkExecutor.responses[trackingURL] = MockNetworkExecutorForSync.MockResponse(statusCode: 404)
     
     dataManager.save(time: entry)
+    waitForAsyncSave()  // Wait for async save to complete
     XCTAssertEqual(dataManager.store.queue.count, 1)
     XCTAssertNotNil(dataManager.store.urls[LibraryBook(time: entry)])
     
@@ -352,6 +386,7 @@ final class AudiobookDataManagerErrorHandlingTests: XCTestCase {
     mockNetworkExecutor.responses[trackingURL] = MockNetworkExecutorForSync.MockResponse(statusCode: 500)
     
     dataManager.save(time: entry)
+    waitForAsyncSave()  // Wait for async save to complete
     
     // Act
     let expectation = XCTestExpectation(description: "Sync completes")
@@ -382,6 +417,7 @@ final class AudiobookDataManagerErrorHandlingTests: XCTestCase {
     mockNetworkExecutor.responses[trackingURL] = MockNetworkExecutorForSync.MockResponse(statusCode: 503)
     
     dataManager.save(time: entry)
+    waitForAsyncSave()  // Wait for async save to complete
     
     // Act
     let expectation = XCTestExpectation(description: "Sync completes")
@@ -420,6 +456,7 @@ final class AudiobookDataManagerErrorHandlingTests: XCTestCase {
     
     dataManager.save(time: entry1)
     dataManager.save(time: entry2)
+    waitForAsyncSave()  // Wait for async save to complete
     
     // Act
     let expectation = XCTestExpectation(description: "Sync completes")
@@ -456,6 +493,7 @@ final class AudiobookDataManagerErrorHandlingTests: XCTestCase {
     )
     
     dataManager.save(time: entry)
+    waitForAsyncSave()  // Wait for async save to complete
     
     // Act
     let expectation = XCTestExpectation(description: "Sync completes")
@@ -592,9 +630,16 @@ final class AudiobookDataManagerEmptyQueueTests: XCTestCase {
     super.setUp()
     mockNetworkExecutor = MockNetworkExecutorForSync()
     dataManager = AudiobookDataManager(syncTimeInterval: 3600, networkService: mockNetworkExecutor)
+    
+    // Clear any existing store data from previous tests
+    dataManager.store.queue.removeAll()
+    dataManager.store.urls.removeAll()
   }
   
   override func tearDown() {
+    // Clear store before releasing
+    dataManager?.store.queue.removeAll()
+    dataManager?.store.urls.removeAll()
     dataManager = nil
     mockNetworkExecutor = nil
     super.tearDown()
