@@ -9,7 +9,6 @@
 		<string>applinks:thepalaceproject.org</string>
 		<string>applinks:thepalaceproject.page.link</string>
 	</array>
-	<!-- PP-260: CarPlay Audio entitlement (approved by Apple) -->
 	<key>com.apple.developer.carplay-audio</key>
 	<true/>
 </dict>
