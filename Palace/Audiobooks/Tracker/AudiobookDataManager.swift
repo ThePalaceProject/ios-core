@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import UIKit
 
 struct LibraryBook: Codable, Hashable {
   var bookId: String
@@ -111,7 +112,8 @@ class AudiobookDataManager {
     self.syncTimeInterval = syncTimeInterval
     self.networkService = networkService
 
-    syncTimer = Timer.publish(every: syncTimeInterval, on: .main, in: .default)
+    // Use .common RunLoop mode for reliable timer firing during UI interactions
+    syncTimer = Timer.publish(every: syncTimeInterval, on: .main, in: .common)
       .autoconnect()
       .sink(receiveValue: syncValues)
       .store(in: &subscriptions) as? any Cancellable
@@ -143,10 +145,32 @@ class AudiobookDataManager {
   }
 
   func syncValues(_: Date? = nil) {
+    // Request background task to ensure sync completes even if app is backgrounded
+    var backgroundTaskId: UIBackgroundTaskIdentifier = .invalid
+    backgroundTaskId = UIApplication.shared.beginBackgroundTask(withName: "AudiobookTimeSync") {
+      // Cleanup handler if time expires
+      UIApplication.shared.endBackgroundTask(backgroundTaskId)
+      backgroundTaskId = .invalid
+    }
+    
     syncQueue.async { [weak self] in
-      guard let self = self else { return }
+      guard let self = self else {
+        UIApplication.shared.endBackgroundTask(backgroundTaskId)
+        return
+      }
 
       let queuedLibraryBooks: Set<LibraryBook> = Set(self.store.queue.map { LibraryBook(time: $0) })
+      
+      // Track pending requests to end background task when all complete
+      let pendingCount = queuedLibraryBooks.count
+      var completedCount = 0
+      let countLock = NSLock()
+      
+      // If no entries to sync, end background task immediately
+      if pendingCount == 0 {
+        UIApplication.shared.endBackgroundTask(backgroundTaskId)
+        return
+      }
 
       for libraryBook in queuedLibraryBooks {
         let requestData = RequestData(
@@ -172,6 +196,18 @@ class AudiobookDataManager {
           request.applyCustomUserAgent()
 
           self.networkService.POST(request, useTokenIfAvailable: true) { [weak self] result, response, error in
+            defer {
+              // Track request completion for background task management
+              countLock.lock()
+              completedCount += 1
+              let allComplete = completedCount >= pendingCount
+              countLock.unlock()
+              
+              if allComplete {
+                UIApplication.shared.endBackgroundTask(backgroundTaskId)
+              }
+            }
+            
             guard let self = self else { return }
 
             if let response = response as? HTTPURLResponse {
@@ -234,6 +270,16 @@ class AudiobookDataManager {
               self.removeSynchronizedEntries(ids: responseData.responses.map { $0.id })
               self.cleanUpUrls()
             }
+          }
+        } else {
+          // No request made for this book, count as complete
+          countLock.lock()
+          completedCount += 1
+          let allComplete = completedCount >= pendingCount
+          countLock.unlock()
+          
+          if allComplete {
+            UIApplication.shared.endBackgroundTask(backgroundTaskId)
           }
         }
       }

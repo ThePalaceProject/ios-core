@@ -3,6 +3,7 @@ import FirebaseCore
 import FirebaseDynamicLinks
 import BackgroundTasks
 import SwiftUI
+import CarPlay
 import PalaceAudiobookToolkit
 
 @main
@@ -24,6 +25,9 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     // This replaces separate DeviceSpecificErrorMonitor and RemoteFeatureFlags initialization
     Task {
       await FirebaseManager.shared.fetchAndActivateRemoteConfig()
+      // Update feature flag cache after Remote Config is fetched
+      // This ensures isCarPlayEnabledCached has the latest value for next app launch
+      _ = RemoteFeatureFlags.shared.isCarPlayEnabled
     }
 
     TPPErrorLogger.configureCrashAnalytics()
@@ -61,11 +65,8 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     DispatchQueue.main.async {
       self.audiobookLifecycleManager.didFinishLaunching()
       
-      // Migrate audiobook downloads from Caches to Application Support
-      // This prevents iOS from purging downloaded audiobook files
-      Task.detached(priority: .utility) {
-        AudiobookSessionManager.migrateDownloadsFromCaches()
-      }
+      // TODO: Implement audiobook downloads migration from Caches to Application Support
+      // This would prevent iOS from purging downloaded audiobook files
     }
 
     TransifexManager.setup()
@@ -164,6 +165,13 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     // Resume Firebase operations when app becomes active
     FirebaseManager.shared.applicationDidBecomeActive()
     
+    // Update feature flag cache after Remote Config is refreshed
+    Task {
+      // Small delay to let Remote Config fetch complete
+      try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+      _ = RemoteFeatureFlags.shared.isCarPlayEnabled
+    }
+    
     // Sync held books when app becomes active to ensure UI reflects current availability
     syncIfUserHasHolds()
   }
@@ -220,6 +228,52 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     audiobookLifecycleManager.handleEventsForBackgroundURLSession(for: identifier, completionHandler: completionHandler)
   }
 
+  // MARK: - Scene Configuration
+  
+  /// Provides scene configurations for main app and CarPlay scenes.
+  ///
+  /// CarPlay support is controlled by the `CARPLAY_ENABLED` Swift compiler flag.
+  /// To enable CarPlay, add `-DCARPLAY_ENABLED` to "Other Swift Flags" in Build Settings.
+  func application(
+    _ application: UIApplication,
+    configurationForConnecting connectingSceneSession: UISceneSession,
+    options: UIScene.ConnectionOptions
+  ) -> UISceneConfiguration {
+    Log.info(#file, "📱 Configuring scene with role: \(connectingSceneSession.role.rawValue)")
+    
+    switch connectingSceneSession.role {
+    #if CARPLAY_ENABLED
+    case .carTemplateApplication:
+      // Check if CarPlay is enabled via remote feature flag
+      // Use cached value since scene config happens before Remote Config is fetched
+      guard RemoteFeatureFlags.shared.isCarPlayEnabledCached else {
+        Log.info(#file, "🚗 CarPlay disabled via feature flag (cached) - returning default configuration")
+        let config = UISceneConfiguration(name: "Default Configuration", sessionRole: connectingSceneSession.role)
+        return config
+      }
+      
+      // Handle CarPlay scene
+      Log.info(#file, "🚗 Creating CarPlay scene configuration")
+      let config = UISceneConfiguration(name: "CarPlay", sessionRole: connectingSceneSession.role)
+      config.delegateClass = CarPlaySceneDelegate.self
+      return config
+    #endif
+      
+    default:
+      // Handle main app scene (and CarPlay when CARPLAY_ENABLED is not set)
+      let config = UISceneConfiguration(name: "Default Configuration", sessionRole: connectingSceneSession.role)
+      config.delegateClass = SceneDelegate.self
+      return config
+    }
+  }
+  
+  func application(_ application: UIApplication, didDiscardSceneSessions sceneSessions: Set<UISceneSession>) {
+    // Called when the user discards a scene session
+    for session in sceneSessions {
+      Log.info(#file, "Scene session discarded: \(session.configuration.name ?? "unknown")")
+    }
+  }
+
   // MARK: - User Sign-in Tracking
 
   func signingIn(_ notification: Notification) {
@@ -231,12 +285,35 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
   // MARK: - UI Configuration
 
   private func setupWindow() {
+    // When using scenes (iOS 13+), window setup is handled by SceneDelegate
+    // Only create window here for non-scene based launches (shouldn't happen with our config)
+    guard window == nil else { return }
+    
+    // Check if we're using scenes - if so, SceneDelegate will handle window
+    if #available(iOS 13.0, *),
+       UIApplication.shared.supportsMultipleScenes || 
+       Bundle.main.object(forInfoDictionaryKey: "UIApplicationSceneManifest") != nil {
+      // Scene-based: SceneDelegate will create window
+      return
+    }
+    
+    // Legacy non-scene setup (fallback)
     window = UIWindow()
-    window?.tintColor = TPPConfiguration.mainColor()
-    window?.tintAdjustmentMode = .normal
-    window?.makeKeyAndVisible()
+    configureWindow(window!)
+  }
+  
+  /// Configures an existing window with the app's root view controller
+  func configureWindow(_ window: UIWindow) {
+    window.tintColor = TPPConfiguration.mainColor()
+    window.tintAdjustmentMode = .normal
+    window.rootViewController = createRootViewController()
+    window.makeKeyAndVisible()
+  }
+  
+  /// Creates and returns the app's root view controller
+  func createRootViewController() -> UIViewController {
     let root = AppTabHostView()
-    window?.rootViewController = UIHostingController(rootView: root)
+    return UIHostingController(rootView: root)
   }
 
   private func configureUIAppearance() {

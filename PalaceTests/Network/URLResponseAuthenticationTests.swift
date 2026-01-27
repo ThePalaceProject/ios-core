@@ -137,7 +137,7 @@ final class URLResponseAuthenticationTests: XCTestCase {
 
 // MARK: - Cross-Domain 401 Tests
 
-/// Tests for PP-418: Cross-domain redirect 401 handling
+/// Tests for cross-domain redirect 401 handling
 /// When a request is redirected to a different domain and returns 401,
 /// we should NOT mark credentials as stale since the 401 is from a third-party.
 final class CrossDomain401Tests: XCTestCase {
@@ -281,3 +281,185 @@ final class CrossDomain401Tests: XCTestCase {
   }
 }
 
+// MARK: - Recoverable/Unrecoverable Auth Error Tests
+
+/// Tests for the new problem document category system (PR #3003).
+/// Server uses URL path conventions to classify auth errors:
+/// - /auth/recoverable/* -> client should re-authenticate
+/// - /auth/unrecoverable/* -> client should display error to user
+final class AuthErrorCategoryTests: XCTestCase {
+  
+  private let testURL = URL(string: "https://example.com/api")!
+  
+  // MARK: - TPPProblemDocument Category Detection
+  
+  func testProblemDocument_recoverableTokenExpired_isRecoverable() {
+    let problemDoc = TPPProblemDocument.fromDictionary([
+      "type": "http://palaceproject.io/terms/problem/auth/recoverable/token/expired",
+      "title": "Access token expired",
+      "status": 401
+    ])
+    
+    XCTAssertTrue(problemDoc.isRecoverableAuthError)
+    XCTAssertFalse(problemDoc.isUnrecoverableAuthError)
+  }
+  
+  func testProblemDocument_recoverableSAMLSessionExpired_isRecoverable() {
+    let problemDoc = TPPProblemDocument.fromDictionary([
+      "type": "http://palaceproject.io/terms/problem/auth/recoverable/saml/session-expired",
+      "title": "SAML session expired",
+      "status": 401
+    ])
+    
+    XCTAssertTrue(problemDoc.isRecoverableAuthError)
+    XCTAssertFalse(problemDoc.isUnrecoverableAuthError)
+  }
+  
+  func testProblemDocument_recoverableSAMLBearerTokenInvalid_isRecoverable() {
+    let problemDoc = TPPProblemDocument.fromDictionary([
+      "type": "http://palaceproject.io/terms/problem/auth/recoverable/saml/bearer-token-invalid",
+      "title": "Invalid SAML bearer token",
+      "status": 401
+    ])
+    
+    XCTAssertTrue(problemDoc.isRecoverableAuthError)
+    XCTAssertFalse(problemDoc.isUnrecoverableAuthError)
+  }
+  
+  func testProblemDocument_unrecoverableInvalidCredentials_isUnrecoverable() {
+    let problemDoc = TPPProblemDocument.fromDictionary([
+      "type": "http://palaceproject.io/terms/problem/auth/unrecoverable/credentials/invalid",
+      "title": "Invalid credentials",
+      "status": 401
+    ])
+    
+    XCTAssertFalse(problemDoc.isRecoverableAuthError)
+    XCTAssertTrue(problemDoc.isUnrecoverableAuthError)
+  }
+  
+  func testProblemDocument_unrecoverableNoAccess_isUnrecoverable() {
+    let problemDoc = TPPProblemDocument.fromDictionary([
+      "type": "http://palaceproject.io/terms/problem/auth/unrecoverable/saml/no-access",
+      "title": "No access",
+      "status": 401
+    ])
+    
+    XCTAssertFalse(problemDoc.isRecoverableAuthError)
+    XCTAssertTrue(problemDoc.isUnrecoverableAuthError)
+  }
+  
+  func testProblemDocument_nonAuthType_isNeitherCategory() {
+    let problemDoc = TPPProblemDocument.fromDictionary([
+      "type": "http://librarysimplified.org/terms/problem/loan-limit-reached",
+      "title": "Loan limit reached",
+      "status": 403
+    ])
+    
+    XCTAssertFalse(problemDoc.isRecoverableAuthError)
+    XCTAssertFalse(problemDoc.isUnrecoverableAuthError)
+  }
+  
+  func testProblemDocument_nilType_isNeitherCategory() {
+    let problemDoc = TPPProblemDocument.fromDictionary([
+      "title": "Some error",
+      "status": 500
+    ])
+    
+    XCTAssertFalse(problemDoc.isRecoverableAuthError)
+    XCTAssertFalse(problemDoc.isUnrecoverableAuthError)
+  }
+  
+  // MARK: - Authentication Refresh Detection with Categories
+  
+  func testHTTPURLResponse_withRecoverableError_shouldIndicateAuthRefresh() {
+    let response = HTTPURLResponse(
+      url: testURL,
+      statusCode: 401,
+      httpVersion: nil,
+      headerFields: nil
+    )!
+    
+    let problemDoc = TPPProblemDocument.fromDictionary([
+      "type": "http://palaceproject.io/terms/problem/auth/recoverable/token/expired",
+      "title": "Access token expired"
+    ])
+    
+    XCTAssertTrue(
+      response.indicatesAuthenticationNeedsRefresh(with: problemDoc),
+      "Recoverable auth error should indicate auth refresh needed"
+    )
+  }
+  
+  func testHTTPURLResponse_withUnrecoverableError_shouldNotIndicateAuthRefresh() {
+    let response = HTTPURLResponse(
+      url: testURL,
+      statusCode: 401,
+      httpVersion: nil,
+      headerFields: nil
+    )!
+    
+    let problemDoc = TPPProblemDocument.fromDictionary([
+      "type": "http://palaceproject.io/terms/problem/auth/unrecoverable/credentials/invalid",
+      "title": "Invalid credentials"
+    ])
+    
+    XCTAssertFalse(
+      response.indicatesAuthenticationNeedsRefresh(with: problemDoc),
+      "Unrecoverable auth error should NOT indicate auth refresh needed"
+    )
+  }
+  
+  func testHTTPURLResponse_withUnrecoverableNoAccess_shouldNotIndicateAuthRefresh() {
+    let response = HTTPURLResponse(
+      url: testURL,
+      statusCode: 401,
+      httpVersion: nil,
+      headerFields: nil
+    )!
+    
+    let problemDoc = TPPProblemDocument.fromDictionary([
+      "type": "http://palaceproject.io/terms/problem/auth/unrecoverable/saml/no-access",
+      "title": "No access",
+      "detail": "Patron does not have access based on their attributes."
+    ])
+    
+    XCTAssertFalse(
+      response.indicatesAuthenticationNeedsRefresh(with: problemDoc),
+      "Unrecoverable no-access error should NOT indicate auth refresh needed"
+    )
+  }
+  
+  // MARK: - Backward Compatibility Tests
+  
+  func testHTTPURLResponse_withOldCredentialsInvalidType_shouldIndicateAuthRefresh() {
+    // Old servers may still use the legacy credentials-invalid type
+    let response = HTTPURLResponse(
+      url: testURL,
+      statusCode: 401,
+      httpVersion: nil,
+      headerFields: ["Content-Type": "application/problem+json"]
+    )!
+    
+    let problemDoc = TPPProblemDocument.forExpiredOrMissingCredentials(hasCredentials: true)
+    
+    XCTAssertTrue(
+      response.indicatesAuthenticationNeedsRefresh(with: problemDoc),
+      "Old credentials-invalid type should still indicate auth refresh (backward compatibility)"
+    )
+  }
+  
+  func testHTTPURLResponse_bare401WithoutProblemDoc_shouldIndicateAuthRefresh() {
+    // Bare 401 without problem document (older servers or edge cases)
+    let response = HTTPURLResponse(
+      url: testURL,
+      statusCode: 401,
+      httpVersion: nil,
+      headerFields: nil
+    )!
+    
+    XCTAssertTrue(
+      response.indicatesAuthenticationNeedsRefresh(with: nil),
+      "Bare 401 without problem doc should indicate auth refresh (fallback)"
+    )
+  }
+}

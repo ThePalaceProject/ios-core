@@ -11,22 +11,33 @@ import Foundation
 extension URLResponse {
 
   /// Attempts to determine if the response indicates that the user's
-  /// credentials are expired or invalid.
+  /// credentials are expired or invalid and re-authentication should be attempted.
   ///
-  /// The idea is that if the user was authenticated and an error is returned,
-  /// this may indicate that the credentials that were used in the request
-  /// are no longer valid. The problem document, if available, is the
-  /// primary source of truth.
-  ///
-  /// You could use this api even when the user was not authenticated to begin
-  /// with, but in that case you'd already know the reason of the error.
+  /// The problem document, if available, is the primary source of truth.
+  /// The server uses URL path conventions to classify auth errors:
+  /// - `/auth/recoverable/*` → client should retry auth flow
+  /// - `/auth/unrecoverable/*` → client should display error (re-auth won't help)
   ///
   /// - Parameter problemDoc: The problem document returned by the server.
-  /// - Returns: `true` if the response or problem document indicate that the
-  /// authentication needs to be refreshed.
+  /// - Returns: `true` if the problem document indicates a recoverable auth error.
   @objc(indicatesAuthenticationNeedsRefresh:)
   func indicatesAuthenticationNeedsRefresh(with problemDoc: TPPProblemDocument?) -> Bool {
-    return isProblemDocument() && problemDoc?.type == TPPProblemDocument.TypeInvalidCredentials 
+    // Check for new recoverable auth error category (preferred)
+    if problemDoc?.isRecoverableAuthError == true {
+      return true
+    }
+    
+    // Unrecoverable errors should NOT trigger re-auth
+    if problemDoc?.isUnrecoverableAuthError == true {
+      return false
+    }
+    
+    // Backward compatibility: old credentials-invalid type from older servers
+    if isProblemDocument() && problemDoc?.type == TPPProblemDocument.TypeInvalidCredentials {
+      return true
+    }
+    
+    return false
   }
   
   /// Checks if this response came from the same domain as the given URL.
@@ -73,15 +84,23 @@ extension URLResponse {
 extension HTTPURLResponse {
   @objc(indicatesAuthenticationNeedsRefresh:)
   override func indicatesAuthenticationNeedsRefresh(with problemDoc: TPPProblemDocument?) -> Bool {
-
+    // First check problem document categories (highest priority)
     if super.indicatesAuthenticationNeedsRefresh(with: problemDoc) {
       return true
     }
+    
+    // If problem doc explicitly says unrecoverable, don't trigger re-auth
+    if problemDoc?.isUnrecoverableAuthError == true {
+      return false
+    }
 
+    // Fallback: bare 401 without categorized problem doc
+    // (for older servers or edge cases)
     if statusCode == 401 {
       return true
     }
 
+    // OPDS authentication document response
     if !isSuccess() && mimeType == "application/vnd.opds.authentication.v1.0+json" {
       return true
     }

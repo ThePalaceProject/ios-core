@@ -9,5 +9,10 @@
 		<string>applinks:thepalaceproject.org</string>
 		<string>applinks:thepalaceproject.page.link</string>
 	</array>
+	<!-- PP-260: CarPlay Audio entitlement - DISABLED for release builds
+	     Re-enable when CarPlay is ready for production:
+	<key>com.apple.developer.carplay-audio</key>
+	<true/>
+	-->
 </dict>
 </plist>

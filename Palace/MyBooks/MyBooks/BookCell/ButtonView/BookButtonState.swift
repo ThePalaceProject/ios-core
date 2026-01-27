@@ -118,6 +118,74 @@ extension BookButtonState {
   }
 }
 
+extension BookButtonState {
+  init?(_ book: TPPBook) {
+    let bookState = TPPBookRegistry.shared.state(for: book.identifier)
+    switch bookState {
+    case .unregistered, .holding:
+      guard let buttonState = Self.stateForAvailability(book.defaultAcquisition?.availability) else {
+        TPPErrorLogger.logError(withCode: .noURL, summary: "Unable to determine BookButtonsViewState because no Availability was provided")
+        return nil
+      }
+      
+      self = buttonState
+    case .downloadNeeded:
+      #if LCP
+      if LCPAudiobooks.canOpenBook(book) {
+        self = .downloadSuccessful
+      } else {
+        self = .downloadNeeded
+      }
+      #else
+      self = .downloadNeeded
+      #endif
+    case .downloadSuccessful:
+      self = .downloadSuccessful
+    case .SAMLStarted, .downloading:
+      // SAML started is part of download process, in this step app does authenticate user but didn't begin file downloading yet
+      // The cell should present progress bar and "Requesting" description on its side
+      self = .downloadInProgress
+    case .downloadFailed:
+      self = .downloadFailed
+    case .used:
+      self = .used
+    case .unsupported:
+      self = .unsupported
+    case .returning:
+      self = .returning
+    }
+  }
+}
+
+extension BookButtonState {
+  static func stateForAvailability(_ availability: TPPOPDSAcquisitionAvailability?) -> BookButtonState? {
+    guard let availability else {
+      return nil
+    }
+
+    var state: BookButtonState = .unsupported
+    availability.matchUnavailable { _ in
+      state = .canHold
+    } limited: { limited in
+      // Check if copies are actually available to borrow
+      if limited.copiesAvailable == TPPOPDSAcquisitionAvailabilityCopiesUnknown || limited.copiesAvailable > 0 {
+        state = .canBorrow
+      } else {
+        state = .canHold
+      }
+    } unlimited: { _ in
+      state = .canBorrow
+    } reserved: { _ in
+      state = .holdingFrontOfQueue
+    } ready: { _ in
+      state = .canBorrow  // Hold is ready, user can borrow
+    }
+
+    return state
+  }
+}
+
+
 extension TPPBook {
   func supportsDeletion(for state: BookButtonState) -> Bool {
     var fullfillmentRequired = false

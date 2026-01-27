@@ -1,0 +1,99 @@
+---
+description: Modern Swift patterns and best practices for Palace iOS development
+globs: ["**/*.swift"]
+alwaysApply: true
+---
+
+# Modern Swift Patterns
+
+When implementing new features or improving existing functionality, always prefer the most modern approach available for the project's minimum deployment target.
+
+## Communication & Events
+
+### Prefer Combine over NotificationCenter
+- Use `PassthroughSubject` or `CurrentValueSubject` for event broadcasting
+- Provides type safety, no casting from `Any?`
+- Clear subscription lifecycle with `AnyCancellable`
+
+```swift
+// ✅ Modern - Type-safe Combine publisher
+enum MyEvents {
+  static let somethingHappened = PassthroughSubject<MyModel, Never>()
+}
+
+// Publish
+MyEvents.somethingHappened.send(model)
+
+// Subscribe
+MyEvents.somethingHappened
+  .receive(on: DispatchQueue.main)
+  .sink { model in /* handle */ }
+  .store(in: &cancellables)
+
+// ❌ Avoid - NotificationCenter loses type safety
+NotificationCenter.default.post(name: .myNotification, object: model)
+```
+
+### Prefer @Observable (iOS 17+) over ObservableObject when available
+- Simpler, more automatic change tracking
+- Better performance, only re-renders affected views
+
+## Concurrency
+
+### Prefer Swift Concurrency over completion handlers
+- Use `async/await` for asynchronous operations
+- Use `Task` for bridging to async contexts
+- Use `@MainActor` for UI updates
+
+```swift
+// ✅ Modern
+func fetchData() async throws -> Data {
+  let (data, _) = try await URLSession.shared.data(from: url)
+  return data
+}
+
+// ❌ Avoid
+func fetchData(completion: @escaping (Result<Data, Error>) -> Void)
+```
+
+### Prefer AsyncStream over delegate callbacks for sequences of values
+```swift
+// ✅ Modern
+func updates() -> AsyncStream<Update> {
+  AsyncStream { continuation in
+    // yield values
+  }
+}
+```
+
+## Data Flow
+
+### Prefer structured state management
+- Use `@State`, `@StateObject`, `@Published` appropriately
+- Avoid singletons when dependency injection is feasible
+- Use environment objects for cross-cutting concerns
+
+## Error Handling
+
+### Prefer typed throws (Swift 6+) when available
+```swift
+// ✅ Modern - typed throws
+func load() throws(NetworkError) -> Data
+
+// Fallback - untyped throws with documented error types  
+func load() throws -> Data
+```
+
+## Collections & Algorithms
+
+### Use Swift Algorithms package patterns
+- Prefer `.chunked()`, `.uniqued()`, `.grouped()` over manual loops
+- Use `.compactMap` over `.map` + `.filter`
+
+## General Principles
+
+1. **Type Safety First**: Prefer APIs that provide compile-time type checking
+2. **Declarative over Imperative**: Use declarative patterns (SwiftUI, Combine) when possible
+3. **Immutability**: Prefer `let` over `var`, value types over reference types when appropriate
+4. **Protocol-Oriented**: Use protocols to define contracts, enable testing, and reduce coupling
+5. **Progressive Enhancement**: When modern APIs aren't available, provide fallbacks but document the preferred approach for future updates

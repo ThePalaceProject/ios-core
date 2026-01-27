@@ -178,8 +178,12 @@ class CatalogSearchViewModel: ObservableObject {
         books[idx] = registryBook
         anyChanged = true
       } else {
-        // Book is NOT in registry (e.g., returned) - invalidate cached model
-        // so it gets recreated with fresh state from availability data
+        // Book is NOT in registry (e.g., returned)
+        // Reset to original catalog version from allBooks to get correct availability
+        if let originalBook = allBooks.first(where: { $0.identifier == book.identifier }) {
+          books[idx] = originalBook
+        }
+        // Invalidate cached model so it gets recreated with fresh state
         BookCellModelCache.shared.invalidate(for: book.identifier)
         anyChanged = true
       }
