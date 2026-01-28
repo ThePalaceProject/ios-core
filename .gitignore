@@ -50,3 +50,7 @@ docs/ledger/OPEN_QUESTIONS.md
 docs/ledger/SYSTEM_MAP.md
 docs/ledger/VERIFICATION.md
 readium-sdk
+
+# AccessLint reports and cache
+accesslint-reports/
+.accesslint-cache/
