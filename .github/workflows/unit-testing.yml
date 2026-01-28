@@ -19,20 +19,20 @@ jobs:
         id: cache-accesslint
         uses: actions/cache@v4
         with:
-          path: /tmp/AccessLint/.build/release/accesslint
-          key: accesslint-${{ runner.os }}-${{ hashFiles('.github/workflows/unit-testing.yml') }}
+          path: /usr/local/bin/accesslint
+          key: accesslint-v1.0.0-${{ runner.os }}
           
-      - name: Clone and build AccessLint
+      - name: Download AccessLint
         if: steps.cache-accesslint.outputs.cache-hit != 'true'
         run: |
-          git clone --depth 1 https://${{ secrets.CI_GITHUB_ACCESS_TOKEN }}@github.com/mauricecarrier7/AccessLint.git /tmp/AccessLint
-          cd /tmp/AccessLint
-          swift build -c release
+          curl -L -o /usr/local/bin/accesslint \
+            https://github.com/mauricecarrier7/AccessLint-Distribution/releases/download/1.0.0/accesslint
+          chmod +x /usr/local/bin/accesslint
           
       - name: Run AccessLint analysis
         id: analyze
         run: |
-          ACCESSLINT="/tmp/AccessLint/.build/release/accesslint"
+          ACCESSLINT="/usr/local/bin/accesslint"
           
           # Run analysis
           set +e
