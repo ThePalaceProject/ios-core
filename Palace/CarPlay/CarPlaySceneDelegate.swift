@@ -158,6 +158,17 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
   }
   
   private func subscribeToBookRegistryChanges() {
+    // Subscribe to registry changes (fires when books are loaded from disk or synced)
+    TPPBookRegistry.shared.registryPublisher
+      .dropFirst() // Skip initial empty state
+      .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
+      .sink { [weak self] _ in
+        Log.debug(#file, "🚗 Registry updated - refreshing CarPlay library")
+        self?.templateManager?.refreshLibrary()
+      }
+      .store(in: &cancellables)
+    
+    // Also subscribe to individual book state changes (download progress, etc.)
     TPPBookRegistry.shared.bookStatePublisher
       .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
       .sink { [weak self] _ in
