@@ -36,8 +36,9 @@ final class RemoteFeatureFlags {
       case .downloadRetryEnabled, .circuitBreakerEnabled:
         return true
       case .carPlayEnabled:
-        // CarPlay defaults to disabled - enable via Firebase Remote Config when ready for production
-        return false
+        // CarPlay defaults to enabled for development/testing
+        // Set to false in production and control via Firebase Remote Config
+        return true
       default:
         return false
       }

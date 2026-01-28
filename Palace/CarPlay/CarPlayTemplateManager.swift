@@ -123,15 +123,19 @@ final class CarPlayTemplateManager: NSObject {
   }
   
   private func createListItem(for book: TPPBook) -> CPListItem {
+    // Create placeholder image immediately so items have artwork from the start
+    let placeholderImage = UIImage(systemName: "headphones") ?? UIImage()
+    
     let item = CPListItem(
       text: book.title,
-      detailText: book.authors ?? "Unknown Author"
+      detailText: book.authors ?? "Unknown Author",
+      image: placeholderImage
     )
     
     item.accessoryType = .disclosureIndicator
     item.userInfo = ["bookIdentifier": book.identifier]
     
-    // Load artwork asynchronously
+    // Load actual artwork asynchronously
     imageProvider.artwork(for: book) { [weak item] image in
       guard let image = image else { return }
       DispatchQueue.main.async {
