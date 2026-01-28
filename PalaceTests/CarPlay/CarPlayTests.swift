@@ -13,27 +13,26 @@ import CarPlay
 
 /// Tests for CarPlay audiobook browsing and playback integration.
 /// Verifies library display, chapter navigation, and error handling.
+@MainActor
 class CarPlayTests: XCTestCase {
   
-  // MARK: - CarPlayAudiobookBridge Tests
+  // MARK: - AudiobookSessionManager Tests
+  
+  func testAudiobookSessionManager_Initialization() {
+    // Arrange & Act
+    let sessionManager = Palace.AudiobookSessionManager.shared
+    
+    // Assert - session manager starts with no active book
+    XCTAssertNil(sessionManager.currentBook, "Session manager should not have a book initially")
+    XCTAssertNil(sessionManager.manager, "Session manager should not have a manager initially")
+    XCTAssertFalse(sessionManager.state.isActive, "Session manager should not be active initially")
+  }
   
   func testCarPlayBridge_Initialization() {
     // Arrange & Act
     let bridge = CarPlayAudiobookBridge()
     
-    // Assert
-    XCTAssertNil(bridge.currentBook, "Bridge should not have a book initially")
-    XCTAssertNil(bridge.currentManager, "Bridge should not have a manager initially")
-    XCTAssertNil(bridge.currentChapters, "Bridge should not have chapters initially")
-    XCTAssertNil(bridge.currentChapter, "Bridge should not have current chapter initially")
-  }
-  
-  func testCarPlayBridge_PlaybackRates() {
-    // Arrange
-    let bridge = CarPlayAudiobookBridge()
-    
-    // Assert - verify available playback rates exist
-    // The bridge should support multiple playback rates
+    // Assert - bridge delegates to session manager
     XCTAssertNotNil(bridge, "Bridge should be created successfully")
   }
   
@@ -223,6 +222,7 @@ class CarPlayTests: XCTestCase {
 // MARK: - CarPlay Integration Tests
 
 /// Integration tests that verify CarPlay components work together
+@MainActor
 class CarPlayIntegrationTests: XCTestCase {
   
   func testCarPlay_TemplateManager_CreatesWithInterfaceController() {

@@ -38,6 +38,8 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
     
     Log.info(#file, "🚗 CarPlay scene connected - setting up templates")
     
+    PlaybackBootstrapper.shared.ensureInitializedForCarPlay()
+    
     self.templateManager = CarPlayTemplateManager(interfaceController: interfaceController)
     
     // Set up the root template
@@ -58,6 +60,11 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
     cancellables.removeAll()
     templateManager = nil
     self.interfaceController = nil
+    
+    // Note: We don't stop playback on CarPlay disconnect since:
+    // 1. User might still be listening on phone
+    // 2. Phone app UI may still be showing the player
+    // Playback lifecycle is managed by AudiobookSessionManager
   }
   
   func templateApplicationScene(

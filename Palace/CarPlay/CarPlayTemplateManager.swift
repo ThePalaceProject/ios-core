@@ -10,7 +10,9 @@ import CarPlay
 import Combine
 import PalaceAudiobookToolkit
 
-/// Manages CarPlay template hierarchy and navigation for audiobook playback
+/// Manages CarPlay template hierarchy and navigation for audiobook playback.
+/// Pure UI layer - all playback logic delegated to AudiobookSessionManager via CarPlayAudiobookBridge.
+@MainActor
 final class CarPlayTemplateManager: NSObject {
   
   // MARK: - Constants
@@ -149,7 +151,8 @@ final class CarPlayTemplateManager: NSObject {
     completion()
     
     // Check authentication status first
-    guard isUserAuthenticated() else {
+    let authenticated = isUserAuthenticated()
+    guard authenticated else {
       Log.warn(#file, "CarPlay: User not authenticated")
       showErrorAlert(
         title: Strings.CarPlay.Error.authRequired,
@@ -159,7 +162,8 @@ final class CarPlayTemplateManager: NSObject {
     }
     
     // Check if book is downloaded for offline play
-    guard isDownloaded(book) else {
+    let downloaded = isDownloaded(book)
+    guard downloaded else {
       showErrorAlert(
         title: Strings.CarPlay.Error.notDownloaded,
         message: Strings.CarPlay.Error.downloadRequired
@@ -180,17 +184,20 @@ final class CarPlayTemplateManager: NSObject {
       return
     }
     
-    // Stop any existing playback and clean up before starting new book
-    playerBridge.stopCurrentPlayback()
+    // NOTE: Don't call stopCurrentPlayback() here - it races with playAudiobook()
+    // and causes the phone UI to be dismissed after it's pushed.
+    // AudiobookSessionManager.openAudiobook() handles stopping existing playback internally.
     
-    // Pop to root to clear any stacked templates (only if not already at root)
+    // Pop to root to clear any stacked CarPlay templates (only if not already at root)
     if let controller = interfaceController, controller.templates.count > 1 {
       controller.popToRootTemplate(animated: false, completion: nil)
     }
     
+    
     // Start playback through the bridge with enhanced error handling
     // Note: switchToNowPlaying will be called automatically via playbackStatePublisher
     // when playback actually begins (after BookService finishes position sync)
+    // openAudiobook() will stop any existing playback before starting the new book
     playerBridge.playAudiobook(book) { [weak self] result in
       switch result {
       case .success:
@@ -387,8 +394,7 @@ final class CarPlayTemplateManager: NSObject {
       } else {
         Log.info(#file, "CarPlay: Now Playing template pushed successfully")
         self?.isShowingNowPlaying = true
-        // Force CarPlay to show playing state
-        self?.playerBridge.forcePlayingStateForCarPlay()
+        // NowPlayingCoordinator handles the Now Playing state via AudiobookSessionManager
       }
     }
   }
@@ -403,8 +409,8 @@ final class CarPlayTemplateManager: NSObject {
     }
     
     // Check if Now Playing is already the top template
-    if let topTemplate = controller.topTemplate,
-       topTemplate is CPNowPlayingTemplate {
+    let topTemplate = controller.topTemplate
+    if let top = topTemplate, top is CPNowPlayingTemplate {
       Log.debug(#file, "CarPlay: Already showing Now Playing, skipping push")
       return
     }
@@ -416,11 +422,11 @@ final class CarPlayTemplateManager: NSObject {
     }
     
     isPushingNowPlaying = true
-    Log.info(#file, "CarPlay: Will push Now Playing in 0.5s")
+    Log.info(#file, "CarPlay: Will push Now Playing in 0.15s")
     
-    // Delay to ensure MPNowPlayingInfoCenter has been fully updated by the toolkit
-    // Longer delay for reliability, especially on first play
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+    // Brief delay to ensure MPNowPlayingInfoCenter has been updated
+    // Reduced from 0.5s to 0.15s for faster UI response
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
       guard let self = self else { return }
       
       // Double-check we're not already showing Now Playing

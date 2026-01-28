@@ -17,6 +17,13 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
   func applicationDidFinishLaunching(_ application: UIApplication) {
     let startupQueue = DispatchQueue.global(qos: .userInitiated)
+    
+    // CRITICAL: Initialize playback infrastructure FIRST for CarPlay cold starts
+    // This ensures MPRemoteCommandCenter handlers are registered before any UI loads
+    // Without this, CarPlay remote controls won't work when the app is launched
+    // directly from CarPlay without the phone UI ever being shown
+    Log.info(#file, "📱 App launch - initializing playback bootstrapper")
+    PlaybackBootstrapper.shared.ensureInitialized()
 
     // Configure Firebase once at startup
     FirebaseApp.configure()
@@ -231,9 +238,6 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
   // MARK: - Scene Configuration
   
   /// Provides scene configurations for main app and CarPlay scenes.
-  ///
-  /// CarPlay support is controlled by the `CARPLAY_ENABLED` Swift compiler flag.
-  /// To enable CarPlay, add `-DCARPLAY_ENABLED` to "Other Swift Flags" in Build Settings.
   func application(
     _ application: UIApplication,
     configurationForConnecting connectingSceneSession: UISceneSession,
@@ -242,25 +246,15 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     Log.info(#file, "📱 Configuring scene with role: \(connectingSceneSession.role.rawValue)")
     
     switch connectingSceneSession.role {
-    #if CARPLAY_ENABLED
     case .carTemplateApplication:
-      // Check if CarPlay is enabled via remote feature flag
-      // Use cached value since scene config happens before Remote Config is fetched
-      guard RemoteFeatureFlags.shared.isCarPlayEnabledCached else {
-        Log.info(#file, "🚗 CarPlay disabled via feature flag (cached) - returning default configuration")
-        let config = UISceneConfiguration(name: "Default Configuration", sessionRole: connectingSceneSession.role)
-        return config
-      }
-      
       // Handle CarPlay scene
       Log.info(#file, "🚗 Creating CarPlay scene configuration")
       let config = UISceneConfiguration(name: "CarPlay", sessionRole: connectingSceneSession.role)
       config.delegateClass = CarPlaySceneDelegate.self
       return config
-    #endif
       
     default:
-      // Handle main app scene (and CarPlay when CARPLAY_ENABLED is not set)
+      // Handle main app scene
       let config = UISceneConfiguration(name: "Default Configuration", sessionRole: connectingSceneSession.role)
       config.delegateClass = SceneDelegate.self
       return config
