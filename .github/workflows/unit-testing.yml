@@ -20,7 +20,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /usr/local/bin/accesslint
-          key: accesslint-v1.0.0-${{ runner.os }}
+          key: accesslint-v1.0.0-${{ runner.os }}-v2
           
       - name: Download AccessLint
         if: steps.cache-accesslint.outputs.cache-hit != 'true'
@@ -28,6 +28,10 @@ jobs:
           curl -L -o /usr/local/bin/accesslint \
             https://github.com/mauricecarrier7/AccessLint-Distribution/releases/download/1.0.0/accesslint
           chmod +x /usr/local/bin/accesslint
+          # Remove macOS quarantine attribute
+          xattr -d com.apple.quarantine /usr/local/bin/accesslint 2>/dev/null || true
+          # Verify it's a valid binary
+          file /usr/local/bin/accesslint
           
       - name: Run AccessLint analysis
         id: analyze
