@@ -57,3 +57,6 @@ accesslint-reports/
 
 # Jira integration credentials (local only - never commit)
 .jira-config
+
+# Cursor IDE local rules
+.cursor/
