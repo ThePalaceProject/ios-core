@@ -738,6 +738,96 @@ final class BookDetailViewModelTests: XCTestCase {
                   "Half sheet should stay open on download failure so user can retry")
   }
   
+  
+  // MARK: - Related Books Persistence Tests
+  
+  /// Related books should persist when view reappears after closing preview.
+  /// This tests the scenario where the user:
+  /// 1. Opens book details, sees "OTHER BOOKS BY THIS AUTHOR"
+  /// 2. Opens a sample preview
+  /// 3. Closes the preview
+  /// 4. "OTHER BOOKS BY THIS AUTHOR" should still be visible
+  func testRelatedBooks_PersistAfterViewReappears() {
+    // Arrange - Create ViewModel with a book that has relatedWorksURL
+    // (without relatedWorksURL, fetchRelatedBooks returns early and doesn't clear)
+    let book = TPPBookMocker.mockBookWithRelatedWorksURL(identifier: "test-book-1", title: "Test Book")
+    let mockRegistry = TPPBookRegistryMock()
+    mockRegistry.addBook(book, location: nil, state: .unregistered, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+    
+    let viewModel = BookDetailViewModel(book: book, registry: mockRegistry)
+    
+    // Simulate that related books have already been fetched
+    let relatedBook1 = createTestBook()
+    let relatedBook2 = createTestBook()
+    let lane = BookLane(title: "By This Author", books: [relatedBook1, relatedBook2], subsectionURL: nil)
+    viewModel.relatedBooksByLane = ["By This Author": lane]
+    
+    // Verify pre-condition: related books exist
+    XCTAssertEqual(viewModel.relatedBooksByLane.count, 1, "Pre-condition: Related books should exist")
+    XCTAssertEqual(viewModel.relatedBooksByLane["By This Author"]?.books.count, 2)
+    
+    // Act - Simulate view reappearing (which happens when preview is closed)
+    // This is what triggers the bug - fetchRelatedBooks() is called in onAppear
+    // and it clears relatedBooksByLane immediately before the network request completes
+    viewModel.fetchRelatedBooks()
+    
+    // Assert - Related books should NOT be cleared immediately
+    // The bug is that they ARE cleared, causing the section to disappear
+    XCTAssertFalse(viewModel.relatedBooksByLane.isEmpty,
+                   "Related books should NOT be cleared when fetchRelatedBooks is called " +
+                   "and we already have data for the same book")
+  
+  }
+  
+  /// Tests that related books ARE cleared when navigating to a different book
+  func testRelatedBooks_ClearedWhenNavigatingToDifferentBook() {
+    // Arrange - Use books with relatedWorksURL so fetchRelatedBooks doesn't return early
+    let book1 = TPPBookMocker.mockBookWithRelatedWorksURL(identifier: "book-1", title: "Book 1")
+    let book2 = TPPBookMocker.mockBookWithRelatedWorksURL(identifier: "book-2", title: "Book 2")
+    let mockRegistry = TPPBookRegistryMock()
+    mockRegistry.addBook(book1, location: nil, state: .unregistered, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+    
+    let viewModel = BookDetailViewModel(book: book1, registry: mockRegistry)
+    
+    // Populate related books for book1
+    let relatedBook = createTestBook()
+    let lane = BookLane(title: "Similar Books", books: [relatedBook], subsectionURL: nil)
+    viewModel.relatedBooksByLane = ["Similar Books": lane]
+    
+    // Act - Navigate to a different book
+    viewModel.selectRelatedBook(book2)
+    
+    // Assert - Related books should be cleared since we're viewing a different book
+    // (The fetch will repopulate with book2's related books)
+    XCTAssertTrue(viewModel.relatedBooksByLane.isEmpty,
+                  "Related books SHOULD be cleared when navigating to a different book")
+  }
+  
+  /// Tests that related books are preserved during loading state
+  func testRelatedBooks_PreservedDuringRefetchForSameBook() {
+    // Arrange - Use a book with relatedWorksURL so fetchRelatedBooks doesn't return early
+    let book = TPPBookMocker.mockBookWithRelatedWorksURL(identifier: "test-book-2", title: "Test Book")
+    let mockRegistry = TPPBookRegistryMock()
+    mockRegistry.addBook(book, location: nil, state: .unregistered, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+    
+    let viewModel = BookDetailViewModel(book: book, registry: mockRegistry)
+    
+    // Populate existing related books
+    let relatedBook = createTestBook()
+    let lane = BookLane(title: "More Books", books: [relatedBook], subsectionURL: nil)
+    viewModel.relatedBooksByLane = ["More Books": lane]
+    
+    // Store the count before
+    let countBefore = viewModel.relatedBooksByLane.count
+    
+    // Act - Call fetchRelatedBooks (simulating onAppear after modal dismiss)
+    viewModel.fetchRelatedBooks()
+    
+    // Assert - Should maintain data during fetch
+    XCTAssertEqual(viewModel.relatedBooksByLane.count, countBefore,
+                   "Related books count should be preserved while fetching for the same book")
+  }
+  
   // MARK: - Helper Methods for Regression Tests
   
   private func createBookWithLoanExpiration(from book: TPPBook) -> TPPBook {

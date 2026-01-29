@@ -11,6 +11,11 @@ class CatalogSearchViewModel: ObservableObject {
   @Published var nextPageURL: URL?
   @Published var isLoadingMore: Bool = false
   
+  /// Unique identifier that changes only when a new search is performed.
+  /// Use this to trigger scroll-to-top behavior in the view.
+  /// Does NOT change during pagination or registry updates (PP-3605 fix).
+  @Published private(set) var searchId: UUID = UUID()
+  
   private var allBooks: [TPPBook] = []
   private let repository: CatalogRepositoryProtocol
   private let baseURL: () -> URL?
@@ -57,6 +62,8 @@ class CatalogSearchViewModel: ObservableObject {
     filteredBooks = allBooks
     nextPageURL = nil
     isLoadingMore = false
+    // Generate new searchId to scroll to top of restored books (PP-3605)
+    searchId = UUID()
   }
   
   private func performSearch() {
@@ -84,6 +91,9 @@ class CatalogSearchViewModel: ObservableObject {
     nextPageURL = nil
     isLoadingMore = false
     isLoading = true
+    
+    // Generate new searchId for new search - triggers scroll to top (PP-3605)
+    searchId = UUID()
     
     searchTask = Task { [weak self] in
       // Ensure isLoading is cleared on all exit paths

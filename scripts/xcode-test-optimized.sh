@@ -33,8 +33,9 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
     xcrun simctl list devices available | grep iPhone | head -5
     
     # Try multiple simulator options that are commonly available in CI
-    # Same list as main branch - these work on macos-14 runners
-    SIMULATORS=("iPhone SE (3rd generation)" "iPhone 14" "iPhone 13" "iPhone 12" "iPhone 11")
+    # Updated for macOS 26 / Xcode 26 runners (iOS 26 simulators)
+    # Fallback to older devices for macos-14 runners
+    SIMULATORS=("iPhone 16e" "iPhone 17" "iPhone 17 Pro" "iPhone Air" "iPhone SE (3rd generation)" "iPhone 15" "iPhone 14")
     
     TEST_RAN=false
     for SIM in "${SIMULATORS[@]}"; do
@@ -93,7 +94,8 @@ else
         xcodebuild clean -project Palace.xcodeproj -scheme Palace > /dev/null 2>&1
         
         # Fallback to name-based approach with common simulators
-        FALLBACK_SIMULATORS=("iPhone 16" "iPhone 15" "iPhone 15 Pro" "iPhone SE (3rd generation)")
+        # Updated for Xcode 26 / iOS 26 compatibility
+        FALLBACK_SIMULATORS=("iPhone 16e" "iPhone 17" "iPhone 17 Pro" "iPhone 16" "iPhone 15" "iPhone 15 Pro")
         
         for SIM in "${FALLBACK_SIMULATORS[@]}"; do
             echo "Trying fallback simulator: $SIM"

@@ -53,8 +53,8 @@ struct CatalogSearchView: View {
         .onTapGesture {
           isSearchFieldFocused = false
         }
-        .onChange(of: viewModel.filteredBooks) { _ in
-          // Scroll to top when results change (new search or results loaded)
+        .onChange(of: viewModel.searchId) { _ in
+          // Scroll to top only for new searches, not pagination (PP-3605)
           proxy.scrollTo("search-results-top", anchor: .top)
         }
       }

@@ -54,3 +54,10 @@ readium-sdk
 # AccessLint reports and cache
 accesslint-reports/
 .accesslint-cache/
+
+# Jira integration credentials (local only - never commit)
+.jira-config
+
+# Cursor IDE local rules
+.cursor/
+.claude/settings.local.json
