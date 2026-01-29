@@ -89,6 +89,25 @@ jobs:
           submodules: true
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
 
+      - name: Cache Swift Package Manager
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/org.swift.swiftpm
+            ~/Library/Developer/Xcode/DerivedData/**/SourcePackages
+            .build
+          key: spm-${{ runner.os }}-macos-26-${{ hashFiles('**/Package.resolved') }}
+          restore-keys: |
+            spm-${{ runner.os }}-macos-26-
+
+      - name: Cache DerivedData
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Developer/Xcode/DerivedData
+          key: deriveddata-upload-${{ runner.os }}-macos-26-${{ hashFiles('**/*.swift', '**/*.m', '**/*.h', '**/project.pbxproj') }}
+          restore-keys: |
+            deriveddata-upload-${{ runner.os }}-macos-26-
+
       - name: Checkout Binaries
         uses: actions/checkout@v3
         with:
