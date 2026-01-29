@@ -13,7 +13,10 @@ struct BookDetailView: View {
   @State private var selectedBook: TPPBook?
   @State private var descriptionText = ""
 
-  @ObservedObject var viewModel: BookDetailViewModel
+  /// Use @StateObject to ensure the ViewModel survives view recreation.
+  /// This prevents related books from disappearing after dismissing
+  /// the preview fullScreenCover (which can cause SwiftUI to recreate the view).
+  @StateObject var viewModel: BookDetailViewModel
   @State private var isExpanded: Bool = false
   @State private var headerHeight: CGFloat = UIDevice.current.isIpad ? 300 : 225
   @State private var showCompactHeader: Bool = false
@@ -38,7 +41,9 @@ struct BookDetailView: View {
   private let dampingFactor: CGFloat = 0.95
   
   init(book: TPPBook) {
-    self.viewModel = BookDetailViewModel(book: book)
+    // Use _viewModel to initialize @StateObject with a parameter
+    // This ensures SwiftUI only creates the ViewModel once per view identity
+    _viewModel = StateObject(wrappedValue: BookDetailViewModel(book: book))
   }
   
   var body: some View {

@@ -37,6 +37,10 @@ final class BookDetailViewModel: ObservableObject {
   
   @Published var relatedBooksByLane: [String: BookLane] = [:]
   @Published var isLoadingRelatedBooks = false
+  
+  /// Tracks the book identifier we last fetched related books for.
+  /// Used to preserve related books when view reappears after modal dismissal.
+  private var relatedBooksBookIdentifier: String?
   @Published var isLoadingDescription = false
   @Published var selectedBookURL: URL? = nil
   @Published var isManagingHold: Bool = false
@@ -256,11 +260,14 @@ final class BookDetailViewModel: ObservableObject {
   
   func selectRelatedBook(_ newBook: TPPBook) {
     guard newBook.identifier != book.identifier else { return }
-    Task { @MainActor in
-      self.book = newBook
-      self.bookState = registry.state(for: newBook.identifier)
-      self.fetchRelatedBooks()
-    }
+    
+    // Clear related books data since we're navigating to a different book
+    relatedBooksByLane = [:]
+    relatedBooksBookIdentifier = nil
+    
+    book = newBook
+    bookState = registry.state(for: newBook.identifier)
+    fetchRelatedBooks()
   }
   
   // MARK: - Notifications
@@ -285,13 +292,32 @@ final class BookDetailViewModel: ObservableObject {
   func fetchRelatedBooks() {
     guard let url = book.relatedWorksURL else { return }
     
+    let currentBookId = book.identifier
+    
+    // Only clear existing related books if we're fetching for a different book.
+    // This prevents the "Other Books By This Author" section from disappearing
+    // when the view reappears (e.g., after closing a sample preview).
+    // If relatedBooksBookIdentifier is nil but we have data, assume it belongs to the current book.
+    let isSameBook = relatedBooksBookIdentifier == currentBookId ||
+                     (relatedBooksBookIdentifier == nil && !relatedBooksByLane.isEmpty)
+    
+    if !isSameBook {
+      relatedBooksByLane = [:]
+    }
+    relatedBooksBookIdentifier = currentBookId
+    
     isLoadingRelatedBooks = true
-    relatedBooksByLane = [:]
     
     TPPOPDSFeed.withURL(url, shouldResetCache: false, useTokenIfAvailable: TPPUserAccount.sharedAccount().hasAdobeToken()) { [weak self] feed, _ in
       guard let self else { return }
       
       DispatchQueue.main.async {
+        // Verify we're still on the same book (user might have navigated away)
+        guard self.book.identifier == currentBookId else {
+          self.isLoadingRelatedBooks = false
+          return
+        }
+        
         if feed?.type == .acquisitionGrouped {
           var groupTitleToBooks: [String: [TPPBook]] = [:]
           var groupTitleToMoreURL: [String: URL?] = [:]
@@ -331,6 +357,12 @@ final class BookDetailViewModel: ObservableObject {
     }
     
     DispatchQueue.main.async {
+      // Don't replace existing related books with empty data.
+      // This can happen if the network request succeeds but parsing fails.
+      if lanesMap.isEmpty && !self.relatedBooksByLane.isEmpty {
+        self.isLoadingRelatedBooks = false
+        return
+      }
       self.relatedBooksByLane = lanesMap
       self.isLoadingRelatedBooks = false
     }
