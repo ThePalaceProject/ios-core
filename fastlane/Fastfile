@@ -35,9 +35,6 @@ platform :ios do
   lane :beta do |options|
     ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "300"
     ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"] = "4"
-    
-    # Best-effort DerivedData clean (ignore failures)
-    sh("rm -rf ~/Library/Developer/Xcode/DerivedData/* || true")
 
     build_app(
       project: "Palace.xcodeproj",
@@ -63,8 +60,8 @@ platform :ios do
     ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "300"
     ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"] = "4"
 
-    # Best-effort DerivedData clean (ignore failures)
-    sh("rm -rf ~/Library/Developer/Xcode/DerivedData/* || true")
+    # NOTE: Reusing DerivedData from beta build for faster compilation
+    # Only re-links with App Store provisioning profile
 
     build_app(
       project: "Palace.xcodeproj",
