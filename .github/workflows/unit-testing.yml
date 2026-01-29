@@ -149,7 +149,7 @@ jobs:
             
             const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
             body += `\n---\n📦 [Download full report](${runUrl}) (see **accessibility-report** artifact)\n`;
-            body += '\n*Powered by [AccessLint](https://github.com/mauricecarrier7/AccessLint) - iOS accessibility static analysis*';
+            body += '\n*Powered by [AccessLint](https://github.com/mauricecarrier7/AccessLint-Distribution) - iOS accessibility static analysis*';
             
             // Find/update existing comment
             const { data: comments } = await github.rest.issues.listComments({
