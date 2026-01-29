@@ -154,9 +154,11 @@ public final class PlaybackBootstrapper {
   public func ensureInitializedForCarPlay() {
     Log.info(#file, "🚀 PlaybackBootstrapper.ensureInitializedForCarPlay() - CarPlay scene connected")
     
-    // CRITICAL: Ensure book registry is loaded BEFORE CarPlay tries to show books
-    // On cold start, the registry loads asynchronously and may not be ready yet
-    _ = TPPBookRegistry.shared
+    // CRITICAL: Load book registry from disk for CarPlay cold starts
+    // Just accessing TPPBookRegistry.shared creates the singleton but doesn't load data
+    // We must explicitly call load() to read books from disk
+    Log.info(#file, "🚀 Loading book registry from disk...")
+    TPPBookRegistry.shared.load()
     
     // Full initialization if not done yet
     ensureInitialized()

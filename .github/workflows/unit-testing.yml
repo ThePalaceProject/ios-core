@@ -1,6 +1,183 @@
 name: Unit Tests
 on: [ pull_request, workflow_dispatch ]
 jobs:
+  # Accessibility linting runs in parallel with tests
+  accessibility-lint:
+    runs-on: macos-14
+    outputs:
+      findings-count: ${{ steps.analyze.outputs.findings-count }}
+      major-count: ${{ steps.analyze.outputs.major-count }}
+      minor-count: ${{ steps.analyze.outputs.minor-count }}
+      exit-code: ${{ steps.analyze.outputs.exit-code }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+          
+      - name: Cache AccessLint binary
+        id: cache-accesslint
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/bin/accesslint
+          key: accesslint-v1.1.0-${{ runner.os }}-v4
+          
+      - name: Download AccessLint
+        if: steps.cache-accesslint.outputs.cache-hit != 'true'
+        run: |
+          curl -L -o /usr/local/bin/accesslint \
+            https://github.com/mauricecarrier7/AccessLint-Distribution/releases/download/v1.1.0/accesslint
+          chmod +x /usr/local/bin/accesslint
+          # Remove macOS quarantine attribute
+          xattr -d com.apple.quarantine /usr/local/bin/accesslint 2>/dev/null || true
+          # Verify it's a valid binary
+          file /usr/local/bin/accesslint
+          /usr/local/bin/accesslint --version || echo "Version check skipped"
+          
+      - name: Run AccessLint analysis
+        id: analyze
+        run: |
+          ACCESSLINT="/usr/local/bin/accesslint"
+          
+          echo "🔍 Running AccessLint v1.1.0 with WCAG AA preset..."
+          
+          # Run analysis with comprehensive settings
+          set +e
+          OUTPUT=$($ACCESSLINT analyze \
+            --path ./Palace \
+            --config .accesslintrc.json \
+            --output ./accesslint-reports \
+            --format json \
+            --format md \
+            --preset wcag-aa \
+            --relative-paths \
+            --verbose \
+            --fail-on major 2>&1)
+          EXIT_CODE=$?
+          set -e
+          
+          echo "$OUTPUT"
+          
+          # Parse counts from JSON if available
+          if [ -f "./accesslint-reports/findings.json" ]; then
+            TOTAL=$(jq 'length' ./accesslint-reports/findings.json)
+            BLOCKER=$(jq '[.[] | select(.severity == "blocker")] | length' ./accesslint-reports/findings.json)
+            MAJOR=$(jq '[.[] | select(.severity == "major")] | length' ./accesslint-reports/findings.json)
+            MINOR=$(jq '[.[] | select(.severity == "minor")] | length' ./accesslint-reports/findings.json)
+            INFO=$(jq '[.[] | select(.severity == "info")] | length' ./accesslint-reports/findings.json)
+            
+            echo "📊 Results: $TOTAL total ($BLOCKER blocker, $MAJOR major, $MINOR minor, $INFO info)"
+          else
+            TOTAL=0; BLOCKER=0; MAJOR=0; MINOR=0; INFO=0
+            echo "⚠️ No findings.json generated"
+          fi
+          
+          echo "findings-count=$TOTAL" >> $GITHUB_OUTPUT
+          echo "blocker-count=$BLOCKER" >> $GITHUB_OUTPUT
+          echo "major-count=$MAJOR" >> $GITHUB_OUTPUT
+          echo "minor-count=$MINOR" >> $GITHUB_OUTPUT
+          echo "info-count=$INFO" >> $GITHUB_OUTPUT
+          echo "exit-code=$EXIT_CODE" >> $GITHUB_OUTPUT
+          
+          # Don't fail the step - we'll handle it in the report
+          exit 0
+          
+      - name: Upload accessibility report
+        uses: actions/upload-artifact@v4
+        with:
+          name: accessibility-report
+          path: accesslint-reports/
+          retention-days: 14
+          if-no-files-found: ignore
+          
+      - name: Post PR comment
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            
+            const total = '${{ steps.analyze.outputs.findings-count }}' || '0';
+            const blocker = '${{ steps.analyze.outputs.blocker-count }}' || '0';
+            const major = '${{ steps.analyze.outputs.major-count }}' || '0';
+            const minor = '${{ steps.analyze.outputs.minor-count }}' || '0';
+            const info = '${{ steps.analyze.outputs.info-count }}' || '0';
+            const exitCode = '${{ steps.analyze.outputs.exit-code }}';
+            
+            let body = '## 🔍 AccessLint Accessibility Report (WCAG AA)\n\n';
+            
+            const criticalCount = parseInt(blocker) + parseInt(major);
+            if (criticalCount === 0) {
+              body += '### ✅ No Critical Accessibility Issues\n\n';
+            } else if (parseInt(blocker) > 0) {
+              body += `### 🚨 ${blocker} Blocker Issue${blocker === '1' ? '' : 's'} Found\n\n`;
+            } else {
+              body += `### ⚠️ ${major} Major Issue${major === '1' ? '' : 's'} Found\n\n`;
+            }
+            
+            body += '| Severity | Count | WCAG Impact |\n';
+            body += '|----------|-------|-------------|\n';
+            if (parseInt(blocker) > 0) body += `| 🚨 Blocker | ${blocker} | Critical barrier |\n`;
+            body += `| 🔴 Major | ${major} | Significant barrier |\n`;
+            body += `| 🟡 Minor | ${minor} | Usability issue |\n`;
+            body += `| 🔵 Info | ${info} | Best practice |\n`;
+            body += `| **Total** | **${total}** | |\n\n`;
+            
+            // Read top issues from report (sorted by severity: blocker > major > minor > info)
+            try {
+              const findings = JSON.parse(fs.readFileSync('./accesslint-reports/findings.json', 'utf8'));
+              if (findings.length > 0) {
+                // Sort by severity priority
+                const severityOrder = { blocker: 0, major: 1, minor: 2, info: 3 };
+                const sorted = findings.sort((a, b) => 
+                  (severityOrder[a.severity] ?? 4) - (severityOrder[b.severity] ?? 4)
+                );
+                
+                body += '### Top Issues\n\n';
+                for (const f of sorted.slice(0, 5)) {
+                  const icon = {blocker: '🚨', major: '🔴', minor: '🟡', info: '🔵'}[f.severity] || '⚪';
+                  const file = f.location.file.split('/').pop();
+                  body += `- ${icon} **${f.title}** - \`${file}:${f.location.start_line}\`\n`;
+                }
+                if (findings.length > 5) {
+                  body += `\n*...and ${findings.length - 5} more issues*\n`;
+                }
+              }
+            } catch (e) {
+              console.log('Could not read findings:', e.message);
+            }
+            
+            const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
+            body += `\n---\n📦 [Download full report](${runUrl}) (see **accessibility-report** artifact)\n`;
+            body += '\n*Powered by [AccessLint](https://github.com/mauricecarrier7/AccessLint-Distribution) - iOS accessibility static analysis*';
+            
+            // Find/update existing comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            });
+            
+            const existing = comments.find(c => 
+              c.user.type === 'Bot' && c.body.includes('AccessLint Accessibility Report')
+            );
+            
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body
+              });
+            }
+
   build-and-test:
     runs-on: macos-14
     permissions:
@@ -774,3 +951,6 @@ jobs:
       - name: Fail if tests failed
         if: steps.tests.outcome == 'failure'
         run: exit 1
+
+  # Note: The AccessLint GitHub Action handles PR comments and artifact upload automatically
+  # This combined-report job is no longer needed since AccessLint posts its own comment
