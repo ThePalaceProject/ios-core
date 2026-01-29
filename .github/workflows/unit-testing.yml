@@ -123,13 +123,19 @@ jobs:
             body += `| 🔵 Info | ${info} | Best practice |\n`;
             body += `| **Total** | **${total}** | |\n\n`;
             
-            // Read top issues from report
+            // Read top issues from report (sorted by severity: blocker > major > minor > info)
             try {
               const findings = JSON.parse(fs.readFileSync('./accesslint-reports/findings.json', 'utf8'));
               if (findings.length > 0) {
+                // Sort by severity priority
+                const severityOrder = { blocker: 0, major: 1, minor: 2, info: 3 };
+                const sorted = findings.sort((a, b) => 
+                  (severityOrder[a.severity] ?? 4) - (severityOrder[b.severity] ?? 4)
+                );
+                
                 body += '### Top Issues\n\n';
-                for (const f of findings.slice(0, 5)) {
-                  const icon = {major: '🔴', minor: '🟡', info: '🔵'}[f.severity] || '⚪';
+                for (const f of sorted.slice(0, 5)) {
+                  const icon = {blocker: '🚨', major: '🔴', minor: '🟡', info: '🔵'}[f.severity] || '⚪';
                   const file = f.location.file.split('/').pop();
                   body += `- ${icon} **${f.title}** - \`${file}:${f.location.start_line}\`\n`;
                 }
