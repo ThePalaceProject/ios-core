@@ -20,7 +20,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /usr/local/bin/accesslint
-          key: accesslint-v1.1.0-${{ runner.os }}-v4
+          # Include macos-26 in key to ensure binary is rebuilt for new OS version
+          key: accesslint-v1.1.0-macos-26-v5
           
       - name: Download AccessLint
         if: steps.cache-accesslint.outputs.cache-hit != 'true'
