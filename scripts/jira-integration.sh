@@ -78,28 +78,25 @@ add_comment() {
   
   echo -e "${BLUE}📝 Adding comment to $ticket...${NC}"
   
-  # Jira API v3 uses Atlassian Document Format (ADF)
+  # Use jq for proper JSON escaping
   local json_payload
-  json_payload=$(cat <<EOF
-{
-  "body": {
-    "type": "doc",
-    "version": 1,
-    "content": [
-      {
-        "type": "paragraph",
-        "content": [
-          {
-            "type": "text",
-            "text": "$comment"
-          }
-        ]
-      }
-    ]
-  }
-}
-EOF
-)
+  json_payload=$(jq -n --arg text "$comment" '{
+    body: {
+      type: "doc",
+      version: 1,
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "text",
+              text: $text
+            }
+          ]
+        }
+      ]
+    }
+  }')
   
   local response
   response=$(curl -s -w "\n%{http_code}" \
@@ -153,48 +150,60 @@ add_fix_comment() {
     commit_date=$(git log -1 --format="%ai" "$commit_sha" 2>/dev/null || echo "")
     
     if [[ -n "$commit_msg" ]]; then
-      commit_info="Commit: $commit_sha\nAuthor: $commit_author\nDate: $commit_date\nMessage: $commit_msg"
+      commit_info="Commit: ${commit_sha:0:12}
+Author: $commit_author
+Date: $commit_date
+Message: $commit_msg"
     fi
   fi
   
-  # Build the comment content
-  local content_blocks='['
-  
-  # Header
-  content_blocks+='{"type":"heading","attrs":{"level":3},"content":[{"type":"text","text":"🔧 Fix Details"}]},'
-  
-  # Root Cause section
-  if [[ -n "$root_cause" ]]; then
-    content_blocks+='{"type":"heading","attrs":{"level":4},"content":[{"type":"text","text":"Root Cause"}]},'
-    content_blocks+='{"type":"paragraph","content":[{"type":"text","text":"'"$(echo "$root_cause" | sed 's/"/\\"/g' | sed 's/\n/\\n/g')"'"}]},'
-  fi
-  
-  # Testing Steps section
-  if [[ -n "$testing_steps" ]]; then
-    content_blocks+='{"type":"heading","attrs":{"level":4},"content":[{"type":"text","text":"Testing Steps"}]},'
-    content_blocks+='{"type":"paragraph","content":[{"type":"text","text":"'"$(echo "$testing_steps" | sed 's/"/\\"/g' | sed 's/\n/\\n/g')"'"}]},'
-  fi
-  
-  # Commit info section
-  if [[ -n "$commit_info" ]]; then
-    content_blocks+='{"type":"heading","attrs":{"level":4},"content":[{"type":"text","text":"Commit Information"}]},'
-    content_blocks+='{"type":"codeBlock","attrs":{"language":"text"},"content":[{"type":"text","text":"'"$(echo -e "$commit_info" | sed 's/"/\\"/g')"'"}]},'
-  fi
-  
-  # Remove trailing comma and close array
-  content_blocks="${content_blocks%,}]"
-  
+  # Use jq for proper JSON construction with escaping
   local json_payload
-  json_payload=$(cat <<EOF
-{
-  "body": {
-    "type": "doc",
-    "version": 1,
-    "content": $content_blocks
-  }
-}
-EOF
-)
+  json_payload=$(jq -n \
+    --arg root_cause "$root_cause" \
+    --arg testing_steps "$testing_steps" \
+    --arg commit_info "$commit_info" \
+    '{
+      body: {
+        type: "doc",
+        version: 1,
+        content: [
+          {
+            type: "heading",
+            attrs: { level: 3 },
+            content: [{ type: "text", text: "🔧 Fix Details" }]
+          },
+          {
+            type: "heading", 
+            attrs: { level: 4 },
+            content: [{ type: "text", text: "Root Cause" }]
+          },
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: $root_cause }]
+          },
+          {
+            type: "heading",
+            attrs: { level: 4 },
+            content: [{ type: "text", text: "Testing Steps" }]
+          },
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: $testing_steps }]
+          },
+          {
+            type: "heading",
+            attrs: { level: 4 },
+            content: [{ type: "text", text: "Commit Information" }]
+          },
+          {
+            type: "codeBlock",
+            attrs: { language: "text" },
+            content: [{ type: "text", text: $commit_info }]
+          }
+        ]
+      }
+    }')
   
   local response
   response=$(curl -s -w "\n%{http_code}" \
