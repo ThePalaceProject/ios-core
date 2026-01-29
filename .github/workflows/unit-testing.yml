@@ -20,7 +20,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /usr/local/bin/accesslint
-          key: accesslint-v1.1.0-${{ runner.os }}
+          key: accesslint-v1.1.0-${{ runner.os }}-v2
           
       - name: Download AccessLint
         if: steps.cache-accesslint.outputs.cache-hit != 'true'
