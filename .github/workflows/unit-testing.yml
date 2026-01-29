@@ -20,7 +20,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /usr/local/bin/accesslint
-          key: accesslint-v1.1.0-${{ runner.os }}-v3
+          key: accesslint-v1.1.0-${{ runner.os }}-v4
           
       - name: Download AccessLint
         if: steps.cache-accesslint.outputs.cache-hit != 'true'
@@ -45,18 +45,13 @@ jobs:
           set +e
           OUTPUT=$($ACCESSLINT analyze \
             --path ./Palace \
+            --config .accesslintrc.json \
             --output ./accesslint-reports \
             --format json \
             --format md \
             --preset wcag-aa \
             --relative-paths \
             --verbose \
-            --exclude '**/Tests/**' \
-            --exclude '**/*Tests.swift' \
-            --exclude '**/Mocks/**' \
-            --exclude '**/Generated/**' \
-            --exclude '**/Pods/**' \
-            --exclude '**/*.generated.swift' \
             --fail-on major 2>&1)
           EXIT_CODE=$?
           set -e

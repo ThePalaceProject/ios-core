@@ -98,7 +98,5 @@
     "**/Fixtures/**",
     "**/Preview Content/**"
   ],
-  "include": [
-    "Palace/**/*.swift"
-  ]
+  "include": []
 }

@@ -12,7 +12,7 @@ ACCESSLINT_PATH="${ACCESSLINT_PATH:-accesslint}"
 if ! command -v "$ACCESSLINT_PATH" &> /dev/null; then
     echo "❌ AccessLint not found. Install it with:"
     echo ""
-    echo "  curl -L https://github.com/mauricecarrier7/AccessLint-Distribution/releases/download/1.1.0/accesslint -o /usr/local/bin/accesslint"
+    echo "  curl -L https://github.com/mauricecarrier7/AccessLint-Distribution/releases/download/v1.1.0/accesslint -o /usr/local/bin/accesslint"
     echo "  chmod +x /usr/local/bin/accesslint"
     echo ""
     echo "Or set ACCESSLINT_PATH environment variable"
