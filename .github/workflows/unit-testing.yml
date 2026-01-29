@@ -1,6 +1,153 @@
 name: Unit Tests
 on: [ pull_request, workflow_dispatch ]
 jobs:
+  # QAAtlas AI test coverage analysis - runs in parallel with other jobs
+  # Limited to PRs only and capped at 20 files to control AI costs
+  qaatlas-analysis:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    continue-on-error: true  # Non-blocking - don't fail PR on QAAtlas issues
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Need full history for diff analysis
+          
+      - name: Check for Swift changes
+        id: changes
+        run: |
+          # Only run if Swift files changed
+          SWIFT_CHANGES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -c '\.swift$' || echo "0")
+          echo "swift_files_changed=$SWIFT_CHANGES" >> $GITHUB_OUTPUT
+          if [ "$SWIFT_CHANGES" -eq "0" ]; then
+            echo "No Swift files changed, skipping QAAtlas analysis"
+          else
+            echo "Found $SWIFT_CHANGES Swift files changed"
+          fi
+          
+      - name: Setup Node.js
+        if: steps.changes.outputs.swift_files_changed != '0'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          
+      - name: Cache QAAtlas binary
+        if: steps.changes.outputs.swift_files_changed != '0'
+        id: cache-qaatlas
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/bin/qaatlas
+          key: qaatlas-v1.1.1-linux-x64
+          
+      - name: Download QAAtlas
+        if: steps.changes.outputs.swift_files_changed != '0' && steps.cache-qaatlas.outputs.cache-hit != 'true'
+        run: |
+          curl -L -o /usr/local/bin/qaatlas \
+            https://github.com/mauricecarrier7/qaatlas-dist/releases/download/v1.1.1/qaatlas-linux-x64
+          chmod +x /usr/local/bin/qaatlas
+          # Verify download
+          file /usr/local/bin/qaatlas
+          /usr/local/bin/qaatlas --version || echo "Version check completed"
+          
+      - name: Generate PR diff
+        if: steps.changes.outputs.swift_files_changed != '0'
+        run: |
+          git diff origin/${{ github.base_ref }}...HEAD > /tmp/pr-changes.patch
+          echo "Generated diff with $(wc -l < /tmp/pr-changes.patch) lines"
+          
+      - name: Run QAAtlas analysis
+        if: steps.changes.outputs.swift_files_changed != '0'
+        id: qaatlas
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          NODE_ENV: production
+        run: |
+          echo "🔍 Running QAAtlas test coverage analysis..."
+          
+          # Run with limited scope to control costs
+          set +e
+          /usr/local/bin/qaatlas analyze \
+            --diff /tmp/pr-changes.patch \
+            --config qaatlas.yml \
+            --output-dir ./qaatlas-output \
+            --preset ios 2>&1 | tee qaatlas-log.txt
+          EXIT_CODE=$?
+          set -e
+          
+          echo "QAAtlas exit code: $EXIT_CODE"
+          echo "Output directory contents:"
+          ls -la ./qaatlas-output/ 2>/dev/null || echo "No output directory"
+          
+          # Check if analysis produced output
+          if [ -f "./qaatlas-output/pr-comment.md" ]; then
+            echo "analysis_complete=true" >> $GITHUB_OUTPUT
+            echo "✅ Analysis complete - pr-comment.md generated"
+          else
+            echo "analysis_complete=false" >> $GITHUB_OUTPUT
+            echo "❌ No pr-comment.md generated"
+          fi
+          
+          exit 0  # Always succeed - this is advisory only
+          
+      - name: Upload QAAtlas report
+        if: steps.changes.outputs.swift_files_changed != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: qaatlas-report
+          path: |
+            qaatlas-output/
+            qaatlas-log.txt
+          retention-days: 7
+          if-no-files-found: ignore
+          
+      - name: Post PR comment
+        if: steps.changes.outputs.swift_files_changed != '0' && steps.qaatlas.outputs.analysis_complete == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            
+            let body = '## 🧪 QAAtlas Test Coverage Analysis\n\n';
+            
+            // Read PR comment if available
+            try {
+              const prComment = fs.readFileSync('./qaatlas-output/pr-comment.md', 'utf8');
+              body += prComment;
+            } catch (e) {
+              body += '✅ Analysis complete. See **qaatlas-report** artifact for details.\n';
+            }
+            
+            body += '\n---\n';
+            body += '*Powered by [QAAtlas](https://github.com/mauricecarrier7/qaatlas-dist) - AI-powered test coverage analysis*\n';
+            body += '*⚠️ AI recommendations are advisory only - review before implementing*';
+            
+            // Find/update existing comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            });
+            
+            const existing = comments.find(c => 
+              c.user.type === 'Bot' && c.body.includes('QAAtlas Test Coverage Analysis')
+            );
+            
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body
+              });
+            }
+
   # Accessibility linting runs in parallel with tests
   accessibility-lint:
     runs-on: macos-26

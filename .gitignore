@@ -61,3 +61,11 @@ accesslint-reports/
 # Cursor IDE local rules
 .cursor/
 .claude/settings.local.json
+
+# Environment files (local secrets - never commit)
+.env
+.env.local
+.env*.local
+
+# QAAtlas output (generated files)
+qaatlas-output/
