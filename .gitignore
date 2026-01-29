@@ -60,3 +60,4 @@ accesslint-reports/
 
 # Cursor IDE local rules
 .cursor/
+.claude/settings.local.json
