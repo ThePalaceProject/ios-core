@@ -121,6 +121,37 @@ add_comment() {
   fi
 }
 
+# Convert text with numbered items to Jira ADF list format
+# Input: "1. First item 2. Second item" or "1. First\n2. Second"
+# Output: JSON array of list items for Jira ADF
+build_list_items() {
+  local text="$1"
+  
+  # Split by numbered pattern (1. 2. 3. etc) and filter empty
+  echo "$text" | sed 's/[0-9]\+\./\n&/g' | grep -E '^[0-9]+\.' | while read -r item; do
+    # Remove the number prefix and trim
+    local content
+    content=$(echo "$item" | sed 's/^[0-9]\+\.\s*//' | xargs)
+    if [[ -n "$content" ]]; then
+      echo "$content"
+    fi
+  done
+}
+
+# Find existing "Fix Details" comment ID for a ticket
+find_fix_comment_id() {
+  local ticket="$1"
+  
+  local response
+  response=$(curl -s \
+    -u "$JIRA_EMAIL:$JIRA_API_TOKEN" \
+    -H "Content-Type: application/json" \
+    "$JIRA_URL/rest/api/3/issue/$ticket/comment")
+  
+  # Find comment containing "Fix Details" and return its ID
+  echo "$response" | jq -r '.comments[]? | select(.body.content[]?.content[]?.text? | contains("Fix Details")) | .id' | head -1
+}
+
 # Add a structured fix comment with root cause and testing steps
 add_fix_comment() {
   local ticket="$1"
@@ -138,6 +169,14 @@ add_fix_comment() {
   fi
   
   echo -e "${BLUE}📝 Adding fix details to $ticket...${NC}"
+  
+  # Check for existing fix comment to update
+  local existing_comment_id
+  existing_comment_id=$(find_fix_comment_id "$ticket")
+  
+  if [[ -n "$existing_comment_id" ]]; then
+    echo -e "${YELLOW}   Found existing fix comment, updating...${NC}"
+  fi
   
   # Get commit info if available
   local commit_info=""
@@ -157,73 +196,157 @@ Message: $commit_msg"
     fi
   fi
   
+  # Build list items from testing steps
+  local list_items_json="[]"
+  if [[ "$testing_steps" =~ [0-9]+\. ]]; then
+    # Has numbered items - build as ordered list
+    list_items_json=$(build_list_items "$testing_steps" | jq -R -s 'split("\n") | map(select(length > 0)) | map({
+      type: "listItem",
+      content: [{
+        type: "paragraph",
+        content: [{ type: "text", text: . }]
+      }]
+    })')
+  fi
+  
   # Use jq for proper JSON construction with escaping
   local json_payload
-  json_payload=$(jq -n \
-    --arg root_cause "$root_cause" \
-    --arg testing_steps "$testing_steps" \
-    --arg commit_info "$commit_info" \
-    '{
-      body: {
-        type: "doc",
-        version: 1,
-        content: [
-          {
-            type: "heading",
-            attrs: { level: 3 },
-            content: [{ type: "text", text: "🔧 Fix Details" }]
-          },
-          {
-            type: "heading", 
-            attrs: { level: 4 },
-            content: [{ type: "text", text: "Root Cause" }]
-          },
-          {
-            type: "paragraph",
-            content: [{ type: "text", text: $root_cause }]
-          },
-          {
-            type: "heading",
-            attrs: { level: 4 },
-            content: [{ type: "text", text: "Testing Steps" }]
-          },
-          {
-            type: "paragraph",
-            content: [{ type: "text", text: $testing_steps }]
-          },
-          {
-            type: "heading",
-            attrs: { level: 4 },
-            content: [{ type: "text", text: "Commit Information" }]
-          },
-          {
-            type: "codeBlock",
-            attrs: { language: "text" },
-            content: [{ type: "text", text: $commit_info }]
-          }
-        ]
-      }
-    }')
+  if [[ "$list_items_json" != "[]" ]]; then
+    # Use ordered list for testing steps
+    json_payload=$(jq -n \
+      --arg root_cause "$root_cause" \
+      --argjson list_items "$list_items_json" \
+      --arg commit_info "$commit_info" \
+      '{
+        body: {
+          type: "doc",
+          version: 1,
+          content: [
+            {
+              type: "heading",
+              attrs: { level: 3 },
+              content: [{ type: "text", text: "🔧 Fix Details" }]
+            },
+            {
+              type: "heading", 
+              attrs: { level: 4 },
+              content: [{ type: "text", text: "Root Cause" }]
+            },
+            {
+              type: "paragraph",
+              content: [{ type: "text", text: $root_cause }]
+            },
+            {
+              type: "heading",
+              attrs: { level: 4 },
+              content: [{ type: "text", text: "Testing Steps" }]
+            },
+            {
+              type: "orderedList",
+              attrs: { order: 1 },
+              content: $list_items
+            },
+            {
+              type: "heading",
+              attrs: { level: 4 },
+              content: [{ type: "text", text: "Commit Information" }]
+            },
+            {
+              type: "codeBlock",
+              attrs: { language: "text" },
+              content: [{ type: "text", text: $commit_info }]
+            }
+          ]
+        }
+      }')
+  else
+    # Plain text for testing steps
+    json_payload=$(jq -n \
+      --arg root_cause "$root_cause" \
+      --arg testing_steps "$testing_steps" \
+      --arg commit_info "$commit_info" \
+      '{
+        body: {
+          type: "doc",
+          version: 1,
+          content: [
+            {
+              type: "heading",
+              attrs: { level: 3 },
+              content: [{ type: "text", text: "🔧 Fix Details" }]
+            },
+            {
+              type: "heading", 
+              attrs: { level: 4 },
+              content: [{ type: "text", text: "Root Cause" }]
+            },
+            {
+              type: "paragraph",
+              content: [{ type: "text", text: $root_cause }]
+            },
+            {
+              type: "heading",
+              attrs: { level: 4 },
+              content: [{ type: "text", text: "Testing Steps" }]
+            },
+            {
+              type: "paragraph",
+              content: [{ type: "text", text: $testing_steps }]
+            },
+            {
+              type: "heading",
+              attrs: { level: 4 },
+              content: [{ type: "text", text: "Commit Information" }]
+            },
+            {
+              type: "codeBlock",
+              attrs: { language: "text" },
+              content: [{ type: "text", text: $commit_info }]
+            }
+          ]
+        }
+      }')
+  fi
   
   local response
+  local api_url
+  local http_method
+  local expected_code
+  
+  if [[ -n "$existing_comment_id" ]]; then
+    # Update existing comment
+    api_url="$JIRA_URL/rest/api/3/issue/$ticket/comment/$existing_comment_id"
+    http_method="PUT"
+    expected_code="200"
+  else
+    # Create new comment
+    api_url="$JIRA_URL/rest/api/3/issue/$ticket/comment"
+    http_method="POST"
+    expected_code="201"
+  fi
+  
   response=$(curl -s -w "\n%{http_code}" \
-    -X POST \
+    -X "$http_method" \
     -u "$JIRA_EMAIL:$JIRA_API_TOKEN" \
     -H "Content-Type: application/json" \
     -d "$json_payload" \
-    "$JIRA_URL/rest/api/3/issue/$ticket/comment")
+    "$api_url")
   
   local http_code
   http_code=$(echo "$response" | tail -1)
   local body
   body=$(echo "$response" | sed '$d')
   
-  if [[ "$http_code" == "201" ]]; then
-    echo -e "${GREEN}✅ Fix details added to $ticket${NC}"
+  if [[ "$http_code" == "$expected_code" ]]; then
+    if [[ -n "$existing_comment_id" ]]; then
+      echo -e "${GREEN}✅ Fix details updated on $ticket${NC}"
+    else
+      echo -e "${GREEN}✅ Fix details added to $ticket${NC}"
+    fi
     echo -e "${GREEN}   View at: $JIRA_URL/browse/$ticket${NC}"
     return 0
   else
-    echo -e "${RED}❌ Failed to add fix details (HTTP $http_code)${NC}"
+    echo -e "${RED}❌ Failed to add/update fix details (HTTP $http_code)${NC}"
     echo "$body"
     return 1
   fi
