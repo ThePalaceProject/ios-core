@@ -20,13 +20,13 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /usr/local/bin/accesslint
-          key: accesslint-v1.1.0-${{ runner.os }}-v2
+          key: accesslint-v1.1.0-${{ runner.os }}-v3
           
       - name: Download AccessLint
         if: steps.cache-accesslint.outputs.cache-hit != 'true'
         run: |
           curl -L -o /usr/local/bin/accesslint \
-            https://github.com/mauricecarrier7/AccessLint-Distribution/releases/download/1.1.0/accesslint
+            https://github.com/mauricecarrier7/AccessLint-Distribution/releases/download/v1.1.0/accesslint
           chmod +x /usr/local/bin/accesslint
           # Remove macOS quarantine attribute
           xattr -d com.apple.quarantine /usr/local/bin/accesslint 2>/dev/null || true
