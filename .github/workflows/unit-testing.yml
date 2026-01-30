@@ -31,13 +31,13 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /usr/local/bin/qaatlas
-          key: qaatlas-v1.2.7-macos
+          key: qaatlas-v1.2.10-macos
           
       - name: Download QAAtlas
         if: steps.changes.outputs.swift_files_changed != '0' && steps.cache-qaatlas.outputs.cache-hit != 'true'
         run: |
           curl -L -o /usr/local/bin/qaatlas \
-            https://github.com/mauricecarrier7/qaatlas-dist/releases/download/v1.2.7/qaatlas-macos
+            https://github.com/mauricecarrier7/qaatlas-dist/releases/download/v1.2.10/qaatlas-macos
           chmod +x /usr/local/bin/qaatlas
           xattr -d com.apple.quarantine /usr/local/bin/qaatlas 2>/dev/null || true
           /usr/local/bin/qaatlas --version 2>&1 | tail -1
@@ -168,7 +168,7 @@ jobs:
             }
             
             body += '\n---\n';
-            body += '*Powered by [QAAtlas v1.2.7](https://github.com/mauricecarrier7/qaatlas-dist) - AI-powered test coverage analysis*\n';
+            body += '*Powered by [QAAtlas v1.2.10](https://github.com/mauricecarrier7/qaatlas-dist) - AI-powered test coverage analysis*\n';
             body += '*⚠️ AI recommendations are advisory only - review before implementing*';
             
             // Find/update existing comment
