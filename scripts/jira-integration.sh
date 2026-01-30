@@ -406,6 +406,47 @@ $files_changed"
   add_comment "$ticket" "$comment"
 }
 
+# Add build/merge info to a Jira ticket
+add_build_info() {
+  local ticket="$1"
+  local build_number="$2"
+  local pr_number="$3"
+  local pr_title="$4"
+  local branch="$5"
+  local repo_url="${6:-https://github.com/ThePalaceProject/ios-core}"
+  
+  if ! load_config; then
+    return 1
+  fi
+  
+  if [[ -z "$ticket" || -z "$build_number" ]]; then
+    echo -e "${RED}❌ Usage: jira-integration.sh add-build-info <ticket> <build_number> [pr_number] [pr_title] [branch]${NC}"
+    return 1
+  fi
+  
+  echo -e "${BLUE}📦 Adding build info to $ticket...${NC}"
+  
+  local comment="✅ *Merged to ${branch:-main}*
+
+*Build:* ${build_number}"
+
+  if [[ -n "$pr_number" ]]; then
+    comment+="
+*PR:* [#${pr_number}|${repo_url}/pull/${pr_number}]"
+  fi
+  
+  if [[ -n "$pr_title" ]]; then
+    comment+="
+*Title:* ${pr_title}"
+  fi
+  
+  comment+="
+
+This fix will be available in the next release build."
+  
+  add_comment "$ticket" "$comment"
+}
+
 # Get Jira link URL for a ticket
 get_jira_link() {
   local ticket="$1"
@@ -462,6 +503,9 @@ main() {
     add-fix-comment)
       add_fix_comment "$@"
       ;;
+    add-build-info)
+      add_build_info "$@"
+      ;;
     interactive)
       interactive_fix_comment "$@"
       ;;
@@ -484,6 +528,8 @@ main() {
       echo "  link-commit <ticket> [sha]        Link a commit to a ticket"
       echo "  add-fix-comment <ticket> <root_cause> <testing_steps> [sha]"
       echo "                                    Add structured fix details"
+      echo "  add-build-info <ticket> <build> [pr_num] [pr_title] [branch]"
+      echo "                                    Add merge/build info to ticket"
       echo "  interactive <ticket>              Interactive fix comment entry"
       echo "  extract-ticket <text>             Extract ticket number from text"
       echo "  get-link <ticket>                 Get Jira URL for ticket"

@@ -1,0 +1,94 @@
+name: Update Jira on PR Merge
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main, develop]
+
+jobs:
+  update-jira:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - name: Get build number
+        id: build
+        run: |
+          # Extract build number from project.pbxproj
+          BUILD_NUM=$(grep -m1 'CURRENT_PROJECT_VERSION' Palace.xcodeproj/project.pbxproj | grep -oE '[0-9]+' | head -1)
+          echo "number=$BUILD_NUM" >> $GITHUB_OUTPUT
+          echo "📦 Build number: $BUILD_NUM"
+          
+      - name: Extract Jira tickets
+        id: tickets
+        run: |
+          # Extract ticket numbers from PR title, body, and branch name
+          PR_TITLE="${{ github.event.pull_request.title }}"
+          PR_BODY="${{ github.event.pull_request.body }}"
+          PR_BRANCH="${{ github.event.pull_request.head.ref }}"
+          
+          # Combine all sources
+          ALL_TEXT="$PR_TITLE $PR_BODY $PR_BRANCH"
+          
+          # Extract unique PP-XXXX tickets
+          TICKETS=$(echo "$ALL_TEXT" | grep -oE 'PP-[0-9]+' | sort -u | tr '\n' ' ')
+          
+          if [ -z "$TICKETS" ]; then
+            echo "No Jira tickets found in PR"
+            echo "found=false" >> $GITHUB_OUTPUT
+          else
+            echo "Found tickets: $TICKETS"
+            echo "found=true" >> $GITHUB_OUTPUT
+            echo "list=$TICKETS" >> $GITHUB_OUTPUT
+          fi
+          
+      - name: Update Jira tickets
+        if: steps.tickets.outputs.found == 'true'
+        env:
+          JIRA_URL: ${{ secrets.JIRA_URL }}
+          JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+        run: |
+          # Create temp config for script
+          cat > .jira-config << EOF
+          JIRA_URL="$JIRA_URL"
+          JIRA_EMAIL="$JIRA_EMAIL"
+          JIRA_API_TOKEN="$JIRA_API_TOKEN"
+          JIRA_PROJECT_KEY="PP"
+          EOF
+          
+          BUILD_NUM="${{ steps.build.outputs.number }}"
+          PR_NUM="${{ github.event.pull_request.number }}"
+          PR_TITLE="${{ github.event.pull_request.title }}"
+          BRANCH="${{ github.event.pull_request.base.ref }}"
+          TICKETS="${{ steps.tickets.outputs.list }}"
+          
+          # Update each ticket
+          for TICKET in $TICKETS; do
+            echo "📝 Updating $TICKET..."
+            ./scripts/jira-integration.sh add-build-info "$TICKET" "$BUILD_NUM" "$PR_NUM" "$PR_TITLE" "$BRANCH" || {
+              echo "⚠️ Failed to update $TICKET (may not exist or no permission)"
+            }
+          done
+          
+          # Cleanup
+          rm -f .jira-config
+          
+      - name: Summary
+        run: |
+          echo "## 🎫 Jira Update Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.tickets.outputs.found }}" == "true" ]; then
+            echo "**Tickets Updated:** ${{ steps.tickets.outputs.list }}" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Build:** ${{ steps.build.outputs.number }}" >> $GITHUB_STEP_SUMMARY
+            echo "**PR:** #${{ github.event.pull_request.number }}" >> $GITHUB_STEP_SUMMARY
+            echo "**Branch:** ${{ github.event.pull_request.base.ref }}" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "No Jira tickets found in this PR." >> $GITHUB_STEP_SUMMARY
+          fi
