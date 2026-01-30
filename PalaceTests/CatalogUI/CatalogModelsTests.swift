@@ -408,9 +408,9 @@ final class CatalogFilterGroupModelTests: XCTestCase {
   }
 }
 
-// MARK: - CatalogLaneModel Tests
+// MARK: - CatalogLaneModel Struct Tests
 
-final class CatalogLaneModelTests: XCTestCase {
+final class CatalogLaneModelStructTests: XCTestCase {
 
   // MARK: - Initialization Tests
 
