@@ -100,6 +100,45 @@ jobs:
             RISK_LEVEL=$(python3 -c "import json; d=json.load(open('./qaatlas-output/report.json')); print(d.get('riskAssessment', {}).get('level', 'unknown'))" 2>/dev/null || echo "unknown")
             echo "tests_recommended=$TESTS_RECOMMENDED" >> $GITHUB_OUTPUT
             echo "risk_level=$RISK_LEVEL" >> $GITHUB_OUTPUT
+            
+            # Extract test matching info from analyze log
+            if [ -f "qaatlas-analyze.log" ]; then
+              # Parse matching info and save to JSON for PR comment
+              python3 -c "
+          import re
+          import json
+          
+          with open('qaatlas-analyze.log', 'r') as f:
+              content = f.read()
+          
+          # Extract matches section
+          matches = []
+          in_matches = False
+          for line in content.split('\n'):
+              if 'Matches Found:' in line:
+                  in_matches = True
+                  continue
+              if in_matches:
+                  if line.strip().startswith('✓'):
+                      # Extract test title
+                      title_match = re.search(r'\"([^\"]+)\"', line)
+                      if title_match:
+                          matches.append({'title': title_match.group(1), 'test_file': '', 'match_type': ''})
+                  elif line.strip().startswith('→') and matches:
+                      # Extract test file
+                      matches[-1]['test_file'] = line.strip().replace('→ ', '')
+                  elif '(' in line and matches and not matches[-1]['match_type']:
+                      # Extract match type (e.g., 'contains keywords: carplay, library')
+                      match_info = re.search(r'\(([^)]+)\)', line)
+                      if match_info:
+                          matches[-1]['match_type'] = match_info.group(1)
+                  elif line.strip().startswith('Coverage Verdict'):
+                      break
+          
+          with open('test-matches.json', 'w') as f:
+              json.dump(matches, f)
+          " 2>/dev/null || echo "[]" > test-matches.json
+            fi
           else
             echo "analysis_complete=false" >> $GITHUB_OUTPUT
           fi
@@ -115,6 +154,7 @@ jobs:
             qaatlas-output/
             qaatlas-gap.log
             qaatlas-analyze.log
+            test-matches.json
           retention-days: 14
           if-no-files-found: ignore
       
@@ -249,6 +289,26 @@ jobs:
                 const prComment = fs.readFileSync('./qaatlas-output/pr-comment.md', 'utf8');
                 body += '### 🔍 What Changed in This PR\n\n';
                 body += prComment;
+                
+                // Add test matching details
+                try {
+                  const matchesJson = fs.readFileSync('./test-matches.json', 'utf8');
+                  const matches = JSON.parse(matchesJson);
+                  if (matches.length > 0) {
+                    body += '\n### ✅ Existing Test Coverage\n\n';
+                    body += '| Recommendation | Covered By | Match Type |\n';
+                    body += '|----------------|------------|------------|\n';
+                    for (const m of matches) {
+                      const title = m.title.substring(0, 40) + (m.title.length > 40 ? '...' : '');
+                      const testFile = m.test_file.split('/').pop() || m.test_file;
+                      const matchType = m.match_type.includes('mapped') ? '✅ Direct' : '🔍 Keyword';
+                      body += `| ${title} | \`${testFile}\` | ${matchType} |\n`;
+                    }
+                    body += '\n';
+                  }
+                } catch (e) {
+                  // No matches file, skip this section
+                }
               } catch (e) {
                 body += '✅ Analysis complete. See **qaatlas-report** artifact for full details.\n';
               }
