@@ -546,7 +546,7 @@ add_build_info() {
   
   comment+="
 
-This fix will be available in the next release build."
+This fix will be available in the next TestFlight build."
   
   add_comment "$ticket" "$comment"
 }
