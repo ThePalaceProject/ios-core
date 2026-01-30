@@ -493,7 +493,7 @@ final class CarPlayTemplateManager: NSObject {
   }
   
   private func switchToNowPlayingIfNeeded() {
-    Log.info(#file, "CarPlay: switchToNowPlayingIfNeeded called")
+    Log.debug(#file, "CarPlay: switchToNowPlayingIfNeeded called")
     
     // Only push if we're not already showing Now Playing
     guard let controller = interfaceController else {
@@ -515,7 +515,7 @@ final class CarPlayTemplateManager: NSObject {
     }
     
     isPushingNowPlaying = true
-    Log.info(#file, "CarPlay: Will push Now Playing in 0.15s")
+    Log.debug(#file, "CarPlay: Will push Now Playing in 0.15s")
     
     // Brief delay to ensure MPNowPlayingInfoCenter has been updated
     // Reduced from 0.5s to 0.15s for faster UI response
