@@ -81,8 +81,8 @@ final class TPPBookmarkFactoryTests: XCTestCase {
     // Assert
     XCTAssertNotNil(bookmark)
     XCTAssertEqual(bookmark?.href, "/chapter1.xhtml")
-    XCTAssertEqual(bookmark?.progressWithinChapter, 0.5, accuracy: 0.001)
-    XCTAssertEqual(bookmark?.progressWithinBook, 0.25, accuracy: 0.001)
+    XCTAssertEqual(Double(bookmark?.progressWithinChapter ?? 0), 0.5, accuracy: 0.001)
+    XCTAssertEqual(Double(bookmark?.progressWithinBook ?? 0), 0.25, accuracy: 0.001)
     XCTAssertEqual(bookmark?.device, testDeviceId)
   }
   
@@ -472,7 +472,7 @@ final class TPPBookmarkFactoryTests: XCTestCase {
     
     return TPPBook(
       acquisitions: [acquisition],
-      authors: ["Test Author"],
+      authors: [TPPBookAuthor(authorName: "Test Author", relatedBooksURL: nil)],
       categoryStrings: [],
       distributor: "",
       identifier: identifier,

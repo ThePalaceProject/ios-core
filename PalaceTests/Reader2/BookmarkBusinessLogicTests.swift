@@ -994,7 +994,7 @@ final class BookmarkReauthenticationTests: XCTestCase {
     reauthenticatorMock.authenticateIfNeeded(userAccount, usingExistingCredentials: true) { }
     
     // Assert - mock tracks that reauthentication was performed
-    XCTAssertTrue(reauthenticatorMock.reauthenticationPerformed)
+    XCTAssertTrue(reauthenticatorMock.authenticateIfNeededCalled)
   }
   
   func testReauthenticatorMock_SetsCredentials() {

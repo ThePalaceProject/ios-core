@@ -164,7 +164,7 @@ final class TPPLastReadPositionPosterTests: XCTestCase {
     
     return TPPBook(
       acquisitions: [acquisition],
-      authors: ["Test Author"],
+      authors: [TPPBookAuthor(authorName: "Test Author", relatedBooksURL: nil)],
       categoryStrings: [],
       distributor: "",
       identifier: "position-poster-test-book",

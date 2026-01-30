@@ -74,11 +74,11 @@ final class TPPReauthenticatorMockTests: XCTestCase {
   }
   
   func testMockReauthenticator_tracksReauthPerformed() {
-    XCTAssertFalse(mockReauthenticator.reauthenticationPerformed)
+    XCTAssertFalse(mockReauthenticator.authenticateIfNeededCalled)
     
     mockReauthenticator.authenticateIfNeeded(userAccount, usingExistingCredentials: true, authenticationCompletion: nil)
     
-    XCTAssertTrue(mockReauthenticator.reauthenticationPerformed)
+    XCTAssertTrue(mockReauthenticator.authenticateIfNeededCalled)
   }
   
   func testMockReauthenticator_callsCompletion() {

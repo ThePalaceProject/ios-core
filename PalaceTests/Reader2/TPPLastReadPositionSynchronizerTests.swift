@@ -675,8 +675,8 @@ final class TPPLastReadPositionSynchronizerTests: XCTestCase {
     XCTAssertEqual(bookmark?.annotationId, "annotation-123")
     XCTAssertEqual(bookmark?.href, "/chapter2.xhtml")
     XCTAssertEqual(bookmark?.chapter, "Chapter 2")
-    XCTAssertEqual(bookmark?.progressWithinChapter, 0.3, accuracy: 0.001)
-    XCTAssertEqual(bookmark?.progressWithinBook, 0.6, accuracy: 0.001)
+    XCTAssertEqual(Double(bookmark?.progressWithinChapter ?? 0), 0.3, accuracy: 0.001)
+    XCTAssertEqual(Double(bookmark?.progressWithinBook ?? 0), 0.6, accuracy: 0.001)
     XCTAssertEqual(bookmark?.device, "test-device")
   }
 }

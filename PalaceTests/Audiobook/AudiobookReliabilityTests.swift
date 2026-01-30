@@ -82,7 +82,7 @@ final class AudiobookSessionManagerTests: XCTestCase {
     
     // Then
     let info = AudiobookSessionManager.shared.downloadInfo(forSessionIdentifier: sessionId)
-    XCTAssertEqual(info?.progress, 0.5, accuracy: 0.01)
+    XCTAssertEqual(Double(info?.progress ?? 0), 0.5, accuracy: 0.01)
   }
   
   func testBackgroundCompletionHandlerRegistration() async {
@@ -233,7 +233,7 @@ final class DownloadPersistenceStoreTests: XCTestCase {
     let download = store.getDownload(bookID: bookID, trackKey: trackKey)
     XCTAssertEqual(download?.downloadedBytes, 500000)
     XCTAssertEqual(download?.state, .inProgress)
-    XCTAssertEqual(download?.progress, 0.5, accuracy: 0.01)
+    XCTAssertEqual(Double(download?.progress ?? 0), 0.5, accuracy: 0.01)
   }
   
   func testMarkCompleted() async {
