@@ -3,14 +3,106 @@
 //  PalaceTests
 //
 //  Factory methods for creating test books with various configurations.
-//  This file extends the existing TPPBookMock.swift with additional convenience
-//  methods for the test coverage initiative.
+//  Provides convenience methods for unit tests requiring specific book states.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
 
 import Foundation
 @testable import Palace
+
+// MARK: - DistributorType
+
+/// Content types for book acquisitions used in testing.
+/// Maps to MIME types used in OPDS acquisition feeds.
+enum DistributorType: String {
+  case EpubZip = "application/epub+zip"
+  case OpenAccessAudiobook = "application/audiobook+json"
+  case OpenAccessPDF = "application/pdf"
+  case AdobeAdept = "application/vnd.adobe.adept+xml"
+  case ReadiumLCP = "application/vnd.readium.lcp.license.v1.0+json"
+  case Findaway = "application/vnd.librarysimplified.findaway.license+json"
+  case AxisNow = "application/vnd.librarysimplified.axisnow+json"
+  case OverdriveManifest = "application/vnd.overdrive.circulation.api+json"
+}
+
+// MARK: - TPPBookMocker
+
+/// Factory enum for creating mock TPPBook instances for testing.
+/// Use these methods to create books with specific configurations without network calls.
+enum TPPBookMocker {
+  
+  // MARK: - Primary Factory Method
+  
+  /// Creates a mock book with the specified identifier, title, and optional parameters.
+  /// This is the primary factory method used throughout the test suite.
+  /// - Parameters:
+  ///   - identifier: Unique identifier for the book
+  ///   - title: Book title
+  ///   - authors: Optional author string (comma-separated for multiple authors)
+  ///   - distributorType: Content type for acquisitions (default: .EpubZip)
+  /// - Returns: A configured TPPBook instance
+  static func mockBook(
+    identifier: String,
+    title: String,
+    authors: String? = "Test Author",
+    distributorType: DistributorType = .EpubZip
+  ) -> TPPBook {
+    let acquisitionUrl = URL(string: "http://example.com/\(identifier)")!
+    
+    let acquisition = TPPOPDSAcquisition(
+      relation: .generic,
+      type: distributorType.rawValue,
+      hrefURL: acquisitionUrl,
+      indirectAcquisitions: [],
+      availability: TPPOPDSAcquisitionAvailabilityUnlimited()
+    )
+    
+    let bookAuthors: [TPPBookAuthor]
+    if let authorsString = authors {
+      bookAuthors = [TPPBookAuthor(authorName: authorsString, relatedBooksURL: nil)]
+    } else {
+      bookAuthors = []
+    }
+    
+    let imageCache = MockImageCache()
+    let cover = MockImageCache.generateTenPrintCover(title: title, author: authors ?? "Unknown")
+    imageCache.set(cover, for: identifier, expiresIn: nil)
+    
+    let book = TPPBook(
+      acquisitions: [acquisition],
+      authors: bookAuthors,
+      categoryStrings: ["Fiction"],
+      distributor: "Test Distributor",
+      identifier: identifier,
+      imageURL: nil,
+      imageThumbnailURL: nil,
+      published: Date(),
+      publisher: "Test Publisher",
+      subtitle: nil,
+      summary: "Test summary for \(title)",
+      title: title,
+      updated: Date(),
+      annotationsURL: nil,
+      analyticsURL: nil,
+      alternateURL: nil,
+      relatedWorksURL: nil,
+      previewLink: nil,
+      seriesURL: nil,
+      revokeURL: nil,
+      reportURL: nil,
+      timeTrackingURL: nil,
+      contributors: [:],
+      bookDuration: nil,
+      imageCache: imageCache
+    )
+    
+    book.coverImage = cover
+    book.thumbnailImage = cover
+    
+    return book
+  }
+}
 
 // MARK: - TPPBookMocker Extensions
 
