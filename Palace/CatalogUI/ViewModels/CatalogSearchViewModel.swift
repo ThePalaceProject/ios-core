@@ -15,15 +15,17 @@ class CatalogSearchViewModel: ObservableObject {
   private let repository: CatalogRepositoryProtocol
   private let baseURL: () -> URL?
   private var searchTask: Task<Void, Never>?
-  private var debounceTimer: Timer?
+  private var debounceTask: Task<Void, Never>?
+  private let debounceInterval: TimeInterval
   
-  init(repository: CatalogRepositoryProtocol, baseURL: @escaping () -> URL?) {
+  init(repository: CatalogRepositoryProtocol, baseURL: @escaping () -> URL?, debounceInterval: TimeInterval = 0.1) {
     self.repository = repository
     self.baseURL = baseURL
+    self.debounceInterval = debounceInterval
   }
   
   deinit {
-    debounceTimer?.invalidate()
+    debounceTask?.cancel()
     searchTask?.cancel()
   }
   
@@ -37,17 +39,18 @@ class CatalogSearchViewModel: ObservableObject {
   func updateSearchQuery(_ query: String) {
     searchQuery = query
     
-    debounceTimer?.invalidate()
-    debounceTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: false) { [weak self] _ in
-      Task { @MainActor in
-        self?.performSearch()
-      }
+    debounceTask?.cancel()
+    debounceTask = Task { [weak self] in
+      guard let self else { return }
+      try? await Task.sleep(nanoseconds: UInt64(self.debounceInterval * 1_000_000_000))
+      guard !Task.isCancelled else { return }
+      await self.performSearch()
     }
   }
   
   func clearSearch() {
     searchQuery = ""
-    debounceTimer?.invalidate()
+    debounceTask?.cancel()
     searchTask?.cancel()
     isLoading = false
     errorMessage = nil
@@ -83,11 +86,8 @@ class CatalogSearchViewModel: ObservableObject {
     isLoading = true
     
     searchTask = Task { [weak self] in
-      defer {
-        Task { @MainActor in
-          self?.isLoading = false
-        }
-      }
+      // Ensure isLoading is cleared on all exit paths
+      defer { self?.isLoading = false }
       
       do {
         guard let self, !Task.isCancelled else { return }
@@ -96,32 +96,25 @@ class CatalogSearchViewModel: ObservableObject {
         
         guard !Task.isCancelled else { return }
         
-        await MainActor.run {
-          guard !Task.isCancelled else { return }
+        if let feed = feed {
+          // Extract books from search results and map through registry for correct button states
+          let feedObjc = feed.opdsFeed
+          var searchResults: [TPPBook] = []
           
-          if let feed = feed {
-            // Extract books from search results and map through registry for correct button states
-            let feedObjc = feed.opdsFeed
-            var searchResults: [TPPBook] = []
-            
-            if let opdsEntries = feedObjc.entries as? [TPPOPDSEntry] {
-              searchResults = opdsEntries.compactMap { CatalogViewModel.makeBook(from: $0) }
-            }
-            
-            self.filteredBooks = searchResults
-            self.extractNextPageURL(from: feedObjc)
-          } else {
-            self.filteredBooks = []
-            self.nextPageURL = nil
+          if let opdsEntries = feedObjc.entries as? [TPPOPDSEntry] {
+            searchResults = opdsEntries.compactMap { CatalogViewModel.makeBook(from: $0) }
           }
+          
+          self.filteredBooks = searchResults
+          self.extractNextPageURL(from: feedObjc)
+        } else {
+          self.filteredBooks = []
+          self.nextPageURL = nil
         }
       } catch {
         guard !Task.isCancelled else { return }
-        await MainActor.run {
-          guard !Task.isCancelled else { return }
-          self?.filteredBooks = []
-          self?.nextPageURL = nil
-        }
+        self?.filteredBooks = []
+        self?.nextPageURL = nil
       }
     }
   }
@@ -178,10 +171,20 @@ class CatalogSearchViewModel: ObservableObject {
     for idx in books.indices {
       let book = books[idx]
       if let changedIdentifier, book.identifier != changedIdentifier { continue }
-      // For books in registry, use registry version to get current state
+      
+      // Check if book is in registry
       if let registryBook = TPPBookRegistry.shared.book(forIdentifier: book.identifier) {
-        // Always update to trigger cell recreation with new registry state
+        // Book is in registry - use registry version
         books[idx] = registryBook
+        anyChanged = true
+      } else {
+        // Book is NOT in registry (e.g., returned)
+        // Reset to original catalog version from allBooks to get correct availability
+        if let originalBook = allBooks.first(where: { $0.identifier == book.identifier }) {
+          books[idx] = originalBook
+        }
+        // Invalidate cached model so it gets recreated with fresh state
+        BookCellModelCache.shared.invalidate(for: book.identifier)
         anyChanged = true
       }
     }

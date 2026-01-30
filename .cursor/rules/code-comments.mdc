@@ -1,0 +1,44 @@
+# Code Comment Guidelines for Palace iOS
+
+## No Jira Ticket References in Code
+
+**NEVER include Jira ticket numbers (e.g., PP-123, PALACE-456) in code comments.**
+
+### Why
+
+- Ticket numbers become meaningless over time as Jira projects evolve
+- Code should be self-documenting without requiring external context
+- Comments should explain "why" not reference external tracking systems
+- Ticket references clutter the codebase and don't add value to future readers
+
+### Instead
+
+- Write clear, descriptive comments that explain the reasoning
+- Reference the behavior or bug being addressed, not the ticket
+- Use git commit messages to link tickets (not code comments)
+
+### Bad Examples
+
+```swift
+// PP-418: Fix cross-domain redirect issue
+// PALACE-123: Handle token refresh
+// Fixes ticket #456
+```
+
+### Good Examples
+
+```swift
+// A 401 from a cross-domain redirect does NOT mean our credentials
+// are expired - it's a third-party auth issue
+// Token refresh should preserve Adobe DRM activation state
+```
+
+### Git Commits
+
+Ticket references ARE appropriate in git commit messages for traceability:
+
+```
+Fix false credential expiration on cross-domain redirect 401s
+
+Resolves PP-418
+```

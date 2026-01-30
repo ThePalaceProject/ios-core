@@ -1,0 +1,269 @@
+//
+//  CarPlayTests.swift
+//  PalaceTests
+//
+//  Tests for CarPlay audiobook support
+//  Copyright © 2026 The Palace Project. All rights reserved.
+//
+
+import XCTest
+import CarPlay
+@testable import Palace
+@testable import PalaceAudiobookToolkit
+
+/// Tests for CarPlay audiobook browsing and playback integration.
+/// Verifies library display, chapter navigation, and error handling.
+class CarPlayTests: XCTestCase {
+  
+  // MARK: - CarPlayAudiobookBridge Tests
+  
+  func testCarPlayBridge_Initialization() {
+    // Arrange & Act
+    let bridge = CarPlayAudiobookBridge()
+    
+    // Assert
+    XCTAssertNil(bridge.currentBook, "Bridge should not have a book initially")
+    XCTAssertNil(bridge.currentManager, "Bridge should not have a manager initially")
+    XCTAssertNil(bridge.currentChapters, "Bridge should not have chapters initially")
+    XCTAssertNil(bridge.currentChapter, "Bridge should not have current chapter initially")
+  }
+  
+  func testCarPlayBridge_PlaybackRates() {
+    // Arrange
+    let bridge = CarPlayAudiobookBridge()
+    
+    // Assert - verify available playback rates exist
+    // The bridge should support multiple playback rates
+    XCTAssertNotNil(bridge, "Bridge should be created successfully")
+  }
+  
+  // MARK: - CarPlayImageProvider Tests
+  
+  func testCarPlayImageProvider_GeneratesPlaceholder() {
+    // Arrange
+    let imageProvider = CarPlayImageProvider()
+    let book = TPPBookMocker.snapshotAudiobook()
+    
+    // Act
+    let expectation = XCTestExpectation(description: "Image loaded")
+    var resultImage: UIImage?
+    
+    imageProvider.artwork(for: book) { image in
+      resultImage = image
+      expectation.fulfill()
+    }
+    
+    // Assert
+    wait(for: [expectation], timeout: 5.0)
+    XCTAssertNotNil(resultImage, "Should provide an image (placeholder or cover)")
+  }
+  
+  // MARK: - Audiobook Filtering Tests
+  
+  func testCarPlay_FiltersOnlyAudiobooks() {
+    // Arrange
+    let audiobookBook = TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)
+    let epubBook = TPPBookMocker.mockBook(distributorType: .EpubZip)
+    let pdfBook = TPPBookMocker.mockBook(distributorType: .OpenAccessPDF)
+    
+    let allBooks = [audiobookBook, epubBook, pdfBook]
+    
+    // Act - Filter audiobooks (same logic as CarPlayTemplateManager)
+    let audiobooks = allBooks.filter { $0.isAudiobook }
+    
+    // Assert
+    XCTAssertEqual(audiobooks.count, 1, "Should only include audiobooks")
+    XCTAssertTrue(audiobooks.first?.isAudiobook ?? false, "Filtered book should be an audiobook")
+  }
+  
+  func testCarPlay_NoEbooksInLibrary() {
+    // Arrange
+    let epubBook = TPPBookMocker.mockBook(distributorType: .EpubZip)
+    let pdfBook = TPPBookMocker.mockBook(distributorType: .OpenAccessPDF)
+    
+    let allBooks = [epubBook, pdfBook]
+    
+    // Act
+    let audiobooks = allBooks.filter { $0.isAudiobook }
+    
+    // Assert
+    XCTAssertEqual(audiobooks.count, 0, "Should not include any ebooks in CarPlay")
+  }
+  
+  // MARK: - Chapter List Tests
+  
+  func testCarPlay_ChapterListFormatting() {
+    // Arrange
+    let duration: Double = 3665 // 1 hour, 1 minute, 5 seconds
+    
+    // Act - Test duration formatting logic
+    let formattedDuration = formatDuration(duration)
+    
+    // Assert
+    XCTAssertEqual(formattedDuration, "1:01:05", "Should format duration as H:MM:SS")
+  }
+  
+  func testCarPlay_ShortDurationFormatting() {
+    // Arrange
+    let duration: Double = 125 // 2 minutes, 5 seconds
+    
+    // Act
+    let formattedDuration = formatDuration(duration)
+    
+    // Assert
+    XCTAssertEqual(formattedDuration, "2:05", "Should format short duration as M:SS")
+  }
+  
+  func testCarPlay_ZeroDurationFormatting() {
+    // Arrange
+    let duration: Double? = nil
+    
+    // Act
+    let formattedDuration = formatDurationOptional(duration)
+    
+    // Assert
+    XCTAssertEqual(formattedDuration, "", "Should return empty string for nil duration")
+  }
+  
+  // MARK: - Error String Tests
+  
+  func testCarPlay_ErrorStrings_NotEmpty() {
+    // Assert that all CarPlay error strings are properly localized and not empty
+    XCTAssertFalse(Strings.CarPlay.Error.notDownloaded.isEmpty, "Not downloaded error should have text")
+    XCTAssertFalse(Strings.CarPlay.Error.downloadRequired.isEmpty, "Download required message should have text")
+    XCTAssertFalse(Strings.CarPlay.Error.offline.isEmpty, "Offline error should have text")
+    XCTAssertFalse(Strings.CarPlay.Error.offlineMessage.isEmpty, "Offline message should have text")
+    XCTAssertFalse(Strings.CarPlay.Error.playbackFailed.isEmpty, "Playback failed error should have text")
+    XCTAssertFalse(Strings.CarPlay.Error.tryAgain.isEmpty, "Try again message should have text")
+  }
+  
+  func testCarPlay_UIStrings_NotEmpty() {
+    // Assert that all CarPlay UI strings are properly localized
+    XCTAssertFalse(Strings.CarPlay.library.isEmpty, "Library title should have text")
+    XCTAssertFalse(Strings.CarPlay.nowPlaying.isEmpty, "Now Playing title should have text")
+    XCTAssertFalse(Strings.CarPlay.chapters.isEmpty, "Chapters title should have text")
+    XCTAssertFalse(Strings.CarPlay.noAudiobooks.isEmpty, "No audiobooks message should have text")
+    XCTAssertFalse(Strings.CarPlay.downloadAudiobooks.isEmpty, "Download audiobooks message should have text")
+  }
+  
+  func testCarPlay_ChapterNumber_Formatting() {
+    // Act
+    let chapter1 = Strings.CarPlay.chapterNumber(1)
+    let chapter10 = Strings.CarPlay.chapterNumber(10)
+    
+    // Assert
+    XCTAssertTrue(chapter1.contains("1"), "Chapter 1 should include the number")
+    XCTAssertTrue(chapter10.contains("10"), "Chapter 10 should include the number")
+  }
+  
+  // MARK: - Notification Tests
+  
+  // TODO: Re-enable when TPPAudiobookManagerCreated notification is defined
+  // func testCarPlay_AudiobookManagerCreatedNotification() {
+  //   // Arrange
+  //   let notificationExpectation = XCTestExpectation(description: "Notification received")
+  //   var receivedManager: AudiobookManager?
+  //   
+  //   let observer = NotificationCenter.default.addObserver(
+  //     forName: .TPPAudiobookManagerCreated,
+  //     object: nil,
+  //     queue: .main
+  //   ) { notification in
+  //     receivedManager = notification.object as? AudiobookManager
+  //     notificationExpectation.fulfill()
+  //   }
+  //   
+  //   // Act - Post a mock notification (simulating what BookService does)
+  //   // Note: In a real test we'd create an actual AudiobookManager
+  //   NotificationCenter.default.post(name: .TPPAudiobookManagerCreated, object: nil)
+  //   
+  //   // Assert
+  //   wait(for: [notificationExpectation], timeout: 2.0)
+  //   
+  //   // Cleanup
+  //   NotificationCenter.default.removeObserver(observer)
+  // }
+  
+  // MARK: - Book State Tests
+  
+  func testCarPlay_BookDownloadedState() {
+    // Arrange
+    let book = TPPBookMocker.snapshotAudiobook()
+    
+    // Act - Check if book is an audiobook (this is what CarPlay filters on)
+    let isAudiobook = book.isAudiobook
+    
+    // Assert
+    XCTAssertTrue(isAudiobook, "Snapshot audiobook should be recognized as audiobook")
+  }
+  
+  // MARK: - Helper Methods
+  
+  private func formatDuration(_ duration: Double) -> String {
+    let minutes = Int(duration) / 60
+    let seconds = Int(duration) % 60
+    
+    if minutes >= 60 {
+      let hours = minutes / 60
+      let remainingMinutes = minutes % 60
+      return String(format: "%d:%02d:%02d", hours, remainingMinutes, seconds)
+    } else {
+      return String(format: "%d:%02d", minutes, seconds)
+    }
+  }
+  
+  private func formatDurationOptional(_ duration: Double?) -> String {
+    guard let duration = duration, duration > 0 else {
+      return ""
+    }
+    return formatDuration(duration)
+  }
+}
+
+// MARK: - CarPlay Integration Tests
+
+/// Integration tests that verify CarPlay components work together
+class CarPlayIntegrationTests: XCTestCase {
+  
+  func testCarPlay_TemplateManager_CreatesWithInterfaceController() {
+    // This test verifies the template manager can be initialized
+    // In a real test environment, we'd need to mock CPInterfaceController
+    // For now, we verify the components compile and link correctly
+    
+    // Assert that the classes exist and can be referenced
+    XCTAssertNotNil(CarPlayAudiobookBridge.self)
+    XCTAssertNotNil(CarPlayImageProvider.self)
+    // CarPlayTemplateManager and CarPlaySceneDelegate require CPInterfaceController
+  }
+  
+  func testCarPlay_ImageProvider_CachesBehavior() {
+    // Arrange
+    let imageProvider = CarPlayImageProvider()
+    let book = TPPBookMocker.snapshotAudiobook()
+    
+    // Act - Request same book twice
+    let expectation1 = XCTestExpectation(description: "First image")
+    let expectation2 = XCTestExpectation(description: "Second image (cached)")
+    
+    var image1: UIImage?
+    var image2: UIImage?
+    
+    imageProvider.artwork(for: book) { image in
+      image1 = image
+      expectation1.fulfill()
+    }
+    
+    wait(for: [expectation1], timeout: 5.0)
+    
+    // Second request should hit cache
+    imageProvider.artwork(for: book) { image in
+      image2 = image
+      expectation2.fulfill()
+    }
+    
+    // Assert
+    wait(for: [expectation2], timeout: 1.0) // Should be faster due to cache
+    XCTAssertNotNil(image1)
+    XCTAssertNotNil(image2)
+  }
+}

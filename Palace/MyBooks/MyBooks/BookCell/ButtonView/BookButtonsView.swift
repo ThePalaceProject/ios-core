@@ -56,9 +56,48 @@ struct ActionButton<T: BookButtonProvider>: View {
   var isDarkBackground: Bool = true
   var size: ButtonSize = .large
   var onButtonTapped: ((BookButtonType) -> Void)?
+  
+  @ObservedObject private var previewManager = SamplePreviewManager.shared
 
+  private var buttonTitle: String {
+    type.title(for: provider.book)
+  }
+  
   private var accessibilityString: String {
-    return type.title
+    return buttonTitle
+  }
+  
+  private var accessibilityID: String {
+    switch type {
+    case .get:
+      return AccessibilityID.BookDetail.getButton
+    case .download:
+      return AccessibilityID.BookDetail.downloadButton
+    case .read:
+      return AccessibilityID.BookDetail.readButton
+    case .listen:
+      return AccessibilityID.BookDetail.listenButton
+    case .remove:
+      return AccessibilityID.BookDetail.deleteButton
+    case .return:
+      return AccessibilityID.BookDetail.returnButton
+    case .reserve:
+      return AccessibilityID.BookDetail.reserveButton
+    case .cancel:
+      return AccessibilityID.BookDetail.cancelButton
+    case .retry:
+      return AccessibilityID.BookDetail.retryButton
+    case .manageHold:
+      return AccessibilityID.BookDetail.manageHoldButton
+    case .sample:
+      return AccessibilityID.BookDetail.sampleButton
+    case .audiobookSample:
+      return AccessibilityID.BookDetail.audiobookSampleButton
+    case .returning, .cancelHold:
+      return AccessibilityID.BookDetail.returnButton
+    case .close:
+      return AccessibilityID.Common.closeButton
+    }
   }
 
   var body: some View {
@@ -75,7 +114,7 @@ struct ActionButton<T: BookButtonProvider>: View {
             .tint(type.buttonTextColor(isDarkBackground))
             .transition(.opacity)
         }
-        Text(type.title)
+        Text(buttonTitle)
           .fixedSize(horizontal: true, vertical: true)
           .lineLimit(1)
           .minimumScaleFactor(0.8)
@@ -97,6 +136,7 @@ struct ActionButton<T: BookButtonProvider>: View {
     .disabled(provider.isProcessing(for: type))
     .buttonStyle(.plain)
     .accessibilityLabel(accessibilityString)
+    .accessibilityIdentifier(accessibilityID)
   }
 }
 

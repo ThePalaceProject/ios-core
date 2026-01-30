@@ -14,8 +14,13 @@ struct AccountDetailView: View {
   @StateObject var viewModel: AccountDetailViewModel
   @Environment(\.dismiss) private var dismiss
   
-  init(libraryAccountID: String) {
+  /// When true, forces showing sign-in form even if user has stale credentials.
+  /// Used when presenting for re-authentication (e.g., from borrow flow after 401).
+  private let forceReauthMode: Bool
+  
+  init(libraryAccountID: String, forceReauthMode: Bool = false) {
     _viewModel = StateObject(wrappedValue: AccountDetailViewModel(libraryAccountID: libraryAccountID))
+    self.forceReauthMode = forceReauthMode
   }
   
   var body: some View {
@@ -27,6 +32,9 @@ struct AccountDetailView: View {
         Button(Strings.Generic.ok, role: .cancel) {}
       } message: {
         Text(viewModel.alertMessage)
+      }
+      .onAppear {
+        viewModel.refreshSignInState()
       }
   }
   
@@ -49,9 +57,17 @@ struct AccountDetailView: View {
   }
   
   private var shouldShowSignInPrompt: Bool {
-    !viewModel.isSignedIn && 
-    (viewModel.businessLogic.selectedAuthentication?.isOauth == true ||
-     viewModel.businessLogic.selectedAuthentication?.isSaml == true)
+    // Show sign-in prompt when:
+    // 1. User is not signed in (no credentials), OR
+    // 2. forceReauthMode is true AND credentials are stale (need re-authentication)
+    //    This is used when the sign-in modal is presented for re-auth (e.g., borrow flow after 401)
+    let needsSignIn = !viewModel.isSignedIn
+    let needsReauth = forceReauthMode && viewModel.selectedUserAccount.authState == .credentialsStale
+    
+    let isOAuthOrSAML = viewModel.businessLogic.selectedAuthentication?.isOauth == true ||
+                        viewModel.businessLogic.selectedAuthentication?.isSaml == true
+    
+    return (needsSignIn || needsReauth) && isOAuthOrSAML
   }
   
   // MARK: - Sign In Prompt View
@@ -122,6 +138,8 @@ struct AccountDetailView: View {
     }
     .padding(.horizontal, Layout.horizontalPadding)
     .padding(.top, Layout.verticalPaddingLarge)
+    // Force view refresh when isLoading changes
+    .id("samlIDPList-\(viewModel.isLoading)")
   }
   
   private var singleSignInButton: some View {
@@ -136,6 +154,8 @@ struct AccountDetailView: View {
     }
     .padding(.horizontal, Layout.horizontalPadding)
     .padding(.top, Layout.verticalPaddingLarge)
+    // Force view refresh when isLoading changes
+    .id("signInButton-\(viewModel.isLoading)")
   }
   
   @ViewBuilder
@@ -293,15 +313,18 @@ struct AccountDetailView: View {
       .keyboardType(keyboardType(for: viewModel.businessLogic.selectedAuthentication?.patronIDKeyboard))
       .disabled(viewModel.isSignedIn)
       .foregroundColor(viewModel.isSignedIn ? .secondary : .primary)
+      .accessibilityIdentifier(AccessibilityID.SignIn.barcodeField)
       
       if !viewModel.isSignedIn && viewModel.businessLogic.selectedAuthentication?.supportsBarcodeScanner == true {
         Button(action: { viewModel.scanBarcode() }) {
           Image(systemName: "camera")
             .foregroundColor(Color(TPPConfiguration.mainColor()))
         }
+        .accessibilityLabel(Strings.Generic.scanBarcode)
       }
     }
     .padding(.vertical, Layout.verticalPaddingInput)
+    .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
   }
   
   private var pinInputCell: some View {
@@ -315,6 +338,7 @@ struct AccountDetailView: View {
         .keyboardType(keyboardType(for: viewModel.businessLogic.selectedAuthentication?.pinKeyboard))
         .disabled(viewModel.isSignedIn)
         .foregroundColor(viewModel.isSignedIn ? .secondary : .primary)
+        .accessibilityIdentifier(AccessibilityID.SignIn.pinField)
       } else {
         TextField(
           viewModel.businessLogic.selectedAuthentication?.pinLabel ?? DisplayStrings.pin,
@@ -324,6 +348,7 @@ struct AccountDetailView: View {
         .keyboardType(keyboardType(for: viewModel.businessLogic.selectedAuthentication?.pinKeyboard))
         .disabled(viewModel.isSignedIn)
         .foregroundColor(viewModel.isSignedIn ? .secondary : .primary)
+        .accessibilityIdentifier(AccessibilityID.SignIn.pinField)
       }
       
       if LAContext().canEvaluatePolicy(.deviceOwnerAuthentication, error: nil) {
@@ -334,6 +359,7 @@ struct AccountDetailView: View {
       }
     }
     .padding(.vertical, Layout.verticalPaddingInput)
+    .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
   }
   
   private var logInSignOutCell: some View {
@@ -360,6 +386,7 @@ struct AccountDetailView: View {
       }
     }
     .disabled(!viewModel.canSignIn && !viewModel.isSignedIn)
+    .accessibilityIdentifier(AccessibilityID.SignIn.signInButton)
   }
   
   private var ageCheckCell: some View {
@@ -391,6 +418,8 @@ struct AccountDetailView: View {
       
       Toggle("", isOn: $viewModel.isSyncEnabled)
         .labelsHidden()
+        .tint(.green)
+        .accessibilityIdentifier("signIn.syncBookmarksToggle")
         .onChange(of: viewModel.isSyncEnabled) { newValue in
           viewModel.updateSync(enabled: newValue)
         }

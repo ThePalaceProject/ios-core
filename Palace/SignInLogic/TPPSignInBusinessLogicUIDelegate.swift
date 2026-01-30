@@ -31,6 +31,13 @@ import Foundation
   /// - Note: This is always called on the main thread.
   /// - Parameter businessLogic: The business logic in charge of signing in.
   func businessLogicDidCompleteSignIn(_ businessLogic: TPPSignInBusinessLogic)
+  
+  /// Notifies the delegate that credentials have been received from OAuth/SAML
+  /// and DRM processing is about to begin. This is called after the WebView
+  /// dismisses but before DRM authorization starts.
+  /// - Note: This is always called on the main thread.
+  /// - Parameter businessLogic: The business logic in charge of signing in.
+  @objc optional func businessLogicDidReceiveCredentials(_ businessLogic: TPPSignInBusinessLogic)
 
   /// Notifies the delegate that an error happened during sign in,
   /// providing (if available) a user-friendly message and title, possibly

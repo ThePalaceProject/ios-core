@@ -49,6 +49,7 @@ platform :ios do
       xcargs: "ONLY_ACTIVE_ARCH=NO ARCHS=arm64 IPHONEOS_DEPLOYMENT_TARGET=16.0",
       output_name: options[:output_name],
       output_directory: options[:export_path],
+      export_method: "ad-hoc",
       export_options: {
         method: "ad-hoc",
         provisioningProfiles: { 
@@ -72,6 +73,7 @@ platform :ios do
       include_bitcode: false,
       sdk: "iphoneos",
       xcargs: "ONLY_ACTIVE_ARCH=NO ARCHS=arm64 IPHONEOS_DEPLOYMENT_TARGET=16.0",
+      export_method: "app-store",
       export_options: {
         method: "app-store",
         provisioningProfiles: { 

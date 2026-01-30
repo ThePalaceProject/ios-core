@@ -55,6 +55,7 @@ class BookCellModel: ObservableObject {
   
   private var cancellables = Set<AnyCancellable>()
   let imageCache: ImageCacheType
+  let bookRegistry: TPPBookRegistryProvider
   private var isFetchingImage = false
   #if LCP
   private var didPrefetchLCPStreaming = false
@@ -76,10 +77,9 @@ class BookCellModel: ObservableObject {
 
   @Published private(set) var stableButtonState: BookButtonState = .unsupported {
     didSet {
+      // Always update state when stableButtonState changes - avoids comparison edge cases
       let newState = BookCellState(stableButtonState)
-      if newState.buttonState != state.buttonState {
-        state = newState
-      }
+      state = newState
     }
   }
   @Published private(set) var registryState: TPPBookState
@@ -104,15 +104,33 @@ class BookCellModel: ObservableObject {
   
   // MARK: - Initializer
   
-  init(book: TPPBook, imageCache: ImageCacheType) {
+  /// Creates a BookCellModel with injectable dependencies for testability
+  /// - Parameters:
+  ///   - book: The book to display
+  ///   - imageCache: Cache for book cover images
+  ///   - bookRegistry: Registry for book state (defaults to shared instance)
+  init(book: TPPBook, imageCache: ImageCacheType, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
     self.book = book
-    let initialButtonState = Self.computeInitialButtonState(book: book)
-    self.state = BookCellState(initialButtonState)
-    self.isLoading = TPPBookRegistry.shared.processing(forIdentifier: book.identifier)
+    self.bookRegistry = bookRegistry
+    self.isLoading = bookRegistry.processing(forIdentifier: book.identifier)
     self.currentBookIdentifier = book.identifier
     self.imageCache = imageCache
-    self.registryState = TPPBookRegistry.shared.state(for: book.identifier)
-    self.stableButtonState = self.computeButtonState(book: book, registryState: self.registryState, isManagingHold: self.isManagingHold)
+    
+    // Get registry state and compute initial button state from it
+    let currentRegistryState = bookRegistry.state(for: book.identifier)
+    self.registryState = currentRegistryState
+    
+    // Compute initial button state from registry state (not just book data)
+    let initialButtonState = Self.computeButtonState(
+      book: book,
+      registryState: currentRegistryState,
+      isManagingHold: false,
+      bookRegistry: bookRegistry
+    )
+    self.stableButtonState = initialButtonState
+    // Initialize state from computed button state (didSet doesn't fire during init)
+    self.state = BookCellState(initialButtonState)
+    
     self.image = generatePlaceholder(for: book)
     registerForNotifications()
     loadBookCoverImage()
@@ -121,10 +139,6 @@ class BookCellModel: ObservableObject {
     #if LCP
     prefetchLCPStreamingIfPossible()
     #endif
-  }
-  
-  private static func computeInitialButtonState(book: TPPBook) -> BookButtonState {
-    BookButtonState(book) ?? .unsupported
   }
   
   deinit {
@@ -156,7 +170,7 @@ class BookCellModel: ObservableObject {
     
     if let cachedImage = imageCache.get(for: simpleKey) ?? imageCache.get(for: thumbnailKey) {
       image = cachedImage
-    } else if let registryImage = TPPBookRegistry.shared.cachedThumbnailImage(for: book) {
+    } else if let registryImage = bookRegistry.cachedThumbnailImage(for: book) {
       setImageAndCache(registryImage)
     } else {
       fetchAndCacheImage()
@@ -168,11 +182,15 @@ class BookCellModel: ObservableObject {
     isFetchingImage = true
     isLoading = true
     
-    TPPBookRegistry.shared.thumbnailImage(for: self.book) { [weak self] fetchedImage in
-      guard let self = self, let fetchedImage else { return }
-      self.setImageAndCache(fetchedImage)
+    bookRegistry.thumbnailImage(for: self.book) { [weak self] fetchedImage in
+      guard let self else { return }
+      // Always clear loading state, even if image fetch failed
       self.isLoading = false
       self.isFetchingImage = false
+      
+      if let fetchedImage {
+        self.setImageAndCache(fetchedImage)
+      }
     }
   }
   
@@ -192,16 +210,32 @@ class BookCellModel: ObservableObject {
   }
 
   private func bindRegistryState() {
-    TPPBookRegistry.shared.bookStatePublisher
+    bookRegistry.bookStatePublisher
       .filter { [weak self] in $0.0 == self?.book.identifier }
       .map { $0.1 }
+      .receive(on: RunLoop.main) // Use RunLoop.main to avoid "Publishing changes during view updates"
       .sink { [weak self] newState in
-        self?.registryState = newState
+        guard let self else { return }
+        self.registryState = newState
+        
+        // Clear loading state based on state transitions
+        switch newState {
+        case .downloading, .downloadFailed, .downloadSuccessful, .holding, .unregistered:
+          // These states indicate the action completed - clear loading
+          self.isLoading = false
+        default:
+          break
+        }
       }
       .store(in: &cancellables)
   }
 
   private func computeButtonState(book: TPPBook, registryState: TPPBookState, isManagingHold: Bool) -> BookButtonState {
+    return Self.computeButtonState(book: book, registryState: registryState, isManagingHold: isManagingHold, bookRegistry: bookRegistry)
+  }
+  
+  /// Static version for use during initialization
+  private static func computeButtonState(book: TPPBook, registryState: TPPBookState, isManagingHold: Bool, bookRegistry: TPPBookRegistryProvider) -> BookButtonState {
     let availability = book.defaultAcquisition?.availability
     // Only reflect actual download state from registry; do not treat UI image loading as download-in-progress
     let isProcessingDownload = registryState == .downloading
@@ -219,8 +253,53 @@ class BookCellModel: ObservableObject {
         self?.computeButtonState(book: book, registryState: state, isManagingHold: isManaging) ?? .unsupported
       }
       .removeDuplicates()
-      .debounce(for: .milliseconds(180), scheduler: DispatchQueue.main)
+      // Use throttle instead of debounce - throttle emits immediately on first value,
+      // then emits the latest value after the interval. Debounce waits for silence.
+      .throttle(for: .milliseconds(50), scheduler: RunLoop.main, latest: true)
       .assign(to: &$stableButtonState)
+  }
+  
+  // MARK: - State Consistency Validation
+  
+  /// Validates that the model's state is consistent with the registry.
+  /// This is useful for debugging state inconsistency issues.
+  ///
+  /// - Returns: true if state is consistent, false if there's a mismatch
+  @discardableResult
+  func validateStateConsistency() -> Bool {
+    let currentRegistryState = bookRegistry.state(for: book.identifier)
+    let expectedButtonState = computeButtonState(book: book, registryState: currentRegistryState, isManagingHold: isManagingHold)
+    
+    let isConsistent = stableButtonState == expectedButtonState && registryState == currentRegistryState
+    
+    #if DEBUG
+    if !isConsistent {
+      Log.warn(#file, """
+        ⚠️ STATE INCONSISTENCY DETECTED for '\(book.title)'
+        Book ID: \(book.identifier)
+        Model registryState: \(registryState.stringValue())
+        Actual registryState: \(currentRegistryState.stringValue())
+        Model buttonState: \(stableButtonState)
+        Expected buttonState: \(expectedButtonState)
+        """)
+      
+      // Track for analytics
+      TPPErrorLogger.logError(
+        withCode: .bookStateInconsistency,
+        summary: "BookCellModel state mismatch",
+        metadata: [
+          "bookId": book.identifier,
+          "bookTitle": book.title,
+          "modelRegistryState": registryState.stringValue(),
+          "actualRegistryState": currentRegistryState.stringValue(),
+          "modelButtonState": String(describing: stableButtonState),
+          "expectedButtonState": String(describing: expectedButtonState)
+        ]
+      )
+    }
+    #endif
+    
+    return isConsistent
   }
   
   @objc private func updateButtons() {
@@ -232,23 +311,34 @@ class BookCellModel: ObservableObject {
 
 extension BookCellModel {
   func callDelegate(for action: BookButtonType) {
+    // Set loading state for actions that need it
+    switch action {
+    case .download, .retry, .get, .reserve, .return, .remove, .returning, .cancelHold, .cancel:
+      isLoading = true
+    default:
+      break
+    }
+    
     switch action {
     case .download, .retry, .get:
       didSelectDownload()
     case .reserve:
       didSelectReserve()
-    case .return:
+    case .return, .remove, .returning, .cancelHold:
+      // Set state for visual feedback and perform return
       isManagingHold = false
       bookState = .returning
-      showHalfSheet = true
+      didSelectReturn()
     case .manageHold:
       isManagingHold = true
       bookState = .holding
       showHalfSheet = true
-    case .remove, .returning, .cancelHold:
-      didSelectReturn()
     case .cancel:
       didSelectCancel()
+      // Clear loading after a short delay for cancel
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+        self?.isLoading = false
+      }
     case .sample, .audiobookSample:
       didSelectSample()
     case .read, .listen:
@@ -330,6 +420,11 @@ extension BookCellModel {
     if account.needsAuth && !account.hasCredentials() {
       SignInModalPresenter.presentSignInModalForCurrentAccount { [weak self] in
         guard let self else { return }
+        // Only proceed if user successfully logged in, not if they cancelled
+        guard TPPUserAccount.sharedAccount().hasCredentials() else {
+          Log.info(#file, "Sign-in cancelled or failed, not starting download")
+          return
+        }
         self.startDownloadNow()
       }
       return
@@ -339,7 +434,7 @@ extension BookCellModel {
 
   private func startDownloadNow() {
     if case .canHold = state.buttonState {
-      TPPUserNotifications.requestAuthorization()
+      NotificationService.requestAuthorization()
     }
     MyBooksDownloadCenter.shared.startDownload(for: book)
   }
@@ -350,7 +445,13 @@ extension BookCellModel {
     if account.needsAuth && !account.hasCredentials() {
       SignInModalPresenter.presentSignInModalForCurrentAccount { [weak self] in
         guard let self else { return }
-        TPPUserNotifications.requestAuthorization()
+        // Only proceed if user successfully logged in, not if they cancelled
+        guard TPPUserAccount.sharedAccount().hasCredentials() else {
+          Log.info(#file, "Sign-in cancelled or failed, not proceeding with reservation")
+          self.isLoading = false
+          return
+        }
+        NotificationService.requestAuthorization()
         Task {
           do {
             _ = try await MyBooksDownloadCenter.shared.borrowAsync(self.book, attemptDownload: false)
@@ -362,7 +463,7 @@ extension BookCellModel {
       }
       return
     }
-    TPPUserNotifications.requestAuthorization()
+    NotificationService.requestAuthorization()
     Task {
       do {
         _ = try await MyBooksDownloadCenter.shared.borrowAsync(book, attemptDownload: false)
@@ -380,6 +481,7 @@ extension BookCellModel {
       self.isLoading = false
       return
     }
+    SamplePreviewManager.shared.close()
     EpubSampleFactory.createSample(book: book) { sampleURL, error in
       self.isLoading = false
       if let error = error {
@@ -394,9 +496,18 @@ extension BookCellModel {
         return
       }
       if let url = sampleURL?.url {
-        let web = BundledHTMLViewController(fileURL: url, title: self.book.title)
-        if let appDelegate = UIApplication.shared.delegate as? TPPAppDelegate, let top = appDelegate.topViewController() {
-          top.present(web, animated: true)
+        // Check if this is an EPUB sample
+        let isEpubSample = self.book.sample?.type == .contentTypeEpubZip
+        
+        if isEpubSample {
+          // Use Readium EPUB reader for EPUB samples
+          ReaderService.shared.openSample(self.book, url: url)
+        } else {
+          // Use WebKit for HTML/web samples
+          let web = BundledHTMLViewController(fileURL: url, title: self.book.title)
+          if let appDelegate = UIApplication.shared.delegate as? TPPAppDelegate, let top = appDelegate.topViewController() {
+            top.present(web, animated: true)
+          }
         }
       }
     }
@@ -432,11 +543,11 @@ extension BookCellModel: HalfSheetProvider {
   }
   
   var buttonState: BookButtonState {
-    let registryState = TPPBookRegistry.shared.state(for: book.identifier)
+    let currentRegistryState = bookRegistry.state(for: book.identifier)
     let availability = book.defaultAcquisition?.availability
-    let isDownloading = isLoading || registryState == .downloading
+    let isDownloading = isLoading || currentRegistryState == .downloading
     return BookButtonMapper.map(
-      registryState: registryState,
+      registryState: currentRegistryState,
       availability: availability,
       isProcessingDownload: isDownloading
     )

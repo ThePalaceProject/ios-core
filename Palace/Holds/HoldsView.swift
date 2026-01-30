@@ -87,6 +87,7 @@ struct HoldsView: View {
     GeometryReader { geometry in
       if model.isLoading {
         BookListSkeletonView(rows: 10)
+          .accessibilityIdentifier(AccessibilityID.Holds.loadingIndicator)
       } else if model.visibleBooks.isEmpty {
         ScrollView {
           emptyView
@@ -94,6 +95,7 @@ struct HoldsView: View {
             .centered()
         }
         .refreshable { model.refresh() }
+        .accessibilityIdentifier(AccessibilityID.Holds.emptyStateView)
       } else {
         ScrollView {
           BookListView(
@@ -106,6 +108,7 @@ struct HoldsView: View {
         .scrollIndicators(.visible)
         .refreshable { model.refresh() }
         .dismissKeyboardOnTap()
+        .accessibilityIdentifier(AccessibilityID.Holds.scrollView)
       }
     }
   }
@@ -136,6 +139,8 @@ struct HoldsView: View {
     } label: {
       ImageProviders.MyBooksView.myLibraryIcon
     }
+    .accessibilityIdentifier(AccessibilityID.Holds.libraryButton)
+    .accessibilityLabel(Strings.Generic.switchLibrary)
     .actionSheet(isPresented: $model.selectNewLibrary) {
       var buttons: [ActionSheet.Button] = TPPSettings.shared.settingsAccountsList.map { account in
           .default(Text(account.name)) {
@@ -159,6 +164,7 @@ struct HoldsView: View {
     } label: {
       ImageProviders.MyBooksView.search
     }
+    .accessibilityIdentifier(AccessibilityID.Holds.searchButton)
     .accessibilityLabel(NSLocalizedString("Search Reservations", comment: ""))
   }
   
@@ -171,6 +177,7 @@ struct HoldsView: View {
     HStack {
       TextField(NSLocalizedString("Search Reservations", comment: ""), text: $model.searchQuery)
         .searchBarStyle()
+        .accessibilityIdentifier(AccessibilityID.Holds.searchField)
         .onChange(of: model.searchQuery) { query in
           Task { await model.filterBooks(query: query) }
         }
@@ -178,6 +185,7 @@ struct HoldsView: View {
         Image(systemName: "xmark.circle.fill")
           .foregroundColor(.gray)
       })
+      .accessibilityLabel(Strings.Generic.clearSearch)
     }
     .padding(.horizontal)
   }

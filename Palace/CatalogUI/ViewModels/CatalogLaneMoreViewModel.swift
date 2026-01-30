@@ -37,6 +37,9 @@ class CatalogLaneMoreViewModel: ObservableObject {
   
   private var cancellables = Set<AnyCancellable>()
   
+  /// Original catalog books (before registry updates) - used to restore state after returns
+  private var originalCatalogBooks: [String: TPPBook] = [:]
+  
   // MARK: - Computed Properties
   
   var activeFiltersCount: Int {
@@ -171,10 +174,16 @@ class CatalogLaneMoreViewModel: ObservableObject {
     lanes = orderedTitles.map { title in
       CatalogLaneModel(title: title, books: titleToBooks[title] ?? [], moreURL: titleToMoreURL[title] ?? nil)
     }
+    
+    // Store original catalog books for restoration after returns
+    storeOriginalCatalogBooks(lanes.flatMap { $0.books })
   }
   
   private func processUngroupedFeed(entries: [TPPOPDSEntry], feedObjc: TPPOPDSFeed) {
     ungroupedBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0) }
+    
+    // Store original catalog books for restoration after returns
+    storeOriginalCatalogBooks(ungroupedBooks)
     facetGroups = CatalogViewModel.extractFacets(from: feedObjc).0
     appliedSelections = Set(
       CatalogFilterService.selectionKeysFromActiveFacets(facetGroups: facetGroups, includeDefaults: false)
@@ -218,6 +227,16 @@ class CatalogLaneMoreViewModel: ObservableObject {
   
   // MARK: - Registry Sync
   
+  /// Stores original catalog books for restoration after returns
+  private func storeOriginalCatalogBooks(_ books: [TPPBook]) {
+    for book in books {
+      // Only store if not already stored (preserve original catalog version)
+      if originalCatalogBooks[book.identifier] == nil {
+        originalCatalogBooks[book.identifier] = book
+      }
+    }
+  }
+  
   /// Refresh visible books with registry state (for downloaded/borrowed books)
   func applyRegistryUpdates(changedIdentifier: String?) {
     if !lanes.isEmpty {
@@ -228,10 +247,19 @@ class CatalogLaneMoreViewModel: ObservableObject {
         for bIdx in books.indices {
           let book = books[bIdx]
           if let changedIdentifier, book.identifier != changedIdentifier { continue }
-          // For books in registry, use registry version to get current state
+          
           if let registryBook = TPPBookRegistry.shared.book(forIdentifier: book.identifier) {
-            // Always update to trigger cell recreation with new registry state
+            // Book is in registry - use registry version
             books[bIdx] = registryBook
+            changed = true
+          } else {
+            // Book is NOT in registry (e.g., returned)
+            // Restore to original catalog version to get correct availability
+            if let originalBook = originalCatalogBooks[book.identifier] {
+              books[bIdx] = originalBook
+            }
+            // Invalidate cached model so it gets recreated with fresh state
+            BookCellModelCache.shared.invalidate(for: book.identifier)
             changed = true
           }
         }
@@ -252,10 +280,19 @@ class CatalogLaneMoreViewModel: ObservableObject {
       for idx in books.indices {
         let book = books[idx]
         if let changedIdentifier, book.identifier != changedIdentifier { continue }
-        // For books in registry, use registry version to get current state
+        
         if let registryBook = TPPBookRegistry.shared.book(forIdentifier: book.identifier) {
-          // Always update to trigger cell recreation with new registry state
+          // Book is in registry - use registry version
           books[idx] = registryBook
+          anyChanged = true
+        } else {
+          // Book is NOT in registry (e.g., returned)
+          // Restore to original catalog version to get correct availability
+          if let originalBook = originalCatalogBooks[book.identifier] {
+            books[idx] = originalBook
+          }
+          // Invalidate cached model so it gets recreated with fresh state
+          BookCellModelCache.shared.invalidate(for: book.identifier)
           anyChanged = true
         }
       }

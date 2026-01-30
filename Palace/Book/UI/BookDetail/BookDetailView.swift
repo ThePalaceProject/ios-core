@@ -272,6 +272,7 @@ struct BookDetailView: View {
   
   private var imageView: some View {
     BookImageView(book: viewModel.book, height: 280 * imageScale)
+      .accessibilityIdentifier(AccessibilityID.BookDetail.coverImage)
       .opacity(imageOpacity)
       .adaptiveShadow()
       .animation(scaleAnimation, value: imageScale)
@@ -290,10 +291,12 @@ struct BookDetailView: View {
         .lineLimit(nil)
         .multilineTextAlignment(.center)
         .frame(maxWidth: .infinity, alignment: viewModel.isFullSize ? .leading : .center)
+        .accessibilityIdentifier(AccessibilityID.BookDetail.title)
       
       if let authors = viewModel.book.authors, !authors.isEmpty {
         Text(authors)
           .font(.footnote)
+          .accessibilityIdentifier(AccessibilityID.BookDetail.author)
       }
       
       BookButtonsView(
@@ -446,6 +449,7 @@ struct BookDetailView: View {
                           .adaptiveShadow(radius: 5)
                           .transition(.opacity.combined(with: .scale))
                       }
+                      .accessibilityLabel(bookAccessibilityLabel(for: book))
                     } else {
                       RoundedRectangle(cornerRadius: 8)
                         .fill(Color.gray.opacity(0.25))
@@ -561,6 +565,17 @@ struct BookDetailView: View {
     let minutes = Int((totalSeconds - Double(hours * 3600)) / 60)
     
     return String(format: "%d hours, %d minutes", hours, minutes)
+  }
+  
+  private func bookAccessibilityLabel(for book: TPPBook) -> String {
+    var components = [book.title]
+    if book.isAudiobook {
+      components.append(Strings.Generic.audiobook)
+    }
+    if let authors = book.authors, !authors.isEmpty {
+      components.append(authors)
+    }
+    return components.joined(separator: ", ")
   }
   
   private func updateImageBottomPosition() {

@@ -17,6 +17,7 @@ private enum StorageKey: String {
   case credentials = "TPPAccountCredentialsKey"
   case authDefinition = "TPPAccountAuthDefinitionKey"
   case cookies = "TPPAccountAuthCookiesKey"
+  case authState = "TPPAccountAuthStateKey"
 
   func keyForLibrary(uuid libraryUUID: String?) -> String {
     guard
@@ -46,28 +47,28 @@ private enum StorageKey: String {
   var libraryUUID: String? {
     didSet {
       guard libraryUUID != oldValue else { return }
-      let variables: [StorageKey: Keyable] = [
-        StorageKey.authorizationIdentifier: _authorizationIdentifier,
-        StorageKey.adobeToken: _adobeToken,
-        StorageKey.licensor: _licensor,
-        StorageKey.patron: _patron,
-        StorageKey.adobeVendor: _adobeVendor,
-        StorageKey.provider: _provider,
-        StorageKey.userID: _userID,
-        StorageKey.deviceID: _deviceID,
-        StorageKey.credentials: _credentials,
-        StorageKey.authDefinition: _authDefinition,
-        StorageKey.cookies: _cookies,
-
-        // legacy
-        StorageKey.barcode: _barcode,
-        StorageKey.PIN: _pin,
-        StorageKey.authToken: _authToken,
-      ]
-
-      for (key, var value) in variables {
-        value.key = key.keyForLibrary(uuid: libraryUUID)
-      }
+      
+      Log.debug(#file, "libraryUUID changed from \(oldValue ?? "nil") to \(libraryUUID ?? "nil")")
+      
+      // Update keychain variable keys directly to access account-specific storage
+      // Setting the key property triggers didSet which resets alreadyInited (forces re-read from keychain)
+      _authorizationIdentifier.key = StorageKey.authorizationIdentifier.keyForLibrary(uuid: libraryUUID)
+      _adobeToken.key = StorageKey.adobeToken.keyForLibrary(uuid: libraryUUID)
+      _licensor.key = StorageKey.licensor.keyForLibrary(uuid: libraryUUID)
+      _patron.key = StorageKey.patron.keyForLibrary(uuid: libraryUUID)
+      _adobeVendor.key = StorageKey.adobeVendor.keyForLibrary(uuid: libraryUUID)
+      _provider.key = StorageKey.provider.keyForLibrary(uuid: libraryUUID)
+      _userID.key = StorageKey.userID.keyForLibrary(uuid: libraryUUID)
+      _deviceID.key = StorageKey.deviceID.keyForLibrary(uuid: libraryUUID)
+      _credentials.key = StorageKey.credentials.keyForLibrary(uuid: libraryUUID)
+      _authDefinition.key = StorageKey.authDefinition.keyForLibrary(uuid: libraryUUID)
+      _cookies.key = StorageKey.cookies.keyForLibrary(uuid: libraryUUID)
+      _authState.key = StorageKey.authState.keyForLibrary(uuid: libraryUUID)
+      
+      // Legacy
+      _barcode.key = StorageKey.barcode.keyForLibrary(uuid: libraryUUID)
+      _pin.key = StorageKey.PIN.keyForLibrary(uuid: libraryUUID)
+      _authToken.key = StorageKey.authToken.keyForLibrary(uuid: libraryUUID)
     }
   }
 
@@ -175,8 +176,10 @@ private enum StorageKey: String {
   }
     
   class func sharedAccount(libraryUUID: String?) -> TPPUserAccount {
-    shared.accountInfoQueue.async(flags: .barrier) {
-      shared.libraryUUID = libraryUUID
+    shared.accountInfoQueue.sync(flags: .barrier) {
+      if shared.libraryUUID != libraryUUID {
+        shared.libraryUUID = libraryUUID
+      }
     }
     return shared
   }
@@ -233,6 +236,9 @@ private enum StorageKey: String {
   private lazy var _cookies: TPPKeychainVariable<[HTTPCookie]> = StorageKey.cookies
     .keyForLibrary(uuid: libraryUUID)
     .asKeychainVariable(with: accountInfoQueue)
+  private lazy var _authState: TPPKeychainCodableVariable<TPPAccountAuthState> = StorageKey.authState
+    .keyForLibrary(uuid: libraryUUID)
+    .asKeychainCodableVariable(with: accountInfoQueue)
 
   // Legacy
   private lazy var _barcode: TPPKeychainVariable<String> = StorageKey.barcode
@@ -374,6 +380,26 @@ private enum StorageKey: String {
   var adobeToken: String? { _adobeToken.read() }
   var licensor: [String:Any]? { _licensor.read() }
   var cookies: [HTTPCookie]? { _cookies.read() }
+  
+  /// The current authentication state of this account.
+  /// Computed based on stored auth state and credentials.
+  var authState: TPPAccountAuthState {
+    // If we have stored auth state, use it
+    if let storedState = _authState.read() {
+      Log.debug(#file, "🔐 authState: storedState=\(storedState), hasCredentials=\(hasCredentials())")
+      // Validate: if state is loggedIn or credentialsStale but no credentials, reset to loggedOut
+      if storedState.hasStoredCredentials && !hasCredentials() {
+        Log.debug(#file, "🔐 authState: returning .loggedOut (no credentials but stored state has them)")
+        return .loggedOut
+      }
+      return storedState
+    }
+    
+    // No stored state - derive from credentials
+    let derivedState: TPPAccountAuthState = hasCredentials() ? .loggedIn : .loggedOut
+    Log.debug(#file, "🔐 authState: no stored state, derived=\(derivedState)")
+    return derivedState
+  }
 
   var authToken: String? {
     if let credentials = _credentials.read(),
@@ -397,6 +423,23 @@ private enum StorageKey: String {
     }
     
     return expirationDate <= Date()  // Expired if date is in the past
+  }
+  
+  private enum TokenExpiry {
+    static let refreshThresholdSeconds: TimeInterval = 300  // 5 minutes
+  }
+  
+  /// Returns true if the auth token exists and will expire within 5 minutes.
+  /// Use this for proactive token refresh before making requests.
+  var authTokenNearExpiry: Bool {
+    guard let credentials = credentials,
+          case let TPPCredentials.token(authToken: _, barcode: _, pin: _, expirationDate: expirationDate) = credentials,
+          let expirationDate = expirationDate else {
+      return false
+    }
+    
+    let expiryThreshold = Date().addingTimeInterval(TokenExpiry.refreshThresholdSeconds)
+    return expirationDate <= expiryThreshold
   }
 
   var patronFullName: String? {
@@ -513,7 +556,61 @@ private enum StorageKey: String {
     _deviceID.write(id)
     notifyAccountDidChange()
   }
+  
+  /// Sets the authentication state of the account.
+  /// - Parameter state: The new authentication state.
+  func setAuthState(_ state: TPPAccountAuthState) {
+    Log.debug(#file, "Auth state changing from \(authState) to \(state)")
+    _authState.write(state)
     
+    // Update Combine publisher
+    Task { @MainActor in
+      UserAccountPublisher.shared.updateState(from: self)
+    }
+    
+    notifyAccountDidChange()
+  }
+  
+  /// Marks the account credentials as stale (e.g., after receiving a 401).
+  /// This preserves Adobe DRM activation while signaling that re-authentication is needed.
+  func markCredentialsStale() {
+    guard authState == .loggedIn else {
+      Log.debug(#file, "Cannot mark credentials stale - current state is \(authState)")
+      return
+    }
+    setAuthState(.credentialsStale)
+  }
+  
+  /// Marks the account as fully logged in (e.g., after successful re-authentication).
+  func markLoggedIn() {
+    setAuthState(.loggedIn)
+  }
+    
+  // MARK: - Cache Refresh
+  
+  /// Forces a refresh of all cached credentials from keychain storage.
+  /// This is useful when credentials may have been updated by another component
+  /// or to verify that credentials were successfully persisted.
+  ///
+  /// - Returns: `true` if credentials were found after refresh, `false` otherwise.
+  @discardableResult
+  func refreshCredentialsFromKeychain() -> Bool {
+    // Force all keychain variables to re-read from keychain on next access
+    // This is done by changing the key (which resets alreadyInited) and then
+    // changing it back
+    let currentUUID = libraryUUID
+    
+    // Temporarily invalidate cache by triggering key change
+    // We do this by re-setting the libraryUUID which updates all keys via didSet
+    if let uuid = currentUUID {
+      // Force the didSet to trigger by setting to a different value first
+      libraryUUID = nil
+      libraryUUID = uuid
+    }
+    
+    return hasCredentials()
+  }
+  
   // MARK: - Remove
 
   func removeAll() {
@@ -524,6 +621,7 @@ private enum StorageKey: String {
       _provider.write(nil)
       _userID.write(nil)
       _deviceID.write(nil)
+      _authState.write(nil)
 
       keychainTransaction.perform {
         _authDefinition.write(nil)

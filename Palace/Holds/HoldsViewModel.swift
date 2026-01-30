@@ -35,8 +35,15 @@ final class HoldsViewModel: ObservableObject {
     @Published var searchQuery: String = ""
     @Published var visibleBooks: [TPPBook] = []
     private var cancellables = Set<AnyCancellable>()
+    private let bookRegistry: TPPBookRegistryProvider
 
-    init() {
+    convenience init() {
+        self.init(bookRegistry: TPPBookRegistry.shared)
+    }
+    
+    init(bookRegistry: TPPBookRegistryProvider) {
+        self.bookRegistry = bookRegistry
+        
         NotificationCenter.default.publisher(for: .TPPSyncBegan)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
@@ -64,7 +71,13 @@ final class HoldsViewModel: ObservableObject {
     }
 
     func reloadData() {
-        let allHeld = TPPBookRegistry.shared.heldBooks
+        // Use test books if debug configuration is enabled, otherwise use injected registry data
+        #if DEBUG
+        let allHeld: [TPPBook] = DebugSettings.shared.createTestHoldBooks() ?? bookRegistry.heldBooks
+        #else
+        let allHeld = bookRegistry.heldBooks
+        #endif
+        
         var reservedVMs: [HoldsBookViewModel] = []
         var heldVMs: [HoldsBookViewModel] = []
 
@@ -81,8 +94,10 @@ final class HoldsViewModel: ObservableObject {
             self.reservedBookVMs = reservedVMs
             self.heldBookVMs = heldVMs
             self.visibleBooks = self.allBooks
-            self.updateBadgeCount()
         }
+        
+        // Trigger badge update via notification (badge is now centrally managed by AppTabHostView)
+        NotificationCenter.default.post(name: .TPPBookRegistryStateDidChange, object: nil)
     }
 
     func refresh() {
@@ -97,10 +112,6 @@ final class HoldsViewModel: ObservableObject {
         } else {
             TPPBookRegistry.shared.load()
         }
-    }
-
-    private func updateBadgeCount() {
-        UIApplication.shared.applicationIconBadgeNumber = reservedBookVMs.count
     }
 
     func loadAccount(_ account: Account) {

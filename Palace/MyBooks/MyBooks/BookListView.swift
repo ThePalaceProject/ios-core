@@ -9,19 +9,24 @@ struct BookListView: View {
   var previewEnabled: Bool = true
   @State private var containerWidth: CGFloat = UIScreen.main.bounds.width
   @State private var screenSize: CGSize = UIScreen.main.bounds.size
+  
+  /// Shared model cache for performance - reuses BookCellModel instances
+  private let modelCache = BookCellModelCache.shared
+  
+  /// Number of items to prefetch beyond visible range
+  private let prefetchBuffer = 10
 
   var body: some View {
     LazyVGrid(columns: gridLayout, spacing: 0) {
       ForEach(books, id: \.identifier) { book in
         Button(action: { onSelect(book) }) {
-          BookCell(model: BookCellModel(book: book, imageCache: ImageCache.shared), previewEnabled: previewEnabled)
+          // Use cached model instead of creating new one each render
+          BookCell(model: modelCache.model(for: book), previewEnabled: previewEnabled)
         }
         .buttonStyle(.plain)
         .applyBorderStyle()
         .onAppear {
-          if let onLoadMore = onLoadMore, book.identifier == books.last?.identifier {
-            Task { await onLoadMore() }
-          }
+          handleCellAppear(book: book)
         }
       }
       
@@ -45,6 +50,48 @@ struct BookListView: View {
     )
     .onReceive(NotificationCenter.default.publisher(for: UIDevice.orientationDidChangeNotification)) { _ in
       screenSize = UIScreen.main.bounds.size
+    }
+  }
+  
+  // MARK: - Cell Appearance Handler
+  
+  private func handleCellAppear(book: TPPBook) {
+    // Trigger load more if at end
+    if let onLoadMore = onLoadMore, book.identifier == books.last?.identifier {
+      Task { await onLoadMore() }
+    }
+    
+    // Prefetch images for upcoming cells
+    prefetchUpcomingImages(currentBook: book)
+  }
+  
+  // MARK: - Image Prefetching
+  
+  /// Prefetches images for cells that are about to become visible
+  private func prefetchUpcomingImages(currentBook: TPPBook) {
+    guard let currentIndex = books.firstIndex(where: { $0.identifier == currentBook.identifier }) else {
+      return
+    }
+    
+    // Prefetch next N items
+    let startIndex = currentIndex + 1
+    let endIndex = min(startIndex + prefetchBuffer, books.count)
+    
+    guard startIndex < endIndex else { return }
+    
+    let upcomingBooks = Array(books[startIndex..<endIndex])
+    
+    // Prefetch in background
+    Task.detached(priority: .utility) {
+      for book in upcomingBooks {
+        // Prefetch thumbnail images
+        await TPPBookCoverRegistry.shared.thumbnailImage(for: book)
+      }
+    }
+    
+    // Also preload models for upcoming books
+    Task { @MainActor in
+      modelCache.preload(books: upcomingBooks)
     }
   }
   

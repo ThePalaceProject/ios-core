@@ -16,15 +16,17 @@ struct SignInModalView: View {
   
   var body: some View {
     NavigationView {
-      AccountDetailView(libraryAccountID: libraryAccountID)
+      // forceReauthMode: true ensures sign-in form is shown even if user has stale credentials
+      // This is needed for re-auth flows (e.g., after 401 from borrow)
+      AccountDetailView(libraryAccountID: libraryAccountID, forceReauthMode: true)
         .navigationTitle(Strings.Generic.signin)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarItems(leading: cancelButton)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarBackground(Color(UIColor.systemGroupedBackground), for: .navigationBar)
-        .onChange(of: accountPublisher.hasCredentials) { hasCredentials in
-          // Auto-dismiss when user successfully signs in
-          if hasCredentials {
+        .onChange(of: accountPublisher.authState) { authState in
+          // Auto-dismiss when user successfully signs in (including re-auth from stale state)
+          if authState == .loggedIn {
             dismiss()
             completion?()
           }
@@ -36,6 +38,9 @@ struct SignInModalView: View {
   private var cancelButton: some View {
     Button(Strings.Generic.cancel) {
       dismiss()
+      // Call completion on cancel so callers can clean up UI state (e.g., remove processing spinners)
+      // IMPORTANT: Callers MUST check hasCredentials() before proceeding with their action
+      completion?()
     }
   }
 }
@@ -71,4 +76,3 @@ class SignInModalPresenter: NSObject {
     presentSignInModal(libraryAccountID: libraryID, completion: completion)
   }
 }
-

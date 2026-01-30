@@ -26,6 +26,14 @@ struct TPPPDFNavigation<Content>: View where Content: View {
       }
     }
     
+    var accessibilityLabel: String {
+      switch self {
+      case .previews: return Strings.Generic.pagePreviewsTab
+      case .toc: return Strings.Generic.tableOfContents
+      case .bookmarks: return Strings.Generic.bookmarksTab
+      }
+    }
+    
     static var allValues: [TPPPDFReaderModeValues] {
       return [.previews, .toc, .bookmarks]
     }
@@ -66,12 +74,14 @@ struct TPPPDFNavigation<Content>: View where Content: View {
           readerMode = TPPPDFReaderModeValues(rawValue: pickerSelection)?.readerMode ?? .previews
           metadata.fetchBookmarks()
         }
+        .accessibilityLabel(Strings.Generic.tableOfContents)
         .visible(when: !isShowingPdfContorls)
 
         Picker("", selection: $pickerSelection.onChange(changeReaderMode)) {
           ForEach(TPPPDFReaderModeValues.allValues) { readerModeValue in
             readerModeValue.image
               .tag(readerModeValue.rawValue)
+              .accessibilityLabel(readerModeValue.accessibilityLabel)
           }
         }
         .toolbarButtonSize()
@@ -93,6 +103,7 @@ struct TPPPDFNavigation<Content>: View where Content: View {
         TPPPDFToolbarButton(icon: "magnifyingglass") {
           readerMode = (readerMode == .search ? .reader : .search)
         }
+        .accessibilityLabel(Strings.Generic.searchInBook)
         TPPPDFToolbarButton(icon: metadata.isBookmarked() ? "bookmark.fill" : "bookmark") {
           if metadata.isBookmarked() {
             metadata.removeBookmark()
@@ -100,7 +111,7 @@ struct TPPPDFNavigation<Content>: View where Content: View {
             metadata.addBookmark()
           }
         }
-        .accessibilityIdentifier(metadata.isBookmarked() ? Strings.TPPBaseReaderViewController.removeBookmark : Strings.TPPBaseReaderViewController.addBookmark)
+        .accessibilityLabel(metadata.isBookmarked() ? Strings.TPPBaseReaderViewController.removeBookmark : Strings.TPPBaseReaderViewController.addBookmark)
       }
       .visible(when: !isShowingPdfContorls)
     }

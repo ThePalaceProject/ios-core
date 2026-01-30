@@ -46,6 +46,15 @@ extension AdobeCertificate {
     return expirationDate.timeIntervalSinceNow <= 0
   }
     
+  /// Safely checks if DRM is available and certificate is valid.
+  /// Use this before attempting any DRM operations.
+  @objc static var isDRMAvailable: Bool {
+    guard let cert = defaultCertificate else {
+      return false
+    }
+    return !cert.hasExpired
+  }
+    
   /// Default certificate for Palace app.
   @objc static var defaultCertificate: AdobeCertificate? = {
     let bundle: Bundle = (ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil) ? Bundle(for: TPPAppDelegate.self) : Bundle.main
@@ -85,6 +94,131 @@ extension AdobeCertificate {
     }
   }
   
+}
+
+// MARK: - Safe DRM Access
+
+/// Provides thread-safe access to Adobe DRM functionality.
+/// Wraps NYPLADEPT.sharedInstance() with defensive error handling to prevent crashes.
+/// Note: Named AdobeDRMService to avoid conflict with Obj-C AdobeDRMContainer (the decryption container)
+@objcMembers
+class AdobeDRMService: NSObject {
+  
+  /// Singleton for safe DRM access
+  static let shared = AdobeDRMService()
+  
+  /// Lock for thread-safe singleton access
+  private let lock = NSLock()
+  
+  /// Cached reference to NYPLADEPT instance
+  private var _adeptInstance: NYPLADEPT?
+  
+  /// Flag to track if initialization has been attempted
+  private var initializationAttempted = false
+  
+  /// Flag to track if initialization failed
+  private var initializationFailed = false
+  
+  private override init() {
+    super.init()
+  }
+  
+  /// Safely get the NYPLADEPT shared instance.
+  /// Returns nil if DRM is not available or initialization fails.
+  var adeptInstance: NYPLADEPT? {
+    lock.lock()
+    defer { lock.unlock() }
+    
+    // Return cached instance if available
+    if let instance = _adeptInstance {
+      return instance
+    }
+    
+    // Don't retry if initialization already failed
+    if initializationFailed {
+      return nil
+    }
+    
+    // Check DRM availability before attempting access
+    guard AdobeCertificate.isDRMAvailable else {
+      Log.info(#file, "Adobe DRM not available - certificate missing or expired")
+      initializationFailed = true
+      return nil
+    }
+    
+    // Attempt to get the shared instance safely
+    initializationAttempted = true
+    
+    // Access the shared instance - this can crash with EXC_BREAKPOINT
+    // if the Adobe DRM library fails to initialize properly
+    _adeptInstance = NYPLADEPT.sharedInstance()
+    
+    if _adeptInstance == nil {
+      Log.error(#file, "Failed to initialize Adobe DRM - NYPLADEPT.sharedInstance() returned nil")
+      initializationFailed = true
+    }
+    
+    return _adeptInstance
+  }
+  
+  /// Safely check if a user is authorized for DRM content.
+  /// Returns false if DRM is not available.
+  func isUserAuthorized(_ userID: String?, deviceID: String?) -> Bool {
+    guard let adept = adeptInstance,
+          let userID = userID,
+          let deviceID = deviceID else {
+      return false
+    }
+    return adept.isUserAuthorized(userID, withDevice: deviceID)
+  }
+  
+  /// Safely set the delegate for DRM callbacks.
+  func setDelegate(_ delegate: NYPLADEPTDelegate?) {
+    guard let adept = adeptInstance else {
+      Log.warn(#file, "Cannot set DRM delegate - Adobe DRM not available")
+      return
+    }
+    adept.delegate = delegate
+  }
+  
+  /// Check if DRM is ready for use
+  var isReady: Bool {
+    return adeptInstance != nil
+  }
+  
+  /// Safely cancel a DRM fulfillment operation.
+  func cancelFulfillment(withTag tag: String) {
+    guard let adept = adeptInstance else {
+      Log.warn(#file, "Cannot cancel DRM fulfillment - Adobe DRM not available")
+      return
+    }
+    adept.cancelFulfillment(withTag: tag)
+  }
+  
+  /// Safely return a DRM loan.
+  func returnLoan(_ fulfillmentId: String?,
+                        userID: String?,
+                        deviceID: String?,
+                        completion: @escaping (Bool, Error?) -> Void) {
+    guard let adept = adeptInstance else {
+      Log.warn(#file, "Cannot return DRM loan - Adobe DRM not available")
+      completion(false, NSError(domain: "AdobeDRM", code: -1, userInfo: [NSLocalizedDescriptionKey: "Adobe DRM not available"]))
+      return
+    }
+    adept.returnLoan(fulfillmentId, userID: userID, deviceID: deviceID, completion: completion)
+  }
+  
+  /// Safely fulfill a DRM-protected download.
+  func fulfill(withACSMData acsmData: Data,
+                     tag: String,
+                     userID: String?,
+                     deviceID: String?) {
+    guard let adept = adeptInstance else {
+      Log.error(#file, "Cannot fulfill DRM content - Adobe DRM not available")
+      return
+    }
+    adept.fulfill(withACSMData: acsmData, tag: tag, userID: userID, deviceID: deviceID)
+  }
 }
 
 #endif

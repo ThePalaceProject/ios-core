@@ -15,6 +15,7 @@ protocol AnnotationsManager {
                                 motivation: TPPBookmarkSpec.Motivation,
                                 completion: @escaping (_ bookmarks: [Bookmark]?) -> ())
   func deleteBookmark(annotationId: String, completionHandler: @escaping (_ success: Bool) -> ())
+  func deleteAllBookmarks(forBook book: TPPBook, completion: @escaping () -> Void)
 }
 
 @objcMembers final class TPPAnnotationsWrapper: NSObject, AnnotationsManager {
@@ -34,6 +35,10 @@ protocol AnnotationsManager {
   
   func deleteBookmark(annotationId: String, completionHandler: @escaping (Bool) -> ()) {
     TPPAnnotations.deleteBookmark(annotationId: annotationId, completionHandler: completionHandler)
+  }
+  
+  func deleteAllBookmarks(forBook book: TPPBook, completion: @escaping () -> Void) {
+    TPPAnnotations.deleteAllBookmarks(forBook: book, completion: completion)
   }
 }
 
@@ -289,44 +294,74 @@ protocol AnnotationsManager {
                                 completion: @escaping (_ bookmarks: [Bookmark]?) -> ()) {
 
     guard syncIsPossibleAndPermitted() else {
-      Log.debug(#file, "Account does not support sync or sync is disabled.")
+      Log.debug(#file, "📡 getServerBookmarks: Account does not support sync or sync is disabled.")
       completion(nil)
       return
     }
 
     guard let book, let annotationURL else {
-      Log.error(#file, "Required parameter was nil.")
+      Log.error(#file, "📡 getServerBookmarks: Required parameter was nil.")
       completion(nil)
       return
     }
     
+    Log.info(#file, "📡 GET SERVER BOOKMARKS for book: \(book.identifier), URL: \(annotationURL.absoluteString), motivation: \(motivation.rawValue)")
+    
     let dataTask = TPPNetworkExecutor.shared.GET(annotationURL, useTokenIfAvailable: true) { (data, response, error) in
       
       if let error = error as NSError? {
-        Log.error(#file, "Request Error Code: \(error.code). Description: \(error.localizedDescription)")
+        Log.error(#file, "📡 Request Error Code: \(error.code). Description: \(error.localizedDescription)")
         completion(nil)
         return
+      }
+      
+      if let httpResponse = response as? HTTPURLResponse {
+        Log.info(#file, "📡 Server Response Status Code: \(httpResponse.statusCode)")
       }
 
       guard let data,
         let jsonObject = try? JSONSerialization.jsonObject(with: data, options: []),
         let json = jsonObject as? [String: Any] else {
-          Log.error(#file, "Response from annotation server could not be serialized.")
+          Log.error(#file, "📡 Response from annotation server could not be serialized.")
+          if let data = data, let responseString = String(data: data, encoding: .utf8) {
+            Log.error(#file, "📡 Raw response: \(responseString.prefix(500))")
+          }
           completion(nil)
           return
       }
 
       guard let first = json["first"] as? [String: Any],
         let items = first["items"] as? [[String: Any]] else {
-          Log.error(#file, "Missing required key from Annotations response, or no items exist.")
+          Log.error(#file, "📡 Missing required key from Annotations response, or no items exist.")
+          Log.info(#file, "📡 JSON keys: \(json.keys)")
           completion(nil)
           return
+      }
+      
+      Log.info(#file, "📡 RAW SERVER ITEMS COUNT: \(items.count)")
+      
+      for (index, item) in items.enumerated() {
+        if let annotationId = item[TPPBookmarkSpec.Id.key] as? String,
+           let body = item[TPPBookmarkSpec.Body.key] as? [String: Any],
+           let time = body[TPPBookmarkSpec.Body.Time.key] as? String,
+           let target = item[TPPBookmarkSpec.Target.key] as? [String: Any],
+           let source = target[TPPBookmarkSpec.Target.Source.key] as? String {
+          Log.info(#file, "📡 Raw Item #\(index): id=\(annotationId), timestamp=\(time), bookId=\(source)")
+        } else {
+          Log.warn(#file, "📡 Raw Item #\(index): Could not extract basic info from annotation")
+        }
       }
 
       let bookmarks = items.compactMap {
         TPPBookmarkFactory.make(fromServerAnnotation: $0,
                                  annotationType: motivation,
                                  book: book)
+      }
+      
+      Log.info(#file, "📡 PARSED BOOKMARKS COUNT: \(bookmarks.count) (from \(items.count) raw items)")
+      
+      if bookmarks.count < items.count {
+        Log.warn(#file, "📡 ⚠️ Some items failed to parse: \(items.count - bookmarks.count) items were not converted to bookmarks")
       }
 
       completion(bookmarks)
@@ -349,18 +384,46 @@ protocol AnnotationsManager {
       }
     }
   }
+  
+  /// Deletes all bookmarks for a book from the server.
+  /// This should be called when a book is returned to prevent old bookmarks
+  /// from reappearing when the book is re-borrowed.
+  ///
+  /// **Important:** This is fire-and-forget. Completion is called immediately,
+  /// and deletions happen in the background. Book returns are never blocked.
+  ///
+  /// - Parameters:
+  ///   - book: The book whose bookmarks should be deleted
+  ///   - completion: Called immediately. Deletions continue in background.
+  class func deleteAllBookmarks(forBook book: TPPBook, completion: @escaping () -> Void) {
+    // Call completion immediately - never block book returns
+    completion()
+    
+    // Fire-and-forget: delete bookmarks in background
+    guard syncIsPossibleAndPermitted() else { return }
+    
+    getServerBookmarks(forBook: book, atURL: book.annotationsURL, motivation: .bookmark) { bookmarks in
+      guard let readiumBookmarks = bookmarks as? [TPPReadiumBookmark], !readiumBookmarks.isEmpty else {
+        return
+      }
+      
+      for bookmark in readiumBookmarks {
+        guard let annotationId = bookmark.annotationId else { continue }
+        deleteBookmark(annotationId: annotationId) { _ in }
+      }
+    }
+  }
 
   class func deleteBookmark(annotationId: String,
                             completionHandler: @escaping (_ success: Bool) -> ()) {
 
     if !syncIsPossibleAndPermitted() {
-      Log.debug(#file, "Account does not support sync or sync is disabled.")
       completionHandler(true)
       return
     }
 
     guard let url = URL(string: annotationId) else {
-      Log.error(#file, "Invalid URL from Annotation ID")
+      Log.error(#file, "Invalid annotation ID URL: \(annotationId)")
       completionHandler(false)
       return
     }

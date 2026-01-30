@@ -32,6 +32,12 @@ class TPPNetworkResponder: NSObject {
   private let useFallbackCaching: Bool
   private let credentialsProvider: NYPLBasicAuthCredentialsProvider?
   
+  /// Tracks URLs that have been retried after a 401 to prevent infinite retry loops.
+  /// Key is the URL absoluteString, value is the number of retry attempts.
+  private var retriedURLs: [String: Int] = [:]
+  private let retriedURLsLock = NSLock()
+  private let maxRetryAttempts = 1
+  
   private let taskInfoQueue = DispatchQueue(
     label: "com.thepalaceproject.networkResponder.taskInfo"
   )
@@ -48,6 +54,42 @@ class TPPNetworkResponder: NSObject {
     self.useFallbackCaching = useFallbackCaching
     self.credentialsProvider = credentialsProvider
     super.init()
+  }
+  
+  // MARK: - Retry Tracking
+  
+  /// Checks if a URL can be retried (hasn't exceeded max retry attempts)
+  func canRetry(url: URL?) -> Bool {
+    guard let urlString = url?.absoluteString else { return false }
+    retriedURLsLock.lock()
+    defer { retriedURLsLock.unlock() }
+    let attempts = retriedURLs[urlString] ?? 0
+    return attempts < maxRetryAttempts
+  }
+  
+  /// Marks a URL as having been retried
+  func markRetried(url: URL?) {
+    guard let urlString = url?.absoluteString else { return }
+    retriedURLsLock.lock()
+    defer { retriedURLsLock.unlock() }
+    retriedURLs[urlString] = (retriedURLs[urlString] ?? 0) + 1
+    Log.debug(#file, "Marked URL as retried (\(retriedURLs[urlString]!)/\(maxRetryAttempts)): \(urlString)")
+  }
+  
+  /// Clears retry tracking for a URL (called after successful completion)
+  func clearRetry(url: URL?) {
+    guard let urlString = url?.absoluteString else { return }
+    retriedURLsLock.lock()
+    defer { retriedURLsLock.unlock() }
+    retriedURLs.removeValue(forKey: urlString)
+  }
+  
+  /// Clears all retry tracking (useful for session reset)
+  func clearAllRetries() {
+    retriedURLsLock.lock()
+    defer { retriedURLsLock.unlock() }
+    retriedURLs.removeAll()
+    tokenRefreshAttempts = 0
   }
 
   //----------------------------------------------------------------------------
@@ -151,20 +193,40 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
       "taskID": taskID
     ]
 
+    // Check for 401 BEFORE removing taskInfo, so completion can be preserved for retry
+    // Use URL-based retry tracking instead of associated objects (which don't work on structs)
+    let requestURL = task.originalRequest?.url
+    if let http = task.response as? HTTPURLResponse,
+       http.statusCode == 401,
+       canRetry(url: requestURL),
+       handleExpiredTokenIfNeeded(for: http, with: task) {
+      // Mark this URL as retried to prevent infinite loops
+      markRetried(url: requestURL)
+      // Don't remove taskInfo - it will be transferred to the retry task via updateCompletionId
+      Log.debug(#file, "Task \(taskID) got 401, triggering token refresh and retry (completion preserved)")
+      return
+    } else if let http = task.response as? HTTPURLResponse,
+              http.statusCode == 401,
+              !canRetry(url: requestURL) {
+      // Already retried this URL - don't retry again
+      Log.warn(#file, "Task \(taskID) got 401 but max retries reached for URL - failing request")
+    }
+    
     var maybeInfo: TPPNetworkTaskInfo?
     taskInfoQueue.sync {
       maybeInfo = self.taskInfo.removeValue(forKey: task.taskIdentifier)
     }
 
     guard let info = maybeInfo else {
-      TPPErrorLogger.logNetworkError(
-        nil,
-        code: .noTaskInfoAvailable,
-        summary: "No taskInfo for task \(taskID)",
-        request: task.originalRequest,
-        response: task.response,
-        metadata: logMetadata
-      )
+      // This can happen legitimately in several scenarios:
+      // 1. URLSession internal tasks (preconnect, preflight, etc.) that we never registered
+      // 2. Cancelled tasks where session became invalid and cleared all taskInfo
+      // 3. Tasks created by the system for HTTP/2 multiplexing
+      // 4. Rapid task creation/completion race conditions (very rare)
+      //
+      // Only log at debug level to avoid noise in crash reporting.
+      // If this becomes a real issue, the user will see failed network requests.
+      Log.debug(#file, "Task \(taskID) completed but no taskInfo found - likely an internal URLSession task")
       return
     }
 
@@ -172,6 +234,8 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
        nsErr.domain == NSURLErrorDomain,
        nsErr.code == NSURLErrorCancelled {
       Log.info(#file, "Task \(taskID) cancelled: \(nsErr.localizedDescription)")
+      // Must still call completion to avoid leaving continuations unresumed
+      info.completion(.failure(nsErr, task.response))
       return
     }
 
@@ -181,14 +245,8 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
 
     let result: NYPLResult<Data>
     if let http = task.response as? HTTPURLResponse {
-      let isFailedRetry = task.originalRequest?.hasRetried == true
-      
-      if http.statusCode == 401,
-         !isFailedRetry,
-         handleExpiredTokenIfNeeded(for: http, with: task) {
-        Log.debug(#file, "Task \(taskID) got 401, triggering token refresh and retry")
-        return
-      }
+      // Use URL-based retry tracking instead of broken hasRetried flag
+      let isFailedRetry = !canRetry(url: requestURL)
       
       if !http.isSuccess() {
         let err: TPPUserFriendlyError
@@ -215,6 +273,8 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
         }
         
         result = .failure(err, task.response)
+        // Request failed permanently - clear retry tracking so future requests can try again
+        clearRetry(url: requestURL)
       }
       
       else if let netErr = networkError {
@@ -227,6 +287,8 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
                                        metadata: logMetadata)
       }
       else {
+        // Success! Clear retry tracking for this URL
+        clearRetry(url: requestURL)
         result = .success(info.progressData, task.response)
       }
     } else {
@@ -318,13 +380,40 @@ private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse, with task
     return false
   }
   
-  guard TPPUserAccount.sharedAccount().hasCredentials() else {
+  let userAccount = TPPUserAccount.sharedAccount()
+  guard userAccount.hasCredentials() else {
     return false
   }
   
-  if response.statusCode == 401 && TPPUserAccount.sharedAccount().isTokenRefreshRequired() {
-    TPPNetworkExecutor.shared.refreshTokenAndResume(task: task)
-    return true
+  let authDef = userAccount.authDefinition
+  
+  if response.statusCode == 401 {
+    // A 401 from a cross-domain redirect (e.g., to biblioboard.com) does NOT
+    // mean our Palace credentials are expired - it's a third-party auth issue
+    let originalURL = task.originalRequest?.url
+    guard response.indicatesAuthenticationNeedsRefresh(with: nil, originalRequestURL: originalURL) else {
+      Log.info(#file, "401 from cross-domain redirect - not marking credentials stale")
+      return false
+    }
+    
+    // Mark credentials as stale - preserves Adobe DRM activation
+    userAccount.markCredentialsStale()
+    
+    if authDef?.isSaml == true {
+      Log.info(#file, "Server returned 401 for SAML - credentials marked stale, will trigger re-auth flow")
+      return false
+    }
+    
+    let canRefreshToken = (authDef?.isToken == true || authDef?.isOauth == true) && 
+                          authDef?.tokenURL != nil &&
+                          userAccount.username != nil &&
+                          userAccount.pin != nil
+    
+    if canRefreshToken {
+      Log.info(#file, "Server returned 401 - triggering token refresh (server authority)")
+      TPPNetworkExecutor.shared.refreshTokenAndResume(task: task)
+      return true
+    }
   }
   return false
 }
@@ -356,9 +445,10 @@ extension URLSessionTask {
       let httpStatusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
       let problemDocStatus = problemDoc.status ?? httpStatusCode
       
-      // Don't log first-attempt 401s - they'll be retried with token refresh
+      // Don't log first-attempt 401s to Crashlytics - they may be retried with token refresh
+      // or trigger re-auth flow (for SAML). Either way, not a crashworthy error yet.
       if !isFailedRetry && (httpStatusCode == 401 || problemDocStatus == 401) {
-        Log.debug(#file, "Problem document with 401 - will retry with token refresh (not logging to Crashlytics)")
+        Log.debug(#file, "Problem document with 401 - will be handled by auth flow (not logging to Crashlytics)")
         return returnedError
       }
       

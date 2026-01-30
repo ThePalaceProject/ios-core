@@ -77,10 +77,16 @@ extension TPPSignInBusinessLogic {
   
   // this is used by both Clever and SAML authentication
   @objc func handleRedirectURL(_ notification: Notification, completion: ((_ error: Error?, _ errorTitle: String?, _ errorMessage: String?)->())?) {
+    Log.info(#file, "🔐 [REDIRECT] handleRedirectURL() called")
+    Log.info(#file, "🔐 [REDIRECT] Library account ID: \(libraryAccountID)")
+    Log.info(#file, "🔐 [REDIRECT] Auth method: \(selectedAuthentication?.methodDescription ?? "N/A")")
+    Log.info(#file, "🔐 [REDIRECT] Is SAML: \(selectedAuthentication?.isSaml == true)")
+    
     NotificationCenter.default
       .removeObserver(self, name: .TPPAppDelegateDidReceiveCleverRedirectURL, object: nil)
 
     guard let url = notification.object as? URL else {
+      Log.error(#file, "🔐 [REDIRECT] ❌ ERROR: No URL in notification object")
       TPPErrorLogger.logError(withCode: .noURL,
                                summary: "Sign-in redirection error",
                                metadata: [
@@ -91,8 +97,15 @@ extension TPPSignInBusinessLogic {
     }
 
     let urlStr = url.absoluteString
+    Log.info(#file, "🔐 [REDIRECT] Received URL: \(urlStr.prefix(100))...")
+    
     guard urlStr.hasPrefix(urlSettingsProvider.universalLinksURL.absoluteString),
       universalLinkRedirectURLContainsPayload(urlStr) else {
+        Log.error(#file, "🔐 [REDIRECT] ❌ ERROR: URL missing payload or wrong prefix")
+        Log.error(#file, "🔐 [REDIRECT]   Expected prefix: \(urlSettingsProvider.universalLinksURL.absoluteString)")
+        Log.error(#file, "🔐 [REDIRECT]   Contains error: \(urlStr.contains("error"))")
+        Log.error(#file, "🔐 [REDIRECT]   Contains access_token: \(urlStr.contains("access_token"))")
+        Log.error(#file, "🔐 [REDIRECT]   Contains patron_info: \(urlStr.contains("patron_info"))")
 
         TPPErrorLogger.logError(withCode: .unrecognizedUniversalLink,
                                  summary: "Sign-in redirection error: missing payload",
@@ -109,6 +122,7 @@ extension TPPSignInBusinessLogic {
     // Oauth method provides the auth token as a fragment while SAML as a
     // query parameter
     guard let payload = { url.fragment ?? url.query }() else {
+      Log.error(#file, "🔐 [REDIRECT] ❌ ERROR: No fragment or query in URL")
       TPPErrorLogger.logError(withCode: .unrecognizedUniversalLink,
                                summary: "Sign-in redirection error: payload not in fragment nor query params",
                                metadata: [
@@ -117,6 +131,9 @@ extension TPPSignInBusinessLogic {
       completion?(nil, nil, nil)
       return
     }
+    
+    Log.info(#file, "🔐 [REDIRECT] Payload source: \(url.fragment != nil ? "fragment" : "query")")
+    Log.debug(#file, "🔐 [REDIRECT] Payload length: \(payload.count) characters")
 
     for param in payload.components(separatedBy: "&") {
       let elts = param.components(separatedBy: "=")
@@ -125,11 +142,16 @@ extension TPPSignInBusinessLogic {
       }
       kvpairs[key] = value
     }
+    
+    Log.info(#file, "🔐 [REDIRECT] Parsed \(kvpairs.count) key-value pairs from payload")
+    Log.info(#file, "🔐 [REDIRECT] Keys present: \(kvpairs.keys.sorted().joined(separator: ", "))")
 
     if
       let rawError = kvpairs["error"],
       let error = rawError.replacingOccurrences(of: "+", with: " ").removingPercentEncoding,
       let parsedError = error.parseJSONString as? [String: Any] {
+      Log.error(#file, "🔐 [REDIRECT] ❌ ERROR: Server returned error in payload")
+      Log.error(#file, "🔐 [REDIRECT]   Error: \(parsedError)")
 
       completion?(nil,
                   Strings.Error.loginErrorTitle,
@@ -142,6 +164,9 @@ extension TPPSignInBusinessLogic {
       let patronInfo = kvpairs["patron_info"],
       let patron = patronInfo.replacingOccurrences(of: "+", with: " ").removingPercentEncoding,
       let parsedPatron = patron.parseJSONString as? [String: Any] else {
+        Log.error(#file, "🔐 [REDIRECT] ❌ ERROR: Failed to parse auth token or patron info")
+        Log.error(#file, "🔐 [REDIRECT]   access_token present: \(kvpairs["access_token"] != nil)")
+        Log.error(#file, "🔐 [REDIRECT]   patron_info present: \(kvpairs["patron_info"] != nil)")
 
         TPPErrorLogger.logError(withCode: .authDataParseFail,
                                  summary: "Sign-in redirection error: Unable to parse auth info",
@@ -152,10 +177,23 @@ extension TPPSignInBusinessLogic {
         completion?(nil, nil, nil)
         return
     }
+    
+    Log.info(#file, "🔐 [REDIRECT] ✅ Successfully extracted auth data:")
+    Log.info(#file, "🔐 [REDIRECT]   Auth token length: \(authToken.count) characters")
+    Log.info(#file, "🔐 [REDIRECT]   Auth token prefix: \(authToken.prefix(20))...")
+    Log.info(#file, "🔐 [REDIRECT]   Patron keys: \(parsedPatron.keys.sorted().joined(separator: ", "))")
+    if let patronName = parsedPatron["name"] as? String {
+      Log.info(#file, "🔐 [REDIRECT]   Patron name: \(patronName)")
+    }
 
     self.authToken = authToken
     self.patron = parsedPatron
+    Log.info(#file, "🔐 [REDIRECT] Stored authToken and patron in businessLogic")
+    Log.info(#file, "🔐 [REDIRECT] Calling validateCredentials()...")
+    
     validateCredentials()
+    
+    Log.info(#file, "🔐 [REDIRECT] validateCredentials() initiated (async)")
     completion?(nil, nil, nil)
   }
 }
