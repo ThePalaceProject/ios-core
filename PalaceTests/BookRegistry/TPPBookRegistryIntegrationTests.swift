@@ -340,16 +340,18 @@ final class TPPBookRegistryPublisherTests: XCTestCase {
     }
     waitForExpectations(timeout: 1.0)
     
-    var emissionCount = 0
+    var receivedRegistry: [String: TPPBookRegistryRecord]?
     let removeExpectation = self.expectation(description: "Registry publisher emits on remove")
     
+    // Use filter instead of dropFirst() for more reliable timing
+    // The initial emission contains the book, so this filter won't match
+    // After removal, the emission won't contain the book, so it will match
     registry.registryPublisher
-      .dropFirst() // Skip current value
+      .filter { $0[book.identifier] == nil }
+      .first()
       .sink { records in
-        emissionCount += 1
-        if records[book.identifier] == nil {
-          removeExpectation.fulfill()
-        }
+        receivedRegistry = records
+        removeExpectation.fulfill()
       }
       .store(in: &cancellables)
     
@@ -358,7 +360,8 @@ final class TPPBookRegistryPublisherTests: XCTestCase {
     
     // Assert
     waitForExpectations(timeout: 2.0)
-    XCTAssertGreaterThanOrEqual(emissionCount, 1)
+    XCTAssertNotNil(receivedRegistry)
+    XCTAssertNil(receivedRegistry?[book.identifier])
   }
   
   // MARK: - bookStatePublisher Tests
