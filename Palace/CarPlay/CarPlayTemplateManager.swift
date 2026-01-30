@@ -200,6 +200,19 @@ final class CarPlayTemplateManager: NSObject {
     lastSelectedBookId = book.identifier
     lastSelectionTime = now
     
+    // Check if the main phone scene has connected.
+    // If only CarPlay connected (cold start from CarPlay), playback won't work reliably
+    // because iOS limits background execution. Show an alert asking the user to open
+    // Palace on their phone first.
+    let mainSceneConnected = SceneDelegate.hasMainSceneConnected
+    Log.info(#file, "CarPlay: Main scene connected: \(mainSceneConnected)")
+    
+    if !mainSceneConnected {
+      Log.info(#file, "CarPlay: Main scene not connected - showing open app alert")
+      showOpenAppAlert()
+      return
+    }
+    
     // Check authentication status first
     let authenticated = isUserAuthenticated()
     guard authenticated else {
@@ -323,6 +336,32 @@ final class CarPlayTemplateManager: NSObject {
     )
     
     interfaceController.presentTemplate(alert, animated: true, completion: nil)
+  }
+  
+  /// Shows an alert when the user tries to play a book but the main phone app
+  /// hasn't been opened yet (cold start from CarPlay). iOS doesn't allow CarPlay
+  /// apps to programmatically open the phone app, so we ask the user to do it manually.
+  private func showOpenAppAlert() {
+    guard let interfaceController = interfaceController else { return }
+    
+    let alert = CPAlertTemplate(
+      titleVariants: [
+        Strings.CarPlay.OpenApp.message,
+        Strings.CarPlay.OpenApp.messageShort,
+        Strings.CarPlay.OpenApp.messageShortest
+      ],
+      actions: [
+        CPAlertAction(title: Strings.Generic.ok, style: .default) { _ in
+          interfaceController.dismissTemplate(animated: true, completion: nil)
+        }
+      ]
+    )
+    
+    interfaceController.presentTemplate(alert, animated: true) { success, error in
+      if let error = error {
+        Log.warn(#file, "CarPlay: Failed to present open app alert: \(error)")
+      }
+    }
   }
   
   // MARK: - Now Playing Template
@@ -686,6 +725,24 @@ extension Strings {
         "CarPlay.Error.drmMessage",
         value: "There was a problem with the audiobook license. Please try again in the app",
         comment: "CarPlay error message when DRM/license fails"
+      )
+    }
+    
+    enum OpenApp {
+      static let message = NSLocalizedString(
+        "CarPlay.OpenApp.message",
+        value: "Please open Palace on your phone first, then select the book again",
+        comment: "CarPlay alert message asking user to open the app on their phone"
+      )
+      static let messageShort = NSLocalizedString(
+        "CarPlay.OpenApp.messageShort",
+        value: "Open Palace on your phone first",
+        comment: "CarPlay alert short message asking user to open the app"
+      )
+      static let messageShortest = NSLocalizedString(
+        "CarPlay.OpenApp.messageShortest",
+        value: "Open Palace first",
+        comment: "CarPlay alert shortest message"
       )
     }
   }

@@ -341,96 +341,96 @@ public final class PlaybackBootstrapper {
   /// at which point AudiobookEvents.managerCreated fires and binds the manager.
   
   private func handlePlay() -> MPRemoteCommandHandlerStatus {
-    let manager = AudiobookSessionManager.shared.manager
+    let hasManager = AudiobookSessionManager.shared.manager != nil
     let state = AudiobookSessionManager.shared.state
-    Log.info(#file, "🎮 handlePlay - manager: \(manager != nil), state: \(state)")
+    Log.info(#file, "🎮 handlePlay - manager: \(hasManager), state: \(state)")
     
-    guard let manager = manager else {
-      Log.warn(#file, "🎮 Play command received but no active manager - book may not be loaded yet")
-      return .noActionableNowPlayingItem
+    // When AudiobookManager is active, the toolkit's MediaControlPublisher handles
+    // play/pause commands. We return .success to indicate we handled it (preventing error)
+    // but don't actually play - the toolkit does the actual play.
+    if hasManager {
+      Log.debug(#file, "🎮 Play - deferring to toolkit's MediaControlPublisher")
+      return .success
     }
     
-    manager.play()
-    Log.info(#file, "🎮 Play command executed successfully")
-    return .success
+    Log.warn(#file, "🎮 Play command received but no active manager - book may not be loaded yet")
+    return .noActionableNowPlayingItem
   }
   
   private func handlePause() -> MPRemoteCommandHandlerStatus {
-    let manager = AudiobookSessionManager.shared.manager
-    Log.info(#file, "🎮 handlePause - manager: \(manager != nil)")
+    let hasManager = AudiobookSessionManager.shared.manager != nil
+    Log.info(#file, "🎮 handlePause - manager: \(hasManager)")
     
-    guard let manager = manager else {
-      Log.warn(#file, "🎮 Pause command received but no active manager")
-      return .noActionableNowPlayingItem
+    // When AudiobookManager is active, the toolkit's MediaControlPublisher handles
+    // play/pause commands. We return .success but defer actual action to toolkit.
+    if hasManager {
+      Log.debug(#file, "🎮 Pause - deferring to toolkit's MediaControlPublisher")
+      return .success
     }
     
-    manager.pause()
-    Log.info(#file, "🎮 Pause command executed successfully")
-    return .success
+    Log.warn(#file, "🎮 Pause command received but no active manager")
+    return .noActionableNowPlayingItem
   }
   
   private func handleTogglePlayPause() -> MPRemoteCommandHandlerStatus {
-    let manager = AudiobookSessionManager.shared.manager
-    Log.info(#file, "🎮 handleTogglePlayPause - manager: \(manager != nil)")
+    let hasManager = AudiobookSessionManager.shared.manager != nil
+    Log.info(#file, "🎮 handleTogglePlayPause - manager: \(hasManager)")
     
-    guard let manager = manager else {
-      Log.warn(#file, "🎮 TogglePlayPause command received but no active manager")
-      return .noActionableNowPlayingItem
+    // When AudiobookManager is active, the toolkit's MediaControlPublisher handles
+    // play/pause commands. We return .success but defer actual action to toolkit.
+    if hasManager {
+      Log.debug(#file, "🎮 TogglePlayPause - deferring to toolkit's MediaControlPublisher")
+      return .success
     }
     
-    let wasPlaying = manager.audiobook.player.isPlaying
-    if wasPlaying {
-      manager.pause()
-    } else {
-      manager.play()
-    }
-    Log.info(#file, "🎮 TogglePlayPause executed: wasPlaying=\(wasPlaying) -> \(!wasPlaying)")
-    return .success
+    Log.warn(#file, "🎮 TogglePlayPause command received but no active manager")
+    return .noActionableNowPlayingItem
   }
   
   private func handleSkipForward(interval: TimeInterval) -> MPRemoteCommandHandlerStatus {
-    let manager = AudiobookSessionManager.shared.manager
-    Log.info(#file, "🎮 handleSkipForward(\(interval)s) - manager: \(manager != nil)")
+    let hasManager = AudiobookSessionManager.shared.manager != nil
+    Log.info(#file, "🎮 handleSkipForward(\(interval)s) - manager: \(hasManager)")
     
-    guard let manager = manager else {
-      Log.warn(#file, "🎮 SkipForward command received but no active manager")
-      return .noActionableNowPlayingItem
+    // When AudiobookManager is active, the toolkit's MediaControlPublisher handles
+    // skip commands. We return .success to indicate we handled it (preventing error)
+    // but don't actually skip - the toolkit does the actual skip.
+    if hasManager {
+      Log.debug(#file, "🎮 SkipForward - deferring to toolkit's MediaControlPublisher")
+      return .success
     }
     
-    manager.audiobook.player.skipPlayhead(interval, completion: nil)
-    Log.info(#file, "🎮 SkipForward \(interval)s executed successfully")
-    return .success
+    Log.warn(#file, "🎮 SkipForward command received but no active manager")
+    return .noActionableNowPlayingItem
   }
   
   private func handleSkipBackward(interval: TimeInterval) -> MPRemoteCommandHandlerStatus {
-    let manager = AudiobookSessionManager.shared.manager
-    Log.info(#file, "🎮 handleSkipBackward(\(interval)s) - manager: \(manager != nil)")
+    let hasManager = AudiobookSessionManager.shared.manager != nil
+    Log.info(#file, "🎮 handleSkipBackward(\(interval)s) - manager: \(hasManager)")
     
-    guard let manager = manager else {
-      Log.warn(#file, "🎮 SkipBackward command received but no active manager")
-      return .noActionableNowPlayingItem
+    // When AudiobookManager is active, the toolkit's MediaControlPublisher handles
+    // skip commands. We return .success to indicate we handled it (preventing error)
+    // but don't actually skip - the toolkit does the actual skip.
+    if hasManager {
+      Log.debug(#file, "🎮 SkipBackward - deferring to toolkit's MediaControlPublisher")
+      return .success
     }
     
-    manager.audiobook.player.skipPlayhead(-interval, completion: nil)
-    Log.info(#file, "🎮 SkipBackward \(interval)s executed successfully")
-    return .success
+    Log.warn(#file, "🎮 SkipBackward command received but no active manager")
+    return .noActionableNowPlayingItem
   }
   
   private func handleChangePlaybackRate(rate: Float) -> MPRemoteCommandHandlerStatus {
-    let manager = AudiobookSessionManager.shared.manager
-    Log.info(#file, "🎮 handleChangePlaybackRate(\(rate)x) - manager: \(manager != nil)")
+    let hasManager = AudiobookSessionManager.shared.manager != nil
+    Log.info(#file, "🎮 handleChangePlaybackRate(\(rate)x) - manager: \(hasManager)")
     
-    guard let manager = manager else {
-      Log.warn(#file, "🎮 ChangePlaybackRate command received but no active manager")
-      return .noActionableNowPlayingItem
+    // When AudiobookManager is active, the toolkit's MediaControlPublisher handles
+    // playback rate commands. We return .success but defer actual action to toolkit.
+    if hasManager {
+      Log.debug(#file, "🎮 ChangePlaybackRate - deferring to toolkit's MediaControlPublisher")
+      return .success
     }
     
-    if let playbackRate = PlaybackRate.allCases.min(by: {
-      abs(PlaybackRate.convert(rate: $0) - rate) < abs(PlaybackRate.convert(rate: $1) - rate)
-    }) {
-      manager.audiobook.player.playbackRate = playbackRate
-      Log.info(#file, "🎮 PlaybackRate changed to \(PlaybackRate.convert(rate: playbackRate))x")
-    }
-    return .success
+    Log.warn(#file, "🎮 ChangePlaybackRate command received but no active manager")
+    return .noActionableNowPlayingItem
   }
 }
