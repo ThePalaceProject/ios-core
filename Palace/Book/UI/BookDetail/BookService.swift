@@ -382,12 +382,11 @@ enum BookService {
         // Note: For CarPlay, coordinator may be nil - that's OK, we still start playback
         let route = BookRoute(id: book.identifier)
         
-        let hasCoordinator = NavigationCoordinatorHub.shared.coordinator != nil
-        
         if let coordinator = NavigationCoordinatorHub.shared.coordinator {
           Log.debug(#file, "  🎉 Successfully presenting audiobook player to user")
           coordinator.storeAudioModel(playbackModel, forBookId: route.id)
-          coordinator.push(.audio(route))
+          // Use pushAudioRoute to clear any existing audio routes first (prevents stack accumulation)
+          coordinator.pushAudioRoute(route)
         } else {
           Log.info(#file, "  📱 No coordinator available (CarPlay background launch?) - proceeding with playback only")
         }

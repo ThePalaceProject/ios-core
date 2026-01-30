@@ -110,6 +110,40 @@ final class NavigationCoordinator: ObservableObject {
       path.removeLast(path.count)
     }
   }
+  
+  /// Removes all existing audio routes from the navigation path.
+  /// Used before pushing a new audio route to prevent accumulation.
+  func clearAudioRoutes() {
+    // NavigationPath doesn't allow iteration, so we need to pop to root
+    // and re-push non-audio routes if needed. For simplicity, just track
+    // if we have audio routes and handle appropriately.
+    // Since audio is typically the last route, popping to root is safe.
+    guard !path.isEmpty else { return }
+    
+    // For now, just pop to root when switching audiobooks
+    // This ensures no stacking of player views
+    Log.debug(#file, "📍 NavigationCoordinator.clearAudioRoutes() - Clearing path for new audio route")
+    withAnimation(.easeInOut) {
+      path.removeLast(path.count)
+    }
+  }
+  
+  /// Pushes an audio route, clearing any existing audio routes first.
+  /// This prevents accumulation of player views in the navigation stack.
+  func pushAudioRoute(_ route: BookRoute) {
+    Log.debug(#file, "📍 NavigationCoordinator.pushAudioRoute(\(route.id)) - Current path count: \(path.count)")
+    
+    // Clear existing routes before pushing new audio route
+    if !path.isEmpty {
+      clearAudioRoutes()
+    }
+    
+    // Push the new audio route
+    withAnimation(.easeInOut) {
+      path.append(AppRoute.audio(route))
+    }
+    Log.debug(#file, "📍 NavigationCoordinator.pushAudioRoute - After push count: \(path.count)")
+  }
 
   func store(book: TPPBook) {
     bookById[book.identifier] = book
