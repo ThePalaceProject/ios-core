@@ -188,7 +188,14 @@ public final class PlaybackBootstrapper {
       
       Log.info(#file, "🔊 Audio session configured (category: playback, mode: spokenAudio)")
     } catch {
-      Log.error(#file, "🔊 Failed to configure audio session: \(error)")
+      // Error -50 (paramErr) can occur during early app launch before scenes connect.
+      // This is expected and the session will be reconfigured when CarPlay connects.
+      let nsError = error as NSError
+      if nsError.code == -50 {
+        Log.info(#file, "🔊 Audio session configuration deferred (early launch, no scenes yet) - will retry on CarPlay connect")
+      } else {
+        Log.error(#file, "🔊 Failed to configure audio session: \(error)")
+      }
     }
   }
   
