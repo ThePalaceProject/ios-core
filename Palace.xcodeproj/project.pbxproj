@@ -493,13 +493,7 @@
 		CHPT002T260955EF008E1DC3 /* ChapterParsingOptimizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CHPT001T260955EF008E1DC3 /* ChapterParsingOptimizerTests.swift */; };
 		DREC002T260955EF008E1DC3 /* DownloadRecoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DREC001T260955EF008E1DC3 /* DownloadRecoveryTests.swift */; };
 		SAML002T260955EF008E1DC3 /* TPPSAMLSignInTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = SAML001T260955EF008E1DC3 /* TPPSAMLSignInTests.swift */; };
-		CLOK002T260955EF008E1DC3 /* Clock.swift in Sources */ = {isa = PBXBuildFile; fileRef = CLOK001T260955EF008E1DC3 /* Clock.swift */; };
-		TDEP002T260955EF008E1DC3 /* TestDependencyContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = TDEP001T260955EF008E1DC3 /* TestDependencyContainer.swift */; };
-		TBMK002T260955EF008E1DC3 /* TPPBookMocker.swift in Sources */ = {isa = PBXBuildFile; fileRef = TBMK001T260955EF008E1DC3 /* TPPBookMocker.swift */; };
-		XCTS002T260955EF008E1DC3 /* XCTestCase+Async.swift in Sources */ = {isa = PBXBuildFile; fileRef = XCTS001T260955EF008E1DC3 /* XCTestCase+Async.swift */; };
 		CFCL002T260955EF008E1DC3 /* ComprehensiveFileCleanupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFCL001T260955EF008E1DC3 /* ComprehensiveFileCleanupTests.swift */; };
-		FCFT002T260955EF008E1DC3 /* FacetFilteringTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCFT001T260955EF008E1DC3 /* FacetFilteringTests.swift */; };
-		ABOT002T260955EF008E1DC3 /* AudiobookOptimizationIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABOT001T260955EF008E1DC3 /* AudiobookOptimizationIntegrationTests.swift */; };
 		81C26B959E33252B2BD42607 /* StringExtensionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7751F6315B6633F398F0B808 /* StringExtensionTests.swift */; };
 		836F74C400A5DA94F8B453D2 /* CatalogModelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B57489E1C2CE2DD11EFC1C03 /* CatalogModelsTests.swift */; };
 		84B7A3461B84E8FE00584FB2 /* OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = 84B7A3431B84E8FE00584FB2 /* OFL.txt */; };
@@ -1446,13 +1440,7 @@
 		CHPT001T260955EF008E1DC3 /* ChapterParsingOptimizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChapterParsingOptimizerTests.swift; sourceTree = "<group>"; };
 		DREC001T260955EF008E1DC3 /* DownloadRecoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DownloadRecoveryTests.swift; path = ConcurrencyTests/DownloadRecoveryTests.swift; sourceTree = "<group>"; };
 		SAML001T260955EF008E1DC3 /* TPPSAMLSignInTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPSAMLSignInTests.swift; sourceTree = "<group>"; };
-		CLOK001T260955EF008E1DC3 /* Clock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Clock.swift; sourceTree = "<group>"; };
-		TDEP001T260955EF008E1DC3 /* TestDependencyContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestDependencyContainer.swift; sourceTree = "<group>"; };
-		TBMK001T260955EF008E1DC3 /* TPPBookMocker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBookMocker.swift; sourceTree = "<group>"; };
-		XCTS001T260955EF008E1DC3 /* XCTestCase+Async.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "XCTestCase+Async.swift"; sourceTree = "<group>"; };
 		CFCL001T260955EF008E1DC3 /* ComprehensiveFileCleanupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComprehensiveFileCleanupTests.swift; sourceTree = "<group>"; };
-		FCFT001T260955EF008E1DC3 /* FacetFilteringTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FacetFilteringTests.swift; sourceTree = "<group>"; };
-		ABOT001T260955EF008E1DC3 /* AudiobookOptimizationIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudiobookOptimizationIntegrationTests.swift; sourceTree = "<group>"; };
 		5A569A261B8351C6003B5B61 /* ADEPT.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = ADEPT.xcodeproj; path = "adept-ios/ADEPT.xcodeproj"; sourceTree = "<group>"; };
 		5A5B90111B946763002C53E9 /* libc++.1.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = "libc++.1.dylib"; path = "usr/lib/libc++.1.dylib"; sourceTree = SDKROOT; };
 		5A5B90141B946CBD002C53E9 /* libstdc++.6.0.9.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = "libstdc++.6.0.9.dylib"; path = "usr/lib/libstdc++.6.0.9.dylib"; sourceTree = SDKROOT; };
@@ -2600,17 +2588,6 @@
 			path = Mocks;
 			sourceTree = "<group>";
 		};
-		TSUP001G260955EF008E1DC3 /* TestSupport */ = {
-			isa = PBXGroup;
-			children = (
-				CLOK001T260955EF008E1DC3 /* Clock.swift */,
-				TDEP001T260955EF008E1DC3 /* TestDependencyContainer.swift */,
-				TBMK001T260955EF008E1DC3 /* TPPBookMocker.swift */,
-				XCTS001T260955EF008E1DC3 /* XCTestCase+Async.swift */,
-			);
-			path = TestSupport;
-			sourceTree = "<group>";
-		};
 		7361615225F7015B00395337 /* ReadingFormats */ = {
 			isa = PBXGroup;
 			children = (
@@ -3363,7 +3340,6 @@
 				7384C803242BCE5900D5F960 /* Date+NYPLAdditionsTests.swift */,
 				219901F224FD2DBE001BC727 /* JWK */,
 				735771A6253763A000067CEA /* Mocks */,
-				TSUP001G260955EF008E1DC3 /* TestSupport */,
 				1763C0D524F460FE00A4D0E2 /* TPPAnnouncementManagerTests.swift */,
 				2D8790A420129AF200E2763F /* TPPOPDSAcquisitionPathTests.swift */,
 				E5037FE629A3FF83002DA132 /* ButtonStateTests.swift */,
@@ -3372,8 +3348,6 @@
 				E5251E8E2F0DB18E00BE7E36 /* ProblemDocumentTests.swift */,
 				CHPT001T260955EF008E1DC3 /* ChapterParsingOptimizerTests.swift */,
 				CFCL001T260955EF008E1DC3 /* ComprehensiveFileCleanupTests.swift */,
-				FCFT001T260955EF008E1DC3 /* FacetFilteringTests.swift */,
-				ABOT001T260955EF008E1DC3 /* AudiobookOptimizationIntegrationTests.swift */,
 				NSER001T260955EF008E1DC3 /* NSErrorAdditionsTests.swift */,
 				DREC001T260955EF008E1DC3 /* DownloadRecoveryTests.swift */,
 				7384C7FF242BB43300D5F960 /* TPPCachingTests.swift */,
@@ -4526,12 +4500,6 @@
 				DREC002T260955EF008E1DC3 /* DownloadRecoveryTests.swift in Sources */,
 				SAML002T260955EF008E1DC3 /* TPPSAMLSignInTests.swift in Sources */,
 				CFCL002T260955EF008E1DC3 /* ComprehensiveFileCleanupTests.swift in Sources */,
-				FCFT002T260955EF008E1DC3 /* FacetFilteringTests.swift in Sources */,
-				ABOT002T260955EF008E1DC3 /* AudiobookOptimizationIntegrationTests.swift in Sources */,
-				CLOK002T260955EF008E1DC3 /* Clock.swift in Sources */,
-				TDEP002T260955EF008E1DC3 /* TestDependencyContainer.swift in Sources */,
-				TBMK002T260955EF008E1DC3 /* TPPBookMocker.swift in Sources */,
-				XCTS002T260955EF008E1DC3 /* XCTestCase+Async.swift in Sources */,
 				681FBB4C5C3E2B2A10DAD273 /* CatalogViewModelTests.swift in Sources */,
 				PP3346A11B0000000000001B /* CatalogLaneRowViewAccessibilityTests.swift in Sources */,
 				9E482D5D89E03F23F7451DE6 /* MyBooksViewModelTests.swift in Sources */,
