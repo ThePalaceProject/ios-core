@@ -133,32 +133,41 @@ jobs:
             const riskLevel = '${{ steps.qaatlas.outputs.risk_level }}';
             const analysisComplete = '${{ steps.qaatlas.outputs.analysis_complete }}';
             
-            let body = '## 🧪 QAAtlas Test Coverage Analysis\n\n';
+            let body = '## 🧪 QAAtlas Test Analysis\n\n';
             
-            // Coverage summary
+            // Coverage summary with clearer language
             if (coverage) {
               const coverageNum = parseFloat(coverage);
               const coverageIcon = coverageNum >= 50 ? '🟢' : coverageNum >= 30 ? '🟡' : '🔴';
-              body += `### 📊 Symbol Coverage: ${coverageIcon} ${coverage}%\n\n`;
-              body += `| Metric | Value |\n`;
-              body += `|--------|-------|\n`;
-              body += `| Tested Symbols | ${tested} / ${total} |\n`;
-              body += `| High Priority Gaps | ${highGaps} |\n`;
+              body += `### 📊 Test Coverage Estimate: ${coverageIcon} ${coverage}%\n\n`;
+              body += `> **What this measures:** AI analysis of which functions and classes have corresponding unit tests.\n`;
+              body += `> This is an *estimate* based on code analysis, not actual runtime coverage.\n\n`;
+              body += `| Metric | Value | Description |\n`;
+              body += `|--------|-------|-------------|\n`;
+              body += `| Functions with Tests | ${tested} / ${total} | Methods/functions that appear to have test coverage |\n`;
+              body += `| Untested High-Priority | ${highGaps} | Important functions without tests |\n`;
               if (testsRecommended && testsRecommended !== '0') {
-                body += `| Tests Recommended | ${testsRecommended} |\n`;
-              }
-              if (riskLevel && riskLevel !== 'unknown') {
-                const riskIcon = {low: '🟢', medium: '🟡', high: '🔴'}[riskLevel.toLowerCase()] || '⚪';
-                body += `| Risk Level | ${riskIcon} ${riskLevel.toUpperCase()} |\n`;
+                body += `| Suggested Tests | ${testsRecommended} | New tests recommended for this PR |\n`;
               }
               body += '\n';
+              
+              // Risk assessment with clearer language
+              if (riskLevel && riskLevel !== 'unknown') {
+                const riskIcon = {low: '🟢', medium: '🟡', high: '🔴'}[riskLevel.toLowerCase()] || '⚪';
+                const riskDesc = {
+                  low: 'Changes are low-risk or well-covered by existing tests',
+                  medium: 'Some changes may benefit from additional testing',
+                  high: 'Changes touch critical code paths - careful review recommended'
+                }[riskLevel.toLowerCase()] || 'Risk level could not be determined';
+                body += `**Risk Assessment:** ${riskIcon} **${riskLevel.toUpperCase()}** - ${riskDesc}\n\n`;
+              }
             }
             
             // Read PR-specific analysis
             if (analysisComplete === 'true') {
               try {
                 const prComment = fs.readFileSync('./qaatlas-output/pr-comment.md', 'utf8');
-                body += '### 🔍 PR Change Analysis\n\n';
+                body += '### 🔍 What Changed in This PR\n\n';
                 body += prComment;
               } catch (e) {
                 body += '✅ Analysis complete. See **qaatlas-report** artifact for full details.\n';
@@ -179,7 +188,7 @@ jobs:
             });
             
             const existing = comments.find(c => 
-              c.user.type === 'Bot' && c.body.includes('QAAtlas Test Coverage Analysis')
+              c.user.type === 'Bot' && (c.body.includes('QAAtlas Test Analysis') || c.body.includes('QAAtlas Test Coverage Analysis'))
             );
             
             if (existing) {
@@ -751,14 +760,15 @@ jobs:
             echo "</details>" >> $GITHUB_STEP_SUMMARY
           fi
           
-          # Code Coverage
+          # Code Coverage - actual runtime coverage from test execution
           if [ "$COVERAGE" != "N/A" ] && [ -n "$COVERAGE" ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### 📈 Code Coverage: $COVERAGE" >> $GITHUB_STEP_SUMMARY
+            echo "### 📈 Actual Code Coverage: $COVERAGE" >> $GITHUB_STEP_SUMMARY
+            echo "> Lines of code executed during test runs" >> $GITHUB_STEP_SUMMARY
             if [ -n "$COVERAGE_TARGETS" ]; then
               echo "" >> $GITHUB_STEP_SUMMARY
-              echo "| Target | Coverage |" >> $GITHUB_STEP_SUMMARY
-              echo "|--------|----------|" >> $GITHUB_STEP_SUMMARY
+              echo "| Target | Lines Covered |" >> $GITHUB_STEP_SUMMARY
+              echo "|--------|---------------|" >> $GITHUB_STEP_SUMMARY
               echo "$COVERAGE_TARGETS" | while IFS='|' read -r name cov covered total; do
                 if [ -n "$name" ]; then
                   echo "| $name | $cov |" >> $GITHUB_STEP_SUMMARY
@@ -1050,12 +1060,13 @@ jobs:
               body += `</details>\n\n`;
             }
             
-            // Code Coverage
+            // Code Coverage - actual runtime coverage from test execution
             if (coverage && coverage !== 'N/A' && coverage !== '') {
-              body += `### 📈 Code Coverage: ${coverage}\n\n`;
+              body += `### 📈 Actual Code Coverage: ${coverage}\n\n`;
+              body += `> Lines of code executed during test runs (from Xcode test report)\n\n`;
               if (coverageTargets && coverageTargets.trim()) {
-                body += `| Target | Coverage |\n`;
-                body += `|--------|----------|\n`;
+                body += `| Target | Lines Covered |\n`;
+                body += `|--------|---------------|\n`;
                 coverageTargets.trim().split('\n').forEach(line => {
                   const [name, cov] = line.split('|');
                   if (name) {
