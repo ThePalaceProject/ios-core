@@ -1,28 +1,19 @@
-name: Update Jira on PR Merge
+name: Update Jira on PR Open
 
 on:
   pull_request:
-    types: [closed]
+    types: [opened, reopened, ready_for_review]
     branches: [main, develop]
 
 jobs:
-  update-jira:
-    if: github.event.pull_request.merged == true
+  move-to-review:
+    # Skip draft PRs
+    if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          
-      - name: Get build number
-        id: build
-        run: |
-          # Extract build number from project.pbxproj
-          BUILD_NUM=$(grep -m1 'CURRENT_PROJECT_VERSION' Palace.xcodeproj/project.pbxproj | grep -oE '[0-9]+' | head -1)
-          echo "number=$BUILD_NUM" >> $GITHUB_OUTPUT
-          echo "📦 Build number: $BUILD_NUM"
           
       - name: Extract Jira tickets
         id: tickets
@@ -47,7 +38,7 @@ jobs:
             echo "list=$TICKETS" >> $GITHUB_OUTPUT
           fi
           
-      - name: Update Jira tickets
+      - name: Move tickets to Code Review
         if: steps.tickets.outputs.found == 'true'
         env:
           JIRA_URL: ${{ secrets.JIRA_URL }}
@@ -62,25 +53,28 @@ jobs:
           JIRA_PROJECT_KEY="PP"
           EOF
           
-          BUILD_NUM="${{ steps.build.outputs.number }}"
           PR_NUM="${{ github.event.pull_request.number }}"
+          PR_URL="${{ github.event.pull_request.html_url }}"
           PR_TITLE="${{ github.event.pull_request.title }}"
-          BRANCH="${{ github.event.pull_request.base.ref }}"
+          AUTHOR="${{ github.event.pull_request.user.login }}"
           TICKETS="${{ steps.tickets.outputs.list }}"
           
-          # Update each ticket
           for TICKET in $TICKETS; do
-            echo "📝 Updating $TICKET..."
+            echo "🔍 Moving $TICKET to Code Review..."
             
-            # Add build info comment
-            ./scripts/jira-integration.sh add-build-info "$TICKET" "$BUILD_NUM" "$PR_NUM" "$PR_TITLE" "$BRANCH" || {
-              echo "⚠️ Failed to add comment to $TICKET"
+            # Transition to Code Review
+            ./scripts/jira-integration.sh transition "$TICKET" "Code Review" || {
+              echo "⚠️ Could not transition $TICKET (may already be in review or different workflow)"
             }
             
-            # Transition to Done
-            echo "✅ Moving $TICKET to Done..."
-            ./scripts/jira-integration.sh transition "$TICKET" "Done" || {
-              echo "⚠️ Failed to transition $TICKET to Done (may already be done or different workflow)"
+            # Add PR link comment
+            ./scripts/jira-integration.sh comment "$TICKET" "🔍 *Pull Request Ready for Review*
+
+*PR:* [#${PR_NUM} - ${PR_TITLE}|${PR_URL}]
+*Author:* ${AUTHOR}
+
+Please review the changes." || {
+              echo "⚠️ Failed to add comment to $TICKET"
             }
           done
           
@@ -89,14 +83,12 @@ jobs:
           
       - name: Summary
         run: |
-          echo "## 🎫 Jira Update Summary" >> $GITHUB_STEP_SUMMARY
+          echo "## 🔍 Jira Code Review Update" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           if [ "${{ steps.tickets.outputs.found }}" == "true" ]; then
-            echo "**Tickets Updated:** ${{ steps.tickets.outputs.list }}" >> $GITHUB_STEP_SUMMARY
+            echo "**Tickets moved to Code Review:** ${{ steps.tickets.outputs.list }}" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "**Build:** ${{ steps.build.outputs.number }}" >> $GITHUB_STEP_SUMMARY
             echo "**PR:** #${{ github.event.pull_request.number }}" >> $GITHUB_STEP_SUMMARY
-            echo "**Branch:** ${{ github.event.pull_request.base.ref }}" >> $GITHUB_STEP_SUMMARY
           else
             echo "No Jira tickets found in this PR." >> $GITHUB_STEP_SUMMARY
           fi
