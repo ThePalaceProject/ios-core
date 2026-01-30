@@ -505,7 +505,8 @@ final class DownloadQueueIntegrationTests: XCTestCase {
     await coordinator.registerCompletion(identifier: "active-0")
     
     // Then capacity should be available
-    let capacity = maxConcurrent - await coordinator.activeCount
+    let activeCount = await coordinator.activeCount
+    let capacity = maxConcurrent - activeCount
     XCTAssertEqual(capacity, 1, "Should have 1 slot available")
     
     // And can dequeue one pending

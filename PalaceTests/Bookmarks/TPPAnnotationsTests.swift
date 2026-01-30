@@ -306,9 +306,12 @@ final class TPPAnnotationsTests: XCTestCase {
     let responseData = AnnotationsTestFixtures.serverBookmarksResponse(bookmarks: [serverBookmark])
     
     // Verify fixture data is valid JSON
-    let json = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any]
-    XCTAssertNotNil(json, "Response data should be valid JSON")
-    XCTAssertNotNil(json?["first"], "Response should have 'first' key")
+    guard let jsonObject = try? JSONSerialization.jsonObject(with: responseData),
+          let json = jsonObject as? [String: Any] else {
+      XCTFail("Response data should be valid JSON")
+      return
+    }
+    XCTAssertNotNil(json["first"], "Response should have 'first' key")
   }
   
   /// Test that getServerBookmarks returns nil for nil book parameter
