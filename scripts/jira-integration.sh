@@ -62,6 +62,110 @@ ticket_exists() {
   [[ "$response" == "200" ]]
 }
 
+# Get available transitions for a ticket
+get_transitions() {
+  local ticket="$1"
+  
+  curl -s \
+    -u "$JIRA_EMAIL:$JIRA_API_TOKEN" \
+    -H "Content-Type: application/json" \
+    "$JIRA_URL/rest/api/3/issue/$ticket/transitions"
+}
+
+# Find transition ID by name (case-insensitive partial match)
+find_transition_id() {
+  local ticket="$1"
+  local target_name="$2"
+  
+  local transitions
+  transitions=$(get_transitions "$ticket")
+  
+  # Find transition ID matching the target name (case-insensitive)
+  echo "$transitions" | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+target = '${target_name}'.lower()
+for t in data.get('transitions', []):
+    name = t.get('name', '').lower()
+    if target in name or name in target:
+        print(t['id'])
+        sys.exit(0)
+# Try common variations
+variations = {
+    'code review': ['in review', 'review', 'code review', 'peer review'],
+    'done': ['done', 'closed', 'resolved', 'complete'],
+    'in progress': ['in progress', 'in development', 'developing', 'started']
+}
+target_variations = variations.get(target, [target])
+for t in data.get('transitions', []):
+    name = t.get('name', '').lower()
+    for v in target_variations:
+        if v in name:
+            print(t['id'])
+            sys.exit(0)
+sys.exit(1)
+" 2>/dev/null
+}
+
+# Transition a ticket to a new status
+transition_ticket() {
+  local ticket="$1"
+  local status="$2"
+  
+  if ! load_config; then
+    return 1
+  fi
+  
+  if [[ -z "$ticket" || -z "$status" ]]; then
+    echo -e "${RED}❌ Usage: jira-integration.sh transition <ticket> <status>${NC}"
+    echo -e "   Status can be: 'Code Review', 'Done', 'In Progress', etc."
+    return 1
+  fi
+  
+  echo -e "${BLUE}🔄 Transitioning $ticket to '$status'...${NC}"
+  
+  # Find the transition ID
+  local transition_id
+  transition_id=$(find_transition_id "$ticket" "$status")
+  
+  if [[ -z "$transition_id" ]]; then
+    echo -e "${YELLOW}⚠️  Could not find transition to '$status' for $ticket${NC}"
+    echo -e "${YELLOW}   Available transitions:${NC}"
+    get_transitions "$ticket" | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+for t in data.get('transitions', []):
+    print(f\"   - {t['name']} (id: {t['id']})\")
+" 2>/dev/null || echo "   (unable to list transitions)"
+    return 1
+  fi
+  
+  # Execute the transition
+  local response
+  response=$(curl -s -w "\n%{http_code}" \
+    -u "$JIRA_EMAIL:$JIRA_API_TOKEN" \
+    -H "Content-Type: application/json" \
+    -X POST \
+    -d "{\"transition\": {\"id\": \"$transition_id\"}}" \
+    "$JIRA_URL/rest/api/3/issue/$ticket/transitions")
+  
+  local http_code
+  http_code=$(echo "$response" | tail -1)
+  local body
+  body=$(echo "$response" | sed '$d')
+  
+  if [[ "$http_code" == "204" ]]; then
+    echo -e "${GREEN}✅ $ticket transitioned to '$status'${NC}"
+    return 0
+  else
+    echo -e "${RED}❌ Failed to transition $ticket (HTTP $http_code)${NC}"
+    if [[ -n "$body" ]]; then
+      echo "$body" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('errorMessages', d))" 2>/dev/null || echo "$body"
+    fi
+    return 1
+  fi
+}
+
 # Add a comment to a Jira ticket
 add_comment() {
   local ticket="$1"
@@ -406,6 +510,47 @@ $files_changed"
   add_comment "$ticket" "$comment"
 }
 
+# Add build/merge info to a Jira ticket
+add_build_info() {
+  local ticket="$1"
+  local build_number="$2"
+  local pr_number="$3"
+  local pr_title="$4"
+  local branch="$5"
+  local repo_url="${6:-https://github.com/ThePalaceProject/ios-core}"
+  
+  if ! load_config; then
+    return 1
+  fi
+  
+  if [[ -z "$ticket" || -z "$build_number" ]]; then
+    echo -e "${RED}❌ Usage: jira-integration.sh add-build-info <ticket> <build_number> [pr_number] [pr_title] [branch]${NC}"
+    return 1
+  fi
+  
+  echo -e "${BLUE}📦 Adding build info to $ticket...${NC}"
+  
+  local comment="✅ *Merged to ${branch:-main}*
+
+*Build:* ${build_number}"
+
+  if [[ -n "$pr_number" ]]; then
+    comment+="
+*PR:* [#${pr_number}|${repo_url}/pull/${pr_number}]"
+  fi
+  
+  if [[ -n "$pr_title" ]]; then
+    comment+="
+*Title:* ${pr_title}"
+  fi
+  
+  comment+="
+
+This fix will be available in the next TestFlight build."
+  
+  add_comment "$ticket" "$comment"
+}
+
 # Get Jira link URL for a ticket
 get_jira_link() {
   local ticket="$1"
@@ -462,6 +607,12 @@ main() {
     add-fix-comment)
       add_fix_comment "$@"
       ;;
+    add-build-info)
+      add_build_info "$@"
+      ;;
+    transition)
+      transition_ticket "$@"
+      ;;
     interactive)
       interactive_fix_comment "$@"
       ;;
@@ -484,6 +635,9 @@ main() {
       echo "  link-commit <ticket> [sha]        Link a commit to a ticket"
       echo "  add-fix-comment <ticket> <root_cause> <testing_steps> [sha]"
       echo "                                    Add structured fix details"
+      echo "  add-build-info <ticket> <build> [pr_num] [pr_title] [branch]"
+      echo "                                    Add merge/build info to ticket"
+      echo "  transition <ticket> <status>      Move ticket to status (e.g., 'Code Review', 'Done')"
       echo "  interactive <ticket>              Interactive fix comment entry"
       echo "  extract-ticket <text>             Extract ticket number from text"
       echo "  get-link <ticket>                 Get Jira URL for ticket"
