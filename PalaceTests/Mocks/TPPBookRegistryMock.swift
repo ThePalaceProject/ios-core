@@ -21,6 +21,12 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider {
   // MARK: - Mock Data Storage
   var registry = [String: TPPBookRegistryRecord]()
   private var processingBooks = Set<String>()
+  
+  var heldBooks: [TPPBook] {
+    registry.values
+      .filter { $0.state == .holding }
+      .map { $0.book }
+  }
 
   // MARK: - TPPBookRegistryProvider Methods
 
@@ -36,6 +42,10 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider {
     } else {
       processingBooks.remove(bookIdentifier)
     }
+  }
+
+  func processing(forIdentifier bookIdentifier: String) -> Bool {
+    processingBooks.contains(bookIdentifier)
   }
 
   func state(for bookIdentifier: String?) -> TPPBookState {
@@ -150,6 +160,34 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider {
   func with(account: String, perform block: (_ registry: TPPBookRegistry) -> Void) {
     // Mock implementation does not support account-specific operations
   }
+
+  // MARK: - Image Loading (for snapshot testing)
+  
+  /// Mock image storage for testing
+  var mockImages: [String: UIImage] = [:]
+  
+  func cachedThumbnailImage(for book: TPPBook) -> UIImage? {
+    mockImages[book.identifier]
+  }
+  
+  func thumbnailImage(for book: TPPBook?, handler: @escaping (UIImage?) -> Void) {
+    guard let book = book else {
+      handler(nil)
+      return
+    }
+    // Return mock image or generate a placeholder
+    if let cached = mockImages[book.identifier] {
+      handler(cached)
+    } else {
+      // Return a system image as placeholder
+      handler(UIImage(systemName: "book.fill"))
+    }
+  }
+  
+  /// Helper to set a mock image for testing
+  func setMockImage(_ image: UIImage, for bookIdentifier: String) {
+    mockImages[bookIdentifier] = image
+  }
 }
 
 extension TPPBookRegistryMock: TPPBookRegistrySyncing {
@@ -161,7 +199,7 @@ extension TPPBookRegistryMock: TPPBookRegistrySyncing {
 
   func sync() {
     isSyncing = true
-    sleep(1) // Simulate syncing delay
+    // Mock completes synchronously - no delay needed for tests
     isSyncing = false
   }
 

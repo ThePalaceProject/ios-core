@@ -1,0 +1,98 @@
+name: Update Jira on PR Open
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review]
+    branches: [main, develop]
+
+jobs:
+  move-to-review:
+    # Skip draft PRs
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+          
+      - name: Extract Jira tickets
+        id: tickets
+        run: |
+          # Extract ticket numbers from PR title, body, and branch name
+          PR_TITLE="${{ github.event.pull_request.title }}"
+          PR_BODY="${{ github.event.pull_request.body }}"
+          PR_BRANCH="${{ github.event.pull_request.head.ref }}"
+          
+          # Combine all sources
+          ALL_TEXT="$PR_TITLE $PR_BODY $PR_BRANCH"
+          
+          # Extract unique PP-XXXX tickets
+          TICKETS=$(echo "$ALL_TEXT" | grep -oE 'PP-[0-9]+' | sort -u | tr '\n' ' ')
+          
+          if [ -z "$TICKETS" ]; then
+            echo "No Jira tickets found in PR"
+            echo "found=false" >> $GITHUB_OUTPUT
+          else
+            echo "Found tickets: $TICKETS"
+            echo "found=true" >> $GITHUB_OUTPUT
+            echo "list=$TICKETS" >> $GITHUB_OUTPUT
+          fi
+          
+      - name: Move tickets to Code Review
+        if: steps.tickets.outputs.found == 'true'
+        env:
+          JIRA_URL: ${{ secrets.JIRA_URL }}
+          JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+        run: |
+          # Create temp config for script
+          cat > .jira-config << EOF
+          JIRA_URL="$JIRA_URL"
+          JIRA_EMAIL="$JIRA_EMAIL"
+          JIRA_API_TOKEN="$JIRA_API_TOKEN"
+          JIRA_PROJECT_KEY="PP"
+          EOF
+          
+          PR_NUM="${{ github.event.pull_request.number }}"
+          PR_URL="${{ github.event.pull_request.html_url }}"
+          PR_TITLE="${{ github.event.pull_request.title }}"
+          AUTHOR="${{ github.event.pull_request.user.login }}"
+          TICKETS="${{ steps.tickets.outputs.list }}"
+          
+          for TICKET in $TICKETS; do
+            echo "🔍 Moving $TICKET to Code Review..."
+            
+            # Transition to Code Review
+            ./scripts/jira-integration.sh transition "$TICKET" "Code Review" || {
+              echo "⚠️ Could not transition $TICKET (may already be in review or different workflow)"
+            }
+            
+            # Add PR link comment (use heredoc to avoid YAML issues with special chars)
+            COMMENT=$(cat <<ENDCOMMENT
+          🔍 *Pull Request Ready for Review*
+
+          *PR:* [#${PR_NUM} - ${PR_TITLE}|${PR_URL}]
+          *Author:* ${AUTHOR}
+
+          Please review the changes.
+          ENDCOMMENT
+            )
+            ./scripts/jira-integration.sh comment "$TICKET" "$COMMENT" || {
+              echo "⚠️ Failed to add comment to $TICKET"
+            }
+          done
+          
+          # Cleanup
+          rm -f .jira-config
+          
+      - name: Summary
+        run: |
+          echo "## 🔍 Jira Code Review Update" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.tickets.outputs.found }}" == "true" ]; then
+            echo "**Tickets moved to Code Review:** ${{ steps.tickets.outputs.list }}" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**PR:** #${{ github.event.pull_request.number }}" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "No Jira tickets found in this PR." >> $GITHUB_STEP_SUMMARY
+          fi

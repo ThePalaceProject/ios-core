@@ -13,7 +13,10 @@ struct BookDetailView: View {
   @State private var selectedBook: TPPBook?
   @State private var descriptionText = ""
 
-  @ObservedObject var viewModel: BookDetailViewModel
+  /// Use @StateObject to ensure the ViewModel survives view recreation.
+  /// This prevents related books from disappearing after dismissing
+  /// the preview fullScreenCover (which can cause SwiftUI to recreate the view).
+  @StateObject var viewModel: BookDetailViewModel
   @State private var isExpanded: Bool = false
   @State private var headerHeight: CGFloat = UIDevice.current.isIpad ? 300 : 225
   @State private var showCompactHeader: Bool = false
@@ -38,7 +41,9 @@ struct BookDetailView: View {
   private let dampingFactor: CGFloat = 0.95
   
   init(book: TPPBook) {
-    self.viewModel = BookDetailViewModel(book: book)
+    // Use _viewModel to initialize @StateObject with a parameter
+    // This ensures SwiftUI only creates the ViewModel once per view identity
+    _viewModel = StateObject(wrappedValue: BookDetailViewModel(book: book))
   }
   
   var body: some View {
@@ -272,6 +277,7 @@ struct BookDetailView: View {
   
   private var imageView: some View {
     BookImageView(book: viewModel.book, height: 280 * imageScale)
+      .accessibilityIdentifier(AccessibilityID.BookDetail.coverImage)
       .opacity(imageOpacity)
       .adaptiveShadow()
       .animation(scaleAnimation, value: imageScale)
@@ -290,10 +296,12 @@ struct BookDetailView: View {
         .lineLimit(nil)
         .multilineTextAlignment(.center)
         .frame(maxWidth: .infinity, alignment: viewModel.isFullSize ? .leading : .center)
+        .accessibilityIdentifier(AccessibilityID.BookDetail.title)
       
       if let authors = viewModel.book.authors, !authors.isEmpty {
         Text(authors)
           .font(.footnote)
+          .accessibilityIdentifier(AccessibilityID.BookDetail.author)
       }
       
       BookButtonsView(
@@ -446,6 +454,7 @@ struct BookDetailView: View {
                           .adaptiveShadow(radius: 5)
                           .transition(.opacity.combined(with: .scale))
                       }
+                      .accessibilityLabel(bookAccessibilityLabel(for: book))
                     } else {
                       RoundedRectangle(cornerRadius: 8)
                         .fill(Color.gray.opacity(0.25))
@@ -561,6 +570,17 @@ struct BookDetailView: View {
     let minutes = Int((totalSeconds - Double(hours * 3600)) / 60)
     
     return String(format: "%d hours, %d minutes", hours, minutes)
+  }
+  
+  private func bookAccessibilityLabel(for book: TPPBook) -> String {
+    var components = [book.title]
+    if book.isAudiobook {
+      components.append(Strings.Generic.audiobook)
+    }
+    if let authors = book.authors, !authors.isEmpty {
+      components.append(authors)
+    }
+    return components.joined(separator: ", ")
   }
   
   private func updateImageBottomPosition() {

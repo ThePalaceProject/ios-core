@@ -166,8 +166,13 @@ extension BookButtonState {
     var state: BookButtonState = .unsupported
     availability.matchUnavailable { _ in
       state = .canHold
-    } limited: { _ in
-      state = .canBorrow
+    } limited: { limited in
+      // Check if copies are actually available to borrow
+      if limited.copiesAvailable == TPPOPDSAcquisitionAvailabilityCopiesUnknown || limited.copiesAvailable > 0 {
+        state = .canBorrow
+      } else {
+        state = .canHold
+      }
     } unlimited: { _ in
       state = .canBorrow
     } reserved: { _ in
@@ -179,6 +184,7 @@ extension BookButtonState {
     return state
   }
 }
+
 
 extension TPPBook {
   func supportsDeletion(for state: BookButtonState) -> Bool {

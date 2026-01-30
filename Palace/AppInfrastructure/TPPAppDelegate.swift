@@ -3,6 +3,7 @@ import FirebaseCore
 import FirebaseDynamicLinks
 import BackgroundTasks
 import SwiftUI
+import CarPlay
 import PalaceAudiobookToolkit
 
 @main
@@ -10,18 +11,30 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
   var window: UIWindow?
   let audiobookLifecycleManager = AudiobookLifecycleManager()
-  var notificationsManager: TPPUserNotifications!
   var isSigningIn = false
 
   // MARK: - Application Lifecycle
 
   func applicationDidFinishLaunching(_ application: UIApplication) {
     let startupQueue = DispatchQueue.global(qos: .userInitiated)
+    
+    // CRITICAL: Initialize playback infrastructure FIRST for CarPlay cold starts
+    // This ensures MPRemoteCommandCenter handlers are registered before any UI loads
+    // Without this, CarPlay remote controls won't work when the app is launched
+    // directly from CarPlay without the phone UI ever being shown
+    Log.info(#file, "📱 App launch - initializing playback bootstrapper")
+    PlaybackBootstrapper.shared.ensureInitialized()
 
+    // Configure Firebase once at startup
     FirebaseApp.configure()
     
+    // Initialize FirebaseManager (consolidated Firebase access to prevent mutex crashes)
+    // This replaces separate DeviceSpecificErrorMonitor and RemoteFeatureFlags initialization
     Task {
-      await DeviceSpecificErrorMonitor.shared.initialize()
+      await FirebaseManager.shared.fetchAndActivateRemoteConfig()
+      // Update feature flag cache after Remote Config is fetched
+      // This ensures isCarPlayEnabledCached has the latest value for next app launch
+      _ = RemoteFeatureFlags.shared.isCarPlayEnabled
     }
 
     TPPErrorLogger.configureCrashAnalytics()
@@ -31,15 +44,6 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
     setupWindow()
     configureUIAppearance()
-
-    // Check for crashes and perform recovery
-    Task {
-      await CrashRecoveryService.shared.checkForCrashOnLaunch()
-      
-      // Schedule stable session check after 10 minutes of stable running
-      try? await Task.sleep(nanoseconds: 600_000_000_000) // 10 minutes
-      await CrashRecoveryService.shared.recordStableSession()
-    }
 
     startupQueue.async {
       self.setupBookRegistryAndNotifications()
@@ -67,6 +71,9 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
     DispatchQueue.main.async {
       self.audiobookLifecycleManager.didFinishLaunching()
+      
+      // TODO: Implement audiobook downloads migration from Caches to Application Support
+      // This would prevent iOS from purging downloaded audiobook files
     }
 
     TransifexManager.setup()
@@ -102,6 +109,9 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         task.setTaskCompleted(success: false)
       } else {
         Log.log("[Background Refresh] \(newBooks ? "New books available" : "No new books fetched"). Elapsed Time: \(-startDate.timeIntervalSinceNow)")
+        
+        NotificationService.updateAppIconBadge(heldBooks: TPPBookRegistry.shared.heldBooks)
+        
         task.setTaskCompleted(success: true)
       }
     }
@@ -147,6 +157,12 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
   }
 
   func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
+    // Handle PalaceApp://carplay URL (used by CarPlay to open app on phone)
+    if url.scheme == "PalaceApp" && url.host == "carplay" {
+      Log.info(#file, "📱 App opened from CarPlay - ready for playback")
+      return true
+    }
+    
     if let dynamicLink = DynamicLinks.dynamicLinks().dynamicLink(fromCustomSchemeURL: url) {
       if DLNavigator.shared.isValidLink(dynamicLink) {
         DLNavigator.shared.navigate(to: dynamicLink)
@@ -158,14 +174,64 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
   func applicationDidBecomeActive(_ application: UIApplication) {
     TPPErrorLogger.setUserID(TPPUserAccount.sharedAccount().barcode)
+    
+    // Resume Firebase operations when app becomes active
+    FirebaseManager.shared.applicationDidBecomeActive()
+    
+    // Update feature flag cache after Remote Config is refreshed
+    Task {
+      // Small delay to let Remote Config fetch complete
+      try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+      _ = RemoteFeatureFlags.shared.isCarPlayEnabled
+    }
+    
+    // Sync held books when app becomes active to ensure UI reflects current availability
+    syncIfUserHasHolds()
+  }
+  
+  /// Syncs the book registry if the user has holds to ensure fresh availability data.
+  /// Throttled to prevent excessive network calls on frequent app activation.
+  private func syncIfUserHasHolds() {
+    guard TPPUserAccount.sharedAccount().hasCredentials() else {
+      return
+    }
+    
+    let heldBooks = TPPBookRegistry.shared.heldBooks
+    guard !heldBooks.isEmpty else {
+      return
+    }
+    
+    // Shared throttle key with NotificationService to coordinate syncs
+    let lastSyncKey = "lastForegroundSyncTimestamp"
+    let lastSync = UserDefaults.standard.double(forKey: lastSyncKey)
+    let now = Date().timeIntervalSince1970
+    
+    guard (now - lastSync) > 30 else {
+      Log.debug(#file, "[Foreground Sync] Skipped - synced recently")
+      return
+    }
+    
+    UserDefaults.standard.set(now, forKey: lastSyncKey)
+    
+    Log.info(#file, "[Foreground Sync] Starting - user has \(heldBooks.count) holds")
+    
+    TPPBookRegistry.shared.sync { errorDocument, newBooks in
+      if let errorDocument = errorDocument {
+        Log.error(#file, "[Foreground Sync] Failed: \(errorDocument)")
+      } else {
+        Log.info(#file, "[Foreground Sync] Completed. New books: \(newBooks)")
+        NotificationService.updateAppIconBadge(heldBooks: TPPBookRegistry.shared.heldBooks)
+      }
+    }
+  }
+  
+  func applicationDidEnterBackground(_ application: UIApplication) {
+    // Pause Firebase operations when app goes to background
+    // This helps prevent the "recursive_mutex lock failed" crash
+    FirebaseManager.shared.applicationDidEnterBackground()
   }
 
   func applicationWillTerminate(_ application: UIApplication) {
-    // Record clean exit for crash detection
-    Task {
-      await CrashRecoveryService.shared.recordCleanExit()
-    }
-    
     audiobookLifecycleManager.willTerminate()
     NotificationCenter.default.removeObserver(self)
     Reachability.shared.stopMonitoring()
@@ -173,6 +239,39 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
   internal func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String, completionHandler: @escaping () -> Void) {
     audiobookLifecycleManager.handleEventsForBackgroundURLSession(for: identifier, completionHandler: completionHandler)
+  }
+
+  // MARK: - Scene Configuration
+  
+  /// Provides scene configurations for main app and CarPlay scenes.
+  func application(
+    _ application: UIApplication,
+    configurationForConnecting connectingSceneSession: UISceneSession,
+    options: UIScene.ConnectionOptions
+  ) -> UISceneConfiguration {
+    Log.info(#file, "📱 Configuring scene with role: \(connectingSceneSession.role.rawValue)")
+    
+    switch connectingSceneSession.role {
+    case .carTemplateApplication:
+      // Handle CarPlay scene
+      Log.info(#file, "🚗 Creating CarPlay scene configuration")
+      let config = UISceneConfiguration(name: "CarPlay", sessionRole: connectingSceneSession.role)
+      config.delegateClass = CarPlaySceneDelegate.self
+      return config
+      
+    default:
+      // Handle main app scene
+      let config = UISceneConfiguration(name: "Default Configuration", sessionRole: connectingSceneSession.role)
+      config.delegateClass = SceneDelegate.self
+      return config
+    }
+  }
+  
+  func application(_ application: UIApplication, didDiscardSceneSessions sceneSessions: Set<UISceneSession>) {
+    // Called when the user discards a scene session
+    for session in sceneSessions {
+      Log.info(#file, "Scene session discarded: \(session.configuration.name ?? "unknown")")
+    }
   }
 
   // MARK: - User Sign-in Tracking
@@ -186,12 +285,35 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
   // MARK: - UI Configuration
 
   private func setupWindow() {
+    // When using scenes (iOS 13+), window setup is handled by SceneDelegate
+    // Only create window here for non-scene based launches (shouldn't happen with our config)
+    guard window == nil else { return }
+    
+    // Check if we're using scenes - if so, SceneDelegate will handle window
+    if #available(iOS 13.0, *),
+       UIApplication.shared.supportsMultipleScenes || 
+       Bundle.main.object(forInfoDictionaryKey: "UIApplicationSceneManifest") != nil {
+      // Scene-based: SceneDelegate will create window
+      return
+    }
+    
+    // Legacy non-scene setup (fallback)
     window = UIWindow()
-    window?.tintColor = TPPConfiguration.mainColor()
-    window?.tintAdjustmentMode = .normal
-    window?.makeKeyAndVisible()
+    configureWindow(window!)
+  }
+  
+  /// Configures an existing window with the app's root view controller
+  func configureWindow(_ window: UIWindow) {
+    window.tintColor = TPPConfiguration.mainColor()
+    window.tintAdjustmentMode = .normal
+    window.rootViewController = createRootViewController()
+    window.makeKeyAndVisible()
+  }
+  
+  /// Creates and returns the app's root view controller
+  func createRootViewController() -> UIViewController {
     let root = AppTabHostView()
-    window?.rootViewController = UIHostingController(rootView: root)
+    return UIHostingController(rootView: root)
   }
 
   private func configureUIAppearance() {
@@ -222,22 +344,12 @@ extension TPPAppDelegate {
       return
     }
 
-    let showOnboarding = !TPPSettings.shared.userHasSeenWelcomeScreen
     // Use persisted currentAccountId rather than computed currentAccount to avoid timing issues
     let needsAccount = (AccountsManager.shared.currentAccountId == nil)
-    guard showOnboarding || needsAccount else { return }
+    guard needsAccount else { return }
 
     guard let top = topViewController() else { return }
 
-    func presentOnboarding(over presenter: UIViewController) {
-      let onboardingVC = TPPOnboardingViewController.makeSwiftUIView(dismissHandler: {
-        TPPSettings.shared.userHasSeenWelcomeScreen = true
-        presenter.presentedViewController?.dismiss(animated: true)
-      })
-      presenter.present(onboardingVC, animated: true)
-    }
-
-    if needsAccount {
       var nav: UINavigationController!
       let accountList = TPPAccountList { account in
         if !TPPSettings.shared.settingsAccountIdsList.contains(account.uuid) {
@@ -255,14 +367,7 @@ extension TPPAppDelegate {
       }
       accountList.requiresSelectionBeforeDismiss = true
       nav = UINavigationController(rootViewController: accountList)
-      top.present(nav, animated: true) {
-        if showOnboarding {
-          presentOnboarding(over: nav)
-        }
-      }
-    } else if showOnboarding {
-      presentOnboarding(over: top)
-    }
+    top.present(nav, animated: true)
   }
 
   private func switchToCatalogTab() {

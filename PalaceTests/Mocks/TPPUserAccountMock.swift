@@ -10,15 +10,6 @@ import Foundation
 @testable import Palace
 
 class TPPUserAccountMock: TPPUserAccount {
-  override init() {
-    super.init()
-    print("#### init'ing userAccount \(self.hash)")
-  }
-
-  deinit {
-    print("#### deinit'ing userAccount \(self.hash)")
-  }
-
   private static var shared = TPPUserAccountMock()
   override class func sharedAccount(libraryUUID: String?) -> TPPUserAccount {
     return shared
@@ -133,6 +124,31 @@ class TPPUserAccountMock: TPPUserAccount {
 
   override func setAuthToken(_ token: String, barcode: String?, pin: String?, expirationDate: Date?) {
     _authToken = token
+    _credentials = .token(authToken: token, barcode: barcode, pin: pin, expirationDate: expirationDate)
+  }
+  
+  // MARK: - Auth State
+  
+  private var _authState: TPPAccountAuthState = .loggedOut
+  override var authState: TPPAccountAuthState {
+    // If we have credentials but state is loggedOut, derive loggedIn state
+    if _authState == .loggedOut && hasCredentials() {
+      return .loggedIn
+    }
+    return _authState
+  }
+  
+  override func setAuthState(_ state: TPPAccountAuthState) {
+    _authState = state
+  }
+  
+  override func markCredentialsStale() {
+    guard authState == .loggedIn else { return }
+    _authState = .credentialsStale
+  }
+  
+  override func markLoggedIn() {
+    _authState = .loggedIn
   }
 
   // MARK:- Clean everything up
@@ -149,5 +165,6 @@ class TPPUserAccountMock: TPPUserAccount {
     _credentials = nil
     _cookies = nil
     _authorizationIdentifier = nil
+    _authState = .loggedOut
   }
 }

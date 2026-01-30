@@ -1,0 +1,102 @@
+{
+  "$schema": "https://github.com/mauricecarrier7/AccessLint-Distribution",
+  "version": "1.1.0",
+  "preset": "wcag-aa",
+  "rules": {
+    "A11Y.SWIFTUI.MISSING_LABEL": {
+      "enabled": true,
+      "severity": "major"
+    },
+    "A11Y.SWIFTUI.IMAGE_DECORATIVE": {
+      "enabled": true,
+      "severity": "minor"
+    },
+    "A11Y.SWIFTUI.FIXED_FONT": {
+      "enabled": true,
+      "severity": "info"
+    },
+    "A11Y.SWIFTUI.SCREEN_TITLE": {
+      "enabled": true,
+      "severity": "minor"
+    },
+    "A11Y.SWIFTUI.REDUCE_MOTION": {
+      "enabled": true,
+      "severity": "minor"
+    },
+    "A11Y.SWIFTUI.TOUCH_TARGET": {
+      "enabled": true,
+      "severity": "major"
+    },
+    "A11Y.SWIFTUI.ACCESSIBILITY_HINT": {
+      "enabled": true,
+      "severity": "info"
+    },
+    "A11Y.SWIFTUI.ORIENTATION_LOCK": {
+      "enabled": true,
+      "severity": "minor"
+    },
+    "A11Y.SWIFTUI.LABEL_IN_NAME": {
+      "enabled": true,
+      "severity": "major"
+    },
+    "A11Y.SWIFTUI.MEANINGFUL_NAME": {
+      "enabled": true,
+      "severity": "major"
+    },
+    "A11Y.UIKIT.BUTTON_MISSING_LABEL": {
+      "enabled": true,
+      "severity": "major"
+    },
+    "A11Y.UIKIT.HIDDEN_BUT_ACCESSIBLE": {
+      "enabled": true,
+      "severity": "major"
+    },
+    "A11Y.UIKIT.FIXED_FONT_DYNAMIC_TYPE": {
+      "enabled": true,
+      "severity": "major"
+    },
+    "A11Y.UIKIT.IMAGE_DECORATIVE": {
+      "enabled": true,
+      "severity": "minor"
+    },
+    "A11Y.UIKIT.SCREEN_TITLE": {
+      "enabled": true,
+      "severity": "minor"
+    },
+    "A11Y.UIKIT.REDUCE_MOTION": {
+      "enabled": true,
+      "severity": "minor"
+    },
+    "A11Y.UIKIT.TOUCH_TARGET": {
+      "enabled": true,
+      "severity": "major"
+    },
+    "A11Y.UIKIT.ACCESSIBILITY_HINT": {
+      "enabled": true,
+      "severity": "info"
+    },
+    "A11Y.UIKIT.ORIENTATION_LOCK": {
+      "enabled": true,
+      "severity": "minor"
+    },
+    "A11Y.UIKIT.LABEL_IN_NAME": {
+      "enabled": true,
+      "severity": "major"
+    },
+    "A11Y.UIKIT.MEANINGFUL_NAME": {
+      "enabled": true,
+      "severity": "major"
+    }
+  },
+  "exclude": [
+    "**/Tests/**",
+    "**/*Tests.swift",
+    "**/Mocks/**",
+    "**/Generated/**",
+    "**/Pods/**",
+    "**/*.generated.swift",
+    "**/Fixtures/**",
+    "**/Preview Content/**"
+  ],
+  "include": []
+}

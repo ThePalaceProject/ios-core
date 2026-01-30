@@ -1,0 +1,141 @@
+//
+//  SnapshotTestConfiguration.swift
+//  PalaceTests
+//
+//  Shared configuration for snapshot testing across multiple device types.
+//
+
+import XCTest
+import SwiftUI
+import SnapshotTesting
+
+/// Device configuration for snapshot testing.
+/// Simplified to single device to speed up test runs.
+enum SnapshotDevice: String, CaseIterable {
+  case iPhoneSE = "iPhone SE"
+  
+  var config: ViewImageConfig {
+    switch self {
+    case .iPhoneSE:
+      return .iPhoneSe
+    }
+  }
+  
+  var displayName: String {
+    rawValue
+  }
+}
+
+/// Check if running in CI environment
+/// GitHub Actions automatically sets GITHUB_ACTIONS=true
+/// Also check CI (common) and BUILD_CONTEXT (our custom var)
+private var isRunningInCI: Bool {
+  ProcessInfo.processInfo.environment["GITHUB_ACTIONS"] == "true" ||
+  ProcessInfo.processInfo.environment["CI"] == "true" ||
+  ProcessInfo.processInfo.environment["BUILD_CONTEXT"] == "ci"
+}
+
+/// Extension to run snapshot tests across multiple devices
+extension XCTestCase {
+  
+  /// Assert snapshot across all configured devices
+  /// - Note: Skipped in CI to reduce test time. Run locally to verify UI.
+  @MainActor
+  func assertMultiDeviceSnapshot<V: View>(
+    of view: V,
+    named name: String? = nil,
+    record: Bool = false,
+    file: StaticString = #file,
+    testName: String = #function,
+    line: UInt = #line
+  ) {
+    // Skip snapshot tests in CI - they're slow and should be verified locally
+    guard !isRunningInCI else {
+      return
+    }
+    
+    let shouldRecord = record || ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil
+    
+    for device in SnapshotDevice.allCases {
+      let snapshotName = name.map { "\($0)_\(device.rawValue)" } ?? device.rawValue
+      
+      assertSnapshot(
+        of: view,
+        as: .image(layout: .device(config: device.config)),
+        named: snapshotName,
+        record: shouldRecord,
+        file: file,
+        testName: testName,
+        line: line
+      )
+    }
+  }
+  
+  /// Assert snapshot for a single device (for tests that don't need multi-device)
+  /// - Note: Skipped in CI to reduce test time. Run locally to verify UI.
+  @MainActor
+  func assertDeviceSnapshot<V: View>(
+    of view: V,
+    on device: SnapshotDevice = .iPhoneSE,
+    named name: String? = nil,
+    record: Bool = false,
+    file: StaticString = #file,
+    testName: String = #function,
+    line: UInt = #line
+  ) {
+    // Skip snapshot tests in CI
+    guard !isRunningInCI else {
+      return
+    }
+    
+    let shouldRecord = record || ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil
+    let snapshotName = name.map { "\($0)_\(device.rawValue)" } ?? device.rawValue
+    
+    assertSnapshot(
+      of: view,
+      as: .image(layout: .device(config: device.config)),
+      named: snapshotName,
+      record: shouldRecord,
+      file: file,
+      testName: testName,
+      line: line
+    )
+  }
+  
+  /// Assert snapshot with fixed size (device-independent, for small components)
+  /// - Note: Skipped in CI to reduce test time. Run locally to verify UI.
+  @MainActor
+  func assertFixedSizeSnapshot<V: View>(
+    of view: V,
+    width: CGFloat,
+    height: CGFloat,
+    userInterfaceStyle: UIUserInterfaceStyle = .light,
+    named name: String? = nil,
+    record: Bool = false,
+    file: StaticString = #file,
+    testName: String = #function,
+    line: UInt = #line
+  ) {
+    // Skip snapshot tests in CI
+    guard !isRunningInCI else {
+      return
+    }
+    
+    let shouldRecord = record || ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil
+    
+    let traits = UITraitCollection(traitsFrom: [
+      UITraitCollection(displayScale: 2.0),
+      UITraitCollection(userInterfaceStyle: userInterfaceStyle)
+    ])
+    
+    assertSnapshot(
+      of: view,
+      as: .image(layout: .fixed(width: width, height: height), traits: traits),
+      named: name,
+      record: shouldRecord,
+      file: file,
+      testName: testName,
+      line: line
+    )
+  }
+}

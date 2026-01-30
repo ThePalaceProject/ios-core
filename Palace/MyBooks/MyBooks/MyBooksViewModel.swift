@@ -61,6 +61,18 @@ enum Group: Int {
     guard !isLoading else { return }
     isLoading = true
 
+    // If the account requires authentication and user is not logged in,
+    // don't show any books from the registry (they may be stale from a previous session)
+    let account = TPPUserAccount.sharedAccount()
+    if account.needsAuth && !account.hasCredentials() {
+      Log.info(#file, "User not logged in - showing empty My Books")
+      self.allBooks = []
+      self.books = []
+      self.showInstructionsLabel = true
+      self.isLoading = false
+      return
+    }
+    
     let registryBooks = bookRegistry.myBooks
     let isConnected = Reachability.shared.isConnectedToNetwork()
 

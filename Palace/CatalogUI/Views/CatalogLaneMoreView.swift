@@ -44,11 +44,13 @@ struct CatalogLaneMoreView: View {
           Button(action: { presentSearch() }) {
             ImageProviders.MyBooksView.search
           }
+          .accessibilityLabel(Strings.Generic.searchCatalog)
         }
       }
     }
     .task { await viewModel.load(coordinator: coordinator) }
     .onAppear {
+      Log.debug(#file, "🟢 CatalogLaneMoreView.onAppear() - Appearing")
       setupCoordinator()
       setupAccount()
     }
@@ -59,6 +61,7 @@ struct CatalogLaneMoreView: View {
       handleSampleToggle(note)
     }
     .onDisappear {
+      Log.debug(#file, "🔴 CatalogLaneMoreView.onDisappear() - Being dismissed")
       SamplePreviewManager.shared.close()
     }
     .onReceive(registryChangePublisher) { note in
@@ -353,17 +356,24 @@ private extension CatalogLaneMoreView {
   
   @ViewBuilder
   var booksView: some View {
-    ScrollView {
-      BookListView(
-        books: viewModel.ungroupedBooks,
-        isLoading: $viewModel.isLoading,
-        onSelect: { book in presentBookDetail(book) },
-        onLoadMore: viewModel.shouldShowPagination ? { @MainActor in await viewModel.loadNextPage() } : nil,
-        isLoadingMore: viewModel.isLoadingMore
-      )
-    }
-    .refreshable {
-      await viewModel.fetchAndApplyFeed(at: viewModel.url, clearFilters: false)
+    ScrollViewReader { proxy in
+      ScrollView {
+        BookListView(
+          books: viewModel.ungroupedBooks,
+          isLoading: $viewModel.isLoading,
+          onSelect: { book in presentBookDetail(book) },
+          onLoadMore: viewModel.shouldShowPagination ? { @MainActor in await viewModel.loadNextPage() } : nil,
+          isLoadingMore: viewModel.isLoadingMore
+        )
+        .id("books-list-top")
+      }
+      .refreshable {
+        await viewModel.fetchAndApplyFeed(at: viewModel.url, clearFilters: false)
+      }
+      .onChange(of: viewModel.ungroupedBooks) { _ in
+        // Scroll to top when books change (new results loaded)
+        proxy.scrollTo("books-list-top", anchor: .top)
+      }
     }
   }
 }

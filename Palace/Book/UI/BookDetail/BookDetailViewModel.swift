@@ -37,6 +37,10 @@ final class BookDetailViewModel: ObservableObject {
   
   @Published var relatedBooksByLane: [String: BookLane] = [:]
   @Published var isLoadingRelatedBooks = false
+  
+  /// Tracks the book identifier we last fetched related books for.
+  /// Used to preserve related books when view reappears after modal dismissal.
+  private var relatedBooksBookIdentifier: String?
   @Published var isLoadingDescription = false
   @Published var selectedBookURL: URL? = nil
   @Published var isManagingHold: Bool = false
@@ -64,7 +68,7 @@ final class BookDetailViewModel: ObservableObject {
   
   // MARK: - Dependencies
   
-  let registry: TPPBookRegistry
+  let registry: TPPBookRegistryProvider
   let downloadCenter = MyBooksDownloadCenter.shared
   private var cancellables = Set<AnyCancellable>()
   
@@ -88,12 +92,17 @@ final class BookDetailViewModel: ObservableObject {
   
   // MARK: - Initializer
   
-  @objc init(book: TPPBook) {
+  @objc convenience init(book: TPPBook) {
+    self.init(book: book, registry: TPPBookRegistry.shared)
+  }
+  
+  /// Initializer with dependency injection for testing
+  init(book: TPPBook, registry: TPPBookRegistryProvider) {
     self.book = book
-    self.registry = TPPBookRegistry.shared
+    self.registry = registry
     self.bookState = registry.state(for: book.identifier)
     self.bookIdentifier = book.identifier
-    self.stableButtonState = self.computeButtonState(book: book, state: self.bookState, isManagingHold: self.isManagingHold, isProcessing: self.isProcessing)
+    self.stableButtonState = self.computeButtonState(book: book, state: self.bookState, isManagingHold: self.isManagingHold)
     
     bindRegistryState()
     setupStableButtonState()
@@ -134,28 +143,64 @@ final class BookDetailViewModel: ObservableObject {
       .bookStatePublisher
       .filter { $0.0 == self.book.identifier }
       .map { $0.1 }
-      .receive(on: DispatchQueue.main)
+      .receive(on: RunLoop.main) // Use RunLoop.main to avoid "Publishing changes during view updates"
       .sink { [weak self] newState in
         guard let self else { return }
         let updatedBook = registry.book(forIdentifier: book.identifier) ?? book
         let registryState = registry.state(for: book.identifier)
-
-        Task { @MainActor in
-          self.book = updatedBook
-          // If we are in a local returning override, hold it until unregistered
-          if let override = self.localBookStateOverride, override == .returning, registryState != .unregistered {
-            return
-          }
-          self.bookState = registryState
-          if registryState == .unregistered {
-            // Ensure UI is not left in a managing/processing state after returning
-            self.isManagingHold = false
-            self.showHalfSheet = false
-            self.processingButtons.remove(.returning)
-            self.processingButtons.remove(.cancelHold)
-          } else if registryState == .downloadFailed {
-            self.showHalfSheet = false
-          }
+        
+        // Always update book from registry - it has authoritative data including loan duration
+        // after borrowing completes. The old optimization (only update if identifier/title changed)
+        // was too aggressive and missed availability data changes needed for the HalfSheet.
+        self.book = updatedBook
+        
+        // If we are in a local returning override, hold it until unregistered
+        if let override = self.localBookStateOverride, override == .returning, registryState != .unregistered {
+          return
+        }
+        self.bookState = registryState
+        
+        // Clear processing buttons based on state transitions
+        switch registryState {
+        case .unregistered:
+          // Ensure UI is not left in a managing/processing state after returning
+          self.isManagingHold = false
+          self.showHalfSheet = false
+          self.processingButtons.remove(.returning)
+          self.processingButtons.remove(.cancelHold)
+          self.processingButtons.remove(.return)
+          self.processingButtons.remove(.remove)
+          
+        case .downloading:
+          // Download started - clear download-related processing buttons
+          self.processingButtons.remove(.download)
+          self.processingButtons.remove(.get)
+          self.processingButtons.remove(.retry)
+          
+        case .downloadFailed:
+          // Download failed - clear download-related processing buttons
+          self.processingButtons.remove(.download)
+          self.processingButtons.remove(.get)
+          self.processingButtons.remove(.retry)
+          // Don't auto-close the HalfSheet on downloadFailed - the HalfSheet will update
+          // to show retry/cancel buttons. Auto-closing causes a race condition with the
+          // error alert presentation, resulting in the alert being auto-dismissed.
+          
+        case .downloadSuccessful, .used:
+          // Download completed - clear all download-related processing
+          // Keep half sheet open so user can tap Read/Listen
+          self.processingButtons.remove(.download)
+          self.processingButtons.remove(.get)
+          self.processingButtons.remove(.retry)
+          
+        case .holding:
+          // Hold placed - clear reserve button and dismiss half sheet
+          self.processingButtons.remove(.reserve)
+          self.processingButtons.remove(.get)
+          self.showHalfSheet = false
+          
+        default:
+          break
         }
       }
       .store(in: &cancellables)
@@ -177,9 +222,11 @@ final class BookDetailViewModel: ObservableObject {
       .assign(to: &$downloadProgress)
   }
 
-  private func computeButtonState(book: TPPBook, state: TPPBookState, isManagingHold: Bool, isProcessing: Bool) -> BookButtonState {
+  private func computeButtonState(book: TPPBook, state: TPPBookState, isManagingHold: Bool) -> BookButtonState {
     let availability = book.defaultAcquisition?.availability
-    let isProcessingDownload = isProcessing || state == .downloading
+    // Only count download/borrow-related processing, not return processing
+    let downloadRelatedButtons: Set<BookButtonType> = [.download, .get, .retry, .reserve]
+    let isProcessingDownload = state == .downloading || processingButtons.intersection(downloadRelatedButtons).count > 0
     if case .holding = state, isManagingHold { return .managingHold }
     return BookButtonMapper.map(
       registryState: state,
@@ -189,17 +236,23 @@ final class BookDetailViewModel: ObservableObject {
   }
 
   private func setupStableButtonState() {
+    // Note: We still observe $isProcessing to trigger updates when processingButtons changes,
+    // even though the value itself isn't used in computeButtonState anymore
     Publishers.CombineLatest4($book, $bookState, $isManagingHold, $isProcessing)
-      .map { [weak self] book, state, isManaging, isProcessing in
-        self?.computeButtonState(book: book, state: state, isManagingHold: isManaging, isProcessing: isProcessing) ?? .unsupported
+      .map { [weak self] book, state, isManaging, _ in
+        self?.computeButtonState(book: book, state: state, isManagingHold: isManaging) ?? .unsupported
       }
       .removeDuplicates()
-      .debounce(for: .milliseconds(180), scheduler: DispatchQueue.main)
+      // Use throttle instead of debounce - throttle emits immediately on first value,
+      // then emits the latest value after the interval. Debounce waits for silence.
+      .throttle(for: .milliseconds(50), scheduler: RunLoop.main, latest: true)
       .assign(to: &self.$stableButtonState)
   }
   
   @objc func handleBookRegistryChange(_ notification: Notification) {
     let updatedBook = registry.book(forIdentifier: book.identifier) ?? book
+    // Always update book from registry - it has authoritative data including loan duration
+    // after borrowing completes
     DispatchQueue.main.async {
       self.book = updatedBook
     }
@@ -207,11 +260,14 @@ final class BookDetailViewModel: ObservableObject {
   
   func selectRelatedBook(_ newBook: TPPBook) {
     guard newBook.identifier != book.identifier else { return }
-    Task { @MainActor in
-      self.book = newBook
-      self.bookState = registry.state(for: newBook.identifier)
-      self.fetchRelatedBooks()
-    }
+    
+    // Clear related books data since we're navigating to a different book
+    relatedBooksByLane = [:]
+    relatedBooksBookIdentifier = nil
+    
+    book = newBook
+    bookState = registry.state(for: newBook.identifier)
+    fetchRelatedBooks()
   }
   
   // MARK: - Notifications
@@ -236,13 +292,32 @@ final class BookDetailViewModel: ObservableObject {
   func fetchRelatedBooks() {
     guard let url = book.relatedWorksURL else { return }
     
+    let currentBookId = book.identifier
+    
+    // Only clear existing related books if we're fetching for a different book.
+    // This prevents the "Other Books By This Author" section from disappearing
+    // when the view reappears (e.g., after closing a sample preview).
+    // If relatedBooksBookIdentifier is nil but we have data, assume it belongs to the current book.
+    let isSameBook = relatedBooksBookIdentifier == currentBookId ||
+                     (relatedBooksBookIdentifier == nil && !relatedBooksByLane.isEmpty)
+    
+    if !isSameBook {
+      relatedBooksByLane = [:]
+    }
+    relatedBooksBookIdentifier = currentBookId
+    
     isLoadingRelatedBooks = true
-    relatedBooksByLane = [:]
     
     TPPOPDSFeed.withURL(url, shouldResetCache: false, useTokenIfAvailable: TPPUserAccount.sharedAccount().hasAdobeToken()) { [weak self] feed, _ in
       guard let self else { return }
       
       DispatchQueue.main.async {
+        // Verify we're still on the same book (user might have navigated away)
+        guard self.book.identifier == currentBookId else {
+          self.isLoadingRelatedBooks = false
+          return
+        }
+        
         if feed?.type == .acquisitionGrouped {
           var groupTitleToBooks: [String: [TPPBook]] = [:]
           var groupTitleToMoreURL: [String: URL?] = [:]
@@ -282,6 +357,12 @@ final class BookDetailViewModel: ObservableObject {
     }
     
     DispatchQueue.main.async {
+      // Don't replace existing related books with empty data.
+      // This can happen if the network request succeeds but parsing fails.
+      if lanesMap.isEmpty && !self.relatedBooksByLane.isEmpty {
+        self.isLoadingRelatedBooks = false
+        return
+      }
       self.relatedBooksByLane = lanesMap
       self.isLoadingRelatedBooks = false
     }
@@ -305,15 +386,15 @@ final class BookDetailViewModel: ObservableObject {
     
     switch button {
     case .reserve:
-      didSelectReserve(for: book)
-      removeProcessingButton(button)
-      showHalfSheet = false
-    case .return, .remove:
-      bookState = .returning
-      removeProcessingButton(button)
+      didSelectReserve(for: book) { [weak self] in
+        self?.removeProcessingButton(button)
+        self?.showHalfSheet = false
+      }
       
-    case .returning, .cancelHold:
-      // didSelectReturn will guard against duplicate requests using processingButtons
+    case .return, .remove, .returning, .cancelHold:
+      // Set state to returning for visual feedback
+      bookState = .returning
+      // Actually perform the return
       didSelectReturn(for: book) {
         self.removeProcessingButton(button)
         self.showHalfSheet = false
@@ -323,7 +404,7 @@ final class BookDetailViewModel: ObservableObject {
     case .download, .get, .retry:
       self.downloadProgress = 0
       didSelectDownload(for: book)
-      removeProcessingButton(button)
+      // Don't remove processing here - will be removed when state changes to .downloading or .downloadFailed
       
     case .read, .listen:
       didSelectRead(for: book) {
@@ -332,7 +413,10 @@ final class BookDetailViewModel: ObservableObject {
       
     case .cancel:
       didSelectCancel()
-      removeProcessingButton(button)
+      // Remove after a short delay to show feedback
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+        self?.removeProcessingButton(button)
+      }
       
     case .sample, .audiobookSample:
       didSelectPlaySample(for: book) {
@@ -380,7 +464,17 @@ final class BookDetailViewModel: ObservableObject {
         if account.needsAuth && !account.hasCredentials() {
           self.showHalfSheet = false
           SignInModalPresenter.presentSignInModalForCurrentAccount { [weak self] in
-            guard self != nil else { return }
+            guard let self else { return }
+            // Only proceed if user successfully logged in, not if they cancelled
+            guard TPPUserAccount.sharedAccount().hasCredentials() else {
+              Log.info(#file, "Sign-in cancelled or failed, not proceeding with action")
+              // Clear any processing state for download-related buttons
+              self.processingButtons.remove(.download)
+              self.processingButtons.remove(.get)
+              self.processingButtons.remove(.retry)
+              self.processingButtons.remove(.reserve)
+              return
+            }
             action()
           }
           return
@@ -405,14 +499,20 @@ final class BookDetailViewModel: ObservableObject {
     downloadCenter.startDownload(for: book)
   }
 
-  func didSelectReserve(for book: TPPBook) {
+  func didSelectReserve(for book: TPPBook, completion: (() -> Void)? = nil) {
     ensureAuthAndExecute { [weak self] in
-      guard let self = self else { return }
+      guard let self = self else { 
+        completion?()
+        return 
+      }
       Task {
         do {
           _ = try await self.downloadCenter.borrowAsync(book, attemptDownload: false)
         } catch {
           Log.error(#file, "Failed to borrow book: \(error.localizedDescription)")
+        }
+        await MainActor.run {
+          completion?()
         }
       }
     }
@@ -449,11 +549,16 @@ final class BookDetailViewModel: ObservableObject {
           if user.hasAuthToken() {
             self.openBook(book, completion: completion)
             return
-          } else if !(AdobeCertificate.defaultCertificate?.hasExpired ?? false) &&
-                      !NYPLADEPT.sharedInstance().isUserAuthorized(user.userID, withDevice: user.deviceID) {
+          } else if AdobeCertificate.isDRMAvailable &&
+                      !AdobeDRMService.shared.isUserAuthorized(user.userID, deviceID: user.deviceID) {
             let reauthenticator = TPPReauthenticator()
             reauthenticator.authenticateIfNeeded(user, usingExistingCredentials: true) {
               Task { @MainActor in
+                // Only proceed if user successfully re-authenticated
+                guard user.hasCredentials() else {
+                  completion?()
+                  return
+                }
                 self.openBook(book, completion: completion)
               }
             }
@@ -572,6 +677,7 @@ final class BookDetailViewModel: ObservableObject {
     
     if book.defaultBookContentType == .audiobook {
       if book.sampleAcquisition?.type == "text/html" {
+        SamplePreviewManager.shared.close()
         presentWebView(book.sampleAcquisition?.hrefURL)
         isProcessingSample = false
         completion?()
@@ -582,6 +688,7 @@ final class BookDetailViewModel: ObservableObject {
         completion?()
       }
     } else {
+      SamplePreviewManager.shared.close()
       EpubSampleFactory.createSample(book: book) { sampleURL, error in
         DispatchQueue.main.async {
           if let error = error {
@@ -589,15 +696,14 @@ final class BookDetailViewModel: ObservableObject {
           } else if let sampleWebURL = sampleURL as? EpubSampleWebURL {
             self.presentWebView(sampleWebURL.url)
           } else if let sampleURL = sampleURL?.url {
-            // Check if this is a Palace Marketplace EPUB sample
-            let isPalaceMarketplace = book.distributor == "Palace Marketplace"
+            // Check if this is an EPUB sample
             let isEpubSample = book.sample?.type == .contentTypeEpubZip
             
-            if isPalaceMarketplace && isEpubSample {
-              // Use Readium EPUB reader for Palace Marketplace EPUB samples
+            if isEpubSample {
+              // Use Readium EPUB reader for EPUB samples
               ReaderService.shared.openSample(book, url: sampleURL)
             } else {
-              // Use WebKit for other samples (maintains backward compatibility)
+              // Use WebKit for HTML/web samples
               let web = BundledHTMLViewController(fileURL: sampleURL, title: book.title)
               if let top = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController() {
                 top.present(web, animated: true)

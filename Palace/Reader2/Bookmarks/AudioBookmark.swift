@@ -98,7 +98,10 @@ enum BookmarkType: String, Codable {
   
   static func create(locatorData: [String: Any], timeStamp: String? = Date().iso8601, annotationId: String = "") -> AudioBookmark? {
     guard let typeString = locatorData["@type"] as? String,
-          let type = BookmarkType(rawValue: typeString) else { return nil }
+          let type = BookmarkType(rawValue: typeString) else {
+      Log.error(#file, "🔖 AudioBookmark.create FAILED: Invalid or missing @type in locatorData: \(locatorData)")
+      return nil
+    }
 
     let version = locatorData["@version"] as? Int ?? 1
     let lastSavedTimeStamp = (locatorData["timeStamp"] as? String)?.isEmpty == false ? locatorData["timeStamp"] as? String : timeStamp
@@ -110,6 +113,8 @@ enum BookmarkType: String, Codable {
     let title = locatorData["title"] as? String
     let part = locatorData["part"] as? Int
     let time = locatorData["time"] as? Int
+    
+    Log.info(#file, "🔖 AudioBookmark.create: version=\(version), timestamp=\(lastSavedTimeStamp ?? "nil"), annotationId=\(id.isEmpty ? "EMPTY" : id), chapter=\(chapter ?? "nil"), readingOrderItem=\(readingOrderItem ?? "nil"), readingOrderItemOffset=\(readingOrderItemOffsetMilliseconds?.description ?? "nil"), part=\(part?.description ?? "nil"), time=\(time?.description ?? "nil")")
 
     return AudioBookmark(
       type: type,

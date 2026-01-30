@@ -35,9 +35,6 @@ platform :ios do
   lane :beta do |options|
     ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "300"
     ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"] = "4"
-    
-    # Best-effort DerivedData clean (ignore failures)
-    sh("rm -rf ~/Library/Developer/Xcode/DerivedData/* || true")
 
     build_app(
       project: "Palace.xcodeproj",
@@ -49,6 +46,7 @@ platform :ios do
       xcargs: "ONLY_ACTIVE_ARCH=NO ARCHS=arm64 IPHONEOS_DEPLOYMENT_TARGET=16.0",
       output_name: options[:output_name],
       output_directory: options[:export_path],
+      export_method: "ad-hoc",
       export_options: {
         method: "ad-hoc",
         provisioningProfiles: { 
@@ -62,8 +60,8 @@ platform :ios do
     ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "300"
     ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"] = "4"
 
-    # Best-effort DerivedData clean (ignore failures)
-    sh("rm -rf ~/Library/Developer/Xcode/DerivedData/* || true")
+    # NOTE: Reusing DerivedData from beta build for faster compilation
+    # Only re-links with App Store provisioning profile
 
     build_app(
       project: "Palace.xcodeproj",
@@ -72,6 +70,7 @@ platform :ios do
       include_bitcode: false,
       sdk: "iphoneos",
       xcargs: "ONLY_ACTIVE_ARCH=NO ARCHS=arm64 IPHONEOS_DEPLOYMENT_TARGET=16.0",
+      export_method: "app-store",
       export_options: {
         method: "app-store",
         provisioningProfiles: { 

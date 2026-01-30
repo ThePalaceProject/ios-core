@@ -26,6 +26,7 @@ struct AppTabHostView: View {
           }
         }
         .tag(AppTab.catalog)
+        .accessibilityIdentifier(AccessibilityID.TabBar.catalogTab)
 
       NavigationHostView(rootView: MyBooksView(model: MyBooksViewModel()))
         .tabItem {
@@ -35,6 +36,7 @@ struct AppTabHostView: View {
           }
         }
         .tag(AppTab.myBooks)
+        .accessibilityIdentifier(AccessibilityID.TabBar.myBooksTab)
 
       NavigationHostView(rootView: HoldsView())
         .tabItem {
@@ -45,10 +47,12 @@ struct AppTabHostView: View {
         }
         .badge(holdsBadgeCount)
         .tag(AppTab.holds)
+        .accessibilityIdentifier(AccessibilityID.TabBar.holdsTab)
 
       NavigationHostView(rootView: TPPSettingsView())
         .tabItem { Label(Strings.Settings.settings, systemImage: "gearshape") }
         .tag(AppTab.settings)
+        .accessibilityIdentifier(AccessibilityID.TabBar.settingsTab)
     }
     .tint(Color.accentColor)
     .onAppear { AppTabRouterHub.shared.router = router }
@@ -73,16 +77,58 @@ struct AppTabHostView: View {
 
 private extension AppTabHostView {
   func updateHoldsBadge() {
-    let held = TPPBookRegistry.shared.heldBooks
-    var readyCount = 0
-    for book in held {
-      book.defaultAcquisition?.availability.matchUnavailable(nil,
-                                                            limited: nil,
-                                                            unlimited: nil,
-                                                            reserved: nil,
-                                                            ready: { _ in readyCount += 1 })
+    guard TPPBookRegistry.shared.state == .loaded || TPPBookRegistry.shared.state == .synced else {
+      return
     }
-    holdsBadgeCount = readyCount
+    
+    // Move heavy registry access off main thread to avoid blocking UI
+    DispatchQueue.global(qos: .userInitiated).async {
+      // Use test books if debug configuration is enabled, otherwise use real registry data
+      #if DEBUG
+      let held: [TPPBook] = DebugSettings.shared.createTestHoldBooks() ?? TPPBookRegistry.shared.heldBooks
+      let usingTestBooks = DebugSettings.shared.isTestHoldsEnabled
+      #else
+      let held = TPPBookRegistry.shared.heldBooks
+      #endif
+      
+      var readyCount = 0
+      
+      for book in held {
+        book.defaultAcquisition?.availability.matchUnavailable(nil,
+                                                              limited: nil,
+                                                              unlimited: nil,
+                                                              reserved: nil,
+                                                              ready: { _ in readyCount += 1 })
+      }
+      
+      #if DEBUG
+      if DebugSettings.shared.isBadgeLoggingEnabled {
+        var reservedCount = 0
+        for book in held {
+          book.defaultAcquisition?.availability.matchUnavailable(nil, limited: nil, unlimited: nil,
+                                                                reserved: { _ in reservedCount += 1 }, ready: nil)
+        }
+        Log.info(#file, "[DEBUG-BADGE] updateHoldsBadge: source=\(usingTestBooks ? "TEST BOOKS" : "registry"), totalHeld=\(held.count), reserved=\(reservedCount), ready=\(readyCount)")
+        for (index, book) in held.enumerated() {
+          var status = "unknown"
+          book.defaultAcquisition?.availability.matchUnavailable(
+            { _ in status = "unavailable" },
+            limited: { _ in status = "limited" },
+            unlimited: { _ in status = "unlimited" },
+            reserved: { r in status = "reserved (pos: \(r.holdPosition))" },
+            ready: { _ in status = "READY" }
+          )
+          Log.info(#file, "[DEBUG-BADGE]   Book[\(index)]: '\(book.title)' - status: \(status)")
+        }
+      }
+      #endif
+      
+      // Update UI on main thread
+      DispatchQueue.main.async {
+        self.holdsBadgeCount = readyCount
+        UIApplication.shared.applicationIconBadgeNumber = readyCount
+      }
+    }
   }
 }
 

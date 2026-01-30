@@ -48,12 +48,11 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
       bookInfoView
       statusInfoView
 
-      if viewModel.bookState == .downloading && viewModel.buttonState != .downloadSuccessful {
-        ProgressView(value: viewModel.downloadProgress, total: 1.0)
-          .progressViewStyle(LinearProgressViewStyle())
-          .frame(height: 6)
-          .transition(.opacity)
-      }
+      // Reserve consistent space for progress bar to prevent layout shifts
+      ProgressView(value: viewModel.downloadProgress, total: 1.0)
+        .progressViewStyle(LinearProgressViewStyle())
+        .frame(height: 6)
+        .opacity(viewModel.bookState == .downloading && viewModel.buttonState != .downloadSuccessful ? 1 : 0)
 
       if viewModel.isFullSize {
         BookButtonsView(provider: viewModel, previewEnabled: false, onButtonTapped: { type in
@@ -97,6 +96,9 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
       }
     }
     .padding()
+    .animation(.easeInOut(duration: 0.2), value: viewModel.bookState)
+    .animation(.easeInOut(duration: 0.2), value: viewModel.buttonState)
+    .animation(.easeInOut(duration: 0.15), value: viewModel.downloadProgress)
     .presentationDetents([UIDevice.current.isIpad ? .height(540) : .medium])
     .presentationDragIndicator(.visible)
     .interactiveDismissDisabled(viewModel.isProcessing(for: .returning))
@@ -206,6 +208,7 @@ private extension HalfSheetView {
         }
       }
     }
+    .frame(minHeight: 50) // Consistent minimum height to prevent layout shifts
   }
 
   @ViewBuilder

@@ -1,13 +1,543 @@
 name: Unit Tests
 on: [ pull_request, workflow_dispatch ]
 jobs:
-  build-and-test:
-    runs-on: macos-14
+  # QAAtlas AI test coverage analysis - runs in parallel with other jobs
+  # Analyzes PR changes and tracks overall symbol coverage
+  qaatlas-analysis:
+    runs-on: macos-latest  # macOS for better Swift/iOS parsing
+    if: github.event_name == 'pull_request'
+    continue-on-error: true  # Non-blocking - don't fail PR on QAAtlas issues
     steps:
-      - name: Set up Xcode 16.2
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Need full history for diff analysis
+          
+      - name: Check for Swift changes
+        id: changes
+        run: |
+          # Only run if Swift files changed
+          SWIFT_CHANGES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -c '\.swift$' || echo "0")
+          echo "swift_files_changed=$SWIFT_CHANGES" >> $GITHUB_OUTPUT
+          if [ "$SWIFT_CHANGES" -eq "0" ]; then
+            echo "No Swift files changed, skipping QAAtlas analysis"
+          else
+            echo "Found $SWIFT_CHANGES Swift files changed"
+          fi
+          
+      - name: Cache QAAtlas binary
+        if: steps.changes.outputs.swift_files_changed != '0'
+        id: cache-qaatlas
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/bin/qaatlas
+          key: qaatlas-v2.2.1-macos
+          
+      - name: Download QAAtlas
+        if: steps.changes.outputs.swift_files_changed != '0' && steps.cache-qaatlas.outputs.cache-hit != 'true'
+        run: |
+          curl -L -o /usr/local/bin/qaatlas \
+            https://github.com/mauricecarrier7/qaatlas-dist/releases/download/v2.2.1/qaatlas-macos
+          chmod +x /usr/local/bin/qaatlas
+          xattr -d com.apple.quarantine /usr/local/bin/qaatlas 2>/dev/null || true
+          /usr/local/bin/qaatlas --version 2>&1 | tail -1
+          
+      - name: Generate PR diff
+        if: steps.changes.outputs.swift_files_changed != '0'
+        run: |
+          git diff origin/${{ github.base_ref }}...HEAD > /tmp/pr-changes.patch
+          echo "Generated diff with $(wc -l < /tmp/pr-changes.patch) lines"
+          
+      - name: Run QAAtlas gap analysis
+        if: steps.changes.outputs.swift_files_changed != '0'
+        id: gap-analysis
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          echo "📊 Running symbol coverage analysis..."
+          set +e
+          /usr/local/bin/qaatlas gap-analysis \
+            --target . \
+            --preset ios \
+            --output-dir ./qaatlas-output 2>&1 | grep -v "Warning:" | tee qaatlas-gap.log
+          set -e
+          
+          # Extract coverage metrics
+          if [ -f "./qaatlas-output/gap-report.json" ]; then
+            COVERAGE=$(python3 -c "import json; d=json.load(open('./qaatlas-output/gap-report.json')); print(d['summary']['coveragePercent'])")
+            TESTED=$(python3 -c "import json; d=json.load(open('./qaatlas-output/gap-report.json')); print(d['summary']['testedSymbols'])")
+            TOTAL=$(python3 -c "import json; d=json.load(open('./qaatlas-output/gap-report.json')); print(d['summary']['totalSymbols'])")
+            HIGH_GAPS=$(python3 -c "import json; d=json.load(open('./qaatlas-output/gap-report.json')); print(d['summary']['gapsByPriority']['high'])")
+            echo "coverage=$COVERAGE" >> $GITHUB_OUTPUT
+            echo "tested=$TESTED" >> $GITHUB_OUTPUT
+            echo "total=$TOTAL" >> $GITHUB_OUTPUT
+            echo "high_gaps=$HIGH_GAPS" >> $GITHUB_OUTPUT
+            echo "✅ Coverage: $COVERAGE% ($TESTED/$TOTAL symbols)"
+          fi
+          
+      - name: Run QAAtlas PR analysis
+        if: steps.changes.outputs.swift_files_changed != '0'
+        id: qaatlas
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          NODE_ENV: production
+        run: |
+          echo "🔍 Analyzing PR changes for test recommendations..."
+          set +e
+          /usr/local/bin/qaatlas analyze \
+            --diff /tmp/pr-changes.patch \
+            --preset ios \
+            --output-dir ./qaatlas-output 2>&1 | grep -v "Warning:" | tee qaatlas-analyze.log
+          EXIT_CODE=$?
+          set -e
+          
+          # Check if analysis produced output
+          if [ -f "./qaatlas-output/pr-comment.md" ]; then
+            echo "analysis_complete=true" >> $GITHUB_OUTPUT
+            
+            # Extract test recommendations count
+            TESTS_RECOMMENDED=$(python3 -c "import json; d=json.load(open('./qaatlas-output/report.json')); print(len(d.get('testCases', [])))" 2>/dev/null || echo "0")
+            RISK_LEVEL=$(python3 -c "import json; d=json.load(open('./qaatlas-output/report.json')); print(d.get('riskAssessment', {}).get('level', 'unknown'))" 2>/dev/null || echo "unknown")
+            echo "tests_recommended=$TESTS_RECOMMENDED" >> $GITHUB_OUTPUT
+            echo "risk_level=$RISK_LEVEL" >> $GITHUB_OUTPUT
+            
+            # Extract test matching info from analyze log
+            if [ -f "qaatlas-analyze.log" ]; then
+              # Parse matching info and save to JSON for PR comment
+              python3 -c "
+          import re
+          import json
+          
+          with open('qaatlas-analyze.log', 'r') as f:
+              content = f.read()
+          
+          # Extract matches section
+          matches = []
+          in_matches = False
+          for line in content.split('\n'):
+              if 'Matches Found:' in line:
+                  in_matches = True
+                  continue
+              if in_matches:
+                  if line.strip().startswith('✓'):
+                      # Extract test title
+                      title_match = re.search(r'\"([^\"]+)\"', line)
+                      if title_match:
+                          matches.append({'title': title_match.group(1), 'test_file': '', 'match_type': ''})
+                  elif line.strip().startswith('→') and matches:
+                      # Extract test file
+                      matches[-1]['test_file'] = line.strip().replace('→ ', '')
+                  elif '(' in line and matches and not matches[-1]['match_type']:
+                      # Extract match type (e.g., 'contains keywords: carplay, library')
+                      match_info = re.search(r'\(([^)]+)\)', line)
+                      if match_info:
+                          matches[-1]['match_type'] = match_info.group(1)
+                  elif line.strip().startswith('Coverage Verdict'):
+                      break
+          
+          with open('test-matches.json', 'w') as f:
+              json.dump(matches, f)
+          " 2>/dev/null || echo "[]" > test-matches.json
+            fi
+          else
+            echo "analysis_complete=false" >> $GITHUB_OUTPUT
+          fi
+          
+          exit 0  # Always succeed - this is advisory only
+          
+      - name: Upload QAAtlas report
+        if: steps.changes.outputs.swift_files_changed != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: qaatlas-report
+          path: |
+            qaatlas-output/
+            qaatlas-gap.log
+            qaatlas-analyze.log
+            test-matches.json
+          retention-days: 14
+          if-no-files-found: ignore
+      
+      - name: QAAtlas Dashboard Summary
+        if: steps.changes.outputs.swift_files_changed != '0'
+        run: |
+          COVERAGE="${{ steps.gap-analysis.outputs.coverage }}"
+          TESTED="${{ steps.gap-analysis.outputs.tested }}"
+          TOTAL="${{ steps.gap-analysis.outputs.total }}"
+          HIGH_GAPS="${{ steps.gap-analysis.outputs.high_gaps }}"
+          TESTS_REC="${{ steps.qaatlas.outputs.tests_recommended }}"
+          RISK="${{ steps.qaatlas.outputs.risk_level }}"
+          
+          echo "## 🧪 QAAtlas Test Coverage Analysis" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Risk badge
+          if [ "$RISK" = "low" ]; then
+            echo "### 🟢 Risk Level: LOW" >> $GITHUB_STEP_SUMMARY
+          elif [ "$RISK" = "medium" ]; then
+            echo "### 🟡 Risk Level: MEDIUM" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### 🔴 Risk Level: HIGH" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Coverage gauge
+          if [ -n "$COVERAGE" ]; then
+            COVERAGE_INT=${COVERAGE%.*}
+            if [ "$COVERAGE_INT" -ge 50 ]; then
+              GAUGE="🟢"
+            elif [ "$COVERAGE_INT" -ge 30 ]; then
+              GAUGE="🟡"
+            else
+              GAUGE="🔴"
+            fi
+            echo "### 📊 Estimated Test Coverage: $GAUGE $COVERAGE%" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Symbols with Tests | $TESTED / $TOTAL |" >> $GITHUB_STEP_SUMMARY
+            echo "| High-Priority Gaps | $HIGH_GAPS |" >> $GITHUB_STEP_SUMMARY
+            echo "| Tests Recommended | $TESTS_REC |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Top gaps from gap report
+          if [ -f "./qaatlas-output/gap-report.json" ]; then
+            echo "<details>" >> $GITHUB_STEP_SUMMARY
+            echo "<summary><strong>🔍 Top 10 Coverage Gaps</strong></summary>" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Priority | Symbol | File |" >> $GITHUB_STEP_SUMMARY
+            echo "|----------|--------|------|" >> $GITHUB_STEP_SUMMARY
+            python3 -c "
+          import json
+          d = json.load(open('./qaatlas-output/gap-report.json'))
+          gaps = d.get('gaps', [])[:10]
+          for g in gaps:
+            symbol = g.get('symbol', 'Unknown')[:40]
+            file = g.get('file', 'Unknown').split('/')[-1]
+            priority = g.get('priority', 'unknown').upper()
+            icon = '🔴' if priority == 'HIGH' else '🟡' if priority == 'MEDIUM' else '🟢'
+            print(f'| {icon} {priority} | \`{symbol}\` | {file} |')
+          " >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "| - | Unable to parse gaps | - |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "</details>" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Test recommendations from testplan
+          if [ -f "./qaatlas-output/testplan.md" ]; then
+            echo "<details>" >> $GITHUB_STEP_SUMMARY
+            echo "<summary><strong>📋 Recommended Tests</strong></summary>" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            cat ./qaatlas-output/testplan.md | head -80 >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "</details>" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "*AI-powered analysis by [QAAtlas v2.2.1](https://github.com/mauricecarrier7/qaatlas-dist) • [Download Full Report](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}#artifacts)*" >> $GITHUB_STEP_SUMMARY
+          
+      - name: Post PR comment
+        if: steps.changes.outputs.swift_files_changed != '0'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            
+            const coverage = '${{ steps.gap-analysis.outputs.coverage }}';
+            const tested = '${{ steps.gap-analysis.outputs.tested }}';
+            const total = '${{ steps.gap-analysis.outputs.total }}';
+            const highGaps = '${{ steps.gap-analysis.outputs.high_gaps }}';
+            const testsRecommended = '${{ steps.qaatlas.outputs.tests_recommended }}';
+            const riskLevel = '${{ steps.qaatlas.outputs.risk_level }}';
+            const analysisComplete = '${{ steps.qaatlas.outputs.analysis_complete }}';
+            
+            let body = '## 🧪 QAAtlas Test Analysis\n\n';
+            
+            // Coverage summary with clearer language
+            if (coverage) {
+              const coverageNum = parseFloat(coverage);
+              const coverageIcon = coverageNum >= 50 ? '🟢' : coverageNum >= 30 ? '🟡' : '🔴';
+              body += `### 📊 Test Coverage Estimate: ${coverageIcon} ${coverage}%\n\n`;
+              body += `> **What this measures:** AI analysis of which functions and classes have corresponding unit tests.\n`;
+              body += `> This is an *estimate* based on code analysis, not actual runtime coverage.\n\n`;
+              body += `| Metric | Value | Description |\n`;
+              body += `|--------|-------|-------------|\n`;
+              body += `| Functions with Tests | ${tested} / ${total} | Methods/functions that appear to have test coverage |\n`;
+              body += `| Untested High-Priority | ${highGaps} | Important functions without tests |\n`;
+              if (testsRecommended && testsRecommended !== '0') {
+                body += `| Suggested Tests | ${testsRecommended} | New tests recommended for this PR |\n`;
+              }
+              body += '\n';
+              
+              // Risk assessment with clearer language
+              if (riskLevel && riskLevel !== 'unknown') {
+                const riskIcon = {low: '🟢', medium: '🟡', high: '🔴'}[riskLevel.toLowerCase()] || '⚪';
+                const riskDesc = {
+                  low: 'Changes are low-risk or well-covered by existing tests',
+                  medium: 'Some changes may benefit from additional testing',
+                  high: 'Changes touch critical code paths - careful review recommended'
+                }[riskLevel.toLowerCase()] || 'Risk level could not be determined';
+                body += `**Risk Assessment:** ${riskIcon} **${riskLevel.toUpperCase()}** - ${riskDesc}\n\n`;
+              }
+            }
+            
+            // Read PR-specific analysis
+            if (analysisComplete === 'true') {
+              try {
+                const prComment = fs.readFileSync('./qaatlas-output/pr-comment.md', 'utf8');
+                body += '### 🔍 What Changed in This PR\n\n';
+                body += prComment;
+                
+                // Add test matching details
+                try {
+                  const matchesJson = fs.readFileSync('./test-matches.json', 'utf8');
+                  const matches = JSON.parse(matchesJson);
+                  if (matches.length > 0) {
+                    body += '\n### ✅ Existing Test Coverage\n\n';
+                    body += '| Recommendation | Covered By | Match Type |\n';
+                    body += '|----------------|------------|------------|\n';
+                    for (const m of matches) {
+                      const title = m.title.substring(0, 40) + (m.title.length > 40 ? '...' : '');
+                      const testFile = m.test_file.split('/').pop() || m.test_file;
+                      const matchType = m.match_type.includes('mapped') ? '✅ Direct' : '🔍 Keyword';
+                      body += `| ${title} | \`${testFile}\` | ${matchType} |\n`;
+                    }
+                    body += '\n';
+                  }
+                } catch (e) {
+                  // No matches file, skip this section
+                }
+              } catch (e) {
+                body += '✅ Analysis complete. See **qaatlas-report** artifact for full details.\n';
+              }
+            } else {
+              body += '⚠️ PR analysis skipped or failed. Gap analysis completed successfully.\n';
+            }
+            
+            body += '\n---\n';
+            body += `📋 [View Full Report](${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}#artifacts) | `;
+            body += '*Powered by [QAAtlas v2.2.1](https://github.com/mauricecarrier7/qaatlas-dist)*\n';
+            body += '*⚠️ AI recommendations are advisory only - review before implementing*';
+            
+            // Find/update existing comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            });
+            
+            const existing = comments.find(c => 
+              c.user.type === 'Bot' && (c.body.includes('QAAtlas Test Analysis') || c.body.includes('QAAtlas Test Coverage Analysis'))
+            );
+            
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body
+              });
+            }
+
+  # Accessibility linting runs in parallel with tests
+  accessibility-lint:
+    runs-on: macos-26
+    outputs:
+      findings-count: ${{ steps.analyze.outputs.findings-count }}
+      major-count: ${{ steps.analyze.outputs.major-count }}
+      minor-count: ${{ steps.analyze.outputs.minor-count }}
+      exit-code: ${{ steps.analyze.outputs.exit-code }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+          
+      - name: Cache AccessLint binary
+        id: cache-accesslint
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/bin/accesslint
+          # Include macos-26 in key to ensure binary is rebuilt for new OS version
+          key: accesslint-v1.1.0-macos-26-v5
+          
+      - name: Download AccessLint
+        if: steps.cache-accesslint.outputs.cache-hit != 'true'
+        run: |
+          curl -L -o /usr/local/bin/accesslint \
+            https://github.com/mauricecarrier7/AccessLint-Distribution/releases/download/v1.1.0/accesslint
+          chmod +x /usr/local/bin/accesslint
+          # Remove macOS quarantine attribute
+          xattr -d com.apple.quarantine /usr/local/bin/accesslint 2>/dev/null || true
+          # Verify it's a valid binary
+          file /usr/local/bin/accesslint
+          /usr/local/bin/accesslint --version || echo "Version check skipped"
+          
+      - name: Run AccessLint analysis
+        id: analyze
+        run: |
+          ACCESSLINT="/usr/local/bin/accesslint"
+          
+          echo "🔍 Running AccessLint v1.1.0 with WCAG AA preset..."
+          
+          # Run analysis with comprehensive settings
+          set +e
+          OUTPUT=$($ACCESSLINT analyze \
+            --path ./Palace \
+            --config .accesslintrc.json \
+            --output ./accesslint-reports \
+            --format json \
+            --format md \
+            --preset wcag-aa \
+            --relative-paths \
+            --verbose \
+            --fail-on major 2>&1)
+          EXIT_CODE=$?
+          set -e
+          
+          echo "$OUTPUT"
+          
+          # Parse counts from JSON if available
+          if [ -f "./accesslint-reports/findings.json" ]; then
+            TOTAL=$(jq 'length' ./accesslint-reports/findings.json)
+            BLOCKER=$(jq '[.[] | select(.severity == "blocker")] | length' ./accesslint-reports/findings.json)
+            MAJOR=$(jq '[.[] | select(.severity == "major")] | length' ./accesslint-reports/findings.json)
+            MINOR=$(jq '[.[] | select(.severity == "minor")] | length' ./accesslint-reports/findings.json)
+            INFO=$(jq '[.[] | select(.severity == "info")] | length' ./accesslint-reports/findings.json)
+            
+            echo "📊 Results: $TOTAL total ($BLOCKER blocker, $MAJOR major, $MINOR minor, $INFO info)"
+          else
+            TOTAL=0; BLOCKER=0; MAJOR=0; MINOR=0; INFO=0
+            echo "⚠️ No findings.json generated"
+          fi
+          
+          echo "findings-count=$TOTAL" >> $GITHUB_OUTPUT
+          echo "blocker-count=$BLOCKER" >> $GITHUB_OUTPUT
+          echo "major-count=$MAJOR" >> $GITHUB_OUTPUT
+          echo "minor-count=$MINOR" >> $GITHUB_OUTPUT
+          echo "info-count=$INFO" >> $GITHUB_OUTPUT
+          echo "exit-code=$EXIT_CODE" >> $GITHUB_OUTPUT
+          
+          # Don't fail the step - we'll handle it in the report
+          exit 0
+          
+      - name: Upload accessibility report
+        uses: actions/upload-artifact@v4
+        with:
+          name: accessibility-report
+          path: accesslint-reports/
+          retention-days: 14
+          if-no-files-found: ignore
+          
+      - name: Post PR comment
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            
+            const total = '${{ steps.analyze.outputs.findings-count }}' || '0';
+            const blocker = '${{ steps.analyze.outputs.blocker-count }}' || '0';
+            const major = '${{ steps.analyze.outputs.major-count }}' || '0';
+            const minor = '${{ steps.analyze.outputs.minor-count }}' || '0';
+            const info = '${{ steps.analyze.outputs.info-count }}' || '0';
+            const exitCode = '${{ steps.analyze.outputs.exit-code }}';
+            
+            let body = '## 🔍 AccessLint Accessibility Report (WCAG AA)\n\n';
+            
+            const criticalCount = parseInt(blocker) + parseInt(major);
+            if (criticalCount === 0) {
+              body += '### ✅ No Critical Accessibility Issues\n\n';
+            } else if (parseInt(blocker) > 0) {
+              body += `### 🚨 ${blocker} Blocker Issue${blocker === '1' ? '' : 's'} Found\n\n`;
+            } else {
+              body += `### ⚠️ ${major} Major Issue${major === '1' ? '' : 's'} Found\n\n`;
+            }
+            
+            body += '| Severity | Count | WCAG Impact |\n';
+            body += '|----------|-------|-------------|\n';
+            if (parseInt(blocker) > 0) body += `| 🚨 Blocker | ${blocker} | Critical barrier |\n`;
+            body += `| 🔴 Major | ${major} | Significant barrier |\n`;
+            body += `| 🟡 Minor | ${minor} | Usability issue |\n`;
+            body += `| 🔵 Info | ${info} | Best practice |\n`;
+            body += `| **Total** | **${total}** | |\n\n`;
+            
+            // Read top issues from report (sorted by severity: blocker > major > minor > info)
+            try {
+              const findings = JSON.parse(fs.readFileSync('./accesslint-reports/findings.json', 'utf8'));
+              if (findings.length > 0) {
+                // Sort by severity priority
+                const severityOrder = { blocker: 0, major: 1, minor: 2, info: 3 };
+                const sorted = findings.sort((a, b) => 
+                  (severityOrder[a.severity] ?? 4) - (severityOrder[b.severity] ?? 4)
+                );
+                
+                body += '### Top Issues\n\n';
+                for (const f of sorted.slice(0, 5)) {
+                  const icon = {blocker: '🚨', major: '🔴', minor: '🟡', info: '🔵'}[f.severity] || '⚪';
+                  const file = f.location.file.split('/').pop();
+                  body += `- ${icon} **${f.title}** - \`${file}:${f.location.start_line}\`\n`;
+                }
+                if (findings.length > 5) {
+                  body += `\n*...and ${findings.length - 5} more issues*\n`;
+                }
+              }
+            } catch (e) {
+              console.log('Could not read findings:', e.message);
+            }
+            
+            const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
+            body += `\n---\n📦 [Download full report](${runUrl}) (see **accessibility-report** artifact)\n`;
+            body += '\n*Powered by [AccessLint](https://github.com/mauricecarrier7/AccessLint-Distribution) - iOS accessibility static analysis*';
+            
+            // Find/update existing comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            });
+            
+            const existing = comments.find(c => 
+              c.user.type === 'Bot' && c.body.includes('AccessLint Accessibility Report')
+            );
+            
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body
+              });
+            }
+
+  build-and-test:
+    runs-on: macos-26
+    permissions:
+      contents: write
+      pull-requests: write
+      pages: write
+      id-token: write
+    steps:
+      - name: Set up Xcode 26
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: '16.2'
+          xcode-version: '26'
 
       - name: Verify Xcode Version
         run: xcodebuild -version
@@ -37,6 +567,16 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-deriveddata-
             
+      - name: Cache Test History
+        uses: actions/cache@v4
+        with:
+          path: .test-history
+          key: test-history-${{ github.head_ref || github.ref_name }}-${{ github.run_number }}
+          restore-keys: |
+            test-history-${{ github.head_ref || github.ref_name }}-
+            test-history-develop-
+            test-history-
+            
       - name: Checkout Certificates
         uses: actions/checkout@v3
         with:
@@ -62,7 +602,705 @@ jobs:
       - name: List available simulators for debugging
         run: xcrun simctl list devices available | grep iPhone | head -10
         
-      - name: Run Palace unit tests (builds automatically)
+      - name: Run Palace unit tests
+        id: tests
+        timeout-minutes: 20
         run: ./scripts/xcode-test-optimized.sh
         env:
           BUILD_CONTEXT: ci
+        continue-on-error: true
+          
+      - name: Find Test Results
+        if: always()
+        id: find_results
+        run: |
+          echo "Looking for xcresult bundles..."
+          echo "Current directory: $(pwd)"
+          echo "Directory contents:"
+          ls -la | head -20
+          
+          # Check current directory
+          if [ -d "TestResults.xcresult" ]; then
+            echo "✅ Found: ./TestResults.xcresult"
+            echo "xcresult size: $(du -sh TestResults.xcresult)"
+            echo "path=TestResults.xcresult" >> $GITHUB_OUTPUT
+            echo "found=true" >> $GITHUB_OUTPUT
+            
+            # Quick check of what's inside
+            echo "=== Quick xcresult summary ==="
+            xcrun xcresulttool get test-results summary --path TestResults.xcresult 2>&1 | head -30 || echo "Could not get summary"
+            exit 0
+          fi
+          
+          # Search in common locations
+          echo "Searching for xcresult in current directory tree..."
+          FOUND=$(find . -name "*.xcresult" -type d 2>/dev/null | head -1)
+          if [ -n "$FOUND" ]; then
+            echo "✅ Found: $FOUND"
+            echo "path=$FOUND" >> $GITHUB_OUTPUT
+            echo "found=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Search in DerivedData
+          echo "Searching in DerivedData..."
+          FOUND=$(find ~/Library/Developer/Xcode/DerivedData -name "*.xcresult" -type d 2>/dev/null | head -1)
+          if [ -n "$FOUND" ]; then
+            echo "✅ Found in DerivedData: $FOUND"
+            cp -r "$FOUND" ./TestResults.xcresult
+            echo "path=TestResults.xcresult" >> $GITHUB_OUTPUT
+            echo "found=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          echo "❌ No xcresult found anywhere!"
+          echo "found=false" >> $GITHUB_OUTPUT
+          
+      - name: Parse Test Results
+        if: always()
+        id: parse_results
+        run: |
+          RESULT_PATH="${{ steps.find_results.outputs.path }}"
+          
+          # Initialize defaults
+          echo "tests=0" >> $GITHUB_OUTPUT
+          echo "passed=0" >> $GITHUB_OUTPUT
+          echo "failed=0" >> $GITHUB_OUTPUT
+          echo "skipped=0" >> $GITHUB_OUTPUT
+          echo "duration=unknown" >> $GITHUB_OUTPUT
+          echo "pass_rate=N/A" >> $GITHUB_OUTPUT
+          
+          if [ "${{ steps.find_results.outputs.found }}" != "true" ] || [ ! -d "$RESULT_PATH" ]; then
+            echo "No results to parse"
+            exit 0
+          fi
+          
+          echo "Parsing test results from: $RESULT_PATH"
+          
+          # Debug: Show raw xcresulttool output structure
+          echo "=== xcresulttool version ==="
+          xcrun xcresulttool version 2>/dev/null || echo "version command not available"
+          
+          echo "=== Raw test-results summary (first 2000 chars) ==="
+          xcrun xcresulttool get test-results summary --path "$RESULT_PATH" 2>/dev/null | head -c 2000 || echo "summary command failed"
+          
+          echo ""
+          echo "=== Raw test-results tests structure (first 3000 chars) ==="
+          xcrun xcresulttool get test-results tests --path "$RESULT_PATH" 2>/dev/null | head -c 3000 || echo "tests command failed"
+          
+          echo ""
+          echo "=== Parsing with Python script ==="
+          
+          # Use the enhanced Python parser - outputs to GITHUB_OUTPUT and test-data.json
+          python3 scripts/parse-xcresult.py "$RESULT_PATH" --json test-data.json || true
+          
+          # Debug: Show parsed values
+          echo "=== Parsed Test Results ==="
+          cat test-data.json | python3 -c "import json,sys; d=json.load(sys.stdin); s=d.get('summary',{}); print(f\"Tests: {s.get('tests',0)}, Passed: {s.get('passed',0)}, Failed: {s.get('failed',0)}\")" 2>/dev/null || echo "Could not read test-data.json"
+          
+      - name: Compare with History
+        if: always()
+        id: history
+        run: |
+          if [ -f "test-data.json" ] && [ -d ".test-history" ]; then
+            echo "Comparing with test history..."
+            python3 scripts/test-history.py compare test-data.json .test-history || true
+          else
+            echo "No history available for comparison"
+            echo "has_history=false" >> $GITHUB_OUTPUT
+          fi
+          
+      - name: Save to History
+        if: always()
+        run: |
+          if [ -f "test-data.json" ]; then
+            python3 scripts/test-history.py save test-data.json .test-history || true
+          fi
+          
+      - name: Parse Code Coverage
+        if: always()
+        id: coverage
+        run: |
+          RESULT_PATH="${{ steps.find_results.outputs.path }}"
+          
+          # Initialize defaults
+          echo "coverage=0" >> $GITHUB_OUTPUT
+          echo "coverage_formatted=N/A" >> $GITHUB_OUTPUT
+          
+          if [ "${{ steps.find_results.outputs.found }}" != "true" ] || [ ! -d "$RESULT_PATH" ]; then
+            echo "No results for coverage"
+            exit 0
+          fi
+          
+          echo "Extracting code coverage..."
+          python3 scripts/coverage-report.py "$RESULT_PATH" --json coverage-data.json || true
+          
+      - name: Collect Snapshot Failures
+        if: always()
+        id: snapshots
+        run: |
+          mkdir -p snapshot-failures
+          
+          echo "Searching for snapshot failures..."
+          
+          # Search multiple locations
+          find /Users/runner/Library/Developer/CoreSimulator -name "*.png" -path "*tmp*" -type f 2>/dev/null | head -50 | while read -r file; do
+            cp "$file" snapshot-failures/ 2>/dev/null || true
+          done
+          
+          find ~/Library/Developer/Xcode/DerivedData -name "*.png" -path "*Failures*" -type f 2>/dev/null | head -50 | while read -r file; do
+            cp "$file" snapshot-failures/ 2>/dev/null || true
+          done
+          
+          # Count what we found
+          COUNT=$(ls -1 snapshot-failures/*.png 2>/dev/null | wc -l | tr -d ' ')
+          echo "Total snapshot files found: $COUNT"
+          
+          if [ "$COUNT" -gt "0" ]; then
+            echo "found=true" >> $GITHUB_OUTPUT
+            echo "count=$COUNT" >> $GITHUB_OUTPUT
+            
+            # Process snapshots to generate viewer and comparisons
+            python3 scripts/process-snapshots.py snapshot-failures || true
+          else
+            echo "found=false" >> $GITHUB_OUTPUT
+            echo "count=0" >> $GITHUB_OUTPUT
+          fi
+          
+      - name: Generate Test Reports
+        if: always()
+        run: |
+          mkdir -p test-report
+          
+          # Generate Markdown report
+          python3 scripts/generate-test-report.py test-data.json test-report/TEST_RESULTS.md \
+            --commit "${{ github.sha }}" \
+            --branch "${{ github.head_ref || github.ref_name }}" \
+            --snapshot-count "${{ steps.snapshots.outputs.count }}" || true
+          
+          # Generate HTML report
+          python3 scripts/generate-html-report.py test-data.json test-report/test-report.html \
+            --coverage coverage-data.json \
+            --commit "${{ github.sha }}" \
+            --branch "${{ github.head_ref || github.ref_name }}" || true
+          
+          # Fallback if scripts fail
+          if [ ! -f "test-report/TEST_RESULTS.md" ]; then
+            echo "# Test Results" > test-report/TEST_RESULTS.md
+            echo "" >> test-report/TEST_RESULTS.md
+            echo "Tests: ${{ steps.parse_results.outputs.tests }}" >> test-report/TEST_RESULTS.md
+            echo "Passed: ${{ steps.parse_results.outputs.passed }}" >> test-report/TEST_RESULTS.md
+            echo "Failed: ${{ steps.parse_results.outputs.failed }}" >> test-report/TEST_RESULTS.md
+          fi
+          
+          echo "Generated reports:"
+          ls -la test-report/
+          
+      - name: Generate GitHub Step Summary
+        if: always()
+        run: |
+          TESTS="${{ steps.parse_results.outputs.tests }}"
+          PASSED="${{ steps.parse_results.outputs.passed }}"
+          FAILED="${{ steps.parse_results.outputs.failed }}"
+          SKIPPED="${{ steps.parse_results.outputs.skipped }}"
+          DURATION="${{ steps.parse_results.outputs.duration }}"
+          PASS_RATE="${{ steps.parse_results.outputs.pass_rate }}"
+          CLASS_SUMMARY="${{ steps.parse_results.outputs.class_summary }}"
+          COVERAGE="${{ steps.coverage.outputs.coverage_formatted }}"
+          COVERAGE_TARGETS="${{ steps.coverage.outputs.coverage_targets }}"
+          NEW_FAILURES="${{ steps.history.outputs.new_failures }}"
+          FIXED_TESTS="${{ steps.history.outputs.fixed_tests }}"
+          FLAKY_TESTS="${{ steps.history.outputs.flaky_tests }}"
+          TEST_COUNT_CHANGE="${{ steps.history.outputs.test_count_change }}"
+          BUILD_STATUS="${{ steps.parse_results.outputs.build_status }}"
+          BUILD_ERRORS="${{ steps.parse_results.outputs.build_errors }}"
+          
+          echo "## 🧪 Palace Unit Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Check for build failure first
+          if [ "$BUILD_STATUS" = "failed" ]; then
+            echo "### 🔴 BUILD FAILED" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "The build failed before tests could run." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            
+            if [ -n "$BUILD_ERRORS" ]; then
+              echo "<details>" >> $GITHUB_STEP_SUMMARY
+              echo "<summary><strong>Build Errors</strong></summary>" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+              echo "$BUILD_ERRORS" >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+              echo "</details>" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+            fi
+          elif [ "$TESTS" != "0" ] && [ "$TESTS" != "" ]; then
+            # Header with counts
+            if [ "$FAILED" = "0" ]; then
+              echo "### ✅ ALL TESTS PASSED" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "### ❌ $FAILED TEST(S) FAILED" >> $GITHUB_STEP_SUMMARY
+            fi
+            echo "" >> $GITHUB_STEP_SUMMARY
+            
+            # Quick stats line
+            COVERAGE_DISPLAY=""
+            if [ "$COVERAGE" != "N/A" ] && [ -n "$COVERAGE" ]; then
+              COVERAGE_DISPLAY=" | 📈 $COVERAGE coverage"
+            fi
+            echo "**$TESTS tests** | **$PASSED passed** | **$FAILED failed** | **$SKIPPED skipped** | ⏱️ $DURATION | 📊 $PASS_RATE$COVERAGE_DISPLAY" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            
+            # Class breakdown table
+            if [ -n "$CLASS_SUMMARY" ]; then
+              echo "### Tests by Class" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "| Class | Tests | Passed | Failed | Duration |" >> $GITHUB_STEP_SUMMARY
+              echo "|-------|-------|--------|--------|----------|" >> $GITHUB_STEP_SUMMARY
+              echo "$CLASS_SUMMARY" | while IFS='|' read -r class total passed failed duration; do
+                if [ "$failed" = "0" ]; then
+                  echo "| ✅ $class | $total | $passed | $failed | $duration |" >> $GITHUB_STEP_SUMMARY
+                else
+                  echo "| ❌ $class | $total | $passed | **$failed** | $duration |" >> $GITHUB_STEP_SUMMARY
+                fi
+              done
+              echo "" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            # 0 tests - check why
+            if [ "${{ steps.tests.outcome }}" = "success" ]; then
+              echo "### ✅ ALL TESTS PASSED" >> $GITHUB_STEP_SUMMARY
+            elif [ "$BUILD_STATUS" = "failed" ] || [ -n "$BUILD_ERRORS" ]; then
+              echo "### 🔴 BUILD FAILED - No tests ran" >> $GITHUB_STEP_SUMMARY
+              if [ -n "$BUILD_ERRORS" ]; then
+                echo "" >> $GITHUB_STEP_SUMMARY
+                echo "<details>" >> $GITHUB_STEP_SUMMARY
+                echo "<summary><strong>Build Errors</strong></summary>" >> $GITHUB_STEP_SUMMARY
+                echo "" >> $GITHUB_STEP_SUMMARY
+                echo '```' >> $GITHUB_STEP_SUMMARY
+                echo "$BUILD_ERRORS" >> $GITHUB_STEP_SUMMARY
+                echo '```' >> $GITHUB_STEP_SUMMARY
+                echo "</details>" >> $GITHUB_STEP_SUMMARY
+              fi
+            else
+              echo "### ❌ TESTS FAILED" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
+          
+          # Failed tests
+          FAILED_TESTS="${{ steps.parse_results.outputs.failed_tests }}"
+          if [ -n "$FAILED_TESTS" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "<details>" >> $GITHUB_STEP_SUMMARY
+            echo "<summary><strong>Failed Tests</strong></summary>" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "$FAILED_TESTS" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "</details>" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Code Coverage - actual runtime coverage from test execution
+          if [ "$COVERAGE" != "N/A" ] && [ -n "$COVERAGE" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### 📈 Actual Code Coverage: $COVERAGE" >> $GITHUB_STEP_SUMMARY
+            echo "> Lines of code executed during test runs" >> $GITHUB_STEP_SUMMARY
+            if [ -n "$COVERAGE_TARGETS" ]; then
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "| Target | Lines Covered |" >> $GITHUB_STEP_SUMMARY
+              echo "|--------|---------------|" >> $GITHUB_STEP_SUMMARY
+              echo "$COVERAGE_TARGETS" | while IFS='|' read -r name cov covered total; do
+                if [ -n "$name" ]; then
+                  echo "| $name | $cov |" >> $GITHUB_STEP_SUMMARY
+                fi
+              done
+            fi
+          fi
+          
+          # History/Trends
+          if [ -n "$NEW_FAILURES" ] || [ -n "$FIXED_TESTS" ] || [ -n "$FLAKY_TESTS" ] || [ -n "$TEST_COUNT_CHANGE" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### 📈 Trends" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            
+            if [ -n "$TEST_COUNT_CHANGE" ]; then
+              echo "Test count change: **$TEST_COUNT_CHANGE**" >> $GITHUB_STEP_SUMMARY
+            fi
+            
+            if [ -n "$NEW_FAILURES" ]; then
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "<details>" >> $GITHUB_STEP_SUMMARY
+              echo "<summary>⚠️ <strong>New Failures</strong></summary>" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+              echo "$NEW_FAILURES" >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+              echo "</details>" >> $GITHUB_STEP_SUMMARY
+            fi
+            
+            if [ -n "$FIXED_TESTS" ]; then
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "<details>" >> $GITHUB_STEP_SUMMARY
+              echo "<summary>✅ <strong>Fixed Tests</strong></summary>" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+              echo "$FIXED_TESTS" >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+              echo "</details>" >> $GITHUB_STEP_SUMMARY
+            fi
+            
+            if [ -n "$FLAKY_TESTS" ]; then
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "<details>" >> $GITHUB_STEP_SUMMARY
+              echo "<summary>⚡ <strong>Flaky Tests Detected</strong></summary>" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+              echo "$FLAKY_TESTS" >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+              echo "</details>" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
+          
+          # Snapshots
+          SNAPSHOT_COUNT="${{ steps.snapshots.outputs.count }}"
+          if [ "$SNAPSHOT_COUNT" != "0" ] && [ -n "$SNAPSHOT_COUNT" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### 📸 Snapshot Failures: $SNAPSHOT_COUNT" >> $GITHUB_STEP_SUMMARY
+            echo "Download **snapshot-failures** artifact to view diff images" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Report Link and Artifacts
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          
+          REPORT_URL="${{ steps.deploy_report.outputs.report_url }}"
+          if [ -n "$REPORT_URL" ]; then
+            echo "### 🔗 [View Interactive Report]($REPORT_URL)" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "### 📦 Artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Artifact | Description |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **test-report** | 📄 Markdown + HTML report |" >> $GITHUB_STEP_SUMMARY
+          echo "| **test-data** | 📊 JSON data files |" >> $GITHUB_STEP_SUMMARY
+          echo "| **test-results** | 🔍 Full xcresult (open in Xcode) |" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.snapshots.outputs.found }}" = "true" ]; then
+            echo "| **snapshot-failures** | 🖼️ Visual diff images |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+      - name: Upload Test Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: test-report/
+          retention-days: 14
+          if-no-files-found: ignore
+          
+      - name: Upload Test Data JSON
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-data
+          path: |
+            test-data.json
+            coverage-data.json
+          retention-days: 14
+          if-no-files-found: ignore
+          
+      - name: Upload Snapshot Failures
+        if: steps.snapshots.outputs.found == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: snapshot-failures
+          path: snapshot-failures/
+          retention-days: 14
+          if-no-files-found: ignore
+          
+      - name: Upload Test Results
+        if: steps.find_results.outputs.found == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: ${{ steps.find_results.outputs.path }}
+          retention-days: 14
+          if-no-files-found: ignore
+          
+      - name: Deploy Report to GitHub Pages
+        if: always()
+        id: deploy_report
+        run: |
+          # Create report directory structure
+          REPORT_DIR="test-reports/${{ github.run_number }}"
+          mkdir -p "$REPORT_DIR"
+          
+          # Copy reports
+          cp test-report/test-report.html "$REPORT_DIR/" 2>/dev/null || true
+          cp test-report/TEST_RESULTS.md "$REPORT_DIR/" 2>/dev/null || true
+          cp test-data.json "$REPORT_DIR/" 2>/dev/null || true
+          cp coverage-data.json "$REPORT_DIR/" 2>/dev/null || true
+          
+          # Copy snapshot viewer if exists
+          if [ -f "snapshot-failures/snapshot-viewer.html" ]; then
+            cp snapshot-failures/snapshot-viewer.html "$REPORT_DIR/"
+            cp snapshot-failures/*.png "$REPORT_DIR/" 2>/dev/null || true
+          fi
+          
+          # Create index.html that redirects to the report
+          cat > "$REPORT_DIR/index.html" << 'INDEXEOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta http-equiv="refresh" content="0; url=test-report.html">
+            <title>Redirecting to Test Report</title>
+          </head>
+          <body>
+            <p>Redirecting to <a href="test-report.html">Test Report</a>...</p>
+          </body>
+          </html>
+          INDEXEOF
+          
+          # Create root index listing recent reports
+          mkdir -p test-reports
+          cat > test-reports/index.html << 'ROOTINDEXEOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>Palace iOS Test Reports</title>
+            <style>
+              body { font-family: -apple-system, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; background: #0d1117; color: #f0f6fc; }
+              h1 { color: #58a6ff; }
+              a { color: #58a6ff; }
+              .report-link { display: block; padding: 10px; margin: 5px 0; background: #161b22; border-radius: 6px; text-decoration: none; }
+              .report-link:hover { background: #21262d; }
+            </style>
+          </head>
+          <body>
+            <h1>🧪 Palace iOS Test Reports</h1>
+            <p>Recent test reports from CI runs:</p>
+            <div id="reports"></div>
+            <script>
+              // This will be populated by the actual report links
+              document.getElementById('reports').innerHTML = '<p>Browse to a specific run number: <code>/test-reports/{run-number}/</code></p>';
+            </script>
+          </body>
+          </html>
+          ROOTINDEXEOF
+          
+          # Output the report URL
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
+          REPO_OWNER="${GITHUB_REPOSITORY%/*}"
+          REPORT_URL="https://${REPO_OWNER}.github.io/${REPO_NAME}/test-reports/${{ github.run_number }}/"
+          echo "report_url=$REPORT_URL" >> $GITHUB_OUTPUT
+          echo "Report will be available at: $REPORT_URL"
+          
+      - name: Publish to GitHub Pages
+        if: always()
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./test-reports
+          destination_dir: test-reports
+          keep_files: true
+          
+      - name: Post PR Comment with Results
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            
+            const tests = '${{ steps.parse_results.outputs.tests }}';
+            const passed = '${{ steps.parse_results.outputs.passed }}';
+            const failed = '${{ steps.parse_results.outputs.failed }}';
+            const skipped = '${{ steps.parse_results.outputs.skipped }}';
+            const duration = '${{ steps.parse_results.outputs.duration }}';
+            const passRate = '${{ steps.parse_results.outputs.pass_rate }}';
+            const testOutcome = '${{ steps.tests.outcome }}';
+            const failedTests = `${{ steps.parse_results.outputs.failed_tests }}`;
+            const classSummary = `${{ steps.parse_results.outputs.class_summary }}`;
+            const snapshotCount = '${{ steps.snapshots.outputs.count }}';
+            const coverage = '${{ steps.coverage.outputs.coverage_formatted }}';
+            const coverageTargets = `${{ steps.coverage.outputs.coverage_targets }}`;
+            const newFailures = `${{ steps.history.outputs.new_failures }}`;
+            const fixedTests = `${{ steps.history.outputs.fixed_tests }}`;
+            const flakyTests = `${{ steps.history.outputs.flaky_tests }}`;
+            const testCountChange = '${{ steps.history.outputs.test_count_change }}';
+            const buildStatus = '${{ steps.parse_results.outputs.build_status }}';
+            const buildErrors = `${{ steps.parse_results.outputs.build_errors }}`;
+            const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
+            const reportUrl = '${{ steps.deploy_report.outputs.report_url }}';
+            
+            let body = '## 🧪 Unit Test Results\n\n';
+            
+            // Add clickable report link at the top
+            if (reportUrl) {
+              body += `📊 **[View Full Interactive Report](${reportUrl})**\n\n`;
+            }
+            
+            // Check for build failure first
+            if (buildStatus === 'failed') {
+              body += `### 🔴 BUILD FAILED\n\n`;
+              body += `The build failed before tests could run.\n\n`;
+              
+              if (buildErrors && buildErrors.trim()) {
+                body += `<details>\n<summary><strong>Build Errors</strong></summary>\n\n`;
+                body += '```\n' + buildErrors.trim() + '\n```\n';
+                body += `</details>\n\n`;
+              }
+            } else if (tests !== '0' && tests !== '') {
+              // Status header
+              if (failed === '0') {
+                body += `### ✅ ALL TESTS PASSED\n\n`;
+              } else {
+                body += `### ❌ ${failed} TEST${failed === '1' ? '' : 'S'} FAILED\n\n`;
+              }
+              
+              // Quick stats
+              let coverageDisplay = '';
+              if (coverage && coverage !== 'N/A' && coverage !== '') {
+                coverageDisplay = ` | 📈 ${coverage} coverage`;
+              }
+              body += `**${tests} tests** | **${passed} passed** | **${failed} failed** | **${skipped} skipped** | ⏱️ ${duration} | 📊 ${passRate}${coverageDisplay}\n\n`;
+              
+              // Class breakdown table
+              if (classSummary && classSummary.trim()) {
+                body += `### Tests by Class\n\n`;
+                body += `| Class | Tests | Passed | Failed | Duration |\n`;
+                body += `|-------|-------|--------|--------|----------|\n`;
+                classSummary.trim().split('\n').forEach(line => {
+                  const [cls, total, pass, fail, dur] = line.split('|');
+                  if (cls) {
+                    const icon = fail === '0' ? '✅' : '❌';
+                    const failCell = fail === '0' ? fail : `**${fail}**`;
+                    body += `| ${icon} ${cls} | ${total} | ${pass} | ${failCell} | ${dur} |\n`;
+                  }
+                });
+                body += '\n';
+              }
+            } else {
+              if (testOutcome === 'success') {
+                body += `### ✅ ALL TESTS PASSED\n\n`;
+              } else if (buildErrors && buildErrors.trim()) {
+                body += `### 🔴 BUILD FAILED - No tests ran\n\n`;
+                body += `<details>\n<summary><strong>Build Errors</strong></summary>\n\n`;
+                body += '```\n' + buildErrors.trim() + '\n```\n';
+                body += `</details>\n\n`;
+              } else {
+                body += `### ❌ TESTS FAILED\n\n`;
+              }
+            }
+            
+            // Failed tests details
+            if (failedTests && failedTests.trim()) {
+              body += `<details>\n<summary><strong>Failed Tests (click to expand)</strong></summary>\n\n`;
+              body += '```\n' + failedTests.trim() + '\n```\n';
+              body += `</details>\n\n`;
+            }
+            
+            // Code Coverage - actual runtime coverage from test execution
+            if (coverage && coverage !== 'N/A' && coverage !== '') {
+              body += `### 📈 Actual Code Coverage: ${coverage}\n\n`;
+              body += `> Lines of code executed during test runs (from Xcode test report)\n\n`;
+              if (coverageTargets && coverageTargets.trim()) {
+                body += `| Target | Lines Covered |\n`;
+                body += `|--------|---------------|\n`;
+                coverageTargets.trim().split('\n').forEach(line => {
+                  const [name, cov] = line.split('|');
+                  if (name) {
+                    body += `| ${name} | ${cov} |\n`;
+                  }
+                });
+                body += '\n';
+              }
+            }
+            
+            // Trends
+            if (newFailures || fixedTests || flakyTests || testCountChange) {
+              body += `### 📈 Trends\n\n`;
+              
+              if (testCountChange) {
+                body += `Test count change: **${testCountChange}**\n\n`;
+              }
+              
+              if (newFailures && newFailures.trim()) {
+                body += `<details>\n<summary>⚠️ <strong>New Failures</strong></summary>\n\n`;
+                body += '```\n' + newFailures.trim() + '\n```\n';
+                body += `</details>\n\n`;
+              }
+              
+              if (fixedTests && fixedTests.trim()) {
+                body += `<details>\n<summary>✅ <strong>Fixed Tests</strong></summary>\n\n`;
+                body += '```\n' + fixedTests.trim() + '\n```\n';
+                body += `</details>\n\n`;
+              }
+              
+              if (flakyTests && flakyTests.trim()) {
+                body += `<details>\n<summary>⚡ <strong>Flaky Tests Detected</strong></summary>\n\n`;
+                body += '```\n' + flakyTests.trim() + '\n```\n';
+                body += `</details>\n\n`;
+              }
+            }
+            
+            // Snapshot failures
+            if (snapshotCount && snapshotCount !== '0') {
+              body += `### 📸 Snapshot Failures: ${snapshotCount}\n`;
+              body += `Download the **snapshot-failures** artifact to view visual differences.\n\n`;
+            }
+            
+            // Links section
+            body += `---\n`;
+            if (reportUrl) {
+              body += `🔗 **[Interactive HTML Report](${reportUrl})** | `;
+            }
+            body += `**[CI Run Details](${runUrl})**\n\n`;
+            
+            // Artifacts table
+            body += `<details>\n<summary>📦 <strong>Downloadable Artifacts</strong></summary>\n\n`;
+            body += `| Artifact | Description |\n`;
+            body += `|----------|-------------|\n`;
+            body += `| test-report | 📄 Markdown + HTML reports |\n`;
+            body += `| test-data | 📊 JSON data for tooling |\n`;
+            body += `| test-results | 🔍 Full xcresult (open in Xcode) |\n`;
+            if (snapshotCount && snapshotCount !== '0') {
+              body += `| snapshot-failures | 🖼️ Visual diff images |\n`;
+            }
+            body += `\n</details>`;
+            
+            // Find and update or create comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            });
+            
+            const botComment = comments.find(c => 
+              c.user.type === 'Bot' && 
+              c.body.includes('🧪 Unit Test Results')
+            );
+            
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body
+              });
+            }
+          
+      - name: Fail if tests failed
+        if: steps.tests.outcome == 'failure'
+        run: exit 1
+
+  # Note: The AccessLint GitHub Action handles PR comments and artifact upload automatically
+  # This combined-report job is no longer needed since AccessLint posts its own comment

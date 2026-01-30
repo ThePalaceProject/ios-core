@@ -45,6 +45,38 @@ class TPPCookiesWebViewController: UIViewController, WKNavigationDelegate {
   private let webView = WKWebView()
   private var previousRequest: URLRequest?
   private var wasBookFound = false
+  
+  // MARK: - Loading Indicator
+  private lazy var loadingOverlay: UIView = {
+    let overlay = UIView()
+    overlay.backgroundColor = UIColor.systemBackground.withAlphaComponent(0.9)
+    overlay.translatesAutoresizingMaskIntoConstraints = false
+    return overlay
+  }()
+  
+  private lazy var loadingStackView: UIStackView = {
+    let stack = UIStackView()
+    stack.axis = .vertical
+    stack.alignment = .center
+    stack.spacing = 16
+    stack.translatesAutoresizingMaskIntoConstraints = false
+    return stack
+  }()
+  
+  private lazy var activityIndicator: UIActivityIndicatorView = {
+    let indicator = UIActivityIndicatorView(style: .large)
+    indicator.color = .systemGray
+    indicator.hidesWhenStopped = true
+    return indicator
+  }()
+  
+  private lazy var loadingLabel: UILabel = {
+    let label = UILabel()
+    label.text = NSLocalizedString("Loading...", comment: "Loading indicator text shown during sign-in")
+    label.textColor = .secondaryLabel
+    label.font = .preferredFont(forTextStyle: .body)
+    return label
+  }()
 
   init() {
     super.init(nibName: nil, bundle: nil)
@@ -64,7 +96,50 @@ class TPPCookiesWebViewController: UIViewController, WKNavigationDelegate {
   }
 
   override func loadView() {
-    view = webView
+    // Create container view that holds both webView and loading overlay
+    let containerView = UIView()
+    containerView.backgroundColor = .systemBackground
+    
+    webView.translatesAutoresizingMaskIntoConstraints = false
+    containerView.addSubview(webView)
+    
+    // Setup loading overlay
+    loadingStackView.addArrangedSubview(activityIndicator)
+    loadingStackView.addArrangedSubview(loadingLabel)
+    loadingOverlay.addSubview(loadingStackView)
+    containerView.addSubview(loadingOverlay)
+    
+    NSLayoutConstraint.activate([
+      webView.topAnchor.constraint(equalTo: containerView.topAnchor),
+      webView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+      webView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+      webView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
+      
+      loadingOverlay.topAnchor.constraint(equalTo: containerView.topAnchor),
+      loadingOverlay.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+      loadingOverlay.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+      loadingOverlay.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
+      
+      loadingStackView.centerXAnchor.constraint(equalTo: loadingOverlay.centerXAnchor),
+      loadingStackView.centerYAnchor.constraint(equalTo: loadingOverlay.centerYAnchor)
+    ])
+    
+    view = containerView
+  }
+  
+  private func showLoading() {
+    loadingOverlay.isHidden = false
+    activityIndicator.startAnimating()
+  }
+  
+  private func hideLoading() {
+    UIView.animate(withDuration: 0.25) {
+      self.loadingOverlay.alpha = 0
+    } completion: { _ in
+      self.loadingOverlay.isHidden = true
+      self.loadingOverlay.alpha = 1
+      self.activityIndicator.stopAnimating()
+    }
   }
 
   override func viewDidLoad() {
@@ -78,6 +153,10 @@ class TPPCookiesWebViewController: UIViewController, WKNavigationDelegate {
     navigationItem.leftBarButtonItem = UIBarButtonItem(title: Strings.Generic.cancel, style: .plain, target: self, action: #selector(didSelectCancel))
 
     webView.navigationDelegate = self
+    
+    // Show loading indicator while initial page loads
+    showLoading()
+    
     guard let model = model else { return }
     if !model.cookies.isEmpty {
       // if there are cookies to inject
@@ -274,6 +353,8 @@ class TPPCookiesWebViewController: UIViewController, WKNavigationDelegate {
 
   private var loginScreenHandlerOnceOnly = true
   func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+    // Hide loading indicator when page finishes loading
+    hideLoading()
 
     // when loading just finished
     // and this controller is asked to autopresent itself if needed
@@ -298,6 +379,23 @@ class TPPCookiesWebViewController: UIViewController, WKNavigationDelegate {
         TPPCookiesWebViewController.automaticBrowserStorage[self.uuid] = nil
       }
     }
+  }
+  
+  func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+    // Hide loading indicator on navigation failure
+    hideLoading()
+    Log.error(#file, "WebView navigation failed: \(error.localizedDescription)")
+  }
+  
+  func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+    // Hide loading indicator on provisional navigation failure (e.g., network errors)
+    hideLoading()
+    Log.error(#file, "WebView provisional navigation failed: \(error.localizedDescription)")
+  }
+  
+  func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+    // Show loading indicator when navigation starts (for subsequent navigations)
+    showLoading()
   }
 }
 

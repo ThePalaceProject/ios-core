@@ -122,6 +122,8 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     navigatorContainer.addSubview(navigator.view)
     navigator.view.translatesAutoresizingMaskIntoConstraints = false
     
+    // IMPORTANT: Use FIXED offsets from container edges (not safe area) to prevent
+    // content shifting when navigation bar appears/disappears.
     let fixedTopInset: CGFloat = 100.0  // Letterbox space for navbar + status bar
     let fixedBottomInset: CGFloat = 50.0  // Letterbox space for home indicator
     
@@ -171,18 +173,20 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
       positionLabel.topAnchor.constraint(greaterThanOrEqualTo: navigator.view.bottomAnchor, constant: TPPBaseReaderViewController.overlayLabelMargin / 2)
     ])
 
-    // Book title label in the top letterbox area
+    // Book title label - positioned below status bar using safe area
+    // Previously at 20px from container top, which overlapped the status bar
+    // Using view's safe area (not container) so label moves with status bar but doesn't affect navigator
     bookTitleLabel.translatesAutoresizingMaskIntoConstraints = false
     bookTitleLabel.font = .systemFont(ofSize: 12)
     bookTitleLabel.textAlignment = .center
     bookTitleLabel.lineBreakMode = .byTruncatingTail
     bookTitleLabel.textColor = .lightGray
-    navigatorContainer.addSubview(bookTitleLabel)
+    view.addSubview(bookTitleLabel)  // Add to view, not navigatorContainer
     NSLayoutConstraint.activate([
-      bookTitleLabel.topAnchor.constraint(equalTo: navigatorContainer.topAnchor, constant: TPPBaseReaderViewController.overlayLabelMargin),
-      bookTitleLabel.leftAnchor.constraint(equalTo: navigatorContainer.leftAnchor, constant: TPPBaseReaderViewController.overlayLabelMargin),
-      bookTitleLabel.rightAnchor.constraint(equalTo: navigatorContainer.rightAnchor, constant: -TPPBaseReaderViewController.overlayLabelMargin),
-      bookTitleLabel.bottomAnchor.constraint(lessThanOrEqualTo: navigator.view.topAnchor, constant: -TPPBaseReaderViewController.overlayLabelMargin / 2)
+      // Position below safe area (status bar) with small margin
+      bookTitleLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 4),
+      bookTitleLabel.leftAnchor.constraint(equalTo: view.leftAnchor, constant: TPPBaseReaderViewController.overlayLabelMargin),
+      bookTitleLabel.rightAnchor.constraint(equalTo: view.rightAnchor, constant: -TPPBaseReaderViewController.overlayLabelMargin),
     ])
 
     // Accessibility
@@ -299,7 +303,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
                                     style: .plain,
                                     target: self,
                                     action: #selector(presentPositionsVC))
-    tocButton.accessibilityLabel = Strings.Accessibility.viewBookmarksAndTocButton
+    tocButton.accessibilityLabel = Strings.Generic.tableOfContents
 
     if !isShowingSample {
       buttons.append(bookmarkBtn)

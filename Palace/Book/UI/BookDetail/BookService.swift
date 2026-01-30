@@ -7,6 +7,7 @@ enum BookService {
   private static var openingBooks = Set<String>()
   
   static func open(_ book: TPPBook, onFinish: (() -> Void)? = nil) {
+    
     // Prevent multiple simultaneous opens of the same book
     guard !openingBooks.contains(book.identifier) else {
       Log.warn(#file, "Book \(book.title) is already being opened, ignoring duplicate request")
@@ -21,6 +22,50 @@ enum BookService {
   }
   
   private static func openAfterTokenRefresh(_ book: TPPBook, onFinish: (() -> Void)?) {
+    let userAccount = TPPUserAccount.sharedAccount()
+    
+    if book.defaultBookContentType == .audiobook && userAccount.authTokenHasExpired {
+      Log.info(#file, "🔄 Auth token expired for audiobook - refreshing before opening")
+      
+      guard let username = userAccount.username,
+            let password = userAccount.PIN,
+            let tokenURL = userAccount.authDefinition?.tokenURL else {
+        Log.error(#file, "Cannot refresh token: missing credentials or tokenURL")
+        openingBooks.remove(book.identifier)
+        showAudiobookTryAgainError()
+        onFinish?()
+        return
+      }
+      
+      TPPNetworkExecutor.shared.executeTokenRefresh(username: username, password: password, tokenURL: tokenURL) { result in
+        switch result {
+        case .success:
+          Log.info(#file, "✅ Token refresh successful - re-fetching manifest with fresh token")
+          
+          fetchOpenAccessManifest(for: book) { json in
+            guard let json else {
+              Log.error(#file, "❌ Failed to re-fetch manifest after token refresh")
+              openingBooks.remove(book.identifier)
+              showAudiobookTryAgainError()
+              onFinish?()
+              return
+            }
+            
+            Log.info(#file, "✅ Manifest re-fetched with fresh bearer token - opening audiobook")
+            presentAudiobookFrom(book: book, json: json, decryptor: nil, onFinish: onFinish)
+          }
+          
+        case .failure(let error):
+          Log.error(#file, "❌ Token refresh failed: \(error.localizedDescription) - cannot open audiobook")
+          openingBooks.remove(book.identifier)
+          showAudiobookTryAgainError()
+          onFinish?()
+        }
+      }
+      return
+    }
+    
+    // For non-audiobooks or valid tokens, proceed normally
     switch book.defaultBookContentType {
     case .epub:
       Task { @MainActor in
@@ -291,6 +336,9 @@ enum BookService {
           networkService: networkService,
           playbackTrackerDelegate: timeTracker
         )
+        
+        // Notify CarPlay and other observers that an audiobook manager was created
+        AudiobookEvents.managerCreated.send(manager)
 
         let bookmarkLogic = AudiobookBookmarkBusinessLogic(book: book)
         manager.bookmarkDelegate = bookmarkLogic
@@ -313,102 +361,122 @@ enum BookService {
         }
 
         let playbackModel = AudiobookPlaybackModel(audiobookManager: manager)
+        
+        // Update cover image through both playback model and session manager
+        // Session manager coordinates Now Playing info centrally
         if let cover = book.coverImage {
           playbackModel.updateCoverImage(cover)
+          AudiobookSessionManager.shared.updateCoverImage(cover)
         } else {
           Task {
             if let img = await TPPBookCoverRegistry.shared.coverImage(for: book) {
-              await MainActor.run { playbackModel.updateCoverImage(img) }
+              await MainActor.run {
+                playbackModel.updateCoverImage(img)
+                AudiobookSessionManager.shared.updateCoverImage(img)
+              }
             }
           }
         }
 
-        // Present the AudiobookPlayerView first, then start playback
+        // Present the AudiobookPlayerView and start playback
+        // Note: For CarPlay, coordinator may be nil - that's OK, we still start playback
+        let route = BookRoute(id: book.identifier)
+        
         if let coordinator = NavigationCoordinatorHub.shared.coordinator {
           Log.debug(#file, "  🎉 Successfully presenting audiobook player to user")
-          let route = BookRoute(id: book.identifier)
           coordinator.storeAudioModel(playbackModel, forBookId: route.id)
-          coordinator.push(.audio(route))
-          
-          // Get local position first
-          let shouldRestorePosition = shouldRestoreBookmarkPosition(for: book)
-          let localPosition = shouldRestorePosition ? getValidLocalPosition(book: book, audiobook: audiobook) : nil
-          
-          // Fetch remote position, then start playback ONCE with most recent position
-          TPPBookRegistry.shared.syncLocation(for: book) { (remoteBookmark: AudioBookmark?) in
-            let finalPosition: TrackPosition
-            
-            // Compare local and remote, use the most recent one
-            let remote = remoteBookmark.flatMap { TrackPosition(
-              audioBookmark: $0,
-              toc: audiobook.tableOfContents.toc,
-              tracks: audiobook.tableOfContents.tracks
-            )}
-            
-            if let local = localPosition, let remote = remote {
-              // Both exist - compare save timestamps to find most recently saved
-              let formatter = ISO8601DateFormatter()
-              let localSaveDate = formatter.date(from: local.lastSavedTimeStamp)
-              let remoteSaveDate = formatter.date(from: remote.lastSavedTimeStamp)
-              
-              if let localDate = localSaveDate, let remoteDate = remoteSaveDate {
-                // Both timestamps valid - normal comparison
-                if remoteDate > localDate {
-                  Log.debug(#file, "Using remote position (more recently saved): track=\(remote.track.key), timestamp=\(remote.timestamp), saved=\(remote.lastSavedTimeStamp)")
-                  finalPosition = remote
-                } else {
-                  Log.debug(#file, "Using local position (more recently saved): track=\(local.track.key), timestamp=\(local.timestamp), saved=\(local.lastSavedTimeStamp)")
-                  finalPosition = local
-                }
-              } else if localSaveDate != nil && remoteSaveDate == nil {
-                // Only local timestamp is valid
-                Log.debug(#file, "Using local position (remote timestamp invalid): track=\(local.track.key)")
-                finalPosition = local
-              } else if remoteSaveDate != nil && localSaveDate == nil {
-                // Only remote timestamp is valid
-                Log.debug(#file, "Using remote position (local timestamp invalid): track=\(remote.track.key)")
-                finalPosition = remote
-              } else {
-                // Both timestamps invalid - prefer local as safer default
-                Log.warn(#file, "⚠️ Both timestamps invalid! Preferring local position as safer default: track=\(local.track.key)")
-                finalPosition = local
-              }
-            } else if let remote = remote {
-              Log.debug(#file, "Using remote position (no local): track=\(remote.track.key), timestamp=\(remote.timestamp)")
-              finalPosition = remote
-            } else if let local = localPosition {
-              Log.debug(#file, "Using local position (no remote): track=\(local.track.key), timestamp=\(local.timestamp)")
-              finalPosition = local
-            } else if let firstTrack = audiobook.tableOfContents.allTracks.first {
-              Log.debug(#file, "Starting \(book.title) from beginning - no saved position")
-              finalPosition = TrackPosition(track: firstTrack, timestamp: 0.0, tracks: audiobook.tableOfContents.tracks)
+          // Use pushAudioRoute to clear any existing audio routes first (prevents stack accumulation)
+          coordinator.pushAudioRoute(route)
+        } else {
+          Log.info(#file, "  📱 No coordinator available (CarPlay background launch?) - proceeding with playback only")
+        }
+        
+        // Get local position IMMEDIATELY for fast startup
+        let shouldRestorePosition = shouldRestoreBookmarkPosition(for: book)
+        let localPosition = shouldRestorePosition ? getValidLocalPosition(book: book, audiobook: audiobook) : nil
+        
+        // Determine initial position - use local or start from beginning
+        let initialPosition: TrackPosition
+        if let local = localPosition {
+          Log.debug(#file, "Starting playback immediately with local position: track=\(local.track.key), timestamp=\(local.timestamp)")
+          initialPosition = local
+        } else if let firstTrack = audiobook.tableOfContents.allTracks.first {
+          Log.debug(#file, "Starting \(book.title) from beginning - no saved position")
+          initialPosition = TrackPosition(track: firstTrack, timestamp: 0.0, tracks: audiobook.tableOfContents.tracks)
+        } else {
+          Log.error(#file, "No tracks available in audiobook")
+          openingBooks.remove(book.identifier)
+          onFinish?()
+          return
+        }
+        
+        // START PLAYBACK IMMEDIATELY - don't wait for remote sync
+        Task { @MainActor in
+          playbackModel.currentLocation = initialPosition
+          playbackModel.beginSaveSuppression(for: 3.0)
+          manager.audiobook.player.play(at: initialPosition) { error in
+            if let error = error {
+              Log.error(#file, "Playback start error: \(error)")
             } else {
-              return
+              Log.info(#file, "🎵 Playback started immediately at local position")
+            }
+          }
+        }
+        
+        // Sync remote position ASYNCHRONOUSLY - update playback if remote is newer
+        TPPBookRegistry.shared.syncLocation(for: book) { [weak playbackModel, weak manager] (remoteBookmark: AudioBookmark?) in
+          guard let playbackModel = playbackModel, let manager = manager else { return }
+          
+          // Check if remote position is newer than what we started with
+          guard let remoteBookmark = remoteBookmark,
+                let remote = TrackPosition(
+                  audioBookmark: remoteBookmark,
+                  toc: audiobook.tableOfContents.toc,
+                  tracks: audiobook.tableOfContents.tracks
+                ) else {
+            Log.debug(#file, "No remote position found - continuing with local position")
+            return
+          }
+          
+          // Compare timestamps to see if remote is newer
+          let formatter = ISO8601DateFormatter()
+          let localSaveDate = localPosition.flatMap { formatter.date(from: $0.lastSavedTimeStamp) }
+          let remoteSaveDate = formatter.date(from: remote.lastSavedTimeStamp)
+          
+          // Only seek to remote if it's significantly newer (more than 5 seconds difference)
+          // to avoid unnecessary seeks during normal playback
+          if let remoteDate = remoteSaveDate {
+            let shouldUseRemote: Bool
+            if let localDate = localSaveDate {
+              shouldUseRemote = remoteDate.timeIntervalSince(localDate) > 5.0
+            } else {
+              shouldUseRemote = true
             }
             
-            Task { @MainActor in
-              playbackModel.currentLocation = finalPosition
-              playbackModel.beginSaveSuppression(for: 3.0)
-              manager.audiobook.player.play(at: finalPosition) { error in
-                if error == nil {
-                  // Save initial position after suppression period ends
-                  Task { @MainActor in
-                    try? await Task.sleep(nanoseconds: 3_500_000_000) // 3.5 seconds
-                    playbackModel.persistLocation()
+            if shouldUseRemote {
+              Log.info(#file, "📡 Remote position is newer - seeking to remote: track=\(remote.track.key), timestamp=\(remote.timestamp)")
+              Task { @MainActor in
+                playbackModel.currentLocation = remote
+                manager.audiobook.player.play(at: remote) { error in
+                  if let error = error {
+                    Log.error(#file, "Failed to seek to remote position: \(error)")
                   }
                 }
               }
+            } else {
+              Log.debug(#file, "Local position is current - keeping local position")
             }
           }
-
-          openingBooks.remove(book.identifier)
-          onFinish?()
-        } else {
-          Log.error(#file, "  ❌ No navigation coordinator available to present audiobook")
-          showAudiobookTryAgainError()
-          openingBooks.remove(book.identifier)
-          onFinish?()
         }
+        
+        // Save initial position after suppression period ends
+        Task { @MainActor in
+          try? await Task.sleep(nanoseconds: 3_500_000_000) // 3.5 seconds
+          playbackModel.persistLocation()
+        }
+
+        openingBooks.remove(book.identifier)
+        onFinish?()
       }
     }
 

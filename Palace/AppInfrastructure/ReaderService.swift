@@ -1,4 +1,5 @@
 import UIKit
+import ReadiumShared
 
 final class ReaderService {
   static let shared = ReaderService()
@@ -28,12 +29,13 @@ final class ReaderService {
     r3Owner.libraryService.openBook(book, sender: topPresenter()) { result in
       switch result {
       case .success(let publication):
-        let nav = UINavigationController()
-        self.r3Owner.readerModule.presentPublication(publication, book: book, in: nav, forSample: false)
         if let coordinator = NavigationCoordinatorHub.shared.coordinator {
-          coordinator.storeEPUBController(nav, forBookId: book.identifier)
+          coordinator.store(book: book)
+          coordinator.storeEPUBPublication(publication, forBookId: book.identifier, forSample: false)
           coordinator.push(.epub(BookRoute(id: book.identifier)))
         } else {
+          let nav = UINavigationController()
+          self.r3Owner.readerModule.presentPublication(publication, book: book, in: nav, forSample: false)
           TPPPresentationUtils.safelyPresent(nav, animated: true, completion: nil)
         }
       case .failure(let error):
@@ -48,12 +50,12 @@ final class ReaderService {
     r3Owner.libraryService.openSample(book, sampleURL: url, sender: topPresenter()) { result in
       switch result {
       case .success(let publication):
-        let nav = UINavigationController()
-        self.r3Owner.readerModule.presentPublication(publication, book: book, in: nav, forSample: true)
         if let coordinator = NavigationCoordinatorHub.shared.coordinator {
-          coordinator.storeEPUBController(nav, forBookId: book.identifier)
-          coordinator.push(.epub(BookRoute(id: book.identifier)))
+          coordinator.store(book: book)
+          coordinator.presentEPUBSample(publication, forBookId: book.identifier)
         } else {
+          let nav = UINavigationController()
+          self.r3Owner.readerModule.presentPublication(publication, book: book, in: nav, forSample: true)
           TPPPresentationUtils.safelyPresent(nav, animated: true, completion: nil)
         }
       case .failure(let error):
@@ -61,6 +63,36 @@ final class ReaderService {
         TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
       }
     }
+  }
+  
+  // MARK: - View Controller Creation (for SwiftUI integration)
+  
+  /// Creates an EPUB view controller from a publication (used by EPUBReaderView)
+  @MainActor
+  func makeEPUBViewController(for publication: Publication, book: TPPBook, forSample: Bool) async throws -> UIViewController {
+    let bookRegistry = TPPBookRegistry.shared
+    let lastSavedLocation = bookRegistry.location(forIdentifier: book.identifier)
+    let initialLocator = await lastSavedLocation?.convertToLocator(publication: publication)
+    
+    // Cast to concrete ReaderModule to access formatModules
+    guard let readerModule = r3Owner.readerModule as? ReaderModule else {
+      throw ReaderError.formatNotSupported
+    }
+    
+    let formatModule = readerModule.formatModules.first { $0.supports(publication) }
+    guard let epubModule = formatModule else {
+      throw ReaderError.formatNotSupported
+    }
+    
+    let readerVC = try await epubModule.makeReaderViewController(
+      for: publication,
+      book: book,
+      initialLocation: initialLocator,
+      forSample: forSample
+    )
+    
+    readerVC.hidesBottomBarWhenPushed = true
+    return readerVC
   }
 }
 

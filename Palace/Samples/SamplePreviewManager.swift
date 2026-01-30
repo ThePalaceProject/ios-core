@@ -19,8 +19,9 @@ final class SamplePreviewManager: ObservableObject {
       return
     }
 
+    close()
+
     guard let toolbarView = AudiobookSampleToolbar(book: book) else {
-      close()
       return
     }
 

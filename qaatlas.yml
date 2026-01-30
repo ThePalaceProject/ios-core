@@ -1,0 +1,50 @@
+version: "1"
+
+# QAAtlas Configuration for Palace iOS
+# See: https://github.com/mauricecarrier7/qaatlas-dist
+
+provider:
+  name: openai
+  model: gpt-4o
+  maxTokens: 4096
+
+analysis:
+  # Cost control: Limit files analyzed per run
+  # CI runs analyze PR diffs which are typically small
+  maxFiles: 20
+  maxLinesPerFile: 500
+  includePatterns:
+    # Swift source files
+    - "**/*.swift"
+    # Objective-C files
+    - "**/*.m"
+    - "**/*.h"
+    # Configuration
+    - "**/*.plist"
+    - "**/*.yml"
+    - "**/*.yaml"
+  excludePatterns:
+    # Dependencies
+    - "**/Pods/**"
+    - "**/Carthage/**"
+    - "**/DerivedData/**"
+    # Generated files
+    - "**/Generated/**"
+    - "**/*.generated.swift"
+    # Secrets (already gitignored)
+    - "**/APIKeys.swift"
+    - "**/TPPSecrets.swift"
+
+output:
+  dir: ./qaatlas-output
+  formats:
+    - report
+    - testplan
+    - risk
+    - pr-comment
+    - coverage-map
+
+context:
+  includeImports: true
+  includeFunctionSignatures: true
+  surroundingLines: 10

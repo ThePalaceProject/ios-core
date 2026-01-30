@@ -16,6 +16,20 @@ import Foundation
     "http://librarysimplified.org/terms/problem/cannot-issue-loan";
   static let TypeCannotRender =
     "http://librarysimplified.org/terms/problem/cannot-render";
+  
+  // MARK: - Account/Patron Status Types
+  
+  /// Patron's credentials have been suspended by the library
+  static let TypeCredentialsSuspended =
+    "http://librarysimplified.org/terms/problem/credentials-suspended";
+  
+  /// Patron has reached their loan limit
+  static let TypePatronLoanLimit =
+    "http://librarysimplified.org/terms/problem/loan-limit-reached";
+  
+  /// Patron has reached their hold limit
+  static let TypePatronHoldLimit =
+    "http://librarysimplified.org/terms/problem/hold-limit-reached";
 
   private static let noStatus: Int = -1
 
@@ -131,5 +145,39 @@ import Foundation
 
   @objc var stringValue: String {
     return "\(title == nil ? "" : title! + ": ")\(detail ?? "")"
+  }
+  
+  // MARK: - Auth Error Categories
+  
+  /// URL path component indicating a recoverable auth error.
+  /// Server uses: http://palaceproject.io/terms/problem/auth/recoverable/*
+  private static let recoverableAuthPath = "/auth/recoverable/"
+  
+  /// URL path component indicating an unrecoverable auth error.
+  /// Server uses: http://palaceproject.io/terms/problem/auth/unrecoverable/*
+  private static let unrecoverableAuthPath = "/auth/unrecoverable/"
+  
+  /// Returns true if this is a recoverable auth error.
+  /// Client should re-authenticate (restart auth flow for the appropriate auth type).
+  ///
+  /// Examples:
+  /// - Token expired/invalid → request new token
+  /// - SAML session expired → re-authenticate via IdP
+  /// - SAML bearer token invalid → restart SAML flow
+  var isRecoverableAuthError: Bool {
+    guard let type = type else { return false }
+    return type.contains(TPPProblemDocument.recoverableAuthPath)
+  }
+  
+  /// Returns true if this is an unrecoverable auth error.
+  /// Client should display the error to the user (re-auth won't help).
+  ///
+  /// Examples:
+  /// - Invalid credentials (wrong username/password)
+  /// - No access (user doesn't have library access)
+  /// - Cannot identify patron (server config issue)
+  var isUnrecoverableAuthError: Bool {
+    guard let type = type else { return false }
+    return type.contains(TPPProblemDocument.unrecoverableAuthPath)
   }
 }

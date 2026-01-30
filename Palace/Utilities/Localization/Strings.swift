@@ -26,7 +26,7 @@ struct Strings {
   
   struct Announcments {
     static let alertTitle = NSLocalizedString("Announcement", comment: "")
-    static let ok = NSLocalizedString("Announcement", comment: "")
+    static let ok = NSLocalizedString("OK", comment: "Button to dismiss announcement alert")
   }
 
   struct Error {
@@ -34,6 +34,8 @@ struct Strings {
     static let loadFailedError = NSLocalizedString("The page could not load due to a conection error.", comment: "")
     static let invalidCredentialsErrorTitle = NSLocalizedString("Invalid Credentials", comment: "")
     static let invalidCredentialsErrorMessage = NSLocalizedString("Please check your username and password and try again.", comment: "")
+    static let sessionExpiredTitle = NSLocalizedString("Session Expired", comment: "Title for session expired alert")
+    static let sessionExpiredMessage = NSLocalizedString("Your session has expired. Please sign in again to continue.", comment: "Message explaining that the user's session has expired")
     static let unknownRequestError = NSLocalizedString("An unknown error occurred. Please check your connection or try again later.", comment: "A generic error message for when a network request fails")
     static let connectionFailed = NSLocalizedString(
       "Connection Failed",
@@ -79,6 +81,39 @@ struct Strings {
     static let search = NSLocalizedString("Search", comment: "Placeholder for Search Field")
     static let done =  NSLocalizedString("Done", comment: "Title for Done button")
     static let clear = NSLocalizedString("Clear", comment: "Button to clear selection")
+    
+    // Accessibility - General
+    static let audiobook = NSLocalizedString("Audiobook", comment: "VoiceOver: Indicates the book is an audiobook")
+    static let switchLibrary = NSLocalizedString("Switch Library", comment: "VoiceOver: Button to switch between libraries")
+    static let searchBooks = NSLocalizedString("Search Books", comment: "VoiceOver: Button to search for books")
+    static let searchCatalog = NSLocalizedString("Search Catalog", comment: "VoiceOver: Button to search the catalog")
+    static let scanBarcode = NSLocalizedString("Scan Barcode", comment: "VoiceOver: Button to scan library card barcode")
+    
+    // Accessibility - Search Actions
+    static let clearSearch = NSLocalizedString("Clear search", comment: "VoiceOver: Button to clear search text")
+    static let goBack = NSLocalizedString("Go back", comment: "VoiceOver: Button to navigate back")
+    
+    // Accessibility - Sort/Filter
+    static let sortByFormat = NSLocalizedString("Sort by %@", comment: "VoiceOver: Current sort option, e.g. 'Sort by Title'")
+    static let filterWithCount = NSLocalizedString("Filter, %d applied", comment: "VoiceOver: Filter button showing count of applied filters")
+    static let filter = NSLocalizedString("Filter", comment: "VoiceOver: Filter button with no filters applied")
+    
+    // Accessibility - Catalog
+    static let moreBooksInLane = NSLocalizedString("More books in %@", comment: "VoiceOver: See more books in a catalog lane")
+    static let expandSection = NSLocalizedString("Expand section", comment: "VoiceOver: Expand a collapsible section")
+    static let collapseSection = NSLocalizedString("Collapse section", comment: "VoiceOver: Collapse an expanded section")
+    
+    // Accessibility - Reader Navigation
+    static let tableOfContents = NSLocalizedString("Table of contents", comment: "VoiceOver: Open table of contents")
+    static let searchInBook = NSLocalizedString("Search in book", comment: "VoiceOver: Search within the current book")
+    static let pagePreviewsTab = NSLocalizedString("Page previews", comment: "VoiceOver: Show page thumbnail previews")
+    static let bookmarksTab = NSLocalizedString("Bookmarks", comment: "VoiceOver: Show bookmarks list")
+    static let closeSample = NSLocalizedString("Close sample", comment: "VoiceOver: Close the sample preview")
+    
+    // Accessibility - Audiobook
+    static let playAudiobook = NSLocalizedString("Play", comment: "VoiceOver: Play audiobook")
+    static let pauseAudiobook = NSLocalizedString("Pause", comment: "VoiceOver: Pause audiobook")
+    static let skipBack30 = NSLocalizedString("Skip back 30 seconds", comment: "VoiceOver: Rewind audiobook 30 seconds")
   }
   
   struct OETutorialChoiceViewController {

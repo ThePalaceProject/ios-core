@@ -16,17 +16,23 @@ actor DownloadErrorRecovery {
     let maxAttempts: Int
     let baseDelay: TimeInterval
     let maxDelay: TimeInterval
+    /// Overall timeout for all retry attempts combined (prevents indefinite freezing)
+    let overallTimeout: TimeInterval
     let shouldRetry: (Error) -> Bool
     
     static let `default` = RetryPolicy(
       maxAttempts: 3,
       baseDelay: 2.0,
       maxDelay: 30.0,
+      overallTimeout: 45.0,  // Max 45 seconds for entire borrow operation
       shouldRetry: { error in
         // Check for PalaceError types first (structured errors)
         if let palaceError = error as? PalaceError {
           switch palaceError {
-          // Don't retry authentication/authorization errors
+          // RETRY token expiry - token refresh mechanism will handle it
+          case .authentication(.tokenExpired):
+            return true
+          // Don't retry other authentication errors (invalid credentials, etc.)
           case .authentication:
             return false
           // Don't retry parsing errors (server sent invalid data)
@@ -82,6 +88,7 @@ actor DownloadErrorRecovery {
       maxAttempts: 5,
       baseDelay: 1.0,
       maxDelay: 60.0,
+      overallTimeout: 120.0,
       shouldRetry: { _ in true }
     )
     
@@ -89,7 +96,32 @@ actor DownloadErrorRecovery {
       maxAttempts: 2,
       baseDelay: 5.0,
       maxDelay: 15.0,
+      overallTimeout: 30.0,
       shouldRetry: { error in
+        let nsError = error as NSError
+        return nsError.domain == NSURLErrorDomain &&
+          (nsError.code == NSURLErrorTimedOut ||
+           nsError.code == NSURLErrorNotConnectedToInternet)
+      }
+    )
+    
+    /// Fast policy for borrow operations - fail fast to show error quickly
+    static let borrowOperation = RetryPolicy(
+      maxAttempts: 2,
+      baseDelay: 1.0,
+      maxDelay: 10.0,
+      overallTimeout: 20.0,  // Max 20 seconds - fail fast and show error
+      shouldRetry: { error in
+        // Only retry on transient network issues, not server errors
+        if let palaceError = error as? PalaceError {
+          switch palaceError {
+          case .network(.timeout), .network(.noConnection):
+            return true
+          default:
+            return false
+          }
+        }
+        
         let nsError = error as NSError
         return nsError.domain == NSURLErrorDomain &&
           (nsError.code == NSURLErrorTimedOut ||
@@ -100,19 +132,27 @@ actor DownloadErrorRecovery {
   
   // MARK: - Retry Execution
   
-  /// Executes an operation with automatic retry
+  /// Executes an operation with automatic retry and overall timeout
   /// - Parameters:
   ///   - policy: The retry policy to use
   ///   - operation: The operation to execute
   /// - Returns: The result of the operation
-  /// - Throws: The last error after all retries are exhausted
+  /// - Throws: The last error after all retries are exhausted or timeout
   func executeWithRetry<T>(
     policy: RetryPolicy = .default,
     operation: @Sendable () async throws -> T
   ) async throws -> T {
+    let startTime = Date()
     var lastError: Error?
     
     for attempt in 0..<policy.maxAttempts {
+      // Check overall timeout before each attempt
+      let elapsed = Date().timeIntervalSince(startTime)
+      if elapsed >= policy.overallTimeout {
+        Log.warn(#file, "Operation timed out after \(String(format: "%.1f", elapsed))s (overall timeout: \(policy.overallTimeout)s)")
+        throw PalaceError.network(.timeout)
+      }
+      
       do {
         return try await operation()
       } catch {
@@ -131,6 +171,13 @@ actor DownloadErrorRecovery {
             baseDelay: policy.baseDelay,
             maxDelay: policy.maxDelay
           )
+          
+          // Check if delay would exceed overall timeout
+          let remainingTime = policy.overallTimeout - Date().timeIntervalSince(startTime)
+          if delay >= remainingTime {
+            Log.warn(#file, "Skipping retry - delay (\(String(format: "%.1f", delay))s) would exceed remaining time (\(String(format: "%.1f", remainingTime))s)")
+            break
+          }
           
           Log.info(#file, "Download failed (attempt \(attempt + 1)/\(policy.maxAttempts)), retrying in \(String(format: "%.1f", delay))s: \(error.localizedDescription)")
           

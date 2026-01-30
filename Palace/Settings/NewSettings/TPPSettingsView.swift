@@ -101,6 +101,7 @@ struct TPPSettingsView: View {
 
     Section {
       row(title: DisplayStrings.libraries, index: 1, selection: self.$selectedView, destination: wrapper.anyView())
+        .accessibilityIdentifier(AccessibilityID.Settings.manageLibrariesButton)
     }
   }
 
@@ -125,6 +126,7 @@ struct TPPSettingsView: View {
       .navigationBarTitle(Text(DisplayStrings.aboutApp))
 
     row(title: DisplayStrings.aboutApp, index: 2, selection: self.$selectedView, destination: wrapper.anyView())
+      .accessibilityIdentifier(AccessibilityID.Settings.aboutPalaceButton)
   }
 
   @ViewBuilder private var privacyRow: some View {
@@ -138,7 +140,7 @@ struct TPPSettingsView: View {
       .navigationBarTitle(Text(DisplayStrings.privacyPolicy))
 
     row(title: DisplayStrings.privacyPolicy, index: 3, selection: self.$selectedView, destination: wrapper.anyView())
-
+      .accessibilityIdentifier(AccessibilityID.Settings.privacyPolicyButton)
   }
 
   @ViewBuilder private var userAgreementRow: some View {
@@ -152,6 +154,7 @@ struct TPPSettingsView: View {
       .navigationBarTitle(Text(DisplayStrings.eula))
 
     row(title: DisplayStrings.eula, index: 4, selection: self.$selectedView, destination: wrapper.anyView())
+      .accessibilityIdentifier(AccessibilityID.Settings.userAgreementButton)
   }
 
   @ViewBuilder private var softwareLicenseRow: some View {
@@ -165,6 +168,7 @@ struct TPPSettingsView: View {
       .navigationBarTitle(Text(DisplayStrings.softwareLicenses))
 
     row(title: DisplayStrings.softwareLicenses, index: 5, selection: self.$selectedView, destination: wrapper.anyView())
+      .accessibilityIdentifier(AccessibilityID.Settings.softwareLicensesButton)
   }
 
   @ViewBuilder private var developerSettingsSection: some View {

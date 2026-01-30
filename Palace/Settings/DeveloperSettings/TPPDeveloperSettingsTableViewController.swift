@@ -11,6 +11,8 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     case libraryRegistryDebugging
     case dataManagement
     case developerTools
+    case badgeTesting
+    case errorSimulation
   }
   
   private let betaLibraryCellIdentifier = "betaLibraryCell"
@@ -18,6 +20,9 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
   private let clearCacheCellIdentifier = "clearCacheCell"
   private let emailLogsCellIdentifier = "emailLogsCell"
   private let sendErrorLogsCellIdentifier = "sendErrorLogsCell"
+  private let errorSimulationCellIdentifier = "errorSimulationCell"
+  private let badgeLoggingCellIdentifier = "badgeLoggingCell"
+  private let testHoldsCellIdentifier = "testHoldsCell"
   
   private var pushNotificationsStatus = false
   
@@ -54,6 +59,9 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: clearCacheCellIdentifier)
     self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: emailLogsCellIdentifier)
     self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: sendErrorLogsCellIdentifier)
+    self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: errorSimulationCellIdentifier)
+    self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: badgeLoggingCellIdentifier)
+    self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: testHoldsCellIdentifier)
   }
   
   // MARK:- UITableViewDataSource
@@ -62,6 +70,13 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     switch Section(rawValue: section)! {
     case .librarySettings: return 2
     case .developerTools: return 2
+    case .badgeTesting:
+      #if DEBUG
+      return 2
+      #else
+      return 0  // Hide badge testing in production builds
+      #endif
+    case .errorSimulation: return 1
     default: return 1
     }
   }
@@ -84,6 +99,16 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
       case 0: return cellForSendErrorLogs()
       default: return cellForEmailAudiobookLogs()
       }
+    case .badgeTesting:
+      #if DEBUG
+      switch indexPath.row {
+      case 0: return cellForBadgeLogging()
+      default: return cellForTestHolds()
+      }
+      #else
+      return UITableViewCell()  // Should never be called in production (0 rows)
+      #endif
+    case .errorSimulation: return cellForErrorSimulation()
     }
   }
   
@@ -97,6 +122,14 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
       return "Data Management"
     case .developerTools:
       return "Developer Tools"
+    case .badgeTesting:
+      #if DEBUG
+      return "Badge Testing"
+      #else
+      return nil
+      #endif
+    case .errorSimulation:
+      return "Error Simulation (Testing)"
     }
   }
   
@@ -166,25 +199,191 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     return cell
   }
   
+  #if DEBUG
+  @objc func badgeLoggingSwitchDidChange(sender: UISwitch) {
+    DebugSettings.shared.isBadgeLoggingEnabled = sender.isOn
+  }
+  
+  private func cellForBadgeLogging() -> UITableViewCell {
+    let cell = tableView.dequeueReusableCell(withIdentifier: badgeLoggingCellIdentifier)!
+    cell.selectionStyle = .none
+    cell.textLabel?.text = "Enable Badge Logging"
+    cell.accessoryView = createSwitch(
+      isOn: DebugSettings.shared.isBadgeLoggingEnabled,
+      action: #selector(badgeLoggingSwitchDidChange)
+    )
+    return cell
+  }
+  
+  private func cellForTestHolds() -> UITableViewCell {
+    let cell = UITableViewCell(style: .value1, reuseIdentifier: testHoldsCellIdentifier)
+    cell.selectionStyle = .default
+    cell.textLabel?.text = "Test Holds Configuration"
+    cell.textLabel?.adjustsFontSizeToFitWidth = true
+    
+    let currentConfig = DebugSettings.shared.testHoldsConfiguration
+    cell.detailTextLabel?.text = currentConfig.displayName
+    cell.detailTextLabel?.textColor = currentConfig == .none ? .secondaryLabel : .systemBlue
+    cell.accessoryType = .disclosureIndicator
+    return cell
+  }
+  #else
+  private func cellForBadgeLogging() -> UITableViewCell {
+    return UITableViewCell()
+  }
+  
+  private func cellForTestHolds() -> UITableViewCell {
+    return UITableViewCell()
+  }
+  #endif
+  
+  #if DEBUG
+  private func cellForErrorSimulation() -> UITableViewCell {
+    let cell = tableView.dequeueReusableCell(withIdentifier: errorSimulationCellIdentifier)!
+    cell.selectionStyle = .default
+    cell.textLabel?.text = "Simulate Borrow Error"
+    cell.textLabel?.adjustsFontSizeToFitWidth = true
+    
+    let currentError = DebugSettings.shared.simulatedBorrowError
+    cell.detailTextLabel?.text = currentError.displayName
+    
+    // Use a subtitle style cell to show current selection
+    if cell.detailTextLabel == nil {
+      let newCell = UITableViewCell(style: .value1, reuseIdentifier: errorSimulationCellIdentifier)
+      newCell.selectionStyle = .default
+      newCell.textLabel?.text = "Simulate Borrow Error"
+      newCell.detailTextLabel?.text = currentError.displayName
+      newCell.detailTextLabel?.textColor = currentError == .none ? .secondaryLabel : .systemOrange
+      newCell.accessoryType = .disclosureIndicator
+      return newCell
+    }
+    
+    cell.detailTextLabel?.textColor = currentError == .none ? .secondaryLabel : .systemOrange
+    cell.accessoryType = .disclosureIndicator
+    return cell
+  }
+  #else
+  private func cellForErrorSimulation() -> UITableViewCell {
+    // Return empty cell in non-DEBUG builds (section won't be visible anyway)
+    return UITableViewCell()
+  }
+  #endif
+  
   // MARK:- UITableViewDelegate
   
   func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
     self.tableView.deselectRow(at: indexPath, animated: true)
     
-    if Section(rawValue: indexPath.section) == .dataManagement {
+    switch Section(rawValue: indexPath.section) {
+    case .dataManagement:
       AccountsManager.shared.clearCache()
       ImageCache.shared.clear()
       let alert = TPPAlertUtils.alert(title: "Data Management", message: "Cache Cleared")
       self.present(alert, animated: true, completion: nil)
-    } else if Section(rawValue: indexPath.section) == .developerTools {
+      
+    case .developerTools:
       switch indexPath.row {
       case 0:
         sendErrorLogs()
       default:
         emailAudiobookLogs()
       }
+      
+    case .badgeTesting:
+      #if DEBUG
+      if indexPath.row == 1 {
+        showTestHoldsPicker()
+      }
+      #endif
+      
+    case .errorSimulation:
+      #if DEBUG
+      showErrorSimulationPicker()
+      #endif
+      
+    default:
+      break
     }
   }
+  
+  #if DEBUG
+  private func showTestHoldsPicker() {
+    let alert = UIAlertController(
+      title: "Test Holds Configuration",
+      message: "Select a test configuration to verify badge behavior.\n\nNote: This creates mock books with specific availability states. The app will use real data when set to 'None'.",
+      preferredStyle: .actionSheet
+    )
+    
+    for config in DebugSettings.TestHoldsConfiguration.allCases {
+      let isSelected = DebugSettings.shared.testHoldsConfiguration == config
+      let checkmark = isSelected ? " ✓" : ""
+      let expectedBadge = config.expectedBadgeCount >= 0 ? " (badge=\(config.expectedBadgeCount))" : ""
+      
+      alert.addAction(UIAlertAction(title: config.displayName + checkmark, style: .default) { [weak self] _ in
+        DebugSettings.shared.testHoldsConfiguration = config
+        self?.tableView.reloadData()
+        
+        // Trigger refresh of both badge (TPPBookRegistryStateDidChange) and HoldsView (TPPBookRegistryDidChange)
+        NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
+        NotificationCenter.default.post(name: .TPPBookRegistryStateDidChange, object: nil)
+        
+        if config != .none {
+          let confirmAlert = TPPAlertUtils.alert(
+            title: "Test Holds Enabled",
+            message: "Badge should show: \(config.expectedBadgeCount)\n\nGo to the Reservations tab to see the test books. Remember to disable when done testing."
+          )
+          self?.present(confirmAlert, animated: true)
+        }
+      })
+    }
+    
+    alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+    
+    // For iPad
+    if let popover = alert.popoverPresentationController {
+      popover.sourceView = tableView
+      popover.sourceRect = tableView.rectForRow(at: IndexPath(row: 1, section: Section.badgeTesting.rawValue))
+    }
+    
+    present(alert, animated: true)
+  }
+  
+  private func showErrorSimulationPicker() {
+    let alert = UIAlertController(
+      title: "Simulate Borrow Error",
+      message: "Select an error type to simulate when borrowing books. The error will appear until you set it back to 'None'.",
+      preferredStyle: .actionSheet
+    )
+    
+    for errorType in DebugSettings.SimulatedBorrowError.allCases {
+      let isSelected = DebugSettings.shared.simulatedBorrowError == errorType
+      let checkmark = isSelected ? " ✓" : ""
+      
+      alert.addAction(UIAlertAction(title: errorType.displayName + checkmark, style: .default) { [weak self] _ in
+        DebugSettings.shared.simulatedBorrowError = errorType
+        self?.tableView.reloadData()
+        
+        if errorType != .none {
+          let confirmAlert = TPPAlertUtils.alert(
+            title: "Error Simulation Enabled",
+            message: "'\(errorType.displayName)' will be shown when you try to borrow any book. Remember to disable this when done testing."
+          )
+          self?.present(confirmAlert, animated: true)
+        }
+      })
+    }
+    
+    alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+    
+    // For iPad
+    if let popover = alert.popoverPresentationController {
+      popover.sourceView = tableView
+      popover.sourceRect = tableView.rectForRow(at: IndexPath(row: 0, section: Section.errorSimulation.rawValue))
+    }
+    
+    present(alert, animated: true)
+  }
+  #endif
   
   private func sendErrorLogs() {
     Task {

@@ -47,4 +47,47 @@ public final class MockImageCache: ImageCacheType {
         removedKeys.removeAll()
         cleared = false
     }
+    
+    // MARK: - TenPrint Cover Generation for Snapshot Tests
+    
+    /// Generates a TenPrint-style book cover for deterministic snapshot testing
+    /// Must be called from main thread as it uses UIKit views
+    public static func generateTenPrintCover(title: String, author: String, size: CGSize = CGSize(width: 80, height: 120)) -> UIImage {
+        // Ensure we're on the main thread for UIView operations
+        if !Thread.isMainThread {
+            var result: UIImage!
+            DispatchQueue.main.sync {
+                result = generateTenPrintCoverOnMainThread(title: title, author: author, size: size)
+            }
+            return result
+        }
+        return generateTenPrintCoverOnMainThread(title: title, author: author, size: size)
+    }
+    
+    private static func generateTenPrintCoverOnMainThread(title: String, author: String, size: CGSize) -> UIImage {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 2.0  // Fixed scale for consistent snapshot testing across devices
+        return UIGraphicsImageRenderer(size: size, format: format)
+            .image { ctx in
+                if let view = NYPLTenPrintCoverView(
+                    frame: CGRect(origin: .zero, size: size),
+                    withTitle: title,
+                    withAuthor: author,
+                    withScale: 0.4
+                ) {
+                    view.layer.render(in: ctx.cgContext)
+                }
+            }
+    }
+    
+    /// Pre-populates the cache with TenPrint covers for the given books
+    public func preloadTenPrintCovers(for books: [TPPBook]) {
+        for book in books {
+            let cover = MockImageCache.generateTenPrintCover(
+                title: book.title,
+                author: book.authors ?? "Unknown Author"
+            )
+            set(cover, for: book.identifier, expiresIn: nil)
+        }
+    }
 }
