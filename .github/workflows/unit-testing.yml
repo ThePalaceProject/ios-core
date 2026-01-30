@@ -117,6 +117,86 @@ jobs:
             qaatlas-analyze.log
           retention-days: 14
           if-no-files-found: ignore
+      
+      - name: QAAtlas Dashboard Summary
+        if: steps.changes.outputs.swift_files_changed != '0'
+        run: |
+          COVERAGE="${{ steps.gap-analysis.outputs.coverage }}"
+          TESTED="${{ steps.gap-analysis.outputs.tested }}"
+          TOTAL="${{ steps.gap-analysis.outputs.total }}"
+          HIGH_GAPS="${{ steps.gap-analysis.outputs.high_gaps }}"
+          TESTS_REC="${{ steps.qaatlas.outputs.tests_recommended }}"
+          RISK="${{ steps.qaatlas.outputs.risk_level }}"
+          
+          echo "## 🧪 QAAtlas Test Coverage Analysis" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Risk badge
+          if [ "$RISK" = "low" ]; then
+            echo "### 🟢 Risk Level: LOW" >> $GITHUB_STEP_SUMMARY
+          elif [ "$RISK" = "medium" ]; then
+            echo "### 🟡 Risk Level: MEDIUM" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### 🔴 Risk Level: HIGH" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Coverage gauge
+          if [ -n "$COVERAGE" ]; then
+            COVERAGE_INT=${COVERAGE%.*}
+            if [ "$COVERAGE_INT" -ge 50 ]; then
+              GAUGE="🟢"
+            elif [ "$COVERAGE_INT" -ge 30 ]; then
+              GAUGE="🟡"
+            else
+              GAUGE="🔴"
+            fi
+            echo "### 📊 Estimated Test Coverage: $GAUGE $COVERAGE%" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Symbols with Tests | $TESTED / $TOTAL |" >> $GITHUB_STEP_SUMMARY
+            echo "| High-Priority Gaps | $HIGH_GAPS |" >> $GITHUB_STEP_SUMMARY
+            echo "| Tests Recommended | $TESTS_REC |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Top gaps from gap report
+          if [ -f "./qaatlas-output/gap-report.json" ]; then
+            echo "<details>" >> $GITHUB_STEP_SUMMARY
+            echo "<summary><strong>🔍 Top 10 Coverage Gaps</strong></summary>" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Priority | Symbol | File |" >> $GITHUB_STEP_SUMMARY
+            echo "|----------|--------|------|" >> $GITHUB_STEP_SUMMARY
+            python3 -c "
+          import json
+          d = json.load(open('./qaatlas-output/gap-report.json'))
+          gaps = d.get('gaps', [])[:10]
+          for g in gaps:
+            symbol = g.get('symbol', 'Unknown')[:40]
+            file = g.get('file', 'Unknown').split('/')[-1]
+            priority = g.get('priority', 'unknown').upper()
+            icon = '🔴' if priority == 'HIGH' else '🟡' if priority == 'MEDIUM' else '🟢'
+            print(f'| {icon} {priority} | \`{symbol}\` | {file} |')
+          " >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "| - | Unable to parse gaps | - |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "</details>" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Test recommendations from testplan
+          if [ -f "./qaatlas-output/testplan.md" ]; then
+            echo "<details>" >> $GITHUB_STEP_SUMMARY
+            echo "<summary><strong>📋 Recommended Tests</strong></summary>" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            cat ./qaatlas-output/testplan.md | head -80 >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "</details>" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "*AI-powered analysis by [QAAtlas v2.0.0](https://github.com/mauricecarrier7/qaatlas-dist) • [Download Full Report](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}#artifacts)*" >> $GITHUB_STEP_SUMMARY
           
       - name: Post PR comment
         if: steps.changes.outputs.swift_files_changed != '0'
