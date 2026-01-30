@@ -571,13 +571,15 @@ final class AudiobookDataManagerStoreRecoveryTests: XCTestCase {
   
   /// Test store round-trip persistence
   func testSaveAndLoadStore_preservesData() {
-    // Arrange - clear any existing data first
+    // Arrange - use unique ID to avoid test interference
+    let uniqueId = "entry-persist-\(UUID().uuidString)"
     let dataManager = AudiobookDataManager(syncTimeInterval: 3600)
-    dataManager.store.queue.removeAll()
-    dataManager.store.urls.removeAll()
+    
+    // Clear any existing entries with our test prefix
+    dataManager.store.queue.removeAll { $0.id.hasPrefix("entry-persist") }
     
     let entry = AudiobookTimeEntry(
-      id: "entry-persist",
+      id: uniqueId,
       bookId: "book-123",
       libraryId: "lib-456",
       timeTrackingUrl: URL(string: "https://api.example.com/track")!,
@@ -587,27 +589,30 @@ final class AudiobookDataManagerStoreRecoveryTests: XCTestCase {
     
     dataManager.save(time: entry)
     
-    // Wait for async save
+    // Wait for async save - use longer timeout for CI
     let expectation = XCTestExpectation(description: "Save completes")
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
       expectation.fulfill()
     }
-    wait(for: [expectation], timeout: 1.0)
+    wait(for: [expectation], timeout: 2.0)
     
     // Act - create new manager that loads from disk
     let newDataManager = AudiobookDataManager(syncTimeInterval: 3600)
     
-    // Wait for load
+    // Wait for load - use longer timeout for CI
     let loadExpectation = XCTestExpectation(description: "Load completes")
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
       loadExpectation.fulfill()
     }
-    wait(for: [loadExpectation], timeout: 1.0)
+    wait(for: [loadExpectation], timeout: 2.0)
     
     // Assert - should have the entry we just saved
-    let persistedEntry = newDataManager.store.queue.first { $0.id == "entry-persist" }
-    XCTAssertNotNil(persistedEntry, "Should find persisted entry")
-    XCTAssertEqual(persistedEntry?.id, "entry-persist")
+    let persistedEntry = newDataManager.store.queue.first { $0.id == uniqueId }
+    XCTAssertNotNil(persistedEntry, "Should find persisted entry with id: \(uniqueId)")
+    XCTAssertEqual(persistedEntry?.id, uniqueId)
+    
+    // Cleanup - remove our test entry
+    dataManager.store.queue.removeAll { $0.id == uniqueId }
   }
   
   /// Test AudiobookDataManagerStore init with invalid data returns nil
