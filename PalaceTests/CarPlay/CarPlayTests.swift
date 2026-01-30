@@ -225,7 +225,8 @@ class CarPlayTests: XCTestCase {
 @MainActor
 class CarPlayIntegrationTests: XCTestCase {
   
-  func testCarPlay_TemplateManager_CreatesWithInterfaceController() {
+  /// Tests CarPlay Template Manager initialization and component availability
+  func testCarPlayTemplateManager_Initialization() {
     // This test verifies the template manager can be initialized
     // In a real test environment, we'd need to mock CPInterfaceController
     // For now, we verify the components compile and link correctly

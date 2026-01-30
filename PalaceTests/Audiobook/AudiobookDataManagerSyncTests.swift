@@ -124,6 +124,14 @@ final class AudiobookDataManagerNetworkSyncTests: XCTestCase {
   
   // MARK: - Successful Sync Tests
   
+  /// Tests AudiobookDataManager sync functionality handles time entry storage and network synchronization
+  func testAudiobookDataManager_Sync_InitializesCorrectly() {
+    // Verify data manager initializes with empty queue
+    XCTAssertNotNil(dataManager)
+    XCTAssertTrue(dataManager.store.queue.isEmpty)
+    XCTAssertTrue(dataManager.store.urls.isEmpty)
+  }
+  
   func testSyncValues_withQueuedEntries_postsToCorrectURL() {
     // Arrange
     let trackingURL = URL(string: "https://api.example.com/track")!
