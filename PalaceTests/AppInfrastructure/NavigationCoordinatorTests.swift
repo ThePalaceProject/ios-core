@@ -173,7 +173,7 @@ final class NavigationCoordinatorTests: XCTestCase {
     
     // Act
     coordinator.store(book: book)
-    let retrieved = coordinator.book(forId: book.identifier)
+    let retrieved = coordinator.resolveBook(for: BookRoute(id: book.identifier))
     
     // Assert
     XCTAssertNotNil(retrieved, "Stored book should be retrievable")
@@ -182,7 +182,7 @@ final class NavigationCoordinatorTests: XCTestCase {
   
   func testNavigationCoordinator_Book_NotStored_ReturnsNil() {
     // Act
-    let retrieved = coordinator.book(forId: "non-existent-book")
+    let retrieved = coordinator.resolveBook(for: BookRoute(id: "non-existent-book"))
     
     // Assert
     XCTAssertNil(retrieved, "Non-existent book should return nil")
@@ -193,7 +193,7 @@ final class NavigationCoordinatorTests: XCTestCase {
   func testNavigationCoordinator_StoreAudioModel_CanBeRetrieved() {
     // We can't easily create AudiobookPlaybackModel in tests without a real AudiobookManager
     // But we can test that the storage mechanism works for nil cases
-    let retrieved = coordinator.audioModel(forBookId: "non-existent-book")
+    let retrieved = coordinator.resolveAudioModel(for: BookRoute(id: "non-existent-book"))
     XCTAssertNil(retrieved, "Non-existent audio model should return nil")
   }
 }

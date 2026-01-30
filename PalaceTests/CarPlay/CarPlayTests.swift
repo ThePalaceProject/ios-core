@@ -277,17 +277,18 @@ class CarPlayOpenAppAlertTests: XCTestCase {
   
   func testCarPlay_OpenAppStrings_AreConfigured() {
     // Assert that Open App strings are not empty
-    XCTAssertFalse(Strings.CarPlay.OpenApp.title.isEmpty, "Open App title should have text")
+    // The alert uses message variants (message, messageShort, messageShortest)
     XCTAssertFalse(Strings.CarPlay.OpenApp.message.isEmpty, "Open App message should have text")
-    XCTAssertFalse(Strings.CarPlay.OpenApp.okButton.isEmpty, "OK button should have text")
+    XCTAssertFalse(Strings.CarPlay.OpenApp.messageShort.isEmpty, "Open App short message should have text")
+    XCTAssertFalse(Strings.CarPlay.OpenApp.messageShortest.isEmpty, "Open App shortest message should have text")
   }
   
-  func testCarPlay_OpenAppTitle_IsAppropriate() {
-    // The title should mention opening the app
-    let title = Strings.CarPlay.OpenApp.title
+  func testCarPlay_OpenAppMessage_MentionsPalace() {
+    // The message should mention Palace
+    let message = Strings.CarPlay.OpenApp.message
     XCTAssertTrue(
-      title.lowercased().contains("open") || title.lowercased().contains("palace"),
-      "Title should mention opening Palace"
+      message.lowercased().contains("palace"),
+      "Message should mention Palace"
     )
   }
   
@@ -295,8 +296,8 @@ class CarPlayOpenAppAlertTests: XCTestCase {
     // The message should tell the user to use their phone
     let message = Strings.CarPlay.OpenApp.message
     XCTAssertTrue(
-      message.lowercased().contains("phone") || message.lowercased().contains("device"),
-      "Message should mention the phone/device"
+      message.lowercased().contains("phone"),
+      "Message should mention the phone"
     )
   }
   
@@ -334,16 +335,19 @@ class CarPlayLibraryRefreshTests: XCTestCase {
   
   func testCarPlay_DownloadedAudiobooks_CanBeFiltered() {
     // Arrange
-    let audiobookState = TPPBookState.DownloadSuccessful
-    let ebookState = TPPBookState.DownloadSuccessful
+    let audiobookState = TPPBookState.downloadSuccessful
+    let ebookState = TPPBookState.downloadSuccessful
     
     // Assert - verify these states are recognized as downloaded
     XCTAssertTrue(
-      audiobookState == .DownloadSuccessful || 
-      audiobookState == .DownloadNeeded ||
-      audiobookState == .Downloading,
+      audiobookState == .downloadSuccessful || 
+      audiobookState == .downloadNeeded ||
+      audiobookState == .downloading,
       "Should recognize download states"
     )
+    
+    // Verify both are the same state
+    XCTAssertEqual(audiobookState, ebookState)
   }
 }
 

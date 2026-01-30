@@ -9,7 +9,6 @@
 import XCTest
 import MediaPlayer
 @testable import Palace
-@testable import PalaceAudiobookToolkit
 
 /// Tests for PlaybackBootstrapper initialization and remote command handling.
 /// Verifies that remote commands return correct statuses based on manager state.
@@ -105,8 +104,12 @@ final class PlaybackBootstrapperTests: XCTestCase {
     // Arrange & Act
     let sessionManager = AudiobookSessionManager.shared
     
-    // Assert
-    XCTAssertEqual(sessionManager.state, .idle, "Session manager should start in idle state")
+    // Assert - Use pattern matching for enum with associated values
+    if case .idle = sessionManager.state {
+      // State is idle - test passes
+    } else {
+      XCTFail("Session manager should start in idle state, but was: \(sessionManager.state)")
+    }
     XCTAssertNil(sessionManager.manager, "No manager should exist initially")
     XCTAssertNil(sessionManager.audiobook, "No audiobook should exist initially")
     XCTAssertNil(sessionManager.currentBook, "No current book should exist initially")
