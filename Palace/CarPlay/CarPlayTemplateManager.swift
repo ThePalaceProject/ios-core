@@ -38,6 +38,9 @@ final class CarPlayTemplateManager: NSObject {
   private var nowPlayingTemplate: CPNowPlayingTemplate?
   private var isPushingNowPlaying = false
   private var isShowingNowPlaying = false
+  private var isLoadingBook = false
+  private var lastSelectedBookId: String?
+  private var lastSelectionTime: Date?
   
   // MARK: - Initialization
   
@@ -79,6 +82,30 @@ final class CarPlayTemplateManager: NSObject {
     libraryTemplate.updateSections([section])
     
     Log.debug(#file, "CarPlay library refreshed with \(items.count) audiobooks")
+  }
+  
+  /// Updates the library template title to reflect the current account name.
+  /// Called when the user switches libraries.
+  func updateLibraryName() {
+    guard let libraryTemplate = libraryTemplate else { return }
+    
+    let libraryName = AccountsManager.shared.currentAccount?.name ?? Strings.CarPlay.library
+    
+    // CPListTemplate.title is read-only after creation, so we need to
+    // recreate the template or use a workaround. Unfortunately, CarPlay
+    // doesn't support changing the title dynamically on CPListTemplate.
+    // The best we can do is log this limitation and ensure the correct
+    // name is shown when the CarPlay scene reconnects.
+    Log.info(#file, "🚗 Library name should be: '\(libraryName)' - Note: CPListTemplate title cannot be updated after creation")
+    
+    // Workaround: If the interface controller supports it, we can try to
+    // replace the root template. This will cause a brief UI reset.
+    if let controller = interfaceController {
+      let newLibraryTemplate = createLibraryTemplate()
+      self.libraryTemplate = newLibraryTemplate
+      controller.setRootTemplate(newLibraryTemplate, animated: true, completion: nil)
+      Log.info(#file, "🚗 CarPlay library template replaced with new name: '\(libraryName)'")
+    }
   }
   
   // MARK: - Library Template
@@ -154,6 +181,38 @@ final class CarPlayTemplateManager: NSObject {
     Log.info(#file, "CarPlay: User selected audiobook '\(book.title)'")
     completion()
     
+    // Debounce: Prevent rapid double-taps on the same book
+    let now = Date()
+    if let lastTime = lastSelectionTime,
+       let lastId = lastSelectedBookId,
+       lastId == book.identifier,
+       now.timeIntervalSince(lastTime) < 1.0 {
+      Log.info(#file, "CarPlay: Ignoring duplicate selection within 1 second")
+      return
+    }
+    
+    // Prevent selection while another book is loading
+    if isLoadingBook {
+      Log.info(#file, "CarPlay: Ignoring selection - another book is currently loading")
+      return
+    }
+    
+    lastSelectedBookId = book.identifier
+    lastSelectionTime = now
+    
+    // Check if the main phone scene has connected.
+    // If only CarPlay connected (cold start from CarPlay), playback won't work reliably
+    // because iOS limits background execution. Show an alert asking the user to open
+    // Palace on their phone first.
+    let mainSceneConnected = SceneDelegate.hasMainSceneConnected
+    Log.info(#file, "CarPlay: Main scene connected: \(mainSceneConnected)")
+    
+    if !mainSceneConnected {
+      Log.info(#file, "CarPlay: Main scene not connected - showing open app alert")
+      showOpenAppAlert()
+      return
+    }
+    
     // Check authentication status first
     let authenticated = isUserAuthenticated()
     guard authenticated else {
@@ -197,12 +256,16 @@ final class CarPlayTemplateManager: NSObject {
       controller.popToRootTemplate(animated: false, completion: nil)
     }
     
+    // Mark as loading to prevent duplicate selections
+    isLoadingBook = true
     
     // Start playback through the bridge with enhanced error handling
     // Note: switchToNowPlaying will be called automatically via playbackStatePublisher
     // when playback actually begins (after BookService finishes position sync)
     // openAudiobook() will stop any existing playback before starting the new book
     playerBridge.playAudiobook(book) { [weak self] result in
+      self?.isLoadingBook = false
+      
       switch result {
       case .success:
         Log.info(#file, "CarPlay: Playback started successfully for '\(book.title)'")
@@ -273,6 +336,32 @@ final class CarPlayTemplateManager: NSObject {
     )
     
     interfaceController.presentTemplate(alert, animated: true, completion: nil)
+  }
+  
+  /// Shows an alert when the user tries to play a book but the main phone app
+  /// hasn't been opened yet (cold start from CarPlay). iOS doesn't allow CarPlay
+  /// apps to programmatically open the phone app, so we ask the user to do it manually.
+  private func showOpenAppAlert() {
+    guard let interfaceController = interfaceController else { return }
+    
+    let alert = CPAlertTemplate(
+      titleVariants: [
+        Strings.CarPlay.OpenApp.message,
+        Strings.CarPlay.OpenApp.messageShort,
+        Strings.CarPlay.OpenApp.messageShortest
+      ],
+      actions: [
+        CPAlertAction(title: Strings.Generic.ok, style: .default) { _ in
+          interfaceController.dismissTemplate(animated: true, completion: nil)
+        }
+      ]
+    )
+    
+    interfaceController.presentTemplate(alert, animated: true) { success, error in
+      if let error = error {
+        Log.warn(#file, "CarPlay: Failed to present open app alert: \(error)")
+      }
+    }
   }
   
   // MARK: - Now Playing Template
@@ -404,7 +493,7 @@ final class CarPlayTemplateManager: NSObject {
   }
   
   private func switchToNowPlayingIfNeeded() {
-    Log.info(#file, "CarPlay: switchToNowPlayingIfNeeded called")
+    Log.debug(#file, "CarPlay: switchToNowPlayingIfNeeded called")
     
     // Only push if we're not already showing Now Playing
     guard let controller = interfaceController else {
@@ -426,7 +515,7 @@ final class CarPlayTemplateManager: NSObject {
     }
     
     isPushingNowPlaying = true
-    Log.info(#file, "CarPlay: Will push Now Playing in 0.15s")
+    Log.debug(#file, "CarPlay: Will push Now Playing in 0.15s")
     
     // Brief delay to ensure MPNowPlayingInfoCenter has been updated
     // Reduced from 0.5s to 0.15s for faster UI response
@@ -475,9 +564,9 @@ final class CarPlayTemplateManager: NSObject {
     playerBridge.playbackStatePublisher
       .receive(on: DispatchQueue.main)
       .sink { [weak self] state in
-        Log.info(#file, "CarPlay: Received playback state: \(state)")
+        Log.debug(#file, "CarPlay: Received playback state: \(state)")
         if case .playing = state {
-          Log.info(#file, "CarPlay: Playback started - will switch to Now Playing")
+          Log.debug(#file, "CarPlay: Playback started - will switch to Now Playing")
           self?.switchToNowPlayingIfNeeded()
         }
       }
@@ -523,11 +612,15 @@ extension CarPlayTemplateManager: CPInterfaceControllerDelegate {
       DispatchQueue.main.async { [weak self] in
         guard let self = self else { return }
         
-        // If templates count is 1 (only root/library), user backed out completely
+        // If templates count is 1 (only root/library), user backed out to library
         if let templateCount = self.interfaceController?.templates.count, templateCount <= 1 {
-          Log.info(#file, "CarPlay: User returned to library - stopping playback")
+          Log.info(#file, "CarPlay: User returned to library - keeping playback active")
           self.isShowingNowPlaying = false
-          self.playerBridge.stopCurrentPlayback()
+          // Don't stop playback when user returns to library!
+          // User can continue listening while browsing. They can use the system
+          // Now Playing button to return to the player, or select a different book.
+          // Playback will only stop when: 1) User selects another book, or
+          // 2) User uses play/pause controls
         } else {
           Log.debug(#file, "CarPlay: Now Playing covered by another template")
         }
@@ -632,6 +725,24 @@ extension Strings {
         "CarPlay.Error.drmMessage",
         value: "There was a problem with the audiobook license. Please try again in the app",
         comment: "CarPlay error message when DRM/license fails"
+      )
+    }
+    
+    enum OpenApp {
+      static let message = NSLocalizedString(
+        "CarPlay.OpenApp.message",
+        value: "Please open Palace on your phone first, then select the book again",
+        comment: "CarPlay alert message asking user to open the app on their phone"
+      )
+      static let messageShort = NSLocalizedString(
+        "CarPlay.OpenApp.messageShort",
+        value: "Open Palace on your phone first",
+        comment: "CarPlay alert short message asking user to open the app"
+      )
+      static let messageShortest = NSLocalizedString(
+        "CarPlay.OpenApp.messageShortest",
+        value: "Open Palace first",
+        comment: "CarPlay alert shortest message"
       )
     }
   }

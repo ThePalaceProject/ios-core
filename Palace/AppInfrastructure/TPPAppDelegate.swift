@@ -157,6 +157,12 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
   }
 
   func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
+    // Handle PalaceApp://carplay URL (used by CarPlay to open app on phone)
+    if url.scheme == "PalaceApp" && url.host == "carplay" {
+      Log.info(#file, "📱 App opened from CarPlay - ready for playback")
+      return true
+    }
+    
     if let dynamicLink = DynamicLinks.dynamicLinks().dynamicLink(fromCustomSchemeURL: url) {
       if DLNavigator.shared.isValidLink(dynamicLink) {
         DLNavigator.shared.navigate(to: dynamicLink)

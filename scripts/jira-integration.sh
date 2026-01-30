@@ -123,17 +123,25 @@ add_comment() {
 
 # Convert text with numbered items to Jira ADF list format
 # Input: "1. First item 2. Second item" or "1. First\n2. Second"
-# Output: JSON array of list items for Jira ADF
+# Output: One item per line with number prefixes stripped
 build_list_items() {
   local text="$1"
   
-  # Split by numbered pattern (1. 2. 3. etc) and filter empty
-  echo "$text" | sed 's/[0-9]\+\./\n&/g' | grep -E '^[0-9]+\.' | while read -r item; do
-    # Remove the number prefix and trim
-    local content
-    content=$(echo "$item" | sed 's/^[0-9]\+\.\s*//' | xargs)
-    if [[ -n "$content" ]]; then
-      echo "$content"
+  # First, normalize the text: replace literal \n with actual newlines
+  text=$(echo -e "$text")
+  
+  # Split by numbered pattern (1. 2. 3. etc) - insert newline before each number
+  # Then process each line to strip the number prefix
+  echo "$text" | sed 's/[0-9]\+\.\s*/\n/g' | while IFS= read -r line; do
+    # Trim whitespace
+    line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    # Skip empty lines and lines that are just numbers
+    if [[ -n "$line" && ! "$line" =~ ^[0-9]+\.?$ ]]; then
+      # Also strip any remaining leading numbers (handles "1. 1. text" cases)
+      line=$(echo "$line" | sed 's/^[0-9]\+\.\s*//')
+      if [[ -n "$line" ]]; then
+        echo "$line"
+      fi
     fi
   done
 }

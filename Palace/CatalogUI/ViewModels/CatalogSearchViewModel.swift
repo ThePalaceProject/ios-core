@@ -13,7 +13,7 @@ class CatalogSearchViewModel: ObservableObject {
   
   /// Unique identifier that changes only when a new search is performed.
   /// Use this to trigger scroll-to-top behavior in the view.
-  /// Does NOT change during pagination or registry updates (PP-3605 fix).
+  /// Does NOT change during pagination or registry updates.
   @Published private(set) var searchId: UUID = UUID()
   
   private var allBooks: [TPPBook] = []
@@ -62,7 +62,7 @@ class CatalogSearchViewModel: ObservableObject {
     filteredBooks = allBooks
     nextPageURL = nil
     isLoadingMore = false
-    // Generate new searchId to scroll to top of restored books (PP-3605)
+    // Generate new searchId to scroll to top of restored books
     searchId = UUID()
   }
   
@@ -92,7 +92,7 @@ class CatalogSearchViewModel: ObservableObject {
     isLoadingMore = false
     isLoading = true
     
-    // Generate new searchId for new search - triggers scroll to top (PP-3605)
+    // Generate new searchId for new search - triggers scroll to top
     searchId = UUID()
     
     searchTask = Task { [weak self] in

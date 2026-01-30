@@ -54,7 +54,7 @@ struct CatalogSearchView: View {
           isSearchFieldFocused = false
         }
         .onChange(of: viewModel.searchId) { _ in
-          // Scroll to top only for new searches, not pagination (PP-3605)
+          // Scroll to top only for new searches, not pagination
           proxy.scrollTo("search-results-top", anchor: .top)
         }
       }

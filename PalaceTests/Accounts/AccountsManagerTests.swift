@@ -481,27 +481,25 @@ final class AccountsManagerTests: XCTestCase {
   // MARK: - Notification Integration Tests
 
   func testNotificationObserver_ForAccountChange_CanBeAdded() {
-    // Given: An observer for account changes
+    // Given: An observer for account changes with expectation
+    let notificationExpectation = expectation(description: "Notification received")
     var notificationCount = 0
+    
     let observer = NotificationCenter.default.addObserver(
       forName: .TPPCurrentAccountDidChange,
       object: nil,
       queue: .main
     ) { _ in
       notificationCount += 1
+      notificationExpectation.fulfill()
     }
 
     // When: Posting the notification
     NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
 
-    // Give time for notification to be processed
-    let expectation = expectation(description: "Notification processed")
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-      expectation.fulfill()
-    }
-    waitForExpectations(timeout: 1.0)
-
-    // Then: Observer should have been called
+    // Then: Wait for notification to be received
+    waitForExpectations(timeout: 2.0)
+    
     XCTAssertEqual(notificationCount, 1)
 
     // Cleanup
@@ -509,7 +507,10 @@ final class AccountsManagerTests: XCTestCase {
   }
 
   func testMultipleNotificationObservers_AllReceiveAccountChange() {
-    // Given: Multiple observers
+    // Given: Multiple observers with expectations
+    let expectation1 = expectation(description: "Observer 1 received notification")
+    let expectation2 = expectation(description: "Observer 2 received notification")
+    
     var observer1Count = 0
     var observer2Count = 0
 
@@ -519,6 +520,7 @@ final class AccountsManagerTests: XCTestCase {
       queue: .main
     ) { _ in
       observer1Count += 1
+      expectation1.fulfill()
     }
 
     let observer2 = NotificationCenter.default.addObserver(
@@ -527,17 +529,14 @@ final class AccountsManagerTests: XCTestCase {
       queue: .main
     ) { _ in
       observer2Count += 1
+      expectation2.fulfill()
     }
 
     // When: Posting notification
     NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
 
-    // Give time for notifications
-    let expectation = expectation(description: "Notifications processed")
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-      expectation.fulfill()
-    }
-    waitForExpectations(timeout: 1.0)
+    // Wait for both observers to be called
+    wait(for: [expectation1, expectation2], timeout: 2.0)
 
     // Then: Both observers should receive notification
     XCTAssertEqual(observer1Count, 1)

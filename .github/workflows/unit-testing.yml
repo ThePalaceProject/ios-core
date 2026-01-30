@@ -31,13 +31,13 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /usr/local/bin/qaatlas
-          key: qaatlas-v1.2.7-macos
+          key: qaatlas-v2.2.1-macos
           
       - name: Download QAAtlas
         if: steps.changes.outputs.swift_files_changed != '0' && steps.cache-qaatlas.outputs.cache-hit != 'true'
         run: |
           curl -L -o /usr/local/bin/qaatlas \
-            https://github.com/mauricecarrier7/qaatlas-dist/releases/download/v1.2.7/qaatlas-macos
+            https://github.com/mauricecarrier7/qaatlas-dist/releases/download/v2.2.1/qaatlas-macos
           chmod +x /usr/local/bin/qaatlas
           xattr -d com.apple.quarantine /usr/local/bin/qaatlas 2>/dev/null || true
           /usr/local/bin/qaatlas --version 2>&1 | tail -1
@@ -100,6 +100,45 @@ jobs:
             RISK_LEVEL=$(python3 -c "import json; d=json.load(open('./qaatlas-output/report.json')); print(d.get('riskAssessment', {}).get('level', 'unknown'))" 2>/dev/null || echo "unknown")
             echo "tests_recommended=$TESTS_RECOMMENDED" >> $GITHUB_OUTPUT
             echo "risk_level=$RISK_LEVEL" >> $GITHUB_OUTPUT
+            
+            # Extract test matching info from analyze log
+            if [ -f "qaatlas-analyze.log" ]; then
+              # Parse matching info and save to JSON for PR comment
+              python3 -c "
+          import re
+          import json
+          
+          with open('qaatlas-analyze.log', 'r') as f:
+              content = f.read()
+          
+          # Extract matches section
+          matches = []
+          in_matches = False
+          for line in content.split('\n'):
+              if 'Matches Found:' in line:
+                  in_matches = True
+                  continue
+              if in_matches:
+                  if line.strip().startswith('✓'):
+                      # Extract test title
+                      title_match = re.search(r'\"([^\"]+)\"', line)
+                      if title_match:
+                          matches.append({'title': title_match.group(1), 'test_file': '', 'match_type': ''})
+                  elif line.strip().startswith('→') and matches:
+                      # Extract test file
+                      matches[-1]['test_file'] = line.strip().replace('→ ', '')
+                  elif '(' in line and matches and not matches[-1]['match_type']:
+                      # Extract match type (e.g., 'contains keywords: carplay, library')
+                      match_info = re.search(r'\(([^)]+)\)', line)
+                      if match_info:
+                          matches[-1]['match_type'] = match_info.group(1)
+                  elif line.strip().startswith('Coverage Verdict'):
+                      break
+          
+          with open('test-matches.json', 'w') as f:
+              json.dump(matches, f)
+          " 2>/dev/null || echo "[]" > test-matches.json
+            fi
           else
             echo "analysis_complete=false" >> $GITHUB_OUTPUT
           fi
@@ -115,8 +154,89 @@ jobs:
             qaatlas-output/
             qaatlas-gap.log
             qaatlas-analyze.log
+            test-matches.json
           retention-days: 14
           if-no-files-found: ignore
+      
+      - name: QAAtlas Dashboard Summary
+        if: steps.changes.outputs.swift_files_changed != '0'
+        run: |
+          COVERAGE="${{ steps.gap-analysis.outputs.coverage }}"
+          TESTED="${{ steps.gap-analysis.outputs.tested }}"
+          TOTAL="${{ steps.gap-analysis.outputs.total }}"
+          HIGH_GAPS="${{ steps.gap-analysis.outputs.high_gaps }}"
+          TESTS_REC="${{ steps.qaatlas.outputs.tests_recommended }}"
+          RISK="${{ steps.qaatlas.outputs.risk_level }}"
+          
+          echo "## 🧪 QAAtlas Test Coverage Analysis" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Risk badge
+          if [ "$RISK" = "low" ]; then
+            echo "### 🟢 Risk Level: LOW" >> $GITHUB_STEP_SUMMARY
+          elif [ "$RISK" = "medium" ]; then
+            echo "### 🟡 Risk Level: MEDIUM" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### 🔴 Risk Level: HIGH" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Coverage gauge
+          if [ -n "$COVERAGE" ]; then
+            COVERAGE_INT=${COVERAGE%.*}
+            if [ "$COVERAGE_INT" -ge 50 ]; then
+              GAUGE="🟢"
+            elif [ "$COVERAGE_INT" -ge 30 ]; then
+              GAUGE="🟡"
+            else
+              GAUGE="🔴"
+            fi
+            echo "### 📊 Estimated Test Coverage: $GAUGE $COVERAGE%" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Symbols with Tests | $TESTED / $TOTAL |" >> $GITHUB_STEP_SUMMARY
+            echo "| High-Priority Gaps | $HIGH_GAPS |" >> $GITHUB_STEP_SUMMARY
+            echo "| Tests Recommended | $TESTS_REC |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Top gaps from gap report
+          if [ -f "./qaatlas-output/gap-report.json" ]; then
+            echo "<details>" >> $GITHUB_STEP_SUMMARY
+            echo "<summary><strong>🔍 Top 10 Coverage Gaps</strong></summary>" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Priority | Symbol | File |" >> $GITHUB_STEP_SUMMARY
+            echo "|----------|--------|------|" >> $GITHUB_STEP_SUMMARY
+            python3 -c "
+          import json
+          d = json.load(open('./qaatlas-output/gap-report.json'))
+          gaps = d.get('gaps', [])[:10]
+          for g in gaps:
+            symbol = g.get('symbol', 'Unknown')[:40]
+            file = g.get('file', 'Unknown').split('/')[-1]
+            priority = g.get('priority', 'unknown').upper()
+            icon = '🔴' if priority == 'HIGH' else '🟡' if priority == 'MEDIUM' else '🟢'
+            print(f'| {icon} {priority} | \`{symbol}\` | {file} |')
+          " >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "| - | Unable to parse gaps | - |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "</details>" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Test recommendations from testplan
+          if [ -f "./qaatlas-output/testplan.md" ]; then
+            echo "<details>" >> $GITHUB_STEP_SUMMARY
+            echo "<summary><strong>📋 Recommended Tests</strong></summary>" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            cat ./qaatlas-output/testplan.md | head -80 >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "</details>" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "*AI-powered analysis by [QAAtlas v2.2.1](https://github.com/mauricecarrier7/qaatlas-dist) • [Download Full Report](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}#artifacts)*" >> $GITHUB_STEP_SUMMARY
           
       - name: Post PR comment
         if: steps.changes.outputs.swift_files_changed != '0'
@@ -169,6 +289,26 @@ jobs:
                 const prComment = fs.readFileSync('./qaatlas-output/pr-comment.md', 'utf8');
                 body += '### 🔍 What Changed in This PR\n\n';
                 body += prComment;
+                
+                // Add test matching details
+                try {
+                  const matchesJson = fs.readFileSync('./test-matches.json', 'utf8');
+                  const matches = JSON.parse(matchesJson);
+                  if (matches.length > 0) {
+                    body += '\n### ✅ Existing Test Coverage\n\n';
+                    body += '| Recommendation | Covered By | Match Type |\n';
+                    body += '|----------------|------------|------------|\n';
+                    for (const m of matches) {
+                      const title = m.title.substring(0, 40) + (m.title.length > 40 ? '...' : '');
+                      const testFile = m.test_file.split('/').pop() || m.test_file;
+                      const matchType = m.match_type.includes('mapped') ? '✅ Direct' : '🔍 Keyword';
+                      body += `| ${title} | \`${testFile}\` | ${matchType} |\n`;
+                    }
+                    body += '\n';
+                  }
+                } catch (e) {
+                  // No matches file, skip this section
+                }
               } catch (e) {
                 body += '✅ Analysis complete. See **qaatlas-report** artifact for full details.\n';
               }
@@ -177,9 +317,9 @@ jobs:
             }
             
             body += '\n---\n';
-            body += `> 💡 **Note:** For actual runtime code coverage (lines executed during tests), see the **Unit Test Results** comment below.\n\n`;
-            body += '*Powered by [QAAtlas](https://github.com/mauricecarrier7/qaatlas-dist) - AI-powered test analysis*\n';
-            body += '*⚠️ AI recommendations are advisory - always review before implementing*';
+            body += `📋 [View Full Report](${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}#artifacts) | `;
+            body += '*Powered by [QAAtlas v2.2.1](https://github.com/mauricecarrier7/qaatlas-dist)*\n';
+            body += '*⚠️ AI recommendations are advisory only - review before implementing*';
             
             // Find/update existing comment
             const { data: comments } = await github.rest.issues.listComments({
