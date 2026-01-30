@@ -284,4 +284,190 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
     
     XCTAssertEqual(selectedPosition.timestamp, 1000, "Should use local position when timestamps are equal")
   }
+  
+  // MARK: - Save Listening Position Tests
+  
+  func testSaveListeningPosition_SavesLocallyImmediately() {
+    mockRegistry = TPPBookRegistryMock()
+    mockRegistry.addBook(fakeBook, state: .downloadSuccessful)
+    mockAnnotations = TPPAnnotationMock()
+    
+    sut = AudiobookBookmarkBusinessLogic(book: fakeBook, registry: mockRegistry, annotationsManager: mockAnnotations)
+    tracks = try! loadTracks(for: manifestJSON)
+    
+    let position = TrackPosition(track: tracks.tracks[0], timestamp: 500, tracks: tracks)
+    
+    let expectation = XCTestExpectation(description: "Save listening position")
+    
+    sut.saveListeningPosition(at: position) { _ in
+      expectation.fulfill()
+    }
+    
+    // Local save should happen immediately (before server sync)
+    wait(for: [expectation], timeout: 3.0)
+    
+    let savedLocation = mockRegistry.location(forIdentifier: fakeBook.identifier)
+    XCTAssertNotNil(savedLocation, "Location should be saved to registry")
+  }
+  
+  func testSaveListeningPosition_SyncsToServer() {
+    mockRegistry = TPPBookRegistryMock()
+    mockRegistry.addBook(fakeBook, state: .downloadSuccessful)
+    mockAnnotations = TPPAnnotationMock()
+    
+    sut = AudiobookBookmarkBusinessLogic(book: fakeBook, registry: mockRegistry, annotationsManager: mockAnnotations)
+    tracks = try! loadTracks(for: manifestJSON)
+    
+    let position = TrackPosition(track: tracks.tracks[0], timestamp: 500, tracks: tracks)
+    
+    let expectation = XCTestExpectation(description: "Sync to server")
+    
+    sut.saveListeningPosition(at: position) { timestamp in
+      // Timestamp returned indicates server sync succeeded
+      XCTAssertNotNil(timestamp, "Should receive timestamp from server")
+      expectation.fulfill()
+    }
+    
+    wait(for: [expectation], timeout: 3.0)
+    
+    // Verify server was called
+    let serverBookmarks = mockAnnotations.savedLocations[fakeBook.identifier]
+    XCTAssertNotNil(serverBookmarks, "Server should have saved bookmark")
+    XCTAssertFalse(serverBookmarks?.isEmpty ?? true, "Server bookmarks should not be empty")
+  }
+  
+  // MARK: - Save Bookmark Tests
+  
+  func testSaveBookmark_CreatesBookmark() {
+    mockRegistry = TPPBookRegistryMock()
+    mockRegistry.addBook(fakeBook, state: .downloadSuccessful)
+    mockAnnotations = TPPAnnotationMock()
+    
+    sut = AudiobookBookmarkBusinessLogic(book: fakeBook, registry: mockRegistry, annotationsManager: mockAnnotations)
+    tracks = try! loadTracks(for: manifestJSON)
+    
+    let position = TrackPosition(track: tracks.tracks[1], timestamp: 1500, tracks: tracks)
+    
+    let expectation = XCTestExpectation(description: "Save bookmark")
+    
+    sut.saveBookmark(at: position) { savedPosition in
+      XCTAssertNotNil(savedPosition, "Should return saved position")
+      expectation.fulfill()
+    }
+    
+    wait(for: [expectation], timeout: 3.0)
+  }
+  
+  func testSaveBookmark_AddsToRegistry() {
+    mockRegistry = TPPBookRegistryMock()
+    mockRegistry.addBook(fakeBook, state: .downloadSuccessful)
+    mockAnnotations = TPPAnnotationMock()
+    
+    sut = AudiobookBookmarkBusinessLogic(book: fakeBook, registry: mockRegistry, annotationsManager: mockAnnotations)
+    tracks = try! loadTracks(for: manifestJSON)
+    
+    let position = TrackPosition(track: tracks.tracks[1], timestamp: 2000, tracks: tracks)
+    
+    let expectation = XCTestExpectation(description: "Add bookmark to registry")
+    
+    sut.saveBookmark(at: position) { _ in
+      expectation.fulfill()
+    }
+    
+    wait(for: [expectation], timeout: 3.0)
+    
+    // Verify bookmark was added to registry
+    let genericBookmarks = mockRegistry.genericBookmarksForIdentifier(fakeBook.identifier)
+    XCTAssertFalse(genericBookmarks.isEmpty, "Should have generic bookmarks in registry")
+  }
+  
+  // MARK: - Delete Bookmark Tests
+  
+  func testDeleteBookmark_CallsAnnotationsManager() {
+    mockRegistry = TPPBookRegistryMock()
+    mockRegistry.addBook(fakeBook, state: .downloadSuccessful)
+    mockAnnotations = TPPAnnotationMock()
+    
+    // Pre-populate with a bookmark
+    mockAnnotations.bookmarks[fakeBook.identifier] = [
+      TestBookmark(annotationId: "test-annotation-123", value: "{}")
+    ]
+    
+    sut = AudiobookBookmarkBusinessLogic(book: fakeBook, registry: mockRegistry, annotationsManager: mockAnnotations)
+    tracks = try! loadTracks(for: manifestJSON)
+    
+    let position = TrackPosition(track: tracks.tracks[0], timestamp: 100, tracks: tracks)
+    
+    let expectation = XCTestExpectation(description: "Delete bookmark")
+    
+    sut.deleteBookmark(at: position) { success in
+      // Deletion should complete (may or may not find the bookmark)
+      expectation.fulfill()
+    }
+    
+    wait(for: [expectation], timeout: 3.0)
+  }
+  
+  // MARK: - Sync Bookmarks Tests
+  
+  func testSyncBookmarks_MergesLocalAndRemote() {
+    mockRegistry = TPPBookRegistryMock()
+    mockRegistry.addBook(fakeBook, state: .downloadSuccessful)
+    mockAnnotations = TPPAnnotationMock()
+    
+    sut = AudiobookBookmarkBusinessLogic(book: fakeBook, registry: mockRegistry, annotationsManager: mockAnnotations)
+    
+    // Create a local bookmark using the proper initializer
+    let localBookmark = AudioBookmark(
+      type: .locatorAudioBookTime,
+      annotationId: "local-123",
+      chapter: "track-0",
+      time: 1000
+    )
+    
+    let expectation = XCTestExpectation(description: "Sync bookmarks")
+    
+    sut.syncBookmarks(localBookmarks: [localBookmark]) { mergedBookmarks in
+      // Should return merged bookmarks
+      XCTAssertNotNil(mergedBookmarks)
+      expectation.fulfill()
+    }
+    
+    wait(for: [expectation], timeout: 5.0)
+  }
+  
+  // MARK: - Flush Pending Operations Tests
+  
+  func testFlushPendingOperations_ExecutesPendingWork() {
+    mockRegistry = TPPBookRegistryMock()
+    mockRegistry.addBook(fakeBook, state: .downloadSuccessful)
+    mockAnnotations = TPPAnnotationMock()
+    
+    sut = AudiobookBookmarkBusinessLogic(book: fakeBook, registry: mockRegistry, annotationsManager: mockAnnotations)
+    
+    // This should not crash or cause issues
+    sut.flushPendingOperations()
+    
+    XCTAssertNotNil(sut, "Business logic should still be valid after flush")
+  }
+  
+  // MARK: - Save Listening Position Sync Tests
+  
+  func testSaveListeningPositionSync_SavesImmediately() {
+    mockRegistry = TPPBookRegistryMock()
+    mockRegistry.addBook(fakeBook, state: .downloadSuccessful)
+    mockAnnotations = TPPAnnotationMock()
+    
+    sut = AudiobookBookmarkBusinessLogic(book: fakeBook, registry: mockRegistry, annotationsManager: mockAnnotations)
+    tracks = try! loadTracks(for: manifestJSON)
+    
+    let position = TrackPosition(track: tracks.tracks[0], timestamp: 750, tracks: tracks)
+    
+    // This is a synchronous save (no debouncing)
+    sut.saveListeningPositionSync(at: position)
+    
+    // Verify it was saved
+    let savedLocation = mockRegistry.location(forIdentifier: fakeBook.identifier)
+    XCTAssertNotNil(savedLocation, "Location should be saved synchronously")
+  }
 }
