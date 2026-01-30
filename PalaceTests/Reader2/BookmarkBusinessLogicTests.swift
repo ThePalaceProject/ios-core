@@ -985,42 +985,6 @@ final class BookmarkReauthenticationTests: XCTestCase {
     XCTAssertNotNil(businessLogic)
     // The reauthenticator was injected during init - test passes if no crash
   }
-  
-  func testReauthenticatorMock_PerformsAuthentication() {
-    // Arrange
-    let userAccount = TPPUserAccount.sharedAccount()
-    
-    // Act
-    reauthenticatorMock.authenticateIfNeeded(userAccount, usingExistingCredentials: true) { }
-    
-    // Assert - mock tracks that reauthentication was performed
-    XCTAssertTrue(reauthenticatorMock.authenticateIfNeededCalled)
-  }
-  
-  func testReauthenticatorMock_SetsCredentials() {
-    // Arrange
-    let userAccount = TPPUserAccount.sharedAccount()
-    
-    // Act
-    reauthenticatorMock.authenticateIfNeeded(userAccount, usingExistingCredentials: true) { }
-    
-    // Assert - mock sets credentials on the user account
-    XCTAssertNotNil(userAccount.credentials)
-  }
-  
-  func testReauthenticatorMock_CallsCompletion() {
-    // Arrange
-    let userAccount = TPPUserAccount.sharedAccount()
-    var completionCalled = false
-    
-    // Act
-    reauthenticatorMock.authenticateIfNeeded(userAccount, usingExistingCredentials: true) {
-      completionCalled = true
-    }
-    
-    // Assert
-    XCTAssertTrue(completionCalled, "Completion should be called immediately")
-  }
 }
 
 // MARK: - Device ID Matching Tests

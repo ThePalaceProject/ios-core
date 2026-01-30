@@ -105,6 +105,9 @@ final class OPDSParsingTests: XCTestCase {
             <id>urn:uuid:links-test-001</id>
             <title>Link Relations Test</title>
             <updated>2024-01-19T12:00:00Z</updated>
+            <author>
+                <name>Test Author</name>
+            </author>
             <link href="http://example.org/cover.jpg" rel="http://opds-spec.org/image" type="image/jpeg"/>
             <link href="http://example.org/thumb.jpg" rel="http://opds-spec.org/image/thumbnail" type="image/jpeg"/>
             <link href="http://example.org/alternate" rel="alternate" type="application/atom+xml"/>

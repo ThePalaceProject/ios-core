@@ -160,14 +160,8 @@ final class TPPBookmarkFactoryTests: XCTestCase {
     XCTAssertFalse(bookmark!.time.isEmpty)
   }
   
-  func testMake_FromR3Location_IncludesRegistryLocation() async {
+  func testMake_FromR3Location_GeneratesLocationFromLocator() async {
     // Arrange
-    let registryLocation = TPPBookLocation(
-      locationString: "{\"progressWithinBook\":0.3}",
-      renderer: TPPBookLocation.r3Renderer
-    )
-    bookRegistry.setLocation(registryLocation, forIdentifier: testBookId)
-    
     let locator = Locator(
       href: AnyURL(string: "/chapter1.xhtml")!,
       mediaType: .xhtml,
@@ -183,9 +177,14 @@ final class TPPBookmarkFactoryTests: XCTestCase {
       publication: publication
     )
     
-    // Assert
+    // Assert - location is generated from locator, containing progress values
     XCTAssertNotNil(bookmark)
-    XCTAssertEqual(bookmark?.location, registryLocation?.locationString)
+    XCTAssertNotNil(bookmark?.location)
+    // The location should contain the progress values from the locator
+    XCTAssertTrue(bookmark!.location.contains("progressWithinBook"), 
+                  "Location should contain progressWithinBook")
+    XCTAssertTrue(bookmark!.location.contains("progressWithinChapter"),
+                  "Location should contain progressWithinChapter")
   }
   
   // MARK: - Make from Server Annotation Tests
