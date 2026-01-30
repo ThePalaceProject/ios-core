@@ -31,13 +31,13 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /usr/local/bin/qaatlas
-          key: qaatlas-v2.0.0-macos
+          key: qaatlas-v2.2.1-macos
           
       - name: Download QAAtlas
         if: steps.changes.outputs.swift_files_changed != '0' && steps.cache-qaatlas.outputs.cache-hit != 'true'
         run: |
           curl -L -o /usr/local/bin/qaatlas \
-            https://github.com/mauricecarrier7/qaatlas-dist/releases/download/v2.0.0/qaatlas-macos
+            https://github.com/mauricecarrier7/qaatlas-dist/releases/download/v2.2.1/qaatlas-macos
           chmod +x /usr/local/bin/qaatlas
           xattr -d com.apple.quarantine /usr/local/bin/qaatlas 2>/dev/null || true
           /usr/local/bin/qaatlas --version 2>&1 | tail -1
@@ -196,7 +196,7 @@ jobs:
           
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "---" >> $GITHUB_STEP_SUMMARY
-          echo "*AI-powered analysis by [QAAtlas v2.0.0](https://github.com/mauricecarrier7/qaatlas-dist) • [Download Full Report](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}#artifacts)*" >> $GITHUB_STEP_SUMMARY
+          echo "*AI-powered analysis by [QAAtlas v2.2.1](https://github.com/mauricecarrier7/qaatlas-dist) • [Download Full Report](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}#artifacts)*" >> $GITHUB_STEP_SUMMARY
           
       - name: Post PR comment
         if: steps.changes.outputs.swift_files_changed != '0'
@@ -258,7 +258,7 @@ jobs:
             
             body += '\n---\n';
             body += `📋 [View Full Report](${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}#artifacts) | `;
-            body += '*Powered by [QAAtlas v2.0.0](https://github.com/mauricecarrier7/qaatlas-dist)*\n';
+            body += '*Powered by [QAAtlas v2.2.1](https://github.com/mauricecarrier7/qaatlas-dist)*\n';
             body += '*⚠️ AI recommendations are advisory only - review before implementing*';
             
             // Find/update existing comment
