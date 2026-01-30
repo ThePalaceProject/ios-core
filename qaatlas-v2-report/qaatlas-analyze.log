@@ -1,64 +1,0 @@
-To load a module from disk after the single executable application is launched, use require("module").createRequire().
-Support for bundled module loading or virtual file systems are under discussions in https://github.com/nodejs/single-executable
-(Use `qaatlas --trace-warnings ...` to show where the warning was created)
-[KLoading configuration...Using preset: ios
-[KGetting diff content...{"level":30,"time":1769803280331,"tool":"qaatlas","file":"/tmp/pr-changes.patch","msg":"Reading diff from file"}
-[KScanning for existing tests...[KAnalyzing code changes...{"level":30,"time":1769803280334,"tool":"qaatlas","source":"file:/tmp/pr-changes.patch","length":122340,"msg":"Diff content obtained"}
-{"level":30,"time":1769803280690,"tool":"qaatlas","msg":"Parsing diff content"}
-{"level":30,"time":1769803280691,"tool":"qaatlas","filesChanged":17,"additions":1001,"deletions":187,"msg":"Diff parsed successfully"}
-{"level":30,"time":1769803280691,"tool":"qaatlas","msg":"Building analysis context"}
-{"level":30,"time":1769803280693,"tool":"qaatlas","count":3,"files":[".github/workflows/unit-testing.yml","Palace.xcodeproj/project.pbxproj","scripts/jira-integration.sh"],"msg":"Files excluded from analysis"}
-{"level":30,"time":1769803280718,"tool":"qaatlas","originalTokens":14908,"newTokens":10869,"savedPercent":27,"msg":"Preprocessing reduced token count"}
-{"level":30,"time":1769803280718,"tool":"qaatlas","savedTokens":4039,"savingsPercent":"27%","msg":"Preprocessing reduced token usage"}
-{"level":30,"time":1769803280718,"tool":"qaatlas","filesIncluded":14,"filesExcluded":3,"filesTruncated":0,"msg":"Context built successfully"}
-{"level":30,"time":1769803280718,"tool":"qaatlas","provider":"openai","model":"gpt-4o","msg":"Starting LLM analysis"}
-{"level":30,"time":1769803280718,"tool":"qaatlas","model":"gpt-4o","filesCount":14,"msg":"Starting analysis with OpenAI"}
-{"level":30,"time":1769803299315,"tool":"qaatlas","testCases":4,"risks":2,"riskLevel":"medium","msg":"LLM analysis completed"}
-[KChecking test coverage...[KGenerating reports...[K
-QAAtlas Analysis Complete
-=========================
-Files analyzed: 14
-Tests recommended: 4
-Risks identified: 2
-Risk level: MEDIUM
-
-Test Files Analyzed
--------------------
-  Found: 120 test files, 2178 test methods
-  Mapped to source files: 117
-
-  Matches Found:
-    ✓ "Test NavigationCoordinator Initializa..."
-      → PalaceTests/AppInfrastructure/NavigationCoordinatorTests.swift
-        (testNavigationCoordinator_InitialState_PathIsEmpty contains "navigationcoordinator" (mapped))
-    ✓ "Test PlaybackBootstrapper Initialization"
-      → PalaceTests/Audiobooks/PlaybackBootstrapperTests.swift
-        (testPlaybackBootstrapper_Singleton_Exists contains "playbackbootstrapper" (mapped))
-    ✓ "Test CarPlay Template Manager Initial..."
-      → PalaceTests/Accounts/AccountsManagerTests.swift
-        (testAccountsManager_ConformsToTPPLibraryAccountsProvider contains "manager" (fallback))
-    ✓ "Test Audiobook Data Manager Sync"
-      → PalaceTests/Accessibility/AudiobookAccessibilityTests.swift
-        (testAudiobookIndicator_labelExists contains "audiobook" (fallback))
-
-Coverage Verdict
-----------------
-✅ PASS
-  Already covered: 4
-  Partially covered: 0
-  Missing: 0
-
-Output written to: /Users/runner/work/ios-core/ios-core/qaatlas-output
-  - report.json
-  - testplan.md
-  - risk.md
-  - pr-comment.md
-  - coverage-map.json
-Note: 3 file(s) excluded by filters
-Token savings: 27% (4039 tokens saved)
-{"level":30,"time":1769803299748,"tool":"qaatlas","formats":["report","testplan","risk","pr-comment","coverage-map"],"msg":"Rendering outputs"}
-{"level":30,"time":1769803299781,"tool":"qaatlas","file":"qaatlas-output/report.json","format":"report","msg":"Wrote output file"}
-{"level":30,"time":1769803299781,"tool":"qaatlas","file":"qaatlas-output/testplan.md","format":"testplan","msg":"Wrote output file"}
-{"level":30,"time":1769803299781,"tool":"qaatlas","file":"qaatlas-output/risk.md","format":"risk","msg":"Wrote output file"}
-{"level":30,"time":1769803299781,"tool":"qaatlas","file":"qaatlas-output/pr-comment.md","format":"pr-comment","msg":"Wrote output file"}
-{"level":30,"time":1769803299781,"tool":"qaatlas","file":"qaatlas-output/coverage-map.json","format":"coverage-map","msg":"Wrote output file"}
