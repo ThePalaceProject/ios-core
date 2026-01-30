@@ -177,7 +177,8 @@ jobs:
             }
             
             body += '\n---\n';
-            body += '*Powered by [QAAtlas v2.0.0](https://github.com/mauricecarrier7/qaatlas-dist) - AI-powered test coverage analysis*\n';
+            body += `📋 [View Full Report](${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}#artifacts) | `;
+            body += '*Powered by [QAAtlas v2.0.0](https://github.com/mauricecarrier7/qaatlas-dist)*\n';
             body += '*⚠️ AI recommendations are advisory only - review before implementing*';
             
             // Find/update existing comment
