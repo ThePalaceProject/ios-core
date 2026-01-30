@@ -67,13 +67,17 @@ jobs:
               echo "⚠️ Could not transition $TICKET (may already be in review or different workflow)"
             }
             
-            # Add PR link comment
-            ./scripts/jira-integration.sh comment "$TICKET" "🔍 *Pull Request Ready for Review*
+            # Add PR link comment (use heredoc to avoid YAML issues with special chars)
+            COMMENT=$(cat <<ENDCOMMENT
+          🔍 *Pull Request Ready for Review*
 
-*PR:* [#${PR_NUM} - ${PR_TITLE}|${PR_URL}]
-*Author:* ${AUTHOR}
+          *PR:* [#${PR_NUM} - ${PR_TITLE}|${PR_URL}]
+          *Author:* ${AUTHOR}
 
-Please review the changes." || {
+          Please review the changes.
+          ENDCOMMENT
+            )
+            ./scripts/jira-integration.sh comment "$TICKET" "$COMMENT" || {
               echo "⚠️ Failed to add comment to $TICKET"
             }
           done
