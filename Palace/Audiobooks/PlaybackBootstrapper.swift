@@ -117,31 +117,27 @@ public final class PlaybackBootstrapper {
   /// a book is opened will return .noActionableNowPlayingItem, which is correct.
   public func ensureInitialized() {
     guard !isInitialized else {
-      Log.info(#file, "🚀 PlaybackBootstrapper.ensureInitialized() - already initialized, skipping")
+      Log.debug(#file, "🚀 PlaybackBootstrapper.ensureInitialized() - already initialized")
       return
     }
     
     let startTime = CFAbsoluteTimeGetCurrent()
-    Log.info(#file, "🚀 PlaybackBootstrapper.ensureInitialized() - STARTING audio infrastructure setup")
+    Log.debug(#file, "🚀 PlaybackBootstrapper initializing audio infrastructure")
     
     // 1. Configure audio session for playback
-    Log.info(#file, "🚀 Step 1/3: Configuring AVAudioSession...")
     configureAudioSession()
     
     // 2. Set up remote command handlers
-    Log.info(#file, "🚀 Step 2/3: Setting up MPRemoteCommandCenter handlers...")
     setupRemoteCommands()
     
     // 3. Ensure AudiobookSessionManager exists
     // This guarantees it's subscribed to AudiobookEvents.managerCreated
-    Log.info(#file, "🚀 Step 3/3: Initializing AudiobookSessionManager...")
     _ = AudiobookSessionManager.shared
     
     isInitialized = true
     
     let elapsed = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
-    Log.info(#file, "🚀 PlaybackBootstrapper.ensureInitialized() - COMPLETE in \(String(format: "%.1f", elapsed))ms")
-    Log.info(#file, "🚀 Remote commands are now ready to receive input (manager binding happens when book opens)")
+    Log.info(#file, "🚀 PlaybackBootstrapper initialized in \(String(format: "%.1f", elapsed))ms")
   }
   
   /// Call when CarPlay connects to ensure audio session is active.
@@ -152,12 +148,11 @@ public final class PlaybackBootstrapper {
   /// - First call: Full initialization
   /// - Subsequent calls: Re-activates audio session and re-applies command config
   public func ensureInitializedForCarPlay() {
-    Log.info(#file, "🚀 PlaybackBootstrapper.ensureInitializedForCarPlay() - CarPlay scene connected")
+    Log.debug(#file, "🚀 PlaybackBootstrapper preparing for CarPlay")
     
     // CRITICAL: Load book registry from disk for CarPlay cold starts
     // Just accessing TPPBookRegistry.shared creates the singleton but doesn't load data
     // We must explicitly call load() to read books from disk
-    Log.info(#file, "🚀 Loading book registry from disk...")
     TPPBookRegistry.shared.load()
     
     // Full initialization if not done yet
@@ -169,7 +164,7 @@ public final class PlaybackBootstrapper {
     // Re-apply command configuration to ensure correctness after reconnect
     configureCommandSettings()
     
-    Log.info(#file, "🚀 PlaybackBootstrapper.ensureInitializedForCarPlay() - CarPlay ready")
+    Log.debug(#file, "🚀 PlaybackBootstrapper ready for CarPlay")
   }
   
   // MARK: - Audio Session
@@ -205,7 +200,7 @@ public final class PlaybackBootstrapper {
     do {
       if !session.isOtherAudioPlaying {
         try session.setActive(true)
-        Log.info(#file, "🔊 Audio session activated")
+        Log.debug(#file, "🔊 Audio session activated")
       }
     } catch {
       Log.error(#file, "🔊 Failed to activate audio session: \(error)")
@@ -215,8 +210,6 @@ public final class PlaybackBootstrapper {
   // MARK: - Remote Commands
   
   private func setupRemoteCommands() {
-    Log.info(#file, "🎮 Setting up MPRemoteCommandCenter handlers")
-    
     // Clear any existing targets first
     removeAllTargets()
     
@@ -226,7 +219,7 @@ public final class PlaybackBootstrapper {
     // Add our targets
     addCommandTargets()
     
-    Log.info(#file, "🎮 Remote command handlers registered")
+    Log.debug(#file, "🎮 Remote command handlers registered")
   }
   
   private func configureCommandSettings() {
@@ -253,31 +246,26 @@ public final class PlaybackBootstrapper {
   }
   
   private func addCommandTargets() {
-    Log.info(#file, "🎮 Adding remote command targets...")
-    
     // Play command
     let playTarget = commandCenter.playCommand.addTarget { [weak self] _ in
-      Log.info(#file, "🎮 ▶️ PLAY command received from remote")
+      Log.debug(#file, "🎮 ▶️ PLAY command received")
       return self?.handlePlay() ?? .noActionableNowPlayingItem
     }
     commandTargets.append(playTarget)
-    Log.debug(#file, "🎮 ✓ playCommand target registered")
     
     // Pause command
     let pauseTarget = commandCenter.pauseCommand.addTarget { [weak self] _ in
-      Log.info(#file, "🎮 ⏸️ PAUSE command received from remote")
+      Log.debug(#file, "🎮 ⏸️ PAUSE command received")
       return self?.handlePause() ?? .noActionableNowPlayingItem
     }
     commandTargets.append(pauseTarget)
-    Log.debug(#file, "🎮 ✓ pauseCommand target registered")
     
     // Toggle play/pause (headphone button, steering wheel)
     let toggleTarget = commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
-      Log.info(#file, "🎮 ⏯️ TOGGLE command received from remote")
+      Log.debug(#file, "🎮 ⏯️ TOGGLE command received")
       return self?.handleTogglePlayPause() ?? .noActionableNowPlayingItem
     }
     commandTargets.append(toggleTarget)
-    Log.debug(#file, "🎮 ✓ togglePlayPauseCommand target registered")
     
     // Skip forward (30 seconds)
     let skipForwardTarget = commandCenter.skipForwardCommand.addTarget { [weak self] event in
@@ -285,11 +273,10 @@ public final class PlaybackBootstrapper {
         Log.error(#file, "🎮 skipForward event cast failed")
         return .commandFailed
       }
-      Log.info(#file, "🎮 ⏩ SKIP FORWARD \(skipEvent.interval)s command received from remote")
+      Log.debug(#file, "🎮 ⏩ SKIP FORWARD \(skipEvent.interval)s")
       return self?.handleSkipForward(interval: skipEvent.interval) ?? .noActionableNowPlayingItem
     }
     commandTargets.append(skipForwardTarget)
-    Log.debug(#file, "🎮 ✓ skipForwardCommand target registered (30s interval)")
     
     // Skip backward (30 seconds)
     let skipBackwardTarget = commandCenter.skipBackwardCommand.addTarget { [weak self] event in
@@ -297,11 +284,10 @@ public final class PlaybackBootstrapper {
         Log.error(#file, "🎮 skipBackward event cast failed")
         return .commandFailed
       }
-      Log.info(#file, "🎮 ⏪ SKIP BACKWARD \(skipEvent.interval)s command received from remote")
+      Log.debug(#file, "🎮 ⏪ SKIP BACKWARD \(skipEvent.interval)s")
       return self?.handleSkipBackward(interval: skipEvent.interval) ?? .noActionableNowPlayingItem
     }
     commandTargets.append(skipBackwardTarget)
-    Log.debug(#file, "🎮 ✓ skipBackwardCommand target registered (30s interval)")
     
     // Change playback rate
     let rateTarget = commandCenter.changePlaybackRateCommand.addTarget { [weak self] event in
@@ -309,13 +295,12 @@ public final class PlaybackBootstrapper {
         Log.error(#file, "🎮 changePlaybackRate event cast failed")
         return .commandFailed
       }
-      Log.info(#file, "🎮 🔄 PLAYBACK RATE command received: \(rateEvent.playbackRate)x")
+      Log.debug(#file, "🎮 🔄 PLAYBACK RATE: \(rateEvent.playbackRate)x")
       return self?.handleChangePlaybackRate(rate: Float(rateEvent.playbackRate)) ?? .noActionableNowPlayingItem
     }
     commandTargets.append(rateTarget)
-    Log.debug(#file, "🎮 ✓ changePlaybackRateCommand target registered")
     
-    Log.info(#file, "🎮 All \(commandTargets.count) remote command targets registered successfully")
+    Log.debug(#file, "🎮 \(commandTargets.count) remote command targets registered")
   }
   
   private func removeAllTargets() {
@@ -342,95 +327,88 @@ public final class PlaybackBootstrapper {
   
   private func handlePlay() -> MPRemoteCommandHandlerStatus {
     let hasManager = AudiobookSessionManager.shared.manager != nil
-    let state = AudiobookSessionManager.shared.state
-    Log.info(#file, "🎮 handlePlay - manager: \(hasManager), state: \(state)")
+    Log.debug(#file, "🎮 handlePlay - manager: \(hasManager)")
     
     // When AudiobookManager is active, the toolkit's MediaControlPublisher handles
     // play/pause commands. We return .success to indicate we handled it (preventing error)
     // but don't actually play - the toolkit does the actual play.
     if hasManager {
-      Log.debug(#file, "🎮 Play - deferring to toolkit's MediaControlPublisher")
       return .success
     }
     
-    Log.warn(#file, "🎮 Play command received but no active manager - book may not be loaded yet")
+    Log.debug(#file, "🎮 Play command received but no active manager")
     return .noActionableNowPlayingItem
   }
   
   private func handlePause() -> MPRemoteCommandHandlerStatus {
     let hasManager = AudiobookSessionManager.shared.manager != nil
-    Log.info(#file, "🎮 handlePause - manager: \(hasManager)")
+    Log.debug(#file, "🎮 handlePause - manager: \(hasManager)")
     
     // When AudiobookManager is active, the toolkit's MediaControlPublisher handles
     // play/pause commands. We return .success but defer actual action to toolkit.
     if hasManager {
-      Log.debug(#file, "🎮 Pause - deferring to toolkit's MediaControlPublisher")
       return .success
     }
     
-    Log.warn(#file, "🎮 Pause command received but no active manager")
+    Log.debug(#file, "🎮 Pause command received but no active manager")
     return .noActionableNowPlayingItem
   }
   
   private func handleTogglePlayPause() -> MPRemoteCommandHandlerStatus {
     let hasManager = AudiobookSessionManager.shared.manager != nil
-    Log.info(#file, "🎮 handleTogglePlayPause - manager: \(hasManager)")
+    Log.debug(#file, "🎮 handleTogglePlayPause - manager: \(hasManager)")
     
     // When AudiobookManager is active, the toolkit's MediaControlPublisher handles
     // play/pause commands. We return .success but defer actual action to toolkit.
     if hasManager {
-      Log.debug(#file, "🎮 TogglePlayPause - deferring to toolkit's MediaControlPublisher")
       return .success
     }
     
-    Log.warn(#file, "🎮 TogglePlayPause command received but no active manager")
+    Log.debug(#file, "🎮 TogglePlayPause command received but no active manager")
     return .noActionableNowPlayingItem
   }
   
   private func handleSkipForward(interval: TimeInterval) -> MPRemoteCommandHandlerStatus {
     let hasManager = AudiobookSessionManager.shared.manager != nil
-    Log.info(#file, "🎮 handleSkipForward(\(interval)s) - manager: \(hasManager)")
+    Log.debug(#file, "🎮 handleSkipForward(\(interval)s) - manager: \(hasManager)")
     
     // When AudiobookManager is active, the toolkit's MediaControlPublisher handles
     // skip commands. We return .success to indicate we handled it (preventing error)
     // but don't actually skip - the toolkit does the actual skip.
     if hasManager {
-      Log.debug(#file, "🎮 SkipForward - deferring to toolkit's MediaControlPublisher")
       return .success
     }
     
-    Log.warn(#file, "🎮 SkipForward command received but no active manager")
+    Log.debug(#file, "🎮 SkipForward command received but no active manager")
     return .noActionableNowPlayingItem
   }
   
   private func handleSkipBackward(interval: TimeInterval) -> MPRemoteCommandHandlerStatus {
     let hasManager = AudiobookSessionManager.shared.manager != nil
-    Log.info(#file, "🎮 handleSkipBackward(\(interval)s) - manager: \(hasManager)")
+    Log.debug(#file, "🎮 handleSkipBackward(\(interval)s) - manager: \(hasManager)")
     
     // When AudiobookManager is active, the toolkit's MediaControlPublisher handles
     // skip commands. We return .success to indicate we handled it (preventing error)
     // but don't actually skip - the toolkit does the actual skip.
     if hasManager {
-      Log.debug(#file, "🎮 SkipBackward - deferring to toolkit's MediaControlPublisher")
       return .success
     }
     
-    Log.warn(#file, "🎮 SkipBackward command received but no active manager")
+    Log.debug(#file, "🎮 SkipBackward command received but no active manager")
     return .noActionableNowPlayingItem
   }
   
   private func handleChangePlaybackRate(rate: Float) -> MPRemoteCommandHandlerStatus {
     let hasManager = AudiobookSessionManager.shared.manager != nil
-    Log.info(#file, "🎮 handleChangePlaybackRate(\(rate)x) - manager: \(hasManager)")
+    Log.debug(#file, "🎮 handleChangePlaybackRate(\(rate)x) - manager: \(hasManager)")
     
     // When AudiobookManager is active, the toolkit's MediaControlPublisher handles
     // playback rate commands. We return .success but defer actual action to toolkit.
     if hasManager {
-      Log.debug(#file, "🎮 ChangePlaybackRate - deferring to toolkit's MediaControlPublisher")
       return .success
     }
     
-    Log.warn(#file, "🎮 ChangePlaybackRate command received but no active manager")
+    Log.debug(#file, "🎮 ChangePlaybackRate command received but no active manager")
     return .noActionableNowPlayingItem
   }
 }

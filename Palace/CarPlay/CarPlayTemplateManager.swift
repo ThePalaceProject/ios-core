@@ -564,9 +564,9 @@ final class CarPlayTemplateManager: NSObject {
     playerBridge.playbackStatePublisher
       .receive(on: DispatchQueue.main)
       .sink { [weak self] state in
-        Log.info(#file, "CarPlay: Received playback state: \(state)")
+        Log.debug(#file, "CarPlay: Received playback state: \(state)")
         if case .playing = state {
-          Log.info(#file, "CarPlay: Playback started - will switch to Now Playing")
+          Log.debug(#file, "CarPlay: Playback started - will switch to Now Playing")
           self?.switchToNowPlayingIfNeeded()
         }
       }
