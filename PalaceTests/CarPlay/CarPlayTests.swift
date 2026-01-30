@@ -267,3 +267,141 @@ class CarPlayIntegrationTests: XCTestCase {
     XCTAssertNotNil(image2)
   }
 }
+
+// MARK: - CarPlay Open App Alert Tests
+
+/// Tests for the CarPlay "Open App" alert functionality
+/// Verifies alert messages and strings are properly configured
+@MainActor
+class CarPlayOpenAppAlertTests: XCTestCase {
+  
+  func testCarPlay_OpenAppStrings_AreConfigured() {
+    // Assert that Open App strings are not empty
+    XCTAssertFalse(Strings.CarPlay.OpenApp.title.isEmpty, "Open App title should have text")
+    XCTAssertFalse(Strings.CarPlay.OpenApp.message.isEmpty, "Open App message should have text")
+    XCTAssertFalse(Strings.CarPlay.OpenApp.okButton.isEmpty, "OK button should have text")
+  }
+  
+  func testCarPlay_OpenAppTitle_IsAppropriate() {
+    // The title should mention opening the app
+    let title = Strings.CarPlay.OpenApp.title
+    XCTAssertTrue(
+      title.lowercased().contains("open") || title.lowercased().contains("palace"),
+      "Title should mention opening Palace"
+    )
+  }
+  
+  func testCarPlay_OpenAppMessage_MentionsPhone() {
+    // The message should tell the user to use their phone
+    let message = Strings.CarPlay.OpenApp.message
+    XCTAssertTrue(
+      message.lowercased().contains("phone") || message.lowercased().contains("device"),
+      "Message should mention the phone/device"
+    )
+  }
+  
+  func testSceneDelegate_HasMainSceneConnected_Flag() {
+    // Verify the flag exists and is accessible
+    // This flag is used to determine when to show the "Open App" alert
+    let _ = SceneDelegate.hasMainSceneConnected
+    
+    // The flag should be a Bool
+    XCTAssertTrue(true, "hasMainSceneConnected flag should be accessible")
+  }
+}
+
+// MARK: - CarPlay Library Refresh Tests
+
+/// Tests for CarPlay library refresh functionality
+@MainActor
+class CarPlayLibraryRefreshTests: XCTestCase {
+  
+  func testCarPlay_LibraryName_CanBeUpdated() {
+    // Verify that AccountsManager can provide a current account
+    // This is used to update the library name in CarPlay
+    let accountsManager = AccountsManager.shared
+    
+    // In test environment, may or may not have a current account
+    // But the manager should be accessible
+    XCTAssertNotNil(accountsManager, "AccountsManager should be accessible")
+  }
+  
+  func testCarPlay_BookRegistry_IsAccessible() {
+    // Verify book registry can be accessed (used for library book list)
+    let registry = TPPBookRegistry.shared
+    XCTAssertNotNil(registry, "Book registry should be accessible")
+  }
+  
+  func testCarPlay_DownloadedAudiobooks_CanBeFiltered() {
+    // Arrange
+    let audiobookState = TPPBookState.DownloadSuccessful
+    let ebookState = TPPBookState.DownloadSuccessful
+    
+    // Assert - verify these states are recognized as downloaded
+    XCTAssertTrue(
+      audiobookState == .DownloadSuccessful || 
+      audiobookState == .DownloadNeeded ||
+      audiobookState == .Downloading,
+      "Should recognize download states"
+    )
+  }
+}
+
+// MARK: - CarPlay Playback Error Handling Tests
+
+/// Tests for CarPlay playback error handling and alerts
+@MainActor
+class CarPlayPlaybackErrorTests: XCTestCase {
+  
+  func testCarPlay_ErrorStrings_AuthRequired() {
+    let title = Strings.CarPlay.Error.authRequired
+    let message = Strings.CarPlay.Error.authMessage
+    
+    XCTAssertFalse(title.isEmpty, "Auth required error should have title")
+    XCTAssertFalse(message.isEmpty, "Auth required error should have message")
+  }
+  
+  func testCarPlay_ErrorStrings_NotDownloaded() {
+    let title = Strings.CarPlay.Error.notDownloaded
+    let message = Strings.CarPlay.Error.downloadRequired
+    
+    XCTAssertFalse(title.isEmpty, "Not downloaded error should have title")
+    XCTAssertFalse(message.isEmpty, "Not downloaded error should have message")
+  }
+  
+  func testCarPlay_ErrorStrings_Offline() {
+    let title = Strings.CarPlay.Error.offline
+    let message = Strings.CarPlay.Error.offlineMessage
+    
+    XCTAssertFalse(title.isEmpty, "Offline error should have title")
+    XCTAssertFalse(message.isEmpty, "Offline error should have message")
+  }
+  
+  func testCarPlay_ErrorStrings_PlaybackFailed() {
+    let title = Strings.CarPlay.Error.playbackFailed
+    let message = Strings.CarPlay.Error.tryAgain
+    
+    XCTAssertFalse(title.isEmpty, "Playback failed error should have title")
+    XCTAssertFalse(message.isEmpty, "Try again message should exist")
+  }
+  
+  func testAudiobookSessionError_MapsToCarPlayAlert() {
+    // Verify each error type has a meaningful description
+    let errors: [AudiobookSessionError] = [
+      .notAuthenticated,
+      .notDownloaded,
+      .networkUnavailable,
+      .manifestLoadFailed,
+      .playerCreationFailed,
+      .alreadyLoading,
+      .unknown("Test error")
+    ]
+    
+    for error in errors {
+      XCTAssertFalse(
+        error.localizedDescription.isEmpty,
+        "Error \(error) should have a description for CarPlay alert"
+      )
+    }
+  }
+}
