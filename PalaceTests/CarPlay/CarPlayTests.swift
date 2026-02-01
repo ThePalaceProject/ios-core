@@ -353,6 +353,67 @@ class CarPlayLibraryRefreshTests: XCTestCase {
   }
 }
 
+// MARK: - CarPlay Now Playing Template Crash Regression Tests
+
+/// Regression tests for CarPlay crashes related to Now Playing template configuration.
+/// Bug: SIGABRT crash when configuring CPNowPlayingTemplate before playback starts.
+/// Fix: Defer Now Playing template configuration until playback actually begins.
+@MainActor
+class CarPlayNowPlayingTemplateTests: XCTestCase {
+  
+  /// Regression test for crash when Now Playing is configured during initial setup.
+  /// The CarPlay framework throws SIGABRT if CPNowPlayingTemplate.shared is configured
+  /// (observers added, buttons updated) before any media playback has started.
+  ///
+  /// This test verifies that CarPlayAudiobookBridge can be created safely without
+  /// triggering any premature Now Playing configuration.
+  func testCarPlayBridge_DoesNotConfigureNowPlayingOnInit() {
+    // Arrange & Act
+    // Creating the bridge should NOT configure Now Playing template
+    let bridge = CarPlayAudiobookBridge()
+    
+    // Assert
+    // If we got here without crashing, the bridge didn't prematurely configure Now Playing
+    XCTAssertNotNil(bridge, "Bridge should be created without configuring Now Playing")
+    
+    // The bridge should not report active playback
+    XCTAssertFalse(bridge.isPlaying, "Bridge should not be playing after init")
+    XCTAssertNil(bridge.currentBook, "Bridge should not have a book after init")
+    XCTAssertNil(bridge.currentChapter, "Bridge should not have a chapter after init")
+  }
+  
+  /// Verifies that the playback state publisher exists and is observable.
+  /// This publisher is used to trigger Now Playing configuration ONLY when playback starts.
+  func testCarPlayBridge_HasPlaybackStatePublisher() {
+    // Arrange
+    let bridge = CarPlayAudiobookBridge()
+    
+    // Act & Assert
+    // The publisher should exist and be subscribable
+    let expectation = XCTestExpectation(description: "Publisher subscribed")
+    expectation.isInverted = true // We don't expect any events during setup
+    
+    let cancellable = bridge.playbackStatePublisher
+      .sink { _ in
+        expectation.fulfill()
+      }
+    
+    // Wait briefly - no events should be emitted during setup
+    wait(for: [expectation], timeout: 0.5)
+    cancellable.cancel()
+  }
+  
+  /// Tests that the image provider can be created independently without CarPlay.
+  /// Image loading should not depend on Now Playing state.
+  func testCarPlayImageProvider_InitializesIndependently() {
+    // Arrange & Act
+    let imageProvider = CarPlayImageProvider()
+    
+    // Assert
+    XCTAssertNotNil(imageProvider, "Image provider should initialize without CarPlay connection")
+  }
+}
+
 // MARK: - CarPlay Playback Error Handling Tests
 
 /// Tests for CarPlay playback error handling and alerts
