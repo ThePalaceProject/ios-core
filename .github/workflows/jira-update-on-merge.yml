@@ -35,11 +35,11 @@ jobs:
           # Combine all sources
           ALL_TEXT="$PR_TITLE $PR_BODY $PR_BRANCH"
           
-          # Extract unique PP-XXXX tickets
-          TICKETS=$(echo "$ALL_TEXT" | grep -oE 'PP-[0-9]+' | sort -u | tr '\n' ' ')
+          # Extract unique PP-XXXX tickets (silently skip if none found)
+          TICKETS=$(echo "$ALL_TEXT" | grep -oE 'PP-[0-9]+' | sort -u | tr '\n' ' ' || true)
           
           if [ -z "$TICKETS" ]; then
-            echo "No Jira tickets found in PR"
+            # No tickets found - this is fine, not all PRs have Jira tickets
             echo "found=false" >> $GITHUB_OUTPUT
           else
             echo "Found tickets: $TICKETS"
@@ -88,15 +88,12 @@ jobs:
           rm -f .jira-config
           
       - name: Summary
+        if: steps.tickets.outputs.found == 'true'
         run: |
           echo "## 🎫 Jira Update Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          if [ "${{ steps.tickets.outputs.found }}" == "true" ]; then
-            echo "**Tickets Updated:** ${{ steps.tickets.outputs.list }}" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "**Build:** ${{ steps.build.outputs.number }}" >> $GITHUB_STEP_SUMMARY
-            echo "**PR:** #${{ github.event.pull_request.number }}" >> $GITHUB_STEP_SUMMARY
-            echo "**Branch:** ${{ github.event.pull_request.base.ref }}" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "No Jira tickets found in this PR." >> $GITHUB_STEP_SUMMARY
-          fi
+          echo "**Tickets Updated:** ${{ steps.tickets.outputs.list }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Build:** ${{ steps.build.outputs.number }}" >> $GITHUB_STEP_SUMMARY
+          echo "**PR:** #${{ github.event.pull_request.number }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** ${{ github.event.pull_request.base.ref }}" >> $GITHUB_STEP_SUMMARY

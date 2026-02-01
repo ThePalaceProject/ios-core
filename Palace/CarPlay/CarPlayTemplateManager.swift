@@ -41,6 +41,7 @@ final class CarPlayTemplateManager: NSObject {
   private var isLoadingBook = false
   private var lastSelectedBookId: String?
   private var lastSelectionTime: Date?
+  private var hasConfiguredNowPlaying = false
   
   // MARK: - Initialization
   
@@ -55,13 +56,24 @@ final class CarPlayTemplateManager: NSObject {
     setupPlayerBridgeBindings()
   }
   
+  deinit {
+    // Remove ourselves as observer from the Now Playing template to prevent crashes
+    // during CarPlay disconnect/reconnect cycles
+    if hasConfiguredNowPlaying, let nowPlayingTemplate = nowPlayingTemplate {
+      nowPlayingTemplate.remove(self)
+      Log.debug(#file, "CarPlay: Removed Now Playing observer during deinit")
+    }
+  }
+  
   // MARK: - Public Methods
   
   func setupRootTemplate() {
     libraryTemplate = createLibraryTemplate()
-    nowPlayingTemplate = CPNowPlayingTemplate.shared
     
-    configureNowPlayingTemplate()
+    // IMPORTANT: Do NOT access or configure CPNowPlayingTemplate.shared here!
+    // The CarPlay framework can crash (SIGABRT) if we configure the Now Playing
+    // template before playback has started. We defer configuration to when
+    // playback actually begins via configureNowPlayingTemplateIfNeeded().
     
     // Note: CPNowPlayingTemplate cannot be added to tab bar - it's shown automatically
     // by the system when audio is playing. We only set up the library as root.
@@ -366,8 +378,23 @@ final class CarPlayTemplateManager: NSObject {
   
   // MARK: - Now Playing Template
   
-  private func configureNowPlayingTemplate() {
-    guard let nowPlayingTemplate = nowPlayingTemplate else { return }
+  /// Configures the Now Playing template if not already configured.
+  /// MUST be called only after playback has begun, not during initial setup.
+  /// Calling this during setup (before playback) can cause CarPlay crashes.
+  private func configureNowPlayingTemplateIfNeeded() {
+    guard !hasConfiguredNowPlaying else {
+      Log.debug(#file, "CarPlay: Now Playing template already configured")
+      return
+    }
+    
+    // Get the shared Now Playing template - only safe to access during active playback
+    nowPlayingTemplate = CPNowPlayingTemplate.shared
+    guard let nowPlayingTemplate = nowPlayingTemplate else {
+      Log.error(#file, "CarPlay: Failed to get shared Now Playing template")
+      return
+    }
+    
+    Log.info(#file, "CarPlay: Configuring Now Playing template (playback active)")
     
     nowPlayingTemplate.tabTitle = Strings.CarPlay.nowPlaying
     nowPlayingTemplate.tabImage = UIImage(systemName: "play.circle")
@@ -384,6 +411,7 @@ final class CarPlayTemplateManager: NSObject {
     guard let tocImage = UIImage(systemName: "list.bullet") else {
       Log.warn(#file, "CarPlay: Could not load list.bullet image")
       nowPlayingTemplate.updateNowPlayingButtons([rateButton])
+      hasConfiguredNowPlaying = true
       return
     }
     let tocButton = CPNowPlayingImageButton(image: tocImage) { [weak self] _ in
@@ -395,10 +423,14 @@ final class CarPlayTemplateManager: NSObject {
     
     // Disable the system Up Next button since we're using a custom TOC button
     nowPlayingTemplate.isUpNextButtonEnabled = false
+    
+    hasConfiguredNowPlaying = true
+    Log.info(#file, "CarPlay: Now Playing template configured successfully")
   }
   
   private func updateChapterList() {
     // No longer needed since we use a custom button, but keep for potential future use
+    // Note: Don't configure Now Playing here - this is just a state update notification
     guard let chapters = playerBridge.currentChapters, !chapters.isEmpty else {
       return
     }
@@ -408,6 +440,9 @@ final class CarPlayTemplateManager: NSObject {
   // MARK: - Chapter List
   
   private func showChapterList() {
+    // Ensure Now Playing is configured if we're showing chapters (playback must be active)
+    configureNowPlayingTemplateIfNeeded()
+    
     guard let chapters = playerBridge.currentChapters, !chapters.isEmpty else {
       Log.warn(#file, "CarPlay: No chapters available to display")
       return
@@ -472,6 +507,10 @@ final class CarPlayTemplateManager: NSObject {
   }
   
   private func switchToNowPlaying() {
+    // Configure the Now Playing template now that playback is active
+    // This MUST be called only during active playback, not during setup
+    configureNowPlayingTemplateIfNeeded()
+    
     // CPNowPlayingTemplate is automatically shown by the system when playback starts.
     // We can push it onto the navigation stack if needed, but typically the system
     // handles showing it via the Now Playing button in CarPlay.
