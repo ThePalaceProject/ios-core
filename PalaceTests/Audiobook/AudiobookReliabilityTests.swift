@@ -143,18 +143,24 @@ final class DownloadWatchdogTests: XCTestCase {
     XCTAssertEqual(config.checkInterval, 10.0)
   }
   
-  func testStartAndStop() {
+  func testStartAndStop() async {
     // Given
     let watchdog = DownloadWatchdog()
     
     // When
     watchdog.start()
     
+    // Allow async task to initialize
+    try? await Task.sleep(nanoseconds: 50_000_000) // 50ms
+    
     // Then
     XCTAssertTrue(watchdog.status.isEmpty) // No downloads monitored yet
     
     // Cleanup
     watchdog.stop()
+    
+    // Allow cleanup to complete
+    try? await Task.sleep(nanoseconds: 50_000_000) // 50ms
   }
 }
 
