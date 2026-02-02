@@ -96,25 +96,45 @@ log_info "Validating git refs..."
 
 cd "$REPO_ROOT"
 
+# In CI, refs may need to be fetched or resolved differently
 if ! git rev-parse --verify "${BASE_REF}" >/dev/null 2>&1; then
     log_warn "Base ref '${BASE_REF}' not found locally"
-    log_info "Attempting to fetch origin/${BASE_REF}..."
-    git fetch origin "${BASE_REF}" 2>/dev/null || {
-        log_warn "Could not fetch ${BASE_REF}, using origin/main as fallback"
-        BASE_REF="origin/main"
-    }
+
+    # Try origin/BASE_REF first
+    if git rev-parse --verify "origin/${BASE_REF}" >/dev/null 2>&1; then
+        BASE_REF="origin/${BASE_REF}"
+        log_info "Using origin/${BASE_REF}"
+    else
+        log_info "Attempting to fetch ${BASE_REF}..."
+        git fetch origin "${BASE_REF}:refs/remotes/origin/${BASE_REF}" 2>/dev/null || true
+
+        if git rev-parse --verify "origin/${BASE_REF}" >/dev/null 2>&1; then
+            BASE_REF="origin/${BASE_REF}"
+            log_info "Fetched and using origin/${BASE_REF}"
+        else
+            log_warn "Could not resolve ${BASE_REF}, using origin/main as fallback"
+            git fetch origin main:refs/remotes/origin/main 2>/dev/null || true
+            BASE_REF="origin/main"
+        fi
+    fi
 fi
 
 if ! git rev-parse --verify "${HEAD_REF}" >/dev/null 2>&1; then
-    log_warn "Head ref '${HEAD_REF}' not found"
+    log_warn "Head ref '${HEAD_REF}' not found, using HEAD"
     HEAD_REF="HEAD"
 fi
 
 DIFF_RANGE="${BASE_REF}..${HEAD_REF}"
 log_info "Diff range: ${DIFF_RANGE}"
 
-# Show changed files
-CHANGED_FILES=$(git diff --name-only "${DIFF_RANGE}" 2>/dev/null | wc -l | tr -d ' ')
+# Verify diff range is valid before proceeding
+if ! git rev-parse "${BASE_REF}" >/dev/null 2>&1; then
+    log_warn "Cannot resolve base ref, skipping diff analysis"
+    CHANGED_FILES=0
+else
+    # Show changed files
+    CHANGED_FILES=$(git diff --name-only "${DIFF_RANGE}" 2>/dev/null | wc -l | tr -d ' ' || echo "0")
+fi
 log_info "Changed files: ${CHANGED_FILES}"
 echo ""
 
