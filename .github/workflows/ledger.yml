@@ -164,17 +164,19 @@ jobs:
             REACH_ISSUES=$(jq -r '.reach.deadCodeCount // 0' "$OBSERVE_DIR/summary.json")
             echo "reach_issues=$REACH_ISSUES" >> $GITHUB_OUTPUT
             
-            # Accessibility metrics (v0.8.3 uses .a11y)
-            A11Y_TOTAL=$(jq -r '.a11y.totalCount // 0' "$OBSERVE_DIR/summary.json")
-            A11Y_BLOCKER=$(jq -r '.a11y.blockerCount // 0' "$OBSERVE_DIR/summary.json")
-            A11Y_MAJOR=$(jq -r '.a11y.majorCount // 0' "$OBSERVE_DIR/summary.json")
-            A11Y_MINOR=$(jq -r '.a11y.minorCount // 0' "$OBSERVE_DIR/summary.json")
-            A11Y_INFO=$(jq -r '.a11y.infoCount // 0' "$OBSERVE_DIR/summary.json")
+            # Accessibility metrics (v0.8.3 uses .a11y with findings array)
+            # Count from findings array since totalCount may not exist
+            A11Y_TOTAL=$(jq -r '.a11y.findings | length // 0' "$OBSERVE_DIR/summary.json")
+            A11Y_BLOCKER=$(jq -r '[.a11y.findings[] | select(.severity == "blocker")] | length // 0' "$OBSERVE_DIR/summary.json")
+            A11Y_MAJOR=$(jq -r '[.a11y.findings[] | select(.severity == "major")] | length // 0' "$OBSERVE_DIR/summary.json")
+            A11Y_MINOR=$(jq -r '[.a11y.findings[] | select(.severity == "minor")] | length // 0' "$OBSERVE_DIR/summary.json")
+            A11Y_INFO=$(jq -r '[.a11y.findings[] | select(.severity == "info")] | length // 0' "$OBSERVE_DIR/summary.json")
             echo "a11y_issues=$A11Y_TOTAL" >> $GITHUB_OUTPUT
             echo "a11y_blocker=$A11Y_BLOCKER" >> $GITHUB_OUTPUT
             echo "a11y_major=$A11Y_MAJOR" >> $GITHUB_OUTPUT
             echo "a11y_minor=$A11Y_MINOR" >> $GITHUB_OUTPUT
             echo "a11y_info=$A11Y_INFO" >> $GITHUB_OUTPUT
+            echo "🔍 Debug: A11Y counts: total=$A11Y_TOTAL blocker=$A11Y_BLOCKER major=$A11Y_MAJOR minor=$A11Y_MINOR info=$A11Y_INFO"
             
             # QAAtlas metrics - try summary.json first, fallback to gap-report.json
             QA_COVERAGE=""
