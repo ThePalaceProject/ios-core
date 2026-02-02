@@ -15,6 +15,7 @@ analysis:
     - arch     # Architecture patterns and dependencies
     - reach    # Code reachability and dead code detection
     - a11y     # Accessibility compliance
+    - qa       # AI-powered test coverage analysis (via QAAtlas)
 
   # Root directories for analysis
   roots:
@@ -125,8 +126,7 @@ domains:
     # Check contrast ratios (requires color info)
     check_contrast: false
 
-# QA domain (optional, requires QAAtlas)
-# Uncomment to enable AI-powered quality analysis
-# qa:
-#   enabled: false
-#   config_file: qaatlas.yml
+# QA domain (uses QAAtlas for AI-powered test coverage analysis)
+qa:
+  enabled: true
+  config_file: qaatlas.yml
