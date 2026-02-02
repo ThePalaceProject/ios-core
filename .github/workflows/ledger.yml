@@ -69,8 +69,12 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          # v0.8.3: observe command handles init automatically
-          # AccessLint & QAAtlas are bundled (no separate install needed)
+          # Initialize ledger first (required by observe)
+          echo "Initializing ledger..."
+          ./tools/bin/ledger init --platform ios --no-interactive
+          
+          # Run ledger observe for CI-friendly JSON output
+          # v0.8.3: AccessLint & QAAtlas are bundled
           echo "Running ledger observe (CI mode)..."
           ./tools/bin/ledger observe \
             --domains arch,reach,a11y,qa \
