@@ -437,6 +437,64 @@ jobs:
           path: accesslint-reports/
           retention-days: 14
           if-no-files-found: ignore
+      
+      - name: AccessLint Dashboard Summary
+        run: |
+          TOTAL="${{ steps.analyze.outputs.findings-count }}"
+          BLOCKER="${{ steps.analyze.outputs.blocker-count }}"
+          MAJOR="${{ steps.analyze.outputs.major-count }}"
+          MINOR="${{ steps.analyze.outputs.minor-count }}"
+          INFO="${{ steps.analyze.outputs.info-count }}"
+          
+          echo "## ♿ AccessLint Accessibility Report (WCAG AA)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          CRITICAL=$((BLOCKER + MAJOR))
+          if [ "$CRITICAL" -eq 0 ]; then
+            echo "### ✅ No Critical Accessibility Issues" >> $GITHUB_STEP_SUMMARY
+          elif [ "$BLOCKER" -gt 0 ]; then
+            echo "### 🚨 $BLOCKER Blocker Issue(s) Found" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ⚠️ $MAJOR Major Issue(s) Found" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "| Severity | Count | WCAG Impact |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|-------------|" >> $GITHUB_STEP_SUMMARY
+          if [ "$BLOCKER" -gt 0 ]; then
+            echo "| 🚨 Blocker | $BLOCKER | Critical barrier |" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "| 🔴 Major | $MAJOR | Significant barrier |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🟡 Minor | $MINOR | Usability issue |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🔵 Info | $INFO | Best practice |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Total** | **$TOTAL** | |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Top issues
+          if [ -f "./accesslint-reports/findings.json" ] && [ "$TOTAL" -gt 0 ]; then
+            echo "<details>" >> $GITHUB_STEP_SUMMARY
+            echo "<summary><strong>📋 Top Issues</strong></summary>" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            python3 -c "
+          import json
+          findings = json.load(open('./accesslint-reports/findings.json'))
+          severity_order = {'blocker': 0, 'major': 1, 'minor': 2, 'info': 3}
+          sorted_findings = sorted(findings, key=lambda x: severity_order.get(x.get('severity', 'info'), 4))
+          icons = {'blocker': '🚨', 'major': '🔴', 'minor': '🟡', 'info': '🔵'}
+          for f in sorted_findings[:10]:
+              icon = icons.get(f.get('severity', 'info'), '⚪')
+              file = f.get('location', {}).get('file', '').split('/')[-1]
+              line = f.get('location', {}).get('start_line', '?')
+              title = f.get('title', 'Unknown issue')
+              print(f'- {icon} **{title}** - \`{file}:{line}\`')
+          " >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "Unable to parse findings" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "</details>" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "*Powered by [AccessLint v1.1.0](https://github.com/mauricecarrier7/AccessLint-Distribution) • [Download Full Report](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}#artifacts)*" >> $GITHUB_STEP_SUMMARY
           
       - name: Post PR comment
         if: github.event_name == 'pull_request'
