@@ -340,13 +340,28 @@ cat > "${DOGFOOD_DIR}/scorecard.md" << EOF
 ## Test Metrics
 
 $(if [[ -f "${DOGFOOD_DIR}/test-results/test-output.log" ]]; then
-    # Extract test counts if available
-    TESTS_RUN=$(grep -oE "Executed [0-9]+ tests?" "${DOGFOOD_DIR}/test-results/test-output.log" | grep -oE "[0-9]+" | head -1 || echo "N/A")
-    TESTS_FAILED=$(grep -oE "[0-9]+ failure" "${DOGFOOD_DIR}/test-results/test-output.log" | grep -oE "^[0-9]+" || echo "0")
+    # Extract test counts by counting individual test results
+    # xcodebuild parallel testing outputs "Test case '...' passed/failed"
+    TESTS_PASSED=$(grep -c "passed on '" "${DOGFOOD_DIR}/test-results/test-output.log" 2>/dev/null | tr -d '[:space:]' || echo "0")
+    TESTS_FAILED=$(grep -c "failed on '" "${DOGFOOD_DIR}/test-results/test-output.log" 2>/dev/null | tr -d '[:space:]' || echo "0")
+
+    # Ensure numeric values
+    [[ -z "$TESTS_PASSED" ]] && TESTS_PASSED=0
+    [[ -z "$TESTS_FAILED" ]] && TESTS_FAILED=0
+    TESTS_RUN=$((TESTS_PASSED + TESTS_FAILED))
+
+    # Fallback to "Executed N tests" pattern if available
+    if [[ "$TESTS_RUN" -eq 0 ]]; then
+        TESTS_RUN=$(grep -oE "Executed [0-9]+ test" "${DOGFOOD_DIR}/test-results/test-output.log" | grep -oE "[0-9]+" | head -1 | tr -d '[:space:]' || echo "N/A")
+        TESTS_FAILED=$(grep -oE "[0-9]+ failure" "${DOGFOOD_DIR}/test-results/test-output.log" | grep -oE "^[0-9]+" | head -1 | tr -d '[:space:]' || echo "0")
+    fi
+
     echo "| Tests Run | ${TESTS_RUN} |"
+    echo "| Tests Passed | ${TESTS_PASSED} |"
     echo "| Tests Failed | ${TESTS_FAILED} |"
 else
     echo "| Tests Run | N/A |"
+    echo "| Tests Passed | N/A |"
     echo "| Tests Failed | N/A |"
 fi)
 
