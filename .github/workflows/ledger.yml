@@ -1,0 +1,139 @@
+# Ledger Analysis for Palace iOS
+#
+# This workflow runs ledger diff analysis on PRs to detect
+# architecture, reachability, and accessibility issues.
+#
+# Currently non-blocking (continue-on-error: true).
+# See comments below for enabling gating.
+
+name: Ledger Analysis
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+    # Only run on code changes, not docs-only
+    paths:
+      - '**.swift'
+      - '**.m'
+      - '**.h'
+      - 'tools/ledger/**'
+
+  # Allow manual trigger for testing
+  workflow_dispatch:
+    inputs:
+      full_analysis:
+        description: 'Run full analysis instead of diff'
+        required: false
+        default: 'false'
+        type: boolean
+
+# Cancel in-progress runs for same PR
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Ledger Analysis
+    runs-on: macos-latest
+    # Non-blocking for initial dogfood cycle
+    continue-on-error: true
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # Fetch full history for diff analysis
+          fetch-depth: 0
+
+      - name: Setup environment
+        run: |
+          # Ensure jq is available (usually pre-installed on macos-latest)
+          which jq || brew install jq
+          
+          # Create directories
+          mkdir -p tools/bin
+          mkdir -p artifacts/ledger
+
+      - name: Install ledger
+        run: |
+          chmod +x ./tools/ledger/install_ledger.sh
+          ./tools/ledger/install_ledger.sh
+
+      - name: Run analysis
+        env:
+          BASE_REF: ${{ github.base_ref || 'main' }}
+          HEAD_REF: ${{ github.head_ref || 'HEAD' }}
+        run: |
+          # Make scripts executable
+          chmod +x ./tools/ledger/run_*.sh
+          
+          if [[ "${{ inputs.full_analysis }}" == "true" ]]; then
+            echo "Running full analysis..."
+            ./tools/ledger/run_full.sh
+          else
+            echo "Running diff analysis: ${BASE_REF}..${HEAD_REF}"
+            ./tools/ledger/run_diff.sh
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ledger-analysis
+          path: artifacts/ledger/
+          retention-days: 14
+
+      - name: Post summary
+        if: always()
+        run: |
+          echo "## Ledger Analysis Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Show summary if exists
+          if [[ -f "artifacts/ledger/logs/diff-summary.md" ]]; then
+            cat artifacts/ledger/logs/diff-summary.md >> $GITHUB_STEP_SUMMARY
+          elif [[ -f "artifacts/ledger/logs/run-summary.md" ]]; then
+            cat artifacts/ledger/logs/run-summary.md >> $GITHUB_STEP_SUMMARY
+          else
+            echo "No summary generated. Check workflow logs." >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "Artifacts available in the Actions tab." >> $GITHUB_STEP_SUMMARY
+
+# ---------------------------------------------------------------------
+# GATING CONFIGURATION (uncomment to enable blocking checks)
+# ---------------------------------------------------------------------
+#
+# To make ledger analysis a required check:
+#
+# 1. Remove `continue-on-error: true` from the job
+#
+# 2. Add a verification step that fails on issues:
+#
+#     - name: Check for blocking issues
+#       run: |
+#         # Example: Fail if critical arch violations found
+#         if grep -r "CRITICAL" artifacts/ledger/diff/ 2>/dev/null; then
+#           echo "::error::Critical architecture violations found"
+#           exit 1
+#         fi
+#
+# 3. Configure branch protection in GitHub:
+#    - Settings > Branches > Branch protection rules
+#    - Add rule for 'main'
+#    - Enable "Require status checks to pass"
+#    - Add "Ledger Analysis" to required checks
+#
+# 4. Optionally add spec verification:
+#
+#     - name: Verify against specs
+#       run: |
+#         if [[ -d "artifacts/ledger/spec" ]]; then
+#           ./tools/ledger/run_verify.sh
+#         fi
+# ---------------------------------------------------------------------

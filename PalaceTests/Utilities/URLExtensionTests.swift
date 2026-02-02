@@ -145,11 +145,15 @@ final class URLValidationTests: XCTestCase {
   }
   
   func testInvalidURL_handledByURLInit() {
-    // URL(string:) may percent-encode some invalid characters
-    // Only truly malformed URLs return nil
+    // URL(string:) returns nil for strings without a scheme
+    // "not a valid url" has no scheme so it's interpreted as a relative URL,
+    // which returns nil when there's no base URL
     let url = URL(string: "not a valid url")
-    // This actually creates a URL with percent encoding
-    XCTAssertNotNil(url, "URL(string:) percent-encodes spaces")
+    XCTAssertNil(url, "URL without scheme returns nil")
+
+    // A truly invalid URL (e.g., with invalid characters) also returns nil
+    let invalidUrl = URL(string: "https://example.com/path\nwith\nnewlines")
+    XCTAssertNil(invalidUrl, "URL with newlines returns nil")
   }
   
   func testEmptyString_returnsNil() {
@@ -157,10 +161,16 @@ final class URLValidationTests: XCTestCase {
     XCTAssertNil(url)
   }
   
-  func testURLWithSpaces_getsPercentEncoded() {
-    let url = URL(string: "https://example.com/path with spaces")
-    // URL(string:) percent-encodes spaces automatically
-    XCTAssertNotNil(url, "URL(string:) percent-encodes spaces")
+  func testURLWithSpaces_requiresManualEncoding() {
+    // URL(string:) does NOT auto-encode spaces - returns nil
+    let urlWithSpaces = URL(string: "https://example.com/path with spaces")
+    XCTAssertNil(urlWithSpaces, "URL(string:) does not auto-encode spaces in path")
+
+    // To create a URL with spaces, you must percent-encode first
+    let encodedPath = "path with spaces".addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)!
+    let validUrl = URL(string: "https://example.com/\(encodedPath)")
+    XCTAssertNotNil(validUrl, "Manually encoded URL should work")
+    XCTAssertTrue(validUrl!.absoluteString.contains("%20"))
   }
   
   func testFileURL_alwaysValid() {

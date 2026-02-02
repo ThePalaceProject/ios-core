@@ -1,0 +1,113 @@
+# CodeAtlas Ledger Configuration for Palace iOS
+# See: https://github.com/mauricecarrier7/CodeAtlas
+
+version: "1"
+
+# Project identification
+project:
+  name: "Palace iOS"
+  description: "The Palace Project iOS e-reader application"
+
+# Analysis configuration
+analysis:
+  # Default domains to analyze
+  domains:
+    - arch     # Architecture patterns and dependencies
+    - reach    # Code reachability and dead code detection
+    - a11y     # Accessibility compliance
+
+  # Root directories for analysis
+  roots:
+    - Palace
+    - PalaceTests
+
+  # Analysis mode: auto, strict, relaxed
+  mode: auto
+
+# File patterns
+include:
+  # Swift source files
+  - "**/*.swift"
+  # Objective-C files (legacy code)
+  - "**/*.m"
+  - "**/*.h"
+  # Configuration
+  - "**/*.plist"
+  - "**/*.xcconfig"
+
+exclude:
+  # Build artifacts
+  - "**/DerivedData/**"
+  - "**/build/**"
+  - "**/Build/**"
+  
+  # Dependencies (managed externally)
+  - "**/Carthage/**"
+  - "**/Pods/**"
+  - "**/.build/**"
+  
+  # Package caches
+  - "**/SourcePackages/**"
+  
+  # Generated code
+  - "**/Generated/**"
+  - "**/*.generated.swift"
+  
+  # Secrets (should not be committed anyway)
+  - "**/APIKeys.swift"
+  - "**/TPPSecrets.swift"
+  
+  # Submodules (analyzed separately)
+  - "ios-audiobooktoolkit/**"
+  - "ios-tenprintcover/**"
+  - "adept-ios/**"
+  
+  # Test fixtures
+  - "**/Fixtures/**"
+  - "**/TestData/**"
+  
+  # External SDKs
+  - "readium-sdk/**"
+  - "adobe-rmsdk/**"
+
+# Output configuration
+output:
+  # Default format for reports
+  format: md
+  
+  # Include timestamps in reports
+  timestamps: true
+  
+  # Verbosity level: quiet, normal, verbose
+  verbosity: normal
+
+# Domain-specific settings
+domains:
+  arch:
+    # Track module boundaries
+    track_modules: true
+    # Detect circular dependencies
+    detect_cycles: true
+    
+  reach:
+    # Entry points for reachability analysis
+    entry_points:
+      - "Palace/AppDelegate.swift"
+      - "Palace/SceneDelegate.swift"
+    # Include test code in reachability
+    include_tests: false
+    
+  a11y:
+    # Accessibility standards to check
+    standards:
+      - WCAG21-AA
+    # Check for missing labels
+    check_labels: true
+    # Check contrast ratios (requires color info)
+    check_contrast: false
+
+# QA domain (optional, requires QAAtlas)
+# Uncomment to enable AI-powered quality analysis
+# qa:
+#   enabled: false
+#   config_file: qaatlas.yml

@@ -70,3 +70,12 @@ accesslint-reports/
 # QAAtlas output (generated files)
 qaatlas-output/
 qaatlas-v2-report/
+
+# Ledger artifacts (generated files)
+artifacts/ledger/
+
+# Tools binaries (downloaded, not committed)
+tools/bin/
+
+# Dogfood reports (generated during validation)
+reports/dogfood/
