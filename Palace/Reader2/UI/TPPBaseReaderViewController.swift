@@ -44,6 +44,9 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   private var isShowingSample: Bool = false
   private var initialLocation: Locator?
   private var subscriptions: Set<AnyCancellable> = []
+  
+  // Keyboard navigation handler for PP-3594 accessibility support
+  private var keyboardNavigationHandler: KeyboardNavigationHandler?
   private var currentLocationIsBookmarked: Bool {
     bookmarksBusinessLogic.currentLocation(in: navigator) != nil
   }
@@ -197,6 +200,9 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
         await navigator.go(to: initialLocation)
       }
     }
+    
+    // Initialize keyboard navigation handler (PP-3594)
+    keyboardNavigationHandler = KeyboardNavigationHandler(navigable: self)
   }
 
   private func setupStackView() {
@@ -598,6 +604,42 @@ extension TPPBaseReaderViewController: VisualNavigatorDelegate {
         toggleNavigationBar()
       }
     }
+  }
+  
+  /// PP-3594: Handle keyboard events for accessibility
+  func navigator(_ navigator: VisualNavigator, didPressKey event: KeyEvent) {
+    guard let handler = keyboardNavigationHandler else { return }
+    Task {
+      await handler.handleKeyEvent(event)
+    }
+  }
+}
+
+//------------------------------------------------------------------------------
+// MARK: - KeyboardNavigable
+
+extension TPPBaseReaderViewController: KeyboardNavigable {
+  
+  var isToolbarHidden: Bool {
+    navigationBarHidden
+  }
+  
+  func toggleToolbar() {
+    toggleNavigationBar()
+  }
+  
+  func navigateLeft() async -> Bool {
+    guard let visualNavigator = navigator as? VisualNavigator else { return false }
+    return await visualNavigator.goLeft(options: NavigatorGoOptions(animated: false))
+  }
+  
+  func navigateRight() async -> Bool {
+    guard let visualNavigator = navigator as? VisualNavigator else { return false }
+    return await visualNavigator.goRight(options: NavigatorGoOptions(animated: false))
+  }
+  
+  func navigateForward() async -> Bool {
+    return await navigator.goForward(options: NavigatorGoOptions(animated: false))
   }
 }
 
