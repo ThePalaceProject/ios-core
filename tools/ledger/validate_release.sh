@@ -337,41 +337,70 @@ cat > "${DOGFOOD_DIR}/scorecard.md" << EOF
 | Ledger | $(if [[ -x "$LEDGER_BIN" ]]; then echo "PASS"; else echo "N/A"; fi) |
 | Overall | $(if [[ "$VALIDATION_PASSED" == "true" ]]; then echo "PASS"; else echo "FAIL"; fi) |
 
-## Test Metrics
+## Test Metrics (Palace Only)
 
 $(if [[ -f "${DOGFOOD_DIR}/test-results/test-output.log" ]]; then
     # Extract test counts by counting individual test results
     # xcodebuild parallel testing outputs "Test case '...' passed/failed"
-    TESTS_PASSED=$(grep -c "passed on '" "${DOGFOOD_DIR}/test-results/test-output.log" 2>/dev/null | tr -d '[:space:]' || echo "0")
-    TESTS_FAILED=$(grep -c "failed on '" "${DOGFOOD_DIR}/test-results/test-output.log" 2>/dev/null | tr -d '[:space:]' || echo "0")
+    # Filter to Palace tests only (exclude third-party: swift-protobuf, app-check, etc.)
+    PALACE_PASSED=$(grep "passed on '" "${DOGFOOD_DIR}/test-results/test-output.log" 2>/dev/null | grep -c "Palace" | tr -d '[:space:]' || echo "0")
+    PALACE_FAILED=$(grep "failed on '" "${DOGFOOD_DIR}/test-results/test-output.log" 2>/dev/null | grep -c "Palace" | tr -d '[:space:]' || echo "0")
+    
+    # Count third-party failures separately (URLValidationTests, etc.)
+    THIRD_PARTY_FAILED=$(grep "failed on '" "${DOGFOOD_DIR}/test-results/test-output.log" 2>/dev/null | grep -v "Palace" | wc -l | tr -d '[:space:]' || echo "0")
 
     # Ensure numeric values
-    [[ -z "$TESTS_PASSED" ]] && TESTS_PASSED=0
-    [[ -z "$TESTS_FAILED" ]] && TESTS_FAILED=0
-    TESTS_RUN=$((TESTS_PASSED + TESTS_FAILED))
+    [[ -z "$PALACE_PASSED" ]] && PALACE_PASSED=0
+    [[ -z "$PALACE_FAILED" ]] && PALACE_FAILED=0
+    [[ -z "$THIRD_PARTY_FAILED" ]] && THIRD_PARTY_FAILED=0
+    PALACE_RUN=$((PALACE_PASSED + PALACE_FAILED))
 
     # Fallback to "Executed N tests" pattern if available
-    if [[ "$TESTS_RUN" -eq 0 ]]; then
-        TESTS_RUN=$(grep -oE "Executed [0-9]+ test" "${DOGFOOD_DIR}/test-results/test-output.log" | grep -oE "[0-9]+" | head -1 | tr -d '[:space:]' || echo "N/A")
-        TESTS_FAILED=$(grep -oE "[0-9]+ failure" "${DOGFOOD_DIR}/test-results/test-output.log" | grep -oE "^[0-9]+" | head -1 | tr -d '[:space:]' || echo "0")
+    if [[ "$PALACE_RUN" -eq 0 ]]; then
+        PALACE_RUN=$(grep -oE "Executed [0-9]+ test" "${DOGFOOD_DIR}/test-results/test-output.log" | grep -oE "[0-9]+" | head -1 | tr -d '[:space:]' || echo "N/A")
+        PALACE_FAILED=$(grep -oE "[0-9]+ failure" "${DOGFOOD_DIR}/test-results/test-output.log" | grep -oE "^[0-9]+" | head -1 | tr -d '[:space:]' || echo "0")
     fi
 
-    echo "| Tests Run | ${TESTS_RUN} |"
-    echo "| Tests Passed | ${TESTS_PASSED} |"
-    echo "| Tests Failed | ${TESTS_FAILED} |"
+    echo "| Palace Tests Run | ${PALACE_RUN} |"
+    echo "| Palace Tests Passed | ${PALACE_PASSED} |"
+    echo "| Palace Tests Failed | ${PALACE_FAILED} |"
+    echo "| Third-Party Failures (ignored) | ${THIRD_PARTY_FAILED} |"
 else
-    echo "| Tests Run | N/A |"
-    echo "| Tests Passed | N/A |"
-    echo "| Tests Failed | N/A |"
+    echo "| Palace Tests Run | N/A |"
+    echo "| Palace Tests Passed | N/A |"
+    echo "| Palace Tests Failed | N/A |"
+    echo "| Third-Party Failures (ignored) | N/A |"
 fi)
 
 ## Ledger Metrics
 
 $(if [[ -f "${DOGFOOD_DIR}/ledger-analysis/analyze.log" ]]; then
-    # Extract metrics from analyze log if available
-    echo "See ledger-analysis/ for detailed metrics."
+    # Extract metrics from analyze log
+    COMPONENTS=$(grep -oE "Components: [0-9]+" "${DOGFOOD_DIR}/ledger-analysis/analyze.log" | grep -oE "[0-9]+" | head -1 || echo "N/A")
+    DEPENDENCIES=$(grep -oE "Dependencies: [0-9]+" "${DOGFOOD_DIR}/ledger-analysis/analyze.log" | grep -oE "[0-9]+" | head -1 || echo "N/A")
+    AVG_COUPLING=$(grep -oE "Avg Coupling: [0-9.]+" "${DOGFOOD_DIR}/ledger-analysis/analyze.log" | grep -oE "[0-9.]+" | head -1 || echo "N/A")
+    ORPHANS=$(grep -c "orphan_component" "${DOGFOOD_DIR}/ledger-analysis/analyze.log" 2>/dev/null || echo "0")
+    
+    # Determine health score based on issues
+    if [[ "$ORPHANS" -eq 0 ]]; then
+        HEALTH="100%"
+    elif [[ "$ORPHANS" -le 4 ]]; then
+        HEALTH="Good (known submodules)"
+    else
+        HEALTH="Needs attention"
+    fi
+
+    echo "| Components | ${COMPONENTS} |"
+    echo "| Dependencies | ${DEPENDENCIES} |"
+    echo "| Avg Coupling | ${AVG_COUPLING} |"
+    echo "| Orphan Warnings | ${ORPHANS} |"
+    echo "| Health | ${HEALTH} |"
 else
-    echo "No ledger analysis available."
+    echo "| Components | N/A |"
+    echo "| Dependencies | N/A |"
+    echo "| Avg Coupling | N/A |"
+    echo "| Orphan Warnings | N/A |"
+    echo "| Health | N/A |"
 fi)
 
 ## Before/After Comparison

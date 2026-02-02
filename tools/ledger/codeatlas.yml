@@ -81,6 +81,25 @@ output:
   # Verbosity level: quiet, normal, verbose
   verbosity: normal
 
+# Layer classification hints
+layers:
+  application:
+    - Palace
+    - Palace-noDRM
+  presentation:
+    - PalaceUIKit
+  infrastructure:
+    - ios-audiobooktoolkit
+  tests:
+    - PalaceTests
+
+# Known external dependencies (git submodules, not orphans)
+known_externals:
+  - ios-tenprintcover      # Book cover generation (libTenPrintCover.a)
+  - adept-ios              # Adobe DRM (libADEPT.a)
+  - ios-audiobook-overdrive # Overdrive processor (framework)
+  - OverdriveProcessorDriver # Test harness only
+
 # Domain-specific settings
 domains:
   arch:
