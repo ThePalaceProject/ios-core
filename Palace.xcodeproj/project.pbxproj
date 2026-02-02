@@ -233,6 +233,8 @@
 		612FD8DA16387F71EB3CA398 /* HoldsViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8ADE8A45C4B4AAE67143A272 /* HoldsViewModelTests.swift */; };
 		61757D3F95012F8F4340FABB /* TPPAccountAuthState.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6C56509A03466E0531DBC27 /* TPPAccountAuthState.swift */; };
 		6552DA0826AB41E985E7B17A /* CatalogRepositoryMock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DDE892E38D34061A2DBE2F2 /* CatalogRepositoryMock.swift */; };
+		DCAP002T260955EF008E1DC3 /* DefaultCatalogAPITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCAP001T260955EF008E1DC3 /* DefaultCatalogAPITests.swift */; };
+		NTCK002T260955EF008E1DC3 /* NetworkClientMock.swift in Sources */ = {isa = PBXBuildFile; fileRef = NTCK001T260955EF008E1DC3 /* NetworkClientMock.swift */; };
 		676F638471BA390A373B329B /* DebugSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEF1F7C70AC93BF8E2F22148 /* DebugSettings.swift */; };
 		681FBB4C5C3E2B2A10DAD273 /* CatalogViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48DF25F6BFF39ECDAF39E3E3 /* CatalogViewModelTests.swift */; };
 		7096661E3AAF4B878E1F49DB /* RDServicesStubs.m in Sources */ = {isa = PBXBuildFile; fileRef = 75305888F6A941DDA9EEE592 /* RDServicesStubs.m */; };
@@ -1413,6 +1415,8 @@
 		3BB31382B3826FB20CD3BE34 /* URLExtensionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = URLExtensionTests.swift; sourceTree = "<group>"; };
 		3C0E625DA84AEEFF9840A601 /* LCPAudiobooksTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LCPAudiobooksTests.swift; sourceTree = "<group>"; };
 		3DDE892E38D34061A2DBE2F2 /* CatalogRepositoryMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogRepositoryMock.swift; sourceTree = "<group>"; };
+		DCAP001T260955EF008E1DC3 /* DefaultCatalogAPITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DefaultCatalogAPITests.swift; sourceTree = "<group>"; };
+		NTCK001T260955EF008E1DC3 /* NetworkClientMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkClientMock.swift; sourceTree = "<group>"; };
 		3FE7745D6905F20849740238 /* TPPCredentialsTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPCredentialsTests.swift; sourceTree = "<group>"; };
 		44E59F675A3E4419BE1E24BB /* FacetViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FacetViewModelTests.swift; sourceTree = "<group>"; };
 		4609134D5A2D39DD0D8E7DCA /* CatalogAccessibilityTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CatalogAccessibilityTests.swift; sourceTree = "<group>"; };
@@ -2345,6 +2349,7 @@
 		5289E925521FB2A6119428EF /* Network */ = {
 			isa = PBXGroup;
 			children = (
+				DCAP001T260955EF008E1DC3 /* DefaultCatalogAPITests.swift */,
 				7F31B83CAB15F0245AEEE83C /* NetworkRetryTests.swift */,
 				E5A09A802F0D72D000CC23EA /* URLResponseAuthenticationTests.swift */,
 			);
@@ -2573,6 +2578,7 @@
 				E56724C02A132C1300972828 /* TPPAnnotationMock.swift */,
 				E5B8E9A52E14DE8B002E0F3D /* MockImageCache.swift */,
 				3DDE892E38D34061A2DBE2F2 /* CatalogRepositoryMock.swift */,
+				NTCK001T260955EF008E1DC3 /* NetworkClientMock.swift */,
 				2D413CEAF86FD23AA8F421AE /* CatalogAPIMock.swift */,
 				STMK001T260955EF008E1DC3 /* TPPSettingsMock.swift */,
 				REAU001T260955EF008E1DC3 /* TPPReauthenticatorMock.swift */,
@@ -4523,6 +4529,8 @@
 				E5A09A522F0D6F1A00CC23EA /* EpubSampleFactoryTests.swift in Sources */,
 				8F33160CFC0FC38329D8A903 /* OPDSFeedServiceTests.swift in Sources */,
 				AAB502EE6AB7156C9D7D5C19 /* NetworkRetryTests.swift in Sources */,
+				DCAP002T260955EF008E1DC3 /* DefaultCatalogAPITests.swift in Sources */,
+				NTCK002T260955EF008E1DC3 /* NetworkClientMock.swift in Sources */,
 				08C091914901968B5F392918 /* BookmarkBusinessLogicTests.swift in Sources */,
 				A31A3D604E4F2B7D1F07906E /* PositionSyncTests.swift in Sources */,
 				LRPS002T260955EF008E1DC3 /* TPPLastReadPositionSynchronizerTests.swift in Sources */,

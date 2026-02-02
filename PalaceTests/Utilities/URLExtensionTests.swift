@@ -145,11 +145,22 @@ final class URLValidationTests: XCTestCase {
   }
   
   func testInvalidURL_handledByURLInit() {
-    // URL(string:) may percent-encode some invalid characters
-    // Only truly malformed URLs return nil
+    // URL(string:) behavior varies by iOS version:
+    // - iOS 16 and earlier: returns nil for strings with spaces/special chars
+    // - iOS 17+: auto-encodes spaces and some special characters
+    
+    // Test that we can safely handle the result (nil or encoded)
     let url = URL(string: "not a valid url")
-    // This actually creates a URL with percent encoding
-    XCTAssertNotNil(url, "URL(string:) percent-encodes spaces")
+    if let url = url {
+      // iOS 17+: auto-encoded
+      XCTAssertTrue(url.absoluteString.contains("%20"), "Spaces should be percent-encoded")
+    }
+    // Either nil or encoded is acceptable - the key is it doesn't crash
+    
+    // Characters that are ALWAYS invalid (control characters)
+    // Use a character that cannot be percent-encoded
+    let urlWithNull = URL(string: "https://example.com/\0invalid")
+    XCTAssertNil(urlWithNull, "URL with null character returns nil")
   }
   
   func testEmptyString_returnsNil() {
@@ -157,10 +168,25 @@ final class URLValidationTests: XCTestCase {
     XCTAssertNil(url)
   }
   
-  func testURLWithSpaces_getsPercentEncoded() {
-    let url = URL(string: "https://example.com/path with spaces")
-    // URL(string:) percent-encodes spaces automatically
-    XCTAssertNotNil(url, "URL(string:) percent-encodes spaces")
+  func testURLWithSpaces_handledCorrectly() {
+    // URL(string:) behavior varies by iOS version:
+    // - iOS 16 and earlier: returns nil for paths with spaces
+    // - iOS 17+: auto-encodes spaces in the path
+    
+    let urlWithSpaces = URL(string: "https://example.com/path with spaces")
+    
+    if let url = urlWithSpaces {
+      // iOS 17+: auto-encoded - verify it was encoded correctly
+      XCTAssertTrue(url.absoluteString.contains("%20"), "Spaces should be percent-encoded")
+      XCTAssertFalse(url.absoluteString.contains(" "), "Should not contain raw spaces")
+    } else {
+      // iOS 16 and earlier: nil is expected
+      // Manual encoding is required
+      let encodedPath = "path with spaces".addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)!
+      let validUrl = URL(string: "https://example.com/\(encodedPath)")
+      XCTAssertNotNil(validUrl, "Manually encoded URL should work")
+      XCTAssertTrue(validUrl!.absoluteString.contains("%20"))
+    }
   }
   
   func testFileURL_alwaysValid() {

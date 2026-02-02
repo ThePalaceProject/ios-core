@@ -303,10 +303,14 @@ final class TPPBookRegistryPublisherTests: XCTestCase {
     let book = TPPBookMocker.mockBook(identifier: "publisher-add-\(UUID().uuidString)", title: "Publisher Add Test", distributorType: .EpubZip)
     
     var receivedRegistry: [String: TPPBookRegistryRecord]?
-    let expectation = self.expectation(description: "Registry publisher emits")
+    let expectation = self.expectation(description: "Registry publisher emits with added book")
     
+    // Use filter to wait for the specific emission containing our book
+    // This is more reliable than dropFirst() in CI environments with timing variance
     registry.registryPublisher
-      .dropFirst() // Skip initial value
+      .filter { records in
+        records[book.identifier] != nil
+      }
       .first()
       .sink { records in
         receivedRegistry = records
@@ -318,7 +322,7 @@ final class TPPBookRegistryPublisherTests: XCTestCase {
     registry.addBook(book, state: .downloadNeeded)
     
     // Assert
-    waitForExpectations(timeout: 2.0)
+    waitForExpectations(timeout: 3.0) // Increased timeout for CI
     XCTAssertNotNil(receivedRegistry)
     XCTAssertNotNil(receivedRegistry?[book.identifier])
     

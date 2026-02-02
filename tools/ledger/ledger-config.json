@@ -1,0 +1,99 @@
+{
+  "architectureStyle": "layered",
+  "excludePaths": [
+    "*.build",
+    "*.generated.swift",
+    "*.pb.swift",
+    ".build",
+    "Build",
+    "Carthage",
+    "DerivedData",
+    "External",
+    "Pods",
+    "Rome",
+    "SourcePackages",
+    "ThirdParty",
+    "Vendor",
+    "adobe-*",
+    "build",
+    "fastlane",
+    "mobile-*",
+    "node_modules",
+    "readium-*",
+    "scripts",
+    "third_party",
+    "vendor"
+  ],
+  "includeCodeSnippetsInAsk": false,
+  "inferenceAggressiveness": "conservative",
+  "layerRules": {
+    "allowedEdges": [
+      {
+        "from": "Application",
+        "to": "Presentation"
+      },
+      {
+        "from": "Application",
+        "to": "Domain"
+      },
+      {
+        "from": "Presentation",
+        "to": "Domain"
+      },
+      {
+        "from": "Domain",
+        "to": "Infrastructure"
+      }
+    ],
+    "layers": [
+      "Infrastructure",
+      "Domain",
+      "Presentation",
+      "Application",
+      "Tests"
+    ]
+  },
+  "firstPartyRoots": ["Palace", "PalaceTests", "PalaceUIKit"],
+  "submoduleExclusions": [
+    "ios-tenprintcover",
+    "adept-ios",
+    "ios-audiobook-overdrive",
+    "OverdriveProcessorDriver"
+  ],
+  "projectName": "Palace",
+  "questionBudgetInit": 7,
+  "questionBudgetUpdate": 2,
+  "topFlows": [
+    "auth",
+    "borrow",
+    "download",
+    "holds",
+    "read",
+    "return",
+    "search",
+    "sync"
+  ],
+  "verificationCommands": [
+    "xcodebuild build",
+    "xcodebuild test",
+    "fastlane test",
+    "make test"
+  ],
+  "version": 1,
+  "layerOverrides": {
+    "Palace": "Application",
+    "Palace-noDRM": "Application",
+    "PalaceUIKit": "Presentation",
+    "PalaceTests": "Tests",
+    "ios-audiobooktoolkit": "Presentation",
+    "adept-ios": "Infrastructure",
+    "ios-tenprintcover": "Infrastructure"
+  },
+  "knownLayerViolations": [
+    {
+      "from": "ios-audiobooktoolkit",
+      "to": "PalaceUIKit",
+      "reason": "Toolkit provides both core playback (Infrastructure) and default UI (Presentation). UI components import PalaceUIKit for shared styles."
+    }
+  ]
+}
