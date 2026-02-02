@@ -156,14 +156,27 @@ jobs:
             echo "a11y_minor=$A11Y_MINOR" >> $GITHUB_OUTPUT
             echo "a11y_info=$A11Y_INFO" >> $GITHUB_OUTPUT
             
-            # QAAtlas metrics (if qa domain was enabled)
-            if jq -e '.qa' "$OBSERVE_DIR/summary.json" > /dev/null 2>&1; then
-              QA_COVERAGE=$(jq -r '.qa.coveragePercent // empty' "$OBSERVE_DIR/summary.json")
+            # QAAtlas metrics - try summary.json first, fallback to gap-report.json
+            QA_COVERAGE=""
+            if jq -e '.qa != null and .qa.coverageEstimate != null' "$OBSERVE_DIR/summary.json" > /dev/null 2>&1; then
+              # QA data is in summary.json
+              QA_COVERAGE=$(jq -r '.qa.coverageEstimate // empty' "$OBSERVE_DIR/summary.json")
               QA_TESTED=$(jq -r '.qa.testedSymbols // 0' "$OBSERVE_DIR/summary.json")
               QA_TOTAL=$(jq -r '.qa.totalSymbols // 0' "$OBSERVE_DIR/summary.json")
               QA_HIGH_GAPS=$(jq -r '.qa.highPriorityGaps // 0' "$OBSERVE_DIR/summary.json")
               QA_TESTS_REC=$(jq -r '.qa.testsRecommended // 0' "$OBSERVE_DIR/summary.json")
               QA_RISK=$(jq -r '.qa.riskLevel // empty' "$OBSERVE_DIR/summary.json")
+            elif [[ -f "$OBSERVE_DIR/qa/gap-report.json" ]]; then
+              # Fallback: parse directly from gap-report.json (v0.8.2 workaround)
+              QA_COVERAGE=$(jq -r '.coverageEstimate // empty' "$OBSERVE_DIR/qa/gap-report.json")
+              QA_TESTED=$(jq -r '.functionsWithTests // 0' "$OBSERVE_DIR/qa/gap-report.json")
+              QA_TOTAL=$(jq -r '.totalFunctions // 0' "$OBSERVE_DIR/qa/gap-report.json")
+              QA_HIGH_GAPS=$(jq -r '.highPriorityGaps // 0' "$OBSERVE_DIR/qa/gap-report.json")
+              QA_TESTS_REC=$(jq -r '.gaps | length' "$OBSERVE_DIR/qa/gap-report.json")
+              QA_RISK=$(jq -r '.riskLevel // empty' "$OBSERVE_DIR/qa/gap-report.json")
+            fi
+            
+            if [[ -n "$QA_COVERAGE" ]]; then
               echo "qa_coverage=$QA_COVERAGE" >> $GITHUB_OUTPUT
               echo "qa_tested=$QA_TESTED" >> $GITHUB_OUTPUT
               echo "qa_total=$QA_TOTAL" >> $GITHUB_OUTPUT
