@@ -86,6 +86,10 @@ jobs:
           HEAD_REF: ${{ github.head_ref || 'HEAD' }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
+          # Initialize ledger (required before observe)
+          echo "Initializing ledger..."
+          ./tools/bin/ledger init --config tools/ledger/codeatlas.yml 2>/dev/null || true
+          
           # Run ledger observe for CI-friendly JSON output
           echo "Running ledger observe (CI mode)..."
           ./tools/bin/ledger observe \
