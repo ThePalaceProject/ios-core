@@ -69,15 +69,43 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          # Initialize ledger and use our custom config
+          # Initialize ledger with iOS preset
           echo "Initializing ledger..."
           ./tools/bin/ledger init --platform ios --no-interactive
           
-          # Copy our config with correct roots (Palace, PalaceTests)
-          cp tools/ledger/codeatlas.yml .ledger/config.yml
+          # Use our custom config with correct firstPartyRoots
+          # (Palace, PalaceTests, PalaceUIKit)
+          if [ -f ".ledger/config.json.bak" ]; then
+            rm .ledger/config.json.bak
+          fi
+          cat > .ledger/config.json << 'EOCONFIG'
+          {
+            "architectureStyle": "layered",
+            "excludePaths": [
+              "*.build", "*.generated.swift", ".build", "Build", "Carthage",
+              "DerivedData", "External", "Pods", "SourcePackages", "Vendor",
+              "adobe-*", "build", "node_modules", "readium-*", "third_party"
+            ],
+            "inferenceAggressiveness": "conservative",
+            "firstPartyRoots": ["Palace", "PalaceTests", "PalaceUIKit"],
+            "submoduleExclusions": [
+              "ios-tenprintcover", "adept-ios", "ios-audiobook-overdrive"
+            ],
+            "projectName": "Palace",
+            "version": 1,
+            "layerOverrides": {
+              "Palace": "Application",
+              "PalaceUIKit": "Presentation",
+              "PalaceTests": "Tests"
+            }
+          }
+          EOCONFIG
+          
+          # Build model before observe
+          echo "Building model..."
+          ./tools/bin/ledger update
           
           # Run ledger observe for CI-friendly JSON output
-          # v0.8.3: AccessLint & QAAtlas are bundled
           echo "Running ledger observe (CI mode)..."
           ./tools/bin/ledger observe \
             --domains arch,reach,a11y,qa \
