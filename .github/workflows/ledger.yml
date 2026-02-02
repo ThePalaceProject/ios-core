@@ -143,8 +143,6 @@ jobs:
           # Parse from summary.json (primary source)
           # v0.8.3 uses short keys: arch, reach, a11y, qa
           if [[ -f "$OBSERVE_DIR/summary.json" ]]; then
-            echo "📊 Parsing summary.json..."
-            cat "$OBSERVE_DIR/summary.json" | head -50  # Debug: show structure
             
             # Architecture metrics (v0.8.3 uses .arch)
             COMPONENTS=$(jq -r '.arch.components // 0' "$OBSERVE_DIR/summary.json")
@@ -176,17 +174,11 @@ jobs:
             echo "a11y_major=$A11Y_MAJOR" >> $GITHUB_OUTPUT
             echo "a11y_minor=$A11Y_MINOR" >> $GITHUB_OUTPUT
             echo "a11y_info=$A11Y_INFO" >> $GITHUB_OUTPUT
-            echo "🔍 Debug: A11Y counts: total=$A11Y_TOTAL blocker=$A11Y_BLOCKER major=$A11Y_MAJOR minor=$A11Y_MINOR info=$A11Y_INFO"
             
             # QAAtlas metrics - try summary.json first, fallback to gap-report.json
             QA_COVERAGE=""
-            echo "🔍 Debug: Checking QA data sources..."
-            echo "  summary.json qa section: $(jq '.qa' "$OBSERVE_DIR/summary.json" 2>/dev/null | head -5)"
-            ls -la "$OBSERVE_DIR/qa/" 2>/dev/null || echo "  No qa/ directory"
-            
             if jq -e '.qa != null and .qa.coverage != null' "$OBSERVE_DIR/summary.json" > /dev/null 2>&1; then
               # QA data is in summary.json (v0.8.3 format)
-              echo "  Using summary.json for QA data"
               QA_COVERAGE=$(jq -r '.qa.coverage // empty' "$OBSERVE_DIR/summary.json")
               QA_TESTED=$(jq -r '.qa.testedCount // 0' "$OBSERVE_DIR/summary.json")
               QA_TOTAL=$(jq -r '.qa.totalCount // 0' "$OBSERVE_DIR/summary.json")
@@ -195,8 +187,6 @@ jobs:
               QA_RISK=$(jq -r '.qa.risk // empty' "$OBSERVE_DIR/summary.json")
             elif [[ -f "$OBSERVE_DIR/qa/gap-report.json" ]]; then
               # Fallback: parse directly from gap-report.json
-              echo "  Using gap-report.json for QA data"
-              cat "$OBSERVE_DIR/qa/gap-report.json" | head -20  # Debug
               QA_COVERAGE=$(jq -r '.coverage // .coverageEstimate // empty' "$OBSERVE_DIR/qa/gap-report.json")
               QA_TESTED=$(jq -r '.testedCount // .functionsWithTests // 0' "$OBSERVE_DIR/qa/gap-report.json")
               QA_TOTAL=$(jq -r '.totalCount // .totalFunctions // 0' "$OBSERVE_DIR/qa/gap-report.json")
@@ -204,7 +194,6 @@ jobs:
               QA_TESTS_REC=$(jq -r '.gaps | length' "$OBSERVE_DIR/qa/gap-report.json" 2>/dev/null || echo "0")
               QA_RISK=$(jq -r '.risk // .riskLevel // empty' "$OBSERVE_DIR/qa/gap-report.json")
             fi
-            echo "  Parsed: coverage=$QA_COVERAGE tested=$QA_TESTED total=$QA_TOTAL"
             
             if [[ -n "$QA_COVERAGE" ]]; then
               echo "qa_coverage=$QA_COVERAGE" >> $GITHUB_OUTPUT
