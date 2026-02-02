@@ -141,16 +141,18 @@ jobs:
           OBSERVE_DIR="artifacts/ledger/observe/latest"
           
           # Parse from summary.json (primary source)
+          # v0.8.3 uses short keys: arch, reach, a11y, qa
           if [[ -f "$OBSERVE_DIR/summary.json" ]]; then
             echo "📊 Parsing summary.json..."
+            cat "$OBSERVE_DIR/summary.json" | head -50  # Debug: show structure
             
-            # Architecture metrics
-            COMPONENTS=$(jq -r '.architecture.components // 0' "$OBSERVE_DIR/summary.json")
-            CYCLES=$(jq -r '.architecture.cycles // 0' "$OBSERVE_DIR/summary.json")
-            VIOLATIONS=$(jq -r '.architecture.violations // 0' "$OBSERVE_DIR/summary.json")
-            HOTSPOTS=$(jq -r '.architecture.hotspots // 0' "$OBSERVE_DIR/summary.json")
-            ARCH_ISSUES=$(jq -r '.architecture.findings | length // 0' "$OBSERVE_DIR/summary.json")
-            AVG_COUPLING=$(jq -r '.architecture.averageCoupling // 0' "$OBSERVE_DIR/summary.json")
+            # Architecture metrics (v0.8.3 uses .arch)
+            COMPONENTS=$(jq -r '.arch.components // 0' "$OBSERVE_DIR/summary.json")
+            CYCLES=$(jq -r '.arch.cycles // 0' "$OBSERVE_DIR/summary.json")
+            VIOLATIONS=$(jq -r '.arch.violations // 0' "$OBSERVE_DIR/summary.json")
+            HOTSPOTS=$(jq -r '.arch.hotspots // 0' "$OBSERVE_DIR/summary.json")
+            ARCH_ISSUES=$(jq -r '.arch.findings | length // 0' "$OBSERVE_DIR/summary.json")
+            AVG_COUPLING=$(jq -r '.arch.averageCoupling // 0' "$OBSERVE_DIR/summary.json")
             echo "components=$COMPONENTS" >> $GITHUB_OUTPUT
             echo "cycles=$CYCLES" >> $GITHUB_OUTPUT
             echo "violations=$VIOLATIONS" >> $GITHUB_OUTPUT
@@ -158,16 +160,16 @@ jobs:
             echo "arch_issues=$ARCH_ISSUES" >> $GITHUB_OUTPUT
             echo "avg_coupling=$AVG_COUPLING" >> $GITHUB_OUTPUT
             
-            # Reachability metrics
-            REACH_ISSUES=$(jq -r '.reachability.deadCodeCount // 0' "$OBSERVE_DIR/summary.json")
+            # Reachability metrics (v0.8.3 uses .reach)
+            REACH_ISSUES=$(jq -r '.reach.deadCodeCount // 0' "$OBSERVE_DIR/summary.json")
             echo "reach_issues=$REACH_ISSUES" >> $GITHUB_OUTPUT
             
-            # Accessibility metrics (from AccessLint)
-            A11Y_TOTAL=$(jq -r '.accessibility.totalCount // 0' "$OBSERVE_DIR/summary.json")
-            A11Y_BLOCKER=$(jq -r '.accessibility.blockerCount // 0' "$OBSERVE_DIR/summary.json")
-            A11Y_MAJOR=$(jq -r '.accessibility.majorCount // 0' "$OBSERVE_DIR/summary.json")
-            A11Y_MINOR=$(jq -r '.accessibility.minorCount // 0' "$OBSERVE_DIR/summary.json")
-            A11Y_INFO=$(jq -r '.accessibility.infoCount // 0' "$OBSERVE_DIR/summary.json")
+            # Accessibility metrics (v0.8.3 uses .a11y)
+            A11Y_TOTAL=$(jq -r '.a11y.totalCount // 0' "$OBSERVE_DIR/summary.json")
+            A11Y_BLOCKER=$(jq -r '.a11y.blockerCount // 0' "$OBSERVE_DIR/summary.json")
+            A11Y_MAJOR=$(jq -r '.a11y.majorCount // 0' "$OBSERVE_DIR/summary.json")
+            A11Y_MINOR=$(jq -r '.a11y.minorCount // 0' "$OBSERVE_DIR/summary.json")
+            A11Y_INFO=$(jq -r '.a11y.infoCount // 0' "$OBSERVE_DIR/summary.json")
             echo "a11y_issues=$A11Y_TOTAL" >> $GITHUB_OUTPUT
             echo "a11y_blocker=$A11Y_BLOCKER" >> $GITHUB_OUTPUT
             echo "a11y_major=$A11Y_MAJOR" >> $GITHUB_OUTPUT
