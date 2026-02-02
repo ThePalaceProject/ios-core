@@ -60,6 +60,10 @@ class TPPEncryptedPDFPageViewController: UIViewController {
     imageView!.layer.shadowOffset = .zero
     imageView!.layer.shadowRadius = contentInset
     imageView!.layer.shadowOpacity = 0.2
+    // Accessibility: Image shows PDF page content
+    imageView!.isAccessibilityElement = true
+    imageView!.accessibilityLabel = String(format: NSLocalizedString("PDF page %d", comment: "PDF page accessibility label"), pageNumber)
+    imageView!.accessibilityTraits = .image
     scrollView!.addSubview(imageView!)
     scrollView!.addGestureRecognizer(doubleTap)
 

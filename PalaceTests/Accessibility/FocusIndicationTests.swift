@@ -61,19 +61,14 @@ final class FocusIndicationTests: XCTestCase {
   }
   
   /// Test that TPPRoundedButton maintains accessibility
-  /// BUG DISCOVERED: TPPRoundedButton is not properly configured as an accessibility element
-  /// TODO: Fix TPPRoundedButton to set isAccessibilityElement = true and proper traits
+  /// Fixed in PP-3594: Added isAccessibilityElement and accessibilityTraits
   func testTPPRoundedButton_isAccessible() {
     // Arrange
     let button = TPPRoundedButton(type: .normal, endDate: nil, isFromDetailView: false)
     
-    // KNOWN BUG: TPPRoundedButton doesn't properly configure accessibility
-    // This test documents the bug - remove XCTExpectFailure when fixed
-    XCTExpectFailure("TPPRoundedButton accessibility not configured - needs fix") {
-      // Assert - UIButton subclasses should be accessibility elements
-      XCTAssertTrue(button.isAccessibilityElement, "TPPRoundedButton should be an accessibility element")
-      XCTAssertTrue(button.accessibilityTraits.contains(.button), "TPPRoundedButton should have button trait")
-    }
+    // Assert - UIButton subclasses should be accessibility elements
+    XCTAssertTrue(button.isAccessibilityElement, "TPPRoundedButton should be an accessibility element")
+    XCTAssertTrue(button.accessibilityTraits.contains(.button), "TPPRoundedButton should have button trait")
   }
   
   /// Test catalog cells have proper accessibility

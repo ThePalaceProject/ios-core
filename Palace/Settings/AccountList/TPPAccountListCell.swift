@@ -26,12 +26,22 @@ class TPPAccountListCell: UITableViewCell {
     
     accessoryType = .disclosureIndicator
     customImageView.contentMode = .scaleAspectFit
+    customImageView.isAccessibilityElement = false // Cell provides accessibility
     
-    customTextlabel.font = UIFont.palaceFont(ofSize: 14)
+    // Use Dynamic Type for better accessibility
+    customTextlabel.font = UIFont.preferredFont(forTextStyle: .body)
+    customTextlabel.adjustsFontForContentSizeCategory = true
     customTextlabel.numberOfLines = 0
+    customTextlabel.isAccessibilityElement = false // Cell provides accessibility
     
-    customDetailLabel.font = UIFont.palaceFont(ofSize: 12)
+    customDetailLabel.font = UIFont.preferredFont(forTextStyle: .caption1)
+    customDetailLabel.adjustsFontForContentSizeCategory = true
     customDetailLabel.numberOfLines = 0
+    customDetailLabel.isAccessibilityElement = false // Cell provides accessibility
+    
+    // Cell is the accessibility element
+    isAccessibilityElement = true
+    accessibilityTraits = .button
     
     textContainer.addSubview(customTextlabel)
     textContainer.addSubview(customDetailLabel)
@@ -72,6 +82,14 @@ class TPPAccountListCell: UITableViewCell {
     customImageView.image = account.logo
     customTextlabel.text = account.name
     customDetailLabel.text = account.subtitle
+    
+    // Combine text for accessibility
+    if let subtitle = account.subtitle, !subtitle.isEmpty {
+      accessibilityLabel = "\(account.name). \(subtitle)"
+    } else {
+      accessibilityLabel = account.name
+    }
+    
     layoutSubviews()
   }
 }

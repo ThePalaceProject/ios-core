@@ -57,8 +57,13 @@ struct AppTabHostView: View {
     .tint(Color.accentColor)
     .onAppear { AppTabRouterHub.shared.router = router }
     .onChange(of: router.selected) { _ in
-      withAnimation(.easeInOut) {
+      // Respect reduce motion accessibility setting
+      if UIAccessibility.isReduceMotionEnabled {
         NavigationCoordinatorHub.shared.coordinator?.popToRoot()
+      } else {
+        withAnimation(.easeInOut) {
+          NavigationCoordinatorHub.shared.coordinator?.popToRoot()
+        }
       }
       if let appDelegate = UIApplication.shared.delegate as? TPPAppDelegate,
          let top = appDelegate.topViewController() {

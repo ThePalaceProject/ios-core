@@ -23,6 +23,7 @@ struct LibraryNavTitleView: View {
           .scaledToFit()
           .frame(width: 28, height: 28)
           .clipShape(Circle())
+          .accessibilityHidden(true) // Decorative, title label provides context
       }
       Text(AccountsManager.shared.currentAccount?.name ?? NSLocalizedString("Catalog", comment: ""))
         .font(.headline)
@@ -48,6 +49,7 @@ struct LibraryNavTitleView: View {
       imageView.translatesAutoresizingMaskIntoConstraints = false
       imageView.widthAnchor.constraint(equalToConstant: 24).isActive = true
       imageView.heightAnchor.constraint(equalToConstant: 24).isActive = true
+      imageView.isAccessibilityElement = false // Decorative, title label provides context
       container.addArrangedSubview(imageView)
     }
 

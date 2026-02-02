@@ -76,6 +76,14 @@ private let TPPRoundedButtonPadding: CGFloat = 6.0
     
     addSubview(label)
     addSubview(iconView)
+    
+    // Accessibility configuration (PP-3594)
+    isAccessibilityElement = true
+    accessibilityTraits = .button
+    
+    // Hide subviews from accessibility - parent button handles it
+    label.isAccessibilityElement = false
+    iconView.isAccessibilityElement = false
   }
   
   private func updateViews() {
