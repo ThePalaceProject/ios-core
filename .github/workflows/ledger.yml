@@ -65,6 +65,22 @@ jobs:
           echo "Installed ledger version:"
           ./tools/bin/ledger --version
 
+      - name: Install AccessLint (for full a11y analysis)
+        run: |
+          curl -fsSL -o /usr/local/bin/accesslint \
+            https://github.com/mauricecarrier7/AccessLint-Distribution/releases/download/v1.1.0/accesslint
+          chmod +x /usr/local/bin/accesslint
+          xattr -cr /usr/local/bin/accesslint 2>/dev/null || true
+          echo "AccessLint version: $(/usr/local/bin/accesslint --version 2>&1 || echo 'installed')"
+
+      - name: Install QAAtlas (for full qa analysis)
+        run: |
+          curl -fsSL -o /usr/local/bin/qaatlas \
+            https://github.com/mauricecarrier7/qaatlas-dist/releases/download/v2.2.1/qaatlas-macos
+          chmod +x /usr/local/bin/qaatlas
+          xattr -cr /usr/local/bin/qaatlas 2>/dev/null || true
+          echo "QAAtlas version: $(/usr/local/bin/qaatlas --version 2>&1 | tail -1 || echo 'installed')"
+
       - name: Run analysis
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
