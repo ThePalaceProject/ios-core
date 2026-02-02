@@ -69,9 +69,12 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          # Initialize ledger first (required by observe)
+          # Initialize ledger and use our custom config
           echo "Initializing ledger..."
           ./tools/bin/ledger init --platform ios --no-interactive
+          
+          # Copy our config with correct roots (Palace, PalaceTests)
+          cp tools/ledger/codeatlas.yml .ledger/config.yml
           
           # Run ledger observe for CI-friendly JSON output
           # v0.8.3: AccessLint & QAAtlas are bundled
