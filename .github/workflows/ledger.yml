@@ -73,33 +73,9 @@ jobs:
           echo "Initializing ledger..."
           ./tools/bin/ledger init --platform ios --no-interactive
           
-          # Use our custom config with correct firstPartyRoots
-          # (Palace, PalaceTests, PalaceUIKit)
-          if [ -f ".ledger/config.json.bak" ]; then
-            rm .ledger/config.json.bak
-          fi
-          cat > .ledger/config.json << 'EOCONFIG'
-          {
-            "architectureStyle": "layered",
-            "excludePaths": [
-              "*.build", "*.generated.swift", ".build", "Build", "Carthage",
-              "DerivedData", "External", "Pods", "SourcePackages", "Vendor",
-              "adobe-*", "build", "node_modules", "readium-*", "third_party"
-            ],
-            "inferenceAggressiveness": "conservative",
-            "firstPartyRoots": ["Palace", "PalaceTests", "PalaceUIKit"],
-            "submoduleExclusions": [
-              "ios-tenprintcover", "adept-ios", "ios-audiobook-overdrive"
-            ],
-            "projectName": "Palace",
-            "version": 1,
-            "layerOverrides": {
-              "Palace": "Application",
-              "PalaceUIKit": "Presentation",
-              "PalaceTests": "Tests"
-            }
-          }
-          EOCONFIG
+          # Use our pre-configured config with correct settings
+          echo "Applying custom config..."
+          cp tools/ledger/ledger-config.json .ledger/config.json
           
           # Build model before observe
           echo "Building model..."
