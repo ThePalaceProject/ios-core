@@ -88,7 +88,8 @@ jobs:
         run: |
           # Initialize ledger (required before observe)
           echo "Initializing ledger..."
-          ./tools/bin/ledger init --config tools/ledger/codeatlas.yml 2>/dev/null || true
+          ./tools/bin/ledger init --platform ios --no-interactive --force
+          ./tools/bin/ledger update
           
           # Run ledger observe for CI-friendly JSON output
           echo "Running ledger observe (CI mode)..."
