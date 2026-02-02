@@ -207,6 +207,17 @@ jobs:
             head -80 "$OBSERVE_DIR/qa/testplan.md" > /tmp/qa_testplan.md 2>/dev/null || true
           fi
           
+          # QAAtlas: PR-specific analysis (what changed)
+          if [[ -f "$OBSERVE_DIR/qa/pr-comment.md" ]]; then
+            cat "$OBSERVE_DIR/qa/pr-comment.md" > /tmp/qa_pr_comment.md 2>/dev/null || true
+          fi
+          
+          # QAAtlas: Test matching (existing coverage)
+          if [[ -f "$OBSERVE_DIR/qa/test-matches.json" ]]; then
+            jq -r '.[] | "| " + (.title[:40] + if (.title | length) > 40 then "..." else "" end) + " | `" + (.test_file | split("/")[-1]) + "` | " + (if .match_type | contains("mapped") then "✅ Direct" else "🔍 Keyword" end) + " |"' \
+              "$OBSERVE_DIR/qa/test-matches.json" 2>/dev/null > /tmp/qa_test_matches.md || true
+          fi
+          
           # Architecture: Cycle details
           if [[ -f "$OBSERVE_DIR/arch/analysis.json" ]]; then
             jq -r 'if .cycles then .cycles[] | "- " + (.components | join(" → ")) else empty end' \
@@ -370,6 +381,31 @@ jobs:
                 body += `**Risk Assessment:** ${riskIcon} **${qaRisk.toUpperCase()}** - ${riskDesc}\n\n`;
               }
               
+              // What Changed in This PR (PR-specific analysis)
+              try {
+                const prComment = fs.readFileSync('/tmp/qa_pr_comment.md', 'utf8');
+                if (prComment.trim()) {
+                  body += '#### 🔍 What Changed in This PR\n\n';
+                  body += prComment + '\n\n';
+                }
+              } catch (e) {
+                // No PR comment available
+              }
+              
+              // Existing Test Coverage (test matching)
+              try {
+                const testMatches = fs.readFileSync('/tmp/qa_test_matches.md', 'utf8');
+                if (testMatches.trim()) {
+                  body += '<details>\n<summary><strong>✅ Existing Test Coverage</strong></summary>\n\n';
+                  body += '| Recommendation | Covered By | Match Type |\n';
+                  body += '|----------------|------------|------------|\n';
+                  body += testMatches;
+                  body += '\n</details>\n\n';
+                }
+              } catch (e) {
+                // No test matches available
+              }
+              
               // Expandable: Top Coverage Gaps
               if (parseInt(qaHighGaps) > 0) {
                 body += '<details>\n<summary><strong>🔍 Top 10 Coverage Gaps</strong></summary>\n\n';
@@ -401,6 +437,8 @@ jobs:
                 body += 'See full report artifact for test recommendations.\n';
               }
               body += '\n</details>\n\n';
+              
+              body += '*⚠️ AI recommendations are advisory only - review before implementing*\n\n';
             }
             
             // ═══════════════════════════════════════════════════════════════
