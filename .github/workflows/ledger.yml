@@ -53,6 +53,9 @@ jobs:
           # Ensure jq is available (usually pre-installed on macos-latest)
           which jq || brew install jq
           
+          # Install icu4c for QAAtlas dependency
+          brew install icu4c@77 || brew install icu4c
+          
           # Create directories
           mkdir -p tools/bin
           mkdir -p artifacts/ledger
