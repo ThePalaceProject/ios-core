@@ -81,31 +81,38 @@ jobs:
           echo "Building model..."
           ./tools/bin/ledger update
           
-          # Check if OpenAI key is available for QAAtlas
-          if [[ -z "$OPENAI_API_KEY" ]]; then
-            echo "⚠️ OPENAI_API_KEY not set - QAAtlas will be skipped"
-            DOMAINS="arch,reach,a11y"
+          # Always enable QAAtlas - the secret is configured in the repo
+          # OPENAI_API_KEY is passed via env above and Ledger will use it
+          DOMAINS="arch,reach,a11y,qa"
+          
+          # Debug: Confirm key is available (show only first 4 chars for security)
+          if [[ -n "$OPENAI_API_KEY" ]]; then
+            echo "✅ OPENAI_API_KEY is set (starts with: ${OPENAI_API_KEY:0:4}...)"
           else
-            echo "✅ OPENAI_API_KEY available - enabling QAAtlas"
-            DOMAINS="arch,reach,a11y,qa"
+            echo "⚠️ OPENAI_API_KEY not found in environment"
           fi
           
           # Run ledger observe for CI-friendly JSON output
           echo "Running ledger observe with domains: $DOMAINS"
           ./tools/bin/ledger observe \
             --domains $DOMAINS \
-            --output artifacts/ledger/observe
+            --output artifacts/ledger/observe \
+            2>&1 | tee artifacts/ledger/observe.log
           
           # Debug: Show what was generated
           echo "=== Generated files ==="
-          find artifacts/ledger/observe -type f -name "*.json" | head -20
+          find artifacts/ledger/observe -type f -name "*.json" 2>/dev/null | head -20 || echo "No JSON files found"
           
           # Debug: Show summary.json content if exists
           if [[ -f "artifacts/ledger/observe/latest/summary.json" ]]; then
             echo "=== summary.json structure ==="
             jq 'keys' artifacts/ledger/observe/latest/summary.json
             echo "=== QA section ==="
-            jq '.qa // "QA section not found"' artifacts/ledger/observe/latest/summary.json
+            jq '.qa // "QA section not found"' artifacts/ledger/observe/latest/summary.json | head -30
+          else
+            echo "⚠️ summary.json not found"
+            ls -la artifacts/ledger/observe/ 2>/dev/null || echo "observe dir not found"
+            ls -la artifacts/ledger/observe/latest/ 2>/dev/null || echo "latest dir not found"
           fi
 
       - name: Upload artifacts
@@ -115,6 +122,7 @@ jobs:
           name: ledger-analysis
           path: |
             artifacts/ledger/observe/
+            artifacts/ledger/observe.log
             artifacts/ledger/diff/
             artifacts/ledger/logs/
           retention-days: 14
