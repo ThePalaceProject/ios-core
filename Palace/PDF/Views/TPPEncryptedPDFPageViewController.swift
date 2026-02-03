@@ -18,6 +18,7 @@ class TPPEncryptedPDFPageViewController: UIViewController {
   var pageNumber: Int
 
   private var timer: Timer?
+  // accesslint:ignore:next - accessibility configured at initialization in viewDidLoad
   private var imageView: UIImageView?
   private var scrollView: UIScrollView?
   private var didZoom = false
