@@ -53,9 +53,6 @@ jobs:
           # Ensure jq is available (usually pre-installed on macos-latest)
           which jq || brew install jq
           
-          # Install icu4c for QAAtlas dependency
-          brew install icu4c@77 || brew install icu4c
-          
           # Create directories
           mkdir -p tools/bin
           mkdir -p artifacts/ledger
@@ -67,17 +64,6 @@ jobs:
             | bash -s -- --version 0.9.3 --dir ./tools/bin
           echo "Installed ledger version:"
           ./tools/bin/ledger --version
-          
-      - name: Install AccessLint
-        run: |
-          # Install standalone AccessLint for accurate accessibility analysis
-          curl -fsSL https://raw.githubusercontent.com/mauricecarrier7/AccessLint-Distribution/main/install.sh \
-            | bash -s -- --version 1.1.0 --dir ./tools/bin
-          # Clear quarantine and verify
-          xattr -c ./tools/bin/accesslint 2>/dev/null || true
-          chmod +x ./tools/bin/accesslint
-          echo "Installed AccessLint version:"
-          ./tools/bin/accesslint --version || echo "AccessLint installed (version check may fail)"
 
       - name: Run analysis
         env:
