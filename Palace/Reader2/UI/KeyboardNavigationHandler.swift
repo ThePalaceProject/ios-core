@@ -3,7 +3,7 @@
 //  Palace
 //
 //  Handles keyboard events for EPUB reader navigation.
-//  Implements PP-3594: iOS keyboard accessibility controls.
+//  Implements iOS keyboard accessibility controls.
 //
 //  Copyright (c) 2026 The Palace Project. All rights reserved.
 //
@@ -39,6 +39,9 @@ final class KeyboardNavigationHandler {
   
   private weak var navigable: KeyboardNavigable?
   
+  /// Track if navigation is currently in progress to prevent overlapping navigations
+  private var isNavigating: Bool = false
+  
   // MARK: - Initialization
   
   init(navigable: KeyboardNavigable) {
@@ -62,37 +65,53 @@ final class KeyboardNavigationHandler {
     
     switch event.key {
     case .escape:
-      // Escape toggles toolbar visibility (AC2.1, AC2.2)
+      // Escape toggles toolbar visibility
       navigable.toggleToolbar()
       return true
       
     case .arrowLeft:
-      // Left arrow navigates to previous page when toolbar is hidden (AC3.2)
+      // Left arrow navigates to previous page when toolbar is hidden
       guard navigable.isToolbarHidden else { return false }
-      return await navigable.navigateLeft()
+      return await performNavigation { await navigable.navigateLeft() }
       
     case .arrowRight:
-      // Right arrow navigates to next page when toolbar is hidden (AC3.1)
+      // Right arrow navigates to next page when toolbar is hidden
       guard navigable.isToolbarHidden else { return false }
-      return await navigable.navigateRight()
+      return await performNavigation { await navigable.navigateRight() }
       
     case .space:
       // Space advances forward when toolbar is hidden
       guard navigable.isToolbarHidden else { return false }
-      return await navigable.navigateForward()
+      return await performNavigation { await navigable.navigateForward() }
       
     case .pageDown:
       // Page Down advances forward when toolbar is hidden
       guard navigable.isToolbarHidden else { return false }
-      return await navigable.navigateForward()
+      return await performNavigation { await navigable.navigateForward() }
       
     case .pageUp:
       // Page Up goes backward when toolbar is hidden
       guard navigable.isToolbarHidden else { return false }
-      return await navigable.navigateLeft()
+      return await performNavigation { await navigable.navigateLeft() }
       
     default:
       return false
     }
+  }
+  
+  // MARK: - Private Helpers
+  
+  /// Perform navigation with in-progress tracking to prevent overlapping navigations
+  private func performNavigation(_ action: @escaping () async -> Bool) async -> Bool {
+    // Prevent concurrent navigation - wait for current one to complete
+    guard !isNavigating else {
+      return true // Consume the event but don't navigate
+    }
+    
+    isNavigating = true
+    let result = await action()
+    isNavigating = false
+    
+    return result
   }
 }
