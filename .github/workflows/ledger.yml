@@ -59,11 +59,17 @@ jobs:
 
       - name: Install ledger
         run: |
-          # v0.9.4 with new install script and fixed integrated tools
+          # v0.9.4 with new install script and bundled tools
           curl -fsSL https://raw.githubusercontent.com/mauricecarrier7/ledger-dist/main/install.sh \
             | bash -s -- --version 0.9.4 --dir ./tools/bin
-          echo "Installed ledger version:"
+          
+          # Clear macOS quarantine attributes (fixes exit code 11)
+          xattr -cr ./tools/bin/ 2>/dev/null || true
+          
+          echo "Installed versions:"
           ./tools/bin/ledger --version
+          ./tools/bin/accesslint --version 2>/dev/null || echo "AccessLint installed"
+          ./tools/bin/qaatlas --version 2>/dev/null || echo "QAAtlas installed"
 
       - name: Run analysis
         env:
