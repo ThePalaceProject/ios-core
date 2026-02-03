@@ -165,6 +165,7 @@ private extension HalfSheetView {
             .scaledToFit()
             .frame(width: 60, height: 90)
             .cornerRadius(4)
+            .accessibilityHidden(true) // Book title provides context
         } else {
           RoundedRectangle(cornerRadius: 8)
             .fill(Color.gray.opacity(0.25))

@@ -145,13 +145,13 @@ struct PulsatingDotsLoader: View {
         .opacity(pulse3 ? 0.6 : 1.0)
     }
     .onAppear {
-      withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+      accessibleWithAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
         pulse1 = true
       }
-      withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true).delay(0.3)) {
+      accessibleWithAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true).delay(0.3)) {
         pulse2 = true
       }
-      withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true).delay(0.6)) {
+      accessibleWithAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true).delay(0.6)) {
         pulse3 = true
       }
     }

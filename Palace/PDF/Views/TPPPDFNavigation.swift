@@ -26,6 +26,7 @@ struct TPPPDFNavigation<Content>: View where Content: View {
       }
     }
     
+    /// Accessibility label for the tab - images are decorative, labels provide context
     var accessibilityLabel: String {
       switch self {
       case .previews: return Strings.Generic.pagePreviewsTab

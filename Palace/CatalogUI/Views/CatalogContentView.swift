@@ -24,7 +24,7 @@ struct CatalogContentView: View {
         .refreshable { await viewModel.refresh() }
         .onReceive(viewModel.$shouldScrollToTop) { shouldScroll in
           if shouldScroll {
-            withAnimation(.easeInOut(duration: 0.3)) {
+            accessibleWithAnimation(.easeInOut(duration: 0.3)) {
               proxy.scrollTo("catalog-content-top", anchor: .top)
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {

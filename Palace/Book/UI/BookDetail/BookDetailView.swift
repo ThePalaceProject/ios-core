@@ -96,7 +96,7 @@ struct BookDetailView: View {
         
         viewModel.fetchRelatedBooks()
         self.descriptionText = viewModel.book.summary ?? ""
-        withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+        accessibleWithAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
           pulseSkeleton = true
         }
       }
@@ -110,7 +110,7 @@ struct BookDetailView: View {
         // Don't update while half sheet is showing to prevent unnecessary re-renders
         guard !viewModel.showHalfSheet else { return }
         
-        withAnimation(.easeInOut(duration: 0.2)) {
+        accessibleWithAnimation(.easeInOut(duration: 0.2)) {
           headerColor = Color(newColor)
         }
       }
@@ -596,7 +596,7 @@ struct BookDetailView: View {
     currentOrientation = newOrientation
     viewModel.orientationChanged.toggle()
     
-    withAnimation(.easeInOut(duration: 0.3)) {
+    accessibleWithAnimation(.easeInOut(duration: 0.3)) {
       headerHeight = viewModel.isFullSize ? 300 : 225
       imageScale = viewModel.isFullSize ? 1.0 : imageScale
       imageOpacity = viewModel.isFullSize ? 1.0 : imageOpacity
@@ -647,7 +647,7 @@ struct BookDetailView: View {
       
     case .manageHold:
       viewModel.isManagingHold = true
-      withAnimation(.spring()) {
+      accessibleWithAnimation(.spring()) {
         viewModel.showHalfSheet.toggle()
       }
       
@@ -659,7 +659,7 @@ struct BookDetailView: View {
         if buttonType == .return {
           viewModel.bookState = .returning
         }
-        withAnimation(.spring()) {
+        accessibleWithAnimation(.spring()) {
           viewModel.showHalfSheet = true
         }
         if buttonType != .return {
@@ -668,7 +668,7 @@ struct BookDetailView: View {
       }
       
     default:
-      withAnimation(.spring()) {
+      accessibleWithAnimation(.spring()) {
         viewModel.showHalfSheet.toggle()
       }
     }

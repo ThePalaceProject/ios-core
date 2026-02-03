@@ -32,7 +32,7 @@ struct BookRowSkeletonView: View {
       alignment: .bottom
     )
     .onAppear {
-      withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+      accessibleWithAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
         pulse = true
       }
     }

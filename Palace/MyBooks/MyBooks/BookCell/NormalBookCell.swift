@@ -78,7 +78,7 @@ struct NormalBookCell: View {
     .frame(minHeight: cellHeight)
     .onDisappear { model.isLoading = false }
     .onReceive(downloadProgressPublisher) { progress in
-      withAnimation(.easeInOut(duration: 0.15)) {
+      accessibleWithAnimation(.easeInOut(duration: 0.15)) {
         downloadProgress = progress
       }
     }
@@ -187,10 +187,10 @@ struct NormalBookCell: View {
       BookButtonsView(provider: model, previewEnabled: previewEnabled, size: buttonSize) { type in
         switch type {
         case .close:
-          withAnimation(.spring()) { self.showHalfSheet = false }
+          accessibleWithAnimation(.spring()) { self.showHalfSheet = false }
         default:
           model.callDelegate(for: type)
-          withAnimation(.spring()) { self.showHalfSheet = model.showHalfSheet }
+          accessibleWithAnimation(.spring()) { self.showHalfSheet = model.showHalfSheet }
         }
       }
   }

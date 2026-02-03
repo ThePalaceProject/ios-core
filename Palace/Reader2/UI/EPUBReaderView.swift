@@ -37,6 +37,7 @@ struct EPUBReaderView: View {
           Image(systemName: "exclamationmark.triangle")
             .font(.largeTitle)
             .foregroundColor(.red)
+            .accessibilityHidden(true) // Error text provides context
           Text("Failed to open book")
             .font(.headline)
           Text(error.localizedDescription)

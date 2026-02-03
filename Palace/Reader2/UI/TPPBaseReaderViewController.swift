@@ -164,7 +164,8 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
 
     // Position label in the bottom letterbox area
     positionLabel.translatesAutoresizingMaskIntoConstraints = false
-    positionLabel.font = .systemFont(ofSize: 12)
+    positionLabel.font = .preferredFont(forTextStyle: .caption1) // Dynamic Type
+    positionLabel.adjustsFontForContentSizeCategory = true
     positionLabel.textAlignment = .center
     positionLabel.lineBreakMode = .byTruncatingTail
     positionLabel.textColor = .lightGray
@@ -180,7 +181,8 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     // Previously at 20px from container top, which overlapped the status bar
     // Using view's safe area (not container) so label moves with status bar but doesn't affect navigator
     bookTitleLabel.translatesAutoresizingMaskIntoConstraints = false
-    bookTitleLabel.font = .systemFont(ofSize: 12)
+    bookTitleLabel.font = .preferredFont(forTextStyle: .caption1) // Dynamic Type
+    bookTitleLabel.adjustsFontForContentSizeCategory = true
     bookTitleLabel.textAlignment = .center
     bookTitleLabel.lineBreakMode = .byTruncatingTail
     bookTitleLabel.textColor = .lightGray
