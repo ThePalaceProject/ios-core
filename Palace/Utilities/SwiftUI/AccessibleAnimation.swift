@@ -2,7 +2,7 @@
 //  AccessibleAnimation.swift
 //  Palace
 //
-//  Created for PP-3594: Accessibility improvements
+//  Accessibility improvements for reduced motion support
 //  Provides animations that respect the Reduce Motion accessibility setting.
 //
 

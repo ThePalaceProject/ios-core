@@ -3,7 +3,7 @@
 //  PalaceTests
 //
 //  Mock implementation of VisualNavigator for testing keyboard navigation.
-//  Used for PP-3594: Keyboard accessibility testing.
+//  Used for keyboard accessibility testing.
 //
 //  Copyright (c) 2026 The Palace Project. All rights reserved.
 //

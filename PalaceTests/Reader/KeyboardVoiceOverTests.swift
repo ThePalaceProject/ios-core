@@ -3,7 +3,7 @@
 //  PalaceTests
 //
 //  Tests ensuring keyboard navigation works alongside VoiceOver.
-//  PP-3594 AC4: No regression in accessibility behavior
+//  AC4: No regression in accessibility behavior
 //
 //  Copyright (c) 2026 The Palace Project. All rights reserved.
 //
@@ -13,7 +13,7 @@ import XCTest
 import ReadiumNavigator
 
 /// Tests ensuring keyboard navigation works alongside VoiceOver
-/// PP-3594 AC4: No regression in accessibility behavior
+/// AC4: No regression in accessibility behavior
 @MainActor
 final class KeyboardVoiceOverTests: XCTestCase {
   
@@ -38,7 +38,7 @@ final class KeyboardVoiceOverTests: XCTestCase {
   
   // MARK: - Test: VoiceOver Compatibility
   
-  /// PP-3594 AC4.1: Keyboard commands work when VoiceOver would be running
+  /// AC4.1: Keyboard commands work when VoiceOver would be running
   /// Note: We can't actually enable VoiceOver in tests, but we verify behavior
   func testKeyboardNavigation_worksRegardlessOfVoiceOverState() async {
     // Arrange - Simulate VoiceOver being "on" via our mock
@@ -54,7 +54,7 @@ final class KeyboardVoiceOverTests: XCTestCase {
     XCTAssertTrue(mockNavigable.didCallNavigateRight, "navigateRight should be called")
   }
   
-  /// PP-3594 AC4.2: Touch navigation continues to work (regression test)
+  /// AC4.2: Touch navigation continues to work (regression test)
   func testTouchNavigation_notAffectedByKeyboardSupport() {
     // This is a conceptual test - actual touch handling is in TPPBaseReaderViewController
     // We verify that KeyboardNavigationHandler doesn't interfere with tap handling

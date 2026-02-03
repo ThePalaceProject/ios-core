@@ -595,7 +595,7 @@ final class HTMLTextViewTests: XCTestCase {
       "<p>A story of courage &amp; hope in the face of unimaginable hardship.</p>",
       
       // Pattern 6: Summary with unicode quotes
-      "<p>"A must-read" — School Library Journal</p>",
+      "<p>\u{201C}A must-read\u{201D} — School Library Journal</p>",
       
       // Pattern 7: Empty paragraph followed by content
       "<p></p><p>The graphic novel adaptation.</p>",
@@ -797,6 +797,7 @@ final class HTMLTextViewTests: XCTestCase {
         // Note: Safe method wraps in HTML doc which may add/remove whitespace
         // So we just check the core content is present
         XCTAssertFalse(safeText.isEmpty, "Safe result for '\(name)' should not be empty")
+        XCTAssertFalse(unsafeText.isEmpty, "Unsafe result for '\(name)' should not be empty")
         print("ℹ️ '\(name)' - Safe and unsafe both succeed")
       } else if exception != nil {
         XCTFail("Unexpected exception for valid HTML '\(name)': \(exception!)")

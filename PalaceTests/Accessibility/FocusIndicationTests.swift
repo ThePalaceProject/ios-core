@@ -3,7 +3,7 @@
 //  PalaceTests
 //
 //  Tests for visual focus indication across the app.
-//  PP-3594 AC1: Visible focus indication on iOS
+//  AC1: Visible focus indication on iOS
 //
 //  Copyright (c) 2026 The Palace Project. All rights reserved.
 //
@@ -12,12 +12,12 @@ import XCTest
 @testable import Palace
 
 /// Tests for visual focus indication across the app
-/// PP-3594 AC1: Visible focus indication on iOS
+/// AC1: Visible focus indication on iOS
 final class FocusIndicationTests: XCTestCase {
   
   // MARK: - Test: Focus Ring Visibility
   
-  /// PP-3594 AC1.1: Focused element is visually indicated
+  /// AC1.1: Focused element is visually indicated
   func testFocusableButton_hasFocusEffect() {
     // Arrange
     let button = UIButton(type: .system)
@@ -32,7 +32,7 @@ final class FocusIndicationTests: XCTestCase {
     XCTAssertFalse(button.canBecomeFocused, "UIButton defaults to non-focusable on iOS, system handles keyboard focus")
   }
   
-  /// PP-3594 AC1.2: Focus visible in light mode - contrast check
+  /// AC1.2: Focus visible in light mode - contrast check
   func testFocusColor_hasSufficientContrastInLightMode() {
     // Arrange
     let focusColor = UIColor.systemBlue // Standard iOS focus color
@@ -46,7 +46,7 @@ final class FocusIndicationTests: XCTestCase {
       "Focus indication should meet WCAG AA contrast ratio of 3:1 against light background")
   }
   
-  /// PP-3594 AC1.3: Focus visible in dark mode - contrast check
+  /// AC1.3: Focus visible in dark mode - contrast check
   func testFocusColor_hasSufficientContrastInDarkMode() {
     // Arrange
     let focusColor = UIColor.systemBlue // Standard iOS focus color
@@ -61,7 +61,7 @@ final class FocusIndicationTests: XCTestCase {
   }
   
   /// Test that TPPRoundedButton maintains accessibility
-  /// Fixed in PP-3594: Added isAccessibilityElement and accessibilityTraits
+  /// Added isAccessibilityElement and accessibilityTraits
   func testTPPRoundedButton_isAccessible() {
     // Arrange
     let button = TPPRoundedButton(type: .normal, endDate: nil, isFromDetailView: false)
@@ -87,7 +87,7 @@ final class FocusIndicationTests: XCTestCase {
   
   // MARK: - Test: Focus Order
   
-  /// PP-3594 AC1.4: Focus order follows visual layout
+  /// AC1.4: Focus order follows visual layout
   func testAccessibilityElements_areOrderedLogically() {
     // Arrange - Create a simple view hierarchy
     let containerView = UIView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))

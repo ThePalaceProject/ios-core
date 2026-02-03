@@ -3,7 +3,7 @@
 //  PalaceTests
 //
 //  TDD tests for keyboard navigation behavior in the EPUB reader.
-//  Regression tests for PP-3594: iOS keyboard accessibility.
+//  Regression tests for iOS keyboard accessibility.
 //
 //  Copyright (c) 2026 The Palace Project. All rights reserved.
 //
@@ -13,7 +13,6 @@ import XCTest
 import ReadiumNavigator
 
 /// Tests for keyboard navigation behavior in the EPUB reader
-/// PP-3594: iOS keyboard accessibility
 @MainActor
 final class KeyboardNavigationHandlerTests: XCTestCase {
   
@@ -38,7 +37,7 @@ final class KeyboardNavigationHandlerTests: XCTestCase {
   
   // MARK: - Test: Escape Key Toggles Toolbar
   
-  /// PP-3594 AC2.1: Given toolbar is visible, pressing Escape hides it
+  /// AC2.1: Given toolbar is visible, pressing Escape hides it
   func testEscapeKey_whenToolbarVisible_togglesToolbar() async {
     // Arrange
     mockNavigable.toolbarHidden = false
@@ -53,7 +52,7 @@ final class KeyboardNavigationHandlerTests: XCTestCase {
     XCTAssertTrue(mockNavigable.didCallToggleToolbar, "toggleToolbar should be called")
   }
   
-  /// PP-3594 AC2.2: Given toolbar is hidden, pressing Escape shows it
+  /// AC2.2: Given toolbar is hidden, pressing Escape shows it
   func testEscapeKey_whenToolbarHidden_togglesToolbar() async {
     // Arrange
     mockNavigable.toolbarHidden = true
@@ -70,7 +69,7 @@ final class KeyboardNavigationHandlerTests: XCTestCase {
   
   // MARK: - Test: Arrow Keys Turn Pages (Toolbar Hidden)
   
-  /// PP-3594 AC3.1: Right arrow advances to next page when toolbar hidden
+  /// AC3.1: Right arrow advances to next page when toolbar hidden
   func testRightArrow_whenToolbarHidden_advancesToNextPage() async {
     // Arrange
     mockNavigable.toolbarHidden = true
@@ -85,7 +84,7 @@ final class KeyboardNavigationHandlerTests: XCTestCase {
     XCTAssertFalse(mockNavigable.didCallNavigateLeft, "navigateLeft should NOT be called")
   }
   
-  /// PP-3594 AC3.2: Left arrow goes to previous page when toolbar hidden
+  /// AC3.2: Left arrow goes to previous page when toolbar hidden
   func testLeftArrow_whenToolbarHidden_goesToPreviousPage() async {
     // Arrange
     mockNavigable.toolbarHidden = true
@@ -102,7 +101,7 @@ final class KeyboardNavigationHandlerTests: XCTestCase {
   
   // MARK: - Test: Arrow Keys Do NOT Turn Pages (Toolbar Visible)
   
-  /// PP-3594 AC3.3: Arrow keys don't change pages when toolbar visible
+  /// AC3.3: Arrow keys don't change pages when toolbar visible
   func testRightArrow_whenToolbarVisible_doesNotChangePage() async {
     // Arrange
     mockNavigable.toolbarHidden = false

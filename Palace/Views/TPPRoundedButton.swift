@@ -78,7 +78,7 @@ private let TPPRoundedButtonPadding: CGFloat = 6.0
     addSubview(label)
     addSubview(iconView)
     
-    // Accessibility configuration (PP-3594)
+    // Accessibility configuration
     isAccessibilityElement = true
     accessibilityTraits = .button
     
