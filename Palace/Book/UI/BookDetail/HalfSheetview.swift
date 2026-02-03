@@ -96,9 +96,9 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
       }
     }
     .padding()
-    .animation(.easeInOut(duration: 0.2), value: viewModel.bookState)
-    .animation(.easeInOut(duration: 0.2), value: viewModel.buttonState)
-    .animation(.easeInOut(duration: 0.15), value: viewModel.downloadProgress)
+    .accessibleAnimation(.easeInOut(duration: 0.2), value: viewModel.bookState)
+    .accessibleAnimation(.easeInOut(duration: 0.2), value: viewModel.buttonState)
+    .accessibleAnimation(.easeInOut(duration: 0.15), value: viewModel.downloadProgress)
     .presentationDetents([UIDevice.current.isIpad ? .height(540) : .medium])
     .presentationDragIndicator(.visible)
     .interactiveDismissDisabled(viewModel.isProcessing(for: .returning))

@@ -73,7 +73,7 @@ private extension CatalogContentView {
         }
       }
       .opacity(viewModel.isOptimisticLoading ? 0.6 : 1.0)
-      .animation(.easeInOut(duration: 0.2), value: viewModel.isOptimisticLoading)
+      .accessibleAnimation(.easeInOut(duration: 0.2), value: viewModel.isOptimisticLoading)
     } else {
       ScrollView {
         BookListView(
@@ -83,7 +83,7 @@ private extension CatalogContentView {
         )
       }
       .opacity(viewModel.isOptimisticLoading ? 0.6 : 1.0)
-      .animation(.easeInOut(duration: 0.2), value: viewModel.isOptimisticLoading)
+      .accessibleAnimation(.easeInOut(duration: 0.2), value: viewModel.isOptimisticLoading)
     }
   }
 }
