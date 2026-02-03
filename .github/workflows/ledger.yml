@@ -59,9 +59,9 @@ jobs:
 
       - name: Install ledger
         run: |
-          # v0.9.3 fixes integrated AccessLint and QAAtlas analyzers
+          # v0.9.4 with new install script and fixed integrated tools
           curl -fsSL https://raw.githubusercontent.com/mauricecarrier7/ledger-dist/main/install.sh \
-            | bash -s -- --version 0.9.3 --dir ./tools/bin
+            | bash -s -- --version 0.9.4 --dir ./tools/bin
           echo "Installed ledger version:"
           ./tools/bin/ledger --version
 
