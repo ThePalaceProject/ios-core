@@ -81,11 +81,32 @@ jobs:
           echo "Building model..."
           ./tools/bin/ledger update
           
+          # Check if OpenAI key is available for QAAtlas
+          if [[ -z "$OPENAI_API_KEY" ]]; then
+            echo "⚠️ OPENAI_API_KEY not set - QAAtlas will be skipped"
+            DOMAINS="arch,reach,a11y"
+          else
+            echo "✅ OPENAI_API_KEY available - enabling QAAtlas"
+            DOMAINS="arch,reach,a11y,qa"
+          fi
+          
           # Run ledger observe for CI-friendly JSON output
-          echo "Running ledger observe (CI mode)..."
+          echo "Running ledger observe with domains: $DOMAINS"
           ./tools/bin/ledger observe \
-            --domains arch,reach,a11y,qa \
+            --domains $DOMAINS \
             --output artifacts/ledger/observe
+          
+          # Debug: Show what was generated
+          echo "=== Generated files ==="
+          find artifacts/ledger/observe -type f -name "*.json" | head -20
+          
+          # Debug: Show summary.json content if exists
+          if [[ -f "artifacts/ledger/observe/latest/summary.json" ]]; then
+            echo "=== summary.json structure ==="
+            jq 'keys' artifacts/ledger/observe/latest/summary.json
+            echo "=== QA section ==="
+            jq '.qa // "QA section not found"' artifacts/ledger/observe/latest/summary.json
+          fi
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -276,13 +297,20 @@ jobs:
           script: |
             const fs = require('fs');
             
+            // Helper: round floats to 2 decimal places
+            const round2 = (val) => {
+              const num = parseFloat(val);
+              return isNaN(num) ? val : num.toFixed(2);
+            };
+            
             // Basic metrics
             const changedFiles = '${{ steps.parse.outputs.changed_files }}' || '0';
             const components = '${{ steps.parse.outputs.components }}' || '0';
             const cycles = '${{ steps.parse.outputs.cycles }}' || '0';
             const violations = '${{ steps.parse.outputs.violations }}' || '0';
             const hotspots = '${{ steps.parse.outputs.hotspots }}' || '0';
-            const avgCoupling = '${{ steps.parse.outputs.avg_coupling }}' || '0';
+            const avgCouplingRaw = '${{ steps.parse.outputs.avg_coupling }}' || '0';
+            const avgCoupling = round2(avgCouplingRaw);
             const archIssues = '${{ steps.parse.outputs.arch_issues }}' || '0';
             const reachIssues = '${{ steps.parse.outputs.reach_issues }}' || '0';
             
@@ -294,7 +322,8 @@ jobs:
             const a11yInfo = '${{ steps.parse.outputs.a11y_info }}' || '0';
             
             // QAAtlas metrics (if qa domain enabled)
-            const qaCoverage = '${{ steps.parse.outputs.qa_coverage }}';
+            const qaCoverageRaw = '${{ steps.parse.outputs.qa_coverage }}';
+            const qaCoverage = qaCoverageRaw ? round2(qaCoverageRaw) : '';
             const qaTested = '${{ steps.parse.outputs.qa_tested }}' || '0';
             const qaTotal = '${{ steps.parse.outputs.qa_total }}' || '0';
             const qaHighGaps = '${{ steps.parse.outputs.qa_high_gaps }}' || '0';
@@ -320,18 +349,19 @@ jobs:
             // ACCESSIBILITY SECTION (AccessLint)
             // ═══════════════════════════════════════════════════════════════
             body += '---\n';
-            body += '### ♿ Accessibility (via AccessLint - WCAG 2.1 AA)\n\n';
+            body += '### ♿ Accessibility (via AccessLint)\n\n';
+            body += '> 💡 *Static analysis against WCAG 2.1 AA guidelines for iOS accessibility.*\n\n';
             
             if (parseInt(a11yIssues) === 0) {
               body += '✅ **No accessibility issues detected**\n\n';
             } else {
-              // Severity breakdown table (matches standalone AccessLint)
-              body += '| Severity | Count | WCAG Impact |\n';
-              body += '|----------|-------|-------------|\n';
-              if (parseInt(a11yBlocker) > 0) body += `| 🚨 Blocker | ${a11yBlocker} | Critical barrier |\n`;
-              body += `| 🔴 Major | ${a11yMajor} | Significant barrier |\n`;
-              body += `| 🟡 Minor | ${a11yMinor} | Usability issue |\n`;
-              body += `| 🔵 Info | ${a11yInfo} | Best practice |\n`;
+              // Severity breakdown table with help
+              body += '| Severity | Count | ℹ️ What This Means |\n';
+              body += '|----------|-------|-------------------|\n';
+              if (parseInt(a11yBlocker) > 0) body += `| 🚨 Blocker | ${a11yBlocker} | Completely blocks assistive technology users |\n`;
+              body += `| 🔴 Major | ${a11yMajor} | Significant barrier - fix before release |\n`;
+              body += `| 🟡 Minor | ${a11yMinor} | Usability issue - improves experience |\n`;
+              body += `| 🔵 Info | ${a11yInfo} | Best practice suggestion |\n`;
               body += `| **Total** | **${a11yIssues}** | |\n\n`;
               
               // Top issues
@@ -367,22 +397,28 @@ jobs:
             // ═══════════════════════════════════════════════════════════════
             // TEST COVERAGE SECTION (QAAtlas) - only if qa domain enabled
             // ═══════════════════════════════════════════════════════════════
-            if (qaCoverage) {
-              body += '---\n';
-              body += '### 🧪 Test Coverage (via QAAtlas)\n\n';
-              
+            body += '---\n';
+            body += '### 🧪 Test Coverage (via QAAtlas)\n\n';
+            
+            // Check if we have valid QA data
+            const hasQAData = qaCoverage && parseFloat(qaCoverage) > 0 || (parseInt(qaTested) > 0 || parseInt(qaTotal) > 0);
+            
+            if (!hasQAData) {
+              body += '> ⚠️ **No coverage data available** - QAAtlas requires an OpenAI API key.\n';
+              body += '> Set `OPENAI_API_KEY` in repository secrets to enable AI-powered test coverage analysis.\n\n';
+            } else {
               const coverageNum = parseFloat(qaCoverage);
               const coverageIcon = coverageNum >= 50 ? '🟢' : coverageNum >= 30 ? '🟡' : '🔴';
               body += `**Coverage Estimate:** ${coverageIcon} **${qaCoverage}%**\n\n`;
-              body += `> AI analysis of which functions/classes have corresponding unit tests.\n\n`;
+              body += `> 💡 *AI analysis of which functions/classes have corresponding unit tests.*\n\n`;
               
-              // Metrics table (matches standalone QAAtlas)
-              body += '| Metric | Value | Description |\n';
-              body += '|--------|-------|-------------|\n';
-              body += `| Functions with Tests | ${qaTested} / ${qaTotal} | Methods that appear to have test coverage |\n`;
-              body += `| High-Priority Gaps | ${qaHighGaps} | Important functions without tests |\n`;
+              // Metrics table with help tooltips
+              body += '| Metric | Value | ℹ️ What This Means |\n';
+              body += '|--------|-------|-------------------|\n';
+              body += `| Functions with Tests | ${qaTested} / ${qaTotal} | Number of methods that appear to have test coverage out of total detected |\n`;
+              body += `| High-Priority Gaps | ${qaHighGaps} | Critical functions (public APIs, error handlers) that lack tests |\n`;
               if (qaTestsRec && qaTestsRec !== '0') {
-                body += `| Suggested Tests | ${qaTestsRec} | New tests recommended for this PR |\n`;
+                body += `| Suggested Tests | ${qaTestsRec} | AI-recommended tests based on code complexity and risk |\n`;
               }
               body += '\n';
               
@@ -455,7 +491,7 @@ jobs:
               body += '\n</details>\n\n';
               
               body += '*⚠️ AI recommendations are advisory only - review before implementing*\n\n';
-            }
+            } // end hasQAData
             
             // ═══════════════════════════════════════════════════════════════
             // ARCHITECTURE SECTION
@@ -463,15 +499,14 @@ jobs:
             body += '---\n';
             body += '### 🏛️ Architecture Analysis\n\n';
             
-            // Always show metrics table
-            body += '| Metric | Value |\n';
-            body += '|--------|-------|\n';
-            body += `| Components | ${components} |\n`;
-            body += `| Dependencies | - |\n`;
-            body += `| Dependency Cycles | ${cycles} |\n`;
-            body += `| Layer Violations | ${violations} |\n`;
-            body += `| Hotspots | ${hotspots} |\n`;
-            body += `| Avg Coupling | ${avgCoupling} |\n\n`;
+            // Always show metrics table with help tooltips
+            body += '| Metric | Value | ℹ️ What This Means |\n';
+            body += '|--------|-------|-------------------|\n';
+            body += `| Components | ${components} | Distinct modules/layers detected in your codebase |\n`;
+            body += `| Dependency Cycles | ${cycles} | Circular dependencies (A→B→C→A). Goal: **0** |\n`;
+            body += `| Layer Violations | ${violations} | Dependencies that break architectural boundaries |\n`;
+            body += `| Hotspots | ${hotspots} | Files with high complexity + frequent changes |\n`;
+            body += `| Avg Coupling | ${avgCoupling} | How interconnected modules are (lower is better, <1.0 is good) |\n\n`;
             
             if (parseInt(archIssues) === 0 && cycles === '0' && violations === '0') {
               body += '✅ **Architecture looks healthy!**\n\n';
@@ -519,11 +554,13 @@ jobs:
             // ═══════════════════════════════════════════════════════════════
             body += '---\n';
             body += '### 🔍 Reachability Analysis\n\n';
+            body += '> 💡 *Detects code that cannot be reached from entry points (dead code).*\n\n';
             
             if (parseInt(reachIssues) === 0) {
               body += '✅ **No dead code detected**\n\n';
             } else {
-              body += `Found **${reachIssues}** potentially unreachable symbol(s).\n\n`;
+              body += `Found **${reachIssues}** potentially unreachable symbol(s).\n`;
+              body += `> These functions/classes may be unused and could be candidates for removal.\n\n`;
               
               body += '**Top Unreachable Symbols:**\n';
               try {
