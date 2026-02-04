@@ -376,6 +376,70 @@ final class BookCellModelCacheTests: XCTestCase {
     XCTAssertGreaterThan(aggressiveConfig.unusedTTL, defaultConfig.unusedTTL)
   }
   
+  // MARK: - Deferred Update Tests (SwiftUI Warning Fix)
+  
+  /// Tests that when a book is updated, the cache defers the model update
+  /// to avoid "Publishing changes from within view updates" warning.
+  func testModelUpdate_WithNewerBook_DefersUpdateToTask() async throws {
+    let oldDate = Date(timeIntervalSince1970: 1000)
+    let newDate = Date(timeIntervalSince1970: 2000)
+    
+    let oldBook = makeTestBook(identifier: "deferred-test", title: "Old Title", updated: oldDate)
+    let newBook = makeTestBook(identifier: "deferred-test", title: "New Title", updated: newDate)
+    
+    // First call caches the model
+    let model = sut.model(for: oldBook)
+    XCTAssertEqual(model.book.updated, oldDate)
+    
+    // Second call with newer book triggers deferred update
+    let sameModel = sut.model(for: newBook)
+    XCTAssertTrue(model === sameModel, "Should return same model instance")
+    
+    // The update happens in a Task, so we need to wait
+    try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+    
+    // After the deferred update, the model should have the new book
+    XCTAssertEqual(model.book.updated, newDate)
+    XCTAssertEqual(model.book.title, "New Title")
+  }
+  
+  /// Tests that the cache doesn't update when the book hasn't changed
+  func testModelUpdate_WithSameBook_DoesNotUpdate() throws {
+    let book = makeTestBook(identifier: "no-update-test", title: "Same Book")
+    
+    let model1 = sut.model(for: book)
+    let originalBook = model1.book
+    
+    let model2 = sut.model(for: book)
+    
+    XCTAssertTrue(model1 === model2)
+    // Book should not have been modified
+    XCTAssertEqual(model1.book.identifier, originalBook.identifier)
+  }
+  
+  /// Tests that older book versions don't trigger updates
+  func testModelUpdate_WithOlderBook_DoesNotUpdate() async throws {
+    let oldDate = Date(timeIntervalSince1970: 1000)
+    let newDate = Date(timeIntervalSince1970: 2000)
+    
+    let newBook = makeTestBook(identifier: "older-test", title: "New Title", updated: newDate)
+    let oldBook = makeTestBook(identifier: "older-test", title: "Old Title", updated: oldDate)
+    
+    // Cache the newer book first
+    let model = sut.model(for: newBook)
+    XCTAssertEqual(model.book.title, "New Title")
+    
+    // Request with older book - should not update
+    let sameModel = sut.model(for: oldBook)
+    XCTAssertTrue(model === sameModel)
+    
+    try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+    
+    // Book should still be the newer version
+    XCTAssertEqual(model.book.title, "New Title")
+    XCTAssertEqual(model.book.updated, newDate)
+  }
+  
   // MARK: - Helpers
   
   private func makeTestBook(identifier: String, title: String, updated: Date = Date(timeIntervalSince1970: 0)) -> TPPBook {
