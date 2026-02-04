@@ -74,17 +74,6 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
       self.handleHighlightInteraction(event)
     }
     
-    // Readium 3.3+ input handling:
-    // DirectionalNavigationAdapter handles arrow keys and edge taps for page navigation.
-    // This also prevents iOS's focus system from consuming arrow key events.
-    DirectionalNavigationAdapter().bind(to: epubNavigator)
-    
-    // Toggle navigation bar on tap (when not turning pages)
-    epubNavigator.addInputObserver(.tap { [weak self] _ in
-      self?.toggleNavigationBar()
-      return true
-    })
-    
     epubNavigator.submitPreferences(preferences)
     setUIColor(for: preferences)
   }
