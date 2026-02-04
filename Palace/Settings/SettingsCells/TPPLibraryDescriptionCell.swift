@@ -14,7 +14,8 @@ class TPPLibraryDescriptionCell: UITableViewCell {
   let descriptionLabel: UILabel = {
     let label = UILabel()
     label.numberOfLines = 0
-    label.font = UIFont.palaceFont(ofSize: 12)
+    label.font = UIFont.preferredFont(forTextStyle: .footnote) // Dynamic Type
+    label.adjustsFontForContentSizeCategory = true
     return label
   }()
 

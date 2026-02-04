@@ -44,6 +44,9 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   private var isShowingSample: Bool = false
   private var initialLocation: Locator?
   private var subscriptions: Set<AnyCancellable> = []
+  
+  // Keyboard navigation handler for accessibility support
+  private var keyboardNavigationHandler: KeyboardNavigationHandler?
   private var currentLocationIsBookmarked: Bool {
     bookmarksBusinessLogic.currentLocation(in: navigator) != nil
   }
@@ -161,7 +164,8 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
 
     // Position label in the bottom letterbox area
     positionLabel.translatesAutoresizingMaskIntoConstraints = false
-    positionLabel.font = .systemFont(ofSize: 12)
+    positionLabel.font = .preferredFont(forTextStyle: .caption1) // Dynamic Type
+    positionLabel.adjustsFontForContentSizeCategory = true
     positionLabel.textAlignment = .center
     positionLabel.lineBreakMode = .byTruncatingTail
     positionLabel.textColor = .lightGray
@@ -177,7 +181,8 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     // Previously at 20px from container top, which overlapped the status bar
     // Using view's safe area (not container) so label moves with status bar but doesn't affect navigator
     bookTitleLabel.translatesAutoresizingMaskIntoConstraints = false
-    bookTitleLabel.font = .systemFont(ofSize: 12)
+    bookTitleLabel.font = .preferredFont(forTextStyle: .caption1) // Dynamic Type
+    bookTitleLabel.adjustsFontForContentSizeCategory = true
     bookTitleLabel.textAlignment = .center
     bookTitleLabel.lineBreakMode = .byTruncatingTail
     bookTitleLabel.textColor = .lightGray
@@ -197,6 +202,9 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
         await navigator.go(to: initialLocation)
       }
     }
+    
+    // Initialize keyboard navigation handler for accessibility
+    keyboardNavigationHandler = KeyboardNavigationHandler(navigable: self)
   }
 
   private func setupStackView() {
@@ -271,6 +279,17 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     // Readium may create WKWebViews asynchronously, so reconfigure after appearing
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
       self?.configureScrollViewInsets()
+    }
+    
+    // Ensure navigator becomes first responder for keyboard events
+    // The navigator's InputObservableViewController calls becomeFirstResponder() in its viewDidAppear,
+    // but as a child view controller it may not succeed. Explicitly request focus here.
+    DispatchQueue.main.async { [weak self] in
+      guard let self = self else { return }
+      if !self.navigator.isFirstResponder {
+        Log.debug(#file, "Making navigator first responder for keyboard input")
+        self.navigator.becomeFirstResponder()
+      }
     }
   }
 
@@ -599,6 +618,47 @@ extension TPPBaseReaderViewController: VisualNavigatorDelegate {
       }
     }
   }
+  
+  /// Handle keyboard events for accessibility
+  func navigator(_ navigator: VisualNavigator, didPressKey event: KeyEvent) {
+    Log.debug(#file, "didPressKey called: key=\(event.key), phase=\(event.phase), modifiers=\(event.modifiers)")
+    guard let handler = keyboardNavigationHandler else {
+      Log.warn(#file, "keyboardNavigationHandler is nil!")
+      return
+    }
+    Task {
+      let consumed = await handler.handleKeyEvent(event)
+      Log.debug(#file, "Key event consumed: \(consumed)")
+    }
+  }
+}
+
+//------------------------------------------------------------------------------
+// MARK: - KeyboardNavigable
+
+extension TPPBaseReaderViewController: KeyboardNavigable {
+  
+  var isToolbarHidden: Bool {
+    navigationBarHidden
+  }
+  
+  func toggleToolbar() {
+    toggleNavigationBar()
+  }
+  
+  func navigateLeft() async -> Bool {
+    guard let visualNavigator = navigator as? VisualNavigator else { return false }
+    return await visualNavigator.goLeft(options: NavigatorGoOptions(animated: true))
+  }
+  
+  func navigateRight() async -> Bool {
+    guard let visualNavigator = navigator as? VisualNavigator else { return false }
+    return await visualNavigator.goRight(options: NavigatorGoOptions(animated: true))
+  }
+  
+  func navigateForward() async -> Bool {
+    return await navigator.goForward(options: NavigatorGoOptions(animated: true))
+  }
 }
 
 //------------------------------------------------------------------------------
@@ -644,5 +704,83 @@ extension TPPBaseReaderViewController: TPPReaderPositionsDelegate {
   func positionsVC(_ positionsVC: TPPReaderPositionsVC,
                    didRequestSyncBookmarksWithCompletion completion: @escaping (_ success: Bool, _ bookmarks: [TPPReadiumBookmark]) -> Void) {
     bookmarksBusinessLogic.syncBookmarks(completion: completion)
+  }
+}
+
+//------------------------------------------------------------------------------
+// MARK: - Keyboard Input via UIKeyCommand
+
+extension TPPBaseReaderViewController {
+  
+  /// Allow this view controller to become first responder for keyboard input
+  override var canBecomeFirstResponder: Bool { true }
+  
+  /// Define key commands for keyboard navigation - these have priority over focus navigation
+  override var keyCommands: [UIKeyCommand]? {
+    // Only enable navigation keys when toolbar is hidden
+    guard navigationBarHidden else {
+      // When toolbar visible, only Escape works
+      return [
+        UIKeyCommand(action: #selector(handleEscapeKey), input: UIKeyCommand.inputEscape)
+      ]
+    }
+    
+    return [
+      // Escape to toggle toolbar
+      UIKeyCommand(action: #selector(handleEscapeKey), input: UIKeyCommand.inputEscape),
+      // Arrow keys for page navigation
+      UIKeyCommand(action: #selector(handleLeftArrowKey), input: UIKeyCommand.inputLeftArrow),
+      UIKeyCommand(action: #selector(handleRightArrowKey), input: UIKeyCommand.inputRightArrow),
+      // Space for forward navigation
+      UIKeyCommand(action: #selector(handleSpaceKey), input: " "),
+      // Page Up/Down
+      UIKeyCommand(action: #selector(handlePageUpKey), input: UIKeyCommand.inputPageUp),
+      UIKeyCommand(action: #selector(handlePageDownKey), input: UIKeyCommand.inputPageDown),
+    ]
+  }
+  
+  @objc private func handleEscapeKey() {
+    Log.debug(#file, "UIKeyCommand: Escape pressed")
+    toggleNavigationBar()
+  }
+  
+  @objc private func handleLeftArrowKey() {
+    Log.debug(#file, "UIKeyCommand: Left arrow pressed")
+    guard navigationBarHidden else { return }
+    Task {
+      await navigateLeft()
+    }
+  }
+  
+  @objc private func handleRightArrowKey() {
+    Log.debug(#file, "UIKeyCommand: Right arrow pressed")
+    guard navigationBarHidden else { return }
+    Task {
+      await navigateRight()
+    }
+  }
+  
+  @objc private func handleSpaceKey() {
+    Log.debug(#file, "UIKeyCommand: Space pressed")
+    guard navigationBarHidden else { return }
+    Task {
+      await navigateForward()
+    }
+  }
+  
+  @objc private func handlePageUpKey() {
+    Log.debug(#file, "UIKeyCommand: Page Up pressed")
+    guard navigationBarHidden else { return }
+    Task {
+      await navigateLeft()
+    }
+  }
+  
+  @objc private func handlePageDownKey() {
+    Log.debug(#file, "UIKeyCommand: Page Down pressed")
+    guard navigationBarHidden else { return }
+    Task {
+      await navigateForward()
+    }
   }
 }

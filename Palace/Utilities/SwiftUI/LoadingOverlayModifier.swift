@@ -25,7 +25,7 @@ struct LoadingOverlayModifier: ViewModifier {
           .transition(.opacity)
       }
     }
-    .animation(.easeInOut(duration: 0.2), value: isLoading)
+    .accessibleAnimation(.easeInOut(duration: 0.2), value: isLoading)
   }
 }
 
@@ -51,12 +51,14 @@ struct ShimmerEffect: ViewModifier {
           endPoint: .trailing
         )
         .mask(content)
-        .animation(
-          Animation.linear(duration: 1.5)
-            .repeatForever(autoreverses: false)
-        )
+        .accessibleAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false), value: isAnimating)
       )
-      .onAppear { isAnimating = true }
+      .onAppear {
+        // Only animate if reduce motion is not enabled
+        if !UIAccessibility.isReduceMotionEnabled {
+          isAnimating = true
+        }
+      }
   }
 }
 

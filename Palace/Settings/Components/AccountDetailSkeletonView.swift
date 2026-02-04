@@ -26,7 +26,7 @@ struct AccountDetailSkeletonView: View {
     }
     .listStyle(GroupedListStyle())
     .onAppear {
-      withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+      accessibleWithAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
         pulse = true
       }
     }

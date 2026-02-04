@@ -96,7 +96,7 @@ struct BookDetailView: View {
         
         viewModel.fetchRelatedBooks()
         self.descriptionText = viewModel.book.summary ?? ""
-        withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+        accessibleWithAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
           pulseSkeleton = true
         }
       }
@@ -110,7 +110,7 @@ struct BookDetailView: View {
         // Don't update while half sheet is showing to prevent unnecessary re-renders
         guard !viewModel.showHalfSheet else { return }
         
-        withAnimation(.easeInOut(duration: 0.2)) {
+        accessibleWithAnimation(.easeInOut(duration: 0.2)) {
           headerColor = Color(newColor)
         }
       }
@@ -148,7 +148,7 @@ struct BookDetailView: View {
       if !viewModel.isFullSize {
         backgroundView
           .frame(height: headerHeight)
-          .animation(scaleAnimation, value: headerHeight)
+          .accessibleAnimation(scaleAnimation, value: headerHeight)
         
         imageView
           .padding(.top, 50)
@@ -156,12 +156,12 @@ struct BookDetailView: View {
       
       compactHeaderContent
         .opacity(showCompactHeader ? 1 : 0)
-        .animation(scaleAnimation, value: -headerHeight)
+        .accessibleAnimation(scaleAnimation, value: -headerHeight)
 
       SamplePreviewBarView()
     }
     .offset(x: dragOffset)
-    .animation(.interactiveSpring(), value: dragOffset)
+    .accessibleAnimation(.interactiveSpring(), value: dragOffset)
     .navigationBarTitleDisplayMode(.inline)
     .navigationBarBackButtonHidden(true)
     .toolbar {
@@ -257,7 +257,7 @@ struct BookDetailView: View {
           .opacity(titleOpacity)
           .scaleEffect(max(0.8, titleOpacity))
           .offset(y: (1 - titleOpacity) * -10)
-          .animation(scaleAnimation, value: titleOpacity)
+          .accessibleAnimation(scaleAnimation, value: titleOpacity)
         
         VStack(spacing: 20) {
           descriptionView
@@ -272,7 +272,7 @@ struct BookDetailView: View {
       Spacer(minLength: 50)
     }
     .padding(.top, imageBottomPosition + 10)
-    .animation(scaleAnimation, value: imageBottomPosition)
+    .accessibleAnimation(scaleAnimation, value: imageBottomPosition)
   }
   
   private var imageView: some View {
@@ -280,8 +280,8 @@ struct BookDetailView: View {
       .accessibilityIdentifier(AccessibilityID.BookDetail.coverImage)
       .opacity(imageOpacity)
       .adaptiveShadow()
-      .animation(scaleAnimation, value: imageScale)
-      .animation(scaleAnimation, value: imageOpacity)
+      .accessibleAnimation(scaleAnimation, value: imageScale)
+      .accessibleAnimation(scaleAnimation, value: imageOpacity)
       .background(GeometryReader { _ in
         Color.clear
           .onAppear { updateImageBottomPosition() }
@@ -317,7 +317,7 @@ struct BookDetailView: View {
       }
     }
     .foregroundColor(viewModel.isFullSize ? (headerColor.isDark ? .white : .black) : Color(UIColor.label))
-    .animation(scaleAnimation, value: imageScale)
+    .accessibleAnimation(scaleAnimation, value: imageScale)
   }
   
   private var backgroundView: some View {
@@ -596,7 +596,7 @@ struct BookDetailView: View {
     currentOrientation = newOrientation
     viewModel.orientationChanged.toggle()
     
-    withAnimation(.easeInOut(duration: 0.3)) {
+    accessibleWithAnimation(.easeInOut(duration: 0.3)) {
       headerHeight = viewModel.isFullSize ? 300 : 225
       imageScale = viewModel.isFullSize ? 1.0 : imageScale
       imageOpacity = viewModel.isFullSize ? 1.0 : imageOpacity
@@ -647,7 +647,7 @@ struct BookDetailView: View {
       
     case .manageHold:
       viewModel.isManagingHold = true
-      withAnimation(.spring()) {
+      accessibleWithAnimation(.spring()) {
         viewModel.showHalfSheet.toggle()
       }
       
@@ -659,7 +659,7 @@ struct BookDetailView: View {
         if buttonType == .return {
           viewModel.bookState = .returning
         }
-        withAnimation(.spring()) {
+        accessibleWithAnimation(.spring()) {
           viewModel.showHalfSheet = true
         }
         if buttonType != .return {
@@ -668,7 +668,7 @@ struct BookDetailView: View {
       }
       
     default:
-      withAnimation(.spring()) {
+      accessibleWithAnimation(.spring()) {
         viewModel.showHalfSheet.toggle()
       }
     }
