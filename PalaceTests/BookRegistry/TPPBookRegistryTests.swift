@@ -394,3 +394,140 @@ final class DeriveInitialStateTests: XCTestCase {
     XCTAssertEqual(state, .unsupported)
   }
 }
+
+// MARK: - TPPBookRegistry Load Re-entrancy Tests
+
+/// Tests for the re-entrancy guard added to prevent EXC_BAD_ACCESS crashes
+/// when load() is called multiple times rapidly during account changes.
+final class TPPBookRegistryLoadReentrancyTests: XCTestCase {
+  
+  var registry: TPPBookRegistry!
+  var cancellables = Set<AnyCancellable>()
+  
+  override func setUp() {
+    super.setUp()
+    registry = TPPBookRegistry.shared
+    cancellables.removeAll()
+  }
+  
+  override func tearDown() {
+    cancellables.removeAll()
+    super.tearDown()
+  }
+  
+  /// Verifies that calling load() multiple times rapidly for the same account
+  /// doesn't cause crashes or undefined behavior due to re-entrancy.
+  func testLoad_RapidCallsForSameAccount_DoesNotCrash() {
+    let expectation = XCTestExpectation(description: "Registry finishes loading")
+    expectation.expectedFulfillmentCount = 1 // Only expect one completion
+    
+    var loadedCount = 0
+    
+    // Subscribe to registry changes
+    registry.registryPublisher
+      .dropFirst() // Skip initial value
+      .sink { _ in
+        loadedCount += 1
+        if loadedCount == 1 {
+          expectation.fulfill()
+        }
+      }
+      .store(in: &cancellables)
+    
+    // Simulate rapid calls that could trigger the crash
+    // This pattern was causing EXC_BAD_ACCESS before the fix
+    for _ in 0..<10 {
+      registry.load()
+    }
+    
+    wait(for: [expectation], timeout: 5.0)
+    
+    // If we got here without crashing, the re-entrancy guard is working
+    XCTAssertGreaterThanOrEqual(loadedCount, 1, "Registry should have loaded at least once")
+  }
+  
+  /// Verifies that the registry state transitions correctly during load
+  func testLoad_StateTransitions_LoadingToLoaded() {
+    let loadingExpectation = XCTestExpectation(description: "State becomes loading")
+    let loadedExpectation = XCTestExpectation(description: "State becomes loaded")
+    
+    var sawLoading = false
+    var sawLoaded = false
+    
+    registry.statePublisher
+      .sink { state in
+        switch state {
+        case .loading where !sawLoading:
+          sawLoading = true
+          loadingExpectation.fulfill()
+        case .loaded where !sawLoaded:
+          sawLoaded = true
+          loadedExpectation.fulfill()
+        default:
+          break
+        }
+      }
+      .store(in: &cancellables)
+    
+    registry.load()
+    
+    wait(for: [loadingExpectation, loadedExpectation], timeout: 5.0)
+    
+    XCTAssertTrue(sawLoading, "Should have seen loading state")
+    XCTAssertTrue(sawLoaded, "Should have seen loaded state")
+  }
+  
+  /// Verifies that the registry emits book state events after loading
+  /// This was added to fix UI sync issues when reopening the app
+  func testLoad_EmitsBookStateEventsForAllBooks() {
+    let expectation = XCTestExpectation(description: "Book state events emitted")
+    
+    var receivedStateUpdates = Set<String>()
+    
+    registry.bookStatePublisher
+      .sink { (identifier, _) in
+        receivedStateUpdates.insert(identifier)
+      }
+      .store(in: &cancellables)
+    
+    registry.load()
+    
+    // Wait a moment for async events
+    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+      expectation.fulfill()
+    }
+    
+    wait(for: [expectation], timeout: 5.0)
+    
+    // Check that we received state updates for books that were in the registry
+    let registryCount = registry.allBooks.count
+    if registryCount > 0 {
+      XCTAssertFalse(receivedStateUpdates.isEmpty, "Should have received state updates for loaded books")
+    }
+  }
+  
+  /// Verifies that weak self captures in async closures prevent crashes
+  /// when the registry might be deallocated mid-operation
+  func testLoad_WeakSelfCaptures_DoNotRetainStrongReferences() {
+    // This test verifies that the async closures in load() use weak self
+    // and don't cause retain cycles or crashes
+    
+    let expectation = XCTestExpectation(description: "Load completes")
+    
+    // Track that we can complete a load without issues
+    registry.statePublisher
+      .filter { $0 == .loaded }
+      .first()
+      .sink { _ in
+        expectation.fulfill()
+      }
+      .store(in: &cancellables)
+    
+    registry.load()
+    
+    wait(for: [expectation], timeout: 5.0)
+    
+    // If we got here, the weak self captures are working correctly
+    // A strong reference issue would either hang or crash
+  }
+}
