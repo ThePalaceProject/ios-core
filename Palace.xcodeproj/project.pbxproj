@@ -589,7 +589,6 @@
 		E50221CE29881D2800A8A80B /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = E50221D029881D2800A8A80B /* Localizable.strings */; };
 		E5024A8F2A0EB9D6006BF653 /* AudiobookBookmarkBusinessLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5024A8E2A0EB9D6006BF653 /* AudiobookBookmarkBusinessLogicTests.swift */; };
 		E5037FE729A3FF84002DA132 /* ButtonStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5037FE629A3FF83002DA132 /* ButtonStateTests.swift */; };
-		HTVI00012F2600010000001A /* HTMLTextViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = HTVI00012F2600010000001B /* HTMLTextViewTests.swift */; };
 		E50543642E5F68B2007CCFAB /* LibraryNavTitle.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50543632E5F68B2007CCFAB /* LibraryNavTitle.swift */; };
 		E50543652E5F68B2007CCFAB /* LibraryNavTitle.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50543632E5F68B2007CCFAB /* LibraryNavTitle.swift */; };
 		E50543672E5F6A4F007CCFAB /* CatalogSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50543662E5F6A4F007CCFAB /* CatalogSearchView.swift */; };
@@ -768,8 +767,6 @@
 		E5A09AA52F0D739D00CC23EA /* PDFDocumentProviding.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A09A572F0D6F9300CC23EA /* PDFDocumentProviding.swift */; };
 		E5A09AA62F0D739D00CC23EA /* PDFDocumentProviding.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A09A572F0D6F9300CC23EA /* PDFDocumentProviding.swift */; };
 		E5A0CEA42AA9855200C304EC /* TPPBookMock.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A0CEA32AA9855200C304EC /* TPPBookMock.swift */; };
-		OBJC00012F2600020000001A /* ObjCExceptionCatcher.m in Sources */ = {isa = PBXBuildFile; fileRef = OBJC00012F2600020000001B /* ObjCExceptionCatcher.m */; };
-		E5A0CEA62AA9856000C304EC /* TPPReauthenticatorMock.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A0CEA52AA9856000C304EC /* TPPReauthenticatorMock.swift */; };
 		E5A1412A28D4F1B20091AD2D /* TPPBook.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A1412928D4F1B20091AD2D /* TPPBook.swift */; };
 		E5A1413328D9018A0091AD2D /* TPPBook.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A1412928D4F1B20091AD2D /* TPPBook.swift */; };
 		E5A1413528D94DDA0091AD2D /* TPPContentType.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A1413428D94DDA0091AD2D /* TPPContentType.swift */; };
@@ -1056,11 +1053,13 @@
 		F8724E8F85D04DC1941AFC2B /* AccountDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 480ADB3F1AA842DE805EC230 /* AccountDetailView.swift */; };
 		FA346754BE76A48C92CF0754 /* OPDS2FeedParsingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CD86C00D774B74F80D5B713 /* OPDS2FeedParsingTests.swift */; };
 		FC0AD7762077072EC062F780 /* AudiobookAccessibilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A77E63314ED6F70CC68C0DA0 /* AudiobookAccessibilityTests.swift */; };
+		HTVI00012F2600010000001A /* HTMLTextViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = HTVI00012F2600010000001B /* HTMLTextViewTests.swift */; };
 		LRPP002T260955EF008E1DC3 /* TPPLastReadPositionPosterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = LRPP001T260955EF008E1DC3 /* TPPLastReadPositionPosterTests.swift */; };
 		LRPS002T260955EF008E1DC3 /* TPPLastReadPositionSynchronizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = LRPS001T260955EF008E1DC3 /* TPPLastReadPositionSynchronizerTests.swift */; };
 		NAVCOORDTESTS0001SOURCES /* NavigationCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = NAVCOORDTESTS0001FILEREF /* NavigationCoordinatorTests.swift */; };
 		NSER002T260955EF008E1DC3 /* NSErrorAdditionsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = NSER001T260955EF008E1DC3 /* NSErrorAdditionsTests.swift */; };
 		NTCK002T260955EF008E1DC3 /* NetworkClientMock.swift in Sources */ = {isa = PBXBuildFile; fileRef = NTCK001T260955EF008E1DC3 /* NetworkClientMock.swift */; };
+		OBJC00012F2600020000001A /* ObjCExceptionCatcher.m in Sources */ = {isa = PBXBuildFile; fileRef = OBJC00012F2600020000001B /* ObjCExceptionCatcher.m */; };
 		PLAYBOOTTEST0001SOURCES /* PlaybackBootstrapperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PLAYBOOTTEST0001FILEREF /* PlaybackBootstrapperTests.swift */; };
 		PP3346A11B0000000000001B /* CatalogLaneRowViewAccessibilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP3346A11A0000000000001A /* CatalogLaneRowViewAccessibilityTests.swift */; };
 		PP3583TRACKER00001TESTS /* AudiobookTrackerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E544E7132C8A14D400802EB9 /* AudiobookTrackerTests.swift */; };
@@ -1684,7 +1683,6 @@
 		E50221CF29881D2800A8A80B /* fr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = fr; path = fr.lproj/Localizable.strings; sourceTree = "<group>"; };
 		E5024A8E2A0EB9D6006BF653 /* AudiobookBookmarkBusinessLogicTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudiobookBookmarkBusinessLogicTests.swift; sourceTree = "<group>"; };
 		E5037FE629A3FF83002DA132 /* ButtonStateTests.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ButtonStateTests.swift; sourceTree = "<group>"; };
-		HTVI00012F2600010000001B /* HTMLTextViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTMLTextViewTests.swift; sourceTree = "<group>"; };
 		E50543632E5F68B2007CCFAB /* LibraryNavTitle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryNavTitle.swift; sourceTree = "<group>"; };
 		E50543662E5F6A4F007CCFAB /* CatalogSearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogSearchView.swift; sourceTree = "<group>"; };
 		E50543692E5F6A68007CCFAB /* CatalogSearchViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogSearchViewModel.swift; sourceTree = "<group>"; };
@@ -1800,9 +1798,6 @@
 		E5A09A7E2F0D72B500CC23EA /* DeviceOrientationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceOrientationTests.swift; sourceTree = "<group>"; };
 		E5A09A802F0D72D000CC23EA /* URLResponseAuthenticationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = URLResponseAuthenticationTests.swift; sourceTree = "<group>"; };
 		E5A0CEA32AA9855200C304EC /* TPPBookMock.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPBookMock.swift; sourceTree = "<group>"; };
-		OBJC00012F2600020000001B /* ObjCExceptionCatcher.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ObjCExceptionCatcher.m; sourceTree = "<group>"; };
-		OBJC00012F2600020000001C /* ObjCExceptionCatcher.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ObjCExceptionCatcher.h; sourceTree = "<group>"; };
-		E5A0CEA52AA9856000C304EC /* TPPReauthenticatorMock.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPReauthenticatorMock.swift; sourceTree = "<group>"; };
 		E5A1412928D4F1B20091AD2D /* TPPBook.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBook.swift; sourceTree = "<group>"; };
 		E5A1413428D94DDA0091AD2D /* TPPContentType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPContentType.swift; sourceTree = "<group>"; };
 		E5AA6F4029A6BA4000601B02 /* RefreshableView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RefreshableView.swift; sourceTree = "<group>"; };
@@ -1960,11 +1955,14 @@
 		F6BA53D1C399ABE2186FD429 /* OPDS2AuthenticationDocumentTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OPDS2AuthenticationDocumentTests.swift; sourceTree = "<group>"; };
 		F6C56509A03466E0531DBC27 /* TPPAccountAuthState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAccountAuthState.swift; sourceTree = "<group>"; };
 		F6F691D8676CFC56232C6790 /* LCPPDFsTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LCPPDFsTests.swift; sourceTree = "<group>"; };
+		HTVI00012F2600010000001B /* HTMLTextViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTMLTextViewTests.swift; sourceTree = "<group>"; };
 		LRPP001T260955EF008E1DC3 /* TPPLastReadPositionPosterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPLastReadPositionPosterTests.swift; sourceTree = "<group>"; };
 		LRPS001T260955EF008E1DC3 /* TPPLastReadPositionSynchronizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPLastReadPositionSynchronizerTests.swift; sourceTree = "<group>"; };
 		NAVCOORDTESTS0001FILEREF /* NavigationCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationCoordinatorTests.swift; sourceTree = "<group>"; };
 		NSER001T260955EF008E1DC3 /* NSErrorAdditionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = NSErrorAdditionsTests.swift; path = ErrorHandling/NSErrorAdditionsTests.swift; sourceTree = "<group>"; };
 		NTCK001T260955EF008E1DC3 /* NetworkClientMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkClientMock.swift; sourceTree = "<group>"; };
+		OBJC00012F2600020000001B /* ObjCExceptionCatcher.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ObjCExceptionCatcher.m; sourceTree = "<group>"; };
+		OBJC00012F2600020000001C /* ObjCExceptionCatcher.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ObjCExceptionCatcher.h; sourceTree = "<group>"; };
 		PLAYBOOTTEST0001FILEREF /* PlaybackBootstrapperTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackBootstrapperTests.swift; sourceTree = "<group>"; };
 		PP3346A11A0000000000001A /* CatalogLaneRowViewAccessibilityTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CatalogLaneRowViewAccessibilityTests.swift; sourceTree = "<group>"; };
 		R3LC001T260955EF008E1DC3 /* TPPBookmarkR3LocationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBookmarkR3LocationTests.swift; sourceTree = "<group>"; };
@@ -3669,7 +3667,6 @@
 				E5A0CEA32AA9855200C304EC /* TPPBookMock.swift */,
 				OBJC00012F2600020000001C /* ObjCExceptionCatcher.h */,
 				OBJC00012F2600020000001B /* ObjCExceptionCatcher.m */,
-				5D73DA3D22A07B9A00162CB8 /* MyBooksDownloadCenterTests.swift */,
 			);
 			name = MyBooksDownloadCenterTests;
 			sourceTree = "<group>";
