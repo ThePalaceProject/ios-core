@@ -232,6 +232,15 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
   }
 
   func applicationWillTerminate(_ application: UIApplication) {
+    // Clean up Adobe DRM first to prevent "recursive_mutex lock failed" crashes
+    // on Mac Catalyst. The FinalTerminationWatchdog can force exit() which triggers
+    // C++ static destructors - clearing our references helps avoid mutex corruption.
+    #if FEATURE_DRM_CONNECTOR
+    if AdobeCertificate.isDRMAvailable {
+      AdobeDRMService.shared.prepareForTermination()
+    }
+    #endif
+    
     audiobookLifecycleManager.willTerminate()
     NotificationCenter.default.removeObserver(self)
     Reachability.shared.stopMonitoring()
