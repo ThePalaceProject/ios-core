@@ -1,0 +1,36 @@
+{
+  "success": true,
+  "xcresult_path": "TestResults.xcresult",
+  "api_used": "none",
+  "build": {
+    "status": "failed",
+    "errors": [
+      "Testing cancelled because the build failed.",
+      "'Presentation' is unavailable: This was removed from RWPM. You can still use the EPUB extensibility to access the original values.",
+      "'Presentation' is unavailable: This was removed from RWPM. You can still use the EPUB extensibility to access the original values.",
+      "'Presentation' is unavailable: This was removed from RWPM. You can still use the EPUB extensibility to access the original values.",
+      "'Presentation' is unavailable: This was removed from RWPM. You can still use the EPUB extensibility to access the original values.",
+      "'Presentation' is unavailable: This was removed from RWPM. You can still use the EPUB extensibility to access the original values.",
+      "'Presentation' is unavailable: This was removed from RWPM. You can still use the EPUB extensibility to access the original values."
+    ],
+    "warnings": [
+      "Skipping duplicate build file in Compile Sources build phase: /Users/runner/work/ios-core/ios-core/Palace/CarPlay/CarPlaySceneDelegate.swift",
+      "Skipping duplicate build file in Compile Sources build phase: /Users/runner/work/ios-core/ios-core/Palace/CarPlay/CarPlayTemplateManager.swift",
+      "Skipping duplicate build file in Compile Sources build phase: /Users/runner/work/ios-core/ios-core/Palace/CarPlay/CarPlayAudiobookBridge.swift",
+      "Skipping duplicate build file in Compile Sources build phase: /Users/runner/work/ios-core/ios-core/Palace/CarPlay/CarPlayImageProvider.swift",
+      "'sprintf' is deprecated: This function is provided for compatibility reasons only.  Due to security concerns inherent in the design of sprintf(3), it is highly recommended that you use snprintf(3) instead."
+    ]
+  },
+  "summary": {
+    "tests": 0,
+    "passed": 0,
+    "failed": 0,
+    "skipped": 0,
+    "duration": 0,
+    "duration_formatted": "<1ms",
+    "pass_rate": "N/A"
+  },
+  "tests": [],
+  "classes": {},
+  "failed_tests": []
+}
