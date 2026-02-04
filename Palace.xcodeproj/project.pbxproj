@@ -1062,11 +1062,13 @@
 		F8724E8F85D04DC1941AFC2B /* AccountDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 480ADB3F1AA842DE805EC230 /* AccountDetailView.swift */; };
 		FA346754BE76A48C92CF0754 /* OPDS2FeedParsingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CD86C00D774B74F80D5B713 /* OPDS2FeedParsingTests.swift */; };
 		FC0AD7762077072EC062F780 /* AudiobookAccessibilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A77E63314ED6F70CC68C0DA0 /* AudiobookAccessibilityTests.swift */; };
+		HTVI00012F2600010000001A /* HTMLTextViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = HTVI00012F2600010000001B /* HTMLTextViewTests.swift */; };
 		LRPP002T260955EF008E1DC3 /* TPPLastReadPositionPosterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = LRPP001T260955EF008E1DC3 /* TPPLastReadPositionPosterTests.swift */; };
 		LRPS002T260955EF008E1DC3 /* TPPLastReadPositionSynchronizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = LRPS001T260955EF008E1DC3 /* TPPLastReadPositionSynchronizerTests.swift */; };
 		NAVCOORDTESTS0001SOURCES /* NavigationCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = NAVCOORDTESTS0001FILEREF /* NavigationCoordinatorTests.swift */; };
 		NSER002T260955EF008E1DC3 /* NSErrorAdditionsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = NSER001T260955EF008E1DC3 /* NSErrorAdditionsTests.swift */; };
 		NTCK002T260955EF008E1DC3 /* NetworkClientMock.swift in Sources */ = {isa = PBXBuildFile; fileRef = NTCK001T260955EF008E1DC3 /* NetworkClientMock.swift */; };
+		OBJC00012F2600020000001A /* ObjCExceptionCatcher.m in Sources */ = {isa = PBXBuildFile; fileRef = OBJC00012F2600020000001B /* ObjCExceptionCatcher.m */; };
 		PLAYBOOTTEST0001SOURCES /* PlaybackBootstrapperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PLAYBOOTTEST0001FILEREF /* PlaybackBootstrapperTests.swift */; };
 		PP3346A11B0000000000001B /* CatalogLaneRowViewAccessibilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP3346A11A0000000000001A /* CatalogLaneRowViewAccessibilityTests.swift */; };
 		PP3583TRACKER00001TESTS /* AudiobookTrackerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E544E7132C8A14D400802EB9 /* AudiobookTrackerTests.swift */; };
@@ -1974,12 +1976,15 @@
 		F6BA53D1C399ABE2186FD429 /* OPDS2AuthenticationDocumentTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OPDS2AuthenticationDocumentTests.swift; sourceTree = "<group>"; };
 		F6C56509A03466E0531DBC27 /* TPPAccountAuthState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAccountAuthState.swift; sourceTree = "<group>"; };
 		F6F691D8676CFC56232C6790 /* LCPPDFsTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LCPPDFsTests.swift; sourceTree = "<group>"; };
+		HTVI00012F2600010000001B /* HTMLTextViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTMLTextViewTests.swift; sourceTree = "<group>"; };
 		F75B6896C9742C07208D935E /* MockVisualNavigator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MockVisualNavigator.swift; sourceTree = "<group>"; };
 		LRPP001T260955EF008E1DC3 /* TPPLastReadPositionPosterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPLastReadPositionPosterTests.swift; sourceTree = "<group>"; };
 		LRPS001T260955EF008E1DC3 /* TPPLastReadPositionSynchronizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPLastReadPositionSynchronizerTests.swift; sourceTree = "<group>"; };
 		NAVCOORDTESTS0001FILEREF /* NavigationCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationCoordinatorTests.swift; sourceTree = "<group>"; };
 		NSER001T260955EF008E1DC3 /* NSErrorAdditionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = NSErrorAdditionsTests.swift; path = ErrorHandling/NSErrorAdditionsTests.swift; sourceTree = "<group>"; };
 		NTCK001T260955EF008E1DC3 /* NetworkClientMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkClientMock.swift; sourceTree = "<group>"; };
+		OBJC00012F2600020000001B /* ObjCExceptionCatcher.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ObjCExceptionCatcher.m; sourceTree = "<group>"; };
+		OBJC00012F2600020000001C /* ObjCExceptionCatcher.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ObjCExceptionCatcher.h; sourceTree = "<group>"; };
 		PLAYBOOTTEST0001FILEREF /* PlaybackBootstrapperTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackBootstrapperTests.swift; sourceTree = "<group>"; };
 		PP3346A11A0000000000001A /* CatalogLaneRowViewAccessibilityTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CatalogLaneRowViewAccessibilityTests.swift; sourceTree = "<group>"; };
 		R3LC001T260955EF008E1DC3 /* TPPBookmarkR3LocationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBookmarkR3LocationTests.swift; sourceTree = "<group>"; };
@@ -5893,6 +5898,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 428;
+				DEVELOPMENT_TEAM = "";
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
@@ -6227,7 +6233,7 @@
 			repositoryURL = "https://github.com/readium/swift-toolkit.git";
 			requirement = {
 				kind = exactVersion;
-				version = 3.3.0;
+				version = 3.6.0;
 			};
 		};
 		E77D02232931357400544180 /* XCRemoteSwiftPackageReference "SwiftSoup" */ = {

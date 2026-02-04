@@ -123,6 +123,24 @@ class AdobeDRMService: NSObject {
     super.init()
   }
   
+  /// Prepare for app termination by clearing cached references.
+  /// This helps prevent "recursive_mutex lock failed" crashes on Mac Catalyst
+  /// when the FinalTerminationWatchdog forces app exit and triggers C++ static
+  /// destructors while Adobe DRM objects are in an inconsistent state.
+  func prepareForTermination() {
+    lock.lock()
+    defer { lock.unlock() }
+    
+    // Clear delegate to prevent callbacks during shutdown
+    _adeptInstance?.delegate = nil
+    
+    // Clear our cached reference (doesn't destroy the underlying C++ objects,
+    // but helps avoid our code interacting with them during shutdown)
+    _adeptInstance = nil
+    
+    Log.info(#file, "Adobe DRM prepared for termination")
+  }
+  
   /// Safely get the NYPLADEPT shared instance.
   /// Returns nil if DRM is not available or initialization fails.
   var adeptInstance: NYPLADEPT? {
