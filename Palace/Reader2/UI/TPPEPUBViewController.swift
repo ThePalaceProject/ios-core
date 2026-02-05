@@ -2,8 +2,7 @@ import UIKit
 import SwiftUI
 import ReadiumShared
 import ReadiumNavigator
-import WebKit
-import SwiftSoup
+import GameController
 
 class TPPEPUBViewController: TPPBaseReaderViewController {
   var popoverUserconfigurationAnchor: UIBarButtonItem?
@@ -12,6 +11,11 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
   private var preferences: EPUBPreferences
   private var highlights: [Decoration] = []
   private var highlightGroup = "highlights"
+  private var keyboardInput: GCKeyboardInput?
+  private var keyboardConnectObserver: NSObjectProtocol?
+  private var keyboardDisconnectObserver: NSObjectProtocol?
+  private var isShiftPressed = false
+  private lazy var keyboardNavigationHandler = KeyboardNavigationHandler(navigable: self)
 
   init(publication: Publication,
        book: TPPBook,
@@ -25,7 +29,7 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
 
     self.searchButton = UIBarButtonItem(barButtonSystemItem: .search, target: nil, action: #selector(presentEPUBSearch))
     self.searchButton.accessibilityLabel = Strings.Generic.searchInBook
-    
+
     // Use zero insets - letterbox container in base class handles spacing
     let contentInset: [UIUserInterfaceSizeClass: EPUBContentInsets] = [
       .compact: (top: 0, bottom: 0),
@@ -54,6 +58,39 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     navigator.delegate = self
     self.searchButton.target = self
     setUIColor(for: preferences)
+
+    // MARK: - Readium Input Observers
+
+    // DirectionalNavigationAdapter handles BOTH edge taps AND keyboard navigation.
+    // Keyboard events arrive via Readium's JavaScript bridge (keyboard.js captures
+    // keydown in WKWebView, calls preventDefault, forwards via messageHandlers).
+    // This matches Readium's TestApp configuration.
+    DirectionalNavigationAdapter(
+      pointerPolicy: DirectionalNavigationAdapter.PointerPolicy(
+        types: [.touch],
+        edges: .horizontal,
+        ignoreWhileScrolling: true,
+        horizontalEdgeThresholdPercent: 0.2
+      ),
+      animatedTransition: true
+    ).bind(to: navigator)
+
+    // Readium key observer — handles keys NOT covered by DirectionalNavigationAdapter
+    // (e.g. Escape for toolbar toggle). Arrow/space events are consumed by
+    // DirectionalNavigationAdapter above (registered first = higher priority).
+    navigator.addObserver(.key { [weak self] event in
+      guard let self = self else { return false }
+      return await self.keyboardNavigationHandler.handleKeyEvent(event)
+    })
+
+    // Center taps toggle toolbar, then reclaim first responder so
+    // UIKeyCommands keep working (tapping WKWebView steals it).
+    navigator.addObserver(.tap { [weak self] _ in
+      self?.toggleNavigationBar()
+      self?.claimFirstResponder()
+      return true
+    })
+
     log(.info, "TPPEPUBViewController initialized with publication: \(publication.metadata.title ?? "Unknown Title").")
   }
 
@@ -69,29 +106,214 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
 
   override func viewDidLoad() {
     super.viewDidLoad()
-    
+
     observeDecorationInteractions(inGroup: highlightGroup) { event in
       self.handleHighlightInteraction(event)
     }
-    
+
     epubNavigator.submitPreferences(preferences)
     setUIColor(for: preferences)
+
+    // Configure accessibility for Full Keyboard Access (FKA) users.
+    // FKA intercepts arrow keys at the system level for focus navigation.
+    // Users can press Tab-Z to access these custom actions for page turning.
+    configureAccessibilityActions()
   }
-  
-  override func updateNavigationBar(animated: Bool = true) {
-    super.updateNavigationBar(animated: animated)
+
+  // MARK: - Accessibility (Full Keyboard Access support)
+
+  /// Configure accessibility custom actions for page turning.
+  /// These appear in the Tab-Z menu when Full Keyboard Access is enabled,
+  /// providing an alternative to arrow keys which FKA consumes.
+  private func configureAccessibilityActions() {
+    // Make the navigator view respond as a single accessible element
+    // so FKA doesn't try to focus individual elements within the WKWebView.
+    navigator.view.isAccessibilityElement = true
+    navigator.view.accessibilityLabel = Strings.Generic.bookReader
+    navigator.view.accessibilityTraits = .allowsDirectInteraction
+
+    // Custom actions accessible via Tab-Z for FKA users
+    let nextPageAction = UIAccessibilityCustomAction(
+      name: Strings.Generic.nextPage,
+      actionHandler: { [weak self] _ in
+        guard let self = self else { return false }
+        Task { @MainActor in
+          _ = await self.navigator.goForward(options: NavigatorGoOptions(animated: true))
+        }
+        return true
+      }
+    )
+
+    let previousPageAction = UIAccessibilityCustomAction(
+      name: Strings.Generic.previousPage,
+      actionHandler: { [weak self] _ in
+        guard let self = self else { return false }
+        Task { @MainActor in
+          _ = await self.navigator.goBackward(options: NavigatorGoOptions(animated: true))
+        }
+        return true
+      }
+    )
+
+    let toggleToolbarAction = UIAccessibilityCustomAction(
+      name: Strings.Generic.toggleToolbar,
+      actionHandler: { [weak self] _ in
+        self?.toggleNavigationBar()
+        return true
+      }
+    )
+
+    navigator.view.accessibilityCustomActions = [nextPageAction, previousPageAction, toggleToolbarAction]
   }
-  
+
+  /// Reclaim first responder after each page load so UIKeyCommands stay active.
+  /// WKWebView often reclaims first responder when it finishes rendering content.
+  override func didChangeLocation(_ locator: Locator) {
+    claimFirstResponder()
+  }
+
+  override func viewDidAppear(_ animated: Bool) {
+    super.viewDidAppear(animated)
+    tabBarController?.tabBar.isHidden = true
+    startKeyboardInputMonitoring()
+    // Readium's InputObservableViewController.viewDidAppear also calls
+    // becomeFirstResponder(). Reclaim after a short delay so our UIKeyCommands
+    // take priority, and again after WKWebView finishes async content loading.
+    claimFirstResponder()
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+      self?.claimFirstResponder()
+    }
+  }
+
+  // MARK: - First Responder & Focus Control
+
+  /// Claim first responder so UIKeyCommands are matched on THIS VC before
+  /// WKWebView's web-content process can consume arrow key events.
+  private func claimFirstResponder() {
+    if !isFirstResponder {
+      becomeFirstResponder()
+    }
+  }
+
+  /// Refuse to give up first responder. WKWebView aggressively reclaims it
+  /// after content loads, stealing it from our VC. When WKWebView is first
+  /// responder, the iPadOS/iOS focus engine consumes arrow keys before
+  /// UIKeyCommand matching. By staying first responder, our UIKeyCommands
+  /// with wantsPriorityOverSystemBehavior fire BEFORE the focus engine.
+  @discardableResult
+  override func resignFirstResponder() -> Bool {
+    return false
+  }
+
+  /// Block FKA from moving focus between Readium's internal WKWebViews.
+  override func shouldUpdateFocus(in context: UIFocusUpdateContext) -> Bool {
+    return false
+  }
+
+  // MARK: - UIKeyCommand (Primary Keyboard Path)
+
+  /// UIKeyCommand with `wantsPriorityOverSystemBehavior` intercepts arrow keys
+  /// BEFORE the focus engine consumes them. This is the only reliable path on
+  /// iPadOS where the focus system eats arrow/space events.
+  private static let readerKeyCommands: [UIKeyCommand] = {
+    let commands = [
+      UIKeyCommand(input: UIKeyCommand.inputLeftArrow, modifierFlags: [], action: #selector(keyCommandGoBackward)),
+      UIKeyCommand(input: UIKeyCommand.inputRightArrow, modifierFlags: [], action: #selector(keyCommandGoForward)),
+      UIKeyCommand(input: " ", modifierFlags: [], action: #selector(keyCommandGoForward)),
+      UIKeyCommand(input: " ", modifierFlags: .shift, action: #selector(keyCommandGoBackward)),
+      UIKeyCommand(input: UIKeyCommand.inputEscape, modifierFlags: [], action: #selector(keyCommandToggleUI)),
+      UIKeyCommand(input: UIKeyCommand.inputPageUp, modifierFlags: [], action: #selector(keyCommandGoBackward)),
+      UIKeyCommand(input: UIKeyCommand.inputPageDown, modifierFlags: [], action: #selector(keyCommandGoForward)),
+    ]
+    commands.forEach { $0.wantsPriorityOverSystemBehavior = true }
+    return commands
+  }()
+
+  override var keyCommands: [UIKeyCommand]? {
+    return Self.readerKeyCommands
+  }
+
+  @objc private func keyCommandGoBackward() {
+    Task { @MainActor in
+      await keyboardNavigationHandler.handleCommand(.goBackward, via: self)
+    }
+  }
+
+  @objc private func keyCommandGoForward() {
+    Task { @MainActor in
+      await keyboardNavigationHandler.handleCommand(.goForward, via: self)
+    }
+  }
+
+  @objc private func keyCommandToggleUI() {
+    Task { @MainActor in
+      await keyboardNavigationHandler.handleCommand(.toggleUI, via: self)
+    }
+  }
+
+  // MARK: - GCKeyboard Monitoring
+
+  private func startKeyboardInputMonitoring() {
+    keyboardConnectObserver = NotificationCenter.default.addObserver(
+      forName: .GCKeyboardDidConnect,
+      object: nil,
+      queue: .main
+    ) { [weak self] _ in
+      self?.configureKeyboardInput()
+    }
+
+    keyboardDisconnectObserver = NotificationCenter.default.addObserver(
+      forName: .GCKeyboardDidDisconnect,
+      object: nil,
+      queue: .main
+    ) { [weak self] _ in
+      self?.keyboardInput?.keyChangedHandler = nil
+      self?.keyboardInput = nil
+    }
+
+    configureKeyboardInput()
+  }
+
+  private func stopKeyboardInputMonitoring() {
+    keyboardInput?.keyChangedHandler = nil
+    keyboardInput = nil
+    if let observer = keyboardConnectObserver {
+      NotificationCenter.default.removeObserver(observer)
+      keyboardConnectObserver = nil
+    }
+    if let observer = keyboardDisconnectObserver {
+      NotificationCenter.default.removeObserver(observer)
+      keyboardDisconnectObserver = nil
+    }
+  }
+
+  private func configureKeyboardInput() {
+    guard let input = GCKeyboard.coalesced?.keyboardInput else { return }
+    keyboardInput = input
+    input.keyChangedHandler = { [weak self] _, _, keyCode, pressed in
+      guard let self = self else { return }
+      if keyCode == .leftShift || keyCode == .rightShift {
+        self.isShiftPressed = pressed
+        return
+      }
+      guard pressed else { return }
+      if let command = KeyboardInputMapper.command(for: keyCode, isShiftPressed: self.isShiftPressed) {
+        Task { @MainActor in
+          await self.keyboardNavigationHandler.handleCommand(command, via: self)
+        }
+      }
+    }
+  }
+
   override func viewWillAppear(_ animated: Bool) {
     super.viewWillAppear(animated)
     setUIColor(for: preferences)
     log(.info, "TPPEPUBViewController will appear. UI color set based on preferences.")
     epubNavigator.submitPreferences(preferences)
-    
+
     // Ensure tab bar is properly hidden on both iPhone and iPad
     if let tabBarController = tabBarController {
       tabBarController.tabBar.isHidden = true
-      // On iPad, also ensure the tab bar is not translucent to prevent rendering issues
       if UIDevice.current.userInterfaceIdiom == .pad {
         tabBarController.tabBar.isTranslucent = false
       }
@@ -104,30 +326,26 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
      }
 
     navigationController?.navigationBar.isTranslucent = true
-    
+
     navigationController?.setNavigationBarHidden(true, animated: false)
     navigationController?.setToolbarHidden(true, animated: false)
   }
-  
-  override func viewDidAppear(_ animated: Bool) {
-    super.viewDidAppear(animated)
-    tabBarController?.tabBar.isHidden = true
-  }
-  
+
   @objc private func closeEPUB() {
     if let tabBarController = tabBarController {
       tabBarController.tabBar.isHidden = false
       tabBarController.tabBar.isTranslucent = true
     }
-    
+
     NavigationCoordinatorHub.shared.coordinator?.pop()
   }
-  
+
   override func viewSafeAreaInsetsDidChange() {
   }
 
   override func viewWillDisappear(_ animated: Bool) {
     super.viewWillDisappear(animated)
+    stopKeyboardInputMonitoring()
     resetNavigationAppearance()
   }
 
@@ -212,12 +430,12 @@ extension TPPEPUBViewController: TPPReaderSettingsDelegate {
   func setUIColor(for appearance: EPUBPreferences) {
     let backgroundColor = appearance.backgroundColor?.uiColor ?? .black
     let textColor = appearance.textColor?.uiColor ?? .lightGray
-    
+
     navigator.view.backgroundColor = backgroundColor
     view.backgroundColor = backgroundColor
     navigatorContainer?.backgroundColor = backgroundColor
     view.tintColor = textColor
-    
+
     // Update label colors to match theme
     positionLabel.textColor = textColor.withAlphaComponent(0.7)
     bookTitleLabel.textColor = textColor.withAlphaComponent(0.7)
@@ -230,6 +448,53 @@ extension TPPEPUBViewController: EPUBNavigatorDelegate {
   }
 }
 
+// MARK: - KeyboardNavigable
+
+extension TPPEPUBViewController: KeyboardNavigable {
+  var isToolbarHidden: Bool {
+    navigationController?.isNavigationBarHidden ?? true
+  }
+
+  func toggleToolbar() {
+    toggleNavigationBar()
+  }
+
+  func navigateLeft() async -> Bool {
+    await navigator.goBackward(options: NavigatorGoOptions(animated: false))
+  }
+
+  func navigateRight() async -> Bool {
+    await navigator.goForward(options: NavigatorGoOptions(animated: false))
+  }
+
+  func navigateForward() async -> Bool {
+    await navigator.goForward(options: NavigatorGoOptions(animated: false))
+  }
+}
+
+// MARK: - KeyboardInputMapper
+
+enum KeyboardInputMapper {
+  static func command(for keyCode: GCKeyCode, isShiftPressed: Bool) -> TPPBaseReaderViewController.ReaderKeyboardCommand? {
+    switch keyCode {
+    case .leftArrow, .pageUp:
+      return .goBackward
+    case .rightArrow, .pageDown:
+      return .goForward
+    case .spacebar:
+      if isShiftPressed {
+        return .goBackward
+      }
+      return .goForward
+    case .escape:
+      return .toggleUI
+    default:
+      return nil
+    }
+  }
+}
+
+// MARK: - UIPopoverPresentationControllerDelegate
 extension TPPEPUBViewController: UIPopoverPresentationControllerDelegate {
   func adaptivePresentationStyle(for controller: UIPresentationController) -> UIModalPresentationStyle {
     return .none
@@ -284,4 +549,3 @@ public extension DecorableNavigator {
     }
   }
 }
-

@@ -114,6 +114,12 @@ struct Strings {
     static let playAudiobook = NSLocalizedString("Play", comment: "VoiceOver: Play audiobook")
     static let pauseAudiobook = NSLocalizedString("Pause", comment: "VoiceOver: Pause audiobook")
     static let skipBack30 = NSLocalizedString("Skip back 30 seconds", comment: "VoiceOver: Rewind audiobook 30 seconds")
+
+    // Accessibility - EPUB Reader (Full Keyboard Access)
+    static let bookReader = NSLocalizedString("Book reader", comment: "VoiceOver: Accessibility label for the book reading area")
+    static let nextPage = NSLocalizedString("Next page", comment: "Full Keyboard Access: Custom action to go to next page (Tab-Z menu)")
+    static let previousPage = NSLocalizedString("Previous page", comment: "Full Keyboard Access: Custom action to go to previous page (Tab-Z menu)")
+    static let toggleToolbar = NSLocalizedString("Toggle toolbar", comment: "Full Keyboard Access: Custom action to show/hide reader toolbar (Tab-Z menu)")
   }
   
   struct OETutorialChoiceViewController {
@@ -245,8 +251,10 @@ struct Strings {
   struct TPPEPUBViewController {
     static let readerSettings = NSLocalizedString("Reader settings", comment: "Reader settings")
     static let emptySearchView = NSLocalizedString("There are no results", comment: "No search results available.")
-    static let endOfResults = NSLocalizedString("Reached the end of the results.", comment: "Reached the end of the results."
-)
+    static let endOfResults = NSLocalizedString("Reached the end of the results.", comment: "Reached the end of the results.")
+    static let previousPage = NSLocalizedString("Previous page", comment: "Keyboard shortcut for navigating to previous page")
+    static let nextPage = NSLocalizedString("Next page", comment: "Keyboard shortcut for navigating to next page")
+    static let toggleToolbar = NSLocalizedString("Toggle toolbar", comment: "Keyboard shortcut for toggling the reader toolbar")
   }
   
   struct TPPLastReadPositionSynchronizer {
