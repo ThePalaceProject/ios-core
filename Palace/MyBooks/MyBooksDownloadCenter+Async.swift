@@ -48,6 +48,8 @@ extension MyBooksDownloadCenter {
     attemptDownload: Bool = false
   ) async throws -> TPPBook {
     let bookIdentifier = book.identifier
+
+    announceBorrowStarted(for: book)
     
     #if DEBUG
     // Check if error simulation is enabled via Developer Settings
@@ -117,6 +119,8 @@ extension MyBooksDownloadCenter {
       
       // Emit explicit state update so SwiftUI lists refresh immediately
       TPPBookRegistry.shared.setState(newState, for: borrowedBook.identifier)
+
+      announceBorrowSucceeded(for: borrowedBook)
       
       // Optionally start download
       if attemptDownload && newState == .downloadNeeded {
@@ -303,6 +307,8 @@ extension MyBooksDownloadCenter {
     problemDocument: TPPProblemDocument? = nil
   ) {
     let title = Strings.MyDownloadCenter.borrowFailed
+
+    announceBorrowFailed(for: book)
     
     // Try to extract problem document from the original error
     // This is where the server's specific error message lives (e.g., "loan limit reached", "credentials suspended")

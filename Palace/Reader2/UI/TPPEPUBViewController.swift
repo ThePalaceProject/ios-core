@@ -126,6 +126,14 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
   /// These appear in the Tab-Z menu when Full Keyboard Access is enabled,
   /// providing an alternative to arrow keys which FKA consumes.
   private func configureAccessibilityActions() {
+    if UIAccessibility.isVoiceOverRunning {
+      // Let VoiceOver access the underlying WKWebView content directly.
+      navigator.view.isAccessibilityElement = false
+      navigator.view.accessibilityLabel = nil
+      navigator.view.accessibilityCustomActions = nil
+      return
+    }
+
     // Make the navigator view respond as a single accessible element
     // so FKA doesn't try to focus individual elements within the WKWebView.
     navigator.view.isAccessibilityElement = true
@@ -166,10 +174,36 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     navigator.view.accessibilityCustomActions = [nextPageAction, previousPageAction, toggleToolbarAction]
   }
 
+  override func voiceOverStatusDidChange() {
+    super.voiceOverStatusDidChange()
+    configureAccessibilityActions()
+  }
+
+  override func updateViewsForVoiceOver(isRunning: Bool) {
+    super.updateViewsForVoiceOver(isRunning: isRunning)
+
+    if isRunning {
+      navigator.view.isAccessibilityElement = false
+      navigator.view.accessibilityElementsHidden = false
+      navigator.view.accessibilityLabel = nil
+      navigator.view.accessibilityTraits = []
+      navigator.view.accessibilityCustomActions = nil
+    } else {
+      configureAccessibilityActions()
+    }
+  }
+
   /// Reclaim first responder after each page load so UIKeyCommands stay active.
   /// WKWebView often reclaims first responder when it finishes rendering content.
   override func didChangeLocation(_ locator: Locator) {
     claimFirstResponder()
+
+    if UIAccessibility.isVoiceOverRunning {
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+        guard let self else { return }
+        UIAccessibility.post(notification: .screenChanged, argument: self.navigator.view)
+      }
+    }
   }
 
   override func viewDidAppear(_ animated: Bool) {

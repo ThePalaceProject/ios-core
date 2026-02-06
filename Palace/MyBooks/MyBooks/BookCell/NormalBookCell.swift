@@ -94,8 +94,12 @@ struct NormalBookCell: View {
   
   private var downloadProgressPublisher: AnyPublisher<Double, Never> {
     MyBooksDownloadCenter.shared.downloadProgressPublisher
-      .filter { [model] in $0.0 == model.book.identifier }
-      .map { $0.1 }
+      .filter { [model] (update: (String, Double)) in
+        update.0 == model.book.identifier
+      }
+      .map { (update: (String, Double)) in
+        update.1
+      }
       .receive(on: DispatchQueue.main)
       .eraseToAnyPublisher()
   }

@@ -121,6 +121,79 @@ struct Strings {
     static let previousPage = NSLocalizedString("Previous page", comment: "Full Keyboard Access: Custom action to go to previous page (Tab-Z menu)")
     static let toggleToolbar = NSLocalizedString("Toggle toolbar", comment: "Full Keyboard Access: Custom action to show/hide reader toolbar (Tab-Z menu)")
   }
+
+  struct DownloadAnnouncements {
+    static func downloadStarted(_ title: String) -> String {
+      String.localizedStringWithFormat(
+        NSLocalizedString("Download started for %@.", comment: "VoiceOver announcement when a download begins"),
+        title
+      )
+    }
+
+    static func downloadProgress(_ title: String, _ percent: Int) -> String {
+      String.localizedStringWithFormat(
+        NSLocalizedString("Download %d percent complete for %@.", comment: "VoiceOver announcement for download progress"),
+        percent,
+        title
+      )
+    }
+
+    static func downloadCompleted(_ title: String) -> String {
+      String.localizedStringWithFormat(
+        NSLocalizedString("Download completed for %@.", comment: "VoiceOver announcement when a download finishes"),
+        title
+      )
+    }
+
+    static func downloadFailed(_ title: String) -> String {
+      String.localizedStringWithFormat(
+        NSLocalizedString("Download failed for %@.", comment: "VoiceOver announcement when a download fails"),
+        title
+      )
+    }
+
+    static func borrowStarted(_ title: String) -> String {
+      String.localizedStringWithFormat(
+        NSLocalizedString("Borrow started for %@.", comment: "VoiceOver announcement when a borrow starts"),
+        title
+      )
+    }
+
+    static func borrowSucceeded(_ title: String) -> String {
+      String.localizedStringWithFormat(
+        NSLocalizedString("Borrowed %@.", comment: "VoiceOver announcement when a borrow succeeds"),
+        title
+      )
+    }
+
+    static func borrowFailed(_ title: String) -> String {
+      String.localizedStringWithFormat(
+        NSLocalizedString("Borrow failed for %@.", comment: "VoiceOver announcement when a borrow fails"),
+        title
+      )
+    }
+
+    static func returnStarted(_ title: String) -> String {
+      String.localizedStringWithFormat(
+        NSLocalizedString("Return started for %@.", comment: "VoiceOver announcement when a return starts"),
+        title
+      )
+    }
+
+    static func returnSucceeded(_ title: String) -> String {
+      String.localizedStringWithFormat(
+        NSLocalizedString("Returned %@.", comment: "VoiceOver announcement when a return succeeds"),
+        title
+      )
+    }
+
+    static func returnFailed(_ title: String) -> String {
+      String.localizedStringWithFormat(
+        NSLocalizedString("Return failed for %@.", comment: "VoiceOver announcement when a return fails"),
+        title
+      )
+    }
+  }
   
   struct OETutorialChoiceViewController {
     static let loginMessage = NSLocalizedString("You need to login to access the collection.", comment: "")
