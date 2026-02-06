@@ -1,12 +1,26 @@
 # 🧪 Palace iOS Unit Test Results
 
-**Generated:** 2026-02-06 21:12:49 UTC
+**Generated:** 2026-02-06 21:44:34 UTC
 **Commit:** `1643d12a17b9`
 **Branch:** `task/PP-3594-keyboard-accessibility`
 
 ## Summary
 
-_No test results available_
+### 🔴 BUILD FAILED
+
+The build failed before tests could run.
+
+### Build Errors
+
+```
+Testing cancelled because the build failed.
+'Presentation' is unavailable: This was removed from RWPM. You can still use the EPUB extensibility to access the original values.
+'Presentation' is unavailable: This was removed from RWPM. You can still use the EPUB extensibility to access the original values.
+'Presentation' is unavailable: This was removed from RWPM. You can still use the EPUB extensibility to access the original values.
+'Presentation' is unavailable: This was removed from RWPM. You can still use the EPUB extensibility to access the original values.
+'Presentation' is unavailable: This was removed from RWPM. You can still use the EPUB extensibility to access the original values.
+'Presentation' is unavailable: This was removed from RWPM. You can still use the EPUB extensibility to access the original values.
+```
 
 ---
 
