@@ -744,7 +744,7 @@ extension AccountsManagerTests {
     XCTAssertNil(account)
   }
   
-  func testAccount_WithEmptyUUID_ReturnsNil() {
+  func testAccountsManager_WithEmptyUUID_ReturnsNil() {
     // Given: The shared AccountsManager
     let manager = AccountsManager.shared
     
