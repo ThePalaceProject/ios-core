@@ -164,7 +164,7 @@ final class BookCellModelCacheTests: XCTestCase {
   
   // MARK: - Model Updates
   
-  func testModelUpdatesWhenBookChanges() throws {
+  func testModelUpdatesWhenBookChanges() async throws {
     let book1 = makeTestBook(identifier: "book1", title: "Original Title")
     
     let model = sut.model(for: book1)
@@ -175,8 +175,11 @@ final class BookCellModelCacheTests: XCTestCase {
     
     let updatedModel = sut.model(for: book2)
     
-    // Should be same model instance but with updated book
+    // Should be same model instance
     XCTAssertTrue(model === updatedModel)
+    
+    // Book update is deferred via Task { @MainActor }, so wait for it
+    try await Task.sleep(nanoseconds: 100_000_000) // 100ms
     XCTAssertEqual(updatedModel.book.title, "Updated Title")
   }
   
@@ -292,7 +295,7 @@ final class BookCellModelCacheTests: XCTestCase {
   
   // MARK: - Edge Case Tests
   
-  func testCacheWithSameIdentifierDifferentUpdatedDate() throws {
+  func testCacheWithSameIdentifierDifferentUpdatedDate() async throws {
     let oldDate = Date(timeIntervalSince1970: 1000)
     let newDate = Date(timeIntervalSince1970: 2000)
     
@@ -301,6 +304,9 @@ final class BookCellModelCacheTests: XCTestCase {
     
     _ = sut.model(for: oldBook)
     let model = sut.model(for: newBook)
+    
+    // Book update is deferred via Task { @MainActor }, so wait for it
+    try await Task.sleep(nanoseconds: 100_000_000) // 100ms
     
     // Model should have updated to new book data
     XCTAssertEqual(model.book.title, "New Title")

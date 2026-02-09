@@ -773,15 +773,15 @@ final class HTMLTextViewTests: XCTestCase {
   
   /// Compare safe vs unsafe parsing results for edge cases
   func testSafeVsUnsafeParsingComparison() {
-    let edgeCases: [(name: String, html: String)] = [
-      ("Normal HTML", "<p>Normal content</p>"),
-      ("Empty paragraph", "<p></p>"),
-      ("Nested tags", "<p><b><i>Nested</i></b></p>"),
-      ("HTML entities", "<p>&amp; &lt; &gt;</p>"),
-      ("Unicode", "<p>日本語 中文 العربية</p>"),
+    let edgeCases: [(name: String, html: String, expectsContent: Bool)] = [
+      ("Normal HTML", "<p>Normal content</p>", true),
+      ("Empty paragraph", "<p></p>", false),
+      ("Nested tags", "<p><b><i>Nested</i></b></p>", true),
+      ("HTML entities", "<p>&amp; &lt; &gt;</p>", true),
+      ("Unicode", "<p>日本語 中文 العربية</p>", true),
     ]
     
-    for (name, html) in edgeCases {
+    for (name, html, expectsContent) in edgeCases {
       let safeResult = HTMLTextView.makeAttributedString(from: html)
       
       var unsafeResult: AttributedString?
@@ -794,10 +794,10 @@ final class HTMLTextViewTests: XCTestCase {
         let safeText = String(safeResult.characters).trimmingCharacters(in: .whitespacesAndNewlines)
         let unsafeText = String(unsafe.characters).trimmingCharacters(in: .whitespacesAndNewlines)
         
-        // Note: Safe method wraps in HTML doc which may add/remove whitespace
-        // So we just check the core content is present
-        XCTAssertFalse(safeText.isEmpty, "Safe result for '\(name)' should not be empty")
-        XCTAssertFalse(unsafeText.isEmpty, "Unsafe result for '\(name)' should not be empty")
+        if expectsContent {
+          XCTAssertFalse(safeText.isEmpty, "Safe result for '\(name)' should not be empty")
+          XCTAssertFalse(unsafeText.isEmpty, "Unsafe result for '\(name)' should not be empty")
+        }
         print("ℹ️ '\(name)' - Safe and unsafe both succeed")
       } else if exception != nil {
         XCTFail("Unexpected exception for valid HTML '\(name)': \(exception!)")

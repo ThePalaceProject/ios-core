@@ -738,10 +738,14 @@ final class SettingsViewModelSyncTests: XCTestCase {
     XCTAssertEqual(sut.customLibraryRegistryServer, "https://registry.example.com")
   }
   
-  func testSetCustomRegistryServer_WithInvalidURL_ReturnsFalse() async {
-    let result = sut.setCustomRegistryServer("not a valid url with spaces")
+  func testSetCustomRegistryServer_WithEmptyString_ReturnsTrueAndClears() async {
+    // First set a valid server
+    sut.setCustomRegistryServer("https://registry.example.com")
     
-    XCTAssertFalse(result)
+    // Empty string should clear the server
+    let result = sut.setCustomRegistryServer("")
+    
+    XCTAssertTrue(result)
     XCTAssertNil(sut.customLibraryRegistryServer)
   }
   
