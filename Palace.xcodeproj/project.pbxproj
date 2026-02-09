@@ -825,6 +825,12 @@
 		E5CD879B2EC2897A0043468C /* ActionButtonView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5CD87992EC2897A0043468C /* ActionButtonView.swift */; };
 		E5D10C0012F0A10000DC0002 /* DeviceLogCollector.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5D10C0012F0A10000DC0001 /* DeviceLogCollector.swift */; };
 		E5D10C0012F0A10000DC0003 /* DeviceLogCollector.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5D10C0012F0A10000DC0001 /* DeviceLogCollector.swift */; };
+		E5PP3439012F0B10000EB001 /* ErrorActivityTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5PP3439012F0B10000EA001 /* ErrorActivityTracker.swift */; };
+		E5PP3439012F0B10000EB002 /* ErrorActivityTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5PP3439012F0B10000EA001 /* ErrorActivityTracker.swift */; };
+		E5PP3439012F0B10000EB003 /* ErrorDetail.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5PP3439012F0B10000EA002 /* ErrorDetail.swift */; };
+		E5PP3439012F0B10000EB004 /* ErrorDetail.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5PP3439012F0B10000EA002 /* ErrorDetail.swift */; };
+		E5PP3439012F0B10000EB005 /* ErrorDetailViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5PP3439012F0B10000EA003 /* ErrorDetailViewController.swift */; };
+		E5PP3439012F0B10000EB006 /* ErrorDetailViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5PP3439012F0B10000EA003 /* ErrorDetailViewController.swift */; };
 		E5D10C0012F0A10000DC0004 /* LogPreviewViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5D10C0012F0A10000DC0005 /* LogPreviewViewController.swift */; };
 		E5D10C0012F0A10000DC0006 /* LogPreviewViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5D10C0012F0A10000DC0005 /* LogPreviewViewController.swift */; };
 		E5D3288A292C0D34008BFD01 /* txstrings.json in Resources */ = {isa = PBXBuildFile; fileRef = E5D32881292C0D34008BFD01 /* txstrings.json */; };
@@ -1850,6 +1856,9 @@
 		E5C2C421268BA5140046F415 /* TPPRegistryDebuggingCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPRegistryDebuggingCell.swift; sourceTree = "<group>"; };
 		E5CD87992EC2897A0043468C /* ActionButtonView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionButtonView.swift; sourceTree = "<group>"; };
 		E5D10C0012F0A10000DC0001 /* DeviceLogCollector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceLogCollector.swift; sourceTree = "<group>"; };
+		E5PP3439012F0B10000EA001 /* ErrorActivityTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorActivityTracker.swift; sourceTree = "<group>"; };
+		E5PP3439012F0B10000EA002 /* ErrorDetail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorDetail.swift; sourceTree = "<group>"; };
+		E5PP3439012F0B10000EA003 /* ErrorDetailViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorDetailViewController.swift; sourceTree = "<group>"; };
 		E5D10C0012F0A10000DC0005 /* LogPreviewViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogPreviewViewController.swift; sourceTree = "<group>"; };
 		E5D32881292C0D34008BFD01 /* txstrings.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = txstrings.json; sourceTree = "<group>"; };
 		E5D8C8DC2D829B2000667A99 /* HTMLTextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTMLTextView.swift; sourceTree = "<group>"; };
@@ -3037,6 +3046,9 @@
 				8C40D6A62375FF8B006EA63B /* TPPProblemDocumentCacheManager.swift */,
 				145798F5215BE9E300F68AFD /* ProblemReportEmail.swift */,
 				E5E4A9C72EB0559500CC1D67 /* PalaceError.swift */,
+				E5PP3439012F0B10000EA001 /* ErrorActivityTracker.swift */,
+				E5PP3439012F0B10000EA002 /* ErrorDetail.swift */,
+				E5PP3439012F0B10000EA003 /* ErrorDetailViewController.swift */,
 			);
 			path = ErrorHandling;
 			sourceTree = "<group>";
@@ -4950,6 +4962,9 @@
 				2126FE3A25C0597E0095C45C /* LibraryServiceError.swift in Sources */,
 				E580CDA427ECF0E200B14475 /* LCPPDFs.swift in Sources */,
 				E5E4A9C92EB0559500CC1D67 /* PalaceError.swift in Sources */,
+				E5PP3439012F0B10000EB001 /* ErrorActivityTracker.swift in Sources */,
+				E5PP3439012F0B10000EB003 /* ErrorDetail.swift in Sources */,
+				E5PP3439012F0B10000EB005 /* ErrorDetailViewController.swift in Sources */,
 				217595DB27B6800100BA0FDD /* TPPReaderSettingsView.swift in Sources */,
 				73EB0AFE25821DF4006BC997 /* NSNotification+TPP.swift in Sources */,
 				E53573D3295613FF008BDCA4 /* MyBooksViewModel.swift in Sources */,
@@ -5428,6 +5443,9 @@
 				73B501C524F48D4C00FBAD7D /* TPPUserAccountFrontEndValidation.swift in Sources */,
 				E5EE38102D5DB1A100252001 /* Color+Extension.swift in Sources */,
 				E5E4A9C82EB0559500CC1D67 /* PalaceError.swift in Sources */,
+				E5PP3439012F0B10000EB002 /* ErrorActivityTracker.swift in Sources */,
+				E5PP3439012F0B10000EB004 /* ErrorDetail.swift in Sources */,
+				E5PP3439012F0B10000EB006 /* ErrorDetailViewController.swift in Sources */,
 				E51919D82B508EE400C08E86 /* URLRequest+Extensions.swift in Sources */,
 				E501710F27A3948C004B3392 /* TPPBookmarkFactory.swift in Sources */,
 				27A6D65175F1874DD633AFE0 /* OPDS2Feed.swift in Sources */,
@@ -5922,9 +5940,9 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/PalaceDebug.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 429;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",

@@ -371,6 +371,8 @@ actor DownloadCoordinator {
     let loginRequired = (userAccount.authDefinition?.needsAuth ?? false) && !userAccount.hasCredentials()
     
     Log.info(#file, "📥 Starting download for '\(book.title)' - state: \(state), hasCredentials: \(userAccount.hasCredentials()), loginRequired: \(loginRequired)")
+
+    await ErrorActivityTracker.shared.log("Starting download for '\(book.title)'", category: .download)
     
     switch state {
     case .unregistered:
@@ -2084,6 +2086,10 @@ extension MyBooksDownloadCenter {
     announceDownloadFailed(for: book)
     
     Task {
+      await ErrorActivityTracker.shared.log(
+        "Download failed for '\(book.title)': \(message ?? "unknown reason")",
+        category: .download
+      )
       // CRITICAL: Remove from bookIdentifierToDownloadInfo so retry works
       await bookIdentifierToDownloadInfo.remove(book.identifier)
       await downloadCoordinator.removeCachedDownloadInfo(for: book.identifier)
@@ -2097,7 +2103,12 @@ extension MyBooksDownloadCenter {
       let errorMessage = message ?? "No error message"
       let formattedMessage = String.localizedStringWithFormat(NSLocalizedString("The download for %@ could not be completed.", comment: ""), book.title)
       let finalMessage = "\(formattedMessage)\n\(errorMessage)"
-      let alert = TPPAlertUtils.alert(title: "DownloadFailed", message: finalMessage)
+      let alert = TPPAlertUtils.alertWithDetails(
+        title: "DownloadFailed",
+        message: finalMessage,
+        bookIdentifier: book.identifier,
+        bookTitle: book.title
+      )
       runOnMainAsync {
         TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
       }
