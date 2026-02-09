@@ -412,6 +412,9 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         alert.addAction(UIAlertAction(title: "Copy Firebase Key", style: .default) { _ in
           UIPasteboard.general.string = "enhanced_error_logging_device_\(sanitizedID)"
         })
+        alert.addAction(UIAlertAction(title: "Preview Logs", style: .default) { _ in
+          self.previewLogs()
+        })
         alert.addAction(UIAlertAction(title: "Send Logs", style: .default) { _ in
           Task {
             await ErrorLogExporter.shared.sendErrorLogs(from: self)
@@ -424,6 +427,39 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     }
   }
   
+  private func previewLogs() {
+    Task {
+      let loadingAlert = UIAlertController(
+        title: "Collecting Logs",
+        message: "Please wait...",
+        preferredStyle: .alert
+      )
+      await MainActor.run {
+        self.present(loadingAlert, animated: true)
+      }
+
+      let logData = await ErrorLogExporter.shared.collectLogsForPreview()
+
+      await MainActor.run {
+        loadingAlert.dismiss(animated: true) {
+          let previewVC = LogPreviewViewController(logData: logData)
+          let nav = UINavigationController(rootViewController: previewVC)
+          nav.modalPresentationStyle = .fullScreen
+          previewVC.navigationItem.leftBarButtonItem = UIBarButtonItem(
+            barButtonSystemItem: .done,
+            target: self,
+            action: #selector(self.dismissLogPreview)
+          )
+          self.present(nav, animated: true)
+        }
+      }
+    }
+  }
+
+  @objc private func dismissLogPreview() {
+    dismiss(animated: true)
+  }
+
   private func emailAudiobookLogs() {
     guard MFMailComposeViewController.canSendMail() else {
       let alert = TPPAlertUtils.alert(title: "Mail Unavailable", message: "Cannot send email. Please configure an email account.")

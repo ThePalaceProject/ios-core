@@ -26,7 +26,13 @@ actor ErrorLogExporter {
   private init() {}
   
   // MARK: - Public API
-  
+
+  /// Collects all logs and returns them for local preview/debugging.
+  /// This returns the same data that would be attached to the email.
+  func collectLogsForPreview() async -> ErrorLogData {
+    return await collectAllLogs()
+  }
+
   /// Generates and presents an email with collected error logs
   @MainActor
   func sendErrorLogs(from presentingViewController: UIViewController) async {

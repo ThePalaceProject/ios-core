@@ -825,6 +825,8 @@
 		E5CD879B2EC2897A0043468C /* ActionButtonView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5CD87992EC2897A0043468C /* ActionButtonView.swift */; };
 		E5D10C0012F0A10000DC0002 /* DeviceLogCollector.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5D10C0012F0A10000DC0001 /* DeviceLogCollector.swift */; };
 		E5D10C0012F0A10000DC0003 /* DeviceLogCollector.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5D10C0012F0A10000DC0001 /* DeviceLogCollector.swift */; };
+		E5D10C0012F0A10000DC0004 /* LogPreviewViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5D10C0012F0A10000DC0005 /* LogPreviewViewController.swift */; };
+		E5D10C0012F0A10000DC0006 /* LogPreviewViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5D10C0012F0A10000DC0005 /* LogPreviewViewController.swift */; };
 		E5D3288A292C0D34008BFD01 /* txstrings.json in Resources */ = {isa = PBXBuildFile; fileRef = E5D32881292C0D34008BFD01 /* txstrings.json */; };
 		E5D3288B292C0D68008BFD01 /* txstrings.json in Resources */ = {isa = PBXBuildFile; fileRef = E5D32881292C0D34008BFD01 /* txstrings.json */; };
 		E5D8C8DE2D829B2000667A99 /* HTMLTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5D8C8DC2D829B2000667A99 /* HTMLTextView.swift */; };
@@ -1848,6 +1850,7 @@
 		E5C2C421268BA5140046F415 /* TPPRegistryDebuggingCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPRegistryDebuggingCell.swift; sourceTree = "<group>"; };
 		E5CD87992EC2897A0043468C /* ActionButtonView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionButtonView.swift; sourceTree = "<group>"; };
 		E5D10C0012F0A10000DC0001 /* DeviceLogCollector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceLogCollector.swift; sourceTree = "<group>"; };
+		E5D10C0012F0A10000DC0005 /* LogPreviewViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogPreviewViewController.swift; sourceTree = "<group>"; };
 		E5D32881292C0D34008BFD01 /* txstrings.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = txstrings.json; sourceTree = "<group>"; };
 		E5D8C8DC2D829B2000667A99 /* HTMLTextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTMLTextView.swift; sourceTree = "<group>"; };
 		E5DE86FB2D6C39C6003D356E /* BookImageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookImageView.swift; sourceTree = "<group>"; };
@@ -2831,6 +2834,7 @@
 			children = (
 				2D382BD61D08BA99002C423D /* Log.swift */,
 				E5D10C0012F0A10000DC0001 /* DeviceLogCollector.swift */,
+				E5D10C0012F0A10000DC0005 /* LogPreviewViewController.swift */,
 				E5E4A9CA2EB055BB00CC1D67 /* ErrorLogExporter.swift */,
 				E5E4A9CB2EB055BB00CC1D67 /* PersistentLogger.swift */,
 				7340DA6724B7F27900361387 /* TPPBook+Logging.swift */,
@@ -4740,6 +4744,7 @@
 				73EB0A9025821DF4006BC997 /* OPDS2CatalogsFeed.swift in Sources */,
 				21E41784292810EE00A78606 /* CGPDFPage+previews.swift in Sources */,
 				E5D10C0012F0A10000DC0002 /* DeviceLogCollector.swift in Sources */,
+				E5D10C0012F0A10000DC0004 /* LogPreviewViewController.swift in Sources */,
 				E5E4A9CE2EB055BB00CC1D67 /* PersistentLogger.swift in Sources */,
 				E5E4A9CF2EB055BB00CC1D67 /* ErrorLogExporter.swift in Sources */,
 				21E4178F2928112600A78606 /* Sample.swift in Sources */,
@@ -5299,6 +5304,7 @@
 				E58EAD5D2EC7746700CDA626 /* UserAccountPublisher.swift in Sources */,
 				61757D3F95012F8F4340FABB /* TPPAccountAuthState.swift in Sources */,
 				E5D10C0012F0A10000DC0003 /* DeviceLogCollector.swift in Sources */,
+				E5D10C0012F0A10000DC0006 /* LogPreviewViewController.swift in Sources */,
 				E5E4A9CC2EB055BB00CC1D67 /* PersistentLogger.swift in Sources */,
 				E5E4A9CD2EB055BB00CC1D67 /* ErrorLogExporter.swift in Sources */,
 				E53573CF295612BA008BDCA4 /* MyBooksView.swift in Sources */,
