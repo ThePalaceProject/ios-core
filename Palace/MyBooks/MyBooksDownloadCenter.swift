@@ -113,6 +113,7 @@ actor DownloadCoordinator {
   public var userAccount: TPPUserAccount
   private var reauthenticator: Reauthenticator
   private var bookRegistry: TPPBookRegistryProvider
+  private let accessibilityAnnouncements: TPPAccessibilityAnnouncementCenter
   
   private var bookIdentifierOfBookToRemove: String?
   private var session: URLSession!
@@ -135,11 +136,13 @@ actor DownloadCoordinator {
   init(
     userAccount: TPPUserAccount = TPPUserAccount.sharedAccount(),
     reauthenticator: Reauthenticator = TPPReauthenticator(),
-    bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared
+    bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared,
+    accessibilityAnnouncements: TPPAccessibilityAnnouncementCenter = TPPAccessibilityAnnouncementCenter()
   ) {
     self.userAccount = userAccount
     self.bookRegistry = bookRegistry
     self.reauthenticator = reauthenticator
+    self.accessibilityAnnouncements = accessibilityAnnouncements
     
     super.init()
     
@@ -167,6 +170,57 @@ actor DownloadCoordinator {
   
   deinit {
     session?.invalidateAndCancel()
+  }
+
+  func announceDownloadStarted(for book: TPPBook) {
+    accessibilityAnnouncements.announceDownloadStarted(title: book.title)
+  }
+
+  func announceDownloadProgress(for book: TPPBook, progress: Double) {
+    accessibilityAnnouncements.announceDownloadProgress(
+      title: book.title,
+      identifier: book.identifier,
+      progress: progress
+    )
+  }
+
+  func announceDownloadCompleted(for book: TPPBook) {
+    accessibilityAnnouncements.announceDownloadCompleted(title: book.title)
+    accessibilityAnnouncements.resetProgress(identifier: book.identifier)
+  }
+
+  func announceDownloadFailed(for book: TPPBook) {
+    accessibilityAnnouncements.announceDownloadFailed(title: book.title)
+    accessibilityAnnouncements.resetProgress(identifier: book.identifier)
+  }
+
+  func announceBorrowStarted(for book: TPPBook) {
+    accessibilityAnnouncements.announceBorrowStarted(title: book.title)
+  }
+
+  func announceBorrowSucceeded(for book: TPPBook) {
+    accessibilityAnnouncements.announceBorrowSucceeded(title: book.title)
+  }
+
+  func announceBorrowFailed(for book: TPPBook) {
+    accessibilityAnnouncements.announceBorrowFailed(title: book.title)
+  }
+
+  func announceReturnStarted(for book: TPPBook) {
+    accessibilityAnnouncements.announceReturnStarted(title: book.title)
+  }
+
+  func announceReturnSucceeded(for book: TPPBook) {
+    accessibilityAnnouncements.announceReturnSucceeded(title: book.title)
+  }
+
+  func announceReturnFailed(for book: TPPBook) {
+    accessibilityAnnouncements.announceReturnFailed(title: book.title)
+  }
+
+  private func markDownloadSuccessful(for book: TPPBook) {
+    bookRegistry.setState(.downloadSuccessful, for: book.identifier)
+    announceDownloadCompleted(for: book)
   }
   
   /// Legacy callback-based borrow method - wraps the modern async implementation
@@ -906,6 +960,8 @@ extension MyBooksDownloadCenter {
       return
     }
     
+    announceReturnStarted(for: book)
+
     let state = bookRegistry.state(for: identifier)
     let downloaded = (state == .downloadSuccessful) || (state == .used)
     
@@ -943,7 +999,10 @@ extension MyBooksDownloadCenter {
         self.bookRegistry.removeBook(forIdentifier: identifier)
         Task {
           try? await TPPBookRegistry.shared.syncAsync()
-          runOnMainAsync { completion?() }
+          runOnMainAsync {
+            self.announceReturnSucceeded(for: book)
+            completion?()
+          }
         }
       }
     } else {
@@ -966,14 +1025,20 @@ extension MyBooksDownloadCenter {
               self.bookRegistry.setState(.unregistered, for: identifier)
               Task {
                 try? await TPPBookRegistry.shared.syncAsync()
-                runOnMainAsync { completion?() }
+                runOnMainAsync {
+                  self.announceReturnSucceeded(for: book)
+                  completion?()
+                }
               }
             }
           } else {
             NSLog("Failed to create book from entry. Book not removed from registry.")
             Task {
               try? await TPPBookRegistry.shared.syncAsync()
-              runOnMainAsync { completion?() }
+              runOnMainAsync {
+                self.announceReturnFailed(for: book)
+                completion?()
+              }
             }
           }
         } else {
@@ -991,7 +1056,10 @@ extension MyBooksDownloadCenter {
                 self.bookRegistry.removeBook(forIdentifier: identifier)
                 Task {
                   try? await TPPBookRegistry.shared.syncAsync()
-                  runOnMainAsync { completion?() }
+                  runOnMainAsync {
+                    self.announceReturnSucceeded(for: book)
+                    completion?()
+                  }
                 }
               }
             } else if errorType == TPPProblemDocument.TypeInvalidCredentials {
@@ -1002,7 +1070,10 @@ extension MyBooksDownloadCenter {
                 if self.userAccount.hasCredentials() {
                   self.returnBook(withIdentifier: identifier, completion: completion)
                 } else {
-                  runOnMainAsync { completion?() }
+                  runOnMainAsync {
+                    self.announceReturnFailed(for: book)
+                    completion?()
+                  }
                 }
               }
             }
@@ -1017,7 +1088,10 @@ extension MyBooksDownloadCenter {
                 TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
               }
             }
-            runOnMainAsync { completion?() }
+            runOnMainAsync {
+              self.announceReturnFailed(for: book)
+              completion?()
+            }
           }
         }
       }
@@ -1209,6 +1283,8 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
         await MainActor.run {
           downloadProgressPublisher.send((book.identifier, progress))
         }
+
+        announceDownloadProgress(for: book, progress: progress)
         
         if progress > 0.95 || Int(progress * 100) % 20 == 0 {
           broadcastUpdate()
@@ -1656,6 +1732,8 @@ extension MyBooksDownloadCenter: URLSessionTaskDelegate {
                                fulfillmentId: nil,
                                readiumBookmarks: nil,
                                genericBookmarks: nil)
+
+      self.announceDownloadStarted(for: book)
       
       runOnMainAsync {
         NotificationCenter.default.post(name: .TPPMyBooksDownloadCenterDidChange, object: self)
@@ -1886,6 +1964,7 @@ extension MyBooksDownloadCenter {
         await MainActor.run {
           self.downloadProgressPublisher.send((book.identifier, progressValue))
         }
+        self.announceDownloadProgress(for: book, progress: progressValue)
         self.broadcastUpdate()
       }
     }
@@ -1931,7 +2010,7 @@ extension MyBooksDownloadCenter {
            let bookURL = self.fileUrl(for: book.identifier) {
           self.bookRegistry.setState(.downloading, for: book.identifier)
           let _ = try? await LCPPDFs(url: bookURL)?.extract(url: bookURL)
-          self.bookRegistry.setState(.downloadSuccessful, for: book.identifier)
+          self.markDownloadSuccessful(for: book)
         }
       }
     }
@@ -1948,7 +2027,7 @@ extension MyBooksDownloadCenter {
       }
       
       self.copyLicenseForStreaming(book: book, sourceLicenseUrl: licenseUrl)
-      self.bookRegistry.setState(.downloadSuccessful, for: book.identifier)
+      self.markDownloadSuccessful(for: book)
       
       runOnMainAsync {
         self.broadcastUpdate()
@@ -2001,6 +2080,8 @@ extension MyBooksDownloadCenter {
                          fulfillmentId: nil,
                          readiumBookmarks: nil,
                          genericBookmarks: nil)
+
+    announceDownloadFailed(for: book)
     
     Task {
       // CRITICAL: Remove from bookIdentifierToDownloadInfo so retry works
@@ -2069,7 +2150,7 @@ extension MyBooksDownloadCenter {
     if success {
       // Verify file exists and is not empty before marking as successful
       if validateDownloadedFile(at: finalFileURL, for: book) {
-        bookRegistry.setState(.downloadSuccessful, for: book.identifier)
+        markDownloadSuccessful(for: book)
       } else {
         logBookDownloadFailure(book, reason: "File validation failed after move", downloadTask: downloadTask, metadata: [
           "finalFileURL": finalFileURL.absoluteString
@@ -2149,10 +2230,10 @@ extension MyBooksDownloadCenter {
 #if LCP
       let isLCPAudiobook = book.defaultBookContentType == .audiobook && LCPAudiobooks.canOpenBook(book)
       if !isLCPAudiobook {
-        bookRegistry.setState(.downloadSuccessful, for: book.identifier)
+        markDownloadSuccessful(for: book)
       }
 #else
-      bookRegistry.setState(.downloadSuccessful, for: book.identifier)
+      markDownloadSuccessful(for: book)
 #endif
       return true
     } catch {
@@ -2406,7 +2487,7 @@ extension MyBooksDownloadCenter: NYPLADEPTDelegate {
       bookRegistry.setFulfillmentId(fulfillmentID, for: book.identifier)
     }
     
-    bookRegistry.setState(.downloadSuccessful, for: book.identifier)
+    markDownloadSuccessful(for: book)
     
     self.broadcastUpdate()
   }
@@ -2419,6 +2500,9 @@ extension MyBooksDownloadCenter: NYPLADEPTDelegate {
       // Publish to progress publisher so UI updates (HalfSheet, BookCell, etc.)
       await MainActor.run {
         self.downloadProgressPublisher.send((tag, progress))
+      }
+      if let book = self.bookRegistry.book(forIdentifier: tag) {
+        self.announceDownloadProgress(for: book, progress: progress)
       }
       self.broadcastUpdate()
     }

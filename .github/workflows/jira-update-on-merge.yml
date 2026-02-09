@@ -26,11 +26,14 @@ jobs:
           
       - name: Extract Jira tickets
         id: tickets
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |
           # Extract ticket numbers from PR title, body, and branch name
-          PR_TITLE="${{ github.event.pull_request.title }}"
-          PR_BODY="${{ github.event.pull_request.body }}"
-          PR_BRANCH="${{ github.event.pull_request.head.ref }}"
+          # NOTE: We pass these via env vars (not direct ${{ }} interpolation)
+          # to prevent shell injection when PR body contains backticks or special chars.
           
           # Combine all sources
           ALL_TEXT="$PR_TITLE $PR_BODY $PR_BRANCH"
@@ -53,6 +56,11 @@ jobs:
           JIRA_URL: ${{ secrets.JIRA_URL }}
           JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
           JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          BUILD_NUM: ${{ steps.build.outputs.number }}
+          PR_NUM: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          BRANCH: ${{ github.event.pull_request.base.ref }}
+          TICKETS: ${{ steps.tickets.outputs.list }}
         run: |
           # Create temp config for script
           cat > .jira-config << EOF
@@ -61,12 +69,6 @@ jobs:
           JIRA_API_TOKEN="$JIRA_API_TOKEN"
           JIRA_PROJECT_KEY="PP"
           EOF
-          
-          BUILD_NUM="${{ steps.build.outputs.number }}"
-          PR_NUM="${{ github.event.pull_request.number }}"
-          PR_TITLE="${{ github.event.pull_request.title }}"
-          BRANCH="${{ github.event.pull_request.base.ref }}"
-          TICKETS="${{ steps.tickets.outputs.list }}"
           
           # Update each ticket
           for TICKET in $TICKETS; do

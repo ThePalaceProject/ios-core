@@ -91,6 +91,7 @@ struct AccountDetailView: View {
           .resizable()
           .scaledToFit()
           .frame(width: Layout.logoSize, height: Layout.logoSize)
+          .accessibilityHidden(true) // Library name provides context
       }
       
       Text(viewModel.libraryName)
@@ -225,6 +226,7 @@ struct AccountDetailView: View {
           .resizable()
           .scaledToFit()
           .frame(width: Layout.logoSizeList, height: Layout.logoSizeList)
+          .accessibilityHidden(true) // Library name provides context
       }
       
       Text(viewModel.libraryName)
@@ -286,6 +288,7 @@ struct AccountDetailView: View {
             .resizable()
             .scaledToFit()
             .frame(height: Layout.barcodeHeight)
+            .accessibilityLabel(NSLocalizedString("Library barcode", comment: "Barcode image accessibility"))
           
           Text(viewModel.selectedUserAccount.authorizationIdentifier ?? "")
             .font(.system(.body))
@@ -399,6 +402,7 @@ struct AccountDetailView: View {
       if TPPSettings.shared.userPresentedAgeCheck {
         Image(systemName: "checkmark.circle.fill")
           .foregroundColor(.green)
+          .accessibilityLabel(NSLocalizedString("Verified", comment: "Age check verified"))
       }
     }
     .contentShape(Rectangle())

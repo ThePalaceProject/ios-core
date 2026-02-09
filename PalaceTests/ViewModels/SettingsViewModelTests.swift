@@ -677,4 +677,114 @@ final class SettingsViewModelSyncTests: XCTestCase {
     XCTAssertTrue(sut.userPresentedAgeCheck)
     XCTAssertTrue(sut.enterLCPPassphraseManually)
   }
+  
+  // MARK: - setCustomFeedURL Tests (QAAtlas Gap)
+  
+  func testSetCustomFeedURL_WithValidHttpsURL_ReturnsTrue() async {
+    let result = sut.setCustomFeedURL("https://example.com/feed")
+    
+    XCTAssertTrue(result)
+    XCTAssertEqual(sut.customMainFeedURL?.absoluteString, "https://example.com/feed")
+  }
+  
+  func testSetCustomFeedURL_WithValidHttpURL_ReturnsTrue() async {
+    let result = sut.setCustomFeedURL("http://example.com/feed")
+    
+    XCTAssertTrue(result)
+    XCTAssertEqual(sut.customMainFeedURL?.absoluteString, "http://example.com/feed")
+  }
+  
+  func testSetCustomFeedURL_WithInvalidURL_ReturnsFalse() async {
+    let result = sut.setCustomFeedURL("not a valid url")
+    
+    XCTAssertFalse(result)
+    XCTAssertNil(sut.customMainFeedURL)
+  }
+  
+  func testSetCustomFeedURL_WithNonHttpScheme_ReturnsFalse() async {
+    let result = sut.setCustomFeedURL("ftp://example.com/feed")
+    
+    XCTAssertFalse(result)
+    XCTAssertNil(sut.customMainFeedURL)
+  }
+  
+  func testSetCustomFeedURL_WithNil_ClearsURL() async {
+    // First set a valid URL
+    sut.setCustomFeedURL("https://example.com/feed")
+    XCTAssertNotNil(sut.customMainFeedURL)
+    
+    // Then clear it
+    let result = sut.setCustomFeedURL(nil)
+    
+    XCTAssertTrue(result)
+    XCTAssertNil(sut.customMainFeedURL)
+  }
+  
+  func testSetCustomFeedURL_WithEmptyString_ClearsURL() async {
+    sut.setCustomFeedURL("https://example.com/feed")
+    
+    let result = sut.setCustomFeedURL("")
+    
+    XCTAssertTrue(result)
+    XCTAssertNil(sut.customMainFeedURL)
+  }
+  
+  // MARK: - setCustomRegistryServer Tests (QAAtlas Gap)
+  
+  func testSetCustomRegistryServer_WithValidURL_ReturnsTrue() async {
+    let result = sut.setCustomRegistryServer("https://registry.example.com")
+    
+    XCTAssertTrue(result)
+    XCTAssertEqual(sut.customLibraryRegistryServer, "https://registry.example.com")
+  }
+  
+  func testSetCustomRegistryServer_WithEmptyString_ReturnsTrueAndClears() async {
+    // First set a valid server
+    sut.setCustomRegistryServer("https://registry.example.com")
+    
+    // Empty string should clear the server
+    let result = sut.setCustomRegistryServer("")
+    
+    XCTAssertTrue(result)
+    XCTAssertNil(sut.customLibraryRegistryServer)
+  }
+  
+  func testSetCustomRegistryServer_WithNil_ClearsServer() async {
+    sut.setCustomRegistryServer("https://registry.example.com")
+    
+    let result = sut.setCustomRegistryServer(nil)
+    
+    XCTAssertTrue(result)
+    XCTAssertNil(sut.customLibraryRegistryServer)
+  }
+  
+  // MARK: - resetToDefaults Tests (QAAtlas Gap)
+  
+  func testResetToDefaults_ClearsAllSettings() async {
+    // Set non-default values
+    sut.useBetaLibraries = true
+    sut.enterLCPPassphraseManually = true
+    sut.setCustomFeedURL("https://example.com/feed")
+    sut.setCustomRegistryServer("https://registry.example.com")
+    
+    // Act
+    sut.resetToDefaults()
+    
+    // Assert all reset
+    XCTAssertFalse(sut.useBetaLibraries)
+    XCTAssertFalse(sut.enterLCPPassphraseManually)
+    XCTAssertNil(sut.customMainFeedURL)
+    XCTAssertNil(sut.customLibraryRegistryServer)
+  }
+  
+  func testResetToDefaults_UpdatesSettingsProvider() async {
+    mockSettings.useBetaLibraries = true
+    mockSettings.enterLCPPassphraseManually = true
+    
+    sut.resetToDefaults()
+    
+    // Settings provider should also be reset
+    XCTAssertFalse(mockSettings.useBetaLibraries)
+    XCTAssertFalse(mockSettings.enterLCPPassphraseManually)
+  }
 }

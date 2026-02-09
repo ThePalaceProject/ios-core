@@ -158,9 +158,14 @@ final class URLValidationTests: XCTestCase {
     // Either nil or encoded is acceptable - the key is it doesn't crash
     
     // Characters that are ALWAYS invalid (control characters)
-    // Use a character that cannot be percent-encoded
+    // Note: Modern Foundation may percent-encode null bytes, so we only
+    // verify it doesn't crash. Either nil or encoded is acceptable.
     let urlWithNull = URL(string: "https://example.com/\0invalid")
-    XCTAssertNil(urlWithNull, "URL with null character returns nil")
+    if urlWithNull != nil {
+      // Modern Foundation percent-encodes the null byte
+      XCTAssertTrue(urlWithNull!.absoluteString.contains("%00"))
+    }
+    // Either nil or encoded is acceptable - the key is it doesn't crash
   }
   
   func testEmptyString_returnsNil() {

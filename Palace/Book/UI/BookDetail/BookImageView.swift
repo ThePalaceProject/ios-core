@@ -25,6 +25,7 @@ struct BookImageView: View {
           .resizable()
           .aspectRatio(contentMode: .fit)
           .transition(.opacity)
+          .accessibilityLabel(String(format: NSLocalizedString("Cover image for %@", comment: "Book cover accessibility"), book.title))
       }
 
       if book.isAudiobook {
@@ -35,6 +36,7 @@ struct BookImageView: View {
           .background(Circle().fill(Color.colorAudiobookBackground))
           .clipShape(Circle())
           .padding([.trailing, .bottom], 10)
+          .accessibilityLabel(NSLocalizedString("Audiobook", comment: "Audiobook badge accessibility"))
       }
     }
     .frame(width: width, height: height)
@@ -48,15 +50,23 @@ struct BookImageView: View {
     }
     .onChange(of: book.coverImage) { newImage in
       if newImage != nil {
-        withAnimation(.easeOut(duration: 0.2)) {
+        if UIAccessibility.isReduceMotionEnabled {
           showSkeleton = false
+        } else {
+          withAnimation(.easeOut(duration: 0.2)) {
+            showSkeleton = false
+          }
         }
       }
     }
     .onChange(of: book.thumbnailImage) { newImage in
       if newImage != nil && book.coverImage == nil {
-        withAnimation(.easeOut(duration: 0.2)) {
+        if UIAccessibility.isReduceMotionEnabled {
           showSkeleton = false
+        } else {
+          withAnimation(.easeOut(duration: 0.2)) {
+            showSkeleton = false
+          }
         }
       }
     }

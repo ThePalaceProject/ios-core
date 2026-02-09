@@ -75,11 +75,16 @@ final class NavigationCoordinator: ObservableObject {
   private var lastPopTime: Date?
 
   // MARK: - Public API
-
+  
   func push(_ route: AppRoute) {
     Log.debug(#file, "📍 NavigationCoordinator.push(\(route)) - Current path count: \(path.count)")
-    withAnimation(.easeInOut) {
+    // Respect reduce motion accessibility setting
+    if UIAccessibility.isReduceMotionEnabled {
       path.append(route)
+    } else {
+      withAnimation(.easeInOut) {
+        path.append(route)
+      }
     }
     Log.debug(#file, "📍 NavigationCoordinator.push(\(route)) - After push count: \(path.count)")
   }
@@ -98,16 +103,26 @@ final class NavigationCoordinator: ObservableObject {
     
     lastPopTime = Date()
     Log.debug(#file, "📍 NavigationCoordinator.pop() - Current path count: \(path.count)")
-    withAnimation(.easeInOut) {
+    // Respect reduce motion accessibility setting
+    if UIAccessibility.isReduceMotionEnabled {
       path.removeLast()
+    } else {
+      withAnimation(.easeInOut) {
+        path.removeLast()
+      }
     }
     Log.debug(#file, "📍 NavigationCoordinator.pop() - After pop count: \(path.count)")
   }
 
   func popToRoot() {
     guard !path.isEmpty else { return }
-    withAnimation(.easeInOut) {
+    // Respect reduce motion accessibility setting
+    if UIAccessibility.isReduceMotionEnabled {
       path.removeLast(path.count)
+    } else {
+      withAnimation(.easeInOut) {
+        path.removeLast(path.count)
+      }
     }
   }
   
@@ -123,8 +138,13 @@ final class NavigationCoordinator: ObservableObject {
     // For now, just pop to root when switching audiobooks
     // This ensures no stacking of player views
     Log.debug(#file, "📍 NavigationCoordinator.clearAudioRoutes() - Clearing path for new audio route")
-    withAnimation(.easeInOut) {
+    // Respect reduce motion accessibility setting
+    if UIAccessibility.isReduceMotionEnabled {
       path.removeLast(path.count)
+    } else {
+      withAnimation(.easeInOut) {
+        path.removeLast(path.count)
+      }
     }
   }
   
@@ -138,9 +158,13 @@ final class NavigationCoordinator: ObservableObject {
       clearAudioRoutes()
     }
     
-    // Push the new audio route
-    withAnimation(.easeInOut) {
+    // Push the new audio route (respect reduce motion)
+    if UIAccessibility.isReduceMotionEnabled {
       path.append(AppRoute.audio(route))
+    } else {
+      withAnimation(.easeInOut) {
+        path.append(AppRoute.audio(route))
+      }
     }
     Log.debug(#file, "📍 NavigationCoordinator.pushAudioRoute - After push count: \(path.count)")
   }

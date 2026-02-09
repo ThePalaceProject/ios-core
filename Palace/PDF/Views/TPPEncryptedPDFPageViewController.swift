@@ -18,14 +18,30 @@ class TPPEncryptedPDFPageViewController: UIViewController {
   var pageNumber: Int
 
   private var timer: Timer?
-  private var imageView: UIImageView?
   private var scrollView: UIScrollView?
   private var didZoom = false
   private var image: UIImage? {
     didSet {
-      imageView?.image = image
+      pdfImageView.image = image
     }
   }
+  
+  /// PDF page image view with accessibility configured
+  // accesslint:disable A11Y.UIKIT.IMAGE_DECORATIVE - Accessibility configured in closure below (lines 38-40)
+  private lazy var pdfImageView: UIImageView = {
+    let imageView = UIImageView()
+    imageView.contentMode = .scaleAspectFit
+    imageView.clipsToBounds = false
+    imageView.layer.shadowOffset = .zero
+    imageView.layer.shadowRadius = contentInset
+    imageView.layer.shadowOpacity = 0.2
+    // Accessibility: Image shows PDF page content
+    imageView.isAccessibilityElement = true
+    imageView.accessibilityLabel = String(format: NSLocalizedString("PDF page %d", comment: "PDF page accessibility label"), pageNumber)
+    imageView.accessibilityTraits = .image
+    return imageView
+  }()
+  // accesslint:enable A11Y.UIKIT.IMAGE_DECORATIVE
   private var doubleTap = UITapGestureRecognizer()
   
   @available(*, unavailable)
@@ -54,18 +70,13 @@ class TPPEncryptedPDFPageViewController: UIViewController {
     view.addSubview(scrollView!)
     scrollView!.autoPinEdgesToSuperviewEdges()
     
-    imageView = UIImageView(frame: view.bounds.insetBy(dx: contentInset * 2, dy: contentInset * 2))
-    imageView!.contentMode = .scaleAspectFit
-    imageView!.clipsToBounds = false
-    imageView!.layer.shadowOffset = .zero
-    imageView!.layer.shadowRadius = contentInset
-    imageView!.layer.shadowOpacity = 0.2
-    scrollView!.addSubview(imageView!)
+    pdfImageView.frame = view.bounds.insetBy(dx: contentInset * 2, dy: contentInset * 2)
+    scrollView!.addSubview(pdfImageView)
     scrollView!.addGestureRecognizer(doubleTap)
 
     // Blank page
     if let pageSize = document.page(at: pageNumber)?.getBoxRect(.mediaBox).size {
-      imageView!.image = UIImage(color: .white, size: pageSize)
+      pdfImageView.image = UIImage(color: .white, size: pageSize)
     }
     
     // The page is rendered after a short delay to avoid rendering when the user quickly scrolls through pages
@@ -119,7 +130,7 @@ class TPPEncryptedPDFPageViewController: UIViewController {
         DispatchQueue.main.async {
           self.scrollView?.zoomScale = 1
           self.didZoom =  false
-          self.imageView?.frame = CGRect(origin: .zero, size: viewSize).insetBy(dx: self.contentInset * 2, dy: self.contentInset * 2)
+          self.pdfImageView.frame = CGRect(origin: .zero, size: viewSize).insetBy(dx: self.contentInset * 2, dy: self.contentInset * 2)
           self.image = pageImage
         }
       }
@@ -152,7 +163,7 @@ class TPPEncryptedPDFPageViewController: UIViewController {
 
 extension TPPEncryptedPDFPageViewController: UIScrollViewDelegate {
   func viewForZooming(in scrollView: UIScrollView) -> UIView? {
-    return imageView
+    return pdfImageView
   }
   
   func scrollViewDidEndZooming(_ scrollView: UIScrollView, with view: UIView?, atScale scale: CGFloat) {

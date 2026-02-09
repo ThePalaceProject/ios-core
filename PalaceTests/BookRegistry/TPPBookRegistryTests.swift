@@ -394,3 +394,68 @@ final class DeriveInitialStateTests: XCTestCase {
     XCTAssertEqual(state, .unsupported)
   }
 }
+
+// MARK: - TPPBookRegistry Load Re-entrancy Tests
+
+/// Tests for the re-entrancy guard added to prevent EXC_BAD_ACCESS crashes
+/// when load() is called multiple times rapidly during account changes.
+final class TPPBookRegistryLoadReentrancyTests: XCTestCase {
+  
+  var registry: TPPBookRegistry!
+  var cancellables = Set<AnyCancellable>()
+  
+  override func setUp() {
+    super.setUp()
+    registry = TPPBookRegistry.shared
+    cancellables.removeAll()
+  }
+  
+  override func tearDown() {
+    cancellables.removeAll()
+    super.tearDown()
+  }
+  
+  /// Verifies that calling load() multiple times rapidly for the same account
+  /// doesn't cause crashes or undefined behavior due to re-entrancy.
+  func testLoad_RapidCallsForSameAccount_DoesNotCrash() {
+    // Simulate rapid calls that could trigger a crash.
+    // This pattern was causing EXC_BAD_ACCESS before the re-entrancy fix.
+    // In test environments without a real account, load() may not emit
+    // registry changes, so we simply verify no crash occurs.
+    for _ in 0..<10 {
+      registry.load()
+    }
+    
+    // If we got here without crashing, the re-entrancy guard is working
+  }
+  
+  /// Verifies that the registry emits book state events after loading
+  /// This was added to fix UI sync issues when reopening the app
+  func testLoad_EmitsBookStateEventsForAllBooks() {
+    let expectation = XCTestExpectation(description: "Book state events emitted")
+    
+    var receivedStateUpdates = Set<String>()
+    
+    registry.bookStatePublisher
+      .sink { (identifier, _) in
+        receivedStateUpdates.insert(identifier)
+      }
+      .store(in: &cancellables)
+    
+    registry.load()
+    
+    // Wait a moment for async events
+    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+      expectation.fulfill()
+    }
+    
+    wait(for: [expectation], timeout: 5.0)
+    
+    // Check that we received state updates for books that were in the registry
+    let registryCount = registry.allBooks.count
+    if registryCount > 0 {
+      XCTAssertFalse(receivedStateUpdates.isEmpty, "Should have received state updates for loaded books")
+    }
+  }
+  
+}

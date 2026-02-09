@@ -114,6 +114,85 @@ struct Strings {
     static let playAudiobook = NSLocalizedString("Play", comment: "VoiceOver: Play audiobook")
     static let pauseAudiobook = NSLocalizedString("Pause", comment: "VoiceOver: Pause audiobook")
     static let skipBack30 = NSLocalizedString("Skip back 30 seconds", comment: "VoiceOver: Rewind audiobook 30 seconds")
+
+    // Accessibility - EPUB Reader (Full Keyboard Access)
+    static let bookReader = NSLocalizedString("Book reader", comment: "VoiceOver: Accessibility label for the book reading area")
+    static let nextPage = NSLocalizedString("Next page", comment: "Full Keyboard Access: Custom action to go to next page (Tab-Z menu)")
+    static let previousPage = NSLocalizedString("Previous page", comment: "Full Keyboard Access: Custom action to go to previous page (Tab-Z menu)")
+    static let toggleToolbar = NSLocalizedString("Toggle toolbar", comment: "Full Keyboard Access: Custom action to show/hide reader toolbar (Tab-Z menu)")
+  }
+
+  struct DownloadAnnouncements {
+    static func downloadStarted(_ title: String) -> String {
+      String.localizedStringWithFormat(
+        NSLocalizedString("Download started for %@.", comment: "VoiceOver announcement when a download begins"),
+        title
+      )
+    }
+
+    static func downloadProgress(_ title: String, _ percent: Int) -> String {
+      String.localizedStringWithFormat(
+        NSLocalizedString("Download %d percent complete for %@.", comment: "VoiceOver announcement for download progress"),
+        percent,
+        title
+      )
+    }
+
+    static func downloadCompleted(_ title: String) -> String {
+      String.localizedStringWithFormat(
+        NSLocalizedString("Download completed for %@.", comment: "VoiceOver announcement when a download finishes"),
+        title
+      )
+    }
+
+    static func downloadFailed(_ title: String) -> String {
+      String.localizedStringWithFormat(
+        NSLocalizedString("Download failed for %@.", comment: "VoiceOver announcement when a download fails"),
+        title
+      )
+    }
+
+    static func borrowStarted(_ title: String) -> String {
+      String.localizedStringWithFormat(
+        NSLocalizedString("Borrow started for %@.", comment: "VoiceOver announcement when a borrow starts"),
+        title
+      )
+    }
+
+    static func borrowSucceeded(_ title: String) -> String {
+      String.localizedStringWithFormat(
+        NSLocalizedString("Borrowed %@.", comment: "VoiceOver announcement when a borrow succeeds"),
+        title
+      )
+    }
+
+    static func borrowFailed(_ title: String) -> String {
+      String.localizedStringWithFormat(
+        NSLocalizedString("Borrow failed for %@.", comment: "VoiceOver announcement when a borrow fails"),
+        title
+      )
+    }
+
+    static func returnStarted(_ title: String) -> String {
+      String.localizedStringWithFormat(
+        NSLocalizedString("Return started for %@.", comment: "VoiceOver announcement when a return starts"),
+        title
+      )
+    }
+
+    static func returnSucceeded(_ title: String) -> String {
+      String.localizedStringWithFormat(
+        NSLocalizedString("Returned %@.", comment: "VoiceOver announcement when a return succeeds"),
+        title
+      )
+    }
+
+    static func returnFailed(_ title: String) -> String {
+      String.localizedStringWithFormat(
+        NSLocalizedString("Return failed for %@.", comment: "VoiceOver announcement when a return fails"),
+        title
+      )
+    }
   }
   
   struct OETutorialChoiceViewController {
@@ -245,8 +324,10 @@ struct Strings {
   struct TPPEPUBViewController {
     static let readerSettings = NSLocalizedString("Reader settings", comment: "Reader settings")
     static let emptySearchView = NSLocalizedString("There are no results", comment: "No search results available.")
-    static let endOfResults = NSLocalizedString("Reached the end of the results.", comment: "Reached the end of the results."
-)
+    static let endOfResults = NSLocalizedString("Reached the end of the results.", comment: "Reached the end of the results.")
+    static let previousPage = NSLocalizedString("Previous page", comment: "Keyboard shortcut for navigating to previous page")
+    static let nextPage = NSLocalizedString("Next page", comment: "Keyboard shortcut for navigating to next page")
+    static let toggleToolbar = NSLocalizedString("Toggle toolbar", comment: "Keyboard shortcut for toggling the reader toolbar")
   }
   
   struct TPPLastReadPositionSynchronizer {

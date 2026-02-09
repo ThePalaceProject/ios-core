@@ -20,14 +20,17 @@ class TPPPDFPreviewGridCell: UICollectionViewCell {
     imageView.layer.shadowOffset = .zero
     imageView.layer.shadowRadius = 4
     imageView.layer.shadowOpacity = 0.2
+    imageView.isAccessibilityElement = false // Cell itself is the accessibility element
     return imageView
   }()
   
   var pageLabel: UILabel = {
     let label = UILabel()
-    label.font = UIFont.systemFont(ofSize: UIFont.smallSystemFontSize)
+    label.font = UIFont.preferredFont(forTextStyle: .caption2) // Dynamic Type support
+    label.adjustsFontForContentSizeCategory = true
     label.textColor = .secondaryLabel
     label.textAlignment = .center
+    label.isAccessibilityElement = false // Cell itself is the accessibility element
     return label
   }()
 
@@ -47,6 +50,18 @@ class TPPPDFPreviewGridCell: UICollectionViewCell {
     imageView.autoPinEdgesToSuperviewMargins()
     pageLabel.autoPinEdge(.leading, to: .leading, of: self)
     pageLabel.autoPinEdge(.trailing, to: .trailing, of: self)
-    pageLabel.autoPinEdge(.top, to: .bottom, of: self, withOffset: -UIFont.smallSystemFontSize / 4)
+    pageLabel.autoPinEdge(.top, to: .bottom, of: self, withOffset: -UIFont.preferredFont(forTextStyle: .caption2).pointSize / 4)
+    
+    // Accessibility: Cell is the accessible element
+    isAccessibilityElement = true
+    accessibilityTraits = .button
+  }
+  
+  override var accessibilityLabel: String? {
+    get {
+      guard let pageNum = pageNumber else { return nil }
+      return String(format: NSLocalizedString("Page %d", comment: "PDF page preview accessibility label"), pageNum)
+    }
+    set { }
   }
 }

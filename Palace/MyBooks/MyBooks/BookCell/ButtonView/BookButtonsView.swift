@@ -45,7 +45,7 @@ struct BookButtonsView<T: BookButtonProvider>: View {
       }
     }
     .padding(.vertical)
-    .animation(.spring(response: 0.4, dampingFraction: 0.7), value: filteredButtonTypes)
+    .accessibleAnimation(.spring(response: 0.4, dampingFraction: 0.7), value: filteredButtonTypes)
   }
 }
 
@@ -121,7 +121,7 @@ struct ActionButton<T: BookButtonProvider>: View {
           .font(size.font)
           .opacity(provider.isProcessing(for: type) ? 0.5 : 1)
           .scaleEffect(provider.isProcessing(for: type) ? 0.95 : 1.0)
-          .animation(.easeInOut(duration: 0.2), value: provider.isProcessing(for: type))
+          .accessibleAnimation(.easeInOut(duration: 0.2), value: provider.isProcessing(for: type))
       }
       .padding(size.padding)
       .frame(minHeight: size.height)

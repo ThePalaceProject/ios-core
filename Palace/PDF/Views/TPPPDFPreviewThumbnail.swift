@@ -30,6 +30,7 @@ struct TPPPDFPreviewThumbnail: View {
       .frame(width: size.width, height: size.height)
       .background(Color(UIColor.secondarySystemBackground))
       .border(.gray)
+      .accessibilityLabel(String(format: NSLocalizedString("Page %d preview", comment: "PDF page thumbnail"), index + 1))
   }
   
   /// Ths view needs an observable object to correctly update selected page thumbnail

@@ -102,7 +102,7 @@ private struct LaneSkeletonView: View {
       .padding(.horizontal, 12)
     }
     .onAppear {
-      withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+      accessibleWithAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
         pulse = true
       }
     }

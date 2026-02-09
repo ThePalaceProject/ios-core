@@ -107,7 +107,9 @@ final class HoldsSnapshotTests: XCTestCase {
       Button(action: {}, label: {
         Image(systemName: "xmark.circle.fill")
           .foregroundColor(.gray)
+          .accessibilityHidden(true)
       })
+      .accessibilityLabel(NSLocalizedString("Clear search", comment: "Clear search button"))
     }
     .padding(.horizontal)
     .frame(width: 390, height: 60)
@@ -123,7 +125,9 @@ final class HoldsSnapshotTests: XCTestCase {
       Button(action: {}, label: {
         Image(systemName: "xmark.circle.fill")
           .foregroundColor(.gray)
+          .accessibilityHidden(true)
       })
+      .accessibilityLabel(NSLocalizedString("Clear search", comment: "Clear search button"))
     }
     .padding(.horizontal)
     .frame(width: 390, height: 60)

@@ -11,8 +11,11 @@
 import Foundation
 @testable import Palace
 
-/// Mock implementation of NetworkClient for isolated testing of network-dependent code
+/// Mock implementation of NetworkClient for isolated testing of network-dependent code.
+/// Thread-safe: all mutable state is protected by a lock for concurrent test scenarios.
 final class NetworkClientMock: NetworkClient {
+
+  private let lock = NSLock()
 
   // MARK: - Configuration
 
@@ -53,65 +56,63 @@ final class NetworkClientMock: NetworkClient {
 
   /// The last URL that was requested
   var lastRequestedURL: URL? {
-    lastRequest?.url
+    lock.lock()
+    defer { lock.unlock() }
+    return lastRequest?.url
   }
 
   /// The last HTTP method that was used
   var lastRequestedMethod: HTTPMethod? {
-    lastRequest?.method
+    lock.lock()
+    defer { lock.unlock() }
+    return lastRequest?.method
   }
 
   /// The last headers that were sent
   var lastRequestedHeaders: [String: String]? {
-    lastRequest?.headers
+    lock.lock()
+    defer { lock.unlock() }
+    return lastRequest?.headers
   }
 
   /// The last body that was sent
   var lastRequestedBody: Data? {
-    lastRequest?.body
+    lock.lock()
+    defer { lock.unlock() }
+    return lastRequest?.body
   }
 
   // MARK: - NetworkClient Implementation
 
   func send(_ request: NetworkRequest) async throws -> NetworkResponse {
-    sendCallCount += 1
-    lastRequest = request
-    requestHistory.append(request)
+    // Capture config and record call atomically
+    let (shouldFail, delay, globalError, urlError, stubbed, defaultResp) : (Bool, TimeInterval, Error?, Error?, NetworkResponse?, NetworkResponse?) = {
+      lock.lock()
+      defer { lock.unlock() }
+      sendCallCount += 1
+      lastRequest = request
+      requestHistory.append(request)
+      let fail = failAfterCallCount.map { sendCallCount > $0 } ?? false
+      let d = simulateSlowConnection ? 2.0 : simulatedDelay
+      return (fail, d, errorToThrow, errorsByURL[request.url], stubbedResponses[request.url], defaultResponse)
+    }()
 
-    // Check if we should fail after N calls
-    if let failAfter = failAfterCallCount, sendCallCount > failAfter {
+    if shouldFail {
       throw NetworkClientMockError.simulatedFailure(
-        "Simulated failure after \(failAfter) calls"
+        "Simulated failure after \(failAfterCallCount ?? 0) calls"
       )
     }
 
-    // Simulate network delay
-    if simulatedDelay > 0 || simulateSlowConnection {
-      let delay = simulateSlowConnection ? 2.0 : simulatedDelay
+    // Simulate network delay (outside lock)
+    if delay > 0 {
       try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
     }
 
-    // Check for global error
-    if let error = errorToThrow {
-      throw error
-    }
+    if let error = globalError { throw error }
+    if let error = urlError { throw error }
+    if let response = stubbed { return response }
+    if let response = defaultResp { return response }
 
-    // Check for URL-specific error
-    if let urlError = errorsByURL[request.url] {
-      throw urlError
-    }
-
-    // Return stubbed response for URL
-    if let stubbedResponse = stubbedResponses[request.url] {
-      return stubbedResponse
-    }
-
-    // Return default response
-    if let defaultResponse = defaultResponse {
-      return defaultResponse
-    }
-
-    // Create a default empty response if nothing else is configured
     return makeDefaultResponse(for: request.url)
   }
 
@@ -119,6 +120,8 @@ final class NetworkClientMock: NetworkClient {
 
   /// Resets all tracking state and configuration
   func reset() {
+    lock.lock()
+    defer { lock.unlock() }
     stubbedResponses = [:]
     defaultResponse = nil
     errorToThrow = nil
@@ -134,17 +137,23 @@ final class NetworkClientMock: NetworkClient {
 
   /// Check if a specific URL was requested
   func wasURLRequested(_ url: URL) -> Bool {
-    requestHistory.contains { $0.url == url }
+    lock.lock()
+    defer { lock.unlock() }
+    return requestHistory.contains { $0.url == url }
   }
 
   /// Check if a specific HTTP method was used for a URL
   func wasMethodUsed(_ method: HTTPMethod, forURL url: URL) -> Bool {
-    requestHistory.contains { $0.url == url && $0.method == method }
+    lock.lock()
+    defer { lock.unlock() }
+    return requestHistory.contains { $0.url == url && $0.method == method }
   }
 
   /// Get all requests made to a specific URL
   func requests(forURL url: URL) -> [NetworkRequest] {
-    requestHistory.filter { $0.url == url }
+    lock.lock()
+    defer { lock.unlock() }
+    return requestHistory.filter { $0.url == url }
   }
 
   /// Stub a successful JSON response for a URL

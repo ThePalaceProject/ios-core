@@ -44,8 +44,15 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
   private var isShowingSample: Bool = false
   private var initialLocation: Locator?
   private var subscriptions: Set<AnyCancellable> = []
+  
   private var currentLocationIsBookmarked: Bool {
     bookmarksBusinessLogic.currentLocation(in: navigator) != nil
+  }
+
+  enum ReaderKeyboardCommand {
+    case goBackward
+    case goForward
+    case toggleUI
   }
 
   // MARK: - Lifecycle
@@ -161,7 +168,8 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
 
     // Position label in the bottom letterbox area
     positionLabel.translatesAutoresizingMaskIntoConstraints = false
-    positionLabel.font = .systemFont(ofSize: 12)
+    positionLabel.font = .preferredFont(forTextStyle: .caption1) // Dynamic Type
+    positionLabel.adjustsFontForContentSizeCategory = true
     positionLabel.textAlignment = .center
     positionLabel.lineBreakMode = .byTruncatingTail
     positionLabel.textColor = .lightGray
@@ -177,7 +185,8 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     // Previously at 20px from container top, which overlapped the status bar
     // Using view's safe area (not container) so label moves with status bar but doesn't affect navigator
     bookTitleLabel.translatesAutoresizingMaskIntoConstraints = false
-    bookTitleLabel.font = .systemFont(ofSize: 12)
+    bookTitleLabel.font = .preferredFont(forTextStyle: .caption1) // Dynamic Type
+    bookTitleLabel.adjustsFontForContentSizeCategory = true
     bookTitleLabel.textAlignment = .center
     bookTitleLabel.lineBreakMode = .byTruncatingTail
     bookTitleLabel.textColor = .lightGray
@@ -272,6 +281,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
       self?.configureScrollViewInsets()
     }
+    
   }
 
   override func viewWillDisappear(_ animated: Bool) {
@@ -509,6 +519,30 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
       }
     }
   }
+
+  // MARK: - Subclass Hooks
+
+  /// Called after the navigator location updates.
+  /// Subclasses can override to react to page changes.
+  func didChangeLocation(_ locator: Locator) {}
+
+  // MARK: - Keyboard Handling
+
+  @MainActor
+  func handleKeyboardCommand(_ command: ReaderKeyboardCommand) {
+    switch command {
+    case .goBackward:
+      Task { @MainActor in
+        await navigator.goBackward(options: NavigatorGoOptions(animated: false))
+      }
+    case .goForward:
+      Task { @MainActor in
+        await navigator.goForward(options: NavigatorGoOptions(animated: false))
+      }
+    case .toggleUI:
+      toggleNavigationBar()
+    }
+  }
 }
 
 //------------------------------------------------------------------------------
@@ -557,6 +591,8 @@ extension TPPBaseReaderViewController: NavigatorDelegate {
       } else {
         updateBookmarkButton(withState: false)
       }
+
+      self.didChangeLocation(locator)
     }
   }
 
@@ -645,4 +681,12 @@ extension TPPBaseReaderViewController: TPPReaderPositionsDelegate {
                    didRequestSyncBookmarksWithCompletion completion: @escaping (_ success: Bool, _ bookmarks: [TPPReadiumBookmark]) -> Void) {
     bookmarksBusinessLogic.syncBookmarks(completion: completion)
   }
+}
+
+//------------------------------------------------------------------------------
+// MARK: - First Responder
+
+extension TPPBaseReaderViewController {
+  /// Allow this view controller to become first responder for keyboard input
+  override var canBecomeFirstResponder: Bool { true }
 }

@@ -7,6 +7,11 @@ DerivedData
 .vscode
 Build
 adobe-rmsdk
+.accesslint-cache/
+accesslint-reports/
+artifacts/
+reports/
+tools/
 **/ReaderClientCert.sig
 **/APIKeys.swift
 Carthage*
