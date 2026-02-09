@@ -848,6 +848,11 @@
 		E5E4907229280597005BFC55 /* Strings.swift in Sources */ = {isa = PBXBuildFile; fileRef = E54DD4CF275C66F30013C200 /* Strings.swift */; };
 		E5E4A9C82EB0559500CC1D67 /* PalaceError.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E4A9C72EB0559500CC1D67 /* PalaceError.swift */; };
 		E5E4A9C92EB0559500CC1D67 /* PalaceError.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E4A9C72EB0559500CC1D67 /* PalaceError.swift */; };
+		E5D10C0012F0A10000DC0002 /* DeviceLogCollector.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5D10C0012F0A10000DC0001 /* DeviceLogCollector.swift */; };
+		E5D10C0012F0A10000DC0003 /* DeviceLogCollector.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5D10C0012F0A10000DC0001 /* DeviceLogCollector.swift */; };
+		E5LOGTEST012F0A10000003 /* DeviceLogCollectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5LOGTEST012F0A10000002 /* DeviceLogCollectorTests.swift */; };
+		E5LOGTEST012F0A10000005 /* LogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5LOGTEST012F0A10000004 /* LogTests.swift */; };
+		E5LOGTEST012F0A10000007 /* ErrorLogExporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5LOGTEST012F0A10000006 /* ErrorLogExporterTests.swift */; };
 		E5E4A9CC2EB055BB00CC1D67 /* PersistentLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E4A9CB2EB055BB00CC1D67 /* PersistentLogger.swift */; };
 		E5E4A9CD2EB055BB00CC1D67 /* ErrorLogExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E4A9CA2EB055BB00CC1D67 /* ErrorLogExporter.swift */; };
 		E5E4A9CE2EB055BB00CC1D67 /* PersistentLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E4A9CB2EB055BB00CC1D67 /* PersistentLogger.swift */; };
@@ -1859,6 +1864,10 @@
 		E5E2F8D32CB631C100A95840 /* TPPSAMLHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPSAMLHelper.swift; sourceTree = "<group>"; };
 		E5E443F92DA4591C00AD4BC9 /* AdaptiveShadowModifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdaptiveShadowModifier.swift; sourceTree = "<group>"; };
 		E5E4A9C72EB0559500CC1D67 /* PalaceError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PalaceError.swift; sourceTree = "<group>"; };
+		E5D10C0012F0A10000DC0001 /* DeviceLogCollector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceLogCollector.swift; sourceTree = "<group>"; };
+		E5LOGTEST012F0A10000002 /* DeviceLogCollectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceLogCollectorTests.swift; sourceTree = "<group>"; };
+		E5LOGTEST012F0A10000004 /* LogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogTests.swift; sourceTree = "<group>"; };
+		E5LOGTEST012F0A10000006 /* ErrorLogExporterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorLogExporterTests.swift; sourceTree = "<group>"; };
 		E5E4A9CA2EB055BB00CC1D67 /* ErrorLogExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorLogExporter.swift; sourceTree = "<group>"; };
 		E5E4A9CB2EB055BB00CC1D67 /* PersistentLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistentLogger.swift; sourceTree = "<group>"; };
 		E5E4A9D62EB0560200CC1D67 /* OPDSFeedService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OPDSFeedService.swift; sourceTree = "<group>"; };
@@ -2828,6 +2837,7 @@
 			isa = PBXGroup;
 			children = (
 				2D382BD61D08BA99002C423D /* Log.swift */,
+				E5D10C0012F0A10000DC0001 /* DeviceLogCollector.swift */,
 				E5E4A9CA2EB055BB00CC1D67 /* ErrorLogExporter.swift */,
 				E5E4A9CB2EB055BB00CC1D67 /* PersistentLogger.swift */,
 				7340DA6724B7F27900361387 /* TPPBook+Logging.swift */,
@@ -3433,6 +3443,7 @@
 				90A8854BED2D87DCAB2181D3 /* Book */,
 				F4448A54423492EC6C1350A7 /* CatalogDomain */,
 				C0B6D1C920A978CFF9492E3B /* BookRegistry */,
+				E5LOGTEST012F0A10000001 /* Logging */,
 			);
 			path = PalaceTests;
 			sourceTree = "<group>";
@@ -3507,6 +3518,16 @@
 				BSMA00012F0F000000000004 /* TPPBookRegistryRecordTests.swift */,
 			);
 			path = BookStateManagement;
+			sourceTree = "<group>";
+		};
+		E5LOGTEST012F0A10000001 /* Logging */ = {
+			isa = PBXGroup;
+			children = (
+				E5LOGTEST012F0A10000002 /* DeviceLogCollectorTests.swift */,
+				E5LOGTEST012F0A10000004 /* LogTests.swift */,
+				E5LOGTEST012F0A10000006 /* ErrorLogExporterTests.swift */,
+			);
+			path = Logging;
 			sourceTree = "<group>";
 		};
 		C0B6D1C920A978CFF9492E3B /* BookRegistry */ = {
@@ -4551,6 +4572,9 @@
 				ABDM002T260955EF008E1DC3 /* AudiobookDataManagerModelsTests.swift in Sources */,
 				ABRL002T260955EF008E1DC3 /* AudiobookReliabilityTests.swift in Sources */,
 				NSER002T260955EF008E1DC3 /* NSErrorAdditionsTests.swift in Sources */,
+				E5LOGTEST012F0A10000003 /* DeviceLogCollectorTests.swift in Sources */,
+				E5LOGTEST012F0A10000005 /* LogTests.swift in Sources */,
+				E5LOGTEST012F0A10000007 /* ErrorLogExporterTests.swift in Sources */,
 				681FBB4C5C3E2B2A10DAD273 /* CatalogViewModelTests.swift in Sources */,
 				PP3346A11B0000000000001B /* CatalogLaneRowViewAccessibilityTests.swift in Sources */,
 				9E482D5D89E03F23F7451DE6 /* MyBooksViewModelTests.swift in Sources */,
@@ -4723,6 +4747,7 @@
 				73EB0A8E25821DF4006BC997 /* TPPSignInBusinessLogic+UI.swift in Sources */,
 				73EB0A9025821DF4006BC997 /* OPDS2CatalogsFeed.swift in Sources */,
 				21E41784292810EE00A78606 /* CGPDFPage+previews.swift in Sources */,
+				E5D10C0012F0A10000DC0002 /* DeviceLogCollector.swift in Sources */,
 				E5E4A9CE2EB055BB00CC1D67 /* PersistentLogger.swift in Sources */,
 				E5E4A9CF2EB055BB00CC1D67 /* ErrorLogExporter.swift in Sources */,
 				21E4178F2928112600A78606 /* Sample.swift in Sources */,
@@ -5281,6 +5306,7 @@
 				E58EAD5C2EC7746700CDA626 /* UserAccountPublisher+Extensions.swift in Sources */,
 				E58EAD5D2EC7746700CDA626 /* UserAccountPublisher.swift in Sources */,
 				61757D3F95012F8F4340FABB /* TPPAccountAuthState.swift in Sources */,
+				E5D10C0012F0A10000DC0003 /* DeviceLogCollector.swift in Sources */,
 				E5E4A9CC2EB055BB00CC1D67 /* PersistentLogger.swift in Sources */,
 				E5E4A9CD2EB055BB00CC1D67 /* ErrorLogExporter.swift in Sources */,
 				E53573CF295612BA008BDCA4 /* MyBooksView.swift in Sources */,

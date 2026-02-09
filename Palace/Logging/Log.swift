@@ -5,6 +5,12 @@ import FirebaseCrashlytics
 #endif
 
 final class Log: NSObject {
+  /// Subsystem identifier used for unified logging (OSLog).
+  /// This makes Palace log entries identifiable when collecting device logs via OSLogStore.
+  static let subsystem = "org.thepalaceproject.palace"
+
+  private static let palaceLog = OSLog(subsystem: subsystem, category: "Palace")
+
   static var dateFormatter: DateFormatter = {
     let formatter = DateFormatter()
     formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
@@ -45,7 +51,16 @@ final class Log: NSObject {
     }
     #endif
 
-    os_log("%{public}@: %{public}@", type: level, tag, message)
+    os_log("%{public}@: %{public}@", log: palaceLog, type: level, tag, message)
+
+    // Persist error and fault level messages to disk for cross-launch diagnostics.
+    // OSLogStore entries may be pruned by the system, so PersistentLogger ensures
+    // critical messages survive between sessions.
+    if level == .error || level == .fault {
+      Task {
+        await PersistentLogger.shared.log(level: level, tag: tag, message: message)
+      }
+    }
   }
 
   /** For objc compatibility only. */
