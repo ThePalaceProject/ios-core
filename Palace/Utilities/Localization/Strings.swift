@@ -185,13 +185,6 @@ struct Strings {
       String(format: NSLocalizedString("To download books, please sign in to %@.", comment: "Sign in prompt"), libraryName)
     }
     
-    static func signOutWarningWithSync(syncEnabled: Bool) -> String {
-      if syncEnabled {
-        return NSLocalizedString("If you sign out, your books and any saved bookmarks will be removed.", comment: "")
-      } else {
-        return NSLocalizedString("If you sign out without enabling Sync, your books and any saved bookmarks will be removed.", comment: "")
-      }
-    }
     
     static func deleteServerDataMessage(libraryName: String) -> String {
       String.localizedStringWithFormat(
