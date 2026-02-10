@@ -56,6 +56,10 @@ extension MyBooksDownloadCenter {
     #if DEBUG
     // Check if error simulation is enabled via Developer Settings
     if let simulated = DebugSettings.shared.createSimulatedBorrowError() {
+      await ErrorActivityTracker.shared.log(
+        "[DEBUG] Simulated borrow error triggered: \(DebugSettings.shared.simulatedBorrowError.displayName)",
+        category: .borrow
+      )
       await MainActor.run {
         showBorrowError(.network(.forbidden), originalError: simulated.error, for: book, problemDocument: simulated.problemDocument)
       }

@@ -45,7 +45,7 @@ actor ErrorActivityTracker {
   private var activities: [Activity] = []
   private let maxEntries = 200
 
-  private init() {}
+  public init() {}
 
   // MARK: - Logging
 

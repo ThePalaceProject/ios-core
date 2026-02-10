@@ -825,12 +825,6 @@
 		E5CD879B2EC2897A0043468C /* ActionButtonView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5CD87992EC2897A0043468C /* ActionButtonView.swift */; };
 		E5D10C0012F0A10000DC0002 /* DeviceLogCollector.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5D10C0012F0A10000DC0001 /* DeviceLogCollector.swift */; };
 		E5D10C0012F0A10000DC0003 /* DeviceLogCollector.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5D10C0012F0A10000DC0001 /* DeviceLogCollector.swift */; };
-		E5PP3439012F0B10000EB001 /* ErrorActivityTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5PP3439012F0B10000EA001 /* ErrorActivityTracker.swift */; };
-		E5PP3439012F0B10000EB002 /* ErrorActivityTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5PP3439012F0B10000EA001 /* ErrorActivityTracker.swift */; };
-		E5PP3439012F0B10000EB003 /* ErrorDetail.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5PP3439012F0B10000EA002 /* ErrorDetail.swift */; };
-		E5PP3439012F0B10000EB004 /* ErrorDetail.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5PP3439012F0B10000EA002 /* ErrorDetail.swift */; };
-		E5PP3439012F0B10000EB005 /* ErrorDetailViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5PP3439012F0B10000EA003 /* ErrorDetailViewController.swift */; };
-		E5PP3439012F0B10000EB006 /* ErrorDetailViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5PP3439012F0B10000EA003 /* ErrorDetailViewController.swift */; };
 		E5D10C0012F0A10000DC0004 /* LogPreviewViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5D10C0012F0A10000DC0005 /* LogPreviewViewController.swift */; };
 		E5D10C0012F0A10000DC0006 /* LogPreviewViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5D10C0012F0A10000DC0005 /* LogPreviewViewController.swift */; };
 		E5D3288A292C0D34008BFD01 /* txstrings.json in Resources */ = {isa = PBXBuildFile; fileRef = E5D32881292C0D34008BFD01 /* txstrings.json */; };
@@ -910,6 +904,12 @@
 		E5LOGTEST012F0A10000003 /* DeviceLogCollectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5LOGTEST012F0A10000002 /* DeviceLogCollectorTests.swift */; };
 		E5LOGTEST012F0A10000005 /* LogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5LOGTEST012F0A10000004 /* LogTests.swift */; };
 		E5LOGTEST012F0A10000007 /* ErrorLogExporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5LOGTEST012F0A10000006 /* ErrorLogExporterTests.swift */; };
+		E5PP3439012F0B10000EB001 /* ErrorActivityTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5PP3439012F0B10000EA001 /* ErrorActivityTracker.swift */; };
+		E5PP3439012F0B10000EB002 /* ErrorActivityTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5PP3439012F0B10000EA001 /* ErrorActivityTracker.swift */; };
+		E5PP3439012F0B10000EB003 /* ErrorDetail.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5PP3439012F0B10000EA002 /* ErrorDetail.swift */; };
+		E5PP3439012F0B10000EB004 /* ErrorDetail.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5PP3439012F0B10000EA002 /* ErrorDetail.swift */; };
+		E5PP3439012F0B10000EB005 /* ErrorDetailViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5PP3439012F0B10000EA003 /* ErrorDetailViewController.swift */; };
+		E5PP3439012F0B10000EB006 /* ErrorDetailViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5PP3439012F0B10000EA003 /* ErrorDetailViewController.swift */; };
 		E6207B652118973800864143 /* TPPAppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6207B642118973800864143 /* TPPAppTheme.swift */; };
 		E63F2C6C1EAA81B3002B6373 /* ExtendedNavBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E63F2C6B1EAA81B3002B6373 /* ExtendedNavBarView.swift */; };
 		E65977C51F82AC91003CD6BC /* TPP_Launch_Screen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = E65977C41F82AC91003CD6BC /* TPP_Launch_Screen.storyboard */; };
@@ -1083,6 +1083,26 @@
 		PLAYBOOTTEST0001SOURCES /* PlaybackBootstrapperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PLAYBOOTTEST0001FILEREF /* PlaybackBootstrapperTests.swift */; };
 		PP3346A11B0000000000001B /* CatalogLaneRowViewAccessibilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP3346A11A0000000000001A /* CatalogLaneRowViewAccessibilityTests.swift */; };
 		PP3583TRACKER00001TESTS /* AudiobookTrackerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E544E7132C8A14D400802EB9 /* AudiobookTrackerTests.swift */; };
+		QATEST01BF00000000000001 /* ErrorActivityTrackerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QATEST01FR00000000000001 /* ErrorActivityTrackerTests.swift */; };
+		QATEST02BF00000000000001 /* ErrorDetailTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QATEST02FR00000000000001 /* ErrorDetailTests.swift */; };
+		QATEST03BF00000000000001 /* PalaceErrorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QATEST03FR00000000000001 /* PalaceErrorTests.swift */; };
+		QATEST04BF00000000000001 /* TPPAlertUtilsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QATEST04FR00000000000001 /* TPPAlertUtilsTests.swift */; };
+		QATEST05BF00000000000001 /* PersistentLoggerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QATEST05FR00000000000001 /* PersistentLoggerTests.swift */; };
+		QATEST06BF00000000000001 /* TPPProblemDocumentCacheManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QATEST06FR00000000000001 /* TPPProblemDocumentCacheManagerTests.swift */; };
+		QATEST07BF00000000000001 /* GeneralCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QATEST07FR00000000000001 /* GeneralCacheTests.swift */; };
+		QATEST08BF00000000000001 /* SafeDictionaryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QATEST08FR00000000000001 /* SafeDictionaryTests.swift */; };
+		QATEST09BF00000000000001 /* DownloadErrorRecoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QATEST09FR00000000000001 /* DownloadErrorRecoveryTests.swift */; };
+		QATEST10BF00000000000001 /* EmailAddressTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QATEST10FR00000000000001 /* EmailAddressTests.swift */; };
+		QATEST11BF00000000000001 /* DeviceSpecificErrorMonitorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QATEST11FR00000000000001 /* DeviceSpecificErrorMonitorTests.swift */; };
+		QATEST12BF00000000000001 /* AudiobookFileLoggerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QATEST12FR00000000000001 /* AudiobookFileLoggerTests.swift */; };
+		QATEST13BF00000000000001 /* RemoteFeatureFlagsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QATEST13FR00000000000001 /* RemoteFeatureFlagsTests.swift */; };
+		QATEST14BF00000000000001 /* TPPNetworkExecutorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QATEST14FR00000000000001 /* TPPNetworkExecutorTests.swift */; };
+		QATEST15BF00000000000001 /* ReachabilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QATEST15FR00000000000001 /* ReachabilityTests.swift */; };
+		QATEST16BF00000000000001 /* TPPKeychainStoredVariableTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QATEST16FR00000000000001 /* TPPKeychainStoredVariableTests.swift */; };
+		QATEST17BF00000000000001 /* TPPUserFriendlyErrorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QATEST17FR00000000000001 /* TPPUserFriendlyErrorTests.swift */; };
+		QATEST18BF00000000000001 /* SEMigrationsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QATEST18FR00000000000001 /* SEMigrationsTests.swift */; };
+		QATEST19BF00000000000001 /* TPPSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QATEST19FR00000000000001 /* TPPSettingsTests.swift */; };
+		QATEST20BF00000000000001 /* TPPBookContentMetadataFilesHelperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QATEST20FR00000000000001 /* TPPBookContentMetadataFilesHelperTests.swift */; };
 		R3LC002T260955EF008E1DC3 /* TPPBookmarkR3LocationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = R3LC001T260955EF008E1DC3 /* TPPBookmarkR3LocationTests.swift */; };
 		RDBM002T260955EF008E1DC3 /* TPPReadiumBookmarkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = RDBM001T260955EF008E1DC3 /* TPPReadiumBookmarkTests.swift */; };
 		REAU002T260955EF008E1DC3 /* TPPReauthenticatorMock.swift in Sources */ = {isa = PBXBuildFile; fileRef = REAU001T260955EF008E1DC3 /* TPPReauthenticatorMock.swift */; };
@@ -1249,7 +1269,6 @@
 		08A352231BDE8E640040BF1D /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
 		08A352251BDE8E700040BF1D /* SystemConfiguration.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SystemConfiguration.framework; path = System/Library/Frameworks/SystemConfiguration.framework; sourceTree = SDKROOT; };
 		0D6A9F2703AA4DE2B0D5D35C /* Components/AccountDetailSkeletonView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Components/AccountDetailSkeletonView.swift; sourceTree = "<group>"; };
-		0DDC6FBE64C33F02AE4E05F5 /* BookDetailViewModelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BookDetailViewModelTests.swift; path = PalaceTests/Book/BookDetailViewModelTests.swift; sourceTree = "<group>"; };
 		1020FD76B5E7EA7D89A58124 /* KeyboardNavigationHandlerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = KeyboardNavigationHandlerTests.swift; sourceTree = "<group>"; };
 		11068C53196DD37900E8A94B /* TPPNull.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPNull.h; sourceTree = "<group>"; };
 		11068C54196DD37900E8A94B /* TPPNull.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPNull.m; sourceTree = "<group>"; };
@@ -1608,7 +1627,6 @@
 		7751F6315B6633F398F0B808 /* StringExtensionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = StringExtensionTests.swift; sourceTree = "<group>"; };
 		781125E2689F3A05C75A0D33 /* CatalogCacheMetadataTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CatalogCacheMetadataTests.swift; sourceTree = "<group>"; };
 		7F31B83CAB15F0245AEEE83C /* NetworkRetryTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NetworkRetryTests.swift; sourceTree = "<group>"; };
-		7F41F4700B0175DE2189FB0E /* TPPBookStateTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPBookStateTests.swift; sourceTree = "<group>"; };
 		84B7A3431B84E8FE00584FB2 /* OFL.txt */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = OFL.txt; sourceTree = "<group>"; };
 		84B7A3441B84E8FE00584FB2 /* OpenDyslexic3-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "OpenDyslexic3-Bold.ttf"; sourceTree = "<group>"; };
 		84B7A3451B84E8FE00584FB2 /* OpenDyslexic3-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "OpenDyslexic3-Regular.ttf"; sourceTree = "<group>"; };
@@ -1856,9 +1874,6 @@
 		E5C2C421268BA5140046F415 /* TPPRegistryDebuggingCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPRegistryDebuggingCell.swift; sourceTree = "<group>"; };
 		E5CD87992EC2897A0043468C /* ActionButtonView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionButtonView.swift; sourceTree = "<group>"; };
 		E5D10C0012F0A10000DC0001 /* DeviceLogCollector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceLogCollector.swift; sourceTree = "<group>"; };
-		E5PP3439012F0B10000EA001 /* ErrorActivityTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorActivityTracker.swift; sourceTree = "<group>"; };
-		E5PP3439012F0B10000EA002 /* ErrorDetail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorDetail.swift; sourceTree = "<group>"; };
-		E5PP3439012F0B10000EA003 /* ErrorDetailViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorDetailViewController.swift; sourceTree = "<group>"; };
 		E5D10C0012F0A10000DC0005 /* LogPreviewViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogPreviewViewController.swift; sourceTree = "<group>"; };
 		E5D32881292C0D34008BFD01 /* txstrings.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = txstrings.json; sourceTree = "<group>"; };
 		E5D8C8DC2D829B2000667A99 /* HTMLTextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTMLTextView.swift; sourceTree = "<group>"; };
@@ -1898,6 +1913,9 @@
 		E5LOGTEST012F0A10000002 /* DeviceLogCollectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceLogCollectorTests.swift; sourceTree = "<group>"; };
 		E5LOGTEST012F0A10000004 /* LogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogTests.swift; sourceTree = "<group>"; };
 		E5LOGTEST012F0A10000006 /* ErrorLogExporterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorLogExporterTests.swift; sourceTree = "<group>"; };
+		E5PP3439012F0B10000EA001 /* ErrorActivityTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorActivityTracker.swift; sourceTree = "<group>"; };
+		E5PP3439012F0B10000EA002 /* ErrorDetail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorDetail.swift; sourceTree = "<group>"; };
+		E5PP3439012F0B10000EA003 /* ErrorDetailViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorDetailViewController.swift; sourceTree = "<group>"; };
 		E5SNAP001A0000000000001A /* SnapshotTestConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapshotTestConfiguration.swift; sourceTree = "<group>"; };
 		E61D7F631F6AC78B0091C781 /* SimplyE.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SimplyE.entitlements; sourceTree = "<group>"; };
 		E6207B642118973800864143 /* TPPAppTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAppTheme.swift; sourceTree = "<group>"; };
@@ -2003,6 +2021,26 @@
 		OBJC00012F2600020000001C /* ObjCExceptionCatcher.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ObjCExceptionCatcher.h; sourceTree = "<group>"; };
 		PLAYBOOTTEST0001FILEREF /* PlaybackBootstrapperTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackBootstrapperTests.swift; sourceTree = "<group>"; };
 		PP3346A11A0000000000001A /* CatalogLaneRowViewAccessibilityTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CatalogLaneRowViewAccessibilityTests.swift; sourceTree = "<group>"; };
+		QATEST01FR00000000000001 /* ErrorActivityTrackerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorActivityTrackerTests.swift; sourceTree = "<group>"; };
+		QATEST02FR00000000000001 /* ErrorDetailTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorDetailTests.swift; sourceTree = "<group>"; };
+		QATEST03FR00000000000001 /* PalaceErrorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PalaceErrorTests.swift; sourceTree = "<group>"; };
+		QATEST04FR00000000000001 /* TPPAlertUtilsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAlertUtilsTests.swift; sourceTree = "<group>"; };
+		QATEST05FR00000000000001 /* PersistentLoggerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistentLoggerTests.swift; sourceTree = "<group>"; };
+		QATEST06FR00000000000001 /* TPPProblemDocumentCacheManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPProblemDocumentCacheManagerTests.swift; sourceTree = "<group>"; };
+		QATEST07FR00000000000001 /* GeneralCacheTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneralCacheTests.swift; sourceTree = "<group>"; };
+		QATEST08FR00000000000001 /* SafeDictionaryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafeDictionaryTests.swift; sourceTree = "<group>"; };
+		QATEST09FR00000000000001 /* DownloadErrorRecoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadErrorRecoveryTests.swift; sourceTree = "<group>"; };
+		QATEST10FR00000000000001 /* EmailAddressTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmailAddressTests.swift; sourceTree = "<group>"; };
+		QATEST11FR00000000000001 /* DeviceSpecificErrorMonitorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceSpecificErrorMonitorTests.swift; sourceTree = "<group>"; };
+		QATEST12FR00000000000001 /* AudiobookFileLoggerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudiobookFileLoggerTests.swift; sourceTree = "<group>"; };
+		QATEST13FR00000000000001 /* RemoteFeatureFlagsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFeatureFlagsTests.swift; sourceTree = "<group>"; };
+		QATEST14FR00000000000001 /* TPPNetworkExecutorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPNetworkExecutorTests.swift; sourceTree = "<group>"; };
+		QATEST15FR00000000000001 /* ReachabilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReachabilityTests.swift; sourceTree = "<group>"; };
+		QATEST16FR00000000000001 /* TPPKeychainStoredVariableTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPKeychainStoredVariableTests.swift; sourceTree = "<group>"; };
+		QATEST17FR00000000000001 /* TPPUserFriendlyErrorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPUserFriendlyErrorTests.swift; sourceTree = "<group>"; };
+		QATEST18FR00000000000001 /* SEMigrationsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SEMigrationsTests.swift; sourceTree = "<group>"; };
+		QATEST19FR00000000000001 /* TPPSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPSettingsTests.swift; sourceTree = "<group>"; };
+		QATEST20FR00000000000001 /* TPPBookContentMetadataFilesHelperTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBookContentMetadataFilesHelperTests.swift; sourceTree = "<group>"; };
 		R3LC001T260955EF008E1DC3 /* TPPBookmarkR3LocationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBookmarkR3LocationTests.swift; sourceTree = "<group>"; };
 		RDBM001T260955EF008E1DC3 /* TPPReadiumBookmarkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPReadiumBookmarkTests.swift; sourceTree = "<group>"; };
 		REAU001T260955EF008E1DC3 /* TPPReauthenticatorMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPReauthenticatorMock.swift; sourceTree = "<group>"; };
@@ -2140,6 +2178,8 @@
 				C61A8F5FC897F582128D45B7 /* NetworkClientTests.swift */,
 				A325872EF1D517D66C0FA15F /* TokenResponseTests.swift */,
 				1A81964771D1CB9A93ED2EA6 /* TokenRefreshTests.swift */,
+				QATEST14FR00000000000001 /* TPPNetworkExecutorTests.swift */,
+				QATEST15FR00000000000001 /* ReachabilityTests.swift */,
 			);
 			path = Network;
 			sourceTree = "<group>";
@@ -3145,15 +3185,6 @@
 			path = Resources/OpenDyslexicFont;
 			sourceTree = "<group>";
 		};
-		90A8854BED2D87DCAB2181D3 /* Book */ = {
-			isa = PBXGroup;
-			children = (
-				0DDC6FBE64C33F02AE4E05F5 /* BookDetailViewModelTests.swift */,
-				7F41F4700B0175DE2189FB0E /* TPPBookStateTests.swift */,
-			);
-			path = Book;
-			sourceTree = "<group>";
-		};
 		9AA35EB189630201A9761FA2 /* SignInLogic */ = {
 			isa = PBXGroup;
 			children = (
@@ -3449,10 +3480,13 @@
 				BSMA00012F0F000000000000 /* BookStateManagement */,
 				FDF8747DDC245E6180FB8A81 /* Accessibility */,
 				ACCT00012F17000000000003 /* Accounts */,
-				90A8854BED2D87DCAB2181D3 /* Book */,
 				F4448A54423492EC6C1350A7 /* CatalogDomain */,
 				C0B6D1C920A978CFF9492E3B /* BookRegistry */,
 				E5LOGTEST012F0A10000001 /* Logging */,
+				QATESTGRPERRORHANDL0001 /* ErrorHandling */,
+				QATESTGRPKEYCHAIN000001 /* Keychain */,
+				QATESTGRPMIGRATIONS0001 /* Migrations */,
+				QATESTGRPSETTINGS000001 /* Settings */,
 			);
 			path = PalaceTests;
 			sourceTree = "<group>";
@@ -3496,6 +3530,7 @@
 			isa = PBXGroup;
 			children = (
 				NAVCOORDTESTS0001FILEREF /* NavigationCoordinatorTests.swift */,
+				QATEST13FR00000000000001 /* RemoteFeatureFlagsTests.swift */,
 			);
 			path = AppInfrastructure;
 			sourceTree = "<group>";
@@ -3514,6 +3549,7 @@
 				CB9CA89B135C85E23F0D907B /* MyBooksViewModelTests.swift */,
 				317C8F0150303A9AC53BC44F /* MyBooksDownloadCenterTests.swift */,
 				DCIT001T260955EF008E1DC3 /* MyBooksDownloadCenterIntegrationTests.swift */,
+				QATEST09FR00000000000001 /* DownloadErrorRecoveryTests.swift */,
 			);
 			path = MyBooks;
 			sourceTree = "<group>";
@@ -3563,6 +3599,10 @@
 				153576DF8AE3801A58DE3F75 /* DateExtensionTests.swift */,
 				3BB31382B3826FB20CD3BE34 /* URLExtensionTests.swift */,
 				E5A09A7E2F0D72B500CC23EA /* DeviceOrientationTests.swift */,
+				QATEST07FR00000000000001 /* GeneralCacheTests.swift */,
+				QATEST08FR00000000000001 /* SafeDictionaryTests.swift */,
+				QATEST10FR00000000000001 /* EmailAddressTests.swift */,
+				QATEST20FR00000000000001 /* TPPBookContentMetadataFilesHelperTests.swift */,
 			);
 			path = Utilities;
 			sourceTree = "<group>";
@@ -3912,6 +3952,9 @@
 				E5LOGTEST012F0A10000002 /* DeviceLogCollectorTests.swift */,
 				E5LOGTEST012F0A10000004 /* LogTests.swift */,
 				E5LOGTEST012F0A10000006 /* ErrorLogExporterTests.swift */,
+				QATEST05FR00000000000001 /* PersistentLoggerTests.swift */,
+				QATEST11FR00000000000001 /* DeviceSpecificErrorMonitorTests.swift */,
+				QATEST12FR00000000000001 /* AudiobookFileLoggerTests.swift */,
 			);
 			path = Logging;
 			sourceTree = "<group>";
@@ -4083,6 +4126,43 @@
 				42F178DBC9EBCF7C7FA70BEC /* FocusIndicationTests.swift */,
 			);
 			path = Accessibility;
+			sourceTree = "<group>";
+		};
+		QATESTGRPERRORHANDL0001 /* ErrorHandling */ = {
+			isa = PBXGroup;
+			children = (
+				QATEST01FR00000000000001 /* ErrorActivityTrackerTests.swift */,
+				QATEST02FR00000000000001 /* ErrorDetailTests.swift */,
+				QATEST03FR00000000000001 /* PalaceErrorTests.swift */,
+				QATEST04FR00000000000001 /* TPPAlertUtilsTests.swift */,
+				QATEST06FR00000000000001 /* TPPProblemDocumentCacheManagerTests.swift */,
+				QATEST17FR00000000000001 /* TPPUserFriendlyErrorTests.swift */,
+			);
+			path = ErrorHandling;
+			sourceTree = "<group>";
+		};
+		QATESTGRPKEYCHAIN000001 /* Keychain */ = {
+			isa = PBXGroup;
+			children = (
+				QATEST16FR00000000000001 /* TPPKeychainStoredVariableTests.swift */,
+			);
+			path = Keychain;
+			sourceTree = "<group>";
+		};
+		QATESTGRPMIGRATIONS0001 /* Migrations */ = {
+			isa = PBXGroup;
+			children = (
+				QATEST18FR00000000000001 /* SEMigrationsTests.swift */,
+			);
+			path = Migrations;
+			sourceTree = "<group>";
+		};
+		QATESTGRPSETTINGS000001 /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				QATEST19FR00000000000001 /* TPPSettingsTests.swift */,
+			);
+			path = Settings;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -4580,6 +4660,26 @@
 				ABDM002T260955EF008E1DC3 /* AudiobookDataManagerModelsTests.swift in Sources */,
 				ABRL002T260955EF008E1DC3 /* AudiobookReliabilityTests.swift in Sources */,
 				NSER002T260955EF008E1DC3 /* NSErrorAdditionsTests.swift in Sources */,
+				QATEST01BF00000000000001 /* ErrorActivityTrackerTests.swift in Sources */,
+				QATEST02BF00000000000001 /* ErrorDetailTests.swift in Sources */,
+				QATEST03BF00000000000001 /* PalaceErrorTests.swift in Sources */,
+				QATEST04BF00000000000001 /* TPPAlertUtilsTests.swift in Sources */,
+				QATEST05BF00000000000001 /* PersistentLoggerTests.swift in Sources */,
+				QATEST06BF00000000000001 /* TPPProblemDocumentCacheManagerTests.swift in Sources */,
+				QATEST07BF00000000000001 /* GeneralCacheTests.swift in Sources */,
+				QATEST08BF00000000000001 /* SafeDictionaryTests.swift in Sources */,
+				QATEST09BF00000000000001 /* DownloadErrorRecoveryTests.swift in Sources */,
+				QATEST10BF00000000000001 /* EmailAddressTests.swift in Sources */,
+				QATEST11BF00000000000001 /* DeviceSpecificErrorMonitorTests.swift in Sources */,
+				QATEST12BF00000000000001 /* AudiobookFileLoggerTests.swift in Sources */,
+				QATEST13BF00000000000001 /* RemoteFeatureFlagsTests.swift in Sources */,
+				QATEST14BF00000000000001 /* TPPNetworkExecutorTests.swift in Sources */,
+				QATEST15BF00000000000001 /* ReachabilityTests.swift in Sources */,
+				QATEST16BF00000000000001 /* TPPKeychainStoredVariableTests.swift in Sources */,
+				QATEST17BF00000000000001 /* TPPUserFriendlyErrorTests.swift in Sources */,
+				QATEST18BF00000000000001 /* SEMigrationsTests.swift in Sources */,
+				QATEST19BF00000000000001 /* TPPSettingsTests.swift in Sources */,
+				QATEST20BF00000000000001 /* TPPBookContentMetadataFilesHelperTests.swift in Sources */,
 				E5LOGTEST012F0A10000003 /* DeviceLogCollectorTests.swift in Sources */,
 				E5LOGTEST012F0A10000005 /* LogTests.swift in Sources */,
 				E5LOGTEST012F0A10000007 /* ErrorLogExporterTests.swift in Sources */,
@@ -5698,7 +5798,7 @@
 				CODE_SIGN_IDENTITY = "Apple Distribution";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 429;
+				CURRENT_PROJECT_VERSION = 430;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -5755,7 +5855,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 429;
+				CURRENT_PROJECT_VERSION = 430;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -5940,9 +6040,9 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/PalaceDebug.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 429;
-				DEVELOPMENT_TEAM = 88CBA74T8K;
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 430;
+				DEVELOPMENT_TEAM = "";
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -6001,7 +6101,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 429;
+				CURRENT_PROJECT_VERSION = 430;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;

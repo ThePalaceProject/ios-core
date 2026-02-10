@@ -170,7 +170,7 @@ final class ErrorDetailViewController: UIViewController {
 
   // MARK: - Actions
 
-  @objc private func dismissSelf() {
+  @objc override func dismissSelf() {
     dismiss(animated: true)
   }
 
