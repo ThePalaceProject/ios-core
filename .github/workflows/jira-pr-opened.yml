@@ -22,7 +22,7 @@ jobs:
           PR_BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |
           # Extract ticket numbers from PR title, body, and branch name
-          # NOTE: We pass these via env vars (not direct ${{ }} interpolation)
+          # NOTE: We pass these via env vars (not direct interpolation)
           # to prevent shell injection when PR body contains backticks or special chars.
           
           # Combine all sources
