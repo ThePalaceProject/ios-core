@@ -13,8 +13,10 @@ struct BookListView: View {
   /// Shared model cache for performance - reuses BookCellModel instances
   private let modelCache = BookCellModelCache.shared
   
-  /// Number of items to prefetch beyond visible range
-  private let prefetchBuffer = 10
+  /// Number of items to prefetch beyond visible range.
+  /// Kept low to avoid memory pressure from concurrent image decodes
+  /// when browsing catalogs with many entries (e.g., Stanislaus County PP-3682).
+  private let prefetchBuffer = 4
 
   var body: some View {
     LazyVGrid(columns: gridLayout, spacing: 0) {
