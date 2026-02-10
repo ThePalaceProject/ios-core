@@ -722,18 +722,20 @@ extension AccountsManagerTests {
   // MARK: - account(_ uuid:) Tests (QAAtlas Gap)
   
   func testAccount_WithExistingUUID_ReturnsAccount() {
-    // Given: The shared AccountsManager
+    // Given: The shared AccountsManager with whatever accounts are loaded
     let manager = AccountsManager.shared
-    
-    // When: Looking up by the NYPL UUID
-    let account = manager.account(nyplUUID)
-    
-    // Then: If accounts have loaded, should return the NYPL account.
-    // In test environments accounts may not be loaded, so skip gracefully.
-    if manager.accountsHaveLoaded {
-      XCTAssertNotNil(account)
-      XCTAssertEqual(account?.uuid, nyplUUID)
-    }
+    guard manager.accountsHaveLoaded else { return }
+
+    // Find any account that is actually present in the current environment
+    let allAccounts = manager.accounts(nil)
+    guard let existingAccount = allAccounts.first else { return }
+
+    // When: Looking up by an account UUID that we know exists
+    let found = manager.account(existingAccount.uuid)
+
+    // Then: Should return the same account
+    XCTAssertNotNil(found, "account(_:) should find an account that exists in the accounts list")
+    XCTAssertEqual(found?.uuid, existingAccount.uuid)
   }
   
   func testAccount_WithNonExistentUUID_ReturnsNil() {

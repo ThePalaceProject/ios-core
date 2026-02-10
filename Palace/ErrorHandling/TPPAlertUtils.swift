@@ -37,6 +37,12 @@ import UIKit
         metadata: ["alert_title": title ?? "N/A"]
       )
     }
+
+    // Track in the activity trail for error detail views
+    Task {
+      let msg = "Error alert: \(title ?? "Unknown") — \(error?.localizedDescription ?? "no error")"
+      await ErrorActivityTracker.shared.log(msg, category: .general)
+    }
     
     var message = ""
     let domain = error?.domain ?? ""
@@ -270,6 +276,78 @@ import UIKit
         if let msg = alertController.message { Log.info(#file, msg) }
       }
     }
+  }
+
+  // MARK: - View Error Details
+
+  /// Creates an alert with a "View Error Details" button that presents
+  /// a detailed error report including activity trail, problem document,
+  /// and device context.
+  ///
+  /// This is the primary integration point for PP-3439.
+  class func alertWithDetails(
+    title: String?,
+    message: String?,
+    error: NSError? = nil,
+    problemDocument: TPPProblemDocument? = nil,
+    bookIdentifier: String? = nil,
+    bookTitle: String? = nil
+  ) -> UIAlertController {
+    // Build the base alert using existing logic
+    let alertController: UIAlertController
+    if let error = error {
+      alertController = alert(title: title, message: message, error: error)
+    } else {
+      alertController = alert(title: title, message: message)
+    }
+
+    // Remove the default OK action so we can reorder buttons
+    alertController.actions.forEach { _ in } // actions are read-only, so we build a new one
+    let freshAlert = UIAlertController(
+      title: alertController.title,
+      message: alertController.message,
+      preferredStyle: .alert
+    )
+
+    // Apply problem document if present
+    if let doc = problemDocument {
+      setProblemDocument(controller: freshAlert, document: doc, append: true)
+    }
+
+    // Capture values for the closure
+    let alertTitle = freshAlert.title ?? title ?? "Error"
+    let alertMessage = freshAlert.message ?? message ?? ""
+
+    // "View Error Details" button
+    freshAlert.addAction(UIAlertAction(title: "View Error Details", style: .default) { _ in
+      Task {
+        let detail = await ErrorDetail.capture(
+          title: alertTitle,
+          message: alertMessage,
+          error: error,
+          problemDocument: problemDocument,
+          bookIdentifier: bookIdentifier,
+          bookTitle: bookTitle
+        )
+
+        await MainActor.run {
+          let detailVC = ErrorDetailViewController(errorDetail: detail)
+          let nav = UINavigationController(rootViewController: detailVC)
+          nav.modalPresentationStyle = .fullScreen
+
+          // Present from the top-most view controller
+          if let root = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController() {
+            let top = topMostViewController(from: root)
+            top.present(nav, animated: true)
+          }
+        }
+      }
+    })
+
+    // OK button
+    freshAlert.addAction(UIAlertAction(title: "OK", style: .default))
+
+    return freshAlert
   }
 
   // MARK: - Helpers

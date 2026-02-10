@@ -76,7 +76,12 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
       #else
       return 0  // Hide badge testing in production builds
       #endif
-    case .errorSimulation: return 1
+    case .errorSimulation:
+      #if DEBUG
+      return 2  // Simulate Borrow Error + Preview Error Details
+      #else
+      return 1
+      #endif
     default: return 1
     }
   }
@@ -108,7 +113,15 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
       #else
       return UITableViewCell()  // Should never be called in production (0 rows)
       #endif
-    case .errorSimulation: return cellForErrorSimulation()
+    case .errorSimulation:
+      #if DEBUG
+      switch indexPath.row {
+      case 0: return cellForErrorSimulation()
+      default: return cellForPreviewErrorDetails()
+      }
+      #else
+      return cellForErrorSimulation()
+      #endif
     }
   }
   
@@ -262,6 +275,61 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     cell.accessoryType = .disclosureIndicator
     return cell
   }
+  
+  private func cellForPreviewErrorDetails() -> UITableViewCell {
+    let cell = UITableViewCell(style: .default, reuseIdentifier: "previewErrorDetailsCell")
+    cell.selectionStyle = .default
+    cell.textLabel?.text = "Preview Error Details View"
+    cell.textLabel?.textColor = .systemBlue
+    cell.accessoryType = .disclosureIndicator
+    return cell
+  }
+  
+  private func showPreviewErrorDetails() {
+    Task {
+      // Seed some realistic activity trail entries for the preview
+      let tracker = ErrorActivityTracker.shared
+      await tracker.log("User tapped 'Get' on 'The Great Gatsby'", category: .ui)
+      await tracker.log("Initiating borrow for 'The Great Gatsby'", category: .borrow)
+      await tracker.log("Authenticating with library credentials", category: .auth)
+      await tracker.log("Auth succeeded — patron ID confirmed", category: .auth)
+      await tracker.log("Requesting loan from https://circulation.example.org/loans", category: .network)
+      await tracker.log("Received HTTP 403 from circulation server", category: .network)
+      await tracker.log("[DEBUG] Preview: Simulated error for testing Error Details view", category: .general)
+      
+      // Create a realistic sample ErrorDetail
+      let sampleProblemDoc = TPPProblemDocument.fromDictionary([
+        "type": TPPProblemDocument.TypePatronLoanLimit,
+        "title": "Loan limit reached",
+        "status": 403,
+        "detail": "You have reached your checkout limit of 10 items. Please return a title to borrow more."
+      ])
+      
+      let sampleError = NSError(
+        domain: "org.thepalaceproject.SimulatedError",
+        code: 403,
+        userInfo: [
+          NSLocalizedDescriptionKey: "Loan limit reached. You have checked out the maximum number of items.",
+          NSLocalizedRecoverySuggestionErrorKey: "Please return one or more titles before borrowing again."
+        ]
+      )
+      
+      let detail = await ErrorDetail.capture(
+        title: "Borrow Failed",
+        message: "Unable to borrow 'The Great Gatsby'. You have reached your loan limit.",
+        error: sampleError,
+        problemDocument: sampleProblemDoc,
+        bookIdentifier: "urn:isbn:9780743273565",
+        bookTitle: "The Great Gatsby"
+      )
+      
+      await MainActor.run {
+        let detailVC = ErrorDetailViewController(errorDetail: detail)
+        let nav = UINavigationController(rootViewController: detailVC)
+        self.present(nav, animated: true)
+      }
+    }
+  }
   #else
   private func cellForErrorSimulation() -> UITableViewCell {
     // Return empty cell in non-DEBUG builds (section won't be visible anyway)
@@ -298,7 +366,12 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
       
     case .errorSimulation:
       #if DEBUG
-      showErrorSimulationPicker()
+      switch indexPath.row {
+      case 0:
+        showErrorSimulationPicker()
+      default:
+        showPreviewErrorDetails()
+      }
       #endif
       
     default:
@@ -412,6 +485,9 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         alert.addAction(UIAlertAction(title: "Copy Firebase Key", style: .default) { _ in
           UIPasteboard.general.string = "enhanced_error_logging_device_\(sanitizedID)"
         })
+        alert.addAction(UIAlertAction(title: "Preview Logs", style: .default) { _ in
+          self.previewLogs()
+        })
         alert.addAction(UIAlertAction(title: "Send Logs", style: .default) { _ in
           Task {
             await ErrorLogExporter.shared.sendErrorLogs(from: self)
@@ -424,6 +500,39 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     }
   }
   
+  private func previewLogs() {
+    Task {
+      let loadingAlert = UIAlertController(
+        title: "Collecting Logs",
+        message: "Please wait...",
+        preferredStyle: .alert
+      )
+      await MainActor.run {
+        self.present(loadingAlert, animated: true)
+      }
+
+      let logData = await ErrorLogExporter.shared.collectLogsForPreview()
+
+      await MainActor.run {
+        loadingAlert.dismiss(animated: true) {
+          let previewVC = LogPreviewViewController(logData: logData)
+          let nav = UINavigationController(rootViewController: previewVC)
+          nav.modalPresentationStyle = .fullScreen
+          previewVC.navigationItem.leftBarButtonItem = UIBarButtonItem(
+            barButtonSystemItem: .done,
+            target: self,
+            action: #selector(self.dismissLogPreview)
+          )
+          self.present(nav, animated: true)
+        }
+      }
+    }
+  }
+
+  @objc private func dismissLogPreview() {
+    dismiss(animated: true)
+  }
+
   private func emailAudiobookLogs() {
     guard MFMailComposeViewController.canSendMail() else {
       let alert = TPPAlertUtils.alert(title: "Mail Unavailable", message: "Cannot send email. Please configure an email account.")

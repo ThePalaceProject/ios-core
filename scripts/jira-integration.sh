@@ -228,26 +228,29 @@ add_comment() {
 # Convert text with numbered items to Jira ADF list format
 # Input: "1. First item 2. Second item" or "1. First\n2. Second"
 # Output: One item per line with number prefixes stripped
+# Note: Uses python3 for reliable cross-platform regex (BSD sed on macOS
+#       does not support \+, \s, or \n in replacements)
 build_list_items() {
   local text="$1"
   
-  # First, normalize the text: replace literal \n with actual newlines
-  text=$(echo -e "$text")
-  
-  # Split by numbered pattern (1. 2. 3. etc) - insert newline before each number
-  # Then process each line to strip the number prefix
-  echo "$text" | sed 's/[0-9]\+\.\s*/\n/g' | while IFS= read -r line; do
-    # Trim whitespace
-    line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-    # Skip empty lines and lines that are just numbers
-    if [[ -n "$line" && ! "$line" =~ ^[0-9]+\.?$ ]]; then
-      # Also strip any remaining leading numbers (handles "1. 1. text" cases)
-      line=$(echo "$line" | sed 's/^[0-9]\+\.\s*//')
-      if [[ -n "$line" ]]; then
-        echo "$line"
-      fi
-    fi
-  done
+  python3 -c "
+import re, sys
+
+text = sys.argv[1]
+
+# Normalize literal backslash-n to real newlines
+text = text.replace(r'\n', '\n')
+
+# Split on numbered prefixes: '1. ', '2. ', etc.
+# Handles both inline ('1. foo 2. bar') and newline-separated formats
+items = re.split(r'(?:^|\s)(?=\d+\.\s)', text.strip())
+
+for item in items:
+    # Strip the leading number prefix and whitespace
+    item = re.sub(r'^\d+\.\s*', '', item).strip()
+    if item:
+        print(item)
+" "$text"
 }
 
 # Find existing "Fix Details" comment ID for a ticket
@@ -261,7 +264,11 @@ find_fix_comment_id() {
     "$JIRA_URL/rest/api/3/issue/$ticket/comment")
   
   # Find comment containing "Fix Details" and return its ID
-  echo "$response" | jq -r '.comments[]? | select(.body.content[]?.content[]?.text? | contains("Fix Details")) | .id' | head -1
+  echo "$response" | jq -r '
+    [.comments[]? | select(
+      .body.content[]?.content[]?.text? // empty | contains("Fix Details")
+    ) | .id] | first // empty
+  ' 2>/dev/null
 }
 
 # Add a structured fix comment with root cause and testing steps

@@ -50,10 +50,16 @@ extension MyBooksDownloadCenter {
     let bookIdentifier = book.identifier
 
     announceBorrowStarted(for: book)
-    
+
+    Task { await ErrorActivityTracker.shared.log("Initiating borrow for '\(book.title)'", category: .borrow) }
+
     #if DEBUG
     // Check if error simulation is enabled via Developer Settings
     if let simulated = DebugSettings.shared.createSimulatedBorrowError() {
+      await ErrorActivityTracker.shared.log(
+        "[DEBUG] Simulated borrow error triggered: \(DebugSettings.shared.simulatedBorrowError.displayName)",
+        category: .borrow
+      )
       await MainActor.run {
         showBorrowError(.network(.forbidden), originalError: simulated.error, for: book, problemDocument: simulated.problemDocument)
       }
@@ -63,8 +69,11 @@ extension MyBooksDownloadCenter {
     
     // Use modern OPDSFeedService instead of legacy callback-based TPPOPDSFeed
     guard let acquisitionURL = book.defaultAcquisition?.hrefURL else {
+      Task { await ErrorActivityTracker.shared.log("No acquisition URL found for '\(book.title)'", category: .borrow) }
       throw PalaceError.bookRegistry(.invalidState)
     }
+
+    Task { await ErrorActivityTracker.shared.log("Requesting loan from \(acquisitionURL.host ?? acquisitionURL.absoluteString)", category: .network) }
     
     // Set processing state - this shows a spinner in the UI
     await MainActor.run {
@@ -119,6 +128,8 @@ extension MyBooksDownloadCenter {
       
       // Emit explicit state update so SwiftUI lists refresh immediately
       TPPBookRegistry.shared.setState(newState, for: borrowedBook.identifier)
+
+      Task { await ErrorActivityTracker.shared.log("Borrow succeeded for '\(borrowedBook.title)', state: \(newState)", category: .borrow) }
 
       announceBorrowSucceeded(for: borrowedBook)
       
@@ -311,13 +322,8 @@ extension MyBooksDownloadCenter {
     announceBorrowFailed(for: book)
     
     // Try to extract problem document from the original error
-    // This is where the server's specific error message lives (e.g., "loan limit reached", "credentials suspended")
     let problemDoc: TPPProblemDocument? = {
-      // Use pre-extracted problem document if available
-      if let doc = problemDocument {
-        return doc
-      }
-      // Try to extract from original error
+      if let doc = problemDocument { return doc }
       if let nsError = originalError as NSError? {
         return nsError.problemDocument
       }
@@ -328,18 +334,31 @@ extension MyBooksDownloadCenter {
     if let doc = problemDoc {
       Log.info(#file, "Borrow error with problem document - type: \(doc.type ?? "unknown"), title: \(doc.title ?? "none"), detail: \(doc.detail ?? "none")")
     }
-    
-    // Start with the generic error message
-    let alert = TPPAlertUtils.alert(title: title, message: error.localizedDescription)
-    
-    // If we have a problem document from the server, use its title/detail instead
-    // This provides specific messages like "loan limit reached" or "credentials suspended"
-    if let problemDoc = problemDoc {
-      TPPAlertUtils.setProblemDocument(controller: alert, document: problemDoc, append: false)
-    } else if let recovery = error.recoverySuggestion {
-      alert.message = "\(error.localizedDescription)\n\n\(recovery)"
+
+    // Track the error in the activity trail
+    Task {
+      await ErrorActivityTracker.shared.log(
+        "Borrow failed for '\(book.title)': \(error.localizedDescription)",
+        category: .borrow
+      )
     }
-    
+
+    // Build message with recovery suggestion
+    var message = error.localizedDescription
+    if problemDoc == nil, let recovery = error.recoverySuggestion {
+      message = "\(error.localizedDescription)\n\n\(recovery)"
+    }
+
+    // Use alertWithDetails to include the "View Error Details" button
+    let alert = TPPAlertUtils.alertWithDetails(
+      title: title,
+      message: message,
+      error: originalError as NSError?,
+      problemDocument: problemDoc,
+      bookIdentifier: book.identifier,
+      bookTitle: book.title
+    )
+
     TPPAlertUtils.presentFromViewControllerOrNil(
       alertController: alert,
       viewController: nil,
