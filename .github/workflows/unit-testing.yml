@@ -1,5 +1,8 @@
 name: Unit Tests
 on: [ pull_request, workflow_dispatch ]
+concurrency:
+  group: unit-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 jobs:
 
   # NOTE: Standalone QAAtlas and AccessLint jobs have been consolidated into
@@ -579,6 +582,7 @@ jobs:
           
       - name: Publish to GitHub Pages
         if: always()
+        continue-on-error: true
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
