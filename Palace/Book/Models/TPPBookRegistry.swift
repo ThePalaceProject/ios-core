@@ -190,15 +190,31 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
       .appendingPathComponent(registryFileName)
   }
 
+  /// Tracks the account currently being loaded to prevent re-entrant loads
+  private var loadingAccount: String?
+  
   func load(account: String? = nil) {
     guard let account = account ?? AccountsManager.shared.currentAccountId,
           let url     = registryUrl(for: account)
     else { return }
 
+    // Prevent re-entrant loads for the same account
+    // This fixes crashes when load() is called multiple times rapidly
+    // (e.g., from account change notifications during background refresh)
+    if loadingAccount == account {
+      Log.debug(#file, "📖 Skipping duplicate load for account: \(account) (already loading)")
+      return
+    }
+    
+    loadingAccount = account
     Log.info(#file, "📖 Loading registry for account: \(account)")
-    DispatchQueue.main.async { self.state = .loading }
+    DispatchQueue.main.async { [weak self] in
+      self?.state = .loading
+    }
 
-    syncQueue.async(flags: .barrier) {
+    syncQueue.async(flags: .barrier) { [weak self] in
+      guard let self = self else { return }
+      
       var newRegistry = [String:TPPBookRegistryRecord]()
       if FileManager.default.fileExists(atPath: url.path),
          let data     = try? Data(contentsOf: url),
@@ -256,8 +272,17 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
       
       // Capture states to emit on main thread
       let bookStates = newRegistry.map { ($0.key, $0.value.state) }
+      // Capture account to clear loading state
+      let loadedAccount = account
 
-      DispatchQueue.main.async {
+      DispatchQueue.main.async { [weak self] in
+        guard let self = self else { return }
+        
+        // Clear loading state only if we're still loading this account
+        if self.loadingAccount == loadedAccount {
+          self.loadingAccount = nil
+        }
+        
         self.state = .loaded
         self.registrySubject.send(self.registry)
         

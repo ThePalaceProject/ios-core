@@ -134,6 +134,7 @@ struct TPPReaderSettingsView: View {
     HStack(spacing: 0) {
       Image(systemName: "sun.min")
         .foregroundColor(Color(settings.textColor))
+        .accessibilityHidden(true) // Slider provides accessibility
       
       Slider(
         value: $settings.screenBrightness,
@@ -141,11 +142,12 @@ struct TPPReaderSettingsView: View {
         step: 0.01
       )
         .accentColor(Color(settings.textColor))
-        .accessibility(label: Text("BrightnessSlider"))
+        .accessibilityLabel(NSLocalizedString("Screen brightness", comment: "Brightness slider accessibility"))
 
       Image(systemName: "sun.max")
         .imageScale(.large)
         .foregroundColor(Color(settings.textColor))
+        .accessibilityHidden(true) // Slider provides accessibility
     }
     .padding()
     .onReceive(NotificationCenter.default.publisher(for: UIScreen.brightnessDidChangeNotification)) { notification in

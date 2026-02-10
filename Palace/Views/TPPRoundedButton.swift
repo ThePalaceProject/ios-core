@@ -72,10 +72,19 @@ private let TPPRoundedButtonPadding: CGFloat = 6.0
     layer.cornerRadius = 3
     
     label.textColor = self.tintColor
-    label.font = UIFont.palaceFont(ofSize: 9)
+    label.font = UIFont.preferredFont(forTextStyle: .caption2) // Dynamic Type
+    label.adjustsFontForContentSizeCategory = true
     
     addSubview(label)
     addSubview(iconView)
+    
+    // Accessibility configuration
+    isAccessibilityElement = true
+    accessibilityTraits = .button
+    
+    // Hide subviews from accessibility - parent button handles it
+    label.isAccessibilityElement = false
+    iconView.isAccessibilityElement = false
   }
   
   private func updateViews() {

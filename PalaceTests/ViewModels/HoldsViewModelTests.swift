@@ -184,17 +184,199 @@ final class HoldsViewModelTests: XCTestCase {
   func testReloadData_HandlesMultipleBooks() {
     let reservedBook = TPPBookMocker.snapshotReservedBook(identifier: "reserved-1", title: "Reserved Book")
     let readyBook = TPPBookMocker.snapshotReadyBook(identifier: "ready-1", title: "Ready Book")
-    
+
     mockRegistry.addBook(reservedBook, state: .holding)
     mockRegistry.addBook(readyBook, state: .holding)
-    
+
     let viewModel = createViewModel()
-    
+
     viewModel.reloadData()
-    
+
     // Test passes if no crash
     XCTAssertNotNil(viewModel.reservedBookVMs)
     XCTAssertNotNil(viewModel.heldBookVMs)
+  }
+
+  // MARK: - Load Holds Tests
+
+  func testLoadHolds_WithSuccess_UpdatesHolds() {
+    // Add books before creating view model
+    let reservedBook = TPPBookMocker.snapshotReservedBook(identifier: "book-1", title: "Reserved Book")
+    let readyBook = TPPBookMocker.snapshotReadyBook(identifier: "book-2", title: "Ready Book")
+
+    mockRegistry.addBook(reservedBook, state: .holding)
+    mockRegistry.addBook(readyBook, state: .holding)
+
+    // Create view model (will call reloadData in init)
+    let viewModel = createViewModel()
+
+    // Verify books are loaded into the view models
+    let totalBooks = viewModel.reservedBookVMs.count + viewModel.heldBookVMs.count
+    XCTAssertEqual(totalBooks, 2, "Should have 2 books total in view models")
+    XCTAssertEqual(viewModel.visibleBooks.count, 2, "Should have 2 visible books")
+  }
+
+  func testLoadHolds_WithEmptyResult_SetsEmptyState() {
+    // Create view model with no books in registry
+    let viewModel = createViewModel()
+
+    // Verify empty state
+    XCTAssertTrue(viewModel.reservedBookVMs.isEmpty, "reservedBookVMs should be empty")
+    XCTAssertTrue(viewModel.heldBookVMs.isEmpty, "heldBookVMs should be empty")
+    XCTAssertTrue(viewModel.visibleBooks.isEmpty, "visibleBooks should be empty")
+  }
+
+  func testReloadData_SeparatesReservedAndReadyBooks() {
+    // Add one reserved and one ready book
+    let reservedBook = TPPBookMocker.snapshotReservedBook(identifier: "reserved-1", title: "Waiting in Queue")
+    let readyBook = TPPBookMocker.snapshotReadyBook(identifier: "ready-1", title: "Ready to Borrow")
+
+    mockRegistry.addBook(reservedBook, state: .holding)
+    mockRegistry.addBook(readyBook, state: .holding)
+
+    let viewModel = createViewModel()
+    viewModel.reloadData()
+
+    // Both reserved and ready books should be in reservedBookVMs based on isReserved logic
+    // isReserved returns true for both TPPOPDSAcquisitionAvailabilityReserved and Ready
+    XCTAssertEqual(viewModel.reservedBookVMs.count, 2, "Both reserved and ready books should be in reservedBookVMs")
+  }
+
+  // MARK: - Registry Change Notification Tests
+
+  func testRegistryDidChange_ReloadsData() async {
+    let viewModel = createViewModel()
+
+    // Initially empty
+    XCTAssertTrue(viewModel.visibleBooks.isEmpty)
+
+    // Add a book to the registry
+    let book = TPPBookMocker.snapshotReservedBook(identifier: "new-book", title: "New Book")
+    mockRegistry.addBook(book, state: .holding)
+
+    let expectation = XCTestExpectation(description: "visibleBooks updated after registry change")
+
+    viewModel.$visibleBooks
+      .dropFirst()
+      .sink { books in
+        if !books.isEmpty {
+          expectation.fulfill()
+        }
+      }
+      .store(in: &cancellables)
+
+    // Post registry change notification (which triggers reloadData after debounce)
+    NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
+
+    await fulfillment(of: [expectation], timeout: 1.0)
+    XCTAssertFalse(viewModel.visibleBooks.isEmpty, "visibleBooks should be updated after registry change")
+  }
+
+  // MARK: - Filter Tests (Enhanced)
+
+  func testFilterBooks_WithTitleMatch_ReturnsMatchingBooks() async {
+    // Add books to registry
+    let book1 = TPPBookMocker.snapshotReservedBook(identifier: "book-1", title: "Swift Programming Guide")
+    let book2 = TPPBookMocker.snapshotReservedBook(identifier: "book-2", title: "Python Basics")
+
+    mockRegistry.addBook(book1, state: .holding)
+    mockRegistry.addBook(book2, state: .holding)
+
+    let viewModel = createViewModel()
+
+    // Filter by title
+    await viewModel.filterBooks(query: "Swift")
+
+    XCTAssertEqual(viewModel.visibleBooks.count, 1, "Should have one book matching 'Swift'")
+    XCTAssertEqual(viewModel.visibleBooks.first?.title, "Swift Programming Guide")
+  }
+
+  func testFilterBooks_WithAuthorMatch_ReturnsMatchingBooks() async {
+    // Add books with different authors to registry
+    let book1 = TPPBookMocker.snapshotReservedBook(identifier: "book-1", title: "Book One", author: "John Smith")
+    let book2 = TPPBookMocker.snapshotReservedBook(identifier: "book-2", title: "Book Two", author: "Jane Doe")
+
+    mockRegistry.addBook(book1, state: .holding)
+    mockRegistry.addBook(book2, state: .holding)
+
+    let viewModel = createViewModel()
+
+    // Filter by author
+    await viewModel.filterBooks(query: "Smith")
+
+    XCTAssertEqual(viewModel.visibleBooks.count, 1, "Should have one book with author 'Smith'")
+    XCTAssertEqual(viewModel.visibleBooks.first?.identifier, "book-1")
+  }
+
+  func testFilterBooks_CaseInsensitive() async {
+    let book = TPPBookMocker.snapshotReservedBook(identifier: "book-1", title: "The GREAT Gatsby")
+    mockRegistry.addBook(book, state: .holding)
+
+    let viewModel = createViewModel()
+
+    // Filter with lowercase
+    await viewModel.filterBooks(query: "great")
+
+    XCTAssertEqual(viewModel.visibleBooks.count, 1, "Filter should be case insensitive")
+  }
+
+  // MARK: - OpenSearchDescription Tests (Enhanced)
+
+  func testOpenSearchDescription_IncludesAllBooks() {
+    // Add books to registry
+    let book1 = TPPBookMocker.snapshotReservedBook(identifier: "book-1", title: "Book 1")
+    let book2 = TPPBookMocker.snapshotReadyBook(identifier: "book-2", title: "Book 2")
+
+    mockRegistry.addBook(book1, state: .holding)
+    mockRegistry.addBook(book2, state: .holding)
+
+    let viewModel = createViewModel()
+
+    let description = viewModel.openSearchDescription
+
+    XCTAssertEqual(description.books.count, 2, "OpenSearchDescription should include all held books")
+  }
+
+  // MARK: - Published Properties Tests
+
+  func testIsLoading_PublishesChanges() {
+    let viewModel = createViewModel()
+
+    let expectation = XCTestExpectation(description: "isLoading publishes change")
+
+    viewModel.$isLoading
+      .dropFirst()
+      .sink { _ in
+        expectation.fulfill()
+      }
+      .store(in: &cancellables)
+
+    // Trigger loading state change via notification
+    NotificationCenter.default.post(name: .TPPSyncBegan, object: nil)
+
+    wait(for: [expectation], timeout: 1.0)
+  }
+
+  func testVisibleBooks_PublishesChanges() async {
+    let viewModel = createViewModel()
+
+    let expectation = XCTestExpectation(description: "visibleBooks publishes change")
+
+    viewModel.$visibleBooks
+      .dropFirst()
+      .sink { _ in
+        expectation.fulfill()
+      }
+      .store(in: &cancellables)
+
+    // Add a book and reload
+    let book = TPPBookMocker.snapshotReservedBook()
+    mockRegistry.addBook(book, state: .holding)
+
+    // Post notification to trigger reload
+    NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
+
+    await fulfillment(of: [expectation], timeout: 1.0)
   }
 }
 
@@ -235,9 +417,56 @@ final class HoldsBookViewModelTests: XCTestCase {
   func testIsReservedForReadyBook() {
     let book = TPPBookMocker.snapshotReadyBook()
     let viewModel = HoldsBookViewModel(book: book)
-    
+
     // Ready books should also return true for isReserved (they're still in holds)
     XCTAssertTrue(viewModel.isReserved)
+  }
+
+  // MARK: - Hold Ready Identification Tests
+
+  func testHoldReady_IdentifiesReadyHolds() {
+    // Test that we can correctly identify when a hold is ready to borrow
+    let readyBook = TPPBookMocker.snapshotReadyBook()
+    let viewModel = HoldsBookViewModel(book: readyBook)
+
+    // The isReserved property should be true for ready books
+    XCTAssertTrue(viewModel.isReserved, "Ready book should be identified as reserved (eligible for holds list)")
+  }
+
+  func testHoldReady_DistinguishesFromReserved() {
+    // While both reserved and ready return true for isReserved,
+    // we can test the underlying availability to distinguish them
+    let reservedBook = TPPBookMocker.snapshotReservedBook()
+    let readyBook = TPPBookMocker.snapshotReadyBook()
+
+    var reservedBookIsReady = false
+    var readyBookIsReady = false
+
+    reservedBook.defaultAcquisition?.availability.matchUnavailable(nil,
+                                                                     limited: nil,
+                                                                     unlimited: nil,
+                                                                     reserved: nil,
+                                                                     ready: { _ in reservedBookIsReady = true })
+
+    readyBook.defaultAcquisition?.availability.matchUnavailable(nil,
+                                                                  limited: nil,
+                                                                  unlimited: nil,
+                                                                  reserved: nil,
+                                                                  ready: { _ in readyBookIsReady = true })
+
+    XCTAssertFalse(reservedBookIsReady, "Reserved book should not have 'ready' availability")
+    XCTAssertTrue(readyBookIsReady, "Ready book should have 'ready' availability")
+  }
+
+  func testIsReserved_WithLimitedAvailability_ReturnsFalse() {
+    // Books with limited availability (borrowed books) should not be in holds
+    let borrowedBook = TPPBookMocker.mockBookWithLimitedAvailability(
+      identifier: "borrowed-1",
+      until: Date().addingTimeInterval(86400 * 14)
+    )
+    let viewModel = HoldsBookViewModel(book: borrowedBook)
+
+    XCTAssertFalse(viewModel.isReserved, "Borrowed book should not be identified as reserved")
   }
 }
 

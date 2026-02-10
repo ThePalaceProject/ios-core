@@ -36,8 +36,9 @@ final class RemoteFeatureFlags {
       case .downloadRetryEnabled, .circuitBreakerEnabled:
         return true
       case .carPlayEnabled:
-        // CarPlay defaults to disabled - enable via Firebase Remote Config when ready for production
-        return false
+        // CarPlay defaults to enabled for development/testing
+        // Set to false in production and control via Firebase Remote Config
+        return true
       default:
         return false
       }
@@ -126,17 +127,8 @@ final class RemoteFeatureFlags {
   private static let carPlayEnabledCacheKey = "RemoteFeatureFlags.carPlayEnabled"
   
   /// Whether CarPlay support is enabled.
-  /// 
-  /// Controlled by the `CARPLAY_ENABLED` Swift compiler flag.
-  /// To enable CarPlay in a build:
-  /// 1. Add `-DCARPLAY_ENABLED` to "Other Swift Flags" in Build Settings
-  /// 2. Or create a separate scheme/configuration with this flag
-  ///
-  /// When CARPLAY_ENABLED is set, uses Firebase Remote Config for runtime control.
-  /// When not set, CarPlay is completely disabled at compile time.
+  /// Uses Firebase Remote Config for runtime control.
   var isCarPlayEnabled: Bool {
-    #if CARPLAY_ENABLED
-    // CarPlay compiled in - check Firebase flag for runtime control
     let remoteValue = isFeatureEnabled(.carPlayEnabled)
     let previousCached: Bool? = UserDefaults.standard.object(forKey: Self.carPlayEnabledCacheKey) != nil
       ? UserDefaults.standard.bool(forKey: Self.carPlayEnabledCacheKey)
@@ -148,19 +140,11 @@ final class RemoteFeatureFlags {
     }
     
     return remoteValue
-    #else
-    // CarPlay not compiled in
-    return false
-    #endif
   }
   
   /// Cached CarPlay enabled value for use during early app lifecycle
   /// (before Remote Config is fetched). Returns the last known value.
-  ///
-  /// Controlled by the `CARPLAY_ENABLED` Swift compiler flag.
   var isCarPlayEnabledCached: Bool {
-    #if CARPLAY_ENABLED
-    // CarPlay compiled in - check cached Firebase flag
     if UserDefaults.standard.object(forKey: Self.carPlayEnabledCacheKey) != nil {
       let cached = UserDefaults.standard.bool(forKey: Self.carPlayEnabledCacheKey)
       Log.debug(#file, "🚗 CarPlay feature flag (cached): \(cached)")
@@ -169,10 +153,6 @@ final class RemoteFeatureFlags {
     // No cached value - return default
     Log.debug(#file, "🚗 CarPlay feature flag (no cache, using default): \(FeatureFlag.carPlayEnabled.defaultValue)")
     return FeatureFlag.carPlayEnabled.defaultValue
-    #else
-    // CarPlay not compiled in
-    return false
-    #endif
   }
   
   // MARK: - Device Info for Targeting

@@ -10,6 +10,7 @@ import UIKit
 import MessageUI
 import FirebaseCrashlytics
 import Compression
+import OSLog
 
 /// Actor responsible for collecting and exporting error logs for diagnostics
 actor ErrorLogExporter {
@@ -25,7 +26,13 @@ actor ErrorLogExporter {
   private init() {}
   
   // MARK: - Public API
-  
+
+  /// Collects all logs and returns them for local preview/debugging.
+  /// This returns the same data that would be attached to the email.
+  func collectLogsForPreview() async -> ErrorLogData {
+    return await collectAllLogs()
+  }
+
   /// Generates and presents an email with collected error logs
   @MainActor
   func sendErrorLogs(from presentingViewController: UIViewController) async {
@@ -66,15 +73,18 @@ actor ErrorLogExporter {
     async let errorLogs = collectErrorLogs()
     async let audiobookLogs = collectAudiobookPlaybackLogs()
     async let crashlyticsBreadcrumbs = collectCrashlyticsBreadcrumbs()
+    async let deviceLogs = DeviceLogCollector.shared.collectLogs(lastDays: defaultLogDays)
     
     let allErrorLogs = await errorLogs
     let allAudiobookLogs = await audiobookLogs
     let breadcrumbs = await crashlyticsBreadcrumbs
+    let allDeviceLogs = await deviceLogs
     
     return ErrorLogData(
       errorLogs: allErrorLogs,
       audiobookLogs: allAudiobookLogs,
       crashlyticsBreadcrumbs: breadcrumbs,
+      deviceLogs: allDeviceLogs,
       deviceInfo: await collectDeviceInfo()
     )
   }
@@ -317,8 +327,11 @@ actor ErrorLogExporter {
     dateFormatter.dateFormat = "yyyy-MM-dd_HHmm"
     let timestamp = dateFormatter.string(from: Date())
     
-    // Calculate total size
-    let totalSize = logData.errorLogs.count + logData.audiobookLogs.count + logData.crashlyticsBreadcrumbs.count
+    // Calculate total size including device logs
+    let totalSize = logData.errorLogs.count
+      + logData.audiobookLogs.count
+      + logData.crashlyticsBreadcrumbs.count
+      + logData.deviceLogs.count
     
     if totalSize > maxLogSizeBytes {
       // Compress logs as zip
@@ -332,6 +345,10 @@ actor ErrorLogExporter {
       
       if !logData.crashlyticsBreadcrumbs.isEmpty {
         await mailComposer.addAttachmentData(logData.crashlyticsBreadcrumbs, mimeType: "text/plain", fileName: "crashlytics_\(timestamp).txt")
+      }
+      
+      if !logData.deviceLogs.isEmpty {
+        await mailComposer.addAttachmentData(logData.deviceLogs, mimeType: "text/plain", fileName: "device_logs_\(timestamp).txt")
       }
     }
   }
@@ -368,9 +385,14 @@ actor ErrorLogExporter {
         try logData.crashlyticsBreadcrumbs.write(to: crashlyticsFile)
       }
       
+      if !logData.deviceLogs.isEmpty {
+        let deviceLogFile = tempDir.appendingPathComponent("device_logs.txt")
+        try logData.deviceLogs.write(to: deviceLogFile)
+      }
+      
       // Use built-in compression (simplified approach)
       // For production, consider using a proper zip library like ZIPFoundation
-      let combinedData = logData.errorLogs + logData.audiobookLogs + logData.crashlyticsBreadcrumbs
+      let combinedData = logData.errorLogs + logData.audiobookLogs + logData.crashlyticsBreadcrumbs + logData.deviceLogs
       let compressedData = try (combinedData as NSData).compressed(using: .lzfse)
       
       // Clean up temp directory
@@ -419,6 +441,7 @@ struct ErrorLogData {
   let errorLogs: Data
   let audiobookLogs: Data
   let crashlyticsBreadcrumbs: Data
+  let deviceLogs: Data
   let deviceInfo: String
 }
 

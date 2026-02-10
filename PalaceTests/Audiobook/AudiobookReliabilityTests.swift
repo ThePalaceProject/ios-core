@@ -82,7 +82,7 @@ final class AudiobookSessionManagerTests: XCTestCase {
     
     // Then
     let info = AudiobookSessionManager.shared.downloadInfo(forSessionIdentifier: sessionId)
-    XCTAssertEqual(info?.progress, 0.5, accuracy: 0.01)
+    XCTAssertEqual(Double(info?.progress ?? 0), 0.5, accuracy: 0.01)
   }
   
   func testBackgroundCompletionHandlerRegistration() async {
@@ -143,18 +143,24 @@ final class DownloadWatchdogTests: XCTestCase {
     XCTAssertEqual(config.checkInterval, 10.0)
   }
   
-  func testStartAndStop() {
+  func testStartAndStop() async {
     // Given
     let watchdog = DownloadWatchdog()
     
     // When
     watchdog.start()
     
+    // Allow async task to initialize
+    try? await Task.sleep(nanoseconds: 50_000_000) // 50ms
+    
     // Then
     XCTAssertTrue(watchdog.status.isEmpty) // No downloads monitored yet
     
     // Cleanup
     watchdog.stop()
+    
+    // Allow cleanup to complete
+    try? await Task.sleep(nanoseconds: 50_000_000) // 50ms
   }
 }
 
@@ -233,7 +239,7 @@ final class DownloadPersistenceStoreTests: XCTestCase {
     let download = store.getDownload(bookID: bookID, trackKey: trackKey)
     XCTAssertEqual(download?.downloadedBytes, 500000)
     XCTAssertEqual(download?.state, .inProgress)
-    XCTAssertEqual(download?.progress, 0.5, accuracy: 0.01)
+    XCTAssertEqual(Double(download?.progress ?? 0), 0.5, accuracy: 0.01)
   }
   
   func testMarkCompleted() async {

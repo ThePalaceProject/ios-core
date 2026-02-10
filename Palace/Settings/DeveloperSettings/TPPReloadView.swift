@@ -7,7 +7,8 @@ final class TPPReloadView: UIView {
   // MARK: - UI
   private let titleLabel: UILabel = {
     let label = UILabel()
-    label.font = UIFont.boldPalaceFont(ofSize: 17)
+    label.font = UIFont.preferredFont(forTextStyle: .headline) // Dynamic Type
+    label.adjustsFontForContentSizeCategory = true
     label.text = NSLocalizedString("Connection Failed", comment: "")
     label.textColor = .gray
     return label
@@ -17,7 +18,8 @@ final class TPPReloadView: UIView {
     let label = UILabel()
     label.numberOfLines = 3
     label.textAlignment = .center
-    label.font = UIFont.palaceFont(ofSize: 12)
+    label.font = UIFont.preferredFont(forTextStyle: .footnote) // Dynamic Type
+    label.adjustsFontForContentSizeCategory = true
     label.textColor = .gray
     return label
   }()

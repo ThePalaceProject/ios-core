@@ -142,8 +142,14 @@ final class BookCellModelCache: ObservableObject {
       cache[key] = entry
       updateAccessOrder(key)
       
+      // Defer book update to avoid "Publishing changes from within view updates" warning
+      // This can happen when SwiftUI calls model(for:) during rendering
       if book.updated > entry.model.book.updated {
-        entry.model.book = book
+        let model = entry.model
+        let updatedBook = book
+        Task { @MainActor in
+          model.book = updatedBook
+        }
       }
       
       return entry.model

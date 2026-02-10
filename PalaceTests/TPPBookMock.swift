@@ -435,6 +435,60 @@ struct TPPBookMocker {
     return book
   }
   
+  /// Creates a mock book with a relatedWorksURL for testing related books functionality
+  static func mockBookWithRelatedWorksURL(
+    identifier: String,
+    title: String = "Test Book"
+  ) -> TPPBook {
+    let acquisitionUrl = URL(string: "http://example.com/\(identifier)")!
+    let relatedWorksUrl = URL(string: "http://example.com/related/\(identifier)")!
+    
+    let acquisition = TPPOPDSAcquisition(
+      relation: .generic,
+      type: DistributorType.EpubZip.rawValue,
+      hrefURL: acquisitionUrl,
+      indirectAcquisitions: [],
+      availability: TPPOPDSAcquisitionAvailabilityUnlimited()
+    )
+    
+    let imageCache = MockImageCache()
+    let cover = MockImageCache.generateTenPrintCover(title: title, author: "Test Author")
+    imageCache.set(cover, for: identifier, expiresIn: nil)
+    
+    let book = TPPBook(
+      acquisitions: [acquisition],
+      authors: [TPPBookAuthor(authorName: "Test Author", relatedBooksURL: nil)],
+      categoryStrings: ["Fiction"],
+      distributor: "Test",
+      identifier: identifier,
+      imageURL: nil,
+      imageThumbnailURL: nil,
+      published: Date(),
+      publisher: "Test Publisher",
+      subtitle: nil,
+      summary: "Test summary",
+      title: title,
+      updated: Date(),
+      annotationsURL: nil,
+      analyticsURL: nil,
+      alternateURL: nil,
+      relatedWorksURL: relatedWorksUrl,
+      previewLink: nil,
+      seriesURL: nil,
+      revokeURL: nil,
+      reportURL: nil,
+      timeTrackingURL: nil,
+      contributors: [:],
+      bookDuration: nil,
+      imageCache: imageCache
+    )
+    
+    book.coverImage = cover
+    book.thumbnailImage = cover
+    
+    return book
+  }
+  
   /// Creates a mock book with LIMITED availability (simulating a borrowed book with loan expiration)
   /// This is crucial for testing that the HalfSheet displays "Borrowing for X days"
   static func mockBookWithLimitedAvailability(

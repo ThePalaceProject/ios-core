@@ -38,6 +38,8 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
     
     Log.info(#file, "🚗 CarPlay scene connected - setting up templates")
     
+    PlaybackBootstrapper.shared.ensureInitializedForCarPlay()
+    
     self.templateManager = CarPlayTemplateManager(interfaceController: interfaceController)
     
     // Set up the root template
@@ -58,6 +60,11 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
     cancellables.removeAll()
     templateManager = nil
     self.interfaceController = nil
+    
+    // Note: We don't stop playback on CarPlay disconnect since:
+    // 1. User might still be listening on phone
+    // 2. Phone app UI may still be showing the player
+    // Playback lifecycle is managed by AudiobookSessionManager
   }
   
   func templateApplicationScene(
@@ -151,9 +158,30 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
   }
   
   private func subscribeToBookRegistryChanges() {
+    // Subscribe to registry changes (fires when books are loaded from disk or synced)
+    TPPBookRegistry.shared.registryPublisher
+      .dropFirst() // Skip initial empty state
+      .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
+      .sink { [weak self] _ in
+        Log.debug(#file, "🚗 Registry updated - refreshing CarPlay library")
+        self?.templateManager?.refreshLibrary()
+      }
+      .store(in: &cancellables)
+    
+    // Also subscribe to individual book state changes (download progress, etc.)
     TPPBookRegistry.shared.bookStatePublisher
       .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
       .sink { [weak self] _ in
+        self?.templateManager?.refreshLibrary()
+      }
+      .store(in: &cancellables)
+    
+    // Subscribe to account changes to update library name
+    NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)
+      .receive(on: DispatchQueue.main)
+      .sink { [weak self] _ in
+        Log.info(#file, "🚗 Account changed - updating CarPlay library name and refreshing")
+        self?.templateManager?.updateLibraryName()
         self?.templateManager?.refreshLibrary()
       }
       .store(in: &cancellables)

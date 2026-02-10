@@ -13,6 +13,10 @@ import SwiftUI
 /// Required when using UIApplicationSceneManifest for CarPlay support.
 class SceneDelegate: UIResponder, UIWindowSceneDelegate {
   
+  /// Tracks whether the main phone scene has connected at least once.
+  /// Used by CarPlay to determine if user has the phone app open.
+  static var hasMainSceneConnected = false
+  
   var window: UIWindow?
   
   func scene(
@@ -23,6 +27,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     guard let windowScene = scene as? UIWindowScene else { return }
     
     Log.info(#file, "📱 Main app scene connecting")
+    SceneDelegate.hasMainSceneConnected = true
     
     // Create window for this scene
     let newWindow = UIWindow(windowScene: windowScene)

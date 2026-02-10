@@ -75,11 +75,16 @@ final class NavigationCoordinator: ObservableObject {
   private var lastPopTime: Date?
 
   // MARK: - Public API
-
+  
   func push(_ route: AppRoute) {
     Log.debug(#file, "📍 NavigationCoordinator.push(\(route)) - Current path count: \(path.count)")
-    withAnimation(.easeInOut) {
+    // Respect reduce motion accessibility setting
+    if UIAccessibility.isReduceMotionEnabled {
       path.append(route)
+    } else {
+      withAnimation(.easeInOut) {
+        path.append(route)
+      }
     }
     Log.debug(#file, "📍 NavigationCoordinator.push(\(route)) - After push count: \(path.count)")
   }
@@ -98,17 +103,70 @@ final class NavigationCoordinator: ObservableObject {
     
     lastPopTime = Date()
     Log.debug(#file, "📍 NavigationCoordinator.pop() - Current path count: \(path.count)")
-    withAnimation(.easeInOut) {
+    // Respect reduce motion accessibility setting
+    if UIAccessibility.isReduceMotionEnabled {
       path.removeLast()
+    } else {
+      withAnimation(.easeInOut) {
+        path.removeLast()
+      }
     }
     Log.debug(#file, "📍 NavigationCoordinator.pop() - After pop count: \(path.count)")
   }
 
   func popToRoot() {
     guard !path.isEmpty else { return }
-    withAnimation(.easeInOut) {
+    // Respect reduce motion accessibility setting
+    if UIAccessibility.isReduceMotionEnabled {
       path.removeLast(path.count)
+    } else {
+      withAnimation(.easeInOut) {
+        path.removeLast(path.count)
+      }
     }
+  }
+  
+  /// Removes all existing audio routes from the navigation path.
+  /// Used before pushing a new audio route to prevent accumulation.
+  func clearAudioRoutes() {
+    // NavigationPath doesn't allow iteration, so we need to pop to root
+    // and re-push non-audio routes if needed. For simplicity, just track
+    // if we have audio routes and handle appropriately.
+    // Since audio is typically the last route, popping to root is safe.
+    guard !path.isEmpty else { return }
+    
+    // For now, just pop to root when switching audiobooks
+    // This ensures no stacking of player views
+    Log.debug(#file, "📍 NavigationCoordinator.clearAudioRoutes() - Clearing path for new audio route")
+    // Respect reduce motion accessibility setting
+    if UIAccessibility.isReduceMotionEnabled {
+      path.removeLast(path.count)
+    } else {
+      withAnimation(.easeInOut) {
+        path.removeLast(path.count)
+      }
+    }
+  }
+  
+  /// Pushes an audio route, clearing any existing audio routes first.
+  /// This prevents accumulation of player views in the navigation stack.
+  func pushAudioRoute(_ route: BookRoute) {
+    Log.debug(#file, "📍 NavigationCoordinator.pushAudioRoute(\(route.id)) - Current path count: \(path.count)")
+    
+    // Clear existing routes before pushing new audio route
+    if !path.isEmpty {
+      clearAudioRoutes()
+    }
+    
+    // Push the new audio route (respect reduce motion)
+    if UIAccessibility.isReduceMotionEnabled {
+      path.append(AppRoute.audio(route))
+    } else {
+      withAnimation(.easeInOut) {
+        path.append(AppRoute.audio(route))
+      }
+    }
+    Log.debug(#file, "📍 NavigationCoordinator.pushAudioRoute - After push count: \(path.count)")
   }
 
   func store(book: TPPBook) {

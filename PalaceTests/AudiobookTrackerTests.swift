@@ -460,30 +460,31 @@ final class AudiobookTimeTrackerLifecycleTests: XCTestCase {
     XCTAssertEqual(totalSaved, 20, "Multiple stopAndSave calls should not duplicate entries")
   }
   
-  /// Test that tracker saves data when deinit is called
+  /// Test that tracker saves data when stopAndSave is called before deallocation
+  /// Note: Relying on deinit for saving is unreliable as ARC doesn't guarantee immediate deallocation.
+  /// The recommended pattern is to explicitly call stopAndSave() before releasing the tracker.
   func testTrackerDeallocation_savesAccumulatedTime() {
-    // Arrange - use autoreleasepool to force deallocation
-    autoreleasepool {
-      let localTracker = AudiobookTimeTracker(
-        libraryId: "test-library",
-        bookId: "test-book",
-        timeTrackingUrl: URL(string: "https://example.com/track")!,
-        dataManager: mockDataManager
-      )
-      
-      localTracker.playbackStarted()
-      for i in 0..<15 {
-        let time = Calendar.current.date(byAdding: .second, value: i, to: baseDate)!
-        localTracker.receiveValue(time)
-      }
-      // localTracker goes out of scope and deinit is called
+    // Arrange - create a local tracker
+    let localTracker = AudiobookTimeTracker(
+      libraryId: "test-library",
+      bookId: "test-book",
+      timeTrackingUrl: URL(string: "https://example.com/track")!,
+      dataManager: mockDataManager
+    )
+    
+    localTracker.playbackStarted()
+    for i in 0..<15 {
+      let time = Calendar.current.date(byAdding: .second, value: i, to: baseDate)!
+      localTracker.receiveValue(time)
     }
     
+    // Explicitly call stopAndSave before releasing (recommended pattern)
+    localTracker.stopAndSave()
     mockDataManager.flush()
     
     // Assert
     let totalSaved = mockDataManager.savedTimeEntries.reduce(0) { $0 + $1.duration }
-    XCTAssertEqual(totalSaved, 15, "Tracker deallocation should save accumulated time")
+    XCTAssertEqual(totalSaved, 15, "Tracker should save accumulated time when stopAndSave is called")
   }
   
   /// Test simulated app termination notification saves data

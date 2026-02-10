@@ -239,7 +239,7 @@ private struct FacetSectionHeader: View {
       Button(action: toggleExpanded) {
         Image(systemName: "chevron.right")
           .rotationEffect(.degrees(isExpanded ? 90 : 0))
-          .animation(.easeInOut(duration: 0.2), value: isExpanded)
+          .accessibleAnimation(.easeInOut(duration: 0.2), value: isExpanded)
           .foregroundColor(.primary)
       }
       .frame(width: 24, alignment: .center)

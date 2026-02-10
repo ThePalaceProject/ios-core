@@ -178,6 +178,116 @@ final class AudiobookTrackCompletionTests: XCTestCase {
   }
 }
 
+// MARK: - PP-3596 Regression Tests
+
+/// The bug was that playbackStarted() was called unconditionally in setupNowPlayingInfoTimer()
+/// even when the player wasn't actually playing, causing time to be tracked incorrectly.
+final class PP3596RegressionTests: XCTestCase {
+  
+  private var mockDataManager: MockDataManager!
+  
+  override func setUp() {
+    super.setUp()
+    mockDataManager = MockDataManager()
+  }
+  
+  override func tearDown() {
+    mockDataManager = nil
+    super.tearDown()
+  }
+  
+  /// Verifies that time is NOT tracked when playbackStarted() is called
+  /// but no actual playback events (receiveValue) occur.
+  /// This simulates the bug where setupNowPlayingInfoTimer() called playbackStarted()
+  /// when the app opened but the user hadn't pressed play yet.
+  func testPP3596_playbackStartedWithoutPlayback_shouldNotAccumulateTime() {
+    let tracker = AudiobookTimeTracker(
+      libraryId: "test-library",
+      bookId: "test-book",
+      timeTrackingUrl: URL(string: "https://example.com")!,
+      dataManager: mockDataManager
+    )
+    
+    // Simulate the bug: playbackStarted() is called but no actual playback occurs
+    tracker.playbackStarted()
+    
+    // Wait a bit to simulate time passing (in real code, the timer would tick)
+    // But since we're not calling receiveValue(), no time should accumulate
+    
+    // Stop without any playback events
+    tracker.playbackStopped()
+    mockDataManager.flush()
+    
+    let total = mockDataManager.savedTimeEntries.reduce(0) { $0 + $1.duration }
+    XCTAssertEqual(total, 0, "No time should be tracked when playbackStarted() is called without actual playback")
+  }
+  
+  /// Verifies that time IS tracked only when actual playback events occur
+  func testPP3596_onlyActualPlaybackIsTracked() {
+    let tracker = AudiobookTimeTracker(
+      libraryId: "test-library",
+      bookId: "test-book",
+      timeTrackingUrl: URL(string: "https://example.com")!,
+      dataManager: mockDataManager
+    )
+    
+    // Simulate the fixed behavior: playbackStarted() is only called when playing
+    let date = Date()
+    
+    // Simulate 60 seconds of actual playback
+    tracker.playbackStarted()
+    for i in 0..<60 {
+      let time = Calendar.current.date(byAdding: .second, value: i, to: date)!
+      tracker.receiveValue(time)
+    }
+    tracker.playbackStopped()
+    
+    // Explicitly finalize
+    tracker.stopAndSave()
+    mockDataManager.flush()
+    
+    let total = mockDataManager.savedTimeEntries.reduce(0) { $0 + $1.duration }
+    
+    // Should track approximately 60 seconds (may be slightly less due to timing)
+    XCTAssertGreaterThan(total, 55, "Should track close to 60 seconds of actual playback")
+    XCTAssertLessThanOrEqual(total, 60, "Should not exceed actual playback time")
+  }
+  
+  /// Verifies that multiple playbackStarted() calls don't cause overcounting
+  /// This tests the fix where we cancel existing timer before creating new one
+  func testPP3596_multiplePlaybackStartedCalls_shouldNotOvercount() {
+    let tracker = AudiobookTimeTracker(
+      libraryId: "test-library",
+      bookId: "test-book",
+      timeTrackingUrl: URL(string: "https://example.com")!,
+      dataManager: mockDataManager
+    )
+    
+    let date = Date()
+    
+    // Simulate multiple playbackStarted() calls (as happens with app foreground transitions)
+    tracker.playbackStarted()
+    tracker.playbackStarted()
+    tracker.playbackStarted()
+    
+    // Simulate 30 seconds of playback
+    for i in 0..<30 {
+      let time = Calendar.current.date(byAdding: .second, value: i, to: date)!
+      tracker.receiveValue(time)
+    }
+    
+    tracker.playbackStopped()
+    tracker.stopAndSave()
+    mockDataManager.flush()
+    
+    let total = mockDataManager.savedTimeEntries.reduce(0) { $0 + $1.duration }
+    
+    // Should track approximately 30 seconds, NOT more due to multiple starts
+    XCTAssertGreaterThan(total, 25, "Should track close to 30 seconds")
+    XCTAssertLessThanOrEqual(total, 30, "Should not overcount due to multiple playbackStarted() calls")
+  }
+}
+
 // MARK: - Background Audio Tests
 
 final class AudiobookBackgroundAudioTests: XCTestCase {

@@ -71,6 +71,8 @@ struct AudiobookSampleToolbar: View {
       .resizable()
       .aspectRatio(contentMode: .fit)
       .frame(width: imageViewHeight)
+      .accessibilityLabel(book.title)
+      .accessibilityAddTraits(.isImage)
   }
 
   private var infoView: some View {
