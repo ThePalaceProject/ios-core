@@ -529,6 +529,12 @@
 		AE77EE7AACC975280BAB9A4C /* TPPOPDSFeed.m in Sources */ = {isa = PBXBuildFile; fileRef = AE77E94D56B65997B861C0C0 /* TPPOPDSFeed.m */; };
 		AF890D5839204832223A2287 /* OPDSParsingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FDA12704CE45280D151E7AC /* OPDSParsingTests.swift */; };
 		AMGR002T260955EF008E1DC3 /* AccountsManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AMGR001T260955EF008E1DC3 /* AccountsManagerTests.swift */; };
+		QAAMT002T260955EF00000001 /* AccountModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QAAMT001T260955EF00000001 /* AccountModelTests.swift */; };
+		QAAUT002T260955EF00000001 /* AccountDetailsURLTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QAAUT001T260955EF00000001 /* AccountDetailsURLTests.swift */; };
+		QAAPD002T260955EF00000001 /* AccountProfileDocumentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QAAPD001T260955EF00000001 /* AccountProfileDocumentTests.swift */; };
+		QALCS002T260955EF00000001 /* LicensesServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QALCS001T260955EF00000001 /* LicensesServiceTests.swift */; };
+		QAEDV002T260955EF00000001 /* ErrorDetailViewControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QAEDV001T260955EF00000001 /* ErrorDetailViewControllerTests.swift */; };
+		QAPDF002T260955EF00000001 /* TPPPDFDocumentMetadataTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QAPDF001T260955EF00000001 /* TPPPDFDocumentMetadataTests.swift */; };
 		ANNOT002T260955EF008E1DC3 /* TPPAnnotationsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ANNOT001T260955EF008E1DC3 /* TPPAnnotationsTests.swift */; };
 		AUDITSYNC00001SOURCES001 /* AudiobookDataManagerSyncTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AUDITSYNC00001FILEREF001 /* AudiobookDataManagerSyncTests.swift */; };
 		B51C1DFA2285FDF9003B49A5 /* OPDS2CatalogsFeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51C1DF92285FDF9003B49A5 /* OPDS2CatalogsFeed.swift */; };
@@ -1682,6 +1688,12 @@
 		AE77EDCF05BE5D54CF8E0E70 /* TPPOPDSType.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPOPDSType.h; sourceTree = "<group>"; };
 		AE77EFD5622206475B6715A9 /* TPPOPDSType.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPOPDSType.m; sourceTree = "<group>"; };
 		AMGR001T260955EF008E1DC3 /* AccountsManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountsManagerTests.swift; sourceTree = "<group>"; };
+		QAAMT001T260955EF00000001 /* AccountModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountModelTests.swift; sourceTree = "<group>"; };
+		QAAUT001T260955EF00000001 /* AccountDetailsURLTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountDetailsURLTests.swift; sourceTree = "<group>"; };
+		QAAPD001T260955EF00000001 /* AccountProfileDocumentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountProfileDocumentTests.swift; sourceTree = "<group>"; };
+		QALCS001T260955EF00000001 /* LicensesServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LicensesServiceTests.swift; sourceTree = "<group>"; };
+		QAEDV001T260955EF00000001 /* ErrorDetailViewControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorDetailViewControllerTests.swift; sourceTree = "<group>"; };
+		QAPDF001T260955EF00000001 /* TPPPDFDocumentMetadataTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFDocumentMetadataTests.swift; sourceTree = "<group>"; };
 		ANNOT001T260955EF008E1DC3 /* TPPAnnotationsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TPPAnnotationsTests.swift; path = Bookmarks/TPPAnnotationsTests.swift; sourceTree = "<group>"; };
 		AUDITSYNC00001FILEREF001 /* AudiobookDataManagerSyncTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AudiobookDataManagerSyncTests.swift; sourceTree = "<group>"; };
 		B51C1DF92285FDF9003B49A5 /* OPDS2CatalogsFeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OPDS2CatalogsFeed.swift; sourceTree = "<group>"; };
@@ -2425,6 +2437,7 @@
 				8568424DF6517B247D048D5D /* LCPLibraryServiceTests.swift */,
 				3C0E625DA84AEEFF9840A601 /* LCPAudiobooksTests.swift */,
 				F6F691D8676CFC56232C6790 /* LCPPDFsTests.swift */,
+				QALCS001T260955EF00000001 /* LicensesServiceTests.swift */,
 			);
 			path = LCP;
 			sourceTree = "<group>";
@@ -3522,6 +3535,9 @@
 				ACCT00012F17000000000002 /* AccountsManagerCacheTests.swift */,
 				781125E2689F3A05C75A0D33 /* CatalogCacheMetadataTests.swift */,
 				AMGR001T260955EF008E1DC3 /* AccountsManagerTests.swift */,
+				QAAMT001T260955EF00000001 /* AccountModelTests.swift */,
+				QAAUT001T260955EF00000001 /* AccountDetailsURLTests.swift */,
+				QAAPD001T260955EF00000001 /* AccountProfileDocumentTests.swift */,
 			);
 			path = Accounts;
 			sourceTree = "<group>";
@@ -3619,6 +3635,7 @@
 			isa = PBXGroup;
 			children = (
 				9A586098465213BD58E11860 /* PDFReaderTests.swift */,
+				QAPDF001T260955EF00000001 /* TPPPDFDocumentMetadataTests.swift */,
 			);
 			path = PDF;
 			sourceTree = "<group>";
@@ -4137,6 +4154,7 @@
 				QATEST04FR00000000000001 /* TPPAlertUtilsTests.swift */,
 				QATEST06FR00000000000001 /* TPPProblemDocumentCacheManagerTests.swift */,
 				QATEST17FR00000000000001 /* TPPUserFriendlyErrorTests.swift */,
+				QAEDV001T260955EF00000001 /* ErrorDetailViewControllerTests.swift */,
 			);
 			path = ErrorHandling;
 			sourceTree = "<group>";
@@ -4730,6 +4748,12 @@
 				06A3D1FBD9EAD882D6F86181 /* OPDSFeedCacheTests.swift in Sources */,
 				ACCT00012F17000000000001 /* AccountsManagerCacheTests.swift in Sources */,
 				AMGR002T260955EF008E1DC3 /* AccountsManagerTests.swift in Sources */,
+				QAAMT002T260955EF00000001 /* AccountModelTests.swift in Sources */,
+				QAAUT002T260955EF00000001 /* AccountDetailsURLTests.swift in Sources */,
+				QAAPD002T260955EF00000001 /* AccountProfileDocumentTests.swift in Sources */,
+				QALCS002T260955EF00000001 /* LicensesServiceTests.swift in Sources */,
+				QAEDV002T260955EF00000001 /* ErrorDetailViewControllerTests.swift in Sources */,
+				QAPDF002T260955EF00000001 /* TPPPDFDocumentMetadataTests.swift in Sources */,
 				8A79FCB73FD467DF7BBA1665 /* BookCellModelCacheTests.swift in Sources */,
 				3499C23886EB7E4BCD55F2E9 /* AccessibilityLabelTests.swift in Sources */,
 				FC0AD7762077072EC062F780 /* AudiobookAccessibilityTests.swift in Sources */,
