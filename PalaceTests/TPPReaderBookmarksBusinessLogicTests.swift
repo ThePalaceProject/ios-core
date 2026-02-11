@@ -197,6 +197,97 @@ class TPPReaderBookmarksBusinessLogicTests: XCTestCase {
       }
     }
 
+    // MARK: - addBookmark Tests (QAAtlas Gap)
+    
+    func testBookmarkAtIndex_WithValidIndex_ReturnsBookmark() {
+      guard let bookmark1 = newBookmark(href: "Chapter1",
+                                        chapter: "1",
+                                        progressWithinChapter: 0.1,
+                                        progressWithinBook: 0.1) else {
+        XCTFail("Failed to create bookmark")
+        return
+      }
+      
+      // Manually add to bookmarks list
+      bookmarkBusinessLogic.bookmarks.append(bookmark1)
+      
+      let result = bookmarkBusinessLogic.bookmark(at: 0)
+      XCTAssertNotNil(result)
+      XCTAssertEqual(result?.progressWithinChapter, 0.1)
+    }
+    
+    func testBookmarkAtIndex_WithNegativeIndex_ReturnsNil() {
+      let result = bookmarkBusinessLogic.bookmark(at: -1)
+      XCTAssertNil(result)
+    }
+    
+    func testBookmarkAtIndex_WithOutOfBoundsIndex_ReturnsNil() {
+      let result = bookmarkBusinessLogic.bookmark(at: 100)
+      XCTAssertNil(result)
+    }
+    
+    func testBookmarkAtIndex_WithEmptyBookmarks_ReturnsNil() {
+      XCTAssertTrue(bookmarkBusinessLogic.bookmarks.isEmpty)
+      let result = bookmarkBusinessLogic.bookmark(at: 0)
+      XCTAssertNil(result)
+    }
+    
+    func testDeleteBookmark_RemovesFromList() {
+      guard let bookmark = newBookmark(href: "Chapter1",
+                                       chapter: "1",
+                                       progressWithinChapter: 0.1,
+                                       progressWithinBook: 0.1) else {
+        XCTFail("Failed to create bookmark")
+        return
+      }
+      
+      bookRegistryMock.add(bookmark, forIdentifier: bookIdentifier)
+      bookmarkBusinessLogic.bookmarks.append(bookmark)
+      XCTAssertEqual(bookmarkBusinessLogic.bookmarks.count, 1)
+      
+      bookmarkBusinessLogic.deleteBookmark(bookmark)
+      XCTAssertEqual(bookmarkBusinessLogic.bookmarks.count, 0)
+    }
+    
+    func testDeleteBookmarkAtIndex_WithValidIndex_RemovesAndReturns() {
+      guard let bookmark = newBookmark(href: "Chapter1",
+                                       chapter: "1",
+                                       progressWithinChapter: 0.1,
+                                       progressWithinBook: 0.1) else {
+        XCTFail("Failed to create bookmark")
+        return
+      }
+      
+      bookRegistryMock.add(bookmark, forIdentifier: bookIdentifier)
+      bookmarkBusinessLogic.bookmarks.append(bookmark)
+      
+      let deleted = bookmarkBusinessLogic.deleteBookmark(at: 0)
+      XCTAssertNotNil(deleted)
+      XCTAssertEqual(bookmarkBusinessLogic.bookmarks.count, 0)
+    }
+    
+    func testDeleteBookmarkAtIndex_WithInvalidIndex_ReturnsNil() {
+      let deleted = bookmarkBusinessLogic.deleteBookmark(at: -1)
+      XCTAssertNil(deleted)
+      
+      let deleted2 = bookmarkBusinessLogic.deleteBookmark(at: 100)
+      XCTAssertNil(deleted2)
+    }
+    
+    func testNoBookmarksText_ReturnsNonEmptyString() {
+      let text = bookmarkBusinessLogic.noBookmarksText
+      XCTAssertFalse(text.isEmpty, "noBookmarksText should not be empty")
+    }
+    
+    func testShouldSelectBookmark_ReturnsTrue() {
+      XCTAssertTrue(bookmarkBusinessLogic.shouldSelectBookmark(at: 0))
+    }
+    
+    func testIsBookmarkExisting_WithNilLocation_ReturnsNil() {
+      let result = bookmarkBusinessLogic.isBookmarkExisting(at: nil)
+      XCTAssertNil(result)
+    }
+    
     // MARK: Helper
     
     func newBookmark(href: String,

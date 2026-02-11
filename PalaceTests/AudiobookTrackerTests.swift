@@ -88,13 +88,23 @@ class AudiobookTimeTrackerTests: XCTestCase {
       sut.receiveValue(simulatedDate)
     }
     
-    // The tracker's internal timeEntry should have accumulated time
-    // but each individual entry is capped at 60 seconds
-    let currentDuration = sut.timeEntry.duration
-    XCTAssertLessThanOrEqual(currentDuration, 60, "Current entry duration should be <= 60 seconds")
+    // Save all accumulated time and verify through saved entries
+    // (Reading sut.timeEntry.duration directly is unreliable because a minute
+    // boundary crossing resets the internal duration to 0)
+    sut.stopAndSave()
+    mockDataManager.flush()
     
-    // Verify time was accumulated
-    XCTAssertGreaterThan(currentDuration, 0, "Should have accumulated some time")
+    let entries = mockDataManager.savedTimeEntries
+    XCTAssertGreaterThan(entries.count, 0, "Should have at least one saved entry")
+    
+    // Each individual entry must be capped at 60 seconds
+    for entry in entries {
+      XCTAssertLessThanOrEqual(entry.duration, 60, "Each entry duration should be <= 60 seconds")
+    }
+    
+    // Total time across all entries should equal 70 seconds
+    let totalDuration = entries.reduce(0) { $0 + $1.duration }
+    XCTAssertEqual(totalDuration, 70, "Total duration should be 70 seconds")
   }
 
   func testTimeEntries_areInUTC() {
@@ -124,20 +134,28 @@ class AudiobookTimeTrackerTests: XCTestCase {
       sut.receiveValue(simulatedDate)
     }
     
+    // playbackStopped saves accumulated time and resets internal duration
     sut.playbackStopped()
-    let durationAfterStop = sut.timeEntry.duration
+    mockDataManager.flush()
     
-    // Simulate more time that shouldn't be counted
+    let savedAfterStop = mockDataManager.savedTimeEntries.reduce(0) { $0 + $1.duration }
+    XCTAssertEqual(savedAfterStop, 5, "playbackStopped should save accumulated 5 seconds")
+    
+    // Direct receiveValue calls still accumulate time even after the timer is stopped
     for i in 5..<10 {
       let simulatedDate = Calendar.current.date(byAdding: .second, value: i, to: currentDate)!
       sut.receiveValue(simulatedDate)
     }
     
-    // Duration should still increase since receiveValue is called directly
-    // The timer is stopped, but manual calls still work
-    let durationAfterMoreCalls = sut.timeEntry.duration
-    XCTAssertGreaterThan(durationAfterMoreCalls, durationAfterStop, 
-                         "Direct receiveValue calls still accumulate time even after stop")
+    // Finalize and verify total through saved entries
+    // (Reading sut.timeEntry.duration directly is unreliable because a minute
+    // boundary crossing resets the internal duration to 0)
+    sut.stopAndSave()
+    mockDataManager.flush()
+    
+    let totalSaved = mockDataManager.savedTimeEntries.reduce(0) { $0 + $1.duration }
+    XCTAssertEqual(totalSaved, 10,
+                   "Direct receiveValue calls still accumulate time even after stop (5 + 5 = 10)")
   }
   
   func testSaveCurrentDuration_savesTimeEntryCorrectly() {
