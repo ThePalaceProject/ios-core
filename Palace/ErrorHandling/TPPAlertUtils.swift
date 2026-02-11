@@ -230,6 +230,16 @@ import UIKit
       
       let top = topMostViewController(from: root)
       
+      // Safety: never present from a UIAlertController
+      guard !(top is UIAlertController) else {
+        Log.warn(#file, "Cannot present alert: top controller is a UIAlertController")
+        if let msg = alertController.message {
+          Log.warn(#file, "Skipped alert with message: \(msg)")
+        }
+        completion?()
+        return
+      }
+      
       // Additional safety check: ensure view controller can present
       guard top.view.window != nil else {
         Log.error(#file, "Cannot present alert: view controller not in window hierarchy")
@@ -242,6 +252,16 @@ import UIKit
       
       guard top.isViewLoaded else {
         Log.warn(#file, "Cannot present alert: view not loaded")
+        completion?()
+        return
+      }
+      
+      // Don't present during view controller transitions
+      guard !top.isBeingPresented && !top.isBeingDismissed else {
+        Log.warn(#file, "Cannot present alert: view controller is in transition")
+        if let msg = alertController.message {
+          Log.warn(#file, "Skipped alert with message: \(msg)")
+        }
         completion?()
         return
       }
@@ -338,7 +358,27 @@ import UIKit
           // Present from the top-most view controller
           if let root = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController() {
             let top = topMostViewController(from: root)
-            top.present(nav, animated: true)
+            
+            // Safety: don't present from a UIAlertController or a VC mid-transition
+            guard !(top is UIAlertController) else {
+              Log.warn(#file, "Cannot present error details: top controller is an alert")
+              return
+            }
+            guard !top.isBeingPresented && !top.isBeingDismissed else {
+              Log.warn(#file, "Cannot present error details: view controller is in transition")
+              return
+            }
+            
+            // If already presenting something, present from the presented VC
+            if let presented = top.presentedViewController {
+              guard !(presented is UIAlertController) else {
+                Log.warn(#file, "Cannot present error details: an alert is already visible")
+                return
+              }
+              presented.present(nav, animated: true)
+            } else {
+              top.present(nav, animated: true)
+            }
           }
         }
       }
@@ -359,6 +399,15 @@ import UIKit
       return topMostViewController(from: selected)
     }
     if let presented = base.presentedViewController {
+      // Don't traverse into UIAlertControllers. Alert controllers cannot present
+      // other view controllers, and attempting to do so causes
+      // NSInternalInconsistencyException ("A view controller not containing an
+      // alert controller was asked for its contained alert controller").
+      // By returning `base` here, the caller can check base.presentedViewController
+      // and see the alert, allowing proper guard logic to skip stacking alerts.
+      if presented is UIAlertController {
+        return base
+      }
       return topMostViewController(from: presented)
     }
     return base
