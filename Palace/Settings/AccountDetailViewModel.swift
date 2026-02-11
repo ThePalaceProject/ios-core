@@ -363,11 +363,9 @@ class AccountDetailViewModel: NSObject, ObservableObject {
   }
   
   private func presentSignOutAlert() {
-    let message = Strings.AccountDetail.signOutWarningWithSync(syncEnabled: isSyncEnabled)
-    
     let alert = UIAlertController(
       title: DisplayStrings.signOut,
-      message: message,
+      message: nil,
       preferredStyle: .alert
     )
     

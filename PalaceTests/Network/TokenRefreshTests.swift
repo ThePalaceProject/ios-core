@@ -104,41 +104,31 @@ final class TokenRefreshTests: XCTestCase {
     let responseBody = "{\"test\": \"data\"}"
     mock.responseBodies[testURL] = responseBody
 
-    var receivedData: Data?
-    var receivedResponse: URLResponse?
+    let expectation = XCTestExpectation(description: "Response received")
 
     let request = URLRequest(url: testURL)
     _ = mock.executeRequest(request, enableTokenRefresh: false) { result in
       switch result {
       case .success(let data, let response):
-        receivedData = data
-        receivedResponse = response
+        XCTAssertNotNil(data)
+        XCTAssertNotNil(response)
+        if let responseString = String(data: data, encoding: .utf8) {
+          XCTAssertEqual(responseString, responseBody)
+        }
       case .failure:
         XCTFail("Expected success")
       }
-    }
-
-    // Wait for async completion
-    let expectation = XCTestExpectation(description: "Response received")
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-      XCTAssertNotNil(receivedData)
-      XCTAssertNotNil(receivedResponse)
-
-      if let data = receivedData, let responseString = String(data: data, encoding: .utf8) {
-        XCTAssertEqual(responseString, responseBody)
-      }
-
       expectation.fulfill()
     }
 
-    wait(for: [expectation], timeout: 1.0)
+    wait(for: [expectation], timeout: 2.0)
   }
 
   func testMockExecutor_Returns404ForUnknownURL() {
     let mock = TPPRequestExecutorMock()
     let unknownURL = URL(string: "https://unknown.com/api")!
 
-    var receivedError = false
+    let expectation = XCTestExpectation(description: "Error received")
 
     let request = URLRequest(url: unknownURL)
     _ = mock.executeRequest(request, enableTokenRefresh: false) { result in
@@ -149,23 +139,17 @@ final class TokenRefreshTests: XCTestCase {
         if let httpResponse = response as? HTTPURLResponse {
           XCTAssertEqual(httpResponse.statusCode, 404)
         }
-        receivedError = true
       }
-    }
-
-    let expectation = XCTestExpectation(description: "Error received")
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-      XCTAssertTrue(receivedError)
       expectation.fulfill()
     }
 
-    wait(for: [expectation], timeout: 1.0)
+    wait(for: [expectation], timeout: 2.0)
   }
 
   func testMockExecutor_HandlesEmptyURL() {
     let mock = TPPRequestExecutorMock()
 
-    var receivedError = false
+    let expectation = XCTestExpectation(description: "Error received")
 
     var request = URLRequest(url: URL(string: "https://example.com")!)
     request.url = nil // Set URL to nil
@@ -175,17 +159,12 @@ final class TokenRefreshTests: XCTestCase {
       case .success:
         XCTFail("Expected failure for nil URL")
       case .failure:
-        receivedError = true
+        break
       }
-    }
-
-    let expectation = XCTestExpectation(description: "Error received")
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-      XCTAssertTrue(receivedError)
       expectation.fulfill()
     }
 
-    wait(for: [expectation], timeout: 1.0)
+    wait(for: [expectation], timeout: 2.0)
   }
 
   // MARK: - Request Timeout Tests

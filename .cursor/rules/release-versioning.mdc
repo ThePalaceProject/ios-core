@@ -1,0 +1,52 @@
+---
+description: Release versioning checklist for Palace iOS. Enforces submodule tagging and version bumps when creating releases, hotfixes, or bumping version numbers.
+globs: "**/project.pbxproj"
+alwaysApply: false
+---
+
+# Release Versioning Checklist
+
+When creating a release, hotfix, or bumping version numbers, follow this checklist.
+
+## 1. Bump Palace version numbers
+
+In `Palace.xcodeproj/project.pbxproj`:
+- `MARKETING_VERSION` — semver release version (e.g., `2.2.1`)
+- `CURRENT_PROJECT_VERSION` — monotonically increasing build number (e.g., `429`)
+
+All 4 build configurations (Palace Debug, Palace Release, Palace+DRM Debug, Palace+DRM Release) must match.
+
+## 2. Tag all submodules
+
+Every release MUST tag its submodules so hotfixes can revert to the exact dependency versions. The `ios-audiobooktoolkit` submodule is the most critical — it has no independent versioning and must be tagged from ios-core.
+
+```bash
+# Tag audiobooktoolkit at whatever commit the submodule points to
+cd ios-audiobooktoolkit
+git tag -a "<PALACE_VERSION>" $(git rev-parse HEAD) -m "Palace <PALACE_VERSION> release"
+git push origin --tags
+cd ..
+```
+
+Tags should match the Palace `MARKETING_VERSION` (e.g., `2.2.1`).
+
+## 3. Hotfix submodule alignment
+
+For hotfixes based on an older release, revert submodules to their tagged version:
+
+```bash
+cd ios-audiobooktoolkit
+git checkout <TARGET_RELEASE_TAG>  # e.g., git checkout 2.0.0
+cd ..
+git add ios-audiobooktoolkit
+git commit -m "Revert audiobooktoolkit to <TAG> for hotfix"
+```
+
+## Existing audiobooktoolkit tags
+
+| Tag   | Commit     | Palace Release |
+|-------|------------|----------------|
+| 2.0.0 | f16ff894   | 2.0.0, 2.0.1   |
+| 2.0.2 | cf5035d5   | 2.0.2           |
+| 2.0.4 | 4c23e73a   | 2.0.4, 2.0.5   |
+| 2.2.0 | 341345b5   | 2.2.0           |

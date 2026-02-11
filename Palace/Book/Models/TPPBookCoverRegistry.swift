@@ -1,5 +1,71 @@
 import Foundation
 import UIKit
+import ImageIO
+
+// MARK: - Host Failure Tracker (Circuit Breaker)
+
+/// Tracks hosts that are consistently failing (e.g., DNS resolution errors) and allows
+/// callers to skip requests to those hosts immediately instead of waiting for timeouts.
+///
+/// This is critical for performance when a library's image host is down — without it,
+/// each book in a swimlane wastes 2 sequential network requests waiting for DNS timeouts
+/// before falling back to a placeholder. With it, the first failure trips the circuit
+/// and all subsequent requests skip instantly.
+actor HostFailureTracker {
+  
+  /// How long to remember a host failure before retrying
+  let cooldownInterval: TimeInterval
+  
+  /// Number of consecutive failures before tripping the circuit breaker
+  let failureThreshold: Int
+  
+  private struct HostRecord {
+    var consecutiveFailures: Int = 0
+    var lastFailureDate: Date = Date()
+    var isTripped: Bool { consecutiveFailures >= 1 }
+  }
+  
+  private var records: [String: HostRecord] = [:]
+  
+  init(cooldownInterval: TimeInterval = 300, failureThreshold: Int = 1) {
+    self.cooldownInterval = cooldownInterval
+    self.failureThreshold = failureThreshold
+  }
+  
+  /// Returns true if the host is known to be failing and should be skipped
+  func isHostFailing(_ host: String?) -> Bool {
+    guard let host, let record = records[host] else { return false }
+    
+    // If enough time has passed, allow a retry
+    if Date().timeIntervalSince(record.lastFailureDate) > cooldownInterval {
+      records.removeValue(forKey: host)
+      return false
+    }
+    
+    return record.isTripped
+  }
+  
+  /// Records a failure for a host. After `failureThreshold` consecutive failures,
+  /// the host is marked as failing and requests to it will be skipped.
+  func recordFailure(for host: String?) {
+    guard let host else { return }
+    var record = records[host] ?? HostRecord()
+    record.consecutiveFailures += 1
+    record.lastFailureDate = Date()
+    records[host] = record
+  }
+  
+  /// Records a success, resetting the failure counter for this host.
+  func recordSuccess(for host: String?) {
+    guard let host else { return }
+    records.removeValue(forKey: host)
+  }
+  
+  /// Clears all tracked failures (e.g., on account change or app foregrounding)
+  func reset() {
+    records.removeAll()
+  }
+}
 
 // MARK: - Swift Concurrency Actor
 actor TPPBookCoverRegistry {
@@ -8,9 +74,76 @@ actor TPPBookCoverRegistry {
   static let shared = TPPBookCoverRegistry(imageCache: ImageCache.shared)
   
   private var inProgressTasks: [URL: Task<UIImage?, Never>] = [:]
-  init(imageCache: ImageCacheType) {
+  
+  /// Semaphore to limit concurrent image fetches and prevent memory pressure
+  private let maxConcurrentFetches: Int
+  private var activeFetchCount: Int = 0
+  private var waitingContinuations: [CheckedContinuation<Void, Never>] = []
+  
+  /// Maximum pixel dimension for decoded images (matches ImageCache device-based limits)
+  private let maxDecodeDimension: CGFloat
+  
+  /// Tracks hosts that are down to skip requests immediately instead of waiting for timeouts
+  let hostFailureTracker: HostFailureTracker
+  
+  /// Dedicated URLSession with short timeouts for image fetches.
+  /// Using URLSession.shared's 60s default timeout is far too slow when a host is down —
+  /// a swimlane with 20 books would waste 40 minutes on doomed requests.
+  nonisolated static let imageSession: URLSession = {
+    let config = URLSessionConfiguration.default
+    config.timeoutIntervalForRequest = 10     // 10s to connect/respond (vs 60s default)
+    config.timeoutIntervalForResource = 15    // 15s total per image fetch
+    config.waitsForConnectivity = false        // Fail immediately if no network
+    config.httpMaximumConnectionsPerHost = 4   // Limit per-host connections
+    config.urlCache = nil                      // Images have their own cache layer
+    return URLSession(configuration: config)
+  }()
+  
+  init(
+    imageCache: ImageCacheType,
+    hostFailureTracker: HostFailureTracker = HostFailureTracker()
+  ) {
     self.imageCache = imageCache
+    self.hostFailureTracker = hostFailureTracker
+    
+    let deviceMemoryMB = ProcessInfo.processInfo.physicalMemory / (1024 * 1024)
+    if deviceMemoryMB < 2048 {
+      maxConcurrentFetches = 3
+      maxDecodeDimension = 512
+    } else if deviceMemoryMB < 4096 {
+      maxConcurrentFetches = 5
+      maxDecodeDimension = 768
+    } else {
+      maxConcurrentFetches = 8
+      maxDecodeDimension = 1024
+    }
   }
+  
+  // MARK: - Concurrency Throttling
+  
+  /// Waits until a fetch slot is available (limits concurrent image downloads)
+  private func acquireFetchSlot() async {
+    if activeFetchCount < maxConcurrentFetches {
+      activeFetchCount += 1
+      return
+    }
+    
+    await withCheckedContinuation { continuation in
+      waitingContinuations.append(continuation)
+    }
+  }
+  
+  /// Releases a fetch slot and wakes up a waiting task if any
+  private func releaseFetchSlot() {
+    if !waitingContinuations.isEmpty {
+      let next = waitingContinuations.removeFirst()
+      next.resume()
+    } else {
+      activeFetchCount -= 1
+    }
+  }
+  
+  // MARK: - Public API
   
   func coverImage(for book: TPPBook) async -> UIImage? {
     if let url = book.imageURL, let image = await fetchImage(from: url, for: book, isCover: true) {
@@ -34,6 +167,11 @@ actor TPPBookCoverRegistry {
       return img
     }
     
+    // Circuit breaker: skip immediately if this host is known to be failing
+    if await hostFailureTracker.isHostFailing(url.host) {
+      return nil
+    }
+    
     if let existing = inProgressTasks[url] {
       return await existing.value
     }
@@ -41,11 +179,19 @@ actor TPPBookCoverRegistry {
     let task = Task<UIImage?, Never> { [weak self] in
       guard let self else { return nil }
       
+      await self.acquireFetchSlot()
+      defer { Task { await self.releaseFetchSlot() } }
+      
       do {
-        let (data, _) = try await URLSession.shared.data(from: url)
+        let (data, _) = try await Self.imageSession.data(from: url)
         
-        // Decode image in background to prevent main thread blocking
-        guard let image = await self.decodeImageInBackground(data) else {
+        // Host is reachable — clear any failure record
+        await self.hostFailureTracker.recordSuccess(for: url.host)
+        
+        guard let image = Self.downsampleImage(
+          data: data,
+          maxDimension: self.maxDecodeDimension
+        ) else {
           Log.error(#file, "Failed to decode image data from URL: \(url)")
           return nil
         }
@@ -53,6 +199,13 @@ actor TPPBookCoverRegistry {
         self.imageCache.set(image, for: key as String, expiresIn: nil)
         return image
       } catch {
+        // Track host-level failures (DNS, connection refused, etc.) so we can
+        // skip future requests to this host immediately
+        if Self.isHostLevelError(error) {
+          await self.hostFailureTracker.recordFailure(for: url.host)
+          Log.warn(#file, "Host failure recorded for \(url.host ?? "unknown"): \(error.localizedDescription)")
+        }
+        
         Log.error(#file, "Failed to fetch image from \(url): \(error.localizedDescription)")
         return nil
       }
@@ -66,53 +219,66 @@ actor TPPBookCoverRegistry {
     return image
   }
   
-  // MARK: - Background Image Decoding
-  
-  /// Decodes image data off the main thread using iOS 15+ optimized API
-  /// This prevents main thread hitching when displaying images
-  private func decodeImageInBackground(_ data: Data) async -> UIImage? {
-    await Task.detached(priority: .userInitiated) {
-      guard let image = UIImage(data: data) else { return nil }
-      
-      // byPreparingForDisplay() decodes the image and prepares it for rendering
-      // This is the iOS 15+ way to force decode off main thread
-      if #available(iOS 15.0, *) {
-        return await image.byPreparingForDisplay()
-      } else {
-        // Fallback for iOS 14: force decode by drawing into a context
-        return self.forceDecodeImage(image)
-      }
-    }.value
+  /// Determines if an error indicates a host-level failure (DNS, connection, etc.)
+  /// vs a transient or request-specific error (timeout on a slow response, etc.)
+  private nonisolated static func isHostLevelError(_ error: Error) -> Bool {
+    let nsError = error as NSError
+    guard nsError.domain == NSURLErrorDomain else { return false }
+    
+    switch nsError.code {
+    case NSURLErrorCannotFindHost,       // DNS resolution failed
+         NSURLErrorDNSLookupFailed,       // DNS lookup failed
+         NSURLErrorCannotConnectToHost,   // Host reachable but refusing connections
+         NSURLErrorSecureConnectionFailed: // SSL/TLS failure (cert issues)
+      return true
+    default:
+      return false
+    }
   }
   
-  /// Force decode image for iOS 14 compatibility
-  /// Drawing into a context forces the image to be decoded
-  private nonisolated func forceDecodeImage(_ image: UIImage) -> UIImage {
-    guard let cgImage = image.cgImage else { return image }
-    
-    let width = cgImage.width
-    let height = cgImage.height
-    let colorSpace = CGColorSpaceCreateDeviceRGB()
-    
-    guard let context = CGContext(
-      data: nil,
-      width: width,
-      height: height,
-      bitsPerComponent: 8,
-      bytesPerRow: 0,
-      space: colorSpace,
-      bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
-    ) else {
-      return image
+  // MARK: - CGImageSource-based Downsampled Decoding
+  
+  /// Decodes image data directly at the target size using CGImageSource.
+  ///
+  /// This avoids two critical problems:
+  /// 1. **iOS 26 JPEG color space bug** (rdar://143602439) where `UIImage(data:)` +
+  ///    `byPreparingForDisplay()` fails on 24-bpp JFIF images with `kCGImageBlockFormatBGRx8`
+  ///    errors, producing corrupt images that leak memory.
+  /// 2. **Peak memory pressure** from decoding full-resolution images before resizing.
+  ///    CGImageSource decodes directly at the target size, so a 3000x4000 cover image
+  ///    never exists uncompressed in memory.
+  ///
+  /// - Parameters:
+  ///   - data: Raw image data (JPEG, PNG, etc.)
+  ///   - maxDimension: Maximum width or height for the decoded image
+  /// - Returns: A decoded UIImage at the target size, or nil if decoding fails
+  nonisolated static func downsampleImage(data: Data, maxDimension: CGFloat) -> UIImage? {
+    autoreleasepool {
+      let options: [CFString: Any] = [
+        kCGImageSourceShouldCache: false  // Don't cache the full-size image
+      ]
+      
+      guard let source = CGImageSourceCreateWithData(data as CFData, options as CFDictionary) else {
+        return nil
+      }
+      
+      let downsampleOptions: [CFString: Any] = [
+        kCGImageSourceCreateThumbnailFromImageAlways: true,
+        kCGImageSourceThumbnailMaxPixelSize: maxDimension,
+        kCGImageSourceCreateThumbnailWithTransform: true,  // Respect EXIF orientation
+        kCGImageSourceShouldCacheImmediately: true  // Decode immediately at target size
+      ]
+      
+      guard let cgImage = CGImageSourceCreateThumbnailAtIndex(
+        source,
+        0,
+        downsampleOptions as CFDictionary
+      ) else {
+        return nil
+      }
+      
+      return UIImage(cgImage: cgImage)
     }
-    
-    context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
-    
-    guard let decodedCGImage = context.makeImage() else {
-      return image
-    }
-    
-    return UIImage(cgImage: decodedCGImage, scale: image.scale, orientation: image.imageOrientation)
   }
   
   private func placeholder(for book: TPPBook) async -> UIImage? {
@@ -154,6 +320,11 @@ actor TPPBookCoverRegistry {
       return img
     }
     
+    // Circuit breaker: skip immediately if this host is known to be failing
+    if await hostFailureTracker.isHostFailing(url.host) {
+      return nil
+    }
+    
     // Check for existing in-progress task
     if let existing = inProgressTasks[url] {
       return await existing.value
@@ -162,11 +333,19 @@ actor TPPBookCoverRegistry {
     let task = Task<UIImage?, Never> { [weak self] in
       guard let self else { return nil }
       
+      await self.acquireFetchSlot()
+      defer { Task { await self.releaseFetchSlot() } }
+      
       do {
-        let (data, _) = try await URLSession.shared.data(from: url)
+        let (data, _) = try await Self.imageSession.data(from: url)
         
-        // Decode image in background to prevent main thread blocking
-        guard let image = await self.decodeImageInBackground(data) else {
+        // Host is reachable — clear any failure record
+        await self.hostFailureTracker.recordSuccess(for: url.host)
+        
+        guard let image = Self.downsampleImage(
+          data: data,
+          maxDimension: self.maxDecodeDimension
+        ) else {
           Log.error(#file, "Failed to decode image data from URL: \(url)")
           return nil
         }
@@ -174,6 +353,11 @@ actor TPPBookCoverRegistry {
         self.imageCache.set(image, for: key, expiresIn: nil)
         return image
       } catch {
+        if Self.isHostLevelError(error) {
+          await self.hostFailureTracker.recordFailure(for: url.host)
+          Log.warn(#file, "Host failure recorded for \(url.host ?? "unknown"): \(error.localizedDescription)")
+        }
+        
         Log.error(#file, "Failed to fetch image from \(url): \(error.localizedDescription)")
         return nil
       }
