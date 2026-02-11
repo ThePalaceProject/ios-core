@@ -177,11 +177,11 @@ struct CatalogLaneMoreView: View {
   // MARK: - Search
   
   private func presentSearch() {
-    withAnimation { viewModel.showSearch = true }
+    withAnimation(UIAccessibility.isReduceMotionEnabled ? .none : .default) { viewModel.showSearch = true }
   }
   
   private func dismissSearch() {
-    withAnimation { viewModel.showSearch = false }
+    withAnimation(UIAccessibility.isReduceMotionEnabled ? .none : .default) { viewModel.showSearch = false }
   }
   
   // MARK: - Filter Sheet

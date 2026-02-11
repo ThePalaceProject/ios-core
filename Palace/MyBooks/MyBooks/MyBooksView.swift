@@ -184,7 +184,7 @@ struct MyBooksView: View {
   }
 
   private var trailingBarButton: some View {
-    Button(action: { withAnimation { model.showSearchSheet.toggle() } }) {
+    Button(action: { withAnimation(UIAccessibility.isReduceMotionEnabled ? .none : .default) { model.showSearchSheet.toggle() } }) {
       ImageProviders.MyBooksView.search
     }
     .accessibilityIdentifier(AccessibilityID.MyBooks.searchButton)

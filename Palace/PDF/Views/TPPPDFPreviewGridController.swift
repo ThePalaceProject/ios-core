@@ -77,6 +77,7 @@ class TPPPDFPreviewGridController: UICollectionViewController {
   
   override func viewDidLoad() {
     super.viewDidLoad()
+    title = NSLocalizedString("Page Previews", comment: "PDF page preview grid title")
     configurePreviewCache()
     collectionView.bounces = true
     collectionView.decelerationRate = .normal

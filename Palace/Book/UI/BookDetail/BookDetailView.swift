@@ -399,7 +399,7 @@ struct BookDetailView: View {
         }
         
         Button(isExpanded ? DisplayStrings.less.capitalized : DisplayStrings.more.capitalized) {
-          withAnimation {
+          withAnimation(UIAccessibility.isReduceMotionEnabled ? .none : .default) {
             isExpanded.toggle()
           }
         }

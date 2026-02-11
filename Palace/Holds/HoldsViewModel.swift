@@ -90,7 +90,7 @@ final class HoldsViewModel: ObservableObject {
             }
         }
 
-        withAnimation {
+        withAnimation(UIAccessibility.isReduceMotionEnabled ? .none : .default) {
             self.reservedBookVMs = reservedVMs
             self.heldBookVMs = heldVMs
             self.visibleBooks = self.allBooks

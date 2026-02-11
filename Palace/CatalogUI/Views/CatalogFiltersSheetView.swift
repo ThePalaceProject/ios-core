@@ -95,6 +95,8 @@ struct CatalogFiltersSheetView: View {
         Spacer()
       }
       .background(Color(UIColor.systemBackground))
+      .navigationTitle("Filters")
+      .navigationBarTitleDisplayMode(.inline)
       .task { configureInitialSelection() }
     }
   }
