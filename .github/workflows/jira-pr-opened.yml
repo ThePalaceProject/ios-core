@@ -4,22 +4,62 @@ on:
   pull_request:
     types: [opened, reopened, ready_for_review]
     branches: [main, develop]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to process'
+        required: true
+        type: string
 
 jobs:
   move-to-review:
-    if: github.event.pull_request.draft == false
+    if: >
+      (github.event_name == 'workflow_dispatch') ||
+      (github.event.pull_request.draft == false)
     runs-on: ubuntu-latest
     
     steps:
+      - name: Resolve PR data
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            # Manual trigger — fetch PR data via API
+            PR_JSON=$(gh api repos/${{ github.repository }}/pulls/${{ inputs.pr_number }})
+            echo "num=${{ inputs.pr_number }}" >> $GITHUB_OUTPUT
+            echo "title=$(echo "$PR_JSON" | jq -r '.title')" >> $GITHUB_OUTPUT
+            echo "url=$(echo "$PR_JSON" | jq -r '.html_url')" >> $GITHUB_OUTPUT
+            echo "author=$(echo "$PR_JSON" | jq -r '.user.login')" >> $GITHUB_OUTPUT
+            echo "branch=$(echo "$PR_JSON" | jq -r '.head.ref')" >> $GITHUB_OUTPUT
+            echo "sha=$(echo "$PR_JSON" | jq -r '.head.sha')" >> $GITHUB_OUTPUT
+            
+            # PR body can be multiline — write to file
+            echo "$PR_JSON" | jq -r '.body // ""' > /tmp/pr_body.txt
+          else
+            # pull_request event — use event payload
+            echo "num=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+            echo "title=${{ github.event.pull_request.title }}" >> $GITHUB_OUTPUT
+            echo "url=${{ github.event.pull_request.html_url }}" >> $GITHUB_OUTPUT
+            echo "author=${{ github.event.pull_request.user.login }}" >> $GITHUB_OUTPUT
+            echo "branch=${{ github.event.pull_request.head.ref }}" >> $GITHUB_OUTPUT
+            echo "sha=${{ github.event.pull_request.head.sha }}" >> $GITHUB_OUTPUT
+            
+            # Write PR body to file (via env var to avoid injection)
+            cat <<'EOFBODY' > /tmp/pr_body.txt
+          ${{ github.event.pull_request.body }}
+          EOFBODY
+          fi
+
       - name: Checkout code
         uses: actions/checkout@v4
         with:
+          ref: ${{ steps.pr.outputs.sha }}
           fetch-depth: 10
           
       - name: Get build number
         id: build
         run: |
-          # Extract build number from project.pbxproj
           BUILD_NUM=$(grep -m1 'CURRENT_PROJECT_VERSION' Palace.xcodeproj/project.pbxproj | grep -oE '[0-9]+' | head -1)
           echo "number=$BUILD_NUM" >> $GITHUB_OUTPUT
           echo "📦 Build number: $BUILD_NUM"
@@ -27,22 +67,15 @@ jobs:
       - name: Extract Jira tickets
         id: tickets
         env:
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_BODY: ${{ github.event.pull_request.body }}
-          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+          PR_TITLE: ${{ steps.pr.outputs.title }}
+          PR_BRANCH: ${{ steps.pr.outputs.branch }}
         run: |
-          # Extract ticket numbers from PR title, body, and branch name
-          # NOTE: We pass these via env vars (not direct interpolation)
-          # to prevent shell injection when PR body contains backticks or special chars.
-          
-          # Combine all sources
+          PR_BODY=$(cat /tmp/pr_body.txt 2>/dev/null || true)
           ALL_TEXT="$PR_TITLE $PR_BODY $PR_BRANCH"
           
-          # Extract unique PP-XXXX tickets (silently skip if none found)
           TICKETS=$(echo "$ALL_TEXT" | grep -oE 'PP-[0-9]+' | sort -u | tr '\n' ' ' || true)
           
           if [ -z "$TICKETS" ]; then
-            # No tickets found - this is fine, not all PRs have Jira tickets
             echo "found=false" >> $GITHUB_OUTPUT
           else
             echo "Found tickets: $TICKETS"
@@ -53,14 +86,10 @@ jobs:
       - name: Get latest commit info
         id: commit
         run: |
-          COMMIT_SHA=$(git rev-parse --short HEAD)
-          COMMIT_AUTHOR=$(git log -1 --format="%an")
-          COMMIT_DATE=$(git log -1 --format="%ai")
-          COMMIT_MSG=$(git log -1 --format="%s")
-          echo "sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
-          echo "author=$COMMIT_AUTHOR" >> $GITHUB_OUTPUT
-          echo "date=$COMMIT_DATE" >> $GITHUB_OUTPUT
-          echo "msg=$COMMIT_MSG" >> $GITHUB_OUTPUT
+          echo "sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          echo "author=$(git log -1 --format='%an')" >> $GITHUB_OUTPUT
+          echo "date=$(git log -1 --format='%ai')" >> $GITHUB_OUTPUT
+          echo "msg=$(git log -1 --format='%s')" >> $GITHUB_OUTPUT
 
       - name: Move tickets to Code Review
         if: steps.tickets.outputs.found == 'true'
@@ -68,12 +97,11 @@ jobs:
           JIRA_URL: ${{ secrets.JIRA_URL }}
           JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
           JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
-          PR_NUM: ${{ github.event.pull_request.number }}
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_BODY: ${{ github.event.pull_request.body }}
-          AUTHOR: ${{ github.event.pull_request.user.login }}
-          BRANCH: ${{ github.event.pull_request.head.ref }}
+          PR_NUM: ${{ steps.pr.outputs.num }}
+          PR_URL: ${{ steps.pr.outputs.url }}
+          PR_TITLE: ${{ steps.pr.outputs.title }}
+          AUTHOR: ${{ steps.pr.outputs.author }}
+          BRANCH: ${{ steps.pr.outputs.branch }}
           BUILD_NUM: ${{ steps.build.outputs.number }}
           COMMIT_SHA: ${{ steps.commit.outputs.sha }}
           COMMIT_AUTHOR: ${{ steps.commit.outputs.author }}
@@ -89,12 +117,8 @@ jobs:
           JIRA_PROJECT_KEY="PP"
           EOF
           
-          # Extract key changes from PR body (strip markdown headers, keep bullet points)
-          KEY_CHANGES=""
-          if [ -n "$PR_BODY" ]; then
-            # Take the PR body as key changes, trim to reasonable length
-            KEY_CHANGES=$(echo "$PR_BODY" | head -30)
-          fi
+          # Read PR body for key changes
+          KEY_CHANGES=$(cat /tmp/pr_body.txt 2>/dev/null | head -30 || true)
           
           for TICKET in $TICKETS; do
             echo "🔍 Moving $TICKET to Code Review..."
@@ -145,5 +169,5 @@ Message: ${COMMIT_MSG}
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Tickets moved to Code Review:** ${{ steps.tickets.outputs.list }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**PR:** #${{ github.event.pull_request.number }}" >> $GITHUB_STEP_SUMMARY
+          echo "**PR:** #${{ steps.pr.outputs.num }}" >> $GITHUB_STEP_SUMMARY
           echo "**Build:** ${{ steps.build.outputs.number }}" >> $GITHUB_STEP_SUMMARY
