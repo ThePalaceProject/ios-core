@@ -593,7 +593,8 @@ struct AccountDetailView: View {
     ProblemReportEmail.sharedInstance.beginComposing(
       to: email.rawValue,
       presentingViewController: topVC,
-      book: nil as TPPBook?
+      book: nil as TPPBook?,
+      libraryUUID: viewModel.selectedAccount?.uuid
     )
   }
   

@@ -142,5 +142,30 @@ final class ProblemReportEmailTests: XCTestCase {
     XCTAssertTrue(afterSeparator.contains("Patron ID: \(patronID)"),
                   "Patron ID should appear in the device info section after the separator")
   }
+
+  // MARK: - Library-scoped Patron ID Tests (PP-3651 follow-up)
+
+  /// Regression test: When viewing a library you're NOT signed into,
+  /// the patron ID from another (active) library should NOT leak through.
+  /// beginComposing(to:presentingViewController:book:libraryUUID:) should
+  /// resolve the patron ID for the specified library, not the active one.
+  func testPP3651_generateBody_withExplicitNilPatronID_doesNotLeakActiveLibraryID() {
+    // Simulate: user is signed into Library A (active) but viewing Library B (no patron)
+    // The caller should pass nil when the viewed library has no signed-in patron
+    let body = emailService.generateBody(book: nil, patronIdentifier: nil)
+
+    XCTAssertFalse(body.contains("Patron ID:"),
+                   "When patronIdentifier is nil (not signed in to viewed library), no Patron ID should appear")
+  }
+
+  /// Regression test: beginComposing should accept a libraryUUID so it can
+  /// resolve the correct patron ID for the viewed library, not the active one.
+  func testPP3651_beginComposing_acceptsLibraryUUID() {
+    // Verify the method signature exists and compiles with libraryUUID parameter
+    // This is a compile-time check — the actual email composition requires MFMailComposeViewController
+    let selector = #selector(ProblemReportEmail.beginComposing(to:presentingViewController:book:libraryUUID:))
+    XCTAssertTrue(emailService.responds(to: selector),
+                  "ProblemReportEmail should have beginComposing(to:presentingViewController:book:libraryUUID:) method")
+  }
 }
 

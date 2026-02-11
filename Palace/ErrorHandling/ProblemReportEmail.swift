@@ -13,7 +13,23 @@ import UIKit
     presentingViewController: UIViewController,
     book: TPPBook?)
   {
-    let patronID = TPPUserAccount.sharedAccount().authorizationIdentifier
+    beginComposing(to: emailAddress, presentingViewController: presentingViewController, book: book, libraryUUID: nil)
+  }
+
+  /// Composes a problem report email using the patron ID for the specified library.
+  /// - Parameters:
+  ///   - emailAddress: The support email address.
+  ///   - presentingViewController: The view controller to present the mail composer from.
+  ///   - book: An optional book associated with the report.
+  ///   - libraryUUID: The UUID of the library being viewed. When nil, falls back to the active library.
+  @objc func beginComposing(
+    to emailAddress: String,
+    presentingViewController: UIViewController,
+    book: TPPBook?,
+    libraryUUID: String?)
+  {
+    let account = TPPUserAccount.sharedAccount(libraryUUID: libraryUUID ?? AccountsManager.shared.currentAccountId)
+    let patronID = account.authorizationIdentifier
     beginComposing(to: emailAddress, presentingViewController: presentingViewController, body: generateBody(book: book, patronIdentifier: patronID))
   }
   
