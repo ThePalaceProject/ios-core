@@ -13,7 +13,8 @@ import UIKit
     presentingViewController: UIViewController,
     book: TPPBook?)
   {
-    beginComposing(to: emailAddress, presentingViewController: presentingViewController, body: generateBody(book: book))
+    let patronID = TPPUserAccount.sharedAccount().authorizationIdentifier
+    beginComposing(to: emailAddress, presentingViewController: presentingViewController, body: generateBody(book: book, patronIdentifier: patronID))
   }
   
   func beginComposing(
@@ -45,7 +46,7 @@ import UIKit
     presentingViewController.present(mailComposeViewController, animated: true)
   }
   
-  func generateBody(book: TPPBook?) -> String {
+  func generateBody(book: TPPBook?, patronIdentifier: String? = nil) -> String {
     let nativeHeight = UIScreen.main.nativeBounds.height
     let systemVersion = UIDevice.current.systemVersion
     let idiom: String
@@ -71,13 +72,16 @@ import UIKit
     }
     
     let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
-    let bodyWithoutBook = "\n\n---\nIdiom: \(idiom)\nPlatform: iOS\nOS: \(systemVersion)\nHeight: \(nativeHeight)\nPalace Version: \(appVersion)\nLibrary: \(AccountsManager.shared.currentAccount?.name ?? "")"
-    let body: String
-    if let book = book {
-      body = bodyWithoutBook + "\nTitle: \(book.title)\nID: \(book.identifier)"
-    } else {
-      body = bodyWithoutBook
+    var body = "\n\n---\nIdiom: \(idiom)\nPlatform: iOS\nOS: \(systemVersion)\nHeight: \(nativeHeight)\nPalace Version: \(appVersion)\nLibrary: \(AccountsManager.shared.currentAccount?.name ?? "")"
+    
+    if let patronIdentifier = patronIdentifier {
+      body += "\nPatron ID: \(patronIdentifier)"
     }
+    
+    if let book = book {
+      body += "\nTitle: \(book.title)\nID: \(book.identifier)"
+    }
+    
     return body
   }
 }

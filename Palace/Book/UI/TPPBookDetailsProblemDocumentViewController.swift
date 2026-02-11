@@ -178,12 +178,14 @@
     alert.addAction(UIAlertAction.init(title: "Cancel", style: .cancel, handler: nil))
     alert.addAction(UIAlertAction.init(title: "Send email", style: .default, handler: { (action) in
       let labelText = self.label?.attributedText?.string ?? ""
+      let patronID = TPPUserAccount.sharedAccount().authorizationIdentifier ?? "n/a"
       let body = """
         \(labelText)\n\
         DeviceModel:\n\(UIDevice.current.model)\n\n
         DeviceSystemName:\n\(UIDevice.current.systemName)\n\n
         DeviceSystemVersion:\n\(UIDevice.current.systemVersion)\n\n
         DeviceIdiom:\n\(UIDevice.current.userInterfaceIdiom)\n\n
+        PatronID:\n\(patronID)\n\n
         BookTitle:\n\(self.book?.title ?? "n/a")\n\n
         BookIdentifier:\n\(self.book?.identifier ?? "n/a")\n\n
       """
