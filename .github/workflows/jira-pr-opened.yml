@@ -13,7 +13,17 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 10
           
+      - name: Get build number
+        id: build
+        run: |
+          # Extract build number from project.pbxproj
+          BUILD_NUM=$(grep -m1 'CURRENT_PROJECT_VERSION' Palace.xcodeproj/project.pbxproj | grep -oE '[0-9]+' | head -1)
+          echo "number=$BUILD_NUM" >> $GITHUB_OUTPUT
+          echo "📦 Build number: $BUILD_NUM"
+
       - name: Extract Jira tickets
         id: tickets
         env:
@@ -39,7 +49,19 @@ jobs:
             echo "found=true" >> $GITHUB_OUTPUT
             echo "list=$TICKETS" >> $GITHUB_OUTPUT
           fi
-          
+
+      - name: Get latest commit info
+        id: commit
+        run: |
+          COMMIT_SHA=$(git rev-parse --short HEAD)
+          COMMIT_AUTHOR=$(git log -1 --format="%an")
+          COMMIT_DATE=$(git log -1 --format="%ai")
+          COMMIT_MSG=$(git log -1 --format="%s")
+          echo "sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
+          echo "author=$COMMIT_AUTHOR" >> $GITHUB_OUTPUT
+          echo "date=$COMMIT_DATE" >> $GITHUB_OUTPUT
+          echo "msg=$COMMIT_MSG" >> $GITHUB_OUTPUT
+
       - name: Move tickets to Code Review
         if: steps.tickets.outputs.found == 'true'
         env:
@@ -49,7 +71,14 @@ jobs:
           PR_NUM: ${{ github.event.pull_request.number }}
           PR_URL: ${{ github.event.pull_request.html_url }}
           PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
           AUTHOR: ${{ github.event.pull_request.user.login }}
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+          BUILD_NUM: ${{ steps.build.outputs.number }}
+          COMMIT_SHA: ${{ steps.commit.outputs.sha }}
+          COMMIT_AUTHOR: ${{ steps.commit.outputs.author }}
+          COMMIT_DATE: ${{ steps.commit.outputs.date }}
+          COMMIT_MSG: ${{ steps.commit.outputs.msg }}
           TICKETS: ${{ steps.tickets.outputs.list }}
         run: |
           # Create temp config for script
@@ -60,6 +89,13 @@ jobs:
           JIRA_PROJECT_KEY="PP"
           EOF
           
+          # Extract key changes from PR body (strip markdown headers, keep bullet points)
+          KEY_CHANGES=""
+          if [ -n "$PR_BODY" ]; then
+            # Take the PR body as key changes, trim to reasonable length
+            KEY_CHANGES=$(echo "$PR_BODY" | head -30)
+          fi
+          
           for TICKET in $TICKETS; do
             echo "🔍 Moving $TICKET to Code Review..."
             
@@ -68,16 +104,32 @@ jobs:
               echo "⚠️ Could not transition $TICKET (may already be in review or different workflow)"
             }
             
-            # Add PR link comment (use heredoc to avoid YAML issues with special chars)
-            COMMENT=$(cat <<ENDCOMMENT
-          🔍 *Pull Request Ready for Review*
+            # Build rich comment with full PR context
+            COMMENT="🔍 *Pull Request Ready for Review*
 
-          *PR:* [#${PR_NUM} - ${PR_TITLE}|${PR_URL}]
-          *Author:* ${AUTHOR}
+*PR:* #${PR_NUM} - ${PR_TITLE}
+*URL:* ${PR_URL}
+*Author:* ${AUTHOR}
+*Branch:* ${BRANCH}
+*Build:* ${BUILD_NUM}"
 
-          Please review the changes.
-          ENDCOMMENT
-            )
+            if [ -n "$KEY_CHANGES" ]; then
+              COMMENT="${COMMENT}
+
+*Key changes:*
+${KEY_CHANGES}"
+            fi
+
+            COMMENT="${COMMENT}
+
+*Commit Information*
+{code}
+Commit: ${COMMIT_SHA}
+Author: ${COMMIT_AUTHOR}
+Date: ${COMMIT_DATE}
+Message: ${COMMIT_MSG}
+{code}"
+
             ./scripts/jira-integration.sh comment "$TICKET" "$COMMENT" || {
               echo "⚠️ Failed to add comment to $TICKET"
             }
@@ -94,3 +146,4 @@ jobs:
           echo "**Tickets moved to Code Review:** ${{ steps.tickets.outputs.list }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**PR:** #${{ github.event.pull_request.number }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Build:** ${{ steps.build.outputs.number }}" >> $GITHUB_STEP_SUMMARY
