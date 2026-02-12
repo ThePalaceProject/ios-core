@@ -17,57 +17,28 @@ class Reachability: NSObject {
   private let connectionMonitor = NWPathMonitor()
   private let monitorQueue = DispatchQueue(label: "NetworkMonitor")
 
-  private var pollingTimer: Timer?
-  private var retriesCounter = 0
-  private let maxRetries = 30
   private(set) var isConnected = false
 
   func startMonitoring() {
-    retriesCounter = 0
-    connectionMonitor.pathUpdateHandler = { [weak self] _ in
-      self?.beginPolling()
+    connectionMonitor.pathUpdateHandler = { [weak self] path in
+      guard let self else { return }
+      let newStatus = (path.status == .satisfied)
+      
+      guard newStatus != self.isConnected else { return }
+      self.isConnected = newStatus
+      
+      DispatchQueue.main.async {
+        NotificationCenter.default.post(
+          name: .TPPReachabilityChanged,
+          object: newStatus
+        )
+      }
     }
     connectionMonitor.start(queue: monitorQueue)
   }
 
   func stopMonitoring() {
     connectionMonitor.cancel()
-    pollingTimer?.invalidate()
-    pollingTimer = nil
-  }
-
-  private func beginPolling() {
-    pollingTimer?.invalidate()
-    retriesCounter = 0
-
-    pollingTimer = Timer.scheduledTimer(
-      timeInterval: 1.0,
-      target: self,
-      selector: #selector(pollNetworkStatus),
-      userInfo: nil,
-      repeats: true
-    )
-  }
-
-  @objc private func pollNetworkStatus() {
-    defer { retriesCounter += 1 }
-
-    guard retriesCounter < maxRetries else {
-      pollingTimer?.invalidate()
-      pollingTimer = nil
-      return
-    }
-
-    let newStatus = isConnectedToNetwork()
-    if newStatus != isConnected {
-      isConnected = newStatus
-      NotificationCenter.default.post(
-        name: .TPPReachabilityChanged,
-        object: newStatus
-      )
-      pollingTimer?.invalidate()
-      pollingTimer = nil
-    }
   }
 
   // MARK: - Reachability Check
