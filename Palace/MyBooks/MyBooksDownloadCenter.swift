@@ -127,6 +127,13 @@ actor DownloadCoordinator {
   private let downloadExecutor = SerialExecutor()
   
   let downloadProgressPublisher = PassthroughSubject<(String, Double), Never>()
+  
+  /// Publishes download error alerts for a given book identifier.
+  /// Subscribers (e.g. view models showing a half sheet) can present the
+  /// error inline via SwiftUI `.alert` instead of relying on UIKit
+  /// presentation, which can fail when a SwiftUI sheet is topmost.
+  let downloadErrorPublisher = PassthroughSubject<(String, String, String), Never>() // (bookId, title, message)
+  
   private var maxConcurrentDownloads: Int = 4  // Increased from 2 for better UX
   private let downloadCoordinator = DownloadCoordinator()
   
@@ -280,9 +287,8 @@ actor DownloadCoordinator {
     switch errorType {
     case TPPProblemDocument.TypeLoanAlreadyExists:
       let alertMessage = DisplayStrings.loanAlreadyExistsAlertMessage
-      let alert = TPPAlertUtils.alert(title: alertTitle, message: alertMessage)
       runOnMainAsync {
-        TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
+        self.downloadErrorPublisher.send((book.identifier, alertTitle, alertMessage))
       }
       
     case TPPProblemDocument.TypeInvalidCredentials:
@@ -333,23 +339,24 @@ actor DownloadCoordinator {
   }
   
   private func showAlert(for book: TPPBook, with error: [String: Any]?, alertTitle: String) {
-    let alertMessage = String(format: DisplayStrings.borrowFailedMessage, book.title)
-    let alert = TPPAlertUtils.alert(title: alertTitle, message: alertMessage)
+    var alertMessage = String(format: DisplayStrings.borrowFailedMessage, book.title)
     
     if let error = error {
-      TPPAlertUtils.setProblemDocument(controller: alert, document: TPPProblemDocument.fromDictionary(error), append: false)
+      let problemDoc = TPPProblemDocument.fromDictionary(error)
+      if let detail = problemDoc.detail {
+        alertMessage = "\(alertMessage)\n\n\(detail)"
+      }
     }
     
     runOnMainAsync {
-      TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
+      self.downloadErrorPublisher.send((book.identifier, alertTitle, alertMessage))
     }
   }
   
   private func showGenericBorrowFailedAlert(for book: TPPBook) {
     let formattedMessage = String(format: DisplayStrings.borrowFailedMessage, book.title)
-    let alert = TPPAlertUtils.alert(title: DisplayStrings.borrowFailed, message: formattedMessage)
     runOnMainAsync {
-      TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
+      self.downloadErrorPublisher.send((book.identifier, DisplayStrings.borrowFailed, formattedMessage))
     }
   }
   
@@ -2099,19 +2106,13 @@ extension MyBooksDownloadCenter {
       self.schedulePendingStartsIfPossible()
     }
     
+    let errorMessage = message ?? "No error message"
+    let formattedMessage = String.localizedStringWithFormat(NSLocalizedString("The download for %@ could not be completed.", comment: ""), book.title)
+    let finalMessage = "\(formattedMessage)\n\(errorMessage)"
+    
+    // Publish error so SwiftUI views (half sheet) can present inline
     runOnMainAsync {
-      let errorMessage = message ?? "No error message"
-      let formattedMessage = String.localizedStringWithFormat(NSLocalizedString("The download for %@ could not be completed.", comment: ""), book.title)
-      let finalMessage = "\(formattedMessage)\n\(errorMessage)"
-      let alert = TPPAlertUtils.alertWithDetails(
-        title: "DownloadFailed",
-        message: finalMessage,
-        bookIdentifier: book.identifier,
-        bookTitle: book.title
-      )
-      runOnMainAsync {
-        TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
-      }
+      self.downloadErrorPublisher.send((book.identifier, "DownloadFailed", finalMessage))
     }
     
     broadcastUpdate()
@@ -2119,21 +2120,24 @@ extension MyBooksDownloadCenter {
   
   func alertForProblemDocument(_ problemDoc: TPPProblemDocument?, error: Error?, book: TPPBook) {
     let msg = String(format: NSLocalizedString("The download for %@ could not be completed.", comment: ""), book.title)
-    let alert = TPPAlertUtils.alert(title: "DownloadFailed", message: msg)
     
+    var finalMessage = msg
     if let problemDoc = problemDoc {
       TPPProblemDocumentCacheManager.sharedInstance().cacheProblemDocument(problemDoc, key: book.identifier)
-      TPPAlertUtils.setProblemDocument(controller: alert, document: problemDoc, append: true)
+      if let detail = problemDoc.detail {
+        finalMessage = "\(msg)\n\n\(detail)"
+      }
       
       if problemDoc.type == TPPProblemDocument.TypeNoActiveLoan {
         bookRegistry.removeBook(forIdentifier: book.identifier)
       }
     } else if let error = error {
-      alert.message = String(format: "%@\n\nError: %@", msg, error.localizedDescription)
+      finalMessage = String(format: "%@\n\nError: %@", msg, error.localizedDescription)
     }
     
+    // Publish error so SwiftUI views (half sheet) can present inline
     runOnMainAsync {
-      TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
+      self.downloadErrorPublisher.send((book.identifier, "DownloadFailed", finalMessage))
     }
   }
   
